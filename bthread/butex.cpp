@@ -111,7 +111,7 @@ struct Butex {
     base::Mutex waiter_lock;
 };
 
-// Confirm that Butex is consistent with constants in bthread_types.h
+// Confirm that Butex is consistent with constants in bthread/types.h
 BAIDU_CASSERT(sizeof(Butex) == BUTEX_MEMORY_SIZE,
               sizeof_Butex_must_match);
 // Confirm that layout of Butex is consistent with impl. of butex_locate()

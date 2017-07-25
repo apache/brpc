@@ -28,7 +28,7 @@ struct TimerThreadOptions {
     // Default: ""
     std::string bvar_prefix;
 
-    // Contruct with default options.
+    // Constructed with default options.
     TimerThreadOptions();
 };
 

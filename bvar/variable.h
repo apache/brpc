@@ -42,7 +42,7 @@ public:
 
 // Options for Variable::dump_exposed().
 struct DumpOptions {
-    // Contructed with default options.
+    // Constructed with default options.
     DumpOptions();
 
     // If this is true, string-type values will be quoted.

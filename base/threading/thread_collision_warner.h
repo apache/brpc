@@ -79,7 +79,7 @@
 // };
 //
 //
-// Example: Class that has to be contructed/destroyed on same thread, it has
+// Example: Class that has to be constructed/destroyed on same thread, it has
 //          a "shareable" method (with external synchronization) and a not
 //          shareable method (even with external synchronization).
 //
