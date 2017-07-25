@@ -1,0 +1,15 @@
+syntax="proto2";
+package brpc;
+
+option cc_generic_services = true;
+option java_generic_services = true;
+option java_package = "com.brpc";
+option java_outer_classname = "GetFavicon";
+
+message GetFaviconRequest {}
+message GetFaviconResponse {}
+
+// Hack for accessing /favicon.ico
+service ico {
+    rpc default_method(GetFaviconRequest) returns (GetFaviconResponse);
+}

@@ -1,0 +1,58 @@
+syntax="proto2";
+// Meta of sofa-pbrpc https://github.com/baidu/sofa-pbrpc
+
+package brpc.policy;
+option java_package = "com.brpc.policy";
+option java_outer_classname = "SofaRpcProto";
+
+enum SofaCompressType {
+    SOFA_COMPRESS_TYPE_NONE = 0;
+    SOFA_COMPRESS_TYPE_GZIP = 1;
+    SOFA_COMPRESS_TYPE_ZLIB = 2;
+    SOFA_COMPRESS_TYPE_SNAPPY = 3;
+    SOFA_COMPRESS_TYPE_LZ4 = 4;
+}
+
+message SofaRpcMeta {
+
+  /////////////////////////////////////////////////////
+  // The following fields are used both for request and response.
+
+  // Message type.
+  enum Type {
+    REQUEST = 0;
+    RESPONSE = 1;
+  };
+  required Type type = 1;
+
+  // Message sequence id.
+  required uint64 sequence_id = 2;
+
+  /////////////////////////////////////////////////////
+  // The following fields are used only for request.
+
+  // Method full name.
+  // For example: "test.HelloService.GreetMethod"
+  optional string method = 100;
+
+  /////////////////////////////////////////////////////
+  // The following fields are used only for response.
+
+  // Set as true if the call is failed.
+  optional bool failed = 200;
+
+  // The error code if the call is failed.
+  optional int32 error_code = 201;
+
+  // The error reason if the call is failed.
+  optional string reason = 202;
+
+  /////////////////////////////////////////////////////
+  // Compression related fields.
+
+  // Set the request/response compress type.
+  optional SofaCompressType compress_type = 300;
+
+  // Set the response compress type of user expected.
+  optional SofaCompressType expected_response_compress_type = 301;
+}

@@ -1,0 +1,130 @@
+// Baidu RPC - A framework to host and access services throughout Baidu.
+// Copyright (c) 2015 Baidu.com, Inc. All Rights Reserved
+
+// Author: The baidu-rpc authors (pbrpc@baidu.com)
+// Date: 2015/09/23 17:37:46
+
+#ifndef  BRPC_STREAM_H
+#define  BRPC_STREAM_H
+
+#include "base/iobuf.h"
+#include "base/scoped_generic.h"
+#include "brpc/socket_id.h"
+
+namespace brpc {
+
+class Controller;
+
+typedef SocketId StreamId;
+const StreamId INVALID_STREAM_ID = (StreamId)-1L;
+
+namespace detail {
+struct StreamIdTraits;
+};
+
+// Auto-closed Stream
+typedef base::ScopedGeneric<StreamId, detail::StreamIdTraits> ScopedStream;
+
+class StreamInputHandler {
+public:
+    virtual int on_received_messages(StreamId id, 
+                                     base::IOBuf *const messages[], 
+                                     size_t size) = 0;
+    virtual void on_idle_timeout(StreamId id) = 0;
+    virtual void on_closed(StreamId id) = 0; 
+};
+
+struct StreamOptions {
+    StreamOptions()
+        : max_buf_size(2 * 1024 * 1024)
+        , idle_timeout_ms(-1)
+        , messages_in_batch(128)
+        , handler(NULL)
+    {}
+
+    // The max size of unconsumed data allowed at remote side. 
+    // If |max_buf_size| <= 0, there's no limit of buf size
+    // default: 2097152 (2M)
+    int max_buf_size;
+
+    // Notify user when there's no data for at least |idle_timeout_ms|
+    // milliseconds since the last time that HandleIdleTimeout or HandleInput 
+    // finished.
+    // default: -1
+    long idle_timeout_ms;
+    
+    // Maximum messages in batch passed to handler->on_received_messages
+    // default: 128
+    size_t messages_in_batch;
+
+    // Handle input message, if handler is NULL, the remote side is not allowd to
+    // write any message, who will get EBADF on writting
+    // default: NULL
+    StreamInputHandler* handler;
+};
+
+// [Called at the client side]
+// Create a stream at client-side along with the |cntl|, which will be connected
+// when receiving the response with a stream from server-side. If |options| is
+// NULL, the stream will be created with default options
+// Return 0 on success, -1 otherwise
+int StreamCreate(StreamId* request_stream, Controller &cntl,
+                 const StreamOptions* options);
+
+// [Called at the server side]
+// Accept the stream. If client didn't create a stream with the request 
+// (cntl.has_remote_stream() returns false), this method would fail.
+// Return 0 on success, -1 otherwise.
+int StreamAccept(StreamId* response_stream, Controller &cntl,
+                 const StreamOptions* options);
+
+// Write |message| into |stream_id|. The remote-side handler will received the 
+// message by the written order
+// Returns 0 on success, errno otherwise
+// Errno:
+//  - EAGAIN: |stream_id| is created with positive |max_buf_size| and buf size
+//            which the remote side hasn't consumed yet excceeds the number.
+//  - EINVAL: |stream_id| is invalied or has been closed
+int StreamWrite(StreamId stream_id, const base::IOBuf &message);
+
+// Write util the pending buffer size is less than |max_buf_size| or orrur
+// occurs
+// Returns 0 on success, errno otherwise
+// Errno:
+//  - ETIMEDOUT: when |due_time| is not NULL and time expired this
+//  - EINVAL: the stream was close during waiting
+int StreamWait(StreamId stream_id, const timespec* due_time);
+
+// Async wait
+void StreamWait(StreamId stream_id, const timespec *due_time,
+                void (*on_writable)(StreamId stream_id, void* arg, 
+                                    int error_code),
+                void *arg);
+
+// Close |stream_id|, after this function is called:
+//  - All the following |StreamWrite| would fail 
+//  - |StreamWait| wakes up immediately.
+//  - Both sides |on_closed| would be notifed after all the pending buffers have
+//    been received
+// This function could be called multiple times without side-effects
+int StreamClose(StreamId stream_id);
+
+namespace detail {
+
+struct StreamIdTraits {
+    inline static StreamId InvalidValue() {
+        return INVALID_STREAM_ID;
+    };
+    static void Free(StreamId f) {
+        if (f != INVALID_STREAM_ID) {
+            StreamClose(f);
+        }
+    }
+};
+
+}  // namespace detail
+
+} // namespace brpc
+
+
+#endif  //BRPC_STREAM_H

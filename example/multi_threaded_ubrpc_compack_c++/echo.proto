@@ -1,0 +1,19 @@
+// Converted from echo.idl by public/mcpack2pb/idl2proto
+syntax="proto2";
+import "idl_options.proto";
+option (idl_support) = true;
+
+option cc_generic_services = true;
+package example;
+
+message EchoRequest {
+    required string message = 1; 
+}
+
+message EchoResponse {
+    required string message = 1; 
+}
+
+service EchoService {
+    rpc Echo(EchoRequest) returns (EchoResponse);
+}

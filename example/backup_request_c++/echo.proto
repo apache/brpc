@@ -1,0 +1,16 @@
+syntax="proto2";
+package example;
+
+option cc_generic_services = true;
+
+message EchoRequest {
+  required int32 index = 1;
+};
+
+message EchoResponse {
+  required int32 index = 1;
+};
+
+service EchoService {
+  rpc Echo(EchoRequest) returns (EchoResponse);
+};

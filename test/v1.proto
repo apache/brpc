@@ -1,0 +1,21 @@
+syntax="proto2";
+// for testing adding same named services in different packages into server
+package v1;
+
+option cc_generic_services = true;
+
+message EchoRequest {
+    required string message = 1;
+};
+
+message EchoResponse {
+    required string message = 1;
+};
+
+service EchoService {
+    rpc Echo(EchoRequest) returns (EchoResponse);
+    rpc Echo2(EchoRequest) returns (EchoResponse);
+    rpc Echo3(EchoRequest) returns (EchoResponse);
+    rpc Echo4(EchoRequest) returns (EchoResponse);
+    rpc Echo5(EchoRequest) returns (EchoResponse);
+};

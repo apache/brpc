@@ -1,0 +1,20 @@
+#edit-mode: -*- python -*-
+#coding:gbk
+
+WORKROOT('../../../../../')
+
+CPPFLAGS('-g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -fno-omit-frame-pointer -Wno-deprecated -Wno-unused-parameter -std=c++0x')
+CPPFLAGS('-D__const__=')
+
+INCPATHS('../../')
+LIBS(GLOB('../../output/lib/lib*.a'))
+ImportConfigsFrom('../../')
+
+CPPFLAGS('-DBRPC_ENABLE_CPU_PROFILER -DBRPC_ENABLE_HEAP_PROFILER')
+CONFIGS('third-64/tcmalloc@1.7.0.200',Libraries('lib/libtcmalloc_and_profiler.a'))
+
+LDFLAGS('-lpthread -lrt -lssl -lcrypto -ldl -lz')
+
+PROTOC(ENV.WorkRoot() + "/third-64/protobuf/bin/protoc")
+
+Application('trackme_server', Sources('trackme_server.cpp'))

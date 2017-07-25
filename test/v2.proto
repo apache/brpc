@@ -1,0 +1,17 @@
+syntax="proto2";
+// for testing adding same named services in different packages into server
+package v2;
+
+option cc_generic_services = true;
+
+message EchoRequest {
+    required int32 value = 1;
+};
+
+message EchoResponse {
+    required int32 value = 1;
+};
+
+service EchoService {
+    rpc Echo(EchoRequest) returns (EchoResponse);
+};

@@ -1,0 +1,68 @@
+syntax="proto2";
+
+package brpc;
+
+message RtmpConnectRequest {
+  // The Server application name the client is connected to.
+  optional string app = 1;
+
+  // Flash Player version. It is the same string as returned by the
+  // ApplicationScript getversion () function.
+  optional string flashVer = 2;
+
+  // URL of the source SWF file making the connection. 
+  optional string swfUrl = 3;
+
+  // URL of the Server. It has the following format:
+  //   protocol://servername:port/appName/appInstance 
+  optional string tcUrl = 4;
+  
+  // True if proxy is being used.
+  optional bool fpad = 5;
+
+  // Unknown, copy from SRS.
+  optional double capabilities = 6;
+
+  // Indicates what audio codecs the client supports.
+  optional double audioCodecs = 7;
+
+  // Indicates what video codecs are supported.
+  optional double videoCodecs = 8;
+
+  // Indicates what special video functions are supported.
+  optional double videoFunction = 9;
+
+  // URL of the web page from where the SWF file was loaded.
+  optional string pageUrl = 10;
+
+  // AMF encoding method.
+  optional double objectEncoding = 11;
+
+  // True if the client supports multiple streams over one connection.
+  optional bool stream_multiplexing = 12;
+}
+
+message RtmpConnectResponse {
+  optional string fmsVer = 1;
+  optional double capabilities = 2;
+  optional double mode = 3;
+  optional bool create_stream_with_play_or_publish = 4;
+}
+
+message RtmpPlay2Options {
+  optional double len = 1;
+  optional double offset = 2;
+  optional string oldStreamName = 3;
+  optional double start = 4;
+  optional string streamName = 5;
+  optional string transition = 6;
+}
+
+message RtmpInfo {
+  optional string code = 1;
+  optional string level = 2;
+  optional string description = 3;
+  optional double objectEncoding = 4; // used in connect response
+}
+
+message RtmpEmptyObject {}

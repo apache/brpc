@@ -1,0 +1,8 @@
+#!/bin/bash
+saved_pwd_before_making=$PWD
+for file in `find example -name COMAKE`; do
+    cd $(dirname $file)
+    echo -e "\n[$file]"
+    comake2 -P && make -sj4
+    cd $saved_pwd_before_making
+done

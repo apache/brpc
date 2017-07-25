@@ -1,0 +1,13 @@
+Name: dynamic annotations
+URL: http://code.google.com/p/data-race-test/wiki/DynamicAnnotations
+Version: 4384
+License: BSD
+
+One header and one source file (dynamic_annotations.h and dynamic_annotations.c)
+in this directory define runtime macros useful for annotating synchronization
+utilities and benign data races so data race detectors can handle Chromium code
+with better precision.
+
+These files were taken from
+http://code.google.com/p/data-race-test/source/browse/?#svn/trunk/dynamic_annotations
+The files are covered under BSD license as described within the files.

@@ -1,0 +1,15 @@
+#edit-mode: -*- python -*-
+#coding:gbk
+
+WORKROOT('../../../../../')
+
+CXXFLAGS('-std=c++0x -g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -Wno-deprecated -Wno-unused-parameter')
+CPPFLAGS('-D__const__=')
+
+INCPATHS('../../')
+LIBS(GLOB('../../output/lib/lib*.a'))
+ImportConfigsFrom('../../')
+
+LDFLAGS('-lpthread -lrt -lssl -lcrypto -ldl -lz')
+
+Application('parallel_http', Sources('parallel_http.cpp'))

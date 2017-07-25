@@ -1,0 +1,9 @@
+#!/bin/bash
+if [[ $1 -lt 1 ]]; then
+    echo "Invalid argument, at least 1"
+    exit 1
+fi
+for ((i=0; i<$(($1-1)); ++i)); do
+    ./echo_server -server_num 1 -sleep_us $(((i+1)*1000)) -port $((8004+i)) &
+done
+./echo_server -server_num 1 -sleep_us $(($1*1000)) -port $(($1+8003))

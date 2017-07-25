@@ -1,0 +1,80 @@
+syntax="proto2";
+import "brpc/options.proto";
+
+package brpc;
+option java_package="com.brpc";
+option java_outer_classname="Span";
+
+enum SpanType {
+    SPAN_TYPE_SERVER = 0;
+    SPAN_TYPE_CLIENT = 1;
+}
+
+// We don't unify RpczSpan and TracingSpan as one because the former one needs
+// to be as lightweight as possible, say `info' equals span_name + annotations
+// in TracingSpan which needs heavier memory allocations.
+message RpczSpan {
+    required uint64 trace_id = 1;
+    required uint64 span_id = 2;
+    required uint64 parent_span_id = 3;
+    optional uint64 log_id = 4;
+    optional uint64 base_cid = 5;
+    optional uint64 ending_cid = 6;
+    // We don't use additional message for EndPoint to save a memory allocation.
+    optional uint32 remote_ip = 7;
+    optional uint32 remote_port = 8;
+    optional SpanType type = 9;
+    optional bool async = 10;
+    optional ProtocolType protocol = 11;
+    optional int32 error_code = 12;
+    optional int32 request_size = 13;
+    optional int32 response_size = 14;
+    optional int64 received_real_us = 15;
+    optional int64 start_parse_real_us = 16;
+    optional int64 start_callback_real_us = 17;
+    optional int64 start_send_real_us = 18;
+    optional int64 sent_real_us = 19;
+    optional bytes info = 20;
+    repeated RpczSpan client_spans = 21;
+    optional bytes full_method_name = 22;
+}
+
+message BriefSpan {
+    required uint64 trace_id = 1;
+    required uint64 span_id = 2;
+    optional uint64 log_id = 3;
+    optional SpanType type = 4;
+    optional int32 error_code = 5;
+    optional int32 request_size = 6;
+    optional int32 response_size = 7;
+    optional int64 start_real_us = 8;
+    optional int64 latency_us = 9;
+    optional bytes full_method_name = 10;
+}
+
+message SpanAnnotation {
+    required int64 realtime_us = 1;
+    required string content = 2;
+}
+
+message TracingSpan {
+    required uint64 trace_id = 1;
+    required uint64 span_id = 2;
+    required uint64 parent_span_id = 3;
+    optional uint64 log_id = 4;
+    optional uint32 remote_ip = 5;
+    optional uint32 remote_port = 6;
+    optional SpanType type = 7;
+    optional ProtocolType protocol = 8;
+    optional int32 error_code = 9;
+    optional int32 request_size = 10;
+    optional int32 response_size = 11;
+    optional int64 received_real_us = 12;
+    optional int64 start_parse_real_us = 13;
+    optional int64 start_callback_real_us = 14;
+    optional int64 start_send_real_us = 15;
+    optional int64 sent_real_us = 16;
+    optional string span_name = 17;
+    repeated SpanAnnotation annotations = 18;
+    repeated TracingSpan client_spans = 19;
+}
