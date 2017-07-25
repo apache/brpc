@@ -10,7 +10,7 @@
 #include "json_to_pb.h"
 #include "zero_copy_stream_reader.h"       // ZeroCopyStreamReader
 #include "encode_decode.h"
-#include "string_printf.h"
+#include "base/string_printf.h"
 #include "protobuf_map.h"
 #include "rapidjson.h"
 
@@ -19,7 +19,7 @@
         if (!perr->empty()) {                                           \
             perr->append(", ", 2);                                      \
         }                                                               \
-        ::json2pb::string_appendf(perr, fmt, ##__VA_ARGS__);      \
+        base::string_appendf(perr, fmt, ##__VA_ARGS__);                 \
     } else { }
 
 namespace json2pb {
@@ -37,15 +37,15 @@ static void string_append_value(const rapidjson::Value& value,
     } else if (value.IsBool()) {
         output->append(value.GetBool() ? "true" : "false");
     } else if (value.IsInt()) {
-        string_appendf(output, "%d", value.GetInt());
+        base::string_appendf(output, "%d", value.GetInt());
     } else if (value.IsUint()) {
-        string_appendf(output, "%u", value.GetUint());
+        base::string_appendf(output, "%u", value.GetUint());
     } else if (value.IsInt64()) {
-        string_appendf(output, "%ld", value.GetInt64());
+        base::string_appendf(output, "%ld", value.GetInt64());
     } else if (value.IsUint64()) {
-        string_appendf(output, "%lu", value.GetUint64());
+        base::string_appendf(output, "%lu", value.GetUint64());
     } else if (value.IsDouble()) {
-        string_appendf(output, "%f", value.GetDouble());
+        base::string_appendf(output, "%f", value.GetDouble());
     } else if (value.IsString()) {
         output->push_back('"');
         output->append(value.GetString(), value.GetStringLength());
@@ -72,7 +72,7 @@ inline bool value_invalid(const google::protobuf::FieldDescriptor* field, const 
         }
         err->append("Invalid value `");
         string_append_value(value, err);
-        string_appendf(err, "' for %sfield `%s' which SHOULD be %s",
+        base::string_appendf(err, "' for %sfield `%s' which SHOULD be %s",
                        optional ? "optional " : "",
                        field->full_name().c_str(), type);
     }

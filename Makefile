@@ -287,7 +287,6 @@ clean:ccpclean
 	rm -rf json2pb/json2pb_json_to_pb.o
 	rm -rf json2pb/json2pb_pb_to_json.o
 	rm -rf json2pb/json2pb_protobuf_map.o
-	rm -rf json2pb/json2pb_string_printf.o
 	rm -rf mcpack2pb/mcpack2pb_field_type.o
 	rm -rf mcpack2pb/mcpack2pb_mcpack2pb.o
 	rm -rf mcpack2pb/mcpack2pb_parser.o
@@ -900,14 +899,12 @@ libbthread.a:bthread/bthread_bthread.o \
 libjson2pb.a:json2pb/json2pb_encode_decode.o \
   json2pb/json2pb_json_to_pb.o \
   json2pb/json2pb_pb_to_json.o \
-  json2pb/json2pb_protobuf_map.o \
-  json2pb/json2pb_string_printf.o
+  json2pb/json2pb_protobuf_map.o
 	@echo "[[1;32;40mCOMAKE:BUILD[0m][Target:'[1;32;40mlibjson2pb.a[0m']"
 	ar crs libjson2pb.a json2pb/json2pb_encode_decode.o \
   json2pb/json2pb_json_to_pb.o \
   json2pb/json2pb_pb_to_json.o \
-  json2pb/json2pb_protobuf_map.o \
-  json2pb/json2pb_string_printf.o
+  json2pb/json2pb_protobuf_map.o
 	mkdir -p ./output/lib
 	cp -f libjson2pb.a ./output/lib
 
@@ -1953,10 +1950,6 @@ json2pb/json2pb_pb_to_json.o:json2pb/pb_to_json.cpp
 json2pb/json2pb_protobuf_map.o:json2pb/protobuf_map.cpp
 	@echo "[[1;32;40mCOMAKE:BUILD[0m][Target:'[1;32;40mjson2pb/json2pb_protobuf_map.o[0m']"
 	$(CXX) -c $(INCPATH) $(DEP_INCPATH) $(CPPFLAGS) $(CXXFLAGS)  -o json2pb/json2pb_protobuf_map.o json2pb/protobuf_map.cpp
-
-json2pb/json2pb_string_printf.o:json2pb/string_printf.cpp
-	@echo "[[1;32;40mCOMAKE:BUILD[0m][Target:'[1;32;40mjson2pb/json2pb_string_printf.o[0m']"
-	$(CXX) -c $(INCPATH) $(DEP_INCPATH) $(CPPFLAGS) $(CXXFLAGS)  -o json2pb/json2pb_string_printf.o json2pb/string_printf.cpp
 
 mcpack2pb/mcpack2pb_field_type.o:mcpack2pb/field_type.cpp
 	@echo "[[1;32;40mCOMAKE:BUILD[0m][Target:'[1;32;40mmcpack2pb/mcpack2pb_field_type.o[0m']"
