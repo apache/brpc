@@ -18,41 +18,22 @@ LIBS=$(BRPC_PATH)/lib/libbase.a \
   $(GFLAGS_PATH)/lib/libgflags.a \
   $(LEVELDB_PATH)/lib/libleveldb.a \
   $(PROTOBUF_PATH)/lib/libprotobuf.a \
-  -lpthread \
-  -lrt \
-  -lssl \
-  -lcrypto \
-  -ldl \
-  -lz
+  -lpthread -lrt -lssl -lcrypto -ldl -lz
 
-CLIENT_SOURCES = client.cpp
-SERVER_SOURCES = server.cpp
-PROTOS = echo.proto
-
-PROTO_OBJS = $(addsuffix .pb.o, $(basename $(PROTOS)))
-PROTO_GENS = $(addsuffix .pb.h, $(basename $(PROTOS))) $(addsuffix .pb.cc, $(basename $(PROTOS)))
+CLIENT_SOURCES = parallel_http.cpp
 CLIENT_OBJS = $(addsuffix .o, $(basename $(CLIENT_SOURCES))) 
-SERVER_OBJS = $(addsuffix .o, $(basename $(SERVER_SOURCES))) 
 
 .PHONY:all
-all: echo_client echo_server
+all: parallel_http
 
 .PHONY:clean
 clean:
 	@echo "Cleaning"
-	@rm -rf echo_client echo_server $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS) $(SERVER_OBJS)
+	@rm -rf parallel_http $(CLIENT_OBJS)
 
-echo_client:$(PROTO_OBJS) $(CLIENT_OBJS)
+parallel_http:$(CLIENT_OBJS)
 	@echo "Linking $@"
 	@$(CXX) -Xlinker "-(" $^ $(LIBS) -Xlinker "-)" -o $@
-
-echo_server:$(PROTO_OBJS) $(SERVER_OBJS)
-	@echo "Linking $@"
-	@$(CXX) -Xlinker "-(" $^ $(LIBS) -Xlinker "-)" -o $@
-
-%.pb.cc:%.proto
-	@echo "Generating $@"
-	@$(PROTOC) --cpp_out=. --proto_path=. $<
 
 %.o:%.cpp
 	@echo "Compiling $@"

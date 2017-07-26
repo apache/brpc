@@ -10,7 +10,7 @@ function exit_func {
 trap "exit_func" EXIT SIGINT SIGTERM
 
 echo > server_list
-starting_port=8002
+starting_port=8004
 pids=()
 num_servers=5
 interval=2

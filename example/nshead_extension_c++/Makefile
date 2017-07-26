@@ -27,7 +27,7 @@ LIBS=$(BRPC_PATH)/lib/libbase.a \
 
 CLIENT_SOURCES = client.cpp
 SERVER_SOURCES = server.cpp
-PROTOS = echo.proto
+PROTOS = 
 
 PROTO_OBJS = $(addsuffix .pb.o, $(basename $(PROTOS)))
 PROTO_GENS = $(addsuffix .pb.h, $(basename $(PROTOS))) $(addsuffix .pb.cc, $(basename $(PROTOS)))

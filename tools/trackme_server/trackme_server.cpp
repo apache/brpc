@@ -9,7 +9,6 @@
 // A server to receive TrackMeRequest and send back TrackMeResponse.
 
 #include <gflags/gflags.h>
-#include <google/malloc_extension.h>
 #include <memory>
 #include <base/logging.h>
 #include <brpc/server.h>
@@ -78,14 +77,6 @@ private:
     BugsLoader* _bugs;
 };
 
-static void* release_memory_thread(void*) {
-    while (true) {
-        MallocExtension::instance()->ReleaseFreeMemory();
-        bthread_usleep(5000000L/*5s*/);
-    }
-    return NULL;
-}
-
 int main(int argc, char* argv[]) {
     google::ParseCommandLineFlags(&argc, &argv, true);
     
@@ -110,8 +101,6 @@ int main(int argc, char* argv[]) {
         LOG(ERROR) << "Fail to start TrackMeServer";
         return -1;
     }
-    bthread_t th;
-    bthread_start_background(&th, NULL, release_memory_thread, NULL);
     server.RunUntilAskedToQuit();
     bugs.stop();
     return 0;

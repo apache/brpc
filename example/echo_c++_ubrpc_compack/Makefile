@@ -1,13 +1,14 @@
 CC=gcc
 CXX=g++
-CPPFLAGS=-std=c++0x -g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -fno-omit-frame-pointer -Wno-deprecated -Wno-unused-parameter -D__const__=
+CPPFLAGS=-std=c++0x -g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -fno-omit-frame-pointer -Wno-deprecated -Wno-unused-parameter -D__const__= -DBRPC_ENABLE_CPU_PROFILER -DBRPC_ENABLE_HEAP_PROFILER
 CXXFLAGS=$(CPPFLAGS)
 CFLAGS=$(CPPFLAGS)
 GFLAGS_PATH=../../../../../third-64/gflags
 LEVELDB_PATH=../../../../../third-64/leveldb
 PROTOBUF_PATH=../../../../../third-64/protobuf
+TCMALLOC_PATH=../../../../../third-64/tcmalloc
 BRPC_PATH=../../output
-INCPATH=-I$(BRPC_PATH)/include -I$(GFLAGS_PATH)/include -I$(LEVELDB_PATH)/include -I$(PROTOBUF_PATH)/include
+INCPATH=-I$(BRPC_PATH)/include -I$(GFLAGS_PATH)/include -I$(LEVELDB_PATH)/include -I$(PROTOBUF_PATH)/include -I$(TCMALLOC_PATH)/include
 PROTOC=$(PROTOBUF_PATH)/bin/protoc
 LIBS=$(BRPC_PATH)/lib/libbase.a \
   $(BRPC_PATH)/lib/libbrpc.a \
@@ -18,6 +19,7 @@ LIBS=$(BRPC_PATH)/lib/libbase.a \
   $(GFLAGS_PATH)/lib/libgflags.a \
   $(LEVELDB_PATH)/lib/libleveldb.a \
   $(PROTOBUF_PATH)/lib/libprotobuf.a \
+  $(TCMALLOC_PATH)/lib/libtcmalloc_and_profiler.a \
   -lpthread \
   -lrt \
   -lssl \
@@ -52,7 +54,7 @@ echo_server:$(PROTO_OBJS) $(SERVER_OBJS)
 
 %.pb.cc:%.proto
 	@echo "Generating $@"
-	@$(PROTOC) --cpp_out=. --proto_path=. $<
+	@$(PROTOC) --plugin=protoc-gen-mcpack=$(BRPC_PATH)/bin/protoc-gen-mcpack --proto_path=. --proto_path=$(BRPC_PATH)/include --proto_path=$(PROTOBUF_PATH)/include --cpp_out=. --mcpack_out=. $<
 
 %.o:%.cpp
 	@echo "Compiling $@"
