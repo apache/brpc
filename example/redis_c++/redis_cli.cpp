@@ -8,6 +8,7 @@
 
 // A baidu-rpc based command-line interface to talk with redis-server
 
+#include <signal.h>
 #include <stdio.h>
 #include <readline/readline.h>
 #include <readline/history.h>

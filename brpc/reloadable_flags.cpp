@@ -4,7 +4,7 @@
 // Author: The baidu-rpc authors (pbrpc@baidu.com)
 // Date: Sun Aug 31 16:27:49 CST 2014
 
-#include <unistd.h>
+#include "base/macros.h"
 #include "brpc/reloadable_flags.h"
 
 namespace google {
@@ -61,7 +61,7 @@ static bool RegisterFlagValidatorOrDieImpl(
     }
     // Error printed by gflags does not have newline. Add one to it.
     char newline = '\n';
-    write(2, &newline, 1);
+    base::ignore_result(write(2, &newline, 1));
     _exit(1);
 }
 

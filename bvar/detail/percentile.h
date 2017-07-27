@@ -11,6 +11,7 @@
 #include <limits>                       // std::numeric_limits
 #include <ostream>                      // std::ostream
 #include <algorithm>                    // std::sort
+#include <math.h>                       // ceil
 #include "base/macros.h"                // ARRAY_SIZE
 #include "bvar/reducer.h"               // Reducer
 #include "bvar/window.h"                // Window

@@ -40,7 +40,7 @@ void ThreadsService::default_method(::google::protobuf::RpcController* cntl_base
     // and pclose will fail:
     //   CHECK failed: 0 == pclose(pipe): Resource temporarily unavailable
     size_t fake_buf;
-    (void)fread(&fake_buf, sizeof(fake_buf), 1, pipe);
+    base::ignore_result(fread(&fake_buf, sizeof(fake_buf), 1, pipe));
     CHECK_EQ(0, pclose(pipe)) << berror();
     tm.stop();
     resp.append(base::string_printf("\n\ntime=%lums", tm.m_elapsed()));

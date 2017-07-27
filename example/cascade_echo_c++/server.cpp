@@ -58,7 +58,7 @@ public:
             stub.Echo(&cntl2, &request2, &response2, NULL);
             if (cntl2.Failed()) {
                 LOG(ERROR) << "Fail to send EchoRequest, " << cntl2.ErrorText();
-                cntl->SetFailed(cntl2.ErrorCode(), cntl2.ErrorText().c_str());
+                cntl->SetFailed(cntl2.ErrorCode(), "%s", cntl2.ErrorText().c_str());
                 return;
             }
             response->set_message(response2.message());

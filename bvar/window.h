@@ -6,6 +6,7 @@
 #define  BVAR_WINDOW_H
 
 #include <limits>                                 // std::numeric_limits
+#include <math.h>                                 // round
 #include <gflags/gflags_declare.h>
 #include "base/logging.h"                         // LOG
 #include "bvar/detail/sampler.h"

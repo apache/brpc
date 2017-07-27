@@ -321,7 +321,7 @@ private:
             std::string cmd = base::string_printf("rm -rf %s %s",
                                                   id_db_name.c_str(),
                                                   time_db_name.c_str());
-            system(cmd.c_str());
+            base::ignore_result(system(cmd.c_str()));
         }
     }
 };

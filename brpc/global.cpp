@@ -7,6 +7,7 @@
 #include <openssl/ssl.h>
 #include <gflags/gflags.h>
 #include <fcntl.h>                               // O_RDONLY
+#include <signal.h>
 
 // Naming services
 #ifdef BAIDU_INTERNAL

@@ -4,6 +4,7 @@
 // Author: The baidu-rpc authors (pbrpc@baidu.com)
 // Date: Sun Aug 31 16:27:49 CST 2014
 
+#include <signal.h>
 #include <openssl/md5.h>  
 #include <google/protobuf/descriptor.h>
 #include <gflags/gflags.h>

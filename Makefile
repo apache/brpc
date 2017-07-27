@@ -1,23 +1,12 @@
 include config.mk
-CC=gcc
-CXX=g++
-CPPFLAGS=-D__const__= -DNDEBUG -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\"$(shell git rev-parse --short HEAD)\"
+CPPFLAGS=-D__const__= -D_GNU_SOURCE -DNDEBUG -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\"$(shell git rev-parse --short HEAD)\"
 CXXFLAGS=$(CPPFLAGS) -O2 -g -pipe -Wall -W -Werror -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x -include brpc/config.h
 CFLAGS=$(CPPFLAGS) -O2 -g -pipe -Wall -W -Werror -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
 
-INCPATH=-I. -I$(GFLAGS_PATH)/include -I$(LEVELDB_PATH)/include -I$(PROTOBUF_PATH)/include
-LIBS= $(GFLAGS_PATH)/lib/libgflags.a \
-  $(LEVELDB_PATH)/lib/libleveldb.a \
-  $(PROTOBUF_PATH)/lib/libprotobuf.a \
-  $(PROTOBUF_PATH)/lib/libprotoc.a \
-  -lpthread \
-  -lrt \
-  -lssl \
-  -lcrypto \
-  -ldl \
-  -lz
+INCPATH=-I. $(addprefix -I, $(INCS))
 SRCEXTS = .c .cc .cpp .proto
 HDREXTS = .h .hpp
+LDFLAGS = -lpthread -lrt -ldl -lz -lssl -lcrypto
 
 BASE_SOURCES = \
     base/third_party/dmg_fp/g_fmt.cc \
@@ -104,8 +93,6 @@ BASE_SOURCES = \
     base/process/kill_posix.cc \
     base/process/launch.cc \
     base/process/launch_posix.cc \
-    base/process/memory.cc \
-    base/process/memory_linux.cc \
     base/process/process_handle_linux.cc \
     base/process/process_handle_posix.cc \
     base/process/process_info_linux.cc \
@@ -208,7 +195,7 @@ MCPACK2PB_SOURCES = \
 MCPACK2PB_OBJS = idl_options.pb.o $(addsuffix .o, $(basename $(MCPACK2PB_SOURCES)))
 
 .PHONY:all
-all: libbase.a libbvar.a libbthread.a libjson2pb.a libmcpack2pb.a protoc-gen-mcpack libbrpc.a output/include output/lib output/bin
+all: libbase.a libbvar.a libbthread.a libjson2pb.a libmcpack2pb.a mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a output/include output/lib output/bin
 
 .PHONY:clean
 clean:
@@ -239,7 +226,7 @@ libmcpack2pb.a:$(MCPACK2PB_OBJS)
 
 protoc-gen-mcpack:mcpack2pb/generator.o libmcpack2pb.a libbase.a libbthread.a libbvar.a
 	@echo "Linking $@"
-	@$(CXX) -Xlinker "-(" $^ $(LIBS) -Xlinker "-)" -o protoc-gen-mcpack
+	@$(CXX) -o protoc-gen-mcpack -Xlinker "-(" $^ $(LIBS) $(PROTOC_LIB) -Xlinker "-)" $(LDFLAGS)
 
 libbrpc.a:$(BRPC_OBJS)
 	@echo "Linking $@"
@@ -266,7 +253,7 @@ output/bin:protoc-gen-mcpack
 
 %.pb.cc %.pb.h:%.proto
 	@echo "Generating $@"
-	@$(PROTOC) --cpp_out=. --proto_path=. --proto_path=$(PROTOBUF_PATH)/include $<
+	@$(PROTOC) --cpp_out=. --proto_path=. --proto_path=$(PROTOBUF_INC) $<
 
 %.o:%.cpp
 	@echo "Compiling $@"

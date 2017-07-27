@@ -1,14 +1,10 @@
 include ../../config.mk
-BRPC_PATH=../../output
-CC=gcc
-CXX=g++
-CPPFLAGS=-std=c++0x -g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -fno-omit-frame-pointer -Wno-deprecated -Wno-unused-parameter -D__const__=
-CXXFLAGS=$(CPPFLAGS)
-CFLAGS=$(CPPFLAGS)
-INCPATH=-I$(BRPC_PATH)/include -I$(GFLAGS_PATH)/include -I$(LEVELDB_PATH)/include -I$(PROTOBUF_PATH)/include
-PROTOC=$(PROTOBUF_PATH)/bin/protoc
-LIBS=$(wildcard $(BRPC_PATH)/lib/lib*.a) $(GFLAGS_PATH)/lib/libgflags.a $(LEVELDB_PATH)/lib/libleveldb.a $(PROTOBUF_PATH)/lib/libprotobuf.a \
-	 -lpthread -lrt -lssl -lcrypto -ldl -lz
+BRPC_PATH = ../../output
+CPPFLAGS = -std=c++0x -g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -fno-omit-frame-pointer -Wno-deprecated -Wno-unused-parameter -D__const__=
+CXXFLAGS = $(CPPFLAGS)
+INCPATH = -I$(BRPC_PATH)/include $(addprefix -I, $(INCS))
+LIBS += $(wildcard $(BRPC_PATH)/lib/lib*.a)
+LDFLAGS = -lpthread -lrt -lssl -lcrypto -ldl -lz
 
 CLIENT_SOURCES = client.cpp
 SERVER_SOURCES = server.cpp
@@ -29,15 +25,15 @@ clean:
 
 echo_client:$(PROTO_OBJS) $(CLIENT_OBJS)
 	@echo "Linking $@"
-	@$(CXX) -Xlinker "-(" $^ $(LIBS) -Xlinker "-)" -o $@
+	@$(CXX) -Xlinker "-(" $^ $(LIBS) -Xlinker "-)" $(LDFLAGS) -o $@
 
 echo_server:$(PROTO_OBJS) $(SERVER_OBJS)
 	@echo "Linking $@"
-	@$(CXX) -Xlinker "-(" $^ $(LIBS) -Xlinker "-)" -o $@
+	@$(CXX) -Xlinker "-(" $^ $(LIBS) -Xlinker "-)" $(LDFLAGS) -o $@
 
 %.pb.cc:%.proto
 	@echo "Generating $@"
-	@$(PROTOC) --plugin=protoc-gen-mcpack=$(BRPC_PATH)/bin/protoc-gen-mcpack --proto_path=. --proto_path=$(BRPC_PATH)/include --proto_path=$(PROTOBUF_PATH)/include --cpp_out=. --mcpack_out=. $<
+	@$(PROTOC) --plugin=protoc-gen-mcpack=$(BRPC_PATH)/bin/protoc-gen-mcpack --proto_path=. --proto_path=$(BRPC_PATH)/include --proto_path=$(PROTOBUF_INC) --cpp_out=. --mcpack_out=. $<
 
 %.o:%.cpp
 	@echo "Compiling $@"

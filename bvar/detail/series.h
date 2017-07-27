@@ -5,6 +5,7 @@
 #ifndef  BVAR_DETAIL_SERIES_H
 #define  BVAR_DETAIL_SERIES_H
 
+#include <math.h>                       // round
 #include <ostream>
 #include "base/scoped_lock.h"           // BAIDU_SCOPED_LOCK
 #include "base/type_traits.h"
