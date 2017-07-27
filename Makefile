@@ -195,12 +195,12 @@ MCPACK2PB_SOURCES = \
 MCPACK2PB_OBJS = idl_options.pb.o $(addsuffix .o, $(basename $(MCPACK2PB_SOURCES)))
 
 .PHONY:all
-all: libbase.a libbvar.a libbthread.a libjson2pb.a libmcpack2pb.a mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a output/include output/lib output/bin
+all: libbase.a libbvar.a libbthread.a libjson2pb.a libmcpack2pb.a protoc-gen-mcpack libbrpc.a output/include output/lib output/bin
 
 .PHONY:clean
 clean:
 	@echo "Cleaning"
-	@rm -rf libbase.a libbvar.a libbthread.a libjson2pb.a libmcpack2pb.a protoc-gen-mcpack libbrpc.a \
+	@rm -rf libbase.a libbvar.a libbthread.a libjson2pb.a libmcpack2pb.a mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a \
 		$(BASE_OBJS) $(BVAR_OBJS) $(BTHREAD_OBJS) $(JSON2PB_OBJS) $(MCPACK2PB_OBJS) $(BRPC_OBJS) \
 		output/include output/lib output/bin
 
