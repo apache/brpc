@@ -38,7 +38,6 @@ echo -e $CONTENT1 > config.mk
 if [[ ! -z "$TCMALLOC_PATH" ]]; then
     CONTENT2="$CONTENT1\nTCMALLOC_PATH=$TCMALLOC_PATH"
 else
-    CONTENT2="\$(info TCMALLOC_PATH is not defined, run config_brpc.sh with --tcmalloc again)\nall:\n\texit 1"
+    CONTENT2="\$(error TCMALLOC_PATH is not defined, run config_brpc.sh with --tcmalloc again)"
 fi
 echo -e $CONTENT2 > config_with_tcmalloc.mk
-
