@@ -1,29 +1,14 @@
+include ../../config.mk
+BRPC_PATH=../../output
 CC=gcc
 CXX=g++
 CPPFLAGS=-std=c++0x -g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -fno-omit-frame-pointer -Wno-deprecated -Wno-unused-parameter -D__const__=
 CXXFLAGS=$(CPPFLAGS)
 CFLAGS=$(CPPFLAGS)
-GFLAGS_PATH=../../../../../third-64/gflags
-LEVELDB_PATH=../../../../../third-64/leveldb
-PROTOBUF_PATH=../../../../../third-64/protobuf
-BRPC_PATH=../../output
 INCPATH=-I$(BRPC_PATH)/include -I$(GFLAGS_PATH)/include -I$(LEVELDB_PATH)/include -I$(PROTOBUF_PATH)/include
 PROTOC=$(PROTOBUF_PATH)/bin/protoc
-LIBS=$(BRPC_PATH)/lib/libbase.a \
-  $(BRPC_PATH)/lib/libbrpc.a \
-  $(BRPC_PATH)/lib/libbthread.a \
-  $(BRPC_PATH)/lib/libbvar.a \
-  $(BRPC_PATH)/lib/libjson2pb.a \
-  $(BRPC_PATH)/lib/libmcpack2pb.a \
-  $(GFLAGS_PATH)/lib/libgflags.a \
-  $(LEVELDB_PATH)/lib/libleveldb.a \
-  $(PROTOBUF_PATH)/lib/libprotobuf.a \
-  -lpthread \
-  -lrt \
-  -lssl \
-  -lcrypto \
-  -ldl \
-  -lz
+LIBS=$(wildcard $(BRPC_PATH)/lib/lib*.a) $(GFLAGS_PATH)/lib/libgflags.a $(LEVELDB_PATH)/lib/libleveldb.a $(PROTOBUF_PATH)/lib/libprotobuf.a \
+	 -lpthread -lrt -lssl -lcrypto -ldl -lz
 
 CLIENT_SOURCES = client.cpp
 SERVER_SOURCES = server.cpp

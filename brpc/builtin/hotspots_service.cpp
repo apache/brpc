@@ -726,9 +726,7 @@ static void StartProfiling(ProfilingType type,
     if (!use_html) {
         if (!enabled) {
             os << "Error: " << type_str << " profiler is not enabled yet.\n"
-                "Add following code in COMAKE to enable all profilers:\n"
-                "    CPPFLAGS('-DBRPC_ENABLE_CPU_PROFILER -DBRPC_ENABLE_HEAP_PROFILER')\n"
-                "    CONFIGS('third-64/tcmalloc@1.7.0.200',Libraries('lib/libtcmalloc_and_profiler.a'))\n"
+                "To enable all profilers, link tcmalloc and define macros BRPC_ENABLE_CPU_PROFILER and BRPC_ENABLE_HEAP_PROFILER\n"
                 "Or read the wiki for more details:\n"
                 "    http://wiki.baidu.com/display/RPC/Builtin+Services#BuiltinServices-Onlineprofiler\n";
             os.move_to(cntl->response_attachment());
@@ -972,10 +970,8 @@ static void StartProfiling(ProfilingType type,
     if (!enabled && view == NULL) {
         os << "<p><span style='color:red'>Error:</span> "
            << type_str << " profiler is not enabled yet.</p>"
-            "<p>Add following code in COMAKE to enable all profilers:<pre>"
-            "  CPPFLAGS('-DBRPC_ENABLE_CPU_PROFILER -DBRPC_ENABLE_HEAP_PROFILER')\n"
-            "  CONFIGS('third-64/tcmalloc@1.7.0.200',Libraries('lib/libtcmalloc_and_profiler.a'))\n"
-            "</pre></p><p>Or read <a href='"
+            "<p>To enable all profilers, link tcmalloc and define macros BRPC_ENABLE_CPU_PROFILER and BRPC_ENABLE_HEAP_PROFILER"
+            "</p><p>Or read <a href='"
             "http://wiki.baidu.com/display/RPC/Builtin+Services#BuiltinServices-Onlineprofiler"
             "'>wiki</a> for more details.</p></body></html>";
         os.move_to(cntl->response_attachment());

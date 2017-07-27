@@ -1,11 +1,9 @@
+include config.mk
 CC=gcc
 CXX=g++
 CPPFLAGS=-D__const__= -DNDEBUG -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\"$(shell git rev-parse --short HEAD)\"
 CXXFLAGS=$(CPPFLAGS) -O2 -g -pipe -Wall -W -Werror -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x -include brpc/config.h
 CFLAGS=$(CPPFLAGS) -O2 -g -pipe -Wall -W -Werror -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
-GFLAGS_PATH=../../../third-64/gflags
-LEVELDB_PATH=../../../third-64/leveldb
-PROTOBUF_PATH=../../../third-64/protobuf
 
 INCPATH=-I. -I$(GFLAGS_PATH)/include -I$(LEVELDB_PATH)/include -I$(PROTOBUF_PATH)/include
 LIBS= $(GFLAGS_PATH)/lib/libgflags.a \
