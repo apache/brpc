@@ -21,8 +21,6 @@ DEFINE_int32(guard_page_size, 4096, "size of guard page, allocate stacks by mall
 DEFINE_int32(tc_stack_small, 32, "maximum small stacks cached by each thread");
 DEFINE_int32(tc_stack_normal, 8, "maximum normal stacks cached by each thread");
 
-DEFINE_bool(has_valgrind, false, "Set to true when running inside valgrind");
-
 namespace bthread {
 
 BAIDU_CASSERT(BTHREAD_STACKTYPE_PTHREAD == STACK_TYPE_PTHREAD, must_match);

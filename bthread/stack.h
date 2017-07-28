@@ -12,7 +12,8 @@
 #include "bthread/types.h"
 #include "bthread/context.h"        // bthread_fcontext_t
 #include "base/object_pool.h"
-#include "bthread/valgrind.h"       // VALGRIND_STACK_REGISTER
+#include "base/third_party/dynamic_annotations/dynamic_annotations.h" // RunningOnValgrind
+#include "base/third_party/valgrind/valgrind.h" // VALGRIND_STACK_REGISTER
 
 namespace bthread {
 

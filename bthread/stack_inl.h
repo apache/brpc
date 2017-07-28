@@ -10,7 +10,6 @@
 DECLARE_int32(guard_page_size);
 DECLARE_int32(tc_stack_small);
 DECLARE_int32(tc_stack_normal);
-DECLARE_bool(has_valgrind);
 
 namespace bthread {
 
@@ -45,7 +44,7 @@ template <typename StackClass> struct StackContainerFactory {
             // TODO: Growth direction of stack is arch-dependent(not handled by
             //       fcontext). We temporarily assume stack grows upwards.
             // http://www.boost.org/doc/libs/1_55_0/libs/context/doc/html/context/stack.html
-            if (FLAGS_has_valgrind) {
+            if (RunningOnValgrind()) {
                 valgrind_stack_id = VALGRIND_STACK_REGISTER(
                     stack, (char*)stack - stacksize);
             }
@@ -54,7 +53,7 @@ template <typename StackClass> struct StackContainerFactory {
         }
         ~Wrapper() {
             if (stack) {
-                if (FLAGS_has_valgrind) {
+                if (RunningOnValgrind()) {
                     VALGRIND_STACK_DEREGISTER(valgrind_stack_id);
                     valgrind_stack_id = 0;
                 }
