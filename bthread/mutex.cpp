@@ -27,6 +27,10 @@
 #include "bthread/processor.h"                   // cpu_relax, barrier
 #include "bthread/types.h"                       // bthread_mutex_
 
+extern "C" {
+extern void* _dl_sym(void* handle, const char* symbol, void* caller);
+}
+
 namespace bthread {
 // Warm up backtrace before main().
 void* dummy_buf[4];
@@ -352,11 +356,40 @@ static MutexOp sys_pthread_mutex_lock = first_sys_pthread_mutex_lock;
 static MutexOp sys_pthread_mutex_unlock = first_sys_pthread_mutex_unlock;
 static pthread_once_t init_sys_mutex_lock_once = PTHREAD_ONCE_INIT;
 
+// dlsym may call malloc to allocate space for dlerror and causes contention
+// profiler to deadlock at boostraping when the program is linked with
+// libunwind. The deadlock bt:
+//   #0  0x00007effddc99b80 in __nanosleep_nocancel () at ../sysdeps/unix/syscall-template.S:81
+//   #1  0x00000000004b4df7 in base::internal::SpinLockDelay(int volatile*, int, int) ()
+//   #2  0x00000000004b4d57 in SpinLock::SlowLock() ()
+//   #3  0x00000000004b4a63 in tcmalloc::ThreadCache::InitModule() ()
+//   #4  0x00000000004aa2b5 in tcmalloc::ThreadCache::GetCache() ()
+//   #5  0x000000000040c6c5 in (anonymous namespace)::do_malloc_no_errno(unsigned long) [clone.part.16] ()
+//   #6  0x00000000006fc125 in tc_calloc ()
+//   #7  0x00007effdd245690 in _dlerror_run (operate=operate@entry=0x7effdd245130 <dlsym_doit>, args=args@entry=0x7fff483dedf0) at dlerror.c:141
+//   #8  0x00007effdd245198 in __dlsym (handle=<optimized out>, name=<optimized out>) at dlsym.c:70
+//   #9  0x0000000000666517 in bthread::init_sys_mutex_lock () at bthread/mutex.cpp:358
+//   #10 0x00007effddc97a90 in pthread_once () at ../nptl/sysdeps/unix/sysv/linux/x86_64/pthread_once.S:103
+//   #11 0x000000000066649f in bthread::first_sys_pthread_mutex_lock (mutex=0xbaf880 <_ULx86_64_lock>) at bthread/mutex.cpp:366
+//   #12 0x00000000006678bc in pthread_mutex_lock_impl (mutex=0xbaf880 <_ULx86_64_lock>) at bthread/mutex.cpp:489
+//   #13 pthread_mutex_lock (__mutex=__mutex@entry=0xbaf880 <_ULx86_64_lock>) at bthread/mutex.cpp:751
+//   #14 0x00000000004c6ea1 in _ULx86_64_init () at x86_64/Gglobal.c:83
+//   #15 0x00000000004c44fb in _ULx86_64_init_local (cursor=0x7fff483df340, uc=0x7fff483def90) at x86_64/Ginit_local.c:47
+//   #16 0x00000000004b5012 in GetStackTrace(void**, int, int) ()
+//   #17 0x00000000004b2095 in tcmalloc::PageHeap::GrowHeap(unsigned long) ()
+//   #18 0x00000000004b23a3 in tcmalloc::PageHeap::New(unsigned long) ()
+//   #19 0x00000000004ad457 in tcmalloc::CentralFreeList::Populate() ()
+//   #20 0x00000000004ad628 in tcmalloc::CentralFreeList::FetchFromSpansSafe() ()
+//   #21 0x00000000004ad6a3 in tcmalloc::CentralFreeList::RemoveRange(void**, void**, int) ()
+//   #22 0x00000000004b3ed3 in tcmalloc::ThreadCache::FetchFromCentralCache(unsigned long, unsigned long) ()
+//   #23 0x00000000006fbb9a in tc_malloc ()
+// Call _dl_sym which is a private function in glibc to workaround the malloc
+// causing deadlock temporarily. This fix is hardly portable.
 static void init_sys_mutex_lock() {
     // TODO: may need dlvsym when GLIBC has multiple versions of a same symbol.
     // http://blog.fesnel.com/blog/2009/08/25/preloading-with-multiple-symbol-versions
-    sys_pthread_mutex_lock = (MutexOp)dlsym(RTLD_NEXT, "pthread_mutex_lock");
-    sys_pthread_mutex_unlock = (MutexOp)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
+    sys_pthread_mutex_lock = (MutexOp)_dl_sym(RTLD_NEXT, "pthread_mutex_lock", (void*)init_sys_mutex_lock);
+    sys_pthread_mutex_unlock = (MutexOp)_dl_sym(RTLD_NEXT, "pthread_mutex_unlock", (void*)init_sys_mutex_lock);
 }
 
 // Make sure pthread functions are ready before main().
