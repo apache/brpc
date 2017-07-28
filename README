@@ -1,27 +1,24 @@
 The opensource version of baidu-rpc
-
 # BUILD
-## Ubuntu
-### install deps
-sudo apt-get install libgflags-dev libprotobuf-dev libprotoc-dev libleveldb-dev libsnappy-dev
-### compile brpc
-git clone this repo. cd into the repo and run: sh config_brpc.sh --incs=/usr/include --libs=/usr/lib
-### run echo example
-- cd into example/echo_c++
-- make
-- run echo_server and echo_client
-### run examples enabling cpu/heap profilers:
-- sudo apt-get install libgoogle-perftools-dev libunwind-dev liblzma-dev
-- Rerun: sh config_brpc.sh --incs=/usr/include --libs=/usr/lib
-- set LINK_PERFTOOLS to 1 in the Makefile
+### Ubuntu
+**install deps**  
+sudo apt-get install libgflags-dev libprotobuf-dev libprotoc-dev libleveldb-dev libsnappy-dev  
+**compile**  
+git clone this repo. cd into the repo and run: sh config_brpc.sh --incs=/usr/include
+--libs=/usr/lib  
+**run echo example**  
+cd into example/echo_c++, make, run echo_server and echo_client  
+**run examples with cpu/heap profilers**  
+sudo apt-get install libgoogle-perftools-dev libunwind-dev liblzma-dev  
+Rerun config_brpc.sh  
 
-## Baidu-internal
-### setup workspace
-- setup directories for baidu/opensource/baidu-rpc
-- download deps: third-64/gflags@gflags_2-0-0-100_PD_BL  third-64/protobuf@protobuf_2-4-1-1100_PD_BL  third-64/leveldb@leveldb_1-0-0-0_PD_BL
-### compile brpc
-git clone this repo. cd into the repo and run: sh config_brpc.sh --incs=../../../third-64 --libs=../../../third-64
-### run examples enabling cpu/heap profilers:
-- download deps: third-64/tcmalloc@tcmalloc_1-7-0-200_PD_BL
-- Rerun: sh config_brpc.sh --incs=../../../third-64 --libs=../../../third-64
-- set LINK_PERFTOOLS to 1 in the Makefile
+### Baidu-internal
+**setup directories**  
+download deps: third-64/gflags@gflags_2-0-0-100_PD_BL  third-64/protobuf@protobuf_2-4-1-1100_PD_BL
+third-64/leveldb@leveldb_1-0-0-0_PD_BL  
+**compile**  
+git clone this repo. cd into the repo and run: sh config_brpc.sh --incs=../../../third-64
+--libs=../../../third-64  
+**run examples with cpu/heap profilers**  
+download deps: third-64/tcmalloc@tcmalloc_1-7-0-200_PD_BL  
+Rerun config_brpc.sh  
