@@ -1,7 +1,7 @@
-LINK_PERFTOOLS=0
+LINK_PERFTOOLS=1
 include ../../config.mk
 BRPC_PATH=../../output
-CPPFLAGS=-std=c++0x -g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -fno-omit-frame-pointer -Wno-deprecated -Wno-unused-parameter -D__const__= 
+CPPFLAGS=-std=c++0x -g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -Wno-deprecated -Wno-unused-parameter -D__const__= 
 CXXFLAGS=$(CPPFLAGS)
 CFLAGS=$(CPPFLAGS)
 INCPATH=-I$(BRPC_PATH)/include -I$(GFLAGS_PATH)/include -I$(LEVELDB_PATH)/include -I$(PROTOBUF_PATH)/include -I$(TCMALLOC_PATH)/include

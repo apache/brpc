@@ -1,6 +1,6 @@
 CC=gcc
 CXX=g++
-CPPFLAGS=-std=c++0x -g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -fno-omit-frame-pointer -Wno-deprecated -Wno-unused-parameter -D__const__=
+CPPFLAGS=-std=c++0x -g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -Wno-deprecated -Wno-unused-parameter -D__const__=
 CXXFLAGS=$(CPPFLAGS)
 CFLAGS=$(CPPFLAGS)
 GFLAGS_PATH=../../../../../third-64/gflags
