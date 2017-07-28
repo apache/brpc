@@ -237,17 +237,19 @@ void Controller::InternalReset(bool in_constructor) {
     _stream_creator = NULL;
 }
 
-Controller::Call::Call(Controller::Call& rhs)
-    : nretry(rhs.nretry)
-    , need_feedback(rhs.need_feedback)
-    , peer_id(rhs.peer_id)
-    , begin_time_us(rhs.begin_time_us)
-    , sending_sock(rhs.sending_sock.release()) {
+Controller::Call::Call(Controller::Call* rhs)
+    : nretry(rhs->nretry)
+    , need_feedback(rhs->need_feedback)
+    , touched_by_stream_creator(rhs->touched_by_stream_creator)
+    , peer_id(rhs->peer_id)
+    , begin_time_us(rhs->begin_time_us)
+    , sending_sock(rhs->sending_sock.release()) {
     // NOTE: fields in rhs should be reset because RPC could fail before
     // setting all the fields to next call and _current_call.OnComplete
     // will behave incorrectly.
-    rhs.need_feedback = false;
-    rhs.peer_id = (SocketId)-1;
+    rhs->need_feedback = false;
+    rhs->touched_by_stream_creator = false;
+    rhs->peer_id = (SocketId)-1;
 }
 
 Controller::Call::~Call() {
@@ -257,6 +259,7 @@ Controller::Call::~Call() {
 void Controller::Call::Reset() {
     nretry = 0;
     need_feedback = false;
+    touched_by_stream_creator = false;
     peer_id = (SocketId)-1;
     begin_time_us = 0;
     sending_sock.reset(NULL);
@@ -513,7 +516,8 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         CHECK_EQ(0, bthread_id_unlock(info.id));
         return;
     }
-    if (!_error_code || _current_call.nretry >= _max_retry) {
+    if ((!_error_code && _retry_policy == NULL) ||
+        _current_call.nretry >= _max_retry) {
         goto END_OF_RPC;
     }
     if (_error_code == EBACKUPREQUEST) {
@@ -542,7 +546,7 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         }
         // _current_call does not end yet.
         CHECK(_unfinished_call == NULL);  // only one backup request now.
-        _unfinished_call = new (std::nothrow) Call(_current_call);
+        _unfinished_call = new (std::nothrow) Call(&_current_call);
         if (_unfinished_call == NULL) {
             SetFailed(ENOMEM, "Fail to new Call");
             goto END_OF_RPC;
@@ -693,9 +697,15 @@ void Controller::Call::OnComplete(Controller* c, int error_code/*note*/,
             sock->SetLogOff();
         }
     }
+    if (touched_by_stream_creator) {
+        touched_by_stream_creator = false;
+        CHECK(c->stream_creator());
+        c->stream_creator()->CleanupSocketForStream(
+            sending_sock.get(), c, error_code);
+    }
     // Release the `Socket' we used to send/receive data
     sending_sock.reset(NULL);
-
+    
     if (need_feedback) {
         LoadBalancer::CallInfo info;
         info.in.begin_time_us = begin_time_us;
@@ -727,6 +737,7 @@ void Controller::EndRPC(const CompletionInfo& info) {
                 _current_call.sending_sock, this);
         }
         _current_call.OnComplete(this, _error_code, info.responded);
+
         if (_unfinished_call != NULL) {
             // When _current_call is successful, mark _unfinished_call as
             // EBACKUPREQUEST, we can't use 0 because the server possibly
@@ -790,7 +801,18 @@ void Controller::EndRPC(const CompletionInfo& info) {
     // No need to retry or can't retry, just call user's `done'.
     const CallId saved_cid = _correlation_id;
     if (_done) {
-        if (!FLAGS_usercode_in_pthread) {
+        if (!FLAGS_usercode_in_pthread || _done == DoNothing()/*Note*/) {
+            // Note: no need to run DoNothing in backup thread when pthread 
+            // mode is on. Otherwise there's a tricky deadlock:
+            // void SomeService::CallMethod(...) { // -usercode_in_pthread=true
+            //   ...
+            //   channel.CallMethod(...., baidu::rpc::DoNothing());
+            //   baidu::rpc::Join(cntl.call_id());
+            //   ...
+            // }
+            // Join is not signalled when the done does not Run() and the done
+            // can't Run() because all backup threads are blocked by Join().
+            
             // Call OnRPCEnd for async RPC. The one for sync RPC is called in
             // Channel::CallMethod to count in latency of the context-switch.
             OnRPCEnd(base::gettimeofday_us());
@@ -807,6 +829,7 @@ void Controller::EndRPC(const CompletionInfo& info) {
             RunUserCode(RunDoneInBackupThread, this);
         }
     } else {
+        // OnRPCEnd() of sync RPC is called in the caller's thread.
         // FIXME: We're assuming the calling thread is about to quit.
         bthread_about_to_quit();
         add_flag(FLAGS_DESTROYED_CID);
@@ -860,7 +883,6 @@ void Controller::HandleSendFailed() {
 void Controller::IssueRPC(int64_t start_realtime_us) {
     _current_call.begin_time_us = start_realtime_us;
     // Clear last error, Don't clear _error_text because we append to it.
-    const int prev_error_code = _error_code;
     _error_code = 0;
 
     // Make versioned correlation_id.
@@ -919,7 +941,8 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _remote_side = tmp_sock->remote_side();
     }
     if (_stream_creator) {
-        _stream_creator->ReplaceSocketForStream(&tmp_sock, this, prev_error_code);
+        _current_call.touched_by_stream_creator = true;
+        _stream_creator->ReplaceSocketForStream(&tmp_sock, this);
         if (FailedInline()) {
             return HandleSendFailed();
         }

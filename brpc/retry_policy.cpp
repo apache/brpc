@@ -15,6 +15,9 @@ class RpcRetryPolicy : public RetryPolicy {
 public:
     bool DoRetry(const Controller* controller) const {
         const int error_code = controller->ErrorCode();
+        if (!error_code) {
+            return false;
+        }
         return (EFAILEDSOCKET == error_code
                 || EEOF == error_code 
                 || EHOSTDOWN == error_code 

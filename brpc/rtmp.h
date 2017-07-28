@@ -750,9 +750,9 @@ friend class RtmpRetryingClientStream;
     int Publish(const base::StringPiece& name, RtmpPublishType type);
 
     // @StreamCreator
-    void ReplaceSocketForStream(SocketUniquePtr* inout, Controller* cntl,
-                                int prev_error_code);
+    void ReplaceSocketForStream(SocketUniquePtr* inout, Controller* cntl);
     void OnStreamCreationDone(SocketUniquePtr& sending_sock, Controller* cntl);
+    void CleanupSocketForStream(Socket* prev_sock, Controller*, int error_code);
 
     void OnFailedToCreateStream();
     

@@ -506,13 +506,14 @@ private:
     // One RPC to a channel may send several requests due to retrying.
     struct Call {
         Call() { Reset(); }
-        Call(Call&);
+        Call(Call*); //move semantics
         ~Call();
         void Reset();
-        void OnComplete(Controller*, int error_code, bool responded);
+        void OnComplete(Controller* c, int error_code, bool responded);
 
         int nretry;                // sent in nretry-th retry.
         bool need_feedback;        // The LB needs feedback.
+        bool touched_by_stream_creator;
         SocketId peer_id;          // main server id
         int64_t begin_time_us;     // sent real time.
         // The actual `Socket' for sending RPC. It's socket id will be

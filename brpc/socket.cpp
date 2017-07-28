@@ -747,11 +747,14 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
                          &_id_wait_list_mutex));
 
             ResetAllStreams();
-            if (_app_connect) {
-                AppConnect* const saved_app_connect = _app_connect;
-                _app_connect = NULL;
-                saved_app_connect->StopConnect(this);
-            }
+            // _app_connect shouldn't be set to NULL in SetFailed otherwise
+            // HC is always not supported.
+            // FIXME: Design a better interface for AppConnect
+            // if (_app_connect) {
+            //     AppConnect* const saved_app_connect = _app_connect;
+            //     _app_connect = NULL;
+            //     saved_app_connect->StopConnect(this);
+            // }
 
             // Deref additionally which is added at creation so that this
             // Socket's reference will hit 0(recycle) when no one addresses it.

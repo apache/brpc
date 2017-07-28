@@ -1475,8 +1475,20 @@ void RtmpClientStream::SignalError() {
     }
 }
 
+void RtmpClientStream::CleanupSocketForStream(
+    Socket* prev_sock, Controller*, int /*error_code*/) {
+    if (prev_sock) {
+        if (_from_socketmap) {
+            _client_impl->socket_map().Remove(prev_sock->remote_side(),
+                                              prev_sock->id());
+        } else {
+            prev_sock->SetFailed(); // not necessary, already failed.
+        }
+    }
+}
+
 void RtmpClientStream::ReplaceSocketForStream(
-    SocketUniquePtr* inout, Controller* cntl, int /*prev_error_code*/) {
+    SocketUniquePtr* inout, Controller* cntl) {
     SocketId esid;
     if (cntl->connection_type() == CONNECTION_TYPE_SHORT) {
         if (_client_impl->CreateSocket((*inout)->remote_side(), &esid) != 0) {
@@ -1507,6 +1519,8 @@ int RtmpClientStream::RunOnFailed(bthread_id_t id, void* data, int) {
     base::intrusive_ptr<RtmpClientStream> stream(
         static_cast<RtmpClientStream*>(data), false);
     CHECK(stream->_rtmpsock);
+    // Must happen after NotifyOnFailed which is after all other callsites
+    // to OnStopInternal().
     stream->OnStopInternal();
     bthread_id_unlock_and_destroy(id);
     return 0;
@@ -1535,8 +1549,15 @@ void RtmpClientStream::OnFailedToCreateStream() {
 
 void RtmpClientStream::OnStreamCreationDone(SocketUniquePtr& sending_sock,
                                             Controller* cntl) {
+    // Always move sending_sock into _rtmpsock.
+    // - If the RPC is successful, moving sending_sock prevents it from
+    //   setfailed in Controller after calling this method.
+    // - If the RPC is failed, OnStopInternal() can clean up the socket_map
+    //   inserted in ReplaceSocketForStream().
+    _rtmpsock.swap(sending_sock);
+    
     if (cntl->Failed()) {
-        if (sending_sock != NULL &&
+        if (_rtmpsock != NULL &&
             // ^ If sending_sock is NULL, the RPC fails before _pack_request
             // which calls AddTransaction, in another word, RemoveTransaction
             // is not needed.
@@ -1546,7 +1567,7 @@ void RtmpClientStream::OnStreamCreationDone(SocketUniquePtr& sending_sock,
             CHECK_LT(cntl->log_id(), (uint64_t)std::numeric_limits<uint32_t>::max());
             const uint32_t transaction_id = cntl->log_id();
             policy::RtmpContext* rtmp_ctx =
-                static_cast<policy::RtmpContext*>(sending_sock->parsing_context());
+                static_cast<policy::RtmpContext*>(_rtmpsock->parsing_context());
             if (rtmp_ctx == NULL) {
                 LOG(FATAL) << "RtmpContext must be created";
             } else {
@@ -1563,11 +1584,7 @@ void RtmpClientStream::OnStreamCreationDone(SocketUniquePtr& sending_sock,
     // NOTE: set _rtmpsock before any error checking to make sure that
     // deleteStream command will be sent over _rtmpsock to release the
     // server-side stream on this stream's stop.
-    CHECK(sending_sock);
-    _from_socketmap = (cntl->connection_type() == CONNECTION_TYPE_SINGLE);
-    // move sending_sock to prevent it from being setfailed by default
-    // behaviors in Controller (when connection_type is short).
-    _rtmpsock.swap(sending_sock);
+    CHECK(_rtmpsock);
     
     const int rc = bthread_id_create(&_onfail_id, this, RunOnFailed);
     if (rc) {
@@ -1607,50 +1624,51 @@ void RtmpClientStream::OnStopInternal() {
         return CallOnStop();
     }
 
-    // SRS requires closeStream which is sent over this stream.
-    base::IOBuf req_buf1;
-    {
-        base::IOBufAsZeroCopyOutputStream zc_stream(&req_buf1);
-        AMFOutputStream ostream(&zc_stream);
-        WriteAMFString(RTMP_AMF0_COMMAND_CLOSE_STREAM, &ostream);
-        WriteAMFUint32(0, &ostream);
-        WriteAMFNull(&ostream);
-        CHECK(ostream.good());
-    }
-    SocketMessagePtr<policy::RtmpUnsentMessage> msg1(new policy::RtmpUnsentMessage);
-    msg1->header.message_length = req_buf1.size();
-    msg1->header.message_type = policy::RTMP_MESSAGE_COMMAND_AMF0;
-    msg1->header.stream_id = _message_stream_id;
-    msg1->chunk_stream_id = _chunk_stream_id;
-    msg1->body = req_buf1;
+    if (!_rtmpsock->Failed()) {
+        // SRS requires closeStream which is sent over this stream.
+        base::IOBuf req_buf1;
+        {
+            base::IOBufAsZeroCopyOutputStream zc_stream(&req_buf1);
+            AMFOutputStream ostream(&zc_stream);
+            WriteAMFString(RTMP_AMF0_COMMAND_CLOSE_STREAM, &ostream);
+            WriteAMFUint32(0, &ostream);
+            WriteAMFNull(&ostream);
+            CHECK(ostream.good());
+        }
+        SocketMessagePtr<policy::RtmpUnsentMessage> msg1(new policy::RtmpUnsentMessage);
+        msg1->header.message_length = req_buf1.size();
+        msg1->header.message_type = policy::RTMP_MESSAGE_COMMAND_AMF0;
+        msg1->header.stream_id = _message_stream_id;
+        msg1->chunk_stream_id = _chunk_stream_id;
+        msg1->body = req_buf1;
     
-    // Send deleteStream over the control stream.
-    base::IOBuf req_buf2;
-    {
-        base::IOBufAsZeroCopyOutputStream zc_stream(&req_buf2);
-        AMFOutputStream ostream(&zc_stream);
-        WriteAMFString(RTMP_AMF0_COMMAND_DELETE_STREAM, &ostream);
-        WriteAMFUint32(0, &ostream);
-        WriteAMFNull(&ostream);
-        WriteAMFUint32(_message_stream_id, &ostream);
-        CHECK(ostream.good());
-    }
-    policy::RtmpUnsentMessage* msg2 = policy::MakeUnsentControlMessage(
-        policy::RTMP_MESSAGE_COMMAND_AMF0, req_buf2);
-    msg1->next.reset(msg2);
+        // Send deleteStream over the control stream.
+        base::IOBuf req_buf2;
+        {
+            base::IOBufAsZeroCopyOutputStream zc_stream(&req_buf2);
+            AMFOutputStream ostream(&zc_stream);
+            WriteAMFString(RTMP_AMF0_COMMAND_DELETE_STREAM, &ostream);
+            WriteAMFUint32(0, &ostream);
+            WriteAMFNull(&ostream);
+            WriteAMFUint32(_message_stream_id, &ostream);
+            CHECK(ostream.good());
+        }
+        policy::RtmpUnsentMessage* msg2 = policy::MakeUnsentControlMessage(
+            policy::RTMP_MESSAGE_COMMAND_AMF0, req_buf2);
+        msg1->next.reset(msg2);
 
-    if (policy::WriteWithoutOvercrowded(_rtmpsock.get(), msg1) != 0) {
-        if (errno != EFAILEDSOCKET) {
-            PLOG(WARNING) << "Fail to send closeStream/deleteStream to "
-                          << _rtmpsock->remote_side() << "["
-                          << _message_stream_id << "]";
-            // Close the connection to make sure the server-side knows the
-            // closing event, however this may terminate other streams over
-            // the connection as well.
-            _rtmpsock->SetFailed(EFAILEDSOCKET, "Fail to send closeStream/deleteStream");
+        if (policy::WriteWithoutOvercrowded(_rtmpsock.get(), msg1) != 0) {
+            if (errno != EFAILEDSOCKET) {
+                PLOG(WARNING) << "Fail to send closeStream/deleteStream to "
+                              << _rtmpsock->remote_side() << "["
+                              << _message_stream_id << "]";
+                // Close the connection to make sure the server-side knows the
+                // closing event, however this may terminate other streams over
+                // the connection as well.
+                _rtmpsock->SetFailed(EFAILEDSOCKET, "Fail to send closeStream/deleteStream");
+            }
         }
     }
-
     policy::RtmpContext* ctx =
         static_cast<policy::RtmpContext*>(_rtmpsock->parsing_context());
     if (ctx != NULL) {
@@ -1909,6 +1927,7 @@ void RtmpClientStream::Init(const RtmpClient* client,
     done->cntl.set_connection_type(_options.share_connection ?
                                    CONNECTION_TYPE_SINGLE :
                                    CONNECTION_TYPE_SHORT);
+    _from_socketmap = (done->cntl.connection_type() == CONNECTION_TYPE_SINGLE);
     done->cntl.set_max_retry(_options.create_stream_max_retry);
     if (_options.hash_code.has_been_set()) {
         done->cntl.set_request_code(_options.hash_code);
@@ -2085,13 +2104,26 @@ void InitSubStream::Run(const RtmpClient* client) {
 }
 
 void RtmpRetryingClientStream::Recreate() {
-    _last_creation_time_us = base::gettimeofday_us();
     base::intrusive_ptr<SubStream> sub_stream(new SubStream(this));
+    bool destroying = false;
     {
         BAIDU_SCOPED_LOCK(_stream_mutex);
-        _using_sub_stream = sub_stream;
-        _changed_stream = true;
+        // Need to check _destroying to avoid setting the new sub_stream to a 
+        // destroying retrying stream. 
+        // Note: the load of _destroying and the setting of _using_sub_stream 
+        // must be in the same lock, otherwise current bthread may be scheduled
+        // and Destroy() may be called, making new sub_stream leaked.
+        destroying = _destroying.load(base::memory_order_relaxed);
+        if (!destroying) {
+            _using_sub_stream = sub_stream;
+            _changed_stream = true;
+        }
     }
+    if (destroying) {
+        sub_stream->Destroy();
+        return;
+    }
+    _last_creation_time_us = base::gettimeofday_us();
     RtmpClientStreamOptions modified_options = _options;
     if (_options.stream_name_manipulator) {
         if (!modified_options.play_name.empty()) {
