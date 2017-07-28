@@ -1,23 +1,24 @@
 The opensource version of baidu-rpc
 
-BUILD
+# BUILD
+## Ubuntu
+- install deps: sudo apt-get install libgflags-dev libprotobuf-dev libprotoc-dev libleveldb-dev libsnappy-dev
+- git clone this repo.
+- cd into the repo and run: sh config_brpc.sh --incs=/usr/include --libs=/usr/lib
+Run echo example:
+- cd into example/echo_c++
+- make
+- Run echo_server and echo_client
+To run examples enabling cpu/heap profilers:
+- sudo apt-get install libgoogle-perftools-dev libunwind-dev liblzma-dev
+- Rerun: sh config_brpc.sh --incs=/usr/include --libs=/usr/lib
+- set LINK_PERFTOOLS to 1 in the Makefile
 
-[ubuntu]
-Must: sudo apt-get install libgflags-dev libprotobuf-dev libprotoc-dev libleveldb-dev libsnappy-dev
-sh config_brpc.sh --incs=/usr/include --libs=/usr/lib
-
-Enable cpu/heap profiler in some examples (not working yet)
-sudo apt-get install libgoogle-perftools-dev libunwind-dev liblzma-dev
-Rerun config_brpc.sh
-set LINK_PERFTOOLS to 1 in the Makefile
-
-[baidu internal]
-Deps: third-64/gflags@gflags_2-0-0-100_PD_BL
-      third-64/protobuf@protobuf_2-4-1-1100_PD_BL
-      third-64/leveldb@leveldb_1-0-0-0_PD_BL
-sh config_brpc.sh --incs=../../../third-64 --libs=../../../third-64
-
-Enable cpu/heap profiler in some examples
-Deps: third-64/tcmalloc@tcmalloc_1-7-0-200_PD_BL
-Rerun config_brpc.sh
-set LINK_PERFTOOLS to 1 in the Makefile
+## Baidu-internal
+- setup directories for baidu/opensource/baidu-rpc
+- download deps: third-64/gflags@gflags_2-0-0-100_PD_BL  third-64/protobuf@protobuf_2-4-1-1100_PD_BL  third-64/leveldb@leveldb_1-0-0-0_PD_BL
+- cd into the repo and run: sh config_brpc.sh --incs=../../../third-64 --libs=../../../third-64
+To run examples enabling cpu/heap profilers:
+- download deps: third-64/tcmalloc@tcmalloc_1-7-0-200_PD_BL
+- Rerun: sh config_brpc.sh --incs=../../../third-64 --libs=../../../third-64
+- set LINK_PERFTOOLS to 1 in the Makefile
