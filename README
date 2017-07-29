@@ -1,11 +1,14 @@
 The opensource version of baidu-rpc
 # BUILD
-### Ubuntu
+### Ubuntu/LinuxMint/WSL
 **install deps**  
-sudo apt-get install libgflags-dev libprotobuf-dev libprotoc-dev libleveldb-dev libsnappy-dev  
+Common: sudo apt-get install git g++ make  
+gflags: sudo apt-get install libgflags-dev  
+protobuf: sudo apt-get install libprotobuf-dev libprotoc-dev protobuf-compiler  
+leveldb(used by rpcz): sudo apt-get install libleveldb-dev libsnappy-dev  
+openssl(for https): libssl-dev  
 **compile**  
-git clone this repo. cd into the repo and run: sh config_brpc.sh --incs=/usr/include
---libs=/usr/lib  
+git clone this repo. cd into the repo and run: sh config_brpc.sh --incs=/usr/include --libs=/usr/lib  
 **run echo example**  
 cd into example/echo_c++, make, run echo_server and echo_client  
 **run examples with cpu/heap profilers**  
@@ -14,11 +17,9 @@ Rerun config_brpc.sh
 
 ### Baidu-internal
 **setup directories**  
-download deps: third-64/gflags@gflags_2-0-0-100_PD_BL  third-64/protobuf@protobuf_2-4-1-1100_PD_BL
-third-64/leveldb@leveldb_1-0-0-0_PD_BL  
+download deps: third-64/gflags@gflags_2-0-0-100_PD_BL  third-64/protobuf@protobuf_2-4-1-1100_PD_BL third-64/leveldb@leveldb_1-0-0-0_PD_BL  
 **compile**  
-git clone this repo. cd into the repo and run: sh config_brpc.sh --incs=../../../third-64
---libs=../../../third-64  
+git clone this repo. cd into the repo and run: sh config_brpc.sh --incs=../../../third-64 --libs=../../../third-64  
 **run examples with cpu/heap profilers**  
 download deps: third-64/tcmalloc@tcmalloc_1-7-0-200_PD_BL  
 Rerun config_brpc.sh  
