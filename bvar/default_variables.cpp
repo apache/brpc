@@ -52,7 +52,7 @@ struct ProcStat {
 static bool read_proc_status(ProcStat &stat) {
     base::ScopedFILE fp("/proc/self/stat", "r");
     if (NULL == fp) {
-        PLOG(WARNING) << "Fail to open /proc/self/stat";
+        PLOG_ONCE(WARNING) << "Fail to open /proc/self/stat";
         return false;
     }
     stat = ProcStat();
@@ -157,7 +157,7 @@ struct ProcMemory {
 static bool read_proc_memory(ProcMemory &m) {
     base::ScopedFILE fp("/proc/self/statm", "r");
     if (NULL == fp) {
-        PLOG(WARNING) << "Fail to open /proc/self/statm";
+        PLOG_ONCE(WARNING) << "Fail to open /proc/self/statm";
         return false;
     }
     m = ProcMemory();
@@ -201,7 +201,7 @@ struct LoadAverage {
 static bool read_load_average(LoadAverage &m) {
     base::ScopedFILE fp("/proc/loadavg", "r");
     if (NULL == fp) {
-        PLOG(WARNING) << "Fail to open /proc/loadavg";
+        PLOG_ONCE(WARNING) << "Fail to open /proc/loadavg";
         return false;
     }
     m = LoadAverage();
@@ -237,7 +237,7 @@ public:
 static int get_fd_count(int limit) {
     DIR *dir = opendir("/proc/self/fd");
     if (dir == NULL) {
-        PLOG(WARNING) << "Fail to opendir /proc/self/fd";
+        PLOG_ONCE(WARNING) << "Fail to opendir /proc/self/fd";
         return -1;
     }
     int count = 0;
@@ -311,7 +311,7 @@ struct ProcIO {
 static bool read_proc_io(ProcIO* s) {
     base::ScopedFILE fp("/proc/self/io", "r");
     if (NULL == fp) {
-        PLOG(WARNING) << "Fail to open /proc/self/io";
+        PLOG_ONCE(WARNING) << "Fail to open /proc/self/io";
         return false;
     }
     errno = 0;
@@ -402,7 +402,7 @@ struct DiskStat {
 static bool read_disk_stat(DiskStat* s) {
     base::ScopedFILE fp("/proc/diskstats", "r");
     if (NULL == fp) {
-        PLOG(WARNING) << "Fail to open /proc/diskstats";
+        PLOG_ONCE(WARNING) << "Fail to open /proc/diskstats";
         return false;
     }
     errno = 0;
