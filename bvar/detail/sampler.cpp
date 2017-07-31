@@ -6,6 +6,8 @@
 #include "base/memory/singleton_on_pthread_once.h"
 #include "bvar/reducer.h"
 #include "bvar/detail/sampler.h"
+#include "bvar/passive_status.h"
+#include "bvar/window.h"
 
 namespace bvar {
 namespace detail {
@@ -39,7 +41,7 @@ struct CombineSampler {
 // deletion is taken place in the thread as well.
 class SamplerCollector : public bvar::Reducer<Sampler*, CombineSampler> {
 public:
-    SamplerCollector() : _created(false), _stop(false) {
+    SamplerCollector() : _created(false), _stop(false), _cumulated_time_us(0) {
         int rc = pthread_create(&_tid, NULL, sampling_thread, this);
         if (rc != 0) {
             LOG(FATAL) << "Fail to create sampling_thread, " << berror(rc);
@@ -55,6 +57,10 @@ public:
             _created = false;
         }
     }
+
+    static double get_cumulated_time(void* arg) {
+        return ((SamplerCollector*)arg)->_cumulated_time_us / 1000.0 / 1000.0;
+    }
     
 private:
     void run();
@@ -67,6 +73,7 @@ private:
 private:
     bool _created;
     bool _stop;
+    int64_t _cumulated_time_us;
     pthread_t _tid;
 };
 
@@ -74,8 +81,11 @@ void SamplerCollector::run() {
     VLOG(99) << "SamplerCollector starts to run";
     base::LinkNode<Sampler> root;
     int consecutive_nosleep = 0;
+    PassiveStatus<double> cumulated_time(get_cumulated_time, this);
+    bvar::PerSecond<bvar::PassiveStatus<double> > usage(
+            "bvar_sampler_collector_usage", &cumulated_time, 10);
     while (!_stop) {
-        const int64_t abstime = base::gettimeofday_us() + 1000000L;
+        int64_t abstime = base::gettimeofday_us();
         Sampler* s = this->reset();
         if (s) {
             s->InsertBeforeAsList(&root);
@@ -99,11 +109,14 @@ void SamplerCollector::run() {
             }
             p = saved_next;
         }
-        int64_t now = 0;
         bool slept = false;
-        while (abstime > (now = base::gettimeofday_us())) {
+        int64_t now = base::gettimeofday_us();
+        _cumulated_time_us += now - abstime;
+        abstime += 1000000L;
+        while (abstime > now) {
             ::usleep(abstime - now);
             slept = true;
+            now = base::gettimeofday_us();
         }
         if (slept) {
             consecutive_nosleep = 0;

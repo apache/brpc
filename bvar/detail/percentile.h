@@ -130,6 +130,11 @@ public:
     void merge_with_expectation(PercentileInterval<size2>& mutable_rhs, size_t n) {
         CHECK(n <= mutable_rhs._num_samples);
         _num_added += mutable_rhs._num_added;
+        if (_num_samples + n <= SAMPLE_SIZE && n == mutable_rhs._num_samples) {
+            memcpy(_samples + _num_samples, mutable_rhs._samples, sizeof(_samples[0]) * n);
+            _num_samples += n;
+            return;
+        }
         for (size_t i = 0; i < n; ++i) {
             size_t index = base::fast_rand_less_than(mutable_rhs._num_samples - i);
             if (_num_samples < SAMPLE_SIZE) {
