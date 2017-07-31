@@ -4,9 +4,12 @@ CXXFLAGS=$(CPPFLAGS) -O2 -g -pipe -Wall -W -Werror -fPIC -fstrict-aliasing -Wno-
 CFLAGS=$(CPPFLAGS) -O2 -g -pipe -Wall -W -Werror -fPIC -fstrict-aliasing -Wno-unused-parameter
 
 INCPATH=-I. $(addprefix -I, $(INCS))
+LIBPATH = $(addprefix -L, $(LIBS))
 SRCEXTS = .c .cc .cpp .proto
 HDREXTS = .h .hpp
-LDFLAGS = -lpthread -lrt -ldl -lz -lssl -lcrypto
+#dyanmic linking of libprotoc.so crashes on ubuntu when protoc-gen-mcpack is invoked
+STATIC_LINKING += -lprotoc
+LDFLAGS = -Wl,-Bstatic $(STATIC_LINKING) -Wl,-Bdynamic $(DYNAMIC_LINKING)
 
 BASE_SOURCES = \
     base/third_party/dmg_fp/g_fmt.cc \
@@ -226,7 +229,7 @@ libmcpack2pb.a:$(MCPACK2PB_OBJS)
 
 protoc-gen-mcpack:mcpack2pb/generator.o libmcpack2pb.a libbase.a libbthread.a libbvar.a
 	@echo "Linking $@"
-	@$(CXX) -o protoc-gen-mcpack -Xlinker "-(" $^ $(LIBS) $(PROTOC_LIB) -Xlinker "-)" $(LDFLAGS)
+	@$(CXX) -o protoc-gen-mcpack -L$(LIBPATH) -Xlinker "-(" $^ -Xlinker "-)" $(LDFLAGS)
 
 libbrpc.a:$(BRPC_OBJS)
 	@echo "Linking $@"

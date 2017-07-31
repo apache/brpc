@@ -5,11 +5,10 @@ CPPFLAGS=-std=c++0x -g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -Wno-deprecated
 CXXFLAGS=$(CPPFLAGS)
 CFLAGS=$(CPPFLAGS)
 INCPATH=-I$(BRPC_PATH)/include $(addprefix -I, $(INCS))
-LIBS+=$(wildcard $(BRPC_PATH)/lib/lib*.a)
-LDFLAGS=-lpthread -lrt -lssl -lcrypto -ldl -lz
+LIBPATH = $(addprefix -L, $(LIBS))
+BRPC_LIBS=$(wildcard $(BRPC_PATH)/lib/lib*.a)
 ifeq ($(LINK_PERFTOOLS), 1)
 	CPPFLAGS += -DBRPC_ENABLE_CPU_PROFILER -DBRPC_ENABLE_HEAP_PROFILER
-	LDFLAGS += -llzma
 endif
 
 CLIENT_SOURCES = client.cpp
@@ -20,6 +19,7 @@ PROTO_OBJS = $(addsuffix .pb.o, $(basename $(PROTOS)))
 PROTO_GENS = $(addsuffix .pb.h, $(basename $(PROTOS))) $(addsuffix .pb.cc, $(basename $(PROTOS)))
 CLIENT_OBJS = $(addsuffix .o, $(basename $(CLIENT_SOURCES))) 
 SERVER_OBJS = $(addsuffix .o, $(basename $(SERVER_SOURCES))) 
+LDFLAGS = -Wl,-Bstatic $(STATIC_LINKING) -Wl,-Bdynamic $(DYNAMIC_LINKING)
 
 .PHONY:all
 all: echo_client echo_server
@@ -31,11 +31,11 @@ clean:
 
 echo_client:$(PROTO_OBJS) $(CLIENT_OBJS)
 	@echo "Linking $@"
-	@$(CXX) -Xlinker "-(" $^ $(LIBS) -Xlinker "-)" $(LDFLAGS) -o $@
+	@$(CXX) $(LIBPATH) -Xlinker "-(" $^ $(BRPC_LIBS) -Xlinker "-)" $(LDFLAGS) -o $@
 
 echo_server:$(PROTO_OBJS) $(SERVER_OBJS)
 	@echo "Linking $@"
-	@$(CXX) -Xlinker "-(" $^ $(LIBS) -Xlinker "-)" $(LDFLAGS) -o $@
+	@$(CXX) $(LIBPATH) -Xlinker "-(" $^ $(BRPC_LIBS) -Xlinker "-)" $(LDFLAGS) -o $@
 
 %.pb.cc:%.proto
 	@echo "Generating $@"

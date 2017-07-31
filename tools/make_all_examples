@@ -1,4 +1,3 @@
-#!/bin/bash
 saved_pwd_before_making=$PWD
 for file in `find example -name Makefile`; do
     cd $(dirname $file)
