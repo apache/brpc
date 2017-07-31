@@ -208,31 +208,31 @@ clean:
 		output/include output/lib output/bin
 
 libbase.a:$(BASE_OBJS)
-	@echo "Linking $@"
+	@echo "Packing $@"
 	@ar crs $@ $^
 
 libbvar.a:$(BVAR_OBJS)
-	@echo "Linking $@"
+	@echo "Packing $@"
 	@ar crs $@ $^
 
 libbthread.a:$(BTHREAD_OBJS)
-	@echo "Linking $@"
+	@echo "Packing $@"
 	@ar crs $@ $^
 
 libjson2pb.a:$(JSON2PB_OBJS)
-	@echo "Linking $@"
+	@echo "Packing $@"
 	@ar crs $@ $^
 
 libmcpack2pb.a:$(MCPACK2PB_OBJS)
-	@echo "Linking $@"
+	@echo "Packing $@"
 	@ar crs $@ $^
 
 protoc-gen-mcpack:mcpack2pb/generator.o libmcpack2pb.a libbase.a libbthread.a libbvar.a
 	@echo "Linking $@"
-	@$(CXX) -o protoc-gen-mcpack -L$(LIBPATH) -Xlinker "-(" $^ -Xlinker "-)" $(LDFLAGS)
+	@$(CXX) -o protoc-gen-mcpack $(LIBPATH) -Xlinker "-(" $^ -Xlinker "-)" $(LDFLAGS)
 
 libbrpc.a:$(BRPC_OBJS)
-	@echo "Linking $@"
+	@echo "Packing $@"
 	@ar crs libbrpc.a $^
 
 .PHONY:output/include
