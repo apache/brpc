@@ -14,6 +14,7 @@ cat $1 |sed -e 's/src\/baidu\/rpc\//brpc\//g' \
             -e 's/\<baidu::rpc::/brpc::/g' \
             -e 's/\<rpc::/brpc::/g' \
             -e 's/\<BAIDU_RPC_/BRPC_/g' \
+            -e 's/\<protocol\/\(.*\)\.proto/\1.proto/g' \
             -e 's/TEST_F(HttpMessageTest/TEST(HttpMessageTest/g' \
             -e 's/TEST_F(URITest/TEST(URITest/g' \
             -e 's/<bthread\.h>/\"bthread\/bthread.h\"/g' \

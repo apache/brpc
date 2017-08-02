@@ -70,9 +70,6 @@ using namespace policy;
 
 const char* const DUMMY_SERVER_PORT_FILE = "dummy_server.port";
 
-DEFINE_bool(enable_trackme, true, 
-            "Ping brpc.baidu.com periodically to check out latest bugs");
-
 struct GlobalExtensions {
     GlobalExtensions()
         : ch_mh_lb(MurmurHash32)
@@ -187,9 +184,7 @@ static void* GlobalUpdate(void*) {
         }
         last_time_us = base::gettimeofday_us();
         
-        if (FLAGS_enable_trackme) {
-            TrackMe();
-        }
+        TrackMe();
         
         if (!IsDummyServerRunning()
             && g_running_server_count.load(base::memory_order_relaxed) == 0

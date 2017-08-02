@@ -19,7 +19,7 @@ namespace brpc {
 void SetTrackMeAddress(base::EndPoint pt);
 
 // Call this function every second (or every several seconds) to send
-// TrackMeRequest to trackme_server every TRACKME_INTERVAL seconds.
+// TrackMeRequest to -trackme_server every TRACKME_INTERVAL seconds.
 void TrackMe();
 
 } // namespace brpc

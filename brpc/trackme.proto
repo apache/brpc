@@ -4,7 +4,7 @@ option cc_generic_services=true;
 
 package brpc;
 
-// The request sent to brpc.baidu.com.
+// The request sent to -trackme_server
 message TrackMeRequest {
   // the svn revision when baidu-rp being compiled, which will be checked
   // by server to tell if the version contains bugs
@@ -18,7 +18,7 @@ enum TrackMeSeverity {
   TrackMeFatal = 2;
 };
 
-// The response from brpc.baidu.com
+// The response from -trackme_server
 message TrackMeResponse {
   // Print an ERROR log with error_text when severity=TrackMeFatal
   // Print a WARNING log with error_text when severity=TrackMeWarning

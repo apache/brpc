@@ -19,10 +19,16 @@
 
 namespace brpc {
 
+#ifdef BAIDU_INTERNAL
+DEFINE_string(trackme_server, "http://brpc.baidu.com:8765",
+              "Where the TrackMe requests are sent to");
+#else
+DEFINE_string(trackme_server, "", "Where the TrackMe requests are sent to");
+#endif
+
 static const int32_t TRACKME_MIN_INTERVAL = 30;
 static const int32_t TRACKME_MAX_INTERVAL = 600;
 static int32_t s_trackme_interval = TRACKME_MIN_INTERVAL;
-static const char* const TRACKME_SERVER = "http://brpc.baidu.com:8877";
 // Protecting global vars on trackme
 static pthread_mutex_t g_trackme_mutex = PTHREAD_MUTEX_INITIALIZER;
 // For contacting with trackme_server.
@@ -113,7 +119,7 @@ void SetTrackMeAddress(base::EndPoint pt) {
 
 static void HandleTrackMeResponse(Controller* cntl, TrackMeResponse* res) {
     if (cntl->Failed()) {
-        RPC_VLOG << "Fail to access " << TRACKME_SERVER << ", " << cntl->ErrorText();
+        RPC_VLOG << "Fail to access " << FLAGS_trackme_server << ", " << cntl->ErrorText();
     } else {
         BugInfo cur_info;
         cur_info.severity = res->severity();
@@ -180,8 +186,8 @@ static void TrackMeNow(std::unique_lock<pthread_mutex_t>& mu) {
         ChannelOptions opt;
         // keep #connections on server-side low
         opt.connection_type = CONNECTION_TYPE_SHORT;
-        if (chan->Init(TRACKME_SERVER, "c_murmurhash", &opt) != 0) {
-            LOG(WARNING) << "Fail to connect to " << TRACKME_SERVER;
+        if (chan->Init(FLAGS_trackme_server.c_str(), "c_murmurhash", &opt) != 0) {
+            LOG(WARNING) << "Fail to connect to " << FLAGS_trackme_server;
             delete chan;
             return;
         }
@@ -203,6 +209,9 @@ static void TrackMeNow(std::unique_lock<pthread_mutex_t>& mu) {
 // Called in global.cpp
 // [Thread-safe] supposed to be called in low frequency.
 void TrackMe() {
+    if (FLAGS_trackme_server.empty()) {
+        return;
+    }
     int64_t now = base::gettimeofday_us();
     std::unique_lock<pthread_mutex_t> mu(g_trackme_mutex);
     if (g_trackme_last_time == 0) {
