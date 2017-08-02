@@ -378,6 +378,36 @@ private:
     base::IOBuf* _buf;
 };
 
+class FlvReader {
+public:
+    // Start reading FLV tags from the buffer. The data read by the following 
+    // Read functions would be removed from *buf.
+    explicit FlvReader(base::IOBuf* buf);
+
+    // Get the next message type.
+    // If it is a valid flv tag, base::Status::OK() is returned and the 
+    // type is written to *type. Otherwise an error would be returned,
+    // leaving *type unchanged.
+    // Note: If error_code of the return value is EAGAIN, the caller 
+    // should wait more data and try call PeekMessageType again.
+    base::Status PeekMessageType(FlvTagType* type);
+
+    // Read a video/audio/metadata message from the input buffer.
+    // Caller should use the result of function PeekMessageType to select an
+    // appropriate function, e.g., if *type is set to FLV_TAG_AUDIO in 
+    // PeekMessageType, caller should call Read(RtmpAudioMessage*) subsequently.
+    base::Status Read(RtmpVideoMessage* msg);
+    base::Status Read(RtmpAudioMessage* msg);
+    base::Status Read(AMFObject* object, std::string* object_name);
+
+private:
+    base::Status ReadHeader();
+
+private:
+    bool _read_header;
+    base::IOBuf* _buf;
+};
+
 struct RtmpPlayOptions {
     // [Required] Name of the stream to play.
     // * video (FLV) files: specify the name without a file extension,

@@ -140,6 +140,134 @@ base::Status FlvWriter::Write(const AMFObject& metadata) {
     return base::Status::OK();
 }
 
+FlvReader::FlvReader(base::IOBuf* buf)
+    : _read_header(false), _buf(buf) {
+}
+
+base::Status FlvReader::ReadHeader() {
+    if (!_read_header) {
+        char header_buf[sizeof(g_flv_header) + 4/* PreviousTagSize0 */];
+        const char* p = (const char*)_buf->fetch(header_buf, sizeof(header_buf));
+        if (p == NULL) {
+            return base::Status(EAGAIN, "Fail to read, not enough data");
+        }
+        if (memcmp(p, g_flv_header, 3) != 0) {
+            LOG(FATAL) << "Fail to parse FLV header";
+            return base::Status(EINVAL, "Fail to parse FLV header");
+        }
+        _buf->pop_front(sizeof(header_buf));
+        _read_header = true;
+    }
+    return base::Status::OK();
+}
+
+base::Status FlvReader::PeekMessageType(FlvTagType* type_out) {
+    base::Status st = ReadHeader();
+    if (!st.ok()) {
+        return st;
+    }
+    const char* p = (const char*)_buf->fetch1();
+    if (p == NULL) {
+        return base::Status(EAGAIN, "Fail to read, not enough data");
+    }
+    FlvTagType type = (FlvTagType)*p;
+    if (type != FLV_TAG_AUDIO && type != FLV_TAG_VIDEO &&
+        type != FLV_TAG_SCRIPT_DATA) {
+        return base::Status(EINVAL, "Fail to parse FLV tag");
+    }
+    if (type_out) {
+        *type_out = type;
+    }
+    return base::Status::OK();
+}
+
+base::Status FlvReader::Read(RtmpVideoMessage* msg) {
+    char tags[11];
+    const char* p = (const char*)_buf->fetch(tags, sizeof(tags));
+    if (p == NULL) {
+        return base::Status(EAGAIN, "Fail to read, not enough data");
+    }
+    if (*p != FLV_TAG_VIDEO) {
+        return base::Status(EINVAL, "Fail to parse RtmpVideoMessage");
+    }
+    uint32_t msg_size = policy::ReadBigEndian3Bytes(p + 1);
+    uint32_t timestamp = policy::ReadBigEndian3Bytes(p + 4);
+    timestamp |= (*(p + 7) << 24);
+    if (_buf->length() < 11 + msg_size + 4/*PreviousTagSize*/) {
+        return base::Status(EAGAIN, "Fail to read, not enough data");
+    }
+    _buf->pop_front(11);
+    char first_byte = 0;
+    CHECK(_buf->cut1(&first_byte));
+    msg->timestamp = timestamp;
+    msg->frame_type = (FlvVideoFrameType)((first_byte >> 4) & 0xF);
+    msg->codec = (FlvVideoCodec)(first_byte & 0xF);
+    // TODO(zhujiashun): check the validation of frame_type and codec
+    _buf->cutn(&msg->data, msg_size - 1);
+    _buf->pop_front(4/* PreviousTagSize0 */);
+
+    return base::Status::OK();
+}
+
+base::Status FlvReader::Read(RtmpAudioMessage* msg) {
+    char tags[11];
+    const char* p = (const char*)_buf->fetch(tags, sizeof(tags));
+    if (p == NULL) {
+        return base::Status(EAGAIN, "Fail to read, not enough data");
+    }
+    if (*p != FLV_TAG_AUDIO) {
+        return base::Status(EINVAL, "Fail to parse RtmpAudioMessage");
+    }
+    uint32_t msg_size = policy::ReadBigEndian3Bytes(p + 1);
+    uint32_t timestamp = policy::ReadBigEndian3Bytes(p + 4);
+    timestamp |= (*(p + 7) << 24);
+    if (_buf->length() < 11 + msg_size + 4/*PreviousTagSize*/) {
+        return base::Status(EAGAIN, "Fail to read, not enough data");
+    }
+    _buf->pop_front(11);
+    char first_byte = 0;
+    CHECK(_buf->cut1(&first_byte));
+    msg->timestamp = timestamp;
+    msg->codec = (FlvAudioCodec)((first_byte >> 4) & 0xF);
+    msg->rate = (FlvSoundRate)((first_byte >> 2) & 0x3);
+    msg->bits = (FlvSoundBits)((first_byte >> 1) & 0x1);
+    msg->type = (FlvSoundType)(first_byte & 0x1);
+    _buf->cutn(&msg->data, msg_size - 1);
+    _buf->pop_front(4/* PreviousTagSize0 */);
+
+    return base::Status::OK();
+}
+
+base::Status FlvReader::Read(AMFObject* msg, std::string* name) {
+    char tags[11];
+    const char* p = (const char*)_buf->fetch(tags, sizeof(tags));
+    if (p == NULL) {
+        return base::Status(EAGAIN, "Fail to read, not enough data");
+    }
+    if (*p != FLV_TAG_SCRIPT_DATA) {
+        return base::Status(EINVAL, "Fail to parse RtmpScriptMessage");
+    }
+    uint32_t msg_size = policy::ReadBigEndian3Bytes(p + 1);
+    if (_buf->length() < 11 + msg_size + 4/*PreviousTagSize*/) {
+        return base::Status(EAGAIN, "Fail to read, not enough data");
+    }
+    _buf->pop_front(11);
+    base::IOBuf req_buf;
+    _buf->cutn(&req_buf, msg_size);
+    _buf->pop_front(4/* PreviousTagSize0 */);
+    {
+        base::IOBufAsZeroCopyInputStream zc_stream(req_buf);
+        AMFInputStream istream(&zc_stream);
+        if (!ReadAMFString(name, &istream)) {
+            return base::Status(EINVAL, "Fail to read AMF string");
+        }
+        if (!ReadAMFObject(msg, &istream)) {
+            return base::Status(EINVAL, "Fail to read AMF object");
+        }
+    }
+    return base::Status::OK();
+}
+
 const char* FlvVideoFrameType2Str(FlvVideoFrameType t) {
     switch (t) {
     case FLV_VIDEO_FRAME_KEYFRAME:              return "keyframe";
