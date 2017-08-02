@@ -54,8 +54,6 @@ inline std::ostream& operator<<(std::ostream& os,
     return os;
 }
 
-} // namespace brpc
-
 // Append `indent' spaces after each newline.
 // Example:
 //   IndentingOStream os1(std::cout, 2);
@@ -98,5 +96,7 @@ private:
     bool _is_at_start_of_line;
     std::string _indent;
 };
+
+} // namespace brpc
 
 #endif  // BRPC_DESCRIBABLE_H
