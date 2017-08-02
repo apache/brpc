@@ -222,6 +222,7 @@ void Controller::InternalReset(bool in_constructor) {
     _request_code = 0;
     _single_server_id = (SocketId)-1;
     _unfinished_call = NULL;
+    _stream_creator = NULL;
     _accessed = NULL;
     _pack_request = NULL;
     _method = NULL;
@@ -234,7 +235,6 @@ void Controller::InternalReset(bool in_constructor) {
     _request_stream = INVALID_STREAM_ID;
     _response_stream = INVALID_STREAM_ID;
     _remote_stream_settings = NULL;
-    _stream_creator = NULL;
 }
 
 Controller::Call::Call(Controller::Call* rhs)
@@ -292,11 +292,6 @@ void Controller::set_max_retry(int max_retry) {
     } else {
         _max_retry = max_retry;
     }
-}
-
-void Controller::set_fail_limit(int fail_limit) {
-    LOG(ERROR) << "Controller::set_fail_limit is deprecated"
-        " and the set value(" << fail_limit << ") is ignored";
 }
 
 void Controller::set_log_id(uint64_t log_id) {
@@ -1047,16 +1042,20 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         }
         pabstime = &connect_abstime;
     }
-    const size_t packet_size = packet.size();
     Socket::WriteOptions wopt;
     wopt.id_wait = cid;
     wopt.abstime = pabstime;
     wopt.pipelined_count = _pipelined_count;
     wopt.ignore_eovercrowded = has_flag(FLAGS_IGNORE_EOVERCROWDED);
     int rc;
+    size_t packet_size = 0;
     if (user_packet_guard) {
+        if (span) {
+            packet_size = user_packet_guard->EstimatedByteSize();
+        }
         rc = _current_call.sending_sock->Write(user_packet_guard, &wopt);
     } else {
+        packet_size = packet.size();
         rc = _current_call.sending_sock->Write(&packet, &wopt);
     }
     if (span) {

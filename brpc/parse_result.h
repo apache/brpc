@@ -53,7 +53,6 @@ public:
     bool is_ok() const { return error() == PARSE_OK; }
 
     // definitely NULL when result is failed.
-    // Likely to be non-NULL when result is successful.
     InputMessageBase* message() const { return _msg; }
  
 private:

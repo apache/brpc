@@ -396,7 +396,7 @@ void PackNsheadRequest(
     }
     // Store `correlation_id' into the socket since nshead protocol can't
     // pack the field.
-    accessor.set_socket_correlation_id(correlation_id);
+    accessor.get_sending_socket()->set_correlation_id(correlation_id);
 
     Span* span = accessor.span();
     if (span) {

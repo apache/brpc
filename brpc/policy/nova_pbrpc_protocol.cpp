@@ -163,7 +163,7 @@ void PackNovaRequest(base::IOBuf* buf,
     }
     // Store `correlation_id' into Socket since nova_pbrpc protocol
     // doesn't contain this field
-    accessor.set_socket_correlation_id(correlation_id);
+    accessor.get_sending_socket()->set_correlation_id(correlation_id);
         
     nshead_t nshead;
     memset(&nshead, 0, sizeof(nshead_t));

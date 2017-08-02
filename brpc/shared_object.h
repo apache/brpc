@@ -18,8 +18,8 @@ namespace brpc {
 // locality when the ref/deref are frequent, in the cost of inability of
 // weak_ptr and worse interfacing.
 class SharedObject {
-friend void intrusive_ptr_add_ref(SharedObject* obj);
-friend void intrusive_ptr_release(SharedObject* obj);
+friend void intrusive_ptr_add_ref(SharedObject*);
+friend void intrusive_ptr_release(SharedObject*);
 
 public:
     SharedObject() : _nref(0) { }

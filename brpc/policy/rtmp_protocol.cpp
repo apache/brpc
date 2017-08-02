@@ -1754,30 +1754,30 @@ static const RtmpChunkStream::MessageHandler s_msg_handlers[] = {
 };
 
 typedef base::FlatMap<std::string, RtmpChunkStream::CommandHandler> CommandHandlerMap;
-static CommandHandlerMap* s_cmd_handers = NULL;
-static pthread_once_t s_cmd_handers_init_once = PTHREAD_ONCE_INIT;
+static CommandHandlerMap* s_cmd_handlers = NULL;
+static pthread_once_t s_cmd_handlers_init_once = PTHREAD_ONCE_INIT;
 static void InitCommandHandlers() {
     // Dispatch commands based on "Command Name".
-    s_cmd_handers = new CommandHandlerMap;
-    CHECK_EQ(0, s_cmd_handers->init(64, 70));
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_CONNECT] = &RtmpChunkStream::OnConnect;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_ON_BW_DONE] = &RtmpChunkStream::OnBWDone;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_RESULT] = &RtmpChunkStream::OnResult;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_ERROR] = &RtmpChunkStream::OnError;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_PLAY] = &RtmpChunkStream::OnPlay;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_PLAY2] = &RtmpChunkStream::OnPlay2;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_CREATE_STREAM] = &RtmpChunkStream::OnCreateStream;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_DELETE_STREAM] = &RtmpChunkStream::OnDeleteStream;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_CLOSE_STREAM] = &RtmpChunkStream::OnCloseStream;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_PUBLISH] = &RtmpChunkStream::OnPublish;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_SEEK] = &RtmpChunkStream::OnSeek;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_PAUSE] = &RtmpChunkStream::OnPause;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_ON_STATUS] = &RtmpChunkStream::OnStatus;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_RELEASE_STREAM] = &RtmpChunkStream::OnReleaseStream;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_FC_PUBLISH] = &RtmpChunkStream::OnFCPublish;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_FC_UNPUBLISH] = &RtmpChunkStream::OnFCUnpublish;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_GET_STREAM_LENGTH] = &RtmpChunkStream::OnGetStreamLength;
-    (*s_cmd_handers)[RTMP_AMF0_COMMAND_CHECK_BW] = &RtmpChunkStream::OnCheckBW;
+    s_cmd_handlers = new CommandHandlerMap;
+    CHECK_EQ(0, s_cmd_handlers->init(64, 70));
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_CONNECT] = &RtmpChunkStream::OnConnect;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_ON_BW_DONE] = &RtmpChunkStream::OnBWDone;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_RESULT] = &RtmpChunkStream::OnResult;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_ERROR] = &RtmpChunkStream::OnError;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_PLAY] = &RtmpChunkStream::OnPlay;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_PLAY2] = &RtmpChunkStream::OnPlay2;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_CREATE_STREAM] = &RtmpChunkStream::OnCreateStream;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_DELETE_STREAM] = &RtmpChunkStream::OnDeleteStream;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_CLOSE_STREAM] = &RtmpChunkStream::OnCloseStream;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_PUBLISH] = &RtmpChunkStream::OnPublish;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_SEEK] = &RtmpChunkStream::OnSeek;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_PAUSE] = &RtmpChunkStream::OnPause;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_ON_STATUS] = &RtmpChunkStream::OnStatus;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_RELEASE_STREAM] = &RtmpChunkStream::OnReleaseStream;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_FC_PUBLISH] = &RtmpChunkStream::OnFCPublish;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_FC_UNPUBLISH] = &RtmpChunkStream::OnFCUnpublish;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_GET_STREAM_LENGTH] = &RtmpChunkStream::OnGetStreamLength;
+    (*s_cmd_handlers)[RTMP_AMF0_COMMAND_CHECK_BW] = &RtmpChunkStream::OnCheckBW;
 }
 
 bool RtmpChunkStream::OnMessage(const RtmpBasicHeader& bh,
@@ -2248,9 +2248,9 @@ bool RtmpChunkStream::OnCommandMessageAMF0(
     RPC_VLOG << socket->remote_side() << "[" << mh.stream_id
              << "] Command{timestamp=" << mh.timestamp
              << " name=" << command_name << '}';
-    pthread_once(&s_cmd_handers_init_once, InitCommandHandlers);
+    pthread_once(&s_cmd_handlers_init_once, InitCommandHandlers);
     RtmpChunkStream::CommandHandler* phandler =
-        s_cmd_handers->seek(command_name);
+        s_cmd_handlers->seek(command_name);
     if (phandler == NULL) {
         RTMP_ERROR(socket, mh) << "Unknown command_name=" << command_name;
         return false;
@@ -3605,7 +3605,7 @@ void PackRtmpRequest(base::IOBuf* /*buf*/,
                      const Authenticator*) {
     // Send createStream command
     ControllerPrivateAccessor accessor(cntl);
-    Socket* s = accessor.get_sending_sock();
+    Socket* s = accessor.get_sending_socket();
     RtmpContext* ctx = static_cast<RtmpContext*>(s->parsing_context());
     if (ctx == NULL) {
         cntl->SetFailed(EINVAL, "RtmpContext of %s is not created",

@@ -193,7 +193,7 @@ BRPC_OBJS = $(addsuffix .pb.o, $(basename $(BRPC_PROTOS))) $(addsuffix .o, $(bas
 MCPACK2PB_SOURCES = \
 	mcpack2pb/field_type.cpp \
 	mcpack2pb/mcpack2pb.cpp \
-   	mcpack2pb/parser.cpp \
+	mcpack2pb/parser.cpp \
 	mcpack2pb/serializer.cpp
 MCPACK2PB_OBJS = idl_options.pb.o $(addsuffix .o, $(basename $(MCPACK2PB_SOURCES)))
 

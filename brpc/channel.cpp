@@ -327,6 +327,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         cntl->_single_server_id = _server_id;
         cntl->_remote_side = _server_address;
     }
+    cntl->_request_protocol = _options.protocol;
     cntl->_preferred_index = _preferred_index;
 
     // Share the lb with controller.

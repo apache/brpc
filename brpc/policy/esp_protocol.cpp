@@ -83,7 +83,7 @@ void PackEspRequest(base::IOBuf* packet_buf,
             EINVAL, "esp protocol can't work with CONNECTION_TYPE_SINGLE");
     }
 
-    accessor.set_socket_correlation_id(correlation_id);
+    accessor.get_sending_socket()->set_correlation_id(correlation_id);
     Span* span = accessor.span();
     if (span) {
         span->set_request_size(request.length());

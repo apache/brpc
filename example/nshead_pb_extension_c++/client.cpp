@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
             g_latency_recorder << cntl.latency_us();
         }
         LOG_EVERY_SECOND(INFO)
-            << "Sending nshead request at qps=" << g_latency_recorder.qps(1)
+            << "Sending nshead requests at qps=" << g_latency_recorder.qps(1)
             << " latency=" << g_latency_recorder.latency(1);
     }
 

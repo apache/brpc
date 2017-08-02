@@ -21,12 +21,11 @@
 #include "brpc/span.h"
 #include "brpc/socket.h"                       // Socket
 #include "brpc/http_status_code.h"             // HTTP_STATUS_*
-#include "brpc/details/http_message_serializer.h" // HttpMessageSerializer
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/builtin/index_service.h"        // IndexService
 #include "brpc/policy/gzip_compress.h"
-#include "brpc/policy/http_rpc_protocol.h"
 #include "brpc/details/usercode_backup_pool.h"
+#include "brpc/policy/http_rpc_protocol.h"
 
 extern "C" {
 void bthread_assign_data(void* data) __THROW;
@@ -56,11 +55,8 @@ DEFINE_bool(pb_enum_as_number, false, "[Not recommended] Convert enums in "
             "server-side");
 
 // Read user address from the header specified by -http_header_of_user_ip
-inline bool GetUserAddressFromHeader(const HttpHeader& headers,
-                                     base::EndPoint* user_addr) {
-    if (FLAGS_http_header_of_user_ip.empty()) {
-        return false;
-    }
+static bool GetUserAddressFromHeaderImpl(const HttpHeader& headers,
+                                         base::EndPoint* user_addr) {
     const std::string* user_addr_str =
         headers.GetHeader(FLAGS_http_header_of_user_ip);
     if (user_addr_str == NULL) {
@@ -81,44 +77,46 @@ inline bool GetUserAddressFromHeader(const HttpHeader& headers,
     return true;
 }
 
-// Put commonly used std::strings (or other constants that need memory
-// allocations) in this struct to avoid memory allocations for each request.
-struct CommonStrings {
-    CommonStrings()
-        : CONTENT_TYPE_TEXT("text/plain")
-        , CONTENT_TYPE_JSON("application/json")
-        , CONTENT_TYPE_PROTO("application/proto")
-        , ERROR_CODE("x-bd-error-code")
-        , AUTHORIZATION("Authorization")
-        , ACCEPT_ENCODING("Accept-Encoding")
-        , CONTENT_ENCODING("Content-Encoding")
-        , GZIP("gzip")
-        , CONNECTION("Connection")
-        , KEEP_ALIVE("keep-alive")
-        , CLOSE("close")
-        , LOG_ID("log-id")
-        , DEFAULT_METHOD("default_method")
-        , NO_METHOD("no_method")
-    {}
-    
-    std::string CONTENT_TYPE_TEXT;
-    std::string CONTENT_TYPE_JSON;
-    std::string CONTENT_TYPE_PROTO;
-    std::string ERROR_CODE;
-    std::string AUTHORIZATION;
-    std::string ACCEPT_ENCODING;
-    std::string CONTENT_ENCODING;
-    std::string GZIP;
-    std::string CONNECTION;
-    std::string KEEP_ALIVE;
-    std::string CLOSE;
-    // Many users already GetHeader("log-id") in their code, it's difficult to
-    // rename this to `x-bd-log-id'.
-    // NOTE: Keep in mind that this name also appears inside `http_message.cpp'
-    std::string LOG_ID;
-    std::string DEFAULT_METHOD;
-    std::string NO_METHOD;
-};
+inline bool GetUserAddressFromHeader(const HttpHeader& headers,
+                                     base::EndPoint* user_addr) {
+    if (FLAGS_http_header_of_user_ip.empty()) {
+        return false;
+    }
+    return GetUserAddressFromHeaderImpl(headers, user_addr);
+}
+
+CommonStrings::CommonStrings()
+    : ACCEPT("accept")
+    , DEFAULT_ACCEPT("*/*")
+    , USER_AGENT("user-agent")
+    , DEFAULT_USER_AGENT("baidu-rpc/1.0 curl/7.0")
+    , CONTENT_TYPE("content-type")
+    , CONTENT_TYPE_TEXT("text/plain")
+    , CONTENT_TYPE_JSON("application/json")
+    , CONTENT_TYPE_PROTO("application/proto")
+    , ERROR_CODE("x-bd-error-code")
+    , AUTHORIZATION("authorization")
+    , ACCEPT_ENCODING("accept-encoding")
+    , CONTENT_ENCODING("content-encoding")
+    , CONTENT_LENGTH("content-length")
+    , GZIP("gzip")
+    , CONNECTION("connection")
+    , KEEP_ALIVE("keep-alive")
+    , CLOSE("close")
+    , LOG_ID("log-id")
+    , DEFAULT_METHOD("default_method")
+    , NO_METHOD("no_method")
+    , H2_SCHEME(":scheme")
+    , H2_SCHEME_HTTP("http")
+    , H2_SCHEME_HTTPS("https")
+    , H2_AUTHORITY(":authority")
+    , H2_PATH(":path")
+    , H2_STATUS(":status")
+    , STATUS_200("200")
+    , H2_METHOD(":method")
+    , METHOD_GET("GET")
+    , METHOD_POST("POST")
+{}
 
 static CommonStrings* common = NULL;
 static pthread_once_t g_common_strings_once = PTHREAD_ONCE_INIT;
@@ -130,11 +128,12 @@ int InitCommonStrings() {
     return pthread_once(&g_common_strings_once, CreateCommonStrings);
 }
 static const int ALLOW_UNUSED force_creation_of_common = InitCommonStrings();
+const CommonStrings* get_common_strings() { return common; }
 
-enum HttpContentType{
-    HTTP_CONTENT_JSON = 0,
-    HTTP_CONTENT_PROTO = 1,
-    HTTP_CONTENT_OTHERS = 2,
+enum HttpContentType {
+    HTTP_CONTENT_OTHERS = 0,
+    HTTP_CONTENT_JSON = 1,
+    HTTP_CONTENT_PROTO = 2
 };
 
 inline HttpContentType ParseContentType(base::StringPiece content_type) {
@@ -176,12 +175,15 @@ static void PrintMessage(const base::IOBuf& inbuf,
         snprintf(str, sizeof(str), "[HTTP RESPONSE @%s]", base::my_ip_cstr());
     }
     buf2.append(str);
+    size_t last_size;
     do {
         buf2.append("\r\n> ");
+        last_size = buf2.size();
     } while (buf1.cut_until(&buf2, "\r\n") == 0);
-    if (buf1.empty()) {
+    if (buf2.size() == last_size) {
         buf2.pop_back(2);  // remove "> "
-    } else if (!has_content) {
+    }
+    if (!has_content) {
         buf2.append(buf1);
     } else {
         size_t nskipped = 0;
@@ -198,19 +200,16 @@ static void PrintMessage(const base::IOBuf& inbuf,
     std::cerr << buf2 << std::endl;
 }
 
-void ProcessHttpResponse(InputMessageBase* msg_base) {
+void ProcessHttpResponse(InputMessageBase* msg) {
     const int64_t start_parse_us = base::cpuwide_time_us();
-    DestroyingPtr<HttpInputMessage> http_imsg(static_cast<HttpInputMessage*>(msg_base));
-    Socket* socket = http_imsg->socket();
-    if (socket == NULL) {
-        LOG(ERROR) << "Invalid http_imsg=" << http_imsg.get();
-    }
-
-    if (socket->correlation_id() == 0) {
+    DestroyingPtr<HttpContext> imsg_guard(static_cast<HttpContext*>(msg));
+    Socket* socket = imsg_guard->socket();
+    uint64_t cid_value = socket->correlation_id();
+    if (cid_value == 0) {
         LOG(WARNING) << "Fail to find correlation_id from " << *socket;
         return;
     }
-    const bthread_id_t cid = { static_cast<uint64_t>(socket->correlation_id()) };
+    const bthread_id_t cid = { cid_value };
     Controller* cntl = NULL;
     const int rc = bthread_id_lock(cid, (void**)&cntl);
     if (rc != 0) {
@@ -218,28 +217,30 @@ void ProcessHttpResponse(InputMessageBase* msg_base) {
                                     << cid.value << ": " << berror(rc);
         return;
     }
-    
+
     ControllerPrivateAccessor accessor(cntl);
+    
     Span* span = accessor.span();
     if (span) {
-        span->set_base_real_us(http_imsg->base_real_us());
-        span->set_received_us(http_imsg->received_us());
-        // TODO: not static when http_imsg->read_body_progressively() is true
-        span->set_response_size(http_imsg->parsed_length());
+        span->set_base_real_us(msg->base_real_us());
+        span->set_received_us(msg->received_us());
+        // TODO: changing when imsg_guard->read_body_progressively() is true
+        span->set_response_size(imsg_guard->parsed_length());
         span->set_start_parse_us(start_parse_us);
     }
 
-    HttpHeader* header = &cntl->http_response();
-    header->Swap(http_imsg->header());
+    HttpHeader* res_header = &cntl->http_response();
+    res_header->Swap(imsg_guard->header());
+    base::IOBuf& res_body = imsg_guard->body();
     CHECK(cntl->response_attachment().empty());
     const int saved_error = cntl->ErrorCode();
 
     do {
         // If header has "Connection: close", close the connection.
-        const std::string* conn_cmd = header->GetHeader(common->CONNECTION);
+        const std::string* conn_cmd = res_header->GetHeader(common->CONNECTION);
         if (conn_cmd != NULL && 0 == strcasecmp(conn_cmd->c_str(), "close")) {
             // Server asked to close the connection.
-            if (http_imsg->read_body_progressively()) {
+            if (imsg_guard->read_body_progressively()) {
                 // Close the socket when reading completes.
                 socket->read_will_be_progressive(CONNECTION_TYPE_SHORT);
             } else {
@@ -247,16 +248,16 @@ void ProcessHttpResponse(InputMessageBase* msg_base) {
             }
         }
 
-        if (http_imsg->read_body_progressively()) {
+        if (imsg_guard->read_body_progressively()) {
             // Set RPA if needed
-            accessor.set_readable_progressive_attachment(http_imsg.get());
-            const int sc = header->status_code();
+            accessor.set_readable_progressive_attachment(imsg_guard.get());
+            const int sc = res_header->status_code();
             if (sc < 200 || sc >= 300) {
                 cntl->SetFailed(EHTTP, "HTTP/%d.%d %d %s",
-                                header->major_version(),
-                                header->minor_version(),
-                                static_cast<int>(header->status_code()),
-                                header->reason_phrase());
+                                res_header->major_version(),
+                                res_header->minor_version(),
+                                static_cast<int>(res_header->status_code()),
+                                res_header->reason_phrase());
             } else if (cntl->response() != NULL &&
                        cntl->response()->GetDescriptor()->field_count() != 0) {
                 cntl->SetFailed(ERESPONSE, "A protobuf response can't be parsed"
@@ -266,30 +267,29 @@ void ProcessHttpResponse(InputMessageBase* msg_base) {
         }
         
         // Fail RPC if status code is an error in http sense.
-        // The ErrorCode is unified to EHTTP. If a http user sees EHTTP, he/she
-        // can check http_request()->status_code() for the exact code.
-        const int sc = header->status_code();
+        // ErrorCode of RPC is unified to EHTTP.
+        const int sc = res_header->status_code();
         if (sc < 200 || sc >= 300) {
-            if (!http_imsg->body().empty()) {
+            if (!res_body.empty()) {
                 // Use content as error text if it's present. Notice that
                 // content may be binary data, so the size limit is a must.
                 // TODO: Print body in better way.
                 std::string body_str;
-                http_imsg->body().copy_to(
-                    &body_str, std::min((int)http_imsg->body().size(),
+                res_body.copy_to(
+                    &body_str, std::min((int)res_body.size(),
                                         FLAGS_http_max_error_length));
                 cntl->SetFailed(EHTTP, "HTTP/%d.%d %d %s: %.*s",
-                                header->major_version(),
-                                header->minor_version(),
-                                static_cast<int>(header->status_code()),
-                                header->reason_phrase(),
+                                res_header->major_version(),
+                                res_header->minor_version(),
+                                static_cast<int>(res_header->status_code()),
+                                res_header->reason_phrase(),
                                 (int)body_str.size(), body_str.c_str());
             } else {
                 cntl->SetFailed(EHTTP, "HTTP/%d.%d %d %s",
-                                header->major_version(),
-                                header->minor_version(),
-                                static_cast<int>(header->status_code()),
-                                header->reason_phrase());
+                                res_header->major_version(),
+                                res_header->minor_version(),
+                                static_cast<int>(res_header->status_code()),
+                                res_header->reason_phrase());
             }
             if (cntl->response() == NULL ||
                 cntl->response()->GetDescriptor()->field_count() == 0) {
@@ -297,45 +297,46 @@ void ProcessHttpResponse(InputMessageBase* msg_base) {
                 // json etc) even if the http call was failed. This is different
                 // from protobuf services where responses are undefined when RPC
                 // was failed.
-                cntl->response_attachment().swap(http_imsg->body());
+                cntl->response_attachment().swap(res_body);
             }
             break;
         }
         if (cntl->response() == NULL ||
             cntl->response()->GetDescriptor()->field_count() == 0) {
             // a http call, content is the "real response".
-            cntl->response_attachment().swap(http_imsg->body());
+            cntl->response_attachment().swap(res_body);
             break;
         }
-        const HttpContentType content_type = ParseContentType(header->content_type());
+        const HttpContentType content_type =
+            ParseContentType(res_header->content_type());
         if (content_type != HTTP_CONTENT_PROTO && content_type != HTTP_CONTENT_JSON) {
-            cntl->SetFailed(ERESPONSE, "Content-Type must contain %s|%s"
-                            " when response is non-NULL, actually it's `%s'",
+            cntl->SetFailed(ERESPONSE, "content-type=%s is neither %s nor %s "
+                            "when response is not NULL",
+                            res_header->content_type().c_str(),
                             common->CONTENT_TYPE_JSON.c_str(),
-                            common->CONTENT_TYPE_PROTO.c_str(),
-                            header->content_type().c_str());
+                            common->CONTENT_TYPE_PROTO.c_str());
             break;
         }
         const std::string* encoding =
-            header->GetHeader(common->CONTENT_ENCODING);
+            res_header->GetHeader(common->CONTENT_ENCODING);
         if (encoding != NULL && *encoding == common->GZIP) {
             TRACEPRINTF("Decompressing response=%lu",
-                        (unsigned long)http_imsg->body().size());
+                        (unsigned long)res_body.size());
             base::IOBuf uncompressed;
-            if (!policy::GzipDecompress(http_imsg->body(), &uncompressed)) {
+            if (!policy::GzipDecompress(res_body, &uncompressed)) {
                 cntl->SetFailed(ERESPONSE, "Fail to un-gzip response body");
                 break;
             }
-            http_imsg->body().swap(uncompressed);
+            res_body.swap(uncompressed);
         }
         // message body is json
         if (content_type == HTTP_CONTENT_PROTO) {
-            if (!ParsePbFromIOBuf(cntl->response(), http_imsg->body())) {
+            if (!ParsePbFromIOBuf(cntl->response(), res_body)) {
                 cntl->SetFailed(ERESPONSE, "Fail to parse content");
                 break;
             }
         } else {
-            base::IOBufAsZeroCopyInputStream wrapper(http_imsg->body());
+            base::IOBufAsZeroCopyInputStream wrapper(res_body);
             std::string err;
             if (!json2pb::JsonToProtoMessage(&wrapper, cntl->response(), &err)) {
                 cntl->SetFailed(ERESPONSE, "Fail to parse content, %s", err.c_str());
@@ -345,41 +346,33 @@ void ProcessHttpResponse(InputMessageBase* msg_base) {
     } while (0);
     // Unlocks correlation_id inside. Revert controller's
     // error code if it version check of `cid' fails
-    http_imsg.reset();
+    imsg_guard.reset();
     accessor.OnResponse(cid, saved_error);
 }
 
-static void UpdateResponseHeader(int status_code, Controller* cntl) {
+void UpdateResponseHeader(int status_code, Controller* cntl) {
     DCHECK(cntl->Failed());
     HttpHeader* resp_header = &cntl->http_response();
     resp_header->set_status_code(status_code);
     cntl->response_attachment().clear();
     cntl->response_attachment().append(cntl->ErrorText());
-    cntl->response_attachment().append("\n");
 }
 
 void SerializeHttpRequest(base::IOBuf* /*not used*/,
                           Controller* cntl,
                           const google::protobuf::Message* request) {
-    if (cntl->connection_type() == CONNECTION_TYPE_SINGLE) {
-        cntl->SetFailed(EREQUEST, "http can't work with CONNECTION_TYPE_SINGLE");
-        UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
-        return;
-    }
     if (request != NULL) {
         // If request is not NULL, message body will be serialized json,
         if (!request->IsInitialized()) {
             cntl->SetFailed(
                 EREQUEST, "Missing required fields in request: %s",
                 request->InitializationErrorString().c_str());
-            UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
-            return;
+            return UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
         }
         if (!cntl->request_attachment().empty()) {
             cntl->SetFailed(EREQUEST, "request_attachment must be empty "
-                            "when request is non-NULL");
-            UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
-            return;
+                            "when request is not NULL");
+            return UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
         }
         base::IOBufAsZeroCopyOutputStream wrapper(&cntl->request_attachment());
         const HttpContentType content_type
@@ -419,15 +412,13 @@ void SerializeHttpRequest(base::IOBuf* /*not used*/,
     if (!cntl->http_request().uri().status().ok()) {
         cntl->SetFailed(EREQUEST, "%s",
                         cntl->http_request().uri().status().error_cstr());
-        UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
-        return;
+        return UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
     }
     if (cntl->request_compress_type() != COMPRESS_TYPE_NONE) {
         if (cntl->request_compress_type() != COMPRESS_TYPE_GZIP) {
             cntl->SetFailed(EREQUEST, "http does not support %s",
                             CompressTypeToCStr(cntl->request_compress_type()));
-            UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
-            return;
+            return UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
         }
         const size_t request_size = cntl->request_attachment().size();
         if (request_size >= (size_t)FLAGS_http_body_compress_threshold) {
@@ -473,6 +464,7 @@ void SerializeHttpRequest(base::IOBuf* /*not used*/,
         path.append(method->name());
         header->uri().set_path(path);
     }
+
     Span* span = accessor.span();
     if (span) {
         header->SetHeader("x-bd-trace-id", base::string_printf(
@@ -491,6 +483,10 @@ void PackHttpRequest(base::IOBuf* buf,
                      Controller* cntl,
                      const base::IOBuf& /*unused*/,
                      const Authenticator* auth) {
+    if (cntl->connection_type() == CONNECTION_TYPE_SINGLE) {
+        cntl->SetFailed(EREQUEST, "http can't work with CONNECTION_TYPE_SINGLE");
+        return UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
+    }
     ControllerPrivateAccessor accessor(cntl);
     HttpHeader* header = &cntl->http_request();
     if (auth != NULL && header->GetHeader(common->AUTHORIZATION) == NULL) {
@@ -505,12 +501,10 @@ void PackHttpRequest(base::IOBuf* buf,
 
     // Store `correlation_id' into Socket since http server
     // may not echo back this field. But we send it anyway.
-    accessor.set_socket_correlation_id(correlation_id);
+    accessor.get_sending_socket()->set_correlation_id(correlation_id);
 
-    HttpMessageSerializer(header)
-        .set_content(&cntl->request_attachment())
-        .set_remote_side(cntl->remote_side())
-        .SerializeAsRequest(buf);
+    SerializeHttpRequest(buf, *header, cntl->remote_side(),
+                         &cntl->request_attachment());
     if (FLAGS_http_verbose) {
         PrintMessage(*buf, true, true);
     }
@@ -563,21 +557,22 @@ static void SendHttpResponse(Controller *cntl,
     std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
-    Socket* socket = accessor.get_sending_sock();
+    Socket* socket = accessor.get_sending_socket();
     ScopedRemoveConcurrency remove_concurrency_dummy(server, cntl);
     
     if (cntl->IsCloseConnection()) {
         socket->SetFailed();
         return;
     }
-    
-    HttpHeader* res_header = &cntl->http_response();
-    res_header->set_version(cntl->http_request().major_version(),
-                        cntl->http_request().minor_version());
 
-    // Convert response to json if needed.
-    // Notice: we don't check res->IsInitialized() which should be checked
-    // by the conversion function.
+    const HttpHeader* req_header = &cntl->http_request();
+    HttpHeader* res_header = &cntl->http_response();
+    res_header->set_version(req_header->major_version(),
+                            req_header->minor_version());
+
+    // Convert response to json/proto if needed.
+    // Notice: Not check res->IsInitialized() which should be checked in the
+    // conversion function.
     if (res != NULL &&
         res->GetDescriptor()->field_count() > 0 &&
         // ^ a pb service must have fields in response.
@@ -586,7 +581,7 @@ static void SendHttpResponse(Controller *cntl,
 
         if (!cntl->response_attachment().empty()) {
             if (res->ByteSize() != 0) { // fields in `res' were set.
-                LOG(ERROR) << "Service on " << cntl->http_request().uri().path()
+                LOG(ERROR) << "Service on " << req_header->uri().path()
                            << " sets both response_attachment and response(pb)"
                     ", you can set only one of them.";
             } // else no fields in `res' were set, user is intended to fill
@@ -595,7 +590,7 @@ static void SendHttpResponse(Controller *cntl,
             base::IOBufAsZeroCopyOutputStream wrapper(&cntl->response_attachment());
             const std::string* content_type_str = &res_header->content_type();
             if (content_type_str->empty()) {
-                content_type_str = &cntl->http_request().content_type();
+                content_type_str = &req_header->content_type();
             }
             const HttpContentType content_type = ParseContentType(*content_type_str);
             if (content_type == HTTP_CONTENT_PROTO) {
@@ -641,9 +636,8 @@ static void SendHttpResponse(Controller *cntl,
     // after receiving the response.
     const std::string* res_conn = res_header->GetHeader(common->CONNECTION);
     if (res_conn == NULL || strcasecmp(res_conn->c_str(), "close") != 0) {
-        const std::string* req_conn =
-            cntl->http_request().GetHeader(common->CONNECTION);
-        if (cntl->http_request().before_http_1_1()) {
+        const std::string* req_conn = req_header->GetHeader(common->CONNECTION);
+        if (req_header->before_http_1_1()) {
             if (req_conn != NULL &&
                 strcasecmp(req_conn->c_str(), "keep-alive") == 0) {
                 res_header->SetHeader(common->CONNECTION, common->KEEP_ALIVE);
@@ -654,10 +648,9 @@ static void SendHttpResponse(Controller *cntl,
                 res_header->SetHeader(common->CONNECTION, common->CLOSE);
             }
         }
-    } // else user explicitly set Connection:close, clients of HTTP 1.1/1.0/0.9
-    // should all close the connection.
+    } // else user explicitly set Connection:close, clients of
+    // HTTP 1.1/1.0/0.9 should all close the connection.
 
-    HttpMessageSerializer serializer(res_header);
     if (cntl->Failed()) {
         // Set status-code with default value(converted from error code)
         // if user did not set it.
@@ -666,21 +659,18 @@ static void SendHttpResponse(Controller *cntl,
         }
         // Fill ErrorCode into header
         res_header->SetHeader(common->ERROR_CODE,
-                          base::string_printf("%d", cntl->ErrorCode()));
+                              base::string_printf("%d", cntl->ErrorCode()));
 
-        // user may compress the output, remove the header, otherwise web
-        // browser cannot parse the response.
-        res_header->RemoveHeader(common->CONTENT_ENCODING);
-        
         // Fill body with ErrorText.
+        // user may compress the output and change content-encoding. However
+        // body is error-text right now, remove the header.
+        res_header->RemoveHeader(common->CONTENT_ENCODING);
         res_header->set_content_type(common->CONTENT_TYPE_TEXT);
         cntl->response_attachment().clear();
         cntl->response_attachment().append(cntl->ErrorText());
-        cntl->response_attachment().append("\n");
-        serializer.set_content(&cntl->response_attachment());
     } else if (cntl->has_progressive_writer()) {
         // Transfer-Encoding is supported since HTTP/1.1
-        if (!res_header->before_http_1_1()) {
+        if (res_header->major_version() < 2 && !res_header->before_http_1_1()) {
             res_header->SetHeader("Transfer-Encoding", "chunked");
         }
         if (!cntl->response_attachment().empty()) {
@@ -708,24 +698,28 @@ static void SendHttpResponse(Controller *cntl,
                 << "Unknown compress_type=" << cntl->response_compress_type()
                 << ", skip compression.";
         }
-        serializer.set_content(&cntl->response_attachment());
-    }
-    base::IOBuf res_buf;
-    serializer.SerializeAsResponse(&res_buf);
-    if (FLAGS_http_verbose) {
-        PrintMessage(res_buf, false, serializer.has_content());
     }
 
-    if (span) {
-        span->set_response_size(res_buf.size());
-    }
-    cntl->response_attachment().clear();
-
+    int rc = -1;
     // Have the risk of unlimited pending responses, in which case, tell
     // users to set max_concurrency.
     Socket::WriteOptions wopt;
     wopt.ignore_eovercrowded = true;
-    if (socket->Write(&res_buf, &wopt) != 0) {
+    base::IOBuf* content = NULL;
+    if (cntl->Failed() || !cntl->has_progressive_writer()) {
+        content = &cntl->response_attachment();
+    }
+    base::IOBuf res_buf;
+    SerializeHttpResponse(&res_buf, *res_header, content);
+    if (FLAGS_http_verbose) {
+        PrintMessage(res_buf, false, !!content);
+    }
+    if (span) {
+        span->set_response_size(res_buf.size());
+    }
+    rc = socket->Write(&res_buf, &wopt);
+
+    if (rc != 0) {
         // EPIPE is common in pooled connections + backup requests.
         const int errcode = errno;
         PLOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *socket;
@@ -743,36 +737,35 @@ static void SendHttpResponse(Controller *cntl,
     }
 }
 
-static void SendHttpResponse(Controller *cntl, const Server* svr,
+inline void SendHttpResponse(Controller *cntl, const Server* svr,
                              MethodStatus* method_status) {
     SendHttpResponse(cntl, NULL, NULL, svr, method_status, -1);
 }
 
-
 // Normalize the sub string of `uri_path' covered by `splitter' and
 // put it into `unresolved_path'
-inline void FillUnresolvedPath(std::string* unresolved_path,
+static void FillUnresolvedPath(std::string* unresolved_path,
                                const std::string& uri_path,
                                base::StringSplitter& splitter) {
     if (unresolved_path == NULL) {
         return;
     }
-    if (splitter) {
-        // Normalize unresolve_path.
-        const size_t path_len =
-            uri_path.c_str() + uri_path.size() - splitter.field();
-        unresolved_path->reserve(path_len);
+    if (!splitter) {
         unresolved_path->clear();
-        for (base::StringSplitter slash_sp(
-                 splitter.field(), splitter.field() + path_len, '/');
-             slash_sp != NULL; ++slash_sp) {
-            if (!unresolved_path->empty()) {
-                unresolved_path->push_back('/');
-            }
-            unresolved_path->append(slash_sp.field(), slash_sp.length());
+        return;
+    }
+    // Normalize unresolve_path.
+    const size_t path_len =
+        uri_path.c_str() + uri_path.size() - splitter.field();
+    unresolved_path->reserve(path_len);
+    unresolved_path->clear();
+    for (base::StringSplitter slash_sp(
+             splitter.field(), splitter.field() + path_len, '/');
+         slash_sp != NULL; ++slash_sp) {
+        if (!unresolved_path->empty()) {
+            unresolved_path->push_back('/');
         }
-    } else {
-        unresolved_path->clear();
+        unresolved_path->append(slash_sp.field(), slash_sp.length());
     }
 }
 
@@ -870,10 +863,10 @@ FindMethodPropertyByURI(const std::string& uri_path, const Server* server,
     return NULL;
 }
 
-ParseResult ParseHttpMessage(base::IOBuf *source, Socket *socket, bool read_eof,
-                             const void* /*arg*/) {
-    HttpInputMessage* http_imsg = 
-        static_cast<HttpInputMessage*>(socket->parsing_context());
+ParseResult ParseHttpMessage(base::IOBuf *source, Socket *socket, 
+                             bool read_eof, const void* /*arg*/) {
+    HttpContext* http_imsg = 
+        static_cast<HttpContext*>(socket->parsing_context());
     if (http_imsg == NULL) {
         if (read_eof || source->empty()) {
             // 1. read_eof: Read EOF after intact HTTP messages, a common case.
@@ -885,10 +878,10 @@ ParseResult ParseHttpMessage(base::IOBuf *source, Socket *socket, bool read_eof,
             //    source is likely to be empty.
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
         }
-        http_imsg = new (std::nothrow) HttpInputMessage(
+        http_imsg = new (std::nothrow) HttpContext(
             socket->is_read_progressive());
         if (http_imsg == NULL) {
-            LOG(FATAL) << "Fail to new HttpInputMessage";
+            LOG(FATAL) << "Fail to new HttpContext";
             return MakeParseError(PARSE_ERROR_NO_RESOURCE);
         }
         // Parsing http is costly, parsing an incomplete http message from the
@@ -900,7 +893,7 @@ ParseResult ParseHttpMessage(base::IOBuf *source, Socket *socket, bool read_eof,
     }
     ssize_t rc = 0;
     if (read_eof) {
-        // Send EOF to HttpInputMessage, check comments in http_message.h
+        // Send EOF to HttpContext, check comments in http_message.h
         rc = http_imsg->ParseFromArray(NULL, 0);
     } else {
         // Empty `source' is sliently ignored and 0 is returned, check
@@ -934,8 +927,8 @@ ParseResult ParseHttpMessage(base::IOBuf *source, Socket *socket, bool read_eof,
         // Normal or stage1 of progressive-read http message.
         source->pop_front(rc);
         if (http_imsg->Completed()) {
-            socket->release_parsing_context();
-            ParseResult result = MakeMessage(http_imsg);
+            CHECK_EQ(http_imsg, socket->release_parsing_context());
+            const ParseResult result = MakeMessage(http_imsg);
             if (socket->is_read_progressive()) {
                 socket->OnProgressiveReadCompleted();
             }
@@ -981,12 +974,10 @@ ParseResult ParseHttpMessage(base::IOBuf *source, Socket *socket, bool read_eof,
             base::IOBuf bad_req;
             HttpHeader header;
             header.set_status_code(HTTP_STATUS_BAD_REQUEST);
-            HttpMessageSerializer(&header)
-                .set_remote_side(socket->remote_side())
-                .SerializeAsResponse(&bad_req);
+            SerializeHttpRequest(&bad_req, header, socket->remote_side(), NULL);
             Socket::WriteOptions wopt;
             wopt.ignore_eovercrowded = true;
-            CHECK_EQ(0, socket->Write(&bad_req, &wopt));
+            socket->Write(&bad_req, &wopt);
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
         } else {
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
@@ -1004,7 +995,7 @@ bool VerifyHttpRequest(const InputMessageBase* msg) {
     Server* server = (Server*)msg->arg();
     Socket* socket = msg->socket();
     
-    HttpInputMessage* http_request = (HttpInputMessage*)msg;
+    HttpContext* http_request = (HttpContext*)msg;
     const Authenticator* auth = server->options().auth;
     if (NULL == auth) {
         // Fast pass
@@ -1045,23 +1036,27 @@ void EndRunningCallMethodInPool(
 
 void ProcessHttpRequest(InputMessageBase *msg) {
     const int64_t start_parse_us = base::cpuwide_time_us();
-    DestroyingPtr<HttpInputMessage> http_imsg(static_cast<HttpInputMessage*>(msg));
-    SocketUniquePtr socket_guard(http_imsg->ReleaseSocket());
+    DestroyingPtr<HttpContext> imsg_guard(static_cast<HttpContext*>(msg));
+    SocketUniquePtr socket_guard(imsg_guard->ReleaseSocket());
     Socket* socket = socket_guard.get();
     const Server* server = static_cast<const Server*>(msg->arg());
     ScopedNonServiceError non_service_error(server);
-
+    
     std::unique_ptr<Controller> cntl(new (std::nothrow) Controller);
     if (NULL == cntl.get()) {
         LOG(FATAL) << "Fail to new Controller";
         return;
     }
+    ControllerPrivateAccessor accessor(cntl.get());
+    HttpHeader& req_header = cntl->http_request();
+    imsg_guard->header().Swap(req_header);
+    base::IOBuf& req_body = imsg_guard->body();
+    
     base::EndPoint user_addr;
-    if (!GetUserAddressFromHeader(http_imsg->header(), &user_addr)) {
+    if (!GetUserAddressFromHeader(req_header, &user_addr)) {
         user_addr = socket->remote_side();
     }
     ServerPrivateAccessor server_accessor(server);
-    ControllerPrivateAccessor accessor(cntl.get());
     const bool security_mode = server->options().security_mode() &&
                                socket->user() == server_accessor.acceptor();
     accessor.set_server(server)
@@ -1072,12 +1067,10 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         .set_auth_context(socket->auth_context())
         .set_request_protocol(PROTOCOL_HTTP)
         .move_in_server_receiving_sock(socket_guard);
-
     
     // Read log-id. errno may be set when input to strtoull overflows.
     // atoi/atol/atoll don't support 64-bit integer and can't be used.
-    const std::string* log_id_str =
-        http_imsg->header().GetHeader(common->LOG_ID);
+    const std::string* log_id_str = req_header.GetHeader(common->LOG_ID);
     if (log_id_str) {
         char* logid_end = NULL;
         errno = 0;
@@ -1097,23 +1090,21 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     }
 
     Span* span = NULL;
-    const std::string& path = http_imsg->header().uri().path();
-    if (IsTraceable(false)) {
+    const std::string& path = req_header.uri().path();
+    const std::string* trace_id_str = req_header.GetHeader("x-bd-trace-id");
+    if (IsTraceable(trace_id_str)) {
         uint64_t trace_id = 0;
-        const std::string* trace_id_str =
-            http_imsg->header().GetHeader("x-bd-trace-id");
         if (trace_id_str) {
             trace_id = strtoull(trace_id_str->c_str(), NULL, 10);
         }
         uint64_t span_id = 0;
-        const std::string* span_id_str =
-            http_imsg->header().GetHeader("x-bd-span-id");
+        const std::string* span_id_str = req_header.GetHeader("x-bd-span-id");
         if (span_id_str) {
             span_id = strtoull(span_id_str->c_str(), NULL, 10);
         }
         uint64_t parent_span_id = 0;
         const std::string* parent_span_id_str =
-            http_imsg->header().GetHeader("x-bd-parent-span-id");
+            req_header.GetHeader("x-bd-parent-span-id");
         if (parent_span_id_str) {
             parent_span_id = strtoull(parent_span_id_str->c_str(), NULL, 10);
         }
@@ -1122,10 +1113,10 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         accessor.set_span(span);
         span->set_log_id(cntl->log_id());
         span->set_remote_side(user_addr);
-        span->set_protocol(PROTOCOL_HTTP);
         span->set_received_us(msg->received_us());
         span->set_start_parse_us(start_parse_us);
-        span->set_request_size(http_imsg->parsed_length());
+        span->set_protocol(PROTOCOL_HTTP);
+        span->set_request_size(imsg_guard->parsed_length());
     }
     
     if (!server->IsRunning()) {
@@ -1145,8 +1136,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             return SendHttpResponse(cntl.release(), server, NULL);
         }
         accessor.set_method(md);
-        cntl->http_request().Swap(http_imsg->header());
-        cntl->request_attachment().swap(http_imsg->body());
+        cntl->request_attachment().swap(req_body);
         google::protobuf::Closure* done = brpc::NewCallback<
             Controller*, const google::protobuf::Message*,
             const google::protobuf::Message*, const Server*,
@@ -1162,24 +1152,22 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         return svc->CallMethod(md, cntl.release(), NULL, NULL, done);
     }
     
-    std::string unresolved_path;
-    const Server::MethodProperty* sp =
-        FindMethodPropertyByURI(path, server, &unresolved_path);
+    const Server::MethodProperty* const sp =
+        FindMethodPropertyByURI(path, server, &req_header._unresolved_path);
     if (NULL == sp) {
         if (security_mode) {
             std::string escape_path;
-            WebEscape(http_imsg->header().uri().path(), &escape_path);
+            WebEscape(path, &escape_path);
             cntl->SetFailed(ENOMETHOD, "Fail to find method on `%s'", escape_path.c_str());
         } else {
-            cntl->SetFailed(ENOMETHOD, "Fail to find method on `%s'",
-                            http_imsg->header().uri().path().c_str());
+            cntl->SetFailed(ENOMETHOD, "Fail to find method on `%s'", path.c_str());
         }
         cntl->http_response().set_status_code(HTTP_STATUS_NOT_FOUND);
         return SendHttpResponse(cntl.release(), server, NULL);
     } else if (sp->service->GetDescriptor() == BadMethodService::descriptor()) {
         BadMethodRequest breq;
         BadMethodResponse bres;
-        base::StringSplitter split(http_imsg->header().uri().path().c_str(), '/');
+        base::StringSplitter split(path.c_str(), '/');
         breq.set_service_name(std::string(split.field(), split.length()));
         sp->service->CallMethod(sp->method, cntl.get(), &breq, &bres, NULL);
         return SendHttpResponse(cntl.release(), server, NULL);
@@ -1196,7 +1184,6 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         }
     }
     
-    http_imsg->header().set_unresolved_path(unresolved_path);
     if (span) {
         span->ResetServerSpanName(sp->method->full_name());
     }
@@ -1238,7 +1225,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         // applcation/json or body is empty, we have to treat body as a json
         // and try to convert it to pb, which guarantees that a protobuf
         // service is always accessed with valid requests.
-        if (http_imsg->body().empty()) {
+        if (req_body.empty()) {
             // Treat empty body specially since parsing it results in error
             if (!req->IsInitialized()) {
                 cntl->SetFailed(EREQUEST, "%s needs to be created from a"
@@ -1249,25 +1236,25 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             } // else all fields of the request are optional.
         } else {
             const std::string* encoding =
-                http_imsg->header().GetHeader(common->CONTENT_ENCODING);
+                req_header.GetHeader(common->CONTENT_ENCODING);
             if (encoding != NULL && *encoding == common->GZIP) {
                 TRACEPRINTF("Decompressing request=%lu",
-                            (unsigned long)http_imsg->body().size());
+                            (unsigned long)req_body.size());
                 base::IOBuf uncompressed;
-                if (!policy::GzipDecompress(http_imsg->body(), &uncompressed)) {
+                if (!policy::GzipDecompress(req_body, &uncompressed)) {
                     cntl->SetFailed(EREQUEST, "Fail to un-gzip request body");
                     return SendHttpResponse(cntl.release(), server, method_status);
                 }
-                http_imsg->body().swap(uncompressed);
+                req_body.swap(uncompressed);
             }
-            if (ParseContentType(http_imsg->header().content_type()) == HTTP_CONTENT_PROTO) {
-                if (!ParsePbFromIOBuf(req.get(), http_imsg->body())) {
+            if (ParseContentType(req_header.content_type()) == HTTP_CONTENT_PROTO) {
+                if (!ParsePbFromIOBuf(req.get(), req_body)) {
                     cntl->SetFailed(EREQUEST, "Fail to parse http body as %s",
                                     req->GetDescriptor()->full_name().c_str());
                     return SendHttpResponse(cntl.release(), server, method_status);
                 }
             } else {
-                base::IOBufAsZeroCopyInputStream wrapper(http_imsg->body());
+                base::IOBufAsZeroCopyInputStream wrapper(req_body);
                 std::string err;
                 if (!json2pb::JsonToProtoMessage(&wrapper, req.get(), &err)) {
                     cntl->SetFailed(EREQUEST, "Fail to parse http body as %s, %s",
@@ -1278,17 +1265,15 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         }
     } else {
         // A http server, just keep content as it is.
-        cntl->request_attachment().swap(http_imsg->body());
+        cntl->request_attachment().swap(req_body);
     }
-    // Always set http header. Even a pb service may need it.
-    cntl->http_request().Swap(http_imsg->header());
     
-    http_imsg.reset();  // optional, just release resourse ASAP
+    imsg_guard.reset();  // optional, just release resourse ASAP
 
     google::protobuf::Closure* done = brpc::NewCallback<
         Controller*, const google::protobuf::Message*,
         const google::protobuf::Message*, const Server*,
-          MethodStatus *, long>(
+        MethodStatus *, long>(
             &SendHttpResponse, cntl.get(),
             req.get(), res.get(), server,
             method_status, start_parse_us);
@@ -1311,54 +1296,10 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     }
 }
 
-// We don't use URI::SetHttpURL because we want to make Channel::Init fast
-// however the structure has many internal fields that we don't need.
-// We can't avoid memory allocation here(using string now) because host may
-// only be part of the given url and succeeding functions(say str2endpoint)
-// do not support a length parameter.
-static int ParseHostFromURL(const char* url, std::string* host, int* port) {
-    const char* p = url;
-    for (; isspace(*p); ++p);
-    if (strncmp("http", p, 4) != 0 ||
-        (strncmp("://", p + 4, 3) != 0 &&
-         strncmp("s://", p + 4, 4) != 0)) {
-        host->assign("http://");
-        host->append(p);
-    } else {
-        host->assign(p);
-    }
-    struct http_parser_url layout;
-    // Have to initialize layout because http_parser may use undefined
-    // field_data[UF_HOST] when there's no host field in `url'.
-    memset(&layout, 0, sizeof(layout));
-    const int rc = http_parser_parse_url(
-        host->c_str(), host->size(), 0, &layout);
-    if (rc) {
-        LOG(ERROR) << "Invalid url=`" << url << "'";
-        return -1;
-    }
-    if (!(layout.field_set & (1 << UF_HOST))) {
-        LOG(ERROR) << "No host in url=`" << url << "'";
-        return -1;
-    }
-    // We already modified host at the beginning, it's safe to memmove.
-    memmove(const_cast<char*>(host->data()),
-            host->data() + layout.field_data[UF_HOST].off,
-            layout.field_data[UF_HOST].len);
-    host->resize(layout.field_data[UF_HOST].len);
-    if (layout.field_set & (1 << UF_PORT)) {
-        *port = layout.port;
-    } else {
-        *port = 80;  // default port of http.
-    }
-    return 0;
-}
-
 bool ParseHttpServerAddress(base::EndPoint* point, const char* server_addr_and_port) {
     std::string host;
     int port = -1;
-    if (ParseHostFromURL(server_addr_and_port, &host, &port) != 0) {
-        LOG(ERROR) << "Fail to ParseHostFromURL";
+    if (ParseHostAndPortFromURL(server_addr_and_port, &host, &port) != 0) {
         return false;
     }
     if (str2endpoint(host.c_str(), port, point) != 0 &&

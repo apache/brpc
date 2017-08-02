@@ -15,7 +15,7 @@ namespace brpc {
 // [Implement by user]
 // To read a very long or infinitely long response progressively.
 // Client-side usage:
-//   cntl.repsonse_will_be_read_progressively();                // before RPC
+//   cntl.response_will_be_read_progressively();                // before RPC
 //   ...
 //   channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
 //   ...
@@ -47,9 +47,8 @@ protected:
 // Take chunked HTTP response as an example:
 //  1. The protocol handler parses headers and goes to ProcessHttpResponse
 //     before reading all body.
-//  2. ProcessHttpResponse sets controller's RPA which is just the
-//     HttpInputMessage in this case. The RPC ends at the end of
-//     ProcessHttpResponse.
+//  2. ProcessHttpResponse sets controller's RPA which is just the HttpContext
+//     in this case. The RPC ends at the end of ProcessHttpResponse.
 //  3. When the RPC ends, user may call Controller.ReadProgressiveAttachmentBy()
 //     to read the body. If user does not set a reader, controller sets one
 //     ignoring all bytes read before self's destruction.

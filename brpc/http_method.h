@@ -7,7 +7,6 @@
 #ifndef  BRPC_HTTP_METHOD_H
 #define  BRPC_HTTP_METHOD_H
 
-
 namespace brpc {
 
 enum HttpMethod {
@@ -40,12 +39,13 @@ enum HttpMethod {
     HTTP_METHOD_MKCALENDAR  =   26
 };
 
-// Return the method description of |http_method| or "UNKNOWN" if |http_method|
-// is unknown.
-// NULL is never supposed to be returned
-const char *GetMethodStr(HttpMethod http_method);
+// Returns literal description of `http_method'. "UNKNOWN" on not found.
+const char *HttpMethod2Str(HttpMethod http_method);
+
+// Convert case-insensitive `method_str' to enum HttpMethod.
+// Returns true on success. 
+bool Str2HttpMethod(const char* method_str, HttpMethod* method);
 
 } // namespace brpc
-
 
 #endif  //BRPC_HTTP_METHOD_H

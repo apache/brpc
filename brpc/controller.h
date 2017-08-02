@@ -15,7 +15,6 @@
 #include "bthread/errno.h"                          // Redefine errno
 #include "base/endpoint.h"                          // base::EndPoint
 #include "base/iobuf.h"                             // base::IOBuf
-#include "base/macros.h"                            // BAIDU_DEPRECATED
 #include "bthread/types.h"                          // bthread_id_t
 #include "brpc/options.pb.h"                   // CompressType
 #include "brpc/errno.pb.h"                     // error code
@@ -186,7 +185,7 @@ public:
         }
         return *_http_request;
     }
-    BAIDU_DEPRECATED HttpHeader& request_http_header() { return http_request(); }
+    bool has_http_request() const { return _http_request; }
 
     // User attached data or body of http request, which is wired to network
     // directly instead of being serialized into protobuf messages.
@@ -196,9 +195,6 @@ public:
     // Get the called method. May-be NULL for non-pb services.
     const google::protobuf::MethodDescriptor* method() const { return _method; }
 
-    // DEPRECATED! Set ParallelChannelOptions.fail_limit instead
-    BAIDU_DEPRECATED void set_fail_limit(int fail_limit);
-    
     // Get the controllers for accessing sub channels in combo channels.
     // Ordinary channel:
     //   sub_count() is 0 and sub() is always NULL.
@@ -282,8 +278,8 @@ public:
         }
         return *_http_response;
     }
-    BAIDU_DEPRECATED HttpHeader& response_http_header() { return http_response(); }
-
+    bool has_http_response() const { return _http_response; }
+    
     // User attached data or body of http response, which is wired to network
     // directly instead of being serialized into protobuf messages.
     base::IOBuf& response_attachment() { return _response_attachment; }
@@ -295,9 +291,6 @@ public:
     ProgressiveAttachment*
     CreateProgressiveAttachment(StopStyle stop_style = WAIT_FOR_STOP);
     bool has_progressive_writer() const { return _wpa != NULL; }
-
-    // Return the protocol of this request
-    ProtocolType request_protocol() const { return _request_protocol; }
 
     // Set compression method for response.
     void set_response_compress_type(CompressType t) { _response_compress_type = t; }
@@ -349,6 +342,9 @@ public:
     // Server-side: the address that clients access.
     base::EndPoint local_side() const { return _local_side; }
 
+    // Protocol of the request sent by client or received by server.
+    ProtocolType request_protocol() const { return _request_protocol; }
+
     // Whether the underlying channel is using SSL
     bool is_ssl() const;
     
@@ -382,13 +378,9 @@ public:
     CompressType response_compress_type() const { return _response_compress_type; }
     const HttpHeader& http_request() const 
     { return _http_request != NULL ? *_http_request : DefaultHttpHeader(); }
-    BAIDU_DEPRECATED const HttpHeader& request_http_header() const
-    { return http_request(); }
     
     const HttpHeader& http_response() const
     { return _http_response != NULL ? *_http_response : DefaultHttpHeader(); }
-    BAIDU_DEPRECATED const HttpHeader& response_http_header() const
-    { return http_response(); }
 
     const base::IOBuf& request_attachment() const { return _request_attachment; }
     const base::IOBuf& response_attachment() const { return _response_attachment; }
@@ -616,6 +608,8 @@ private:
     Call _current_call;
     Call* _unfinished_call;
     ExcludedServers* _accessed;
+    
+    StreamCreator* _stream_creator;
 
     // Fields will be used when making requests
     Protocol::PackRequest _pack_request;
@@ -637,15 +631,13 @@ private:
     // Readable progressive attachment
     base::intrusive_ptr<ReadableProgressiveAttachment> _rpa;
 
+    // TODO: Replace following fields with StreamCreator
     // Defined at client side
     StreamId _request_stream;
     // Defined at server side
     StreamId _response_stream;
     // Defined at both sides
     StreamSettings *_remote_stream_settings;
-
-    // TODO: Replace stream fields above.
-    StreamCreator* _stream_creator;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be

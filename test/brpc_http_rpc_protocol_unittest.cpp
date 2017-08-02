@@ -128,8 +128,8 @@ protected:
         (*process)(msg);
     }
 
-    brpc::policy::HttpInputMessage* MakePostRequestMessage(const std::string& path) {
-        brpc::policy::HttpInputMessage* msg = new brpc::policy::HttpInputMessage();
+    brpc::policy::HttpContext* MakePostRequestMessage(const std::string& path) {
+        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext();
         msg->header().uri().set_path(path);
         msg->header().set_content_type("application/json");
         msg->header().set_method(brpc::HTTP_METHOD_POST);
@@ -141,16 +141,16 @@ protected:
         return msg;
     }
 
-    brpc::policy::HttpInputMessage* MakeGetRequestMessage(const std::string& path) {
-        brpc::policy::HttpInputMessage* msg = new brpc::policy::HttpInputMessage();
+    brpc::policy::HttpContext* MakeGetRequestMessage(const std::string& path) {
+        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext();
         msg->header().uri().set_path(path);
         msg->header().set_method(brpc::HTTP_METHOD_GET);
         return msg;
     }
 
 
-    brpc::policy::HttpInputMessage* MakeResponseMessage(int code) {
-        brpc::policy::HttpInputMessage* msg = new brpc::policy::HttpInputMessage();
+    brpc::policy::HttpContext* MakeResponseMessage(int code) {
+        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext();
         msg->header().set_status_code(code);
         msg->header().set_content_type("application/json");
         
@@ -176,8 +176,8 @@ protected:
         brpc::ParseResult pr =
                 brpc::policy::ParseHttpMessage(&buf, _socket.get(), false, NULL);
         EXPECT_EQ(brpc::PARSE_OK, pr.error());
-        brpc::policy::HttpInputMessage* msg =
-            static_cast<brpc::policy::HttpInputMessage*>(pr.message());
+        brpc::policy::HttpContext* msg =
+            static_cast<brpc::policy::HttpContext*>(pr.message());
 
         EXPECT_EQ(expect_code, msg->header().status_code());
         msg->Destroy();
@@ -190,6 +190,19 @@ protected:
     MyEchoService _svc;
     MyAuthenticator _auth;
 };
+
+TEST_F(HttpTest, indenting_ostream) {
+    std::ostringstream os1;
+    brpc::IndentingOStream is1(os1, 2);
+    brpc::IndentingOStream is2(is1, 2);
+    os1 << "begin1\nhello" << std::endl << "world\nend1" << std::endl;
+    is1 << "begin2\nhello" << std::endl << "world\nend2" << std::endl;
+    is2 << "begin3\nhello" << std::endl << "world\nend3" << std::endl;
+    ASSERT_EQ(
+    "begin1\nhello\nworld\nend1\nbegin2\n  hello\n  world\n  end2\n"
+    "  begin3\n    hello\n    world\n    end3\n",
+    os1.str());
+}
 
 TEST_F(HttpTest, parse_http_address) {
     const std::string EXP_HOSTNAME = "cp01-rpc-dev01.cp01.baidu.com:9876";
@@ -214,7 +227,7 @@ TEST_F(HttpTest, parse_http_address) {
             std::string(base::ip2str(EXP_ENDPOINT.ip).c_str());
         EXPECT_TRUE(brpc::policy::ParseHttpServerAddress(&ep, url.c_str()));
         EXPECT_EQ(EXP_ENDPOINT.ip, ep.ip);
-        EXPECT_EQ(80, ep.port);
+        EXPECT_EQ(443, ep.port);
     }
     {
         base::EndPoint ep;
@@ -229,18 +242,18 @@ TEST_F(HttpTest, parse_http_address) {
 
 TEST_F(HttpTest, verify_request) {
     {
-        brpc::policy::HttpInputMessage* msg =
+        brpc::policy::HttpContext* msg =
                 MakePostRequestMessage("/EchoService/Echo");
         VerifyMessage(msg, false);
         msg->Destroy();
     }
     {
-        brpc::policy::HttpInputMessage* msg = MakeGetRequestMessage("/status");
+        brpc::policy::HttpContext* msg = MakeGetRequestMessage("/status");
         VerifyMessage(msg, true);
         msg->Destroy();
     }
     {
-        brpc::policy::HttpInputMessage* msg =
+        brpc::policy::HttpContext* msg =
                 MakePostRequestMessage("/EchoService/Echo");
         _socket->SetFailed();
         VerifyMessage(msg, false);
@@ -249,7 +262,7 @@ TEST_F(HttpTest, verify_request) {
 }
 
 TEST_F(HttpTest, process_request_failed_socket) {
-    brpc::policy::HttpInputMessage* msg = MakePostRequestMessage("/EchoService/Echo");
+    brpc::policy::HttpContext* msg = MakePostRequestMessage("/EchoService/Echo");
     _socket->SetFailed();
     ProcessMessage(brpc::policy::ProcessHttpRequest, msg, false);
     ASSERT_EQ(0ll, _server._nerror.get_value());
@@ -257,7 +270,7 @@ TEST_F(HttpTest, process_request_failed_socket) {
 }
 
 TEST_F(HttpTest, reject_get_to_pb_services_with_required_fields) {
-    brpc::policy::HttpInputMessage* msg = MakeGetRequestMessage("/EchoService/Echo");
+    brpc::policy::HttpContext* msg = MakeGetRequestMessage("/EchoService/Echo");
     _server._status = brpc::Server::RUNNING;
     ProcessMessage(brpc::policy::ProcessHttpRequest, msg, false);
     ASSERT_EQ(0ll, _server._nerror.get_value());
@@ -270,7 +283,7 @@ TEST_F(HttpTest, reject_get_to_pb_services_with_required_fields) {
 }
 
 TEST_F(HttpTest, process_request_logoff) {
-    brpc::policy::HttpInputMessage* msg = MakePostRequestMessage("/EchoService/Echo");
+    brpc::policy::HttpContext* msg = MakePostRequestMessage("/EchoService/Echo");
     _server._status = brpc::Server::READY;
     ProcessMessage(brpc::policy::ProcessHttpRequest, msg, false);
     ASSERT_EQ(1ll, _server._nerror.get_value());
@@ -278,7 +291,7 @@ TEST_F(HttpTest, process_request_logoff) {
 }
 
 TEST_F(HttpTest, process_request_wrong_method) {
-    brpc::policy::HttpInputMessage* msg = MakePostRequestMessage("/NO_SUCH_METHOD");
+    brpc::policy::HttpContext* msg = MakePostRequestMessage("/NO_SUCH_METHOD");
     ProcessMessage(brpc::policy::ProcessHttpRequest, msg, false);
     ASSERT_EQ(1ll, _server._nerror.get_value());
     CheckResponseCode(false, brpc::HTTP_STATUS_NOT_FOUND);
@@ -288,7 +301,7 @@ TEST_F(HttpTest, process_response_after_eof) {
     test::EchoResponse res;
     brpc::Controller cntl;
     cntl._response = &res;
-    brpc::policy::HttpInputMessage* msg =
+    brpc::policy::HttpContext* msg =
             MakeResponseMessage(brpc::HTTP_STATUS_OK);
     _socket->set_correlation_id(cntl.call_id().value);
     ProcessMessage(brpc::policy::ProcessHttpResponse, msg, true);
@@ -300,7 +313,7 @@ TEST_F(HttpTest, process_response_error_code) {
     {
         brpc::Controller cntl;
         _socket->set_correlation_id(cntl.call_id().value);
-        brpc::policy::HttpInputMessage* msg =
+        brpc::policy::HttpContext* msg =
                 MakeResponseMessage(brpc::HTTP_STATUS_CONTINUE);
         ProcessMessage(brpc::policy::ProcessHttpResponse, msg, false);
         ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
@@ -309,7 +322,7 @@ TEST_F(HttpTest, process_response_error_code) {
     {
         brpc::Controller cntl;
         _socket->set_correlation_id(cntl.call_id().value);
-        brpc::policy::HttpInputMessage* msg =
+        brpc::policy::HttpContext* msg =
                 MakeResponseMessage(brpc::HTTP_STATUS_TEMPORARY_REDIRECT);
         ProcessMessage(brpc::policy::ProcessHttpResponse, msg, false);
         ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
@@ -319,7 +332,7 @@ TEST_F(HttpTest, process_response_error_code) {
     {
         brpc::Controller cntl;
         _socket->set_correlation_id(cntl.call_id().value);
-        brpc::policy::HttpInputMessage* msg =
+        brpc::policy::HttpContext* msg =
                 MakeResponseMessage(brpc::HTTP_STATUS_BAD_REQUEST);
         ProcessMessage(brpc::policy::ProcessHttpResponse, msg, false);
         ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
@@ -329,7 +342,7 @@ TEST_F(HttpTest, process_response_error_code) {
     {
         brpc::Controller cntl;
         _socket->set_correlation_id(cntl.call_id().value);
-        brpc::policy::HttpInputMessage* msg = MakeResponseMessage(12345);
+        brpc::policy::HttpContext* msg = MakeResponseMessage(12345);
         ProcessMessage(brpc::policy::ProcessHttpResponse, msg, false);
         ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
         ASSERT_EQ(12345, cntl.http_response().status_code());

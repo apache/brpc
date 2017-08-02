@@ -1,4 +1,4 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
+ // Baidu RPC - A framework to host and access services throughout Baidu.
 // Copyright (c) 2014 Baidu.com, Inc. All Rights Reserved
 
 // Author: The baidu-rpc authors (pbrpc@baidu.com)
@@ -23,6 +23,34 @@ bool ParseHttpServerAddress(base::EndPoint *point, const char *server_addr_and_p
 namespace {
 using brpc::policy::FindMethodPropertyByURI;
 using brpc::policy::ParseHttpServerAddress;
+
+TEST(HttpMessageTest, http_method) {
+    ASSERT_STREQ("DELETE", brpc::HttpMethod2Str(brpc::HTTP_METHOD_DELETE));
+    ASSERT_STREQ("GET", brpc::HttpMethod2Str(brpc::HTTP_METHOD_GET));
+    ASSERT_STREQ("POST", brpc::HttpMethod2Str(brpc::HTTP_METHOD_POST));
+    ASSERT_STREQ("PUT", brpc::HttpMethod2Str(brpc::HTTP_METHOD_PUT));
+
+    brpc::HttpMethod m;
+    ASSERT_TRUE(brpc::Str2HttpMethod("DELETE", &m));
+    ASSERT_EQ(brpc::HTTP_METHOD_DELETE, m);
+    ASSERT_TRUE(brpc::Str2HttpMethod("GET", &m));
+    ASSERT_EQ(brpc::HTTP_METHOD_GET, m);
+    ASSERT_TRUE(brpc::Str2HttpMethod("POST", &m));
+    ASSERT_EQ(brpc::HTTP_METHOD_POST, m);
+    ASSERT_TRUE(brpc::Str2HttpMethod("PUT", &m));
+    ASSERT_EQ(brpc::HTTP_METHOD_PUT, m);
+
+    // case-insensitive
+    ASSERT_TRUE(brpc::Str2HttpMethod("DeLeTe", &m));
+    ASSERT_EQ(brpc::HTTP_METHOD_DELETE, m);
+    ASSERT_TRUE(brpc::Str2HttpMethod("get", &m));
+    ASSERT_EQ(brpc::HTTP_METHOD_GET, m);
+
+    // non-existed
+    ASSERT_FALSE(brpc::Str2HttpMethod("DEL", &m));
+    ASSERT_FALSE(brpc::Str2HttpMethod("DELETE ", &m));
+    ASSERT_FALSE(brpc::Str2HttpMethod("GOT", &m));
+}
 
 TEST(HttpMessageTest, eof) {
     google::SetCommandLineOption("verbose", "100");
@@ -91,7 +119,7 @@ TEST(HttpMessageTest, request_sanity) {
     ASSERT_TRUE(header.GetHeader("Accept"));
     ASSERT_EQ("*/*", *header.GetHeader("Accept"));
     
-    ASSERT_EQ(12, header.major_version());
+    ASSERT_EQ(1, header.major_version());
     ASSERT_EQ(34, header.minor_version());
     ASSERT_EQ(brpc::HTTP_METHOD_POST, header.method());
     ASSERT_EQ(brpc::HTTP_STATUS_OK, header.status_code());
@@ -135,12 +163,13 @@ TEST(HttpMessageTest, response_sanity) {
     ASSERT_TRUE(header.GetHeader("Accept"));
     ASSERT_EQ("*/*", *header.GetHeader("Accept"));
     
-    ASSERT_EQ(12, header.major_version());
+    ASSERT_EQ(1, header.major_version());
     ASSERT_EQ(34, header.minor_version());
     // method is undefined for response, in our case, it's set to 0.
     ASSERT_EQ(brpc::HTTP_METHOD_DELETE, header.method());
     ASSERT_EQ(brpc::HTTP_STATUS_GONE, header.status_code());
-    ASSERT_STREQ("GoneBlah", header.reason_phrase());
+    ASSERT_STREQ(brpc::HttpReasonPhrase(header.status_code()), /*not GoneBlah*/
+                 header.reason_phrase());
     
     ASSERT_TRUE(header.GetHeader("log-id"));
     ASSERT_EQ("456", *header.GetHeader("log-id"));
@@ -283,9 +312,10 @@ TEST(HttpMessageTest, http_header) {
     ASSERT_STREQ(brpc::HttpReasonPhrase(header.status_code()),
                  header.reason_phrase());
     
-    header.set_status_code(brpc::HTTP_STATUS_GONE, "Blah");
+    header.set_status_code(brpc::HTTP_STATUS_GONE);
     ASSERT_EQ(brpc::HTTP_STATUS_GONE, header.status_code());
-    ASSERT_STREQ("Blah", header.reason_phrase());
+    ASSERT_STREQ(brpc::HttpReasonPhrase(header.status_code()),
+                 header.reason_phrase());
 }
 
 TEST(HttpMessageTest, emtpy_url) {

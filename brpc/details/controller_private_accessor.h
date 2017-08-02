@@ -37,10 +37,6 @@ public:
         _cntl->OnVersionedRPCReturned(info, false, saved_error);
     }
 
-    BAIDU_DEPRECATED google::protobuf::Message* response() const {
-        return _cntl->response();
-    }
-
     ConnectionType connection_type() const {
         return _cntl->_connection_type;
     }
@@ -49,16 +45,12 @@ public:
         return _cntl->_current_call.nretry;
     }
     
-    void set_socket_correlation_id(uint64_t id) {
-        _cntl->_current_call.sending_sock->set_correlation_id(id);
-    }
-
     ControllerPrivateAccessor &set_peer_id(SocketId peer_id) {
         _cntl->_current_call.peer_id = peer_id;
         return *this;
     }
 
-    Socket* get_sending_sock() {
+    Socket* get_sending_socket() {
         return _cntl->_current_call.sending_sock.get();
     }
 

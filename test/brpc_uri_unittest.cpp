@@ -7,14 +7,11 @@
 
 #include "brpc/uri.h"
 
-namespace brpc {
-int ParseQueries(URI::QueryMap& query_map, const std::string &query);
-}
-
-TEST(URITest, sanity) {
+TEST(URITest, everything) {
     brpc::URI uri;
-    ASSERT_EQ(0, uri.SetHttpURL("http://user:passwd@www.baidu.com:80/s?wd=uri#frag"));
-    ASSERT_EQ("http", uri.schema());
+    std::string uri_str = " foobar://user:passwd@www.baidu.com:80/s?wd=uri#frag  ";
+    ASSERT_EQ(0, uri.SetHttpURL(uri_str));
+    ASSERT_EQ("foobar", uri.schema());
     ASSERT_EQ(80, uri.port());
     ASSERT_EQ("www.baidu.com", uri.host());
     ASSERT_EQ("/s", uri.path());
@@ -24,20 +21,60 @@ TEST(URITest, sanity) {
     ASSERT_EQ(*uri.GetQuery("wd"), "uri");
     ASSERT_FALSE(uri.GetQuery("nonkey"));
 
-    ASSERT_EQ(0, uri.SetHttpURL("https://www.baidu.com"));
-    ASSERT_EQ("https", uri.schema());
+    std::string host_out;
+    int port_out = -1;
+    brpc::ParseHostAndPortFromURL(uri_str.c_str(), &host_out, &port_out);
+    ASSERT_EQ("www.baidu.com", host_out);
+    ASSERT_EQ(80, port_out);
+}
+
+TEST(URITest, only_host) {
+    brpc::URI uri;
+    ASSERT_EQ(0, uri.SetHttpURL("  foo1://www.baidu1.com "));
+    ASSERT_EQ("foo1", uri.schema());
     ASSERT_EQ(-1, uri.port());
-    ASSERT_EQ("www.baidu.com", uri.host());
+    ASSERT_EQ("www.baidu1.com", uri.host());
     ASSERT_EQ("", uri.path());
     ASSERT_EQ("", uri.user_info());
     ASSERT_EQ("", uri.fragment());
+    ASSERT_EQ(0, uri.QueryCount());
     ASSERT_FALSE(uri.GetQuery("wd"));
     ASSERT_FALSE(uri.GetQuery("nonkey"));
+
+    ASSERT_EQ(0, uri.SetHttpURL("foo2://www.baidu2.com:1234"));
+    ASSERT_EQ("foo2", uri.schema());
+    ASSERT_EQ(1234, uri.port());
+    ASSERT_EQ("www.baidu2.com", uri.host());
+    ASSERT_EQ("", uri.path());
+    ASSERT_EQ("", uri.user_info());
+    ASSERT_EQ("", uri.fragment());
+    ASSERT_EQ(0, uri.QueryCount());
+
+    ASSERT_EQ(0, uri.SetHttpURL(" www.baidu3.com:4321 "));
+    ASSERT_EQ("", uri.schema());
+    ASSERT_EQ(4321, uri.port());
+    ASSERT_EQ("www.baidu3.com", uri.host());
+    ASSERT_EQ("", uri.path());
+    ASSERT_EQ("", uri.user_info());
+    ASSERT_EQ("", uri.fragment());
+    ASSERT_EQ(0, uri.QueryCount());
     
-    ASSERT_EQ(0, uri.SetHttpURL("user:passwd2@www.baidu.com/s?wd=uri2&nonkey=22#frag"));
-    ASSERT_EQ("http", uri.schema());
+    ASSERT_EQ(0, uri.SetHttpURL(" www.baidu4.com "));
+    ASSERT_EQ("", uri.schema());
     ASSERT_EQ(-1, uri.port());
-    ASSERT_EQ("www.baidu.com", uri.host());
+    ASSERT_EQ("www.baidu4.com", uri.host());
+    ASSERT_EQ("", uri.path());
+    ASSERT_EQ("", uri.user_info());
+    ASSERT_EQ("", uri.fragment());
+    ASSERT_EQ(0, uri.QueryCount());
+}
+
+TEST(URITest, no_schema) {
+    brpc::URI uri;
+    ASSERT_EQ(0, uri.SetHttpURL(" user:passwd2@www.baidu1.com/s?wd=uri2&nonkey=22#frag "));
+    ASSERT_EQ("", uri.schema());
+    ASSERT_EQ(-1, uri.port());
+    ASSERT_EQ("www.baidu1.com", uri.host());
     ASSERT_EQ("/s", uri.path());
     ASSERT_EQ("user:passwd2", uri.user_info());
     ASSERT_EQ("frag", uri.fragment());
@@ -45,9 +82,26 @@ TEST(URITest, sanity) {
     ASSERT_EQ(*uri.GetQuery("wd"), "uri2");
     ASSERT_TRUE(uri.GetQuery("nonkey"));
     ASSERT_EQ(*uri.GetQuery("nonkey"), "22");
+}
 
-    // Should work with path as well.
-    ASSERT_EQ(0, uri.SetHttpURL("/sb?wd=uri3#frag2"));
+TEST(URITest, no_schema_and_user_info) {
+    brpc::URI uri;
+    ASSERT_EQ(0, uri.SetHttpURL(" www.baidu2.com/s?wd=uri2&nonkey=22#frag "));
+    ASSERT_EQ("", uri.schema());
+    ASSERT_EQ(-1, uri.port());
+    ASSERT_EQ("www.baidu2.com", uri.host());
+    ASSERT_EQ("/s", uri.path());
+    ASSERT_EQ("", uri.user_info());
+    ASSERT_EQ("frag", uri.fragment());
+    ASSERT_TRUE(uri.GetQuery("wd"));
+    ASSERT_EQ(*uri.GetQuery("wd"), "uri2");
+    ASSERT_TRUE(uri.GetQuery("nonkey"));
+    ASSERT_EQ(*uri.GetQuery("nonkey"), "22");
+}
+
+TEST(URITest, no_host) {
+    brpc::URI uri;
+    ASSERT_EQ(0, uri.SetHttpURL(" /sb?wd=uri3#frag2 ")) << uri.status();
     ASSERT_EQ("", uri.schema());
     ASSERT_EQ(-1, uri.port());
     ASSERT_EQ("", uri.host());
@@ -71,10 +125,9 @@ TEST(URITest, sanity) {
     ASSERT_FALSE(uri.GetQuery("nonkey"));
 }
 
-TEST(URITest,  consecutive_ampersand) {
-    const std::string query="&key1=value1&&key3=value3";
+TEST(URITest, consecutive_ampersand) {
     brpc::URI uri;
-    ASSERT_EQ(0, brpc::ParseQueries(uri._query_map, query));
+    uri._query = "&key1=value1&&key3=value3";
     ASSERT_TRUE(uri.GetQuery("key1"));
     ASSERT_TRUE(uri.GetQuery("key3"));
     ASSERT_FALSE(uri.GetQuery("key2"));
@@ -83,9 +136,8 @@ TEST(URITest,  consecutive_ampersand) {
 }
 
 TEST(URITest, only_equality) {
-    const std::string query ="key1=&&key2&&=&key3=value3";
     brpc::URI uri;
-    ASSERT_EQ(0, brpc::ParseQueries(uri._query_map, query));
+    uri._query = "key1=&&key2&&=&key3=value3";
     ASSERT_TRUE(uri.GetQuery("key1"));
     ASSERT_EQ("", *uri.GetQuery("key1"));
     ASSERT_TRUE(uri.GetQuery("key2"));
@@ -95,9 +147,8 @@ TEST(URITest, only_equality) {
 }
 
 TEST(URITest, set_query) {
-    const std::string query ="key1=&&key2&&=&key3=value3";
     brpc::URI uri;
-    ASSERT_EQ(0, brpc::ParseQueries(uri._query_map, query));
+    uri._query = "key1=&&key2&&=&key3=value3";
     ASSERT_TRUE(uri.GetQuery("key1"));
     ASSERT_TRUE(uri.GetQuery("key3"));
     ASSERT_EQ("value3", *uri.GetQuery("key3"));
@@ -111,10 +162,84 @@ TEST(URITest, set_query) {
     ASSERT_EQ("value2", *uri.GetQuery("key2"));
 }
 
-TEST(URITest, only_one_key) {
-    const std::string query = "key1";
+TEST(URITest, set_h2_path) {
     brpc::URI uri;
-    ASSERT_EQ(0, brpc::ParseQueries(uri._query_map, query));
+    uri.SetH2Path("/dir?key1=&&key2&&=&key3=value3");
+    ASSERT_EQ("/dir", uri.path());
+    ASSERT_TRUE(uri.GetQuery("key1"));
+    ASSERT_TRUE(uri.GetQuery("key2"));
+    ASSERT_TRUE(uri.GetQuery("key3"));
+    ASSERT_EQ("value3", *uri.GetQuery("key3"));
+
+    uri.SetH2Path("dir?key1=&&key2&&=&key3=value3");
+    ASSERT_EQ("dir", uri.path());
+    ASSERT_TRUE(uri.GetQuery("key1"));
+    ASSERT_TRUE(uri.GetQuery("key2"));
+    ASSERT_TRUE(uri.GetQuery("key3"));
+    ASSERT_EQ("value3", *uri.GetQuery("key3"));
+
+    uri.SetH2Path("/dir?key1=&&key2&&=&key3=value3#frag1");
+    ASSERT_EQ("/dir", uri.path());
+    ASSERT_TRUE(uri.GetQuery("key1"));
+    ASSERT_TRUE(uri.GetQuery("key2"));
+    ASSERT_TRUE(uri.GetQuery("key3"));
+    ASSERT_EQ("value3", *uri.GetQuery("key3"));
+    ASSERT_EQ("frag1", uri.fragment());
+}
+
+TEST(URITest, generate_h2_path) {
+    brpc::URI uri;
+    const std::string ref1 = "/dir?key1=&&key2&&=&key3=value3";
+    uri.SetH2Path(ref1);
+    ASSERT_EQ("/dir", uri.path());
+    ASSERT_EQ(3u, uri.QueryCount());
+    ASSERT_TRUE(uri.GetQuery("key1"));
+    ASSERT_TRUE(uri.GetQuery("key2"));
+    ASSERT_TRUE(uri.GetQuery("key3"));
+    ASSERT_EQ("value3", *uri.GetQuery("key3"));
+    std::string path1;
+    uri.GenerateH2Path(&path1);
+    ASSERT_EQ(ref1, path1);
+
+    uri.SetQuery("key3", "value3.3");
+    ASSERT_EQ(3u, uri.QueryCount());
+    ASSERT_EQ(1u, uri.RemoveQuery("key1"));
+    ASSERT_EQ(2u, uri.QueryCount());
+    ASSERT_EQ("key2&key3=value3.3", uri.query());
+    uri.GenerateH2Path(&path1);
+    ASSERT_EQ("/dir?key2&key3=value3.3", path1);    
+
+    const std::string ref2 = "/dir2?key1=&&key2&&=&key3=value3#frag2";
+    uri.SetH2Path(ref2);
+    ASSERT_EQ("/dir2", uri.path());
+    ASSERT_TRUE(uri.GetQuery("key1"));
+    ASSERT_TRUE(uri.GetQuery("key2"));
+    ASSERT_TRUE(uri.GetQuery("key3"));
+    ASSERT_EQ("value3", *uri.GetQuery("key3"));
+    ASSERT_EQ("frag2", uri.fragment());
+    std::string path2;
+    uri.GenerateH2Path(&path2);
+    ASSERT_EQ(ref2, path2);
+
+    const std::string ref3 = "/dir3#frag3";
+    uri.SetH2Path(ref3);
+    ASSERT_EQ("/dir3", uri.path());
+    ASSERT_EQ("frag3", uri.fragment());
+    std::string path3;
+    uri.GenerateH2Path(&path3);
+    ASSERT_EQ(ref3, path3);
+
+    const std::string ref4 = "/dir4";
+    uri.SetH2Path(ref4);
+    ASSERT_EQ("/dir4", uri.path());
+    std::string path4;
+    uri.GenerateH2Path(&path4);
+    ASSERT_EQ(ref4, path4);
+}
+
+TEST(URITest, only_one_key) {
+    brpc::URI uri;
+    uri._query = "key1";
     ASSERT_TRUE(uri.GetQuery("key1"));
     ASSERT_EQ("", *uri.GetQuery("key1"));
 }
@@ -122,6 +247,32 @@ TEST(URITest, only_one_key) {
 TEST(URITest, empty_host) {
     brpc::URI uri;
     ASSERT_EQ(-1, uri.SetHttpURL("http://"));
+}
+
+TEST(URITest, invalid_spaces) {
+    brpc::URI uri;
+    ASSERT_EQ(-1, uri.SetHttpURL("foo bar://user:passwd@www.baidu.com:80/s?wd=uri#frag"));
+    ASSERT_STREQ("Invalid space in url", uri.status().error_cstr());
+    ASSERT_EQ(-1, uri.SetHttpURL("foobar://us er:passwd@www.baidu.com:80/s?wd=uri#frag"));
+    ASSERT_STREQ("Invalid space in url", uri.status().error_cstr());
+    ASSERT_EQ(-1, uri.SetHttpURL("foobar://user:pass wd@www.baidu.com:80/s?wd=uri#frag"));
+    ASSERT_STREQ("Invalid space in url", uri.status().error_cstr());
+    ASSERT_EQ(-1, uri.SetHttpURL("foobar://user:passwd@www. baidu.com:80/s?wd=uri#frag"));
+    ASSERT_STREQ("Invalid space in url", uri.status().error_cstr());
+    ASSERT_EQ(-1, uri.SetHttpURL("foobar://user:passwd@www.baidu.com:80/ s?wd=uri#frag"));
+    ASSERT_STREQ("Invalid space in path", uri.status().error_cstr());
+    ASSERT_EQ(-1, uri.SetHttpURL("foobar://user:passwd@www.baidu.com:80/s ?wd=uri#frag"));
+    ASSERT_STREQ("Invalid space in path", uri.status().error_cstr());
+    ASSERT_EQ(-1, uri.SetHttpURL("foobar://user:passwd@www.baidu.com:80/s? wd=uri#frag"));
+    ASSERT_STREQ("Invalid space in query", uri.status().error_cstr());
+    ASSERT_EQ(-1, uri.SetHttpURL("foobar://user:passwd@www.baidu.com:80/s?w d=uri#frag"));
+    ASSERT_STREQ("Invalid space in query", uri.status().error_cstr());
+    ASSERT_EQ(-1, uri.SetHttpURL("foobar://user:passwd@www.baidu.com:80/s?wd=uri #frag"));
+    ASSERT_STREQ("Invalid space in query", uri.status().error_cstr());
+    ASSERT_EQ(-1, uri.SetHttpURL("foobar://user:passwd@www.baidu.com:80/s?wd=uri# frag"));
+    ASSERT_STREQ("Invalid space in fragment", uri.status().error_cstr());
+    ASSERT_EQ(-1, uri.SetHttpURL("foobar://user:passwd@www.baidu.com:80/s?wd=uri#fr ag"));
+    ASSERT_STREQ("Invalid space in fragment", uri.status().error_cstr());
 }
 
 TEST(URITest, invalid_query) {
@@ -150,6 +301,16 @@ TEST(URITest, print_url) {
     oss.str("");
     uri.Print(oss, false);
     ASSERT_EQ("/?d=c&a=b&e=f#frg1", oss.str());
+
+    uri.SetQuery("e", "f2");
+    uri.SetQuery("f", "g");
+    ASSERT_EQ((size_t)1, uri.RemoveQuery("a"));
+    oss.str("");
+    uri.Print(oss, true);
+    ASSERT_EQ("http://a.b.c/?d=c&e=f2&f=g#frg1", oss.str());
+    oss.str("");
+    uri.Print(oss, false);
+    ASSERT_EQ("/?d=c&e=f2&f=g#frg1", oss.str());
 }
 
 TEST(URITest, copy_and_assign) {

@@ -59,6 +59,7 @@ public:
     virtual void AfterRevived(Socket*);
 };
 
+// TODO: Remove this class which is replace-able with SocketMessage
 // A special closure for handling fd related connection. The Socket does
 // not delete SocketConnection, if you want, `delete this' at the end of
 // BeforeRecycle().
@@ -117,12 +118,22 @@ struct PipelinedInfo {
     bthread_id_t id_wait;
 };
 
+// TODO: Comment fields
 struct SocketOptions {
     SocketOptions();
-    
+
+    // If `fd' is non-negative, set `fd' to be non-blocking and take the
+    // ownership. Socket will close the fd(if needed) and call 
+    // user->BeforeRecycle() before recycling.
     int fd;
     base::EndPoint remote_side;
     SocketUser* user;
+    // When *edge-triggered* events happen on the file descriptor, callback
+    // `on_edge_triggered_events' will be called. Inside the callback, user
+    // shall read fd() in non-blocking mode until all data has been read
+    // or EAGAIN is met, otherwise the callback will not be called again
+    // until new data arrives. The callback will not be called from more than
+    // one thread at any time.
     void (*on_edge_triggered_events)(Socket*);
     int health_check_interval_s;
     SSL_CTX* ssl_ctx;
@@ -197,7 +208,7 @@ public:
     int Write(base::IOBuf *msg, const WriteOptions* options = NULL);
     
     // Write an user-defined message. `msg' is released when Write() is
-    // successful and remain unchanged otherwise.
+    // successful and *may* remain unchanged otherwise.
     int Write(SocketMessagePtr<>& msg, const WriteOptions* options = NULL);
 
     // The file descriptor
@@ -224,27 +235,23 @@ public:
     SocketConnection* conn() const { return _conn; }
     AppConnect* app_connect() const { return _app_connect; }
 
-    // Saved contexts for parsing.
-    // Will be reset before trying a new protocol or destruction of the socket.
+    // Saved contexts for parsing. Reset before trying new protocols and
+    // recycling of the socket.
     void reset_parsing_context(Destroyable*);
     Destroyable* release_parsing_context();
-    Destroyable* parsing_context() const { return _parsing_context; }
+    Destroyable* parsing_context() const
+    { return _parsing_context.load(base::memory_order_consume); }
+    // Try to set _parsing_context to *ctx when _parsing_context is NULL.
+    // If _parsing_context is NULL, the set is successful and true is returned.
+    // Otherwise, *ctx is Destroy()-ed and replaced with the value of
+    // _parsing_context, and false is returned. This process is thread-safe.
+    template <typename T> bool initialize_parsing_context(T** ctx);
 
     // Connection-specific result of authentication.
     const AuthContext* auth_context() const { return _auth_context; }
     AuthContext* mutable_auth_context();
 
-    // Create a Socket on `remote_side', put the identifier into `id'.
-    // If `fd' is non-negative, set `fd' to be non-blocking and take the
-    // ownership. Socket will close the fd(if needed) and call 
-    // user->BeforeRecycle() before recycling.
-    // FIXME(gejun): Fix comment.
-    // When *edge-triggered* events happen on the file descriptor, callback
-    // `on_edge_triggered_events' will be called. Inside the callback, user
-    // shall read fd() in non-blocking mode until all data has been read
-    // or EAGAIN is met, otherwise the callback will not be called again
-    // until new data arrives. The callback will not be called from more than
-    // one thread at any time.
+    // Create a Socket according to `options', put the identifier into `id'.
     // Returns 0 on sucess, -1 otherwise.
     static int Create(const SocketOptions& options, SocketId* id);
 
@@ -625,8 +632,8 @@ private:
     // Set with cpuwide_time_us() at last read operation
     base::atomic<int64_t> _last_readtime_us;
 
-    // The temporary context saved during parsing.
-    Destroyable* _parsing_context;
+    // Saved context for parsing, reset before trying other protocols.
+    base::atomic<Destroyable*> _parsing_context;
 
     // Saving the correlation_id of RPC on protocols that cannot put
     // correlation_id on-wire and do not send multiple requests on one

@@ -55,7 +55,7 @@ void* sender(void* arg) {
         }
 
         cntl.set_log_id(log_id ++);  // set by user
-        if (FLAGS_protocol != "http") {
+        if (FLAGS_protocol != "http" && FLAGS_protocol != "h2c") {
             // Set attachment which is wired to network directly instead of 
             // being serialized into protobuf messages.
             cntl.request_attachment().append(FLAGS_attachment);

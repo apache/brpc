@@ -261,7 +261,7 @@ protected:
             ClosureChecker done;
             brpc::Controller cntl;
             SetUpController(&cntl, use_html);
-            cntl.http_request().set_unresolved_path("foo");
+            cntl.http_request()._unresolved_path = "foo";
             service.default_method(&cntl, &req, &res, &done);
             EXPECT_FALSE(cntl.Failed());
             EXPECT_EQ(expect_type, cntl.http_response().content_type());
@@ -271,7 +271,7 @@ protected:
             ClosureChecker done;
             brpc::Controller cntl;
             SetUpController(&cntl, use_html);
-            cntl.http_request().set_unresolved_path("foo");
+            cntl.http_request()._unresolved_path = "foo";
             cntl.http_request().uri()
                     .SetQuery(brpc::SETVALUE_STR, "true");
             service.default_method(&cntl, &req, &res, &done);
@@ -282,7 +282,7 @@ protected:
             ClosureChecker done;
             brpc::Controller cntl;
             SetUpController(&cntl, use_html);
-            cntl.http_request().set_unresolved_path("foo");
+            cntl.http_request()._unresolved_path = "foo";
             service.default_method(&cntl, &req, &res, &done);
             EXPECT_FALSE(cntl.Failed());
             EXPECT_EQ(expect_type, cntl.http_response().content_type());
@@ -614,7 +614,7 @@ TEST_F(BuiltinServiceTest, vars) {
     {
         ClosureChecker done;
         brpc::Controller cntl;
-        cntl.http_request().set_unresolved_path("iobuf*");
+        cntl.http_request()._unresolved_path = "iobuf*";
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "iobuf_block_count");
@@ -682,7 +682,7 @@ TEST_F(BuiltinServiceTest, dir) {
         ClosureChecker done;
         brpc::Controller cntl;
         SetUpController(&cntl, true);
-        cntl.http_request().set_unresolved_path("");
+        cntl.http_request()._unresolved_path = "";
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "tmp");
@@ -692,7 +692,7 @@ TEST_F(BuiltinServiceTest, dir) {
         ClosureChecker done;
         brpc::Controller cntl;
         SetUpController(&cntl, false);
-        cntl.http_request().set_unresolved_path("/usr/include/errno.h");
+        cntl.http_request()._unresolved_path = "/usr/include/errno.h";
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "ERRNO_H");
@@ -702,7 +702,7 @@ TEST_F(BuiltinServiceTest, dir) {
         ClosureChecker done;
         brpc::Controller cntl;
         SetUpController(&cntl, false);
-        cntl.http_request().set_unresolved_path("file_not_exist");
+        cntl.http_request()._unresolved_path = "file_not_exist";
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_TRUE(cntl.Failed());
         CheckErrorText(cntl, "Cannot open");
@@ -723,7 +723,7 @@ TEST_F(BuiltinServiceTest, ids) {
     {
         ClosureChecker done;
         brpc::Controller cntl;
-        cntl.http_request().set_unresolved_path("not_valid");
+        cntl.http_request()._unresolved_path = "not_valid";
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_TRUE(cntl.Failed());
         CheckErrorText(cntl, "is not a bthread_id");
@@ -735,7 +735,7 @@ TEST_F(BuiltinServiceTest, ids) {
         brpc::Controller cntl;
         std::string id_string;
         base::string_printf(&id_string, "%llu", (unsigned long long)id.value);
-        cntl.http_request().set_unresolved_path(id_string);
+        cntl.http_request()._unresolved_path = id_string;
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "Status: UNLOCKED");
@@ -761,7 +761,7 @@ TEST_F(BuiltinServiceTest, bthreads) {
     {
         ClosureChecker done;
         brpc::Controller cntl;
-        cntl.http_request().set_unresolved_path("not_valid");
+        cntl.http_request()._unresolved_path = "not_valid";
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_TRUE(cntl.Failed());
         CheckErrorText(cntl, "is not a bthread id");
@@ -773,7 +773,7 @@ TEST_F(BuiltinServiceTest, bthreads) {
         brpc::Controller cntl;
         std::string id_string;
         base::string_printf(&id_string, "%llu", (unsigned long long)th);
-        cntl.http_request().set_unresolved_path(id_string);
+        cntl.http_request()._unresolved_path = id_string;
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "stop=0");
@@ -794,7 +794,7 @@ TEST_F(BuiltinServiceTest, sockets) {
     {
         ClosureChecker done;
         brpc::Controller cntl;
-        cntl.http_request().set_unresolved_path("not_valid");
+        cntl.http_request()._unresolved_path = "not_valid";
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_TRUE(cntl.Failed());
         CheckErrorText(cntl, "is not a SocketId");
@@ -807,7 +807,7 @@ TEST_F(BuiltinServiceTest, sockets) {
         brpc::Controller cntl;
         std::string id_string;
         base::string_printf(&id_string, "%llu", (unsigned long long)id);
-        cntl.http_request().set_unresolved_path(id_string);
+        cntl.http_request()._unresolved_path = id_string;
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "fd=-1");

@@ -8,13 +8,16 @@
 #define BRPC_DESCRIBABLE_H
 
 #include <ostream>
+#include "base/macros.h"
 #include "base/class_name.h"
-
 
 namespace brpc {
 
 struct DescribeOptions {
-    DescribeOptions() : verbose(true), use_html(false) {}
+    DescribeOptions()
+        : verbose(true)
+        , use_html(false)
+    {}
 
     bool verbose;
     bool use_html;
@@ -53,5 +56,47 @@ inline std::ostream& operator<<(std::ostream& os,
 
 } // namespace brpc
 
+// Append `indent' spaces after each newline.
+// Example:
+//   IndentingOStream os1(std::cout, 2);
+//   IndentingOStream os2(os1, 2);
+//   std::cout << "begin1\nhello" << std::endl << "world\nend1" << std::endl;
+//   os1 << "begin2\nhello" << std::endl << "world\nend2" << std::endl;
+//   os2 << "begin3\nhello" << std::endl << "world\nend3" << std::endl;
+// Output:
+// begin1
+// hello
+// world
+// end1
+// begin2
+//   hello
+//   world
+//   end2
+//   begin3
+//     hello
+//     world
+//     end3
+class IndentingOStream : virtual private std::streambuf, public std::ostream {
+public:
+    IndentingOStream(std::ostream& dest, int indent)
+        : std::ostream(this)
+        , _dest(dest.rdbuf())
+        , _is_at_start_of_line(false)
+        , _indent(indent, ' ')
+    {}
+protected:
+    virtual int overflow(int ch) {
+        if (_is_at_start_of_line && ch != '\n' ) {
+            _dest->sputn(_indent.data(), _indent.size());
+        }
+        _is_at_start_of_line = (ch == '\n');
+        return _dest->sputc(ch);
+    }
+private:
+    DISALLOW_COPY_AND_ASSIGN(IndentingOStream);
+    std::streambuf* _dest;
+    bool _is_at_start_of_line;
+    std::string _indent;
+};
 
 #endif  // BRPC_DESCRIBABLE_H

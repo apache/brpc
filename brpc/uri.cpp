@@ -13,6 +13,7 @@ namespace brpc {
 URI::URI() 
     : _port(-1)
     , _query_was_modified(false)
+    , _initialized_query_map(false)
 {}
 
 URI::~URI() {
@@ -21,104 +22,22 @@ URI::~URI() {
 void URI::Clear() {
     _st.reset();
     _port = -1;
+    _query_was_modified = false;
+    _initialized_query_map = false;
     _host.clear();
     _path.clear();
     _user_info.clear();
     _fragment.clear();
     _schema.clear();
-    _query_map.clear();
     _query.clear();
-}
-
-// Parse queries, which is case-sensitive
-int ParseQueries(URI::QueryMap& query_map, const std::string &query) {
-    query_map.clear();
-    if (query.empty()) {
-        return 0;
-    }
-    for (QuerySplitter sp(query.data(), query.data() + query.size()); 
-        sp; ++sp) {
-        if (!query_map.initialized()) {
-            query_map.init(URI::QUERY_MAP_INITIAL_BUCKET);
-        }
-        query_map[sp.key().as_string()] = sp.value().as_string();
-    }
-        
-    return 0;
-}
-
-int URI::SetHttpURL(base::StringPiece url) {
-    if (url.empty()) { // responses
-        return 0;
-    }
-    url.trim_spaces();
-    if (url.empty()) {
-        _st.set_error(EINVAL, "url only has spaces");
-        return -1;
-    }
-    std::string new_url;
-    const char* p = url.data();
-    if (*p != '/' &&
-        (strncmp("http", p, 4) != 0 ||
-         (strncmp("://", p + 4, 3) != 0 && strncmp("s://", p + 4, 4) != 0))) {
-        // Normalize "HOST/PATH" to "http://HOST/PATH"
-        new_url.reserve(7 + url.data() + url.size() - p);
-        new_url.append("http://");
-        new_url.append(p, url.data() + url.size() - p);
-        url = new_url;
-    }
-    struct http_parser_url layout;
-    // Have to initialize layout because http_parser may use undefined
-    // field_data[UF_HOST] when there's no host field in `url'.
-    memset(&layout, 0, sizeof(layout));
-    // FIXME:
-    const int rc = http_parser_parse_url(url.data(), url.size(), 0, &layout);
-    if (rc) {
-        _st.set_error(EINVAL, "Fail to parse url=`%.*s'",
-                      (int)url.size(), url.data());
-        return -1;
-    }
-    //enum http_parser_url_fields
-    //  { UF_SCHEMA           = 0
-    //  , UF_HOST             = 1
-    //  , UF_PORT             = 2
-    //  , UF_PATH             = 3
-    //  , UF_QUERY            = 4
-    //  , UF_FRAGMENT         = 5
-    //  , UF_USERINFO         = 6
-    //  , UF_MAX              = 7
-    //  };
-    std::string *fields[] = { &_schema, &_host, NULL, 
-                              &_path, &_query,
-                              &_fragment, &_user_info};
-    for (int i = 0; i < UF_MAX; ++i) {
-        if (fields[i] == NULL) {
-            continue;
-        }
-        if (layout.field_set & (1 << i)) {
-            fields[i]->assign(url.data() + layout.field_data[i].off,
-                              layout.field_data[i].len);
-        } else {
-            fields[i]->clear();
-        }
-    }
-    if (layout.field_set & (1 << UF_PORT)) {
-        _port = layout.port;
-    } else {
-        _port = -1;
-    }
-    if (ParseQueries(_query_map, _query) != 0) {
-        _st.set_error(EINVAL, "Fail to parse queries=`%s'", _query.c_str());
-        return -1;
-    }
-    _query_was_modified = false;
-    return 0;
+    _query_map.clear();
 }
 
 void URI::Swap(URI &rhs) {
     _st.swap(rhs._st);
     std::swap(_port, rhs._port);
     std::swap(_query_was_modified, rhs._query_was_modified);
+    std::swap(_initialized_query_map, rhs._initialized_query_map);
     _host.swap(rhs._host);
     _path.swap(rhs._path);
     _user_info.swap(rhs._user_info);
@@ -126,6 +45,181 @@ void URI::Swap(URI &rhs) {
     _schema.swap(rhs._schema);
     _query.swap(rhs._query);
     _query_map.swap(rhs._query_map);
+}
+
+// Parse queries, which is case-sensitive
+static void ParseQueries(URI::QueryMap& query_map, const std::string &query) {
+    query_map.clear();
+    if (query.empty()) {
+        return;
+    }
+    for (QuerySplitter sp(query.c_str()); sp; ++sp) {
+        if (!sp.key().empty()) {
+            if (!query_map.initialized()) {
+                query_map.init(URI::QUERY_MAP_INITIAL_BUCKET);
+            }
+            std::string key(sp.key().data(), sp.key().size());
+            std::string value(sp.value().data(), sp.value().size());
+            query_map[key] = value;
+        }
+    }
+}
+
+inline const char* SplitHostAndPort(const char* host_begin,
+                                    const char* host_end,
+                                    int* port) {
+    uint64_t port_raw = 0;
+    uint64_t multiply = 1;
+    for (const char* q = host_end - 1; q > host_begin; --q) {
+        if (*q >= '0' && *q <= '9') {
+            port_raw += (*q - '0') * multiply;
+            multiply *= 10;
+        } else if (*q == ':') {
+            *port = static_cast<int>(port_raw);
+            return q;
+        } else {
+            break;
+        }
+    }
+    *port = -1;
+    return host_end;
+}
+
+static bool is_all_spaces(const char* p) {
+    for (; *p == ' '; ++p) {}
+    return !*p;
+}
+    
+// This implementation is much faster than http_parser_parse_url().
+int URI::SetHttpURL(const char* url) {
+    Clear();
+    
+    const char* p = url;
+    // skip heading blanks
+    if (*p == ' ') {
+        for (++p; *p == ' '; ++p) {}
+    }
+    const char* start = p;
+    // Find end of host, locate schema and user_info during the searching
+    bool need_schema = true;
+    bool need_user_info = true;
+    for (; *p && *p != '/'; ++p) {
+        if (*p == ':') {
+            if (p[1] == '/' && p[2] == '/' && need_schema) {
+                need_schema = false;
+                _schema.assign(start, p - start);
+                p += 2;
+                start = p + 1;
+            }
+        } else if (*p == '@') {
+            if (need_user_info) {
+                need_user_info = false;
+                _user_info.assign(start, p - start);
+                start = p + 1;
+            }
+        } else if (*p == ' ') {
+            if (!is_all_spaces(p + 1)) {
+                _st.set_error(EINVAL, "Invalid space in url");
+                return -1;
+            }
+            break;
+        }
+    }
+    const char* host_end = SplitHostAndPort(start, p, &_port);
+    _host.assign(start, host_end - start);
+    if (*p != '/') {
+        if (host_end == start) {
+            _st.set_error(EINVAL, "Empty host and path");
+            return -1;
+        }
+        return 0;
+    }
+    start = p; //slash pointed by p is counted into _path
+    ++p;
+    for (; *p && *p != '?' && *p != '#'; ++p) {
+        if (*p == ' ') {
+            if (!is_all_spaces(p + 1)) {
+                _st.set_error(EINVAL, "Invalid space in path");
+                return -1;
+            }
+            break;
+        }
+    }
+    _path.assign(start, p - start);
+    if (*p == '?') {
+        start = ++p;
+        for (; *p && *p != '#'; ++p) {
+            if (*p == ' ') {
+                if (!is_all_spaces(p + 1)) {
+                    _st.set_error(EINVAL, "Invalid space in query");
+                    return -1;
+                }
+                break;
+            }
+        }
+        _query.assign(start, p - start);
+    }
+    if (*p == '#') {
+        start = ++p;
+        for (; *p; ++p) {
+            if (*p == ' ') {
+                if (!is_all_spaces(p + 1)) {
+                    _st.set_error(EINVAL, "Invalid space in fragment");
+                    return -1;
+                }
+                break;
+            }
+        }
+        _fragment.assign(start, p - start);
+    }
+    return 0;
+}
+
+int ParseHostAndPortFromURL(const char* url, std::string* host_out,
+                             int* port_out) {
+    const char* p = url;
+    // skip heading blanks
+    if (*p == ' ') {
+        for (++p; *p == ' '; ++p) {}
+    }
+    const char* start = p;
+    // Find end of host, locate schema and user_info during the searching
+    bool need_schema = true;
+    bool need_user_info = true;
+    base::StringPiece schema;
+    for (; *p && *p != '/'; ++p) {
+        if (*p == ':') {
+            if (p[1] == '/' && p[2] == '/' && need_schema) {
+                need_schema = false;
+                schema.set(start, p - start);
+                p += 2;
+                start = p + 1;
+            }
+        } else if (*p == '@') {
+            if (need_user_info) {
+                need_user_info = false;
+                start = p + 1;
+            }
+        } else if (*p == ' ') {
+            if (!is_all_spaces(p + 1)) {
+                LOG(ERROR) << "Invalid space in url=`" << url << '\'';
+                return -1;
+            }
+            break;
+        }
+    }
+    int port = -1;
+    const char* host_end = SplitHostAndPort(start, p, &port);
+    if (port < 0) {
+        if (schema.empty() || schema == "http") {
+            port = 80;
+        } else if (schema == "https") {
+            port = 443;
+        }
+    }
+    host_out->assign(start, host_end - start);
+    *port_out = port;
+    return 0;
 }
 
 void URI::Print(std::ostream& os, bool always_show_host) const {
@@ -149,9 +243,7 @@ void URI::Print(std::ostream& os, bool always_show_host) const {
     } else {
         os << _path;
     }
-    if (!_query.empty() && !_query_was_modified) {
-        os << '?' << _query;
-    } else if (QueryCount()) {
+    if (_initialized_query_map && _query_was_modified) {
         bool is_first = true;
         for (QueryIterator it = QueryBegin(); it != QueryEnd(); ++it) {
             if (is_first) {
@@ -165,26 +257,95 @@ void URI::Print(std::ostream& os, bool always_show_host) const {
                 os << '=' << it->second;
             }
         }
+    } else if (!_query.empty()) {
+        os << '?' << _query;
     }
     if (!_fragment.empty()) {
         os << '#' << _fragment;
     }
 }
 
-void URI::GenerateQueryString(std::string* query) const {
-    query->clear();
+void URI::InitializeQueryMap() const {
+    if (!_query_map.initialized()) {
+        CHECK_EQ(0, _query_map.init(QUERY_MAP_INITIAL_BUCKET));
+    }
+    ParseQueries(_query_map, _query);
+    _query_was_modified = false;
+    _initialized_query_map = true;
+}
+
+void URI::AppendQueryString(std::string* query, bool append_question_mark) const {
     if (_query_map.empty()) {
         return;
     }
-    for (QueryIterator it = QueryBegin(); it != QueryEnd(); ++it) {
-        if (!query->empty()) {
-            query->push_back('&');
-        }
+    if (append_question_mark) {
+        query->push_back('?');
+    }
+    QueryIterator it = QueryBegin();
+    query->append(it->first);
+    if (!it->second.empty()) {
+        query->push_back('=');
+        query->append(it->second);
+    }
+    ++it;
+    for (; it != QueryEnd(); ++it) {
+        query->push_back('&');
         query->append(it->first);
         if (!it->second.empty()) {
             query->push_back('=');
             query->append(it->second);
         }
+    }
+}
+
+void URI::GenerateH2Path(std::string* h2_path) const {
+    h2_path->reserve(_path.size() + _query.size() + _fragment.size() + 3);
+    h2_path->clear();
+    if (_path.empty()) {
+        h2_path->push_back('/');
+    } else {
+        h2_path->append(_path);
+    }
+    if (_initialized_query_map && _query_was_modified) {
+        AppendQueryString(h2_path, true);
+    } else if (!_query.empty()) {
+        h2_path->push_back('?');
+        h2_path->append(_query);
+    }
+    if (!_fragment.empty()) {
+        h2_path->push_back('#');
+        h2_path->append(_fragment);
+    }
+}
+
+void URI::SetHostAndPort(const std::string& host) {
+    const char* const host_begin = host.c_str();
+    const char* host_end =
+        SplitHostAndPort(host_begin, host_begin + host.size(), &_port);
+    _host.assign(host_begin, host_end - host_begin);
+}
+
+void URI::SetH2Path(const char* h2_path) {
+    _path.clear();
+    _query.clear();
+    _fragment.clear();
+    _query_was_modified = false;
+    _initialized_query_map = false;
+    _query_map.clear();
+
+    const char* p = h2_path;
+    const char* start = p;
+    for (; *p && *p != '?' && *p != '#'; ++p) {}
+    _path.assign(start, p - start);
+    if (*p == '?') {
+        start = ++p;
+        for (; *p && *p != '#'; ++p) {}
+        _query.assign(start, p - start);
+    }
+    if (*p == '#') {
+        start = ++p;
+        for (; *p; ++p) {}
+        _fragment.assign(start, p - start);
     }
 }
 

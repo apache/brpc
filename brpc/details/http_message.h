@@ -10,6 +10,7 @@
 #include <string>                           // std::string
 #include "base/macros.h"
 #include "base/iobuf.h"                     // base::IOBuf
+#include "base/scoped_lock.h"               // base::unique_lock
 #include "brpc/details/http_parser.h"  // http_parser
 #include "brpc/http_header.h"          // HttpHeader
 #include "brpc/progressive_reader.h"   // ProgressiveReader
@@ -35,14 +36,8 @@ public:
     explicit HttpMessage(bool read_body_progressively = false);
     ~HttpMessage();
 
-    // Fields for general headers
     const base::IOBuf &body() const { return _body; }
     base::IOBuf &body() { return _body; }
-
-    // Uri related stuff
-    const std::string &url() const { return _url; }
-
-    const std::string &reason_phrase() const  { return _header._reason_phrase; }
 
     // Parse from array, length=0 is treated as EOF.
     // Returns bytes parsed, -1 on failure.
@@ -58,7 +53,6 @@ public:
 
     HttpHeader &header() { return _header; }
     const HttpHeader &header() const { return _header; }
-
     size_t parsed_length() const { return _parsed_length; }
     
     // Http parser callback functions
@@ -68,8 +62,8 @@ public:
     static int on_header_field(http_parser *, const char *, const size_t);
     static int on_header_value(http_parser *, const char *, const size_t);
     static int on_headers_complete(http_parser *);
-    static int on_body(http_parser *, const char *, const size_t);
-    static int on_message_complete(http_parser *);
+    static int on_body_cb(http_parser*, const char *, const size_t);
+    static int on_message_complete_cb(http_parser *);
 
     const http_parser& parser() const { return _parser; }
 
@@ -80,17 +74,21 @@ public:
     // Any error during the setting will destroy the reader.
     void SetBodyReader(ProgressiveReader* r);
 
+protected:
+    int OnBody(const char* data, size_t size);
+    int OnMessageComplete();
+    size_t _parsed_length;
+    
 private:
     DISALLOW_COPY_AND_ASSIGN(HttpMessage);
+    int UnlockAndFlushToBodyReader(std::unique_lock<base::Mutex>& locked);
 
-    int UnlockAndFlushToBodyReader(std::unique_lock<pthread_mutex_t>& locked);
-
-    size_t _parsed_length;
-    bool _read_body_progressively;
+    HttpParserStage _stage;
     std::string _url;
     HttpHeader _header;
+    bool _read_body_progressively;
     // For mutual exclusion between on_body and SetBodyReader.
-    pthread_mutex_t _body_mutex;
+    base::Mutex _body_mutex;
     // Read body progressively
     ProgressiveReader* _body_reader;
     base::IOBuf _body;
@@ -99,8 +97,8 @@ private:
     struct http_parser _parser;
     std::string _cur_header;
     std::string *_cur_value;
-    HttpParserStage _stage;
 
+protected:
     // Only valid when -http_verbose is on
     base::IOBufBuilder* _vmsgbuilder;
     size_t _body_length;
@@ -108,7 +106,20 @@ private:
 
 std::ostream& operator<<(std::ostream& os, const http_parser& parser);
 
-} // namespace brpc
+// Serialize a http request.
+// remote_side: used when "Host" is absent
+// content: could be NULL.
+void SerializeHttpRequest(base::IOBuf* request,
+                          const HttpHeader& header,
+                          const base::EndPoint& remote_side,
+                          const base::IOBuf* content);
 
+// Serialize a http response.
+// content: cleared after usage. could be NULL. 
+void SerializeHttpResponse(base::IOBuf* response,
+                           const HttpHeader& header,
+                           base::IOBuf* content);
+
+} // namespace brpc
 
 #endif  // BRPC_HTTP_MESSAGE_H

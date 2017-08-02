@@ -28,6 +28,7 @@ DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 DEFINE_int32(dummy_port, 0, "Launch dummy server at this port");
+DEFINE_string(protocol, "http", "http or h2c");
 
 bvar::LatencyRecorder g_latency_recorder("client");
 
@@ -59,7 +60,7 @@ static void* sender(void* arg) {
             // is a specific sleeping to prevent this thread from spinning too
             // fast. You should continue the business logic in a production 
             // server rather than sleeping.
-            bthread_usleep(50000);
+            bthread_usleep(100000);
         }
     }
     return NULL;
@@ -73,7 +74,7 @@ int main(int argc, char* argv[]) {
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
     brpc::ChannelOptions options;
-    options.protocol = "http";
+    options.protocol = FLAGS_protocol;
     options.connection_type = FLAGS_connection_type;
     
     // Initialize the channel, NULL means using default options. 
@@ -108,7 +109,8 @@ int main(int argc, char* argv[]) {
 
     while (!brpc::IsAskedToQuit()) {
         sleep(1);
-        LOG(INFO) << "Sending http request at qps=" << g_latency_recorder.qps(1)
+        LOG(INFO) << "Sending " << FLAGS_protocol << " requests at qps=" 
+                  << g_latency_recorder.qps(1)
                   << " latency=" << g_latency_recorder.latency(1);
     }
 

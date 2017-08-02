@@ -177,7 +177,7 @@ void SendRpcResponse(int64_t correlation_id,
     }
 
     int error_code = cntl->ErrorCode();
-    if (error_code == -1/*FIXME*/) {
+    if (error_code == -1) {
         // replace general error (-1) with INTERNAL_SERVER_ERROR to make a
         // distinction between server error and client error
         error_code = EINTERNAL;

@@ -531,7 +531,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     CHECK(m->_read_buf.empty());
     const int64_t cpuwide_now = base::cpuwide_time_us();
     m->_last_readtime_us.store(cpuwide_now, base::memory_order_relaxed);
-    m->_parsing_context = options.initial_parsing_context;
+    m->reset_parsing_context(options.initial_parsing_context);
     m->_correlation_id = 0;
     m->_health_check_interval_s = options.health_check_interval_s;
     m->_ninprocess.store(1, base::memory_order_relaxed);
@@ -1977,9 +1977,20 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
         }
         os << idsizes[i];
     }
-    os << "}\npipeline_q=" << npipelined
+    os << '}';
+    Destroyable* const parsing_context = ptr->parsing_context();
+    Describable* parsing_context_desc = dynamic_cast<Describable*>(parsing_context);
+    if (parsing_context_desc) {
+        os << "\nparsing_context=";
+        DescribeOptions opt;
+        opt.verbose = true;
+        IndentingOStream os2(os, 2);
+        parsing_context_desc->Describe(os2, opt);
+    } else {
+        os << "\nparsing_context=" << ShowObject(parsing_context);
+    }
+    os << "\npipeline_q=" << npipelined
        << "\nhc_interval_s=" << ptr->_health_check_interval_s
-       << "\ncontext=" << ShowObject(ptr->parsing_context())
        << "\nninprocess=" << ptr->_ninprocess.load(base::memory_order_relaxed)
        << "\nauth_flag_error=" << ptr->_auth_flag_error.load(base::memory_order_relaxed)
        << "\nauth_id=" << ptr->_auth_id.value

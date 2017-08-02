@@ -316,8 +316,7 @@ inline void Socket::CheckEOFInternal() {
 }
 
 inline void Socket::SetEOF() {
-    uint32_t nref = _ninprocess.fetch_or(
-        EOF_FLAG, base::memory_order_relaxed);
+    uint32_t nref = _ninprocess.fetch_or(EOF_FLAG, base::memory_order_relaxed);
     if ((nref & EOF_FLAG) == 0) {
         // Release the additional reference in `_ninprocess'
         CheckEOFInternal();
@@ -325,16 +324,29 @@ inline void Socket::SetEOF() {
 }
 
 inline void Socket::reset_parsing_context(Destroyable* new_context) {
-    if (_parsing_context) {
-        _parsing_context->Destroy();
+    Destroyable* old_ctx = _parsing_context.exchange(
+        new_context, base::memory_order_acq_rel);
+    if (old_ctx) {
+        old_ctx->Destroy();
     }
-    _parsing_context = new_context;
 }
 
 inline Destroyable* Socket::release_parsing_context() {
-    Destroyable *tmp = _parsing_context;
-    _parsing_context = NULL;
-    return tmp;
+    return _parsing_context.exchange(NULL, base::memory_order_acquire);
+}
+
+template <typename T>
+bool Socket::initialize_parsing_context(T** ctx) {
+    Destroyable* expected = NULL;
+    if (_parsing_context.compare_exchange_strong(
+            expected, *ctx, base::memory_order_acq_rel,
+            base::memory_order_acquire)) {
+        return true;
+    } else {
+        (*ctx)->Destroy();
+        *ctx = static_cast<T*>(expected);
+        return false;
+    }
 }
 
 // NOTE: Push/Pop may be called from different threads simultaneously.

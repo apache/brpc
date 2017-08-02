@@ -58,7 +58,7 @@ struct CertInfo {
 };
 
 struct SSLOptions {
-    // Construct with default options
+    // Constructed with default options
     SSLOptions();
 
     // Default certificate which will be loaded into server. Requests

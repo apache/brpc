@@ -8,10 +8,10 @@
 #define  BRPC_HTTP_HEADER_H
 
 #include "base/strings/string_piece.h"  // StringPiece
+#include "base/containers/case_ignored_flat_map.h"
 #include "brpc/uri.h"              // URI
 #include "brpc/http_method.h"      // HttpMethod
 #include "brpc/http_status_code.h"
-#include "base/containers/case_ignored_flat_map.h"
 
 // To rpc developers: DON'T put impl. details here, use opaque pointers instead.
 
@@ -46,6 +46,9 @@ public:
     // True if version of http is earlier than 1.1
     bool before_http_1_1() const
     { return (major_version() * 10000 +  minor_version()) <= 10000; }
+
+    // True if the message is from HTTP2.
+    bool is_http2() const { return major_version() == 2; }
 
     // Get/set "Content-Type". Notice that you can't get "Content-Type"
     // via GetHeader().
@@ -99,10 +102,9 @@ public:
     int status_code() const { return _status_code; }
     const char* reason_phrase() const;
     void set_status_code(int status_code);
-    void set_status_code(int status_code, const std::string& reason_phrase);
 
     // The URL path removed with matched prefix.
-    // NOTE: This field is always normalized and NOT started with /.
+    // NOTE: always normalized and NOT started with /.
     //
     // Accessing HttpService.Echo
     //   [URL]                               [unresolved_path]
@@ -119,16 +121,10 @@ public:
     //   "/FileService//mydir///123.txt//"   "mydir/123.txt"
     const std::string& unresolved_path() const { return _unresolved_path; }
 
-    // Call unresolved_path() instead.
-    BAIDU_DEPRECATED
-    const std::string& method_path() const { return _unresolved_path; }
-    
 private:
 friend class HttpMessage;
 friend class HttpMessageSerializer;
 friend void policy::ProcessHttpRequest(InputMessageBase *msg);
-    
-    void set_unresolved_path(const std::string& path) { _unresolved_path = path; }
 
     std::string& GetOrAddHeader(const std::string& key) {
         if (!_headers.initialized()) {
@@ -137,12 +133,10 @@ friend void policy::ProcessHttpRequest(InputMessageBase *msg);
         return _headers[key];
     }
 
-    // TODO: Customize allocator of the map
     HeaderMap _headers;
     URI _uri;
     int _status_code;
     HttpMethod _method;
-    std::string _reason_phrase;
     std::string _content_type;
     std::string _unresolved_path;
     std::pair<int, int> _version;

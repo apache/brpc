@@ -21,6 +21,7 @@ DEFINE_string(d, "", "POST this data to the http server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 1000, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_string(protocol, "http", "http or h2c");
 
 namespace brpc {
 DECLARE_bool(http_verbose);
@@ -40,7 +41,7 @@ int main(int argc, char* argv[]) {
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
     brpc::ChannelOptions options;
-    options.protocol = brpc::PROTOCOL_HTTP;
+    options.protocol = FLAGS_protocol;
     options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
     options.max_retry = FLAGS_max_retry;
 
@@ -65,11 +66,7 @@ int main(int argc, char* argv[]) {
     // the response comes back or error occurs(including timedout).
     channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     if (cntl.Failed()) {
-        if (!cntl.response_attachment().empty()) {
-            std::cerr << cntl.response_attachment();
-        } else {
-            std::cerr << cntl.ErrorText();
-        }
+        std::cerr << cntl.ErrorText() << std::endl;
         return -1;
     }
     // If -http_verbose is on, baidu-rpc already prints the response to stderr.
