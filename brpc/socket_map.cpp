@@ -117,7 +117,6 @@ SocketMap::SocketMap()
     : _exposed_in_bvar(false)
     , _this_map_bvar(NULL)
     , _has_close_idle_thread(false) {
-    pthread_mutex_init(&_mutex, NULL);
 }
 
 SocketMap::~SocketMap() {
@@ -127,7 +126,6 @@ SocketMap::~SocketMap() {
         bthread_join(_close_idle_thread, NULL);
     }
     if (!_map.empty()) {
-        pthread_mutex_lock(&_mutex);
         int nleft = 0;
         for (Map::iterator it = _map.begin(); it != _map.end(); ++it) {
             SingleConnection* sc = &it->second;
@@ -141,7 +139,6 @@ SocketMap::~SocketMap() {
                 LOG(ERROR) << ' ' << *sc->socket << noflush;
             }
         }
-        pthread_mutex_unlock(&_mutex);
         if (nleft) {
             LOG(ERROR);
         }
@@ -152,7 +149,6 @@ SocketMap::~SocketMap() {
     }
     delete _options.socket_creator;
     _options.socket_creator = NULL;
-    pthread_mutex_destroy(&_mutex);
 }
 
 int SocketMap::Init(const SocketMapOptions& options) {
@@ -185,7 +181,7 @@ void SocketMap::Print(std::ostream& os) {
     // TODO: Elaborate.
     size_t count = 0;
     {
-        std::unique_lock<pthread_mutex_t> mu(_mutex);
+        std::unique_lock<base::Mutex> mu(_mutex);
         count = _map.size();
     }
     os << "count=" << count;
@@ -196,7 +192,7 @@ void SocketMap::PrintSocketMap(std::ostream& os, void* arg) {
 }
 
 int SocketMap::Insert(const base::EndPoint& pt, SocketId* id) {
-    std::unique_lock<pthread_mutex_t> mu(_mutex);
+    std::unique_lock<base::Mutex> mu(_mutex);
     SingleConnection* sc = _map.seek(pt);
     if (sc) {
         if (!sc->socket->Failed() ||
@@ -253,7 +249,7 @@ void SocketMap::Remove(const base::EndPoint& pt, SocketId expected_id) {
 void SocketMap::RemoveInternal(const base::EndPoint& pt,
                                SocketId expected_id,
                                bool remove_orphan) {
-    std::unique_lock<pthread_mutex_t> mu(_mutex);
+    std::unique_lock<base::Mutex> mu(_mutex);
     SingleConnection* sc = _map.seek(pt);
     if (!sc) {
         return;

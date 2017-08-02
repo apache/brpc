@@ -22,7 +22,7 @@ namespace brpc {
 // may crash probably due to some TLS data used inside OpenSSL
 // Also according to performance test, there is little difference
 // between pthread mutex and bthread mutex
-static pthread_mutex_t* g_ssl_mutexs = NULL;
+static base::Mutex* g_ssl_mutexs = NULL;
 
 #ifndef OPENSSL_NO_DH
 static DH* g_dh_1024 = NULL;
@@ -480,20 +480,14 @@ static void SSLLockCallback(int mode, int n, const char* file, int line) {
     //          << (mode & CRYPTO_LOCK ? "locks" : "unlocks")
     //          << " thread=" << CRYPTO_thread_id();
     if (mode & CRYPTO_LOCK) {
-        pthread_mutex_lock(&g_ssl_mutexs[n]);
+        g_ssl_mutexs[n].lock();
     } else {
-        pthread_mutex_unlock(&g_ssl_mutexs[n]);
+        g_ssl_mutexs[n].unlock();
     }
 }
 
 int SSLThreadInit() {
-    g_ssl_mutexs = new pthread_mutex_t[CRYPTO_num_locks()];
-    for (int i = 0; i < CRYPTO_num_locks(); ++i) {
-        if (pthread_mutex_init(&g_ssl_mutexs[i], NULL) != 0) {
-            LOG(ERROR) << "Fail to initialize pthread_mutex_t";
-            return -1;
-        }
-    }
+    g_ssl_mutexs = new base::Mutex[CRYPTO_num_locks()];
     CRYPTO_set_locking_callback(SSLLockCallback);
 #ifdef CRYPTO_LOCK_ECDH
     CRYPTO_THREADID_set_callback(SSLGetThreadId);

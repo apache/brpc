@@ -38,16 +38,12 @@ public:
 
 private:
     ExcludedServers(int cap)
-        : _l(_space, sizeof(SocketId)* cap, base::NOT_OWN_STORAGE) {
-        pthread_mutex_init(&_mutex, NULL);
-    }
-    ~ExcludedServers() {
-        pthread_mutex_destroy(&_mutex);
-    }
+        : _l(_space, sizeof(SocketId)* cap, base::NOT_OWN_STORAGE) {}
+    ~ExcludedServers() {}
     // Controller::_accessed may be shared by sub channels in schan, protect
     // all mutable methods with this mutex. In ordinary channels, this mutex
     // is never contended.
-    mutable pthread_mutex_t _mutex;
+    mutable base::Mutex _mutex;
     base::BoundedQueue<SocketId> _l;
     SocketId _space[0];
 };

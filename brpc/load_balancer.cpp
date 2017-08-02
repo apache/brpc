@@ -23,12 +23,12 @@ void SharedLoadBalancer::DescribeLB(std::ostream& os, void* arg) {
 
 void SharedLoadBalancer::ExposeLB() {
     bool changed = false;
-    pthread_mutex_lock(&_st_mutex);
+    _st_mutex.lock();
     if (!_exposed) {
         _exposed = true;
         changed = true;
     }
-    pthread_mutex_unlock(&_st_mutex);
+    _st_mutex.unlock();
     if (changed) {
         char name[32];
         snprintf(name, sizeof(name), "_load_balancer_%d", g_lb_counter.fetch_add(
@@ -42,7 +42,6 @@ SharedLoadBalancer::SharedLoadBalancer()
     , _weight_sum(0)
     , _exposed(false)
     , _st(DescribeLB, this) {
-    pthread_mutex_init(&_st_mutex, NULL);
 }
 
 SharedLoadBalancer::~SharedLoadBalancer() {
@@ -51,7 +50,6 @@ SharedLoadBalancer::~SharedLoadBalancer() {
         _lb->Destroy();
         _lb = NULL;
     }
-    pthread_mutex_destroy(&_st_mutex);
 }
 
 int SharedLoadBalancer::Init(const char* lb_name) {

@@ -430,7 +430,7 @@ void LocalityAwareLoadBalancer::Destroy() {
 }
 
 void LocalityAwareLoadBalancer::Weight::Describe(std::ostream& os, int64_t now) {
-    pthread_mutex_lock(&_mutex);
+    std::unique_lock<base::Mutex> mu(_mutex);
     int64_t begin_time_sum = _begin_time_sum;
     int begin_time_count = _begin_time_count;
     int64_t weight = _weight;
@@ -447,7 +447,7 @@ void LocalityAwareLoadBalancer::Weight::Describe(std::ostream& os, int64_t now) 
         }
         qps = n * 1000000 / (double)(now - _time_q.top()->end_time_us);
     }
-    pthread_mutex_unlock(&_mutex);
+    mu.unlock();
 
     os << "weight=" << weight;
     if (base_weight != weight) {
@@ -502,19 +502,16 @@ LocalityAwareLoadBalancer::Weight::Weight(int64_t initial_weight)
     , _avg_latency(0)
     , _dev(0)
     , _time_q(_time_q_items, sizeof(_time_q_items), base::NOT_OWN_STORAGE) {
-    CHECK_EQ(0, pthread_mutex_init(&_mutex, NULL));
 }
 
 LocalityAwareLoadBalancer::Weight::~Weight() {
-    pthread_mutex_destroy(&_mutex);
 }
 
 int64_t LocalityAwareLoadBalancer::Weight::Disable() {
-    pthread_mutex_lock(&_mutex);
+    BAIDU_SCOPED_LOCK(_mutex);
     const int64_t saved = _weight;
     _base_weight = 0;
     _weight = 0;
-    pthread_mutex_unlock(&_mutex);
     return saved;
 }
 
@@ -528,13 +525,12 @@ int64_t LocalityAwareLoadBalancer::Weight::MarkOld(size_t index) {
 }
         
 std::pair<int64_t, int64_t> LocalityAwareLoadBalancer::Weight::ClearOld() {
-    pthread_mutex_lock(&_mutex);
+    BAIDU_SCOPED_LOCK(_mutex);
     const int64_t old_weight = _old_weight;
     const int64_t diff = _old_diff_sum;
     _old_diff_sum = 0;
     _old_index = (size_t)-1;
     _old_weight = 0;
-    pthread_mutex_unlock(&_mutex);
     return std::make_pair(old_weight, diff);
 }
 

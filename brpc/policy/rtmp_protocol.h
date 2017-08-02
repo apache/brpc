@@ -367,14 +367,14 @@ private:
     RtmpService* _service;
     
     // Mapping message_stream_id to message streams.
-    pthread_mutex_t _stream_mutex;
+    base::Mutex _stream_mutex;
     struct MessageStreamInfo {
         base::intrusive_ptr<RtmpStreamBase> stream;
     };
     base::FlatMap<uint32_t, MessageStreamInfo> _mstream_map;
 
     // Mapping transaction id to handlers.
-    pthread_mutex_t _trans_mutex;
+    base::Mutex _trans_mutex;
     uint32_t _trans_id_allocator;
     base::FlatMap<uint32_t, RtmpTransactionHandler*> _trans_map;
 

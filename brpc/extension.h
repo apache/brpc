@@ -41,7 +41,7 @@ friend class base::GetLeakySingleton<Extension<T> >;
     Extension();
     ~Extension();
     base::CaseIgnoredFlatMap<T*> _instance_map;
-    pthread_mutex_t _map_mutex;
+    base::Mutex _map_mutex;
 };
 
 } // namespace brpc

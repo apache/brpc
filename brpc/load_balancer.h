@@ -148,7 +148,7 @@ private:
     LoadBalancer* _lb;
     base::atomic<int> _weight_sum;
     volatile bool _exposed;
-    pthread_mutex_t _st_mutex;
+    base::Mutex _st_mutex;
     bvar::PassiveStatus<std::string> _st;
 };
 

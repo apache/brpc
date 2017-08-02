@@ -94,7 +94,7 @@ private:
         const std::vector<ServerNodeWithId>& src,
         std::vector<ServerId>* dst, const NamingServiceFilter* filter);
 
-    pthread_mutex_t _mutex;
+    base::Mutex _mutex;
     bthread_t _tid;
     // TODO: better use a name.
     const NamingService* _source_ns;

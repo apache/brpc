@@ -103,7 +103,7 @@ private:
     // and destroyed, a single map+mutex may become hot-spots.
     typedef base::FlatMap<base::EndPoint, SingleConnection> Map;
     SocketMapOptions _options;
-    pthread_mutex_t _mutex;
+    base::Mutex _mutex;
     Map _map;
     bool _exposed_in_bvar;
     bvar::PassiveStatus<std::string>* _this_map_bvar;

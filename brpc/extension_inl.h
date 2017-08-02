@@ -19,13 +19,11 @@ Extension<T>* Extension<T>::instance() {
 
 template <typename T>
 Extension<T>::Extension() {
-    pthread_mutex_init(&_map_mutex, NULL);
     _instance_map.init(29);
 }
 
 template <typename T>
 Extension<T>::~Extension() {
-    pthread_mutex_destroy(&_map_mutex);
 }
 
 template <typename T>

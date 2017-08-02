@@ -65,9 +65,7 @@ public:
         bool need_feedback;
     };
     
-    ChannelBalancer() {
-        pthread_mutex_init(&_mutex, NULL);
-    }
+    ChannelBalancer() {}
     ~ChannelBalancer();
     int Init(const char* lb_name);
     int AddChannel(ChannelBase* sub_channel,
@@ -78,7 +76,7 @@ public:
     void Describe(std::ostream& os, const DescribeOptions&);
 
 private:
-    pthread_mutex_t _mutex;
+    base::Mutex _mutex;
     // Find out duplicated sub channels.
     ChannelToIdMap _chan_map;
 };
@@ -143,7 +141,6 @@ private:
 // ===============================================
 
 ChannelBalancer::~ChannelBalancer() {
-    pthread_mutex_destroy(&_mutex);
     for (ChannelToIdMap::iterator
              it = _chan_map.begin(); it != _chan_map.end(); ++it) {
         SocketUniquePtr ptr(it->second); // Dereference

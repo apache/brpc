@@ -23,7 +23,7 @@ struct AccessThreadArgs {
     const std::deque<std::string>* url_list;
     size_t offset;
     std::deque<std::pair<std::string, base::IOBuf> > output_queue;
-    pthread_mutex_t output_queue_mutex;
+    base::Mutex output_queue_mutex;
     base::atomic<int> current_concurrency;
 };
 
@@ -124,7 +124,6 @@ int main(int argc, char** argv) {
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         args[i].url_list = &url_list;
         args[i].offset = i;
-        pthread_mutex_init(&args[i].output_queue_mutex, NULL);
         args[i].current_concurrency.store(0, base::memory_order_relaxed);
     }
     std::vector<bthread_t> tids;

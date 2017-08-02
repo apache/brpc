@@ -7,7 +7,7 @@
 #ifndef BRPC_ACCEPTOR_H
 #define BRPC_ACCEPTOR_H
 
-#include <pthread.h>
+#include "base/synchronization/condition_variable.h"
 #include "base/containers/flat_map.h"
 #include "brpc/input_messenger.h"
 
@@ -86,8 +86,8 @@ private:
     // The Socket tso accept connections.
     SocketId _acception_id;
 
-    pthread_mutex_t _map_mutex;
-    pthread_cond_t _empty_cond;
+    base::Mutex _map_mutex;
+    base::ConditionVariable _empty_cond;
     
     // The map containing all the accepted sockets
     SocketMap _socket_map;

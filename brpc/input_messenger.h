@@ -107,7 +107,7 @@ private:
     bool _non_protocol;
     size_t _capacity;
 
-    pthread_mutex_t _add_handler_mutex;
+    base::Mutex _add_handler_mutex;
 };
 
 // Get the global InputMessenger at client-side.

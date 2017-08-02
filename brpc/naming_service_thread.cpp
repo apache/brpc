@@ -193,7 +193,6 @@ NamingServiceThread::NamingServiceThread()
     , _source_ns(NULL)
     , _ns(NULL)
     , _actions(this) {
-    pthread_mutex_init(&_mutex, NULL);
 }
 
 NamingServiceThread::~NamingServiceThread() {
@@ -232,7 +231,6 @@ NamingServiceThread::~NamingServiceThread() {
         _ns->Destroy();
         _ns = NULL;
     }
-    pthread_mutex_destroy(&_mutex);
 }
 
 void* NamingServiceThread::RunThis(void* arg) {

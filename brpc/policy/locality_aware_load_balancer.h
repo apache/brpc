@@ -86,7 +86,7 @@ private:
     private:
         int64_t _weight;
         int64_t _base_weight;
-        pthread_mutex_t _mutex;
+        base::Mutex _mutex;
         int64_t _begin_time_sum;
         int _begin_time_count;
         int64_t _old_diff_sum;

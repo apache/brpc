@@ -720,8 +720,6 @@ RtmpContext::RtmpContext(const RtmpClientOptions* copt, const Server* server)
         _service = server->options().rtmp_service;
     }
     _free_ms_ids.reserve(32);
-    pthread_mutex_init(&_stream_mutex, NULL);
-    pthread_mutex_init(&_trans_mutex, NULL);
     CHECK_EQ(0, _mstream_map.init(1024, 70));
     CHECK_EQ(0, _trans_map.init(1024, 70));
     memset(_cstream_ctx, 0, sizeof(_cstream_ctx));
@@ -765,8 +763,6 @@ RtmpContext::~RtmpContext() {
 
     free(_s1_digest);
     _s1_digest = NULL;
-    pthread_mutex_destroy(&_stream_mutex);
-    pthread_mutex_destroy(&_trans_mutex);
 }
 
 void RtmpContext::Destroy() {
@@ -926,7 +922,7 @@ bool RtmpContext::AddClientStream(RtmpStreamBase* stream) {
     }
     uint32_t chunk_stream_id = 0;
     {
-        std::unique_lock<pthread_mutex_t> mu(_stream_mutex);
+        std::unique_lock<base::Mutex> mu(_stream_mutex);
         MessageStreamInfo& info = _mstream_map[stream_id];
         if (info.stream != NULL) {
             mu.unlock();
@@ -943,7 +939,7 @@ bool RtmpContext::AddClientStream(RtmpStreamBase* stream) {
 bool RtmpContext::AddServerStream(RtmpStreamBase* stream) {
     uint32_t stream_id = 0;
     {
-        std::unique_lock<pthread_mutex_t> mu(_stream_mutex);
+        std::unique_lock<base::Mutex> mu(_stream_mutex);
         if (!AllocateMessageStreamId(&stream_id)) {
             return false;
         }
@@ -974,7 +970,7 @@ bool RtmpContext::RemoveMessageStream(RtmpStreamBase* stream) {
     // for deref the stream outside _stream_mutex.
     base::intrusive_ptr<RtmpStreamBase> deref_ptr; 
     {
-        std::unique_lock<pthread_mutex_t> mu(_stream_mutex);
+        std::unique_lock<base::Mutex> mu(_stream_mutex);
         MessageStreamInfo* info = _mstream_map.seek(stream_id);
         if (info == NULL) {
             mu.unlock();

@@ -7,7 +7,7 @@
 #ifndef BRPC_SIMPLE_DATA_POOL_H
 #define BRPC_SIMPLE_DATA_POOL_H
 
-#include <pthread.h>
+#include "base/scoped_lock.h"
 #include "brpc/data_factory.h"
 
 
@@ -35,7 +35,7 @@ public:
     Stat stat() const;
     
 private:
-    pthread_mutex_t _mutex;
+    base::Mutex _mutex;
     unsigned _capacity;
     unsigned _size;
     base::atomic<unsigned> _ncreated;
@@ -49,12 +49,10 @@ inline SimpleDataPool::SimpleDataPool(const DataFactory* factory)
     , _ncreated(0)
     , _pool(NULL)
     , _factory(factory) {
-    pthread_mutex_init(&_mutex, NULL);
 }
 
 inline SimpleDataPool::~SimpleDataPool() {
     Reset(NULL);
-    pthread_mutex_destroy(&_mutex);
 }
 
 inline void SimpleDataPool::Reset(const DataFactory* factory) {
@@ -132,12 +130,12 @@ inline void SimpleDataPool::Return(void* data) {
     if (data == NULL) {
         return;
     }
-    pthread_mutex_lock(&_mutex);
+    std::unique_lock<base::Mutex> mu(_mutex);
     if (_capacity == _size) {
         const unsigned new_cap = (_capacity == 0 ? 128 : (_capacity * 3 / 2));
         void** new_pool = (void**)malloc(new_cap * sizeof(void*));
         if (NULL == new_pool) {
-            pthread_mutex_unlock(&_mutex);
+            mu.unlock();
             return _factory->DestroyData(data);
         }
         if (_pool) {
@@ -148,7 +146,6 @@ inline void SimpleDataPool::Return(void* data) {
         _pool = new_pool;
     }
     _pool[_size++] = data;
-    pthread_mutex_unlock(&_mutex);
 }
 
 inline SimpleDataPool::Stat SimpleDataPool::stat() const {

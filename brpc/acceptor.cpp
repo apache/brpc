@@ -23,17 +23,13 @@ Acceptor::Acceptor(bthread_keytable_pool_t* pool)
     , _close_idle_tid(INVALID_BTHREAD)
     , _listened_fd(-1)
     , _acception_id(0)
+    , _empty_cond(&_map_mutex)
     , _ssl_ctx(NULL) {
-    CHECK_EQ(0, pthread_mutex_init(&_map_mutex, NULL));
-    CHECK_EQ(0, pthread_cond_init(&_empty_cond, NULL));
 }
 
 Acceptor::~Acceptor() {
     StopAccept(0);
     Join();
-
-    CHECK_EQ(0, pthread_mutex_destroy(&_map_mutex));
-    CHECK_EQ(0, pthread_cond_destroy(&_empty_cond));
 }
 
 int Acceptor::StartAccept(
@@ -151,19 +147,18 @@ int Acceptor::Initialize() {
 
 // NOTE: Join() can happen before StopAccept()
 void Acceptor::Join() {
-    pthread_mutex_lock(&_map_mutex);
+    std::unique_lock<base::Mutex> mu(_map_mutex);
     if (_status != STOPPING && _status != RUNNING) {  // no need to join.
-        pthread_mutex_unlock(&_map_mutex);
         return;
     }
     // `_listened_fd' will be set to -1 once it has been recycled
     while (_listened_fd > 0 || !_socket_map.empty()) {
-        pthread_cond_wait(&_empty_cond, &_map_mutex);
+        _empty_cond.Wait();
     }
     const int saved_idle_timeout_sec = _idle_timeout_sec;
     _idle_timeout_sec = 0;
     const bthread_t saved_close_idle_tid = _close_idle_tid;
-    pthread_mutex_unlock(&_map_mutex);
+    mu.unlock();
 
     // Join the bthread outside lock.
     if (saved_idle_timeout_sec > 0) {
@@ -194,7 +189,7 @@ void Acceptor::ListConnections(std::vector<SocketId>* conn_list,
     // ConnectionCount is inaccurate, enough space is reserved
     conn_list->reserve(ConnectionCount() + 10);
 
-    std::unique_lock<pthread_mutex_t> mu(_map_mutex);
+    std::unique_lock<base::Mutex> mu(_map_mutex);
     if (!_socket_map.initialized()) {
         // Optional. Uninitialized FlatMap should be iteratable.
         return;
@@ -313,14 +308,14 @@ void Acceptor::BeforeRecycle(Socket* sock) {
         // so that we are ensured no more events will arrive (and `Join'
         // will return to its caller)
         _listened_fd = -1;
-        pthread_cond_broadcast(&_empty_cond);
+        _empty_cond.Broadcast();
         return;
     }
     // If a Socket could not be addressed shortly after its creation, it
     // was not added into `_socket_map'.
     _socket_map.erase(sock->id());
     if (_socket_map.empty()) {
-        pthread_cond_broadcast(&_empty_cond);
+        _empty_cond.Broadcast();
     }
 }
 

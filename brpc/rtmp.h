@@ -578,7 +578,7 @@ friend class policy::OnServerStreamCreated;
     uint32_t _chunk_stream_id;
     int64_t _create_realtime_us;
     SocketUniquePtr _rtmpsock;
-    pthread_mutex_t _call_mutex;
+    base::Mutex _call_mutex;
 };
 
 struct RtmpClientOptions {
@@ -812,7 +812,7 @@ friend class RtmpRetryingClientStream;
         STATE_DESTROYING,
     };
     State _state;
-    pthread_mutex_t _state_mutex;
+    base::Mutex _state_mutex;
     RtmpClientStreamOptions _options;
 };
 
@@ -944,7 +944,7 @@ friend class InitSubStream;
     
     base::intrusive_ptr<SubStream> _using_sub_stream;
     base::intrusive_ptr<RtmpRetryingClientStream> _self_ref;
-    mutable pthread_mutex_t _stream_mutex;
+    mutable base::Mutex _stream_mutex;
     RtmpRetryingClientStreamOptions _options;
     base::atomic<bool> _destroying;
     base::atomic<bool> _called_on_stop;

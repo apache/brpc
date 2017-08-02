@@ -27,7 +27,6 @@ ProgressiveAttachment::ProgressiveAttachment(SocketUniquePtr& movable_httpsock,
     , _rpc_state(RPC_RUNNING)
     , _notify_id(INVALID_BTHREAD_ID) {
     _httpsock.swap(movable_httpsock);
-    pthread_mutex_init(&_mutex, NULL);
 }
 
 ProgressiveAttachment::~ProgressiveAttachment() {
@@ -55,7 +54,6 @@ ProgressiveAttachment::~ProgressiveAttachment() {
     if (_notify_id != INVALID_BTHREAD_ID) {
         bthread_id_error(_notify_id, 0);
     }
-    pthread_mutex_destroy(&_mutex);
 }
 
 static char s_hex_map[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8',
@@ -115,7 +113,7 @@ int ProgressiveAttachment::Write(const base::IOBuf& data) {
 
     int rpc_state = _rpc_state.load(base::memory_order_acquire);
     if (rpc_state == RPC_RUNNING) {
-        std::unique_lock<pthread_mutex_t> mu(_mutex);
+        std::unique_lock<base::Mutex> mu(_mutex);
         rpc_state = _rpc_state.load(base::memory_order_acquire);
         if (rpc_state == RPC_RUNNING) {
             if (_saved_buf.size() >= (size_t)FLAGS_socket_max_unwritten_bytes ||
@@ -148,7 +146,7 @@ int ProgressiveAttachment::Write(const void* data, size_t n) {
     }
     int rpc_state = _rpc_state.load(base::memory_order_acquire);
     if (rpc_state == RPC_RUNNING) {
-        std::unique_lock<pthread_mutex_t> mu(_mutex);
+        std::unique_lock<base::Mutex> mu(_mutex);
         rpc_state = _rpc_state.load(base::memory_order_relaxed);
         if (rpc_state == RPC_RUNNING) {
             if (_saved_buf.size() >= (size_t)FLAGS_socket_max_unwritten_bytes ||
@@ -190,7 +188,7 @@ void ProgressiveAttachment::MarkRPCAsDone(bool rpc_failed) {
     int ntry = 0;
     bool permanent_error = false;
     do {
-        std::unique_lock<pthread_mutex_t> mu(_mutex);
+        std::unique_lock<base::Mutex> mu(_mutex);
         if (_saved_buf.empty() || permanent_error || rpc_failed) {
             base::IOBuf tmp;
             tmp.swap(_saved_buf); // Clear _saved_buf outside lock.

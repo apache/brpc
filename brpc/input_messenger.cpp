@@ -328,7 +328,6 @@ InputMessenger::InputMessenger(size_t capacity)
     , _max_index(-1)
     , _non_protocol(false)
     , _capacity(capacity) {
-    CHECK_EQ(0, pthread_mutex_init(&_add_handler_mutex, NULL));
 }
 
 InputMessenger::~InputMessenger() {
@@ -336,7 +335,6 @@ InputMessenger::~InputMessenger() {
     _handlers = NULL;        
     _max_index.store(-1, base::memory_order_relaxed);
     _capacity = 0;
-    pthread_mutex_destroy(&_add_handler_mutex);
 }
 
 int InputMessenger::AddHandler(const InputMessageHandler& handler) {
