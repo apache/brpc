@@ -661,7 +661,7 @@ void RtmpContext::SetState(const base::EndPoint& remote_side, State new_state) {
     RPC_VLOG << remote_side << ": " << state2str(old_state)
              << " -> " << state2str(new_state);
 }
- 
+
 RtmpUnsentMessage* MakeUnsentControlMessage(
     uint8_t message_type, uint32_t chunk_stream_id,
     const void* data, size_t n) {

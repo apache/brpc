@@ -2308,7 +2308,7 @@ void Socket::ListPooledSockets(std::vector<SocketId>* out, size_t max_count) {
 }
     
 int Socket::GetShortSocket(Socket* main_socket,
-                            SocketUniquePtr* short_socket) {
+                           SocketUniquePtr* short_socket) {
     if (main_socket == NULL || short_socket == NULL) {
         LOG(ERROR) << "main_socket or short_socket is NULL";
         return -1;

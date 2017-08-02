@@ -1489,6 +1489,13 @@ void RtmpClientStream::CleanupSocketForStream(
 
 void RtmpClientStream::ReplaceSocketForStream(
     SocketUniquePtr* inout, Controller* cntl) {
+    {
+        std::unique_lock<pthread_mutex_t> mu(_state_mutex);
+        if (_state == STATE_ERROR || _state == STATE_DESTROYING) {
+            cntl->SetFailed(EINVAL, "Fail to replace socket for stream, _state is error or destroying");
+            return;
+        }
+    }
     SocketId esid;
     if (cntl->connection_type() == CONNECTION_TYPE_SHORT) {
         if (_client_impl->CreateSocket((*inout)->remote_side(), &esid) != 0) {
@@ -1581,28 +1588,23 @@ void RtmpClientStream::OnStreamCreationDone(SocketUniquePtr& sending_sock,
         return OnFailedToCreateStream();
     }
 
-    // NOTE: set _rtmpsock before any error checking to make sure that
-    // deleteStream command will be sent over _rtmpsock to release the
-    // server-side stream on this stream's stop.
-    CHECK(_rtmpsock);
-    
-    const int rc = bthread_id_create(&_onfail_id, this, RunOnFailed);
-    if (rc) {
-        cntl->SetFailed(ENOMEM, "Fail to create _onfail_id: %s", berror(rc));
-        // no need to care about management of socket_map or setting
-        // sending_sock to be failed. The socket is OK to be kept in socket_map
-        // or let Controller::Call::OnComplete close it.
-        return OnFailedToCreateStream();
-    }
-    // Add a ref for RunOnFailed.
-    base::intrusive_ptr<RtmpClientStream>(this).detach();
-
-    // Check _state
+    int rc = 0;
+    bthread_id_t onfail_id = INVALID_BTHREAD_ID;
     {
         std::unique_lock<pthread_mutex_t> mu(_state_mutex);
         switch (_state) {
         case STATE_CREATING:
+            CHECK(_rtmpsock);
+            rc = bthread_id_create(&onfail_id, this, RunOnFailed);
+            if (rc) {
+                cntl->SetFailed(ENOMEM, "Fail to create _onfail_id: %s", berror(rc));
+                mu.unlock();
+                return OnFailedToCreateStream();
+            }
+            // Add a ref for RunOnFailed.
+            base::intrusive_ptr<RtmpClientStream>(this).detach();
             _state = STATE_CREATED;
+            _onfail_id = onfail_id;
             break;
         case STATE_UNINITIALIZED:
         case STATE_CREATED:
@@ -1616,7 +1618,9 @@ void RtmpClientStream::OnStreamCreationDone(SocketUniquePtr& sending_sock,
             return OnStopInternal();
         }
     }
-    _rtmpsock->NotifyOnFailed(_onfail_id);
+    if (onfail_id != INVALID_BTHREAD_ID) {
+        _rtmpsock->NotifyOnFailed(onfail_id);
+    }
 }
 
 void RtmpClientStream::OnStopInternal() {
@@ -1913,11 +1917,14 @@ void RtmpClientStream::Init(const RtmpClient* client,
         LOG(FATAL) << "RtmpClient is not initialized";
         return OnStopInternal();
     }
-    if (_state == STATE_DESTROYING || _state == STATE_ERROR) {
-        // already Destroy()-ed or SignalError()-ed
-        LOG(WARNING) << "RtmpClientStream=" << this << " was already "
-            "Destroy()-ed, stop Init()";
-        return;
+    {
+        std::unique_lock<pthread_mutex_t> mu(_state_mutex);
+        if (_state == STATE_DESTROYING || _state == STATE_ERROR) {
+            // already Destroy()-ed or SignalError()-ed
+            LOG(WARNING) << "RtmpClientStream=" << this << " was already "
+                "Destroy()-ed, stop Init()";
+            return;
+        }
     }
     _client_impl = client->_impl;
     _options = options;
@@ -2105,6 +2112,7 @@ void InitSubStream::Run(const RtmpClient* client) {
 
 void RtmpRetryingClientStream::Recreate() {
     base::intrusive_ptr<SubStream> sub_stream(new SubStream(this));
+    base::intrusive_ptr<SubStream> old_sub_stream;
     bool destroying = false;
     {
         BAIDU_SCOPED_LOCK(_stream_mutex);
@@ -2115,9 +2123,13 @@ void RtmpRetryingClientStream::Recreate() {
         // and Destroy() may be called, making new sub_stream leaked.
         destroying = _destroying.load(base::memory_order_relaxed);
         if (!destroying) {
+            _using_sub_stream.swap(old_sub_stream);
             _using_sub_stream = sub_stream;
             _changed_stream = true;
         }
+    }
+    if (old_sub_stream) {
+        old_sub_stream->Destroy();
     }
     if (destroying) {
         sub_stream->Destroy();
