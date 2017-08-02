@@ -390,7 +390,8 @@ void SerializeHttpRequest(base::IOBuf* /*not used*/,
             // Serialize content as json
             std::string err;
             json2pb::Pb2JsonOptions opt;
-            opt.enum_option = (FLAGS_pb_enum_as_number ? json2pb::OUTPUT_ENUM_BY_NUMBER
+            opt.enum_option = (FLAGS_pb_enum_as_number
+                               ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                : json2pb::OUTPUT_ENUM_BY_NAME);
             if (!json2pb::ProtoMessageToJson(*request, &wrapper, opt, &err)) {
                 cntl->request_attachment().clear();
@@ -574,49 +575,43 @@ static void SendHttpResponse(Controller *cntl,
     // Notice: Not check res->IsInitialized() which should be checked in the
     // conversion function.
     if (res != NULL &&
+        cntl->response_attachment().empty() &&
+        // ^ user did not fill the body yet.
         res->GetDescriptor()->field_count() > 0 &&
-        // ^ a pb service must have fields in response.
+        // ^ a pb service
         !cntl->Failed()) {
         // ^ pb response in failed RPC is undefined, no need to convert.
-
-        if (!cntl->response_attachment().empty()) {
-            if (res->ByteSize() != 0) { // fields in `res' were set.
-                LOG(ERROR) << "Service on " << req_header->uri().path()
-                           << " sets both response_attachment and response(pb)"
-                    ", you can set only one of them.";
-            } // else no fields in `res' were set, user is intended to fill
-            // the http body by him/herself.
-        } else {
-            base::IOBufAsZeroCopyOutputStream wrapper(&cntl->response_attachment());
-            const std::string* content_type_str = &res_header->content_type();
-            if (content_type_str->empty()) {
-                content_type_str = &req_header->content_type();
-            }
-            const HttpContentType content_type = ParseContentType(*content_type_str);
-            if (content_type == HTTP_CONTENT_PROTO) {
-                if (res->SerializeToZeroCopyStream(&wrapper)) {
-                    // Set content-type if user did not
-                    if (res_header->content_type().empty()) {
-                        res_header->set_content_type(common->CONTENT_TYPE_PROTO);
-                    }
-                } else {
-                    cntl->SetFailed(ERESPONSE, "Fail to serialize %s",
-                                    res->GetTypeName().c_str());
+        
+        base::IOBufAsZeroCopyOutputStream wrapper(&cntl->response_attachment());
+        const std::string* content_type_str = &res_header->content_type();
+        if (content_type_str->empty()) {
+            content_type_str = &req_header->content_type();
+        }
+        const HttpContentType content_type = ParseContentType(*content_type_str);
+        if (content_type == HTTP_CONTENT_PROTO) {
+            if (res->SerializeToZeroCopyStream(&wrapper)) {
+                // Set content-type if user did not
+                if (res_header->content_type().empty()) {
+                    res_header->set_content_type(common->CONTENT_TYPE_PROTO);
                 }
             } else {
-                std::string err;
-                json2pb::Pb2JsonOptions opt;
-                opt.enum_option = (FLAGS_pb_enum_as_number ? json2pb::OUTPUT_ENUM_BY_NUMBER
-                                   : json2pb::OUTPUT_ENUM_BY_NAME);
-                if (json2pb::ProtoMessageToJson(*res, &wrapper, opt, &err)) {
-                    // Set content-type if user did not
-                    if (res_header->content_type().empty()) {
-                        res_header->set_content_type(common->CONTENT_TYPE_JSON);
-                    }
-                } else {
-                    cntl->SetFailed(ERESPONSE, "Fail to convert response to json, %s",
-                                    err.c_str());
+                cntl->SetFailed(ERESPONSE, "Fail to serialize %s",
+                                res->GetTypeName().c_str());
+            }
+        } else {
+            std::string err;
+            json2pb::Pb2JsonOptions opt;
+            opt.enum_option = (FLAGS_pb_enum_as_number
+                               ? json2pb::OUTPUT_ENUM_BY_NUMBER
+                               : json2pb::OUTPUT_ENUM_BY_NAME);
+            if (json2pb::ProtoMessageToJson(*res, &wrapper, opt, &err)) {
+                // Set content-type if user did not
+                if (res_header->content_type().empty()) {
+                    res_header->set_content_type(common->CONTENT_TYPE_JSON);
                 }
+            } else {
+                cntl->SetFailed(ERESPONSE, "Fail to convert response to json, %s",
+                                err.c_str());
             }
         }
     }
@@ -1220,7 +1215,8 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         cntl->SetFailed("Fail to new req or res");
         return SendHttpResponse(cntl.release(), server, method_status);
     }
-    if (method->input_type()->field_count() > 0) {
+    if (sp->allow_http_body_to_pb &&
+        method->input_type()->field_count() > 0) {
         // A protobuf service. No matter if Content-type is set to
         // applcation/json or body is empty, we have to treat body as a json
         // and try to convert it to pb, which guarantees that a protobuf

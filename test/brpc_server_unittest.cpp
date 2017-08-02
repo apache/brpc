@@ -130,7 +130,7 @@ protected:
         brpc::Server server;
         EvilService evil(conflict_sd);
         EXPECT_EQ(0, server.AddServiceInternal(
-                      &evil, brpc::SERVER_DOESNT_OWN_SERVICE, false, ""));
+                      &evil, false, brpc::ServiceOptions()));
         EXPECT_EQ(-1, server.AddBuiltinServices());
     }
 };
@@ -206,12 +206,18 @@ public:
                     , ncalled_echo5(0)
     {}
     virtual ~EchoServiceV1() {}
-    virtual void Echo(google::protobuf::RpcController*,
+    virtual void Echo(google::protobuf::RpcController* cntl_base,
                       const v1::EchoRequest* request,
                       v1::EchoResponse* response,
                       google::protobuf::Closure* done) {
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
         brpc::ClosureGuard done_guard(done);
-        response->set_message(request->message() + "_v1");
+        if (request->has_message()) {
+            response->set_message(request->message() + "_v1");
+        } else {
+            CHECK_EQ(brpc::PROTOCOL_HTTP, cntl->request_protocol());
+            cntl->response_attachment() = cntl->request_attachment();
+        }
         ncalled.fetch_add(1);
     }
     virtual void Echo2(google::protobuf::RpcController*,
@@ -439,6 +445,76 @@ TEST_F(ServerTest, various_forms_of_uri_paths) {
     //Stop the server.
     server1.Stop(0);
     server1.Join();
+}
+
+TEST_F(ServerTest, missing_required_fields) {
+    const int port = 9200;
+    brpc::Server server1;
+    EchoServiceV1 service_v1;
+    ASSERT_EQ(0, server1.AddService(&service_v1, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server1.Start(port, NULL));
+    brpc::Channel http_channel;
+    brpc::ChannelOptions chan_options;
+    chan_options.protocol = "http";
+    ASSERT_EQ(0, http_channel.Init("0.0.0.0", port, &chan_options));
+    brpc::Controller cntl;
+    cntl.http_request().uri() = "/EchoService/Echo";
+    http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    ASSERT_EQ(brpc::HTTP_STATUS_BAD_REQUEST, cntl.http_response().status_code());
+    ASSERT_EQ(0, service_v1.ncalled.load());
+
+    cntl.Reset();
+    cntl.http_request().uri() = "/EchoService/Echo";
+    cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+    http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    ASSERT_EQ(brpc::HTTP_STATUS_BAD_REQUEST, cntl.http_response().status_code());
+    ASSERT_EQ(0, service_v1.ncalled.load());
+
+    cntl.Reset();
+    cntl.http_request().uri() = "/EchoService/Echo";
+    cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl.request_attachment().append("{\"message2\":\"foo\"}");
+    http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    ASSERT_EQ(brpc::HTTP_STATUS_BAD_REQUEST, cntl.http_response().status_code());
+    ASSERT_EQ(0, service_v1.ncalled.load());
+}
+
+TEST_F(ServerTest, disallow_http_body_to_pb) {
+    const int port = 9200;
+    brpc::Server server1;
+    EchoServiceV1 service_v1;
+    brpc::ServiceOptions svc_opt;
+    svc_opt.allow_http_body_to_pb = false;
+    svc_opt.restful_mappings = "/access_echo1=>Echo";
+    ASSERT_EQ(0, server1.AddService(&service_v1, svc_opt));
+    ASSERT_EQ(0, server1.Start(port, NULL));
+    brpc::Channel http_channel;
+    brpc::ChannelOptions chan_options;
+    chan_options.protocol = "http";
+    ASSERT_EQ(0, http_channel.Init("0.0.0.0", port, &chan_options));
+    brpc::Controller cntl;
+    cntl.http_request().uri() = "/access_echo1";
+    http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    ASSERT_EQ(brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR,
+              cntl.http_response().status_code());
+    ASSERT_EQ(1, service_v1.ncalled.load());
+
+    cntl.Reset();
+    cntl.http_request().uri() = "/access_echo1";
+    cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl.request_attachment().append("heheda");
+    http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ("heheda", cntl.response_attachment());
+    ASSERT_EQ(2, service_v1.ncalled.load());
 }
 
 TEST_F(ServerTest, restful_mapping) {

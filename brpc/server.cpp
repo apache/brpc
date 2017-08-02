@@ -140,6 +140,7 @@ Server::MethodProperty::MethodProperty()
     : is_builtin_service(false)
     , own_method_status(false)
     , is_tabbed(false)
+    , allow_http_body_to_pb(true)
     , http_url(NULL)
     , service(NULL)
     , method(NULL)
@@ -1061,9 +1062,8 @@ int Server::Join() {
 }
 
 int Server::AddServiceInternal(google::protobuf::Service* service,
-                               ServiceOwnership ownership,
                                bool is_builtin_service,
-                               base::StringPiece restful_mappings) {
+                               const ServiceOptions& svc_opt) {
     if (NULL == service) {
         LOG(ERROR) << "Parameter[service] is NULL!";
         return -1;
@@ -1108,6 +1108,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
         mp.is_builtin_service = is_builtin_service;
         mp.own_method_status = true;
         mp.is_tabbed = !!tabbed;
+        mp.allow_http_body_to_pb = svc_opt.allow_http_body_to_pb;
         mp.service = service;
         mp.method = md;
         mp.status = new MethodStatus;
@@ -1132,7 +1133,8 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
         }
     }
 
-    const ServiceProperty ss = { is_builtin_service, ownership, service, NULL };
+    const ServiceProperty ss = {
+        is_builtin_service, svc_opt.ownership, service, NULL };
     _fullname_service_map[sd->full_name()] = ss;
     _service_map[sd->name()] = ss;
     if (is_builtin_service) {
@@ -1142,7 +1144,8 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
             _first_service = service;
         }
     }
-    
+
+    base::StringPiece restful_mappings = svc_opt.restful_mappings;
     restful_mappings.trim_spaces();
     if (!restful_mappings.empty()) {
         // Parse the mappings.
@@ -1190,6 +1193,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
                 }
                 if (!_global_restful_map->AddMethod(
                         mappings[i].path, service, !!tabbed,
+                        svc_opt.allow_http_body_to_pb,
                         mappings[i].method_name, mp->status)) {
                     LOG(ERROR) << "Fail to map `" << mappings[i].path
                                << "' to `" << full_method_name << '\'';
@@ -1222,6 +1226,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
                 m = sp->restful_map;
             }
             if (!m->AddMethod(mappings[i].path, service, !!tabbed,
+                              svc_opt.allow_http_body_to_pb,
                               mappings[i].method_name, mp->status)) {
                 LOG(ERROR) << "Fail to map `" << mappings[i].path << "' to `"
                            << sd->full_name() << '.' << mappings[i].method_name
@@ -1271,16 +1276,37 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
     return 0;
 }
 
+ServiceOptions::ServiceOptions()
+    : ownership(SERVER_DOESNT_OWN_SERVICE)
+    , allow_http_body_to_pb(true) {
+}
+
 int Server::AddService(google::protobuf::Service* service,
                        ServiceOwnership ownership) {
-    return AddServiceInternal(service, ownership, false/*non-builtin*/, "");
+    ServiceOptions options;
+    options.ownership = ownership;
+    return AddServiceInternal(service, false, options);
 }
 
 int Server::AddService(google::protobuf::Service* service,
                        ServiceOwnership ownership,
                        const base::StringPiece& restful_mappings) {
-    return AddServiceInternal(service, ownership, false/*non-builtin*/,
-                              restful_mappings);
+    ServiceOptions options;
+    options.ownership = ownership;
+    // TODO: This is weird
+    options.restful_mappings = restful_mappings.as_string();
+    return AddServiceInternal(service, false, options);
+}
+
+int Server::AddService(google::protobuf::Service* service,
+                       const ServiceOptions& options) {
+    return AddServiceInternal(service, false, options);
+}
+
+int Server::AddBuiltinService(google::protobuf::Service* service) {
+    ServiceOptions options;
+    options.ownership = SERVER_OWNS_SERVICE;
+    return AddServiceInternal(service, true, options);
 }
 
 void Server::RemoveMethodsOf(google::protobuf::Service* service) {

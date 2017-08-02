@@ -295,6 +295,34 @@ enum ServiceOwnership {
     SERVER_DOESNT_OWN_SERVICE
 };
 
+struct ServiceOptions {
+    ServiceOptions(); // constructed with default options.
+
+    // SERVER_OWNS_SERVICE: the service will be deleted by the server.
+    // SERVER_DOESNT_OWN_SERVICE: the service shall be deleted by user after
+    // stopping the server.
+    // Default: SERVER_DOESNT_OWN_SERVICE
+    ServiceOwnership ownership;
+    
+    // If this option is non-empty, methods in the service will be exposed
+    // on specified paths instead of default "/SERVICE/METHOD".
+    // Mappings are in form of: "PATH1 => NAME1, PATH2 => NAME2 ..." where
+    // PATHs are valid http paths, NAMEs are method names in the service.
+    // Default: empty
+    std::string restful_mappings;
+
+    // [ Not recommended to change this option ]
+    // If this flag is true, the service will convert http body to protobuf
+    // when the pb schema is non-empty in http servings. The body must be
+    // valid json or protobuf(wire-format) otherwise the request is rejected.
+    // This option does not affect pure-http services (pb schema is empty).
+    // Services that use older versions of baidu-rpc may need to turn this
+    // conversion off and handle http requests by their own to keep compatible
+    // with existing clients.
+    // Default: true
+    bool allow_http_body_to_pb;
+};
+
 // Represent ports inside [min_port, max_port]
 struct PortRange {
     int min_port;
@@ -336,6 +364,7 @@ public:
         bool is_builtin_service;
         bool own_method_status;
         bool is_tabbed;
+        bool allow_http_body_to_pb;
         // NULL if service of the method was never added as restful.
         // "@path1 @path2 ..." if the method was mapped from paths.
         std::string* http_url;
@@ -402,14 +431,7 @@ public:
     // function may block indefinitely.
     void RunUntilAskedToQuit();
 
-    // Add a service.
-    // If `ownership' is SERVER_OWNS_SERVICE, the service will be deleted along
-    // with this server, otherwise user shall delete the service after stopping
-    // this server.
-    // If `restful_mappings' is not empty, the methods in the service will be
-    // exposed on the specified paths instead of fixed "/SERVICE/METHOD". The
-    // mapping should be in form of: "PATH1 => NAME1, PATH2 => NAME2 ..." where
-    // PATHs are valid http URI paths, NAMEs are method names in the service.
+    // Add a service. Arguments are explained in ServiceOptions above.
     // NOTE: Adding a service while server is running is forbidden.
     // Returns 0 on success, -1 otherwise.
     int AddService(google::protobuf::Service* service,
@@ -417,6 +439,8 @@ public:
     int AddService(google::protobuf::Service* service,
                    ServiceOwnership ownership,
                    const base::StringPiece& restful_mappings);
+    int AddService(google::protobuf::Service* service,
+                   const ServiceOptions& options);
 
     // Remove a service from this server.
     // NOTE: removing a service while server is running is forbidden.
@@ -533,13 +557,10 @@ friend class ServerPrivateAccessor;
 friend class Controller;
 
     int AddServiceInternal(google::protobuf::Service* service,
-                           ServiceOwnership ownership,
                            bool is_builtin_service,
-                           base::StringPiece restful_mappings);
+                           const ServiceOptions& options);
 
-    int AddBuiltinService(google::protobuf::Service* service) {
-        return AddServiceInternal(service, SERVER_OWNS_SERVICE, true, "");
-    }
+    int AddBuiltinService(google::protobuf::Service* service);
 
     // Remove all methods of `service' from internal structures.
     void RemoveMethodsOf(google::protobuf::Service* service);

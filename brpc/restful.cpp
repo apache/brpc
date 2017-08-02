@@ -247,6 +247,7 @@ RestfulMap::~RestfulMap() {
 bool RestfulMap::AddMethod(const RestfulMethodPath& path,
                            google::protobuf::Service* service,
                            bool is_tabbed,
+                           bool allow_http_body_to_pb,
                            const std::string& method_name,
                            MethodStatus* status) {
     if (service == NULL) {
@@ -278,6 +279,7 @@ bool RestfulMap::AddMethod(const RestfulMethodPath& path,
     info.is_builtin_service = false;
     info.own_method_status = false;
     info.is_tabbed = is_tabbed;
+    info.allow_http_body_to_pb = allow_http_body_to_pb;
     info.service = service;
     info.method = md;
     info.status = status;

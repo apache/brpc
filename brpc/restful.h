@@ -61,6 +61,7 @@ public:
     bool AddMethod(const RestfulMethodPath& path,
                    google::protobuf::Service* service,
                    bool is_tabbed,
+                   bool allow_http_body_to_pb,
                    const std::string& method_name,
                    MethodStatus* status);
 
