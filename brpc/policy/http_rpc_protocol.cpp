@@ -32,7 +32,6 @@ extern "C" {
 void bthread_assign_data(void* data) __THROW;
 }
 
-
 namespace brpc {
 
 int is_failed_after_queries(const http_parser* parser);
@@ -398,8 +397,7 @@ void SerializeHttpRequest(base::IOBuf* /*not used*/,
             // Serialize content as json
             std::string err;
             json2pb::Pb2JsonOptions opt;
-            opt.enum_option = (FLAGS_pb_enum_as_number
-                               ? json2pb::OUTPUT_ENUM_BY_NUMBER
+            opt.enum_option = (FLAGS_pb_enum_as_number ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                : json2pb::OUTPUT_ENUM_BY_NAME);
             if (!json2pb::ProtoMessageToJson(*request, &wrapper, opt, &err)) {
                 cntl->request_attachment().clear();
@@ -613,8 +611,7 @@ static void SendHttpResponse(Controller *cntl,
             } else {
                 std::string err;
                 json2pb::Pb2JsonOptions opt;
-                opt.enum_option = (FLAGS_pb_enum_as_number
-                                   ? json2pb::OUTPUT_ENUM_BY_NUMBER
+                opt.enum_option = (FLAGS_pb_enum_as_number ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                    : json2pb::OUTPUT_ENUM_BY_NAME);
                 if (json2pb::ProtoMessageToJson(*res, &wrapper, opt, &err)) {
                     // Set content-type if user did not
@@ -1093,7 +1090,8 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         }
     }
 
-    // Tag the bthread with this server's key for thread_local_data().
+    // Tag the bthread with this server's key for
+    // thread_local_data().
     if (server->thread_local_options().thread_local_data_factory) {
         bthread_assign_data((void*)&server->thread_local_options());
     }
@@ -1149,7 +1147,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         accessor.set_method(md);
         cntl->http_request().Swap(http_imsg->header());
         cntl->request_attachment().swap(http_imsg->body());
-        google::protobuf::Closure* done = ::brpc::NewCallback<
+        google::protobuf::Closure* done = brpc::NewCallback<
             Controller*, const google::protobuf::Message*,
             const google::protobuf::Message*, const Server*,
             MethodStatus *, long>(
@@ -1287,7 +1285,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     
     http_imsg.reset();  // optional, just release resourse ASAP
 
-    google::protobuf::Closure* done = ::brpc::NewCallback<
+    google::protobuf::Closure* done = brpc::NewCallback<
         Controller*, const google::protobuf::Message*,
         const google::protobuf::Message*, const Server*,
           MethodStatus *, long>(
