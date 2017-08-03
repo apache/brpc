@@ -4,7 +4,7 @@
 // Author: The baidu-rpc authors (pbrpc@baidu.com)
 // Date: Wed Mar  4 10:49:35 2015
 
-#include "brpc/load_balancer_with_naming.h"
+#include "brpc/details/load_balancer_with_naming.h"
 
 
 namespace brpc {

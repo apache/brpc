@@ -13,7 +13,7 @@
 #include "brpc/compress.h"
 #include "brpc/global.h"
 #include "brpc/span.h"
-#include "brpc/load_balancer_with_naming.h"
+#include "brpc/details/load_balancer_with_naming.h"
 #include "brpc/controller.h"
 #include "brpc/channel.h"
 #include "brpc/details/usercode_backup_pool.h"  // TooManyUserCode

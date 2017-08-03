@@ -22,7 +22,7 @@
 #include "brpc/policy/baidu_rpc_meta.pb.h"
 #include "brpc/policy/most_common_message.h"
 #include "brpc/channel.h"
-#include "brpc/load_balancer_with_naming.h"
+#include "brpc/details/load_balancer_with_naming.h"
 #include "brpc/parallel_channel.h"
 #include "brpc/selective_channel.h"
 #include "brpc/socket_map.h"
