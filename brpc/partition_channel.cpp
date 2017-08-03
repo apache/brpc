@@ -6,7 +6,7 @@
 
 #include "base/containers/flat_map.h"
 #include "brpc/load_balancer.h"
-#include "brpc/naming_service_thread.h"
+#include "brpc/details/naming_service_thread.h"
 #include "brpc/partition_channel.h"
 #include "brpc/global.h"
 

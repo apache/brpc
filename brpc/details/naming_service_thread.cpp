@@ -11,7 +11,7 @@
 #include "base/scoped_lock.h"
 #include "base/logging.h"
 #include "brpc/socket_map.h"
-#include "brpc/naming_service_thread.h"
+#include "brpc/details/naming_service_thread.h"
 
 
 namespace brpc {

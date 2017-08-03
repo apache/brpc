@@ -9,7 +9,7 @@
 
 #include "base/intrusive_ptr.hpp"
 #include "brpc/load_balancer.h"
-#include "brpc/naming_service_thread.h"         // NamingServiceWatcher
+#include "brpc/details/naming_service_thread.h"         // NamingServiceWatcher
 
 
 namespace brpc {
