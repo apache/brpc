@@ -30,25 +30,31 @@ TEST(URITest, everything) {
 
 TEST(URITest, only_host) {
     brpc::URI uri;
-    ASSERT_EQ(0, uri.SetHttpURL("  foo1://www.baidu1.com "));
+    ASSERT_EQ(0, uri.SetHttpURL("  foo1://www.baidu1.com?wd=uri2&nonkey=22 "));
     ASSERT_EQ("foo1", uri.schema());
     ASSERT_EQ(-1, uri.port());
     ASSERT_EQ("www.baidu1.com", uri.host());
     ASSERT_EQ("", uri.path());
     ASSERT_EQ("", uri.user_info());
     ASSERT_EQ("", uri.fragment());
-    ASSERT_EQ(0, uri.QueryCount());
-    ASSERT_FALSE(uri.GetQuery("wd"));
-    ASSERT_FALSE(uri.GetQuery("nonkey"));
+    ASSERT_EQ(2, uri.QueryCount());
+    ASSERT_TRUE(uri.GetQuery("wd"));
+    ASSERT_EQ(*uri.GetQuery("wd"), "uri2");
+    ASSERT_TRUE(uri.GetQuery("nonkey"));
+    ASSERT_EQ(*uri.GetQuery("nonkey"), "22");
 
-    ASSERT_EQ(0, uri.SetHttpURL("foo2://www.baidu2.com:1234"));
+    ASSERT_EQ(0, uri.SetHttpURL("foo2://www.baidu2.com:1234?wd=uri2&nonkey=22 "));
     ASSERT_EQ("foo2", uri.schema());
     ASSERT_EQ(1234, uri.port());
     ASSERT_EQ("www.baidu2.com", uri.host());
     ASSERT_EQ("", uri.path());
     ASSERT_EQ("", uri.user_info());
     ASSERT_EQ("", uri.fragment());
-    ASSERT_EQ(0, uri.QueryCount());
+    ASSERT_EQ(2, uri.QueryCount());
+    ASSERT_TRUE(uri.GetQuery("wd"));
+    ASSERT_EQ(*uri.GetQuery("wd"), "uri2");
+    ASSERT_TRUE(uri.GetQuery("nonkey"));
+    ASSERT_EQ(*uri.GetQuery("nonkey"), "22");
 
     ASSERT_EQ(0, uri.SetHttpURL(" www.baidu3.com:4321 "));
     ASSERT_EQ("", uri.schema());
@@ -246,7 +252,9 @@ TEST(URITest, only_one_key) {
 
 TEST(URITest, empty_host) {
     brpc::URI uri;
-    ASSERT_EQ(-1, uri.SetHttpURL("http://"));
+    ASSERT_EQ(0, uri.SetHttpURL("http://"));
+    ASSERT_EQ("", uri.host());
+    ASSERT_EQ("", uri.path());
 }
 
 TEST(URITest, invalid_spaces) {

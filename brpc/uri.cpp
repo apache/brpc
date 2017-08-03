@@ -89,8 +89,43 @@ static bool is_all_spaces(const char* p) {
     for (; *p == ' '; ++p) {}
     return !*p;
 }
-    
-// This implementation is much faster than http_parser_parse_url().
+
+const char URI_PARSE_CONTINUE = 0;
+const char URI_PARSE_CHECK = 1;
+const char URI_PARSE_BREAK = 2;
+static const char g_url_parsing_fast_action_map_raw[] = {
+    0/*-128*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*-118*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*-108*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*-98*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*-88*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*-78*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*-68*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*-58*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*-48*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*-38*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*-28*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*-18*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*-8*/, 0, 0, 0, 0, 0, 0, 0, URI_PARSE_BREAK/*\0*/, 0,
+    0/*2*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*12*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*22*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    URI_PARSE_CHECK/* */, 0, 0, URI_PARSE_BREAK/*#*/, 0, 0, 0, 0, 0, 0,
+    0/*42*/, 0, 0, 0, 0, URI_PARSE_BREAK/*/*/, 0, 0, 0, 0,
+    0/*52*/, 0, 0, 0, 0, 0, URI_PARSE_CHECK/*:*/, 0, 0, 0,
+    0/*62*/, URI_PARSE_BREAK/*?*/, URI_PARSE_CHECK/*@*/, 0, 0, 0, 0, 0, 0, 0,
+    0/*72*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*82*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*92*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*102*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*112*/, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0/*122*/, 0, 0, 0, 0, 0
+};
+static const char* const g_url_parsing_fast_action_map =
+    g_url_parsing_fast_action_map_raw + 128;
+
+// This implementation is faster than http_parser_parse_url() and allows
+// ignoring of schema("http://")
 int URI::SetHttpURL(const char* url) {
     Clear();
     
@@ -103,7 +138,14 @@ int URI::SetHttpURL(const char* url) {
     // Find end of host, locate schema and user_info during the searching
     bool need_schema = true;
     bool need_user_info = true;
-    for (; *p && *p != '/'; ++p) {
+    for (; true; ++p) {
+        const char action = g_url_parsing_fast_action_map[(int)*p];
+        if (action == URI_PARSE_CONTINUE) {
+            continue;
+        }
+        if (action == URI_PARSE_BREAK) {
+            break;
+        }
         if (*p == ':') {
             if (p[1] == '/' && p[2] == '/' && need_schema) {
                 need_schema = false;
@@ -127,25 +169,20 @@ int URI::SetHttpURL(const char* url) {
     }
     const char* host_end = SplitHostAndPort(start, p, &_port);
     _host.assign(start, host_end - start);
-    if (*p != '/') {
-        if (host_end == start) {
-            _st.set_error(EINVAL, "Empty host and path");
-            return -1;
-        }
-        return 0;
-    }
-    start = p; //slash pointed by p is counted into _path
-    ++p;
-    for (; *p && *p != '?' && *p != '#'; ++p) {
-        if (*p == ' ') {
-            if (!is_all_spaces(p + 1)) {
-                _st.set_error(EINVAL, "Invalid space in path");
-                return -1;
+    if (*p == '/') {
+        start = p; //slash pointed by p is counted into _path
+        ++p;
+        for (; *p && *p != '?' && *p != '#'; ++p) {
+            if (*p == ' ') {
+                if (!is_all_spaces(p + 1)) {
+                    _st.set_error(EINVAL, "Invalid space in path");
+                    return -1;
+                }
+                break;
             }
-            break;
         }
+        _path.assign(start, p - start);
     }
-    _path.assign(start, p - start);
     if (*p == '?') {
         start = ++p;
         for (; *p && *p != '#'; ++p) {
@@ -187,7 +224,14 @@ int ParseHostAndPortFromURL(const char* url, std::string* host_out,
     bool need_schema = true;
     bool need_user_info = true;
     base::StringPiece schema;
-    for (; *p && *p != '/'; ++p) {
+    for (; true; ++p) {
+        const char action = g_url_parsing_fast_action_map[(int)*p];
+        if (action == URI_PARSE_CONTINUE) {
+            continue;
+        }
+        if (action == URI_PARSE_BREAK) {
+            break;
+        }
         if (*p == ':') {
             if (p[1] == '/' && p[2] == '/' && need_schema) {
                 need_schema = false;
