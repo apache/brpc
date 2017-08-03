@@ -10,7 +10,7 @@
 #include "bvar/passive_status.h"
 #include "brpc/describable.h"
 #include "brpc/destroyable.h"
-#include "brpc/details/excluded_servers.h"        // ExcludedServers
+#include "brpc/excluded_servers.h"                // ExcludedServers
 #include "brpc/shared_object.h"                   // SharedObject
 #include "brpc/server_id.h"                       // ServerId
 #include "brpc/extension.h"                       // Extension<T>
