@@ -19,6 +19,7 @@ cat $1 |sed -e 's/src\/baidu\/rpc\//brpc\//g' \
             -e 's/TEST_F(URITest/TEST(URITest/g' \
             -e 's/<bthread\.h>/\"bthread\/bthread.h\"/g' \
             -e 's/<bthread_\(.*\)\.h>/\"bthread\/\1.h\"/g' \
+            -e 's/bthread_cond\.cpp/bthread\/condition_variable.cpp/g' \
             -e 's/<\(brpc\/[^>]*\)>/"\1"/g' \
             -e 's/<\(bvar\/[^>]*\)>/"\1"/g' \
             -e 's/<\(base\/[^>]*\)>/"\1"/g' \
