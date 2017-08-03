@@ -32,7 +32,7 @@
 #include "brpc/builtin/bthreads_service.h"     // BthreadsService
 #include "brpc/builtin/ids_service.h"          // IdsService
 #include "brpc/builtin/sockets_service.h"      // SocketsService
-#include "brpc/bad_method_service.h"
+#include "brpc/builtin/bad_method_service.h"
 #include "brpc/server.h"
 #include "brpc/restful.h"
 #include "brpc/channel.h"

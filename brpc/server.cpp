@@ -27,7 +27,7 @@
 #include "brpc/details/ssl_helper.h"           // CreateSSLContext
 #include "brpc/protocol.h"                     // ListProtocols
 #include "brpc/nshead_service.h"               // NsheadService
-#include "brpc/bad_method_service.h"           // BadMethodService
+#include "brpc/builtin/bad_method_service.h"   // BadMethodService
 #include "brpc/builtin/get_favicon_service.h"
 #include "brpc/builtin/get_js_service.h"
 #include "brpc/builtin/version_service.h"

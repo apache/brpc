@@ -11,7 +11,7 @@
 #include "brpc/server.h"
 #include "brpc/acceptor.h"
 #include "brpc/details/method_status.h"
-#include "brpc/bad_method_service.h"
+#include "brpc/builtin/bad_method_service.h"
 #include "brpc/restful.h"
 
 

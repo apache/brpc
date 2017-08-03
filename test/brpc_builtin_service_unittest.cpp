@@ -37,7 +37,7 @@
 #include "brpc/builtin/ids_service.h"          // IdsService
 #include "brpc/builtin/sockets_service.h"      // SocketsService
 #include "brpc/builtin/common.h"
-#include "brpc/bad_method_service.h"
+#include "brpc/builtin/bad_method_service.h"
 #include "test/echo.pb.h"
 
 DEFINE_bool(foo, false, "Flags for UT");

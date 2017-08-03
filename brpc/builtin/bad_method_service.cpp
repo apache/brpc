@@ -13,7 +13,7 @@
 #include "brpc/builtin/common.h"
 #include "brpc/server.h"
 #include "brpc/errno.pb.h"
-#include "brpc/bad_method_service.h"
+#include "brpc/builtin/bad_method_service.h"
 #include "brpc/details/server_private_accessor.h"
 
 
