@@ -111,9 +111,10 @@ public:
     // #queries
     size_t QueryCount() const { return get_query_map().size(); }
 
-    // Print this URI. If `always_show_host' is false, host:port will
-    // be hidden is there's no authority part.
-    void Print(std::ostream& os, bool always_show_host) const;
+    // Print this URI to the ostream.
+    // PrintWithoutHost only prints components including and after path.
+    void PrintWithoutHost(std::ostream& os) const;
+    void Print(std::ostream& os) const;
 
 private:
 friend class HttpMessage;
@@ -179,7 +180,7 @@ inline const std::string& URI::query() const {
 }
 
 inline std::ostream& operator<<(std::ostream& os, const URI& uri) {
-    uri.Print(os, true/*always show host*/);
+    uri.Print(os);
     return os;
 }
 

@@ -518,19 +518,19 @@ std::ostream& operator<<(std::ostream& os, const http_parser& parser) {
 //                | extension-method
 // extension-method = token
 void SerializeHttpRequest(base::IOBuf* request,
-                          const HttpHeader& header,
+                          HttpHeader* h,
                           const base::EndPoint& remote_side,
                           const base::IOBuf* content) {
     base::IOBufBuilder os;
-    const URI& uri = header.uri();
-    os << HttpMethod2Str(header.method()) << ' ';
-    // note: hide host if possible because host is a field in header.
-    uri.Print(os, false/*note*/);
-    os << " HTTP/" << header.major_version() << '.'
-       << header.minor_version() << BRPC_CRLF;
-    if (header.method() != HTTP_METHOD_GET) {
+    os << HttpMethod2Str(h->method()) << ' ';
+    const URI& uri = h->uri();
+    uri.PrintWithoutHost(os); // host is sent by "Host" header.
+    os << " HTTP/" << h->major_version() << '.'
+       << h->minor_version() << BRPC_CRLF;
+    if (h->method() != HTTP_METHOD_GET) {
+        h->RemoveHeader("Content-Length");
         // Never use "Content-Length" set by user.
-        os << "Content-Length: " << (content ? content->length() : 0)
+        os << "Content-Length:" << (content ? content->length() : 0)
            << BRPC_CRLF;
     }
     //rfc 7230#section-5.4:
@@ -542,8 +542,8 @@ void SerializeHttpRequest(base::IOBuf* request,
     //the request-target consists of only the host name and port number of 
     //the tunnel destination, seperated by a colon. For example,
     //Host: server.example.com:80
-    if (header.GetHeader("host") == NULL) {
-        os << "Host: ";
+    if (h->GetHeader("host") == NULL) {
+        os << "Host:";
         if (!uri.host().empty()) {
             os << uri.host();
             if (uri.port() >= 0) {
@@ -554,40 +554,40 @@ void SerializeHttpRequest(base::IOBuf* request,
         }
         os << BRPC_CRLF;
     }
-    if (!header.content_type().empty()) {
-        os << "Content-Type: " << header.content_type()
+    if (!h->content_type().empty()) {
+        os << "Content-Type:" << h->content_type()
            << BRPC_CRLF;
     }
-    for (HttpHeader::HeaderIterator it = header.HeaderBegin();
-         it != header.HeaderEnd(); ++it) {
-        os << it->first << ": " << it->second << BRPC_CRLF;
+    for (HttpHeader::HeaderIterator it = h->HeaderBegin();
+         it != h->HeaderEnd(); ++it) {
+        os << it->first << ':' << it->second << BRPC_CRLF;
     }
-    if (header.GetHeader("Accept") == NULL) {
-        os << "Accept: */*" BRPC_CRLF;
+    if (h->GetHeader("Accept") == NULL) {
+        os << "Accept:*/*" BRPC_CRLF;
     }
     // The fake "curl" user-agent may let servers return plain-text results.
-    if (header.GetHeader("User-Agent") == NULL) {
-        os << "User-Agent: baidu-rpc/1.0 curl/7.0" BRPC_CRLF;
+    if (h->GetHeader("User-Agent") == NULL) {
+        os << "User-Agent:baidu-rpc/1.0 curl/7.0" BRPC_CRLF;
     }
-    const std::string& user_info = header.uri().user_info();
-    if (!user_info.empty() && header.GetHeader("Authorization") == NULL) {
+    const std::string& user_info = h->uri().user_info();
+    if (!user_info.empty() && h->GetHeader("Authorization") == NULL) {
         // NOTE: just assume user_info is well formatted, namely
         // "<user_name>:<password>". Users are very unlikely to add extra
         // characters in this part and even if users did, most of them are
         // invalid and rejected by http_parser_parse_url().
         std::string encoded_user_info;
         base::Base64Encode(user_info, &encoded_user_info);
-        os << "Authorization: Basic " << encoded_user_info << BRPC_CRLF;
+        os << "Authorization:Basic " << encoded_user_info << BRPC_CRLF;
     }
     os << BRPC_CRLF;  // CRLF before content
     os.move_to(*request);
-    if (header.method() != HTTP_METHOD_GET && content) {
+    if (h->method() != HTTP_METHOD_GET && content) {
         request->append(*content);
     }
 }
 
 // Response format
-// Response      = Status-Line               ; Section 6.1
+// Response     = Status-Line               ; Section 6.1
 //                *(( general-header        ; Section 4.5
 //                 | response-header        ; Section 6.2
 //                 | entity-header ) CRLF)  ; Section 7.1
@@ -596,25 +596,26 @@ void SerializeHttpRequest(base::IOBuf* request,
 // 
 // Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
 void SerializeHttpResponse(base::IOBuf* response,
-                           const HttpHeader& header,
+                           HttpHeader* h,
                            base::IOBuf* content) {
     base::IOBufBuilder os;
-    os << "HTTP/" << header.major_version() << '.'
-       << header.minor_version() << ' ' << header.status_code()
-       << ' ' << header.reason_phrase() << BRPC_CRLF;
+    os << "HTTP/" << h->major_version() << '.'
+       << h->minor_version() << ' ' << h->status_code()
+       << ' ' << h->reason_phrase() << BRPC_CRLF;
     if (content) {
+        h->RemoveHeader("Content-Length");
         // Never use "Content-Length" set by user.
         // Always set Content-Length since lighttpd requires the header to be
         // set to 0 for empty content.
-        os << "Content-Length: " << content->length() << BRPC_CRLF;
+        os << "Content-Length:" << content->length() << BRPC_CRLF;
     }
-    if (!header.content_type().empty()) {
-        os << "Content-Type: " << header.content_type()
+    if (!h->content_type().empty()) {
+        os << "Content-Type:" << h->content_type()
            << BRPC_CRLF;
     }
-    for (HttpHeader::HeaderIterator it = header.HeaderBegin();
-         it != header.HeaderEnd(); ++it) {
-        os << it->first << ": " << it->second << BRPC_CRLF;
+    for (HttpHeader::HeaderIterator it = h->HeaderBegin();
+         it != h->HeaderEnd(); ++it) {
+        os << it->first << ':' << it->second << BRPC_CRLF;
     }
     os << BRPC_CRLF;  // CRLF before content
     os.move_to(*response);

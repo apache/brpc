@@ -107,17 +107,19 @@ protected:
 std::ostream& operator<<(std::ostream& os, const http_parser& parser);
 
 // Serialize a http request.
+// header: may be modified in some cases
 // remote_side: used when "Host" is absent
 // content: could be NULL.
 void SerializeHttpRequest(base::IOBuf* request,
-                          const HttpHeader& header,
+                          HttpHeader* header,
                           const base::EndPoint& remote_side,
                           const base::IOBuf* content);
 
 // Serialize a http response.
+// header: may be modified in some cases
 // content: cleared after usage. could be NULL. 
 void SerializeHttpResponse(base::IOBuf* response,
-                           const HttpHeader& header,
+                           HttpHeader* header,
                            base::IOBuf* content);
 
 } // namespace brpc

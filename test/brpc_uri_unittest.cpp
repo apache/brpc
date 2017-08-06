@@ -295,29 +295,29 @@ TEST(URITest, print_url) {
     const std::string url1 = "http://user:passwd@a.b.c/?d=c&a=b&e=f#frg1";
     ASSERT_EQ(0, uri.SetHttpURL(url1));
     std::ostringstream oss;
-    uri.Print(oss, true);
+    uri.Print(oss);
     ASSERT_EQ("http://a.b.c/?d=c&a=b&e=f#frg1", oss.str());
     oss.str("");
-    uri.Print(oss, false);
+    uri.PrintWithoutHost(oss);
     ASSERT_EQ("/?d=c&a=b&e=f#frg1", oss.str());
 
     const std::string url2 = "http://a.b.c/?d=c&a=b&e=f#frg1";
     ASSERT_EQ(0, uri.SetHttpURL(url2));
     oss.str("");
-    uri.Print(oss, true);
+    uri.Print(oss);
     ASSERT_EQ(url2, oss.str());
     oss.str("");
-    uri.Print(oss, false);
+    uri.PrintWithoutHost(oss);
     ASSERT_EQ("/?d=c&a=b&e=f#frg1", oss.str());
 
     uri.SetQuery("e", "f2");
     uri.SetQuery("f", "g");
     ASSERT_EQ((size_t)1, uri.RemoveQuery("a"));
     oss.str("");
-    uri.Print(oss, true);
+    uri.Print(oss);
     ASSERT_EQ("http://a.b.c/?d=c&e=f2&f=g#frg1", oss.str());
     oss.str("");
-    uri.Print(oss, false);
+    uri.PrintWithoutHost(oss);
     ASSERT_EQ("/?d=c&e=f2&f=g#frg1", oss.str());
 }
 

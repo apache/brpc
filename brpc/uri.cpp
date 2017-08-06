@@ -266,8 +266,8 @@ int ParseHostAndPortFromURL(const char* url, std::string* host_out,
     return 0;
 }
 
-void URI::Print(std::ostream& os, bool always_show_host) const {
-    if (!_host.empty() && always_show_host) {
+void URI::Print(std::ostream& os) const {
+    if (!_host.empty()) {
         if (!_schema.empty()) {
             os << _schema << "://";
         } else {
@@ -279,6 +279,10 @@ void URI::Print(std::ostream& os, bool always_show_host) const {
             os << ':' << _port;
         }
     }
+    PrintWithoutHost(os);
+}
+    
+void URI::PrintWithoutHost(std::ostream& os) const {
     if (_path.empty()) {
         // According to rfc2616#section-5.1.2, the absolute path
         // cannot be empty; if none is present in the original URI, it MUST

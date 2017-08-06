@@ -504,7 +504,7 @@ void PackHttpRequest(base::IOBuf* buf,
     // may not echo back this field. But we send it anyway.
     accessor.get_sending_socket()->set_correlation_id(correlation_id);
 
-    SerializeHttpRequest(buf, *header, cntl->remote_side(),
+    SerializeHttpRequest(buf, header, cntl->remote_side(),
                          &cntl->request_attachment());
     if (FLAGS_http_verbose) {
         PrintMessage(*buf, true, true);
@@ -705,7 +705,7 @@ static void SendHttpResponse(Controller *cntl,
         content = &cntl->response_attachment();
     }
     base::IOBuf res_buf;
-    SerializeHttpResponse(&res_buf, *res_header, content);
+    SerializeHttpResponse(&res_buf, res_header, content);
     if (FLAGS_http_verbose) {
         PrintMessage(res_buf, false, !!content);
     }
@@ -969,7 +969,7 @@ ParseResult ParseHttpMessage(base::IOBuf *source, Socket *socket,
             base::IOBuf bad_req;
             HttpHeader header;
             header.set_status_code(HTTP_STATUS_BAD_REQUEST);
-            SerializeHttpRequest(&bad_req, header, socket->remote_side(), NULL);
+            SerializeHttpRequest(&bad_req, &header, socket->remote_side(), NULL);
             Socket::WriteOptions wopt;
             wopt.ignore_eovercrowded = true;
             socket->Write(&bad_req, &wopt);

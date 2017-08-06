@@ -2464,4 +2464,61 @@ TEST_F(ChannelTest, unused) {
         ASSERT_EQ(EINVAL, bthread_id_error(cid2, ECANCELED));
     }
 }
+
+TEST_F(ChannelTest, adaptive_connection_type) {
+    brpc::AdaptiveConnectionType ctype;
+    ASSERT_EQ(brpc::CONNECTION_TYPE_UNKNOWN, ctype);
+    ASSERT_FALSE(ctype.has_error());
+    ASSERT_STREQ("unknown", ctype.name());
+
+    ctype = brpc::CONNECTION_TYPE_SINGLE;
+    ASSERT_EQ(brpc::CONNECTION_TYPE_SINGLE, ctype);
+    ASSERT_STREQ("single", ctype.name());
+
+    ctype = "shorT";
+    ASSERT_EQ(brpc::CONNECTION_TYPE_SHORT, ctype);
+    ASSERT_STREQ("short", ctype.name());
+    
+    ctype = "PooLed";
+    ASSERT_EQ(brpc::CONNECTION_TYPE_POOLED, ctype);
+    ASSERT_STREQ("pooled", ctype.name());
+
+    ctype = "SINGLE";
+    ASSERT_EQ(brpc::CONNECTION_TYPE_SINGLE, ctype);
+    ASSERT_FALSE(ctype.has_error());
+    ASSERT_STREQ("single", ctype.name());
+
+    ctype = "blah";
+    ASSERT_EQ(brpc::CONNECTION_TYPE_UNKNOWN, ctype);
+    ASSERT_TRUE(ctype.has_error());
+    ASSERT_STREQ("unknown", ctype.name());
+
+    ctype = "single";
+    ASSERT_EQ(brpc::CONNECTION_TYPE_SINGLE, ctype);
+    ASSERT_FALSE(ctype.has_error());
+    ASSERT_STREQ("single", ctype.name());
+}
+
+TEST_F(ChannelTest, adaptive_protocol_type) {
+    brpc::AdaptiveProtocolType ptype;
+    ASSERT_EQ(brpc::PROTOCOL_UNKNOWN, ptype);
+    ASSERT_STREQ("unknown", ptype.name());
+
+    ptype = brpc::PROTOCOL_HTTP;
+    ASSERT_EQ(brpc::PROTOCOL_HTTP, ptype);
+    ASSERT_STREQ("http", ptype.name());
+
+    ptype = "HuLu_pbRPC";
+    ASSERT_EQ(brpc::PROTOCOL_HULU_PBRPC, ptype);
+    ASSERT_STREQ("hulu_pbrpc", ptype.name());
+    
+    ptype = "blah";
+    ASSERT_EQ(brpc::PROTOCOL_UNKNOWN, ptype);
+    ASSERT_STREQ("unknown", ptype.name());
+
+    ptype = "Baidu_STD";
+    ASSERT_EQ(brpc::PROTOCOL_BAIDU_STD, ptype);
+    ASSERT_STREQ("baidu_std", ptype.name());
+}
+
 } //namespace
