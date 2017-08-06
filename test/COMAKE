@@ -329,66 +329,16 @@ StaticLibrary('test', Sources(GLOB('*.pb.cc')))
 Application('test_base',
             Sources(' '.join(base_ut)) + Sources(' '.join(opt_base_ut), opt_cxx_flags),
             Libraries('libbase_debug.a'))
+
 Application('test_bvar', Sources(GLOB('bvar_*_unittest.cpp'), opt_cxx_flags),
             Libraries('libbvar_debug.a libbase_debug.a'))
 
-bthread_ut = [
-    "bthread_butex_unittest.cpp",
-    "bthread_execution_queue_unittest.cpp",
-    "bthread_key_unittest.cpp",
-    "bthread_rwlock_unittest.cpp",
-    "bthread_unittest.cpp",
-    "bthread_cond_unittest.cpp",
-    "bthread_fd_unittest.cpp",
-    "bthread_list_unittest.cpp",
-    "bthread_sched_yield_unittest.cpp",
-    "bthread_work_stealing_queue_unittest.cpp",
-    "bthread_countdown_event_unittest.cpp",
-    "bthread_futex_unittest.cpp",
-    "bthread_mutex_unittest.cpp",
-    "bthread_setconcurrency_unittest.cpp",
-    "bthread_dispatcher_unittest.cpp",
-    "bthread_id_unittest.cpp",
-    "bthread_ping_pong_unittest.cpp",
-    "bthread_timer_thread_unittest.cpp",
-]
+bthread_ut = GLOB('bthread_*unittest.cpp').split(' ')
 for ut in bthread_ut:
     Application(ut[:-4], Sources(ut, opt_cxx_flags),
             Libraries('libbthread_debug.a libbvar_debug.a libbase_debug.a'))
 
-brpc_ut = [
-    "brpc_builtin_service_unittest.cpp",
-    "brpc_channel_unittest.cpp",
-    "brpc_controller_unittest.cpp",
-    "brpc_esp_protocol_unittest.cpp",
-    "brpc_event_dispatcher_unittest.cpp",
-    "brpc_extension_unittest.cpp",
-    "brpc_hpack_unittest.cpp",
-    "brpc_http_message_unittest.cpp",
-    "brpc_http_parser_unittest.cpp",
-    "brpc_http_rpc_protocol_unittest.cpp",
-    "brpc_http_status_code_unittest.cpp",
-    "brpc_hulu_pbrpc_protocol_unittest.cpp",
-    "brpc_input_messenger_unittest.cpp",
-    "brpc_load_balancer_unittest.cpp",
-    "brpc_memcache_unittest.cpp",
-    "brpc_mongo_protocol_unittest.cpp",
-    "brpc_naming_service_filter_unittest.cpp",
-    "brpc_naming_service_unittest.cpp",
-    "brpc_nova_pbrpc_protocol_unittest.cpp",
-    "brpc_proto_unittest.cpp",
-    "brpc_public_pbrpc_protocol_unittest.cpp",
-    "brpc_redis_unittest.cpp",
-    "brpc_rtmp_unittest.cpp",
-    "brpc_server_unittest.cpp",
-    "brpc_snappy_compress_unittest.cpp",
-    "brpc_socket_map_unittest.cpp",
-    "brpc_socket_unittest.cpp",
-    "brpc_sofa_pbrpc_protocol_unittest.cpp",
-    "brpc_streaming_rpc_unittest.cpp",
-    "brpc_uri_unittest.cpp",
-]
- 
+brpc_ut = GLOB('brpc_*unittest.cpp').split(' ')
 for ut in brpc_ut:
     Application(ut[:-4], Sources(ut),
             Libraries('libtest.a libbrpc_debug.a libbthread_debug.a libbvar_debug.a libbase_debug.a libjson2pb_debug.a libmcpack2pb_debug.a'))

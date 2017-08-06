@@ -530,7 +530,7 @@ void SerializeHttpRequest(base::IOBuf* request,
     if (h->method() != HTTP_METHOD_GET) {
         h->RemoveHeader("Content-Length");
         // Never use "Content-Length" set by user.
-        os << "Content-Length:" << (content ? content->length() : 0)
+        os << "Content-Length: " << (content ? content->length() : 0)
            << BRPC_CRLF;
     }
     //rfc 7230#section-5.4:
@@ -543,7 +543,7 @@ void SerializeHttpRequest(base::IOBuf* request,
     //the tunnel destination, seperated by a colon. For example,
     //Host: server.example.com:80
     if (h->GetHeader("host") == NULL) {
-        os << "Host:";
+        os << "Host: ";
         if (!uri.host().empty()) {
             os << uri.host();
             if (uri.port() >= 0) {
@@ -555,19 +555,19 @@ void SerializeHttpRequest(base::IOBuf* request,
         os << BRPC_CRLF;
     }
     if (!h->content_type().empty()) {
-        os << "Content-Type:" << h->content_type()
+        os << "Content-Type: " << h->content_type()
            << BRPC_CRLF;
     }
     for (HttpHeader::HeaderIterator it = h->HeaderBegin();
          it != h->HeaderEnd(); ++it) {
-        os << it->first << ':' << it->second << BRPC_CRLF;
+        os << it->first << ": " << it->second << BRPC_CRLF;
     }
     if (h->GetHeader("Accept") == NULL) {
-        os << "Accept:*/*" BRPC_CRLF;
+        os << "Accept: */*" BRPC_CRLF;
     }
     // The fake "curl" user-agent may let servers return plain-text results.
     if (h->GetHeader("User-Agent") == NULL) {
-        os << "User-Agent:baidu-rpc/1.0 curl/7.0" BRPC_CRLF;
+        os << "User-Agent: baidu-rpc/1.0 curl/7.0" BRPC_CRLF;
     }
     const std::string& user_info = h->uri().user_info();
     if (!user_info.empty() && h->GetHeader("Authorization") == NULL) {
@@ -577,7 +577,7 @@ void SerializeHttpRequest(base::IOBuf* request,
         // invalid and rejected by http_parser_parse_url().
         std::string encoded_user_info;
         base::Base64Encode(user_info, &encoded_user_info);
-        os << "Authorization:Basic " << encoded_user_info << BRPC_CRLF;
+        os << "Authorization: Basic " << encoded_user_info << BRPC_CRLF;
     }
     os << BRPC_CRLF;  // CRLF before content
     os.move_to(*request);
@@ -607,15 +607,15 @@ void SerializeHttpResponse(base::IOBuf* response,
         // Never use "Content-Length" set by user.
         // Always set Content-Length since lighttpd requires the header to be
         // set to 0 for empty content.
-        os << "Content-Length:" << content->length() << BRPC_CRLF;
+        os << "Content-Length: " << content->length() << BRPC_CRLF;
     }
     if (!h->content_type().empty()) {
-        os << "Content-Type:" << h->content_type()
+        os << "Content-Type: " << h->content_type()
            << BRPC_CRLF;
     }
     for (HttpHeader::HeaderIterator it = h->HeaderBegin();
          it != h->HeaderEnd(); ++it) {
-        os << it->first << ':' << it->second << BRPC_CRLF;
+        os << it->first << ": " << it->second << BRPC_CRLF;
     }
     os << BRPC_CRLF;  // CRLF before content
     os.move_to(*response);

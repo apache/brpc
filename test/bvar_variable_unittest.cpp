@@ -19,6 +19,9 @@
 
 namespace bvar {
 DECLARE_bool(bvar_log_dumpped);
+namespace detail {
+extern bool FLAGS_show_sampler_usage;
+}
 }
 
 template <typename T>
@@ -37,7 +40,9 @@ std::ostream& operator<<(std::ostream& os, const std::vector<T>& vec) {
 namespace {
 class VariableTest : public testing::Test {
 protected:
-    void SetUp() {}
+    void SetUp() {
+        bvar::detail::FLAGS_show_sampler_usage = false;
+    }
     void TearDown() {
         ASSERT_EQ(0UL, bvar::Variable::count_exposed());
     }

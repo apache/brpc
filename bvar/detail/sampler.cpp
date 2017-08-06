@@ -12,6 +12,8 @@
 namespace bvar {
 namespace detail {
 
+// set to true in UT. Not using gflags since users hardly need to change it.
+bool FLAGS_show_sampler_usage = true;
 const int WARN_NOSLEEP_THRESHOLD = 2;
 
 // Combine two circular linked list into one.
@@ -82,8 +84,10 @@ void SamplerCollector::run() {
     base::LinkNode<Sampler> root;
     int consecutive_nosleep = 0;
     PassiveStatus<double> cumulated_time(get_cumulated_time, this);
-    bvar::PerSecond<bvar::PassiveStatus<double> > usage(
-            "bvar_sampler_collector_usage", &cumulated_time, 10);
+    bvar::PerSecond<bvar::PassiveStatus<double> > usage(&cumulated_time, 10);
+    if (FLAGS_show_sampler_usage) {
+        usage.expose("bvar_sampler_collector_usage");
+    }
     while (!_stop) {
         int64_t abstime = base::gettimeofday_us();
         Sampler* s = this->reset();
@@ -96,15 +100,15 @@ void SamplerCollector::run() {
             // We may remove p from the list, save next first.
             base::LinkNode<Sampler>* saved_next = p->next();
             Sampler* s = p->value();
-            pthread_mutex_lock(&s->_mutex);
+            s->_mutex.lock();
             if (!s->_used) {
-                pthread_mutex_unlock(&s->_mutex);
+                s->_mutex.unlock();
                 p->RemoveFromList();
                 delete s;
                 ++nremoved;
             } else {
                 s->take_sample();
-                pthread_mutex_unlock(&s->_mutex);
+                s->_mutex.unlock();
                 ++nsampled;
             }
             p = saved_next;
@@ -130,22 +134,18 @@ void SamplerCollector::run() {
     }
 }
 
-Sampler::Sampler() : _used(true) {
-    pthread_mutex_init(&_mutex, NULL);
-}
+Sampler::Sampler() : _used(true) {}
 
-Sampler::~Sampler() {
-    pthread_mutex_destroy(&_mutex);
-}
+Sampler::~Sampler() {}
 
 void Sampler::schedule() {
     *base::get_leaky_singleton<SamplerCollector>() << this;
 }
 
 void Sampler::destroy() {
-    pthread_mutex_lock(&_mutex);
+    _mutex.lock();
     _used = false;
-    pthread_mutex_unlock(&_mutex);
+    _mutex.unlock();
 }
 
 }  // namespace detail
