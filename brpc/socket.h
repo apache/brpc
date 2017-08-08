@@ -16,7 +16,7 @@
 #include "base/macros.h"                       // DISALLOW_COPY_AND_ASSIGN
 #include "base/endpoint.h"                     // base::EndPoint
 #include "base/resource_pool.h"                // base::ResourceId
-#include "bthread/butex.h"                     // BUTEX_MEMORY_SIZE
+#include "bthread/butex.h"                     // butex_create_checked
 #include "brpc/authenticator.h"           // Authenticator
 #include "brpc/details/ssl_helper.h"      // SSLState
 #include "brpc/stream.h"                  // StreamId
@@ -704,7 +704,6 @@ private:
     
     // Butex to wait for EPOLLOUT event
     base::atomic<int>* _epollout_butex;
-    char _epollout_butex_memory[BUTEX_MEMORY_SIZE] __attribute__((__aligned__(sizeof(int))));
 
     // Storing data that are not flushed into `fd' yet.
     base::atomic<WriteRequest*> _write_head;

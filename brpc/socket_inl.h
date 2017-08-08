@@ -52,63 +52,6 @@ inline SocketOptions::SocketOptions()
     , initial_parsing_context(NULL)
 {}
 
-static const uint64_t INITIAL_VREF = 0;
-static const uint32_t EOF_FLAG = (1 << 31);
-
-inline Socket::Socket(Forbidden)
-    // must be even because Address() relies on evenness of version
-    : _versioned_ref(0)
-    , _shared_part(NULL)
-    , _nevent(0)
-    , _keytable_pool(NULL)
-    , _fd(-1)
-    , _tos(0)
-    , _reset_fd_real_us(-1)
-    , _on_edge_triggered_events(NULL)
-    , _user(NULL)
-    , _conn(NULL)
-    , _app_connect(NULL)
-    , _this_id(0)
-    , _preferred_index(-1)
-    , _hc_count(0)
-    , _last_msg_size(0)
-    , _avg_msg_size(0)
-    , _last_readtime_us(0)
-    , _parsing_context(NULL)
-    , _correlation_id(0)
-    , _health_check_interval_s(-1)
-    , _ninprocess(1)
-    , _auth_flag_error(0)
-    , _auth_id(INVALID_BTHREAD_ID)
-    , _auth_context(NULL)
-    , _ssl_state(SSL_UNKNOWN)
-    , _ssl_ctx(NULL)
-    , _ssl_session(NULL)
-    , _connection_type_for_progressive_read(CONNECTION_TYPE_UNKNOWN)
-    , _controller_released_socket(false)
-    , _overcrowded(false)
-    , _fail_me_at_server_stop(false)
-    , _logoff_flag(false)
-    , _recycle_flag(false)
-    , _error_code(0)
-    , _pipeline_q(NULL)
-    , _last_writetime_us(0)
-    , _unwritten_bytes(0)
-    , _epollout_butex(NULL)
-    , _write_head(NULL)
-    , _stream_set(NULL)
-{
-    CreateVarsOnce();
-    pthread_mutex_init(&_id_wait_list_mutex, NULL);
-    _epollout_butex = (base::atomic<int>*)
-        ::bthread::butex_construct(_epollout_butex_memory);
-}
-
-inline Socket::~Socket() {
-    pthread_mutex_destroy(&_id_wait_list_mutex);
-    ::bthread::butex_destruct(_epollout_butex_memory);
-}
-
 inline int Socket::Dereference() {
     const SocketId id = _this_id;
     const uint64_t vref = _versioned_ref.fetch_sub(
@@ -293,6 +236,8 @@ inline void Socket::SetLogOff() {
 inline bool Socket::IsLogOff() const {
     return _logoff_flag.load(base::memory_order_relaxed);
 }
+
+static const uint32_t EOF_FLAG = (1 << 31);
 
 inline void Socket::PostponeEOF() {
     if (CreatedByConnect()) { // not needed at server-side

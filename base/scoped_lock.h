@@ -50,8 +50,6 @@ std::lock_guard<typename std::remove_reference<T>::type> get_lock_guard();
 namespace std {
 
 #if !defined(BASE_CXX11_ENABLED)
-template <typename Mutex> class lock_guard;
-template <typename Mutex> class unique_lock;
 
 // Do not acquire ownership of the mutex
 struct defer_lock_t {};
@@ -65,7 +63,89 @@ static const try_to_lock_t try_to_lock = {};
 struct adopt_lock_t {};
 static const adopt_lock_t adopt_lock = {};
 
-#endif
+template <typename Mutex> class lock_guard {
+public:
+    explicit lock_guard(Mutex & mutex) : _pmutex(&mutex) { _pmutex->lock(); }
+    ~lock_guard() { _pmutex->unlock(); }
+private:
+    DISALLOW_COPY_AND_ASSIGN(lock_guard);
+    Mutex* _pmutex;
+};
+
+template <typename Mutex> class unique_lock {
+    DISALLOW_COPY_AND_ASSIGN(unique_lock);
+public:
+    typedef Mutex mutex_type;
+    unique_lock() : _mutex(NULL), _owns_lock(false) {}
+    explicit unique_lock(mutex_type& mutex)
+        : _mutex(&mutex), _owns_lock(true) {
+        mutex.lock();
+    }
+    unique_lock(mutex_type& mutex, defer_lock_t)
+        : _mutex(&mutex), _owns_lock(false)
+    {}
+    unique_lock(mutex_type& mutex, try_to_lock_t) 
+        : _mutex(&mutex), _owns_lock(mutex.try_lock())
+    {}
+    unique_lock(mutex_type& mutex, adopt_lock_t) 
+        : _mutex(&mutex), _owns_lock(true)
+    {}
+
+    ~unique_lock() {
+        if (_owns_lock) {
+            _mutex->unlock();
+        }
+    }
+
+    void lock() {
+        if (_owns_lock) {
+            CHECK(false) << "Detected deadlock issue";     
+            return;
+        }
+        _owns_lock = true;
+        _mutex->lock();
+    }
+
+    bool try_lock() {
+        if (_owns_lock) {
+            CHECK(false) << "Detected deadlock issue";     
+            return false;
+        }
+        _owns_lock = _mutex->try_lock();
+        return _owns_lock;
+    }
+
+    void unlock() {
+        if (!_owns_lock) {
+            CHECK(false) << "Invalid operation";
+            return;
+        }
+        _mutex->unlock();
+        _owns_lock = false;
+    }
+
+    void swap(unique_lock& rhs) {
+        std::swap(_mutex, rhs._mutex);
+        std::swap(_owns_lock, rhs._owns_lock);
+    }
+
+    mutex_type* release() {
+        mutex_type* saved_mutex = _mutex;
+        _mutex = NULL;
+        _owns_lock = false;
+        return saved_mutex;
+    }
+
+    mutex_type* mutex() { return _mutex; }
+    bool owns_lock() const { return _owns_lock; }
+    operator bool() const { return owns_lock(); }
+
+private:
+    mutex_type*                     _mutex;
+    bool                            _owns_lock;
+};
+
+#endif // !defined(BASE_CXX11_ENABLED)
 
 #if defined(OS_POSIX)
 
@@ -133,8 +213,8 @@ public:
     typedef pthread_mutex_t         mutex_type;
     unique_lock() : _mutex(NULL), _owns_lock(false) {}
     explicit unique_lock(mutex_type& mutex)
-        : _mutex(&mutex), _owns_lock(false) {
-        lock();
+        : _mutex(&mutex), _owns_lock(true) {
+        pthread_mutex_lock(_mutex);
     }
     unique_lock(mutex_type& mutex, defer_lock_t)
         : _mutex(&mutex), _owns_lock(false)
@@ -148,7 +228,7 @@ public:
 
     ~unique_lock() {
         if (_owns_lock) {
-            unlock();
+            pthread_mutex_unlock(_mutex);
         }
     }
 
@@ -158,19 +238,16 @@ public:
             return;
         }
 #if !defined(NDEBUG)
-        if (!_mutex) {
-            CHECK(false) << "_mutex is NULL";
-            return;
-        }
         const int rc = pthread_mutex_lock(_mutex);
         if (rc) {
             LOG(FATAL) << "Fail to lock pthread_mutex=" << _mutex << ", " << berror(rc);
             return;
         }
+        _owns_lock = true;
 #else
+        _owns_lock = true;
         pthread_mutex_lock(_mutex);
 #endif  // NDEBUG
-        _owns_lock = true;
     }
 
     bool try_lock() {
@@ -178,12 +255,6 @@ public:
             CHECK(false) << "Detected deadlock issue";     
             return false;
         }
-#if !defined(NDEBUG)
-        if (!_mutex) {
-            CHECK(false) << "_mutex is NULL";
-            return false;
-        }
-#endif
         _owns_lock = !pthread_mutex_trylock(_mutex);
         return _owns_lock;
     }
@@ -193,12 +264,6 @@ public:
             CHECK(false) << "Invalid operation";
             return;
         }
-#if !defined(NDEBUG)
-        if (!_mutex) {
-            CHECK(false) << "_mutex is NULL";
-            return;
-        }
-#endif
         pthread_mutex_unlock(_mutex);
         _owns_lock = false;
     }
@@ -230,13 +295,13 @@ public:
     typedef pthread_spinlock_t  mutex_type;
     unique_lock() : _mutex(NULL), _owns_lock(false) {}
     explicit unique_lock(mutex_type& mutex)
-        : _mutex(&mutex), _owns_lock(false) {
-        lock();
+        : _mutex(&mutex), _owns_lock(true) {
+        pthread_spin_lock(_mutex);
     }
 
     ~unique_lock() {
         if (_owns_lock) {
-            unlock();
+            pthread_spin_unlock(_mutex);
         }
     }
     unique_lock(mutex_type& mutex, defer_lock_t)
@@ -255,20 +320,16 @@ public:
             return;
         }
 #if !defined(NDEBUG)
-        if (!_mutex) {
-            CHECK(false) << "_mutex is NULL";
-            return;
-        }
         const int rc = pthread_spin_lock(_mutex);
         if (rc) {
             LOG(FATAL) << "Fail to lock pthread_spinlock=" << _mutex << ", " << berror(rc);
-            _owns_lock = false;
             return;
         }
+        _owns_lock = true;
 #else
+        _owns_lock = true;
         pthread_spin_lock(_mutex);
 #endif  // NDEBUG
-        _owns_lock = true;
     }
 
     bool try_lock() {
@@ -276,12 +337,6 @@ public:
             CHECK(false) << "Detected deadlock issue";     
             return false;
         }
-#if !defined(NDEBUG)
-        if (!_mutex) {
-            CHECK(false) << "_mutex is NULL";
-            return false;
-        }
-#endif
         _owns_lock = !pthread_spin_trylock(_mutex);
         return _owns_lock;
     }
@@ -291,12 +346,6 @@ public:
             CHECK(false) << "Invalid operation";
             return;
         }
-#if !defined(NDEBUG)
-        if (!_mutex) {
-            CHECK(false) << "_mutex is NULL";
-            return;
-        }
-#endif
         pthread_spin_unlock(_mutex);
         _owns_lock = false;
     }
@@ -324,106 +373,6 @@ private:
 
 #endif  // defined(OS_POSIX)
 
-template<> class lock_guard<base::Mutex> {
-public:
-    explicit lock_guard(base::Mutex & mutex) : _pmutex(&mutex) { _pmutex->lock(); }
-    ~lock_guard() { _pmutex->unlock(); }
-private:
-    DISALLOW_COPY_AND_ASSIGN(lock_guard);
-    base::Mutex* _pmutex;
-};
-
-template<> class unique_lock<base::Mutex> {
-    DISALLOW_COPY_AND_ASSIGN(unique_lock);
-public:
-    typedef base::Mutex         mutex_type;
-    unique_lock() : _mutex(NULL), _owns_lock(false) {}
-    explicit unique_lock(mutex_type& mutex)
-        : _mutex(&mutex), _owns_lock(false) {
-        lock();
-    }
-    unique_lock(mutex_type& mutex, defer_lock_t)
-        : _mutex(&mutex), _owns_lock(false)
-    {}
-    unique_lock(mutex_type& mutex, try_to_lock_t) 
-        : _mutex(&mutex), _owns_lock(mutex.try_lock())
-    {}
-    unique_lock(mutex_type& mutex, adopt_lock_t) 
-        : _mutex(&mutex), _owns_lock(true)
-    {}
-
-    ~unique_lock() {
-        if (_owns_lock) {
-            unlock();
-        }
-    }
-
-    void lock() {
-        if (_owns_lock) {
-            CHECK(false) << "Detected deadlock issue";     
-            return;
-        }
-#if !defined(NDEBUG)
-        if (!_mutex) {
-            CHECK(false) << "_mutex is NULL";
-            return;
-        }
-#endif
-        _mutex->lock();
-        _owns_lock = true;
-    }
-
-    bool try_lock() {
-        if (_owns_lock) {
-            CHECK(false) << "Detected deadlock issue";     
-            return false;
-        }
-#if !defined(NDEBUG)
-        if (!_mutex) {
-            CHECK(false) << "_mutex is NULL";
-            return false;
-        }
-#endif
-        _owns_lock = _mutex->try_lock();
-        return _owns_lock;
-    }
-
-    void unlock() {
-        if (!_owns_lock) {
-            CHECK(false) << "Invalid operation";
-            return;
-        }
-#if !defined(NDEBUG)
-        if (!_mutex) {
-            CHECK(false) << "_mutex is NULL";
-            return;
-        }
-#endif
-        _mutex->unlock();
-        _owns_lock = false;
-    }
-
-    void swap(unique_lock& rhs) {
-        std::swap(_mutex, rhs._mutex);
-        std::swap(_owns_lock, rhs._owns_lock);
-    }
-
-    mutex_type* release() {
-        mutex_type* saved_mutex = _mutex;
-        _mutex = NULL;
-        _owns_lock = false;
-        return saved_mutex;
-    }
-
-    mutex_type* mutex() { return _mutex; }
-    bool owns_lock() const { return _owns_lock; }
-    operator bool() const { return owns_lock(); }
-
-private:
-    mutex_type*                     _mutex;
-    bool                            _owns_lock;
-};
-
 }  // namespace std
 
 namespace base {
@@ -433,8 +382,8 @@ template <typename Mutex1, typename Mutex2>
 void double_lock(std::unique_lock<Mutex1> &lck1, std::unique_lock<Mutex2> &lck2) {
     DCHECK(!lck1.owns_lock());
     DCHECK(!lck2.owns_lock());
-    const void* ptr1 = static_cast<void*>(lck1.mutex());
-    const void* ptr2 = static_cast<void*>(lck2.mutex());
+    volatile void* const ptr1 = lck1.mutex();
+    volatile void* const ptr2 = lck2.mutex();
     DCHECK_NE(ptr1, ptr2);
     if (ptr1 < ptr2) {
         lck1.lock();

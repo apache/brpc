@@ -275,7 +275,6 @@ struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
     WriteRequest* next;
     bthread_id_t id_wait;
     Socket* socket;
-    bool is_debug;
     
     uint32_t pipelined_count() const {
         return (_pc_and_udmsg >> 48) & 0xFFFF;
@@ -379,10 +378,60 @@ public:
 
 static const uint64_t AUTH_FLAG = (1ul << 32);
 
+Socket::Socket(Forbidden)
+    // must be even because Address() relies on evenness of version
+    : _versioned_ref(0)
+    , _shared_part(NULL)
+    , _nevent(0)
+    , _keytable_pool(NULL)
+    , _fd(-1)
+    , _tos(0)
+    , _reset_fd_real_us(-1)
+    , _on_edge_triggered_events(NULL)
+    , _user(NULL)
+    , _conn(NULL)
+    , _app_connect(NULL)
+    , _this_id(0)
+    , _preferred_index(-1)
+    , _hc_count(0)
+    , _last_msg_size(0)
+    , _avg_msg_size(0)
+    , _last_readtime_us(0)
+    , _parsing_context(NULL)
+    , _correlation_id(0)
+    , _health_check_interval_s(-1)
+    , _ninprocess(1)
+    , _auth_flag_error(0)
+    , _auth_id(INVALID_BTHREAD_ID)
+    , _auth_context(NULL)
+    , _ssl_state(SSL_UNKNOWN)
+    , _ssl_ctx(NULL)
+    , _ssl_session(NULL)
+    , _connection_type_for_progressive_read(CONNECTION_TYPE_UNKNOWN)
+    , _controller_released_socket(false)
+    , _overcrowded(false)
+    , _fail_me_at_server_stop(false)
+    , _logoff_flag(false)
+    , _recycle_flag(false)
+    , _error_code(0)
+    , _pipeline_q(NULL)
+    , _last_writetime_us(0)
+    , _unwritten_bytes(0)
+    , _epollout_butex(NULL)
+    , _write_head(NULL)
+    , _stream_set(NULL)
+{
+    CreateVarsOnce();
+    pthread_mutex_init(&_id_wait_list_mutex, NULL);
+    _epollout_butex = bthread::butex_create_checked<base::atomic<int> >();
+}
+
+Socket::~Socket() {
+    pthread_mutex_destroy(&_id_wait_list_mutex);
+    bthread::butex_destroy(_epollout_butex);
+}
+
 void Socket::ReturnSuccessfulWriteRequest(Socket::WriteRequest* p) {
-    if (p->is_debug) {
-        LOG(WARNING) << "[DEBUG] ReturnSuccessfulWriteRequest, req=" << p << " SocketId=" << id();
-    }
     DCHECK(p->data.empty());
     AddOutputMessages(1);
     const bthread_id_t id_wait = p->id_wait;
@@ -394,9 +443,6 @@ void Socket::ReturnSuccessfulWriteRequest(Socket::WriteRequest* p) {
 
 void Socket::ReturnFailedWriteRequest(Socket::WriteRequest* p, int error_code,
                                       const std::string& error_text) {
-    if (p->is_debug) {
-        LOG(WARNING) << "[DEBUG] ReturnFailedWriteRequest, req=" << p << " SocketId=" << id();
-    }
     if (!p->reset_pipelined_count_and_user_message()) {
         CancelUnwrittenBytes(p->data.size());
     }
@@ -1371,7 +1417,6 @@ int Socket::Write(base::IOBuf* data, const WriteOptions* options_in) {
     req->id_wait = opt.id_wait;
     req->set_pipelined_count_and_user_message(
         opt.pipelined_count, DUMMY_USER_MESSAGE);
-    req->is_debug = false;
     return StartWrite(req, opt);
 }
 
@@ -1407,10 +1452,6 @@ int Socket::Write(SocketMessagePtr<>& msg, const WriteOptions* options_in) {
     req->next = WriteRequest::UNCONNECTED;
     req->id_wait = opt.id_wait;
     req->set_pipelined_count_and_user_message(opt.pipelined_count, msg.release());
-    req->is_debug = false;
-    if (VLOG_IS_ON(RPC_VLOG_LEVEL)) {
-        req->is_debug = dynamic_cast<policy::RtmpCreateStreamMessage*>(req->user_message());
-    }
     return StartWrite(req, opt);
 }
 
@@ -1465,16 +1506,7 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
         base::IOBuf* data_arr[1] = { &req->data };
         nw = _conn->CutMessageIntoFileDescriptor(fd(), data_arr, 1);
     } else {
-        if (req->is_debug) {
-            LOG(WARNING) << "[DEBUG] Before write, data.size=" << req->data.size()
-                     << " req=" << req << " SocketId=" << id();
-        }
         nw = req->data.cut_into_file_descriptor(fd());
-        if (req->is_debug) {
-            LOG(WARNING) << "[DEBUG] After write, data.size=" << req->data.size()
-                     << " nw=" << nw << " errno=" << errno
-                     << " req=" << req << " SocketId=" << id();
-        }
     }
     if (nw < 0) {
         // RTMP may return EOVERCROWDED
@@ -1491,16 +1523,10 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
     }
     if (IsWriteComplete(req, true, NULL)) {
         ReturnSuccessfulWriteRequest(req);
-        if (req->is_debug) {
-            LOG(WARNING) << "[DEBUG] Written in-place, req=" << req << " SocketId=" << id();
-        }
         return 0;
     }
 
 KEEPWRITE_IN_BACKGROUND:
-    if (req->is_debug) {
-        LOG(WARNING) << "[DEBUG] launch KeepWrite, req=" << req << " SocketId=" << id();
-    }
     ReAddress(&ptr_for_keep_write);
     req->socket = ptr_for_keep_write.release();
     if (bthread_start_background(&th, &BTHREAD_ATTR_NORMAL,
@@ -1511,10 +1537,6 @@ KEEPWRITE_IN_BACKGROUND:
     return 0;
 
 FAIL_TO_WRITE:
-    if (req->is_debug) {
-        LOG(WARNING) << "[DEBUG] Fail in-place, errno=" << saved_errno
-                 << " req=" << req << " SocketId=" << id();
-    }
     // `SetFailed' before `ReturnFailedWriteRequest' (which will calls
     // `on_reset' callback inside the id object) so that we immediately
     // know this socket has failed inside the `on_reset' callback
@@ -1529,9 +1551,6 @@ void* Socket::KeepWrite(void* void_arg) {
     s_vars->nkeepwrite << 1;
     WriteRequest* req = static_cast<WriteRequest*>(void_arg);
     SocketUniquePtr s(req->socket);
-    if (req->is_debug) {
-        LOG(WARNING) << "[DEBUG] Start KeepWrite, req=" << req << " SocketId=" << s->id();
-    }
 
     // When error occurs, spin until there's no more requests instead of
     // returning directly otherwise _write_head is permantly non-NULL which
@@ -1609,27 +1628,16 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
         // Group base::IOBuf in the list into a batch array.
         base::IOBuf* data_list[DATA_LIST_MAX];
         size_t ndata = 0;
-        WriteRequest* debug_req = NULL;
         for (WriteRequest* p = req; p != NULL && ndata < DATA_LIST_MAX;
              p = p->next) {
-            if (p->is_debug) {
-                debug_req = p;
-            }
             data_list[ndata++] = &p->data;
         }
         // Write IOBuf in the batch array into the fd.
         if (_conn) {
             return _conn->CutMessageIntoFileDescriptor(fd(), data_list, ndata);
         } else {
-            if (debug_req) {
-                LOG(WARNING) << "[DEBUG] Before cut, req=" << debug_req << " SocketId=" << id();
-            }
             ssize_t nw = base::IOBuf::cut_multiple_into_file_descriptor(
                 fd(), data_list, ndata);
-            if (debug_req) {
-                LOG(WARNING) << "[DEBUG] After cut, nw=" << nw
-                             << " errno=" << errno << " req=" << debug_req << " SocketId=" << id();
-            }
             return nw;
         }
     } else if (ssl_state() == SSL_UNKNOWN) {
@@ -2326,7 +2334,7 @@ int Socket::GetShortSocket(Socket* main_socket,
 
 void Socket::GetStat(SocketStat* s) const {
     BAIDU_CASSERT(offsetof(Socket, _preferred_index) >= 64, different_cacheline);
-    //BAIDU_CASSERT(sizeof(WriteRequest) == 64, sizeof_write_request_is_64);
+    BAIDU_CASSERT(sizeof(WriteRequest) == 64, sizeof_write_request_is_64);
 
     SharedPart* sp = GetSharedPart();
     if (sp != NULL && sp->extended_stat != NULL) {
