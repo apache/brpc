@@ -11,12 +11,8 @@
 #include <gflags/gflags.h>
 #include <bthread/bthread.h>
 #include <base/logging.h>
-#include <base/string_printf.h>
-#include <base/time.h>
-#include <base/macros.h>
 #include <brpc/server.h>
 #include <brpc/channel.h>
-#include <deque>
 #include "echo.pb.h"
 #include <bvar/bvar.h>
 

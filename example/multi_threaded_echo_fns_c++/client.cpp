@@ -21,7 +21,7 @@
 
 DEFINE_int32(thread_num, 50, "Number of threads to send requests");
 DEFINE_bool(use_bthread, false, "Use bthread to send requests");
-DEFINE_bool(send_attachment, false, "Carry attachment along with requests");
+DEFINE_int32(attachment_size, 0, "Carry so many byte attachment along with requests");
 DEFINE_string(protocol, "baidu_std", "Protocol type. Defined in protocol/brpc/options.proto");
 DEFINE_string(connection_type, "", "Connection type. Available values: single, pooled, short");
 DEFINE_string(server, "file://server_list", "Addresses of servers");
@@ -30,46 +30,38 @@ DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(backup_timeout_ms, -1, "backup timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
-DEFINE_int32(dummy_port, -1, "Port of dummy server");
+DEFINE_int32(dummy_port, 0, "Launch dummy server at this port");
+DEFINE_string(http_content_type, "application/json", "Content type of http request");
 
-pthread_mutex_t g_latency_mutex = PTHREAD_MUTEX_INITIALIZER;
-struct BAIDU_CACHELINE_ALIGNMENT SenderInfo {
-    size_t nsuccess;
-    int64_t latency_sum;
-};
-std::deque<SenderInfo> g_sender_info;
+std::string g_attachment;
+
+bvar::LatencyRecorder g_latency_recorder("client");
+bvar::Adder<int> g_error_count("client_error_count");
+base::static_atomic<int> g_sender_count = BASE_STATIC_ATOMIC_INIT(0);
 
 static void* sender(void* arg) {
     // Normally, you should not call a Channel directly, but instead construct
     // a stub Service wrapping it. stub can be shared by all threads as well.
     example::EchoService_Stub stub(static_cast<google::protobuf::RpcChannel*>(arg));
 
-    SenderInfo* info = NULL;
-    int thread_index = 0;
-    {
-        BAIDU_SCOPED_LOCK(g_latency_mutex);
-        g_sender_info.push_back(SenderInfo());
-        info = &g_sender_info.back();
-        thread_index = (int)g_sender_info.size();
-    }
-
     int log_id = 0;
-    brpc::Controller cntl;
     while (!brpc::IsAskedToQuit()) {
         // We will receive response synchronously, safe to put variables
         // on stack.
         example::EchoRequest request;
         example::EchoResponse response;
-        cntl.Reset();
+        brpc::Controller cntl;
 
+        const int thread_index = g_sender_count.fetch_add(1, base::memory_order_relaxed);
         const int input = ((thread_index & 0xFFF) << 20) | (log_id & 0xFFFFF);
         request.set_value(input);
         cntl.set_log_id(log_id ++);  // set by user
-
-        if (FLAGS_send_attachment) {
+        if (FLAGS_protocol != "http" && FLAGS_protocol != "h2c") {
             // Set attachment which is wired to network directly instead of 
             // being serialized into protobuf messages.
-            cntl.request_attachment().append("foo");
+            cntl.request_attachment().append(g_attachment);
+        } else {
+            cntl.http_request().set_content_type(FLAGS_http_content_type);
         }
 
         // Because `done'(last parameter) is NULL, this function waits until
@@ -77,9 +69,9 @@ static void* sender(void* arg) {
         stub.Echo(&cntl, &request, &response, NULL);
         if (!cntl.Failed()) {
             CHECK(response.value() == request.value() + 1);
-            info->latency_sum += cntl.latency_us();
-            ++info->nsuccess;
+            g_latency_recorder << cntl.latency_us();
         } else {
+            g_error_count << 1;
             CHECK(brpc::IsAskedToQuit() || !FLAGS_dont_fail)        
                 << "input=(" << thread_index << "," << (input & 0xFFFFF)        
                 << ") error=" << cntl.ErrorText() << " latency=" << cntl.latency_us();
@@ -101,7 +93,7 @@ int main(int argc, char* argv[]) {
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
     
-    // Initialize the channel, NULL means using default options. 
+    // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
     options.backup_request_ms = FLAGS_backup_timeout_ms;
     options.protocol = FLAGS_protocol;
@@ -111,6 +103,10 @@ int main(int argc, char* argv[]) {
     if (channel.Init(FLAGS_server.c_str(), FLAGS_load_balancer.c_str(), &options) != 0) {
         LOG(ERROR) << "Fail to initialize channel";
         return -1;
+    }
+
+    if (FLAGS_attachment_size > 0) {
+        g_attachment.resize(FLAGS_attachment_size, 'a');
     }
 
     if (FLAGS_dummy_port > 0) {
@@ -136,32 +132,10 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    int64_t last_counter = 0;
-    int64_t last_latency_sum = 0;
-    std::vector<size_t> last_nsuccess(FLAGS_thread_num);
     while (!brpc::IsAskedToQuit()) {
         sleep(1);
-        int64_t latency_sum = 0;
-        int64_t nsuccess = 0;
-        pthread_mutex_lock(&g_latency_mutex);
-        CHECK_EQ(g_sender_info.size(), (size_t)FLAGS_thread_num);
-        for (size_t i = 0; i < g_sender_info.size(); ++i) {
-            const SenderInfo& info = g_sender_info[i];
-            latency_sum += info.latency_sum;
-            nsuccess += info.nsuccess;
-            if (FLAGS_dont_fail) {
-                CHECK(info.nsuccess > last_nsuccess[i]);
-            }
-            last_nsuccess[i] = info.nsuccess;
-        }
-        pthread_mutex_unlock(&g_latency_mutex);
-
-        const int64_t avg_latency = (latency_sum - last_latency_sum) /
-            std::max(nsuccess - last_counter, 1L);
-        LOG(INFO) << "Sending EchoRequest at qps=" << nsuccess - last_counter
-                  << " latency=" << avg_latency;
-        last_counter = nsuccess;
-        last_latency_sum = latency_sum;
+        LOG(INFO) << "Sending EchoRequest at qps=" << g_latency_recorder.qps(1)
+                  << " latency=" << g_latency_recorder.latency(1);
     }
 
     LOG(INFO) << "EchoClient is going to quit";

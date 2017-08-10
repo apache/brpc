@@ -129,7 +129,8 @@ private:
     bool _has_error;  // previous AddCommand had error
     base::IOBuf _buf;  // the serialized request.
     mutable int _cached_size_;  // ByteSize
-  
+
+friend void protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto_impl();
 friend void protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto();
 friend void protobuf_AssignDesc_baidu_2frpc_2fredis_5fbase_2eproto();
 friend void protobuf_ShutdownFile_baidu_2frpc_2fredis_5fbase_2eproto();
@@ -201,7 +202,8 @@ private:
     base::Arena _arena;
     uint32_t _nreply;
     mutable int _cached_size_;
-  
+
+friend void protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto_impl();
 friend void protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto();
 friend void protobuf_AssignDesc_baidu_2frpc_2fredis_5fbase_2eproto();
 friend void protobuf_ShutdownFile_baidu_2frpc_2fredis_5fbase_2eproto();

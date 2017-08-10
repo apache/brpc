@@ -10,7 +10,6 @@
 
 #include <gflags/gflags.h>
 #include <base/logging.h>
-#include <base/string_printf.h>
 #include <brpc/channel.h>
 #include <brpc/stream.h>
 #include "echo.pb.h"

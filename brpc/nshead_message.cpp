@@ -48,13 +48,14 @@ void protobuf_ShutdownFile_baidu_2frpc_2fnshead_5fmessage_2eproto() {
     delete NsheadMessage::default_instance_;
 }
 
-void protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto() {
-    static bool already_here = false;
-    if (already_here) return;
-    already_here = true;
+void protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto_impl() {
     GOOGLE_PROTOBUF_VERIFY_VERSION;
 
+#if GOOGLE_PROTOBUF_VERSION >= 3002000
+    ::google::protobuf::internal::InitProtobufDefaults();
+#else
     ::google::protobuf::protobuf_AddDesc_google_2fprotobuf_2fdescriptor_2eproto();
+#endif
     ::google::protobuf::DescriptorPool::InternalAddGeneratedFile(
         "\n\036baidu/rpc/nshead_message.proto\022\tbaidu."
         "rpc\032 google/protobuf/descriptor.proto\"\017\n"
@@ -65,6 +66,13 @@ void protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto() {
     NsheadMessage::default_instance_->InitAsDefaultInstance();
     ::google::protobuf::internal::OnShutdown(
         &protobuf_ShutdownFile_baidu_2frpc_2fnshead_5fmessage_2eproto);
+}
+
+GOOGLE_PROTOBUF_DECLARE_ONCE(protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto_once);
+void protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto() {
+    ::google::protobuf::GoogleOnceInit(
+        &protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto_once,
+        &protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto_impl);
 }
 
 // Force AddDescriptors() to be called at static initialization time.

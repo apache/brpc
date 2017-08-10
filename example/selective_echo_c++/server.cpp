@@ -12,7 +12,6 @@
 #include <gflags/gflags.h>
 #include <base/time.h>
 #include <base/logging.h>
-#include <base/string_printf.h>
 #include <base/string_splitter.h>
 #include <base/rand_util.h>
 #include <brpc/server.h>

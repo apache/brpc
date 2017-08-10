@@ -117,7 +117,8 @@ private:
     int _pipelined_count;
     base::IOBuf _buf;
     mutable int _cached_size_;
-  
+
+friend void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto_impl();
 friend void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto();
 friend void protobuf_AssignDesc_baidu_2frpc_2fmemcache_5fbase_2eproto();
 friend void protobuf_ShutdownFile_baidu_2frpc_2fmemcache_5fbase_2eproto();
@@ -230,7 +231,8 @@ private:
     std::string _err;
     base::IOBuf _buf;
     mutable int _cached_size_;
-  
+
+friend void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto_impl();
 friend void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto();
 friend void protobuf_AssignDesc_baidu_2frpc_2fmemcache_5fbase_2eproto();
 friend void protobuf_ShutdownFile_baidu_2frpc_2fmemcache_5fbase_2eproto();

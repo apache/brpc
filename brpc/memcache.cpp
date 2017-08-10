@@ -23,6 +23,7 @@
 namespace brpc {
 
 // Internal implementation detail -- do not call these.
+void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto_impl();
 void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto();
 void protobuf_AssignDesc_baidu_2frpc_2fmemcache_5fbase_2eproto();
 void protobuf_ShutdownFile_baidu_2frpc_2fmemcache_5fbase_2eproto();
@@ -67,13 +68,14 @@ void protobuf_ShutdownFile_baidu_2frpc_2fmemcache_5fbase_2eproto() {
     delete MemcacheResponse::default_instance_;
 }
 
-void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto() {
-    static bool already_here = false;
-    if (already_here) return;
-    already_here = true;
+void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto_impl() {
     GOOGLE_PROTOBUF_VERIFY_VERSION;
 
+#if GOOGLE_PROTOBUF_VERSION >= 3002000
+    ::google::protobuf::internal::InitProtobufDefaults();
+#else
     ::google::protobuf::protobuf_AddDesc_google_2fprotobuf_2fdescriptor_2eproto();
+#endif
     ::google::protobuf::DescriptorPool::InternalAddGeneratedFile(
         "\n\035baidu/rpc/memcache_base.proto\022\tbaidu.r"
         "pc\032 google/protobuf/descriptor.proto\"\021\n\017"
@@ -85,6 +87,13 @@ void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto() {
     MemcacheRequest::default_instance_->InitAsDefaultInstance();
     MemcacheResponse::default_instance_->InitAsDefaultInstance();
     ::google::protobuf::internal::OnShutdown(&protobuf_ShutdownFile_baidu_2frpc_2fmemcache_5fbase_2eproto);
+}
+
+GOOGLE_PROTOBUF_DECLARE_ONCE(protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto_once);
+void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto() {
+    ::google::protobuf::GoogleOnceInit(
+        &protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto_once,
+        &protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto_impl);
 }
 
 // Force AddDescriptors() to be called at static initialization time.

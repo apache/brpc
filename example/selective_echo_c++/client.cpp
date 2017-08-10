@@ -11,12 +11,8 @@
 #include <gflags/gflags.h>
 #include <bthread/bthread.h>
 #include <base/logging.h>
-#include <base/string_printf.h>
-#include <base/time.h>
-#include <base/macros.h>
 #include <brpc/selective_channel.h>
 #include <brpc/parallel_channel.h>
-#include <deque>
 #include "echo.pb.h"
 
 DEFINE_int32(thread_num, 50, "Number of threads to send requests");
@@ -34,24 +30,14 @@ DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 
 std::string g_request;
 std::string g_attachment;
-pthread_mutex_t g_latency_mutex = PTHREAD_MUTEX_INITIALIZER;
-struct BAIDU_CACHELINE_ALIGNMENT SenderInfo {
-    size_t nsuccess;
-    int64_t latency_sum;
-};
-std::deque<SenderInfo> g_sender_info;
+
+bvar::LatencyRecorder g_latency_recorder("client");
+bvar::Adder<int> g_error_count("client_error_count");
 
 static void* sender(void* arg) {
     // Normally, you should not call a Channel directly, but instead construct
     // a stub Service wrapping it. stub can be shared by all threads as well.
     example::EchoService_Stub stub(static_cast<google::protobuf::RpcChannel*>(arg));
-
-    SenderInfo* info = NULL;
-    {
-        BAIDU_SCOPED_LOCK(g_latency_mutex);
-        g_sender_info.push_back(SenderInfo());
-        info = &g_sender_info.back();
-    }
 
     int log_id = 0;
     while (!brpc::IsAskedToQuit()) {
@@ -75,15 +61,13 @@ static void* sender(void* arg) {
         stub.Echo(&cntl, &request, &response, NULL);
         const int64_t elp = cntl.latency_us();
         if (!cntl.Failed()) {
-            info->latency_sum += elp;
-            ++info->nsuccess;
+            g_latency_recorder << cntl.latency_us();
         } else {
+            g_error_count << 1; 
             CHECK(brpc::IsAskedToQuit() || !FLAGS_dont_fail)
                 << "error=" << cntl.ErrorText() << " latency=" << elp;
-            CHECK_LT(elp, 5000);
             // We can't connect to the server, sleep a while. Notice that this
-            // is a specific sleeping to prevent this thread from spinning too
-            // fast. You should continue the business logic in a production 
+            // is a specific sleeping to prevent this thread from spinning too // fast. You should continue the business logic in a production 
             // server rather than sleeping.
             bthread_usleep(50000);
         }
@@ -106,18 +90,6 @@ int main(int argc, char* argv[]) {
         LOG(ERROR) << "Fail to init SelectiveChannel";
         return -1;
     }
-
-    LOG(INFO) << "Topology:\n"
-        << "SelectiveChannel[\n"
-        << "  Channel[list://0.0.0.0:8004,0.0.0.0:8005,0.0.0.0:8006]\n"      
-        << "  ParallelChannel[\n"
-        << "    Channel[0.0.0.0:8007]\n"
-        << "    Channel[0.0.0.0:8008]\n"
-        << "    Channel[0.0.0.0:8009]]\n"
-        << "  SelectiveChannel[\n"
-        << "    Channel[list://0.0.0.0:8010,0.0.0.0:8011,0.0.0.0:8012]\n"
-        << "    Channel[0.0.0.0:8013]\n"
-        << "    Channel[0.0.0.0:8014]]]\n";
 
     // Add sub channels.
     // ================
@@ -238,32 +210,10 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    int64_t last_counter = 0;
-    int64_t last_latency_sum = 0;
-    std::vector<size_t> last_nsuccess(FLAGS_thread_num);
     while (!brpc::IsAskedToQuit()) {
         sleep(1);
-        int64_t latency_sum = 0;
-        int64_t nsuccess = 0;
-        pthread_mutex_lock(&g_latency_mutex);
-        CHECK_EQ(g_sender_info.size(), (size_t)FLAGS_thread_num);
-        for (size_t i = 0; i < g_sender_info.size(); ++i) {
-            const SenderInfo& info = g_sender_info[i];
-            latency_sum += info.latency_sum;
-            nsuccess += info.nsuccess;
-            if (FLAGS_dont_fail) {
-                CHECK(info.nsuccess > last_nsuccess[i]) << "i=" << i;
-            }
-            last_nsuccess[i] = info.nsuccess;
-        }
-        pthread_mutex_unlock(&g_latency_mutex);
-
-        const int64_t avg_latency = (latency_sum - last_latency_sum) /
-            std::max(nsuccess - last_counter, 1L);
-        LOG(INFO) << "Sending EchoRequest at qps=" << nsuccess - last_counter
-                  << " latency=" << avg_latency;
-        last_counter = nsuccess;
-        last_latency_sum = latency_sum;
+        LOG(INFO) << "Sending EchoRequest at qps=" << g_latency_recorder.qps(1)
+                  << " latency=" << g_latency_recorder.latency(1);
     }
 
     LOG(INFO) << "EchoClient is going to quit";

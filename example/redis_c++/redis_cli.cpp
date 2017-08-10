@@ -14,8 +14,6 @@
 #include <readline/history.h>
 #include <gflags/gflags.h>
 #include <base/logging.h>
-#include <base/string_printf.h>
-#include <base/macros.h>
 #include <brpc/channel.h>
 #include <brpc/redis.h>
 

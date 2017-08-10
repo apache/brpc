@@ -69,6 +69,7 @@ private:
     void SharedCtor();
     void SharedDtor();
 private:
+friend void protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto_impl();
 friend void protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto();
 friend void protobuf_AssignDesc_baidu_2frpc_2fnshead_5fmessage_2eproto();
 friend void protobuf_ShutdownFile_baidu_2frpc_2fnshead_5fmessage_2eproto();

@@ -105,8 +105,8 @@ struct ExtendedSocketStat : public SocketStat {
 
     struct Sampled {
         uint32_t in_size_s;
-        uint32_t out_size_s;
         uint32_t in_num_messages_s;
+        uint32_t out_size_s;
         uint32_t out_num_messages_s;
     };
     SparseMinuteCounter<Sampled> _minute_counter;
@@ -116,7 +116,7 @@ struct ExtendedSocketStat : public SocketStat {
         , last_in_num_messages(0)
         , last_out_size(0)
         , last_out_num_messages(0) {
-        memset((SocketStat*)this, 0 , sizeof(SocketStat));
+        memset((SocketStat*)this, 0, sizeof(SocketStat));
     }
 };
 
@@ -212,7 +212,6 @@ void Socket::SharedPart::UpdateStatsEverySecond(int64_t now_ms) {
         stat->in_num_messages_m += s.in_num_messages_s;
         stat->out_size_m += s.out_size_s;
         stat->out_num_messages_m += s.out_num_messages_s;
-        
         if (stat->_minute_counter.Add(now_ms, s, &popped)) {
             stat->in_size_m -= popped.in_size_s;
             stat->in_num_messages_m -= popped.in_num_messages_s;
@@ -843,17 +842,17 @@ int Socket::SetFailed(SocketId id) {
 }
 
 void Socket::NotifyOnFailed(bthread_id_t id) {
-    int rc = 0;
-    std::string desc;
     pthread_mutex_lock(&_id_wait_list_mutex);
-    if (Failed()) {
-        rc = non_zero_error_code();
-        desc = _error_text;
+    if (!Failed()) {
+        const int rc = bthread_id_list_add(&_id_wait_list, id);
+        pthread_mutex_unlock(&_id_wait_list_mutex);
+        if (rc != 0) {
+            bthread_id_error(id, rc);
+        }
     } else {
-        rc = bthread_id_list_add(&_id_wait_list, id);
-    }
-    pthread_mutex_unlock(&_id_wait_list_mutex);
-    if (rc != 0) {
+        const int rc = non_zero_error_code();
+        const std::string desc = _error_text;
+        pthread_mutex_unlock(&_id_wait_list_mutex);
         bthread_id_error2(id, rc, desc);
     }
 }
