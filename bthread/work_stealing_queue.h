@@ -18,9 +18,9 @@ class WorkStealingQueue {
 public:
     WorkStealingQueue()
         : _bottom(1)
-        , _top(1)
         , _capacity(0)
-        , _buffer(NULL) {
+        , _buffer(NULL)
+        , _top(1) {
     }
 
     ~WorkStealingQueue() {
@@ -132,9 +132,9 @@ private:
     DISALLOW_COPY_AND_ASSIGN(WorkStealingQueue);
 
     base::atomic<size_t> _bottom;
-    base::atomic<size_t> _top;
     size_t _capacity;
     T* _buffer;
+    base::atomic<size_t> BAIDU_CACHELINE_ALIGNMENT _top;
 };
 
 }  // namespace bthread

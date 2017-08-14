@@ -132,6 +132,10 @@ bool TaskGroup::wait_task(bthread_t* tid, size_t* seed, size_t offset) {
         if (rc <= 0) {
             return rc == 0;
         }
+        // When BTHREAD_FAIR_WSQ is defined, profiling shows that cpu cost of
+        // WSQ::steal() in example/multi_threaded_echo_c++ changes from 1.9%
+        // to 2.9%
+#ifndef BTHREAD_FAIR_WSQ
         if (_rq.volatile_size() != 0) {
             _rq_mutex.lock();
             const bool popped = _rq.pop(tid);
@@ -140,6 +144,11 @@ bool TaskGroup::wait_task(bthread_t* tid, size_t* seed, size_t offset) {
                 return true;
             }
         }
+#else
+        if (_rq.steal(tid)) {
+            return true;
+        }
+#endif
     } while (true);
 }
 
@@ -510,9 +519,13 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
     TaskGroup* g = *pg;
     bthread_t next_tid = 0;
     // Find next task to run, if none, switch to idle thread of the group.
+#ifndef BTHREAD_FAIR_WSQ
     g->_rq_mutex.lock();
     const bool popped = g->_rq.pop(&next_tid);
     g->_rq_mutex.unlock();
+#else
+    const bool popped = g->_rq.steal(&next_tid);
+#endif
     if (!popped) {
         if (!g->_control->steal_task(
                 &next_tid, &g->_steal_seed, g->_steal_offset)) {
@@ -549,9 +562,13 @@ void TaskGroup::sched(TaskGroup** pg) {
     TaskGroup* g = *pg;
     bthread_t next_tid = 0;
     // Find next task to run, if none, switch to idle thread of the group.
+#ifndef BTHREAD_FAIR_WSQ
     g->_rq_mutex.lock();
     const bool popped = g->_rq.pop(&next_tid);
     g->_rq_mutex.unlock();
+#else
+    const bool popped = g->_rq.steal(&next_tid);
+#endif
     if (!popped) {
         if (!g->_control->steal_task(
                 &next_tid, &g->_steal_seed, g->_steal_offset)) {
