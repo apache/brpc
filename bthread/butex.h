@@ -16,6 +16,7 @@ namespace bthread {
 
 // Create a butex which is a futex-like 32-bit primitive for synchronizing
 // bthreads/pthreads.
+// Returns a pointer to 32-bit data, NULL on failure.
 // NOTE: all butexes are private(not inter-process).
 void* butex_create();
 
@@ -26,33 +27,11 @@ template <typename T> T* butex_create_checked() {
 }
 
 // Destroy the butex.
-// NOTE: This function currently races with other functions, user is
-// responsible for the synchronization.
 void butex_destroy(void* butex);
-
-// Placement creation of butex, `butex_memory' must be as long as BUTEX_MEMORY_SIZE.
-// Example:
-//     char butex_memory[BUTEX_MEMORY_SIZE];
-//     void* butex = butex_construct(butex_memory);
-//     ... butex usage ...
-//     butex_destruct(butex_memory);
-// Notice that a butex returned by butex_construct() should not be destroyed
-// by butex_destroy().
-void* butex_construct(void* butex_memory);
-void butex_destruct(void* butex_memory);
-
-// Get butex from its memory.
-inline void* butex_locate(void* butex_memory) { return butex_memory; }
 
 // Wake up at most 1 thread waiting on |butex|.
 // Returns # of threads woken up.
 int butex_wake(void* butex);
-
-// Temporary functions.
-void butex_add_ref_before_wake(void* arg);
-int butex_wake_and_remove_ref(void* arg);
-int butex_wake_all_and_remove_ref(void* arg);
-void butex_remove_ref(void* arg);
 
 // Wake up all threads waiting on |butex|.
 // Returns # of threads woken up.

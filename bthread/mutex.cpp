@@ -25,7 +25,8 @@
 #include "base/object_pool.h"
 #include "bthread/butex.h"                       // butex_*
 #include "bthread/processor.h"                   // cpu_relax, barrier
-#include "bthread/types.h"                       // bthread_mutex_
+#include "bthread/mutex.h"                       // bthread_mutex_t
+#include "bthread/sys_futex.h"
 
 extern "C" {
 extern void* _dl_sym(void* handle, const char* symbol, void* caller);
@@ -39,7 +40,9 @@ const int ALLOW_UNUSED dummy_bt = backtrace(dummy_buf, arraysize(dummy_buf));
 // For controlling contentions collected per second.
 static bvar::CollectorSpeedLimit g_cp_sl = BVAR_COLLECTOR_SPEED_LIMIT_INITIALIZER;
 
-static size_t MAX_CACHED_CONTENTIONS = 512;
+const size_t MAX_CACHED_CONTENTIONS = 512;
+// Skip frames which are always same: the unlock function and submit_contention()
+const int SKIPPED_STACK_FRAMES = 2;
 
 struct SampledContention : public bvar::Collected {
     // time taken by lock and unlock, normalized according to sampling_range
@@ -163,8 +166,7 @@ void ContentionProfiler::flush_to_disk(bool ending) {
                  it = _dedup_map.begin(); it != _dedup_map.end(); ++it) {
             SampledContention* c = it->second;
             os << c->duration_ns << ' ' << (size_t)ceil(c->count) << " @";
-            // Skip first frame which is always the function calling backtrace.
-            for (int i = 1/*note*/; i < c->nframes; ++i) {
+            for (int i = SKIPPED_STACK_FRAMES; i < c->nframes; ++i) {
                 os << ' ' << (void*)c->stack[i];
             }
             os << '\n';
@@ -247,14 +249,14 @@ static pthread_mutex_t g_cp_mutex = PTHREAD_MUTEX_INITIALIZER;
 // bthread_mutex, we can't save stuff into pthread_mutex, we neither can
 // save the info in TLS reliably, since a mutex can be unlocked in a different
 // thread from the one locked (although rare)
-// This map must be very fast, since it's accessed inside user's locking.
+// This map must be very fast, since it's accessed inside the lock.
 // Layout of the map:
 //  * Align each entry by cacheline so that different threads do not collide.
 //  * Hash the mutex into the map by its address. If the entry is occupied,
 //    cancel sampling.
 // The canceling rate should be small provided that programs are unlikely to
 // lock a lot of mutexes simultaneously.
-static const size_t MUTEX_MAP_SIZE = 1024;
+const size_t MUTEX_MAP_SIZE = 1024;
 BAIDU_CASSERT((MUTEX_MAP_SIZE & (MUTEX_MAP_SIZE - 1)) == 0, must_be_power_of_2);
 struct BAIDU_CACHELINE_ALIGNMENT MutexMapEntry {
     base::static_atomic<uint64_t> versioned_mutex;
@@ -337,11 +339,13 @@ void ContentionProfilerStop() {
     LOG(ERROR) << "Contention profiler is not started!";
 }
 
-inline bool is_contention_site_valid(const bthread_contention_site_t& cs) {
+BASE_FORCE_INLINE bool
+is_contention_site_valid(const bthread_contention_site_t& cs) {
     return cs.sampling_range;
 }
 
-inline void make_contention_site_invalid(bthread_contention_site_t* cs) {
+BASE_FORCE_INLINE void
+make_contention_site_invalid(bthread_contention_site_t* cs) {
     cs->sampling_range = 0;
 }
 
@@ -404,17 +408,8 @@ int first_sys_pthread_mutex_unlock(pthread_mutex_t* mutex) {
     return sys_pthread_mutex_unlock(mutex);
 }
 
-inline uint64_t fmix64(uint64_t k) {
-    k ^= k >> 33;
-    k *= 0xff51afd7ed558ccdLLU;
-    k ^= k >> 33;
-    k *= 0xc4ceb9fe1a85ec53LLU;
-    k ^= k >> 33;
-    return k;
-}
-
 inline uint64_t hash_mutex_ptr(const pthread_mutex_t* m) {
-    return fmix64((uint64_t)m);
+    return base::fmix64((uint64_t)m);
 }
 
 // Mark being inside locking so that pthread_mutex calls inside collecting
@@ -431,7 +426,7 @@ static __thread bool tls_inside_lock = false;
 //   a program that locks and unlocks in the same thread and does not lock a
 //   lot of mutexes simulateneously, this strategy always uses the TLS.
 #ifndef DONT_SPEEDUP_PTHREAD_CONTENTION_PROFILER_WITH_TLS
-static const int TLS_MAX_COUNT = 3;
+const int TLS_MAX_COUNT = 3;
 struct MutexAndContentionSite {
     pthread_mutex_t* mutex;
     bthread_contention_site_t csite;
@@ -444,7 +439,8 @@ struct TLSPthreadContentionSites {
 static __thread TLSPthreadContentionSites tls_csites = {0,0,{}};
 #endif  // DONT_SPEEDUP_PTHREAD_CONTENTION_PROFILER_WITH_TLS
 
-static const int PTR_BITS = 48;
+// Guaranteed in linux/win.
+const int PTR_BITS = 48;
 
 inline bthread_contention_site_t*
 add_pthread_contention_site(pthread_mutex_t* mutex) {
@@ -485,9 +481,24 @@ inline bool remove_pthread_contention_site(
     return true;
 }
 
-inline int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
+// Submit the contention along with the callsite('s stacktrace)
+void submit_contention(const bthread_contention_site_t& csite, int64_t now_ns) {
+    tls_inside_lock = true;
+    SampledContention* sc = base::get_object<SampledContention>();
+    // Normalize duration_us and count so that they're addable in later
+    // processings. Notice that sampling_range is adjusted periodically by
+    // collecting thread.
+    sc->duration_ns = csite.duration_ns * bvar::COLLECTOR_SAMPLING_BASE
+        / csite.sampling_range;
+    sc->count = bvar::COLLECTOR_SAMPLING_BASE / (double)csite.sampling_range;
+    sc->nframes = backtrace(sc->stack, arraysize(sc->stack)); // may lock
+    sc->submit(now_ns / 1000);  // may lock
+    tls_inside_lock = false;
+}
+
+BASE_FORCE_INLINE int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
     // Don't change behavior of lock when profiler is off.
-    if (g_cp == NULL ||
+    if (!g_cp ||
         // collecting code including backtrace() and submit() may call
         // pthread_mutex_lock and cause deadlock. Don't sample.
         tls_inside_lock) {
@@ -496,7 +507,7 @@ inline int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
     // Don't slow down non-contended locks.
     int rc = pthread_mutex_trylock(mutex);
     if (rc != EBUSY) {
-        return rc ;
+        return rc;
     }
     // Ask bvar::Collector if this (contended) locking should be sampled
     const size_t sampling_range = bvar::is_collectable(&g_cp_sl);
@@ -524,21 +535,22 @@ inline int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
     // Lock and monitor the waiting time.
     const int64_t start_ns = base::cpuwide_time_ns();
     rc = sys_pthread_mutex_lock(mutex);
-    // [Inside lock]
-    if (csite == NULL) {
-        csite = add_pthread_contention_site(mutex);
-        if (csite == NULL) {
-            return rc;
+    if (!rc) { // Inside lock
+        if (!csite) {
+            csite = add_pthread_contention_site(mutex);
+            if (csite == NULL) {
+                return rc;
+            }
         }
-    }
-    csite->duration_ns = base::cpuwide_time_ns() - start_ns;
-    csite->sampling_range = sampling_range;
+        csite->duration_ns = base::cpuwide_time_ns() - start_ns;
+        csite->sampling_range = sampling_range;
+    } // else rare
     return rc;
 }
 
-inline int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
+BASE_FORCE_INLINE int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
     // Don't change behavior of unlock when profiler is off.
-    if (g_cp == NULL || tls_inside_lock) {
+    if (!g_cp || tls_inside_lock) {
         // This branch brings an issue that an entry created by
         // add_pthread_contention_site may not be cleared. Thus we add a 
         // 16-bit rolling version in the entry to find out such entry.
@@ -571,58 +583,48 @@ inline int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
     const int rc = sys_pthread_mutex_unlock(mutex);
     // [Outside lock]
     if (unlock_start_ns) {
-        tls_inside_lock = true;
         const int64_t unlock_end_ns = base::cpuwide_time_ns();
-        SampledContention* sc = base::get_object<SampledContention>();
-        // Normalize duration_us and count so that they're addable in later
-        // processings. Notice that sampling_range is adjusted periodically by
-        // collecting thread.
-        sc->duration_ns = (saved_csite.duration_ns + unlock_end_ns - unlock_start_ns)
-            * bvar::COLLECTOR_SAMPLING_BASE / saved_csite.sampling_range;
-        sc->count = bvar::COLLECTOR_SAMPLING_BASE / (double)saved_csite.sampling_range;
-        sc->nframes = backtrace(sc->stack, arraysize(sc->stack)); // may lock
-        sc->submit(unlock_end_ns / 1000);  // may lock
-        tls_inside_lock = false;
+        saved_csite.duration_ns += unlock_end_ns - unlock_start_ns;
+        submit_contention(saved_csite, unlock_end_ns);
     }
     return rc;
 }
 
 // Implement bthread_mutex_t related functions
 struct MutexInternal {
-    base::atomic<unsigned char> locked;
-    base::atomic<unsigned char> contended;
-    unsigned char padding[2];
+    base::static_atomic<unsigned char> locked;
+    base::static_atomic<unsigned char> contended;
+    unsigned short padding;
 };
 
-// FIXME:
-inline unsigned bthread_mutex_value(unsigned locked, unsigned contended) {
-    MutexInternal p;
-    p.locked = locked;
-    p.contended = contended;
-    p.padding[0] = 0;
-    p.padding[1] = 0;
-    return (unsigned&)p;
-}
-
-static const unsigned MUTEX_LOCKED_AND_CONTENDED =
-    bthread_mutex_value(1, 1);
-static const unsigned MUTEX_LOCKED = bthread_mutex_value(1, 0);
+const MutexInternal MUTEX_CONTENDED_RAW = {{1},{1},0};
+const MutexInternal MUTEX_LOCKED_RAW = {{1},{0},0};
+// Define as macros rather than constants which can't be put in read-only
+// section and affected by initialization-order fiasco.
+#define BTHREAD_MUTEX_CONTENDED (*(const unsigned*)&bthread::MUTEX_CONTENDED_RAW)
+#define BTHREAD_MUTEX_LOCKED (*(const unsigned*)&bthread::MUTEX_LOCKED_RAW)
 
 BAIDU_CASSERT(sizeof(unsigned) == sizeof(MutexInternal),
-              sizeof_parted_must_equal_unsigned);
+              sizeof_mutex_internal_must_equal_unsigned);
 
-inline void mutex_lock_contended(base::atomic<unsigned>* whole) {
-    while (whole->exchange(MUTEX_LOCKED_AND_CONTENDED) & MUTEX_LOCKED) {
-        bthread::butex_wait(whole, MUTEX_LOCKED_AND_CONTENDED, NULL);
+inline int mutex_lock_contended(bthread_mutex_t* m) {
+    base::atomic<unsigned>* whole = (base::atomic<unsigned>*)m->butex;
+    while (whole->exchange(BTHREAD_MUTEX_CONTENDED) & BTHREAD_MUTEX_LOCKED) {
+        if (bthread::butex_wait(whole, BTHREAD_MUTEX_CONTENDED, NULL) < 0
+            && errno != EWOULDBLOCK) {
+            return errno;
+        }
     }
+    return 0;
 }
 
-inline int mutex_timedlock_contended(base::atomic<unsigned>* whole,
-                                     const struct timespec* __restrict abstime) {
-    while (whole->exchange(MUTEX_LOCKED_AND_CONTENDED) & MUTEX_LOCKED) {
-        if (bthread::butex_wait(whole, MUTEX_LOCKED_AND_CONTENDED, abstime) < 0
-            && errno == ETIMEDOUT) {
-            return ETIMEDOUT;
+inline int mutex_timedlock_contended(
+    bthread_mutex_t* m, const struct timespec* __restrict abstime) {
+    base::atomic<unsigned>* whole = (base::atomic<unsigned>*)m->butex;
+    while (whole->exchange(BTHREAD_MUTEX_CONTENDED) & BTHREAD_MUTEX_LOCKED) {
+        if (bthread::butex_wait(whole, BTHREAD_MUTEX_CONTENDED, abstime) < 0
+            && errno != EWOULDBLOCK) {
+            return errno;
         }
     }
     return 0;
@@ -635,148 +637,111 @@ extern "C" {
 int bthread_mutex_init(bthread_mutex_t* __restrict m,
                        const bthread_mutexattr_t* __restrict) __THROW {
     bthread::make_contention_site_invalid(&m->csite);
-    base::atomic<unsigned>* butex = (base::atomic<unsigned>*)
-        bthread::butex_construct(m->butex_memory);
-    *butex = 0;
+    m->butex = bthread::butex_create_checked<unsigned>();
+    if (!m->butex) {
+        return ENOMEM;
+    }
+    *m->butex = 0;
     return 0;
 }
 
 int bthread_mutex_destroy(bthread_mutex_t* m) __THROW {
-    bthread::butex_destruct(m->butex_memory);
+    bthread::butex_destroy(m->butex);
     return 0;
 }
 
 int bthread_mutex_trylock(bthread_mutex_t* m) __THROW {
-    bthread::MutexInternal* p = (bthread::MutexInternal*)
-        bthread::butex_locate(m->butex_memory);
-    unsigned c = p->locked.exchange(1);
-    if (c) {
-        return EBUSY;
+    bthread::MutexInternal* split = (bthread::MutexInternal*)m->butex;
+    if (!split->locked.exchange(1, base::memory_order_acquire)) {
+        return 0;
     }
-    return 0;
+    return EBUSY;
 }
 
-void bthread_mutex_lock_contended(bthread_mutex_t* m) {
-    base::atomic<unsigned>* whole = (base::atomic<unsigned>*)
-        bthread::butex_locate(m->butex_memory);
-    bthread::mutex_lock_contended(whole);
+int bthread_mutex_lock_contended(bthread_mutex_t* m) {
+    return bthread::mutex_lock_contended(m);
 }
 
 int bthread_mutex_lock(bthread_mutex_t* m) __THROW {
-    void* butex = bthread::butex_locate(m->butex_memory);
-    base::atomic<unsigned>* whole = (base::atomic<unsigned>*)butex;
-    bthread::MutexInternal* parted = (bthread::MutexInternal*)butex;
-    // Try to grab lock
-    if (!parted->locked.exchange(1)) {
+    bthread::MutexInternal* split = (bthread::MutexInternal*)m->butex;
+    if (!split->locked.exchange(1, base::memory_order_acquire)) {
         return 0;
     }
-
-    // TODO: following memory fence makes benchmark better, but not sure if it is
-    // 100% OK
-    //if (!parted->locked.exchange(1, base::memory_order_release)) {
-    //    base::atomic_thread_fence(base::memory_order_acquire);
-    //    return 0;
-    //}
-
-    // Don't do anything when contention profiler is off.
-    if (bthread::g_cp == NULL) {
-        bthread::mutex_lock_contended(whole);
-        return 0;
+    // Don't sample when contention profiler is off.
+    if (!bthread::g_cp) {
+        return bthread::mutex_lock_contended(m);
     }
     // Ask Collector if this (contended) locking should be sampled.
     const size_t sampling_range = bvar::is_collectable(&bthread::g_cp_sl);
-    if (!sampling_range) {
-        bthread::mutex_lock_contended(whole);
-        return 0;
+    if (!sampling_range) { // Don't sample
+        return bthread::mutex_lock_contended(m);
     }
+    // Start sampling.
     const int64_t start_ns = base::cpuwide_time_ns();
-    // Don't write to m->csite outside locking since multiple threads are
+    // NOTE: Don't modify m->csite outside lock since multiple threads are
     // still contending with each other.
-    bthread::mutex_lock_contended(whole);
-    // [Inside lock]
-    m->csite.duration_ns = base::cpuwide_time_ns() - start_ns;
-    m->csite.sampling_range = sampling_range;
-    return 0;
+    const int rc = bthread::mutex_lock_contended(m);
+    if (!rc) { // Inside lock
+        m->csite.duration_ns = base::cpuwide_time_ns() - start_ns;
+        m->csite.sampling_range = sampling_range;
+    } // else rare
+    return rc;
 }
 
 int bthread_mutex_timedlock(bthread_mutex_t* __restrict m,
                             const struct timespec* __restrict abstime) __THROW {
-    void* butex = bthread::butex_locate(m->butex_memory);
-    base::atomic<unsigned>* whole = (base::atomic<unsigned>*)butex;
-    bthread::MutexInternal* parted = (bthread::MutexInternal*)butex;
-    // Try to grab lock
-    if (!parted->locked.exchange(1)) {
+    bthread::MutexInternal* split = (bthread::MutexInternal*)m->butex;
+    if (!split->locked.exchange(1, base::memory_order_acquire)) {
         return 0;
     }
-
-    // Don't do anything when contention profiler is off.
-    if (bthread::g_cp == NULL) {
-        return bthread::mutex_timedlock_contended(whole, abstime);
+    // Don't sample when contention profiler is off.
+    if (!bthread::g_cp) {
+        return bthread::mutex_timedlock_contended(m, abstime);
     }
     // Ask Collector if this (contended) locking should be sampled.
     const size_t sampling_range = bvar::is_collectable(&bthread::g_cp_sl);
-    if (!sampling_range) {
-        return bthread::mutex_timedlock_contended(whole, abstime);
+    if (!sampling_range) { // Don't sample
+        return bthread::mutex_timedlock_contended(m, abstime);
     }
+    // Start sampling.
     const int64_t start_ns = base::cpuwide_time_ns();
-    const int rc = bthread::mutex_timedlock_contended(whole, abstime);
-    // [Inside lock]
-    m->csite.duration_ns = base::cpuwide_time_ns() - start_ns;
-    m->csite.sampling_range = sampling_range;
+    // NOTE: Don't modify m->csite outside lock since multiple threads are
+    // still contending with each other.
+    const int rc = bthread::mutex_timedlock_contended(m, abstime);
+    if (!rc) { // Inside lock
+        m->csite.duration_ns = base::cpuwide_time_ns() - start_ns;
+        m->csite.sampling_range = sampling_range;
+    } else if (rc == ETIMEDOUT) {
+        // Failed to lock due to ETIMEDOUT, submit the elapse directly.
+        const int64_t end_ns = base::cpuwide_time_ns();
+        const bthread_contention_site_t csite = {end_ns - start_ns, sampling_range};
+        bthread::submit_contention(csite, end_ns);
+    }
     return rc;
 }
 
 int bthread_mutex_unlock(bthread_mutex_t* m) __THROW {
-    void* butex = bthread::butex_locate(m->butex_memory);
-    base::atomic<unsigned>* whole = (base::atomic<unsigned>*)butex;
-    bthread::MutexInternal* parted = (bthread::MutexInternal*)butex;
-    // Locked and not contended
-    if (*whole == 1) {
-        unsigned expected = 1;
-        if (whole->compare_exchange_strong(expected, 0)) {
-            return 0;
-        }
-    }
-
-    int64_t unlock_start_ns = 0;
-    bthread_contention_site_t saved_csite = {0,0};
+    base::atomic<unsigned>* whole = (base::atomic<unsigned>*)m->butex;
+    bthread_contention_site_t saved_csite = {0, 0};
     if (bthread::is_contention_site_valid(m->csite)) {
-        unlock_start_ns = base::cpuwide_time_ns();
         saved_csite = m->csite;
         bthread::make_contention_site_invalid(&m->csite);
     }
-
-    // Unlock
-    bthread::butex_add_ref_before_wake(whole);
-    parted->locked = 0;
-    barrier();
-
-    // Not perform well.
-    // // Spin and hope someone takes the lock
-    // for (i = 0; i < 200; i++) {
-    //     if (parted->locked) {
-    //         return 0;
-    //     }
-    //     cpu_relax();
-    // }
-    
-    // Need to wake someone up
-    parted->contended = 0;
-    bthread::butex_wake_and_remove_ref(whole);
-    // [Outside lock]
-    
-    if (bthread::is_contention_site_valid(saved_csite)) {
-        bthread::tls_inside_lock = true;
-        const int64_t unlock_end_ns = base::cpuwide_time_ns();
-        bthread::SampledContention* sc =
-            base::get_object<bthread::SampledContention>();
-        sc->duration_ns = (saved_csite.duration_ns + unlock_end_ns - unlock_start_ns)
-            * bvar::COLLECTOR_SAMPLING_BASE / saved_csite.sampling_range;
-        sc->count = bvar::COLLECTOR_SAMPLING_BASE / (double)saved_csite.sampling_range;
-        sc->nframes = backtrace(sc->stack, arraysize(sc->stack));
-        sc->submit(unlock_end_ns / 1000);
-        bthread::tls_inside_lock = false;
+    const unsigned prev = whole->exchange(0, base::memory_order_release);
+    // CAUTION: the mutex may be destroyed, check comments before butex_create
+    if (prev == BTHREAD_MUTEX_LOCKED) {
+        return 0;
     }
+    // Wakeup one waiter
+    if (!bthread::is_contention_site_valid(saved_csite)) {
+        bthread::butex_wake(whole);
+        return 0;
+    }
+    const int64_t unlock_start_ns = base::cpuwide_time_ns();
+    bthread::butex_wake(whole);
+    const int64_t unlock_end_ns = base::cpuwide_time_ns();
+    saved_csite.duration_ns += unlock_end_ns - unlock_start_ns;
+    bthread::submit_contention(saved_csite, unlock_end_ns);
     return 0;
 }
 

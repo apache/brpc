@@ -11,6 +11,7 @@
 #include "base/time.h"
 #include "base/fd_utility.h"                     // make_non_blocking
 #include "base/logging.h"
+#include "base/third_party/murmurhash3/murmurhash3.h"   // fmix32
 #include "bthread/butex.h"                       // butex_*
 #include "bthread/task_group.h"                  // TaskGroup
 #include "bthread/bthread.h"                             // bthread_start_urgent
@@ -325,15 +326,6 @@ private:
 
 EpollThread epoll_thread[BTHREAD_EPOLL_THREAD_NUM];
 
-inline uint32_t fmix32(uint32_t h) {
-    h ^= h >> 16;
-    h *= 0x85ebca6b;
-    h ^= h >> 13;
-    h *= 0xc2b2ae35;
-    h ^= h >> 16;
-    return h;
-}
-
 static inline EpollThread& get_epoll_thread(int fd) {
     if (BTHREAD_EPOLL_THREAD_NUM == 1UL) {
         EpollThread& et = epoll_thread[0];
@@ -341,7 +333,7 @@ static inline EpollThread& get_epoll_thread(int fd) {
         return et;
     }
 
-    EpollThread& et = epoll_thread[fmix32(fd) % BTHREAD_EPOLL_THREAD_NUM];
+    EpollThread& et = epoll_thread[base::fmix32(fd) % BTHREAD_EPOLL_THREAD_NUM];
     et.start(BTHREAD_DEFAULT_EPOLL_SIZE);
     return et;
 }

@@ -154,12 +154,12 @@ public:
         , _versioned_ref(0)  // join() depends on even version
         , _high_priority_tasks(0)
     {
-        _join_butex = (base::atomic<int>*)butex_construct(_butex_memory);
+        _join_butex = butex_create_checked<base::atomic<int> >();
         _join_butex->store(0, base::memory_order_relaxed);
     }
 
     ~ExecutionQueueBase() {
-        butex_destruct(_butex_memory);
+        butex_destroy(_join_butex);
     }
 
     bool stopped() const { return _stopped.load(base::memory_order_acquire); }
@@ -219,7 +219,6 @@ private:
     clear_task_mem _clear_func;
     ExecutionQueueOptions _options;
     base::atomic<int>* _join_butex;
-    char _butex_memory[BUTEX_MEMORY_SIZE];
 };
 
 template <typename T>

@@ -114,6 +114,7 @@ public:
     inline bool is_current_pthread_task() const;
 
     inline int64_t current_uptime_ns() const;
+    inline int64_t cumulated_cputime_ns() const { return _cumulated_cputime_ns; }
 
     void ready_to_run(bthread_t tid);
     void ready_to_run_nosignal(bthread_t tid);
@@ -181,11 +182,10 @@ private:
     StackContainer* _main_stack_container;
     bthread_t _main_tid;
     pthread_t _creation_pthread;
-
     // NOTE: _rq_mutex is not in the same cacheline of _rq because in some
     // scenarios _rq_mutex is mostly locked/unlocked by this thread only.
     // As a contrast, _rq is always stolen by other threads frequently.
-    base::Mutex BAIDU_CACHELINE_ALIGNMENT _rq_mutex;
+    base::Mutex _rq_mutex;
 
     WorkStealingQueue<bthread_t> BAIDU_CACHELINE_ALIGNMENT _rq;
 };

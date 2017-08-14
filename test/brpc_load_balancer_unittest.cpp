@@ -9,7 +9,7 @@
 #include <sys/socket.h>
 #include <map>
 #include <gtest/gtest.h>
-#include <google/profiler.h>
+#include <gperftools/profiler.h>
 #include "base/time.h"
 #include "base/containers/doubly_buffered_data.h"
 #include "brpc/socket.h"

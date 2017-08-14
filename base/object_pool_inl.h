@@ -33,10 +33,12 @@ struct ObjectPoolFreeChunk {
     size_t nfree;
     T* ptrs[NITEM];
 }; 
-
-}  // namespace base
-
-namespace base {
+// for gcc 3.4.5
+template <typename T>
+struct ObjectPoolFreeChunk<T, 0> {
+    size_t nfree;
+    T* ptrs[0];
+}; 
 
 struct ObjectPoolInfo {
     size_t local_pool_num;
@@ -69,13 +71,12 @@ template <typename T>
 class BAIDU_CACHELINE_ALIGNMENT ObjectPool {
 public:
     static const size_t BLOCK_NITEM = ObjectPoolBlockItemNum<T>::value;
-    static const size_t FREE_CHUNK_NITEM =
-        ObjectPoolFreeChunkMaxItem<T>::value > 0 ?
-        ObjectPoolFreeChunkMaxItem<T>::value : BLOCK_NITEM;
+    static const size_t FREE_CHUNK_NITEM = BLOCK_NITEM;
 
     // Free objects are batched in a FreeChunk before they're added to
     // global list(_free_chunks).
     typedef ObjectPoolFreeChunk<T, FREE_CHUNK_NITEM>    FreeChunk;
+    typedef ObjectPoolFreeChunk<T, 0> DynamicFreeChunk;
 
     // When a thread needs memory, it allocates a Block. To improve locality,
     // items in the Block are only used by the thread.
@@ -250,8 +251,8 @@ public:
     }
 
     inline static size_t free_chunk_nitem() {
-        const size_t n = ObjectPoolFreeChunkMaxItemDynamic<T>::value();
-        return (!n ? FREE_CHUNK_NITEM : n);
+        const size_t n = ObjectPoolFreeChunkMaxItem<T>::value();
+        return (n < FREE_CHUNK_NITEM ? n : FREE_CHUNK_NITEM);
     }
 
     // Number of all allocated objects, including being used and free.
@@ -434,8 +435,8 @@ private:
 
 private:
     bool pop_free_chunk(FreeChunk& c) {
-        // This is critical for high contention situation in which many threads
-        // try to get_object but return in other threads
+        // Critical for the case that most return_object are called in
+        // different threads of get_object.
         if (_free_chunks.empty()) {
             return false;
         }
@@ -444,21 +445,25 @@ private:
             pthread_mutex_unlock(&_free_chunks_mutex);
             return false;
         }
-        FreeChunk* p = _free_chunks.back();
+        DynamicFreeChunk* p = _free_chunks.back();
         _free_chunks.pop_back();
         pthread_mutex_unlock(&_free_chunks_mutex);
-        c = *p;
-        delete p;
+        c.nfree = p->nfree;
+        memcpy(c.ptrs, p->ptrs, sizeof(*p->ptrs) * p->nfree);
+        free(p);
         return true;
     }
 
     bool push_free_chunk(const FreeChunk& c) {
-        FreeChunk* c2 = new (std::nothrow) FreeChunk(c);
-        if (NULL == c2) {
+        DynamicFreeChunk* p = (DynamicFreeChunk*)malloc(
+            offsetof(DynamicFreeChunk, ptrs) + sizeof(*c.ptrs) * c.nfree);
+        if (!p) {
             return false;
         }
+        p->nfree = c.nfree;
+        memcpy(p->ptrs, c.ptrs, sizeof(*c.ptrs) * c.nfree);
         pthread_mutex_lock(&_free_chunks_mutex);
-        _free_chunks.push_back(c2);
+        _free_chunks.push_back(p);
         pthread_mutex_unlock(&_free_chunks_mutex);
         return true;
     }
@@ -472,7 +477,7 @@ private:
     static pthread_mutex_t _change_thread_mutex;
     static base::static_atomic<BlockGroup*> _block_groups[OP_MAX_BLOCK_NGROUP];
 
-    std::vector<FreeChunk*> _free_chunks;
+    std::vector<DynamicFreeChunk*> _free_chunks;
     pthread_mutex_t _free_chunks_mutex;
 
 #ifdef BASE_OBJECT_POOL_NEED_FREE_ITEM_NUM

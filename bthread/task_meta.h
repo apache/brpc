@@ -67,9 +67,6 @@ struct TaskMeta {
 
     // bthread local storage.
     LocalStorage local_storage;
-    
-    // [Not Reset] The memory to construct `version_butex'
-    char version_butex_memory[BUTEX_MEMORY_SIZE];
 
 public:
     // Only initialize [Not Reset] fields, other fields will be reset in
@@ -79,12 +76,12 @@ public:
         , current_sleep(0)
         , stack_container(NULL) {
         pthread_spin_init(&version_lock, 0);
-        version_butex = (uint32_t*)butex_construct(version_butex_memory);
+        version_butex = butex_create_checked<uint32_t>();
         *version_butex = 1;
     }
         
     ~TaskMeta() {
-        butex_destruct(version_butex_memory);
+        butex_destroy(version_butex);
         version_butex = NULL;
         pthread_spin_destroy(&version_lock);
     }

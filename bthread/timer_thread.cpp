@@ -6,6 +6,7 @@
 #include <queue>                           // heap functions
 #include "base/scoped_lock.h"
 #include "base/logging.h"
+#include "base/third_party/murmurhash3/murmurhash3.h"   // fmix64
 #include "base/resource_pool.h"
 #include "bvar/bvar.h"
 #include "bthread/sys_futex.h"
@@ -23,7 +24,7 @@ void run_worker_startfn();
 const TimerThread::TaskId TimerThread::INVALID_TASK_ID = 0;
 
 TimerThreadOptions::TimerThreadOptions()
-    : num_buckets(12) {
+    : num_buckets(13) {
 }
 
 // A task contains the necessary information for running fn(arg).
@@ -191,15 +192,6 @@ TimerThread::Bucket::ScheduleResult TimerThread::Bucket::schedule(
     return result;
 }
 
-inline uint64_t fmix64(uint64_t k) {
-    k ^= k >> 33;
-    k *= 0xff51afd7ed558ccdLLU;
-    k ^= k >> 33;
-    k *= 0xc4ceb9fe1a85ec53LLU;
-    k ^= k >> 33;
-    return k;
-}
-
 TimerThread::TaskId TimerThread::schedule(
     void (*fn)(void*), void* arg, const timespec& abstime) {
     if (_stop.load(base::memory_order_relaxed) || !_started) {
@@ -208,7 +200,7 @@ TimerThread::TaskId TimerThread::schedule(
     }
     // Hashing by pthread id is better for cache locality.
     const Bucket::ScheduleResult result = 
-        _buckets[fmix64(pthread_self()) % _options.num_buckets]
+        _buckets[base::fmix64(pthread_self()) % _options.num_buckets]
         .schedule(fn, arg, abstime);
     if (result.earlier) {
         bool earlier = false;

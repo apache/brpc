@@ -66,7 +66,7 @@ int bthread_id_error_verbose(bthread_id_t id, int error_code,
 // Make other bthread_id_lock/bthread_id_trylock on the id fail, the id must
 // already be locked. If the id is unlocked later rather than being destroyed,
 // effect of this function is cancelled. This function avoids useless
-// contending on a bthread_id which will be destroyed soon but still needs to
+// waiting on a bthread_id which will be destroyed soon but still needs to
 // be joinable.
 // Returns 0 on success, error code otherwise.
 int bthread_id_about_to_destroy(bthread_id_t id) __THROW;

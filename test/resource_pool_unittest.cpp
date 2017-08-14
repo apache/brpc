@@ -35,7 +35,7 @@ template <> struct ResourcePoolBlockMaxItem<MyObject> {
 };
 
 template <> struct ResourcePoolFreeChunkMaxItem<MyObject> {
-    static const size_t value = 5;
+    static size_t value() { return 5; }
 };
 
 template <> struct ResourcePoolValidator<Foo> {
@@ -99,7 +99,7 @@ TEST_F(ResourcePoolTest, change_config) {
     printf("%lu\n", ARRAY_SIZE(a));
     
     ResourcePoolInfo info = describe_resources<MyObject>();
-    ResourcePoolInfo zero_info = { 0, 0, 0, 0, 3, 5, 0 };
+    ResourcePoolInfo zero_info = { 0, 0, 0, 0, 3, 3, 0 };
     ASSERT_EQ(0, memcmp(&info, &zero_info, sizeof(info)));
 
     ResourceId<MyObject> id = { 0 };
@@ -279,7 +279,7 @@ void* get_and_return_int(void*) {
     std::vector<ResourceId<D> > v;
     v.reserve(N);
     base::Timer tm0, tm1, tm2;
-    ResourceId<D> id;
+    ResourceId<D> id = {0};
     D tmp = D();
     int sr = 0;
 

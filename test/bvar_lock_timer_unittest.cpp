@@ -8,7 +8,7 @@
 #include <condition_variable>
 #endif
 #include <gtest/gtest.h>
-#include <google/profiler.h>
+#include <gperftools/profiler.h>
 #include "bvar/utils/lock_timer.h"
 
 namespace {

@@ -86,9 +86,9 @@ TaskGroup* TaskControl::create_group() {
     return g;
 }
 
-static void print_task_control(std::ostream &os, void *arg) {
+static void print_rq_sizes_in_the_tc(std::ostream &os, void *arg) {
     TaskControl *tc = (TaskControl *)arg;
-    tc->print(os);
+    tc->print_rq_sizes(os);
 }
 
 static double get_cumulated_worker_time_from_this(void *arg) {
@@ -110,16 +110,16 @@ TaskControl::TaskControl()
     , _stop(false)
     , _concurrency(0)
     , _nworkers("bthread_worker_count")
-    , _pending_time_exposed(false)
+    , _pending_time(NULL)
       // Delay exposure of following two vars because they rely on TC which
       // is not initialized yet.
     , _cumulated_worker_time(get_cumulated_worker_time_from_this, this)
-    , _worker_usage(&_cumulated_worker_time, 1)
+    , _worker_usage_second(&_cumulated_worker_time, 1)
     , _cumulated_switch_count(get_cumulated_switch_count_from_this, this)
     , _switch_per_second(&_cumulated_switch_count)
     , _cumulated_signal_count(get_cumulated_signal_count_from_this, this)
     , _signal_per_second(&_cumulated_signal_count)
-    , _status(print_task_control, this)
+    , _status(print_rq_sizes_in_the_tc, this)
     , _nbthreads("bthread_count")
     , _pending_signal(0)
 {
@@ -152,7 +152,7 @@ int TaskControl::init(int concurrency) {
             return -1;
         }
     }
-    _worker_usage.expose("bthread_worker_usage");
+    _worker_usage_second.expose("bthread_worker_usage");
     _switch_per_second.expose("bthread_switch_second");
     _signal_per_second.expose("bthread_signal_second");
     _status.expose("bthread_group_status");
@@ -231,11 +231,11 @@ void TaskControl::stop_and_join() {
 TaskControl::~TaskControl() {
     // NOTE: g_task_control is not destructed now because the situation
     //       is extremely racy.
-    _status.hide();
-    _worker_usage.hide();
+    delete _pending_time.exchange(NULL, base::memory_order_relaxed);
+    _worker_usage_second.hide();
     _switch_per_second.hide();
     _signal_per_second.hide();
-    // _pending_time is not passive, let it hide itself in dtor.
+    _status.hide();
     
     stop_and_join();
 
@@ -361,7 +361,7 @@ int TaskControl::wait_task_once(bthread_t* tid, size_t* seed, size_t offset) {
     return 1;
 }
 
-void TaskControl::print(std::ostream& os) {
+void TaskControl::print_rq_sizes(std::ostream& os) {
     const size_t ngroup = _ngroup.load(base::memory_order_relaxed);
     DEFINE_SMALL_ARRAY(int, nums, ngroup, 128);
     {
@@ -411,6 +411,22 @@ int64_t TaskControl::get_cumulated_signal_count() {
         }
     }
     return c;
+}
+
+bvar::LatencyRecorder* TaskControl::create_exposed_pending_time() {
+    bool is_creator = false;
+    _pending_time_mutex.lock();
+    bvar::LatencyRecorder* pt = _pending_time.load(base::memory_order_consume);
+    if (!pt) {
+        pt = new bvar::LatencyRecorder;
+        _pending_time.store(pt, base::memory_order_release);
+        is_creator = true;
+    }
+    _pending_time_mutex.unlock();
+    if (is_creator) {
+        pt->expose("bthread_creation");
+    }
+    return pt;
 }
 
 }  // namespace bthread

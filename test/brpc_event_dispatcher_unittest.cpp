@@ -8,7 +8,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
-#include <google/profiler.h>
+#include <gperftools/profiler.h>
 #include "base/time.h"
 #include "base/macros.h"
 #include "base/fd_utility.h"

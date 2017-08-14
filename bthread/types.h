@@ -119,7 +119,6 @@ static const bthread_attr_t BTHREAD_ATTR_DEBUG = {
 };
 
 static const size_t BTHREAD_EPOLL_THREAD_NUM = 1;
-static const size_t BUTEX_MEMORY_SIZE = 64;
 static const bthread_t BTHREAD_ATOMIC_INIT = 0;
 
 // Min/Max number of work pthreads.
@@ -143,8 +142,8 @@ typedef struct {
 } bthread_contention_site_t;
 
 typedef struct {
+    unsigned* butex;
     bthread_contention_site_t csite;
-    char butex_memory[BUTEX_MEMORY_SIZE];
 } bthread_mutex_t;
 
 typedef struct {

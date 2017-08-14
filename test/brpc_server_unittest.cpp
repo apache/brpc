@@ -9,7 +9,7 @@
 #include <sys/socket.h>
 #include <fstream>
 #include <gtest/gtest.h>
-#include <google/profiler.h>
+#include <gperftools/profiler.h>
 #include <google/protobuf/descriptor.h>
 #include "base/time.h"
 #include "base/macros.h"

@@ -10,7 +10,7 @@ INCPATHS('..')
 CONFIGS('third-64/gflags@base')
 CONFIGS('third-64/gtest@gtest_1-7-0-100_PD_BL')
 CONFIGS('third-64/protobuf@protobuf_2-4-1-1100_PD_BL')
-CONFIGS('third-64/tcmalloc@1.7.0.200',Libraries('lib/libprofiler.a'))
+CONFIGS('thirdsrc/tcmalloc@2.5.0.5977',Libraries('output/lib/libtcmalloc_and_profiler.a'))
 CONFIGS('third-64/leveldb@leveldb_1-0-0-0_PD_BL')   # rpcz
 
 base_sources = [
@@ -98,8 +98,9 @@ base_sources = [
     "../base/process/kill_posix.cc",
     "../base/process/launch.cc",
     "../base/process/launch_posix.cc",
-    "../base/process/memory.cc",
-    "../base/process/memory_linux.cc",
+    #conflict with tcmalloc
+    #"../base/process/memory.cc",
+    #"../base/process/memory_linux.cc",
     "../base/process/process_handle_linux.cc",
     "../base/process/process_handle_posix.cc",
     "../base/process/process_info_linux.cc",
@@ -228,7 +229,7 @@ base_ut = [
     "weak_ptr_unittest.cc",
     "observer_list_unittest.cc",
     "file_descriptor_shuffle_unittest.cc",
-    "memory_unittest.cc",
+    #"memory_unittest.cc",
     "process_metrics_unittest.cc",
     "process_util_unittest.cc",
     "rand_util_unittest.cc",

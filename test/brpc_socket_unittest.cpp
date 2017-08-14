@@ -9,7 +9,7 @@
 #include <sys/socket.h>
 #include <fcntl.h>  // F_GETFD
 #include <gtest/gtest.h>
-#include <google/profiler.h>
+#include <gperftools/profiler.h>
 #include <bthread/unstable.h>
 #include <bthread/task_control.h>
 #include "base/time.h"
@@ -765,7 +765,7 @@ TEST_F(SocketTest, multi_threaded_write) {
             ASSERT_EQ(0, pthread_join(th[i], NULL));
         }
         ASSERT_TRUE(dest.empty());
-        bthread::g_task_control->print(std::cout);
+        bthread::g_task_control->print_rq_sizes(std::cout);
         std::cout << std::endl;
 
         ASSERT_EQ(REP * ARRAY_SIZE(th), result.size()) 

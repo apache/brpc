@@ -34,7 +34,7 @@ template <> struct ObjectPoolBlockMaxItem<MyObject> {
 };
 
 template <> struct ObjectPoolFreeChunkMaxItem<MyObject> {
-    static const size_t value = 5;
+    static size_t value() { return 5; }
 };
 
 template <> struct ObjectPoolValidator<Foo> {
@@ -81,7 +81,7 @@ TEST_F(ObjectPoolTest, change_config) {
     printf("%lu\n", ARRAY_SIZE(a));
     
     ObjectPoolInfo info = describe_objects<MyObject>();
-    ObjectPoolInfo zero_info = { 0, 0, 0, 0, 3, 5, 0 };
+    ObjectPoolInfo zero_info = { 0, 0, 0, 0, 3, 3, 0 };
     ASSERT_EQ(0, memcmp(&info, &zero_info, sizeof(info)));
 
     MyObject* p = get_object<MyObject>();

@@ -51,7 +51,7 @@ public:
     int concurrency() const 
     { return _concurrency.load(base::memory_order_acquire); }
 
-    void print(std::ostream& os);  // for debugging
+    void print_rq_sizes(std::ostream& os);
 
     double get_cumulated_worker_time();
     int64_t get_cumulated_switch_count();
@@ -65,7 +65,7 @@ public:
     // If this method is called after init(), it never returns NULL.
     TaskGroup* choose_one_group();
 
-private:    
+private:
     // Add/Remove a TaskGroup.
     // Returns 0 on success, -1 otherwise.
     int _add_group(TaskGroup*);
@@ -76,7 +76,8 @@ private:
     static void* worker_thread(void* task_control);
 
     bvar::LatencyRecorder& exposed_pending_time();
-    
+    bvar::LatencyRecorder* create_exposed_pending_time();
+
     base::atomic<size_t> _ngroup;
     TaskGroup** _groups;
     base::Mutex _modify_group_mutex;
@@ -87,10 +88,9 @@ private:
 
     bvar::Adder<int64_t> _nworkers;
     base::Mutex _pending_time_mutex;
-    base::atomic<bool> _pending_time_exposed;
-    bvar::LatencyRecorder _pending_time;
+    base::atomic<bvar::LatencyRecorder*> _pending_time;
     bvar::PassiveStatus<double> _cumulated_worker_time;
-    bvar::PerSecond<bvar::PassiveStatus<double> > _worker_usage;
+    bvar::PerSecond<bvar::PassiveStatus<double> > _worker_usage_second;
     bvar::PassiveStatus<int64_t> _cumulated_switch_count;
     bvar::PerSecond<bvar::PassiveStatus<int64_t> > _switch_per_second;
     bvar::PassiveStatus<int64_t> _cumulated_signal_count;
@@ -102,16 +102,12 @@ private:
     base::atomic<int> BAIDU_CACHELINE_ALIGNMENT _pending_signal;
 };
 
-inline bvar::LatencyRecorder & TaskControl::exposed_pending_time() {
-    if (!_pending_time_exposed.load(base::memory_order_consume)) {
-        _pending_time_mutex.lock();
-        if (!_pending_time_exposed.load(base::memory_order_consume)) {
-            _pending_time.expose("bthread_creation");
-            _pending_time_exposed.store(true, base::memory_order_release);
-        }
-        _pending_time_mutex.unlock();
+inline bvar::LatencyRecorder& TaskControl::exposed_pending_time() {
+    bvar::LatencyRecorder* pt = _pending_time.load(base::memory_order_consume);
+    if (!pt) {
+        pt = create_exposed_pending_time();
     }
-    return _pending_time;
+    return *pt;
 }
 
 }  // namespace bthread

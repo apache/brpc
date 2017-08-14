@@ -8,9 +8,7 @@
 #define  BTHREAD_MUTEX_H
 
 #include "bthread/types.h"
-#include "base/macros.h"
-#include "base/errno.h"
-#include "base/logging.h"
+#include "base/scoped_lock.h"
 #include "bvar/utils/lock_timer.h"
 
 __BEGIN_DECLS
@@ -32,145 +30,19 @@ namespace bthread {
 class Mutex {
 public:
     typedef bthread_mutex_t* native_handler_type;
-    Mutex() {
-        CHECK_EQ(0, bthread_mutex_init(&_mutex, NULL));
-    }
-    ~Mutex() {
-        CHECK_EQ(0, bthread_mutex_destroy(&_mutex));
-    }
-
+    Mutex() { CHECK_EQ(0, bthread_mutex_init(&_mutex, NULL)); }
+    ~Mutex() { CHECK_EQ(0, bthread_mutex_destroy(&_mutex)); }
     native_handler_type native_handler() { return &_mutex; }
-
-    void lock() {
-        bthread_mutex_lock(&_mutex);
-    }
-    void unlock() {
-        bthread_mutex_unlock(&_mutex);
-    }
-    bool try_lock() {
-        return bthread_mutex_trylock(&_mutex) == 0;
-    }
-
+    void lock() { bthread_mutex_lock(&_mutex); }
+    void unlock() { bthread_mutex_unlock(&_mutex); }
+    bool try_lock() { return !bthread_mutex_trylock(&_mutex); }
     // TODO(chenzhangyi01): Complement interfaces for C++11
-    
 private:
     DISALLOW_COPY_AND_ASSIGN(Mutex);
     bthread_mutex_t _mutex;   
 };
 
 }  // namespace bthread
-
-#if __cplusplus >= 201103L
-#include <mutex>                           // std::lock_guard std::unique_lock
-#else  // __cplusplus >= 201103L
-
-namespace std {
-
-// Declare unique_lock and lock_guard for C++03
-
-template <typename _Mutex> class unique_lock;
-template <typename _Mutex> class lock_guard;
-
-// Specialize std::unique_lock and std::lock_guard
-template<>
-class unique_lock<bthread::Mutex> {
-    DISALLOW_COPY_AND_ASSIGN(unique_lock);
-public:
-    typedef bthread::Mutex          mutex_type;
-    unique_lock() : _mutex(NULL), _owns_lock(false) {}
-    explicit unique_lock(mutex_type& mutex)
-        : _mutex(&mutex), _owns_lock(false) {
-        lock();
-    }
-    unique_lock(mutex_type& mutex, defer_lock_t)
-        : _mutex(&mutex), _owns_lock(false)
-    {}
-    unique_lock(mutex_type& mutex, try_to_lock_t) 
-        : _mutex(&mutex), _owns_lock(mutex.try_lock())
-    {}
-    unique_lock(mutex_type& mutex, adopt_lock_t) 
-        : _mutex(&mutex), _owns_lock(true)
-    {}
-
-    ~unique_lock() {
-        if (_owns_lock) {
-            unlock();
-        }
-    }
-    void lock() {
-        if (_owns_lock) {
-            CHECK(false) << "Detected deadlock issue";     
-            return;
-        }
-        if (!_mutex) {
-            CHECK(false) << "Invalid operator";
-            return;
-        }
-        _mutex->lock();
-        _owns_lock = true;
-    }
-    bool try_lock() {
-        if (!_mutex) {
-            CHECK(false) << "Invalid operation";
-            return false;
-        }
-        if (_owns_lock) {
-            CHECK(false) << "Detected deadlock issue";     
-            return false;
-        }
-        _owns_lock = _mutex->try_lock();
-        return _owns_lock;
-    }
-    void unlock() {
-        if (!_owns_lock) {
-            CHECK(false) << "Invalid operation";
-            return;
-        }
-        if (_mutex) {
-            _mutex->unlock();
-            _owns_lock = false;
-        }
-    }
-    void swap(unique_lock& rhs) {
-        std::swap(_mutex, rhs._mutex);
-        std::swap(_owns_lock, rhs._owns_lock);
-    }
-    mutex_type* release() {
-        mutex_type* saved_mutex = _mutex;
-        _mutex = NULL;
-        _owns_lock = false;
-        return saved_mutex;
-    }
-    mutex_type* mutex() { return _mutex; }
-    bool owns_lock() const { return _owns_lock; }
-    operator bool() const { return owns_lock(); }
-private:
-    mutex_type*                     _mutex;
-    bool                            _owns_lock;
-};
-
-template <>
-class lock_guard<bthread::Mutex> {
-    DISALLOW_COPY_AND_ASSIGN(lock_guard);
-public:
-    typedef bthread::Mutex          mutex_type;
-    lock_guard() : _mutex(NULL) {}
-    explicit lock_guard(mutex_type& mutex) : _mutex(&mutex) {
-        _mutex->lock();
-    }
-    ~lock_guard() {
-        if (_mutex) {
-            _mutex->unlock();
-            _mutex = NULL;
-        }
-    }
-private:
-    mutex_type*                     _mutex;
-};
-
-}  // namespace std
-
-#endif // __cplusplus
 
 // Specialize std::lock_guard and std::unique_lock for bthread_mutex_t
 
@@ -205,8 +77,7 @@ private:
     bthread_mutex_t* _pmutex;
 };
 
-template<>
-class unique_lock<bthread_mutex_t> {
+template <> class unique_lock<bthread_mutex_t> {
     DISALLOW_COPY_AND_ASSIGN(unique_lock);
 public:
     typedef bthread_mutex_t         mutex_type;

@@ -92,35 +92,33 @@ struct PendingError {
 };
 
 struct BAIDU_CACHELINE_ALIGNMENT Id {
-    void* data;
-    int (*on_error)(bthread_id_t, void*, int);
-    int (*on_error2)(bthread_id_t, void*, int, const std::string&);
-
     // first_ver ~ locked_ver - 1: unlocked versions
     // locked_ver: locked
     // unlockable_ver: locked and about to be destroyed
     // contended_ver: locked and contended
     uint32_t first_ver;
     uint32_t locked_ver;
-    const char *lock_location;
-    SmallQueue<PendingError, 2> pending_q;
     base::Mutex mutex;
-    char butex_memory[BUTEX_MEMORY_SIZE]
-        __attribute__((__aligned__(sizeof(int))));
-    char join_butex_memory[BUTEX_MEMORY_SIZE]
-        __attribute__((__aligned__(sizeof(int))));
-
+    void* data;
+    int (*on_error)(bthread_id_t, void*, int);
+    int (*on_error2)(bthread_id_t, void*, int, const std::string&);
+    const char *lock_location;
+    uint32_t* butex;
+    uint32_t* join_butex;
+    SmallQueue<PendingError, 2> pending_q;
     
     Id() {
         // Although value of the butex(as version part of bthread_id_t)
         // does not matter, we set it to 0 to make program more deterministic.
-        *(int*)bthread::butex_construct(butex_memory) = 0;
-        *(int*)bthread::butex_construct(join_butex_memory) = 0;
+        butex = bthread::butex_create_checked<uint32_t>();
+        join_butex = bthread::butex_create_checked<uint32_t>();
+        *butex = 0;
+        *join_butex = 0;
     }
 
     ~Id() {
-        bthread::butex_destruct(butex_memory);
-        bthread::butex_destruct(join_butex_memory);
+        bthread::butex_destroy(butex);
+        bthread::butex_destroy(join_butex);
     }
 
     inline bool has_version(uint32_t id_ver) const {
@@ -153,23 +151,19 @@ inline uint32_t get_version(bthread_id_t id) {
     return (uint32_t)(id.value & 0xFFFFFFFFul);
 }
 
-inline bool id_exists(bthread_id_t id) {
+inline bool id_exists_with_true_negatives(bthread_id_t id) {
     Id* const meta = address_resource(get_slot(id));
     if (meta == NULL) {
         return false;
     }
     const uint32_t id_ver = bthread::get_version(id);
-    if (id_ver >= meta->first_ver && id_ver <= meta->last_ver()) {
-        std::unique_lock<base::Mutex> mu(meta->mutex);
-        return (id_ver >= meta->first_ver && id_ver <= meta->last_ver());
-    }
-    return false;
+    return id_ver >= meta->first_ver && id_ver <= meta->last_ver();
 }
 // required by unittest
 uint32_t id_value(bthread_id_t id) {
     Id* const meta = address_resource(get_slot(id));
     if (meta != NULL) {
-        return *(const uint32_t*)bthread::butex_locate(meta->butex_memory);
+        return *meta->butex;
     }
     return 0;  // valid version never be zero
 }
@@ -189,7 +183,7 @@ void id_status(bthread_id_t id, std::ostream &os) {
         return;
     }
     const uint32_t id_ver = bthread::get_version(id);
-    uint32_t* butex = (uint32_t*)bthread::butex_locate(meta->butex_memory);
+    uint32_t* butex = meta->butex;
     bool valid = true;
     void* data = NULL;
     int (*on_error)(bthread_id_t, void*, int) = NULL;
@@ -282,7 +276,8 @@ struct IdTraits {
     static const size_t BLOCK_SIZE = 63;
     static const size_t MAX_ENTRIES = 100000;
     static const bthread_id_t ID_INIT;
-    static bool exists(bthread_id_t id) { return bthread::id_exists(id); }
+    static bool exists(bthread_id_t id)
+    { return bthread::id_exists_with_true_negatives(id); }
 };
 const bthread_id_t IdTraits::ID_INIT = INVALID_BTHREAD_ID;
 
@@ -321,13 +316,13 @@ static int id_create_impl(
         meta->on_error = on_error;
         meta->on_error2 = on_error2;
         CHECK(meta->pending_q.empty());
-        uint32_t* butex = (uint32_t*)butex_locate(meta->butex_memory);
+        uint32_t* butex = meta->butex;
         if (0 == *butex || *butex + ID_MAX_RANGE + 2 < *butex) {
             // Skip 0 so that bthread_id_t is never 0
             // avoid overflow to make comparisons simpler.
             *butex = 1;
         }
-        *(uint32_t*)butex_locate(meta->join_butex_memory) = *butex;
+        *meta->join_butex = *butex;
         meta->first_ver = *butex;
         meta->locked_ver = *butex + 1;
         *id = make_id(*butex, slot);
@@ -354,13 +349,13 @@ static int id_create_ranged_impl(
         meta->on_error = on_error;
         meta->on_error2 = on_error2;
         CHECK(meta->pending_q.empty());
-        uint32_t* butex = (uint32_t*)butex_locate(meta->butex_memory);
+        uint32_t* butex = meta->butex;
         if (0 == *butex || *butex + ID_MAX_RANGE + 2 < *butex) {
             // Skip 0 so that bthread_id_t is never 0
             // avoid overflow to make comparisons simpler.
             *butex = 1;
         }
-        *(uint32_t*)butex_locate(meta->join_butex_memory) = *butex;
+        *meta->join_butex = *butex;
         meta->first_ver = *butex;
         meta->locked_ver = *butex + range;
         *id = make_id(*butex, slot);
@@ -408,7 +403,7 @@ int bthread_id_lock_and_reset_range_verbose(
         return EINVAL;
     }
     const uint32_t id_ver = bthread::get_version(id);
-    uint32_t* butex = (uint32_t*) bthread::butex_locate(meta->butex_memory);
+    uint32_t* butex = meta->butex;
     bool ever_contended = false;
     meta->mutex.lock();
     while (meta->has_version(id_ver)) {
@@ -469,7 +464,7 @@ int bthread_id_about_to_destroy(bthread_id_t id) __THROW {
         return EINVAL;
     }
     const uint32_t id_ver = bthread::get_version(id);
-    uint32_t* butex = (uint32_t*)bthread::butex_locate(meta->butex_memory);
+    uint32_t* butex = meta->butex;
     std::unique_lock<base::Mutex> mu(meta->mutex);
     if (!meta->has_version(id_ver)) {
         return EINVAL;
@@ -494,7 +489,7 @@ int bthread_id_cancel(bthread_id_t id) __THROW {
     if (__builtin_expect(meta == NULL, 0)) {
         return EINVAL;
     }
-    uint32_t* butex = (uint32_t*)bthread::butex_locate(meta->butex_memory);
+    uint32_t* butex = meta->butex;
     const uint32_t id_ver = bthread::get_version(id);
     std::unique_lock<base::Mutex> mu(meta->mutex);
     if (!meta->has_version(id_ver)) {
@@ -518,8 +513,7 @@ int bthread_id_join(bthread_id_t id) __THROW {
         return EINVAL;
     }
     const uint32_t id_ver = bthread::get_version(id);
-    uint32_t* join_butex =
-        (uint32_t*)bthread::butex_locate(meta->join_butex_memory);
+    uint32_t* join_butex = meta->join_butex;
     bool stopped = false;
     while (1) {
         meta->mutex.lock();
@@ -547,7 +541,7 @@ int bthread_id_trylock(bthread_id_t id, void** pdata) __THROW {
     if (__builtin_expect(meta == NULL, 0)) {
         return EINVAL;
     }
-    uint32_t* butex = (uint32_t*)bthread::butex_locate(meta->butex_memory);
+    uint32_t* butex = meta->butex;
     const uint32_t id_ver = bthread::get_version(id);
     std::unique_lock<base::Mutex> mu(meta->mutex);
     if (!meta->has_version(id_ver)) {
@@ -574,7 +568,7 @@ int bthread_id_unlock(bthread_id_t id) __THROW {
     if (__builtin_expect(meta == NULL, 0)) {
         return EINVAL;
     }
-    uint32_t* butex = (uint32_t*)bthread::butex_locate(meta->butex_memory);
+    uint32_t* butex = meta->butex;
     // Release fence makes sure all changes made before signal visible to
     // woken-up waiters.
     const uint32_t id_ver = bthread::get_version(id);
@@ -616,10 +610,8 @@ int bthread_id_unlock_and_destroy(bthread_id_t id) __THROW {
     if (__builtin_expect(meta == NULL, 0)) {
         return EINVAL;
     }
-    uint32_t* butex =
-        (uint32_t*)bthread::butex_locate(meta->butex_memory);
-    uint32_t* join_butex =
-        (uint32_t*)bthread::butex_locate(meta->join_butex_memory);
+    uint32_t* butex = meta->butex;
+    uint32_t* join_butex = meta->join_butex;
     const uint32_t id_ver = bthread::get_version(id);
     std::unique_lock<base::Mutex> mu(meta->mutex);
     if (!meta->has_version(id_ver)) {
@@ -720,7 +712,7 @@ int bthread_id_error2_verbose(bthread_id_t id, int error_code,
         return EINVAL;
     }
     const uint32_t id_ver = bthread::get_version(id);
-    uint32_t* butex = (uint32_t*)bthread::butex_locate(meta->butex_memory);
+    uint32_t* butex = meta->butex;
     std::unique_lock<base::Mutex> mu(meta->mutex);
     if (!meta->has_version(id_ver)) {
         return EINVAL;

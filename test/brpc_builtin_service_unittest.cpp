@@ -10,7 +10,7 @@
 #include <fstream>
 #include <gtest/gtest.h>
 #include <google/gflags.h>
-#include <google/profiler.h>
+#include <gperftools/profiler.h>
 #include <google/protobuf/descriptor.h>
 #include "base/time.h"
 #include "base/macros.h"
@@ -638,7 +638,7 @@ TEST_F(BuiltinServiceTest, pprof) {
         brpc::Controller cntl;
         cntl.http_request().uri().SetQuery("seconds", "1");
         service.profile(&cntl, NULL, NULL, &done);
-        // Just for loading symbols in google/profiler.h
+        // Just for loading symbols in gperftools/profiler.h
         ProfilerFlush();
         EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
         EXPECT_GT(cntl.response_attachment().length(), 0ul);

@@ -129,35 +129,35 @@ void return_stack(StackContainer* sc) {
 
 namespace base {
 
-template <> struct ObjectPoolFreeChunkMaxItem<
+template <> struct ObjectPoolBlockMaxItem<
     bthread::StackContainerFactory<bthread::LargeStackClass>::Wrapper> {
-    static const size_t value = 32;
+    static const size_t value = 64;
 };
-template <> struct ObjectPoolFreeChunkMaxItem<
+template <> struct ObjectPoolBlockMaxItem<
     bthread::StackContainerFactory<bthread::NormalStackClass>::Wrapper> {
-    static const size_t value = 32;
+    static const size_t value = 64;
+};
+
+template <> struct ObjectPoolBlockMaxItem<
+    bthread::StackContainerFactory<bthread::SmallStackClass>::Wrapper> {
+    static const size_t value = 64;
 };
 
 template <> struct ObjectPoolFreeChunkMaxItem<
-    bthread::StackContainerFactory<bthread::SmallStackClass>::Wrapper> {
-    static const size_t value = 32;
-};
-
-template <> struct ObjectPoolFreeChunkMaxItemDynamic<
     bthread::StackContainerFactory<bthread::SmallStackClass>::Wrapper> {
     inline static size_t value() {
         return (FLAGS_tc_stack_small <= 0 ? 0 : FLAGS_tc_stack_small);
     }
 };
 
-template <> struct ObjectPoolFreeChunkMaxItemDynamic<
+template <> struct ObjectPoolFreeChunkMaxItem<
     bthread::StackContainerFactory<bthread::NormalStackClass>::Wrapper> {
     inline static size_t value() {
         return (FLAGS_tc_stack_normal <= 0 ? 0 : FLAGS_tc_stack_normal);
     }
 };
 
-template <> struct ObjectPoolFreeChunkMaxItemDynamic<
+template <> struct ObjectPoolFreeChunkMaxItem<
     bthread::StackContainerFactory<bthread::LargeStackClass>::Wrapper> {
     inline static size_t value() { return 1UL; }
 };

@@ -14,7 +14,7 @@
 
 //#define ENABLE_PROFILE
 #ifdef ENABLE_PROFILE
-# include <google/profiler.h>
+# include <gperftools/profiler.h>
 #else
 # define ProfilerStart(a)
 # define ProfilerStop()
@@ -22,7 +22,7 @@
 
 namespace {
 inline unsigned* get_butex(bthread_mutex_t & m) {
-    return (unsigned*)bthread::butex_locate(m.butex_memory);
+    return m.butex;
 }
 
 long start_time = base::cpuwide_time_ms();
@@ -127,12 +127,106 @@ TEST(MutexTest, cpp_wrapper) {
     mutex.unlock();
 }
 
+bool g_started = false;
 bool g_stopped = false;
+
+template <typename Mutex>
+struct BAIDU_CACHELINE_ALIGNMENT PerfArgs {
+    Mutex* mutex;
+    int64_t counter;
+    int64_t elapse_ns;
+    bool ready;
+
+    PerfArgs() : mutex(NULL), counter(0), elapse_ns(0), ready(false) {}
+};
+
+template <typename Mutex>
+void* add_with_mutex(void* void_arg) {
+    PerfArgs<Mutex>* args = (PerfArgs<Mutex>*)void_arg;
+    args->ready = true;
+    base::Timer t;
+    while (!g_stopped) {
+        if (g_started) {
+            break;
+        }
+        bthread_usleep(1000);
+    }
+    t.start();
+    while (!g_stopped) {
+        BAIDU_SCOPED_LOCK(*args->mutex);
+        ++args->counter;
+    }
+    t.stop();
+    args->elapse_ns = t.n_elapsed();
+    return NULL;
+}
+
+int g_prof_name_counter = 0;
+
+template <typename Mutex, typename ThreadId,
+          typename ThreadCreateFn, typename ThreadJoinFn>
+void PerfTest(Mutex* mutex,
+              ThreadId* /*dummy*/,
+              int thread_num,
+              const ThreadCreateFn& create_fn,
+              const ThreadJoinFn& join_fn) {
+    g_started = false;
+    g_stopped = false;
+    ThreadId threads[thread_num];
+    PerfArgs<Mutex> args[thread_num];
+    for (int i = 0; i < thread_num; ++i) {
+        args[i].mutex = mutex;
+        create_fn(&threads[i], NULL, add_with_mutex<Mutex>, &args[i]);
+    }
+    while (true) {
+        bool all_ready = true;
+        for (int i = 0; i < thread_num; ++i) {
+            if (!args[i].ready) {
+                all_ready = false;
+                break;
+            }
+        }
+        if (all_ready) {
+            break;
+        }
+        usleep(1000);
+    }
+    g_started = true;
+    char prof_name[32];
+    snprintf(prof_name, sizeof(prof_name), "mutex_perf_%d.prof", ++g_prof_name_counter); 
+    ProfilerStart(prof_name);
+    usleep(500 * 1000);
+    ProfilerStop();
+    g_stopped = true;
+    int64_t wait_time = 0;
+    int64_t count = 0;
+    for (int i = 0; i < thread_num; ++i) {
+        join_fn(threads[i], NULL);
+        wait_time += args[i].elapse_ns;
+        count += args[i].counter;
+    }
+    LOG(INFO) << base::class_name<Mutex>() << " in "
+              << ((void*)create_fn == (void*)pthread_create ? "pthread" : "bthread")
+              << " thread_num=" << thread_num
+              << " count=" << count
+              << " average_time=" << wait_time / (double)count;
+}
+
+TEST(MutexTest, performance) {
+    const int thread_num = 12;
+    base::Mutex base_mutex;
+    PerfTest(&base_mutex, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
+    PerfTest(&base_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
+    bthread::Mutex bth_mutex;
+    PerfTest(&bth_mutex, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
+    PerfTest(&bth_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
+}
+
 void* loop_until_stopped(void* arg) {
     bthread::Mutex *m = (bthread::Mutex*)arg;
     while (!g_stopped) {
         BAIDU_SCOPED_LOCK(*m);
-        usleep(20);
+        bthread_usleep(20);
     }
     return NULL;
 }
@@ -140,89 +234,29 @@ void* loop_until_stopped(void* arg) {
 TEST(MutexTest, mix_thread_types) {
     g_stopped = false;
     const int N = 16;
+    const int M = N * 2;
     bthread::Mutex m;
     pthread_t pthreads[N];
-    bthread_t bthreads[N + N];
-    bthread_setconcurrency(N * 2); // reserve enough workers for test
+    bthread_t bthreads[M];
+    // reserve enough workers for test. This is a must since we have
+    // BTHREAD_ATTR_PTHREAD bthreads which may cause deadlocks (the
+    // bhtread_usleep below can't be scheduled and g_stopped is never
+    // true, thus loop_until_stopped spins forever)
+    bthread_setconcurrency(M);
     for (int i = 0; i < N; ++i) {
         ASSERT_EQ(0, pthread_create(&pthreads[i], NULL, loop_until_stopped, &m));
     }
-    for (int i = 0; i < N + N; ++i) {
+    for (int i = 0; i < M; ++i) {
         const bthread_attr_t *attr = i % 2 ? NULL : &BTHREAD_ATTR_PTHREAD;
         ASSERT_EQ(0, bthread_start_urgent(&bthreads[i], attr, loop_until_stopped, &m));
     }
-    bthread_usleep(5000L * 1000);
+    bthread_usleep(1000L * 1000);
     g_stopped = true;
-    for (int i = 0; i < N + N; ++i) {
+    for (int i = 0; i < M; ++i) {
         bthread_join(bthreads[i], NULL);
     }
     for (int i = 0; i < N; ++i) {
         pthread_join(pthreads[i], NULL);
     }
-}
-
-int64_t counter = 0;
-
-template <typename Mutex>
-void* add_with_mutex(void* arg) {
-    Mutex* m = (Mutex*)arg;
-    base::Timer t;
-    t.start();
-    while (!g_stopped) {
-        BAIDU_SCOPED_LOCK(*m);
-        ++counter;
-    }
-    t.stop();
-    return (void*)t.n_elapsed();
-}
-
-#define TEST_IN_BTHREAD
-#ifdef TEST_IN_BTHREAD 
-#define pthread_t bthread_t
-#define pthread_join bthread_join
-#define pthread_create bthread_start_urgent
-#endif
-
-TEST(MutexTest, performance) {
-    g_stopped = false;
-    base::Timer t;
-    pthread_t threads[12];
-    pthread_mutex_t m;
-    pthread_mutex_init(&m, NULL);
-    counter = 0;
-    for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_create(&threads[i], NULL, add_with_mutex<pthread_mutex_t>, &m);
-    }
-    usleep(1000 * 1000);
-    g_stopped = true;
-    int64_t total_wait_time = 0;
-    for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        void *ret = NULL;
-        pthread_join(threads[i], &ret);
-        total_wait_time += (int64_t)ret;
-    }
-    LOG(INFO) << "With pthread_mutex in " << ARRAY_SIZE(threads) << " threads"
-              << " counter is " << counter
-              << " and the average wait time is " << total_wait_time / counter;
-    pthread_mutex_destroy(&m);
-    counter = 0;
-    g_stopped = false;
-    bthread::Mutex mutex;
-    ProfilerStart("mutex.prof");
-    for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        pthread_create(&threads[i], NULL, add_with_mutex<bthread::Mutex>, &mutex);
-    }
-    usleep(1000 * 1000);
-    g_stopped = true;
-    total_wait_time = 0;
-    for (size_t i = 0; i < ARRAY_SIZE(threads); ++i) {
-        void *ret = NULL;
-        pthread_join(threads[i], &ret);
-        total_wait_time += (int64_t)ret;
-    }
-    ProfilerStop();
-    LOG(INFO) << "With bthread_mutex in " << ARRAY_SIZE(threads) << " threads"
-              << " counter is " << counter 
-              << " and the average wait time is " << total_wait_time / counter;
 }
 } // namespace

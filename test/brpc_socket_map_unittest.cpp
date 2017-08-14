@@ -6,7 +6,7 @@
 
 #include <gtest/gtest.h>
 #include <google/gflags.h>
-#include <google/profiler.h>
+#include <gperftools/profiler.h>
 #include "brpc/socket.h"
 #include "brpc/socket_map.h"
 #include "brpc/reloadable_flags.h"

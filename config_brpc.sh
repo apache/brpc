@@ -1,15 +1,13 @@
 if [ -z "$BASH" ]; then
     ECHO=echo
-    ERROR='>&2 echo'
 else
     ECHO='echo -e'
-    ERROR='>&2 echo -e'
 fi
 # NOTE: This requires GNU getopt.  On Mac OS X and FreeBSD, you have to install this
 # separately; see below.
 TEMP=`getopt -o v: --long incs:,libs:,cc:,cxx: -n 'config_brpc' -- "$@"`
 
-if [ $? != 0 ] ; then $ERROR "Terminating..."; exit 1 ; fi
+if [ $? != 0 ] ; then >&2 $ECHO "Terminating..."; exit 1 ; fi
 
 # Note the quotes around `$TEMP': they are essential!
 eval set -- "$TEMP"
@@ -29,7 +27,7 @@ while true; do
 done
 
 if [ -z "$INCS" ] || [ -z "$LIBS" ]; then
-    $ERROR "config_brpc: --incs=INCPATHS --libs=LIBPATHS must be specified"
+    >&2 $ECHO "config_brpc: --incs=INCPATHS --libs=LIBPATHS must be specified"
     exit 1
 fi
 
@@ -42,7 +40,7 @@ find_dir_of_lib() {
 find_dir_of_lib_or_die() {
     local dir=$(find_dir_of_lib $1)
     if [ -z "$dir" ]; then
-        $ERROR "fail to find $1 from -libs"
+        >&2 $ECHO "fail to find $1 from -libs"
         exit 1
     else
         $ECHO $dir
@@ -59,7 +57,7 @@ find_dir_of_header() {
 find_dir_of_header_or_die() {
     local dir=$(find_dir_of_header $1)
     if [ -z "$dir" ]; then
-        $ERROR "fail to find $1 from -incs"
+        >&2 $ECHO "fail to find $1 from -incs"
         exit 1
     else
         $ECHO $dir
@@ -93,7 +91,7 @@ PROTOC=$(which protoc 2>/dev/null)
 if [ -z "$PROTOC" ]; then
     PROTOC=$(find_bin protoc)
     if [ -z "$PROTOC" ]; then
-        $ERROR "Fail to find protoc"
+        >&2 $ECHO "Fail to find protoc"
         exit 1
     fi
 fi

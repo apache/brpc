@@ -6,7 +6,7 @@
 #include "bvar/detail/percentile.h"
 #include "base/logging.h"
 #include <gtest/gtest.h>
-#include <google/profiler.h>
+#include <gperftools/profiler.h>
 #include <fstream>
 
 class PercentileTest : public testing::Test {

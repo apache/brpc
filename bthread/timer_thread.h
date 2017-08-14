@@ -20,7 +20,7 @@ struct TimerThreadOptions {
     // schedule() because bigger values also make each buckets more sparse
     // and more likely to lock the global mutex. You better not change
     // this value, just leave it to us.
-    // Default: 12
+    // Default: 13
     size_t num_buckets;
 
     // If this field is not empty, some bvar for reporting stats of TimerThread

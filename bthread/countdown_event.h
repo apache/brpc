@@ -11,38 +11,22 @@
 
 namespace bthread {
 
-// Represents a synchronization primitive that is signaled when its count
-// reaches zero.
+// A synchronization primitive to wait for multiple signallers.
 class CountdownEvent {
 public:
-    // Ctor/Dtor
-    CountdownEvent();
+    CountdownEvent(int initial_count = 1);
     ~CountdownEvent();
 
-    // Initialize the counter to 1
-    int init() { return init(1); }
+    // Increase current counter by |v|
+    void add_count(int v = 1);
 
-    // Initialize the counter to |initial_count|
-    int init(int initial_count);
-
-    // Decrease the counter by 1
-    void signal() { return signal(1); }
+    // Reset the counter to |v|
+    void reset(int v = 1);
 
     // Decrease the counter by |sig|
-    void signal(int sig);
+    void signal(int sig = 1);
 
-    // Increase current counter by 1
-    void add_count() { return add_count(1); }
-
-    // Increase current counter by |v|
-    void add_count(int v);
-
-    // Reset the counter to 1
-    void reset() { return reset(1); }
-    // Reset the counter to |v|
-    void reset(int v);
-
-    // Block the current thread until the counter reaches 0
+    // Block current thread until the counter reaches 0
     void wait();
 
     // Block the current thread until the counter reaches 0 or duetime has expired
@@ -50,7 +34,6 @@ public:
     int timed_wait(const timespec& duetime);
 
 private:
-    char _butex_memory[BUTEX_MEMORY_SIZE];
     int *_butex;
     bool _wait_was_invoked;
 };

@@ -14,7 +14,7 @@
 
 #define ENABLE_PROFILE
 #ifdef ENABLE_PROFILE
-# include <google/profiler.h>
+# include <gperftools/profiler.h>
 #else
 # define ProfilerStart(a)
 # define ProfilerStop()

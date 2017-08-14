@@ -5,41 +5,33 @@
 // Date: 2016/06/03 13:15:24
 
 #include "base/atomicops.h"     // base::atomic<int>
+#include "bthread/butex.h"
 #include "bthread/countdown_event.h"
-#include "bthread/butex.h"      // butex_construct
 
 namespace bthread {
 
-CountdownEvent::CountdownEvent() {
-    _butex = (int*)butex_construct(_butex_memory);
-    ((base::atomic<int>*)_butex)->store(0, base::memory_order_relaxed);
+CountdownEvent::CountdownEvent(int initial_count) {
+    if (initial_count < 0) {
+        LOG(FATAL) << "Invalid initial_count=" << initial_count;
+        abort();
+    }
+    _butex = butex_create_checked<int>();
+    *_butex = initial_count;
     _wait_was_invoked = false;
 }
 
 CountdownEvent::~CountdownEvent() {
-    butex_destruct(_butex_memory);
-}
-
-int CountdownEvent::init(int initial_count) {
-    if (initial_count < 0) {
-        return -1;
-    }
-    ((base::atomic<int>*)_butex)->store(initial_count, 
-                                        base::memory_order_relaxed);
-    _wait_was_invoked = false;
-    return 0;
+    butex_destroy(_butex);
 }
 
 void CountdownEvent::signal(int sig) {
-    butex_add_ref_before_wake(_butex);
     const int prev = ((base::atomic<int>*)_butex)
         ->fetch_sub(sig, base::memory_order_release);
     if (prev > sig) {
-        butex_remove_ref(_butex);
         return;
     }
     LOG_IF(ERROR, prev < sig) << "Counter is over decreased";
-    butex_wake_all_and_remove_ref(_butex);
+    butex_wake_all(_butex);
 }
 
 void CountdownEvent::wait() {
@@ -56,7 +48,7 @@ void CountdownEvent::wait() {
 
 void CountdownEvent::add_count(int v) {
     if (v <= 0) {
-        LOG_IF(ERROR, v < 0) << "Negative v=" << v;
+        LOG_IF(ERROR, v < 0) << "Invalid count=" << v;
         return;
     }
     LOG_IF(ERROR, _wait_was_invoked) 
@@ -65,10 +57,15 @@ void CountdownEvent::add_count(int v) {
 }
 
 void CountdownEvent::reset(int v) {
+    if (v < 0) {
+        LOG(ERROR) << "Invalid count=" << v;
+        return;
+    }
     const int prev_counter =
             ((base::atomic<int>*)_butex)
                 ->exchange(v, base::memory_order_release);
-    LOG_IF(ERROR, !prev_counter) << "Invoking reset() while the count is not 0";
+    LOG_IF(ERROR, _wait_was_invoked && prev_counter)
+        << "Invoking reset() while count=" << prev_counter;
     _wait_was_invoked = false;
 }
 
@@ -81,8 +78,8 @@ int CountdownEvent::timed_wait(const timespec& duetime) {
             return 0;
         }
         const int rc = butex_wait(_butex, seen_counter, &duetime);
-        if (rc < 0 && errno == ETIMEDOUT) {
-            return ETIMEDOUT;
+        if (rc < 0 && errno != EWOULDBLOCK) {
+            return errno;
         }
     }
 }

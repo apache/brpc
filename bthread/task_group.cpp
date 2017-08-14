@@ -4,11 +4,13 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 10 17:40:58 CST 2012
 
+#include <sys/types.h>
 #include <stddef.h>                         // size_t
 #include <gflags/gflags.h>
 #include "base/macros.h"                    // ARRAY_SIZE
 #include "base/scoped_lock.h"               // BAIDU_SCOPED_LOCK
 #include "base/fast_rand.h"
+#include "base/unique_ptr.h"
 #include "bthread/butex.h"                  // butex_*
 #include "bthread/sys_futex.h"              // futex_wake_private
 #include "bthread/processor.h"              // cpu_relax
@@ -22,15 +24,20 @@ namespace bthread {
 static const bthread_attr_t BTHREAD_ATTR_TASKGROUP = {
     BTHREAD_STACKTYPE_UNKNOWN, 0, NULL };
 
+static bool pass_bool(const char*, bool) { return true; }
+
 DEFINE_bool(show_bthread_creation_in_vars, false, "When this flags is on, The time "
             "from bthread creation to first run will be recorded and shown "
             "in /vars");
+const bool ALLOW_UNUSED dummy_show_bthread_creation_in_vars =
+    ::google::RegisterFlagValidator(&FLAGS_show_bthread_creation_in_vars,
+                                    pass_bool);
 
-static bool pass_show_bthread_creation_in_vars(const char*, bool) {
-    return true;
-}
-const bool ALLOW_UNUSED dummy_show_bthread_creation_in_vars = ::google::RegisterFlagValidator(
-    &FLAGS_show_bthread_creation_in_vars, pass_show_bthread_creation_in_vars);
+DEFINE_bool(show_per_worker_usage_in_vars, false,
+            "Show per-worker usage in /vars/bthread_per_worker_usage_<tid>");
+const bool ALLOW_UNUSED dummy_show_per_worker_usage_in_vars =
+    ::google::RegisterFlagValidator(&FLAGS_show_per_worker_usage_in_vars,
+                                    pass_bool);
 
 __thread TaskGroup* tls_task_group = NULL;
 __thread LocalStorage tls_bls = BTHREAD_LOCAL_STORAGE_INITIALIZER;
@@ -136,7 +143,15 @@ bool TaskGroup::wait_task(bthread_t* tid, size_t* seed, size_t offset) {
     } while (true);
 }
 
-void TaskGroup::run_main_task() {    
+static double get_cumulated_cputime_from_this(void* arg) {
+    return static_cast<TaskGroup*>(arg)->cumulated_cputime_ns() / 1000000000.0;
+}
+
+void TaskGroup::run_main_task() {
+    bvar::PassiveStatus<double> cumulated_cputime(
+        get_cumulated_cputime_from_this, this);
+    std::unique_ptr<bvar::PerSecond<bvar::PassiveStatus<double> > > usage_bvar;
+    
     TaskGroup* dummy = this;
     bthread_t tid;
     while (wait_task(&tid, &_steal_seed, _steal_offset)) {
@@ -145,6 +160,13 @@ void TaskGroup::run_main_task() {
         DCHECK_EQ(_cur_meta->stack_container, _main_stack_container);
         if (_cur_meta->tid != _main_tid) {
             TaskGroup::task_runner(1/*skip remained*/);
+        }
+        if (FLAGS_show_per_worker_usage_in_vars && !usage_bvar) {
+            char name[32];
+            snprintf(name, sizeof(name), "bthread_worker_usage_%ld",
+                     (long)syscall(SYS_gettid));
+            usage_bvar.reset(new bvar::PerSecond<bvar::PassiveStatus<double> >
+                             (name, &cumulated_cputime, 1));
         }
     }
     // stop_main_task() was called.

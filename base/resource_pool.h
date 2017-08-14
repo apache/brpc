@@ -36,31 +36,29 @@
 namespace base {
 
 // Specialize following classes to override default parameters for type T.
-//
-// For example, following code specializes max size of a block for type Foo.
-//   template <> struct ResourcePoolBlockMaxSize<Foo> {
+//   namespace base {
+//     template <> struct ResourcePoolBlockMaxSize<Foo> {
 //       static const size_t value = 1024;
-//   };
+//     };
+//   }
 
-// Memory is allocated in blocks, override this class to change maximum size
-// (in bytes) of a block for type T.
+// Memory is allocated in blocks, memory size of a block will not exceed:
+//   min(ResourcePoolBlockMaxSize<T>::value,
+//       ResourcePoolBlockMaxItem<T>::value * sizeof(T))
 template <typename T> struct ResourcePoolBlockMaxSize {
-    static const size_t value = 128 * 1024;
+    static const size_t value = 64 * 1024; // bytes
 };
-
-// Number of resources in a block will not exceed the value in this class.
 template <typename T> struct ResourcePoolBlockMaxItem {
-    static const size_t value = 512;
+    static const size_t value = 256;
 };
 
-// Free resources are grouped into a local chunk (of each thread) before they
-// are merged into global list. Override this class to change number of free
-// resources in a chunk.
+// Free objects of each thread are grouped into a chunk before they are merged
+// to the global list. Memory size of objects in one free chunk will not exceed:
+//   min(ResourcePoolFreeChunkMaxItem<T>::value(),
+//       ResourcePoolBlockMaxSize<T>::value,
+//       ResourcePoolBlockMaxItem<T>::value * sizeof(T))
 template <typename T> struct ResourcePoolFreeChunkMaxItem {
-    static const size_t value = 0;  // use default value
-};
-template <typename T> struct ResourcePoolFreeChunkMaxItemDynamic {
-    static size_t value() { return 0; }  // use default value
+    static size_t value() { return 256; }
 };
 
 // ResourcePool calls this function on newly constructed objects. If this
