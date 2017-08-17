@@ -1,7 +1,7 @@
 LINK_PERFTOOLS=1
 include ../../config.mk
 BRPC_PATH=../../output
-CPPFLAGS=-std=c++0x -g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -Wno-deprecated -Wno-unused-parameter -D__const__=
+CPPFLAGS=-std=c++0x -g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -Wno-deprecated -Wno-unused-parameter -fno-omit-frame-pointer -D__const__=
 CXXFLAGS=$(CPPFLAGS)
 CFLAGS=$(CPPFLAGS)
 INCPATH=-I$(BRPC_PATH)/include $(addprefix -I, $(INCS))

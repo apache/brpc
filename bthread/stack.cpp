@@ -73,7 +73,6 @@ void* allocate_stack(int* inout_stacksize, int* inout_guardsize) {
             return NULL;
         }
 
-        stack_count() << 1;
         char* aligned_mem = (char*)(((intptr_t)mem + PAGESIZE_M1) & ~PAGESIZE_M1);
         const int offset = aligned_mem - (char*)mem;
 
@@ -83,6 +82,7 @@ void* allocate_stack(int* inout_stacksize, int* inout_guardsize) {
             return NULL;
         }
         
+        stack_count() << 1;
         *inout_stacksize = stacksize;
         *inout_guardsize = guardsize;
         return (char*)mem + memsize;
