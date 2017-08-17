@@ -11,6 +11,8 @@
 #include "base/scoped_lock.h"               // BAIDU_SCOPED_LOCK
 #include "base/fast_rand.h"
 #include "base/unique_ptr.h"
+#include "base/third_party/murmurhash3/murmurhash3.h" // fmix32
+#include "bthread/errno.h"                  // ESTOP
 #include "bthread/butex.h"                  // butex_*
 #include "bthread/sys_futex.h"              // futex_wake_private
 #include "bthread/processor.h"              // cpu_relax
@@ -126,28 +128,25 @@ int set_butex_waiter(bthread_t tid, ButexWaiter* w) {
     return -1;
 }
 
-bool TaskGroup::wait_task(bthread_t* tid, size_t* seed, size_t offset) {
+bool TaskGroup::wait_task(bthread_t* tid) {
     do {
-        int rc = _control->wait_task_once(tid, seed, offset);
-        if (rc <= 0) {
-            return rc == 0;
+#ifdef BTHREAD_SAVE_PARKING_STATE
+        if (_last_pl_state.stopped()) {
+            return -1;
         }
-        // When BTHREAD_FAIR_WSQ is defined, profiling shows that cpu cost of
-        // WSQ::steal() in example/multi_threaded_echo_c++ changes from 1.9%
-        // to 2.9%
-#ifndef BTHREAD_FAIR_WSQ
-        if (_rq.volatile_size() != 0) {
-            _rq_mutex.lock();
-            const bool popped = _rq.pop(tid);
-            _rq_mutex.unlock();
-            if (popped) {
-                return true;
-            }
-        }
-#else
-        if (_rq.steal(tid)) {
+        _pl->wait(_last_pl_state);
+        if (steal_task(tid)) {
             return true;
         }
+#else
+        const ParkingLot::State st = _pl->get_state();
+        if (st.stopped()) {
+            return -1;
+        }
+        if (steal_task(tid)) {
+            return true;
+        }
+        _pl->wait(st);
 #endif
     } while (true);
 }
@@ -163,7 +162,10 @@ void TaskGroup::run_main_task() {
     
     TaskGroup* dummy = this;
     bthread_t tid;
-    while (wait_task(&tid, &_steal_seed, _steal_offset)) {
+#ifdef BTHREAD_SAVE_PARKING_STATE
+    _last_pl_state = _pl->get_state();
+#endif
+    while (wait_task(&tid)) {
         TaskGroup::sched_to(&dummy, tid);
         DCHECK_EQ(this, dummy);
         DCHECK_EQ(_cur_meta->stack_container, _main_stack_container);
@@ -197,12 +199,15 @@ TaskGroup::TaskGroup(TaskControl* c)
     , _nswitch(0)
     , _last_context_remained(NULL)
     , _last_context_remained_arg(NULL)
+    , _pl(NULL) 
     , _main_stack_container(NULL)
     , _main_tid(0)
-    , _creation_pthread(pthread_self())
+    , _remote_num_nosignal(0)
+    , _remote_nsignaled(0)
 {
     _steal_seed = base::fast_rand();
     _steal_offset = OFFSET_TABLE[_steal_seed % ARRAY_SIZE(OFFSET_TABLE)];
+    _pl = &c->_pl[base::fmix32(pthread_self()) % TaskControl::PARKING_LOT_NUM];
     CHECK(c);
 }
 
@@ -217,11 +222,14 @@ TaskGroup::~TaskGroup() {
 }
 
 int TaskGroup::init(size_t runqueue_capacity) {
-    if (_rq.init(runqueue_capacity)) {
-        LOG(FATAL) << "Fail to init runqueue";
+    if (_rq.init(runqueue_capacity) != 0) {
+        LOG(FATAL) << "Fail to init _rq";
         return -1;
     }
-
+    if (_remote_rq.init(runqueue_capacity / 2) != 0) {
+        LOG(FATAL) << "Fail to init _remote_rq";
+        return -1;
+    }
     StackContainer* sc = get_stack(STACK_TYPE_MAIN, NULL);
     if (NULL == sc) {
         LOG(FATAL) << "Fail to get main stack container";
@@ -398,28 +406,21 @@ int TaskGroup::start_foreground(TaskGroup** pg,
 
     TaskGroup* g = *pg;
     g->_control->_nbthreads << 1;
-    if (using_attr.flags & BTHREAD_NOSIGNAL) {
-        if (g->is_current_pthread_task()) {
-            // never create foreground task in pthread.
-            g->ready_to_run_nosignal(m->tid);
-        } else {
-            // NOSIGNAL affects current task, not the new task.
-            g->set_remained(ready_to_run_in_worker_nosignal,
-                            (void*)g->current_tid());
-            TaskGroup::sched_to(pg, m->tid);
-        }
-        return 0;
-    }
     if (g->is_current_pthread_task()) {
         // never create foreground task in pthread.
-        g->ready_to_run(m->tid);
+        g->ready_to_run(m->tid, (using_attr.flags & BTHREAD_NOSIGNAL));
     } else {
-        g->set_remained(ready_to_run_in_worker, (void*)g->current_tid());
+        // NOSIGNAL affects current task, not the new task.
+        g->set_remained(((using_attr.flags & BTHREAD_NOSIGNAL)
+                         ? ready_to_run_in_worker_nosignal
+                         : ready_to_run_in_worker),
+                        (void*)g->current_tid());
         TaskGroup::sched_to(pg, m->tid);
     }
     return 0;
 }
 
+template <bool REMOTE>
 int TaskGroup::start_background(bthread_t* __restrict th,
                                 const bthread_attr_t* __restrict attr,
                                 void * (*fn)(void*),
@@ -451,13 +452,25 @@ int TaskGroup::start_background(bthread_t* __restrict th,
         LOG(INFO) << "Started bthread " << m->tid;
     }
     _control->_nbthreads << 1;
-    if (using_attr.flags & BTHREAD_NOSIGNAL) {
-        ready_to_run_nosignal(m->tid);
-        return 0;
+    if (REMOTE) {
+        ready_to_run_remote(m->tid, (using_attr.flags & BTHREAD_NOSIGNAL));
+    } else {
+        ready_to_run(m->tid, (using_attr.flags & BTHREAD_NOSIGNAL));
     }
-    ready_to_run(m->tid);
     return 0;
 }
+
+// Explicit instantiations.
+template int
+TaskGroup::start_background<true>(bthread_t* __restrict th,
+                                  const bthread_attr_t* __restrict attr,
+                                  void * (*fn)(void*),
+                                  void* __restrict arg);
+template int
+TaskGroup::start_background<false>(bthread_t* __restrict th,
+                                   const bthread_attr_t* __restrict attr,
+                                   void * (*fn)(void*),
+                                   void* __restrict arg);
 
 int TaskGroup::join(bthread_t tid, void** return_value) {
     if (__builtin_expect(!tid, 0)) {  // tid of bthread is never 0.
@@ -520,18 +533,16 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
     bthread_t next_tid = 0;
     // Find next task to run, if none, switch to idle thread of the group.
 #ifndef BTHREAD_FAIR_WSQ
-    g->_rq_mutex.lock();
+    // When BTHREAD_FAIR_WSQ is defined, profiling shows that cpu cost of
+    // WSQ::steal() in example/multi_threaded_echo_c++ changes from 1.9%
+    // to 2.9%
     const bool popped = g->_rq.pop(&next_tid);
-    g->_rq_mutex.unlock();
 #else
     const bool popped = g->_rq.steal(&next_tid);
 #endif
-    if (!popped) {
-        if (!g->_control->steal_task(
-                &next_tid, &g->_steal_seed, g->_steal_offset)) {
-            // Jump to main task if there's no task to run.
-            next_tid = g->_main_tid;
-        }
+    if (!popped && !g->steal_task(&next_tid)) {
+        // Jump to main task if there's no task to run.
+        next_tid = g->_main_tid;
     }
 
     TaskMeta* const cur_meta = g->_cur_meta;
@@ -563,18 +574,13 @@ void TaskGroup::sched(TaskGroup** pg) {
     bthread_t next_tid = 0;
     // Find next task to run, if none, switch to idle thread of the group.
 #ifndef BTHREAD_FAIR_WSQ
-    g->_rq_mutex.lock();
     const bool popped = g->_rq.pop(&next_tid);
-    g->_rq_mutex.unlock();
 #else
     const bool popped = g->_rq.steal(&next_tid);
 #endif
-    if (!popped) {
-        if (!g->_control->steal_task(
-                &next_tid, &g->_steal_seed, g->_steal_offset)) {
-            // Jump to main task if there's no task to run.
-            next_tid = g->_main_tid;
-        }
+    if (!popped && !g->steal_task(&next_tid)) {
+        // Jump to main task if there's no task to run.
+        next_tid = g->_main_tid;
     }
     sched_to(pg, next_tid);
 }
@@ -657,6 +663,82 @@ void TaskGroup::destroy_self() {
     }
 }
 
+void TaskGroup::ready_to_run(bthread_t tid) {
+    push_rq(tid);
+    const int additional_signal = _num_nosignal;
+    _num_nosignal = 0;
+    _nsignaled += 1 + additional_signal;
+    _control->signal_task(1 + additional_signal);
+}
+
+void TaskGroup::ready_to_run_nosignal(bthread_t tid) {
+    push_rq(tid);
+    ++_num_nosignal;
+}
+
+void TaskGroup::ready_to_run(bthread_t tid, bool nosignal) {
+    if (nosignal) {
+        return ready_to_run_nosignal(tid);
+    }
+    return ready_to_run(tid);
+}
+
+void TaskGroup::flush_nosignal_tasks() {
+    const int val = _num_nosignal;
+    if (val) {
+        _num_nosignal = 0;
+        _nsignaled += val;
+        _control->signal_task(val);
+    }
+}
+
+void TaskGroup::ready_to_run_remote(bthread_t tid, bool nosignal) {
+    _remote_rq._mutex.lock();
+    while (!_remote_rq.push_locked(tid)) {
+        flush_nosignal_tasks_remote_locked(_remote_rq._mutex);
+        LOG_EVERY_SECOND(ERROR) << "_remote_rq is full, capacity="
+                                << _remote_rq.capacity();
+        ::usleep(1000);
+        _remote_rq._mutex.lock();
+    }
+    if (nosignal) {
+        ++_remote_num_nosignal;
+        _remote_rq._mutex.unlock();
+    } else {
+        const int additional_signal = _remote_num_nosignal;
+        _remote_num_nosignal = 0;
+        _remote_nsignaled += 1 + additional_signal;
+        _remote_rq._mutex.unlock();
+        _control->signal_task(1 + additional_signal);
+    }
+}
+
+void TaskGroup::flush_nosignal_tasks_remote_locked(base::Mutex& locked_mutex) {
+    const int val = _remote_num_nosignal;
+    if (!val) {
+        locked_mutex.unlock();
+        return;
+    }
+    _remote_num_nosignal = 0;
+    _remote_nsignaled += val;
+    locked_mutex.unlock();
+    _control->signal_task(val);
+}
+
+void TaskGroup::ready_to_run_general(bthread_t tid, bool nosignal) {
+    if (tls_task_group == this) {
+        return ready_to_run(tid, nosignal);
+    }
+    return ready_to_run_remote(tid, nosignal);
+}
+
+void TaskGroup::flush_nosignal_tasks_general() {
+    if (tls_task_group == this) {
+        return flush_nosignal_tasks();
+    }
+    return flush_nosignal_tasks_remote();
+}
+
 void TaskGroup::ready_to_run_in_worker(void* arg) {
     return tls_task_group->ready_to_run((bthread_t)arg);
 }
@@ -665,65 +747,8 @@ void TaskGroup::ready_to_run_in_worker_nosignal(void* arg) {
     return tls_task_group->ready_to_run_nosignal((bthread_t)arg);
 }
 
-void TaskGroup::ready_to_run(bthread_t tid) {
-    _rq_mutex.lock();
-    while (!_rq.push(tid)) {
-        // Flush nosignal tasks to avoid the case that the caller start too
-        // many no signal threads
-        const int val = _num_nosignal;
-        _num_nosignal = 0;
-        _nsignaled += val;
-        _rq_mutex.unlock();
-        _control->signal_task(val);
-
-        // A promising approach is to insert the task into another TaskGroup,
-        // but we don't use it because:
-        // * There're already many bthreads to run, just insert the bthread
-        //   into other TaskGroup does not help.
-        // * Insertions into other TaskGroups perform worse when all workers
-        //   are busy at creating bthreads (proved by test_input_messenger in
-        //   baidu-rpc)
-        
-        // Shall be rare, simply sleep awhile.
-        LOG_EVERY_SECOND(ERROR) << "rq is full, capacity=" << _rq.capacity();
-        ::usleep(1000);
-        _rq_mutex.lock();
-    }
-    const int additional_signal = _num_nosignal;
-    _num_nosignal = 0;
-    _nsignaled += 1 + additional_signal;
-    _rq_mutex.unlock();
-    _control->signal_task(1 + additional_signal);
-}
-
-void TaskGroup::ready_to_run_nosignal(bthread_t tid) {
-    _rq_mutex.lock();
-    while (!_rq.push(tid)) {
-        // Flush nosignal tasks to avoid the case that the caller start too
-        // many no signal threads
-        const int val = _num_nosignal;
-        _num_nosignal = 0;
-        _nsignaled += val;
-        _rq_mutex.unlock();
-        _control->signal_task(val);
-
-        // See the comment in ready_to_run()
-        LOG_EVERY_SECOND(ERROR) << "rq is full, capacity=" << _rq.capacity();
-        ::usleep(1000);
-        _rq_mutex.lock();
-    }
-    ++_num_nosignal;
-    _rq_mutex.unlock();
-}
-
-int TaskGroup::flush_nosignal_tasks() {
-    _rq_mutex.lock();
-    const int val = _num_nosignal;
-    _num_nosignal = 0;
-    _nsignaled += val;
-    _rq_mutex.unlock();
-    _control->signal_task(val);
-    return val;
+void TaskGroup::ready_to_run_in_worker_ignoresignal(void* arg) {
+    return tls_task_group->push_rq((bthread_t)arg);
 }
 
 struct SleepArgs {
@@ -736,7 +761,7 @@ struct SleepArgs {
 static void ready_to_run_from_timer_thread(void* arg) {
     CHECK(tls_task_group == NULL);
     const SleepArgs* e = static_cast<const SleepArgs*>(arg);
-    e->group->control()->choose_one_group()->ready_to_run(e->tid);
+    e->group->control()->choose_one_group()->ready_to_run_remote(e->tid);
 }
 
 void TaskGroup::_add_sleep_event(void* arg) {
@@ -828,19 +853,15 @@ int TaskGroup::stop_usleep(bthread_t tid) {
         }
     }
     if (sleep_id != 0 && get_global_timer_thread()->unschedule(sleep_id) == 0) {
-        ready_to_run(tid);
+        ready_to_run_general(tid);
     }
     return 0;
 }
 
 int TaskGroup::yield(TaskGroup** pg) {
     TaskGroup* g = *pg;
-    if (!g->current_task()->about_to_quit) {
-        g->set_remained(ready_to_run_in_worker, (void*)g->current_tid());
-    } else {
-        g->set_remained(ready_to_run_in_worker_nosignal,
-                        (void*)g->current_tid());
-    }
+    g->set_remained(ready_to_run_in_worker_ignoresignal,
+                    (void*)g->current_tid());
     sched(pg);
     return 0;
 }

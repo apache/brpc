@@ -45,20 +45,26 @@ int bthread_cond_destroy(bthread_cond_t* c) {
 
 int bthread_cond_signal(bthread_cond_t* c) {
     bthread::CondInternal* ic = reinterpret_cast<bthread::CondInternal*>(c);
-    ic->seq->fetch_add(1, base::memory_order_release);
-    bthread::butex_wake(ic->seq);
+    // ic is probably dereferenced after fetch_add, save required fields before
+    // this point
+    base::atomic<int>* const saved_seq = ic->seq;
+    saved_seq->fetch_add(1, base::memory_order_release);
+    // don't touch ic any more
+    bthread::butex_wake(saved_seq);
     return 0;
 }
 
 int bthread_cond_broadcast(bthread_cond_t* c) {
     bthread::CondInternal* ic = reinterpret_cast<bthread::CondInternal*>(c);
     bthread_mutex_t* m = ic->m.load(base::memory_order_relaxed);
+    base::atomic<int>* const saved_seq = ic->seq;
     if (!m) {
         return 0;
     }
+    void* const saved_butex = m->butex;
     // Wakeup one thread and requeue the rest on the mutex.
     ic->seq->fetch_add(1, base::memory_order_release);
-    bthread::butex_requeue(ic->seq, m->butex);
+    bthread::butex_requeue(saved_seq, saved_butex);
     return 0;
 }
 

@@ -18,7 +18,7 @@ namespace policy {
 // Process() to maximize usage of ObjectPool<MostCommonMessage>, otherwise
 // you have to new the messages or use a separate ObjectPool (which is likely
 // to waste more memory)
-struct MostCommonMessage : public InputMessageBase {
+struct BAIDU_CACHELINE_ALIGNMENT MostCommonMessage : public InputMessageBase {
     base::IOBuf meta;
     base::IOBuf payload;
     PipelinedInfo pi;
@@ -31,7 +31,7 @@ struct MostCommonMessage : public InputMessageBase {
     void DestroyImpl() {
         meta.clear();
         payload.clear();
-        pi = PipelinedInfo();
+        pi.reset();
         base::return_object(this);
     }
 };

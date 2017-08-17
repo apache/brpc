@@ -7,6 +7,7 @@
 #include <deque>
 #include "base/logging.h"
 #include "bthread/butex.h"                       // butex_*
+#include "bthread/mutex.h"
 #include "bthread/list_of_abafree_id.h"
 #include "base/resource_pool.h"
 #include "bthread/bthread.h"
@@ -98,7 +99,7 @@ struct BAIDU_CACHELINE_ALIGNMENT Id {
     // contended_ver: locked and contended
     uint32_t first_ver;
     uint32_t locked_ver;
-    base::Mutex mutex;
+    internal::FastPthreadMutex mutex;
     void* data;
     int (*on_error)(bthread_id_t, void*, int);
     int (*on_error2)(bthread_id_t, void*, int, const std::string&);
@@ -178,7 +179,7 @@ static int default_bthread_id_on_error2(
 
 void id_status(bthread_id_t id, std::ostream &os) {
     bthread::Id* const meta = address_resource(bthread::get_slot(id));
-    if (__builtin_expect(meta == NULL, 0)) {
+    if (!meta) {
         os << "Invalid id=" << id.value << '\n';
         return;
     }
@@ -311,7 +312,7 @@ static int id_create_impl(
     int (*on_error2)(bthread_id_t, void*, int, const std::string&)) __THROW {
     IdResourceId slot;
     Id* const meta = get_resource(&slot);
-    if (__builtin_expect(meta != NULL, 1)) {
+    if (meta) {
         meta->data = data;
         meta->on_error = on_error;
         meta->on_error2 = on_error2;
@@ -336,7 +337,7 @@ static int id_create_ranged_impl(
     int (*on_error)(bthread_id_t, void*, int),
     int (*on_error2)(bthread_id_t, void*, int, const std::string&),
     int range) __THROW {
-    if (__builtin_expect(range < 1 || range > ID_MAX_RANGE, 0)) {
+    if (range < 1 || range > ID_MAX_RANGE) {
         LOG_IF(FATAL, range < 1) << "range must be positive, actually " << range;
         LOG_IF(FATAL, range > ID_MAX_RANGE ) << "max of range is " 
                 << ID_MAX_RANGE << ", actually " << range;
@@ -344,7 +345,7 @@ static int id_create_ranged_impl(
     }
     IdResourceId slot;
     Id* const meta = get_resource(&slot);
-    if (__builtin_expect(meta != NULL, 1)) {
+    if (meta) {
         meta->data = data;
         meta->on_error = on_error;
         meta->on_error2 = on_error2;
@@ -399,7 +400,7 @@ int bthread_id_create_ranged(bthread_id_t* id, void* data,
 int bthread_id_lock_and_reset_range_verbose(
     bthread_id_t id, void **pdata, int range, const char *location) __THROW {
     bthread::Id* const meta = address_resource(bthread::get_slot(id));
-    if (__builtin_expect(meta == NULL, 0)) {
+    if (!meta) {
         return EINVAL;
     }
     const uint32_t id_ver = bthread::get_version(id);
@@ -460,23 +461,24 @@ int bthread_id_error_verbose(bthread_id_t id, int error_code,
 
 int bthread_id_about_to_destroy(bthread_id_t id) __THROW {
     bthread::Id* const meta = address_resource(bthread::get_slot(id));
-    if (__builtin_expect(meta == NULL, 0)) {
+    if (!meta) {
         return EINVAL;
     }
     const uint32_t id_ver = bthread::get_version(id);
     uint32_t* butex = meta->butex;
-    std::unique_lock<base::Mutex> mu(meta->mutex);
+    meta->mutex.lock();
     if (!meta->has_version(id_ver)) {
+        meta->mutex.unlock();
         return EINVAL;
     }
     if (*butex == meta->first_ver) {
-        mu.unlock();
+        meta->mutex.unlock();
         LOG(FATAL) << "bthread_id=" << id.value << " is not locked!";
         return EPERM;
     }
     const bool contended = (*butex == meta->contended_ver());
     *butex = meta->unlockable_ver();
-    mu.unlock();
+    meta->mutex.unlock();
     if (contended) {
         // wake up all waiting lockers.
         bthread::butex_wake_except(butex, 0);
@@ -486,22 +488,24 @@ int bthread_id_about_to_destroy(bthread_id_t id) __THROW {
 
 int bthread_id_cancel(bthread_id_t id) __THROW {
     bthread::Id* const meta = address_resource(bthread::get_slot(id));
-    if (__builtin_expect(meta == NULL, 0)) {
+    if (!meta) {
         return EINVAL;
     }
     uint32_t* butex = meta->butex;
     const uint32_t id_ver = bthread::get_version(id);
-    std::unique_lock<base::Mutex> mu(meta->mutex);
+    meta->mutex.lock();
     if (!meta->has_version(id_ver)) {
+        meta->mutex.unlock();
         return EINVAL;
     }
     if (*butex != meta->first_ver) {
+        meta->mutex.unlock();
         return EPERM;
     }       
     *butex = meta->end_ver();
     meta->first_ver = *butex;
     meta->locked_ver = *butex;
-    mu.unlock();
+    meta->mutex.unlock();
     return_resource(bthread::get_slot(id));
     return 0;
 }
@@ -509,7 +513,7 @@ int bthread_id_cancel(bthread_id_t id) __THROW {
 int bthread_id_join(bthread_id_t id) __THROW {
     const bthread::IdResourceId slot = bthread::get_slot(id);
     bthread::Id* const meta = address_resource(slot);
-    if (__builtin_expect(meta == NULL, 0)) {
+    if (!meta) {
         return EINVAL;
     }
     const uint32_t id_ver = bthread::get_version(id);
@@ -538,20 +542,22 @@ int bthread_id_join(bthread_id_t id) __THROW {
 
 int bthread_id_trylock(bthread_id_t id, void** pdata) __THROW {
     bthread::Id* const meta = address_resource(bthread::get_slot(id));
-    if (__builtin_expect(meta == NULL, 0)) {
+    if (!meta) {
         return EINVAL;
     }
     uint32_t* butex = meta->butex;
     const uint32_t id_ver = bthread::get_version(id);
-    std::unique_lock<base::Mutex> mu(meta->mutex);
+    meta->mutex.lock();
     if (!meta->has_version(id_ver)) {
+        meta->mutex.unlock();
         return EINVAL;
     }
     if (*butex != meta->first_ver) {
+        meta->mutex.unlock();
         return EBUSY;
     }
     *butex = meta->locked_ver;
-    mu.unlock();
+    meta->mutex.unlock();
     if (pdata != NULL) {
         *pdata = meta->data;
     }
@@ -565,28 +571,28 @@ int bthread_id_lock_verbose(bthread_id_t id, void** pdata,
 
 int bthread_id_unlock(bthread_id_t id) __THROW {
     bthread::Id* const meta = address_resource(bthread::get_slot(id));
-    if (__builtin_expect(meta == NULL, 0)) {
+    if (!meta) {
         return EINVAL;
     }
     uint32_t* butex = meta->butex;
     // Release fence makes sure all changes made before signal visible to
     // woken-up waiters.
     const uint32_t id_ver = bthread::get_version(id);
-    std::unique_lock<base::Mutex> mu(meta->mutex);
+    meta->mutex.lock();
     if (!meta->has_version(id_ver)) {
-        mu.unlock();
+        meta->mutex.unlock();
         LOG(FATAL) << "Invalid bthread_id=" << id.value;
         return EINVAL;
     }
     if (*butex == meta->first_ver) {
-        mu.unlock();
+        meta->mutex.unlock();
         LOG(FATAL) << "bthread_id=" << id.value << " is not locked!";
         return EPERM;
     }
     bthread::PendingError front;
     if (meta->pending_q.pop(&front)) {
         meta->lock_location = front.location;
-        mu.unlock();
+        meta->mutex.unlock();
         if (meta->on_error) {
             return meta->on_error(front.id, meta->data, front.error_code);
         } else {
@@ -596,7 +602,7 @@ int bthread_id_unlock(bthread_id_t id) __THROW {
     } else {
         const bool contended = (*butex == meta->contended_ver());
         *butex = meta->first_ver;
-        mu.unlock();
+        meta->mutex.unlock();
         if (contended) {
             // We may wake up already-reused id, but that's OK.
             bthread::butex_wake(butex);
@@ -607,29 +613,30 @@ int bthread_id_unlock(bthread_id_t id) __THROW {
 
 int bthread_id_unlock_and_destroy(bthread_id_t id) __THROW {
     bthread::Id* const meta = address_resource(bthread::get_slot(id));
-    if (__builtin_expect(meta == NULL, 0)) {
+    if (!meta) {
         return EINVAL;
     }
     uint32_t* butex = meta->butex;
     uint32_t* join_butex = meta->join_butex;
     const uint32_t id_ver = bthread::get_version(id);
-    std::unique_lock<base::Mutex> mu(meta->mutex);
+    meta->mutex.lock();
     if (!meta->has_version(id_ver)) {
-        mu.unlock();
+        meta->mutex.unlock();
         LOG(FATAL) << "Invalid bthread_id=" << id.value;
         return EINVAL;
     }
     if (*butex == meta->first_ver) {
-        mu.unlock();
+        meta->mutex.unlock();
         LOG(FATAL) << "bthread_id=" << id.value << " is not locked!";
         return EPERM;
     }
-    *butex = meta->end_ver();
-    *join_butex = meta->end_ver();
-    meta->first_ver = *butex;
-    meta->locked_ver = *butex;
+    const uint32_t next_ver = meta->end_ver();
+    *butex = next_ver;
+    *join_butex = next_ver;
+    meta->first_ver = next_ver;
+    meta->locked_ver = next_ver;
     meta->pending_q.clear();
-    mu.unlock();
+    meta->mutex.unlock();
     // Notice that butex_wake* returns # of woken-up, not successful or not.
     bthread::butex_wake_except(butex, 0);
     bthread::butex_wake_all(join_butex);
@@ -708,19 +715,20 @@ int bthread_id_error2_verbose(bthread_id_t id, int error_code,
                               const std::string& error_text,
                               const char *location) __THROW {
     bthread::Id* const meta = address_resource(bthread::get_slot(id));
-    if (__builtin_expect(meta == NULL, 0)) {
+    if (!meta) {
         return EINVAL;
     }
     const uint32_t id_ver = bthread::get_version(id);
     uint32_t* butex = meta->butex;
-    std::unique_lock<base::Mutex> mu(meta->mutex);
+    meta->mutex.lock();
     if (!meta->has_version(id_ver)) {
+        meta->mutex.unlock();
         return EINVAL;
     }
     if (*butex == meta->first_ver) {
         *butex = meta->locked_ver;
         meta->lock_location = location;
-        mu.unlock();
+        meta->mutex.unlock();
         if (meta->on_error) {
             return meta->on_error(id, meta->data, error_code);
         } else {
@@ -733,6 +741,7 @@ int bthread_id_error2_verbose(bthread_id_t id, int error_code,
         e.error_text = error_text;
         e.location = location;
         meta->pending_q.push(e);
+        meta->mutex.unlock();
         return 0;
     }
 }

@@ -8,12 +8,16 @@
 #define BAIDU_BTHREAD_TASK_GROUP_H
 
 #include "base/time.h"                             // cpuwide_time_ns
+#include "bthread/task_control.h"
 #include "bthread/task_meta.h"                     // bthread_t, TaskMeta
 #include "bthread/work_stealing_queue.h"           // WorkStealingQueue
+#include "bthread/remote_task_queue.h"             // RemoteTaskQueue
 #include "base/resource_pool.h"                    // ResourceId
+#include "bthread/parking_lot.h"
 
 namespace bthread {
 
+// For exiting a bthread.
 class ExitException : public std::exception {
 public:
     explicit ExitException(void* value) : _value(value) {}
@@ -28,20 +32,12 @@ private:
     void* _value;
 };
 
-class TaskControl;
-
 // Thread-local group of tasks.
 // Notice that most methods involving context switching are static otherwise
 // pointer `this' may change after wakeup. The **pg parameters in following
 // function are updated before returning.
 class TaskGroup {
-    friend class TaskControl;
-
 public:
-    static const int STOP_INDEX = 1000000;
-    static const int NOHINT_INDEX = -1;
-    static const int IDLE_INDEX = -2;
-
     // Create task `fn(arg)' with attributes `attr' in TaskGroup *pg and put
     // the identifier into `tid'. Switch to the new task and schedule old task
     // to run.
@@ -54,7 +50,10 @@ public:
 
     // Create task `fn(arg)' with attributes `attr' in this TaskGroup, put the
     // identifier into `tid'. Schedule the new thread to run.
+    //   Called from worker: start_background<false>
+    //   Called from non-worker: start_background<true>
     // Return 0 on success, errno otherwise.
+    template <bool REMOTE>
     int start_background(bthread_t* __restrict tid,
                          const bthread_attr_t* __restrict attr,
                          void * (*fn)(void*),
@@ -69,19 +68,27 @@ public:
     // runqueue and then calling sched(pg), which has similar effect but
     // slower.
     static void sched_to(TaskGroup** pg, TaskMeta* next_meta);
-    inline static void sched_to(TaskGroup** pg, bthread_t next_tid);
+    static void sched_to(TaskGroup** pg, bthread_t next_tid);
+    static void exchange(TaskGroup** pg, bthread_t next_tid);
+
+    // The callback will be run in the beginning of next-run bthread.
+    // Can't be called by current bthread directly because it often needs
+    // the target to be suspended already.
+    void set_remained(void (*cb)(void*), void* arg) {
+        _last_context_remained = cb;
+        _last_context_remained_arg = arg;
+    }
     
-    inline static void exchange(TaskGroup** pg, bthread_t next_tid);
-
-    inline void set_remained(void (*last_context_remained)(void*), void* arg);
-
     // Suspend caller for at least |timeout_us| microseconds.
     // If |timeout_us| is 0, this function does nothing.
     // If |group| is NULL or current thread is non-bthread, call usleep(3)
     // instead. This function does not create thread-local TaskGroup.
-    // Returns: 0 when successful, -1 otherwise and errno is set.
+    // Returns: 0 on success, -1 otherwise and errno is set.
     static int usleep(TaskGroup** pg, uint64_t timeout_us);
 
+    // Suspend caller and run another bthread. When the caller will resume
+    // is undefined.
+    // Returns 0 on success, -1 otherwise and errno is set.
     static int yield(TaskGroup** pg);
 
     // Suspend caller until bthread `tid' terminates.
@@ -95,50 +102,72 @@ public:
     //    }
     static bool exists(bthread_t tid);
 
+    // Put attribute associated with `tid' into `*attr'.
+    // Returns 0 on success, -1 otherwise and errno is set.
     static int get_attr(bthread_t tid, bthread_attr_t* attr);
-    
+
+    // Returns non-zero the `tid' is stopped, 0 otherwise.
     static int stopped(bthread_t tid);
 
-    // Identifier/statistics of the bthread associated with
-    // TaskControl::worker_thread
+    // The bthread running run_main_task();
     bthread_t main_tid() const { return _main_tid; }
     TaskStatistics main_stat() const;
     // Routine of the main task which should be called from a dedicated pthread.
     void run_main_task();
 
-    // Meta/Identifier of current bthread in this group.
+    // Meta/Identifier of current task in this group.
     TaskMeta* current_task() const { return _cur_meta; }
     bthread_t current_tid() const { return _cur_meta->tid; }
+    // Uptime of current task in nanoseconds.
+    int64_t current_uptime_ns() const
+    { return base::cpuwide_time_ns() - _cur_meta->cpuwide_start_ns; }
 
-    inline bool is_current_main_task() const;
-    inline bool is_current_pthread_task() const;
+    // True iff current task is the one running run_main_task()
+    bool is_current_main_task() const { return current_tid() == _main_tid; }
+    // True iff current task is in pthread-mode.
+    bool is_current_pthread_task() const
+    { return _cur_meta->stack_container == _main_stack_container; }
 
-    inline int64_t current_uptime_ns() const;
-    inline int64_t cumulated_cputime_ns() const { return _cumulated_cputime_ns; }
+    // Active time in nanoseconds spent by this TaskGroup.
+    int64_t cumulated_cputime_ns() const { return _cumulated_cputime_ns; }
 
+    // Push a bthread into the runqueue
     void ready_to_run(bthread_t tid);
+    void ready_to_run(bthread_t tid, bool nosignal);
     void ready_to_run_nosignal(bthread_t tid);
+    // Flush tasks pushed to rq but signalled.
+    void flush_nosignal_tasks();
 
-    // Flush tasks in rq but signalled.
-    // Returns #tasks flushed.
-    int flush_nosignal_tasks();
-    
+    // Push a bthread into the runqueue from another non-worker thread.
+    void ready_to_run_remote(bthread_t tid, bool nosignal = false);
+    void flush_nosignal_tasks_remote_locked(base::Mutex& locked_mutex);
+    void flush_nosignal_tasks_remote();
+
+    // Automatically decide the caller is remote or local, and call
+    // the corresponding function.
+    void ready_to_run_general(bthread_t tid, bool nosignal = false);
+    void flush_nosignal_tasks_general();
+
+    // The TaskControl that this TaskGroup belongs to.
     TaskControl* control() const { return _control; }
 
     // Call this instead of delete.
     void destroy_self();
 
+    // Wake up `tid' if it's sleeping.
+    // Returns 0 on success, error code otherwise.
     int stop_usleep(bthread_t tid);
 
-    inline static TaskMeta* address_meta(bthread_t tid);
+    // Get the meta associate with the task.
+    static TaskMeta* address_meta(bthread_t tid);
 
-    // The pthread where this TaskGroup is constructed. With current
-    // implementation, the pthread is also the worker pthread or the user
-    // pthread launching bthreads. butex_wait() uses this fact to get
-    // pthread of TaskGroup without calling pthread_self() repeatly.
-    pthread_t creation_pthread() const { return _creation_pthread; }
+    // Push a task into _rq, if _rq is full, retry after some time. This
+    // process make go on indefinitely.
+    void push_rq(bthread_t tid);
 
 private:
+friend class TaskControl;
+
     // You shall use TaskControl::create_group to create new instance.
     explicit TaskGroup(TaskControl*);
 
@@ -150,14 +179,27 @@ private:
 
     static void task_runner(intptr_t skip_remained);
 
+    // Callbacks for set_remained()
     static void _release_last_context(void*);
-
-    static void _add_sleep_event(void* arg);
-
+    static void _add_sleep_event(void*);
     static void ready_to_run_in_worker(void*);
     static void ready_to_run_in_worker_nosignal(void*);
+    static void ready_to_run_in_worker_ignoresignal(void*);
 
-    bool wait_task(bthread_t* tid, size_t* seed, size_t offset);
+    // Wait for a task to run.
+    // Returns true on success, false is treated as permanent error and the
+    // loop calling this function should end.
+    bool wait_task(bthread_t* tid);
+
+    bool steal_task(bthread_t* tid) {
+        if (_remote_rq.pop(tid)) {
+            return true;
+        }
+#ifdef BTHREAD_SAVE_PARKING_STATE
+        _last_pl_state = _pl->get_state();
+#endif
+        return _control->steal_task(tid, &_steal_seed, _steal_offset);
+    }
 
 #ifndef NDEBUG
     int _sched_recursive_guard;
@@ -177,13 +219,18 @@ private:
     void (*_last_context_remained)(void*);
     void* _last_context_remained_arg;
 
+    ParkingLot* _pl;
+#ifdef BTHREAD_SAVE_PARKING_STATE
+    ParkingLot::State _last_pl_state;
+#endif
     size_t _steal_seed;
     size_t _steal_offset;
     StackContainer* _main_stack_container;
     bthread_t _main_tid;
-    pthread_t _creation_pthread;
-    base::Mutex _rq_mutex;
     WorkStealingQueue<bthread_t> _rq;
+    RemoteTaskQueue _remote_rq;
+    int _remote_num_nosignal;
+    int _remote_nsignaled;
 };
 
 }  // namespace bthread

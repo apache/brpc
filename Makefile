@@ -1,5 +1,5 @@
 include config.mk
-CPPFLAGS=-D__const__= -D_GNU_SOURCE -DNDEBUG -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\"$(shell git rev-parse --short HEAD)\"
+CPPFLAGS=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DNDEBUG -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\"$(shell git rev-parse --short HEAD)\"
 CXXFLAGS=$(CPPFLAGS) -O2 -g -pipe -Wall -W -Werror -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -std=c++0x -include brpc/config.h
 CFLAGS=$(CPPFLAGS) -O2 -g -pipe -Wall -W -Werror -fPIC -fstrict-aliasing -Wno-unused-parameter
 

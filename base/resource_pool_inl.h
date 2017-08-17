@@ -96,9 +96,10 @@ public:
 
     // When a thread needs memory, it allocates a Block. To improve locality,
     // items in the Block are only used by the thread.
+    // To support cache-aligned objects, align Block.items by cacheline.
     struct BAIDU_CACHELINE_ALIGNMENT Block {
-        size_t nitem;
         char items[sizeof(T) * BLOCK_NITEM];
+        size_t nitem;
 
         Block() : nitem(0) {}
     };

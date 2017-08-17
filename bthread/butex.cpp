@@ -8,7 +8,9 @@
 #include "base/scoped_lock.h"              // BAIDU_SCOPED_LOCK
 #include "base/macros.h"
 #include "base/containers/linked_list.h"   // LinkNode
+#ifdef SHOW_BTHREAD_BUTEX_WAITER_COUNT_IN_VARS
 #include "base/memory/singleton_on_pthread_once.h"
+#endif
 #include "base/logging.h"
 #include "base/object_pool.h"
 #include "bthread/errno.h"                 // EWOULDBLOCK, ESTOP
@@ -18,26 +20,24 @@
 #include "bthread/task_group.h"            // TaskGroup
 #include "bthread/timer_thread.h"
 #include "bthread/butex.h"
+#include "bthread/mutex.h"
 
 // This file implements butex.h
-//
-// Essence of futex-like semantics is sequenced wait and wake operations
-// and guaranteed visibility.
+// Provides futex-like semantics which is sequenced wait and wake operations
+// and guaranteed visibilities.
 //
 // If wait is sequenced before wake:
-//    thread1               thread2
-//    -------               -------
+//    [thread1]             [thread2]
 //    wait()                value = new_value
 //                          wake()
 // wait() sees unmatched value(fail to wait), or wake() sees the waiter.
 //
 // If wait is sequenced after wake:
-//    thread1               thread2
-//    -------               -------
+//    [thread1]             [thread2]
 //                          value = new_value
 //                          wake()
 //    wait()
-// wake() must provide some sort of memory fencing to prevent assignment
+// wake() must provide some sort of memory fence to prevent assignment
 // of value to be reordered after it. Thus the value is visible to wait()
 // as well.
 
@@ -58,8 +58,8 @@ int set_butex_waiter(bthread_t tid, ButexWaiter* w);
 
 // If a thread would suspend for less than so many microseconds, return
 // ETIMEDOUT directly.
-// Use 1: sleeping for less than 1 microsecond is inefficient and useless.
-static const int64_t LEAST_SLEEP_US = 1; 
+// Use 1: sleeping for less than 2 microsecond is inefficient and useless.
+static const int64_t MIN_SLEEP_US = 2; 
 
 enum WaiterState {
     WAITER_STATE_NONE,
@@ -74,8 +74,8 @@ struct ButexWaiter : public base::LinkNode<ButexWaiter> {
     // tids of pthreads are 0
     bthread_t tid;
 
-    // Erasing node from middle of LinkedList is unsafe, namely we can't tell
-    // whether a node belongs to a list, have to tag ownership.
+    // Erasing node from middle of LinkedList is thread-unsafe, we need
+    // to hold its container's lock.
     base::atomic<Butex*> container;
 };
 
@@ -110,20 +110,18 @@ struct BAIDU_CACHELINE_ALIGNMENT Butex {
 
     base::atomic<int> value;
     ButexWaiterList waiters;
-    base::Mutex waiter_lock;
+    internal::FastPthreadMutex waiter_lock;
 };
 
-// Confirm that layout of Butex is consistent with impl. of butex_locate()
 BAIDU_CASSERT(offsetof(Butex, value) == 0, offsetof_value_must_0);
 BAIDU_CASSERT(sizeof(Butex) == BAIDU_CACHELINE_SIZE, butex_fits_in_one_cacheline);
 
 void wakeup_pthread(ButexPthreadWaiter* pw) {
-    // release fence to make sure wait_pthread sees newest changes if it sees
-    // new sig
+    // release fence makes wait_pthread see other changes when it sees new sig
     pw->sig.store(SAFE_TO_DESTROY, base::memory_order_release);
     // At this point, *pw is possibly destroyed if wait_pthread has woken up and
     // seen the new sig. As the futex_wake_private just check the accessibility
-    // of the memory and returnes EFAULT in this case, we think it's just fine.
+    // of the memory and returnes EFAULT in this case, it's just fine.
     // If crash happens in the future, we can make pw as tls and never
     // destroyed to resolve this issue.
     futex_wake_private(&pw->sig, 1);
@@ -135,12 +133,11 @@ int wait_pthread(ButexPthreadWaiter& pw, timespec* ptimeout) {
     int expected_value = NOT_SIGNALLED;
     while (true) {
         const int rc = futex_wait_private(&pw.sig, expected_value, ptimeout);
-        // Accquire fence to make sure that this thread sees newest changes when
-        // it sees the new |sig|
+        // Accquire fence makes this thread sees other changes when it sees
+        // the new |sig|
         if (expected_value != pw.sig.load(base::memory_order_acquire)) {
-            // After this routine returnes, |pw| is going to be destroyed while
-            // the wake threads is possibly holding the reference, but we think
-            // it's ok, see the comments at wakeup_pthread for some future work
+            // After this routine returns, |pw| will be destroyed while the wake
+            // thread possibly still uses it. See the comments in wakeup_pthread
             return rc;
         }
         if (rc != 0 && errno == ETIMEDOUT) {
@@ -149,8 +146,8 @@ int wait_pthread(ButexPthreadWaiter& pw, timespec* ptimeout) {
             if (!erase_from_butex(&pw, false)) {
                 // Another thread holds pw, attemping to signal it, spin until
                 // it's safe to destroy pw
-                // Make sure this thread sees the lastest changes when sig is set to
-                // SAFE_TO_DESTROY
+                // Make sure this thread sees the lastest changes when sig is
+                // set to SAFE_TO_DESTROY
                 BT_LOOP_WHEN(pw.sig.load(base::memory_order_acquire) 
                                     != SAFE_TO_DESTROY,
                              30/*nops before sched_yield*/);
@@ -165,8 +162,8 @@ extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
 
 // Returns 0 when no need to unschedule or successfully unscheduled,
 // -1 otherwise.
-static inline int unsleep_if_necessary(
-    ButexBthreadWaiter* w, TimerThread* timer_thread) {
+inline int unsleep_if_necessary(ButexBthreadWaiter* w,
+                                TimerThread* timer_thread) {
     if (!w->sleep_id) {
         return 0;
     }
@@ -280,7 +277,7 @@ int butex_wake(void* arg) {
     if (g) {
         TaskGroup::exchange(&g, bbw->tid);
     } else {
-        bbw->control->choose_one_group()->ready_to_run(bbw->tid);
+        bbw->control->choose_one_group()->ready_to_run_remote(bbw->tid);
     }
     return 1;
 }
@@ -329,16 +326,16 @@ int butex_wake_all(void* arg) {
             bthread_waiters.tail()->value());
         w->RemoveFromList();
         unsleep_if_necessary(w, get_global_timer_thread());
-        g->ready_to_run_nosignal(w->tid);
+        g->ready_to_run_general(w->tid, true);
         ++nwakeup;
     }
     if (saved_nwakeup != nwakeup) {
-        g->flush_nosignal_tasks();
+        g->flush_nosignal_tasks_general();
     }
     if (g == tls_task_group) {
         TaskGroup::exchange(&g, next->tid);
     } else {
-        g->ready_to_run(next->tid);
+        g->ready_to_run_remote(next->tid);
     }
     return nwakeup;
 }
@@ -396,11 +393,11 @@ int butex_wake_except(void* arg, bthread_t excluded_bthread) {
             bthread_waiters.tail()->value());
         w->RemoveFromList();
         unsleep_if_necessary(w, get_global_timer_thread());
-        g->ready_to_run_nosignal(w->tid);
+        g->ready_to_run_general(w->tid, true);
         ++nwakeup;
     } while (!bthread_waiters.empty());
     if (saved_nwakeup != nwakeup) {
-        g->flush_nosignal_tasks();
+        g->flush_nosignal_tasks_general();
     }
     return nwakeup;
 }
@@ -411,8 +408,8 @@ int butex_requeue(void* arg, void* arg2) {
 
     ButexWaiter* front = NULL;
     {
-        std::unique_lock<base::Mutex> lck1(b->waiter_lock, std::defer_lock);
-        std::unique_lock<base::Mutex> lck2(m->waiter_lock, std::defer_lock);
+        std::unique_lock<internal::FastPthreadMutex> lck1(b->waiter_lock, std::defer_lock);
+        std::unique_lock<internal::FastPthreadMutex> lck2(m->waiter_lock, std::defer_lock);
         base::double_lock(lck1, lck2);
         if (b->waiters.empty()) {
             return 0;
@@ -440,7 +437,7 @@ int butex_requeue(void* arg, void* arg2) {
     if (g) {
         TaskGroup::exchange(&g, front->tid);
     } else {
-        bbw->control->choose_one_group()->ready_to_run(front->tid);
+        bbw->control->choose_one_group()->ready_to_run_remote(front->tid);
     }
     return 1;
 }
@@ -452,7 +449,7 @@ static void erase_from_butex_and_wakeup(void* arg) {
 
 inline bool erase_from_butex(ButexWaiter* bw, bool wakeup) {
     // `bw' is guaranteed to be valid inside this function because waiter
-    // will wait until this function cancelled or finished.
+    // will wait until this function being cancelled or finished.
     // NOTE: This function must be no-op when bw->container is NULL.
     bool erased = false;
     Butex* b;
@@ -473,7 +470,7 @@ inline bool erase_from_butex(ButexWaiter* bw, bool wakeup) {
     if (erased && wakeup) {
         if (bw->tid) {
             ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(bw);
-            get_task_group(bbw->control)->ready_to_run(bw->tid);
+            get_task_group(bbw->control)->ready_to_run_general(bw->tid);
         } else {
             ButexPthreadWaiter* pw = static_cast<ButexPthreadWaiter*>(bw);
             wakeup_pthread(pw);
@@ -491,8 +488,7 @@ static void wait_for_butex(void* arg) {
     //    and removed by TimerThread, in which case we should stop queueing.
     //
     // Visibility of waiter_state:
-    //    bthread                           TimerThread
-    //    -------                           -----------
+    //    [bthread]                         [TimerThread]
     //    waiter_state = TIMED
     //    tt_lock { add task }
     //                                      tt_lock { get task }
@@ -541,7 +537,7 @@ static int butex_wait_from_pthread(TaskGroup* g, Butex* b, int expected_value,
     if (abstime != NULL) {
         const int64_t timeout_us = base::timespec_to_microseconds(*abstime) -
             base::gettimeofday_us();
-        if (timeout_us <= LEAST_SLEEP_US) {
+        if (timeout_us < MIN_SLEEP_US) {
             errno = ETIMEDOUT;
             return -1;
         }
@@ -631,9 +627,8 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime) {
         // queueing, cancel queueing. This is a kind of optimistic locking.
         bbw.waiter_state = WAITER_STATE_TIMED;
         // Already timed out.
-        // TODO(gejun): find general methods to speed up time functions.
-        if (base::timespec_to_microseconds(*abstime) <=
-            (base::gettimeofday_us() + LEAST_SLEEP_US)) {
+        if (base::timespec_to_microseconds(*abstime) <
+            (base::gettimeofday_us() + MIN_SLEEP_US)) {
             errno = ETIMEDOUT;
             return -1;
         }

@@ -67,24 +67,13 @@ inline TaskControl* get_or_new_task_control() {
     return c;
 }
 
-inline TaskGroup* get_task_group() {
-    TaskGroup* g = tls_task_group;
-    if (g) {
-        return g;
-    }
-    TaskControl* c = get_or_new_task_control();
-    if (c) {
-        return c->choose_one_group();
-    }
-    return NULL;
-}
-
 __thread TaskGroup* tls_task_group_nosignal = NULL;
 
-inline int start_from_non_worker(bthread_t* __restrict tid,
-                                  const bthread_attr_t* __restrict attr,
-                                  void * (*fn)(void*),
-                                  void* __restrict arg) {
+BASE_FORCE_INLINE int
+start_from_non_worker(bthread_t* __restrict tid,
+                      const bthread_attr_t* __restrict attr,
+                      void * (*fn)(void*),
+                      void* __restrict arg) {
     TaskControl* c = get_or_new_task_control();
     if (NULL == c) {
         return ENOMEM;
@@ -99,9 +88,10 @@ inline int start_from_non_worker(bthread_t* __restrict tid,
             g = c->choose_one_group();
             tls_task_group_nosignal = g;
         }
-        return g->start_background(tid, attr, fn, arg);
+        return g->start_background<true>(tid, attr, fn, arg);
     }
-    return c->choose_one_group()->start_background(tid, attr, fn, arg);
+    return c->choose_one_group()->start_background<true>(
+        tid, attr, fn, arg);
 }
 
 int stop_butex_wait(bthread_t tid);
@@ -149,7 +139,7 @@ int bthread_start_background(bthread_t* __restrict tid,
     bthread::TaskGroup* g = bthread::tls_task_group;
     if (g) {
         // start from worker
-        return g->start_background(tid, attr, fn, arg);
+        return g->start_background<false>(tid, attr, fn, arg);
     }
     return bthread::start_from_non_worker(tid, attr, fn, arg);
 }
@@ -157,14 +147,13 @@ int bthread_start_background(bthread_t* __restrict tid,
 void bthread_flush() __THROW {
     bthread::TaskGroup* g = bthread::tls_task_group;
     if (g) {
-        g->flush_nosignal_tasks();
-        return;
+        return g->flush_nosignal_tasks();
     }
     g = bthread::tls_task_group_nosignal;
     if (g) {
         // NOSIGNAL tasks were created in this non-worker.
         bthread::tls_task_group_nosignal = NULL;
-        g->flush_nosignal_tasks();
+        return g->flush_nosignal_tasks_remote();
     }
 }
 
@@ -172,11 +161,15 @@ int bthread_stop(bthread_t tid) __THROW {
     if (bthread::stop_butex_wait(tid) < 0) {
         return errno;
     }
-    bthread::TaskGroup* g = bthread::get_task_group();
-    if (g) {
-        return g->stop_usleep(tid);
+    bthread::TaskGroup* g = bthread::tls_task_group;
+    if (!g) {
+        bthread::TaskControl* c = bthread::get_or_new_task_control();
+        if (!c) {
+            return ENOMEM;
+        }
+        g = c->choose_one_group();
     }
-    return EAGAIN;
+    return g->stop_usleep(tid);
 }
 
 int bthread_stopped(bthread_t tid) __THROW {

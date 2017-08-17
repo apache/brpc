@@ -25,13 +25,17 @@ CountdownEvent::~CountdownEvent() {
 }
 
 void CountdownEvent::signal(int sig) {
+    // Have to save _butex, *this is probably defreferenced by the wait thread
+    // which sees fetch_sub
+    void* const saved_butex = _butex;
     const int prev = ((base::atomic<int>*)_butex)
         ->fetch_sub(sig, base::memory_order_release);
+    // DON'T touch *this ever after
     if (prev > sig) {
         return;
     }
     LOG_IF(ERROR, prev < sig) << "Counter is over decreased";
-    butex_wake_all(_butex);
+    butex_wake_all(saved_butex);
 }
 
 void CountdownEvent::wait() {

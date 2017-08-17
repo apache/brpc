@@ -4,10 +4,10 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 10 17:40:58 CST 2012
 
-#include "bthread/config.h"
 #include "base/scoped_lock.h"             // BAIDU_SCOPED_LOCK
 #include "base/errno.h"                   // berror
 #include "base/logging.h"
+#include "base/third_party/murmurhash3/murmurhash3.h"
 #include "bthread/sys_futex.h"            // futex_wake_private
 #include "bthread/interrupt_pthread.h"
 #include "bthread/processor.h"            // cpu_relax
@@ -15,9 +15,7 @@
 #include "bthread/task_control.h"
 #include "bthread/timer_thread.h"         // global_timer_thread
 #include <gflags/gflags.h>
-#ifdef BAIDU_INTERNAL
-#include "base/comlog_sink.h"
-#endif
+#include "bthread/log.h"
 
 DEFINE_int32(task_group_delete_delay, 1,
              "delay deletion of TaskGroup for so many seconds");
@@ -121,7 +119,6 @@ TaskControl::TaskControl()
     , _signal_per_second(&_cumulated_signal_count)
     , _status(print_rq_sizes_in_the_tc, this)
     , _nbthreads("bthread_count")
-    , _pending_signal(0)
 {
     // calloc shall set memory to zero
     CHECK(_groups) << "Fail to create array of groups";
@@ -216,8 +213,9 @@ void TaskControl::stop_and_join() {
         _stop = true;
         _ngroup.exchange(0, base::memory_order_relaxed); 
     }
-    _pending_signal.fetch_or(1, base::memory_order_relaxed);
-    futex_wake_private(&_pending_signal, 10000);
+    for (int i = 0; i < PARKING_LOT_NUM; ++i) {
+        _pl[i].stop();
+    }
     // Interrupt blocking operations.
     for (size_t i = 0; i < _workers.size(); ++i) {
         interrupt_pthread(_workers[i]);
@@ -329,9 +327,15 @@ bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
     for (size_t i = 0; i < ngroup; ++i, s += offset) {
         TaskGroup* g = _groups[s % ngroup];
         // g is possibly NULL because of concurrent _destroy_group
-        if (g != NULL && g->_rq.steal(tid)) {
-            stolen = true;
-            break;
+        if (g) {
+            if (g->_rq.steal(tid)) {
+                stolen = true;
+                break;
+            }
+            if (g->_remote_rq.pop(tid)) {
+                stolen = true;
+                break;
+            }
         }
     }
     *seed = s;
@@ -342,23 +346,23 @@ void TaskControl::signal_task(int num_task) {
     if (num_task <= 0) {
         return;
     }
-    _pending_signal.fetch_add((num_task << 1), base::memory_order_release);
-    // Update(2016/9/12): user may block the launched bthread indefinitely by
-    // calling pthread-blocking functions, especially when -usercode_in_pthread
-    // is on, we can no longer save the additional signaling.
-    futex_wake_private(&_pending_signal, num_task/*note*/);
-}
-
-int TaskControl::wait_task_once(bthread_t* tid, size_t* seed, size_t offset) {
-    const int nsig = _pending_signal.load(base::memory_order_acquire);
-    if (nsig & 1) {  // stopped
-        return -1;
+    // TODO(gejun): Current algorithm does not guarantee enough threads will
+    // be created to match caller's requests. But in another side, there's also
+    // many useless signalings according to current impl. Capping the concurrency
+    // is a good balance between performance and timeliness of scheduling.
+    if (num_task > 2) {
+        num_task = 2;
     }
-    if (steal_task(tid, seed, offset)) {
-        return 0;
+    int start_index = base::fmix32(pthread_self()) % PARKING_LOT_NUM;
+    num_task -= _pl[start_index].signal(1);
+    if (num_task > 0) {
+        for (int i = 1; i < PARKING_LOT_NUM && num_task > 0; ++i) {
+            if (++start_index >= PARKING_LOT_NUM) {
+                start_index = 0;
+            }
+            num_task -= _pl[start_index].signal(1);
+        }
     }
-    futex_wait_private(&_pending_signal, nsig, NULL);
-    return 1;
 }
 
 void TaskControl::print_rq_sizes(std::ostream& os) {
@@ -406,8 +410,9 @@ int64_t TaskControl::get_cumulated_signal_count() {
     BAIDU_SCOPED_LOCK(_modify_group_mutex);
     const size_t ngroup = _ngroup.load(base::memory_order_relaxed);
     for (size_t i = 0; i < ngroup; ++i) {
-        if (_groups[i]) {
-            c += _groups[i]->_nsignaled;
+        TaskGroup* g = _groups[i];
+        if (g) {
+            c += g->_nsignaled + g->_remote_nsignaled;
         }
     }
     return c;

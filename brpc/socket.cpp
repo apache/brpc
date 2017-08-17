@@ -1088,10 +1088,9 @@ int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime) {
     }
     // Do not need to check addressable since it will be called by
     // health checker which called `SetFailed' before
-    const int expected_val = 
-        _epollout_butex->load(base::memory_order_relaxed);
-    EventDispatcher* const edisp = &GetGlobalEventDispatcher(fd);
-    if (edisp->AddEpollOut(id(), fd, pollin) != 0) {
+    const int expected_val = _epollout_butex->load(base::memory_order_relaxed);
+    EventDispatcher& edisp = GetGlobalEventDispatcher(fd);
+    if (edisp.AddEpollOut(id(), fd, pollin) != 0) {
         return -1;
     }
 
@@ -1103,7 +1102,7 @@ int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime) {
     }
     // Ignore return value since `fd' might have been removed
     // by `RemoveConsumer' in `SetFailed'
-    edisp->RemoveEpollOut(id(), fd, pollin);
+    base::ignore_result(edisp.RemoveEpollOut(id(), fd, pollin));
     errno = saved_errno;
     // Could be writable or spurious wakeup (by former epollout)
     return rc;
@@ -1582,9 +1581,9 @@ void* Socket::KeepWrite(void* void_arg) {
         }
         // TODO(gejun): wait for epollout when we actually have written
         // all the data. This weird heuristic reduces 30us delay...
-        // Update(12/22/2015): 
-        //   Not seem to work now. better switch to correct code.
+        // Update(12/22/2015): seem not working. better switch to correct code.
         // Update(1/8/2016, r31823): Still working.
+        // Update(8/15/2017): Not working, performance downgraded.
         //if (nw <= 0 || req->data.empty()/*note*/) {
         if (nw <= 0) {
             s_vars->nwaitepollout << 1;
@@ -1840,7 +1839,7 @@ int Socket::StartInputEvent(SocketId id, uint32_t epoll_events,
     // requires stronger memory fences, since reading the fd returns
     // error as well, we don't pass the events.
     if (s->_nevent.fetch_add(1, base::memory_order_acq_rel) == 0) {
-        // According to the stats, this fetch_add is very effective. In a
+        // According to the stats, above fetch_add is very effective. In a
         // server processing 1 million requests per second, this counter
         // is just 1500~1700/s
         s_vars->neventthread << 1;
@@ -1860,7 +1859,7 @@ int Socket::StartInputEvent(SocketId id, uint32_t epoll_events,
 }
 
 void DereferenceSocket(Socket* s) {
-    if (BAIDU_LIKELY(s != NULL)) {
+    if (s) {
         s->Dereference();
     }
 }

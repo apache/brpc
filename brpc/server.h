@@ -700,21 +700,6 @@ friend class Controller;
     mutable int32_t BAIDU_CACHELINE_ALIGNMENT _concurrency;
 };
 
-inline const Server::MethodProperty*
-Server::FindMethodPropertyByFullName(const base::StringPiece&fullname) const  {
-    return _method_map.seek(fullname);
-}
-
-inline const Server::ServiceProperty*
-Server::FindServicePropertyByFullName(const base::StringPiece& fullname) const {
-    return _fullname_service_map.seek(fullname);
-}
-
-inline const Server::ServiceProperty*
-Server::FindServicePropertyByName(const base::StringPiece& name) const {
-    return _service_map.seek(name);
-}
-
 // Get the data attached to current searching thread. The data is created by
 // ServerOptions.thread_local_data_factory and reused between different threads.
 // If ServerOptions.thread_local_data_factory is NULL, return NULL.

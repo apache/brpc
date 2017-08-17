@@ -1,0 +1,9 @@
+*
+!*.*
+*.o
+*.a
+*.pb.cc
+*.pb.h
+*.prof
+/output
+/test/output

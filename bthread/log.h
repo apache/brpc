@@ -4,11 +4,13 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon Sep 15 10:51:15 CST 2014
 
-#ifndef BAIDU_BTHREAD_CONFIG_H
-#define BAIDU_BTHREAD_CONFIG_H
+#ifndef BAIDU_BTHREAD_LOG_H
+#define BAIDU_BTHREAD_LOG_H
 
-#include "base/thread_local.h"              // thread_local, thread_atexit
+#ifdef BAIDU_INTERNAL
+#include "bthread/comlog_initializer.h"
+#endif
 
 #define BT_VLOG VLOG(100)
 
-#endif
+#endif // BAIDU_BTHREAD_LOG_H

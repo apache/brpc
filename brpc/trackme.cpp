@@ -20,7 +20,7 @@
 namespace brpc {
 
 #ifdef BAIDU_INTERNAL
-DEFINE_string(trackme_server, "http://brpc.baidu.com:8765",
+DEFINE_string(trackme_server, "http://brpc.baidu.com:8877",
               "Where the TrackMe requests are sent to");
 #else
 DEFINE_string(trackme_server, "", "Where the TrackMe requests are sent to");

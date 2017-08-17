@@ -113,7 +113,11 @@ struct SocketStat {
 };
 
 struct PipelinedInfo {
-    PipelinedInfo() : count(0), id_wait(INVALID_BTHREAD_ID) {}
+    PipelinedInfo() { reset(); }
+    void reset() {
+        count = 0;
+        id_wait = INVALID_BTHREAD_ID;
+    }
     uint32_t count;
     bthread_id_t id_wait;
 };

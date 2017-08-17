@@ -6,9 +6,9 @@
 
 #include <gflags/gflags.h>                           // DEFINE_int32
 #include <sys/epoll.h>                               // epoll_create
-#include "base/macros.h"
 #include "base/fd_utility.h"                         // make_close_on_exec
 #include "base/logging.h"                            // LOG
+#include "base/third_party/murmurhash3/murmurhash3.h"// fmix32
 #include "bthread/bthread.h"                         // bthread_start_background
 #include "brpc/event_dispatcher.h"
 #ifdef BRPC_SOCKET_HAS_EOF
@@ -192,6 +192,7 @@ void EventDispatcher::Run() {
     epoll_event e[32];
     while (!_stop) {
 #ifdef BRPC_ADDITIONAL_EPOLL
+        // Performance downgrades in examples.
         int n = epoll_wait(_epfd, e, ARRAY_SIZE(e), 0);
         if (n == 0) {
             n = epoll_wait(_epfd, e, ARRAY_SIZE(e), -1);
@@ -214,12 +215,6 @@ void EventDispatcher::Run() {
             break;
         }
         for (int i = 0; i < n; ++i) {
-            if (e[i].events & (EPOLLOUT | EPOLLERR | EPOLLHUP)) {
-                // We don't care about the return value.
-                Socket::HandleEpollOut(e[i].data.u64);
-            }
-        }
-        for (int i = 0; i < n; ++i) {
             if (e[i].events & (EPOLLIN | EPOLLERR | EPOLLHUP)
 #ifdef BRPC_SOCKET_HAS_EOF
                 || (e[i].events & has_epollrdhup)
@@ -228,6 +223,12 @@ void EventDispatcher::Run() {
                 // We don't care about the return value.
                 Socket::StartInputEvent(e[i].data.u64, e[i].events,
                                         _consumer_thread_attr);
+            }
+        }
+        for (int i = 0; i < n; ++i) {
+            if (e[i].events & (EPOLLOUT | EPOLLERR | EPOLLHUP)) {
+                // We don't care about the return value.
+                Socket::HandleEpollOut(e[i].data.u64);
             }
         }
     }
@@ -254,21 +255,12 @@ void InitializeGlobalDispatchers() {
     CHECK_EQ(0, atexit(StopAndJoinGlobalDispatchers));
 }
 
-inline uint32_t fmix32 ( uint32_t h ) {
-    h ^= h >> 16;
-    h *= 0x85ebca6b;
-    h ^= h >> 13;
-    h *= 0xc2b2ae35;
-    h ^= h >> 16;
-    return h;
-}
-
 EventDispatcher& GetGlobalEventDispatcher(int fd) {
     pthread_once(&g_edisp_once, InitializeGlobalDispatchers);
     if (FLAGS_event_dispatcher_num == 1) {
         return g_edisp[0];
     }
-    int index = fmix32(fd) % FLAGS_event_dispatcher_num;
+    int index = base::fmix32(fd) % FLAGS_event_dispatcher_num;
     return g_edisp[index];
 }
 

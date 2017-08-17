@@ -15,8 +15,8 @@ static int cast_nprocessing(void* arg) {
 }
 
 MethodStatus::MethodStatus()
-    : _nprocessing_bvar(cast_nprocessing, &_nprocessing)
-    , _max_concurrency(0)
+    : _max_concurrency(0)
+    , _nprocessing_bvar(cast_nprocessing, &_nprocessing)
     , _nprocessing(0) {
 }
 

@@ -16,6 +16,7 @@
 #include "bthread/task_meta.h"                  // TaskMeta
 #include "base/resource_pool.h"                 // ResourcePool
 #include "bthread/work_stealing_queue.h"        // WorkStealingQueue
+#include "bthread/parking_lot.h"
 
 namespace bthread {
 
@@ -40,9 +41,6 @@ public:
 
     // Tell other groups that `n' tasks was just added to caller's runqueue
     void signal_task(int num_task);
-
-    // Suspend caller pthread until a task is stolen.
-    int wait_task_once(bthread_t* tid, size_t* seed, size_t offset);
 
     // Stop and join worker threads in TaskControl.
     void stop_and_join();
@@ -98,8 +96,8 @@ private:
     bvar::PassiveStatus<std::string> _status;
     bvar::Adder<int64_t> _nbthreads;
 
-    // higher 31 bits count futex, lowest bit stands for stopping.
-    base::atomic<int> BAIDU_CACHELINE_ALIGNMENT _pending_signal;
+    static const int PARKING_LOT_NUM = 4;
+    ParkingLot _pl[PARKING_LOT_NUM];
 };
 
 inline bvar::LatencyRecorder& TaskControl::exposed_pending_time() {

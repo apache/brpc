@@ -1435,20 +1435,14 @@ void Server::ClearServices() {
 
 google::protobuf::Service* Server::FindServiceByFullName(
     const base::StringPiece& full_name) const {
-    if (BAIDU_LIKELY(status() != UNINITIALIZED)) {
-        ServiceProperty* ss = _fullname_service_map.seek(full_name);
-        return (ss ? ss->service : NULL);
-    }
-    return NULL;
+    ServiceProperty* ss = _fullname_service_map.seek(full_name);
+    return (ss ? ss->service : NULL);
 }
 
 google::protobuf::Service* Server::FindServiceByName(
     const base::StringPiece& name) const {
-    if (BAIDU_LIKELY(status() != UNINITIALIZED)) {
-        ServiceProperty* ss = _service_map.seek(name);
-        return (ss ? ss->service : NULL);
-    }
-    return NULL;
+    ServiceProperty* ss = _service_map.seek(name);
+    return (ss ? ss->service : NULL);
 }
 
 void Server::GetStat(ServerStatistics* stat) const {
@@ -1640,6 +1634,11 @@ bool IsDummyServerRunning() {
 }
 
 const Server::MethodProperty*
+Server::FindMethodPropertyByFullName(const base::StringPiece&fullname) const  {
+    return _method_map.seek(fullname);
+}
+
+const Server::MethodProperty*
 Server::FindMethodPropertyByFullName(const base::StringPiece& service_name/*full*/,
                                      const base::StringPiece& method_name) const {
     const size_t fullname_len = service_name.size() + 1 + method_name.size();
@@ -1673,6 +1672,16 @@ Server::FindMethodPropertyByNameAndIndex(const base::StringPiece& service_name,
     }
     const google::protobuf::MethodDescriptor* method = sd->method(method_index);
     return FindMethodPropertyByFullName(method->full_name());
+}
+
+const Server::ServiceProperty*
+Server::FindServicePropertyByFullName(const base::StringPiece& fullname) const {
+    return _fullname_service_map.seek(fullname);
+}
+
+const Server::ServiceProperty*
+Server::FindServicePropertyByName(const base::StringPiece& name) const {
+    return _service_map.seek(name);
 }
 
 int Server::AddCertificate(const CertInfo& cert) {

@@ -6,15 +6,12 @@
 #include <queue>                           // heap functions
 #include "base/scoped_lock.h"
 #include "base/logging.h"
-#include "base/third_party/murmurhash3/murmurhash3.h"   // fmix64
+#include "base/third_party/murmurhash3/murmurhash3.h"   // fmix32
 #include "base/resource_pool.h"
 #include "bvar/bvar.h"
 #include "bthread/sys_futex.h"
 #include "bthread/timer_thread.h"
-#include "bthread/config.h"
-#ifdef BAIDU_INTERNAL
-#include "base/comlog_sink.h"
-#endif
+#include "bthread/log.h"
 
 namespace bthread {
 
@@ -59,7 +56,8 @@ class BAIDU_CACHELINE_ALIGNMENT TimerThread::Bucket {
 public:
     Bucket()
         : _nearest_run_time(std::numeric_limits<int64_t>::max())
-        , _task_head(NULL) {}
+        , _task_head(NULL) {
+    }
 
     ~Bucket() {}
 
@@ -70,14 +68,15 @@ public:
     
     // Schedule a task into this bucket.
     // Returns the TaskId and if it has the nearest run time.
-    ScheduleResult schedule(
-        void (*fn)(void*), void* arg, const timespec& abstime);
+    ScheduleResult schedule(void (*fn)(void*), void* arg,
+                            const timespec& abstime);
 
     // Pull all scheduled tasks.
+    // This function is called in timer thread.
     Task* consume_tasks();
 
 private:
-    base::Mutex _mutex;
+    internal::FastPthreadMutex _mutex;
     int64_t _nearest_run_time;
     Task* _task_head;
 };
@@ -152,15 +151,23 @@ int TimerThread::start(const TimerThreadOptions* options_in) {
 
 TimerThread::Task* TimerThread::Bucket::consume_tasks() {
     Task* head = NULL;
-    BAIDU_SCOPED_LOCK(_mutex);
-    head = _task_head;
-    _task_head = NULL;
-    _nearest_run_time = std::numeric_limits<int64_t>::max();
+    if (_task_head) { // NOTE: schedule() and consume_tasks() are sequenced
+        // by TimerThread._nearest_run_time and fenced by TimerThread._mutex.
+        // We can avoid touching the mutex and related cacheline when the
+        // bucket is actually empty.
+        BAIDU_SCOPED_LOCK(_mutex);
+        if (_task_head) {
+            head = _task_head;
+            _task_head = NULL;
+            _nearest_run_time = std::numeric_limits<int64_t>::max();
+        }
+    }
     return head;
 }
 
-TimerThread::Bucket::ScheduleResult TimerThread::Bucket::schedule(
-    void (*fn)(void*), void* arg, const timespec& abstime) {
+TimerThread::Bucket::ScheduleResult
+TimerThread::Bucket::schedule(void (*fn)(void*), void* arg,
+                              const timespec& abstime) {
     base::ResourceId<Task> slot_id;
     Task* task = base::get_resource<Task>(&slot_id);
     if (task == NULL) {
@@ -200,7 +207,7 @@ TimerThread::TaskId TimerThread::schedule(
     }
     // Hashing by pthread id is better for cache locality.
     const Bucket::ScheduleResult result = 
-        _buckets[base::fmix64(pthread_self()) % _options.num_buckets]
+        _buckets[base::fmix32(pthread_self()) % _options.num_buckets]
         .schedule(fn, arg, abstime);
     if (result.earlier) {
         bool earlier = false;

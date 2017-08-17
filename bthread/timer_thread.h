@@ -10,7 +10,7 @@
 #include <pthread.h>                  // pthread_*
 #include "base/atomicops.h" 
 #include "base/time.h"                // time utilities
-#include "base/synchronization/lock.h"// base::Mutex
+#include "bthread/mutex.h"
 
 namespace bthread {
 
@@ -80,8 +80,7 @@ private:
 
     TimerThreadOptions _options;
     Bucket* _buckets;        // list of tasks to be run
-    base::Mutex _mutex;      // protect _nearest_run_time
-    
+    internal::FastPthreadMutex _mutex;    // protect _nearest_run_time
     int64_t _nearest_run_time;
     // the futex for wake up timer thread. can't use _nearest_run_time because
     // it's 64-bit.

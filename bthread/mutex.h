@@ -42,6 +42,25 @@ private:
     bthread_mutex_t _mutex;   
 };
 
+namespace internal {
+#ifdef BTHREAD_USE_FAST_PTHREAD_MUTEX
+class FastPthreadMutex {
+public:
+    FastPthreadMutex() : _futex(0) {}
+    ~FastPthreadMutex() {}
+    void lock();
+    void unlock();
+    bool try_lock();
+private:
+    DISALLOW_COPY_AND_ASSIGN(FastPthreadMutex);
+    int lock_contended();
+    unsigned _futex;
+};
+#else
+typedef base::Mutex FastPthreadMutex;
+#endif
+}
+
 }  // namespace bthread
 
 // Specialize std::lock_guard and std::unique_lock for bthread_mutex_t

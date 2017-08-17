@@ -4,7 +4,7 @@
 WORKROOT('../../../..')
 CXXFLAGS('-g -pipe -Wall -W -fPIC -Wno-invalid-offsetof -fstrict-aliasing -Wno-unused-parameter -std=c++0x -include brpc/config.h')
 CFLAGS('-g -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter')
-CPPFLAGS('-D__const__= -DUSE_SYMBOLIZE -DNO_TCMALLOC -DUNIT_TEST -Dprivate=public -Dprotected=public -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBVAR_NOT_LINK_DEFAULT_VARIABLES')
+CPPFLAGS('-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -DUSE_SYMBOLIZE -DNO_TCMALLOC -DUNIT_TEST -Dprivate=public -Dprotected=public -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBVAR_NOT_LINK_DEFAULT_VARIABLES')
 LDFLAGS('-lpthread -lrt -lssl -lcrypto -ldl -lz')
 INCPATHS('..')
 CONFIGS('third-64/gflags@base')

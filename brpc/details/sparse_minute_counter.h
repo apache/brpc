@@ -8,6 +8,8 @@
 #define BRPC_SPARSE_MINUTE_COUNTER_H
 
 
+#include "base/containers/bounded_queue.h"
+
 namespace brpc {
 
 // An utility to add up per-second value into per-minute value.

@@ -54,7 +54,7 @@ int butex_requeue(void* butex1, void* butex2);
 //   Different from FUTEX_WAIT, butex_wait uses absolute time.
 int butex_wait(void* butex, int expected_value, const timespec* abstime);
 
-// Same with butex_wait except that this function can not be woken up by
+// Same with butex_wait except that this function cannot be woken up by
 // bthread_stop(), although this function still returns -1(ESTOP) after
 // wake-up.
 int butex_wait_uninterruptible(void* butex, int expected_value,
@@ -63,4 +63,3 @@ int butex_wait_uninterruptible(void* butex, int expected_value,
 }  // namespace bthread
 
 #endif  // BAIDU_BTHREAD_BUTEX_H
-

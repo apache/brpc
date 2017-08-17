@@ -48,10 +48,10 @@ friend class ScopedMethodStatus;
     DISALLOW_COPY_AND_ASSIGN(MethodStatus);
     void OnError();
 
-    bvar::LatencyRecorder        _latency_rec;
-    bvar::Adder<int64_t>         _nerror;
-    bvar::PassiveStatus<int>     _nprocessing_bvar;
     int _max_concurrency;
+    bvar::Adder<int64_t>         _nerror;
+    bvar::LatencyRecorder        _latency_rec;
+    bvar::PassiveStatus<int>     _nprocessing_bvar;
     base::atomic<int> BAIDU_CACHELINE_ALIGNMENT _nprocessing;
 };
 

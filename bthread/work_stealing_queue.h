@@ -57,7 +57,7 @@ public:
     bool push(const T& x) {
         const size_t b = _bottom.load(base::memory_order_relaxed);
         const size_t t = _top.load(base::memory_order_acquire);
-        if (b - t >= _capacity) { // Full queue.
+        if (b >= t + _capacity) { // Full queue.
             return false;
         }
         _buffer[b & (_capacity - 1)] = x;

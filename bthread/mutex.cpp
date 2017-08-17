@@ -8,7 +8,6 @@
 #include <execinfo.h>
 #include <dlfcn.h>                               // dlsym
 #include <fcntl.h>                               // O_RDONLY
-#include "bthread/config.h"
 #include "base/atomicops.h"
 #include "bvar/bvar.h"
 #include "bvar/collector.h"
@@ -27,6 +26,7 @@
 #include "bthread/processor.h"                   // cpu_relax, barrier
 #include "bthread/mutex.h"                       // bthread_mutex_t
 #include "bthread/sys_futex.h"
+#include "bthread/log.h"
 
 extern "C" {
 extern void* _dl_sym(void* handle, const char* symbol, void* caller);
@@ -629,6 +629,44 @@ inline int mutex_timedlock_contended(
     }
     return 0;
 }
+
+#ifdef BTHREAD_USE_FAST_PTHREAD_MUTEX
+namespace internal {
+
+int FastPthreadMutex::lock_contended() {
+    base::atomic<unsigned>* whole = (base::atomic<unsigned>*)&_futex;
+    while (whole->exchange(BTHREAD_MUTEX_CONTENDED) & BTHREAD_MUTEX_LOCKED) {
+        if (futex_wait_private(whole, BTHREAD_MUTEX_CONTENDED, NULL) < 0
+            && errno != EWOULDBLOCK) {
+            return errno;
+        }
+    }
+    return 0;
+}
+
+void FastPthreadMutex::lock() {
+    bthread::MutexInternal* split = (bthread::MutexInternal*)&_futex;
+    if (split->locked.exchange(1, base::memory_order_acquire)) {
+        (void)lock_contended();
+    }
+}
+
+bool FastPthreadMutex::try_lock() {
+    bthread::MutexInternal* split = (bthread::MutexInternal*)&_futex;
+    return !split->locked.exchange(1, base::memory_order_acquire);
+}
+
+void FastPthreadMutex::unlock() {
+    base::atomic<unsigned>* whole = (base::atomic<unsigned>*)&_futex;
+    const unsigned prev = whole->exchange(0, base::memory_order_release);
+    // CAUTION: the mutex may be destroyed, check comments before butex_create
+    if (prev != BTHREAD_MUTEX_LOCKED) {
+        futex_wake_private(whole, 1);
+    }
+}
+
+} // namespace internal
+#endif // BTHREAD_USE_FAST_PTHREAD_MUTEX
 
 } // namespace bthread
 
