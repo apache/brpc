@@ -195,7 +195,7 @@ friend class TaskControl;
         if (_remote_rq.pop(tid)) {
             return true;
         }
-#ifdef BTHREAD_SAVE_PARKING_STATE
+#ifndef BTHREAD_DONT_SAVE_PARKING_STATE
         _last_pl_state = _pl->get_state();
 #endif
         return _control->steal_task(tid, &_steal_seed, _steal_offset);
@@ -220,7 +220,7 @@ friend class TaskControl;
     void* _last_context_remained_arg;
 
     ParkingLot* _pl;
-#ifdef BTHREAD_SAVE_PARKING_STATE
+#ifndef BTHREAD_DONT_SAVE_PARKING_STATE
     ParkingLot::State _last_pl_state;
 #endif
     size_t _steal_seed;

@@ -130,7 +130,7 @@ int set_butex_waiter(bthread_t tid, ButexWaiter* w) {
 
 bool TaskGroup::wait_task(bthread_t* tid) {
     do {
-#ifdef BTHREAD_SAVE_PARKING_STATE
+#ifndef BTHREAD_DONT_SAVE_PARKING_STATE
         if (_last_pl_state.stopped()) {
             return -1;
         }
@@ -162,7 +162,7 @@ void TaskGroup::run_main_task() {
     
     TaskGroup* dummy = this;
     bthread_t tid;
-#ifdef BTHREAD_SAVE_PARKING_STATE
+#ifndef BTHREAD_DONT_SAVE_PARKING_STATE
     _last_pl_state = _pl->get_state();
 #endif
     while (wait_task(&tid)) {
