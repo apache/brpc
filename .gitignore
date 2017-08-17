@@ -1,9 +1,15 @@
+#ignore all files without extension
 *
 !*.*
+!*/
+
 *.o
 *.a
+*.log
 *.pb.cc
 *.pb.h
 *.prof
 /output
 /test/output
+#ignore hidden files
+.*
