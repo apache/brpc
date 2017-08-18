@@ -5,7 +5,7 @@ else
 fi
 # NOTE: This requires GNU getopt.  On Mac OS X and FreeBSD, you have to install this
 # separately; see below.
-TEMP=`getopt -o v: --long incs:,libs:,cc:,cxx: -n 'config_brpc' -- "$@"`
+TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx: -n 'config_brpc' -- "$@"`
 
 if [ $? != 0 ] ; then >&2 $ECHO "Terminating..."; exit 1 ; fi
 
@@ -17,7 +17,7 @@ CC=gcc
 CXX=g++
 while true; do
     case "$1" in
-        --incs ) INCS="$(readlink -f $2)"; shift 2 ;;
+        --headers ) HDRS="$(readlink -f $2)"; shift 2 ;;
         --libs ) LIBS="$(readlink -f $2)"; shift 2 ;;
         --cc ) CC=$2; shift 2 ;;
         --cxx ) CXX=$2; shift 2 ;;
@@ -26,8 +26,8 @@ while true; do
     esac
 done
 
-if [ -z "$INCS" ] || [ -z "$LIBS" ]; then
-    >&2 $ECHO "config_brpc: --incs=INCPATHS --libs=LIBPATHS must be specified"
+if [ -z "$HDRS" ] || [ -z "$LIBS" ]; then
+    >&2 $ECHO "config_brpc: --headers=HDRPATHS --libs=LIBPATHS must be specified"
     exit 1
 fi
 
@@ -52,7 +52,7 @@ find_bin() {
 }
 
 find_dir_of_header() {
-    find ${INCS} -path "*/$1" | head -n1 | sed "s|$1||g"
+    find ${HDRS} -path "*/$1" | head -n1 | sed "s|$1||g"
 }
 find_dir_of_header_or_die() {
     local dir=$(find_dir_of_header $1)
@@ -64,27 +64,27 @@ find_dir_of_header_or_die() {
     fi
 }
 
-STATIC_LINKING=
-DYNAMIC_LINKING="-lpthread -lrt -lssl -lcrypto -ldl -lz"
+STATIC_LINKINGS=
+DYNAMIC_LINKINGS="-lpthread -lrt -lssl -lcrypto -ldl -lz"
 append_linking() {
     if [ -f $1/lib${2}.a ]; then
-        STATIC_LINKING="${STATIC_LINKING} -l$2"
+        STATIC_LINKINGS="${STATIC_LINKINGS} -l$2"
     else
-        DYNAMIC_LINKING="${DYNAMIC_LINKING} -l$2"
+        DYNAMIC_LINKINGS="${DYNAMIC_LINKINGS} -l$2"
     fi
 }
 
-GFLAGS_DIR=$(find_dir_of_lib_or_die gflags)
-append_linking $GFLAGS_DIR gflags
-PROTOBUF_DIR=$(find_dir_of_lib_or_die protobuf)
-append_linking $PROTOBUF_DIR protobuf
-PROTOC_DIR=$(find_dir_of_lib_or_die protoc)
-LEVELDB_DIR=$(find_dir_of_lib_or_die leveldb)
-append_linking $LEVELDB_DIR leveldb
+GFLAGS_LIB=$(find_dir_of_lib_or_die gflags)
+append_linking $GFLAGS_LIB gflags
+PROTOBUF_LIB=$(find_dir_of_lib_or_die protobuf)
+append_linking $PROTOBUF_LIB protobuf
+PROTOC_LIB=$(find_dir_of_lib_or_die protoc)
+LEVELDB_LIB=$(find_dir_of_lib_or_die leveldb)
+append_linking $LEVELDB_LIB leveldb
 # required by leveldb
-SNAPPY_DIR=$(find_dir_of_lib snappy)
-if [ ! -z "$SNAPPY_DIR" ]; then
-    append_linking $SNAPPY_DIR snappy
+SNAPPY_LIB=$(find_dir_of_lib snappy)
+if [ ! -z "$SNAPPY_LIB" ]; then
+    append_linking $SNAPPY_LIB snappy
 fi
 
 PROTOC=$(which protoc 2>/dev/null)
@@ -96,12 +96,12 @@ if [ -z "$PROTOC" ]; then
     fi
 fi
 
-GFLAGS_INC=$(find_dir_of_header gflags/gflags.h)
-PROTOBUF_INC=$(find_dir_of_header google/protobuf/message.h)
-LEVELDB_INC=$(find_dir_of_header leveldb/db.h)
+GFLAGS_HDR=$(find_dir_of_header gflags/gflags.h)
+PROTOBUF_HDR=$(find_dir_of_header google/protobuf/message.h)
+LEVELDB_HDR=$(find_dir_of_header leveldb/db.h)
 
-INCS2=$($ECHO "$GFLAGS_INC\n$PROTOBUF_INC\n$LEVELDB_INC" | sort | uniq)
-LIBS2=$($ECHO "$GFLAGS_DIR\n$PROTOBUF_DIR\n$LEVELDB_DIR\n$SNAPPY_DIR\n$PROTOC_DIR" | sort | uniq)
+HDRS2=$($ECHO "$GFLAGS_HDR\n$PROTOBUF_HDR\n$LEVELDB_HDR" | sort | uniq)
+LIBS2=$($ECHO "$GFLAGS_LIB\n$PROTOBUF_LIB\n$LEVELDB_LIB\n$SNAPPY_LIB\n$PROTOC_LIB" | sort | uniq)
 
 absent_in_the_list() {
     TMP=$($ECHO "`$ECHO "$1\n$2" | sort | uniq`")
@@ -112,47 +112,73 @@ absent_in_the_list() {
 }
 
 #can't use \n in texts because sh does not support -e
-CONTENT="INCS=$($ECHO $INCS2)"
+CONTENT="HDRS=$($ECHO $HDRS2)"
 CONTENT="${CONTENT}\nLIBS=$($ECHO $LIBS2)"
 CONTENT="${CONTENT}\nPROTOC=$PROTOC"
-CONTENT="${CONTENT}\nPROTOBUF_INC=$PROTOBUF_INC"
+CONTENT="${CONTENT}\nPROTOBUF_HDR=$PROTOBUF_HDR"
 CONTENT="${CONTENT}\nCC=$CC"
 CONTENT="${CONTENT}\nCXX=$CXX"
-CONTENT="${CONTENT}\nSTATIC_LINKING=$STATIC_LINKING"
-CONTENT="${CONTENT}\nDYNAMIC_LINKING=$DYNAMIC_LINKING"
-CONTENT="${CONTENT}\nifeq (\$(LINK_PERFTOOLS), 1)"
+CONTENT="${CONTENT}\nSTATIC_LINKINGS=$STATIC_LINKINGS"
+CONTENT="${CONTENT}\nDYNAMIC_LINKINGS=$DYNAMIC_LINKINGS"
+CONTENT="${CONTENT}\nifeq (\$(NEED_GPERFTOOLS), 1)"
 # required by cpu/heap profiler
-TCMALLOC_DIR=$(find_dir_of_lib tcmalloc_and_profiler)
-if [ ! -z "$TCMALLOC_DIR" ]; then
-    if absent_in_the_list "$TCMALLOC_DIR" "$LIBS2"; then
-        CONTENT="${CONTENT}\n    LIBS+=$TCMALLOC_DIR"
-        LIBS2="${LIBS2}\n$TCMALLOC_DIR"
+TCMALLOC_LIB=$(find_dir_of_lib tcmalloc_and_profiler)
+if [ ! -z "$TCMALLOC_LIB" ]; then
+    if absent_in_the_list "$TCMALLOC_LIB" "$LIBS2"; then
+        CONTENT="${CONTENT}\n    LIBS+=$TCMALLOC_LIB"
+        LIBS2="${LIBS2}\n$TCMALLOC_LIB"
     fi
-    TCMALLOC_INC=$(find_dir_of_header google/tcmalloc.h)
-    if absent_in_the_list "$TCMALLOC_INC" "$INCS2"; then
-        CONTENT="${CONTENT}\n    INCS+=$TCMALLOC_INC"
-        INCS2="${INCS2}\n$TCMALLOC_INC"
+    TCMALLOC_HDR=$(find_dir_of_header google/tcmalloc.h)
+    if absent_in_the_list "$TCMALLOC_HDR" "$HDRS2"; then
+        CONTENT="${CONTENT}\n    HDRS+=$TCMALLOC_HDR"
+        HDRS2="${HDRS2}\n$TCMALLOC_HDR"
     fi
-    if [ -f $TCMALLOC_DIR/libtcmalloc_and_profiler.a ]; then
-        CONTENT="${CONTENT}\n    STATIC_LINKING+=-ltcmalloc_and_profiler"
+    if [ -f $TCMALLOC_LIB/libtcmalloc_and_profiler.a ]; then
+        CONTENT="${CONTENT}\n    STATIC_LINKINGS+=-ltcmalloc_and_profiler"
     else
-        CONTENT="${CONTENT}\n    DYNAMIC_LINKING+=-ltcmalloc_and_profiler"
+        CONTENT="${CONTENT}\n    DYNAMIC_LINKINGS+=-ltcmalloc_and_profiler"
     fi
 fi
 # required by tcmalloc('s profiler)
-UNWIND_DIR=$(find_dir_of_lib unwind)
-if [ ! -z "$UNWIND_DIR" ]; then
-    if absent_in_the_list "$UNWIND_DIR" "$LIBS2"; then
-        CONTENT="${CONTENT}\n    LIBS+=$UNWIND_DIR"
-        LIBS2="${LIBS2}\n$UNWIND_DIR"
+UNWIND_LIB=$(find_dir_of_lib unwind)
+if [ ! -z "$UNWIND_LIB" ]; then
+    if absent_in_the_list "$UNWIND_LIB" "$LIBS2"; then
+        CONTENT="${CONTENT}\n    LIBS+=$UNWIND_LIB"
+        LIBS2="${LIBS2}\n$UNWIND_LIB"
     fi
-    if [ -f $UNWIND_DIR/libunwind.a ]; then
-        CONTENT="${CONTENT}\n    STATIC_LINKING+=-lunwind"
+    if [ -f $UNWIND_LIB/libunwind.a ]; then
+        CONTENT="${CONTENT}\n    STATIC_LINKINGS+=-lunwind"
     else
-        CONTENT="${CONTENT}\n    DYNAMIC_LINKING+=-lunwind"
+        CONTENT="${CONTENT}\n    DYNAMIC_LINKINGS+=-lunwind"
     fi
     # required by libunwind
-    CONTENT="${CONTENT}\n    DYNAMIC_LINKING+=-llzma"
+    CONTENT="${CONTENT}\n    DYNAMIC_LINKINGS+=-llzma"
+fi
+CONTENT="${CONTENT}\nendif"
+
+# required by UT
+#gtest
+GTEST_LIB=$(find_dir_of_lib gtest)
+GTEST_HDR=$(find_dir_of_header gtest/gtest.h)
+CONTENT="${CONTENT}\nifeq (\$(NEED_GTEST), 1)"
+CONTENT="${CONTENT}\n    HDRS+=$GTEST_HDR"
+CONTENT="${CONTENT}\n    LIBS+=$GTEST_LIB"
+if [ -f $GTEST_LIB/libgtest.a ]; then
+    CONTENT="${CONTENT}\n    STATIC_LINKINGS+=-lgtest -lgtest_main"
+else
+    CONTENT="${CONTENT}\n    DYNAMIC_LINKINGS+=-lgtest -lgtest_main"
+fi
+CONTENT="${CONTENT}\nendif"
+#gmock
+GMOCK_LIB=$(find_dir_of_lib gmock)
+GMOCK_HDR=$(find_dir_of_header gmock/gmock.h)
+CONTENT="${CONTENT}\nifeq (\$(NEED_GMOCK), 1)"
+CONTENT="${CONTENT}\n    HDRS+=$GMOCK_HDR"
+CONTENT="${CONTENT}\n    LIBS+=$GMOCK_LIB"
+if [ -f $GMOCK_LIB/libgmock.a ]; then
+    CONTENT="${CONTENT}\n    STATIC_LINKINGS+=-lgmock -lgmock_main"
+else
+    CONTENT="${CONTENT}\n    DYNAMIC_LINKINGS+=-lgmock -lgmock_main"
 fi
 CONTENT="${CONTENT}\nendif"
 $ECHO "$CONTENT" > config.mk

@@ -1,14 +1,13 @@
-include ../../config.mk
-BRPC_PATH = ../../output
+BRPC_PATH = ../../
+include $(BRPC_PATH)/config.mk
 CPPFLAGS = -std=c++0x -g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -Wno-deprecated -Wno-unused-parameter -fno-omit-frame-pointer -D__const__=
 CXXFLAGS = $(CPPFLAGS)
-INCPATH = -I$(BRPC_PATH)/include $(addprefix -I, $(INCS))
-LIBPATH = $(addprefix -L, $(LIBS))
-BRPC_LIBS += $(wildcard $(BRPC_PATH)/lib/lib*.a)
+HDRPATHS = -I$(BRPC_PATH)/output/include $(addprefix -I, $(HDRS))
+LIBPATHS = -L$(BRPC_PATH)/output/lib $(addprefix -L, $(LIBS))
+STATIC_LINKINGS += -lbase -lbvar -lbthread -lbrpc -ljson2pb -lmcpack2pb
 
 SOURCES = $(wildcard *.cpp)
 OBJS = $(addsuffix .o, $(basename $(SOURCES))) 
-LDFLAGS = -Wl,-Bstatic $(STATIC_LINKING) -Wl,-Bdynamic $(DYNAMIC_LINKING)
 
 .PHONY:all
 all: memcache_client
@@ -20,12 +19,12 @@ clean:
 
 memcache_client:$(OBJS)
 	@echo "Linking $@"
-	@$(CXX) $(LIBPATH) -Xlinker "-(" $^ $(BRPC_LIBS) -Xlinker "-)" $(LDFLAGS) -o $@
+	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic $(DYNAMIC_LINKINGS) -Xlinker "-)" -o $@
 
 %.o:%.cpp
 	@echo "Compiling $@"
-	@$(CXX) -c $(INCPATH) $(CXXFLAGS) $< -o $@
+	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.o:%.cc
 	@echo "Compiling $@"
-	@$(CXX) -c $(INCPATH) $(CXXFLAGS) $< -o $@
+	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@

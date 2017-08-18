@@ -1,16 +1,14 @@
 include config.mk
-CPPFLAGS=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DNDEBUG -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\"$(shell git rev-parse --short HEAD)\"
+CPPFLAGS=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\"$(shell git rev-parse --short HEAD)\"
 #Add -fno-omit-frame-pointer: perf/tcmalloc-profiler uses frame pointers by default
 CXXFLAGS=$(CPPFLAGS) -O2 -g -pipe -Wall -W -Werror -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x -include brpc/config.h
 CFLAGS=$(CPPFLAGS) -O2 -g -pipe -Wall -W -Werror -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
-
-INCPATH=-I. $(addprefix -I, $(INCS))
-LIBPATH = $(addprefix -L, $(LIBS))
+HDRPATHS=-I. $(addprefix -I, $(HDRS))
+LIBPATHS = $(addprefix -L, $(LIBS))
 SRCEXTS = .c .cc .cpp .proto
 HDREXTS = .h .hpp
 #dyanmic linking of libprotoc.so crashes on ubuntu when protoc-gen-mcpack is invoked
-STATIC_LINKING += -lprotoc
-LDFLAGS = -Wl,-Bstatic $(STATIC_LINKING) -Wl,-Bdynamic $(DYNAMIC_LINKING)
+STATIC_LINKINGS += -lprotoc
 
 BASE_SOURCES = \
     base/third_party/dmg_fp/g_fmt.cc \
@@ -47,7 +45,6 @@ BASE_SOURCES = \
     base/base_switches.cc \
     base/big_endian.cc \
     base/bind_helpers.cc \
-    base/build_time.cc \
     base/callback_helpers.cc \
     base/callback_internal.cc \
     base/command_line.cc \
@@ -171,25 +168,30 @@ BASE_SOURCES = \
 
 BASE_PROTOS = $(filter %.proto,$(BASE_SOURCES))
 BASE_CFAMILIES = $(filter-out %.proto,$(BASE_SOURCES))
-BASE_OBJS = $(addsuffix .pb.o, $(basename $(BASE_PROTOS))) $(addsuffix .o, $(basename $(BASE_CFAMILIES))) 
+BASE_OBJS = $(BASE_PROTOS:.proto=.pb.o) $(addsuffix .o, $(basename $(BASE_CFAMILIES)))
+BASE_DEBUG_OBJS = $(BASE_OBJS:.o=.dbg.o)
 
 BVAR_DIRS = bvar bvar/detail
 BVAR_SOURCES = $(foreach d,$(BVAR_DIRS),$(wildcard $(addprefix $(d)/*,$(SRCEXTS))))
 BVAR_OBJS = $(addsuffix .o, $(basename $(BVAR_SOURCES))) 
+BVAR_DEBUG_OBJS = $(BVAR_OBJS:.o=.dbg.o)
 
 BTHREAD_DIRS = bthread
 BTHREAD_SOURCES = $(foreach d,$(BTHREAD_DIRS),$(wildcard $(addprefix $(d)/*,$(SRCEXTS))))
 BTHREAD_OBJS = $(addsuffix .o, $(basename $(BTHREAD_SOURCES))) 
+BTHREAD_DEBUG_OBJS = $(BTHREAD_OBJS:.o=.dbg.o)
 
 JSON2PB_DIRS = json2pb
 JSON2PB_SOURCES = $(foreach d,$(JSON2PB_DIRS),$(wildcard $(addprefix $(d)/*,$(SRCEXTS))))
 JSON2PB_OBJS = $(addsuffix .o, $(basename $(JSON2PB_SOURCES))) 
+JSON2PB_DEBUG_OBJS = $(JSON2PB_OBJS:.o=.dbg.o)
 
 BRPC_DIRS = brpc brpc/details brpc/builtin brpc/policy
 BRPC_SOURCES = $(foreach d,$(BRPC_DIRS),$(wildcard $(addprefix $(d)/*,$(SRCEXTS))))
 BRPC_PROTOS = $(filter %.proto,$(BRPC_SOURCES))
 BRPC_CFAMILIES = $(filter-out %.proto brpc/policy/baidu_naming_service.cpp brpc/policy/giano_authenticator.cpp,$(BRPC_SOURCES))
-BRPC_OBJS = $(addsuffix .pb.o, $(basename $(BRPC_PROTOS))) $(addsuffix .o, $(basename $(BRPC_CFAMILIES))) 
+BRPC_OBJS = $(BRPC_PROTOS:.proto=.pb.o) $(addsuffix .o, $(basename $(BRPC_CFAMILIES)))
+BRPC_DEBUG_OBJS = $(BRPC_OBJS:.o=.dbg.o)
 
 MCPACK2PB_SOURCES = \
 	mcpack2pb/field_type.cpp \
@@ -197,18 +199,31 @@ MCPACK2PB_SOURCES = \
 	mcpack2pb/parser.cpp \
 	mcpack2pb/serializer.cpp
 MCPACK2PB_OBJS = idl_options.pb.o $(addsuffix .o, $(basename $(MCPACK2PB_SOURCES)))
+MCPACK2PB_DEBUG_OBJS = $(MCPACK2PB_OBJS:.o=.dbg.o)
 
 .PHONY:all
 all: libbase.a libbvar.a libbthread.a libjson2pb.a libmcpack2pb.a protoc-gen-mcpack libbrpc.a output/include output/lib output/bin
 
+.PHONY:debug
+debug: libbase.dbg.a libbvar.dbg.a libbthread.dbg.a libjson2pb.dbg.a libmcpack2pb.dbg.a libbrpc.dbg.a
+
 .PHONY:clean
-clean:
+clean:clean_debug
 	@echo "Cleaning"
 	@rm -rf libbase.a libbvar.a libbthread.a libjson2pb.a libmcpack2pb.a mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a \
 		$(BASE_OBJS) $(BVAR_OBJS) $(BTHREAD_OBJS) $(JSON2PB_OBJS) $(MCPACK2PB_OBJS) $(BRPC_OBJS) \
 		output/include output/lib output/bin
 
+.PHONY:clean_debug
+clean_debug:
+	@rm -rf libbase.dbg.a libbvar.dbg.a libbthread.dbg.a libjson2pb.dbg.a libmcpack2pb.dbg.a libbrpc.dbg.a \
+		$(BASE_DEBUG_OBJS) $(BVAR_DEBUG_OBJS) $(BTHREAD_DEBUG_OBJS) $(JSON2PB_DEBUG_OBJS) $(MCPACK2PB_DEBUG_OBJS) $(BRPC_DEBUG_OBJS)
+
 libbase.a:$(BASE_OBJS)
+	@echo "Packing $@"
+	@ar crs $@ $^
+
+libbase.dbg.a:$(BASE_DEBUG_OBJS)
 	@echo "Packing $@"
 	@ar crs $@ $^
 
@@ -216,7 +231,15 @@ libbvar.a:$(BVAR_OBJS)
 	@echo "Packing $@"
 	@ar crs $@ $^
 
+libbvar.dbg.a:$(BVAR_DEBUG_OBJS)
+	@echo "Packing $@"
+	@ar crs $@ $^
+
 libbthread.a:$(BTHREAD_OBJS)
+	@echo "Packing $@"
+	@ar crs $@ $^
+
+libbthread.dbg.a:$(BTHREAD_DEBUG_OBJS)
 	@echo "Packing $@"
 	@ar crs $@ $^
 
@@ -224,17 +247,29 @@ libjson2pb.a:$(JSON2PB_OBJS)
 	@echo "Packing $@"
 	@ar crs $@ $^
 
+libjson2pb.dbg.a:$(JSON2PB_DEBUG_OBJS)
+	@echo "Packing $@"
+	@ar crs $@ $^
+
 libmcpack2pb.a:$(MCPACK2PB_OBJS)
+	@echo "Packing $@"
+	@ar crs $@ $^
+
+libmcpack2pb.dbg.a:$(MCPACK2PB_DEBUG_OBJS)
 	@echo "Packing $@"
 	@ar crs $@ $^
 
 protoc-gen-mcpack:mcpack2pb/generator.o libmcpack2pb.a libbase.a libbthread.a libbvar.a
 	@echo "Linking $@"
-	@$(CXX) -o protoc-gen-mcpack $(LIBPATH) -Xlinker "-(" $^ -Xlinker "-)" $(LDFLAGS)
+	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic $(DYNAMIC_LINKINGS) -Xlinker "-)"
 
 libbrpc.a:$(BRPC_OBJS)
 	@echo "Packing $@"
-	@ar crs libbrpc.a $^
+	@ar crs $@ $^
+
+libbrpc.dbg.a:$(BRPC_DEBUG_OBJS)
+	@echo "Packing $@"
+	@ar crs $@ $^
 
 .PHONY:output/include
 output/include:
@@ -255,18 +290,30 @@ output/bin:protoc-gen-mcpack
 	@mkdir -p $@
 	@cp $^ $@
 
-%.pb.cc %.pb.h:%.proto
+%.pb.cc:%.proto
 	@echo "Generating $@"
-	@$(PROTOC) --cpp_out=. --proto_path=. --proto_path=$(PROTOBUF_INC) $<
+	@$(PROTOC) --cpp_out=. --proto_path=. --proto_path=$(PROTOBUF_HDR) $<
 
 %.o:%.cpp
 	@echo "Compiling $@"
-	@$(CXX) -c $(INCPATH) $(CXXFLAGS) $< -o $@
+	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) -DNDEBUG $< -o $@
+
+%.dbg.o:%.cpp
+	@echo "Compiling $@"
+	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.o:%.cc
 	@echo "Compiling $@"
-	@$(CXX) -c $(INCPATH) $(CXXFLAGS) $< -o $@
+	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) -DNDEBUG $< -o $@
+
+%.dbg.o:%.cc
+	@echo "Compiling $@"
+	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.o:%.c
 	@echo "Compiling $@"
-	@$(CC) -c $(INCPATH) $(CFLAGS) $< -o $@
+	@$(CC) -c $(HDRPATHS) $(CFLAGS) -DNDEBUG $< -o $@
+
+%.dbg.o:%.c
+	@echo "Compiling $@"
+	@$(CC) -c $(HDRPATHS) $(CFLAGS) $< -o $@
