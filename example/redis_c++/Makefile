@@ -23,11 +23,11 @@ clean:
 
 redis_press:$(PRESS_OBJS)
 	@echo "Linking $@"
-	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic $(DYNAMIC_LINKINGS) -Xlinker "-)" -o $@
+	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
 
 redis_cli:$(CLI_OBJS)
 	@echo "Linking $@"
-	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic $(DYNAMIC_LINKINGS) -Xlinker "-)" -o $@
+	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
 
 %.o:%.cpp
 	@echo "Compiling $@"

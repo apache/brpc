@@ -261,7 +261,7 @@ libmcpack2pb.dbg.a:$(MCPACK2PB_DEBUG_OBJS)
 
 protoc-gen-mcpack:mcpack2pb/generator.o libmcpack2pb.a libbase.a libbthread.a libbvar.a
 	@echo "Linking $@"
-	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic $(DYNAMIC_LINKINGS) -Xlinker "-)"
+	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
 libbrpc.a:$(BRPC_OBJS)
 	@echo "Packing $@"

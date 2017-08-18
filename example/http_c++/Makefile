@@ -32,15 +32,15 @@ clean:
 
 http_client:$(CLIENT_OBJS)
 	@echo "Linking $@"
-	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic $(DYNAMIC_LINKINGS) -Xlinker "-)" -o $@
+	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
 
 benchmark_http:$(BENCHMARK_OBJS)
 	@echo "Linking $@"
-	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic $(DYNAMIC_LINKINGS) -Xlinker "-)" -o $@
+	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
 
 http_server:$(PROTO_OBJS) $(SERVER_OBJS)
 	@echo "Linking $@"
-	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic $(DYNAMIC_LINKINGS) -Xlinker "-)" -o $@
+	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
 
 %.pb.cc:%.proto
 	@echo "Generating $@"

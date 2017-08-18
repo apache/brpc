@@ -123,7 +123,9 @@ CONTENT="${CONTENT}\nDYNAMIC_LINKINGS=$DYNAMIC_LINKINGS"
 CONTENT="${CONTENT}\nifeq (\$(NEED_GPERFTOOLS), 1)"
 # required by cpu/heap profiler
 TCMALLOC_LIB=$(find_dir_of_lib tcmalloc_and_profiler)
-if [ ! -z "$TCMALLOC_LIB" ]; then
+if [ -z "$TCMALLOC_LIB" ]; then
+    CONTENT="${CONTENT}\n    \$(error \"Fail to find gperftools\")"
+else
     if absent_in_the_list "$TCMALLOC_LIB" "$LIBS2"; then
         CONTENT="${CONTENT}\n    LIBS+=$TCMALLOC_LIB"
         LIBS2="${LIBS2}\n$TCMALLOC_LIB"
@@ -159,26 +161,46 @@ CONTENT="${CONTENT}\nendif"
 # required by UT
 #gtest
 GTEST_LIB=$(find_dir_of_lib gtest)
-GTEST_HDR=$(find_dir_of_header gtest/gtest.h)
 CONTENT="${CONTENT}\nifeq (\$(NEED_GTEST), 1)"
-CONTENT="${CONTENT}\n    HDRS+=$GTEST_HDR"
-CONTENT="${CONTENT}\n    LIBS+=$GTEST_LIB"
-if [ -f $GTEST_LIB/libgtest.a ]; then
-    CONTENT="${CONTENT}\n    STATIC_LINKINGS+=-lgtest -lgtest_main"
+if [ -z "$GTEST_LIB" ]; then
+    CONTENT="${CONTENT}\n    \$(error \"Fail to find gtest\")"
 else
-    CONTENT="${CONTENT}\n    DYNAMIC_LINKINGS+=-lgtest -lgtest_main"
+    GTEST_HDR=$(find_dir_of_header gtest/gtest.h)
+    if absent_in_the_list "$GTEST_LIB" "$LIBS2"; then
+        CONTENT="${CONTENT}\n    LIBS+=$GTEST_LIB"
+        LIBS2="${LIBS2}\n$GTEST_LIB"
+    fi
+    if absent_in_the_list "$GTEST_HDR" "$HDRS2"; then
+        CONTENT="${CONTENT}\n    HDRS+=$GTEST_HDR"
+        HDRS2="${HDRS2}\n$GTEST_HDR"
+    fi
+    if [ -f $GTEST_LIB/libgtest.a ]; then
+        CONTENT="${CONTENT}\n    STATIC_LINKINGS+=-lgtest -lgtest_main"
+    else
+        CONTENT="${CONTENT}\n    DYNAMIC_LINKINGS+=-lgtest -lgtest_main"
+    fi
 fi
 CONTENT="${CONTENT}\nendif"
 #gmock
 GMOCK_LIB=$(find_dir_of_lib gmock)
-GMOCK_HDR=$(find_dir_of_header gmock/gmock.h)
 CONTENT="${CONTENT}\nifeq (\$(NEED_GMOCK), 1)"
-CONTENT="${CONTENT}\n    HDRS+=$GMOCK_HDR"
-CONTENT="${CONTENT}\n    LIBS+=$GMOCK_LIB"
-if [ -f $GMOCK_LIB/libgmock.a ]; then
-    CONTENT="${CONTENT}\n    STATIC_LINKINGS+=-lgmock -lgmock_main"
+if [ -z "$GMOCK_LIB" ]; then
+    CONTENT="${CONTENT}\n    \$(error \"Fail to find gmock\")"
 else
-    CONTENT="${CONTENT}\n    DYNAMIC_LINKINGS+=-lgmock -lgmock_main"
+    GMOCK_HDR=$(find_dir_of_header gmock/gmock.h)
+    if absent_in_the_list "$GMOCK_LIB" "$LIBS2"; then
+        CONTENT="${CONTENT}\n    LIBS+=$GMOCK_LIB"
+        LIBS2="${LIBS2}\n$GMOCK_LIB"
+    fi
+    if absent_in_the_list "$GMOCK_HDR" "$HDRS2"; then
+        CONTENT="${CONTENT}\n    HDRS+=$GMOCK_HDR"
+        HDRS2="${HDRS2}\n$GMOCK_HDR"
+    fi
+    if [ -f $GMOCK_LIB/libgmock.a ]; then
+        CONTENT="${CONTENT}\n    STATIC_LINKINGS+=-lgmock -lgmock_main"
+    else
+        CONTENT="${CONTENT}\n    DYNAMIC_LINKINGS+=-lgmock -lgmock_main"
+    fi
 fi
 CONTENT="${CONTENT}\nendif"
 $ECHO "$CONTENT" > config.mk

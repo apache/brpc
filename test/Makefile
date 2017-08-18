@@ -9,7 +9,6 @@ CFLAGS=$(CPPFLAGS) -g -pipe -Wall -W -Werror -fPIC -fstrict-aliasing -Wno-unused
 
 HDRPATHS=-I. -I.. $(addprefix -I, $(HDRS))
 LIBPATHS=$(addprefix -L, $(LIBS))
-LDFLAGS=-Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic $(DYNAMIC_LINKINGS)
 
 TEST_BASE_SOURCES = \
     at_exit_unittest.cc \
@@ -172,19 +171,19 @@ clean_bins:
 
 test_base:$(TEST_BASE_OBJS) ../libbase.dbg.a
 	@echo "Linking $@"
-	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ $(LDFLAGS) -Xlinker "-)" 
+	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
 test_bvar:$(TEST_BVAR_OBJS) ../libbase.dbg.a ../libbvar.dbg.a
 	@echo "Linking $@"
-	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ $(LDFLAGS) -Xlinker "-)"
+	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
 bthread%unittest:bthread%unittest.o ../libbase.dbg.a ../libbvar.dbg.a ../libbthread.dbg.a
 	@echo "Linking $@"
-	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ $(LDFLAGS) -Xlinker "-)"
+	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
-brpc_%_unittest:brpc_%_unittest.o $(TEST_PROTO_OBJS) ../libbase.dbg.a ../libbvar.dbg.a ../libbthread.dbg.a ../libbrpc.dbg.a ../libmcpack2pb.dbg.a ../libjson2pb.dbg.a
+brpc_%_unittest:$(TEST_PROTO_OBJS) brpc_%_unittest.o ../libbase.dbg.a ../libbvar.dbg.a ../libbthread.dbg.a ../libbrpc.dbg.a ../libmcpack2pb.dbg.a ../libjson2pb.dbg.a
 	@echo "Linking $@"
-	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ $(LDFLAGS) -Xlinker "-)"
+	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
 %.pb.cc:%.proto
 	@echo "Generating $@"
