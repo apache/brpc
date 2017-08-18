@@ -464,7 +464,7 @@ _T* find_lowered_cstr(FlatMap<std::string, _T, _Hash, _Equal, _Sparse>& m,
     return m.seek(*tls_stringmap_temp.get_lowered_string(key, length));
 }
 
-}  // namespace baidu
+}  // namespace base
 
 #include "base/containers/flat_map_inl.h"
 

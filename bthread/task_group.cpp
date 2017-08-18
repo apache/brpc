@@ -917,13 +917,3 @@ void print_task(std::ostream& os, bthread_t tid) {
 }
 
 }  // namespace bthread
-
-namespace baidu {
-namespace bthread {
-void print_task(std::ostream& os, bthread_t tid) {
-    ::bthread::print_task(os, tid);
-}
-extern BAIDU_THREAD_LOCAL void* tls_unique_user_ptr
-    __attribute__ ((alias ("_ZN7bthread19tls_unique_user_ptrE")));
-}
-}

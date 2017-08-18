@@ -367,17 +367,6 @@ static int id_create_ranged_impl(
 
 }  // namespace bthread
 
-namespace baidu {
-namespace bthread {
-void id_status(bthread_id_t id, std::ostream& os) {
-    ::bthread::id_status(id, os);
-}
-void id_pool_status(std::ostream& os) {
-    ::bthread::id_pool_status(os);
-}
-}
-}
-
 extern "C" {
 
 int bthread_id_create(

@@ -16,14 +16,26 @@
 
 namespace base {
 
-// NOTE: This version requires storage in ctor rather than allocating it, 
-// which is different from DP version.
-// Example:
+// [Create a on-stack small queue]
 //   char storage[64];
 //   base::BoundedQueue<int> q(storage, sizeof(storage), base::NOT_OWN_STORAGE);
 //   q.push(1);
 //   q.push(2);
 //   ...
+   
+// [Initialize a class-member queue]
+//   class Foo {
+//     ...
+//     BoundQueue<int> _queue;
+//   };
+//   int Foo::init() {
+//     BoundedQueue<int> tmp(capacity);
+//     if (!tmp.initialized()) {
+//       LOG(ERROR) << "Fail to create _queue";
+//       return -1;
+//     }
+//     tmp.swap(_queue);
+//   }
 
 enum StorageOwnership { OWNS_STORAGE, NOT_OWN_STORAGE };
 
@@ -31,16 +43,28 @@ template <typename T>
 class BoundedQueue {
 public:
     // You have to pass the memory for storing items at creation.
-    // The queue contains at most size / sizeof(T) items.
-    BoundedQueue(void* spaces, size_t size, StorageOwnership ownership)
+    // The queue contains at most memsize/sizeof(T) items.
+    BoundedQueue(void* mem, size_t memsize, StorageOwnership ownership)
         : _count(0)
-        , _cap(size / sizeof(T))
+        , _cap(memsize / sizeof(T))
         , _start(0)
         , _ownership(ownership)
-        , _items(spaces) {
+        , _items(mem) {
         DCHECK(_items);
     };
-
+    
+    // Construct a queue with the given capacity.
+    // The malloc() may fail sliently, call initialized() to test validity
+    // of the queue.
+    explicit BoundedQueue(size_t capacity)
+        : _count(0)
+        , _cap(capacity)
+        , _start(0)
+        , _ownership(OWNS_STORAGE)
+        , _items(malloc(capacity * sizeof(T))) {
+        DCHECK(_items);
+    };
+    
     BoundedQueue()
         : _count(0)
         , _cap(0)
