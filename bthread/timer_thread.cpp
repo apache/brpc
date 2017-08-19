@@ -6,7 +6,7 @@
 #include <queue>                           // heap functions
 #include "base/scoped_lock.h"
 #include "base/logging.h"
-#include "base/third_party/murmurhash3/murmurhash3.h"   // fmix32
+#include "base/third_party/murmurhash3/murmurhash3.h"   // fmix64
 #include "base/resource_pool.h"
 #include "bvar/bvar.h"
 #include "bthread/sys_futex.h"
@@ -207,7 +207,7 @@ TimerThread::TaskId TimerThread::schedule(
     }
     // Hashing by pthread id is better for cache locality.
     const Bucket::ScheduleResult result = 
-        _buckets[base::fmix32(pthread_self()) % _options.num_buckets]
+        _buckets[base::fmix64(pthread_self()) % _options.num_buckets]
         .schedule(fn, arg, abstime);
     if (result.earlier) {
         bool earlier = false;

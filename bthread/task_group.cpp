@@ -11,7 +11,7 @@
 #include "base/scoped_lock.h"               // BAIDU_SCOPED_LOCK
 #include "base/fast_rand.h"
 #include "base/unique_ptr.h"
-#include "base/third_party/murmurhash3/murmurhash3.h" // fmix32
+#include "base/third_party/murmurhash3/murmurhash3.h" // fmix64
 #include "bthread/errno.h"                  // ESTOP
 #include "bthread/butex.h"                  // butex_*
 #include "bthread/sys_futex.h"              // futex_wake_private
@@ -207,7 +207,7 @@ TaskGroup::TaskGroup(TaskControl* c)
 {
     _steal_seed = base::fast_rand();
     _steal_offset = OFFSET_TABLE[_steal_seed % ARRAY_SIZE(OFFSET_TABLE)];
-    _pl = &c->_pl[base::fmix32(pthread_self()) % TaskControl::PARKING_LOT_NUM];
+    _pl = &c->_pl[base::fmix64(pthread_self()) % TaskControl::PARKING_LOT_NUM];
     CHECK(c);
 }
 
