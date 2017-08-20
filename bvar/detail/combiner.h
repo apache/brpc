@@ -7,8 +7,6 @@
 #define  BAIDU_BVAR__COMBINER_H
 
 #include <string>                       // std::string
-#include <algorithm>                    // std::swap until C++11
-#include <utility>                      // std::swap since C++11
 #include <vector>                       // std::vector
 #include "base/atomicops.h"             // base::atomic
 #include "base/scoped_lock.h"           // BAIDU_SCOPED_LOCK

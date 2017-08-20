@@ -17,6 +17,11 @@
 #include <algorithm> // std::min
 #include "base/third_party/murmurhash3/murmurhash3.h"
 
+// Too many fallthroughs in this file to mark, just ignore the warning.
+#if defined(__GNUC__) && __GNUC__ >= 7
+#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+#endif
+
 //-----------------------------------------------------------------------------
 // Platform-specific functions and macros
 

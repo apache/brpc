@@ -15,13 +15,13 @@
 
 namespace base {
 
-static const int ERRNO_BEGIN = -32768;
-static const int ERRNO_END = 32768;
-const char* errno_desc[ERRNO_END - ERRNO_BEGIN] = {};
-pthread_mutex_t modify_desc_mutex = PTHREAD_MUTEX_INITIALIZER;
+const int ERRNO_BEGIN = -32768;
+const int ERRNO_END = 32768;
+static const char* errno_desc[ERRNO_END - ERRNO_BEGIN] = {};
+static pthread_mutex_t modify_desc_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-static const size_t UNKNOWN_ERROR_BUFSIZE = 32;
-__thread char unknown_error_buf[UNKNOWN_ERROR_BUFSIZE];
+const size_t ERROR_BUFSIZE = 64;
+__thread char tls_error_buf[ERROR_BUFSIZE];
 
 int DescribeCustomizedErrno(
     int error_code, const char* error_name, const char* description) {
@@ -32,20 +32,18 @@ int DescribeCustomizedErrno(
               error_name, error_code);
     }
     const char* desc = errno_desc[error_code - ERRNO_BEGIN];
-    if (!desc) {
-        // g++ 4.8.2 reports nonnull warning for directly using NULL as the
-        // second parameter to strerror_r which is totally valid.
-        char* cheat_nonnull = NULL;
-        desc = strerror_r(error_code, cheat_nonnull, 0);
-    }
     if (desc) {
         if (strcmp(desc, description) == 0) {
             fprintf(stderr, "WARNING: Detected shared library loading\n");
-            return 0;
+            return -1;
         }
-        error(EXIT_FAILURE, 0,
-              "Fail to define %s(%d) which is already defined as `%s', abort.",
-              error_name, error_code, desc);
+    } else {
+        desc = strerror_r(error_code, tls_error_buf, ERROR_BUFSIZE);
+        if (desc && strncmp(desc, "Unknown error", 13) != 0) {
+            error(EXIT_FAILURE, 0,
+                    "Fail to define %s(%d) which is already defined as `%s', abort.",
+                    error_name, error_code, desc);
+        }
     }
     errno_desc[error_code - ERRNO_BEGIN] = description;
     return 0;  // must
@@ -55,24 +53,21 @@ int DescribeCustomizedErrno(
 
 const char* berror(int error_code) {
     if (error_code == -1) {
-        return "General Error(-1)";
+        return "General Error -1";
     }
     if (error_code >= base::ERRNO_BEGIN && error_code < base::ERRNO_END) {
         const char* s = base::errno_desc[error_code - base::ERRNO_BEGIN];
         if (s) {
             return s;
         }
-        // g++ 4.8.2 reports nonnull warning for directly using NULL as the
-        // second parameter to strerror_r which is totally valid.
-        char* cheat_nonnull = NULL;
-        s = strerror_r(error_code, cheat_nonnull, 0);
+        s = strerror_r(error_code, base::tls_error_buf, base::ERROR_BUFSIZE);
         if (s) {  // strerror_r returns NULL if error_code is unknown
             return s;
         }
     }
-    snprintf(base::unknown_error_buf, base::UNKNOWN_ERROR_BUFSIZE,
-             "Unknown Error(%d)", error_code);
-    return base::unknown_error_buf;
+    snprintf(base::tls_error_buf, base::ERROR_BUFSIZE,
+             "Unknown Error %d", error_code);
+    return base::tls_error_buf;
 }
 
 const char* berror() {

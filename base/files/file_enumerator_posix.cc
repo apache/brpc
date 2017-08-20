@@ -129,9 +129,17 @@ bool FileEnumerator::ReadDirectory(std::vector<FileInfo>* entries,
          additional space for pathname may be needed
 #endif
 
-  struct dirent dent_buf;
   struct dirent* dent;
+  // readdir_r is marked as deprecated since glibc 2.24. 
+  // Using readdir on _different_ DIR* object is already thread-safe in
+  // most modern libc implementations.
+#if defined(__GLIBC__) &&  \
+    (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 24))
+  while ((dent = readdir(dir))) {
+#else
+  struct dirent dent_buf;
   while (readdir_r(dir, &dent_buf, &dent) == 0 && dent) {
+#endif
     FileInfo info;
     info.filename_ = FilePath(dent->d_name);
 

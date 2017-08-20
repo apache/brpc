@@ -664,6 +664,7 @@ void Controller::Call::OnComplete(Controller* c, int error_code/*note*/,
             }
             break;
         }
+        // fall through
     case CONNECTION_TYPE_SHORT:
         if (sending_sock != NULL) {
             // Check the comment in CONNECTION_TYPE_POOLED branch.

@@ -168,7 +168,7 @@ static void PrintMessage(const base::IOBuf& inbuf,
                          bool has_content) {
     base::IOBuf buf1 = inbuf;
     base::IOBuf buf2;
-    char str[32];
+    char str[48];
     if (request_or_response) {
         snprintf(str, sizeof(str), "[HTTP REQUEST @%s]", base::my_ip_cstr());
     } else {

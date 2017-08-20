@@ -433,6 +433,7 @@ static bool ReadAMFObjectField(AMFInputStream* stream,
             LOG(ERROR) << "Fail to read class_name";
         }
     }
+    // fall through
     case AMF_MARKER_OBJECT: {
         if (field) {
             if (field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
@@ -633,6 +634,7 @@ static bool ReadAMFObjectField(AMFInputStream* stream,
             LOG(ERROR) << "Fail to read class_name";
         }
     }
+    // fall through
     case AMF_MARKER_OBJECT: {
         if (!ReadAMFObjectBody(obj->MutableObject(name), stream)) {
             return false;
@@ -781,6 +783,7 @@ static bool ReadAMFArrayItem(AMFInputStream* stream, AMFArray* arr) {
             LOG(ERROR) << "Fail to read class_name";
         }
     }
+    // fall through
     case AMF_MARKER_OBJECT: {
         if (!ReadAMFObjectBody(arr->AddObject(), stream)) {
             return false;

@@ -11,6 +11,7 @@
 #include "base/memory/singleton_on_pthread_once.h"
 #include "base/scoped_lock.h"
 #include "base/files/scoped_file.h"
+#include "base/files/file_enumerator.h"
 #include "base/file_util.h"
 #include "bvar/passive_status.h"
 
@@ -235,18 +236,15 @@ public:
 // ==================================================
 
 static int get_fd_count(int limit) {
-    DIR *dir = opendir("/proc/self/fd");
-    if (dir == NULL) {
-        PLOG_ONCE(WARNING) << "Fail to opendir /proc/self/fd";
-        return -1;
-    }
+    base::FileEnumerator fd_enum(base::FilePath("/proc/self/fd"),
+                                 false/*non recursive*/,
+                                 base::FileEnumerator::FILES);
     int count = 0;
-    dirent ent;
-    // We have to limit the scaning which consumes a lot of CPU when #fd
+    // Have to limit the scaning which consumes a lot of CPU when #fd
     // are huge (100k+)
-    for (dirent* p = &ent; readdir_r(dir, &ent, &p) == 0 && p &&
-             count <= limit; ++count) {}
-    closedir(dir);
+    for (base::FilePath name = fd_enum.Next();
+         !name.empty() && count <= limit;
+         name = fd_enum.Next(), ++count) {}
     return count - 2/*. and ..*/ - 1/*opendir itself*/;
 }
 

@@ -75,8 +75,14 @@ void DirService::default_method(::google::protobuf::RpcController* cntl_base,
 
         std::vector<std::string> files;
         files.reserve(32);
-        struct dirent ent;
-        for (struct dirent* p = &ent; readdir_r(dir, &ent, &p) == 0 && p; ) {
+        // readdir_r is marked as deprecated since glibc 2.24. 
+#if defined(__GLIBC__) && \
+        (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 24))
+        for (struct dirent* p = NULL; (p = readdir(dir)) != NULL; ) {
+#else
+        struct dirent entbuf;
+        for (struct dirent* p = NULL; readdir_r(dir, &entbuf, &p) == 0 && p; ) {
+#endif
             files.push_back(p->d_name);
         }
         CHECK_EQ(0, closedir(dir));

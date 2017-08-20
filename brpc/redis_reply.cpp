@@ -255,6 +255,7 @@ void RedisReply::Print(std::ostream& os) const {
         break;
     case REDIS_REPLY_ERROR:
         os << "(error) ";
+        // fall through
     case REDIS_REPLY_STATUS:
         if (_length < sizeof(_data.short_str)) {
             os << _data.short_str;

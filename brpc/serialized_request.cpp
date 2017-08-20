@@ -120,7 +120,9 @@ const ::google::protobuf::Descriptor* SerializedRequest::descriptor() {
 }
 
 const SerializedRequest& SerializedRequest::default_instance() {
-    if (default_instance_ == NULL) protobuf_AddDesc_baidu_2frpc_2fserialized_5frequest_2eproto();  return *default_instance_;
+    if (default_instance_ == NULL)
+        protobuf_AddDesc_baidu_2frpc_2fserialized_5frequest_2eproto();
+    return *default_instance_;
 }
 
 SerializedRequest* SerializedRequest::default_instance_ = NULL;

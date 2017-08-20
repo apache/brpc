@@ -86,8 +86,7 @@ private:
     bool _stop;         // Set to true in dtor.
     pthread_t _grab_thread;     // For joining.
     pthread_t _dump_thread;
-
-    int64_t BAIDU_CACHELINE_ALIGNMENT _ngrab;
+    int64_t _ngrab BAIDU_CACHELINE_ALIGNMENT;
     int64_t _ndrop;
     int64_t _ndump;
     pthread_mutex_t _dump_thread_mutex;

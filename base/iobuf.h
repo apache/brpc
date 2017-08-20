@@ -652,15 +652,17 @@ private:
 }  // namespace base
 
 // Specialize std::swap for IOBuf
+#if __cplusplus < 201103L  // < C++11
+#include <algorithm>  // std::swap until C++11
+#else
+#include <utility>  // std::swap since C++11
+#endif  // __cplusplus < 201103L
 namespace std {
-template <class T> void swap ( T& a, T& b );
-
 template <>
 inline void swap(base::IOBuf& a, base::IOBuf& b) {
     return a.swap(b);
 }
-
-};
+} // namespace std
 
 #include "base/iobuf_inl.h"
 

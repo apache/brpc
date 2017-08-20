@@ -159,10 +159,12 @@ utf8_nextCharSafeBody(const uint8_t *s, int32_t *pi, int32_t length, UChar32 c, 
                 illegal=1;
                 break;
             }
+            // fall through
         case 2:
             trail=s[(i)++];
             (c)=((c)<<6)|(trail&0x3f);
             illegal|=(trail&0xc0)^0x80;
+            // fall through
         case 1:
             trail=s[(i)++];
             (c)=((c)<<6)|(trail&0x3f);

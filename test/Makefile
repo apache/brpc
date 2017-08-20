@@ -4,8 +4,11 @@ NEED_GMOCK=1
 include ../config.mk
 CPPFLAGS=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS
 CPPFLAGS+=-DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES
-CXXFLAGS=$(CPPFLAGS) -g -pipe -Wall -W -Werror -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x
-CFLAGS=$(CPPFLAGS) -g -pipe -Wall -W -Werror -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
+CXXFLAGS=$(CPPFLAGS) -g -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x
+CFLAGS=$(CPPFLAGS) -g -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
+ifeq ($(shell test $(shell $(CXX) -dumpversion) -ge 7; echo $$?),0)
+CXXFLAGS+=-Wno-aligned-new
+endif
 
 HDRPATHS=-I. -I.. $(addprefix -I, $(HDRS))
 LIBPATHS=$(addprefix -L, $(LIBS))

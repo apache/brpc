@@ -165,11 +165,10 @@ private:
         return *_s_free_ids;
     }
 
-    static pthread_mutex_t                                      _s_mutex;
-    static AgentId                                              _s_agent_kinds;
-    static std::deque<AgentId>                                  *_s_free_ids;
-    static __thread
-        BAIDU_CACHELINE_ALIGNMENT std::vector<ThreadBlock *>    *_s_tls_blocks;
+    static pthread_mutex_t                      _s_mutex;
+    static AgentId                              _s_agent_kinds;
+    static std::deque<AgentId>                  *_s_free_ids;
+    static __thread std::vector<ThreadBlock *>  *_s_tls_blocks;
 };
 
 template <typename Agent>

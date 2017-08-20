@@ -10,6 +10,12 @@
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 
+// gcc7 reports that the first arg to vsnprintfT in StringAppendVT is NULL,
+// which I can't figure out why, turn off the warning right now.
+#if defined(__GNUC__) && __GNUC__ >= 7
+#pragma GCC diagnostic warning "-Wformat-truncation=0"
+#endif
+
 namespace base {
 
 namespace {

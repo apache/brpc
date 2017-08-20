@@ -1,14 +1,21 @@
+NEED_LIBPROTOC=1
 include config.mk
+
+# Notes on the flags:
+# 1. -fno-omit-frame-pointer is required by perf/tcmalloc-profiler which use frame pointers by default
+# 2. -D__const__= MUST be added in user's gcc compilation as well to avoid the over-optimization on TLS variables by gcc
+# 3. Removed -Werror to not block compilation for non-vital warnings, especially when the code is compiled on newer systems. If you use the code in production, add -Werror back
 CPPFLAGS=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\"$(shell git rev-parse --short HEAD)\"
-#Add -fno-omit-frame-pointer: perf/tcmalloc-profiler uses frame pointers by default
-CXXFLAGS=$(CPPFLAGS) -O2 -g -pipe -Wall -W -Werror -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x -include brpc/config.h
-CFLAGS=$(CPPFLAGS) -O2 -g -pipe -Wall -W -Werror -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
+CXXFLAGS=$(CPPFLAGS) -O2 -g -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x -include brpc/config.h
+CFLAGS=$(CPPFLAGS) -O2 -g -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
 HDRPATHS=-I. $(addprefix -I, $(HDRS))
 LIBPATHS = $(addprefix -L, $(LIBS))
 SRCEXTS = .c .cc .cpp .proto
 HDREXTS = .h .hpp
-#dyanmic linking of libprotoc.so crashes on ubuntu when protoc-gen-mcpack is invoked
-STATIC_LINKINGS += -lprotoc
+
+ifeq ($(shell test $(shell $(CXX) -dumpversion) -ge 7; echo $$?),0)
+CXXFLAGS+=-Wno-aligned-new
+endif
 
 BASE_SOURCES = \
     base/third_party/dmg_fp/g_fmt.cc \
