@@ -13,8 +13,8 @@ LIBPATHS = $(addprefix -L, $(LIBS))
 SRCEXTS = .c .cc .cpp .proto
 HDREXTS = .h .hpp
 
-ifeq ($(shell test $(shell $(CXX) -dumpversion) -ge 7; echo $$?),0)
-CXXFLAGS+=-Wno-aligned-new
+ifeq ($(shell test $(shell $(CXX) -dumpversion | sed -e 's/\..*$$//g') -ge 7; echo $$?),0)
+	CXXFLAGS+=-Wno-aligned-new
 endif
 
 BASE_SOURCES = \

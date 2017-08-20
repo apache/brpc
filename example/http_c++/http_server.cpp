@@ -53,7 +53,7 @@ public:
         os.move_to(cntl->response_attachment());
     }
 
-    void EchoProtobuf(google::protobuf::RpcController* cntl_base,
+    void EchoProtobuf(google::protobuf::RpcController*,
                       const HttpRequest* request,
                       HttpResponse* response,
                       google::protobuf::Closure* done) {

@@ -6,7 +6,8 @@ CPPFLAGS=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBO
 CPPFLAGS+=-DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES
 CXXFLAGS=$(CPPFLAGS) -g -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x
 CFLAGS=$(CPPFLAGS) -g -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
-ifeq ($(shell test $(shell $(CXX) -dumpversion) -ge 7; echo $$?),0)
+
+ifeq ($(shell test $(shell $(CXX) -dumpversion | sed -e 's/\..*$$//g') -ge 7; echo $$?),0)
 CXXFLAGS+=-Wno-aligned-new
 endif
 

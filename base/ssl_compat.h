@@ -303,7 +303,7 @@ BRPC_INLINE unsigned char *EVP_CIPHER_CTX_iv_noconst(EVP_CIPHER_CTX *ctx) {
 }
 
 BRPC_INLINE EVP_MD_CTX *EVP_MD_CTX_new(void) {
-    return OPENSSL_zalloc(sizeof(EVP_MD_CTX));
+    return (EVP_MD_CTX*)OPENSSL_zalloc(sizeof(EVP_MD_CTX));
 }
 
 BRPC_INLINE void EVP_MD_CTX_free(EVP_MD_CTX *ctx) {
@@ -314,7 +314,7 @@ BRPC_INLINE void EVP_MD_CTX_free(EVP_MD_CTX *ctx) {
 BRPC_INLINE RSA_METHOD *RSA_meth_dup(const RSA_METHOD *meth) {
     RSA_METHOD *ret;
 
-    ret = OPENSSL_malloc(sizeof(RSA_METHOD));
+    ret = (RSA_METHOD*)OPENSSL_malloc(sizeof(RSA_METHOD));
 
     if (ret != NULL) {
         memcpy(ret, meth, sizeof(*meth));
@@ -381,9 +381,10 @@ BRPC_INLINE RSA *EVP_PKEY_get0_RSA(EVP_PKEY *pkey) {
     return pkey->pkey.rsa;
 }
 
-
+/* following 2 functions don't compile in openssl 1.0.1f*/
+/*
 BRPC_INLINE HMAC_CTX *HMAC_CTX_new(void) {
-    HMAC_CTX *ctx = OPENSSL_malloc(sizeof(*ctx));
+    HMAC_CTX *ctx = (HMAC_CTX*)OPENSSL_malloc(sizeof(*ctx));
     if (ctx != NULL) {
         if (!HMAC_CTX_reset(ctx)) {
             HMAC_CTX_free(ctx);
@@ -402,6 +403,7 @@ BRPC_INLINE void HMAC_CTX_free(HMAC_CTX *ctx) {
         OPENSSL_free(ctx);
     }
 }
+*/
 
 #endif /* OPENSSL_VERSION_NUMBER < 0x10100000L */
 

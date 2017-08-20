@@ -1,12 +1,10 @@
 NEED_GPERFTOOLS=1
 BRPC_PATH=../../
 include $(BRPC_PATH)/config.mk
-CPPFLAGS=-std=c++0x -g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -Wno-deprecated -Wno-unused-parameter -fno-omit-frame-pointer -D__const__= 
+CXXFLAGS=-std=c++0x -g -DNDEBUG -O2 -D__const__= -pipe -W -Wall -Werror -fPIC -fno-omit-frame-pointer
 ifeq ($(NEED_GPERFTOOLS), 1)
-	CPPFLAGS+=-DBRPC_ENABLE_CPU_PROFILER -DBRPC_ENABLE_HEAP_PROFILER
+	CXXFLAGS+=-DBRPC_ENABLE_CPU_PROFILER -DBRPC_ENABLE_HEAP_PROFILER
 endif
-CXXFLAGS=$(CPPFLAGS)
-CFLAGS=$(CPPFLAGS)
 HDRPATHS = -I$(BRPC_PATH)/output/include $(addprefix -I, $(HDRS))
 LIBPATHS = -L$(BRPC_PATH)/output/lib $(addprefix -L, $(LIBS))
 STATIC_LINKINGS += -lbase -lbvar -lbthread -lbrpc -ljson2pb -lmcpack2pb
