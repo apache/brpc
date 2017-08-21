@@ -26,6 +26,8 @@ while true; do
     esac
 done
 
+GCC_VERSION=$($CXX tools/print_gcc_version.cc -o print_gcc_version && ./print_gcc_version && rm ./print_gcc_version)
+
 if [ -z "$HDRS_IN" ] || [ -z "$LIBS_IN" ]; then
     >&2 $ECHO "config_brpc: --headers=HDRPATHS --libs=LIBPATHS must be specified"
     exit 1
@@ -163,6 +165,7 @@ append_to_output "PROTOC=$PROTOC"
 append_to_output "PROTOBUF_HDR=$PROTOBUF_HDR"
 append_to_output "CC=$CC"
 append_to_output "CXX=$CXX"
+append_to_output "GCC_VERSION=$GCC_VERSION"
 append_to_output "STATIC_LINKINGS=$STATIC_LINKINGS"
 append_to_output "DYNAMIC_LINKINGS=$DYNAMIC_LINKINGS"
 
