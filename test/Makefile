@@ -7,8 +7,18 @@ CPPFLAGS+=-DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAUL
 CXXFLAGS=$(CPPFLAGS) -g -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x
 CFLAGS=$(CPPFLAGS) -g -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
 
-ifeq ($(shell test $(shell $(CXX) -dumpversion | sed -e 's/\..*$$//g') -ge 7; echo $$?),0)
-CXXFLAGS+=-Wno-aligned-new
+# strict-aliasing in gcc4.4 in buggy
+ifeq ($(shell echo $$(($(GCC_VERSION)/ 100))), 404)
+	CXXFLAGS+=-Wno-strict-aliasing
+	CFLAGS+=-Wno-strict-aliasing
+endif
+#required by base/crc32.cc to boost performance for 10x
+ifeq ($(shell test $(GCC_VERSION) -ge 40400; echo $$?),0)
+	CXXFLAGS+=-msse4 -msse4.2
+endif
+#not solved yet
+ifeq ($(shell test $(GCC_VERSION) -ge 70000; echo $$?),0)
+	CXXFLAGS+=-Wno-aligned-new
 endif
 
 HDRPATHS=-I. -I.. -I../src $(addprefix -I, $(HDRS))
