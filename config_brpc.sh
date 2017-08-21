@@ -32,7 +32,7 @@ if [ -z "$HDRS_IN" ] || [ -z "$LIBS_IN" ]; then
 fi
 
 find_dir_of_lib() {
-    local lib=$(find ${LIBS_IN} -name "lib${1}.*" | head -n1)
+    local lib=$(find ${LIBS_IN} -name "lib${1}.a" -o -name "lib${1}.so*" | head -n1)
     if [ ! -z "$lib" ]; then
         dirname $lib
     fi
@@ -72,14 +72,13 @@ find_dir_of_header_or_die() {
     if [ -z "$dir" ]; then
         >&2 $ECHO "Fail to find $1 from --headers"
         exit 1
-    else
-        $ECHO $dir
     fi
+    $ECHO $dir
 }
 
-# required headers
-PTHREAD_HDR=$(find_dir_of_header_or_die pthread.h)
-OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h)
+# Inconvenient to check these headers in baidu-internal
+#PTHREAD_HDR=$(find_dir_of_header_or_die pthread.h)
+#OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h)
 
 STATIC_LINKINGS=
 DYNAMIC_LINKINGS="-lpthread -lrt -lssl -lcrypto -ldl -lz"

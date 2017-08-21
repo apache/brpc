@@ -1,6 +1,9 @@
 BRPC_PATH = ../../
 include $(BRPC_PATH)/config.mk
-CXXFLAGS = -std=c++0x -g -DNDEBUG -O2 -D__const__= -pipe -W -Wall -Werror -fPIC -fno-omit-frame-pointer
+# Notes on the flags:
+# 1. Added -fno-omit-frame-pointer: perf/tcmalloc-profiler use frame pointers by default
+# 2. Added -D__const__= : Avoid over-optimizations of TLS variables by GCC>=4.8
+CXXFLAGS = -std=c++0x -g -DNDEBUG -O2 -D__const__= -pipe -W -Wall -Werror -Wno-unused-parameter -fPIC -fno-omit-frame-pointer
 HDRPATHS = -I$(BRPC_PATH)/output/include $(addprefix -I, $(HDRS))
 LIBPATHS = -L$(BRPC_PATH)/output/lib $(addprefix -L, $(LIBS))
 STATIC_LINKINGS += -lbase -lbvar -lbthread -lbrpc -ljson2pb -lmcpack2pb

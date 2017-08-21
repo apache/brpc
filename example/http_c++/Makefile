@@ -1,7 +1,10 @@
 NEED_GPERFTOOLS=1
 BRPC_PATH=../../
 include $(BRPC_PATH)/config.mk
-CXXFLAGS=-std=c++0x -g -DNDEBUG -O2 -D__const__= -pipe -W -Wall -Werror -fPIC -fno-omit-frame-pointer
+# Notes on the flags:
+# 1. Added -fno-omit-frame-pointer: perf/tcmalloc-profiler use frame pointers by default
+# 2. Added -D__const__= : Avoid over-optimizations of TLS variables by GCC>=4.8
+CXXFLAGS = -std=c++0x -g -DNDEBUG -O2 -D__const__= -pipe -W -Wall -Werror -Wno-unused-parameter -fPIC -fno-omit-frame-pointer
 ifeq ($(NEED_GPERFTOOLS), 1)
 	CXXFLAGS+=-DBRPC_ENABLE_CPU_PROFILER -DBRPC_ENABLE_HEAP_PROFILER
 endif
