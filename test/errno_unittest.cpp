@@ -39,7 +39,7 @@ TEST_F(ErrnoTest, customized_errno) {
     ASSERT_STREQ("the thread is interrupted", berror(EBREAK));
     ASSERT_STREQ("something happened", berror(ESTH));
     ASSERT_STREQ("OK!", berror(EOK));
-    ASSERT_STREQ("Unknown Error(1000)", berror(1000));
+    ASSERT_STREQ("Unknown error 1000", berror(1000));
     
     errno = ESTOP;
     printf("Something got wrong, %m\n");

@@ -53,7 +53,7 @@ int DescribeCustomizedErrno(
 
 const char* berror(int error_code) {
     if (error_code == -1) {
-        return "General Error -1";
+        return "General error -1";
     }
     if (error_code >= base::ERRNO_BEGIN && error_code < base::ERRNO_END) {
         const char* s = base::errno_desc[error_code - base::ERRNO_BEGIN];
@@ -66,7 +66,7 @@ const char* berror(int error_code) {
         }
     }
     snprintf(base::tls_error_buf, base::ERROR_BUFSIZE,
-             "Unknown Error %d", error_code);
+             "Unknown error %d", error_code);
     return base::tls_error_buf;
 }
 
