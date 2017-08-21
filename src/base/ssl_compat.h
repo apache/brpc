@@ -6,6 +6,7 @@
 #ifndef BRPC_BASE_SSL_COMPAT_H
 #define BRPC_BASE_SSL_COMPAT_H
 
+#include <openssl/ssl.h>
 #include <openssl/opensslv.h>
 
 /* Provide functions added in newer openssl but missing in older versions */
@@ -207,23 +208,6 @@ BRPC_INLINE int DSA_SIG_set0(DSA_SIG *sig, BIGNUM *r, BIGNUM *s) {
     return 1;
 }
 
-BRPC_INLINE void ECDSA_SIG_get0(const ECDSA_SIG *sig, const BIGNUM **pr, const BIGNUM **ps) {
-    if (pr != NULL)
-        *pr = sig->r;
-    if (ps != NULL)
-        *ps = sig->s;
-}
-
-BRPC_INLINE int ECDSA_SIG_set0(ECDSA_SIG *sig, BIGNUM *r, BIGNUM *s) {
-    if (r == NULL || s == NULL)
-        return 0;
-    BN_clear_free(sig->r);
-    BN_clear_free(sig->s);
-    sig->r = r;
-    sig->s = s;
-    return 1;
-}
-
 BRPC_INLINE void DH_get0_pqg(const DH *dh,
         const BIGNUM **p, const BIGNUM **q, const BIGNUM **g) {
     if (p != NULL)
@@ -294,54 +278,6 @@ BRPC_INLINE int DH_set_length(DH *dh, long length) {
     return 1;
 }
 
-BRPC_INLINE const unsigned char *EVP_CIPHER_CTX_iv(const EVP_CIPHER_CTX *ctx) {
-    return ctx->iv;
-}
-
-BRPC_INLINE unsigned char *EVP_CIPHER_CTX_iv_noconst(EVP_CIPHER_CTX *ctx) {
-    return ctx->iv;
-}
-
-BRPC_INLINE EVP_MD_CTX *EVP_MD_CTX_new(void) {
-    return (EVP_MD_CTX*)OPENSSL_zalloc(sizeof(EVP_MD_CTX));
-}
-
-BRPC_INLINE void EVP_MD_CTX_free(EVP_MD_CTX *ctx) {
-    EVP_MD_CTX_cleanup(ctx);
-    OPENSSL_free(ctx);
-}
-
-BRPC_INLINE RSA_METHOD *RSA_meth_dup(const RSA_METHOD *meth) {
-    RSA_METHOD *ret;
-
-    ret = (RSA_METHOD*)OPENSSL_malloc(sizeof(RSA_METHOD));
-
-    if (ret != NULL) {
-        memcpy(ret, meth, sizeof(*meth));
-        ret->name = OPENSSL_strdup(meth->name);
-        if (ret->name == NULL) {
-            OPENSSL_free(ret);
-            return NULL;
-        }
-    }
-
-    return ret;
-}
-
-BRPC_INLINE int RSA_meth_set1_name(RSA_METHOD *meth, const char *name) {
-    char *tmpname;
-
-    tmpname = OPENSSL_strdup(name);
-    if (tmpname == NULL) {
-        return 0;
-    }
-
-    OPENSSL_free((char *)meth->name);
-    meth->name = tmpname;
-
-    return 1;
-}
-
 BRPC_INLINE int RSA_meth_set_priv_enc(RSA_METHOD *meth,
         int (*priv_enc) (int flen, const unsigned char *from,
             unsigned char *to, RSA *rsa,
@@ -374,37 +310,6 @@ BRPC_INLINE int RSA_bits(const RSA *r) {
     return (BN_num_bits(r->n));
 }
 
-BRPC_INLINE RSA *EVP_PKEY_get0_RSA(EVP_PKEY *pkey) {
-    if (pkey->type != EVP_PKEY_RSA) {
-        return NULL;
-    }
-    return pkey->pkey.rsa;
-}
-
-/* following 2 functions don't compile in openssl 1.0.1f*/
-/*
-BRPC_INLINE HMAC_CTX *HMAC_CTX_new(void) {
-    HMAC_CTX *ctx = (HMAC_CTX*)OPENSSL_malloc(sizeof(*ctx));
-    if (ctx != NULL) {
-        if (!HMAC_CTX_reset(ctx)) {
-            HMAC_CTX_free(ctx);
-            return NULL;
-        }
-    }
-    return ctx;
-}
-
-BRPC_INLINE void HMAC_CTX_free(HMAC_CTX *ctx) {
-    if (ctx != NULL) {
-        hmac_ctx_cleanup(ctx);
-        EVP_MD_CTX_free(ctx->i_ctx);
-        EVP_MD_CTX_free(ctx->o_ctx);
-        EVP_MD_CTX_free(ctx->md_ctx);
-        OPENSSL_free(ctx);
-    }
-}
-*/
-
 #endif /* OPENSSL_VERSION_NUMBER < 0x10100000L */
 
 #if OPENSSL_VERSION_NUMBER < 0x0090801fL
@@ -422,10 +327,10 @@ BRPC_INLINE BIGNUM* get_rfc2409_prime_1024(BIGNUM* bn) {
         0x7C,0x4B,0x1F,0xE6,0x49,0x28,0x66,0x51,0xEC,0xE6,0x53,0x81,
         0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
     };
-    return BN_bin2bn(RFC2409_PRIME_1024, sizeof(RFC2409_RPIME_1024), bn);
+    return BN_bin2bn(RFC2409_PRIME_1024, sizeof(RFC2409_PRIME_1024), bn);
 }
 
-BRPC_INLINE BIGNUM* get_rfc3526_prime_2048(BIGNUM* bn);
+BRPC_INLINE BIGNUM* get_rfc3526_prime_2048(BIGNUM* bn) {
     static const unsigned char RFC3526_PRIME_2048[] = {
         0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xC9,0x0F,0xDA,0xA2,
         0x21,0x68,0xC2,0x34,0xC4,0xC6,0x62,0x8B,0x80,0xDC,0x1C,0xD1,
@@ -593,6 +498,14 @@ BRPC_INLINE BIGNUM* get_rfc3526_prime_8192(BIGNUM* bn) {
         0xFF,0xFF,0xFF,0xFF,
     };
     return BN_bin2bn(RFC3526_PRIME_8192, sizeof(RFC3526_PRIME_8192), bn);
+}
+
+BRPC_INLINE int EVP_PKEY_base_id(const EVP_PKEY *pkey) {
+    return EVP_PKEY_type(pkey->type);
+}
+
+BRPC_INLINE int EVP_PKEY_base_id(const EVP_PKEY *pkey) {
+    return EVP_PKEY_type(pkey->type);
 }
 
 #endif /* OPENSSL_VERSION_NUMBER < 0x0090801fL */

@@ -5,12 +5,16 @@ if [ -z "$1" ]; then
     exit 1
 fi
 PATCHFILE=$1
+FILTER_TARGET_DIR_CMD=
 if [ -d "$1/.svn" ]; then
     if [ -z "$2" ]; then
         echo "Second argument must be a SVN revision"
         exit 1
     fi
+    CURRENT_DIR=`pwd`
     SVN_DIR=$1
+    # replace the filepaths in diff
+    FILTER_TARGET_DIR_CMD=-e\ "s|$SVN_DIR|$CURRENT_DIR/src/|g"
     REV=$2
     PATCHFILE=$REV.patch
     echo "*** Generating diff of $SVN_DIR@$REV"
@@ -19,7 +23,7 @@ fi
 
 MODIFIED_PATCHFILE="$(basename $PATCHFILE).brpc_os"
 
-cat $PATCHFILE | sed -e 's/src\/baidu\/rpc\//brpc\//g' \
+cat $PATCHFILE | sed -e 's/src\/baidu\/rpc\//src\/brpc\//g' \
             -e 's/\<baidu\/rpc\//brpc\//g' \
             -e 's/brpc\/test\/test_\(.*\)\.cpp/test\/brpc_\1_unittest.cpp/g' \
             -e 's/\<namespace \+baidu *{/namespace brpc {/g' \
@@ -29,18 +33,22 @@ cat $PATCHFILE | sed -e 's/src\/baidu\/rpc\//brpc\//g' \
             -e 's/\<baidu::rpc::/brpc::/g' \
             -e 's/\<rpc::/brpc::/g' \
             -e 's/\<BAIDU_RPC_/BRPC_/g' \
-            -e 's/\<protocol\/\(.*\)\.proto/\1.proto/g' \
+            -e 's/\<protocol\/\(.*\)\.proto/src\/\1.proto/g' \
             -e 's/TEST_F(HttpMessageTest/TEST(HttpMessageTest/g' \
             -e 's/TEST_F(URITest/TEST(URITest/g' \
-            -e 's/bthread_cond\.cpp/bthread\/condition_variable.cpp/g' \
-            -e 's/bthread_\([^.]*\)\.cpp/bthread\/\1.cpp/g' \
-            -e 's/bthread_\([^.]*\)\.h/bthread\/\1.h/g' \
-            -e 's/bthread\.h/bthread\/bthread.h/g' \
+            -e 's/bthread_cond\.cpp/src\/bthread\/condition_variable.cpp/g' \
+            -e 's/bthread_\([^.]*\)\.cpp/src\/bthread\/\1.cpp/g' \
+            -e 's/bthread_\([^.]*\)\.h/src\/bthread\/\1.h/g' \
+            -e 's/bthread\.h/src\/bthread\/bthread.h/g' \
             -e 's/<\(brpc\/[^>]*\)>/"\1"/g' \
             -e 's/<\(bvar\/[^>]*\)>/"\1"/g' \
             -e 's/<\(base\/[^>]*\)>/"\1"/g' \
             -e 's/<\(bthread\/[^>]*\)>/"\1"/g' \
             -e 's/<\(mcpack2pb\/[^>]*\)>/"\1"/g' \
+            -e 's/ base\// src\/base\//g' \
+            -e 's/ bthread\// src\/bthread\//g' \
+            -e 's/ bvar\// src\/bvar\//g' \
+            $FILTER_TARGET_DIR_CMD \
             > $MODIFIED_PATCHFILE
 EXTRA_ARGS=
 if [ -z "$DO_RUN" ]; then
