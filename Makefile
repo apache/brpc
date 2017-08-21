@@ -184,9 +184,7 @@ BASE_SOURCES = \
     src/base/containers/case_ignored_flat_map.cpp \
     src/base/iobuf.cpp
 
-BASE_PROTOS = $(filter %.proto,$(BASE_SOURCES))
-BASE_CFAMILIES = $(filter-out %.proto,$(BASE_SOURCES))
-BASE_OBJS = $(BASE_PROTOS:.proto=.pb.o) $(addsuffix .o, $(basename $(BASE_CFAMILIES)))
+BASE_OBJS = $(addsuffix .o, $(basename $(BASE_SOURCES)))
 BASE_DEBUG_OBJS = $(BASE_OBJS:.o=.dbg.o)
 
 BVAR_DIRS = src/bvar src/bvar/detail
@@ -308,7 +306,7 @@ output/bin:protoc-gen-mcpack
 	@mkdir -p $@
 	@cp $^ $@
 
-%.pb.cc:%.proto
+%.pb.cc %.pb.h:%.proto
 	@echo "Generating $@"
 	@$(PROTOC) --cpp_out=./src --proto_path=./src --proto_path=$(PROTOBUF_HDR) $<
 

@@ -199,7 +199,7 @@ brpc_%_unittest:$(TEST_PROTO_OBJS) brpc_%_unittest.o ../libbase.dbg.a ../libbvar
 	@echo "Linking $@"
 	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
-%.pb.cc:%.proto
+%.pb.cc %.pb.h:%.proto
 	@echo "Generating $@"
 	@$(PROTOC) --cpp_out=. --proto_path=. --proto_path=../src --proto_path=$(PROTOBUF_HDR) $<
 

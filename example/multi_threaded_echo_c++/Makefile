@@ -37,7 +37,7 @@ echo_server:$(PROTO_OBJS) $(SERVER_OBJS)
 	@echo "Linking $@"
 	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
 
-%.pb.cc:%.proto
+%.pb.cc %.pb.h:%.proto
 	@echo "Generating $@"
 	@$(PROTOC) --cpp_out=. --proto_path=. $(PROTOC_EXTRA_ARGS) $<
 
