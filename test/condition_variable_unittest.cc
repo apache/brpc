@@ -191,7 +191,7 @@ TEST_F(ConditionVariableTest, TimeoutTest) {
 #if defined(OS_POSIX)
 const int kDiscontinuitySeconds = 2;
 
-void BackInTime(Lock* lock) {
+void ALLOW_UNUSED BackInTime(Lock* lock) {
   AutoLock auto_lock(*lock);
 
   timeval tv;

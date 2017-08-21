@@ -229,7 +229,7 @@ class RtmpChunkStream;
 // Associated with a RTMP connection.
 class RtmpContext : public Destroyable {
 friend class RtmpChunkStream;
-friend struct RtmpUnsentMessage;
+friend class RtmpUnsentMessage;
 public:
     // States during handshake.
     enum State {

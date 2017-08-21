@@ -18,7 +18,7 @@ struct BStruct {
     int x;
 };
 class BClass {
-    int _x;
+    int ALLOW_UNUSED _x;
 };
 
 class Parent {};

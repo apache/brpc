@@ -12,18 +12,12 @@
 
 namespace brpc {
 
-class Server;
 class DirService : public dir {
 public:
-    explicit DirService(Server* server) : _server(server) {}
-
     void default_method(::google::protobuf::RpcController* cntl_base,
                         const ::brpc::DirRequest* request,
                         ::brpc::DirResponse* response,
                         ::google::protobuf::Closure* done);
-
-private:
-    Server* _server;
 };
 
 } // namespace brpc

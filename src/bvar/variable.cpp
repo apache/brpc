@@ -51,8 +51,6 @@ DEFINE_bool(bvar_log_dumpped,  false,
 const size_t SUB_MAP_COUNT = 32;  // must be power of 2
 BAIDU_CASSERT(!(SUB_MAP_COUNT & (SUB_MAP_COUNT - 1)), must_be_power_of_2);
 
-const size_t MAX_CONFLICT_NAME = 128;
-
 class VarEntry {
 public:
     VarEntry() : var(NULL), display_filter(DISPLAY_ON_ALL) {}

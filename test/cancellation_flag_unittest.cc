@@ -16,16 +16,6 @@ namespace base {
 
 namespace {
 
-//------------------------------------------------------------------------------
-// Define our test class.
-//------------------------------------------------------------------------------
-
-void CancelHelper(CancellationFlag* flag) {
-#if GTEST_HAS_DEATH_TEST
-  ASSERT_DEBUG_DEATH(flag->Set(), "");
-#endif
-}
-
 TEST(CancellationFlagTest, SimpleSingleThreadedTest) {
   CancellationFlag flag;
   ASSERT_FALSE(flag.IsSet());

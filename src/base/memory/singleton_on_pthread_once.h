@@ -12,7 +12,8 @@
 
 namespace base {
 
-template <typename T> struct GetLeakySingleton {
+template <typename T> class GetLeakySingleton {
+public:
     static base::subtle::AtomicWord g_leaky_singleton_untyped;
     static pthread_once_t g_create_leaky_singleton_once;
     static void create_leaky_singleton();

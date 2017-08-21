@@ -38,7 +38,7 @@ struct StringMapThreadLocalTemp {
         if (temp->initialized) {
             temp->initialized = false;
             std::string* temp_string = (std::string*)temp->buf;
-            temp_string->std::string::~string();
+            temp_string->~basic_string();
         }
     }
 

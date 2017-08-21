@@ -5,7 +5,7 @@
 // Date: 2015/06/11 17:46:26
 
 #ifndef  BRPC_HASHER_H
-#define  BAIDU_PPC_HASHER_H
+#define  BRPC_HASHER_H
 
 #include <stddef.h>
 #include <stdint.h>

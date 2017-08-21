@@ -68,8 +68,11 @@ class BASE_EXPORT RefCountedBase {
 
  private:
   mutable int ref_count_;
+#if defined(__clang__)
+  mutable bool ALLOW_UNUSED  in_dtor_;
+#else
   mutable bool in_dtor_;
-
+#endif
   DFAKE_MUTEX(add_release_);
 
   DISALLOW_COPY_AND_ASSIGN(RefCountedBase);
@@ -90,7 +93,11 @@ class BASE_EXPORT RefCountedThreadSafeBase {
 
  private:
   mutable AtomicRefCount ref_count_;
+#if defined(__clang__)
+  mutable bool ALLOW_UNUSED  in_dtor_;
+#else
   mutable bool in_dtor_;
+#endif
 
   DISALLOW_COPY_AND_ASSIGN(RefCountedThreadSafeBase);
 };

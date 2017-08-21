@@ -527,10 +527,6 @@ public:
         RUsageReader::get_field<BVAR_MEMBER_TYPE(&rusage::field),       \
         offsetof(rusage, field)>, NULL);                                \
 
-inline std::ostream& operator<<(std::ostream& os, const timeval& tm) {
-    return os << tm.tv_sec << '.' << std::setw(6) << std::setfill('0') << tm.tv_usec;
-}
-
 // ======================================
 
 BVAR_DEFINE_PROC_STAT_FIELD2(pid, "pid");
@@ -746,3 +742,9 @@ PassiveStatus<std::string> g_work_dir("process_work_dir", get_work_dir, NULL);
 #undef BVAR_DEFINE_RUSAGE_FIELD2
 
 }  // namespace bvar
+
+// In the same scope where timeval is defined. Required by clang.
+inline std::ostream& operator<<(std::ostream& os, const timeval& tm) {
+    return os << tm.tv_sec << '.' << std::setw(6) << std::setfill('0') << tm.tv_usec;
+}
+

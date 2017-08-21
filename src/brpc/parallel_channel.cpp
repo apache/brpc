@@ -395,7 +395,11 @@ private:
     int _fail_limit;
     int _ndone;
     int _nchan;
+#if defined(__clang__)
+    int ALLOW_UNUSED _memsize;
+#else
     int _memsize;
+#endif
     base::atomic<int> _current_fail;
     base::atomic<uint32_t> _current_done;
     Controller* _cntl;

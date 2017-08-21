@@ -85,7 +85,6 @@ const char* messagetype2str(uint8_t t) {
 // Unchangable constants required by RTMP
 static const uint32_t RTMP_INITIAL_CHUNK_SIZE = 128;
 static const uint8_t RTMP_DEFAULT_VERSION = 3;
-static const uint8_t RTMP_MAX_VERSION = 31;
 static const size_t RTMP_HANDSHAKE_SIZE0 = 1;
 static const size_t RTMP_HANDSHAKE_SIZE1 = 1536;
 static const size_t RTMP_HANDSHAKE_SIZE2 = RTMP_HANDSHAKE_SIZE1;

@@ -64,9 +64,7 @@ typedef unsigned __int64 uint64_t;
 
 namespace brpc {
 
-typedef struct http_parser http_parser;
-typedef struct http_parser_settings http_parser_settings;
-
+struct http_parser;
 
 /* Callbacks should return non-zero to indicate an error. The parser will
  * then halt execution.
@@ -201,8 +199,7 @@ enum http_errno {
 #define HTTP_PARSER_ERRNO(p)            ((enum http_errno) (p)->http_errno)
 
 
-class http_parser {
-public:
+struct http_parser {
   /** PRIVATE **/
   unsigned int type : 2;         /* enum http_parser_type */
   unsigned int flags : 6;        /* F_* values from 'flags' enum; semi-public */

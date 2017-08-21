@@ -90,19 +90,19 @@ static const int TS_PMT_NUMBER = 1;
 // Program Association Table(see Table 2-25)
 static const TsPid TS_PID_PAT = (TsPid)0x00;
 // Conditional Access Table (see Table 2-27)
-static const TsPid TS_PID_CAT = (TsPid)0x01;
+//static const TsPid TS_PID_CAT = (TsPid)0x01;
 // Transport Stream Description Table
-static const TsPid TS_PID_TSDT = (TsPid)0x02;
-static const TsPid TS_PID_RESERVED_START = (TsPid)0x03;
-static const TsPid TS_PID_RESERVED_END = (TsPid)0x0f;
+//static const TsPid TS_PID_TSDT = (TsPid)0x02;
+//static const TsPid TS_PID_RESERVED_START = (TsPid)0x03;
+// static const TsPid TS_PID_RESERVED_END = (TsPid)0x0f;
 // May be assigned as network_PID; Program_map_PID; elementary_PID; or for
 // other purposes
-static const TsPid TS_PID_APP_START = (TsPid)0x10;
+//static const TsPid TS_PID_APP_START = (TsPid)0x10;
 static const TsPid TS_PID_VIDEO_AVC = (TsPid)0x100;
 static const TsPid TS_PID_AUDIO_AAC = (TsPid)0x101;
 static const TsPid TS_PID_AUDIO_MP3 = (TsPid)0x102;
 static const TsPid TS_PID_PMT = (TsPid)0x1001;
-static const TsPid TS_PID_APP_END = (TsPid)0x1ffe;
+//static const TsPid TS_PID_APP_END = (TsPid)0x1ffe;
 static const TsPid TS_PID_NULL = (TsPid)0x01FFF;// null packets (see Table 2-3)
 
 // The sync_byte is a fixed 8-bit field whose value is '0100 0111' (0x47).
@@ -1185,7 +1185,7 @@ static const uint8_t cont_nalu_header[] = { 0x00, 0x00, 0x01 };
 //      8, SP (SP slice)
 //      9, SI (SI slice)
 // H.264-AVC-ISO_IEC_14496-10-2012.pdf, page 105.
-static const uint8_t aud_nalu_7[] = { 0x09, 0xf0};
+//static const uint8_t aud_nalu_7[] = { 0x09, 0xf0};
 static const uint8_t fresh_nalu_header_and_aud_nalu_7[] =
 { 0x00, 0x00, 0x00, 0x01, 0x09, 0xf0};
 

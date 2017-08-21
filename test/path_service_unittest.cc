@@ -25,7 +25,7 @@ namespace {
 
 // Returns true if PathService::Get returns true and sets the path parameter
 // to non-empty for the given PathService::DirType enumeration value.
-bool ReturnsValidPath(int dir_type) {
+bool ALLOW_UNUSED ReturnsValidPath(int dir_type) {
   base::FilePath path;
   bool result = PathService::Get(dir_type, &path);
 

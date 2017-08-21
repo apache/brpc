@@ -191,7 +191,7 @@ const char* sorttable_js() {
 "    for (var i=0; i<table.tBodies[0].rows.length; i++) {\n"
 "      text = sorttable.getInnerText(table.tBodies[0].rows[i].cells[column]);\n"
 "      if (text != '') {\n"
-"        if (text.match(/^-?[ก๊$ก่]?[\\d,.]+%?$/)) {\n"
+"        if (text.match(/^-?[$]?[\\d,.]+%?$/)) {\n"
 "          return sorttable.sort_numeric;\n"
 "        }\n"
 "        // check for a date: dd/mm/yyyy or dd/mm/yy\n"

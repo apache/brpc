@@ -509,7 +509,7 @@ friend void DereferenceSocket(Socket*);
     // Generic callback for Socket to handle epollout event
     static int HandleEpollOut(SocketId socket_id);
 
-    struct EpollOutRequest;
+    class EpollOutRequest;
     // Callback to handle epollout event whose request data
     // is `EpollOutRequest'
     int HandleEpollOutRequest(int error_code, EpollOutRequest* req);

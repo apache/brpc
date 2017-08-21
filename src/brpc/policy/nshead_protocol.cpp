@@ -45,7 +45,8 @@ void NsheadClosure::DoNotRespond() {
     _do_respond = false;
 }
 
-struct DeleteNsheadClosure {
+class DeleteNsheadClosure {
+public:
     void operator()(NsheadClosure* done) const {
         done->~NsheadClosure();
         free(done);

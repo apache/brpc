@@ -31,7 +31,7 @@ inline const char* ParseErrorToString(ParseError e) {
     return "unknown ParseError";
 }
 
-struct InputMessageBase;
+class InputMessageBase;
 
 // A specialized Maybe<> type to represent a parsing result.
 class ParseResult {

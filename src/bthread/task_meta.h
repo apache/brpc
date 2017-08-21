@@ -20,7 +20,7 @@ struct TaskStatistics {
     int64_t nswitch;
 };
 
-struct KeyTable;
+class KeyTable;
 struct ButexWaiter;
 
 struct LocalStorage {

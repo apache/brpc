@@ -254,7 +254,7 @@ static int MakeProfName(ProfilingType type, char* buf, size_t buf_len) {
 static void ConsumeWaiters(ProfilingType type, const Controller* cur_cntl,
                            std::vector<ProfilingWaiter>* waiters) {
     waiters->clear();
-    if (type >= (int)arraysize(g_env)) {
+    if ((int)type >= (int)arraysize(g_env)) {
         LOG(ERROR) << "Invalid type=" << type;
         return;
     }

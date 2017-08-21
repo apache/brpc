@@ -60,11 +60,11 @@ struct LessThanByName {
 
 static void BuildHttpMethodMaps() {
     for (size_t i = 0; i < ARRAY_SIZE(g_method_pairs); ++i) {
-        if (g_method_pairs[i].method < 0 ||
-            g_method_pairs[i].method > (int)ARRAY_SIZE(g_method2str_map)) {
+        int method = (int)g_method_pairs[i].method;
+        if (method < 0 || method > (int)ARRAY_SIZE(g_method2str_map)) {
             abort();
         }
-        g_method2str_map[g_method_pairs[i].method] = g_method_pairs[i].str;
+        g_method2str_map[method] = g_method_pairs[i].str;
      }
     std::sort(g_method_pairs, g_method_pairs + ARRAY_SIZE(g_method_pairs),
               LessThanByName());
@@ -82,13 +82,13 @@ static void BuildHttpMethodMaps() {
     }
 }
 
-const char *HttpMethod2Str(HttpMethod http_method) {
+const char *HttpMethod2Str(HttpMethod method) {
     pthread_once(&g_init_maps_once, BuildHttpMethodMaps);
-    if (http_method < 0 ||
-        http_method >= (int)ARRAY_SIZE(g_method2str_map)) {
+    if ((int)method < 0 ||
+        (int)method >= (int)ARRAY_SIZE(g_method2str_map)) {
         return "UNKNOWN";
     }
-    const char* s = g_method2str_map[http_method];
+    const char* s = g_method2str_map[method];
     return s ? s : "UNKNOWN";
 }
 

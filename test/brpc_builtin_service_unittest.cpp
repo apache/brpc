@@ -674,7 +674,7 @@ TEST_F(BuiltinServiceTest, pprof) {
 }
 
 TEST_F(BuiltinServiceTest, dir) {
-    brpc::DirService service(&_server);
+    brpc::DirService service;
     brpc::DirRequest req;
     brpc::DirResponse res;
     {

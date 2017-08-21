@@ -171,17 +171,21 @@ Atomic64 Release_Load(volatile const Atomic64* ptr);
 // gcc supports atomic thread fence since 4.8 checkout
 // https://gcc.gnu.org/gcc-4.7/cxx0x_status.html and
 // https://gcc.gnu.org/gcc-4.8/cxx0x_status.html for more details
-#if !defined(__GNUC__) || (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 >= 40800)
-#include <atomic>
+#if defined(__clang__) || \
+    !defined(__GNUC__) || \
+    (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 >= 40800)
+
+# include <atomic>
+
 #else 
 
-#if __GNUC__ * 10000 + __GNUC_MINOR__ * 100 >= 40500
+# if __GNUC__ * 10000 + __GNUC_MINOR__ * 100 >= 40500
 // gcc 4.5 renames cstdatomic to atomic
 // (https://gcc.gnu.org/gcc-4.5/changes.html)
-#include <atomic>
-#else
-#include <cstdatomic>
-#endif
+#  include <atomic>
+# else
+#  include <cstdatomic>
+# endif
 
 namespace std {
 

@@ -94,7 +94,7 @@ namespace base {
 
 template <typename _Map, typename _Element> class FlatMapIterator;
 template <typename _Map, typename _Element> class SparseFlatMapIterator;
-template <typename K, typename T> struct FlatMapElement;
+template <typename K, typename T> class FlatMapElement;
 struct FlatMapVoid {}; // Replace void which is not constructible.
 template <typename K> struct DefaultHasher;
 template <typename K> struct DefaultEqualTo;
@@ -246,6 +246,7 @@ public:
     };
 
 private:
+    friend class FlatMapTest;
 template <typename _Map, typename _Element> friend class FlatMapIterator;
 template <typename _Map, typename _Element> friend class FlatMapSparseIterator;
     // True if buckets need to be resized before holding `size' elements.

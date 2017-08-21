@@ -23,7 +23,7 @@ inline uint32_t ones32(uint32_t x) {
 }
 
 inline uint32_t log2(uint32_t x) {
-    register int y = (x & (x - 1));
+    int y = (x & (x - 1));
     y |= -y;
     y >>= 31;
     x |= (x >> 1);

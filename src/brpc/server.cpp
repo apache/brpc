@@ -147,8 +147,6 @@ Server::MethodProperty::MethodProperty()
     , status(NULL) {
 }
 
-static const char* const UNKNOWN_STR = "unknown";
-
 static timeval GetUptime(void* arg/*start_time*/) {
     return base::microseconds_to_timeval(base::cpuwide_time_us() - (intptr_t)arg);
 }
@@ -494,7 +492,7 @@ int Server::AddBuiltinServices() {
         return -1;
     }
     if (FLAGS_enable_dir_service &&
-        AddBuiltinService(new (std::nothrow) DirService(this))) {
+        AddBuiltinService(new (std::nothrow) DirService)) {
         LOG(ERROR) << "Fail to add DirService";
         return -1;
     }

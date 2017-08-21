@@ -119,7 +119,7 @@ struct test_t {
 
 TEST_F(TempFileTest, save_binary_twice)
 {
-    test_t data = {12, -34, 'B', 'E', 'E', 'F'};
+    test_t data = {12, -34, {'B', 'E', 'E', 'F'}};
     base::TempFile tmp;
     ASSERT_EQ(0, tmp.save_bin(&data, sizeof(data)));
 
@@ -133,7 +133,7 @@ TEST_F(TempFileTest, save_binary_twice)
     ASSERT_EQ(0, memcmp(&data, &act_data, sizeof(data)));
 
     // save twice
-    test_t data2 = { 89, 1000, 'E', 'C', 'A', 'Z'};
+    test_t data2 = { 89, 1000, {'E', 'C', 'A', 'Z'}};
     ASSERT_EQ(0, tmp.save_bin(&data2, sizeof(data2)));
     
     fp = fopen(tmp.fname(), "r");

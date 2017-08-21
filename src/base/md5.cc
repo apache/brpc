@@ -64,7 +64,7 @@ void byteReverse(unsigned char *buf, unsigned longs) {
  * the data and converts bytes into longwords for this routine.
  */
 void MD5Transform(uint32_t buf[4], const uint32_t in[16]) {
-        register uint32_t a, b, c, d;
+        uint32_t a, b, c, d;
 
         a = buf[0];
         b = buf[1];

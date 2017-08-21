@@ -19,7 +19,7 @@ namespace bthread {
 template <typename T> struct ExecutionQueueId;
 template <typename T> class ExecutionQueue;
 struct TaskNode;
-struct ExecutionQueueBase;
+class ExecutionQueueBase;
 
 class TaskIteratorBase {
 DISALLOW_COPY_AND_ASSIGN(TaskIteratorBase);
