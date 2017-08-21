@@ -27,3 +27,11 @@ git clone this repo. cd into the repo and run: sh config_brpc.sh --headers=../..
 **run examples with cpu/heap profilers**  
 download deps: third-64/tcmalloc@tcmalloc_1-7-0-200_PD_BL  
 Rerun config_brpc.sh  
+
+# Supported toolchains:
+GCC: 3.4-7.1  
+glibc: 2.12-2.25  
+protobuf: 2.4-3.2  
+gflags: 2.0-2.21  
+openssl: 0.98-1.1  
+tcmalloc: 1.7-2.5  
