@@ -13,8 +13,6 @@ if [ $? != 0 ] ; then >&2 $ECHO "Terminating..."; exit 1 ; fi
 eval set -- "$TEMP"
 
 # Convert to abspath always so that generated mk is include-able from everywhere
-CC=gcc
-CXX=g++
 while true; do
     case "$1" in
         --headers ) HDRS_IN="$(readlink -f $2)"; shift 2 ;;
@@ -25,8 +23,23 @@ while true; do
         * ) break ;;
     esac
 done
+if [ -z "$CC" ]; then
+    if [ ! -z "$CXX" ]; then
+        >&2 $ECHO "--cc and --cxx must be both set or unset"
+        exit 1
+    fi
+    CC=gcc
+    CXX=g++
+elif [ -z "$CXX" ]; then
+    >&2 $ECHO "--cc and --cxx must be both set or unset"
+    exit 1
+fi
 
 GCC_VERSION=$($CXX tools/print_gcc_version.cc -o print_gcc_version && ./print_gcc_version && rm ./print_gcc_version)
+if [ $GCC_VERSION -gt 0 ] && [ $GCC_VERSION -lt 40800 ]; then
+    >&2 $ECHO "GCC is too old, please install a newer version supporting C++11"
+    exit 1
+fi
 
 if [ -z "$HDRS_IN" ] || [ -z "$LIBS_IN" ]; then
     >&2 $ECHO "config_brpc: --headers=HDRPATHS --libs=LIBPATHS must be specified"

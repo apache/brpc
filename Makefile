@@ -14,11 +14,6 @@ LIBPATHS = $(addprefix -L, $(LIBS))
 SRCEXTS = .c .cc .cpp .proto
 HDREXTS = .h .hpp
 
-# strict-aliasing in gcc4.4 in buggy
-ifeq ($(shell echo $$(($(GCC_VERSION)/ 100))), 404)
-	CXXFLAGS+=-Wno-strict-aliasing
-	CFLAGS+=-Wno-strict-aliasing
-endif
 #required by base/crc32.cc to boost performance for 10x
 ifeq ($(shell test $(GCC_VERSION) -ge 40400; echo $$?),0)
 	CXXFLAGS+=-msse4 -msse4.2
