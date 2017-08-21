@@ -245,7 +245,9 @@ static int get_fd_count(int limit) {
     for (base::FilePath name = fd_enum.Next();
          !name.empty() && count <= limit;
          name = fd_enum.Next(), ++count) {}
-    return count - 2/*. and ..*/ - 1/*opendir itself*/;
+    // FileEnumerator already filtered . and .., due to its implementation,
+    // the fd created by opendir is not counted as well.
+    return count;
 }
 
 extern PassiveStatus<int> g_fd_num;

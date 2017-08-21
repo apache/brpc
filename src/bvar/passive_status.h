@@ -10,8 +10,6 @@
 
 namespace bvar {
 
-// TODO: naming should be consistent with Status<>
-
 // Display a updated-by-need value. This is done by passing in an user callback
 // which is called to produce the value.
 // Example:

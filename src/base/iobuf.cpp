@@ -213,7 +213,7 @@ size_t IOBuf::new_bigview_count() {
 }
 
 struct IOBuf::Block {
-    base::atomic<int32_t> nshared;
+    base::atomic<int> nshared;
     uint16_t size;
     uint16_t cap;
     Block* portal_next;
@@ -242,7 +242,7 @@ struct IOBuf::Block {
         }
     }
 
-    int32_t ref_count() const {
+    int ref_count() const {
         return nshared.load(base::memory_order_relaxed);
     }
 
@@ -253,7 +253,7 @@ struct IOBuf::Block {
 namespace iobuf {
 
 // for unit test
-int32_t block_shared_count(IOBuf::Block const* b) { return b->ref_count(); }
+int block_shared_count(IOBuf::Block const* b) { return b->ref_count(); }
 
 IOBuf::Block* get_portal_next(IOBuf::Block const* b) {
     return b->portal_next;
