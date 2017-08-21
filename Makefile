@@ -279,11 +279,12 @@ protoc-gen-mcpack:src/mcpack2pb/generator.o libmcpack2pb.a libbase.a libbthread.
 	@echo "Linking $@"
 	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
-libbrpc.a:$(BRPC_OBJS)
+# force generation of pb headers before compiling to avoid fail-to-import issues in compiling pb.cc
+libbrpc.a:$(BRPC_PROTOS:.proto=.pb.h) $(BRPC_OBJS)
 	@echo "Packing $@"
 	@ar crs $@ $^
 
-libbrpc.dbg.a:$(BRPC_DEBUG_OBJS)
+libbrpc.dbg.a:$(BRPC_PROTOS:.proto=.pb.h) $(BRPC_DEBUG_OBJS)
 	@echo "Packing $@"
 	@ar crs $@ $^
 
