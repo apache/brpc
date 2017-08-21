@@ -60,7 +60,7 @@ struct LessThanByName {
 
 static void BuildHttpMethodMaps() {
     for (size_t i = 0; i < ARRAY_SIZE(g_method_pairs); ++i) {
-        int method = (int)g_method_pairs[i].method;
+        const int method = (int)g_method_pairs[i].method;
         if (method < 0 || method > (int)ARRAY_SIZE(g_method2str_map)) {
             abort();
         }
