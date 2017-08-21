@@ -4,11 +4,12 @@
 // Date 2014/10/20 11:42:51
 // Implement NamingService to acquire server list from Baidu-Naming-Service
 
+#ifdef BAIDU_INTERNAL
+
 #ifndef  BRPC_POLICY_BAIDU_NAMING_SERVICE_H
 #define  BRPC_POLICY_BAIDU_NAMING_SERVICE_H
 
 #include "brpc/periodic_naming_service.h"
-
 
 namespace brpc {
 namespace policy {
@@ -31,5 +32,5 @@ public:
 }  // namespace policy
 } // namespace brpc
 
-
-#endif  //BRPC_POLICY_BAIDU_NAMING_SERVICE_H
+#endif //BRPC_POLICY_BAIDU_NAMING_SERVICE_H
+#endif // BAIDU_INTERNAL

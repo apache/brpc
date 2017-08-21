@@ -4,9 +4,10 @@
 // Author: The baidu-rpc authors (pbrpc@baidu.com)
 // Date: Mon Nov  3 00:40:20 2014
 
+#ifdef BAIDU_INTERNAL
+
 #include "base/logging.h"
 #include "brpc/policy/giano_authenticator.h"
-
 
 namespace brpc {
 namespace policy {
@@ -76,5 +77,5 @@ int GianoAuthenticator::VerifyCredential(
 }
 
 }  // namespace policy
-} // namespace brpc
-
+}  // namespace brpc
+#endif // BAIDU_INTERNAL

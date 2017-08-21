@@ -4,6 +4,8 @@
 // Author: The baidu-rpc authors (pbrpc@baidu.com)
 // Date: Sun Nov  2 00:30:49 2014
 
+#ifdef BAIDU_INTERNAL
+
 #ifndef BRPC_POLICY_GIANO_AUTHENTICATOR_H
 #define BRPC_POLICY_GIANO_AUTHENTICATOR_H
 
@@ -39,4 +41,4 @@ private:
 
 
 #endif // BRPC_POLICY_GIANO_AUTHENTICATOR_H
-
+#endif // BAIDU_INTERNAL

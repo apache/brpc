@@ -11,7 +11,7 @@ ifeq ($(shell test $(shell $(CXX) -dumpversion | sed -e 's/\..*$$//g') -ge 7; ec
 CXXFLAGS+=-Wno-aligned-new
 endif
 
-HDRPATHS=-I. -I.. $(addprefix -I, $(HDRS))
+HDRPATHS=-I. -I.. -I../src $(addprefix -I, $(HDRS))
 LIBPATHS=$(addprefix -L, $(LIBS))
 
 TEST_BASE_SOURCES = \
@@ -191,7 +191,7 @@ brpc_%_unittest:$(TEST_PROTO_OBJS) brpc_%_unittest.o ../libbase.dbg.a ../libbvar
 
 %.pb.cc:%.proto
 	@echo "Generating $@"
-	@$(PROTOC) --cpp_out=. --proto_path=. --proto_path=.. --proto_path=$(PROTOBUF_HDR) $<
+	@$(PROTOC) --cpp_out=. --proto_path=. --proto_path=../src --proto_path=$(PROTOBUF_HDR) $<
 
 %.o:%.cpp
 	@echo "Compiling $@"

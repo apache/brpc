@@ -2,11 +2,12 @@
 // Author: The baidu-rpc authors (pbrpc@baidu.com)
 // Date 2014/10/20 11:53:16
 
+#ifdef BAIDU_INTERNAL
+
 #include <webfoot_naming.h>                             //webfoot::*
 #include <naming.pb.h>                                  //BnsInput BnsOutput
 #include "base/logging.h"                               // CHECK
 #include "brpc/policy/baidu_naming_service.h"
-
 
 namespace brpc {
 namespace policy {
@@ -63,4 +64,5 @@ void BaiduNamingService::Destroy() {
 
 }  // namespace policy
 } // namespace brpc
+#endif  // BAIDU_INTERNAL
 
