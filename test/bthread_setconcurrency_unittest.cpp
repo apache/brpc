@@ -40,15 +40,17 @@ TEST(BthreadTest, setconcurrency) {
 static base::atomic<int> *odd;
 static base::atomic<int> *even;
 
-static base::atomic<int> nthreads(0);
+static base::atomic<int> nbthreads(0);
+static base::atomic<int> npthreads(0);
 static BAIDU_THREAD_LOCAL bool counted = false;
 static base::atomic<bool> stop (false);
 
 static void *odd_thread(void *) {
+    nbthreads.fetch_add(1);
     while (!stop) {
         if (!counted) {
             counted = true;
-            nthreads.fetch_add(1);
+            npthreads.fetch_add(1);
         }
         bthread::butex_wake_all(even);
         bthread::butex_wait(odd, 0, NULL);
@@ -57,10 +59,11 @@ static void *odd_thread(void *) {
 }
 
 static void *even_thread(void *) {
+    nbthreads.fetch_add(1);
     while (!stop) {
         if (!counted) {
             counted = true;
-            nthreads.fetch_add(1);
+            npthreads.fetch_add(1);
         }
         bthread::butex_wake_all(odd);
         bthread::butex_wait(even, 0, NULL);
@@ -75,7 +78,7 @@ TEST(BthreadTest, setconcurrency_with_running_bthread) {
     *odd = 0;
     *even = 0;
     std::vector<bthread_t> tids;
-    const int N = 700;
+    const int N = 500;
     for (int i = 0; i < N; ++i) {
         bthread_t tid;
         bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, odd_thread, NULL);
@@ -87,7 +90,7 @@ TEST(BthreadTest, setconcurrency_with_running_bthread) {
         ASSERT_EQ(0, bthread_setconcurrency(i));
         ASSERT_EQ(i, bthread_getconcurrency());
     }
-    usleep(2000 * N);
+    usleep(1000 * N);
     *odd = 1;
     *even = 1;
     stop =  true;
@@ -97,6 +100,9 @@ TEST(BthreadTest, setconcurrency_with_running_bthread) {
         bthread_join(tids[i], NULL);
     }
     LOG(INFO) << "All bthreads has quit";
-    ASSERT_EQ(N, nthreads);
+    ASSERT_EQ(2*N, nbthreads);
+    // This is not necessarily true, not all workers need to run sth.
+    //ASSERT_EQ(N, npthreads);
+    LOG(INFO) << "Touched pthreads=" << npthreads;
 }
 } // namespace
