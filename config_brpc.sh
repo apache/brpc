@@ -117,11 +117,12 @@ LEVELDB_LIB=$(find_dir_of_lib_or_die leveldb)
 # required by leveldb
 if [ -f $LEVELDB_LIB/libleveldb.a ]; then
     if [ -f $LEVELDB_LIB/libleveldb.so ]; then
-        if ldd $LEVELDB_LIB/libleveldb.so | grep libsnappy; then
+        if ldd $LEVELDB_LIB/libleveldb.so | grep -q libsnappy; then
             SNAPPY_LIB=$(find_dir_of_lib snappy)
+            REQUIRE_SNAPPY="yes"
         fi
     fi
-    if [ -z "$SNAPPY_LIB" ]; then
+    if [ -z "$REQUIRE_SNAPPY" ]; then
 	    STATIC_LINKINGS="$STATIC_LINKINGS -lleveldb"
     elif [ -f $SNAPPY_LIB/libsnappy.a ]; then
 	    STATIC_LINKINGS="$STATIC_LINKINGS -lleveldb -lsnappy"
@@ -142,7 +143,7 @@ HDRS=$($ECHO "$GFLAGS_HDR\n$PROTOBUF_HDR\n$LEVELDB_HDR" | sort | uniq)
 LIBS=$($ECHO "$GFLAGS_LIB\n$PROTOBUF_LIB\n$LEVELDB_LIB\n$SNAPPY_LIB" | sort | uniq)
 
 absent_in_the_list() {
-    TMP=$($ECHO "`$ECHO "$1\n$2" | sort | uniq`")
+    TMP=`$ECHO "$1\n$2" | sort | uniq`
     if [ "${TMP}" = "$2" ]; then
         return 1
     fi
@@ -157,14 +158,14 @@ append_to_output() {
 append_to_output_headers() {
     if absent_in_the_list "$1" "$HDRS"; then
         append_to_output "${2}HDRS+=$1"
-        HDRS="${HDRS}\n$1"
+        HDRS=`$ECHO "${HDRS}\n$1" | sort | uniq`
     fi
 }
 # $1: libname, $2: indentation
 append_to_output_libs() {
     if absent_in_the_list "$1" "$LIBS"; then
         append_to_output "${2}LIBS+=$1"
-        LIBS="${LIBS}\n$1"
+        LIBS=`$ECHO "${LIBS}\n$1" | sort | uniq`
     fi
 }
 # $1: libdir, $2: libname, $3: indentation
@@ -204,6 +205,8 @@ else
 fi
 append_to_output "endif"
 
+OLD_HDRS=$HDRS
+OLD_LIBS=$LIBS
 append_to_output "ifeq (\$(NEED_GPERFTOOLS), 1)"
 # required by cpu/heap profiler
 TCMALLOC_LIB=$(find_dir_of_lib tcmalloc_and_profiler)
@@ -216,25 +219,24 @@ else
     if [ -f $TCMALLOC_LIB/libtcmalloc_and_profiler.a ]; then
         if [ -f $TCMALLOC_LIB/libtcmalloc.so ]; then
             ldd $TCMALLOC_LIB/libtcmalloc.so > libtcmalloc.deps
-            if grep libunwind libtcmalloc.deps; then
+            if grep -q libunwind libtcmalloc.deps; then
                 UNWIND_LIB=$(find_dir_of_lib unwind)
+                REQUIRE_UNWIND="yes"
             fi
-            if grep liblzma libtcmalloc.deps; then
-                LZMA_LIB=$(find_dir_of_lib lzma)
-            fi
-            rm libtcmalloc.deps
         fi
-        if [ -z "$UNWIND_LIB" ]; then
+        if [ -z "$REQUIRE_UNWIND" ]; then
             append_to_output "    STATIC_LINKINGS+=-ltcmalloc_and_profiler"
         elif [ -f $UNWIND_LIB/libunwind.a ]; then
             append_to_output_libs "$UNWIND_LIB" "    "
             append_to_output "    STATIC_LINKINGS+=-ltcmalloc_and_profiler -lunwind"
-            if [ ! -z "$LZMA_LIB" ]; then
+            if grep -q liblzma libtcmalloc.deps; then
+                LZMA_LIB=$(find_dir_of_lib lzma)
                 append_to_output_linkings $LZMA_LIB lzma "    "
             fi
         else
             append_to_output "    DYNAMIC_LINKINGS+=-ltcmalloc_and_profiler"
         fi
+        rm -f libtcmalloc.deps
     else
         append_to_output "    DYNAMIC_LINKINGS+=-ltcmalloc_and_profiler"
     fi
@@ -244,6 +246,8 @@ append_to_output "endif"
 # required by UT
 #gtest
 GTEST_LIB=$(find_dir_of_lib gtest)
+HDRS=$OLD_HDRS
+LIBS=$OLD_LIBS
 append_to_output "ifeq (\$(NEED_GTEST), 1)"
 if [ -z "$GTEST_LIB" ]; then
     append_to_output "    \$(error \"Fail to find gtest\")"
@@ -255,8 +259,11 @@ else
     append_to_output_linkings $GTEST_LIB gtest_main "    "
 fi
 append_to_output "endif"
+
 #gmock
 GMOCK_LIB=$(find_dir_of_lib gmock)
+HDRS=$OLD_HDRS
+LIBS=$OLD_LIBS
 append_to_output "ifeq (\$(NEED_GMOCK), 1)"
 if [ -z "$GMOCK_LIB" ]; then
     append_to_output "    \$(error \"Fail to find gmock\")"
