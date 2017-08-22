@@ -675,7 +675,7 @@ int TsPayloadPES::Encode(void* data) const {
         encode_33bits_dts_pts(&p, 0x03, pts);
         encode_33bits_dts_pts(&p, 0x01, dts);
         // the diff of dts and pts should never be greater than 1s.
-        if (abs(dts - pts) > 90000) {
+        if (labs(dts - pts) > 90000) {
             LOG(WARNING) << "Diff between dts=" << dts << " and pts=" << pts
                          << " is greater than 1 second";
         }
