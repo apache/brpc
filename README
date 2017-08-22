@@ -1,5 +1,6 @@
 The opensource version of baidu-rpc
 # BUILD
+baidu-rpc prefers static linking if possible, so that deps don't have to be installed on every machine running the code.  
 ### Ubuntu/LinuxMint/WSL
 **install common deps**  
 Including: git g++ make libssl-dev  
