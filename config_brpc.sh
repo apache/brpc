@@ -47,7 +47,7 @@ if [ -z "$HDRS_IN" ] || [ -z "$LIBS_IN" ]; then
 fi
 
 find_dir_of_lib() {
-    local lib=$(find ${LIBS_IN} -name "lib${1}.a" -o -name "lib${1}.so*" | head -n1)
+    local lib=$(find ${LIBS_IN} -name "lib${1}.a" -o -name "lib${1}.so" | head -n1)
     if [ ! -z "$lib" ]; then
         dirname $lib
     fi
@@ -114,13 +114,10 @@ PROTOBUF_LIB=$(find_dir_of_lib_or_die protobuf)
 append_linking $PROTOBUF_LIB protobuf
 
 LEVELDB_LIB=$(find_dir_of_lib_or_die leveldb)
-if [ -f $LEVELDB_LIB/libleveldb.a ]; then
-	STATIC_LINKINGS="$STATIC_LINKINGS -lleveldb"
-	# required by leveldb
-	SNAPPY_LIB=$(find_dir_of_lib snappy)
-	if [ ! -z "$SNAPPY_LIB" ]; then
-		append_linking $SNAPPY_LIB snappy
-	fi
+# required by leveldb
+SNAPPY_LIB=$(find_dir_of_lib snappy)
+if [ -f $LEVELDB_LIB/libleveldb.a ] && [ -f $SNAPPY_LIB/libsnappy.a ]; then
+	STATIC_LINKINGS="$STATIC_LINKINGS -lleveldb -lsnappy"
 else
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -lleveldb"
 fi
@@ -206,21 +203,18 @@ else
     append_to_output_libs "$TCMALLOC_LIB" "    "
     TCMALLOC_HDR=$(find_dir_of_header_or_die google/profiler.h)
     append_to_output_headers "$TCMALLOC_HDR" "    "
-    append_to_output_linkings $TCMALLOC_LIB tcmalloc_and_profiler "    "
-    if [ $STATICALLY_LINKED_tcmalloc_and_profiler -gt 0 ]; then
-        # required by tcmalloc('s profiler)
-        UNWIND_LIB=$(find_dir_of_lib unwind)
-        if [ ! -z "$UNWIND_LIB" ]; then
-            append_to_output_libs $UNWIND_LIB "    "
-            append_to_output_linkings $UNWIND_LIB unwind "    "
-            if [ $STATICALLY_LINKED_unwind -gt 0 ]; then
-                # required by libunwind
-                LZMA_LIB=$(find_dir_of_lib lzma)
-                if [ ! -z "$LZMA_LIB" ]; then
-                    append_to_output_linkings $LZMA_LIB lzma "    "
-                fi
-            fi
-        fi
+    # required by tcmalloc('s profiler)
+    UNWIND_LIB=$(find_dir_of_lib unwind)
+    # required by libunwind
+    LZMA_LIB=$(find_dir_of_lib lzma)
+    if [ -f $TCMALLOC_LIB/libtcmalloc_and_profiler.a ] && \
+        [ -f $UNWIND_LIB/libunwind.a ] && \
+        [ -f $LZMA_LIB/liblzma.a ]; then
+        append_to_output_libs "$UNWIND_LIB" "    "
+        append_to_output_libs "$LZMA_LIB" "    "
+        append_to_output "    STATIC_LINKINGS+=-ltcmalloc_and_profiler -lunwind -llzma"
+    else
+        append_to_output "    DYNAMIC_LINKINGS+=-ltcmalloc_and_profiler"
     fi
 fi
 append_to_output "endif"
