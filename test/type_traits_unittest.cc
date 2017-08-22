@@ -18,7 +18,11 @@ struct BStruct {
     int x;
 };
 class BClass {
+#if defined(__clang__)
     int ALLOW_UNUSED _x;
+#else
+    int _x;
+#endif
 };
 
 class Parent {};
