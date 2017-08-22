@@ -29,7 +29,7 @@ Rerun config_brpc.sh
 
 # Supported deps:
 GCC: 4.8-7.1  
-Clang: 3.5-4.0
+Clang: 3.5-4.0  
 glibc: 2.12-2.25  
 protobuf: 2.4-3.2  
 gflags: 2.0-2.21  
