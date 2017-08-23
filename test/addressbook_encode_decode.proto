@@ -1,0 +1,38 @@
+message ExtEncDec {
+  optional fixed32 Aa_ge_Z040_ = 2;
+  optional bytes databyte_Z040_std_Z058__Z058_string_Z041_ = 3;
+  enum PhoneTypeEncDec {
+    MOBILE = 0;
+    HOME = 1;
+    WORK = 2;
+  }
+
+  optional PhoneTypeEncDec enum_Z045__Z045_type = 4 [default = HOME];
+} 
+
+message ContentEncDec {
+  optional string uid_Z042_ = 1;
+  required float Distance_info_ = 16;
+  optional ExtEncDec _ext_Z037_T_ = 17;
+}
+
+message JsonContextBodyEncDec {
+  repeated string info = 6;
+  optional int64 type = 1;
+  repeated int32 data_Z058_array = 5;
+  required bool  judge = 2;
+  optional double spur = 3;
+  repeated ContentEncDec _Z064_Content_Test_Z037__Z064_ = 4;
+}
+
+
+message PersonEncDec {
+  optional string name = 1;
+  optional int32 id = 2;        // Unique ID number for this person.
+  optional JsonContextBodyEncDec json_body = 18;
+}
+
+message AddressBookEncDec {
+  repeated PersonEncDec person = 1;
+}
+

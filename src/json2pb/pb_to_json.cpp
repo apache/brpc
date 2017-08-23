@@ -5,6 +5,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <google/protobuf/descriptor.h>
+#include "base/base64.h"
 #include "zero_copy_stream_writer.h"
 #include "encode_decode.h"
 #include "protobuf_map.h"
@@ -15,7 +16,12 @@ namespace json2pb {
 Pb2JsonOptions::Pb2JsonOptions()
     : enum_option(OUTPUT_ENUM_BY_NAME)
     , pretty_json(false)
-    , enable_protobuf_map(true) {
+    , enable_protobuf_map(true)
+#ifdef BAIDU_INTERNAL
+    , bytes_to_base64(false) {
+#else
+    , bytes_to_base64(true) {
+#endif
 }
 
 class PbToJsonConverter {
@@ -175,13 +181,27 @@ bool PbToJsonConverter::_PbFieldToJson(
             for (int index = 0; index < field_size; ++index) {
                 value = reflection->GetRepeatedStringReference(
                     message, field, index, &value);
-                handler.String(value.data(), value.size(), false);
+                if (field->type() == google::protobuf::FieldDescriptor::TYPE_BYTES
+                    && _option.bytes_to_base64) {
+                    std::string value_decoded;
+                    base::Base64Encode(value, &value_decoded);
+                    handler.String(value_decoded.data(), value_decoded.size(), false);
+                } else {
+                    handler.String(value.data(), value.size(), false);
+                }
             }
             handler.EndArray(field_size);
             
         } else {
             value = reflection->GetStringReference(message, field, &value);
-            handler.String(value.data(), value.size(), false);
+            if (field->type() == google::protobuf::FieldDescriptor::TYPE_BYTES
+                && _option.bytes_to_base64) {
+                std::string value_decoded;
+                base::Base64Encode(value, &value_decoded);
+                handler.String(value_decoded.data(), value_decoded.size(), false);
+            } else {
+                handler.String(value.data(), value.size(), false);
+            }
         }
         break;
     }

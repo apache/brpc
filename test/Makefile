@@ -133,6 +133,7 @@ TEST_BASE_SOURCES = \
     test_file_util_linux.cc \
     base_unittest_main.cpp
 
+
 TEST_BASE_OBJS = $(addsuffix .o, $(basename $(TEST_BASE_SOURCES))) 
 
 TEST_BVAR_SOURCES = $(wildcard bvar_*_unittest.cpp)

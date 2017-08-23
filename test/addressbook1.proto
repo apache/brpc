@@ -1,0 +1,39 @@
+message Ext {
+  optional fixed32 age = 2;
+  required bytes databyte = 3;
+  enum PhoneType {
+    MOBILE = 0;
+    HOME = 1;
+    WORK = 2;
+  }
+
+  optional PhoneType enumtype = 4 [default = HOME];
+} 
+
+message Content {
+  optional string uid = 1;
+  required float distance = 16;
+  optional Ext ext = 17;
+}
+
+message JsonContextBody {
+  optional int64 type = 1;
+  repeated int32 data = 5;
+  repeated string info = 6;
+  required bool  judge = 2;
+  required double spur = 3;
+  repeated Content content = 4;
+  optional float text = 7;
+}
+
+
+message PersonInfo {
+  optional string name = 1;
+  optional int32 id = 2;        // Unique ID number for this person.
+  optional JsonContextBody json_body = 18;
+}
+
+message AddressBook {
+  repeated PersonInfo person = 1;
+}
+

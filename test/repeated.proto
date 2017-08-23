@@ -1,0 +1,8 @@
+
+message Dummy {}
+
+message RepeatedMessage {
+    repeated int32 ints = 1;
+    repeated string strings = 2;
+    repeated Dummy msgs = 3;
+}
