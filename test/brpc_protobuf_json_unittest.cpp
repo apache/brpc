@@ -172,7 +172,7 @@ TEST_F(ProtobufJsonTest, json_to_pb_map_case) {
 TEST_F(ProtobufJsonTest, json_to_pb_encode_decode) {
     std::string info3 = "{\"@Content_Test%@\":[{\"Distance_info_\":1,\
                          \"_ext%T_\":{\"Aa_ge(\":1666666666, \"databyte(std::string)\":\
-                         \"welcome\", \"enum--type\":\"HOME\"},\"uid*\":\"welcome\"}], \
+                         \"d2VsY29tZQ==\", \"enum--type\":\"HOME\"},\"uid*\":\"welcome\"}], \
                          \"judge\":false, \"spur\":2, \"data:array\":[]}";  
     printf("----------test json to pb------------\n\n");
     std::string error; 
@@ -185,12 +185,12 @@ TEST_F(ProtobufJsonTest, json_to_pb_encode_decode) {
 #ifndef RAPIDJSON_VERSION_0_1
     ASSERT_STREQ("{\"judge\":false,\"spur\":2.0,"
                  "\"@Content_Test%@\":[{\"uid*\":\"welcome\",\"Distance_info_\":1.0,"
-                 "\"_ext%T_\":{\"Aa_ge(\":1666666666,\"databyte(std::string)\":\"welcome\","
+                 "\"_ext%T_\":{\"Aa_ge(\":1666666666,\"databyte(std::string)\":\"d2VsY29tZQ==\","
                  "\"enum--type\":\"HOME\"}}]}", info4.data());
 #else
     ASSERT_STREQ("{\"judge\":false,\"spur\":2,"
                  "\"@Content_Test%@\":[{\"uid*\":\"welcome\",\"Distance_info_\":1,"
-                 "\"_ext%T_\":{\"Aa_ge(\":1666666666,\"databyte(std::string)\":\"welcome\","
+                 "\"_ext%T_\":{\"Aa_ge(\":1666666666,\"databyte(std::string)\":\"d2VsY29tZQ==\","
                  "\"enum--type\":\"HOME\"}}]}", info4.data());
 #endif
 }
@@ -319,7 +319,7 @@ TEST_F(ProtobufJsonTest, json_to_pb_edge_case) {
     ASSERT_TRUE(ret);
 
     info3 = "{\"judge\":false, \"spur\":2.0, \"content\":[{\"distance\":2.5, "
-            "\"ext\":{\"databyte\":\"welcome\", \"enumtype\":\"MOBILE\"}}]}"; 
+            "\"ext\":{\"databyte\":\"d2VsY29tZQ==\", \"enumtype\":\"MOBILE\"}}]}"; 
     error.clear(); 
 
     JsonContextBody data5;
@@ -332,9 +332,9 @@ TEST_F(ProtobufJsonTest, json_to_pb_edge_case) {
     ASSERT_TRUE(ret);
     
     info3 = "{\"content\":[{\"distance\":1,\"unknown_member\":2,\
-              \"ext\":{\"age\":1666666666, \"databyte\":\"welcome\", \"enumtype\":1},\
+              \"ext\":{\"age\":1666666666, \"databyte\":\"d2VsY29tZQ==\", \"enumtype\":1},\
               \"uid\":\"someone\"},{\"distance\":2.3,\"unknown_member\":20,\
-              \"ext\":{\"age\":1666666660, \"databyte\":\"welcome0\", \"enumtype\":\"Test\"},\
+              \"ext\":{\"age\":1666666660, \"databyte\":\"d2VsY29tZQ==\", \"enumtype\":\"Test\"},\
               \"uid\":\"someone0\"}], \"judge\":false, \
               \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";  
     error.clear(); 
@@ -345,9 +345,9 @@ TEST_F(ProtobufJsonTest, json_to_pb_edge_case) {
     ASSERT_STREQ("Invalid value `\"Test\"' for optional field `Ext.enumtype' which SHOULD be enum", error.data());
     
     info3 = "{\"content\":[{\"distance\":1,\"unknown_member\":2,\
-              \"ext\":{\"age\":1666666666, \"databyte\":\"welcome\", \"enumtype\":1},\
+              \"ext\":{\"age\":1666666666, \"databyte\":\"d2VsY29tZQ==\", \"enumtype\":1},\
               \"uid\":\"someone\"},{\"distance\":5,\"unknown_member\":20,\
-              \"ext\":{\"age\":1666666660, \"databyte\":\"welcome0\", \"enumtype\":15},\
+              \"ext\":{\"age\":1666666660, \"databyte\":\"d2VsY29tZQ==\", \"enumtype\":15},\
               \"uid\":\"someone0\"}], \"judge\":false, \
               \"spur\":2, \"data\":[1,2,3,4,5,6,7,8,9,10]}";  
     error.clear(); 
@@ -358,9 +358,9 @@ TEST_F(ProtobufJsonTest, json_to_pb_edge_case) {
     ASSERT_STREQ("Invalid value `15' for optional field `Ext.enumtype' which SHOULD be enum", error.data());
 
     info3 = "{\"content\":[{\"distance\":1,\"unknown_member\":2,\
-              \"ext\":{\"age\":1666666666, \"databyte\":\"welcome\", \"enumtype\":1},\
+              \"ext\":{\"age\":1666666666, \"databyte\":\"d2VsY29tZQ==\", \"enumtype\":1},\
               \"uid\":\"someone\"},{\"distance\":5,\"unknown_member\":20,\
-              \"ext\":{\"age\":1666666660, \"databyte\":\"welcome0\", \"enumtype\":15},\
+              \"ext\":{\"age\":1666666660, \"databyte\":\"d2VsY29tZQ==\", \"enumtype\":15},\
               \"uid\":\"someone0\"}], \"judge\":false, \
               \"spur\":2, \"type\":[\"123\"]}";  
     error.clear(); 
@@ -482,7 +482,7 @@ TEST_F(ProtobufJsonTest, json_to_pb_expected_failed_case) {
 TEST_F(ProtobufJsonTest, json_to_pb_perf_case) {
     
     std::string info3 = "{\"content\":[{\"distance\":1.0,\
-                          \"ext\":{\"age\":1666666666, \"databyte\":\"welcome\", \"enumtype\":1},\
+                          \"ext\":{\"age\":1666666666, \"databyte\":\"d2VsY29tZQ==\", \"enumtype\":1},\
                           \"uid\":\"welcome\"}], \"judge\":false, \"spur\":2.0, \"data\":[]}";  
 
     printf("----------test json to pb performance------------\n\n");
@@ -572,12 +572,14 @@ TEST_F(ProtobufJsonTest, json_to_pb_complex_perf_case) {
     bool res;
     float avg_time1 = 0;
     const int times = 10000;
+    json2pb::Json2PbOptions options;
+    options.base64_to_bytes = false;
     ProfilerStart("json_to_pb_complex_perf.prof");
     for (int i = 0; i < times; i++) { 
         gss::message::gss_us_res_t data;
         base::IOBufAsZeroCopyInputStream stream(buf); 
         timer.start();
-        res = json2pb::JsonToProtoMessage(&stream, &data, &error);
+        res = json2pb::JsonToProtoMessage(&stream, &data, options, &error);
         timer.stop();
         avg_time1 += timer.u_elapsed();
         ASSERT_TRUE(res);
@@ -602,11 +604,13 @@ TEST_F(ProtobufJsonTest, json_to_pb_to_string_complex_perf_case) {
     bool res;
     float avg_time1 = 0;
     const int times = 10000;
+    json2pb::Json2PbOptions options;
+    options.base64_to_bytes = false;
     ProfilerStart("json_to_pb_to_string_complex_perf.prof");
     for (int i = 0; i < times; i++) { 
         gss::message::gss_us_res_t data;
         timer.start();
-        res = json2pb::JsonToProtoMessage(info3, &data, &error);
+        res = json2pb::JsonToProtoMessage(info3, &data, options, &error);
         timer.stop();
         avg_time1 += timer.u_elapsed();
         ASSERT_TRUE(res);
@@ -639,7 +643,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
     person->set_datau32(60);
     person->set_datau64(960);
     person->set_databool(0);
-    person->set_databyte("welcome to china");
+    person->set_databyte("welcome");
     person->set_datafix32(1);
     person->set_datafix64(666);
     person->set_datasfix32(120);
@@ -654,7 +658,9 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
     printf("text:%s\n", text.data());
 
     printf("----------test pb to json------------\n\n");
-    bool ret = json2pb::ProtoMessageToJson(address_book, &info1, NULL);
+    json2pb::Pb2JsonOptions option;
+    option.bytes_to_base64 = true;
+    bool ret = json2pb::ProtoMessageToJson(address_book, &info1, option, NULL);
     ASSERT_TRUE(ret);
 
 #ifndef RAPIDJSON_VERSION_0_1
@@ -662,7 +668,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
                  "\"phone\":[{\"number\":\"number123\",\"type\":\"HOME\"}],\"data\":-240000000,"
                  "\"data32\":6,\"data64\":-1820000000,\"datadouble\":123.456,"
                  "\"datafloat\":8.612299919128418,\"datau32\":60,\"datau64\":960,"
-                 "\"databool\":false,\"databyte\":\"welcome to china\",\"datafix32\":1,"
+                 "\"databool\":false,\"databyte\":\"d2VsY29tZQ==\",\"datafix32\":1,"
                  "\"datafix64\":666,\"datasfix32\":120,\"datasfix64\":-802,"
                  "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}", 
                  info1.data());
@@ -671,14 +677,17 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
                  "\"phone\":[{\"number\":\"number123\",\"type\":\"HOME\"}],\"data\":-240000000,"
                  "\"data32\":6,\"data64\":-1820000000,\"datadouble\":123.456,"
                  "\"datafloat\":8.612299919,\"datau32\":60,\"datau64\":960,\"databool\":false,"
-                 "\"databyte\":\"welcome to china\",\"datafix32\":1,\"datafix64\":666,"
+                 "\"databyte\":\"d2VsY29tZQ==\",\"datafix32\":1,\"datafix64\":666,"
                  "\"datasfix32\":120,\"datasfix64\":-802,\"datafloat_scientific\":123456792,"
                  "\"datadouble_scientific\":123456789}]}", info1.data());
 #endif
 
     info1.clear();
-    json2pb::Pb2JsonOptions option;
-    ret = json2pb::ProtoMessageToJson(address_book, &info1, option, NULL);
+    {
+        json2pb::Pb2JsonOptions option;
+        option.bytes_to_base64 = true;
+        ret = ProtoMessageToJson(address_book, &info1, option, NULL);
+    }
     ASSERT_TRUE(ret);
 
 #ifndef RAPIDJSON_VERSION_0_1
@@ -686,7 +695,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
                  "\"phone\":[{\"number\":\"number123\",\"type\":\"HOME\"}],\"data\":-240000000,"
                  "\"data32\":6,\"data64\":-1820000000,\"datadouble\":123.456,"
                  "\"datafloat\":8.612299919128418,\"datau32\":60,\"datau64\":960,"
-                 "\"databool\":false,\"databyte\":\"welcome to china\",\"datafix32\":1,"
+                 "\"databool\":false,\"databyte\":\"d2VsY29tZQ==\",\"datafix32\":1,"
                  "\"datafix64\":666,\"datasfix32\":120,\"datasfix64\":-802,"
                  "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}", 
                  info1.data());
@@ -695,14 +704,18 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
                  "\"phone\":[{\"number\":\"number123\",\"type\":\"HOME\"}],\"data\":-240000000,"
                  "\"data32\":6,\"data64\":-1820000000,\"datadouble\":123.456,"
                  "\"datafloat\":8.612299919,\"datau32\":60,\"datau64\":960,\"databool\":false,"
-                 "\"databyte\":\"welcome to china\",\"datafix32\":1,\"datafix64\":666,"
+                 "\"databyte\":\"d2VsY29tZQ==\",\"datafix32\":1,\"datafix64\":666,"
                  "\"datasfix32\":120,\"datasfix64\":-802,\"datafloat_scientific\":123456792,"
                  "\"datadouble_scientific\":123456789}]}", info1.data());
 #endif
     
     info1.clear();
-    option.enum_option = json2pb::OUTPUT_ENUM_BY_NUMBER;
-    ret = json2pb::ProtoMessageToJson(address_book, &info1, option, NULL);
+    {
+        json2pb::Pb2JsonOptions option;
+        option.bytes_to_base64 = true;
+        option.enum_option = json2pb::OUTPUT_ENUM_BY_NUMBER;
+        ret = ProtoMessageToJson(address_book, &info1, option, NULL);
+    }
     ASSERT_TRUE(ret);
 
 #ifndef RAPIDJSON_VERSION_0_1
@@ -710,7 +723,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
                  "\"phone\":[{\"number\":\"number123\",\"type\":1}],\"data\":-240000000,"
                  "\"data32\":6,\"data64\":-1820000000,\"datadouble\":123.456,"
                  "\"datafloat\":8.612299919128418,\"datau32\":60,\"datau64\":960,"
-                 "\"databool\":false,\"databyte\":\"welcome to china\",\"datafix32\":1,"
+                 "\"databool\":false,\"databyte\":\"d2VsY29tZQ==\",\"datafix32\":1,"
                  "\"datafix64\":666,\"datasfix32\":120,\"datasfix64\":-802,"
                  "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}", 
                  info1.data());
@@ -719,7 +732,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
                  "\"phone\":[{\"number\":\"number123\",\"type\":1}],\"data\":-240000000,"
                  "\"data32\":6,\"data64\":-1820000000,\"datadouble\":123.456,"
                  "\"datafloat\":8.612299919,\"datau32\":60,\"datau64\":960,\"databool\":false,"
-                 "\"databyte\":\"welcome to china\",\"datafix32\":1,\"datafix64\":666,"
+                 "\"databyte\":\"d2VsY29tZQ==\",\"datafix32\":1,\"datafix64\":666,"
                  "\"datasfix32\":120,\"datasfix64\":-802,\"datafloat_scientific\":123456792,"
                  "\"datadouble_scientific\":123456789}]}", info1.data());
 #endif
@@ -751,7 +764,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
                  "\"phone\":[{\"number\":\"number123\",\"type\":\"HOME\"}],\"data\":-240000000,"
                  "\"data32\":6,\"data64\":-1820000000,\"datadouble\":123.456,"
                  "\"datafloat\":8.612299919128418,\"datau32\":60,\"datau64\":960,"
-                 "\"databool\":false,\"databyte\":\"welcome to china\",\"datafix32\":1,"
+                 "\"databool\":false,\"databyte\":\"d2VsY29tZQ==\",\"datafix32\":1,"
                  "\"datafix64\":666,\"datasfix32\":120,\"datasfix64\":-802,"
                  "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}", 
                  info3.data());
@@ -760,7 +773,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_normal_case) {
                  "\"phone\":[{\"number\":\"number123\",\"type\":\"HOME\"}],\"data\":-240000000,"
                  "\"data32\":6,\"data64\":-1820000000,\"datadouble\":123.456,"
                  "\"datafloat\":8.612299919,\"datau32\":60,\"datau64\":960,\"databool\":false,"
-                 "\"databyte\":\"welcome to china\",\"datafix32\":1,\"datafix64\":666,"
+                 "\"databyte\":\"d2VsY29tZQ==\",\"datafix32\":1,\"datafix64\":666,"
                  "\"datasfix32\":120,\"datasfix64\":-802,\"datafloat_scientific\":123456792,"
                  "\"datadouble_scientific\":123456789}]}", info3.data());
 #endif
@@ -836,19 +849,21 @@ TEST_F(ProtobufJsonTest, pb_to_json_encode_decode) {
     printf("text:%s\n", text.data());
 
     printf("----------test pb to json------------\n\n");
-    ASSERT_TRUE(json2pb::ProtoMessageToJson(json_data, &info1, NULL));
+    json2pb::Pb2JsonOptions option;
+    option.bytes_to_base64 = true;
+    ASSERT_TRUE(ProtoMessageToJson(json_data, &info1, option, NULL));
 #ifndef RAPIDJSON_VERSION_0_1
     ASSERT_STREQ("{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
                  "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
                  "[{\"uid*\":\"content info\",\"Distance_info_\":1234.56005859375,\"_ext%T_\":"
-                 "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"databyte\","
+                 "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
                  "\"enum--type\":\"WORK\"}}]}", 
                  info1.data());
 #else
     ASSERT_STREQ("{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
                  "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
                  "[{\"uid*\":\"content info\",\"Distance_info_\":1234.560059,\"_ext%T_\":"
-                 "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"databyte\","
+                 "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
                  "\"enum--type\":\"WORK\"}}]}", 
                  info1.data());
 #endif
@@ -862,14 +877,14 @@ TEST_F(ProtobufJsonTest, pb_to_json_encode_decode) {
     ASSERT_STREQ("{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
                  "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
                  "[{\"uid*\":\"content info\",\"Distance_info_\":1234.56005859375,\"_ext%T_\":"
-                 "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"databyte\","
+                 "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
                  "\"enum--type\":\"WORK\"}}]}", 
                  info1.data());
 #else
     ASSERT_STREQ("{\"info\":[\"this is json data's info\",\"this is a test\"],\"type\":80000,"
                  "\"data:array\":[200,300],\"judge\":true,\"spur\":3.45,\"@Content_Test%@\":"
                  "[{\"uid*\":\"content info\",\"Distance_info_\":1234.560059,\"_ext%T_\":"
-                 "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"databyte\","
+                 "{\"Aa_ge(\":160000,\"databyte(std::string)\":\"ZGF0YWJ5dGU=\","
                  "\"enum--type\":\"WORK\"}}]}", 
                  info1.data());
 #endif
@@ -924,9 +939,14 @@ TEST_F(ProtobufJsonTest, pb_to_json_control_char_case) {
 
     printf("text:%s\n", text.data());
 
+    bool ret = false;
     printf("----------test pb to json------------\n\n");
-    bool ret = json2pb::ProtoMessageToJson(address_book, &info1, NULL);
-    ASSERT_TRUE(ret);
+    {
+        json2pb::Pb2JsonOptions option;
+        option.bytes_to_base64 = false;
+        ret = ProtoMessageToJson(address_book, &info1, option, NULL);
+        ASSERT_TRUE(ret);
+    }
 
 #ifndef RAPIDJSON_VERSION_0_1
     ASSERT_STREQ("{\"person\":[{\"name\":\"baidu \\u0001test\\b\\u001Aend\",\"id\":100,\"email\":"
@@ -950,9 +970,12 @@ TEST_F(ProtobufJsonTest, pb_to_json_control_char_case) {
 #endif
 
     info1.clear();
-    json2pb::Pb2JsonOptions option;
-    ret = json2pb::ProtoMessageToJson(address_book, &info1, option, NULL);
-    ASSERT_TRUE(ret);
+    {
+        json2pb::Pb2JsonOptions option;
+        option.bytes_to_base64 = true;
+        ret = ProtoMessageToJson(address_book, &info1, option, NULL);
+        ASSERT_TRUE(ret);
+    }
 
 #ifndef RAPIDJSON_VERSION_0_1
     ASSERT_STREQ("{\"person\":[{\"name\":\"baidu \\u0001test\\b\\u001Aend\",\"id\":100,\"email\":"
@@ -960,7 +983,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_control_char_case) {
                  "\"phone\":[{\"number\":\"number123\",\"type\":\"HOME\"}],\"data\":-240000000,"
                  "\"data32\":6,\"data64\":-1820000000,\"datadouble\":123.456,"
                  "\"datafloat\":8.612299919128418,\"datau32\":60,\"datau64\":960,"
-                 "\"databool\":false,\"databyte\":\"welcome to china\",\"datafix32\":1,"
+                 "\"databool\":false,\"databyte\":\"d2VsY29tZSB0byBjaGluYQ==\",\"datafix32\":1,"
                  "\"datafix64\":666,\"datasfix32\":120,\"datasfix64\":-802,"
                  "\"datafloat_scientific\":123456792.0,\"datadouble_scientific\":123456789.0}]}", 
                  info1.data());
@@ -970,15 +993,19 @@ TEST_F(ProtobufJsonTest, pb_to_json_control_char_case) {
                  "\"phone\":[{\"number\":\"number123\",\"type\":\"HOME\"}],\"data\":-240000000,"
                  "\"data32\":6,\"data64\":-1820000000,\"datadouble\":123.456,"
                  "\"datafloat\":8.612299919,\"datau32\":60,\"datau64\":960,\"databool\":false,"
-                 "\"databyte\":\"welcome to china\",\"datafix32\":1,\"datafix64\":666,"
+                 "\"databyte\":\"d2VsY29tZSB0byBjaGluYQ==\",\"datafix32\":1,\"datafix64\":666,"
                  "\"datasfix32\":120,\"datasfix64\":-802,\"datafloat_scientific\":123456792,"
                  "\"datadouble_scientific\":123456789}]}", info1.data());
 #endif
     
     info1.clear();
-    option.enum_option = json2pb::OUTPUT_ENUM_BY_NUMBER;
-    ret = json2pb::ProtoMessageToJson(address_book, &info1, option, NULL);
-    ASSERT_TRUE(ret);
+    {
+        json2pb::Pb2JsonOptions option;
+        option.enum_option = json2pb::OUTPUT_ENUM_BY_NUMBER;
+        option.bytes_to_base64 = false;
+        ret = ProtoMessageToJson(address_book, &info1, option, NULL);
+        ASSERT_TRUE(ret);
+    }
 
 #ifndef RAPIDJSON_VERSION_0_1
     ASSERT_STREQ("{\"person\":[{\"name\":\"baidu \\u0001test\\b\\u001Aend\",\"id\":100,\"email\":"
@@ -1283,8 +1310,10 @@ TEST_F(ProtobufJsonTest, pb_to_json_complex_perf_case) {
     float avg_time2 = 0;
     const int times = 10000;
     gss::message::gss_us_res_t data;
+    json2pb::Json2PbOptions option;
+    option.base64_to_bytes = false;
     timer.start();
-    res = json2pb::JsonToProtoMessage(info3, &data, &error);
+    res = JsonToProtoMessage(info3, &data, option, &error);
     timer.stop();
     avg_time1 += timer.u_elapsed();
     ASSERT_TRUE(res);
@@ -1321,8 +1350,10 @@ TEST_F(ProtobufJsonTest, pb_to_json_to_string_complex_perf_case) {
     float avg_time2 = 0;
     const int times = 10000;
     gss::message::gss_us_res_t data;
+    json2pb::Json2PbOptions option;
+    option.base64_to_bytes = false;
     timer.start();
-    res = json2pb::JsonToProtoMessage(info3, &data, &error);
+    res = JsonToProtoMessage(info3, &data, option, &error);
     timer.stop();
     avg_time1 += timer.u_elapsed();
     ASSERT_TRUE(res);
