@@ -10,7 +10,7 @@ ifeq ($(NEED_GPERFTOOLS), 1)
 endif
 HDRPATHS=-I$(BRPC_PATH)/output/include $(addprefix -I, $(HDRS))
 LIBPATHS=-L$(BRPC_PATH)/output/lib $(addprefix -L, $(LIBS))
-STATIC_LINKINGS+=-lbase -lbvar -lbthread -lbrpc -ljson2pb -lmcpack2pb
+STATIC_LINKINGS+=-lbrpc
 
 CLIENT_SOURCES = client.cpp
 SERVER_SOURCES = server.cpp
@@ -31,7 +31,7 @@ clean:
 
 echo_client:$(PROTO_OBJS) $(CLIENT_OBJS)
 	@echo "Linking $@"
-	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
+	$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
 
 echo_server:$(PROTO_OBJS) $(SERVER_OBJS)
 	@echo "Linking $@"

@@ -7,8 +7,8 @@ include config.mk
 # 3. Removed -Werror: Not block compilation for non-vital warnings, especially when the
 #    code is tested on newer systems. If the code is used in production, add -Werror back
 CPPFLAGS=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\"$(shell git rev-parse --short HEAD)\"
-CXXFLAGS=$(CPPFLAGS) -O2 -g -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x -include brpc/config.h
-CFLAGS=$(CPPFLAGS) -O2 -g -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
+CXXFLAGS=$(CPPFLAGS) -g -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x -include brpc/config.h
+CFLAGS=$(CPPFLAGS) -g -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
 HDRPATHS=-I./src $(addprefix -I, $(HDRS))
 LIBPATHS = $(addprefix -L, $(LIBS))
 SRCEXTS = .c .cc .cpp .proto
@@ -26,7 +26,6 @@ endif
 BASE_SOURCES = \
     src/base/third_party/dmg_fp/g_fmt.cc \
     src/base/third_party/dmg_fp/dtoa_wrapper.cc \
-    src/base/third_party/dmg_fp/dtoa.cc \
     src/base/third_party/dynamic_annotations/dynamic_annotations.c \
     src/base/third_party/icu/icu_utf.cc \
     src/base/third_party/superfasthash/superfasthash.c \
@@ -180,29 +179,24 @@ BASE_SOURCES = \
     src/base/iobuf.cpp
 
 BASE_OBJS = $(addsuffix .o, $(basename $(BASE_SOURCES)))
-BASE_DEBUG_OBJS = $(BASE_OBJS:.o=.dbg.o)
 
 BVAR_DIRS = src/bvar src/bvar/detail
 BVAR_SOURCES = $(foreach d,$(BVAR_DIRS),$(wildcard $(addprefix $(d)/*,$(SRCEXTS))))
 BVAR_OBJS = $(addsuffix .o, $(basename $(BVAR_SOURCES))) 
-BVAR_DEBUG_OBJS = $(BVAR_OBJS:.o=.dbg.o)
 
 BTHREAD_DIRS = src/bthread
 BTHREAD_SOURCES = $(foreach d,$(BTHREAD_DIRS),$(wildcard $(addprefix $(d)/*,$(SRCEXTS))))
 BTHREAD_OBJS = $(addsuffix .o, $(basename $(BTHREAD_SOURCES))) 
-BTHREAD_DEBUG_OBJS = $(BTHREAD_OBJS:.o=.dbg.o)
 
 JSON2PB_DIRS = src/json2pb
 JSON2PB_SOURCES = $(foreach d,$(JSON2PB_DIRS),$(wildcard $(addprefix $(d)/*,$(SRCEXTS))))
 JSON2PB_OBJS = $(addsuffix .o, $(basename $(JSON2PB_SOURCES))) 
-JSON2PB_DEBUG_OBJS = $(JSON2PB_OBJS:.o=.dbg.o)
 
 BRPC_DIRS = src/brpc src/brpc/details src/brpc/builtin src/brpc/policy
 BRPC_SOURCES = $(foreach d,$(BRPC_DIRS),$(wildcard $(addprefix $(d)/*,$(SRCEXTS))))
 BRPC_PROTOS = $(filter %.proto,$(BRPC_SOURCES))
 BRPC_CFAMILIES = $(filter-out %.proto,$(BRPC_SOURCES))
 BRPC_OBJS = $(BRPC_PROTOS:.proto=.pb.o) $(addsuffix .o, $(basename $(BRPC_CFAMILIES)))
-BRPC_DEBUG_OBJS = $(BRPC_OBJS:.o=.dbg.o)
 
 MCPACK2PB_SOURCES = \
 	src/mcpack2pb/field_type.cpp \
@@ -210,78 +204,37 @@ MCPACK2PB_SOURCES = \
 	src/mcpack2pb/parser.cpp \
 	src/mcpack2pb/serializer.cpp
 MCPACK2PB_OBJS = src/idl_options.pb.o $(addsuffix .o, $(basename $(MCPACK2PB_SOURCES)))
-MCPACK2PB_DEBUG_OBJS = $(MCPACK2PB_OBJS:.o=.dbg.o)
+
+OBJS=$(BASE_OBJS) $(BVAR_OBJS) $(BTHREAD_OBJS) $(JSON2PB_OBJS) $(MCPACK2PB_OBJS) $(BRPC_OBJS)
+DEBUG_OBJS = $(OBJS:.o=.dbg.o)
 
 .PHONY:all
-all: libbase.a libbvar.a libbthread.a libjson2pb.a libmcpack2pb.a protoc-gen-mcpack libbrpc.a output/include output/lib output/bin
+all:  protoc-gen-mcpack libbrpc.a output/include output/lib output/bin
 
 .PHONY:debug
-debug: libbase.dbg.a libbvar.dbg.a libbthread.dbg.a libjson2pb.dbg.a libmcpack2pb.dbg.a libbrpc.dbg.a
+debug: libbrpc.dbg.a
 
 .PHONY:clean
 clean:clean_debug
 	@echo "Cleaning"
-	@rm -rf libbase.a libbvar.a libbthread.a libjson2pb.a libmcpack2pb.a mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a \
-		$(BASE_OBJS) $(BVAR_OBJS) $(BTHREAD_OBJS) $(JSON2PB_OBJS) $(MCPACK2PB_OBJS) $(BRPC_OBJS) \
-		output/include output/lib output/bin
+	@rm -rf mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a $(OBJS) output/include output/lib output/bin
 
 .PHONY:clean_debug
 clean_debug:
-	@rm -rf libbase.dbg.a libbvar.dbg.a libbthread.dbg.a libjson2pb.dbg.a libmcpack2pb.dbg.a libbrpc.dbg.a \
-		$(BASE_DEBUG_OBJS) $(BVAR_DEBUG_OBJS) $(BTHREAD_DEBUG_OBJS) $(JSON2PB_DEBUG_OBJS) $(MCPACK2PB_DEBUG_OBJS) $(BRPC_DEBUG_OBJS)
+	@rm -rf libbrpc.dbg.a $(DEBUG_OBJS)
 
-libbase.a:$(BASE_OBJS)
-	@echo "Packing $@"
-	@ar crs $@ $^
-
-libbase.dbg.a:$(BASE_DEBUG_OBJS)
-	@echo "Packing $@"
-	@ar crs $@ $^
-
-libbvar.a:$(BVAR_OBJS)
-	@echo "Packing $@"
-	@ar crs $@ $^
-
-libbvar.dbg.a:$(BVAR_DEBUG_OBJS)
-	@echo "Packing $@"
-	@ar crs $@ $^
-
-libbthread.a:$(BTHREAD_OBJS)
-	@echo "Packing $@"
-	@ar crs $@ $^
-
-libbthread.dbg.a:$(BTHREAD_DEBUG_OBJS)
-	@echo "Packing $@"
-	@ar crs $@ $^
-
-libjson2pb.a:$(JSON2PB_OBJS)
-	@echo "Packing $@"
-	@ar crs $@ $^
-
-libjson2pb.dbg.a:$(JSON2PB_DEBUG_OBJS)
-	@echo "Packing $@"
-	@ar crs $@ $^
-
-libmcpack2pb.a:$(MCPACK2PB_OBJS)
-	@echo "Packing $@"
-	@ar crs $@ $^
-
-libmcpack2pb.dbg.a:$(MCPACK2PB_DEBUG_OBJS)
-	@echo "Packing $@"
-	@ar crs $@ $^
-
-protoc-gen-mcpack:src/mcpack2pb/generator.o libmcpack2pb.a libbase.a libbthread.a libbvar.a
+protoc-gen-mcpack:src/mcpack2pb/generator.o libbrpc.a
 	@echo "Linking $@"
 	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
 # force generation of pb headers before compiling to avoid fail-to-import issues in compiling pb.cc
-libbrpc.a:$(BRPC_PROTOS:.proto=.pb.h) $(BRPC_OBJS)
+libbrpc.a:$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
 	@echo "Packing $@"
-	@ar crs $@ $^
+	@ar crs $@ $(OBJS)
 
-libbrpc.dbg.a:$(BRPC_PROTOS:.proto=.pb.h) $(BRPC_DEBUG_OBJS)
+libbrpc.dbg.a:$(BRPC_PROTOS:.proto=.pb.h) $(DEBUG_OBJS)
 	@echo "Packing $@"
-	@ar crs $@ $^
+	@ar crs $@ $(DEBUG_OBJS)
 
 .PHONY:output/include
 output/include:
@@ -291,7 +244,7 @@ output/include:
 	@cp src/idl_options.proto src/idl_options.pb.h $@
 
 .PHONY:output/lib
-output/lib:libbase.a libbvar.a libbthread.a libjson2pb.a libmcpack2pb.a libbrpc.a
+output/lib:libbrpc.a
 	@echo "Copying to $@"
 	@mkdir -p $@
 	@cp $^ $@

@@ -160,37 +160,22 @@ clean:clean_bins
 clean_bins:
 	@rm -rf $(TEST_BINS)
 
-../libbase.dbg.a:
-	@$(MAKE) -C.. libbase.dbg.a
-
-../libbvar.dbg.a:
-	@$(MAKE) -C.. libbvar.dbg.a
-
-../libbthread.dbg.a:
-	@$(MAKE) -C.. libbthread.dbg.a
-
 ../libbrpc.dbg.a:
 	@$(MAKE) -C.. libbrpc.dbg.a
 
-../libmcpack2pb.dbg.a:
-	@$(MAKE) -C.. libmcpack2pb.dbg.a
-
-../libjson2pb.dbg.a:
-	@$(MAKE) -C.. libjson2pb.dbg.a
-
-test_base:$(TEST_BASE_OBJS) ../libbase.dbg.a
+test_base:$(TEST_BASE_OBJS) ../libbrpc.dbg.a
 	@echo "Linking $@"
 	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
-test_bvar:$(TEST_BVAR_OBJS) ../libbase.dbg.a ../libbvar.dbg.a
+test_bvar:$(TEST_BVAR_OBJS) ../libbrpc.dbg.a
 	@echo "Linking $@"
 	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
-bthread%unittest:bthread%unittest.o ../libbase.dbg.a ../libbvar.dbg.a ../libbthread.dbg.a
+bthread%unittest:bthread%unittest.o ../libbrpc.dbg.a
 	@echo "Linking $@"
 	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
-brpc_%_unittest:$(TEST_PROTO_OBJS) brpc_%_unittest.o ../libbase.dbg.a ../libbvar.dbg.a ../libbthread.dbg.a ../libbrpc.dbg.a ../libmcpack2pb.dbg.a ../libjson2pb.dbg.a
+brpc_%_unittest:$(TEST_PROTO_OBJS) brpc_%_unittest.o ../libbrpc.dbg.a
 	@echo "Linking $@"
 	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 

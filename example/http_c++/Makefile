@@ -10,7 +10,7 @@ ifeq ($(NEED_GPERFTOOLS), 1)
 endif
 HDRPATHS = -I$(BRPC_PATH)/output/include $(addprefix -I, $(HDRS))
 LIBPATHS = -L$(BRPC_PATH)/output/lib $(addprefix -L, $(LIBS))
-STATIC_LINKINGS += -lbase -lbvar -lbthread -lbrpc -ljson2pb -lmcpack2pb
+STATIC_LINKINGS += -lbrpc
 
 CLIENT_SOURCES = http_client.cpp
 BENCHMARK_SOURCES = benchmark_http.cpp
