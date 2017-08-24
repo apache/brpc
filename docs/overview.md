@@ -1,4 +1,5 @@
-P/IP协议](http://en.wikipedia.org/wiki/Internet_protocol_suite)相互访问，但TCP/IP只是往远端发送了一段二进制数据，相比日常需求还有很多问题需要抽象：
+# 背景
+我们的服务大都通过[TCP/IP协议](http://en.wikipedia.org/wiki/Internet_protocol_suite)相互访问，但TCP/IP只是往远端发送了一段二进制数据，相比日常需求还有很多问题需要抽象：
 
 - 数据以什么格式传输？不同机器间，网络间可能是不同的字节序，把C++
   struct直接作为数据传输显然是不合适的；随着业务变化，数据字段往往要增加或删减，怎么兼容前后不同版本的格式？
