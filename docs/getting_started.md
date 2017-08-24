@@ -1,20 +1,20 @@
 # 运行示例程序
 
 在命令行中运行如下命令即可在~/my_baidu_rpc/public/baidu-rpc中下载源代码编译并运行echo示例程序：
-
-> mkdir -p ~/my_baidu_rpc/public && cd ~/my_baidu_rpc/public && svn co
-> https://svn.baidu.com/public/trunk/baidu-rpc && cd baidu-rpc && comake2 -UB -J8 -j8 && comake2 -P
-> && make -sj8 && cd example/echo_c++ && comake2 -UB -J8 -j8 && comake2 -P && make -sj8 && (
-> ./echo_server & ) && ./echo_client && pkill echo_server
-
+```
+mkdir -p ~/my_baidu_rpc/public && cd ~/my_baidu_rpc/public && svn co
+https://svn.baidu.com/public/trunk/baidu-rpc && cd baidu-rpc && comake2 -UB -J8 -j8 && comake2 -P
+&& make -sj8 && cd example/echo_c++ && comake2 -UB -J8 -j8 && comake2 -P && make -sj8 && (
+./echo_server & ) && ./echo_client && pkill echo_server
+```
 # 通过COMAKE依赖baidu-rpc
 
 如果你的模块还没有建立，你可能得去[work.baidu.com](http://work.baidu.com/)上申请新的模块。确保你使用了[comake2](http://wiki.babel.baidu.com/twiki/bin/view/Com/Main/Comake2)。
 
 在COMAKE文件中增加：
-
-> CONFIGS('public/baidu-rpc@ci-base')
-
+```
+CONFIGS('public/baidu-rpc@ci-base')
+```
  这依赖了baidu-rpc的最新发布版本。模板可参考[echo的COMAKE文件](https://svn.baidu.com/public/trunk/baidu-rpc/example/echo_c++/COMAKE)。然后运行：
 
 ```
@@ -22,7 +22,6 @@ $ comake2 -UB            # 下载所有的依赖模块
 $ comake2 -P             # 生成或更新Makefile
 $ make -sj8              # 编译
 ```
-
 你也可以在[agile上](http://agile.baidu.com/#/builds/public/baidu-rpc@trunk)
 或[scm.baidu.com](http://scm.baidu.com/)上查询baidu-rpc的已发布版本，并在COMAKE中依赖对应的静态版本。当comake2
 -UB时baidu-rpc的版本会固定在你选定的版本上。注意：静态版本指的是我们发布的tag，而不是trunk上的revision。请勿依赖trunk的某个revision。
@@ -71,7 +70,7 @@ $ ./auto_update.py
   而public/common则不会, 如果baidu-rpc依赖了public/common的新接口, baidu-rpc的编译就挂了.
 - 情况2: 产品线依赖了public/common@ci-base 和 public/baidu-rpc@某tag,
   所以public/common总是会更新到最新, 但baidu-rpc不变, 如果public/common中删除了老接口,
-或一些接口有调整, baidu-rpc的编译也挂了
+  或一些接口有调整, baidu-rpc的编译也挂了
 
 如果去掉了public/common的依赖,
 每次更新时COMAKE或BCLOUD会自动选择baidu-rpc对应版本被发布时使用的public/common版本,
@@ -177,9 +176,9 @@ r34354后改为依赖public/common中的base::atomic，不再（直接）依赖b
 ## tcmalloc
 
 baidu-rpc默认**不链接**[tcmalloc](http://goog-perftools.sourceforge.net/doc/tcmalloc.html)，如果需要可自行依赖，在COMAKE中增加：
-
-**COMAKE**
-
+```python
+CONFIGS('thirdsrc/tcmalloc@2.5.0.5977',Libraries('output/lib/libtcmalloc_and_profiler.a'))
+```
 tcmalloc相比默认的ptmalloc常可提升整体性能，建议尝试。但不同的tcmalloc版本可能有巨大的性能差异。tcmalloc
 2.1.0.100会使baidu-rpc示例程序的性能显著地低于使用tcmalloc 1.7.0.200和2.5.0.5977的版本。甚至使用
 1.7.0.100的性能也比1.7.0.200低一些，当你的程序出现性能问题时，去掉tcmalloc或更换版本看看。
@@ -193,9 +192,7 @@ tcmalloc相比默认的ptmalloc常可提升整体性能，建议尝试。但不�
 
 tcmalloc的另一个常见问题是它不像默认的ptmalloc那样及时的归还系统内存，所以在出现非法内存访问时，可能不会立刻crash，而最终crash在不相关的地方，甚至不crash。当你的程序出现诡异的内存问题时，也记得去掉tcmalloc看看。
 
-如果要使用[cpu profiler](http://wiki.baidu.com/display/RPC/cpu+profiler)或[heap
-profiler](http://wiki.baidu.com/display/RPC/heap+profiler)，请链接tcmalloc，这两个profiler是基于tcmalloc开发的。[contention
-profiler](http://wiki.baidu.com/display/RPC/contention+profiler)不要求tcmalloc。
+如果要使用[cpu profiler](http://wiki.baidu.com/display/RPC/cpu+profiler)或[heap profiler](http://wiki.baidu.com/display/RPC/heap+profiler)，请链接tcmalloc，这两个profiler是基于tcmalloc开发的。[contention profiler](http://wiki.baidu.com/display/RPC/contention+profiler)不要求tcmalloc。
 
 不想链接tcmalloc时请注意：不仅要去掉对tcmalloc模块的依赖，还得检查下是否删除了-DBAIDU_RPC_ENABLE_CPU_PROFILER
 或 -DBAIDU_RPC_ENABLE_HEAP_PROFILER等baidu-rpc的宏。
@@ -224,56 +221,31 @@ r35109后支持1.1
 
 对用户有意义的新特性，以方便用户调研使用。
 
-| 版本        | 功能                          | 描述                                       |
-| --------- | --------------------------- | ---------------------------------------- |
-| `r33446 ` | 开启-usercode_in_pthread无死锁风险 | 之前有。                                     |
-| `r33424 ` | 增加开关-log_hostname           |
-开启后会在每条日志后加上本机名。对于汇总的日志查询工具有用。           |
-| `r33323 ` | 默认发布工具                      | 编译baidu-rpc时rpc_press, rpc_view, rpc_replay,
-parallel_http也会一并编译，并能在产品库中获得。要注意的是，产品库默认以gcc
-3.4编译，在新机器上可能无法直接运行，需要对一些so做软链。 |
-| `r33306 ` | 增加工具parallel_http           | 可同时访问数万个http url,
-远快于curl（即使批量后台运行）      |
-| `r32844 ` | 支持http-flv                  | 另一种广泛用于直播的流媒体协议
-|
-| `r32803 ` | 支持同时发起大量异步访问                |
-重构了bthread_id_list_t，从静态容量变为了动态容量。       |
-| `r32668 ` | 支持RTMP                      | 一种广泛用于直播的流媒体协议（仍在完善中）
-|
-| `r32560 ` | 支持NamingServiceFilter       | 用于过滤名字服务返回的节点列表
-|
-| `r32536 ` | 初始化bthread                  |
-`ServerOptions增加了bthread_init_fn等参数用于在server启动前初始化一些bthread。` |
-| `r32420 ` | 支持nshead_mcpack             | 可用protobuf处理nshead+mcpack的协议             |
-| `r32401 ` | 受控的日志打印                     | `LOG_ONCE:只打印一次　LOG_EVERY_N:每过N次打印一次
-LOG_EVERY_SECOND:每秒打印一次` |
-| `r32399 ` | 不可修改的flags                  | 加上-immutable_flags程序的/flags页面就无法被修改了
-|
-| `r32328 ` | 获取RPC延时                     |
-Controller.latency_us()会返回对应的RPC延时，同步异步都支持。 |
-| `r32301 ` | 显示RTT                       |
-[/connections](http://brpc.baidu.com:8765/connections)页面会显示内核统计的smooth RTT了。 |
-| `r32279 ` | 支持凤巢ITP协议                   |
-详见[ITP](http://wiki.baidu.com/pages/viewpage.action?pageId=184259578) |
-| `r32097`  | 支持Restful开发                 |
-用户可定制访问每个方法的URL，详见[RestfulURL](http://wiki.baidu.com/pages/viewpage.action?pageId=213828736#id-实现HTTPService-RestfulURL)
-|
-| `r32034 ` | 支持protobuf 3.0              | `Server端的Arena分配仍不支持。mcpack2pb,
-protobuf-json等周边工具仍待迁移。` |
-| `r32015 ` | 访问redis-server              |
-[访问Redis](http://wiki.baidu.com/pages/viewpage.action?pageId=213828705) |
-| `r32009`  | RetryPolicy                 |
-可定制重试策略，详见[重试](http://wiki.baidu.com/pages/viewpage.action?pageId=213828685#id-创建和访问Client-错误值得重试)
-|
-| `r32009 ` | rpc_view                    |
-可在浏览器中查看端口不在[8000-8999]的内置服务，详见[rpc_view](http://wiki.baidu.com/pages/viewpage.action?pageId=167651918)
-|
-| `r31986 ` | rpc_press                   |
-代替了pbrpcpress，详见[rpc_press](http://wiki.baidu.com/pages/viewpage.action?pageId=97645422) |
-| `r31901 ` | contention profiler         | 可分析在锁上的等待时间，详见[contention
-profiler](http://wiki.baidu.com/pages/viewpage.action?pageId=165876314) |
-| `r31658 ` | rpc dump & replay           |
-详见[rpc_replay](http://wiki.baidu.com/pages/viewpage.action?pageId=158707916) |
+| 版本   | 功能                        | 描述                                     |
+| ------ | --------------------------- | ---------------------------------------- |
+| r33446 | 开启-usercode_in_pthread无死锁风险 | 之前有。                                     |
+| r33424 | 增加开关-log_hostname    | 开启后会在每条日志后加上本机名。对于汇总的日志查询工具有用。           |
+| r33323 | 默认发布工具             | 编译baidu-rpc时rpc_press, rpc_view, rpc_replay, parallel_http也会一并编译，并能在产品库中获得。要注意的是，产品库默认以gcc3.4编译，在新机器上可能无法直接运行，需要对一些so做软链。 |
+| r33306 | 增加工具parallel_http    | 可同时访问数万个http url, 快于curl（即使批量后台运行）       |
+| r32844 | 支持http-flv             | 另一种广泛用于直播的流媒体协议                          |
+| r32803 | 支持同时发起大量异步访问 | 构了bthread_id_list_t，从静态容量变为了动态容量。        |
+| r32668 | 支持RTMP                 | 一种广泛用于直播的流媒体协议（仍在完善中）                    |
+| r32560 | 支持NamingServiceFilter  | 用于过滤名字服务返回的节点列表                          |
+| r32536 | 初始化bthread            | ServerOptions增加了bthread_init_fn等参数用于在server启动前初始化一些bthread。 |
+| r32420 | 支持nshead_mcpack        | 可用protobuf处理nshead+mcpack的协议             |
+| r32401 | 受控的日志打印           | LOG_ONCE:只打印一次　LOG_EVERY_N:每过N次打印一次  LOG_EVERY_SECOND:每秒打印一次 |
+| r32399 | 不可修改的flags          | 加上-immutable_flags程序的/flags页面就无法被修改了     |
+| r32328 | 获取RPC延时              | Controller.latency_us()会返回对应的RPC延时，同步异步都支持。 |
+| r32301 | 显示RTT                  | [/connections](http://brpc.baidu.com:8765/connections)页面会显示内核统计的smooth RTT了。 |
+| r32279 | 支持凤巢ITP协议          | 详见[ITP](http://wiki.baidu.com/pages/viewpage.action?pageId=184259578) |
+| r32097 | 支持Restful开发          | 用户可定制访问每个方法的URL，详见[RestfulURL](http://wiki.baidu.com/pages/viewpage.action?pageId=213828736#id-实现HTTPService-RestfulURL) |
+| r32034 | 支持protobuf 3.0         | Server端的Arena分配仍不支持。mcpack2pb,protobuf-json等周边工具仍待迁移。 |
+| r32015 | 访问redis-server         | [访问Redis](http://wiki.baidu.com/pages/viewpage.action?pageId=213828705) |
+| r32009 | RetryPolicy              | 可定制重试策略，详见[重试](http://wiki.baidu.com/pages/viewpage.action?pageId=213828685#id-创建和访问Client-错误值得重试) |
+| r32009 | rpc_view                 | 可在浏览器中查看端口不在[8000-8999]的内置服务，详见[rpc_view](http://wiki.baidu.com/pages/viewpage.action?pageId=167651918) |
+| r31986 | rpc_press                | 代替了pbrpcpress，详见[rpc_press](http://wiki.baidu.com/pages/viewpage.action?pageId=97645422) |
+| r31901 | contention profiler      | 可分析在锁上的等待时间，详见[contention profiler](http://wiki.baidu.com/pages/viewpage.action?pageId=165876314) |
+| r31658 | rpc dump & replay        | 详见[rpc_replay](http://wiki.baidu.com/pages/viewpage.action?pageId=158707916) |
 
 # FAQ
 
@@ -354,7 +326,7 @@ a protocol buffer. Use the 'bytes' type if you intend to send raw bytes
 解决方式：
 
 1. [推荐]
-把proto中对应字段的类型从string改为bytes。string和bytes的二进制格式是一样的，所以这个改动不会造成新老消息的不兼容。这两个类型生成的函数也是一样的，用户代码不需要修改。
+  把proto中对应字段的类型从string改为bytes。string和bytes的二进制格式是一样的，所以这个改动不会造成新老消息的不兼容。这两个类型生成的函数也是一样的，用户代码不需要修改。
 2. 定义宏NDEBUG。这个检查会被跳过。
 
 注意：pb 2.4不会打印出问题的字段名，pb 2.6会，如果你需要快速定位出问题的字段，用pb 2.6
