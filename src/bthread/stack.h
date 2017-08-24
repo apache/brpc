@@ -12,19 +12,31 @@
 #include "bthread/types.h"
 #include "bthread/context.h"        // bthread_fcontext_t
 #include "base/object_pool.h"
-#include "base/third_party/dynamic_annotations/dynamic_annotations.h" // RunningOnValgrind
-#include "base/third_party/valgrind/valgrind.h" // VALGRIND_STACK_REGISTER
 
 namespace bthread {
 
-struct StackContainer {
-    bthread_fcontext_t context;
-    int stacksize;
-    int guardsize;
-    void* stack;
-    int stacktype;
+struct StackStorage {
+     int stacksize;
+     int guardsize;
+    // Assume stack grows upwards.
+    // http://www.boost.org/doc/libs/1_55_0/libs/context/doc/html/context/stack.html
+    void* bottom;
     unsigned valgrind_stack_id;
+
+    // Clears all members.
+    void zeroize() {
+        stacksize = 0;
+        guardsize = 0;
+        bottom = NULL;
+        valgrind_stack_id = 0;
+    }
 };
+ 
+// Allocate a piece of stack.
+int allocate_stack_storage(StackStorage* s, int stacksize, int guardsize);
+// Deallocate a piece of stack. Parameters MUST be returned or set by the
+// corresponding allocate_stack_storage() otherwise behavior is undefined.
+void deallocate_stack_storage(StackStorage* s);
 
 enum StackType {
     STACK_TYPE_MAIN = 0,
@@ -34,12 +46,20 @@ enum StackType {
     STACK_TYPE_LARGE = BTHREAD_STACKTYPE_LARGE
 };
 
-inline StackContainer* get_stack(StackType type, void (*entry)(intptr_t));
-inline void return_stack(StackContainer* sc);
+struct ContextualStack {
+    bthread_fcontext_t context;
+    StackType stacktype;
+    StackStorage storage;
+};
 
-// Allocate/deallocate stacks with guard pages.
-void* allocate_stack(int* stacksize, int* guardsize);
-void deallocate_stack(void* mem, int stacksize, int guardsize);
+// Get a stack in the `type' and run `entry' at the first time that the
+// stack is jumped.
+ContextualStack* get_stack(StackType type, void (*entry)(intptr_t));
+// Recycle a stack. NULL does nothing.
+void return_stack(ContextualStack*);
+// Jump from stack `from' to stack `to'. `from' must be the stack of callsite
+// (to save contexts before jumping)
+void jump_stack(ContextualStack* from, ContextualStack* to);
 
 }  // namespace bthread
 

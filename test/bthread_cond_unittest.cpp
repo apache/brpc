@@ -80,7 +80,7 @@ TEST(CondTest, sanity) {
     bthread_t sth;
     ASSERT_EQ(0, bthread_start_urgent(&sth, NULL, signaler, &a));
 
-    bthread_usleep(SIGNAL_INTERVAL_US * 300);
+    bthread_usleep(SIGNAL_INTERVAL_US * 200);
 
     pthread_mutex_lock(&wake_mutex);
     const size_t nbeforestop = wake_time.size();
@@ -336,11 +336,11 @@ void* disturb_thread(void* arg) {
     return NULL;
 }
 
-TEST(CondTest, mix_usage) {
+TEST(CondTest, mixed_usage) {
     BroadcastArg ba;
     ba.nwaiter = 0;
     ba.cur_waiter = 0;
-    ba.rounds = 100000;
+    ba.rounds = 30000;
     const int NTHREADS = 10;
     ba.nwaiter = NTHREADS * 2;
 
@@ -424,7 +424,7 @@ void* wait_cond_thread(void* arg) {
     return NULL;
 }
 
-TEST(CondTest, too_many_bthread) {
+TEST(CondTest, too_many_bthreads) {
     std::vector<bthread_t> th;
     th.resize(32768);
     BthreadCond c;
@@ -435,7 +435,7 @@ TEST(CondTest, too_many_bthread) {
         bthread_start_background(&th[i], NULL, usleep_thread, NULL);
     }
     c.Signal();
-    usleep(1 * 1000 * 1000L);
+    usleep(3 * 1000 * 1000L);
     g_stop = true;
     bthread_join(tid, NULL);
     ASSERT_TRUE(started_wait);

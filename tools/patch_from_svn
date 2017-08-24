@@ -57,4 +57,3 @@ if [ -z "$DO_RUN" ]; then
     echo "*** This is a dry-run. To really apply, run: DO_RUN=1 tools/patch_from_svn $1"
 fi
 patch -p0 -u $EXTRA_ARGS < $MODIFIED_PATCHFILE
-rm $MODIFIED_PATCHFILE

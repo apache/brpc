@@ -10,7 +10,9 @@
 #include <stdlib.h>                               // posix_memalign
 #include "base/macros.h"                          // BAIDU_CASSERT
 #include "base/memory/singleton_on_pthread_once.h"
-#include "bvar/reducer.h"                         // bvar::Adder
+#include "base/third_party/dynamic_annotations/dynamic_annotations.h" // RunningOnValgrind
+#include "base/third_party/valgrind/valgrind.h"   // VALGRIND_STACK_REGISTER
+#include "bvar/passive_status.h"
 #include "bthread/types.h"                        // BTHREAD_STACKTYPE_*
 #include "bthread/stack.h"
 
@@ -29,78 +31,103 @@ BAIDU_CASSERT(BTHREAD_STACKTYPE_NORMAL == STACK_TYPE_NORMAL, must_match);
 BAIDU_CASSERT(BTHREAD_STACKTYPE_LARGE == STACK_TYPE_LARGE, must_match);
 BAIDU_CASSERT(STACK_TYPE_MAIN == 0, must_be_0);
 
-extern const int PAGESIZE = getpagesize();
-extern const int PAGESIZE_M1 = PAGESIZE - 1;
-
-const int MIN_STACKSIZE = PAGESIZE * 2;
-const int MIN_GUARDSIZE = PAGESIZE;
-
-struct StackCount : public bvar::Adder<int64_t> {
-    StackCount() : bvar::Adder<int64_t>("bthread_stack_count") {}
-};
-inline bvar::Adder<int64_t>& stack_count() {
-    return *base::get_leaky_singleton<StackCount>();
+static base::static_atomic<int64_t> s_stack_count = BASE_STATIC_ATOMIC_INIT(0);
+static int64_t get_stack_count(void*) {
+    return s_stack_count.load(base::memory_order_relaxed);
 }
+static bvar::PassiveStatus<int64_t> bvar_stack_count(
+    "bthread_stack_count", get_stack_count, NULL);
 
-void* allocate_stack(int* inout_stacksize, int* inout_guardsize) {
-    // Align stack and guard size.
-    int stacksize =
-        (std::max(*inout_stacksize, MIN_STACKSIZE) + PAGESIZE_M1) &
-        ~PAGESIZE_M1;
-    int guardsize =
-        (std::max(*inout_guardsize, MIN_GUARDSIZE) + PAGESIZE_M1) &
+int allocate_stack_storage(StackStorage* s, int stacksize_in, int guardsize_in) {
+    const static int PAGESIZE = getpagesize();
+    const int PAGESIZE_M1 = PAGESIZE - 1;
+    const int MIN_STACKSIZE = PAGESIZE * 2;
+    const int MIN_GUARDSIZE = PAGESIZE;
+
+    // Align stacksize
+    const int stacksize =
+        (std::max(stacksize_in, MIN_STACKSIZE) + PAGESIZE_M1) &
         ~PAGESIZE_M1;
 
-    if (FLAGS_guard_page_size <= 0) {
+    if (guardsize_in <= 0) {
         void* mem = malloc(stacksize);
         if (NULL == mem) {
-            return NULL;
+            PLOG_EVERY_SECOND(ERROR) << "Fail to malloc (size="
+                                     << stacksize << ")";
+            return -1;
         }
-        stack_count() << 1;
-        *inout_stacksize = stacksize;
-        *inout_guardsize = 0;
-        return (char*)mem + stacksize;
+        s_stack_count.fetch_add(1, base::memory_order_relaxed);
+        s->bottom = (char*)mem + stacksize;
+        s->stacksize = stacksize;
+        s->guardsize = 0;
+        if (RunningOnValgrind()) {
+            s->valgrind_stack_id = VALGRIND_STACK_REGISTER(
+                s->bottom, (char*)s->bottom - stacksize);
+        } else {
+            s->valgrind_stack_id = 0;
+        }
+        return 0;
     } else {
+        // Align guardsize
+        const int guardsize =
+            (std::max(guardsize_in, MIN_GUARDSIZE) + PAGESIZE_M1) &
+            ~PAGESIZE_M1;
+
         const int memsize = stacksize + guardsize;
         void* const mem = mmap(NULL, memsize, (PROT_READ | PROT_WRITE),
                                (MAP_PRIVATE | MAP_ANONYMOUS), -1, 0);
 
         if (MAP_FAILED == mem) {
             PLOG_EVERY_SECOND(ERROR) 
-                    << "Fail to mmap, which is likely to be limited by the value"
-                       " in /proc/sys/vm/max_map_count";
+                << "Fail to mmap size=" << memsize << " stack_count="
+                << s_stack_count.load(base::memory_order_relaxed)
+                << ", possibly limited by /proc/sys/vm/max_map_count";
             // may fail due to limit of max_map_count (65536 in default)
-            return NULL;
+            return -1;
         }
 
-        char* aligned_mem = (char*)(((intptr_t)mem + PAGESIZE_M1) & ~PAGESIZE_M1);
-        const int offset = aligned_mem - (char*)mem;
-
+        void* aligned_mem = (void*)(((intptr_t)mem + PAGESIZE_M1) & ~PAGESIZE_M1);
+        if (aligned_mem != mem) {
+            LOG_ONCE(ERROR) << "addr=" << mem << " returned by mmap is not "
+                "aligned by pagesize=" << PAGESIZE;
+        }
+        const int offset = (char*)aligned_mem - (char*)mem;
         if (guardsize <= offset ||
             mprotect(aligned_mem, guardsize - offset, PROT_NONE) != 0) {
             munmap(mem, memsize);
-            return NULL;
+            PLOG_EVERY_SECOND(ERROR) 
+                << "Fail to mprotect " << (void*)aligned_mem << " length="
+                << guardsize - offset; 
+            return -1;
         }
-        
-        stack_count() << 1;
-        *inout_stacksize = stacksize;
-        *inout_guardsize = guardsize;
-        return (char*)mem + memsize;
+
+        s_stack_count.fetch_add(1, base::memory_order_relaxed);
+        s->bottom = (char*)mem + memsize;
+        s->stacksize = stacksize;
+        s->guardsize = guardsize;
+        if (RunningOnValgrind()) {
+            s->valgrind_stack_id = VALGRIND_STACK_REGISTER(
+                s->bottom, (char*)s->bottom - stacksize);
+        } else {
+            s->valgrind_stack_id = 0;
+        }
+        return 0;
     }
 }
 
-void deallocate_stack(void* mem, int stacksize, int guardsize) {
-    const int memsize = stacksize + guardsize;
-    if (FLAGS_guard_page_size <= 0) {
-        if ((char*)mem > (char*)NULL + memsize) {
-            stack_count() << -1;
-            free((char*)mem - memsize);
-        }
+void deallocate_stack_storage(StackStorage* s) {
+    if (RunningOnValgrind()) {
+        VALGRIND_STACK_DEREGISTER(s->valgrind_stack_id);
+    }
+    const int memsize = s->stacksize + s->guardsize;
+    if ((char*)s->bottom <= (char*)NULL + memsize) {
+        return;
+    }
+    s_stack_count.fetch_sub(1, base::memory_order_relaxed);
+    if (s->guardsize <= 0) {
+        free((char*)s->bottom - memsize);
     } else {
-        if ((char*)mem > (char*)NULL + memsize) {
-            stack_count() << -1;
-            munmap((char*)mem - memsize, memsize);
-        }
+        munmap((char*)s->bottom - memsize, memsize);
     }
 }
 

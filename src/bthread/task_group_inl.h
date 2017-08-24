@@ -45,17 +45,17 @@ inline void TaskGroup::exchange(TaskGroup** pg, bthread_t next_tid) {
 
 inline void TaskGroup::sched_to(TaskGroup** pg, bthread_t next_tid) {
     TaskMeta* next_meta = address_meta(next_tid);
-    if (next_meta->stack_container == NULL) {
-        StackContainer* sc = get_stack(next_meta->stack_type(), task_runner);
-        if (sc != NULL) {
-            next_meta->set_stack(sc);
+    if (next_meta->stack == NULL) {
+        ContextualStack* stk = get_stack(next_meta->stack_type(), task_runner);
+        if (stk) {
+            next_meta->set_stack(stk);
         } else {
             // stack_type is BTHREAD_STACKTYPE_PTHREAD or out of memory,
             // In latter case, attr is forced to be BTHREAD_STACKTYPE_PTHREAD.
             // This basically means that if we can't allocate stack, run
             // the task in pthread directly.
             next_meta->attr.stack_type = BTHREAD_STACKTYPE_PTHREAD;
-            next_meta->set_stack((*pg)->_main_stack_container);
+            next_meta->set_stack((*pg)->_main_stack);
         }
     }
     // Update now_ns only when wait_task did yield.

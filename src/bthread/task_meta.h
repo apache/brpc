@@ -11,7 +11,7 @@
 #include "bthread/butex.h"           // butex_construct/destruct
 #include "base/atomicops.h"          // base::atomic
 #include "bthread/types.h"           // bthread_attr_t
-#include "bthread/stack.h"           // Context, StackContainer
+#include "bthread/stack.h"           // ContextualStack
 
 namespace bthread {
 
@@ -56,7 +56,8 @@ struct TaskMeta {
     void* (*fn)(void*);
     void* arg;
 
-    StackContainer* stack_container;
+    // Stack of this task.
+    ContextualStack* stack;
 
     // Attributes creating this task
     bthread_attr_t attr;
@@ -74,7 +75,7 @@ public:
     TaskMeta()
         : current_waiter(NULL)
         , current_sleep(0)
-        , stack_container(NULL) {
+        , stack(NULL) {
         pthread_spin_init(&version_lock, 0);
         version_butex = butex_create_checked<uint32_t>();
         *version_butex = 1;
@@ -86,13 +87,13 @@ public:
         pthread_spin_destroy(&version_lock);
     }
 
-    void set_stack(StackContainer* sc) {
-        stack_container = sc;
+    void set_stack(ContextualStack* s) {
+        stack = s;
     }
 
-    StackContainer* release_stack() {
-        StackContainer* tmp = stack_container;
-        stack_container = NULL;
+    ContextualStack* release_stack() {
+        ContextualStack* tmp = stack;
+        stack = NULL;
         return tmp;
     }
 

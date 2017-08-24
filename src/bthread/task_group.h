@@ -126,7 +126,7 @@ public:
     bool is_current_main_task() const { return current_tid() == _main_tid; }
     // True iff current task is in pthread-mode.
     bool is_current_pthread_task() const
-    { return _cur_meta->stack_container == _main_stack_container; }
+    { return _cur_meta->stack == _main_stack; }
 
     // Active time in nanoseconds spent by this TaskGroup.
     int64_t cumulated_cputime_ns() const { return _cumulated_cputime_ns; }
@@ -225,7 +225,7 @@ friend class TaskControl;
 #endif
     size_t _steal_seed;
     size_t _steal_offset;
-    StackContainer* _main_stack_container;
+    ContextualStack* _main_stack;
     bthread_t _main_tid;
     WorkStealingQueue<bthread_t> _rq;
     RemoteTaskQueue _remote_rq;

@@ -168,7 +168,7 @@ void TaskGroup::run_main_task() {
     while (wait_task(&tid)) {
         TaskGroup::sched_to(&dummy, tid);
         DCHECK_EQ(this, dummy);
-        DCHECK_EQ(_cur_meta->stack_container, _main_stack_container);
+        DCHECK_EQ(_cur_meta->stack, _main_stack);
         if (_cur_meta->tid != _main_tid) {
             TaskGroup::task_runner(1/*skip remained*/);
         }
@@ -200,7 +200,7 @@ TaskGroup::TaskGroup(TaskControl* c)
     , _last_context_remained(NULL)
     , _last_context_remained_arg(NULL)
     , _pl(NULL) 
-    , _main_stack_container(NULL)
+    , _main_stack(NULL)
     , _main_tid(0)
     , _remote_num_nosignal(0)
     , _remote_nsignaled(0)
@@ -214,7 +214,7 @@ TaskGroup::TaskGroup(TaskControl* c)
 TaskGroup::~TaskGroup() {
     if (_main_tid) {
         TaskMeta* m = address_meta(_main_tid);
-        CHECK(_main_stack_container == m->stack_container);
+        CHECK(_main_stack == m->stack);
         return_stack(m->release_stack());
         return_resource(get_slot(_main_tid));
         _main_tid = 0;
@@ -230,8 +230,8 @@ int TaskGroup::init(size_t runqueue_capacity) {
         LOG(FATAL) << "Fail to init _remote_rq";
         return -1;
     }
-    StackContainer* sc = get_stack(STACK_TYPE_MAIN, NULL);
-    if (NULL == sc) {
+    ContextualStack* stk = get_stack(STACK_TYPE_MAIN, NULL);
+    if (NULL == stk) {
         LOG(FATAL) << "Fail to get main stack container";
         return -1;
     }
@@ -258,11 +258,11 @@ int TaskGroup::init(size_t runqueue_capacity) {
     m->stat = EMPTY_STAT;
     m->attr = BTHREAD_ATTR_TASKGROUP;
     m->tid = make_tid(*m->version_butex, slot);
-    m->set_stack(sc);
+    m->set_stack(stk);
 
     _cur_meta = m;
     _main_tid = m->tid;
-    _main_stack_container = sc;
+    _main_stack = stk;
     _last_run_ns = base::cpuwide_time_ns();
     return 0;
 }
@@ -366,7 +366,7 @@ void TaskGroup::_release_last_context(void* arg) {
     if (m->stack_type() != STACK_TYPE_PTHREAD) {
         return_stack(m->release_stack()/*may be NULL*/);
     } else {
-        // it's _main_stack_container, don't return.
+        // it's _main_stack, don't return.
         m->set_stack(NULL);
     }
     return_resource(get_slot(m->tid));
@@ -393,7 +393,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     m->about_to_quit = false;
     m->fn = fn;
     m->arg = arg;
-    CHECK(m->stack_container == NULL);
+    CHECK(m->stack == NULL);
     m->attr = using_attr;
     m->local_storage = LOCAL_STORAGE_INIT;
     m->cpuwide_start_ns = start_ns;
@@ -441,7 +441,7 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     m->about_to_quit = false;
     m->fn = fn;
     m->arg = arg;
-    CHECK(m->stack_container == NULL);
+    CHECK(m->stack == NULL);
     m->attr = using_attr;
     m->local_storage = LOCAL_STORAGE_INIT;
     m->cpuwide_start_ns = start_ns;
@@ -547,22 +547,22 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
 
     TaskMeta* const cur_meta = g->_cur_meta;
     TaskMeta* next_meta = address_meta(next_tid);
-    if (next_meta->stack_container == NULL) {
+    if (next_meta->stack == NULL) {
         if (next_meta->stack_type() == cur_meta->stack_type()) {
             // also works with pthread_task scheduling to pthread_task, the
-            // transfered stack_container is just _main_stack_container.
+            // transfered stack is just _main_stack.
             next_meta->set_stack(cur_meta->release_stack());
         } else {
-            StackContainer* sc = get_stack(next_meta->stack_type(), task_runner);
-            if (sc != NULL) {
-                next_meta->set_stack(sc);
+            ContextualStack* stk = get_stack(next_meta->stack_type(), task_runner);
+            if (stk) {
+                next_meta->set_stack(stk);
             } else {
                 // stack_type is BTHREAD_STACKTYPE_PTHREAD or out of memory,
                 // In latter case, attr is forced to be BTHREAD_STACKTYPE_PTHREAD.
                 // This basically means that if we can't allocate stack, run
                 // the task in pthread directly.
                 next_meta->attr.stack_type = BTHREAD_STACKTYPE_PTHREAD;
-                next_meta->set_stack(g->_main_stack_container);
+                next_meta->set_stack(g->_main_stack);
             }
         }
     }
@@ -616,19 +616,17 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
         }
         g->_cur_meta = next_meta;
         tls_bls = next_meta->local_storage;
-        if (cur_meta->stack_container != NULL) {
-            if (next_meta->stack_container != cur_meta->stack_container) {
-                bthread_jump_fcontext(&cur_meta->stack_container->context,
-                                      next_meta->stack_container->context,
-                                      0/*not skip remained*/);
+        if (cur_meta->stack != NULL) {
+            if (next_meta->stack != cur_meta->stack) {
+                jump_stack(cur_meta->stack, next_meta->stack);
                 // probably went to another group, need to assign g again.
                 g = tls_task_group;
             }
 #ifndef NDEBUG
             else {
                 // else pthread_task is switching to another pthread_task, sc
-                // can only equal when they're both _main_stack_container
-                CHECK(cur_meta->stack_container == g->_main_stack_container);
+                // can only equal when they're both _main_stack
+                CHECK(cur_meta->stack == g->_main_stack);
             }
 #endif
         }
