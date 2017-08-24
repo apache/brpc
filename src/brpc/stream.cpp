@@ -11,6 +11,7 @@
 #include "base/object_pool.h"
 #include "base/unique_ptr.h"
 #include "bthread/unstable.h"
+#include "brpc/log.h"
 #include "brpc/socket.h"
 #include "brpc/controller.h"
 #include "brpc/input_messenger.h"

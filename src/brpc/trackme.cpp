@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <pwd.h>
 #include "base/fast_rand.h"
+#include "brpc/log.h"
 #include "brpc/channel.h"
 #include "brpc/trackme.pb.h"
 #include "brpc/policy/hasher.h"

@@ -9,6 +9,7 @@
 #include "base/time.h"
 #include "base/scoped_lock.h"
 #include "base/logging.h"
+#include "brpc/log.h"
 #include "brpc/protocol.h"
 #include "brpc/input_messenger.h"
 #include "brpc/reloadable_flags.h"

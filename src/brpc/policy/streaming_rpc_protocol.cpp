@@ -14,8 +14,9 @@
 #include "base/time.h"
 #include "base/iobuf.h"                         // base::IOBuf
 #include "base/raw_pack.h"                      // RawPacker RawUnpacker
-#include "brpc/streaming_rpc_meta.pb.h"        // StreamFrameMeta
+#include "brpc/log.h"
 #include "brpc/socket.h"                        // Socket
+#include "brpc/streaming_rpc_meta.pb.h"         // StreamFrameMeta
 #include "brpc/policy/most_common_message.h"
 #include "brpc/stream_impl.h"
 

@@ -10,6 +10,7 @@
 #include "base/scoped_lock.h"
 #include "base/fast_rand.h"
 #include "base/sys_byteorder.h"
+#include "brpc/log.h"
 #include "brpc/server.h"
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/details/server_private_accessor.h"

@@ -4,6 +4,7 @@
 // Author: The baidu-rpc authors (pbrpc@baidu.com)
 // Date 2014/10/27 10:31:51
 
+#include "brpc/log.h"
 #include "brpc/details/http_parser.h"      // http_parser_parse_url
 #include "brpc/uri.h"                      // URI
 

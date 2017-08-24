@@ -12,6 +12,7 @@
 #include "base/fast_rand.h"
 #include "base/files/file_enumerator.h"
 #include "bvar/bvar.h"
+#include "brpc/log.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/rpc_dump.h"
 #include "brpc/protocol.h"

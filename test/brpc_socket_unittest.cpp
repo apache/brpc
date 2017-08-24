@@ -20,6 +20,7 @@
 #include "brpc/acceptor.h"
 #include "brpc/policy/hulu_pbrpc_protocol.h"
 #include "brpc/policy/most_common_message.h"
+#include "brpc/nshead.h"
 
 #define CONNECT_IN_KEEPWRITE 1;
 

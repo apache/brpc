@@ -8,6 +8,7 @@
 #include <gflags/gflags.h>
 #include "base/time.h"                                       // gettimeofday_us
 #include "base/fast_rand.h"
+#include "brpc/log.h"
 #include "brpc/socket.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/policy/locality_aware_load_balancer.h"

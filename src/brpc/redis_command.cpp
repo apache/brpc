@@ -5,6 +5,7 @@
 // Date: Fri Jun  5 18:25:40 CST 2015
 
 #include "base/logging.h"
+#include "brpc/log.h"
 #include "brpc/redis_command.h"
 
 // Defined in public/iobuf/base/iobuf.cpp

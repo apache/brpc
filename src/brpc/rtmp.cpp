@@ -7,6 +7,7 @@
 #include <gflags/gflags.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h> // StringOutputStream
 #include "bthread/unstable.h"                     // bthread_timer_del
+#include "brpc/log.h"
 #include "brpc/callback.h"                   // Closure
 #include "brpc/channel.h"                    // Channel
 #include "brpc/socket_map.h"                 // SocketMap

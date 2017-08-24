@@ -8,6 +8,7 @@
 #include <gflags/gflags.h>
 #include "base/files/file_enumerator.h"
 #include "base/file_util.h"                     // base::FilePath
+#include "brpc/log.h"
 #include "brpc/controller.h"
 #include "brpc/server.h"
 #include "brpc/reloadable_flags.h"

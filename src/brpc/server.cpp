@@ -19,6 +19,7 @@
 #include "base/time.h"
 #include "base/class_name.h"
 #include "base/string_printf.h"
+#include "brpc/log.h"
 #include "brpc/compress.h"
 #include "brpc/policy/nova_pbrpc_protocol.h"
 #include "brpc/global.h"

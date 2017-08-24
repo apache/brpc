@@ -8,9 +8,8 @@
 #include "base/sys_byteorder.h"
 #include "base/logging.h"
 #include "base/find_cstr.h"
+#include "brpc/log.h"
 #include "brpc/amf.h"
-#include "brpc/config.h"
-
 
 namespace brpc {
 

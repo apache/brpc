@@ -5,6 +5,7 @@
 // Date: Fri Sep  4 00:11:10 CST 2015
 
 #include "base/containers/flat_map.h"
+#include "brpc/log.h"
 #include "brpc/load_balancer.h"
 #include "brpc/details/naming_service_thread.h"
 #include "brpc/partition_channel.h"

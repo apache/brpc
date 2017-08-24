@@ -8,6 +8,7 @@
 #include <stdlib.h>                                   // strtol
 #include <string>                                     // std::string
 #include "bthread/bthread.h"
+#include "brpc/log.h"
 #include "brpc/policy/domain_naming_service.h"
 
 

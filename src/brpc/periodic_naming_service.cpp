@@ -7,9 +7,9 @@
 #include <gflags/gflags.h>
 #include "base/logging.h"
 #include "bthread/bthread.h"
+#include "brpc/log.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/periodic_naming_service.h"
-
 
 namespace brpc {
 

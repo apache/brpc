@@ -23,6 +23,7 @@
 
 #include "base/logging.h"
 #include "base/ssl_compat.h"
+#include "brpc/log.h"
 #include "brpc/policy/dh.h"
 
 namespace brpc {

@@ -4,6 +4,7 @@
 // Author: The baidu-rpc authors (pbrpc@baidu.com)
 // Date: 2014/11/06 15:28:43
 
+#include "brpc/log.h"
 #include "brpc/controller.h"           // Controller
 #include "brpc/closure_guard.h"        // ClosureGuard
 #include "brpc/builtin/vlog_service.h"

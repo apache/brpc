@@ -15,6 +15,7 @@
 #include "base/file_util.h"                 // base::FilePath
 #include "base/files/scoped_file.h"         // ScopedFILE
 #include "base/time.h"
+#include "brpc/log.h"
 #include "brpc/controller.h"                // Controller
 #include "brpc/closure_guard.h"             // ClosureGuard
 #include "brpc/builtin/pprof_service.h"

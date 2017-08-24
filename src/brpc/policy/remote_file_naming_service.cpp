@@ -10,6 +10,7 @@
 #include <set>                                          // std::set
 #include "bthread/bthread.h"                            // bthread_usleep
 #include "base/iobuf.h"
+#include "brpc/log.h"
 #include "brpc/channel.h"
 #include "brpc/policy/remote_file_naming_service.h"
 

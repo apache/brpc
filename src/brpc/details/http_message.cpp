@@ -15,6 +15,7 @@
 #include "base/endpoint.h"
 #include "base/base64.h"
 #include "bthread/bthread.h"                    // bthread_usleep
+#include "brpc/log.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/details/http_message.h"
 

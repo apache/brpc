@@ -10,6 +10,7 @@
 #include "bthread/butex.h"
 #include "base/scoped_lock.h"
 #include "base/logging.h"
+#include "brpc/log.h"
 #include "brpc/socket_map.h"
 #include "brpc/details/naming_service_thread.h"
 

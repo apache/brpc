@@ -5,6 +5,7 @@
 // Date: 2016-02-27 15:33:29
 
 #include <google/protobuf/descriptor.h>
+#include "brpc/log.h"
 #include "brpc/restful.h"
 #include "brpc/details/method_status.h"
 

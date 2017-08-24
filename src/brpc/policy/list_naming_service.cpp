@@ -8,6 +8,7 @@
 #include <string>                                     // std::string
 #include <set>                                        // std::set
 #include "base/string_splitter.h"                     // StringSplitter
+#include "brpc/log.h"
 #include "brpc/policy/list_naming_service.h"
 
 

@@ -7,10 +7,9 @@
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
-
 #include "base/time.h" 
 #include "base/iobuf.h"                         // base::IOBuf
-
+#include "brpc/log.h"
 #include "brpc/controller.h"               // Controller
 #include "brpc/socket.h"                   // Socket
 #include "brpc/server.h"                   // Server

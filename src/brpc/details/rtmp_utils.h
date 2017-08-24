@@ -7,8 +7,8 @@
 #ifndef BRPC_DETAILS_RTMP_UTILS_H
 #define BRPC_DETAILS_RTMP_UTILS_H
 
-#include <stdint.h>
-#include <cstddef>
+#include <stdint.h>  // int32_t
+#include <stddef.h>  // size_t
 
 namespace brpc {
 

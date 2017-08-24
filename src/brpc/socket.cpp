@@ -18,6 +18,7 @@
 #include "base/macros.h"
 #include "base/class_name.h"                     // base::class_name
 #include "bvar/bvar.h"
+#include "brpc/log.h"
 #include "brpc/reloadable_flags.h"          // BRPC_VALIDATE_GFLAG
 #include "brpc/errno.pb.h"
 #include "brpc/event_dispatcher.h"          // RemoveConsumer

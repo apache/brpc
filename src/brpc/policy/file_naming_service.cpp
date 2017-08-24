@@ -10,6 +10,7 @@
 #include "base/files/file_watcher.h"                    // FileWatcher
 #include "base/files/scoped_file.h"                     // ScopedFILE
 #include "bthread/bthread.h"                            // bthread_usleep
+#include "brpc/log.h"
 #include "brpc/policy/file_naming_service.h"
 
 
