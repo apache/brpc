@@ -1,0 +1,60 @@
+package addressbook;
+message Person {
+    required string name = 1;
+    required int32 id = 2;        // Unique ID number for this person.
+    optional string email = 3;
+
+    enum PhoneType {
+        MOBILE = 0;
+        HOME = 1;
+        WORK = 2;
+    }
+
+    message PhoneNumber {
+        required string number = 1;
+        optional PhoneType type = 2 [default = HOME];
+    }
+
+    repeated PhoneNumber phone = 4;
+
+    optional int64 data = 5;
+  
+    optional sint32 data32 = 6;
+  
+    optional sint64 data64 = 7;
+
+    required double datadouble = 8;
+
+    required float  datafloat = 9; 
+  
+    optional uint32 datau32 = 10;
+  
+    optional uint64 datau64 = 11;
+
+    optional bool   databool = 12;
+
+    optional bytes databyte = 13;
+  
+    optional fixed32 datafix32 = 14;
+  
+    optional fixed64 datafix64 = 15;
+  
+    optional sfixed32 datasfix32 = 16;
+  
+    optional sfixed64 datasfix64 = 17;
+
+    optional float datafloat_scientific = 18;
+    
+    optional double datadouble_scientific = 19;
+
+    extensions 100 to 200;
+}
+
+extend Person {
+    optional string hobby = 100;
+}
+
+message AddressBook {
+    repeated Person person = 1;
+}
+

@@ -10,6 +10,7 @@
 #include "json_to_pb.h"
 #include "zero_copy_stream_reader.h"       // ZeroCopyStreamReader
 #include "encode_decode.h"
+#include "base/base64.h"
 #include "base/string_printf.h"
 #include "protobuf_map.h"
 #include "rapidjson.h"
@@ -23,6 +24,14 @@
     } else { }
 
 namespace json2pb {
+
+Json2PbOptions::Json2PbOptions()
+#ifdef BAIDU_INTERNAL
+    : base64_to_bytes(false) {
+#else
+    : base64_to_bytes(true) {
+#endif
+}
 
 enum MatchType { 
     TYPE_MATCH = 0x00, 
@@ -182,7 +191,9 @@ inline bool convert_enum_type(const rapidjson::Value&item, bool repeated,
 }
 
 bool JsonValueToProtoMessage(const rapidjson::Value& json_value,
-                             google::protobuf::Message* message, std::string* err);
+                             google::protobuf::Message* message,
+                             const Json2PbOptions& options,
+                             std::string* err);
 
 //Json value to protobuf convert rules for type:
 //Json value type                 Protobuf type                convert rules
@@ -208,7 +219,9 @@ bool JsonValueToProtoMessage(const rapidjson::Value& json_value,
 
 static bool JsonValueToProtoField(const rapidjson::Value& value,
                                   const google::protobuf::FieldDescriptor* field,
-                                  google::protobuf::Message* message, std::string* err) {
+                                  google::protobuf::Message* message,
+                                  const Json2PbOptions& options,
+                                  std::string* err) {
     if (value.IsNull()) {
         if (field->is_required()) {
             J2PERROR(err, "Missing required field: %s", field->full_name().c_str());
@@ -288,11 +301,29 @@ static bool JsonValueToProtoField(const rapidjson::Value& value,
                 const rapidjson::Value & item = value[index];
                 if (TYPE_MATCH == J2PCHECKTYPE(item, string, String)) { 
                     std::string str(item.GetString(), item.GetStringLength());
+                    if (field->type() == google::protobuf::FieldDescriptor::TYPE_BYTES &&
+                        options.base64_to_bytes) {
+                        std::string str_decoded;
+                        if (!base::Base64Decode(str, &str_decoded)) {
+                            J2PERROR(err, "Fail to decode base64 string=%s", str.c_str());
+                            return false;
+                        }
+                        str = str_decoded;
+                    }
                     reflection->AddString(message, field, str);
                 }  
             }
         } else if (TYPE_MATCH == J2PCHECKTYPE(value, string, String)) {
             std::string str(value.GetString(), value.GetStringLength());
+            if (field->type() == google::protobuf::FieldDescriptor::TYPE_BYTES &&
+                options.base64_to_bytes) {
+                std::string str_decoded;
+                if (!base::Base64Decode(str, &str_decoded)) {
+                    J2PERROR(err, "Fail to decode base64 string=%s", str.c_str());
+                    return false;
+                }
+                str = str_decoded;
+            }
             reflection->SetString(message, field, str);
         }
         break;
@@ -320,13 +351,13 @@ static bool JsonValueToProtoField(const rapidjson::Value& value,
                 const rapidjson::Value& item = value[index];
                 if (TYPE_MATCH == J2PCHECKTYPE(item, message, Object)) { 
                     if (!JsonValueToProtoMessage(
-                            item, reflection->AddMessage(message, field), err)) {
+                            item, reflection->AddMessage(message, field), options, err)) {
                         return false;
                     }
                 } 
             }
         } else if (!JsonValueToProtoMessage(
-            value, reflection->MutableMessage(message, field), err)) {
+            value, reflection->MutableMessage(message, field), options, err)) {
             return false;
         }
         break;
@@ -336,7 +367,9 @@ static bool JsonValueToProtoField(const rapidjson::Value& value,
 
 bool JsonMapToProtoMap(const rapidjson::Value& value,
                        const google::protobuf::FieldDescriptor* map_desc,
-                       google::protobuf::Message* message, std::string* err) {
+                       google::protobuf::Message* message,
+                       const Json2PbOptions& options,
+                       std::string* err) {
     if (!value.IsObject()) {
         J2PERROR(err, "Non-object value for map field: %s",
                  map_desc->full_name().c_str());
@@ -356,7 +389,7 @@ bool JsonMapToProtoMap(const rapidjson::Value& value,
         entry_reflection->SetString(
             entry, key_desc, std::string(it->name.GetString(),
                                          it->name.GetStringLength()));
-        if (!JsonValueToProtoField(it->value, value_desc, entry, err)) {
+        if (!JsonValueToProtoField(it->value, value_desc, entry, options, err)) {
             return false;
         }
     }
@@ -364,7 +397,9 @@ bool JsonMapToProtoMap(const rapidjson::Value& value,
 }
 
 bool JsonValueToProtoMessage(const rapidjson::Value& json_value,
-                             google::protobuf::Message* message, std::string* err) {
+                             google::protobuf::Message* message,
+                             const Json2PbOptions& options,
+                             std::string* err) {
     if (!json_value.IsObject()) {
         J2PERROR(err, "`json_value' is not a json object");
         return false;
@@ -426,11 +461,11 @@ bool JsonValueToProtoMessage(const rapidjson::Value& json_value,
 
         if (IsProtobufMap(field) && value_ptr->IsObject()) {
             // Try to parse json like {"key":value, ...} into protobuf map
-            if (!JsonMapToProtoMap(*value_ptr, field, message, err)) {
+            if (!JsonMapToProtoMap(*value_ptr, field, message, options, err)) {
                 return false;
             }
         } else {
-            if (!JsonValueToProtoField(*value_ptr, field, message, err)) {
+            if (!JsonValueToProtoField(*value_ptr, field, message, options, err)) {
                 return false;
             }
         }
@@ -447,19 +482,42 @@ bool ZeroCopyStreamToJson(rapidjson::Document *dest,
 
 inline bool JsonToProtoMessageInline(const std::string& json_string, 
                         google::protobuf::Message* message,
+                        const Json2PbOptions& options,
                         std::string* error) {
     if (error) {
         error->clear();
     }
     rapidjson::Document d;
     d.Parse<0>(json_string.c_str());
-    return json2pb::JsonValueToProtoMessage(d, message, error);
+    return json2pb::JsonValueToProtoMessage(d, message, options, error);
+}
+
+bool JsonToProtoMessage(const std::string& json_string,
+                        google::protobuf::Message* message,
+                        const Json2PbOptions& options,
+                        std::string* error) {
+    return JsonToProtoMessageInline(json_string, message, options, error);
+}
+
+bool JsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream* stream,
+                        google::protobuf::Message* message,
+                        const Json2PbOptions& options,
+                        std::string* error) {
+    if (error) {
+        error->clear();
+    }
+    rapidjson::Document d;
+    if (!json2pb::ZeroCopyStreamToJson(&d, stream)) {
+        J2PERROR(error, "Invalid json format");
+        return false;
+    }
+    return json2pb::JsonValueToProtoMessage(d, message, options, error);
 }
 
 bool JsonToProtoMessage(const std::string& json_string, 
                         google::protobuf::Message* message,
                         std::string* error) {
-    return JsonToProtoMessageInline(json_string, message, error); 
+    return JsonToProtoMessageInline(json_string, message, Json2PbOptions(), error);
 }
 
 // For ABI compatibility with 1.0.0.0
@@ -469,7 +527,7 @@ bool JsonToProtoMessage(const std::string& json_string,
 bool JsonToProtoMessage(std::string json_string, 
                         google::protobuf::Message* message,
                         std::string* error) {
-    return JsonToProtoMessageInline(json_string, message, error); 
+    return JsonToProtoMessageInline(json_string, message, Json2PbOptions(), error);
 }
 
 bool JsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream *stream,
@@ -483,7 +541,7 @@ bool JsonToProtoMessage(google::protobuf::io::ZeroCopyInputStream *stream,
         J2PERROR(error, "Invalid json format");
         return false;
     }
-    return json2pb::JsonValueToProtoMessage(d, message, error);
+    return json2pb::JsonValueToProtoMessage(d, message, Json2PbOptions(), error);
 }
 } //namespace json2pb
 

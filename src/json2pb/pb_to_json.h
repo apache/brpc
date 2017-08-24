@@ -28,12 +28,18 @@ struct Pb2JsonOptions {
     // Use rapidjson::PrettyWriter to generate the json when this option is on.
     // NOTE: currently PrettyWriter is not optimized yet thus the conversion
     // functions may be slower when this option is turned on.
+    // Default: false
     bool pretty_json;
 
-    // true, we will automatically convert
-    // "repeated { required string key = 1; required string value = 2; }"
-    // to a map object of json and vice versa
+    // Convert "repeated { required string key = 1; required string value = 2; }"
+    // to a map object of json and vice versa when this option is turned on.
+    // Default: true
     bool enable_protobuf_map;
+
+    // Encode the field of type bytes to string in json using base64
+    // encoding when this option is turned on.
+    // Default: false for baidu-internal, true otherwise.
+    bool bytes_to_base64;
 };
 
 // Rules: http://wiki.baidu.com/display/RPC/Json+%3C%3D%3E+Protobuf

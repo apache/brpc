@@ -1,0 +1,353 @@
+package gss.message;
+
+//------------------------------------gss_src_req_t---------------------------------
+//struct gss_src_req_t
+//{
+//    string TransQuery[] = optional();               /**< transquery from da tranfered by us */
+//    int32_t ExtType[] = optional();                    /**< 扩展query类型 */
+//    int32_t SrcID = optional();                     /**< table id */
+//    int32_t SrcId = optional();                     /**< table id */
+//    int32_t Pos = optional();                       /**< pos */
+//    int32_t Place = optional();                     /**< place */
+//    int32_t Degree = optional();                    /**< degree */
+//    string Key = optional(),default("");            /**< us建议key */
+//    string ReqKey = optional(),default("");         /**< us建议 ReqKey */
+//    int32_t QueryType = optional(),default(0);      /**< 类型，default=0 */
+//    binary HighLight = optional(),default("");      /**< da飘红词 */
+//    string RetFormat = optional(),default("html");  /**< 回传格式 */
+//    string TagFilter = optional(),default("");      /**< Tag过滤信息 */
+//    //SPEC REQ
+//    int32_t SpReqType = optional(),default(0);      /**< 特殊请求类型，正常为0 */
+//    //FRO ZHIXIN USE
+//    string UriKey = optional();                     /**< UriKey 知心卡片使用 */
+//    string EntityName = optional();                 /**< 实体名 知心卡片使用 */
+//};
+
+message gss_src_req_t {
+    repeated string TransQuery = 1;                     /**< transquery from da tranfered by us */
+    repeated int32 ExtType = 2;                         /**< 扩展query类型 */
+    optional int32 SrcID = 3;                           /**< table id */
+    //optional int32 SrcId = 4;                           /**< table id */
+    optional int32 Pos = 5;                             /**< pos */
+    optional int32 Place = 6;                           /**< place */
+    optional int32 Degree = 7;                          /**< degree */
+    optional string Key = 8;                            /**< us建议key */
+    optional string ReqKey = 9;                         /**< us建议 ReqKey */
+    optional int32 QueryType = 10;                      /**< 类型，default=0 */
+    optional bytes HighLight = 11;                      /**< da飘红词 */
+    optional string RetFormat = 12 [default ="html"];   /**< 回传格式 */
+    optional string TagFilter = 13;                     /**< Tag过滤信息 */
+    //SPEC REQ
+    optional int32 SpReqType = 14;                      /**< 特殊请求类型，正常为0 */
+    //FRO ZHIXIN USE
+    optional string UriKey = 15;                        /**< UriKey 知心卡片使用 */
+    optional string EntityName = 16;                    /**< 实体名 知心卡片使用 */
+};
+//------------------------------------终端 ua 信息:us_gss_req_t---------------------------------
+//struct ua_info_t
+//{
+//    string ua_os = optional();                        /**< 操作系统 */
+//    string ua_browser = optional();                   /**< 浏览器 */
+//    string ua_modal = optional();                     /**< 机型 */
+//    string ua_measure = optional();                   /**< 尺寸 */
+//    int32_t ua_res_x = optional();                    /**< 分辨率宽 */
+//    int32_t ua_res_y = optional();                    /**< 分辨率高 */
+//    binary ua_ext = optional();                       /**< 扩展（预计会放操作系统版本os_version、浏览器版本browser_version）*/
+//};
+
+message ua_info_t {
+    optional string ua_os = 1;                          /**< 操作系统 */
+    optional string ua_browser = 2;                     /**< 浏览器 */
+    optional string ua_modal = 3;                       /**< 机型 */
+    optional string ua_measure = 4;                     /**< 尺寸 */
+    optional int32 ua_res_x = 5;                        /**< 分辨率宽 */
+    optional int32 ua_res_y = 6;                        /**< 分辨率高 */
+    optional bytes ua_ext = 7;                          /**< 扩展（预计会放操作系统版本os_version、浏览器版本browser_version）*/
+};
+
+//------------------------------------app_info_t------------------------------------------------
+//struct app_info_t
+//{
+//    string      package;      /*应用的packagename*/
+//    int32_t    version;        /*应用的version code*/
+//    uint32_t    signmd5;        /*包体签名*/
+//};
+
+message app_info_t {
+    required string package = 1;                        /*应用的packagename*/
+    required int32 version = 2;                         /*应用的version code*/
+    required uint32 signmd5 = 3;                        /*包体签名*/
+}
+
+//------------------------------------us请求gss结构体:us_gss_req_t---------------------------------
+//struct us_gss_req_t
+//{
+//    string OriginQuery;                               /**< 原始query */
+//    int32_t UserIP;                                   /**< 用户IP */
+//    int32_t TimingNeed;                                       /**< 时效性查询 */
+//    uint64_t QueryID64 = optional(),default(0);               /**< QueryID */
+//    string ClientName = optional(),default("unknow");         /**< 调用方名称 */
+//    int32_t ResNum = range(0,2000),default(20),optional();    /**< 翻页参数，当页结果数 */
+//    int32_t PageNum = range(0,2000),default(0),optional();    /**< 翻页参数，结果偏移量 */
+//    int32_t ctpl_or_php = optional(),default(0),range(0,1);   /**< 是否smarty渲染 */
+//    int32_t SeType = optional(),default(0);                   /**< 请求类型 0:US, 1:US_MID, 2:UI */
+//    //int32_t KeepAlive;                              /**< 保持连接 */
+//    string TemplateName;                              /**< 模版名 ex. baidu wisexmlnew */
+//    int32_t sid[] = optional();                       /**< 抽样id */
+//    binary UrlParaPack = optional();                  /**< Uri参数包 */
+//    binary gssqa = optional();                        /**< 经us透传的DA分析结果 */
+//    string Cookie = optional(),default("");           /**< 用户cookie */
+//    string province_name = optional();                /**< 省份信息 */
+//    string city_name = optional();                    /**< 城市信息 */
+//    string isp_name = optional();                     /**< 运营商信息 */
+//    uint32_t SrcNum;                                  /**< 请求table数量 */
+//    string From = optional(),default("www");          /**< 请求来源 */
+//    string Fmt = optional(),default("html");          /**< 请求格式 */
+//    binary HighLight = optional(),default("");        /**< da飘红词 */
+//    int32_t NeedHilightStr = optional(),default(0);   /**< 是否回传飘红词 */
+//    gss_src_req_t SrcArr[] = optional();              /**< table请求信息 */
+//    //国际化新增参数
+//    int64_t resultLang = optional();                  /**< 用户需要的结果语言设置 */
+//    int64_t resultLocale = optional();                /**< 用户需要的结果地域 */
+//    //终端app 信息
+//    app_info_t AppInfoArr[] = optional();             /**< 用户安装的app信息*/
+//    //终端ua 信息
+//    ua_info_t uaInfo = optional();                    /**< 请求的终端信息 */
+//    string useragent_full = optional();               /**< 请求的终端全部信息 */
+//    //百度账号信息
+//    int32_t uid = optional();
+//    string uname = optional();
+//    int32_t open_gssda_recall = optional();
+//    int32_t prefetch_flag = optional();               /**< 针对wise-us。值为1表示预取请求，值为0表示正常检索请求       */
+//};
+
+// pb for us_gss_req_t:
+message us_gss_req_t {
+    required string OriginQuery = 1;                    	/**< 原始query */
+    required int32 UserIP = 2;                          	/**< 用户IP */
+    required int32 TimingNeed = 3;                      	/**< 时效性查询 */
+    optional uint64 QueryID64 = 4 [default = 0];        	/**< QueryID */
+    optional string ClientName = 5 [default = "unknow"];	/**< 调用方名称 */
+
+    //reserved 6 - 10
+
+    optional int32 ResNum = 11 [default = 20];          	/**< 翻页参数，当页结果数 */
+    optional int32 PageNum = 12 [default = 0];          	/**< 翻页参数，结果偏移量 */
+    optional int32 ctpl_or_php = 13 [default = 0];      	/**< 是否smarty渲染 */
+    optional int32 SeType = 14 [default = 0];           	/**< 请求类型 0:US, 1:US_MID, 2:UI */
+    //int32_t KeepAlive;                                	/**< 保持连接 */
+    required string TemplateName = 15;                  	/**< 模版名 ex. baidu wisexmlnew */
+    repeated int32 sid = 16;                            	/**< 抽样id */
+    optional bytes UrlParaPack = 17;                    	/**< Uri参数包*/
+    optional bytes gssqa = 18;                          	/**< 经us透传的DA分析结果 */
+    optional string Cookie = 19;                        	/**< 用户cookie */
+
+    //reserved 20 - 30
+
+    optional string province_name = 31;                 	/**< 省份信息 */
+    optional string city_name = 32;                     	/**< 城市信息 */
+    optional string isp_name = 33;                      	/**< 运营商信息 */
+    required uint32 SrcNum = 34;                        	/**< 请求table数量 */
+    optional string From = 35 [default = "www"];        	/**< 请求来源 */
+    optional string Fmt = 36 [default = "html"];        	/**< 请求格式 */
+    optional bytes HighLight = 37;                      	/**< da飘红词 */
+    optional int32 NeedHilightStr = 38 [default = 0];   	/**< 是否回传飘红词 */
+    repeated gss_src_req_t SrcArr = 39;                 	/**< table请求信息 */
+    //国际化新增参数
+    optional int64 resultLang = 40;                     	/**< 用户需要的结果语言设置 */
+    optional int64 resultLocale = 41;                   	/**< 用户需要的结果地域 */
+    //终端app 信息
+    repeated app_info_t AppInfoArr = 42;                	/**< 用户安装的app信息*/
+    //终端ua 信息
+    optional ua_info_t uaInfo = 43;                     	/**< 请求的终端信息 */
+    optional string useragent_full = 44;                	/**< 请求的终端全部信息 */
+    //百度账号信息
+    optional int32 uid = 45;
+    optional string uname = 46;
+    optional int32 open_gssda_recall = 47;
+    optional int32 prefetch_flag = 48;                  	/**< 针对wise-us。值为1表示预取请求，值为0表示正常检索请求*/
+
+	//reserved 50 - 70
+
+	//added by new gss:
+	//for service distribution:
+	optional string service_name = 71;
+	//for normalized caller:
+	optional string caller = 72;
+	//for parsing UrlParaPack:
+	optional UserAgent user_agent = 73;
+
+};
+
+/** uri相关请求参数, gss代码中定义的结构体： */
+//struct uri_req_t {
+//    unsigned int uri_len;           	/**< uri长度 */
+//    char uri[US2GSS_MAX_URI_LEN];   	/**< uribuffer */
+//    u_int uri_sign[2];              	/**< 对uri的签名 */
+//    char dsp[GSS_GEN_STR_LEN];      	/**< dsp参数 */
+//    npoint_t crd;                   	/**< 用户百度地图墨卡托坐标 for lbs */
+//    char os[GSS_GEN_STR_LEN];       	/**< os操作系统参数 */
+//    char osv[GSS_GEN_STR_LEN];      	/**< osv操作系统版本参数 */
+//    char mb[GSS_GEN_STR_LEN];       	/**< mb浏览器参数 */
+//    char mbv[GSS_GEN_STR_LEN];      	/**< mbv浏览器版本参数*/
+//    int apn;                        	/**< opendata api的co参数中传递的翻页信息类似大搜索的pn */
+//    int arn;                        	/**< opendata api的co参数中传递的翻页信息类似大搜索的rn */
+//    char cuid[GSS_GEN_STR_LEN];     	/**< 移动用户唯一标识*/
+//    char net_type[GSS_GEN_STR_LEN]; 	/**< 移动网络类型，0=>unknown,1=>wifi, 2=>2G, 3=>3G*/
+//    int ignore_caller_auth;        	/**< 忽略调用方认证 */
+//};
+
+// 对应uri_req_t中的部分信息：
+message UserAgent {
+	optional string dsp = 1;			/**< dsp参数 */
+	optional string os = 2;				/**< os操作系统参数 */
+	optional string osv = 3;			/**< osv操作系统版本参数 */
+	optional string mb = 4;				/**< mb浏览器参数 */
+	optional string mbv = 5;			/**< mbv浏览器版本参数*/
+	optional int32 apn = 6;				/**< opendata api的co参数中传递的翻页信息类似大搜索的pn */
+	optional int32 arn = 7;				/**< opendata api的co参数中传递的翻页信息类似大搜索的rn */
+	optional string cuid = 8;			/**< 移动用户唯一标识*/
+	optional string net_type = 9;		/**< 移动网络类型，0=>unknown,1=>wifi, 2=>2G, 3=>3G*/
+};
+
+//------------------------------------gss给us子链接结构体: sub_url_t---------------------------------
+//struct sub_url_t
+//{
+//    string SubURL;                                    /**< sub url */
+//    string SubURI = optional();                       /**< sub uri */
+//    string SubName = optional();
+//    string SubPath = optional();
+//    int32_t SiteId = optional();                      /**< 子链接site id */
+//    string SubEx = optional();                        /**< extend */
+//};
+
+message sub_url_t {
+    required string SubURL = 1;                         /**< sub url */
+    optional string SubURI = 2;                         /**< sub uri */
+    optional string SubName = 3;
+    optional string SubPath = 4;
+    optional int32 SiteId = 5;                          /**< 子链接site id */
+    optional string SubEx = 6;                          /**< extend */
+};
+
+//------------------------------------gss单个结果结构体:gss_res_t---------------------------------
+//struct gss_res_t
+//{
+//    string ResultURL;                                 /**< 结果URL */
+//    string Display = optional(),default("");          /**< 展现结果 */
+//    int32_t Weight;                                   /**< 权重 */
+//    int32_t Sort = optional();                        /**< 插入位置 */
+//    int32_t SrcID = optional();                       /**< id */
+//    int32_t TimingNeed;                               /**< 时效性 */
+//    uint32_t WiseStrategyFlag = optional();           /**< wise策略bitmap */
+//    int32_t Degree = optional();                      /**< 需求强度 */
+//    int32_t ClickNeed = optional();                   /**< 点击调权 */
+//    int32_t StrategyInfo = optional();                /**< 策略附加信息 */
+//    //SPEC REQ
+//    int32_t SpReqType = optional();                   /**< 特殊请求类型，正常为0 */
+//    //FRO ZHIXIN USE
+//    string UriKey = optional();                       /**< UriKey 知心卡片使用 */
+//    string EntityName = optional();                   /**< 实体名 知心卡片使用 */
+//    sub_url_t SubResult[50];                          /**< 50条子链接 */
+//    int32_t SubResNum = optional(),default(0);        /**< 子链接 */
+//    string DisplayLog = optional();                   /**< 展现日志 */
+//    binary DisplayData = optional();                  /**< 特型展现数据 */
+//	uint32_t ResType = optional();                      /**< 资源是否带图*/
+//	string Title = optional();                          /**< 右侧去重名称*/
+//    int32_t RecoverCacheTime = optional();            /**< us容灾cache，过滤不进人容灾的资源*/
+//};
+
+message gss_res_t {
+    // pb for gss_res_t:
+    required string ResultURL = 2;                      /**< 结果URL */
+    optional string Display = 3;                        /**< 展现结果 */
+    required int32 Weight = 4;                          /**< 权重 */
+    optional int32 Sort = 5;                            /**< 插入位置 */
+    optional int32 SrcID = 6;                           /**< id */
+    required int32 TimingNeed = 7;                      /**< 时效性 */
+    optional uint32 WiseStrategyFlag = 8;               /**< wise策略bitmap */
+    optional int32 Degree = 9;                          /**< 需求强度 */
+    optional int32 ClickNeed = 10;                       /**< 点击调权 */
+    optional int32 StrategyInfo = 11;                   /**< 策略附加信息 */
+    //SPEC REQ
+    optional int32 SpReqType = 12;                      /**< 特殊请求类型，正常为0 */
+    //FRO ZHIXIN USE
+    optional string UriKey = 13;                        /**< UriKey 知心卡片使用 */
+    optional string EntityName = 14;                    /**< 实体名 知心卡片使用 */
+    repeated sub_url_t SubResult = 15;                  /**< 50条子链接 */
+    optional int32 SubResNum = 16;                      /**< 子链接 */
+    optional string DisplayLog = 17;                    /**< 展现日志 */
+    optional bytes DisplayData = 18;                    /**< 特型展现数据 */
+	optional uint32 ResType = 19;                       /**< 资源是否带图*/
+	optional string Title = 20;                         /**< 右侧去重名称*/
+    optional int32 RecoverCacheTime = 21;               /**< us容灾cache，过滤不进人容灾的资源*/
+
+    //customized result messages:
+};
+
+//------------------------------------debug_info_t---------------------------------
+//struct item_t
+//{
+//    string title;
+//    string content;
+//    int32_t parent;
+//};
+//struct strategy_bits_t
+//{
+//    uint32_t bits[STRATEGY_INT_NUM];
+//};
+//struct  debug_info_t
+//{
+//    ///废弃, 使用idebug代替
+//    item_t debug_info[] = optional();
+//    string item_info[] = optional();
+//    string anchor_info[] = optional();
+//    ///通过ivar 发送的全部debug信息, 取代原debug_info
+//    binary idebug = optional();
+//};
+
+message item_t {
+    required string title = 1;
+    required string content = 2;
+    required int32 parent = 3;
+};
+message debug_info_t {
+    optional bytes idebug = 1;
+    repeated string item_info = 2;
+    repeated string anchor_info = 3;
+    ///废弃, 使用idebug代替
+    repeated item_t debug_info = 4 [deprecated=true];
+};
+
+//------------------------------------gss_us_res_t---------------------------------
+// gss返回给us结构体
+//struct gss_us_res_t
+//{
+//    int32_t ResultCode;                               /**< 返回状态码 */
+//    uint64_t QueryID;                                 /**< query id */
+//    //集群合并后，加大最大返回结果包大小
+//    gss_res_t Result[40];                             /**< 返回结果 */
+//    uint32_t ResultNum = range(0,40);                 /**< 返回结果数 */
+//    debug_info_t info = optional();                   /**< debug info */
+//    int32_t bfe_cached_time = optional();             /**< cache失效时间 */
+//    int32_t bfe_cached_islocate = optional();         /**< 是否有地域扩展 */
+//    binary disp_data_url_ex = optional();             /**< 展现日志中url级别信息 */
+//    binary disp_data_query_ex = optional();           /**< 展现日志中query级别信息 */
+//};
+
+
+// pb for gss_us_res_t:
+message gss_us_res_t {
+    required int32 ResultCode = 1;                      /**< 返回状态码 */
+    required uint64 QueryID = 2;                        /**< query id */
+    //集群合并后，加大最大返回结果包大小
+    repeated gss_res_t Result = 3;                      /**< 返回结果 */
+    required uint32 ResultNum = 4;                      /**< 返回结果数 */
+    optional debug_info_t info = 5;                     /**< debug info */
+    optional int32 bfe_cached_time = 6;                 /**< cache失效时间 */
+    optional int32 bfe_cached_islocate = 7;             /**< 是否有地域扩展 */
+    optional bytes disp_data_url_ex = 8;                /**< 展现日志中url级别信息 */
+    optional bytes disp_data_query_ex = 9;              /**< 展现日志中query级别信息 */
+
+    optional string name = 20;                          /* response name*/
+};
