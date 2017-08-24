@@ -11,9 +11,7 @@ baidu-rpc中的异步和单线程的异步是完全不同的，异步回调会�
 
 当然，延时不长，qps不高时，我们更建议使用同步接口，这也是我们创建bthread的动机：维持同步代码也能提升交互性能。
 
-Icon
-
-判断使用同步或异步：计算qps * latency(in seconds)，如果和cpu核数是同一数量级，就用同步，否则用异步。
+**判断使用同步或异步**：计算qps * latency(in seconds)，如果和cpu核数是同一数量级，就用同步，否则用异步。
 
 比如：
 
@@ -33,16 +31,28 @@ Icon
 
 哪种效率更高呢？显然是前者。后者不仅要付出创建bthread的代价，在RPC过程中bthread还被阻塞着，不能用于其他用途。
 
-Icon
-
-如果仅仅是为了并发RPC，别用bthread。
-
- 
+**如果仅仅是为了并发RPC，别用bthread。**
 
 不过当你需要并行计算时，问题就不同了。使用bthread可以简单地构建树形的并行计算，充分利用多核资源。比如检索过程中有三个环节可以并行处理，你可以建立两个bthread运行两个环节，在原地运行剩下的环节，最后join那两个bthread。过程大致如下：
-
+```
+bool search() {
+  ...
+  bthread th1, th2;
+  if (bthread_start_background(&th1, NULL, part1, part1_args) != 0) {
+    LOG(ERROR) << "Fail to create bthread for part1";
+    return false;
+  }
+  if (bthread_start_background(&th2, NULL, part2, part2_args) != 0) {
+    LOG(ERROR) << "Fail to create bthread for part2";
+    return false;
+  }
+  part3(part3_args);
+  bthread_join(th1);
+  bthread_join(th2);
+  return true;
+}
+```
 这么实现的point：
-
 - 你当然可以建立三个bthread分别执行三个部分，最后join它们，但相比这个方法要多耗费一个线程资源。
 - bthread从建立到执行是有延时的（调度延时），在不是很忙的机器上，这个延时的中位数在3微秒左右，90%在10微秒内，99.99%在30微秒内。这说明两点：
   - 计算时间超过1ms时收益比较明显。如果计算非常简单，几微秒就结束了，用bthread是没有意义的。
