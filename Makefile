@@ -223,9 +223,9 @@ clean:clean_debug
 clean_debug:
 	@rm -rf libbrpc.dbg.a $(DEBUG_OBJS)
 
-protoc-gen-mcpack:src/mcpack2pb/generator.o libbrpc.a
+protoc-gen-mcpack: src/idl_options.pb.cc src/mcpack2pb/generator.o libbrpc.a
 	@echo "Linking $@"
-	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
+	@$(CXX) -o $@ $(HDRPATHS) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
 # force generation of pb headers before compiling to avoid fail-to-import issues in compiling pb.cc
 libbrpc.a:$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
