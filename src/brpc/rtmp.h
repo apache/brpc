@@ -474,14 +474,26 @@ enum RtmpLimitType {
 };
 
 // The common part of RtmpClientStream and RtmpServerStream.
-class RtmpStreamBase : public SharedObject {
+class RtmpStreamBase : public SharedObject 
+                     , public Destroyable {
 public:
     explicit RtmpStreamBase(bool is_client);
+
+    // @Destroyable
+    // For ClientStream, this function must be called to end this stream no matter 
+    // Init() is called or not. Use DestroyingPtr<> which is a specialized unique_ptr 
+    // to call Destroy() automatically.
+    // If this stream is enclosed in intrusive_ptr<>, this method can be called
+    // before/during Init(), or multiple times, because the stream is not
+    // destructed yet after calling Destroy(), otherwise the behavior is
+    // undefined.
+    virtual void Destroy();
 
     // Process media messages from the peer.
     // Following methods and OnStop() on the same stream are never called
     // simultaneously.
     // NOTE: Inputs can be modified and consumed.
+    virtual void OnUserData(void* msg);
     virtual void OnMetaData(AMFObject*, const base::StringPiece&);
     virtual void OnSharedObjectMessage(RtmpSharedObjectMessage* msg);
     virtual void OnAudioMessage(RtmpAudioMessage* msg);
@@ -505,6 +517,8 @@ public:
     virtual int SendAACMessage(const RtmpAACMessage& msg);
     virtual int SendVideoMessage(const RtmpVideoMessage& msg);
     virtual int SendAVCMessage(const RtmpAVCMessage& msg);
+    // msg is owned by the caller of this function
+    virtual int SendUserMessage(void* msg);
 
     // Send a message to the peer to make it stop. The concrete message depends
     // on implementation of the stream.
@@ -548,6 +562,15 @@ public:
     Socket* socket() { return _rtmpsock.get(); }
     const Socket* socket() const { return _rtmpsock.get(); }
 
+    // Returns true when the server accepted play or publish command.
+    // The acquire fence makes sure the callsite seeing true must be after
+    // sending play or publish command (possibly in another thread).
+    bool is_server_accepted() const
+    { return _is_server_accepted.load(base::memory_order_acquire); }
+
+    // Explicitly notify error to current stream
+    virtual void SignalError();
+    
 protected:
 friend class policy::RtmpContext;
 friend class policy::RtmpChunkStream;
@@ -563,6 +586,7 @@ friend class policy::OnServerStreamCreated;
     // implement the exclusion.
     bool BeginProcessingMessage(const char* fun_name);
     void EndProcessingMessage();
+    void CallOnUserData(void* data);
     void CallOnMetaData(AMFObject*, const base::StringPiece&);
     void CallOnSharedObjectMessage(RtmpSharedObjectMessage* msg);
     void CallOnAudioMessage(RtmpAudioMessage* msg);
@@ -579,6 +603,7 @@ friend class policy::OnServerStreamCreated;
     int64_t _create_realtime_us;
     SocketUniquePtr _rtmpsock;
     base::Mutex _call_mutex;
+    base::atomic<bool> _is_server_accepted;
 };
 
 struct RtmpClientOptions {
@@ -730,13 +755,6 @@ class RtmpClientStream : public RtmpStreamBase
 public:
     RtmpClientStream();
 
-    // Must be called to end this stream no matter Init() is called or not.
-    // Use DestroyingPtr<> which is a specialized unique_ptr to call Destroy()
-    // automatically.
-    // If this stream is enclosed in intrusive_ptr<>, this method can be called
-    // before/during Init(), or multiple times, because the stream is not
-    // destructed yet after calling Destroy(), otherwise the behavior is
-    // undefined.
     void Destroy();
 
     // Create this stream on `client' according to `options'.
@@ -755,12 +773,6 @@ public:
 
     int Pause(bool pause_or_unpause, double offset_ms);
 
-    // Returns true when the server accepted play or publish command.
-    // The acquire fence makes sure the callsite seeing true must be after
-    // sending play or publish command (possibly in another thread).
-    bool is_server_accepted() const
-    { return _is_server_accepted.load(base::memory_order_acquire); }
-    
     // The options passed to Init()
     const RtmpClientStreamOptions& options() const { return _options; }
 
@@ -803,7 +815,6 @@ friend class RtmpRetryingClientStream;
     CallId _create_stream_rpc_id;
     bool _from_socketmap;
     bool _created_stream_with_play_or_publish;
-    base::atomic<bool> _is_server_accepted;
     enum State {
         STATE_UNINITIALIZED,
         STATE_CREATING,
@@ -814,16 +825,6 @@ friend class RtmpRetryingClientStream;
     State _state;
     base::Mutex _state_mutex;
     RtmpClientStreamOptions _options;
-};
-
-// stream_name may contain timestamps that should be updated before each retry.
-// Inherit this class to do the update.
-class RtmpStreamNameManipulator : public brpc::SharedObject {
-public:
-    virtual ~RtmpStreamNameManipulator() {}
-    // *name is play_name or publish_name in RtmpClientStreamOptions, set
-    // the modified name back to *name before returning.
-    virtual void ModifyStreamName(std::string* name) = 0;
 };
 
 struct RtmpRetryingClientStreamOptions : public RtmpClientStreamOptions {
@@ -849,10 +850,6 @@ struct RtmpRetryingClientStreamOptions : public RtmpClientStreamOptions {
     // Default: true
     bool quit_when_no_data_ever;
 
-    // Modify play_name or publish_name before each retry.
-    // Default: NULL
-    base::intrusive_ptr<RtmpStreamNameManipulator> stream_name_manipulator;
-
     RtmpRetryingClientStreamOptions();
 };
 
@@ -872,6 +869,54 @@ public:
     virtual void StartGettingRtmpClient(OnGetRtmpClient* done) = 0;
 };
 
+// Base class for handling the messages received by a SubStream
+class RtmpMessageHandler {
+public:
+    virtual void OnPlayable() = 0;
+    virtual void OnUserData(void*) = 0;
+    virtual void OnMetaData(brpc::AMFObject* metadata, const base::StringPiece& name) = 0;
+    virtual void OnAudioMessage(brpc::RtmpAudioMessage* msg) = 0;
+    virtual void OnVideoMessage(brpc::RtmpVideoMessage* msg) = 0;
+    virtual void OnSharedObjectMessage(RtmpSharedObjectMessage* msg) = 0;
+    virtual void OnSubStreamStop(RtmpStreamBase* sub_stream) = 0;
+    virtual ~RtmpMessageHandler() {}
+};
+
+class RtmpRetryingClientStream;
+// RtmpMessageHandler for RtmpRetryingClientStream
+class RetryingClientMessageHandler : public RtmpMessageHandler {
+public:
+    RetryingClientMessageHandler(RtmpRetryingClientStream* parent);
+    ~RetryingClientMessageHandler() {}
+
+    void OnPlayable();
+    void OnUserData(void*);
+    void OnMetaData(brpc::AMFObject* metadata, const base::StringPiece& name);
+    void OnAudioMessage(brpc::RtmpAudioMessage* msg);
+    void OnVideoMessage(brpc::RtmpVideoMessage* msg);
+    void OnSharedObjectMessage(RtmpSharedObjectMessage* msg);
+    void OnSubStreamStop(RtmpStreamBase* sub_stream);
+
+private:
+    base::intrusive_ptr<RtmpRetryingClientStream> _parent;
+};
+
+class SubStreamCreator {
+public:
+    // Create a new SubStream and use *message_handler to handle messages from
+    // the current SubStream. *sub_stream is set iff the creation is successful.
+    // Note: message_handler is OWNED by this creator and deleted by the creator.
+    virtual void NewSubStream(RtmpMessageHandler* message_handler,
+                              base::intrusive_ptr<RtmpStreamBase>* sub_stream) = 0;
+    
+    // Do the Initialization of sub_stream. If an error happens, sub_stream->Destroy()
+    // would be called.
+    // Note: sub_stream is not OWNED by the creator.
+    virtual void LaunchSubStream(RtmpStreamBase* sub_stream,
+                                 RtmpRetryingClientStreamOptions* options) = 0;
+    virtual ~SubStreamCreator() {}
+};
+
 class RtmpRetryingClientStream : public RtmpStreamBase {
 public:
     RtmpRetryingClientStream();
@@ -879,16 +924,10 @@ public:
     // Must be called to end this stream no matter Init() is called or not.
     void Destroy();
 
-    // [ Must be called ]
-    // Initialize this stream with the given client. The client is not used
-    // anymore after calling this method.
-    void Init(const RtmpClient* client,
-              const RtmpRetryingClientStreamOptions& options);
-
-    // Initialize this stream with the given client selector which may return a
-    // different RtmpClient each time.
-    // NOTE: client_selector is OWNED by this stream and deleted by this stream.
-    void Init(RtmpClientSelector* client_selector,
+    // Initialize this stream with the given sub_stream_creator which may create a
+    // different sub stream each time.
+    // NOTE: sub_stream_creator is OWNED by this stream and deleted by this stream.
+    void Init(SubStreamCreator* sub_stream_creator,
               const RtmpRetryingClientStreamOptions& options);
 
     // @RtmpStreamBase
@@ -915,34 +954,20 @@ public:
     virtual void OnPlayable();
 
     const RtmpRetryingClientStreamOptions& options() const { return _options; }
-    
+
 protected:
     ~RtmpRetryingClientStream();
 
 private:
-friend class OnSubStreamCreated;
-friend class InitSubStream;
-    class SubStream : public RtmpClientStream {
-    public:
-        explicit SubStream(RtmpRetryingClientStream* s)
-            : _parent(s) {}
-        // @RtmpStreamBase
-        void OnMetaData(AMFObject*, const base::StringPiece&);
-        void OnSharedObjectMessage(RtmpSharedObjectMessage* msg);
-        void OnAudioMessage(RtmpAudioMessage* msg);
-        void OnVideoMessage(RtmpVideoMessage* msg);
-        void OnFirstMessage();
-        void OnStop();
-    private:
-        base::intrusive_ptr<RtmpRetryingClientStream> _parent;
-    };
-    int AcquireStreamToSend(base::intrusive_ptr<SubStream>*);
-    void OnSubStreamStop(SubStream*);
+friend class RetryingClientMessageHandler;
+
+    void OnSubStreamStop(RtmpStreamBase* sub_stream);
+    int AcquireStreamToSend(base::intrusive_ptr<RtmpStreamBase>*);
     static void OnRecreateTimer(void* arg);
     void Recreate();
     void CallOnStopIfNeeded();
     
-    base::intrusive_ptr<SubStream> _using_sub_stream;
+    base::intrusive_ptr<RtmpStreamBase> _using_sub_stream;
     base::intrusive_ptr<RtmpRetryingClientStream> _self_ref;
     mutable base::Mutex _stream_mutex;
     RtmpRetryingClientStreamOptions _options;
@@ -957,7 +982,7 @@ friend class InitSubStream;
     bthread_timer_t _create_timer_id;
     // Note: RtmpClient can be efficiently copied.
     RtmpClient _client_copy;
-    RtmpClientSelector* _client_selector;
+    SubStreamCreator* _sub_stream_creator;
 };
 
 // Utility function to get components from rtmp_url which could be in forms of:
@@ -1012,7 +1037,7 @@ class RtmpServerStream : public RtmpStreamBase {
 public:
     RtmpServerStream();
     ~RtmpServerStream();
-    
+
     // Called when receiving a play request.
     // Call status->set_error() when the play request is rejected.
     // Call done->Run() when the play request is processed (either accepted
@@ -1048,6 +1073,7 @@ public:
 
     // @RtmpStreamBase, sending StreamNotFound
     int SendStopMessage(const base::StringPiece& error_description);
+    void Destroy();
 
 private:
 friend class policy::RtmpContext;
@@ -1065,3 +1091,4 @@ friend class policy::RtmpChunkStream;
 
 
 #endif  // BRPC_RTMP_H
+

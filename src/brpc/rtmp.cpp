@@ -1205,10 +1205,15 @@ RtmpStreamBase::RtmpStreamBase(bool is_client)
     , _has_data_ever(false)
     , _message_stream_id(0)
     , _chunk_stream_id(0)
-    , _create_realtime_us(base::gettimeofday_us()) {
+    , _create_realtime_us(base::gettimeofday_us())
+    , _is_server_accepted(false) {
 }
 
 RtmpStreamBase::~RtmpStreamBase() {
+}
+
+void RtmpStreamBase::Destroy() {
+    return;
 }
 
 int RtmpStreamBase::SendMessage(uint32_t timestamp,
@@ -1328,6 +1333,11 @@ int RtmpStreamBase::SendAACMessage(const RtmpAACMessage& msg) {
     return _rtmpsock->Write(msg2);
 }
 
+int RtmpStreamBase::SendUserMessage(void* msg) { 
+    CHECK(false) << "You should implement your own SendUserMessage";
+    return 0; 
+}
+
 int RtmpStreamBase::SendVideoMessage(const RtmpVideoMessage& msg) {
     if (_rtmpsock == NULL) {
         errno = EPERM;
@@ -1413,7 +1423,16 @@ const char* RtmpObjectEncoding2Str(RtmpObjectEncoding e) {
     return "Unknown RtmpObjectEncoding";
 }
 
+void RtmpStreamBase::SignalError() {
+    return;
+}
+
 void RtmpStreamBase::OnFirstMessage() {}
+
+void RtmpStreamBase::OnUserData(void* data) {
+    LOG(INFO) << remote_side() << '[' << stream_id()
+              << "] ignored UserData{}";
+}
 
 void RtmpStreamBase::OnMetaData(AMFObject* metadata, const base::StringPiece& name) {
     LOG(INFO) << remote_side() << '[' << stream_id()
@@ -1464,6 +1483,13 @@ void RtmpStreamBase::EndProcessingMessage() {
     if (_stopped) {
         mu.unlock();
         return OnStop();
+    }
+}
+
+void RtmpStreamBase::CallOnUserData(void* data) {
+    if (BeginProcessingMessage("OnUserData()")) {
+        OnUserData(data);
+        EndProcessingMessage();
     }
 }
 
@@ -1526,7 +1552,6 @@ RtmpClientStream::RtmpClientStream()
     , _create_stream_rpc_id(INVALID_BTHREAD_ID)
     , _from_socketmap(true)
     , _created_stream_with_play_or_publish(false)
-    , _is_server_accepted(false)
     , _state(STATE_UNINITIALIZED) {
     get_rtmp_bvars()->client_stream_count << 1;
     _self_ref.reset(this);
@@ -2128,14 +2153,14 @@ RtmpRetryingClientStream::RtmpRetryingClientStream()
     , _last_creation_time_us(0)
     , _last_retry_start_time_us(0)
     , _create_timer_id(0)
-    , _client_selector(NULL) {
+    , _sub_stream_creator(NULL) {
     get_rtmp_bvars()->retrying_client_stream_count << 1;
     _self_ref.reset(this);
 }
 
 RtmpRetryingClientStream::~RtmpRetryingClientStream() {
-    delete _client_selector;
-    _client_selector = NULL;
+    delete _sub_stream_creator;
+    _sub_stream_creator = NULL;
     get_rtmp_bvars()->retrying_client_stream_count << -1;
 }
 
@@ -2160,7 +2185,7 @@ void RtmpRetryingClientStream::Destroy() {
     base::intrusive_ptr<RtmpRetryingClientStream> self_ref;
     _self_ref.swap(self_ref);
 
-    base::intrusive_ptr<SubStream> old_sub_stream;
+    base::intrusive_ptr<RtmpStreamBase> old_sub_stream;
     {
         BAIDU_SCOPED_LOCK(_stream_mutex);
         // swap instead of reset(NULL) to make the stream destructed
@@ -2182,33 +2207,18 @@ void RtmpRetryingClientStream::Destroy() {
 }
 
 void RtmpRetryingClientStream::Init(
-    const RtmpClient* client, const RtmpRetryingClientStreamOptions& options) {
-    if (_destroying.load(base::memory_order_relaxed)) {
-        LOG(WARNING) << "RtmpRetryingClientStream=" << this << " was already "
-            "Destroy()-ed, stop Init()";
-        return;
-    }
-    _client_copy = *client;
-    _options = options;
-    // retrying stream does not support this option.
-    _options.wait_until_play_or_publish_is_sent = false;
-    _last_retry_start_time_us = base::gettimeofday_us();
-    Recreate();
-}
-
-void RtmpRetryingClientStream::Init(
-    RtmpClientSelector* client_selector,
+    SubStreamCreator* sub_stream_creator,
     const RtmpRetryingClientStreamOptions& options) {
-    if (client_selector == NULL) {
-        LOG(ERROR) << "client_selector is NULL";
+    if (sub_stream_creator == NULL) {
+        LOG(ERROR) << "sub_stream_creator is NULL";
         return CallOnStopIfNeeded();
     }
+    _sub_stream_creator = sub_stream_creator;
     if (_destroying.load(base::memory_order_relaxed)) {
         LOG(WARNING) << "RtmpRetryingClientStream=" << this << " was already "
             "Destroy()-ed, stop Init()";
         return;
     }
-    _client_selector = client_selector;
     _options = options;
     // retrying stream does not support this option.
     _options.wait_until_play_or_publish_is_sent = false;
@@ -2216,26 +2226,41 @@ void RtmpRetryingClientStream::Init(
     Recreate();
 }
 
-class InitSubStream : public OnGetRtmpClient {
-public:
-    void Run(const RtmpClient*);
-public:
-    base::intrusive_ptr<RtmpRetryingClientStream::SubStream> sub_stream;
-    RtmpClientStreamOptions options;
-};
-
-void InitSubStream::Run(const RtmpClient* client) {
-    std::unique_ptr<InitSubStream> delete_self(this);
-    if (client == NULL) {
-        sub_stream->Destroy();
-    } else {
-        sub_stream->Init(client, options);
-    }
+void RetryingClientMessageHandler::OnPlayable() {
+    _parent->OnPlayable();
 }
 
+void RetryingClientMessageHandler::OnUserData(void* msg) {
+    _parent->CallOnUserData(msg);
+}
+
+void RetryingClientMessageHandler::OnMetaData(brpc::AMFObject* metadata, const base::StringPiece& name) {
+    _parent->CallOnMetaData(metadata, name);
+}
+
+void RetryingClientMessageHandler::OnAudioMessage(brpc::RtmpAudioMessage* msg) {
+    _parent->CallOnAudioMessage(msg);
+}
+
+void RetryingClientMessageHandler::OnVideoMessage(brpc::RtmpVideoMessage* msg) {
+    _parent->CallOnVideoMessage(msg);
+}
+
+void RetryingClientMessageHandler::OnSharedObjectMessage(RtmpSharedObjectMessage* msg) {
+    _parent->CallOnSharedObjectMessage(msg);
+}
+
+void RetryingClientMessageHandler::OnSubStreamStop(RtmpStreamBase* sub_stream) {
+    _parent->OnSubStreamStop(sub_stream);
+}
+
+RetryingClientMessageHandler::RetryingClientMessageHandler(RtmpRetryingClientStream* parent)
+    : _parent(parent) {}
+
 void RtmpRetryingClientStream::Recreate() {
-    base::intrusive_ptr<SubStream> sub_stream(new SubStream(this));
-    base::intrusive_ptr<SubStream> old_sub_stream;
+    base::intrusive_ptr<RtmpStreamBase> sub_stream;
+    _sub_stream_creator->NewSubStream(new RetryingClientMessageHandler(this), &sub_stream);
+    base::intrusive_ptr<RtmpStreamBase> old_sub_stream;
     bool destroying = false;
     {
         BAIDU_SCOPED_LOCK(_stream_mutex);
@@ -2259,28 +2284,11 @@ void RtmpRetryingClientStream::Recreate() {
         return;
     }
     _last_creation_time_us = base::gettimeofday_us();
-    RtmpClientStreamOptions modified_options = _options;
-    if (_options.stream_name_manipulator) {
-        if (!modified_options.play_name.empty()) {
-            _options.stream_name_manipulator->ModifyStreamName(
-                &modified_options.play_name);
-        }
-        if (!modified_options.publish_name.empty()) {
-            _options.stream_name_manipulator->ModifyStreamName(
-                &modified_options.publish_name);
-        }
-    }
     // If Init() of sub_stream is called before setting _using_sub_stream,
     // OnStop() may happen before _using_sub_stream is set and the stopped
     // stream is wrongly left in the variable.
-    if (_client_selector) {
-        InitSubStream* done = new InitSubStream;
-        done->sub_stream = sub_stream;
-        done->options = modified_options;
-        _client_selector->StartGettingRtmpClient(done);
-    } else {
-        sub_stream->Init(&_client_copy, modified_options);
-    }
+     
+    _sub_stream_creator->LaunchSubStream(sub_stream.get(), &_options);
 }
 
 void RtmpRetryingClientStream::OnRecreateTimer(void* arg) {
@@ -2290,11 +2298,11 @@ void RtmpRetryingClientStream::OnRecreateTimer(void* arg) {
     ptr->Recreate();
 }
 
-void RtmpRetryingClientStream::OnSubStreamStop(SubStream* sub_stream) {
+void RtmpRetryingClientStream::OnSubStreamStop(RtmpStreamBase* sub_stream) {
     // Make sure the sub_stream is destroyed after this function.
-    DestroyingPtr<SubStream> sub_stream_guard(sub_stream);
+    DestroyingPtr<RtmpStreamBase> sub_stream_guard(sub_stream);
     
-    base::intrusive_ptr<SubStream> removed_sub_stream;
+    base::intrusive_ptr<RtmpStreamBase> removed_sub_stream;
     {
         BAIDU_SCOPED_LOCK(_stream_mutex);
         if (sub_stream == _using_sub_stream) {
@@ -2368,7 +2376,7 @@ void RtmpRetryingClientStream::OnSubStreamStop(SubStream* sub_stream) {
 }
 
 int RtmpRetryingClientStream::AcquireStreamToSend(
-    base::intrusive_ptr<SubStream>* ptr) {
+    base::intrusive_ptr<RtmpStreamBase>* ptr) {
     BAIDU_SCOPED_LOCK(_stream_mutex);
     if (!_using_sub_stream) {
         errno = EPERM;
@@ -2389,7 +2397,7 @@ int RtmpRetryingClientStream::AcquireStreamToSend(
 }
 
 int RtmpRetryingClientStream::SendMetaData(const AMFObject& obj, const base::StringPiece& name) {
-    base::intrusive_ptr<SubStream> ptr;
+    base::intrusive_ptr<RtmpStreamBase> ptr;
     if (AcquireStreamToSend(&ptr) != 0) {
         return -1;
     }
@@ -2398,7 +2406,7 @@ int RtmpRetryingClientStream::SendMetaData(const AMFObject& obj, const base::Str
 
 int RtmpRetryingClientStream::SendSharedObjectMessage(
     const RtmpSharedObjectMessage& msg) {
-    base::intrusive_ptr<SubStream> ptr;
+    base::intrusive_ptr<RtmpStreamBase> ptr;
     if (AcquireStreamToSend(&ptr) != 0) {
         return -1;
     }
@@ -2406,7 +2414,7 @@ int RtmpRetryingClientStream::SendSharedObjectMessage(
 }
 
 int RtmpRetryingClientStream::SendAudioMessage(const RtmpAudioMessage& msg) {
-    base::intrusive_ptr<SubStream> ptr;
+    base::intrusive_ptr<RtmpStreamBase> ptr;
     if (AcquireStreamToSend(&ptr) != 0) {
         return -1;
     }
@@ -2414,7 +2422,7 @@ int RtmpRetryingClientStream::SendAudioMessage(const RtmpAudioMessage& msg) {
 }
 
 int RtmpRetryingClientStream::SendAACMessage(const RtmpAACMessage& msg) {
-    base::intrusive_ptr<SubStream> ptr;
+    base::intrusive_ptr<RtmpStreamBase> ptr;
     if (AcquireStreamToSend(&ptr) != 0) {
         return -1;
     }
@@ -2422,7 +2430,7 @@ int RtmpRetryingClientStream::SendAACMessage(const RtmpAACMessage& msg) {
 }
 
 int RtmpRetryingClientStream::SendVideoMessage(const RtmpVideoMessage& msg) {
-    base::intrusive_ptr<SubStream> ptr;
+    base::intrusive_ptr<RtmpStreamBase> ptr;
     if (AcquireStreamToSend(&ptr) != 0) {
         return -1;
     }
@@ -2430,16 +2438,15 @@ int RtmpRetryingClientStream::SendVideoMessage(const RtmpVideoMessage& msg) {
 }
 
 int RtmpRetryingClientStream::SendAVCMessage(const RtmpAVCMessage& msg) {
-    base::intrusive_ptr<SubStream> ptr;
+    base::intrusive_ptr<RtmpStreamBase> ptr;
     if (AcquireStreamToSend(&ptr) != 0) {
         return -1;
     }
     return ptr->SendAVCMessage(msg);
 }
 
-
 void RtmpRetryingClientStream::StopCurrentStream() {
-    base::intrusive_ptr<SubStream> sub_stream;
+    base::intrusive_ptr<RtmpStreamBase> sub_stream;
     {
         BAIDU_SCOPED_LOCK(_stream_mutex);
         sub_stream = _using_sub_stream;
@@ -2449,29 +2456,7 @@ void RtmpRetryingClientStream::StopCurrentStream() {
     }
 }
 
-void RtmpRetryingClientStream::SubStream::OnFirstMessage() {
-    _parent->OnPlayable();
-}
-
 void RtmpRetryingClientStream::OnPlayable() {}
-
-void RtmpRetryingClientStream::SubStream::OnMetaData(AMFObject* obj,
-                                                     const base::StringPiece& name) {
-    _parent->CallOnMetaData(obj, name);
-}
-void RtmpRetryingClientStream::SubStream::OnSharedObjectMessage(
-    RtmpSharedObjectMessage* msg) {
-    _parent->CallOnSharedObjectMessage(msg);
-}
-void RtmpRetryingClientStream::SubStream::OnAudioMessage(RtmpAudioMessage* msg) {
-    _parent->CallOnAudioMessage(msg);
-}
-void RtmpRetryingClientStream::SubStream::OnVideoMessage(RtmpVideoMessage* msg) {
-    _parent->CallOnVideoMessage(msg);
-}
-void RtmpRetryingClientStream::SubStream::OnStop() {
-    _parent->OnSubStreamStop(this);
-}
 
 base::EndPoint RtmpRetryingClientStream::remote_side() const {
     {
@@ -2508,6 +2493,10 @@ RtmpServerStream::RtmpServerStream()
 
 RtmpServerStream::~RtmpServerStream() {
     get_rtmp_bvars()->server_stream_count << -1;
+}
+
+void RtmpServerStream::Destroy() {
+    CHECK(false) << "You're not supposed to call Destroy() for server-side streams";
 }
 
 void RtmpServerStream::OnPlay(const RtmpPlayOptions& opt,
