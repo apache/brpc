@@ -23,7 +23,7 @@ MODIFIED_PATCHFILE="$(basename $PATCHFILE).brpc_os"
 
 cat $PATCHFILE | sed -e 's/src\/baidu\/rpc\//src\/brpc\//g' \
             -e 's/\<baidu\/rpc\//brpc\//g' \
-            -e 's/brpc\/test\/test_\(.*\)\.cpp/test\/brpc_\1_unittest.cpp/g' \
+            -e 's/src\/brpc\/test\/test_\(.*\)\.cpp/test\/brpc_\1_unittest.cpp/g' \
             -e 's/\<namespace \+baidu *{/namespace brpc {/g' \
             -e 's/\<namespace \+rpc *{//g' \
             -e 's/} *\/\/ \+namespace \+baidu/} \/\/ namespace brpc/g' \

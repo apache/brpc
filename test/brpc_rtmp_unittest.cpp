@@ -335,6 +335,83 @@ private:
     std::vector<base::intrusive_ptr<PublishStream> > _created_streams;
 };
 
+class RtmpSubStream : public brpc::RtmpClientStream {
+public:
+    explicit RtmpSubStream(brpc::RtmpMessageHandler* mh)
+        : _message_handler(mh) {}
+    // @RtmpStreamBase
+    void OnMetaData(brpc::AMFObject*, const base::StringPiece&);
+    void OnSharedObjectMessage(brpc::RtmpSharedObjectMessage* msg);
+    void OnAudioMessage(brpc::RtmpAudioMessage* msg);
+    void OnVideoMessage(brpc::RtmpVideoMessage* msg);
+    void OnFirstMessage();
+    void OnStop();
+private:
+    std::unique_ptr<brpc::RtmpMessageHandler> _message_handler;
+};
+
+void RtmpSubStream::OnFirstMessage() {
+    _message_handler->OnPlayable();
+}
+
+void RtmpSubStream::OnMetaData(brpc::AMFObject* obj, const base::StringPiece& name) {
+    _message_handler->OnMetaData(obj, name);
+}
+
+void RtmpSubStream::OnSharedObjectMessage(brpc::RtmpSharedObjectMessage* msg) {
+    _message_handler->OnSharedObjectMessage(msg);
+}
+
+void RtmpSubStream::OnAudioMessage(brpc::RtmpAudioMessage* msg) {
+    _message_handler->OnAudioMessage(msg);
+}
+
+void RtmpSubStream::OnVideoMessage(brpc::RtmpVideoMessage* msg) {
+    _message_handler->OnVideoMessage(msg);
+}
+
+void RtmpSubStream::OnStop() {
+    _message_handler->OnSubStreamStop(this);
+}
+
+
+class RtmpSubStreamCreator : public brpc::SubStreamCreator {
+public:
+    RtmpSubStreamCreator(brpc::RtmpClientSelector* client_selector);
+    RtmpSubStreamCreator(const brpc::RtmpClient* client);
+
+    ~RtmpSubStreamCreator();
+
+    // @SubStreamCreator
+    void NewSubStream(brpc::RtmpMessageHandler* message_handler,
+                      base::intrusive_ptr<brpc::RtmpStreamBase>* sub_stream);
+    void LaunchSubStream(brpc::RtmpStreamBase* sub_stream,
+                         brpc::RtmpRetryingClientStreamOptions* options);
+
+private:
+    const brpc::RtmpClient* _client;
+};
+
+RtmpSubStreamCreator::RtmpSubStreamCreator(const brpc::RtmpClient* client)
+    : _client(client) {}
+
+RtmpSubStreamCreator::~RtmpSubStreamCreator() {}
+ 
+void RtmpSubStreamCreator::NewSubStream(brpc::RtmpMessageHandler* message_handler,
+                                        base::intrusive_ptr<brpc::RtmpStreamBase>* sub_stream) {
+    if (sub_stream) { 
+        (*sub_stream).reset(new RtmpSubStream(message_handler));
+    }
+    return;
+}
+
+void RtmpSubStreamCreator::LaunchSubStream(
+    brpc::RtmpStreamBase* sub_stream, 
+    brpc::RtmpRetryingClientStreamOptions* options) {
+    brpc::RtmpClientStreamOptions client_options = *options;
+    dynamic_cast<RtmpSubStream*>(sub_stream)->Init(_client, client_options);
+}
+
 TEST(RtmpTest, parse_rtmp_url) {
     base::StringPiece host;
     base::StringPiece vhost;
@@ -662,7 +739,8 @@ TEST(RtmpTest, destroy_retrying_client_streams_before_init) {
         ASSERT_EQ(1, cstreams[i]->_called_on_stop);
         brpc::RtmpRetryingClientStreamOptions opt;
         opt.play_name = base::string_printf("play_name_%d", i);
-        cstreams[i]->Init(&rtmp_client, opt);
+        brpc::SubStreamCreator* sc = new RtmpSubStreamCreator(&rtmp_client);
+        cstreams[i]->Init(sc, opt);
         ASSERT_EQ(1, cstreams[i]->_called_on_stop);
     }
     LOG(INFO) << "Quiting program...";
@@ -721,7 +799,8 @@ TEST(RtmpTest, destroy_retrying_client_streams_during_creation) {
         cstreams[i].reset(new TestRtmpRetryingClientStream);
         brpc::RtmpRetryingClientStreamOptions opt;
         opt.play_name = base::string_printf("play_name_%d", i);
-        cstreams[i]->Init(&rtmp_client, opt);
+        brpc::SubStreamCreator* sc = new RtmpSubStreamCreator(&rtmp_client);
+        cstreams[i]->Init(sc, opt);
         ASSERT_EQ(0, cstreams[i]->_called_on_stop);
         usleep(500*1000);
         ASSERT_EQ(0, cstreams[i]->_called_on_stop);
@@ -754,7 +833,8 @@ TEST(RtmpTest, retrying_stream) {
         brpc::Controller cntl;
         brpc::RtmpRetryingClientStreamOptions opt;
         opt.play_name = base::string_printf("name_%d", i);
-        cstreams[i]->Init(&rtmp_client, opt);
+        brpc::SubStreamCreator* sc = new RtmpSubStreamCreator(&rtmp_client);
+        cstreams[i]->Init(sc, opt);
     }
     sleep(3);
     LOG(INFO) << "Stopping server";
