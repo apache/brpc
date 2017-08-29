@@ -319,7 +319,7 @@ TRACE: 09-06 10:40:42:   * 0 server.cpp:192] S[0]=0 S[1]=0 S[2]=0 [total=0]
 启动后每个Server每秒会打印上一秒收到的流量，目前都是0。然后我们在本地启动使用DynamicPartitionChannel的Client，初始化DynamicPartitionChannel的代码如下：
 
 ```c++
-...
+    ...
     baidu::rpc::DynamicPartitionChannel channel;
     baidu::rpc::PartitionChannelOptions options;
     options.succeed_without_server = true;          // 表示允许server_list在DynamicPartitionChannel.Init启动时为空，否则Init会失败。
@@ -328,18 +328,15 @@ TRACE: 09-06 10:40:42:   * 0 server.cpp:192] S[0]=0 S[1]=0 S[2]=0 [total=0]
         LOG(ERROR) << "Fail to init channel";
         return -1;
     }
-...
+    ...
 ```
 
 名字服务"file://server_list"的内容是：
-
 ```
 0.0.0.0:8004  0/3  # 表示3分库中的第一个分库，其他依次类推
 0.0.0.0:8004  1/3
 0.0.0.0:8004  2/3
 ```
-
-****
 
 3分库方案的3个库都在8004端口对应的server上。启动Client后Client发现了8004，并向其发送流量。
 
@@ -406,8 +403,6 @@ TRACE: 09-06 10:57:15:   * 0 server.cpp:192] S[0]=208453 S[1]=276803 S[2]=0 [tot
 
 在我们这儿的场景中，3分库和4分库的容量是一样的，都是1。所有的3库都在8004，所有的4库都在8005，所以这两个Server的流量比例就是分库数的比例。
 
- 
-
 我们可以让4分库方案加入更多机器。修改server_list加入8006:
 
 ```
@@ -449,7 +444,7 @@ TRACE: 09-06 11:11:54:   * 0 server.cpp:192] S[0]=135534 S[1]=180386 S[2]=180333
 我们尝试下掉3分库中的一个分库：
 
 ```
-0.0.0.0:8004  0/3
+ 0.0.0.0:8004  0/3
  0.0.0.0:8004  1/3
 #0.0.0.0:8004  2/3
  
