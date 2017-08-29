@@ -14,6 +14,7 @@ machine running the code.
 $ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib
 ```
 4. make
+
 ### run example
 ```
 $ cd example/echo_c++
@@ -21,8 +22,10 @@ $ make
 $ ./echo_server &
 $ ./echo_client
 ```
+
 ### run examples with cpu/heap profilers
 Install libgoogle-perftools-dev and re-run config_brpc.sh before compiling
+
 ### compile tests
 Install gmock and gtest, use the gtest embedded in gmock and don't install libgtest-dev
 ```
@@ -36,6 +39,7 @@ $ sudo mv gtest/include/gtest /usr/include/
 Rerun config_brpc.sh and run make in test/
 
 ## Baidu-internal
+
 ### compile
 1. download `third-64/gflags@gflags_2-0-0-100_PD_BL` `third-64/protobuf@protobuf_2-4-1-1100_PD_BL` `third-64/leveldb@leveldb_1-0-0-0_PD_BL`
 2. git clone this repo. cd into the repo and run
@@ -43,6 +47,7 @@ Rerun config_brpc.sh and run make in test/
 $ sh config_brpc.sh --headers=../../../third-64 --libs=../../../third-64
 ```
 3. make
+
 ### run examples with cpu/heap profilers
 download `third-64/tcmalloc@tcmalloc_1-7-0-200_PD_BL` and Rerun config_brpc.sh
 
