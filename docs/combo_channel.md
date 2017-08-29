@@ -127,7 +127,7 @@ Result的取值有：
 
 有时访问者需要了解访问sub channel时的细节，通过Controller.sub(i)可获得访问sub channel的controller.
 
-```
+```c++
 // Get the controllers for accessing sub channels in combo channels.
 // Ordinary channel:
 //   sub_count() is 0 and sub() is always NULL.
