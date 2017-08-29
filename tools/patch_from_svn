@@ -19,11 +19,23 @@ if [ -d "$1/.svn" ]; then
     cd $CURRENT_DIR
 fi
 
-MODIFIED_PATCHFILE="$(basename $PATCHFILE).brpc_os"
+MODIFIED_PATCHFILE="$(dirname $PATCHFILE)/brpc_os.$(basename $PATCHFILE)"
+
+# guess prefix of test files
+TEST_PREFIX="test_"
+TEST_SUFFIX=
+if fgrep -q " bthread/" $PATCHFILE; then
+    TEST_PREFIX="bthread_"
+    TEST_SUFFIX="_unittest"
+elif fgrep -q " bvar/" $PATCHFILE; then
+    TEST_PREFIX="bvar_"
+    TEST_SUFFIX="_unittest"
+fi
 
 cat $PATCHFILE | sed -e 's/src\/baidu\/rpc\//src\/brpc\//g' \
             -e 's/\<baidu\/rpc\//brpc\//g' \
-            -e 's/src\/brpc\/test\/test_\(.*\)\.cpp/test\/brpc_\1_unittest.cpp/g' \
+            -e 's/\<src\/brpc\/test\/test_\(.*\)\.cpp/test\/brpc_\1_unittest.cpp/g' \
+            -e "s/\<test\/test_\(.*\)\.cpp/test\/${TEST_PREFIX}\1${TEST_SUFFIX}.cpp/g" \
             -e 's/\<namespace \+baidu *{/namespace brpc {/g' \
             -e 's/\<namespace \+rpc *{//g' \
             -e 's/} *\/\/ \+namespace \+baidu/} \/\/ namespace brpc/g' \
@@ -34,10 +46,10 @@ cat $PATCHFILE | sed -e 's/src\/baidu\/rpc\//src\/brpc\//g' \
             -e 's/\<protocol\/\(.*\)\.proto/src\/\1.proto/g' \
             -e 's/TEST_F(HttpMessageTest/TEST(HttpMessageTest/g' \
             -e 's/TEST_F(URITest/TEST(URITest/g' \
-            -e 's/bthread_cond\.cpp/src\/bthread\/condition_variable.cpp/g' \
-            -e 's/bthread_\([^.]*\)\.cpp/src\/bthread\/\1.cpp/g' \
-            -e 's/bthread_\([^.]*\)\.h/src\/bthread\/\1.h/g' \
-            -e 's/bthread\.h/src\/bthread\/bthread.h/g' \
+            -e 's/ bthread_cond\.cpp/ src\/bthread\/condition_variable.cpp/g' \
+            -e 's/ bthread_\([^.]*\)\.cpp/ src\/bthread\/\1.cpp/g' \
+            -e 's/ bthread_\([^.]*\)\.h/ src\/bthread\/\1.h/g' \
+            -e 's/ bthread\.\(h\|cpp\)/ src\/bthread\/bthread.\1/g' \
             -e 's/<\(brpc\/[^>]*\)>/"\1"/g' \
             -e 's/<\(bvar\/[^>]*\)>/"\1"/g' \
             -e 's/<\(base\/[^>]*\)>/"\1"/g' \

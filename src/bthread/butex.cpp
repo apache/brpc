@@ -522,7 +522,8 @@ static void wait_for_butex(void* arg) {
     // // Value unmatched or waiter is already woken up by TimerThread, jump
     // // back to original bthread.
     // TaskGroup* g = tls_task_group;
-    // g->set_remained(TaskGroup::ready_to_run_in_worker, (void*)g->current_tid());
+    // ReadyToRunArgs args = { g->current_tid(), false };
+    // g->set_remained(TaskGroup::ready_to_run_in_worker, &args);
     // // 2: Don't run remained because we're already in a remained function
     // //    otherwise stack may overflow.
     // TaskGroup::sched_to(&g, bw->tid, false/*2*/);

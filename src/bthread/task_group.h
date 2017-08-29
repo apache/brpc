@@ -64,9 +64,8 @@ public:
     static void ending_sched(TaskGroup** pg);
 
     // Suspend caller and run bthread `next_tid' in TaskGroup *pg.
-    // Purpose of this function is to avoid pushing `next_tid' to local
-    // runqueue and then calling sched(pg), which has similar effect but
-    // slower.
+    // Purpose of this function is to avoid pushing `next_tid' to _rq and
+    // then being popped by sched(pg), which is not necessary.
     static void sched_to(TaskGroup** pg, TaskMeta* next_meta);
     static void sched_to(TaskGroup** pg, bthread_t next_tid);
     static void exchange(TaskGroup** pg, bthread_t next_tid);
@@ -74,7 +73,8 @@ public:
     // The callback will be run in the beginning of next-run bthread.
     // Can't be called by current bthread directly because it often needs
     // the target to be suspended already.
-    void set_remained(void (*cb)(void*), void* arg) {
+    typedef void (*RemainedFn)(void*);
+    void set_remained(RemainedFn cb, void* arg) {
         _last_context_remained = cb;
         _last_context_remained_arg = arg;
     }
@@ -88,8 +88,7 @@ public:
 
     // Suspend caller and run another bthread. When the caller will resume
     // is undefined.
-    // Returns 0 on success, -1 otherwise and errno is set.
-    static int yield(TaskGroup** pg);
+    static void yield(TaskGroup** pg);
 
     // Suspend caller until bthread `tid' terminates.
     static int join(bthread_t tid, void** return_value);
@@ -132,9 +131,7 @@ public:
     int64_t cumulated_cputime_ns() const { return _cumulated_cputime_ns; }
 
     // Push a bthread into the runqueue
-    void ready_to_run(bthread_t tid);
-    void ready_to_run(bthread_t tid, bool nosignal);
-    void ready_to_run_nosignal(bthread_t tid);
+    void ready_to_run(bthread_t tid, bool nosignal = false);
     // Flush tasks pushed to rq but signalled.
     void flush_nosignal_tasks();
 
@@ -182,8 +179,11 @@ friend class TaskControl;
     // Callbacks for set_remained()
     static void _release_last_context(void*);
     static void _add_sleep_event(void*);
+    struct ReadyToRunArgs {
+        bthread_t tid;
+        bool nosignal;
+    };
     static void ready_to_run_in_worker(void*);
-    static void ready_to_run_in_worker_nosignal(void*);
     static void ready_to_run_in_worker_ignoresignal(void*);
 
     // Wait for a task to run.
@@ -216,7 +216,7 @@ friend class TaskControl;
     int64_t _cumulated_cputime_ns;
 
     size_t _nswitch;
-    void (*_last_context_remained)(void*);
+    RemainedFn _last_context_remained;
     void* _last_context_remained_arg;
 
     ParkingLot* _pl;

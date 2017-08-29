@@ -45,8 +45,6 @@ TEST(FDTest, read_kernel_version) {
 
 volatile bool stop = false;
 
-const size_t NCLIENT = 30;
-
 struct SocketMeta {
     int fd;
     int epfd;
@@ -62,6 +60,7 @@ struct EpollMeta {
     int epfd;
 };
 
+const size_t NCLIENT = 30;
 void* process_thread(void* arg) {
     SocketMeta* m = (SocketMeta*)arg;
     size_t count;
@@ -148,9 +147,7 @@ void* client_thread(void* arg) {
         ssize_t rc;
         do {
             const int wait_rc = bthread_fd_wait(m->fd, EPOLLIN);
-            if (__builtin_expect(wait_rc != 0, 0)) {
-                EXPECT_EQ(0, wait_rc) << berror();
-            }
+            EXPECT_EQ(0, wait_rc) << berror();
             rc = read(m->fd, &m->count, sizeof(m->count));
         } while (rc < 0 && errno == EAGAIN);
 #else

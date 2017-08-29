@@ -274,7 +274,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
 
     if (!skip_remained) {
         while (g->_last_context_remained) {
-            void (*fn)(void*) = g->_last_context_remained;
+            RemainedFn fn = g->_last_context_remained;
             g->_last_context_remained = NULL;
             fn(g->_last_context_remained_arg);
             g = tls_task_group;
@@ -362,7 +362,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
 }
 
 void TaskGroup::_release_last_context(void* arg) {
-    TaskMeta* m = (TaskMeta*)arg;
+    TaskMeta* m = static_cast<TaskMeta*>(arg);
     if (m->stack_type() != STACK_TYPE_PTHREAD) {
         return_stack(m->release_stack()/*may be NULL*/);
     } else {
@@ -411,10 +411,17 @@ int TaskGroup::start_foreground(TaskGroup** pg,
         g->ready_to_run(m->tid, (using_attr.flags & BTHREAD_NOSIGNAL));
     } else {
         // NOSIGNAL affects current task, not the new task.
-        g->set_remained(((using_attr.flags & BTHREAD_NOSIGNAL)
-                         ? ready_to_run_in_worker_nosignal
-                         : ready_to_run_in_worker),
-                        (void*)g->current_tid());
+        RemainedFn fn = NULL;
+        if (g->current_task()->about_to_quit) {
+            fn = ready_to_run_in_worker_ignoresignal;
+        } else {
+            fn = ready_to_run_in_worker;
+        }
+        ReadyToRunArgs args = {
+            g->current_tid(),
+            (bool)(using_attr.flags & BTHREAD_NOSIGNAL)
+        };
+        g->set_remained(fn, &args);
         TaskGroup::sched_to(pg, m->tid);
     }
     return 0;
@@ -636,7 +643,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     }
 
     while (g->_last_context_remained) {
-        void (*fn)(void*) = g->_last_context_remained;
+        RemainedFn fn = g->_last_context_remained;
         g->_last_context_remained = NULL;
         fn(g->_last_context_remained_arg);
         g = tls_task_group;
@@ -661,24 +668,16 @@ void TaskGroup::destroy_self() {
     }
 }
 
-void TaskGroup::ready_to_run(bthread_t tid) {
-    push_rq(tid);
-    const int additional_signal = _num_nosignal;
-    _num_nosignal = 0;
-    _nsignaled += 1 + additional_signal;
-    _control->signal_task(1 + additional_signal);
-}
-
-void TaskGroup::ready_to_run_nosignal(bthread_t tid) {
-    push_rq(tid);
-    ++_num_nosignal;
-}
-
 void TaskGroup::ready_to_run(bthread_t tid, bool nosignal) {
+    push_rq(tid);
     if (nosignal) {
-        return ready_to_run_nosignal(tid);
+        ++_num_nosignal;
+    } else {
+        const int additional_signal = _num_nosignal;
+        _num_nosignal = 0;
+        _nsignaled += 1 + additional_signal;
+        _control->signal_task(1 + additional_signal);
     }
-    return ready_to_run(tid);
 }
 
 void TaskGroup::flush_nosignal_tasks() {
@@ -737,16 +736,14 @@ void TaskGroup::flush_nosignal_tasks_general() {
     return flush_nosignal_tasks_remote();
 }
 
-void TaskGroup::ready_to_run_in_worker(void* arg) {
-    return tls_task_group->ready_to_run((bthread_t)arg);
+void TaskGroup::ready_to_run_in_worker(void* args_in) {
+    ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
+    return tls_task_group->ready_to_run(args->tid, args->nosignal);
 }
 
-void TaskGroup::ready_to_run_in_worker_nosignal(void* arg) {
-    return tls_task_group->ready_to_run_nosignal((bthread_t)arg);
-}
-
-void TaskGroup::ready_to_run_in_worker_ignoresignal(void* arg) {
-    return tls_task_group->push_rq((bthread_t)arg);
+void TaskGroup::ready_to_run_in_worker_ignoresignal(void* args_in) {
+    ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
+    return tls_task_group->push_rq(args->tid);
 }
 
 struct SleepArgs {
@@ -775,7 +772,7 @@ void TaskGroup::_add_sleep_event(void* arg) {
         base::microseconds_from_now(e.timeout_us));
 
     if (!sleep_id) {
-        // TimerThread is stopping, schedule previous thread.
+        // fail to schedule timer, go back to previous thread.
         // TODO(gejun): Need error?
         g->ready_to_run(e.tid);
         return;
@@ -810,12 +807,8 @@ void TaskGroup::_add_sleep_event(void* arg) {
 // To be consistent with sys_usleep, set errno and return -1 on error.
 int TaskGroup::usleep(TaskGroup** pg, uint64_t timeout_us) {
     if (0 == timeout_us) {
-        int rc = yield(pg);
-        if (rc == 0) {
-            return 0;
-        }
-        errno = rc;
-        return -1;
+        yield(pg);
+        return 0;
     }
     TaskGroup* g = *pg;
     // We have to schedule timer after we switched to next bthread otherwise
@@ -856,12 +849,11 @@ int TaskGroup::stop_usleep(bthread_t tid) {
     return 0;
 }
 
-int TaskGroup::yield(TaskGroup** pg) {
+void TaskGroup::yield(TaskGroup** pg) {
     TaskGroup* g = *pg;
-    g->set_remained(ready_to_run_in_worker_ignoresignal,
-                    (void*)g->current_tid());
+    ReadyToRunArgs args = { g->current_tid(), true };
+    g->set_remained(ready_to_run_in_worker_ignoresignal, &args);
     sched(pg);
-    return 0;
 }
 
 void print_task(std::ostream& os, bthread_t tid) {

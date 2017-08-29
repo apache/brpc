@@ -184,7 +184,7 @@ bthread_t bthread_self(void) __THROW {
     if (g != NULL && !g->is_current_main_task()/*note*/) {
         return g->current_tid();
     }
-    return 0;
+    return INVALID_BTHREAD;
 }
 
 int bthread_equal(bthread_t t1, bthread_t t2) __THROW {
@@ -314,7 +314,8 @@ int bthread_usleep(uint64_t microseconds) __THROW {
 int bthread_yield(void) __THROW {
     bthread::TaskGroup* g = bthread::tls_task_group;
     if (NULL != g && !g->is_current_pthread_task()) {
-        return bthread::TaskGroup::yield(&g);
+        bthread::TaskGroup::yield(&g);
+        return 0;
     }
     return pthread_yield();
 }

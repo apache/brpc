@@ -36,10 +36,11 @@ inline void TaskGroup::exchange(TaskGroup** pg, bthread_t next_tid) {
     if (g->is_current_pthread_task()) {
         return g->ready_to_run(next_tid);
     }
+    ReadyToRunArgs args = { g->current_tid(), false };
     g->set_remained((g->current_task()->about_to_quit
                      ? ready_to_run_in_worker_ignoresignal
                      : ready_to_run_in_worker),
-                    (void*)g->current_tid());
+                    &args);
     TaskGroup::sched_to(pg, next_tid);
 }
 
@@ -73,6 +74,10 @@ inline void TaskGroup::push_rq(bthread_t tid) {
         //   baidu-rpc)
         flush_nosignal_tasks();
         LOG_EVERY_SECOND(ERROR) << "_rq is full, capacity=" << _rq.capacity();
+        // TODO(gejun): May cause deadlock when all workers are spinning here.
+        // A better solution is to pop and run existing bthreads, however which
+        // make set_remained()-callbacks do context switches and need extensive
+        // reviews on related code.
         ::usleep(1000);
     }
 }

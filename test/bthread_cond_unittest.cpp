@@ -424,24 +424,46 @@ void* wait_cond_thread(void* arg) {
     return NULL;
 }
 
-TEST(CondTest, too_many_bthreads) {
-    std::vector<bthread_t> th;
-    th.resize(32768);
+static void launch_many_bthreads() {
+    g_stop = false;
+    bthread_t tid;
     BthreadCond c;
     c.Init();
-    bthread_t tid;
+    base::Timer tm;
     bthread_start_urgent(&tid, &BTHREAD_ATTR_PTHREAD, wait_cond_thread, &c);
-    for (size_t i = 0; i < th.size(); ++i) {
-        bthread_start_background(&th[i], NULL, usleep_thread, NULL);
+    std::vector<bthread_t> tids;
+    tids.reserve(32768);
+    tm.start();
+    for (size_t i = 0; i < 32768; ++i) {
+        bthread_t t0;
+        ASSERT_EQ(0, bthread_start_background(&t0, NULL, usleep_thread, NULL));
+        tids.push_back(t0);
     }
-    c.Signal();
+    tm.stop();
+    LOG(INFO) << "Creating bthreads took " << tm.u_elapsed() << " us";
     usleep(3 * 1000 * 1000L);
+    c.Signal();
     g_stop = true;
     bthread_join(tid, NULL);
-    ASSERT_TRUE(started_wait);
-    ASSERT_TRUE(ended_wait);
-    for (size_t i = 0; i < th.size(); ++i) {
-        bthread_join(th[i], NULL);
+    for (size_t i = 0; i < tids.size(); ++i) {
+        LOG_EVERY_SECOND(INFO) << "Joined " << i << " threads";
+        bthread_join(tids[i], NULL);
     }
+    LOG_EVERY_SECOND(INFO) << "Joined " << tids.size() << " threads";
+}
+
+TEST(CondTest, too_many_bthreads_from_pthread) {
+    launch_many_bthreads();
+}
+
+static void* run_launch_many_bthreads(void*) {
+    launch_many_bthreads();
+    return NULL;
+}
+
+TEST(CondTest, too_many_bthreads_from_bthread) {
+    bthread_t th;
+    ASSERT_EQ(0, bthread_start_urgent(&th, NULL, run_launch_many_bthreads, NULL));
+    bthread_join(th, NULL);
 }
 } // namespace
