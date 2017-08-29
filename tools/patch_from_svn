@@ -19,7 +19,7 @@ if [ -d "$1/.svn" ]; then
     cd $CURRENT_DIR
 fi
 
-MODIFIED_PATCHFILE="$(dirname $PATCHFILE)/brpc_os.$(basename $PATCHFILE)"
+MODIFIED_PATCHFILE=$(basename $(basename $PATCHFILE .patch) .diff).brpc_os.patch
 
 # guess prefix of test files
 TEST_PREFIX="test_"
