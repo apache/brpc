@@ -1,22 +1,30 @@
+---
+title: Bthread Introduction
+last_updated: July 16, 2016
+sidebar: brpc_sidebar
+permalink: bthread_introduction.html
+folder: docs
+---
+
 bthread([代码](https://svn.baidu.com/public/trunk/bthread))是baidu-rpc使用的M:N线程库，目的是在提高程序的并发度的同时，降低编码难度，并在核数日益增多的CPU上提供更好的scalability,
 cache
 locality。”M:N“是指M个bthread会映射至N个pthread，一般M远大于N。由于linux当下的pthread实现([NPTL](http://en.wikipedia.org/wiki/Native_POSIX_Thread_Library))是1:1的，M个bthread也相当于映射至N个[LWP](http://en.wikipedia.org/wiki/Light-weight_process)。bthread的前身是[DP](http://wiki.babel.baidu.com/twiki/bin/view/Com/Ecom/DistributedProcess)中的[fiber](https://svn.baidu.com/app/ecom/nova/trunk/public/streamfold/fiber/)，一个N:1的合作式线程库，等价于event
 loop库，但写的是同步代码。
 
-# Goals
+## Goals
 
 - 用户可以延续同步的编程模式，能很快地建立bthread，可以用多种原语同步。
 - bthread所有接口可以在pthread中被调用并有合理的行为，使用bthread的代码可以在pthread中正常执行。
 - 能充分利用多核。
 - 更好的cache locality，更低的延时。
 
-# NonGoals
+## NonGoals
 
 - 提供pthread的兼容接口，只需链接即可使用。拒绝理由：bthread没有优先级，不适用于所有的场景，链接的方式容易使用户在不知情的情况下误用bthread，造成bug。
 - 修改内核让pthread支持同核快速切换。拒绝理由：拥有大量pthread后，每个线程对资源的需求被稀释了，基于thread-local
   cache的代码效果都会很差，比如tcmalloc。而独立的bthread不会有这个问题，因为它最终还是被映射到了少量的pthread。
 
-# FAQ
+## FAQ
 
 ##### Q：bthread是协程(coroutine)吗？
 
@@ -63,7 +71,7 @@ worker，当有8个bthread都调用了系统usleep()后，处理网络收发的R
 那有没有完全规避的方法呢?
 
 - 一个容易想到的方法是动态增加worker数. 但实际可能很糟糕, 当大量的worker同时被阻塞时,
-  它们很可能在等待同一个资源(比如同一把锁), 增加worker可能只是增加了更多的等待者. 
+  它们很可能在等待同一个资源(比如同一把锁), 增加worker可能只是增加了更多的等待者.
 - 大部分RPC框架采取的方法是区分io线程和worker线程, io线程专门处理收发, worker线程调用用户逻辑,
   即使worker线程全部阻塞也不会影响io线程. 但这个方法使得每个请求都要从io线程跳转至worker线程,
 增加了一次上下文切换, 在机器繁忙时, 切换都有一定概率无法被及时调度, 会导致更多的延时长尾.
@@ -80,7 +88,7 @@ worker，当有8个bthread都调用了系统usleep()后，处理网络收发的R
 但这个机制更多是为了规避在一些极端情况下的死锁, 比如所有的用户代码都lock在一个pthread mutex上,
 并且这个mutex需要在某个RPC回调中unlock, 如果所有的worker都被阻塞, 那么就没有线程来处理RPC回调了,
 整个程序就死锁了. 虽然绝大部分的RPC实现都有这个潜在问题, 但实际出现频率似乎很低,
-只要养成不在锁内做RPC的好习惯, 这是完全可以规避的. 
+只要养成不在锁内做RPC的好习惯, 这是完全可以规避的.
 
 ##### Q：bthread会有[Channel](https://gobyexample.com/channels)吗？
 

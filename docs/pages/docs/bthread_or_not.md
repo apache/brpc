@@ -1,8 +1,16 @@
+---
+title: Bthread or not
+last_updated: July 16, 2016
+sidebar: brpc_sidebar
+permalink: bthread_or_not.html
+folder: mydoc
+---
+
 baidu-rpc提供了[异步接口](http://wiki.baidu.com/pages/viewpage.action?pageId=213828685#id-创建和访问Client-异步访问)，所以一个常见的问题是：我应该用异步接口还是bthread？
 
 短回答：延时不高时你应该先用简单易懂的同步接口，不行的话用异步接口，只有在需要多核并行计算时才用bthread。
 
-# 同步或异步
+## 同步或异步
 
 异步即用回调代替阻塞，有阻塞的地方就有回调。虽然在javascript这种语言中回调工作的很好，接受度也非常高，但只要你用过，就会发现这和我们需要的回调是两码事，这个区别不是[lambda](https://en.wikipedia.org/wiki/Anonymous_function)，也不是[future](https://en.wikipedia.org/wiki/Futures_and_promises)，而是javascript是单线程的。javascript的回调放到多线程下可能没有一个能跑过，race
 condition太多了，单线程的同步方法和多线程的同步方法是两个世界。那是不是服务能搞成类似的形式呢？多个线程，每个都是独立的eventloop。可以，ub**a**server就是（注意带a)，但实际效果糟糕，因为阻塞改回调可不简单，当阻塞发生在循环，条件分支，深层子函数中时，改造特别困难，况且很多老代码、第三方代码你根本不可能去改造。结果是代码中会出现不可避免的阻塞，导致那个线程中其他回调都被延迟，流量超时，server性能不符合预期。如果你说，”我想把现在的同步代码改造为大量的回调，除了我其他人都看不太懂，并且性能可能更差了”，我猜大部分人不会同意。别被那些鼓吹异步的人迷惑了，他们写的是从头到尾从下到上全异步且不考虑多线程的代码，和你要写的完全是两码事。
@@ -22,7 +30,7 @@ baidu-rpc中的异步和单线程的异步是完全不同的，异步回调会�
 
 这个公式计算的是同时进行的平均请求数（你可以尝试证明一下），和线程数，cpu核数是可比的。当这个值远大于cpu核数时，说明大部分操作并不耗费cpu，而是让大量线程阻塞着，使用异步可以明显节省线程资源（栈占用的内存）。当这个值小于或和cpu核数差不多时，异步能节省的线程资源就很有限了，这时候简单易懂的同步代码更重要。
 
-# 异步或bthread
+## 异步或bthread
 
 有了bthread这个工具，用户甚至可以自己实现异步。以“半同步”为例，在baidu-rpc中用户有多种选择：
 

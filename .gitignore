@@ -13,3 +13,10 @@
 /test/output
 #ignore hidden files
 .*
+*.swp
+
+docs/_site/
+docs/.sass-cache/
+docs/.jekyll-metadata
+docs/_pdf
+docs/.DS_Store

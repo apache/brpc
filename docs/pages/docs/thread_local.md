@@ -1,6 +1,14 @@
+---
+title: Thread-local
+last_updated: July 16, 2016
+sidebar: brpc_sidebar
+permalink: thread_local.html
+folder: mydoc
+---
+
 本页说明bthread下使用pthread-local可能会导致的问题。bthread-local的使用方法见[这里](http://wiki.baidu.com/pages/viewpage.action?pageId=213828715#id-创建和设置Server-bthread-local)。
 
-# thread-local问题
+## thread-local问题
 
 调用阻塞的bthread函数后，所在的pthread很可能改变，这使[pthread_getspecific](http://linux.die.net/man/3/pthread_getspecific)，[gcc
 __thread](https://gcc.gnu.org/onlinedocs/gcc-4.2.4/gcc/Thread_002dLocal.html)和c++11
@@ -20,7 +28,7 @@ bthread_usleep之后，该bthread很可能身处不同的pthread，这时p指向
 - 不使用线程级变量传递业务数据。这是一种槽糕的设计模式，依赖线程级数据的函数也难以单测。判断是否滥用：如果不使用线程级变量，业务逻辑是否还能正常运行？线程级变量应只用作优化手段，使用过程中不应直接或间接调用任何可能阻塞的bthread函数。比如使用线程级变量的tcmalloc就不会和bthread有任何冲突。
 - 如果一定要（在业务中）使用线程级变量，使用bthread_key_create和bthread_getspecific。
 
-# gcc4下的errno问题
+## gcc4下的errno问题
 
 gcc4会优化[标记为__attribute__((__const__))](https://gcc.gnu.org/onlinedocs/gcc/Function-Attributes.html#index-g_t_0040code_007bconst_007d-function-attribute-2958)的函数，这个标记大致指只要参数不变，输出就不会变。所以当一个函数中以相同参数出现多次时，gcc4会合并为一次。比如在我们的系统中errno是内容为*__errno_location()的宏，这个函数的签名是：
 
@@ -36,7 +44,7 @@ extern int *__errno_location (void) __THROW __attribute__ ((__const__));
 ```
 Use errno ...   (original pthread)
 bthread functions that may switch to another pthread.
-Use errno ...   (another pthread) 
+Use errno ...   (another pthread)
 ```
 
 我们期望看到的行为：
@@ -64,3 +72,4 @@ Use *p ...                   -  still the errno of original pthread, undefined b
 3.4，即使没有定义-D\_\_const\_\_=，程序的正确性也不会受影响，但为了防止未来可能的问题，我们强烈建议加上。
 
 需要说明的是，和errno类似，pthread_self也有类似的问题，不过一般pthread_self除了打日志没有其他用途，影响面较小，在-D\_\_const\_\_=后pthread_self也会正常。
+
