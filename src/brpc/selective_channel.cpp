@@ -324,7 +324,7 @@ void SubDone::Run() {
     if (rc != 0) {
         // _cid must be valid because schan does not dtor before cancelling
         // all sub calls.
-        LOG(FATAL) << "Fail to lock correlation_id="
+        LOG(ERROR) << "Fail to lock correlation_id="
                    << _cid.value << ": " << berror(rc);
         return;
     }

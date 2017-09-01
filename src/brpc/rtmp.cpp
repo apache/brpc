@@ -1333,7 +1333,7 @@ int RtmpStreamBase::SendAACMessage(const RtmpAACMessage& msg) {
     return _rtmpsock->Write(msg2);
 }
 
-int RtmpStreamBase::SendUserMessage(void* msg) { 
+int RtmpStreamBase::SendUserMessage(void*) {
     CHECK(false) << "You should implement your own SendUserMessage";
     return 0; 
 }
@@ -1429,7 +1429,7 @@ void RtmpStreamBase::SignalError() {
 
 void RtmpStreamBase::OnFirstMessage() {}
 
-void RtmpStreamBase::OnUserData(void* data) {
+void RtmpStreamBase::OnUserData(void*) {
     LOG(INFO) << remote_side() << '[' << stream_id()
               << "] ignored UserData{}";
 }

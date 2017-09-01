@@ -489,7 +489,8 @@ private:
     
     // Append server information to `_error_text'
     void AppendServerIdentiy();
-    
+
+    // Used by ParallelChannel
     static const int8_t CALLMETHOD_CANNOT_RUN_DONE = 0;
     static const int8_t CALLMETHOD_CAN_RUN_DONE = 1;
     static const int8_t CALLMETHOD_DID_RUN_DONE = 2;

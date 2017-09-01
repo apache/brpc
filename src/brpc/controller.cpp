@@ -581,7 +581,7 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
     
 END_OF_RPC:
     if (new_bthread) {
-        // [Essential for -usercode_in_pthread=true, nice to have otherwise]
+        // [ Essential for -usercode_in_pthread=true ]
         // When -usercode_in_pthread is on, the reserved threads (set by
         // -usercode_backup_threads) may all block on bthread_id_lock in
         // ProcessXXXResponse(), until the id is unlocked or destroyed which
@@ -591,8 +591,24 @@ END_OF_RPC:
         // Make the id unlockable before creating the bthread fixes the issue.
         // When -usercode_in_pthread is false, this also removes some useless
         // waiting of the bthreads processing responses.
-        bthread_id_about_to_destroy(info.id);
 
+        // Note[_done]: callid is destroyed after _done which possibly takes
+        // a lot of time, stop useless locking
+
+        // Note[cid]: When the callid needs to be destroyed in done->Run(),
+        // it does not mean that it will be destroyed directly in done->Run(),
+        // conversely the callid may still be locked/unlocked for many times
+        // before destroying. E.g. in slective channel, the callid is referenced
+        // by multiple sub-done and only destroyed by the last one. Calling
+        // bthread_id_about_to_destroy right here which makes the id unlockable
+        // anymore, is wrong. On the other hand, the combo channles setting
+        // FLAGS_DESTROY_CID_IN_DONE to true must be aware of
+        // -usercode_in_pthread and avoid deadlock by their own (TBR)
+
+        if ((FLAGS_usercode_in_pthread || _done != NULL/*Note[_done]*/) &&
+            !has_flag(FLAGS_DESTROY_CID_IN_DONE)/*Note[cid]*/) {
+            bthread_id_about_to_destroy(info.id);
+        }
         // No need to join this bthread since RPC caller won't wake up
         // (or user's done won't be called) until this bthread finishes
         bthread_t bt;
@@ -605,9 +621,8 @@ END_OF_RPC:
         LOG(FATAL) << "Fail to start bthread";
         EndRPC(info);
     } else {
-        if (_done != NULL) {
-            // [Optional] _done possibly takes a lot of time, stop
-            // useless locking.
+        if (_done != NULL/*Note[_done]*/ &&
+            !has_flag(FLAGS_DESTROY_CID_IN_DONE)/*Note[cid]*/) {
             bthread_id_about_to_destroy(info.id);
         }
         EndRPC(info);
@@ -809,14 +824,14 @@ void Controller::EndRPC(const CompletionInfo& info) {
             // Join is not signalled when the done does not Run() and the done
             // can't Run() because all backup threads are blocked by Join().
             
-            // Call OnRPCEnd for async RPC. The one for sync RPC is called in
-            // Channel::CallMethod to count in latency of the context-switch.
             OnRPCEnd(base::gettimeofday_us());
             const bool destroy_cid_in_done = has_flag(FLAGS_DESTROY_CID_IN_DONE);
             _done->Run();
             // NOTE: Don't touch this Controller anymore, because it's likely to be
             // deleted by done.
             if (!destroy_cid_in_done) {
+                // Make this thread not scheduling itself when launching new
+                // bthreads, saving signalings.
                 // FIXME: We're assuming the calling thread is about to quit.
                 bthread_about_to_quit();
                 CHECK_EQ(0, bthread_id_unlock_and_destroy(saved_cid));
@@ -825,8 +840,10 @@ void Controller::EndRPC(const CompletionInfo& info) {
             RunUserCode(RunDoneInBackupThread, this);
         }
     } else {
-        // OnRPCEnd() of sync RPC is called in the caller's thread.
-        // FIXME: We're assuming the calling thread is about to quit.
+        // OnRPCEnd for sync RPC is called in Channel::CallMethod to count in
+        // latency of the context-switch.
+
+        // Check comments in above branch on bthread_about_to_quit.
         bthread_about_to_quit();
         add_flag(FLAGS_DESTROYED_CID);
         CHECK_EQ(0, bthread_id_unlock_and_destroy(saved_cid));
@@ -837,14 +854,13 @@ void Controller::RunDoneInBackupThread(void* arg) {
 }
 
 void Controller::DoneInBackupThread() {
-    // Call OnRPCEnd for async RPC. The one for sync RPC is called in
-    // Channel::CallMethod to count in latency of the context-switch.
+    // OnRPCEnd for sync RPC is called in Channel::CallMethod to count in
+    // latency of the context-switch.
     OnRPCEnd(base::gettimeofday_us());
     const CallId saved_cid = _correlation_id;
     const bool destroy_cid_in_done = has_flag(FLAGS_DESTROY_CID_IN_DONE);
     _done->Run();
-    // NOTE: Don't touch this Controller anymore, because it's likely to be
-    // deleted by done.
+    // NOTE: Don't touch fields of controller anymore, it may be deleted.
     if (!destroy_cid_in_done) {
         CHECK_EQ(0, bthread_id_unlock_and_destroy(saved_cid));
     }
@@ -862,12 +878,11 @@ void Controller::SubmitSpan() {
 
 void Controller::HandleSendFailed() {
     // NOTE: Must launch new thread to run the callback in an asynchronous
-    // call. Users are likely to hold a lock before async CallMethod returns
-    // and grab the same lock inside the callback. If we call the callback
-    // on top of the same stack of CallMethod, we're deadlocked.
-    // Sync call is opposite: We cannot run the callback with new thread
-    // in a sync call otherwise we can't leave CallMethod before the
-    // callback is done.
+    // call. Users may hold a lock before asynchronus CallMethod returns and
+    // grab the same lock inside done->Run(). If we call done->Run() in the
+    // same stack of CallMethod, we're deadlocked.
+    // We don't need to run the callback with new thread in a sync call since
+    // the created thread needs to be joined anyway before CallMethod ends.
     if (!FailedInline()) {
         SetFailed("Must be SetFailed() before calling HandleSendFailed()");
         LOG(FATAL) << ErrorText();

@@ -3463,8 +3463,8 @@ void OnServerStreamCreated::Run(bool error,
     Controller* cntl = NULL;
     const int rc = bthread_id_lock(cid, (void**)&cntl);
     if (rc != 0) {
-        LOG_IF(FATAL, rc != EINVAL) << "Fail to lock correlation_id="
-                                    << cid.value << ": " << berror(rc);
+        LOG_IF(ERROR, rc != EINVAL && rc != EPERM)
+            << "Fail to lock correlation_id=" << cid << ": " << berror(rc);
         return;
     }
     

@@ -127,8 +127,7 @@ public:
         for (int i = 0; i < ndone; ++i) {
             new (d->sub_done(i)) SubDone;
             d->sub_done(i)->cntl.ApplyClientSettings(settings);
-            d->sub_done(i)->cntl._run_done_state =
-                    Controller::CALLMETHOD_CAN_RUN_DONE;
+            d->sub_done(i)->cntl._run_done_state = Controller::CALLMETHOD_CAN_RUN_DONE;
         }
         // Setup the map for finding sub_done of i-th sub_channel
         if (ndone != nchan) {
@@ -271,7 +270,7 @@ public:
         // [ Rendezvous point ]
         // One and only one thread arrives here.
         // all call_id of sub calls are destroyed and call_id of _cntl is
-        // still locked (because of _destroy_cid_in_done = true);
+        // still locked (because FLAGS_DESTROY_CID_IN_DONE is true);
 
         // Merge responses of successful calls if fail_limit is not reached.
         // nfailed may be increased during the merging.

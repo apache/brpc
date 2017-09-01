@@ -505,7 +505,7 @@ int Socket::ResetFileDescriptor(int fd) {
 
     // Make the fd non-blocking.
     if (base::make_non_blocking(fd) != 0) {
-        PLOG(FATAL) << "Fail to set fd=" << fd << " to non-blocking";
+        PLOG(ERROR) << "Fail to set fd=" << fd << " to non-blocking";
         return -1;
     }
     // turn off nagling.

@@ -21,7 +21,7 @@ DEFINE_int32(attachment_size, 0, "Carry so many byte attachment along with reque
 DEFINE_int32(request_size, 16, "Bytes of each request");
 DEFINE_string(connection_type, "", "Connection type. Available values: single, pooled, short");
 DEFINE_string(protocol, "baidu_std", "Protocol type. Defined in protocol/brpc/options.proto");
-DEFINE_string(starting_server, "0.0.0.0:8014", "IP Address of the first server, port of i-th server is `first-port + i'");
+DEFINE_string(starting_server, "0.0.0.0:8114", "IP Address of the first server, port of i-th server is `first-port + i'");
 DEFINE_string(load_balancer, "rr", "Name of load balancer");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(backup_ms, -1, "backup timeout in milliseconds");
