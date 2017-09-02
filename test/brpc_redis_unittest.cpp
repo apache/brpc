@@ -1,5 +1,4 @@
-// Copyright (c) 2015 Baidu.com, Inc. All Rights Reserved
-// Author: The baidu-rpc authors (pbrpc@baidu.com)
+// Copyright (c) 2014 baidu-rpc authors
 // Date: Thu Jun 11 14:30:07 CST 2015
 
 #include <iostream>

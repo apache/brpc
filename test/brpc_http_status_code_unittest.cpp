@@ -1,8 +1,7 @@
 // Baidu RPC - A framework to host and access services throughout Baidu.
-// Copyright (c) 2014 Baidu.com, Inc. All Rights Reserved
+// Copyright (c) 2014 baidu-rpc authors
 
 // File: test_http_status_code.cpp
-// Author: The baidu-rpc authors (pbrpc@baidu.com)
 // Date: 2014/11/04 18:33:39
 
 #include <gtest/gtest.h>

@@ -1,6 +1,5 @@
-// Copyright (c) 2014 Baidu.com, Inc. All Rights Reserved
+// Copyright (c) 2014 baidu-rpc authors
 // File test_http_parser.cpp
-// Author: The baidu-rpc authors (pbrpc@baidu.com)
 // Date 2014/10/22 09:58:14
 
 #include <gtest/gtest.h>

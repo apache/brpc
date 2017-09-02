@@ -1,24 +1,9 @@
-CC=gcc
-CXX=g++
-CPPFLAGS=-std=c++0x -g -DNDEBUG -O2 -pipe -W -Wall -Werror -fPIC -Wno-deprecated -Wno-unused-parameter -D__const__=
-CXXFLAGS=$(CPPFLAGS)
-CFLAGS=$(CPPFLAGS)
-GFLAGS_PATH=../../../../../third-64/gflags
-LEVELDB_PATH=../../../../../third-64/leveldb
-PROTOBUF_PATH=../../../../../third-64/protobuf
-BRPC_PATH=../../output
-INCPATH=-I$(BRPC_PATH)/include -I$(GFLAGS_PATH)/include -I$(LEVELDB_PATH)/include -I$(PROTOBUF_PATH)/include
-PROTOC=$(PROTOBUF_PATH)/bin/protoc
-LIBS=$(BRPC_PATH)/lib/libbase.a \
-  $(BRPC_PATH)/lib/libbrpc.a \
-  $(BRPC_PATH)/lib/libbthread.a \
-  $(BRPC_PATH)/lib/libbvar.a \
-  $(BRPC_PATH)/lib/libjson2pb.a \
-  $(BRPC_PATH)/lib/libmcpack2pb.a \
-  $(GFLAGS_PATH)/lib/libgflags.a \
-  $(LEVELDB_PATH)/lib/libleveldb.a \
-  $(PROTOBUF_PATH)/lib/libprotobuf.a \
-  -lpthread -lrt -lssl -lcrypto -ldl -lz
+BRPC_PATH = ../../
+include $(BRPC_PATH)/config.mk
+CXXFLAGS = -std=c++0x -g -DNDEBUG -O2 -D__const__= -pipe -W -Wall -Werror -fPIC -fno-omit-frame-pointer -Wno-unused-parameter
+HDRPATHS = -I$(BRPC_PATH)/output/include $(addprefix -I, $(HDRS))
+LIBPATHS = -L$(BRPC_PATH)/output/lib $(addprefix -L, $(LIBS))
+STATIC_LINKINGS += -lbrpc
 
 SOURCES = $(wildcard *.cpp)
 OBJS = $(addsuffix .o, $(basename $(SOURCES))) 
@@ -33,12 +18,12 @@ clean:
 
 rpc_press:$(OBJS)
 	@echo "Linking $@"
-	@$(CXX) -Xlinker "-(" $^ $(LIBS) -Xlinker "-)" -o $@
+	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
 
 %.o:%.cpp
 	@echo "Compiling $@"
-	@$(CXX) -c $(INCPATH) $(CXXFLAGS) $< -o $@
+	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.o:%.cc
 	@echo "Compiling $@"
-	@$(CXX) -c $(INCPATH) $(CXXFLAGS) $< -o $@
+	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@

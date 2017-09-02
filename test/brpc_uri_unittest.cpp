@@ -1,6 +1,5 @@
-// Copyright (c) 2014 Baidu.com, Inc. All Rights Reserved
+// Copyright (c) 2014 baidu-rpc authors
 // File test_uri.cpp
-// Author: The baidu-rpc authors (pbrpc@baidu.com)
 // Date 2014/10/27 14:19:35
 
 #include <gtest/gtest.h>

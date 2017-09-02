@@ -1,6 +1,4 @@
-// Copyright (c) 2014 Baidu.com, Inc. All Rights Reserved
-// File test_baidu_naming_service.cpp
-// Author: The baidu-rpc authors (pbrpc@baidu.com)
+// Copyright (c) 2014 baidu-rpc authors
 // Date 2014/10/20 13:50:10
 
 #include <stdio.h>
