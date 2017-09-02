@@ -1,8 +1,16 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
-// Copyright (c) 2017 Baidu.com, Inc. All Rights Reserved
-
-// Author: The baidu-rpc authors (pbrpc@baidu.com)
-// Date: 2017/04/19 14:48:53
+// Copyright (c) 2017 baidu-rpc authors.
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+//     http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef  BRPC_HPACK_H
 #define  BRPC_HPACK_H
@@ -60,7 +68,6 @@ class IndexTable;
 
 // HPACK - Header compression algorithm for http2 (rfc7541)
 // http://httpwg.org/specs/rfc7541.html
-// 
 // Note: Name of header is assumed to be in *lowercase* acoording to
 // https://tools.ietf.org/html/rfc7540#section-8.1.2
 //      Just as in HTTP/1.x, header field names are strings of ASCII
@@ -68,10 +75,8 @@ class IndexTable;
 //      header field names *MUST* be converted to lowercase prior to their
 //      encoding in HTTP/2.  A request or response containing uppercase
 //      header field names MUST be treated as malformed 
-//
 // Not supported methods:
 //  - Resize dynamic table.
-//
 class HPacker {
 public:
     struct Header {

@@ -1,14 +1,3 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
-// Copyright (c) 2016 Baidu.com, Inc. All Rights Reserved
-//
-// Author: The baidu-rpc authors (pbrpc@baidu.com)
-// Date: Tue Feb 16 18:35:41 CST 2016
-
-#ifndef BRPC_CALLBACK_H
-#define BRPC_CALLBACK_H
-
-#include <google/protobuf/stubs/common.h>  // Closure
-
 // The code in this file is modified from google/protobuf/stubs/common.h
 // in protobuf-2.4, mainly for creating closures. We need to separate
 // the code because protobuf 3.0 moves NewCallback into internal namespace.
@@ -16,6 +5,11 @@
 // probably widely used throughout baidu. When user's callback creation 
 // code breaks in protobuf 3.0, they can simply replace
 // google::protobuf::NewCallback with brpc::NewCallback.
+
+#ifndef BRPC_CALLBACK_H
+#define BRPC_CALLBACK_H
+
+#include <google/protobuf/stubs/common.h>  // Closure
 
 namespace brpc {
 

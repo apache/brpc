@@ -1,8 +1,16 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
-// Copyright (c) 2014 Baidu.com, Inc. All Rights Reserved
-//
-// Author: The baidu-rpc authors (pbrpc@baidu.com)
-// Date: Tue Dec  2 10:37:45 2014
+// Copyright (c) 2014 baidu-rpc authors.
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+//     http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Since kDefaultTotalBytesLimit is private, we need some hacks to get the limit.
 // Works for pb 2.4, 2.6, 3.0

@@ -1,8 +1,16 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
-// Copyright (c) 2014 Baidu.com, Inc. All Rights Reserved
-
-// Author: The baidu-rpc authors (pbrpc@baidu.com)
-// Date: Sun Sep  7 17:24:45 CST 2014
+// Copyright (c) 2014 baidu-rpc authors.
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+//     http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <sys/epoll.h>                           // EPOLLIN
 #include <openssl/ssl.h>
@@ -1024,7 +1032,6 @@ void* Socket::ProcessEvent(void* arg) {
 // If no:
 //    old_head is fully written, set _write_head to NULL and return true;
 //    old_head is not written yet, keep _write_head unchanged and return false;
-//
 // `old_head' is last new_head got from this function or (in another word)
 // tail of current writing list.
 // `singular_node' is true iff `old_head' is the only node in its list.
