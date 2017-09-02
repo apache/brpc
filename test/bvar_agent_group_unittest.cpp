@@ -1,5 +1,4 @@
-// Copyright (c) 2014 Baidu.com, Inc. All Rights Reserved
-// File test_agent_group.cpp
+// Copyright (c) 2014 baidu-rpc authors
 // Author Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date 2014/09/26 12:43:49
 

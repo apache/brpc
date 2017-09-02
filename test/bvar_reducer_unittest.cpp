@@ -1,5 +1,4 @@
-// Copyright (c) 2014 Baidu.com, Inc. All Rights Reserved
-// File test_reducer.cpp
+// Copyright (c) 2014 baidu-rpc authors
 // Author Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date 2014/10/16 17:55:39
 
