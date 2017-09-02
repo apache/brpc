@@ -1434,4 +1434,3 @@ base::Status TsWriter::EncodePES(TsMessage* msg, TsStream sid, TsPid pid,
 }
 
 } // namespace brpc
-

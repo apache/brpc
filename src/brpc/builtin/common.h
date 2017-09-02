@@ -146,4 +146,3 @@ inline std::ostream& operator<<(std::ostream& os, const MinWidth<T>& fw) {
 
 
 #endif // BRPC_BUILTIN_COMMON_H
-

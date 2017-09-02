@@ -99,4 +99,3 @@ bool SerializeAsCompressedData(const google::protobuf::Message& msg,
 }
 
 } // namespace brpc
-

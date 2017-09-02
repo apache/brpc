@@ -71,4 +71,3 @@ const HttpHeader& DefaultHttpHeader() {
 }
 
 } // namespace brpc
-

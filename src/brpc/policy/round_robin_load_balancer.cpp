@@ -158,4 +158,3 @@ void RoundRobinLoadBalancer::Describe(
 
 }  // namespace policy
 } // namespace brpc
-

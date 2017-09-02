@@ -90,4 +90,3 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "EchoClient is going to quit";
     return 0;
 }
-

@@ -476,4 +476,3 @@ std::ostream& operator<<(std::ostream& os, const NamingServiceThread& nsthr) {
 }
 
 } // namespace brpc
-

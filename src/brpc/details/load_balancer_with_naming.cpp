@@ -62,4 +62,3 @@ void LoadBalancerWithNaming::Describe(std::ostream& os,
 }
 
 } // namespace brpc
-

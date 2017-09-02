@@ -89,4 +89,3 @@ private:
 
 
 #endif // BRPC_NSHEAD_PB_SERVICE_ADAPTOR_H
-

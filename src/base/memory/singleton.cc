@@ -31,4 +31,3 @@ subtle::AtomicWord WaitForInstance(subtle::AtomicWord* instance) {
 
 }  // namespace internal
 }  // namespace base
-

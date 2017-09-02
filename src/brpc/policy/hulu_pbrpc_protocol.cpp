@@ -676,4 +676,3 @@ void PackHuluRequest(base::IOBuf* req_buf,
 }  // namespace policy
 } // namespace brpc
 
-

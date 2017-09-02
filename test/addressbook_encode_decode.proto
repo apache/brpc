@@ -35,4 +35,3 @@ message PersonEncDec {
 message AddressBookEncDec {
   repeated PersonEncDec person = 1;
 }
-

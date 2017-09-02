@@ -496,4 +496,3 @@ Socket* InputMessageBase::ReleaseSocket() {
 InputMessageBase::~InputMessageBase() {}
 
 } // namespace brpc
-

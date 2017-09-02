@@ -57,4 +57,3 @@ int PeriodicNamingService::RunNamingService(
 }
 
 } // namespace brpc
-

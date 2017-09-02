@@ -1099,4 +1099,3 @@ friend class policy::RtmpChunkStream;
 
 
 #endif  // BRPC_RTMP_H
-

@@ -1848,4 +1848,3 @@ IOBufAppender::IOBufAppender()
 void* fast_memcpy(void *__restrict dest, const void *__restrict src, size_t n) {
     return base::iobuf::cp(dest, src, n);
 }
-

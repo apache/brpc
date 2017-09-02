@@ -504,4 +504,3 @@ void append_query(std::string *query_string,
 }
 
 } // namespace brpc
-

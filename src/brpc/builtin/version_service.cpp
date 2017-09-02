@@ -35,4 +35,3 @@ void VersionService::default_method(::google::protobuf::RpcController* controlle
 }
 
 } // namespace brpc
-

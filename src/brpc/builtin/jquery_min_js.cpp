@@ -45,4 +45,3 @@ const char* jquery_min_js() {
 }
 
 } // namespace brpc
-

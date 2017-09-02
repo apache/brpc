@@ -39,4 +39,3 @@ bool IsProtobufMap(const google::protobuf::FieldDescriptor* field);
 } // namespace json2pb
 
 #endif // BRPC_JSON2PB_JSON_PROTOBUF_MAP_H
-

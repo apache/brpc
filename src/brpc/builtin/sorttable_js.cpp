@@ -523,4 +523,3 @@ const char* sorttable_js() {
 }
 
 } // namespace brpc
-

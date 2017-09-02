@@ -1006,4 +1006,3 @@ bool MemcacheResponse::PopVersion(std::string* version) {
 }
  
 } // namespace brpc
-

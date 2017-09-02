@@ -198,4 +198,3 @@ size_t ListOfABAFreeId<Id, IdTraits>::get_sizes(size_t* cnts, size_t n) {
 }  // namespace bthread
 
 #endif  // BAIDU_BTHREAD_LIST_OF_ABAFREE_ID_H
-

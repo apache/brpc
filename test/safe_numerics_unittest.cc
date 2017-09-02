@@ -577,4 +577,3 @@ TEST(SafeNumerics, CastTests) {
   EXPECT_EQ(saturated_cast<float>(double_large), double_infinity);
   EXPECT_EQ(saturated_cast<float>(-double_large), -double_infinity);
 }
-

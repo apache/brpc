@@ -180,4 +180,3 @@ _xdg_mime_icon_list_dump (XdgIconList *list)
     }
 }
 
-

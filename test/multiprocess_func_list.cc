@@ -55,4 +55,3 @@ int InvokeChildProcessTest(std::string test_name) {
 }
 
 }  // namespace multi_process_function_list
-

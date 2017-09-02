@@ -747,4 +747,3 @@ PassiveStatus<std::string> g_work_dir("process_work_dir", get_work_dir, NULL);
 inline std::ostream& operator<<(std::ostream& os, const timeval& tm) {
     return os << tm.tv_sec << '.' << std::setw(6) << std::setfill('0') << tm.tv_usec;
 }
-

@@ -528,4 +528,3 @@ TEST_F(HPackTest, responses_with_huffman) {
     }
     ASSERT_TRUE(buf.buf().empty());
 }
-

@@ -36,4 +36,3 @@ message PersonInfo {
 message AddressBook {
   repeated PersonInfo person = 1;
 }
-

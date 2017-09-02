@@ -96,4 +96,3 @@ void ListNamingService::Destroy() {
 
 }  // namespace policy
 } // namespace brpc
-

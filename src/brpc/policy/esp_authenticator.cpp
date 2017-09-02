@@ -44,4 +44,3 @@ const Authenticator* global_esp_authenticator() {
 
 }  // namespace policy
 } // namespace brpc
-

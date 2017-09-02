@@ -54,4 +54,3 @@ int avc_nalu_read_bit(BitStream* stream, int8_t* v) {
 }
 
 } // namespace brpc
-

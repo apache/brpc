@@ -231,4 +231,3 @@ void NsheadMessage::Swap(NsheadMessage* other) {
 }
 
 } // namespace brpc
-

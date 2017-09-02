@@ -792,4 +792,3 @@ int bthread_id_list_reset2_bthreadsafe(bthread_id_list_t* list,
     bthread_id_list_destroy(&tmplist);
     return rc2;
 }
-

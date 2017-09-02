@@ -509,4 +509,3 @@ RestfulMap::FindMethodProperty(const base::StringPiece& method_path,
 }
 
 } // namespace brpc
-

@@ -1322,4 +1322,3 @@ const std::string& GetHttpMethodName(
 
 }  // namespace policy
 } // namespace brpc
-

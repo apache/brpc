@@ -539,4 +539,3 @@ std::ostream& operator<<(std::ostream& os, const RedisResponse& response) {
 }
  
 } // namespace brpc
-

@@ -33,4 +33,3 @@ void ProcessMongoRequest(InputMessageBase* msg);
 
 
 #endif // BRPC_POLICY_MONGO_PROTOCOL_H
-

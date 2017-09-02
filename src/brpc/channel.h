@@ -203,5 +203,4 @@ enum ChannelOwnership {
 
 } // namespace brpc
 
-
 #endif  // BRPC_CHANNEL_H

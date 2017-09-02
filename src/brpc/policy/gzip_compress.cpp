@@ -164,4 +164,3 @@ bool ZlibDecompress(const base::IOBuf& data, base::IOBuf* msg) {
 
 }  // namespace policy
 } // namespace brpc
-

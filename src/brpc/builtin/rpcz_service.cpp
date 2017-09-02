@@ -685,4 +685,3 @@ void RpczService::GetTabInfo(TabInfoList* info_list) const {
 }
 
 } // namespace brpc
-

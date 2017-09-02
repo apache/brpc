@@ -34,4 +34,3 @@ public:
 
 
 #endif // BRPC_NAMING_SERVICE_FILTER_H
-

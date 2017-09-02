@@ -40,4 +40,3 @@ private:
 
 
 #endif // BRPC_FLAGS_SERVICE_H
-

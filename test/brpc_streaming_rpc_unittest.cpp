@@ -497,4 +497,3 @@ TEST_F(StreamingRpcTest, server_send_data_before_run_done) {
     ASSERT_FALSE(handler.failed());
     ASSERT_EQ(0, handler.idle_times());
 }
-

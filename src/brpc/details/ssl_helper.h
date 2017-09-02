@@ -70,4 +70,3 @@ SSLState DetectSSLState(int fd, int* error_code);
 
 
 #endif // BRPC_SSL_HELPER_H
-

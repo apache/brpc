@@ -52,4 +52,3 @@ void BthreadsService::default_method(::google::protobuf::RpcController* cntl_bas
 }
 
 } // namespace brpc
-

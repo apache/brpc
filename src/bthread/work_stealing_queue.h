@@ -140,4 +140,3 @@ private:
 }  // namespace bthread
 
 #endif  // BAIDU_BTHREAD_WORK_STEALING_QUEUE_H
-

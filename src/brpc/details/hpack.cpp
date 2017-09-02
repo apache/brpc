@@ -789,4 +789,3 @@ ssize_t HPacker::Decode(base::IOBufBytesIterator& iter, Header* h) {
 }
 
 } // namespace brpc
-

@@ -162,4 +162,3 @@ void FileNamingService::Destroy() {
 
 }  // namespace policy
 } // namespace brpc
-

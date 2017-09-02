@@ -795,4 +795,3 @@ void DescribeSpanDB(std::ostream& os) {
 }
 
 } // namespace brpc
-

@@ -673,4 +673,3 @@ void PackRpcRequest(base::IOBuf* req_buf,
 
 }  // namespace policy
 } // namespace brpc
-

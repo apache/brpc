@@ -50,4 +50,3 @@ bool VerifyNsheadRequest(const InputMessageBase *msg);
 
 
 #endif // BRPC_POLICY_NSHEAD_PROTOCOL_H
-

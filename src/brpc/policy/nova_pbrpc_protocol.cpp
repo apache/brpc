@@ -196,4 +196,3 @@ void PackNovaRequest(base::IOBuf* buf,
 
 }  // namespace policy
 } // namespace brpc
-

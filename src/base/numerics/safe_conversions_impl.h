@@ -214,4 +214,3 @@ inline RangeConstraint DstRangeRelationToSrcRange(Src value) {
 }  // namespace base
 
 #endif  // BASE_SAFE_CONVERSIONS_IMPL_H_
-

@@ -160,4 +160,3 @@ const char *GetHashName(uint32_t (*hasher)(const void* key, size_t len)) {
 
 }  // namespace policy
 } // namespace brpc
-

@@ -157,4 +157,3 @@ void RemoteFileNamingService::Destroy() {
 
 }  // namespace policy
 } // namespace brpc
-

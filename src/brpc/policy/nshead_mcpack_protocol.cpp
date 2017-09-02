@@ -181,4 +181,3 @@ void PackNsheadMcpackRequest(base::IOBuf* buf,
 
 }  // namespace policy
 } // namespace brpc
-

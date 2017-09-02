@@ -161,4 +161,3 @@ void RandomizedLoadBalancer::Describe(
 
 }  // namespace policy
 } // namespace brpc
-

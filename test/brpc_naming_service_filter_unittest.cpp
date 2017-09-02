@@ -60,4 +60,3 @@ TEST_F(NamingServiceFilterTest, sanity) {
         ASSERT_EQ(ep, tmp_sock->remote_side());
     }
 }
-

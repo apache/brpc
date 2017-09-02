@@ -61,4 +61,3 @@ void BadMethodService::no_method(::google::protobuf::RpcController* cntl_base,
 }
 
 } // namespace brpc
-

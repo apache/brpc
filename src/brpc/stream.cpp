@@ -742,4 +742,3 @@ int StreamAccept(StreamId* response_stream, Controller &cntl,
 }
 
 } // namespace brpc
-

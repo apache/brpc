@@ -125,4 +125,3 @@ private:
 
 
 #endif // BRPC_NSHEAD_SERVICE_H
-

@@ -30,4 +30,3 @@ const base::IOBuf& sorttable_js_iobuf();
 
 
 #endif // BRPC_BUILTIN_SORTTABLE_JS_H
-

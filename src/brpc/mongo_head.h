@@ -73,4 +73,3 @@ struct mongo_head_t {
 
 
 #endif // BRPC_MONGO_HEAD_H
-

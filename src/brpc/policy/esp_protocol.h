@@ -50,4 +50,3 @@ void ProcessEspResponse(InputMessageBase* msg);
 
 
 #endif // BRPC_POLICY_ESP_PROTOCOL_H
-

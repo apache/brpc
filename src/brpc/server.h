@@ -37,7 +37,6 @@ extern "C" {
 struct ssl_ctx_st;
 }
 
-
 namespace brpc {
 
 class Acceptor;
@@ -725,6 +724,5 @@ bool IsDummyServerRunning();
 int StartDummyServerAt(int port, ProfilerLinker = ProfilerLinker());
 
 } // namespace brpc
-
 
 #endif  // BRPC_SERVER_H

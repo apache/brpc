@@ -66,4 +66,3 @@ void AdaptiveConnectionType::operator=(const base::StringPiece& name) {
 }
 
 } // namespace brpc
-

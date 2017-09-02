@@ -85,4 +85,3 @@ inline std::ostream& operator<<(std::ostream& os, const AuthContext& ctx) {
 
 
 #endif // BRPC_AUTHENTICATOR_H
-

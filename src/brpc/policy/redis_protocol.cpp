@@ -169,4 +169,3 @@ const std::string& GetRedisMethodName(
 
 }  // namespace policy
 } // namespace brpc
-

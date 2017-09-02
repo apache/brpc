@@ -103,4 +103,3 @@ inline Atomic32 Release_Load(volatile const Atomic32* ptr) {
 }  // namespace base
 
 #endif  // BASE_ATOMICOPS_INTERNALS_GCC_H_
-

@@ -245,4 +245,3 @@ void LogErrorTextAndDelete::operator()(Controller* c) const {
 }
 
 } // namespace brpc
-

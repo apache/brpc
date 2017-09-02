@@ -158,4 +158,3 @@ void ProcessEspResponse(InputMessageBase* msg_base) {
 
 } // namespace policy
 } // namespace brpc
-

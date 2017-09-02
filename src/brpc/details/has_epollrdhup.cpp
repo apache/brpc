@@ -54,4 +54,3 @@ static unsigned int check_epollrdhup() {
 extern const unsigned int has_epollrdhup = check_epollrdhup();
 
 } // namespace brpc
-

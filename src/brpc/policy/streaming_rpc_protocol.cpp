@@ -158,4 +158,3 @@ int SendStreamData(Socket* sock, const base::IOBuf* data,
 
 }  // namespace policy
 } // namespace brpc
-

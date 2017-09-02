@@ -89,4 +89,3 @@ void VLogService::default_method(::google::protobuf::RpcController* cntl_base,
 }
 
 } // namespace brpc
-

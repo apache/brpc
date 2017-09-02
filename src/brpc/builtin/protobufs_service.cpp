@@ -109,4 +109,3 @@ void ProtobufsService::default_method(::google::protobuf::RpcController* cntl_ba
 }
 
 } // namespace brpc
-

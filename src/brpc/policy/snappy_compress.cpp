@@ -58,4 +58,3 @@ bool SnappyDecompress(const base::IOBuf& in, base::IOBuf* out) {
 
 }  // namespace policy
 } // namespace brpc
-

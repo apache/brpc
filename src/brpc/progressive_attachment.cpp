@@ -255,4 +255,3 @@ void ProgressiveAttachment::NotifyOnStopped(google::protobuf::Closure* done) {
 }
     
 } // namespace brpc
-

@@ -73,4 +73,3 @@ const char* berror(int error_code) {
 const char* berror() {
     return berror(errno);
 }
-

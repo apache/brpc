@@ -489,4 +489,3 @@ void DynamicPartitionChannel::CallMethod(
 }
 
 } // namespace brpc
-

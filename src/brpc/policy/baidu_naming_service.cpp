@@ -75,4 +75,3 @@ void BaiduNamingService::Destroy() {
 }  // namespace policy
 } // namespace brpc
 #endif  // BAIDU_INTERNAL
-

@@ -1114,4 +1114,3 @@ void HotspotsService::GetTabInfo(TabInfoList* info_list) const {
 }
 
 } // namespace brpc
-

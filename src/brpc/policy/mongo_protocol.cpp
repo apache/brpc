@@ -294,4 +294,3 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
 
 }  // namespace policy
 } // namespace brpc
-

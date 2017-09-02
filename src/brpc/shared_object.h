@@ -67,4 +67,3 @@ inline void intrusive_ptr_release(SharedObject* obj) {
 
 
 #endif // BRPC_SHARED_OBJECT_H
-

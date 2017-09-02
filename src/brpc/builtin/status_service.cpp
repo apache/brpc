@@ -220,4 +220,3 @@ void StatusService::GetTabInfo(TabInfoList* info_list) const {
 }
 
 } // namespace brpc
-

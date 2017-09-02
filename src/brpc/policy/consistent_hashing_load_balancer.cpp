@@ -289,4 +289,3 @@ void ConsistentHashingLoadBalancer::GetLoads(
 
 }  // namespace policy
 } // namespace brpc
-

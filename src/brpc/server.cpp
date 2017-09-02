@@ -78,7 +78,6 @@ extern "C" {
 void* bthread_get_assigned_data() __THROW;
 }
 
-
 namespace brpc {
 
 BAIDU_CASSERT(sizeof(int32_t) == sizeof(base::subtle::Atomic32),
@@ -2015,4 +2014,3 @@ int Server::SSLSwitchCTXByHostname(struct ssl_st* ssl,
 #endif // SSL_CTRL_SET_TLSEXT_HOSTNAME
 
 } // namespace brpc
-

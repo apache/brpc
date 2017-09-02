@@ -329,4 +329,3 @@ void TCMallocGetHeapSample(std::string* writer) {
 void TCMallocGetHeapGrowthStacks(std::string* writer) {
     MallocExtension::instance()->GetHeapGrowthStacks(writer);
 }
-

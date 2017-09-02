@@ -33,4 +33,3 @@ public:
 
 
 #endif // BRPC_BADMETHOD_SERVICE_H
-

@@ -209,4 +209,3 @@ void SerializedRequest::Swap(SerializedRequest* other) {
 }
 
 } // namespace brpc
-

@@ -204,4 +204,3 @@ TEST_F(MessengerTest, dispatch_tasks) {
     sleep(1);
     LOG(WARNING) << "begin to exit!!!!";
 }
-

@@ -328,4 +328,3 @@ void Acceptor::BeforeRecycle(Socket* sock) {
 }
 
 } // namespace brpc
-

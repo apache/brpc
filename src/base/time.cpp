@@ -131,4 +131,3 @@ __thread int64_t tls_realtime_ns = 0;
 __thread int64_t tls_cpuwidetime_ns = 0;
 
 }  // namespace base
-

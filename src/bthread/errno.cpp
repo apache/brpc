@@ -19,4 +19,3 @@ int *bthread_errno_location() {
     return __errno_location();
 }
 }  // extern "C"
-

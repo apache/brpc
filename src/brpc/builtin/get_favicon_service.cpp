@@ -73,4 +73,3 @@ void GetFaviconService::default_method(
 }
 
 } // namespace brpc
-

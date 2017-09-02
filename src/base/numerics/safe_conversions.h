@@ -61,4 +61,3 @@ inline Dst saturated_cast(Src value) {
 }  // namespace base
 
 #endif  // BASE_SAFE_CONVERSIONS_H_
-

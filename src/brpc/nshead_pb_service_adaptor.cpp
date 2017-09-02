@@ -140,4 +140,3 @@ void NsheadPbServiceAdaptor::ProcessNsheadRequest(
 } 
 
 } // namespace brpc
-

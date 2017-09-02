@@ -163,4 +163,3 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
 }
 
 } // namespace brpc
-

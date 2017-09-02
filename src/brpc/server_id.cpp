@@ -65,4 +65,3 @@ std::vector<SocketId>& ServerId2SocketIdMapper::RemoveServers(
 }
 
 } // namespace brpc
-

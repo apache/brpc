@@ -181,4 +181,3 @@ _xdg_mime_alias_list_dump (XdgAliasList *list)
     }
 }
 
-

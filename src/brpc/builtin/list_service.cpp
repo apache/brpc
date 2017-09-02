@@ -36,4 +36,3 @@ void ListService::default_method(::google::protobuf::RpcController*,
 }
 
 } // namespace brpc
-

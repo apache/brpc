@@ -130,4 +130,3 @@ int string_vprintf(std::string* output, const char* format, va_list args) {
 
 
 }  // namespace base
-

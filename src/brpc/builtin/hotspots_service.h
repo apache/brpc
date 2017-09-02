@@ -74,4 +74,3 @@ public:
 
 
 #endif // BRPC_HOTSPOTS_SERVICE_H
-

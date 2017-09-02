@@ -720,4 +720,3 @@ const ResponseMerger::Result ResponseMerger::IGNORED;
 const ResponseMerger::Result ResponseMerger::CALL_FAILED;
 
 } // namespace brpc
-

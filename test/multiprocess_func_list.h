@@ -68,4 +68,3 @@ int InvokeChildProcessTest(std::string test_name);
 }  // namespace multi_process_function_list
 
 #endif  // TESTING_MULTIPROCESS_FUNC_LIST_H_
-

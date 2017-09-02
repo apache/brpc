@@ -31,4 +31,3 @@ const base::IOBuf& viz_min_js_iobuf_gzip();
 
 
 #endif // BRPC_BUILTIN_VIZ_MIN_JS_H
-

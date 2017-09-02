@@ -37,4 +37,3 @@ const Authenticator* global_esp_authenticator();
 
 
 #endif // BRPC_POLICY_GIANO_AUTHENTICATOR_H
-

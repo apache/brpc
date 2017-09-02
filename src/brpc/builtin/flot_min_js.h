@@ -31,4 +31,3 @@ const base::IOBuf& flot_min_js_iobuf_gzip();
 
 
 #endif // BRPC_BUILTIN_FLOT_MIN_JS_H
-

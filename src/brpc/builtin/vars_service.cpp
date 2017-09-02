@@ -435,4 +435,3 @@ void VarsService::GetTabInfo(TabInfoList* info_list) const {
 }
 
 } // namespace brpc
-

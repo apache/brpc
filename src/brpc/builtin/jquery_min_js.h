@@ -31,4 +31,3 @@ const base::IOBuf& jquery_min_js_iobuf_gzip();
 
 
 #endif // BRPC_BUILTIN_JQUERY_MIN_JS_H
-

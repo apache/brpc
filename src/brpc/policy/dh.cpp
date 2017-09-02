@@ -121,4 +121,3 @@ int DHWrapper::do_initialize() {
 
 }  // namespace policy
 } // namespace brpc
-

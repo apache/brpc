@@ -545,4 +545,3 @@ std::pair<int64_t, int64_t> LocalityAwareLoadBalancer::Weight::ClearOld() {
 
 }  // namespace policy
 } // namespace brpc
-

@@ -365,4 +365,3 @@ SampledRequest* SampleIterator::Pop(base::IOBuf& buf, bool* format_error) {
 #undef DUMPED_FILE_PREFIX
 
 } // namespace brpc
-

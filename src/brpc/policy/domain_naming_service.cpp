@@ -134,4 +134,3 @@ void DomainNamingService::Destroy() {
 
 }  // namespace policy
 } // namespace brpc
-

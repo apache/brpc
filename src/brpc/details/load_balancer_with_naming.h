@@ -45,4 +45,3 @@ private:
 
 
 #endif // BRPC_LOAD_BALANCER_WITH_NAMING_H
-
