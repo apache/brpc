@@ -1,4 +1,4 @@
-// Copyright (c) 2014 Baidu.com, Inc. All Rights Reserved
+// Copyright (c) 2014 baidu-rpc authors.
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Sep 30 16:52:32 CST 2014
 

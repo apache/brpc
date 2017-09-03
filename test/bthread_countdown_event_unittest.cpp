@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Baidu.com, Inc. All Rights Reserved
+// Copyright (c) 2014 baidu-rpc authors.
 
 // Author: Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date: 2016/06/03 13:25:44

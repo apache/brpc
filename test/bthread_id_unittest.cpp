@@ -1,4 +1,4 @@
-// Copyright (c) 2014 Baidu.com, Inc. All Rights Reserved
+// Copyright (c) 2014 baidu-rpc authors.
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Jul 13 15:04:18 CST 2014
 
@@ -397,10 +397,15 @@ TEST(BthreadIdTest, reset_range) {
 
 static bool any_thread_quit = false;
 
-static void* fail_to_lock_id(void* arg) {
-    bthread_id_t id = *(bthread_id_t*)arg;
+struct FailToLockIdArgs {
+    bthread_id_t id;
+    int expected_return;
+};
+
+static void* fail_to_lock_id(void* args_in) {
+    FailToLockIdArgs* args = (FailToLockIdArgs*)args_in;
     base::Timer tm;
-    EXPECT_EQ(EINVAL, bthread_id_lock(id, NULL));
+    EXPECT_EQ(args->expected_return, bthread_id_lock(args->id, NULL));
     any_thread_quit = true;
     return NULL;
 }
@@ -412,8 +417,9 @@ TEST(BthreadIdTest, about_to_destroy_before_locking) {
     ASSERT_EQ(0, bthread_id_about_to_destroy(id));
     pthread_t pth;
     bthread_t bth;
-    ASSERT_EQ(0, pthread_create(&pth, NULL, fail_to_lock_id, &id));
-    ASSERT_EQ(0, bthread_start_background(&bth, NULL, fail_to_lock_id, &id));
+    FailToLockIdArgs args = { id, EPERM };
+    ASSERT_EQ(0, pthread_create(&pth, NULL, fail_to_lock_id, &args));
+    ASSERT_EQ(0, bthread_start_background(&bth, NULL, fail_to_lock_id, &args));
     // The threads should quit soon.
     pthread_join(pth, NULL);
     bthread_join(bth, NULL);
@@ -453,8 +459,9 @@ TEST(BthreadIdTest, about_to_destroy_during_locking) {
     any_thread_quit = false;
     pthread_t pth;
     bthread_t bth;
-    ASSERT_EQ(0, pthread_create(&pth, NULL, fail_to_lock_id, &id));
-    ASSERT_EQ(0, bthread_start_background(&bth, NULL, fail_to_lock_id, &id));
+    FailToLockIdArgs args = { id, EPERM };
+    ASSERT_EQ(0, pthread_create(&pth, NULL, fail_to_lock_id, &args));
+    ASSERT_EQ(0, bthread_start_background(&bth, NULL, fail_to_lock_id, &args));
 
     usleep(100000);
     ASSERT_FALSE(any_thread_quit);
