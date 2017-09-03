@@ -1,0 +1,93 @@
+baidu-rpc可以分析程序中的热点函数。
+
+# 开启方法
+
+1. 在COMAKE中增加`CONFIGS('``thirdsrc/tcmalloc@2.5.0.5977``', Libraries('libtcmalloc_and_profiler.a'))`
+   1. 这么写也开启了tcmalloc，不建议单独链接cpu profiler而不链接tcmalloc，可能越界访问导致[crash](https://code.google.com/p/gperftools/source/browse/README#sl_svn1035d5c18f64d114ac790b92a96f3b3a1a301eb9_207)**。**可能由于tcmalloc不及时归还内存，越界访问不会crash。
+   2. 这个版本的tcmalloc使用frame pointer而不是libunwind回溯栈，请确保在CXXFLAGS或CFLAGS中加上`-fno-omit-frame-pointer`，否则函数间的调用关系会丢失，最后产生的图片中都是彼此独立的函数方框。
+2. 定义宏BAIDU_RPC_ENABLE_CPU_PROFILER。在COMAKE中加入`CXXFLAGS('-DBAIDU_RPC_ENABLE_CPU_PROFILER')`
+3. 如果只是baidu-rpc client或没有使用baidu-rpc，看[这里](http://wiki.baidu.com/pages/viewpage.action?pageId=213843633)。 
+
+ 注意要关闭Server端的认证，否则可能会看到这个：
+
+```
+$ tools/pprof --text localhost:9002/pprof/profile
+Use of uninitialized value in substitution (s///) at tools/pprof line 2703.
+http://localhost:9002/profile/symbol doesn't exist
+```
+
+server端可能会有这样的日志：
+
+```
+FATAL: 12-26 10:01:25:   * 0 [src/baidu/rpc/policy/giano_authenticator.cpp:65][4294969345] Giano fails to verify credentical, 70003
+WARNING: 12-26 10:01:25:   * 0 [src/baidu/rpc/input_messenger.cpp:132][4294969345] Authentication failed, remote side(127.0.0.1:22989) of sockfd=5, close it
+```
+
+# 图示
+
+下图是一次运行cpu profiler后的结果：
+
+- 左上角是总体信息，包括时间，程序名，总采样数等等。
+- View框中可以选择查看之前运行过的profile结果，Diff框中可选择查看和之前的结果的变化量，重启后清空。
+- 代表函数调用的方框中的字段从上到下依次为：函数名，这个函数本身（除去所有子函数）占的采样数和比例，这个函数及调用的所有子函数累计的采样数和比例。采样数越大框越大。
+- 方框之间连线上的数字表示被采样到的上层函数对下层函数的调用数，数字越大线越粗。
+
+热点分析一般开始于找到最大的框最粗的线考察其来源及去向。
+
+cpu profiler的原理是在定期被调用的SIGPROF handler中采样所在线程的栈，由于handler（在linux 2.6后）会被随机地摆放于活跃线程的栈上运行，cpu profiler在运行一段时间后能以很大的概率采集到所有活跃线程中的活跃函数，最后根据栈代表的函数调用关系汇总为调用图，并把地址转换成符号，这就是我们看到的结果图了。采集频率由环境变量CPUPROFILE_FREQUENCY控制，默认100，即每秒钟100次或每10ms一次。。在实践中cpu profiler对原程序的影响不明显。
+
+![img](http://wiki.baidu.com/download/attachments/165876310/image2016-1-19%2023%3A28%3A21.png?version=1&modificationDate=1453217323000&api=v2)
+
+你也可以使用[public/baidu-rpc/tools/pprof](https://svn.baidu.com/public/trunk/baidu-rpc/tools/pprof)或gperftools中的pprof进行profiling。
+
+比如`pprof --text localhost:9002 --seconds=5`的意思是统计运行在本机9002端口的server的cpu情况，时长5秒。一次运行的例子如下：
+
+```
+$ tools/pprof --text 0.0.0.0:9002 --seconds=5
+Gathering CPU profile from http://0.0.0.0:9002/pprof/profile?seconds=5 for 5 seconds to
+  /home/gejun/pprof/echo_server.1419501210.0.0.0.0
+Be patient...
+Wrote profile to /home/gejun/pprof/echo_server.1419501210.0.0.0.0
+Removing funlockfile from all stack traces.
+Total: 2946 samples
+    1161  39.4%  39.4%     1161  39.4% syscall
+     248   8.4%  47.8%      248   8.4% baidu::bthread::TaskControl::steal_task
+     227   7.7%  55.5%      227   7.7% writev
+      87   3.0%  58.5%       88   3.0% ::cpp_alloc
+      74   2.5%  61.0%       74   2.5% __read_nocancel
+      46   1.6%  62.6%       48   1.6% tc_delete
+      42   1.4%  64.0%       42   1.4% baidu::rpc::Socket::Address
+      41   1.4%  65.4%       41   1.4% epoll_wait
+      35   1.2%  66.6%       35   1.2% memcpy
+      33   1.1%  67.7%       33   1.1% __pthread_getspecific
+      33   1.1%  68.8%       33   1.1% baidu::rpc::Socket::Write
+      33   1.1%  69.9%       33   1.1% epoll_ctl
+      28   1.0%  70.9%       42   1.4% baidu::rpc::policy::ProcessRpcRequest
+      27   0.9%  71.8%       27   0.9% baidu::IOBuf::_push_back_ref
+      27   0.9%  72.7%       27   0.9% baidu::bthread::TaskGroup::ending_sched
+```
+
+省略–text进入交互模式，如下图所示：
+
+```
+$ tools/pprof localhost:9002 --seconds=5       
+Gathering CPU profile from http://0.0.0.0:9002/pprof/profile?seconds=5 for 5 seconds to
+  /home/gejun/pprof/echo_server.1419501236.0.0.0.0
+Be patient...
+Wrote profile to /home/gejun/pprof/echo_server.1419501236.0.0.0.0
+Removing funlockfile from all stack traces.
+Welcome to pprof!  For help, type 'help'.
+(pprof) top
+Total: 2954 samples
+    1099  37.2%  37.2%     1099  37.2% syscall
+     253   8.6%  45.8%      253   8.6% baidu::bthread::TaskControl::steal_task
+     240   8.1%  53.9%      240   8.1% writev
+      90   3.0%  56.9%       90   3.0% ::cpp_alloc
+      67   2.3%  59.2%       67   2.3% __read_nocancel
+      47   1.6%  60.8%       47   1.6% baidu::IOBuf::_push_back_ref
+      42   1.4%  62.2%       56   1.9% baidu::rpc::policy::ProcessRpcRequest
+      41   1.4%  63.6%       41   1.4% epoll_wait
+      38   1.3%  64.9%       38   1.3% epoll_ctl
+      37   1.3%  66.1%       37   1.3% memcpy
+      35   1.2%  67.3%       35   1.2% baidu::rpc::Socket::Address
+```
