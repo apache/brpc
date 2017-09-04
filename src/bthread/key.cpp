@@ -233,7 +233,7 @@ void return_keytable(bthread_keytable_pool_t* pool, KeyTable* kt) {
     pool->free_keytables = kt;
 }
 
-static void cleanup_pthread(void*) {
+static void cleanup_pthread() {
     KeyTable* kt = tls_bls.keytable;
     if (kt) {
         delete kt;
@@ -446,7 +446,7 @@ int bthread_setspecific(bthread_key_t key, void* data) __THROW {
         }
         if (!bthread::tls_ever_created_keytable) {
             bthread::tls_ever_created_keytable = true;
-            CHECK_EQ(0, base::thread_atexit(bthread::cleanup_pthread, NULL));
+            CHECK_EQ(0, base::thread_atexit(bthread::cleanup_pthread));
         }
     }
     return kt->set_data(key, data);
