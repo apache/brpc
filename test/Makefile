@@ -123,6 +123,7 @@ TEST_BASE_SOURCES = \
     baidu_time_unittest.cpp \
     flat_map_unittest.cpp \
     crc32c_unittest.cc \
+    iobuf_unittest.cc \
     multiprocess_func_list.cc \
     test_switches.cc \
     test_timeouts.cc \
@@ -133,7 +134,7 @@ TEST_BASE_SOURCES = \
     base_unittest_main.cpp
 
 
-TEST_BASE_OBJS = $(addsuffix .o, $(basename $(TEST_BASE_SOURCES))) 
+TEST_BASE_OBJS = iobuf.pb.o $(addsuffix .o, $(basename $(TEST_BASE_SOURCES))) 
 
 TEST_BVAR_SOURCES = $(wildcard bvar_*_unittest.cpp)
 TEST_BVAR_OBJS = $(addsuffix .o, $(basename $(TEST_BVAR_SOURCES))) 
