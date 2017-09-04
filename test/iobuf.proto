@@ -1,0 +1,27 @@
+package proto;
+
+enum CompressType {
+    CompressTypeNone = 0;
+    CompressTypeGzip = 1;
+    CompressTypeZlib = 2;
+    CompressTypeSnappy = 3;
+    CompressTypeLZ4 = 4;
+}
+
+message Misc {
+  required CompressType required_enum = 1;
+  optional CompressType optional_enum = 2;
+  repeated CompressType repeated_enum = 3;
+  required uint64 required_uint64 = 4;
+  optional uint64 optional_uint64 = 5;
+  repeated uint64 repeated_uint64 = 6;
+  required string required_string = 7;
+  optional string optional_string = 8;
+  repeated string repeated_string = 9;
+  required bool required_bool = 10;
+  optional bool optional_bool = 11;
+  repeated bool repeated_bool = 12;
+  required int32 required_int32 = 13;
+  optional int32 optional_int32 = 14;
+  repeated int32 repeated_int32 = 15;
+}
