@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+
 #include <gflags/gflags.h>
 #include "base/fd_guard.h"                      // fd_guard
 #include "base/logging.h"                       // CHECK

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Jiang,Lin (jianglin05@baidu.com)
+
 #include "base/logging.h"
 #include "base/third_party/snappy/snappy.h"
 #include "brpc/policy/snappy_compress.h"

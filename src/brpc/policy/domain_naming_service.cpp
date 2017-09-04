@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Rujie Jiang (jiangrujie@baidu.com)
+
 #include <netdb.h>                                    // gethostbyname_r
 #include <stdlib.h>                                   // strtol
 #include <string>                                     // std::string

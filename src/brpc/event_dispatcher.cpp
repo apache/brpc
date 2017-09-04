@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+//          Rujie Jiang (jiangrujie@baidu.com)
+
 #include <gflags/gflags.h>                           // DEFINE_int32
 #include <sys/epoll.h>                               // epoll_create
 #include "base/fd_utility.h"                         // make_close_on_exec

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+
 #ifndef BRPC_BUILTIN_VIZ_MIN_JS_H
 #define BRPC_BUILTIN_VIZ_MIN_JS_H
 

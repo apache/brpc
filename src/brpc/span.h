@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+
 // NOTE: RPC users are not supposed to include this file.
 
 #ifndef BRPC_SPAN_H

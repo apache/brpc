@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+
 #include <ostream>
 #include "brpc/closure_guard.h"        // ClosureGuard
 #include "brpc/controller.h"           // Controller

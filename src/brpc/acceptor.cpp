@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Rujie Jiang(jiangrujie@baidu.com)
+//          Ge,Jun(gejun@baidu.com)
+
 #include <gflags/gflags.h>
 #include "base/fd_guard.h"                 // fd_guard 
 #include "base/fd_utility.h"               // make_close_on_exec

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+
 #include "bthread/unstable.h"                 // bthread_timer_add
 #include "base/atomicops.h"
 #include "base/time.h"

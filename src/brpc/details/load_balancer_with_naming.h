@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+
 #ifndef BRPC_LOAD_BALANCER_WITH_NAMING_H
 #define BRPC_LOAD_BALANCER_WITH_NAMING_H
 

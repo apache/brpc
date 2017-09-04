@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+
 #include <sys/epoll.h>                             // epoll_create
 #include <sys/types.h>                             // socketpair
 #include <sys/socket.h>                            // ^

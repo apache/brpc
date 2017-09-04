@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+
 #include <gflags/gflags.h>
 #include <fcntl.h>                    // O_CREAT
 #include "base/file_util.h"
@@ -115,10 +117,6 @@ private:
 bvar::CollectorSpeedLimit g_rpc_dump_sl = BVAR_COLLECTOR_SPEED_LIMIT_INITIALIZER;
 static RpcDumpContext* g_rpc_dump_ctx = NULL;
 
-static void DeleteRpcDumpContext(void* arg) {
-    delete (RpcDumpContext*)arg;
-}
-
 void SampledRequest::dump_and_destroy(size_t round) {
     static bvar::DisplaySamplingRatio sampling_ratio_var(
         "rpc_dump_sampling_ratio", &g_rpc_dump_sl);
@@ -127,7 +125,6 @@ void SampledRequest::dump_and_destroy(size_t round) {
     RpcDumpContext* rpc_dump_ctx = g_rpc_dump_ctx;
     if (rpc_dump_ctx == NULL) {
         rpc_dump_ctx = new RpcDumpContext;
-        base::thread_atexit(DeleteRpcDumpContext, rpc_dump_ctx);
         g_rpc_dump_ctx = rpc_dump_ctx;
     }
     rpc_dump_ctx->Dump(round, this);

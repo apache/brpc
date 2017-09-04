@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
+
 #include <limits.h>
 #include <openssl/md5.h>
 #include "base/third_party/murmurhash3/murmurhash3.h"

@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Rujie Jiang (jiangrujie@baidu.com)
+//          Ge,Jun (gejun@baidu.com)
+
 #ifndef BRPC_POLICY_HULU_PBRPC_PROTOCOL_H
 #define BRPC_POLICY_HULU_PBRPC_PROTOCOL_H
 

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+
 #include <map>
 #include <gflags/gflags.h>
 #include "brpc/socket.h"                             // SocketUser

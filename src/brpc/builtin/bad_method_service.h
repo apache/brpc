@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Rujie Jiang (jiangrujie@baidu.com)
+
 #ifndef BRPC_BADMETHOD_SERVICE_H
 #define BRPC_BADMETHOD_SERVICE_H
 

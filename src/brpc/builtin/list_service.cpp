@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+
 #include <vector>                           // std::vector
 #include <google/protobuf/descriptor.h>     // ServiceDescriptor
 #include "brpc/controller.h"           // Controller

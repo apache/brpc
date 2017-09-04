@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+
 #include <google/protobuf/descriptor.h>
 #include "base/sys_byteorder.h"
 #include "base/logging.h"

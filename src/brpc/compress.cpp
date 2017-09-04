@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Rujie Jiang (jiangrujie@baidu.com)
+//          Ge,Jun (gejun@baidu.com)
+
 #include "base/logging.h"
 #include "brpc/compress.h"
 #include "brpc/protocol.h"

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+
 #include "base/containers/flat_map.h"
 #include "brpc/log.h"
 #include "brpc/load_balancer.h"

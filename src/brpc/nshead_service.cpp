@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+
 #include "base/class_name.h"
 #include "brpc/nshead_service.h"
 #include "brpc/details/method_status.h"

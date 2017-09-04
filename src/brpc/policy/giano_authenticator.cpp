@@ -14,6 +14,8 @@
 
 #ifdef BAIDU_INTERNAL
 
+// Authors: Rujie Jiang (jiangrujie@baidu.com)
+
 #include "base/logging.h"
 #include "brpc/policy/giano_authenticator.h"
 

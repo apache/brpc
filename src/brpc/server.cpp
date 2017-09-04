@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+//          Rujie Jiang(jiangrujie@baidu.com)
+//          Zhangyi Chen(chenzhangyi01@baidu.com)
+
 #include <wordexp.h>                                // wordexp
 #include <iomanip>
 #include <arpa/inet.h>                              // inet_aton

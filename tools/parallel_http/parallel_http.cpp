@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+
 // Access many http servers in parallel, much faster than curl (even called in batch)
 
 #include <gflags/gflags.h>

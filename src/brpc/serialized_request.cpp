@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+
 #define INTERNAL_SUPPRESS_PROTOBUF_FIELD_DEPRECATION
 #include "brpc/serialized_request.h"
 

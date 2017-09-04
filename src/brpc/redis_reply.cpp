@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+
 #include <limits>
 #include "base/logging.h"
 #include "brpc/redis_reply.h"
