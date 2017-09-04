@@ -1,12 +1,8 @@
-// Copyright (c) 2011 Baidu.com, Inc. All Rights Reserved
-//
-// Format std::string.
-//
-// Author: Ge,Jun (gejun@baidu.com)
+// Copyright (c) 2011 baidu-rpc authors.
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
-#ifndef BRPC_BASE_STRING_PRINTF_H
-#define BRPC_BASE_STRING_PRINTF_H
+#ifndef BAIDU_BASE_STRING_PRINTF_H
+#define BAIDU_BASE_STRING_PRINTF_H
 
 #include <string>                                // std::string
 #include <stdarg.h>                              // va_list
@@ -38,4 +34,4 @@ int string_vappendf(std::string* output, const char* format, va_list args);
 
 }  // namespace base
 
-#endif  // BRPC_BASE_STRING_PRINTF_H
+#endif  // BAIDU_BASE_STRING_PRINTF_H

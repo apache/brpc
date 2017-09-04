@@ -1,11 +1,24 @@
-// Copyright (c) 2014 Baidu.com, Inc. All Rights Reserved
-//
+// Copyright (c) 2014 baidu-rpc authors.
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+//     http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Author: Ge,Jun (gejun@base.com)
+// Date: Tue Feb 25 23:43:39 CST 2014
+
 // Provide functions to get/set bits of an integral array. These functions
 // are not threadsafe because operations on different bits may modify a same
 // integer.
-//
-// Author: Ge,Jun (gejun@base.com)
-// Date: Tue Feb 25 23:43:39 CST 2014
+
 #ifndef BASE_BIT_ARRAY_H
 #define BASE_BIT_ARRAY_H
 

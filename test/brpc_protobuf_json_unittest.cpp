@@ -1,4 +1,4 @@
-// Copyright (c) 2015 baidu-rpc authors.
+// Copyright (c) 2014 baidu-rpc authors.
 
 #include <sys/time.h>
 #include <gtest/gtest.h>

@@ -1,4 +1,4 @@
-// Copyright (c) 2014 baidu-rpc authors
+// Copyright (c) 2014 baidu-rpc authors.
 
 // Date: 2015/03/31 14:50:20
 

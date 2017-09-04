@@ -1,10 +1,7 @@
-// Copyright (c) 2015 Baidu.com Inc. All rights reserved.
-//
-// Author: Ge,Jun (gejun@baidu.com)
-// Date: Mon Feb  9 15:04:03 CST 2015
+// Copyright (c) 2015 baidu-rpc authors.
 
-#ifndef BRPC_BASE_STATUS_H
-#define BRPC_BASE_STATUS_H
+#ifndef BAIDU_BASE_STATUS_H
+#define BAIDU_BASE_STATUS_H
 
 #include <stdarg.h>                       // va_list
 #include <stdlib.h>                       // free
@@ -142,4 +139,4 @@ inline std::ostream& operator<<(std::ostream& os, const Status& st) {
 
 }  // namespace base
 
-#endif  // BRPC_BASE_STATUS_H
+#endif  // BAIDU_BASE_STATUS_H

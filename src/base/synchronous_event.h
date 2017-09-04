@@ -1,21 +1,33 @@
-// Copyright (c) 2010 Baidu.com, Inc. All Rights Reserved
-//
-// Synchronous event notification.
-// Observers to an event will be called immediately in the same context where
-// the event is notified. This utility uses a vector to store all observers
-// thus is only suitable for a relatively small amount of observers.
-//
+// Copyright (c) 2010 baidu-rpc authors.
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+//     http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Nov 7 21:43:34 CST 2010
 
-#ifndef BRPC_BASE_SYNCHRONOUS_EVENT_H
-#define BRPC_BASE_SYNCHRONOUS_EVENT_H
+#ifndef BAIDU_BASE_SYNCHRONOUS_EVENT_H
+#define BAIDU_BASE_SYNCHRONOUS_EVENT_H
 
 #include <vector>                             // std::vector
 #include <algorithm>                          // std::find
 #include <errno.h>                            // errno
 #include "base/logging.h"
 
+// Synchronous event notification.
+// Observers to an event will be called immediately in the same context where
+// the event is notified. This utility uses a vector to store all observers
+// thus is only suitable for a relatively small amount of observers.
+//
 // Example:
 //    // Declare event type
 //    typedef SynchronousEvent<int, const Foo*> FooEvent;
@@ -216,4 +228,4 @@ public:
 }  // end namespace detail
 }  // end namespace base
 
-#endif  // BRPC_BASE_SYNCHRONOUS_EVENT_H
+#endif  // BAIDU_BASE_SYNCHRONOUS_EVENT_H

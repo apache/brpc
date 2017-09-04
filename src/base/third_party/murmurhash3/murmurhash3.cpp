@@ -1,11 +1,9 @@
 // MurmurHash3 was written by Austin Appleby, and is placed in the public
 // domain. The author hereby disclaims copyright to this source code.
 
-// Copyright (c) 2013 Baidu.com, Inc. All Rights Reserved
+// Copyright (c) 2013 baidu-rpc authors.
 // Compute murmurhash3 iteratively so that you don't have to buffer
-// everything in memory before computation. The APIs are similar
-// with MD5
-// Author: The baidu-rpc authors (pbrpc@baidu.com)
+// everything in memory before computation. The APIs are similar with MD5
 
 // Note - The x86 and x64 versions do _not_ produce the same results, as the
 // algorithms are optimized for their respective platforms. You can still

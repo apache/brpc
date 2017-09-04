@@ -1,5 +1,28 @@
-// Copyright (c) 2010 Baidu.com, Inc. All Rights Reserved
-//
+// Copyright (c) 2010 baidu-rpc authors.
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+//     http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Author: Yan,Lin (yanlin@baidu.com)
+//         Ge,Jun (gejun@baidu.com)
+// Date: Thu Oct 28 15:23:09 2010
+
+#ifndef BASE_FILES_TEMP_FILE_H
+#define BASE_FILES_TEMP_FILE_H
+
+#include "base/macros.h"
+
+namespace base {
+
 // Create a temporary file in current directory, which will be deleted when 
 // corresponding TempFile object destructs, typically for unit testing.
 // 
@@ -9,17 +32,7 @@
 //      tmpfile.save("some text");  // Write into the temporary file
 //   }
 //   // The temporary file shall be removed due to destruction of tmpfile
-// 
-// Author: Yan,Lin (yanlin@baidu.com),  Ge,Jun (gejun@baidu.com)
-// Date: Thu Oct 28 15:23:09 2010
-
-#ifndef BASE_FILES_TEMP_FILE_H
-#define BASE_FILES_TEMP_FILE_H
-
-#include "base/macros.h"
-
-namespace base {
-    
+ 
 class TempFile {
 public:
     // Create a temporary file in current directory. If |ext| is given,

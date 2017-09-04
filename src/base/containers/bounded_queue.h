@@ -1,12 +1,24 @@
-// Copyright (c) 2012 Baidu.com, Inc. All Rights Reserved
-//
+// Copyright (c) 2012 baidu-rpc authors.
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+//     http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Author: Ge,Jun (gejun@baidu.com)
+// Date: Sat Aug 18 12:42:16 CST 2012
+
 // A thread-unsafe bounded queue(ring buffer). It can push/pop from both
 // sides and is more handy than thread-safe queues in single thread. Use
 // boost::lockfree::spsc_queue or boost::lockfree::queue in multi-threaded
 // scenarios.
-//
-// Author: Ge,Jun (gejun@baidu.com)
-// Date: Sat Aug 18 12:42:16 CST 2012
 
 #ifndef BASE_BOUNDED_QUEUE_H
 #define BASE_BOUNDED_QUEUE_H

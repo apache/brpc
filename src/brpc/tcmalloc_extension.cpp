@@ -1,9 +1,3 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
-// Copyright (c) 2014 Baidu.com, Inc. All Rights Reserved
-
-// Author: The baidu-rpc authors (pbrpc@baidu.com)
-// Date: Wed Dec  3 15:08:36 CST 2014
-
 // This file pastes google/malloc_extension.h and implements
 // TCMallocGetHeapSample in the last sections.
 

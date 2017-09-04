@@ -1,4 +1,4 @@
-// Copyright (c) 2014 baidu-rpc authors
+// Copyright (c) 2014 baidu-rpc authors.
 
 #include <limits>                           //std::numeric_limits
 #include "bvar/detail/sampler.h"

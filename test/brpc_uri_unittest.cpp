@@ -1,4 +1,4 @@
-// Copyright (c) 2014 baidu-rpc authors
+// Copyright (c) 2014 baidu-rpc authors.
 // File test_uri.cpp
 // Date 2014/10/27 14:19:35
 

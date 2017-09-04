@@ -1,12 +1,24 @@
-// Copyright (c) 2011 Baidu.com, Inc. All Rights Reserved
-//
-// Wrappers of IP and port.
-//
+// Copyright (c) 2011 baidu-rpc authors.
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+//     http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
-#ifndef BRPC_BASE_ENDPOINT_H
-#define BRPC_BASE_ENDPOINT_H
+// Wrappers of IP and port.
+
+#ifndef BAIDU_BASE_ENDPOINT_H
+#define BAIDU_BASE_ENDPOINT_H
 
 #include <netinet/in.h>                          // in_addr
 #include <iostream>                              // std::ostream
@@ -204,4 +216,4 @@ struct hash<base::EndPoint> {
 
 }
 
-#endif  // BRPC_BASE_ENDPOINT_H
+#endif  // BAIDU_BASE_ENDPOINT_H

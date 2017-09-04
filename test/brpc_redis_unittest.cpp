@@ -1,4 +1,4 @@
-// Copyright (c) 2014 baidu-rpc authors
+// Copyright (c) 2014 baidu-rpc authors.
 // Date: Thu Jun 11 14:30:07 CST 2015
 
 #include <iostream>

@@ -1,9 +1,20 @@
-// Copyright (c) 2012-2014 Baidu.com, Inc. All Rights Reserved
+// Copyright (c) 2011 baidu-rpc authors.
 // 
-// A single-threaded pool for very efficient allocations of same-sized items.
-//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+//     http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Author: Ge,Jun (gejun@base.com)
 // Date: Mon. Nov 7 14:47:36 CST 2011
+
 #ifndef BASE_SINGLE_THREADED_POOL_H
 #define BASE_SINGLE_THREADED_POOL_H
 
@@ -11,6 +22,7 @@
 
 namespace base {
 
+// A single-threaded pool for very efficient allocations of same-sized items.
 // Example:
 //   SingleThreadedPool<16, 512> pool;
 //   void* mem = pool.get();

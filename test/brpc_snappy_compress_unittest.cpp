@@ -1,5 +1,5 @@
 // Baidu RPC - A framework to host and access services throughout Baidu.
-// Copyright (c) 2014 baidu-rpc authors
+// Copyright (c) 2014 baidu-rpc authors.
 
 // Date: 2015/01/20 19:01:06
 

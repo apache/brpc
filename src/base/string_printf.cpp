@@ -1,4 +1,4 @@
-// Copyright (c) 2011 Baidu.com, Inc. All Rights Reserved
+// Copyright (c) 2011 baidu-rpc authors.
 //
 // string_printf_impl, string_printf, string_appendf were taken from
 // https://github.com/facebook/folly/blob/master/folly/String.cpp

@@ -1,5 +1,5 @@
-#ifndef BRPC_BASE_UNIQUE_PTR_H
-#define BRPC_BASE_UNIQUE_PTR_H
+#ifndef BAIDU_BASE_UNIQUE_PTR_H
+#define BAIDU_BASE_UNIQUE_PTR_H
 
 #include "base/build_config.h"
 
@@ -469,4 +469,4 @@ operator>=(const unique_ptr<T1, D1>& x, const unique_ptr<T2, D2>& y) {
 }  // namespace std
 
 #endif  // BASE_CXX11_ENABLED
-#endif  // BRPC_BASE_UNIQUE_PTR_H
+#endif  // BAIDU_BASE_UNIQUE_PTR_H

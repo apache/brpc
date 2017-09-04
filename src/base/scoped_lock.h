@@ -1,4 +1,4 @@
-// Copyright (c) 2011 Baidu.com, Inc. All Rights Reserved
+// Copyright (c) 2011 baidu-rpc authors.
 //
 // Lock a mutex, a spinlock, or mutex types in C++11 in a way that the lock
 // will be unlocked automatically when go out of declaring scope.
@@ -14,8 +14,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
-#ifndef BRPC_BASE_BAIDU_SCOPED_LOCK_H
-#define BRPC_BASE_BAIDU_SCOPED_LOCK_H
+#ifndef BAIDU_BASE_BAIDU_SCOPED_LOCK_H
+#define BAIDU_BASE_BAIDU_SCOPED_LOCK_H
 
 #include "base/build_config.h"
 
@@ -396,4 +396,4 @@ void double_lock(std::unique_lock<Mutex1> &lck1, std::unique_lock<Mutex2> &lck2)
 
 };
 
-#endif  // BRPC_BASE_BAIDU_SCOPED_LOCK_H
+#endif  // BAIDU_BASE_BAIDU_SCOPED_LOCK_H
