@@ -1,5 +1,6 @@
-#include "protobuf_map.h"
+// Copyright (c) 2014 baidu-rpc authors.
 
+#include "protobuf_map.h"
 #include <stdio.h>
 
 namespace json2pb {
