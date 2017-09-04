@@ -1,3 +1,5 @@
+// Copyright (c) 2014 baidu-rpc authors.
+
 #include <iostream>
 #include <vector>
 #include <string>

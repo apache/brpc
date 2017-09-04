@@ -1,5 +1,4 @@
-// Copyright (c) 2015 Baidu.com, Inc. All Rights Reserved
-// File: optimized_writer.h
+// Copyright (c) 2015 baidu-rpc authors.
 // Author: Lin Jiang (jianglin05@baidu.com)
 // Date: 2015/7/21 16:44:42
 
