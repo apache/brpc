@@ -10,31 +10,28 @@ namespace {
 
 BAIDU_THREAD_LOCAL int * dummy = NULL;
 const size_t NTHREAD = 8;
-bool processed[NTHREAD+1];
-bool deleted[NTHREAD+1];
-bool register_check = false;
+static bool processed[NTHREAD+1];
+static bool deleted[NTHREAD+1];
+static bool register_check = false;
 
 struct YellObj {
     static int nc;
     static int nd;
     YellObj() {
-        printf("Created\n");
         ++nc;
     }
     ~YellObj() {
-        printf("Destroyed\n");
         ++nd;
     }
 };
 int YellObj::nc = 0;
 int YellObj::nd = 0;
 
-
-void check_global_variable() {
-    ASSERT_TRUE(processed[NTHREAD]);
-    ASSERT_TRUE(deleted[NTHREAD]);
-    ASSERT_EQ(2, YellObj::nc);
-    ASSERT_EQ(2, YellObj::nd);
+static void check_global_variable() {
+    EXPECT_TRUE(processed[NTHREAD]);
+    EXPECT_TRUE(deleted[NTHREAD]);
+    EXPECT_EQ(2, YellObj::nc);
+    EXPECT_EQ(2, YellObj::nd);
 }
 
 class BaiduThreadLocalTest : public ::testing::Test{
@@ -42,7 +39,7 @@ protected:
     BaiduThreadLocalTest(){
         if (!register_check) {
             register_check = true;
-            atexit(check_global_variable);
+            base::thread_atexit(check_global_variable);
         }
     };
     virtual ~BaiduThreadLocalTest(){};
@@ -99,9 +96,8 @@ TEST_F(BaiduThreadLocalTest, get_thread_local) {
 }
 
 void delete_dummy(void* arg) {
-    *((bool*)arg) = true;
+    *(bool*)arg = true;
     if (dummy) {
-        printf("dummy(%p)=%d\n", dummy, *dummy);
         delete dummy;
         dummy = NULL;
     } else {
@@ -112,6 +108,7 @@ void delete_dummy(void* arg) {
 void* proc_dummy(void* arg) {
     bool *p = (bool*)arg;
     *p = true;
+    EXPECT_TRUE(dummy == NULL);
     dummy = new int(p - processed);
     base::thread_atexit(delete_dummy, deleted + (p - processed));
     return NULL;
@@ -139,26 +136,32 @@ TEST_F(BaiduThreadLocalTest, sanity) {
     }
 }
 
-std::stringstream oss;
+static std::ostringstream* oss = NULL;
+inline std::ostringstream& get_oss() {
+    if (oss == NULL) {
+        oss = new std::ostringstream;
+    }
+    return *oss;
+}
 
 void fun1() {
-    oss << "fun1" << std::endl;
+    get_oss() << "fun1" << std::endl;
 }
 
 void fun2() {
-    oss << "fun2" << std::endl;
+    get_oss() << "fun2" << std::endl;
 }
 
 void fun3(void* arg) {
-    oss << "fun3(" << arg << ")" << std::endl;
+    get_oss() << "fun3(" << arg << ")" << std::endl;
 }
 
 void fun4(void* arg) {
-    oss << "fun4(" << arg << ")" << std::endl;
+    get_oss() << "fun4(" << arg << ")" << std::endl;
 }
 
-void check_result() {
-    ASSERT_EQ("fun4(0)\nfun3(0x2)\nfun2\n", oss.str());
+static void check_result() {
+    ASSERT_EQ("fun4(0)\nfun3(0x2)\nfun2\n", get_oss().str());
 }
 
 TEST_F(BaiduThreadLocalTest, call_order_and_cancel) {
@@ -182,4 +185,4 @@ TEST_F(BaiduThreadLocalTest, call_order_and_cancel) {
     base::thread_atexit_cancel(fun3, (void*)1);
 }
 
-}
+} // namespace

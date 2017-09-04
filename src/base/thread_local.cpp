@@ -76,7 +76,10 @@ static void helper_exit_global() {
 }
 
 static void make_thread_atexit_key() {
-    pthread_key_create(&thread_atexit_key, delete_thread_exit_helper);
+    if (pthread_key_create(&thread_atexit_key, delete_thread_exit_helper) != 0) {
+        fprintf(stderr, "Fail to create thread_atexit_key, abort\n");
+        abort();
+    }
     // If caller is not pthread, delete_thread_exit_helper will not be called.
     // We have to rely on atexit().
     atexit(helper_exit_global);

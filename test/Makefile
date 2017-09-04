@@ -5,7 +5,6 @@ include ../config.mk
 CPPFLAGS=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS
 CPPFLAGS+=-DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES
 CXXFLAGS=$(CPPFLAGS) -g -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x
-CFLAGS=$(CPPFLAGS) -g -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
 
 #required by base/crc32.cc to boost performance for 10x
 ifeq ($(shell test $(GCC_VERSION) -ge 40400; echo $$?),0)
@@ -152,7 +151,7 @@ TEST_BINS = test_base test_bvar $(TEST_BTHREAD_SOURCES:.cpp=) $(TEST_BRPC_SOURCE
 all: $(TEST_BINS)
 
 .PHONY:clean
-clean:clean_bins
+clean:clean_bins clean_dbg
 	@echo "Cleaning"
 	@rm -rf $(TEST_BASE_OBJS) $(TEST_BVAR_OBJS) $(TEST_BTHREAD_OBJS) \
 		$(TEST_BRPC_OBJS) $(TEST_PROTO_OBJS)
@@ -161,12 +160,20 @@ clean:clean_bins
 clean_bins:
 	@rm -rf $(TEST_BINS)
 
-../libbrpc.dbg.a:
+.PHONY:clean_dbg
+clean_dbg:
+	@$(MAKE) -C.. clean_debug
+
+../libbrpc.dbg.a: FORCE
 	@$(MAKE) -C.. libbrpc.dbg.a
+
+FORCE:
+
+.PRECIOUS: %.o
 
 test_base:$(TEST_BASE_OBJS) ../libbrpc.dbg.a
 	@echo "Linking $@"
-	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
+	$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
 test_bvar:$(TEST_BVAR_OBJS) ../libbrpc.dbg.a
 	@echo "Linking $@"
@@ -192,6 +199,3 @@ brpc_%_unittest:$(TEST_PROTO_OBJS) brpc_%_unittest.o ../libbrpc.dbg.a
 	@echo "Compiling $@"
 	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
-%.o:%.c
-	@echo "Compiling $@"
-	@$(CC) -c $(HDRPATHS) $(CFLAGS) $< -o $@
