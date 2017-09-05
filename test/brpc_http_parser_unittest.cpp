@@ -1,4 +1,4 @@
-// Copyright (c) 2014 baidu-rpc authors.
+// Copyright (c) 2014 Baidu, Inc.
 // File test_http_parser.cpp
 // Date 2014/10/22 09:58:14
 

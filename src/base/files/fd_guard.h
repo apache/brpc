@@ -1,4 +1,4 @@
-// Copyright (c) 2011 baidu-rpc authors.
+// Copyright (c) 2011 Baidu, Inc.
 //
 // RAII file descriptor.
 //

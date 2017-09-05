@@ -1,4 +1,4 @@
-// Copyright (c) 2014 baidu-rpc authors.
+// Copyright (c) 2014 Baidu, Inc.
 // File: iobuf_read_stream.h
 // Author: Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date: 2014/10/29 15:01:09

@@ -1,5 +1,5 @@
 // protobuf-json: Conversions between protobuf and json.
-// Copyright (c) 2014 baidu-rpc authors.
+// Copyright (c) 2014 Baidu, Inc.
 // Date:  2014-10-29 18:30:33
 
 #ifndef BRPC_JSON2PB_JSON_TO_PB_H

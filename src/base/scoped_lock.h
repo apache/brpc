@@ -1,4 +1,4 @@
-// Copyright (c) 2011 baidu-rpc authors.
+// Copyright (c) 2011 Baidu, Inc.
 //
 // Lock a mutex, a spinlock, or mutex types in C++11 in a way that the lock
 // will be unlocked automatically when go out of declaring scope.

@@ -1,4 +1,4 @@
-// Copyright (c) 2013 baidu-rpc authors.
+// Copyright (c) 2013 Baidu, Inc.
 // Author: gejun@baidu.com
 
 #include <gtest/gtest.h>

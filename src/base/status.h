@@ -1,4 +1,4 @@
-// Copyright (c) 2015 baidu-rpc authors.
+// Copyright (c) 2015 Baidu, Inc.
 
 #ifndef BAIDU_BASE_STATUS_H
 #define BAIDU_BASE_STATUS_H

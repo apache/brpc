@@ -1,5 +1,5 @@
 // bthread - A M:N threading library to make applications more concurrent.
-// Copyright (c) 2015 baidu-rpc authors.
+// Copyright (c) 2015 Baidu, Inc.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
