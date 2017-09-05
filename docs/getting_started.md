@@ -50,11 +50,11 @@ Using other versions of gcc may generate warnings, contact us to fix.
 
 Adding `-D__const__=` to cxxflags in your makefiles is a must avoid [errno issue in gcc4+](docs/thread_local.md)。
 
-##Clang: 3.5-4.0
+## Clang: 3.5-4.0
 
 unittests can't be compiled with clang yet.
 
-##glibc: 2.12-2.25
+## glibc: 2.12-2.25
 
 no known issues.
 
@@ -69,11 +69,11 @@ protobuf 3.3-3.4 is not tested yet.
 
 no known issues.
 
-##openssl: 0.97-1.1
+## openssl: 0.97-1.1
 
 required by https.
 
-##tcmalloc: 1.7-2.5
+## tcmalloc: 1.7-2.5
 
 baidu-rpc does **not** link [tcmalloc](http://goog-perftools.sourceforge.net/doc/tcmalloc.html) by default. Users link tcmalloc on-demand.
 
@@ -95,6 +95,6 @@ When you remove tcmalloc, not only remove the linking with tcmalloc but also the
 
 baidu-rpc detects valgrind automatically (and registers stacks of bthread). Older valgrind (say 3.2) is not supported.
 
-#Track instances
+# Track instances
 
 We provide a program to help you to track and monitor all baidu-rpc instances. Just run [trackme_server](tools/trackme_server/trackme_server.cpp) somewhere and launch need-to-be-tracked instances with -trackme_server=<SERVER>. The trackme_server will receive pings from instance periodically and print logs when it does. You can aggregate instance addresses from the log and call builtin services of the instances for further information.
