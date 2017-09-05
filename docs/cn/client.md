@@ -339,9 +339,7 @@ brpc::DoNothing()可获得一个什么都不干的done，专门用于半同步�
 
 brpc::StartCancel(CallId)可取消任意RPC，CallId必须**在发起RPC前**通过Controller.call_id()获得，其他时刻都可能有race condition。
 
-Icon
-
-是brpc::StartCancel(CallId)，不是controller.StartCancel()，后者被禁用，没有效果。
+> 是brpc::StartCancel(CallId)，不是controller.StartCancel()，后者被禁用，没有效果。
 
 顾名思义，StartCancel调用完成后RPC并未立刻结束，你不应该碰触Controller的任何字段或删除任何资源，它们自然会在RPC结束时被done中对应逻辑处理。如果你一定要在原地等到RPC结束（一般不需要），则可通过Join(call_id)。
 

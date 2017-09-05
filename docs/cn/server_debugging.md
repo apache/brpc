@@ -2,9 +2,7 @@
 
 查看 /vars/bthread_worker_**count** 和 /vars/bthread_worker_**usage**。分别是工作线程的个数，和正在被使用的工作线程个数。
 
-Icon
-
-如果usage和count接近，说明线程不够用了。
+> 如果usage和count接近，说明线程不够用了。
 
 比如，下图中有24个工作线程，正在使用的是23.93个，说明所有的工作线程都被打满了，不够用了。
 
@@ -20,9 +18,7 @@ Icon
 
 查看 /vars/process_core_**count** 和 /vars/process_cpu_**usage**。分别是cpu核心的个数，和正在使用的cpu核数。
 
-Icon
-
-如果usage和count接近，说明CPU不够用了。
+> 如果usage和count接近，说明CPU不够用了。
 
 下图中cpu核数为24，正在使用的核心数是20.9个，CPU是瓶颈了。
 

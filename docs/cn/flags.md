@@ -69,41 +69,39 @@ flagfile中可以使用`--flagfile包含另一个flagfile。`
 
 访问/flags/NAME?setvalue=VALUE即可动态修改一个gflag的值，validator会被调用。
 
-Icon
-
 为了防止误修改，需要动态修改的gflag必须有validator，显示此类gflag名字时有(R)后缀。
 
-![img](http://wiki.baidu.com/download/thumbnails/71337189/image2015-9-21%2021%3A49%3A48.png?version=1&modificationDate=1442843389000&api=v2)
+![img](../images/reloadable_flags.png)
 
 *修改成功后会显示如下信息*：
 
-![img](http://wiki.baidu.com/download/attachments/37774685/image2015-2-22%2012%3A30%3A54.png?version=1&modificationDate=1424579454000&api=v2)
+![img](../images/flag_setvalue.png)
 
 *尝试修改不允许修改的gflag会显示如下错误信息*：
 
-![img](http://wiki.baidu.com/download/attachments/37774685/image2015-2-22%2012%3A30%3A1.png?version=1&modificationDate=1424579401000&api=v2)
+![img](../images/set_flag_reject.png)
 
 *设置一个不允许的值会显示如下错误（flag值不会变化）*：
 
-![img](http://wiki.baidu.com/download/attachments/37774685/image2015-2-22%2012%3A35%3A9.png?version=1&modificationDate=1424579709000&api=v2)
+![img](../images/set_flag_invalid_value.png)
 
  
 
 r31658之后支持可视化地修改，在浏览器上访问时将看到(R)下多了下划线：
 
-![img](http://wiki.baidu.com/download/attachments/71337189/image2015-12-24%2022%3A55%3A29.png?version=1&modificationDate=1450968931000&api=v2)
+![img](../images/the_r_after_flag.png)
 
 点击后在一个独立页面可视化地修改对应的flag：
 
-![img](http://wiki.baidu.com/download/attachments/71337189/image2015-12-24%2022%3A56%3A3.png?version=1&modificationDate=1450968965000&api=v2)
+![img](../images/set_flag_with_form.png)
 
 填入true后确定：
 
-![img](http://wiki.baidu.com/download/attachments/71337189/image2015-12-24%2022%3A57%3A13.png?version=1&modificationDate=1450969035000&api=v2)
+![img](../images/set_flag_with_form_2.png)
 
 返回/flags可以看到对应的flag已经被修改了：
 
-![img](http://wiki.baidu.com/download/attachments/71337189/image2015-12-24%2022%3A57%3A57.png?version=1&modificationDate=1450969079000&api=v2)
+![img](../images/set_flag_with_form_3.png)
 
  
 
