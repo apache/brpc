@@ -1,10 +1,6 @@
 # 背景
 
-[baidu-dsp](http://wiki.baidu.com/pages/viewpage.action?pageId=100940602)是联盟基于Ad Exchange和RTB模式的需求方平台，服务大客户、代理的投放产品体系。
-
-# 改造方法
-
-我们改造了多个模块，均取得了显著的效果。本文只介绍其中关于super-nova-as的改动。super-nova-as是的baidu-dsp的AS，之前使用ub-aserver编写，由于当时(2015.1)属于baidu-rpc推广早期，为了尽量减少改动，我们没有改造整个as，而只是把super-nova-as连接下游（ctr-server、cvr-server、super-nova-bs）的client从ubrpc升级为baidu-rpc。
+baidu-dsp是联盟基于Ad Exchange和RTB模式的需求方平台，服务大客户、代理的投放产品体系。我们改造了多个模块，均取得了显著的效果。本文只介绍其中关于super-nova-as的改动。super-nova-as是的baidu-dsp的AS，之前使用ub-aserver编写，为了尽量减少改动，我们没有改造整个as，而只是把super-nova-as连接下游（ctr-server、cvr-server、super-nova-bs）的client从ubrpc升级为baidu-rpc。
 
 # 结论
 

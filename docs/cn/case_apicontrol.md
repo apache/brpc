@@ -34,32 +34,17 @@ QA测试结论：通过
 | 总线程数     | 193               | 132                | 降低**31.61**% | Baidu RPC版本线程数使用率较低，还可降低 |
 | 极限QPS    | 3000              | 9000               | 提升**3**倍     | 线下使用Geoconv和Geocoder服务测试 |
 
- 
-
-**CPU****使用率(%)**Noah监控数据（红色为升级前，蓝色为升级后）
-
+**CPU使用率(%)**（红色为升级前，蓝色为升级后）
 ![img](../images/apicontrol_compare_1.png)
 
- 
-
-**内存使用量(KB)**Noah监控数据（红色为升级前，蓝色为升级后）
-
+**内存使用量(KB)**（红色为升级前，蓝色为升级后）
 ![img](../images/apicontrol_compare_2.png)
 
-****
-
-**鉴权平响(ms)**Noah监控数据（红色为升级前，蓝色为升级后）
-
+**鉴权平响(ms)**（红色为升级前，蓝色为升级后）
 ![img](../images/apicontrol_compare_3.png)
 
- 
-
-**转发平响(ms)**Noah监控数据（红色为升级前，蓝色为升级后）
-
+**转发平响(ms)**（红色为升级前，蓝色为升级后）
 ![img](../images/apicontrol_compare_4.png)
 
- 
-
-**总线程数(****个)**Noah监控数据（红色为升级前，蓝色为升级后）
-
+**总线程数(个)**（红色为升级前，蓝色为升级后）
 ![img](../images/apicontrol_compare_5.png)
