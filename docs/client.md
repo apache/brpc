@@ -656,3 +656,11 @@ set_request_compress_type()设置request的压缩方式，默认不压缩。注�
 FATAL 04-07 20:00:03 7778 public/baidu-rpc/src/baidu/rpc/channel.cpp:123] Invalid address=`bns://group.user-persona.dumi.nj03'. You should use Init(naming_service_name, load_balancer_name, options) to access multiple servers.
 
 访问bns要使用三个参数的Init，它第二个参数是load_balancer_name，而你这里用的是两个参数的Init，框架当你是访问单点，就会报这个错。
+
+### Q: 两个产品线都使用protobuf，为什么不能互相访问
+
+协议 !=protobuf。protobuf负责打包，协议负责定字段。打包格式相同不意味着字段可以互通。协议中可能会包含多个protobuf包，以及额外的长度、校验码、magic number等等。协议的互通是通过在RPC框架内转化为统一的编程接口完成的，而不是在protobuf层面。从广义上来说，protobuf也可以作为打包框架使用，生成其他序列化格式的包，像[idl<=>protobuf](http://wiki.baidu.com/pages/viewpage.action?pageId=144820547)就是通过protobuf生成了解析idl的代码。
+
+### Q: 为什么C++ client/server 能够互相通信， 和其他语言的client/server 通信会报序列化失败的错误
+
+检查一下C++ 版本是否开启了压缩 (Controller::set_compress_type), 目前 python/JAVA版的rpc框架还没有实现压缩，互相返回会出现问题。 
