@@ -61,7 +61,7 @@ r31806之后当load_balancer_name为NULL或空时，此Init转为连接单台ser
 
 ### bns://<bns-name>
 
-BNS是百度内常用的名字服务，比如bns://rdev.matrix.all，其中"bns"是protocol，"rdev.matrix.all"是service-name。相关一个gflag是-ns_access_interval: ![img](../images/ns_access_interval.png)
+BNS是百度内常用的名字服务，比如bns://rdev.matrix.all，其中"bns"是protocol，"rdev.matrix.all"是service-name。相关一个gflag是-ns_access_interval: ![img](ns_access_interval.png)
 
 如果bns中显示不为空，但Channel却说找不到服务器，那么有可能bns列表中的机器状态位（status）为非0，含义为机器不可用，所以不会被加入到server候选集中，具体可通过命令行查看：
 
