@@ -6,11 +6,11 @@
 
 比如，下图中有24个工作线程，正在使用的是23.93个，说明所有的工作线程都被打满了，不够用了。
 
-![img](../images/full_worker_usage.png)
+![](../images/full_worker_usage.png)
 
 下图中正在使用的只有2.36个，工作线程明显是足够的。
 
-![img](../images/normal_worker_usage.png)
+![](../images/normal_worker_usage.png)
 
 把 /vars/bthread_worker_count;bthread_worker_usage?expand 拼在服务url后直接看到这两幅图，就像[这样](http://brpc.baidu.com:8765/vars/bthread_worker_count;bthread_worker_usage?expand)。
 
