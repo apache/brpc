@@ -24,7 +24,7 @@ protobuf的更多用法请阅读[protobuf官方文档](https://developers.google
 
 # 实现生成的Service基类
 
-protoc运行后会生成[echo.pb.cc](http://echo.pb.cc/)和echo.pb.h文件，你得include echo.pb.h，实现其中的EchoService基类：
+protoc运行后会生成echo.pb.cc和echo.pb.h文件，你得include echo.pb.h，实现其中的EchoService基类：
 
 **my_echo_service.cpp** 
 
@@ -127,7 +127,7 @@ public:
 };
 ```
 
-> Service在插入[brpc::Server](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/server.h)后才可能提供服务。
+Service在插入[brpc::Server](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/server.h)后才可能提供服务。
 
 ## 标记当前调用为失败
 
@@ -165,12 +165,12 @@ printf("local_side=%s\n", base::endpoint2str(cntl->local_side()).c_str());
 
 有些server以等待后端服务返回结果为主，且处理时间特别长，为了及时地释放出线程资源，更好的办法是把done注册到被等待事件的回调中，等到事件发生后再调用done->Run()，这种是**异步service**。
 
-异步service的最后一行一般是done_guard.release()以确保done_guard在析构时不会调用done->Run()，而是在事件回调中调用。例子请看[example/session_data_and_thread_local](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/session_data_and_thread_local/)。
+异步service的最后一行一般是done_guard.release()以确保done_guard在析构时不会调用done->Run()，而是在事件回调中调用。例子请看[example/session_data_and_thread_local](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/example/session_data_and_thread_local/)。
 
->Service和Channel都可以使用done来表达后续的操作，但它们是完全不同的，请勿混淆：
->
->- Service的done由框架创建，用户处理请求后调用done把response发回给client。
->- Channel的done由用户创建，递给框架，待RPC结束后被框架调用以执行用户的后续代码。
+Service和Channel都可以使用done来表达后续的操作，但它们是完全不同的，请勿混淆：
+
+* Service的done由框架创建，用户处理请求后调用done把response发回给client。
+* Channel的done由用户创建，递给框架，待RPC结束后被框架调用以执行用户的后续代码。
 
 # 插入Service
 
@@ -195,7 +195,7 @@ if (server.AddService(&my_echo_service, brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
 }
 ```
 
->Server启动后你无法再修改其中的Service。
+Server启动后你无法再修改其中的Service。
 
 # 启动
 
@@ -225,7 +225,7 @@ server.Start(..., &options);
 
 # 停止
 
-```
+```c++
 server.Stop(closewait_ms); // r28921后closewait_ms无效
 server.Join();
 ```
@@ -261,7 +261,6 @@ $ curl -H 'Content-Type: application/json' -d '{"message":"hello"}' http://brpc.
 # after r31987
 $ curl -d '{"message":"hello"}' http://brpc.baidu.com:8765/EchoService/Echo
 {"message":"hello"}
-
 ```
 
 注意：
@@ -306,7 +305,7 @@ server端会自动尝试其支持的协议，无需用户指定。`cntl->protoco
 - nova协议，显示为”nova“ (r32206前显示为"nshead_server")，默认不启用，开启方式：
 
   ```c++
-  #include brpc/policy/nova_pbrpc_protocol.h>
+  #include <brpc/policy/nova_pbrpc_protocol.h>
   ...
   ServerOptions options;
   ...
@@ -316,7 +315,7 @@ server端会自动尝试其支持的协议，无需用户指定。`cntl->protoco
 - public/pbrpc协议，显示为"public_pbrpc" (r32206前显示为"nshead_server")，默认不启用，开启方式：
 
   ```c++
-  #include brpc/policy/public_pbrpc_protocol.h>
+  #include <brpc/policy/public_pbrpc_protocol.h>
   ...
   ServerOptions options;
   ...
@@ -326,7 +325,7 @@ server端会自动尝试其支持的协议，无需用户指定。`cntl->protoco
 - nshead_mcpack协议，显示为"nshead_mcpack"，默认不启用，开启方式：
 
   ```c++
-  #include brpc/policy/nshead_mcpack_protocol.h>
+  #include <brpc/policy/nshead_mcpack_protocol.h>
   ...
   ServerOptions options;
   ...
@@ -350,6 +349,10 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 ## 关闭闲置连接
 
 如果一个连接在ServerOptions.idle_timeout_sec对应的时间内没有读取或写出数据，则被视为”闲置”而被server主动关闭，打开[-log_idle_connection_close](http://brpc.baidu.com:8765/flags/log_idle_connection_close)后关闭前会打印一条日志。默认值为-1，代表不开启。
+
+| Name                      | Value | Description                              | Defined At          |
+| ------------------------- | ----- | ---------------------------------------- | ------------------- |
+| log_idle_connection_close | false | Print log when an idle connection is closed | src/brpc/socket.cpp |
 
 ## pid_file
 
@@ -383,17 +386,21 @@ server的框架部分在出现错误时一般是不打日志的，因为当大�
 
 超过最大消息时会打印如下错误日志：
 
-> FATAL: 05-10 14:40:05: * 0 src/brpc/input_messenger.cpp:89] A message from 127.0.0.1:35217(protocol=baidu_std) is bigger than 67108864 bytes, the connection will be closed. Set max_body_size to allow bigger messages
+```
+FATAL: 05-10 14:40:05: * 0 src/brpc/input_messenger.cpp:89] A message from 127.0.0.1:35217(protocol=baidu_std) is bigger than 67108864 bytes, the connection will be closed. Set max_body_size to allow bigger messages
+```
 
 protobuf中有[类似的限制](https://github.com/google/protobuf/blob/master/src/google/protobuf/io/coded_stream.h#L364)，在r34677之前，即使用户设置了足够大的-max_body_size，仍然有可能因为protobuf中的限制而被拒收，出错时会打印如下日志：
 
-> FATAL: 05-10 13:35:02: * 0 google/protobuf/io/coded_stream.cc:156] A protocol message was rejected because it was too big (more than 67108864 bytes). To increase the limit (or to disable these warnings), see CodedInputStream::SetTotalBytesLimit() in google/protobuf/io/coded_stream.h.
+```
+FATAL: 05-10 13:35:02: * 0 google/protobuf/io/coded_stream.cc:156] A protocol message was rejected because it was too big (more than 67108864 bytes). To increase the limit (or to disable these warnings), see CodedInputStream::SetTotalBytesLimit() in google/protobuf/io/coded_stream.h.
+```
 
 在r34677后，baidu-rpc移除了protobuf中的限制，只要-max_body_size足够大，protobuf不会再打印限制错误。此功能对protobuf的版本没有要求。
 
 ## 压缩
 
-set_response_compress_type()设置response的压缩方式，默认不压缩。注意附件不会被压缩。HTTP body的压缩方法见[server压缩response body](access_http.md#压缩responsebody)。
+set_response_compress_type()设置response的压缩方式，默认不压缩。注意附件不会被压缩。HTTP body的压缩方法见[server压缩response body](http_client.md#压缩responsebody)。
 
 支持的压缩方法有：
 
@@ -469,7 +476,7 @@ option.auth = &auth;
 
 你不能认为Server就用了这么多线程，因为进程内的所有Server和Channel会共享线程资源，线程总数是所有ServerOptions.num_threads和bthread_concurrency中的最大值。Channel没有相应的选项，但可以通过--bthread_concurrency调整。比如一个程序内有两个Server，num_threads分别为24和36，bthread_concurrency为16。那么worker线程数为max(24, 36, 16) = 36。这不同于其他RPC实现中往往是加起来。
 
-> 另外，baidu-rpc不区分io线程和worker线程。baidu-rpc知道如何编排IO和处理代码，以获得更高的并发度和线程利用率。
+另外，baidu-rpc**不区分**io线程和worker线程。baidu-rpc知道如何编排IO和处理代码，以获得更高的并发度和线程利用率。
 
 ## 限制最大并发
 
@@ -518,7 +525,7 @@ server.MaxConcurrencyOf(&service, "Echo") = 10;
 
 对于这些情况，baidu-rpc提供了pthread模式，开启**-usercode_in_pthread**后，用户代码均会在pthread中运行，原先阻塞bthread的函数转而阻塞pthread。
 
-> **r33447前请勿在开启-usercode_in_pthread的代码中发起同步RPC，只要同时进行的同步RPC个数超过工作线程数就会死锁。**
+**r33447前请勿在开启-usercode_in_pthread的代码中发起同步RPC，只要同时进行的同步RPC个数超过工作线程数就会死锁。**
 
 打开pthread模式在性能上的注意点：
 
@@ -537,26 +544,24 @@ server.MaxConcurrencyOf(&service, "Echo") = 10;
 
 内置服务很有用，但包含了大量内部信息，不应对外暴露。有多种方式可以对外禁用内置服务：
 
-- 设置内部端口。把ServerOptions.internal_port设为一个**仅允许百度内网访问**的端口。你可通过internal_port访问到内置服务，但通过对外端口(Server.Start时传入的那个)访问内置服务时将看到如下错误：
+- 设置内部端口。把ServerOptions.internal_port设为一个**仅允许内网访问**的端口。你可通过internal_port访问到内置服务，但通过对外端口(Server.Start时传入的那个)访问内置服务时将看到如下错误：
 
-  > [a27eda84bcdeef529a76f22872b78305] Not allowed to access builtin services, try ServerOptions.internal_port=... instead if you're inside Baidu's network
+  ```
+  [a27eda84bcdeef529a76f22872b78305] Not allowed to access builtin services, try ServerOptions.internal_port=... instead if you're inside Baidu's network
+  ```
 
 - 前端server指定转发路径。nginx等http server可配置URL的映射关系，比如下面的配置把访问/MyAPI的外部流量映射到`target-server的/ServiceName/MethodName`。当外部流量尝试访问内置服务，比如说/status时，将直接被nginx拒绝。
-
-  ```nginx
+```nginx
   location /MyAPI {
       ...
       proxy_pass http://<target-server>/ServiceName/MethodName$query_string   # $query_string是nginx变量，更多变量请查询http://nginx.org/en/docs/http/ngx_http_core_module.html
       ...
   }
-  ```
-
-  > **另外请勿开启**-enable_dir_service**和**-enable_threads_service**两个选项，它们虽然很方便，但可能会暴露服务器上的其他信息，有安全隐患。早于r30869 (1.0.106.30846)的rpc版本没有这两个选项而是默认打开了这两个服务，请升级rpc确保它们关闭。
-  >
-  > 检查现有rpc服务是否打开了这两个开关：
-  >
-  > `curl -s -m 1 <HOSTNAME>:<PORT>/flags/enable_dir_service,enable_threads_service | awk '{if($3=="false"){++falsecnt}else if($3=="Value"){isrpc=1}}END{if(isrpc!=1||falsecnt==2){print "SAFE"}else{print "NOT SAFE"}}'`**
-
+```
+**请勿开启**-enable_dir_service和-enable_threads_service两个选项，它们虽然很方便，但会暴露服务器上的其他信息，有安全隐患。早于r30869 (1.0.106.30846)的rpc版本没有这两个选项而是默认打开了这两个服务，请升级rpc确保它们关闭。检查现有rpc服务是否打开了这两个开关：
+```shell
+curl -s -m 1 <HOSTNAME>:<PORT>/flags/enable_dir_service,enable_threads_service | awk '{if($3=="false"){++falsecnt}else if($3=="Value"){isrpc=1}}END{if(isrpc!=1||falsecnt==2){print "SAFE"}else{print "NOT SAFE"}}'
+```
 ### 对返回的URL进行转义
 
 可调用brpc::WebEscape()对url进行转义，防止恶意URI注入攻击。
@@ -752,9 +757,9 @@ Session-local和server-thread-local对大部分server已经够用。不过在一
 
 由于baidu-rpc会为每个请求建立一个bthread，server中的bthread-local行为特殊：当一个检索bthread退出时，它并不删除bthread-local，而是还回server的一个pool中，以被其他bthread复用。这可以避免bthread-local随着bthread的创建和退出而不停地构造和析构。这对于用户是透明的。
 
-> **在使用bthread-local前确保baidu-rpc的版本 >= 1.0.130.31109**
->
-> 在那个版本之前的bthread-local没有在不同bthread间重用线程私有的存储(keytable)。由于baidu-rpc server会为每个请求创建一个bthread, bthread-local函数会频繁地创建和删除thread-local数据，性能表现不佳。之前的实现也无法在pthread中使用。
+**在使用bthread-local前确保baidu-rpc的版本 >= 1.0.130.31109**
+
+在那个版本之前的bthread-local没有在不同bthread间重用线程私有的存储(keytable)。由于baidu-rpc server会为每个请求创建一个bthread, bthread-local函数会频繁地创建和删除thread-local数据，性能表现不佳。之前的实现也无法在pthread中使用。
 
 **主要接口：**
 
@@ -876,7 +881,7 @@ A: 一般是client端使用了连接池或短连接模式，在RPC超时后会�
 
 ### Q: Remote side of fd=9 SocketId=2@10.94.66.55:8000 was closed是什么意思
 
-这不是错误，是常见的warning日志，表示对端关掉连接了（EOF)。这个日志有时对排查问题有帮助。r31210之后，这个日志默认被关闭了。如果需要打开，可以把参数-log_connection_close设置为true（支持[动态修改](http://wiki.baidu.com/display/RPC/flags#flags-Changegflagon-the-fly)）
+这不是错误，是常见的warning日志，表示对端关掉连接了（EOF)。这个日志有时对排查问题有帮助。r31210之后，这个日志默认被关闭了。如果需要打开，可以把参数-log_connection_close设置为true（支持[动态修改](flags.md#change-gflag-on-the-fly)）
 
 ### Q: 为什么server端线程数设了没用
 
@@ -899,15 +904,12 @@ baidu-rpc的Server是运行在bthread之上，默认栈大小为1M，而pthread�
 ### Q: Fail to open /proc/self/io
 
 有些内核没这个文件，不影响服务正确性，但如下几个bvar会无法更新：
-
+```
 process_io_read_bytes_second
-
 process_io_write_bytes_second
-
 process_io_read_second
-
 process_io_write_second
-
+```
 ### Q: json串="[1,2,3]"没法直接转为protobuf message
 
 不行，最外层必须是json object（大括号包围的）

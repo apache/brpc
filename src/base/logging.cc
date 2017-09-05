@@ -130,7 +130,7 @@ DEFINE_int32(min_log_level, 0, "Any log at or above this level will be "
              "displayed. Anything below this level will be silently ignored. "
              "0=INFO 1=NOTICE 2=WARNING 3=ERROR 4=FATAL");
 
-DEFINE_bool(log_hostname, false, "Add [host=...] after each log so"
+DEFINE_bool(log_hostname, false, "Add host after pid in each log so"
             " that we know where logs came from when using aggregation tools"
             " like ELK.");
 

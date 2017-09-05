@@ -8,11 +8,11 @@ Icon
 
 比如，下图中有24个工作线程，正在使用的是23.93个，说明所有的工作线程都被打满了，不够用了。
 
-**![img](http://wiki.baidu.com/download/attachments/161461013/image2016-1-8%2017%3A14%3A8.png?version=1&modificationDate=1452244448000&api=v2)**
+![img](../images/full_worker_usage.png)
 
 下图中正在使用的只有2.36个，工作线程明显是足够的。
 
-![img](http://wiki.baidu.com/download/attachments/161461013/image2016-1-8%2017%3A16%3A34.png?version=1&modificationDate=1452244594000&api=v2)
+![img](../images/normal_worker_usage.png)
 
 把 /vars/bthread_worker_count;bthread_worker_usage?expand 拼在服务url后直接看到这两幅图，就像[这样](http://brpc.baidu.com:8765/vars/bthread_worker_count;bthread_worker_usage?expand)。
 
@@ -26,11 +26,11 @@ Icon
 
 下图中cpu核数为24，正在使用的核心数是20.9个，CPU是瓶颈了。
 
-![img](http://wiki.baidu.com/download/attachments/161461013/image2016-1-8%2017%3A28%3A37.png?version=1&modificationDate=1452245317000&api=v2)
+![img](../images/high_cpu_usage.png)
 
 下图中正在使用的核心数是2.06，CPU是够用的。
 
-![img](http://wiki.baidu.com/download/attachments/161461013/image2016-1-8%2017%3A26%3A25.png?version=1&modificationDate=1452245185000&api=v2)
+![img](../images/normal_cpu_usage.png)
 
 # 3.定位问题
 
@@ -48,7 +48,7 @@ Icon
 
 在不同服务的[vars界面](http://brpc.baidu.com:8765/vars)输入qps，查看不同的qps是否符合预期，就像这样：
 
-![img](http://wiki.baidu.com/download/attachments/161461013/image2016-1-8%2018%3A5%3A40.png?version=1&modificationDate=1452247540000&api=v2)
+![img](../images/bthread_creation_qps.png)
 
 或者在命令行中用curl直接访问，像这样：
 
@@ -58,7 +58,7 @@ bthread_creation_qps : 95
 rpc_server_8765_example_echo_service_echo_qps : 57
 ```
 
-如果不同机器的分流确实不均，且难以解决，可以考虑[限制最大并发](server.md#id-创建和设置Server-限制最大并发)。
+如果不同机器的分流确实不均，且难以解决，可以考虑[限制最大并发](server.md#限制最大并发)。
 
 ### 优化单机性能
 
@@ -78,15 +78,15 @@ rpc_server_8765_example_echo_service_echo_qps : 57
 
 如果线程数不够，你可以尝试动态调大工作线程数，切换到/flags页面，点击bthread_concurrency右边的(R):
 
-![img](http://wiki.baidu.com/download/attachments/161461013/image2016-1-8%2017%3A35%3A54.png?version=1&modificationDate=1452245754000&api=v2)
+![img](../images/bthread_concurrency_1.png)
 
 进入后填入新的线程数确认即可：
 
-![img](http://wiki.baidu.com/download/attachments/161461013/image2016-1-8%2017%3A36%3A48.png?version=1&modificationDate=1452245808000&api=v2)
+![img](../images/bthread_concurrency_2.png)
 
 回到flags界面可以看到bthread_concurrency已变成了新值。
 
-![img](http://wiki.baidu.com/download/attachments/161461013/image2016-1-8%2017%3A37%3A33.png?version=1&modificationDate=1452245853000&api=v2)
+![img](../images/bthread_concurrency_3.png)
 
  
 
@@ -94,7 +94,7 @@ rpc_server_8765_example_echo_service_echo_qps : 57
 
 比如在我们这的例子中，调大线程后新增的工作线程仍然被打满了。
 
-![img](http://wiki.baidu.com/download/attachments/161461013/image2016-1-8%2017%3A39%3A37.png?version=1&modificationDate=1452245977000&api=v2)
+![img](../images/full_worker_usage_2.png)
 
 ### 排除锁的嫌疑
 
@@ -104,21 +104,21 @@ rpc_server_8765_example_echo_service_echo_qps : 57
 
 rpcz可以帮助你看到最近的所有请求，和处理它们时在每个阶段花费的时间（单位都是微秒）。
 
-![img](http://wiki.baidu.com/download/attachments/161461013/image2016-1-8%2018%3A14%3A8.png?version=1&modificationDate=1452248048000&api=v2)
+![img](../images/rpcz.png)
 
 点击一个span链接后看到该次RPC何时开始，每个阶段花费的时间，何时结束。
 
-![img](http://wiki.baidu.com/download/attachments/161461013/image2016-1-8%2018%3A15%3A7.png?version=1&modificationDate=1452248107000&api=v2)
+![img](../images/rpcz_2.png)
 
 这是一个典型的server在严重阻塞的例子。从接收到请求到开始运行花费了20ms，说明server已经没有足够的工作线程来及时完成工作了。
 
 现在这个span的信息比较少，我们去程序里加一些。你可以使用TRACEPRINTF向rpcz打印日志。打印内容会嵌入在rpcz的时间流中。
 
-![img](http://wiki.baidu.com/download/attachments/161461013/image2016-1-8%2018%3A26%3A19.png?version=1&modificationDate=1452248779000&api=v2)
+![img](../images/trace_printf.png)
 
 重新运行后，查看一个span，里面的打印内容果然包含了我们增加的TRACEPRINTF。
 
-![img](http://wiki.baidu.com/download/attachments/161461013/image2016-1-8%2018%3A28%3A27.png?version=1&modificationDate=1452248908000&api=v2)
+![img](../images/rpcz_3.png)
 
 在运行到第一条TRACEPRINTF前，用户回调已运行了2051微秒（假设这符合我们的预期），紧接着foobar()却花费了8036微秒，我们本来以为这个函数会很快返回的。范围进一步缩小了。
 
@@ -152,11 +152,11 @@ void search() {
 
 重新运行程序后，在vars的搜索框中键入foobar，显示如下：
 
-![img](http://wiki.baidu.com/download/attachments/161461013/image2016-1-8%2018%3A41%3A11.png?version=1&modificationDate=1452249671000&api=v2)
+![img](../images/foobar_bvar.png)
 
 点击一个bvar可以看到动态图，比如点击cdf后看到
 
-![img](http://wiki.baidu.com/download/attachments/161461013/image2016-1-8%2018%3A42%3A46.png?version=1&modificationDate=1452249766000&api=v2)
+![img](../images/foobar_latency_cdf.png)
 
 根据延时的分布，你可以推测出这个函数的整体行为，对大多数请求表现如何，对长尾表现如何。
 

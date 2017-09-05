@@ -154,17 +154,23 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 
 ## 健康检查
 
-连接断开的server会被暂时隔离而不会被负载均衡算法选中，baidu-rpc会定期连接被隔离的server（间隔由参数[-health_check_interval](http://brpc.baidu.com:8765/flags/health_check_interval)控制），一旦server被连接上，它会恢复为可用状态。如果在隔离过程中，server从名字服务中删除了，baidu-rpc也会停止连接尝试。
+连接断开的server会被暂时隔离而不会被负载均衡算法选中，baidu-rpc会定期连接被隔离的server，间隔由参数-health_check_interval控制:
+
+| Name                      | Value | Description                              | Defined At              |
+| ------------------------- | ----- | ---------------------------------------- | ----------------------- |
+| health_check_interval （R） | 3     | seconds between consecutive health-checkings | src/brpc/socket_map.cpp |
+
+一旦server被连接上，它会恢复为可用状态。如果在隔离过程中，server从名字服务中删除了，baidu-rpc也会停止连接尝试。
 
 # 发起访问
 
 一般来说，我们不直接调用Channel.CallMethod，而是通过protobuf生成的桩XXX_Stub，过程更像是“调用函数”。stub内没什么成员变量，建议在栈上创建和使用，而不必new，当然你也可以把stub存下来复用。Channel::CallMethod和stub访问都是线程安全的。比如：
-```
+```c++
 XXX_Stub stub(&channel);
 stub.some_method(controller, request, response, done);
 ```
 甚至
-```
+```c++
 XXX_Stub(&channel).some_method(controller, request, response, done);
 ```
 一个例外是http client。访问http服务和protobuf没什么关系，直接调用CallMethod即可，除了Controller和done均为NULL，详见[访问HTTP服务](http_client.md)。
@@ -174,7 +180,7 @@ XXX_Stub(&channel).some_method(controller, request, response, done);
 同步访问指的是：CallMethod会阻塞到server端返回response或发生错误（包括超时）。
 
 由于同步访问中CallMethod结束意味着RPC结束，response/controller不再会被框架使用，它们都可以分配在栈上。注意，如果request/response字段特别多字节数特别大的话，还是更适合分配在堆上。
-```
+```c++
 MyRequest request;
 MyResponse response;
 brpc::Controller cntl;
@@ -202,7 +208,7 @@ if (cntl->Failed()) {
 这两样和response/controller是不同的。请注意，这是说Channel的析构可以立刻发生在CallMethod**之后**，并不是说析构可以和CallMethod同时发生，删除正被另一个线程使用的Channel是未定义行为（很可能crash）。
 
 ### 使用NewCallback
-```
+```c++
 static void OnRPCDone(MyResponse* response, brpc::Controller* cntl) {
     // unique_ptr会帮助我们在return时自动删掉response/cntl，防止忘记。gcc 3.4下的unique_ptr是public/common提供的模拟版本。
     std::unique_ptr<MyResponse> response_guard(response);
@@ -229,7 +235,7 @@ stub.some_method(cntl, &request, response, google::protobuf::NewCallback(OnRPCDo
 ### 继承google::protobuf::Closure
 
 使用NewCallback的缺点是要分配三次内存：response, controller, done。如果profiler证明这儿的内存分配有瓶颈，可以考虑自己继承Closure，把response/controller作为成员变量，这样可以把三次new合并为一次。但缺点就是代码不够美观，如果内存分配不是瓶颈，别用这种方法。`
-```
+```c++
 class OnRPCDone: public google::protobuf::Closure {
 public:
     void Run() {
@@ -268,7 +274,7 @@ stub.some_method(&done->cntl, &request, &done->response, done);
 当你需要发起多个并发操作时，可能[ParallelChannel](combo_channel.md#parallelchannel)更方便。
 
 如下代码发起两个异步RPC后等待它们完成。
-```
+```c++
 const brpc::CallId cid1 = controller1->call_id();
 const brpc::CallId cid2 = controller2->call_id();
 ...
@@ -291,7 +297,7 @@ Join()在之前的版本叫做JoinResponse()，如果你在编译时被提示dep
 在RPC调用后Join(controller->call_id())是**错误**的行为，一定要先把call_id保存下来。因为RPC调用后controller可能被随时开始运行的done删除。
 
 下面代码的Join方式是**错误**的。
-```
+```c++
 static void on_rpc_done(Controller* controller, MyResponse* response) {
     ... Handle response ...
     delete controller;
@@ -313,7 +319,7 @@ brpc::Join(controller2->call_id());   // 错误，controller2可能被on_rpc_don
 ## 半同步
 
 Join可用来实现“半同步”操作：即等待多个异步操作返回。由于调用处的代码会等到多个RPC都结束后再醒来，所以controller和response都可以放栈上。
-```
+```c++
 brpc::Controller cntl1;
 brpc::Controller cntl2;
 MyResponse response1;
@@ -360,7 +366,7 @@ printf("remote_side=%s\n", base::endpoint2str(cntl->remote_side()).c_str());
 r31384后通过local_side()方法可**在RPC结束后**获得发起RPC的地址和端口。
 
 打印方式：
-```
+```c++
 LOG(INFO) << "local_side=" << cntl->local_side(); 
 printf("local_side=%s\n", base::endpoint2str(cntl->local_side()).c_str());
 ```
@@ -369,7 +375,7 @@ printf("local_side=%s\n", base::endpoint2str(cntl->local_side()).c_str());
 不大，不用刻意地重用，但Controller是个大杂烩，可能会包含一些缓存，Reset()可以避免反复地创建这些缓存。
 
 在大部分场景下，构造Controller和重置Controller(通过Reset)的代价差不多，比如下面代码中的snippet1和snippet2性能差异不大。
-```
+```c++
 // snippet1
 for (int i = 0; i < n; ++i) {
     brpc::Controller controller;
@@ -452,7 +458,7 @@ Controller.set_max_retry()或ChannelOptions.max_retry设置最大重试次数，
 r32009后用户可以通过继承[brpc::RetryPolicy](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/retry_policy.h)自定义重试条件。r34642后通过cntl->response()可获得对应RPC的response。对ERPCTIMEDOUT代表的RPC超时总是不重试，即使RetryPolicy中允许。
 
 比如baidu-rpc默认不重试HTTP相关的错误，而你的程序中希望在碰到HTTP_STATUS_FORBIDDEN (403)时重试，可以这么做：
-```
+```c++
 #include brpc/retry_policy.h>
  
 class MyRetryPolicy : public brpc::RetryPolicy {
@@ -518,15 +524,27 @@ baidu-rpc支持以下连接方式：
 框架会为协议选择默认的连接方式，用户**一般不用修改**。若需要，把ChannelOptions.connection_type设为：
 
 - CONNECTION_TYPE_SINGLE 或 "single" 为单连接
-- CONNECTION_TYPE_POOLED 或 "pooled" 为连接池, 与单个远端的最大连接数由[-max_connection_pool_size](http://brpc.baidu.com:8765/flags/max_connection_pool_size)控制。
+
+- CONNECTION_TYPE_POOLED 或 "pooled" 为连接池, 与单个远端的最大连接数由-max_connection_pool_size控制:
+
+  | Name                         | Value | Description                              | Defined At          |
+  | ---------------------------- | ----- | ---------------------------------------- | ------------------- |
+  | max_connection_pool_size (R) | 100   | maximum pooled connection count to a single endpoint | src/brpc/socket.cpp |
+
 - CONNECTION_TYPE_SHORT 或 "short" 为短连接
+
 - 设置为“”（空字符串）则让框架选择协议对应的默认连接方式。
 
-r31468之后baidu-rpc支持[Streaming RPC](http://wiki.baidu.com/display/RPC/Streaming+RPC)，这是一种应用层的连接，用于传递流式数据。
+r31468之后baidu-rpc支持[Streaming RPC](streaming_rpc.md)，这是一种应用层的连接，用于传递流式数据。
 
 ## 关闭连接池中的闲置连接
 
-当连接池中的某个连接在-[idle_timeout_second](http://brpc.baidu.com:8765/flags/idle_timeout_second)时间内没有读写，则被视作“闲置”，会被自动关闭。打开[-log_idle_connection_close](http://brpc.baidu.com:8765/flags/log_idle_connection_close)后关闭前会打印一条日志。默认值为10秒。此功能只对连接池(pooled)有效。
+当连接池中的某个连接在-idle_timeout_second时间内没有读写，则被视作“闲置”，会被自动关闭。打开-log_idle_connection_close后关闭前会打印一条日志。默认值为10秒。此功能只对连接池(pooled)有效。
+
+| Name                      | Value | Description                              | Defined At              |
+| ------------------------- | ----- | ---------------------------------------- | ----------------------- |
+| idle_timeout_second       | 10    | Pooled connections without data transmission for so many seconds will be closed. No effect for non-positive values | src/brpc/socket_map.cpp |
+| log_idle_connection_close | false | Print log when an idle connection is closed | src/brpc/socket.cpp     |
 
 ## 延迟关闭连接
 
@@ -534,13 +552,24 @@ r31468之后baidu-rpc支持[Streaming RPC](http://wiki.baidu.com/display/RPC/Str
 
 一个解决办法是用户把所有或常用的channel缓存下来，这样自然能避免channel频繁产生和析构，但目前baidu-rpc没有提供这样一个utility，用户自己（正确）实现有一些工作量。
 
-另一个解决办法是设置全局选项[-defer_close_second](http://brpc.baidu.com:8765/flags/defer_close_second)，设置后引用计数清0时连接并不会立刻被关闭，而是会等待这么多秒再关闭，如果在这段时间内又有channel引用了这个连接，它会恢复正常被使用的状态。不管channel创建析构有多频率，这个选项使得关闭连接的频率有上限。这个选项的副作用是一些fd不会被及时关闭，如果延时被误设为一个大数值，程序占据的fd个数可能会很大。
+另一个解决办法是设置全局选项-defer_close_second
+
+| Name               | Value | Description                              | Defined At              |
+| ------------------ | ----- | ---------------------------------------- | ----------------------- |
+| defer_close_second | 0     | Defer close of connections for so many seconds even if the connection is not used by anyone. Close immediately for non-positive values | src/brpc/socket_map.cpp |
+
+设置后引用计数清0时连接并不会立刻被关闭，而是会等待这么多秒再关闭，如果在这段时间内又有channel引用了这个连接，它会恢复正常被使用的状态。不管channel创建析构有多频率，这个选项使得关闭连接的频率有上限。这个选项的副作用是一些fd不会被及时关闭，如果延时被误设为一个大数值，程序占据的fd个数可能会很大。
 
 ## 连接的缓冲区大小
 
-[-socket_recv_buffer_size](http://brpc.baidu.com:8765/flags/socket_recv_buffer_size)设置所有连接的接收缓冲区大小，默认-1（不修改）
+-socket_recv_buffer_size设置所有连接的接收缓冲区大小，默认-1（不修改）
 
-[-socket_send_buffer_size](http://brpc.baidu.com:8765/flags/socket_send_buffer_size)设置所有连接的发送缓冲区大小，默认-1（不修改）
+-socket_send_buffer_size设置所有连接的发送缓冲区大小，默认-1（不修改）
+
+| Name                    | Value | Description                              | Defined At          |
+| ----------------------- | ----- | ---------------------------------------- | ------------------- |
+| socket_recv_buffer_size | -1    | Set the recv buffer size of socket if this value is positive | src/brpc/socket.cpp |
+| socket_send_buffer_size | -1    | Set send buffer size of sockets if this value is positive | src/brpc/socket.cpp |
 
 ## log_id
 
@@ -577,7 +606,7 @@ option.auth = &auth;
 
 ## 压缩
 
-set_request_compress_type()设置request的压缩方式，默认不压缩。注意：附件不会被压缩。HTTP body的压缩方法见[client压缩request body](http_client#压缩requestbody)。
+set_request_compress_type()设置request的压缩方式，默认不压缩。注意：附件不会被压缩。HTTP body的压缩方法见[client压缩request body](http_client#压缩request-body)。
 
 支持的压缩方法有：
 
@@ -631,13 +660,29 @@ set_request_compress_type()设置request的压缩方式，默认不压缩。注�
 
 ### Q: 经常遇到Connection timedout(不在一个机房)
 
-![img](http://wiki.baidu.com/download/attachments/71337200/image2017-2-28%2015%3A48%3A48.png?version=1&modificationDate=1488268128000&api=v2)
+![img](../images/connection_timedout.png)
 
-这个就是连接超时了，调大连接超时：
+这个就是连接超时了，调大连接和RPC超时：
 
-![img](http://wiki.baidu.com/download/attachments/71337200/image2017-2-28%2015%3A48%3A9.png?version=1&modificationDate=1488268089000&api=v2)
+```c++
+struct ChannelOptions {
+    ...
+    // Issue error when a connection is not established after so many
+    // milliseconds. -1 means wait indefinitely.
+    // Default: 200 (milliseconds)
+    // Maximum: 0x7fffffff (roughly 30 days)
+    int32_t connect_timeout_ms;
+    
+    // Max duration of RPC over this Channel. -1 means wait indefinitely.
+    // Overridable by Controller.set_timeout_ms().
+    // Default: 500 (milliseconds)
+    // Maximum: 0x7fffffff (roughly 30 days)
+    int32_t timeout_ms;
+    ...
+};
+```
 
-注意这并不是RPC超时，RPC超时打印的日志是"Reached timeout=..."。
+注意连接超时不是RPC超时，RPC超时打印的日志是"Reached timeout=..."。
 
 ### Q: 为什么同步方式是好的，异步就crash了
 
@@ -652,9 +697,9 @@ set_request_compress_type()设置request的压缩方式，默认不压缩。注�
 使用get_instance_by_service -s your_bns_name 来检查一下所有机器的status状态，  只有status为0的机器才能被client访问.
 
 ### Q: Invalid address=`bns://group.user-persona.dumi.nj03'是什么意思
-
+```
 FATAL 04-07 20:00:03 7778 public/baidu-rpc/src/brpc/channel.cpp:123] Invalid address=`bns://group.user-persona.dumi.nj03'. You should use Init(naming_service_name, load_balancer_name, options) to access multiple servers.
-
+```
 访问bns要使用三个参数的Init，它第二个参数是load_balancer_name，而你这里用的是两个参数的Init，框架当你是访问单点，就会报这个错。
 
 ### Q: 两个产品线都使用protobuf，为什么不能互相访问
