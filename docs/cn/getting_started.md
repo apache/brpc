@@ -1,5 +1,3 @@
-The opensource version of baidu-rpc
-
 # BUILD
 
 baidu-rpc prefers static linking if possible, so that deps don't have to be installed on every
@@ -97,4 +95,4 @@ baidu-rpc detects valgrind automatically (and registers stacks of bthread). Olde
 
 # Track instances
 
-We provide a program to help you to track and monitor all baidu-rpc instances. Just run [trackme_server](tools/trackme_server/trackme_server.cpp) somewhere and launch need-to-be-tracked instances with -trackme_server=<SERVER>. The trackme_server will receive pings from instance periodically and print logs when it does. You can aggregate instance addresses from the log and call builtin services of the instances for further information.
+We provide a program to help you to track and monitor all baidu-rpc instances. Just run [trackme_server](tools/trackme_server/trackme_server.cpp) somewhere and launch need-to-be-tracked instances with -trackme_server=SERVER. The trackme_server will receive pings from instances periodically and print logs when it does. You can aggregate instance addresses from the log and call builtin services of the instances for further information.
