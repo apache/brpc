@@ -383,7 +383,7 @@ server的框架部分在出现错误时一般是不打日志的，因为当大�
 
 超过最大消息时会打印如下错误日志：
 
-> FATAL: 05-10 14:40:05: * 0 src/baidu/rpc/input_messenger.cpp:89] A message from 127.0.0.1:35217(protocol=baidu_std) is bigger than 67108864 bytes, the connection will be closed. Set max_body_size to allow bigger messages
+> FATAL: 05-10 14:40:05: * 0 src/brpc/input_messenger.cpp:89] A message from 127.0.0.1:35217(protocol=baidu_std) is bigger than 67108864 bytes, the connection will be closed. Set max_body_size to allow bigger messages
 
 protobuf中有[类似的限制](https://github.com/google/protobuf/blob/master/src/google/protobuf/io/coded_stream.h#L364)，在r34677之前，即使用户设置了足够大的-max_body_size，仍然有可能因为protobuf中的限制而被拒收，出错时会打印如下日志：
 

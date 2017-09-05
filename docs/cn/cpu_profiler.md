@@ -19,8 +19,8 @@ http://localhost:9002/profile/symbol doesn't exist
 server端可能会有这样的日志：
 
 ```
-FATAL: 12-26 10:01:25:   * 0 [src/baidu/rpc/policy/giano_authenticator.cpp:65][4294969345] Giano fails to verify credentical, 70003
-WARNING: 12-26 10:01:25:   * 0 [src/baidu/rpc/input_messenger.cpp:132][4294969345] Authentication failed, remote side(127.0.0.1:22989) of sockfd=5, close it
+FATAL: 12-26 10:01:25:   * 0 [src/brpc/policy/giano_authenticator.cpp:65][4294969345] Giano fails to verify credentical, 70003
+WARNING: 12-26 10:01:25:   * 0 [src/brpc/input_messenger.cpp:132][4294969345] Authentication failed, remote side(127.0.0.1:22989) of sockfd=5, close it
 ```
 
 # 图示

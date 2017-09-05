@@ -61,7 +61,7 @@ baidu-rpc提供了[SampleIterator](http://icode.baidu.com/repo/baidu/opensource/
 brpc::SampleIterator it("./rpc_data/rpc_dump/echo_server");         
 for (SampleRequest* req = it->Next(); req != NULL; req = it->Next()) {
     ...                    
-    // req->meta的类型是brpc::RpcDumpMeta，定义在protocol/baidu/rpc/rpc_dump.proto
+    // req->meta的类型是brpc::RpcDumpMeta，定义在protocol/brpc/rpc_dump.proto
     // req->request的类型是base::IOBuf，对应格式说明中的"serialized request"
     // 使用结束后必须delete req。
 }

@@ -231,7 +231,7 @@ VLOG(2) << "verbose log tier 2";
 
 ```bash
 --verbose=1 --verbose_module="channel=2,server=3"                # 打印channel.cpp中<=2，server.cpp中<=3，其他文件<=1的VLOG
---verbose=1 --verbose_module="src/baidu/rpc/channel=2,server=3"  # 当不同目录下有同名文件时，可以加上路径
+--verbose=1 --verbose_module="src/brpc/channel=2,server=3"  # 当不同目录下有同名文件时，可以加上路径
 ```
 
 `--verbose`和`--verbose_module`可以通过`google::SetCommandLineOption`动态设置。

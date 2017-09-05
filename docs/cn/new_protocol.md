@@ -20,7 +20,7 @@ baidu-rpc就是设计为可随时扩展新协议的，步骤如下：
 
 ## 增加ProtocolType
 
-在[options.proto](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/protocol/baidu/rpc/options.proto)的ProtocolType中增加新协议类型，如果你需要的话可以联系我们增加，以确保不会和其他人的需求重合。
+在[options.proto](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/protocol/brpc/options.proto)的ProtocolType中增加新协议类型，如果你需要的话可以联系我们增加，以确保不会和其他人的需求重合。
 
 目前的ProtocolType（16年底）:
 ```c++
@@ -204,7 +204,7 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
 check_eof_guard.h被移除，所以对这个文件的include也得移除：
 
 ```c++
--    #include "baidu/rpc/details/check_eof_guard.h"
+-    #include "brpc/details/check_eof_guard.h"
 ```
 
 - AddClientSideHandler被移除，用如下方法代替：

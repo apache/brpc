@@ -65,9 +65,9 @@ RPC不是万能的抽象，否则我们也不需要TCP/IP这一层了。但是�
 
 我们只有三个用户类：[Server](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/server.h)，[Channel](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h)，[Controller](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)，分别对应server端，client端，和调整参数集合。你不需要推敲诸如“Client怎么初始化”，“XXXManager有什么用”，“Context和Controller的关系是什么“之类的问题，你要做的很简单：
 
-- 建服务就包含baidu/rpc/server.h，并按照注释或例子使用Server对象。
-- 访问服务就包含baidu/rpc/channel.h，并按照注释或例子使用Channel对象。
-- 想控制一次RPC访问的参数，就看看baidu/rpc/controller.h中到底有些什么。请注意，这个类是Server和Channel共用的，其中分成了三段，分别标记为Client-side, Server-side和Both-side methods。
+- 建服务就包含brpc/server.h，并按照注释或例子使用Server对象。
+- 访问服务就包含brpc/channel.h，并按照注释或例子使用Channel对象。
+- 想控制一次RPC访问的参数，就看看brpc/controller.h中到底有些什么。请注意，这个类是Server和Channel共用的，其中分成了三段，分别标记为Client-side, Server-side和Both-side methods。
 
 我们尝试让事情变得更加简单，以名字服务为例，在其他RPC实现中，你也许需要复制一长段晦涩的代码才可使用，而在baidu-rpc中访问BNS可以这么写"bns://node-name"，本地文件列表可以这么写"file:///home/work/server.list"，相信不用我解释，你也能明白这些代表什么，这个字串可以放在配置文件中，方便地载入并使用。
 

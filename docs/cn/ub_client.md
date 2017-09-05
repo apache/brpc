@@ -156,10 +156,10 @@ server端由public/ubrpc搭建，request/response使用idl文件描述字段，�
 
 1. 依赖[public/baidu-rpc-ub](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob)模块，在COMAKE中增加依赖：`CONFIGS('public/baidu-rpc-ub@ci-base')。`这个模块是baidu-rpc的扩展，不需要的用户不会依赖idl/mcpack/compack等模块。baidu-rpc-ub只包含扩展代码，baidu-rpc中的新特性会自动体现在这个模块中。
 
-2. 编写一个proto文件，其中定义了service，名字和idl中的相同，但请求类型必须是baidu.rpc.UBRequest，回复类型必须是baidu.rpc.UBResponse。这两个类型定义在baidu/rpc/ub.proto中，使用时得import。
+2. 编写一个proto文件，其中定义了service，名字和idl中的相同，但请求类型必须是baidu.rpc.UBRequest，回复类型必须是baidu.rpc.UBResponse。这两个类型定义在brpc/ub.proto中，使用时得import。
 
    ```protobuf
-   import "baidu/rpc/ub.proto";              // UBRequest, UBResponse
+   import "brpc/ub.proto";              // UBRequest, UBResponse
    option cc_generic_services = true;
    // Define UB service. request/response must be UBRequest/UBResponse
    service EchoService {
@@ -170,7 +170,7 @@ server端由public/ubrpc搭建，request/response使用idl文件描述字段，�
 3. 在COMAKE包含baidu-rpc-ub/src路径。
 
    ```python
-   # baidu/rpc/ub.proto的包含路径
+   # brpc/ub.proto的包含路径
    PROTOC(ENV.WorkRoot()+"third-64/protobuf/bin/protoc")
    PROTOFLAGS("--proto_path=" + ENV.WorkRoot() + "public/baidu-rpc-ub/src/")
    ```

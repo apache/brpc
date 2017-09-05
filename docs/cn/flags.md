@@ -135,7 +135,7 @@ BAIDU_RPC_VALIDATE_GFLAG(health_check_interval, brpc::PositiveInteger);
 $ curl brpc.baidu.com:8765/flags/health_check_interval
 Name | Value | Description | Defined At
 ---------------------------------------
-health_check_interval (R) | 3 | seconds between consecutive health-checkings | src/baidu/rpc/socket_map.cpp
+health_check_interval (R) | 3 | seconds between consecutive health-checkings | src/brpc/socket_map.cpp
 ```
 
 1.0.251.32399后增加了-immutable_flags，打开后所有的gflags将不能被动态修改。当一个服务对某个gflag值比较敏感且不希望在线上被误改，可打开这个开关。打开这个开关的同时也意味着你无法动态修改线上的配置，每次修改都要重启程序，对于还在调试阶段或待收敛阶段的程序不建议打开。

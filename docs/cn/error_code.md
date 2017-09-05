@@ -13,7 +13,7 @@ server端Controller的SetFailed()常由用户在服务回调中调用。当处�
 
 # baidu-rpc的错误码
 
-baidu-rpc使用的所有ErrorCode都定义在[errno.proto](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/protocol/baidu/rpc/errno.proto)中，*SYS_*开头的来自linux系统，与/usr/include/errno.h中定义的精确一致，定义在proto中是为了跨语言。其余的是baidu-rpc自有的。
+baidu-rpc使用的所有ErrorCode都定义在[errno.proto](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/protocol/brpc/errno.proto)中，*SYS_*开头的来自linux系统，与/usr/include/errno.h中定义的精确一致，定义在proto中是为了跨语言。其余的是baidu-rpc自有的。
 
 [berror(error_code)](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/errno.h)可获得error_code的描述，berror()可获得[system errno](http://www.cplusplus.com/reference/cerrno/errno/)的描述。**ErrorText() != berror(****ErrorCode())**，ErrorText()会包含更具体的错误信息。baidu-rpc默认包含berror，你可以直接使用。
 
