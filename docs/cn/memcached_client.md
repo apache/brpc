@@ -16,11 +16,11 @@
 创建一个访问memcached的Channel：
 
 ```c++
-#include <baidu/rpc/memcache.h>
-#include <baidu/rpc/channel.h>
+#include brpc/memcache.h>
+#include brpc/channel.h>
  
 ChannelOptions options;
-options.protocol = baidu::rpc::PROTOCOL_MEMCACHE;
+options.protocol = brpc::PROTOCOL_MEMCACHE;
 if (channel.Init("0.0.0.0:11211", &options) != 0) {  // 11211是memcached的默认端口
    LOG(FATAL) << "Fail to init channel to memcached";
    return -1;
@@ -34,9 +34,9 @@ if (channel.Init("0.0.0.0:11211", &options) != 0) {  // 11211是memcached的默�
 
 ```c++
 // 写入key="hello" value="world" flags=0xdeadbeef，10秒失效，无视cas。
-baidu::rpc::MemcacheRequest request;
-baidu::rpc::MemcacheResponse response;
-baidu::rpc::Controller cntl;
+brpc::MemcacheRequest request;
+brpc::MemcacheResponse response;
+brpc::Controller cntl;
 if (!request.Set("hello", "world", 0xdeadbeef/*flags*/, 10/*expiring seconds*/, 0/*ignore cas*/)) {
     LOG(FATAL) << "Fail to SET request";
     return -1;

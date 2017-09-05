@@ -12,14 +12,14 @@
 你必须手动加入dummy server。你得先查看[Getting Started](getting_started.md)如何下载和编译baidu-rpc，然后在程序入口处加入如下代码片段：
 
 ```c++
-#include <baidu/rpc/server.h>
+#include brpc/server.h>
  
 ...
  
 int main() {
     ...
-    baidu::rpc::Server dummy_server;
-    baidu::rpc::ServerOptions dummy_server_options;
+    brpc::Server dummy_server;
+    brpc::ServerOptions dummy_server_options;
     dummy_server_options.num_threads = 0;  // 不要改变寄主程序的线程数。
     if (dummy_server.Start(8888/*port*/, &dummy_server_options) != 0) {
         LOG(FATAL) << "Fail to start dummy server";
@@ -32,13 +32,13 @@ int main() {
 r31803之后加入dummy server更容易了，只要一行：
 
 ```c++
-#include <baidu/rpc/server.h>
+#include brpc/server.h>
  
 ...
  
 int main() {
     ...
-    baidu::rpc::StartDummyServerAt(8888/*port*/);
+    brpc::StartDummyServerAt(8888/*port*/);
     ...
 }
 ```

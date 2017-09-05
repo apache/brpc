@@ -23,7 +23,7 @@ channel_short_socket_count: 0
 上述信息分为三段：
 
 - 第一段是server接受(accept)的连接。
-- 第二段是server与下游的单连接（使用baidu::rpc::Channel建立），fd为-1的是虚拟连接，对应第三段中所有相同RemoteSide的连接。
+- 第二段是server与下游的单连接（使用brpc::Channel建立），fd为-1的是虚拟连接，对应第三段中所有相同RemoteSide的连接。
 - 第三段是server与下游的短连接或连接池(pooled connections)，这些连接从属于第二段中的相同RemoteSide的虚拟连接。
 
 表格标题的含义：

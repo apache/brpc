@@ -56,12 +56,12 @@ serialized request (body_size - meta_size bytes, including attachment)
 baidu-rpc提供了[SampleIterator](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/rpc_dump.h)从一个采样目录下的所有文件中依次读取所有的被采样请求，用户可根据需求把serialized request反序列化为protobuf请求，做一些二次开发。
 
 ```
-#include <baidu/rpc/rpc_dump.h>
+#include brpc/rpc_dump.h>
 ...
-baidu::rpc::SampleIterator it("./rpc_data/rpc_dump/echo_server");         
+brpc::SampleIterator it("./rpc_data/rpc_dump/echo_server");         
 for (SampleRequest* req = it->Next(); req != NULL; req = it->Next()) {
     ...                    
-    // req->meta的类型是baidu::rpc::RpcDumpMeta，定义在protocol/baidu/rpc/rpc_dump.proto
+    // req->meta的类型是brpc::RpcDumpMeta，定义在protocol/baidu/rpc/rpc_dump.proto
     // req->request的类型是base::IOBuf，对应格式说明中的"serialized request"
     // 使用结束后必须delete req。
 }

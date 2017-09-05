@@ -17,7 +17,7 @@ ParallelChannel (“pchan”)同时访问其包含的sub channel，并合并它�
 
 示例代码见[example/parallel_echo_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/parallel_echo_c++/)。
 
-任何baidu::rpc::ChannelBase的子类都可以加入ParallelChannel，包括ParallelChannel和其他组合Channel。用户可以设置ParallelChannelOptions.fail_limit来控制访问的最大失败次数(r31803前是ParallelChannel::set_fail_limit)，当失败的访问达到这个数目时，RPC call会立刻结束而不等待超时。
+任何brpc::ChannelBase的子类都可以加入ParallelChannel，包括ParallelChannel和其他组合Channel。用户可以设置ParallelChannelOptions.fail_limit来控制访问的最大失败次数(r31803前是ParallelChannel::set_fail_limit)，当失败的访问达到这个数目时，RPC call会立刻结束而不等待超时。
 
 当baidu-rpc >= 1.0.155.31351时，一个sub channel可多次加入同一个ParallelChannel。当你需要对同一个服务发起多次异步访问并等待它们完成的话，这很有用。
 
@@ -30,13 +30,13 @@ ParallelChannel的内部结构大致如下：
 可通过如下接口把sub channel插入ParallelChannel：
 
 ```c++
-int AddChannel(baidu::rpc::ChannelBase* sub_channel,
+int AddChannel(brpc::ChannelBase* sub_channel,
                ChannelOwnership ownership,
                CallMapper* call_mapper,
                ResponseMerger* response_merger);
 ```
 
-当ownership为baidu::rpc::OWNS_CHANNEL时，sub_channel会在ParallelChannel析构时被删除。当baidu-rpc >= 1.0.155.31351时，由于一个sub channel可能会多次加入一个ParallelChannel，只要其中一个指明了ownership为baidu::rpc::OWNS_CHANNEL，那个sub channel就会在ParallelChannel析构时被删除（一次）。
+当ownership为brpc::OWNS_CHANNEL时，sub_channel会在ParallelChannel析构时被删除。当baidu-rpc >= 1.0.155.31351时，由于一个sub channel可能会多次加入一个ParallelChannel，只要其中一个指明了ownership为brpc::OWNS_CHANNEL，那个sub channel就会在ParallelChannel析构时被删除（一次）。
 
 访问ParallelChannel时调用AddChannel是线程**不安全**的。
 
@@ -88,7 +88,7 @@ method/request/response：ParallelChannel.CallMethod()的参数。
                 const google::protobuf::MethodDescriptor* method,
                 const google::protobuf::Message* request,
                 google::protobuf::Message* response) {
-        FooRequest* copied_req = baidu::rpc::Clone<FooRequest>(request);
+        FooRequest* copied_req = brpc::Clone<FooRequest>(request);
         copied_req->set_xxx(...);
         // 拷贝并修改request，最后的flag告诉pchan在RPC结束后删除Request和Response。
         return SubCall(method, copied_req, response->New(), DELETE_REQUEST | DELETE_RESPONSE);
@@ -157,7 +157,7 @@ const Controller* sub(int index) const;
 
 示例代码见[example/selective_echo_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/selective_echo_c++/)。
 
-任何baidu::rpc::ChannelBase的子类都可加入SelectiveChannel，包括SelectiveChannel和其他组合Channel。
+任何brpc::ChannelBase的子类都可加入SelectiveChannel，包括SelectiveChannel和其他组合Channel。
 
 SelectiveChannel的重试独立于其中的sub channel，当SelectiveChannel访问某个sub channel失败时（可能本身包含了重试），它会重试另外一个sub channel。
 
@@ -168,10 +168,10 @@ SelectiveChannel的重试独立于其中的sub channel，当SelectiveChannel访�
 SelectiveChannel的初始化和普通Channel基本一样，但Init不需要指定名字服务，因为SelectiveChannel面向sub channel并通过AddChannel动态添加，而普通Channel面向的server才记录在名字服务中。
 
 ```c++
-#include <baidu/rpc/selective_channel.h>
+#include brpc/selective_channel.h>
 ...
-baidu::rpc::SelectiveChannel schan;
-baidu::rpc::ChannelOptions schan_options;
+brpc::SelectiveChannel schan;
+brpc::ChannelOptions schan_options;
 schan_options.timeout_ms = ...;
 schan_options.backup_request_ms = ...;
 schan_options.max_retry = ...;
@@ -194,7 +194,7 @@ if (schan.AddChannel(sub_channel, NULL/*ChannelHandle*/) != 0) {  // 第二个�
 
 - 和ParallelChannel不同，SelectiveChannel的AddChannel可在任意时刻调用，即使该SelectiveChannel正在被访问（下一次访问时生效）
 - SelectiveChannel总是own sub channel，这和ParallelChannel可选择ownership是不同的。
-- 如果AddChannel第二个参数不为空，会填入一个类型为baidu::rpc::SelectiveChannel::ChannelHandle的值，这个handle可作为RemoveAndDestroyChannel的参数来动态删除一个channel。
+- 如果AddChannel第二个参数不为空，会填入一个类型为brpc::SelectiveChannel::ChannelHandle的值，这个handle可作为RemoveAndDestroyChannel的参数来动态删除一个channel。
 - SelectiveChannel会用自身的超时覆盖sub channel初始化时指定的超时。比如某个sub channel的超时为100ms，SelectiveChannel的超时为500ms，实际访问时的超时是500ms，而不是100ms。
 
 访问SelectiveChannel的方式和普通Channel是一样的。
@@ -211,8 +211,8 @@ if (schan.AddChannel(sub_channel, NULL/*ChannelHandle*/) != 0) {  // 第二个�
 SelectiveChannel的创建和普通Channel类似，但不需要名字服务，而是通过AddChannel方法插入sub channel。下面的代码创建了一个SelectiveChannel，并插入三个访问不同bns的普通Channel。
 
 ```c++
-baidu::rpc::SelectiveChannel channel;
-baidu::rpc::ChannelOptions schan_options;
+brpc::SelectiveChannel channel;
+brpc::ChannelOptions schan_options;
 schan_options.timeout_ms = FLAGS_timeout_ms;
 schan_options.backup_request_ms = FLAGS_backup_ms;
 schan_options.max_retry = FLAGS_max_retry;
@@ -222,7 +222,7 @@ if (channel.Init("c_murmurhash", &schan_options) != 0) {
 }
  
 for (int i = 0; i < 3; ++i) {
-    baidu::rpc::Channel* sub_channel = new baidu::rpc::Channel;
+    brpc::Channel* sub_channel = new brpc::Channel;
     if (sub_channel->Init(bns_node_name[i], "rr", NULL) != 0) {
         LOG(ERROR) << "Fail to init sub channel " << i;
         return -1;
@@ -251,11 +251,11 @@ ParititonChannel只能处理一种分库方法，当用户需要多种分库方�
 首先定制PartitionParser。这个例子中tag的形式是N/M，N代表分库的index，M是分库的个数。比如0/3代表一共3个分库，这是第一个。
 
 ```c++
-#include <baidu/rpc/partition_channel.h>
+#include brpc/partition_channel.h>
 ...
-class MyPartitionParser : public baidu::rpc::PartitionParser {
+class MyPartitionParser : public brpc::PartitionParser {
 public:
-    bool ParseFromTag(const std::string& tag, baidu::rpc::Partition* out) {
+    bool ParseFromTag(const std::string& tag, brpc::Partition* out) {
         // "N/M" : #N partition of M partitions.
         size_t pos = tag.find_first_of('/');
         if (pos == std::string::npos) {
@@ -281,11 +281,11 @@ public:
 然后初始化PartitionChannel。
 
 ```c++
-#include <baidu/rpc/partition_channel.h>
+#include brpc/partition_channel.h>
 ...
-baidu::rpc::PartitionChannel channel;
+brpc::PartitionChannel channel;
  
-baidu::rpc::PartitionChannelOptions options;
+brpc::PartitionChannelOptions options;
 options.protocol = ...;   // PartitionChannelOptions继承了ChannelOptions，后者有的前者也有
 options.timeout_ms = ...; // 同上
 options.fail_limit = 1;   // PartitionChannel自己的选项，意思同ParalellChannel中的fail_limit。这里为1的意思是只要有1个分库访问失败，这次RPC就失败了。
@@ -320,8 +320,8 @@ TRACE: 09-06 10:40:42:   * 0 server.cpp:192] S[0]=0 S[1]=0 S[2]=0 [total=0]
 
 ```c++
     ...
-    baidu::rpc::DynamicPartitionChannel channel;
-    baidu::rpc::PartitionChannelOptions options;
+    brpc::DynamicPartitionChannel channel;
+    brpc::PartitionChannelOptions options;
     options.succeed_without_server = true;          // 表示允许server_list在DynamicPartitionChannel.Init启动时为空，否则Init会失败。
     options.fail_limit = 1;                         // 任何访问分库失败都认为RPC失败。调大这个数值可以使访问更宽松，比如等于2的话表示至少两个分库失败才算失败。
     if (channel.Init(new MyPartitionParser(), "file://server_list", "rr", &options) != 0) {

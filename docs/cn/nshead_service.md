@@ -85,8 +85,8 @@ public:
                       const EchoRequest* request,
                       EchoResponse* response,
                       google::protobuf::Closure* done) {
-        baidu::rpc::ClosureGuard done_guard(done);
-        baidu::rpc::Controller* cntl = static_cast<baidu::rpc::Controller*>(cntl_base);
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
  
         // 填充response。
         response->set_message(request->message());
@@ -99,15 +99,15 @@ public:
                                    const MultiRequests* request,
                                    MultiResponses* response,
                                    google::protobuf::Closure* done) {
-        baidu::rpc::ClosureGuard done_guard(done);
-        baidu::rpc::Controller* cntl = static_cast<baidu::rpc::Controller*>(cntl_base);
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
  
         // 填充response。response是我们定义的包含所有idl response的消息。
         response->mutable_res1()->set_message(request->req1().message());
         response->mutable_res2()->set_message(request->req2().message());
  
         // 告诉RPC有多个request和response。
-        cntl->set_idl_names(baidu::rpc::idl_multi_req_multi_res);
+        cntl->set_idl_names(brpc::idl_multi_req_multi_res);
  
         // 对应idl方法的返回值。
         cntl->set_idl_result(17);
@@ -118,10 +118,10 @@ public:
 ## 设置ServerOptions.nshead_service
 
 ```c++
-#include <baidu/rpc/ubrpc2pb_protocol.h>
+#include brpc/ubrpc2pb_protocol.h>
 ...
-baidu::rpc::ServerOptions option;
-option.nshead_service = new baidu::rpc::policy::UbrpcCompackAdaptor; // mcpack2用UbrpcMcpack2Adaptor
+brpc::ServerOptions option;
+option.nshead_service = new brpc::policy::UbrpcCompackAdaptor; // mcpack2用UbrpcMcpack2Adaptor
 ```
 
 例子见[example/echo_c++_ubrpc_compack](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/echo_c++_ubrpc_compack/)。
@@ -147,15 +147,15 @@ public:
     virtual ~NsheadService();
  
     // 实现这个方法来处理nshead请求。注意这个方法可能在调用时controller->Failed()已经为true了。
-    // 原因可能是Server.Stop()被调用正在退出(错误码是baidu::rpc::ELOGOFF)
-    // 或触发了ServerOptions.max_concurrency(错误码是baidu::rpc::ELIMIT)
+    // 原因可能是Server.Stop()被调用正在退出(错误码是brpc::ELOGOFF)
+    // 或触发了ServerOptions.max_concurrency(错误码是brpc::ELIMIT)
     // 在这种情况下，这个方法应该通过返回一个代表错误的response让客户端知道这些错误。
     // Parameters:
     //   server      The server receiving the request.
     //   controller  Contexts of the request.
     //   request     The nshead request received.
     //   response    The nshead response that you should fill in.
-    //   done        You must call done->Run() to end the processing, baidu::rpc::ClosureGuard is preferred.
+    //   done        You must call done->Run() to end the processing, brpc::ClosureGuard is preferred.
     virtual void ProcessNsheadRequest(const Server& server,
                                       Controller* controller,
                                       const NsheadMessage& request,

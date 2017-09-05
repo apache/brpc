@@ -16,12 +16,12 @@ r32037后加上[-redis_verbose](http://brpc.baidu.com:8765/flags/redis_verbose;r
 创建一个访问redis的Channel：
 
 ```c++
-#include <baidu/rpc/redis.h>
-#include <baidu/rpc/channel.h>
+#include brpc/redis.h>
+#include brpc/channel.h>
   
-baidu::rpc::ChannelOptions options;
-options.protocol = baidu::rpc::PROTOCOL_REDIS;
-baidu::rpc::Channel redis_channel;
+brpc::ChannelOptions options;
+options.protocol = brpc::PROTOCOL_REDIS;
+brpc::Channel redis_channel;
 if (redis_channel.Init("0.0.0.0:6379", &options) != 0) {  // 6379是redis-server的默认端口
    LOG(ERROR) << "Fail to init channel to redis-server";
    return -1;
@@ -36,9 +36,9 @@ std::string my_key = "my_key_1";
 int my_number = 1;
 ...
 // 执行"SET <my_key> <my_number>"
-baidu::rpc::RedisRequest set_request;
-baidu::rpc::RedisResponse response;
-baidu::rpc::Controller cntl;
+brpc::RedisRequest set_request;
+brpc::RedisResponse response;
+brpc::Controller cntl;
 set_request.AddCommand("SET %s %d", my_key.c_str(), my_number);
 redis_channel.CallMethod(NULL, &cntl, &set_request, &response, NULL/*done*/);
 if (cntl.Failed()) {
@@ -56,7 +56,7 @@ LOG(INFO) << response.reply(0).c_str()  // OK
 ...
  
 // 执行"INCR <my_key>"
-baidu::rpc::RedisRequest incr_request;
+brpc::RedisRequest incr_request;
 incr_request.AddCommand("INCR %s", my_key.c_str());
 response.Clear();
 cntl.Reset();
@@ -78,9 +78,9 @@ LOG(INFO) << response.reply(0).integer()  // 2
 批量执行incr或decr
 
 ```c++
-baidu::rpc::RedisRequest request;
-baidu::rpc::RedisResponse response;
-baidu::rpc::Controller cntl;
+brpc::RedisRequest request;
+brpc::RedisResponse response;
+brpc::Controller cntl;
 request.AddCommand("INCR counter1");
 request.AddCommand("DECR counter1");
 request.AddCommand("INCRBY counter1 10");
@@ -93,7 +93,7 @@ if (cntl.Failed()) {
 CHECK_EQ(4, response.reply_size());
 for (int i = 0; i < 4; ++i) {
     CHECK(response.reply(i).is_integer());
-    CHECK_EQ(baidu::rpc::REDIS_REPLY_INTEGER, response.reply(i).type());
+    CHECK_EQ(brpc::REDIS_REPLY_INTEGER, response.reply(i).type());
 }
 CHECK_EQ(1, response.reply(0).integer());
 CHECK_EQ(0, response.reply(1).integer());

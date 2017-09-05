@@ -1,4 +1,4 @@
-Client指发起请求的一端，在baidu-rpc中没有对应的实体，取而代之的是[baidu::rpc::Channel](http://websvn.work.baidu.com/repos/public/show/trunk/baidu-rpc/src/baidu/rpc/channel.h?revision=HEAD)，它代表和一台或一组服务器的交互通道，Client和Channel在角色上的差别在实践中并不重要，你可以把Channel视作Client。
+Client指发起请求的一端，在baidu-rpc中没有对应的实体，取而代之的是[brpc::Channel](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h)，它代表和一台或一组服务器的交互通道，Client和Channel在角色上的差别在实践中并不重要，你可以把Channel视作Client。
 
 Channel可以被进程中的所有线程共用，你不需要为每个线程创建独立的Channel，也不需要用锁互斥。不过Channel的创建和析构并不是线程安全的，请确保在Init成功后再被多线程访问，在没有线程访问后再析构。
 
@@ -10,7 +10,7 @@ Channel可以被进程中的所有线程共用，你不需要为每个线程创�
 
 就像大部分类那样，Channel必须在**Init**之后才能使用，options为NULL时所有参数取默认值，如果你要使用非默认值，这么做就行了：
 ```
-baidu::rpc::ChannelOptions options;  // 包含了默认值
+brpc::ChannelOptions options;  // 包含了默认值
 options.xxx = yyy;
 ...
 channel.Init(..., &options);
@@ -61,7 +61,7 @@ r31806之后当load_balancer_name为NULL或空时，此Init转为连接单台ser
 
 ### bns://<bns-name>
 
-BNS是百度内常用的名字服务，比如bns://rdev.matrix.all，其中"bns"是protocol，"rdev.matrix.all"是service-name。相关一个gflag是[-ns_access_interval](http://brpc.baidu.com:8765/flags/ns_access_interval)。
+BNS是百度内常用的名字服务，比如bns://rdev.matrix.all，其中"bns"是protocol，"rdev.matrix.all"是service-name。相关一个gflag是-ns_access_interval: ![img](../images/ns_access_interval.png)
 
 如果bns中显示不为空，但Channel却说找不到服务器，那么有可能bns列表中的机器状态位（status）为非0，含义为机器不可用，所以不会被加入到server候选集中，具体可通过命令行查看：
 
@@ -83,7 +83,7 @@ BNS是百度内常用的名字服务，比如bns://rdev.matrix.all，其中"bns"
 
 当名字服务获得机器列表后，可以自定义一个过滤器进行筛选，最后把结果传递给负载均衡：
 
-![img](http://wiki.baidu.com/download/attachments/71337222/dafe68fd-6ace-444a-8df9-72bf0311298d.JPG?version=1&modificationDate=1463536052000&api=v2)
+![img](../images/ns_filter.jpg)
 
 过滤器的接口如下：
 ```
@@ -103,9 +103,9 @@ struct ServerNode {
 ```
 常见的业务策略如根据bns中每个server不同tag进行过滤，自定义的过滤器配置在ChannelOptions中，默认为NULL（不过滤）：
 ```
-class MyNamingServiceFilter : public baidu::rpc::NamingServiceFilter {
+class MyNamingServiceFilter : public brpc::NamingServiceFilter {
 public:
-    bool Accept(const baidu::rpc::ServerNode& server) const {
+    bool Accept(const brpc::ServerNode& server) const {
         return server.tag == "main";
     }
 };
@@ -114,7 +114,7 @@ int main() {
     ...
     MyNamingServiceFilter my_filter;
     ...
-    baidu::rpc::ChannelOptions options;
+    brpc::ChannelOptions options;
     options.ns_filter = &my_filter;
     ...
 }
@@ -146,7 +146,7 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 
 发起RPC前需要设置Controller.set_request_code()，否则RPC会失败。request_code一般是请求中主键部分的32位哈希值，**不需要和负载均衡使用的哈希算法一致**。比如用c_murmurhash算法也可以用md5计算哈希值。
 
-[baidu/rpc/policy/hasher.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/policy/hasher.h)中包含了常用的hash函数。如果用std::string key代表请求的主键，controller.set_request_code(baidu::rpc::policy::MurmurHash32(key.data(), key.size()))就正确地设置了request_code。
+[baidu/rpc/policy/hasher.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/policy/hasher.h)中包含了常用的hash函数。如果用std::string key代表请求的主键，controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size()))就正确地设置了request_code。
 
 注意甄别请求中的“主键”部分和“属性”部分，不要为了偷懒或通用，就把请求的所有内容一股脑儿计算出哈希值，属性的变化会使请求的目的地发生剧烈的变化。另外也要注意padding问题，比如struct Foo { int32_t a; int64_t b; }在64位机器上a和b之间有4个字节的空隙，内容未定义，如果像hash(&foo, sizeof(foo))这样计算哈希值，结果就是未定义的，得把内容紧密排列或序列化后再算。
 
@@ -177,7 +177,7 @@ XXX_Stub(&channel).some_method(controller, request, response, done);
 ```
 MyRequest request;
 MyResponse response;
-baidu::rpc::Controller cntl;
+brpc::Controller cntl;
 XXX_Stub stub(&channel);
  
 request.set_foo(...);
@@ -203,10 +203,10 @@ if (cntl->Failed()) {
 
 ### 使用NewCallback
 ```
-static void OnRPCDone(MyResponse* response, baidu::rpc::Controller* cntl) {
+static void OnRPCDone(MyResponse* response, brpc::Controller* cntl) {
     // unique_ptr会帮助我们在return时自动删掉response/cntl，防止忘记。gcc 3.4下的unique_ptr是public/common提供的模拟版本。
     std::unique_ptr<MyResponse> response_guard(response);
-    std::unique_ptr<baidu::rpc::Controller> cntl_guard(cntl);
+    std::unique_ptr<brpc::Controller> cntl_guard(cntl);
     if (cntl->Failed()) {
         // RPC出错了. response里的值是未定义的，勿用。
     } else {
@@ -216,7 +216,7 @@ static void OnRPCDone(MyResponse* response, baidu::rpc::Controller* cntl) {
 }
  
 MyResponse* response = new MyResponse;
-baidu::rpc::Controller* cntl = new baidu::rpc::Controller;
+brpc::Controller* cntl = new brpc::Controller;
 MyService_Stub stub(&channel);
  
 MyRequest request;  // you don't have to new request, even in an asynchronous call.
@@ -224,7 +224,7 @@ request.set_foo(...);
 cntl->set_timeout_ms(...);
 stub.some_method(cntl, &request, response, google::protobuf::NewCallback(OnRPCDone, response, cntl));
 ```
-由于protobuf 3把NewCallback设置为私有，r32035后baidu-rpc把NewCallback独立于[src/baidu/rpc/callback.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/callback.h)。如果你的程序出现NewCallback相关的编译错误，把google::protobuf::NewCallback替换为baidu::rpc::NewCallback就行了。
+由于protobuf 3把NewCallback设置为私有，r32035后baidu-rpc把NewCallback独立于[src/baidu/rpc/callback.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/callback.h)。如果你的程序出现NewCallback相关的编译错误，把google::protobuf::NewCallback替换为brpc::NewCallback就行了。
 
 ### 继承google::protobuf::Closure
 
@@ -244,7 +244,7 @@ public:
     }
  
     MyResponse response;
-    baidu::rpc::Controller cntl;
+    brpc::Controller cntl;
 }
  
 OnRPCDone* done = new OnRPCDone;
@@ -269,14 +269,14 @@ stub.some_method(&done->cntl, &request, &done->response, done);
 
 如下代码发起两个异步RPC后等待它们完成。
 ```
-const baidu::rpc::CallId cid1 = controller1->call_id();
-const baidu::rpc::CallId cid2 = controller2->call_id();
+const brpc::CallId cid1 = controller1->call_id();
+const brpc::CallId cid2 = controller2->call_id();
 ...
 stub.method1(controller1, request1, response1, done1);
 stub.method2(controller2, request2, response2, done2);
 ...
-baidu::rpc::Join(cid1);
-baidu::rpc::Join(cid2);
+brpc::Join(cid1);
+brpc::Join(cid2);
 ```
 **在发起RPC前**调用Controller.call_id()获得一个id，发起RPC调用后Join那个id。
 
@@ -306,36 +306,36 @@ MyResponse* response2 = new MyResponse;
 stub.method1(controller1, &request1, response1, google::protobuf::NewCallback(on_rpc_done, controller1, response1));
 stub.method2(controller2, &request2, response2, google::protobuf::NewCallback(on_rpc_done, controller2, response2));
 ...
-baidu::rpc::Join(controller1->call_id());   // 错误，controller1可能被on_rpc_done删除了
-baidu::rpc::Join(controller2->call_id());   // 错误，controller2可能被on_rpc_done删除了
+brpc::Join(controller1->call_id());   // 错误，controller1可能被on_rpc_done删除了
+brpc::Join(controller2->call_id());   // 错误，controller2可能被on_rpc_done删除了
 ```
 
 ## 半同步
 
 Join可用来实现“半同步”操作：即等待多个异步操作返回。由于调用处的代码会等到多个RPC都结束后再醒来，所以controller和response都可以放栈上。
 ```
-baidu::rpc::Controller cntl1;
-baidu::rpc::Controller cntl2;
+brpc::Controller cntl1;
+brpc::Controller cntl2;
 MyResponse response1;
 MyResponse response2;
 ...
-stub1.method1(&cntl1, &request1, &response1, baidu::rpc::DoNothing());
-stub2.method2(&cntl2, &request2, &response2, baidu::rpc::DoNothing());
+stub1.method1(&cntl1, &request1, &response1, brpc::DoNothing());
+stub2.method2(&cntl2, &request2, &response2, brpc::DoNothing());
 ...
-baidu::rpc::Join(cntl1.call_id());
-baidu::rpc::Join(cntl2.call_id());
+brpc::Join(cntl1.call_id());
+brpc::Join(cntl2.call_id());
 ```
-baidu::rpc::DoNothing()可获得一个什么都不干的done，专门用于半同步访问。它的生命周期由框架管理，用户不用关心。
+brpc::DoNothing()可获得一个什么都不干的done，专门用于半同步访问。它的生命周期由框架管理，用户不用关心。
 
 注意在上面的代码中，我们在RPC结束后又访问了controller.call_id()，这是没有问题的，因为DoNothing中并不会像上面的on_rpc_done中那样删除Controller。
 
 ## 取消RPC
 
-baidu::rpc::StartCancel(CallId)可取消任意RPC，CallId必须**在发起RPC前**通过Controller.call_id()获得，其他时刻都可能有race condition。
+brpc::StartCancel(CallId)可取消任意RPC，CallId必须**在发起RPC前**通过Controller.call_id()获得，其他时刻都可能有race condition。
 
 Icon
 
-是baidu::rpc::StartCancel(CallId)，不是controller.StartCancel()，后者被禁用，没有效果。
+是brpc::StartCancel(CallId)，不是controller.StartCancel()，后者被禁用，没有效果。
 
 顾名思义，StartCancel调用完成后RPC并未立刻结束，你不应该碰触Controller的任何字段或删除任何资源，它们自然会在RPC结束时被done中对应逻辑处理。如果你一定要在原地等到RPC结束（一般不需要），则可通过Join(call_id)。
 
@@ -364,7 +364,7 @@ r31384后通过local_side()方法可**在RPC结束后**获得发起RPC的地址�
 LOG(INFO) << "local_side=" << cntl->local_side(); 
 printf("local_side=%s\n", base::endpoint2str(cntl->local_side()).c_str());
 ```
-## 新建baidu::rpc::Controller的代价大吗
+## 新建brpc::Controller的代价大吗
 
 不大，不用刻意地重用，但Controller是个大杂烩，可能会包含一些缓存，Reset()可以避免反复地创建这些缓存。
 
@@ -372,13 +372,13 @@ printf("local_side=%s\n", base::endpoint2str(cntl->local_side()).c_str());
 ```
 // snippet1
 for (int i = 0; i < n; ++i) {
-    baidu::rpc::Controller controller;
+    brpc::Controller controller;
     ...
     stub.CallSomething(..., &controller);
 }
  
 // snippet2
-baidu::rpc::Controller controller;
+brpc::Controller controller;
 for (int i = 0; i < n; ++i) {
     controller.Reset();
     ...
@@ -391,8 +391,8 @@ for (int i = 0; i < n; ++i) {
 
 Client端的设置主要由三部分组成：
 
-- baidu::rpc::ChannelOptions: 定义在[src/baidu/rpc/channel.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h)中，用于初始化Channel，一旦初始化成功无法修改。
-- baidu::rpc::Controller: 定义在[src/baidu/rpc/controller.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)中，用于在某次RPC中覆盖ChannelOptions中的选项，可根据上下文每次均不同。
+- brpc::ChannelOptions: 定义在[src/baidu/rpc/channel.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h)中，用于初始化Channel，一旦初始化成功无法修改。
+- brpc::Controller: 定义在[src/baidu/rpc/controller.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)中，用于在某次RPC中覆盖ChannelOptions中的选项，可根据上下文每次均不同。
 - 全局gflags：常用于调节一些底层代码的行为，一般不用修改。请自行阅读服务/flags页面中的说明。
 
 Controller包含了request中没有的数据和选项。server端和client端的Controller结构体是一样的，但使用的字段可能是不同的，你需要仔细阅读Controller中的注释，明确哪些字段可以在server端使用，哪些可以在client端使用。
@@ -449,28 +449,28 @@ Controller.set_max_retry()或ChannelOptions.max_retry设置最大重试次数，
 
 一些错误重试是没有意义的，就不会重试，比如请求有错时(EREQUEST)不会重试，因为server总不会接受。
 
-r32009后用户可以通过继承[baidu::rpc::RetryPolicy](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/retry_policy.h)自定义重试条件。r34642后通过cntl->response()可获得对应RPC的response。对ERPCTIMEDOUT代表的RPC超时总是不重试，即使RetryPolicy中允许。
+r32009后用户可以通过继承[brpc::RetryPolicy](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/retry_policy.h)自定义重试条件。r34642后通过cntl->response()可获得对应RPC的response。对ERPCTIMEDOUT代表的RPC超时总是不重试，即使RetryPolicy中允许。
 
 比如baidu-rpc默认不重试HTTP相关的错误，而你的程序中希望在碰到HTTP_STATUS_FORBIDDEN (403)时重试，可以这么做：
 ```
-#include <baidu/rpc/retry_policy.h>
+#include brpc/retry_policy.h>
  
-class MyRetryPolicy : public baidu::rpc::RetryPolicy {
+class MyRetryPolicy : public brpc::RetryPolicy {
 public:
-    bool DoRetry(const baidu::rpc::Controller* cntl) const {
-        if (cntl->ErrorCode() == baidu::rpc::EHTTP && // HTTP错误
-            cntl->http_response().status_code() == baidu::rpc::HTTP_STATUS_FORBIDDEN) {
+    bool DoRetry(const brpc::Controller* cntl) const {
+        if (cntl->ErrorCode() == brpc::EHTTP && // HTTP错误
+            cntl->http_response().status_code() == brpc::HTTP_STATUS_FORBIDDEN) {
             return true;
         }
         // 把其他情况丢给框架。
-        return baidu::rpc::DefaultRetryPolicy()->DoRetry(cntl);
+        return brpc::DefaultRetryPolicy()->DoRetry(cntl);
     }
 };
 ...
  
 // 给ChannelOptions.retry_policy赋值就行了。
 // 注意：retry_policy必须在Channel使用期间保持有效，Channel也不会删除retry_policy，所以大部分情况下RetryPolicy都应以单例模式创建。
-baidu::rpc::ChannelOptions options;
+brpc::ChannelOptions options;
 static MyRetryPolicy g_my_retry_policy;
 options.retry_policy = &g_my_retry_policy;
 ...
@@ -559,13 +559,13 @@ r31468之后baidu-rpc支持[Streaming RPC](http://wiki.baidu.com/display/RPC/Str
 baas::CredentialGenerator generator = CREATE_MOCK_PERSONAL_GENERATOR(
     "mock_user", "mock_roles", "mock_group", baas::sdk::BAAS_OK);
  
-// Create a baidu::rpc::policy::GianoAuthenticator using the generator we just created 
-// and then pass it into baidu::rpc::ChannelOptions
-baidu::rpc::policy::GianoAuthenticator auth(&generator, NULL);
-baidu::rpc::ChannelOptions option;
+// Create a brpc::policy::GianoAuthenticator using the generator we just created 
+// and then pass it into brpc::ChannelOptions
+brpc::policy::GianoAuthenticator auth(&generator, NULL);
+brpc::ChannelOptions option;
 option.auth = &auth;
 ```
-首先通过调用Giano API生成验证器baas::CredentialGenerator，具体可参看[Giano快速上手手册.pdf](http://wiki.baidu.com/download/attachments/37774685/Giano%E5%BF%AB%E9%80%9F%E4%B8%8A%E6%89%8B%E6%89%8B%E5%86%8C.pdf?version=1&modificationDate=1421990746000&api=v2)。然后按照如上代码一步步将其设置到baidu::rpc::ChannelOptions里去。
+首先通过调用Giano API生成验证器baas::CredentialGenerator，具体可参看[Giano快速上手手册.pdf](http://wiki.baidu.com/download/attachments/37774685/Giano%E5%BF%AB%E9%80%9F%E4%B8%8A%E6%89%8B%E6%89%8B%E5%86%8C.pdf?version=1&modificationDate=1421990746000&api=v2)。然后按照如上代码一步步将其设置到brpc::ChannelOptions里去。
 
 当client设置认证后，任何一个新连接建立后都必须首先发送一段验证信息（通过Giano认证器生成），才能发送后续请求。认证成功后，该连接上的后续请求不会再带有验证消息。
 
@@ -581,9 +581,9 @@ set_request_compress_type()设置request的压缩方式，默认不压缩。注�
 
 支持的压缩方法有：
 
-- baidu::rpc::CompressTypeSnappy : [snanpy压缩](http://google.github.io/snappy/)，压缩和解压显著快于其他压缩方法，但压缩率最低。
-- baidu::rpc::CompressTypeGzip : [gzip压缩](http://en.wikipedia.org/wiki/Gzip)，显著慢于snappy，但压缩率高
-- baidu::rpc::CompressTypeZlib : [zlib压缩](http://en.wikipedia.org/wiki/Zlib)，比gzip快10%~20%，压缩率略好于gzip，但速度仍明显慢于snappy。
+- brpc::CompressTypeSnappy : [snanpy压缩](http://google.github.io/snappy/)，压缩和解压显著快于其他压缩方法，但压缩率最低。
+- brpc::CompressTypeGzip : [gzip压缩](http://en.wikipedia.org/wiki/Gzip)，显著慢于snappy，但压缩率高
+- brpc::CompressTypeZlib : [zlib压缩](http://en.wikipedia.org/wiki/Zlib)，比gzip快10%~20%，压缩率略好于gzip，但速度仍明显慢于snappy。
 
 下表是多种压缩算法应对重复率很高的数据时的性能，仅供参考。
 

@@ -163,7 +163,7 @@ class Variable {
 $ cat bvar.echo_server.data                 
 rpc_server_8002_builtin_service_count : 20
 rpc_server_8002_connection_count : 1
-rpc_server_8002_nshead_service_adaptor : baidu::rpc::policy::NovaServiceAdaptor
+rpc_server_8002_nshead_service_adaptor : brpc::policy::NovaServiceAdaptor
 rpc_server_8002_service_count : 1
 rpc_server_8002_start_time : 2015/07/24-21:08:03
 rpc_server_8002_uptime_ms : 14740954

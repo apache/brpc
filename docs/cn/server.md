@@ -38,9 +38,9 @@ public:
               ::example::EchoResponse* response,
               ::google::protobuf::Closure* done) {
         // 这个对象确保在return时自动调用done->Run()
-        baidu::rpc::ClosureGuard done_guard(done);
+        brpc::ClosureGuard done_guard(done);
          
-        baidu::rpc::Controller* cntl = static_cast<baidu::rpc::Controller*>(cntl_base);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
  
         // 填写response
         response->set_message(request->message());
@@ -52,7 +52,7 @@ public:
 
 **controller**
 
-在baidu-rpc中可以静态转为baidu::rpc::Controller（前提是这运行baidu-rpc的Server中），包含了所有request和response之外的参数集合，具体接口查阅[controller.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)
+在baidu-rpc中可以静态转为brpc::Controller（前提是这运行baidu-rpc的Server中），包含了所有request和response之外的参数集合，具体接口查阅[controller.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)
 
 **request**
 
@@ -73,7 +73,7 @@ done包含了调用服务回调后的下一步动作，包括检查response正�
 我们强烈建议使用**ClosureGuard**确保done->Run()被调用，即在服务回调开头的那句：
 
 ```c++
-baidu::rpc::ClosureGuard done_guard(done);
+brpc::ClosureGuard done_guard(done);
 ```
 
 不管在中间还是末尾脱离服务回调，都会使done_guard析构，其中会调用done->Run()。这个机制称为[RAII](https://en.wikipedia.org/wiki/Resource_Acquisition_Is_Initialization)。没有这个的话你得在每次return前都加上done->Run()，**极易忘记**。
@@ -90,7 +90,7 @@ public:
                  const ::example::EchoRequest* request,
                  ::example::EchoResponse* response,
                  ::google::protobuf::Closure* done) {
-         baidu::rpc::ClosureGuard done_guard(done);
+         brpc::ClosureGuard done_guard(done);
          ...
     }
  
@@ -99,7 +99,7 @@ public:
                   const ::example::EchoRequest* request,
                   ::example::EchoResponse* response,
                   ::google::protobuf::Closure* done) {
-         baidu::rpc::ClosureGuard done_guard(done);
+         brpc::ClosureGuard done_guard(done);
          ...
          done_guard.release();
     }
@@ -127,13 +127,13 @@ public:
 };
 ```
 
-> Service在插入[baidu::rpc::Server](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/server.h)后才可能提供服务。
+> Service在插入[brpc::Server](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/server.h)后才可能提供服务。
 
 ## 标记当前调用为失败
 
 调用Controller.SetFailed()可以把当前调用设置为失败，当发送过程出现错误时，框架也会调用这个函数。用户一般是在服务的CallMethod里调用这个函数，比如某个处理环节出错，SetFailed()后便可调用done->Run()并跳出函数了（如果使用了ClosureGuard的话在跳出函数时会自动调用done，不用手动）。Server端的done的逻辑主要是发送response回client，当其发现用户调用了SetFailed()后，会把错误信息送回client。client收到后，它的Controller::Failed()会为true（成功时为false），Controller::ErrorCode()和Controller::ErrorText()则分别是错误码和错误信息。
 
-对于http访问，用户还可以设置[status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html)，在server端一般是调用controller.http_response().set_status_code()，标准的status-code定义在[http_status_code.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/http_status_code.h)中。如果SetFailed了但没有设置status-code，默认设为baidu::rpc::HTTP_STATUS_INTERNAL_SERVER_ERROR（500错误）
+对于http访问，用户还可以设置[status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html)，在server端一般是调用controller.http_response().set_status_code()，标准的status-code定义在[http_status_code.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/http_status_code.h)中。如果SetFailed了但没有设置status-code，默认设为brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR（500错误）
 
 ## 获取Client的地址和端口
 
@@ -161,7 +161,7 @@ printf("local_side=%s\n", base::endpoint2str(cntl->local_side()).c_str());
 
 即done->Run()在Service回调之外被调用。
 
-大多数Server在进入回调函数后使用baidu::rpc::ClosureGuard以确保在退出回调时done->Run()会被自动调用（向client发回response），这种是**同步service**。
+大多数Server在进入回调函数后使用brpc::ClosureGuard以确保在退出回调时done->Run()会被自动调用（向client发回response），这种是**同步service**。
 
 有些server以等待后端服务返回结果为主，且处理时间特别长，为了及时地释放出线程资源，更好的办法是把done注册到被等待事件的回调中，等到事件发生后再调用done->Run()，这种是**异步service**。
 
@@ -187,9 +187,9 @@ int AddService(google::protobuf::Service* service, ServiceOwnership ownership);
 若ownership参数为SERVER_OWNS_SERVICE，Server在析构时会一并删除Service，否则应设为SERVER_DOESNT_OWN_SERVICE。插入上节中的MyEchoService代码如下：
 
 ```c++
-baidu::rpc::Server server;
+brpc::Server server;
 MyEchoService my_echo_service;
-if (server.AddService(&my_echo_service, baidu::rpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
+if (server.AddService(&my_echo_service, brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
     LOG(FATAL) << "Fail to add my_echo_service";
     return -1;
 }
@@ -213,7 +213,7 @@ int Start(const char *ip_str, PortRange port_range, const ServerOptions *opt); 
 options为NULL时所有参数取默认值，如果你要使用非默认值，这么做就行了：
 
 ```c++
-baidu::rpc::ServerOptions options;  // 包含了默认值
+brpc::ServerOptions options;  // 包含了默认值
 options.xxx = yyy;
 ...
 server.Start(..., &options);
@@ -280,14 +280,14 @@ r34532后增加选项-pb_enum_as_number，开启后pb中的enum会转化为它�
 15年时，baidu-rpc允许一个pb service被http协议访问时，不设置pb请求，即使里面有required字段。一般来说这种service会自行解析http请求和设置http回复，并不会访问pb请求。但这也是非常危险的行为，毕竟这是pb service，但pb请求却是未定义的。这种服务在升级到新版本rpc时会遇到障碍，因为baidu-rpc早不允许这种行为。为了帮助这种服务升级，r34953后baidu-rpc允许用户经过一些设置后不把http body自动转化为pb（从而可自行处理），方法如下：
 
 ```c++
-baidu::rpc::ServiceOptions svc_opt;
+brpc::ServiceOptions svc_opt;
 svc_opt.ownership = ...;
 svc_opt.restful_mappings = ...;
 svc_opt.allow_http_body_to_pb = false; //关闭http body至pb的自动转化
 server.AddService(service, svc_opt);
 ```
 
-如此设置后service收到http请求后不会尝试把body转化为pb请求，所以pb请求总是未定义状态，用户得根据`cntl->request_protocol() == baidu::rpc::PROTOCOL_HTTP`来判断请求是否是http，并自行对http body进行解析。
+如此设置后service收到http请求后不会尝试把body转化为pb请求，所以pb请求总是未定义状态，用户得根据`cntl->request_protocol() == brpc::PROTOCOL_HTTP`来判断请求是否是http，并自行对http body进行解析。
 
 相应地，r34953中当cntl->response_attachment()不为空时（且pb回复不为空），框架不再报错，而是直接把cntl->response_attachment()作为回复的body。这个功能和设置allow_http_body_to_pb与否无关，如果放开自由度导致过多的用户犯错，可能会有进一步的调整。
 
@@ -306,31 +306,31 @@ server端会自动尝试其支持的协议，无需用户指定。`cntl->protoco
 - nova协议，显示为”nova“ (r32206前显示为"nshead_server")，默认不启用，开启方式：
 
   ```c++
-  #include <baidu/rpc/policy/nova_pbrpc_protocol.h>
+  #include brpc/policy/nova_pbrpc_protocol.h>
   ...
   ServerOptions options;
   ...
-  options.nshead_service = new baidu::rpc::policy::NovaServiceAdaptor;
+  options.nshead_service = new brpc::policy::NovaServiceAdaptor;
   ```
 
 - public/pbrpc协议，显示为"public_pbrpc" (r32206前显示为"nshead_server")，默认不启用，开启方式：
 
   ```c++
-  #include <baidu/rpc/policy/public_pbrpc_protocol.h>
+  #include brpc/policy/public_pbrpc_protocol.h>
   ...
   ServerOptions options;
   ...
-  options.nshead_service = new baidu::rpc::policy::PublicPbrpcServiceAdaptor;
+  options.nshead_service = new brpc::policy::PublicPbrpcServiceAdaptor;
   ```
 
 - nshead_mcpack协议，显示为"nshead_mcpack"，默认不启用，开启方式：
 
   ```c++
-  #include <baidu/rpc/policy/nshead_mcpack_protocol.h>
+  #include brpc/policy/nshead_mcpack_protocol.h>
   ...
   ServerOptions options;
   ...
-  options.nshead_service = new baidu::rpc::policy::NsheadMcpackAdaptor;
+  options.nshead_service = new brpc::policy::NsheadMcpackAdaptor;
   ```
 
   顾名思义，这个协议的数据包由nshead+mcpack构成，mcpack中不包含特殊字段。不同于用户基于NsheadService的实现，这个协议使用了mcpack2pb：任何protobuf service都可以接受这个协议的请求。由于没有传递ErrorText的字段，当发生错误时server只能关闭连接。
@@ -397,9 +397,9 @@ set_response_compress_type()设置response的压缩方式，默认不压缩。�
 
 支持的压缩方法有：
 
-- baidu::rpc::CompressTypeSnappy : [snanpy压缩](http://google.github.io/snappy/)，压缩和解压显著快于其他压缩方法，但压缩率最低。
-- baidu::rpc::CompressTypeGzip : [gzip压缩](http://en.wikipedia.org/wiki/Gzip)，显著慢于snappy，但压缩率高
-- baidu::rpc::CompressTypeZlib : [zlib压缩](http://en.wikipedia.org/wiki/Zlib)，比gzip快10%~20%，压缩率略好于gzip，但速度仍明显慢于snappy。
+- brpc::CompressTypeSnappy : [snanpy压缩](http://google.github.io/snappy/)，压缩和解压显著快于其他压缩方法，但压缩率最低。
+- brpc::CompressTypeGzip : [gzip压缩](http://en.wikipedia.org/wiki/Gzip)，显著慢于snappy，但压缩率高
+- brpc::CompressTypeZlib : [zlib压缩](http://en.wikipedia.org/wiki/Zlib)，比gzip快10%~20%，压缩率略好于gzip，但速度仍明显慢于snappy。
 
 更具体的性能对比见[Client-压缩](client.md#压缩).
 
@@ -454,10 +454,10 @@ server端开启giano认证的方式：
 // Create a baas::CredentialVerifier using Giano's API
 baas::CredentialVerifier verifier = CREATE_MOCK_VERIFIER(baas::sdk::BAAS_OK);
  
-// Create a baidu::rpc::policy::GianoAuthenticator using the verifier we just created 
-// and then pass it into baidu::rpc::ServerOptions
-baidu::rpc::policy::GianoAuthenticator auth(NULL, &verifier);
-baidu::rpc::ServerOptions option;
+// Create a brpc::policy::GianoAuthenticator using the verifier we just created 
+// and then pass it into brpc::ServerOptions
+brpc::policy::GianoAuthenticator auth(NULL, &verifier);
+brpc::ServerOptions option;
 option.auth = &auth;
 ```
 
@@ -559,7 +559,7 @@ server.MaxConcurrencyOf(&service, "Echo") = 10;
 
 ### 对返回的URL进行转义
 
-可调用baidu::rpc::WebEscape()对url进行转义，防止恶意URI注入攻击。
+可调用brpc::WebEscape()对url进行转义，防止恶意URI注入攻击。
 
 ### 不返回内部server地址
 
@@ -595,7 +595,7 @@ public:
               example::EchoResponse* response,
               google::protobuf::Closure* done) {
         ...
-        baidu::rpc::Controller* cntl = static_cast<baidu::rpc::Controller*>(cntl_base);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
  
         // Get the session-local data which is created by ServerOptions.session_local_data_factory
         // and reused between different RPC.
@@ -637,7 +637,7 @@ session_local_data_factory的类型为[DataFactory](http://icode.baidu.com/repo/
 注意：CreateData和DestroyData会被多个线程同时调用，必须线程安全。
 
 ```c++
-class MySessionLocalDataFactory : public baidu::rpc::DataFactory {
+class MySessionLocalDataFactory : public brpc::DataFactory {
 public:
     void* CreateData() const {
         return new MySessionLocalData;
@@ -651,8 +651,8 @@ int main(int argc, char* argv[]) {
     ...
     MySessionLocalDataFactory session_local_data_factory;
  
-    baidu::rpc::Server server;
-    baidu::rpc::ServerOptions options;
+    brpc::Server server;
+    brpc::ServerOptions options;
     ...
     options.session_local_data_factory = &session_local_data_factory;
     ...
@@ -678,12 +678,12 @@ public:
               example::EchoResponse* response,
               google::protobuf::Closure* done) {
         ...
-        baidu::rpc::Controller* cntl = static_cast<baidu::rpc::Controller*>(cntl_base);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
          
         // Get the thread-local data which is created by ServerOptions.thread_local_data_factory
         // and reused between different threads.
         // "tls" is short for "thread local storage".
-        MyThreadLocalData* tls = static_cast<MyThreadLocalData*>(baidu::rpc::thread_local_data());
+        MyThreadLocalData* tls = static_cast<MyThreadLocalData*>(brpc::thread_local_data());
         if (tls == NULL) {
             cntl->SetFailed("Require ServerOptions.thread_local_data_factory "
                             "to be set with a correctly implemented instance");
@@ -701,13 +701,13 @@ struct ServerOptions {
     ...    
     // The factory to create/destroy data attached to each searching thread
     // in server.
-    // If this field is NULL, baidu::rpc::thread_local_data() is always NULL.
+    // If this field is NULL, brpc::thread_local_data() is always NULL.
     // NOT owned by Server and must be valid when Server is running.
     // Default: NULL
     const DataFactory* thread_local_data_factory;
  
     // Prepare so many thread-local data before server starts, so that calls
-    // to baidu::rpc::thread_local_data() get data directly rather than calling
+    // to brpc::thread_local_data() get data directly rather than calling
     // thread_local_data_factory->Create() at first time. Useful when Create()
     // is slow, otherwise the RPC session may be blocked by the creation
     // of data and not served within timeout.
@@ -723,7 +723,7 @@ thread_local_data_factory的类型为[DataFactory](http://icode.baidu.com/repo/b
 注意：CreateData和DestroyData会被多个线程同时调用，必须线程安全。
 
 ```c++
-class MyThreadLocalDataFactory : public baidu::rpc::DataFactory {
+class MyThreadLocalDataFactory : public brpc::DataFactory {
 public:
     void* CreateData() const {
         return new MyThreadLocalData;
@@ -737,8 +737,8 @@ int main(int argc, char* argv[]) {
     ...
     MyThreadLocalDataFactory thread_local_data_factory;
  
-    baidu::rpc::Server server;
-    baidu::rpc::ServerOptions options;
+    brpc::Server server;
+    brpc::ServerOptions options;
     ...
     options.thread_local_data_factory  = &thread_local_data_factory;
     ...

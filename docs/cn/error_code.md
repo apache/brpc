@@ -1,4 +1,4 @@
-baidu-rpc使用[baidu::rpc::Controller](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)设置一次RPC的参数和获取一次RPC的结果，ErrorCode()和ErrorText()是Controller的两个方法，分别是该次RPC的错误码和错误描述，只在RPC结束后才能访问，否则结果未定义。ErrorText()由Controller的基类google::protobuf::RpcController定义，ErrorCode()则是baidu::rpc::Controller定义的。Controller还有个Failed()方法告知该次RPC是否失败，这三者的关系是：
+baidu-rpc使用[brpc::Controller](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)设置一次RPC的参数和获取一次RPC的结果，ErrorCode()和ErrorText()是Controller的两个方法，分别是该次RPC的错误码和错误描述，只在RPC结束后才能访问，否则结果未定义。ErrorText()由Controller的基类google::protobuf::RpcController定义，ErrorCode()则是brpc::Controller定义的。Controller还有个Failed()方法告知该次RPC是否失败，这三者的关系是：
 
 - 当Failed()为true时，ErrorCode()一定不为0，ErrorText()是非空的错误描述
 - 当Failed()为false时，ErrorCode()一定为0，ErrorText()是未定义的（目前在baidu-rpc中会为空，但你最好不要依赖这个事实）

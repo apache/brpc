@@ -74,13 +74,13 @@ Total: 38.9 MB
      0.0   0.0% 100.0%      0.5   1.3% __do_global_ctors_aux
      0.0   0.0% 100.0%      1.6   4.2% _end
      0.0   0.0% 100.0%      0.5   1.3% _init
-     0.0   0.0% 100.0%      0.6   1.5% baidu::rpc::CloseIdleConnections
-     0.0   0.0% 100.0%      1.1   2.9% baidu::rpc::GlobalUpdate
-     0.0   0.0% 100.0%      0.6   1.5% baidu::rpc::PProfService::heap
-     0.0   0.0% 100.0%      1.9   4.9% baidu::rpc::Socket::Create
-     0.0   0.0% 100.0%      2.9   7.4% baidu::rpc::Socket::Write
-     0.0   0.0% 100.0%      3.8   9.7% baidu::rpc::Span::CreateServerSpan
-     0.0   0.0% 100.0%      1.4   3.5% baidu::rpc::SpanQueue::Push
+     0.0   0.0% 100.0%      0.6   1.5% brpc::CloseIdleConnections
+     0.0   0.0% 100.0%      1.1   2.9% brpc::GlobalUpdate
+     0.0   0.0% 100.0%      0.6   1.5% brpc::PProfService::heap
+     0.0   0.0% 100.0%      1.9   4.9% brpc::Socket::Create
+     0.0   0.0% 100.0%      2.9   7.4% brpc::Socket::Write
+     0.0   0.0% 100.0%      3.8   9.7% brpc::Span::CreateServerSpan
+     0.0   0.0% 100.0%      1.4   3.5% brpc::SpanQueue::Push
      0.0   0.0% 100.0%      1.9   4.8% base::ObjectPool
      0.0   0.0% 100.0%      0.8   2.0% base::ResourcePool
      0.0   0.0% 100.0%      1.0   2.6% base::iobuf::tls_block

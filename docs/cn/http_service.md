@@ -29,8 +29,8 @@ public:
                       const HttpRequest* /*request*/,
                       HttpResponse* /*response*/,
                       google::protobuf::Closure* done) {
-        baidu::rpc::ClosureGuard done_guard(done);
-        baidu::rpc::Controller* cntl = static_cast<baidu::rpc::Controller*>(cntl_base);
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
  
         // 这里返回纯文本。
         cntl->http_response().set_content_type("text/plain");
@@ -38,7 +38,7 @@ public:
         // 把请求的query-string和body打印出来，作为回复内容。
         base::IOBufBuilder os;
         os << "queries:";
-        for (baidu::rpc::URI::QueryIterator it = cntl->http_request().uri().QueryBegin();
+        for (brpc::URI::QueryIterator it = cntl->http_request().uri().QueryBegin();
                 it != cntl->http_request().uri().QueryEnd(); ++it) {
             os << ' ' << it->first << '=' << it->second;
         }
@@ -87,8 +87,8 @@ public:
                                 const HttpRequest* /*request*/,
                                 HttpResponse* /*response*/,
                                 google::protobuf::Closure* done) {
-        baidu::rpc::ClosureGuard done_guard(done);
-        baidu::rpc::Controller* cntl = static_cast<baidu::rpc::Controller*>(cntl_base);
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
         cntl->response_attachment().append("Getting file: ");
         cntl->response_attachment().append(cntl->http_request().unresolved_path());
     }
@@ -135,7 +135,7 @@ service QueueService {
 ```c++
 // r33521前星号只能出现在最后
 if (server.AddService(&queue_svc,
-                      baidu::rpc::SERVER_DOESNT_OWN_SERVICE,
+                      brpc::SERVER_DOESNT_OWN_SERVICE,
                       "/v1/queue/start   => start,"
                       "/v1/queue/stop    => stop,"
                       "/v1/queue/stats/* => get_stats") != 0) {
@@ -145,7 +145,7 @@ if (server.AddService(&queue_svc,
  
 // r33521后星号可出现在中间
 if (server.AddService(&queue_svc,
-                      baidu::rpc::SERVER_DOESNT_OWN_SERVICE,
+                      brpc::SERVER_DOESNT_OWN_SERVICE,
                       "/v1/*/start   => start,"
                       "/v1/*/stop    => stop,"
                       "*.data        => download_data") != 0) {
@@ -230,19 +230,19 @@ status code是http response特有的字段，标记http请求的完成情况。�
 
 ```c++
 // Get Status Code
-if (cntl->http_response().status_code() == baidu::rpc::HTTP_STATUS_NOT_FOUND) {
+if (cntl->http_response().status_code() == brpc::HTTP_STATUS_NOT_FOUND) {
     LOG(FATAL) << "FAILED: " << controller.http_response().reason_phrase();
 }
 ...
 // Set Status code
-cntl->http_response().set_status_code(baidu::rpc::HTTP_STATUS_INTERNAL_SERVER_ERROR);
-cntl->http_response().set_status_code(baidu::rpc::HTTP_STATUS_INTERNAL_SERVER_ERROR, "My explanation of the error...");
+cntl->http_response().set_status_code(brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR);
+cntl->http_response().set_status_code(brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR, "My explanation of the error...");
 ```
 
 以下代码在302错误时重定向：
 
 ```c++
-cntl->http_response().set_status_code(baidu::rpc::HTTP_STATUS_FOUND);
+cntl->http_response().set_status_code(brpc::HTTP_STATUS_FOUND);
 cntl->http_response().SetHeader("Location", "http://bj.bs.bae.baidu.com/family/image001(4979).jpg");
 ```
 
@@ -270,19 +270,19 @@ cntl->http_request().uri().SetQuery("time", "2015/1/2");
 
 http服务常对http body进行压缩，对于文本网页可以有效减少传输时间，加快页面的展现速度。
 
-在r33093后，调用Controller::set_response_compress_type(baidu::rpc::COMPRESS_TYPE_GZIP)将尝试用gzip压缩http body，并设置"Content-Encoding"为"gzip"。“尝试”指的是如果请求中没有设置Accept-encoding或不包含gzip，压缩不会进行。比如curl不加--compressed时是不支持压缩的，这时server端总是会返回不压缩的结果。
+在r33093后，调用Controller::set_response_compress_type(brpc::COMPRESS_TYPE_GZIP)将尝试用gzip压缩http body，并设置"Content-Encoding"为"gzip"。“尝试”指的是如果请求中没有设置Accept-encoding或不包含gzip，压缩不会进行。比如curl不加--compressed时是不支持压缩的，这时server端总是会返回不压缩的结果。
 
 # 解压request body
 
 出于通用性考虑且解压代码不复杂，baidu-rpc不会自动解压request body，用户可以自己做，方法如下：
 
 ```c++
-#include <baidu/rpc/policy/gzip_compress.h>
+#include brpc/policy/gzip_compress.h>
 ...
 const std::string* encoding = cntl->http_request().GetHeader("Content-Encoding");
 if (encoding != NULL && *encoding == "gzip") {
     base::IOBuf uncompressed;
-    if (!baidu::rpc::policy::GzipDecompress(cntl->request_attachment(), &uncompressed)) {
+    if (!brpc::policy::GzipDecompress(cntl->request_attachment(), &uncompressed)) {
         LOG(ERROR) << "Fail to un-gzip request body";
         return;
     }
@@ -351,13 +351,13 @@ r33796前baidu-rpc server不适合发送超大或无限长的body。r33796后bai
 
 \1. 调用Controller::CreateProgressiveAttachment()创建可持续发送的body。
 
-`boost::intrusive_ptr<baidu::rpc::ProgressiveAttachment> pa(cntl->CreateProgressiveAttachment());`
+`boost::intrusive_ptr<brpc::ProgressiveAttachment> pa(cntl->CreateProgressiveAttachment());`
 
-返回的ProgressiveAttachment对象需要用boost::intrusive_ptr<>管理，定义在<baidu/rpc/progressive_attachment.h>中。
+返回的ProgressiveAttachment对象需要用boost::intrusive_ptr<>管理，定义在brpc/progressive_attachment.h>中。
 
 \2. 调用ProgressiveAttachment::Write()发送数据。如果写入发生在server回调结束前，发送的数据将会被缓存直到回调结束发送了header部分后才会开始发送数据。如果写入发生在server回调结束后，发送的数据将立刻以chunked mode写出。 
 
-\3. 发送完毕后确保所有的boost::intrusive_ptr<baidu::rpc::ProgressiveAttachment>都析构了。
+\3. 发送完毕后确保所有的boost::intrusive_ptr<brpc::ProgressiveAttachment>都析构了。
 
 # 持续接收
 

@@ -18,13 +18,13 @@
 - **processing**: 正在处理的请求个数。如果持续不为0（特别是在压力归0后），应考虑程序是否有bug。
 
 
-用户可通过让对应Service实现[baidu::rpc::Describable](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/describable.h)自定义在/status页面上的描述.
+用户可通过让对应Service实现[brpc::Describable](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/describable.h)自定义在/status页面上的描述.
 
 ```c++
-class MyService : public XXXService, public baidu::rpc::Describable {
+class MyService : public XXXService, public brpc::Describable {
 public:
     ...
-    void DescribeStatus(std::ostream& os, const baidu::rpc::DescribeOptions& options) const {
+    void DescribeStatus(std::ostream& os, const brpc::DescribeOptions& options) const {
         os << "my_status: blahblah";
     }
 };

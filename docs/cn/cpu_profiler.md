@@ -51,20 +51,20 @@ Wrote profile to /home/gejun/pprof/echo_server.1419501210.0.0.0.0
 Removing funlockfile from all stack traces.
 Total: 2946 samples
     1161  39.4%  39.4%     1161  39.4% syscall
-     248   8.4%  47.8%      248   8.4% baidu::bthread::TaskControl::steal_task
+     248   8.4%  47.8%      248   8.4% bthread::TaskControl::steal_task
      227   7.7%  55.5%      227   7.7% writev
       87   3.0%  58.5%       88   3.0% ::cpp_alloc
       74   2.5%  61.0%       74   2.5% __read_nocancel
       46   1.6%  62.6%       48   1.6% tc_delete
-      42   1.4%  64.0%       42   1.4% baidu::rpc::Socket::Address
+      42   1.4%  64.0%       42   1.4% brpc::Socket::Address
       41   1.4%  65.4%       41   1.4% epoll_wait
       35   1.2%  66.6%       35   1.2% memcpy
       33   1.1%  67.7%       33   1.1% __pthread_getspecific
-      33   1.1%  68.8%       33   1.1% baidu::rpc::Socket::Write
+      33   1.1%  68.8%       33   1.1% brpc::Socket::Write
       33   1.1%  69.9%       33   1.1% epoll_ctl
-      28   1.0%  70.9%       42   1.4% baidu::rpc::policy::ProcessRpcRequest
-      27   0.9%  71.8%       27   0.9% baidu::IOBuf::_push_back_ref
-      27   0.9%  72.7%       27   0.9% baidu::bthread::TaskGroup::ending_sched
+      28   1.0%  70.9%       42   1.4% brpc::policy::ProcessRpcRequest
+      27   0.9%  71.8%       27   0.9% base::IOBuf::_push_back_ref
+      27   0.9%  72.7%       27   0.9% bthread::TaskGroup::ending_sched
 ```
 
 省略–text进入交互模式，如下图所示：
@@ -80,14 +80,14 @@ Welcome to pprof!  For help, type 'help'.
 (pprof) top
 Total: 2954 samples
     1099  37.2%  37.2%     1099  37.2% syscall
-     253   8.6%  45.8%      253   8.6% baidu::bthread::TaskControl::steal_task
+     253   8.6%  45.8%      253   8.6% bthread::TaskControl::steal_task
      240   8.1%  53.9%      240   8.1% writev
       90   3.0%  56.9%       90   3.0% ::cpp_alloc
       67   2.3%  59.2%       67   2.3% __read_nocancel
-      47   1.6%  60.8%       47   1.6% baidu::IOBuf::_push_back_ref
-      42   1.4%  62.2%       56   1.9% baidu::rpc::policy::ProcessRpcRequest
+      47   1.6%  60.8%       47   1.6% base::IOBuf::_push_back_ref
+      42   1.4%  62.2%       56   1.9% brpc::policy::ProcessRpcRequest
       41   1.4%  63.6%       41   1.4% epoll_wait
       38   1.3%  64.9%       38   1.3% epoll_ctl
       37   1.3%  66.1%       37   1.3% memcpy
-      35   1.2%  67.3%       35   1.2% baidu::rpc::Socket::Address
+      35   1.2%  67.3%       35   1.2% brpc::Socket::Address
 ```

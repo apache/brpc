@@ -2,13 +2,13 @@ http client的例子见[example/http_c++](http://icode.baidu.com/repo/baidu/open
 
 # 创建Channel
 
-baidu::rpc::Channel可访问HTTP服务，ChannelOptions.protocol须指定为PROTOCOL_HTTP。
+brpc::Channel可访问HTTP服务，ChannelOptions.protocol须指定为PROTOCOL_HTTP。
 
 设定为HTTP协议后，`Channel::Init`的第一个参数可为任意合法的URL。注意：允许任意URL是为了省去用户取出host和port的麻烦，`Channel::Init`只用其中的host及port，其他部分都会丢弃。
 
 ```c++
-baidu::rpc::ChannelOptions options;
-options.protocol = baidu::rpc::PROTOCOL_HTTP;
+brpc::ChannelOptions options;
+options.protocol = brpc::PROTOCOL_HTTP;
 if (channel.Init("www.baidu.com" /*any url*/, &options) != 0) {
      LOG(ERROR) << "Fail to initialize channel";
      return -1;
@@ -20,7 +20,7 @@ http channel也支持bns地址。
 # GET
 
 ```c++
-baidu::rpc::Controller cntl;
+brpc::Controller cntl;
 cntl.http_request().uri() = "www.baidu.com/index.html";  // 设置为待访问的URL
 channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
 ```
@@ -34,9 +34,9 @@ HTTP和protobuf无关，所以除了Controller和done，CallMethod的其他参�
 默认的HTTP Method为GET，如果需要做POST，则需要设置。待POST的数据应置入request_attachment()，它([base::IOBuf](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/iobuf.h))可以直接append std::string或char*
 
 ```c++
-baidu::rpc::Controller cntl;
+brpc::Controller cntl;
 cntl.http_request().uri() = "...";  // 设置为待访问的URL
-cntl.http_request().set_method(baidu::rpc::HTTP_METHOD_POST);
+cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
 cntl.request_attachment().append("{\"message\":\"hello world!\"}");
 channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
 ```
@@ -44,9 +44,9 @@ channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
 需要大量打印过程的body建议使用base::IOBufBuilder，它的用法和std::ostringstream是一样的。对于有大量对象要打印的场景，IOBufBuilder会简化代码，并且效率也更高。
 
 ```c++
-baidu::rpc::Controller cntl;
+brpc::Controller cntl;
 cntl.http_request().uri() = "...";  // 设置为待访问的URL
-cntl.http_request().set_method(baidu::rpc::HTTP_METHOD_POST);
+cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
 base::IOBufBuilder os;
 os << "A lot of printing" << printable_objects << ...;
 os.move_to(cntl.request_attachment());
@@ -108,7 +108,7 @@ cntl->http_request().uri().SetQuery("Foo", "value");
 ```
 设置HTTP方法 
 ```c++
-cntl->http_request().set_method(baidu::rpc::HTTP_METHOD_POST);
+cntl->http_request().set_method(brpc::HTTP_METHOD_POST);
 ```
 设置url
 ```c++
@@ -149,19 +149,19 @@ Notes on http header:
 
 # 压缩request body
 
-在r33877后，调用Controller::set_request_compress_type(baidu::rpc::COMPRESS_TYPE_GZIP)可将http body用gzip压缩，并设置"Content-Encoding"为"gzip"。
+在r33877后，调用Controller::set_request_compress_type(brpc::COMPRESS_TYPE_GZIP)可将http body用gzip压缩，并设置"Content-Encoding"为"gzip"。
 
 # 解压response body
 
 出于通用性考虑且解压代码不复杂，baidu-rpc不会自动解压response body，用户可以自己做，方法如下：
 
 ```c++
-#include <baidu/rpc/policy/gzip_compress.h>
+#include brpc/policy/gzip_compress.h>
 ...
 const std::string* encoding = cntl->http_response().GetHeader("Content-Encoding");
 if (encoding != NULL && *encoding == "gzip") {
     base::IOBuf uncompressed;
-    if (!baidu::rpc::policy::GzipDecompress(cntl->response_attachment(), &uncompressed)) {
+    if (!brpc::policy::GzipDecompress(cntl->response_attachment(), &uncompressed)) {
         LOG(ERROR) << "Fail to un-gzip response body";
         return;
     }
@@ -181,7 +181,7 @@ r33796后baidu-rpc client支持在读取完body前就结束RPC，让用户在RPC
 1. 首先实现ProgressiveReader，接口如下：
 
    ```c++
-   #include <baidu/rpc/progressive_reader.h>
+   #include brpc/progressive_reader.h>
    ...
    class ProgressiveReader {
    public:
