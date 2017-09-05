@@ -1,11 +1,11 @@
-[redis](http://redis.io/)是最近几年比较火的缓存服务，相比memcached在server端提供了更多的数据结构和操作方法，简化了用户的开发工作，在百度内有比较广泛的应用。为了使用户更快捷地访问redis并充分利用bthread的并发能力，baidu-rpc直接支持redis协议。示例程序：<https://svn.baidu.com/public/trunk/baidu-rpc/example/redis_c++/>
+[redis](http://redis.io/)是最近几年比较火的缓存服务，相比memcached在server端提供了更多的数据结构和操作方法，简化了用户的开发工作，在百度内有比较广泛的应用。为了使用户更快捷地访问redis并充分利用bthread的并发能力，baidu-rpc直接支持redis协议。示例程序：[example/redis_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/redis_c++/)
 
 相比使用[hiredis](https://github.com/redis/hiredis)(官方client)的优势有：
 
 - 线程安全。用户不需要为每个线程建立独立的client。
 - 支持同步、异步、批量同步、批量异步等访问方式，能使用ParallelChannel等组合访问方式。
-- 支持多种[连接方式](http://wiki.baidu.com/pages/viewpage.action?pageId=213828685#id-创建和访问Client-连接方式)。支持超时、backup request、取消、tracing、内置服务等一系列RPC基本福利。
-- 一个进程和一个redis-server只有一个连接。多个线程同时访问一个redis-server时更高效（见[性能](http://wiki.baidu.com/pages/viewpage.action?pageId=213828705#id-访问Redis-性能)）。无论reply的组成多复杂，内存都会连续成块地分配，并支持短串优化(SSO)。
+- 支持多种[连接方式](client.md#连接方式)。支持超时、backup request、取消、tracing、内置服务等一系列RPC基本福利。
+- 一个进程和一个redis-server只有一个连接。多个线程同时访问一个redis-server时更高效（见[性能](#性能)）。无论reply的组成多复杂，内存都会连续成块地分配，并支持短串优化(SSO)。
 
 像http一样，baidu-rpc保证在最差情况下解析redis reply的时间复杂度也是O(N)，N是reply的字节数，而不是O(N^2)。当reply是个较大的数组时，这是比较重要的。
 
@@ -103,7 +103,7 @@ CHECK_EQ(-10, response.reply(3).integer());
 
 # RedisRequest
 
-一个[RedisRequest](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/redis.h)可包含多个Command，调用AddCommand*增加命令，成功返回true，失败返回false并会打印调用处的栈。
+一个[RedisRequest](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/redis.h)可包含多个Command，调用AddCommand*增加命令，成功返回true，失败返回false并会打印调用处的栈。
 
 ```c++
 bool AddCommand(const char* fmt, ...);
@@ -123,7 +123,7 @@ command_size()可获得（成功）加入的命令个数。
 
 # RedisResponse
 
-[RedisResponse](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/redis.h)可能包含一个或多个[RedisReply](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/redis_reply.h)，reply_size()可获得reply的个数，reply(i)可获得第i个reply的引用（从0计数）。注意在hiredis中，如果请求包含了N个command，获取结果也要调用N次redisGetReply。但在baidu-rpc中这是不必要的，RedisResponse已经包含了N个reply，通过reply(i)获取就行了。只要RPC成功，response.reply_size()应与request.command_size()相等，除非redis-server有bug（redis-server工作的基本前提就是response和request按序一一对应）
+[RedisResponse](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/redis.h)可能包含一个或多个[RedisReply](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/redis_reply.h)，reply_size()可获得reply的个数，reply(i)可获得第i个reply的引用（从0计数）。注意在hiredis中，如果请求包含了N个command，获取结果也要调用N次redisGetReply。但在baidu-rpc中这是不必要的，RedisResponse已经包含了N个reply，通过reply(i)获取就行了。只要RPC成功，response.reply_size()应与request.command_size()相等，除非redis-server有bug（redis-server工作的基本前提就是response和request按序一一对应）
 
 每个reply可能是：
 

@@ -6,7 +6,7 @@ baidu-rpc可以分析程序中的热点函数。
    1. 这么写也开启了tcmalloc，不建议单独链接cpu profiler而不链接tcmalloc，可能越界访问导致[crash](https://code.google.com/p/gperftools/source/browse/README#sl_svn1035d5c18f64d114ac790b92a96f3b3a1a301eb9_207)**。**可能由于tcmalloc不及时归还内存，越界访问不会crash。
    2. 这个版本的tcmalloc使用frame pointer而不是libunwind回溯栈，请确保在CXXFLAGS或CFLAGS中加上`-fno-omit-frame-pointer`，否则函数间的调用关系会丢失，最后产生的图片中都是彼此独立的函数方框。
 2. 定义宏BAIDU_RPC_ENABLE_CPU_PROFILER。在COMAKE中加入`CXXFLAGS('-DBAIDU_RPC_ENABLE_CPU_PROFILER')`
-3. 如果只是baidu-rpc client或没有使用baidu-rpc，看[这里](http://wiki.baidu.com/pages/viewpage.action?pageId=213843633)。 
+3. 如果只是baidu-rpc client或没有使用baidu-rpc，看[这里](dummy_server.md)。 
 
  注意要关闭Server端的认证，否则可能会看到这个：
 
@@ -38,7 +38,7 @@ cpu profiler的原理是在定期被调用的SIGPROF handler中采样所在线�
 
 ![img](http://wiki.baidu.com/download/attachments/165876310/image2016-1-19%2023%3A28%3A21.png?version=1&modificationDate=1453217323000&api=v2)
 
-你也可以使用[public/baidu-rpc/tools/pprof](https://svn.baidu.com/public/trunk/baidu-rpc/tools/pprof)或gperftools中的pprof进行profiling。
+你也可以使用[public/baidu-rpc/tools/pprof](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/tools/pprof)或gperftools中的pprof进行profiling。
 
 比如`pprof --text localhost:9002 --seconds=5`的意思是统计运行在本机9002端口的server的cpu情况，时长5秒。一次运行的例子如下：
 

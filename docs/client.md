@@ -138,7 +138,7 @@ int main() {
 
 ### la
 
-locality-aware，优先选择延时低的下游，直到其延时高于其他机器，无需其他设置。实现原理请查看[Locality-aware load balancing](http://wiki.baidu.com/pages/viewpage.action?pageId=38012521)。
+locality-aware，优先选择延时低的下游，直到其延时高于其他机器，无需其他设置。实现原理请查看[Locality-aware load balancing](lalb.md)。
 
 ### c_murmurhash or c_md5
 
@@ -146,11 +146,11 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 
 发起RPC前需要设置Controller.set_request_code()，否则RPC会失败。request_code一般是请求中主键部分的32位哈希值，**不需要和负载均衡使用的哈希算法一致**。比如用c_murmurhash算法也可以用md5计算哈希值。
 
-[baidu/rpc/policy/hasher.h](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/policy/hasher.h)中包含了常用的hash函数。如果用std::string key代表请求的主键，controller.set_request_code(baidu::rpc::policy::MurmurHash32(key.data(), key.size()))就正确地设置了request_code。
+[baidu/rpc/policy/hasher.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/policy/hasher.h)中包含了常用的hash函数。如果用std::string key代表请求的主键，controller.set_request_code(baidu::rpc::policy::MurmurHash32(key.data(), key.size()))就正确地设置了request_code。
 
 注意甄别请求中的“主键”部分和“属性”部分，不要为了偷懒或通用，就把请求的所有内容一股脑儿计算出哈希值，属性的变化会使请求的目的地发生剧烈的变化。另外也要注意padding问题，比如struct Foo { int32_t a; int64_t b; }在64位机器上a和b之间有4个字节的空隙，内容未定义，如果像hash(&foo, sizeof(foo))这样计算哈希值，结果就是未定义的，得把内容紧密排列或序列化后再算。
 
-实现原理请查看[Consistent Hashing](http://wiki.baidu.com/pages/viewpage.action?pageId=105311464)。
+实现原理请查看[Consistent Hashing](consistent_hashing.md)。
 
 ## 健康检查
 
@@ -167,7 +167,7 @@ stub.some_method(controller, request, response, done);
 ```
 XXX_Stub(&channel).some_method(controller, request, response, done);
 ```
-一个例外是http client。访问http服务和protobuf没什么关系，直接调用CallMethod即可，除了Controller和done均为NULL，详见[访问HTTP服务](http://wiki.baidu.com/pages/viewpage.action?pageId=213828697)。
+一个例外是http client。访问http服务和protobuf没什么关系，直接调用CallMethod即可，除了Controller和done均为NULL，详见[访问HTTP服务](http_client.md)。
 
 ## 同步访问
 
@@ -224,7 +224,7 @@ request.set_foo(...);
 cntl->set_timeout_ms(...);
 stub.some_method(cntl, &request, response, google::protobuf::NewCallback(OnRPCDone, response, cntl));
 ```
-由于protobuf 3把NewCallback设置为私有，r32035后baidu-rpc把NewCallback独立于[src/baidu/rpc/callback.h](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/callback.h)。如果你的程序出现NewCallback相关的编译错误，把google::protobuf::NewCallback替换为baidu::rpc::NewCallback就行了。
+由于protobuf 3把NewCallback设置为私有，r32035后baidu-rpc把NewCallback独立于[src/baidu/rpc/callback.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/callback.h)。如果你的程序出现NewCallback相关的编译错误，把google::protobuf::NewCallback替换为baidu::rpc::NewCallback就行了。
 
 ### 继承google::protobuf::Closure
 
@@ -265,7 +265,7 @@ stub.some_method(&done->cntl, &request, &done->response, done);
 一定不在同一个线程里运行，即使该次rpc调用刚进去就失败了，回调也会在另一个bthread中运行。这可以在加锁进行rpc（不推荐）的代码中避免死锁。
 
 ## 等待RPC完成
-当你需要发起多个并发操作时，可能[ParallelChannel](http://wiki.baidu.com/pages/viewpage.action?pageId=213828709#id-组合访问-ParallelChannel)更方便。
+当你需要发起多个并发操作时，可能[ParallelChannel](combo_channel.md#parallelchannel)更方便。
 
 如下代码发起两个异步RPC后等待它们完成。
 ```
@@ -348,7 +348,7 @@ Icon
 
 ## 获取Server的地址和端口
 
-remote_side()方法可知道request被送向了哪个server，返回值类型是[base::EndPoint](https://svn.baidu.com/public/trunk/common/base/endpoint.h)，包含一个ip4地址和端口。在RPC结束前调用这个方法都是没有意义的。
+remote_side()方法可知道request被送向了哪个server，返回值类型是[base::EndPoint](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/endpoint.h)，包含一个ip4地址和端口。在RPC结束前调用这个方法都是没有意义的。
 
 打印方式：
 ```
@@ -391,8 +391,8 @@ for (int i = 0; i < n; ++i) {
 
 Client端的设置主要由三部分组成：
 
-- baidu::rpc::ChannelOptions: 定义在[src/baidu/rpc/channel.h](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/channel.h)中，用于初始化Channel，一旦初始化成功无法修改。
-- baidu::rpc::Controller: 定义在[src/baidu/rpc/controller.h](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/controller.h)中，用于在某次RPC中覆盖ChannelOptions中的选项，可根据上下文每次均不同。
+- baidu::rpc::ChannelOptions: 定义在[src/baidu/rpc/channel.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h)中，用于初始化Channel，一旦初始化成功无法修改。
+- baidu::rpc::Controller: 定义在[src/baidu/rpc/controller.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)中，用于在某次RPC中覆盖ChannelOptions中的选项，可根据上下文每次均不同。
 - 全局gflags：常用于调节一些底层代码的行为，一般不用修改。请自行阅读服务/flags页面中的说明。
 
 Controller包含了request中没有的数据和选项。server端和client端的Controller结构体是一样的，但使用的字段可能是不同的，你需要仔细阅读Controller中的注释，明确哪些字段可以在server端使用，哪些可以在client端使用。
@@ -449,7 +449,7 @@ Controller.set_max_retry()或ChannelOptions.max_retry设置最大重试次数，
 
 一些错误重试是没有意义的，就不会重试，比如请求有错时(EREQUEST)不会重试，因为server总不会接受。
 
-r32009后用户可以通过继承[baidu::rpc::RetryPolicy](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/retry_policy.h)自定义重试条件。r34642后通过cntl->response()可获得对应RPC的response。对ERPCTIMEDOUT代表的RPC超时总是不重试，即使RetryPolicy中允许。
+r32009后用户可以通过继承[baidu::rpc::RetryPolicy](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/retry_policy.h)自定义重试条件。r34642后通过cntl->response()可获得对应RPC的response。对ERPCTIMEDOUT代表的RPC超时总是不重试，即使RetryPolicy中允许。
 
 比如baidu-rpc默认不重试HTTP相关的错误，而你的程序中希望在碰到HTTP_STATUS_FORBIDDEN (403)时重试，可以这么做：
 ```
@@ -487,15 +487,15 @@ Channel的默认协议是标准协议，可通过设置ChannelOptions.protocol�
 - PROTOCOL_BAIDU_STD 或 “baidu_std"，即[标准协议](http://gollum.baidu.com/RPCSpec)，默认为单连接。
 - PROTOCOL_HULU_PBRPC 或 "hulu_pbrpc"，hulu的协议，默认为单连接。
 - PROTOCOL_NOVA_PBRPC 或 ”nova_pbrpc“，网盟的协议，默认为连接池。
-- PROTOCOL_HTTP 或 ”http", http协议，默认为连接池(Keep-Alive)。具体方法见[访问HTTP服务](http://wiki.baidu.com/pages/viewpage.action?pageId=213828697)。
+- PROTOCOL_HTTP 或 ”http", http协议，默认为连接池(Keep-Alive)。具体方法见[访问HTTP服务](http_client.md)。
 - PROTOCOL_SOFA_PBRPC 或 "sofa_pbrpc"，sofa-pbrpc的协议，默认为单连接。
 - PROTOCOL_PUBLIC_PBRPC 或 "public_pbrpc"，public/pbrpc的协议，默认为连接池。
-- PROTOCOL_UBRPC_COMPACK 或 "ubrpc_compack"，public/ubrpc的协议，使用compack打包，默认为连接池。具体方法见[ubrpc (by protobuf)](http://wiki.baidu.com/pages/viewpage.action?pageId=213828700#id-访问UB-ubrpc(byprotobuf))。相关的还有PROTOCOL_UBRPC_MCPACK2或ubrpc_mcpack2，使用mcpack2打包。
-- PROTOCOL_NSHEAD_CLIENT 或 "nshead_client"，这是发送baidu-rpc-ub中所有UBXXXRequest需要的协议，默认为连接池。具体方法见[访问ub](http://wiki.baidu.com/pages/viewpage.action?pageId=213828700)。
-- PROTOCOL_NSHEAD 或 "nshead"，这是baidu-rpc中发送NsheadMessage需要的协议，默认为连接池。注意发送NsheadMessage的效果等同于发送baidu-rpc-ub中的UBRawBufferRequest，但更加方便一点。具体方法见[nshead+blob](http://wiki.baidu.com/pages/viewpage.action?pageId=213828700#id-访问UB-nshead+blob) 。
-- PROTOCOL_MEMCACHE 或 "memcache"，memcached的二进制协议，默认为单连接。具体方法见[访问memcached](http://wiki.baidu.com/pages/viewpage.action?pageId=213828702)。
-- PROTOCOL_REDIS 或 "redis"，redis 1.2后的协议（也是hiredis支持的协议），默认为单连接。具体方法见[访问Redis](http://wiki.baidu.com/pages/viewpage.action?pageId=213828705)。
-- PROTOCOL_ITP 或 "itp", 凤巢的协议，格式为nshead + control idl + user idl，使用mcpack2pb适配，默认为连接池。具体方法见[访问ITP](http://wiki.baidu.com/pages/viewpage.action?pageId=184259578)。
+- PROTOCOL_UBRPC_COMPACK 或 "ubrpc_compack"，public/ubrpc的协议，使用compack打包，默认为连接池。具体方法见[ubrpc (by protobuf)](ub_client.md)。相关的还有PROTOCOL_UBRPC_MCPACK2或ubrpc_mcpack2，使用mcpack2打包。
+- PROTOCOL_NSHEAD_CLIENT 或 "nshead_client"，这是发送baidu-rpc-ub中所有UBXXXRequest需要的协议，默认为连接池。具体方法见[访问ub](ub_client.md)。
+- PROTOCOL_NSHEAD 或 "nshead"，这是baidu-rpc中发送NsheadMessage需要的协议，默认为连接池。注意发送NsheadMessage的效果等同于发送baidu-rpc-ub中的UBRawBufferRequest，但更加方便一点。具体方法见[nshead+blob](ub_client.md#nshead-blob) 。
+- PROTOCOL_MEMCACHE 或 "memcache"，memcached的二进制协议，默认为单连接。具体方法见[访问memcached](memcache_client.md)。
+- PROTOCOL_REDIS 或 "redis"，redis 1.2后的协议（也是hiredis支持的协议），默认为单连接。具体方法见[访问Redis](redis_client.md)。
+- PROTOCOL_ITP 或 "itp", 凤巢的协议，格式为nshead + control idl + user idl，使用mcpack2pb适配，默认为连接池。具体方法见[访问ITP](itp.md)。
 - PROTOCOL_NSHEAD_MCPACK 或 "nshead_mcpack", 顾名思义，格式为nshead + mcpack，使用mcpack2pb适配，默认为连接池。
 - PROTOCOL_ESP 或 "esp"，访问使用esp协议的服务，默认为连接池。
 
@@ -577,7 +577,7 @@ option.auth = &auth;
 
 ## 压缩
 
-set_request_compress_type()设置request的压缩方式，默认不压缩。注意：附件不会被压缩。HTTP body的压缩方法见[client压缩request body](http://wiki.baidu.com/pages/viewpage.action?pageId=213828697#id-访问HTTP-压缩requestbody)。
+set_request_compress_type()设置request的压缩方式，默认不压缩。注意：附件不会被压缩。HTTP body的压缩方法见[client压缩request body](http_client#压缩requestbody)。
 
 支持的压缩方法有：
 
@@ -641,7 +641,7 @@ set_request_compress_type()设置request的压缩方式，默认不压缩。注�
 
 ### Q: 为什么同步方式是好的，异步就crash了
 
-重点检查Controller，Response和done的生命周期。在异步访问中，RPC调用结束并不意味着RPC整个过程结束，而是要在done被调用后才会结束。所以这些对象不应在调用RPC后就释放，而是要在done里面释放。所以你一般不能把这些对象分配在栈上，而应该使用NewCallback等方式分配在堆上。详见[异步访问](http://wiki.baidu.com/pages/viewpage.action?pageId=213828685#id-创建和访问Client-异步访问)。
+重点检查Controller，Response和done的生命周期。在异步访问中，RPC调用结束并不意味着RPC整个过程结束，而是要在done被调用后才会结束。所以这些对象不应在调用RPC后就释放，而是要在done里面释放。所以你一般不能把这些对象分配在栈上，而应该使用NewCallback等方式分配在堆上。详见[异步访问](client.md#异步访问)。
 
 ### Q: 我怎么确认server处理了我的请求
 

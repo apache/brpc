@@ -9,7 +9,7 @@
 
 你注意到了么，在RPC中timer更像是”保险机制”，在大部分情况下都不会发挥作用，自然地我们希望它的开销越小越好。一个几乎不触发的功能需要两次系统调用似乎并不理想。那在应用框架中一般是如何实现timer的呢？谈论这个问题需要区分“单线程”和“多线程”:
 
-- 在单线程框架中，比如以[libevent](http://libevent.org/)[, ](http://en.wikipedia.org/wiki/Reactor_pattern)[libev](http://software.schmorp.de/pkg/libev.html)为代表的eventloop类库，或以[GNU Pth](http://www.gnu.org/software/pth/pth-manual.html), [StateThreads](http://state-threads.sourceforge.net/index.html)为代表的coroutine / fiber类库中，一般是以[小顶堆](https://en.wikipedia.org/wiki/Heap_(data_structure))记录触发时间。[epoll_wait](http://man7.org/linux/man-pages/man2/epoll_wait.2.html)前以堆顶的时间计算出参数timeout的值，如果在该时间内没有其他事件，epoll_wait也会醒来，从堆中弹出已超时的元素，调用相应的回调函数。整个框架周而复始地这么运转，timer的建立，等待，删除都发生在一个线程中。只要所有的回调都是非阻塞的，且逻辑不复杂，这套机制就能提供基本准确的timer。不过就像[Threading Overview](http://wiki.baidu.com/pages/viewpage.action?pageId=99588643)中说的那样，这不是RPC的场景。
+- 在单线程框架中，比如以[libevent](http://libevent.org/)[, ](http://en.wikipedia.org/wiki/Reactor_pattern)[libev](http://software.schmorp.de/pkg/libev.html)为代表的eventloop类库，或以[GNU Pth](http://www.gnu.org/software/pth/pth-manual.html), [StateThreads](http://state-threads.sourceforge.net/index.html)为代表的coroutine / fiber类库中，一般是以[小顶堆](https://en.wikipedia.org/wiki/Heap_(data_structure))记录触发时间。[epoll_wait](http://man7.org/linux/man-pages/man2/epoll_wait.2.html)前以堆顶的时间计算出参数timeout的值，如果在该时间内没有其他事件，epoll_wait也会醒来，从堆中弹出已超时的元素，调用相应的回调函数。整个框架周而复始地这么运转，timer的建立，等待，删除都发生在一个线程中。只要所有的回调都是非阻塞的，且逻辑不复杂，这套机制就能提供基本准确的timer。不过就像[Threading Overview](threading_overview.md)中说的那样，这不是RPC的场景。
 - 在多线程框架中，任何线程都可能被用户逻辑阻塞较长的时间，我们需要独立的线程实现timer，这种线程我们叫它TimerThread。一个非常自然的做法，就是使用用锁保护的小顶堆。当一个线程需要创建timer时，它先获得锁，然后把对应的时间插入堆，如果插入的元素成为了最早的，唤醒TimerThread。TimerThread中的逻辑和单线程类似，就是等着堆顶的元素超时，如果在等待过程中有更早的时间插入了，自己会被插入线程唤醒，而不会睡过头。这个方法的问题在于每个timer都需要竞争一把全局锁，操作一个全局小顶堆，就像在其他文章中反复谈到的那样，这会触发cache bouncing。同样数量的timer操作比单线程下的慢10倍是非常正常的，尴尬的是这些timer基本不触发。
 
 我们重点谈怎么解决多线程下的问题。
@@ -34,7 +34,7 @@
 - 删除时通过id直接定位到timer内存结构，修改一个标志，timer结构总是由TimerThread释放。
 - TimerThread被唤醒后首先把全局nearest_run_time设置为几乎无限大(max of int64)，然后取出所有Bucket内的链表，并把Bucket的nearest_run_time设置为几乎无限大(max of int64)。TimerThread把未删除的timer插入小顶堆中维护，这个堆就它一个线程用。在每次运行回调或准备睡眠前都会检查全局nearest_run_time， 如果全局更早，说明有更早的时间加入了，重复这个过程。
 
-这里勾勒了TimerThread的大致工作原理，工程实现中还有不少细节问题，具体请阅读[timer_thread.h](https://svn.baidu.com/public/trunk/bthread/bthread/timer_thread.h)和[timer_thread.cpp](https://svn.baidu.com/public/trunk/bthread/bthread/timer_thread.cpp)。
+这里勾勒了TimerThread的大致工作原理，工程实现中还有不少细节问题，具体请阅读[timer_thread.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/bthread/timer_thread.h)和[timer_thread.cpp](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/bthread/timer_thread.cpp)。
 
 这个方法之所以有效：
 
@@ -47,8 +47,6 @@
 - TimerThread醒来的频率大约是RPC超时的倒数，比如超时=100ms，TimerThread一秒内大约醒10次，已经最优。
 
 至此baidu-rpc在默认配置下不再有全局竞争点，在400个线程同时运行时，profiling也显示几乎没有对锁的等待。
-
- 
 
 下面是一些和linux下时间管理相关的知识：
 

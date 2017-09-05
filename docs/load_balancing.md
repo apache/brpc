@@ -2,10 +2,10 @@
 
 # 名字服务
 
-在baidu-rpc中，[NamingService](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/naming_service.h)用于获得服务名对应的所有节点。一个直观的做法是定期调用一个函数以获取最新的节点列表。但这会带来一定的延时（定期调用的周期一般在若干秒左右），作为通用接口不太合适。特别当名字服务提供事件通知时(比如zk)，这个特性没有被利用。所以我们反转了控制权：不是我们调用用户函数，而是用户在获得列表后调用我们的接口，对应[NamingServiceActions](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/naming_service.h)。当然我们还是得启动进行这一过程的函数，对应NamingService::RunNamingService。下面以三个实现解释这套方式：
+在baidu-rpc中，[NamingService](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/naming_service.h)用于获得服务名对应的所有节点。一个直观的做法是定期调用一个函数以获取最新的节点列表。但这会带来一定的延时（定期调用的周期一般在若干秒左右），作为通用接口不太合适。特别当名字服务提供事件通知时(比如zk)，这个特性没有被利用。所以我们反转了控制权：不是我们调用用户函数，而是用户在获得列表后调用我们的接口，对应[NamingServiceActions](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/naming_service.h)。当然我们还是得启动进行这一过程的函数，对应NamingService::RunNamingService。下面以三个实现解释这套方式：
 
-- bns：没有事件通知，所以我们只能定期去获得最新列表，默认间隔是[5秒](http://brpc.baidu.com:8765/flags/ns_access_interval)。为了简化这类定期获取的逻辑，baidu-rpc提供了[PeriodicNamingService](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/periodic_naming_service.h) 供用户继承，用户只需要实现单次如何获取（GetServers）。获取后调用NamingServiceActions::ResetServers告诉框架。框架会对列表去重，和之前的列表比较，通知对列表有兴趣的观察者(NamingServiceWatcher)。这套逻辑会运行在独立的bthread中，即NamingServiceThread。一个NamingServiceThread可能被多个Channel共享，通过intrusive_ptr管理ownership。
-- file：列表即文件。合理的方式是在文件更新后重新读取。[该实现](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/policy/file_naming_service.cpp)使用[FileWatcher](https://svn.baidu.com/public/trunk/common/base/file_watcher.h)关注文件的修改时间，当文件修改后，读取并调用NamingServiceActions::ResetServers告诉框架。
+- bns：没有事件通知，所以我们只能定期去获得最新列表，默认间隔是[5秒](http://brpc.baidu.com:8765/flags/ns_access_interval)。为了简化这类定期获取的逻辑，baidu-rpc提供了[PeriodicNamingService](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/periodic_naming_service.h) 供用户继承，用户只需要实现单次如何获取（GetServers）。获取后调用NamingServiceActions::ResetServers告诉框架。框架会对列表去重，和之前的列表比较，通知对列表有兴趣的观察者(NamingServiceWatcher)。这套逻辑会运行在独立的bthread中，即NamingServiceThread。一个NamingServiceThread可能被多个Channel共享，通过intrusive_ptr管理ownership。
+- file：列表即文件。合理的方式是在文件更新后重新读取。[该实现](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/policy/file_naming_service.cpp)使用[FileWatcher](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/file_watcher.h)关注文件的修改时间，当文件修改后，读取并调用NamingServiceActions::ResetServers告诉框架。
 - list：列表就在服务名里（逗号分隔）。在读取完一次并调用NamingServiceActions::ResetServers后就退出了，因为列表再不会改变了。
 
 如果用户需要建立这些对象仍然是不够方便的，因为总是需要一些工厂代码根据配置项建立不同的对象，鉴于此，我们把工厂类做进了框架，并且是非常方便的形式：
@@ -20,7 +20,7 @@ list://addr1,addr2,...       # use the addresses separated by comma
 http://<url>                 # Domain Naming Service, aka DNS.
 ```
 
-这套方式是可扩展的，实现了新的NamingService后在[global.cpp](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/global.cpp)中依葫芦画瓢注册下就行了，如下图所示：
+这套方式是可扩展的，实现了新的NamingService后在[global.cpp](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/global.cpp)中依葫芦画瓢注册下就行了，如下图所示：
 
 ![img](http://wiki.baidu.com/download/attachments/158717014/image2015-12-19%2016%3A59%3A8.png?version=1&modificationDate=1450515550000&api=v2)
 
@@ -28,9 +28,9 @@ http://<url>                 # Domain Naming Service, aka DNS.
 
 # 负载均衡
 
-baidu-rpc中[LoadBalancer](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/load_balancer.h)从多个服务节点中选择一个节点，目前的实现见[负载均衡](http://wiki.baidu.com/pages/viewpage.action?pageId=213828685#id-创建和访问Client-负载均衡)。
+baidu-rpc中[LoadBalancer](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/load_balancer.h)从多个服务节点中选择一个节点，目前的实现见[负载均衡](client.md#负载均衡)。
 
-Load balancer最重要的是如何让不同线程中的负载均衡不互斥，解决这个问题的技术是[DoublyBufferedData](http://wiki.baidu.com/pages/viewpage.action?pageId=38012521#Locality-awareloadbalancing-DoublyBufferedData)。
+Load balancer最重要的是如何让不同线程中的负载均衡不互斥，解决这个问题的技术是[DoublyBufferedData](lalb.md#doublybuffereddata)。
 
 和NamingService类似，我们使用字符串来指代一个load balancer，在global.cpp中注册：
 

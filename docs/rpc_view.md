@@ -5,10 +5,10 @@ rpc_view可以查看端口不在8000-8999的server的内置服务。之前如果
 在终端中运行如下命令即可编译出最新版baidu-rpc包含的rpc_view工具.
 
 ```bash
-PREVDIR=`pwd` && TEMPDIR=`mktemp -d -t build_rpc_press.XXXXXXXXXX` && mkdir $TEMPDIR/public && cd $TEMPDIR/public && svn co https://svn.baidu.com/public/trunk/baidu-rpc && cd baidu-rpc && comake2 -UB -J8 -j8 && comake2 -P && make -sj8 && cd tools/rpc_view && comake2 -P && make -sj8 && cp -f ./rpc_view $PREVDIR && cd $PREVDIR; rm -rf $TEMPDIR
+PREVDIR=`pwd` && TEMPDIR=`mktemp -d -t build_rpc_press.XXXXXXXXXX` && mkdir $TEMPDIR/public && cd $TEMPDIR/public && svn co http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob && cd baidu-rpc && comake2 -UB -J8 -j8 && comake2 -P && make -sj8 && cd tools/rpc_view && comake2 -P && make -sj8 && cp -f ./rpc_view $PREVDIR && cd $PREVDIR; rm -rf $TEMPDIR
 ```
 
-编译完成后，rpc_press就会出现在当前目录下。如果编译出错，看[Getting Started](http://wiki.baidu.com/pages/viewpage.action?pageId=71337200)。
+编译完成后，rpc_press就会出现在当前目录下。如果编译出错，看[Getting Started](getting_started.md)。
 
  
 

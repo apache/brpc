@@ -1,4 +1,4 @@
-ub是百度内广泛使用的老RPC框架，在迁移ub服务时不可避免地需要[访问ub-server](http://wiki.baidu.com/pages/viewpage.action?pageId=213828700)或被ub-client访问。ub使用的协议种类很多，但都以nshead作为二进制包的头部，这类服务在baidu-rpc中统称为**“nshead service”**。
+ub是百度内广泛使用的老RPC框架，在迁移ub服务时不可避免地需要[访问ub-server](ub_client.md)或被ub-client访问。ub使用的协议种类很多，但都以nshead作为二进制包的头部，这类服务在baidu-rpc中统称为**“nshead service”**。
 
 nshead后大都使用mcpack/compack作为序列化格式，注意这不是“协议”。"协议"除了序列化格式，还涉及到各种特殊字段的定义，一种序列化格式可能会衍生出很多协议。ub没有定义标准协议，所以即使都使用mcpack/compack，产品线的通信协议也是五花八门，无法互通。鉴于此，我们提供了一套接口，让用户能够灵活的处理自己产品线的协议，同时享受baidu-rpc提供的builtin services等一系列框架福利。
 
@@ -10,9 +10,7 @@ ubrpc协议的基本形式是nshead+compack或mcpack2，但compack或mcpack2中�
 
 ## 把idl文件转化为proto文件
 
- 
-
-使用脚本[public/mcpack2pb/idl2proto](https://svn.baidu.com/public/trunk/mcpack2pb/idl2proto)把idl文件自动转化为proto文件，下面是转化后的proto文件。
+使用脚本[idl2proto](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/tools/idl2proto)把idl文件自动转化为proto文件，下面是转化后的proto文件。
 
 ```protobuf
 // Converted from echo.idl by public/mcpack2pb/idl2proto
@@ -126,11 +124,11 @@ baidu::rpc::ServerOptions option;
 option.nshead_service = new baidu::rpc::policy::UbrpcCompackAdaptor; // mcpack2用UbrpcMcpack2Adaptor
 ```
 
-例子见[example/echo_c++_ubrpc_compack](https://svn.baidu.com/public/trunk/baidu-rpc/example/echo_c++_ubrpc_compack/)。
+例子见[example/echo_c++_ubrpc_compack](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/echo_c++_ubrpc_compack/)。
 
 # 使用nshead+blob的服务
 
-[NsheadService](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/nshead_service.h)是baidu-rpc中所有处理nshead打头协议的基类，实现好的NsheadService实例得赋值给ServerOptions.nshead_service才能发挥作用。不赋值的话，默认是NULL，代表不支持任何nshead开头的协议，这个server被nshead开头的数据包访问时会报错。明显地，**一个Server只能处理一种以nshead开头的协议。**
+[NsheadService](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/nshead_service.h)是baidu-rpc中所有处理nshead打头协议的基类，实现好的NsheadService实例得赋值给ServerOptions.nshead_service才能发挥作用。不赋值的话，默认是NULL，代表不支持任何nshead开头的协议，这个server被nshead开头的数据包访问时会报错。明显地，**一个Server只能处理一种以nshead开头的协议。**
 
 NsheadService的接口如下，基本上用户只需要实现`ProcessNsheadRequest`这个函数。
 
@@ -166,11 +164,11 @@ public:
 };
 ```
 
-完整的example在[example/nshead_extension_c++](https://svn.baidu.com/public/trunk/baidu-rpc/example/nshead_extension_c++/)。
+完整的example在[example/nshead_extension_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/nshead_extension_c++/)。
 
 # 使用nshead+mcpack/compack/idl的服务
 
-idl是mcpack/compack的前端，用户只要在idl文件中描述schema，就可以生成一些C++结构体，这些结构体可以打包为mcpack/compack。如果你的服务仍在大量地使用idl生成的结构体，且短期内难以修改，同时想要使用baidu-rpc提升性能和开发效率的话，可以实现[NsheadService](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/nshead_service.h)，其接口接受nshead + 二进制包为request，用户填写自己的处理逻辑，最后的response也是nshead+二进制包。流程与protobuf方法保持一致，但过程中不涉及任何protobuf的序列化和反序列化，用户可以自由地理解nshead后的二进制包，包括用idl加载mcpack/compack数据包。
+idl是mcpack/compack的前端，用户只要在idl文件中描述schema，就可以生成一些C++结构体，这些结构体可以打包为mcpack/compack。如果你的服务仍在大量地使用idl生成的结构体，且短期内难以修改，同时想要使用baidu-rpc提升性能和开发效率的话，可以实现[NsheadService](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/nshead_service.h)，其接口接受nshead + 二进制包为request，用户填写自己的处理逻辑，最后的response也是nshead+二进制包。流程与protobuf方法保持一致，但过程中不涉及任何protobuf的序列化和反序列化，用户可以自由地理解nshead后的二进制包，包括用idl加载mcpack/compack数据包。
 
 不过，你应当充分意识到这么改造的坏处：
 
@@ -180,7 +178,7 @@ idl是mcpack/compack的前端，用户只要在idl文件中描述schema，就可
 
 # 使用nshead+protobuf的服务
 
-如果你的协议已经使用了nshead + protobuf，或者你想把你的协议适配为protobuf格式，那可以使用另一种模式：实现[NsheadPbServiceAdaptor](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/nshead_pb_service_adaptor.h)（NsheadService的子类）。
+如果你的协议已经使用了nshead + protobuf，或者你想把你的协议适配为protobuf格式，那可以使用另一种模式：实现[NsheadPbServiceAdaptor](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/nshead_pb_service_adaptor.h)（NsheadService的子类）。
 
 工作步骤：
 
@@ -188,7 +186,7 @@ idl是mcpack/compack的前端，用户只要在idl文件中描述schema，就可
 - Call ParseRequestFromIOBuf() to convert the body after nshead header to pb request, then call the pb method.
 - When user calls server's done to end the RPC, SerializeResponseToIOBuf() is called to convert pb response to binary data that will be appended after nshead header and sent back to client.
 
-这样做的好处是，这个服务还可以被其他使用protobuf的协议访问，比如标准协议，hulu协议，sofa协议等等。NsheadPbServiceAdaptor的主要接口如下。完整的example在[这里](https://svn.baidu.com/public/trunk/baidu-rpc/example/nshead_pb_extension_c++/)。
+这样做的好处是，这个服务还可以被其他使用protobuf的协议访问，比如标准协议，hulu协议，sofa协议等等。NsheadPbServiceAdaptor的主要接口如下。完整的example在[这里](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/nshead_pb_extension_c++/)。
 
 ```c++
 class NsheadPbServiceAdaptor : public NsheadService {

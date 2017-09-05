@@ -30,7 +30,7 @@ RPC框架作为最基本的网络通讯组件，需要具备优秀的稳定性�
 
 - [hulu-pbrpc](https://svn.baidu.com/public/trunk/hulu/pbrpc/)：INF在13年基于saber(kylin变种)和protobuf实现的RPC框架。hulu尝试区分了机制(pbrpc)和策略(huluwa)，减轻了依赖问题。但在实现上有较多问题：未封装的引用计数，混乱的生命周期，充斥的多线程问题(race conditions & ABA problems)，运行质量很不可靠，比如hulu的短链接从来没有能正常运行过。其编程接口强依赖saber，很多功能的划分不够清晰，比如增加新协议就需要同时修改saber和pbrpc，扩展新功能仍然很困难。hulu增加了http协议的内置服务，可以提供一些简单的内部运行状态，但对于排查问题还比较简陋。hulu支持和一个server只保持一个连接，相比UB可以节省连接数，但由于多线程实现粗糙，读写不够并发，hulu的性能反而不如UB。
 
-- [sofa-pbrpc](https://svn.baidu.com/public/trunk/sofa-pbrpc/)：PS在13年基于boost::asio和protobuf实现的RPC框架，这个库代码工整，接口清晰，支持同步和异步，有非HTTP协议的调试接口（最新版也支持HTTP了）。但sofa-pbrpc也有产品线自研框架的鲜明特点：不支持公司内的其他协议，对名字服务、负载均衡、服务认证、连接方式等多样化的需求的抽象不够一般化。sofa-pbrpc还对外发布了开源版本。
+- [sofa-pbrpc](https://github.com/baidu/sofa-pbrpc)：PS在13年基于boost::asio和protobuf实现的RPC框架，这个库代码工整，接口清晰，支持同步和异步，有非HTTP协议的调试接口（最新版也支持HTTP了）。但sofa-pbrpc也有产品线自研框架的鲜明特点：不支持公司内的其他协议，对名字服务、负载均衡、服务认证、连接方式等多样化的需求的抽象不够一般化。sofa-pbrpc还对外发布了开源版本。
 
 - thrift：facebook最早在07年开发的RPC框架，后转为[apache的开源项目](https://thrift.apache.org/)。包含独特的序列化格式和IDL，支持很多编程语言。thrift让网络上的开发者能完成基本的RPC通讯，但也仅限于此了。thrift的代码看似分层很清楚，client、server选择很多，但没有一个足够通用，每个server实现都只能解决很小一块场景，每个client都线程不安全。实际使用中非常麻烦。thrift的代码质量也比较差，接口和生成的代码都比较乱。
 
@@ -56,7 +56,7 @@ RPC框架作为最基本的网络通讯组件，需要具备优秀的稳定性�
 RPC不是万能的抽象，否则我们也不需要TCP/IP这一层了。但是在我们绝大部分的网络交互中，RPC既能解决问题，又能隔离更底层的网络问题。对于RPC常见的质疑有：
 
 - 我的数据非常大，用protobuf序列化太慢了。首先这可能是个伪命题，你得用[profiler](http://wiki.baidu.com/display/RPC/cpu+profiler)证明慢了才是真的慢，其次一些协议支持附件，你可以在传递protobuf请求时附带二进制数据。
-- 我传输的是流数据，RPC表达不了。baidu-rpc支持[Streaming RPC](http://wiki.baidu.com/pages/viewpage.action?pageId=152229270)，这可以表达。
+- 我传输的是流数据，RPC表达不了。baidu-rpc支持[Streaming RPC](streaming_rpc.md)，这可以表达。
 - 我的场景不需要回复。简单推理可知，你的场景中请求可丢可不丢，可处理也可不处理，因为client总是无法感知，你真的确认这是OK的？即使场景真的不需要，我们仍然建议用最小的结构体回复，因为这不大会是瓶颈，并且在出问题时让你有一些线索，否则真的是盲人摸象。
 
 # 优势
@@ -73,7 +73,7 @@ RPC不是万能的抽象，否则我们也不需要TCP/IP这一层了。但是�
 
 ### 访问各种服务，被各种服务访问
 
-baidu-rpc能访问百度内所有基于protobuf的RPC server实现，能[访问ub server](http://wiki.baidu.com/pages/viewpage.action?pageId=213828700)(idl/mcpack/compack)
+baidu-rpc能访问百度内所有基于protobuf的RPC server实现，能[访问ub server](ub_client.md)(idl/mcpack/compack)
 
 baidu-rpc能被百度内所有基于protobuf的RPC client访问，能被HTTP+json访问，通过一些额外代码可以被UB访问。
 
@@ -81,7 +81,7 @@ baidu-rpc能被百度内所有基于protobuf的RPC client访问，能被HTTP+jso
 
 我们的开发机制能持续地保证高质量：
 
-- 分离机制(mechanism)和策略(policy)：baidu-rpc把可扩展的部分都抽象为了策略，并放在了[单独的目录](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/policy/)，具体的协议支持，压缩算法，名字服务，负载均衡都是策略，如果你想二次开发，可以很容易找到模板并开始上手。就像在算法问题中O(M*N)问题变为了O(M+N)那样，这有效地降低了baidu-rpc整体的复杂度，使得我们可以把精力集中到最核心的代码上。
+- 分离机制(mechanism)和策略(policy)：baidu-rpc把可扩展的部分都抽象为了策略，并放在了[单独的目录](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/policy/)，具体的协议支持，压缩算法，名字服务，负载均衡都是策略，如果你想二次开发，可以很容易找到模板并开始上手。就像在算法问题中O(M*N)问题变为了O(M+N)那样，这有效地降低了baidu-rpc整体的复杂度，使得我们可以把精力集中到最核心的代码上。
 - 完整的单元和集成测试：baidu-rpc有完整的单元测试，集成测试，系统测试和性能测试，在我们每次check
   in代码后都会运行，这确保我们在开发阶段可以及时规避问题。
 - 全面的调试和监控手段：baidu-rpc特别重视开发和运维，你可以使用浏览器或curl[查询服务器内部状态](http://wiki.baidu.com/display/RPC/Builtin+Services)，你也可以用pprof[分析在线服务的性能](http://wiki.baidu.com/display/RPC/cpu+profiler)。你可以[用bvar计数](http://wiki.baidu.com/display/RPC/bvar)，相比缓慢的ubmonitor几乎没有性能损耗，同时bvar能以/vars访问，这改变了我们监控在线服务的方式
@@ -109,4 +109,4 @@ baidu-rpc背后的技术和知识请阅读[深入RPC](http://wiki.baidu.com/disp
 - [Locality-aware load balancer](http://wiki.baidu.com/display/RPC/Locality-aware+load+balancing) :这种负载均衡算法会优先选择最近的服务器，即同机 > 同rack > 同机房 >
   跨机房，并在近节点发生故障时快速收敛，当节点大量混部时，这可以有效地降低延时，并规避网络抖动。
 - [内置服务](http://wiki.baidu.com/display/RPC/Builtin+Services) :彻底改变开发和调试体验的强大工具！配合[bvar](http://wiki.baidu.com/display/RPC/bvar)更贴心。
-- [组合访问](http://wiki.baidu.com/pages/viewpage.action?pageId=213828709)：并发访问，分库分环，从没有这么简单过。
+- [组合访问](combo_channel.md)：并发访问，分库分环，从没有这么简单过。

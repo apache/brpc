@@ -2,7 +2,7 @@ baidu-rpc可以分析花在等待锁上的时间及发生等待的函数。
 
 # 开启方法
 
-按需开启。无需配置，不依赖tcmalloc，不需要链接frame pointer或libunwind。如果只是baidu-rpc client或没有使用baidu-rpc，看[这里](http://wiki.baidu.com/pages/viewpage.action?pageId=213843633)。 
+按需开启。无需配置，不依赖tcmalloc，不需要链接frame pointer或libunwind。如果只是baidu-rpc client或没有使用baidu-rpc，看[这里](dummy_server.md)。 
 
 # 图示
 

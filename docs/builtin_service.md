@@ -12,7 +12,7 @@
 
 # 安全模式
 
-出于安全考虑，直接对外服务需要关闭内置服务（包括经过nginx或其他http server转发流量的），具体方法请阅读[这里](http://wiki.baidu.com/pages/viewpage.action?pageId=213828715#id-创建和设置Server-安全模式)。
+出于安全考虑，直接对外服务需要关闭内置服务（包括经过nginx或其他http server转发流量的），具体方法请阅读[这里](server.md#id-创建和设置Server-安全模式)。
 
 # 主要服务
 

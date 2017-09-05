@@ -145,7 +145,7 @@ class Variable {
     static int dump_exposed(Dumper* dumper, const DumpOptions* options);
 };
 ```
-最常见的导出需求是通过HTTP接口查询和写入本地文件。前者在baidu-rpc中通过[/vars](http://wiki.baidu.com/display/RPC/vars)服务提供，后者则已实现在bvar中，由用户选择开启。该功能由5个gflags控制，你的程序需要使用[gflags](http://wiki.baidu.com/pages/viewpage.action?pageId=71698818)。
+最常见的导出需求是通过HTTP接口查询和写入本地文件。前者在baidu-rpc中通过[/vars](vars.md)服务提供，后者则已实现在bvar中，由用户选择开启。该功能由5个gflags控制，你的程序需要使用[gflags](flags.md)。
 
 ![img](http://wiki.baidu.com/download/attachments/133624370/image2015-8-8%2023%3A18%3A21.png?version=1&modificationDate=1439047101000&api=v2)
 

@@ -1,4 +1,4 @@
-http client的例子见[example/http_c++](https://svn.baidu.com/public/trunk/baidu-rpc/example/http_c++/http_client.cpp)
+http client的例子见[example/http_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/http_c++/http_client.cpp)
 
 # 创建Channel
 
@@ -31,7 +31,7 @@ HTTP和protobuf无关，所以除了Controller和done，CallMethod的其他参�
 
 # POST
 
-默认的HTTP Method为GET，如果需要做POST，则需要设置。待POST的数据应置入request_attachment()，它([base::IOBuf](https://svn.baidu.com/public/trunk/iobuf/base/iobuf.h))可以直接append std::string或char*
+默认的HTTP Method为GET，如果需要做POST，则需要设置。待POST的数据应置入request_attachment()，它([base::IOBuf](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/iobuf.h))可以直接append std::string或char*
 
 ```c++
 baidu::rpc::Controller cntl;
@@ -57,7 +57,7 @@ channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
 
 URL的一般形式如下图：
 
-```c++
+```
 // URI scheme : http://en.wikipedia.org/wiki/URI_scheme
 //
 //  foo://username:password@example.com:8042/over/there/index.dtb?type=animal&name=narwhal#nose
@@ -88,24 +88,47 @@ URL的一般形式如下图：
 
 # 常见设置
 
-**以http request为例（对response的操作自行替换）**，常见操作方式如下表所示：
+以http request为例 (对response的操作自行替换), 常见操作方式如下所示：
 
-| 操作             | 方法                                       |
-| -------------- | ---------------------------------------- |
-| 访问名为Foo的header | `const std::string* value = cntl->http_request().GetHeader("Foo");` |
-|                | // 不存在为NULL                              |
-| 设置名为Foo的header | `cntl->http_request().SetHeader("Foo", "value")` |
-| 访问名为Foo的query  | `const std::string* value = cntl->http_request().uri().GetQuery("Foo");` |
-|                | // 不存在为NULL                              |
-| 设置名为Foo的query  | `cntl->http_request().uri().SetQuery("Foo", "value")` |
-| 设置HTTP方法       | `cntl->http_request().set_method(baidu::rpc::HTTP_METHOD_POST);` |
-| 设置url          | `cntl->http_request().uri() = "http://www.baidu.com";` |
-| 设置content-type | `cntl->http_request().set_content_type("text/plain");` |
-| 访问body         | `base::IOBuf& buf = cntl->request_attachment();` |
-|                | `std::string str = cntl->request_attachment().to_string();` // 有拷贝 |
-| 设置body         | `cntl->request_attachment().append("....");` |
-|                | `base::IOBufBuilder os;``os << "....";`  |
-|                | `os.move_to(cntl->request_attachment());` |
+访问名为Foo的header
+```c++
+const std::string* value = cntl->http_request().GetHeader("Foo"); //不存在为NULL
+```
+设置名为Foo的header
+```c++
+cntl->http_request().SetHeader("Foo", "value");
+```
+访问名为Foo的query
+```c++
+const std::string* value = cntl->http_request().uri().GetQuery("Foo"); // 不存在为NULL
+```
+设置名为Foo的query
+```c++
+cntl->http_request().uri().SetQuery("Foo", "value");
+```
+设置HTTP方法 
+```c++
+cntl->http_request().set_method(baidu::rpc::HTTP_METHOD_POST);
+```
+设置url
+```c++
+cntl->http_request().uri() = "http://www.baidu.com";
+```
+设置content-type
+```c++
+cntl->http_request().set_content_type("text/plain");
+```
+访问body
+```c++
+base::IOBuf& buf = cntl->request_attachment();
+std::string str = cntl->request_attachment().to_string(); // 有拷贝
+```
+设置body
+```c++
+cntl->request_attachment().append("....");
+base::IOBufBuilder os; os << "....";
+os.move_to(cntl->request_attachment());
+```
 
 Notes on http header:
 
@@ -126,7 +149,7 @@ Notes on http header:
 
 # 压缩request body
 
-在r33877后，调用`Controller::set_request_compress_type(baidu::rpc::COMPRESS_TYPE_GZIP)`可将http body用gzip压缩，并设置"Content-Encoding"为"gzip"。
+在r33877后，调用Controller::set_request_compress_type(baidu::rpc::COMPRESS_TYPE_GZIP)可将http body用gzip压缩，并设置"Content-Encoding"为"gzip"。
 
 # 解压response body
 
@@ -178,15 +201,12 @@ r33796后baidu-rpc client支持在读取完body前就结束RPC，让用户在RPC
        virtual void OnEndOfMessage(const base::Status& status) = 0;
    };
    ```
-
    OnReadOnePart在每读到一段数据时被调用，OnEndOfMessage在数据结束或连接断开时调用，实现前仔细阅读注释。
 
 2. 发起RPC前设置`cntl.response_will_be_read_progressively();`
-
    这告诉baidu-rpc在读取http response时只要读完header部分RPC就可以结束了。
 
 3. RPC结束后调用`cntl.ReadProgressiveAttachmentBy(new MyProgressiveReader);`
-
    MyProgressiveReader就是用户实现ProgressiveReader的实例。用户可以在这个实例的OnEndOfMessage接口中删除这个实例。
 
 # 持续上传

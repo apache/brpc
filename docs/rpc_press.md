@@ -10,9 +10,9 @@ rpc_press无需写代码就压测各种rpc server，目前支持的协议有：
 
 在终端中运行如下命令即可编译出最新版baidu-rpc包含的rpc_press工具.
 
-`PREVDIR=`pwd` && TEMPDIR=`mktemp -d -t build_rpc_press.XXXXXXXXXX` && mkdir $TEMPDIR/public && cd $TEMPDIR/public && svn co https://svn.baidu.com/public/trunk/baidu-rpc && cd baidu-rpc && comake2 -UB -J8 -j8 && comake2 -P && make -sj8 && cd tools/rpc_press && comake2 -P && make -sj8 && cp -f ./rpc_press $PREVDIR && cd $PREVDIR; rm -rf $TEMPDIR`
+`PREVDIR=`pwd` && TEMPDIR=`mktemp -d -t build_rpc_press.XXXXXXXXXX` && mkdir $TEMPDIR/public && cd $TEMPDIR/public && svn co http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob && cd baidu-rpc && comake2 -UB -J8 -j8 && comake2 -P && make -sj8 && cd tools/rpc_press && comake2 -P && make -sj8 && cp -f ./rpc_press $PREVDIR && cd $PREVDIR; rm -rf $TEMPDIR`
 
-编译完成后，rpc_press就会出现在当前目录下。如果编译出错，看[Getting Started](http://wiki.baidu.com/pages/viewpage.action?pageId=71337200)。
+编译完成后，rpc_press就会出现在当前目录下。如果编译出错，看[Getting Started](getting_started.md)。
 
  
 
@@ -36,17 +36,17 @@ json也可以写在文件中，假如./input.json包含了上述两个请求，-
 
 - -proto：指定相关的proto文件名。
 - -method：指定方法名，形式必须是package.service.method。
-- -server：当-lb_policy为空时，是服务器的ip:port；当-lb_policy不为空时，是集群地址，比如bns://node-name, file://server_list等等。具体见[名字服务](http://wiki.baidu.com/pages/viewpage.action?pageId=213828685#id-创建和访问Client-名字服务)。
+- -server：当-lb_policy为空时，是服务器的ip:port；当-lb_policy不为空时，是集群地址，比如bns://node-name, file://server_list等等。具体见[名字服务](client.md#名字服务)。
 - -input: 指定json请求或包含json请求的文件。r32157后json间不需要分隔符，r32157前json间用分号分隔。
 
 可选参数:
 
 - -inc: 包含被import的proto文件的路径。rpc_press默认支持import目录下的其他proto文件，但如果proto文件在其他目录，就要通过这个参数指定，多个路径用分号(;)分隔。
-- -lb_policy: 指定负载均衡算法，默认为空，可选项为: rr random la c_murmurhash c_md5，具体见[负载均衡](http://wiki.baidu.com/pages/viewpage.action?pageId=213828685#id-创建和访问Client-负载均衡)。
+- -lb_policy: 指定负载均衡算法，默认为空，可选项为: rr random la c_murmurhash c_md5，具体见[负载均衡](client.md#负载均衡)。
 - -timeout_ms: 设定超时,单位是毫秒(milliseconds),默认是1000(1秒)
-- -max_retry: 最大的重试次数,默认是3, 一般无需修改. baidu-rpc的重试行为具体请见[这里](http://wiki.baidu.com/pages/viewpage.action?pageId=213828685#id-创建和访问Client-重试).
-- -protocol: 连接server使用的协议，可选项见[协议](http://wiki.baidu.com/pages/viewpage.action?pageId=213828685#id-创建和访问Client-协议), 默认是baidu_std(标准协议)
-- -connection_type: 连接方式，可选项为: single pooled short，具体见[连接方式](http://wiki.baidu.com/pages/viewpage.action?pageId=213828685#id-创建和访问Client-连接方式)。默认会根据协议自动选择,无需指定.
+- -max_retry: 最大的重试次数,默认是3, 一般无需修改. baidu-rpc的重试行为具体请见[这里](client.md#重试).
+- -protocol: 连接server使用的协议，可选项见[协议](client.md#协议), 默认是baidu_std(标准协议)
+- -connection_type: 连接方式，可选项为: single pooled short，具体见[连接方式](client.md#连接方式)。默认会根据协议自动选择,无需指定.
 - -output: 如果不为空，response会转为json并写入这个文件，默认为空。
 - -duration：大于0时表示发送这么多秒的压力后退出，否则一直发直到按ctrl-c或进程被杀死。默认是0（一直发送）。
 - -qps：大于0时表示以这个压力发送，否则以最大速度(自适应)发送。默认是100。

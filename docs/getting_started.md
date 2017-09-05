@@ -3,7 +3,7 @@
 在命令行中运行如下命令即可在~/my_baidu_rpc/public/baidu-rpc中下载源代码编译并运行echo示例程序：
 ```
 mkdir -p ~/my_baidu_rpc/public && cd ~/my_baidu_rpc/public && svn co
-https://svn.baidu.com/public/trunk/baidu-rpc && cd baidu-rpc && comake2 -UB -J8 -j8 && comake2 -P
+http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob && cd baidu-rpc && comake2 -UB -J8 -j8 && comake2 -P
 && make -sj8 && cd example/echo_c++ && comake2 -UB -J8 -j8 && comake2 -P && make -sj8 && (
 ./echo_server & ) && ./echo_client && pkill echo_server
 ```
@@ -15,7 +15,7 @@ https://svn.baidu.com/public/trunk/baidu-rpc && cd baidu-rpc && comake2 -UB -J8 
 ```
 CONFIGS('public/baidu-rpc@ci-base')
 ```
- 这依赖了baidu-rpc的最新发布版本。模板可参考[echo的COMAKE文件](https://svn.baidu.com/public/trunk/baidu-rpc/example/echo_c++/COMAKE)。然后运行：
+ 这依赖了baidu-rpc的最新发布版本。模板可参考[echo的COMAKE文件](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/echo_c++/COMAKE)。然后运行：
 
 ```
 $ comake2 -UB            # 下载所有的依赖模块
@@ -132,7 +132,7 @@ baidu-rpc默认的依赖2.4，你可以在你项目的COMAKE或BCLOUD中指定�
 ### 关于NewCallback
 
 由于protobuf
-3把NewCallback设置为私有，r32035后baidu-rpc把NewCallback独立于[src/baidu/rpc/callback.h](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/callback.h)，如果你的程序出现NewCallback相关的编译错误（不论protobuf的版本），把google::protobuf::NewCallback替换为baidu::rpc::NewCallback就行了。
+3把NewCallback设置为私有，r32035后baidu-rpc把NewCallback独立于[src/baidu/rpc/callback.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/callback.h)，如果你的程序出现NewCallback相关的编译错误（不论protobuf的版本），把google::protobuf::NewCallback替换为baidu::rpc::NewCallback就行了。
 
 ### 编译.proto
 
@@ -151,7 +151,7 @@ $ protoc --cpp_out=DEST_PATH -I=PROTO_PATH your.proto
 
 ### 同时兼容pb 3.0和pb 2.x
 
-勿使用proto3的新类型，proto文件开头要加上syntax="proto2";，[tools/add_syntax_equal_proto2_to_all.sh](https://svn.baidu.com/public/trunk/baidu-rpc/tools/add_syntax_equal_proto2_to_all.sh)可以给目录以下的所有没有加的proto文件加上syntax="proto2"。
+勿使用proto3的新类型，proto文件开头要加上syntax="proto2";，[tools/add_syntax_equal_proto2_to_all.sh](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/tools/add_syntax_equal_proto2_to_all.sh)可以给目录以下的所有没有加的proto文件加上syntax="proto2"。
 
 ## boost
 
@@ -241,7 +241,7 @@ r35109后支持1.1
 | r32097 | 支持Restful开发          | 用户可定制访问每个方法的URL，详见[RestfulURL](http://wiki.baidu.com/pages/viewpage.action?pageId=213828736#id-实现HTTPService-RestfulURL) |
 | r32034 | 支持protobuf 3.0         | Server端的Arena分配仍不支持。mcpack2pb,protobuf-json等周边工具仍待迁移。 |
 | r32015 | 访问redis-server         | [访问Redis](http://wiki.baidu.com/pages/viewpage.action?pageId=213828705) |
-| r32009 | RetryPolicy              | 可定制重试策略，详见[重试](http://wiki.baidu.com/pages/viewpage.action?pageId=213828685#id-创建和访问Client-错误值得重试) |
+| r32009 | RetryPolicy              | 可定制重试策略，详见[重试](client.md#错误值得重试) |
 | r32009 | rpc_view                 | 可在浏览器中查看端口不在[8000-8999]的内置服务，详见[rpc_view](http://wiki.baidu.com/pages/viewpage.action?pageId=167651918) |
 | r31986 | rpc_press                | 代替了pbrpcpress，详见[rpc_press](http://wiki.baidu.com/pages/viewpage.action?pageId=97645422) |
 | r31901 | contention profiler      | 可分析在锁上的等待时间，详见[contention profiler](http://wiki.baidu.com/pages/viewpage.action?pageId=165876314) |
@@ -251,7 +251,7 @@ r35109后支持1.1
 
 ### Q: baidu-rpc会不会发布稳定版本
 
-本项目是主干开发，最新的改动在[trunk](https://svn.baidu.com/public/trunk/baidu-rpc/)，发布在[agile上](http://agile.baidu.com/#/builds/public/baidu-rpc@trunk)。我们会尽量保持已有接口不变，升级新版本一般不会break代码。由于开发节奏快，我们没有发布Releasing
+本项目是主干开发，最新的改动在[trunk](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/)，发布在[agile上](http://agile.baidu.com/#/builds/public/baidu-rpc@trunk)。我们会尽量保持已有接口不变，升级新版本一般不会break代码。由于开发节奏快，我们没有发布Releasing
 Branch (RB)的计划。
 
 使用ci-base是更安全的选择。老版本的使用者更稀疏一些，bug会更加隐秘，发现得更晚。这种注意不到的bug会真正影响到策略的判断和迭代。而ci-base你在用，其他产品线也在用，问题很快能被发现和纠正。

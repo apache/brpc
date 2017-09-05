@@ -16,11 +16,11 @@ baidu-rpc server在同端口支持所有的协议，大部分时候这对部署�
 
 baidu-rpc就是设计为可随时扩展新协议的，步骤如下：
 
-> 以nshead开头的协议有统一支持，看[这里](http://wiki.baidu.com/pages/viewpage.action?pageId=213828733)。
+> 以nshead开头的协议有统一支持，看[这里](nshead_service.md)。
 
 ## 增加ProtocolType
 
-在[options.proto](https://svn.baidu.com/public/trunk/baidu-rpc/protocol/baidu/rpc/options.proto)的ProtocolType中增加新协议类型，如果你需要的话可以联系我们增加，以确保不会和其他人的需求重合。
+在[options.proto](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/protocol/baidu/rpc/options.proto)的ProtocolType中增加新协议类型，如果你需要的话可以联系我们增加，以确保不会和其他人的需求重合。
 
 目前的ProtocolType（16年底）:
 ```c++
@@ -52,14 +52,15 @@ enum ProtocolType {
 ```
 ## 实现回调
 
-均定义在struct Protocol中，该结构定义在[protocol.h](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/protocol.h)。其中的parse必须实现，除此之外server端至少要实现process_request，client端至少要实现serialize_request，pack_request，process_response;
+均定义在struct Protocol中，该结构定义在[protocol.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/protocol.h)。其中的parse必须实现，除此之外server端至少要实现process_request，client端至少要实现serialize_request，pack_request，process_response;
 
 实现协议回调还是比较困难的，这块的代码不会像供普通用户使用的那样，有较好的提示和保护，你得先靠自己搞清楚其他协议中的类似代码，然后再动手，最后发给我们做code review。
 
 ### parse
 
-定义：`typedef ParseResult (*Parse)(base::IOBuf* source, Socket *socket, bool read_eof, const void *arg);`
-
+```c++
+typedef ParseResult (*Parse)(base::IOBuf* source, Socket *socket, bool read_eof, const void *arg);
+```
 用于把消息从source上切割下来，client端和server端使用同一个parse函数。返回的消息会被递给process_request(server端)或process_response(client端)。
 
 参数：source是读取到的二进制内容，socket是对应的连接，read_eof为true表示连接已被对端关闭，arg在server端是对应server的指针，在client端是NULL。
@@ -73,49 +74,57 @@ ParseResult可能是错误，也可能包含一个切割下来的message，可�
 - PARSE_ERROR_ABSOLUTELY_WRONG  : 应该是这个协议（比如magic number匹配了），但是格式不符合预期。连接会被关闭。
 
 ### serialize_request
-
-定义：`typedef bool (*SerializeRequest)( base::IOBuf* request_buf, Controller* cntl, const google::protobuf::Message* request); `
-
+```c++
+typedef bool (*SerializeRequest)(base::IOBuf* request_buf,
+                                 Controller* cntl,
+                                 const google::protobuf::Message* request);
+```
 把request序列化进request_buf，client端必须实现。发生在pack_request之前，一次RPC中只会调用一次。cntl包含某些协议（比如http）需要的信息。成功返回true，否则false。
 
 ### pack_request
-
-定义：`typedef int (*PackRequest)( base::IOBuf* msg, uint64_t correlation_id, const google::protobuf::MethodDescriptor* method, Controller* controller, const base::IOBuf& request_buf, const Authenticator* auth);`
-
+```c++
+typedef int (*PackRequest)(base::IOBuf* msg, 
+                           uint64_t correlation_id,
+                           const google::protobuf::MethodDescriptor* method,
+                           Controller* controller,
+                           const base::IOBuf& request_buf,
+                           const Authenticator* auth);
+```
 把request_buf打包入msg，每次向server发送消息前（包括重试）都会调用。当auth不为空时，需要打包认证信息。成功返回0，否则-1。
 
 ### process_request
-
-定义：`typedef void (*ProcessRequest)(InputMessageBase* msg_base);`
-
+```c++
+typedef void (*ProcessRequest)(InputMessageBase* msg_base);
+```
 处理server端parse返回的消息，server端必须实现。可能会在和parse()不同的线程中运行。多个process_request可能同时运行。
 
 在r34386后必须在处理结束时调用msg_base->Destroy()，为了防止漏调，考虑使用DestroyingPtr<>。
 
 ### process_response
-
-定义：`typedef void (*ProcessResponse)(InputMessageBase* msg);`
-
+```c++
+typedef void (*ProcessResponse)(InputMessageBase* msg);
+```
 处理client端parse返回的消息，client端必须实现。可能会在和parse()不同的线程中运行。多个process_response可能同时运行。
 
 在r34386后必须在处理结束时调用msg_base->Destroy()，为了防止漏调，考虑使用DestroyingPtr<>。
 
 ### verify
-
-定义：`typedef bool (*Verify)(const InputMessageBase* msg);`
-
+```c++
+typedef bool (*Verify)(const InputMessageBase* msg);
+```
 处理连接的认证，只会对连接上的第一个消息调用，需要支持认证的server端必须实现，不需要认证或仅支持client端的协议可填NULL。成功返回true，否则false。
 
 ### parse_server_address
-
-定义：`typedef bool (*ParseServerAddress)(base::EndPoint* out, const char* server_addr_and_port);`
-
+```c++
+typedef bool (*ParseServerAddress)(base::EndPoint* out, const char* server_addr_and_port);
+```
 把server_addr_and_port(Channel.Init的一个参数)转化为base::EndPoint，可选。一些协议对server地址的表达和理解可能是不同的。
 
 ### get_method_name
-
-定义：`typedef const std::string& (*GetMethodName)(const google::protobuf::MethodDescriptor* method, const Controller*);`
-
+```c++
+typedef const std::string& (*GetMethodName)(const google::protobuf::MethodDescriptor* method,
+                                            const Controller*);
+```
 定制method name，可选。
 
 ### supported_connection_type
@@ -128,7 +137,7 @@ ParseResult可能是错误，也可能包含一个切割下来的message，可�
 
 ## 注册到全局
 
-实现好的协议要调用RegisterProtocol[注册到全局](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/global.cpp)，以便baidu-rpc发现。就像这样：
+实现好的协议要调用RegisterProtocol[注册到全局](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/global.cpp)，以便baidu-rpc发现。就像这样：
 ```c++
 Protocol http_protocol = { ParseHttpMessage,
                            SerializeHttpRequest, PackHttpRequest,
@@ -146,16 +155,15 @@ if (RegisterProtocol(PROTOCOL_HTTP, http_protocol) != 0) {
 
 为了进一步简化protocol的实现逻辑，r34386是一个不兼容改动，主要集中在下面几点：
 
-- ProcessXXX必须在处理结束时调用msg_base->Destroy()。在之前的版本中，这是由框架完成的。这个改动帮助我们隐藏处理EOF的代码（很晦涩），还可以在未来支持更异步的处理（退出ProcessXXX不意味着处理结束）。为了确保所有的退出分支都会调用msg_base->Destroy()，可以使用定义在[destroying_ptr.h](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/destroying_ptr.h)中的DestroyingPtr<>，可能像这样：
+- ProcessXXX必须在处理结束时调用msg_base->Destroy()。在之前的版本中，这是由框架完成的。这个改动帮助我们隐藏处理EOF的代码（很晦涩），还可以在未来支持更异步的处理（退出ProcessXXX不意味着处理结束）。为了确保所有的退出分支都会调用msg_base->Destroy()，可以使用定义在[destroying_ptr.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/destroying_ptr.h)中的DestroyingPtr<>，可能像这样：
 ```c++
-
 void ProcessXXXRequest(InputMessageBase* msg_base) {
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     ...
 }
 ```
 
-- 具体请参考[其他协议](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/policy/baidu_rpc_protocol.cpp)的实现。
+- 具体请参考[其他协议](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/policy/baidu_rpc_protocol.cpp)的实现。
 - InputMessageBase::socket_id()被移除，而通过socket()可以直接访问到对应Socket的指针。ProcessXXX函数中Address Socket的代码可以移除。
   ProcessXXXRequest开头的修改一般是这样：
 ```c++
@@ -185,7 +193,6 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
 -    MostCommonMessage* msg = static_cast<MostCommonMessage*>(msg_base);
 -    CheckEOFGuard eof_guard(msg->socket_id());
 +    DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
- 
  
      ...
  

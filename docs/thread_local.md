@@ -1,4 +1,4 @@
-本页说明bthread下使用pthread-local可能会导致的问题。bthread-local的使用方法见[这里](http://wiki.baidu.com/pages/viewpage.action?pageId=213828715#id-创建和设置Server-bthread-local)。
+本页说明bthread下使用pthread-local可能会导致的问题。bthread-local的使用方法见[这里](server.md#bthread-local)。
 
 # thread-local问题
 

@@ -2,4 +2,4 @@
 
 使用方法：
 
-首先你得[下载和编译](http://wiki.baidu.com/display/RPC/Getting+Started)了baidu-rpc源码，然后去example/http_c++目录，comake2 -P && make -sj4，成功后应该能看到benchmark_http。
+首先你得[下载和编译](getting_started.md)了baidu-rpc源码，然后去example/http_c++目录，comake2 -P && make -sj4，成功后应该能看到benchmark_http。

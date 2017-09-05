@@ -12,7 +12,7 @@
 
 ![img](http://wiki.baidu.com/download/attachments/71337189/image2015-12-24%2013%3A21%3A34.png?version=1&modificationDate=1450934494000&api=v2)
 
-如果只是baidu-rpc client或没有使用baidu-rpc，看[这里](http://wiki.baidu.com/pages/viewpage.action?pageId=213843633)。 
+如果只是baidu-rpc client或没有使用baidu-rpc，看[这里](dummy_server.md)。 
 
 ## 数据展现
 
@@ -40,7 +40,7 @@
 
 ## Annotation
 
-只要你使用了baidu-rpc，就可以使用[TRACEPRINTF](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/traceprintf.h)打印内容到事件流中，比如：
+只要你使用了baidu-rpc，就可以使用[TRACEPRINTF](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/traceprintf.h)打印内容到事件流中，比如：
 
 ```c++
 TRACEPRINTF("Hello rpcz %d", 123);

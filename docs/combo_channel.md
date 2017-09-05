@@ -15,7 +15,7 @@ ParallelChannel (“pchan”)同时访问其包含的sub channel，并合并它�
 - 可以取消。
 - 支持超时。
 
-示例代码见[example/parallel_echo_c++](https://svn.baidu.com/public/trunk/baidu-rpc/example/parallel_echo_c++/)。
+示例代码见[example/parallel_echo_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/parallel_echo_c++/)。
 
 任何baidu::rpc::ChannelBase的子类都可以加入ParallelChannel，包括ParallelChannel和其他组合Channel。用户可以设置ParallelChannelOptions.fail_limit来控制访问的最大失败次数(r31803前是ParallelChannel::set_fail_limit)，当失败的访问达到这个数目时，RPC call会立刻结束而不等待超时。
 
@@ -148,14 +148,14 @@ const Controller* sub(int index) const;
 
 # SelectiveChannel
 
-[SelectiveChannel](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/selective_channel.h) (“schan”)按负载均衡算法访问其包含的一个Channel，相比普通Channel它更加高层：把流量分给sub channel，而不是具体的Server。SelectiveChannel主要用来支持机器组之间的负载均衡，它具备Channel的主要属性：
+[SelectiveChannel](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/selective_channel.h) (“schan”)按负载均衡算法访问其包含的一个Channel，相比普通Channel它更加高层：把流量分给sub channel，而不是具体的Server。SelectiveChannel主要用来支持机器组之间的负载均衡，它具备Channel的主要属性：
 
 - 支持同步和异步访问。
 - 发起异步操作后可以立刻删除。
 - 可以取消。
 - 支持超时。
 
-示例代码见[example/selective_echo_c++](https://svn.baidu.com/public/trunk/baidu-rpc/example/selective_echo_c++/)。
+示例代码见[example/selective_echo_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/selective_echo_c++/)。
 
 任何baidu::rpc::ChannelBase的子类都可加入SelectiveChannel，包括SelectiveChannel和其他组合Channel。
 
@@ -240,9 +240,9 @@ stub.FooMethod(&cntl, &request, &response, NULL);
 
 # PartitionChannel
 
-[PartitionChannel](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/partition_channel.h)是特殊的ParallelChannel，它会根据名字服务中的tag自动建立对应分库的sub channel。这样用户就可以把所有的分库机器挂在一个名字服务内，通过tag来指定哪台机器对应哪个分库。示例代码见[example/partition_echo_c++](https://svn.baidu.com/public/trunk/baidu-rpc/example/partition_echo_c++/)。
+[PartitionChannel](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/partition_channel.h)是特殊的ParallelChannel，它会根据名字服务中的tag自动建立对应分库的sub channel。这样用户就可以把所有的分库机器挂在一个名字服务内，通过tag来指定哪台机器对应哪个分库。示例代码见[example/partition_echo_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/partition_echo_c++/)。
 
-ParititonChannel只能处理一种分库方法，当用户需要多种分库方法共存，或从一个分库方法平滑地切换为另一种分库方法时，可以使用DynamicPartitionChannel，它会根据不同的分库方式动态地建立对应的sub PartitionChannel，并根据容量把请求分配给不同的分库。示例代码见[example/dynamic_partition_echo_c++](https://svn.baidu.com/public/trunk/baidu-rpc/example/dynamic_partition_echo_c++/)。
+ParititonChannel只能处理一种分库方法，当用户需要多种分库方法共存，或从一个分库方法平滑地切换为另一种分库方法时，可以使用DynamicPartitionChannel，它会根据不同的分库方式动态地建立对应的sub PartitionChannel，并根据容量把请求分配给不同的分库。示例代码见[example/dynamic_partition_echo_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/dynamic_partition_echo_c++/)。
 
 如果分库在不同的名字服务内，那么用户得自行用ParallelChannel组装，即每个sub channel对应一个分库（使用不同的名字服务）。ParellelChannel的使用方法请见上一节。
 

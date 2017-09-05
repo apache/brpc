@@ -18,7 +18,7 @@ baidu-rpc可以分析内存是被哪些函数占据的。heap profiler的原理�
    /home/gejun/pprof/echo_server.1419559063.localhost.pprof.heap: header size >= 2**16
    ```
 
-4. 如果只是baidu-rpc client或没有使用baidu-rpc，看[这里](http://wiki.baidu.com/pages/viewpage.action?pageId=213843633)。 
+4. 如果只是baidu-rpc client或没有使用baidu-rpc，看[这里](dummy_server.md)。 
 
 注意要关闭Server端的认证，否则可能会看到这个：
 

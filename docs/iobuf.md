@@ -1,4 +1,4 @@
-baidu-rpc使用[base::IOBuf](https://svn.baidu.com/public/trunk/iobuf/base/iobuf.h)作为存储附件或http body的数据结构，它是一种非连续零拷贝缓冲，在其他项目中得到了验证并有出色的性能。IOBuf的接口和std::string类似，但不相同。
+baidu-rpc使用[base::IOBuf](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/iobuf.h)作为存储附件或http body的数据结构，它是一种非连续零拷贝缓冲，在其他项目中得到了验证并有出色的性能。IOBuf的接口和std::string类似，但不相同。
 
 如果你之前使用Kylin中的BufHandle，你将更能感受到IOBuf的便利性：前者几乎没有实现完整，直接暴露了内部结构，用户得小心翼翼地处理引用计数，极易出错。BufHandle是很多bug的诱因。
 

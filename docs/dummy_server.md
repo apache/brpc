@@ -9,7 +9,7 @@
 
 # 没有使用baidu-rpc
 
-你必须手动加入dummy server。你得先查看[Getting Started](http://wiki.baidu.com/display/RPC/Getting+Started)如何下载和编译baidu-rpc，然后在程序入口处加入如下代码片段：
+你必须手动加入dummy server。你得先查看[Getting Started](getting_started.md)如何下载和编译baidu-rpc，然后在程序入口处加入如下代码片段：
 
 ```c++
 #include <baidu/rpc/server.h>

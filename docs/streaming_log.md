@@ -4,7 +4,7 @@ streaming_log - Print log to std::ostreams
 
 # SYNOPSIS
 
-你得依赖[public/common](https://svn.baidu.com/public/trunk/common/)模块，在COMAKE中插入CONFIGS('public/common@ci-base')即可。
+你得依赖[public/common](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/)模块，在COMAKE中插入CONFIGS('public/common@ci-base')即可。
 
 ```c++
 #include <base/logging.h>

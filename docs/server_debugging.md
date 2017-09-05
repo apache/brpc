@@ -58,11 +58,11 @@ bthread_creation_qps : 95
 rpc_server_8765_example_echo_service_echo_qps : 57
 ```
 
-如果不同机器的分流确实不均，且难以解决，可以考虑[限制最大并发](http://wiki.baidu.com/pages/viewpage.action?pageId=213828715#id-创建和设置Server-限制最大并发)。
+如果不同机器的分流确实不均，且难以解决，可以考虑[限制最大并发](server.md#id-创建和设置Server-限制最大并发)。
 
 ### 优化单机性能
 
-请使用[CPU profiler](http://wiki.baidu.com/display/RPC/cpu+profiler)分析程序的热点，用数据驱动优化。一般来说一个卡顿的cpu-bound程序一般能看到显著的热点。
+请使用[CPU profiler](cpu_profiler.md)分析程序的热点，用数据驱动优化。一般来说一个卡顿的cpu-bound程序一般能看到显著的热点。
 
 ## 3.2 定位io-bound问题
 
@@ -98,7 +98,7 @@ rpc_server_8765_example_echo_service_echo_qps : 57
 
 ### 排除锁的嫌疑
 
-如果程序被某把锁挡住了，也可能呈现出“io-bound”的特征。先用[contention profiler](http://wiki.baidu.com/display/RPC/contention+profiler)排查锁的竞争状况。
+如果程序被某把锁挡住了，也可能呈现出“io-bound”的特征。先用[contention profiler](contention_profiler.md)排查锁的竞争状况。
 
 ### 使用rpcz
 
@@ -128,7 +128,7 @@ rpcz可以帮助你看到最近的所有请求，和处理它们时在每个阶�
 
 TRACEPRINTF主要适合若干次的函数调用，如果一个函数调用了很多次，或者函数本身开销很小，每次都往rpcz打印日志是不合适的。这时候你可以使用bvar。
 
-[bvar](http://wiki.baidu.com/display/RPC/bvar)是一个多线程下的计数库，可以以极低的开销统计用户递来的数值，相比“打日志大法”几乎不影响程序行为。你不用完全了解bvar的完整用法，只要使用bvar::LatencyRecorder即可。
+[bvar](bvar.md)是一个多线程下的计数库，可以以极低的开销统计用户递来的数值，相比“打日志大法”几乎不影响程序行为。你不用完全了解bvar的完整用法，只要使用bvar::LatencyRecorder即可。
 
 仿照如下代码对foobar的运行时间进行监控。
 
@@ -164,4 +164,4 @@ void search() {
 
 ### 只使用了baidu-rpc client
 
-得打开dummy server提供内置服务，方法见[这里](http://wiki.baidu.com/pages/viewpage.action?pageId=213843633)。
+得打开dummy server提供内置服务，方法见[这里](dummy_server.md)。
