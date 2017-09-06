@@ -27,8 +27,13 @@ namespace bthread {
 // Park idle workers.
 class BAIDU_CACHELINE_ALIGNMENT ParkingLot {
 public:
-    struct State {
+    class State {
+    public:
+        State(): val(0) {}
         bool stopped() const { return val & 1; }
+    private:
+    friend class ParkingLot;
+        State(int val) : val(val) {}
         int val;
     };
 
@@ -43,8 +48,7 @@ public:
 
     // Get a state for later wait().
     State get_state() {
-        const State st = {_pending_signal.load(base::memory_order_acquire)};
-        return st;
+        return _pending_signal.load(base::memory_order_acquire);
     }
 
     // Wait for tasks.

@@ -653,7 +653,7 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime) {
         }
     }
 #ifdef SHOW_BTHREAD_BUTEX_WAITER_COUNT_IN_VARS
-    bvar::Adder<int64_t>* num_waiters = *butex_waiter_count();
+    bvar::Adder<int64_t>& num_waiters = butex_waiter_count();
     num_waiters << 1;
 #endif
 

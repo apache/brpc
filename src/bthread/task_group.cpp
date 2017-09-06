@@ -174,9 +174,6 @@ void TaskGroup::run_main_task() {
     
     TaskGroup* dummy = this;
     bthread_t tid;
-#ifndef BTHREAD_DONT_SAVE_PARKING_STATE
-    _last_pl_state = _pl->get_state();
-#endif
     while (wait_task(&tid)) {
         TaskGroup::sched_to(&dummy, tid);
         DCHECK_EQ(this, dummy);
