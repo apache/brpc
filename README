@@ -1,5 +1,0 @@
-# baidu-rpc
-
-A RPC framework used throughout Baidu, with more than 600,000 instances.
-
-Check out [Getting started](docs/cn/getting_started.md) for more information.
