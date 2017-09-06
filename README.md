@@ -21,4 +21,4 @@ A RPC framework used throughout Baidu, with more than 600,000 instances. You can
 * Debug services [via http](docs/cn/builtin_service.md), and run online profilers.
 * Get [better latency and throughput](docs/cn/benchmark.md).
 
-Check out [Getting Started](docs/en/getting_started.md) or [开始使用](docs/cn/getting_started) for more information.
+Check out [Getting Started](docs/en/getting_started.md) or [开始使用](docs/cn/getting_started.md) for more information.
