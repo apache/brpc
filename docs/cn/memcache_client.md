@@ -1,6 +1,6 @@
-[memcached](http://memcached.org/)是常用的缓存服务，为了使用户更快捷地访问memcached并充分利用bthread的并发能力，baidu-rpc直接支持memcache协议。示例程序：<http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/memcache_c++/>
+[memcached](http://memcached.org/)是常用的缓存服务，为了使用户更快捷地访问memcached并充分利用bthread的并发能力，baidu-rpc直接支持memcache协议。示例程序：[example/memcache_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/example/memcache_c++/)
 
-> 注意：baidu-rpc只支持memcache的二进制协议。memcached在1.3前只有文本协议，但在当前看来支持的意义甚微。如果你的memcached早于1.3，升级版本。
+**注意**：baidu-rpc只支持memcache的二进制协议。memcached在1.3前只有文本协议，但在当前看来支持的意义甚微。如果你的memcached早于1.3，升级版本。
 
 相比使用[libmemcached](http://libmemcached.org/libMemcached.html)(官方client)的优势有：
 
@@ -9,15 +9,15 @@
 - 有明确的request和response。而libmemcached是没有的，收到的消息不能直接和发出的消息对应上，用户需要自己做维护工作。
 - 支持多种[连接方式](client.md#连接方式)。支持超时、backup request、取消、tracing、内置服务等一系列RPC基本福利。
 
-当前实现充分利用了RPC的并发机制并尽量避免了拷贝。一个client可以轻松地把一个同机memcached实例([版本1.4.15](https://svn.baidu.com/third-64/tags/memcached/memcached_1-4-15-100_PD_BL/))压到极限：单连接9万，多连接33万。在大部分情况下，baidu-rpc应该能充分发挥memcached的性能。
+当前实现充分利用了RPC的并发机制并尽量避免了拷贝。一个client可以轻松地把一个同机memcached实例(版本1.4.15)压到极限：单连接9万，多连接33万。在大部分情况下，baidu-rpc应该能充分发挥memcached的性能。
 
 # 访问单台memcached
 
 创建一个访问memcached的Channel：
 
 ```c++
-#include brpc/memcache.h>
-#include brpc/channel.h>
+#include <brpc/memcache.h>
+#include <brpc/channel.h>
  
 ChannelOptions options;
 options.protocol = brpc::PROTOCOL_MEMCACHE;
@@ -25,10 +25,8 @@ if (channel.Init("0.0.0.0:11211", &options) != 0) {  // 11211是memcached的默�
    LOG(FATAL) << "Fail to init channel to memcached";
    return -1;
 }
-...
+... 
 ```
-
- 
 
 往memcached中设置一份数据。
 

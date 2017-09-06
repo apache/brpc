@@ -40,21 +40,21 @@ LALB可以解决的问题：
 
 注意这个算法并不是按照延时的比例来分流，不是说一个下游30ms，另一个60ms，它们的流量比例就是60 / 30。而是30ms的节点会一直获得流量直到它的延时高于60ms，或者没有更多流量了。以下图为例，曲线1和曲线2分别是节点1和节点2的延时与吞吐关系图，随着吞吐增大延时会逐渐升高，接近极限吞吐时，延时会飙升。左下的虚线标记了QPS=400时的延时，此时虽然节点1的延时有所上升，但还未高于节点2的基本延时（QPS=0时的延时），所以所有流量都会分给节点1，而不是按它们基本延时的比例（图中大约2:1）。当QPS继续上升达到1600时，分流比例会在两个节点延时相等时平衡，图中为9 : 7。很明显这个比例是高度非线性的，取决于不同曲线的组合，和单一指标的比例关系没有直接关联。在真实系统中，延时和吞吐的曲线也在动态变化着，分流比例更加动态。
 
-![img](http://wiki.baidu.com/download/attachments/38012521/image2015-5-20%2023%3A5%3A34.png?version=1&modificationDate=1432134338000&api=v2)
+![img](../images/lalb_1.png)
 
 我们用一个例子来看一下具体的分流过程。启动3台server，逻辑分别是sleep 1ms，2ms，3ms，对于client来说这些值就是延时。启动client（50个同步访问线程）后每秒打印的分流结果如下：
 
-![img](http://wiki.baidu.com/download/attachments/38012521/image2015-5-29%208%3A57%3A44.png?version=1&modificationDate=1432861065000&api=v2)
+![img](../images/lalb_2.png)
 
 S[n]代表第n台server。由于S[1]和S[2]的平均延时大于1ms，LALB会发现这点并降低它们的权值。它们的权值会继续下降，直到被算法设定的最低值拦住。这时停掉server，反转延时并重新启动，即逻辑分别为sleep 3ms，2ms，1ms，运行一段时候后分流效果如下：
 
-![img](http://wiki.baidu.com/download/attachments/38012521/image2015-5-29%209%3A2%3A53.png?version=1&modificationDate=1432861373000&api=v2)
+![img](../images/lalb_3.png)
 
 刚重连上server时，client还是按之前的权值把大部分流量都分给了S[0]，但由于S[0]的延时从1ms上升到了3ms，client的qps也降到了原来的1/3。随着数据积累，LALB逐渐发现S[2]才是最快的，而把大部分流量切换了过去。同样的服务如果用rr或random访问，则qps会显著下降：
 
-"rr" or "random": ![img](http://wiki.baidu.com/download/attachments/38012521/image2015-5-31%2020%3A57%3A24.png?version=1&modificationDate=1433077045000&api=v2)
+"rr" or "random": ![img](../images/lalb_4.png)
 
-"la" :                   ![img](http://wiki.baidu.com/download/attachments/38012521/image2015-5-31%2020%3A58%3A21.png?version=1&modificationDate=1433077102000&api=v2)
+"la" :                       ![img](../images/lalb_5.png)
 
 真实的场景中不会有这么显著的差异，但你应该能看到差别了。
 

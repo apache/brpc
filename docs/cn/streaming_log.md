@@ -4,8 +4,6 @@ streaming_log - Print log to std::ostreams
 
 # SYNOPSIS
 
-你得依赖[public/common](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/)模块，在COMAKE中插入CONFIGS('public/common@ci-base')即可。
-
 ```c++
 #include <base/logging.h>
 
@@ -323,4 +321,4 @@ TEST_F(StreamingLogTest, log_at) {
 
 定义在base/comlog_sink.h中，把日志打印入comlog，主要用于线上系统，用法见[SYNOPSIS](#SYNOPSIS)一段。
 
-> [使用]()ComlogSink的streaming log可以和com_writelog, ul_writelog混用。你并不需要把程序中所有日志都换成streaming log。
+使用ComlogSink的streaming log可以和com_writelog, ul_writelog混用。你并不需要把程序中所有日志都换成streaming log。

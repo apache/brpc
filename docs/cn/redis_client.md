@@ -1,4 +1,4 @@
-[redis](http://redis.io/)是最近几年比较火的缓存服务，相比memcached在server端提供了更多的数据结构和操作方法，简化了用户的开发工作，在百度内有比较广泛的应用。为了使用户更快捷地访问redis并充分利用bthread的并发能力，baidu-rpc直接支持redis协议。示例程序：[example/redis_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/redis_c++/)
+[redis](http://redis.io/)是最近几年比较火的缓存服务，相比memcached在server端提供了更多的数据结构和操作方法，简化了用户的开发工作，在百度内有比较广泛的应用。为了使用户更快捷地访问redis并充分利用bthread的并发能力，baidu-rpc直接支持redis协议。示例程序：[example/redis_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/example/redis_c++/)
 
 相比使用[hiredis](https://github.com/redis/hiredis)(官方client)的优势有：
 
@@ -9,15 +9,15 @@
 
 像http一样，baidu-rpc保证在最差情况下解析redis reply的时间复杂度也是O(N)，N是reply的字节数，而不是O(N^2)。当reply是个较大的数组时，这是比较重要的。
 
-r32037后加上[-redis_verbose](http://brpc.baidu.com:8765/flags/redis_verbose;redis_verbose_crlf2space)后会在stderr上打印出所有的redis request和response供调试。
+r32037后加上[-redis_verbose](#查看发出的请求和收到的回复)后会在stderr上打印出所有的redis request和response供调试。
 
 # 访问单台redis
 
 创建一个访问redis的Channel：
 
 ```c++
-#include brpc/redis.h>
-#include brpc/channel.h>
+#include <brpc/redis.h>
+#include <brpc/channel.h>
   
 brpc::ChannelOptions options;
 options.protocol = brpc::PROTOCOL_REDIS;
@@ -136,13 +136,13 @@ command_size()可获得（成功）加入的命令个数。
 
 比如response包含三个reply，类型分别是integer，string和array (size=2)。那么可以分别这么获得值：response.reply(0).integer()，response.reply(1).c_str(), repsonse.reply(2)[0]和repsonse.reply(2)[1]。如果类型对不上，调用处的栈会被打印出来，并返回一个undefined的值。
 
-> response中的所有reply的ownership属于response。当response析构时，reply也析构了。相应地，RedisReply被禁止拷贝。
+response中的所有reply的ownership属于response。当response析构时，reply也析构了。相应地，RedisReply被禁止拷贝。
 
 调用Clear()后RedisResponse可以重用。
 
 # 访问redis集群
 
-暂时请沿用常见的[twemproxy](https://github.com/twitter/twemproxy)方案，像访问单点一样访问proxy。如果你之前用hiredis访问[BDRP](http://wiki.baidu.com/pages/viewpage.action?pageId=40197196)（使用了twemproxy），那把client更换成baidu-rpc就行了。通过client（一致性哈希）直接访问redis集群虽然能降低延时，但同时也（可能）意味着无法直接利用BDRP的托管服务，这一块还不是很确定。
+暂时请沿用常见的[twemproxy](https://github.com/twitter/twemproxy)方案，像访问单点一样访问proxy。如果你之前用hiredis访问BDRP（使用了twemproxy），那把client更换成baidu-rpc就行了。通过client（一致性哈希）直接访问redis集群虽然能降低延时，但同时也（可能）意味着无法直接利用BDRP的托管服务，这一块还不是很确定。
 
 如果你自己维护了redis集群，和memcache类似，应该是可以用一致性哈希访问的。但每个RedisRequest应只包含一个command或确保所有的command始终落在同一台server。如果request包含了多个command，在当前实现下总会送向同一个server。比方说一个request中包含了多个Get，而对应的key分布在多个server上，那么结果就肯定不对了，这个情况下你必须把一个request分开为多个。
 
@@ -152,9 +152,14 @@ command_size()可获得（成功）加入的命令个数。
 
 打开[-redis_verbose_crlf2space](http://brpc.baidu.com:8765/flags/redis_verbose_crlf2space)可让打印内容中的CRLF (\r\n)变为空格，方便阅读。
 
+| Name                     | Value | Description                              | Defined At                         |
+| ------------------------ | ----- | ---------------------------------------- | ---------------------------------- |
+| redis_verbose            | false | [DEBUG] Print EVERY redis request/response to stderr | src/brpc/policy/redis_protocol.cpp |
+| redis_verbose_crlf2space | false | [DEBUG] Show \r\n as a space             | src/brpc/redis.cpp                 |
+
 # 性能
 
-redis版本：<https://svn.baidu.com/third-64/tags/redis/redis_2-6-14-100_PD_BL/> （不是最新的3.0）
+redis版本：2.6.14 (不是最新的3.0）
 
 分别使用1，50，200个bthread同步压测同机redis-server，延时单位均为微秒。
 
@@ -175,9 +180,7 @@ TRACE: 02-13 19:43:49:   * 0 client.cpp:180] Accessing redis server at qps=41167
 TRACE: 02-13 19:43:50:   * 0 client.cpp:180] Accessing redis server at qps=412583 latency=482
 ```
 
-200个线程后qps基本到极限了。这里的极限qps比hiredis高很多，原因在于baidu-rpc默认以单链接访问redis-server，多个线程在写出时会[以wait-free的方式合并](http://wiki.baidu.com/display/RPC/IO#IO-发消息)，从而让redis-server就像被批量访问一样，每次都能从那个连接中读出一批请求，从而获得远高于非批量时的qps。下面通过连接池访问redis-server时qps的大幅回落是另外一个证明。
-
- 
+200个线程后qps基本到极限了。这里的极限qps比hiredis高很多，原因在于baidu-rpc默认以单链接访问redis-server，多个线程在写出时会[以wait-free的方式合并](io.md#发消息)，从而让redis-server就像被批量访问一样，每次都能从那个连接中读出一批请求，从而获得远高于非批量时的qps。下面通过连接池访问redis-server时qps的大幅回落是另外一个证明。
 
 分别使用1，50，200个bthread一次发送10个同步压测同机redis-server，延时单位均为微秒。
 
@@ -204,9 +207,7 @@ TRACE: 02-13 19:49:11:   * 0 client.cpp:180] Accessing redis server at qps=29271
 16878 gejun     20   0 48136 2508 1004 R 99.9  0.0  13:36.59 redis-server   // thread_num=200
 ```
 
-注意redis-server实际处理的qps要乘10。乘10后也差不多在40万左右。另外在thread_num为50或200时，redis-server的CPU已打满。注意redis-server是[单线程reactor](http://wiki.baidu.com/display/RPC/Threading+Overview#ThreadingOverview-单线程reactor)，一个核心打满就意味server到极限了。
-
- 
+注意redis-server实际处理的qps要乘10。乘10后也差不多在40万左右。另外在thread_num为50或200时，redis-server的CPU已打满。注意redis-server是[单线程reactor](threading_overview.md#单线程reactor)，一个核心打满就意味server到极限了。
 
 使用50个bthread通过连接池方式同步压测同机redis-server。
 

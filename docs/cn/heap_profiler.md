@@ -2,11 +2,11 @@ baidu-rpc可以分析内存是被哪些函数占据的。heap profiler的原理�
 
 # 开启方法
 
-1. 在COMAKE中增加`CONFIGS('thirdsrc/tcmalloc@2.5.0.5977')`。如果要同时使用cpu profiler，加上`Libraries('libtcmalloc_and_profiler.a')`
+1. 链接`libtcmalloc_and_profiler.a`
 
-   1. 这个版本的tcmalloc使用frame pointer而不是libunwind回溯栈，请确保在CXXFLAGS或CFLAGS中加上`-fno-omit-frame-pointer`，否则函数间的调用关系会丢失，最后产生的图片中都是彼此独立的函数方框。
+   1. 如果tcmalloc使用frame pointer而不是libunwind回溯栈，请确保在CXXFLAGS或CFLAGS中加上`-fno-omit-frame-pointer`，否则函数间的调用关系会丢失，最后产生的图片中都是彼此独立的函数方框。
 
-2. 在COMAKE的CPPFLAGS中增加`-DBAIDU_RPC_ENABLE_HEAP_PROFILER`
+2. 在COMAKE的CPPFLAGS中增加`-DBRPC_ENABLE_HEAP_PROFILER`
 
 3. 在shell中`export TCMALLOC_SAMPLE_PARAMETER=524288`。该变量指每分配这么多字节内存时做一次统计，默认为0，代表不开启内存统计。[官方文档](http://gperftools.googlecode.com/svn/trunk/doc/tcmalloc.html)建议设置为524288。这个变量也可在运行前临时设置，如`TCMALLOC_SAMPLE_PARAMETER=524288 ./server`。如果没有这个环境变量，可能会看到这样的结果：
 
@@ -37,13 +37,13 @@ WARNING: 12-26 10:01:25:   * 0 [src/brpc/input_messenger.cpp:132][4294969345] Au
 
 # 图示
 
-![img](http://wiki.baidu.com/download/attachments/165876312/image2016-1-19%2023%3A8%3A50.png?version=1&modificationDate=1453216152000&api=v2)
+![img](../images/heap_profiler_1.png)
 
 左上角是当前程序通过malloc分配的内存总量，顺着箭头上的数字可以看到内存来自哪些函数。
 
 点击左上角的text选择框可以查看文本格式的结果，有时候这种按分配量排序的形式更方便。
 
-![img](http://wiki.baidu.com/download/attachments/165876312/image2016-1-19%2023%3A12%3A44.png?version=1&modificationDate=1453216386000&api=v2)
+![img](../images/heap_profiler_2.png)
 
 左上角的两个选择框作用分别是：
 
@@ -52,7 +52,7 @@ WARNING: 12-26 10:01:25:   * 0 [src/brpc/input_messenger.cpp:132][4294969345] Au
 
 下图演示了勾选Diff和Text的效果。
 
-![img](http://wiki.baidu.com/download/attachments/37774685/prof.gif?version=1&modificationDate=1494403248000&api=v2)
+![img](../images/heap_profiler_3.gif)
 
 你也可以使用pprof脚本（public/baidu-rpc/tools/pprof）在命令行中查看文本格式结果：
 
@@ -103,5 +103,5 @@ Total: 38.9 MB
 
 baidu-rpc还提供一个类似的growth profiler分析内存的分配去向（不考虑释放）。 
 
-![img](http://wiki.baidu.com/download/attachments/71337189/image2015-10-1%209%3A55%3A9.png?version=1&modificationDate=1443664514000&api=v2)
+![img](../images/growth_profiler.png)
 

@@ -270,7 +270,7 @@ $ curl -d '{"message":"hello"}' http://brpc.baidu.com:8765/EchoService/Echo
 
 ## json<=>pb
 
-json通过名字与pb字段一一对应，结构层次也应匹配。json中一定要包含pb的required字段，否则转化会失败，对应请求会被拒绝。json中可以包含pb中没有定义的字段，但不会作为pb的unknown字段被继续传递。转化规则详见[json <=> protobuf](http://wiki.baidu.com/display/RPC/json+%3C%3D%3E+protobuf)。
+json通过名字与pb字段一一对应，结构层次也应匹配。json中一定要包含pb的required字段，否则转化会失败，对应请求会被拒绝。json中可以包含pb中没有定义的字段，但不会作为pb的unknown字段被继续传递。转化规则详见[json <=> protobuf](idl_protobuf.md)。
 
 r34532后增加选项-pb_enum_as_number，开启后pb中的enum会转化为它的数值而不是名字，比如在`enum MyEnum { Foo = 1; Bar = 2; };`中不开启此选项时MyEnum类型的字段会转化为"Foo"或"Bar"，开启后为1或2。此选项同时影响client发出的请求和server返回的回复。由于转化为名字相比数值有更好的前后兼容性，此选项只应用于兼容无法处理enum为名字的场景。
 
@@ -294,7 +294,7 @@ server.AddService(service, svc_opt);
 
 server端会自动尝试其支持的协议，无需用户指定。`cntl->protocol()`可获得当前协议。server能从一个listen端口建立不同协议的连接，不需要为不同的协议使用不同的listen端口，一个连接上也可以传输多种协议的数据包（但一般不会这么做），支持的协议有：
 
-- [标准协议](http://wiki.baidu.com/display/pp/Protobuf+RPC)，显示为"baidu_std"，默认启用。
+- 标准协议，显示为"baidu_std"，默认启用。
 
 - hulu协议，显示为"hulu"，默认启动。
 
@@ -334,7 +334,7 @@ server端会自动尝试其支持的协议，无需用户指定。`cntl->protoco
 
   顾名思义，这个协议的数据包由nshead+mcpack构成，mcpack中不包含特殊字段。不同于用户基于NsheadService的实现，这个协议使用了mcpack2pb：任何protobuf service都可以接受这个协议的请求。由于没有传递ErrorText的字段，当发生错误时server只能关闭连接。
 
-- ITP协议，显示为"itp"，默认不启用，使用方式见[ITP](http://wiki.baidu.com/display/RPC/ITP)。
+- ITP协议，显示为"itp"，默认不启用，使用方式见[ITP](itp.md)。
 
 - 和UB相关的协议请阅读[实现NsheadService](nshead_service.md)。
 

@@ -10,7 +10,7 @@ bthread_id是一个特殊的同步结构，它可以互斥RPC过程中的不同�
 
 上文提到的bug在其他rpc框架中广泛存在，下面我们来看下baidu-rpc是如何通过bthread_id解决这些问题的。
 
-bthread_id包括两部分，一个是用户可见的64位id，另一个是对应的不可见的bthread::Id结构体。用户接口都是操作id的。从id映射到结构体的方式和baidu-rpc中的[其他结构](http://wiki.baidu.com/display/RPC/Memory+Management)类似：32位是内存池的位移，32位是version。前者O(1)时间定位，后者防止ABA问题。
+bthread_id包括两部分，一个是用户可见的64位id，另一个是对应的不可见的bthread::Id结构体。用户接口都是操作id的。从id映射到结构体的方式和baidu-rpc中的[其他结构](memory_management.md)类似：32位是内存池的位移，32位是version。前者O(1)时间定位，后者防止ABA问题。
 
 bthread_id的接口不太简洁，有不少API：
 

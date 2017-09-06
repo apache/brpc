@@ -20,7 +20,7 @@ linux一般使用non-blocking IO提高IO并发度。当IO并发度很低时，no
 
 "消息”指向连接写出的有边界的二进制串，可能是发向上游client的response或下游server的request。多个线程可能会同时向一个fd发送消息，而写fd又是非原子的，所以如何高效率地排队不同线程写出的数据包是这里的关键。baidu-rpc使用一种wait-free MPSC链表来实现这个功能。所有待写出的数据都放在一个单链表节点中，next指针初始化为一个特殊值(Socket::WriteRequest::UNCONNECTED)。当一个线程想写出数据前，它先尝试和对应的链表头(Socket::_write_head)做原子交换，返回值是交换前的链表头。如果返回值为空，说明它获得了写出的权利，它会在原地写一次数据。否则说明有另一个线程在写，它把next指针指向返回的头，那样正在写的线程之后会看到并写出这块数据。这套方法可以让写竞争是wait-free的，而获得写权利的线程虽然在原理上不是wait-free也不是lock-free，可能会被一个值仍为UNCONNECTED的节点锁定（这需要发起写的线程正好在原子交换后，在设置next指针前，仅仅一条指令的时间内被OS换出），但在实践中很少出现。在当前的实现中，如果获得写权利的线程一下子无法写出所有的数据，会启动一个KeepWrite线程继续写，直到所有的数据都被写出。这套逻辑非常复杂，大致原理如下图，细节请阅读[socket.cpp](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/socket.cpp)。
 
-![img](http://wiki.baidu.com/download/attachments/48480438/image2015-12-20%2019%3A0%3A23.png?version=1&modificationDate=1450609228000&api=v2)
+![img](../images/write.png)
 
 由于baidu-rpc的写出总能很快地返回，调用线程可以更快地处理新任务，后台写线程也能每次拿到一批任务批量写出，在大吞吐时容易形成流水线效应而提高IO效率。
 
@@ -40,4 +40,4 @@ linux一般使用non-blocking IO提高IO并发度。当IO并发度很低时，no
 
 # The full picture
 
-![img](http://wiki.baidu.com/download/attachments/48480438/image2015-12-26%2017%3A31%3A6.png?version=1&modificationDate=1451122271000&api=v2)
+![img](../images/rpc_flow.png)

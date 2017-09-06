@@ -355,7 +355,7 @@ brpc::StartCancel(CallId)可取消任意RPC，CallId必须**在发起RPC前**通
 remote_side()方法可知道request被送向了哪个server，返回值类型是[base::EndPoint](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/endpoint.h)，包含一个ip4地址和端口。在RPC结束前调用这个方法都是没有意义的。
 
 打印方式：
-```
+```c++
 LOG(INFO) << "remote_side=" << cntl->remote_side();
 printf("remote_side=%s\n", base::endpoint2str(cntl->remote_side()).c_str());
 ```
@@ -457,7 +457,7 @@ r32009后用户可以通过继承[brpc::RetryPolicy](http://icode.baidu.com/repo
 
 比如baidu-rpc默认不重试HTTP相关的错误，而你的程序中希望在碰到HTTP_STATUS_FORBIDDEN (403)时重试，可以这么做：
 ```c++
-#include brpc/retry_policy.h>
+#include <brpc/retry_policy.h>
  
 class MyRetryPolicy : public brpc::RetryPolicy {
 public:
@@ -592,7 +592,8 @@ brpc::policy::GianoAuthenticator auth(&generator, NULL);
 brpc::ChannelOptions option;
 option.auth = &auth;
 ```
-首先通过调用Giano API生成验证器baas::CredentialGenerator，具体可参看[Giano快速上手手册.pdf](http://wiki.baidu.com/download/attachments/37774685/Giano%E5%BF%AB%E9%80%9F%E4%B8%8A%E6%89%8B%E6%89%8B%E5%86%8C.pdf?version=1&modificationDate=1421990746000&api=v2)。然后按照如上代码一步步将其设置到brpc::ChannelOptions里去。
+首先通过调用Giano API生成验证器baas::CredentialGenerator，具体可参看[Giano快速上手手册.pdf](http://wiki.baidu.com/download/attachments/37774685/Giano%E5%BF%A
+B%E9%80%9F%E4%B8%8A%E6%89%8B%E6%89%8B%E5%86%8C.pdf?version=1&modificationDate=1421990746000&api=v2)。然后按照如上代码一步步将其设置到brpc::ChannelOptions里去。
 
 当client设置认证后，任何一个新连接建立后都必须首先发送一段验证信息（通过Giano认证器生成），才能发送后续请求。认证成功后，该连接上的后续请求不会再带有验证消息。
 
@@ -702,7 +703,7 @@ FATAL 04-07 20:00:03 7778 public/baidu-rpc/src/brpc/channel.cpp:123] Invalid add
 
 ### Q: 两个产品线都使用protobuf，为什么不能互相访问
 
-协议 !=protobuf。protobuf负责打包，协议负责定字段。打包格式相同不意味着字段可以互通。协议中可能会包含多个protobuf包，以及额外的长度、校验码、magic number等等。协议的互通是通过在RPC框架内转化为统一的编程接口完成的，而不是在protobuf层面。从广义上来说，protobuf也可以作为打包框架使用，生成其他序列化格式的包，像[idl<=>protobuf](http://wiki.baidu.com/pages/viewpage.action?pageId=144820547)就是通过protobuf生成了解析idl的代码。
+协议 !=protobuf。protobuf负责打包，协议负责定字段。打包格式相同不意味着字段可以互通。协议中可能会包含多个protobuf包，以及额外的长度、校验码、magic number等等。协议的互通是通过在RPC框架内转化为统一的编程接口完成的，而不是在protobuf层面。从广义上来说，protobuf也可以作为打包框架使用，生成其他序列化格式的包，像[idl<=>protobuf](idl_protobuf.md)就是通过protobuf生成了解析idl的代码。
 
 ### Q: 为什么C++ client/server 能够互相通信， 和其他语言的client/server 通信会报序列化失败的错误
 

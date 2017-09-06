@@ -4,7 +4,7 @@
 
 所有pb service默认都能通过/ServiceName/MethodName来访问，其中ServiceName不包括package。对于公司内的纯HTTP服务，一般来说这种形式的URL也够用了。实现步骤如下：
 
-\1. 填写proto文件。
+1. 填写proto文件。
 
 下面代码里的HttpRequest和HttpResponse都是空的，因为http数据在Controller中。http request的头在Controller.http_request()中，body在Controller.request_attachment()中。类似的，http response的头在Controller.http_response()，body在Controller.response_attachment()。
 
@@ -19,7 +19,7 @@ service HttpService {
 };
 ```
 
-\2.实现Service。和其他pb service一样，也是继承定义在.pb.h中的service基类。
+2. 实现Service。和其他pb service一样，也是继承定义在.pb.h中的service基类。
 
 ```c++
 class HttpServiceImpl : public HttpService {
@@ -48,7 +48,7 @@ public:
 };
 ```
 
-实现完毕插入Server后可通过如下URL访问，/HttpService/Echo后的部分在cntl->http_request().unresolved_path()中，unresolved_path总是normalized。
+实现完毕插入Server后可通过如下URL访问，/HttpService/Echo后的部分在 cntl->http_request().unresolved_path()中，unresolved_path总是normalized。
 
 | URL                        | 访问方法             | cntl->http_request().uri().path() | cntl->http_request().unresolved_path() |
 | -------------------------- | ---------------- | --------------------------------- | -------------------------------------- |
@@ -64,9 +64,9 @@ public:
 
 实现方法：
 
-\1. proto文件中应以FileService为服务名，以default_method为方法名。
+1. proto文件中应以FileService为服务名，以default_method为方法名。
 
-```protbuf
+```protobuf
 option cc_generic_services = true;
  
 message HttpRequest { };
@@ -77,7 +77,7 @@ service FileService {
 }
 ```
 
-\2.实现Service。
+2. 实现Service。
 
 ```c++
 class FileServiceImpl: public FileService {
@@ -168,11 +168,11 @@ if (server.AddService(&queue_svc,
 
 `cntl.http_request().unresolved_path()` 对应星号(*)匹配的部分，保证normalized：开头结尾都不包含斜杠(/)，中间斜杠不重复。比如：
 
-![img](http://wiki.baidu.com/download/attachments/71337204/image2016-3-1%2012%3A26%3A51.png?version=1&modificationDate=1456806412000&api=v2)
+![img](../images/restful_1.png)
 
-或：
+或
 
- ![img](http://wiki.baidu.com/download/attachments/71337204/image2016-3-1%2012%3A27%3A47.png?version=1&modificationDate=1456806467000&api=v2)
+![img](../images/restful_2.png)
 
 unresolved_path都是`"foo/bar"`，左右、中间多余的斜杠被移除了。
 
@@ -182,7 +182,7 @@ unresolved_path都是`"foo/bar"`，左右、中间多余的斜杠被移除了。
 
 /status页面上的方法名后会加上所有相关的URL，形式是：@URL1 @URL2 ...
 
-![img](http://wiki.baidu.com/download/attachments/71337204/image2016-3-1%200%3A12%3A36.png?version=1&modificationDate=1456762356000&api=v2)
+![img](../images/restful_3.png)
 
 # HTTP参数
 
@@ -246,7 +246,7 @@ cntl->http_response().set_status_code(brpc::HTTP_STATUS_FOUND);
 cntl->http_response().SetHeader("Location", "http://bj.bs.bae.baidu.com/family/image001(4979).jpg");
 ```
 
-![img](http://wiki.baidu.com/download/attachments/71337204/image2015-12-9%2015%3A1%3A47.png?version=1&modificationDate=1449644507000&api=v2)
+![img](../images/302.png)
 
 ## Query String
 
@@ -277,7 +277,7 @@ http服务常对http body进行压缩，对于文本网页可以有效减少传�
 出于通用性考虑且解压代码不复杂，baidu-rpc不会自动解压request body，用户可以自己做，方法如下：
 
 ```c++
-#include brpc/policy/gzip_compress.h>
+#include <brpc/policy/gzip_compress.h>
 ...
 const std::string* encoding = cntl->http_request().GetHeader("Content-Encoding");
 if (encoding != NULL && *encoding == "gzip") {
@@ -340,24 +340,21 @@ bool Controller::is_ssl() const;
 
 没有极端性能要求的产品线都有使用HTTP协议的倾向，特别是移动端产品线，所以我们很重视HTTP的实现质量，具体来说：
 
-- 使用了node.js的[http parser](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/http_parser.h)(部分来自nginx)解析http消息，这是一个轻量、优秀的实现。
+- 使用了node.js的[http parser](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/details/http_parser.h)(部分来自nginx)解析http消息，这是一个轻量、优秀的实现。
 - 使用[rapidjson](https://github.com/miloyip/rapidjson)解析json，这是一个主打性能的json库，由一位腾讯专家开发。
 - 在最差情况下解析http请求的时间复杂度也是O(N)，其中N是请求的字节数。反过来说，如果解析代码要求http请求是完整的，那么它可能会花费O(N^2)的时间。HTTP请求普遍较大，这一点意义还是比较大的。
-- 来自不同client的http消息是高度并发的，即使相当复杂的http消息也不会影响对其他客户端的响应。其他rpc和[基于单线程reactor](http://wiki.baidu.com/display/RPC/Threading+Overview#ThreadingOverview-单线程reactor)的各类http server往往难以做到这一点。
+- 来自不同client的http消息是高度并发的，即使相当复杂的http消息也不会影响对其他客户端的响应。其他rpc和[基于单线程reactor](threading_overview.md#单线程reactor)的各类http server往往难以做到这一点。
 
 # 持续发送
 
 r33796前baidu-rpc server不适合发送超大或无限长的body。r33796后baidu-rpc server支持。方法如下:
 
-\1. 调用Controller::CreateProgressiveAttachment()创建可持续发送的body。
+1. 调用Controller::CreateProgressiveAttachment()创建可持续发送的body。
+  `boost::intrusive_ptr<brpc::ProgressiveAttachment> pa(cntl->CreateProgressiveAttachment());`
+  返回的ProgressiveAttachment对象需要用boost::intrusive_ptr<>管理，定义在brpc/progressive_attachment.h>中。
 
-`boost::intrusive_ptr<brpc::ProgressiveAttachment> pa(cntl->CreateProgressiveAttachment());`
-
-返回的ProgressiveAttachment对象需要用boost::intrusive_ptr<>管理，定义在brpc/progressive_attachment.h>中。
-
-\2. 调用ProgressiveAttachment::Write()发送数据。如果写入发生在server回调结束前，发送的数据将会被缓存直到回调结束发送了header部分后才会开始发送数据。如果写入发生在server回调结束后，发送的数据将立刻以chunked mode写出。 
-
-\3. 发送完毕后确保所有的boost::intrusive_ptr<brpc::ProgressiveAttachment>都析构了。
+2. 调用ProgressiveAttachment::Write()发送数据。如果写入发生在server回调结束前，发送的数据将会被缓存直到回调结束发送了header部分后才会开始发送数据。如果写入发生在server回调结束后，发送的数据将立刻以chunked mode写出。 
+3. 发送完毕后确保所有的boost::intrusive_ptr<brpc::ProgressiveAttachment>都析构了。
 
 # 持续接收
 
@@ -379,14 +376,14 @@ baidu-rpc server同端口支持多种协议，当它遇到非法HTTP请求并解
 
 根据[HTTP协议](http://tools.ietf.org/html/rfc3986#section-2.2)中的要求，以下字符应该使用%编码
 
-> ```
->       reserved    = gen-delims / sub-delims
->
->       gen-delims  = ":" / "/" / "?" / "#" / "[" / "]" / "@"
->
->       sub-delims  = "!" / "$" / "&" / "'" / "(" / ")"
->                   / "*" / "+" / "," / ";" / "="
-> ```
+```
+       reserved    = gen-delims / sub-delims
+
+       gen-delims  = ":" / "/" / "?" / "#" / "[" / "]" / "@"
+
+       sub-delims  = "!" / "$" / "&" / "'" / "(" / ")"
+                   / "*" / "+" / "," / ";" / "="
+```
 
 Base64 编码后的字符串中，会以"="或者"=="作为结尾(比如: ?wi=NDgwMDB8dGVzdA==&anothorkey=anothervalue), 这个字段可能会被正确解析，也可能不会，取决于具体实现，用户不应该做任何假设.
 

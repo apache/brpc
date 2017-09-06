@@ -118,7 +118,7 @@ public:
 ## 设置ServerOptions.nshead_service
 
 ```c++
-#include brpc/ubrpc2pb_protocol.h>
+#include <brpc/ubrpc2pb_protocol.h>
 ...
 brpc::ServerOptions option;
 option.nshead_service = new brpc::policy::UbrpcCompackAdaptor; // mcpack2用UbrpcMcpack2Adaptor
@@ -164,7 +164,7 @@ public:
 };
 ```
 
-完整的example在[example/nshead_extension_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/nshead_extension_c++/)。
+完整的example在[example/nshead_extension_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/example/nshead_extension_c++/)。
 
 # 使用nshead+mcpack/compack/idl的服务
 
@@ -174,7 +174,7 @@ idl是mcpack/compack的前端，用户只要在idl文件中描述schema，就可
 
 > **这个服务在继续使用mcpack/compack作为序列化格式，相比protobuf占用成倍的带宽和打包时间。**
 
-为了解决这个问题，我们提供了[public/mcpack2pb](http://wiki.baidu.com/display/RPC/idl+%3C%3D%3E+protobuf)，允许把protobuf作为mcpack/compack的前端。你只要写一份proto文件，就可以同时解析mcpack/compack和protobuf格式的请求。使用这个方法，使用idl描述的服务的可以平滑地改造为使用proto文件描述，而不用修改上游client（仍然使用mcpack/compack）。你产品线的服务可以逐个地从mcpack/compack/idl切换为protobuf，从而享受到性能提升，带宽节省，全新开发体验等好处。你可以自行在NsheadService使用public/mcpack2pb，也可以联系我们，提供更高质量的协议支持。
+为了解决这个问题，我们提供了[mcpack2pb](idl_protobuf.md)，允许把protobuf作为mcpack/compack的前端。你只要写一份proto文件，就可以同时解析mcpack/compack和protobuf格式的请求。使用这个方法，使用idl描述的服务的可以平滑地改造为使用proto文件描述，而不用修改上游client（仍然使用mcpack/compack）。你产品线的服务可以逐个地从mcpack/compack/idl切换为protobuf，从而享受到性能提升，带宽节省，全新开发体验等好处。你可以自行在NsheadService使用public/mcpack2pb，也可以联系我们，提供更高质量的协议支持。
 
 # 使用nshead+protobuf的服务
 
@@ -186,7 +186,7 @@ idl是mcpack/compack的前端，用户只要在idl文件中描述schema，就可
 - Call ParseRequestFromIOBuf() to convert the body after nshead header to pb request, then call the pb method.
 - When user calls server's done to end the RPC, SerializeResponseToIOBuf() is called to convert pb response to binary data that will be appended after nshead header and sent back to client.
 
-这样做的好处是，这个服务还可以被其他使用protobuf的协议访问，比如标准协议，hulu协议，sofa协议等等。NsheadPbServiceAdaptor的主要接口如下。完整的example在[这里](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/nshead_pb_extension_c++/)。
+这样做的好处是，这个服务还可以被其他使用protobuf的协议访问，比如标准协议，hulu协议，sofa协议等等。NsheadPbServiceAdaptor的主要接口如下。完整的example在[这里](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/example/nshead_pb_extension_c++/)。
 
 ```c++
 class NsheadPbServiceAdaptor : public NsheadService {

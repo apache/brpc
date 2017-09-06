@@ -10,7 +10,7 @@
 
 单线程reactor的运行方式如下图所示：
 
-![img](http://wiki.baidu.com/download/attachments/99588643/image2015-7-6%2016%3A3%3A42.png?version=1&modificationDate=1436169822000&api=v2)
+![img](../images/threading_overview_1.png)
 
 ## N:1线程库
 
@@ -22,7 +22,7 @@
 
 多线程reactor的运行方式如下：
 
-![img](http://wiki.baidu.com/download/attachments/99588643/image2015-7-6%2016%3A4%3A28.png?version=1&modificationDate=1436169869000&api=v2)
+![img](../images/threading_overview_2.png)
 
 # 那我们还能改进什么呢？
 

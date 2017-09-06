@@ -10,11 +10,11 @@ cache bouncing使访问频繁修改的变量的开销陡增，甚至还会使访
 
 下图是bvar和原子变量，静态UbMonitor，动态UbMonitor的性能对比。可以看到bvar的耗时基本和线程数无关，一直保持在极低的水平（~20纳秒）。而动态UbMonitor在24核时每次累加的耗时达7微秒，这意味着使用300次bvar的开销才抵得上使用一次动态UbMonitor变量。
 
-![img](http://wiki.baidu.com/download/attachments/53020182/image2015-8-9%200%3A6%3A9.png?version=1&modificationDate=1439049969000&api=v2)
+![img](../images/bvar_perf.png)
 
 # 3.用noah监控bvar
 
-![img](http://wiki.baidu.com/download/attachments/53020182/image2015-8-8%2018%3A30%3A48.png?version=1&modificationDate=1439029848000&api=v2)
+![img](../images/bvar_flow.png)
 
 - bvar 将被监控的项目定期打入文件：monitor/bvar.<app>.data。
 - noah 自动收集文件并生成图像。
@@ -31,8 +31,6 @@ cache bouncing使访问频繁修改的变量的开销陡增，甚至还会使访
 # 4.RD要干的事情
 
 ## 1.定义bvar
-
-在COMAKE中增加CONFIGS('public/bvar@ci-base')来依赖bvar。
 
 ```c++
 #include <bvar/bvar.h>
@@ -212,16 +210,16 @@ process_username : "gejun"
 
 搜索监控节点：
 
-![img](http://wiki.baidu.com/download/attachments/53020182/image2015-8-8%2019%3A11%3A30.png?version=1&modificationDate=1439032291000&api=v2)
+![img](../images/bvar_noah1.png)
 
  
 
 点击“文件”tab，勾选要查看的统计量，bvar已经统计了进程级的很多参数，大都以process开头。
 
-![img](http://wiki.baidu.com/download/attachments/53020182/image2015-8-8%2019%3A13%3A8.png?version=1&modificationDate=1439032388000&api=v2)
+![img](../images/bvar_noah2.png)
 
  
 
 查看趋势图：
 
-![img](http://wiki.baidu.com/download/attachments/53020182/image2015-8-8%2019%3A16%3A9.png?version=1&modificationDate=1439032569000&api=v2)
+![img](../images/bvar_noah3.png)

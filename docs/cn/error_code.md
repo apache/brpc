@@ -13,7 +13,7 @@ server端Controller的SetFailed()常由用户在服务回调中调用。当处�
 
 # baidu-rpc的错误码
 
-baidu-rpc使用的所有ErrorCode都定义在[errno.proto](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/protocol/brpc/errno.proto)中，*SYS_*开头的来自linux系统，与/usr/include/errno.h中定义的精确一致，定义在proto中是为了跨语言。其余的是baidu-rpc自有的。
+baidu-rpc使用的所有ErrorCode都定义在[errno.proto](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/errno.proto)中，*SYS_*开头的来自linux系统，与/usr/include/errno.h中定义的精确一致，定义在proto中是为了跨语言。其余的是baidu-rpc自有的。
 
 [berror(error_code)](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/errno.h)可获得error_code的描述，berror()可获得[system errno](http://www.cplusplus.com/reference/cerrno/errno/)的描述。**ErrorText() != berror(****ErrorCode())**，ErrorText()会包含更具体的错误信息。baidu-rpc默认包含berror，你可以直接使用。
 
@@ -43,18 +43,18 @@ baidu-rpc中常见错误的打印内容列表如下：
 # 自定义错误码
 
 在C++/C中你可以通过宏、常量、protobuf enum等方式定义ErrorCode:
-```
+```c++
 #define ESTOP -114                // C/C++
 static const int EMYERROR = 30;   // C/C++
 const int EMYERROR2 = -31;        // C++ only
 ```
 如果你需要用berror返回这些新错误码的描述，你可以在.cpp或.c文件的全局域中调用BAIDU_REGISTER_ERRNO(error_code, description)进行注册，比如：
-```
+```c++
 BAIDU_REGISTER_ERRNO(ESTOP, "the thread is stopping")
 BAIDU_REGISTER_ERRNO(EMYERROR, "my error")
 ```
 strerror/strerror_r不认识使用BAIDU_REGISTER_ERRNO定义的错误码，自然地，printf类的函数中的%m也不能转化为对应的描述，你必须使用%s并配以berror()。
-```
+```c++
 errno = ESTOP;
 printf("Describe errno: %m\n");                               // [Wrong] Describe errno: Unknown error -114
 printf("Describe errno: %s\n", strerror_r(errno, NULL, 0));   // [Wrong] Describe errno: Unknown error -114

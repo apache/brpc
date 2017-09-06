@@ -2,8 +2,7 @@
 
 # thread-local问题
 
-调用阻塞的bthread函数后，所在的pthread很可能改变，这使[pthread_getspecific](http://linux.die.net/man/3/pthread_getspecific)，[gcc
-__thread](https://gcc.gnu.org/onlinedocs/gcc-4.2.4/gcc/Thread_002dLocal.html)和c++11
+调用阻塞的bthread函数后，所在的pthread很可能改变，这使[pthread_getspecific](http://linux.die.net/man/3/pthread_getspecific)，[gcc __thread](https://gcc.gnu.org/onlinedocs/gcc-4.2.4/gcc/Thread_002dLocal.html)和c++11
 thread_local变量，pthread_self()等的值变化了，如下代码的行为是不可预计的：
 
 ```
@@ -29,7 +28,7 @@ gcc4会优化[标记为__attribute__((__const__))](https://gcc.gnu.org/onlinedoc
 extern int *__errno_location (void) __THROW __attribute__ ((__const__));
 ```
 
-由于此函数被标记为__const__，且没有参数，当你在一个函数中调用多次errno时，可能只有第一次才调用__errno_location()，而之后只是访问其返回的int*。在pthread中这没有问题，因为返回的int*是thread-local的，一个给定的pthread中是不会变化的。但是在bthread中，这是不成立的，因为一个bthread很可能在调用一些函数后跑到另一个pthread去，如果gcc4做了类似的优化，即一个函数内所有的errno都替换为第一次调用返回的int*，这中间bthread又切换了pthread，那么可能会访问之前pthread的errno，从而造成未定义行为。
+由于此函数被标记为`__const__`，且没有参数，当你在一个函数中调用多次errno时，可能只有第一次才调用__errno_location()，而之后只是访问其返回的`int*`。在pthread中这没有问题，因为返回的`int*`是thread-local的，一个给定的pthread中是不会变化的。但是在bthread中，这是不成立的，因为一个bthread很可能在调用一些函数后跑到另一个pthread去，如果gcc4做了类似的优化，即一个函数内所有的errno都替换为第一次调用返回的int*，这中间bthread又切换了pthread，那么可能会访问之前pthread的errno，从而造成未定义行为。
 
 比如下文是一种errno的使用场景：
 
@@ -58,9 +57,9 @@ Use *p ...                   -  still the errno of original pthread, undefined b
 
 严格地说这个问题不是gcc4导致的，而是glibc给__errno_location的签名不够准确，一个返回thread-local指针的函数依赖于段寄存器（TLS的一般实现方式），这怎么能算const呢？由于我们还未找到覆盖__errno_location的方法，所以这个问题目前实际的解决方法是：
 
-**务必在直接或间接使用bthread的项目的gcc编译选项中添加-D__const__=，即把__const__定义为空，避免gcc4做相关优化。**
+**务必在直接或间接使用bthread的项目的gcc编译选项中添加`-D__const__=`，即把`__const__`定义为空，避免gcc4做相关优化。**
 
-把\_\_const\_\_定义为空对程序其他部分的影响几乎为0。另外如果你没有**直接**使用errno（即你的项目中没有出现errno），或使用的是gcc
-3.4，即使没有定义-D\_\_const\_\_=，程序的正确性也不会受影响，但为了防止未来可能的问题，我们强烈建议加上。
+把`__const__`定义为空对程序其他部分的影响几乎为0。另外如果你没有**直接**使用errno（即你的项目中没有出现errno），或使用的是gcc
+3.4，即使没有定义`-D__const__=`，程序的正确性也不会受影响，但为了防止未来可能的问题，我们强烈建议加上。
 
-需要说明的是，和errno类似，pthread_self也有类似的问题，不过一般pthread_self除了打日志没有其他用途，影响面较小，在-D\_\_const\_\_=后pthread_self也会正常。
+需要说明的是，和errno类似，pthread_self也有类似的问题，不过一般pthread_self除了打日志没有其他用途，影响面较小，在`-D__const__=`后pthread_self也会正常。

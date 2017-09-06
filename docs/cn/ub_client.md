@@ -2,7 +2,7 @@ baidu-rpc可通过多种方式访问用ub搭建的服务。
 
 # ubrpc (by protobuf)
 
-r31687后，baidu-rpc支持通过protobuf访问ubrpc，不需要baidu-rpc-ub，也不依赖idl-compiler。（也可以让protobuf服务被ubrpc client访问，方法见[使用ubrpc的服务](nshead_service.md#id-实现NsheadService-使用ubrpc的服务)）。
+r31687后，baidu-rpc支持通过protobuf访问ubrpc，不需要baidu-rpc-ub，也不依赖idl-compiler。（也可以让protobuf服务被ubrpc client访问，方法见[使用ubrpc的服务](nshead_service.md#使用ubrpc的服务)）。
 
 **步骤：**
 
@@ -75,7 +75,7 @@ r31687后，baidu-rpc支持通过protobuf访问ubrpc，不需要baidu-rpc-ub，�
    idl不同于pb，允许有多个请求，我们先看只有一个请求的情况，和普通的pb访问基本上是一样的。
 
    ```c++
-   #include brpc/channel.h>
+   #include <brpc/channel.h>
    #include "echo.pb.h"
    ...
     
@@ -110,7 +110,7 @@ r31687后，baidu-rpc支持通过protobuf访问ubrpc，不需要baidu-rpc-ub，�
    多个请求要设置一下set_idl_names。
 
    ```c++
-   #include brpc/channel.h>
+   #include <brpc/channel.h>
    #include "echo.pb.h"
    ...
     
@@ -178,7 +178,7 @@ server端由public/ubrpc搭建，request/response使用idl文件描述字段，�
 4. 用法和访问其他协议类似：创建Channel，ChannelOptions.protocol为**brpc::PROTOCOL_NSHEAD_CLIENT**或**"nshead_client"**。request和response对象必须是baidu-rpc-ub提供的类型
 
    ```c++
-   #include brpc/ub_call.h>
+   #include <brpc/ub_call.h>
    ...
        
    brpc::Channel channel;
@@ -219,7 +219,7 @@ server端由public/ubrpc搭建，request/response使用idl文件描述字段，�
    ...
    ```
 
-   具体example代码可以参考[echo_c++_compack_ubrpc](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/echo_c++_compack_ubrpc/)，类似的还有[echo_c++_mcpack_ubrpc](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/echo_c++_mcpack_ubrpc/)。
+   具体example代码可以参考[echo_c++_compack_ubrpc](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/example/echo_c++_compack_ubrpc/)，类似的还有[echo_c++_mcpack_ubrpc](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/example/echo_c++_mcpack_ubrpc/)。
 
 # nshead+idl
 
@@ -228,7 +228,7 @@ server端是由public/ub搭建，通讯包组成为nshead+idl::compack/idl::mcpa
 由于不需要指定service和method，无需编写proto文件，直接使用Channel.CallMethod方法发起RPC即可。请求包中的nshead可以填也可以不填，框架会补上正确的magic_num和body_len字段：
 
 ```c++
-#include brpc/ub_call.h>
+#include <brpc/ub_call.h>
 ...
  
 brpc::Channel channel;
@@ -265,7 +265,7 @@ response.message();
 server端是由public/ub搭建，通讯包组成为nshead+mcpack包，但不是idl编译器生成的，RPC前需要先构造RawBuffer将其传入，然后获取mc_pack_t并按之前手工填写mcpack的方式操作：
 
 ```c++
-#include brpc/ub_call.h>
+#include <brpc/ub_call.h>
 ...
  
 brpc::Channel channel;
@@ -312,7 +312,7 @@ mc_pack_get_str(res_pack, "mystr");
 r32897后baidu-rpc直接支持用nshead+blob访问老server（而不用依赖baidu-rpc-ub）。example代码可以参考[nshead_extension_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/nshead_extension_c++/client.cpp)。
 
 ```c++
-#include brpc/nshead_message.h>
+#include <brpc/nshead_message.h>
 ...
  
 brpc::Channel;

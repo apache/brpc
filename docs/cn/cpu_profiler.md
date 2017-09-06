@@ -2,10 +2,10 @@ baidu-rpc可以分析程序中的热点函数。
 
 # 开启方法
 
-1. 在COMAKE中增加`CONFIGS('``thirdsrc/tcmalloc@2.5.0.5977``', Libraries('libtcmalloc_and_profiler.a'))`
-   1. 这么写也开启了tcmalloc，不建议单独链接cpu profiler而不链接tcmalloc，可能越界访问导致[crash](https://code.google.com/p/gperftools/source/browse/README#sl_svn1035d5c18f64d114ac790b92a96f3b3a1a301eb9_207)**。**可能由于tcmalloc不及时归还内存，越界访问不会crash。
-   2. 这个版本的tcmalloc使用frame pointer而不是libunwind回溯栈，请确保在CXXFLAGS或CFLAGS中加上`-fno-omit-frame-pointer`，否则函数间的调用关系会丢失，最后产生的图片中都是彼此独立的函数方框。
-2. 定义宏BAIDU_RPC_ENABLE_CPU_PROFILER。在COMAKE中加入`CXXFLAGS('-DBAIDU_RPC_ENABLE_CPU_PROFILER')`
+1. 链接`libtcmalloc_and_profiler.a`
+   1. 这么写也开启了tcmalloc，不建议单独链接cpu profiler而不链接tcmalloc，可能越界访问导致[crash](https://github.com/gperftools/gperftools/blob/master/README#L226)**。**可能由于tcmalloc不及时归还内存，越界访问不会crash。
+   2. 如果tcmalloc使用frame pointer而不是libunwind回溯栈，请确保在CXXFLAGS或CFLAGS中加上`-fno-omit-frame-pointer`，否则函数间的调用关系会丢失，最后产生的图片中都是彼此独立的函数方框。
+2. 定义宏BRPC_ENABLE_CPU_PROFILER。在COMAKE中加入`CXXFLAGS('-DBRPC_ENABLE_CPU_PROFILER')`
 3. 如果只是baidu-rpc client或没有使用baidu-rpc，看[这里](dummy_server.md)。 
 
  注意要关闭Server端的认证，否则可能会看到这个：
@@ -36,9 +36,9 @@ WARNING: 12-26 10:01:25:   * 0 [src/brpc/input_messenger.cpp:132][4294969345] Au
 
 cpu profiler的原理是在定期被调用的SIGPROF handler中采样所在线程的栈，由于handler（在linux 2.6后）会被随机地摆放于活跃线程的栈上运行，cpu profiler在运行一段时间后能以很大的概率采集到所有活跃线程中的活跃函数，最后根据栈代表的函数调用关系汇总为调用图，并把地址转换成符号，这就是我们看到的结果图了。采集频率由环境变量CPUPROFILE_FREQUENCY控制，默认100，即每秒钟100次或每10ms一次。。在实践中cpu profiler对原程序的影响不明显。
 
-![img](http://wiki.baidu.com/download/attachments/165876310/image2016-1-19%2023%3A28%3A21.png?version=1&modificationDate=1453217323000&api=v2)
+![img](../images/echo_cpu_profiling.png)
 
-你也可以使用[public/baidu-rpc/tools/pprof](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/tools/pprof)或gperftools中的pprof进行profiling。
+你也可以使用[pprof](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/tools/pprof)或gperftools中的pprof进行profiling。
 
 比如`pprof --text localhost:9002 --seconds=5`的意思是统计运行在本机9002端口的server的cpu情况，时长5秒。一次运行的例子如下：
 

@@ -8,9 +8,9 @@
 
 若启动时未加-enable_rpcz，则可在启动后访问SERVER_URL/rpcz/enable动态开启rpcz，访问SERVER_URL/rpcz/disable则关闭，这两个链接等价于访问SERVER_URL/flags/enable_rpcz?setvalue=true和SERVER_URL/flags/enable_rpcz?setvalue=false。在r31010之后，rpc在html版本中增加了一个按钮可视化地开启和关闭。
 
-![img](http://wiki.baidu.com/download/attachments/71337189/image2015-12-24%2013%3A20%3A38.png?version=1&modificationDate=1450934438000&api=v2)
+![img](../images/rpcz_4.png)
 
-![img](http://wiki.baidu.com/download/attachments/71337189/image2015-12-24%2013%3A21%3A34.png?version=1&modificationDate=1450934494000&api=v2)
+![img](../images/rpcz_5.png)
 
 如果只是baidu-rpc client或没有使用baidu-rpc，看[这里](dummy_server.md)。 
 
@@ -22,13 +22,13 @@
 
 看到最新请求的概况，点击链接进入第二层。
 
-![img](http://wiki.baidu.com/download/attachments/37774685/image2015-1-21%2020%3A20%3A53.png?version=1&modificationDate=1421842854000&api=v2)
+![img](../images/rpcz_6.png)
 
 ### 第二层
 
 看到某系列(trace)或某个请求(span)的详细信息。一般通过点击链接进入，也可以把trace=和span=作为query-string拼出链接
 
-![img](http://wiki.baidu.com/download/attachments/37774685/image2015-1-21%2020%3A23%3A35.png?version=1&modificationDate=1421843015000&api=v2)
+![img](../images/rpcz_7.png)
 
 内容说明：
 

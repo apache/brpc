@@ -79,13 +79,13 @@ Comparing to ptmalloc embedded in glibc, tcmalloc often improves performance. Ho
 
 Code compiled with gcc 4.8.2 when linking to a tcmalloc compiled with earlier GCC may crash or deadlock before main(), E.g:
 
-![img](http://wiki.baidu.com/download/attachments/71337200/image2017-8-22%2017%3A32%3A28.png?version=1&modificationDate=1503394348000&api=v2)
+![img](../images/tcmalloc_stuck.png)
 
 When you meet the issue, compile tcmalloc with the same GCC as the RPC code.
 
 Another common issue with tcmalloc is that it does not return memory to system as early as ptmalloc. So when there's an invalid memory access, the program may not crash directly,  instead it crashes at a unrelated place, or even not crash. When you program has weird memory issues, try removing tcmalloc.
 
-If you want to use [cpu profiler](docs/cpu_profiler.md) or [heap profiler](docs/heap_profiler.md), do link `libtcmalloc_and_profiler.a`. These two profilers are based on tcmalloc.[contention profiler](contention_profiler.md) does not require tcmalloc.
+If you want to use [cpu profiler](cpu_profiler.md) or [heap profiler](heap_profiler.md), do link `libtcmalloc_and_profiler.a`. These two profilers are based on tcmalloc.[contention profiler](contention_profiler.md) does not require tcmalloc.
 
 When you remove tcmalloc, not only remove the linking with tcmalloc but also the macros: `-DBRPC_ENABLE_CPU_PROFILER` and `-DBRPC_ENABLE_HEAP_PROFILER`.
 
@@ -95,4 +95,4 @@ baidu-rpc detects valgrind automatically (and registers stacks of bthread). Olde
 
 # Track instances
 
-We provide a program to help you to track and monitor all baidu-rpc instances. Just run [trackme_server](tools/trackme_server/trackme_server.cpp) somewhere and launch need-to-be-tracked instances with -trackme_server=SERVER. The trackme_server will receive pings from instances periodically and print logs when it does. You can aggregate instance addresses from the log and call builtin services of the instances for further information.
+We provide a program to help you to track and monitor all baidu-rpc instances. Just run [trackme_server](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/tools/trackme_server/) somewhere and launch need-to-be-tracked instances with -trackme_server=SERVER. The trackme_server will receive pings from instances periodically and print logs when it does. You can aggregate instance addresses from the log and call builtin services of the instances for further information.

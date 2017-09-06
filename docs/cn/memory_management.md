@@ -33,7 +33,7 @@
 
 bthread的大部分函数都需要在O(1)时间内通过bthread_t访问到TaskMeta，并且当bthread_t失效后，访问应返回NULL以让函数做出返回错误。解决方法是：bthread_t由32位的版本和32位的偏移量组成。版本解决[ABA问题](http://en.wikipedia.org/wiki/ABA_problem)，偏移量由ResourcePool<TaskMeta>分配。查找时先通过偏移量获得TaskMeta，再检查版本，如果版本不匹配，说明bthread失效了。注意：这只是大概的说法，在多线程环境下，即使版本相等，bthread仍可能随时失效，在不同的bthread函数中处理方法都是不同的，有些函数会加锁，有些则能忍受版本不相等。
 
-![img](http://wiki.baidu.com/download/attachments/99588634/image2015-7-6%2016%3A5%3A53.png?version=1&modificationDate=1436169953000&api=v2)
+![img](../images/resource_pool.png)
 
 这种id生成方式在baidu-rpc中应用广泛，baidu-rpc中的SocketId，bthread_id_t也是用类似的方法分配的。
 

@@ -11,7 +11,7 @@ bvar分为多个具体的类，常用的有：
 - bvar::LatencyRecorder : 专用于记录延时和qps的变量。输入延时，平均延时/最大延时/qps/总次数 都有了。
 
 例子：
-```
+```c++
 // 构造时不带名字，则无法被查询到。并不是所有的bvar都会显示在/vars
 bvar::Adder<int> request_count1;
  
@@ -56,7 +56,7 @@ About thread-safety:
 Variable是所有bvar的基类，主要提供全局注册，列举，查询等功能。
 
 用户以默认参数建立一个bvar时，这个bvar并未注册到任何全局结构中，在这种情况下，bvar纯粹是一个更快的计数器。我们称把一个bvar注册到全局表中的行为为”曝光“，可通过**expose**函数曝光：
-```
+```c++
 // Expose this variable globally so that it's counted in following functions:
 //   list_exposed
 //   count_exposed
@@ -71,7 +71,7 @@ int expose(const base::StringPiece& prefix, const base::StringPiece& name);
 当相同名字的bvar已存在时，expose会打印FATAL日志并返回-1。如果选项**--bvar_abort_on_same_name**设为true (默认是false)，程序会直接abort。
 
 下面是一些曝光bvar的例子：
-```
+```c++
 bvar::Adder<int> count1;
  
 count1 << 10 << 20 << 30;   // values add up to 60.
@@ -89,7 +89,7 @@ bvar::Status<std::string> status1("count2", "hello");  // the name conflicts. if
 ```
 
 为避免重名，bvar的名字应加上前缀，建议为<namespace>_<module>_<name>。为了方便使用，我们提供了**expose_as**函数，接收一个前缀。
-```
+```c++
 // Expose this variable with a prefix.
 // Example:
 //   namespace foo {
@@ -110,7 +110,7 @@ int expose_as(const base::StringPiece& prefix, const base::StringPiece& name);
 # Export all variables
 
 我们提供dump_exposed函数导出进程中的所有已曝光的bvar：
-```
+```c++
 // Implement this class to write variables into different places.
 // If dump() returns false, Variable::dump_exposed() stops and returns -1.
 class Dumper {
@@ -147,15 +147,15 @@ class Variable {
 ```
 最常见的导出需求是通过HTTP接口查询和写入本地文件。前者在baidu-rpc中通过[/vars](vars.md)服务提供，后者则已实现在bvar中，由用户选择开启。该功能由5个gflags控制，你的程序需要使用[gflags](flags.md)。
 
-![img](http://wiki.baidu.com/download/attachments/133624370/image2015-8-8%2023%3A18%3A21.png?version=1&modificationDate=1439047101000&api=v2)
+![img](../images/bvar_dump_flags.png)
 
-用户可在程序启动前加上对应的gflags，在baidu-rpc中也可通过[/flags](http://wiki.baidu.com/display/RPC/flags)服务在启动后动态修改某个gflag。
+用户可在程序启动前加上对应的gflags，在baidu-rpc中也可通过[/flags](flags.md)服务在启动后动态修改某个gflag。
 
 当bvar_dump_file不为空时，程序会启动一个后台导出线程以bvar_dump_interval指定的间隔更新bvar_dump_file，其中包含了被bvar_dump_include匹配且不被bvar_dump_exclude匹配的所有bvar。
 
 比如我们把所有的gflags修改为下图：
 
-![img](http://wiki.baidu.com/download/attachments/133624370/image2015-8-9%2014%3A38%3A1.png?version=1&modificationDate=1439102281000&api=v2)
+![img](../images/bvar_dump_flags_2.png)
 
 导出文件为：
 
@@ -172,7 +172,7 @@ rpc_server_8002_uptime_ms : 14740954
 像”`iobuf_block_count : 8`”被bvar_dump_include过滤了，“`rpc_server_8002_error : 0`”则被bvar_dump_exclude排除了。
 
 如果你的程序没有使用baidu-rpc，仍需要动态修改gflag（一般不需要），可以调用google::SetCommandLineOption()，如下所示：
-```
+```c++
 #include <gflags/gflags.h>
 ...
 if (google::SetCommandLineOption("bvar_dump_include", "*service*").empty()) {
@@ -187,7 +187,7 @@ LOG(INFO) << "Successfully set bvar_dump_include to *service*";
 # bvar::Reducer
 
 Reducer用二元运算符把多个值合并为一个值，运算符需满足结合律，交换律，没有副作用。只有满足这三点，我们才能确保合并的结果不受线程私有数据如何分布的影响。像减法就不满足结合律和交换律，它无法作为此处的运算符。
-```
+```c++
 // Reduce multiple values into one with `Op': e1 Op e2 Op e3 ...
 // `Op' shall satisfy:
 //   - associative:     a Op (b Op c) == (a Op b) Op c
@@ -204,7 +204,7 @@ reducer << e1 << e2 << e3的作用等价于reducer = e1 op e2 op e3。
 ## bvar::Adder
 
 顾名思义，用于累加，Op为+。
-```
+```c++
 bvar::Adder<int> value;
 value<< 1 << 2 << 3 << -4;
 CHECK_EQ(2, value.get_value());
@@ -214,7 +214,7 @@ fp_value << 1.0 << 2.0 << 3.0 << -4.0;
 CHECK_DOUBLE_EQ(2.0, fp_value.get_value());
 ```
 Adder<>可用于非基本类型，对应的类型至少要重载`T operator+(T, T)`。一个已经存在的例子是std::string，下面的代码会把string拼接起来：
-```
+```c++
 // This is just proof-of-concept, don't use it for production code because it makes a 
 // bunch of temporary strings which is not efficient, use std::ostringstream instead.
 bvar::Adder<std::string> concater;
@@ -225,7 +225,7 @@ CHECK_EQ("hello world", concater.get_value());
 
 ## bvar::Maxer
 用于取最大值，运算符为std::max。
-```
+```c++
 bvar::Maxer<int> value;
 value<< 1 << 2 << 3 << -4;
 CHECK_EQ(3, value.get_value());
@@ -235,7 +235,7 @@ Since Maxer<> use std::numeric_limits<T>::min() as the identity, it cannot be ap
 ## bvar::Miner
 
 用于取最小值，运算符为std::min。
-```
+```c++
 bvar::Maxer<int> value;
 value<< 1 << 2 << 3 << -4;
 CHECK_EQ(-4, value.get_value());
@@ -245,7 +245,7 @@ Since Miner<> use std::numeric_limits<T>::max() as the identity, it cannot be ap
 # bvar::IntRecorder
 
 用于计算平均值。
-```
+```c++
 // For calculating average of numbers.
 // Example:
 //   IntRecorder latency;
@@ -259,7 +259,7 @@ class IntRecorder : public Variable;
 专用于计算latency和qps的计数器。只需填入latency数据，就能获得latency / max_latency / qps / count。统计窗口是最后一个参数，不填为bvar_dump_interval（这里没填）。
 
 注意：LatencyRecorder没有继承Variable，而是多个bvar的组合。
-```
+```c++
 LatencyRecorder write_latency("table2_my_table_write");  // produces 4 variables:
                                                          //   table2_my_table_write_latency
                                                          //   table2_my_table_write_max_latency
@@ -272,7 +272,7 @@ write_latency << the_latency_of_write;
 # bvar::Window
 
 获得之前一段时间内的统计值。Window不能独立存在，必须依赖于一个已有的计数器。Window会自动更新，不用给它发送数据。出于性能考虑，Window的数据来自于每秒一次对原计数器的采样，在最差情况下，Window的返回值有1秒的延时。
-```
+```c++
 // Get data within a time window.
 // The time unit is 1 second fixed.
 // Window relies on other bvar which should be constructed before this window and destructs after this window.
@@ -286,7 +286,7 @@ class Window : public Variable;
 # bvar::PerSecond
 
 获得之前一段时间内平均每秒的统计值。它和Window基本相同，除了返回值会除以时间窗口之外。
-```
+```c++
 bvar::Adder<int> sum;
  
 // sum_per_second.get_value()是sum在之前60秒内*平均每秒*的累加值，省略最后一个时间窗口的话默认为bvar_dump_interval。
@@ -295,7 +295,7 @@ bvar::PerSecond<bvar::Adder<int> > sum_per_second(&sum, 60);
 **PerSecond并不总是有意义**
 
 上面的代码中没有Maxer，因为一段时间内的最大值除以时间窗口是没有意义的。
-```
+```c++
 bvar::Maxer<int> max_value;
  
 // 错误！最大值除以时间是没有意义的
@@ -314,7 +314,7 @@ Window的优点是精确值，适合一些比较小的量，比如“上一分�
 # bvar::Status
 
 记录和显示一个值，拥有额外的set_value函数。
-```
+```c++
 
 // Display a rarely or periodically updated value.
 // Usage:
@@ -334,7 +334,7 @@ class Status : public Variable;
 # bvar::PassiveStatus
 
 按需显示值。在一些场合中，我们无法set_value或不知道以何种频率set_value，更适合的方式也许是当需要显示时才打印。用户传入打印回调函数实现这个目的。
-```
+```c++
 // Display a updated-by-need value. This is done by passing in an user callback
 // which is called to produce the value.
 // Example:
@@ -352,7 +352,7 @@ template <typename Tp>
 class PassiveStatus : public Variable;
 ```
 虽然很简单，但PassiveStatus是最有用的bvar之一，因为很多统计量已经存在，我们不需要再次存储它们，而只要按需获取。比如下面的代码声明了一个在linux下显示进程用户名的bvar：
-```
+```c++
 
 static void get_username(std::ostream& os, void*) {
     char buf[32];
@@ -369,7 +369,7 @@ PassiveStatus<std::string> g_username("process_username", get_username, NULL);
 # bvar::GFlag
 
 Expose important gflags as bvar so that they're monitored (in noah).
-```
+```c++
 DEFINE_int32(my_flag_that_matters, 8, "...");
  
 // Expose the gflag as *same-named* bvar so that it's monitored (in noah).

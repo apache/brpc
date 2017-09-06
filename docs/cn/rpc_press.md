@@ -8,17 +8,7 @@ rpc_press无需写代码就压测各种rpc server，目前支持的协议有：
 
 # 获取工具
 
-在终端中运行如下命令即可编译出最新版baidu-rpc包含的rpc_press工具.
-
-`PREVDIR=`pwd` && TEMPDIR=`mktemp -d -t build_rpc_press.XXXXXXXXXX` && mkdir $TEMPDIR/public && cd $TEMPDIR/public && svn co http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob && cd baidu-rpc && comake2 -UB -J8 -j8 && comake2 -P && make -sj8 && cd tools/rpc_press && comake2 -P && make -sj8 && cp -f ./rpc_press $PREVDIR && cd $PREVDIR; rm -rf $TEMPDIR`
-
-编译完成后，rpc_press就会出现在当前目录下。如果编译出错，看[Getting Started](getting_started.md)。
-
- 
-
-也可以从[agile](http://agile.baidu.com/#/release/public/baidu-rpc)上获取产出，下面是获取版本r34466中的rpc_press的命令：
-
-`wget -r -nH --level=0 --cut-dirs=8 getprod@buildprod.scm.baidu.com:/temp/data/prod-64/public/baidu-rpc/d92a9fac91892a5f4784fc105e493933/r34466/output/bin/rpc_press  --user getprod --password getprod --preserve-permissions`
+先按照[Getting Started](getting_started.md)编译好baidu-rpc，再去tools/rpc_press编译。
 
 在CentOS 6.3上如果出现找不到libssl.so.4的错误，可执行`ln -s /usr/lib64/libssl.so.6 libssl.so.4临时解决`
 
@@ -77,11 +67,11 @@ TRACE: 01-30 16:10:04:   * 0 src/brpc/server.cpp:742] Check out http://db-rpc-de
 
 dummy_server启动时会在终端打印日志，一般按住ctrl点击那个链接可以直接打开对应的内置服务页面，就像这样：
 
-![img](http://wiki.baidu.com/download/attachments/97645422/image2016-1-30%2016%3A16%3A39.png?version=1&modificationDate=1454141816000&api=v2)
+![img](../images/rpc_press_1.png)
 
 切换到vars页面，在Search框中输入rpc_press可以看到当前压力的延时分布情况:
 
-![img](http://wiki.baidu.com/download/attachments/97645422/image2016-1-30%2016%3A14%3A59.png?version=1&modificationDate=1454141716000&api=v2)
+![img](../images/rpc_press_2.png)
 
 你可以通过-dummy_port参数修改dummy_server的端口，但请确保端口在8000到8999范围内，否则总是无法在浏览器中访问。
 

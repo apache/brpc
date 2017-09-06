@@ -18,8 +18,6 @@ channel_socket_count: 1
 
 channel_short_socket_count: 0
 
-` `
-
 上述信息分为三段：
 
 - 第一段是server接受(accept)的连接。
@@ -42,13 +40,13 @@ channel_short_socket_count: 0
 - Out/m: 上一分钟写出的消息数
 - SocketId ：内部id，用于debug，用户不用关心。
 
- 
+
 
 典型截图分别如下所示：
 
-单连接：![img](http://wiki.baidu.com/download/attachments/165876298/image2016-7-15%2016%3A7%3A41.png?version=1&modificationDate=1468570062000&api=v2)
+单连接：![img](../images/single_conn.png)
 
-连接池：![img](http://wiki.baidu.com/download/attachments/165876298/image2016-7-15%2016%3A8%3A40.png?version=1&modificationDate=1468570121000&api=v2)
+连接池：![img](../images/pooled_conn.png)
 
-短连接：![img](http://wiki.baidu.com/download/attachments/165876298/image2016-7-15%2016%3A9%3A1.png?version=1&modificationDate=1468570141000&api=v2)
+短连接：![img](../images/short_conn.png)
 

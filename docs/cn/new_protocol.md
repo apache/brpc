@@ -20,7 +20,7 @@ baidu-rpc就是设计为可随时扩展新协议的，步骤如下：
 
 ## 增加ProtocolType
 
-在[options.proto](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/protocol/brpc/options.proto)的ProtocolType中增加新协议类型，如果你需要的话可以联系我们增加，以确保不会和其他人的需求重合。
+在[options.proto](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/options.proto)的ProtocolType中增加新协议类型，如果你需要的话可以联系我们增加，以确保不会和其他人的需求重合。
 
 目前的ProtocolType（16年底）:
 ```c++

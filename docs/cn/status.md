@@ -1,6 +1,6 @@
 [/status](http://brpc.baidu.com:8765/status)可以访问服务的主要统计信息。这些信息和/vars是同源的，但按服务重新组织方便查看。
 
-![img](http://wiki.baidu.com/download/attachments/165876293/image2016-12-22%2011%3A19%3A56.png?version=1&modificationDate=1482376797000&api=v2)
+![img](../images/status.png)
 
 上图中字段的含义分别是：
 
@@ -32,4 +32,4 @@ public:
 
 比如:
 
-![img](http://wiki.baidu.com/download/attachments/165876293/image2017-1-14%2023%3A58%3A20.png?version=1&modificationDate=1484409504000&api=v2)
+![img](../images/status_2.png)

@@ -156,7 +156,7 @@ Notes on http header:
 出于通用性考虑且解压代码不复杂，baidu-rpc不会自动解压response body，用户可以自己做，方法如下：
 
 ```c++
-#include brpc/policy/gzip_compress.h>
+#include <brpc/policy/gzip_compress.h>
 ...
 const std::string* encoding = cntl->http_response().GetHeader("Content-Encoding");
 if (encoding != NULL && *encoding == "gzip") {
@@ -181,7 +181,7 @@ r33796后baidu-rpc client支持在读取完body前就结束RPC，让用户在RPC
 1. 首先实现ProgressiveReader，接口如下：
 
    ```c++
-   #include brpc/progressive_reader.h>
+   #include <brpc/progressive_reader.h>
    ...
    class ProgressiveReader {
    public:
