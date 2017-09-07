@@ -14,7 +14,7 @@ Most machines on internet communicate with each other via [TCP/IP](http://en.wik
 Let's see how the issues are solved.
 
 * RPC needs serialization which is done by [protobuf](https://github.com/google/protobuf) pretty well. Users fill requests in format of protobuf::Message, do RPC, and fetch results from responses in protobuf::Message. protobuf has good forward and backward compatibility for users to change fields and build services incrementally. For http services, [json](http://www.json.org/) is used for serialization extensively.
-* Establishment and re-using of connections are transparent to users, but users can make choices, say [different connection types](client.md#连接方式): short, pooled, single.
+* Establishment and re-using of connections are transparent to users, but users can make choices, say [different connection types](docs/cn/client.md#连接方式): short, pooled, single.
 * Machines are discovered by Naming Service, which can be implemented by [DNS](https://en.wikipedia.org/wiki/Domain_Name_System), [ZooKeeper](https://zookeeper.apache.org/) or [etcd](https://github.com/coreos/etcd). Inside Baidu, we use BNS (Baidu Naming Service). baidu-rpc provides ["list://" and "file://" as well](docs/cn/client.md#名字服务). Users specify load balancing algorithms to choose one machine for each request from all machines, including: round-robin, randomized, [consistent-hashing](docs/cn/consistent_hashing.md)(murmurhash3 or md5) and [locality-aware](docs/cn/lalb.md).
 * RPC retries when the connection is broken. When server does not respond within given time, client fails with  timeout error.
 
