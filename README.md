@@ -35,14 +35,14 @@ Common doubts on RPC:
 A RPC framework used throughout [Baidu](http://ir.baidu.com/phoenix.zhtml?c=188488&p=irol-irhome), with more than 600,000 instances. Only C++ implementation is opensourced right now.
 
 You can use it for:
-* Build a server that can talk in multiple protocols (**on same port**), including:
+* Build a server that can talk in multiple protocols (**on same port**)
   * restful http/https, h2/h2c (compatible with [grpc](https://github.com/grpc/grpc), will be opensourced soon).
   * [rtmp](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building live-streaming services.
   * hadoop_rpc(not opensourced yet)
   * all sorts of protocols used in Baidu: baidu_std, [streaming_rpc](docs/cn/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc, and nshead-based ones.
-  * Many protobuf-based protocols can be accessed via HTTP+json, probably from another language.
+  * Many protobuf-based protocols are accessible via HTTP+json, probably from another language.
   * Services can handle requests [synchronously](docs/cn/server.md) or [asynchrounously](docs/cn/server.md#异步service).
-* Access all sorts of services:
+* Access all sorts of services
   * http (much more friendly than [libcurl](https://curl.haxx.se/libcurl/)), h2/h2c (compatible with [grpc](https://github.com/grpc/grpc), will be opensourced soon)
   * [redis](docs/cn/redis_client.md) and [memcached](docs/cn/memcache_client.md), thread-safe, more friendly and performant than the official clients
   * [rtmp](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video), for building live-streaming services.
@@ -52,7 +52,7 @@ You can use it for:
 * rdma support (will be opensourced soon)
 * Debug services [via http](docs/cn/builtin_service.md), and run online profilers.
 * Get [better latency and throughput](#better-latency-and-throughput).
-* [extend baidu-rpc](docs/cn/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/cn/load_balancing.md#名字服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing), [new protocols](docs/cn/new_protocol.md). Extend them by your own or issue your requests.
+* [Extend baidu-rpc](docs/cn/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/cn/load_balancing.md#名字服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing), [new protocols](docs/cn/new_protocol.md). Extend them by your own or issue your requests.
 
 # Advantages of baidu-rpc
 
@@ -72,15 +72,15 @@ We tried to make simple things simple. Take naming service as an example, in old
 
 baidu-rpc is extensively used in baidu-rpc, with more than 600,000 instances and 500 kinds of services, from map-reduce, table storages, high-performance computing, machine learning, indexing servers, ranking servers…. It's been proven.
 
-baidu-rpc pays special attentions to development and maintenance efficency, you can [view internal status of servers](docs/cn/builtin_service.md) in browers or with curl, you can analyze [cpu usages](docs/cn/cpu_profiler.md), [heap allocations](docs/cn/heap_profiler.md) and [lock contentions](docs/cn/contention_profiler.md) of services online, you can measure stats by [bvar](docs/cn/bvar.md), which is viewable in [/vars](docs/cn/vars.md).
+baidu-rpc pays special attentions to development and maintenance efficency, you can [view internal status of servers](docs/cn/builtin_service.md) in web brower or with curl, you can analyze [cpu usages](docs/cn/cpu_profiler.md), [heap allocations](docs/cn/heap_profiler.md) and [lock contentions](docs/cn/contention_profiler.md) of services online, you can measure stats by [bvar](docs/cn/bvar.md), which is viewable in [/vars](docs/cn/vars.md).
 
 ### Better latency and throughput
 
 Although almost all RPC implementations claim that they're "high-performant", the number are probably just numbers. Being really high-performant in different scenarios is difficult. To make users easier, baidu-rpc goes much deeper at performance than other implementations. 
 
-* Reading and parsing requests from different clients is fully parallelized, and users don't need to distinguish between "IO-threads" and "Processing-threads".  Other implementations probably have "IO-threads" and "Processing-threads" and hash file descriptors(fd) into IO-threads. When a IO-thread handles one of its fds, other fds in the thread can't be handled. If a message is large, other fds are sigficantly delayed. Although different IO-threads run in parallel, you won't have many IO-threads since they don't have too much to do generally except reading/parsing from fds. If you have 10 IO-threads, one fd may affect 10% of all fds, which is unacceptable to industrial online services (requiring 99.99% availability). The problem will be worse, when fds are distributed unevenly accross IO-threads (unfortunately common), or the service is multi-tenancy (common in cloud services). In baidu-rpc, reading from different fds is parallelized and even processing different messages from one fd is parallelized as well. Parsing a large message does not block other messages from the same fd, not to mention other fds. More details can be found [here](docs/cn/io.md#收消息).
-* Writing into one fd and multiple fds are highly concurrent. When multiple threads write into the same fd (common for multiplex requests, and h2), the first thread directly writes in-place and other threads submit their write requests in [wait-free](http://en.wikipedia.org/wiki/Non-blocking_algorithm#Wait-freedom) manner. One fd can be written into 5,000,000 16-byte messages per second by a couple of highly-contended threads. More details can be found [here](docs/cn/io.md#发消息).
-* Minimal locks. High-QPS services can utilize all CPU power on the machine easily. For example, [creating bthreads](docs/cn/memory_management.md) for processing requests is highly concurrent. [setting up timeout](docs/cn/timer_keeping.md) is highly concurrent, [finding RPC contexts](docs/cn/bthread_id.md) according to response is highly concurrent, [recording performance counters](docs/cn/bvar.md) is highly concurrent as well. Users should see very few contentions (via [contention profiler](docs/cn/contention_profiler.md)) caused by RPC framework even if the service runs at 500,000+ QPS.
+* Reading and parsing requests from different clients is fully parallelized, and users don't need to distinguish between "IO-threads" and "Processing-threads".  Other implementations probably have "IO-threads" and "Processing-threads" and hash file descriptors(fd) into IO-threads. When a IO-thread handles one of its fds, other fds in the thread can't be handled. If a message is large, other fds are significantly delayed. Although different IO-threads run in parallel, you won't have many IO-threads since they don't have too much to do generally except reading/parsing from fds. If you have 10 IO-threads, one fd may affect 10% of all fds, which is unacceptable to industrial online services (requiring 99.99% availability). The problem will be worse, when fds are distributed unevenly accross IO-threads (unfortunately common), or the service is multi-tenancy (common in cloud services). In baidu-rpc, reading from different fds is parallelized and even processing different messages from one fd is parallelized as well. Parsing a large message does not block other messages from the same fd, not to mention other fds. More details can be found [here](docs/cn/io.md#收消息).
+* Writing into one fd and multiple fds are highly concurrent. When multiple threads write into the same fd (common for multiplexed connections), the first thread directly writes in-place and other threads submit their write requests in [wait-free](http://en.wikipedia.org/wiki/Non-blocking_algorithm#Wait-freedom) manner. One fd can be written into 5,000,000 16-byte messages per second by a couple of highly-contended threads. More details can be found [here](docs/cn/io.md#发消息).
+* Minimal locks. High-QPS services can utilize all CPU power on the machine. For example, [creating bthreads](docs/cn/memory_management.md) for processing requests, [setting up timeout](docs/cn/timer_keeping.md), [finding RPC contexts](docs/cn/bthread_id.md) according to response, [recording performance counters](docs/cn/bvar.md) are all highly concurrent. Users see very few contentions (via [contention profiler](docs/cn/contention_profiler.md)) caused by RPC framework even if the service runs at 500,000+ QPS.
 * Server adjusts thread number according to load. Traditional implementations set number of threads according to latency to avoid limiting the throughput. baidu-rpc creates a new [bthread](docs/cn/bthread.md) for each request and ends the bthread when the request is done, which automatically adjusts thread number according to load.
 
 Check out [benchmark](docs/cn/benchmark.md) for a comparison between baidu-rpc and other implementations.
