@@ -9,7 +9,7 @@ Most machines on internet communicate with each other via [TCP/IP](http://en.wik
 * ...
 
 [RPC](http://en.wikipedia.org/wiki/Remote_procedure_call) addresses above issues by abstracting the network communications as "clients access functions on servers": client sends a request to server, wait until server receives -> processes -> responds the request, then do actions according to the result. 
-![rpc](docs/images/rpc.png)
+![rpc.png](docs/images/rpc.png)
 
 Let's see how the issues are solved.
 
@@ -27,7 +27,7 @@ RPC can't do everything surely, otherwise we don't need the layer of TCP/IP. But
 Common doubts on RPC:
 
 - My data is binary and large, using protobuf is slow. First this is possibly a wrong feeling, you have to prove it with [profilers](docs/cn/cpu_profiler.md), second many protocols support carrying binary data along with protobuf requests and bypass the serialization.
-- I'm sending streaming data, which can't be processed by RPC. Actually there're many protocols in RPC can handle streaming data, including [ProgressiveReader in http](docs/cn/http_client.md#持续下载), streams in h2, [streaming rpc](docs/cn/streaming_rpc.md).
+- I'm sending streaming data, which can't be processed by RPC. Actually many protocols in RPC can handle streaming data, including [ProgressiveReader in http](docs/cn/http_client.md#持续下载), streams in h2, [streaming rpc](docs/cn/streaming_rpc.md), and RTMP which is a specialized streaming protocol.
 - I don't need replies. With some inductions, we know that in your scene, requests can be dropped at any stage, because the client is always unaware of the situation. Are you really sure this is acceptable? Even if you don't need the reply, we recommend sending back small-size replies, which are unlikely performance bottlenecks and probably valuable clues when debugging complex bugs. 
 
 # What is ![baidu-rpc](docs/images/logo.png)?
@@ -37,7 +37,7 @@ A RPC framework used throughout [Baidu](http://ir.baidu.com/phoenix.zhtml?c=1884
 You can use it for:
 * Build a server that can talk in multiple protocols (**on same port**), including:
   * http/https, h2/h2c (compatible with [grpc](https://github.com/grpc/grpc), will be opensourced soon)
-  * [rtmp](https://en.wikipedia.org/wiki/Real-Time_Messaging_Protocol)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building live-streaming services.
+  * [rtmp](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building live-streaming services.
   * hadoop_rpc(not opensourced yet)
   * all sorts of protocols used in Baidu: baidu_std, [streaming_rpc](docs/cn/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc, and nshead-based ones.
 
