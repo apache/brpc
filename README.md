@@ -36,26 +36,23 @@ A RPC framework used throughout [Baidu](http://ir.baidu.com/phoenix.zhtml?c=1884
 
 You can use it for:
 * Build a server that can talk in multiple protocols (**on same port**), including:
-  * http/https, h2/h2c (compatible with [grpc](https://github.com/grpc/grpc), will be opensourced soon)
+  * restful http/https, h2/h2c (compatible with [grpc](https://github.com/grpc/grpc), will be opensourced soon).
   * [rtmp](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building live-streaming services.
   * hadoop_rpc(not opensourced yet)
   * all sorts of protocols used in Baidu: baidu_std, [streaming_rpc](docs/cn/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc, and nshead-based ones.
-
-* Access all sorts of services more easily, including:
+  * Many protobuf-based protocols can be accessed via HTTP+json, probably from another language.
+  * Services can handle requests [synchronously](docs/cn/server.md) or [asynchrounously](docs/cn/server.md#异步service).
+* Access all sorts of services:
   * http (much more friendly than [libcurl](https://curl.haxx.se/libcurl/)), h2/h2c (compatible with [grpc](https://github.com/grpc/grpc), will be opensourced soon)
   * [redis](docs/cn/redis_client.md) and [memcached](docs/cn/memcache_client.md), thread-safe, more friendly and performant than the official clients
-  * [rtmp](https://en.wikipedia.org/wiki/Real-Time_Messaging_Protocol)/[flv](https://en.wikipedia.org/wiki/Flash_Video), for building live-streaming services.
+  * [rtmp](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video), for building live-streaming services.
   * all sorts of protocols used in Baidu: baidu_std, [streaming_rpc](docs/cn/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc, and nshead-based ones.
+  * Access service [synchronously](docs/cn/client.md#同步访问) or [asynchrounously](docs/cn/client.md#异步访问), or even [semi-synchronously](docs/cn/client.md#半同步).
+  * Use [combo channels](docs/cn/combo_channel.md) to simplify complicated client patterns declaratively, including sharded and parallel accesses.
 * rdma support (will be opensourced soon)
-
 * Debug services [via http](docs/cn/builtin_service.md), and run online profilers.
-
 * Get [better latency and throughput](#better-latency-and-throughput).
-
-* Many components in baidu-rpc are customizable, including [naming services](docs/cn/load_balancing.md#名字服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing), [new protocols](docs/cn/new_protocol.md). Extend them by your own or issue your requests.
-
-**Check out [Getting Started](docs/cn/getting_started.md) to build!**
-
+* [extend baidu-rpc](docs/cn/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/cn/load_balancing.md#名字服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing), [new protocols](docs/cn/new_protocol.md). Extend them by your own or issue your requests.
 
 # Advantages of baidu-rpc
 
@@ -70,18 +67,6 @@ Only 3 (major) user headers: [Server](http://icode.baidu.com/repo/baidu/opensour
 * Tweak parameters? Checkout [brpc/controller.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h). Note that the class is shared by server and channel. Methods are separated into 3 parts: client-side, server-side and both-side.
 
 We tried to make simple things simple. Take naming service as an example, in older RPC implementations, you may need to copy a pile of obscure code to make it work, however in baidu-rpc accessing BNS is expressed as `Init("bns://node-name"...`, DNS is "http://domain-name" and local machine list is "file:///home/work/server.list". Without any explanation, you know what it means.
-
-### Build and access all sorts of services
-
-baidu-rpc is capable of accessing and hosting many protocols listed in above section, additionally:
-
-* most of the protobuf-based protocols can be accessed by HTTP+json automatically
-* You can build restful http service without protobuf as well.
-* You can access service [synchronously](docs/cn/client.md#同步访问) or [asynchrounously](docs/cn/client.md#异步访问), or even [semi-synchronously](docs/cn/client.md#半同步).
-* Services can handle requests [synchronously](docs/cn/server.md) or [asynchrounously](docs/cn/server.md#异步service).
-* Provide [combo channels](docs/cn/combo_channel.md) to simplify complicated client patterns declaratively, including sharded and parallel accesses.
-
-More importantly, you can [extend baidu-rpc](docs/cn/new_protocol.md) with the protocols used in your organization quickly.
 
 ### Make services more reliable
 
@@ -99,3 +84,7 @@ Although almost all RPC implementations claim that they're "high-performant", th
 * Server adjusts thread number according to load. Traditional implementations set number of threads according to latency to avoid limiting the throughput. baidu-rpc creates a new [bthread](docs/cn/bthread.md) for each request and ends the bthread when the request is done, which automatically adjusts thread number according to load.
 
 Check out [benchmark](docs/cn/benchmark.md) for a comparison between baidu-rpc and other implementations.
+
+# Try it!
+
+Check out [Getting Started](docs/cn/getting_started.md) to start.
