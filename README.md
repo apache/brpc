@@ -45,7 +45,6 @@ You can use it for:
   * http (much more friendly than [libcurl](https://curl.haxx.se/libcurl/)), h2/h2c (compatible with [grpc](https://github.com/grpc/grpc), will be opensourced soon)
   * [redis](docs/cn/redis_client.md) and [memcached](docs/cn/memcache_client.md), thread-safe, more friendly and performant than the official clients
   * [rtmp](https://en.wikipedia.org/wiki/Real-Time_Messaging_Protocol)/[flv](https://en.wikipedia.org/wiki/Flash_Video), for building live-streaming services.
-  * [streaming_rpc](docs/cn/streaming_rpc.md)
   * all sorts of protocols used in Baidu: baidu_std, [streaming_rpc](docs/cn/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc, and nshead-based ones.
 * rdma support (will be opensourced soon)
 
@@ -55,7 +54,7 @@ You can use it for:
 
 * Many components in baidu-rpc are customizable, including [naming services](docs/cn/load_balancing.md#名字服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing), [new protocols](docs/cn/new_protocol.md). Extend them by your own or issue your requests.
 
-**Check out [Getting Started](docs/en/getting_started.md) or [开始使用](docs/cn/getting_started.md) to build!**
+**Check out [Getting Started](docs/cn/getting_started.md) to build!**
 
 
 # Advantages of baidu-rpc
