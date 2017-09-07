@@ -55,7 +55,7 @@ You can use it for:
 
 * Many components in baidu-rpc are customizable, including [naming services](docs/cn/load_balancing.md#名字服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing), [new protocols](docs/cn/new_protocol.md). Extend them by your own or issue your requests.
 
-**Check out [Getting Started](docs/en/getting_started.md) or [开始使用](docs/cn/getting_started.md) to build!**
+**Check out [Getting Started](docs/cn/getting_started.md) to build!**
 
 
 # Advantages of baidu-rpc
