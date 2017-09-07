@@ -30,7 +30,7 @@ Common doubts on RPC:
 - I'm sending streaming data, which can't be processed by RPC. Actually there're many protocols in RPC can handle streaming data, including [ProgressiveReader in http](docs/cn/http_client.md#持续下载), streams in h2, [streaming rpc](docs/cn/streaming_rpc.md).
 - I don't need replies. With some inductions, we know that in your scene, requests can be dropped at any stage, because the client is always unaware of the situation. Are you really sure this is acceptable? Even if you don't need the reply, we recommend sending back small-size replies, which are unlikely performance bottlenecks and probably valuable clues when debugging complex bugs. 
 
-# What is ![baidu-rpc-log](docs/images/logo.png)?
+# What is ![baidu-rpc](docs/images/logo.png)?
 
 A RPC framework used throughout [Baidu](http://ir.baidu.com/phoenix.zhtml?c=188488&p=irol-irhome), with more than 600,000 instances. Only C++ implementation is opensourced right now.
 
