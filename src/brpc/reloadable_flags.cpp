@@ -14,7 +14,7 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#include "base/macros.h"
+#include "butil/macros.h"
 #include "brpc/reloadable_flags.h"
 
 namespace google {
@@ -71,7 +71,7 @@ static bool RegisterFlagValidatorOrDieImpl(
     }
     // Error printed by gflags does not have newline. Add one to it.
     char newline = '\n';
-    base::ignore_result(write(2, &newline, 1));
+    butil::ignore_result(write(2, &newline, 1));
     _exit(1);
 }
 

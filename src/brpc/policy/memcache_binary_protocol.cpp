@@ -17,10 +17,10 @@
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
-#include "base/logging.h"                       // LOG()
-#include "base/time.h"
-#include "base/iobuf.h"                         // base::IOBuf
-#include "base/sys_byteorder.h"
+#include "butil/logging.h"                       // LOG()
+#include "butil/time.h"
+#include "butil/iobuf.h"                         // butil::IOBuf
+#include "butil/sys_byteorder.h"
 #include "brpc/controller.h"               // Controller
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/socket.h"                   // Socket
@@ -32,7 +32,7 @@
 #include "brpc/policy/memcache_binary_header.h"
 #include "brpc/memcache.h"
 #include "brpc/policy/most_common_message.h"
-#include "base/containers/flat_map.h"
+#include "butil/containers/flat_map.h"
 
 
 namespace brpc {
@@ -48,29 +48,29 @@ static uint64_t supported_cmd_map[8];
 static pthread_once_t supported_cmd_map_once = PTHREAD_ONCE_INIT;
 
 static void InitSupportedCommandMap() {
-    base::bit_array_clear(supported_cmd_map, 256);
-    base::bit_array_set(supported_cmd_map, MC_BINARY_GET);
-    base::bit_array_set(supported_cmd_map, MC_BINARY_SET);
-    base::bit_array_set(supported_cmd_map, MC_BINARY_ADD);
-    base::bit_array_set(supported_cmd_map, MC_BINARY_REPLACE);
-    base::bit_array_set(supported_cmd_map, MC_BINARY_DELETE);
-    base::bit_array_set(supported_cmd_map, MC_BINARY_INCREMENT);
-    base::bit_array_set(supported_cmd_map, MC_BINARY_DECREMENT);
-    base::bit_array_set(supported_cmd_map, MC_BINARY_FLUSH);
-    base::bit_array_set(supported_cmd_map, MC_BINARY_VERSION);
-    base::bit_array_set(supported_cmd_map, MC_BINARY_NOOP);
-    base::bit_array_set(supported_cmd_map, MC_BINARY_APPEND);
-    base::bit_array_set(supported_cmd_map, MC_BINARY_PREPEND);
-    base::bit_array_set(supported_cmd_map, MC_BINARY_STAT);
-    base::bit_array_set(supported_cmd_map, MC_BINARY_TOUCH);
+    butil::bit_array_clear(supported_cmd_map, 256);
+    butil::bit_array_set(supported_cmd_map, MC_BINARY_GET);
+    butil::bit_array_set(supported_cmd_map, MC_BINARY_SET);
+    butil::bit_array_set(supported_cmd_map, MC_BINARY_ADD);
+    butil::bit_array_set(supported_cmd_map, MC_BINARY_REPLACE);
+    butil::bit_array_set(supported_cmd_map, MC_BINARY_DELETE);
+    butil::bit_array_set(supported_cmd_map, MC_BINARY_INCREMENT);
+    butil::bit_array_set(supported_cmd_map, MC_BINARY_DECREMENT);
+    butil::bit_array_set(supported_cmd_map, MC_BINARY_FLUSH);
+    butil::bit_array_set(supported_cmd_map, MC_BINARY_VERSION);
+    butil::bit_array_set(supported_cmd_map, MC_BINARY_NOOP);
+    butil::bit_array_set(supported_cmd_map, MC_BINARY_APPEND);
+    butil::bit_array_set(supported_cmd_map, MC_BINARY_PREPEND);
+    butil::bit_array_set(supported_cmd_map, MC_BINARY_STAT);
+    butil::bit_array_set(supported_cmd_map, MC_BINARY_TOUCH);
 }
 
 inline bool IsSupportedCommand(uint8_t command) {
     pthread_once(&supported_cmd_map_once, InitSupportedCommandMap);
-    return base::bit_array_get(supported_cmd_map, command);
+    return butil::bit_array_get(supported_cmd_map, command);
 }
 
-ParseResult ParseMemcacheMessage(base::IOBuf* source,
+ParseResult ParseMemcacheMessage(butil::IOBuf* source,
                                  Socket* socket, bool /*read_eof*/, const void */*arg*/) {
     while (1) {
         const uint8_t* p_mcmagic = (const uint8_t*)source->fetch1();
@@ -86,7 +86,7 @@ ParseResult ParseMemcacheMessage(base::IOBuf* source,
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
         }
         const MemcacheResponseHeader* header = (const MemcacheResponseHeader*)p;
-        uint32_t total_body_length = base::NetToHost32(header->total_body_length);
+        uint32_t total_body_length = butil::NetToHost32(header->total_body_length);
         if (source->size() < sizeof(*header) + total_body_length) {
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
         }
@@ -114,13 +114,13 @@ ParseResult ParseMemcacheMessage(base::IOBuf* source,
         const MemcacheResponseHeader local_header = {
             header->magic,
             header->command,
-            base::NetToHost16(header->key_length),
+            butil::NetToHost16(header->key_length),
             header->extras_length,
             header->data_type,
-            base::NetToHost16(header->status),
+            butil::NetToHost16(header->status),
             total_body_length,
-            base::NetToHost32(header->opaque),
-            base::NetToHost64(header->cas_value),
+            butil::NetToHost32(header->opaque),
+            butil::NetToHost64(header->cas_value),
         };
         msg->meta.append(&local_header, sizeof(local_header));
         source->pop_front(sizeof(*header));
@@ -137,7 +137,7 @@ ParseResult ParseMemcacheMessage(base::IOBuf* source,
 }
 
 void ProcessMemcacheResponse(InputMessageBase* msg_base) {
-    const int64_t start_parse_us = base::cpuwide_time_us();
+    const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
 
     const bthread_id_t cid = msg->pi.id_wait;
@@ -177,7 +177,7 @@ void ProcessMemcacheResponse(InputMessageBase* msg_base) {
     accessor.OnResponse(cid, saved_error);
 }
 
-void SerializeMemcacheRequest(base::IOBuf* buf,
+void SerializeMemcacheRequest(butil::IOBuf* buf,
                               Controller* cntl,
                               const google::protobuf::Message* request) {
     if (request == NULL) {
@@ -192,12 +192,12 @@ void SerializeMemcacheRequest(base::IOBuf* buf,
     ControllerPrivateAccessor(cntl).set_pipelined_count(mr->pipelined_count());
 }
 
-void PackMemcacheRequest(base::IOBuf* buf,
+void PackMemcacheRequest(butil::IOBuf* buf,
                          SocketMessage**,
                          uint64_t /*correlation_id*/,
                          const google::protobuf::MethodDescriptor*,
                          Controller*,
-                         const base::IOBuf& request,
+                         const butil::IOBuf& request,
                          const Authenticator* /*auth*/) {
     buf->append(request);
 }

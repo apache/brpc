@@ -14,7 +14,7 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#include "base/containers/flat_map.h"
+#include "butil/containers/flat_map.h"
 #include "brpc/log.h"
 #include "brpc/load_balancer.h"
 #include "brpc/details/naming_service_thread.h"
@@ -410,7 +410,7 @@ private:
         SelectiveChannel::ChannelHandle handle;  // uninitialized
         std::vector<ServerId> tmp;
     };
-    typedef base::FlatMap<int, SubPartitionChannel*> PartChanMap;
+    typedef butil::FlatMap<int, SubPartitionChannel*> PartChanMap;
     
     PartChanMap _part_chan_map;
     SelectiveChannel* _schan;

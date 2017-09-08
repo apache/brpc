@@ -17,8 +17,8 @@
 #include <google/protobuf/descriptor.h>            // MethodDescriptor
 #include <google/protobuf/message.h>               // Message
 #include <gflags/gflags.h>
-#include "base/third_party/snappy/snappy.h"        // snappy::Compress
-#include "base/time.h"
+#include "butil/third_party/snappy/snappy.h"        // snappy::Compress
+#include "butil/time.h"
 #include "brpc/controller.h"                       // Controller
 #include "brpc/socket.h"                           // Socket
 #include "brpc/server.h"                           // Server
@@ -116,7 +116,7 @@ void PublicPbrpcServiceAdaptor::SerializeResponseToIOBuf(
     ResponseHead* head = whole_res.mutable_responsehead();
     ResponseBody* body = whole_res.add_responsebody();
 
-    head->set_from_host(base::ip2str(base::my_ip()).c_str());
+    head->set_from_host(butil::ip2str(butil::my_ip()).c_str());
     body->set_version(meta.user_string());
     body->set_id(meta.correlation_id());
     if (cntl->Failed()) {
@@ -133,12 +133,12 @@ void PublicPbrpcServiceAdaptor::SerializeResponseToIOBuf(
         }
         if (cntl->response_compress_type() == COMPRESS_TYPE_SNAPPY) {
             std::string tmp;
-            base::snappy::Compress(response_str->data(), response_str->size(), &tmp);
+            butil::snappy::Compress(response_str->data(), response_str->size(), &tmp);
             response_str->swap(tmp);
             head->set_compress_type(COMPRESS_TYPE);
         }
     }
-    base::IOBufAsZeroCopyOutputStream wrapper(&raw_res->body);
+    butil::IOBufAsZeroCopyOutputStream wrapper(&raw_res->body);
     if (!whole_res.SerializeToZeroCopyStream(&wrapper)) {
         cntl->CloseConnection("Close connection due to failure of "
                                  "serializing the whole response");
@@ -147,7 +147,7 @@ void PublicPbrpcServiceAdaptor::SerializeResponseToIOBuf(
 }
 
 void ProcessPublicPbrpcResponse(InputMessageBase* msg_base) {
-    const int64_t start_parse_us = base::cpuwide_time_us();
+    const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     
     PublicPbrpcResponse pbres;
@@ -189,7 +189,7 @@ void ProcessPublicPbrpcResponse(InputMessageBase* msg_base) {
                              COMPRESS_TYPE_SNAPPY : COMPRESS_TYPE_NONE);
         bool parse_result = false;
         if (type == COMPRESS_TYPE_SNAPPY) {
-            base::IOBuf tmp;
+            butil::IOBuf tmp;
             tmp.append(res_data);
             parse_result = ParseFromCompressedData(tmp, cntl->response(), type);
         } else {
@@ -210,7 +210,7 @@ void ProcessPublicPbrpcResponse(InputMessageBase* msg_base) {
     accessor.OnResponse(cid, saved_error);
 }
 
-void SerializePublicPbrpcRequest(base::IOBuf* buf, Controller* cntl,
+void SerializePublicPbrpcRequest(butil::IOBuf* buf, Controller* cntl,
                                  const google::protobuf::Message* request) {
     CompressType type = cntl->request_compress_type();
     if (type != COMPRESS_TYPE_NONE && type != COMPRESS_TYPE_SNAPPY) {
@@ -221,19 +221,19 @@ void SerializePublicPbrpcRequest(base::IOBuf* buf, Controller* cntl,
     return SerializeRequestDefault(buf, cntl, request);
 }
        
-void PackPublicPbrpcRequest(base::IOBuf* buf,
+void PackPublicPbrpcRequest(butil::IOBuf* buf,
                             SocketMessage**,
                             uint64_t correlation_id,
                             const google::protobuf::MethodDescriptor* method,
                             Controller* controller,
-                            const base::IOBuf& request,
+                            const butil::IOBuf& request,
                             const Authenticator* /*not supported*/) {
     PublicPbrpcRequest pbreq;
     RequestHead* head = pbreq.mutable_requesthead();
     RequestBody* body = pbreq.add_requestbody();
-    base::IOBufAsZeroCopyOutputStream request_stream(buf);
+    butil::IOBufAsZeroCopyOutputStream request_stream(buf);
 
-    head->set_from_host(base::ip2str(base::my_ip()).c_str());
+    head->set_from_host(butil::ip2str(butil::my_ip()).c_str());
     head->set_content_type(CONTENT_TYPE);
     bool short_connection = (ControllerPrivateAccessor(controller)
                              .connection_type() == CONNECTION_TYPE_SHORT);

@@ -4,10 +4,10 @@
 
 #include <errno.h>
 
-#include "base/scoped_clear_errno.h"
+#include "butil/scoped_clear_errno.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 TEST(ScopedClearErrno, TestNoError) {
   errno = 1;
@@ -27,4 +27,4 @@ TEST(ScopedClearErrno, TestError) {
   EXPECT_EQ(2, errno);
 }
 
-}  // namespace base
+}  // namespace butil

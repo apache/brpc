@@ -25,8 +25,8 @@
 #include <google/protobuf/generated_message_reflection.h>
 #include "google/protobuf/descriptor.pb.h"
 
-#include "base/iobuf.h"
-#include "base/strings/string_piece.h"
+#include "butil/iobuf.h"
+#include "butil/strings/string_piece.h"
 
 namespace brpc {
 
@@ -53,35 +53,35 @@ public:
     }
     void Swap(MemcacheRequest* other);
 
-    bool Get(const base::StringPiece& key);
+    bool Get(const butil::StringPiece& key);
 
     // If the cas_value(Data Version Check) is non-zero, the requested operation
     // MUST only succeed if the item exists and has a cas_value identical to the
     // provided value.
-    bool Set(const base::StringPiece& key, const base::StringPiece& value,
+    bool Set(const butil::StringPiece& key, const butil::StringPiece& value,
              uint32_t flags, uint32_t exptime, uint64_t cas_value);
     
-    bool Add(const base::StringPiece& key, const base::StringPiece& value,
+    bool Add(const butil::StringPiece& key, const butil::StringPiece& value,
              uint32_t flags, uint32_t exptime, uint64_t cas_value);
 
-    bool Replace(const base::StringPiece& key, const base::StringPiece& value,
+    bool Replace(const butil::StringPiece& key, const butil::StringPiece& value,
                  uint32_t flags, uint32_t exptime, uint64_t cas_value);
     
-    bool Append(const base::StringPiece& key, const base::StringPiece& value,
+    bool Append(const butil::StringPiece& key, const butil::StringPiece& value,
                 uint32_t flags, uint32_t exptime, uint64_t cas_value);
 
-    bool Prepend(const base::StringPiece& key, const base::StringPiece& value,
+    bool Prepend(const butil::StringPiece& key, const butil::StringPiece& value,
                  uint32_t flags, uint32_t exptime, uint64_t cas_value);
 
-    bool Delete(const base::StringPiece& key);
+    bool Delete(const butil::StringPiece& key);
     bool Flush(uint32_t timeout);
 
-    bool Increment(const base::StringPiece& key, uint64_t delta,
+    bool Increment(const butil::StringPiece& key, uint64_t delta,
                    uint64_t initial_value, uint32_t exptime);
-    bool Decrement(const base::StringPiece& key, uint64_t delta,
+    bool Decrement(const butil::StringPiece& key, uint64_t delta,
                    uint64_t initial_value, uint32_t exptime);
     
-    bool Touch(const base::StringPiece& key, uint32_t exptime);
+    bool Touch(const butil::StringPiece& key, uint32_t exptime);
 
     bool Version();
 
@@ -108,16 +108,16 @@ public:
     static const MemcacheRequest& default_instance();
     ::google::protobuf::Metadata GetMetadata() const;
 
-    base::IOBuf& raw_buffer() { return _buf; }
-    const base::IOBuf& raw_buffer() const { return _buf; }
+    butil::IOBuf& raw_buffer() { return _buf; }
+    const butil::IOBuf& raw_buffer() const { return _buf; }
     
 private:
-    bool GetOrDelete(uint8_t command, const base::StringPiece& key);
-    bool Counter(uint8_t command, const base::StringPiece& key, uint64_t delta,
+    bool GetOrDelete(uint8_t command, const butil::StringPiece& key);
+    bool Counter(uint8_t command, const butil::StringPiece& key, uint64_t delta,
                  uint64_t initial_value, uint32_t exptime);
     
-    bool Store(uint8_t command, const base::StringPiece& key,
-               const base::StringPiece& value,
+    bool Store(uint8_t command, const butil::StringPiece& key,
+               const butil::StringPiece& value,
                uint32_t flags, uint32_t exptime, uint64_t cas_value);
 
     void SharedCtor();
@@ -125,7 +125,7 @@ private:
     void SetCachedSize(int size) const;
 
     int _pipelined_count;
-    base::IOBuf _buf;
+    butil::IOBuf _buf;
     mutable int _cached_size_;
 
 friend void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto_impl();
@@ -189,7 +189,7 @@ public:
 
     const std::string& LastError() const { return _err; }
    
-    bool PopGet(base::IOBuf* value, uint32_t* flags, uint64_t* cas_value);
+    bool PopGet(butil::IOBuf* value, uint32_t* flags, uint64_t* cas_value);
     bool PopGet(std::string* value, uint32_t* flags, uint64_t* cas_value);
     bool PopSet(uint64_t* cas_value);
     bool PopAdd(uint64_t* cas_value);
@@ -225,8 +225,8 @@ public:
     static const MemcacheResponse& default_instance();
     ::google::protobuf::Metadata GetMetadata() const;
 
-    base::IOBuf& raw_buffer() { return _buf; }
-    const base::IOBuf& raw_buffer() const { return _buf; }
+    butil::IOBuf& raw_buffer() { return _buf; }
+    const butil::IOBuf& raw_buffer() const { return _buf; }
 
     static const char* status_str(Status);
 
@@ -239,7 +239,7 @@ private:
     void SetCachedSize(int size) const;
 
     std::string _err;
-    base::IOBuf _buf;
+    butil::IOBuf _buf;
     mutable int _cached_size_;
 
 friend void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto_impl();

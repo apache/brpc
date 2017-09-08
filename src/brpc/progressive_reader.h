@@ -38,7 +38,7 @@ public:
     // data was read will be closed.
     // A temporary error may be handled by blocking this function, which
     // may block the HTTP parsing on the socket.
-    virtual base::Status OnReadOnePart(const void* data, size_t length) = 0;
+    virtual butil::Status OnReadOnePart(const void* data, size_t length) = 0;
 
     // Called when there's nothing to read anymore. The `status' is a hint for
     // why this method is called.
@@ -46,7 +46,7 @@ public:
     // - otherwise: socket was broken or OnReadOnePart() failed.
     // This method will be called once and only once. No other methods will
     // be called after. User can release the memory of this object inside.
-    virtual void OnEndOfMessage(const base::Status& status) = 0;
+    virtual void OnEndOfMessage(const butil::Status& status) = 0;
     
 protected:
     virtual ~ProgressiveReader() {}

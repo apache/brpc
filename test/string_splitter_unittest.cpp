@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "base/string_splitter.h"
+#include "butil/string_splitter.h"
 #include <stdlib.h>
 
 namespace {
@@ -17,7 +17,7 @@ protected:
 
 TEST_F(StringSplitterTest, sanity) {
     const char* str = "hello there!   man ";
-    base::StringSplitter ss(str, ' ');
+    butil::StringSplitter ss(str, ' ');
     // "hello"
     ASSERT_TRUE(ss != NULL);
     ASSERT_EQ(5ul, ss.length());
@@ -41,7 +41,7 @@ TEST_F(StringSplitterTest, sanity) {
     ASSERT_EQ(ss.field(), str + strlen(str));
 
     // consecutive separators are treated as zero-length field inside
-    base::StringSplitter ss2(str, ' ', base::ALLOW_EMPTY_FIELD);
+    butil::StringSplitter ss2(str, ' ', butil::ALLOW_EMPTY_FIELD);
 
     // "hello"
     ASSERT_TRUE(ss2);
@@ -82,7 +82,7 @@ TEST_F(StringSplitterTest, sanity) {
 TEST_F(StringSplitterTest, single_word)
 {
     const char* str = "apple";
-    base::StringSplitter ss(str, ' ');
+    butil::StringSplitter ss(str, ' ');
     // "apple"
     ASSERT_TRUE(ss);
     ASSERT_EQ(5ul, ss.length());
@@ -96,7 +96,7 @@ TEST_F(StringSplitterTest, single_word)
 
 TEST_F(StringSplitterTest, starting_with_separator) {
     const char* str = "  apple";
-    base::StringSplitter ss(str, ' ');
+    butil::StringSplitter ss(str, ' ');
     // "apple"
     ASSERT_TRUE(ss);
     ASSERT_EQ(5ul, ss.length());
@@ -107,7 +107,7 @@ TEST_F(StringSplitterTest, starting_with_separator) {
     ASSERT_EQ(0ul, ss.length());
     ASSERT_EQ(ss.field(), str + strlen(str));
 
-    base::StringSplitter ss2(str, ' ', base::ALLOW_EMPTY_FIELD);
+    butil::StringSplitter ss2(str, ' ', butil::ALLOW_EMPTY_FIELD);
     // ""
     ASSERT_TRUE(ss2);
     ASSERT_EQ(0ul, ss2.length());
@@ -133,7 +133,7 @@ TEST_F(StringSplitterTest, starting_with_separator) {
 
 TEST_F(StringSplitterTest, site_id_as_example) {
     const char* str = "|123|12||1|21|4321";
-    base::StringSplitter ss(str, '|');
+    butil::StringSplitter ss(str, '|');
     ASSERT_TRUE(ss);
     ASSERT_EQ(3ul, ss.length());
     ASSERT_FALSE(strncmp(ss.field(), "123", ss.length()));
@@ -166,7 +166,7 @@ TEST_F(StringSplitterTest, site_id_as_example) {
 
 TEST_F(StringSplitterTest, number_list) {
     const char* str = " 123,,12,1,  21 4321";
-    base::StringMultiSplitter ss(str, ", ");
+    butil::StringMultiSplitter ss(str, ", ");
     ASSERT_TRUE(ss);
     ASSERT_EQ(3ul, ss.length());
     ASSERT_FALSE(strncmp(ss.field(), "123", ss.length()));
@@ -208,7 +208,7 @@ TEST_F(StringSplitterTest, cast_type) {
     float f = 0.0;
     double d = 0.0;
     
-    base::StringSplitter ss(str, '\t');
+    butil::StringSplitter ss(str, '\t');
     ASSERT_TRUE(ss);
 
     ASSERT_EQ(0, ss.to_int(&i));
@@ -259,7 +259,7 @@ TEST_F(StringSplitterTest, cast_type) {
 
 TEST_F(StringSplitterTest, split_limit_len) {
     const char* str = "1\t123\t111\t1\t10\t11\t1.3\t3.1415926";
-    base::StringSplitter ss(str, str + 5, '\t');
+    butil::StringSplitter ss(str, str + 5, '\t');
 
     ASSERT_TRUE(ss);
     ASSERT_EQ(1ul, ss.length());

@@ -5,8 +5,8 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <gtest/gtest.h>
-#include "base/time.h"
-#include "base/macros.h"
+#include "butil/time.h"
+#include "butil/macros.h"
 
 namespace {
 

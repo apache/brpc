@@ -18,10 +18,10 @@
 #include <sys/time.h>
 #include <fcntl.h>                          // O_RDONLY
 #include <gflags/gflags.h>
-#include "base/logging.h"
-#include "base/fd_guard.h"                  // fd_guard
-#include "base/file_util.h"                 // base::FilePath
-#include "base/third_party/murmurhash3/murmurhash3.h"
+#include "butil/logging.h"
+#include "butil/fd_guard.h"                  // fd_guard
+#include "butil/file_util.h"                 // butil::FilePath
+#include "butil/third_party/murmurhash3/murmurhash3.h"
 #include "brpc/server.h"
 #include "brpc/builtin/common.h"
 
@@ -140,7 +140,7 @@ std::ostream& operator<<(std::ostream& os, const Path& link) {
     return os;
 }
 
-const base::EndPoint *Path::LOCAL = (base::EndPoint *)0x01;
+const butil::EndPoint *Path::LOCAL = (butil::EndPoint *)0x01;
 
 void AppendFileName(std::string* dir, const std::string& filename) {
     if (dir->empty()) {
@@ -149,20 +149,20 @@ void AppendFileName(std::string* dir, const std::string& filename) {
     }
     const size_t len = filename.size();
     if (len >= 3) {
-        if (base::back_char(*dir) != '/') {
+        if (butil::back_char(*dir) != '/') {
             dir->push_back('/');
         }
         dir->append(filename);
     } else if (len == 1) {
         if (filename[0] != '.') {
-            if (base::back_char(*dir) != '/') {
+            if (butil::back_char(*dir) != '/') {
                 dir->push_back('/');
             }
             dir->append(filename);
         }
     } else if (len == 2) {
         if (filename[0] != '.' || filename[1] != '.') {
-            if (base::back_char(*dir) != '/') {
+            if (butil::back_char(*dir) != '/') {
                 dir->push_back('/');
             }
             dir->append(filename);
@@ -311,7 +311,7 @@ const char* ProfilingType2String(ProfilingType t) {
 }
 
 ssize_t ReadCommandLine(char* buf, size_t len, bool with_args) {
-    base::fd_guard fd(open("/proc/self/cmdline", O_RDONLY));
+    butil::fd_guard fd(open("/proc/self/cmdline", O_RDONLY));
     if (fd < 0) {
         LOG(ERROR) << "Fail to open /proc/self/cmdline";
         return -1;
@@ -347,19 +347,19 @@ ssize_t ReadCommandLine(char* buf, size_t len, bool with_args) {
 }
 
 int FileChecksum(const char* file_path, unsigned char* checksum) {
-    base::fd_guard fd(open(file_path, O_RDONLY));
+    butil::fd_guard fd(open(file_path, O_RDONLY));
     if (fd < 0) {
         PLOG(ERROR) << "Fail to open `" << file_path << "'";
         return -1;
     }
     char block[16*1024];   // 16k each time
     ssize_t size = 0L;
-    base::MurmurHash3_x64_128_Context mm_ctx;
-    base::MurmurHash3_x64_128_Init(&mm_ctx, 0);
+    butil::MurmurHash3_x64_128_Context mm_ctx;
+    butil::MurmurHash3_x64_128_Init(&mm_ctx, 0);
     while ((size = read(fd, block, sizeof(block))) > 0) {
-        base::MurmurHash3_x64_128_Update(&mm_ctx, block, size);
+        butil::MurmurHash3_x64_128_Update(&mm_ctx, block, size);
     }
-    base::MurmurHash3_x64_128_Final(checksum, &mm_ctx);
+    butil::MurmurHash3_x64_128_Final(checksum, &mm_ctx);
     return 0;
 }
 

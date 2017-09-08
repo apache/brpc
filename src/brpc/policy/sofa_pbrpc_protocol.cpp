@@ -18,7 +18,7 @@
 #include <google/protobuf/message.h>             // Message
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/io/coded_stream.h>
-#include "base/time.h"
+#include "butil/time.h"
 #include "brpc/controller.h"                // Controller
 #include "brpc/socket.h"                    // Socket
 #include "brpc/server.h"                    // Server
@@ -137,7 +137,7 @@ inline void PackSofaHeader(char* sofa_header, int meta_size, int body_size) {
 }
 
 static void SerializeSofaHeaderAndMeta(
-    base::IOBuf* out, const SofaRpcMeta& meta, int payload_size) {
+    butil::IOBuf* out, const SofaRpcMeta& meta, int payload_size) {
     const int meta_size = meta.ByteSize();
     if (meta_size <= 232) { // most common cases
         char header_and_meta[24 + meta_size];
@@ -151,14 +151,14 @@ static void SerializeSofaHeaderAndMeta(
         char header[24];
         PackSofaHeader(header, meta_size, payload_size);
         out->append(header, sizeof(header));
-        base::IOBufAsZeroCopyOutputStream buf_stream(out);
+        butil::IOBufAsZeroCopyOutputStream buf_stream(out);
         ::google::protobuf::io::CodedOutputStream coded_out(&buf_stream);
         meta.SerializeWithCachedSizes(&coded_out);
         CHECK(!coded_out.HadError());
     }
 }
 
-ParseResult ParseSofaMessage(base::IOBuf* source, Socket* socket,
+ParseResult ParseSofaMessage(butil::IOBuf* source, Socket* socket,
                              bool /*read_eof*/, const void* /*arg*/) {
     char header_buf[24];
     const size_t n = source->copy_to(header_buf, sizeof(header_buf));
@@ -214,7 +214,7 @@ static void SendSofaResponse(int64_t correlation_id,
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
-        span->set_start_send_us(base::cpuwide_time_us());
+        span->set_start_send_us(butil::cpuwide_time_us());
     }
     ScopedMethodStatus method_status(method_status_raw);
     SocketUniquePtr sock(socket_raw);
@@ -233,7 +233,7 @@ static void SendSofaResponse(int64_t correlation_id,
         "your response_attachment will not be sent";
 
     bool append_body = false;
-    base::IOBuf res_body;
+    butil::IOBuf res_body;
     // `res' can be NULL here, in which case we don't serialize it
     // If user calls `SetFailed' on Controller, we don't serialize
     // response either
@@ -272,7 +272,7 @@ static void SendSofaResponse(int64_t correlation_id,
     meta.set_compress_type(
         CompressType2Sofa(cntl->response_compress_type()));
 
-    base::IOBuf res_buf;
+    butil::IOBuf res_buf;
     SerializeSofaHeaderAndMeta(&res_buf, meta, res_size);
     if (append_body) {
         res_buf.append(res_body.movable());
@@ -293,11 +293,11 @@ static void SendSofaResponse(int64_t correlation_id,
     }
     if (span) {
         // TODO: this is not sent
-        span->set_sent_us(base::cpuwide_time_us());
+        span->set_sent_us(butil::cpuwide_time_us());
     }
     if (method_status) {
         method_status.release()->OnResponded(
-            !cntl->Failed(), base::cpuwide_time_us() - start_parse_us);
+            !cntl->Failed(), butil::cpuwide_time_us() - start_parse_us);
     }
 }
 
@@ -311,7 +311,7 @@ void EndRunningCallMethodInPool(
     ::google::protobuf::Closure* done);
 
 void ProcessSofaRequest(InputMessageBase* msg_base) {
-    const int64_t start_parse_us = base::cpuwide_time_us();
+    const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     SocketUniquePtr socket(msg->ReleaseSocket());
     const Server* server = static_cast<const Server*>(msg_base->arg());
@@ -437,7 +437,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
                     method_status, start_parse_us);
         // `cntl', `req' and `res' will be deleted inside `done'
         if (span) {
-            span->set_start_callback_us(base::cpuwide_time_us());
+            span->set_start_callback_us(butil::cpuwide_time_us());
             span->AsParent();
         }
         if (!FLAGS_usercode_in_pthread) {
@@ -472,7 +472,7 @@ bool VerifySofaRequest(const InputMessageBase* msg_base) {
 }
 
 void ProcessSofaResponse(InputMessageBase* msg_base) {
-    const int64_t start_parse_us = base::cpuwide_time_us();
+    const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     SofaRpcMeta meta;
     if (!ParsePbFromIOBuf(&meta, msg->meta)) {
@@ -522,12 +522,12 @@ void ProcessSofaResponse(InputMessageBase* msg_base) {
     accessor.OnResponse(cid, saved_error);
 }
 
-void PackSofaRequest(base::IOBuf* req_buf,
+void PackSofaRequest(butil::IOBuf* req_buf,
                      SocketMessage**,
                      uint64_t correlation_id,
                      const google::protobuf::MethodDescriptor* method,
                      Controller* cntl,
-                     const base::IOBuf& req_body,
+                     const butil::IOBuf& req_body,
                      const Authenticator* /*not supported*/) {
     if (!cntl->request_attachment().empty()) {
         LOG(WARNING) << "sofa-pbrpc does not support attachment, "

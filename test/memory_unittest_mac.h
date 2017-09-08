@@ -8,9 +8,9 @@
 #ifndef BASE_PROCESS_MEMORY_UNITTEST_MAC_H_
 #define BASE_PROCESS_MEMORY_UNITTEST_MAC_H_
 
-#include "base/basictypes.h"
+#include "butil/basictypes.h"
 
-namespace base {
+namespace butil {
 
 // Allocates memory via system allocators. Alas, they take a _signed_ size for
 // allocation.
@@ -27,6 +27,6 @@ void* AllocatePsychoticallyBigObjCObject();
 
 #endif  // !ARCH_CPU_64_BITS
 
-}  // namespace base
+}  // namespace butil
 
 #endif  // BASE_PROCESS_MEMORY_UNITTEST_MAC_H_

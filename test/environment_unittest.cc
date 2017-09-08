@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/environment.h"
-#include "base/memory/scoped_ptr.h"
+#include "butil/environment.h"
+#include "butil/memory/scoped_ptr.h"
 #include <gtest/gtest.h>
 #include <gtest/gtest.h>
 
 typedef testing::Test EnvironmentTest;
 
-namespace base {
+namespace butil {
 
 TEST_F(EnvironmentTest, GetVar) {
   // Every setup should have non-empty PATH...
@@ -161,4 +161,4 @@ TEST_F(EnvironmentTest, AlterEnvironment) {
 
 #endif
 
-}  // namespace base
+}  // namespace butil

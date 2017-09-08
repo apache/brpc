@@ -16,8 +16,8 @@
 
 #include <gflags/gflags.h>
 #include <bthread/bthread.h>
-#include <base/logging.h>
-#include <base/string_printf.h>
+#include <butil/logging.h>
+#include <butil/string_printf.h>
 #include <bvar/bvar.h>
 #include <brpc/channel.h>
 #include <brpc/server.h>
@@ -51,9 +51,9 @@ static void* sender(void* void_args) {
     std::vector<std::pair<std::string, std::string> > kvs;
     kvs.resize(FLAGS_batch);
     for (int i = 0; i < FLAGS_batch; ++i) {
-        kvs[i].first = base::string_printf(
+        kvs[i].first = butil::string_printf(
             "%s_%04d", FLAGS_key.c_str(), args->base_index + i);
-        kvs[i].second = base::string_printf(
+        kvs[i].second = butil::string_printf(
             "%s_%04d", FLAGS_value.c_str(), args->base_index + i);
     }
 

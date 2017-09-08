@@ -6,7 +6,7 @@ CPPFLAGS=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBO
 CPPFLAGS+=-DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES
 CXXFLAGS=$(CPPFLAGS) -g -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x
 
-#required by base/crc32.cc to boost performance for 10x
+#required by butil/crc32.cc to boost performance for 10x
 ifeq ($(shell test $(GCC_VERSION) -ge 40400; echo $$?),0)
 	CXXFLAGS+=-msse4 -msse4.2
 endif
@@ -18,7 +18,7 @@ endif
 HDRPATHS=-I. -I.. -I../src $(addprefix -I, $(HDRS))
 LIBPATHS=$(addprefix -L, $(LIBS))
 
-TEST_BASE_SOURCES = \
+TEST_BUTIL_SOURCES = \
     at_exit_unittest.cc \
     atomicops_unittest.cc \
     barrier_closure_unittest.cc \
@@ -131,22 +131,24 @@ TEST_BASE_SOURCES = \
     multiprocess_test.cc \
     test_file_util.cc \
     test_file_util_linux.cc \
-    base_unittest_main.cpp
+    butil_unittest_main.cpp
 
 
-TEST_BASE_OBJS = iobuf.pb.o $(addsuffix .o, $(basename $(TEST_BASE_SOURCES))) 
+TEST_BUTIL_OBJS = iobuf.pb.o $(addsuffix .o, $(basename $(TEST_BUTIL_SOURCES))) 
 
 TEST_BVAR_SOURCES = $(wildcard bvar_*_unittest.cpp)
 TEST_BVAR_OBJS = $(addsuffix .o, $(basename $(TEST_BVAR_SOURCES))) 
 
 TEST_BTHREAD_SOURCES = $(wildcard bthread_*unittest.cpp)
+TEST_BTHREAD_OBJS = $(addsuffix .o, $(basename $(TEST_BTHREAD_SOURCES))) 
 
 TEST_BRPC_SOURCES = $(wildcard brpc_*unittest.cpp)
+TEST_BRPC_OBJS = $(addsuffix .o, $(basename $(TEST_BRPC_SOURCES))) 
 
 TEST_PROTO_SOURCES = $(wildcard *.proto)
 TEST_PROTO_OBJS =  $(TEST_PROTO_SOURCES:.proto=.pb.o)
 
-TEST_BINS = test_base test_bvar $(TEST_BTHREAD_SOURCES:.cpp=) $(TEST_BRPC_SOURCES:.cpp=)
+TEST_BINS = test_butil test_bvar $(TEST_BTHREAD_SOURCES:.cpp=) $(TEST_BRPC_SOURCES:.cpp=)
 
 .PHONY:all
 all: $(TEST_BINS)
@@ -154,7 +156,7 @@ all: $(TEST_BINS)
 .PHONY:clean
 clean:clean_bins clean_dbg
 	@echo "Cleaning"
-	@rm -rf $(TEST_BASE_OBJS) $(TEST_BVAR_OBJS) $(TEST_BTHREAD_OBJS) \
+	@rm -rf $(TEST_BUTIL_OBJS) $(TEST_BVAR_OBJS) $(TEST_BTHREAD_OBJS) \
 		$(TEST_BRPC_OBJS) $(TEST_PROTO_OBJS)
 
 .PHONY:clean_bins
@@ -172,9 +174,9 @@ FORCE:
 
 .PRECIOUS: %.o
 
-test_base:$(TEST_BASE_OBJS) ../libbrpc.dbg.a
+test_butil:$(TEST_BUTIL_OBJS) ../libbrpc.dbg.a
 	@echo "Linking $@"
-	$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
+	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
 test_bvar:$(TEST_BVAR_OBJS) ../libbrpc.dbg.a
 	@echo "Linking $@"

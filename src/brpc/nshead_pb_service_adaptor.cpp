@@ -17,8 +17,8 @@
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 
-#include "base/time.h" 
-#include "base/iobuf.h"                         // base::IOBuf
+#include "butil/time.h" 
+#include "butil/iobuf.h"                         // butil::IOBuf
 
 #include "brpc/controller.h"               // Controller
 #include "brpc/socket.h"                   // Socket
@@ -85,7 +85,7 @@ void SendNsheadPbResponse::Run() {
     // back response.
     if (saved_status) {
         saved_status->OnResponded(
-            !saved_failed, base::cpuwide_time_us() - saved_start_us);
+            !saved_failed, butil::cpuwide_time_us() - saved_start_us);
     }
     saved_done->Run();
 }

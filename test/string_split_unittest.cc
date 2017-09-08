@@ -2,15 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/strings/string_split.h"
+#include "butil/strings/string_split.h"
 
-#include "base/strings/utf_string_conversions.h"
+#include "butil/strings/utf_string_conversions.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 using ::testing::ElementsAre;
 
-namespace base {
+namespace butil {
 
 namespace {
 
@@ -323,4 +323,4 @@ TEST(StringSplitTest, SplitStringAlongWhitespace) {
   }
 }
 
-}  // namespace base
+}  // namespace butil

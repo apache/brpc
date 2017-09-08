@@ -105,7 +105,7 @@ int DomainNamingService::GetServers(const char* dns_name,
         return -1;
     }
 
-    base::EndPoint point;
+    butil::EndPoint point;
     point.port = port;
     for (int i = 0; result->h_addr_list[i] != NULL; ++i) {
         if (result->h_addrtype == AF_INET) {

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/at_exit.h"
-#include "base/bind.h"
+#include "butil/at_exit.h"
+#include "butil/bind.h"
 
 #include <gtest/gtest.h>
 
@@ -43,45 +43,45 @@ class AtExitTest : public testing::Test {
  private:
   // Don't test the global AtExitManager, because asking it to process its
   // AtExit callbacks can ruin the global state that other tests may depend on.
-  base::ShadowingAtExitManager exit_manager_;
+  butil::ShadowingAtExitManager exit_manager_;
 };
 
 TEST_F(AtExitTest, Basic) {
   ZeroTestCounters();
-  base::AtExitManager::RegisterCallback(&IncrementTestCounter1, NULL);
-  base::AtExitManager::RegisterCallback(&IncrementTestCounter2, NULL);
-  base::AtExitManager::RegisterCallback(&IncrementTestCounter1, NULL);
+  butil::AtExitManager::RegisterCallback(&IncrementTestCounter1, NULL);
+  butil::AtExitManager::RegisterCallback(&IncrementTestCounter2, NULL);
+  butil::AtExitManager::RegisterCallback(&IncrementTestCounter1, NULL);
 
   EXPECT_EQ(0, g_test_counter_1);
   EXPECT_EQ(0, g_test_counter_2);
-  base::AtExitManager::ProcessCallbacksNow();
+  butil::AtExitManager::ProcessCallbacksNow();
   EXPECT_EQ(2, g_test_counter_1);
   EXPECT_EQ(1, g_test_counter_2);
 }
 
 TEST_F(AtExitTest, LIFOOrder) {
   ZeroTestCounters();
-  base::AtExitManager::RegisterCallback(&IncrementTestCounter1, NULL);
-  base::AtExitManager::RegisterCallback(&ExpectCounter1IsZero, NULL);
-  base::AtExitManager::RegisterCallback(&IncrementTestCounter2, NULL);
+  butil::AtExitManager::RegisterCallback(&IncrementTestCounter1, NULL);
+  butil::AtExitManager::RegisterCallback(&ExpectCounter1IsZero, NULL);
+  butil::AtExitManager::RegisterCallback(&IncrementTestCounter2, NULL);
 
   EXPECT_EQ(0, g_test_counter_1);
   EXPECT_EQ(0, g_test_counter_2);
-  base::AtExitManager::ProcessCallbacksNow();
+  butil::AtExitManager::ProcessCallbacksNow();
   EXPECT_EQ(1, g_test_counter_1);
   EXPECT_EQ(1, g_test_counter_2);
 }
 
 TEST_F(AtExitTest, Param) {
-  base::AtExitManager::RegisterCallback(&ExpectParamIsNull, NULL);
-  base::AtExitManager::RegisterCallback(&ExpectParamIsCounter,
+  butil::AtExitManager::RegisterCallback(&ExpectParamIsNull, NULL);
+  butil::AtExitManager::RegisterCallback(&ExpectParamIsCounter,
                                         &g_test_counter_1);
-  base::AtExitManager::ProcessCallbacksNow();
+  butil::AtExitManager::ProcessCallbacksNow();
 }
 
 TEST_F(AtExitTest, Task) {
   ZeroTestCounters();
-  base::AtExitManager::RegisterTask(base::Bind(&ExpectParamIsCounter,
+  butil::AtExitManager::RegisterTask(butil::Bind(&ExpectParamIsCounter,
                                                &g_test_counter_1));
-  base::AtExitManager::ProcessCallbacksNow();
+  butil::AtExitManager::ProcessCallbacksNow();
 }

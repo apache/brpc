@@ -20,8 +20,8 @@
 #include <vector>                                   // std::vector
 #include <string>                                   // std::string
 #include <ostream>                                  // std::ostream
-#include "base/endpoint.h"                          // base::EndPoint
-#include "base/macros.h"                            // BAIDU_CONCAT
+#include "butil/endpoint.h"                          // butil::EndPoint
+#include "butil/macros.h"                            // BAIDU_CONCAT
 #include "brpc/describable.h"
 #include "brpc/destroyable.h"
 #include "brpc/extension.h"                    // Extension<T>
@@ -32,14 +32,14 @@ namespace brpc {
 // Representing a server inside a NamingService.
 struct ServerNode {
     ServerNode() {}
-    ServerNode(base::ip_t ip, int port, const std::string& tag2)
+    ServerNode(butil::ip_t ip, int port, const std::string& tag2)
         : addr(ip, port), tag(tag2) {}
-    ServerNode(const base::EndPoint& pt, const std::string& tag2)
+    ServerNode(const butil::EndPoint& pt, const std::string& tag2)
         : addr(pt), tag(tag2) {}
-    ServerNode(base::ip_t ip, int port) : addr(ip, port) {}
-    explicit ServerNode(const base::EndPoint& pt) : addr(pt) {}
+    ServerNode(butil::ip_t ip, int port) : addr(ip, port) {}
+    explicit ServerNode(const butil::EndPoint& pt) : addr(pt) {}
 
-    base::EndPoint addr;
+    butil::EndPoint addr;
     std::string tag;
 };
 

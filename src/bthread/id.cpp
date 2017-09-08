@@ -17,11 +17,11 @@
 // Date: Sun Aug  3 12:46:15 CST 2014
 
 #include <deque>
-#include "base/logging.h"
+#include "butil/logging.h"
 #include "bthread/butex.h"                       // butex_*
 #include "bthread/mutex.h"
 #include "bthread/list_of_abafree_id.h"
-#include "base/resource_pool.h"
+#include "butil/resource_pool.h"
 #include "bthread/bthread.h"
 
 namespace bthread {
@@ -147,7 +147,7 @@ struct BAIDU_CACHELINE_ALIGNMENT Id {
 
 BAIDU_CASSERT(sizeof(Id) % 64 == 0, sizeof_Id_must_align);
 
-typedef base::ResourceId<Id> IdResourceId;
+typedef butil::ResourceId<Id> IdResourceId;
 
 inline bthread_id_t make_id(uint32_t version, IdResourceId slot) {
     const bthread_id_t tmp =
@@ -282,7 +282,7 @@ void id_status(bthread_id_t id, std::ostream &os) {
 }
 
 void id_pool_status(std::ostream &os) {
-    os << base::describe_resources<Id>() << '\n';
+    os << butil::describe_resources<Id>() << '\n';
 }
 
 struct IdTraits {

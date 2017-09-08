@@ -7,11 +7,11 @@
 #include <sys/socket.h>
 #include <gtest/gtest.h>
 #include <gperftools/profiler.h>
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/scoped_lock.h"
-#include "base/fd_utility.h"
-#include "base/logging.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/scoped_lock.h"
+#include "butil/fd_utility.h"
+#include "butil/logging.h"
 #include "bthread/bthread.h"
 #include "bthread/task_control.h"
 #include "bthread/task_group.h"
@@ -36,7 +36,7 @@ struct BAIDU_CACHELINE_ALIGNMENT ClientMeta {
 struct BAIDU_CACHELINE_ALIGNMENT SocketMeta {
     int fd;
     int epfd;
-    base::atomic<int> req;
+    butil::atomic<int> req;
     char* buf;
     size_t buf_cap;
     size_t bytes;
@@ -76,11 +76,11 @@ void* process_thread(void* arg) {
             }
         } while (1);
         
-        if (m->req.exchange(0, base::memory_order_release) == 1) {
+        if (m->req.exchange(0, butil::memory_order_release) == 1) {
             // no events during reading.
             break;
         }
-        if (m->req.fetch_add(1, base::memory_order_relaxed) != 0) {
+        if (m->req.fetch_add(1, butil::memory_order_relaxed) != 0) {
             // someone else takes the fd.
             break;
         }
@@ -109,7 +109,7 @@ void* epoll_thread(void* arg) {
 
         for (int i = 0; i < n; ++i) {
             SocketMeta* m = (SocketMeta*)e[i].data.ptr;
-            if (m->req.fetch_add(1, base::memory_order_acquire) == 0) {
+            if (m->req.fetch_add(1, butil::memory_order_acquire) == 0) {
                 bthread_t th;
                 bthread_start_urgent(
                     &th, &BTHREAD_ATTR_SMALL, process_thread, m);
@@ -200,7 +200,7 @@ TEST(DispatcherTest, dispatch_tasks) {
         m->buf = (char*)malloc(m->buf_cap);
         m->bytes = 0;
         m->times = 0;
-        ASSERT_EQ(0, base::make_non_blocking(m->fd));
+        ASSERT_EQ(0, butil::make_non_blocking(m->fd));
         sm[i] = m;
 
         epoll_event evt = { EPOLLIN | EPOLLET, { m } };
@@ -214,7 +214,7 @@ TEST(DispatcherTest, dispatch_tasks) {
     }
     
     ProfilerStart("dispatcher.prof");
-    base::Timer tm;
+    butil::Timer tm;
     tm.start();
 
     for (size_t i = 0; i < NEPOLL; ++i) {

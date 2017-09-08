@@ -2,15 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/callback_list.h"
+#include "butil/callback_list.h"
 
-#include "base/basictypes.h"
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/memory/scoped_ptr.h"
+#include "butil/basictypes.h"
+#include "butil/bind.h"
+#include "butil/bind_helpers.h"
+#include "butil/memory/scoped_ptr.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 namespace {
 
 class Listener {
@@ -288,4 +288,4 @@ TEST(CallbackListTest, EmptyList) {
 }
 
 }  // namespace
-}  // namespace base
+}  // namespace butil

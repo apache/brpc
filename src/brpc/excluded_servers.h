@@ -17,8 +17,8 @@
 #ifndef BRPC_EXCLUDED_SERVERS_H
 #define BRPC_EXCLUDED_SERVERS_H
 
-#include "base/scoped_lock.h"
-#include "base/containers/bounded_queue.h"
+#include "butil/scoped_lock.h"
+#include "butil/containers/bounded_queue.h"
 #include "brpc/socket_id.h"                       // SocketId
 
 
@@ -48,13 +48,13 @@ public:
 
 private:
     ExcludedServers(int cap)
-        : _l(_space, sizeof(SocketId)* cap, base::NOT_OWN_STORAGE) {}
+        : _l(_space, sizeof(SocketId)* cap, butil::NOT_OWN_STORAGE) {}
     ~ExcludedServers() {}
     // Controller::_accessed may be shared by sub channels in schan, protect
     // all mutable methods with this mutex. In ordinary channels, this mutex
     // is never contended.
-    mutable base::Mutex _mutex;
-    base::BoundedQueue<SocketId> _l;
+    mutable butil::Mutex _mutex;
+    butil::BoundedQueue<SocketId> _l;
     SocketId _space[0];
 };
 

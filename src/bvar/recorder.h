@@ -19,8 +19,8 @@
 #define  BVAR_RECORDER_H
 
 #include <stdint.h>                              // int64_t uint64_t
-#include "base/macros.h"                         // BAIDU_CASSERT
-#include "base/logging.h"                        // LOG
+#include "butil/macros.h"                         // BAIDU_CASSERT
+#include "butil/logging.h"                        // LOG
 #include "bvar/detail/combiner.h"                // detail::AgentCombiner
 #include "bvar/variable.h"
 #include "bvar/window.h"
@@ -112,11 +112,11 @@ public:
 
     IntRecorder() : _sampler(NULL) {}
 
-    explicit IntRecorder(const base::StringPiece& name) : _sampler(NULL) {
+    explicit IntRecorder(const butil::StringPiece& name) : _sampler(NULL) {
         expose(name);
     }
 
-    IntRecorder(const base::StringPiece& prefix, const base::StringPiece& name)
+    IntRecorder(const butil::StringPiece& prefix, const butil::StringPiece& name)
         : _sampler(NULL) {
         expose_as(prefix, name);
     }
@@ -167,7 +167,7 @@ public:
 
     // This name is useful for printing overflow log in operator<< since
     // IntRecorder is often used as the source of data and not exposed.
-    void set_debug_name(const base::StringPiece& name) {
+    void set_debug_name(const butil::StringPiece& name) {
         _debug_name.assign(name.data(), name.size());
     }
     

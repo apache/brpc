@@ -15,8 +15,8 @@
 // A client sending requests to server every 1 second.
 
 #include <gflags/gflags.h>
-#include <base/logging.h>
-#include <base/time.h>
+#include <butil/logging.h>
+#include <butil/time.h>
 #include <brpc/channel.h>
 #include <brpc/policy/hulu_pbrpc_controller.h>
 #include "echo.pb.h"

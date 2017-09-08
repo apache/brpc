@@ -25,11 +25,11 @@
 #include <deque>                            // std::deque
 #include <vector>                           // std::vector
 
-#include "base/errno.h"                     // errno
-#include "base/thread_local.h"              // thread_atexit
-#include "base/macros.h"                    // BAIDU_CACHELINE_ALIGNMENT
-#include "base/scoped_lock.h"
-#include "base/logging.h"
+#include "butil/errno.h"                     // errno
+#include "butil/thread_local.h"              // thread_atexit
+#include "butil/macros.h"                    // BAIDU_CACHELINE_ALIGNMENT
+#include "butil/scoped_lock.h"
+#include "butil/logging.h"
 
 namespace bvar {
 namespace detail {
@@ -136,7 +136,7 @@ public:
                 LOG(FATAL) << "Fail to create vector, " << berror();
                 return NULL;
             }
-            base::thread_atexit(_destroy_tls_blocks);
+            butil::thread_atexit(_destroy_tls_blocks);
         }
         const size_t block_id = (size_t)id / ELEMENTS_PER_BLOCK; 
         if (block_id >= _s_tls_blocks->size()) {

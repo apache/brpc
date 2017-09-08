@@ -18,8 +18,8 @@
 
 #include <google/protobuf/descriptor.h>
 #include <gflags/gflags.h>
-#include "base/time.h"                               // milliseconds_from_now
-#include "base/logging.h"
+#include "butil/time.h"                               // milliseconds_from_now
+#include "butil/logging.h"
 #include "bthread/unstable.h"                        // bthread_timer_add
 #include "brpc/socket_map.h"                    // SocketMapInsert
 #include "brpc/compress.h"
@@ -128,7 +128,7 @@ int Channel::InitChannelOptions(const ChannelOptions* options) {
 int Channel::Init(const char* server_addr_and_port,
                   const ChannelOptions* options) {
     GlobalInitializeOrDie();
-    base::EndPoint point;
+    butil::EndPoint point;
     const Protocol* protocol =
         FindProtocol(options ? options->protocol : _options.protocol);
     if (protocol != NULL && protocol->parse_server_address != NULL) {
@@ -157,7 +157,7 @@ int Channel::Init(const char* server_addr_and_port,
 int Channel::Init(const char* server_addr, int port,
                   const ChannelOptions* options) {
     GlobalInitializeOrDie();
-    base::EndPoint point;
+    butil::EndPoint point;
     const Protocol* protocol =
         FindProtocol(options ? options->protocol : _options.protocol);
     if (protocol != NULL && protocol->parse_server_address != NULL) {
@@ -176,7 +176,7 @@ int Channel::Init(const char* server_addr, int port,
     return Init(point, options);
 }
 
-int Channel::Init(base::EndPoint server_addr_and_port,
+int Channel::Init(butil::EndPoint server_addr_and_port,
                   const ChannelOptions* options) {
     GlobalInitializeOrDie();
     if (InitChannelOptions(options) != 0) {
@@ -265,7 +265,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
                          const google::protobuf::Message* request,
                          google::protobuf::Message* response,
                          google::protobuf::Closure* done) {
-    const int64_t start_send_real_us = base::gettimeofday_us();
+    const int64_t start_send_real_us = butil::gettimeofday_us();
     Controller* cntl = static_cast<Controller*>(controller_base);
     cntl->OnRPCBegin(start_send_real_us);
     // Override max_retry first to reset the range of correlation_id
@@ -297,7 +297,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         return;
     }
     if (cntl->_sender == NULL && IsTraceable(Span::tls_parent())) {
-        const int64_t start_send_us = base::cpuwide_time_us();
+        const int64_t start_send_us = butil::cpuwide_time_us();
         const std::string* method_name = NULL;
         if (_get_method_name) {
             method_name = &_get_method_name(method, cntl);
@@ -378,7 +378,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         }
         const int rc = bthread_timer_add(
             &cntl->_timeout_id,
-            base::microseconds_to_timespec(
+            butil::microseconds_to_timespec(
                 cntl->backup_request_ms() * 1000L + start_send_real_us),
             HandleBackupRequest, (void*)correlation_id.value);
         if (BAIDU_UNLIKELY(rc != 0)) {
@@ -392,7 +392,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         cntl->_abstime_us = cntl->timeout_ms() * 1000L + start_send_real_us;
         const int rc = bthread_timer_add(
             &cntl->_timeout_id,
-            base::microseconds_to_timespec(cntl->_abstime_us),
+            butil::microseconds_to_timespec(cntl->_abstime_us),
             HandleTimeout, (void*)correlation_id.value);
         if (BAIDU_UNLIKELY(rc != 0)) {
             cntl->SetFailed(rc, "Fail to add timer for timeout");
@@ -411,7 +411,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         if (cntl->_span) {
             cntl->SubmitSpan();
         }
-        cntl->OnRPCEnd(base::gettimeofday_us());
+        cntl->OnRPCEnd(butil::gettimeofday_us());
     }
 }
 

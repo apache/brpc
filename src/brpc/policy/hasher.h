@@ -19,17 +19,17 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "base/strings/string_piece.h"
+#include "butil/strings/string_piece.h"
 
 
 namespace brpc {
 namespace policy {
 
 uint32_t MD5Hash32(const void* key, size_t len);
-uint32_t MD5Hash32V(const base::StringPiece* keys, size_t num_keys);
+uint32_t MD5Hash32V(const butil::StringPiece* keys, size_t num_keys);
 
 uint32_t MurmurHash32(const void* key, size_t len);
-uint32_t MurmurHash32V(const base::StringPiece* keys, size_t num_keys);
+uint32_t MurmurHash32V(const butil::StringPiece* keys, size_t num_keys);
 
 }  // namespace policy
 } // namespace brpc

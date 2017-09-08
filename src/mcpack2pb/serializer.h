@@ -21,8 +21,8 @@
 
 #include <limits>
 #include <google/protobuf/io/zero_copy_stream.h>
-#include "base/logging.h"
-#include "base/strings/string_piece.h"
+#include "butil/logging.h"
+#include "butil/strings/string_piece.h"
 #include "mcpack2pb/field_type.h"
 
 // CAUTION: Methods in this header is not intended to be public to users of
@@ -40,7 +40,7 @@ public:
                , _size1(0)
                , _size2(0)
                , _addional_area(NULL) {}
-        Area(const base::LinkerInitialized&) {}
+        Area(const butil::LinkerInitialized&) {}
         Area(const Area& rhs);
         Area& operator=(const Area& rhs);
         ~Area();
@@ -51,7 +51,7 @@ public:
         void* _addr2;
         unsigned _size1;
         unsigned _size2;
-        std::vector<base::StringPiece>* _addional_area;
+        std::vector<butil::StringPiece>* _addional_area;
     };
 
     // TODO(gejun): The zero-copy stream MUST return permanent memory blocks
@@ -113,7 +113,7 @@ private:
     size_t _pushed_bytes;
 };
 
-// This class is different from base::StringPiece that it only can be
+// This class is different from butil::StringPiece that it only can be
 // constructed from std::string or const char* which are both ended with
 // zero, so that in later serialization of the name, we can simply copy one
 // extra byte to end the name with zero(required by compack) rather than
@@ -140,7 +140,7 @@ private:
     size_t _size;
 };
 inline std::ostream& operator<<(std::ostream& os, const StringWrapper& sw) {
-    return os << base::StringPiece(sw.data(), sw.size());
+    return os << butil::StringPiece(sw.data(), sw.size());
 }
 
 class Serializer {

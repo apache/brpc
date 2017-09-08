@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/hash.h"
+#include "butil/hash.h"
 
 #include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 TEST(HashTest, String) {
   std::string str;
@@ -79,4 +79,4 @@ TEST(HashTest, CString) {
   EXPECT_EQ(2794219650u, Hash(str, strlen("hello world")));
 }
 
-}  // namespace base
+}  // namespace butil

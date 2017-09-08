@@ -5,12 +5,12 @@
 #include <string.h>
 #include <string>
 
-#include "base/basictypes.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/md5.h"
+#include "butil/basictypes.h"
+#include "butil/memory/scoped_ptr.h"
+#include "butil/md5.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 TEST(MD5, DigestToBase16) {
   MD5Digest digest;
@@ -249,4 +249,4 @@ TEST(MD5, IntermediateFinal) {
   EXPECT_FALSE(!memcmp(&digest, &header_digest, sizeof(digest)));
 }
 
-}  // namespace base
+}  // namespace butil

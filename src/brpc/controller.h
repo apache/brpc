@@ -21,10 +21,10 @@
 // on internal structures, use opaque pointers instead.
 
 #include <gflags/gflags.h>                          // Users often need gflags
-#include "base/intrusive_ptr.hpp"                   // base::intrusive_ptr
+#include "butil/intrusive_ptr.hpp"                   // butil::intrusive_ptr
 #include "bthread/errno.h"                          // Redefine errno
-#include "base/endpoint.h"                          // base::EndPoint
-#include "base/iobuf.h"                             // base::IOBuf
+#include "butil/endpoint.h"                          // butil::EndPoint
+#include "butil/iobuf.h"                             // butil::IOBuf
 #include "bthread/types.h"                          // bthread_id_t
 #include "brpc/options.pb.h"                   // CompressType
 #include "brpc/errno.pb.h"                     // error code
@@ -199,7 +199,7 @@ public:
 
     // User attached data or body of http request, which is wired to network
     // directly instead of being serialized into protobuf messages.
-    base::IOBuf& request_attachment() { return _request_attachment; }
+    butil::IOBuf& request_attachment() { return _request_attachment; }
 
     ConnectionType connection_type() const { return _connection_type; }
     // Get the called method. May-be NULL for non-pb services.
@@ -292,7 +292,7 @@ public:
     
     // User attached data or body of http response, which is wired to network
     // directly instead of being serialized into protobuf messages.
-    base::IOBuf& response_attachment() { return _response_attachment; }
+    butil::IOBuf& response_attachment() { return _response_attachment; }
 
     // Create a ProgressiveAttachment to write (often after RPC).
     // If `stop_style' is FORCE_STOP, the underlying socket will be failed
@@ -344,13 +344,13 @@ public:
     // Client-side: successful or last server called. Accessible from 
     // PackXXXRequest() in protocols.
     // Server-side: returns the client sending the request
-    base::EndPoint remote_side() const { return _remote_side; }
+    butil::EndPoint remote_side() const { return _remote_side; }
     
     // Client-side: the local address for talking with server, undefined until
     // this RPC succeeds (because the connection may not be established 
     // before RPC).
     // Server-side: the address that clients access.
-    base::EndPoint local_side() const { return _local_side; }
+    butil::EndPoint local_side() const { return _local_side; }
 
     // Protocol of the request sent by client or received by server.
     ProtocolType request_protocol() const { return _request_protocol; }
@@ -392,8 +392,8 @@ public:
     const HttpHeader& http_response() const
     { return _http_response != NULL ? *_http_response : DefaultHttpHeader(); }
 
-    const base::IOBuf& request_attachment() const { return _request_attachment; }
-    const base::IOBuf& response_attachment() const { return _response_attachment; }
+    const butil::IOBuf& request_attachment() const { return _request_attachment; }
+    const butil::IOBuf& response_attachment() const { return _response_attachment; }
 
     // Return true if the remote side creates a stream.
     bool has_remote_stream() { return _remote_stream_settings != NULL; }
@@ -559,14 +559,14 @@ private:
     uint32_t _flags; // all boolean fields inside Controller
     int32_t _error_code;
     std::string _error_text;
-    base::EndPoint _remote_side;
-    base::EndPoint _local_side;
+    butil::EndPoint _remote_side;
+    butil::EndPoint _local_side;
     
     void* _session_local_data;
     const Server* _server;
     bthread_id_t _oncancel_id;
     const AuthContext* _auth_context;        // Authentication result
-    base::intrusive_ptr<MongoContext> _mongo_session_data;
+    butil::intrusive_ptr<MongoContext> _mongo_session_data;
     RpcDumpMeta* _rpc_dump_meta;
 
     ProtocolType _request_protocol;
@@ -611,7 +611,7 @@ private:
     RPCSender* _sender;
     uint64_t _request_code;
     SocketId _single_server_id;
-    base::intrusive_ptr<SharedLoadBalancer> _lb;
+    butil::intrusive_ptr<SharedLoadBalancer> _lb;
 
     // for passing parameters to created bthread, don't modify it otherwhere.
     CompletionInfo _tmp_completion_info;
@@ -626,7 +626,7 @@ private:
     Protocol::PackRequest _pack_request;
     const google::protobuf::MethodDescriptor* _method;
     const Authenticator* _auth;
-    base::IOBuf _request_buf;
+    butil::IOBuf _request_buf;
     IdlNames _idl_names;
     int64_t _idl_result;
 
@@ -634,13 +634,13 @@ private:
     HttpHeader* _http_response;
 
     // Fields with large size but low access frequency 
-    base::IOBuf _request_attachment;
-    base::IOBuf _response_attachment;
+    butil::IOBuf _request_attachment;
+    butil::IOBuf _response_attachment;
 
     // Writable progressive attachment
-    base::intrusive_ptr<ProgressiveAttachment> _wpa;
+    butil::intrusive_ptr<ProgressiveAttachment> _wpa;
     // Readable progressive attachment
-    base::intrusive_ptr<ReadableProgressiveAttachment> _rpa;
+    butil::intrusive_ptr<ReadableProgressiveAttachment> _rpa;
 
     // TODO: Replace following fields with StreamCreator
     // Defined at client side

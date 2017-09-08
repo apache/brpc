@@ -33,20 +33,20 @@ public:
    
     int Connect(Socket* ptr, const timespec* due_time,
                 int (*on_connect)(int, int, void *), void *data);
-    ssize_t CutMessageIntoFileDescriptor(int, base::IOBuf **data_list,
+    ssize_t CutMessageIntoFileDescriptor(int, butil::IOBuf **data_list,
                                          size_t size);
-    ssize_t CutMessageIntoSSLChannel(base::IOBuf*, SSL*, int*);
+    ssize_t CutMessageIntoSSLChannel(butil::IOBuf*, SSL*, int*);
     void BeforeRecycle(Socket *);
 
     // --------------------- SocketConnection --------------
 
-    int AppendIfNotFull(const base::IOBuf& msg);
+    int AppendIfNotFull(const butil::IOBuf& msg);
     static int Create(const StreamOptions& options,
                       const StreamSettings *remote_settings,
                       StreamId *id);
     StreamId id() { return _id; }
 
-    int OnReceived(const StreamFrameMeta& fm, base::IOBuf *buf, Socket* sock);
+    int OnReceived(const StreamFrameMeta& fm, butil::IOBuf *buf, Socket* sock);
     void SetRemoteSettings(const StreamSettings& remote_settings) {
         _remote_settings.MergeFrom(remote_settings);
     }
@@ -75,10 +75,10 @@ friend class MessageBatcher;
     void SendFeedback();
     void StartIdleTimer();
     void StopIdleTimer();
-    void HandleRpcResponse(base::IOBuf* response_buffer);
-    void WriteToHostSocket(base::IOBuf* b);
+    void HandleRpcResponse(butil::IOBuf* response_buffer);
+    void WriteToHostSocket(butil::IOBuf* b);
 
-    static int Consume(void *meta, bthread::TaskIterator<base::IOBuf*>& iter);
+    static int Consume(void *meta, bthread::TaskIterator<butil::IOBuf*>& iter);
     static int TriggerOnWritable(bthread_id_t id, void *data, int error_code);
     static void *RunOnWritable(void* arg);
     static void* RunOnConnect(void* arg);
@@ -118,8 +118,8 @@ friend class MessageBatcher;
     StreamSettings _remote_settings;   
 
     bool _parse_rpc_response;
-    bthread::ExecutionQueueId<base::IOBuf*> _consumer_queue;
-    base::IOBuf *_pending_buf;
+    bthread::ExecutionQueueId<butil::IOBuf*> _consumer_queue;
+    butil::IOBuf *_pending_buf;
     int64_t _start_idle_timer_us;
     bthread_timer_t _idle_timer;
 };

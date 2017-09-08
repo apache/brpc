@@ -9,8 +9,8 @@
 #include <memory>
 #include <iostream>
 #include <sstream>
-#include "base/time.h"
-#include "base/macros.h"
+#include "butil/time.h"
+#include "butil/macros.h"
 
 #include "bvar/bvar.h"
 
@@ -181,7 +181,7 @@ TEST_F(VariableTest, expose) {
 class MyDumper : public bvar::Dumper {
 public:
     bool dump(const std::string& name,
-              const base::StringPiece& description) {
+              const butil::StringPiece& description) {
         _list.push_back(std::make_pair(name, description.as_string()));
         return true;
     }
@@ -364,7 +364,7 @@ TEST_F(VariableTest, recursive_mutex) {
     pthread_mutex_t mutex;
     pthread_mutex_init(&mutex, &attr);
     pthread_mutexattr_destroy(&attr);
-    base::Timer timer;
+    butil::Timer timer;
     const size_t N = 1000000;
     timer.start();
     for (size_t i = 0; i < N; ++i) {

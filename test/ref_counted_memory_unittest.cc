@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/memory/ref_counted_memory.h"
+#include "butil/memory/ref_counted_memory.h"
 
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 TEST(RefCountedMemoryUnitTest, RefCountedStaticMemory) {
   scoped_refptr<RefCountedMemory> mem = new RefCountedStaticMemory(
@@ -86,4 +86,4 @@ TEST(RefCountedMemoryUnitTest, EqualsNull) {
   EXPECT_FALSE(mem->Equals(NULL));
 }
 
-}  //  namespace base
+}  //  namespace butil

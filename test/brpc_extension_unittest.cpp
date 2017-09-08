@@ -8,8 +8,8 @@
 #include <sys/socket.h>
 #include <map>
 #include <gtest/gtest.h>
-#include "base/time.h"
-#include "base/macros.h"
+#include "butil/time.h"
+#include "butil/macros.h"
 #include "brpc/extension.h"
 
 class ExtensionTest : public ::testing::Test{

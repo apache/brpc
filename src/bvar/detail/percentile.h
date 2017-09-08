@@ -24,12 +24,12 @@
 #include <ostream>                      // std::ostream
 #include <algorithm>                    // std::sort
 #include <math.h>                       // ceil
-#include "base/macros.h"                // ARRAY_SIZE
+#include "butil/macros.h"                // ARRAY_SIZE
 #include "bvar/reducer.h"               // Reducer
 #include "bvar/window.h"                // Window
 #include "bvar/detail/combiner.h"       // AgentCombiner
 #include "bvar/detail/sampler.h"        // ReducerSampler
-#include "base/fast_rand.h"
+#include "butil/fast_rand.h"
 
 namespace bvar {
 namespace detail {
@@ -39,7 +39,7 @@ inline unsigned long round_of_expectation(unsigned long a, unsigned long b) {
     if (BAIDU_UNLIKELY(b == 0)) {
         return 0;
     }
-    return a / b + (base::fast_rand_less_than(b) < a % b);
+    return a / b + (butil::fast_rand_less_than(b) < a % b);
 }
 
 // Storing latencies inside a interval.
@@ -119,7 +119,7 @@ public:
             CHECK_LE(num_remain, _num_samples);
             // Randomly drop samples of this
             for (size_t i = _num_samples; i > num_remain; --i) {
-                _samples[base::fast_rand_less_than(i)] = _samples[i - 1];
+                _samples[butil::fast_rand_less_than(i)] = _samples[i - 1];
             }
             const size_t num_remain_from_rhs = SAMPLE_SIZE - num_remain;
             CHECK_LE(num_remain_from_rhs, rhs._num_samples);
@@ -127,7 +127,7 @@ public:
             DEFINE_SMALL_ARRAY(uint32_t, tmp, rhs._num_samples, 64);
             memcpy(tmp, rhs._samples, sizeof(uint32_t) * rhs._num_samples);
             for (size_t i = 0; i < num_remain_from_rhs; ++i) {
-                const int index = base::fast_rand_less_than(rhs._num_samples - i);
+                const int index = butil::fast_rand_less_than(rhs._num_samples - i);
                 _samples[num_remain++] = tmp[index];
                 tmp[index] = tmp[rhs._num_samples - i - 1];
             }
@@ -148,11 +148,11 @@ public:
             return;
         }
         for (size_t i = 0; i < n; ++i) {
-            size_t index = base::fast_rand_less_than(mutable_rhs._num_samples - i);
+            size_t index = butil::fast_rand_less_than(mutable_rhs._num_samples - i);
             if (_num_samples < SAMPLE_SIZE) {
                 _samples[_num_samples++] = mutable_rhs._samples[index];
             } else {
-                _samples[base::fast_rand_less_than(_num_samples)]
+                _samples[butil::fast_rand_less_than(_num_samples)]
                         = mutable_rhs._samples[index];
             }
             std::swap(mutable_rhs._samples[index],
@@ -367,7 +367,7 @@ friend class AddLatency;
                 if (!iter->_intervals[i] || iter->_intervals[i]->empty()) {
                     continue;
                 }
-                typename base::add_reference<BAIDU_TYPEOF(*(iter->_intervals[i]))>::type
+                typename butil::add_reference<BAIDU_TYPEOF(*(iter->_intervals[i]))>::type
                         invl = *(iter->_intervals[i]);
                 if (total <= SAMPLE_SIZE) {
                     get_interval_at(i).merge_with_expectation(
@@ -485,7 +485,7 @@ public:
     bool valid() const { return _combiner != NULL && _combiner->valid(); }
     
     // This name is useful for warning negative latencies in operator<<
-    void set_debug_name(const base::StringPiece& name) {
+    void set_debug_name(const butil::StringPiece& name) {
         _debug_name.assign(name.data(), name.size());
     }
 

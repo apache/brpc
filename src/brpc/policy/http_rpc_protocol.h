@@ -76,16 +76,16 @@ public:
         , HttpMessage(read_body_progressively)
         , _is_stage2(false) {
         // add one ref for Destroy
-        base::intrusive_ptr<HttpContext>(this).detach();
+        butil::intrusive_ptr<HttpContext>(this).detach();
     }
 
     void AddOneRefForStage2() {
-        base::intrusive_ptr<HttpContext>(this).detach();
+        butil::intrusive_ptr<HttpContext>(this).detach();
         _is_stage2 = true;
     }
 
     void RemoveOneRefForStage2() {
-        base::intrusive_ptr<HttpContext>(this, false);
+        butil::intrusive_ptr<HttpContext>(this, false);
     }
 
     // True if AddOneRefForStage2() was ever called.
@@ -106,22 +106,22 @@ private:
 };
 
 // Implement functions required in protocol.h
-ParseResult ParseHttpMessage(base::IOBuf *source, Socket *socket,
+ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
                              bool read_eof, const void *arg);
 void ProcessHttpRequest(InputMessageBase *msg);
 void ProcessHttpResponse(InputMessageBase* msg);
 bool VerifyHttpRequest(const InputMessageBase* msg);
-void SerializeHttpRequest(base::IOBuf* request_buf,
+void SerializeHttpRequest(butil::IOBuf* request_buf,
                           Controller* cntl,
                           const google::protobuf::Message* msg);
-void PackHttpRequest(base::IOBuf* buf,
+void PackHttpRequest(butil::IOBuf* buf,
                      SocketMessage** user_message_out,
                      uint64_t correlation_id,
                      const google::protobuf::MethodDescriptor* method,
                      Controller* controller,
-                     const base::IOBuf& request,
+                     const butil::IOBuf& request,
                      const Authenticator* auth);
-bool ParseHttpServerAddress(base::EndPoint* out, const char* server_addr_and_port);
+bool ParseHttpServerAddress(butil::EndPoint* out, const char* server_addr_and_port);
 const std::string& GetHttpMethodName(const google::protobuf::MethodDescriptor*,
                                      const Controller*);
 

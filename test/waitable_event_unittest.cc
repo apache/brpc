@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/synchronization/waitable_event.h"
+#include "butil/synchronization/waitable_event.h"
 
-#include "base/compiler_specific.h"
-#include "base/threading/platform_thread.h"
-#include "base/time/time.h"
+#include "butil/compiler_specific.h"
+#include "butil/threading/platform_thread.h"
+#include "butil/time/time.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 TEST(WaitableEventTest, ManualBasics) {
   WaitableEvent event(true, false);
@@ -105,4 +105,4 @@ TEST(WaitableEventTest, WaitMany) {
     delete ev[i];
 }
 
-}  // namespace base
+}  // namespace butil

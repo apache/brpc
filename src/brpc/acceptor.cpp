@@ -16,9 +16,9 @@
 //          Ge,Jun(gejun@baidu.com)
 
 #include <gflags/gflags.h>
-#include "base/fd_guard.h"                 // fd_guard 
-#include "base/fd_utility.h"               // make_close_on_exec
-#include "base/time.h"                     // gettimeofday_us
+#include "butil/fd_guard.h"                 // fd_guard 
+#include "butil/fd_utility.h"               // make_close_on_exec
+#include "butil/time.h"                     // gettimeofday_us
 #include "brpc/acceptor.h"
 
 
@@ -158,7 +158,7 @@ int Acceptor::Initialize() {
 
 // NOTE: Join() can happen before StopAccept()
 void Acceptor::Join() {
-    std::unique_lock<base::Mutex> mu(_map_mutex);
+    std::unique_lock<butil::Mutex> mu(_map_mutex);
     if (_status != STOPPING && _status != RUNNING) {  // no need to join.
         return;
     }
@@ -200,7 +200,7 @@ void Acceptor::ListConnections(std::vector<SocketId>* conn_list,
     // ConnectionCount is inaccurate, enough space is reserved
     conn_list->reserve(ConnectionCount() + 10);
 
-    std::unique_lock<base::Mutex> mu(_map_mutex);
+    std::unique_lock<butil::Mutex> mu(_map_mutex);
     if (!_socket_map.initialized()) {
         // Optional. Uninitialized FlatMap should be iteratable.
         return;
@@ -240,7 +240,7 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
     while (1) {
         struct sockaddr in_addr;
         socklen_t in_len = sizeof(in_addr);
-        base::fd_guard in_fd(accept(acception->fd(), &in_addr, &in_len));
+        butil::fd_guard in_fd(accept(acception->fd(), &in_addr, &in_len));
         if (in_fd < 0) {
             // no EINTR because listened fd is non-blocking.
             if (errno == EAGAIN) {
@@ -267,7 +267,7 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
         SocketOptions options;
         options.keytable_pool = am->_keytable_pool;
         options.fd = in_fd;
-        options.remote_side = base::EndPoint(*(sockaddr_in*)&in_addr);
+        options.remote_side = butil::EndPoint(*(sockaddr_in*)&in_addr);
         options.user = acception->user();
         options.on_edge_triggered_events = InputMessenger::OnNewMessages;
         options.ssl_ctx = am->_ssl_ctx;

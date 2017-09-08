@@ -15,8 +15,8 @@
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
-#include "base/time.h" 
-#include "base/iobuf.h"                         // base::IOBuf
+#include "butil/time.h" 
+#include "butil/iobuf.h"                         // butil::IOBuf
 #include "brpc/controller.h"               // Controller
 #include "brpc/socket.h"                   // Socket
 #include "brpc/server.h"                   // Server
@@ -71,7 +71,7 @@ void SendMongoResponse::Run() {
     
     const MongoServiceAdaptor* adaptor =
             server->options().mongo_service_adaptor;
-    base::IOBuf res_buf;
+    butil::IOBuf res_buf;
     if (cntl.Failed()) {
         adaptor->SerializeError(res.header().response_to(), &res_buf);
     } else if (res.has_message()) {
@@ -105,11 +105,11 @@ void SendMongoResponse::Run() {
     }
     if (method_status) {
         method_status.release()->OnResponded(
-            !cntl.Failed(), base::cpuwide_time_us() - start_callback_us);
+            !cntl.Failed(), butil::cpuwide_time_us() - start_callback_us);
     }
 }
 
-ParseResult ParseMongoMessage(base::IOBuf* source,
+ParseResult ParseMongoMessage(butil::IOBuf* source,
                               Socket* socket, bool /*read_eof*/, const void *arg) {
     const Server* server = static_cast<const Server*>(arg);
     const MongoServiceAdaptor* adaptor = server->options().mongo_service_adaptor;
@@ -266,7 +266,7 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
         mongo_done->req.mutable_header()->set_op_code(
                 static_cast<MongoOp>(header->op_code));
         mongo_done->res.mutable_header()->set_response_to(header->request_id);
-        mongo_done->start_callback_us = base::cpuwide_time_us();
+        mongo_done->start_callback_us = butil::cpuwide_time_us();
 
         google::protobuf::Service* svc = mp->service;
         const google::protobuf::MethodDescriptor* method = mp->method;

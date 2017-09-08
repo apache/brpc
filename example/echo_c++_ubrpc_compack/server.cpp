@@ -16,7 +16,7 @@
 // This server can be accessed by the client in public/baidu-rpc-ub/example/echo_c++_compack_ubrpc as well.
 
 #include <gflags/gflags.h>
-#include <base/logging.h>
+#include <butil/logging.h>
 #include <brpc/server.h>
 #include <brpc/policy/ubrpc2pb_protocol.h>
 #include "echo.pb.h"

@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/memory/scoped_ptr.h"
+#include "butil/memory/scoped_ptr.h"
 
-#include "base/basictypes.h"
-#include "base/bind.h"
-#include "base/callback.h"
+#include "butil/basictypes.h"
+#include "butil/bind.h"
+#include "butil/callback.h"
 #include <gtest/gtest.h>
 
 namespace {

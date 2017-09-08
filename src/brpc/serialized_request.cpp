@@ -26,7 +26,7 @@
 #include <google/protobuf/reflection_ops.h>
 #include <google/protobuf/wire_format.h>
 
-#include "base/logging.h"
+#include "butil/logging.h"
 
 
 namespace brpc {

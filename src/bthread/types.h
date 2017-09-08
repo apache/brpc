@@ -21,7 +21,7 @@
 
 #include <stdint.h>                            // uint64_t
 #if defined(__cplusplus)
-#include "base/logging.h"                      // CHECK
+#include "butil/logging.h"                      // CHECK
 #endif
 
 typedef uint64_t bthread_t;

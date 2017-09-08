@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/containers/small_map.h"
+#include "butil/containers/small_map.h"
 
 #include <stddef.h>
 
@@ -10,11 +10,11 @@
 #include <functional>
 #include <map>
 
-#include "base/containers/hash_tables.h"
-#include "base/logging.h"
+#include "butil/containers/hash_tables.h"
+#include "butil/logging.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 TEST(SmallMap, General) {
   SmallMap<hash_map<int, int> > m;
@@ -480,4 +480,4 @@ TEST(SmallMap, SubclassInitializationWithFunctionObject) {
   EXPECT_EQ(1u, m.count(-1));
 }
 
-}  // namespace base
+}  // namespace butil

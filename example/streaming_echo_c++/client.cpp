@@ -15,7 +15,7 @@
 // A client sending requests to server in batch every 1 second.
 
 #include <gflags/gflags.h>
-#include <base/logging.h>
+#include <butil/logging.h>
 #include <brpc/channel.h>
 #include <brpc/stream.h>
 #include "echo.pb.h"
@@ -65,10 +65,10 @@ int main(int argc, char* argv[]) {
     }
     
     while (!brpc::IsAskedToQuit()) {
-        base::IOBuf msg1;
+        butil::IOBuf msg1;
         msg1.append("abcdefghijklmnopqrstuvwxyz");
         CHECK_EQ(0, brpc::StreamWrite(stream, msg1));
-        base::IOBuf msg2;
+        butil::IOBuf msg2;
         msg2.append("0123456789");
         CHECK_EQ(0, brpc::StreamWrite(stream, msg2));
         sleep(1);

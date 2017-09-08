@@ -18,10 +18,10 @@
 #ifndef PUBLIC_BVAR_BVAR_COLLECTOR_H
 #define PUBLIC_BVAR_BVAR_COLLECTOR_H
 
-#include "base/containers/linked_list.h"
-#include "base/fast_rand.h"
-#include "base/time.h"
-#include "base/atomicops.h"
+#include "butil/containers/linked_list.h"
+#include "butil/fast_rand.h"
+#include "butil/time.h"
+#include "butil/atomicops.h"
 #include "bvar/passive_status.h"
 
 namespace bvar {
@@ -31,7 +31,7 @@ struct CollectorSpeedLimit {
     // [Managed by Collector, don't change!]
     size_t sampling_range;
     bool ever_grabbed;
-    base::static_atomic<int> count_before_grabbed;
+    butil::static_atomic<int> count_before_grabbed;
     int64_t first_sample_real_us;
 };
 
@@ -52,7 +52,7 @@ public:
 //  1. Implement Collected
 //  2. Create an instance and fill in data.
 //  3. submit() the instance.
-class Collected : public base::LinkNode<Collected> {
+class Collected : public butil::LinkNode<Collected> {
 public:
     virtual ~Collected() {}
     
@@ -62,19 +62,19 @@ public:
     // interleaving status of threads even in highly contended situations.
     // You should also create the sample using a malloc() impl. that are
     // unlikely to contend, keeping interruptions minimal.
-    // `cpuwide_us' should be got from base::cpuwide_time_us(). If it's far
+    // `cpuwide_us' should be got from butil::cpuwide_time_us(). If it's far
     // from the timestamp updated by collecting thread(which basically means
     // the thread is not scheduled by OS in time), this sample is directly
     // destroy()-ed to avoid memory explosion.
     void submit(int64_t cpuwide_us);
-    void submit() { submit(base::cpuwide_time_us()); }
+    void submit() { submit(butil::cpuwide_time_us()); }
 
     // Implement this method to dump the sample into files and destroy it.
     // This method is called in a separate thread and can be blocked
     // indefinitely long(not recommended). If too many samples wait for
     // this funcion due to previous sample's blocking, they'll be destroy()-ed.
     // If you need to run destruction code upon thread's exit, use
-    // base::thread_atexit. Dumping thread run this function in batch, each
+    // butil::thread_atexit. Dumping thread run this function in batch, each
     // batch is counted as one "round", `round_index' is the round that
     // dumping thread is currently at, counting from 1.
     virtual void dump_and_destroy(size_t round_index) = 0;
@@ -111,7 +111,7 @@ inline size_t is_collectable(CollectorSpeedLimit* speed_limit) {
     if (speed_limit->ever_grabbed) { // most common case
         const size_t sampling_range = speed_limit->sampling_range;
         // fast_rand is faster than fast_rand_in
-        if ((base::fast_rand() & (COLLECTOR_SAMPLING_BASE - 1)) >= sampling_range) {
+        if ((butil::fast_rand() & (COLLECTOR_SAMPLING_BASE - 1)) >= sampling_range) {
             return 0;
         }
         return sampling_range;

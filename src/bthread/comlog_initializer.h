@@ -20,7 +20,7 @@
 #define PUBLIC_BTHREAD_BTHREAD_COMLOG_INITIALIZER_H
 
 #include <com_log.h>                       // com_openlog_r, com_closelog_r
-#include <base/macros.h>
+#include <butil/macros.h>
 
 namespace bthread {
 

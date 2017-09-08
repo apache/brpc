@@ -6,26 +6,26 @@
 
 #include <limits>
 
-#include "base/command_line.h"
-#include "base/debug/alias.h"
-#include "base/debug/stack_trace.h"
-#include "base/files/file_path.h"
-#include "base/logging.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/path_service.h"
-#include "base/posix/eintr_wrapper.h"
-#include "base/process/kill.h"
-#include "base/process/launch.h"
-#include "base/process/memory.h"
-#include "base/process/process.h"
-#include "base/process/process_metrics.h"
-#include "base/strings/string_number_conversions.h"
-#include "base/strings/utf_string_conversions.h"
-#include "base/synchronization/waitable_event.h"
+#include "butil/command_line.h"
+#include "butil/debug/alias.h"
+#include "butil/debug/stack_trace.h"
+#include "butil/files/file_path.h"
+#include "butil/logging.h"
+#include "butil/memory/scoped_ptr.h"
+#include "butil/path_service.h"
+#include "butil/posix/eintr_wrapper.h"
+#include "butil/process/kill.h"
+#include "butil/process/launch.h"
+#include "butil/process/memory.h"
+#include "butil/process/process.h"
+#include "butil/process/process_metrics.h"
+#include "butil/strings/string_number_conversions.h"
+#include "butil/strings/utf_string_conversions.h"
+#include "butil/synchronization/waitable_event.h"
 #include "test/multiprocess_test.h"
 #include "test/test_timeouts.h"
-#include "base/third_party/dynamic_annotations/dynamic_annotations.h"
-#include "base/threading/platform_thread.h"
+#include "butil/third_party/dynamic_annotations/dynamic_annotations.h"
+#include "butil/threading/platform_thread.h"
 #include <gtest/gtest.h>
 #include "test/multiprocess_func_list.h"
 
@@ -44,14 +44,14 @@
 #endif
 #if defined(OS_WIN)
 #include <windows.h>
-#include "base/win/windows_version.h"
+#include "butil/win/windows_version.h"
 #endif
 #if defined(OS_MACOSX)
 #include <mach/vm_param.h>
 #include <malloc/malloc.h>
 #endif
 
-using base::FilePath;
+using butil::FilePath;
 
 namespace {
 
@@ -77,7 +77,7 @@ const int kExpectedStillRunningExitCode = 0;
 void WaitToDie(const char* filename) {
   FILE* fp;
   do {
-    base::PlatformThread::Sleep(base::TimeDelta::FromMilliseconds(10));
+    butil::PlatformThread::Sleep(butil::TimeDelta::FromMilliseconds(10));
     fp = fopen(filename, "r");
   } while (!fp);
   fclose(fp);
@@ -94,17 +94,17 @@ void SignalChildren(const char* filename) {
 // libraries closing the fds, child deadlocking). This is a simple
 // case, so it's not worth the risk.  Using wait loops is discouraged
 // in most instances.
-base::TerminationStatus WaitForChildTermination(base::ProcessHandle handle,
+butil::TerminationStatus WaitForChildTermination(butil::ProcessHandle handle,
                                                 int* exit_code) {
   // Now we wait until the result is something other than STILL_RUNNING.
-  base::TerminationStatus status = base::TERMINATION_STATUS_STILL_RUNNING;
-  const base::TimeDelta kInterval = base::TimeDelta::FromMilliseconds(20);
-  base::TimeDelta waited;
+  butil::TerminationStatus status = butil::TERMINATION_STATUS_STILL_RUNNING;
+  const butil::TimeDelta kInterval = butil::TimeDelta::FromMilliseconds(20);
+  butil::TimeDelta waited;
   do {
-    status = base::GetTerminationStatus(handle, exit_code);
-    base::PlatformThread::Sleep(kInterval);
+    status = butil::GetTerminationStatus(handle, exit_code);
+    butil::PlatformThread::Sleep(kInterval);
     waited += kInterval;
-  } while (status == base::TERMINATION_STATUS_STILL_RUNNING &&
+  } while (status == butil::TERMINATION_STATUS_STILL_RUNNING &&
 // Waiting for more time for process termination on android devices.
 #if defined(OS_ANDROID)
            waited < TestTimeouts::large_test_timeout());
@@ -117,7 +117,7 @@ base::TerminationStatus WaitForChildTermination(base::ProcessHandle handle,
 
 }  // namespace
 
-class ProcessUtilTest : public base::MultiProcessTest {
+class ProcessUtilTest : public butil::MultiProcessTest {
  public:
 #if defined(OS_POSIX)
   // Spawn a child process that counts how many file descriptors are open.
@@ -133,7 +133,7 @@ std::string ProcessUtilTest::GetSignalFilePath(const char* filename) {
   return filename;
 #else
   FilePath tmp_dir;
-  PathService::Get(base::DIR_CACHE, &tmp_dir);
+  PathService::Get(butil::DIR_CACHE, &tmp_dir);
   tmp_dir = tmp_dir.Append(filename);
   return tmp_dir.value();
 #endif
@@ -145,11 +145,11 @@ MULTIPROCESS_TEST_MAIN(SimpleChildProcess) {
 
 // TODO(viettrungluu): This should be in a "MultiProcessTestTest".
 TEST_F(ProcessUtilTest, SpawnChild) {
-  base::ProcessHandle handle = SpawnChild("SimpleChildProcess");
-  ASSERT_NE(base::kNullProcessHandle, handle);
-  EXPECT_TRUE(base::WaitForSingleProcess(
+  butil::ProcessHandle handle = SpawnChild("SimpleChildProcess");
+  ASSERT_NE(butil::kNullProcessHandle, handle);
+  EXPECT_TRUE(butil::WaitForSingleProcess(
                   handle, TestTimeouts::action_max_timeout()));
-  base::CloseProcessHandle(handle);
+  butil::CloseProcessHandle(handle);
 }
 
 MULTIPROCESS_TEST_MAIN(SlowChildProcess) {
@@ -161,12 +161,12 @@ TEST_F(ProcessUtilTest, KillSlowChild) {
   const std::string signal_file =
       ProcessUtilTest::GetSignalFilePath(kSignalFileSlow);
   remove(signal_file.c_str());
-  base::ProcessHandle handle = SpawnChild("SlowChildProcess");
-  ASSERT_NE(base::kNullProcessHandle, handle);
+  butil::ProcessHandle handle = SpawnChild("SlowChildProcess");
+  ASSERT_NE(butil::kNullProcessHandle, handle);
   SignalChildren(signal_file.c_str());
-  EXPECT_TRUE(base::WaitForSingleProcess(
+  EXPECT_TRUE(butil::WaitForSingleProcess(
                   handle, TestTimeouts::action_max_timeout()));
-  base::CloseProcessHandle(handle);
+  butil::CloseProcessHandle(handle);
   remove(signal_file.c_str());
 }
 
@@ -175,35 +175,35 @@ TEST_F(ProcessUtilTest, DISABLED_GetTerminationStatusExit) {
   const std::string signal_file =
       ProcessUtilTest::GetSignalFilePath(kSignalFileSlow);
   remove(signal_file.c_str());
-  base::ProcessHandle handle = SpawnChild("SlowChildProcess");
-  ASSERT_NE(base::kNullProcessHandle, handle);
+  butil::ProcessHandle handle = SpawnChild("SlowChildProcess");
+  ASSERT_NE(butil::kNullProcessHandle, handle);
 
   int exit_code = 42;
-  EXPECT_EQ(base::TERMINATION_STATUS_STILL_RUNNING,
-            base::GetTerminationStatus(handle, &exit_code));
+  EXPECT_EQ(butil::TERMINATION_STATUS_STILL_RUNNING,
+            butil::GetTerminationStatus(handle, &exit_code));
   EXPECT_EQ(kExpectedStillRunningExitCode, exit_code);
 
   SignalChildren(signal_file.c_str());
   exit_code = 42;
-  base::TerminationStatus status =
+  butil::TerminationStatus status =
       WaitForChildTermination(handle, &exit_code);
-  EXPECT_EQ(base::TERMINATION_STATUS_NORMAL_TERMINATION, status);
+  EXPECT_EQ(butil::TERMINATION_STATUS_NORMAL_TERMINATION, status);
   EXPECT_EQ(0, exit_code);
-  base::CloseProcessHandle(handle);
+  butil::CloseProcessHandle(handle);
   remove(signal_file.c_str());
 }
 
 #if defined(OS_WIN)
 // TODO(cpu): figure out how to test this in other platforms.
 TEST_F(ProcessUtilTest, GetProcId) {
-  base::ProcessId id1 = base::GetProcId(GetCurrentProcess());
+  butil::ProcessId id1 = butil::GetProcId(GetCurrentProcess());
   EXPECT_NE(0ul, id1);
-  base::ProcessHandle handle = SpawnChild("SimpleChildProcess");
-  ASSERT_NE(base::kNullProcessHandle, handle);
-  base::ProcessId id2 = base::GetProcId(handle);
+  butil::ProcessHandle handle = SpawnChild("SimpleChildProcess");
+  ASSERT_NE(butil::kNullProcessHandle, handle);
+  butil::ProcessId id2 = butil::GetProcId(handle);
   EXPECT_NE(0ul, id2);
   EXPECT_NE(id1, id2);
-  base::CloseProcessHandle(handle);
+  butil::CloseProcessHandle(handle);
 }
 #endif
 
@@ -242,19 +242,19 @@ TEST_F(ProcessUtilTest, MAYBE_GetTerminationStatusCrash) {
   const std::string signal_file =
     ProcessUtilTest::GetSignalFilePath(kSignalFileCrash);
   remove(signal_file.c_str());
-  base::ProcessHandle handle = SpawnChild("CrashingChildProcess");
-  ASSERT_NE(base::kNullProcessHandle, handle);
+  butil::ProcessHandle handle = SpawnChild("CrashingChildProcess");
+  ASSERT_NE(butil::kNullProcessHandle, handle);
 
   int exit_code = 42;
-  EXPECT_EQ(base::TERMINATION_STATUS_STILL_RUNNING,
-            base::GetTerminationStatus(handle, &exit_code));
+  EXPECT_EQ(butil::TERMINATION_STATUS_STILL_RUNNING,
+            butil::GetTerminationStatus(handle, &exit_code));
   EXPECT_EQ(kExpectedStillRunningExitCode, exit_code);
 
   SignalChildren(signal_file.c_str());
   exit_code = 42;
-  base::TerminationStatus status =
+  butil::TerminationStatus status =
       WaitForChildTermination(handle, &exit_code);
-  EXPECT_EQ(base::TERMINATION_STATUS_PROCESS_CRASHED, status);
+  EXPECT_EQ(butil::TERMINATION_STATUS_PROCESS_CRASHED, status);
 
 #if defined(OS_WIN)
   EXPECT_EQ(0xc0000005, exit_code);
@@ -264,10 +264,10 @@ TEST_F(ProcessUtilTest, MAYBE_GetTerminationStatusCrash) {
   int signal = WTERMSIG(exit_code);
   EXPECT_EQ(SIGSEGV, signal);
 #endif
-  base::CloseProcessHandle(handle);
+  butil::CloseProcessHandle(handle);
 
   // Reset signal handlers back to "normal".
-  base::debug::EnableInProcessStackDumping();
+  butil::debug::EnableInProcessStackDumping();
   remove(signal_file.c_str());
 }
 #endif  // !defined(OS_MACOSX)
@@ -289,19 +289,19 @@ TEST_F(ProcessUtilTest, GetTerminationStatusKill) {
   const std::string signal_file =
     ProcessUtilTest::GetSignalFilePath(kSignalFileKill);
   remove(signal_file.c_str());
-  base::ProcessHandle handle = SpawnChild("KilledChildProcess");
-  ASSERT_NE(base::kNullProcessHandle, handle);
+  butil::ProcessHandle handle = SpawnChild("KilledChildProcess");
+  ASSERT_NE(butil::kNullProcessHandle, handle);
 
   int exit_code = 42;
-  EXPECT_EQ(base::TERMINATION_STATUS_STILL_RUNNING,
-            base::GetTerminationStatus(handle, &exit_code));
+  EXPECT_EQ(butil::TERMINATION_STATUS_STILL_RUNNING,
+            butil::GetTerminationStatus(handle, &exit_code));
   EXPECT_EQ(kExpectedStillRunningExitCode, exit_code);
 
   SignalChildren(signal_file.c_str());
   exit_code = 42;
-  base::TerminationStatus status =
+  butil::TerminationStatus status =
       WaitForChildTermination(handle, &exit_code);
-  EXPECT_EQ(base::TERMINATION_STATUS_PROCESS_WAS_KILLED, status);
+  EXPECT_EQ(butil::TERMINATION_STATUS_PROCESS_WAS_KILLED, status);
 #if defined(OS_WIN)
   EXPECT_EQ(kExpectedKilledExitCode, exit_code);
 #elif defined(OS_POSIX)
@@ -310,7 +310,7 @@ TEST_F(ProcessUtilTest, GetTerminationStatusKill) {
   int signal = WTERMSIG(exit_code);
   EXPECT_EQ(SIGKILL, signal);
 #endif
-  base::CloseProcessHandle(handle);
+  butil::CloseProcessHandle(handle);
   remove(signal_file.c_str());
 }
 
@@ -319,8 +319,8 @@ TEST_F(ProcessUtilTest, GetTerminationStatusKill) {
 // Note: a platform may not be willing or able to lower the priority of
 // a process. The calls to SetProcessBackground should be noops then.
 TEST_F(ProcessUtilTest, SetProcessBackgrounded) {
-  base::ProcessHandle handle = SpawnChild("SimpleChildProcess");
-  base::Process process(handle);
+  butil::ProcessHandle handle = SpawnChild("SimpleChildProcess");
+  butil::Process process(handle);
   int old_priority = process.GetPriority();
 #if defined(OS_WIN)
   EXPECT_TRUE(process.SetProcessBackgrounded(true));
@@ -338,7 +338,7 @@ TEST_F(ProcessUtilTest, SetProcessBackgrounded) {
 // Same as SetProcessBackgrounded but to this very process. It uses
 // a different code path at least for Windows.
 TEST_F(ProcessUtilTest, SetProcessBackgroundedSelf) {
-  base::Process process(base::Process::Current().handle());
+  butil::Process process(butil::Process::Current().handle());
   int old_priority = process.GetPriority();
 #if defined(OS_WIN)
   EXPECT_TRUE(process.SetProcessBackgrounded(true));
@@ -371,7 +371,7 @@ TEST_F(ProcessUtilTest, GetAppOutput) {
   cmd_line.AppendArg("/c");
   cmd_line.AppendArg("echo " + message + "");
   std::string output;
-  ASSERT_TRUE(base::GetAppOutput(cmd_line, &output));
+  ASSERT_TRUE(butil::GetAppOutput(cmd_line, &output));
   EXPECT_EQ(expected, output);
 
   // Let's make sure stderr is ignored.
@@ -380,17 +380,17 @@ TEST_F(ProcessUtilTest, GetAppOutput) {
   // http://msdn.microsoft.com/library/cc772622.aspx
   cmd_line.AppendArg("echo " + message + " >&2");
   output.clear();
-  ASSERT_TRUE(base::GetAppOutput(other_cmd_line, &output));
+  ASSERT_TRUE(butil::GetAppOutput(other_cmd_line, &output));
   EXPECT_EQ("", output);
 }
 
 // TODO(estade): if possible, port this test.
 TEST_F(ProcessUtilTest, LaunchAsUser) {
-  base::UserTokenHandle token;
+  butil::UserTokenHandle token;
   ASSERT_TRUE(OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &token));
-  base::LaunchOptions options;
+  butil::LaunchOptions options;
   options.as_user = token;
-  EXPECT_TRUE(base::LaunchProcess(MakeCmdLine("SimpleChildProcess"), options,
+  EXPECT_TRUE(butil::LaunchProcess(MakeCmdLine("SimpleChildProcess"), options,
                                   NULL));
 }
 
@@ -403,9 +403,9 @@ MULTIPROCESS_TEST_MAIN(TriggerEventChildProcess) {
   CHECK(!handle_value_string.empty());
 
   uint64_t handle_value_uint64;
-  CHECK(base::StringToUint64(handle_value_string, &handle_value_uint64));
+  CHECK(butil::StringToUint64(handle_value_string, &handle_value_uint64));
   // Give ownership of the handle to |event|.
-  base::WaitableEvent event(reinterpret_cast<HANDLE>(handle_value_uint64));
+  butil::WaitableEvent event(reinterpret_cast<HANDLE>(handle_value_uint64));
 
   event.Signal();
 
@@ -420,26 +420,26 @@ TEST_F(ProcessUtilTest, InheritSpecifiedHandles) {
   security_attributes.bInheritHandle = true;
 
   // Takes ownership of the event handle.
-  base::WaitableEvent event(
+  butil::WaitableEvent event(
       CreateEvent(&security_attributes, true, false, NULL));
-  base::HandlesToInheritVector handles_to_inherit;
+  butil::HandlesToInheritVector handles_to_inherit;
   handles_to_inherit.push_back(event.handle());
-  base::LaunchOptions options;
+  butil::LaunchOptions options;
   options.handles_to_inherit = &handles_to_inherit;
 
   CommandLine cmd_line = MakeCmdLine("TriggerEventChildProcess");
   cmd_line.AppendSwitchASCII(kEventToTriggerHandleSwitch,
-      base::Uint64ToString(reinterpret_cast<uint64_t>(event.handle())));
+      butil::Uint64ToString(reinterpret_cast<uint64_t>(event.handle())));
 
   // This functionality actually requires Vista or later. Make sure that it
   // fails properly on XP.
-  if (base::win::GetVersion() < base::win::VERSION_VISTA) {
-    EXPECT_FALSE(base::LaunchProcess(cmd_line, options, NULL));
+  if (butil::win::GetVersion() < butil::win::VERSION_VISTA) {
+    EXPECT_FALSE(butil::LaunchProcess(cmd_line, options, NULL));
     return;
   }
 
   // Launch the process and wait for it to trigger the event.
-  ASSERT_TRUE(base::LaunchProcess(cmd_line, options, NULL));
+  ASSERT_TRUE(butil::LaunchProcess(cmd_line, options, NULL));
   EXPECT_TRUE(event.TimedWait(TestTimeouts::action_max_timeout()));
 }
 #endif  // defined(OS_WIN)
@@ -500,11 +500,11 @@ int ProcessUtilTest::CountOpenFDsInChild() {
   if (pipe(fds) < 0)
     NOTREACHED();
 
-  base::FileHandleMappingVector fd_mapping_vec;
+  butil::FileHandleMappingVector fd_mapping_vec;
   fd_mapping_vec.push_back(std::pair<int, int>(fds[1], kChildPipe));
-  base::LaunchOptions options;
+  butil::LaunchOptions options;
   options.fds_to_remap = &fd_mapping_vec;
-  base::ProcessHandle handle =
+  butil::ProcessHandle handle =
       SpawnChildWithOptions("ProcessUtilsLeakFDChildProcess", options);
   CHECK(handle);
   int ret = IGNORE_EINTR(close(fds[1]));
@@ -518,11 +518,11 @@ int ProcessUtilTest::CountOpenFDsInChild() {
 
 #if defined(THREAD_SANITIZER)
   // Compiler-based ThreadSanitizer makes this test slow.
-  CHECK(base::WaitForSingleProcess(handle, base::TimeDelta::FromSeconds(3)));
+  CHECK(butil::WaitForSingleProcess(handle, butil::TimeDelta::FromSeconds(3)));
 #else
-  CHECK(base::WaitForSingleProcess(handle, base::TimeDelta::FromSeconds(1)));
+  CHECK(butil::WaitForSingleProcess(handle, butil::TimeDelta::FromSeconds(1)));
 #endif
-  base::CloseProcessHandle(handle);
+  butil::CloseProcessHandle(handle);
   ret = IGNORE_EINTR(close(fds[0]));
   DPCHECK(ret == 0);
 
@@ -562,16 +562,16 @@ TEST_F(ProcessUtilTest, MAYBE_FDRemapping) {
 namespace {
 
 std::string TestLaunchProcess(const std::vector<std::string>& args,
-                              const base::EnvironmentMap& env_changes,
+                              const butil::EnvironmentMap& env_changes,
                               const bool clear_environ,
                               const int clone_flags) {
-  base::FileHandleMappingVector fds_to_remap;
+  butil::FileHandleMappingVector fds_to_remap;
 
   int fds[2];
   PCHECK(pipe(fds) == 0);
 
   fds_to_remap.push_back(std::make_pair(fds[1], 1));
-  base::LaunchOptions options;
+  butil::LaunchOptions options;
   options.wait = true;
   options.environ = env_changes;
   options.clear_environ = clear_environ;
@@ -581,7 +581,7 @@ std::string TestLaunchProcess(const std::vector<std::string>& args,
 #else
   CHECK_EQ(0, clone_flags);
 #endif  // OS_LINUX
-  EXPECT_TRUE(base::LaunchProcess(args, options, NULL));
+  EXPECT_TRUE(butil::LaunchProcess(args, options, NULL));
   PCHECK(IGNORE_EINTR(close(fds[1])) == 0);
 
   char buf[512];
@@ -604,7 +604,7 @@ const char kLargeString[] =
 }  // namespace
 
 TEST_F(ProcessUtilTest, LaunchProcess) {
-  base::EnvironmentMap env_changes;
+  butil::EnvironmentMap env_changes;
   std::vector<std::string> echo_base_test;
   echo_base_test.push_back(kPosixShell);
   echo_base_test.push_back("-c");
@@ -680,27 +680,27 @@ TEST_F(ProcessUtilTest, GetAppOutput) {
   argv.push_back("-c");
 
   argv.push_back("exit 0");
-  EXPECT_TRUE(base::GetAppOutput(CommandLine(argv), &output));
+  EXPECT_TRUE(butil::GetAppOutput(CommandLine(argv), &output));
   EXPECT_STREQ("", output.c_str());
 
   argv[2] = "exit 1";
-  EXPECT_FALSE(base::GetAppOutput(CommandLine(argv), &output));
+  EXPECT_FALSE(butil::GetAppOutput(CommandLine(argv), &output));
   EXPECT_STREQ("", output.c_str());
 
   argv[2] = "echo foobar42";
-  EXPECT_TRUE(base::GetAppOutput(CommandLine(argv), &output));
+  EXPECT_TRUE(butil::GetAppOutput(CommandLine(argv), &output));
   EXPECT_STREQ("foobar42\n", output.c_str());
 #else
-  EXPECT_TRUE(base::GetAppOutput(CommandLine(FilePath("true")), &output));
+  EXPECT_TRUE(butil::GetAppOutput(CommandLine(FilePath("true")), &output));
   EXPECT_STREQ("", output.c_str());
 
-  EXPECT_FALSE(base::GetAppOutput(CommandLine(FilePath("false")), &output));
+  EXPECT_FALSE(butil::GetAppOutput(CommandLine(FilePath("false")), &output));
 
   std::vector<std::string> argv;
   argv.push_back("/bin/echo");
   argv.push_back("-n");
   argv.push_back("foobar42");
-  EXPECT_TRUE(base::GetAppOutput(CommandLine(argv), &output));
+  EXPECT_TRUE(butil::GetAppOutput(CommandLine(argv), &output));
   EXPECT_STREQ("foobar42", output.c_str());
 #endif  // defined(OS_ANDROID)
 }
@@ -724,34 +724,34 @@ TEST_F(ProcessUtilTest, MAYBE_GetAppOutputRestricted) {
   // need absolute paths).
   argv.push_back("exit 0");   // argv[2]; equivalent to "true"
   std::string output = "abc";
-  EXPECT_TRUE(base::GetAppOutputRestricted(CommandLine(argv), &output, 100));
+  EXPECT_TRUE(butil::GetAppOutputRestricted(CommandLine(argv), &output, 100));
   EXPECT_STREQ("", output.c_str());
 
   argv[2] = "exit 1";  // equivalent to "false"
   output = "before";
-  EXPECT_FALSE(base::GetAppOutputRestricted(CommandLine(argv),
+  EXPECT_FALSE(butil::GetAppOutputRestricted(CommandLine(argv),
                                             &output, 100));
   EXPECT_STREQ("", output.c_str());
 
   // Amount of output exactly equal to space allowed.
   argv[2] = "echo 123456789";  // (the sh built-in doesn't take "-n")
   output.clear();
-  EXPECT_TRUE(base::GetAppOutputRestricted(CommandLine(argv), &output, 10));
+  EXPECT_TRUE(butil::GetAppOutputRestricted(CommandLine(argv), &output, 10));
   EXPECT_STREQ("123456789\n", output.c_str());
 
   // Amount of output greater than space allowed.
   output.clear();
-  EXPECT_TRUE(base::GetAppOutputRestricted(CommandLine(argv), &output, 5));
+  EXPECT_TRUE(butil::GetAppOutputRestricted(CommandLine(argv), &output, 5));
   EXPECT_STREQ("12345", output.c_str());
 
   // Amount of output less than space allowed.
   output.clear();
-  EXPECT_TRUE(base::GetAppOutputRestricted(CommandLine(argv), &output, 15));
+  EXPECT_TRUE(butil::GetAppOutputRestricted(CommandLine(argv), &output, 15));
   EXPECT_STREQ("123456789\n", output.c_str());
 
   // Zero space allowed.
   output = "abc";
-  EXPECT_TRUE(base::GetAppOutputRestricted(CommandLine(argv), &output, 0));
+  EXPECT_TRUE(butil::GetAppOutputRestricted(CommandLine(argv), &output, 0));
   EXPECT_STREQ("", output.c_str());
 }
 
@@ -766,11 +766,11 @@ TEST_F(ProcessUtilTest, GetAppOutputRestrictedSIGPIPE) {
   argv.push_back("-c");
 #if defined(OS_ANDROID)
   argv.push_back("while echo 12345678901234567890; do :; done");
-  EXPECT_TRUE(base::GetAppOutputRestricted(CommandLine(argv), &output, 10));
+  EXPECT_TRUE(butil::GetAppOutputRestricted(CommandLine(argv), &output, 10));
   EXPECT_STREQ("1234567890", output.c_str());
 #else
   argv.push_back("yes");
-  EXPECT_TRUE(base::GetAppOutputRestricted(CommandLine(argv), &output, 10));
+  EXPECT_TRUE(butil::GetAppOutputRestricted(CommandLine(argv), &output, 10));
   EXPECT_STREQ("y\ny\ny\ny\ny\n", output.c_str());
 #endif
 }
@@ -796,14 +796,14 @@ TEST_F(ProcessUtilTest, MAYBE_GetAppOutputRestrictedNoZombies) {
   // 10.5) times with an output buffer big enough to capture all output.
   for (int i = 0; i < 300; i++) {
     std::string output;
-    EXPECT_TRUE(base::GetAppOutputRestricted(CommandLine(argv), &output, 100));
+    EXPECT_TRUE(butil::GetAppOutputRestricted(CommandLine(argv), &output, 100));
     EXPECT_STREQ("123456789012345678901234567890\n", output.c_str());
   }
 
   // Ditto, but with an output buffer too small to capture all output.
   for (int i = 0; i < 300; i++) {
     std::string output;
-    EXPECT_TRUE(base::GetAppOutputRestricted(CommandLine(argv), &output, 10));
+    EXPECT_TRUE(butil::GetAppOutputRestricted(CommandLine(argv), &output, 10));
     EXPECT_STREQ("1234567890", output.c_str());
   }
 }
@@ -816,7 +816,7 @@ TEST_F(ProcessUtilTest, GetAppOutputWithExitCode) {
   argv.push_back(std::string(kShellPath));  // argv[0]
   argv.push_back("-c");  // argv[1]
   argv.push_back("echo foo");  // argv[2];
-  EXPECT_TRUE(base::GetAppOutputWithExitCode(CommandLine(argv), &output,
+  EXPECT_TRUE(butil::GetAppOutputWithExitCode(CommandLine(argv), &output,
                                              &exit_code));
   EXPECT_STREQ("foo\n", output.c_str());
   EXPECT_EQ(exit_code, 0);
@@ -825,19 +825,19 @@ TEST_F(ProcessUtilTest, GetAppOutputWithExitCode) {
   // code.
   output.clear();
   argv[2] = "echo foo; exit 2";
-  EXPECT_TRUE(base::GetAppOutputWithExitCode(CommandLine(argv), &output,
+  EXPECT_TRUE(butil::GetAppOutputWithExitCode(CommandLine(argv), &output,
                                              &exit_code));
   EXPECT_STREQ("foo\n", output.c_str());
   EXPECT_EQ(exit_code, 2);
 }
 
 TEST_F(ProcessUtilTest, GetParentProcessId) {
-  base::ProcessId ppid = base::GetParentProcessId(base::GetCurrentProcId());
+  butil::ProcessId ppid = butil::GetParentProcessId(butil::GetCurrentProcId());
   EXPECT_EQ(ppid, getppid());
 }
 
 // TODO(port): port those unit tests.
-bool IsProcessDead(base::ProcessHandle child) {
+bool IsProcessDead(butil::ProcessHandle child) {
   // waitpid() will actually reap the process which is exactly NOT what we
   // want to test for.  The good thing is that if it can't find the process
   // we'll get a nice value for errno which we can test for.
@@ -846,14 +846,14 @@ bool IsProcessDead(base::ProcessHandle child) {
 }
 
 TEST_F(ProcessUtilTest, DelayedTermination) {
-  base::ProcessHandle child_process = SpawnChild("process_util_test_never_die");
+  butil::ProcessHandle child_process = SpawnChild("process_util_test_never_die");
   ASSERT_TRUE(child_process);
-  base::EnsureProcessTerminated(child_process);
-  base::WaitForSingleProcess(child_process, base::TimeDelta::FromSeconds(5));
+  butil::EnsureProcessTerminated(child_process);
+  butil::WaitForSingleProcess(child_process, butil::TimeDelta::FromSeconds(5));
 
   // Check that process was really killed.
   EXPECT_TRUE(IsProcessDead(child_process));
-  base::CloseProcessHandle(child_process);
+  butil::CloseProcessHandle(child_process);
 }
 
 MULTIPROCESS_TEST_MAIN(process_util_test_never_die) {
@@ -864,16 +864,16 @@ MULTIPROCESS_TEST_MAIN(process_util_test_never_die) {
 }
 
 TEST_F(ProcessUtilTest, ImmediateTermination) {
-  base::ProcessHandle child_process =
+  butil::ProcessHandle child_process =
       SpawnChild("process_util_test_die_immediately");
   ASSERT_TRUE(child_process);
   // Give it time to die.
   sleep(2);
-  base::EnsureProcessTerminated(child_process);
+  butil::EnsureProcessTerminated(child_process);
 
   // Check that process was really killed.
   EXPECT_TRUE(IsProcessDead(child_process));
-  base::CloseProcessHandle(child_process);
+  butil::CloseProcessHandle(child_process);
 }
 
 MULTIPROCESS_TEST_MAIN(process_util_test_die_immediately) {

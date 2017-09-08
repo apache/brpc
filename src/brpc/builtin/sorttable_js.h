@@ -17,7 +17,7 @@
 #ifndef BRPC_BUILTIN_SORTTABLE_JS_H
 #define BRPC_BUILTIN_SORTTABLE_JS_H
 
-#include "base/iobuf.h"
+#include "butil/iobuf.h"
 
 
 namespace brpc {
@@ -26,7 +26,7 @@ namespace brpc {
 // We need to pack all js inside C++ code so that builtin services can be
 // accessed without external resources and network connection.
 const char* sorttable_js();
-const base::IOBuf& sorttable_js_iobuf();
+const butil::IOBuf& sorttable_js_iobuf();
 
 } // namespace brpc
 

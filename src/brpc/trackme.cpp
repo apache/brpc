@@ -21,12 +21,12 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <pwd.h>
-#include "base/fast_rand.h"
+#include "butil/fast_rand.h"
 #include "brpc/log.h"
 #include "brpc/channel.h"
 #include "brpc/trackme.pb.h"
 #include "brpc/policy/hasher.h"
-#include "base/files/scoped_file.h"
+#include "butil/files/scoped_file.h"
 
 namespace brpc {
 
@@ -89,7 +89,7 @@ int ReadJPaasHostPort(int container_port) {
     char* line = NULL;
     size_t line_len = 0;
     ssize_t nr = 0;
-    base::ScopedFILE fp(fopen(JPAAS_LOG_PATH, "r"));
+    butil::ScopedFILE fp(fopen(JPAAS_LOG_PATH, "r"));
     if (!fp) {
         RPC_VLOG << "Fail to open `" << JPAAS_LOG_PATH << '\'';
         return -1;
@@ -113,7 +113,7 @@ int ReadJPaasHostPort(int container_port) {
 }
 
 // Called in server.cpp
-void SetTrackMeAddress(base::EndPoint pt) {
+void SetTrackMeAddress(butil::EndPoint pt) {
     BAIDU_SCOPED_LOCK(g_trackme_mutex);
     if (g_trackme_addr == NULL) {
         // JPAAS has NAT capabilities, read its log to figure out the open port
@@ -124,7 +124,7 @@ void SetTrackMeAddress(base::EndPoint pt) {
                      << " instead of jpaas_container_port=" << pt.port;
             pt.port = jpaas_port;
         }
-        g_trackme_addr = new std::string(base::endpoint2str(pt).c_str());
+        g_trackme_addr = new std::string(butil::endpoint2str(pt).c_str());
     }
 }
 
@@ -223,13 +223,13 @@ void TrackMe() {
     if (FLAGS_trackme_server.empty()) {
         return;
     }
-    int64_t now = base::gettimeofday_us();
+    int64_t now = butil::gettimeofday_us();
     std::unique_lock<pthread_mutex_t> mu(g_trackme_mutex);
     if (g_trackme_last_time == 0) {
         // Delay the first ping randomly within s_trackme_interval. This 
         // protects trackme_server from ping storms.
         g_trackme_last_time =
-            now + base::fast_rand_less_than(s_trackme_interval) * 1000000L;
+            now + butil::fast_rand_less_than(s_trackme_interval) * 1000000L;
     }
     if (now > g_trackme_last_time + 1000000L * s_trackme_interval) {
         g_trackme_last_time = now;

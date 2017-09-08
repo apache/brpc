@@ -3,11 +3,11 @@
 // Date: Sun Jul 13 15:04:18 CST 2014
 
 #include <gtest/gtest.h>
-#include "base/time.h"
-#include "base/macros.h"
+#include "butil/time.h"
+#include "butil/macros.h"
 
 #define BAIDU_CLEAR_OBJECT_POOL_AFTER_ALL_THREADS_QUIT
-#include "base/object_pool.h"
+#include "butil/object_pool.h"
 
 namespace {
 struct MyObject {};
@@ -24,7 +24,7 @@ struct Foo {
 };
 }
 
-namespace base {
+namespace butil {
 template <> struct ObjectPoolBlockMaxSize<MyObject> {
     static const size_t value = 128;
 };
@@ -45,7 +45,7 @@ template <> struct ObjectPoolValidator<Foo> {
 }
 
 namespace {
-using namespace base;
+using namespace butil;
 
 class ObjectPoolTest : public ::testing::Test{
 protected:
@@ -156,7 +156,7 @@ TEST_F(ObjectPoolTest, get_int) {
     // Perf of this test is affected by previous case.
     const size_t N = 100000;
     
-    base::Timer tm;
+    butil::Timer tm;
 
     // warm up
     int* p = get_object<int>();
@@ -193,7 +193,7 @@ TEST_F(ObjectPoolTest, get_perf) {
     std::vector<SilentObj*> new_list;
     new_list.reserve(N);
     
-    base::Timer tm1, tm2;
+    butil::Timer tm1, tm2;
 
     // warm up
     return_object(get_object<SilentObj>());
@@ -232,7 +232,7 @@ void* get_and_return_int(void*) {
     const size_t N = 100000;
     std::vector<D*> v;
     v.reserve(N);
-    base::Timer tm0, tm1, tm2;
+    butil::Timer tm0, tm1, tm2;
     D tmp = D();
     int sr = 0;
 
@@ -278,7 +278,7 @@ void* new_and_delete_int(void*) {
     const size_t N = 100000;
     std::vector<D*> v2;
     v2.reserve(N);
-    base::Timer tm0, tm1, tm2;
+    butil::Timer tm0, tm1, tm2;
     D tmp = D();
 
     for (int j = 0; j < 3; ++j) {

@@ -10,8 +10,8 @@
 #include <gperftools/profiler.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
-#include "base/time.h"
-#include "base/macros.h"
+#include "butil/time.h"
+#include "butil/macros.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
 #include "brpc/server.h"
@@ -50,7 +50,7 @@ public:
     }
 
     int VerifyCredential(const std::string& auth_str,
-                         const base::EndPoint&,
+                         const butil::EndPoint&,
                          brpc::AuthContext* ctx) const {
         EXPECT_EQ(MOCK_CREDENTIAL, auth_str);
         ctx->set_user(MOCK_USER);
@@ -134,7 +134,7 @@ protected:
             EXPECT_TRUE(req.SerializeToString(
                 meta->mutable_requestbody(0)->mutable_serialized_request()));
         }
-        base::IOBufAsZeroCopyOutputStream meta_stream(&msg->payload);
+        butil::IOBufAsZeroCopyOutputStream meta_stream(&msg->payload);
         EXPECT_TRUE(meta->SerializeToZeroCopyStream(&meta_stream));
         return msg;
     }
@@ -152,7 +152,7 @@ protected:
             EXPECT_TRUE(res.SerializeToString(
                 meta->mutable_responsebody(0)->mutable_serialized_response()));
         }
-        base::IOBufAsZeroCopyOutputStream meta_stream(&msg->payload);
+        butil::IOBufAsZeroCopyOutputStream meta_stream(&msg->payload);
         EXPECT_TRUE(meta->SerializeToZeroCopyStream(&meta_stream));
         return msg;
     }
@@ -166,7 +166,7 @@ protected:
         }
 
         EXPECT_GT(bytes_in_pipe, 0);
-        base::IOPortal buf;
+        butil::IOPortal buf;
         EXPECT_EQ((ssize_t)bytes_in_pipe,
                   buf.append_from_file_descriptor(_pipe_fds[0], 1024));
         brpc::ParseResult pr = brpc::policy::ParseNsheadMessage(&buf, NULL, false, NULL);
@@ -175,7 +175,7 @@ protected:
             static_cast<brpc::policy::MostCommonMessage*>(pr.message());
 
         brpc::policy::PublicPbrpcResponse meta;
-        base::IOBufAsZeroCopyInputStream meta_stream(msg->payload);
+        butil::IOBufAsZeroCopyInputStream meta_stream(msg->payload);
         EXPECT_TRUE(meta.ParseFromZeroCopyStream(&meta_stream));
         EXPECT_EQ(expect_code, meta.responsehead().code());
     }
@@ -253,8 +253,8 @@ TEST_F(PublicPbrpcTest, process_response_error_code) {
 }
 
 TEST_F(PublicPbrpcTest, complete_flow) {
-    base::IOBuf request_buf;
-    base::IOBuf total_buf;
+    butil::IOBuf request_buf;
+    butil::IOBuf total_buf;
     brpc::Controller cntl;
     test::EchoRequest req;
     test::EchoResponse res;
@@ -279,7 +279,7 @@ TEST_F(PublicPbrpcTest, complete_flow) {
     ProcessMessage(brpc::policy::ProcessNsheadRequest, req_msg, false);
 
     // Read response from pipe
-    base::IOPortal response_buf;
+    butil::IOPortal response_buf;
     response_buf.append_from_file_descriptor(_pipe_fds[0], 1024);
     brpc::ParseResult res_pr =
             brpc::policy::ParseNsheadMessage(&response_buf, NULL, false, NULL);
@@ -292,8 +292,8 @@ TEST_F(PublicPbrpcTest, complete_flow) {
 }
 
 TEST_F(PublicPbrpcTest, close_in_callback) {
-    base::IOBuf request_buf;
-    base::IOBuf total_buf;
+    butil::IOBuf request_buf;
+    butil::IOBuf total_buf;
     brpc::Controller cntl;
     test::EchoRequest req;
 

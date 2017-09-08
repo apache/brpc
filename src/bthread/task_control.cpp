@@ -16,10 +16,10 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 10 17:40:58 CST 2012
 
-#include "base/scoped_lock.h"             // BAIDU_SCOPED_LOCK
-#include "base/errno.h"                   // berror
-#include "base/logging.h"
-#include "base/third_party/murmurhash3/murmurhash3.h"
+#include "butil/scoped_lock.h"             // BAIDU_SCOPED_LOCK
+#include "butil/errno.h"                   // berror
+#include "butil/logging.h"
+#include "butil/third_party/murmurhash3/murmurhash3.h"
 #include "bthread/sys_futex.h"            // futex_wake_private
 #include "bthread/interrupt_pthread.h"
 #include "bthread/processor.h"            // cpu_relax
@@ -184,7 +184,7 @@ int TaskControl::add_workers(int num) {
     } catch (...) {
         return 0;
     }
-    const int old_concurency = _concurrency.load(base::memory_order_relaxed);
+    const int old_concurency = _concurrency.load(butil::memory_order_relaxed);
     for (int i = 0; i < num; ++i) {
         // Worker will add itself to _idle_workers, so we have to add
         // _concurrency before create a worker.
@@ -194,19 +194,19 @@ int TaskControl::add_workers(int num) {
         if (rc) {
             LOG(WARNING) << "Fail to create _workers[" << i + old_concurency
                          << "], " << berror(rc);
-            _concurrency.fetch_sub(1, base::memory_order_release);
+            _concurrency.fetch_sub(1, butil::memory_order_release);
             break;
         }
     }
     // Cannot fail
-    _workers.resize(_concurrency.load(base::memory_order_relaxed));
-    return _concurrency.load(base::memory_order_relaxed) - old_concurency;
+    _workers.resize(_concurrency.load(butil::memory_order_relaxed));
+    return _concurrency.load(butil::memory_order_relaxed) - old_concurency;
 }
 
 TaskGroup* TaskControl::choose_one_group() {
-    const size_t ngroup = _ngroup.load(base::memory_order_relaxed);
+    const size_t ngroup = _ngroup.load(butil::memory_order_relaxed);
     if (ngroup != 0) {
-        return _groups[base::fast_rand_less_than(ngroup)];
+        return _groups[butil::fast_rand_less_than(ngroup)];
     }
     CHECK(false) << "Impossible: ngroup is 0";
     return NULL;
@@ -223,7 +223,7 @@ void TaskControl::stop_and_join() {
     {
         BAIDU_SCOPED_LOCK(_modify_group_mutex);
         _stop = true;
-        _ngroup.exchange(0, base::memory_order_relaxed); 
+        _ngroup.exchange(0, butil::memory_order_relaxed); 
     }
     for (int i = 0; i < PARKING_LOT_NUM; ++i) {
         _pl[i].stop();
@@ -241,7 +241,7 @@ void TaskControl::stop_and_join() {
 TaskControl::~TaskControl() {
     // NOTE: g_task_control is not destructed now because the situation
     //       is extremely racy.
-    delete _pending_time.exchange(NULL, base::memory_order_relaxed);
+    delete _pending_time.exchange(NULL, butil::memory_order_relaxed);
     _worker_usage_second.hide();
     _switch_per_second.hide();
     _signal_per_second.hide();
@@ -257,14 +257,14 @@ int TaskControl::_add_group(TaskGroup* g) {
     if (__builtin_expect(NULL == g, 0)) {
         return -1;
     }
-    std::unique_lock<base::Mutex> mu(_modify_group_mutex);
+    std::unique_lock<butil::Mutex> mu(_modify_group_mutex);
     if (_stop) {
         return -1;
     }
-    size_t ngroup = _ngroup.load(base::memory_order_relaxed);
+    size_t ngroup = _ngroup.load(butil::memory_order_relaxed);
     if (ngroup < (size_t)BTHREAD_MAX_CONCURRENCY) {
         _groups[ngroup] = g;
-        _ngroup.store(ngroup + 1, base::memory_order_release);
+        _ngroup.store(ngroup + 1, butil::memory_order_release);
     }
     mu.unlock();
     // See the comments in _destroy_group
@@ -290,7 +290,7 @@ int TaskControl::_destroy_group(TaskGroup* g) {
     bool erased = false;
     {
         BAIDU_SCOPED_LOCK(_modify_group_mutex);
-        const size_t ngroup = _ngroup.load(base::memory_order_relaxed);
+        const size_t ngroup = _ngroup.load(butil::memory_order_relaxed);
         for (size_t i = 0; i < ngroup; ++i) {
             if (_groups[i] == g) {
                 // No need for atomic_thread_fence because lock did it.
@@ -304,7 +304,7 @@ int TaskControl::_destroy_group(TaskGroup* g) {
                 //    overwrite it, since we do signal_task in _add_group(),
                 //    we think the pending tasks of _groups[ngroup - 1] would
                 //    not miss.
-                _ngroup.store(ngroup - 1, base::memory_order_release);
+                _ngroup.store(ngroup - 1, butil::memory_order_release);
                 //_groups[ngroup - 1] = NULL;
                 erased = true;
                 break;
@@ -320,7 +320,7 @@ int TaskControl::_destroy_group(TaskGroup* g) {
     if (erased) {
         get_global_timer_thread()->schedule(
             delete_task_group, g,
-            base::microseconds_from_now(FLAGS_task_group_delete_delay * 1000000L));
+            butil::microseconds_from_now(FLAGS_task_group_delete_delay * 1000000L));
     }
     return 0;
 }
@@ -328,7 +328,7 @@ int TaskControl::_destroy_group(TaskGroup* g) {
 bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
     // 1: Acquiring fence is paired with releasing fence in _add_group to
     // avoid accessing uninitialized slot of _groups.
-    const size_t ngroup = _ngroup.load(base::memory_order_acquire/*1*/);
+    const size_t ngroup = _ngroup.load(butil::memory_order_acquire/*1*/);
     if (0 == ngroup) {
         return false;
     }
@@ -365,7 +365,7 @@ void TaskControl::signal_task(int num_task) {
     if (num_task > 2) {
         num_task = 2;
     }
-    int start_index = base::fmix64(pthread_self()) % PARKING_LOT_NUM;
+    int start_index = butil::fmix64(pthread_self()) % PARKING_LOT_NUM;
     num_task -= _pl[start_index].signal(1);
     if (num_task > 0) {
         for (int i = 1; i < PARKING_LOT_NUM && num_task > 0; ++i) {
@@ -378,7 +378,7 @@ void TaskControl::signal_task(int num_task) {
 }
 
 void TaskControl::print_rq_sizes(std::ostream& os) {
-    const size_t ngroup = _ngroup.load(base::memory_order_relaxed);
+    const size_t ngroup = _ngroup.load(butil::memory_order_relaxed);
     DEFINE_SMALL_ARRAY(int, nums, ngroup, 128);
     {
         BAIDU_SCOPED_LOCK(_modify_group_mutex);
@@ -396,7 +396,7 @@ void TaskControl::print_rq_sizes(std::ostream& os) {
 double TaskControl::get_cumulated_worker_time() {
     int64_t cputime_ns = 0;
     BAIDU_SCOPED_LOCK(_modify_group_mutex);
-    const size_t ngroup = _ngroup.load(base::memory_order_relaxed);
+    const size_t ngroup = _ngroup.load(butil::memory_order_relaxed);
     for (size_t i = 0; i < ngroup; ++i) {
         if (_groups[i]) {
             cputime_ns += _groups[i]->_cumulated_cputime_ns;
@@ -408,7 +408,7 @@ double TaskControl::get_cumulated_worker_time() {
 int64_t TaskControl::get_cumulated_switch_count() {
     int64_t c = 0;
     BAIDU_SCOPED_LOCK(_modify_group_mutex);
-    const size_t ngroup = _ngroup.load(base::memory_order_relaxed);
+    const size_t ngroup = _ngroup.load(butil::memory_order_relaxed);
     for (size_t i = 0; i < ngroup; ++i) {
         if (_groups[i]) {
             c += _groups[i]->_nswitch;
@@ -420,7 +420,7 @@ int64_t TaskControl::get_cumulated_switch_count() {
 int64_t TaskControl::get_cumulated_signal_count() {
     int64_t c = 0;
     BAIDU_SCOPED_LOCK(_modify_group_mutex);
-    const size_t ngroup = _ngroup.load(base::memory_order_relaxed);
+    const size_t ngroup = _ngroup.load(butil::memory_order_relaxed);
     for (size_t i = 0; i < ngroup; ++i) {
         TaskGroup* g = _groups[i];
         if (g) {
@@ -433,10 +433,10 @@ int64_t TaskControl::get_cumulated_signal_count() {
 bvar::LatencyRecorder* TaskControl::create_exposed_pending_time() {
     bool is_creator = false;
     _pending_time_mutex.lock();
-    bvar::LatencyRecorder* pt = _pending_time.load(base::memory_order_consume);
+    bvar::LatencyRecorder* pt = _pending_time.load(butil::memory_order_consume);
     if (!pt) {
         pt = new bvar::LatencyRecorder;
-        _pending_time.store(pt, base::memory_order_release);
+        _pending_time.store(pt, butil::memory_order_release);
         is_creator = true;
     }
     _pending_time_mutex.unlock();

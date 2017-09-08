@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/basictypes.h"
-#include "base/containers/linked_list.h"
+#include "butil/basictypes.h"
+#include "butil/containers/linked_list.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 namespace {
 
 class Node : public LinkNode<Node> {
@@ -305,4 +305,4 @@ TEST(LinkedList, RemovedNodeHasNullNextPrevious) {
 }
 
 }  // namespace
-}  // namespace base
+}  // namespace butil

@@ -18,8 +18,8 @@
 #ifndef BRPC_ACCEPTOR_H
 #define BRPC_ACCEPTOR_H
 
-#include "base/synchronization/condition_variable.h"
-#include "base/containers/flat_map.h"
+#include "butil/synchronization/condition_variable.h"
+#include "butil/containers/flat_map.h"
 #include "brpc/input_messenger.h"
 
 
@@ -32,7 +32,7 @@ struct ConnectStatistics {
 // process messages from which it reads
 class Acceptor : public InputMessenger {
 public:
-    typedef base::FlatMap<SocketId, ConnectStatistics> SocketMap;
+    typedef butil::FlatMap<SocketId, ConnectStatistics> SocketMap;
 
     enum Status {
         UNINITIALIZED = 0,
@@ -97,8 +97,8 @@ private:
     // The Socket tso accept connections.
     SocketId _acception_id;
 
-    base::Mutex _map_mutex;
-    base::ConditionVariable _empty_cond;
+    butil::Mutex _map_mutex;
+    butil::ConditionVariable _empty_cond;
     
     // The map containing all the accepted sockets
     SocketMap _socket_map;

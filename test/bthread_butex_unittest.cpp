@@ -3,10 +3,10 @@
 // Date: Sun Jul 13 15:04:18 CST 2014
 
 #include <gtest/gtest.h>
-#include "base/atomicops.h"
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/logging.h"
+#include "butil/atomicops.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/logging.h"
 #include "bthread/butex.h"
 #include "bthread/task_control.h"
 #include "bthread/task_group.h"
@@ -14,9 +14,9 @@
 #include "bthread/unstable.h"
 
 namespace bthread {
-extern base::atomic<TaskControl*> g_task_control;
+extern butil::atomic<TaskControl*> g_task_control;
 inline TaskControl* get_task_control() {
-    return g_task_control.load(base::memory_order_consume);
+    return g_task_control.load(butil::memory_order_consume);
 }
 } // namespace bthread
 
@@ -37,12 +37,12 @@ void* sleeper(void* arg) {
 }
 
 void* joiner(void* arg) {
-    const long t1 = base::gettimeofday_us();
+    const long t1 = butil::gettimeofday_us();
     for (bthread_t* th = (bthread_t*)arg; *th; ++th) {
         if (0 != bthread_join(*th, NULL)) {
             LOG(FATAL) << "fail to join thread_" << th - (bthread_t*)arg;
         }
-        long elp = base::gettimeofday_us() - t1;
+        long elp = butil::gettimeofday_us() - t1;
         EXPECT_LE(labs(elp - (th - (bthread_t*)arg + 1) * 100000L), 5000L)
             << "timeout when joining thread_" << th - (bthread_t*)arg;
         LOG(INFO) << "Joined thread " << *th << " at " << elp << "us ["
@@ -102,16 +102,16 @@ TEST(ButexTest, join) {
 struct WaiterArg {
     int expected_result;
     int expected_value;
-    base::atomic<int> *butex;
+    butil::atomic<int> *butex;
     const timespec *ptimeout;
 };
 
 void* waiter(void* arg) {
     WaiterArg * wa = (WaiterArg*)arg;
-    const long t1 = base::gettimeofday_us();
+    const long t1 = butil::gettimeofday_us();
     const int rc = bthread::butex_wait(
         wa->butex, wa->expected_value, wa->ptimeout);
-    const long t2 = base::gettimeofday_us();
+    const long t2 = butil::gettimeofday_us();
     if (rc == 0) {
         EXPECT_EQ(wa->expected_result, 0) << bthread_self();
     } else {
@@ -125,12 +125,12 @@ TEST(ButexTest, sanity) {
     const size_t N = 5;
     WaiterArg args[N * 4];
     pthread_t t1, t2;
-    base::atomic<int>* b1 =
-        bthread::butex_create_checked<base::atomic<int> >();
+    butil::atomic<int>* b1 =
+        bthread::butex_create_checked<butil::atomic<int> >();
     ASSERT_TRUE(b1);
     bthread::butex_destroy(b1);
     
-    b1 = bthread::butex_create_checked<base::atomic<int> >();
+    b1 = bthread::butex_create_checked<butil::atomic<int> >();
     *b1 = 1;
     ASSERT_EQ(0, bthread::butex_wake(b1));
 
@@ -143,7 +143,7 @@ TEST(ButexTest, sanity) {
     bthread_t th;
     ASSERT_EQ(0, bthread_start_urgent(&th, NULL, waiter, unmatched_arg));
 
-    const timespec abstime = base::seconds_from_now(1);
+    const timespec abstime = butil::seconds_from_now(1);
     for (size_t i = 0; i < 4*N; ++i) {
         args[i].expected_value = *b1;
         args[i].butex = b1;
@@ -180,7 +180,7 @@ struct ButexWaitArg {
 
 void* wait_butex(void* void_arg) {
     ButexWaitArg* arg = static_cast<ButexWaitArg*>(void_arg);
-    const timespec ts = base::milliseconds_from_now(arg->wait_msec);
+    const timespec ts = butil::milliseconds_from_now(arg->wait_msec);
     int rc = bthread::butex_wait(arg->butex, arg->expected_val, &ts);
     int saved_errno = errno;
     if (arg->error_code) {
@@ -195,7 +195,7 @@ void* wait_butex(void* void_arg) {
 TEST(ButexTest, wait_without_stop) {
     int* butex = bthread::butex_create_checked<int>();
     *butex = 7;
-    base::Timer tm;
+    butil::Timer tm;
     const long WAIT_MSEC = 500;
     for (int i = 0; i < 2; ++i) {
         const bthread_attr_t attr =
@@ -216,7 +216,7 @@ TEST(ButexTest, wait_without_stop) {
 TEST(ButexTest, stop_after_running) {
     int* butex = bthread::butex_create_checked<int>();
     *butex = 7;
-    base::Timer tm;
+    butil::Timer tm;
     const long WAIT_MSEC = 500;
     const long SLEEP_MSEC = 10;
     for (int i = 0; i < 2; ++i) {
@@ -243,7 +243,7 @@ TEST(ButexTest, stop_after_running) {
 TEST(ButexTest, stop_before_running) {
     int* butex = bthread::butex_create_checked<int>();
     *butex = 7;
-    base::Timer tm;
+    butil::Timer tm;
     const long WAIT_MSEC = 500;
 
     for (int i = 0; i < 2; ++i) {
@@ -276,7 +276,7 @@ TEST(ButexTest, join_cant_be_wakeup) {
     const long WAIT_MSEC = 100;
     int* butex = bthread::butex_create_checked<int>();
     *butex = 7;
-    base::Timer tm;
+    butil::Timer tm;
     ButexWaitArg arg = { butex, *butex, 1000, ESTOP };
 
     for (int i = 0; i < 2; ++i) {
@@ -303,7 +303,7 @@ TEST(ButexTest, join_cant_be_wakeup) {
 }
 
 TEST(ButexTest, stop_after_slept) {
-    base::Timer tm;
+    butil::Timer tm;
     const long SLEEP_MSEC = 100;
     const long WAIT_MSEC = 10;
     
@@ -330,7 +330,7 @@ TEST(ButexTest, stop_after_slept) {
 }
 
 TEST(ButexTest, stop_just_when_sleeping) {
-    base::Timer tm;
+    butil::Timer tm;
     const long SLEEP_MSEC = 100;
     
     for (int i = 0; i < 2; ++i) {
@@ -355,7 +355,7 @@ TEST(ButexTest, stop_just_when_sleeping) {
 }
 
 TEST(ButexTest, stop_before_sleeping) {
-    base::Timer tm;
+    butil::Timer tm;
     const long SLEEP_MSEC = 100;
 
     for (int i = 0; i < 2; ++i) {

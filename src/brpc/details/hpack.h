@@ -17,8 +17,8 @@
 #ifndef  BRPC_HPACK_H
 #define  BRPC_HPACK_H
 
-#include "base/iobuf.h"                             // base::IOBuf
-#include "base/strings/string_piece.h"              // base::StringPiece
+#include "butil/iobuf.h"                             // butil::IOBuf
+#include "butil/strings/string_piece.h"              // butil::StringPiece
 
 
 namespace brpc {
@@ -99,9 +99,9 @@ public:
 
     // Encode header and append the encoded buffer to |out|
     // Returns the size of encoded buffer on success, -1 otherwise
-    ssize_t Encode(base::IOBufAppender* out, const Header& header,
+    ssize_t Encode(butil::IOBufAppender* out, const Header& header,
                    const HPackOptions& options);
-    ssize_t Encode(base::IOBufAppender* out, const Header& header)
+    ssize_t Encode(butil::IOBufAppender* out, const Header& header)
     { return Encode(out, header, HPackOptions()); }
 
     // Try to decode at most one Header from source and erase correspoding
@@ -110,24 +110,24 @@ public:
     //  * $size of decoded buffer is a header is succesfully decoded
     //  * 0 when the source is incompleted
     //  * -1 when the source is malformed
-    ssize_t Decode(base::IOBuf* source, Header* h);
+    ssize_t Decode(butil::IOBuf* source, Header* h);
 
     // Like the previous function, except that the source is from
     // IOBufBytesIterator.
-    ssize_t Decode(base::IOBufBytesIterator& source, Header* h);
+    ssize_t Decode(butil::IOBufBytesIterator& source, Header* h);
 private:
     int FindHeaderFromIndexTable(const Header& h) const;
     int FindNameFromIndexTable(const std::string& name) const;
     const Header* HeaderAt(int index) const;
     ssize_t DecodeWithKnownPrefix(
-            base::IOBufBytesIterator& iter, Header* h, uint8_t prefix_size) const;
+            butil::IOBufBytesIterator& iter, Header* h, uint8_t prefix_size) const;
 
     IndexTable* _encode_table;
     IndexTable* _decode_table;
 };
 
-inline ssize_t HPacker::Decode(base::IOBuf* source, Header* h) {
-    base::IOBufBytesIterator iter(*source);
+inline ssize_t HPacker::Decode(butil::IOBuf* source, Header* h) {
+    butil::IOBufBytesIterator iter(*source);
     const ssize_t nc = Decode(iter, h);
     if (nc > 0) {
         source->pop_front(nc);

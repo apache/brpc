@@ -17,8 +17,8 @@
 #include <stdio.h>                                      // getline
 #include <string>                                       // std::string
 #include <set>                                          // std::set
-#include "base/files/file_watcher.h"                    // FileWatcher
-#include "base/files/scoped_file.h"                     // ScopedFILE
+#include "butil/files/file_watcher.h"                    // FileWatcher
+#include "butil/files/scoped_file.h"                     // ScopedFILE
 #include "bthread/bthread.h"                            // bthread_usleep
 #include "brpc/log.h"
 #include "brpc/policy/file_naming_service.h"
@@ -27,9 +27,9 @@
 namespace brpc {
 namespace policy {
 
-bool SplitIntoServerAndTag(const base::StringPiece& line,
-                           base::StringPiece* server_addr,
-                           base::StringPiece* tag) {
+bool SplitIntoServerAndTag(const butil::StringPiece& line,
+                           butil::StringPiece* server_addr,
+                           butil::StringPiece* tag) {
     size_t i = 0;
     for (; i < line.size() && isspace(line[i]); ++i) {}
     if (i == line.size() || line[i] == '#') {  // blank line or comments
@@ -75,7 +75,7 @@ int FileNamingService::GetServers(const char *service_name,
     // set to de-duplicate and keep the order.
     std::set<ServerNode> presence;
 
-    base::ScopedFILE fp(fopen(service_name, "r"));
+    butil::ScopedFILE fp(fopen(service_name, "r"));
     if (!fp) {
         PLOG(ERROR) << "Fail to open `" << service_name << "'";
         return errno;
@@ -84,14 +84,14 @@ int FileNamingService::GetServers(const char *service_name,
         if (line[nr - 1] == '\n') { // remove ending newline
             --nr;
         }
-        base::StringPiece addr;
-        base::StringPiece tag;
-        if (!SplitIntoServerAndTag(base::StringPiece(line, nr),
+        butil::StringPiece addr;
+        butil::StringPiece tag;
+        if (!SplitIntoServerAndTag(butil::StringPiece(line, nr),
                                    &addr, &tag)) {
             continue;
         }
         const_cast<char*>(addr.data())[addr.size()] = '\0'; // safe
-        base::EndPoint point;
+        butil::EndPoint point;
         if (str2endpoint(addr.data(), &point) != 0 &&
             hostname2endpoint(addr.data(), &point) != 0) {
             LOG(ERROR) << "Invalid address=`" << addr << '\'';
@@ -115,7 +115,7 @@ int FileNamingService::GetServers(const char *service_name,
 int FileNamingService::RunNamingService(const char* service_name,
                                         NamingServiceActions* actions) {
     std::vector<ServerNode> servers;
-    base::FileWatcher fw;
+    butil::FileWatcher fw;
     if (fw.init(service_name) < 0) {
         LOG(ERROR) << "Fail to init FileWatcher on `" << service_name << "'";
         return -1;
@@ -128,7 +128,7 @@ int FileNamingService::RunNamingService(const char* service_name,
         actions->ResetServers(servers);
 
         for (;;) {
-            base::FileWatcher::Change change = fw.check_and_consume();
+            butil::FileWatcher::Change change = fw.check_and_consume();
             if (change > 0) {
                 break;
             }

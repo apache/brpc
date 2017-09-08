@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/basictypes.h"
-#include "base/logging.h"
-#include "base/strings/string_piece.h"
-#include "base/strings/string_util.h"
-#include "base/strings/utf_string_conversions.h"
+#include "butil/basictypes.h"
+#include "butil/logging.h"
+#include "butil/strings/string_piece.h"
+#include "butil/strings/string_util.h"
+#include "butil/strings/utf_string_conversions.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 namespace {
 
@@ -208,4 +208,4 @@ TEST(UTFStringConversionsTest, ConvertMultiString) {
   EXPECT_EQ(expected, converted);
 }
 
-}  // base
+}  // namespace butil

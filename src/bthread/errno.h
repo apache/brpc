@@ -20,7 +20,7 @@
 #define BAIDU_BTHREAD_ERRNO_H
 
 #include <errno.h>                    // errno
-#include "base/errno.h"               // berror(), DEFINE_BTHREAD_ERRNO
+#include "butil/errno.h"               // berror(), DEFINE_BTHREAD_ERRNO
 
 __BEGIN_DECLS
 

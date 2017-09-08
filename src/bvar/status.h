@@ -19,10 +19,10 @@
 #define  BVAR_STATUS_H
 
 #include <string>                       // std::string
-#include "base/atomicops.h"
-#include "base/type_traits.h"
-#include "base/string_printf.h"
-#include "base/synchronization/lock.h"
+#include "butil/atomicops.h"
+#include "butil/type_traits.h"
+#include "butil/string_printf.h"
+#include "butil/synchronization/lock.h"
 #include "bvar/detail/is_atomical.h"
 #include "bvar/variable.h"
 
@@ -42,11 +42,11 @@ class Status : public Variable {
 public:
     Status() {}
     Status(const T& value) : _value(value) {}
-    Status(const base::StringPiece& name, const T& value) : _value(value) {
+    Status(const butil::StringPiece& name, const T& value) : _value(value) {
         this->expose(name);
     }
-    Status(const base::StringPiece& prefix,
-           const base::StringPiece& name, const T& value) : _value(value) {
+    Status(const butil::StringPiece& prefix,
+           const butil::StringPiece& name, const T& value) : _value(value) {
         this->expose_as(prefix, name);
     }
     // Calling hide() manually is a MUST required by Variable.
@@ -59,40 +59,40 @@ public:
     
 #ifdef BAIDU_INTERNAL
     void get_value(boost::any* value) const {
-        base::AutoLock guard(_lock);
+        butil::AutoLock guard(_lock);
         *value = _value;
     }
 #endif
 
     T get_value() const {
-        base::AutoLock guard(_lock);
+        butil::AutoLock guard(_lock);
         const T res = _value;
         return res;
     }
 
     void set_value(const T& value) {
-        base::AutoLock guard(_lock);
+        butil::AutoLock guard(_lock);
         _value = value;
     }
 
 private:
     T _value;
-    // We use lock rather than base::atomic for generic values because
-    // base::atomic requires the type to be memcpy-able (POD basically)
-    mutable base::Lock _lock;
+    // We use lock rather than butil::atomic for generic values because
+    // butil::atomic requires the type to be memcpy-able (POD basically)
+    mutable butil::Lock _lock;
 };
 
 template <typename T>
-class Status<T, typename base::enable_if<detail::is_atomical<T>::value>::type>
+class Status<T, typename butil::enable_if<detail::is_atomical<T>::value>::type>
     : public Variable {
 public:
     Status() {}
     Status(const T& value) : _value(value) { }
-    Status(const base::StringPiece& name, const T& value) : _value(value) {
+    Status(const butil::StringPiece& name, const T& value) : _value(value) {
         this->expose(name);
     }
-    Status(const base::StringPiece& prefix,
-           const base::StringPiece& name, const T& value) : _value(value) {
+    Status(const butil::StringPiece& prefix,
+           const butil::StringPiece& name, const T& value) : _value(value) {
         this->expose_as(prefix, name);
     }
     ~Status() { hide(); }
@@ -109,15 +109,15 @@ public:
 #endif
     
     T get_value() const {
-        return _value.load(base::memory_order_relaxed);
+        return _value.load(butil::memory_order_relaxed);
     }
     
     void set_value(const T& value) {
-        _value.store(value, base::memory_order_relaxed);
+        _value.store(value, butil::memory_order_relaxed);
     }
 
 private:
-    base::atomic<T> _value;
+    butil::atomic<T> _value;
 };
 
 // Specialize for std::string, adding a printf-style set_value().
@@ -125,21 +125,21 @@ template <>
 class Status<std::string, void> : public Variable {
 public:
     Status() {}
-    Status(const base::StringPiece& name, const char* fmt, ...) {
+    Status(const butil::StringPiece& name, const char* fmt, ...) {
         if (fmt) {
             va_list ap;
             va_start(ap, fmt);
-            base::string_vprintf(&_value, fmt, ap);
+            butil::string_vprintf(&_value, fmt, ap);
             va_end(ap);
         }
         expose(name);
     }
-    Status(const base::StringPiece& prefix,
-           const base::StringPiece& name, const char* fmt, ...) {
+    Status(const butil::StringPiece& prefix,
+           const butil::StringPiece& name, const char* fmt, ...) {
         if (fmt) {
             va_list ap;
             va_start(ap, fmt);
-            base::string_vprintf(&_value, fmt, ap);
+            butil::string_vprintf(&_value, fmt, ap);
             va_end(ap);
         }
         expose_as(prefix, name);
@@ -156,7 +156,7 @@ public:
     }
 
     std::string get_value() const {
-        base::AutoLock guard(_lock);
+        butil::AutoLock guard(_lock);
         return _value;
     }
 
@@ -170,20 +170,20 @@ public:
         va_list ap;
         va_start(ap, fmt);
         {
-            base::AutoLock guard(_lock);
-            base::string_vprintf(&_value, fmt, ap);
+            butil::AutoLock guard(_lock);
+            butil::string_vprintf(&_value, fmt, ap);
         }
         va_end(ap);
     }
 
     void set_value(const std::string& s) {
-        base::AutoLock guard(_lock);
+        butil::AutoLock guard(_lock);
         _value = s;
     }
 
 private:
     std::string _value;
-    mutable base::Lock _lock;
+    mutable butil::Lock _lock;
 };
 
 }  // namespace bvar

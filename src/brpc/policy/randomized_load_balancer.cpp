@@ -14,8 +14,8 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#include "base/macros.h"
-#include "base/fast_rand.h"
+#include "butil/macros.h"
+#include "butil/fast_rand.h"
 #include "brpc/socket.h"
 #include "brpc/policy/randomized_load_balancer.h"
 
@@ -28,7 +28,7 @@ const uint32_t prime_offset[] = {
 };
 
 inline uint32_t GenRandomStride() {
-    return prime_offset[base::fast_rand_less_than(ARRAY_SIZE(prime_offset))];
+    return prime_offset[butil::fast_rand_less_than(ARRAY_SIZE(prime_offset))];
 }
 
 bool RandomizedLoadBalancer::Add(Servers& bg, const ServerId& id) {
@@ -102,7 +102,7 @@ size_t RandomizedLoadBalancer::RemoveServersInBatch(
 }
 
 int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
-    base::DoublyBufferedData<Servers>::ScopedPtr s;
+    butil::DoublyBufferedData<Servers>::ScopedPtr s;
     if (_db_servers.Read(&s) != 0) {
         return ENOMEM;
     }
@@ -112,7 +112,7 @@ int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     }
     
     uint32_t stride = 0;
-    size_t offset = base::fast_rand_less_than(n);
+    size_t offset = butil::fast_rand_less_than(n);
     for (size_t i = 0; i < n; ++i) {
         const SocketId id = s->server_list[offset].id;
         if (((i + 1) == n  // always take last chance
@@ -149,7 +149,7 @@ void RandomizedLoadBalancer::Describe(
         return;
     }
     os << "Randomized{";
-    base::DoublyBufferedData<Servers>::ScopedPtr s;
+    butil::DoublyBufferedData<Servers>::ScopedPtr s;
     if (_db_servers.Read(&s) != 0) {
         os << "fail to read _db_servers";
     } else {

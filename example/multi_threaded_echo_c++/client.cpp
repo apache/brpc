@@ -16,7 +16,7 @@
 
 #include <gflags/gflags.h>
 #include <bthread/bthread.h>
-#include <base/logging.h>
+#include <butil/logging.h>
 #include <brpc/server.h>
 #include <brpc/channel.h>
 #include "echo.pb.h"

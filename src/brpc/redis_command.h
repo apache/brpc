@@ -17,24 +17,24 @@
 #ifndef BRPC_REDIS_COMMAND_H
 #define BRPC_REDIS_COMMAND_H
 
-#include "base/iobuf.h"
-#include "base/status.h"
+#include "butil/iobuf.h"
+#include "butil/status.h"
 
 
 namespace brpc {
 
 // Format a redis command and append it to `buf'.
-// Returns base:Status::OK() on success.
-base::Status RedisCommandFormat(base::IOBuf* buf, const char* fmt, ...);
-base::Status RedisCommandFormatV(base::IOBuf* buf, const char* fmt, va_list args);
+// Returns butil::Status::OK() on success.
+butil::Status RedisCommandFormat(butil::IOBuf* buf, const char* fmt, ...);
+butil::Status RedisCommandFormatV(butil::IOBuf* buf, const char* fmt, va_list args);
 
 // Just convert the command to the text format of redis without processing the
 // specifiers(%) inside.
-base::Status RedisCommandNoFormat(base::IOBuf* buf, const base::StringPiece& command);
+butil::Status RedisCommandNoFormat(butil::IOBuf* buf, const butil::StringPiece& command);
 
 // Concatenate components to form a redis command.
-base::Status RedisCommandByComponents(base::IOBuf* buf,
-                                      const base::StringPiece* components,
+butil::Status RedisCommandByComponents(butil::IOBuf* buf,
+                                      const butil::StringPiece* components,
                                       size_t num_components);
 
 } // namespace brpc

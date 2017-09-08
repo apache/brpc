@@ -19,7 +19,7 @@
 
 #include <vector>                           // std::vector
 #include <gflags/gflags_declare.h>
-#include "base/endpoint.h"
+#include "butil/endpoint.h"
 #include "brpc/http_header.h"
 
 
@@ -68,15 +68,15 @@ struct PrintedAsDateTime {
 std::ostream& operator<<(std::ostream& os, const PrintedAsDateTime&);
 
 struct Path {
-    static const base::EndPoint *LOCAL;
-    Path(const char* uri2, const base::EndPoint* html_addr2)
+    static const butil::EndPoint *LOCAL;
+    Path(const char* uri2, const butil::EndPoint* html_addr2)
         : uri(uri2), html_addr(html_addr2), text(NULL) {}
     
-    Path(const char* uri2, const base::EndPoint* html_addr2, const char* text2)
+    Path(const char* uri2, const butil::EndPoint* html_addr2, const char* text2)
         : uri(uri2), html_addr(html_addr2), text(text2) {}
 
     const char* uri;
-    const base::EndPoint* html_addr;
+    const butil::EndPoint* html_addr;
     const char* text;
 };
 std::ostream& operator<<(std::ostream& os, const Path& link);

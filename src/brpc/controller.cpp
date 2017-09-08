@@ -21,9 +21,9 @@
 #include <google/protobuf/descriptor.h>
 #include <gflags/gflags.h>
 #include "bthread/bthread.h"
-#include "base/string_printf.h"
-#include "base/logging.h"
-#include "base/time.h"
+#include "butil/string_printf.h"
+#include "butil/logging.h"
+#include "butil/time.h"
 #include "bthread/bthread.h"
 #include "bthread/unstable.h"
 #include "bvar/bvar.h"
@@ -129,10 +129,10 @@ Controller::~Controller() {
 class IgnoreAllRead : public ProgressiveReader {
 public:
     // @ProgressiveReader
-    base::Status OnReadOnePart(const void* /*data*/, size_t /*length*/) {
-        return base::Status::OK();
+    butil::Status OnReadOnePart(const void* /*data*/, size_t /*length*/) {
+        return butil::Status::OK();
     }
-    void OnEndOfMessage(const base::Status&) {}
+    void OnEndOfMessage(const butil::Status&) {}
 };
 
 static IgnoreAllRead* s_ignore_all_read = NULL;
@@ -145,7 +145,7 @@ static void CreateIgnoreAllRead() { s_ignore_all_read = new IgnoreAllRead; }
 // they'll be set uniformly after this method is called.
 void Controller::DeleteStuff() {
     if (_span) {
-        Span::Submit(_span, base::cpuwide_time_us());
+        Span::Submit(_span, butil::cpuwide_time_us());
     }
     _error_text.clear();
     if (_session_local_data) {
@@ -201,8 +201,8 @@ void Controller::InternalReset(bool in_constructor) {
     _span = NULL;
     _flags = 0;
     _error_code = 0;
-    _remote_side = base::EndPoint();
-    _local_side = base::EndPoint();
+    _remote_side = butil::EndPoint();
+    _local_side = butil::EndPoint();
     _begin_time_us = 0;
     _end_time_us = 0;
     _session_local_data = NULL;
@@ -340,7 +340,7 @@ void Controller::AppendServerIdentiy() {
         _error_text.push_back('[');
         char ipbuf[64];
         int len = snprintf(ipbuf, sizeof(ipbuf), "%s:%d", 
-                           base::my_ip_cstr(), _server->listen_address().port);
+                           butil::my_ip_cstr(), _server->listen_address().port);
         unsigned char digest[MD5_DIGEST_LENGTH];
         MD5((const unsigned char*)ipbuf, len, digest);
         for (size_t i = 0; i < sizeof(digest); ++i) {
@@ -349,8 +349,8 @@ void Controller::AppendServerIdentiy() {
         }
         _error_text.push_back(']');
     } else {
-        base::string_appendf(&_error_text, "[%s:%d]",
-                             base::my_ip_cstr(), _server->listen_address().port);
+        butil::string_appendf(&_error_text, "[%s:%d]",
+                             butil::my_ip_cstr(), _server->listen_address().port);
     }
 }
 
@@ -360,7 +360,7 @@ void Controller::SetFailed(const std::string& reason) {
         _error_text.push_back(' ');
     }
     if (_current_call.nretry != 0) {
-        base::string_appendf(&_error_text, "[R%d]", _current_call.nretry);
+        butil::string_appendf(&_error_text, "[R%d]", _current_call.nretry);
     } else {
         AppendServerIdentiy();
     }
@@ -381,17 +381,17 @@ void Controller::SetFailed(int error_code, const char* reason_fmt, ...) {
         _error_text.push_back(' ');
     }
     if (_current_call.nretry != 0) {
-        base::string_appendf(&_error_text, "[R%d]", _current_call.nretry);
+        butil::string_appendf(&_error_text, "[R%d]", _current_call.nretry);
     } else {
         AppendServerIdentiy();
     }
     const size_t old_size = _error_text.size();
     if (_error_code != -1) {
-        base::string_appendf(&_error_text, "[E%d]", _error_code);
+        butil::string_appendf(&_error_text, "[E%d]", _error_code);
     }
     va_list ap;
     va_start(ap, reason_fmt);
-    base::string_vappendf(&_error_text, reason_fmt, ap);
+    butil::string_vappendf(&_error_text, reason_fmt, ap);
     va_end(ap);
     if (_span) {
         _span->set_error_code(_error_code);
@@ -408,17 +408,17 @@ void Controller::CloseConnection(const char* reason_fmt, ...) {
         _error_text.push_back(' ');
     }
     if (_current_call.nretry != 0) {
-        base::string_appendf(&_error_text, "[R%d]", _current_call.nretry);
+        butil::string_appendf(&_error_text, "[R%d]", _current_call.nretry);
     } else {
         AppendServerIdentiy();
     }
     const size_t old_size = _error_text.size();
     if (_error_code != -1) {
-        base::string_appendf(&_error_text, "[E%d]", _error_code);
+        butil::string_appendf(&_error_text, "[E%d]", _error_code);
     }
     va_list ap;
     va_start(ap, reason_fmt);
-    base::string_vappendf(&_error_text, reason_fmt, ap);
+    butil::string_vappendf(&_error_text, reason_fmt, ap);
     va_end(ap);
     if (_span) {
         _span->set_error_code(_error_code);
@@ -533,7 +533,7 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         if (timeout_ms() >= 0) {
             rc = bthread_timer_add(
                     &_timeout_id,
-                    base::microseconds_to_timespec(_abstime_us),
+                    butil::microseconds_to_timespec(_abstime_us),
                     HandleTimeout, (void*)_correlation_id.value);
         }
         if (rc != 0) {
@@ -560,7 +560,7 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         }
         ++_current_call.nretry;
         add_flag(FLAGS_BACKUP_REQUEST);
-        return IssueRPC(base::gettimeofday_us());
+        return IssueRPC(butil::gettimeofday_us());
     } else if (_retry_policy ? _retry_policy->DoRetry(this)
                : DefaultRetryPolicy()->DoRetry(this)) {
         // The error must come from _current_call because:
@@ -588,7 +588,7 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         }
         response_attachment().clear();
         
-        return IssueRPC(base::gettimeofday_us());
+        return IssueRPC(butil::gettimeofday_us());
     }
     
 END_OF_RPC:
@@ -836,7 +836,7 @@ void Controller::EndRPC(const CompletionInfo& info) {
             // Join is not signalled when the done does not Run() and the done
             // can't Run() because all backup threads are blocked by Join().
             
-            OnRPCEnd(base::gettimeofday_us());
+            OnRPCEnd(butil::gettimeofday_us());
             const bool destroy_cid_in_done = has_flag(FLAGS_DESTROY_CID_IN_DONE);
             _done->Run();
             // NOTE: Don't touch this Controller anymore, because it's likely to be
@@ -868,7 +868,7 @@ void Controller::RunDoneInBackupThread(void* arg) {
 void Controller::DoneInBackupThread() {
     // OnRPCEnd for sync RPC is called in Channel::CallMethod to count in
     // latency of the context-switch.
-    OnRPCEnd(base::gettimeofday_us());
+    OnRPCEnd(butil::gettimeofday_us());
     const CallId saved_cid = _correlation_id;
     const bool destroy_cid_in_done = has_flag(FLAGS_DESTROY_CID_IN_DONE);
     _done->Run();
@@ -879,7 +879,7 @@ void Controller::DoneInBackupThread() {
 }
 
 void Controller::SubmitSpan() {
-    const int64_t now = base::cpuwide_time_us();
+    const int64_t now = butil::cpuwide_time_us();
     _span->set_start_callback_us(now);
     if (_span->local_parent()) {
         _span->local_parent()->AsParent();
@@ -1042,7 +1042,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         }
     }
     // Make request
-    base::IOBuf packet;
+    butil::IOBuf packet;
     SocketMessage* user_packet = NULL;
     _pack_request(&packet, &user_packet, cid.value, _method, this,
                   _request_buf, using_auth);
@@ -1061,11 +1061,11 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     timespec* pabstime = NULL;
     if (_connect_timeout_ms > 0) {
         if (_abstime_us >= 0) {
-            connect_abstime = base::microseconds_to_timespec(
+            connect_abstime = butil::microseconds_to_timespec(
                 std::min(_connect_timeout_ms * 1000L + start_realtime_us,
                          _abstime_us));
         } else {
-            connect_abstime = base::microseconds_to_timespec(
+            connect_abstime = butil::microseconds_to_timespec(
                 _connect_timeout_ms * 1000L + start_realtime_us);
         }
         pabstime = &connect_abstime;
@@ -1088,7 +1088,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     }
     if (span) {
         if (_current_call.nretry == 0) {
-            span->set_sent_us(base::cpuwide_time_us());
+            span->set_sent_us(butil::cpuwide_time_us());
             span->set_request_size(packet_size);
         } else {
             span->Annotate("Requested(%lld) [%d]",
@@ -1121,16 +1121,16 @@ int Controller::HandleSocketFailed(bthread_id_t id, void* data, int error_code,
     if (error_code == ERPCTIMEDOUT) {
         cntl->SetFailed(error_code, "Reached timeout=%" PRId64 "ms @%s",
                         cntl->timeout_ms(),
-                        base::endpoint2str(cntl->remote_side()).c_str());
+                        butil::endpoint2str(cntl->remote_side()).c_str());
     } else if (error_code == EBACKUPREQUEST) {
         cntl->SetFailed(error_code, "Reached backup timeout=%" PRId64 "ms @%s",
                         cntl->backup_request_ms(),
-                        base::endpoint2str(cntl->remote_side()).c_str());
+                        butil::endpoint2str(cntl->remote_side()).c_str());
     } else if (!error_text.empty()) {
         cntl->SetFailed(error_code, "%s", error_text.c_str());
     } else {
         cntl->SetFailed(error_code, "%s @%s", berror(error_code),
-                        base::endpoint2str(cntl->remote_side()).c_str());
+                        butil::endpoint2str(cntl->remote_side()).c_str());
     }
     CompletionInfo info = { id, false };
     cntl->OnVersionedRPCReturned(info, true, saved_error);
@@ -1138,9 +1138,9 @@ int Controller::HandleSocketFailed(bthread_id_t id, void* data, int error_code,
 }
 
 CallId Controller::call_id() {
-    base::atomic<uint64_t>* target =
-        (base::atomic<uint64_t>*)&_correlation_id.value;
-    uint64_t loaded = target->load(base::memory_order_relaxed);
+    butil::atomic<uint64_t>* target =
+        (butil::atomic<uint64_t>*)&_correlation_id.value;
+    uint64_t loaded = target->load(butil::memory_order_relaxed);
     if (loaded) {
         const CallId id = { loaded };
         return id;
@@ -1150,7 +1150,7 @@ CallId Controller::call_id() {
     // The range of this id will be reset in Channel::CallMethod
     CHECK_EQ(0, bthread_id_create2(&cid, this, HandleSocketFailed));
     if (!target->compare_exchange_strong(loaded, cid.value,
-                                         base::memory_order_relaxed)) {
+                                         butil::memory_order_relaxed)) {
         bthread_id_cancel(cid);
         cid.value = loaded;
     }
@@ -1300,17 +1300,17 @@ void Controller::ReadProgressiveAttachmentBy(ProgressiveReader* r) {
     }
     if (!is_response_read_progressively()) {
         return r->OnEndOfMessage(
-            base::Status(EINVAL, "Can't read progressive attachment from a "
+            butil::Status(EINVAL, "Can't read progressive attachment from a "
                          "controller without calling "
                          "response_will_be_read_progressively() before"));
     }
     if (_rpa == NULL) {
         return r->OnEndOfMessage(
-            base::Status(EINVAL, "ReadableProgressiveAttachment is NULL"));
+            butil::Status(EINVAL, "ReadableProgressiveAttachment is NULL"));
     }
     if (has_progressive_reader()) {
         return r->OnEndOfMessage(
-            base::Status(EPERM, "%s can't be called more than once",
+            butil::Status(EPERM, "%s can't be called more than once",
                          __FUNCTION__));
     }
     add_flag(FLAGS_PROGRESSIVE_READER);
@@ -1363,7 +1363,7 @@ class DoNothingClosure : public google::protobuf::Closure {
     void Run() { }
 };
 google::protobuf::Closure* DoNothing() {
-    return base::get_leaky_singleton<DoNothingClosure>();
+    return butil::get_leaky_singleton<DoNothingClosure>();
 }
 
 } // namespace brpc

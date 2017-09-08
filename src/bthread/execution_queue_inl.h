@@ -19,11 +19,11 @@
 #ifndef  BTHREAD_EXECUTION_QUEUE_INL_H
 #define  BTHREAD_EXECUTION_QUEUE_INL_H
 
-#include "base/atomicops.h"             // base::atomic
-#include "base/macros.h"                // BAIDU_CACHELINE_ALIGNMENT
-#include "base/memory/scoped_ptr.h"     // base::scoped_ptr
-#include "base/logging.h"               // LOG
-#include "base/time.h"                  // base::cpuwide_time_ns
+#include "butil/atomicops.h"             // butil::atomic
+#include "butil/macros.h"                // BAIDU_CACHELINE_ALIGNMENT
+#include "butil/memory/scoped_ptr.h"     // butil::scoped_ptr
+#include "butil/logging.h"               // LOG
+#include "butil/time.h"                  // butil::cpuwide_time_ns
 #include "bvar/bvar.h"                  // bvar::Adder
 #include "bthread/butex.h"              // butex_construct
 
@@ -79,7 +79,7 @@ struct BAIDU_CACHELINE_ALIGNMENT TaskNode {
         }
         return false;
     }
-    base::Mutex mutex;  // to guard version and status
+    butil::Mutex mutex;  // to guard version and status
     int64_t version;
     uint8_t status;
     bool stop_task;
@@ -99,7 +99,7 @@ struct BAIDU_CACHELINE_ALIGNMENT TaskNode {
             CHECK(iterated);
         }
         q = NULL;
-        std::unique_lock<base::Mutex> lck(mutex);
+        std::unique_lock<butil::Mutex> lck(mutex);
         ++version;
         const int saved_status = status;
         status = UNEXECUTED;
@@ -166,15 +166,15 @@ public:
         , _versioned_ref(0)  // join() depends on even version
         , _high_priority_tasks(0)
     {
-        _join_butex = butex_create_checked<base::atomic<int> >();
-        _join_butex->store(0, base::memory_order_relaxed);
+        _join_butex = butex_create_checked<butil::atomic<int> >();
+        _join_butex->store(0, butil::memory_order_relaxed);
     }
 
     ~ExecutionQueueBase() {
         butex_destroy(_join_butex);
     }
 
-    bool stopped() const { return _stopped.load(base::memory_order_acquire); }
+    bool stopped() const { return _stopped.load(butil::memory_order_acquire); }
     int stop();
     static int join(uint64_t id);
 protected:
@@ -220,17 +220,17 @@ private:
 
     // Don't change the order of _head, _versioned_ref and _stopped unless you 
     // see improvement of performance in test
-    base::atomic<TaskNode*> BAIDU_CACHELINE_ALIGNMENT _head;
-    base::atomic<uint64_t> BAIDU_CACHELINE_ALIGNMENT _versioned_ref;
-    base::atomic<bool> BAIDU_CACHELINE_ALIGNMENT _stopped;
-    base::atomic<int64_t> _high_priority_tasks;
+    butil::atomic<TaskNode*> BAIDU_CACHELINE_ALIGNMENT _head;
+    butil::atomic<uint64_t> BAIDU_CACHELINE_ALIGNMENT _versioned_ref;
+    butil::atomic<bool> BAIDU_CACHELINE_ALIGNMENT _stopped;
+    butil::atomic<int64_t> _high_priority_tasks;
     uint64_t _this_id;
     void* _meta;
     void* _type_specific_function;
     execute_func_t _execute_func;
     clear_task_mem _clear_func;
     ExecutionQueueOptions _options;
-    base::atomic<int>* _join_butex;
+    butil::atomic<int>* _join_butex;
 };
 
 template <typename T>
@@ -281,11 +281,11 @@ public:
         return ret.Pass();
     }
 
-    int execute(typename base::add_const_reference<T>::type task) {
+    int execute(typename butil::add_const_reference<T>::type task) {
         return execute(task, NULL, NULL);
     }
 
-    int execute(typename base::add_const_reference<T>::type task,
+    int execute(typename butil::add_const_reference<T>::type task,
                 const TaskOptions* options, TaskHandle* handle) {
         if (stopped()) {
             return EINVAL;
@@ -338,20 +338,20 @@ execution_queue_address(ExecutionQueueId<T> id) {
 
 template <typename T>
 inline int execution_queue_execute(ExecutionQueueId<T> id, 
-                       typename base::add_const_reference<T>::type task) {
+                       typename butil::add_const_reference<T>::type task) {
     return execution_queue_execute(id, task, NULL);
 }
 
 template <typename T>
 inline int execution_queue_execute(ExecutionQueueId<T> id, 
-                       typename base::add_const_reference<T>::type task,
+                       typename butil::add_const_reference<T>::type task,
                        const TaskOptions* options) {
     return execution_queue_execute(id, task, options, NULL);
 }
 
 template <typename T>
 inline int execution_queue_execute(ExecutionQueueId<T> id, 
-                       typename base::add_const_reference<T>::type task,
+                       typename butil::add_const_reference<T>::type task,
                        const TaskOptions* options,
                        TaskHandle* handle) {
     typename ExecutionQueue<T>::scoped_ptr_t 
@@ -441,7 +441,7 @@ inline bool ExecutionQueueBase::_more_tasks(
         return_when_no_more = true;
     }
     if (_head.compare_exchange_strong(
-                new_head, desired, base::memory_order_acquire)) {
+                new_head, desired, butil::memory_order_acquire)) {
         // No one added new tasks.
         return return_when_no_more;
     }
@@ -475,7 +475,7 @@ inline bool ExecutionQueueBase::_more_tasks(
 
 inline int ExecutionQueueBase::dereference() {
     const uint64_t vref = _versioned_ref.fetch_sub(
-            1, base::memory_order_release);
+            1, butil::memory_order_release);
     const int32_t nref = _ref_of_vref(vref);
     // We need make the fast path as fast as possible, don't put any extra
     // code before this point
@@ -513,8 +513,8 @@ inline int ExecutionQueueBase::dereference() {
             uint64_t expected_vref = vref - 1;
             if (_versioned_ref.compare_exchange_strong(
                         expected_vref, _make_vref(id_ver + 2, 0),
-                        base::memory_order_acquire,
-                        base::memory_order_relaxed)) {
+                        butil::memory_order_acquire,
+                        butil::memory_order_relaxed)) {
                 _on_recycle();
                 // We don't return m immediatly when the reference count
                 // reaches 0 as there might be in processing tasks. Instead

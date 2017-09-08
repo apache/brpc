@@ -5,9 +5,9 @@
 #ifndef BASE_TEST_TEST_TIMEOUTS_H_
 #define BASE_TEST_TEST_TIMEOUTS_H_
 
-#include "base/basictypes.h"
-#include "base/logging.h"
-#include "base/time/time.h"
+#include "butil/basictypes.h"
+#include "butil/logging.h"
+#include "butil/time/time.h"
 
 // Returns common timeouts to use in tests. Makes it possible to adjust
 // the timeouts for different environments (like Valgrind).
@@ -18,37 +18,37 @@ class TestTimeouts {
   static void Initialize();
 
   // Timeout for actions that are expected to finish "almost instantly".
-  static base::TimeDelta tiny_timeout() {
+  static butil::TimeDelta tiny_timeout() {
     DCHECK(initialized_);
-    return base::TimeDelta::FromMilliseconds(tiny_timeout_ms_);
+    return butil::TimeDelta::FromMilliseconds(tiny_timeout_ms_);
   }
 
   // Timeout to wait for something to happen. If you are not sure
   // which timeout to use, this is the one you want.
-  static base::TimeDelta action_timeout() {
+  static butil::TimeDelta action_timeout() {
     DCHECK(initialized_);
-    return base::TimeDelta::FromMilliseconds(action_timeout_ms_);
+    return butil::TimeDelta::FromMilliseconds(action_timeout_ms_);
   }
 
   // Timeout longer than the above, but still suitable to use
   // multiple times in a single test. Use if the timeout above
   // is not sufficient.
-  static base::TimeDelta action_max_timeout() {
+  static butil::TimeDelta action_max_timeout() {
     DCHECK(initialized_);
-    return base::TimeDelta::FromMilliseconds(action_max_timeout_ms_);
+    return butil::TimeDelta::FromMilliseconds(action_max_timeout_ms_);
   }
 
   // Timeout for a large test that may take a few minutes to run.
-  static base::TimeDelta large_test_timeout() {
+  static butil::TimeDelta large_test_timeout() {
     DCHECK(initialized_);
-    return base::TimeDelta::FromMilliseconds(large_test_timeout_ms_);
+    return butil::TimeDelta::FromMilliseconds(large_test_timeout_ms_);
   }
 
   // Timeout for a single test launched used built-in test launcher.
   // Do not use outside of the test launcher.
-  static base::TimeDelta test_launcher_timeout() {
+  static butil::TimeDelta test_launcher_timeout() {
     DCHECK(initialized_);
-    return base::TimeDelta::FromMilliseconds(test_launcher_timeout_ms_);
+    return butil::TimeDelta::FromMilliseconds(test_launcher_timeout_ms_);
   }
 
  private:

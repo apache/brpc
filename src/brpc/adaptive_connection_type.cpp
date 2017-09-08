@@ -14,21 +14,21 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#include "base/logging.h"
+#include "butil/logging.h"
 #include "brpc/adaptive_connection_type.h"
 
 
 namespace brpc {
 
 inline bool CompareStringPieceWithoutCase(
-        const base::StringPiece& s1, const char* s2) {
+        const butil::StringPiece& s1, const char* s2) {
     if (strlen(s2) != s1.size()) {
         return false;
     }
     return strncasecmp(s1.data(), s2, s1.size()) == 0;
 }
 
-ConnectionType StringToConnectionType(const base::StringPiece& type,
+ConnectionType StringToConnectionType(const butil::StringPiece& type,
                                       bool print_log_on_unknown) {
     if (CompareStringPieceWithoutCase(type, "single")) {
         return CONNECTION_TYPE_SINGLE;
@@ -57,7 +57,7 @@ const char* ConnectionTypeToString(ConnectionType type) {
     return "unknown";
 }
 
-void AdaptiveConnectionType::operator=(const base::StringPiece& name) {
+void AdaptiveConnectionType::operator=(const butil::StringPiece& name) {
     if (name.empty()) {
         _type = CONNECTION_TYPE_UNKNOWN;
         _error = false;

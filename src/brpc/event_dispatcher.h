@@ -18,7 +18,7 @@
 #ifndef BRPC_EVENT_DISPATCHER_H
 #define BRPC_EVENT_DISPATCHER_H
 
-#include "base/macros.h"                     // DISALLOW_COPY_AND_ASSIGN
+#include "butil/macros.h"                     // DISALLOW_COPY_AND_ASSIGN
 #include "bthread/types.h"                   // bthread_t, bthread_attr_t
 #include "brpc/socket.h"                     // Socket, SocketId
 

@@ -14,8 +14,8 @@
 
 // Authors: Jiang,Lin (jianglin05@baidu.com)
 
-#include "base/logging.h"
-#include "base/third_party/snappy/snappy.h"
+#include "butil/logging.h"
+#include "butil/third_party/snappy/snappy.h"
 #include "brpc/policy/snappy_compress.h"
 #include "brpc/protocol.h"
 
@@ -23,39 +23,39 @@
 namespace brpc {
 namespace policy {
 
-bool SnappyCompress(const google::protobuf::Message& res, base::IOBuf* buf) {
-    base::IOBuf serialized_pb;
-    base::IOBufAsZeroCopyOutputStream wrapper(&serialized_pb);
+bool SnappyCompress(const google::protobuf::Message& res, butil::IOBuf* buf) {
+    butil::IOBuf serialized_pb;
+    butil::IOBufAsZeroCopyOutputStream wrapper(&serialized_pb);
     if (res.SerializeToZeroCopyStream(&wrapper)) {
-        base::IOBufAsSnappySource source(serialized_pb);
-        base::IOBufAsSnappySink sink(*buf);
-        return base::snappy::Compress(&source, &sink);
+        butil::IOBufAsSnappySource source(serialized_pb);
+        butil::IOBufAsSnappySink sink(*buf);
+        return butil::snappy::Compress(&source, &sink);
     }
     LOG(WARNING) << "Fail to serialize input pb=" << &res;
     return false;
 }
 
-bool SnappyDecompress(const base::IOBuf& data, google::protobuf::Message* req) {
-    base::IOBufAsSnappySource source(data);
-    base::IOBuf binary_pb;
-    base::IOBufAsSnappySink sink(binary_pb);
-    if (base::snappy::Uncompress(&source, &sink)) {
+bool SnappyDecompress(const butil::IOBuf& data, google::protobuf::Message* req) {
+    butil::IOBufAsSnappySource source(data);
+    butil::IOBuf binary_pb;
+    butil::IOBufAsSnappySink sink(binary_pb);
+    if (butil::snappy::Uncompress(&source, &sink)) {
         return ParsePbFromIOBuf(req, binary_pb);
     }
     LOG(WARNING) << "Fail to snappy::Uncompress, size=" << data.size();
     return false;
 }
 
-bool SnappyCompress(const base::IOBuf& in, base::IOBuf* out) {
-    base::IOBufAsSnappySource source(in);
-    base::IOBufAsSnappySink sink(*out);
-    return base::snappy::Compress(&source, &sink);
+bool SnappyCompress(const butil::IOBuf& in, butil::IOBuf* out) {
+    butil::IOBufAsSnappySource source(in);
+    butil::IOBufAsSnappySink sink(*out);
+    return butil::snappy::Compress(&source, &sink);
 }
 
-bool SnappyDecompress(const base::IOBuf& in, base::IOBuf* out) {
-    base::IOBufAsSnappySource source(in);
-    base::IOBufAsSnappySink sink(*out);
-    return base::snappy::Uncompress(&source, &sink);
+bool SnappyDecompress(const butil::IOBuf& in, butil::IOBuf* out) {
+    butil::IOBufAsSnappySource source(in);
+    butil::IOBufAsSnappySink sink(*out);
+    return butil::snappy::Uncompress(&source, &sink);
 }
 
 }  // namespace policy

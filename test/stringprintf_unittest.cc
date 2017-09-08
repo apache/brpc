@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/strings/stringprintf.h"
+#include "butil/strings/stringprintf.h"
 
 #include <errno.h>
 
-#include "base/basictypes.h"
+#include "butil/basictypes.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 namespace {
 
@@ -185,4 +185,4 @@ TEST(StringPrintfTest, StringPrintfErrno) {
   EXPECT_EQ(1, errno);
 }
 
-}  // namespace base
+}  // namespace butil

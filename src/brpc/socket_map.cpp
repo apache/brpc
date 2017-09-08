@@ -17,9 +17,9 @@
 
 #include <gflags/gflags.h>
 #include <map>
-#include "base/time.h"
-#include "base/scoped_lock.h"
-#include "base/logging.h"
+#include "butil/time.h"
+#include "butil/scoped_lock.h"
+#include "butil/logging.h"
 #include "brpc/log.h"
 #include "brpc/protocol.h"
 #include "brpc/input_messenger.h"
@@ -50,11 +50,11 @@ DEFINE_bool(show_socketmap_in_vars, false,
 BRPC_VALIDATE_GFLAG(show_socketmap_in_vars, PassValidate);
 
 static pthread_once_t g_socket_map_init = PTHREAD_ONCE_INIT;
-static base::static_atomic<SocketMap*> g_socket_map = BASE_STATIC_ATOMIC_INIT(NULL);
+static butil::static_atomic<SocketMap*> g_socket_map = BASE_STATIC_ATOMIC_INIT(NULL);
 
 class GlobalSocketCreator : public SocketCreator {
 public:
-    int CreateSocket(const base::EndPoint& pt, SocketId* id) {
+    int CreateSocket(const butil::EndPoint& pt, SocketId* id) {
         return get_client_side_messenger()->Create(
             pt, FLAGS_health_check_interval, id);
     }
@@ -70,25 +70,25 @@ static void CreateClientSideSocketMap() {
         LOG(FATAL) << "Fail to init SocketMap";
         exit(1);
     }
-    g_socket_map.store(socket_map, base::memory_order_release);
+    g_socket_map.store(socket_map, butil::memory_order_release);
 }
 
 SocketMap* get_client_side_socket_map() {
     // The consume fence makes sure that we see a NULL or a fully initialized
     // SocketMap.
-    return g_socket_map.load(base::memory_order_consume);
+    return g_socket_map.load(butil::memory_order_consume);
 }
 SocketMap* get_or_new_client_side_socket_map() {
     get_or_new_client_side_messenger();
     pthread_once(&g_socket_map_init, CreateClientSideSocketMap);
-    return g_socket_map.load(base::memory_order_consume);
+    return g_socket_map.load(butil::memory_order_consume);
 }
 
-int SocketMapInsert(base::EndPoint pt, SocketId* id) {
+int SocketMapInsert(butil::EndPoint pt, SocketId* id) {
     return get_or_new_client_side_socket_map()->Insert(pt, id);
 }    
 
-int SocketMapFind(base::EndPoint pt, SocketId* id) {
+int SocketMapFind(butil::EndPoint pt, SocketId* id) {
     SocketMap* m = get_client_side_socket_map();
     if (m) {
         return m->Find(pt, id);
@@ -96,7 +96,7 @@ int SocketMapFind(base::EndPoint pt, SocketId* id) {
     return -1;
 }
 
-void SocketMapRemove(base::EndPoint pt) {
+void SocketMapRemove(butil::EndPoint pt) {
     SocketMap* m = get_client_side_socket_map();
     if (m) {
         // TODO: We don't have expected_id to pass right now since the callsite
@@ -193,7 +193,7 @@ void SocketMap::Print(std::ostream& os) {
     // TODO: Elaborate.
     size_t count = 0;
     {
-        std::unique_lock<base::Mutex> mu(_mutex);
+        std::unique_lock<butil::Mutex> mu(_mutex);
         count = _map.size();
     }
     os << "count=" << count;
@@ -203,8 +203,8 @@ void SocketMap::PrintSocketMap(std::ostream& os, void* arg) {
     static_cast<SocketMap*>(arg)->Print(os);
 }
 
-int SocketMap::Insert(const base::EndPoint& pt, SocketId* id) {
-    std::unique_lock<base::Mutex> mu(_mutex);
+int SocketMap::Insert(const butil::EndPoint& pt, SocketId* id) {
+    std::unique_lock<butil::Mutex> mu(_mutex);
     SingleConnection* sc = _map.seek(pt);
     if (sc) {
         if (!sc->socket->Failed() ||
@@ -249,19 +249,19 @@ int SocketMap::Insert(const base::EndPoint& pt, SocketId* id) {
         char namebuf[32];
         int len = snprintf(namebuf, sizeof(namebuf), "rpc_socketmap_%p", this);
         _this_map_bvar = new bvar::PassiveStatus<std::string>(
-            base::StringPiece(namebuf, len), PrintSocketMap, this);
+            butil::StringPiece(namebuf, len), PrintSocketMap, this);
     }
     return 0;
 }
 
-void SocketMap::Remove(const base::EndPoint& pt, SocketId expected_id) {
+void SocketMap::Remove(const butil::EndPoint& pt, SocketId expected_id) {
     return RemoveInternal(pt, expected_id, false);
 }
 
-void SocketMap::RemoveInternal(const base::EndPoint& pt,
+void SocketMap::RemoveInternal(const butil::EndPoint& pt,
                                SocketId expected_id,
                                bool remove_orphan) {
-    std::unique_lock<base::Mutex> mu(_mutex);
+    std::unique_lock<butil::Mutex> mu(_mutex);
     SingleConnection* sc = _map.seek(pt);
     if (!sc) {
         return;
@@ -277,7 +277,7 @@ void SocketMap::RemoveInternal(const base::EndPoint& pt,
             : _options.defer_close_second;
         if (!remove_orphan && defer_close_second > 0) {
             // Start count down on this Socket 
-            sc->no_ref_us = base::cpuwide_time_us();
+            sc->no_ref_us = butil::cpuwide_time_us();
         } else {
             Socket* const s = sc->socket;
             _map.erase(pt);
@@ -291,7 +291,7 @@ void SocketMap::RemoveInternal(const base::EndPoint& pt,
                 char namebuf[32];
                 int len = snprintf(namebuf, sizeof(namebuf), "rpc_socketmap_%p", this);
                 _this_map_bvar = new bvar::PassiveStatus<std::string>(
-                    base::StringPiece(namebuf, len), PrintSocketMap, this);
+                    butil::StringPiece(namebuf, len), PrintSocketMap, this);
             }
             s->ReleaseAdditionalReference(); // release extra ref
             SocketUniquePtr ptr(s);  // Dereference
@@ -299,7 +299,7 @@ void SocketMap::RemoveInternal(const base::EndPoint& pt,
     }
 }
 
-int SocketMap::Find(const base::EndPoint& pt, SocketId* id) {
+int SocketMap::Find(const butil::EndPoint& pt, SocketId* id) {
     BAIDU_SCOPED_LOCK(_mutex);
     SingleConnection* sc = _map.seek(pt);
     if (sc) {
@@ -317,7 +317,7 @@ void SocketMap::List(std::vector<SocketId>* ids) {
     }
 }
 
-void SocketMap::List(std::vector<base::EndPoint>* pts) {
+void SocketMap::List(std::vector<butil::EndPoint>* pts) {
     pts->clear();
     BAIDU_SCOPED_LOCK(_mutex);
     for (Map::iterator it = _map.begin(); it != _map.end(); ++it) {
@@ -326,9 +326,9 @@ void SocketMap::List(std::vector<base::EndPoint>* pts) {
 }
 
 void SocketMap::ListOrphans(int defer_seconds,
-                            std::vector<base::EndPoint>* out) {
+                            std::vector<butil::EndPoint>* out) {
     out->clear();
-    int64_t now = base::cpuwide_time_s();
+    int64_t now = butil::cpuwide_time_s();
     BAIDU_SCOPED_LOCK(_mutex);
     for (Map::iterator it = _map.begin(); it != _map.end(); ++it) {
         SingleConnection& sc = it->second;
@@ -347,7 +347,7 @@ void* SocketMap::RunWatchConnections(void* arg) {
 void SocketMap::WatchConnections() {
     std::vector<SocketId> main_sockets;
     std::vector<SocketId> pooled_sockets;
-    std::vector<base::EndPoint> orphan_sockets;
+    std::vector<butil::EndPoint> orphan_sockets;
     const uint64_t CHECK_INTERVAL_US = 1000000UL;
     while (bthread_usleep(CHECK_INTERVAL_US) == 0) {
         // NOTE: save the gflag which may be reloaded at any time.

@@ -19,7 +19,7 @@
 
 #include "brpc/periodic_naming_service.h"
 #include "brpc/channel.h"
-#include "base/unique_ptr.h"
+#include "butil/unique_ptr.h"
 
 
 namespace brpc {

@@ -8,9 +8,9 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include <gtest/gtest.h>
-#include "base/crc32c.h"
+#include "butil/crc32c.h"
 
-namespace base {
+namespace butil {
 namespace crc32c {
 
 class CRC : public testing::Test { };
@@ -74,4 +74,4 @@ TEST_F(CRC, fast_is_on) {
 }
 
 }  // namespace crc32c
-}  // namespace base
+}  // namespace butil

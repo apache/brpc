@@ -16,8 +16,8 @@
 
 #include <limits>                                            // numeric_limits
 #include <gflags/gflags.h>
-#include "base/time.h"                                       // gettimeofday_us
-#include "base/fast_rand.h"
+#include "butil/time.h"                                       // gettimeofday_us
+#include "butil/fast_rand.h"
 #include "brpc/log.h"
 #include "brpc/socket.h"
 #include "brpc/reloadable_flags.h"
@@ -71,7 +71,7 @@ bool LocalityAwareLoadBalancer::Add(Servers& bg, const Servers& fg,
         // WEIGHT_SCALE, which feels good.
         int64_t initial_weight = WEIGHT_SCALE;
         if (!bg.weight_tree.empty()) {
-            initial_weight = lb->_total.load(base::memory_order_relaxed)
+            initial_weight = lb->_total.load(butil::memory_order_relaxed)
                 / bg.weight_tree.size();
         }
         
@@ -91,7 +91,7 @@ bool LocalityAwareLoadBalancer::Add(Servers& bg, const Servers& fg,
         const int64_t diff = info.weight->volatile_value();
         if (diff) {
             bg.UpdateParentWeights(diff, index);
-            lb->_total.fetch_add(diff, base::memory_order_relaxed);
+            lb->_total.fetch_add(diff, butil::memory_order_relaxed);
         }
     } else {
         // We already modified the other buffer, just sync. Two buffers are
@@ -129,7 +129,7 @@ bool LocalityAwareLoadBalancer::Remove(
             // the tree). We can't delete the weight structure for same reason.
             int64_t diff = -rm_weight;
             bg.UpdateParentWeights(diff, index);
-            lb->_total.fetch_add(diff, base::memory_order_relaxed);
+            lb->_total.fetch_add(diff, butil::memory_order_relaxed);
         } else {
             // the second buffer. clean left stuff.
             delete w;
@@ -162,7 +162,7 @@ bool LocalityAwareLoadBalancer::Remove(
             const int64_t diff = add_weight - rm_weight;
             if (diff) {
                 bg.UpdateParentWeights(diff, index);
-                lb->_total.fetch_add(diff, base::memory_order_relaxed);
+                lb->_total.fetch_add(diff, butil::memory_order_relaxed);
             }
             // At this point, the foreground distributes traffic to nodes
             // correctly except node `index' because weight of the node is 0.
@@ -181,7 +181,7 @@ bool LocalityAwareLoadBalancer::Remove(
             if (old_weight) {
                 bg.UpdateParentWeights(old_weight, bg.weight_tree.size());
             }
-            lb->_total.fetch_add(- p.first, base::memory_order_relaxed);
+            lb->_total.fetch_add(- p.first, butil::memory_order_relaxed);
             // Clear resources.
             delete w;
             lb->PopLeft();
@@ -262,7 +262,7 @@ size_t LocalityAwareLoadBalancer::RemoveServersInBatch(
 }
 
 int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
-    base::DoublyBufferedData<Servers>::ScopedPtr s;
+    butil::DoublyBufferedData<Servers>::ScopedPtr s;
     if (_db_servers.Read(&s) != 0) {
         return ENOMEM;
     }
@@ -273,8 +273,8 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
 
     size_t ntry = 0;
     size_t nloop = 0;
-    int64_t total = _total.load(base::memory_order_relaxed);
-    int64_t dice = base::fast_rand_less_than(total);
+    int64_t total = _total.load(butil::memory_order_relaxed);
+    int64_t dice = butil::fast_rand_less_than(total);
     size_t index = 0;
     int64_t self = 0;
     while (total > 0) {
@@ -290,7 +290,7 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
         // left-weights / total / weight-of-the-node may not be consistent. But
         // this is what we have to pay to gain more parallism.
         const ServerInfo & info = s->weight_tree[index];
-        const int64_t left = info.left->load(base::memory_order_relaxed);
+        const int64_t left = info.left->load(butil::memory_order_relaxed);
         if (dice < left) {
             index = index * 2 + 1;
             if (index < n) {
@@ -314,7 +314,7 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
                     info.weight->AddInflight(in, index, dice - left);
                 if (r.weight_diff) {
                     s->UpdateParentWeights(r.weight_diff, index);
-                    _total.fetch_add(r.weight_diff, base::memory_order_relaxed);
+                    _total.fetch_add(r.weight_diff, butil::memory_order_relaxed);
                 }
                 if (r.chosen) {
                     out->need_feedback = true;
@@ -329,7 +329,7 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
                 info.weight->MarkFailed(index, total / n);
             if (diff) {
                 s->UpdateParentWeights(diff, index);
-                _total.fetch_add(diff, base::memory_order_relaxed);
+                _total.fetch_add(diff, butil::memory_order_relaxed);
             }
             if (dice >= left + self + diff) {
                 dice -= left + self + diff;
@@ -342,8 +342,8 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
                 break;
             }
         }
-        total = _total.load(base::memory_order_relaxed);
-        dice = base::fast_rand_less_than(total);
+        total = _total.load(butil::memory_order_relaxed);
+        dice = butil::fast_rand_less_than(total);
         index = 0;
     }
     return EHOSTDOWN;
@@ -362,7 +362,7 @@ void LocalityAwareLoadBalancer::Feedback(const CallInfo& info) {
         latency_percent = 200;
     } // else we will not update any weight on other errors
         
-    base::DoublyBufferedData<Servers>::ScopedPtr s;
+    butil::DoublyBufferedData<Servers>::ScopedPtr s;
     if (_db_servers.Read(&s) != 0) {
         return;
     }
@@ -375,13 +375,13 @@ void LocalityAwareLoadBalancer::Feedback(const CallInfo& info) {
     const int64_t diff = w->Update(info, index, latency_percent);
     if (diff != 0) {
         s->UpdateParentWeights(diff, index);
-        _total.fetch_add(diff, base::memory_order_relaxed);
+        _total.fetch_add(diff, butil::memory_order_relaxed);
     }
 }
 
 int64_t LocalityAwareLoadBalancer::Weight::Update(
     const CallInfo& info, size_t index, int64_t latency_percent) {
-    const int64_t end_time_us = base::gettimeofday_us();
+    const int64_t end_time_us = butil::gettimeofday_us();
     BAIDU_SCOPED_LOCK(_mutex);
     if (Disabled()) {
         // The weight was disabled and will be removed soon, do nothing
@@ -441,7 +441,7 @@ void LocalityAwareLoadBalancer::Destroy() {
 }
 
 void LocalityAwareLoadBalancer::Weight::Describe(std::ostream& os, int64_t now) {
-    std::unique_lock<base::Mutex> mu(_mutex);
+    std::unique_lock<butil::Mutex> mu(_mutex);
     int64_t begin_time_sum = _begin_time_sum;
     int begin_time_count = _begin_time_count;
     int64_t weight = _weight;
@@ -482,18 +482,18 @@ void LocalityAwareLoadBalancer::Describe(
         return;
     }
     os << "LocalityAware{total="
-       << _total.load(base::memory_order_relaxed) << ' ';
-    base::DoublyBufferedData<Servers>::ScopedPtr s;
+       << _total.load(butil::memory_order_relaxed) << ' ';
+    butil::DoublyBufferedData<Servers>::ScopedPtr s;
     if (_db_servers.Read(&s) != 0) {
         os << "fail to read _db_servers";
     } else {
-        const int64_t now = base::gettimeofday_us();
+        const int64_t now = butil::gettimeofday_us();
         const size_t n = s->weight_tree.size();
         os << '[';
         for (size_t i = 0; i < n; ++i) {
             const ServerInfo & info = s->weight_tree[i];
             os << "\n{id=" << info.server_id << " left="
-               << info.left->load(base::memory_order_relaxed) << ' ';
+               << info.left->load(butil::memory_order_relaxed) << ' ';
             info.weight->Describe(os, now);
             os << '}';
         }
@@ -512,7 +512,7 @@ LocalityAwareLoadBalancer::Weight::Weight(int64_t initial_weight)
     , _old_weight(0)
     , _avg_latency(0)
     , _dev(0)
-    , _time_q(_time_q_items, sizeof(_time_q_items), base::NOT_OWN_STORAGE) {
+    , _time_q(_time_q_items, sizeof(_time_q_items), butil::NOT_OWN_STORAGE) {
 }
 
 LocalityAwareLoadBalancer::Weight::~Weight() {

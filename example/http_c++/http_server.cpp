@@ -15,7 +15,7 @@
 // A server to receive HttpRequest and send back HttpResponse.
 
 #include <gflags/gflags.h>
-#include <base/logging.h>
+#include <butil/logging.h>
 #include <brpc/server.h>
 #include <brpc/restful.h>
 #include "http.pb.h"
@@ -49,7 +49,7 @@ public:
             static_cast<brpc::Controller*>(cntl_base);
         // Fill response.
         cntl->http_response().set_content_type("text/plain");
-        base::IOBufBuilder os;
+        butil::IOBufBuilder os;
         os << "queries:";
         for (brpc::URI::QueryIterator it = cntl->http_request().uri().QueryBegin();
                 it != cntl->http_request().uri().QueryEnd(); ++it) {
@@ -77,7 +77,7 @@ public:
     virtual ~FileServiceImpl() {};
 
     static void* SendLargeFile(void* arg) {
-        base::intrusive_ptr<brpc::ProgressiveAttachment> pa(
+        butil::intrusive_ptr<brpc::ProgressiveAttachment> pa(
                 (brpc::ProgressiveAttachment*)arg);
         if (pa == NULL) {
             LOG(ERROR) << "ProgressiveAttachment is NULL";

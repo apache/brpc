@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/build_config.h"
+#include "butil/build_config.h"
 
 #if defined(OS_WIN)
 #include <windows.h>
@@ -23,32 +23,32 @@
 #include <set>
 #include <vector>
 
-#include "base/base_paths.h"
-#include "base/file_util.h"
-#include "base/files/file_enumerator.h"
-#include "base/files/file_path.h"
-#include "base/files/scoped_file.h"
-#include "base/files/scoped_temp_dir.h"
-#include "base/path_service.h"
-#include "base/strings/utf_string_conversions.h"
+#include "butil/base_paths.h"
+#include "butil/file_util.h"
+#include "butil/files/file_enumerator.h"
+#include "butil/files/file_path.h"
+#include "butil/files/scoped_file.h"
+#include "butil/files/scoped_temp_dir.h"
+#include "butil/path_service.h"
+#include "butil/strings/utf_string_conversions.h"
 #include "test/test_file_util.h"
-#include "base/threading/platform_thread.h"
+#include "butil/threading/platform_thread.h"
 #include <gtest/gtest.h>
 #include <gtest/gtest.h>
 
 #if defined(OS_WIN)
-#include "base/win/scoped_handle.h"
-#include "base/win/windows_version.h"
+#include "butil/win/scoped_handle.h"
+#include "butil/win/windows_version.h"
 #endif
 
 #if defined(OS_ANDROID)
-#include "base/android/content_uri_utils.h"
+#include "butil/android/content_uri_utils.h"
 #endif
 
 // This macro helps avoid wrapped lines in the test structs.
 #define FPL(x) FILE_PATH_LITERAL(x)
 
-namespace base {
+namespace butil {
 
 namespace {
 
@@ -2081,7 +2081,7 @@ TEST_F(FileUtilTest, ReadFileToString) {
   EXPECT_EQ(0u, data.length());
 
   // Delete test file.
-  EXPECT_TRUE(base::DeleteFile(file_path, false));
+  EXPECT_TRUE(butil::DeleteFile(file_path, false));
 
   data = "temp";
   EXPECT_FALSE(ReadFileToString(file_path, &data));
@@ -2215,23 +2215,23 @@ TEST_F(VerifyPathControlledByUserTest, BadPaths) {
                                      .AppendASCII("not")
                                      .AppendASCII("exist");
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, does_not_exist, uid_, ok_gids_));
 
   // |base| not a subpath of |path|.
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, base_dir_, uid_, ok_gids_));
 
   // An empty base path will fail to be a prefix for any path.
   FilePath empty;
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           empty, base_dir_, uid_, ok_gids_));
 
   // Finding that a bad call fails proves nothing unless a good call succeeds.
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, uid_, ok_gids_));
 }
 
@@ -2244,10 +2244,10 @@ TEST_F(VerifyPathControlledByUserTest, Symlinks) {
       << "Failed to create symlink.";
 
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, file_link, uid_, ok_gids_));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           file_link, file_link, uid_, ok_gids_));
 
   // Symlink from one directory to another within the path.
@@ -2259,16 +2259,16 @@ TEST_F(VerifyPathControlledByUserTest, Symlinks) {
   ASSERT_TRUE(PathExists(file_path_with_link));
 
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, file_path_with_link, uid_, ok_gids_));
 
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           link_to_sub_dir, file_path_with_link, uid_, ok_gids_));
 
   // Symlinks in parents of base path are allowed.
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           file_path_with_link, file_path_with_link, uid_, ok_gids_));
 }
 
@@ -2286,35 +2286,35 @@ TEST_F(VerifyPathControlledByUserTest, OwnershipChecks) {
 
   // We control these paths.
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, uid_, ok_gids_));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, text_file_, uid_, ok_gids_));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, text_file_, uid_, ok_gids_));
 
   // Another user does not control these paths.
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, bad_uid, ok_gids_));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, text_file_, bad_uid, ok_gids_));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, text_file_, bad_uid, ok_gids_));
 
   // Another group does not control the paths.
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, uid_, bad_gids_));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, text_file_, uid_, bad_gids_));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, text_file_, uid_, bad_gids_));
 }
 
@@ -2329,36 +2329,36 @@ TEST_F(VerifyPathControlledByUserTest, GroupWriteTest) {
 
   // Any group is okay because the path is not group-writable.
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, uid_, ok_gids_));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, text_file_, uid_, ok_gids_));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, text_file_, uid_, ok_gids_));
 
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, uid_, bad_gids_));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, text_file_, uid_, bad_gids_));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, text_file_, uid_, bad_gids_));
 
   // No group is okay, because we don't check the group
   // if no group can write.
   std::set<gid_t> no_gids;  // Empty set of gids.
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, uid_, no_gids));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, text_file_, uid_, no_gids));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, text_file_, uid_, no_gids));
 
 
@@ -2372,23 +2372,23 @@ TEST_F(VerifyPathControlledByUserTest, GroupWriteTest) {
 
   // Now |ok_gids_| works, but |bad_gids_| fails.
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, uid_, ok_gids_));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, text_file_, uid_, ok_gids_));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, text_file_, uid_, ok_gids_));
 
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, uid_, bad_gids_));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, text_file_, uid_, bad_gids_));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, text_file_, uid_, bad_gids_));
 
   // Because any group in the group set is allowed,
@@ -2401,13 +2401,13 @@ TEST_F(VerifyPathControlledByUserTest, GroupWriteTest) {
       std::inserter(multiple_gids, multiple_gids.begin()));
 
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, uid_, multiple_gids));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, text_file_, uid_, multiple_gids));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, text_file_, uid_, multiple_gids));
 }
 
@@ -2422,78 +2422,78 @@ TEST_F(VerifyPathControlledByUserTest, WriteBitChecks) {
 
   // Initialy, we control all parts of the path.
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, uid_, ok_gids_));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, text_file_, uid_, ok_gids_));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, text_file_, uid_, ok_gids_));
 
   // Make base_dir_ world-writable.
   ASSERT_NO_FATAL_FAILURE(
       ChangePosixFilePermissions(base_dir_, S_IWOTH, 0u));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, uid_, ok_gids_));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, text_file_, uid_, ok_gids_));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, text_file_, uid_, ok_gids_));
 
   // Make sub_dir_ world writable.
   ASSERT_NO_FATAL_FAILURE(
       ChangePosixFilePermissions(sub_dir_, S_IWOTH, 0u));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, uid_, ok_gids_));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, text_file_, uid_, ok_gids_));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, text_file_, uid_, ok_gids_));
 
   // Make text_file_ world writable.
   ASSERT_NO_FATAL_FAILURE(
       ChangePosixFilePermissions(text_file_, S_IWOTH, 0u));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, uid_, ok_gids_));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, text_file_, uid_, ok_gids_));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, text_file_, uid_, ok_gids_));
 
   // Make sub_dir_ non-world writable.
   ASSERT_NO_FATAL_FAILURE(
       ChangePosixFilePermissions(sub_dir_, 0u, S_IWOTH));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, uid_, ok_gids_));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, text_file_, uid_, ok_gids_));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, text_file_, uid_, ok_gids_));
 
   // Make base_dir_ non-world-writable.
   ASSERT_NO_FATAL_FAILURE(
       ChangePosixFilePermissions(base_dir_, 0u, S_IWOTH));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, uid_, ok_gids_));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, text_file_, uid_, ok_gids_));
   EXPECT_FALSE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, text_file_, uid_, ok_gids_));
 
   // Back to the initial state: Nothing is writable, so every path
@@ -2501,22 +2501,22 @@ TEST_F(VerifyPathControlledByUserTest, WriteBitChecks) {
   ASSERT_NO_FATAL_FAILURE(
       ChangePosixFilePermissions(text_file_, 0u, S_IWOTH));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, sub_dir_, uid_, ok_gids_));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           base_dir_, text_file_, uid_, ok_gids_));
   EXPECT_TRUE(
-      base::VerifyPathControlledByUser(
+      butil::VerifyPathControlledByUser(
           sub_dir_, text_file_, uid_, ok_gids_));
 }
 
 TEST_F(FileUtilTest, CreateDirectoryParentsNotExist) {
-  ASSERT_TRUE(base::CreateDirectory(temp_dir_.path()));
-  base::FilePath creating_dir = temp_dir_.path().Append("sub1").Append("sub2");
+  ASSERT_TRUE(butil::CreateDirectory(temp_dir_.path()));
+  butil::FilePath creating_dir = temp_dir_.path().Append("sub1").Append("sub2");
   std::cout << "path=" << creating_dir.value() << std::endl;
-  ASSERT_FALSE(base::CreateDirectory(creating_dir, false));
-  ASSERT_TRUE(base::CreateDirectory(creating_dir, true));
+  ASSERT_FALSE(butil::CreateDirectory(creating_dir, false));
+  ASSERT_TRUE(butil::CreateDirectory(creating_dir, true));
 }
 
 #if defined(OS_ANDROID)
@@ -2569,9 +2569,9 @@ TEST(ScopedFD, ScopedFDDoesClose) {
   char c = 0;
   ASSERT_EQ(0, pipe(fds));
   const int write_end = fds[1];
-  base::ScopedFD read_end_closer(fds[0]);
+  butil::ScopedFD read_end_closer(fds[0]);
   {
-    base::ScopedFD write_end_closer(fds[1]);
+    butil::ScopedFD write_end_closer(fds[1]);
   }
   // This is the only thread. This file descriptor should no longer be valid.
   int ret = close(write_end);
@@ -2585,14 +2585,14 @@ TEST(ScopedFD, ScopedFDDoesClose) {
 
 #if defined(GTEST_HAS_DEATH_TEST)
 void CloseWithScopedFD(int fd) {
-  base::ScopedFD fd_closer(fd);
+  butil::ScopedFD fd_closer(fd);
 }
 #endif
 
 TEST(ScopedFD, ScopedFDCrashesOnCloseFailure) {
   int fds[2];
   ASSERT_EQ(0, pipe(fds));
-  base::ScopedFD read_end_closer(fds[0]);
+  butil::ScopedFD read_end_closer(fds[0]);
   EXPECT_EQ(0, IGNORE_EINTR(close(fds[1])));
 #if defined(GTEST_HAS_DEATH_TEST)
   // This is the only thread. This file descriptor should no longer be valid.
@@ -2605,4 +2605,4 @@ TEST(ScopedFD, ScopedFDCrashesOnCloseFailure) {
 
 }  // namespace
 
-}  // namespace base
+}  // namespace butil

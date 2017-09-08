@@ -49,7 +49,7 @@ public:
     // If subclass does not require space, this return value is NULL.
     void* additional_space() { return _additional_space; }
 
-    // The starting time of the RPC, got from base::cpuwide_time_us().
+    // The starting time of the RPC, got from butil::cpuwide_time_us().
     int64_t cpuwide_start_us() const { return _start_parse_us; }
 
     // Don't send response back, used by MIMO.
@@ -115,7 +115,7 @@ friend class StatusService;
 friend class Server;
 
 private:
-    void Expose(const base::StringPiece& prefix);
+    void Expose(const butil::StringPiece& prefix);
     
     // Tracking status of non NsheadPbService
     MethodStatus* _status;

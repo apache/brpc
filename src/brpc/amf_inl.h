@@ -62,7 +62,7 @@ inline size_t AMFInputStream::cut_u8(uint8_t* val) {
 inline size_t AMFInputStream::cut_u16(uint16_t* val) {
     if (_size >= 2) {
         const uint16_t netval = *(uint16_t*)_data;
-        *val = base::NetToHost16(netval);
+        *val = butil::NetToHost16(netval);
         _data = (const char*)_data + 2;
         _size -= 2;
         _popped_bytes += 2;
@@ -70,14 +70,14 @@ inline size_t AMFInputStream::cut_u16(uint16_t* val) {
     }
     uint16_t netval = 0;
     const size_t ret = cutn(&netval, 2);
-    *val = base::NetToHost16(netval);
+    *val = butil::NetToHost16(netval);
     return ret;
 }
 
 inline size_t AMFInputStream::cut_u32(uint32_t* val) {
     if (_size >= 4) {
         const uint32_t netval = *(uint32_t*)_data;
-        *val = base::NetToHost32(netval);
+        *val = butil::NetToHost32(netval);
         _data = (const char*)_data + 4;
         _size -= 4;
         _popped_bytes += 4;
@@ -85,14 +85,14 @@ inline size_t AMFInputStream::cut_u32(uint32_t* val) {
     }
     uint32_t netval = 0;
     const size_t ret = cutn(&netval, 4);
-    *val = base::NetToHost32(netval);
+    *val = butil::NetToHost32(netval);
     return ret;
 }
 
 inline size_t AMFInputStream::cut_u64(uint64_t* val) {
     if (_size >= 8) {
         const uint64_t netval = *(uint64_t*)_data;
-        *val = base::NetToHost64(netval);
+        *val = butil::NetToHost64(netval);
         _data = (const char*)_data + 8;
         _size -= 8;
         _popped_bytes += 8;
@@ -100,7 +100,7 @@ inline size_t AMFInputStream::cut_u64(uint64_t* val) {
     }
     uint64_t netval = 0;
     const size_t ret = cutn(&netval, 8);
-    *val = base::NetToHost64(netval);
+    *val = butil::NetToHost64(netval);
     return ret;
 }
 
@@ -149,17 +149,17 @@ inline void AMFOutputStream::put_u8(uint8_t val) {
 }
 
 inline void AMFOutputStream::put_u16(uint16_t val) {
-    uint16_t netval = base::HostToNet16(val);
+    uint16_t netval = butil::HostToNet16(val);
     return putn(&netval, sizeof(netval));
 }
 
 inline void AMFOutputStream::put_u32(uint32_t val) {
-    uint32_t netval = base::HostToNet32(val);
+    uint32_t netval = butil::HostToNet32(val);
     return putn(&netval, sizeof(netval));
 }
 
 inline void AMFOutputStream::put_u64(uint64_t val) {
-    uint64_t netval = base::HostToNet64(val);
+    uint64_t netval = butil::HostToNet64(val);
     return putn(&netval, sizeof(netval));
 }
 

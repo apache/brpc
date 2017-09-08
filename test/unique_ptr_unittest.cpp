@@ -4,7 +4,7 @@
 // Date: 2010-12-04 11:59
 
 #include <gtest/gtest.h>
-#include "base/unique_ptr.h"
+#include "butil/unique_ptr.h"
 
 namespace {
 

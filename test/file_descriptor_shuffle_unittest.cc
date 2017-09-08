@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/posix/file_descriptor_shuffle.h"
+#include "butil/posix/file_descriptor_shuffle.h"
 #include <gtest/gtest.h>
 
 namespace {
@@ -12,7 +12,7 @@ const int kDuplicateBase = 1000;
 
 }  // namespace
 
-namespace base {
+namespace butil {
 
 struct Action {
   enum Type {
@@ -284,4 +284,4 @@ TEST(FileDescriptorShuffleTest, Simple1WithFailure) {
   EXPECT_FALSE(PerformInjectiveMultimap(map, &failing));
 }
 
-}  // namespace base
+}  // namespace butil

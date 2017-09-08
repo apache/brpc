@@ -17,7 +17,7 @@
 #ifndef BRPC_SIMPLE_DATA_POOL_H
 #define BRPC_SIMPLE_DATA_POOL_H
 
-#include "base/scoped_lock.h"
+#include "butil/scoped_lock.h"
 #include "brpc/data_factory.h"
 
 
@@ -45,10 +45,10 @@ public:
     Stat stat() const;
     
 private:
-    base::Mutex _mutex;
+    butil::Mutex _mutex;
     unsigned _capacity;
     unsigned _size;
-    base::atomic<unsigned> _ncreated;
+    butil::atomic<unsigned> _ncreated;
     void** _pool;
     const DataFactory* _factory;
 };
@@ -76,7 +76,7 @@ inline void SimpleDataPool::Reset(const DataFactory* factory) {
         saved_factory = _factory;
         _capacity = 0;
         _size = 0;
-        _ncreated.store(0, base::memory_order_relaxed);
+        _ncreated.store(0, butil::memory_order_relaxed);
         _pool = NULL;
         _factory = factory;
     }
@@ -117,7 +117,7 @@ inline void SimpleDataPool::Reserve(unsigned n) {
         if (data == NULL) {
             break;
         }
-        _ncreated.fetch_add(1,  base::memory_order_relaxed);
+        _ncreated.fetch_add(1,  butil::memory_order_relaxed);
         _pool[_size++] = data;
     }
 }
@@ -131,7 +131,7 @@ inline void* SimpleDataPool::Borrow() {
     }
     void* data = _factory->CreateData();
     if (data) {
-        _ncreated.fetch_add(1,  base::memory_order_relaxed);
+        _ncreated.fetch_add(1,  butil::memory_order_relaxed);
     }
     return data;
 }
@@ -140,7 +140,7 @@ inline void SimpleDataPool::Return(void* data) {
     if (data == NULL) {
         return;
     }
-    std::unique_lock<base::Mutex> mu(_mutex);
+    std::unique_lock<butil::Mutex> mu(_mutex);
     if (_capacity == _size) {
         const unsigned new_cap = (_capacity == 0 ? 128 : (_capacity * 3 / 2));
         void** new_pool = (void**)malloc(new_cap * sizeof(void*));
@@ -159,7 +159,7 @@ inline void SimpleDataPool::Return(void* data) {
 }
 
 inline SimpleDataPool::Stat SimpleDataPool::stat() const {
-    Stat s = { _size, _ncreated.load(base::memory_order_relaxed) };
+    Stat s = { _size, _ncreated.load(butil::memory_order_relaxed) };
     return s;
 }
 

@@ -3,8 +3,8 @@
 
 #include <iostream>
 
-#include "base/time.h"
-#include "base/logging.h"
+#include "butil/time.h"
+#include "butil/logging.h"
 #include <brpc/memcache.h>
 #include <brpc/channel.h>
 #include <gtest/gtest.h>

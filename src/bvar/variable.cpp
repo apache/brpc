@@ -20,14 +20,14 @@
 #include <fstream>                              // std::ifstream
 #include <sstream>                              // std::ostringstream
 #include <gflags/gflags.h>
-#include "base/macros.h"                        // BAIDU_CASSERT
-#include "base/containers/flat_map.h"           // base::FlatMap
-#include "base/scoped_lock.h"                   // BAIDU_SCOPE_LOCK
-#include "base/string_splitter.h"               // base::StringSplitter
-#include "base/strings/string_split.h"          // base::SplitStringIntoKeyValuePairs
-#include "base/errno.h"                         // berror
-#include "base/time.h"                          // milliseconds_from_now
-#include "base/file_util.h"                     // base::FilePath
+#include "butil/macros.h"                        // BAIDU_CASSERT
+#include "butil/containers/flat_map.h"           // butil::FlatMap
+#include "butil/scoped_lock.h"                   // BAIDU_SCOPE_LOCK
+#include "butil/string_splitter.h"               // butil::StringSplitter
+#include "butil/strings/string_split.h"          // butil::SplitStringIntoKeyValuePairs
+#include "butil/errno.h"                         // berror
+#include "butil/time.h"                          // milliseconds_from_now
+#include "butil/file_util.h"                     // butil::FilePath
 #include "bvar/gflag.h"
 #include "bvar/variable.h"
 
@@ -72,7 +72,7 @@ public:
     DisplayFilter display_filter;
 };
 
-typedef base::FlatMap<std::string, VarEntry> VarMap;
+typedef butil::FlatMap<std::string, VarEntry> VarMap;
 
 struct VarMapWithLock : public VarMap {
     pthread_mutex_t mutex;
@@ -125,8 +125,8 @@ Variable::~Variable() {
         " dtors to avoid displaying a variable that is just destructing";
 }
 
-int Variable::expose_impl(const base::StringPiece& prefix,
-                          const base::StringPiece& name,
+int Variable::expose_impl(const butil::StringPiece& prefix,
+                          const butil::StringPiece& name,
                           DisplayFilter display_filter) {
     if (name.empty()) {
         LOG(ERROR) << "Parameter[name] is empty";
@@ -147,7 +147,7 @@ int Variable::expose_impl(const base::StringPiece& prefix,
     _name.reserve((prefix.size() + name.size()) * 5 / 4);
     if (!prefix.empty()) {
         to_underscored_name(&_name, prefix);
-        if (!_name.empty() && base::back_char(_name) != '_') {
+        if (!_name.empty() && butil::back_char(_name) != '_') {
             _name.push_back('_');
         }
     }
@@ -319,8 +319,8 @@ public:
     virtual int overflow(int ch);
     virtual int sync();
     void reset();
-    base::StringPiece data() {
-        return base::StringPiece(pbase(), pptr() - pbase());
+    butil::StringPiece data() {
+        return butil::StringPiece(pbase(), pptr() - pbase());
     }
 
 private:
@@ -411,7 +411,7 @@ public:
         }
         std::string name;
         const char wc_pattern[3] = { '*', question_mark, '\0' };
-        for (base::StringMultiSplitter sp(wildcards.c_str(), ",;");
+        for (butil::StringMultiSplitter sp(wildcards.c_str(), ",;");
              sp != NULL; ++sp) {
             name.assign(sp.field(), sp.length());
             if (name.find_first_of(wc_pattern) != std::string::npos) {
@@ -549,10 +549,10 @@ std::string read_command_name() {
     // safety we normalize the name.
     std::string s;
     if (command_name.size() >= 2UL && command_name[0] == '(' &&
-        base::back_char(command_name) == ')') {
+        butil::back_char(command_name) == ')') {
         // remove parenthesis.
         to_underscored_name(&s,
-                            base::StringPiece(command_name.data() + 1, 
+                            butil::StringPiece(command_name.data() + 1, 
                                               command_name.size() - 2UL));
     } else {
         to_underscored_name(&s, command_name);
@@ -562,7 +562,7 @@ std::string read_command_name() {
 
 class FileDumper : public Dumper {
 public:
-    FileDumper(const std::string& filename, base::StringPiece s/*prefix*/)
+    FileDumper(const std::string& filename, butil::StringPiece s/*prefix*/)
         : _filename(filename), _fp(NULL) {
         // setting prefix.
         // remove trailing spaces.
@@ -572,7 +572,7 @@ public:
         // normalize it.
         if (!s.empty()) {
             to_underscored_name(&_prefix, s);
-            if (base::back_char(_prefix) != '_') {
+            if (butil::back_char(_prefix) != '_') {
                 _prefix.push_back('_');
             }
         }
@@ -587,11 +587,11 @@ public:
             _fp = NULL;
         }
     }
-    bool dump(const std::string& name, const base::StringPiece& desc) {
+    bool dump(const std::string& name, const butil::StringPiece& desc) {
         if (_fp == NULL) {
-            base::File::Error error;
-            base::FilePath dir = base::FilePath(_filename).DirName();
-            if (!base::CreateDirectoryAndGetError(dir, &error)) {
+            butil::File::Error error;
+            butil::FilePath dir = butil::FilePath(_filename).DirName();
+            if (!butil::CreateDirectoryAndGetError(dir, &error)) {
                 LOG(ERROR) << "Fail to create directory=`" << dir.value()
                            << "', " << error;
                 return false;
@@ -621,15 +621,15 @@ private:
 class FileDumperGroup : public Dumper {
 public:
     FileDumperGroup(std::string tabs, std::string filename, 
-                     base::StringPiece s/*prefix*/) {
-        base::FilePath path(filename);
+                     butil::StringPiece s/*prefix*/) {
+        butil::FilePath path(filename);
         if (path.FinalExtension() == ".data") {
             // .data will be appended later
             path = path.RemoveFinalExtension();
         }
-        base::StringPairs pairs;
+        butil::StringPairs pairs;
         pairs.reserve(8);
-        base::SplitStringIntoKeyValuePairs(tabs, '=', ';', &pairs);
+        butil::SplitStringIntoKeyValuePairs(tabs, '=', ';', &pairs);
         dumpers.reserve(pairs.size() + 1);
         //matchers.reserve(pairs.size());
         for (size_t i = 0; i < pairs.size(); ++i) {
@@ -650,7 +650,7 @@ public:
         dumpers.clear();
     }
 
-    bool dump(const std::string& name, const base::StringPiece& desc) {
+    bool dump(const std::string& name, const butil::StringPiece& desc) {
         for (size_t i = 0; i < dumpers.size() - 1; ++i) {
             if (dumpers[i].second->match(name)) {
                 return dumpers[i].first->dump(name, desc);
@@ -762,7 +762,7 @@ static void* dumping_thread(void*) {
             LOG(ERROR) << "Bad cond_sleep_ms=" << cond_sleep_ms;
             cond_sleep_ms = 10000;
         }
-        timespec deadline = base::milliseconds_from_now(cond_sleep_ms);
+        timespec deadline = butil::milliseconds_from_now(cond_sleep_ms);
         pthread_mutex_lock(&dump_mutex);
         pthread_cond_timedwait(&dump_cond, &dump_mutex, &deadline);
         pthread_mutex_unlock(&dump_mutex);
@@ -834,13 +834,13 @@ const bool ALLOW_UNUSED dummy_bvar_dump_prefix = ::google::RegisterFlagValidator
 const bool ALLOW_UNUSED dummy_bvar_dump_tabs = ::google::RegisterFlagValidator(
     &FLAGS_bvar_dump_tabs, wakeup_dumping_thread);
 
-void to_underscored_name(std::string* name, const base::StringPiece& src) {
+void to_underscored_name(std::string* name, const butil::StringPiece& src) {
     name->reserve(name->size() + src.size() + 8/*just guess*/);
     for (const char* p = src.data(); p != src.data() + src.size(); ++p) {
         if (isalpha(*p)) {
             if (*p < 'a') { // upper cases
                 if (p != src.data() && !isupper(p[-1]) &&
-                    base::back_char(*name) != '_') {
+                    butil::back_char(*name) != '_') {
                     name->push_back('_');
                 }
                 name->push_back(*p - 'A' + 'a');
@@ -849,7 +849,7 @@ void to_underscored_name(std::string* name, const base::StringPiece& src) {
             }
         } else if (isdigit(*p)) {
             name->push_back(*p);
-        } else if (name->empty() || base::back_char(*name) != '_') {
+        } else if (name->empty() || butil::back_char(*name) != '_') {
             name->push_back('_');
         }
     }

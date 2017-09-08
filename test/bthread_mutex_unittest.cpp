@@ -3,10 +3,10 @@
 // Date: Sun Jul 13 15:04:18 CST 2014
 
 #include <gtest/gtest.h>
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/string_printf.h"
-#include "base/logging.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/string_printf.h"
+#include "butil/logging.h"
 #include "bthread/bthread.h"
 #include "bthread/butex.h"
 #include "bthread/task_control.h"
@@ -25,13 +25,13 @@ inline unsigned* get_butex(bthread_mutex_t & m) {
     return m.butex;
 }
 
-long start_time = base::cpuwide_time_ms();
+long start_time = butil::cpuwide_time_ms();
 int c = 0;
 void* locker(void* arg) {
     bthread_mutex_t* m = (bthread_mutex_t*)arg;
     bthread_mutex_lock(m);
     printf("[%lu] I'm here, %d, %lums\n", pthread_self(), ++c,
-           base::cpuwide_time_ms() - start_time);
+           butil::cpuwide_time_ms() - start_time);
     bthread_usleep(10000);
     bthread_mutex_unlock(m);
     return NULL;
@@ -144,7 +144,7 @@ template <typename Mutex>
 void* add_with_mutex(void* void_arg) {
     PerfArgs<Mutex>* args = (PerfArgs<Mutex>*)void_arg;
     args->ready = true;
-    base::Timer t;
+    butil::Timer t;
     while (!g_stopped) {
         if (g_started) {
             break;
@@ -205,7 +205,7 @@ void PerfTest(Mutex* mutex,
         wait_time += args[i].elapse_ns;
         count += args[i].counter;
     }
-    LOG(INFO) << base::class_name<Mutex>() << " in "
+    LOG(INFO) << butil::class_name<Mutex>() << " in "
               << ((void*)create_fn == (void*)pthread_create ? "pthread" : "bthread")
               << " thread_num=" << thread_num
               << " count=" << count
@@ -214,7 +214,7 @@ void PerfTest(Mutex* mutex,
 
 TEST(MutexTest, performance) {
     const int thread_num = 12;
-    base::Mutex base_mutex;
+    butil::Mutex base_mutex;
     PerfTest(&base_mutex, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
     PerfTest(&base_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
     bthread::Mutex bth_mutex;

@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/basictypes.h"
-#include "base/logging.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/threading/non_thread_safe.h"
-#include "base/threading/simple_thread.h"
+#include "butil/basictypes.h"
+#include "butil/logging.h"
+#include "butil/memory/scoped_ptr.h"
+#include "butil/threading/non_thread_safe.h"
+#include "butil/threading/simple_thread.h"
 #include <gtest/gtest.h>
 
-// Duplicated from base/threading/non_thread_safe.h so that we can be
+// Duplicated from butil/threading/non_thread_safe.h so that we can be
 // good citizens there and undef the macro.
 #if (!defined(NDEBUG) || defined(DCHECK_ALWAYS_ON))
 #define ENABLE_NON_THREAD_SAFE 1
@@ -17,7 +17,7 @@
 #define ENABLE_NON_THREAD_SAFE 0
 #endif
 
-namespace base {
+namespace butil {
 
 namespace {
 
@@ -164,4 +164,4 @@ TEST(NonThreadSafeTest, DestructorAllowedOnDifferentThreadInRelease) {
 // Just in case we ever get lumped together with other compilation units.
 #undef ENABLE_NON_THREAD_SAFE
 
-}  // namespace base
+}  // namespace butil

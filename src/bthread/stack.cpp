@@ -20,10 +20,10 @@
 #include <sys/mman.h>                             // mmap, munmap, mprotect
 #include <algorithm>                              // std::max
 #include <stdlib.h>                               // posix_memalign
-#include "base/macros.h"                          // BAIDU_CASSERT
-#include "base/memory/singleton_on_pthread_once.h"
-#include "base/third_party/dynamic_annotations/dynamic_annotations.h" // RunningOnValgrind
-#include "base/third_party/valgrind/valgrind.h"   // VALGRIND_STACK_REGISTER
+#include "butil/macros.h"                          // BAIDU_CASSERT
+#include "butil/memory/singleton_on_pthread_once.h"
+#include "butil/third_party/dynamic_annotations/dynamic_annotations.h" // RunningOnValgrind
+#include "butil/third_party/valgrind/valgrind.h"   // VALGRIND_STACK_REGISTER
 #include "bvar/passive_status.h"
 #include "bthread/types.h"                        // BTHREAD_STACKTYPE_*
 #include "bthread/stack.h"
@@ -43,9 +43,9 @@ BAIDU_CASSERT(BTHREAD_STACKTYPE_NORMAL == STACK_TYPE_NORMAL, must_match);
 BAIDU_CASSERT(BTHREAD_STACKTYPE_LARGE == STACK_TYPE_LARGE, must_match);
 BAIDU_CASSERT(STACK_TYPE_MAIN == 0, must_be_0);
 
-static base::static_atomic<int64_t> s_stack_count = BASE_STATIC_ATOMIC_INIT(0);
+static butil::static_atomic<int64_t> s_stack_count = BASE_STATIC_ATOMIC_INIT(0);
 static int64_t get_stack_count(void*) {
-    return s_stack_count.load(base::memory_order_relaxed);
+    return s_stack_count.load(butil::memory_order_relaxed);
 }
 static bvar::PassiveStatus<int64_t> bvar_stack_count(
     "bthread_stack_count", get_stack_count, NULL);
@@ -68,7 +68,7 @@ int allocate_stack_storage(StackStorage* s, int stacksize_in, int guardsize_in) 
                                      << stacksize << ")";
             return -1;
         }
-        s_stack_count.fetch_add(1, base::memory_order_relaxed);
+        s_stack_count.fetch_add(1, butil::memory_order_relaxed);
         s->bottom = (char*)mem + stacksize;
         s->stacksize = stacksize;
         s->guardsize = 0;
@@ -92,7 +92,7 @@ int allocate_stack_storage(StackStorage* s, int stacksize_in, int guardsize_in) 
         if (MAP_FAILED == mem) {
             PLOG_EVERY_SECOND(ERROR) 
                 << "Fail to mmap size=" << memsize << " stack_count="
-                << s_stack_count.load(base::memory_order_relaxed)
+                << s_stack_count.load(butil::memory_order_relaxed)
                 << ", possibly limited by /proc/sys/vm/max_map_count";
             // may fail due to limit of max_map_count (65536 in default)
             return -1;
@@ -113,7 +113,7 @@ int allocate_stack_storage(StackStorage* s, int stacksize_in, int guardsize_in) 
             return -1;
         }
 
-        s_stack_count.fetch_add(1, base::memory_order_relaxed);
+        s_stack_count.fetch_add(1, butil::memory_order_relaxed);
         s->bottom = (char*)mem + memsize;
         s->stacksize = stacksize;
         s->guardsize = guardsize;
@@ -135,7 +135,7 @@ void deallocate_stack_storage(StackStorage* s) {
     if ((char*)s->bottom <= (char*)NULL + memsize) {
         return;
     }
-    s_stack_count.fetch_sub(1, base::memory_order_relaxed);
+    s_stack_count.fetch_sub(1, butil::memory_order_relaxed);
     if (s->guardsize <= 0) {
         free((char*)s->bottom - memsize);
     } else {

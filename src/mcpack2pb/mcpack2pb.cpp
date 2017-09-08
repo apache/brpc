@@ -25,9 +25,9 @@ DEFINE_bool(mcpack2pb_absent_field_is_error, false, "Parsing fails if the "
 namespace mcpack2pb {
 
 static pthread_once_t s_init_handler_map_once = PTHREAD_ONCE_INIT;
-static base::FlatMap<std::string, MessageHandler>* s_handler_map = NULL;
+static butil::FlatMap<std::string, MessageHandler>* s_handler_map = NULL;
 static void init_handler_map() {
-    s_handler_map = new base::FlatMap<std::string, MessageHandler>;
+    s_handler_map = new butil::FlatMap<std::string, MessageHandler>;
     if (s_handler_map->init(64, 50) != 0) {
         LOG(ERROR) << "Fail to init s_handler_map";
         exit(1);

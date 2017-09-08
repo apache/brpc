@@ -16,7 +16,7 @@
 
 #include <gflags/gflags.h>
 #include <bthread/bthread.h>
-#include <base/logging.h>
+#include <butil/logging.h>
 #include <brpc/channel.h>
 #include "echo.pb.h"
 #include <bvar/bvar.h>
@@ -61,9 +61,9 @@ static void* sender(void* arg) {
 
         // Because `done'(last parameter) is NULL, this function waits until
         // the response comes back or error occurs(including timedout).
-        const int64_t start_time = base::cpuwide_time_us();
+        const int64_t start_time = butil::cpuwide_time_us();
         stub.Echo(&cntl, &request, &response, NULL);
-        const int64_t end_time = base::cpuwide_time_us();
+        const int64_t end_time = butil::cpuwide_time_us();
         const int64_t elp = end_time - start_time;
         if (!cntl.Failed()) {
             g_latency_recorder << elp;

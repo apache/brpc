@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/at_exit.h"
-#include "base/memory/singleton.h"
-#include "base/path_service.h"
+#include "butil/at_exit.h"
+#include "butil/memory/singleton.h"
+#include "butil/path_service.h"
 #include <gtest/gtest.h>
 
 namespace {
@@ -208,7 +208,7 @@ TEST_F(SingletonTest, Basic) {
   CallbackFunc* static_singleton;
 
   {
-    base::ShadowingAtExitManager sem;
+    butil::ShadowingAtExitManager sem;
     {
       singleton_int = SingletonInt();
     }
@@ -242,7 +242,7 @@ TEST_F(SingletonTest, Basic) {
   EXPECT_EQ(NULL, GetStaticSingleton());
 
   {
-    base::ShadowingAtExitManager sem;
+    butil::ShadowingAtExitManager sem;
     // Verifiy that the variables were reset.
     {
       singleton_int = SingletonInt();
@@ -267,7 +267,7 @@ TEST_F(SingletonTest, Basic) {
     EXPECT_EQ(0u, reinterpret_cast<uintptr_t>(ptr) & (align - 1))
 
 TEST_F(SingletonTest, Alignment) {
-  using base::AlignedMemory;
+  using butil::AlignedMemory;
 
   // Create some static singletons with increasing sizes and alignment
   // requirements. By ordering this way, the linker will need to do some work to

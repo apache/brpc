@@ -2,15 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/callback_helpers.h"
-#include "base/callback_internal.h"
-#include "base/memory/ref_counted.h"
-#include "base/memory/scoped_ptr.h"
+#include "butil/bind.h"
+#include "butil/callback.h"
+#include "butil/callback_helpers.h"
+#include "butil/callback_internal.h"
+#include "butil/memory/ref_counted.h"
+#include "butil/memory/scoped_ptr.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 namespace {
 
@@ -146,7 +146,7 @@ TEST_F(CallbackTest, ResetAndReturn) {
   ASSERT_TRUE(tfr.cb_already_run);
 }
 
-class CallbackOwner : public base::RefCounted<CallbackOwner> {
+class CallbackOwner : public butil::RefCounted<CallbackOwner> {
  public:
   explicit CallbackOwner(bool* deleted) {
     callback_ = Bind(&CallbackOwner::Unused, this);
@@ -158,7 +158,7 @@ class CallbackOwner : public base::RefCounted<CallbackOwner> {
   }
 
  private:
-  friend class base::RefCounted<CallbackOwner>;
+  friend class butil::RefCounted<CallbackOwner>;
   virtual ~CallbackOwner() {
     *deleted_ = true;
   }
@@ -178,4 +178,4 @@ TEST_F(CallbackTest, CallbackHasLastRefOnContainingObject) {
 }
 
 }  // namespace
-}  // namespace base
+}  // namespace butil

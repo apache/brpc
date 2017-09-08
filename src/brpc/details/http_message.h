@@ -19,9 +19,9 @@
 #define BRPC_HTTP_MESSAGE_H
 
 #include <string>                           // std::string
-#include "base/macros.h"
-#include "base/iobuf.h"                     // base::IOBuf
-#include "base/scoped_lock.h"               // base::unique_lock
+#include "butil/macros.h"
+#include "butil/iobuf.h"                     // butil::IOBuf
+#include "butil/scoped_lock.h"               // butil::unique_lock
 #include "brpc/details/http_parser.h"  // http_parser
 #include "brpc/http_header.h"          // HttpHeader
 #include "brpc/progressive_reader.h"   // ProgressiveReader
@@ -47,17 +47,17 @@ public:
     explicit HttpMessage(bool read_body_progressively = false);
     ~HttpMessage();
 
-    const base::IOBuf &body() const { return _body; }
-    base::IOBuf &body() { return _body; }
+    const butil::IOBuf &body() const { return _body; }
+    butil::IOBuf &body() { return _body; }
 
     // Parse from array, length=0 is treated as EOF.
     // Returns bytes parsed, -1 on failure.
     ssize_t ParseFromArray(const char *data, const size_t length);
     
-    // Parse from base::IOBuf.
+    // Parse from butil::IOBuf.
     // Emtpy `buf' is sliently ignored, which is different from ParseFromArray.
     // Returns bytes parsed, -1 on failure.
-    ssize_t ParseFromIOBuf(const base::IOBuf &buf);
+    ssize_t ParseFromIOBuf(const butil::IOBuf &buf);
 
     bool Completed() const { return _stage == HTTP_ON_MESSAGE_COMPLELE; }
     HttpParserStage stage() const { return _stage; }
@@ -92,17 +92,17 @@ protected:
     
 private:
     DISALLOW_COPY_AND_ASSIGN(HttpMessage);
-    int UnlockAndFlushToBodyReader(std::unique_lock<base::Mutex>& locked);
+    int UnlockAndFlushToBodyReader(std::unique_lock<butil::Mutex>& locked);
 
     HttpParserStage _stage;
     std::string _url;
     HttpHeader _header;
     bool _read_body_progressively;
     // For mutual exclusion between on_body and SetBodyReader.
-    base::Mutex _body_mutex;
+    butil::Mutex _body_mutex;
     // Read body progressively
     ProgressiveReader* _body_reader;
-    base::IOBuf _body;
+    butil::IOBuf _body;
 
     // Parser related members
     struct http_parser _parser;
@@ -111,7 +111,7 @@ private:
 
 protected:
     // Only valid when -http_verbose is on
-    base::IOBufBuilder* _vmsgbuilder;
+    butil::IOBufBuilder* _vmsgbuilder;
     size_t _body_length;
 };
 
@@ -121,17 +121,17 @@ std::ostream& operator<<(std::ostream& os, const http_parser& parser);
 // header: may be modified in some cases
 // remote_side: used when "Host" is absent
 // content: could be NULL.
-void SerializeHttpRequest(base::IOBuf* request,
+void SerializeHttpRequest(butil::IOBuf* request,
                           HttpHeader* header,
-                          const base::EndPoint& remote_side,
-                          const base::IOBuf* content);
+                          const butil::EndPoint& remote_side,
+                          const butil::IOBuf* content);
 
 // Serialize a http response.
 // header: may be modified in some cases
 // content: cleared after usage. could be NULL. 
-void SerializeHttpResponse(base::IOBuf* response,
+void SerializeHttpResponse(butil::IOBuf* response,
                            HttpHeader* header,
-                           base::IOBuf* content);
+                           butil::IOBuf* content);
 
 } // namespace brpc
 

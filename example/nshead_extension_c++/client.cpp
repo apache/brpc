@@ -16,9 +16,9 @@
 
 #include <gflags/gflags.h>
 
-#include <base/logging.h>
-#include <base/time.h>
-#include <base/strings/string_piece.h>
+#include <butil/logging.h>
+#include <butil/time.h>
+#include <butil/strings/string_piece.h>
 #include <brpc/channel.h>
 #include <brpc/nshead_message.h>
 #include <bvar/bvar.h>

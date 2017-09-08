@@ -4,10 +4,10 @@
 
 #include "test/multiprocess_test.h"
 
-#include "base/base_switches.h"
-#include "base/command_line.h"
+#include "butil/base_switches.h"
+#include "butil/command_line.h"
 
-namespace base {
+namespace butil {
 
 #if !defined(OS_ANDROID)
 ProcessHandle SpawnMultiProcessTestChild(
@@ -56,4 +56,4 @@ CommandLine MultiProcessTest::MakeCmdLine(const std::string& procname) {
   return command_line;
 }
 
-}  // namespace base
+}  // namespace butil

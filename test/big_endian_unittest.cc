@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/big_endian.h"
+#include "butil/big_endian.h"
 
-#include "base/strings/string_piece.h"
+#include "butil/strings/string_piece.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 TEST(BigEndianReaderTest, ReadsValues) {
   char data[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0xA, 0xB, 0xC };
@@ -15,7 +15,7 @@ TEST(BigEndianReaderTest, ReadsValues) {
   uint8_t u8;
   uint16_t u16;
   uint32_t u32;
-  base::StringPiece piece;
+  butil::StringPiece piece;
   BigEndianReader reader(data, sizeof(data));
 
   EXPECT_TRUE(reader.Skip(2));
@@ -30,7 +30,7 @@ TEST(BigEndianReaderTest, ReadsValues) {
   EXPECT_EQ(0x0506, u16);
   EXPECT_TRUE(reader.ReadU32(&u32));
   EXPECT_EQ(0x0708090Au, u32);
-  base::StringPiece expected(reader.ptr(), 2);
+  butil::StringPiece expected(reader.ptr(), 2);
   EXPECT_TRUE(reader.ReadPiece(&piece, 2));
   EXPECT_EQ(2u, piece.size());
   EXPECT_EQ(expected.data(), piece.data());
@@ -42,7 +42,7 @@ TEST(BigEndianReaderTest, RespectsLength) {
   uint8_t u8;
   uint16_t u16;
   uint32_t u32;
-  base::StringPiece piece;
+  butil::StringPiece piece;
   BigEndianReader reader(data, sizeof(data));
   // 4 left
   EXPECT_FALSE(reader.Skip(6));
@@ -97,4 +97,4 @@ TEST(BigEndianWriterTest, RespectsLength) {
   EXPECT_EQ(0, writer.remaining());
 }
 
-}  // namespace base
+}  // namespace butil

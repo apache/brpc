@@ -5,9 +5,9 @@
 #include "test/test_file_util.h"
 
 #include "test/test_timeouts.h"
-#include "base/threading/platform_thread.h"
+#include "butil/threading/platform_thread.h"
 
-namespace base {
+namespace butil {
 
 bool EvictFileFromSystemCacheWithRetry(const FilePath& path) {
   const int kCycles = 10;
@@ -20,4 +20,4 @@ bool EvictFileFromSystemCacheWithRetry(const FilePath& path) {
   return false;
 }
 
-}  // namespace base
+}  // namespace butil

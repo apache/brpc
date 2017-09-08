@@ -21,7 +21,7 @@
 #include <deque>
 #include <google/protobuf/io/zero_copy_stream.h>
 #include <google/protobuf/message.h>
-#include "base/sys_byteorder.h"
+#include "butil/sys_byteorder.h"
 
 
 namespace brpc {
@@ -163,14 +163,14 @@ public:
     { return _type == AMF_MARKER_OBJECT || _type == AMF_MARKER_ECMA_ARRAY; }
     bool IsArray() const { return _type == AMF_MARKER_STRICT_ARRAY; }
     
-    base::StringPiece AsString() const
-    { return base::StringPiece((_is_shortstr ? _shortstr : _str), _strsize); }
+    butil::StringPiece AsString() const
+    { return butil::StringPiece((_is_shortstr ? _shortstr : _str), _strsize); }
     bool AsBool() const { return _b; }
     double AsNumber() const { return _num; }
     const AMFObject& AsObject() const { return *_obj; }
     const AMFArray& AsArray() const { return *_arr; }
 
-    void SetString(const base::StringPiece& str);
+    void SetString(const butil::StringPiece& str);
     void SetBool(bool val);
     void SetNumber(double val);
     void SetNull();
@@ -206,7 +206,7 @@ public:
     void Remove(const std::string& name) { _fields.erase(name); }
     void Clear() { _fields.clear(); }
     
-    void SetString(const std::string& name, const base::StringPiece& val);
+    void SetString(const std::string& name, const butil::StringPiece& val);
     void SetBool(const std::string& name, bool val);
     void SetNumber(const std::string& name, double val);
     void SetNull(const std::string& name);
@@ -238,7 +238,7 @@ public:
     AMFField& operator[](size_t index);
     size_t size() const { return _size; }
 
-    void AddString(const base::StringPiece& val) { AddField()->SetString(val); }
+    void AddString(const butil::StringPiece& val) { AddField()->SetString(val); }
     void AddBool(bool val) { AddField()->SetBool(val); }
     void AddNumber(double val) { AddField()->SetNumber(val); }
     void AddNull() { AddField()->SetNull(); }
@@ -281,7 +281,7 @@ bool ReadAMFArray(AMFArray* arr, AMFInputStream* stream);
 
 // Serialize types into the stream.
 // Check stream->good() for successfulness after one or multiple WriteAMFxxx.
-void WriteAMFString(const base::StringPiece& val, AMFOutputStream* stream);
+void WriteAMFString(const butil::StringPiece& val, AMFOutputStream* stream);
 void WriteAMFBool(bool val, AMFOutputStream* stream);
 void WriteAMFNumber(double val, AMFOutputStream* stream);
 void WriteAMFUint32(uint32_t val, AMFOutputStream* stream);

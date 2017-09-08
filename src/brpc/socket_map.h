@@ -15,7 +15,7 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 
 #include <vector>                                  // std::vector
-#include "base/containers/flat_map.h"              // FlatMap
+#include "butil/containers/flat_map.h"              // FlatMap
 #include "brpc/socket_id.h"                   // SockdetId
 #include "brpc/options.pb.h"                  // ProtocolType
 #include "brpc/input_messenger.h"             // InputMessageHandler
@@ -29,14 +29,14 @@ namespace brpc {
 // The corresponding SocketId is written to `*id'. If this function returns
 // successfully, SocketMapRemove() MUST be called when the Socket is not needed.
 // Return 0 on success, -1 otherwise.
-int SocketMapInsert(base::EndPoint pt, SocketId* id);
+int SocketMapInsert(butil::EndPoint pt, SocketId* id);
 
 // Find the SocketId associated with `pt'.
 // Return 0 on found, -1 otherwise.
-int SocketMapFind(base::EndPoint pt, SocketId* id);
+int SocketMapFind(butil::EndPoint pt, SocketId* id);
 
 // Called once when the Socket returned by SocketMapInsert() is not needed.
-void SocketMapRemove(base::EndPoint pt);
+void SocketMapRemove(butil::EndPoint pt);
 
 // Put all existing Sockets into `ids'
 void SocketMapList(std::vector<SocketId>* ids);
@@ -49,7 +49,7 @@ void SocketMapList(std::vector<SocketId>* ids);
 class SocketCreator {
 public:
     virtual ~SocketCreator() {}
-    virtual int CreateSocket(const base::EndPoint& pt, SocketId* id) = 0;
+    virtual int CreateSocket(const butil::EndPoint& pt, SocketId* id) = 0;
 };
 
 struct SocketMapOptions {
@@ -87,17 +87,17 @@ public:
     SocketMap();
     ~SocketMap();
     int Init(const SocketMapOptions&);
-    int Insert(const base::EndPoint& pt, SocketId* id);
-    void Remove(const base::EndPoint& pt, SocketId expected_id);
-    int Find(const base::EndPoint& pt, SocketId* id);
+    int Insert(const butil::EndPoint& pt, SocketId* id);
+    void Remove(const butil::EndPoint& pt, SocketId expected_id);
+    int Find(const butil::EndPoint& pt, SocketId* id);
     void List(std::vector<SocketId>* ids);
-    void List(std::vector<base::EndPoint>* pts);
+    void List(std::vector<butil::EndPoint>* pts);
     const SocketMapOptions& options() const { return _options; }
 
 private:
-    void RemoveInternal(const base::EndPoint& pt, SocketId id,
+    void RemoveInternal(const butil::EndPoint& pt, SocketId id,
                         bool remove_orphan);
-    void ListOrphans(int defer_seconds, std::vector<base::EndPoint>* out);
+    void ListOrphans(int defer_seconds, std::vector<butil::EndPoint>* out);
     void WatchConnections();
     static void* RunWatchConnections(void*);
     void Print(std::ostream& os);
@@ -111,9 +111,9 @@ private:
     };
     // TODO: When RpcChannels connecting to one EndPoint are frequently created
     // and destroyed, a single map+mutex may become hot-spots.
-    typedef base::FlatMap<base::EndPoint, SingleConnection> Map;
+    typedef butil::FlatMap<butil::EndPoint, SingleConnection> Map;
     SocketMapOptions _options;
-    base::Mutex _mutex;
+    butil::Mutex _mutex;
     Map _map;
     bool _exposed_in_bvar;
     bvar::PassiveStatus<std::string>* _this_map_bvar;

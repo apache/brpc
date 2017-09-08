@@ -10,10 +10,10 @@
 #include <gtest/gtest.h>
 #include <gperftools/profiler.h>
 #include <google/protobuf/descriptor.h>
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/fd_guard.h"
-#include "base/files/scoped_file.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/fd_guard.h"
+#include "butil/files/scoped_file.h"
 #include "brpc/socket.h"
 #include "brpc/builtin/version_service.h"
 #include "brpc/builtin/health_service.h"
@@ -68,7 +68,7 @@ public:
     }
 
     int VerifyCredential(const std::string&,
-                         const base::EndPoint&,
+                         const butil::EndPoint&,
                          brpc::AuthContext*) const {
         return 0;
     }
@@ -88,7 +88,7 @@ public:
                       google::protobuf::Closure* done) {
         brpc::ClosureGuard done_guard(done);
         brpc::Controller* cntl = (brpc::Controller*)cntl_base;
-        count.fetch_add(1, base::memory_order_relaxed);
+        count.fetch_add(1, butil::memory_order_relaxed);
         EXPECT_EQ(EXP_REQUEST, request->message());
         response->set_message(EXP_RESPONSE);
         if (request->sleep_us() > 0) {
@@ -100,7 +100,7 @@ public:
         }
     }
 
-    base::atomic<int64_t> count;
+    butil::atomic<int64_t> count;
 };
 
 // An evil service that fakes its `ServiceDescriptor'
@@ -161,7 +161,7 @@ TEST_F(ServerTest, sanity) {
         ASSERT_EQ(0, server.Start("127.0.0.1:8613", NULL));
     }
 
-    base::EndPoint ep;
+    butil::EndPoint ep;
     MyAuthenticator auth;
     brpc::Server server;
     ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
@@ -188,7 +188,7 @@ TEST_F(ServerTest, sanity) {
 }
 
 TEST_F(ServerTest, invalid_protocol_in_enabled_protocols) {
-    base::EndPoint ep;
+    butil::EndPoint ep;
     ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
     brpc::Server server;
     brpc::ServerOptions opt;
@@ -252,11 +252,11 @@ public:
         ncalled_echo5.fetch_add(1);
     }
     
-    base::atomic<int> ncalled;
-    base::atomic<int> ncalled_echo2;
-    base::atomic<int> ncalled_echo3;
-    base::atomic<int> ncalled_echo4;
-    base::atomic<int> ncalled_echo5;
+    butil::atomic<int> ncalled;
+    butil::atomic<int> ncalled_echo2;
+    butil::atomic<int> ncalled_echo3;
+    butil::atomic<int> ncalled_echo4;
+    butil::atomic<int> ncalled_echo5;
 };
 
 class EchoServiceV2 : public v2::EchoService {
@@ -271,11 +271,11 @@ public:
         response->set_value(request->value() + 1);
         ncalled.fetch_add(1);
     }
-    base::atomic<int> ncalled;
+    butil::atomic<int> ncalled;
 };
 
 TEST_F(ServerTest, empty_enabled_protocols) {
-    base::EndPoint ep;
+    butil::EndPoint ep;
     ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
     brpc::Server server;
     EchoServiceImpl echo_svc;
@@ -302,7 +302,7 @@ TEST_F(ServerTest, empty_enabled_protocols) {
 }
 
 TEST_F(ServerTest, only_allow_protocols_in_enabled_protocols) {
-    base::EndPoint ep;
+    butil::EndPoint ep;
     ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
     brpc::Server server;
     EchoServiceImpl echo_svc;
@@ -925,7 +925,7 @@ TEST_F(ServerTest, add_remove_service) {
     ASSERT_TRUE(NULL == server.FindServiceByFullName(
         test::EchoService::descriptor()->name()));
 
-    base::EndPoint ep;
+    butil::EndPoint ep;
     ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
     ASSERT_EQ(0, server.Start(ep, NULL));
 
@@ -953,7 +953,7 @@ TEST_F(ServerTest, add_remove_service) {
     ASSERT_EQ(0ul, server.service_count());
 }
 
-void SendSleepRPC(base::EndPoint ep, int sleep_ms, bool succ) {
+void SendSleepRPC(butil::EndPoint ep, int sleep_ms, bool succ) {
     brpc::Channel channel;
     ASSERT_EQ(0, channel.Init(ep, NULL));
 
@@ -975,7 +975,7 @@ void SendSleepRPC(base::EndPoint ep, int sleep_ms, bool succ) {
 }
 
 TEST_F(ServerTest, close_idle_connections) {
-    base::EndPoint ep;
+    butil::EndPoint ep;
     brpc::Server server;
     brpc::ServerOptions opt;
     opt.idle_timeout_sec = 1;
@@ -995,8 +995,8 @@ TEST_F(ServerTest, close_idle_connections) {
 }
 
 TEST_F(ServerTest, logoff_and_multiple_start) {
-    base::Timer timer;
-    base::EndPoint ep;
+    butil::Timer timer;
+    butil::EndPoint ep;
     EchoServiceImpl echo_svc;
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(&echo_svc,
@@ -1007,11 +1007,11 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
     {
         ASSERT_EQ(0, server.Start(ep, NULL));
         bthread_t tid;
-        const int64_t old_count = echo_svc.count.load(base::memory_order_relaxed);
+        const int64_t old_count = echo_svc.count.load(butil::memory_order_relaxed);
         google::protobuf::Closure* thrd_func = 
             brpc::NewCallback(SendSleepRPC, ep, 100, true);
         EXPECT_EQ(0, bthread_start_background(&tid, NULL, RunClosure, thrd_func));
-        while (echo_svc.count.load(base::memory_order_relaxed) == old_count) {
+        while (echo_svc.count.load(butil::memory_order_relaxed) == old_count) {
             bthread_usleep(1000);
         }
         timer.start();
@@ -1027,11 +1027,11 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         ++ep.port;
         ASSERT_EQ(0, server.Start(ep, NULL));
         bthread_t tid;
-        const int64_t old_count = echo_svc.count.load(base::memory_order_relaxed);
+        const int64_t old_count = echo_svc.count.load(butil::memory_order_relaxed);
         google::protobuf::Closure* thrd_func = 
             brpc::NewCallback(SendSleepRPC, ep, 100, true);
         EXPECT_EQ(0, bthread_start_background(&tid, NULL, RunClosure, thrd_func));
-        while (echo_svc.count.load(base::memory_order_relaxed) == old_count) {
+        while (echo_svc.count.load(butil::memory_order_relaxed) == old_count) {
             bthread_usleep(1000);
         }
         
@@ -1050,11 +1050,11 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         ++ep.port;
         ASSERT_EQ(0, server.Start(ep, NULL));
         bthread_t tid;
-        const int64_t old_count = echo_svc.count.load(base::memory_order_relaxed);
+        const int64_t old_count = echo_svc.count.load(butil::memory_order_relaxed);
         google::protobuf::Closure* thrd_func = 
             brpc::NewCallback(SendSleepRPC, ep, 100, true);
         EXPECT_EQ(0, bthread_start_background(&tid, NULL, RunClosure, thrd_func));
-        while (echo_svc.count.load(base::memory_order_relaxed) == old_count) {
+        while (echo_svc.count.load(butil::memory_order_relaxed) == old_count) {
             bthread_usleep(1000);
         }
 
@@ -1073,11 +1073,11 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         ++ep.port;
         ASSERT_EQ(0, server.Start(ep, NULL));
         bthread_t tid;
-        const int64_t old_count = echo_svc.count.load(base::memory_order_relaxed);
+        const int64_t old_count = echo_svc.count.load(butil::memory_order_relaxed);
         google::protobuf::Closure* thrd_func = 
             brpc::NewCallback(SendSleepRPC, ep, 100, true);
         EXPECT_EQ(0, bthread_start_background(&tid, NULL, RunClosure, thrd_func));
-        while (echo_svc.count.load(base::memory_order_relaxed) == old_count) {
+        while (echo_svc.count.load(butil::memory_order_relaxed) == old_count) {
             bthread_usleep(1000);
         }
         timer.start();
@@ -1089,7 +1089,7 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
     }
 }
 
-void SendMultipleRPC(base::EndPoint ep, int count) {
+void SendMultipleRPC(butil::EndPoint ep, int count) {
     brpc::Channel channel;
     EXPECT_EQ(0, channel.Init(ep, NULL));
 
@@ -1110,7 +1110,7 @@ TEST_F(ServerTest, serving_requests) {
     brpc::Server server;
     ASSERT_EQ(0, server.AddService(&echo_svc,
                                    brpc::SERVER_DOESNT_OWN_SERVICE));
-    base::EndPoint ep;
+    butil::EndPoint ep;
     ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
     ASSERT_EQ(0, server.Start(ep, NULL));
 
@@ -1149,11 +1149,11 @@ TEST_F(ServerTest, create_pid_file) {
 TEST_F(ServerTest, range_start) {
     const int START_PORT = 8713;
     const int END_PORT = 8719;
-    base::fd_guard listen_fds[END_PORT - START_PORT];
-    base::EndPoint point;
+    butil::fd_guard listen_fds[END_PORT - START_PORT];
+    butil::EndPoint point;
     for (int i = START_PORT; i < END_PORT; ++i) {
         point.port = i;
-        listen_fds[i - START_PORT].reset(base::tcp_listen(point, true));
+        listen_fds[i - START_PORT].reset(butil::tcp_listen(point, true));
     }
 
     brpc::Server server;
@@ -1217,14 +1217,14 @@ TEST_F(ServerTest, too_big_message) {
 }
 
 void CheckCert(const char* fname, const char* cert) {
-    base::ScopedFILE fp(fname, "r");
+    butil::ScopedFILE fp(fname, "r");
     char buf[1024];
     fgets(buf, sizeof(buf), fp);
     ASSERT_EQ(0, strncmp(cert, buf + 1, strlen(cert))) << cert; // Skip the first blank
 }
 
 std::string GetRawPemString(const char* fname) {
-    base::ScopedFILE fp(fname, "r");
+    butil::ScopedFILE fp(fname, "r");
     char buf[4096];
     int size = read(fileno(fp), buf, sizeof(buf));
     std::string raw;

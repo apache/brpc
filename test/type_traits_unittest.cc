@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/type_traits.h"
+#include "butil/type_traits.h"
 
-#include "base/basictypes.h"
+#include "butil/basictypes.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 namespace {
 
 struct AStruct {};
@@ -248,4 +248,4 @@ COMPILE_ASSERT((is_same<remove_reference<std::string>::type, std::string>::value
 
 
 }  // namespace
-}  // namespace base
+}  // namespace butil

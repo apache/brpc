@@ -72,12 +72,12 @@ public:
         return *this;
     }
 
-    ControllerPrivateAccessor &set_remote_side(const base::EndPoint& pt) {
+    ControllerPrivateAccessor &set_remote_side(const butil::EndPoint& pt) {
         _cntl->_remote_side = pt;
         return *this;
     }
 
-    ControllerPrivateAccessor &set_local_side(const base::EndPoint& pt) {
+    ControllerPrivateAccessor &set_local_side(const butil::EndPoint& pt) {
         _cntl->_local_side = pt;
         return *this;
     }

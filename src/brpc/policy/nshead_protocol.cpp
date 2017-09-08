@@ -17,8 +17,8 @@
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
-#include "base/time.h" 
-#include "base/iobuf.h"                         // base::IOBuf
+#include "butil/time.h" 
+#include "butil/iobuf.h"                         // butil::IOBuf
 #include "brpc/log.h"
 #include "brpc/controller.h"               // Controller
 #include "brpc/socket.h"                   // Socket
@@ -71,7 +71,7 @@ void NsheadClosure::Run() {
     ControllerPrivateAccessor accessor(&_controller);
     Span* span = accessor.span();
     if (span) {
-        span->set_start_send_us(base::cpuwide_time_us());
+        span->set_start_send_us(butil::cpuwide_time_us());
     }
     ScopedMethodStatus method_status(_server->options().nshead_service->_status);
     if (!method_status) {
@@ -105,7 +105,7 @@ void NsheadClosure::Run() {
             int response_size = sizeof(nshead_t) + _response.head.body_len;
             span->set_response_size(response_size);
         }
-        base::IOBuf write_buf;
+        butil::IOBuf write_buf;
         write_buf.append(&_response.head, sizeof(nshead_t));
         write_buf.append(_response.body.movable());
         // Have the risk of unlimited pending responses, in which case, tell
@@ -122,11 +122,11 @@ void NsheadClosure::Run() {
     }
     if (span) {
         // TODO: this is not sent
-        span->set_sent_us(base::cpuwide_time_us());
+        span->set_sent_us(butil::cpuwide_time_us());
     }
     if (method_status) {
         method_status.release()->OnResponded(
-            !_controller.Failed(), base::cpuwide_time_us() - cpuwide_start_us());
+            !_controller.Failed(), butil::cpuwide_time_us() - cpuwide_start_us());
     }
 }
 
@@ -140,7 +140,7 @@ void NsheadClosure::SetMethodName(const std::string& full_method_name) {
 
 namespace policy {
 
-ParseResult ParseNsheadMessage(base::IOBuf* source,
+ParseResult ParseNsheadMessage(butil::IOBuf* source,
                                Socket*, bool /*read_eof*/, const void* /*arg*/) {
     char header_buf[sizeof(nshead_t)];
     const size_t n = source->copy_to(header_buf, sizeof(header_buf));
@@ -205,7 +205,7 @@ static void EndRunningCallMethodInPool(NsheadService* service,
 };
 
 void ProcessNsheadRequest(InputMessageBase* msg_base) {
-    const int64_t start_parse_us = base::cpuwide_time_us();   
+    const int64_t start_parse_us = butil::cpuwide_time_us();   
 
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     SocketUniquePtr socket(msg->ReleaseSocket());
@@ -307,7 +307,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
     socket.release();
     if (span) {
         span->ResetServerSpanName(service->_cached_name);
-        span->set_start_callback_us(base::cpuwide_time_us());
+        span->set_start_callback_us(butil::cpuwide_time_us());
         span->AsParent();
     }
     if (!FLAGS_usercode_in_pthread) {
@@ -323,7 +323,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
 }
 
 void ProcessNsheadResponse(InputMessageBase* msg_base) {
-    const int64_t start_parse_us = base::cpuwide_time_us();
+    const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     
     // Fetch correlation id that we saved before in `PackNsheadRequest'
@@ -367,7 +367,7 @@ bool VerifyNsheadRequest(const InputMessageBase* msg_base) {
     return true;
 }
 
-void SerializeNsheadRequest(base::IOBuf* request_buf, Controller* cntl,
+void SerializeNsheadRequest(butil::IOBuf* request_buf, Controller* cntl,
                             const google::protobuf::Message* req_base) {
     if (req_base == NULL) {
         return cntl->SetFailed(EREQUEST, "request is NULL");
@@ -392,12 +392,12 @@ void SerializeNsheadRequest(base::IOBuf* request_buf, Controller* cntl,
 }
 
 void PackNsheadRequest(
-    base::IOBuf* packet_buf,
+    butil::IOBuf* packet_buf,
     SocketMessage**,
     uint64_t correlation_id,
     const google::protobuf::MethodDescriptor*,
     Controller* cntl,
-    const base::IOBuf& request,
+    const butil::IOBuf& request,
     const Authenticator*) {
     ControllerPrivateAccessor accessor(cntl);
     if (accessor.connection_type() == CONNECTION_TYPE_SINGLE) {

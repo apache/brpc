@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/memory/ref_counted.h"
+#include "butil/memory/ref_counted.h"
 #include <gtest/gtest.h>
 
 namespace {
 
-class SelfAssign : public base::RefCounted<SelfAssign> {
-  friend class base::RefCounted<SelfAssign>;
+class SelfAssign : public butil::RefCounted<SelfAssign> {
+  friend class butil::RefCounted<SelfAssign>;
 
   ~SelfAssign() {}
 };
@@ -22,7 +22,7 @@ class CheckDerivedMemberAccess : public scoped_refptr<SelfAssign> {
   }
 };
 
-class ScopedRefPtrToSelf : public base::RefCounted<ScopedRefPtrToSelf> {
+class ScopedRefPtrToSelf : public butil::RefCounted<ScopedRefPtrToSelf> {
  public:
   ScopedRefPtrToSelf() : self_ptr_(this) {}
 
@@ -31,7 +31,7 @@ class ScopedRefPtrToSelf : public base::RefCounted<ScopedRefPtrToSelf> {
   void SelfDestruct() { self_ptr_ = NULL; }
 
  private:
-  friend class base::RefCounted<ScopedRefPtrToSelf>;
+  friend class butil::RefCounted<ScopedRefPtrToSelf>;
   ~ScopedRefPtrToSelf() { was_destroyed_ = true; }
 
   static bool was_destroyed_;

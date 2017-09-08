@@ -19,8 +19,8 @@
 #include <set>
 #include <gflags/gflags.h>                  // google::GetAllFlags 
                                             // google::CommandLineFlagInfo
-#include "base/string_printf.h"
-#include "base/string_splitter.h"
+#include "butil/string_printf.h"
+#include "butil/string_splitter.h"
 
 #include "brpc/closure_guard.h"        // ClosureGuard
 #include "brpc/controller.h"           // Controller
@@ -111,7 +111,7 @@ void FlagsService::set_value_page(Controller* cntl,
         cntl->SetFailed(ENOMETHOD, "No such gflag");
         return;
     }
-    base::IOBufBuilder os;
+    butil::IOBufBuilder os;
     const bool is_string = (info.type == "string");
     os << "<!DOCTYPE html><html><body>"
         "<form action='' method='get'>"
@@ -174,7 +174,7 @@ void FlagsService::default_method(::google::protobuf::RpcController* cntl_base,
                             (value_str->empty() ? "empty string" : value_str->c_str()));
             return;
         }
-        base::IOBufBuilder os;
+        butil::IOBufBuilder os;
         os << "Set `" << constraint << "' to " << *value_str;
         if (use_html) {
             os << "<br><a href='/flags'>[back to flags]</a>";
@@ -187,7 +187,7 @@ void FlagsService::default_method(::google::protobuf::RpcController* cntl_base,
     std::vector<std::string> wildcards;
     std::set<std::string> exact;
     if (!constraint.empty()) {
-        for (base::StringMultiSplitter sp(constraint.c_str(), ",;"); sp != NULL; ++sp) {
+        for (butil::StringMultiSplitter sp(constraint.c_str(), ",;"); sp != NULL; ++sp) {
             std::string name(sp.field(), sp.length());
             if (name.find_first_of("$*") != std::string::npos) {
                 wildcards.push_back(name);
@@ -198,7 +198,7 @@ void FlagsService::default_method(::google::protobuf::RpcController* cntl_base,
     }
 
     // Print header of the table
-    base::IOBufBuilder os;
+    butil::IOBufBuilder os;
     if (use_html) {
         os << "<!DOCTYPE html><html><head>\n" << gridtable_style()
            << "<script language=\"javascript\" type=\"text/javascript\" src=\"/js/jquery_min\"></script>\n"

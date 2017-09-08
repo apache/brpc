@@ -5,18 +5,18 @@
 
 #include <gtest/gtest.h>
 #include <bthread/countdown_event.h>
-#include "base/atomicops.h"
-#include "base/time.h"
+#include "butil/atomicops.h"
+#include "butil/time.h"
 
 namespace {
 struct Arg {
     bthread::CountdownEvent event;
-    base::atomic<int> num_sig;
+    butil::atomic<int> num_sig;
 };
 
 void *signaler(void *arg) {
     Arg* a = (Arg*)arg;
-    a->num_sig.fetch_sub(1, base::memory_order_relaxed);
+    a->num_sig.fetch_sub(1, butil::memory_order_relaxed);
     a->event.signal();
     return NULL;
 }
@@ -31,20 +31,20 @@ TEST(CountdonwEventTest, sanity) {
             ASSERT_EQ(0, bthread_start_urgent(&tid, NULL, signaler, &a));
         }
         a.event.wait();
-        ASSERT_EQ(0, a.num_sig.load(base::memory_order_relaxed));
+        ASSERT_EQ(0, a.num_sig.load(butil::memory_order_relaxed));
     }
 }
 
 TEST(CountdonwEventTest, timed_wait) {
     bthread::CountdownEvent event;
-    int rc = event.timed_wait(base::milliseconds_from_now(100));
+    int rc = event.timed_wait(butil::milliseconds_from_now(100));
     ASSERT_EQ(rc, ETIMEDOUT);
     event.signal();
-    rc = event.timed_wait(base::milliseconds_from_now(100));
+    rc = event.timed_wait(butil::milliseconds_from_now(100));
     ASSERT_EQ(rc, 0);
     bthread::CountdownEvent event1;
     event1.signal();
-    rc = event.timed_wait(base::milliseconds_from_now(1));
+    rc = event.timed_wait(butil::milliseconds_from_now(1));
     ASSERT_EQ(rc, 0);
 }
 } // namespace

@@ -25,7 +25,7 @@ namespace brpc {
 // Define in http_parser.cpp
 extern bool is_url_char(char c);
 
-inline base::StringPiece remove_last_char(base::StringPiece s) {
+inline butil::StringPiece remove_last_char(butil::StringPiece s) {
     if (!s.empty()) {
         s.remove_suffix(1);
     }
@@ -54,10 +54,10 @@ std::string RestfulMethodPath::to_string() const {
     if (has_wildcard) {
         s.append(prefix);
         s.push_back('*');
-        base::StringPiece tmp = remove_last_char(postfix);
+        butil::StringPiece tmp = remove_last_char(postfix);
         s.append(tmp.data(), tmp.size());
     } else {
-        base::StringPiece tmp = remove_last_char(prefix);
+        butil::StringPiece tmp = remove_last_char(prefix);
         s.append(tmp.data(), tmp.size());        
     }
     return s;
@@ -77,7 +77,7 @@ std::ostream& operator<<(std::ostream& os, const DebugPrinter& p) {
     return os;
 }
 
-bool ParseRestfulPath(base::StringPiece path,
+bool ParseRestfulPath(butil::StringPiece path,
                       RestfulMethodPath* path_out) {
     path.trim_spaces();
     if (path.empty()) {
@@ -104,8 +104,8 @@ bool ParseRestfulPath(base::StringPiece path,
     }
     path_out->has_wildcard = (star_index >= 0);
 
-    base::StringPiece first_part;
-    base::StringPiece second_part;
+    butil::StringPiece first_part;
+    butil::StringPiece second_part;
     if (star_index < 0) {
         first_part = path;
     } else {
@@ -127,10 +127,10 @@ bool ParseRestfulPath(base::StringPiece path,
         first_part.remove_prefix(i);
     }
     const size_t slash_pos = first_part.find('/');
-    if (slash_pos != base::StringPiece::npos) {
+    if (slash_pos != butil::StringPiece::npos) {
         path_out->service_name.assign(first_part.data(), slash_pos);
-        base::StringPiece prefix_raw = first_part.substr(slash_pos + 1);
-        base::StringSplitter sp(prefix_raw.data(),
+        butil::StringPiece prefix_raw = first_part.substr(slash_pos + 1);
+        butil::StringSplitter sp(prefix_raw.data(),
                                 prefix_raw.data() + prefix_raw.size(), '/');
         for (; sp; ++sp) {
             // Put first component into service_name and others into prefix.
@@ -172,7 +172,7 @@ bool ParseRestfulPath(base::StringPiece path,
         if (second_part.empty() || second_part[0] == '/') {
             path_out->postfix.push_back('/');
         }
-        base::StringSplitter sp2(second_part.data(),
+        butil::StringSplitter sp2(second_part.data(),
                                  second_part.data() + second_part.size(), '/');
         for (; sp2; ++sp2) {
             if (path_out->postfix.empty()) {
@@ -191,7 +191,7 @@ bool ParseRestfulPath(base::StringPiece path,
     return true;
 }
 
-bool ParseRestfulMappings(const base::StringPiece& mappings,
+bool ParseRestfulMappings(const butil::StringPiece& mappings,
                           std::vector<RestfulMapping>* list) {
     if (list == NULL) {
         LOG(ERROR) << "Param[list] is NULL";
@@ -199,7 +199,7 @@ bool ParseRestfulMappings(const base::StringPiece& mappings,
     }
     list->clear();
     list->reserve(8);
-    base::StringSplitter sp(
+    butil::StringSplitter sp(
         mappings.data(), mappings.data() + mappings.size(), ',');
     int nmappings = 0;
     for (; sp; ++sp) {
@@ -220,13 +220,13 @@ bool ParseRestfulMappings(const base::StringPiece& mappings,
             if (i < n && p[i] == '>') {
                 RestfulMapping m;
                 // Parse left part of the arrow as url path.
-                base::StringPiece path(sp.field(), equal_sign_pos);
+                butil::StringPiece path(sp.field(), equal_sign_pos);
                 if (!ParseRestfulPath(path, &m.path)) {
                     LOG(ERROR) << "Fail to parse path=`" << path << '\'';
                     return false;
                 }
                 // Treat right part of the arrow as method_name.
-                base::StringPiece method_name_piece(p + i + 1, n - (i + 1));
+                butil::StringPiece method_name_piece(p + i + 1, n - (i + 1));
                 method_name_piece.trim_spaces();
                 if (method_name_piece.empty()) {
                     LOG(ERROR) << "No method name in " << nmappings
@@ -243,7 +243,7 @@ bool ParseRestfulMappings(const base::StringPiece& mappings,
         // If we don't get a valid mapping from the string, issue error.
         if (!added_sth) {
             LOG(ERROR) << "Invalid mapping: "
-                       << base::StringPiece(sp.field(), sp.length());
+                       << butil::StringPiece(sp.field(), sp.length());
             return false;
         }
     }
@@ -363,7 +363,7 @@ void RestfulMap::PrepareForFinding() {
 // Remove last component from the (normalized) path:
 // Say /A/B/C/ -> /A/B/
 // Notice that /A/ is modified to / and returns true.
-static bool RemoveLastComponent(base::StringPiece* path) {
+static bool RemoveLastComponent(butil::StringPiece* path) {
     if (path->empty()) {
         return false;
     }
@@ -379,10 +379,10 @@ static bool RemoveLastComponent(base::StringPiece* path) {
 }
 
 // Normalized as /A/B/C/
-static std::string NormalizeSlashes(const base::StringPiece& path) {
+static std::string NormalizeSlashes(const butil::StringPiece& path) {
     std::string out_path;
     out_path.reserve(path.size() + 2);
-    base::StringSplitter sp(path.data(), path.data() + path.size(), '/');
+    butil::StringSplitter sp(path.data(), path.data() + path.size(), '/');
     for (; sp; ++sp) {
         out_path.push_back('/');
         out_path.append(sp.field(), sp.length());
@@ -401,21 +401,21 @@ size_t RestfulMap::RemoveByPathString(const std::string& path) {
 }
 
 struct PrefixLess {
-    bool operator()(const base::StringPiece& path,
+    bool operator()(const butil::StringPiece& path,
                     const RestfulMethodProperty* p) const {
         return path < p->path.prefix;
     }
 };
 
 const Server::MethodProperty*
-RestfulMap::FindMethodProperty(const base::StringPiece& method_path,
+RestfulMap::FindMethodProperty(const butil::StringPiece& method_path,
                                std::string* unresolved_path) const {
     if (_sorted_paths.empty()) {
         LOG(ERROR) << "_sorted_paths is empty, method_path=" << method_path;
         return NULL;
     }
     const std::string full_path = NormalizeSlashes(method_path);
-    base::StringPiece sub_path = full_path;
+    butil::StringPiece sub_path = full_path;
     PathList::const_iterator last_find_pos = _sorted_paths.end();
     do {
         if (last_find_pos == _sorted_paths.begin()) {
@@ -431,7 +431,7 @@ RestfulMap::FindMethodProperty(const base::StringPiece& method_path,
         
         bool matched = false;
         bool remove_heading_slash_from_unresolved = false;
-        base::StringPiece left;
+        butil::StringPiece left;
         do {
             const RestfulMethodPath& rpath = (*it)->path;
             if (!sub_path.starts_with(rpath.prefix)) {

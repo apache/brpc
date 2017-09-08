@@ -20,20 +20,20 @@
 #include <execinfo.h>
 #include <dlfcn.h>                               // dlsym
 #include <fcntl.h>                               // O_RDONLY
-#include "base/atomicops.h"
+#include "butil/atomicops.h"
 #include "bvar/bvar.h"
 #include "bvar/collector.h"
-#include "base/macros.h"                         // BAIDU_CASSERT
-#include "base/containers/flat_map.h"
-#include "base/iobuf.h"
-#include "base/fd_guard.h"
-#include "base/files/file.h"
-#include "base/files/file_path.h"
-#include "base/file_util.h"
-#include "base/unique_ptr.h"
-#include "base/third_party/murmurhash3/murmurhash3.h"
-#include "base/logging.h"
-#include "base/object_pool.h"
+#include "butil/macros.h"                         // BAIDU_CASSERT
+#include "butil/containers/flat_map.h"
+#include "butil/iobuf.h"
+#include "butil/fd_guard.h"
+#include "butil/files/file.h"
+#include "butil/files/file_path.h"
+#include "butil/file_util.h"
+#include "butil/unique_ptr.h"
+#include "butil/third_party/murmurhash3/murmurhash3.h"
+#include "butil/logging.h"
+#include "butil/object_pool.h"
 #include "bthread/butex.h"                       // butex_*
 #include "bthread/processor.h"                   // cpu_relax, barrier
 #include "bthread/mutex.h"                       // bthread_mutex_t
@@ -76,7 +76,7 @@ struct SampledContention : public bvar::Collected {
         }
         uint32_t code = 1;
         uint32_t seed = nframes;
-        base::MurmurHash3_x86_32(stack, sizeof(void*) * nframes, seed, &code);
+        butil::MurmurHash3_x86_32(stack, sizeof(void*) * nframes, seed, &code);
         return code;
     }
 };
@@ -103,7 +103,7 @@ struct ContentionHash {
 // The global context for contention profiler.
 class ContentionProfiler {
 public:
-    typedef base::FlatMap<SampledContention*, SampledContention*,
+    typedef butil::FlatMap<SampledContention*, SampledContention*,
                           ContentionHash, ContentionEqual> ContentionMap;
 
     explicit ContentionProfiler(const char* name);
@@ -120,7 +120,7 @@ private:
     bool _init;  // false before first dump_and_destroy is called
     bool _first_write;      // true if buffer was not written to file yet.
     std::string _filename;  // the file storing profiling result.
-    base::IOBuf _disk_buf;  // temp buf before saving the file.
+    butil::IOBuf _disk_buf;  // temp buf before saving the file.
     ContentionMap _dedup_map; // combining same samples to make result smaller.
 };
 
@@ -173,7 +173,7 @@ void ContentionProfiler::flush_to_disk(bool ending) {
     // Serialize contentions in _dedup_map into _disk_buf.
     if (!_dedup_map.empty()) {
         BT_VLOG << "dedup_map=" << _dedup_map.size();
-        base::IOBufBuilder os;
+        butil::IOBufBuilder os;
         for (ContentionMap::const_iterator
                  it = _dedup_map.begin(); it != _dedup_map.end(); ++it) {
             SampledContention* c = it->second;
@@ -193,8 +193,8 @@ void ContentionProfiler::flush_to_disk(bool ending) {
     if (ending) {
         BT_VLOG << "Append /proc/self/maps";
         // Failures are not critical, don't return directly.
-        base::IOPortal mem_maps;
-        const base::fd_guard fd(open("/proc/self/maps", O_RDONLY));
+        butil::IOPortal mem_maps;
+        const butil::fd_guard fd(open("/proc/self/maps", O_RDONLY));
         if (fd >= 0) {
             while (true) {
                 ssize_t nr = mem_maps.append_from_file_descriptor(fd, 8192);
@@ -215,10 +215,10 @@ void ContentionProfiler::flush_to_disk(bool ending) {
         }
     }
     // Write _disk_buf into _filename
-    base::File::Error error;
-    base::FilePath path(_filename);
-    base::FilePath dir = path.DirName();
-    if (!base::CreateDirectoryAndGetError(dir, &error)) {
+    butil::File::Error error;
+    butil::FilePath path(_filename);
+    butil::FilePath dir = path.DirName();
+    if (!butil::CreateDirectoryAndGetError(dir, &error)) {
         LOG(ERROR) << "Fail to create directory=`" << dir.value()
                    << "', " << error;
         return;
@@ -229,7 +229,7 @@ void ContentionProfiler::flush_to_disk(bool ending) {
         _first_write = false;
         flag = O_TRUNC;
     }
-    base::fd_guard fd(open(_filename.c_str(), O_WRONLY|O_CREAT|flag, 0666));
+    butil::fd_guard fd(open(_filename.c_str(), O_WRONLY|O_CREAT|flag, 0666));
     if (fd < 0) {
         PLOG(ERROR) << "Fail to open " << _filename;
         return;
@@ -271,7 +271,7 @@ static pthread_mutex_t g_cp_mutex = PTHREAD_MUTEX_INITIALIZER;
 const size_t MUTEX_MAP_SIZE = 1024;
 BAIDU_CASSERT((MUTEX_MAP_SIZE & (MUTEX_MAP_SIZE - 1)) == 0, must_be_power_of_2);
 struct BAIDU_CACHELINE_ALIGNMENT MutexMapEntry {
-    base::static_atomic<uint64_t> versioned_mutex;
+    butil::static_atomic<uint64_t> versioned_mutex;
     bthread_contention_site_t csite;
 };
 static MutexMapEntry g_mutex_map[MUTEX_MAP_SIZE] = {}; // zero-initialize
@@ -291,13 +291,13 @@ void SampledContention::dump_and_destroy(size_t /*round*/) {
 }
 
 void SampledContention::destroy() {
-    base::return_object(this);
+    butil::return_object(this);
 }
 
 // Remember the conflict hashes for troubleshooting, should be 0 at most of time.
-static base::static_atomic<int64_t> g_nconflicthash = BASE_STATIC_ATOMIC_INIT(0);
+static butil::static_atomic<int64_t> g_nconflicthash = BASE_STATIC_ATOMIC_INIT(0);
 static int64_t get_nconflicthash(void*) {
-    return g_nconflicthash.load(base::memory_order_relaxed);
+    return g_nconflicthash.load(butil::memory_order_relaxed);
 }
 
 // Start profiling contention.
@@ -376,7 +376,7 @@ static pthread_once_t init_sys_mutex_lock_once = PTHREAD_ONCE_INIT;
 // profiler to deadlock at boostraping when the program is linked with
 // libunwind. The deadlock bt:
 //   #0  0x00007effddc99b80 in __nanosleep_nocancel () at ../sysdeps/unix/syscall-template.S:81
-//   #1  0x00000000004b4df7 in base::internal::SpinLockDelay(int volatile*, int, int) ()
+//   #1  0x00000000004b4df7 in butil::internal::SpinLockDelay(int volatile*, int, int) ()
 //   #2  0x00000000004b4d57 in SpinLock::SlowLock() ()
 //   #3  0x00000000004b4a63 in tcmalloc::ThreadCache::InitModule() ()
 //   #4  0x00000000004aa2b5 in tcmalloc::ThreadCache::GetCache() ()
@@ -421,7 +421,7 @@ int first_sys_pthread_mutex_unlock(pthread_mutex_t* mutex) {
 }
 
 inline uint64_t hash_mutex_ptr(const pthread_mutex_t* m) {
-    return base::fmix64((uint64_t)m);
+    return butil::fmix64((uint64_t)m);
 }
 
 // Mark being inside locking so that pthread_mutex calls inside collecting
@@ -457,26 +457,26 @@ const int PTR_BITS = 48;
 inline bthread_contention_site_t*
 add_pthread_contention_site(pthread_mutex_t* mutex) {
     MutexMapEntry& entry = g_mutex_map[hash_mutex_ptr(mutex) & (MUTEX_MAP_SIZE - 1)];
-    base::static_atomic<uint64_t>& m = entry.versioned_mutex;
-    uint64_t expected = m.load(base::memory_order_relaxed);
+    butil::static_atomic<uint64_t>& m = entry.versioned_mutex;
+    uint64_t expected = m.load(butil::memory_order_relaxed);
     // If the entry is not used or used by previous profiler, try to CAS it.
     if (expected == 0 ||
         (expected >> PTR_BITS) != (g_cp_version & ((1 << (64 - PTR_BITS)) - 1))) {
         uint64_t desired = (g_cp_version << PTR_BITS) | (uint64_t)mutex;
         if (m.compare_exchange_strong(
-                expected, desired, base::memory_order_acquire)) {
+                expected, desired, butil::memory_order_acquire)) {
             return &entry.csite;
         }
     }
-    g_nconflicthash.fetch_add(1, base::memory_order_relaxed);
+    g_nconflicthash.fetch_add(1, butil::memory_order_relaxed);
     return NULL;
 }
 
 inline bool remove_pthread_contention_site(
     pthread_mutex_t* mutex, bthread_contention_site_t* saved_csite) {
     MutexMapEntry& entry = g_mutex_map[hash_mutex_ptr(mutex) & (MUTEX_MAP_SIZE - 1)];
-    base::static_atomic<uint64_t>& m = entry.versioned_mutex;
-    if ((m.load(base::memory_order_relaxed) & ((((uint64_t)1) << PTR_BITS) - 1))
+    butil::static_atomic<uint64_t>& m = entry.versioned_mutex;
+    if ((m.load(butil::memory_order_relaxed) & ((((uint64_t)1) << PTR_BITS) - 1))
         != (uint64_t)mutex) {
         // This branch should be the most common case since most locks are
         // neither contended nor sampled. We have one memory indirection and
@@ -489,14 +489,14 @@ inline bool remove_pthread_contention_site(
     // makes profiling result less accurate.
     *saved_csite = entry.csite;
     make_contention_site_invalid(&entry.csite);
-    m.store(0, base::memory_order_release);
+    m.store(0, butil::memory_order_release);
     return true;
 }
 
 // Submit the contention along with the callsite('s stacktrace)
 void submit_contention(const bthread_contention_site_t& csite, int64_t now_ns) {
     tls_inside_lock = true;
-    SampledContention* sc = base::get_object<SampledContention>();
+    SampledContention* sc = butil::get_object<SampledContention>();
     // Normalize duration_us and count so that they're addable in later
     // processings. Notice that sampling_range is adjusted periodically by
     // collecting thread.
@@ -545,7 +545,7 @@ BASE_FORCE_INLINE int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
         return sys_pthread_mutex_lock(mutex);
     }
     // Lock and monitor the waiting time.
-    const int64_t start_ns = base::cpuwide_time_ns();
+    const int64_t start_ns = butil::cpuwide_time_ns();
     rc = sys_pthread_mutex_lock(mutex);
     if (!rc) { // Inside lock
         if (!csite) {
@@ -554,7 +554,7 @@ BASE_FORCE_INLINE int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
                 return rc;
             }
         }
-        csite->duration_ns = base::cpuwide_time_ns() - start_ns;
+        csite->duration_ns = butil::cpuwide_time_ns() - start_ns;
         csite->sampling_range = sampling_range;
     } // else rare
     return rc;
@@ -577,7 +577,7 @@ BASE_FORCE_INLINE int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
         if (fast_alt.list[i].mutex == mutex) {
             if (is_contention_site_valid(fast_alt.list[i].csite)) {
                 saved_csite = fast_alt.list[i].csite;
-                unlock_start_ns = base::cpuwide_time_ns();
+                unlock_start_ns = butil::cpuwide_time_ns();
             }
             fast_alt.list[i] = fast_alt.list[--fast_alt.count];
             miss_in_tls = false;
@@ -589,13 +589,13 @@ BASE_FORCE_INLINE int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
     // inside critical section.
     if (miss_in_tls) {
         if (remove_pthread_contention_site(mutex, &saved_csite)) {
-            unlock_start_ns = base::cpuwide_time_ns();
+            unlock_start_ns = butil::cpuwide_time_ns();
         }
     }
     const int rc = sys_pthread_mutex_unlock(mutex);
     // [Outside lock]
     if (unlock_start_ns) {
-        const int64_t unlock_end_ns = base::cpuwide_time_ns();
+        const int64_t unlock_end_ns = butil::cpuwide_time_ns();
         saved_csite.duration_ns += unlock_end_ns - unlock_start_ns;
         submit_contention(saved_csite, unlock_end_ns);
     }
@@ -604,8 +604,8 @@ BASE_FORCE_INLINE int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
 
 // Implement bthread_mutex_t related functions
 struct MutexInternal {
-    base::static_atomic<unsigned char> locked;
-    base::static_atomic<unsigned char> contended;
+    butil::static_atomic<unsigned char> locked;
+    butil::static_atomic<unsigned char> contended;
     unsigned short padding;
 };
 
@@ -620,7 +620,7 @@ BAIDU_CASSERT(sizeof(unsigned) == sizeof(MutexInternal),
               sizeof_mutex_internal_must_equal_unsigned);
 
 inline int mutex_lock_contended(bthread_mutex_t* m) {
-    base::atomic<unsigned>* whole = (base::atomic<unsigned>*)m->butex;
+    butil::atomic<unsigned>* whole = (butil::atomic<unsigned>*)m->butex;
     while (whole->exchange(BTHREAD_MUTEX_CONTENDED) & BTHREAD_MUTEX_LOCKED) {
         if (bthread::butex_wait(whole, BTHREAD_MUTEX_CONTENDED, NULL) < 0
             && errno != EWOULDBLOCK) {
@@ -632,7 +632,7 @@ inline int mutex_lock_contended(bthread_mutex_t* m) {
 
 inline int mutex_timedlock_contended(
     bthread_mutex_t* m, const struct timespec* __restrict abstime) {
-    base::atomic<unsigned>* whole = (base::atomic<unsigned>*)m->butex;
+    butil::atomic<unsigned>* whole = (butil::atomic<unsigned>*)m->butex;
     while (whole->exchange(BTHREAD_MUTEX_CONTENDED) & BTHREAD_MUTEX_LOCKED) {
         if (bthread::butex_wait(whole, BTHREAD_MUTEX_CONTENDED, abstime) < 0
             && errno != EWOULDBLOCK) {
@@ -646,7 +646,7 @@ inline int mutex_timedlock_contended(
 namespace internal {
 
 int FastPthreadMutex::lock_contended() {
-    base::atomic<unsigned>* whole = (base::atomic<unsigned>*)&_futex;
+    butil::atomic<unsigned>* whole = (butil::atomic<unsigned>*)&_futex;
     while (whole->exchange(BTHREAD_MUTEX_CONTENDED) & BTHREAD_MUTEX_LOCKED) {
         if (futex_wait_private(whole, BTHREAD_MUTEX_CONTENDED, NULL) < 0
             && errno != EWOULDBLOCK) {
@@ -658,19 +658,19 @@ int FastPthreadMutex::lock_contended() {
 
 void FastPthreadMutex::lock() {
     bthread::MutexInternal* split = (bthread::MutexInternal*)&_futex;
-    if (split->locked.exchange(1, base::memory_order_acquire)) {
+    if (split->locked.exchange(1, butil::memory_order_acquire)) {
         (void)lock_contended();
     }
 }
 
 bool FastPthreadMutex::try_lock() {
     bthread::MutexInternal* split = (bthread::MutexInternal*)&_futex;
-    return !split->locked.exchange(1, base::memory_order_acquire);
+    return !split->locked.exchange(1, butil::memory_order_acquire);
 }
 
 void FastPthreadMutex::unlock() {
-    base::atomic<unsigned>* whole = (base::atomic<unsigned>*)&_futex;
-    const unsigned prev = whole->exchange(0, base::memory_order_release);
+    butil::atomic<unsigned>* whole = (butil::atomic<unsigned>*)&_futex;
+    const unsigned prev = whole->exchange(0, butil::memory_order_release);
     // CAUTION: the mutex may be destroyed, check comments before butex_create
     if (prev != BTHREAD_MUTEX_LOCKED) {
         futex_wake_private(whole, 1);
@@ -702,7 +702,7 @@ int bthread_mutex_destroy(bthread_mutex_t* m) __THROW {
 
 int bthread_mutex_trylock(bthread_mutex_t* m) __THROW {
     bthread::MutexInternal* split = (bthread::MutexInternal*)m->butex;
-    if (!split->locked.exchange(1, base::memory_order_acquire)) {
+    if (!split->locked.exchange(1, butil::memory_order_acquire)) {
         return 0;
     }
     return EBUSY;
@@ -714,7 +714,7 @@ int bthread_mutex_lock_contended(bthread_mutex_t* m) {
 
 int bthread_mutex_lock(bthread_mutex_t* m) __THROW {
     bthread::MutexInternal* split = (bthread::MutexInternal*)m->butex;
-    if (!split->locked.exchange(1, base::memory_order_acquire)) {
+    if (!split->locked.exchange(1, butil::memory_order_acquire)) {
         return 0;
     }
     // Don't sample when contention profiler is off.
@@ -727,12 +727,12 @@ int bthread_mutex_lock(bthread_mutex_t* m) __THROW {
         return bthread::mutex_lock_contended(m);
     }
     // Start sampling.
-    const int64_t start_ns = base::cpuwide_time_ns();
+    const int64_t start_ns = butil::cpuwide_time_ns();
     // NOTE: Don't modify m->csite outside lock since multiple threads are
     // still contending with each other.
     const int rc = bthread::mutex_lock_contended(m);
     if (!rc) { // Inside lock
-        m->csite.duration_ns = base::cpuwide_time_ns() - start_ns;
+        m->csite.duration_ns = butil::cpuwide_time_ns() - start_ns;
         m->csite.sampling_range = sampling_range;
     } // else rare
     return rc;
@@ -741,7 +741,7 @@ int bthread_mutex_lock(bthread_mutex_t* m) __THROW {
 int bthread_mutex_timedlock(bthread_mutex_t* __restrict m,
                             const struct timespec* __restrict abstime) __THROW {
     bthread::MutexInternal* split = (bthread::MutexInternal*)m->butex;
-    if (!split->locked.exchange(1, base::memory_order_acquire)) {
+    if (!split->locked.exchange(1, butil::memory_order_acquire)) {
         return 0;
     }
     // Don't sample when contention profiler is off.
@@ -754,16 +754,16 @@ int bthread_mutex_timedlock(bthread_mutex_t* __restrict m,
         return bthread::mutex_timedlock_contended(m, abstime);
     }
     // Start sampling.
-    const int64_t start_ns = base::cpuwide_time_ns();
+    const int64_t start_ns = butil::cpuwide_time_ns();
     // NOTE: Don't modify m->csite outside lock since multiple threads are
     // still contending with each other.
     const int rc = bthread::mutex_timedlock_contended(m, abstime);
     if (!rc) { // Inside lock
-        m->csite.duration_ns = base::cpuwide_time_ns() - start_ns;
+        m->csite.duration_ns = butil::cpuwide_time_ns() - start_ns;
         m->csite.sampling_range = sampling_range;
     } else if (rc == ETIMEDOUT) {
         // Failed to lock due to ETIMEDOUT, submit the elapse directly.
-        const int64_t end_ns = base::cpuwide_time_ns();
+        const int64_t end_ns = butil::cpuwide_time_ns();
         const bthread_contention_site_t csite = {end_ns - start_ns, sampling_range};
         bthread::submit_contention(csite, end_ns);
     }
@@ -771,13 +771,13 @@ int bthread_mutex_timedlock(bthread_mutex_t* __restrict m,
 }
 
 int bthread_mutex_unlock(bthread_mutex_t* m) __THROW {
-    base::atomic<unsigned>* whole = (base::atomic<unsigned>*)m->butex;
+    butil::atomic<unsigned>* whole = (butil::atomic<unsigned>*)m->butex;
     bthread_contention_site_t saved_csite = {0, 0};
     if (bthread::is_contention_site_valid(m->csite)) {
         saved_csite = m->csite;
         bthread::make_contention_site_invalid(&m->csite);
     }
-    const unsigned prev = whole->exchange(0, base::memory_order_release);
+    const unsigned prev = whole->exchange(0, butil::memory_order_release);
     // CAUTION: the mutex may be destroyed, check comments before butex_create
     if (prev == BTHREAD_MUTEX_LOCKED) {
         return 0;
@@ -787,9 +787,9 @@ int bthread_mutex_unlock(bthread_mutex_t* m) __THROW {
         bthread::butex_wake(whole);
         return 0;
     }
-    const int64_t unlock_start_ns = base::cpuwide_time_ns();
+    const int64_t unlock_start_ns = butil::cpuwide_time_ns();
     bthread::butex_wake(whole);
-    const int64_t unlock_end_ns = base::cpuwide_time_ns();
+    const int64_t unlock_end_ns = butil::cpuwide_time_ns();
     saved_csite.duration_ns += unlock_end_ns - unlock_start_ns;
     bthread::submit_contention(saved_csite, unlock_end_ns);
     return 0;

@@ -24,7 +24,7 @@ namespace brpc {
 namespace policy {
 
 // Parse binary format of nshead
-ParseResult ParseNsheadMessage(base::IOBuf* source, Socket* socket, bool read_eof, const void *arg);
+ParseResult ParseNsheadMessage(butil::IOBuf* source, Socket* socket, bool read_eof, const void *arg);
 
 // Actions to a (client) request in nshead format
 void ProcessNsheadRequest(InputMessageBase* msg);
@@ -32,16 +32,16 @@ void ProcessNsheadRequest(InputMessageBase* msg);
 // Actions to a (server) response in nshead format
 void ProcessNsheadResponse(InputMessageBase* msg);
 
-void SerializeNsheadRequest(base::IOBuf* request_buf, Controller* controller,
+void SerializeNsheadRequest(butil::IOBuf* request_buf, Controller* controller,
                             const google::protobuf::Message* request);
 
 void PackNsheadRequest(
-    base::IOBuf* packet_buf,
+    butil::IOBuf* packet_buf,
     SocketMessage**,
     uint64_t correlation_id,
     const google::protobuf::MethodDescriptor*,
     Controller* controller,
-    const base::IOBuf&,
+    const butil::IOBuf&,
     const Authenticator*);
 
 // Verify authentication information in nshead format

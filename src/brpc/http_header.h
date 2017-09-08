@@ -18,8 +18,8 @@
 #ifndef  BRPC_HTTP_HEADER_H
 #define  BRPC_HTTP_HEADER_H
 
-#include "base/strings/string_piece.h"  // StringPiece
-#include "base/containers/case_ignored_flat_map.h"
+#include "butil/strings/string_piece.h"  // StringPiece
+#include "butil/containers/case_ignored_flat_map.h"
 #include "brpc/uri.h"              // URI
 #include "brpc/http_method.h"      // HttpMethod
 #include "brpc/http_status_code.h"
@@ -36,7 +36,7 @@ void ProcessHttpRequest(InputMessageBase *msg);
 // Non-body part of a HTTP message.
 class HttpHeader {
 public:
-    typedef base::CaseIgnoredFlatMap<std::string> HeaderMap;
+    typedef butil::CaseIgnoredFlatMap<std::string> HeaderMap;
     typedef HeaderMap::const_iterator HeaderIterator;
 
     HttpHeader();
@@ -91,7 +91,7 @@ public:
     // Append value to a header. If the header already exists, separate
     // old value and new value with comma(,) according to:
     //   https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2
-    void AppendHeader(const std::string& key, const base::StringPiece& value);
+    void AppendHeader(const std::string& key, const butil::StringPiece& value);
     
     // Get header iterators which are invalidated after calling AppendHeader()
     HeaderIterator HeaderBegin() const { return _headers.begin(); }

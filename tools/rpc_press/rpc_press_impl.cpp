@@ -20,11 +20,11 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <bthread/bthread.h>
-#include <base/file_util.h>                     // base::FilePath
-#include <base/time.h>
+#include <butil/file_util.h>                     // butil::FilePath
+#include <butil/time.h>
 #include <brpc/channel.h>
 #include <brpc/controller.h>
-#include <base/logging.h>
+#include <butil/logging.h>
 #include <json2pb/pb_to_json.h>
 #include "json_loader.h"
 #include "rpc_press_impl.h"
@@ -116,7 +116,7 @@ int RpcPress::init(const PressOptions* options) {
     sourceTree.MapPath("", proto_path.c_str());
     // Add paths in -inc
     if (!_options.proto_includes.empty()) {
-        base::StringSplitter sp(_options.proto_includes.c_str(), ';');
+        butil::StringSplitter sp(_options.proto_includes.c_str(), ';');
         for (; sp; ++sp) {
             sourceTree.MapPath("", std::string(sp.field(), sp.length()));
         }
@@ -131,10 +131,10 @@ int RpcPress::init(const PressOptions* options) {
     _pbrpc_client = new PressClient(&_options, _importer, &_factory);
 
     if (!_options.output.empty()) {
-        base::File::Error error;
-        base::FilePath path(_options.output);
-        base::FilePath dir = path.DirName();
-        if (!base::CreateDirectoryAndGetError(dir, &error)) {
+        butil::File::Error error;
+        butil::FilePath path(_options.output);
+        butil::FilePath dir = path.DirName();
+        if (!butil::CreateDirectoryAndGetError(dir, &error)) {
             LOG(ERROR) << "Fail to create directory=`" << dir.value()
                        << "', " << error;
             return -1;
@@ -155,7 +155,7 @@ int RpcPress::init(const PressOptions* options) {
     }
     brpc::JsonLoader json_util(_importer, &_factory, 
                                      _options.service, _options.method);
-    if (base::PathExists(base::FilePath(_options.input))) {
+    if (butil::PathExists(butil::FilePath(_options.input))) {
         int fd = open(_options.input.c_str(), O_RDONLY);
         if (fd < 0) {
             PLOG(ERROR) << "Fail to open " << _options.input;
@@ -185,7 +185,7 @@ void RpcPress::handle_response(brpc::Controller* cntl,
                                Message* response, 
                                int64_t start_time){
     if (!cntl->Failed()){
-        int64_t rpc_call_time_us = base::gettimeofday_us() - start_time;
+        int64_t rpc_call_time_us = butil::gettimeofday_us() - start_time;
         _latency_recorder << rpc_call_time_us;
 
         if (_output_json) {
@@ -205,7 +205,7 @@ void RpcPress::handle_response(brpc::Controller* cntl,
     delete cntl;
 }
 
-static base::atomic<int> g_thread_count(0);
+static butil::atomic<int> g_thread_count(0);
 
 void RpcPress::sync_client() {
     double req_rate = _options.test_req_rate / _options.test_thread_num;
@@ -214,7 +214,7 @@ void RpcPress::sync_client() {
         LOG(ERROR) << "nothing to send!";
         return;
     }
-    const int thread_index = g_thread_count.fetch_add(1, base::memory_order_relaxed);
+    const int thread_index = g_thread_count.fetch_add(1, butil::memory_order_relaxed);
     int msg_index = thread_index;
     std::deque<int64_t> timeq;
     size_t MAX_QUEUE_SIZE = (size_t)req_rate;
@@ -223,13 +223,13 @@ void RpcPress::sync_client() {
     } else if (MAX_QUEUE_SIZE > 2000) {
         MAX_QUEUE_SIZE = 2000;
     }
-    timeq.push_back(base::gettimeofday_us());
+    timeq.push_back(butil::gettimeofday_us());
     while (!_stop) {
         brpc::Controller* cntl = new brpc::Controller;
         msg_index = (msg_index + _options.test_thread_num) % _msgs.size();
         Message* request = _msgs[msg_index];
         Message* response = _pbrpc_client->get_output_message();
-        const int64_t start_time = base::gettimeofday_us();
+        const int64_t start_time = butil::gettimeofday_us();
         google::protobuf::Closure* done = brpc::NewCallback<
             RpcPress, 
             RpcPress*, 
@@ -244,7 +244,7 @@ void RpcPress::sync_client() {
         if (_options.test_req_rate <= 0) { 
             brpc::Join(cid1);
         } else {
-            int64_t end_time = base::gettimeofday_us();
+            int64_t end_time = butil::gettimeofday_us();
             int64_t expected_elp = 0;
             int64_t actual_elp = 0;
             timeq.push_back(end_time);

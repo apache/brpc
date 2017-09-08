@@ -19,7 +19,7 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #include <gflags/gflags.h>
-#include <base/logging.h>
+#include <butil/logging.h>
 #include <brpc/channel.h>
 #include <brpc/redis.h>
 

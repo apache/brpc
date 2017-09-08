@@ -14,11 +14,11 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#include "base/logging.h"
+#include "butil/logging.h"
 #include "brpc/log.h"
 #include "brpc/redis_command.h"
 
-// Defined in public/iobuf/base/iobuf.cpp
+// Defined in public/iobuf/butil/iobuf.cpp
 void* fast_memcpy(void *__restrict dest, const void *__restrict src, size_t n);
 
 
@@ -49,7 +49,7 @@ inline void AppendHeader(std::string& buf, char fc, unsigned long value) {
     header[len + 2] = '\n';
     buf.append(header, len + 3);
 }
-inline void AppendHeader(base::IOBuf& buf, char fc, unsigned long value) {
+inline void AppendHeader(butil::IOBuf& buf, char fc, unsigned long value) {
     char header[32];
     header[0] = fc;
     size_t len = AppendDecimal(header + 1, value);
@@ -64,10 +64,10 @@ inline void AppendHeader(base::IOBuf& buf, char fc, unsigned long value) {
 // Some code is copied or modified from redisvFormatCommand() in
 // https://github.com/redis/hiredis/blob/master/hiredis.c to keep close
 // compatibility with hiredis.
-base::Status
-RedisCommandFormatV(base::IOBuf* outbuf, const char* fmt, va_list ap) {
+butil::Status
+RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
     if (outbuf == NULL || fmt == NULL) {
-        return base::Status(EINVAL, "Param[outbuf] or [fmt] is NULL");
+        return butil::Status(EINVAL, "Param[outbuf] or [fmt] is NULL");
     }
     const size_t fmt_len = strlen(fmt);
     std::string nocount_buf;
@@ -206,7 +206,7 @@ RedisCommandFormatV(base::IOBuf* outbuf, const char* fmt, va_list ap) {
                 
             fmt_invalid:
                 va_end(_cpy);
-                return base::Status(EINVAL, "Invalid format");
+                return butil::Status(EINVAL, "Invalid format");
 
             fmt_valid:
                 ++nargs;
@@ -231,7 +231,7 @@ RedisCommandFormatV(base::IOBuf* outbuf, const char* fmt, va_list ap) {
         }
     }
     if (quote_char) {
-        return base::Status(EINVAL, "Unmatched quote: ... %.*s ... (offset=%lu)",
+        return butil::Status(EINVAL, "Unmatched quote: ... %.*s ... (offset=%lu)",
                             (int)(fmt + fmt_len - quote_pos),
                             quote_pos, quote_pos - fmt);
     }
@@ -250,21 +250,21 @@ RedisCommandFormatV(base::IOBuf* outbuf, const char* fmt, va_list ap) {
     
     AppendHeader(*outbuf, '*', ncomponent);
     outbuf->append(nocount_buf);
-    return base::Status::OK();
+    return butil::Status::OK();
 }
 
-base::Status RedisCommandFormat(base::IOBuf* buf, const char* fmt, ...) {
+butil::Status RedisCommandFormat(butil::IOBuf* buf, const char* fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    const base::Status st = RedisCommandFormatV(buf, fmt, ap);
+    const butil::Status st = RedisCommandFormatV(buf, fmt, ap);
     va_end(ap);
     return st;
 }
 
-base::Status
-RedisCommandNoFormat(base::IOBuf* outbuf, const base::StringPiece& cmd) {
+butil::Status
+RedisCommandNoFormat(butil::IOBuf* outbuf, const butil::StringPiece& cmd) {
     if (outbuf == NULL || cmd == NULL) {
-        return base::Status(EINVAL, "Param[outbuf] or [cmd] is NULL");
+        return butil::Status(EINVAL, "Param[outbuf] or [cmd] is NULL");
     }
     const size_t cmd_len = cmd.size();
     std::string nocount_buf;
@@ -299,7 +299,7 @@ RedisCommandNoFormat(base::IOBuf* outbuf, const base::StringPiece& cmd) {
         }
     }
     if (quote_char) {
-        return base::Status(EINVAL, "Unmatched quote: ... %.*s ... (offset=%lu)",
+        return butil::Status(EINVAL, "Unmatched quote: ... %.*s ... (offset=%lu)",
                             (int)(cmd.data() + cmd.size() - quote_pos),
                             quote_pos, quote_pos - cmd.data());
     }
@@ -314,14 +314,14 @@ RedisCommandNoFormat(base::IOBuf* outbuf, const base::StringPiece& cmd) {
 
     AppendHeader(*outbuf, '*', ncomponent);
     outbuf->append(nocount_buf);
-    return base::Status::OK();
+    return butil::Status::OK();
 }
 
-base::Status RedisCommandByComponents(base::IOBuf* output,
-                                      const base::StringPiece* components,
+butil::Status RedisCommandByComponents(butil::IOBuf* output,
+                                      const butil::StringPiece* components,
                                       size_t ncomponents) {
     if (output == NULL) {
-        return base::Status(EINVAL, "Param[output] is NULL");
+        return butil::Status(EINVAL, "Param[output] is NULL");
     }
     AppendHeader(*output, '*', ncomponents);
     for (size_t i = 0; i < ncomponents; ++i) {
@@ -329,7 +329,7 @@ base::Status RedisCommandByComponents(base::IOBuf* output,
         output->append(components[i].data(), components[i].size());
         output->append("\r\n", 2);
     }
-    return base::Status::OK();
+    return butil::Status::OK();
 }
 
 } // namespace brpc

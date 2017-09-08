@@ -17,9 +17,9 @@ DECLARE_int32(max_connection_pool_size);
 } // namespace brpc
 
 namespace {
-base::EndPoint g_endpoint;
+butil::EndPoint g_endpoint;
 int main(int argc, char* argv[]) {
-    base::str2endpoint("127.0.0.1:12345", &g_endpoint);
+    butil::str2endpoint("127.0.0.1:12345", &g_endpoint);
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }

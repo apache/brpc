@@ -29,7 +29,7 @@ HttpHeader::HttpHeader()
 }
 
 void HttpHeader::AppendHeader(const std::string& key,
-                              const base::StringPiece& value) {
+                              const butil::StringPiece& value) {
     std::string& slot = GetOrAddHeader(key);
     if (slot.empty()) {
         slot.assign(value.data(), value.size());

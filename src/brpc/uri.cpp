@@ -235,7 +235,7 @@ int ParseHostAndPortFromURL(const char* url, std::string* host_out,
     // Find end of host, locate schema and user_info during the searching
     bool need_schema = true;
     bool need_user_info = true;
-    base::StringPiece schema;
+    butil::StringPiece schema;
     for (; true; ++p) {
         const char action = g_url_parsing_fast_action_map[(int)*p];
         if (action == URI_PARSE_CONTINUE) {
@@ -410,9 +410,9 @@ void URI::SetH2Path(const char* h2_path) {
 }
 
 void QuerySplitter::split() {
-    base::StringPiece query_pair(_sp.field(), _sp.length());
+    butil::StringPiece query_pair(_sp.field(), _sp.length());
     const size_t pos = query_pair.find('=');
-    if (pos == base::StringPiece::npos) {
+    if (pos == butil::StringPiece::npos) {
         _key = query_pair;
         _value.clear();
     } else {
@@ -496,9 +496,9 @@ std::string QueryRemover::modified_query() {
 }
 
 void append_query(std::string *query_string,
-                  const base::StringPiece& key,
-                  const base::StringPiece& value) {
-    if (!query_string->empty() && base::back_char(*query_string) != '?') {
+                  const butil::StringPiece& key,
+                  const butil::StringPiece& value) {
+    if (!query_string->empty() && butil::back_char(*query_string) != '?') {
         query_string->push_back('&');
     }
     query_string->append(key.data(), key.size());

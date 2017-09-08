@@ -9,13 +9,13 @@
 #include <cmath>
 #include <limits>
 
-#include "base/format_macros.h"
-#include "base/strings/string_number_conversions.h"
-#include "base/strings/stringprintf.h"
-#include "base/strings/utf_string_conversions.h"
+#include "butil/format_macros.h"
+#include "butil/strings/string_number_conversions.h"
+#include "butil/strings/stringprintf.h"
+#include "butil/strings/utf_string_conversions.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 namespace {
 
@@ -792,4 +792,4 @@ TEST(StringNumberConversionsTest, HexEncode) {
   EXPECT_EQ(hex.compare("01FF02FE038081"), 0);
 }
 
-}  // namespace base
+}  // namespace butil

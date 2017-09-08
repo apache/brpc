@@ -4,7 +4,7 @@
 // Date: 2015/09/15 15:42:55
 
 #include "bvar/detail/percentile.h"
-#include "base/logging.h"
+#include "butil/logging.h"
 #include <gtest/gtest.h>
 #include <gperftools/profiler.h>
 #include <fstream>

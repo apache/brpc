@@ -97,7 +97,7 @@ public:
     {
     }
     int on_received_messages(brpc::StreamId /*id*/,
-                             base::IOBuf *const messages[],
+                             butil::IOBuf *const messages[],
                              size_t size) {
         if (_cntl && _cntl->block) {
             while (_cntl->block) {
@@ -156,7 +156,7 @@ TEST_F(StreamingRpcTest, received_in_order) {
     const int N = 10000;
     for (int i = 0; i < N; ++i) {
         int network = htonl(i);
-        base::IOBuf out;
+        butil::IOBuf out;
         out.append(&network, sizeof(network));
         ASSERT_EQ(0, brpc::StreamWrite(request_stream, out)) << "i=" << i;
     }
@@ -204,13 +204,13 @@ TEST_F(StreamingRpcTest, block) {
                                 << request_stream;
     for (int i = 0; i < N; ++i) {
         int network = htonl(i);
-        base::IOBuf out;
+        butil::IOBuf out;
         out.append(&network, sizeof(network));
         ASSERT_EQ(0, brpc::StreamWrite(request_stream, out)) << "i=" << i;
     }
     // sync wait
     int dummy = 102030123;
-    base::IOBuf out;
+    butil::IOBuf out;
     out.append(&dummy, sizeof(dummy));
     ASSERT_EQ(EAGAIN, brpc::StreamWrite(request_stream, out));
     hc.block = false;
@@ -224,7 +224,7 @@ TEST_F(StreamingRpcTest, block) {
     // async wait
     for (int i = N; i < N + N; ++i) {
         int network = htonl(i);
-        base::IOBuf out;
+        butil::IOBuf out;
         out.append(&network, sizeof(network));
         ASSERT_EQ(0, brpc::StreamWrite(request_stream, out)) << "i=" << i;
     }
@@ -250,14 +250,14 @@ TEST_F(StreamingRpcTest, block) {
     hc.block = true;
     for (int i = N + N; i < N + N + N; ++i) {
         int network = htonl(i);
-        base::IOBuf out;
+        butil::IOBuf out;
         out.append(&network, sizeof(network));
         ASSERT_EQ(0, brpc::StreamWrite(request_stream, out)) << "i=" << i - N - N;
     }
     out.clear();
     out.append(&dummy, sizeof(dummy));
     ASSERT_EQ(EAGAIN, brpc::StreamWrite(request_stream, out));
-    timespec duetime = base::microseconds_from_now(1);
+    timespec duetime = butil::microseconds_from_now(1);
     p.first = false;
     LOG(INFO) << "Start wait";
     brpc::StreamWait(request_stream, &duetime, on_writable, &p);
@@ -310,7 +310,7 @@ TEST_F(StreamingRpcTest, auto_close_if_host_socket_closed) {
     }
 
     usleep(100);
-    base::IOBuf out;
+    butil::IOBuf out;
     out.append("test");
     ASSERT_EQ(EINVAL, brpc::StreamWrite(request_stream, out));
     while (!handler.stopped()) {
@@ -366,7 +366,7 @@ public:
     {
     }
     int on_received_messages(brpc::StreamId id,
-                             base::IOBuf *const messages[],
+                             butil::IOBuf *const messages[],
                              size_t size) {
         if (size != 1) {
             _failed = true;
@@ -381,7 +381,7 @@ public:
             }
             int send_back = ntohl(network) + 1;
             _expected_next_value = send_back + 1;
-            base::IOBuf out;
+            butil::IOBuf out;
             network = htonl(send_back);
             out.append(&network, sizeof(network));
             // don't care the return value
@@ -434,7 +434,7 @@ TEST_F(StreamingRpcTest, ping_pong) {
     stub.Echo(&cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << " request_stream=" << request_stream;
     int send = 0;
-    base::IOBuf out;
+    butil::IOBuf out;
     out.append(&send, sizeof(send));
     ASSERT_EQ(0, brpc::StreamWrite(request_stream, out));
     usleep(10 * 1000);
@@ -455,7 +455,7 @@ public:
     void action(brpc::StreamId s) {
         for (int i = 0; i < _n; ++i) {
             int network = htonl(i);
-            base::IOBuf out;
+            butil::IOBuf out;
             out.append(&network, sizeof(network));
             ASSERT_EQ(0, brpc::StreamWrite(s, out)) << "i=" << i;
         }

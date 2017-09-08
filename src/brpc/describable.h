@@ -18,8 +18,8 @@
 #define BRPC_DESCRIBABLE_H
 
 #include <ostream>
-#include "base/macros.h"
-#include "base/class_name.h"
+#include "butil/macros.h"
+#include "butil/class_name.h"
 
 namespace brpc {
 
@@ -37,7 +37,7 @@ class Describable {
 public:
     virtual ~Describable() {}
     virtual void Describe(std::ostream& os, const DescribeOptions&) const {
-        os << base::class_name_str(*this);
+        os << butil::class_name_str(*this);
     }
 };
 
@@ -45,7 +45,7 @@ class NonConstDescribable {
 public:
     virtual ~NonConstDescribable() {}
     virtual void Describe(std::ostream& os, const DescribeOptions&) {
-        os << base::class_name_str(*this);
+        os << butil::class_name_str(*this);
     }
 };
 

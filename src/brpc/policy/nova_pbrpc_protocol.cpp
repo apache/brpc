@@ -19,8 +19,8 @@
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
 
-#include "base/time.h"
-#include "base/iobuf.h"                        // base::IOBuf
+#include "butil/time.h"
+#include "butil/iobuf.h"                        // butil::IOBuf
 
 #include "brpc/controller.h"               // Controller
 #include "brpc/socket.h"                   // Socket
@@ -104,7 +104,7 @@ void NovaServiceAdaptor::SerializeResponseToIOBuf(
 }
 
 void ProcessNovaResponse(InputMessageBase* msg_base) {
-    const int64_t start_parse_us = base::cpuwide_time_us();
+    const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     Socket* socket = msg->socket();
     
@@ -149,7 +149,7 @@ void ProcessNovaResponse(InputMessageBase* msg_base) {
     accessor.OnResponse(cid, saved_error);
 } 
 
-void SerializeNovaRequest(base::IOBuf* buf, Controller* cntl,
+void SerializeNovaRequest(butil::IOBuf* buf, Controller* cntl,
                           const google::protobuf::Message* request) {
     CompressType type = cntl->request_compress_type();
     if (type != COMPRESS_TYPE_NONE && type != COMPRESS_TYPE_SNAPPY) {
@@ -160,12 +160,12 @@ void SerializeNovaRequest(base::IOBuf* buf, Controller* cntl,
     return SerializeRequestDefault(buf, cntl, request);
 }
 
-void PackNovaRequest(base::IOBuf* buf,
+void PackNovaRequest(butil::IOBuf* buf,
                      SocketMessage**,
                      uint64_t correlation_id,
                      const google::protobuf::MethodDescriptor* method,
                      Controller* controller,
-                     const base::IOBuf& request,
+                     const butil::IOBuf& request,
                      const Authenticator* /*not supported*/) {
     ControllerPrivateAccessor accessor(controller);
     if (accessor.connection_type() == CONNECTION_TYPE_SINGLE) {

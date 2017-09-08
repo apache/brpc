@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "base/logging.h"
-#include "base/memory/singleton_on_pthread_once.h"
+#include "butil/logging.h"
+#include "butil/memory/singleton_on_pthread_once.h"
 #include "brpc/policy/esp_authenticator.h"
 
 
@@ -32,14 +32,14 @@ int EspAuthenticator::GenerateCredential(std::string* auth_str) const {
 
 int EspAuthenticator::VerifyCredential(
         const std::string& /*auth_str*/,
-        const base::EndPoint& /*client_addr*/,
+        const butil::EndPoint& /*client_addr*/,
         AuthContext* /*out_ctx*/) const {
     //nothing to do
     return 0;
 }
 
 const Authenticator* global_esp_authenticator() {
-    return base::get_leaky_singleton<EspAuthenticator>();
+    return butil::get_leaky_singleton<EspAuthenticator>();
 }
 
 }  // namespace policy

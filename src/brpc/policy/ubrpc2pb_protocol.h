@@ -27,17 +27,17 @@ namespace policy {
 
 void ProcessUbrpcResponse(InputMessageBase* msg);
 
-void SerializeUbrpcCompackRequest(base::IOBuf* buf, Controller* cntl,
+void SerializeUbrpcCompackRequest(butil::IOBuf* buf, Controller* cntl,
                                   const google::protobuf::Message* request);
-void SerializeUbrpcMcpack2Request(base::IOBuf* buf, Controller* cntl,
+void SerializeUbrpcMcpack2Request(butil::IOBuf* buf, Controller* cntl,
                                   const google::protobuf::Message* request);
 
-void PackUbrpcRequest(base::IOBuf* buf,
+void PackUbrpcRequest(butil::IOBuf* buf,
                       SocketMessage**,
                       uint64_t correlation_id,
                       const google::protobuf::MethodDescriptor* method,
                       Controller* controller,
-                      const base::IOBuf& request,
+                      const butil::IOBuf& request,
                       const Authenticator* auth);
 
 class UbrpcAdaptor : public NsheadPbServiceAdaptor {

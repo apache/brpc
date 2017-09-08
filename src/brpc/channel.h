@@ -23,7 +23,7 @@
 
 #include <ostream>                               // std::ostream
 #include "bthread/errno.h"                       // Redefine errno
-#include "base/intrusive_ptr.hpp"               // base::intrusive_ptr
+#include "butil/intrusive_ptr.hpp"               // butil::intrusive_ptr
 #include "brpc/channel_base.h"              // ChannelBase
 #include "brpc/adaptive_protocol_type.h"    // AdaptiveProtocolType
 #include "brpc/adaptive_connection_type.h"  // AdaptiveConnectionType
@@ -126,7 +126,7 @@ public:
 
     // Connect this channel to a single server whose address is given by the
     // first parameter. Use default options if `options' is NULL.
-    int Init(base::EndPoint server_addr_and_port, const ChannelOptions* options);
+    int Init(butil::EndPoint server_addr_and_port, const ChannelOptions* options);
     int Init(const char* server_addr_and_port, const ChannelOptions* options);
     int Init(const char* server_addr, int port, const ChannelOptions* options);
 
@@ -185,7 +185,7 @@ protected:
 
     int InitChannelOptions(const ChannelOptions* options);
 
-    base::EndPoint _server_address;
+    butil::EndPoint _server_address;
     SocketId _server_id;
     Protocol::SerializeRequest _serialize_request;
     Protocol::PackRequest _pack_request;
@@ -194,7 +194,7 @@ protected:
     // are in the middle of RPC procedure using this channel.
     // It will be destroyed after channel's destruction and all
     // the RPC above has finished
-    base::intrusive_ptr<SharedLoadBalancer> _lb;
+    butil::intrusive_ptr<SharedLoadBalancer> _lb;
     ChannelOptions _options;
     int _preferred_index;
 };

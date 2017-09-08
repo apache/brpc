@@ -16,7 +16,7 @@
 // Date: 2014/09/22 11:57:43
 
 #include "bvar/latency_recorder.h"
-#include "base/unique_ptr.h"
+#include "butil/unique_ptr.h"
 
 namespace bvar {
 namespace detail {
@@ -146,13 +146,13 @@ int64_t LatencyRecorder::qps(time_t window_size) const {
     return static_cast<int64_t>(round(s.data.num * 1000000.0 / s.time_us));
 }
 
-int LatencyRecorder::expose(const base::StringPiece& prefix1,
-                            const base::StringPiece& prefix2) {
+int LatencyRecorder::expose(const butil::StringPiece& prefix1,
+                            const butil::StringPiece& prefix2) {
     if (prefix2.empty()) {
         LOG(ERROR) << "Parameter[prefix2] is empty";
         return -1;
     }
-    base::StringPiece prefix = prefix2;
+    butil::StringPiece prefix = prefix2;
     // User may add "_latency" as the suffix, remove it.
     if (prefix.ends_with("latency") || prefix.ends_with("Latency")) {
         prefix.remove_suffix(7);

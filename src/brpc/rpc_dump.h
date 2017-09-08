@@ -18,12 +18,12 @@
 #define BRPC_RPC_DUMP_H
 
 #include <gflags/gflags_declare.h>
-#include "base/iobuf.h"                            // IOBuf
-#include "base/files/file_path.h"                  // FilePath
+#include "butil/iobuf.h"                            // IOBuf
+#include "butil/files/file_path.h"                  // FilePath
 #include "bvar/collector.h"
 #include "brpc/rpc_dump.pb.h"                 // RpcDumpMeta
 
-namespace base {
+namespace butil {
 class FileEnumerator;
 }
 
@@ -48,7 +48,7 @@ DECLARE_bool(rpc_dump);
 
 struct SampledRequest : public bvar::Collected
                       , public RpcDumpMeta {
-    base::IOBuf request;
+    butil::IOBuf request;
 
     // Implement methods of Sampled.
     void dump_and_destroy(size_t round);
@@ -78,7 +78,7 @@ inline SampledRequest* AskToBeSampled() {
 //   }
 class SampleIterator {
 public:
-    explicit SampleIterator(const base::StringPiece& dir);
+    explicit SampleIterator(const butil::StringPiece& dir);
     ~SampleIterator();
 
     // Read a sample. Order of samples are not guaranteed to be same with
@@ -90,12 +90,12 @@ public:
 private:
     // Parse on request from the buf. Set `format_error' to true when
     // the buf does not match the format.
-    static SampledRequest* Pop(base::IOBuf& buf, bool* format_error);
+    static SampledRequest* Pop(butil::IOBuf& buf, bool* format_error);
     
-    base::IOPortal _cur_buf;
+    butil::IOPortal _cur_buf;
     int _cur_fd;
-    base::FileEnumerator* _enum;
-    base::FilePath _dir;
+    butil::FileEnumerator* _enum;
+    butil::FilePath _dir;
 };
 
 } // namespace brpc

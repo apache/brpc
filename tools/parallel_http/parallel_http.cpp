@@ -19,8 +19,8 @@
 #include <gflags/gflags.h>
 #include <deque>
 #include <bthread/bthread.h>
-#include <base/logging.h>
-#include <base/files/scoped_file.h>
+#include <butil/logging.h>
+#include <butil/files/scoped_file.h>
 #include <brpc/channel.h>
 
 DEFINE_string(url_file, "", "The file containing urls to fetch. If this flag is"
@@ -35,9 +35,9 @@ DEFINE_bool(only_show_host, false, "Print host name only");
 struct AccessThreadArgs {
     const std::deque<std::string>* url_list;
     size_t offset;
-    std::deque<std::pair<std::string, base::IOBuf> > output_queue;
-    base::Mutex output_queue_mutex;
-    base::atomic<int> current_concurrency;
+    std::deque<std::pair<std::string, butil::IOBuf> > output_queue;
+    butil::Mutex output_queue_mutex;
+    butil::atomic<int> current_concurrency;
 };
 
 class OnHttpCallEnd : public google::protobuf::Closure {
@@ -54,13 +54,13 @@ void OnHttpCallEnd::Run() {
     {
         BAIDU_SCOPED_LOCK(args->output_queue_mutex);
         if (cntl.Failed()) {
-            args->output_queue.push_back(std::make_pair(url, base::IOBuf()));
+            args->output_queue.push_back(std::make_pair(url, butil::IOBuf()));
         } else {
             args->output_queue.push_back(
                 std::make_pair(url, cntl.response_attachment()));
         }
     }
-    args->current_concurrency.fetch_sub(1, base::memory_order_relaxed);
+    args->current_concurrency.fetch_sub(1, butil::memory_order_relaxed);
 }
 
 void* access_thread(void* void_args) {
@@ -78,12 +78,12 @@ void* access_thread(void* void_args) {
         if (channel.Init(url.c_str(), &options) != 0) {
             LOG(ERROR) << "Fail to create channel to url=" << url;
             BAIDU_SCOPED_LOCK(args->output_queue_mutex);
-            args->output_queue.push_back(std::make_pair(url, base::IOBuf()));
+            args->output_queue.push_back(std::make_pair(url, butil::IOBuf()));
             continue;
         }
-        while (args->current_concurrency.fetch_add(1, base::memory_order_relaxed)
+        while (args->current_concurrency.fetch_add(1, butil::memory_order_relaxed)
                > concurrency_for_this_thread) {
-            args->current_concurrency.fetch_sub(1, base::memory_order_relaxed);
+            args->current_concurrency.fetch_sub(1, butil::memory_order_relaxed);
             bthread_usleep(5000);
         }
         OnHttpCallEnd* done = new OnHttpCallEnd;
@@ -103,7 +103,7 @@ int main(int argc, char** argv) {
     //     FLAGS_path = "/" + FLAGS_path;
     // }
 
-    base::ScopedFILE fp_guard;
+    butil::ScopedFILE fp_guard;
     FILE* fp = NULL;
     if (!FLAGS_url_file.empty()) {
         fp_guard.reset(fopen(FLAGS_url_file.c_str(), "r"));
@@ -124,7 +124,7 @@ int main(int argc, char** argv) {
             line_buf[nr - 1] = '\0';
             --nr;
         }
-        base::StringPiece line(line_buf, nr);
+        butil::StringPiece line(line_buf, nr);
         line.trim_spaces();
         if (!line.empty()) {
             url_list.push_back(line.as_string());
@@ -137,14 +137,14 @@ int main(int argc, char** argv) {
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         args[i].url_list = &url_list;
         args[i].offset = i;
-        args[i].current_concurrency.store(0, base::memory_order_relaxed);
+        args[i].current_concurrency.store(0, butil::memory_order_relaxed);
     }
     std::vector<bthread_t> tids;
     tids.resize(FLAGS_thread_num);
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         CHECK_EQ(0, bthread_start_background(&tids[i], NULL, access_thread, &args[i]));
     }
-    std::deque<std::pair<std::string, base::IOBuf> > output_queue;
+    std::deque<std::pair<std::string, butil::IOBuf> > output_queue;
     size_t nprinted = 0;
     while (nprinted != url_list.size()) {
         for (int i = 0; i < FLAGS_thread_num; ++i) {
@@ -153,13 +153,13 @@ int main(int argc, char** argv) {
                 output_queue.swap(args[i].output_queue);
             }
             for (size_t i = 0; i < output_queue.size(); ++i) {
-                base::StringPiece url = output_queue[i].first;
-                base::StringPiece hostname;
+                butil::StringPiece url = output_queue[i].first;
+                butil::StringPiece hostname;
                 if (url.starts_with("http://")) {
                     url.remove_prefix(7);
                 }
                 size_t slash_pos = url.find('/');
-                if (slash_pos != base::StringPiece::npos) {
+                if (slash_pos != butil::StringPiece::npos) {
                     hostname = url.substr(0, slash_pos);
                 } else {
                     hostname = url;
@@ -201,7 +201,7 @@ int main(int argc, char** argv) {
         bthread_join(tids[i], NULL);
     }
     for (int i = 0; i < FLAGS_thread_num; ++i) {
-        while (args[i].current_concurrency.load(base::memory_order_relaxed) != 0) {
+        while (args[i].current_concurrency.load(butil::memory_order_relaxed) != 0) {
             usleep(10000);
         }
     }

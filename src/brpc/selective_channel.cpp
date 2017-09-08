@@ -86,7 +86,7 @@ public:
     void Describe(std::ostream& os, const DescribeOptions&);
 
 private:
-    base::Mutex _mutex;
+    butil::Mutex _mutex;
     // Find out duplicated sub channels.
     ChannelToIdMap _chan_map;
 };
@@ -468,7 +468,7 @@ const Controller* GetSubControllerOfSelectiveChannel(
     return static_cast<const schan::Sender*>(sender)->SubController(index);
 }
 
-static void PassSerializeRequest(base::IOBuf*, Controller*,
+static void PassSerializeRequest(butil::IOBuf*, Controller*,
                                  const google::protobuf::Message*) {
 }
 
@@ -552,7 +552,7 @@ void SelectiveChannel::CallMethod(
     _chan.CallMethod(method, cntl, request, response, sndr);
     if (user_done == NULL) {
         Join(cid);
-        cntl->OnRPCEnd(base::gettimeofday_us());
+        cntl->OnRPCEnd(butil::gettimeofday_us());
     }
 }
 

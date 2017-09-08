@@ -5,9 +5,9 @@
 
 #include <algorithm>
 #include <gtest/gtest.h>
-#include "base/find_cstr.h"
-#include "base/time.h"
-#include "base/logging.h"
+#include "butil/find_cstr.h"
+#include "butil/time.h"
+#include "butil/logging.h"
 
 namespace {
 class FindCstrTest : public ::testing::Test{
@@ -31,7 +31,7 @@ TEST_F(FindCstrTest, sanity) {
         // nothing.
     }
     t1["hello"] = 0xdeadbeef;
-    std::map<std::string, int>::iterator it = base::find_cstr(t1, "hello");
+    std::map<std::string, int>::iterator it = butil::find_cstr(t1, "hello");
     ASSERT_TRUE(it != t1.end());
     ASSERT_EQ("hello", it->first);
     ASSERT_EQ(0xdeadbeef, (unsigned int)it->second);
@@ -65,10 +65,10 @@ TEST_F(FindCstrTest, perf) {
     }
     std::random_shuffle(all_keys.begin(), all_keys.end());
     int sum = 0;
-    base::Timer tm;
+    butil::Timer tm;
     tm.start();
     for (size_t i = 0; i < all_keys.size(); ++i) {
-        sum += base::find_cstr(t1, all_keys[i])->second;
+        sum += butil::find_cstr(t1, all_keys[i])->second;
     }
     tm.stop();
     int64_t elp1 = tm.n_elapsed();

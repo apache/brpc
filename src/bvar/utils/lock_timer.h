@@ -18,9 +18,9 @@
 #ifndef  BVAR_LOCK_TIMER_H
 #define  BVAR_LOCK_TIMER_H
 
-#include "base/time.h"             // base::Timer
-#include "base/scoped_lock.h"      // std::lock_guard std::unique_lock
-#include "base/macros.h"           // DISALLOW_COPY_AND_ASSIGN
+#include "butil/time.h"             // butil::Timer
+#include "butil/scoped_lock.h"      // std::lock_guard std::unique_lock
+#include "butil/macros.h"           // DISALLOW_COPY_AND_ASSIGN
 
 #include "bvar/recorder.h"         // IntRecorder
 #include "bvar/latency_recorder.h" // LatencyRecorder
@@ -198,11 +198,11 @@ private:
     // This trick makes the recoding happens after the destructor of _lock_guard
     struct TimerAndMutex {
         TimerAndMutex(Mutex &m)
-            : timer(base::Timer::STARTED), mutex(&m) {}
+            : timer(butil::Timer::STARTED), mutex(&m) {}
         ~TimerAndMutex() {
             *mutex << timer.u_elapsed();
         }
-        base::Timer timer;
+        butil::Timer timer;
         Mutex* mutex;
     };
     // Don't change the order of the fields as the implementation depends on
@@ -217,7 +217,7 @@ class UniqueLockBase {
 public:
     typedef Mutex                   mutex_type;
     explicit UniqueLockBase(mutex_type& mutex) 
-        : _timer(base::Timer::STARTED), _lock(mutex.mutex()),
+        : _timer(butil::Timer::STARTED), _lock(mutex.mutex()),
           _mutex(&mutex) {
         _timer.stop();
     }
@@ -227,7 +227,7 @@ public:
     }
 
     UniqueLockBase(mutex_type& mutex, std::try_to_lock_t try_to_lock)
-        : _timer(base::Timer::STARTED)
+        : _timer(butil::Timer::STARTED)
         , _lock(mutex.mutex(), try_to_lock)
         , _mutex(&mutex) {
     
@@ -312,7 +312,7 @@ public:
 
 private:
     // Don't change the order or timer and _lck;
-    base::Timer                                             _timer;
+    butil::Timer                                             _timer;
     std::unique_lock<typename Mutex::mutex_type>            _lock;
     mutex_type*                                             _mutex;
 };

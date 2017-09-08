@@ -25,22 +25,22 @@ namespace brpc {
 namespace policy {
 
 ParseResult ParseEspMessage(
-        base::IOBuf* source, 
+        butil::IOBuf* source, 
         Socket* socket, 
         bool read_eof, 
         const void *arg);
 
 void SerializeEspRequest(
-        base::IOBuf* request_buf, 
+        butil::IOBuf* request_buf, 
         Controller* controller,
         const google::protobuf::Message* request);
 
-void PackEspRequest(base::IOBuf* packet_buf,
+void PackEspRequest(butil::IOBuf* packet_buf,
                     SocketMessage**,
                     uint64_t correlation_id,
                     const google::protobuf::MethodDescriptor*,
                     Controller* controller,
-                    const base::IOBuf&,
+                    const butil::IOBuf&,
                     const Authenticator*);
 
 void ProcessEspResponse(InputMessageBase* msg);

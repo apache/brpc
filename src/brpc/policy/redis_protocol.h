@@ -24,24 +24,24 @@ namespace brpc {
 namespace policy {
 
 // Parse redis response.
-ParseResult ParseRedisMessage(base::IOBuf* source, Socket *socket, bool read_eof,
+ParseResult ParseRedisMessage(butil::IOBuf* source, Socket *socket, bool read_eof,
                               const void *arg);
 
 // Actions to a redis response.
 void ProcessRedisResponse(InputMessageBase* msg);
 
 // Serialize a redis request.
-void SerializeRedisRequest(base::IOBuf* buf,
+void SerializeRedisRequest(butil::IOBuf* buf,
                            Controller* cntl,
                            const google::protobuf::Message* request);
 
 // Pack `request' to `method' into `buf'.
-void PackRedisRequest(base::IOBuf* buf,
+void PackRedisRequest(butil::IOBuf* buf,
                       SocketMessage**,
                       uint64_t correlation_id,
                       const google::protobuf::MethodDescriptor* method,
                       Controller* controller,
-                      const base::IOBuf& request,
+                      const butil::IOBuf& request,
                       const Authenticator* auth);
 
 const std::string& GetRedisMethodName(

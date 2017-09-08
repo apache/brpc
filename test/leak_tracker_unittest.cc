@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/debug/leak_tracker.h"
-#include "base/memory/scoped_ptr.h"
+#include "butil/debug/leak_tracker.h"
+#include "butil/memory/scoped_ptr.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 namespace debug {
 
 namespace {
@@ -110,4 +110,4 @@ TEST(LeakTrackerTest, NoOpCheckForLeaks) {
 }  // namespace
 
 }  // namespace debug
-}  // namespace base
+}  // namespace butil

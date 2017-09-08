@@ -16,7 +16,7 @@
 
 #include <gflags/gflags.h>                  // DECLARE_xxx
 #include <google/protobuf/descriptor.h>
-#include "base/time.h"                      // gettimeofday_us
+#include "butil/time.h"                      // gettimeofday_us
 #include "brpc/server.h"                    // Server
 #include "brpc/builtin/index_service.h"
 #include "brpc/builtin/status_service.h"
@@ -46,7 +46,7 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
     Controller *cntl = (Controller*)controller;
     cntl->http_response().set_content_type("text/plain");
     const Server* server = cntl->server();
-    const base::EndPoint my_addr(base::my_ip(),
+    const butil::EndPoint my_addr(butil::my_ip(),
                                  server->listen_address().port);
     const bool use_html = UseHTML(cntl->http_request());
     const bool as_more = cntl->http_request().uri().GetQuery("as_more");
@@ -62,11 +62,11 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
     }
     cntl->http_response().set_content_type(
         use_html ? "text/html" : "text/plain");
-    const base::EndPoint* const html_addr = (use_html ? Path::LOCAL : NULL);
+    const butil::EndPoint* const html_addr = (use_html ? Path::LOCAL : NULL);
     const char* const NL = (use_html ? "<br>\n" : "\n");
     const char* const SP = (use_html ? "&nbsp;" : "  ");
 
-    base::IOBufBuilder os;
+    butil::IOBufBuilder os;
     if (use_html) {
         os << "<!DOCTYPE html><html>";
         if (as_more) {
@@ -115,7 +115,7 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
            << SP << Path("/rpcz/stats", html_addr) << " : Statistics of rpcz" << NL;
 
         std::ostringstream tmp_oss;
-        const int64_t seconds_before = base::gettimeofday_us() - 30 * 1000000L;
+        const int64_t seconds_before = butil::gettimeofday_us() - 30 * 1000000L;
         tmp_oss << "/rpcz?" << TIME_STR << '=';
         PrintRealDateTime(tmp_oss, seconds_before, true);
         os << SP << Path(tmp_oss.str().c_str(), html_addr)

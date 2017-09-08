@@ -4,12 +4,12 @@
 
 #include <algorithm>
 
-#include "base/logging.h"
-#include "base/strings/string_piece.h"
-#include "base/strings/utf_offset_string_conversions.h"
+#include "butil/logging.h"
+#include "butil/strings/string_piece.h"
+#include "butil/strings/utf_offset_string_conversions.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 namespace {
 
@@ -220,8 +220,8 @@ TEST(UTFOffsetStringConversionsTest, UnadjustOffsets) {
   }
 }
 
-// MergeSequentialAdjustments is used by net/base/escape.{h,cc} and
-// net/base/net_util.{h,cc}.  The two tests EscapeTest.AdjustOffset and
+// MergeSequentialAdjustments is used by net/butil/escape.{h,cc} and
+// net/butil/net_util.{h,cc}.  The two tests EscapeTest.AdjustOffset and
 // NetUtilTest.FormatUrlWithOffsets test its behavior extensively.  This
 // is simply a short, additional test.
 TEST(UTFOffsetStringConversionsTest, MergeSequentialAdjustments) {
@@ -293,4 +293,4 @@ TEST(UTFOffsetStringConversionsTest, MergeSequentialAdjustments) {
   EXPECT_EQ(2u, adjustments_on_adjusted_string[5].output_length);
 }
 
-}  // namaspace base
+}  // namespace butil

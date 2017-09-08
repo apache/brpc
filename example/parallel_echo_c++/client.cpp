@@ -16,10 +16,10 @@
 
 #include <gflags/gflags.h>
 #include <bthread/bthread.h>
-#include <base/logging.h>
-#include <base/string_printf.h>
-#include <base/time.h>
-#include <base/macros.h>
+#include <butil/logging.h>
+#include <butil/string_printf.h>
+#include <butil/time.h>
+#include <butil/macros.h>
 #include <brpc/parallel_channel.h>
 #include <brpc/server.h>
 #include "echo.pb.h"
@@ -148,7 +148,7 @@ int main(int argc, char* argv[]) {
     g_sub_channel_latency = new bvar::LatencyRecorder[FLAGS_channel_num];
     for (int i = 0; i < FLAGS_channel_num; ++i) {
         std::string name;
-        base::string_printf(&name, "client_sub_%d", i);
+        butil::string_printf(&name, "client_sub_%d", i);
         g_sub_channel_latency[i].expose(name);
     }
 

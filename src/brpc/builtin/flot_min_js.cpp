@@ -15,7 +15,7 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 
 #include <pthread.h>
-#include "base/logging.h"
+#include "butil/logging.h"
 #include "brpc/policy/gzip_compress.h"
 #include "brpc/builtin/flot_min_js.h"
 
@@ -23,19 +23,19 @@
 namespace brpc {
 
 static pthread_once_t s_flot_min_buf_once = PTHREAD_ONCE_INIT; 
-static base::IOBuf* s_flot_min_buf = NULL;
-static base::IOBuf* s_flot_min_buf_gzip = NULL;
+static butil::IOBuf* s_flot_min_buf = NULL;
+static butil::IOBuf* s_flot_min_buf_gzip = NULL;
 static void InitFlotMinBuf() {
-    s_flot_min_buf = new base::IOBuf;
+    s_flot_min_buf = new butil::IOBuf;
     s_flot_min_buf->append(flot_min_js());
-    s_flot_min_buf_gzip = new base::IOBuf;
+    s_flot_min_buf_gzip = new butil::IOBuf;
     CHECK(policy::GzipCompress(*s_flot_min_buf, s_flot_min_buf_gzip, NULL));
 }
-const base::IOBuf& flot_min_js_iobuf() {
+const butil::IOBuf& flot_min_js_iobuf() {
     pthread_once(&s_flot_min_buf_once, InitFlotMinBuf);
     return *s_flot_min_buf;
 }
-const base::IOBuf& flot_min_js_iobuf_gzip() {
+const butil::IOBuf& flot_min_js_iobuf_gzip() {
     pthread_once(&s_flot_min_buf_once, InitFlotMinBuf);
     return *s_flot_min_buf_gzip;
 }

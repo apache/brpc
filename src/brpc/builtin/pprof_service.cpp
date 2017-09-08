@@ -18,18 +18,18 @@
 #include <limits>
 #include <sys/stat.h>
 #include <fcntl.h>                          // O_RDONLY
-#include "base/string_printf.h"             // string_printf
-#include "base/string_splitter.h"           // StringSplitter
-#include "base/file_util.h"                 // base::FilePath
-#include "base/files/scoped_file.h"         // ScopedFILE
-#include "base/time.h"
+#include "butil/string_printf.h"             // string_printf
+#include "butil/string_splitter.h"           // StringSplitter
+#include "butil/file_util.h"                 // butil::FilePath
+#include "butil/files/scoped_file.h"         // ScopedFILE
+#include "butil/time.h"
 #include "brpc/log.h"
 #include "brpc/controller.h"                // Controller
 #include "brpc/closure_guard.h"             // ClosureGuard
 #include "brpc/builtin/pprof_service.h"
 #include "brpc/builtin/common.h"
 #include "bthread/bthread.h"                // bthread_usleep
-#include "base/fd_guard.h"
+#include "butil/fd_guard.h"
 
 extern "C" {
 extern char *program_invocation_name;
@@ -123,9 +123,9 @@ void PProfService::profile(
         cntl->SetFailed(errno, "Fail to create .prof file, %s", berror());
         return;
     }
-    base::File::Error error;
-    const base::FilePath dir = base::FilePath(prof_name).DirName();
-    if (!base::CreateDirectoryAndGetError(dir, &error)) {
+    butil::File::Error error;
+    const butil::FilePath dir = butil::FilePath(prof_name).DirName();
+    if (!butil::CreateDirectoryAndGetError(dir, &error)) {
         cntl->SetFailed(EPERM, "Fail to create directory=`%s'",dir.value().c_str());
         return;
     }
@@ -138,12 +138,12 @@ void PProfService::profile(
     }
     ProfilerStop();
 
-    base::fd_guard fd(open(prof_name, O_RDONLY));
+    butil::fd_guard fd(open(prof_name, O_RDONLY));
     if (fd < 0) {
         cntl->SetFailed(ENOENT, "Fail to open %s", prof_name);
         return;
     }
-    base::IOPortal portal;
+    butil::IOPortal portal;
     portal.append_from_file_descriptor(fd, ULONG_MAX);
     cntl->response_attachment().swap(portal);
 }
@@ -187,12 +187,12 @@ void PProfService::contention(
     }
     bthread::ContentionProfilerStop();
 
-    base::fd_guard fd(open(prof_name, O_RDONLY));
+    butil::fd_guard fd(open(prof_name, O_RDONLY));
     if (fd < 0) {
         cntl->SetFailed(ENOENT, "Fail to open %s", prof_name);
         return;
     }
-    base::IOPortal portal;
+    butil::IOPortal portal;
     portal.append_from_file_descriptor(fd, ULONG_MAX);
     cntl->response_attachment().swap(portal);
 }
@@ -275,7 +275,7 @@ static bool HasExt(const std::string& name, const std::string& ext) {
 static int ExtractSymbolsFromBinary(
     std::map<uintptr_t, std::string>& addr_map,
     const LibInfo& lib_info) {
-    base::Timer tm;
+    butil::Timer tm;
     tm.start();
     std::string cmd = "nm -C -p ";
     cmd.append(lib_info.path);
@@ -288,7 +288,7 @@ static int ExtractSymbolsFromBinary(
     size_t line_len = 0;
     ssize_t nr = 0;
     while ((nr = getline(&line, &line_len, pipe)) != -1) {
-        base::StringSplitter sp(line, ' ');
+        butil::StringSplitter sp(line, ' ');
         if (sp == NULL) {
             continue;
         }
@@ -379,9 +379,9 @@ static int ExtractSymbolsFromBinary(
 }
 
 static void LoadSymbols() {
-    base::Timer tm;
+    butil::Timer tm;
     tm.start();
-    base::ScopedFILE fp(fopen("/proc/self/maps", "r"));
+    butil::ScopedFILE fp(fopen("/proc/self/maps", "r"));
     if (fp == NULL) {
         return;
     }
@@ -389,7 +389,7 @@ static void LoadSymbols() {
     size_t line_len = 0;
     ssize_t nr = 0;
     while ((nr = getline(&line, &line_len, fp.get())) != -1) {
-        base::StringSplitter sp(line, line + line_len, ' ');
+        butil::StringSplitter sp(line, line + line_len, ' ');
         if (sp == NULL) {
             continue;
         }
@@ -448,7 +448,7 @@ static void LoadSymbols() {
     info.path = program_invocation_name;
     ExtractSymbolsFromBinary(symbol_map, info);
 
-    base::Timer tm2;
+    butil::Timer tm2;
     tm2.start();
     size_t num_removed = 0;
     bool last_is_empty = false;
@@ -474,7 +474,7 @@ static void LoadSymbols() {
     RPC_VLOG << "Loaded all symbols in " << tm.m_elapsed() << "ms";
 }
 
-static void FindSymbols(base::IOBuf* out, std::vector<uintptr_t>& addr_list) {
+static void FindSymbols(butil::IOBuf* out, std::vector<uintptr_t>& addr_list) {
     char buf[32];
     for (size_t i = 0; i < addr_list.size(); ++i) {
         int len = snprintf(buf, sizeof(buf), "0x%08lx\t", addr_list[i]);
@@ -525,7 +525,7 @@ void PProfService::symbol(
         }
         std::vector<uintptr_t> addr_list;
         addr_list.reserve(32);
-        base::StringSplitter sp(addr_cstr, '+');
+        butil::StringSplitter sp(addr_cstr, '+');
         for ( ; sp != NULL; ++sp) {
             char* endptr;
             uintptr_t addr = strtoull(sp.field(), &endptr, 16);

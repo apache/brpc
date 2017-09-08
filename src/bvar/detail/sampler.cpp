@@ -15,8 +15,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 28 18:14:40 CST 2015
 
-#include "base/time.h"
-#include "base/memory/singleton_on_pthread_once.h"
+#include "butil/time.h"
+#include "butil/memory/singleton_on_pthread_once.h"
 #include "bvar/reducer.h"
 #include "bvar/detail/sampler.h"
 #include "bvar/passive_status.h"
@@ -94,7 +94,7 @@ private:
 
 void SamplerCollector::run() {
     VLOG(99) << "SamplerCollector starts to run";
-    base::LinkNode<Sampler> root;
+    butil::LinkNode<Sampler> root;
     int consecutive_nosleep = 0;
     PassiveStatus<double> cumulated_time(get_cumulated_time, this);
     bvar::PerSecond<bvar::PassiveStatus<double> > usage(&cumulated_time, 10);
@@ -102,16 +102,16 @@ void SamplerCollector::run() {
         usage.expose("bvar_sampler_collector_usage");
     }
     while (!_stop) {
-        int64_t abstime = base::gettimeofday_us();
+        int64_t abstime = butil::gettimeofday_us();
         Sampler* s = this->reset();
         if (s) {
             s->InsertBeforeAsList(&root);
         }
         int nremoved = 0;
         int nsampled = 0;
-        for (base::LinkNode<Sampler>* p = root.next(); p != &root;) {
+        for (butil::LinkNode<Sampler>* p = root.next(); p != &root;) {
             // We may remove p from the list, save next first.
-            base::LinkNode<Sampler>* saved_next = p->next();
+            butil::LinkNode<Sampler>* saved_next = p->next();
             Sampler* s = p->value();
             s->_mutex.lock();
             if (!s->_used) {
@@ -127,13 +127,13 @@ void SamplerCollector::run() {
             p = saved_next;
         }
         bool slept = false;
-        int64_t now = base::gettimeofday_us();
+        int64_t now = butil::gettimeofday_us();
         _cumulated_time_us += now - abstime;
         abstime += 1000000L;
         while (abstime > now) {
             ::usleep(abstime - now);
             slept = true;
-            now = base::gettimeofday_us();
+            now = butil::gettimeofday_us();
         }
         if (slept) {
             consecutive_nosleep = 0;
@@ -152,7 +152,7 @@ Sampler::Sampler() : _used(true) {}
 Sampler::~Sampler() {}
 
 void Sampler::schedule() {
-    *base::get_leaky_singleton<SamplerCollector>() << this;
+    *butil::get_leaky_singleton<SamplerCollector>() << this;
 }
 
 void Sampler::destroy() {

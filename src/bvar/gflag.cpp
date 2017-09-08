@@ -21,12 +21,12 @@
 
 namespace bvar {
 
-GFlag::GFlag(const base::StringPiece& gflag_name) {
+GFlag::GFlag(const butil::StringPiece& gflag_name) {
     expose(gflag_name);
 }
 
-GFlag::GFlag(const base::StringPiece& prefix,
-      const base::StringPiece& gflag_name)
+GFlag::GFlag(const butil::StringPiece& prefix,
+      const butil::StringPiece& gflag_name)
     : _gflag_name(gflag_name.data(), gflag_name.size()) {
     expose_as(prefix, gflag_name);
 }

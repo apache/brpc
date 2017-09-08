@@ -4,12 +4,12 @@
 
 #include <sstream>
 
-#include "base/strings/string16.h"
+#include "butil/strings/string16.h"
 
-#include "base/strings/utf_string_conversions.h"
+#include "butil/strings/utf_string_conversions.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 #if defined(WCHAR_T_IS_UTF32)
 
@@ -55,4 +55,4 @@ TEST(String16Test, OutputStream) {
 
 #endif
 
-}  // namespace base
+}  // namespace butil

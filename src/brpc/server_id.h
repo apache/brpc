@@ -20,8 +20,8 @@
 // To brpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
 
-#include "base/containers/hash_tables.h"   // hash
-#include "base/containers/flat_map.h"
+#include "butil/containers/hash_tables.h"   // hash
+#include "butil/containers/flat_map.h"
 #include "brpc/socket_id.h"
 
 
@@ -69,7 +69,7 @@ public:
     // Returns list of SocketId that do not exist after.
     std::vector<SocketId>& RemoveServers(const std::vector<ServerId>& servers);
 private:
-    base::FlatMap<SocketId, int> _nref_map;
+    butil::FlatMap<SocketId, int> _nref_map;
     std::vector<SocketId> _tmp;
 };
 

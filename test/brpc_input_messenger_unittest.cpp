@@ -9,11 +9,11 @@
 #include <netdb.h>                   //
 #include <gtest/gtest.h>
 #include <gperftools/profiler.h>
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/fd_utility.h"
-#include "base/fd_guard.h"
-#include "base/unix_socket.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/fd_utility.h"
+#include "butil/fd_guard.h"
+#include "butil/unix_socket.h"
 #include "brpc/acceptor.h"
 #include "brpc/policy/hulu_pbrpc_protocol.h"
 
@@ -68,7 +68,7 @@ struct BAIDU_CACHELINE_ALIGNMENT ClientMeta {
     size_t bytes;
 };
 
-base::atomic<size_t> client_index(0);
+butil::atomic<size_t> client_index(0);
 
 void* client_thread(void* arg) {
     ClientMeta* m = (ClientMeta*)arg;
@@ -88,14 +88,14 @@ void* client_thread(void* arg) {
     char socket_name[64];
     snprintf(socket_name, sizeof(socket_name), "input_messenger.socket%lu",
              (id % NEPOLL));
-    base::fd_guard fd(base::unix_socket_connect(socket_name));
+    butil::fd_guard fd(butil::unix_socket_connect(socket_name));
     if (fd < 0) {
         PLOG(FATAL) << "Fail to connect to " << socket_name;
         return NULL;
     }
 #else
-    base::EndPoint point(base::IP_ANY, 7878);
-    base::fd_guard fd(base::tcp_connect(point, NULL));
+    butil::EndPoint point(butil::IP_ANY, 7878);
+    butil::fd_guard fd(butil::tcp_connect(point, NULL));
     if (fd < 0) {
         PLOG(FATAL) << "Fail to connect to " << point;
         return NULL;
@@ -147,12 +147,12 @@ TEST_F(MessengerTest, dispatch_tasks) {
 #ifdef USE_UNIX_DOMAIN_SOCKET
         char buf[64];
         snprintf(buf, sizeof(buf), "input_messenger.socket%lu", i);
-        int listening_fd = base::unix_socket_listen(buf);
+        int listening_fd = butil::unix_socket_listen(buf);
 #else
-        int listening_fd = tcp_listen(base::EndPoint(base::IP_ANY, 7878), false);
+        int listening_fd = tcp_listen(butil::EndPoint(butil::IP_ANY, 7878), false);
 #endif
         ASSERT_TRUE(listening_fd > 0);
-        base::make_non_blocking(listening_fd);
+        butil::make_non_blocking(listening_fd);
         ASSERT_EQ(0, messenger[i].AddHandler(pairs[0]));
         ASSERT_EQ(0, messenger[i].StartAccept(listening_fd, -1, NULL));
     }
@@ -173,7 +173,7 @@ TEST_F(MessengerTest, dispatch_tasks) {
     for (size_t i = 0; i < NCLIENT; ++i) {
         start_client_bytes += cm[i]->bytes;
     }
-    base::Timer tm;
+    butil::Timer tm;
     tm.start();
     
     sleep(5);

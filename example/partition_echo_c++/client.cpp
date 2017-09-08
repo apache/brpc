@@ -16,10 +16,10 @@
 
 #include <gflags/gflags.h>
 #include <bthread/bthread.h>
-#include <base/logging.h>
-#include <base/string_printf.h>
-#include <base/time.h>
-#include <base/macros.h>
+#include <butil/logging.h>
+#include <butil/string_printf.h>
+#include <butil/time.h>
+#include <butil/macros.h>
 #include <brpc/partition_channel.h>
 #include <deque>
 #include "echo.pb.h"
@@ -106,7 +106,7 @@ public:
         char* endptr = NULL;
         out->index = strtol(tag.c_str(), &endptr, 10);
         if (endptr != tag.data() + pos) {
-            LOG(ERROR) << "Invalid index=" << base::StringPiece(tag.data(), pos);
+            LOG(ERROR) << "Invalid index=" << butil::StringPiece(tag.data(), pos);
             return false;
         }
         out->num_partition_kinds = strtol(tag.c_str() + pos + 1, &endptr, 10);

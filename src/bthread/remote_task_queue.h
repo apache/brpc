@@ -19,8 +19,8 @@
 #ifndef BAIDU_BTHREAD_REMOTE_TASK_QUEUE_H
 #define BAIDU_BTHREAD_REMOTE_TASK_QUEUE_H
 
-#include "base/containers/bounded_queue.h"
-#include "base/macros.h"
+#include "butil/containers/bounded_queue.h"
+#include "butil/macros.h"
 
 namespace bthread {
 
@@ -40,7 +40,7 @@ public:
         if (q_mem == NULL) {
             return -1;
         }
-        base::BoundedQueue<bthread_t> q(q_mem, memsize, base::OWNS_STORAGE);
+        butil::BoundedQueue<bthread_t> q(q_mem, memsize, butil::OWNS_STORAGE);
         _tasks.swap(q);
         return 0;
     }
@@ -71,8 +71,8 @@ public:
 private:
 friend class TaskGroup;
     DISALLOW_COPY_AND_ASSIGN(RemoteTaskQueue);
-    base::BoundedQueue<bthread_t> _tasks;
-    base::Mutex _mutex;
+    butil::BoundedQueue<bthread_t> _tasks;
+    butil::Mutex _mutex;
 };
 
 }  // namespace bthread

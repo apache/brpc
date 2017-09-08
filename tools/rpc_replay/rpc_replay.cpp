@@ -15,10 +15,10 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 
 #include <gflags/gflags.h>
-#include <base/logging.h>
-#include <base/time.h>
-#include <base/macros.h>
-#include <base/file_util.h>
+#include <butil/logging.h>
+#include <butil/time.h>
+#include <butil/macros.h>
+#include <butil/file_util.h>
 #include <bvar/bvar.h>
 #include <bthread/bthread.h>
 #include <brpc/channel.h>
@@ -109,7 +109,7 @@ static void handle_response(brpc::Controller* cntl, int64_t start_time,
     // TODO(gejun): some bthreads are starved when new bthreads are created 
     // continuously, which happens when server is down and RPC keeps failing.
     // Sleep a while on error to avoid that now.
-    const int64_t end_time = base::gettimeofday_us();
+    const int64_t end_time = butil::gettimeofday_us();
     const int64_t elp = end_time - start_time;
     if (!cntl->Failed()) {
         g_latency_recorder << elp;
@@ -122,11 +122,11 @@ static void handle_response(brpc::Controller* cntl, int64_t start_time,
     delete cntl;
 }
 
-base::atomic<int> g_thread_offset(0);
+butil::atomic<int> g_thread_offset(0);
 
 static void* replay_thread(void* arg) {
     ChannelGroup* chan_group = static_cast<ChannelGroup*>(arg);
-    const int thread_offset = g_thread_offset.fetch_add(1, base::memory_order_relaxed);
+    const int thread_offset = g_thread_offset.fetch_add(1, butil::memory_order_relaxed);
     double req_rate = FLAGS_qps / (double)FLAGS_thread_num;
     brpc::SerializedRequest req;
     std::deque<int64_t> timeq;
@@ -136,7 +136,7 @@ static void* replay_thread(void* arg) {
     } else if (MAX_QUEUE_SIZE > 2000) {
         MAX_QUEUE_SIZE = 2000;
     }
-    timeq.push_back(base::gettimeofday_us());
+    timeq.push_back(butil::gettimeofday_us());
     for (int i = 0; !brpc::IsAskedToQuit() && i < FLAGS_times; ++i) {
         brpc::SampleIterator it(FLAGS_dir);
         int j = 0;
@@ -167,7 +167,7 @@ static void* replay_thread(void* arg) {
                 req.serialized_data() = sample->request.movable();
             }
             g_sent_count << 1;
-            const int64_t start_time = base::gettimeofday_us();
+            const int64_t start_time = butil::gettimeofday_us();
             if (FLAGS_qps <= 0) {
                 chan->CallMethod(NULL/*use rpc_dump_context in cntl instead*/,
                         cntl, &req, NULL/*ignore response*/, NULL);
@@ -177,7 +177,7 @@ static void* replay_thread(void* arg) {
                     brpc::NewCallback(handle_response, cntl, start_time, false);
                 chan->CallMethod(NULL/*use rpc_dump_context in cntl instead*/,
                         cntl, &req, NULL/*ignore response*/, done);
-                const int64_t end_time = base::gettimeofday_us();
+                const int64_t end_time = butil::gettimeofday_us();
                 int64_t expected_elp = 0;
                 int64_t actual_elp = 0;
                 timeq.push_back(end_time);
@@ -203,7 +203,7 @@ int main(int argc, char* argv[]) {
     google::ParseCommandLineFlags(&argc, &argv, true);
 
     if (FLAGS_dir.empty() ||
-        !base::DirectoryExists(base::FilePath(FLAGS_dir))) {
+        !butil::DirectoryExists(butil::FilePath(FLAGS_dir))) {
         LOG(ERROR) << "--dir=<dir-of-dumped-files> is required";
         return -1;
     }

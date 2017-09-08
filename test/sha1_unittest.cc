@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/sha1.h"
+#include "butil/sha1.h"
 
 #include <string>
 
-#include "base/basictypes.h"
+#include "butil/basictypes.h"
 #include <gtest/gtest.h>
 
 TEST(SHA1Test, Test1) {
@@ -19,8 +19,8 @@ TEST(SHA1Test, Test1) {
                      0x78, 0x50, 0xc2, 0x6c,
                      0x9c, 0xd0, 0xd8, 0x9d };
 
-  std::string output = base::SHA1HashString(input);
-  for (size_t i = 0; i < base::kSHA1Length; i++)
+  std::string output = butil::SHA1HashString(input);
+  for (size_t i = 0; i < butil::kSHA1Length; i++)
     EXPECT_EQ(expected[i], output[i] & 0xFF);
 }
 
@@ -35,8 +35,8 @@ TEST(SHA1Test, Test2) {
                      0xf9, 0x51, 0x29, 0xe5,
                      0xe5, 0x46, 0x70, 0xf1 };
 
-  std::string output = base::SHA1HashString(input);
-  for (size_t i = 0; i < base::kSHA1Length; i++)
+  std::string output = butil::SHA1HashString(input);
+  for (size_t i = 0; i < butil::kSHA1Length; i++)
     EXPECT_EQ(expected[i], output[i] & 0xFF);
 }
 
@@ -50,15 +50,15 @@ TEST(SHA1Test, Test3) {
                      0xdb, 0xad, 0x27, 0x31,
                      0x65, 0x34, 0x01, 0x6f };
 
-  std::string output = base::SHA1HashString(input);
-  for (size_t i = 0; i < base::kSHA1Length; i++)
+  std::string output = butil::SHA1HashString(input);
+  for (size_t i = 0; i < butil::kSHA1Length; i++)
     EXPECT_EQ(expected[i], output[i] & 0xFF);
 }
 
 TEST(SHA1Test, Test1Bytes) {
   // Example A.1 from FIPS 180-2: one-block message.
   std::string input = "abc";
-  unsigned char output[base::kSHA1Length];
+  unsigned char output[butil::kSHA1Length];
 
   unsigned char expected[] = { 0xa9, 0x99, 0x3e, 0x36,
                                0x47, 0x06, 0x81, 0x6a,
@@ -66,9 +66,9 @@ TEST(SHA1Test, Test1Bytes) {
                                0x78, 0x50, 0xc2, 0x6c,
                                0x9c, 0xd0, 0xd8, 0x9d };
 
-  base::SHA1HashBytes(reinterpret_cast<const unsigned char*>(input.c_str()),
+  butil::SHA1HashBytes(reinterpret_cast<const unsigned char*>(input.c_str()),
                       input.length(), output);
-  for (size_t i = 0; i < base::kSHA1Length; i++)
+  for (size_t i = 0; i < butil::kSHA1Length; i++)
     EXPECT_EQ(expected[i], output[i]);
 }
 
@@ -76,7 +76,7 @@ TEST(SHA1Test, Test2Bytes) {
   // Example A.2 from FIPS 180-2: multi-block message.
   std::string input =
       "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
-  unsigned char output[base::kSHA1Length];
+  unsigned char output[butil::kSHA1Length];
 
   unsigned char expected[] = { 0x84, 0x98, 0x3e, 0x44,
                                0x1c, 0x3b, 0xd2, 0x6e,
@@ -84,16 +84,16 @@ TEST(SHA1Test, Test2Bytes) {
                                0xf9, 0x51, 0x29, 0xe5,
                                0xe5, 0x46, 0x70, 0xf1 };
 
-  base::SHA1HashBytes(reinterpret_cast<const unsigned char*>(input.c_str()),
+  butil::SHA1HashBytes(reinterpret_cast<const unsigned char*>(input.c_str()),
                       input.length(), output);
-  for (size_t i = 0; i < base::kSHA1Length; i++)
+  for (size_t i = 0; i < butil::kSHA1Length; i++)
     EXPECT_EQ(expected[i], output[i]);
 }
 
 TEST(SHA1Test, Test3Bytes) {
   // Example A.3 from FIPS 180-2: long message.
   std::string input(1000000, 'a');
-  unsigned char output[base::kSHA1Length];
+  unsigned char output[butil::kSHA1Length];
 
   unsigned char expected[] = { 0x34, 0xaa, 0x97, 0x3c,
                                0xd4, 0xc4, 0xda, 0xa4,
@@ -101,8 +101,8 @@ TEST(SHA1Test, Test3Bytes) {
                                0xdb, 0xad, 0x27, 0x31,
                                0x65, 0x34, 0x01, 0x6f };
 
-  base::SHA1HashBytes(reinterpret_cast<const unsigned char*>(input.c_str()),
+  butil::SHA1HashBytes(reinterpret_cast<const unsigned char*>(input.c_str()),
                       input.length(), output);
-  for (size_t i = 0; i < base::kSHA1Length; i++)
+  for (size_t i = 0; i < butil::kSHA1Length; i++)
     EXPECT_EQ(expected[i], output[i]);
 }

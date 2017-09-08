@@ -4,7 +4,7 @@
 
 #include <gtest/gtest.h>
 #include <errno.h>
-#include "base/thread_local.h"
+#include "butil/thread_local.h"
 
 namespace {
 
@@ -39,7 +39,7 @@ protected:
     BaiduThreadLocalTest(){
         if (!register_check) {
             register_check = true;
-            base::thread_atexit(check_global_variable);
+            butil::thread_atexit(check_global_variable);
         }
     };
     virtual ~BaiduThreadLocalTest(){};
@@ -68,11 +68,11 @@ TEST_F(BaiduThreadLocalTest, thread_local_keyword) {
 }
 
 void* yell(void*) {
-    YellObj* p = base::get_thread_local<YellObj>();
+    YellObj* p = butil::get_thread_local<YellObj>();
     EXPECT_TRUE(p);
     EXPECT_EQ(2, YellObj::nc);
     EXPECT_EQ(0, YellObj::nd);
-    EXPECT_EQ(p, base::get_thread_local<YellObj>());
+    EXPECT_EQ(p, butil::get_thread_local<YellObj>());
     EXPECT_EQ(2, YellObj::nc);
     EXPECT_EQ(0, YellObj::nd);
     return NULL;
@@ -81,11 +81,11 @@ void* yell(void*) {
 TEST_F(BaiduThreadLocalTest, get_thread_local) {
     YellObj::nc = 0;
     YellObj::nd = 0;
-    YellObj* p = base::get_thread_local<YellObj>();
+    YellObj* p = butil::get_thread_local<YellObj>();
     ASSERT_TRUE(p);
     ASSERT_EQ(1, YellObj::nc);
     ASSERT_EQ(0, YellObj::nd);
-    ASSERT_EQ(p, base::get_thread_local<YellObj>());
+    ASSERT_EQ(p, butil::get_thread_local<YellObj>());
     ASSERT_EQ(1, YellObj::nc);
     ASSERT_EQ(0, YellObj::nd);
     pthread_t th;
@@ -110,13 +110,13 @@ void* proc_dummy(void* arg) {
     *p = true;
     EXPECT_TRUE(dummy == NULL);
     dummy = new int(p - processed);
-    base::thread_atexit(delete_dummy, deleted + (p - processed));
+    butil::thread_atexit(delete_dummy, deleted + (p - processed));
     return NULL;
 }
 
 TEST_F(BaiduThreadLocalTest, sanity) {
     errno = 0;
-    ASSERT_EQ(-1, base::thread_atexit(NULL));
+    ASSERT_EQ(-1, butil::thread_atexit(NULL));
     ASSERT_EQ(EINVAL, errno);
 
     processed[NTHREAD] = false;
@@ -165,24 +165,24 @@ static void check_result() {
 }
 
 TEST_F(BaiduThreadLocalTest, call_order_and_cancel) {
-    base::thread_atexit_cancel(NULL);
-    base::thread_atexit_cancel(NULL, NULL);
+    butil::thread_atexit_cancel(NULL);
+    butil::thread_atexit_cancel(NULL, NULL);
 
-    ASSERT_EQ(0, base::thread_atexit(check_result));
+    ASSERT_EQ(0, butil::thread_atexit(check_result));
 
-    ASSERT_EQ(0, base::thread_atexit(fun1));
-    ASSERT_EQ(0, base::thread_atexit(fun1));
-    ASSERT_EQ(0, base::thread_atexit(fun2));
-    ASSERT_EQ(0, base::thread_atexit(fun3, (void*)1));
-    ASSERT_EQ(0, base::thread_atexit(fun3, (void*)1));
-    ASSERT_EQ(0, base::thread_atexit(fun3, (void*)2));
-    ASSERT_EQ(0, base::thread_atexit(fun4, NULL));
+    ASSERT_EQ(0, butil::thread_atexit(fun1));
+    ASSERT_EQ(0, butil::thread_atexit(fun1));
+    ASSERT_EQ(0, butil::thread_atexit(fun2));
+    ASSERT_EQ(0, butil::thread_atexit(fun3, (void*)1));
+    ASSERT_EQ(0, butil::thread_atexit(fun3, (void*)1));
+    ASSERT_EQ(0, butil::thread_atexit(fun3, (void*)2));
+    ASSERT_EQ(0, butil::thread_atexit(fun4, NULL));
 
-    base::thread_atexit_cancel(NULL);
-    base::thread_atexit_cancel(NULL, NULL);
-    base::thread_atexit_cancel(fun1);
-    base::thread_atexit_cancel(fun3, NULL);
-    base::thread_atexit_cancel(fun3, (void*)1);
+    butil::thread_atexit_cancel(NULL);
+    butil::thread_atexit_cancel(NULL, NULL);
+    butil::thread_atexit_cancel(fun1);
+    butil::thread_atexit_cancel(fun3, NULL);
+    butil::thread_atexit_cancel(fun3, (void*)1);
 }
 
 } // namespace

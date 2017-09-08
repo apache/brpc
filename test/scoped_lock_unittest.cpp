@@ -3,7 +3,7 @@
 // Date: 2010-12-04 11:59
 
 #include <gtest/gtest.h>
-#include "base/scoped_lock.h"
+#include "butil/scoped_lock.h"
 #include <errno.h>
 
 namespace {

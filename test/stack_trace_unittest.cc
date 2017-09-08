@@ -6,10 +6,10 @@
 #include <sstream>
 #include <string>
 
-#include "base/debug/stack_trace.h"
-#include "base/logging.h"
-#include "base/process/kill.h"
-#include "base/process/process_handle.h"
+#include "butil/debug/stack_trace.h"
+#include "butil/logging.h"
+#include "butil/process/kill.h"
+#include "butil/process/process_handle.h"
 #include "test/test_timeouts.h"
 #include <gtest/gtest.h>
 #include "test/multiprocess_func_list.h"
@@ -18,7 +18,7 @@
 #include "test/multiprocess_test.h"
 #endif
 
-namespace base {
+namespace butil {
 namespace debug {
 
 #if defined(OS_POSIX) && !defined(OS_ANDROID) && !defined(OS_IOS)
@@ -228,4 +228,4 @@ TEST_F(StackTraceTest, itoa_r) {
 #endif  // defined(OS_POSIX) && !defined(OS_ANDROID)
 
 }  // namespace debug
-}  // namespace base
+}  // namespace butil

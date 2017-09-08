@@ -8,9 +8,9 @@
 #include <sys/socket.h>
 #include <gtest/gtest.h>
 #include <gperftools/profiler.h>
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/fd_utility.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/fd_utility.h"
 #include "brpc/event_dispatcher.h"
 #include "brpc/details/has_epollrdhup.h"
 
@@ -30,9 +30,9 @@ TEST_F(EventDispatcherTest, has_epollrdhup) {
 }
 
 TEST_F(EventDispatcherTest, versioned_ref) {
-    base::atomic<uint64_t> versioned_ref(2);
+    butil::atomic<uint64_t> versioned_ref(2);
     versioned_ref.fetch_add(brpc::MakeVRef(0, -1),
-                            base::memory_order_release);
+                            butil::memory_order_release);
     ASSERT_EQ(brpc::MakeVRef(1, 1), versioned_ref);
 }
 
@@ -169,8 +169,8 @@ inline uint32_t fmix32 ( uint32_t h ) {
 
 TEST_F(EventDispatcherTest, dispatch_tasks) {
 #ifdef BASE_RESOURCE_POOL_NEED_FREE_ITEM_NUM
-    const base::ResourcePoolInfo old_info =
-        base::describe_resources<brpc::Socket>();
+    const butil::ResourcePoolInfo old_info =
+        butil::describe_resources<brpc::Socket>();
 #endif
 
     client_stop = false;
@@ -187,7 +187,7 @@ TEST_F(EventDispatcherTest, dispatch_tasks) {
         sm[i] = new SocketExtra;
 
         const int fd = fds[i * 2];
-        base::make_non_blocking(fd);
+        butil::make_non_blocking(fd);
         brpc::SocketId socket_id;
         brpc::SocketOptions options;
         options.fd = fd;
@@ -204,7 +204,7 @@ TEST_F(EventDispatcherTest, dispatch_tasks) {
     
     LOG(INFO) << "Begin to profile... (5 seconds)";
     ProfilerStart("event_dispatcher.prof");
-    base::Timer tm;
+    butil::Timer tm;
     tm.start();
     
     sleep(5);
@@ -244,8 +244,8 @@ TEST_F(EventDispatcherTest, dispatch_tasks) {
         ASSERT_EQ(copy1[i], copy2[i]) << i;
     }
     ASSERT_EQ(NCLIENT, copy1.size());
-    const base::ResourcePoolInfo info
-        = base::describe_resources<brpc::Socket>();
+    const butil::ResourcePoolInfo info
+        = butil::describe_resources<brpc::Socket>();
     LOG(INFO) << info;
 #ifdef BASE_RESOURCE_POOL_NEED_FREE_ITEM_NUM
     ASSERT_EQ(NCLIENT, info.free_item_num - old_info.free_item_num);

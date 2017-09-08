@@ -23,10 +23,10 @@
 #include <iostream>                             // std::ostream
 #endif
 #include <stddef.h>                             // size_t
-#include "base/atomicops.h"                     // base::atomic
+#include "butil/atomicops.h"                     // butil::atomic
 #include "bvar/bvar.h"                          // bvar::PassiveStatus
 #include "bthread/task_meta.h"                  // TaskMeta
-#include "base/resource_pool.h"                 // ResourcePool
+#include "butil/resource_pool.h"                 // ResourcePool
 #include "bthread/work_stealing_queue.h"        // WorkStealingQueue
 #include "bthread/parking_lot.h"
 
@@ -59,7 +59,7 @@ public:
     
     // Get # of worker threads.
     int concurrency() const 
-    { return _concurrency.load(base::memory_order_acquire); }
+    { return _concurrency.load(butil::memory_order_acquire); }
 
     void print_rq_sizes(std::ostream& os);
 
@@ -88,17 +88,17 @@ private:
     bvar::LatencyRecorder& exposed_pending_time();
     bvar::LatencyRecorder* create_exposed_pending_time();
 
-    base::atomic<size_t> _ngroup;
+    butil::atomic<size_t> _ngroup;
     TaskGroup** _groups;
-    base::Mutex _modify_group_mutex;
+    butil::Mutex _modify_group_mutex;
 
     bool _stop;
-    base::atomic<int> _concurrency;
+    butil::atomic<int> _concurrency;
     std::vector<pthread_t> _workers;
 
     bvar::Adder<int64_t> _nworkers;
-    base::Mutex _pending_time_mutex;
-    base::atomic<bvar::LatencyRecorder*> _pending_time;
+    butil::Mutex _pending_time_mutex;
+    butil::atomic<bvar::LatencyRecorder*> _pending_time;
     bvar::PassiveStatus<double> _cumulated_worker_time;
     bvar::PerSecond<bvar::PassiveStatus<double> > _worker_usage_second;
     bvar::PassiveStatus<int64_t> _cumulated_switch_count;
@@ -113,7 +113,7 @@ private:
 };
 
 inline bvar::LatencyRecorder& TaskControl::exposed_pending_time() {
-    bvar::LatencyRecorder* pt = _pending_time.load(base::memory_order_consume);
+    bvar::LatencyRecorder* pt = _pending_time.load(butil::memory_order_consume);
     if (!pt) {
         pt = create_exposed_pending_time();
     }

@@ -7,12 +7,12 @@
 
 #include <string>
 #include <gtest/gtest.h>
-#include "base/basictypes.h"
-#include "base/process/launch.h"
-#include "base/process/process_handle.h"
-#include "base/build_config.h"
+#include "butil/basictypes.h"
+#include "butil/process/launch.h"
+#include "butil/process/process_handle.h"
+#include "butil/build_config.h"
 
-namespace base {
+namespace butil {
 
 class CommandLine;
 
@@ -25,23 +25,23 @@ class CommandLine;
 //
 //   TEST_F(MyTest, ATest) {
 //     CommandLine command_line(
-//         base::GetMultiProcessTestChildBaseCommandLine());
+//         butil::GetMultiProcessTestChildBaseCommandLine());
 //     // Maybe add our own switches to |command_line|....
 //
 //     LaunchOptions options;
 //     // Maybe set some options (e.g., |start_hidden| on Windows)....
 //
 //     // Start a child process and run |a_test_func|.
-//     base::ProcessHandle test_child_handle =
-//         base::SpawnMultiProcessTestChild("a_test_func", command_line,
+//     butil::ProcessHandle test_child_handle =
+//         butil::SpawnMultiProcessTestChild("a_test_func", command_line,
 //                                          options);
 //
 //     // Do stuff involving |test_child_handle| and the child process....
 //
 //     int rv = -1;
-//     ASSERT_TRUE(base::WaitForExitCodeWithTimeout(
+//     ASSERT_TRUE(butil::WaitForExitCodeWithTimeout(
 //         test_child_handle, &rv, TestTimeouts::action_timeout()));
-//     base::CloseProcessHandle(test_child_handle);
+//     butil::CloseProcessHandle(test_child_handle);
 //     EXPECT_EQ(0, rv);
 //   }
 //
@@ -126,6 +126,6 @@ class MultiProcessTest : public testing::Test {
   DISALLOW_COPY_AND_ASSIGN(MultiProcessTest);
 };
 
-}  // namespace base
+}  // namespace butil
 
 #endif  // BASE_TEST_MULTIPROCESS_TEST_H_

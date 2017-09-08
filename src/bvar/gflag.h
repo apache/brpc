@@ -26,10 +26,10 @@ namespace bvar {
 // Expose important gflags as bvar so that they're monitored.
 class GFlag : public Variable {
 public:
-    GFlag(const base::StringPiece& gflag_name);
+    GFlag(const butil::StringPiece& gflag_name);
     
-    GFlag(const base::StringPiece& prefix,
-          const base::StringPiece& gflag_name);
+    GFlag(const butil::StringPiece& prefix,
+          const butil::StringPiece& gflag_name);
     
     // Calling hide() in dtor manually is a MUST required by Variable.
     ~GFlag() { hide(); }

@@ -109,10 +109,10 @@ std::ostream& operator<<(std::ostream& os, const Vector<T, N>& vec) {
 }
 
 template <typename T>
-struct is_vector : public base::false_type {};
+struct is_vector : public butil::false_type {};
 
 template <typename T, size_t N>
-struct is_vector<Vector<T,N> > : public base::true_type {};
+struct is_vector<Vector<T,N> > : public butil::true_type {};
 
 }  // namespace bvar
 

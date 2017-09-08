@@ -18,8 +18,8 @@
 #include <pthread.h>
 #include <gflags/gflags.h>
 #include "bthread/butex.h"
-#include "base/scoped_lock.h"
-#include "base/logging.h"
+#include "butil/scoped_lock.h"
+#include "butil/logging.h"
 #include "brpc/log.h"
 #include "brpc/socket_map.h"
 #include "brpc/details/naming_service_thread.h"
@@ -33,7 +33,7 @@ struct NSKey {
 };
 struct NSKeyHasher {
     size_t operator()(const NSKey& nskey) const {
-        return base::DefaultHasher<std::string>()(nskey.service_name)
+        return butil::DefaultHasher<std::string>()(nskey.service_name)
             * 101 + (uintptr_t)nskey.ns;
     }
 };
@@ -41,7 +41,7 @@ inline bool operator==(const NSKey& k1, const NSKey& k2) {
     return (k1.ns == k2.ns && k1.service_name == k2.service_name);
 }
 
-typedef base::FlatMap<NSKey, NamingServiceThread*, NSKeyHasher> NamingServiceMap;
+typedef butil::FlatMap<NSKey, NamingServiceThread*, NSKeyHasher> NamingServiceMap;
 // Construct on demand to make the code work before main()
 static NamingServiceMap* g_nsthread_map = NULL;
 static pthread_mutex_t g_nsthread_map_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -168,7 +168,7 @@ void NamingServiceThread::Actions::ResetServers(
     }
 
     if (!_removed.empty() || !_added.empty()) {
-        LOG(INFO) << base::class_name_str(*_owner->_ns) << "(\"" 
+        LOG(INFO) << butil::class_name_str(*_owner->_ns) << "(\"" 
                   << _owner->_service_name << "\"):" << noflush;
         if (!_added.empty()) {
             LOG(INFO) << " added "<< _added.size() << noflush;
@@ -185,7 +185,7 @@ void NamingServiceThread::Actions::ResetServers(
 void NamingServiceThread::Actions::EndWait(int error_code) {
     if (bthread_id_trylock(_wait_id, NULL) == 0) {
         _wait_error = error_code;
-        _has_wait_error.store(true, base::memory_order_release);
+        _has_wait_error.store(true, butil::memory_order_release);
         bthread_id_unlock_and_destroy(_wait_id);
     }
 }
@@ -193,7 +193,7 @@ void NamingServiceThread::Actions::EndWait(int error_code) {
 int NamingServiceThread::Actions::WaitForFirstBatchOfServers() {
     // Wait can happen before signal in which case it returns non-zero,
     // so we ignore return value here and use `_wait_error' instead
-    if (!_has_wait_error.load(base::memory_order_acquire)) {
+    if (!_has_wait_error.load(butil::memory_order_acquire)) {
         bthread_id_join(_wait_id);
     }
     return _wait_error;
@@ -386,7 +386,7 @@ static const char* ParseNamingServiceUrl(const char* url, char* protocol) {
 }
 
 int GetNamingServiceThread(
-    base::intrusive_ptr<NamingServiceThread>* nsthread_out,
+    butil::intrusive_ptr<NamingServiceThread>* nsthread_out,
     const char* url,
     const GetNamingServiceThreadOptions* options) {
     char protocol[MAX_PROTOCOL_LEN + 1];
@@ -404,7 +404,7 @@ int GetNamingServiceThread(
     key.ns = ns;
     key.service_name = service_name;
     bool new_thread = false;
-    base::intrusive_ptr<NamingServiceThread> nsthread;
+    butil::intrusive_ptr<NamingServiceThread> nsthread;
     {
         std::unique_lock<pthread_mutex_t> mu(g_nsthread_map_mutex);
         if (g_nsthread_map == NULL) {

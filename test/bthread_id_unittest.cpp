@@ -4,8 +4,8 @@
 
 #include <iostream>
 #include <gtest/gtest.h>
-#include "base/time.h"
-#include "base/macros.h"
+#include "butil/time.h"
+#include "butil/macros.h"
 #include "bthread/bthread.h"
 #include "bthread/task_group.h"
 #include "bthread/butex.h"
@@ -201,7 +201,7 @@ TEST(BthreadIdTest, many_error) {
 
 static void* locker(void* arg) {
     bthread_id_t id = { (uintptr_t)arg };
-    base::Timer tm;
+    butil::Timer tm;
     tm.start();
     EXPECT_EQ(0, bthread_id_lock(id, NULL));
     bthread_usleep(2000);
@@ -404,7 +404,7 @@ struct FailToLockIdArgs {
 
 static void* fail_to_lock_id(void* args_in) {
     FailToLockIdArgs* args = (FailToLockIdArgs*)args_in;
-    base::Timer tm;
+    butil::Timer tm;
     EXPECT_EQ(args->expected_return, bthread_id_lock(args->id, NULL));
     any_thread_quit = true;
     return NULL;

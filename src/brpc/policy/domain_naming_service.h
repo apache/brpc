@@ -18,7 +18,7 @@
 #define  BRPC_POLICY_DOMAIN_NAMING_SERVICE_H
 
 #include "brpc/periodic_naming_service.h"
-#include "base/unique_ptr.h"
+#include "butil/unique_ptr.h"
 
 
 namespace brpc {

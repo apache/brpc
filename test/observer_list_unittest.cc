@@ -2,16 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/observer_list.h"
+#include "butil/observer_list.h"
 
 #include <vector>
 
-#include "base/compiler_specific.h"
-#include "base/memory/weak_ptr.h"
-#include "base/threading/platform_thread.h"
+#include "butil/compiler_specific.h"
+#include "butil/memory/weak_ptr.h"
+#include "butil/threading/platform_thread.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 namespace {
 
 class Foo {
@@ -186,4 +186,4 @@ TEST(ObserverListTest, IteratorOutlivesList) {
 }
 
 }  // namespace
-}  // namespace base
+}  // namespace butil

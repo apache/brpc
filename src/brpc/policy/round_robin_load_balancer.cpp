@@ -14,8 +14,8 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#include "base/macros.h"
-#include "base/fast_rand.h"
+#include "butil/macros.h"
+#include "butil/fast_rand.h"
 #include "brpc/socket.h"
 #include "brpc/policy/round_robin_load_balancer.h"
 
@@ -28,7 +28,7 @@ const uint32_t prime_offset[] = {
 };
 
 inline uint32_t GenRandomStride() {
-    return prime_offset[base::fast_rand_less_than(ARRAY_SIZE(prime_offset))];
+    return prime_offset[butil::fast_rand_less_than(ARRAY_SIZE(prime_offset))];
 }
 
 bool RoundRobinLoadBalancer::Add(Servers& bg, const ServerId& id) {
@@ -102,7 +102,7 @@ size_t RoundRobinLoadBalancer::RemoveServersInBatch(
 }
 
 int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
-    base::DoublyBufferedData<Servers, TLS>::ScopedPtr s;
+    butil::DoublyBufferedData<Servers, TLS>::ScopedPtr s;
     if (_db_servers.Read(&s) != 0) {
         return ENOMEM;
     }
@@ -146,7 +146,7 @@ void RoundRobinLoadBalancer::Describe(
         return;
     }
     os << "RoundRobin{";
-    base::DoublyBufferedData<Servers, TLS>::ScopedPtr s;
+    butil::DoublyBufferedData<Servers, TLS>::ScopedPtr s;
     if (_db_servers.Read(&s) != 0) {
         os << "fail to read _db_servers";
     } else {

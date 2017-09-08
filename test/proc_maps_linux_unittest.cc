@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/debug/proc_maps_linux.h"
-#include "base/files/file_path.h"
-#include "base/strings/stringprintf.h"
-#include "base/third_party/dynamic_annotations/dynamic_annotations.h"
+#include "butil/debug/proc_maps_linux.h"
+#include "butil/files/file_path.h"
+#include "butil/strings/stringprintf.h"
+#include "butil/third_party/dynamic_annotations/dynamic_annotations.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 namespace debug {
 
 TEST(ProcMapsTest, Empty) {
@@ -168,7 +168,7 @@ TEST(ProcMapsTest, Permissions) {
 
   for (size_t i = 0; i < ARRAYSIZE_UNSAFE(kTestCases); ++i) {
     SCOPED_TRACE(
-        base::StringPrintf("kTestCases[%zu] = %s", i, kTestCases[i].input));
+        butil::StringPrintf("kTestCases[%zu] = %s", i, kTestCases[i].input));
 
     std::vector<MappedMemoryRegion> regions;
     EXPECT_TRUE(ParseProcMaps(kTestCases[i].input, &regions));
@@ -255,7 +255,7 @@ TEST(ProcMapsTest, MissingFields) {
   };
 
   for (size_t i = 0; i < arraysize(kTestCases); ++i) {
-    SCOPED_TRACE(base::StringPrintf("kTestCases[%zu] = %s", i, kTestCases[i]));
+    SCOPED_TRACE(butil::StringPrintf("kTestCases[%zu] = %s", i, kTestCases[i]));
     std::vector<MappedMemoryRegion> regions;
     EXPECT_FALSE(ParseProcMaps(kTestCases[i], &regions));
   }
@@ -272,7 +272,7 @@ TEST(ProcMapsTest, InvalidInput) {
   };
 
   for (size_t i = 0; i < arraysize(kTestCases); ++i) {
-    SCOPED_TRACE(base::StringPrintf("kTestCases[%zu] = %s", i, kTestCases[i]));
+    SCOPED_TRACE(butil::StringPrintf("kTestCases[%zu] = %s", i, kTestCases[i]));
     std::vector<MappedMemoryRegion> regions;
     EXPECT_FALSE(ParseProcMaps(kTestCases[i], &regions));
   }
@@ -311,4 +311,4 @@ TEST(ProcMapsTest, ParseProcMapsWeirdCorrectInput) {
 }
 
 }  // namespace debug
-}  // namespace base
+}  // namespace butil

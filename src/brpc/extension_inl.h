@@ -24,7 +24,7 @@ template <typename T>
 Extension<T>* Extension<T>::instance() {
     // NOTE: We don't delete extensions because in principle they can be
     // accessed during exiting, e.g. create a channel to send rpc at exit.
-    return base::get_leaky_singleton<Extension<T> >();
+    return butil::get_leaky_singleton<Extension<T> >();
 }
 
 template <typename T>
@@ -75,7 +75,7 @@ T* Extension<T>::Find(const char* name) {
 template <typename T>
 void Extension<T>::List(std::ostream& os, char separator) {
     BAIDU_SCOPED_LOCK(_map_mutex);
-    for (typename base::CaseIgnoredFlatMap<T*>::iterator
+    for (typename butil::CaseIgnoredFlatMap<T*>::iterator
              it = _instance_map.begin(); it != _instance_map.end(); ++it) {
         // private extensions which is not intended to be seen by users starts
         // with underscore.

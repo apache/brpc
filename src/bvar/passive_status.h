@@ -45,12 +45,12 @@ public:
     struct PlaceHolderOp {
         void operator()(Tp&, const Tp&) const {}
     };
-    static const bool ADDITIVE = (base::is_integral<Tp>::value ||
-                                  base::is_floating_point<Tp>::value ||
+    static const bool ADDITIVE = (butil::is_integral<Tp>::value ||
+                                  butil::is_floating_point<Tp>::value ||
                                   is_vector<Tp>::value);
     class SeriesSampler : public detail::Sampler {
     public:
-        typedef typename base::conditional<
+        typedef typename butil::conditional<
         ADDITIVE, detail::AddTo<Tp>, PlaceHolderOp>::type Op;
         explicit SeriesSampler(PassiveStatus* owner)
             : _owner(owner), _vector_names(NULL), _series(Op()) {}
@@ -74,7 +74,7 @@ public:
 public:
     // NOTE: You must be very careful about lifetime of `arg' which should be
     // valid during lifetime of PassiveStatus.
-    PassiveStatus(const base::StringPiece& name,
+    PassiveStatus(const butil::StringPiece& name,
                   Tp (*getfn)(void*), void* arg)
         : _getfn(getfn)
         , _arg(arg)
@@ -83,8 +83,8 @@ public:
         expose(name);
     }
     
-    PassiveStatus(const base::StringPiece& prefix,
-                  const base::StringPiece& name,
+    PassiveStatus(const butil::StringPiece& prefix,
+                  const butil::StringPiece& name,
                   Tp (*getfn)(void*), void* arg)
         : _getfn(getfn)
         , _arg(arg)
@@ -166,8 +166,8 @@ public:
 
 protected:
     // @Variable
-    int expose_impl(const base::StringPiece& prefix,
-                    const base::StringPiece& name,
+    int expose_impl(const butil::StringPiece& prefix,
+                    const butil::StringPiece& name,
                     DisplayFilter display_filter) {
         const int rc = Variable::expose_impl(prefix, name, display_filter);
         if (ADDITIVE &&
@@ -198,14 +198,14 @@ class PassiveStatus<std::string> : public Variable {
 public:
     // NOTE: You must be very careful about lifetime of `arg' which should be
     // valid during lifetime of PassiveStatus.
-    PassiveStatus(const base::StringPiece& name,
+    PassiveStatus(const butil::StringPiece& name,
                   void (*print)(std::ostream&, void*), void* arg)
         : _print(print), _arg(arg) {
         expose(name);
     }
 
-    PassiveStatus(const base::StringPiece& prefix,
-                  const base::StringPiece& name,
+    PassiveStatus(const butil::StringPiece& prefix,
+                  const butil::StringPiece& name,
                   void (*print)(std::ostream&, void*), void* arg)
         : _print(print), _arg(arg) {
         expose_as(prefix, name);
@@ -244,12 +244,12 @@ private:
 template <typename Tp>
 class BasicPassiveStatus : public PassiveStatus<Tp> {
 public:
-    BasicPassiveStatus(const base::StringPiece& name,
+    BasicPassiveStatus(const butil::StringPiece& name,
                        Tp (*getfn)(void*), void* arg)
         : PassiveStatus<Tp>(name, getfn, arg) {}
     
-    BasicPassiveStatus(const base::StringPiece& prefix,
-                       const base::StringPiece& name,
+    BasicPassiveStatus(const butil::StringPiece& prefix,
+                       const butil::StringPiece& name,
                        Tp (*getfn)(void*), void* arg)
         : PassiveStatus<Tp>(prefix, name, getfn, arg) {}
 
@@ -260,12 +260,12 @@ public:
 template <>
 class BasicPassiveStatus<std::string> : public PassiveStatus<std::string> {
 public:
-    BasicPassiveStatus(const base::StringPiece& name,
+    BasicPassiveStatus(const butil::StringPiece& name,
                        void (*print)(std::ostream&, void*), void* arg)
         : PassiveStatus<std::string>(name, print, arg) {}
     
-    BasicPassiveStatus(const base::StringPiece& prefix,
-                       const base::StringPiece& name,
+    BasicPassiveStatus(const butil::StringPiece& prefix,
+                       const butil::StringPiece& name,
                        void (*print)(std::ostream&, void*), void* arg)
         : PassiveStatus<std::string>(prefix, name, print, arg) {}
 

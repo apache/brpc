@@ -6,10 +6,10 @@
 
 #include <algorithm>
 
-#include "base/command_line.h"
-#include "base/debug/debugger.h"
-#include "base/logging.h"
-#include "base/strings/string_number_conversions.h"
+#include "butil/command_line.h"
+#include "butil/debug/debugger.h"
+#include "butil/logging.h"
+#include "butil/strings/string_number_conversions.h"
 #include "test/test_switches.h"
 
 namespace {
@@ -39,7 +39,7 @@ void InitializeTimeout(const char* switch_name, int min_value, int* value) {
     std::string string_value(
         CommandLine::ForCurrentProcess()->GetSwitchValueASCII(switch_name));
     int timeout;
-    base::StringToInt(string_value, &timeout);
+    butil::StringToInt(string_value, &timeout);
     *value = std::max(*value, timeout);
   }
   *value *= kTimeoutMultiplier;
@@ -81,7 +81,7 @@ void TestTimeouts::Initialize() {
   }
   initialized_ = true;
 
-  if (base::debug::BeingDebugged()) {
+  if (butil::debug::BeingDebugged()) {
     fprintf(stdout,
         "Detected presence of a debugger, running without test timeouts.\n");
   }
@@ -90,7 +90,7 @@ void TestTimeouts::Initialize() {
   // per the CHECKS below.
   InitializeTimeout(switches::kTestTinyTimeout, &tiny_timeout_ms_);
   InitializeTimeout(switches::kUiTestActionTimeout,
-                    base::debug::BeingDebugged() ? kAlmostInfiniteTimeoutMs
+                    butil::debug::BeingDebugged() ? kAlmostInfiniteTimeoutMs
                                                  : tiny_timeout_ms_,
                     &action_timeout_ms_);
   InitializeTimeout(switches::kUiTestActionMaxTimeout, action_timeout_ms_,

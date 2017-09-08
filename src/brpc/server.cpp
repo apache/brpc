@@ -25,12 +25,12 @@
 #include <google/protobuf/descriptor.h>             // ServiceDescriptor
 #include "idl_options.pb.h"                         // option(idl_support)
 #include "bthread/unstable.h"                       // bthread_keytable_pool_init
-#include "base/macros.h"                            // ARRAY_SIZE
-#include "base/fd_guard.h"                          // fd_guard
-#include "base/logging.h"                           // CHECK
-#include "base/time.h"
-#include "base/class_name.h"
-#include "base/string_printf.h"
+#include "butil/macros.h"                            // ARRAY_SIZE
+#include "butil/fd_guard.h"                          // fd_guard
+#include "butil/logging.h"                           // CHECK
+#include "butil/time.h"
+#include "butil/class_name.h"
+#include "butil/string_printf.h"
 #include "brpc/log.h"
 #include "brpc/compress.h"
 #include "brpc/policy/nova_pbrpc_protocol.h"
@@ -84,7 +84,7 @@ void* bthread_get_assigned_data() __THROW;
 
 namespace brpc {
 
-BAIDU_CASSERT(sizeof(int32_t) == sizeof(base::subtle::Atomic32),
+BAIDU_CASSERT(sizeof(int32_t) == sizeof(butil::subtle::Atomic32),
               Atomic32_must_be_int32);
 
 const char* status_str(Server::Status s) {
@@ -97,7 +97,7 @@ const char* status_str(Server::Status s) {
     return "UNKNOWN_STATUS";
 }
 
-base::static_atomic<int> g_running_server_count = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<int> g_running_server_count = BASE_STATIC_ATOMIC_INIT(0);
 
 DEFINE_bool(reuse_addr, true, "Bind to ports in TIME_WAIT state");
 BRPC_VALIDATE_GFLAG(reuse_addr, PassValidate);
@@ -160,7 +160,7 @@ Server::MethodProperty::MethodProperty()
 }
 
 static timeval GetUptime(void* arg/*start_time*/) {
-    return base::microseconds_to_timeval(base::cpuwide_time_us() - (intptr_t)arg);
+    return butil::microseconds_to_timeval(butil::cpuwide_time_us() - (intptr_t)arg);
 }
 
 static void PrintStartTime(std::ostream& os, void* arg) {
@@ -275,11 +275,11 @@ static bvar::Vector<unsigned, 2> GetSessionLocalDataCount(void* arg) {
 }
 
 std::string Server::ServerPrefix() const {
-    return base::string_printf("rpc_server_%d", listen_address().port);
+    return butil::string_printf("rpc_server_%d", listen_address().port);
 }
 
 void* Server::UpdateDerivedVars(void* arg) {
-    const int64_t start_us = base::cpuwide_time_us();
+    const int64_t start_us = butil::cpuwide_time_us();
     
     Server* server = static_cast<Server*>(arg);
     const std::string prefix = server->ServerPrefix();
@@ -325,10 +325,10 @@ void* Server::UpdateDerivedVars(void* arg) {
         server->options().nshead_service->Expose(prefix);
     }
 
-    int64_t last_time = base::gettimeofday_us();
+    int64_t last_time = butil::gettimeofday_us();
     int consecutive_nosleep = 0;
     while (1) {
-        const int64_t sleep_us = 1000000L + last_time - base::gettimeofday_us();
+        const int64_t sleep_us = 1000000L + last_time - butil::gettimeofday_us();
         if (sleep_us < 1000L) {
             if (++consecutive_nosleep >= 2) {
                 consecutive_nosleep = 0;
@@ -341,7 +341,7 @@ void* Server::UpdateDerivedVars(void* arg) {
                 return NULL;
             }
         }
-        last_time = base::gettimeofday_us();
+        last_time = butil::gettimeofday_us();
         
         // Update stats of accepted sockets.
         if (server->_am) {
@@ -350,7 +350,7 @@ void* Server::UpdateDerivedVars(void* arg) {
         if (server->_internal_am) {
             server->_internal_am->ListConnections(&internal_conns);
         }
-        const int64_t now_ms = base::cpuwide_time_ms();
+        const int64_t now_ms = butil::cpuwide_time_ms();
         for (size_t i = 0; i < conns.size(); ++i) {
             SocketUniquePtr ptr;
             if (Socket::Address(conns[i], &ptr) == 0) {
@@ -542,7 +542,7 @@ bool is_http_protocol(const char* name) {
 
 Acceptor* Server::BuildAcceptor() {
     std::set<std::string> whitelist;
-    for (base::StringSplitter sp(_options.enabled_protocols.c_str(), ' ');
+    for (butil::StringSplitter sp(_options.enabled_protocols.c_str(), ' ');
          sp; ++sp) {
         std::string protocol(sp.field(), sp.length());
         whitelist.insert(protocol);
@@ -659,7 +659,7 @@ struct RevertServerStatus {
     }
 };
 
-int Server::StartInternal(const base::ip_t& ip,
+int Server::StartInternal(const butil::ip_t& ip,
                           const PortRange& port_range,
                           const ServerOptions *opt) {
     std::unique_ptr<Server, RevertServerStatus> revert_server(this);
@@ -876,7 +876,7 @@ int Server::StartInternal(const base::ip_t& ip,
     _listen_addr.ip = ip;
     for (int port = port_range.min_port; port <= port_range.max_port; ++port) {
         _listen_addr.port = port;
-        base::fd_guard sockfd(tcp_listen(_listen_addr, FLAGS_reuse_addr));
+        butil::fd_guard sockfd(tcp_listen(_listen_addr, FLAGS_reuse_addr));
         if (sockfd < 0) {
             if (port != port_range.max_port) { // not the last port, try next
                 continue;
@@ -902,7 +902,7 @@ int Server::StartInternal(const base::ip_t& ip,
         _status = RUNNING;
         time(&_last_start_time);
         GenerateVersionIfNeeded();
-        g_running_server_count.fetch_add(1, base::memory_order_relaxed);
+        g_running_server_count.fetch_add(1, butil::memory_order_relaxed);
 
         // Pass ownership of `sockfd' to `_am'
         if (_am->StartAccept(sockfd, _options.idle_timeout_sec,
@@ -919,9 +919,9 @@ int Server::StartInternal(const base::ip_t& ip,
                        << " is same with port=" << _listen_addr.port << " to Start()";
             return -1;
         }
-        base::EndPoint internal_point = _listen_addr;
+        butil::EndPoint internal_point = _listen_addr;
         internal_point.port = _options.internal_port;
-        base::fd_guard sockfd(tcp_listen(internal_point, FLAGS_reuse_addr));
+        butil::fd_guard sockfd(tcp_listen(internal_point, FLAGS_reuse_addr));
         if (sockfd < 0) {
             LOG(ERROR) << "Fail to listen " << internal_point << " (internal)";
             return -1;
@@ -963,25 +963,25 @@ int Server::StartInternal(const base::ip_t& ip,
     LOG(INFO) << '.';
 
     if (_options.has_builtin_services) {
-        LOG(INFO) << "Check out http://" << base::my_hostname() << ':'
+        LOG(INFO) << "Check out http://" << butil::my_hostname() << ':'
                   << http_port << " in web browser.";
     } else {
         LOG(WARNING) << "Builtin services are disabled according to "
             "ServerOptions.has_builtin_services";
     }
     // For trackme reporting
-    SetTrackMeAddress(base::EndPoint(base::my_ip(), http_port));
+    SetTrackMeAddress(butil::EndPoint(butil::my_ip(), http_port));
     revert_server.release();
     return 0;
 }
 
-int Server::Start(const base::EndPoint& endpoint, const ServerOptions* opt) {
+int Server::Start(const butil::EndPoint& endpoint, const ServerOptions* opt) {
     return StartInternal(
         endpoint.ip, PortRange(endpoint.port, endpoint.port), opt);
 }
 
 int Server::Start(const char* ip_port_str, const ServerOptions* opt) {
-    base::EndPoint point;
+    butil::EndPoint point;
     if (str2endpoint(ip_port_str, &point) != 0 &&
         hostname2endpoint(ip_port_str, &point) != 0) {
         LOG(ERROR) << "Invalid address=`" << ip_port_str << '\'';
@@ -995,14 +995,14 @@ int Server::Start(int port, const ServerOptions* opt) {
         LOG(ERROR) << "Invalid port=" << port;
         return -1;
     }
-    return Start(base::EndPoint(base::IP_ANY, port), opt);
+    return Start(butil::EndPoint(butil::IP_ANY, port), opt);
 }
 
 int Server::Start(const char* ip_str, PortRange port_range,
                   const ServerOptions *opt) {
-    base::ip_t ip;
-    if (base::str2ip(ip_str, &ip) != 0 &&
-        base::hostname2ip(ip_str, &ip) != 0) {
+    butil::ip_t ip;
+    if (butil::str2ip(ip_str, &ip) != 0 &&
+        butil::hostname2ip(ip_str, &ip) != 0) {
         LOG(ERROR) << "Invalid address=`" << ip_str << '\'';
         return -1;
     }
@@ -1066,7 +1066,7 @@ int Server::Join() {
         CHECK_EQ(0, bthread_key_delete(_tl_options.tls_key));
         _tl_options.tls_key = INVALID_BTHREAD_KEY;
     }
-    g_running_server_count.fetch_sub(1, base::memory_order_relaxed);
+    g_running_server_count.fetch_sub(1, butil::memory_order_relaxed);
     _status = READY;
     return 0;
 }
@@ -1155,7 +1155,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
         }
     }
 
-    base::StringPiece restful_mappings = svc_opt.restful_mappings;
+    butil::StringPiece restful_mappings = svc_opt.restful_mappings;
     restful_mappings.trim_spaces();
     if (!restful_mappings.empty()) {
         // Parse the mappings.
@@ -1300,7 +1300,7 @@ int Server::AddService(google::protobuf::Service* service,
 
 int Server::AddService(google::protobuf::Service* service,
                        ServiceOwnership ownership,
-                       const base::StringPiece& restful_mappings) {
+                       const butil::StringPiece& restful_mappings) {
     ServiceOptions options;
     options.ownership = ownership;
     // TODO: This is weird
@@ -1336,17 +1336,17 @@ void Server::RemoveMethodsOf(google::protobuf::Service* service) {
         }
 
         if (mp->http_url) {
-            base::StringSplitter at_sp(mp->http_url->c_str(), '@');
+            butil::StringSplitter at_sp(mp->http_url->c_str(), '@');
             for (; at_sp; ++at_sp) {
-                base::StringPiece path(at_sp.field(), at_sp.length());
+                butil::StringPiece path(at_sp.field(), at_sp.length());
                 path.trim_spaces();
-                base::StringSplitter slash_sp(
+                butil::StringSplitter slash_sp(
                     path.data(), path.data() + path.size(), '/');
                 if (slash_sp == NULL) {
                     LOG(ERROR) << "Invalid http_url=" << *mp->http_url;
                     break;
                 }
-                base::StringPiece v_svc_name(slash_sp.field(), slash_sp.length());
+                butil::StringPiece v_svc_name(slash_sp.field(), slash_sp.length());
                 const ServiceProperty* vsp = FindServicePropertyByName(v_svc_name);
                 if (vsp == NULL) {
                     if (_global_restful_map) {
@@ -1444,13 +1444,13 @@ void Server::ClearServices() {
 }
 
 google::protobuf::Service* Server::FindServiceByFullName(
-    const base::StringPiece& full_name) const {
+    const butil::StringPiece& full_name) const {
     ServiceProperty* ss = _fullname_service_map.seek(full_name);
     return (ss ? ss->service : NULL);
 }
 
 google::protobuf::Service* Server::FindServiceByName(
-    const base::StringPiece& name) const {
+    const butil::StringPiece& name) const {
     ServiceProperty* ss = _service_map.seek(name);
     return (ss ? ss->service : NULL);
 }
@@ -1493,20 +1493,20 @@ void Server::GenerateVersionIfNeeded() {
             if (!_version.empty()) {
                 _version.push_back('+');
             }
-            _version.append(base::class_name_str(*it->second.service));
+            _version.append(butil::class_name_str(*it->second.service));
         }
     }
     if (_options.nshead_service) {
         if (!_version.empty()) {
             _version.push_back('+');
         }
-        _version.append(base::class_name_str(*_options.nshead_service));
+        _version.append(butil::class_name_str(*_options.nshead_service));
     }
     if (_options.rtmp_service) {
         if (!_version.empty()) {
             _version.push_back('+');
         }
-        _version.append(base::class_name_str(*_options.rtmp_service));
+        _version.append(butil::class_name_str(*_options.rtmp_service));
     }
 }
 
@@ -1619,7 +1619,7 @@ int StartDummyServerAt(int port, ProfilerLinker) {
         BAIDU_SCOPED_LOCK(g_dummy_server_mutex);
         if (g_dummy_server == NULL) {
             Server* dummy_server = new Server;
-            dummy_server->set_version(base::string_printf(
+            dummy_server->set_version(butil::string_printf(
                         "DummyServerOf(%s)", GetProgramName()));
             ServerOptions options;
             options.num_threads = 0;
@@ -1644,13 +1644,13 @@ bool IsDummyServerRunning() {
 }
 
 const Server::MethodProperty*
-Server::FindMethodPropertyByFullName(const base::StringPiece&fullname) const  {
+Server::FindMethodPropertyByFullName(const butil::StringPiece&fullname) const  {
     return _method_map.seek(fullname);
 }
 
 const Server::MethodProperty*
-Server::FindMethodPropertyByFullName(const base::StringPiece& service_name/*full*/,
-                                     const base::StringPiece& method_name) const {
+Server::FindMethodPropertyByFullName(const butil::StringPiece& service_name/*full*/,
+                                     const butil::StringPiece& method_name) const {
     const size_t fullname_len = service_name.size() + 1 + method_name.size();
     if (fullname_len <= 256) {
         // Avoid allocation in most cases.
@@ -1658,7 +1658,7 @@ Server::FindMethodPropertyByFullName(const base::StringPiece& service_name/*full
         memcpy(buf, service_name.data(), service_name.size());
         buf[service_name.size()] = '.';
         memcpy(buf + service_name.size() + 1, method_name.data(), method_name.size());
-        return FindMethodPropertyByFullName(base::StringPiece(buf, fullname_len));
+        return FindMethodPropertyByFullName(butil::StringPiece(buf, fullname_len));
     } else {
         std::string full_method_name;
         full_method_name.reserve(fullname_len);
@@ -1670,7 +1670,7 @@ Server::FindMethodPropertyByFullName(const base::StringPiece& service_name/*full
 }
 
 const Server::MethodProperty*
-Server::FindMethodPropertyByNameAndIndex(const base::StringPiece& service_name,
+Server::FindMethodPropertyByNameAndIndex(const butil::StringPiece& service_name,
                                          int method_index) const {
     const Server::ServiceProperty* sp = FindServicePropertyByName(service_name);
     if (NULL == sp) {
@@ -1685,12 +1685,12 @@ Server::FindMethodPropertyByNameAndIndex(const base::StringPiece& service_name,
 }
 
 const Server::ServiceProperty*
-Server::FindServicePropertyByFullName(const base::StringPiece& fullname) const {
+Server::FindServicePropertyByFullName(const butil::StringPiece& fullname) const {
     return _fullname_service_map.seek(fullname);
 }
 
 const Server::ServiceProperty*
-Server::FindServicePropertyByName(const base::StringPiece& name) const {
+Server::FindServicePropertyByName(const butil::StringPiece& name) const {
     return _service_map.seek(name);
 }
 
@@ -1932,7 +1932,7 @@ int Server::MaxConcurrencyOf(const MethodProperty* mp) const {
     return mp->status->max_concurrency();
 }
 
-int& Server::MaxConcurrencyOf(const base::StringPiece& full_method_name) {
+int& Server::MaxConcurrencyOf(const butil::StringPiece& full_method_name) {
     MethodProperty* mp = _method_map.seek(full_method_name);
     if (mp == NULL) {
         LOG(ERROR) << "Fail to find method=" << full_method_name;
@@ -1942,12 +1942,12 @@ int& Server::MaxConcurrencyOf(const base::StringPiece& full_method_name) {
     return MaxConcurrencyOf(mp);
 }
 
-int Server::MaxConcurrencyOf(const base::StringPiece& full_method_name) const {
+int Server::MaxConcurrencyOf(const butil::StringPiece& full_method_name) const {
     return MaxConcurrencyOf(_method_map.seek(full_method_name));
 }
 
-int& Server::MaxConcurrencyOf(const base::StringPiece& full_service_name,
-                              const base::StringPiece& method_name) {
+int& Server::MaxConcurrencyOf(const butil::StringPiece& full_service_name,
+                              const butil::StringPiece& method_name) {
     MethodProperty* mp = const_cast<MethodProperty*>(
         FindMethodPropertyByFullName(full_service_name, method_name));
     if (mp == NULL) {
@@ -1959,19 +1959,19 @@ int& Server::MaxConcurrencyOf(const base::StringPiece& full_service_name,
     return MaxConcurrencyOf(mp);
 }
 
-int Server::MaxConcurrencyOf(const base::StringPiece& full_service_name,
-                             const base::StringPiece& method_name) const {
+int Server::MaxConcurrencyOf(const butil::StringPiece& full_service_name,
+                             const butil::StringPiece& method_name) const {
     return MaxConcurrencyOf(FindMethodPropertyByFullName(
                                 full_service_name, method_name));
 }
 
 int& Server::MaxConcurrencyOf(google::protobuf::Service* service,
-                              const base::StringPiece& method_name) {
+                              const butil::StringPiece& method_name) {
     return MaxConcurrencyOf(service->GetDescriptor()->full_name(), method_name);
 }
 
 int Server::MaxConcurrencyOf(google::protobuf::Service* service,
-                             const base::StringPiece& method_name) const {
+                             const butil::StringPiece& method_name) const {
     return MaxConcurrencyOf(service->GetDescriptor()->full_name(), method_name);
 }
 
@@ -1985,7 +1985,7 @@ int Server::SSLSwitchCTXByHostname(struct ssl_st* ssl,
         return strict_sni ? SSL_TLSEXT_ERR_ALERT_FATAL : SSL_TLSEXT_ERR_NOACK;
     }
 
-    base::DoublyBufferedData<CertMaps>::ScopedPtr s;
+    butil::DoublyBufferedData<CertMaps>::ScopedPtr s;
     if (server->_reload_cert_maps.Read(&s) != 0) {
         return SSL_TLSEXT_ERR_ALERT_FATAL;
     }

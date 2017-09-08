@@ -4,12 +4,12 @@
 
 #include <string>
 
-#include "base/strings/string16.h"
-#include "base/strings/string_piece.h"
-#include "base/strings/utf_string_conversions.h"
+#include "butil/strings/string16.h"
+#include "butil/strings/string_piece.h"
+#include "butil/strings/utf_string_conversions.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 template <typename T>
 class CommonStringPieceTest : public ::testing::Test {
@@ -686,4 +686,4 @@ TYPED_TEST(CommonStringPieceTest, CheckConstructors) {
   ASSERT_TRUE(empty == BasicStringPiece<TypeParam>(empty.begin(), empty.end()));
 }
 
-}  // namespace base
+}  // namespace butil

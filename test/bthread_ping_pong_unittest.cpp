@@ -7,13 +7,13 @@
 #include <signal.h>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/errno.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/errno.h"
 #include <bthread/sys_futex.h>
 #include <bthread/butex.h>
 #include "bthread/bthread.h"
-#include "base/atomicops.h"
+#include "butil/atomicops.h"
 
 namespace {
 DEFINE_int32(thread_num, 1, "#pairs of threads doing ping pong");
@@ -176,7 +176,7 @@ TEST(PingPongTest, ping_pong) {
     long last_counter = 0;
     long last_wakeup = 0;
     while (!stop) {
-        base::Timer tm;
+        butil::Timer tm;
         tm.start();
         sleep(1);
         tm.stop();

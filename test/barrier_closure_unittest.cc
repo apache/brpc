@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/barrier_closure.h"
+#include "butil/barrier_closure.h"
 
-#include "base/bind.h"
+#include "butil/bind.h"
 #include <gtest/gtest.h>
 
 namespace {
@@ -13,17 +13,17 @@ void Increment(int* count) { (*count)++; }
 
 TEST(BarrierClosureTest, RunImmediatelyForZeroClosures) {
   int count = 0;
-  base::Closure doneClosure(base::Bind(&Increment, base::Unretained(&count)));
+  butil::Closure doneClosure(butil::Bind(&Increment, butil::Unretained(&count)));
 
-  base::Closure barrierClosure = base::BarrierClosure(0, doneClosure);
+  butil::Closure barrierClosure = butil::BarrierClosure(0, doneClosure);
   EXPECT_EQ(1, count);
 }
 
 TEST(BarrierClosureTest, RunAfterNumClosures) {
   int count = 0;
-  base::Closure doneClosure(base::Bind(&Increment, base::Unretained(&count)));
+  butil::Closure doneClosure(butil::Bind(&Increment, butil::Unretained(&count)));
 
-  base::Closure barrierClosure = base::BarrierClosure(2, doneClosure);
+  butil::Closure barrierClosure = butil::BarrierClosure(2, doneClosure);
   EXPECT_EQ(0, count);
 
   barrierClosure.Run();

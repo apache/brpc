@@ -17,7 +17,7 @@
 #include <stdlib.h>                                   // strtol
 #include <string>                                     // std::string
 #include <set>                                        // std::set
-#include "base/string_splitter.h"                     // StringSplitter
+#include "butil/string_splitter.h"                     // StringSplitter
 #include "brpc/log.h"
 #include "brpc/policy/list_naming_service.h"
 
@@ -26,9 +26,9 @@ namespace brpc {
 namespace policy {
 
 // Defined in file_naming_service.cpp
-bool SplitIntoServerAndTag(const base::StringPiece& line,
-                           base::StringPiece* server_addr,
-                           base::StringPiece* tag);
+bool SplitIntoServerAndTag(const butil::StringPiece& line,
+                           butil::StringPiece* server_addr,
+                           butil::StringPiece* tag);
 
 int ListNamingService::GetServers(const char *service_name,
                                   std::vector<ServerNode>* servers) {
@@ -43,15 +43,15 @@ int ListNamingService::GetServers(const char *service_name,
         LOG(FATAL) << "Param[service_name] is NULL";
         return -1;
     }
-    for (base::StringSplitter sp(service_name, ','); sp != NULL; ++sp) {
+    for (butil::StringSplitter sp(service_name, ','); sp != NULL; ++sp) {
         line.assign(sp.field(), sp.length());
-        base::StringPiece addr;
-        base::StringPiece tag;
+        butil::StringPiece addr;
+        butil::StringPiece tag;
         if (!SplitIntoServerAndTag(line, &addr, &tag)) {
             continue;
         }
         const_cast<char*>(addr.data())[addr.size()] = '\0'; // safe
-        base::EndPoint point;
+        butil::EndPoint point;
         if (str2endpoint(addr.data(), &point) != 0 &&
             hostname2endpoint(addr.data(), &point) != 0) {
             LOG(ERROR) << "Invalid address=`" << addr << '\'';

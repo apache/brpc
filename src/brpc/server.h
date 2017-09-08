@@ -25,10 +25,10 @@
 #include "bthread/bthread.h"      // Server may need some bthread functions,
                                   // e.g. bthread_usleep
 #include <google/protobuf/service.h>                // google::protobuf::Service
-#include "base/macros.h"                            // DISALLOW_COPY_AND_ASSIGN
-#include "base/containers/doubly_buffered_data.h"   // DoublyBufferedData
+#include "butil/macros.h"                            // DISALLOW_COPY_AND_ASSIGN
+#include "butil/containers/doubly_buffered_data.h"   // DoublyBufferedData
 #include "bvar/bvar.h"
-#include "base/containers/case_ignored_flat_map.h"  // [CaseIgnored]FlatMap
+#include "butil/containers/case_ignored_flat_map.h"  // [CaseIgnored]FlatMap
 #include "brpc/controller.h"                   // brpc::Controller
 #include "brpc/describable.h"                  // User often needs this
 #include "brpc/data_factory.h"                 // DataFactory
@@ -368,7 +368,7 @@ public:
 
         const std::string& service_name() const;
     };
-    typedef base::FlatMap<std::string, ServiceProperty> ServiceMap;
+    typedef butil::FlatMap<std::string, ServiceProperty> ServiceMap;
 
     struct MethodProperty {
         bool is_builtin_service;
@@ -384,7 +384,7 @@ public:
 
         MethodProperty();
     };
-    typedef base::FlatMap<std::string, MethodProperty> MethodMap;
+    typedef butil::FlatMap<std::string, MethodProperty> MethodMap;
 
     struct ThreadLocalOptions {
         bthread_key_t tls_key;
@@ -410,9 +410,9 @@ public:
     // Start on IP_ANY:port.
     int Start(int port, const ServerOptions* opt);
     
-    // Start on ip:port enclosed in base::EndPoint which is defined in
-    // public/common/base/endpoint.h
-    int Start(const base::EndPoint& ip_port, const ServerOptions* opt);
+    // Start on ip:port enclosed in butil::EndPoint which is defined in
+    // public/common/butil/endpoint.h
+    int Start(const butil::EndPoint& ip_port, const ServerOptions* opt);
 
     // Start on `ip_str' + any useable port in `port_range'
     int Start(const char* ip_str, PortRange port_range,
@@ -448,7 +448,7 @@ public:
                    ServiceOwnership ownership);
     int AddService(google::protobuf::Service* service,
                    ServiceOwnership ownership,
-                   const base::StringPiece& restful_mappings);
+                   const butil::StringPiece& restful_mappings);
     int AddService(google::protobuf::Service* service,
                    const ServiceOptions& options);
 
@@ -481,14 +481,14 @@ public:
     // Notice that for performance concerns, this function does not lock service
     // list internally thus races with AddService()/RemoveService().
     google::protobuf::Service*
-    FindServiceByFullName(const base::StringPiece& full_name) const;
+    FindServiceByFullName(const butil::StringPiece& full_name) const;
 
     // Find a service by its ServiceDescriptor::name().
     // Returns the registered service pointer, NULL on not found.
     // Notice that for performance concerns, this function does not lock service
     // list internally thus races with AddService()/RemoveService().
     google::protobuf::Service*
-    FindServiceByName(const base::StringPiece& name) const;
+    FindServiceByName(const butil::StringPiece& name) const;
 
     // Put all services registered by user into `services'
     void ListServices(std::vector<google::protobuf::Service*>* services);
@@ -519,7 +519,7 @@ public:
     const std::string& version() const { return _version; }
 
     // Return the address this server is listening
-    base::EndPoint listen_address() const { return _listen_addr; }
+    butil::EndPoint listen_address() const { return _listen_addr; }
     
     // Last time that Start() was successfully called. 0 if Start() was
     // never called
@@ -545,18 +545,18 @@ public:
     //    server.MaxConcurrencyOf("example.EchoService.Echo") = 10;
     // or server.MaxConcurrencyOf("example.EchoService", "Echo") = 10;
     // or server.MaxConcurrencyOf(&service, "Echo") = 10;
-    int& MaxConcurrencyOf(const base::StringPiece& full_method_name);
-    int MaxConcurrencyOf(const base::StringPiece& full_method_name) const;
+    int& MaxConcurrencyOf(const butil::StringPiece& full_method_name);
+    int MaxConcurrencyOf(const butil::StringPiece& full_method_name) const;
     
-    int& MaxConcurrencyOf(const base::StringPiece& full_service_name,
-                          const base::StringPiece& method_name);
-    int MaxConcurrencyOf(const base::StringPiece& full_service_name,
-                         const base::StringPiece& method_name) const;
+    int& MaxConcurrencyOf(const butil::StringPiece& full_service_name,
+                          const butil::StringPiece& method_name);
+    int MaxConcurrencyOf(const butil::StringPiece& full_service_name,
+                         const butil::StringPiece& method_name) const;
 
     int& MaxConcurrencyOf(google::protobuf::Service* service,
-                          const base::StringPiece& method_name);
+                          const butil::StringPiece& method_name);
     int MaxConcurrencyOf(google::protobuf::Service* service,
-                         const base::StringPiece& method_name) const;
+                         const butil::StringPiece& method_name) const;
 
 private:
 friend class StatusService;
@@ -584,7 +584,7 @@ friend class Controller;
     // Create acceptor with handlers of protocols.
     Acceptor* BuildAcceptor();
 
-    int StartInternal(const base::ip_t& ip,
+    int StartInternal(const butil::ip_t& ip,
                       const PortRange& port_range,
                       const ServerOptions *opt);
 
@@ -604,26 +604,26 @@ friend class Controller;
     void PutPidFileIfNeeded();
 
     const MethodProperty*
-    FindMethodPropertyByFullName(const base::StringPiece& fullname) const;
+    FindMethodPropertyByFullName(const butil::StringPiece& fullname) const;
 
     const MethodProperty*
-    FindMethodPropertyByFullName(const base::StringPiece& full_service_name,
-                                 const base::StringPiece& method_name) const;
+    FindMethodPropertyByFullName(const butil::StringPiece& full_service_name,
+                                 const butil::StringPiece& method_name) const;
 
     const MethodProperty*
-    FindMethodPropertyByNameAndIndex(const base::StringPiece& service_name,
+    FindMethodPropertyByNameAndIndex(const butil::StringPiece& service_name,
                                      int method_index) const;
     
     const ServiceProperty*
-    FindServicePropertyByFullName(const base::StringPiece& fullname) const;
+    FindServicePropertyByFullName(const butil::StringPiece& fullname) const;
 
     const ServiceProperty*
-    FindServicePropertyByName(const base::StringPiece& name) const;
+    FindServicePropertyByName(const butil::StringPiece& name) const;
     
     std::string ServerPrefix() const;
 
     // Mapping from hostname to corresponding SSL_CTX
-    typedef base::CaseIgnoredFlatMap<struct ssl_ctx_st*> CertMap;
+    typedef butil::CaseIgnoredFlatMap<struct ssl_ctx_st*> CertMap;
     struct CertMaps {
         CertMap cert_map;
         CertMap wildcard_cert_map;
@@ -634,7 +634,7 @@ friend class Controller;
         std::vector<std::string> filters;
     };
     // Mapping from [certficate + private-key] to SSLContext
-    typedef base::FlatMap<std::string, SSLContext> SSLContextMap;
+    typedef butil::FlatMap<std::string, SSLContext> SSLContextMap;
 
     void FreeSSLContexts();
     void FreeSSLContextMap(SSLContextMap& ctx_map, bool keep_default);
@@ -689,13 +689,13 @@ friend class Controller;
     struct ssl_ctx_st* _default_ssl_ctx;
 
     // Reloadable SSL mappings
-    base::DoublyBufferedData<CertMaps> _reload_cert_maps;
+    butil::DoublyBufferedData<CertMaps> _reload_cert_maps;
 
     // Holds the memory of all SSL_CTXs
     SSLContextMap _ssl_ctx_map;
     
     ServerOptions _options;
-    base::EndPoint _listen_addr;
+    butil::EndPoint _listen_addr;
 
     std::string _version;
     time_t _last_start_time;

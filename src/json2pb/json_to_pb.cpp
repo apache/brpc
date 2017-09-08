@@ -12,8 +12,8 @@
 #include "json_to_pb.h"
 #include "zero_copy_stream_reader.h"       // ZeroCopyStreamReader
 #include "encode_decode.h"
-#include "base/base64.h"
-#include "base/string_printf.h"
+#include "butil/base64.h"
+#include "butil/string_printf.h"
 #include "protobuf_map.h"
 #include "rapidjson.h"
 
@@ -22,7 +22,7 @@
         if (!perr->empty()) {                                           \
             perr->append(", ", 2);                                      \
         }                                                               \
-        base::string_appendf(perr, fmt, ##__VA_ARGS__);                 \
+        butil::string_appendf(perr, fmt, ##__VA_ARGS__);                 \
     } else { }
 
 namespace json2pb {
@@ -48,15 +48,15 @@ static void string_append_value(const rapidjson::Value& value,
     } else if (value.IsBool()) {
         output->append(value.GetBool() ? "true" : "false");
     } else if (value.IsInt()) {
-        base::string_appendf(output, "%d", value.GetInt());
+        butil::string_appendf(output, "%d", value.GetInt());
     } else if (value.IsUint()) {
-        base::string_appendf(output, "%u", value.GetUint());
+        butil::string_appendf(output, "%u", value.GetUint());
     } else if (value.IsInt64()) {
-        base::string_appendf(output, "%ld", value.GetInt64());
+        butil::string_appendf(output, "%ld", value.GetInt64());
     } else if (value.IsUint64()) {
-        base::string_appendf(output, "%lu", value.GetUint64());
+        butil::string_appendf(output, "%lu", value.GetUint64());
     } else if (value.IsDouble()) {
-        base::string_appendf(output, "%f", value.GetDouble());
+        butil::string_appendf(output, "%f", value.GetDouble());
     } else if (value.IsString()) {
         output->push_back('"');
         output->append(value.GetString(), value.GetStringLength());
@@ -83,7 +83,7 @@ inline bool value_invalid(const google::protobuf::FieldDescriptor* field, const 
         }
         err->append("Invalid value `");
         string_append_value(value, err);
-        base::string_appendf(err, "' for %sfield `%s' which SHOULD be %s",
+        butil::string_appendf(err, "' for %sfield `%s' which SHOULD be %s",
                        optional ? "optional " : "",
                        field->full_name().c_str(), type);
     }
@@ -306,7 +306,7 @@ static bool JsonValueToProtoField(const rapidjson::Value& value,
                     if (field->type() == google::protobuf::FieldDescriptor::TYPE_BYTES &&
                         options.base64_to_bytes) {
                         std::string str_decoded;
-                        if (!base::Base64Decode(str, &str_decoded)) {
+                        if (!butil::Base64Decode(str, &str_decoded)) {
                             J2PERROR(err, "Fail to decode base64 string=%s", str.c_str());
                             return false;
                         }
@@ -320,7 +320,7 @@ static bool JsonValueToProtoField(const rapidjson::Value& value,
             if (field->type() == google::protobuf::FieldDescriptor::TYPE_BYTES &&
                 options.base64_to_bytes) {
                 std::string str_decoded;
-                if (!base::Base64Decode(str, &str_decoded)) {
+                if (!butil::Base64Decode(str, &str_decoded)) {
                     J2PERROR(err, "Fail to decode base64 string=%s", str.c_str());
                     return false;
                 }

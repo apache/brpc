@@ -19,10 +19,10 @@
 #include <google/protobuf/message.h>            // Message
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/io/coded_stream.h>
-#include "base/logging.h"                       // LOG()
-#include "base/time.h"
-#include "base/iobuf.h"                         // base::IOBuf
-#include "base/raw_pack.h"                      // RawPacker RawUnpacker
+#include "butil/logging.h"                       // LOG()
+#include "butil/time.h"
+#include "butil/iobuf.h"                         // butil::IOBuf
+#include "butil/raw_pack.h"                      // RawPacker RawUnpacker
 #include "brpc/controller.h"                    // Controller
 #include "brpc/socket.h"                        // Socket
 #include "brpc/server.h"                        // Server
@@ -62,13 +62,13 @@ inline void PackRpcHeader(char* rpc_header, int meta_size, int payload_size) {
     // supress strict-aliasing warning.
     uint32_t* dummy = (uint32_t*)rpc_header;
     *dummy = *(uint32_t*)"PRPC";
-    base::RawPacker(rpc_header + 4)
+    butil::RawPacker(rpc_header + 4)
         .pack32(meta_size + payload_size)
         .pack32(meta_size);
 }
 
 static void SerializeRpcHeaderAndMeta(
-    base::IOBuf* out, const RpcMeta& meta, int payload_size) {
+    butil::IOBuf* out, const RpcMeta& meta, int payload_size) {
     const int meta_size = meta.ByteSize();
     if (meta_size <= 244) { // most common cases
         char header_and_meta[12 + meta_size];
@@ -82,14 +82,14 @@ static void SerializeRpcHeaderAndMeta(
         char header[12];
         PackRpcHeader(header, meta_size, payload_size);
         out->append(header, sizeof(header));
-        base::IOBufAsZeroCopyOutputStream buf_stream(out);
+        butil::IOBufAsZeroCopyOutputStream buf_stream(out);
         ::google::protobuf::io::CodedOutputStream coded_out(&buf_stream);
         meta.SerializeWithCachedSizes(&coded_out);
         CHECK(!coded_out.HadError());
     }
 }
 
-ParseResult ParseRpcMessage(base::IOBuf* source, Socket* socket,
+ParseResult ParseRpcMessage(butil::IOBuf* source, Socket* socket,
                             bool /*read_eof*/, const void*) {
     char header_buf[12];
     const size_t n = source->copy_to(header_buf, sizeof(header_buf));
@@ -108,7 +108,7 @@ ParseResult ParseRpcMessage(base::IOBuf* source, Socket* socket,
     }
     uint32_t body_size;
     uint32_t meta_size;
-    base::RawUnpacker(header_buf + 4).unpack32(body_size).unpack32(meta_size);
+    butil::RawUnpacker(header_buf + 4).unpack32(body_size).unpack32(meta_size);
     if (body_size > FLAGS_max_body_size) {
         // We need this log to report the body_size to give users some clues
         // which is not printed in InputMessenger.
@@ -144,7 +144,7 @@ void SendRpcResponse(int64_t correlation_id,
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
-        span->set_start_send_us(base::cpuwide_time_us());
+        span->set_start_send_us(butil::cpuwide_time_us());
     }
     SocketUniquePtr sock(socket_raw);
     ScopedMethodStatus method_status(method_status_raw);
@@ -161,7 +161,7 @@ void SendRpcResponse(int64_t correlation_id,
         return;
     }
     bool append_body = false;
-    base::IOBuf res_body;
+    butil::IOBuf res_body;
     // `res' can be NULL here, in which case we don't serialize it
     // If user calls `SetFailed' on Controller, we don't serialize
     // response either
@@ -218,7 +218,7 @@ void SendRpcResponse(int64_t correlation_id,
         }
     }
 
-    base::IOBuf res_buf;
+    butil::IOBuf res_buf;
     SerializeRpcHeaderAndMeta(&res_buf, meta, res_size + attached_size);
     if (append_body) {
         res_buf.append(res_body.movable());
@@ -263,11 +263,11 @@ void SendRpcResponse(int64_t correlation_id,
 
     if (span) {
         // TODO: this is not sent
-        span->set_sent_us(base::cpuwide_time_us());
+        span->set_sent_us(butil::cpuwide_time_us());
     }
     if (method_status) {
         method_status.release()->OnResponded(
-            !cntl->Failed(), base::cpuwide_time_us() - start_parse_us);
+            !cntl->Failed(), butil::cpuwide_time_us() - start_parse_us);
     }
 }
 
@@ -306,7 +306,7 @@ void EndRunningCallMethodInPool(
 };
 
 void ProcessRpcRequest(InputMessageBase* msg_base) {
-    const int64_t start_parse_us = base::cpuwide_time_us();
+    const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     SocketUniquePtr socket(msg->ReleaseSocket());
     const Server* server = static_cast<const Server*>(msg_base->arg());
@@ -400,8 +400,8 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
 
         // NOTE(gejun): jprotobuf sends service names without packages. So the
         // name should be changed to full when it's not.
-        base::StringPiece svc_name(request_meta.service_name());
-        if (svc_name.find('.') == base::StringPiece::npos) {
+        butil::StringPiece svc_name(request_meta.service_name());
+        if (svc_name.find('.') == butil::StringPiece::npos) {
             const Server::ServiceProperty* sp =
                 server_accessor.FindServicePropertyByName(svc_name);
             if (NULL == sp) {
@@ -445,8 +445,8 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             span->ResetServerSpanName(method->full_name());
         }
         const int reqsize = static_cast<int>(msg->payload.size());
-        base::IOBuf req_buf;
-        base::IOBuf* req_buf_ptr = &msg->payload;
+        butil::IOBuf req_buf;
+        butil::IOBuf* req_buf_ptr = &msg->payload;
         if (meta.has_attachment_size()) {
             if (reqsize < meta.attachment_size()) {
                 cntl->SetFailed(EREQUEST,
@@ -483,7 +483,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
                 req.get(), res.get(), socket.release(), server,
                 method_status, start_parse_us);
         if (span) {
-            span->set_start_callback_us(base::cpuwide_time_us());
+            span->set_start_callback_us(butil::cpuwide_time_us());
             span->AsParent();
         }
         if (!FLAGS_usercode_in_pthread) {
@@ -533,7 +533,7 @@ bool VerifyRpcRequest(const InputMessageBase* msg_base) {
 }
 
 void ProcessRpcResponse(InputMessageBase* msg_base) {
-    const int64_t start_parse_us = base::cpuwide_time_us();
+    const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     RpcMeta meta;
     if (!ParsePbFromIOBuf(&meta, msg->meta)) {
@@ -575,9 +575,9 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
             break;
         } 
         // Parse response message iff error code from meta is 0
-        base::IOBuf res_buf;
+        butil::IOBuf res_buf;
         const int res_size = msg->payload.length();
-        base::IOBuf* res_buf_ptr = &msg->payload;
+        butil::IOBuf* res_buf_ptr = &msg->payload;
         if (meta.has_attachment_size()) {
             if (meta.attachment_size() > res_size) {
                 cntl->SetFailed(
@@ -610,12 +610,12 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
     accessor.OnResponse(cid, saved_error);
 }
 
-void PackRpcRequest(base::IOBuf* req_buf,
+void PackRpcRequest(butil::IOBuf* req_buf,
                     SocketMessage**,
                     uint64_t correlation_id,
                     const google::protobuf::MethodDescriptor* method,
                     Controller* cntl,
-                    const base::IOBuf& request_body,
+                    const butil::IOBuf& request_body,
                     const Authenticator* auth) {
     RpcMeta meta;
     if (auth && auth->GenerateCredential(

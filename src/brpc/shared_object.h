@@ -17,8 +17,8 @@
 #ifndef BRPC_SHARED_OBJECT_H
 #define BRPC_SHARED_OBJECT_H
 
-#include "base/intrusive_ptr.hpp"                   // base::intrusive_ptr
-#include "base/atomicops.h"
+#include "butil/intrusive_ptr.hpp"                   // butil::intrusive_ptr
+#include "butil/atomicops.h"
 
 
 namespace brpc {
@@ -33,20 +33,20 @@ friend void intrusive_ptr_release(SharedObject*);
 
 public:
     SharedObject() : _nref(0) { }
-    int ref_count() const { return _nref.load(base::memory_order_relaxed); }
+    int ref_count() const { return _nref.load(butil::memory_order_relaxed); }
     
     // Add ref and returns the ref_count seen before added.
-    // The effect is basically same as base::intrusive_ptr<T>(obj).detach()
+    // The effect is basically same as butil::intrusive_ptr<T>(obj).detach()
     // except that the latter one does not return the seen ref_count which is
     // useful in some scenarios.
     int AddRefManually()
-    { return _nref.fetch_add(1, base::memory_order_relaxed); }
+    { return _nref.fetch_add(1, butil::memory_order_relaxed); }
 
     // Remove one ref, if the ref_count hit zero, delete this object.
-    // Same as base::intrusive_ptr<T>(obj, false).reset(NULL)
+    // Same as butil::intrusive_ptr<T>(obj, false).reset(NULL)
     void RemoveRefManually() {
-        if (_nref.fetch_sub(1, base::memory_order_release) == 1) {
-            base::atomic_thread_fence(base::memory_order_acquire);
+        if (_nref.fetch_sub(1, butil::memory_order_release) == 1) {
+            butil::atomic_thread_fence(butil::memory_order_acquire);
             delete this;
         }
     }
@@ -54,7 +54,7 @@ public:
 protected:
     virtual ~SharedObject() { }
 private:
-    base::atomic<int> _nref;
+    butil::atomic<int> _nref;
 };
 
 inline void intrusive_ptr_add_ref(SharedObject* obj) {

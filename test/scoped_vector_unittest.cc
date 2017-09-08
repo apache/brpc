@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/memory/scoped_vector.h"
+#include "butil/memory/scoped_vector.h"
 
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/memory/scoped_ptr.h"
+#include "butil/bind.h"
+#include "butil/callback.h"
+#include "butil/memory/scoped_ptr.h"
 #include <gtest/gtest.h>
 
 namespace {
@@ -272,8 +272,8 @@ TEST(ScopedVectorTest, Passed) {
   ScopedVector<DeleteCounter> deleter_vector;
   deleter_vector.push_back(new DeleteCounter(&deletes));
   EXPECT_EQ(0, deletes);
-  base::Callback<ScopedVector<DeleteCounter>(void)> callback =
-      base::Bind(&PassThru<DeleteCounter>, base::Passed(&deleter_vector));
+  butil::Callback<ScopedVector<DeleteCounter>(void)> callback =
+      butil::Bind(&PassThru<DeleteCounter>, butil::Passed(&deleter_vector));
   EXPECT_EQ(0, deletes);
   ScopedVector<DeleteCounter> result = callback.Run();
   EXPECT_EQ(0, deletes);

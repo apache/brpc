@@ -12,10 +12,10 @@
 #include <algorithm>
 #include <limits>
 
-#include "base/file_util.h"
-#include "base/logging.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/build_config.h"
+#include "butil/file_util.h"
+#include "butil/logging.h"
+#include "butil/memory/scoped_ptr.h"
+#include "butil/build_config.h"
 #include <gtest/gtest.h>
 
 #if defined(OS_POSIX)
@@ -76,7 +76,7 @@ bool IsTcMallocBypassed() {
 
 bool CallocDiesOnOOM() {
 // The sanitizers' calloc dies on OOM instead of returning NULL.
-// The wrapper function in base/process_util_linux.cc that is used when we
+// The wrapper function in butil/process_util_linux.cc that is used when we
 // compile without TCMalloc will just die on OOM instead of returning NULL.
 #if defined(ADDRESS_SANITIZER) || \
     defined(MEMORY_SANITIZER) || \
@@ -101,7 +101,7 @@ TEST(SecurityTest, TCMALLOC_TEST(IsTCMallocDynamicallyBypassed)) {
 
 TEST(SecurityTest, TCMALLOC_TEST(MemoryAllocationRestrictionsMalloc)) {
   if (!IsTcMallocBypassed()) {
-    scoped_ptr<char, base::FreeDeleter> ptr(static_cast<char*>(
+    scoped_ptr<char, butil::FreeDeleter> ptr(static_cast<char*>(
         HideValueFromCompiler(malloc(kTooBigAllocSize))));
     ASSERT_TRUE(!ptr);
   }
@@ -109,7 +109,7 @@ TEST(SecurityTest, TCMALLOC_TEST(MemoryAllocationRestrictionsMalloc)) {
 
 TEST(SecurityTest, TCMALLOC_TEST(MemoryAllocationRestrictionsCalloc)) {
   if (!IsTcMallocBypassed()) {
-    scoped_ptr<char, base::FreeDeleter> ptr(static_cast<char*>(
+    scoped_ptr<char, butil::FreeDeleter> ptr(static_cast<char*>(
         HideValueFromCompiler(calloc(kTooBigAllocSize, 1))));
     ASSERT_TRUE(!ptr);
   }
@@ -119,7 +119,7 @@ TEST(SecurityTest, TCMALLOC_TEST(MemoryAllocationRestrictionsRealloc)) {
   if (!IsTcMallocBypassed()) {
     char* orig_ptr = static_cast<char*>(malloc(1));
     ASSERT_TRUE(orig_ptr);
-    scoped_ptr<char, base::FreeDeleter> ptr(static_cast<char*>(
+    scoped_ptr<char, butil::FreeDeleter> ptr(static_cast<char*>(
         HideValueFromCompiler(realloc(orig_ptr, kTooBigAllocSize))));
     ASSERT_TRUE(!ptr);
     // If realloc() did not succeed, we need to free orig_ptr.
@@ -210,7 +210,7 @@ TEST(SecurityTest, DISABLE_ON_IOS_AND_WIN_AND_TSAN(NewOverflow)) {
 // Call calloc(), eventually free the memory and return whether or not
 // calloc() did succeed.
 bool CallocReturnsNull(size_t nmemb, size_t size) {
-  scoped_ptr<char, base::FreeDeleter> array_pointer(
+  scoped_ptr<char, butil::FreeDeleter> array_pointer(
       static_cast<char*>(calloc(nmemb, size)));
   // We need the call to HideValueFromCompiler(): we have seen LLVM
   // optimize away the call to calloc() entirely and assume
@@ -228,7 +228,7 @@ TEST(SecurityTest, CallocOverflow) {
     EXPECT_TRUE(CallocReturnsNull(kArraySize2, kArraySize));
   } else {
     // It's also ok for calloc to just terminate the process.
-    // NOTE(gejun): base/process/memory.cc is not linked right now,
+    // NOTE(gejun): butil/process/memory.cc is not linked right now,
     // disable following assertions on calloc
 //#if defined(GTEST_HAS_DEATH_TEST)
 //    EXPECT_DEATH(CallocReturnsNull(kArraySize, kArraySize2), "");
@@ -267,7 +267,7 @@ TEST(SecurityTest, TCMALLOC_TEST(RandomMemoryAllocations)) {
   // 1 MB should get us past what TCMalloc pre-allocated before initializing
   // the sophisticated allocators.
   size_t kAllocSize = 1<<20;
-  scoped_ptr<char, base::FreeDeleter> ptr(
+  scoped_ptr<char, butil::FreeDeleter> ptr(
       static_cast<char*>(malloc(kAllocSize)));
   ASSERT_TRUE(ptr != NULL);
   // If two pointers are separated by less than 512MB, they are considered

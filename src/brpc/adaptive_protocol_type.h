@@ -18,7 +18,7 @@
 // To brpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
 
-#include "base/strings/string_piece.h"
+#include "butil/strings/string_piece.h"
 #include "brpc/options.pb.h"
 
 namespace brpc {
@@ -28,9 +28,9 @@ namespace brpc {
 // Convert a case-insensitive string to corresponding ProtocolType which is
 // defined in protocol/brpc/options.proto
 // Returns: PROTOCOL_UNKNOWN on error.
-ProtocolType StringToProtocolType(const base::StringPiece& type,
+ProtocolType StringToProtocolType(const butil::StringPiece& type,
                                   bool print_log_on_unknown);
-inline ProtocolType StringToProtocolType(const base::StringPiece& type)
+inline ProtocolType StringToProtocolType(const butil::StringPiece& type)
 { return StringToProtocolType(type, true); }
 
 // Convert a ProtocolType to a c-style string.
@@ -44,7 +44,7 @@ public:
     ~AdaptiveProtocolType() {}
 
     void operator=(ProtocolType type) { _type = type; }
-    void operator=(const base::StringPiece& name)
+    void operator=(const butil::StringPiece& name)
     { _type = StringToProtocolType(name); };
 
     operator ProtocolType() const { return _type; }

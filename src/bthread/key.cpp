@@ -17,8 +17,8 @@
 // Date: Sun Aug  3 12:46:15 CST 2014
 
 #include <pthread.h>
-#include "base/macros.h"
-#include "base/atomicops.h"
+#include "butil/macros.h"
+#include "butil/atomicops.h"
 #include "bvar/passive_status.h"
 #include "bthread/errno.h"                       // EAGAIN
 #include "bthread/task_group.h"                  // TaskGroup
@@ -66,8 +66,8 @@ static size_t nkey = 0;
 static uint32_t s_free_keys[KEYS_MAX];
 
 // Stats.
-static base::static_atomic<size_t> nkeytable = BASE_STATIC_ATOMIC_INIT(0);
-static base::static_atomic<size_t> nsubkeytable = BASE_STATIC_ATOMIC_INIT(0);
+static butil::static_atomic<size_t> nkeytable = BASE_STATIC_ATOMIC_INIT(0);
+static butil::static_atomic<size_t> nsubkeytable = BASE_STATIC_ATOMIC_INIT(0);
 
 // The second-level array.
 // Align with cacheline to avoid false sharing.
@@ -75,12 +75,12 @@ class BAIDU_CACHELINE_ALIGNMENT SubKeyTable {
 public:
     SubKeyTable() {
         memset(_data, 0, sizeof(_data));
-        nsubkeytable.fetch_add(1, base::memory_order_relaxed);
+        nsubkeytable.fetch_add(1, butil::memory_order_relaxed);
     }
 
     // NOTE: Call clear first.
     ~SubKeyTable() {
-        nsubkeytable.fetch_sub(1, base::memory_order_relaxed);
+        nsubkeytable.fetch_sub(1, butil::memory_order_relaxed);
     }
 
     void clear(uint32_t offset) {
@@ -135,11 +135,11 @@ class BAIDU_CACHELINE_ALIGNMENT KeyTable {
 public:
     KeyTable() : next(NULL) {
         memset(_subs, 0, sizeof(_subs));
-        nkeytable.fetch_add(1, base::memory_order_relaxed);
+        nkeytable.fetch_add(1, butil::memory_order_relaxed);
     }
 
     ~KeyTable() {
-        nkeytable.fetch_sub(1, base::memory_order_relaxed);
+        nkeytable.fetch_sub(1, butil::memory_order_relaxed);
         for (int ntry = 0; ntry < PTHREAD_DESTRUCTOR_ITERATIONS; ++ntry) {
             for (uint32_t i = 0; i < KEY_1STLEVEL_SIZE; ++i) {
                 if (_subs[i]) {
@@ -252,11 +252,11 @@ static int get_key_count(void*) {
     return (int)nkey - (int)nfreekey;
 }
 static size_t get_keytable_count(void*) {
-    return nkeytable.load(base::memory_order_relaxed);
+    return nkeytable.load(butil::memory_order_relaxed);
 }
 static size_t get_keytable_memory(void*) {
-    const size_t n = nkeytable.load(base::memory_order_relaxed);
-    const size_t nsub = nsubkeytable.load(base::memory_order_relaxed);
+    const size_t n = nkeytable.load(butil::memory_order_relaxed);
+    const size_t nsub = nsubkeytable.load(butil::memory_order_relaxed);
     return n * sizeof(KeyTable) + nsub * sizeof(SubKeyTable);
 }
 
@@ -446,7 +446,7 @@ int bthread_setspecific(bthread_key_t key, void* data) __THROW {
         }
         if (!bthread::tls_ever_created_keytable) {
             bthread::tls_ever_created_keytable = true;
-            CHECK_EQ(0, base::thread_atexit(bthread::cleanup_pthread));
+            CHECK_EQ(0, butil::thread_atexit(bthread::cleanup_pthread));
         }
     }
     return kt->set_data(key, data);

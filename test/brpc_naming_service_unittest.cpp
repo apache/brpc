@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <gtest/gtest.h>
 #include <vector>
-#include "base/string_printf.h"
-#include "base/files/temp_file.h"
+#include "butil/string_printf.h"
+#include "butil/files/temp_file.h"
 #ifdef BAIDU_INTERNAL
 #include "brpc/policy/baidu_naming_service.h"
 #endif
@@ -29,7 +29,7 @@ TEST(NamingServiceTest, sanity) {
     ASSERT_EQ(0, dns.GetServers("brpc.baidu.com:1234", &servers));
     ASSERT_EQ(1u, servers.size());
     ASSERT_EQ(1234, servers[0].addr.port);
-    const base::ip_t expected_ip = servers[0].addr.ip;
+    const butil::ip_t expected_ip = servers[0].addr.ip;
 
     ASSERT_EQ(0, dns.GetServers("brpc.baidu.com", &servers));
     ASSERT_EQ(1u, servers.size());
@@ -53,7 +53,7 @@ TEST(NamingServiceTest, sanity) {
         "localhost:1234",
         "brpc.baidu.com:1234"
     };
-    base::TempFile tmp_file;
+    butil::TempFile tmp_file;
     {
         FILE* fp = fopen(tmp_file.fname(), "w");
         for (size_t i = 0; i < ARRAY_SIZE(address_list); ++i) {
@@ -72,7 +72,7 @@ TEST(NamingServiceTest, sanity) {
     
     std::string s;
     for (size_t i = 0; i < ARRAY_SIZE(address_list); ++i) {
-        ASSERT_EQ(0, base::string_appendf(&s, "%s,", address_list[i]));
+        ASSERT_EQ(0, butil::string_appendf(&s, "%s,", address_list[i]));
     }
     brpc::policy::ListNamingService lns;
     ASSERT_EQ(0, lns.GetServers(s.c_str(), &servers));
@@ -116,7 +116,7 @@ TEST(NamingServiceTest, wrong_name) {
         "brpc.baidu.com:1234",
         "LOCAL:1234"
     };
-    base::TempFile tmp_file;
+    butil::TempFile tmp_file;
     {
         FILE *fp = fopen(tmp_file.fname(), "w");
         for (size_t i = 0; i < ARRAY_SIZE(address_list); ++i) {
@@ -130,7 +130,7 @@ TEST(NamingServiceTest, wrong_name) {
 
     std::string s;
     for (size_t i = 0; i < ARRAY_SIZE(address_list); ++i) {
-        ASSERT_EQ(0, base::string_appendf(&s, ", %s", address_list[i]));
+        ASSERT_EQ(0, butil::string_appendf(&s, ", %s", address_list[i]));
     }
     brpc::policy::ListNamingService lns;
     ASSERT_EQ(0, lns.GetServers(s.c_str(), &servers));
@@ -161,8 +161,8 @@ public:
         touch_count.fetch_add(1);
     }
     
-    base::atomic<int64_t> list_names_count;
-    base::atomic<int64_t> touch_count;
+    butil::atomic<int64_t> list_names_count;
+    butil::atomic<int64_t> touch_count;
 };
 
 TEST(NamingServiceTest, remotefile) {
@@ -175,10 +175,10 @@ TEST(NamingServiceTest, remotefile) {
     ASSERT_EQ(0, server2.AddService(&svc2, brpc::SERVER_DOESNT_OWN_SERVICE));
     ASSERT_EQ(0, server2.Start("localhost:8636", NULL));
 
-    base::EndPoint n1;
-    ASSERT_EQ(0, base::str2endpoint("0.0.0.0:8635", &n1));
-    base::EndPoint n2;
-    ASSERT_EQ(0, base::str2endpoint("0.0.0.0:8636", &n2));
+    butil::EndPoint n1;
+    ASSERT_EQ(0, butil::str2endpoint("0.0.0.0:8635", &n1));
+    butil::EndPoint n2;
+    ASSERT_EQ(0, butil::str2endpoint("0.0.0.0:8636", &n2));
     std::vector<brpc::ServerNode> expected_servers;
     expected_servers.push_back(brpc::ServerNode(n1, "tag1"));
     expected_servers.push_back(brpc::ServerNode(n2, "tag2"));

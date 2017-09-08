@@ -18,8 +18,8 @@
 #define BRPC_AUTHENTICATOR_H
 
 #include <ostream>
-#include "base/endpoint.h"                    // base::EndPoint
-#include "base/macros.h"                      // BAIDU_CONCAT
+#include "butil/endpoint.h"                    // butil::EndPoint
+#include "butil/macros.h"                      // BAIDU_CONCAT
 #include "brpc/extension.h"              // Extension<T>
 
 
@@ -69,7 +69,7 @@ public:
     // pointer from `Controller'.
     // Returns 0 on success, error code otherwise
     virtual int VerifyCredential(const std::string& auth_str,
-                                 const base::EndPoint& client_addr,
+                                 const butil::EndPoint& client_addr,
                                  AuthContext* out_ctx) const = 0;
 
 };

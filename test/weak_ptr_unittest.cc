@@ -2,17 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/memory/weak_ptr.h"
+#include "butil/memory/weak_ptr.h"
 
 #include <string>
 
-#include "base/bind.h"
-#include "base/debug/leak_annotations.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/synchronization/waitable_event.h"
+#include "butil/bind.h"
+#include "butil/debug/leak_annotations.h"
+#include "butil/memory/scoped_ptr.h"
+#include "butil/synchronization/waitable_event.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 namespace {
 
 struct Base {
@@ -150,4 +150,4 @@ TEST(WeakPtrTest, HasWeakPtrs) {
   EXPECT_FALSE(factory.HasWeakPtrs());
 }
 
-}  // namespace base
+}  // namespace butil

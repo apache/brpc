@@ -5,8 +5,8 @@
 #include <stdio.h>
 #include <gtest/gtest.h>
 #include <vector>
-#include "base/string_printf.h"
-#include "base/files/temp_file.h"
+#include "butil/string_printf.h"
+#include "butil/files/temp_file.h"
 #include "brpc/socket.h"
 #include "brpc/channel.h"
 #include "brpc/load_balancer.h"
@@ -34,7 +34,7 @@ TEST_F(NamingServiceFilterTest, sanity) {
         "localhost:1234",
         "brpc.baidu.com:1234"
     };
-    base::TempFile tmp_file;
+    butil::TempFile tmp_file;
     {
         FILE* fp = fopen(tmp_file.fname(), "w");
         for (size_t i = 0; i < ARRAY_SIZE(address_list); ++i) {
@@ -49,8 +49,8 @@ TEST_F(NamingServiceFilterTest, sanity) {
     std::string ns = std::string("file://") + tmp_file.fname();
     ASSERT_EQ(0, channel.Init(ns.c_str(), "rr", &opt));
 
-    base::EndPoint ep;
-    ASSERT_EQ(0, base::hostname2endpoint("10.128.0.1:1234", &ep));
+    butil::EndPoint ep;
+    ASSERT_EQ(0, butil::hostname2endpoint("10.128.0.1:1234", &ep));
     for (int i = 0; i < 10; ++i) {
         brpc::SocketUniquePtr tmp_sock;
         brpc::LoadBalancer::SelectIn sel_in = { 0, false, 0, NULL };

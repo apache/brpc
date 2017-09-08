@@ -65,11 +65,11 @@ template <typename StackClass> struct StackFactory {
     };
     
     static ContextualStack* get_stack(void (*entry)(intptr_t)) {
-        return base::get_object<Wrapper>(entry);
+        return butil::get_object<Wrapper>(entry);
     }
     
     static void return_stack(ContextualStack* sc) {
-        base::return_object(static_cast<Wrapper*>(sc));
+        butil::return_object(static_cast<Wrapper*>(sc));
     }
 };
 
@@ -131,7 +131,7 @@ inline void jump_stack(ContextualStack* from, ContextualStack* to) {
 
 }  // namespace bthread
 
-namespace base {
+namespace butil {
 
 template <> struct ObjectPoolBlockMaxItem<
     bthread::StackFactory<bthread::LargeStackClass>::Wrapper> {
@@ -190,6 +190,6 @@ template <> struct ObjectPoolValidator<
     }
 };
     
-}  // namespace base
+}  // namespace butil
 
 #endif  // BAIDU_BTHREAD_ALLOCATE_STACK_INL_H

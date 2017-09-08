@@ -17,8 +17,8 @@
 #include "brpc/details/hpack.h"
 
 #include <limits>                                       // std::numeric_limits
-#include "base/containers/bounded_queue.h"              // base::BoundedQueue
-#include "base/containers/flat_map.h"                   // base::FlatMap
+#include "butil/containers/bounded_queue.h"              // butil::BoundedQueue
+#include "butil/containers/flat_map.h"                   // butil::FlatMap
 
 #include "brpc/details/hpack-static-table.h"       // s_static_headers
 
@@ -67,9 +67,9 @@ public:
             LOG(ERROR) << "Fail to malloc space for " << num_headers << " headers";
             return -1;
         }
-        base::BoundedQueue<Header> tmp(
+        butil::BoundedQueue<Header> tmp(
                 header_queue_storage, num_headers * sizeof(Header),
-                base::OWNS_STORAGE);
+                butil::OWNS_STORAGE);
         _header_queue.swap(tmp);
         _start_index = options.start_index;
         _need_indexes = options.need_indexes;
@@ -194,15 +194,15 @@ public:
 private:
     struct HeaderHasher {
         size_t operator()(const Header& h) const {
-            return base::DefaultHasher<std::string>()(h.name)
-                ^ base::DefaultHasher<std::string>()(h.value);
+            return butil::DefaultHasher<std::string>()(h.name)
+                ^ butil::DefaultHasher<std::string>()(h.value);
         }
     };
 
     struct HeaderEqualTo {
         bool operator()(const Header& h1, const Header& h2) const {
-            return base::DefaultEqualTo<std::string>()(h1.name, h2.name)
-                && base::DefaultEqualTo<std::string>()(h1.value, h2.value);
+            return butil::DefaultEqualTo<std::string>()(h1.name, h2.name)
+                && butil::DefaultEqualTo<std::string>()(h1.value, h2.value);
         }
     };
 
@@ -211,7 +211,7 @@ private:
     uint64_t _add_times;  // Increase when adding a new entry.
     size_t _max_size;
     size_t _size;
-    base::BoundedQueue<Header> _header_queue;
+    butil::BoundedQueue<Header> _header_queue;
 
     // -----------------------  Encoder only ----------------------------
     // Indexes that map entry to the latest time it was added.
@@ -221,8 +221,8 @@ private:
     // Since the encoder just cares whether this header is in the index table
     // rather than which the index number is, only the latest entry of the same
     // header is indexed here, which is definitely the last one to be removed.
-    base::FlatMap<Header, uint64_t, HeaderHasher, HeaderEqualTo> _header_index;
-    base::FlatMap<std::string, uint64_t> _name_index;
+    butil::FlatMap<Header, uint64_t, HeaderHasher, HeaderEqualTo> _header_index;
+    butil::FlatMap<std::string, uint64_t> _name_index;
 };
 
 struct HuffmanNode {
@@ -300,7 +300,7 @@ private:
 class HuffmanEncoder {
 DISALLOW_COPY_AND_ASSIGN(HuffmanEncoder);
 public:
-    HuffmanEncoder(base::IOBufAppender* out, const HuffmanCode* table)
+    HuffmanEncoder(butil::IOBufAppender* out, const HuffmanCode* table)
         : _out(out)
         , _table(table)
         , _partial_byte(0)
@@ -347,7 +347,7 @@ public:
     uint32_t out_bytes() const { return _out_bytes; }
 
 private:
-    base::IOBufAppender* _out;
+    butil::IOBufAppender* _out;
     const HuffmanCode* _table;
     uint8_t  _partial_byte;
     uint16_t _remain_bit;
@@ -430,7 +430,7 @@ private:
 // Primitive Type Representations
 
 // Encode variant intger and return the size
-inline size_t EncodeInteger(base::IOBufAppender* out, uint8_t msb,
+inline size_t EncodeInteger(butil::IOBufAppender* out, uint8_t msb,
                             uint8_t prefix_size, uint32_t value) {
     uint8_t max_prefix_value = (1 << prefix_size) - 1;
     if (value < max_prefix_value) {
@@ -484,7 +484,7 @@ static void CreateStaticTableOnceOrDie() {
 // Assume that no header would be larger than 10MB
 static const size_t MAX_HPACK_INTEGER = 10 * 1024 * 1024ul;
 
-inline ssize_t DecodeInteger(base::IOBufBytesIterator& iter,
+inline ssize_t DecodeInteger(butil::IOBufBytesIterator& iter,
                              uint8_t prefix_size, uint32_t* value) {
     if (iter == NULL) {
         return 0; // No enough data
@@ -520,7 +520,7 @@ inline ssize_t DecodeInteger(base::IOBufBytesIterator& iter,
     return in_bytes;
 }
 
-inline size_t EncodeString(base::IOBufAppender* out, const std::string& s,
+inline size_t EncodeString(butil::IOBufAppender* out, const std::string& s,
                            bool huffman_encoding) {
     size_t out_bytes = 0;
     if (!huffman_encoding) {
@@ -546,7 +546,7 @@ inline size_t EncodeString(base::IOBufAppender* out, const std::string& s,
     return out_bytes;
 }
 
-inline ssize_t DecodeString(base::IOBufBytesIterator& iter, std::string* out) {
+inline ssize_t DecodeString(butil::IOBufBytesIterator& iter, std::string* out) {
     if (iter == NULL) {
         return 0;
     }
@@ -634,7 +634,7 @@ inline int HPacker::FindNameFromIndexTable(const std::string& name) const {
     return _encode_table->GetIndexOfName(name);
 }
 
-ssize_t HPacker::Encode(base::IOBufAppender* out, const Header& header,
+ssize_t HPacker::Encode(butil::IOBufAppender* out, const Header& header,
                         const HPackOptions& options) {
     if (options.index_policy != HPACK_NEVER_INDEX_HEADER) {
         const int index = FindHeaderFromIndexTable(header);
@@ -674,7 +674,7 @@ inline const HPacker::Header* HPacker::HeaderAt(int index) const {
 }
 
 inline ssize_t HPacker::DecodeWithKnownPrefix(
-        base::IOBufBytesIterator& iter, Header* h, uint8_t prefix_size) const {
+        butil::IOBufBytesIterator& iter, Header* h, uint8_t prefix_size) const {
     int index = 0;
     ssize_t index_bytes = DecodeInteger(iter, prefix_size, (uint32_t*)&index);
     ssize_t name_bytes = 0;
@@ -704,7 +704,7 @@ inline ssize_t HPacker::DecodeWithKnownPrefix(
     return index_bytes + name_bytes + value_bytes;
 }
 
-ssize_t HPacker::Decode(base::IOBufBytesIterator& iter, Header* h) {
+ssize_t HPacker::Decode(butil::IOBufBytesIterator& iter, Header* h) {
     if (iter == NULL) {
         return 0;
     }

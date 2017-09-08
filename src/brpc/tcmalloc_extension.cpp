@@ -65,7 +65,7 @@ static const int kMallocHistogramSize = 64;
 
 typedef std::string MallocExtensionWriter;
 
-namespace base {
+namespace butil {
 struct MallocRange;
 }
 
@@ -120,7 +120,7 @@ class PERFTOOLS_DLL_DECL MallocExtension {
   //
   // This is a best-effort interface useful only for performance
   // analysis.  The implementation may not call func at all.
-  typedef void (RangeFunction)(void*, const base::MallocRange*);
+  typedef void (RangeFunction)(void*, const butil::MallocRange*);
   virtual void Ranges(void* arg, RangeFunction func);
 
   // -------------------------------------------------------------------

@@ -4,10 +4,10 @@
 
 // This file contains the unit tests for the bit utilities.
 
-#include "base/bits.h"
+#include "butil/bits.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 namespace bits {
 
 TEST(BitsTest, Log2Floor) {
@@ -45,4 +45,4 @@ TEST(BitsTest, Log2Ceiling) {
 }
 
 }  // namespace bits
-}  // namespace base
+}  // namespace butil

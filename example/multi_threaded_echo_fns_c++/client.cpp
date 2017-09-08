@@ -16,10 +16,10 @@
 
 #include <gflags/gflags.h>
 #include <bthread/bthread.h>
-#include <base/logging.h>
-#include <base/string_printf.h>
-#include <base/time.h>
-#include <base/macros.h>
+#include <butil/logging.h>
+#include <butil/string_printf.h>
+#include <butil/time.h>
+#include <butil/macros.h>
 #include <brpc/channel.h>
 #include <brpc/server.h>
 #include <deque>
@@ -43,7 +43,7 @@ std::string g_attachment;
 
 bvar::LatencyRecorder g_latency_recorder("client");
 bvar::Adder<int> g_error_count("client_error_count");
-base::static_atomic<int> g_sender_count = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<int> g_sender_count = BASE_STATIC_ATOMIC_INIT(0);
 
 static void* sender(void* arg) {
     // Normally, you should not call a Channel directly, but instead construct
@@ -58,7 +58,7 @@ static void* sender(void* arg) {
         example::EchoResponse response;
         brpc::Controller cntl;
 
-        const int thread_index = g_sender_count.fetch_add(1, base::memory_order_relaxed);
+        const int thread_index = g_sender_count.fetch_add(1, butil::memory_order_relaxed);
         const int input = ((thread_index & 0xFFF) << 20) | (log_id & 0xFFFFF);
         request.set_value(input);
         cntl.set_log_id(log_id ++);  // set by user

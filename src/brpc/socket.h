@@ -22,12 +22,12 @@
 #include <iostream>                            // std::ostream
 #include <deque>                               // std::deque
 #include <set>                                 // std::set
-#include "base/atomicops.h"                    // base::atomic
+#include "butil/atomicops.h"                    // butil::atomic
 #include "bthread/types.h"                     // bthread_id_t
-#include "base/iobuf.h"                        // base::IOBuf, IOPortal
-#include "base/macros.h"                       // DISALLOW_COPY_AND_ASSIGN
-#include "base/endpoint.h"                     // base::EndPoint
-#include "base/resource_pool.h"                // base::ResourceId
+#include "butil/iobuf.h"                        // butil::IOBuf, IOPortal
+#include "butil/macros.h"                       // DISALLOW_COPY_AND_ASSIGN
+#include "butil/endpoint.h"                     // butil::EndPoint
+#include "butil/resource_pool.h"                // butil::ResourceId
 #include "bthread/butex.h"                     // butex_create_checked
 #include "brpc/authenticator.h"           // Authenticator
 #include "brpc/details/ssl_helper.h"      // SSLState
@@ -85,8 +85,8 @@ public:
                         int (*on_connect)(int, int, void*), void*) = 0;
 
     // Cut IOBufs into fd or SSL Channel
-    virtual ssize_t CutMessageIntoFileDescriptor(int, base::IOBuf**, size_t) = 0;
-    virtual ssize_t CutMessageIntoSSLChannel(base::IOBuf *, SSL*, int*) = 0;
+    virtual ssize_t CutMessageIntoFileDescriptor(int, butil::IOBuf**, size_t) = 0;
+    virtual ssize_t CutMessageIntoSSLChannel(butil::IOBuf *, SSL*, int*) = 0;
 };
 
 // Application-level connect. After TCP connected, the client sends some
@@ -142,7 +142,7 @@ struct SocketOptions {
     // ownership. Socket will close the fd(if needed) and call 
     // user->BeforeRecycle() before recycling.
     int fd;
-    base::EndPoint remote_side;
+    butil::EndPoint remote_side;
     SocketUser* user;
     // When *edge-triggered* events happen on the file descriptor, callback
     // `on_edge_triggered_events' will be called. Inside the callback, user
@@ -221,20 +221,20 @@ public:
             : id_wait(INVALID_BTHREAD_ID), abstime(NULL)
             , pipelined_count(0), ignore_eovercrowded(false) {}
     };
-    int Write(base::IOBuf *msg, const WriteOptions* options = NULL);
+    int Write(butil::IOBuf *msg, const WriteOptions* options = NULL);
     
     // Write an user-defined message. `msg' is released when Write() is
     // successful and *may* remain unchanged otherwise.
     int Write(SocketMessagePtr<>& msg, const WriteOptions* options = NULL);
 
     // The file descriptor
-    int fd() const { return _fd.load(base::memory_order_relaxed); }
+    int fd() const { return _fd.load(butil::memory_order_relaxed); }
 
     // ip/port of the local end of the connection
-    base::EndPoint local_side() const { return _local_side; }
+    butil::EndPoint local_side() const { return _local_side; }
 
     // ip/port of the other end of the connection.
-    base::EndPoint remote_side() const { return _remote_side; }
+    butil::EndPoint remote_side() const { return _remote_side; }
 
     // Positive value enables health checking.
     // Initialized by SocketOptions.health_check_interval_s.
@@ -256,7 +256,7 @@ public:
     void reset_parsing_context(Destroyable*);
     Destroyable* release_parsing_context();
     Destroyable* parsing_context() const
-    { return _parsing_context.load(base::memory_order_consume); }
+    { return _parsing_context.load(butil::memory_order_consume); }
     // Try to set _parsing_context to *ctx when _parsing_context is NULL.
     // If _parsing_context is NULL, the set is successful and true is returned.
     // Otherwise, *ctx is Destroy()-ed and replaced with the value of
@@ -300,7 +300,7 @@ public:
     bool Failed() const;
 
     bool DidReleaseAdditionalRereference() const
-    { return _recycle_flag.load(base::memory_order_relaxed); }
+    { return _recycle_flag.load(butil::memory_order_relaxed); }
 
     // Notify `id' object (by calling bthread_id_error) when this Socket
     // has been `SetFailed'. If it already has, notify `id' immediately
@@ -436,8 +436,8 @@ public:
     // Last cpuwide-time at when this socket was read or write.
     int64_t last_active_time_us() const {
         return std::max(
-            _last_readtime_us.load(base::memory_order_relaxed),
-            _last_writetime_us.load(base::memory_order_relaxed));
+            _last_readtime_us.load(butil::memory_order_relaxed),
+            _last_writetime_us.load(butil::memory_order_relaxed));
     }
 
     // A brief description of this socket, consistent with os << *this
@@ -581,34 +581,34 @@ private:
     //   also the version encoded in SocketId.
     // * Failed version: = created version + 1, SetFailed()-ed but returned.
     // * Other versions: the socket is already recycled.
-    base::atomic<uint64_t> _versioned_ref;
+    butil::atomic<uint64_t> _versioned_ref;
 
     // In/Out bytes/messages, SocketPool etc
     // _shared_part is shared by a main socket and all its pooled sockets.
     // Can't use intrusive_ptr because the creation is based on optimistic
     // locking and relies on atomic CAS. We manage references manually.
-    base::atomic<SharedPart*> _shared_part;
+    butil::atomic<SharedPart*> _shared_part;
 
     // [ Set in dispatcher ]
     // To keep the callback in at most one bthread at any time. Read comments
     // of EventDispatcher::ProcessEvent in event_dispatcher.cpp to
     // understand the tricks.
-    base::atomic<int> _nevent;
+    butil::atomic<int> _nevent;
 
     // May be set by Acceptor to share keytables between reading threads
     // on sockets created by the Acceptor.
     bthread_keytable_pool_t* _keytable_pool;
     
     // [ Set in ResetFileDescriptor ] 
-    base::atomic<int> _fd;  // -1 when not connected.
+    butil::atomic<int> _fd;  // -1 when not connected.
     int _tos;                // Type of service which is actually only 8bits.
     int64_t _reset_fd_real_us; // When _fd was reset, in microseconds.
 
     // Address of peer. Initialized by SocketOptions.remote_side.
-    base::EndPoint _remote_side;
+    butil::EndPoint _remote_side;
 
     // Address of self. Initialized in ResetFileDescriptor().
-    base::EndPoint _local_side;
+    butil::EndPoint _local_side;
         
     // Called when edge-triggered events happened on `_fd'. Read comments
     // of EventDispatcher::AddConsumer (event_dispatcher.h)
@@ -643,13 +643,13 @@ private:
     uint32_t _avg_msg_size;
 
     // Storing data read from `_fd' but cut-off yet.
-    base::IOPortal _read_buf;
+    butil::IOPortal _read_buf;
 
     // Set with cpuwide_time_us() at last read operation
-    base::atomic<int64_t> _last_readtime_us;
+    butil::atomic<int64_t> _last_readtime_us;
 
     // Saved context for parsing, reset before trying other protocols.
-    base::atomic<Destroyable*> _parsing_context;
+    butil::atomic<Destroyable*> _parsing_context;
 
     // Saving the correlation_id of RPC on protocols that cannot put
     // correlation_id on-wire and do not send multiple requests on one
@@ -664,7 +664,7 @@ private:
     // +-------+------------+
     // 1-bit flag to ensure `SetEOF' to be called only once
     // 31-bit counter of requests that are currently being processed
-    base::atomic<uint32_t> _ninprocess;
+    butil::atomic<uint32_t> _ninprocess;
     
     // +---32 bit---+---32 bit---+ 
     // |  auth flag | auth error |
@@ -673,7 +673,7 @@ private:
     // 0 - not authenticated yet
     // 1 - authentication completed (whether it succeeded or not
     //     depends on `auth error')
-    base::atomic<uint64_t> _auth_flag_error;
+    butil::atomic<uint64_t> _auth_flag_error;
     bthread_id_t _auth_id;
 
     // Stores authentication result/context of this socket. This only
@@ -686,7 +686,7 @@ private:
 
     // Pass from controller, for progressive reading.
     ConnectionType _connection_type_for_progressive_read;
-    base::atomic<bool> _controller_released_socket;
+    butil::atomic<bool> _controller_released_socket;
 
     // True if the socket is too full to write.
     volatile bool _overcrowded;
@@ -694,11 +694,11 @@ private:
     bool _fail_me_at_server_stop;
 
     // Set by SetLogOff
-    base::atomic<bool> _logoff_flag;
+    butil::atomic<bool> _logoff_flag;
 
     // Flag used to mark whether additional reference has been decreased
     // by either `SetFailed' or `SetRecycle'
-    base::atomic<bool> _recycle_flag;
+    butil::atomic<bool> _recycle_flag;
 
     // Concrete error information from SetFailed()
     // Accesses to these 2 fields(especially _error_text) must be protected
@@ -706,7 +706,7 @@ private:
     int _error_code;
     std::string _error_text;
 
-    base::Mutex _pipeline_mutex;
+    butil::Mutex _pipeline_mutex;
     std::deque<PipelinedInfo>* _pipeline_q;
 
     // For storing call-id of in-progress RPC.
@@ -714,17 +714,17 @@ private:
     bthread_id_list_t _id_wait_list;
 
     // Set with cpuwide_time_us() at last write operation
-    base::atomic<int64_t> _last_writetime_us;
+    butil::atomic<int64_t> _last_writetime_us;
     // Queued but written
-    base::atomic<int64_t> _unwritten_bytes;
+    butil::atomic<int64_t> _unwritten_bytes;
     
     // Butex to wait for EPOLLOUT event
-    base::atomic<int>* _epollout_butex;
+    butil::atomic<int>* _epollout_butex;
 
     // Storing data that are not flushed into `fd' yet.
-    base::atomic<WriteRequest*> _write_head;
+    butil::atomic<WriteRequest*> _write_head;
 
-    base::Mutex _stream_mutex;
+    butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
 };
 

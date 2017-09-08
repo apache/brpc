@@ -4,8 +4,8 @@
 
 #include <string>
 
-#include "base/memory/linked_ptr.h"
-#include "base/strings/stringprintf.h"
+#include "butil/memory/linked_ptr.h"
+#include "butil/strings/stringprintf.h"
 #include <gtest/gtest.h>
 
 namespace {
@@ -16,18 +16,18 @@ std::string history;
 
 // Class which tracks allocation/deallocation
 struct A {
-  A(): mynum(num++) { history += base::StringPrintf("A%d ctor\n", mynum); }
-  virtual ~A() { history += base::StringPrintf("A%d dtor\n", mynum); }
-  virtual void Use() { history += base::StringPrintf("A%d use\n", mynum); }
+  A(): mynum(num++) { history += butil::StringPrintf("A%d ctor\n", mynum); }
+  virtual ~A() { history += butil::StringPrintf("A%d dtor\n", mynum); }
+  virtual void Use() { history += butil::StringPrintf("A%d use\n", mynum); }
   int mynum;
 };
 
 // Subclass
 struct B: public A {
-  B() { history += base::StringPrintf("B%d ctor\n", mynum); }
-  virtual ~B() { history += base::StringPrintf("B%d dtor\n", mynum); }
+  B() { history += butil::StringPrintf("B%d ctor\n", mynum); }
+  virtual ~B() { history += butil::StringPrintf("B%d dtor\n", mynum); }
   virtual void Use() OVERRIDE {
-    history += base::StringPrintf("B%d use\n", mynum);
+    history += butil::StringPrintf("B%d use\n", mynum);
   }
 };
 

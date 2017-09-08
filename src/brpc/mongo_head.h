@@ -15,7 +15,7 @@
 #ifndef BRPC_MONGO_HEAD_H
 #define BRPC_MONGO_HEAD_H
 
-#include "base/sys_byteorder.h"
+#include "butil/sys_byteorder.h"
 
 
 namespace brpc {
@@ -60,10 +60,10 @@ struct mongo_head_t {
 
     void make_host_endian() {
         if (!ARCH_CPU_LITTLE_ENDIAN) {
-            message_length = base::ByteSwap((uint32_t)message_length);
-            request_id = base::ByteSwap((uint32_t)request_id);
-            response_to = base::ByteSwap((uint32_t)response_to);
-            op_code = base::ByteSwap((uint32_t)op_code);
+            message_length = butil::ByteSwap((uint32_t)message_length);
+            request_id = butil::ByteSwap((uint32_t)request_id);
+            response_to = butil::ByteSwap((uint32_t)response_to);
+            op_code = butil::ByteSwap((uint32_t)op_code);
         }
     }
 };

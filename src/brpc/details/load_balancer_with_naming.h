@@ -17,7 +17,7 @@
 #ifndef BRPC_LOAD_BALANCER_WITH_NAMING_H
 #define BRPC_LOAD_BALANCER_WITH_NAMING_H
 
-#include "base/intrusive_ptr.hpp"
+#include "butil/intrusive_ptr.hpp"
 #include "brpc/load_balancer.h"
 #include "brpc/details/naming_service_thread.h"         // NamingServiceWatcher
 
@@ -40,7 +40,7 @@ public:
     void Describe(std::ostream& os, const DescribeOptions& options);
 
 private:
-    base::intrusive_ptr<NamingServiceThread> _nsthread_ptr;
+    butil::intrusive_ptr<NamingServiceThread> _nsthread_ptr;
 };
 
 } // namespace brpc

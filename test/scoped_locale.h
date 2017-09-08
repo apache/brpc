@@ -7,9 +7,9 @@
 
 #include <string>
 
-#include "base/basictypes.h"
+#include "butil/basictypes.h"
 
-namespace base {
+namespace butil {
 
 // Sets the given |locale| on construction, and restores the previous locale
 // on destruction.
@@ -24,6 +24,6 @@ class ScopedLocale {
   DISALLOW_COPY_AND_ASSIGN(ScopedLocale);
 };
 
-}  // namespace base
+}  // namespace butil
 
 #endif  // BASE_TEST_SCOPED_LOCALE_H_

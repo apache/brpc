@@ -5,8 +5,8 @@
 
 #include <gtest/gtest.h>
 #include <google/protobuf/stubs/common.h>
-#include "base/time.h"
-#include "base/macros.h"
+#include "butil/time.h"
+#include "butil/macros.h"
 #include "brpc/socket.h"
 #include "brpc/server.h"
 #include "brpc/channel.h"

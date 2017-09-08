@@ -91,9 +91,9 @@ inline T InputStream::cut_packed_pod() {
     return packed_pod;
 }
     
-inline base::StringPiece InputStream::ref_cut(std::string* aux, size_t n) {
+inline butil::StringPiece InputStream::ref_cut(std::string* aux, size_t n) {
     if (_size >= (int64_t)n) {
-        base::StringPiece ret((const char*)_data, n);
+        butil::StringPiece ret((const char*)_data, n);
         _data = (const char*)_data + n;
         _size -= n;
         _popped_bytes += n;

@@ -20,8 +20,8 @@
 
 #include <vector>                     // std::vector
 #include <pthread.h>                  // pthread_*
-#include "base/atomicops.h" 
-#include "base/time.h"                // time utilities
+#include "butil/atomicops.h" 
+#include "butil/time.h"                // time utilities
 #include "bthread/mutex.h"
 
 namespace bthread {
@@ -88,7 +88,7 @@ private:
     static void* run_this(void* arg);
 
     bool _started;            // whether the timer thread was started successfully.
-    base::atomic<bool> _stop;
+    butil::atomic<bool> _stop;
 
     TimerThreadOptions _options;
     Bucket* _buckets;        // list of tasks to be run

@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/bind.h"
+#include "butil/bind.h"
 
-#include "base/callback.h"
-#include "base/memory/ref_counted.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/memory/weak_ptr.h"
+#include "butil/callback.h"
+#include "butil/memory/ref_counted.h"
+#include "butil/memory/scoped_ptr.h"
+#include "butil/memory/weak_ptr.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -15,7 +15,7 @@ using ::testing::Mock;
 using ::testing::Return;
 using ::testing::StrictMock;
 
-namespace base {
+namespace butil {
 namespace {
 
 class IncompleteType;
@@ -301,7 +301,7 @@ TEST_F(BindTest, CurryingTest) {
 //   - multiple runs of resulting Callback remain valid.
 TEST_F(BindTest, CurryingRvalueResultOfBind) {
   int n = 0;
-  Closure cb = base::Bind(&TakesACallback, base::Bind(&PtrArgSet, &n));
+  Closure cb = butil::Bind(&TakesACallback, butil::Bind(&PtrArgSet, &n));
 
   // If we implement Bind() such that the return value has auto_ptr-like
   // semantics, the second call here will fail because ownership of
@@ -671,7 +671,7 @@ TEST_F(BindTest, ConstRef) {
 
 TEST_F(BindTest, ScopedRefptr) {
   // BUG: The scoped_refptr should cause the only AddRef()/Release() pair. But
-  // due to a bug in base::Bind(), there's an extra call when invoking the
+  // due to a bug in butil::Bind(), there's an extra call when invoking the
   // callback.
   // https://code.google.com/p/chromium/issues/detail?id=251937
   EXPECT_CALL(has_ref_, AddRef()).Times(2);
@@ -680,7 +680,7 @@ TEST_F(BindTest, ScopedRefptr) {
   const scoped_refptr<StrictMock<HasRef> > refptr(&has_ref_);
 
   Callback<int(void)> scoped_refptr_const_ref_cb =
-      Bind(&FunctionWithScopedRefptrFirstParam, base::ConstRef(refptr), 1);
+      Bind(&FunctionWithScopedRefptrFirstParam, butil::ConstRef(refptr), 1);
   EXPECT_EQ(1, scoped_refptr_const_ref_cb.Run());
 }
 
@@ -701,7 +701,7 @@ TEST_F(BindTest, Owned) {
 
   deletes = 0;
   counter = new DeleteCounter(&deletes);
-  base::Closure own_object_cb =
+  butil::Closure own_object_cb =
       Bind(&DeleteCounter::VoidMethod0, Owned(counter));
   own_object_cb.Run();
   EXPECT_EQ(0, deletes);
@@ -823,13 +823,13 @@ TEST_F(BindTest, WindowsCallingConventions) {
 
 // Test null callbacks cause a DCHECK.
 TEST(BindDeathTest, NullCallback) {
-  base::Callback<void(int)> null_cb;
+  butil::Callback<void(int)> null_cb;
   ASSERT_TRUE(null_cb.is_null());
-  EXPECT_DEATH(base::Bind(null_cb, 42), "");
+  EXPECT_DEATH(butil::Bind(null_cb, 42), "");
 }
 
 #endif  // (!defined(NDEBUG) || defined(DCHECK_ALWAYS_ON)) &&
         //     GTEST_HAS_DEATH_TEST
 
 }  // namespace
-}  // namespace base
+}  // namespace butil

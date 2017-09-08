@@ -4,15 +4,15 @@
 
 // Tests of CancellationFlag class.
 
-#include "base/synchronization/cancellation_flag.h"
+#include "butil/synchronization/cancellation_flag.h"
 
-#include "base/bind.h"
-#include "base/logging.h"
-#include "base/synchronization/spin_wait.h"
-#include "base/time/time.h"
+#include "butil/bind.h"
+#include "butil/logging.h"
+#include "butil/synchronization/spin_wait.h"
+#include "butil/time/time.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 namespace {
 
@@ -34,4 +34,4 @@ TEST(CancellationFlagTest, DoubleSetTest) {
 
 }  // namespace
 
-}  // namespace base
+}  // namespace butil

@@ -19,7 +19,7 @@
 #include <string>                                       // std::string
 #include <set>                                          // std::set
 #include "bthread/bthread.h"                            // bthread_usleep
-#include "base/iobuf.h"
+#include "butil/iobuf.h"
 #include "brpc/log.h"
 #include "brpc/channel.h"
 #include "brpc/policy/remote_file_naming_service.h"
@@ -35,21 +35,21 @@ DEFINE_int32(remote_file_timeout_ms, 1000,
              "Timeout for fetching remote server lists");
 
 // Defined in file_naming_service.cpp
-bool SplitIntoServerAndTag(const base::StringPiece& line,
-                           base::StringPiece* server_addr,
-                           base::StringPiece* tag);
+bool SplitIntoServerAndTag(const butil::StringPiece& line,
+                           butil::StringPiece* server_addr,
+                           butil::StringPiece* tag);
 
-static bool CutLineFromIOBuf(base::IOBuf* source, std::string* line_out) {
+static bool CutLineFromIOBuf(butil::IOBuf* source, std::string* line_out) {
     if (source->empty()) {
         return false;
     }
-    base::IOBuf line_data;
+    butil::IOBuf line_data;
     if (source->cut_until(&line_data, "\n") != 0) {
         source->cutn(line_out, source->size());
         return true;
     }
     line_data.copy_to(line_out);
-    if (!line_out->empty() && base::back_char(*line_out) == '\r') {
+    if (!line_out->empty() && butil::back_char(*line_out) == '\r') {
         line_out->resize(line_out->size() - 1);
     }
     return true;
@@ -60,10 +60,10 @@ int RemoteFileNamingService::GetServers(const char *service_name_cstr,
     servers->clear();
 
     if (_channel == NULL) {
-        base::StringPiece tmpname(service_name_cstr);
+        butil::StringPiece tmpname(service_name_cstr);
         size_t pos = tmpname.find("://");
-        base::StringPiece proto;
-        if (pos != base::StringPiece::npos) {
+        butil::StringPiece proto;
+        if (pos != butil::StringPiece::npos) {
             proto = tmpname.substr(0, pos);
             for (pos += 3; tmpname[pos] == '/'; ++pos) {}
             tmpname.remove_prefix(pos);
@@ -76,8 +76,8 @@ int RemoteFileNamingService::GetServers(const char *service_name_cstr,
             return -1;
         }
         size_t slash_pos = tmpname.find('/');
-        base::StringPiece server_addr_piece;
-        if (slash_pos == base::StringPiece::npos) {
+        butil::StringPiece server_addr_piece;
+        if (slash_pos == butil::StringPiece::npos) {
             server_addr_piece = tmpname;
             _path = "/";
         } else {
@@ -116,13 +116,13 @@ int RemoteFileNamingService::GetServers(const char *service_name_cstr,
     std::set<ServerNode> presence;
 
     while (CutLineFromIOBuf(&cntl.response_attachment(), &line)) {
-        base::StringPiece addr;
-        base::StringPiece tag;
+        butil::StringPiece addr;
+        butil::StringPiece tag;
         if (!SplitIntoServerAndTag(line, &addr, &tag)) {
             continue;
         }
         const_cast<char*>(addr.data())[addr.size()] = '\0'; // safe
-        base::EndPoint point;
+        butil::EndPoint point;
         if (str2endpoint(addr.data(), &point) != 0 &&
             hostname2endpoint(addr.data(), &point) != 0) {
             LOG(ERROR) << "Invalid address=`" << addr << '\'';

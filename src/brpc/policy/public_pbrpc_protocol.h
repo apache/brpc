@@ -27,16 +27,16 @@ namespace policy {
 // Actions to a (server) response in public-pbrpc format.
 void ProcessPublicPbrpcResponse(InputMessageBase* msg);
 
-void SerializePublicPbrpcRequest(base::IOBuf* buf, Controller* cntl,
+void SerializePublicPbrpcRequest(butil::IOBuf* buf, Controller* cntl,
                                  const google::protobuf::Message* request);
 
 // Pack `request' to `method' into `buf'.
-void PackPublicPbrpcRequest(base::IOBuf* buf,
+void PackPublicPbrpcRequest(butil::IOBuf* buf,
                             SocketMessage**,
                             uint64_t correlation_id,
                             const google::protobuf::MethodDescriptor* method,
                             Controller* controller,
-                            const base::IOBuf& request,
+                            const butil::IOBuf& request,
                             const Authenticator* auth);
 
 class PublicPbrpcServiceAdaptor : public NsheadPbServiceAdaptor {

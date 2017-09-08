@@ -7,8 +7,8 @@
 #include <bthread/execution_queue.h>
 #include <bthread/sys_futex.h>
 #include <bthread/countdown_event.h>
-#include "base/time.h"
-#include "base/fast_rand.h"
+#include "butil/time.h"
+#include "butil/fast_rand.h"
 
 #define ENABLE_PROFILE
 #ifdef ENABLE_PROFILE
@@ -74,9 +74,9 @@ const static int OPS_PER_THREAD = 1000000;
 
 struct PushArg {
     bthread::ExecutionQueueId<LongIntTask> id;
-    base::atomic<int64_t> total_num;
-    base::atomic<int64_t> total_time;
-    base::atomic<int64_t> expected_value;
+    butil::atomic<int64_t> total_num;
+    butil::atomic<int64_t> total_time;
+    butil::atomic<int64_t> expected_value;
     volatile bool stopped;
     bool wait_task_completed;
 
@@ -88,7 +88,7 @@ struct PushArg {
 void* push_thread(void *arg) {
     PushArg* pa = (PushArg*)arg;
     int64_t sum = 0;
-    base::Timer timer;
+    butil::Timer timer;
     timer.start();
     int num = 0;
     bthread::CountdownEvent e;
@@ -105,7 +105,7 @@ void* push_thread(void *arg) {
         }
     }
     timer.stop();
-    pa->expected_value.fetch_add(sum, base::memory_order_relaxed);
+    pa->expected_value.fetch_add(sum, butil::memory_order_relaxed);
     pa->total_num.fetch_add(num);
     pa->total_time.fetch_add(timer.n_elapsed());
     return NULL;
@@ -114,7 +114,7 @@ void* push_thread(void *arg) {
 void* push_thread_which_addresses_execq(void *arg) {
     PushArg* pa = (PushArg*)arg;
     int64_t sum = 0;
-    base::Timer timer;
+    butil::Timer timer;
     timer.start();
     int num = 0;
     bthread::ExecutionQueue<LongIntTask>::scoped_ptr_t ptr
@@ -126,7 +126,7 @@ void* push_thread_which_addresses_execq(void *arg) {
     }
     EXPECT_TRUE(ptr->stopped());
     timer.stop();
-    pa->expected_value.fetch_add(sum, base::memory_order_relaxed);
+    pa->expected_value.fetch_add(sum, butil::memory_order_relaxed);
     pa->total_num.fetch_add(num);
     pa->total_time.fetch_add(timer.n_elapsed());
     return NULL;
@@ -294,7 +294,7 @@ TEST_F(ExecutionQueueTest, urgent_task_is_the_last_task) {
     ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, -1, &bthread::TASK_OPTIONS_URGENT));
     usleep(100);
     g_suspending = false;
-    base::atomic_thread_fence(base::memory_order_acq_rel);
+    butil::atomic_thread_fence(butil::memory_order_acq_rel);
     usleep(10 * 1000);
     LOG(INFO) << "going to quit";
     ASSERT_EQ(0, bthread::execution_queue_stop(queue_id));
@@ -303,11 +303,11 @@ TEST_F(ExecutionQueueTest, urgent_task_is_the_last_task) {
 }
 
 long next_task[1024];
-base::atomic<int> num_threads(0);
+butil::atomic<int> num_threads(0);
 
 void* push_thread_with_id(void* arg) {
     bthread::ExecutionQueueId<LongIntTask> id = { (uint64_t)arg };
-    int thread_id = num_threads.fetch_add(1, base::memory_order_relaxed);
+    int thread_id = num_threads.fetch_add(1, butil::memory_order_relaxed);
     LOG(INFO) << "Start thread" << thread_id;
     for (int i = 0; i < 100000; ++i) {
         bthread::execution_queue_execute(id, ((long)thread_id << 32) | i);
@@ -391,7 +391,7 @@ int stuck_and_check_running_thread(void* arg, bthread::TaskIterator<InPlaceTask>
     if (iter.is_queue_stopped()) {
         return 0;
     }
-    base::atomic<int>* futex = (base::atomic<int>*)arg;
+    butil::atomic<int>* futex = (butil::atomic<int>*)arg;
     if (iter->first_task) {
         EXPECT_EQ(pthread_self(), iter->thread_id);
         futex->store(1);
@@ -414,7 +414,7 @@ TEST_F(ExecutionQueueTest, should_start_new_thread_on_more_tasks) {
     bthread::ExecutionQueueId<InPlaceTask> queue_id = { 0 };
     bthread::ExecutionQueueOptions options;
     options.max_tasks_size = 1;
-    base::atomic<int> futex(0);
+    butil::atomic<int> futex(0);
     ASSERT_EQ(0, bthread::execution_queue_start(&queue_id, &options,
                                                 stuck_and_check_running_thread, 
                                                 (void*)&futex));
@@ -438,7 +438,7 @@ TEST_F(ExecutionQueueTest, should_start_new_thread_on_more_tasks) {
 
 void* inplace_push_thread(void* arg) {
     bthread::ExecutionQueueId<LongIntTask> id = { (uint64_t)arg };
-    int thread_id = num_threads.fetch_add(1, base::memory_order_relaxed);
+    int thread_id = num_threads.fetch_add(1, butil::memory_order_relaxed);
     LOG(INFO) << "Start thread" << thread_id;
     for (int i = 0; i < 100000; ++i) {
         bthread::execution_queue_execute(id, ((long)thread_id << 32) | i,
@@ -517,7 +517,7 @@ TEST_F(ExecutionQueueTest, cancel) {
 }
 
 struct CancelSelf {
-    base::atomic<bthread::TaskHandle*> handle;
+    butil::atomic<bthread::TaskHandle*> handle;
 };
 
 int cancel_self(void* /*meta*/, bthread::TaskIterator<CancelSelf*>& iter) {
@@ -556,10 +556,10 @@ struct AddTask {
 
 struct AddMeta {
     int64_t sum;
-    base::atomic<int64_t> expected;
-    base::atomic<int64_t> succ_times;
-    base::atomic<int64_t> race_times;
-    base::atomic<int64_t> fail_times;
+    butil::atomic<int64_t> expected;
+    butil::atomic<int64_t> succ_times;
+    butil::atomic<int64_t> race_times;
+    butil::atomic<int64_t> fail_times;
 };
 
 int add_with_cancel(void* meta, bthread::TaskIterator<AddTask>& iter) {
@@ -602,7 +602,7 @@ TEST_F(ExecutionQueueTest, random_cancel) {
         t.value = i;
         t.cancel_task = false;
         ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, t, NULL, &h));
-        const int r = base::fast_rand_less_than(4);
+        const int r = butil::fast_rand_less_than(4);
         expected += i;
         if (r == 0) {
             if (bthread::execution_queue_cancel(h) == 0) {

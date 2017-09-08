@@ -15,7 +15,7 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 
 #include <gflags/gflags.h>
-#include <base/logging.h>
+#include <butil/logging.h>
 #include <brpc/server.h>
 #include <brpc/channel.h>
 #include "view.pb.h"
@@ -34,8 +34,8 @@ static void handle_response(brpc::Controller* client_cntl,
     server_cntl->response_attachment() = client_cntl->response_attachment();
     // Insert "rpc_view: <target>" before </body> so that users are always
     // visually notified with target server w/o confusions.
-    base::IOBuf& content = server_cntl->response_attachment();
-    base::IOBuf before_body;
+    butil::IOBuf& content = server_cntl->response_attachment();
+    butil::IOBuf before_body;
     if (content.cut_until(&before_body, "</body>") == 0) {
         before_body.append(
             "<style type=\"text/css\">\n"

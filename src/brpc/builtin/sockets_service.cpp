@@ -31,12 +31,12 @@ void SocketsService::default_method(::google::protobuf::RpcController* cntl_base
     ClosureGuard done_guard(done);
     Controller *cntl = static_cast<Controller*>(cntl_base);
     cntl->http_response().set_content_type("text/plain");
-    base::IOBufBuilder os;
+    butil::IOBufBuilder os;
     const std::string& constraint = cntl->http_request().unresolved_path();
     
     if (constraint.empty()) {
         os << "# Use /sockets/<SocketId>\n"
-           << base::describe_resources<Socket>() << '\n';
+           << butil::describe_resources<Socket>() << '\n';
     } else {
         char* endptr = NULL;
         SocketId sid = strtoull(constraint.c_str(), &endptr, 10);

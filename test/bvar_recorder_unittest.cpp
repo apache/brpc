@@ -8,8 +8,8 @@
 #include <cstddef>
 #include <memory>
 #include <iostream>
-#include "base/time.h"
-#include "base/macros.h"
+#include "butil/time.h"
+#include "butil/macros.h"
 #include "bvar/recorder.h"
 #include "bvar/latency_recorder.h"
 #include <gtest/gtest.h>
@@ -75,10 +75,10 @@ TEST(RecorderTest, window) {
     bvar::Window<bvar::IntRecorder> w3(&c1, 3);
 
     const int N = 10000;
-    int64_t last_time = base::gettimeofday_us();
+    int64_t last_time = butil::gettimeofday_us();
     for (int i = 1; i <= N; ++i) {
         c1 << i;
-        int64_t now = base::gettimeofday_us();
+        int64_t now = butil::gettimeofday_us();
         if (now - last_time >= 1000000L) {
             last_time = now;
             LOG(INFO) << "c1=" << c1 << " w1=" << w1 << " w2=" << w2 << " w3=" << w3;
@@ -165,7 +165,7 @@ const size_t OPS_PER_THREAD = 20000000;
 
 static void *thread_counter(void *arg) {
     bvar::IntRecorder *recorder = (bvar::IntRecorder *)arg;
-    base::Timer timer;
+    butil::Timer timer;
     timer.start();
     for (int i = 0; i < (int)OPS_PER_THREAD; ++i) {
         *recorder << i;

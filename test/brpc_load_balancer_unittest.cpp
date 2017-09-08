@@ -9,8 +9,8 @@
 #include <map>
 #include <gtest/gtest.h>
 #include <gperftools/profiler.h>
-#include "base/time.h"
-#include "base/containers/doubly_buffered_data.h"
+#include "butil/time.h"
+#include "butil/containers/doubly_buffered_data.h"
 #include "brpc/socket.h"
 #include "brpc/policy/round_robin_load_balancer.h"
 #include "brpc/policy/randomized_load_balancer.h"
@@ -68,29 +68,29 @@ TEST_F(LoadBalancerTest, doubly_buffered_data) {
     const size_t old_TLS_ctor = TLS_ctor;
     const size_t old_TLS_dtor = TLS_dtor;
     {
-        base::DoublyBufferedData<Foo, TLS> d2;
-        base::DoublyBufferedData<Foo, TLS>::ScopedPtr ptr;
+        butil::DoublyBufferedData<Foo, TLS> d2;
+        butil::DoublyBufferedData<Foo, TLS>::ScopedPtr ptr;
         d2.Read(&ptr);
         ASSERT_EQ(old_TLS_ctor + 1, TLS_ctor);
     }
     ASSERT_EQ(old_TLS_ctor + 1, TLS_ctor);
     ASSERT_EQ(old_TLS_dtor + 1, TLS_dtor);
 
-    base::DoublyBufferedData<Foo> d;
+    butil::DoublyBufferedData<Foo> d;
     {
-        base::DoublyBufferedData<Foo>::ScopedPtr ptr;
+        butil::DoublyBufferedData<Foo>::ScopedPtr ptr;
         ASSERT_EQ(0, d.Read(&ptr));
         ASSERT_EQ(0, ptr->x);
     }
     {
-        base::DoublyBufferedData<Foo>::ScopedPtr ptr;
+        butil::DoublyBufferedData<Foo>::ScopedPtr ptr;
         ASSERT_EQ(0, d.Read(&ptr));
         ASSERT_EQ(0, ptr->x);
     }
 
     d.Modify(AddN, 10);
     {
-        base::DoublyBufferedData<Foo>::ScopedPtr ptr;
+        butil::DoublyBufferedData<Foo>::ScopedPtr ptr;
         ASSERT_EQ(0, d.Read(&ptr));
         ASSERT_EQ(10, ptr->x);
     }
@@ -114,7 +114,7 @@ static void ValidateWeightTree(
         }
     }
     for (size_t i = 0; i < weight_tree.size(); ++i) {
-        const int64_t left = weight_tree[i].left->load(base::memory_order_relaxed);
+        const int64_t left = weight_tree[i].left->load(butil::memory_order_relaxed);
         size_t left_child = i * 2 + 1;
         if (left_child < weight_tree.size()) {
             ASSERT_EQ(weight_sum[left_child], left) << "i=" << i;
@@ -158,7 +158,7 @@ TEST_F(LoadBalancerTest, la_sanity) {
         for (; cur_count < N; ++cur_count) {
             char addr[32];
             snprintf(addr, sizeof(addr), "192.168.1.%d:8080", (int)cur_count);
-            base::EndPoint dummy;
+            butil::EndPoint dummy;
             ASSERT_EQ(0, str2endpoint(addr, &dummy));
             brpc::ServerId id(8888);
             brpc::SocketOptions options;
@@ -224,10 +224,10 @@ void* select_server(void* arg) {
 }
 
 brpc::SocketId recycled_sockets[1024];
-base::atomic<size_t> nrecycle(0);
+butil::atomic<size_t> nrecycle(0);
 class SaveRecycle : public brpc::SocketUser {
     void BeforeRecycle(brpc::Socket* s) {
-        recycled_sockets[nrecycle.fetch_add(1, base::memory_order_relaxed)] = s->id();
+        recycled_sockets[nrecycle.fetch_add(1, butil::memory_order_relaxed)] = s->id();
         delete this;
     }
 };
@@ -267,7 +267,7 @@ TEST_F(LoadBalancerTest, update_while_selection) {
         for (int i = 0; i < 256; ++i) {
             char addr[32];
             snprintf(addr, sizeof(addr), "192.%d.1.%d:8080", i, i);
-            base::EndPoint dummy;
+            butil::EndPoint dummy;
             ASSERT_EQ(0, str2endpoint(addr, &dummy));
             brpc::ServerId id(8888);
             brpc::SocketOptions options;
@@ -277,8 +277,8 @@ TEST_F(LoadBalancerTest, update_while_selection) {
             ids.push_back(id);
             ASSERT_TRUE(lb->AddServer(id));
         }
-        std::cout << "Time " << base::class_name_str(*lb) << " ..." << std::endl;
-        base::Timer tm;
+        std::cout << "Time " << butil::class_name_str(*lb) << " ..." << std::endl;
+        butil::Timer tm;
         tm.start();
         for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
             ASSERT_EQ(0, pthread_create(&th[i], NULL, select_server, &sa));
@@ -366,7 +366,7 @@ TEST_F(LoadBalancerTest, fairness) {
         }
         sa.lb = lb;
         
-        std::string lb_name = base::class_name_str(*lb);
+        std::string lb_name = butil::class_name_str(*lb);
         // Remove namespace
         size_t ns_pos = lb_name.find_last_of(':');
         if (ns_pos != std::string::npos) {
@@ -380,7 +380,7 @@ TEST_F(LoadBalancerTest, fairness) {
         for (int i = 0; i < 256; ++i) {
             char addr[32];
             snprintf(addr, sizeof(addr), "192.168.1.%d:8080", i);
-            base::EndPoint dummy;
+            butil::EndPoint dummy;
             ASSERT_EQ(0, str2endpoint(addr, &dummy));
             brpc::ServerId id(8888);
             brpc::SocketOptions options;
@@ -466,12 +466,12 @@ TEST_F(LoadBalancerTest, consistent_hashing) {
     for (size_t round = 0; round < ARRAY_SIZE(hashs); ++round) {
         brpc::policy::ConsistentHashingLoadBalancer chlb(hashs[round]);
         std::vector<brpc::ServerId> ids;
-        std::vector<base::EndPoint> addrs;
+        std::vector<butil::EndPoint> addrs;
         for (int j = 0;j < 5; ++j) 
         for (int i = 0; i < 5; ++i) {
             const char *addr = servers[i];
             //snprintf(addr, sizeof(addr), "192.168.1.%d:8080", i);
-            base::EndPoint dummy;
+            butil::EndPoint dummy;
             ASSERT_EQ(0, str2endpoint(addr, &dummy));
             brpc::ServerId id(8888);
             brpc::SocketOptions options;
@@ -490,7 +490,7 @@ TEST_F(LoadBalancerTest, consistent_hashing) {
             std::cout << chlb;
         }
         const size_t SELECT_TIMES = 1000000;
-        std::map<base::EndPoint, size_t> times;
+        std::map<butil::EndPoint, size_t> times;
         brpc::SocketUniquePtr ptr;
         brpc::LoadBalancer::SelectIn in = { 0, false, 0u, NULL };
         ::brpc::LoadBalancer::SelectOut out(&ptr);
@@ -500,7 +500,7 @@ TEST_F(LoadBalancerTest, consistent_hashing) {
             chlb.SelectServer(in, &out);
             ++times[ptr->remote_side()];
         }
-        std::map<base::EndPoint, double> load_map;
+        std::map<butil::EndPoint, double> load_map;
         chlb.GetLoads(&load_map);
         ASSERT_EQ(times.size(), load_map.size());
         double load_sum = 0;;

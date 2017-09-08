@@ -21,7 +21,7 @@
 // on internal structures, use opaque pointers instead.
 
 #include <stdint.h>               // uint64_t
-#include "base/unique_ptr.h"      // std::unique_ptr
+#include "butil/unique_ptr.h"      // std::unique_ptr
 
 
 namespace brpc {

@@ -8,10 +8,10 @@
 #include <gperftools/profiler.h>
 #include <json2pb/pb_to_json.h>
 #include <json2pb/json_to_pb.h>
-#include <base/iobuf.h>
+#include <butil/iobuf.h>
 #include <google/protobuf/text_format.h>
-#include <base/third_party/rapidjson/rapidjson.h>
-#include "base/time.h"
+#include <butil/third_party/rapidjson/rapidjson.h>
+#include "butil/time.h"
 #include "message.pb.h"
 #include "addressbook1.pb.h"
 #include "addressbook.pb.h"
@@ -243,11 +243,11 @@ TEST_F(ProtobufJsonTest, json_to_pb_unicode_case) {
     ret = json2pb::ProtoMessageToJson(address_book_test, &info2, &error);
     ASSERT_TRUE(ret);
     ASSERT_TRUE(!info1.compare(info2));
-    base::IOBuf buf;
-    base::IOBufAsZeroCopyOutputStream stream(&buf); 
+    butil::IOBuf buf;
+    butil::IOBufAsZeroCopyOutputStream stream(&buf); 
     bool res = json2pb::ProtoMessageToJson(address_book, &stream, NULL);
     ASSERT_TRUE(res);
-    base::IOBufAsZeroCopyInputStream stream2(buf); 
+    butil::IOBufAsZeroCopyInputStream stream2(buf); 
     AddressBook address_book_test3;
     ret = json2pb::JsonToProtoMessage(&stream2, &address_book_test3, &error);
     ASSERT_TRUE(ret);
@@ -490,7 +490,7 @@ TEST_F(ProtobufJsonTest, json_to_pb_perf_case) {
     std::string error; 
   
     ProfilerStart("json_to_pb_perf.prof");
-    base::Timer timer;
+    butil::Timer timer;
     bool res;
     float avg_time1 = 0;
     float avg_time2 = 0;
@@ -527,7 +527,7 @@ TEST_F(ProtobufJsonTest, json_to_pb_encode_decode_perf_case) {
     std::string error; 
     
     ProfilerStart("json_to_pb_encode_decode_perf.prof");
-    base::Timer timer;
+    butil::Timer timer;
     bool res;
     float avg_time1 = 0;
     float avg_time2 = 0;
@@ -559,7 +559,7 @@ TEST_F(ProtobufJsonTest, json_to_pb_complex_perf_case) {
     std::ifstream in("jsonout", std::ios::in);
     std::ostringstream tmp;
     tmp << in.rdbuf();
-    base::IOBuf buf;
+    butil::IOBuf buf;
     buf.append(tmp.str());
     in.close();
 
@@ -567,7 +567,7 @@ TEST_F(ProtobufJsonTest, json_to_pb_complex_perf_case) {
 
     std::string error; 
   
-    base::Timer timer;
+    butil::Timer timer;
 
     bool res;
     float avg_time1 = 0;
@@ -577,7 +577,7 @@ TEST_F(ProtobufJsonTest, json_to_pb_complex_perf_case) {
     ProfilerStart("json_to_pb_complex_perf.prof");
     for (int i = 0; i < times; i++) { 
         gss::message::gss_us_res_t data;
-        base::IOBufAsZeroCopyInputStream stream(buf); 
+        butil::IOBufAsZeroCopyInputStream stream(buf); 
         timer.start();
         res = json2pb::JsonToProtoMessage(&stream, &data, options, &error);
         timer.stop();
@@ -600,7 +600,7 @@ TEST_F(ProtobufJsonTest, json_to_pb_to_string_complex_perf_case) {
 
     std::string error; 
   
-    base::Timer timer;
+    butil::Timer timer;
     bool res;
     float avg_time1 = 0;
     const int times = 10000;
@@ -1072,8 +1072,8 @@ TEST_F(ProtobufJsonTest, pb_to_json_unicode_case) {
     printf("----------test pb to json------------\n\n");
     bool ret = json2pb::ProtoMessageToJson(address_book, &info1, &error);
     ASSERT_TRUE(ret);
-    base::IOBuf buf;
-    base::IOBufAsZeroCopyOutputStream stream(&buf); 
+    butil::IOBuf buf;
+    butil::IOBufAsZeroCopyOutputStream stream(&buf); 
     bool res = json2pb::ProtoMessageToJson(address_book, &stream, NULL);
     ASSERT_TRUE(res);
     ASSERT_TRUE(!info1.compare(buf.to_string()));
@@ -1206,7 +1206,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_perf_case) {
 
     printf("----------test pb to json performance------------\n\n");
     ProfilerStart("pb_to_json_perf.prof");
-    base::Timer timer;
+    butil::Timer timer;
     bool res;
     float avg_time1 = 0;
     float avg_time2 = 0;
@@ -1265,7 +1265,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_encode_decode_perf_case) {
 
     printf("----------test pb to json encode decode performance------------\n\n");
     ProfilerStart("pb_to_json_encode_decode_perf.prof");
-    base::Timer timer;
+    butil::Timer timer;
     bool res;
     float avg_time1 = 0;
     float avg_time2 = 0;
@@ -1304,7 +1304,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_complex_perf_case) {
 
     std::string error; 
   
-    base::Timer timer;
+    butil::Timer timer;
     bool res;
     float avg_time1 = 0;
     float avg_time2 = 0;
@@ -1321,8 +1321,8 @@ TEST_F(ProtobufJsonTest, pb_to_json_complex_perf_case) {
     for (int i = 0; i < times; i++) { 
         std::string error1;
         timer.start();
-        base::IOBuf buf;
-        base::IOBufAsZeroCopyOutputStream stream(&buf); 
+        butil::IOBuf buf;
+        butil::IOBufAsZeroCopyOutputStream stream(&buf); 
         res = json2pb::ProtoMessageToJson(data, &stream, &error1);
         timer.stop();
         avg_time2 += timer.u_elapsed();
@@ -1344,7 +1344,7 @@ TEST_F(ProtobufJsonTest, pb_to_json_to_string_complex_perf_case) {
 
     std::string error; 
   
-    base::Timer timer;
+    butil::Timer timer;
     bool res;
     float avg_time1 = 0;
     float avg_time2 = 0;
@@ -1415,8 +1415,8 @@ TEST_F(ProtobufJsonTest, json_to_zero_copy_stream_normal_case) {
     person.set_id(9);
     person.set_datadouble(2.2);
     person.set_datafloat(1);
-    base::IOBuf iobuf;
-    base::IOBufAsZeroCopyOutputStream wrapper(&iobuf);
+    butil::IOBuf iobuf;
+    butil::IOBufAsZeroCopyOutputStream wrapper(&iobuf);
     std::string error;
     ASSERT_TRUE(json2pb::ProtoMessageToJson(person, &wrapper, &error)) << error;
     std::string out = iobuf.to_string();
@@ -1424,9 +1424,9 @@ TEST_F(ProtobufJsonTest, json_to_zero_copy_stream_normal_case) {
 }
 
 TEST_F(ProtobufJsonTest, zero_copy_stream_to_json_normal_case) {
-    base::IOBuf iobuf;
+    butil::IOBuf iobuf;
     iobuf = "{\"name\":\"hello\",\"id\":9,\"datadouble\":2.2,\"datafloat\":1.0}";
-    base::IOBufAsZeroCopyInputStream wrapper(iobuf);
+    butil::IOBufAsZeroCopyInputStream wrapper(iobuf);
     Person person;
     ASSERT_TRUE(json2pb::JsonToProtoMessage(&wrapper, &person));
     ASSERT_STREQ("hello", person.name().c_str());

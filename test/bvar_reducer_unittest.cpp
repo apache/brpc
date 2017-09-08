@@ -6,10 +6,10 @@
 
 #include "bvar/reducer.h"
 
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/string_printf.h"
-#include "base/string_splitter.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/string_printf.h"
+#include "butil/string_splitter.h"
 
 #include <gtest/gtest.h>
 
@@ -53,7 +53,7 @@ const size_t OPS_PER_THREAD = 5000000;
 
 static void *thread_counter(void *arg) {
     bvar::Adder<uint64_t> *reducer = (bvar::Adder<uint64_t> *)arg;
-    base::Timer timer;
+    butil::Timer timer;
     timer.start();
     for (size_t i = 0; i < OPS_PER_THREAD; ++i) {
         (*reducer) << 2;
@@ -63,18 +63,18 @@ static void *thread_counter(void *arg) {
 }
 
 void *add_atomic(void *arg) {
-    base::atomic<uint64_t> *counter = (base::atomic<uint64_t> *)arg;
-    base::Timer timer;
+    butil::atomic<uint64_t> *counter = (butil::atomic<uint64_t> *)arg;
+    butil::Timer timer;
     timer.start();
     for (size_t i = 0; i < OPS_PER_THREAD / 100; ++i) {
-        counter->fetch_add(2, base::memory_order_relaxed);
+        counter->fetch_add(2, butil::memory_order_relaxed);
     }
     timer.stop();
     return (void *)(timer.n_elapsed());
 }
 
 static long start_perf_test_with_atomic(size_t num_thread) {
-    base::atomic<uint64_t> counter(0);
+    butil::atomic<uint64_t> counter(0);
     pthread_t threads[num_thread];
     for (size_t i = 0; i < num_thread; ++i) {
         pthread_create(&threads[i], NULL, &add_atomic, (void *)&counter);
@@ -203,14 +203,14 @@ void ReducerTest_window() {
     const int N = 6000;
     int count = 0;
     int total_count = 0;
-    int64_t last_time = base::gettimeofday_us();
+    int64_t last_time = butil::gettimeofday_us();
     for (int i = 1; i <= N; ++i) {
         c1 << 1;
         c2 << N - i;
         c3 << i;
         ++count;
         ++total_count;
-        int64_t now = base::gettimeofday_us();
+        int64_t now = butil::gettimeofday_us();
         if (now - last_time >= 1000000L) {
             last_time = now;
             ASSERT_EQ(total_count, c1.get_value());
@@ -270,7 +270,7 @@ struct StringAppenderResult {
 static void* string_appender(void* arg) {
     bvar::Adder<std::string>* cater = (bvar::Adder<std::string>*)arg;
     int count = 0;
-    std::string id = base::string_printf("%lld", (long long)pthread_self());
+    std::string id = butil::string_printf("%lld", (long long)pthread_self());
     std::string tmp = "a";
     for (count = 0; !g_stop; ++count) {
         *cater << id << ":";
@@ -295,20 +295,20 @@ TEST_F(ReducerTest, non_primitive_mt) {
     }
     usleep(10000);
     g_stop = true;
-    base::hash_map<pthread_t, int> appended_count;
+    butil::hash_map<pthread_t, int> appended_count;
     for (size_t i = 0; i < arraysize(th); ++i) {
         StringAppenderResult* res = NULL;
         pthread_join(th[i], (void**)&res);
         appended_count[th[i]] = res->count;
         delete res;
     }
-    base::hash_map<pthread_t, int> got_count;
+    butil::hash_map<pthread_t, int> got_count;
     std::string res = cater.get_value();
-    for (base::StringSplitter sp(res.c_str(), '.'); sp; ++sp) {
+    for (butil::StringSplitter sp(res.c_str(), '.'); sp; ++sp) {
         char* endptr = NULL;
         ++got_count[strtoll(sp.field(), &endptr, 10)];
         ASSERT_EQ(27LL, sp.field() + sp.length() - endptr)
-            << base::StringPiece(sp.field(), sp.length());
+            << butil::StringPiece(sp.field(), sp.length());
         ASSERT_EQ(0, memcmp(":abcdefghijklmnopqrstuvwxyz", endptr, 27));
     }
     ASSERT_EQ(appended_count.size(), got_count.size());

@@ -18,7 +18,7 @@
 #define BRPC_RESTFUL_H
 
 #include <string>
-#include "base/strings/string_piece.h"
+#include "butil/strings/string_piece.h"
 #include "brpc/server.h"
 
 
@@ -42,13 +42,13 @@ struct RestfulMapping {
 // * path_out->prefix is normalized as
 //   prefix := "/COMPONENT" prefix | "" (no dot in COMPONENT)
 // Returns true on success.
-bool ParseRestfulPath(base::StringPiece path_in, RestfulMethodPath* path_out);
+bool ParseRestfulPath(butil::StringPiece path_in, RestfulMethodPath* path_out);
 
 // Parse "PATH1 => NAME1, PATH2 => NAME2 ..." where:
 // * PATHs are acceptible by ParseRestfulPath.
 // * NAMEs are valid as method names in protobuf.
 // Returns true on success.
-bool ParseRestfulMappings(const base::StringPiece& mappings,
+bool ParseRestfulMappings(const butil::StringPiece& mappings,
                           std::vector<RestfulMapping>* list);
 
 struct RestfulMethodProperty : public Server::MethodProperty {
@@ -88,7 +88,7 @@ public:
     // Find the method by path.
     // Time complexity in worst-case is #slashes-in-input * log(#paths-stored)
     const Server::MethodProperty*
-    FindMethodProperty(const base::StringPiece& method_path,
+    FindMethodProperty(const butil::StringPiece& method_path,
                        std::string* unresolved_path) const;
 
     const std::string& service_name() const { return _service_name; }

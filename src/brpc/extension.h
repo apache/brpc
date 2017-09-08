@@ -19,12 +19,12 @@
 
 #include <string>
 #include <error.h>
-#include "base/scoped_lock.h"
-#include "base/logging.h"
-#include "base/containers/case_ignored_flat_map.h"
-#include "base/memory/singleton_on_pthread_once.h"
+#include "butil/scoped_lock.h"
+#include "butil/logging.h"
+#include "butil/containers/case_ignored_flat_map.h"
+#include "butil/memory/singleton_on_pthread_once.h"
 
-namespace base {
+namespace butil {
 template <typename T> class GetLeakySingleton;
 }
 
@@ -47,11 +47,11 @@ public:
     void List(std::ostream& os, char separator);
 
 private:
-friend class base::GetLeakySingleton<Extension<T> >;
+friend class butil::GetLeakySingleton<Extension<T> >;
     Extension();
     ~Extension();
-    base::CaseIgnoredFlatMap<T*> _instance_map;
-    base::Mutex _map_mutex;
+    butil::CaseIgnoredFlatMap<T*> _instance_map;
+    butil::Mutex _map_mutex;
 };
 
 } // namespace brpc

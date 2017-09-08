@@ -23,8 +23,8 @@
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/reflection_ops.h>
 #include <google/protobuf/wire_format.h>
-#include "base/string_printf.h"
-#include "base/macros.h"
+#include "butil/string_printf.h"
+#include "butil/macros.h"
 #include "brpc/controller.h"
 #include "brpc/redis.h"
 #include "brpc/redis_command.h"
@@ -254,11 +254,11 @@ void RedisRequest::Swap(RedisRequest* other) {
     return metadata;
 }
 
-bool RedisRequest::AddCommand(const base::StringPiece& command) {
+bool RedisRequest::AddCommand(const butil::StringPiece& command) {
     if (_has_error) {
         return false;
     }
-    const base::Status st = RedisCommandNoFormat(&_buf, command);
+    const butil::Status st = RedisCommandNoFormat(&_buf, command);
     if (st.ok()) {
         ++_ncommand;
         return true;
@@ -269,12 +269,12 @@ bool RedisRequest::AddCommand(const base::StringPiece& command) {
     }    
 }
 
-bool RedisRequest::AddCommandByComponents(const base::StringPiece* components, 
+bool RedisRequest::AddCommandByComponents(const butil::StringPiece* components, 
                                          size_t n) {
     if (_has_error) {
         return false;
     }
-    const base::Status st = RedisCommandByComponents(&_buf, components, n);
+    const butil::Status st = RedisCommandByComponents(&_buf, components, n);
     if (st.ok()) {
         ++_ncommand;
         return true;
@@ -291,7 +291,7 @@ bool RedisRequest::AddCommandWithArgs(const char* fmt, ...) {
     }
     va_list ap;
     va_start(ap, fmt);
-    const base::Status st = RedisCommandFormatV(&_buf, fmt, ap);
+    const butil::Status st = RedisCommandFormatV(&_buf, fmt, ap);
     va_end(ap);
     if (st.ok()) {
         ++_ncommand;
@@ -307,7 +307,7 @@ bool RedisRequest::AddCommandV(const char* fmt, va_list ap) {
     if (_has_error) {
         return false;
     }
-    const base::Status st = RedisCommandFormatV(&_buf, fmt, ap);
+    const butil::Status st = RedisCommandFormatV(&_buf, fmt, ap);
     if (st.ok()) {
         ++_ncommand;
         return true;
@@ -318,7 +318,7 @@ bool RedisRequest::AddCommandV(const char* fmt, va_list ap) {
     }
 }
 
-bool RedisRequest::SerializeTo(base::IOBuf* buf) const {
+bool RedisRequest::SerializeTo(butil::IOBuf* buf) const {
     if (_has_error) {
         LOG(ERROR) << "Reject serialization due to error in AddCommand[V]";
         return false;
@@ -328,8 +328,8 @@ bool RedisRequest::SerializeTo(base::IOBuf* buf) const {
 }
 
 void RedisRequest::Print(std::ostream& os) const {
-    base::IOBuf cp = _buf;
-    base::IOBuf seg;
+    butil::IOBuf cp = _buf;
+    butil::IOBuf seg;
     while (cp.cut_until(&seg, "\r\n") == 0) {
         os << seg;
         if (FLAGS_redis_verbose_crlf2space) {
@@ -486,7 +486,7 @@ void RedisResponse::Swap(RedisResponse* other) {
 
 // ===================================================================
 
-bool RedisResponse::ConsumePartialIOBuf(base::IOBuf& buf, int reply_count) {
+bool RedisResponse::ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count) {
     size_t oldsize = buf.size();
     if (reply_size() == 0) {
         if (!_first_reply.ConsumePartialIOBuf(buf, &_arena)) {

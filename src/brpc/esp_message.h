@@ -24,7 +24,7 @@
 #include <google/protobuf/generated_message_reflection.h>
 
 #include "brpc/esp_head.h"
-#include "base/iobuf.h"       
+#include "butil/iobuf.h"       
 
 
 namespace brpc {
@@ -37,7 +37,7 @@ void protobuf_ShutdownFile_esp_5fmessage_2eproto();
 class EspMessage : public ::google::protobuf::Message {
 public:
     EspHead head;
-    base::IOBuf body;
+    butil::IOBuf body;
 
 public:
     EspMessage();

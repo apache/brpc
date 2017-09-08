@@ -19,9 +19,9 @@
 #define  BRPC_URI_H
 
 #include <string>                   // std::string
-#include "base/containers/flat_map.h"
-#include "base/status.h"
-#include "base/string_splitter.h"
+#include "butil/containers/flat_map.h"
+#include "butil/status.h"
+#include "butil/string_splitter.h"
 
 // To brpc developers: This is a class exposed to end-user. DON'T put impl.
 // details in this header, use opaque pointers instead.
@@ -51,7 +51,7 @@ namespace brpc {
 class URI {
 public:
     static const size_t QUERY_MAP_INITIAL_BUCKET = 16;
-    typedef base::FlatMap<std::string, std::string> QueryMap;
+    typedef butil::FlatMap<std::string, std::string> QueryMap;
     typedef QueryMap::const_iterator QueryIterator;
 
     // You can copy a URI.
@@ -74,7 +74,7 @@ public:
     void operator=(const std::string& url) { SetHttpURL(url); }
 
     // Status of previous SetHttpURL or opreator=.
-    const base::Status& status() const { return _st; }
+    const butil::Status& status() const { return _st; }
 
     // Sub fields. Empty string if the field is not set.
     const std::string& schema() const { return _schema; } // scheme in http2
@@ -142,7 +142,7 @@ friend class HttpMessage;
     // Iterate _query_map and append all queries to `query'
     void AppendQueryString(std::string* query, bool append_question_mark) const;
 
-    base::Status                            _st;
+    butil::Status                            _st;
     int                                     _port;
     mutable bool                            _query_was_modified;
     mutable bool                            _initialized_query_map;
@@ -210,19 +210,19 @@ public:
         , _is_split(false) {
     }
 
-    QuerySplitter(const base::StringPiece &sp)
+    QuerySplitter(const butil::StringPiece &sp)
         : _sp(sp.begin(), sp.end(), '&')
         , _is_split(false) {
     }
 
-    const base::StringPiece& key() {
+    const butil::StringPiece& key() {
         if (!_is_split) {
             split();
         }
         return _key;
     }
 
-    const base::StringPiece& value() {
+    const butil::StringPiece& value() {
         if (!_is_split) {
             split();
         }
@@ -231,8 +231,8 @@ public:
 
     // Get the current value of key and value 
     // in the format of "key=value"
-    base::StringPiece key_and_value(){
-        return base::StringPiece(_sp.field(), _sp.length());
+    butil::StringPiece key_and_value(){
+        return butil::StringPiece(_sp.field(), _sp.length());
     }
 
     // Move splitter forward.
@@ -254,9 +254,9 @@ private:
     void split();
 
 private:
-    base::StringSplitter _sp;
-    base::StringPiece _key;
-    base::StringPiece _value;
+    butil::StringSplitter _sp;
+    butil::StringPiece _key;
+    butil::StringPiece _value;
     bool _is_split;
 };
 
@@ -267,9 +267,9 @@ class QueryRemover {
 public:
     QueryRemover(const std::string& str);
 
-    const base::StringPiece& key() { return _qs.key();}
-    const base::StringPiece& value() { return _qs.value(); }
-    base::StringPiece key_and_value() { return _qs.key_and_value(); }
+    const butil::StringPiece& key() { return _qs.key();}
+    const butil::StringPiece& value() { return _qs.value(); }
+    butil::StringPiece key_and_value() { return _qs.key_and_value(); }
 
     // Move splitter forward.
     QueryRemover& operator++();
@@ -301,8 +301,8 @@ private:
 // "/some/path?" -> "/some/path?key=value"
 // "/some/path?key1=value1" -> "/some/path?key1=value1&key=value"
 void append_query(std::string *query_string,
-                  const base::StringPiece& key,
-                  const base::StringPiece& value);
+                  const butil::StringPiece& key,
+                  const butil::StringPiece& value);
 
 } // namespace brpc
 

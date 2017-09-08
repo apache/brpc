@@ -4,10 +4,10 @@
 
 #include <map>
 #include <gtest/gtest.h>
-#include "base/atomicops.h"
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/scoped_lock.h"
+#include "butil/atomicops.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/scoped_lock.h"
 #include "bthread/bthread.h"
 #include "bthread/condition_variable.h"
 #include "bthread/stack.h"
@@ -36,7 +36,7 @@ std::ostream& operator<<(std::ostream& os,
 
 void* signaler(void* void_arg) {
     Arg* a = (Arg*)void_arg;
-    signal_start_time = base::gettimeofday_us();
+    signal_start_time = butil::gettimeofday_us();
     while (!stop) {
         bthread_usleep(SIGNAL_INTERVAL_US);
         bthread_cond_signal(&a->c);
@@ -52,7 +52,7 @@ void* waiter(void* void_arg) {
         
         BAIDU_SCOPED_LOCK(wake_mutex);
         wake_tid.push_back(bthread_self());
-        wake_time.push_back(base::gettimeofday_us());
+        wake_time.push_back(butil::gettimeofday_us());
     }
     bthread_mutex_unlock(&a->m);
     return NULL;
@@ -139,7 +139,7 @@ struct WrapperArg {
 
 void* cv_signaler(void* void_arg) {
     WrapperArg* a = (WrapperArg*)void_arg;
-    signal_start_time = base::gettimeofday_us();
+    signal_start_time = butil::gettimeofday_us();
     while (!stop) {
         bthread_usleep(SIGNAL_INTERVAL_US);
         a->cond.notify_one();
@@ -242,8 +242,8 @@ struct PingPongArg {
     bool stopped;
     Signal sig1;
     Signal sig2;
-    base::atomic<int> nthread;
-    base::atomic<long> total_count;
+    butil::atomic<int> nthread;
+    butil::atomic<long> total_count;
 };
 
 void *ping_pong_thread(void* arg) {
@@ -429,7 +429,7 @@ static void launch_many_bthreads() {
     bthread_t tid;
     BthreadCond c;
     c.Init();
-    base::Timer tm;
+    butil::Timer tm;
     bthread_start_urgent(&tid, &BTHREAD_ATTR_PTHREAD, wait_cond_thread, &c);
     std::vector<bthread_t> tids;
     tids.reserve(32768);

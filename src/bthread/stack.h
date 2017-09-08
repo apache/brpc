@@ -23,7 +23,7 @@
 #include <gflags/gflags.h>          // DECLARE_int32
 #include "bthread/types.h"
 #include "bthread/context.h"        // bthread_fcontext_t
-#include "base/object_pool.h"
+#include "butil/object_pool.h"
 
 namespace bthread {
 

@@ -19,8 +19,8 @@
 
 #include <stdint.h>                                     // uint32_t
 #include <vector>                                       // std::vector
-#include "base/endpoint.h"                              // base::EndPoint
-#include "base/containers/doubly_buffered_data.h"
+#include "butil/endpoint.h"                              // butil::EndPoint
+#include "butil/containers/doubly_buffered_data.h"
 #include "brpc/load_balancer.h"
 
 
@@ -42,11 +42,11 @@ public:
     void Describe(std::ostream &os, const DescribeOptions& options);
 
 private:
-    void GetLoads(std::map<base::EndPoint, double> *load_map);
+    void GetLoads(std::map<butil::EndPoint, double> *load_map);
     struct Node {
         uint32_t hash;
         ServerId server_sock;
-        base::EndPoint server_addr;  // To make sorting stable among all clients
+        butil::EndPoint server_addr;  // To make sorting stable among all clients
         bool operator<(const Node &rhs) const {
             if (hash < rhs.hash) { return true; }
             if (hash > rhs.hash) { return false; }
@@ -64,7 +64,7 @@ private:
                          const ServerId& server, bool *executed);
     HashFunc _hash;
     size_t _num_replicas;
-    base::DoublyBufferedData<std::vector<Node> > _db_hash_ring;
+    butil::DoublyBufferedData<std::vector<Node> > _db_hash_ring;
 };
 
 }  // namespace policy

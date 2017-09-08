@@ -27,16 +27,16 @@ namespace policy {
 // Actions to a (server) response in nshead+mcpack format.
 void ProcessNsheadMcpackResponse(InputMessageBase* msg);
 
-void SerializeNsheadMcpackRequest(base::IOBuf* buf, Controller* cntl,
+void SerializeNsheadMcpackRequest(butil::IOBuf* buf, Controller* cntl,
                                  const google::protobuf::Message* request);
 
 // Pack `request' to `method' into `buf'.
-void PackNsheadMcpackRequest(base::IOBuf* buf,
+void PackNsheadMcpackRequest(butil::IOBuf* buf,
                              SocketMessage**,
                              uint64_t correlation_id,
                              const google::protobuf::MethodDescriptor* method,
                              Controller* controller,
-                             const base::IOBuf& request,
+                             const butil::IOBuf& request,
                              const Authenticator* auth);
 
 class NsheadMcpackAdaptor : public NsheadPbServiceAdaptor {

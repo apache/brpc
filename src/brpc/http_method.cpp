@@ -16,8 +16,8 @@
 //          Ge,Jun (gejun@baidu.com)
 
 #include <stdlib.h>                     // abort()
-#include "base/macros.h"
-#include "base/logging.h"
+#include "butil/macros.h"
+#include "butil/logging.h"
 #include <pthread.h>
 #include <algorithm>
 #include "brpc/http_method.h"

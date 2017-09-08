@@ -10,8 +10,8 @@
 #include <gperftools/profiler.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
-#include "base/time.h"
-#include "base/macros.h"
+#include "butil/time.h"
+#include "butil/macros.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
 #include "brpc/server.h"
@@ -43,7 +43,7 @@ public:
     }
 
     int VerifyCredential(const std::string& auth_str,
-                         const base::EndPoint&,
+                         const butil::EndPoint&,
                          brpc::AuthContext* ctx) const {
         EXPECT_EQ(MOCK_CREDENTIAL, auth_str);
         ctx->set_user(MOCK_USER);
@@ -122,7 +122,7 @@ protected:
 
         test::EchoRequest req;
         req.set_message(EXP_REQUEST);
-        base::IOBufAsZeroCopyOutputStream req_stream(&msg->payload);
+        butil::IOBufAsZeroCopyOutputStream req_stream(&msg->payload);
         EXPECT_TRUE(req.SerializeToZeroCopyStream(&req_stream));
         return msg;
     }
@@ -136,7 +136,7 @@ protected:
         
         test::EchoResponse res;
         res.set_message(EXP_RESPONSE);
-        base::IOBufAsZeroCopyOutputStream res_stream(&msg->payload);
+        butil::IOBufAsZeroCopyOutputStream res_stream(&msg->payload);
         EXPECT_TRUE(res.SerializeToZeroCopyStream(&res_stream));
         return msg;
     }
@@ -198,8 +198,8 @@ TEST_F(NovaTest, process_response_after_eof) {
 }
 
 TEST_F(NovaTest, complete_flow) {
-    base::IOBuf request_buf;
-    base::IOBuf total_buf;
+    butil::IOBuf request_buf;
+    butil::IOBuf total_buf;
     brpc::Controller cntl;
     test::EchoRequest req;
     test::EchoResponse res;
@@ -225,7 +225,7 @@ TEST_F(NovaTest, complete_flow) {
     ProcessMessage(brpc::policy::ProcessNsheadRequest, req_msg, false);
 
     // Read response from pipe
-    base::IOPortal response_buf;
+    butil::IOPortal response_buf;
     response_buf.append_from_file_descriptor(_pipe_fds[0], 1024);
     brpc::ParseResult res_pr =
             brpc::policy::ParseNsheadMessage(&response_buf, NULL, false, NULL);
@@ -238,8 +238,8 @@ TEST_F(NovaTest, complete_flow) {
 }
 
 TEST_F(NovaTest, close_in_callback) {
-    base::IOBuf request_buf;
-    base::IOBuf total_buf;
+    butil::IOBuf request_buf;
+    butil::IOBuf total_buf;
     brpc::Controller cntl;
     test::EchoRequest req;
     cntl._connection_type = brpc::CONNECTION_TYPE_SHORT;

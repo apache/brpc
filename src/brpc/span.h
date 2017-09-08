@@ -23,9 +23,9 @@
 #include <string>
 #include <deque>
 #include <ostream>
-#include "base/macros.h"
-#include "base/endpoint.h"
-#include "base/string_splitter.h"
+#include "butil/macros.h"
+#include "butil/endpoint.h"
+#include "butil/string_splitter.h"
 #include "bvar/collector.h"
 #include "bthread/task_meta.h"
 #include "brpc/options.pb.h"                 // ProtocolType
@@ -90,7 +90,7 @@ public:
     void set_log_id(uint64_t cid) { _log_id = cid; }
     void set_base_cid(bthread_id_t id) { _base_cid = id; }
     void set_ending_cid(bthread_id_t id) { _ending_cid = id; }
-    void set_remote_side(const base::EndPoint& pt) { _remote_side = pt; }
+    void set_remote_side(const butil::EndPoint& pt) { _remote_side = pt; }
     void set_protocol(ProtocolType p) { _protocol = p; }
     void set_error_code(int error_code) { _error_code = error_code; }
     void set_request_size(int size) { _request_size = size; }
@@ -120,7 +120,7 @@ public:
     uint64_t log_id() const { return _log_id; }
     bthread_id_t base_cid() const { return _base_cid; }
     bthread_id_t ending_cid() const { return _ending_cid; }
-    const base::EndPoint& remote_side() const { return _remote_side; }
+    const butil::EndPoint& remote_side() const { return _remote_side; }
     SpanType type() const { return _type; }
     ProtocolType protocol() const { return _protocol; }
     int error_code() const { return _error_code; }
@@ -155,7 +155,7 @@ private:
     uint64_t _log_id;
     bthread_id_t _base_cid;
     bthread_id_t _ending_cid;
-    base::EndPoint _remote_side;
+    butil::EndPoint _remote_side;
     SpanType _type;
     bool _async;
     ProtocolType _protocol;
@@ -187,7 +187,7 @@ public:
     bool PopAnnotation(int64_t before_this_time,
                        int64_t* time, std::string* annotation);
 private:
-    base::StringSplitter _sp;
+    butil::StringSplitter _sp;
 };
 
 // These two functions can be used for composing TRACEPRINT as well as hiding

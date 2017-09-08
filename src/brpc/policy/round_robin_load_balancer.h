@@ -19,7 +19,7 @@
 
 #include <vector>                                      // std::vector
 #include <map>                                         // std::map
-#include "base/containers/doubly_buffered_data.h"
+#include "butil/containers/doubly_buffered_data.h"
 #include "brpc/load_balancer.h"
 
 
@@ -54,7 +54,7 @@ private:
     static size_t BatchAdd(Servers& bg, const std::vector<ServerId>& servers);
     static size_t BatchRemove(Servers& bg, const std::vector<ServerId>& servers);
 
-    base::DoublyBufferedData<Servers, TLS> _db_servers;
+    butil::DoublyBufferedData<Servers, TLS> _db_servers;
 };
 
 }  // namespace policy

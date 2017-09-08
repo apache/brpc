@@ -17,8 +17,8 @@
 
 #include <gflags/gflags.h>
 
-#include <base/logging.h>
-#include <base/time.h>
+#include <butil/logging.h>
+#include <butil/time.h>
 #include <brpc/channel.h>
 #include "echo.pb.h"
 

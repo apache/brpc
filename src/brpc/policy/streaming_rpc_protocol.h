@@ -24,11 +24,11 @@
 namespace brpc {
 namespace policy {
 
-void PackStreamMessage(base::IOBuf* out,
+void PackStreamMessage(butil::IOBuf* out,
                        const StreamFrameMeta &fm,
-                       const base::IOBuf *data);
+                       const butil::IOBuf *data);
 
-ParseResult ParseStreamingMessage(base::IOBuf* source, Socket* socket,
+ParseResult ParseStreamingMessage(butil::IOBuf* source, Socket* socket,
                                   bool read_eof, const void* arg);
 
 void ProcessStreamingMessage(InputMessageBase* msg);
@@ -38,7 +38,7 @@ void SendStreamRst(Socket* sock, int64_t remote_stream_id);
 void SendStreamClose(Socket *sock, int64_t remote_stream_id,
                      int64_t source_stream_id);
 
-int SendStreamData(Socket* sock, const base::IOBuf* data,
+int SendStreamData(Socket* sock, const butil::IOBuf* data,
                    int64_t remote_stream_id, int64_t source_stream_id);
 
 }  // namespace policy

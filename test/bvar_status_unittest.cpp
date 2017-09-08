@@ -9,8 +9,8 @@
 #include <memory>
 #include <iostream>
 #include <sstream>
-#include "base/time.h"
-#include "base/macros.h"
+#include "butil/time.h"
+#include "butil/macros.h"
 #include "bvar/bvar.h"
 #include <gtest/gtest.h>
 

@@ -2,26 +2,26 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/containers/stack_container.h"
+#include "butil/containers/stack_container.h"
 
 #include <algorithm>
 
-#include "base/memory/aligned_memory.h"
-#include "base/memory/ref_counted.h"
+#include "butil/memory/aligned_memory.h"
+#include "butil/memory/ref_counted.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 namespace {
 
-class Dummy : public base::RefCounted<Dummy> {
+class Dummy : public butil::RefCounted<Dummy> {
  public:
   explicit Dummy(int* alive) : alive_(alive) {
     ++*alive_;
   }
 
  private:
-  friend class base::RefCounted<Dummy>;
+  friend class butil::RefCounted<Dummy>;
 
   ~Dummy() {
     --*alive_;
@@ -106,7 +106,7 @@ class AlignedData {
  public:
   AlignedData() { memset(data_.void_data(), 0, alignment); }
   ~AlignedData() {}
-  base::AlignedMemory<alignment, alignment> data_;
+  butil::AlignedMemory<alignment, alignment> data_;
 };
 
 }  // anonymous namespace
@@ -148,4 +148,4 @@ TEST(StackContainer, BufferAlignment) {
 template class StackVector<int, 2>;
 template class StackVector<scoped_refptr<Dummy>, 2>;
 
-}  // namespace base
+}  // namespace butil

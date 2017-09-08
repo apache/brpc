@@ -14,8 +14,8 @@
 
 // Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
 
-#include "base/macros.h"                           // ARRAY_SIZE
-#include "base/iobuf.h"                            // base::IOBuf
+#include "butil/macros.h"                           // ARRAY_SIZE
+#include "butil/iobuf.h"                            // butil::IOBuf
 #include "brpc/controller.h"                   // Controller
 #include "brpc/builtin/get_favicon_service.h"
 
@@ -49,13 +49,13 @@ static unsigned char s_favicon_array[] = {
 };
 
 static pthread_once_t s_favicon_buf_once = PTHREAD_ONCE_INIT; 
-static base::IOBuf* s_favicon_buf = NULL;
+static butil::IOBuf* s_favicon_buf = NULL;
 static void InitFavIcon() {
-    s_favicon_buf = new base::IOBuf;
+    s_favicon_buf = new butil::IOBuf;
     s_favicon_buf->append((const void *)s_favicon_array, 
                           arraysize(s_favicon_array));
 }
-static const base::IOBuf& GetFavIcon() {
+static const butil::IOBuf& GetFavIcon() {
     pthread_once(&s_favicon_buf_once, InitFavIcon);
     return *s_favicon_buf;
 }

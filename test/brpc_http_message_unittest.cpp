@@ -16,7 +16,7 @@ namespace policy {
 Server::MethodProperty*
 FindMethodPropertyByURI(const std::string& uri_path, const Server* server,
                         std::string* unknown_method_str);
-bool ParseHttpServerAddress(base::EndPoint *point, const char *server_addr_and_port);
+bool ParseHttpServerAddress(butil::EndPoint *point, const char *server_addr_and_port);
 }}
 
 namespace {
@@ -77,7 +77,7 @@ TEST(HttpMessageTest, eof) {
         "X_BD_LOGID64: 16815814797661447369\r\n"
         "X_BD_PRODUCT: map\r\n"
         "X_BD_SUBSYS: apimap\r\n";
-    base::IOBuf buf;
+    butil::IOBuf buf;
     buf.append(http_request);
     brpc::HttpMessage http_message;
     ASSERT_EQ((ssize_t)buf.size(), http_message.ParseFromIOBuf(buf));
@@ -201,7 +201,7 @@ TEST(HttpMessageTest, parse_from_iobuf) {
             content_length);
     std::string content;
     for (size_t i = 0; i < content_length; ++i) content.push_back('2');
-    base::IOBuf request;
+    butil::IOBuf request;
     request.append(header);
     request.append(content);
 
@@ -318,7 +318,7 @@ TEST(HttpMessageTest, http_header) {
 }
 
 TEST(HttpMessageTest, empty_url) {
-    base::EndPoint host;
+    butil::EndPoint host;
     ASSERT_FALSE(ParseHttpServerAddress(&host, ""));
 }
 
@@ -328,10 +328,10 @@ TEST(HttpMessageTest, serialize_http_request) {
     header.SetHeader("Foo", "Bar");
     ASSERT_EQ(1u, header.HeaderCount());
     header.set_method(brpc::HTTP_METHOD_POST);
-    base::EndPoint ep;
-    ASSERT_EQ(0, base::str2endpoint("127.0.0.1:1234", &ep));
-    base::IOBuf request;
-    base::IOBuf content;
+    butil::EndPoint ep;
+    ASSERT_EQ(0, butil::str2endpoint("127.0.0.1:1234", &ep));
+    butil::IOBuf request;
+    butil::IOBuf content;
     content.append("data");
     SerializeHttpRequest(&request, &header, ep, &content);
     ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nHost: 127.0.0.1:1234\r\nFoo: Bar\r\nAccept: */*\r\nUser-Agent: brpc/1.0 curl/7.0\r\n\r\ndata", request);
@@ -371,8 +371,8 @@ TEST(HttpMessageTest, serialize_http_response) {
     brpc::HttpHeader header;
     header.SetHeader("Foo", "Bar");
     header.set_method(brpc::HTTP_METHOD_POST);
-    base::IOBuf response;
-    base::IOBuf content;
+    butil::IOBuf response;
+    butil::IOBuf content;
     content.append("data");
     SerializeHttpResponse(&response, &header, &content);
     ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 4\r\nFoo: Bar\r\n\r\ndata", response);

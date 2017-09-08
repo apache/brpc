@@ -2,17 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/at_exit.h"
-#include "base/atomic_sequence_num.h"
-#include "base/lazy_instance.h"
-#include "base/memory/aligned_memory.h"
-#include "base/threading/simple_thread.h"
+#include "butil/at_exit.h"
+#include "butil/atomic_sequence_num.h"
+#include "butil/lazy_instance.h"
+#include "butil/memory/aligned_memory.h"
+#include "butil/threading/simple_thread.h"
 #include <gtest/gtest.h>
 
 namespace {
 
-base::StaticAtomicSequenceNumber constructed_seq_;
-base::StaticAtomicSequenceNumber destructed_seq_;
+butil::StaticAtomicSequenceNumber constructed_seq_;
+butil::StaticAtomicSequenceNumber destructed_seq_;
 
 class ConstructAndDestructLogger {
  public:
@@ -28,7 +28,7 @@ class SlowConstructor {
  public:
   SlowConstructor() : some_int_(0) {
     // Sleep for 1 second to try to cause a race.
-    base::PlatformThread::Sleep(base::TimeDelta::FromSeconds(1));
+    butil::PlatformThread::Sleep(butil::TimeDelta::FromSeconds(1));
     ++constructed;
     some_int_ = 12;
   }
@@ -41,9 +41,9 @@ class SlowConstructor {
 
 int SlowConstructor::constructed = 0;
 
-class SlowDelegate : public base::DelegateSimpleThread::Delegate {
+class SlowDelegate : public butil::DelegateSimpleThread::Delegate {
  public:
-  explicit SlowDelegate(base::LazyInstance<SlowConstructor>* lazy)
+  explicit SlowDelegate(butil::LazyInstance<SlowConstructor>* lazy)
       : lazy_(lazy) {}
 
   virtual void Run() OVERRIDE {
@@ -52,17 +52,17 @@ class SlowDelegate : public base::DelegateSimpleThread::Delegate {
   }
 
  private:
-  base::LazyInstance<SlowConstructor>* lazy_;
+  butil::LazyInstance<SlowConstructor>* lazy_;
 };
 
 }  // namespace
 
-static base::LazyInstance<ConstructAndDestructLogger> lazy_logger =
+static butil::LazyInstance<ConstructAndDestructLogger> lazy_logger =
     LAZY_INSTANCE_INITIALIZER;
 
 TEST(LazyInstanceTest, Basic) {
   {
-    base::ShadowingAtExitManager shadow;
+    butil::ShadowingAtExitManager shadow;
 
     EXPECT_EQ(0, constructed_seq_.GetNext());
     EXPECT_EQ(0, destructed_seq_.GetNext());
@@ -79,17 +79,17 @@ TEST(LazyInstanceTest, Basic) {
   EXPECT_EQ(4, destructed_seq_.GetNext());
 }
 
-static base::LazyInstance<SlowConstructor> lazy_slow =
+static butil::LazyInstance<SlowConstructor> lazy_slow =
     LAZY_INSTANCE_INITIALIZER;
 
 TEST(LazyInstanceTest, ConstructorThreadSafety) {
   {
-    base::ShadowingAtExitManager shadow;
+    butil::ShadowingAtExitManager shadow;
 
     SlowDelegate delegate(&lazy_slow);
     EXPECT_EQ(0, SlowConstructor::constructed);
 
-    base::DelegateSimpleThreadPool pool("lazy_instance_cons", 5);
+    butil::DelegateSimpleThreadPool pool("lazy_instance_cons", 5);
     pool.AddWork(&delegate, 20);
     EXPECT_EQ(0, SlowConstructor::constructed);
 
@@ -123,8 +123,8 @@ TEST(LazyInstanceTest, LeakyLazyInstance) {
   // when the AtExitManager finishes.
   bool deleted1 = false;
   {
-    base::ShadowingAtExitManager shadow;
-    static base::LazyInstance<DeleteLogger> test = LAZY_INSTANCE_INITIALIZER;
+    butil::ShadowingAtExitManager shadow;
+    static butil::LazyInstance<DeleteLogger> test = LAZY_INSTANCE_INITIALIZER;
     test.Get().SetDeletedPtr(&deleted1);
   }
   EXPECT_TRUE(deleted1);
@@ -133,8 +133,8 @@ TEST(LazyInstanceTest, LeakyLazyInstance) {
   // when the AtExitManager finishes.
   bool deleted2 = false;
   {
-    base::ShadowingAtExitManager shadow;
-    static base::LazyInstance<DeleteLogger>::Leaky
+    butil::ShadowingAtExitManager shadow;
+    static butil::LazyInstance<DeleteLogger>::Leaky
         test = LAZY_INSTANCE_INITIALIZER;
     test.Get().SetDeletedPtr(&deleted2);
   }
@@ -148,7 +148,7 @@ class AlignedData {
  public:
   AlignedData() {}
   ~AlignedData() {}
-  base::AlignedMemory<alignment, alignment> data_;
+  butil::AlignedMemory<alignment, alignment> data_;
 };
 
 }  // anonymous namespace
@@ -157,7 +157,7 @@ class AlignedData {
     EXPECT_EQ(0u, reinterpret_cast<uintptr_t>(ptr) & (align - 1))
 
 TEST(LazyInstanceTest, Alignment) {
-  using base::LazyInstance;
+  using butil::LazyInstance;
 
   // Create some static instances with increasing sizes and alignment
   // requirements. By ordering this way, the linker will need to do some work to

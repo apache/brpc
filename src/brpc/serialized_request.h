@@ -23,7 +23,7 @@
 #include <google/protobuf/repeated_field.h>
 #include <google/protobuf/extension_set.h>
 #include <google/protobuf/generated_message_reflection.h>
-#include "base/iobuf.h"
+#include "butil/iobuf.h"
 
 
 namespace brpc {
@@ -60,8 +60,8 @@ public:
     int ByteSize() const;
     int GetCachedSize() const { return (int)_serialized.size(); }
     ::google::protobuf::Metadata GetMetadata() const;
-    base::IOBuf& serialized_data() { return _serialized; }
-    const base::IOBuf& serialized_data() const { return _serialized; }
+    butil::IOBuf& serialized_data() { return _serialized; }
+    const butil::IOBuf& serialized_data() const { return _serialized; }
     
 private:
     bool MergePartialFromCodedStream(
@@ -77,7 +77,7 @@ private:
     void SetCachedSize(int size) const;
   
 private:
-    base::IOBuf _serialized;
+    butil::IOBuf _serialized;
   
 friend void protobuf_AddDesc_baidu_2frpc_2fserialized_5frequest_2eproto();
 friend void protobuf_AssignDesc_baidu_2frpc_2fserialized_5frequest_2eproto();

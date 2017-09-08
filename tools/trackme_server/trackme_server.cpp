@@ -18,10 +18,10 @@
 
 #include <gflags/gflags.h>
 #include <memory>
-#include <base/logging.h>
+#include <butil/logging.h>
 #include <brpc/server.h>
-#include <base/files/file_watcher.h>
-#include <base/files/scoped_file.h>
+#include <butil/files/file_watcher.h>
+#include <butil/files/scoped_file.h>
 #include <brpc/trackme.pb.h>
 
 DEFINE_string(bug_file, "./bugs", "A file containing revision and information of bugs");
@@ -72,8 +72,8 @@ public:
             _bugs->find(request->rpc_version(), response);
         } 
         response->set_new_interval(FLAGS_reporting_interval);
-        base::EndPoint server_addr;
-        CHECK_EQ(0, base::str2endpoint(request->server_addr().c_str(), &server_addr));
+        butil::EndPoint server_addr;
+        CHECK_EQ(0, butil::str2endpoint(request->server_addr().c_str(), &server_addr));
         // NOTE(gejun): The ip reported is inaccessible in many cases, use 
         // remote_side instead right now.
         server_addr.ip = cntl->remote_side().ip;
@@ -145,7 +145,7 @@ void* BugsLoader::run_this(void* arg) {
 
 void BugsLoader::run() {
     // Check status of _bugs_files periodically.
-    base::FileWatcher fw;
+    butil::FileWatcher fw;
     if (fw.init(_bugs_file.c_str()) < 0) {
         LOG(ERROR) << "Fail to init FileWatcher on `" << _bugs_file << "'";
         return;
@@ -153,7 +153,7 @@ void BugsLoader::run() {
     while (!_stop) {
         load_bugs();
         while (!_stop) {
-            base::FileWatcher::Change change = fw.check_and_consume();
+            butil::FileWatcher::Change change = fw.check_and_consume();
             if (change > 0) {
                 break;
             }
@@ -167,7 +167,7 @@ void BugsLoader::run() {
 }
 
 void BugsLoader::load_bugs() {
-    base::ScopedFILE fp(fopen(_bugs_file.c_str(), "r"));
+    butil::ScopedFILE fp(fopen(_bugs_file.c_str(), "r"));
     if (!fp) {
         PLOG(WARNING) << "Fail to open `" << _bugs_file << '\'';
         return;
@@ -185,7 +185,7 @@ void BugsLoader::load_bugs() {
         }
         // line format: 
         //   min_rev <sp> max_rev <sp> severity <sp> description
-        base::StringMultiSplitter sp(line, line + nr, " \t");
+        butil::StringMultiSplitter sp(line, line + nr, " \t");
         if (!sp) {
             continue;
         }
@@ -211,7 +211,7 @@ void BugsLoader::load_bugs() {
             continue;
         }
         brpc::TrackMeSeverity severity = brpc::TrackMeOK;
-        base::StringPiece severity_str(sp.field(), sp.length());
+        butil::StringPiece severity_str(sp.field(), sp.length());
         if (severity_str == "f" || severity_str == "F") {
             severity = brpc::TrackMeFatal;
         } else if (severity_str == "w" || severity_str == "W") {\
@@ -227,7 +227,7 @@ void BugsLoader::load_bugs() {
         }
         // Treat everything until end of the line as description. So don't add 
         // comments starting with # or //, they are not recognized.
-        base::StringPiece description(sp.field(), line + nr - sp.field());
+        butil::StringPiece description(sp.field(), line + nr - sp.field());
         RevisionInfo info;
         info.min_rev = min_rev;
         info.max_rev = max_rev;

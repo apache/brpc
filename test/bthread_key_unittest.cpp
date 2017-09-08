@@ -3,12 +3,12 @@
 // Date: Sun Jul 13 15:04:18 CST 2014
 
 #include <algorithm>                         // std::sort
-#include "base/atomicops.h"
+#include "butil/atomicops.h"
 #include <gtest/gtest.h>
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/scoped_lock.h"
-#include "base/logging.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/scoped_lock.h"
+#include "butil/logging.h"
 #include "bthread/bthread.h"
 #include "bthread/unstable.h"
 
@@ -26,10 +26,10 @@ namespace {
 
 // Count tls usages.
 struct Counters {
-    base::atomic<size_t> ncreate;
-    base::atomic<size_t> ndestroy;
-    base::atomic<size_t> nenterthread;
-    base::atomic<size_t> nleavethread;
+    butil::atomic<size_t> ncreate;
+    butil::atomic<size_t> ndestroy;
+    butil::atomic<size_t> nenterthread;
+    butil::atomic<size_t> nleavethread;
 };
 
 // Wrap same counters into different objects to make sure that different key
@@ -38,7 +38,7 @@ struct CountersWrapper {
     CountersWrapper(Counters* c, bthread_key_t key) : _c(c), _key(key) {}
     ~CountersWrapper() {
         if (_c) {
-            _c->ndestroy.fetch_add(1, base::memory_order_relaxed);
+            _c->ndestroy.fetch_add(1, butil::memory_order_relaxed);
         }
         CHECK_EQ(0, bthread_key_delete(_key));
     }
@@ -55,7 +55,7 @@ const size_t NKEY_PER_WORKER = 32;
 
 // NOTE: returns void to use ASSERT
 static void worker1_impl(Counters* cs) {
-    cs->nenterthread.fetch_add(1, base::memory_order_relaxed);
+    cs->nenterthread.fetch_add(1, butil::memory_order_relaxed);
     bthread_key_t k[NKEY_PER_WORKER];
     CountersWrapper* ws[arraysize(k)];
     for (size_t i = 0; i < arraysize(k); ++i) {
@@ -69,7 +69,7 @@ static void worker1_impl(Counters* cs) {
         ASSERT_EQ(NULL, bthread_getspecific(k[i]));
     }
     for (size_t i = 0; i < arraysize(k); ++i) {
-        cs->ncreate.fetch_add(1, base::memory_order_relaxed);
+        cs->ncreate.fetch_add(1, butil::memory_order_relaxed);
         ASSERT_EQ(0, bthread_setspecific(k[i], ws[i]))
             << "i=" << i << " is_bthread=" << !!bthread_self();
             
@@ -80,7 +80,7 @@ static void worker1_impl(Counters* cs) {
     for (size_t i = 0; i < arraysize(k); ++i) {
         ASSERT_EQ(ws[i], bthread_getspecific(k[i])) << "i=" << i;
     }
-    cs->nleavethread.fetch_add(1, base::memory_order_relaxed);
+    cs->nleavethread.fetch_add(1, butil::memory_order_relaxed);
 }
 
 static void* worker1(void* arg) {
@@ -106,16 +106,16 @@ TEST(KeyTest, creating_key_in_parallel) {
         ASSERT_EQ(0, bthread_join(bth[i], NULL));
     }
     ASSERT_EQ(arraysize(th) + arraysize(bth),
-              args.nenterthread.load(base::memory_order_relaxed));
+              args.nenterthread.load(butil::memory_order_relaxed));
     ASSERT_EQ(arraysize(th) + arraysize(bth),
-              args.nleavethread.load(base::memory_order_relaxed));
+              args.nleavethread.load(butil::memory_order_relaxed));
     ASSERT_EQ(NKEY_PER_WORKER * (arraysize(th) + arraysize(bth)),
-              args.ncreate.load(base::memory_order_relaxed));
+              args.ncreate.load(butil::memory_order_relaxed));
     ASSERT_EQ(NKEY_PER_WORKER * (arraysize(th) + arraysize(bth)),
-              args.ndestroy.load(base::memory_order_relaxed));
+              args.ndestroy.load(butil::memory_order_relaxed));
 }
 
-base::atomic<size_t> seq(1);
+butil::atomic<size_t> seq(1);
 std::vector<size_t> seqs;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 

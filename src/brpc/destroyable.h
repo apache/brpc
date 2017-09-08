@@ -17,7 +17,7 @@
 #ifndef BRPC_DESTROYABLE_H
 #define BRPC_DESTROYABLE_H
 
-#include "base/unique_ptr.h"           // std::unique_ptr
+#include "butil/unique_ptr.h"           // std::unique_ptr
 
 
 namespace brpc {

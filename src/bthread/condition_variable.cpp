@@ -16,15 +16,15 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Aug  3 12:46:15 CST 2014
 
-#include "base/atomicops.h"
-#include "base/macros.h"                         // BAIDU_CASSERT
+#include "butil/atomicops.h"
+#include "butil/macros.h"                         // BAIDU_CASSERT
 #include "bthread/butex.h"                       // butex_*
 #include "bthread/types.h"                       // bthread_cond_t
 
 namespace bthread {
 struct CondInternal {
-    base::atomic<bthread_mutex_t*> m;
-    base::atomic<int>* seq;
+    butil::atomic<bthread_mutex_t*> m;
+    butil::atomic<int>* seq;
 };
 
 BAIDU_CASSERT(sizeof(CondInternal) == sizeof(bthread_cond_t),
@@ -59,8 +59,8 @@ int bthread_cond_signal(bthread_cond_t* c) {
     bthread::CondInternal* ic = reinterpret_cast<bthread::CondInternal*>(c);
     // ic is probably dereferenced after fetch_add, save required fields before
     // this point
-    base::atomic<int>* const saved_seq = ic->seq;
-    saved_seq->fetch_add(1, base::memory_order_release);
+    butil::atomic<int>* const saved_seq = ic->seq;
+    saved_seq->fetch_add(1, butil::memory_order_release);
     // don't touch ic any more
     bthread::butex_wake(saved_seq);
     return 0;
@@ -68,14 +68,14 @@ int bthread_cond_signal(bthread_cond_t* c) {
 
 int bthread_cond_broadcast(bthread_cond_t* c) {
     bthread::CondInternal* ic = reinterpret_cast<bthread::CondInternal*>(c);
-    bthread_mutex_t* m = ic->m.load(base::memory_order_relaxed);
-    base::atomic<int>* const saved_seq = ic->seq;
+    bthread_mutex_t* m = ic->m.load(butil::memory_order_relaxed);
+    butil::atomic<int>* const saved_seq = ic->seq;
     if (!m) {
         return 0;
     }
     void* const saved_butex = m->butex;
     // Wakeup one thread and requeue the rest on the mutex.
-    ic->seq->fetch_add(1, base::memory_order_release);
+    ic->seq->fetch_add(1, butil::memory_order_release);
     bthread::butex_requeue(saved_seq, saved_butex);
     return 0;
 }
@@ -83,12 +83,12 @@ int bthread_cond_broadcast(bthread_cond_t* c) {
 int bthread_cond_wait(bthread_cond_t* __restrict c,
                       bthread_mutex_t* __restrict m) {
     bthread::CondInternal* ic = reinterpret_cast<bthread::CondInternal*>(c);
-    const int expected_seq = ic->seq->load(base::memory_order_relaxed);
-    if (ic->m.load(base::memory_order_relaxed) != m) {
+    const int expected_seq = ic->seq->load(butil::memory_order_relaxed);
+    if (ic->m.load(butil::memory_order_relaxed) != m) {
         // bind m to c
         bthread_mutex_t* expected_m = NULL;
         if (!ic->m.compare_exchange_strong(
-                expected_m, m, base::memory_order_relaxed)) {
+                expected_m, m, butil::memory_order_relaxed)) {
             return EINVAL;
         }
     }
@@ -106,12 +106,12 @@ int bthread_cond_timedwait(bthread_cond_t* __restrict c,
                            bthread_mutex_t* __restrict m,
                            const struct timespec* __restrict abstime) {
     bthread::CondInternal* ic = reinterpret_cast<bthread::CondInternal*>(c);
-    const int expected_seq = ic->seq->load(base::memory_order_relaxed);
-    if (ic->m.load(base::memory_order_relaxed) != m) {
+    const int expected_seq = ic->seq->load(butil::memory_order_relaxed);
+    if (ic->m.load(butil::memory_order_relaxed) != m) {
         // bind m to c
         bthread_mutex_t* expected_m = NULL;
         if (!ic->m.compare_exchange_strong(
-                expected_m, m, base::memory_order_relaxed)) {
+                expected_m, m, butil::memory_order_relaxed)) {
             return EINVAL;
         }
     }

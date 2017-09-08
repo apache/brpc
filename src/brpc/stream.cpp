@@ -17,9 +17,9 @@
 #include "brpc/stream.h"
 
 #include <gflags/gflags.h>
-#include "base/time.h"
-#include "base/object_pool.h"
-#include "base/unique_ptr.h"
+#include "butil/time.h"
+#include "butil/object_pool.h"
+#include "butil/unique_ptr.h"
 #include "bthread/unstable.h"
 #include "brpc/log.h"
 #include "brpc/socket.h"
@@ -34,7 +34,7 @@ namespace brpc {
 
 DECLARE_bool(usercode_in_pthread);
 
-const static base::IOBuf *TIMEOUT_TASK = (base::IOBuf*)-1L;
+const static butil::IOBuf *TIMEOUT_TASK = (butil::IOBuf*)-1L;
 
 Stream::Stream() 
     : _host_socket(NULL)
@@ -124,7 +124,7 @@ void Stream::BeforeRecycle(Socket *) {
 }
 
 ssize_t Stream::CutMessageIntoFileDescriptor(int /*fd*/, 
-                                             base::IOBuf **data_list, 
+                                             butil::IOBuf **data_list, 
                                              size_t size) {
     if (_host_socket == NULL) {
         CHECK(false) << "Not connected";
@@ -139,7 +139,7 @@ ssize_t Stream::CutMessageIntoFileDescriptor(int /*fd*/,
         errno = EBADF;
         return -1;
     }
-    base::IOBuf out;
+    butil::IOBuf out;
     ssize_t len = 0;
     for (size_t i = 0; i < size; ++i) {
         StreamFrameMeta fm;
@@ -156,11 +156,11 @@ ssize_t Stream::CutMessageIntoFileDescriptor(int /*fd*/,
     return len;
 }
 
-void Stream::WriteToHostSocket(base::IOBuf* b) {
+void Stream::WriteToHostSocket(butil::IOBuf* b) {
     BRPC_HANDLE_EOVERCROWDED(_host_socket->Write(b));
 }
 
-ssize_t Stream::CutMessageIntoSSLChannel(base::IOBuf*, SSL*, int* error) {
+ssize_t Stream::CutMessageIntoSSLChannel(butil::IOBuf*, SSL*, int* error) {
     CHECK(false) << "Stream does support SSL";
     *error = SSL_ERROR_SSL;
     return -1;
@@ -258,7 +258,7 @@ void Stream::TriggerOnConnectIfNeed() {
     bthread_mutex_unlock(&_connect_mutex);
 }
 
-int Stream::AppendIfNotFull(const base::IOBuf &data) {
+int Stream::AppendIfNotFull(const butil::IOBuf &data) {
     if (_options.max_buf_size > 0) {
         std::unique_lock<bthread_mutex_t> lck(_congestion_control_mutex);
         if (_produced >= _remote_consumed + (size_t)_options.max_buf_size) {
@@ -274,7 +274,7 @@ int Stream::AppendIfNotFull(const base::IOBuf &data) {
         }
         _produced += data.length();
     }
-    base::IOBuf copied_data(data);
+    butil::IOBuf copied_data(data);
     const int rc = _fake_socket_weak_ref->Write(&copied_data);
     if (rc != 0) {
         CHECK_EQ(0, rc) << "Fail to write to _fake_socket, " << berror();
@@ -403,7 +403,7 @@ int Stream::Wait(const timespec* due_time) {
     return rc;
 }
 
-int Stream::OnReceived(const StreamFrameMeta& fm, base::IOBuf *buf, Socket* sock) {
+int Stream::OnReceived(const StreamFrameMeta& fm, butil::IOBuf *buf, Socket* sock) {
     if (_host_socket == NULL) {
         if (SetHostSocket(sock) != 0) {
             return -1;
@@ -419,11 +419,11 @@ int Stream::OnReceived(const StreamFrameMeta& fm, base::IOBuf *buf, Socket* sock
             _pending_buf->append(*buf);
             buf->clear();
         } else {
-            _pending_buf = new base::IOBuf;
+            _pending_buf = new butil::IOBuf;
             _pending_buf->swap(*buf);
         }
         if (!fm.has_continuation()) {
-            base::IOBuf *tmp = _pending_buf;
+            butil::IOBuf *tmp = _pending_buf;
             _pending_buf = NULL;
             if (bthread::execution_queue_execute(_consumer_queue, tmp) != 0) {
                 CHECK(false) << "Fail to push into channel";
@@ -450,7 +450,7 @@ int Stream::OnReceived(const StreamFrameMeta& fm, base::IOBuf *buf, Socket* sock
 
 class MessageBatcher {
 public:
-    MessageBatcher(base::IOBuf* storage[], size_t cap, Stream* s) 
+    MessageBatcher(butil::IOBuf* storage[], size_t cap, Stream* s) 
         : _storage(storage)
         , _cap(cap)
         , _size(0)
@@ -468,7 +468,7 @@ public:
         }
         _size = 0;
     }
-    void push(base::IOBuf* buf) {
+    void push(butil::IOBuf* buf) {
         if (_size == _cap) {
             flush();
         }
@@ -478,14 +478,14 @@ public:
     }
     size_t total_length() { return _total_length; }
 private:
-    base::IOBuf** _storage;
+    butil::IOBuf** _storage;
     size_t _cap;
     size_t _size;
     size_t _total_length;
     Stream* _s;
 };
 
-int Stream::Consume(void *meta, bthread::TaskIterator<base::IOBuf*>& iter) {
+int Stream::Consume(void *meta, bthread::TaskIterator<butil::IOBuf*>& iter) {
     Stream* s = (Stream*)meta;
     s->StopIdleTimer();
     if (iter.is_queue_stopped()) {
@@ -500,11 +500,11 @@ int Stream::Consume(void *meta, bthread::TaskIterator<base::IOBuf*>& iter) {
         delete s;
         return 0;
     }
-    DEFINE_SMALL_ARRAY(base::IOBuf*, buf_list, s->_options.messages_in_batch, 256);
+    DEFINE_SMALL_ARRAY(butil::IOBuf*, buf_list, s->_options.messages_in_batch, 256);
     MessageBatcher mb(buf_list, s->_options.messages_in_batch, s);
     bool has_timeout_task = false;
     for (; iter; ++iter) {
-        base::IOBuf* t= *iter;
+        butil::IOBuf* t= *iter;
         if (t == TIMEOUT_TASK) {
             has_timeout_task = true;
         } else {
@@ -536,7 +536,7 @@ void Stream::SendFeedback() {
     fm.set_stream_id(_remote_settings.stream_id());
     fm.set_source_stream_id(id());
     fm.mutable_feedback()->set_consumed_size(_local_consumed);
-    base::IOBuf out;
+    butil::IOBuf out;
     policy::PackStreamMessage(&out, fm, NULL);
     WriteToHostSocket(&out);
 }
@@ -563,16 +563,16 @@ void Stream::FillSettings(StreamSettings *settings) {
 }
 
 void OnIdleTimeout(void *arg) {
-    bthread::ExecutionQueueId<base::IOBuf*> q = { (uint64_t)arg };
-    bthread::execution_queue_execute(q, (base::IOBuf*)TIMEOUT_TASK);
+    bthread::ExecutionQueueId<butil::IOBuf*> q = { (uint64_t)arg };
+    bthread::execution_queue_execute(q, (butil::IOBuf*)TIMEOUT_TASK);
 }
 
 void Stream::StartIdleTimer() {
     if (_options.idle_timeout_ms < 0) {
         return;
     }
-    _start_idle_timer_us = base::gettimeofday_us();
-    timespec due_time = base::microseconds_to_timespec(
+    _start_idle_timer_us = butil::gettimeofday_us();
+    timespec due_time = butil::microseconds_to_timespec(
             _start_idle_timer_us + _options.idle_timeout_ms * 1000);
     const int rc = bthread_timer_add(&_idle_timer, due_time, OnIdleTimeout,
                                      (void*)(_consumer_queue.value));
@@ -616,10 +616,10 @@ int Stream::SetFailed(StreamId id) {
     return 0;
 }
 
-void Stream::HandleRpcResponse(base::IOBuf* response_buffer) {
+void Stream::HandleRpcResponse(butil::IOBuf* response_buffer) {
     CHECK(!_remote_settings.IsInitialized());
     CHECK(_host_socket != NULL);
-    std::unique_ptr<base::IOBuf> buf_guard(response_buffer);
+    std::unique_ptr<butil::IOBuf> buf_guard(response_buffer);
     ParseResult pr = policy::ParseRpcMessage(response_buffer, NULL, true, NULL);
     if (!pr.is_ok()) {
         CHECK(false);
@@ -634,13 +634,13 @@ void Stream::HandleRpcResponse(base::IOBuf* response_buffer) {
     }
     _host_socket->PostponeEOF();
     _host_socket->ReAddress(&msg->_socket);
-    msg->_received_us = base::gettimeofday_us(); 
-    msg->_base_real_us = base::gettimeofday_us();
+    msg->_received_us = butil::gettimeofday_us(); 
+    msg->_base_real_us = butil::gettimeofday_us();
     msg->_arg = NULL; // ProcessRpcResponse() don't need arg
     policy::ProcessRpcResponse(msg);
 }
 
-int StreamWrite(StreamId stream_id, const base::IOBuf &message) {
+int StreamWrite(StreamId stream_id, const butil::IOBuf &message) {
     SocketUniquePtr ptr;
     if (Socket::Address(stream_id, &ptr) != 0) {
         return EINVAL;

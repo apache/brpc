@@ -4,13 +4,13 @@
 
 #define _CRT_SECURE_NO_WARNINGS
 
-#include "base/process/memory.h"
+#include "butil/process/memory.h"
 
 #include <limits>
 
-#include "base/compiler_specific.h"
-#include "base/debug/alias.h"
-#include "base/strings/stringprintf.h"
+#include "butil/compiler_specific.h"
+#include "butil/debug/alias.h"
+#include "butil/strings/stringprintf.h"
 #include <gtest/gtest.h>
 
 #if defined(OS_WIN)
@@ -21,7 +21,7 @@
 #endif
 #if defined(OS_MACOSX)
 #include <malloc/malloc.h>
-#include "base/process/memory_unittest_mac.h"
+#include "butil/process/memory_unittest_mac.h"
 #endif
 #if defined(OS_LINUX)
 #include <malloc.h>
@@ -41,7 +41,7 @@ TEST(ProcessMemoryTest, GetModuleFromAddress) {
   // kConstantInModule is a constant in this file and
   // therefore within the unit test EXE.
   EXPECT_EQ(::GetModuleHandle(NULL),
-            base::GetModuleFromAddress(
+            butil::GetModuleFromAddress(
                 const_cast<int*>(&kConstantInModule)));
 
   // Any address within the kernel32 module should return
@@ -49,12 +49,12 @@ TEST(ProcessMemoryTest, GetModuleFromAddress) {
   // kernel32 is larger than 4 bytes.
   HMODULE kernel32 = ::GetModuleHandle(L"kernel32.dll");
   HMODULE kernel32_from_address =
-      base::GetModuleFromAddress(reinterpret_cast<DWORD*>(kernel32) + 1);
+      butil::GetModuleFromAddress(reinterpret_cast<DWORD*>(kernel32) + 1);
   EXPECT_EQ(kernel32, kernel32_from_address);
 }
 
 TEST(ProcessMemoryTest, EnableLFH) {
-  ASSERT_TRUE(base::EnableLowFragmentationHeap());
+  ASSERT_TRUE(butil::EnableLowFragmentationHeap());
   if (IsDebuggerPresent()) {
     // Under these conditions, LFH can't be enabled. There's no point to test
     // anything.
@@ -100,7 +100,7 @@ TEST(ProcessMemoryTest, EnableLFH) {
 #if defined(OS_MACOSX)
 
 // For the following Mac tests:
-// Note that base::EnableTerminationOnHeapCorruption() is called as part of
+// Note that butil::EnableTerminationOnHeapCorruption() is called as part of
 // test suite setup and does not need to be done again, else mach_override
 // will fail.
 
@@ -116,14 +116,14 @@ TEST(ProcessMemoryTest, MacMallocFailureDoesNotTerminate) {
   void* buf = NULL;
   ASSERT_EXIT(
       {
-        base::EnableTerminationOnOutOfMemory();
+        butil::EnableTerminationOnOutOfMemory();
 
         buf = malloc(std::numeric_limits<size_t>::max() - (2 * PAGE_SIZE) - 1);
       },
       testing::KilledBySignal(SIGTRAP),
       "\\*\\*\\* error: can't allocate region.*\\n?.*");
 
-  base::debug::Alias(buf);
+  butil::debug::Alias(buf);
 }
 #endif  // !defined(ADDRESS_SANITIZER)
 
@@ -196,7 +196,7 @@ class OutOfMemoryDeathTest : public OutOfMemoryTest {
     // Since this call may result in another thread being created and death
     // tests shouldn't be started in a multithread environment, this call
     // should be done inside of the ASSERT_DEATH.
-    base::EnableTerminationOnOutOfMemory();
+    butil::EnableTerminationOnOutOfMemory();
   }
 };
 
@@ -266,7 +266,7 @@ TEST_F(OutOfMemoryDeathTest, Memalign) {
 TEST_F(OutOfMemoryDeathTest, ViaSharedLibraries) {
   // This tests that the run-time symbol resolution is overriding malloc for
   // shared libraries (including libc itself) as well as for our code.
-  std::string format = base::StringPrintf("%%%zud", test_size_);
+  std::string format = butil::StringPrintf("%%%zud", test_size_);
   char *value = NULL;
   ASSERT_DEATH({
       SetUpInDeathAssert();
@@ -345,7 +345,7 @@ TEST_F(OutOfMemoryDeathTest, CFAllocatorSystemDefault) {
   ASSERT_DEATH({
       SetUpInDeathAssert();
       while ((value_ =
-              base::AllocateViaCFAllocatorSystemDefault(signed_test_size_))) {}
+              butil::AllocateViaCFAllocatorSystemDefault(signed_test_size_))) {}
     }, "");
 }
 
@@ -353,7 +353,7 @@ TEST_F(OutOfMemoryDeathTest, CFAllocatorMalloc) {
   ASSERT_DEATH({
       SetUpInDeathAssert();
       while ((value_ =
-              base::AllocateViaCFAllocatorMalloc(signed_test_size_))) {}
+              butil::AllocateViaCFAllocatorMalloc(signed_test_size_))) {}
     }, "");
 }
 
@@ -361,7 +361,7 @@ TEST_F(OutOfMemoryDeathTest, CFAllocatorMallocZone) {
   ASSERT_DEATH({
       SetUpInDeathAssert();
       while ((value_ =
-              base::AllocateViaCFAllocatorMallocZone(signed_test_size_))) {}
+              butil::AllocateViaCFAllocatorMallocZone(signed_test_size_))) {}
     }, "");
 }
 
@@ -373,7 +373,7 @@ TEST_F(OutOfMemoryDeathTest, CFAllocatorMallocZone) {
 TEST_F(OutOfMemoryDeathTest, PsychoticallyBigObjCObject) {
   ASSERT_DEATH({
       SetUpInDeathAssert();
-      while ((value_ = base::AllocatePsychoticallyBigObjCObject())) {}
+      while ((value_ = butil::AllocatePsychoticallyBigObjCObject())) {}
     }, "");
 }
 
@@ -392,7 +392,7 @@ class OutOfMemoryHandledTest : public OutOfMemoryTest {
     // We enable termination on OOM - just as Chrome does at early
     // initialization - and test that UncheckedMalloc and  UncheckedCalloc
     // properly by-pass this in order to allow the caller to handle OOM.
-    base::EnableTerminationOnOutOfMemory();
+    butil::EnableTerminationOnOutOfMemory();
   }
 };
 
@@ -402,16 +402,16 @@ class OutOfMemoryHandledTest : public OutOfMemoryTest {
 // under sanitizer tools.
 #if !defined(MEMORY_TOOL_REPLACES_ALLOCATOR)
 TEST_F(OutOfMemoryHandledTest, UncheckedMalloc) {
-  EXPECT_TRUE(base::UncheckedMalloc(kSafeMallocSize, &value_));
+  EXPECT_TRUE(butil::UncheckedMalloc(kSafeMallocSize, &value_));
   EXPECT_TRUE(value_ != NULL);
   free(value_);
 
-  EXPECT_FALSE(base::UncheckedMalloc(test_size_, &value_));
+  EXPECT_FALSE(butil::UncheckedMalloc(test_size_, &value_));
   EXPECT_TRUE(value_ == NULL);
 }
 
 TEST_F(OutOfMemoryHandledTest, UncheckedCalloc) {
-  EXPECT_TRUE(base::UncheckedCalloc(1, kSafeMallocSize, &value_));
+  EXPECT_TRUE(butil::UncheckedCalloc(1, kSafeMallocSize, &value_));
   EXPECT_TRUE(value_ != NULL);
   const char* bytes = static_cast<const char*>(value_);
   for (size_t i = 0; i < kSafeMallocSize; ++i)
@@ -419,14 +419,14 @@ TEST_F(OutOfMemoryHandledTest, UncheckedCalloc) {
   free(value_);
 
   EXPECT_TRUE(
-      base::UncheckedCalloc(kSafeCallocItems, kSafeCallocSize, &value_));
+      butil::UncheckedCalloc(kSafeCallocItems, kSafeCallocSize, &value_));
   EXPECT_TRUE(value_ != NULL);
   bytes = static_cast<const char*>(value_);
   for (size_t i = 0; i < (kSafeCallocItems * kSafeCallocSize); ++i)
     EXPECT_EQ(0, bytes[i]);
   free(value_);
 
-  EXPECT_FALSE(base::UncheckedCalloc(1, test_size_, &value_));
+  EXPECT_FALSE(butil::UncheckedCalloc(1, test_size_, &value_));
   EXPECT_TRUE(value_ == NULL);
 }
 #endif  // !defined(MEMORY_TOOL_REPLACES_ALLOCATOR)

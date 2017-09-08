@@ -9,10 +9,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "base/files/file_path.h"
-#include "base/files/scoped_file.h"
+#include "butil/files/file_path.h"
+#include "butil/files/scoped_file.h"
 
-namespace base {
+namespace butil {
 
 bool EvictFileFromSystemCache(const FilePath& file) {
   ScopedFD fd(open(file.value().c_str(), O_RDONLY));
@@ -25,4 +25,4 @@ bool EvictFileFromSystemCache(const FilePath& file) {
   return true;
 }
 
-}  // namespace base
+}  // namespace butil

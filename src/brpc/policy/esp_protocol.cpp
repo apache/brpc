@@ -16,8 +16,8 @@
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
 
-#include "base/time.h" 
-#include "base/iobuf.h"                         // base::IOBuf
+#include "butil/time.h" 
+#include "butil/iobuf.h"                         // butil::IOBuf
 
 #include "brpc/controller.h"               // Controller
 #include "brpc/socket.h"                   // Socket
@@ -35,7 +35,7 @@ namespace brpc {
 namespace policy {
 
 ParseResult ParseEspMessage(
-        base::IOBuf* source,
+        butil::IOBuf* source,
         Socket*, 
         bool /*read_eof*/, 
         const void* /*arg*/) {
@@ -60,7 +60,7 @@ ParseResult ParseEspMessage(
 }
 
 void SerializeEspRequest(
-        base::IOBuf* request_buf, 
+        butil::IOBuf* request_buf, 
         Controller* cntl,
         const google::protobuf::Message* req_base) {
 
@@ -83,12 +83,12 @@ void SerializeEspRequest(
     request_buf->append(req->body);
 }
 
-void PackEspRequest(base::IOBuf* packet_buf,
+void PackEspRequest(butil::IOBuf* packet_buf,
                     SocketMessage**,
                     uint64_t correlation_id,
                     const google::protobuf::MethodDescriptor*,
                     Controller* cntl,
-                    const base::IOBuf& request,
+                    const butil::IOBuf& request,
                     const Authenticator* auth) {
 
     ControllerPrivateAccessor accessor(cntl);
@@ -115,7 +115,7 @@ void PackEspRequest(base::IOBuf* packet_buf,
 
 void ProcessEspResponse(InputMessageBase* msg_base) {
 
-    const int64_t start_parse_us = base::cpuwide_time_us();
+    const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     
     // Fetch correlation id that we saved before in `PackEspRequest'

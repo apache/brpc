@@ -4,10 +4,10 @@
 
 #include <vector>
 
-#include "base/scoped_generic.h"
+#include "butil/scoped_generic.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 namespace {
 
@@ -150,4 +150,4 @@ TEST(ScopedGenericTest, NoCompile) {
 }
 #endif
 
-}  // namespace base
+}  // namespace butil

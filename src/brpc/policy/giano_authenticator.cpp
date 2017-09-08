@@ -16,7 +16,7 @@
 
 // Authors: Rujie Jiang (jiangrujie@baidu.com)
 
-#include "base/logging.h"
+#include "butil/logging.h"
 #include "brpc/policy/giano_authenticator.h"
 
 namespace brpc {
@@ -61,7 +61,7 @@ int GianoAuthenticator::GenerateCredential(std::string* auth_str) const {
 
 int GianoAuthenticator::VerifyCredential(
         const std::string& auth_str,
-        const base::EndPoint& client_addr,
+        const butil::EndPoint& client_addr,
         AuthContext* out_ctx) const {
     if (NULL == _verifier) {
         LOG(FATAL) << "CredentialVerifier is NULL";

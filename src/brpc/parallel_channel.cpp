@@ -15,9 +15,9 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 
 #include "bthread/unstable.h"                 // bthread_timer_add
-#include "base/atomicops.h"
-#include "base/time.h"
-#include "base/macros.h"
+#include "butil/atomicops.h"
+#include "butil/time.h"
+#include "butil/macros.h"
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/parallel_channel.h"
 
@@ -78,7 +78,7 @@ public:
         }
 
         ParallelChannelDone* shared_data;
-        base::intrusive_ptr<ResponseMerger> merger;
+        butil::intrusive_ptr<ResponseMerger> merger;
         SubCall ap;
         Controller cntl;
     };
@@ -202,7 +202,7 @@ public:
 
             // Count failed sub calls, if fail_limit is reached, cancel others.
             if (fin->cntl.FailedInline() &&
-                _current_fail.fetch_add(1, base::memory_order_relaxed) + 1
+                _current_fail.fetch_add(1, butil::memory_order_relaxed) + 1
                 == _fail_limit) {
                 for (int i = 0; i < _ndone; ++i) {
                     SubDone* sd = sub_done(i);
@@ -219,7 +219,7 @@ public:
             // The release fence is matched with acquire fence below to
             // guarantee visibilities of all other variables.
             const uint32_t val =
-                _current_done.fetch_add(1, base::memory_order_release);
+                _current_done.fetch_add(1, butil::memory_order_release);
             // Lower 31 bits are number of finished sub calls. If caller is not
             // the last call that finishes, return.
             if ((val & 0x7fffffff) + 1 != saved_ndone) {
@@ -238,7 +238,7 @@ public:
             // of reading the value relaxly (and CPU cache is not sync yet).
             // It's OK and we have to, because sub_done can't be accessed
             // after fetch_or.
-            uint32_t val = _current_done.load(base::memory_order_relaxed);
+            uint32_t val = _current_done.load(butil::memory_order_relaxed);
             // Lower 31 bits are number of finished sub calls. Cancel sub calls
             // if not all of them finish.
             if ((val & 0x7fffffff) != (uint32_t)_ndone) {
@@ -252,13 +252,13 @@ public:
             // Modify MSB to mark that this->Run() run.
             // The release fence is matched with acquire fence below to
             // guarantee visibilities of all other variables.
-            val = _current_done.fetch_or(0x80000000, base::memory_order_release);
+            val = _current_done.fetch_or(0x80000000, butil::memory_order_release);
             // If not all sub calls finish, return.
             if ((val & 0x7fffffff) != (uint32_t)saved_ndone) {
                 return;
             }
         }
-        base::atomic_thread_fence(base::memory_order_acquire);
+        butil::atomic_thread_fence(butil::memory_order_acquire);
 
         if (fin != NULL &&
             fin->cntl._run_done_state == Controller::CALLMETHOD_DID_RUN_DONE) {
@@ -287,7 +287,7 @@ public:
         // NOTE: Don't forget to set "nfailed = _ndone" when the _cntl is set
         // to be failed since the RPC is still considered to be successful if
         // nfailed is less than fail_limit
-        int nfailed = _current_fail.load(base::memory_order_relaxed);
+        int nfailed = _current_fail.load(butil::memory_order_relaxed);
         if (nfailed < _fail_limit) {
             for (int i = 0; i < _ndone; ++i) {
                 SubDone* sd = sub_done(i);
@@ -365,7 +365,7 @@ public:
         // NOTE: we don't destroy self here, controller destroys this done in
         // Reset() so that user can access sub controllers before Reset().
         if (user_done) {
-            _cntl->OnRPCEnd(base::gettimeofday_us());
+            _cntl->OnRPCEnd(butil::gettimeofday_us());
             user_done->Run();
         }
         CHECK_EQ(0, bthread_id_unlock_and_destroy(saved_cid));
@@ -409,8 +409,8 @@ private:
 #else
     int _memsize;
 #endif
-    base::atomic<int> _current_fail;
-    base::atomic<uint32_t> _current_done;
+    butil::atomic<int> _current_fail;
+    butil::atomic<uint32_t> _current_done;
     Controller* _cntl;
     google::protobuf::Closure* _user_done;
     SubDone _sub_done[0];
@@ -521,7 +521,7 @@ void ParallelChannel::CallMethod(
     google::protobuf::Message* response,
     google::protobuf::Closure* done) {
     Controller* cntl = static_cast<Controller*>(cntl_base);
-    cntl->OnRPCBegin(base::gettimeofday_us());
+    cntl->OnRPCBegin(butil::gettimeofday_us());
     // Make sure cntl->sub_count() always equal #sub-channels
     const int nchan = _chans.size();
     cntl->_pchan_sub_count = nchan;
@@ -625,7 +625,7 @@ void ParallelChannel::CallMethod(
         // Setup timer for RPC timetout
         const int rc = bthread_timer_add(
             &cntl->_timeout_id,
-            base::microseconds_to_timespec(cntl->_abstime_us),
+            butil::microseconds_to_timespec(cntl->_abstime_us),
             HandleTimeout, (void*)cid.value);
         if (rc != 0) {
             cntl->SetFailed(rc, "Fail to add timer");
@@ -650,7 +650,7 @@ void ParallelChannel::CallMethod(
     }
     if (done == NULL) {
         Join(cid);
-        cntl->OnRPCEnd(base::gettimeofday_us());
+        cntl->OnRPCEnd(butil::gettimeofday_us());
     }
     return;
 

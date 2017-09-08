@@ -64,8 +64,8 @@
 #include "brpc/trackme.h"             // TrackMe
 #include <malloc.h>                        // malloc_trim
 #include "brpc/details/usercode_backup_pool.h"
-#include "base/fd_guard.h"
-#include "base/files/file_watcher.h"
+#include "butil/fd_guard.h"
+#include "butil/files/file_watcher.h"
 
 namespace brpc {
 
@@ -104,7 +104,7 @@ static pthread_once_t register_extensions_once = PTHREAD_ONCE_INIT;
 static GlobalExtensions* g_ext = NULL;
 
 static long ReadPortOfDummyServer(const char* filename) {
-    base::fd_guard fd(open(filename, O_RDONLY));
+    butil::fd_guard fd(open(filename, O_RDONLY));
     if (fd < 0) {
         LOG(ERROR) << "Fail to open `" << DUMMY_SERVER_PORT_FILE << "'";
         return -1;
@@ -129,24 +129,24 @@ static long ReadPortOfDummyServer(const char* filename) {
     return port;
 }
 
-// Expose counters of base::IOBuf
+// Expose counters of butil::IOBuf
 static int64_t GetIOBufBlockCount(void*) {
-    return base::IOBuf::block_count();
+    return butil::IOBuf::block_count();
 }
 static int64_t GetIOBufBlockCountHitTLSThreshold(void*) {
-    return base::IOBuf::block_count_hit_tls_threshold();
+    return butil::IOBuf::block_count_hit_tls_threshold();
 }
 static int64_t GetIOBufNewBigViewCount(void*) {
-    return base::IOBuf::new_bigview_count();
+    return butil::IOBuf::new_bigview_count();
 }
 static int64_t GetIOBufBlockMemory(void*) {
-    return base::IOBuf::block_memory();
+    return butil::IOBuf::block_memory();
 }
 
 // Defined in server.cpp
-extern base::static_atomic<int> g_running_server_count;
+extern butil::static_atomic<int> g_running_server_count;
 static int GetRunningServerCount(void*) {
-    return g_running_server_count.load(base::memory_order_relaxed);
+    return g_running_server_count.load(butil::memory_order_relaxed);
 }
     
 // Update global stuff periodically.
@@ -166,20 +166,20 @@ static void* GlobalUpdate(void*) {
     bvar::PassiveStatus<int> var_running_server_count(
         "rpc_server_count", GetRunningServerCount, NULL);
     
-    base::FileWatcher fw;
+    butil::FileWatcher fw;
     if (fw.init_from_not_exist(DUMMY_SERVER_PORT_FILE) < 0) {
         LOG(FATAL) << "Fail to init FileWatcher on `" << DUMMY_SERVER_PORT_FILE << "'";
         return NULL;
     }
 
     std::vector<SocketId> conns;
-    const int64_t start_time_us = base::gettimeofday_us();
+    const int64_t start_time_us = butil::gettimeofday_us();
     const int WARN_NOSLEEP_THRESHOLD = 2;
     int64_t last_time_us = start_time_us;
     int consecutive_nosleep = 0;
     //int64_t last_malloc_trim_time = start_time_us;
     while (1) {
-        const int64_t sleep_us = 1000000L + last_time_us - base::gettimeofday_us();
+        const int64_t sleep_us = 1000000L + last_time_us - butil::gettimeofday_us();
         if (sleep_us > 0) {
             if (bthread_usleep(sleep_us) < 0) {
                 PLOG_IF(FATAL, errno != ESTOP) << "Fail to sleep";
@@ -192,12 +192,12 @@ static void* GlobalUpdate(void*) {
                 LOG(WARNING) << __FUNCTION__ << " is too busy!";
             }
         }
-        last_time_us = base::gettimeofday_us();
+        last_time_us = butil::gettimeofday_us();
         
         TrackMe();
         
         if (!IsDummyServerRunning()
-            && g_running_server_count.load(base::memory_order_relaxed) == 0
+            && g_running_server_count.load(butil::memory_order_relaxed) == 0
             && fw.check_and_consume() > 0) {
             long port = ReadPortOfDummyServer(DUMMY_SERVER_PORT_FILE);
             if (port >= 0) {
@@ -206,7 +206,7 @@ static void* GlobalUpdate(void*) {
         }
 
         SocketMapList(&conns);
-        const int64_t now_ms = base::cpuwide_time_ms();
+        const int64_t now_ms = butil::cpuwide_time_ms();
         for (size_t i = 0; i < conns.size(); ++i) {
             SocketUniquePtr ptr;
             if (Socket::Address(conns[i], &ptr) == 0) {

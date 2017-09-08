@@ -21,7 +21,7 @@
 
 #include <errno.h>                               // users need to check errno
 #include <time.h>                                // timespec
-#include "base/macros.h"                         // BAIDU_CASSERT
+#include "butil/macros.h"                         // BAIDU_CASSERT
 #include "bthread/types.h"                       // bthread_t
 
 namespace bthread {

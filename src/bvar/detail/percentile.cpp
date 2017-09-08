@@ -16,7 +16,7 @@
 // Date: 2015/09/15 15:14:32
 
 #include "bvar/detail/percentile.h"
-#include "base/logging.h"
+#include "butil/logging.h"
 
 namespace bvar {
 namespace detail {

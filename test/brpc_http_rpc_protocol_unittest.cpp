@@ -10,9 +10,9 @@
 #include <gperftools/profiler.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/files/scoped_file.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/files/scoped_file.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
 #include "brpc/server.h"
@@ -62,7 +62,7 @@ public:
     }
 
     int VerifyCredential(const std::string& auth_str,
-                         const base::EndPoint&,
+                         const butil::EndPoint&,
                          brpc::AuthContext* ctx) const {
         EXPECT_EQ(MOCK_CREDENTIAL, auth_str);
         ctx->set_user(MOCK_USER);
@@ -135,7 +135,7 @@ protected:
 
         test::EchoRequest req;
         req.set_message(EXP_REQUEST);
-        base::IOBufAsZeroCopyOutputStream req_stream(&msg->body());
+        butil::IOBufAsZeroCopyOutputStream req_stream(&msg->body());
         EXPECT_TRUE(json2pb::ProtoMessageToJson(req, &req_stream, NULL));
         return msg;
     }
@@ -155,7 +155,7 @@ protected:
         
         test::EchoResponse res;
         res.set_message(EXP_RESPONSE);
-        base::IOBufAsZeroCopyOutputStream res_stream(&msg->body());
+        butil::IOBufAsZeroCopyOutputStream res_stream(&msg->body());
         EXPECT_TRUE(json2pb::ProtoMessageToJson(res, &res_stream, NULL));
         return msg;
     }
@@ -169,7 +169,7 @@ protected:
         }
 
         EXPECT_GT(bytes_in_pipe, 0);
-        base::IOPortal buf;
+        butil::IOPortal buf;
         EXPECT_EQ((ssize_t)bytes_in_pipe,
                   buf.append_from_file_descriptor(_pipe_fds[0], 1024));
         brpc::ParseResult pr =
@@ -205,35 +205,35 @@ TEST_F(HttpTest, indenting_ostream) {
 
 TEST_F(HttpTest, parse_http_address) {
     const std::string EXP_HOSTNAME = "cp01-rpc-dev01.cp01.baidu.com:9876";
-    base::EndPoint EXP_ENDPOINT;
+    butil::EndPoint EXP_ENDPOINT;
     ASSERT_EQ(0, hostname2endpoint(EXP_HOSTNAME.c_str(), &EXP_ENDPOINT));
     {
-        base::EndPoint ep;
+        butil::EndPoint ep;
         std::string url = "https://" + EXP_HOSTNAME;
         EXPECT_TRUE(brpc::policy::ParseHttpServerAddress(&ep, url.c_str()));
         EXPECT_EQ(EXP_ENDPOINT, ep);
     }
     {
-        base::EndPoint ep;
+        butil::EndPoint ep;
         std::string url = "http://" +
                           std::string(endpoint2str(EXP_ENDPOINT).c_str());
         EXPECT_TRUE(brpc::policy::ParseHttpServerAddress(&ep, url.c_str()));
         EXPECT_EQ(EXP_ENDPOINT, ep);
     }
     {
-        base::EndPoint ep;
+        butil::EndPoint ep;
         std::string url = "https://" +
-            std::string(base::ip2str(EXP_ENDPOINT.ip).c_str());
+            std::string(butil::ip2str(EXP_ENDPOINT.ip).c_str());
         EXPECT_TRUE(brpc::policy::ParseHttpServerAddress(&ep, url.c_str()));
         EXPECT_EQ(EXP_ENDPOINT.ip, ep.ip);
         EXPECT_EQ(443, ep.port);
     }
     {
-        base::EndPoint ep;
+        butil::EndPoint ep;
         EXPECT_FALSE(brpc::policy::ParseHttpServerAddress(&ep, "invalid_url"));
     }
     {
-        base::EndPoint ep;
+        butil::EndPoint ep;
         EXPECT_FALSE(brpc::policy::ParseHttpServerAddress(
             &ep, "https://no.such.machine:9090"));
     }
@@ -349,8 +349,8 @@ TEST_F(HttpTest, process_response_error_code) {
 }
 
 TEST_F(HttpTest, complete_flow) {
-    base::IOBuf request_buf;
-    base::IOBuf total_buf;
+    butil::IOBuf request_buf;
+    butil::IOBuf total_buf;
     brpc::Controller cntl;
     test::EchoRequest req;
     test::EchoResponse res;
@@ -377,7 +377,7 @@ TEST_F(HttpTest, complete_flow) {
     ProcessMessage(brpc::policy::ProcessHttpRequest, req_msg, false);
 
     // Read response from pipe
-    base::IOPortal response_buf;
+    butil::IOPortal response_buf;
     response_buf.append_from_file_descriptor(_pipe_fds[0], 1024);
     brpc::ParseResult res_pr =
             brpc::policy::ParseHttpMessage(&response_buf, _socket.get(), false, NULL);
@@ -399,7 +399,7 @@ TEST_F(HttpTest, chunked_uploading) {
     const std::string req = "{\"message\":\"hello\"}";
     const std::string res_fname = "curl.out";
     std::string cmd;
-    base::string_printf(&cmd, "curl -X POST -d '%s' -H 'Transfer-Encoding:chunked' "
+    butil::string_printf(&cmd, "curl -X POST -d '%s' -H 'Transfer-Encoding:chunked' "
                         "-H 'Content-Type:application/json' -o %s "
                         "http://localhost:%d/EchoService/Echo",
                         req.c_str(), res_fname.c_str(), port);
@@ -407,7 +407,7 @@ TEST_F(HttpTest, chunked_uploading) {
 
     // Check response
     const std::string exp_res = "{\"message\":\"world\"}";
-    base::ScopedFILE fp(res_fname.c_str(), "r");
+    butil::ScopedFILE fp(res_fname.c_str(), "r");
     char buf[128];
     fgets(buf, sizeof(buf), fp);
     EXPECT_EQ(exp_res, std::string(buf));
@@ -447,7 +447,7 @@ public:
         cntl->http_response().set_content_type("text/plain");
         brpc::StopStyle stop_style = (_nrep == std::numeric_limits<size_t>::max() 
                 ? brpc::FORCE_STOP : brpc::WAIT_FOR_STOP);
-        base::intrusive_ptr<brpc::ProgressiveAttachment> pa(
+        butil::intrusive_ptr<brpc::ProgressiveAttachment> pa(
                 cntl->CreateProgressiveAttachment(stop_style));
         if (pa == NULL) {
             cntl->SetFailed("The socket was just failed");
@@ -495,7 +495,7 @@ public:
         cntl->http_response().set_content_type("text/plain");
         brpc::StopStyle stop_style = (_nrep == std::numeric_limits<size_t>::max() 
                 ? brpc::FORCE_STOP : brpc::WAIT_FOR_STOP);
-        base::intrusive_ptr<brpc::ProgressiveAttachment> pa(
+        butil::intrusive_ptr<brpc::ProgressiveAttachment> pa(
                 cntl->CreateProgressiveAttachment(stop_style));
         if (pa == NULL) {
             cntl->SetFailed("The socket was just failed");
@@ -551,7 +551,7 @@ TEST_F(HttpTest, read_chunked_response_normally) {
         brpc::Channel channel;
         brpc::ChannelOptions options;
         options.protocol = brpc::PROTOCOL_HTTP;
-        ASSERT_EQ(0, channel.Init(base::EndPoint(base::my_ip(), port), &options));
+        ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
         brpc::Controller cntl;
         cntl.http_request().uri() = "/DownloadService/Download";
         channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
@@ -573,7 +573,7 @@ TEST_F(HttpTest, read_failed_chunked_response) {
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_HTTP;
-    ASSERT_EQ(0, channel.Init(base::EndPoint(base::my_ip(), port), &options));
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
 
     brpc::Controller cntl;
     cntl.http_request().uri() = "/DownloadService/DownloadFailed";
@@ -591,10 +591,10 @@ public:
         : _nread(0)
         , _ncount(0)
         , _destroyed(false) {
-        base::intrusive_ptr<ReadBody>(this).detach(); // ref
+        butil::intrusive_ptr<ReadBody>(this).detach(); // ref
     }
                 
-    base::Status OnReadOnePart(const void* data, size_t length) {
+    butil::Status OnReadOnePart(const void* data, size_t length) {
         _nread += length;
         while (length > 0) {
             size_t nappend = std::min(_buf.size() + length, PA_DATA_LEN) - _buf.size();
@@ -610,10 +610,10 @@ public:
                 _buf.clear();
             }
         }
-        return base::Status::OK();
+        return butil::Status::OK();
     }
-    void OnEndOfMessage(const base::Status& st) {
-        base::intrusive_ptr<ReadBody>(this, false); // deref
+    void OnEndOfMessage(const butil::Status& st) {
+        butil::intrusive_ptr<ReadBody>(this, false); // deref
         ASSERT_LT(_buf.size(), PA_DATA_LEN);
         ASSERT_EQ(0, memcmp(_buf.data(), PA_DATA, _buf.size()));
         _destroyed = true;
@@ -621,20 +621,20 @@ public:
         LOG(INFO) << "Destroy ReadBody=" << this << ", " << st;
     }
     bool destroyed() const { return _destroyed; }
-    const base::Status& destroying_status() const { return _destroying_st; }
+    const butil::Status& destroying_status() const { return _destroying_st; }
     size_t read_bytes() const { return _nread; }
 private:
     std::string _buf;
     size_t _nread;
     size_t _ncount;
     bool _destroyed;
-    base::Status _destroying_st;
+    butil::Status _destroying_st;
 };
 
 static const int GENERAL_DELAY_US = 300000; // 0.3s
 
 TEST_F(HttpTest, read_long_body_progressively) {
-    base::intrusive_ptr<ReadBody> reader;
+    butil::intrusive_ptr<ReadBody> reader;
     {
         const int port = 8923;
         brpc::Server server;
@@ -646,7 +646,7 @@ TEST_F(HttpTest, read_long_body_progressively) {
             brpc::Channel channel;
             brpc::ChannelOptions options;
             options.protocol = brpc::PROTOCOL_HTTP;
-            ASSERT_EQ(0, channel.Init(base::EndPoint(base::my_ip(), port), &options));
+            ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
             {
                 brpc::Controller cntl;
                 cntl.response_will_be_read_progressively();
@@ -683,7 +683,7 @@ TEST_F(HttpTest, read_long_body_progressively) {
 }
 
 TEST_F(HttpTest, read_short_body_progressively) {
-    base::intrusive_ptr<ReadBody> reader;
+    butil::intrusive_ptr<ReadBody> reader;
     const int port = 8923;
     brpc::Server server;
     const int NREP = 10000;
@@ -694,7 +694,7 @@ TEST_F(HttpTest, read_short_body_progressively) {
         brpc::Channel channel;
         brpc::ChannelOptions options;
         options.protocol = brpc::PROTOCOL_HTTP;
-        ASSERT_EQ(0, channel.Init(base::EndPoint(base::my_ip(), port), &options));
+        ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
         {
             brpc::Controller cntl;
             cntl.response_will_be_read_progressively();
@@ -721,7 +721,7 @@ TEST_F(HttpTest, read_short_body_progressively) {
 }
 
 TEST_F(HttpTest, read_progressively_after_cntl_destroys) {
-    base::intrusive_ptr<ReadBody> reader;
+    butil::intrusive_ptr<ReadBody> reader;
     {
         const int port = 8923;
         brpc::Server server;
@@ -733,7 +733,7 @@ TEST_F(HttpTest, read_progressively_after_cntl_destroys) {
             brpc::Channel channel;
             brpc::ChannelOptions options;
             options.protocol = brpc::PROTOCOL_HTTP;
-            ASSERT_EQ(0, channel.Init(base::EndPoint(base::my_ip(), port), &options));
+            ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
             {
                 brpc::Controller cntl;
                 cntl.response_will_be_read_progressively();
@@ -767,7 +767,7 @@ TEST_F(HttpTest, read_progressively_after_cntl_destroys) {
 }
 
 TEST_F(HttpTest, read_progressively_after_long_delay) {
-    base::intrusive_ptr<ReadBody> reader;
+    butil::intrusive_ptr<ReadBody> reader;
     {
         const int port = 8923;
         brpc::Server server;
@@ -779,7 +779,7 @@ TEST_F(HttpTest, read_progressively_after_long_delay) {
             brpc::Channel channel;
             brpc::ChannelOptions options;
             options.protocol = brpc::PROTOCOL_HTTP;
-            ASSERT_EQ(0, channel.Init(base::EndPoint(base::my_ip(), port), &options));
+            ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
             {
                 brpc::Controller cntl;
                 cntl.response_will_be_read_progressively();
@@ -826,7 +826,7 @@ TEST_F(HttpTest, skip_progressive_reading) {
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_HTTP;
-    ASSERT_EQ(0, channel.Init(base::EndPoint(base::my_ip(), port), &options));
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
     {
         brpc::Controller cntl;
         cntl.response_will_be_read_progressively();
@@ -849,10 +849,10 @@ TEST_F(HttpTest, skip_progressive_reading) {
 class AlwaysFailRead : public brpc::ProgressiveReader {
 public:
     // @ProgressiveReader
-    base::Status OnReadOnePart(const void* /*data*/, size_t /*length*/) {
-        return base::Status(-1, "intended fail at %s:%d", __FILE__, __LINE__);
+    butil::Status OnReadOnePart(const void* /*data*/, size_t /*length*/) {
+        return butil::Status(-1, "intended fail at %s:%d", __FILE__, __LINE__);
     }
-    void OnEndOfMessage(const base::Status& st) {
+    void OnEndOfMessage(const butil::Status& st) {
         LOG(INFO) << "Destroy " << this << ": " << st;
         delete this;
     }
@@ -868,7 +868,7 @@ TEST_F(HttpTest, failed_on_read_one_part) {
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_HTTP;
-    ASSERT_EQ(0, channel.Init(base::EndPoint(base::my_ip(), port), &options));
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
     {
         brpc::Controller cntl;
         cntl.response_will_be_read_progressively();
@@ -884,7 +884,7 @@ TEST_F(HttpTest, failed_on_read_one_part) {
 }
 
 TEST_F(HttpTest, broken_socket_stops_progressive_reading) {
-    base::intrusive_ptr<ReadBody> reader;
+    butil::intrusive_ptr<ReadBody> reader;
     const int port = 8923;
     brpc::Server server;
     DownloadServiceImpl svc(DONE_BEFORE_CREATE_PA,
@@ -895,7 +895,7 @@ TEST_F(HttpTest, broken_socket_stops_progressive_reading) {
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_HTTP;
-    ASSERT_EQ(0, channel.Init(base::EndPoint(base::my_ip(), port), &options));
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
     {
         brpc::Controller cntl;
         cntl.response_will_be_read_progressively();

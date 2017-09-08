@@ -18,7 +18,7 @@
 #include "brpc/nshead_message.h"
 
 #include <algorithm>
-#include "base/logging.h"
+#include "butil/logging.h"
 
 #include <google/protobuf/stubs/once.h>
 #include <google/protobuf/io/coded_stream.h>

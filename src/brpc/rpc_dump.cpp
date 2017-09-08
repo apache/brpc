@@ -16,11 +16,11 @@
 
 #include <gflags/gflags.h>
 #include <fcntl.h>                    // O_CREAT
-#include "base/file_util.h"
-#include "base/raw_pack.h"
-#include "base/unique_ptr.h"
-#include "base/fast_rand.h"
-#include "base/files/file_enumerator.h"
+#include "butil/file_util.h"
+#include "butil/raw_pack.h"
+#include "butil/unique_ptr.h"
+#include "butil/fast_rand.h"
+#include "butil/files/file_enumerator.h"
 #include "bvar/bvar.h"
 #include "brpc/log.h"
 #include "brpc/reloadable_flags.h"
@@ -72,7 +72,7 @@ public:
     
     void Dump(size_t round, SampledRequest*);
     
-    static bool Serialize(base::IOBuf& buf, SampledRequest* sample);
+    static bool Serialize(butil::IOBuf& buf, SampledRequest* sample);
     
     RpcDumpContext()
         : _cur_req_count(0)
@@ -80,13 +80,13 @@ public:
         , _last_round(0)
         , _max_requests_in_one_file(0)
         , _max_files(0)
-        , _sched_write_time(base::gettimeofday_us() + FLUSH_TIMEOUT)
+        , _sched_write_time(butil::gettimeofday_us() + FLUSH_TIMEOUT)
         , _last_file_time(0)
     {
         _command_name = bvar::read_command_name();
         SaveFlags();
         // Clean the directory at fist time.
-        base::DeleteFile(_dir, true); 
+        butil::DeleteFile(_dir, true); 
     }
     ~RpcDumpContext() {
         if (_cur_fd >= 0) {
@@ -107,11 +107,11 @@ private:
     int64_t _last_file_time;  // time for the postfix of last file
     // the queue for remembering oldest file to remove.
     std::deque<std::string> _filenames;
-    base::FilePath _dir;
+    butil::FilePath _dir;
     // current filename, being here just to reuse memory.
     std::string _cur_filename;
     // buffering output to file so they can be written in batch.
-    base::IOBuf _unwritten_buf;
+    butil::IOBuf _unwritten_buf;
 };
 
 bvar::CollectorSpeedLimit g_rpc_dump_sl = BVAR_COLLECTOR_SPEED_LIMIT_INITIALIZER;
@@ -144,7 +144,7 @@ void RpcDumpContext::SaveFlags() {
     if (pos != std::string::npos) {
         dir.replace(pos, 5/*<app>*/, _command_name);
     }
-    _dir = base::FilePath(dir);
+    _dir = butil::FilePath(dir);
 
     _max_requests_in_one_file = FLAGS_rpc_dump_max_requests_in_one_file;
     _max_files = FLAGS_rpc_dump_max_files;
@@ -167,7 +167,7 @@ void RpcDumpContext::Dump(size_t round, SampledRequest* sample) {
     } else if (_unwritten_buf.size() >= UNWRITTEN_BUFSIZE) {
         // Too much unwritten data
         RPC_VLOG << "Write because _unwritten_buf=" << _unwritten_buf.size();
-    } else if (base::gettimeofday_us() >= _sched_write_time) {
+    } else if (butil::gettimeofday_us() >= _sched_write_time) {
         // Not write for a while.
         RPC_VLOG << "Write because timeout";
     } else {
@@ -177,19 +177,19 @@ void RpcDumpContext::Dump(size_t round, SampledRequest* sample) {
     // Open file if needed.
     if (_cur_fd < 0) {
         // Make sure the dir exists.
-        base::File::Error error;
-        if (!base::CreateDirectoryAndGetError(_dir, &error)) {
+        butil::File::Error error;
+        if (!butil::CreateDirectoryAndGetError(_dir, &error)) {
             LOG(ERROR) << "Fail to create directory=`" << _dir.value()
                        << "', " << error;
             return;
         }
         // Remove oldest files.
         while ((int)_filenames.size() >= _max_files && !_filenames.empty()) {
-            base::DeleteFile(base::FilePath(_filenames.front()), false);
+            butil::DeleteFile(butil::FilePath(_filenames.front()), false);
             _filenames.pop_front();
         }
         // Make current time as postfix.
-        int64_t cur_file_time = base::gettimeofday_us();
+        int64_t cur_file_time = butil::gettimeofday_us();
         // Make postfix monotonic.
         if (cur_file_time <= _last_file_time) {
             cur_file_time = _last_file_time + 1;
@@ -198,7 +198,7 @@ void RpcDumpContext::Dump(size_t round, SampledRequest* sample) {
         struct tm* timeinfo = localtime(&rawtime);
         char ts_buf[64];
         strftime(ts_buf, sizeof(ts_buf), "%Y%m%d_%H%M%S", timeinfo);
-        base::string_printf(&_cur_filename, "%s/" DUMPED_FILE_PREFIX ".%s_%06u",
+        butil::string_printf(&_cur_filename, "%s/" DUMPED_FILE_PREFIX ".%s_%06u",
                             _dir.value().c_str(), ts_buf,
                             (unsigned)(cur_file_time - rawtime * 1000000L));
         _cur_fd = open(_cur_filename.c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0666);
@@ -222,7 +222,7 @@ void RpcDumpContext::Dump(size_t round, SampledRequest* sample) {
         }
     }
     _unwritten_buf.clear();
-    _sched_write_time = base::gettimeofday_us() + FLUSH_TIMEOUT;
+    _sched_write_time = butil::gettimeofday_us() + FLUSH_TIMEOUT;
     if (fail_to_write || _cur_req_count >= _max_requests_in_one_file) {
         // clean up
         if (_cur_fd >= 0) {
@@ -233,13 +233,13 @@ void RpcDumpContext::Dump(size_t round, SampledRequest* sample) {
     }
 }
 
-bool RpcDumpContext::Serialize(base::IOBuf& buf, SampledRequest* sample) {
+bool RpcDumpContext::Serialize(butil::IOBuf& buf, SampledRequest* sample) {
     // Use the header of baidu_std.
     char rpc_header[12];
-    base::IOBuf::Area header_area = buf.reserve(sizeof(rpc_header));
+    butil::IOBuf::Area header_area = buf.reserve(sizeof(rpc_header));
     
     const size_t starting_size = buf.size();
-    base::IOBufAsZeroCopyOutputStream buf_stream(&buf);
+    butil::IOBufAsZeroCopyOutputStream buf_stream(&buf);
     if (!sample->SerializeToZeroCopyStream(&buf_stream)) {
         LOG(ERROR) << "Fail to serialize";
         return false;
@@ -250,14 +250,14 @@ bool RpcDumpContext::Serialize(base::IOBuf& buf, SampledRequest* sample) {
     // dummy supresses strict-aliasing warning.
     uint32_t* dummy = (uint32_t*)rpc_header;
     *dummy = *(uint32_t*)"PRPC";
-    base::RawPacker(rpc_header + 4)
+    butil::RawPacker(rpc_header + 4)
         .pack32(meta_size + sample->request.size())
         .pack32(meta_size);
     CHECK_EQ(0, buf.unsafe_assign(header_area, rpc_header));
     return true;
 }
 
-SampleIterator::SampleIterator(const base::StringPiece& dir)
+SampleIterator::SampleIterator(const butil::StringPiece& dir)
     : _cur_fd(-1)
     , _enum(NULL)
     , _dir(std::string(dir.data(), dir.size())) {
@@ -308,10 +308,10 @@ SampledRequest* SampleIterator::Next() {
         }
         
         if (_enum == NULL) {
-            _enum = new base::FileEnumerator(
-                _dir, false, base::FileEnumerator::FILES);
+            _enum = new butil::FileEnumerator(
+                _dir, false, butil::FileEnumerator::FILES);
         }
-        base::FilePath filename = _enum->Next();
+        butil::FilePath filename = _enum->Next();
         if (filename.empty()) {
             return NULL;
         }
@@ -319,7 +319,7 @@ SampledRequest* SampleIterator::Next() {
     }
 }
 
-SampledRequest* SampleIterator::Pop(base::IOBuf& buf, bool* format_error) {
+SampledRequest* SampleIterator::Pop(butil::IOBuf& buf, bool* format_error) {
     char backing_buf[12];
     const char* p = (const char*)buf.fetch(backing_buf, sizeof(backing_buf));
     if (NULL == p) {  // buf.length() < sizeof(backing_buf)
@@ -332,7 +332,7 @@ SampledRequest* SampleIterator::Pop(base::IOBuf& buf, bool* format_error) {
     }
     uint32_t body_size;
     uint32_t meta_size;
-    base::RawUnpacker(p + 4).unpack32(body_size).unpack32(meta_size);
+    butil::RawUnpacker(p + 4).unpack32(body_size).unpack32(meta_size);
     if (body_size > FLAGS_max_body_size) {
         LOG(ERROR) << "Too big body=" << body_size;
         *format_error = true;
@@ -347,7 +347,7 @@ SampledRequest* SampleIterator::Pop(base::IOBuf& buf, bool* format_error) {
         return NULL;
     }
     buf.pop_front(sizeof(backing_buf));
-    base::IOBuf meta_buf;
+    butil::IOBuf meta_buf;
     buf.cutn(&meta_buf, meta_size);
     std::unique_ptr<SampledRequest> req(new SampledRequest);
     if (!ParsePbFromIOBuf(req.get(), meta_buf)) {

@@ -9,10 +9,10 @@
 #include <fcntl.h>
 #include <gtest/gtest.h>
 #include <gperftools/profiler.h>
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/fd_utility.h"
-#include "base/logging.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/fd_utility.h"
+#include "butil/logging.h"
 #include "bthread/task_control.h"
 #include "bthread/task_group.h"
 #include "bthread/interrupt_pthread.h"
@@ -21,7 +21,7 @@
 
 #ifndef NDEBUG
 namespace bthread {
-extern base::atomic<int> break_nums;
+extern butil::atomic<int> break_nums;
 extern TaskControl* global_task_control;
 int stop_and_join_epoll_threads();
 }
@@ -211,7 +211,7 @@ TEST(FDTest, ping_pong) {
         cm[i]->count = i;
         cm[i]->times = REP;
 #ifdef RUN_CLIENT_IN_BTHREAD
-        base::make_non_blocking(cm[i]->fd);
+        butil::make_non_blocking(cm[i]->fd);
         ASSERT_EQ(0, bthread_start_urgent(&cth[i], NULL, client_thread, cm[i]));
 #else
         ASSERT_EQ(0, pthread_create(&cth[i], NULL, client_thread, cm[i]));
@@ -219,7 +219,7 @@ TEST(FDTest, ping_pong) {
     }
 
     ProfilerStart("ping_pong.prof");
-    base::Timer tm;
+    butil::Timer tm;
     tm.start();
 
     for (size_t i = 0; i < NEPOLL; ++i) {
@@ -354,7 +354,7 @@ TEST(FDTest, invalid_epoll_events) {
     ASSERT_EQ(EINVAL, errno);
     bthread_t th;
     ASSERT_EQ(0, bthread_start_urgent(&th, NULL, close_the_fd, &fds[1]));
-    base::Timer tm;
+    butil::Timer tm;
     tm.start();
     ASSERT_EQ(0, bthread_fd_wait(fds[0], EPOLLIN | EPOLLET));
     tm.stop();
@@ -364,7 +364,7 @@ TEST(FDTest, invalid_epoll_events) {
 }
 
 void* wait_for_the_fd(void* arg) {
-    timespec ts = base::milliseconds_from_now(50);
+    timespec ts = butil::milliseconds_from_now(50);
     bthread_fd_timedwait(*(int*)arg, EPOLLIN, &ts);
     return NULL;
 }
@@ -376,7 +376,7 @@ TEST(FDTest, timeout) {
     ASSERT_EQ(0, pthread_create(&th, NULL, wait_for_the_fd, &fds[0]));
     bthread_t bth;
     ASSERT_EQ(0, bthread_start_urgent(&bth, NULL, wait_for_the_fd, &fds[0]));
-    base::Timer tm;
+    butil::Timer tm;
     tm.start();
     ASSERT_EQ(0, pthread_join(th, NULL));
     ASSERT_EQ(0, bthread_join(bth, NULL));
@@ -391,7 +391,7 @@ TEST(FDTest, close_should_wakeup_waiter) {
     ASSERT_EQ(0, pipe(fds));
     bthread_t bth;
     ASSERT_EQ(0, bthread_start_urgent(&bth, NULL, wait_for_the_fd, &fds[0]));
-    base::Timer tm;
+    butil::Timer tm;
     tm.start();
     ASSERT_EQ(0, bthread_close(fds[0]));
     ASSERT_EQ(0, bthread_join(bth, NULL));

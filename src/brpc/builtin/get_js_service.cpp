@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "base/macros.h"                           // ARRAY_SIZE
-#include "base/iobuf.h"                            // base::IOBuf
+#include "butil/macros.h"                           // ARRAY_SIZE
+#include "butil/iobuf.h"                            // butil::IOBuf
 #include "brpc/controller.h"                  // Controller
 #include "brpc/builtin/sorttable_js.h"
 #include "brpc/builtin/jquery_min_js.h"

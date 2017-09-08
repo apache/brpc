@@ -15,7 +15,7 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 
 #include <limits>
-#include "base/macros.h"
+#include "butil/macros.h"
 #include "brpc/details/method_status.h"
 
 namespace brpc {
@@ -33,7 +33,7 @@ MethodStatus::MethodStatus()
 MethodStatus::~MethodStatus() {
 }
 
-int MethodStatus::Expose(const base::StringPiece& prefix) {
+int MethodStatus::Expose(const butil::StringPiece& prefix) {
     if (_nprocessing_bvar.expose_as(prefix, "processing") != 0) {
         return -1;
     }

@@ -17,9 +17,9 @@
 #include <deque>
 #include <vector>
 #include <gflags/gflags.h>
-#include "base/scoped_lock.h"
+#include "butil/scoped_lock.h"
 #ifdef BAIDU_INTERNAL
-#include "base/comlog_sink.h"
+#include "butil/comlog_sink.h"
 #endif
 #include "brpc/details/usercode_backup_pool.h"
 
@@ -62,12 +62,12 @@ struct UserCodeBackupPool {
 static pthread_mutex_t s_usercode_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t s_usercode_cond = PTHREAD_COND_INITIALIZER;
 static pthread_once_t s_usercode_init = PTHREAD_ONCE_INIT;
-base::static_atomic<int> g_usercode_inplace = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<int> g_usercode_inplace = BASE_STATIC_ATOMIC_INIT(0);
 bool g_too_many_usercode = false;
 static UserCodeBackupPool* s_usercode_pool = NULL;
 
 static int GetUserCodeInPlace(void*) {
-    return g_usercode_inplace.load(base::memory_order_relaxed);
+    return g_usercode_inplace.load(butil::memory_order_relaxed);
 }
 
 static size_t GetUserCodeQueueSize(void*) {
@@ -113,7 +113,7 @@ void UserCodeBackupPool::UserCodeRunningLoop() {
     logging::ComlogInitializer comlog_initializer;
 #endif
     
-    int64_t last_time = base::cpuwide_time_us();
+    int64_t last_time = butil::cpuwide_time_us();
     while (true) {
         bool blocked = false;
         UserCode usercode = { NULL, NULL };
@@ -130,9 +130,9 @@ void UserCodeBackupPool::UserCodeRunningLoop() {
                 g_too_many_usercode = false;
             }
         }
-        const int64_t begin_time = (blocked ? base::cpuwide_time_us() : last_time);
+        const int64_t begin_time = (blocked ? butil::cpuwide_time_us() : last_time);
         usercode.fn(usercode.arg);
-        const int64_t end_time = base::cpuwide_time_us();
+        const int64_t end_time = butil::cpuwide_time_us();
         inpool_count << 1;
         inpool_elapse_us << (end_time - begin_time);
         last_time = end_time;
@@ -157,7 +157,7 @@ void InitUserCodeBackupPoolOnceOrDie() {
 void EndRunningUserCodeInPool(void (*fn)(void*), void* arg) {
     InitUserCodeBackupPoolOnceOrDie();
     
-    g_usercode_inplace.fetch_sub(1, base::memory_order_relaxed);
+    g_usercode_inplace.fetch_sub(1, butil::memory_order_relaxed);
 
     // Not enough idle workers, run the code in backup threads to prevent
     // all workers from being blocked and no responses will be processed

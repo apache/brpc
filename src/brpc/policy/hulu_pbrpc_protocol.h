@@ -25,7 +25,7 @@ namespace brpc {
 namespace policy {
 
 // Parse binary format of hulu-pbrpc.
-ParseResult ParseHuluMessage(base::IOBuf* source, Socket *socket, bool read_eof, const void *arg);
+ParseResult ParseHuluMessage(butil::IOBuf* source, Socket *socket, bool read_eof, const void *arg);
 
 // Actions to a (client) request in hulu-pbrpc format.
 void ProcessHuluRequest(InputMessageBase* msg);
@@ -37,12 +37,12 @@ void ProcessHuluResponse(InputMessageBase* msg);
 bool VerifyHuluRequest(const InputMessageBase* msg);
 
 // Pack `request' to `method' into `buf'.
-void PackHuluRequest(base::IOBuf* buf,
+void PackHuluRequest(butil::IOBuf* buf,
                      SocketMessage**,
                      uint64_t correlation_id,
                      const google::protobuf::MethodDescriptor* method,
                      Controller* controller,
-                     const base::IOBuf& request,
+                     const butil::IOBuf& request,
                      const Authenticator* auth);
 
 }  // namespace policy

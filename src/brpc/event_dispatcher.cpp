@@ -17,9 +17,9 @@
 
 #include <gflags/gflags.h>                           // DEFINE_int32
 #include <sys/epoll.h>                               // epoll_create
-#include "base/fd_utility.h"                         // make_close_on_exec
-#include "base/logging.h"                            // LOG
-#include "base/third_party/murmurhash3/murmurhash3.h"// fmix32
+#include "butil/fd_utility.h"                         // make_close_on_exec
+#include "butil/logging.h"                            // LOG
+#include "butil/third_party/murmurhash3/murmurhash3.h"// fmix32
 #include "bthread/bthread.h"                         // bthread_start_background
 #include "brpc/event_dispatcher.h"
 #ifdef BRPC_SOCKET_HAS_EOF
@@ -46,7 +46,7 @@ EventDispatcher::EventDispatcher()
         PLOG(FATAL) << "Fail to create epoll";
         return;
     }
-    CHECK_EQ(0, base::make_close_on_exec(_epfd));
+    CHECK_EQ(0, butil::make_close_on_exec(_epfd));
 
     _wakeup_fds[0] = -1;
     _wakeup_fds[1] = -1;
@@ -271,7 +271,7 @@ EventDispatcher& GetGlobalEventDispatcher(int fd) {
     if (FLAGS_event_dispatcher_num == 1) {
         return g_edisp[0];
     }
-    int index = base::fmix32(fd) % FLAGS_event_dispatcher_num;
+    int index = butil::fmix32(fd) % FLAGS_event_dispatcher_num;
     return g_edisp[index];
 }
 

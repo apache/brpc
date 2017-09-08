@@ -18,23 +18,23 @@
 #define BRPC_POLICY_SNAPPY_COMPRESS_H
 
 #include <google/protobuf/message.h>          // Message
-#include "base/iobuf.h"                       // IOBuf
+#include "butil/iobuf.h"                       // IOBuf
 
 
 namespace brpc {
 namespace policy {
 
 // Compress serialized `msg' into `buf'.
-bool SnappyCompress(const google::protobuf::Message& msg, base::IOBuf* buf);
+bool SnappyCompress(const google::protobuf::Message& msg, butil::IOBuf* buf);
 
 // Parse `msg' from decompressed `buf'
-bool SnappyDecompress(const base::IOBuf& data, google::protobuf::Message* msg);
+bool SnappyDecompress(const butil::IOBuf& data, google::protobuf::Message* msg);
 
 // Put compressed `in' into `out'.
-bool SnappyCompress(const base::IOBuf& in, base::IOBuf* out);
+bool SnappyCompress(const butil::IOBuf& in, butil::IOBuf* out);
 
 // Put decompressed `in' into `out'.
-bool SnappyDecompress(const base::IOBuf& in, base::IOBuf* out);
+bool SnappyDecompress(const butil::IOBuf& in, butil::IOBuf* out);
 
 }  // namespace policy
 } // namespace brpc

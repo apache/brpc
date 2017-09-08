@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/tuple.h"
+#include "butil/tuple.h"
 
-#include "base/compiler_specific.h"
+#include "butil/compiler_specific.h"
 #include <gtest/gtest.h>
 
 namespace {

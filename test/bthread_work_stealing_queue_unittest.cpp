@@ -3,9 +3,9 @@
 
 #include <algorithm>                        // std::sort
 #include <gtest/gtest.h>
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/scoped_lock.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/scoped_lock.h"
 #include "bthread/work_stealing_queue.h"
 
 namespace {

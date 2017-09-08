@@ -18,8 +18,8 @@
 #ifndef BRPC_RTMP_H
 #define BRPC_RTMP_H
 
-#include "base/strings/string_piece.h"   // base::StringPiece
-#include "base/endpoint.h"               // base::EndPoint
+#include "butil/strings/string_piece.h"   // butil::StringPiece
+#include "butil/endpoint.h"               // butil::EndPoint
 #include "brpc/shared_object.h"          // SharedObject, intrusive_ptr
 #include "brpc/socket_id.h"              // SocketUniquePtr
 #include "brpc/controller.h"             // Controller, IOBuf
@@ -109,7 +109,7 @@ struct RtmpAudioMessage {
     FlvSoundRate rate;
     FlvSoundBits bits;
     FlvSoundType type;
-    base::IOBuf data;
+    butil::IOBuf data;
 
     bool IsAACSequenceHeader() const;
     size_t size() const { return data.size() + 1; }
@@ -131,10 +131,10 @@ struct RtmpAACMessage {
 
     // For sequence header:  AudioSpecificConfig
     // For raw:              Raw AAC frame data
-    base::IOBuf data;
+    butil::IOBuf data;
 
     // Create AAC message from audio message.
-    base::Status Create(const RtmpAudioMessage& msg);
+    butil::Status Create(const RtmpAudioMessage& msg);
 
     // Size of serialized message.
     size_t size() const { return data.size() + 2; }
@@ -153,8 +153,8 @@ static const AACObjectType AAC_OBJECT_UNKNOWN = (AACObjectType)0;
 
 struct AudioSpecificConfig {
     AudioSpecificConfig();
-    base::Status Create(const base::IOBuf& buf);
-    base::Status Create(const void* data, size_t len);
+    butil::Status Create(const butil::IOBuf& buf);
+    butil::Status Create(const void* data, size_t len);
 
     AACObjectType  aac_object;
     uint8_t        aac_sample_rate;
@@ -209,7 +209,7 @@ struct RtmpVideoMessage {
     uint32_t timestamp;
     FlvVideoFrameType frame_type;
     FlvVideoCodec codec;
-    base::IOBuf data;
+    butil::IOBuf data;
 
     // True iff this message is a sequence header of AVC codec.
     bool IsAVCSequenceHeader() const;
@@ -239,10 +239,10 @@ struct RtmpAVCMessage {
     // For sequence header:  AVCDecoderConfigurationRecord
     // For NALU:             One or more NALUs
     // For end of sequence:  empty
-    base::IOBuf data;
+    butil::IOBuf data;
 
     // Create a AVC message from a video message.
-    base::Status Create(const RtmpVideoMessage&);
+    butil::Status Create(const RtmpVideoMessage&);
 
     // Size of serialized message.
     size_t size() const { return data.size() + 5; }
@@ -312,8 +312,8 @@ enum AVCNaluType {
 struct AVCDecoderConfigurationRecord {
     AVCDecoderConfigurationRecord();
     
-    base::Status Create(const base::IOBuf& buf);
-    base::Status Create(const void* data, size_t len);
+    butil::Status Create(const butil::IOBuf& buf);
+    butil::Status Create(const void* data, size_t len);
 
     int             width;
     int             height;
@@ -324,7 +324,7 @@ struct AVCDecoderConfigurationRecord {
     std::vector<std::string> pps_list;
 
 private:
-    base::Status ParseSPS(const base::StringPiece& buf, size_t sps_length);
+    butil::Status ParseSPS(const butil::StringPiece& buf, size_t sps_length);
 };
 std::ostream& operator<<(std::ostream&, const AVCDecoderConfigurationRecord&);
 
@@ -337,13 +337,13 @@ enum AVCNaluFormat {
 // Iterate NALUs inside RtmpAVCMessage.data
 class AVCNaluIterator {
 public:
-    AVCNaluIterator(base::IOBuf* data, uint32_t length_size_minus1,
+    AVCNaluIterator(butil::IOBuf* data, uint32_t length_size_minus1,
                     AVCNaluFormat* format_inout);
     ~AVCNaluIterator();
     void operator++();
     operator void*() const { return _data; }
-    base::IOBuf& operator*() { return _cur_nalu; }
-    base::IOBuf* operator->() { return &_cur_nalu; }
+    butil::IOBuf& operator*() { return _cur_nalu; }
+    butil::IOBuf* operator->() { return &_cur_nalu; }
     AVCNaluType nalu_type() const { return _nalu_type; }
 private:
     // `data' is mutable, improper to be copied.
@@ -351,8 +351,8 @@ private:
     bool next_as_annexb();
     bool next_as_ibmf();
     void set_end() { _data = NULL; }
-    base::IOBuf* _data;
-    base::IOBuf _cur_nalu;
+    butil::IOBuf* _data;
+    butil::IOBuf _cur_nalu;
     AVCNaluFormat* _format;
     uint32_t _length_size_minus1;
     AVCNaluType _nalu_type;
@@ -378,45 +378,45 @@ enum FlvTagType {
 class FlvWriter {
 public:
     // Start appending FLV tags into the buffer
-    explicit FlvWriter(base::IOBuf* buf);
+    explicit FlvWriter(butil::IOBuf* buf);
     
     // Append a video/audio/metadata message into the output buffer.
-    base::Status Write(const RtmpVideoMessage&);
-    base::Status Write(const RtmpAudioMessage&);
-    base::Status Write(const AMFObject&);
+    butil::Status Write(const RtmpVideoMessage&);
+    butil::Status Write(const RtmpAudioMessage&);
+    butil::Status Write(const AMFObject&);
 private:
     bool _write_header;
-    base::IOBuf* _buf;
+    butil::IOBuf* _buf;
 };
 
 class FlvReader {
 public:
     // Start reading FLV tags from the buffer. The data read by the following 
     // Read functions would be removed from *buf.
-    explicit FlvReader(base::IOBuf* buf);
+    explicit FlvReader(butil::IOBuf* buf);
 
     // Get the next message type.
-    // If it is a valid flv tag, base::Status::OK() is returned and the 
+    // If it is a valid flv tag, butil::Status::OK() is returned and the 
     // type is written to *type. Otherwise an error would be returned,
     // leaving *type unchanged.
     // Note: If error_code of the return value is EAGAIN, the caller 
     // should wait more data and try call PeekMessageType again.
-    base::Status PeekMessageType(FlvTagType* type);
+    butil::Status PeekMessageType(FlvTagType* type);
 
     // Read a video/audio/metadata message from the input buffer.
     // Caller should use the result of function PeekMessageType to select an
     // appropriate function, e.g., if *type is set to FLV_TAG_AUDIO in 
     // PeekMessageType, caller should call Read(RtmpAudioMessage*) subsequently.
-    base::Status Read(RtmpVideoMessage* msg);
-    base::Status Read(RtmpAudioMessage* msg);
-    base::Status Read(AMFObject* object, std::string* object_name);
+    butil::Status Read(RtmpVideoMessage* msg);
+    butil::Status Read(RtmpAudioMessage* msg);
+    butil::Status Read(AMFObject* object, std::string* object_name);
 
 private:
-    base::Status ReadHeader();
+    butil::Status ReadHeader();
 
 private:
     bool _read_header;
-    base::IOBuf* _buf;
+    butil::IOBuf* _buf;
 };
 
 struct RtmpPlayOptions {
@@ -475,7 +475,7 @@ enum RtmpPublishType {
     RTMP_PUBLISH_LIVE,
 };
 const char* RtmpPublishType2Str(RtmpPublishType);
-bool Str2RtmpPublishType(const base::StringPiece&, RtmpPublishType*);
+bool Str2RtmpPublishType(const butil::StringPiece&, RtmpPublishType*);
 
 // For SetPeerBandwidth
 enum RtmpLimitType {
@@ -505,7 +505,7 @@ public:
     // simultaneously.
     // NOTE: Inputs can be modified and consumed.
     virtual void OnUserData(void* msg);
-    virtual void OnMetaData(AMFObject*, const base::StringPiece&);
+    virtual void OnMetaData(AMFObject*, const butil::StringPiece&);
     virtual void OnSharedObjectMessage(RtmpSharedObjectMessage* msg);
     virtual void OnAudioMessage(RtmpAudioMessage* msg);
     virtual void OnVideoMessage(RtmpVideoMessage* msg);
@@ -522,7 +522,7 @@ public:
     // Send media messages to the peer.
     // Returns 0 on success, -1 otherwise.
     virtual int SendMetaData(const AMFObject&, 
-                             const base::StringPiece& name = "onMetaData");
+                             const butil::StringPiece& name = "onMetaData");
     virtual int SendSharedObjectMessage(const RtmpSharedObjectMessage& msg);
     virtual int SendAudioMessage(const RtmpAudioMessage& msg);
     virtual int SendAACMessage(const RtmpAACMessage& msg);
@@ -533,14 +533,14 @@ public:
 
     // Send a message to the peer to make it stop. The concrete message depends
     // on implementation of the stream.
-    virtual int SendStopMessage(const base::StringPiece& error_description);
+    virtual int SendStopMessage(const butil::StringPiece& error_description);
 
     // // Call user's procedure at server-side.
     // // request == NULL  : send AMF null as the parameter.
     // // response == NULL : response is not needed.
     // // done == NULL     : synchronous call, asynchronous otherwise.
     // void Call(Controller* cntl,
-    //           const base::StringPiece& procedure_name,
+    //           const butil::StringPiece& procedure_name,
     //           const google::protobuf::Message* request,
     //           google::protobuf::Message* response,
     //           google::protobuf::Closure* done);
@@ -552,8 +552,8 @@ public:
     uint32_t chunk_stream_id() const { return _chunk_stream_id; }
 
     // Get ip/port of peer/self
-    virtual base::EndPoint remote_side() const;
-    virtual base::EndPoint local_side() const;
+    virtual butil::EndPoint remote_side() const;
+    virtual butil::EndPoint local_side() const;
 
     bool is_client_stream() const { return _is_client; }
     bool is_server_stream() const { return !_is_client; }
@@ -561,7 +561,7 @@ public:
     // True iff OnStop() was called.
     bool is_stopped() const { return _stopped; }
 
-    // When this stream is created, got from base::gettimeofday_us().
+    // When this stream is created, got from butil::gettimeofday_us().
     int64_t create_realtime_us() const { return _create_realtime_us; }
     
     bool is_paused() const { return _paused; }
@@ -577,7 +577,7 @@ public:
     // The acquire fence makes sure the callsite seeing true must be after
     // sending play or publish command (possibly in another thread).
     bool is_server_accepted() const
-    { return _is_server_accepted.load(base::memory_order_acquire); }
+    { return _is_server_accepted.load(butil::memory_order_acquire); }
 
     // Explicitly notify error to current stream
     virtual void SignalError();
@@ -590,7 +590,7 @@ friend class policy::OnServerStreamCreated;
     virtual ~RtmpStreamBase();
 
     int SendMessage(uint32_t timestamp, uint8_t message_type,
-                    const base::IOBuf& body); 
+                    const butil::IOBuf& body); 
     int SendControlMessage(uint8_t message_type, const void* body, size_t);
 
     // OnStop is mutually exclusive with OnXXXMessage, following methods
@@ -598,7 +598,7 @@ friend class policy::OnServerStreamCreated;
     bool BeginProcessingMessage(const char* fun_name);
     void EndProcessingMessage();
     void CallOnUserData(void* data);
-    void CallOnMetaData(AMFObject*, const base::StringPiece&);
+    void CallOnMetaData(AMFObject*, const butil::StringPiece&);
     void CallOnSharedObjectMessage(RtmpSharedObjectMessage* msg);
     void CallOnAudioMessage(RtmpAudioMessage* msg);
     void CallOnVideoMessage(RtmpVideoMessage* msg);
@@ -613,8 +613,8 @@ friend class policy::OnServerStreamCreated;
     uint32_t _chunk_stream_id;
     int64_t _create_realtime_us;
     SocketUniquePtr _rtmpsock;
-    base::Mutex _call_mutex;
-    base::atomic<bool> _is_server_accepted;
+    butil::Mutex _call_mutex;
+    butil::atomic<bool> _is_server_accepted;
 };
 
 struct RtmpClientOptions {
@@ -695,7 +695,7 @@ public:
     RtmpClient& operator=(const RtmpClient&);
 
     // Specify the servers to connect.
-    int Init(base::EndPoint server_addr_and_port,
+    int Init(butil::EndPoint server_addr_and_port,
              const RtmpClientOptions& options);
     int Init(const char* server_addr_and_port,
              const RtmpClientOptions& options);
@@ -714,7 +714,7 @@ public:
 
 private:
 friend class RtmpClientStream;
-    base::intrusive_ptr<RtmpClientImpl> _impl;
+    butil::intrusive_ptr<RtmpClientImpl> _impl;
 };
 
 struct RtmpHashCode {
@@ -800,7 +800,7 @@ friend class OnClientStreamCreated;
 friend class RtmpRetryingClientStream;
 
     int Play(const RtmpPlayOptions& opt);
-    int Publish(const base::StringPiece& name, RtmpPublishType type);
+    int Publish(const butil::StringPiece& name, RtmpPublishType type);
 
     // @StreamCreator
     void ReplaceSocketForStream(SocketUniquePtr* inout, Controller* cntl);
@@ -820,8 +820,8 @@ friend class RtmpRetryingClientStream;
     // client stream self.
     void SignalError();
 
-    base::intrusive_ptr<RtmpClientImpl> _client_impl;
-    base::intrusive_ptr<RtmpClientStream> _self_ref;
+    butil::intrusive_ptr<RtmpClientImpl> _client_impl;
+    butil::intrusive_ptr<RtmpClientStream> _self_ref;
     bthread_id_t _onfail_id;
     CallId _create_stream_rpc_id;
     bool _from_socketmap;
@@ -834,7 +834,7 @@ friend class RtmpRetryingClientStream;
         STATE_DESTROYING,
     };
     State _state;
-    base::Mutex _state_mutex;
+    butil::Mutex _state_mutex;
     RtmpClientStreamOptions _options;
 };
 
@@ -885,7 +885,7 @@ class RtmpMessageHandler {
 public:
     virtual void OnPlayable() = 0;
     virtual void OnUserData(void*) = 0;
-    virtual void OnMetaData(brpc::AMFObject* metadata, const base::StringPiece& name) = 0;
+    virtual void OnMetaData(brpc::AMFObject* metadata, const butil::StringPiece& name) = 0;
     virtual void OnAudioMessage(brpc::RtmpAudioMessage* msg) = 0;
     virtual void OnVideoMessage(brpc::RtmpVideoMessage* msg) = 0;
     virtual void OnSharedObjectMessage(RtmpSharedObjectMessage* msg) = 0;
@@ -902,14 +902,14 @@ public:
 
     void OnPlayable();
     void OnUserData(void*);
-    void OnMetaData(brpc::AMFObject* metadata, const base::StringPiece& name);
+    void OnMetaData(brpc::AMFObject* metadata, const butil::StringPiece& name);
     void OnAudioMessage(brpc::RtmpAudioMessage* msg);
     void OnVideoMessage(brpc::RtmpVideoMessage* msg);
     void OnSharedObjectMessage(RtmpSharedObjectMessage* msg);
     void OnSubStreamStop(RtmpStreamBase* sub_stream);
 
 private:
-    base::intrusive_ptr<RtmpRetryingClientStream> _parent;
+    butil::intrusive_ptr<RtmpRetryingClientStream> _parent;
 };
 
 class SubStreamCreator {
@@ -918,7 +918,7 @@ public:
     // the current SubStream. *sub_stream is set iff the creation is successful.
     // Note: message_handler is OWNED by this creator and deleted by the creator.
     virtual void NewSubStream(RtmpMessageHandler* message_handler,
-                              base::intrusive_ptr<RtmpStreamBase>* sub_stream) = 0;
+                              butil::intrusive_ptr<RtmpStreamBase>* sub_stream) = 0;
     
     // Do the Initialization of sub_stream. If an error happens, sub_stream->Destroy()
     // would be called.
@@ -946,14 +946,14 @@ public:
     // errno to ERTMPPUBLISHABLE for once. (so that users can be notified to
     // resend metadata or header messages).
     int SendMetaData(const AMFObject&,
-                     const base::StringPiece& name = "onMetaData");
+                     const butil::StringPiece& name = "onMetaData");
     int SendSharedObjectMessage(const RtmpSharedObjectMessage& msg);
     int SendAudioMessage(const RtmpAudioMessage& msg);
     int SendAACMessage(const RtmpAACMessage& msg);
     int SendVideoMessage(const RtmpVideoMessage& msg);
     int SendAVCMessage(const RtmpAVCMessage& msg);
-    base::EndPoint remote_side() const;
-    base::EndPoint local_side() const;
+    butil::EndPoint remote_side() const;
+    butil::EndPoint local_side() const;
 
     // Call this function to stop current stream. New sub stream will be
     // tried to be created later.
@@ -973,17 +973,17 @@ private:
 friend class RetryingClientMessageHandler;
 
     void OnSubStreamStop(RtmpStreamBase* sub_stream);
-    int AcquireStreamToSend(base::intrusive_ptr<RtmpStreamBase>*);
+    int AcquireStreamToSend(butil::intrusive_ptr<RtmpStreamBase>*);
     static void OnRecreateTimer(void* arg);
     void Recreate();
     void CallOnStopIfNeeded();
     
-    base::intrusive_ptr<RtmpStreamBase> _using_sub_stream;
-    base::intrusive_ptr<RtmpRetryingClientStream> _self_ref;
-    mutable base::Mutex _stream_mutex;
+    butil::intrusive_ptr<RtmpStreamBase> _using_sub_stream;
+    butil::intrusive_ptr<RtmpRetryingClientStream> _self_ref;
+    mutable butil::Mutex _stream_mutex;
     RtmpRetryingClientStreamOptions _options;
-    base::atomic<bool> _destroying;
-    base::atomic<bool> _called_on_stop;
+    butil::atomic<bool> _destroying;
+    butil::atomic<bool> _called_on_stop;
     bool _changed_stream;
     bool _has_timer_ever;
     bool _is_server_accepted_ever;
@@ -1004,26 +1004,26 @@ friend class RetryingClientMessageHandler;
 // "rtmp://" can be ignored.
 // NOTE: query strings after stream_name is not removed and returned as part
 // of stream_name.
-void ParseRtmpURL(const base::StringPiece& rtmp_url,
-                  base::StringPiece* host,
-                  base::StringPiece* vhost_after_app,
-                  base::StringPiece* port,
-                  base::StringPiece* app,
-                  base::StringPiece* stream_name);
-void ParseRtmpHostAndPort(const base::StringPiece& host_and_port,
-                          base::StringPiece* host,
-                          base::StringPiece* port);
-base::StringPiece RemoveQueryStrings(const base::StringPiece& stream_name,
-                                     base::StringPiece* query_strings);
+void ParseRtmpURL(const butil::StringPiece& rtmp_url,
+                  butil::StringPiece* host,
+                  butil::StringPiece* vhost_after_app,
+                  butil::StringPiece* port,
+                  butil::StringPiece* app,
+                  butil::StringPiece* stream_name);
+void ParseRtmpHostAndPort(const butil::StringPiece& host_and_port,
+                          butil::StringPiece* host,
+                          butil::StringPiece* port);
+butil::StringPiece RemoveQueryStrings(const butil::StringPiece& stream_name,
+                                     butil::StringPiece* query_strings);
 // Returns "rtmp://HOST/APP/STREAM_NAME"
-std::string MakeRtmpURL(const base::StringPiece& host,
-                        const base::StringPiece& port,
-                        const base::StringPiece& app,
-                        const base::StringPiece& stream_name);
+std::string MakeRtmpURL(const butil::StringPiece& host,
+                        const butil::StringPiece& port,
+                        const butil::StringPiece& app,
+                        const butil::StringPiece& stream_name);
 // Returns url removed with beginning "rtmp://".
-base::StringPiece RemoveRtmpPrefix(const base::StringPiece& url);
+butil::StringPiece RemoveRtmpPrefix(const butil::StringPiece& url);
 // Returns url removed with beginning "xxx://"
-base::StringPiece RemoveProtocolPrefix(const base::StringPiece& url);
+butil::StringPiece RemoveProtocolPrefix(const butil::StringPiece& url);
 
 // Implement this class and assign an instance to ServerOption.rtmp_service
 // to enable RTMP support.
@@ -1032,7 +1032,7 @@ public:
     virtual ~RtmpService() {}
 
     // Called when receiving a Pong response from `remote_side'.
-    virtual void OnPingResponse(const base::EndPoint& remote_side,
+    virtual void OnPingResponse(const butil::EndPoint& remote_side,
                                 uint32_t ping_timestamp);
 
     // Called to create a server-side stream.
@@ -1054,7 +1054,7 @@ public:
     // Call done->Run() when the play request is processed (either accepted
     // or rejected)
     virtual void OnPlay(const RtmpPlayOptions&,
-                        base::Status* status,
+                        butil::Status* status,
                         google::protobuf::Closure* done);
     
     // Called when receiving a publish request.
@@ -1063,7 +1063,7 @@ public:
     // Returns 0 on success, -1 otherwise.
     virtual void OnPublish(const std::string& stream_name,
                            RtmpPublishType publish_type,
-                           base::Status* status,
+                           butil::Status* status,
                            google::protobuf::Closure* done);
     
     // Called when receiving a play2 request.
@@ -1083,7 +1083,7 @@ public:
     virtual void OnSetBufferLength(uint32_t buffer_length_ms);
 
     // @RtmpStreamBase, sending StreamNotFound
-    int SendStopMessage(const base::StringPiece& error_description);
+    int SendStopMessage(const butil::StringPiece& error_description);
     void Destroy();
 
 private:

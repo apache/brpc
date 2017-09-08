@@ -24,9 +24,9 @@
 #include <vector>                                  // std::vector
 #include <stdint.h>                                // uint64_t
 #include <gflags/gflags_declare.h>                 // DECLARE_xxx
-#include "base/endpoint.h"                         // base::EndPoint
-#include "base/iobuf.h"
-#include "base/logging.h"
+#include "butil/endpoint.h"                         // butil::EndPoint
+#include "butil/iobuf.h"
+#include "butil/logging.h"
 #include "brpc/options.pb.h"                  // ProtocolType
 #include "brpc/socket_id.h"                   // SocketId
 #include "brpc/parse_result.h"                // ParseResult
@@ -40,7 +40,7 @@ class MethodDescriptor;
 }  // namespace protobuf
 }  // namespace google
 
-namespace base {
+namespace butil {
 class IOBuf;
 }
 
@@ -76,7 +76,7 @@ struct Protocol {
     //     from `source' before returning.
     //  MakeMessage(InputMessageBase*):
     //     The message is parsed successfully and cut from `source'.
-    typedef ParseResult (*Parse)(base::IOBuf* source, Socket *socket,
+    typedef ParseResult (*Parse)(butil::IOBuf* source, Socket *socket,
                                  bool read_eof, const void *arg);
     Parse parse;
 
@@ -86,7 +86,7 @@ struct Protocol {
     // `cntl' provides additional data needed by some protocol (say HTTP).
     // Call cntl->SetFailed() on error.
     typedef void (*SerializeRequest)(
-        base::IOBuf* request_buf,
+        butil::IOBuf* request_buf,
         Controller* cntl,
         const google::protobuf::Message* request);
     SerializeRequest serialize_request;
@@ -97,12 +97,12 @@ struct Protocol {
     // Remember to pack authentication information when `auth' is not NULL.
     // Call cntl->SetFailed() on error.
     typedef void (*PackRequest)(
-        base::IOBuf* iobuf_out,
+        butil::IOBuf* iobuf_out,
         SocketMessage** user_message_out,
         uint64_t correlation_id,
         const google::protobuf::MethodDescriptor* method,
         Controller* controller,
-        const base::IOBuf& request_buf,
+        const butil::IOBuf& request_buf,
         const Authenticator* auth);
     PackRequest pack_request;
 
@@ -133,8 +133,8 @@ struct Protocol {
     Verify verify;
 
     // [Optional]
-    // Convert `server_addr_and_port'(a parameter to Channel) to base::EndPoint.
-    typedef bool (*ParseServerAddress)(base::EndPoint* out,
+    // Convert `server_addr_and_port'(a parameter to Channel) to butil::EndPoint.
+    typedef bool (*ParseServerAddress)(butil::EndPoint* out,
                                        const char* server_addr_and_port);
     ParseServerAddress parse_server_address;
 
@@ -187,7 +187,7 @@ void ListProtocols(std::vector<Protocol>* vec);
 void ListProtocols(std::vector<std::pair<ProtocolType, Protocol> >* vec);
 
 // The common serialize_request implementation used by many protocols.
-void SerializeRequestDefault(base::IOBuf* buf,
+void SerializeRequestDefault(butil::IOBuf* buf,
                              Controller* cntl,
                              const google::protobuf::Message* request);
 
@@ -195,7 +195,7 @@ void SerializeRequestDefault(base::IOBuf* buf,
 // consistent with -max_body_size
 bool ParsePbFromZeroCopyStream(google::protobuf::Message* msg,
                                google::protobuf::io::ZeroCopyInputStream* input);
-bool ParsePbFromIOBuf(google::protobuf::Message* msg, const base::IOBuf& buf);
+bool ParsePbFromIOBuf(google::protobuf::Message* msg, const butil::IOBuf& buf);
 bool ParsePbFromArray(google::protobuf::Message* msg, const void* data, size_t size);
 bool ParsePbFromString(google::protobuf::Message* msg, const std::string& str);
 

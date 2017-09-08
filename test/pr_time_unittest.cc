@@ -5,12 +5,12 @@
 #include <stdint.h>
 #include <time.h>
 
-#include "base/compiler_specific.h"
-#include "base/third_party/nspr/prtime.h"
-#include "base/time/time.h"
+#include "butil/compiler_specific.h"
+#include "butil/third_party/nspr/prtime.h"
+#include "butil/time/time.h"
 #include <gtest/gtest.h>
 
-using base::Time;
+using butil::Time;
 
 namespace {
 

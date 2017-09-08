@@ -16,8 +16,8 @@
 
 #include <algorithm>                                           // std::set_union
 #include <gflags/gflags.h>
-#include "base/containers/flat_map.h"
-#include "base/errno.h"
+#include "butil/containers/flat_map.h"
+#include "butil/errno.h"
 #include "brpc/socket.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
 
@@ -67,7 +67,7 @@ size_t ConsistentHashingLoadBalancer::RemoveBatch(
         bg = fg;
         return 0;
     }
-    base::FlatSet<ServerId> id_set;
+    butil::FlatSet<ServerId> id_set;
     bool use_set = true;
     if (id_set.init(servers.size() * 2) == 0) {
         for (size_t i = 0; i < servers.size(); ++i) {
@@ -205,7 +205,7 @@ int ConsistentHashingLoadBalancer::SelectServer(
         LOG(ERROR) << "request_code must be 32-bit currently";
         return EINVAL;
     }
-    base::DoublyBufferedData<std::vector<Node> >::ScopedPtr s;
+    butil::DoublyBufferedData<std::vector<Node> >::ScopedPtr s;
     if (_db_hash_ring.Read(&s) != 0) {
         return ENOMEM;
     }
@@ -243,14 +243,14 @@ void ConsistentHashingLoadBalancer::Describe(
     os << "ConsistentHashingLoadBalancer {\n"
        << "  hash function: " << GetHashName(_hash) << '\n'
        << "  replica per host: " << _num_replicas << '\n';
-    std::map<base::EndPoint, double> load_map;
+    std::map<butil::EndPoint, double> load_map;
     GetLoads(&load_map);
     os << "  number of hosts: " << load_map.size() << '\n';
     os << "  load of hosts: {\n";
     double expected_load_per_server = 1.0 / load_map.size();
     double load_sum = 0;
     double load_sqr_sum = 0;
-    for (std::map<base::EndPoint, double>::iterator 
+    for (std::map<butil::EndPoint, double>::iterator 
             it = load_map.begin(); it!= load_map.end(); ++it) {
         os << "    " << it->first << ": " << it->second << '\n';
         double normalized_load = it->second / expected_load_per_server;
@@ -265,11 +265,11 @@ void ConsistentHashingLoadBalancer::Describe(
 }
 
 void ConsistentHashingLoadBalancer::GetLoads(
-    std::map<base::EndPoint, double> *load_map) {
+    std::map<butil::EndPoint, double> *load_map) {
     load_map->clear();
-    std::map<base::EndPoint, uint32_t> count_map;
+    std::map<butil::EndPoint, uint32_t> count_map;
     do {
-        base::DoublyBufferedData<std::vector<Node> >::ScopedPtr s;
+        butil::DoublyBufferedData<std::vector<Node> >::ScopedPtr s;
         if (_db_hash_ring.Read(&s) != 0) {
             break;
         }
@@ -283,7 +283,7 @@ void ConsistentHashingLoadBalancer::GetLoads(
                     (*s.get())[i].hash - (*s.get())[i - 1].hash;
         }
     } while (0);
-    for (std::map<base::EndPoint, uint32_t>::iterator 
+    for (std::map<butil::EndPoint, uint32_t>::iterator 
             it = count_map.begin(); it!= count_map.end(); ++it) {
         (*load_map)[it->first] = (double)it->second / UINT_MAX;
     }

@@ -16,7 +16,7 @@
 
 #include <ostream>
 #include <vector>                           // std::vector
-#include "base/string_splitter.h"
+#include "butil/string_splitter.h"
 #include "bvar/bvar.h"
 
 #include "brpc/closure_guard.h"        // ClosureGuard
@@ -258,10 +258,10 @@ static const std::string VAR_SEP = " : ";
 
 class VarsDumper : public bvar::Dumper {
 public:
-    explicit VarsDumper(base::IOBufBuilder& os, bool use_html)
+    explicit VarsDumper(butil::IOBufBuilder& os, bool use_html)
         : _os(os), _use_html(use_html) {}
     
-    bool dump(const std::string& name, const base::StringPiece& desc) {
+    bool dump(const std::string& name, const butil::StringPiece& desc) {
         bool plot = false;
         if (_use_html) {
             bvar::SeriesOptions series_options;
@@ -292,14 +292,14 @@ public:
         return true;
     }
 
-    void move_to(base::IOBuf& buf) {
+    void move_to(butil::IOBuf& buf) {
         _os.move_to(buf);
     }
     
 private:
     DISALLOW_COPY_AND_ASSIGN(VarsDumper);
     
-    base::IOBufBuilder & _os;
+    butil::IOBufBuilder & _os;
     bool _use_html;
 };
 
@@ -310,7 +310,7 @@ void VarsService::default_method(::google::protobuf::RpcController* cntl_base,
     ClosureGuard done_guard(done);
     Controller *cntl = static_cast<Controller*>(cntl_base);    
     if (cntl->http_request().uri().GetQuery("series") != NULL) {
-        base::IOBufBuilder os;
+        butil::IOBufBuilder os;
         bvar::SeriesOptions series_options;
         const int rc = bvar::Variable::describe_series_exposed(
             cntl->http_request().unresolved_path(), os, series_options);
@@ -336,7 +336,7 @@ void VarsService::default_method(::google::protobuf::RpcController* cntl_base,
     cntl->http_response().set_content_type(
         use_html ? "text/html" : "text/plain");
 
-    base::IOBufBuilder os;
+    butil::IOBufBuilder os;
     if (with_tabs) {
         os << "<!DOCTYPE html><html><head>\n"
             "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" />\n";

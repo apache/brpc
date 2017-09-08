@@ -19,9 +19,9 @@
 #define  BVAR_REDUCER_H
 
 #include <limits>                                 // std::numeric_limits
-#include "base/logging.h"                         // LOG()
-#include "base/type_traits.h"                     // base::add_cr_non_integral
-#include "base/class_name.h"                      // class_name_str
+#include "butil/logging.h"                         // LOG()
+#include "butil/type_traits.h"                     // butil::add_cr_non_integral
+#include "butil/class_name.h"                      // class_name_str
 #include "bvar/variable.h"                        // Variable
 #include "bvar/detail/combiner.h"                 // detail::AgentCombiner
 #include "bvar/detail/sampler.h"                  // ReducerSampler
@@ -83,7 +83,7 @@ public:
 
 public:
     // The `identify' must satisfy: identity Op a == a
-    Reducer(typename base::add_cr_non_integral<T>::type identity = T(),
+    Reducer(typename butil::add_cr_non_integral<T>::type identity = T(),
             const Op& op = Op(),
             const InvOp& inv_op = InvOp())
         : _combiner(identity, identity, op)
@@ -107,15 +107,15 @@ public:
 
     // Add a value.
     // Returns self reference for chaining.
-    Reducer& operator<<(typename base::add_cr_non_integral<T>::type value);
+    Reducer& operator<<(typename butil::add_cr_non_integral<T>::type value);
 
     // Get reduced value.
     // Notice that this function walks through threads that ever add values
     // into this reducer. You should avoid calling it frequently.
     T get_value() const {
-        CHECK(!(base::is_same<InvOp, detail::VoidOp>::value) || _sampler == NULL)
-            << "You should not call Reducer<" << base::class_name_str<T>()
-            << ", " << base::class_name_str<Op>() << ">::get_value() when a"
+        CHECK(!(butil::is_same<InvOp, detail::VoidOp>::value) || _sampler == NULL)
+            << "You should not call Reducer<" << butil::class_name_str<T>()
+            << ", " << butil::class_name_str<Op>() << ">::get_value() when a"
             << " Window<> is used because the operator does not have inverse.";
         return _combiner.combine_agents();
     }
@@ -127,7 +127,7 @@ public:
 
     // Implement Variable::describe() and Variable::get_value().
     void describe(std::ostream& os, bool quote_string) const {
-        if (base::is_same<T, std::string>::value && quote_string) {
+        if (butil::is_same<T, std::string>::value && quote_string) {
             os << '"' << get_value() << '"';
         } else {
             os << get_value();
@@ -164,14 +164,14 @@ public:
     }
     
 protected:
-    int expose_impl(const base::StringPiece& prefix,
-                    const base::StringPiece& name,
+    int expose_impl(const butil::StringPiece& prefix,
+                    const butil::StringPiece& name,
                     DisplayFilter display_filter) {
         const int rc = Variable::expose_impl(prefix, name, display_filter);
         if (rc == 0 &&
             _series_sampler == NULL &&
-            !base::is_same<InvOp, detail::VoidOp>::value &&
-            !base::is_same<T, std::string>::value &&
+            !butil::is_same<InvOp, detail::VoidOp>::value &&
+            !butil::is_same<T, std::string>::value &&
             FLAGS_save_series) {
             _series_sampler = new SeriesSampler(this, _combiner.op());
             _series_sampler->schedule();
@@ -188,7 +188,7 @@ private:
 
 template <typename T, typename Op, typename InvOp>
 inline Reducer<T, Op, InvOp>& Reducer<T, Op, InvOp>::operator<<(
-    typename base::add_cr_non_integral<T>::type value) {
+    typename butil::add_cr_non_integral<T>::type value) {
     // It's wait-free for most time
     agent_type* agent = _combiner.get_or_create_tls_agent();
     if (__builtin_expect(!agent, 0)) {
@@ -209,13 +209,13 @@ namespace detail {
 template <typename Tp>
 struct AddTo {
     void operator()(Tp & lhs, 
-                    typename base::add_cr_non_integral<Tp>::type rhs) const
+                    typename butil::add_cr_non_integral<Tp>::type rhs) const
     { lhs += rhs; }
 };
 template <typename Tp>
 struct MinusFrom {
     void operator()(Tp & lhs, 
-                    typename base::add_cr_non_integral<Tp>::type rhs) const
+                    typename butil::add_cr_non_integral<Tp>::type rhs) const
     { lhs -= rhs; }
 };
 }
@@ -227,11 +227,11 @@ public:
     typedef typename Base::sampler_type sampler_type;
 public:
     Adder() : Base() {}
-    explicit Adder(const base::StringPiece& name) : Base() {
+    explicit Adder(const butil::StringPiece& name) : Base() {
         this->expose(name);
     }
-    Adder(const base::StringPiece& prefix,
-          const base::StringPiece& name) : Base() {
+    Adder(const butil::StringPiece& prefix,
+          const butil::StringPiece& name) : Base() {
         this->expose_as(prefix, name);
     }
     ~Adder() { Variable::hide(); }
@@ -244,7 +244,7 @@ namespace detail {
 template <typename Tp> 
 struct MaxTo {
     void operator()(Tp & lhs, 
-                    typename base::add_cr_non_integral<Tp>::type rhs) const {
+                    typename butil::add_cr_non_integral<Tp>::type rhs) const {
         // Use operator< as well.
         if (lhs < rhs) {
             lhs = rhs;
@@ -261,11 +261,11 @@ public:
     typedef typename Base::sampler_type sampler_type;
 public:
     Maxer() : Base(std::numeric_limits<T>::min()) {}
-    explicit Maxer(const base::StringPiece& name)
+    explicit Maxer(const butil::StringPiece& name)
         : Base(std::numeric_limits<T>::min()) {
         this->expose(name);
     }
-    Maxer(const base::StringPiece& prefix, const base::StringPiece& name)
+    Maxer(const butil::StringPiece& prefix, const butil::StringPiece& name)
         : Base(std::numeric_limits<T>::min()) {
         this->expose_as(prefix, name);
     }
@@ -276,12 +276,12 @@ private:
     // it's dangerous so we don't make them public
     explicit Maxer(T default_value) : Base(default_value) {
     }
-    Maxer(T default_value, const base::StringPiece& prefix,
-          const base::StringPiece& name) 
+    Maxer(T default_value, const butil::StringPiece& prefix,
+          const butil::StringPiece& name) 
         : Base(default_value) {
         this->expose_as(prefix, name);
     }
-    Maxer(T default_value, const base::StringPiece& name) : Base(default_value) {
+    Maxer(T default_value, const butil::StringPiece& name) : Base(default_value) {
         this->expose(name);
     }
 };
@@ -294,7 +294,7 @@ namespace detail {
 template <typename Tp> 
 struct MinTo {
     void operator()(Tp & lhs, 
-                    typename base::add_cr_non_integral<Tp>::type rhs) const {
+                    typename butil::add_cr_non_integral<Tp>::type rhs) const {
         if (rhs < lhs) {
             lhs = rhs;
         }
@@ -311,11 +311,11 @@ public:
     typedef typename Base::sampler_type sampler_type;
 public:
     Miner() : Base(std::numeric_limits<T>::max()) {}
-    explicit Miner(const base::StringPiece& name)
+    explicit Miner(const butil::StringPiece& name)
         : Base(std::numeric_limits<T>::max()) {
         this->expose(name);
     }
-    Miner(const base::StringPiece& prefix, const base::StringPiece& name)
+    Miner(const butil::StringPiece& prefix, const butil::StringPiece& name)
         : Base(std::numeric_limits<T>::max()) {
         this->expose_as(prefix, name);
     }

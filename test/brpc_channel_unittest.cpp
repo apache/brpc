@@ -10,10 +10,10 @@
 #include <gperftools/profiler.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/logging.h"
-#include "base/files/temp_file.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/logging.h"
+#include "butil/files/temp_file.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
 #include "brpc/server.h"
@@ -69,7 +69,7 @@ public:
         }
     }
 private:
-    base::atomic<int> _c;
+    butil::atomic<int> _c;
 };
 
 static std::string MOCK_CREDENTIAL = "mock credential";
@@ -81,12 +81,12 @@ public:
 
     int GenerateCredential(std::string* auth_str) const {
         *auth_str = MOCK_CREDENTIAL;
-        count.fetch_add(1, base::memory_order_relaxed);
+        count.fetch_add(1, butil::memory_order_relaxed);
         return 0;
     }
 
     int VerifyCredential(const std::string&,
-                         const base::EndPoint&,
+                         const butil::EndPoint&,
                          brpc::AuthContext* ctx) const {
         ctx->set_user(MOCK_CONTEXT);
         ctx->set_group(MOCK_CONTEXT);
@@ -95,7 +95,7 @@ public:
         ctx->set_is_service(true);
         return 0;
     }
-    mutable base::atomic<int32_t> count;
+    mutable butil::atomic<int32_t> count;
 };
 
 static bool VerifyMyRequest(const brpc::InputMessageBase* msg_base) {
@@ -104,7 +104,7 @@ static bool VerifyMyRequest(const brpc::InputMessageBase* msg_base) {
     brpc::Socket* ptr = msg->socket();
     
     brpc::policy::RpcMeta meta;
-    base::IOBufAsZeroCopyInputStream wrapper(msg->meta);
+    butil::IOBufAsZeroCopyInputStream wrapper(msg->meta);
     EXPECT_TRUE(meta.ParseFromZeroCopyStream(&wrapper));
 
     if (meta.has_authentication_data()) {
@@ -113,7 +113,7 @@ static bool VerifyMyRequest(const brpc::InputMessageBase* msg_base) {
         EXPECT_EQ(meta.authentication_data(), MOCK_CREDENTIAL);
         MyAuthenticator authenticator;
         return authenticator.VerifyCredential(
-            "", base::EndPoint(), ptr->mutable_auth_context()) == 0;
+            "", butil::EndPoint(), ptr->mutable_auth_context()) == 0;
     }
     return true;
 }
@@ -152,7 +152,7 @@ pthread_once_t register_mock_protocol = PTHREAD_ONCE_INIT;
 class ChannelTest : public ::testing::Test{
 protected:
     ChannelTest() 
-        : _ep(base::IP_ANY, 8787)
+        : _ep(butil::IP_ANY, 8787)
         , _close_fd_once(false) {
         pthread_once(&register_mock_protocol, register_protocol);
         const brpc::InputMessageHandler pairs[] = {
@@ -161,7 +161,7 @@ protected:
         };
         EXPECT_EQ(0, _messenger.AddHandler(pairs[0]));
 
-        EXPECT_EQ(0, _server_list.save(base::endpoint2str(_ep).c_str()));           
+        EXPECT_EQ(0, _server_list.save(butil::endpoint2str(_ep).c_str()));           
         _naming_url = std::string("File://") + _server_list.fname();
     };
 
@@ -203,7 +203,7 @@ protected:
         }
         
         brpc::policy::RpcMeta meta;
-        base::IOBufAsZeroCopyInputStream wrapper(msg->meta);
+        butil::IOBufAsZeroCopyInputStream wrapper(msg->meta);
         EXPECT_TRUE(meta.ParseFromZeroCopyStream(&wrapper));
         const brpc::policy::RpcRequestMeta& req_meta = meta.request();
         ASSERT_EQ(ts->_svc.descriptor()->full_name(), req_meta.service_name());
@@ -212,12 +212,12 @@ protected:
         google::protobuf::Message* req =
               ts->_svc.GetRequestPrototype(method).New();
         if (meta.attachment_size() != 0) {
-            base::IOBuf req_buf;
+            butil::IOBuf req_buf;
             msg->payload.cutn(&req_buf, msg->payload.size() - meta.attachment_size());
-            base::IOBufAsZeroCopyInputStream wrapper2(req_buf);
+            butil::IOBufAsZeroCopyInputStream wrapper2(req_buf);
             EXPECT_TRUE(req->ParseFromZeroCopyStream(&wrapper2));
         } else {
-            base::IOBufAsZeroCopyInputStream wrapper2(msg->payload);
+            butil::IOBufAsZeroCopyInputStream wrapper2(msg->payload);
             EXPECT_TRUE(req->ParseFromZeroCopyStream(&wrapper2));
         }
         brpc::Controller* cntl = new brpc::Controller();
@@ -238,7 +238,7 @@ protected:
         ts->_svc.CallMethod(method, cntl, req, res, done);
     }
 
-    int StartAccept(base::EndPoint ep) {
+    int StartAccept(butil::EndPoint ep) {
         int listening_fd = -1;
         while ((listening_fd = tcp_listen(ep, true)) < 0) {
             if (errno == EADDRINUSE) {
@@ -413,9 +413,9 @@ protected:
         EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-            const int64_t start_time = base::gettimeofday_us();
+            const int64_t start_time = butil::gettimeofday_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(base::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -514,9 +514,9 @@ protected:
         }
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-            const int64_t start_time = base::gettimeofday_us();
+            const int64_t start_time = butil::gettimeofday_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(base::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -566,9 +566,9 @@ protected:
         }
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-            const int64_t start_time = base::gettimeofday_us();
+            const int64_t start_time = butil::gettimeofday_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(base::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -610,9 +610,9 @@ protected:
         
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-            const int64_t start_time = base::gettimeofday_us();
+            const int64_t start_time = butil::gettimeofday_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(base::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -659,9 +659,9 @@ protected:
         }
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-            const int64_t start_time = base::gettimeofday_us();
+            const int64_t start_time = butil::gettimeofday_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(base::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -694,7 +694,7 @@ protected:
 
         for (size_t i = 0; i < NCHANS; ++i) {
             ::test::EchoRequest* sub_req = req.add_requests();
-            sub_req->set_message(base::string_printf("hello_%llu", (long long)i));
+            sub_req->set_message(butil::string_printf("hello_%llu", (long long)i));
             sub_req->set_code(i + 1);
         }
 
@@ -713,16 +713,16 @@ protected:
         ASSERT_GT(cntl.latency_us(), 0);
         ASSERT_EQ((int)NCHANS, res.responses_size());
         for (int i = 0; i < res.responses_size(); ++i) {
-            EXPECT_EQ(base::string_printf("received hello_%d", i),
+            EXPECT_EQ(butil::string_printf("received hello_%d", i),
                       res.responses(i).message());
             ASSERT_EQ(1, res.responses(i).code_list_size());
             EXPECT_EQ(i + 1, res.responses(i).code_list(0));
         }
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-            const int64_t start_time = base::gettimeofday_us();
+            const int64_t start_time = butil::gettimeofday_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(base::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -851,7 +851,7 @@ protected:
         CancelerArg carg = { 10000, cid };
         ASSERT_EQ(0, pthread_create(&th, NULL, Canceler, &carg));
         req.set_sleep_us(carg.sleep_before_cancel_us * 2);
-        base::Timer tm;
+        butil::Timer tm;
         tm.start();
         CallMethod(&channel, &cntl, &req, &res, async);
         tm.stop();
@@ -892,7 +892,7 @@ protected:
         CancelerArg carg = { 10000, cid };
         ASSERT_EQ(0, pthread_create(&th, NULL, Canceler, &carg));
         req.set_sleep_us(carg.sleep_before_cancel_us * 2);
-        base::Timer tm;
+        butil::Timer tm;
         tm.start();
         CallMethod(&channel, &cntl, &req, &res, async);
         tm.stop();
@@ -934,7 +934,7 @@ protected:
         CancelerArg carg = { 10000, cid };
         ASSERT_EQ(0, pthread_create(&th, NULL, Canceler, &carg));
         req.set_sleep_us(carg.sleep_before_cancel_us * 2);
-        base::Timer tm;
+        butil::Timer tm;
         tm.start();
         CallMethod(&channel, &cntl, &req, &res, async);
         tm.stop();
@@ -1021,9 +1021,9 @@ protected:
         EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());
         if (short_connection) {
             // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-            const int64_t start_time = base::gettimeofday_us();
+            const int64_t start_time = butil::gettimeofday_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(base::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -1116,7 +1116,7 @@ protected:
         req.set_message(__FUNCTION__);
         req.set_sleep_us(70000); // 70ms
         cntl.set_timeout_ms(17);
-        base::Timer tm;
+        butil::Timer tm;
         tm.start();
         CallMethod(&channel, &cntl, &req, &res, async);
         tm.stop();
@@ -1148,7 +1148,7 @@ protected:
         req.set_message(__FUNCTION__);
         cntl.set_timeout_ms(17);
         req.set_sleep_us(70000); // 70ms
-        base::Timer tm;
+        butil::Timer tm;
         tm.start();
         CallMethod(&channel, &cntl, &req, &res, async);
         tm.stop();
@@ -1197,7 +1197,7 @@ protected:
         test::EchoResponse res;
         req.set_message(__FUNCTION__);
         cntl.set_timeout_ms(30);
-        base::Timer tm;
+        butil::Timer tm;
         tm.start();
         CallMethod(&channel, &cntl, &req, &res, async);
         tm.stop();
@@ -1236,7 +1236,7 @@ protected:
         req.set_message(__FUNCTION__);
         cntl.set_timeout_ms(17);
         req.set_sleep_us(70000); // 70ms
-        base::Timer tm;
+        butil::Timer tm;
         tm.start();
         CallMethod(&channel, &cntl, &req, &res, async);
         tm.stop();
@@ -1426,9 +1426,9 @@ protected:
         EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
         EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());
         // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-        const int64_t start_time = base::gettimeofday_us();
+        const int64_t start_time = butil::gettimeofday_us();
         while (_messenger.ConnectionCount() != 0) {
-            EXPECT_LT(base::gettimeofday_us(), start_time + 100000L/*100ms*/);
+            EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
             bthread_usleep(1000);
         }
 
@@ -1459,9 +1459,9 @@ protected:
         EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
         EXPECT_EQ("received " + std::string(__FUNCTION__), res.message());
         // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-        const int64_t start_time = base::gettimeofday_us();
+        const int64_t start_time = butil::gettimeofday_us();
         while (_messenger.ConnectionCount() != 0) {
-            EXPECT_LT(base::gettimeofday_us(), start_time + 100000L/*100ms*/);
+            EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
             bthread_usleep(1000);
         }
         StopAndJoin();
@@ -1495,9 +1495,9 @@ protected:
         ASSERT_EQ(0, cntl.sub(0)->ErrorCode());
 
         // Sleep to let `_messenger' detect `Socket' being `SetFailed'
-        const int64_t start_time = base::gettimeofday_us();
+        const int64_t start_time = butil::gettimeofday_us();
         while (_messenger.ConnectionCount() != 0) {
-            EXPECT_LT(base::gettimeofday_us(), start_time + 100000L/*100ms*/);
+            EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
             bthread_usleep(1000);
         }
         StopAndJoin();
@@ -1688,9 +1688,9 @@ protected:
             EXPECT_EQ(0, cntl.ErrorCode()) << cntl.ErrorText();
             EXPECT_EQ(1, cntl.retried_count());
 
-            const int64_t start_time = base::gettimeofday_us();
+            const int64_t start_time = butil::gettimeofday_us();
             while (_messenger.ConnectionCount() != 0) {
-                EXPECT_LT(base::gettimeofday_us(), start_time + 100000L/*100ms*/);
+                EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
                 bthread_usleep(1000);
             }
         } else {
@@ -1721,7 +1721,7 @@ protected:
         if (short_connection) {
             opt.connection_type = brpc::CONNECTION_TYPE_SHORT;
         }
-        base::TempFile server_list;                                        
+        butil::TempFile server_list;                                        
         EXPECT_EQ(0, server_list.save_format(
                       "127.0.0.1:100\n"
                       "127.0.0.1:200\n"
@@ -1742,8 +1742,8 @@ protected:
         StopAndJoin();
     }
 
-    base::EndPoint _ep;
-    base::TempFile _server_list;                                        
+    butil::EndPoint _ep;
+    butil::TempFile _server_list;                                        
     std::string _naming_url;
     
     brpc::Acceptor _messenger;
@@ -1774,10 +1774,10 @@ TEST_F(ChannelTest, intrusive_ptr_sanity) {
     {
         MyShared* s1 = new MyShared;
         ASSERT_EQ(0, s1->ref_count());
-        base::intrusive_ptr<MyShared> p1 = s1;
+        butil::intrusive_ptr<MyShared> p1 = s1;
         ASSERT_EQ(1, p1->ref_count());
         {
-            base::intrusive_ptr<MyShared> p2 = s1;
+            butil::intrusive_ptr<MyShared> p2 = s1;
             ASSERT_EQ(2, p2->ref_count());
             ASSERT_EQ(2, p1->ref_count());
         }
@@ -1801,7 +1801,7 @@ TEST_F(ChannelTest, init_as_single_server) {
         ASSERT_EQ(0, channel.Init("127.0.0.1", 8888, NULL));
     }
 
-    base::EndPoint ep;
+    butil::EndPoint ep;
     brpc::Channel channel;
     ASSERT_EQ(0, str2endpoint("127.0.0.1:8888", &ep));
     ASSERT_EQ(0, channel.Init(ep, NULL));
@@ -1835,7 +1835,7 @@ TEST_F(ChannelTest, init_using_empty_fns) {
     brpc::ChannelOptions opt;
     opt.succeed_without_server = false;
     brpc::Channel channel;
-    base::TempFile server_list;
+    butil::TempFile server_list;
     ASSERT_EQ(0, server_list.save(""));
     std::string naming_url = std::string("file://") + server_list.fname();
     // empty file list results in error.
@@ -1857,7 +1857,7 @@ TEST_F(ChannelTest, init_using_empty_lns) {
 
 TEST_F(ChannelTest, init_using_naming_service) {
     brpc::Channel* channel = new brpc::Channel();
-    base::TempFile server_list;
+    butil::TempFile server_list;
     ASSERT_EQ(0, server_list.save("127.0.0.1:8888"));
     std::string naming_url = std::string("filE://") + server_list.fname();
     // Rr are intended to test case-insensitivity.
@@ -1884,7 +1884,7 @@ TEST_F(ChannelTest, init_using_naming_service) {
 
     // `lb' should be valid even if `channel' has destroyed
     // since we hold another reference to it
-    base::intrusive_ptr<brpc::SharedLoadBalancer>
+    butil::intrusive_ptr<brpc::SharedLoadBalancer>
         another_ctx = channel->_lb;
     delete channel;
     ASSERT_EQ(lb, another_ctx.get());

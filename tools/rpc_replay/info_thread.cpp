@@ -33,18 +33,18 @@ void InfoThread::run() {
     int64_t last_sent_count = 0;
     int64_t last_succ_count = 0;
     int64_t last_error_count = 0;
-    int64_t start_time = base::gettimeofday_us();
+    int64_t start_time = butil::gettimeofday_us();
     while (!_stop) {
         int64_t end_time = 0;
         while (!_stop &&
-               (end_time = base::gettimeofday_us()) < start_time + 1000000L) {
+               (end_time = butil::gettimeofday_us()) < start_time + 1000000L) {
             BAIDU_SCOPED_LOCK(_mutex);
             if (!_stop) {
-                timespec ts = base::microseconds_to_timespec(end_time);
+                timespec ts = butil::microseconds_to_timespec(end_time);
                 pthread_cond_timedwait(&_cond, &_mutex, &ts);
             }
         }
-        start_time = base::gettimeofday_us();
+        start_time = butil::gettimeofday_us();
         char buf[64];
         const time_t tm_s = start_time / 1000000L;
         struct tm lt;

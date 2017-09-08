@@ -16,8 +16,8 @@
 #include <google/protobuf/dynamic_message.h>
 #include <google/protobuf/compiler/importer.h>
 #include <brpc/server.h>
-#include <base/logging.h>
-#include <base/string_splitter.h>
+#include <butil/logging.h>
+#include <butil/string_splitter.h>
 #include <string.h>
 #include "rpc_press_impl.h"
 

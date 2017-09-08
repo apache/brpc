@@ -63,8 +63,8 @@ struct PartitionChannelOptions : public ChannelOptions {
 
     // Check comments on ParallelChannel.AddChannel in parallel_channel.h
     // Sub channels in PartitionChannel share the same mapper and merger.
-    base::intrusive_ptr<CallMapper> call_mapper;
-    base::intrusive_ptr<ResponseMerger> response_merger;
+    butil::intrusive_ptr<CallMapper> call_mapper;
+    butil::intrusive_ptr<ResponseMerger> response_merger;
 };
 
 // PartitionChannel is a specialized ParallelChannel whose sub channels are
@@ -119,7 +119,7 @@ private:
     int CheckHealth();
 
     PartitionChannelBase* _pchan;
-    base::intrusive_ptr<NamingServiceThread> _nsthread_ptr;
+    butil::intrusive_ptr<NamingServiceThread> _nsthread_ptr;
     PartitionParser* _parser;
 };
 
@@ -162,7 +162,7 @@ private:
 
     SelectiveChannel _schan;
     Partitioner* _partitioner;
-    base::intrusive_ptr<NamingServiceThread> _nsthread_ptr;
+    butil::intrusive_ptr<NamingServiceThread> _nsthread_ptr;
     PartitionParser* _parser;
 };
 

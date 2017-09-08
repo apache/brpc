@@ -39,7 +39,7 @@
 #include <map>
 #include <vector>
 #include <stdint.h>
-#include "base/iobuf.h"
+#include "butil/iobuf.h"
 #include "brpc/rtmp.h"
 
 
@@ -1222,12 +1222,12 @@ public:
 // Convert Rtmp audio/video messages into ts packets.
 class TsWriter {
 public:
-    explicit TsWriter(base::IOBuf* outbuf);
+    explicit TsWriter(butil::IOBuf* outbuf);
     ~TsWriter();
 
     // Append a video/audio message into the output buffer.
-    base::Status Write(const RtmpVideoMessage&);
-    base::Status Write(const RtmpAudioMessage&);
+    butil::Status Write(const RtmpVideoMessage&);
+    butil::Status Write(const RtmpAudioMessage&);
 
     int64_t discontinuity_counter() const { return _discontinuity_counter; }
     void add_pat_pmt_on_next_write() { _encoded_pat_pmt = false; }
@@ -1235,11 +1235,11 @@ public:
 private:
     struct TsMessage;
 
-    base::Status Encode(TsMessage* msg, TsStream stream, TsPid pid);
-    base::Status EncodePATPMT(TsStream vs, TsPid vpid, TsStream as, TsPid apid);
-    base::Status EncodePES(TsMessage* msg, TsStream sid, TsPid pid, bool pure_audio);
+    butil::Status Encode(TsMessage* msg, TsStream stream, TsPid pid);
+    butil::Status EncodePATPMT(TsStream vs, TsPid vpid, TsStream as, TsPid apid);
+    butil::Status EncodePES(TsMessage* msg, TsStream sid, TsPid pid, bool pure_audio);
 
-    base::IOBuf* _outbuf;
+    butil::IOBuf* _outbuf;
     AVCNaluFormat _nalu_format;
     bool _has_avc_seq_header;
     bool _has_aac_seq_header;

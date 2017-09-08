@@ -19,7 +19,7 @@
 
 #include <stdlib.h>
 #include <ostream>
-#include "base/logging.h"
+#include "butil/logging.h"
 #include <google/protobuf/service.h>            // google::protobuf::RpcChannel
 #include "brpc/describable.h"
 

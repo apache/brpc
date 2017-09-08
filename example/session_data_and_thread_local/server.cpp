@@ -15,7 +15,7 @@
 // A server to receive EchoRequest and send back EchoResponse asynchronously.
 
 #include <gflags/gflags.h>
-#include <base/logging.h>
+#include <butil/logging.h>
 #include <brpc/server.h>
 #include "echo.pb.h"
 
@@ -27,13 +27,13 @@ DEFINE_int32(logoff_ms, 2000, "Maximum duration of server's LOGOFF state "
              "(waiting for client to close connection before server stops)");
 DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
 
-base::atomic<int> nsd(0);
+butil::atomic<int> nsd(0);
 struct MySessionLocalData {
     MySessionLocalData() : x(123) {
-        nsd.fetch_add(1, base::memory_order_relaxed);
+        nsd.fetch_add(1, butil::memory_order_relaxed);
     }
     ~MySessionLocalData() {
-        nsd.fetch_sub(1, base::memory_order_relaxed);
+        nsd.fetch_sub(1, butil::memory_order_relaxed);
     }
 
     int x;
@@ -50,13 +50,13 @@ public:
     }
 };
 
-base::atomic<int> ntls(0);
+butil::atomic<int> ntls(0);
 struct MyThreadLocalData {
     MyThreadLocalData() : y(0) {
-        ntls.fetch_add(1, base::memory_order_relaxed);
+        ntls.fetch_add(1, butil::memory_order_relaxed);
     }
     ~MyThreadLocalData() {
-        ntls.fetch_sub(1, base::memory_order_relaxed);
+        ntls.fetch_sub(1, butil::memory_order_relaxed);
     }
     static void deleter(void* d) {
         delete static_cast<MyThreadLocalData*>(d);
@@ -180,8 +180,8 @@ public:
         // We don't want to call done->Run() here, release the guard.
         done_guard.release();
         
-        LOG_EVERY_SECOND(INFO) << "ntls=" << ntls.load(base::memory_order_relaxed)
-                               << " nsd=" << nsd.load(base::memory_order_relaxed);
+        LOG_EVERY_SECOND(INFO) << "ntls=" << ntls.load(butil::memory_order_relaxed)
+                               << " nsd=" << nsd.load(butil::memory_order_relaxed);
     }
 
 private:

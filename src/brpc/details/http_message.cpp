@@ -20,11 +20,11 @@
 #include <string>                               // std::string
 #include <iostream>
 #include <gflags/gflags.h>
-#include "base/macros.h"
-#include "base/logging.h"                       // LOG
-#include "base/scoped_lock.h"
-#include "base/endpoint.h"
-#include "base/base64.h"
+#include "butil/macros.h"
+#include "butil/logging.h"                       // LOG
+#include "butil/scoped_lock.h"
+#include "butil/endpoint.h"
+#include "butil/base64.h"
 #include "bthread/bthread.h"                    // bthread_usleep
 #include "brpc/log.h"
 #include "brpc/reloadable_flags.h"
@@ -106,17 +106,17 @@ int HttpMessage::on_header_value(http_parser *parser,
         http_message->_cur_value->append(at, length);
     }
     if (FLAGS_http_verbose) {
-        base::IOBufBuilder* vs = http_message->_vmsgbuilder;
+        butil::IOBufBuilder* vs = http_message->_vmsgbuilder;
         if (vs == NULL) {
-            vs = new base::IOBufBuilder;
+            vs = new butil::IOBufBuilder;
             http_message->_vmsgbuilder = vs;
             if (parser->type == HTTP_REQUEST) {
-                *vs << "[HTTP REQUEST @" << base::my_ip() << "]\n< "
+                *vs << "[HTTP REQUEST @" << butil::my_ip() << "]\n< "
                     << HttpMethod2Str((HttpMethod)parser->method) << ' '
                     << http_message->_url << " HTTP/" << parser->http_major
                     << '.' << parser->http_minor;
             } else {
-                *vs << "[HTTP RESPONSE @" << base::my_ip() << "]\n< HTTP/"
+                *vs << "[HTTP RESPONSE @" << butil::my_ip() << "]\n< HTTP/"
                     << parser->http_major
                     << '.' << parser->http_minor << ' ' << parser->status_code
                     << ' ' << http_message->header().reason_phrase();
@@ -178,17 +178,17 @@ int HttpMessage::on_headers_complete(http_parser *parser) {
     return 0;
 }
 
-int HttpMessage::UnlockAndFlushToBodyReader(std::unique_lock<base::Mutex>& mu) {
+int HttpMessage::UnlockAndFlushToBodyReader(std::unique_lock<butil::Mutex>& mu) {
     if (_body.empty()) {
         mu.unlock();
         return 0;
     }
-    base::IOBuf body_seen = _body.movable();
+    butil::IOBuf body_seen = _body.movable();
     ProgressiveReader* r = _body_reader;
     mu.unlock();
     for (size_t i = 0; i < body_seen.backing_block_num(); ++i) {
-        base::StringPiece blk = body_seen.backing_block(i);
-        base::Status st = r->OnReadOnePart(blk.data(), blk.size());
+        butil::StringPiece blk = body_seen.backing_block(i);
+        butil::Status st = r->OnReadOnePart(blk.data(), blk.size());
         if (!st.ok()) {
             mu.lock();
             _body_reader = NULL;
@@ -239,7 +239,7 @@ int HttpMessage::OnBody(const char *at, const size_t length) {
         return 0;
     }
     // Progressive read.
-    std::unique_lock<base::Mutex> mu(_body_mutex);
+    std::unique_lock<butil::Mutex> mu(_body_mutex);
     ProgressiveReader* r = _body_reader;
     while (r == NULL) {
         // When _body is full, the sleep-waiting may block parse handler
@@ -262,7 +262,7 @@ int HttpMessage::OnBody(const char *at, const size_t length) {
     if (UnlockAndFlushToBodyReader(mu) != 0) {
         return -1;
     }
-    base::Status st = r->OnReadOnePart(at, length);
+    butil::Status st = r->OnReadOnePart(at, length);
     if (st.ok()) {
         return 0;
     }
@@ -291,7 +291,7 @@ int HttpMessage::OnMessageComplete() {
         return 0;
     }
     // Progressive read.
-    std::unique_lock<base::Mutex> mu(_body_mutex);
+    std::unique_lock<butil::Mutex> mu(_body_mutex);
     _stage = HTTP_ON_MESSAGE_COMPLELE;
     if (_body_reader != NULL) {
         // Solve the case: SetBodyReader quit at ntry=MAX_TRY with non-empty
@@ -304,7 +304,7 @@ int HttpMessage::OnMessageComplete() {
         ProgressiveReader* r = _body_reader;
         _body_reader = NULL;
         mu.unlock();
-        r->OnEndOfMessage(base::Status());
+        r->OnEndOfMessage(butil::Status());
     }
     return 0;
 }
@@ -312,11 +312,11 @@ int HttpMessage::OnMessageComplete() {
 class FailAllRead : public ProgressiveReader {
 public:
     // @ProgressiveReader
-    base::Status OnReadOnePart(const void* /*data*/, size_t /*length*/) {
-        return base::Status(-1, "Trigger by FailAllRead at %s:%d",
+    butil::Status OnReadOnePart(const void* /*data*/, size_t /*length*/) {
+        return butil::Status(-1, "Trigger by FailAllRead at %s:%d",
                             __FILE__, __LINE__);
     }
-    void OnEndOfMessage(const base::Status&) {}
+    void OnEndOfMessage(const butil::Status&) {}
 };
 
 static FailAllRead* s_fail_all_read = NULL;
@@ -326,17 +326,17 @@ static void CreateFailAllRead() { s_fail_all_read = new FailAllRead; }
 void HttpMessage::SetBodyReader(ProgressiveReader* r) {
     if (!_read_body_progressively) {
         return r->OnEndOfMessage(
-            base::Status(EPERM, "Call SetBodyReader on HttpMessage with"
+            butil::Status(EPERM, "Call SetBodyReader on HttpMessage with"
                          " read_body_progressively=false"));
     }
     const int MAX_TRY = 3;
     int ntry = 0;
     do {
-        std::unique_lock<base::Mutex> mu(_body_mutex);
+        std::unique_lock<butil::Mutex> mu(_body_mutex);
         if (_body_reader != NULL) {
             mu.unlock();
             return r->OnEndOfMessage(
-                base::Status(EPERM, "SetBodyReader is called more than once"));
+                butil::Status(EPERM, "SetBodyReader is called more than once"));
         }
         if (_body.empty()) {
             if (_stage <= HTTP_ON_BODY) {
@@ -344,7 +344,7 @@ void HttpMessage::SetBodyReader(ProgressiveReader* r) {
                 return;
             } else {  // The body is complete and successfully consumed.
                 mu.unlock();
-                return r->OnEndOfMessage(base::Status());
+                return r->OnEndOfMessage(butil::Status());
             }
         } else if (_stage <= HTTP_ON_BODY && ++ntry >= MAX_TRY) {
             // Stop making _body empty after we've tried several times.
@@ -354,11 +354,11 @@ void HttpMessage::SetBodyReader(ProgressiveReader* r) {
             _body_reader = r;
             return;
         }
-        base::IOBuf body_seen = _body.movable();
+        butil::IOBuf body_seen = _body.movable();
         mu.unlock();
         for (size_t i = 0; i < body_seen.backing_block_num(); ++i) {
-            base::StringPiece blk = body_seen.backing_block(i);
-            base::Status st = r->OnReadOnePart(blk.data(), blk.size());
+            butil::StringPiece blk = body_seen.backing_block(i);
+            butil::Status st = r->OnReadOnePart(blk.data(), blk.size());
             if (!st.ok()) {
                 r->OnEndOfMessage(st);
                 // Make OnBody() or OnMessageComplete() fail on next call to
@@ -405,7 +405,7 @@ HttpMessage::~HttpMessage() {
         // _body_reader here just means the socket is broken before completion
         // of the message.
         saved_body_reader->OnEndOfMessage(
-            base::Status(ECONNRESET, "The socket was broken"));
+            butil::Status(ECONNRESET, "The socket was broken"));
     }
 }
 
@@ -423,14 +423,14 @@ ssize_t HttpMessage::ParseFromArray(const char *data, const size_t length) {
     if (_parser.http_errno != 0) {
         // May try HTTP on other formats, failure is norm.
         RPC_VLOG << "Fail to parse http message, parser=" << _parser
-                 << ", buf=`" << base::StringPiece(data, length) << '\'';
+                 << ", buf=`" << butil::StringPiece(data, length) << '\'';
         return -1;
     } 
     _parsed_length += nprocessed;
     return nprocessed;
 }
 
-ssize_t HttpMessage::ParseFromIOBuf(const base::IOBuf &buf) {
+ssize_t HttpMessage::ParseFromIOBuf(const butil::IOBuf &buf) {
     if (Completed()) {
         if (buf.empty()) {
             return 0;
@@ -441,7 +441,7 @@ ssize_t HttpMessage::ParseFromIOBuf(const base::IOBuf &buf) {
     }
     size_t nprocessed = 0;
     for (size_t i = 0; i < buf.backing_block_num(); ++i) {
-        base::StringPiece blk = buf.backing_block(i);
+        butil::StringPiece blk = buf.backing_block(i);
         if (blk.empty()) {
             // length=0 will be treated as EOF by http_parser, must skip.
             continue;
@@ -529,11 +529,11 @@ std::ostream& operator<<(std::ostream& os, const http_parser& parser) {
 //                | "CONNECT"                ; Section 9.9
 //                | extension-method
 // extension-method = token
-void SerializeHttpRequest(base::IOBuf* request,
+void SerializeHttpRequest(butil::IOBuf* request,
                           HttpHeader* h,
-                          const base::EndPoint& remote_side,
-                          const base::IOBuf* content) {
-    base::IOBufBuilder os;
+                          const butil::EndPoint& remote_side,
+                          const butil::IOBuf* content) {
+    butil::IOBufBuilder os;
     os << HttpMethod2Str(h->method()) << ' ';
     const URI& uri = h->uri();
     uri.PrintWithoutHost(os); // host is sent by "Host" header.
@@ -588,7 +588,7 @@ void SerializeHttpRequest(base::IOBuf* request,
         // characters in this part and even if users did, most of them are
         // invalid and rejected by http_parser_parse_url().
         std::string encoded_user_info;
-        base::Base64Encode(user_info, &encoded_user_info);
+        butil::Base64Encode(user_info, &encoded_user_info);
         os << "Authorization: Basic " << encoded_user_info << BRPC_CRLF;
     }
     os << BRPC_CRLF;  // CRLF before content
@@ -606,10 +606,10 @@ void SerializeHttpRequest(base::IOBuf* request,
 //                CRLF
 //                [ message-body ]          ; Section 7.2
 // Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
-void SerializeHttpResponse(base::IOBuf* response,
+void SerializeHttpResponse(butil::IOBuf* response,
                            HttpHeader* h,
-                           base::IOBuf* content) {
-    base::IOBufBuilder os;
+                           butil::IOBuf* content) {
+    butil::IOBufBuilder os;
     os << "HTTP/" << h->major_version() << '.'
        << h->minor_version() << ' ' << h->status_code()
        << ' ' << h->reason_phrase() << BRPC_CRLF;
@@ -631,7 +631,7 @@ void SerializeHttpResponse(base::IOBuf* response,
     os << BRPC_CRLF;  // CRLF before content
     os.move_to(*response);
     if (content) {
-        response->append(base::IOBuf::Movable(*content));
+        response->append(butil::IOBuf::Movable(*content));
     }
 }
 #undef BRPC_CRLF

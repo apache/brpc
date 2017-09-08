@@ -18,7 +18,7 @@
 #define BRPC_NAMING_SERVICE_THREAD_H
 
 #include <string>
-#include "base/intrusive_ptr.hpp"               // base::intrusive_ptr
+#include "butil/intrusive_ptr.hpp"               // butil::intrusive_ptr
 #include "bthread/bthread.h"                    // bthread_t
 #include "brpc/server_id.h"                     // ServerId
 #include "brpc/shared_object.h"                 // SharedObject
@@ -71,7 +71,7 @@ class NamingServiceThread : public SharedObject, public Describable {
     private:
         NamingServiceThread* _owner;
         bthread_id_t _wait_id;
-        base::atomic<bool> _has_wait_error;
+        butil::atomic<bool> _has_wait_error;
         int _wait_error;
         std::vector<ServerNode> _last_servers;
         std::vector<ServerNode> _servers;
@@ -104,7 +104,7 @@ private:
         const std::vector<ServerNodeWithId>& src,
         std::vector<ServerId>* dst, const NamingServiceFilter* filter);
 
-    base::Mutex _mutex;
+    butil::Mutex _mutex;
     bthread_t _tid;
     // TODO: better use a name.
     const NamingService* _source_ns;
@@ -125,7 +125,7 @@ std::ostream& operator<<(std::ostream& os, const NamingServiceThread&);
 // available, unless `options->succeed_without_server' is on, this function
 // returns -1.
 // Returns 0 on success, -1 otherwise.
-int GetNamingServiceThread(base::intrusive_ptr<NamingServiceThread>* ns_thread,
+int GetNamingServiceThread(butil::intrusive_ptr<NamingServiceThread>* ns_thread,
                            const char* url,
                            const GetNamingServiceThreadOptions* options);
 

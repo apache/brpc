@@ -17,10 +17,10 @@
 #ifndef BRPC_REDIS_REPLY_H
 #define BRPC_REDIS_REPLY_H
 
-#include "base/iobuf.h"                  // base::IOBuf
-#include "base/strings/string_piece.h"   // base::StringPiece
-#include "base/arena.h"                  // base::Arena
-#include "base/logging.h"                // CHECK
+#include "butil/iobuf.h"                  // butil::IOBuf
+#include "butil/strings/string_piece.h"   // butil::StringPiece
+#include "butil/arena.h"                  // butil::Arena
+#include "butil/logging.h"                // CHECK
 
 
 namespace brpc {
@@ -68,7 +68,7 @@ public:
     // Convert the reply to a StringPiece. If the reply is not a string,
     // call stacks are logged and "" is returned. 
     // If you need a std::string, call .data().as_string() (which allocates mem)
-    base::StringPiece data() const;
+    butil::StringPiece data() const;
 
     // Return number of sub replies in the array. If this reply is not an array,
     // 0 is returned (call stacks are not logged).
@@ -86,7 +86,7 @@ public:
     // the parsing of RedisReply in the worst case is O(N) where N is size
     // of the on-wire reply. As a contrast, if the parsing needs `buf' to be
     // intact, the complexity in worst case may be O(N^2).
-    bool ConsumePartialIOBuf(base::IOBuf& buf, base::Arena* arena);
+    bool ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena);
 
     // Swap internal fields with another reply.
     void Swap(RedisReply& other);
@@ -159,17 +159,17 @@ inline const char* RedisReply::c_str() const {
     return "";
 }
 
-inline base::StringPiece RedisReply::data() const {
+inline butil::StringPiece RedisReply::data() const {
     if (is_string()) {
         if (_length < sizeof(_data.short_str)) { // SSO
-            return base::StringPiece(_data.short_str, _length);
+            return butil::StringPiece(_data.short_str, _length);
         } else {
-            return base::StringPiece(_data.long_str, _length);
+            return butil::StringPiece(_data.long_str, _length);
         }
     }
     CHECK(false) << "The reply is " << RedisReplyTypeToString(_type)
                  << ", not a string";
-    return base::StringPiece();
+    return butil::StringPiece();
 }
 
 inline const char* RedisReply::error_message() const {

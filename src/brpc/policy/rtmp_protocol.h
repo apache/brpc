@@ -18,7 +18,7 @@
 #ifndef BRPC_POLICY_RTMP_PROTOCOL_H
 #define BRPC_POLICY_RTMP_PROTOCOL_H
 
-#include "base/containers/flat_map.h"
+#include "butil/containers/flat_map.h"
 #include "brpc/protocol.h"
 #include "brpc/rtmp.h"
 #include "brpc/amf.h"
@@ -167,7 +167,7 @@ public:
     // Set RtmpContext::_chunk_size_out to this in AppendAndDestroySelf()
     // if this field is non-zero.
     uint32_t new_chunk_size;
-    base::IOBuf body;
+    butil::IOBuf body;
     // If next is not NULL, next->AppendAndDestroySelf() will be called
     // recursively. For implementing batched messages.
     SocketMessagePtr<RtmpUnsentMessage> next;
@@ -175,7 +175,7 @@ public:
     RtmpUnsentMessage()
         : chunk_stream_id(0) , new_chunk_size(0), next(NULL) {}
     // @SocketMessage
-    base::Status AppendAndDestroySelf(base::IOBuf* out, Socket*);
+    butil::Status AppendAndDestroySelf(butil::IOBuf* out, Socket*);
 };
 
 // Notice that we can't directly pack CreateStream command in PackRtmpRequest, because 
@@ -189,7 +189,7 @@ public:
 public:
     explicit RtmpCreateStreamMessage() {}
     // @SocketMessage
-    base::Status AppendAndDestroySelf(base::IOBuf* out, Socket*);
+    butil::Status AppendAndDestroySelf(butil::IOBuf* out, Socket*);
 };
 
 enum RtmpChunkType {
@@ -222,7 +222,7 @@ void WriteLittleEndian4Bytes(char** buf, uint32_t val);
 RtmpUnsentMessage* MakeUnsentControlMessage(
     uint8_t message_type, const void* body, size_t size);
 RtmpUnsentMessage* MakeUnsentControlMessage(
-    uint8_t message_type, const base::IOBuf& body);
+    uint8_t message_type, const butil::IOBuf& body);
 
 // The callback associated with a transaction_id.
 // If the transaction is successfully done, Run() will be called, otherwise
@@ -265,7 +265,7 @@ public:
     // Parse `source' from `socket'.
     // This method is only called from Protocol.Parse thus does not need
     // to be thread-safe.
-    ParseResult Feed(base::IOBuf* source, Socket* socket);
+    ParseResult Feed(butil::IOBuf* source, Socket* socket);
 
     const RtmpClientOptions* client_options() const { return _client_options; }
     const Server* server() const { return _server; }
@@ -280,7 +280,7 @@ public:
     // Find the stream by its id and reference the stream with intrusive_ptr.
     // Returns true on success.
     bool FindMessageStream(uint32_t stream_id,
-                           base::intrusive_ptr<RtmpStreamBase>* stream);
+                           butil::intrusive_ptr<RtmpStreamBase>* stream);
 
     // Called in client-side to map the id to stream.
     bool AddClientStream(RtmpStreamBase* stream);
@@ -331,7 +331,7 @@ public:
     { return _create_stream_with_play_or_publish; }
 
     // Call this fn to change _state.
-    void SetState(const base::EndPoint& remote_side, State new_state);
+    void SetState(const butil::EndPoint& remote_side, State new_state);
 
     void set_create_stream_with_play_or_publish(bool create_stream_with_play_or_publish)
     { _create_stream_with_play_or_publish = create_stream_with_play_or_publish; }
@@ -339,14 +339,14 @@ public:
     void set_simplified_rtmp(bool simplified_rtmp)
     { _simplified_rtmp = simplified_rtmp; }
 
-    int SendConnectRequest(const base::EndPoint& remote_side, int fd, bool simplified_rtmp);
+    int SendConnectRequest(const butil::EndPoint& remote_side, int fd, bool simplified_rtmp);
 
 private:
-    ParseResult WaitForC0C1orSimpleRtmp(base::IOBuf* source, Socket* socket);
-    ParseResult WaitForC2(base::IOBuf* source, Socket* socket);
-    ParseResult WaitForS0S1(base::IOBuf* source, Socket* socket);
-    ParseResult WaitForS2(base::IOBuf* source, Socket* socket);
-    ParseResult OnChunks(base::IOBuf* source, Socket* socket);
+    ParseResult WaitForC0C1orSimpleRtmp(butil::IOBuf* source, Socket* socket);
+    ParseResult WaitForC2(butil::IOBuf* source, Socket* socket);
+    ParseResult WaitForS0S1(butil::IOBuf* source, Socket* socket);
+    ParseResult WaitForS2(butil::IOBuf* source, Socket* socket);
+    ParseResult OnChunks(butil::IOBuf* source, Socket* socket);
 
     // Count received bytes and send ack back if needed.
     void AddReceivedBytes(Socket* socket, uint32_t size);
@@ -378,27 +378,27 @@ private:
     RtmpService* _service;
     
     // Mapping message_stream_id to message streams.
-    base::Mutex _stream_mutex;
+    butil::Mutex _stream_mutex;
     struct MessageStreamInfo {
-        base::intrusive_ptr<RtmpStreamBase> stream;
+        butil::intrusive_ptr<RtmpStreamBase> stream;
     };
-    base::FlatMap<uint32_t, MessageStreamInfo> _mstream_map;
+    butil::FlatMap<uint32_t, MessageStreamInfo> _mstream_map;
 
     // Mapping transaction id to handlers.
-    base::Mutex _trans_mutex;
+    butil::Mutex _trans_mutex;
     uint32_t _trans_id_allocator;
-    base::FlatMap<uint32_t, RtmpTransactionHandler*> _trans_map;
+    butil::FlatMap<uint32_t, RtmpTransactionHandler*> _trans_map;
 
     RtmpConnectRequest _connect_req;
 
     // Map chunk_stream_id to chunk streams.
     // The array is 2-level to reduce memory for most connections.
     struct SubChunkArray {
-        base::atomic<RtmpChunkStream*> ptrs[RTMP_CHUNK_ARRAY_2ND_SIZE];
+        butil::atomic<RtmpChunkStream*> ptrs[RTMP_CHUNK_ARRAY_2ND_SIZE];
         SubChunkArray();
         ~SubChunkArray();
     };
-    base::atomic<SubChunkArray*> _cstream_ctx[RTMP_CHUNK_ARRAY_1ST_SIZE];
+    butil::atomic<SubChunkArray*> _cstream_ctx[RTMP_CHUNK_ARRAY_1ST_SIZE];
 
     bool _simplified_rtmp;
 };
@@ -406,7 +406,7 @@ private:
 class RtmpChunkStream {
 public:
     typedef bool (RtmpChunkStream::*MessageHandler)(
-        const RtmpMessageHeader& mh, base::IOBuf* msg_body, Socket* socket);
+        const RtmpMessageHeader& mh, butil::IOBuf* msg_body, Socket* socket);
 
     typedef bool (RtmpChunkStream::*CommandHandler)(
         const RtmpMessageHeader& mh, AMFInputStream*, Socket* socket);
@@ -415,69 +415,69 @@ public:
     RtmpChunkStream(RtmpContext* conn_ctx, uint32_t cs_id);
     
     ParseResult Feed(const RtmpBasicHeader& bh,
-                     base::IOBuf* source, Socket* socket);
+                     butil::IOBuf* source, Socket* socket);
 
     RtmpContext* connection_context() const { return _conn_ctx; }
 
     uint32_t chunk_stream_id() const { return _cs_id; }
 
-    int SerializeMessage(base::IOBuf* buf, const RtmpMessageHeader& mh,
-                         base::IOBuf* body);
+    int SerializeMessage(butil::IOBuf* buf, const RtmpMessageHeader& mh,
+                         butil::IOBuf* body);
     
     bool OnMessage(
         const RtmpBasicHeader& bh, const RtmpMessageHeader& mh,
-        base::IOBuf* msg_body, Socket* socket);
+        butil::IOBuf* msg_body, Socket* socket);
 
     bool OnSetChunkSize(const RtmpMessageHeader& mh,
-                        base::IOBuf* msg_body, Socket* socket);
+                        butil::IOBuf* msg_body, Socket* socket);
     bool OnAbortMessage(const RtmpMessageHeader& mh,
-                        base::IOBuf* msg_body, Socket* socket);
+                        butil::IOBuf* msg_body, Socket* socket);
     bool OnAck(const RtmpMessageHeader& mh,
-               base::IOBuf* msg_body, Socket* socket);
+               butil::IOBuf* msg_body, Socket* socket);
     bool OnUserControlMessage(const RtmpMessageHeader& mh,
-                              base::IOBuf* msg_body, Socket* socket);
+                              butil::IOBuf* msg_body, Socket* socket);
     bool OnStreamBegin(const RtmpMessageHeader&,
-                       const base::StringPiece& event_data, Socket* socket);
+                       const butil::StringPiece& event_data, Socket* socket);
     bool OnStreamEOF(const RtmpMessageHeader&,
-                     const base::StringPiece& event_data, Socket* socket);
+                     const butil::StringPiece& event_data, Socket* socket);
     bool OnStreamDry(const RtmpMessageHeader&,
-                     const base::StringPiece& event_data, Socket* socket);
+                     const butil::StringPiece& event_data, Socket* socket);
     bool OnSetBufferLength(const RtmpMessageHeader&,
-                           const base::StringPiece& event_data, Socket* socket);
+                           const butil::StringPiece& event_data, Socket* socket);
     bool OnStreamIsRecorded(const RtmpMessageHeader&,
-                            const base::StringPiece& event_data, Socket* socket);
+                            const butil::StringPiece& event_data, Socket* socket);
     bool OnPingRequest(const RtmpMessageHeader&,
-                       const base::StringPiece& event_data, Socket* socket);
+                       const butil::StringPiece& event_data, Socket* socket);
     bool OnPingResponse(const RtmpMessageHeader&,
-                        const base::StringPiece& event_data, Socket* socket);
+                        const butil::StringPiece& event_data, Socket* socket);
     bool OnBufferEmpty(const RtmpMessageHeader&,
-                       const base::StringPiece& event_data, Socket* socket);
+                       const butil::StringPiece& event_data, Socket* socket);
     bool OnBufferReady(const RtmpMessageHeader&,
-                       const base::StringPiece& event_data, Socket* socket);
+                       const butil::StringPiece& event_data, Socket* socket);
     
     bool OnWindowAckSize(const RtmpMessageHeader& mh,
-                         base::IOBuf* msg_body, Socket* socket);
+                         butil::IOBuf* msg_body, Socket* socket);
     bool OnSetPeerBandwidth(const RtmpMessageHeader& mh,
-                            base::IOBuf* msg_body, Socket* socket);
+                            butil::IOBuf* msg_body, Socket* socket);
     
     bool OnAudioMessage(const RtmpMessageHeader& mh,
-                        base::IOBuf* msg_body, Socket* socket);
+                        butil::IOBuf* msg_body, Socket* socket);
     bool OnVideoMessage(const RtmpMessageHeader& mh,
-                        base::IOBuf* msg_body, Socket* socket);
+                        butil::IOBuf* msg_body, Socket* socket);
     bool OnDataMessageAMF0(const RtmpMessageHeader& mh,
-                           base::IOBuf* msg_body, Socket* socket);
+                           butil::IOBuf* msg_body, Socket* socket);
     bool OnDataMessageAMF3(const RtmpMessageHeader& mh,
-                           base::IOBuf* msg_body, Socket* socket);
+                           butil::IOBuf* msg_body, Socket* socket);
     bool OnSharedObjectMessageAMF0(const RtmpMessageHeader& mh,
-                                   base::IOBuf* msg_body, Socket* socket);
+                                   butil::IOBuf* msg_body, Socket* socket);
     bool OnSharedObjectMessageAMF3(const RtmpMessageHeader& mh,
-                                   base::IOBuf* msg_body, Socket* socket);
+                                   butil::IOBuf* msg_body, Socket* socket);
     bool OnCommandMessageAMF0(const RtmpMessageHeader& mh,
-                              base::IOBuf* msg_body, Socket* socket);
+                              butil::IOBuf* msg_body, Socket* socket);
     bool OnCommandMessageAMF3(const RtmpMessageHeader& mh,
-                              base::IOBuf* msg_body, Socket* socket);
+                              butil::IOBuf* msg_body, Socket* socket);
     bool OnAggregateMessage(const RtmpMessageHeader& mh,
-                            base::IOBuf* msg_body, Socket* socket);
+                            butil::IOBuf* msg_body, Socket* socket);
 
     bool OnStatus(const RtmpMessageHeader& mh, AMFInputStream* istream,
                   Socket* socket);
@@ -524,7 +524,7 @@ private:
         uint32_t last_timestamp_delta;
         uint32_t left_message_length;
         RtmpMessageHeader last_msg_header;
-        base::IOBuf msg_body;
+        butil::IOBuf msg_body;
     };
     struct WriteParams {
         WriteParams();
@@ -540,23 +540,23 @@ private:
 };
 
 // Parse binary format of rmtp.
-ParseResult ParseRtmpMessage(base::IOBuf* source, Socket *socket, bool read_eof,
+ParseResult ParseRtmpMessage(butil::IOBuf* source, Socket *socket, bool read_eof,
                             const void *arg);
 
 // no-op placeholder, never be called.
 void ProcessRtmpMessage(InputMessageBase* msg);
 
 // Pack createStream message
-void PackRtmpRequest(base::IOBuf* buf,
+void PackRtmpRequest(butil::IOBuf* buf,
                      SocketMessage**,
                      uint64_t correlation_id,
                      const google::protobuf::MethodDescriptor* method,
                      Controller* controller,
-                     const base::IOBuf& request,
+                     const butil::IOBuf& request,
                      const Authenticator* auth);
 
 // Serialize createStream message
-void SerializeRtmpRequest(base::IOBuf* buf,
+void SerializeRtmpRequest(butil::IOBuf* buf,
                           Controller* cntl,
                           const google::protobuf::Message* request);
 

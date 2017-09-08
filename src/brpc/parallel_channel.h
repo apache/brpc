@@ -97,7 +97,7 @@ public:
                         const google::protobuf::Message* request,
                         google::protobuf::Message* response) = 0;
 protected:
-    // Only callable by subclasses and base::intrusive_ptr
+    // Only callable by subclasses and butil::intrusive_ptr
     virtual ~CallMapper() {}
 };
 
@@ -133,7 +133,7 @@ public:
     virtual Result Merge(google::protobuf::Message* response,
                          const google::protobuf::Message* sub_response) = 0;
 protected:
-    // Only callable by subclasses and base::intrusive_ptr
+    // Only callable by subclasses and butil::intrusive_ptr
     virtual ~ResponseMerger() { }
 };
 
@@ -236,10 +236,10 @@ public:
     struct SubChan {
         ChannelBase* chan;
         ChannelOwnership ownership;
-        base::intrusive_ptr<CallMapper> call_mapper;
+        butil::intrusive_ptr<CallMapper> call_mapper;
         // ParallelChannel may be dtor before async RPC call finishes and
         // merger is shared with SubDone.
-        base::intrusive_ptr<ResponseMerger> merger;
+        butil::intrusive_ptr<ResponseMerger> merger;
     };
     typedef std::vector<SubChan> ChannelList;
 

@@ -19,7 +19,7 @@
 
 #include <google/protobuf/message.h>              // Message
 #include <google/protobuf/io/gzip_stream.h>
-#include "base/iobuf.h"                           // base::IOBuf
+#include "butil/iobuf.h"                           // butil::IOBuf
 
 
 namespace brpc {
@@ -28,20 +28,20 @@ namespace policy {
 typedef google::protobuf::io::GzipOutputStream::Options GzipCompressOptions;
 
 // Compress serialized `msg' into `buf'.
-bool GzipCompress(const google::protobuf::Message& msg, base::IOBuf* buf);
-bool ZlibCompress(const google::protobuf::Message& msg, base::IOBuf* buf);
+bool GzipCompress(const google::protobuf::Message& msg, butil::IOBuf* buf);
+bool ZlibCompress(const google::protobuf::Message& msg, butil::IOBuf* buf);
 
 // Parse `msg' from decompressed `buf'.
-bool GzipDecompress(const base::IOBuf& buf, google::protobuf::Message* msg);
-bool ZlibDecompress(const base::IOBuf& buf, google::protobuf::Message* msg);
+bool GzipDecompress(const butil::IOBuf& buf, google::protobuf::Message* msg);
+bool ZlibDecompress(const butil::IOBuf& buf, google::protobuf::Message* msg);
 
 // Put compressed `in' into `out'.
-bool GzipCompress(const base::IOBuf& in, base::IOBuf* out,
+bool GzipCompress(const butil::IOBuf& in, butil::IOBuf* out,
                   const GzipCompressOptions*);
 
 // Put decompressed `in' into `out'.
-bool GzipDecompress(const base::IOBuf& in, base::IOBuf* out);
-bool ZlibDecompress(const base::IOBuf& in, base::IOBuf* out);
+bool GzipDecompress(const butil::IOBuf& in, butil::IOBuf* out);
+bool ZlibDecompress(const butil::IOBuf& in, butil::IOBuf* out);
 
 }  // namespace policy
 } // namespace brpc

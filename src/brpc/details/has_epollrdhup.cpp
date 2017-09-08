@@ -17,7 +17,7 @@
 #include <sys/epoll.h>                             // epoll_create
 #include <sys/types.h>                             // socketpair
 #include <sys/socket.h>                            // ^
-#include "base/fd_guard.h"                         // fd_guard
+#include "butil/fd_guard.h"                         // fd_guard
 #include "brpc/details/has_epollrdhup.h"
 
 #ifndef EPOLLRDHUP
@@ -28,11 +28,11 @@
 namespace brpc {
 
 static unsigned int check_epollrdhup() {
-    base::fd_guard epfd(epoll_create(16));
+    butil::fd_guard epfd(epoll_create(16));
     if (epfd < 0) {
         return 0;
     }
-    base::fd_guard fds[2];
+    butil::fd_guard fds[2];
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, (int*)fds) < 0) {
         return 0;
     }

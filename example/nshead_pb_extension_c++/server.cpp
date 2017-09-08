@@ -16,7 +16,7 @@
 
 #include <google/protobuf/descriptor.h>
 #include <gflags/gflags.h>
-#include <base/logging.h>
+#include <butil/logging.h>
 #include <brpc/server.h>
 #include <brpc/nshead_pb_service_adaptor.h>
 #include "echo.pb.h"

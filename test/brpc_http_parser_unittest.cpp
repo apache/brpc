@@ -5,8 +5,8 @@
 #include <gtest/gtest.h>
 #include <iostream>
 
-#include "base/time.h"
-#include "base/logging.h"
+#include "butil/time.h"
+#include "butil/logging.h"
 #include "brpc/details/http_parser.h"
 #include "brpc/builtin/common.h"  // AppendFileName
 
@@ -22,7 +22,7 @@ protected:
 
 TEST_F(HttpParserTest, init_perf) {
     const size_t loops = 10000000;
-    base::Timer timer;
+    butil::Timer timer;
     timer.start();
     for (size_t i = 0; i < loops; ++i) {
         http_parser parser;

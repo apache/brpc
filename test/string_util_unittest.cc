@@ -2,22 +2,22 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/strings/string_util.h"
+#include "butil/strings/string_util.h"
 
 #include <math.h>
 #include <stdarg.h>
 
 #include <algorithm>
 
-#include "base/basictypes.h"
-#include "base/strings/string16.h"
-#include "base/strings/utf_string_conversions.h"
+#include "butil/basictypes.h"
+#include "butil/strings/string16.h"
+#include "butil/strings/utf_string_conversions.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 using ::testing::ElementsAre;
 
-namespace base {
+namespace butil {
 
 static const struct trim_case {
   const wchar_t* input;
@@ -726,7 +726,7 @@ TEST(StringUtilTest, TokenizeStdString) {
 }
 
 TEST(StringUtilTest, TokenizeStringPiece) {
-  TokenizeTest<base::StringPiece>();
+  TokenizeTest<butil::StringPiece>();
 }
 
 // Test for JoinString
@@ -996,9 +996,9 @@ TEST(StringUtilTest, LcpyTest) {
   {
     char dst[10];
     wchar_t wdst[10];
-    EXPECT_EQ(7U, base::strlcpy(dst, "abcdefg", arraysize(dst)));
+    EXPECT_EQ(7U, butil::strlcpy(dst, "abcdefg", arraysize(dst)));
     EXPECT_EQ(0, memcmp(dst, "abcdefg", 8));
-    EXPECT_EQ(7U, base::wcslcpy(wdst, L"abcdefg", arraysize(wdst)));
+    EXPECT_EQ(7U, butil::wcslcpy(wdst, L"abcdefg", arraysize(wdst)));
     EXPECT_EQ(0, memcmp(wdst, L"abcdefg", sizeof(wchar_t) * 8));
   }
 
@@ -1007,10 +1007,10 @@ TEST(StringUtilTest, LcpyTest) {
   {
     char dst[2] = {1, 2};
     wchar_t wdst[2] = {1, 2};
-    EXPECT_EQ(7U, base::strlcpy(dst, "abcdefg", 0));
+    EXPECT_EQ(7U, butil::strlcpy(dst, "abcdefg", 0));
     EXPECT_EQ(1, dst[0]);
     EXPECT_EQ(2, dst[1]);
-    EXPECT_EQ(7U, base::wcslcpy(wdst, L"abcdefg", 0));
+    EXPECT_EQ(7U, butil::wcslcpy(wdst, L"abcdefg", 0));
     EXPECT_EQ(static_cast<wchar_t>(1), wdst[0]);
     EXPECT_EQ(static_cast<wchar_t>(2), wdst[1]);
   }
@@ -1019,9 +1019,9 @@ TEST(StringUtilTest, LcpyTest) {
   {
     char dst[8];
     wchar_t wdst[8];
-    EXPECT_EQ(7U, base::strlcpy(dst, "abcdefg", arraysize(dst)));
+    EXPECT_EQ(7U, butil::strlcpy(dst, "abcdefg", arraysize(dst)));
     EXPECT_EQ(0, memcmp(dst, "abcdefg", 8));
-    EXPECT_EQ(7U, base::wcslcpy(wdst, L"abcdefg", arraysize(wdst)));
+    EXPECT_EQ(7U, butil::wcslcpy(wdst, L"abcdefg", arraysize(wdst)));
     EXPECT_EQ(0, memcmp(wdst, L"abcdefg", sizeof(wchar_t) * 8));
   }
 
@@ -1029,9 +1029,9 @@ TEST(StringUtilTest, LcpyTest) {
   {
     char dst[7];
     wchar_t wdst[7];
-    EXPECT_EQ(7U, base::strlcpy(dst, "abcdefg", arraysize(dst)));
+    EXPECT_EQ(7U, butil::strlcpy(dst, "abcdefg", arraysize(dst)));
     EXPECT_EQ(0, memcmp(dst, "abcdef", 7));
-    EXPECT_EQ(7U, base::wcslcpy(wdst, L"abcdefg", arraysize(wdst)));
+    EXPECT_EQ(7U, butil::wcslcpy(wdst, L"abcdefg", arraysize(wdst)));
     EXPECT_EQ(0, memcmp(wdst, L"abcdef", sizeof(wchar_t) * 7));
   }
 
@@ -1039,9 +1039,9 @@ TEST(StringUtilTest, LcpyTest) {
   {
     char dst[3];
     wchar_t wdst[3];
-    EXPECT_EQ(7U, base::strlcpy(dst, "abcdefg", arraysize(dst)));
+    EXPECT_EQ(7U, butil::strlcpy(dst, "abcdefg", arraysize(dst)));
     EXPECT_EQ(0, memcmp(dst, "ab", 3));
-    EXPECT_EQ(7U, base::wcslcpy(wdst, L"abcdefg", arraysize(wdst)));
+    EXPECT_EQ(7U, butil::wcslcpy(wdst, L"abcdefg", arraysize(wdst)));
     EXPECT_EQ(0, memcmp(wdst, L"ab", sizeof(wchar_t) * 3));
   }
 }
@@ -1074,7 +1074,7 @@ TEST(StringUtilTest, WprintfFormatPortabilityTest) {
     { L"% 10ls", true }
   };
   for (size_t i = 0; i < ARRAYSIZE_UNSAFE(cases); ++i)
-    EXPECT_EQ(cases[i].portable, base::IsWprintfFormatPortable(cases[i].input));
+    EXPECT_EQ(cases[i].portable, butil::IsWprintfFormatPortable(cases[i].input));
 }
 
 TEST(StringUtilTest, RemoveChars) {
@@ -1190,4 +1190,4 @@ TEST_F(WriteIntoTest, WriteInto) {
   EXPECT_EQ(4u, live.size());
 }
 
-}  // namespace base
+}  // namespace butil

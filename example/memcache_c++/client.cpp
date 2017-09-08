@@ -16,8 +16,8 @@
 
 #include <gflags/gflags.h>
 #include <bthread/bthread.h>
-#include <base/logging.h>
-#include <base/string_printf.h>
+#include <butil/logging.h>
+#include <butil/string_printf.h>
 #include <brpc/channel.h>
 #include <brpc/memcache.h>
 
@@ -36,19 +36,19 @@ DEFINE_int32(batch, 1, "Pipelined Operations");
 
 bvar::LatencyRecorder g_latency_recorder("client");
 bvar::Adder<int> g_error_count("client_error_count");
-base::static_atomic<int> g_sender_count = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<int> g_sender_count = BASE_STATIC_ATOMIC_INIT(0);
 
 static void* sender(void* arg) {
     google::protobuf::RpcChannel* channel = 
         static_cast<google::protobuf::RpcChannel*>(arg);
-    const int base_index = g_sender_count.fetch_add(1, base::memory_order_relaxed);
+    const int base_index = g_sender_count.fetch_add(1, butil::memory_order_relaxed);
 
     std::string value;
     std::vector<std::pair<std::string, std::string> > kvs;
     kvs.resize(FLAGS_batch);
     for (int i = 0; i < FLAGS_batch; ++i) {
-        kvs[i].first = base::string_printf("%s%d", FLAGS_key.c_str(), base_index + i);
-        kvs[i].second = base::string_printf("%s%d", FLAGS_value.c_str(), base_index + i);
+        kvs[i].first = butil::string_printf("%s%d", FLAGS_key.c_str(), base_index + i);
+        kvs[i].second = butil::string_printf("%s%d", FLAGS_value.c_str(), base_index + i);
     }
     brpc::MemcacheRequest request;
     for (int i = 0; i < FLAGS_batch; ++i) {
@@ -120,8 +120,8 @@ int main(int argc, char* argv[]) {
     brpc::MemcacheResponse response;
     brpc::Controller cntl;
     for (int i = 0; i < FLAGS_batch * FLAGS_thread_num; ++i) {
-        if (!request.Set(base::string_printf("%s%d", FLAGS_key.c_str(), i),
-                         base::string_printf("%s%d", FLAGS_value.c_str(), i),
+        if (!request.Set(butil::string_printf("%s%d", FLAGS_key.c_str(), i),
+                         butil::string_printf("%s%d", FLAGS_value.c_str(), i),
                          0xdeadbeef + i, FLAGS_exptime, 0)) {
             LOG(ERROR) << "Fail to SET " << i << "th request";
             return -1;

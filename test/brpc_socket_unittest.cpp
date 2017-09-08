@@ -11,9 +11,9 @@
 #include <gperftools/profiler.h>
 #include <bthread/unstable.h>
 #include <bthread/task_control.h>
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/fd_utility.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/fd_utility.h"
 #include "brpc/socket.h"
 #include "brpc/errno.pb.h"
 #include "brpc/acceptor.h"
@@ -85,7 +85,7 @@ TEST_F(SocketTest, not_recycle_until_zero_nref) {
     int fds[2];
     ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
     brpc::SocketId id = 8888;
-    base::EndPoint dummy;
+    butil::EndPoint dummy;
     ASSERT_EQ(0, str2endpoint("192.168.1.26:8080", &dummy));
     brpc::SocketOptions options;
     options.fd = fds[1];
@@ -110,7 +110,7 @@ TEST_F(SocketTest, not_recycle_until_zero_nref) {
     ASSERT_EQ(-1, brpc::Socket::Address(id, &ptr));
 }
 
-base::atomic<int> winner_count(0);
+butil::atomic<int> winner_count(0);
 const int AUTH_ERR = -9;
 
 void* auth_fighter(void* arg) {
@@ -151,19 +151,19 @@ TEST_F(SocketTest, authentication) {
     ASSERT_TRUE(brpc::Socket::Address(s->id(), NULL));
 }
 
-static base::atomic<int> g_called_seq(1);
+static butil::atomic<int> g_called_seq(1);
 class MyMessage : public brpc::SocketMessage {
 public:
     MyMessage(const char* str, size_t len, int* called = NULL)
         : _str(str), _len(len), _called(called) {}
 private:
-    base::Status AppendAndDestroySelf(base::IOBuf* out_buf, brpc::Socket*) {
+    butil::Status AppendAndDestroySelf(butil::IOBuf* out_buf, brpc::Socket*) {
         out_buf->append(_str, _len);
         if (_called) {
-            *_called = g_called_seq.fetch_add(1, base::memory_order_relaxed);
+            *_called = g_called_seq.fetch_add(1, butil::memory_order_relaxed);
         }
         delete this;
-        return base::Status::OK();
+        return butil::Status::OK();
     };
     const char* _str;
     size_t _len;
@@ -172,19 +172,19 @@ private:
 
 class MyErrorMessage : public brpc::SocketMessage {
 public:
-    explicit MyErrorMessage(const base::Status& st) : _status(st) {}
+    explicit MyErrorMessage(const butil::Status& st) : _status(st) {}
 private:
-    base::Status AppendAndDestroySelf(base::IOBuf*, brpc::Socket*) {
+    butil::Status AppendAndDestroySelf(butil::IOBuf*, brpc::Socket*) {
         return _status;
     };
-    base::Status _status;
+    butil::Status _status;
 };
 
 TEST_F(SocketTest, single_threaded_write) {
     int fds[2];
     ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
     brpc::SocketId id = 8888;
-    base::EndPoint dummy;
+    butil::EndPoint dummy;
     ASSERT_EQ(0, str2endpoint("192.168.1.26:8080", &dummy));
     brpc::SocketOptions options;
     options.fd = fds[1];
@@ -208,7 +208,7 @@ TEST_F(SocketTest, single_threaded_write) {
                 ASSERT_EQ(0, s->Write(msg));
             } else if (i % 4 == 1) {
                 brpc::SocketMessagePtr<MyErrorMessage> msg(
-                    new MyErrorMessage(base::Status(EINVAL, "Invalid input")));
+                    new MyErrorMessage(butil::Status(EINVAL, "Invalid input")));
                 bthread_id_t wait_id;
                 WaitData data;
                 ASSERT_EQ(0, bthread_id_create2(&wait_id, &data, OnWaitIdReset));
@@ -243,7 +243,7 @@ TEST_F(SocketTest, single_threaded_write) {
                     ASSERT_LT(seq[j-1], seq[j]) << "j=" << j;
                 }
             } else {
-                base::IOBuf src;
+                butil::IOBuf src;
                 src.append(buf);
                 ASSERT_EQ(len, src.length());
                 ASSERT_EQ(0, s->Write(&src));
@@ -262,7 +262,7 @@ TEST_F(SocketTest, single_threaded_write) {
 void EchoProcessHuluRequest(brpc::InputMessageBase* msg_base) {
     brpc::DestroyingPtr<brpc::policy::MostCommonMessage> msg(
         static_cast<brpc::policy::MostCommonMessage*>(msg_base));
-    base::IOBuf buf;
+    butil::IOBuf buf;
     buf.append(msg->meta);
     buf.append(msg->payload);
     ASSERT_EQ(0, msg->socket()->Write(&buf));
@@ -301,10 +301,10 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
           EchoProcessHuluRequest, NULL, NULL, "dummy_hulu" }
     };
 
-    base::EndPoint point(base::IP_ANY, 7878);
+    butil::EndPoint point(butil::IP_ANY, 7878);
     int listening_fd = tcp_listen(point, false);
     ASSERT_TRUE(listening_fd > 0);
-    base::make_non_blocking(listening_fd);
+    butil::make_non_blocking(listening_fd);
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
     ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL));
 
@@ -341,7 +341,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
                     new MyMessage(buf, 12 + meta_len + len, &called));
                 ASSERT_EQ(0, s->Write(msg));
             } else {
-                base::IOBuf src;
+                butil::IOBuf src;
                 src.append(buf, 12 + meta_len + len);
                 ASSERT_EQ(12 + meta_len + len, src.length());
                 ASSERT_EQ(0, s->Write(&src));
@@ -357,10 +357,10 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
                 my_connect->MakeConnectDone();
                 ASSERT_LT(0, called); // serialized
             }
-            int64_t start_time = base::gettimeofday_us();
+            int64_t start_time = butil::gettimeofday_us();
             while (s->fd() < 0) {
                 bthread_usleep(1000);
-                ASSERT_LT(base::gettimeofday_us(), start_time + 1000000L) << "Too long!";
+                ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L) << "Too long!";
             }
             ASSERT_EQ(0, bthread_fd_wait(s->fd(), EPOLLIN));
             char dest[sizeof(buf)];
@@ -401,7 +401,7 @@ void* FailedWriter(void* void_arg) {
         EXPECT_EQ(0, bthread_id_create(&id, NULL, NULL));
         snprintf(buf, sizeof(buf), "%0" BAIDU_SYMBOLSTR(NUMBER_WIDTH) "lu",
                  i + arg->offset);
-        base::IOBuf src;
+        butil::IOBuf src;
         src.append(buf);
         brpc::Socket::WriteOptions wopt;
         wopt.id_wait = id;
@@ -416,7 +416,7 @@ void* FailedWriter(void* void_arg) {
 
 TEST_F(SocketTest, fail_to_connect) {
     const size_t REP = 10;
-    base::EndPoint point(base::IP_ANY, 7563/*not listened*/);
+    butil::EndPoint point(butil::IP_ANY, 7563/*not listened*/);
     brpc::SocketId id = 8888;
     brpc::SocketOptions options;
     options.remote_side = point;
@@ -445,10 +445,10 @@ TEST_F(SocketTest, fail_to_connect) {
         ASSERT_EQ(-1, s->fd());
     }
     // KeepWrite is possibly still running.
-    int64_t start_time = base::gettimeofday_us();
+    int64_t start_time = butil::gettimeofday_us();
     while (global_sock != NULL) {
         bthread_usleep(1000);
-        ASSERT_LT(base::gettimeofday_us(), start_time + 1000000L) << "Too long!";
+        ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L) << "Too long!";
     }
     ASSERT_EQ(-1, brpc::Socket::Status(id));
     // The id is invalid.
@@ -458,7 +458,7 @@ TEST_F(SocketTest, fail_to_connect) {
 
 TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
     brpc::SocketId id = 8888;
-    base::EndPoint point(base::IP_ANY, 7584/*not listened*/);
+    butil::EndPoint point(butil::IP_ANY, 7584/*not listened*/);
     brpc::SocketOptions options;
     options.remote_side = point;
     options.user = new CheckRecycle;
@@ -483,7 +483,7 @@ TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
         // HULU uses host byte order directly...
         *(uint32_t*)(buf + 4) = len + meta_len;
         *(uint32_t*)(buf + 8) = meta_len;
-        base::IOBuf src;
+        butil::IOBuf src;
         src.append(buf, 12 + meta_len + len);
         ASSERT_EQ(12 + meta_len + len, src.length());
 #ifdef CONNECT_IN_KEEPWRITE
@@ -496,7 +496,7 @@ TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
         ASSERT_EQ(0, bthread_id_join(wait_id));
         ASSERT_EQ(wait_id.value, data.id.value);
         ASSERT_EQ(ECONNREFUSED, data.error_code);
-        ASSERT_TRUE(base::StringPiece(data.error_text).starts_with(
+        ASSERT_TRUE(butil::StringPiece(data.error_text).starts_with(
                         "Fail to make SocketId="));
 #else
         ASSERT_EQ(-1, s->Write(&src));
@@ -509,10 +509,10 @@ TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
     // is NULL(set in CheckRecycle::BeforeRecycle). Notice that you should
     // not spin until Socket::Status(id) becomes -1 and assert global_sock
     // to be NULL because invalidating id happens before calling BeforeRecycle.
-    const int64_t start_time = base::gettimeofday_us();
+    const int64_t start_time = butil::gettimeofday_us();
     while (global_sock != NULL) {
         bthread_usleep(1000);
-        ASSERT_LT(base::gettimeofday_us(), start_time + 1000000L);
+        ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L);
     }
     ASSERT_EQ(-1, brpc::Socket::Status(id));
 }
@@ -522,7 +522,7 @@ TEST_F(SocketTest, health_check) {
     brpc::Acceptor* messenger = new brpc::Acceptor;
 
     brpc::SocketId id = 8888;
-    base::EndPoint point(base::IP_ANY, 7878);
+    butil::EndPoint point(butil::IP_ANY, 7878);
     const int kCheckInteval = 1;
     brpc::SocketOptions options;
     options.remote_side = point;
@@ -551,10 +551,10 @@ TEST_F(SocketTest, health_check) {
     // HULU uses host byte order directly...
     *(uint32_t*)(buf + 4) = len + meta_len;
     *(uint32_t*)(buf + 8) = meta_len;
-    const bool use_my_message = (base::fast_rand_less_than(2) == 0);
+    const bool use_my_message = (butil::fast_rand_less_than(2) == 0);
     brpc::SocketMessagePtr<MyMessage> msg;
     int appended_msg = 0;
-    base::IOBuf src;
+    butil::IOBuf src;
     if (use_my_message) {
         LOG(INFO) << "Use MyMessage";
         msg.reset(new MyMessage(buf, 12 + meta_len + len, &appended_msg));
@@ -576,7 +576,7 @@ TEST_F(SocketTest, health_check) {
     ASSERT_EQ(0, bthread_id_join(wait_id));
     ASSERT_EQ(wait_id.value, data.id.value);
     ASSERT_EQ(ECONNREFUSED, data.error_code);
-    ASSERT_TRUE(base::StringPiece(data.error_text).starts_with(
+    ASSERT_TRUE(butil::StringPiece(data.error_text).starts_with(
                     "Fail to make SocketId="));
     if (use_my_message) {
         ASSERT_TRUE(appended_msg);
@@ -603,15 +603,15 @@ TEST_F(SocketTest, health_check) {
 
     int listening_fd = tcp_listen(point, false);
     ASSERT_TRUE(listening_fd > 0);
-    base::make_non_blocking(listening_fd);
+    butil::make_non_blocking(listening_fd);
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
     ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL));
 
-    int64_t start_time = base::gettimeofday_us();
+    int64_t start_time = butil::gettimeofday_us();
     nref = -1;
     while (brpc::Socket::Status(id, &nref) != 0) {
         bthread_usleep(1000);
-        ASSERT_LT(base::gettimeofday_us(),
+        ASSERT_LT(butil::gettimeofday_us(),
                   start_time + kCheckInteval * 1000000L + 100000L/*100ms*/);
     }
     //ASSERT_EQ(2, nref);
@@ -628,10 +628,10 @@ TEST_F(SocketTest, health_check) {
     // SetFailed again, should reconnect and succeed soon.
     ASSERT_EQ(0, s->SetFailed());
     ASSERT_EQ(fd, s->fd());
-    start_time = base::gettimeofday_us();
+    start_time = butil::gettimeofday_us();
     while (brpc::Socket::Status(id) != 0) {
         bthread_usleep(1000);
-        ASSERT_LT(base::gettimeofday_us(), start_time + 1000000L);
+        ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L);
     }
     ASSERT_TRUE(global_sock);
 
@@ -652,10 +652,10 @@ TEST_F(SocketTest, health_check) {
 
     ASSERT_EQ(0, brpc::Socket::SetFailed(id));
     // HealthCheckThread is possibly still addressing the Socket.
-    start_time = base::gettimeofday_us();
+    start_time = butil::gettimeofday_us();
     while (global_sock != NULL) {
         bthread_usleep(1000);
-        ASSERT_LT(base::gettimeofday_us(), start_time + 1000000L);
+        ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L);
     }
     ASSERT_EQ(-1, brpc::Socket::Status(id));
     // The id is invalid.
@@ -674,7 +674,7 @@ void* Writer(void* void_arg) {
     for (size_t i = 0; i < arg->times; ++i) {
         snprintf(buf, sizeof(buf), "%0" BAIDU_SYMBOLSTR(NUMBER_WIDTH) "lu",
                  i + arg->offset);
-        base::IOBuf src;
+        butil::IOBuf src;
         src.append(buf);
         if (sock->Write(&src) != 0) {
             if (errno == brpc::EOVERCROWDED) {
@@ -703,7 +703,7 @@ TEST_F(SocketTest, multi_threaded_write) {
         result.reserve(ARRAY_SIZE(th) * REP);
 
         brpc::SocketId id = 8888;
-        base::EndPoint dummy;
+        butil::EndPoint dummy;
         ASSERT_EQ(0, str2endpoint("192.168.1.26:8080", &dummy));
         brpc::SocketOptions options;
         options.fd = fds[1];
@@ -718,7 +718,7 @@ TEST_F(SocketTest, multi_threaded_write) {
         ASSERT_EQ(fds[1], s->fd());
         ASSERT_EQ(dummy, s->remote_side());
         ASSERT_EQ(id, s->id());
-        base::make_non_blocking(fds[0]);
+        butil::make_non_blocking(fds[0]);
 
         for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
             args[i].times = REP;
@@ -732,8 +732,8 @@ TEST_F(SocketTest, multi_threaded_write) {
             bthread_usleep(100000);
         }
         
-        base::IOPortal dest;
-        const int64_t start_time = base::gettimeofday_us();
+        butil::IOPortal dest;
+        const int64_t start_time = butil::gettimeofday_us();
         for (;;) {
             ssize_t nr = dest.append_from_file_descriptor(fds[0], 32768);
             if (nr < 0) {
@@ -744,7 +744,7 @@ TEST_F(SocketTest, multi_threaded_write) {
                     ASSERT_EQ(EAGAIN, errno) << berror();
                 }
                 bthread_usleep(1000);
-                if (base::gettimeofday_us() >= start_time + 2000000L) {
+                if (butil::gettimeofday_us() >= start_time + 2000000L) {
                     LOG(FATAL) << "Wait too long!";
                     break;
                 }
@@ -792,11 +792,11 @@ void* FastWriter(void* void_arg) {
         return NULL;
     }
     char buf[] = "hello reader side!";
-    int64_t begin_ts = base::cpuwide_time_us();
+    int64_t begin_ts = butil::cpuwide_time_us();
     int64_t nretry = 0;
     size_t c = 0;
     for (; c < arg->times; ++c) {
-        base::IOBuf src;
+        butil::IOBuf src;
         src.append(buf, 16);
         if (sock->Write(&src) != 0) {
             if (errno == brpc::EOVERCROWDED) {
@@ -811,7 +811,7 @@ void* FastWriter(void* void_arg) {
             break;
         }
     }
-    int64_t end_ts = base::cpuwide_time_us();
+    int64_t end_ts = butil::cpuwide_time_us();
     int64_t total_time = end_ts - begin_ts;
     printf("total=%ld count=%ld nretry=%ld\n",
            (long)total_time * 1000/ c, (long)c, (long)nretry);
@@ -849,7 +849,7 @@ TEST_F(SocketTest, multi_threaded_write_perf) {
     WriterArg args[ARRAY_SIZE(th)];
 
     brpc::SocketId id = 8888;
-    base::EndPoint dummy;
+    butil::EndPoint dummy;
     ASSERT_EQ(0, str2endpoint("192.168.1.26:8080", &dummy));
     brpc::SocketOptions options;
     options.fd = fds[1];
@@ -877,7 +877,7 @@ TEST_F(SocketTest, multi_threaded_write_perf) {
     ReaderArg reader_arg = { fds[0], 0 };
     pthread_create(&rth, NULL, reader, &reader_arg);
 
-    base::Timer tm;
+    butil::Timer tm;
     ProfilerStart("write.prof");
     const size_t old_nread = reader_arg.nread;
     tm.start();

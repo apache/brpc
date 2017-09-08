@@ -18,13 +18,13 @@
 #ifndef  BVAR_DETAIL_SAMPLER_H
 #define  BVAR_DETAIL_SAMPLER_H
 
-#include "base/containers/linked_list.h"// LinkNode
-#include "base/scoped_lock.h"           // BAIDU_SCOPED_LOCK
-#include "base/logging.h"               // LOG()
-#include "base/containers/bounded_queue.h"// BoundedQueue
-#include "base/type_traits.h"           // is_same
-#include "base/time.h"                  // gettimeofday_us
-#include "base/class_name.h"
+#include "butil/containers/linked_list.h"// LinkNode
+#include "butil/scoped_lock.h"           // BAIDU_SCOPED_LOCK
+#include "butil/logging.h"               // LOG()
+#include "butil/containers/bounded_queue.h"// BoundedQueue
+#include "butil/type_traits.h"           // is_same
+#include "butil/time.h"                  // gettimeofday_us
+#include "butil/class_name.h"
 
 namespace bvar {
 namespace detail {
@@ -39,7 +39,7 @@ struct Sample {
 };
 
 // The base class for all samplers whose take_sample() are called periodically.
-class Sampler : public base::LinkNode<Sampler> {
+class Sampler : public butil::LinkNode<Sampler> {
 public:
     Sampler();
         
@@ -61,7 +61,7 @@ protected:
 friend class SamplerCollector;
     bool _used;
     // Sync destroy() and take_sample().
-    base::Mutex _mutex;
+    butil::Mutex _mutex;
 };
 
 // Representing a non-existing operator so that we can test
@@ -108,8 +108,8 @@ public:
             if (NULL == mem) {
                 return;
             }
-            base::BoundedQueue<Sample<T> > new_q(
-                mem, memsize, base::OWNS_STORAGE);
+            butil::BoundedQueue<Sample<T> > new_q(
+                mem, memsize, butil::OWNS_STORAGE);
             Sample<T> tmp;
             while (_q.pop(&tmp)) {
                 new_q.push(tmp);
@@ -118,7 +118,7 @@ public:
         }
 
         Sample<T> latest;
-        if (base::is_same<InvOp, VoidOp>::value) {
+        if (butil::is_same<InvOp, VoidOp>::value) {
             // The operator can't be inversed.
             // We reset the reducer and save the result as a sample.
             // Suming up samples gives the result within a window.
@@ -133,7 +133,7 @@ public:
             // get_value() of _reducer can still be called.
             latest.data = _reducer->get_value();
         }
-        latest.time_us = base::gettimeofday_us();
+        latest.time_us = butil::gettimeofday_us();
         _q.elim_push(latest);
     }
 
@@ -153,7 +153,7 @@ public:
         }
         Sample<T>* latest = _q.bottom();
         DCHECK(latest != oldest);
-        if (base::is_same<InvOp, VoidOp>::value) {
+        if (butil::is_same<InvOp, VoidOp>::value) {
             // No inverse op. Sum up all samples within the window.
             result->data = latest->data;
             for (int i = 1; true; ++i) {
@@ -211,7 +211,7 @@ public:
 private:
     R* _reducer;
     time_t _window_size;
-    base::BoundedQueue<Sample<T> > _q;
+    butil::BoundedQueue<Sample<T> > _q;
 };
 
 }  // namespace detail

@@ -15,7 +15,7 @@
 // A server to receive EchoRequest and send back EchoResponse.
 
 #include <gflags/gflags.h>
-#include <base/logging.h>
+#include <butil/logging.h>
 #include <brpc/server.h>
 #include "echo.pb.h"
 #include <brpc/stream.h>
@@ -30,7 +30,7 @@ DEFINE_int32(logoff_ms, 2000, "Maximum duration of server's LOGOFF state "
 class StreamReceiver : public brpc::StreamInputHandler {
 public:
     virtual int on_received_messages(brpc::StreamId id, 
-                                     base::IOBuf *const messages[], 
+                                     butil::IOBuf *const messages[], 
                                      size_t size) {
         LOG(INFO) << "Received from Stream=" << id << ": " << noflush;
         for (size_t i = 0; i < size; ++i) {

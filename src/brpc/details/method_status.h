@@ -17,7 +17,7 @@
 #ifndef  BRPC_METHOD_STATUS_H
 #define  BRPC_METHOD_STATUS_H
 
-#include "base/macros.h"                  // DISALLOW_COPY_AND_ASSIGN
+#include "butil/macros.h"                  // DISALLOW_COPY_AND_ASSIGN
 #include "bvar/bvar.h"                    // vars
 #include "brpc/describable.h"
 
@@ -45,7 +45,7 @@ public:
 
     // Expose internal vars.
     // Return 0 on success, -1 otherwise.
-    int Expose(const base::StringPiece& prefix);
+    int Expose(const butil::StringPiece& prefix);
 
     // Describe internal vars, used by /status
     void Describe(std::ostream &os, const DescribeOptions&) const;
@@ -62,7 +62,7 @@ friend class ScopedMethodStatus;
     bvar::Adder<int64_t>         _nerror;
     bvar::LatencyRecorder        _latency_rec;
     bvar::PassiveStatus<int>     _nprocessing_bvar;
-    base::atomic<int> BAIDU_CACHELINE_ALIGNMENT _nprocessing;
+    butil::atomic<int> BAIDU_CACHELINE_ALIGNMENT _nprocessing;
 };
 
 // If release() is not called before destruction of this object,
@@ -88,7 +88,7 @@ private:
 };
 
 inline bool MethodStatus::OnRequested() {
-    const int last_nproc = _nprocessing.fetch_add(1, base::memory_order_relaxed);
+    const int last_nproc = _nprocessing.fetch_add(1, butil::memory_order_relaxed);
     // _max_concurrency may be changed by user at any time.
     const int saved_max_concurrency = _max_concurrency;
     return (saved_max_concurrency <= 0 || last_nproc < saved_max_concurrency);
@@ -97,7 +97,7 @@ inline bool MethodStatus::OnRequested() {
 inline void MethodStatus::OnResponded(bool success, int64_t latency) {
     if (success) {
         _latency_rec << latency;
-        _nprocessing.fetch_sub(1, base::memory_order_relaxed);
+        _nprocessing.fetch_sub(1, butil::memory_order_relaxed);
     } else {
         OnError();
     }
@@ -105,7 +105,7 @@ inline void MethodStatus::OnResponded(bool success, int64_t latency) {
 
 inline void MethodStatus::OnError() {
     _nerror << 1;
-    _nprocessing.fetch_sub(1, base::memory_order_relaxed);
+    _nprocessing.fetch_sub(1, butil::memory_order_relaxed);
 }
 
 } // namespace brpc

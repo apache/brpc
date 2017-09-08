@@ -15,8 +15,8 @@
 // A client to send 2 requests to server and accept the first returned response.
 
 #include <gflags/gflags.h>
-#include <base/logging.h>
-#include <base/time.h>
+#include <butil/logging.h>
+#include <butil/time.h>
 #include <brpc/channel.h>
 #include "echo.pb.h"
 
@@ -85,7 +85,7 @@ int main(int argc, char* argv[]) {
         CancelRPC done1(id2);
         CancelRPC done2(id1);
         
-        base::Timer tm;
+        butil::Timer tm;
         tm.start();
         // Send 2 async calls and join them. They will cancel each other in
         // their done which is run before the RPC being Join()-ed. Canceling

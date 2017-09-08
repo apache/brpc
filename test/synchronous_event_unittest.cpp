@@ -4,7 +4,7 @@
 // Date: Sat Aug 30 17:13:19 CST 2014
 
 #include <gtest/gtest.h>
-#include "base/synchronous_event.h"
+#include "butil/synchronous_event.h"
 
 namespace {
 class SynchronousEventTest : public ::testing::Test{
@@ -21,7 +21,7 @@ protected:
 
 struct Foo {};
 
-typedef base::SynchronousEvent<int, int*> FooEvent;
+typedef butil::SynchronousEvent<int, int*> FooEvent;
 
 FooEvent foo_event;
 std::vector<std::pair<int, int> > result;

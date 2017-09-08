@@ -20,9 +20,9 @@
 #include <vector>                                      // std::vector
 #include <deque>                                       // std::deque
 #include <map>                                         // std::map
-#include "base/containers/flat_map.h"                  // FlatMap
-#include "base/containers/doubly_buffered_data.h"      // DoublyBufferedData
-#include "base/containers/bounded_queue.h"             // BoundedQueue
+#include "butil/containers/flat_map.h"                  // FlatMap
+#include "butil/containers/doubly_buffered_data.h"      // DoublyBufferedData
+#include "butil/containers/bounded_queue.h"             // BoundedQueue
 #include "brpc/load_balancer.h"
 #include "brpc/controller.h"
 
@@ -93,7 +93,7 @@ private:
     private:
         int64_t _weight;
         int64_t _base_weight;
-        base::Mutex _mutex;
+        butil::Mutex _mutex;
         int64_t _begin_time_sum;
         int _begin_time_count;
         int64_t _old_diff_sum;
@@ -101,21 +101,21 @@ private:
         int64_t _old_weight;
         int64_t _avg_latency;
         int64_t _dev;
-        base::BoundedQueue<TimeInfo> _time_q;
+        butil::BoundedQueue<TimeInfo> _time_q;
         // content of _time_q
         TimeInfo _time_q_items[RECV_QUEUE_SIZE];
     };
 
     struct ServerInfo {
         SocketId server_id;
-        base::atomic<int64_t>* left;
+        butil::atomic<int64_t>* left;
         Weight* weight;
     };
     
     class Servers {
     public:
         std::vector<ServerInfo> weight_tree;
-        base::FlatMap<SocketId, size_t> server_map;
+        butil::FlatMap<SocketId, size_t> server_map;
 
         Servers() {
             CHECK_EQ(0, server_map.init(1024, 70));
@@ -138,14 +138,14 @@ private:
     static bool RemoveAll(Servers& bg, const Servers& fg);
 
     // Add a entry to _left_weights.
-    base::atomic<int64_t>* PushLeft() {
+    butil::atomic<int64_t>* PushLeft() {
         _left_weights.push_back(0);
-        return (base::atomic<int64_t>*)&_left_weights.back();
+        return (butil::atomic<int64_t>*)&_left_weights.back();
     }
     void PopLeft() { _left_weights.pop_back(); }
 
-    base::atomic<int64_t> _total;
-    base::DoublyBufferedData<Servers> _db_servers;
+    butil::atomic<int64_t> _total;
+    butil::DoublyBufferedData<Servers> _db_servers;
     std::deque<int64_t> _left_weights;
     ServerId2SocketIdMapper _id_mapper;
 };
@@ -156,7 +156,7 @@ inline void LocalityAwareLoadBalancer::Servers::UpdateParentWeights(
         const size_t parent_index = (index - 1) >> 1;
         if ((parent_index << 1) + 1 == index) {  // left child
             weight_tree[parent_index].left->fetch_add(
-                diff, base::memory_order_relaxed);
+                diff, butil::memory_order_relaxed);
         }
         index = parent_index;
     }

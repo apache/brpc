@@ -2,15 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/synchronization/lock.h"
+#include "butil/synchronization/lock.h"
 
 #include <stdlib.h>
 
-#include "base/compiler_specific.h"
-#include "base/threading/platform_thread.h"
+#include "butil/compiler_specific.h"
+#include "butil/threading/platform_thread.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 // Basic test to make sure that Acquire()/Release()/Try() don't crash ----------
 
@@ -213,4 +213,4 @@ TEST(LockTest, MutexFourThreads) {
   EXPECT_EQ(4 * 40, value);
 }
 
-}  // namespace base
+}  // namespace butil

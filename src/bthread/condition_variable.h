@@ -19,7 +19,7 @@
 #ifndef  BTHREAD_CONDITION_VARIABLE_H
 #define  BTHREAD_CONDITION_VARIABLE_H
 
-#include "base/time.h"
+#include "butil/time.h"
 #include "bthread/mutex.h"
 
 namespace bthread {
@@ -50,12 +50,12 @@ public:
     // rather than std::timeout
     int wait_for(std::unique_lock<bthread::Mutex>& lock,
                  long timeout_us) {
-        return wait_until(lock, base::microseconds_from_now(timeout_us));
+        return wait_until(lock, butil::microseconds_from_now(timeout_us));
     }
 
     int wait_for(std::unique_lock<bthread_mutex_t>& lock,
                  long timeout_us) {
-        return wait_until(lock, base::microseconds_from_now(timeout_us));
+        return wait_until(lock, butil::microseconds_from_now(timeout_us));
     }
 
     int wait_until(std::unique_lock<bthread::Mutex>& lock,

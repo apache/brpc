@@ -20,12 +20,12 @@
 #include <sys/resource.h>                  // getrusage
 #include <dirent.h>                        // dirent
 #include <iomanip>                         // setw
-#include "base/time.h"
-#include "base/memory/singleton_on_pthread_once.h"
-#include "base/scoped_lock.h"
-#include "base/files/scoped_file.h"
-#include "base/files/file_enumerator.h"
-#include "base/file_util.h"
+#include "butil/time.h"
+#include "butil/memory/singleton_on_pthread_once.h"
+#include "butil/scoped_lock.h"
+#include "butil/files/scoped_file.h"
+#include "butil/files/file_enumerator.h"
+#include "butil/file_util.h"
 #include "bvar/passive_status.h"
 
 namespace bvar {
@@ -64,7 +64,7 @@ struct ProcStat {
 // Read status from /proc/self/stat. Information from `man proc' is out of date,
 // see http://man7.org/linux/man-pages/man5/proc.5.html
 static bool read_proc_status(ProcStat &stat) {
-    base::ScopedFILE fp("/proc/self/stat", "r");
+    butil::ScopedFILE fp("/proc/self/stat", "r");
     if (NULL == fp) {
         PLOG_ONCE(WARNING) << "Fail to open /proc/self/stat";
         return false;
@@ -105,8 +105,8 @@ public:
     // and 64-bit numbers.
     template <typename ReadFn>
     static const T& get_value(const ReadFn& fn) {
-        CachedReader* p = base::get_leaky_singleton<CachedReader>();
-        const int64_t now = base::gettimeofday_us();
+        CachedReader* p = butil::get_leaky_singleton<CachedReader>();
+        const int64_t now = butil::gettimeofday_us();
         if (now > p->_mtime_us + CACHED_INTERVAL_US) {
             pthread_mutex_lock(&p->_mutex);
             if (now > p->_mtime_us + CACHED_INTERVAL_US) {
@@ -169,7 +169,7 @@ struct ProcMemory {
 };
 
 static bool read_proc_memory(ProcMemory &m) {
-    base::ScopedFILE fp("/proc/self/statm", "r");
+    butil::ScopedFILE fp("/proc/self/statm", "r");
     if (NULL == fp) {
         PLOG_ONCE(WARNING) << "Fail to open /proc/self/statm";
         return false;
@@ -213,7 +213,7 @@ struct LoadAverage {
 };
 
 static bool read_load_average(LoadAverage &m) {
-    base::ScopedFILE fp("/proc/loadavg", "r");
+    butil::ScopedFILE fp("/proc/loadavg", "r");
     if (NULL == fp) {
         PLOG_ONCE(WARNING) << "Fail to open /proc/loadavg";
         return false;
@@ -249,13 +249,13 @@ public:
 // ==================================================
 
 static int get_fd_count(int limit) {
-    base::FileEnumerator fd_enum(base::FilePath("/proc/self/fd"),
+    butil::FileEnumerator fd_enum(butil::FilePath("/proc/self/fd"),
                                  false/*non recursive*/,
-                                 base::FileEnumerator::FILES);
+                                 butil::FileEnumerator::FILES);
     int count = 0;
     // Have to limit the scaning which consumes a lot of CPU when #fd
     // are huge (100k+)
-    for (base::FilePath name = fd_enum.Next();
+    for (butil::FilePath name = fd_enum.Next();
          !name.empty() && count <= limit;
          name = fd_enum.Next(), ++count) {}
     // FileEnumerator already filtered . and .., due to its implementation,
@@ -266,11 +266,11 @@ static int get_fd_count(int limit) {
 extern PassiveStatus<int> g_fd_num;
 
 const int MAX_FD_SCAN_COUNT = 10003;
-static base::static_atomic<bool> s_ever_reached_fd_scan_limit = BASE_STATIC_ATOMIC_INIT(false);
+static butil::static_atomic<bool> s_ever_reached_fd_scan_limit = BASE_STATIC_ATOMIC_INIT(false);
 class FdReader {
 public:
     bool operator()(int* stat) const {
-        if (s_ever_reached_fd_scan_limit.load(base::memory_order_relaxed)) {
+        if (s_ever_reached_fd_scan_limit.load(butil::memory_order_relaxed)) {
             // Never update the count again.
             return false;
         }
@@ -280,7 +280,7 @@ public:
         }
         if (count == MAX_FD_SCAN_COUNT - 2 
                 && s_ever_reached_fd_scan_limit.exchange(
-                        true, base::memory_order_relaxed) == false) {
+                        true, butil::memory_order_relaxed) == false) {
             // Rename the bvar to notify user.
             g_fd_num.hide();
             g_fd_num.expose("process_fd_num_too_many");
@@ -322,7 +322,7 @@ struct ProcIO {
 };
 
 static bool read_proc_io(ProcIO* s) {
-    base::ScopedFILE fp("/proc/self/io", "r");
+    butil::ScopedFILE fp("/proc/self/io", "r");
     if (NULL == fp) {
         PLOG_ONCE(WARNING) << "Fail to open /proc/self/io";
         return false;
@@ -413,7 +413,7 @@ struct DiskStat {
 };
 
 static bool read_disk_stat(DiskStat* s) {
-    base::ScopedFILE fp("/proc/diskstats", "r");
+    butil::ScopedFILE fp("/proc/diskstats", "r");
     if (NULL == fp) {
         PLOG_ONCE(WARNING) << "Fail to open /proc/diskstats";
         return false;
@@ -463,7 +463,7 @@ public:
 static std::string read_first_line(const char* filepath) {
     char * line = NULL;
     size_t len = 0;
-    base::ScopedFILE fp(filepath, "r");
+    butil::ScopedFILE fp(filepath, "r");
     if (fp == NULL) {
         return "";
     }
@@ -487,7 +487,7 @@ struct ReadProcSelfCmdline {
     ReadProcSelfCmdline() : content(read_first_line("/proc/self/cmdline")) {}
 };
 static void get_cmdline(std::ostream& os, void*) {
-    os << base::get_leaky_singleton<ReadProcSelfCmdline>()->content;
+    os << butil::get_leaky_singleton<ReadProcSelfCmdline>()->content;
 }
 
 struct ReadProcVersion {
@@ -495,15 +495,15 @@ struct ReadProcVersion {
     ReadProcVersion() : content(read_first_line("/proc/version")) {}
 };
 static void get_kernel_version(std::ostream& os, void*) {
-    os << base::get_leaky_singleton<ReadProcVersion>()->content;
+    os << butil::get_leaky_singleton<ReadProcVersion>()->content;
 }
 
 // ======================================
 
-static int64_t g_starting_time = base::gettimeofday_us();
+static int64_t g_starting_time = butil::gettimeofday_us();
 
 static timeval get_uptime(void*) {
-    int64_t uptime_us = base::gettimeofday_us() - g_starting_time;
+    int64_t uptime_us = butil::gettimeofday_us() - g_starting_time;
     timeval tm;
     tm.tv_sec = uptime_us / 1000000L;
     tm.tv_usec = uptime_us - tm.tv_sec * 1000000L;
@@ -635,9 +635,9 @@ inline std::ostream& operator<<(std::ostream& os, const TimePercent& tp) {
 }
 
 static TimePercent get_cputime_percent(void*) {
-    TimePercent tp = { base::timeval_to_microseconds(g_ru_stime.get_value()) +
-                       base::timeval_to_microseconds(g_ru_utime.get_value()),
-                       base::timeval_to_microseconds(g_uptime.get_value()) };
+    TimePercent tp = { butil::timeval_to_microseconds(g_ru_stime.get_value()) +
+                       butil::timeval_to_microseconds(g_ru_utime.get_value()),
+                       butil::timeval_to_microseconds(g_uptime.get_value()) };
     return tp;
 }
 PassiveStatus<TimePercent> g_cputime_percent(get_cputime_percent, NULL);
@@ -645,8 +645,8 @@ Window<PassiveStatus<TimePercent>, SERIES_IN_SECOND> g_cputime_percent_second(
     "process_cpu_usage", &g_cputime_percent, FLAGS_bvar_dump_interval);
 
 static TimePercent get_stime_percent(void*) {
-    TimePercent tp = { base::timeval_to_microseconds(g_ru_stime.get_value()),
-                       base::timeval_to_microseconds(g_uptime.get_value()) };
+    TimePercent tp = { butil::timeval_to_microseconds(g_ru_stime.get_value()),
+                       butil::timeval_to_microseconds(g_uptime.get_value()) };
     return tp;
 }
 PassiveStatus<TimePercent> g_stime_percent(get_stime_percent, NULL);
@@ -654,8 +654,8 @@ Window<PassiveStatus<TimePercent>, SERIES_IN_SECOND> g_stime_percent_second(
     "process_cpu_usage_system", &g_stime_percent, FLAGS_bvar_dump_interval);
 
 static TimePercent get_utime_percent(void*) {
-    TimePercent tp = { base::timeval_to_microseconds(g_ru_utime.get_value()),
-                       base::timeval_to_microseconds(g_uptime.get_value()) };
+    TimePercent tp = { butil::timeval_to_microseconds(g_ru_utime.get_value()),
+                       butil::timeval_to_microseconds(g_uptime.get_value()) };
     return tp;
 }
 PassiveStatus<TimePercent> g_utime_percent(get_utime_percent, NULL);
@@ -740,8 +740,8 @@ void get_gcc_version(std::ostream& os, void*) {
 PassiveStatus<std::string> g_gcc_version("gcc_version", get_gcc_version, NULL);
 
 void get_work_dir(std::ostream& os, void*) {
-    base::FilePath path;
-    const bool rc = base::GetCurrentDirectory(&path);
+    butil::FilePath path;
+    const bool rc = butil::GetCurrentDirectory(&path);
     LOG_IF(WARNING, !rc) << "Fail to GetCurrentDirectory";
     os << path.value();
 }

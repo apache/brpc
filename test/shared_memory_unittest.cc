@@ -2,21 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/basictypes.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/memory/shared_memory.h"
-#include "base/process/kill.h"
-#include "base/rand_util.h"
-#include "base/strings/string_number_conversions.h"
-#include "base/sys_info.h"
+#include "butil/basictypes.h"
+#include "butil/memory/scoped_ptr.h"
+#include "butil/memory/shared_memory.h"
+#include "butil/process/kill.h"
+#include "butil/rand_util.h"
+#include "butil/strings/string_number_conversions.h"
+#include "butil/sys_info.h"
 #include "test/multiprocess_test.h"
-#include "base/threading/platform_thread.h"
-#include "base/time/time.h"
+#include "butil/threading/platform_thread.h"
+#include "butil/time/time.h"
 #include <gtest/gtest.h>
 #include "test/multiprocess_func_list.h"
 
 #if defined(OS_MACOSX)
-#include "base/mac/scoped_nsautorelease_pool.h"
+#include "butil/mac/scoped_nsautorelease_pool.h"
 #endif
 
 #if defined(OS_POSIX)
@@ -29,7 +29,7 @@
 #endif
 
 #if defined(OS_WIN)
-#include "base/win/scoped_handle.h"
+#include "butil/win/scoped_handle.h"
 #endif
 
 static const int kNumThreads = 5;
@@ -37,7 +37,7 @@ static const int kNumThreads = 5;
 static const int kNumTasks = 5;
 #endif
 
-namespace base {
+namespace butil {
 
 namespace {
 
@@ -70,7 +70,7 @@ class MultipleThreadMain : public PlatformThread::Delegate {
 
     for (int idx = 0; idx < 100; idx++) {
       *ptr = idx;
-      PlatformThread::Sleep(base::TimeDelta::FromMilliseconds(1));
+      PlatformThread::Sleep(butil::TimeDelta::FromMilliseconds(1));
       EXPECT_EQ(*ptr, idx);
     }
     // Reset back to 0 for the next test that uses the same name.
@@ -218,7 +218,7 @@ TEST(SharedMemoryTest, OpenExclusive) {
 
   // The mapped memory1 shouldn't exceed rounding for allocation granularity.
   EXPECT_LT(memory1.mapped_size(),
-            kDataSize + base::SysInfo::VMAllocationGranularity());
+            kDataSize + butil::SysInfo::VMAllocationGranularity());
 
   memset(memory1.memory(), 'G', kDataSize);
 
@@ -243,7 +243,7 @@ TEST(SharedMemoryTest, OpenExclusive) {
 
   // The mapped memory2 shouldn't exceed rounding for allocation granularity.
   EXPECT_LT(memory2.mapped_size(),
-            kDataSize2 + base::SysInfo::VMAllocationGranularity());
+            kDataSize2 + butil::SysInfo::VMAllocationGranularity());
 
   // Verify that opening memory2 didn't truncate or delete memory 1.
   char *start_ptr = static_cast<char *>(memory2.memory());
@@ -442,7 +442,7 @@ TEST(SharedMemoryTest, ShareReadOnly) {
   EXPECT_EQ(FALSE, rv)
       << "Shouldn't be able to duplicate the handle into a writable one.";
   if (rv)
-    base::win::ScopedHandle writable_handle(temp_handle);
+    butil::win::ScopedHandle writable_handle(temp_handle);
 #else
 #error Unexpected platform; write a test that tries to make 'handle' writable.
 #endif  // defined(OS_POSIX) || defined(OS_WIN)
@@ -683,4 +683,4 @@ MULTIPROCESS_TEST_MAIN(SharedMemoryTestMain) {
 
 #endif  // !OS_IOS
 
-}  // namespace base
+}  // namespace butil

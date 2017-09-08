@@ -16,8 +16,8 @@
 
 #include <stdio.h>
 #include <gflags/gflags.h>
-#include "base/files/file_enumerator.h"
-#include "base/file_util.h"                     // base::FilePath
+#include "butil/files/file_enumerator.h"
+#include "butil/file_util.h"                     // butil::FilePath
 #include "brpc/log.h"
 #include "brpc/controller.h"
 #include "brpc/server.h"
@@ -67,7 +67,7 @@ struct ProfilingClient {
     int64_t end_us;
     int seconds;
     int64_t id;
-    base::EndPoint point;
+    butil::EndPoint point;
 };
 
 struct ProfilingResult {
@@ -75,7 +75,7 @@ struct ProfilingResult {
     
     int64_t id;
     int status_code;
-    base::IOBuf result;
+    butil::IOBuf result;
 };
 
 static bool g_written_pprof_perl = false;
@@ -99,11 +99,11 @@ static ProfilingEnvironment g_env[4] = {
 // The `content' should be small so that it can be written into file in one
 // fwrite (at most time).
 static bool WriteSmallFile(const char* filepath_in,
-                           const base::StringPiece& content) {
-    base::File::Error error;
-    base::FilePath path(filepath_in);
-    base::FilePath dir = path.DirName();
-    if (!base::CreateDirectoryAndGetError(dir, &error)) {
+                           const butil::StringPiece& content) {
+    butil::File::Error error;
+    butil::FilePath path(filepath_in);
+    butil::FilePath dir = path.DirName();
+    if (!butil::CreateDirectoryAndGetError(dir, &error)) {
         LOG(ERROR) << "Fail to create directory=`" << dir.value()
                    << "', " << error;
         return false;
@@ -123,11 +123,11 @@ static bool WriteSmallFile(const char* filepath_in,
 }
 
 static bool WriteSmallFile(const char* filepath_in,
-                           const base::IOBuf& content) {
-    base::File::Error error;
-    base::FilePath path(filepath_in);
-    base::FilePath dir = path.DirName();
-    if (!base::CreateDirectoryAndGetError(dir, &error)) {
+                           const butil::IOBuf& content) {
+    butil::File::Error error;
+    butil::FilePath path(filepath_in);
+    butil::FilePath dir = path.DirName();
+    if (!butil::CreateDirectoryAndGetError(dir, &error)) {
         LOG(ERROR) << "Fail to create directory=`" << dir.value()
                    << "', " << error;
         return false;
@@ -137,7 +137,7 @@ static bool WriteSmallFile(const char* filepath_in,
         LOG(ERROR) << "Fail to open `" << path.value() << '\'';
         return false;
     }
-    base::IOBufAsZeroCopyInputStream iter(content);
+    butil::IOBufAsZeroCopyInputStream iter(content);
     const void* data = NULL;
     int size = 0;
     while (iter.Next(&data, &size)) {
@@ -182,9 +182,9 @@ static const char* GetBaseName(const std::string* full_base_name) {
 }
 
 static const char* GetBaseName(const char* full_base_name) {
-    base::StringPiece s(full_base_name);
+    butil::StringPiece s(full_base_name);
     size_t offset = s.find_last_of('/');
-    if (offset == base::StringPiece::npos) {
+    if (offset == butil::StringPiece::npos) {
         offset = 0;
     } else {
         ++offset;
@@ -196,7 +196,7 @@ static const char* GetBaseName(const char* full_base_name) {
 // NOTE: this function MUST be applied to all parameters finally passed to
 // system related functions (popen/system/exec ...) to avoid potential
 // injections from URL and other user inputs.
-static bool ValidProfilePath(const base::StringPiece& path) {
+static bool ValidProfilePath(const butil::StringPiece& path) {
     if (!path.starts_with(FLAGS_rpc_profiling_dir)) {
         // Must be under the directory.
         return false;
@@ -313,15 +313,15 @@ static void NotifyWaiters(ProfilingType type, const Controller* cur_cntl,
 static void DisplayResult(Controller* cntl,
                           google::protobuf::Closure* done,
                           const char* prof_name,
-                          const base::IOBuf& result_prefix) {
+                          const butil::IOBuf& result_prefix) {
     ClosureGuard done_guard(done);
-    base::IOBuf prof_result;
+    butil::IOBuf prof_result;
     if (cntl->IsCanceled()) {
         // If the page is refreshed, older connections are likely to be
         // already closed by browser.
         return;
     }
-    base::IOBuf& resp = cntl->response_attachment();
+    butil::IOBuf& resp = cntl->response_attachment();
     const bool use_html = UseHTML(cntl->http_request());
     const bool use_text = cntl->http_request().uri().GetQuery("text");
     const bool show_ccount = cntl->http_request().uri().GetQuery("ccount");
@@ -330,12 +330,12 @@ static void DisplayResult(Controller* cntl,
         if (!ValidProfilePath(*base_name)) {
             return cntl->SetFailed(EINVAL, "Invalid query `base'");
         }
-        if (!base::PathExists(base::FilePath(*base_name))) {
+        if (!butil::PathExists(butil::FilePath(*base_name))) {
             return cntl->SetFailed(
                 EINVAL, "The profile denoted by `base' does not exist");
         }
     }
-    base::IOBufBuilder os;
+    butil::IOBufBuilder os;
     os << result_prefix;
     char expected_result_name[256];
     MakeCacheName(expected_result_name, sizeof(expected_result_name),
@@ -435,8 +435,8 @@ static void DisplayResult(Controller* cntl,
         }
         if (pclose(pipe) != 0) {
             // NOTE: pclose may fail if the command failed to run, quit normal.
-            base::FilePath path(pprof_tool);
-            if (!base::PathExists(path)) {
+            butil::FilePath path(pprof_tool);
+            if (!butil::PathExists(path)) {
                 // Write the script again.
                 g_written_pprof_perl = false;
                 // tell user.
@@ -451,8 +451,8 @@ static void DisplayResult(Controller* cntl,
 
             // Append the profile name as the visual reminder for what
             // current profile is.
-            base::IOBuf before_label;
-            base::IOBuf tmp;
+            butil::IOBuf before_label;
+            butil::IOBuf tmp;
             if (cntl->http_request().uri().GetQuery("view") == NULL) {
                 tmp.append(prof_name);
                 tmp.append("[addToProfEnd]");
@@ -483,7 +483,7 @@ static void DisplayResult(Controller* cntl,
             
             if (!WriteSmallFile(result_name, prof_result)) {
                 LOG(ERROR) << "Fail to write " << result_name;
-                CHECK(base::DeleteFile(base::FilePath(result_name), false));
+                CHECK(butil::DeleteFile(butil::FilePath(result_name), false));
             }
         }
         break;
@@ -506,11 +506,11 @@ static void DoProfiling(ProfilingType type,
                         ::google::protobuf::Closure* done) {
     ClosureGuard done_guard(done);
     Controller *cntl = static_cast<Controller*>(cntl_base);
-    base::IOBuf& resp = cntl->response_attachment();
+    butil::IOBuf& resp = cntl->response_attachment();
     const bool use_html = UseHTML(cntl->http_request());
     cntl->http_response().set_content_type(use_html ? "text/html" : "text/plain");
 
-    base::IOBufBuilder os;
+    butil::IOBufBuilder os;
     if (use_html) {
         os << "<!DOCTYPE html><html><head>\n"
             "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" />\n"
@@ -530,7 +530,7 @@ static void DoProfiling(ProfilingType type,
         if (!ValidProfilePath(*view)) {
             return cntl->SetFailed(EINVAL, "Invalid query `view'");
         }
-        if (!base::PathExists(base::FilePath(*view))) {
+        if (!butil::PathExists(butil::FilePath(*view))) {
             return cntl->SetFailed(
                 EINVAL, "The profile denoted by `view' does not exist");
         }
@@ -592,7 +592,7 @@ static void DoProfiling(ProfilingType type,
         }
         CHECK(NULL == g_env[type].client);
         g_env[type].client = new ProfilingClient;
-        g_env[type].client->end_us = base::cpuwide_time_us() + seconds * 1000000L;
+        g_env[type].client->end_us = butil::cpuwide_time_us() + seconds * 1000000L;
         g_env[type].client->seconds = seconds;
         // This id work arounds an issue of chrome (or jquery under chrome) that
         // the ajax call in another tab may be delayed until ajax call in
@@ -627,9 +627,9 @@ static void DoProfiling(ProfilingType type,
             cntl->http_response().set_status_code(HTTP_STATUS_FORBIDDEN);
             return NotifyWaiters(type, cntl, view);
         }
-        base::File::Error error;
-        const base::FilePath dir = base::FilePath(prof_name).DirName();
-        if (!base::CreateDirectoryAndGetError(dir, &error)) {
+        butil::File::Error error;
+        const butil::FilePath dir = butil::FilePath(prof_name).DirName();
+        if (!butil::CreateDirectoryAndGetError(dir, &error)) {
             os << "Fail to create directory=`" << dir.value() << ", "
                << error << (use_html ? "</body></html>" : "\n");
             os.move_to(resp);
@@ -721,9 +721,9 @@ static void StartProfiling(ProfilingType type,
                            ::google::protobuf::Closure* done) {
     ClosureGuard done_guard(done);
     Controller *cntl = static_cast<Controller*>(cntl_base);
-    base::IOBuf& resp = cntl->response_attachment();
+    butil::IOBuf& resp = cntl->response_attachment();
     const bool use_html = UseHTML(cntl->http_request());
-    base::IOBufBuilder os;
+    butil::IOBufBuilder os;
     bool enabled = false;
     if (type == PROFILING_CPU) {
         enabled = cpu_profiler_enabled;
@@ -903,17 +903,17 @@ static void StartProfiling(ProfilingType type,
 
     TRACEPRINTF("Begin to enumerate profiles");
     std::vector<std::string> past_profs;
-    base::FilePath prof_dir(FLAGS_rpc_profiling_dir);
+    butil::FilePath prof_dir(FLAGS_rpc_profiling_dir);
     prof_dir = prof_dir.Append(GetProgramChecksum());
     std::string file_pattern;
     file_pattern.reserve(15);
     file_pattern.append("*.");
     file_pattern.append(type_str);
-    base::FileEnumerator prof_enum(prof_dir, false/*non recursive*/,
-                                   base::FileEnumerator::FILES,
+    butil::FileEnumerator prof_enum(prof_dir, false/*non recursive*/,
+                                   butil::FileEnumerator::FILES,
                                    file_pattern);
     std::string file_path;
-    for (base::FilePath name = prof_enum.Next(); !name.empty();
+    for (butil::FilePath name = prof_enum.Next(); !name.empty();
          name = prof_enum.Next()) {
         // NOTE: name already includes dir.
         if (past_profs.empty()) {
@@ -932,12 +932,12 @@ static void StartProfiling(ProfilingType type,
             TRACEPRINTF("Remove %lu profiles",
                         past_profs.size() - (size_t)max_profiles);
             for (size_t i = max_profiles; i < past_profs.size(); ++i) {
-                CHECK(base::DeleteFile(base::FilePath(past_profs[i]), false));
+                CHECK(butil::DeleteFile(butil::FilePath(past_profs[i]), false));
                 std::string cache_path;
                 cache_path.reserve(past_profs[i].size() + 7);
                 cache_path += past_profs[i];
                 cache_path += ".cache";
-                CHECK(base::DeleteFile(base::FilePath(cache_path), true));
+                CHECK(butil::DeleteFile(butil::FilePath(cache_path), true));
             }
             past_profs.resize(max_profiles);
         }
@@ -1009,7 +1009,7 @@ static void StartProfiling(ProfilingType type,
     os << "<div id=\"profiling-result\">";
     if (profiling_client.seconds != 0) {
         const int wait_seconds =
-            (int)ceil((profiling_client.end_us - base::cpuwide_time_us())
+            (int)ceil((profiling_client.end_us - butil::cpuwide_time_us())
                       / 1000000.0);
         os << "Your request is merged with the request from "
            << profiling_client.point;

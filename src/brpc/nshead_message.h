@@ -27,7 +27,7 @@
 #include "google/protobuf/descriptor.pb.h"
 
 #include "brpc/nshead.h"                     // nshead_t
-#include "base/iobuf.h"                           // IOBuf
+#include "butil/iobuf.h"                           // IOBuf
 
 
 namespace brpc {
@@ -41,7 +41,7 @@ void protobuf_ShutdownFile_baidu_2frpc_2fnshead_5fmessage_2eproto();
 class NsheadMessage : public ::google::protobuf::Message {
 public:
     nshead_t head;
-    base::IOBuf body;
+    butil::IOBuf body;
     
 public:
     NsheadMessage();

@@ -3,8 +3,8 @@
 
 #include <iostream>
 
-#include "base/time.h"
-#include "base/logging.h"
+#include "butil/time.h"
+#include "butil/logging.h"
 #include <brpc/redis.h>
 #include <brpc/channel.h>
 #include <gtest/gtest.h>
@@ -211,10 +211,10 @@ TEST_F(RedisTest, by_components) {
     brpc::RedisResponse response;
     brpc::Controller cntl;
 
-    base::StringPiece comp1[] = { "incr", "counter2" };
-    base::StringPiece comp2[] = { "decr", "counter2" };
-    base::StringPiece comp3[] = { "incrby", "counter2", "10" };
-    base::StringPiece comp4[] = { "decrby", "counter2", "20" };
+    butil::StringPiece comp1[] = { "incr", "counter2" };
+    butil::StringPiece comp2[] = { "decr", "counter2" };
+    butil::StringPiece comp3[] = { "incrby", "counter2", "10" };
+    butil::StringPiece comp4[] = { "decrby", "counter2", "20" };
 
     request.AddCommandByComponents(comp1, arraysize(comp1));
     request.AddCommandByComponents(comp2, arraysize(comp2));

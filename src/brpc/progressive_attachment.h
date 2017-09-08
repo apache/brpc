@@ -17,9 +17,9 @@
 #ifndef BRPC_PROGRESSIVE_ATTACHMENT_H
 #define BRPC_PROGRESSIVE_ATTACHMENT_H
 
-#include "base/atomicops.h"
-#include "base/iobuf.h"
-#include "base/endpoint.h"             // base::EndPoint
+#include "butil/atomicops.h"
+#include "butil/iobuf.h"
+#include "butil/endpoint.h"             // butil::EndPoint
 #include "bthread/types.h"             // bthread_id_t
 #include "brpc/socket_id.h"       // SocketUniquePtr
 #include "brpc/shared_object.h"   // SharedObject
@@ -34,12 +34,12 @@ public:
     // Write `data' as one HTTP chunk to peer ASAP.
     // Returns 0 on success, -1 otherwise and errno is set.
     // Errnos are same as what Socket.Write may set.
-    int Write(const base::IOBuf& data);
+    int Write(const butil::IOBuf& data);
     int Write(const void* data, size_t n);
 
     // Get ip/port of peer/self.
-    base::EndPoint remote_side() const;
-    base::EndPoint local_side() const;
+    butil::EndPoint remote_side() const;
+    butil::EndPoint local_side() const;
 
     // [Not thread-safe and can only be called once]
     // Run the callback when the underlying connection is broken (thus
@@ -63,10 +63,10 @@ protected:
     
     bool _before_http_1_1;
     bool _pause_from_mark_rpc_as_done;
-    base::atomic<int> _rpc_state;
-    base::Mutex _mutex;
+    butil::atomic<int> _rpc_state;
+    butil::Mutex _mutex;
     SocketUniquePtr _httpsock;
-    base::IOBuf _saved_buf;
+    butil::IOBuf _saved_buf;
     bthread_id_t _notify_id;
 
 private:

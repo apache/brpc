@@ -9,15 +9,15 @@
 
 #include <string>
 
-#include "base/compiler_specific.h"
-#include "base/files/file_path.h"
+#include "butil/compiler_specific.h"
+#include "butil/files/file_path.h"
 
 #if defined(OS_ANDROID)
 #include <jni.h>
-#include "base/basictypes.h"
+#include "butil/basictypes.h"
 #endif
 
-namespace base {
+namespace butil {
 
 class FilePath;
 
@@ -27,7 +27,7 @@ class FilePath;
 // rely on uncached files.
 bool EvictFileFromSystemCacheWithRetry(const FilePath& file);
 
-// Wrapper over base::Delete. On Windows repeatedly invokes Delete in case
+// Wrapper over butil::Delete. On Windows repeatedly invokes Delete in case
 // of failure to workaround Windows file locking semantics. Returns true on
 // success.
 bool DieFileDie(const FilePath& file, bool recurse);
@@ -47,21 +47,21 @@ bool VolumeSupportsADS(const FilePath& path);
 bool HasInternetZoneIdentifier(const FilePath& full_path);
 #endif  // defined(OS_WIN)
 
-}  // namespace base
+}  // namespace butil
 
-// TODO(brettw) move all of this to the base namespace.
+// TODO(brettw) move all of this to namespace butil.
 namespace file_util {
 
 // In general it's not reliable to convert a FilePath to a wstring and we use
 // string16 elsewhere for Unicode strings, but in tests it is frequently
 // convenient to be able to compare paths to literals like L"foobar".
-std::wstring FilePathAsWString(const base::FilePath& path);
-base::FilePath WStringAsFilePath(const std::wstring& path);
+std::wstring FilePathAsWString(const butil::FilePath& path);
+butil::FilePath WStringAsFilePath(const std::wstring& path);
 
 // For testing, make the file unreadable or unwritable.
 // In POSIX, this does not apply to the root user.
-bool MakeFileUnreadable(const base::FilePath& path) WARN_UNUSED_RESULT;
-bool MakeFileUnwritable(const base::FilePath& path) WARN_UNUSED_RESULT;
+bool MakeFileUnreadable(const butil::FilePath& path) WARN_UNUSED_RESULT;
+bool MakeFileUnwritable(const butil::FilePath& path) WARN_UNUSED_RESULT;
 
 #if defined(OS_ANDROID)
 // Register the ContentUriTestUrils JNI bindings.
@@ -69,17 +69,17 @@ bool RegisterContentUriTestUtils(JNIEnv* env);
 
 // Insert an image file into the MediaStore, and retrieve the content URI for
 // testing purpose.
-base::FilePath InsertImageIntoMediaStore(const base::FilePath& path);
+butil::FilePath InsertImageIntoMediaStore(const butil::FilePath& path);
 #endif  // defined(OS_ANDROID)
 
 // Saves the current permissions for a path, and restores it on destruction.
 class PermissionRestorer {
  public:
-  explicit PermissionRestorer(const base::FilePath& path);
+  explicit PermissionRestorer(const butil::FilePath& path);
   ~PermissionRestorer();
 
  private:
-  const base::FilePath path_;
+  const butil::FilePath path_;
   void* info_;  // The opaque stored permission information.
   size_t length_;  // The length of the stored permission information.
 

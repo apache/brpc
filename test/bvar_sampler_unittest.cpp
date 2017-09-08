@@ -2,21 +2,21 @@
 
 #include <limits>                           //std::numeric_limits
 #include "bvar/detail/sampler.h"
-#include "base/time.h"
-#include "base/logging.h"
+#include "butil/time.h"
+#include "butil/logging.h"
 #include <gtest/gtest.h>
 
 namespace {
 
 TEST(SamplerTest, linked_list) {
-    base::LinkNode<bvar::detail::Sampler> n1, n2;
+    butil::LinkNode<bvar::detail::Sampler> n1, n2;
     n1.InsertBeforeAsList(&n2);
     ASSERT_EQ(n1.next(), &n2);
     ASSERT_EQ(n1.previous(), &n2);
     ASSERT_EQ(n2.next(), &n1);
     ASSERT_EQ(n2.previous(), &n1);
 
-    base::LinkNode<bvar::detail::Sampler> n3, n4;
+    butil::LinkNode<bvar::detail::Sampler> n3, n4;
     n3.InsertBeforeAsList(&n4);
     ASSERT_EQ(n3.next(), &n4);
     ASSERT_EQ(n3.previous(), &n4);

@@ -21,12 +21,12 @@
 namespace brpc {
 
 static pthread_once_t s_sorttable_buf_once = PTHREAD_ONCE_INIT; 
-static base::IOBuf* s_sorttable_buf = NULL;
+static butil::IOBuf* s_sorttable_buf = NULL;
 static void InitSortTableBuf() {
-    s_sorttable_buf = new base::IOBuf;
+    s_sorttable_buf = new butil::IOBuf;
     s_sorttable_buf->append(sorttable_js());
 }
-const base::IOBuf& sorttable_js_iobuf() {
+const butil::IOBuf& sorttable_js_iobuf() {
     pthread_once(&s_sorttable_buf_once, InitSortTableBuf);
     return *s_sorttable_buf;
 }
@@ -469,7 +469,7 @@ const char* sorttable_js() {
 "  this.cancelBubble = true;\n"
 "}\n"
 "\n"
-"// Dean's forEach: http://dean.edwards.name/base/forEach.js\n"
+"// Dean's forEach: http://dean.edwards.name/butil/forEach.js\n"
 "/*\n"
 "    forEach, version 1.0\n"
 "    Copyright 2006, Dean Edwards\n"

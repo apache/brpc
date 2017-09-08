@@ -21,7 +21,7 @@
 
 #include <pthread.h>                 // pthread_spin_init
 #include "bthread/butex.h"           // butex_construct/destruct
-#include "base/atomicops.h"          // base::atomic
+#include "butil/atomicops.h"          // butil::atomic
 #include "bthread/types.h"           // bthread_attr_t
 #include "bthread/stack.h"           // ContextualStack
 
@@ -47,7 +47,7 @@ const static LocalStorage LOCAL_STORAGE_INIT = BTHREAD_LOCAL_STORAGE_INITIALIZER
 
 struct TaskMeta {
     // [Not Reset]
-    base::atomic<ButexWaiter*> current_waiter;
+    butil::atomic<ButexWaiter*> current_waiter;
     uint64_t current_sleep;
     
     bool stop;

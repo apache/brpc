@@ -19,12 +19,12 @@
 #ifndef BAIDU_BTHREAD_TASK_GROUP_H
 #define BAIDU_BTHREAD_TASK_GROUP_H
 
-#include "base/time.h"                             // cpuwide_time_ns
+#include "butil/time.h"                             // cpuwide_time_ns
 #include "bthread/task_control.h"
 #include "bthread/task_meta.h"                     // bthread_t, TaskMeta
 #include "bthread/work_stealing_queue.h"           // WorkStealingQueue
 #include "bthread/remote_task_queue.h"             // RemoteTaskQueue
-#include "base/resource_pool.h"                    // ResourceId
+#include "butil/resource_pool.h"                    // ResourceId
 #include "bthread/parking_lot.h"
 
 namespace bthread {
@@ -131,7 +131,7 @@ public:
     bthread_t current_tid() const { return _cur_meta->tid; }
     // Uptime of current task in nanoseconds.
     int64_t current_uptime_ns() const
-    { return base::cpuwide_time_ns() - _cur_meta->cpuwide_start_ns; }
+    { return butil::cpuwide_time_ns() - _cur_meta->cpuwide_start_ns; }
 
     // True iff current task is the one running run_main_task()
     bool is_current_main_task() const { return current_tid() == _main_tid; }
@@ -149,7 +149,7 @@ public:
 
     // Push a bthread into the runqueue from another non-worker thread.
     void ready_to_run_remote(bthread_t tid, bool nosignal = false);
-    void flush_nosignal_tasks_remote_locked(base::Mutex& locked_mutex);
+    void flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex);
     void flush_nosignal_tasks_remote();
 
     // Automatically decide the caller is remote or local, and call

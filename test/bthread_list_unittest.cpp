@@ -3,9 +3,9 @@
 // Date: Tue Sep 30 16:52:32 CST 2014
 
 #include <gtest/gtest.h>
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/logging.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/logging.h"
 #include "bthread/task_group.h"
 #include "bthread/bthread.h"
 

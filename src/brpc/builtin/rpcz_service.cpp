@@ -17,10 +17,10 @@
 #include <ostream>
 #include <iomanip>
 #include <gflags/gflags.h>
-#include "base/string_printf.h"
-#include "base/string_splitter.h"
-#include "base/macros.h"
-#include "base/time.h"
+#include "butil/string_printf.h"
+#include "butil/string_splitter.h"
+#include "butil/macros.h"
+#include "butil/time.h"
 #include "brpc/closure_guard.h"        // ClosureGuard
 #include "brpc/controller.h"           // Controller
 #include "brpc/builtin/common.h"
@@ -149,7 +149,7 @@ void RpczService::stats(::google::protobuf::RpcController* cntl_base,
         return;
     }
 
-    base::IOBufBuilder os;
+    butil::IOBufBuilder os;
     DescribeSpanDB(os);
     os.move_to(cntl->response_attachment());
 }
@@ -193,7 +193,7 @@ static void PrintAnnotations(
             PrintRealTime(os, anno_time);
             PrintElapse(os, anno_time, last_time);
             os << ' ' << a;
-            if (a.empty() || base::back_char(a) != '\n') {
+            if (a.empty() || butil::back_char(a) != '\n') {
                 os << '\n';
             }
         }
@@ -224,8 +224,8 @@ struct CompareByStartRealTime {
     }
 };
 
-static base::ip_t loopback_ip = base::IP_ANY;
-static int ALLOW_UNUSED init_loopback_ip_dummy = base::str2ip("127.0.0.1", &loopback_ip);
+static butil::ip_t loopback_ip = butil::IP_ANY;
+static int ALLOW_UNUSED init_loopback_ip_dummy = butil::str2ip("127.0.0.1", &loopback_ip);
 
 static void PrintClientSpan(
     std::ostream& os, const RpczSpan& span,
@@ -242,10 +242,10 @@ static void PrintClientSpan(
                                           last_time, extr, num_extr));
     const Protocol* protocol = FindProtocol(span.protocol());
     const char* protocol_name = (protocol ? protocol->name : "Unknown");
-    const base::EndPoint remote_side(base::int2ip(span.remote_ip()), span.remote_port());
-    base::EndPoint abs_remote_side = remote_side;
+    const butil::EndPoint remote_side(butil::int2ip(span.remote_ip()), span.remote_port());
+    butil::EndPoint abs_remote_side = remote_side;
     if (abs_remote_side.ip == loopback_ip) {
-        abs_remote_side.ip = base::my_ip();
+        abs_remote_side.ip = butil::my_ip();
     }
     os << " Requesting " << span.full_method_name() << '@' << remote_side
        << ' ' << protocol_name << ' ' << LOG_ID_STR << '=';
@@ -313,8 +313,8 @@ static void PrintServerSpan(std::ostream& os, const RpczSpan& span,
     SpanInfoExtractor server_extr(span.info().c_str());
     SpanInfoExtractor* extr[1] = { &server_extr };
     int64_t last_time = span.received_real_us();
-    const base::EndPoint remote_side(
-        base::int2ip(span.remote_ip()), span.remote_port());
+    const butil::EndPoint remote_side(
+        butil::int2ip(span.remote_ip()), span.remote_port());
     PrintRealDateTime(os, last_time);
     const Protocol* protocol = FindProtocol(span.protocol());
     const char* protocol_name = (protocol ? protocol->name : "Unknown");
@@ -481,7 +481,7 @@ void RpczService::default_method(::google::protobuf::RpcController* cntl_base,
     cntl->http_response().set_content_type(
         use_html ? "text/html" : "text/plain");
 
-    base::IOBufBuilder os;
+    butil::IOBufBuilder os;
     if (use_html) {
         os << "<!DOCTYPE html><html><head>\n"
            << "<script language=\"javascript\" type=\"text/javascript\" src=\"/js/jquery_min\"></script>\n"
@@ -503,7 +503,7 @@ void RpczService::default_method(::google::protobuf::RpcController* cntl_base,
         os.move_to(cntl->response_attachment());
         return;
     }
-    base::EndPoint my_addr(base::my_ip(),
+    butil::EndPoint my_addr(butil::my_ip(),
                            cntl->server()->listen_address().port);
     
     const std::string* trace_id_str =
@@ -564,7 +564,7 @@ void RpczService::default_method(::google::protobuf::RpcController* cntl_base,
             cntl->http_request().uri().GetQuery(TIME_STR);
         int64_t start_tm;
         if (time_str == NULL) {
-            start_tm = base::gettimeofday_us();
+            start_tm = butil::gettimeofday_us();
         } else {
             start_tm = ParseDateTime(*time_str);
             if (start_tm < 0) {

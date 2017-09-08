@@ -16,15 +16,15 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 22 17:30:12 CST 2014
 
-#include "base/atomicops.h"                // base::atomic
-#include "base/scoped_lock.h"              // BAIDU_SCOPED_LOCK
-#include "base/macros.h"
-#include "base/containers/linked_list.h"   // LinkNode
+#include "butil/atomicops.h"                // butil::atomic
+#include "butil/scoped_lock.h"              // BAIDU_SCOPED_LOCK
+#include "butil/macros.h"
+#include "butil/containers/linked_list.h"   // LinkNode
 #ifdef SHOW_BTHREAD_BUTEX_WAITER_COUNT_IN_VARS
-#include "base/memory/singleton_on_pthread_once.h"
+#include "butil/memory/singleton_on_pthread_once.h"
 #endif
-#include "base/logging.h"
-#include "base/object_pool.h"
+#include "butil/logging.h"
+#include "butil/object_pool.h"
 #include "bthread/errno.h"                 // EWOULDBLOCK, ESTOP
 #include "bthread/sys_futex.h"             // futex_*
 #include "bthread/processor.h"             // cpu_relax
@@ -60,7 +60,7 @@ struct ButexWaiterCount : public bvar::Adder<int64_t> {
     ButexWaiterCount() : bvar::Adder<int64_t>("bthread_butex_waiter_count") {}
 };
 inline bvar::Adder<int64_t>& butex_waiter_count() {
-    return *base::get_leaky_singleton<ButexWaiterCount>();
+    return *butil::get_leaky_singleton<ButexWaiterCount>();
 }
 #endif
 
@@ -82,13 +82,13 @@ enum WaiterState {
 
 struct Butex;
 
-struct ButexWaiter : public base::LinkNode<ButexWaiter> {
+struct ButexWaiter : public butil::LinkNode<ButexWaiter> {
     // tids of pthreads are 0
     bthread_t tid;
 
     // Erasing node from middle of LinkedList is thread-unsafe, we need
     // to hold its container's lock.
-    base::atomic<Butex*> container;
+    butil::atomic<Butex*> container;
 };
 
 // non_pthread_task allocates this structure on stack and queue it in
@@ -105,10 +105,10 @@ struct ButexBthreadWaiter : public ButexWaiter {
 // pthread_task or main_task allocates this structure on stack and queue it
 // in Butex::waiters.
 struct ButexPthreadWaiter : public ButexWaiter {
-    base::atomic<int> sig;
+    butil::atomic<int> sig;
 };
 
-typedef base::LinkedList<ButexWaiter> ButexWaiterList;
+typedef butil::LinkedList<ButexWaiter> ButexWaiterList;
 
 enum BUTEX_PTHREAD_SIGNAL {
     NOT_SIGNALLED = 0,
@@ -120,7 +120,7 @@ struct BAIDU_CACHELINE_ALIGNMENT Butex {
     Butex() {}
     ~Butex() {}
 
-    base::atomic<int> value;
+    butil::atomic<int> value;
     ButexWaiterList waiters;
     internal::FastPthreadMutex waiter_lock;
 };
@@ -130,7 +130,7 @@ BAIDU_CASSERT(sizeof(Butex) == BAIDU_CACHELINE_SIZE, butex_fits_in_one_cacheline
 
 void wakeup_pthread(ButexPthreadWaiter* pw) {
     // release fence makes wait_pthread see other changes when it sees new sig
-    pw->sig.store(SAFE_TO_DESTROY, base::memory_order_release);
+    pw->sig.store(SAFE_TO_DESTROY, butil::memory_order_release);
     // At this point, *pw is possibly destroyed if wait_pthread has woken up and
     // seen the new sig. As the futex_wake_private just check the accessibility
     // of the memory and returnes EFAULT in this case, it's just fine.
@@ -147,7 +147,7 @@ int wait_pthread(ButexPthreadWaiter& pw, timespec* ptimeout) {
         const int rc = futex_wait_private(&pw.sig, expected_value, ptimeout);
         // Accquire fence makes this thread sees other changes when it sees
         // the new |sig|
-        if (expected_value != pw.sig.load(base::memory_order_acquire)) {
+        if (expected_value != pw.sig.load(butil::memory_order_acquire)) {
             // After this routine returns, |pw| will be destroyed while the wake
             // thread possibly still uses it. See the comments in wakeup_pthread
             return rc;
@@ -160,7 +160,7 @@ int wait_pthread(ButexPthreadWaiter& pw, timespec* ptimeout) {
                 // it's safe to destroy pw
                 // Make sure this thread sees the lastest changes when sig is
                 // set to SAFE_TO_DESTROY
-                BT_LOOP_WHEN(pw.sig.load(base::memory_order_acquire) 
+                BT_LOOP_WHEN(pw.sig.load(butil::memory_order_acquire) 
                                     != SAFE_TO_DESTROY,
                              30/*nops before sched_yield*/);
 
@@ -246,7 +246,7 @@ inline int unsleep_if_necessary(ButexBthreadWaiter* w,
 // wakeup should be acceptable.
 
 void* butex_create() {
-    Butex* b = base::get_object<Butex>();
+    Butex* b = butil::get_object<Butex>();
     if (b) {
         return &b->value;
     }
@@ -258,8 +258,8 @@ void butex_destroy(void* butex) {
         return;
     }
     Butex* b = static_cast<Butex*>(
-        container_of(static_cast<base::atomic<int>*>(butex), Butex, value));
-    base::return_object(b);
+        container_of(static_cast<butil::atomic<int>*>(butex), Butex, value));
+    butil::return_object(b);
 }
 
 inline TaskGroup* get_task_group(TaskControl* c) {
@@ -268,7 +268,7 @@ inline TaskGroup* get_task_group(TaskControl* c) {
 }
 
 int butex_wake(void* arg) {
-    Butex* b = container_of(static_cast<base::atomic<int>*>(arg), Butex, value);
+    Butex* b = container_of(static_cast<butil::atomic<int>*>(arg), Butex, value);
     ButexWaiter* front = NULL;
     {
         BAIDU_SCOPED_LOCK(b->waiter_lock);
@@ -277,7 +277,7 @@ int butex_wake(void* arg) {
         }
         front = b->waiters.head()->value();
         front->RemoveFromList();
-        front->container.store(NULL, base::memory_order_relaxed);
+        front->container.store(NULL, butil::memory_order_relaxed);
     }
     if (front->tid == 0) {
         wakeup_pthread(static_cast<ButexPthreadWaiter*>(front));
@@ -295,7 +295,7 @@ int butex_wake(void* arg) {
 }
 
 int butex_wake_all(void* arg) {
-    Butex* b = container_of(static_cast<base::atomic<int>*>(arg), Butex, value);
+    Butex* b = container_of(static_cast<butil::atomic<int>*>(arg), Butex, value);
 
     ButexWaiterList bthread_waiters;
     ButexWaiterList pthread_waiters;
@@ -304,7 +304,7 @@ int butex_wake_all(void* arg) {
         while (!b->waiters.empty()) {
             ButexWaiter* bw = b->waiters.head()->value();
             bw->RemoveFromList();
-            bw->container.store(NULL, base::memory_order_relaxed);
+            bw->container.store(NULL, butil::memory_order_relaxed);
             if (bw->tid) {
                 bthread_waiters.Append(bw);
             } else {
@@ -353,7 +353,7 @@ int butex_wake_all(void* arg) {
 }
 
 int butex_wake_except(void* arg, bthread_t excluded_bthread) {
-    Butex* b = container_of(static_cast<base::atomic<int>*>(arg), Butex, value);
+    Butex* b = container_of(static_cast<butil::atomic<int>*>(arg), Butex, value);
 
     ButexWaiterList bthread_waiters;
     ButexWaiterList pthread_waiters;
@@ -367,12 +367,12 @@ int butex_wake_except(void* arg, bthread_t excluded_bthread) {
             if (bw->tid) {
                 if (bw->tid != excluded_bthread) {
                     bthread_waiters.Append(bw);
-                    bw->container.store(NULL, base::memory_order_relaxed);
+                    bw->container.store(NULL, butil::memory_order_relaxed);
                 } else {
                     excluded_waiter = bw;
                 }
             } else {
-                bw->container.store(NULL, base::memory_order_relaxed);
+                bw->container.store(NULL, butil::memory_order_relaxed);
                 pthread_waiters.Append(bw);
             }
         }
@@ -415,27 +415,27 @@ int butex_wake_except(void* arg, bthread_t excluded_bthread) {
 }
 
 int butex_requeue(void* arg, void* arg2) {
-    Butex* b = container_of(static_cast<base::atomic<int>*>(arg), Butex, value);
-    Butex* m = container_of(static_cast<base::atomic<int>*>(arg2), Butex, value);
+    Butex* b = container_of(static_cast<butil::atomic<int>*>(arg), Butex, value);
+    Butex* m = container_of(static_cast<butil::atomic<int>*>(arg2), Butex, value);
 
     ButexWaiter* front = NULL;
     {
         std::unique_lock<internal::FastPthreadMutex> lck1(b->waiter_lock, std::defer_lock);
         std::unique_lock<internal::FastPthreadMutex> lck2(m->waiter_lock, std::defer_lock);
-        base::double_lock(lck1, lck2);
+        butil::double_lock(lck1, lck2);
         if (b->waiters.empty()) {
             return 0;
         }
 
         front = b->waiters.head()->value();
         front->RemoveFromList();
-        front->container.store(NULL, base::memory_order_relaxed);
+        front->container.store(NULL, butil::memory_order_relaxed);
 
         while (!b->waiters.empty()) {
             ButexWaiter* bw = b->waiters.head()->value();
             bw->RemoveFromList();
             m->waiters.Append(bw);
-            bw->container.store(m, base::memory_order_relaxed);
+            bw->container.store(m, butil::memory_order_relaxed);
         }
     }
 
@@ -466,12 +466,12 @@ inline bool erase_from_butex(ButexWaiter* bw, bool wakeup) {
     bool erased = false;
     Butex* b;
     int saved_errno = errno;
-    while ((b = bw->container.load(base::memory_order_acquire))) {
+    while ((b = bw->container.load(butil::memory_order_acquire))) {
         // b can be NULL when the waiter is scheduled but queued.
         BAIDU_SCOPED_LOCK(b->waiter_lock);
-        if (b == bw->container.load(base::memory_order_relaxed)) {
+        if (b == bw->container.load(butil::memory_order_relaxed)) {
             bw->RemoveFromList();
-            bw->container.store(NULL, base::memory_order_relaxed);
+            bw->container.store(NULL, butil::memory_order_relaxed);
             if (bw->tid) {
                 static_cast<ButexBthreadWaiter*>(bw)->waiter_state = WAITER_STATE_TIMEDOUT;
             }
@@ -511,11 +511,11 @@ static void wait_for_butex(void* arg) {
     // see the correct value.
     {
         BAIDU_SCOPED_LOCK(b->waiter_lock);
-        if (b->value.load(base::memory_order_relaxed) == bw->expected_value &&
+        if (b->value.load(butil::memory_order_relaxed) == bw->expected_value &&
             bw->waiter_state != WAITER_STATE_TIMEDOUT/*1*/ &&
             (!bw->task_meta->stop || !bw->task_meta->interruptible)) {
             b->waiters.Append(bw);
-            bw->container.store(b, base::memory_order_relaxed);
+            bw->container.store(b, butil::memory_order_relaxed);
             return;
         }
     }
@@ -548,13 +548,13 @@ static int butex_wait_from_pthread(TaskGroup* g, Butex* b, int expected_value,
     timespec* ptimeout = NULL;
     timespec timeout;
     if (abstime != NULL) {
-        const int64_t timeout_us = base::timespec_to_microseconds(*abstime) -
-            base::gettimeofday_us();
+        const int64_t timeout_us = butil::timespec_to_microseconds(*abstime) -
+            butil::gettimeofday_us();
         if (timeout_us < MIN_SLEEP_US) {
             errno = ETIMEDOUT;
             return -1;
         }
-        timeout = base::microseconds_to_timespec(timeout_us);
+        timeout = butil::microseconds_to_timespec(timeout_us);
         ptimeout = &timeout;
     }
 
@@ -562,7 +562,7 @@ static int butex_wait_from_pthread(TaskGroup* g, Butex* b, int expected_value,
     bool set_waiter = false;
     ButexPthreadWaiter pw;
     pw.tid = 0;
-    pw.sig.store(NOT_SIGNALLED, base::memory_order_relaxed);
+    pw.sig.store(NOT_SIGNALLED, butil::memory_order_relaxed);
     int rc = 0;
     
     if (g) {
@@ -573,13 +573,13 @@ static int butex_wait_from_pthread(TaskGroup* g, Butex* b, int expected_value,
                 return -1;
             }
             set_waiter = true;
-            task->current_waiter.store(&pw, base::memory_order_release);
+            task->current_waiter.store(&pw, butil::memory_order_release);
         }
     }
     b->waiter_lock.lock();
-    if (b->value.load(base::memory_order_relaxed) == expected_value) {
+    if (b->value.load(butil::memory_order_relaxed) == expected_value) {
         b->waiters.Append(&pw);
-        pw.container.store(b, base::memory_order_relaxed);
+        pw.container.store(b, butil::memory_order_relaxed);
         b->waiter_lock.unlock();
 
 #ifdef SHOW_BTHREAD_BUTEX_WAITER_COUNT_IN_VARS
@@ -600,7 +600,7 @@ static int butex_wait_from_pthread(TaskGroup* g, Butex* b, int expected_value,
             // If current_waiter is NULL, stop_butex_wait() is running and
             // using pw, spin until current_waiter != NULL.
             BT_LOOP_WHEN(task->current_waiter.exchange(
-                             NULL, base::memory_order_acquire) == NULL,
+                             NULL, butil::memory_order_acquire) == NULL,
                          30/*nops before sched_yield*/);
         }
         if (task->stop) {
@@ -612,12 +612,12 @@ static int butex_wait_from_pthread(TaskGroup* g, Butex* b, int expected_value,
 }
 
 int butex_wait(void* arg, int expected_value, const timespec* abstime) {
-    Butex* b = container_of(static_cast<base::atomic<int>*>(arg), Butex, value);
-    if (b->value.load(base::memory_order_relaxed) != expected_value) {
+    Butex* b = container_of(static_cast<butil::atomic<int>*>(arg), Butex, value);
+    if (b->value.load(butil::memory_order_relaxed) != expected_value) {
         errno = EWOULDBLOCK;
         // Sometimes we may take actions immediately after unmatched butex,
         // this fence makes sure that we see changes before changing butex.
-        base::atomic_thread_fence(base::memory_order_acquire);
+        butil::atomic_thread_fence(butil::memory_order_acquire);
         return -1;
     }
     TaskGroup* g = tls_task_group;
@@ -627,7 +627,7 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime) {
     ButexBthreadWaiter bbw;
     // tid is 0 iff the thread is non-bthread
     bbw.tid = g->current_tid();
-    bbw.container.store(NULL, base::memory_order_relaxed);
+    bbw.container.store(NULL, butil::memory_order_relaxed);
     bbw.task_meta = g->current_task();
     bbw.sleep_id = 0;
     bbw.waiter_state = WAITER_STATE_NONE;
@@ -640,8 +640,8 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime) {
         // queueing, cancel queueing. This is a kind of optimistic locking.
         bbw.waiter_state = WAITER_STATE_TIMED;
         // Already timed out.
-        if (base::timespec_to_microseconds(*abstime) <
-            (base::gettimeofday_us() + MIN_SLEEP_US)) {
+        if (butil::timespec_to_microseconds(*abstime) <
+            (butil::gettimeofday_us() + MIN_SLEEP_US)) {
             errno = ETIMEDOUT;
             return -1;
         }
@@ -659,7 +659,7 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime) {
 
     // release fence matches with acquire fence in stop_and_consume_butex_waiter
     // in task_group.cpp to guarantee visibility of `interruptible'.
-    bbw.task_meta->current_waiter.store(&bbw, base::memory_order_release);
+    bbw.task_meta->current_waiter.store(&bbw, butil::memory_order_release);
     g->set_remained(wait_for_butex, &bbw);
     TaskGroup::sched(&g);
 
@@ -671,7 +671,7 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime) {
     // If current_waiter is NULL, stop_butex_wait() is running and using bbw.
     // Spin until current_waiter != NULL.
     BT_LOOP_WHEN(bbw.task_meta->current_waiter.exchange(
-                     NULL, base::memory_order_acquire) == NULL,
+                     NULL, butil::memory_order_acquire) == NULL,
                  30/*nops before sched_yield*/);
 #ifdef SHOW_BTHREAD_BUTEX_WAITER_COUNT_IN_VARS
     num_waiters << -1;
@@ -729,7 +729,7 @@ int stop_butex_wait(bthread_t tid) {
 
 }  // namespace bthread
 
-namespace base {
+namespace butil {
 template <> struct ObjectPoolBlockMaxItem<bthread::Butex> {
     static const size_t value = 128;
 };

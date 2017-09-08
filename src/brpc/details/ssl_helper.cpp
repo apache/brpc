@@ -19,9 +19,9 @@
 #include <openssl/err.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
-#include "base/unique_ptr.h"
-#include "base/logging.h"
-#include "base/ssl_compat.h"
+#include "butil/unique_ptr.h"
+#include "butil/logging.h"
+#include "butil/ssl_compat.h"
 #include "brpc/socket.h"
 #include "brpc/details/ssl_helper.h"
 
@@ -488,7 +488,7 @@ static unsigned long SSLGetThreadId() {
 // may crash probably due to some TLS data used inside OpenSSL
 // Also according to performance test, there is little difference
 // between pthread mutex and bthread mutex
-static base::Mutex* g_ssl_mutexs = NULL;
+static butil::Mutex* g_ssl_mutexs = NULL;
 
 static void SSLLockCallback(int mode, int n, const char* file, int line) {
     (void)file;
@@ -507,7 +507,7 @@ static void SSLLockCallback(int mode, int n, const char* file, int line) {
 
 int SSLThreadInit() {
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
-    g_ssl_mutexs = new base::Mutex[CRYPTO_num_locks()];
+    g_ssl_mutexs = new butil::Mutex[CRYPTO_num_locks()];
     CRYPTO_set_locking_callback(SSLLockCallback);
 # ifdef CRYPTO_LOCK_ECDH
     CRYPTO_THREADID_set_callback(SSLGetThreadId);

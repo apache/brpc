@@ -6,7 +6,7 @@
 #include "bthread/sys_futex.h"
 #include "bthread/timer_thread.h"
 #include "bthread/bthread.h"
-#include "base/logging.h"
+#include "butil/logging.h"
 
 namespace {
 
@@ -43,7 +43,7 @@ public:
         _run_times.push_back(current_time);
         const int saved_sleep_ms = _sleep_ms;
         if (saved_sleep_ms > 0) {
-            timespec timeout = base::milliseconds_to_timespec(saved_sleep_ms);
+            timespec timeout = butil::milliseconds_to_timespec(saved_sleep_ms);
             bthread::futex_wait_private(&_sleep_ms, saved_sleep_ms, &timeout);
         }
     }
@@ -101,18 +101,18 @@ TEST(TimerThreadTest, RunTasks) {
     bthread::TimerThread timer_thread;
     ASSERT_EQ(0, timer_thread.start(NULL));
 
-    timespec _2s_later = base::seconds_from_now(2);
+    timespec _2s_later = butil::seconds_from_now(2);
     TimeKeeper keeper1(_2s_later, "keeper1");
     keeper1.schedule(&timer_thread);
 
     TimeKeeper keeper2(_2s_later, "keeper2");  // same time with keeper1
     keeper2.schedule(&timer_thread);
     
-    timespec _1s_later = base::seconds_from_now(1);
+    timespec _1s_later = butil::seconds_from_now(1);
     TimeKeeper keeper3(_1s_later, "keeper3");
     keeper3.schedule(&timer_thread);
 
-    timespec _10s_later = base::seconds_from_now(10);
+    timespec _10s_later = butil::seconds_from_now(10);
     TimeKeeper keeper4(_10s_later, "keeper4");
     keeper4.schedule(&timer_thread);
 
@@ -128,13 +128,13 @@ TEST(TimerThreadTest, RunTasks) {
     timespec old_time = { 0, 0 };
     TimeKeeper keeper6(old_time, "keeper6");
     keeper6.schedule(&timer_thread);
-    const timespec keeper6_addtime = base::seconds_from_now(0);
+    const timespec keeper6_addtime = butil::seconds_from_now(0);
 
     // sleep 10 seconds and stop.
     LOG(INFO) << "Sleep 2s";
     sleep(2);
     LOG(INFO) << "Stop timer_thread";
-    base::Timer tm;
+    butil::Timer tm;
     tm.start();
     timer_thread.stop_and_join();
     tm.stop();
@@ -160,7 +160,7 @@ TEST(TimerThreadTest, start_after_schedule) {
     ASSERT_EQ(0, timer_thread.start(NULL));
     keeper.schedule(&timer_thread);
     ASSERT_NE(bthread::TimerThread::INVALID_TASK_ID, keeper._task_id);
-    timespec current_time = base::seconds_from_now(0);
+    timespec current_time = butil::seconds_from_now(0);
     sleep(1);  // make sure timer thread start and run
     timer_thread.stop_and_join();
     keeper.expect_first_run(current_time);
@@ -203,7 +203,7 @@ TEST(TimerThreadTest, schedule_and_unschedule_in_task) {
     bthread::TimerThread timer_thread;
     timespec past_time = { 0, 0 };
     timespec future_time = { std::numeric_limits<int>::max(), 0 };
-    const timespec _500ms_after = base::milliseconds_from_now(500);
+    const timespec _500ms_after = butil::milliseconds_from_now(500);
 
     TimeKeeper keeper1(future_time, "keeper1");
     TimeKeeper keeper2(past_time, "keeper2");
@@ -214,7 +214,7 @@ TEST(TimerThreadTest, schedule_and_unschedule_in_task) {
     ASSERT_EQ(0, timer_thread.start(NULL));
     keeper1.schedule(&timer_thread);  // start keeper1
     keeper3.schedule(&timer_thread);  // start keeper3
-    timespec keeper3_addtime = base::seconds_from_now(0);
+    timespec keeper3_addtime = butil::seconds_from_now(0);
     keeper5.schedule(&timer_thread);  // start keeper5
     sleep(1);  // let keeper1/3/5 run
 

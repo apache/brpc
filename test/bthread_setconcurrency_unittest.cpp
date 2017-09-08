@@ -3,13 +3,13 @@
 // Date: Sun Jul 13 15:04:18 CST 2014
 
 #include <gtest/gtest.h>
-#include "base/atomicops.h"
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/logging.h"
-#include "base/thread_local.h"
+#include "butil/atomicops.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/logging.h"
+#include "butil/thread_local.h"
 #include <bthread/butex.h>
-#include "base/logging.h"
+#include "butil/logging.h"
 #include "bthread/bthread.h"
 
 namespace {
@@ -37,13 +37,13 @@ TEST(BthreadTest, setconcurrency) {
     ASSERT_EQ(BTHREAD_MIN_CONCURRENCY + 5, bthread_getconcurrency());
 }
 
-static base::atomic<int> *odd;
-static base::atomic<int> *even;
+static butil::atomic<int> *odd;
+static butil::atomic<int> *even;
 
-static base::atomic<int> nbthreads(0);
-static base::atomic<int> npthreads(0);
+static butil::atomic<int> nbthreads(0);
+static butil::atomic<int> npthreads(0);
 static BAIDU_THREAD_LOCAL bool counted = false;
-static base::atomic<bool> stop (false);
+static butil::atomic<bool> stop (false);
 
 static void *odd_thread(void *) {
     nbthreads.fetch_add(1);
@@ -72,8 +72,8 @@ static void *even_thread(void *) {
 }
 
 TEST(BthreadTest, setconcurrency_with_running_bthread) {
-    odd = bthread::butex_create_checked<base::atomic<int> >();
-    even = bthread::butex_create_checked<base::atomic<int> >();
+    odd = bthread::butex_create_checked<butil::atomic<int> >();
+    even = bthread::butex_create_checked<butil::atomic<int> >();
     ASSERT_TRUE(odd != NULL && even != NULL);
     *odd = 0;
     *even = 0;

@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/nix/xdg_util.h"
+#include "butil/nix/xdg_util.h"
 
-#include "base/environment.h"
+#include "butil/environment.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -13,7 +13,7 @@ using ::testing::Return;
 using ::testing::SetArgumentPointee;
 using ::testing::StrEq;
 
-namespace base {
+namespace butil {
 namespace nix {
 
 namespace {
@@ -73,4 +73,4 @@ TEST(XDGUtilTest, GetDesktopEnvironmentXFCE) {
 }
 
 }  // namespace nix
-}  // namespace base
+}  // namespace butil

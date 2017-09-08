@@ -17,9 +17,9 @@
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
-#include "base/logging.h"                       // LOG()
-#include "base/time.h"
-#include "base/iobuf.h"                         // base::IOBuf
+#include "butil/logging.h"                       // LOG()
+#include "butil/time.h"
+#include "butil/iobuf.h"                         // butil::IOBuf
 #include "brpc/controller.h"               // Controller
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/socket.h"                   // Socket
@@ -50,7 +50,7 @@ struct InputResponse : public InputMessageBase {
 };
 
 // "Message" = "Response" as we only implement the client for redis.
-ParseResult ParseRedisMessage(base::IOBuf* source, Socket* socket,
+ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                               bool /*read_eof*/, const void* /*arg*/) {
     if (source->empty()) {
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
@@ -86,7 +86,7 @@ ParseResult ParseRedisMessage(base::IOBuf* source, Socket* socket,
 }
 
 void ProcessRedisResponse(InputMessageBase* msg_base) {
-    const int64_t start_parse_us = base::cpuwide_time_us();
+    const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<InputResponse> msg(static_cast<InputResponse*>(msg_base));
 
     const bthread_id_t cid = msg->id_wait;
@@ -132,7 +132,7 @@ void ProcessRedisResponse(InputMessageBase* msg_base) {
     accessor.OnResponse(cid, saved_error);
 }
 
-void SerializeRedisRequest(base::IOBuf* buf,
+void SerializeRedisRequest(butil::IOBuf* buf,
                            Controller* cntl,
                            const google::protobuf::Message* request) {
     if (request == NULL) {
@@ -152,12 +152,12 @@ void SerializeRedisRequest(base::IOBuf* buf,
     }
 }
 
-void PackRedisRequest(base::IOBuf* buf,
+void PackRedisRequest(butil::IOBuf* buf,
                       SocketMessage**,
                       uint64_t /*correlation_id*/,
                       const google::protobuf::MethodDescriptor*,
                       Controller*,
-                      const base::IOBuf& request,
+                      const butil::IOBuf& request,
                       const Authenticator* /*auth*/) {
     buf->append(request);
 }

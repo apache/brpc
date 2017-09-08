@@ -8,7 +8,7 @@
 
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 ScopedLocale::ScopedLocale(const std::string& locale) {
   prev_locale_ = setlocale(LC_ALL, NULL);
@@ -20,4 +20,4 @@ ScopedLocale::~ScopedLocale() {
   EXPECT_STREQ(prev_locale_.c_str(), setlocale(LC_ALL, prev_locale_.c_str()));
 }
 
-}  // namespace base
+}  // namespace butil

@@ -4,11 +4,11 @@
 
 #include <execinfo.h>
 #include <gtest/gtest.h>
-#include "base/time.h"
-#include "base/macros.h"
-#include "base/logging.h"
+#include "butil/time.h"
+#include "butil/macros.h"
+#include "butil/logging.h"
 #include <bthread/task_meta.h>
-#include "base/logging.h"
+#include "butil/logging.h"
 #include "bthread/bthread.h"
 #include "bthread/unstable.h"
 
@@ -91,7 +91,7 @@ TEST_F(BthreadTest, call_bthread_functions_before_tls_created) {
     ASSERT_EQ(0UL, bthread_self());
 }
 
-base::atomic<bool> stop(false);
+butil::atomic<bool> stop(false);
 
 void* sleep_for_awhile(void* arg) {
     LOG(INFO) << "sleep_for_awhile(" << arg << ")";
@@ -117,7 +117,7 @@ void* repeated_sleep(void* arg) {
 
 void* spin_and_log(void* arg) {
     // This thread never yields CPU.
-    base::EveryManyUS every_1s(1000000L);
+    butil::EveryManyUS every_1s(1000000L);
     size_t i = 0;
     while (!stop) {
         if (every_1s) {
@@ -265,15 +265,15 @@ TEST_F(BthreadTest, errno_not_changed) {
 static long sleep_in_adding_func = 0;
 
 void* adding_func(void* arg) {
-    base::atomic<size_t>* s = (base::atomic<size_t>*)arg;
+    butil::atomic<size_t>* s = (butil::atomic<size_t>*)arg;
     if (sleep_in_adding_func > 0) {
         long t1 = 0;
         if (10000 == s->fetch_add(1)) {
-            t1 = base::cpuwide_time_us();
+            t1 = butil::cpuwide_time_us();
         }
         bthread_usleep(sleep_in_adding_func);
         if (t1) {
-            LOG(INFO) << "elapse is " << base::cpuwide_time_us() - t1 << "ns";
+            LOG(INFO) << "elapse is " << butil::cpuwide_time_us() - t1 << "ns";
         }
     } else {
         s->fetch_add(1);
@@ -291,11 +291,11 @@ TEST_F(BthreadTest, small_threads) {
             snprintf(prof_name, sizeof(prof_name), "smallthread_nosleep.prof");
         }
 
-        base::atomic<size_t> s(0);
+        butil::atomic<size_t> s(0);
         size_t N = (sleep_in_adding_func ? 40000 : 100000);
         std::vector<bthread_t> th;
         th.reserve(N);
-        base::Timer tm;
+        butil::Timer tm;
         for (size_t j = 0; j < 3; ++j) {
             th.clear();
             if (j == 1) {
@@ -327,7 +327,7 @@ TEST_F(BthreadTest, small_threads) {
 }
 
 void* bthread_starter(void* void_counter) {
-    while (!stop.load(base::memory_order_relaxed)) {
+    while (!stop.load(butil::memory_order_relaxed)) {
         bthread_t th;
         EXPECT_EQ(0, bthread_start_urgent(&th, NULL, adding_func, void_counter));
     }
@@ -336,7 +336,7 @@ void* bthread_starter(void* void_counter) {
 
 struct BAIDU_CACHELINE_ALIGNMENT AlignedCounter {
     AlignedCounter() : value(0) {}
-    base::atomic<size_t> value;
+    butil::atomic<size_t> value;
 };
 
 TEST_F(BthreadTest, start_bthreads_frequently) {
@@ -357,7 +357,7 @@ TEST_F(BthreadTest, start_bthreads_frequently) {
             ASSERT_EQ(0, bthread_start_urgent(
                           &th[i], NULL, bthread_starter, &counters[i].value));
         }
-        base::Timer tm;
+        butil::Timer tm;
         tm.start();
         bthread_usleep(200000L);
         stop = true;
@@ -377,7 +377,7 @@ TEST_F(BthreadTest, start_bthreads_frequently) {
 }
 
 void* log_start_latency(void* void_arg) {
-    base::Timer* tm = static_cast<base::Timer*>(void_arg);
+    butil::Timer* tm = static_cast<butil::Timer*>(void_arg);
     tm->stop();
     return NULL;
 }
@@ -388,13 +388,13 @@ TEST_F(BthreadTest, start_latency_when_high_idle) {
     long elp2 = 0;
     int REP = 0;
     for (int i = 0; i < 10000; ++i) {
-        base::Timer tm;
+        butil::Timer tm;
         tm.start();
         bthread_t th;
         bthread_start_urgent(&th, NULL, log_start_latency, &tm);
         bthread_join(th, NULL);
         bthread_t th2;
-        base::Timer tm2;
+        butil::Timer tm2;
         tm2.start();
         bthread_start_background(&th2, NULL, log_start_latency, &tm2);
         bthread_join(th2, NULL);
@@ -419,7 +419,7 @@ TEST_F(BthreadTest, stop_sleep) {
     bthread_t th;
     ASSERT_EQ(0, bthread_start_urgent(
                   &th, NULL, sleep_for_awhile_with_sleep, (void*)1000000L));
-    base::Timer tm;
+    butil::Timer tm;
     tm.start();
     bthread_usleep(10000);
     ASSERT_EQ(0, bthread_stop(th));

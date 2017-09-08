@@ -15,9 +15,9 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 
 #include <google/protobuf/descriptor.h>
-#include "base/sys_byteorder.h"
-#include "base/logging.h"
-#include "base/find_cstr.h"
+#include "butil/sys_byteorder.h"
+#include "butil/logging.h"
+#include "butil/find_cstr.h"
 #include "brpc/log.h"
 #include "brpc/amf.h"
 
@@ -131,14 +131,14 @@ void AMFField::SlowerClear() {
 
 const AMFField* AMFObject::Find(const char* name) const {
     std::map<std::string, AMFField>::const_iterator it =
-        base::find_cstr(_fields, name);
+        butil::find_cstr(_fields, name);
     if (it != _fields.end()) {
         return &it->second;
     }
     return NULL;
 }
 
-void AMFField::SetString(const base::StringPiece& str) {
+void AMFField::SetString(const butil::StringPiece& str) {
     // TODO: Try to reuse the space.
     Clear();
     if (str.size() < SSO_LIMIT) {
@@ -216,7 +216,7 @@ AMFArray* AMFField::MutableArray() {
 
 // ============= AMFObject =============
 
-void AMFObject::SetString(const std::string& name, const base::StringPiece& str) {
+void AMFObject::SetString(const std::string& name, const butil::StringPiece& str) {
     _fields[name].SetString(str);
 }
 
@@ -939,7 +939,7 @@ void AMFArray::RemoveLastField() {
 
 // [ Write ]
 
-void WriteAMFString(const base::StringPiece& str, AMFOutputStream* stream) {
+void WriteAMFString(const butil::StringPiece& str, AMFOutputStream* stream) {
     if (str.size() < 65536u) {
         stream->put_u8(AMF_MARKER_STRING);
         stream->put_u16(str.size());
@@ -1068,13 +1068,13 @@ static void WriteAMFField(const AMFField& field, AMFOutputStream* stream) {
         break;
     case AMF_MARKER_STRING: {
         stream->put_u8(AMF_MARKER_STRING);
-        const base::StringPiece str = field.AsString();
+        const butil::StringPiece str = field.AsString();
         stream->put_u16(str.size());
         stream->putn(str.data(), str.size());
     } break;
     case AMF_MARKER_LONG_STRING: {
         stream->put_u8(AMF_MARKER_LONG_STRING);
-        const base::StringPiece str = field.AsString();
+        const butil::StringPiece str = field.AsString();
         stream->put_u32(str.size());
         stream->putn(str.data(), str.size());
     } break;

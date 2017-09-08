@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/containers/hash_tables.h"
+#include "butil/containers/hash_tables.h"
 
-#include "base/basictypes.h"
+#include "butil/basictypes.h"
 #include <gtest/gtest.h>
 
 namespace {
@@ -15,7 +15,7 @@ class HashPairTest : public testing::Test {
 #define INSERT_PAIR_TEST(Type, value1, value2) \
   { \
     Type pair(value1, value2); \
-    base::hash_map<Type, int> map; \
+    butil::hash_map<Type, int> map; \
     map[pair] = 1; \
   }
 

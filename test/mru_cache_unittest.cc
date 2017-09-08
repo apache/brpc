@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/basictypes.h"
-#include "base/containers/mru_cache.h"
+#include "butil/basictypes.h"
+#include "butil/containers/mru_cache.h"
 #include <gtest/gtest.h>
 
 namespace {
@@ -33,7 +33,7 @@ struct CachedItem {
 }  // namespace
 
 TEST(MRUCacheTest, Basic) {
-  typedef base::MRUCache<int, CachedItem> Cache;
+  typedef butil::MRUCache<int, CachedItem> Cache;
   Cache cache(Cache::NO_AUTO_EVICT);
 
   // Check failure conditions
@@ -113,7 +113,7 @@ TEST(MRUCacheTest, Basic) {
 }
 
 TEST(MRUCacheTest, GetVsPeek) {
-  typedef base::MRUCache<int, CachedItem> Cache;
+  typedef butil::MRUCache<int, CachedItem> Cache;
   Cache cache(Cache::NO_AUTO_EVICT);
 
   static const int kItem1Key = 1;
@@ -148,7 +148,7 @@ TEST(MRUCacheTest, GetVsPeek) {
 }
 
 TEST(MRUCacheTest, KeyReplacement) {
-  typedef base::MRUCache<int, CachedItem> Cache;
+  typedef butil::MRUCache<int, CachedItem> Cache;
   Cache cache(Cache::NO_AUTO_EVICT);
 
   static const int kItem1Key = 1;
@@ -186,7 +186,7 @@ TEST(MRUCacheTest, KeyReplacement) {
 
 // Make sure that the owning version release its pointers properly.
 TEST(MRUCacheTest, Owning) {
-  typedef base::OwningMRUCache<int, CachedItem*> Cache;
+  typedef butil::OwningMRUCache<int, CachedItem*> Cache;
   Cache cache(Cache::NO_AUTO_EVICT);
 
   int initial_count = cached_item_live_count;
@@ -229,7 +229,7 @@ TEST(MRUCacheTest, Owning) {
 }
 
 TEST(MRUCacheTest, AutoEvict) {
-  typedef base::OwningMRUCache<int, CachedItem*> Cache;
+  typedef butil::OwningMRUCache<int, CachedItem*> Cache;
   static const Cache::size_type kMaxSize = 3;
 
   int initial_count = cached_item_live_count;
@@ -254,7 +254,7 @@ TEST(MRUCacheTest, AutoEvict) {
 
 TEST(MRUCacheTest, HashingMRUCache) {
   // Very simple test to make sure that the hashing cache works correctly.
-  typedef base::HashingMRUCache<std::string, CachedItem> Cache;
+  typedef butil::HashingMRUCache<std::string, CachedItem> Cache;
   Cache cache(Cache::NO_AUTO_EVICT);
 
   CachedItem one(1);

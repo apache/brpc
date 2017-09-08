@@ -18,7 +18,7 @@
 #ifndef  BVAR_SCOPED_TIMER_H
 #define  BVAR_SCOPED_TIMER_H
 
-#include "base/time.h"
+#include "butil/time.h"
 
 // Accumulate microseconds spent by scopes into bvar, useful for debugging.
 // Example:
@@ -39,13 +39,13 @@ template <typename T>
 class ScopedTimer {
 public:
     explicit ScopedTimer(T& bvar)
-        : _start_time(base::cpuwide_time_us()), _bvar(&bvar) {}
+        : _start_time(butil::cpuwide_time_us()), _bvar(&bvar) {}
 
     ~ScopedTimer() {
-        *_bvar << (base::cpuwide_time_us() - _start_time);
+        *_bvar << (butil::cpuwide_time_us() - _start_time);
     }
 
-    void reset() { _start_time = base::cpuwide_time_us(); }
+    void reset() { _start_time = butil::cpuwide_time_us(); }
 
 private:
     DISALLOW_COPY_AND_ASSIGN(ScopedTimer);

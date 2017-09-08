@@ -20,7 +20,7 @@
 
 namespace mcpack2pb {
 
-const static OutputStream::Area INVALID_AREA(base::LINKER_INITIALIZED);
+const static OutputStream::Area INVALID_AREA(butil::LINKER_INITIALIZED);
 
 // Binary head before fixed-size types.
 struct FieldFixedHead {
@@ -129,7 +129,7 @@ void Serializer::GroupInfo::print(std::ostream& os) const {
     
     // os << type2str(type) << '=';
     // const uint8_t first_byte = *head_buf;
-    // base::StringPiece name;
+    // butil::StringPiece name;
     // if (first_byte & FIELD_FIXED_MASK) {
     //     FieldFixedHead head;
     //     memcpy(&head, head_buf, sizeof(FieldFixedHead));
@@ -398,7 +398,7 @@ void Serializer::add_multiple_double(const double* values, size_t count)
 
 inline void add_binary_internal(OutputStream* stream,
                             Serializer::GroupInfo & group_info,
-                            const base::StringPiece& value,
+                            const butil::StringPiece& value,
                             FieldType type) {
     if (!stream->good()) {
         return;
@@ -426,7 +426,7 @@ inline void add_binary_internal(OutputStream* stream,
 inline void add_binary_internal(OutputStream* stream,
                              Serializer::GroupInfo & group_info,
                              const StringWrapper& name,
-                             const base::StringPiece& value,
+                             const butil::StringPiece& value,
                              FieldType type) {
     if (name.empty()) {
         return add_binary_internal(stream, group_info, value, type);
@@ -458,11 +458,11 @@ inline void add_binary_internal(OutputStream* stream,
 
 void Serializer::add_string(const StringWrapper& name, const StringWrapper& s) {
     add_binary_internal(_stream, peek_group_info(), name,
-                     base::StringPiece(s.data(), s.size() + 1), FIELD_STRING);
+                     butil::StringPiece(s.data(), s.size() + 1), FIELD_STRING);
 }
 void Serializer::add_string(const StringWrapper& s) {
     add_binary_internal(_stream, peek_group_info(),
-                     base::StringPiece(s.data(), s.size() + 1), FIELD_STRING);
+                     butil::StringPiece(s.data(), s.size() + 1), FIELD_STRING);
 }
 void Serializer::add_binary(const StringWrapper& name,
                          const std::string& data) {
@@ -471,14 +471,14 @@ void Serializer::add_binary(const StringWrapper& name,
 void Serializer::add_binary(const StringWrapper& name,
                          const void* data, size_t n) {
     add_binary_internal(_stream, peek_group_info(), name,
-                     base::StringPiece((const char*)data, n), FIELD_BINARY);
+                     butil::StringPiece((const char*)data, n), FIELD_BINARY);
 }
 void Serializer::add_binary(const std::string& data) {
     add_binary_internal(_stream, peek_group_info(), data, FIELD_BINARY);
 }
 void Serializer::add_binary(const void* data, size_t n) {
     add_binary_internal(_stream, peek_group_info(),
-                     base::StringPiece((const char*)data, n), FIELD_BINARY);
+                     butil::StringPiece((const char*)data, n), FIELD_BINARY);
 }
 
 // ===============

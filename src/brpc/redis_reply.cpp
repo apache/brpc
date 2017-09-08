@@ -15,7 +15,7 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 
 #include <limits>
-#include "base/logging.h"
+#include "butil/logging.h"
 #include "brpc/redis_reply.h"
 
 
@@ -35,7 +35,7 @@ const char* RedisReplyTypeToString(RedisReplyType type) {
     }
 }
 
-bool RedisReply::ConsumePartialIOBuf(base::IOBuf& buf, base::Arena* arena) {
+bool RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena) {
     if (_type == REDIS_REPLY_ARRAY && _data.array.last_index >= 0) {
         // The parsing was suspended while parsing sub replies,
         // continue the parsing.
@@ -60,7 +60,7 @@ bool RedisReply::ConsumePartialIOBuf(base::IOBuf& buf, base::Arena* arena) {
     switch (fc) {
     case '-':   // Error          "-<message>\r\n"
     case '+': { // Simple String  "+<string>\r\n"
-        base::IOBuf str;
+        butil::IOBuf str;
         if (buf.cut_until(&str, "\r\n") != 0) {
             return false;
         }
@@ -89,8 +89,8 @@ bool RedisReply::ConsumePartialIOBuf(base::IOBuf& buf, base::Arena* arena) {
         char intbuf[32];  // enough for fc + 64-bit decimal + \r\n
         const size_t ncopied = buf.copy_to(intbuf, sizeof(intbuf) - 1);
         intbuf[ncopied] = '\0';
-        const size_t crlf_pos = base::StringPiece(intbuf, ncopied).find("\r\n");
-        if (crlf_pos == base::StringPiece::npos) {  // not enough data
+        const size_t crlf_pos = butil::StringPiece(intbuf, ncopied).find("\r\n");
+        if (crlf_pos == butil::StringPiece::npos) {  // not enough data
             return false;
         }
         char* endptr = NULL;
@@ -206,7 +206,7 @@ bool RedisReply::ConsumePartialIOBuf(base::IOBuf& buf, base::Arena* arena) {
     return false;
 }
 
-static void PrintBinaryData(std::ostream& os, const base::StringPiece& s) {
+static void PrintBinaryData(std::ostream& os, const butil::StringPiece& s) {
     // Check for non-ascii characters first so that we can print ascii data
     // (most cases) fast, rather than printing char-by-char as we do in the
     // binary_data=true branch.
@@ -227,7 +227,7 @@ static void PrintBinaryData(std::ostream& os, const base::StringPiece& s) {
                 uint8_t d2 = ((uint8_t)s[i]) >> 4;
                 buf[4] = (d1 < 10 ? d1 + '0' : (d1 - 10) + 'A');
                 buf[5] = (d2 < 10 ? d2 + '0' : (d2 - 10) + 'A');
-                os << base::StringPiece(buf, 6);
+                os << butil::StringPiece(buf, 6);
             } else {
                 os << s[i];
             }
@@ -243,7 +243,7 @@ void RedisReply::Print(std::ostream& os) const {
         if (_length < sizeof(_data.short_str)) {
             os << _data.short_str;
         } else {
-            PrintBinaryData(os, base::StringPiece(_data.long_str, _length));
+            PrintBinaryData(os, butil::StringPiece(_data.long_str, _length));
         }
         os << '"';
         break;
@@ -270,7 +270,7 @@ void RedisReply::Print(std::ostream& os) const {
         if (_length < sizeof(_data.short_str)) {
             os << _data.short_str;
         } else {
-            PrintBinaryData(os, base::StringPiece(_data.long_str, _length));
+            PrintBinaryData(os, butil::StringPiece(_data.long_str, _length));
         }
         break;
     default:

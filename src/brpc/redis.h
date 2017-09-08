@@ -26,9 +26,9 @@
 #include <google/protobuf/generated_message_reflection.h>
 #include "google/protobuf/descriptor.pb.h"
 
-#include "base/iobuf.h"
-#include "base/strings/string_piece.h"
-#include "base/arena.h"
+#include "butil/iobuf.h"
+#include "butil/strings/string_piece.h"
+#include "butil/arena.h"
 #include "redis_reply.h"
 
 
@@ -64,14 +64,14 @@ public:
     // Concatenate components into a redis command, similarly with
     // redisCommandArgv() in hiredis.
     // Example:
-    //   base::StringPiece components[] = { "set", "key", "value" };
+    //   butil::StringPiece components[] = { "set", "key", "value" };
     //   request.AddCommandByComponents(components, arraysize(components));
-    bool AddCommandByComponents(const base::StringPiece* components, size_t n);
+    bool AddCommandByComponents(const butil::StringPiece* components, size_t n);
     
     // Add a command with variadic args to this request.
     // The reason that adding so many overloads rather than using ... is that
     // it's the only way to dispatch the AddCommand w/o args differently.
-    bool AddCommand(const base::StringPiece& command);
+    bool AddCommand(const butil::StringPiece& command);
     
     template <typename A1>
     bool AddCommand(const char* format, A1 a1)
@@ -104,7 +104,7 @@ public:
     bool has_error() const { return _has_error; }
 
     // Serialize the request into `buf'. Return true on success.
-    bool SerializeTo(base::IOBuf* buf) const;
+    bool SerializeTo(butil::IOBuf* buf) const;
 
     // Protobuf methods.
     RedisRequest* New() const;
@@ -137,7 +137,7 @@ private:
 
     int _ncommand;    // # of valid commands
     bool _has_error;  // previous AddCommand had error
-    base::IOBuf _buf;  // the serialized request.
+    butil::IOBuf _buf;  // the serialized request.
     mutable int _cached_size_;  // ByteSize
 
 friend void protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto_impl();
@@ -178,7 +178,7 @@ public:
 
     // Parse and consume intact replies from the buf.
     // Returns true on success, false otherwise.
-    bool ConsumePartialIOBuf(base::IOBuf& buf, int reply_count);
+    bool ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count);
     
     // implements Message ----------------------------------------------
   
@@ -209,7 +209,7 @@ private:
 
     RedisReply _first_reply;
     RedisReply* _other_replies;
-    base::Arena _arena;
+    butil::Arena _arena;
     uint32_t _nreply;
     mutable int _cached_size_;
 

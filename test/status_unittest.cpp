@@ -5,7 +5,7 @@
 
 #include <errno.h>
 #include <gtest/gtest.h>
-#include "base/status.h"
+#include "butil/status.h"
 
 namespace {
 class StatusTest : public ::testing::Test{
@@ -23,7 +23,7 @@ protected:
 TEST_F(StatusTest, success_status) {
     std::ostringstream oss;
 
-    base::Status st;
+    butil::Status st;
     ASSERT_TRUE(st.ok());
     ASSERT_EQ(0, st.error_code());
     ASSERT_STREQ("OK", st.error_cstr());
@@ -32,7 +32,7 @@ TEST_F(StatusTest, success_status) {
     oss << st;
     ASSERT_EQ("OK", oss.str());
 
-    base::Status st2(0, "blahblah");
+    butil::Status st2(0, "blahblah");
     ASSERT_TRUE(st2.ok());
     ASSERT_EQ(0, st2.error_code());
     ASSERT_STREQ("OK", st2.error_cstr());
@@ -41,7 +41,7 @@ TEST_F(StatusTest, success_status) {
     oss << st2;
     ASSERT_EQ("OK", oss.str());
 
-    base::Status st3 = base::Status::OK();
+    butil::Status st3 = butil::Status::OK();
     ASSERT_TRUE(st3.ok());
     ASSERT_EQ(0, st3.error_code());
     ASSERT_STREQ("OK", st3.error_cstr());
@@ -57,7 +57,7 @@ TEST_F(StatusTest, success_status) {
 TEST_F(StatusTest, failed_status) {
     std::ostringstream oss;
 
-    base::Status st1(ENOMEM, NO_MEMORY_STR);
+    butil::Status st1(ENOMEM, NO_MEMORY_STR);
     ASSERT_FALSE(st1.ok());
     ASSERT_EQ(ENOMEM, st1.error_code());
     ASSERT_STREQ(NO_MEMORY_STR, st1.error_cstr());
@@ -66,7 +66,7 @@ TEST_F(StatusTest, failed_status) {
     oss << st1;
     ASSERT_EQ(NO_MEMORY_STR, oss.str());
 
-    base::Status st2(EINVAL, "%s%s", NO_MEMORY_STR, NO_CPU_STR);
+    butil::Status st2(EINVAL, "%s%s", NO_MEMORY_STR, NO_CPU_STR);
     ASSERT_FALSE(st2.ok());
     ASSERT_EQ(EINVAL, st2.error_code());
     ASSERT_STREQ(NO_MEMORY_STR NO_CPU_STR, st2.error_cstr());
@@ -75,7 +75,7 @@ TEST_F(StatusTest, failed_status) {
     oss << st2;
     ASSERT_EQ(NO_MEMORY_STR NO_CPU_STR, oss.str());
 
-    base::Status st3(ENOMEM, NO_MEMORY_STR);
+    butil::Status st3(ENOMEM, NO_MEMORY_STR);
     ASSERT_FALSE(st3.ok());
     ASSERT_EQ(ENOMEM, st3.error_code());
     ASSERT_STREQ(NO_MEMORY_STR, st3.error_cstr());
@@ -84,7 +84,7 @@ TEST_F(StatusTest, failed_status) {
     oss << st3;
     ASSERT_EQ(NO_MEMORY_STR, oss.str());
 
-    base::Status st4(EINVAL, "%s%s", NO_MEMORY_STR, NO_CPU_STR);
+    butil::Status st4(EINVAL, "%s%s", NO_MEMORY_STR, NO_CPU_STR);
     ASSERT_FALSE(st4.ok());
     ASSERT_EQ(EINVAL, st4.error_code());
     ASSERT_STREQ(NO_MEMORY_STR NO_CPU_STR, st4.error_cstr());
@@ -93,7 +93,7 @@ TEST_F(StatusTest, failed_status) {
     oss << st4;
     ASSERT_EQ(NO_MEMORY_STR NO_CPU_STR, oss.str());
 
-    base::Status st5(EINVAL, "Blah");
+    butil::Status st5(EINVAL, "Blah");
     ASSERT_FALSE(st5.ok());
     ASSERT_EQ(EINVAL, st5.error_code());
     ASSERT_STREQ("Blah", st5.error_cstr());
@@ -120,7 +120,7 @@ TEST_F(StatusTest, failed_status) {
 TEST_F(StatusTest, reset) {
     std::ostringstream oss;
 
-    base::Status st1(ENOMEM, NO_MEMORY_STR);
+    butil::Status st1(ENOMEM, NO_MEMORY_STR);
     ASSERT_FALSE(st1.ok());
     ASSERT_EQ(ENOMEM, st1.error_code());
     ASSERT_STREQ(NO_MEMORY_STR, st1.error_cstr());
@@ -169,7 +169,7 @@ TEST_F(StatusTest, reset) {
 TEST_F(StatusTest, copy) {
     std::ostringstream oss;
 
-    base::Status st1(ENOMEM, NO_MEMORY_STR);
+    butil::Status st1(ENOMEM, NO_MEMORY_STR);
     ASSERT_FALSE(st1.ok());
     ASSERT_EQ(ENOMEM, st1.error_code());
     ASSERT_STREQ(NO_MEMORY_STR, st1.error_cstr());
@@ -178,7 +178,7 @@ TEST_F(StatusTest, copy) {
     oss << st1;
     ASSERT_EQ(NO_MEMORY_STR, oss.str());
 
-    base::Status st2;
+    butil::Status st2;
     ASSERT_TRUE(st2.ok());
     ASSERT_EQ(0, st2.error_code());
     ASSERT_STREQ("OK", st2.error_cstr());
@@ -245,11 +245,11 @@ TEST_F(StatusTest, copy) {
 TEST_F(StatusTest, message_has_zero) {
     std::ostringstream oss;
     char str[32] = "hello world";
-    base::StringPiece slice(str);
+    butil::StringPiece slice(str);
     ASSERT_EQ(11UL, slice.as_string().size());
     str[5] = '\0';
     ASSERT_EQ(11UL, slice.as_string().size());
-    base::Status st1(ENOMEM, slice);
+    butil::Status st1(ENOMEM, slice);
     ASSERT_FALSE(st1.ok());
     ASSERT_EQ(ENOMEM, st1.error_code());
     ASSERT_STREQ("hello", st1.error_cstr());

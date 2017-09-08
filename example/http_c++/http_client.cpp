@@ -20,7 +20,7 @@
 //   ./http_client www.baidu.com
 
 #include <gflags/gflags.h>
-#include <base/logging.h>
+#include <butil/logging.h>
 #include <brpc/channel.h>
 
 DEFINE_string(d, "", "POST this data to the http server");

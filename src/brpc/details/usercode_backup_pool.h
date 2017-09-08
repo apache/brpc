@@ -17,7 +17,7 @@
 #ifndef  BRPC_USERCODE_BACKUP_POOL_H
 #define  BRPC_USERCODE_BACKUP_POOL_H
 
-#include "base/atomicops.h"
+#include "butil/atomicops.h"
 #include "bthread/bthread.h"
 #include <gflags/gflags_declare.h>
 
@@ -52,14 +52,14 @@ inline bool TooManyUserCode() {
 // in backup threads.
 // Check RunUserCode() below to see the usage pattern.
 inline bool BeginRunningUserCode() {
-    extern base::static_atomic<int> g_usercode_inplace;
-    return (g_usercode_inplace.fetch_add(1, base::memory_order_relaxed)
+    extern butil::static_atomic<int> g_usercode_inplace;
+    return (g_usercode_inplace.fetch_add(1, butil::memory_order_relaxed)
             + FLAGS_usercode_backup_threads) < bthread_getconcurrency();
 }
 
 inline void EndRunningUserCodeInPlace() {
-    extern base::static_atomic<int> g_usercode_inplace;
-    g_usercode_inplace.fetch_sub(1, base::memory_order_relaxed);
+    extern butil::static_atomic<int> g_usercode_inplace;
+    g_usercode_inplace.fetch_sub(1, butil::memory_order_relaxed);
 }
 
 void EndRunningUserCodeInPool(void (*fn)(void*), void* arg);

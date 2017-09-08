@@ -19,11 +19,11 @@
 #include <sys/types.h>
 #include <stddef.h>                         // size_t
 #include <gflags/gflags.h>
-#include "base/macros.h"                    // ARRAY_SIZE
-#include "base/scoped_lock.h"               // BAIDU_SCOPED_LOCK
-#include "base/fast_rand.h"
-#include "base/unique_ptr.h"
-#include "base/third_party/murmurhash3/murmurhash3.h" // fmix64
+#include "butil/macros.h"                    // ARRAY_SIZE
+#include "butil/scoped_lock.h"               // BAIDU_SCOPED_LOCK
+#include "butil/fast_rand.h"
+#include "butil/unique_ptr.h"
+#include "butil/third_party/murmurhash3/murmurhash3.h" // fmix64
 #include "bthread/errno.h"                  // ESTOP
 #include "bthread/butex.h"                  // butex_*
 #include "bthread/sys_futex.h"              // futex_wake_private
@@ -109,10 +109,10 @@ int stop_and_consume_butex_waiter(
             m->stop = true;
             // acquire fence guarantees visibility of `interruptible'.
             ButexWaiter* w =
-                m->current_waiter.exchange(NULL, base::memory_order_acquire);
+                m->current_waiter.exchange(NULL, butil::memory_order_acquire);
             if (w != NULL && !m->interruptible) {
                 // Set waiter back if the bthread is not interruptible.
-                m->current_waiter.store(w, base::memory_order_relaxed);
+                m->current_waiter.store(w, butil::memory_order_relaxed);
                 *pw = NULL;
             } else {
                 *pw = w;
@@ -132,7 +132,7 @@ int set_butex_waiter(bthread_t tid, ButexWaiter* w) {
         BAIDU_SCOPED_LOCK(m->version_lock);
         if (given_ver == *m->version_butex) {
             // Release fence makes m->stop visible to butex_wait
-            m->current_waiter.store(w, base::memory_order_release);
+            m->current_waiter.store(w, butil::memory_order_release);
             return 0;
         }
     }
@@ -191,7 +191,7 @@ void TaskGroup::run_main_task() {
     }
     // stop_main_task() was called.
     // Don't forget to add elapse of last wait_task.
-    current_task()->stat.cputime_ns += base::cpuwide_time_ns() - _last_run_ns;
+    current_task()->stat.cputime_ns += butil::cpuwide_time_ns() - _last_run_ns;
 }
 
 TaskGroup::TaskGroup(TaskControl* c)
@@ -203,7 +203,7 @@ TaskGroup::TaskGroup(TaskControl* c)
     , _control(c)
     , _num_nosignal(0)
     , _nsignaled(0)
-    , _last_run_ns(base::cpuwide_time_ns())
+    , _last_run_ns(butil::cpuwide_time_ns())
     , _cumulated_cputime_ns(0)
     , _nswitch(0)
     , _last_context_remained(NULL)
@@ -214,9 +214,9 @@ TaskGroup::TaskGroup(TaskControl* c)
     , _remote_num_nosignal(0)
     , _remote_nsignaled(0)
 {
-    _steal_seed = base::fast_rand();
+    _steal_seed = butil::fast_rand();
     _steal_offset = OFFSET_TABLE[_steal_seed % ARRAY_SIZE(OFFSET_TABLE)];
-    _pl = &c->_pl[base::fmix64(pthread_self()) % TaskControl::PARKING_LOT_NUM];
+    _pl = &c->_pl[butil::fmix64(pthread_self()) % TaskControl::PARKING_LOT_NUM];
     CHECK(c);
 }
 
@@ -244,8 +244,8 @@ int TaskGroup::init(size_t runqueue_capacity) {
         LOG(FATAL) << "Fail to get main stack container";
         return -1;
     }
-    base::ResourceId<TaskMeta> slot;
-    TaskMeta* m = base::get_resource<TaskMeta>(&slot);
+    butil::ResourceId<TaskMeta> slot;
+    TaskMeta* m = butil::get_resource<TaskMeta>(&slot);
     if (NULL == m) {
         LOG(FATAL) << "Fail to get TaskMeta";
         return -1;
@@ -263,7 +263,7 @@ int TaskGroup::init(size_t runqueue_capacity) {
     // context switching back to this main bthread will restore tls_bls
     // with NULL values which is incorrect.
     m->local_storage = tls_bls;
-    m->cpuwide_start_ns = base::cpuwide_time_ns();
+    m->cpuwide_start_ns = butil::cpuwide_time_ns();
     m->stat = EMPTY_STAT;
     m->attr = BTHREAD_ATTR_TASKGROUP;
     m->tid = make_tid(*m->version_butex, slot);
@@ -272,7 +272,7 @@ int TaskGroup::init(size_t runqueue_capacity) {
     _cur_meta = m;
     _main_tid = m->tid;
     _main_stack = stk;
-    _last_run_ns = base::cpuwide_time_ns();
+    _last_run_ns = butil::cpuwide_time_ns();
     return 0;
 }
 
@@ -311,7 +311,7 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             // considerable time because a single bvar::LatencyRecorder
             // contains many bvar.
             g->_control->exposed_pending_time() <<
-                (base::cpuwide_time_ns() - m->cpuwide_start_ns) / 1000L;
+                (butil::cpuwide_time_ns() - m->cpuwide_start_ns) / 1000L;
         }
         
         // Not catch exceptions except ExitException which is for implementing
@@ -389,14 +389,14 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     if (__builtin_expect(!fn, 0)) {
         return EINVAL;
     }
-    const int64_t start_ns = base::cpuwide_time_ns();
+    const int64_t start_ns = butil::cpuwide_time_ns();
     const bthread_attr_t using_attr = (attr ? *attr : BTHREAD_ATTR_NORMAL);
-    base::ResourceId<TaskMeta> slot;
-    TaskMeta* m = base::get_resource(&slot);
+    butil::ResourceId<TaskMeta> slot;
+    TaskMeta* m = butil::get_resource(&slot);
     if (__builtin_expect(!m, 0)) {
         return ENOMEM;
     }
-    CHECK(m->current_waiter.load(base::memory_order_relaxed) == NULL);
+    CHECK(m->current_waiter.load(butil::memory_order_relaxed) == NULL);
     m->stop = false;
     m->interruptible = true;
     m->about_to_quit = false;
@@ -444,14 +444,14 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     if (__builtin_expect(!fn, 0)) {
         return EINVAL;
     }
-    const int64_t start_ns = base::cpuwide_time_ns();
+    const int64_t start_ns = butil::cpuwide_time_ns();
     const bthread_attr_t using_attr = (attr ? *attr : BTHREAD_ATTR_NORMAL);
-    base::ResourceId<TaskMeta> slot;
-    TaskMeta* m = base::get_resource(&slot);
+    butil::ResourceId<TaskMeta> slot;
+    TaskMeta* m = butil::get_resource(&slot);
     if (__builtin_expect(!m, 0)) {
         return ENOMEM;
     }
-    CHECK(m->current_waiter.load(base::memory_order_relaxed) == NULL);
+    CHECK(m->current_waiter.load(butil::memory_order_relaxed) == NULL);
     m->stop = false;
     m->interruptible = true;
     m->about_to_quit = false;
@@ -614,7 +614,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     void* saved_unique_user_ptr = tls_unique_user_ptr;
 
     TaskMeta* const cur_meta = g->_cur_meta;
-    const int64_t now = base::cpuwide_time_ns();
+    const int64_t now = butil::cpuwide_time_ns();
     const int64_t elp_ns = now - g->_last_run_ns;
     g->_last_run_ns = now;
     cur_meta->stat.cputime_ns += elp_ns;
@@ -719,7 +719,7 @@ void TaskGroup::ready_to_run_remote(bthread_t tid, bool nosignal) {
     }
 }
 
-void TaskGroup::flush_nosignal_tasks_remote_locked(base::Mutex& locked_mutex) {
+void TaskGroup::flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex) {
     const int val = _remote_num_nosignal;
     if (!val) {
         locked_mutex.unlock();
@@ -778,7 +778,7 @@ void TaskGroup::_add_sleep_event(void* arg) {
     TimerThread::TaskId sleep_id;
     sleep_id = get_global_timer_thread()->schedule(
         ready_to_run_from_timer_thread, arg,
-        base::microseconds_from_now(e.timeout_us));
+        butil::microseconds_from_now(e.timeout_us));
 
     if (!sleep_id) {
         // fail to schedule timer, go back to previous thread.
@@ -909,7 +909,7 @@ void print_task(std::ostream& os, bthread_t tid) {
            << " flags=" << attr.flags
            << " keytable_pool=" << attr.keytable_pool 
            << "}\nhas_tls=" << has_tls
-           << "\nuptime_ns=" << base::cpuwide_time_ns() - cpuwide_start_ns
+           << "\nuptime_ns=" << butil::cpuwide_time_ns() - cpuwide_start_ns
            << "\ncputime_ns=" << stat.cputime_ns
            << "\nnswitch=" << stat.nswitch;
     }

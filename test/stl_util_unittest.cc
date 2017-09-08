@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/stl_util.h"
+#include "butil/stl_util.h"
 
 #include <set>
 
@@ -10,7 +10,7 @@
 
 namespace {
 
-// Used as test case to ensure the various base::STLXxx functions don't require
+// Used as test case to ensure the various butil::STLXxx functions don't require
 // more than operators "<" and "==" on values stored in containers.
 class ComparableValue {
  public:
@@ -30,7 +30,7 @@ class ComparableValue {
 
 }
 
-namespace base {
+namespace butil {
 namespace {
 
 TEST(STLUtilTest, STLIsSorted) {
@@ -239,4 +239,4 @@ TEST(STLUtilTest, STLIncludes) {
 }
 
 }  // namespace
-}  // namespace base
+}  // namespace butil

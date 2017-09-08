@@ -20,7 +20,7 @@
 #define  BTHREAD_MUTEX_H
 
 #include "bthread/types.h"
-#include "base/scoped_lock.h"
+#include "butil/scoped_lock.h"
 #include "bvar/utils/lock_timer.h"
 
 __BEGIN_DECLS
@@ -69,7 +69,7 @@ private:
     unsigned _futex;
 };
 #else
-typedef base::Mutex FastPthreadMutex;
+typedef butil::Mutex FastPthreadMutex;
 #endif
 }
 

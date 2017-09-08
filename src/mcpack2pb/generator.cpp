@@ -21,8 +21,8 @@
 #include <google/protobuf/io/printer.h>
 #include <google/protobuf/compiler/code_generator.h>
 #include <google/protobuf/compiler/plugin.h>
-#include "base/string_printf.h"
-#include "base/file_util.h"
+#include "butil/string_printf.h"
+#include "butil/file_util.h"
 #include "mcpack2pb/mcpack2pb.h"
 #include "idl_options.pb.h"
 
@@ -277,7 +277,7 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
             impl.Print("// repeated $type$ $name$ = $number$;\n"
                        , "type", field_to_string(f)
                        , "name", f->name()
-                       , "number", base::string_printf("%d", f->number()));
+                       , "number", butil::string_printf("%d", f->number()));
             impl.Print(TEMPLATE_OF_ADD_FUNC_SIGNATURE()
                        , "vmsg", var_name
                        , "lcfield", f->lowercase_name());
@@ -481,12 +481,12 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
                 impl.Print("// optional $type$ $name$ = $number$;\n"
                            , "type", field_to_string(f)
                            , "name", f->name()
-                           , "number", base::string_printf("%d", f->number()));
+                           , "number", butil::string_printf("%d", f->number()));
             } else {
                 impl.Print("// required $type$ $name$ = $number$;\n"
                            , "type", field_to_string(f)
                            , "name", f->name()
-                           , "number", base::string_printf("%d", f->number()));
+                           , "number", butil::string_printf("%d", f->number()));
             }
             impl.Print(TEMPLATE_OF_SET_FUNC_SIGNATURE()
                        , "vmsg", var_name
@@ -862,12 +862,12 @@ static bool generate_serializing(const google::protobuf::Descriptor* d,
         // Print the field as comment.
         std::string comment_template;
         if (cit == IDL_AUTO) {
-            base::string_printf(&comment_template,
+            butil::string_printf(&comment_template,
                                 "// %s $type$ $name$ = $number$;\n",
                                 (f->is_repeated() ? "repeated" :
                                  (f->is_optional() ? "optional" : "required")));
         } else {
-            base::string_printf(&comment_template,
+            butil::string_printf(&comment_template,
                                 "// %s $type$ $name$ = $number$ [(idl_type)=%s];\n",
                                 (f->is_repeated() ? "repeated" :
                                  (f->is_optional() ? "optional" : "required")),
@@ -876,7 +876,7 @@ static bool generate_serializing(const google::protobuf::Descriptor* d,
         impl.Print(comment_template.c_str()
                    , "type", field_to_string(f)
                    , "name", f->name()
-                   , "number", base::string_printf("%d", f->number()));
+                   , "number", butil::string_printf("%d", f->number()));
         if (f->is_repeated()) {
             switch (f->cpp_type()) {
             case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
@@ -1052,7 +1052,7 @@ static bool generate_serializing(const google::protobuf::Descriptor* d,
                                 , "lcfield2", f2->lowercase_name());
                         }
                     } else if (f2->is_repeated()) {
-                        const std::string msgstr = base::string_printf(
+                        const std::string msgstr = butil::string_printf(
                             "msg.%s(i)", f->lowercase_name().c_str());
                         switch (f2->cpp_type()) {
                         case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
@@ -1102,7 +1102,7 @@ static bool generate_serializing(const google::protobuf::Descriptor* d,
                             return false;
                         }
                     } else {
-                        const std::string msgstr = base::string_printf(
+                        const std::string msgstr = butil::string_printf(
                             "msg.%s(i)", f->lowercase_name().c_str());
                         switch (f2->cpp_type()) {
                         case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
@@ -1278,7 +1278,7 @@ static bool generate_registration(
             "g_$vmsg$_fields = new ::mcpack2pb::FieldMap;\n"
             "CHECK_EQ(0, g_$vmsg$_fields->init(std::max($field_count$, 1), 30));\n"
             , "vmsg", var_name
-            , "field_count", ::base::string_printf("%d", d->field_count())); 
+            , "field_count", ::butil::string_printf("%d", d->field_count())); 
         for (int i = 0; i < d->field_count(); ++i) {
             const google::protobuf::FieldDescriptor* f = d->field(i);
             impl.Print("(*g_$vmsg$_fields)[\"$field$\"] = ::set_$vmsg$_$lcfield$;\n"
@@ -1325,7 +1325,7 @@ bool McpackToProtobuf::Generate(const google::protobuf::FileDescriptor* file,
     std::string cpp_name = file->name();
     const size_t pos = cpp_name.find_last_of('.');
     if (pos == std::string::npos) {
-        ::base::string_printf(error, "Bad filename=%s", cpp_name.c_str());
+        ::butil::string_printf(error, "Bad filename=%s", cpp_name.c_str());
         return false;
     }
     cpp_name.resize(pos);
@@ -1333,7 +1333,7 @@ bool McpackToProtobuf::Generate(const google::protobuf::FileDescriptor* file,
     
     google::protobuf::io::Printer inc_printer(
         ctx->OpenForInsert(cpp_name, "includes"), '$');
-    inc_printer.Print("#include <base/logging.h>\n"
+    inc_printer.Print("#include <butil/logging.h>\n"
                       "#include <mcpack2pb/mcpack2pb.h>\n"
                       "#include <gflags/gflags.h>\n");
 
@@ -1351,13 +1351,13 @@ bool McpackToProtobuf::Generate(const google::protobuf::FileDescriptor* file,
     for (int i = 0; i < file->message_type_count(); ++i) {
         const google::protobuf::Descriptor* d = file->message_type(i);
         if (!generate_parsing(d, ref_msgs, ref_maps, gimpl_printer)) {
-            ::base::string_printf(
+            ::butil::string_printf(
                 error, "Fail to generate parsing code for %s",
                 d->full_name().c_str());
             return false;
         }
         if (!generate_serializing(d, ref_msgs, ref_maps, gimpl_printer)) {
-            ::base::string_printf(
+            ::butil::string_printf(
                 error, "Fail to generate serializing code for %s",
                 d->full_name().c_str());
             return false;
@@ -1368,13 +1368,13 @@ bool McpackToProtobuf::Generate(const google::protobuf::FileDescriptor* file,
             , "vmsg", var_name);
     }
     if (!generate_declarations(ref_msgs, ref_maps, gdecl_printer)) {
-        ::base::string_printf(
+        ::butil::string_printf(
             error, "Fail to generate declarations for %s",
             cpp_name.c_str());
         return false;        
     }
     if (!generate_registration(file, gimpl_printer)) {
-        ::base::string_printf(
+        ::butil::string_printf(
             error, "Fail to generate registration code for %s",
             cpp_name.c_str());
         return false;

@@ -17,7 +17,7 @@
 #ifndef BRPC_BUILTIN_VIZ_MIN_JS_H
 #define BRPC_BUILTIN_VIZ_MIN_JS_H
 
-#include "base/iobuf.h"
+#include "butil/iobuf.h"
 
 
 namespace brpc {
@@ -26,8 +26,8 @@ namespace brpc {
 // We need to pack all js inside C++ code so that builtin services can be
 // accessed without external resources and network connection.
 const char* viz_min_js();
-const base::IOBuf& viz_min_js_iobuf();
-const base::IOBuf& viz_min_js_iobuf_gzip();
+const butil::IOBuf& viz_min_js_iobuf();
+const butil::IOBuf& viz_min_js_iobuf_gzip();
 
 } // namespace brpc
 

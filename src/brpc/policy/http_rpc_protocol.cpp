@@ -20,10 +20,10 @@
 #include <json2pb/pb_to_json.h>                    // ProtoMessageToJson
 #include <json2pb/json_to_pb.h>                    // JsonToProtoMessage
 
-#include "base/unique_ptr.h"                       // std::unique_ptr
-#include "base/string_splitter.h"                  // StringMultiSplitter
-#include "base/string_printf.h"
-#include "base/time.h"
+#include "butil/unique_ptr.h"                       // std::unique_ptr
+#include "butil/string_splitter.h"                  // StringMultiSplitter
+#include "butil/string_printf.h"
+#include "butil/time.h"
 #include "brpc/compress.h"
 #include "brpc/errno.pb.h"                     // ENOSERVICE, ENOMETHOD
 #include "brpc/controller.h"                   // Controller
@@ -67,20 +67,20 @@ DEFINE_bool(pb_enum_as_number, false, "[Not recommended] Convert enums in "
 
 // Read user address from the header specified by -http_header_of_user_ip
 static bool GetUserAddressFromHeaderImpl(const HttpHeader& headers,
-                                         base::EndPoint* user_addr) {
+                                         butil::EndPoint* user_addr) {
     const std::string* user_addr_str =
         headers.GetHeader(FLAGS_http_header_of_user_ip);
     if (user_addr_str == NULL) {
         return false;
     }
     if (user_addr_str->find(':') == std::string::npos) {
-        if (base::str2ip(user_addr_str->c_str(), &user_addr->ip) != 0) {
+        if (butil::str2ip(user_addr_str->c_str(), &user_addr->ip) != 0) {
             LOG(WARNING) << "Fail to parse ip from " << *user_addr_str;
             return false;
         }
         user_addr->port = 0;
     } else {
-        if (base::str2endpoint(user_addr_str->c_str(), user_addr) != 0) {
+        if (butil::str2endpoint(user_addr_str->c_str(), user_addr) != 0) {
             LOG(WARNING) << "Fail to parse ip:port from " << *user_addr_str;
             return false;
         }
@@ -89,7 +89,7 @@ static bool GetUserAddressFromHeaderImpl(const HttpHeader& headers,
 }
 
 inline bool GetUserAddressFromHeader(const HttpHeader& headers,
-                                     base::EndPoint* user_addr) {
+                                     butil::EndPoint* user_addr) {
     if (FLAGS_http_header_of_user_ip.empty()) {
         return false;
     }
@@ -147,10 +147,10 @@ enum HttpContentType {
     HTTP_CONTENT_PROTO = 2
 };
 
-inline HttpContentType ParseContentType(base::StringPiece content_type) {
-    const base::StringPiece prefix = "application/";
-    const base::StringPiece json = "json";
-    const base::StringPiece proto = "proto";
+inline HttpContentType ParseContentType(butil::StringPiece content_type) {
+    const butil::StringPiece prefix = "application/";
+    const butil::StringPiece json = "json";
+    const butil::StringPiece proto = "proto";
 
     // According to http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.7
     //   media-type  = type "/" subtype *( ";" parameter )
@@ -174,16 +174,16 @@ inline HttpContentType ParseContentType(base::StringPiece content_type) {
             ? type : HTTP_CONTENT_OTHERS;
 }
 
-static void PrintMessage(const base::IOBuf& inbuf,
+static void PrintMessage(const butil::IOBuf& inbuf,
                          bool request_or_response,
                          bool has_content) {
-    base::IOBuf buf1 = inbuf;
-    base::IOBuf buf2;
+    butil::IOBuf buf1 = inbuf;
+    butil::IOBuf buf2;
     char str[48];
     if (request_or_response) {
-        snprintf(str, sizeof(str), "[HTTP REQUEST @%s]", base::my_ip_cstr());
+        snprintf(str, sizeof(str), "[HTTP REQUEST @%s]", butil::my_ip_cstr());
     } else {
-        snprintf(str, sizeof(str), "[HTTP RESPONSE @%s]", base::my_ip_cstr());
+        snprintf(str, sizeof(str), "[HTTP RESPONSE @%s]", butil::my_ip_cstr());
     }
     buf2.append(str);
     size_t last_size;
@@ -212,7 +212,7 @@ static void PrintMessage(const base::IOBuf& inbuf,
 }
 
 void ProcessHttpResponse(InputMessageBase* msg) {
-    const int64_t start_parse_us = base::cpuwide_time_us();
+    const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<HttpContext> imsg_guard(static_cast<HttpContext*>(msg));
     Socket* socket = imsg_guard->socket();
     uint64_t cid_value = socket->correlation_id();
@@ -242,7 +242,7 @@ void ProcessHttpResponse(InputMessageBase* msg) {
 
     HttpHeader* res_header = &cntl->http_response();
     res_header->Swap(imsg_guard->header());
-    base::IOBuf& res_body = imsg_guard->body();
+    butil::IOBuf& res_body = imsg_guard->body();
     CHECK(cntl->response_attachment().empty());
     const int saved_error = cntl->ErrorCode();
 
@@ -333,7 +333,7 @@ void ProcessHttpResponse(InputMessageBase* msg) {
         if (encoding != NULL && *encoding == common->GZIP) {
             TRACEPRINTF("Decompressing response=%lu",
                         (unsigned long)res_body.size());
-            base::IOBuf uncompressed;
+            butil::IOBuf uncompressed;
             if (!policy::GzipDecompress(res_body, &uncompressed)) {
                 cntl->SetFailed(ERESPONSE, "Fail to un-gzip response body");
                 break;
@@ -347,7 +347,7 @@ void ProcessHttpResponse(InputMessageBase* msg) {
                 break;
             }
         } else {
-            base::IOBufAsZeroCopyInputStream wrapper(res_body);
+            butil::IOBufAsZeroCopyInputStream wrapper(res_body);
             std::string err;
             if (!json2pb::JsonToProtoMessage(&wrapper, cntl->response(), &err)) {
                 cntl->SetFailed(ERESPONSE, "Fail to parse content, %s", err.c_str());
@@ -369,7 +369,7 @@ void UpdateResponseHeader(int status_code, Controller* cntl) {
     cntl->response_attachment().append(cntl->ErrorText());
 }
 
-void SerializeHttpRequest(base::IOBuf* /*not used*/,
+void SerializeHttpRequest(butil::IOBuf* /*not used*/,
                           Controller* cntl,
                           const google::protobuf::Message* request) {
     if (request != NULL) {
@@ -385,7 +385,7 @@ void SerializeHttpRequest(base::IOBuf* /*not used*/,
                             "when request is not NULL");
             return UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
         }
-        base::IOBufAsZeroCopyOutputStream wrapper(&cntl->request_attachment());
+        butil::IOBufAsZeroCopyOutputStream wrapper(&cntl->request_attachment());
         const HttpContentType content_type
                 = ParseContentType(cntl->http_request().content_type());
         if (content_type == HTTP_CONTENT_PROTO) {
@@ -435,7 +435,7 @@ void SerializeHttpRequest(base::IOBuf* /*not used*/,
         const size_t request_size = cntl->request_attachment().size();
         if (request_size >= (size_t)FLAGS_http_body_compress_threshold) {
             TRACEPRINTF("Compressing request=%lu", (unsigned long)request_size);
-            base::IOBuf compressed;
+            butil::IOBuf compressed;
             if (GzipCompress(cntl->request_attachment(), &compressed, NULL)) {
                 cntl->request_attachment().swap(compressed);
                 cntl->http_request().SetHeader(common->CONTENT_ENCODING, common->GZIP);
@@ -451,7 +451,7 @@ void SerializeHttpRequest(base::IOBuf* /*not used*/,
     // Fill log-id if user set it.
     if (cntl->has_log_id()) {
         header->SetHeader(common->LOG_ID,
-                          base::string_printf(
+                          butil::string_printf(
                               "%llu", (unsigned long long)cntl->log_id()));
     }
 
@@ -479,21 +479,21 @@ void SerializeHttpRequest(base::IOBuf* /*not used*/,
 
     Span* span = accessor.span();
     if (span) {
-        header->SetHeader("x-bd-trace-id", base::string_printf(
+        header->SetHeader("x-bd-trace-id", butil::string_printf(
                               "%llu", (unsigned long long)span->trace_id()));
-        header->SetHeader("x-bd-span-id", base::string_printf(
+        header->SetHeader("x-bd-span-id", butil::string_printf(
                               "%llu", (unsigned long long)span->span_id()));
-        header->SetHeader("x-bd-parent-span-id", base::string_printf(
+        header->SetHeader("x-bd-parent-span-id", butil::string_printf(
                               "%llu", (unsigned long long)span->parent_span_id()));
     }
 }
 
-void PackHttpRequest(base::IOBuf* buf,
+void PackHttpRequest(butil::IOBuf* buf,
                      SocketMessage**,
                      uint64_t correlation_id,
                      const google::protobuf::MethodDescriptor*,
                      Controller* cntl,
-                     const base::IOBuf& /*unused*/,
+                     const butil::IOBuf& /*unused*/,
                      const Authenticator* auth) {
     if (cntl->connection_type() == CONNECTION_TYPE_SINGLE) {
         cntl->SetFailed(EREQUEST, "http can't work with CONNECTION_TYPE_SINGLE");
@@ -563,7 +563,7 @@ static void SendHttpResponse(Controller *cntl,
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
-        span->set_start_send_us(base::cpuwide_time_us());
+        span->set_start_send_us(butil::cpuwide_time_us());
     }
     ScopedMethodStatus method_status(method_status_raw);
     std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
@@ -593,7 +593,7 @@ static void SendHttpResponse(Controller *cntl,
         !cntl->Failed()) {
         // ^ pb response in failed RPC is undefined, no need to convert.
         
-        base::IOBufAsZeroCopyOutputStream wrapper(&cntl->response_attachment());
+        butil::IOBufAsZeroCopyOutputStream wrapper(&cntl->response_attachment());
         const std::string* content_type_str = &res_header->content_type();
         if (content_type_str->empty()) {
             content_type_str = &req_header->content_type();
@@ -665,7 +665,7 @@ static void SendHttpResponse(Controller *cntl,
         }
         // Fill ErrorCode into header
         res_header->SetHeader(common->ERROR_CODE,
-                              base::string_printf("%d", cntl->ErrorCode()));
+                              butil::string_printf("%d", cntl->ErrorCode()));
 
         // Fill body with ErrorText.
         // user may compress the output and change content-encoding. However
@@ -691,7 +691,7 @@ static void SendHttpResponse(Controller *cntl,
             if (response_size >= (size_t)FLAGS_http_body_compress_threshold
                 && SupportGzip(cntl)) {
                 TRACEPRINTF("Compressing response=%lu", (unsigned long)response_size);
-                base::IOBuf tmpbuf;
+                butil::IOBuf tmpbuf;
                 if (GzipCompress(cntl->response_attachment(), &tmpbuf, NULL)) {
                     cntl->response_attachment().swap(tmpbuf);
                     res_header->SetHeader(common->CONTENT_ENCODING, common->GZIP);
@@ -711,11 +711,11 @@ static void SendHttpResponse(Controller *cntl,
     // users to set max_concurrency.
     Socket::WriteOptions wopt;
     wopt.ignore_eovercrowded = true;
-    base::IOBuf* content = NULL;
+    butil::IOBuf* content = NULL;
     if (cntl->Failed() || !cntl->has_progressive_writer()) {
         content = &cntl->response_attachment();
     }
-    base::IOBuf res_buf;
+    butil::IOBuf res_buf;
     SerializeHttpResponse(&res_buf, res_header, content);
     if (FLAGS_http_verbose) {
         PrintMessage(res_buf, false, !!content);
@@ -735,11 +735,11 @@ static void SendHttpResponse(Controller *cntl,
     }
     if (span) {
         // TODO: this is not sent
-        span->set_sent_us(base::cpuwide_time_us());
+        span->set_sent_us(butil::cpuwide_time_us());
     }
     if (method_status) {
         method_status.release()->OnResponded(
-            !cntl->Failed(), base::cpuwide_time_us() - start_parse_us);
+            !cntl->Failed(), butil::cpuwide_time_us() - start_parse_us);
     }
 }
 
@@ -752,7 +752,7 @@ inline void SendHttpResponse(Controller *cntl, const Server* svr,
 // put it into `unresolved_path'
 static void FillUnresolvedPath(std::string* unresolved_path,
                                const std::string& uri_path,
-                               base::StringSplitter& splitter) {
+                               butil::StringSplitter& splitter) {
     if (unresolved_path == NULL) {
         return;
     }
@@ -765,7 +765,7 @@ static void FillUnresolvedPath(std::string* unresolved_path,
         uri_path.c_str() + uri_path.size() - splitter.field();
     unresolved_path->reserve(path_len);
     unresolved_path->clear();
-    for (base::StringSplitter slash_sp(
+    for (butil::StringSplitter slash_sp(
              splitter.field(), splitter.field() + path_len, '/');
          slash_sp != NULL; ++slash_sp) {
         if (!unresolved_path->empty()) {
@@ -779,15 +779,15 @@ inline const Server::MethodProperty*
 FindMethodPropertyByURIImpl(const std::string& uri_path, const Server* server,
                             std::string* unresolved_path) {
     ServerPrivateAccessor wrapper(server);
-    base::StringSplitter splitter(uri_path.c_str(), '/');
+    butil::StringSplitter splitter(uri_path.c_str(), '/');
     // Show index page for empty URI
     if (NULL == splitter) {
         return wrapper.FindMethodPropertyByFullName(
             IndexService::descriptor()->full_name(), common->DEFAULT_METHOD);
     }
-    base::StringPiece service_name(splitter.field(), splitter.length());
+    butil::StringPiece service_name(splitter.field(), splitter.length());
     const bool full_service_name =
-        (service_name.find('.') != base::StringPiece::npos);
+        (service_name.find('.') != butil::StringPiece::npos);
     const Server::ServiceProperty* const sp = 
         (full_service_name ?
          wrapper.FindServicePropertyByFullName(service_name) :
@@ -799,7 +799,7 @@ FindMethodPropertyByURIImpl(const std::string& uri_path, const Server* server,
     // Find restful methods by uri.
     if (sp->restful_map) {
         ++splitter;
-        base::StringPiece left_path;
+        butil::StringPiece left_path;
         if (splitter) {
             // The -1 is for including /, always safe because of ++splitter
             left_path.set(splitter.field() - 1, uri_path.c_str() +
@@ -814,7 +814,7 @@ FindMethodPropertyByURIImpl(const std::string& uri_path, const Server* server,
 
     // Regard URI as [service_name]/[method_name]
     const Server::MethodProperty* mp = NULL;
-    base::StringPiece method_name;
+    butil::StringPiece method_name;
     if (++splitter != NULL) {
         method_name.set(splitter.field(), splitter.length());
         // Copy splitter rather than modifying it directly since it's used
@@ -869,7 +869,7 @@ FindMethodPropertyByURI(const std::string& uri_path, const Server* server,
     return NULL;
 }
 
-ParseResult ParseHttpMessage(base::IOBuf *source, Socket *socket, 
+ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket, 
                              bool read_eof, const void* /*arg*/) {
     HttpContext* http_imsg = 
         static_cast<HttpContext*>(socket->parsing_context());
@@ -977,7 +977,7 @@ ParseResult ParseHttpMessage(base::IOBuf *source, Socket *socket,
                 return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
             }
             // Send 400 back.
-            base::IOBuf bad_req;
+            butil::IOBuf bad_req;
             HttpHeader header;
             header.set_status_code(HTTP_STATUS_BAD_REQUEST);
             SerializeHttpRequest(&bad_req, &header, socket->remote_side(), NULL);
@@ -1023,7 +1023,7 @@ bool VerifyHttpRequest(const InputMessageBase* msg) {
     if (authorization == NULL) {
         return false;
     }
-    base::EndPoint user_addr;
+    butil::EndPoint user_addr;
     if (!GetUserAddressFromHeader(http_request->header(), &user_addr)) {
         user_addr = socket->remote_side();
     }
@@ -1041,7 +1041,7 @@ void EndRunningCallMethodInPool(
     ::google::protobuf::Closure* done);
 
 void ProcessHttpRequest(InputMessageBase *msg) {
-    const int64_t start_parse_us = base::cpuwide_time_us();
+    const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<HttpContext> imsg_guard(static_cast<HttpContext*>(msg));
     SocketUniquePtr socket_guard(imsg_guard->ReleaseSocket());
     Socket* socket = socket_guard.get();
@@ -1056,9 +1056,9 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     ControllerPrivateAccessor accessor(cntl.get());
     HttpHeader& req_header = cntl->http_request();
     imsg_guard->header().Swap(req_header);
-    base::IOBuf& req_body = imsg_guard->body();
+    butil::IOBuf& req_body = imsg_guard->body();
     
-    base::EndPoint user_addr;
+    butil::EndPoint user_addr;
     if (!GetUserAddressFromHeader(req_header, &user_addr)) {
         user_addr = socket->remote_side();
     }
@@ -1151,7 +1151,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 NULL, start_parse_us);
         if (span) {
             span->ResetServerSpanName(md->full_name());
-            span->set_start_callback_us(base::cpuwide_time_us());
+            span->set_start_callback_us(butil::cpuwide_time_us());
             span->AsParent();
         }
         // `cntl', `req' and `res' will be deleted inside `done'
@@ -1173,7 +1173,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     } else if (sp->service->GetDescriptor() == BadMethodService::descriptor()) {
         BadMethodRequest breq;
         BadMethodResponse bres;
-        base::StringSplitter split(path.c_str(), '/');
+        butil::StringSplitter split(path.c_str(), '/');
         breq.set_service_name(std::string(split.field(), split.length()));
         sp->service->CallMethod(sp->method, cntl.get(), &breq, &bres, NULL);
         return SendHttpResponse(cntl.release(), server, NULL);
@@ -1247,7 +1247,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             if (encoding != NULL && *encoding == common->GZIP) {
                 TRACEPRINTF("Decompressing request=%lu",
                             (unsigned long)req_body.size());
-                base::IOBuf uncompressed;
+                butil::IOBuf uncompressed;
                 if (!policy::GzipDecompress(req_body, &uncompressed)) {
                     cntl->SetFailed(EREQUEST, "Fail to un-gzip request body");
                     return SendHttpResponse(cntl.release(), server, method_status);
@@ -1261,7 +1261,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                     return SendHttpResponse(cntl.release(), server, method_status);
                 }
             } else {
-                base::IOBufAsZeroCopyInputStream wrapper(req_body);
+                butil::IOBufAsZeroCopyInputStream wrapper(req_body);
                 std::string err;
                 if (!json2pb::JsonToProtoMessage(&wrapper, req.get(), &err)) {
                     cntl->SetFailed(EREQUEST, "Fail to parse http body as %s, %s",
@@ -1285,7 +1285,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             req.get(), res.get(), server,
             method_status, start_parse_us);
     if (span) {
-        span->set_start_callback_us(base::cpuwide_time_us());
+        span->set_start_callback_us(butil::cpuwide_time_us());
         span->AsParent();
     }
     if (!FLAGS_usercode_in_pthread) {
@@ -1303,7 +1303,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     }
 }
 
-bool ParseHttpServerAddress(base::EndPoint* point, const char* server_addr_and_port) {
+bool ParseHttpServerAddress(butil::EndPoint* point, const char* server_addr_and_port) {
     std::string host;
     int port = -1;
     if (ParseHostAndPortFromURL(server_addr_and_port, &host, &port) != 0) {

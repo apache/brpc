@@ -15,7 +15,7 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 //          Zhangyi Chen (chenzhangyi01@baidu.com)
 
-#include "base/logging.h"
+#include "butil/logging.h"
 #include "bthread/bthread.h"   // INVALID_BTHREAD_ID before bthread r32748
 #include "brpc/progressive_attachment.h"
 #include "brpc/socket.h"
@@ -42,12 +42,12 @@ ProgressiveAttachment::ProgressiveAttachment(SocketUniquePtr& movable_httpsock,
 
 ProgressiveAttachment::~ProgressiveAttachment() {
     if (_httpsock) {
-        CHECK(_rpc_state.load(base::memory_order_relaxed) != RPC_RUNNING);
+        CHECK(_rpc_state.load(butil::memory_order_relaxed) != RPC_RUNNING);
         CHECK(_saved_buf.empty());
         if (!_before_http_1_1) {
             // note: _httpsock may already be failed.
-            if (_rpc_state.load(base::memory_order_relaxed) == RPC_SUCCEED) {
-                base::IOBuf tmpbuf;
+            if (_rpc_state.load(butil::memory_order_relaxed) == RPC_SUCCEED) {
+                butil::IOBuf tmpbuf;
                 tmpbuf.append("0\r\n\r\n", 5);
                 Socket::WriteOptions wopt;
                 wopt.ignore_eovercrowded = true;
@@ -71,7 +71,7 @@ static char s_hex_map[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8',
                             '9', 'A', 'B', 'C', 'D', 'E', 'F' };
 inline char ToHex(uint32_t size/*0-15*/) { return s_hex_map[size]; }
 
-inline void AppendChunkHead(base::IOBuf* buf, uint32_t size) {
+inline void AppendChunkHead(butil::IOBuf* buf, uint32_t size) {
     char tmp[32];
     int i = (int)sizeof(tmp);
     tmp[--i] = '\n';
@@ -92,7 +92,7 @@ inline void AppendChunkHead(base::IOBuf* buf, uint32_t size) {
     buf->append(tmp + i + 1, sizeof(tmp) - i - 1);
 }
 
-inline void AppendAsChunk(base::IOBuf* chunk_buf, const base::IOBuf& data,
+inline void AppendAsChunk(butil::IOBuf* chunk_buf, const butil::IOBuf& data,
                           bool before_http_1_1) {
     if (!before_http_1_1) {
         AppendChunkHead(chunk_buf, data.size());
@@ -103,7 +103,7 @@ inline void AppendAsChunk(base::IOBuf* chunk_buf, const base::IOBuf& data,
     }
 }
 
-inline void AppendAsChunk(base::IOBuf* chunk_buf, const void* data,
+inline void AppendAsChunk(butil::IOBuf* chunk_buf, const void* data,
                           size_t length, bool before_http_1_1) {
     if (!before_http_1_1) {
         AppendChunkHead(chunk_buf, length);
@@ -114,7 +114,7 @@ inline void AppendAsChunk(base::IOBuf* chunk_buf, const void* data,
     }
 }
 
-int ProgressiveAttachment::Write(const base::IOBuf& data) {
+int ProgressiveAttachment::Write(const butil::IOBuf& data) {
     if (data.empty()) {
         LOG_EVERY_SECOND(WARNING)
             << "Write an empty chunk. To suppress this warning, check emptiness"
@@ -122,10 +122,10 @@ int ProgressiveAttachment::Write(const base::IOBuf& data) {
         return 0;
     }
 
-    int rpc_state = _rpc_state.load(base::memory_order_acquire);
+    int rpc_state = _rpc_state.load(butil::memory_order_acquire);
     if (rpc_state == RPC_RUNNING) {
-        std::unique_lock<base::Mutex> mu(_mutex);
-        rpc_state = _rpc_state.load(base::memory_order_acquire);
+        std::unique_lock<butil::Mutex> mu(_mutex);
+        rpc_state = _rpc_state.load(butil::memory_order_acquire);
         if (rpc_state == RPC_RUNNING) {
             if (_saved_buf.size() >= (size_t)FLAGS_socket_max_unwritten_bytes ||
                 _pause_from_mark_rpc_as_done) {
@@ -139,7 +139,7 @@ int ProgressiveAttachment::Write(const base::IOBuf& data) {
     // The RPC is already done (http headers were written into the socket)
     // write into the socket directly.
     if (rpc_state == RPC_SUCCEED) {
-        base::IOBuf tmpbuf;
+        butil::IOBuf tmpbuf;
         AppendAsChunk(&tmpbuf, data, _before_http_1_1);
         return _httpsock->Write(&tmpbuf);
     } else {
@@ -155,10 +155,10 @@ int ProgressiveAttachment::Write(const void* data, size_t n) {
             " of the chunk before calling ProgressiveAttachment.Write()";
         return 0;
     }
-    int rpc_state = _rpc_state.load(base::memory_order_acquire);
+    int rpc_state = _rpc_state.load(butil::memory_order_acquire);
     if (rpc_state == RPC_RUNNING) {
-        std::unique_lock<base::Mutex> mu(_mutex);
-        rpc_state = _rpc_state.load(base::memory_order_relaxed);
+        std::unique_lock<butil::Mutex> mu(_mutex);
+        rpc_state = _rpc_state.load(butil::memory_order_relaxed);
         if (rpc_state == RPC_RUNNING) {
             if (_saved_buf.size() >= (size_t)FLAGS_socket_max_unwritten_bytes ||
                 _pause_from_mark_rpc_as_done) {
@@ -172,7 +172,7 @@ int ProgressiveAttachment::Write(const void* data, size_t n) {
     // The RPC is already done (http headers were written into the socket)
     // write into the socket directly.
     if (rpc_state == RPC_SUCCEED) {
-        base::IOBuf tmpbuf;
+        butil::IOBuf tmpbuf;
         AppendAsChunk(&tmpbuf, data, n, _before_http_1_1);
         return _httpsock->Write(&tmpbuf);
     } else {
@@ -199,20 +199,20 @@ void ProgressiveAttachment::MarkRPCAsDone(bool rpc_failed) {
     int ntry = 0;
     bool permanent_error = false;
     do {
-        std::unique_lock<base::Mutex> mu(_mutex);
+        std::unique_lock<butil::Mutex> mu(_mutex);
         if (_saved_buf.empty() || permanent_error || rpc_failed) {
-            base::IOBuf tmp;
+            butil::IOBuf tmp;
             tmp.swap(_saved_buf); // Clear _saved_buf outside lock.
             _pause_from_mark_rpc_as_done = false;
             _rpc_state.store((rpc_failed? RPC_FAILED: RPC_SUCCEED),
-                             base::memory_order_release);
+                             butil::memory_order_release);
             mu.unlock();
             return;
         }
         if (++ntry > MAX_TRY) {
             _pause_from_mark_rpc_as_done = true;
         }
-        base::IOBuf copied;
+        butil::IOBuf copied;
         copied.swap(_saved_buf);
         mu.unlock();
         Socket::WriteOptions wopt;
@@ -223,12 +223,12 @@ void ProgressiveAttachment::MarkRPCAsDone(bool rpc_failed) {
     } while (true);
 }
 
-base::EndPoint ProgressiveAttachment::remote_side() const {
-    return _httpsock ? _httpsock->remote_side() : base::EndPoint();
+butil::EndPoint ProgressiveAttachment::remote_side() const {
+    return _httpsock ? _httpsock->remote_side() : butil::EndPoint();
 }
 
-base::EndPoint ProgressiveAttachment::local_side() const {
-    return _httpsock ? _httpsock->local_side() : base::EndPoint();
+butil::EndPoint ProgressiveAttachment::local_side() const {
+    return _httpsock ? _httpsock->local_side() : butil::EndPoint();
 }
 
 static int RunOnFailed(bthread_id_t id, void* data, int) {

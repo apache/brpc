@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/process/process_metrics.h"
+#include "butil/process/process_metrics.h"
 
 #include <sstream>
 #include <string>
@@ -10,7 +10,7 @@
 #include <gtest/gtest.h>
 
 
-namespace base {
+namespace butil {
 namespace debug {
 
 // Tests for SystemMetrics.
@@ -271,8 +271,8 @@ TEST_F(SystemMetricsTest, ParseVmstat) {
 
 #if defined(OS_LINUX) || defined(OS_ANDROID)
 TEST(SystemMetrics2Test, GetSystemMemoryInfo) {
-  base::SystemMemoryInfoKB info;
-  EXPECT_TRUE(base::GetSystemMemoryInfo(&info));
+  butil::SystemMemoryInfoKB info;
+  EXPECT_TRUE(butil::GetSystemMemoryInfo(&info));
 
   // Ensure each field received a value.
   EXPECT_GT(info.total, 0);
@@ -306,15 +306,15 @@ TEST(SystemMetrics2Test, GetSystemMemoryInfo) {
 #if defined(OS_WIN)
 // TODO(estade): if possible, port this test.
 TEST(ProcessMetricsTest, CalcFreeMemory) {
-  scoped_ptr<base::ProcessMetrics> metrics(
-      base::ProcessMetrics::CreateProcessMetrics(::GetCurrentProcess()));
+  scoped_ptr<butil::ProcessMetrics> metrics(
+      butil::ProcessMetrics::CreateProcessMetrics(::GetCurrentProcess()));
   ASSERT_TRUE(NULL != metrics.get());
 
   bool using_tcmalloc = false;
 
   // Typical values here is ~1900 for total and ~1000 for largest. Obviously
   // it depends in what other tests have done to this process.
-  base::FreeMBytes free_mem1 = {0};
+  butil::FreeMBytes free_mem1 = {0};
   EXPECT_TRUE(metrics->CalculateFreeMemory(&free_mem1));
   EXPECT_LT(10u, free_mem1.total);
   EXPECT_LT(10u, free_mem1.largest);
@@ -329,7 +329,7 @@ TEST(ProcessMetricsTest, CalcFreeMemory) {
   size_t expected_total = free_mem1.total - kAllocMB;
   size_t expected_largest = free_mem1.largest;
 
-  base::FreeMBytes free_mem2 = {0};
+  butil::FreeMBytes free_mem2 = {0};
   EXPECT_TRUE(metrics->CalculateFreeMemory(&free_mem2));
   EXPECT_GE(free_mem2.total, free_mem2.largest);
   // This test is flaky when using tcmalloc, because tcmalloc
@@ -351,7 +351,7 @@ TEST(ProcessMetricsTest, ParseProcStatCPU) {
       "20 0 1 0 121946157 15077376 314 18446744073709551615 4194304 "
       "4246868 140733983044336 18446744073709551615 140244213071219 "
       "0 0 0 138047495 0 0 0 17 1 0 0 0 0 0";
-  EXPECT_EQ(12 + 16, base::ParseProcStatCPU(kTopStat));
+  EXPECT_EQ(12 + 16, butil::ParseProcStatCPU(kTopStat));
 
   // cat /proc/self/stat on a random other machine I have.
   const char kSelfStat[] = "5364 (cat) R 5354 5364 5354 34819 5364 "
@@ -360,9 +360,9 @@ TEST(ProcessMetricsTest, ParseProcStatCPU) {
       "16 0 1 0 1676099790 2957312 114 4294967295 134512640 134528148 "
       "3221224832 3221224344 3086339742 0 0 0 0 0 0 0 17 0 0 0";
 
-  EXPECT_EQ(0, base::ParseProcStatCPU(kSelfStat));
+  EXPECT_EQ(0, butil::ParseProcStatCPU(kSelfStat));
 }
 #endif // defined(OS_LINUX) || defined(OS_ANDROID)
 
 }  // namespace debug
-}  // namespace base
+}  // namespace butil

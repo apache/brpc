@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include "base/files/file_watcher.h"
-#include "base/logging.h"
+#include "butil/files/file_watcher.h"
+#include "butil/logging.h"
 
 namespace {
 class FileWatcherTest : public ::testing::Test{
@@ -13,29 +13,29 @@ protected:
     };
 };
  
-//! gejun: check basic functions of base::FileWatcher
+//! gejun: check basic functions of butil::FileWatcher
 TEST_F(FileWatcherTest, random_op)
 {
     srand (time(0));
     
-    base::FileWatcher fw;
+    butil::FileWatcher fw;
     EXPECT_EQ (0, fw.init("dummy_file"));
     
     for (int i=0; i<30; ++i) {
         if (rand() % 2) {
             LOG(INFO) << "watch: " << noflush;
-            const base::FileWatcher::Change ret = fw.check_and_consume();
+            const butil::FileWatcher::Change ret = fw.check_and_consume();
             switch (ret) {
-            case base::FileWatcher::UPDATED:
+            case butil::FileWatcher::UPDATED:
                 LOG(INFO) << fw.filepath() << " is updated";
                 break;
-            case base::FileWatcher::CREATED:
+            case butil::FileWatcher::CREATED:
                 LOG(INFO) << fw.filepath() << " is created";
                 break;
-            case base::FileWatcher::DELETED:
+            case butil::FileWatcher::DELETED:
                 LOG(INFO) << fw.filepath() << " is deleted";
                 break;
-            case base::FileWatcher::UNCHANGED:
+            case butil::FileWatcher::UNCHANGED:
                 LOG(INFO) << fw.filepath() << " does not change or still not exist";
                 break;
             }

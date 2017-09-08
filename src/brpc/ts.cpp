@@ -186,7 +186,7 @@ public:
     
     uint8_t continuity_counter;
     
-    base::IOBuf payload;
+    butil::IOBuf payload;
 };
 
 // whether the sid indicates the elementary stream audio.
@@ -1044,7 +1044,7 @@ AACProfile AACObjectType2Profile(AACObjectType object_type) {
     return AAC_PROFILE_UNKNOWN;
 }
 
-TsWriter::TsWriter(base::IOBuf* outbuf)
+TsWriter::TsWriter(butil::IOBuf* outbuf)
     : _outbuf(outbuf)
     , _nalu_format(AVC_NALU_FORMAT_UNKNOWN)
     , _has_avc_seq_header(false)
@@ -1060,10 +1060,10 @@ TsWriter::TsWriter(base::IOBuf* outbuf)
 TsWriter::~TsWriter() {
 }
 
-base::Status TsWriter::Write(const RtmpAudioMessage& msg) {
+butil::Status TsWriter::Write(const RtmpAudioMessage& msg) {
     // ts support audio codec: aac/mp3
     if (msg.codec != FLV_AUDIO_AAC && msg.codec != FLV_AUDIO_MP3) {
-        return base::Status(EINVAL, "Unsupported codec=%s",
+        return butil::Status(EINVAL, "Unsupported codec=%s",
                             FlvAudioCodec2Str(msg.codec));
     }
     const int64_t dts = static_cast<int64_t>(msg.timestamp) * 90;
@@ -1075,25 +1075,25 @@ base::Status TsWriter::Write(const RtmpAudioMessage& msg) {
 
     if (msg.codec == FLV_AUDIO_AAC) {
         RtmpAACMessage aac_msg;
-        base::Status st = aac_msg.Create(msg);
+        butil::Status st = aac_msg.Create(msg);
         if (!st.ok()) {
             return st;
         }
         // ignore sequence header
         if (aac_msg.packet_type == FLV_AAC_PACKET_SEQUENCE_HEADER) {
-            base::Status st2 = _aac_seq_header.Create(aac_msg.data);
+            butil::Status st2 = _aac_seq_header.Create(aac_msg.data);
             if (!st2.ok()) {
                 return st2;
             }
             _has_aac_seq_header = true;
             ++_discontinuity_counter;
-            return base::Status::OK();
+            return butil::Status::OK();
         }
         if (!_has_aac_seq_header) {
-            return base::Status(EINVAL, "Lack of AAC sequence header");
+            return butil::Status(EINVAL, "Lack of AAC sequence header");
         }
         if (aac_msg.data.size() > 0x1fff) {
-            return base::Status(EINVAL, "Invalid AAC data_size=%" PRIu64,
+            return butil::Status(EINVAL, "Invalid AAC data_size=%" PRIu64,
                                 aac_msg.data.size());
         }
         
@@ -1109,7 +1109,7 @@ base::Status TsWriter::Write(const RtmpAudioMessage& msg) {
         const AACProfile aac_profile =
             AACObjectType2Profile(_aac_seq_header.aac_object);
         if (aac_profile == AAC_PROFILE_UNKNOWN) {
-            return base::Status(EINVAL, "Invalid aac_object=%d",
+            return butil::Status(EINVAL, "Invalid aac_object=%d",
                                 (int)_aac_seq_header.aac_object);
         }
         adts_header[2] = (aac_profile << 6) & 0xc0;
@@ -1134,7 +1134,7 @@ base::Status TsWriter::Write(const RtmpAudioMessage& msg) {
     TsPid apid = TS_PID_NULL;
     TsStream as = FlvAudioCodec2TsStream(msg.codec, &apid);
     if (as == TS_STREAM_RESERVED) {
-        return base::Status(EINVAL, "Unsupported audio codec=%s",
+        return butil::Status(EINVAL, "Unsupported audio codec=%s",
                             FlvAudioCodec2Str(msg.codec));
     }
     return Encode(&tsmsg, as, apid);
@@ -1218,33 +1218,33 @@ static const uint8_t cont_nalu_header[] = { 0x00, 0x00, 0x01 };
 static const uint8_t fresh_nalu_header_and_aud_nalu_7[] =
 { 0x00, 0x00, 0x00, 0x01, 0x09, 0xf0};
 
-base::Status TsWriter::Write(const RtmpVideoMessage& msg) {
+butil::Status TsWriter::Write(const RtmpVideoMessage& msg) {
     if (msg.frame_type == FLV_VIDEO_FRAME_INFOFRAME) {
         // Ignore info frame.
-        return base::Status::OK();
+        return butil::Status::OK();
     }
     if (msg.codec != FLV_VIDEO_AVC) {
-        return base::Status(EINVAL, "video_codec=%s is not AVC",
+        return butil::Status(EINVAL, "video_codec=%s is not AVC",
                             FlvVideoCodec2Str(msg.codec));
     }
     RtmpAVCMessage avc_msg;
-    base::Status st = avc_msg.Create(msg);
+    butil::Status st = avc_msg.Create(msg);
     if (!st.ok()) {
         return st;
     }
     // ignore sequence header
     if (avc_msg.frame_type == FLV_VIDEO_FRAME_KEYFRAME &&
         avc_msg.packet_type == FLV_AVC_PACKET_SEQUENCE_HEADER) {
-        base::Status st2 = _avc_seq_header.Create(avc_msg.data);
+        butil::Status st2 = _avc_seq_header.Create(avc_msg.data);
         if (!st2.ok()) {
             return st2;
         }
         _has_avc_seq_header = true;
         ++_discontinuity_counter;
-        return base::Status::OK();
+        return butil::Status::OK();
     }
     if (!_has_avc_seq_header) {
-        return base::Status(EINVAL, "Lack of AVC sequence header");
+        return butil::Status(EINVAL, "Lack of AVC sequence header");
     }
 
     const int64_t dts = static_cast<int64_t>(avc_msg.timestamp) * 90;
@@ -1257,7 +1257,7 @@ base::Status TsWriter::Write(const RtmpVideoMessage& msg) {
     // always append a aud nalu for each frame.
     tsmsg.payload.append(fresh_nalu_header_and_aud_nalu_7,
                          arraysize(fresh_nalu_header_and_aud_nalu_7));
-    base::IOBuf nalus;
+    butil::IOBuf nalus;
     bool has_idr = false;
     for (AVCNaluIterator it(&avc_msg.data, _avc_seq_header.length_size_minus1,
                             &_nalu_format); it != NULL; ++it) {
@@ -1308,13 +1308,13 @@ base::Status TsWriter::Write(const RtmpVideoMessage& msg) {
     TsPid vpid = TS_PID_PAT;
     TsStream vs = FlvVideoCodec2TsStream(msg.codec, &vpid);
     if (vs == TS_STREAM_RESERVED) {
-        return base::Status(EINVAL, "Unsupported video codec=%s",
+        return butil::Status(EINVAL, "Unsupported video codec=%s",
                             FlvVideoCodec2Str(msg.codec));
     }
     return Encode(&tsmsg, vs, vpid);
 }
 
-base::Status
+butil::Status
 TsWriter::EncodePATPMT(TsStream vs, TsPid vpid, TsStream as, TsPid apid) {
     char buf[TS_PACKET_SIZE];
     
@@ -1325,28 +1325,28 @@ TsWriter::EncodePATPMT(TsStream vs, TsPid vpid, TsStream as, TsPid apid) {
     CHECK_LT(size1, TS_PACKET_SIZE);
     memset(buf, 0xFF, TS_PACKET_SIZE);
     if (pat.Encode(buf) != 0) {
-        return base::Status(EINVAL, "Fail to encode PAT");
+        return butil::Status(EINVAL, "Fail to encode PAT");
     }
     _outbuf->append(buf, TS_PACKET_SIZE);
     
     TsPacket pmt(&_tschan_group);
     if (pmt.CreateAsPMT(TS_PMT_NUMBER, TS_PID_PMT, vpid, vs, apid, as) != 0) {
-        return base::Status(EINVAL, "Fail to CreateAsPMT");
+        return butil::Status(EINVAL, "Fail to CreateAsPMT");
     }
     // set the left bytes with 0xFF.
     const size_t size2 = pmt.ByteSize();
     CHECK_LT(size2, TS_PACKET_SIZE);
     memset(buf, 0xFF, TS_PACKET_SIZE);
     if (pmt.Encode(buf) != 0) {
-        return base::Status(EINVAL, "Fail to encode PMT");
+        return butil::Status(EINVAL, "Fail to encode PMT");
     }
     _outbuf->append(buf, TS_PACKET_SIZE);
-    return base::Status::OK();
+    return butil::Status::OK();
 }
 
-base::Status TsWriter::Encode(TsMessage* msg, TsStream stream, TsPid pid) {
+butil::Status TsWriter::Encode(TsMessage* msg, TsStream stream, TsPid pid) {
     if (stream == TS_STREAM_RESERVED) {
-        return base::Status(EINVAL, "Invalid stream=%d", (int)stream);
+        return butil::Status(EINVAL, "Invalid stream=%d", (int)stream);
     }
     // Encode the media frame to PES packets over TS.
     bool add_pat_pmt = false;
@@ -1363,14 +1363,14 @@ base::Status TsWriter::Encode(TsMessage* msg, TsStream stream, TsPid pid) {
             add_pat_pmt = true;
         }
     } else {
-        return base::Status(EINVAL, "Unknown stream_id=%d", (int)msg->sid);
+        return butil::Status(EINVAL, "Unknown stream_id=%d", (int)msg->sid);
     }
     if (!_encoded_pat_pmt) {
         _encoded_pat_pmt = true;
         add_pat_pmt = true;
     }
     if (add_pat_pmt) {
-        base::Status st = EncodePATPMT(_last_video_stream, _last_video_pid,
+        butil::Status st = EncodePATPMT(_last_video_stream, _last_video_pid,
                                        _last_audio_stream, _last_audio_pid);
         if (!st.ok()) {
             return st;
@@ -1380,21 +1380,21 @@ base::Status TsWriter::Encode(TsMessage* msg, TsStream stream, TsPid pid) {
                      (_last_video_stream == TS_STREAM_RESERVED));
 }
 
-base::Status TsWriter::EncodePES(TsMessage* msg, TsStream sid, TsPid pid,
+butil::Status TsWriter::EncodePES(TsMessage* msg, TsStream sid, TsPid pid,
                                  bool pure_audio) {
     if (msg->payload.empty()) {
-        return base::Status::OK();
+        return butil::Status::OK();
     }
     if (sid != TS_STREAM_VIDEO_H264 &&
         sid != TS_STREAM_AUDIO_MP3 &&
         sid != TS_STREAM_AUDIO_AAC) {
         LOG(WARNING) << "Ignore unknown stream_id=" << sid;
-        return base::Status::OK();
+        return butil::Status::OK();
     }
 
     TsChannel* channel = _tschan_group.get(pid);
     if (channel == NULL) {
-        return base::Status(EINVAL, "Fail to get channel on pid=%d", (int)pid);
+        return butil::Status(EINVAL, "Fail to get channel on pid=%d", (int)pid);
     }
 
     bool first_msg = true;
@@ -1446,11 +1446,11 @@ base::Status TsWriter::EncodePES(TsMessage* msg, TsStream sid, TsPid pid,
         }
         msg->payload.cutn(buf + pkt_size, left);
         if (pkt.Encode(buf) != 0) {
-            return base::Status(EINVAL, "Fail to encode PES");
+            return butil::Status(EINVAL, "Fail to encode PES");
         }
         _outbuf->append(buf, TS_PACKET_SIZE);
     }
-    return base::Status::OK();
+    return butil::Status::OK();
 }
 
 } // namespace brpc

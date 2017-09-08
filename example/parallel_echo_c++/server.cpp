@@ -15,8 +15,8 @@
 // A server to receive EchoRequest and send back EchoResponse.
 
 #include <gflags/gflags.h>
-#include <base/logging.h>
-#include <base/string_printf.h>
+#include <butil/logging.h>
+#include <butil/string_printf.h>
 #include <brpc/server.h>
 #include "echo.pb.h"
 

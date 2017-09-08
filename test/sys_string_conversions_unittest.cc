@@ -4,10 +4,10 @@
 
 #include <string>
 
-#include "base/basictypes.h"
-#include "base/strings/string_piece.h"
-#include "base/strings/sys_string_conversions.h"
-#include "base/strings/utf_string_conversions.h"
+#include "butil/basictypes.h"
+#include "butil/strings/string_piece.h"
+#include "butil/strings/sys_string_conversions.h"
+#include "butil/strings/utf_string_conversions.h"
 #include "test/scoped_locale.h"
 #include <gtest/gtest.h>
 
@@ -17,7 +17,7 @@ static const std::wstring kSysWideOldItalicLetterA = L"\x10300";
 static const std::wstring kSysWideOldItalicLetterA = L"\xd800\xdf00";
 #endif
 
-namespace base {
+namespace butil {
 
 TEST(SysStrings, SysWideToUTF8) {
   EXPECT_EQ("Hello, world", SysWideToUTF8(L"Hello, world"));
@@ -185,4 +185,4 @@ TEST(SysStrings, SysNativeMBAndWide) {
 }
 #endif  // OS_LINUX
 
-}  // namespace base
+}  // namespace butil

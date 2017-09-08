@@ -17,8 +17,8 @@
 // Date: Tue Jul 10 17:40:58 CST 2012
 
 #include <gflags/gflags.h>
-#include "base/macros.h"                       // BAIDU_CASSERT
-#include "base/logging.h"
+#include "butil/macros.h"                       // BAIDU_CASSERT
+#include "butil/logging.h"
 #include "bthread/task_group.h"                // TaskGroup
 #include "bthread/task_control.h"              // TaskControl
 #include "bthread/timer_thread.h"
@@ -40,7 +40,7 @@ const int ALLOW_UNUSED register_FLAGS_bthread_concurrency =
     ::google::RegisterFlagValidator(&FLAGS_bthread_concurrency,
                                     validate_bthread_concurrency);
 
-BAIDU_CASSERT(sizeof(TaskControl*) == sizeof(base::atomic<TaskControl*>), atomic_size_match);
+BAIDU_CASSERT(sizeof(TaskControl*) == sizeof(butil::atomic<TaskControl*>), atomic_size_match);
 
 pthread_mutex_t g_task_control_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Referenced in rpc, needs to be extern.
@@ -56,13 +56,13 @@ inline TaskControl* get_task_control() {
 }
 
 inline TaskControl* get_or_new_task_control() {
-    base::atomic<TaskControl*>* p = (base::atomic<TaskControl*>*)&g_task_control;
-    TaskControl* c = p->load(base::memory_order_consume);
+    butil::atomic<TaskControl*>* p = (butil::atomic<TaskControl*>*)&g_task_control;
+    TaskControl* c = p->load(butil::memory_order_consume);
     if (c != NULL) {
         return c;
     }
     BAIDU_SCOPED_LOCK(g_task_control_mutex);
-    c = p->load(base::memory_order_consume);
+    c = p->load(butil::memory_order_consume);
     if (c != NULL) {
         return c;
     }
@@ -75,7 +75,7 @@ inline TaskControl* get_or_new_task_control() {
         delete c;
         return NULL;
     }
-    p->store(c, base::memory_order_release);
+    p->store(c, butil::memory_order_release);
     return c;
 }
 

@@ -2,10 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/callback_helpers.h"
+#include "butil/callback_helpers.h"
 
-#include "base/bind.h"
-#include "base/callback.h"
+#include "butil/bind.h"
+#include "butil/callback.h"
 #include <gtest/gtest.h>
 
 namespace {
@@ -17,7 +17,7 @@ void Increment(int* value) {
 TEST(BindHelpersTest, TestScopedClosureRunnerExitScope) {
   int run_count = 0;
   {
-    base::ScopedClosureRunner runner(base::Bind(&Increment, &run_count));
+    butil::ScopedClosureRunner runner(butil::Bind(&Increment, &run_count));
     EXPECT_EQ(0, run_count);
   }
   EXPECT_EQ(1, run_count);
@@ -25,9 +25,9 @@ TEST(BindHelpersTest, TestScopedClosureRunnerExitScope) {
 
 TEST(BindHelpersTest, TestScopedClosureRunnerRelease) {
   int run_count = 0;
-  base::Closure c;
+  butil::Closure c;
   {
-    base::ScopedClosureRunner runner(base::Bind(&Increment, &run_count));
+    butil::ScopedClosureRunner runner(butil::Bind(&Increment, &run_count));
     c = runner.Release();
     EXPECT_EQ(0, run_count);
   }
@@ -40,9 +40,9 @@ TEST(BindHelpersTest, TestScopedClosureRunnerReset) {
   int run_count_1 = 0;
   int run_count_2 = 0;
   {
-    base::ScopedClosureRunner runner;
-    runner.Reset(base::Bind(&Increment, &run_count_1));
-    runner.Reset(base::Bind(&Increment, &run_count_2));
+    butil::ScopedClosureRunner runner;
+    runner.Reset(butil::Bind(&Increment, &run_count_1));
+    runner.Reset(butil::Bind(&Increment, &run_count_2));
     EXPECT_EQ(1, run_count_1);
     EXPECT_EQ(0, run_count_2);
   }
@@ -50,7 +50,7 @@ TEST(BindHelpersTest, TestScopedClosureRunnerReset) {
 
   int run_count_3 = 0;
   {
-    base::ScopedClosureRunner runner(base::Bind(&Increment, &run_count_3));
+    butil::ScopedClosureRunner runner(butil::Bind(&Increment, &run_count_3));
     EXPECT_EQ(0, run_count_3);
     runner.Reset();
     EXPECT_EQ(1, run_count_3);

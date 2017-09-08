@@ -14,8 +14,8 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#include "base/macros.h"
-#include "base/fast_rand.h"
+#include "butil/macros.h"
+#include "butil/fast_rand.h"
 #include "brpc/socket.h"
 #include "brpc/policy/dynpart_load_balancer.h"
 
@@ -100,7 +100,7 @@ size_t DynPartLoadBalancer::RemoveServersInBatch(
 }
 
 int DynPartLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
-    base::DoublyBufferedData<Servers>::ScopedPtr s;
+    butil::DoublyBufferedData<Servers>::ScopedPtr s;
     if (_db_servers.Read(&s) != 0) {
         return ENOMEM;
     }
@@ -149,7 +149,7 @@ int DynPartLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         out->ptr->reset(ptrs[0].first.release());
         return 0;
     }
-    uint32_t r = base::fast_rand_less_than(total_weight);
+    uint32_t r = butil::fast_rand_less_than(total_weight);
     for (int i = 0; i < nptr; ++i) {
         if (ptrs[i].second > r) {
             out->ptr->reset(ptrs[i].first.release());
@@ -174,7 +174,7 @@ void DynPartLoadBalancer::Describe(
         return;
     }
     os << "DynPart{";
-    base::DoublyBufferedData<Servers>::ScopedPtr s;
+    butil::DoublyBufferedData<Servers>::ScopedPtr s;
     if (_db_servers.Read(&s) != 0) {
         os << "fail to read _db_servers";
     } else {

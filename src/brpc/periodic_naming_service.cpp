@@ -15,7 +15,7 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 
 #include <gflags/gflags.h>
-#include "base/logging.h"
+#include "butil/logging.h"
 #include "bthread/bthread.h"
 #include "brpc/log.h"
 #include "brpc/reloadable_flags.h"

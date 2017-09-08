@@ -2,15 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/threading/watchdog.h"
+#include "butil/threading/watchdog.h"
 
-#include "base/logging.h"
-#include "base/synchronization/spin_wait.h"
-#include "base/threading/platform_thread.h"
-#include "base/time/time.h"
+#include "butil/logging.h"
+#include "butil/synchronization/spin_wait.h"
+#include "butil/threading/platform_thread.h"
+#include "butil/time/time.h"
 #include <gtest/gtest.h>
 
-namespace base {
+namespace butil {
 
 namespace {
 
@@ -139,4 +139,4 @@ TEST_F(WatchdogTest, DisarmTest) {
   EXPECT_EQ(1, watchdog.alarm_counter());
 }
 
-}  // namespace base
+}  // namespace butil

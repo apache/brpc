@@ -7,8 +7,8 @@
 #include <process.h>
 #endif
 
-#include "base/threading/simple_thread.h"
-#include "base/threading/thread_local_storage.h"
+#include "butil/threading/simple_thread.h"
+#include "butil/threading/thread_local_storage.h"
 #include <gtest/gtest.h>
 
 #if defined(OS_WIN)
@@ -17,7 +17,7 @@
 #pragma warning(disable : 4311 4312)
 #endif
 
-namespace base {
+namespace butil {
 
 namespace {
 
@@ -121,4 +121,4 @@ TEST(ThreadLocalStorageTest, MAYBE_TLSDestructors) {
   tls_slot.Free();  // Stop doing callbacks to cleanup threads.
 }
 
-}  // namespace base
+}  // namespace butil
