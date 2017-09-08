@@ -50,11 +50,6 @@ You can use it for:
 * Debug services [via http](docs/cn/builtin_service.md), and run online profilers.
 * Get [better latency and throughput](#better-latency-and-throughput).
 * [Extend brpc](docs/cn/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/cn/load_balancing.md#名字服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
-* Use cases inside Baidu
-  * [百度地图api入口](docs/cn/case_apicontrol.md)
-  * [联盟DSP](docs/cn/case_baidu_dsp.md)
-  * [ELF学习框架](docs/cn/case_elf.md)
-  * [云平台代理服务](docs/cn/case_ubrpc.md)
 
 # Advantages of brpc
 
@@ -89,4 +84,63 @@ Check out [benchmark](docs/cn/benchmark.md) for a comparison between brpc and ot
 
 # Try it!
 
-Check out [Getting Started](docs/cn/getting_started.md) to start.
+* Check out [Getting Started](docs/cn/getting_started.md) to start.
+* Play with [examples](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/example/).
+* Docs:
+  * [Benchmark](docs/cn/benchmark.md)
+  * [bvar](docs/cn/bvar.md)
+    * [bvar_c++](docs/cn/bvar_c++.md)
+  * [bthread](docs/cn/bthread.md)
+    * [bthread or not](docs/cn/bthread_or_not.md)
+    * [thread-local](docs/cn/thread_local.md)
+    * [Execution Queue](docs/cn/execution_queue.md)
+  * Client
+    * [Basics](docs/cn/client.md)
+    * [ErrorCode](docs/cn/error_code.md)
+    * [combo channels](docs/cn/combo_channel.md)
+    * [Access HTTP](docs/cn/http_client.md)
+    * [Access UB](docs/cn/ub_client.md)
+    * [Streaming RPC](docs/cn/streaming_rpc.md)
+    * [Access redis](docs/cn/redis_client.md)
+    * [Access memcached](docs/cn/memcache_client.md)
+    * [backup request](docs/cn/backup_request.md)
+    * [dummy server](docs/cn/dummy_server.md)
+  * Server
+    * [Basics](docs/cn/server.md)
+    * [Build HTTP service](docs/cn/http_service.md)
+    * [Build Nshead service](docs/cn/nshead_service.md)
+    * [Debug server issues](docs/cn/server_debugging.md)
+    * [Avalanche](docs/cn/avalanche_effect.md)
+    * [iobuf](docs/cn/iobuf.md)
+    * [streaming_log](docs/cn/streaming_log.md)
+  * [Builtin Services](docs/cn/builtin_service.md)
+    * [status](docs/cn/status.md)
+    * [vars](docs/cn/vars.md)
+    * [connections](docs/cn/connections.md)
+    * [flags](docs/cn/flags.md)
+    * [rpcz](docs/cn/rpcz.md)
+    * [cpu_profiler](docs/cn/cpu_profiler.md)
+    * [heap_profiler](docs/cn/heap_profiler.md)
+    * [contention_profiler](docs/cn/contention_profiler.md)
+  * Tools
+    * [rpc_press](docs/cn/rpc_press.md)
+    * [rpc_replay](docs/cn/rpc_replay.md)
+    * [rpc_view](docs/cn/rpc_view.md)
+    * [benchmark_http](docs/cn/benchmark_http.md)
+    * [parallel_http](docs/cn/parallel_http.md)
+  * RPC in depth
+    * [New Protocol](docs/cn/new_protocol.md)
+    * [atomic instructions](docs/cn/atomic_instructions.md)
+    * [IO](docs/cn/io.md)
+    * [Threading Overview](docs/cn/threading_overview.md)
+    * [Load Balancing](docs/cn/load_balancing.md)
+    * [Locality-aware](docs/cn/lalb.md)
+    * [Consistent Hashing](docs/cn/consistent_hashing.md)
+    * [Memory Management](docs/cn/memory_management.md)
+    * [Timer keeping](docs/cn/timer_keeping.md)
+    * [bthread_id](docs/cn/bthread_id.md)
+  * Use cases inside Baidu
+    * [百度地图api入口](docs/cn/case_apicontrol.md)
+    * [联盟DSP](docs/cn/case_baidu_dsp.md)
+    * [ELF学习框架](docs/cn/case_elf.md)
+    * [云平台代理服务](docs/cn/case_ubrpc.md)
