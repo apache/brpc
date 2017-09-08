@@ -34,6 +34,7 @@ fi
 
 cat $PATCHFILE | sed -e 's/src\/baidu\/rpc\//src\/brpc\//g' \
             -e 's/\<baidu\/rpc\//brpc\//g' \
+            -e 's/\<baidu\-rpc\([^-]\)/brpc\1/g' \
             -e 's/\<src\/brpc\/test\/test_\(.*\)\.cpp/test\/brpc_\1_unittest.cpp/g' \
             -e 's/\<test\/test_bthread\.cpp/test\/bthread_unittest.cpp/g' \
             -e 's/\<test\/test_object_pool\.cpp/test\/object_pool_unittest.cpp/g' \

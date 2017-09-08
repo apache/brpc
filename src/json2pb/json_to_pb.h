@@ -19,8 +19,6 @@ struct Json2PbOptions {
     bool base64_to_bytes;
 };
 
-// Rules: http://wiki.baidu.com/display/RPC/Json+%3C%3D%3E+Protobuf
-
 // Convert `json' to protobuf `message'.
 // Returns true on success. `error' (if not NULL) will be set with error
 // message on failure.

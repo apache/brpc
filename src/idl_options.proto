@@ -6,8 +6,6 @@ syntax="proto2";
 
 import "google/protobuf/descriptor.proto";
 
-// Doc: http://wiki.baidu.com/display/RPC/idl+%3C%3D%3E+protobuf
-
 extend google.protobuf.FileOptions {
   // True to generate mcpack parsing/serializing code
   optional bool idl_support = 91000;

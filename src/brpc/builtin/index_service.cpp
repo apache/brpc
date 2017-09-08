@@ -87,9 +87,9 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
     }
     os << '\n';
     if (use_html) {
-        os << "<a href=\"http://wiki.baidu.com/display/RPC\">User Manual</a>";
+        os << "<a href=\"http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/\">Repo</a>";
     } else {
-        os << "User Manual : http://wiki.baidu.com/display/RPC";
+        os << "Repo : http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/";
     }
     os << NL << NL;
     if (!as_more) {

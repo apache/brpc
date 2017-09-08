@@ -252,7 +252,7 @@ struct ServerOptions {
     int internal_port;
 
     // Contain a set of builtin services to ease monitoring/debugging.
-    // Read http://wiki.baidu.com/display/RPC/Builtin+Services for details.
+    // Read docs/cn/builtin_service.md for details.
     // DO NOT set this option to false if you don't even know what builtin
     // services are. They're very helpful for addressing runtime problems.
     // Setting to false makes -internal_port ineffective.
