@@ -60,7 +60,7 @@ no known issues.
 
 Be compatible with pb 3.0 and pb 2.x with the same file: 
 Don't use new types in proto3 and start the proto file with `syntax="proto2";`
-[tools/add_syntax_equal_proto2_to_all.sh](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/tools/add_syntax_equal_proto2_to_all.sh)can add `syntax="proto2"` to all proto files without it.
+[tools/add_syntax_equal_proto2_to_all.sh](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/tools/add_syntax_equal_proto2_to_all.sh)can add `syntax="proto2"` to all proto files without it.
 protobuf 3.3-3.4 is not tested yet.
 
 ## gflags: 2.0-2.21
@@ -95,4 +95,4 @@ brpc detects valgrind automatically (and registers stacks of bthread). Older val
 
 # Track instances
 
-We provide a program to help you to track and monitor all brpc instances. Just run [trackme_server](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/tree/tools/trackme_server/) somewhere and launch need-to-be-tracked instances with -trackme_server=SERVER. The trackme_server will receive pings from instances periodically and print logs when it does. You can aggregate instance addresses from the log and call builtin services of the instances for further information.
+We provide a program to help you to track and monitor all brpc instances. Just run [trackme_server](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/tools/trackme_server/) somewhere and launch need-to-be-tracked instances with -trackme_server=SERVER. The trackme_server will receive pings from instances periodically and print logs when it does. You can aggregate instance addresses from the log and call builtin services of the instances for further information.

@@ -1,4 +1,4 @@
-Client指发起请求的一端，在brpc中没有对应的实体，取而代之的是[brpc::Channel](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/channel.h)，它代表和一台或一组服务器的交互通道，Client和Channel在角色上的差别在实践中并不重要，你可以把Channel视作Client。
+Client指发起请求的一端，在brpc中没有对应的实体，取而代之的是[brpc::Channel](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h)，它代表和一台或一组服务器的交互通道，Client和Channel在角色上的差别在实践中并不重要，你可以把Channel视作Client。
 
 Channel可以被进程中的所有线程共用，你不需要为每个线程创建独立的Channel，也不需要用锁互斥。不过Channel的创建和析构并不是线程安全的，请确保在Init成功后再被多线程访问，在没有线程访问后再析构。
 
@@ -146,7 +146,7 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 
 发起RPC前需要设置Controller.set_request_code()，否则RPC会失败。request_code一般是请求中主键部分的32位哈希值，**不需要和负载均衡使用的哈希算法一致**。比如用c_murmurhash算法也可以用md5计算哈希值。
 
-[brpc/policy/hasher.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/policy/hasher.h)中包含了常用的hash函数。如果用std::string key代表请求的主键，controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size()))就正确地设置了request_code。
+[brpc/policy/hasher.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/policy/hasher.h)中包含了常用的hash函数。如果用std::string key代表请求的主键，controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size()))就正确地设置了request_code。
 
 注意甄别请求中的“主键”部分和“属性”部分，不要为了偷懒或通用，就把请求的所有内容一股脑儿计算出哈希值，属性的变化会使请求的目的地发生剧烈的变化。另外也要注意padding问题，比如struct Foo { int32_t a; int64_t b; }在64位机器上a和b之间有4个字节的空隙，内容未定义，如果像hash(&foo, sizeof(foo))这样计算哈希值，结果就是未定义的，得把内容紧密排列或序列化后再算。
 
@@ -230,7 +230,7 @@ request.set_foo(...);
 cntl->set_timeout_ms(...);
 stub.some_method(cntl, &request, response, google::protobuf::NewCallback(OnRPCDone, response, cntl));
 ```
-由于protobuf 3把NewCallback设置为私有，r32035后brpc把NewCallback独立于[src/brpc/callback.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/callback.h)。如果你的程序出现NewCallback相关的编译错误，把google::protobuf::NewCallback替换为brpc::NewCallback就行了。
+由于protobuf 3把NewCallback设置为私有，r32035后brpc把NewCallback独立于[src/brpc/callback.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/callback.h)。如果你的程序出现NewCallback相关的编译错误，把google::protobuf::NewCallback替换为brpc::NewCallback就行了。
 
 ### 继承google::protobuf::Closure
 
@@ -352,7 +352,7 @@ brpc::StartCancel(CallId)可取消任意RPC，CallId必须**在发起RPC前**通
 
 ## 获取Server的地址和端口
 
-remote_side()方法可知道request被送向了哪个server，返回值类型是[base::EndPoint](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/base/endpoint.h)，包含一个ip4地址和端口。在RPC结束前调用这个方法都是没有意义的。
+remote_side()方法可知道request被送向了哪个server，返回值类型是[base::EndPoint](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/endpoint.h)，包含一个ip4地址和端口。在RPC结束前调用这个方法都是没有意义的。
 
 打印方式：
 ```c++
@@ -395,8 +395,8 @@ for (int i = 0; i < n; ++i) {
 
 Client端的设置主要由三部分组成：
 
-- brpc::ChannelOptions: 定义在[src/brpc/channel.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/channel.h)中，用于初始化Channel，一旦初始化成功无法修改。
-- brpc::Controller: 定义在[src/brpc/controller.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/controller.h)中，用于在某次RPC中覆盖ChannelOptions中的选项，可根据上下文每次均不同。
+- brpc::ChannelOptions: 定义在[src/brpc/channel.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h)中，用于初始化Channel，一旦初始化成功无法修改。
+- brpc::Controller: 定义在[src/brpc/controller.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)中，用于在某次RPC中覆盖ChannelOptions中的选项，可根据上下文每次均不同。
 - 全局gflags：常用于调节一些底层代码的行为，一般不用修改。请自行阅读服务/flags页面中的说明。
 
 Controller包含了request中没有的数据和选项。server端和client端的Controller结构体是一样的，但使用的字段可能是不同的，你需要仔细阅读Controller中的注释，明确哪些字段可以在server端使用，哪些可以在client端使用。
@@ -453,7 +453,7 @@ Controller.set_max_retry()或ChannelOptions.max_retry设置最大重试次数，
 
 一些错误重试是没有意义的，就不会重试，比如请求有错时(EREQUEST)不会重试，因为server总不会接受。
 
-r32009后用户可以通过继承[brpc::RetryPolicy](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/retry_policy.h)自定义重试条件。r34642后通过cntl->response()可获得对应RPC的response。对ERPCTIMEDOUT代表的RPC超时总是不重试，即使RetryPolicy中允许。
+r32009后用户可以通过继承[brpc::RetryPolicy](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/retry_policy.h)自定义重试条件。r34642后通过cntl->response()可获得对应RPC的response。对ERPCTIMEDOUT代表的RPC超时总是不重试，即使RetryPolicy中允许。
 
 比如brpc默认不重试HTTP相关的错误，而你的程序中希望在碰到HTTP_STATUS_FORBIDDEN (403)时重试，可以这么做：
 ```c++

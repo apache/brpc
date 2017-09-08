@@ -52,7 +52,7 @@ public:
 
 **controller**
 
-在brpc中可以静态转为brpc::Controller（前提是这运行brpc的Server中），包含了所有request和response之外的参数集合，具体接口查阅[controller.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/controller.h)
+在brpc中可以静态转为brpc::Controller（前提是这运行brpc的Server中），包含了所有request和response之外的参数集合，具体接口查阅[controller.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)
 
 **request**
 
@@ -127,13 +127,13 @@ public:
 };
 ```
 
-Service在插入[brpc::Server](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/server.h)后才可能提供服务。
+Service在插入[brpc::Server](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/server.h)后才可能提供服务。
 
 ## 标记当前调用为失败
 
 调用Controller.SetFailed()可以把当前调用设置为失败，当发送过程出现错误时，框架也会调用这个函数。用户一般是在服务的CallMethod里调用这个函数，比如某个处理环节出错，SetFailed()后便可调用done->Run()并跳出函数了（如果使用了ClosureGuard的话在跳出函数时会自动调用done，不用手动）。Server端的done的逻辑主要是发送response回client，当其发现用户调用了SetFailed()后，会把错误信息送回client。client收到后，它的Controller::Failed()会为true（成功时为false），Controller::ErrorCode()和Controller::ErrorText()则分别是错误码和错误信息。
 
-对于http访问，用户还可以设置[status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html)，在server端一般是调用controller.http_response().set_status_code()，标准的status-code定义在[http_status_code.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/http_status_code.h)中。如果SetFailed了但没有设置status-code，默认设为brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR（500错误）
+对于http访问，用户还可以设置[status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html)，在server端一般是调用controller.http_response().set_status_code()，标准的status-code定义在[http_status_code.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/http_status_code.h)中。如果SetFailed了但没有设置status-code，默认设为brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR（500错误）
 
 ## 获取Client的地址和端口
 
@@ -165,7 +165,7 @@ printf("local_side=%s\n", base::endpoint2str(cntl->local_side()).c_str());
 
 有些server以等待后端服务返回结果为主，且处理时间特别长，为了及时地释放出线程资源，更好的办法是把done注册到被等待事件的回调中，等到事件发生后再调用done->Run()，这种是**异步service**。
 
-异步service的最后一行一般是done_guard.release()以确保done_guard在析构时不会调用done->Run()，而是在事件回调中调用。例子请看[example/session_data_and_thread_local](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/tree/example/session_data_and_thread_local/)。
+异步service的最后一行一般是done_guard.release()以确保done_guard在析构时不会调用done->Run()，而是在事件回调中调用。例子请看[example/session_data_and_thread_local](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/example/session_data_and_thread_local/)。
 
 Service和Channel都可以使用done来表达后续的操作，但它们是完全不同的，请勿混淆：
 
@@ -208,7 +208,7 @@ int Start(int port, const ServerOptions* opt);
 int Start(const char *ip_str, PortRange port_range, const ServerOptions *opt);  // r32009后增加
 ```
 
-"localhost:9000", "cq01-cos-dev00.cq01:8000", “127.0.0.1:7000"都是合法的"ip_and_port_str"。其他重载形式请阅读[server.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/server.h)。
+"localhost:9000", "cq01-cos-dev00.cq01:8000", “127.0.0.1:7000"都是合法的"ip_and_port_str"。其他重载形式请阅读[server.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/server.h)。
 
 options为NULL时所有参数取默认值，如果你要使用非默认值，这么做就行了：
 
@@ -362,7 +362,7 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 
 ## 在每条日志后打印hostname
 
-此功能只对[base/logging.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/base/logging.h)中的日志宏有效。打开[-log_hostname](http://brpc.baidu.com:8765/flags/log_hostname)后每条日志后都会带本机名称，如果所有的日志需要汇总到一起进行分析，这个功能可以帮助你了解某条日志来自哪台机器。
+此功能只对[base/logging.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/logging.h)中的日志宏有效。打开[-log_hostname](http://brpc.baidu.com:8765/flags/log_hostname)后每条日志后都会带本机名称，如果所有的日志需要汇总到一起进行分析，这个功能可以帮助你了解某条日志来自哪台机器。
 
 ## 打印FATAL日志后退出程序
 
@@ -372,7 +372,7 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 
 ## 最低日志级别
 
-此功能只对[base/logging.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/base/logging.h)中的日志宏有效。设置[-min_log_level](http://brpc.baidu.com:8765/flags/min_log_level)后只有**不低于**被设置日志级别的日志才会被打印，这个选项可以动态修改。设置值和日志级别的对应关系：0=INFO 1=NOTICE 2=WARNING 3=ERROR 4=FATAL
+此功能只对[base/logging.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/logging.h)中的日志宏有效。设置[-min_log_level](http://brpc.baidu.com:8765/flags/min_log_level)后只有**不低于**被设置日志级别的日志才会被打印，这个选项可以动态修改。设置值和日志级别的对应关系：0=INFO 1=NOTICE 2=WARNING 3=ERROR 4=FATAL
 
 被拦住的日志产生的开销只是一次if判断，也不会评估参数(比如某个参数调用了函数，日志不打，这个函数就不会被调用），这和comlog是完全不同的。如果日志最终打印到comlog，那么还要经过comlog中的日志级别的过滤。
 
@@ -572,7 +572,7 @@ curl -s -m 1 <HOSTNAME>:<PORT>/flags/enable_dir_service,enable_threads_service |
 
 ## 定制/health页面
 
-/health页面默认返回"OK"，r32162后可以定制/health页面的内容：先继承[HealthReporter](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/health_reporter.h)，在其中实现生成页面的逻辑（就像实现其他http service那样），然后把实例赋给ServerOptions.health_reporter，这个实例不被server拥有，必须保证在server运行期间有效。用户在定制逻辑中可以根据业务的运行状态返回更多样的状态信息。
+/health页面默认返回"OK"，r32162后可以定制/health页面的内容：先继承[HealthReporter](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/health_reporter.h)，在其中实现生成页面的逻辑（就像实现其他http service那样），然后把实例赋给ServerOptions.health_reporter，这个实例不被server拥有，必须保证在server运行期间有效。用户在定制逻辑中可以根据业务的运行状态返回更多样的状态信息。
 
 ## 私有变量
 
@@ -637,7 +637,7 @@ struct ServerOptions {
 
 **实现session_local_data_factory**
 
-session_local_data_factory的类型为[DataFactory](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/data_factory.h)，你需要实现其中的CreateData和DestroyData。
+session_local_data_factory的类型为[DataFactory](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/data_factory.h)，你需要实现其中的CreateData和DestroyData。
 
 注意：CreateData和DestroyData会被多个线程同时调用，必须线程安全。
 
@@ -723,7 +723,7 @@ struct ServerOptions {
 
 **实现thread_local_data_factory：**
 
-thread_local_data_factory的类型为[DataFactory](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/data_factory.h)，你需要实现其中的CreateData和DestroyData。
+thread_local_data_factory的类型为[DataFactory](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/data_factory.h)，你需要实现其中的CreateData和DestroyData。
 
 注意：CreateData和DestroyData会被多个线程同时调用，必须线程安全。
 

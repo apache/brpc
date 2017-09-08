@@ -1,4 +1,4 @@
-http client的例子见[example/http_c++](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/example/http_c++/http_client.cpp)
+http client的例子见[example/http_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/http_c++/http_client.cpp)
 
 # 创建Channel
 
@@ -31,7 +31,7 @@ HTTP和protobuf无关，所以除了Controller和done，CallMethod的其他参�
 
 # POST
 
-默认的HTTP Method为GET，如果需要做POST，则需要设置。待POST的数据应置入request_attachment()，它([base::IOBuf](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/base/iobuf.h))可以直接append std::string或char*
+默认的HTTP Method为GET，如果需要做POST，则需要设置。待POST的数据应置入request_attachment()，它([base::IOBuf](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/iobuf.h))可以直接append std::string或char*
 
 ```c++
 brpc::Controller cntl;

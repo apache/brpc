@@ -38,7 +38,7 @@ You can use it for:
 * Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
   * restful http/https, h2/h2c (compatible with [grpc](https://github.com/grpc/grpc), will be opensourced soon). using http in brpc is much more friendly than [libcurl](https://curl.haxx.se/libcurl/).
   * [redis](docs/cn/redis_client.md) and [memcached](docs/cn/memcache_client.md), thread-safe, more friendly and performant than the official clients
-  * [rtmp](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building live-streaming services.
+  * [rtmp](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building live-streaming services.
   * hadoop_rpc(not opensourced yet)
   * [rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access) support via [openucx](https://github.com/openucx/ucx) (will be opensourced soon)
   * all sorts of protocols used in Baidu: baidu_std, [streaming_rpc](docs/cn/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc, and nshead-based ones.
@@ -55,13 +55,13 @@ You can use it for:
 
 ### More friendly API
 
-Only 3 (major) user headers: [Server](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/server.h), [Channel](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/channel.h), [Controller](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/controller.h), corresponding to server-side, client-side and parameter-set respectively. You don't have to worry about "How to initialize XXXManager", "How to layer all these components together",  "What's the relationship between XXXController and XXXContext".  All you to do is simple:
+Only 3 (major) user headers: [Server](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/server.h), [Channel](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h), [Controller](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h), corresponding to server-side, client-side and parameter-set respectively. You don't have to worry about "How to initialize XXXManager", "How to layer all these components together",  "What's the relationship between XXXController and XXXContext".  All you to do is simple:
 
-* Build service? include [brpc/server.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/server.h) and follow the comments or [examples](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/example/echo_c++/server.cpp).
+* Build service? include [brpc/server.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/server.h) and follow the comments or [examples](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/echo_c++/server.cpp).
 
-* Access service? include [brpc/channel.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/channel.h) and follow the comments or [examples](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/example/echo_c++/client.cpp).
+* Access service? include [brpc/channel.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h) and follow the comments or [examples](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/echo_c++/client.cpp).
 
-* Tweak parameters? Checkout [brpc/controller.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/controller.h). Note that the class is shared by server and channel. Methods are separated into 3 parts: client-side, server-side and both-side.
+* Tweak parameters? Checkout [brpc/controller.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h). Note that the class is shared by server and channel. Methods are separated into 3 parts: client-side, server-side and both-side.
 
 We tried to make simple things simple. Take naming service as an example, in older RPC implementations, you may need to copy a pile of obscure code to make it work, however in brpc accessing BNS is expressed as `Init("bns://node-name"...`, DNS is "http://domain-name" and local machine list is "file:///home/work/server.list". Without any explanation, you know what it means.
 
