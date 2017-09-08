@@ -34,11 +34,8 @@ DECLARE_int64(min_weight);
 DECLARE_int64(dev_multiple);
 
 // Locality-aware is an iterative algorithm to send requests to servers which
-// have lowest expected latencies. Read following link to get a peek at the
-// algorithm.
-//   http://wiki.baidu.com/display/RPC/Locality-aware+load+balancing
-// The implemention is complex. It may take you some time to understand
-// correctness and subtlety of the algorithm.
+// have lowest expected latencies. Read docs/cn/lalb.md to get a peek at the
+// algorithm. The implemention is complex.
 class LocalityAwareLoadBalancer : public LoadBalancer {
 public:
     LocalityAwareLoadBalancer();

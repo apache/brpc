@@ -97,7 +97,7 @@ void PProfService::profile(
     cntl->http_response().set_content_type("text/plain");
     if ((void*)ProfilerStart == NULL || (void*)ProfilerStop == NULL) {
         cntl->SetFailed(ENOMETHOD, "%s, to enable cpu profiler, check out "
-                        "http://wiki.baidu.com/display/RPC",
+                        "docs/cn/cpu_profiler.md",
                         berror(ENOMETHOD));
         return;
     }    
@@ -206,7 +206,7 @@ void PProfService::heap(
     Controller* cntl = static_cast<Controller*>(controller_base);
     if ((void*)TCMallocGetHeapSample == NULL) {
         cntl->SetFailed(ENOMETHOD, "%s, to enable heap profiler, check out "
-                        "http://wiki.baidu.com/display/RPC",
+                        "docs/cn/heap_profiler.md",
                         berror(ENOMETHOD));
         return;
     }
@@ -234,7 +234,7 @@ void PProfService::growth(
     Controller* cntl = static_cast<Controller*>(controller_base);
     if ((void*)TCMallocGetHeapGrowthStacks == NULL) {
         cntl->SetFailed(ENOMETHOD, "%s, to enable growth profiler, check out "
-                        "http://wiki.baidu.com/display/RPC",
+                        "docs/cn/heap_profiler.md",
                         berror(ENOMETHOD));
         return;
     }
