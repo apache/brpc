@@ -1,4 +1,4 @@
-NOTE: following tests are done in 2015, which may not reflect latest status of the package.
+NOTE: following tests were done in 2015, which may not reflect latest status of the package.
 
 # 序言
 
