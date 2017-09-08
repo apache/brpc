@@ -101,12 +101,12 @@ LoadBalancer是一个读远多于写的数据结构：大部分时候，所有�
 - 不同的读之间没有竞争，高度并发。
 - 如果没有写，读总是能无竞争地获取和释放thread-local锁，一般小于25ns，对延时基本无影响。如果有写，由于其临界区极小（拿到立刻释放），读在大部分时候仍能快速地获得锁，少数时候释放锁时可能有唤醒写线程的代价。由于写本身就是少数情况，读整体上几乎不会碰到竞争锁。
 
-完成这些功能的数据结构是[DoublyBufferedData<>](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/containers/doubly_buffered_data.h)，我们常简称为DBD。brpc中的所有load balancer都使用了这个数据结构，使不同线程在分流时几乎不会互斥。而其他rpc实现往往使用了全局锁，这使得它们无法写出复杂的分流算法：否则分流代码将会成为竞争热点。
+完成这些功能的数据结构是[DoublyBufferedData<>](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/butil/containers/doubly_buffered_data.h)，我们常简称为DBD。brpc中的所有load balancer都使用了这个数据结构，使不同线程在分流时几乎不会互斥。而其他rpc实现往往使用了全局锁，这使得它们无法写出复杂的分流算法：否则分流代码将会成为竞争热点。
 
 这个结构有广泛的应用场景：
 
 - reload词典。大部分时候词典都是只读的，不同线程同时查询时不应查询。
-- 可替换的全局callback。像base/logging.cpp支持配置全局LogSink以重定向日志，这个LogSink就是一个带状态的callback。如果只是简单的全局变量，在替换后我们无法直接删除LogSink，因为可能还有都写线程在用。用DBD可以解决这个问题。
+- 可替换的全局callback。像butil/logging.cpp支持配置全局LogSink以重定向日志，这个LogSink就是一个带状态的callback。如果只是简单的全局变量，在替换后我们无法直接删除LogSink，因为可能还有都写线程在用。用DBD可以解决这个问题。
 
 ## weight tree
 

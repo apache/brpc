@@ -110,7 +110,7 @@ public:
  
 // naming_service.h
 struct ServerNode {
-    base::EndPoint addr;
+    butil::EndPoint addr;
     std::string tag;
 };
 ```
@@ -365,12 +365,12 @@ brpc::StartCancel(CallId)可取消任意RPC，CallId必须**在发起RPC前**通
 
 ## 获取Server的地址和端口
 
-remote_side()方法可知道request被送向了哪个server，返回值类型是[base::EndPoint](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/endpoint.h)，包含一个ip4地址和端口。在RPC结束前调用这个方法都是没有意义的。
+remote_side()方法可知道request被送向了哪个server，返回值类型是[butil::EndPoint](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/butil/endpoint.h)，包含一个ip4地址和端口。在RPC结束前调用这个方法都是没有意义的。
 
 打印方式：
 ```c++
 LOG(INFO) << "remote_side=" << cntl->remote_side();
-printf("remote_side=%s\n", base::endpoint2str(cntl->remote_side()).c_str());
+printf("remote_side=%s\n", butil::endpoint2str(cntl->remote_side()).c_str());
 ```
 ## 获取Client的地址和端口
 
@@ -379,7 +379,7 @@ r31384后通过local_side()方法可**在RPC结束后**获得发起RPC的地址�
 打印方式：
 ```c++
 LOG(INFO) << "local_side=" << cntl->local_side(); 
-printf("local_side=%s\n", base::endpoint2str(cntl->local_side()).c_str());
+printf("local_side=%s\n", butil::endpoint2str(cntl->local_side()).c_str());
 ```
 ## 新建brpc::Controller的代价大吗
 
@@ -732,7 +732,7 @@ FATAL 04-07 20:00:03 7778 public/brpc/src/brpc/channel.cpp:123] Invalid address=
 2. 根据Channel的创建方式，从进程级的[SocketMap](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/socket_map.h)中或从[LoadBalancer](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/load_balancer.h)中选择一台下游server作为本次RPC发送的目的地。
 3. 根据连接方式（单连接、连接池、短连接），选择一个[Socket](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/socket.h)。
 4. 如果开启验证且当前Socket没有被验证过时，第一个请求进入验证分支，其余请求会阻塞直到第一个包含认证信息的请求写入Socket。这是因为server端只对第一个请求进行验证。
-5. 根据Channel的协议，选择对应的序列化函数把request序列化至[IOBuf](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/iobuf.h)。
+5. 根据Channel的协议，选择对应的序列化函数把request序列化至[IOBuf](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/butil/iobuf.h)。
 6. 如果配置了超时，设置定时器。从这个点开始要避免使用Controller对象，因为在设定定时器后->有可能触发超时机制->调用到用户的异步回调->用户在回调中析构Controller。
 7. 发送准备阶段结束，若上述任何步骤出错，会调用Channel::HandleSendFailed。
 8. 将之前序列化好的IOBuf写出到Socket上，同时传入回调Channel::HandleSocketFailed，当连接断开、写失败等错误发生时会调用此回调。

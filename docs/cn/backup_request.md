@@ -26,11 +26,11 @@ Channel开启backup request。这个Channel会先向其中一个server发送请�
 
 ```c++
 #include <bvar/bvar.h>
-#include <base/time.h>
+#include <butil/time.h>
 ...
 bvar::LatencyRecorder my_func_latency("my_func");
 ...
-base::Timer tm;
+butil::Timer tm;
 tm.start();
 my_func();
 tm.stop();

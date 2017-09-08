@@ -123,18 +123,18 @@ extern bvar::Adder<int> g_task_pushed;
 
 不同编译单元中全局变量的初始化顺序是[未定义的](https://isocpp.org/wiki/faq/ctors#static-init-order)。在foo.cpp中定义`Adder<int> foo_count`，在foo_qps.cpp中定义`PerSecond<Adder<int> > foo_qps(&foo_count);`是**错误**的做法。
 
-计时可以使用base::Timer，接口如下：
+计时可以使用butil::Timer，接口如下：
 
 ```c++
-#include <base/time.h>
-namespace base {
+#include <butil/time.h>
+namespace butil {
 class Timer {
 public:
     enum TimerType { STARTED };
      
     Timer();
  
-    // base::Timer tm(base::Timer::STARTED);  // tm is already started after creation.
+    // butil::Timer tm(butil::Timer::STARTED);  // tm is already started after creation.
     explicit Timer(TimerType);
  
     // Start this timer
@@ -149,7 +149,7 @@ public:
     int64_t m_elapsed() const;  // in milliseconds
     int64_t s_elapsed() const;  // in seconds
 };
-}  // base
+}  // namespace butil
 ```
 
 ## 2.打开bvar的dump功能

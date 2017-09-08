@@ -108,7 +108,7 @@ CHECK_EQ(-10, response.reply(3).integer());
 ```c++
 bool AddCommand(const char* fmt, ...);
 bool AddCommandV(const char* fmt, va_list args);
-bool AddCommandByComponents(const base::StringPiece* components, size_t n);
+bool AddCommandByComponents(const butil::StringPiece* components, size_t n);
 ```
 
 格式和hiredis基本兼容：即%b对应二进制数据（指针+length)，其他和printf的参数类似。对一些细节做了改进：当某个字段包含空格时，使用单引号或双引号包围起来会被视作一个字段。比如AddCommand("Set 'a key with space' 'a value with space as well'")中的key是a key with space，value是a value with space as well。在hiredis中必须写成redisvCommand(..., "SET %s %s", "a key with space", "a value with space as well");

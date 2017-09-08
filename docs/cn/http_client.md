@@ -27,11 +27,11 @@ channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
 
 HTTP和protobuf无关，所以除了Controller和done，CallMethod的其他参数均为NULL。如果要异步操作，最后一个参数传入done。
 
-`cntl.response_attachment()`是回复的body，类型也是base::IOBuf。注意IOBuf转化为std::string（通过to_string()接口）是需要分配内存并拷贝所有内容的，如果关注性能，你的处理过程应该尽量直接支持IOBuf，而不是要求连续内存。
+`cntl.response_attachment()`是回复的body，类型也是butil::IOBuf。注意IOBuf转化为std::string（通过to_string()接口）是需要分配内存并拷贝所有内容的，如果关注性能，你的处理过程应该尽量直接支持IOBuf，而不是要求连续内存。
 
 # POST
 
-默认的HTTP Method为GET，如果需要做POST，则需要设置。待POST的数据应置入request_attachment()，它([base::IOBuf](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/iobuf.h))可以直接append std::string或char*
+默认的HTTP Method为GET，如果需要做POST，则需要设置。待POST的数据应置入request_attachment()，它([butil::IOBuf](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/butil/iobuf.h))可以直接append std::string或char*
 
 ```c++
 brpc::Controller cntl;
@@ -41,13 +41,13 @@ cntl.request_attachment().append("{\"message\":\"hello world!\"}");
 channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
 ```
 
-需要大量打印过程的body建议使用base::IOBufBuilder，它的用法和std::ostringstream是一样的。对于有大量对象要打印的场景，IOBufBuilder会简化代码，并且效率也更高。
+需要大量打印过程的body建议使用butil::IOBufBuilder，它的用法和std::ostringstream是一样的。对于有大量对象要打印的场景，IOBufBuilder会简化代码，并且效率也更高。
 
 ```c++
 brpc::Controller cntl;
 cntl.http_request().uri() = "...";  // 设置为待访问的URL
 cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
-base::IOBufBuilder os;
+butil::IOBufBuilder os;
 os << "A lot of printing" << printable_objects << ...;
 os.move_to(cntl.request_attachment());
 channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
@@ -120,13 +120,13 @@ cntl->http_request().set_content_type("text/plain");
 ```
 访问body
 ```c++
-base::IOBuf& buf = cntl->request_attachment();
+butil::IOBuf& buf = cntl->request_attachment();
 std::string str = cntl->request_attachment().to_string(); // 有拷贝
 ```
 设置body
 ```c++
 cntl->request_attachment().append("....");
-base::IOBufBuilder os; os << "....";
+butil::IOBufBuilder os; os << "....";
 os.move_to(cntl->request_attachment());
 ```
 
@@ -160,7 +160,7 @@ Notes on http header:
 ...
 const std::string* encoding = cntl->http_response().GetHeader("Content-Encoding");
 if (encoding != NULL && *encoding == "gzip") {
-    base::IOBuf uncompressed;
+    butil::IOBuf uncompressed;
     if (!brpc::policy::GzipDecompress(cntl->response_attachment(), &uncompressed)) {
         LOG(ERROR) << "Fail to un-gzip response body";
         return;
@@ -190,7 +190,7 @@ r33796后brpc client支持在读取完body前就结束RPC，让用户在RPC结�
        // data was read will be closed.
        // A temporary error may be handled by blocking this function, which
        // may block the HTTP parsing on the socket.
-       virtual base::Status OnReadOnePart(const void* data, size_t length) = 0;
+       virtual butil::Status OnReadOnePart(const void* data, size_t length) = 0;
     
        // Called when there's nothing to read anymore. The `status' is a hint for
        // why this method is called.
@@ -198,7 +198,7 @@ r33796后brpc client支持在读取完body前就结束RPC，让用户在RPC结�
        // - otherwise: socket was broken or OnReadOnePart() failed.
        // This method will be called once and only once. No other methods will
        // be called after. User can release the memory of this object inside.
-       virtual void OnEndOfMessage(const base::Status& status) = 0;
+       virtual void OnEndOfMessage(const butil::Status& status) = 0;
    };
    ```
    OnReadOnePart在每读到一段数据时被调用，OnEndOfMessage在数据结束或连接断开时调用，实现前仔细阅读注释。

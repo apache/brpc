@@ -36,7 +36,7 @@ public:
         cntl->http_response().set_content_type("text/plain");
        
         // 把请求的query-string和body打印出来，作为回复内容。
-        base::IOBufBuilder os;
+        butil::IOBufBuilder os;
         os << "queries:";
         for (brpc::URI::QueryIterator it = cntl->http_request().uri().QueryBegin();
                 it != cntl->http_request().uri().QueryEnd(); ++it) {
@@ -114,7 +114,7 @@ r32097后，brpc支持为service中的每个方法指定一个URL。接口如下
 // PATHs是有效的HTTP路径, NAMEs是service中的方法名.                                                     
 int AddService(google::protobuf::Service* service,
                ServiceOwnership ownership,
-               base::StringPiece restful_mappings);
+               butil::StringPiece restful_mappings);
 ```
 
 比如下面的QueueService包含多个http方法。
@@ -281,7 +281,7 @@ http服务常对http body进行压缩，对于文本网页可以有效减少传�
 ...
 const std::string* encoding = cntl->http_request().GetHeader("Content-Encoding");
 if (encoding != NULL && *encoding == "gzip") {
-    base::IOBuf uncompressed;
+    butil::IOBuf uncompressed;
     if (!brpc::policy::GzipDecompress(cntl->request_attachment(), &uncompressed)) {
         LOG(ERROR) << "Fail to un-gzip request body";
         return;
@@ -295,7 +295,7 @@ if (encoding != NULL && *encoding == "gzip") {
 
 # 开启HTTPS
 
-要开启HTTPS，首先确保你的COMAKE/BCLOUD中依赖有最新的openssl库（openssl-1.0.2h）
+要开启HTTPS，首先确保代码依赖了最新的openssl库
 
 ```python
 CONFIGS('third-64/openssl@1.0.2.6123')

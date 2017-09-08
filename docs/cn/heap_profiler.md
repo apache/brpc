@@ -6,7 +6,7 @@ brpc可以分析内存是被哪些函数占据的。heap profiler的原理是每
 
    1. 如果tcmalloc使用frame pointer而不是libunwind回溯栈，请确保在CXXFLAGS或CFLAGS中加上`-fno-omit-frame-pointer`，否则函数间的调用关系会丢失，最后产生的图片中都是彼此独立的函数方框。
 
-2. 在COMAKE的CPPFLAGS中增加`-DBRPC_ENABLE_HEAP_PROFILER`
+2. 定义宏BRPC_ENABLE_HEAP_PROFILER, 一般加入编译参数-DBRPC_ENABLE_HEAP_PROFILER。
 
 3. 在shell中`export TCMALLOC_SAMPLE_PARAMETER=524288`。该变量指每分配这么多字节内存时做一次统计，默认为0，代表不开启内存统计。[官方文档](http://goog-perftools.sourceforge.net/doc/tcmalloc.html)建议设置为524288。这个变量也可在运行前临时设置，如`TCMALLOC_SAMPLE_PARAMETER=524288 ./server`。如果没有这个环境变量，可能会看到这样的结果：
 
@@ -65,9 +65,9 @@ Adjusting heap profiles for 1-in-524288 sampling rate
 Heap version 2
 Total: 38.9 MB
     35.8  92.0%  92.0%     35.8  92.0% ::cpp_alloc
-     2.1   5.4%  97.4%      2.1   5.4% base::FlatMap
-     0.5   1.3%  98.7%      0.5   1.3% base::IOBuf::append
-     0.5   1.3% 100.0%      0.5   1.3% base::IOBufAsZeroCopyOutputStream::Next
+     2.1   5.4%  97.4%      2.1   5.4% butil::FlatMap
+     0.5   1.3%  98.7%      0.5   1.3% butil::IOBuf::append
+     0.5   1.3% 100.0%      0.5   1.3% butil::IOBufAsZeroCopyOutputStream::Next
      0.0   0.0% 100.0%      0.6   1.5% MallocExtension::GetHeapSample
      0.0   0.0% 100.0%      0.5   1.3% ProfileHandler::Init
      0.0   0.0% 100.0%      0.5   1.3% ProfileHandlerRegisterCallback
@@ -81,9 +81,9 @@ Total: 38.9 MB
      0.0   0.0% 100.0%      2.9   7.4% brpc::Socket::Write
      0.0   0.0% 100.0%      3.8   9.7% brpc::Span::CreateServerSpan
      0.0   0.0% 100.0%      1.4   3.5% brpc::SpanQueue::Push
-     0.0   0.0% 100.0%      1.9   4.8% base::ObjectPool
-     0.0   0.0% 100.0%      0.8   2.0% base::ResourcePool
-     0.0   0.0% 100.0%      1.0   2.6% base::iobuf::tls_block
+     0.0   0.0% 100.0%      1.9   4.8% butil::ObjectPool
+     0.0   0.0% 100.0%      0.8   2.0% butil::ResourcePool
+     0.0   0.0% 100.0%      1.0   2.6% butil::iobuf::tls_block
      0.0   0.0% 100.0%      1.0   2.6% bthread::TimerThread::Bucket::schedule
      0.0   0.0% 100.0%      1.6   4.1% bthread::get_stack
      0.0   0.0% 100.0%      4.2  10.8% bthread_id_create

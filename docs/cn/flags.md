@@ -4,8 +4,6 @@ brpc使用gflags管理配置。如果你的程序也使用gflags，那么你应�
 - 你可以在浏览器中查看brpc服务器中所有gflags，并对其动态修改（如果允许的话）。configure不可能做到这点。
 - gflags分散在和其作用紧密关联的文件中，更好管理。而使用configure需要聚集到一个庞大的读取函数中。
 
-如果你依赖了brpc，那么你已经依赖了third-64/gflags，如果你需要依赖某个特定版本的话，在COMAKE中加入CONFIGS('third-64/gflags@<specific-version>')。
-
 # Usage of gflags
 
 gflags一般定义在需要它的源文件中。#include <gflags/gflags.h>后在全局scope加入DEFINE_*<type>*(*<name>*, *<default-value>*, *<description>*); 比如：

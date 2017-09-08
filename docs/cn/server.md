@@ -139,24 +139,24 @@ Service在插入[brpc::Server](http://icode.baidu.com/repo/baidu/opensource/baid
 
 ## 获取Client的地址和端口
 
-controller->remote_side()可获得发送该请求的client地址和端口，类型是base::EndPoint。如果client是nginx，remote_side()是nginx的ip。要获取真实client的ip，可以在nginx里设置proxy_header ClientIp $remote_addr; 在rpc中通过controller->http_request().GetHeader("ClientIp")获得对应的值。
+controller->remote_side()可获得发送该请求的client地址和端口，类型是butil::EndPoint。如果client是nginx，remote_side()是nginx的ip。要获取真实client的ip，可以在nginx里设置proxy_header ClientIp $remote_addr; 在rpc中通过controller->http_request().GetHeader("ClientIp")获得对应的值。
 
 打印方式：
 
 ```c++
 LOG(INFO) << "remote_side=" << cntl->remote_side(); 
-printf("remote_side=%s\n", base::endpoint2str(cntl->remote_side()).c_str());
+printf("remote_side=%s\n", butil::endpoint2str(cntl->remote_side()).c_str());
 ```
 
 ## 获取Server的地址和端口
 
-r31384前server在接受连接时会把server端的端口打印到日志中，但没有接口获得。r31384后调用controller->local_side()获得，类型是base::EndPoint。
+r31384前server在接受连接时会把server端的端口打印到日志中，但没有接口获得。r31384后调用controller->local_side()获得，类型是butil::EndPoint。
 
 打印方式：
 
 ```c++
 LOG(INFO) << "local_side=" << cntl->local_side(); 
-printf("local_side=%s\n", base::endpoint2str(cntl->local_side()).c_str());
+printf("local_side=%s\n", butil::endpoint2str(cntl->local_side()).c_str());
 ```
 
 ## 异步Service
@@ -364,7 +364,7 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 
 ## 在每条日志后打印hostname
 
-此功能只对[base/logging.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/logging.h)中的日志宏有效。打开[-log_hostname](http://brpc.baidu.com:8765/flags/log_hostname)后每条日志后都会带本机名称，如果所有的日志需要汇总到一起进行分析，这个功能可以帮助你了解某条日志来自哪台机器。
+此功能只对[butil/logging.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/butil/logging.h)中的日志宏有效。打开[-log_hostname](http://brpc.baidu.com:8765/flags/log_hostname)后每条日志后都会带本机名称，如果所有的日志需要汇总到一起进行分析，这个功能可以帮助你了解某条日志来自哪台机器。
 
 ## 打印FATAL日志后退出程序
 
@@ -374,7 +374,7 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 
 ## 最低日志级别
 
-此功能只对[base/logging.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/logging.h)中的日志宏有效。设置[-min_log_level](http://brpc.baidu.com:8765/flags/min_log_level)后只有**不低于**被设置日志级别的日志才会被打印，这个选项可以动态修改。设置值和日志级别的对应关系：0=INFO 1=NOTICE 2=WARNING 3=ERROR 4=FATAL
+此功能只对[butil/logging.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/butil/logging.h)中的日志宏有效。设置[-min_log_level](http://brpc.baidu.com:8765/flags/min_log_level)后只有**不低于**被设置日志级别的日志才会被打印，这个选项可以动态修改。设置值和日志级别的对应关系：0=INFO 1=NOTICE 2=WARNING 3=ERROR 4=FATAL
 
 被拦住的日志产生的开销只是一次if判断，也不会评估参数(比如某个参数调用了函数，日志不打，这个函数就不会被调用），这和comlog是完全不同的。如果日志最终打印到comlog，那么还要经过comlog中的日志级别的过滤。
 
@@ -431,7 +431,7 @@ public:                                    �
     // pointer from `Controller'.                                                                                                                                                  
     // Returns 0 on success, error code otherwise                                                                                                                                  
     virtual int VerifyCredential(const std::string& auth_str,                                                                                                                      
-                                 const base::EndPoint& client_addr,                                                                                                                
+                                 const butil::EndPoint& client_addr,                                                                                                                
                                  AuthContext* out_ctx) const = 0;                                                                                                                                                                                                                                                                                                     
 }; 
  

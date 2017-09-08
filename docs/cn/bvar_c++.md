@@ -1,5 +1,4 @@
 # Introduction
-COMAKE中增加bvar依赖：`CONFIGS('public/bvar@ci-base')`
 源文件中`#include <bvar/bvar.h>`
 bvar分为多个具体的类，常用的有：
 - bvar::Adder<T> : 计数器，默认0，varname << N相当于varname += N。
@@ -63,8 +62,8 @@ Variable是所有bvar的基类，主要提供全局注册，列举，查询等�
 //   describe_exposed
 //   find_exposed
 // Return 0 on success, -1 otherwise.
-int expose(const base::StringPiece& name);
-int expose(const base::StringPiece& prefix, const base::StringPiece& name);
+int expose(const butil::StringPiece& name);
+int expose(const butil::StringPiece& prefix, const butil::StringPiece& name);
 ```
 全局曝光后的bvar名字便为name或prefix + name，可通过以_exposed为后缀的static函数查询。比如Variable::describe_exposed(name)会返回名为name的bvar的描述。
 
@@ -104,7 +103,7 @@ bvar::Status<std::string> status1("count2", "hello");  // the name conflicts. if
 //   };
 //   }  // foo
 //   }  // bar
-int expose_as(const base::StringPiece& prefix, const base::StringPiece& name);
+int expose_as(const butil::StringPiece& prefix, const butil::StringPiece& name);
 ```
 
 # Export all variables
@@ -115,7 +114,7 @@ int expose_as(const base::StringPiece& prefix, const base::StringPiece& name);
 // If dump() returns false, Variable::dump_exposed() stops and returns -1.
 class Dumper {
 public:
-    virtual bool dump(const std::string& name, const base::StringPiece& description) = 0;
+    virtual bool dump(const std::string& name, const butil::StringPiece& description) = 0;
 };
  
 // Options for Variable::dump_exposed().

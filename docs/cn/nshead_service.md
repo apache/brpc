@@ -60,11 +60,9 @@ service EchoService {
 };
 ```
 
-## 在COMAKE中设置protoc和mcpack2pb的参数
+## 设置protoc和mcpack2pb的参数
 
 注意--mcpack_out要和--cpp_out一致，你可以先设成--mcpack_out=.，执行comake2或bcloud后看错误信息中的--cpp_out的值，再把--mcpack_out设成一样的。
-
-BCLOUD中要把`/public/mcpack2pb/protoc-gen-mcpack`替换成`/public/mcpack2pb/protoc-gen-mcpack**.forbcloud**，并把ENV.WorkRoot()替换为WORKROOT的实际值。`
 
 ```pyton
 PROTOC(ENV.WorkRoot()+"/third-64/protobuf/bin/protoc")
@@ -136,7 +134,7 @@ NsheadService的接口如下，基本上用户只需要实现`ProcessNsheadReque
 // 代表一个nshead请求或回复。
 struct NsheadMessage {
     nshead_t head;
-    base::IOBuf body;
+    butil::IOBuf body;
 };
  
 // 实现这个类并复制给ServerOptions.nshead_service来让brpc处理nshead请求。

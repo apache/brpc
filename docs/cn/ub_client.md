@@ -57,11 +57,9 @@ r31687后，brpc支持通过protobuf访问ubrpc，不需要baidu-rpc-ub，也不
    };
    ```
 
-2. 在COMAKE或BCLOUD中插入如下片段以使用代码生成插件。
+2. 插入如下片段以使用代码生成插件。
 
    注意--mcpack_out要和--cpp_out一致，你可以先设成--mcpack_out=.，执行comake2或bcloud后看错误信息中的--cpp_out的值，再把--mcpack_out设成一样的。
-
-   BCLOUD中要把`/public/mcpack2pb/protoc-gen-mcpack`替换成`/public/mcpack2pb/protoc-gen-mcpack**.forbcloud**`，并把ENV.WorkRoot()替换为WORKROOT的实际值。
 
    ```python
    PROTOC(ENV.WorkRoot()+"/third-64/protobuf/bin/protoc")
@@ -154,7 +152,7 @@ server端由public/ubrpc搭建，request/response使用idl文件描述字段，�
 
 **步骤：**
 
-1. 依赖[public/baidu-rpc-ub](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob)模块，在COMAKE中增加依赖：`CONFIGS('public/baidu-rpc-ub@ci-base')。`这个模块是brpc的扩展，不需要的用户不会依赖idl/mcpack/compack等模块。baidu-rpc-ub只包含扩展代码，brpc中的新特性会自动体现在这个模块中。
+1. 依赖public/baidu-rpc-ub模块，在COMAKE中增加依赖：`CONFIGS('public/baidu-rpc-ub@ci-base')。`这个模块是brpc的扩展，不需要的用户不会依赖idl/mcpack/compack等模块。baidu-rpc-ub只包含扩展代码，brpc中的新特性会自动体现在这个模块中。
 
 2. 编写一个proto文件，其中定义了service，名字和idl中的相同，但请求类型必须是baidu.rpc.UBRequest，回复类型必须是baidu.rpc.UBResponse。这两个类型定义在brpc/ub.proto中，使用时得import。
 

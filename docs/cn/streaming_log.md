@@ -5,7 +5,7 @@ streaming_log - Print log to std::ostreams
 # SYNOPSIS
 
 ```c++
-#include <base/logging.h>
+#include <butil/logging.h>
 
 LOG(FATAL) << "Fatal error occurred! contexts=" << ...;
 LOG(WARNING) << "Unusual thing happened ..." << ...;
@@ -27,7 +27,7 @@ LOG_ONCE(WARNING) << "Logs that only prints once";
 
 ```c++
 // logging默认重定向至comlog，要配置comlog的话，要额外include comlog_sink.h
-#include <base/comlog_sink.h>
+#include <butil/comlog_sink.h>
  
 // 从./conf/log.conf读取comlog的配置。SetupFromConfig是我们提供的封装函数，不用像com_loadlog那样区分path和file。
 if (logging::ComlogSink::GetInstance()->SetupFromConfig("conf/log.conf") != 0) {
@@ -264,7 +264,7 @@ CHECK_GT(1, 2) << "1 can't be greater than 2";
 
 ```
 FATAL: ... Check failed: 1 > 2 (1 vs 2). 1 can't be greater than 2
-#0 0x000000afaa23 base::debug::StackTrace::StackTrace()
+#0 0x000000afaa23 butil::debug::StackTrace::StackTrace()
 #1 0x000000c29fec logging::LogStream::FlushWithoutReset()
 #2 0x000000c2b8e6 logging::LogStream::Flush()
 #3 0x000000c2bd63 logging::DestroyLogStream()
@@ -319,6 +319,6 @@ TEST_F(StreamingLogTest, log_at) {
 
 ### ComlogSink
 
-定义在base/comlog_sink.h中，把日志打印入comlog，主要用于线上系统，用法见[SYNOPSIS](#SYNOPSIS)一段。
+定义在butil/comlog_sink.h中，把日志打印入comlog，主要用于线上系统，用法见[SYNOPSIS](#SYNOPSIS)一段。
 
 使用ComlogSink的streaming log可以和com_writelog, ul_writelog混用。你并不需要把程序中所有日志都换成streaming log。

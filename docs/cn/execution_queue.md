@@ -151,7 +151,7 @@ const static TaskOptions TASK_OPTIONS_INPLACE = TaskOptions(false, true);
 // Execute a task with defaut TaskOptions (normal task);
 template <typename T>
 int execution_queue_execute(ExecutionQueueId<T> id,
-                            typename base::add_const_reference<T>::type task);
+                            typename butil::add_const_reference<T>::type task);
  
 // Thread-safe and Wait-free.
 // Execute a task with options. e.g
@@ -160,11 +160,11 @@ int execution_queue_execute(ExecutionQueueId<T> id,
 // If |handle| is not NULL, we will assign it with the hanlder of this task.
 template <typename T>
 int execution_queue_execute(ExecutionQueueId<T> id,
-                            typename base::add_const_reference<T>::type task,
+                            typename butil::add_const_reference<T>::type task,
                             const TaskOptions* options);
 template <typename T>
 int execution_queue_execute(ExecutionQueueId<T> id,
-                            typename base::add_const_reference<T>::type task,
+                            typename butil::add_const_reference<T>::type task,
                             const TaskOptions* options,
                             TaskHandle* handle); 
 ```
