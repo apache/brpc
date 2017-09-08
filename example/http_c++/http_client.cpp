@@ -75,7 +75,7 @@ int main(int argc, char* argv[]) {
         std::cerr << cntl.ErrorText() << std::endl;
         return -1;
     }
-    // If -http_verbose is on, baidu-rpc already prints the response to stderr.
+    // If -http_verbose is on, brpc already prints the response to stderr.
     if (!brpc::FLAGS_http_verbose) {
         std::cout << cntl.response_attachment() << std::endl;
     }

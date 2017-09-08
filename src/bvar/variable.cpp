@@ -797,7 +797,7 @@ static bool validate_bvar_dump(const char*, bool enabled) {
 const bool ALLOW_UNUSED dummy_bvar_dump = ::google::RegisterFlagValidator(
     &FLAGS_bvar_dump, validate_bvar_dump);
 
-// validators (to make these gflags reloadable in baidu-rpc)
+// validators (to make these gflags reloadable in brpc)
 static bool validate_bvar_dump_interval(const char*, int32_t v) {
     // FIXME: -bvar_dump_interval is actually unreloadable but we need to 
     // check validity of it, so we still add this validator. In practice

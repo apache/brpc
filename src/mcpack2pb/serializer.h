@@ -26,7 +26,7 @@
 #include "mcpack2pb/field_type.h"
 
 // CAUTION: Methods in this header is not intended to be public to users of
-// baidu-rpc, and subject to change at any future time.
+// brpc, and subject to change at any future time.
 
 namespace mcpack2pb {
 

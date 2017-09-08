@@ -23,7 +23,7 @@
 #include "base/status.h"
 #include "base/string_splitter.h"
 
-// To baidu-rpc developers: This is a class exposed to end-user. DON'T put impl.
+// To brpc developers: This is a class exposed to end-user. DON'T put impl.
 // details in this header, use opaque pointers instead.
 
 

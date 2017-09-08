@@ -18,7 +18,7 @@
 #ifndef BRPC_SERVER_H
 #define BRPC_SERVER_H
 
-// To baidu-rpc developers: This is a header included by user, don't depend
+// To brpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
 
 #include "bthread/errno.h"        // Redefine errno
@@ -157,7 +157,7 @@ struct ServerOptions {
     // you can't assume that the server uses exactly so many pthreads because
     // pthread workers are shared by all servers and channels inside a 
     // process. And there're no "io-thread" and "worker-thread" anymore,
-    // baidu-rpc automatically schedules "io" and "worker" code for better
+    // brpc automatically schedules "io" and "worker" code for better
     // parallelism and less context switches.
     // If this option <= 0, number of pthread workers is not changed.
     // Default: #cpu-cores
@@ -167,7 +167,7 @@ struct ServerOptions {
     // concurrency of a method, use server.MaxConcurrencyOf("xxx") instead.
     //
     // In a traditional server, number of pthread workers also limits
-    // concurrency. However baidu-rpc runs requests in bthreads which are
+    // concurrency. However brpc runs requests in bthreads which are
     // mapped to pthread workers, when a bthread context switches, it gives
     // the pthread worker to another bthread, yielding a higher concurrency
     // than number of pthreads. In some situation, higher concurrency may
@@ -326,7 +326,7 @@ struct ServiceOptions {
     // when the pb schema is non-empty in http servings. The body must be
     // valid json or protobuf(wire-format) otherwise the request is rejected.
     // This option does not affect pure-http services (pb schema is empty).
-    // Services that use older versions of baidu-rpc may need to turn this
+    // Services that use older versions of brpc may need to turn this
     // conversion off and handle http requests by their own to keep compatible
     // with existing clients.
     // Default: true

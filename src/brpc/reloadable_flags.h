@@ -17,13 +17,13 @@
 #ifndef BRPC_RELOADABLE_FLAGS_H
 #define BRPC_RELOADABLE_FLAGS_H
 
-// To baidu-rpc developers: This is a header included by user, don't depend
+// To brpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
 
 #include <stdint.h>
 
 // Register an always-true valiator to a gflag so that the gflag is treated as
-// reloadable by baidu-rpc. If a validator exists, abort the program.
+// reloadable by brpc. If a validator exists, abort the program.
 // You should call this macro within global scope. for example:
 //
 //   DEFINE_int32(foo, 0, "blah blah");

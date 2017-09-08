@@ -145,11 +145,11 @@ class Variable {
     static int dump_exposed(Dumper* dumper, const DumpOptions* options);
 };
 ```
-最常见的导出需求是通过HTTP接口查询和写入本地文件。前者在baidu-rpc中通过[/vars](vars.md)服务提供，后者则已实现在bvar中，由用户选择开启。该功能由5个gflags控制，你的程序需要使用[gflags](flags.md)。
+最常见的导出需求是通过HTTP接口查询和写入本地文件。前者在brpc中通过[/vars](vars.md)服务提供，后者则已实现在bvar中，由用户选择开启。该功能由5个gflags控制，你的程序需要使用[gflags](flags.md)。
 
 ![img](../images/bvar_dump_flags.png)
 
-用户可在程序启动前加上对应的gflags，在baidu-rpc中也可通过[/flags](flags.md)服务在启动后动态修改某个gflag。
+用户可在程序启动前加上对应的gflags，在brpc中也可通过[/flags](flags.md)服务在启动后动态修改某个gflag。
 
 当bvar_dump_file不为空时，程序会启动一个后台导出线程以bvar_dump_interval指定的间隔更新bvar_dump_file，其中包含了被bvar_dump_include匹配且不被bvar_dump_exclude匹配的所有bvar。
 
@@ -171,7 +171,7 @@ rpc_server_8002_uptime_ms : 14740954
 
 像”`iobuf_block_count : 8`”被bvar_dump_include过滤了，“`rpc_server_8002_error : 0`”则被bvar_dump_exclude排除了。
 
-如果你的程序没有使用baidu-rpc，仍需要动态修改gflag（一般不需要），可以调用google::SetCommandLineOption()，如下所示：
+如果你的程序没有使用brpc，仍需要动态修改gflag（一般不需要），可以调用google::SetCommandLineOption()，如下所示：
 ```c++
 #include <gflags/gflags.h>
 ...

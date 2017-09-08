@@ -1,10 +1,10 @@
-baidu-rpc使用gflags管理配置。如果你的程序也使用gflags，那么你应该已经可以修改和baidu-rpc相关的flags，你可以浏览[flags服务](http://brpc.baidu.com:8765/flags)了解每个flag的具体功能。如果你的程序还没有使用gflags，我们建议你使用，原因如下：
+brpc使用gflags管理配置。如果你的程序也使用gflags，那么你应该已经可以修改和brpc相关的flags，你可以浏览[flags服务](http://brpc.baidu.com:8765/flags)了解每个flag的具体功能。如果你的程序还没有使用gflags，我们建议你使用，原因如下：
 
 - 命令行和文件均可传入，前者方便做测试，后者适合线上运维。放在文件中的gflags可以reload。而configure只支持从文件读取配置。
-- 你可以在浏览器中查看baidu-rpc服务器中所有gflags，并对其动态修改（如果允许的话）。configure不可能做到这点。
+- 你可以在浏览器中查看brpc服务器中所有gflags，并对其动态修改（如果允许的话）。configure不可能做到这点。
 - gflags分散在和其作用紧密关联的文件中，更好管理。而使用configure需要聚集到一个庞大的读取函数中。
 
-如果你依赖了baidu-rpc，那么你已经依赖了third-64/gflags，如果你需要依赖某个特定版本的话，在COMAKE中加入CONFIGS('third-64/gflags@<specific-version>')。
+如果你依赖了brpc，那么你已经依赖了third-64/gflags，如果你需要依赖某个特定版本的话，在COMAKE中加入CONFIGS('third-64/gflags@<specific-version>')。
 
 # Usage of gflags
 

@@ -55,7 +55,7 @@ namespace bthread {
 // }
 
 // This container is NOT thread-safe right now, and shouldn't be
-// an issue in current usages throughout baidu-rpc.
+// an issue in current usages throughout brpc.
 template <typename Id, typename IdTraits> 
 class ListOfABAFreeId {
 public:

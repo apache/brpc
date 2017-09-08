@@ -579,7 +579,7 @@ void SerializeHttpRequest(base::IOBuf* request,
     }
     // The fake "curl" user-agent may let servers return plain-text results.
     if (h->GetHeader("User-Agent") == NULL) {
-        os << "User-Agent: baidu-rpc/1.0 curl/7.0" BRPC_CRLF;
+        os << "User-Agent: brpc/1.0 curl/7.0" BRPC_CRLF;
     }
     const std::string& user_info = h->uri().user_info();
     if (!user_info.empty() && h->GetHeader("Authorization") == NULL) {

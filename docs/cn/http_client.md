@@ -1,4 +1,4 @@
-http client的例子见[example/http_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/http_c++/http_client.cpp)
+http client的例子见[example/http_c++](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/example/http_c++/http_client.cpp)
 
 # 创建Channel
 
@@ -31,7 +31,7 @@ HTTP和protobuf无关，所以除了Controller和done，CallMethod的其他参�
 
 # POST
 
-默认的HTTP Method为GET，如果需要做POST，则需要设置。待POST的数据应置入request_attachment()，它([base::IOBuf](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/iobuf.h))可以直接append std::string或char*
+默认的HTTP Method为GET，如果需要做POST，则需要设置。待POST的数据应置入request_attachment()，它([base::IOBuf](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/base/iobuf.h))可以直接append std::string或char*
 
 ```c++
 brpc::Controller cntl;
@@ -153,7 +153,7 @@ Notes on http header:
 
 # 解压response body
 
-出于通用性考虑且解压代码不复杂，baidu-rpc不会自动解压response body，用户可以自己做，方法如下：
+出于通用性考虑且解压代码不复杂，brpc不会自动解压response body，用户可以自己做，方法如下：
 
 ```c++
 #include <brpc/policy/gzip_compress.h>
@@ -172,9 +172,9 @@ if (encoding != NULL && *encoding == "gzip") {
 
 # 持续下载
 
-r33796前baidu-rpc client在下载一个超长的body时，需要一直等待直到body完整才会视作RPC结束，这个过程中超长body都会存在内存中，如果body是无限长的（比如直播用的flv文件），那么内存会持续增长，直到超时。换句话说，r33796前的baidu-rpc client不适合下载大文件。
+r33796前brpc client在下载一个超长的body时，需要一直等待直到body完整才会视作RPC结束，这个过程中超长body都会存在内存中，如果body是无限长的（比如直播用的flv文件），那么内存会持续增长，直到超时。换句话说，r33796前的brpc client不适合下载大文件。
 
-r33796后baidu-rpc client支持在读取完body前就结束RPC，让用户在RPC结束后再读取持续增长的body。注意这个功能不等同于“支持http chunked mode”，baidu-rpc的http实现一直支持解析chunked mode，这里的问题是如何让用户处理超长或无限长的body，和body是否以chunked mode传输无关。
+r33796后brpc client支持在读取完body前就结束RPC，让用户在RPC结束后再读取持续增长的body。注意这个功能不等同于“支持http chunked mode”，brpc的http实现一直支持解析chunked mode，这里的问题是如何让用户处理超长或无限长的body，和body是否以chunked mode传输无关。
 
 使用方法如下：
 
@@ -204,7 +204,7 @@ r33796后baidu-rpc client支持在读取完body前就结束RPC，让用户在RPC
    OnReadOnePart在每读到一段数据时被调用，OnEndOfMessage在数据结束或连接断开时调用，实现前仔细阅读注释。
 
 2. 发起RPC前设置`cntl.response_will_be_read_progressively();`
-   这告诉baidu-rpc在读取http response时只要读完header部分RPC就可以结束了。
+   这告诉brpc在读取http response时只要读完header部分RPC就可以结束了。
 
 3. RPC结束后调用`cntl.ReadProgressiveAttachmentBy(new MyProgressiveReader);`
    MyProgressiveReader就是用户实现ProgressiveReader的实例。用户可以在这个实例的OnEndOfMessage接口中删除这个实例。

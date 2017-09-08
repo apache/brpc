@@ -81,7 +81,7 @@ struct NsheadServiceOptions {
     size_t additional_space;
 };
 
-// Inherit this class to let baidu-rpc server understands nshead requests.
+// Inherit this class to let brpc server understands nshead requests.
 class NsheadService : public Describable {
 public:
     NsheadService();

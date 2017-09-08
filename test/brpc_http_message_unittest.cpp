@@ -334,22 +334,22 @@ TEST(HttpMessageTest, serialize_http_request) {
     base::IOBuf content;
     content.append("data");
     SerializeHttpRequest(&request, &header, ep, &content);
-    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nHost: 127.0.0.1:1234\r\nFoo: Bar\r\nAccept: */*\r\nUser-Agent: baidu-rpc/1.0 curl/7.0\r\n\r\ndata", request);
+    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nHost: 127.0.0.1:1234\r\nFoo: Bar\r\nAccept: */*\r\nUser-Agent: brpc/1.0 curl/7.0\r\n\r\ndata", request);
 
     // user-set content-length is ignored.
     header.SetHeader("Content-Length", "100");
     SerializeHttpRequest(&request, &header, ep, &content);
-    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nHost: 127.0.0.1:1234\r\nFoo: Bar\r\nAccept: */*\r\nUser-Agent: baidu-rpc/1.0 curl/7.0\r\n\r\ndata", request);
+    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nHost: 127.0.0.1:1234\r\nFoo: Bar\r\nAccept: */*\r\nUser-Agent: brpc/1.0 curl/7.0\r\n\r\ndata", request);
 
     // user-host overwrites passed-in remote_side
     header.SetHeader("Host", "MyHost: 4321");
     SerializeHttpRequest(&request, &header, ep, &content);
-    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nFoo: Bar\r\nHost: MyHost: 4321\r\nAccept: */*\r\nUser-Agent: baidu-rpc/1.0 curl/7.0\r\n\r\ndata", request);
+    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nFoo: Bar\r\nHost: MyHost: 4321\r\nAccept: */*\r\nUser-Agent: brpc/1.0 curl/7.0\r\n\r\ndata", request);
 
     // user-set accept
     header.SetHeader("accePT"/*intended uppercase*/, "blahblah");
     SerializeHttpRequest(&request, &header, ep, &content);
-    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\naccePT: blahblah\r\nFoo: Bar\r\nHost: MyHost: 4321\r\nUser-Agent: baidu-rpc/1.0 curl/7.0\r\n\r\ndata", request);
+    ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\naccePT: blahblah\r\nFoo: Bar\r\nHost: MyHost: 4321\r\nUser-Agent: brpc/1.0 curl/7.0\r\n\r\ndata", request);
 
     // user-set UA
     header.SetHeader("user-AGENT", "myUA");

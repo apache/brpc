@@ -111,7 +111,7 @@ int main(int argc, char* argv[]) {
     // channels are disabled in ParallelChannel.
 
     if (FLAGS_same_channel) {
-        // For baidu-rpc >= 1.0.155.31351, a sub channel can be added into
+        // For brpc >= 1.0.155.31351, a sub channel can be added into
         // a ParallelChannel more than once.
         brpc::Channel* sub_channel = new brpc::Channel;
         // Initialize the channel, NULL means using default options. 

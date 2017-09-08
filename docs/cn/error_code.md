@@ -1,23 +1,23 @@
-baidu-rpc使用[brpc::Controller](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)设置一次RPC的参数和获取一次RPC的结果，ErrorCode()和ErrorText()是Controller的两个方法，分别是该次RPC的错误码和错误描述，只在RPC结束后才能访问，否则结果未定义。ErrorText()由Controller的基类google::protobuf::RpcController定义，ErrorCode()则是brpc::Controller定义的。Controller还有个Failed()方法告知该次RPC是否失败，这三者的关系是：
+brpc使用[brpc::Controller](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/controller.h)设置一次RPC的参数和获取一次RPC的结果，ErrorCode()和ErrorText()是Controller的两个方法，分别是该次RPC的错误码和错误描述，只在RPC结束后才能访问，否则结果未定义。ErrorText()由Controller的基类google::protobuf::RpcController定义，ErrorCode()则是brpc::Controller定义的。Controller还有个Failed()方法告知该次RPC是否失败，这三者的关系是：
 
 - 当Failed()为true时，ErrorCode()一定不为0，ErrorText()是非空的错误描述
-- 当Failed()为false时，ErrorCode()一定为0，ErrorText()是未定义的（目前在baidu-rpc中会为空，但你最好不要依赖这个事实）
+- 当Failed()为false时，ErrorCode()一定为0，ErrorText()是未定义的（目前在brpc中会为空，但你最好不要依赖这个事实）
 
 # 标记RPC为错误
 
-baidu-rpc的client端和server端都有Controller，都可以通过SetFailed()修改其中的ErrorCode和ErrorText。当多次调用一个Controller的SetFailed时，ErrorCode会被覆盖，ErrorText则是**添加**而不是覆盖，在client端，框架会额外加上第几次重试，在server端，框架会额外加上server的地址信息。
+brpc的client端和server端都有Controller，都可以通过SetFailed()修改其中的ErrorCode和ErrorText。当多次调用一个Controller的SetFailed时，ErrorCode会被覆盖，ErrorText则是**添加**而不是覆盖，在client端，框架会额外加上第几次重试，在server端，框架会额外加上server的地址信息。
 
 client端Controller的SetFailed()常由框架调用，比如发送request失败，接收到的response不符合要求等等。只有在进行较复杂的访问操作时用户才可能需要设置client端的错误，比如在访问后端前做额外的请求检查，发现有错误时需要把RPC设置为失败。
 
 server端Controller的SetFailed()常由用户在服务回调中调用。当处理过程发生错误时，一般调用SetFailed()并释放资源后就return了。框架会把错误码和错误信息按交互协议填入response，client端的框架收到后会填入它那边的Controller中，从而让用户在RPC结束后取到。需要注意的是，**server端在SetFailed()时一般不需要再打条日志。**打日志是比较慢的，在繁忙的线上磁盘上，很容易出现巨大的lag。一个错误频发的client容易减慢整个server的速度而影响到其他的client，理论上来说这甚至能成为一种攻击手段。对于希望在server端看到错误信息的场景，可以打开**-log_error_text**开关（已上线服务可访问/flags/log_error_text?setvalue=true动态打开），server会在每次失败的RPC后把对应Controller的ErrorText()打印出来。
 
-# baidu-rpc的错误码
+# brpc的错误码
 
-baidu-rpc使用的所有ErrorCode都定义在[errno.proto](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/errno.proto)中，*SYS_*开头的来自linux系统，与/usr/include/errno.h中定义的精确一致，定义在proto中是为了跨语言。其余的是baidu-rpc自有的。
+brpc使用的所有ErrorCode都定义在[errno.proto](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/errno.proto)中，*SYS_*开头的来自linux系统，与/usr/include/errno.h中定义的精确一致，定义在proto中是为了跨语言。其余的是brpc自有的。
 
-[berror(error_code)](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/errno.h)可获得error_code的描述，berror()可获得[system errno](http://www.cplusplus.com/reference/cerrno/errno/)的描述。**ErrorText() != berror(****ErrorCode())**，ErrorText()会包含更具体的错误信息。baidu-rpc默认包含berror，你可以直接使用。
+[berror(error_code)](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/base/errno.h)可获得error_code的描述，berror()可获得[system errno](http://www.cplusplus.com/reference/cerrno/errno/)的描述。**ErrorText() != berror(****ErrorCode())**，ErrorText()会包含更具体的错误信息。brpc默认包含berror，你可以直接使用。
 
-baidu-rpc中常见错误的打印内容列表如下：
+brpc中常见错误的打印内容列表如下：
 
  
 

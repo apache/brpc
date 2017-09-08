@@ -25,7 +25,7 @@
 - 一个依赖全局多生产者多消费者队列(MPMC)的程序难有很好的多核扩展性，因为这个队列的极限吞吐取决于同步cache的延时，而不是核心的个数。最好是用多个SPMC或多个MPSC队列，甚至多个SPSC队列代替，在源头就规避掉竞争。
 - 另一个例子是全局计数器，如果所有线程都频繁修改一个全局变量，性能就会很差，原因同样在于不同的核心在不停地同步同一个cacheline。如果这个计数器只是用作打打日志之类的，那我们完全可以让每个线程修改thread-local变量，在需要时再合并所有线程中的值，性能可能有几十倍的差别。
 
-做不到完全不共享，那就尽量少共享。在一些读很多的场景下，也许可以降低写的频率以减少同步cacheline的次数，以加快读的平均性能。一个相关的编程陷阱是避免false sharing：这指的是那些不怎么被修改的变量，由于同一个cacheline中的另一个变量被频繁修改，而不得不经常等待cacheline同步而显著变慢了。多线程中的变量尽量按访问规律排列，频繁被其他线程的修改要放在独立的cacheline中。要让一个变量或结构体按cacheline对齐，可以include <base/macros.h>然后使用BAIDU_CACHELINE_ALIGNMENT宏，用法请自行grep一下baidu-rpc的代码了解。
+做不到完全不共享，那就尽量少共享。在一些读很多的场景下，也许可以降低写的频率以减少同步cacheline的次数，以加快读的平均性能。一个相关的编程陷阱是避免false sharing：这指的是那些不怎么被修改的变量，由于同一个cacheline中的另一个变量被频繁修改，而不得不经常等待cacheline同步而显著变慢了。多线程中的变量尽量按访问规律排列，频繁被其他线程的修改要放在独立的cacheline中。要让一个变量或结构体按cacheline对齐，可以include <base/macros.h>然后使用BAIDU_CACHELINE_ALIGNMENT宏，用法请自行grep一下brpc的代码了解。
 
 # Memory fence
 
@@ -91,7 +91,7 @@ if (ready.load(std::memory_order_acquire)) {
 
 # wait-free & lock-free
 
-原子指令能为我们的服务赋予两个重要属性：[wait-free](http://en.wikipedia.org/wiki/Non-blocking_algorithm#Wait-freedom)和[lock-free](http://en.wikipedia.org/wiki/Non-blocking_algorithm#Lock-freedom)。前者指不管OS如何调度线程，每个线程都始终在做有用的事；后者比前者弱一些，指不管OS如何调度线程，至少有一个线程在做有用的事。如果我们的服务中使用了锁，那么OS可能把一个刚获得锁的线程切换出去，这时候所有依赖这个锁的线程都在等待，而没有做有用的事，所以用了锁就不是lock-free，更不会是wait-free。为了确保一件事情总在确定时间内完成，实时系统的关键代码至少是lock-free的。在我们广泛又多样的在线服务中，对时效性也有着严苛的要求，如果RPC中最关键的部分满足wait-free或lock-free，就可以提供更稳定的服务质量。比如，由于[fd](https://en.wikipedia.org/wiki/File_descriptor)只适合被单个线程操作，baidu-rpc中使用原子指令最大化了fd的读写的并发度，具体见[IO](io.md)。
+原子指令能为我们的服务赋予两个重要属性：[wait-free](http://en.wikipedia.org/wiki/Non-blocking_algorithm#Wait-freedom)和[lock-free](http://en.wikipedia.org/wiki/Non-blocking_algorithm#Lock-freedom)。前者指不管OS如何调度线程，每个线程都始终在做有用的事；后者比前者弱一些，指不管OS如何调度线程，至少有一个线程在做有用的事。如果我们的服务中使用了锁，那么OS可能把一个刚获得锁的线程切换出去，这时候所有依赖这个锁的线程都在等待，而没有做有用的事，所以用了锁就不是lock-free，更不会是wait-free。为了确保一件事情总在确定时间内完成，实时系统的关键代码至少是lock-free的。在我们广泛又多样的在线服务中，对时效性也有着严苛的要求，如果RPC中最关键的部分满足wait-free或lock-free，就可以提供更稳定的服务质量。比如，由于[fd](https://en.wikipedia.org/wiki/File_descriptor)只适合被单个线程操作，brpc中使用原子指令最大化了fd的读写的并发度，具体见[IO](io.md)。
 
 值得提醒的是，常见想法是lock-free或wait-free的算法会更快，但事实可能相反，因为：
 

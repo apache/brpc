@@ -130,7 +130,7 @@ private:
 };
 
 // Inherit this class to intercept Controller::IssueRPC. This is an internal
-// utility only useable by baidu-rpc developers.
+// utility only useable by brpc developers.
 class RPCSender {
 public:
     virtual ~RPCSender() {}

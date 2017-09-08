@@ -22,7 +22,7 @@
 
 另外，更并发的数据结构也难以奏效，感兴趣的同学可以去搜索"concurrent priority queue"或"concurrent skip list"，这些数据结构一般假设插入的数值较为散开，所以可以同时修改结构内的不同部分。但这在RPC场景中也不成立，相互竞争的线程设定的时间往往聚集在同一个区域，因为程序的超时大都是一个值，加上当前时间后都差不多。
 
-这些因素让TimerThread的设计相当棘手。由于大部分用户的qps较低，不足以明显暴露这个扩展性问题，在r31791前我们一直沿用“用一把锁保护的TimerThread”。TimerThread是baidu-rpc在默认配置下唯一的高频竞争点，这个问题是我们一直清楚的技术债。随着baidu-rpc在高qps系统中应用越来越多，是时候解决这个问题了。r31791后的TimerThread解决了上述三个难点，timer操作几乎对RPC性能没有影响，我们先看下性能差异。
+这些因素让TimerThread的设计相当棘手。由于大部分用户的qps较低，不足以明显暴露这个扩展性问题，在r31791前我们一直沿用“用一把锁保护的TimerThread”。TimerThread是brpc在默认配置下唯一的高频竞争点，这个问题是我们一直清楚的技术债。随着brpc在高qps系统中应用越来越多，是时候解决这个问题了。r31791后的TimerThread解决了上述三个难点，timer操作几乎对RPC性能没有影响，我们先看下性能差异。
 
 > 在示例程序example/mutli_threaded_echo_c++中，r31791后TimerThread相比老TimerThread在24核E5-2620上（超线程），以50个bthread同步发送时，节省4%cpu（差不多1个核），qps提升10%左右；在400个bthread同步发送时，qps从30万上升到60万。新TimerThread的表现和完全关闭超时时接近。
 
@@ -34,7 +34,7 @@
 - 删除时通过id直接定位到timer内存结构，修改一个标志，timer结构总是由TimerThread释放。
 - TimerThread被唤醒后首先把全局nearest_run_time设置为几乎无限大(max of int64)，然后取出所有Bucket内的链表，并把Bucket的nearest_run_time设置为几乎无限大(max of int64)。TimerThread把未删除的timer插入小顶堆中维护，这个堆就它一个线程用。在每次运行回调或准备睡眠前都会检查全局nearest_run_time， 如果全局更早，说明有更早的时间加入了，重复这个过程。
 
-这里勾勒了TimerThread的大致工作原理，工程实现中还有不少细节问题，具体请阅读[timer_thread.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/bthread/timer_thread.h)和[timer_thread.cpp](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/bthread/timer_thread.cpp)。
+这里勾勒了TimerThread的大致工作原理，工程实现中还有不少细节问题，具体请阅读[timer_thread.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/bthread/timer_thread.h)和[timer_thread.cpp](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/bthread/timer_thread.cpp)。
 
 这个方法之所以有效：
 
@@ -46,10 +46,10 @@
 - TimerThread自己维护小顶堆，没有任何cache bouncing，效率很高。 
 - TimerThread醒来的频率大约是RPC超时的倒数，比如超时=100ms，TimerThread一秒内大约醒10次，已经最优。
 
-至此baidu-rpc在默认配置下不再有全局竞争点，在400个线程同时运行时，profiling也显示几乎没有对锁的等待。
+至此brpc在默认配置下不再有全局竞争点，在400个线程同时运行时，profiling也显示几乎没有对锁的等待。
 
 下面是一些和linux下时间管理相关的知识：
 
 - epoll_wait的超时精度是毫秒，较差。pthread_cond_timedwait的超时使用timespec，精度到纳秒，一般是60微秒左右的延时。
 - 出于性能考虑，TimerThread使用wall-time，而不是单调时间，可能受到系统时间调整的影响。具体来说，如果在测试中把系统时间往前或往后调一个小时，程序行为将完全undefined。未来可能会让用户选择单调时间。
-- 在cpu支持nonstop_tsc和constant_tsc的机器上，baidu-rpc和bthread会优先使用基于rdtsc的cpuwide_time_us。那两个flag表示rdtsc可作为wall-time使用，不支持的机器上会转而使用较慢的内核时间。我们的机器（Intel Xeon系列）大都有那两个flag。rdtsc作为wall-time使用时是否会受到系统调整时间的影响，未测试不清楚。
+- 在cpu支持nonstop_tsc和constant_tsc的机器上，brpc和bthread会优先使用基于rdtsc的cpuwide_time_us。那两个flag表示rdtsc可作为wall-time使用，不支持的机器上会转而使用较慢的内核时间。我们的机器（Intel Xeon系列）大都有那两个flag。rdtsc作为wall-time使用时是否会受到系统调整时间的影响，未测试不清楚。

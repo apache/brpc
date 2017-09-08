@@ -1,6 +1,6 @@
 # BUILD
 
-baidu-rpc prefers static linking if possible, so that deps don't have to be installed on every
+brpc prefers static linking if possible, so that deps don't have to be installed on every
 machine running the code. 
 
 ## Ubuntu/LinuxMint/WSL
@@ -60,7 +60,7 @@ no known issues.
 
 Be compatible with pb 3.0 and pb 2.x with the same file: 
 Don't use new types in proto3 and start the proto file with `syntax="proto2";`
-[tools/add_syntax_equal_proto2_to_all.sh](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/tools/add_syntax_equal_proto2_to_all.sh)can add `syntax="proto2"` to all proto files without it.
+[tools/add_syntax_equal_proto2_to_all.sh](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/tools/add_syntax_equal_proto2_to_all.sh)can add `syntax="proto2"` to all proto files without it.
 protobuf 3.3-3.4 is not tested yet.
 
 ## gflags: 2.0-2.21
@@ -73,9 +73,9 @@ required by https.
 
 ## tcmalloc: 1.7-2.5
 
-baidu-rpc does **not** link [tcmalloc](http://goog-perftools.sourceforge.net/doc/tcmalloc.html) by default. Users link tcmalloc on-demand.
+brpc does **not** link [tcmalloc](http://goog-perftools.sourceforge.net/doc/tcmalloc.html) by default. Users link tcmalloc on-demand.
 
-Comparing to ptmalloc embedded in glibc, tcmalloc often improves performance. However different versions of tcmalloc may behave really differently. For example, tcmalloc 2.1 may make multi-threaded examples in baidu-rpc perform significantly worse(due to a spinlock in tcmalloc) than the one using tcmalloc 1.7 and 2.5. Even different minor versions may differ. When you program behave unexpectedly, remove tcmalloc or try another version.
+Comparing to ptmalloc embedded in glibc, tcmalloc often improves performance. However different versions of tcmalloc may behave really differently. For example, tcmalloc 2.1 may make multi-threaded examples in brpc perform significantly worse(due to a spinlock in tcmalloc) than the one using tcmalloc 1.7 and 2.5. Even different minor versions may differ. When you program behave unexpectedly, remove tcmalloc or try another version.
 
 Code compiled with gcc 4.8.2 when linking to a tcmalloc compiled with earlier GCC may crash or deadlock before main(), E.g:
 
@@ -91,8 +91,8 @@ When you remove tcmalloc, not only remove the linking with tcmalloc but also the
 
 ## valgrind: 3.8+
 
-baidu-rpc detects valgrind automatically (and registers stacks of bthread). Older valgrind (say 3.2) is not supported.
+brpc detects valgrind automatically (and registers stacks of bthread). Older valgrind (say 3.2) is not supported.
 
 # Track instances
 
-We provide a program to help you to track and monitor all baidu-rpc instances. Just run [trackme_server](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/tools/trackme_server/) somewhere and launch need-to-be-tracked instances with -trackme_server=SERVER. The trackme_server will receive pings from instances periodically and print logs when it does. You can aggregate instance addresses from the log and call builtin services of the instances for further information.
+We provide a program to help you to track and monitor all brpc instances. Just run [trackme_server](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/tree/tools/trackme_server/) somewhere and launch need-to-be-tracked instances with -trackme_server=SERVER. The trackme_server will receive pings from instances periodically and print logs when it does. You can aggregate instance addresses from the log and call builtin services of the instances for further information.

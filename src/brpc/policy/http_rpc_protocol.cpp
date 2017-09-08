@@ -58,7 +58,7 @@ DEFINE_int32(http_body_compress_threshold, 512, "Not compress http body when "
 
 DEFINE_string(http_header_of_user_ip, "", "http requests sent by proxies may "
               "set the client ip in http headers. When this flag is non-empty, "
-              "baidu-rpc will read ip:port from the specified header for "
+              "brpc will read ip:port from the specified header for "
               "authorization and set Controller::remote_side()");
 
 DEFINE_bool(pb_enum_as_number, false, "[Not recommended] Convert enums in "
@@ -100,7 +100,7 @@ CommonStrings::CommonStrings()
     : ACCEPT("accept")
     , DEFAULT_ACCEPT("*/*")
     , USER_AGENT("user-agent")
-    , DEFAULT_USER_AGENT("baidu-rpc/1.0 curl/7.0")
+    , DEFAULT_USER_AGENT("brpc/1.0 curl/7.0")
     , CONTENT_TYPE("content-type")
     , CONTENT_TYPE_TEXT("text/plain")
     , CONTENT_TYPE_JSON("application/json")

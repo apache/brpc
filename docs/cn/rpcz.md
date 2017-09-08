@@ -1,4 +1,4 @@
-用户能通过/rpcz看到最近请求的详细信息，并可以插入注释（annotation），不同于tracing system（如[dapper](http://static.googleusercontent.com/media/research.google.com/en//pubs/archive/36356.pdf)）以全局视角看到整体系统的延时分布，rpcz更多是一个调试工具，虽然角色有所不同，但在baidu-rpc中rpcz和tracing的数据来源是一样的。当每秒请求数小于1万时，rpcz会记录所有的请求，超过1万时，rpcz会随机忽略一些请求把采样数控制在1万左右。rpcz可以淘汰时间窗口之前的数据，通过-span_keeping_seconds选项设置，默认1小时。[一个长期运行的例子](http://brpc.baidu.com:8765/rpcz)。
+用户能通过/rpcz看到最近请求的详细信息，并可以插入注释（annotation），不同于tracing system（如[dapper](http://static.googleusercontent.com/media/research.google.com/en//pubs/archive/36356.pdf)）以全局视角看到整体系统的延时分布，rpcz更多是一个调试工具，虽然角色有所不同，但在brpc中rpcz和tracing的数据来源是一样的。当每秒请求数小于1万时，rpcz会记录所有的请求，超过1万时，rpcz会随机忽略一些请求把采样数控制在1万左右。rpcz可以淘汰时间窗口之前的数据，通过-span_keeping_seconds选项设置，默认1小时。[一个长期运行的例子](http://brpc.baidu.com:8765/rpcz)。
 
 关于开销：我们的实现完全规避了线程竞争，开销极小，在qps 30万的测试场景中，观察不到明显的性能变化，对大部分应用而言应该是“free”的。即使采集了几千万条请求，rpcz也不会增加很多内存，一般在50兆以内。rpcz会占用一些磁盘空间（就像日志一样），如果设定为存一个小时的数据，一般在几百兆左右。
 
@@ -20,7 +20,7 @@
 
 ![img](../images/rpcz_5.png)
 
-如果只是baidu-rpc client或没有使用baidu-rpc，看[这里](dummy_server.md)。 
+如果只是brpc client或没有使用brpc，看[这里](dummy_server.md)。 
 
 ## 数据展现
 
@@ -48,7 +48,7 @@
 
 ## Annotation
 
-只要你使用了baidu-rpc，就可以使用[TRACEPRINTF](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/traceprintf.h)打印内容到事件流中，比如：
+只要你使用了brpc，就可以使用[TRACEPRINTF](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/traceprintf.h)打印内容到事件流中，比如：
 
 ```c++
 TRACEPRINTF("Hello rpcz %d", 123);

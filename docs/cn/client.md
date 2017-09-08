@@ -1,8 +1,8 @@
-Client指发起请求的一端，在baidu-rpc中没有对应的实体，取而代之的是[brpc::Channel](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h)，它代表和一台或一组服务器的交互通道，Client和Channel在角色上的差别在实践中并不重要，你可以把Channel视作Client。
+Client指发起请求的一端，在brpc中没有对应的实体，取而代之的是[brpc::Channel](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/channel.h)，它代表和一台或一组服务器的交互通道，Client和Channel在角色上的差别在实践中并不重要，你可以把Channel视作Client。
 
 Channel可以被进程中的所有线程共用，你不需要为每个线程创建独立的Channel，也不需要用锁互斥。不过Channel的创建和析构并不是线程安全的，请确保在Init成功后再被多线程访问，在没有线程访问后再析构。
 
-一些RPC实现中有RpcClient的概念，包含了Client端的配置信息和资源管理。baidu-rpc不需要这些，以往在RpcClient中配置的线程数、长短连接等等要么被加入了Channel，要么可以通过gflags全局配置，这么做的好处：
+一些RPC实现中有RpcClient的概念，包含了Client端的配置信息和资源管理。brpc不需要这些，以往在RpcClient中配置的线程数、长短连接等等要么被加入了Channel，要么可以通过gflags全局配置，这么做的好处：
 
 1. 方便。你不需要在创建Channel时传入RpcClient，也不需要存储RpcClient。以往不少代码需要传递RpcClient，比较麻烦。gflags使你无需写代码就能通过命令行或配置文件改变程序的行为。
 2. 共用资源。比如server和channel可以共用后台线程。
@@ -146,7 +146,7 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 
 发起RPC前需要设置Controller.set_request_code()，否则RPC会失败。request_code一般是请求中主键部分的32位哈希值，**不需要和负载均衡使用的哈希算法一致**。比如用c_murmurhash算法也可以用md5计算哈希值。
 
-[brpc/policy/hasher.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/policy/hasher.h)中包含了常用的hash函数。如果用std::string key代表请求的主键，controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size()))就正确地设置了request_code。
+[brpc/policy/hasher.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/policy/hasher.h)中包含了常用的hash函数。如果用std::string key代表请求的主键，controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size()))就正确地设置了request_code。
 
 注意甄别请求中的“主键”部分和“属性”部分，不要为了偷懒或通用，就把请求的所有内容一股脑儿计算出哈希值，属性的变化会使请求的目的地发生剧烈的变化。另外也要注意padding问题，比如struct Foo { int32_t a; int64_t b; }在64位机器上a和b之间有4个字节的空隙，内容未定义，如果像hash(&foo, sizeof(foo))这样计算哈希值，结果就是未定义的，得把内容紧密排列或序列化后再算。
 
@@ -154,13 +154,13 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 
 ## 健康检查
 
-连接断开的server会被暂时隔离而不会被负载均衡算法选中，baidu-rpc会定期连接被隔离的server，间隔由参数-health_check_interval控制:
+连接断开的server会被暂时隔离而不会被负载均衡算法选中，brpc会定期连接被隔离的server，间隔由参数-health_check_interval控制:
 
 | Name                      | Value | Description                              | Defined At              |
 | ------------------------- | ----- | ---------------------------------------- | ----------------------- |
 | health_check_interval （R） | 3     | seconds between consecutive health-checkings | src/brpc/socket_map.cpp |
 
-一旦server被连接上，它会恢复为可用状态。如果在隔离过程中，server从名字服务中删除了，baidu-rpc也会停止连接尝试。
+一旦server被连接上，它会恢复为可用状态。如果在隔离过程中，server从名字服务中删除了，brpc也会停止连接尝试。
 
 # 发起访问
 
@@ -230,7 +230,7 @@ request.set_foo(...);
 cntl->set_timeout_ms(...);
 stub.some_method(cntl, &request, response, google::protobuf::NewCallback(OnRPCDone, response, cntl));
 ```
-由于protobuf 3把NewCallback设置为私有，r32035后baidu-rpc把NewCallback独立于[src/brpc/callback.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/callback.h)。如果你的程序出现NewCallback相关的编译错误，把google::protobuf::NewCallback替换为brpc::NewCallback就行了。
+由于protobuf 3把NewCallback设置为私有，r32035后brpc把NewCallback独立于[src/brpc/callback.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/callback.h)。如果你的程序出现NewCallback相关的编译错误，把google::protobuf::NewCallback替换为brpc::NewCallback就行了。
 
 ### 继承google::protobuf::Closure
 
@@ -352,7 +352,7 @@ brpc::StartCancel(CallId)可取消任意RPC，CallId必须**在发起RPC前**通
 
 ## 获取Server的地址和端口
 
-remote_side()方法可知道request被送向了哪个server，返回值类型是[base::EndPoint](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/endpoint.h)，包含一个ip4地址和端口。在RPC结束前调用这个方法都是没有意义的。
+remote_side()方法可知道request被送向了哪个server，返回值类型是[base::EndPoint](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/base/endpoint.h)，包含一个ip4地址和端口。在RPC结束前调用这个方法都是没有意义的。
 
 打印方式：
 ```c++
@@ -395,8 +395,8 @@ for (int i = 0; i < n; ++i) {
 
 Client端的设置主要由三部分组成：
 
-- brpc::ChannelOptions: 定义在[src/brpc/channel.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h)中，用于初始化Channel，一旦初始化成功无法修改。
-- brpc::Controller: 定义在[src/brpc/controller.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)中，用于在某次RPC中覆盖ChannelOptions中的选项，可根据上下文每次均不同。
+- brpc::ChannelOptions: 定义在[src/brpc/channel.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/channel.h)中，用于初始化Channel，一旦初始化成功无法修改。
+- brpc::Controller: 定义在[src/brpc/controller.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/controller.h)中，用于在某次RPC中覆盖ChannelOptions中的选项，可根据上下文每次均不同。
 - 全局gflags：常用于调节一些底层代码的行为，一般不用修改。请自行阅读服务/flags页面中的说明。
 
 Controller包含了request中没有的数据和选项。server端和client端的Controller结构体是一样的，但使用的字段可能是不同的，你需要仔细阅读Controller中的注释，明确哪些字段可以在server端使用，哪些可以在client端使用。
@@ -417,7 +417,7 @@ Controller的特点：
 
 **ChannelOptions.connect_timeout_ms**是对应Channel上一次RPC的连接超时，单位毫秒，默认值1秒。-1表示等到连接建立或出错，此值被限制为不能超过timeout_ms。注意此超时独立于TCP的连接超时，一般来说前者小于后者，反之则可能在connect_timeout_ms未达到前由于TCP连接超时而出错。
 
-注意1：baidu-rpc中的超时是deadline，超过就意味着RPC结束。UB/hulu中的超时既有单次访问的，也有代表deadline的。迁移到baidu-rpc时请仔细区分。
+注意1：brpc中的超时是deadline，超过就意味着RPC结束。UB/hulu中的超时既有单次访问的，也有代表deadline的。迁移到brpc时请仔细区分。
 
 注意2：r31711后超时的错误码为**ERPCTIMEDOUT (1008)**，ETIMEDOUT的意思是连接超时。r31711前，超时的错误码是ETIMEDOUT (110)。原因：RPC内很早就区分了这两者，但考虑到linux下的使用习惯，在RPC结束前把ERPCTIMEDOUT改为了ETIMEDOUT。使用中我们逐渐发现不管是RPC内部实现（比如组合channel）还是一些用户场景都需要区分RPC超时和连接超时，综合考虑后决定不再合并这两个错误。如果你的程序中有诸如cntl->ErrorCode() == ETIMEDOUT的代码，你考虑下这里到底是否用对了，如果其实是在判RPC超时的话，得改成ERPCTIMEDOUT。
 
@@ -453,9 +453,9 @@ Controller.set_max_retry()或ChannelOptions.max_retry设置最大重试次数，
 
 一些错误重试是没有意义的，就不会重试，比如请求有错时(EREQUEST)不会重试，因为server总不会接受。
 
-r32009后用户可以通过继承[brpc::RetryPolicy](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/retry_policy.h)自定义重试条件。r34642后通过cntl->response()可获得对应RPC的response。对ERPCTIMEDOUT代表的RPC超时总是不重试，即使RetryPolicy中允许。
+r32009后用户可以通过继承[brpc::RetryPolicy](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/retry_policy.h)自定义重试条件。r34642后通过cntl->response()可获得对应RPC的response。对ERPCTIMEDOUT代表的RPC超时总是不重试，即使RetryPolicy中允许。
 
-比如baidu-rpc默认不重试HTTP相关的错误，而你的程序中希望在碰到HTTP_STATUS_FORBIDDEN (403)时重试，可以这么做：
+比如brpc默认不重试HTTP相关的错误，而你的程序中希望在碰到HTTP_STATUS_FORBIDDEN (403)时重试，可以这么做：
 ```c++
 #include <brpc/retry_policy.h>
  
@@ -495,8 +495,8 @@ Channel的默认协议是标准协议，可通过设置ChannelOptions.protocol�
 - PROTOCOL_SOFA_PBRPC 或 "sofa_pbrpc"，sofa-pbrpc的协议，默认为单连接。
 - PROTOCOL_PUBLIC_PBRPC 或 "public_pbrpc"，public/pbrpc的协议，默认为连接池。
 - PROTOCOL_UBRPC_COMPACK 或 "ubrpc_compack"，public/ubrpc的协议，使用compack打包，默认为连接池。具体方法见[ubrpc (by protobuf)](ub_client.md)。相关的还有PROTOCOL_UBRPC_MCPACK2或ubrpc_mcpack2，使用mcpack2打包。
-- PROTOCOL_NSHEAD_CLIENT 或 "nshead_client"，这是发送baidu-rpc-ub中所有UBXXXRequest需要的协议，默认为连接池。具体方法见[访问ub](ub_client.md)。
-- PROTOCOL_NSHEAD 或 "nshead"，这是baidu-rpc中发送NsheadMessage需要的协议，默认为连接池。注意发送NsheadMessage的效果等同于发送baidu-rpc-ub中的UBRawBufferRequest，但更加方便一点。具体方法见[nshead+blob](ub_client.md#nshead-blob) 。
+- PROTOCOL_NSHEAD_CLIENT 或 "nshead_client"，这是发送brpc-ub中所有UBXXXRequest需要的协议，默认为连接池。具体方法见[访问ub](ub_client.md)。
+- PROTOCOL_NSHEAD 或 "nshead"，这是brpc中发送NsheadMessage需要的协议，默认为连接池。注意发送NsheadMessage的效果等同于发送brpc-ub中的UBRawBufferRequest，但更加方便一点。具体方法见[nshead+blob](ub_client.md#nshead-blob) 。
 - PROTOCOL_MEMCACHE 或 "memcache"，memcached的二进制协议，默认为单连接。具体方法见[访问memcached](memcache_client.md)。
 - PROTOCOL_REDIS 或 "redis"，redis 1.2后的协议（也是hiredis支持的协议），默认为单连接。具体方法见[访问Redis](redis_client.md)。
 - PROTOCOL_ITP 或 "itp", 凤巢的协议，格式为nshead + control idl + user idl，使用mcpack2pb适配，默认为连接池。具体方法见[访问ITP](itp.md)。
@@ -505,7 +505,7 @@ Channel的默认协议是标准协议，可通过设置ChannelOptions.protocol�
 
 ## 连接方式
 
-baidu-rpc支持以下连接方式：
+brpc支持以下连接方式：
 
 - 短连接：每次RPC call前建立连接，结束后关闭连接。由于每次调用得有建立连接的开销，这种方式一般用于偶尔发起的操作，而不是持续发起请求的场景。
 - 连接池：每次RPC call前取用空闲连接，结束后归还，一个连接上最多只有一个请求，对一台server可能有多条连接。各类使用nshead的协议和http 1.1都是这个方式。
@@ -533,7 +533,7 @@ baidu-rpc支持以下连接方式：
 
 - 设置为“”（空字符串）则让框架选择协议对应的默认连接方式。
 
-r31468之后baidu-rpc支持[Streaming RPC](streaming_rpc.md)，这是一种应用层的连接，用于传递流式数据。
+r31468之后brpc支持[Streaming RPC](streaming_rpc.md)，这是一种应用层的连接，用于传递流式数据。
 
 ## 关闭连接池中的闲置连接
 
@@ -548,7 +548,7 @@ r31468之后baidu-rpc支持[Streaming RPC](streaming_rpc.md)，这是一种应�
 
 多个channel可能通过引用计数引用同一个连接，当引用某个连接的最后一个channel析构时，该连接将被关闭。但在一些场景中，channel在使用前才被创建，用完立刻析构，这时其中一些连接就会被无谓地关闭再被打开，效果类似短连接。
 
-一个解决办法是用户把所有或常用的channel缓存下来，这样自然能避免channel频繁产生和析构，但目前baidu-rpc没有提供这样一个utility，用户自己（正确）实现有一些工作量。
+一个解决办法是用户把所有或常用的channel缓存下来，这样自然能避免channel频繁产生和析构，但目前brpc没有提供这样一个utility，用户自己（正确）实现有一些工作量。
 
 另一个解决办法是设置全局选项-defer_close_second
 
@@ -649,7 +649,7 @@ set_request_compress_type()设置request的压缩方式，默认不压缩。注�
 
 # FAQ
 
-### Q: baidu-rpc能用unix domain socket吗
+### Q: brpc能用unix domain socket吗
 
 不能。因为同机socket并不走网络，相比domain socket性能只会略微下降，替换为domain socket意义不大。以后可能会扩展支持。
 
@@ -697,7 +697,7 @@ struct ChannelOptions {
 
 ### Q: Invalid address=`bns://group.user-persona.dumi.nj03'是什么意思
 ```
-FATAL 04-07 20:00:03 7778 public/baidu-rpc/src/brpc/channel.cpp:123] Invalid address=`bns://group.user-persona.dumi.nj03'. You should use Init(naming_service_name, load_balancer_name, options) to access multiple servers.
+FATAL 04-07 20:00:03 7778 public/brpc/src/brpc/channel.cpp:123] Invalid address=`bns://group.user-persona.dumi.nj03'. You should use Init(naming_service_name, load_balancer_name, options) to access multiple servers.
 ```
 访问bns要使用三个参数的Init，它第二个参数是load_balancer_name，而你这里用的是两个参数的Init，框架当你是访问单点，就会报这个错。
 

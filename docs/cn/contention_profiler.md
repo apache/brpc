@@ -1,14 +1,14 @@
-baidu-rpc可以分析花在等待锁上的时间及发生等待的函数。
+brpc可以分析花在等待锁上的时间及发生等待的函数。
 
 # 开启方法
 
-按需开启。无需配置，不依赖tcmalloc，不需要链接frame pointer或libunwind。如果只是baidu-rpc client或没有使用baidu-rpc，看[这里](dummy_server.md)。 
+按需开启。无需配置，不依赖tcmalloc，不需要链接frame pointer或libunwind。如果只是brpc client或没有使用brpc，看[这里](dummy_server.md)。 
 
 # 图示
 
 当很多线程争抢同一把锁时，一些线程无法立刻获得锁，而必须睡眠直到某个线程退出临界区。这个争抢过程我们称之为**contention**。在多核机器上，当多个线程需要操作同一个资源却被一把锁挡住时，便无法充分发挥多个核心的并发能力。现代OS通过提供比锁更底层的同步原语，使得无竞争锁完全不需要系统调用，只是一两条wait-free，耗时10-20ns的原子操作，非常快。而锁一旦发生竞争，一些线程就要陷入睡眠，再次醒来触发了OS的调度代码，代价至少为3-5us。所以让锁尽量无竞争，让所有线程“一起飞”是需要高性能的server的永恒话题。
 
-r31906后baidu-rpc支持contention profiler，可以分析在等待锁上花费了多少时间。等待过程中线程是睡着的不会占用CPU，所以contention profiler中的时间并不是cpu时间，也不会出现在[cpu profiler](cpu_profiler.md)中。cpu profiler可以抓到特别频繁的锁（以至于花费了很多cpu），但耗时真正巨大的临界区往往不是那么频繁，而无法被cpu profiler发现。**contention profiler和cpu profiler好似互补关系，前者分析等待时间（被动），后者分析忙碌时间。**还有一类由用户基于condition或sleep发起的主动等待时间，无需分析。
+r31906后brpc支持contention profiler，可以分析在等待锁上花费了多少时间。等待过程中线程是睡着的不会占用CPU，所以contention profiler中的时间并不是cpu时间，也不会出现在[cpu profiler](cpu_profiler.md)中。cpu profiler可以抓到特别频繁的锁（以至于花费了很多cpu），但耗时真正巨大的临界区往往不是那么频繁，而无法被cpu profiler发现。**contention profiler和cpu profiler好似互补关系，前者分析等待时间（被动），后者分析忙碌时间。**还有一类由用户基于condition或sleep发起的主动等待时间，无需分析。
 
 目前contention profiler支持pthread_mutex_t（非递归）和bthread_mutex_t，开启后每秒最多采集1000个竞争锁，这个数字由参数-bvar_collector_expected_per_second控制（同时影响rpc_dump）。
 

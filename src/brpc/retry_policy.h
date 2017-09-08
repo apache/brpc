@@ -68,7 +68,7 @@ public:
     //                                don't forget the const modifier
 };
 
-// Get the RetryPolicy used by baidu-rpc.
+// Get the RetryPolicy used by brpc.
 const RetryPolicy* DefaultRetryPolicy();
 
 } // namespace brpc

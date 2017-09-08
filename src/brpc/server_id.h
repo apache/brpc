@@ -17,7 +17,7 @@
 #ifndef BRPC_SERVER_ID_H
 #define BRPC_SERVER_ID_H
 
-// To baidu-rpc developers: This is a header included by user, don't depend
+// To brpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
 
 #include "base/containers/hash_tables.h"   // hash

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// A baidu-rpc based command-line interface to talk with redis-server
+// A brpc based command-line interface to talk with redis-server
 
 #include <signal.h>
 #include <stdio.h>
@@ -102,7 +102,7 @@ int main(int argc, char* argv[]) {
         // Print welcome information.
         printf("%s\n", brpc::logo());
         printf("This command-line tool mimics the look-n-feel of official "
-               "redis-cli, as a demostration of baidu-rpc's capability of"
+               "redis-cli, as a demostration of brpc's capability of"
                " talking to redis-server. The output and behavior is "
                "not exactly same with the official one.\n\n");
 
@@ -129,7 +129,7 @@ int main(int argc, char* argv[]) {
             add_history(command.get());
 
             if (!strcmp(command.get(), "help")) {
-                printf("This is a redis CLI written in baidu-rpc.\n");
+                printf("This is a redis CLI written in brpc.\n");
                 continue;
             }
             if (!strcmp(command.get(), "quit")) {

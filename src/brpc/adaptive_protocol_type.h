@@ -15,7 +15,7 @@
 #ifndef BRPC_ADAPTIVE_PROTOCOL_TYPE_H
 #define BRPC_ADAPTIVE_PROTOCOL_TYPE_H
 
-// To baidu-rpc developers: This is a header included by user, don't depend
+// To brpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
 
 #include "base/strings/string_piece.h"

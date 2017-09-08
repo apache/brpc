@@ -1,4 +1,4 @@
-[public/bvar](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/src/bvar/)是多线程环境下的计数器类库，方便记录和查看用户程序中的各类数值，它利用了thread local存储避免了cache bouncing，相比UbMonitor几乎不会给程序增加性能开销，也快于竞争频繁的原子操作。baidu-rpc集成了bvar，[/vars](http://brpc.baidu.com:8765/vars)可查看所有曝光的bvar，[/vars/VARNAME](http://brpc.baidu.com:8765/vars/rpc_socket_count)可查阅某个bvar，增加计数器的方法请查看[bvar](bvar.md)。baidu-rpc大量使用了bvar提供统计数值，当你需要在多线程环境中计数并展现时，应该第一时间想到bvar。但bvar不能代替所有的计数器，它的本质是把写时的竞争转移到了读：读得合并所有写过的线程中的数据，而不可避免地变慢了。当你读写都很频繁并得基于数值做一些逻辑判断时，你不应该用bvar。
+[public/bvar](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/tree/src/bvar/)是多线程环境下的计数器类库，方便记录和查看用户程序中的各类数值，它利用了thread local存储避免了cache bouncing，相比UbMonitor几乎不会给程序增加性能开销，也快于竞争频繁的原子操作。brpc集成了bvar，[/vars](http://brpc.baidu.com:8765/vars)可查看所有曝光的bvar，[/vars/VARNAME](http://brpc.baidu.com:8765/vars/rpc_socket_count)可查阅某个bvar，增加计数器的方法请查看[bvar](bvar.md)。brpc大量使用了bvar提供统计数值，当你需要在多线程环境中计数并展现时，应该第一时间想到bvar。但bvar不能代替所有的计数器，它的本质是把写时的竞争转移到了读：读得合并所有写过的线程中的数据，而不可避免地变慢了。当你读写都很频繁并得基于数值做一些逻辑判断时，你不应该用bvar。
 
 ## 查询方法
 
@@ -65,11 +65,11 @@ x%分位值（percentile）是指把一段时间内的N个统计值排序，排�
 
 上图是按时间变化曲线。包含了4条曲线，横轴是时间，纵轴从上到下分别对应99.9%，99%，90%，50%分位值。颜色从上到下也越来越浅（从橘红到土黄）。滑动鼠标可以阅读对应数据点的值，上图中显示是”39秒种前的99%分位值是330微秒”。这幅图中不包含99.99%的曲线，因为99.99%分位值常明显大于99.9%及以下的分位值，画在一起的话会使得其他曲线变得很”矮“，难以辨认。你可以点击以"_latency_9999"结尾的bvar独立查看99.99%曲线，当然，你也可以独立查看50%,90%,99%,99.9%等曲线。按时间变化曲线可以看到分位值的变化趋势，对分析系统的性能变化很实用。
 
-baidu-rpc的服务都会自动统计延时分布，用户不用自己加了。如下图所示：
+brpc的服务都会自动统计延时分布，用户不用自己加了。如下图所示：
 
 ![img](../images/vars_6.png)
 
-你可以用bvar::LatencyRecorder统计非baidu-rpc服务的延时，这么做(更具体的使用方法请查看[bvar-c++](bvar_c++.md)):
+你可以用bvar::LatencyRecorder统计非brpc服务的延时，这么做(更具体的使用方法请查看[bvar-c++](bvar_c++.md)):
 
 ```c++
 #include <bvar/bvar.h>
@@ -84,10 +84,10 @@ void foo() {
 }
 ```
 
-如果这个程序使用了baidu-rpc server，那么你应该已经可以在/vars看到client_latency, client_latency_cdf等变量，点击便可查看动态曲线。如下图所示：
+如果这个程序使用了brpc server，那么你应该已经可以在/vars看到client_latency, client_latency_cdf等变量，点击便可查看动态曲线。如下图所示：
 
 ![img](../images/vars_7.png)
 
-## 非baidu-rpc server
+## 非brpc server
 
-如果这个程序只是一个baidu-rpc client或根本没有使用baidu-rpc，并且你也想看到动态曲线，看[这里](dummy_server.md)。
+如果这个程序只是一个brpc client或根本没有使用brpc，并且你也想看到动态曲线，看[这里](dummy_server.md)。

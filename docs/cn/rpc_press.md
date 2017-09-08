@@ -8,7 +8,7 @@ rpc_press无需写代码就压测各种rpc server，目前支持的协议有：
 
 # 获取工具
 
-先按照[Getting Started](getting_started.md)编译好baidu-rpc，再去tools/rpc_press编译。
+先按照[Getting Started](getting_started.md)编译好brpc，再去tools/rpc_press编译。
 
 在CentOS 6.3上如果出现找不到libssl.so.4的错误，可执行`ln -s /usr/lib64/libssl.so.6 libssl.so.4临时解决`
 
@@ -34,7 +34,7 @@ json也可以写在文件中，假如./input.json包含了上述两个请求，-
 - -inc: 包含被import的proto文件的路径。rpc_press默认支持import目录下的其他proto文件，但如果proto文件在其他目录，就要通过这个参数指定，多个路径用分号(;)分隔。
 - -lb_policy: 指定负载均衡算法，默认为空，可选项为: rr random la c_murmurhash c_md5，具体见[负载均衡](client.md#负载均衡)。
 - -timeout_ms: 设定超时,单位是毫秒(milliseconds),默认是1000(1秒)
-- -max_retry: 最大的重试次数,默认是3, 一般无需修改. baidu-rpc的重试行为具体请见[这里](client.md#重试).
+- -max_retry: 最大的重试次数,默认是3, 一般无需修改. brpc的重试行为具体请见[这里](client.md#重试).
 - -protocol: 连接server使用的协议，可选项见[协议](client.md#协议), 默认是baidu_std(标准协议)
 - -connection_type: 连接方式，可选项为: single pooled short，具体见[连接方式](client.md#连接方式)。默认会根据协议自动选择,无需指定.
 - -output: 如果不为空，response会转为json并写入这个文件，默认为空。
@@ -60,7 +60,7 @@ json也可以写在文件中，假如./input.json包含了上述两个请求，-
 rpc_press启动后会默认在8888端口启动一个dummy server，用于观察rpc_press本身的运行情况：
 
 ```
-./rpc_press -proto=latest_baidu_rpc/public/baidu-rpc/example/multi_threaded_echo_c++/echo.proto -service=example.EchoService -method=Echo -server=0.0.0.0:8002 -input=./input.json -duration=0 -qps=100
+./rpc_press -proto=echo.proto -service=example.EchoService -method=Echo -server=0.0.0.0:8002 -input=./input.json -duration=0 -qps=100
 TRACE: 01-30 16:10:04:   * 0 src/brpc/server.cpp:733] Server[dummy_servers] is serving on port=8888.
 TRACE: 01-30 16:10:04:   * 0 src/brpc/server.cpp:742] Check out http://db-rpc-dev00.db01.baidu.com:8888 in your web browser.</code>
 ```

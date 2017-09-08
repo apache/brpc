@@ -1,12 +1,12 @@
-baidu-rpc可通过多种方式访问用ub搭建的服务。
+brpc可通过多种方式访问用ub搭建的服务。
 
 # ubrpc (by protobuf)
 
-r31687后，baidu-rpc支持通过protobuf访问ubrpc，不需要baidu-rpc-ub，也不依赖idl-compiler。（也可以让protobuf服务被ubrpc client访问，方法见[使用ubrpc的服务](nshead_service.md#使用ubrpc的服务)）。
+r31687后，brpc支持通过protobuf访问ubrpc，不需要baidu-rpc-ub，也不依赖idl-compiler。（也可以让protobuf服务被ubrpc client访问，方法见[使用ubrpc的服务](nshead_service.md#使用ubrpc的服务)）。
 
 **步骤：**
 
-1. 用[idl2proto](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/tools/idl2proto)把idl文件转化为proto文件，老版本idl2proto不会转化idl中的service，需要手动转化。
+1. 用[idl2proto](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/tools/idl2proto)把idl文件转化为proto文件，老版本idl2proto不会转化idl中的service，需要手动转化。
 
    ```protobuf
    // Converted from echo.idl by public/mcpack2pb/idl2proto
@@ -146,7 +146,7 @@ r31687后，baidu-rpc支持通过protobuf访问ubrpc，不需要baidu-rpc-ub，�
    // cntl.idl_result();
    ```
 
-   例子详见[example/echo_c++_ubrpc_compack](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/echo_c++_ubrpc_compack/)。
+   例子详见[example/echo_c++_ubrpc_compack](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/example/echo_c++_ubrpc_compack/)。
 
 # ubrpc (by baidu-rpc-ub)
 
@@ -154,7 +154,7 @@ server端由public/ubrpc搭建，request/response使用idl文件描述字段，�
 
 **步骤：**
 
-1. 依赖[public/baidu-rpc-ub](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob)模块，在COMAKE中增加依赖：`CONFIGS('public/baidu-rpc-ub@ci-base')。`这个模块是baidu-rpc的扩展，不需要的用户不会依赖idl/mcpack/compack等模块。baidu-rpc-ub只包含扩展代码，baidu-rpc中的新特性会自动体现在这个模块中。
+1. 依赖[public/baidu-rpc-ub](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob)模块，在COMAKE中增加依赖：`CONFIGS('public/baidu-rpc-ub@ci-base')。`这个模块是brpc的扩展，不需要的用户不会依赖idl/mcpack/compack等模块。baidu-rpc-ub只包含扩展代码，brpc中的新特性会自动体现在这个模块中。
 
 2. 编写一个proto文件，其中定义了service，名字和idl中的相同，但请求类型必须是baidu.rpc.UBRequest，回复类型必须是baidu.rpc.UBResponse。这两个类型定义在brpc/ub.proto中，使用时得import。
 
@@ -219,7 +219,7 @@ server端由public/ubrpc搭建，request/response使用idl文件描述字段，�
    ...
    ```
 
-   具体example代码可以参考[echo_c++_compack_ubrpc](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/example/echo_c++_compack_ubrpc/)，类似的还有[echo_c++_mcpack_ubrpc](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/example/echo_c++_mcpack_ubrpc/)。
+   具体example代码可以参考[echo_c++_compack_ubrpc](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/tree/example/echo_c++_compack_ubrpc/)，类似的还有[echo_c++_mcpack_ubrpc](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/tree/example/echo_c++_mcpack_ubrpc/)。
 
 # nshead+idl
 
@@ -258,7 +258,7 @@ channel.CallMethod(NULL, &cntl, &request, &response, NULL);    // 假设channel�
 response.message();
 ```
 
-具体example代码可以参考[echo_c++_mcpack_ub](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/echo_c++_mcpack_ub/)，compack情况类似，不再赘述
+具体example代码可以参考[echo_c++_mcpack_ub](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/example/echo_c++_mcpack_ub/)，compack情况类似，不再赘述
 
 # nshead+mcpack(非idl产生的)
 
@@ -305,11 +305,11 @@ const mc_pack_t* res_pack = response.McpackHandle();
 mc_pack_get_str(res_pack, "mystr");
 ```
 
-具体example代码可以参考[echo_c++_raw_mcpack](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/echo_c++_raw_mcpack/)。
+具体example代码可以参考[echo_c++_raw_mcpack](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/example/echo_c++_raw_mcpack/)。
 
 # nshead+blob
 
-r32897后baidu-rpc直接支持用nshead+blob访问老server（而不用依赖baidu-rpc-ub）。example代码可以参考[nshead_extension_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/nshead_extension_c++/client.cpp)。
+r32897后brpc直接支持用nshead+blob访问老server（而不用依赖baidu-rpc-ub）。example代码可以参考[nshead_extension_c++](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/example/nshead_extension_c++/client.cpp)。
 
 ```c++
 #include <brpc/nshead_message.h>
@@ -342,7 +342,7 @@ if (cntl.Failed()) {
 // response.head and response.body contains nshead_t and blob respectively.
 ```
 
-或者用户也可以使用baidu-rpc-ub中的UBRawBufferRequest和UBRawBufferResponse来访问。example代码可以参考[echo_c++_raw_buffer](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/echo_c++_raw_buffer/)。
+或者用户也可以使用baidu-rpc-ub中的UBRawBufferRequest和UBRawBufferResponse来访问。example代码可以参考[echo_c++_raw_buffer](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/example/echo_c++_raw_buffer/)。
 
 ```c++
 brpc::Channel channel;

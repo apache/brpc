@@ -155,11 +155,11 @@ static void HandleTrackMeResponse(Controller* cntl, TrackMeResponse* res) {
             case TrackMeOK:
                 break;
             case TrackMeFatal:
-                LOG(ERROR) << "Your baidu-rpc (r" << g_rpc_version
+                LOG(ERROR) << "Your brpc (r" << g_rpc_version
                            << ") is affected by: " << res->error_text();
                 break;
             case TrackMeWarning:
-                LOG(WARNING) << "Your baidu-rpc (r" << g_rpc_version
+                LOG(WARNING) << "Your brpc (r" << g_rpc_version
                              << ") is affected by: " << res->error_text();
                 break;
             default:

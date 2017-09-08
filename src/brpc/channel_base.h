@@ -23,13 +23,13 @@
 #include <google/protobuf/service.h>            // google::protobuf::RpcChannel
 #include "brpc/describable.h"
 
-// To baidu-rpc developers: This is a header included by user, don't depend
+// To brpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
 
 
 namespace brpc {
 
-// Base of all baidu-rpc channels.
+// Base of all brpc channels.
 class ChannelBase : public google::protobuf::RpcChannel/*non-copyable*/,
                     public Describable {
 public:

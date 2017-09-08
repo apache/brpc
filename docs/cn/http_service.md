@@ -1,4 +1,4 @@
-这里特指“纯粹"的HTTP service，而不是可通过HTTP访问的pb服务。虽然用不到pb消息，但“纯粹”的HTTP Service也必须定义在.proto文件中，只是request和response都是空的结构体。这么做是确保所有的服务声明集中在proto文件中，而不是散列在.proto、程序、配置等多个地方。示例代码见[http_server.cpp](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/http_c++/http_server.cpp)。
+这里特指“纯粹"的HTTP service，而不是可通过HTTP访问的pb服务。虽然用不到pb消息，但“纯粹”的HTTP Service也必须定义在.proto文件中，只是request和response都是空的结构体。这么做是确保所有的服务声明集中在proto文件中，而不是散列在.proto、程序、配置等多个地方。示例代码见[http_server.cpp](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/example/http_c++/http_server.cpp)。
 
 # URL前缀为/ServiceName/MethodName
 
@@ -106,7 +106,7 @@ public:
 
 # Restful URL
 
-r32097后，baidu-rpc支持为service中的每个方法指定一个URL。接口如下：
+r32097后，brpc支持为service中的每个方法指定一个URL。接口如下：
 
 ```c++
 // 如果restful_mappings不为空, service中的方法可通过指定的URL被HTTP协议访问，而不是/ServiceName/MethodName. 
@@ -154,7 +154,7 @@ if (server.AddService(&queue_svc,
 }
 ```
 
-上面代码中AddService的第三个参数分了三行，但实际上是一个字符串。这个字符串包含以逗号(,)分隔的三个映射关系，每个映射告诉baidu-rpc：在遇到箭头左侧的URL时调用右侧的方法。"/v1/queue/stats/*"中的星号可匹配任意字串。在r33521前星号只能加在URL最后。
+上面代码中AddService的第三个参数分了三行，但实际上是一个字符串。这个字符串包含以逗号(,)分隔的三个映射关系，每个映射告诉brpc：在遇到箭头左侧的URL时调用右侧的方法。"/v1/queue/stats/*"中的星号可匹配任意字串。在r33521前星号只能加在URL最后。
 
 关于映射规则：
 
@@ -226,7 +226,7 @@ cntl->http_response().set_content_type("text/html");
 
 ## Status Code
 
-status code是http response特有的字段，标记http请求的完成情况。请使用定义在[http_status_code.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/http_status_code.h)中的enum，遵守HTTP协议。
+status code是http response特有的字段，标记http请求的完成情况。请使用定义在[http_status_code.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/http_status_code.h)中的enum，遵守HTTP协议。
 
 ```c++
 // Get Status Code
@@ -250,7 +250,7 @@ cntl->http_response().SetHeader("Location", "http://bj.bs.bae.baidu.com/family/i
 
 ## Query String
 
-如上面的[HTTP headers](http_service.md#http-headers)中提到的那样，我们按约定成俗的方式来理解query string，即key1=value1&key2=value2&...。只有key而没有value也是可以的，仍然会被GetQuery查询到，只是值为空字符串，这常被用做bool型的开关。接口定义在[uri.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/uri.h)。
+如上面的[HTTP headers](http_service.md#http-headers)中提到的那样，我们按约定成俗的方式来理解query string，即key1=value1&key2=value2&...。只有key而没有value也是可以的，仍然会被GetQuery查询到，只是值为空字符串，这常被用做bool型的开关。接口定义在[uri.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/uri.h)。
 
 ```c++
 const std::string* time_value = cntl->http_request().uri().GetQuery("time");
@@ -274,7 +274,7 @@ http服务常对http body进行压缩，对于文本网页可以有效减少传�
 
 # 解压request body
 
-出于通用性考虑且解压代码不复杂，baidu-rpc不会自动解压request body，用户可以自己做，方法如下：
+出于通用性考虑且解压代码不复杂，brpc不会自动解压request body，用户可以自己做，方法如下：
 
 ```c++
 #include <brpc/policy/gzip_compress.h>
@@ -340,14 +340,14 @@ bool Controller::is_ssl() const;
 
 没有极端性能要求的产品线都有使用HTTP协议的倾向，特别是移动端产品线，所以我们很重视HTTP的实现质量，具体来说：
 
-- 使用了node.js的[http parser](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/details/http_parser.h)(部分来自nginx)解析http消息，这是一个轻量、优秀的实现。
+- 使用了node.js的[http parser](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/details/http_parser.h)(部分来自nginx)解析http消息，这是一个轻量、优秀的实现。
 - 使用[rapidjson](https://github.com/miloyip/rapidjson)解析json，这是一个主打性能的json库，由一位腾讯专家开发。
 - 在最差情况下解析http请求的时间复杂度也是O(N)，其中N是请求的字节数。反过来说，如果解析代码要求http请求是完整的，那么它可能会花费O(N^2)的时间。HTTP请求普遍较大，这一点意义还是比较大的。
 - 来自不同client的http消息是高度并发的，即使相当复杂的http消息也不会影响对其他客户端的响应。其他rpc和[基于单线程reactor](threading_overview.md#单线程reactor)的各类http server往往难以做到这一点。
 
 # 持续发送
 
-r33796前baidu-rpc server不适合发送超大或无限长的body。r33796后baidu-rpc server支持。方法如下:
+r33796前brpc server不适合发送超大或无限长的body。r33796后brpc server支持。方法如下:
 
 1. 调用Controller::CreateProgressiveAttachment()创建可持续发送的body。
   `boost::intrusive_ptr<brpc::ProgressiveAttachment> pa(cntl->CreateProgressiveAttachment());`
@@ -358,17 +358,17 @@ r33796前baidu-rpc server不适合发送超大或无限长的body。r33796后bai
 
 # 持续接收
 
-目前baidu-rpc server不支持在接受完http请求的header部分就调用用户的服务回调，即baidu-rpc server不适合接收超长或无限长的body。
+目前brpc server不支持在接受完http请求的header部分就调用用户的服务回调，即brpc server不适合接收超长或无限长的body。
 
 # FAQ
 
-### Q: baidu-rpc前的nginx报了final fail (ff)
+### Q: brpc前的nginx报了final fail (ff)
 
-baidu-rpc server同端口支持多种协议，当它遇到非法HTTP请求并解析失败后，无法说这个请求一定是HTTP。在r31355之后，server会对query-string及之后出现解析错误的请求返回HTTP 400错误并关闭连接（因为有很大概率是HTTP请求），但如果是HTTP method错误，诸如出现GET、POST、HEAD等标准方法之外的东西或严重的格式错误（可能由HTTP client有bug导致），server仍会直接断开连接，导致nginx的ff。
+brpc server同端口支持多种协议，当它遇到非法HTTP请求并解析失败后，无法说这个请求一定是HTTP。在r31355之后，server会对query-string及之后出现解析错误的请求返回HTTP 400错误并关闭连接（因为有很大概率是HTTP请求），但如果是HTTP method错误，诸如出现GET、POST、HEAD等标准方法之外的东西或严重的格式错误（可能由HTTP client有bug导致），server仍会直接断开连接，导致nginx的ff。
 
 解决方案: 在使用Nginx转发流量时，可以对$HTTP_method做一下过滤，只放行允许的方法。或者干脆在proxy时设置proxy_method为指定方法，来避免ff。 
 
-### Q: baidu-rpc支持http chunked方式传输吗
+### Q: brpc支持http chunked方式传输吗
 
 支持。
 

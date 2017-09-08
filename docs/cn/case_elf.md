@@ -1,6 +1,6 @@
 # 背景
 
-ELF(Essential/Extreme/Excellent Learning Framework) 框架为公司内外的大数据应用提供学习/挖掘算法开发支持。 平台主要包括数据迭代处理的框架支持，并行计算过程中的通信支持和用于存储大规模参数的分布式、快速、高可用参数服务器。应用于fcr-model，公有云bml，大数据实验室，语音技术部门等等。之前是基于[zeromq](http://zeromq.org/)封装的rpc，这次改用baidu-rpc。
+ELF(Essential/Extreme/Excellent Learning Framework) 框架为公司内外的大数据应用提供学习/挖掘算法开发支持。 平台主要包括数据迭代处理的框架支持，并行计算过程中的通信支持和用于存储大规模参数的分布式、快速、高可用参数服务器。应用于fcr-model，公有云bml，大数据实验室，语音技术部门等等。之前是基于[zeromq](http://zeromq.org/)封装的rpc，这次改用brpc。
 
 # 结论
 

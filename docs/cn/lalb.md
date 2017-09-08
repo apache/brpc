@@ -1,6 +1,6 @@
 # 概述
 
-LALB全称Locality-aware load balancing，是一个能把请求及时、自动地送到延时最低的下游的负载均衡算法，特别适合混合部署环境。该算法产生自DP系统，现已加入baidu-rpc！
+LALB全称Locality-aware load balancing，是一个能把请求及时、自动地送到延时最低的下游的负载均衡算法，特别适合混合部署环境。该算法产生自DP系统，现已加入brpc！
 
 LALB可以解决的问题：
 
@@ -101,7 +101,7 @@ LoadBalancer是一个读远多于写的数据结构：大部分时候，所有�
 - 不同的读之间没有竞争，高度并发。
 - 如果没有写，读总是能无竞争地获取和释放thread-local锁，一般小于25ns，对延时基本无影响。如果有写，由于其临界区极小（拿到立刻释放），读在大部分时候仍能快速地获得锁，少数时候释放锁时可能有唤醒写线程的代价。由于写本身就是少数情况，读整体上几乎不会碰到竞争锁。
 
-完成这些功能的数据结构是[DoublyBufferedData<>](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/containers/doubly_buffered_data.h)，我们常简称为DBD。baidu-rpc中的所有load balancer都使用了这个数据结构，使不同线程在分流时几乎不会互斥。而其他rpc实现往往使用了全局锁，这使得它们无法写出复杂的分流算法：否则分流代码将会成为竞争热点。
+完成这些功能的数据结构是[DoublyBufferedData<>](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/base/containers/doubly_buffered_data.h)，我们常简称为DBD。brpc中的所有load balancer都使用了这个数据结构，使不同线程在分流时几乎不会互斥。而其他rpc实现往往使用了全局锁，这使得它们无法写出复杂的分流算法：否则分流代码将会成为竞争热点。
 
 这个结构有广泛的应用场景：
 
@@ -112,7 +112,7 @@ LoadBalancer是一个读远多于写的数据结构：大部分时候，所有�
 
 LALB的查找过程是按权值分流，O(N)方法如下：获得所有权值的和total，产生一个间于[0, total-1]的随机数R，逐个遍历权值，直到当前权值之和不大于R，而下一个权值之和大于R。
 
-这个方法可以工作，也好理解，但当N达到几百时性能已经很差，这儿的主要因素是cache一致性：LALB是一个基于反馈的算法，RPC结束时信息会被反馈入LALB，被遍历的数据结构也一直在被修改。这意味着前台的O(N)读必须刷新每一行cacheline。当N达到数百时，一次查找过程可能会耗时百微秒，更别提更大的N了，LALB（将）作为baidu-rpc的默认分流算法，这个性能开销是无法接受的。
+这个方法可以工作，也好理解，但当N达到几百时性能已经很差，这儿的主要因素是cache一致性：LALB是一个基于反馈的算法，RPC结束时信息会被反馈入LALB，被遍历的数据结构也一直在被修改。这意味着前台的O(N)读必须刷新每一行cacheline。当N达到数百时，一次查找过程可能会耗时百微秒，更别提更大的N了，LALB（将）作为brpc的默认分流算法，这个性能开销是无法接受的。
 
 另一个办法是用完全二叉树。每个节点记录了左子树的权值之和，这样我们就能在O(logN)时间内完成查找。当N为1024时，我们最多跳转10次内存，总耗时可控制在1微秒内，这个性能是可接受的。这个方法的难点是如何和DoublyBufferedData结合。
 

@@ -2,7 +2,7 @@ rpc_view可以查看端口不在8000-8999的server的内置服务。之前如果
 
 # 获取工具
 
-先按照[Getting Started](getting_started.md)编译好baidu-rpc，再去tools/rpc_view编译。
+先按照[Getting Started](getting_started.md)编译好brpc，再去tools/rpc_view编译。
 
 在CentOS 6.3上如果出现找不到libssl.so.4的错误，可执行`ln -s /usr/lib64/libssl.so.6 libssl.so.4临时解决`
 

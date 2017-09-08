@@ -52,7 +52,7 @@ public:
 
 **controller**
 
-在baidu-rpc中可以静态转为brpc::Controller（前提是这运行baidu-rpc的Server中），包含了所有request和response之外的参数集合，具体接口查阅[controller.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)
+在brpc中可以静态转为brpc::Controller（前提是这运行brpc的Server中），包含了所有request和response之外的参数集合，具体接口查阅[controller.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/controller.h)
 
 **request**
 
@@ -127,13 +127,13 @@ public:
 };
 ```
 
-Service在插入[brpc::Server](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/server.h)后才可能提供服务。
+Service在插入[brpc::Server](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/server.h)后才可能提供服务。
 
 ## 标记当前调用为失败
 
 调用Controller.SetFailed()可以把当前调用设置为失败，当发送过程出现错误时，框架也会调用这个函数。用户一般是在服务的CallMethod里调用这个函数，比如某个处理环节出错，SetFailed()后便可调用done->Run()并跳出函数了（如果使用了ClosureGuard的话在跳出函数时会自动调用done，不用手动）。Server端的done的逻辑主要是发送response回client，当其发现用户调用了SetFailed()后，会把错误信息送回client。client收到后，它的Controller::Failed()会为true（成功时为false），Controller::ErrorCode()和Controller::ErrorText()则分别是错误码和错误信息。
 
-对于http访问，用户还可以设置[status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html)，在server端一般是调用controller.http_response().set_status_code()，标准的status-code定义在[http_status_code.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/http_status_code.h)中。如果SetFailed了但没有设置status-code，默认设为brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR（500错误）
+对于http访问，用户还可以设置[status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html)，在server端一般是调用controller.http_response().set_status_code()，标准的status-code定义在[http_status_code.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/http_status_code.h)中。如果SetFailed了但没有设置status-code，默认设为brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR（500错误）
 
 ## 获取Client的地址和端口
 
@@ -165,7 +165,7 @@ printf("local_side=%s\n", base::endpoint2str(cntl->local_side()).c_str());
 
 有些server以等待后端服务返回结果为主，且处理时间特别长，为了及时地释放出线程资源，更好的办法是把done注册到被等待事件的回调中，等到事件发生后再调用done->Run()，这种是**异步service**。
 
-异步service的最后一行一般是done_guard.release()以确保done_guard在析构时不会调用done->Run()，而是在事件回调中调用。例子请看[example/session_data_and_thread_local](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/example/session_data_and_thread_local/)。
+异步service的最后一行一般是done_guard.release()以确保done_guard在析构时不会调用done->Run()，而是在事件回调中调用。例子请看[example/session_data_and_thread_local](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/tree/example/session_data_and_thread_local/)。
 
 Service和Channel都可以使用done来表达后续的操作，但它们是完全不同的，请勿混淆：
 
@@ -208,7 +208,7 @@ int Start(int port, const ServerOptions* opt);
 int Start(const char *ip_str, PortRange port_range, const ServerOptions *opt);  // r32009后增加
 ```
 
-"localhost:9000", "cq01-cos-dev00.cq01:8000", “127.0.0.1:7000"都是合法的"ip_and_port_str"。其他重载形式请阅读[server.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/server.h)。
+"localhost:9000", "cq01-cos-dev00.cq01:8000", “127.0.0.1:7000"都是合法的"ip_and_port_str"。其他重载形式请阅读[server.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/server.h)。
 
 options为NULL时所有参数取默认值，如果你要使用非默认值，这么做就行了：
 
@@ -236,7 +236,7 @@ r28921之前：如果closewait_ms不会0，且还有请求在被处理，那么S
 
 r28921之后：closewait_ms失效，不管它是什么值，server在退出时总会等待所有正在被处理的请求完成，同时对新请求立刻回复ELOGOFF错误。这么做的原因在于只要server退出时仍有处理线程运行，就有访问到已释放内存的风险。如果你的server“退不掉”，很有可能是由于某个检索线程hang住了，
 
-当client看到ELOGOFF时，会跳过对应的server，并在其他server上重试对应的请求。所以在一般情况下baidu-rpc总是“优雅退出”的，重启或上线时几乎不会或只会丢失很少量的流量。
+当client看到ELOGOFF时，会跳过对应的server，并在其他server上重试对应的请求。所以在一般情况下brpc总是“优雅退出”的，重启或上线时几乎不会或只会丢失很少量的流量。
 
 r31371后增加了RunUntilAskedToQuit()函数，简化了大部分情况下server的运转和停止代码。在server.Start后，只需如下代码即会让server运行直到按到Ctrl-C。
 
@@ -276,7 +276,7 @@ r34532后增加选项-pb_enum_as_number，开启后pb中的enum会转化为它�
 
 ## 兼容(很)老版本client
 
-15年时，baidu-rpc允许一个pb service被http协议访问时，不设置pb请求，即使里面有required字段。一般来说这种service会自行解析http请求和设置http回复，并不会访问pb请求。但这也是非常危险的行为，毕竟这是pb service，但pb请求却是未定义的。这种服务在升级到新版本rpc时会遇到障碍，因为baidu-rpc早不允许这种行为。为了帮助这种服务升级，r34953后baidu-rpc允许用户经过一些设置后不把http body自动转化为pb（从而可自行处理），方法如下：
+15年时，brpc允许一个pb service被http协议访问时，不设置pb请求，即使里面有required字段。一般来说这种service会自行解析http请求和设置http回复，并不会访问pb请求。但这也是非常危险的行为，毕竟这是pb service，但pb请求却是未定义的。这种服务在升级到新版本rpc时会遇到障碍，因为brpc早不允许这种行为。为了帮助这种服务升级，r34953后brpc允许用户经过一些设置后不把http body自动转化为pb（从而可自行处理），方法如下：
 
 ```c++
 brpc::ServiceOptions svc_opt;
@@ -362,7 +362,7 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 
 ## 在每条日志后打印hostname
 
-此功能只对[base/logging.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/logging.h)中的日志宏有效。打开[-log_hostname](http://brpc.baidu.com:8765/flags/log_hostname)后每条日志后都会带本机名称，如果所有的日志需要汇总到一起进行分析，这个功能可以帮助你了解某条日志来自哪台机器。
+此功能只对[base/logging.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/base/logging.h)中的日志宏有效。打开[-log_hostname](http://brpc.baidu.com:8765/flags/log_hostname)后每条日志后都会带本机名称，如果所有的日志需要汇总到一起进行分析，这个功能可以帮助你了解某条日志来自哪台机器。
 
 ## 打印FATAL日志后退出程序
 
@@ -372,7 +372,7 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 
 ## 最低日志级别
 
-此功能只对[base/logging.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/logging.h)中的日志宏有效。设置[-min_log_level](http://brpc.baidu.com:8765/flags/min_log_level)后只有**不低于**被设置日志级别的日志才会被打印，这个选项可以动态修改。设置值和日志级别的对应关系：0=INFO 1=NOTICE 2=WARNING 3=ERROR 4=FATAL
+此功能只对[base/logging.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/base/logging.h)中的日志宏有效。设置[-min_log_level](http://brpc.baidu.com:8765/flags/min_log_level)后只有**不低于**被设置日志级别的日志才会被打印，这个选项可以动态修改。设置值和日志级别的对应关系：0=INFO 1=NOTICE 2=WARNING 3=ERROR 4=FATAL
 
 被拦住的日志产生的开销只是一次if判断，也不会评估参数(比如某个参数调用了函数，日志不打，这个函数就不会被调用），这和comlog是完全不同的。如果日志最终打印到comlog，那么还要经过comlog中的日志级别的过滤。
 
@@ -396,7 +396,7 @@ protobuf中有[类似的限制](https://github.com/google/protobuf/blob/master/s
 FATAL: 05-10 13:35:02: * 0 google/protobuf/io/coded_stream.cc:156] A protocol message was rejected because it was too big (more than 67108864 bytes). To increase the limit (or to disable these warnings), see CodedInputStream::SetTotalBytesLimit() in google/protobuf/io/coded_stream.h.
 ```
 
-在r34677后，baidu-rpc移除了protobuf中的限制，只要-max_body_size足够大，protobuf不会再打印限制错误。此功能对protobuf的版本没有要求。
+在r34677后，brpc移除了protobuf中的限制，只要-max_body_size足够大，protobuf不会再打印限制错误。此功能对protobuf的版本没有要求。
 
 ## 压缩
 
@@ -476,15 +476,15 @@ option.auth = &auth;
 
 你不能认为Server就用了这么多线程，因为进程内的所有Server和Channel会共享线程资源，线程总数是所有ServerOptions.num_threads和bthread_concurrency中的最大值。Channel没有相应的选项，但可以通过--bthread_concurrency调整。比如一个程序内有两个Server，num_threads分别为24和36，bthread_concurrency为16。那么worker线程数为max(24, 36, 16) = 36。这不同于其他RPC实现中往往是加起来。
 
-另外，baidu-rpc**不区分**io线程和worker线程。baidu-rpc知道如何编排IO和处理代码，以获得更高的并发度和线程利用率。
+另外，brpc**不区分**io线程和worker线程。brpc知道如何编排IO和处理代码，以获得更高的并发度和线程利用率。
 
 ## 限制最大并发
 
-“并发”在中文背景下有两种含义，一种是连接数，一种是同时在处理的请求数。有了[epoll](https://linux.die.net/man/4/epoll)之后我们就不太关心连接数了，baidu-rpc在所有上下文中提到的并发(concurrency)均指同时在处理的请求数，不是连接数。
+“并发”在中文背景下有两种含义，一种是连接数，一种是同时在处理的请求数。有了[epoll](https://linux.die.net/man/4/epoll)之后我们就不太关心连接数了，brpc在所有上下文中提到的并发(concurrency)均指同时在处理的请求数，不是连接数。
 
-在传统的同步rpc server中，最大并发不会超过worker线程数（上面的num_threads选项），设定worker数量一般也限制了并发。但baidu-rpc的请求运行于bthread中，M个bthread会映射至N个worker中（一般M大于N），所以同步server的并发度可能超过worker数量。另一方面，异步server虽然占用的线程较少，但有时也需要控制并发量。
+在传统的同步rpc server中，最大并发不会超过worker线程数（上面的num_threads选项），设定worker数量一般也限制了并发。但brpc的请求运行于bthread中，M个bthread会映射至N个worker中（一般M大于N），所以同步server的并发度可能超过worker数量。另一方面，异步server虽然占用的线程较少，但有时也需要控制并发量。
 
-baidu-rpc支持设置server级和method级的最大并发，当server或method同时处理的请求数超过并发度限制时，它会立刻给client回复ELIMIT错误，而不会调用服务回调。看到ELIMIT错误的client应尝试另一个server。在一些情况下，这个选项可以防止server出现过度排队，或用于限制server占用的资源，但在大部分情况下并无必要。
+brpc支持设置server级和method级的最大并发，当server或method同时处理的请求数超过并发度限制时，它会立刻给client回复ELIMIT错误，而不会调用服务回调。看到ELIMIT错误的client应尝试另一个server。在一些情况下，这个选项可以防止server出现过度排队，或用于限制server占用的资源，但在大部分情况下并无必要。
 
 ### 为什么超过最大并发要立刻给client返回错误而不是排队？
 
@@ -521,9 +521,9 @@ server.MaxConcurrencyOf(&service, "Echo") = 10;
 用户代码（客户端的done，服务器端的CallMethod）默认在栈为1M的bthread中运行。但有些用户代码无法在bthread中运行，比如：
 
 - JNI会检查stack layout而无法在bthread中运行。
-- 代码中广泛地使用pthread local传递session数据（跨越了某次RPC），短时间内无法修改。请注意，如果代码中完全不使用baidu-rpc的客户端，在bthread中运行是没有问题的，只要代码没有明确地支持bthread就会阻塞pthread，并不会产生问题。
+- 代码中广泛地使用pthread local传递session数据（跨越了某次RPC），短时间内无法修改。请注意，如果代码中完全不使用brpc的客户端，在bthread中运行是没有问题的，只要代码没有明确地支持bthread就会阻塞pthread，并不会产生问题。
 
-对于这些情况，baidu-rpc提供了pthread模式，开启**-usercode_in_pthread**后，用户代码均会在pthread中运行，原先阻塞bthread的函数转而阻塞pthread。
+对于这些情况，brpc提供了pthread模式，开启**-usercode_in_pthread**后，用户代码均会在pthread中运行，原先阻塞bthread的函数转而阻塞pthread。
 
 **r33447前请勿在开启-usercode_in_pthread的代码中发起同步RPC，只要同时进行的同步RPC个数超过工作线程数就会死锁。**
 
@@ -534,7 +534,7 @@ server.MaxConcurrencyOf(&service, "Echo") = 10;
 - bthread端支持一个独特的功能：把当前使用的pthread worker 让给另一个bthread运行，以消除一次上下文切换。client端的实现利用了这点，从而使一次RPC过程中3次上下文切换变为了2次。在高QPS系统中，消除上下文切换可以明显改善性能和延时分布。但pthread模式不具备这个能力，在高QPS系统中性能会有一定下降。
 - pthread模式中线程资源是硬限，一旦线程被打满，请求就会迅速拥塞而造成大量超时。比如下游服务大量超时后，上游服务可能由于线程大都在等待下游也被打满从而影响性能。开启pthread模式后请考虑设置ServerOptions.max_concurrency以控制server的最大并发。而在bthread模式中bthread个数是软限，对此类问题的反应会更加平滑。
 
-打开pthread模式可以让一些产品快速尝试baidu-rpc，但我们仍然建议产品线逐渐地把代码改造为使用bthread local从而最终能关闭这个开关。
+打开pthread模式可以让一些产品快速尝试brpc，但我们仍然建议产品线逐渐地把代码改造为使用bthread local从而最终能关闭这个开关。
 
 ## 安全模式
 
@@ -572,11 +572,11 @@ curl -s -m 1 <HOSTNAME>:<PORT>/flags/enable_dir_service,enable_threads_service |
 
 ## 定制/health页面
 
-/health页面默认返回"OK"，r32162后可以定制/health页面的内容：先继承[HealthReporter](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/health_reporter.h)，在其中实现生成页面的逻辑（就像实现其他http service那样），然后把实例赋给ServerOptions.health_reporter，这个实例不被server拥有，必须保证在server运行期间有效。用户在定制逻辑中可以根据业务的运行状态返回更多样的状态信息。
+/health页面默认返回"OK"，r32162后可以定制/health页面的内容：先继承[HealthReporter](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/health_reporter.h)，在其中实现生成页面的逻辑（就像实现其他http service那样），然后把实例赋给ServerOptions.health_reporter，这个实例不被server拥有，必须保证在server运行期间有效。用户在定制逻辑中可以根据业务的运行状态返回更多样的状态信息。
 
 ## 私有变量
 
-百度内的检索程序大量地使用了[thread-local storage](https://en.wikipedia.org/wiki/Thread-local_storage) (缩写tls)，有些是为了缓存频繁访问的对象以避免反复创建，有些则是为了在全局函数间隐式地传递状态。你应当尽量避免后者，这样的函数难以测试，不设置thread-local变量甚至无法运行。baidu-rpc中有三套机制解决和thread-local相关的问题。
+百度内的检索程序大量地使用了[thread-local storage](https://en.wikipedia.org/wiki/Thread-local_storage) (缩写tls)，有些是为了缓存频繁访问的对象以避免反复创建，有些则是为了在全局函数间隐式地传递状态。你应当尽量避免后者，这样的函数难以测试，不设置thread-local变量甚至无法运行。brpc中有三套机制解决和thread-local相关的问题。
 
 ### session-local
 
@@ -637,7 +637,7 @@ struct ServerOptions {
 
 **实现session_local_data_factory**
 
-session_local_data_factory的类型为[DataFactory](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/data_factory.h)，你需要实现其中的CreateData和DestroyData。
+session_local_data_factory的类型为[DataFactory](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/data_factory.h)，你需要实现其中的CreateData和DestroyData。
 
 注意：CreateData和DestroyData会被多个线程同时调用，必须线程安全。
 
@@ -723,7 +723,7 @@ struct ServerOptions {
 
 **实现thread_local_data_factory：**
 
-thread_local_data_factory的类型为[DataFactory](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/data_factory.h)，你需要实现其中的CreateData和DestroyData。
+thread_local_data_factory的类型为[DataFactory](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/data_factory.h)，你需要实现其中的CreateData和DestroyData。
 
 注意：CreateData和DestroyData会被多个线程同时调用，必须线程安全。
 
@@ -755,11 +755,11 @@ Session-local和server-thread-local对大部分server已经够用。不过在一
 
 这些函数同时支持bthread和pthread，当它们在bthread中被调用时，获得的是bthread私有变量，而当它们在pthread中被调用时，获得的是pthread私有变量。但注意，这里的“pthread私有变量”不是pthread_key_create创建的pthread-local，使用pthread_key_create创建的pthread-local是无法被bthread_getspecific访问到的，这是两个独立的体系。由于pthread与LWP是1:1的关系，由gcc的__thread，c++11的thread_local等声明的变量也可视作pthread-local，同样无法被bthread_getspecific访问到。
 
-由于baidu-rpc会为每个请求建立一个bthread，server中的bthread-local行为特殊：当一个检索bthread退出时，它并不删除bthread-local，而是还回server的一个pool中，以被其他bthread复用。这可以避免bthread-local随着bthread的创建和退出而不停地构造和析构。这对于用户是透明的。
+由于brpc会为每个请求建立一个bthread，server中的bthread-local行为特殊：当一个检索bthread退出时，它并不删除bthread-local，而是还回server的一个pool中，以被其他bthread复用。这可以避免bthread-local随着bthread的创建和退出而不停地构造和析构。这对于用户是透明的。
 
-**在使用bthread-local前确保baidu-rpc的版本 >= 1.0.130.31109**
+**在使用bthread-local前确保brpc的版本 >= 1.0.130.31109**
 
-在那个版本之前的bthread-local没有在不同bthread间重用线程私有的存储(keytable)。由于baidu-rpc server会为每个请求创建一个bthread, bthread-local函数会频繁地创建和删除thread-local数据，性能表现不佳。之前的实现也无法在pthread中使用。
+在那个版本之前的bthread-local没有在不同bthread间重用线程私有的存储(keytable)。由于brpc server会为每个请求创建一个bthread, bthread-local函数会频繁地创建和删除thread-local数据，性能表现不佳。之前的实现也无法在pthread中使用。
 
 **主要接口：**
 
@@ -784,11 +784,11 @@ extern int bthread_key_delete(bthread_key_t key) __THROW;
 // bthread_setspecific() is callable from within destructor. If the application
 // does so, destructors will be repeatedly called for at most
 // PTHREAD_DESTRUCTOR_ITERATIONS times to clear the slots.
-// NOTE: If the thread is not created by baidu-rpc server and lifetime is
+// NOTE: If the thread is not created by brpc server and lifetime is
 // very short(doing a little thing and exit), avoid using bthread-local. The
 // reason is that bthread-local always allocate keytable on first call to
 // bthread_setspecific, the overhead is negligible in long-lived threads,
-// but noticeable in shortly-lived threads. Threads in baidu-rpc server
+// but noticeable in shortly-lived threads. Threads in brpc server
 // are special since they reuse keytables from a bthread_keytable_pool_t
 // in the server.
 // Returns 0 on success, error code otherwise.
@@ -885,7 +885,7 @@ A: 一般是client端使用了连接池或短连接模式，在RPC超时后会�
 
 ### Q: 为什么server端线程数设了没用
 
-baidu-rpc同一个进程中所有的server[共用线程](#worker线程数)，如果创建了多个server，最终的工作线程数是最大的那个。
+brpc同一个进程中所有的server[共用线程](#worker线程数)，如果创建了多个server，最终的工作线程数是最大的那个。
 
 ### Q: 为什么client端的延时远大于server端的延时
 
@@ -893,7 +893,7 @@ baidu-rpc同一个进程中所有的server[共用线程](#worker线程数)，如
 
 ### Q: 程序切换到rpc之后，会出现莫名其妙的core，像堆栈被写坏
 
-baidu-rpc的Server是运行在bthread之上，默认栈大小为1M，而pthread默认栈大小为10M，所以在pthread上正常运行的程序，在bthread上可能遇到栈不足。
+brpc的Server是运行在bthread之上，默认栈大小为1M，而pthread默认栈大小为10M，所以在pthread上正常运行的程序，在bthread上可能遇到栈不足。
 
 解决方案：添加以下gflag，调整栈大小。第一个表示调整栈大小为10M左右，如有必要，可以更大。第二个表示每个工作线程cache的栈个数
 

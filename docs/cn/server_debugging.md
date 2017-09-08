@@ -158,6 +158,6 @@ void search() {
 
 你可以在子函数中继续这个过程，增加更多bvar，并比对不同的分布，最后定位来源。
 
-### 只使用了baidu-rpc client
+### 只使用了brpc client
 
 得打开dummy server提供内置服务，方法见[这里](dummy_server.md)。

@@ -1,5 +1,5 @@
    Notice that the following BSD-style license applies to the Valgrind header
-   files used by baidu-rpc (valgrind.h). However, the rest of Valgrind is 
+   files used by brpc (valgrind.h). However, the rest of Valgrind is 
    licensed under the terms of the GNU General Public License, version 2, 
    unless otherwise indicated.
 

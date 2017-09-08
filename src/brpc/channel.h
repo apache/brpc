@@ -18,7 +18,7 @@
 #ifndef BRPC_CHANNEL_H
 #define BRPC_CHANNEL_H
 
-// To baidu-rpc developers: This is a header included by user, don't depend
+// To brpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
 
 #include <ostream>                               // std::ostream

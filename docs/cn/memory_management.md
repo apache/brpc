@@ -7,7 +7,7 @@
 
 - 大多数结构是等长的。
 
-这个属性可以大幅简化内存分配的过程，获得比通用malloc更稳定、快速的性能。baidu-rpc中的ResourcePool<T>和ObjectPool<T>即提供这类分配。
+这个属性可以大幅简化内存分配的过程，获得比通用malloc更稳定、快速的性能。brpc中的ResourcePool<T>和ObjectPool<T>即提供这类分配。
 
 > 这篇文章不鼓励用户使用ResourcePool<T>或ObjectPool<T>，事实上我们反对用户在程序中使用这两个类。因为”等长“的副作用是某个类型独占了一部分内存，这些内存无法再被其他类型使用，如果不加控制的滥用，反而会在程序中产生大量彼此隔离的内存分配体系，既浪费内存也不见得会有更好的性能。
 
@@ -25,17 +25,17 @@
 
 # ObjectPool<T>
 
-这是ResourcePool<T>的变种，不返回偏移量，而直接返回对象指针。内部结构和ResourcePool类似，一些代码更加简单。对于用户来说，这就是一个多线程下的对象池，baidu-rpc里也是这么用的。比如Socket::Write中把每个待写出的请求包装为WriteRequest，这个对象就是用ObjectPool<WriteRequest>分配的。
+这是ResourcePool<T>的变种，不返回偏移量，而直接返回对象指针。内部结构和ResourcePool类似，一些代码更加简单。对于用户来说，这就是一个多线程下的对象池，brpc里也是这么用的。比如Socket::Write中把每个待写出的请求包装为WriteRequest，这个对象就是用ObjectPool<WriteRequest>分配的。
 
 # 生成bthread_t
 
-用户期望通过创建bthread获得更高的并发度，所以创建bthread必须很快。 在目前的实现中创建一个bthread的平均耗时小于200ns。如果每次都要从头创建，是不可能这么快的。创建过程更像是从一个bthread池子中取一个实例，我们又同时需要一个id来指代一个bthread，所以这儿正是ResourcePool的用武之地。bthread在代码中被称作Task，其结构被称为TaskMeta，定义在[task_meta.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/bthread/task_meta.h)中，所有的TaskMeta由ResourcePool<TaskMeta>分配。
+用户期望通过创建bthread获得更高的并发度，所以创建bthread必须很快。 在目前的实现中创建一个bthread的平均耗时小于200ns。如果每次都要从头创建，是不可能这么快的。创建过程更像是从一个bthread池子中取一个实例，我们又同时需要一个id来指代一个bthread，所以这儿正是ResourcePool的用武之地。bthread在代码中被称作Task，其结构被称为TaskMeta，定义在[task_meta.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/bthread/task_meta.h)中，所有的TaskMeta由ResourcePool<TaskMeta>分配。
 
 bthread的大部分函数都需要在O(1)时间内通过bthread_t访问到TaskMeta，并且当bthread_t失效后，访问应返回NULL以让函数做出返回错误。解决方法是：bthread_t由32位的版本和32位的偏移量组成。版本解决[ABA问题](http://en.wikipedia.org/wiki/ABA_problem)，偏移量由ResourcePool<TaskMeta>分配。查找时先通过偏移量获得TaskMeta，再检查版本，如果版本不匹配，说明bthread失效了。注意：这只是大概的说法，在多线程环境下，即使版本相等，bthread仍可能随时失效，在不同的bthread函数中处理方法都是不同的，有些函数会加锁，有些则能忍受版本不相等。
 
 ![img](../images/resource_pool.png)
 
-这种id生成方式在baidu-rpc中应用广泛，baidu-rpc中的SocketId，bthread_id_t也是用类似的方法分配的。
+这种id生成方式在brpc中应用广泛，brpc中的SocketId，bthread_id_t也是用类似的方法分配的。
 
 # 栈
 

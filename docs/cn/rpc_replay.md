@@ -1,14 +1,14 @@
-r31658后，baidu-rpc能随机地把一部分请求写入一些文件中，并通过rpc_replay工具回放。目前支持的协议有：baidu_std, hulu_pbrpc, sofa_pbrpc。
+r31658后，brpc能随机地把一部分请求写入一些文件中，并通过rpc_replay工具回放。目前支持的协议有：baidu_std, hulu_pbrpc, sofa_pbrpc。
 
 # 获取工具
 
-先按照[Getting Started](getting_started.md)编译好baidu-rpc，再去tools/rpc_replay编译。
+先按照[Getting Started](getting_started.md)编译好brpc，再去tools/rpc_replay编译。
 
 在CentOS 6.3上如果出现找不到libssl.so.4的错误，可执行`ln -s /usr/lib64/libssl.so.6 libssl.so.4临时解决`
 
 # 采样
 
-baidu-rpc通过如下flags打开和控制如何保存请求，包含(R)后缀的flag都可以动态设置。
+brpc通过如下flags打开和控制如何保存请求，包含(R)后缀的flag都可以动态设置。
 
 ![img](../images/rpc_replay_1.png)
 
@@ -16,12 +16,12 @@ baidu-rpc通过如下flags打开和控制如何保存请求，包含(R)后缀的
 
 参数说明：
 
-- -rpc_dump是主开关，关闭时其他以rpc_dump开头的flag都无效。当打开-rpc_dump后，baidu-rpc会以一定概率采集请求，如果服务的qps很高，baidu-rpc会调节采样比例，使得每秒钟采样的请求个数不超过-bvar_collector_expected_per_second对应的值。这个值在目前同样影响rpcz和contention profiler，一般不用改动，以后会对不同的应用独立开来。
+- -rpc_dump是主开关，关闭时其他以rpc_dump开头的flag都无效。当打开-rpc_dump后，brpc会以一定概率采集请求，如果服务的qps很高，brpc会调节采样比例，使得每秒钟采样的请求个数不超过-bvar_collector_expected_per_second对应的值。这个值在目前同样影响rpcz和contention profiler，一般不用改动，以后会对不同的应用独立开来。
 - -rpc_dump_dir：设置存放被dump请求的目录
 - -rpc_dump_max_files: 设置目录下的最大文件数，当超过限制时，老文件会被删除以腾出空间。
 - -rpc_dump_max_requests_in_one_file：一个文件内的最大请求数，超过后写新文件。
 
-baidu-rpc通过一个[bvar::Collector](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/bvar/collector.h)来汇总来自不同线程的被采样请求，不同线程之间没有竞争，开销很小。
+brpc通过一个[bvar::Collector](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/bvar/collector.h)来汇总来自不同线程的被采样请求，不同线程之间没有竞争，开销很小。
 
 写出的内容依次存放在rpc_dump_dir目录下的多个文件内，这个目录默认在./rpc_dump_<app>，其中<app>是程序名。不同程序在同一个目录下同时采样时会写入不同的目录。如果程序启动时rpc_dump_dir已经存在了，目录将被清空。目录中的每个文件以requests.yyyymmdd_hhmmss_uuuuus命名，以保证按时间有序方便查找，比如：
 
@@ -43,7 +43,7 @@ serialized request (body_size - meta_size bytes, including attachment)
 
 > 一个文件可能包含多种协议的请求，如果server被多种协议访问的话。回放时被请求的server也将收到不同协议的请求。
 
-baidu-rpc提供了[SampleIterator](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/rpc_dump.h)从一个采样目录下的所有文件中依次读取所有的被采样请求，用户可根据需求把serialized request反序列化为protobuf请求，做一些二次开发。
+brpc提供了[SampleIterator](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/rpc_dump.h)从一个采样目录下的所有文件中依次读取所有的被采样请求，用户可根据需求把serialized request反序列化为protobuf请求，做一些二次开发。
 
 ```c++
 #include <brpc/rpc_dump.h>
@@ -59,7 +59,7 @@ for (SampleRequest* req = it->Next(); req != NULL; req = it->Next()) {
 
 # 回放
 
-baidu-rpc在[tools/rpc_replay](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/tools/rpc_replay/)提供了默认的回放工具。运行方式如下：
+brpc在[tools/rpc_replay](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/tree/tools/rpc_replay/)提供了默认的回放工具。运行方式如下：
 
 ![img](../images/rpc_replay_4.png)
 

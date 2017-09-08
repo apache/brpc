@@ -27,7 +27,7 @@ namespace brpc {
 
 class Controller;
 
-// These static strings are referenced more than once in baidu-rpc.
+// These static strings are referenced more than once in brpc.
 // Don't turn them to std::strings whose constructing sequences are undefined.
 const char* const UNKNOWN_METHOD_STR = "unknown_method";
 const char* const TRACE_ID_STR = "trace";

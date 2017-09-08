@@ -48,7 +48,7 @@ DEFINE_bool(log_error_text, false,
 BRPC_VALIDATE_GFLAG(log_error_text, PassValidate);
 
 // Not using ProtocolType_MAX as the boundary because others may define new
-// protocols outside baidu-rpc.
+// protocols outside brpc.
 const size_t MAX_PROTOCOL_SIZE = 128;
 struct ProtocolEntry {
     base::atomic<bool> valid;

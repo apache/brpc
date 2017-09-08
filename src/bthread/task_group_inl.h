@@ -83,7 +83,7 @@ inline void TaskGroup::push_rq(bthread_t tid) {
         //   into other TaskGroup does not help.
         // * Insertions into other TaskGroups perform worse when all workers
         //   are busy at creating bthreads (proved by test_input_messenger in
-        //   baidu-rpc)
+        //   brpc)
         flush_nosignal_tasks();
         LOG_EVERY_SECOND(ERROR) << "_rq is full, capacity=" << _rq.capacity();
         // TODO(gejun): May cause deadlock when all workers are spinning here.

@@ -1,6 +1,6 @@
 # server端多协议
 
-baidu-rpc server在同端口支持所有的协议，大部分时候这对部署和运维更加方便。由于不同协议的格式大相径庭，严格地来说，同端口很难无二义地支持所有协议。出于解耦和可扩展性的考虑，也不太可能集中式地构建一个针对所有协议的分类器。我们的做法就是把协议归三类后逐个尝试：
+brpc server在同端口支持所有的协议，大部分时候这对部署和运维更加方便。由于不同协议的格式大相径庭，严格地来说，同端口很难无二义地支持所有协议。出于解耦和可扩展性的考虑，也不太可能集中式地构建一个针对所有协议的分类器。我们的做法就是把协议归三类后逐个尝试：
 
 - 第一类协议：标记或特殊字符在最前面，比如[标准协议](http://gollum.baidu.com/ProtobufRPC)，[hulu协议](http://wiki.babel.baidu.com/twiki/bin/view/Com/Main/Hulu_rpc_protocols)的前4个字符分别分别是PRPC和HULU，解析代码只需要检查前4个字节就可以知道协议是否匹配，最先尝试这类协议。这些协议在同一个连接上也可以共存。
 - 第二类协议：有较为复杂的语法，没有固定的协议标记或特殊字符，可能在解析一段输入后才能判断是否匹配，目前此类协议只有http。
@@ -14,13 +14,13 @@ baidu-rpc server在同端口支持所有的协议，大部分时候这对部署�
 
 # 支持新协议
 
-baidu-rpc就是设计为可随时扩展新协议的，步骤如下：
+brpc就是设计为可随时扩展新协议的，步骤如下：
 
 > 以nshead开头的协议有统一支持，看[这里](nshead_service.md)。
 
 ## 增加ProtocolType
 
-在[options.proto](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/options.proto)的ProtocolType中增加新协议类型，如果你需要的话可以联系我们增加，以确保不会和其他人的需求重合。
+在[options.proto](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/options.proto)的ProtocolType中增加新协议类型，如果你需要的话可以联系我们增加，以确保不会和其他人的需求重合。
 
 目前的ProtocolType（16年底）:
 ```c++
@@ -34,7 +34,7 @@ enum ProtocolType {
     PROTOCOL_HTTP = 6;
     PROTOCOL_PUBLIC_PBRPC = 7;
     PROTOCOL_NOVA_PBRPC = 8;
-    PROTOCOL_NSHEAD_CLIENT = 9;        // implemented in baidu-rpc-ub
+    PROTOCOL_NSHEAD_CLIENT = 9;        // implemented in brpc-ub
     PROTOCOL_NSHEAD = 10;
     PROTOCOL_HADOOP_RPC = 11;
     PROTOCOL_HADOOP_SERVER_RPC = 12;
@@ -52,7 +52,7 @@ enum ProtocolType {
 ```
 ## 实现回调
 
-均定义在struct Protocol中，该结构定义在[protocol.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/protocol.h)。其中的parse必须实现，除此之外server端至少要实现process_request，client端至少要实现serialize_request，pack_request，process_response;
+均定义在struct Protocol中，该结构定义在[protocol.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/protocol.h)。其中的parse必须实现，除此之外server端至少要实现process_request，client端至少要实现serialize_request，pack_request，process_response;
 
 实现协议回调还是比较困难的，这块的代码不会像供普通用户使用的那样，有较好的提示和保护，你得先靠自己搞清楚其他协议中的类似代码，然后再动手，最后发给我们做code review。
 
@@ -137,7 +137,7 @@ typedef const std::string& (*GetMethodName)(const google::protobuf::MethodDescri
 
 ## 注册到全局
 
-实现好的协议要调用RegisterProtocol[注册到全局](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/global.cpp)，以便baidu-rpc发现。就像这样：
+实现好的协议要调用RegisterProtocol[注册到全局](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/global.cpp)，以便brpc发现。就像这样：
 ```c++
 Protocol http_protocol = { ParseHttpMessage,
                            SerializeHttpRequest, PackHttpRequest,
@@ -155,7 +155,7 @@ if (RegisterProtocol(PROTOCOL_HTTP, http_protocol) != 0) {
 
 为了进一步简化protocol的实现逻辑，r34386是一个不兼容改动，主要集中在下面几点：
 
-- ProcessXXX必须在处理结束时调用msg_base->Destroy()。在之前的版本中，这是由框架完成的。这个改动帮助我们隐藏处理EOF的代码（很晦涩），还可以在未来支持更异步的处理（退出ProcessXXX不意味着处理结束）。为了确保所有的退出分支都会调用msg_base->Destroy()，可以使用定义在[destroying_ptr.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/destroying_ptr.h)中的DestroyingPtr<>，可能像这样：
+- ProcessXXX必须在处理结束时调用msg_base->Destroy()。在之前的版本中，这是由框架完成的。这个改动帮助我们隐藏处理EOF的代码（很晦涩），还可以在未来支持更异步的处理（退出ProcessXXX不意味着处理结束）。为了确保所有的退出分支都会调用msg_base->Destroy()，可以使用定义在[destroying_ptr.h](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/destroying_ptr.h)中的DestroyingPtr<>，可能像这样：
 ```c++
 void ProcessXXXRequest(InputMessageBase* msg_base) {
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
@@ -163,7 +163,7 @@ void ProcessXXXRequest(InputMessageBase* msg_base) {
 }
 ```
 
-- 具体请参考[其他协议](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/policy/baidu_rpc_protocol.cpp)的实现。
+- 具体请参考[其他协议](http://icode.baidu.com/repo/baidu/opensource/brpc/files/master/blob/src/brpc/policy/baidu_rpc_protocol.cpp)的实现。
 - InputMessageBase::socket_id()被移除，而通过socket()可以直接访问到对应Socket的指针。ProcessXXX函数中Address Socket的代码可以移除。
   ProcessXXXRequest开头的修改一般是这样：
 ```c++
