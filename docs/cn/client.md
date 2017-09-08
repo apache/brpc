@@ -1,6 +1,19 @@
+# 示例程序
+
+Echo的[client端代码](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/echo_c++/client.cpp)。
+
+# 事实速查
+
+- Channel.Init()是线程不安全的。
+- Channel.CallMethod()是线程安全的，一个Channel可以被所有线程同时使用。
+- Channel可以分配在栈上。
+- Channel在发送异步请求后可以析构。
+- 没有brpc::Client这个类。
+
+# Channel
 Client指发起请求的一端，在brpc中没有对应的实体，取而代之的是[brpc::Channel](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h)，它代表和一台或一组服务器的交互通道，Client和Channel在角色上的差别在实践中并不重要，你可以把Channel视作Client。
 
-Channel可以被进程中的所有线程共用，你不需要为每个线程创建独立的Channel，也不需要用锁互斥。不过Channel的创建和析构并不是线程安全的，请确保在Init成功后再被多线程访问，在没有线程访问后再析构。
+Channel可以**被所有线程共用**，你不需要为每个线程创建独立的Channel，也不需要用锁互斥。不过Channel的创建和Init并不是线程安全的，请确保在Init成功后再被多线程访问，在没有线程访问后再析构。
 
 一些RPC实现中有RpcClient的概念，包含了Client端的配置信息和资源管理。brpc不需要这些，以往在RpcClient中配置的线程数、长短连接等等要么被加入了Channel，要么可以通过gflags全局配置，这么做的好处：
 
@@ -9,7 +22,7 @@ Channel可以被进程中的所有线程共用，你不需要为每个线程创�
 3. 生命周期。析构RpcClient的过程很容易出错，现在由框架负责则不会有问题。
 
 就像大部分类那样，Channel必须在**Init**之后才能使用，options为NULL时所有参数取默认值，如果你要使用非默认值，这么做就行了：
-```
+```c++
 brpc::ChannelOptions options;  // 包含了默认值
 options.xxx = yyy;
 ...
@@ -164,7 +177,7 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 
 # 发起访问
 
-一般来说，我们不直接调用Channel.CallMethod，而是通过protobuf生成的桩XXX_Stub，过程更像是“调用函数”。stub内没什么成员变量，建议在栈上创建和使用，而不必new，当然你也可以把stub存下来复用。Channel::CallMethod和stub访问都是线程安全的。比如：
+一般来说，我们不直接调用Channel.CallMethod，而是通过protobuf生成的桩XXX_Stub，过程更像是“调用函数”。stub内没什么成员变量，建议在栈上创建和使用，而不必new，当然你也可以把stub存下来复用。Channel::CallMethod和stub访问都是**线程安全**的，可以被所有线程同时访问。比如：
 ```c++
 XXX_Stub stub(&channel);
 stub.some_method(controller, request, response, done);
@@ -708,3 +721,23 @@ FATAL 04-07 20:00:03 7778 public/brpc/src/brpc/channel.cpp:123] Invalid address=
 ### Q: 为什么C++ client/server 能够互相通信， 和其他语言的client/server 通信会报序列化失败的错误
 
 检查一下C++ 版本是否开启了压缩 (Controller::set_compress_type), 目前 python/JAVA版的rpc框架还没有实现压缩，互相返回会出现问题。 
+
+# 附:Client端基本流程
+
+![img](../images/client_side.png)
+
+主要步骤：
+
+1. 创建一个[bthread_id](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/bthread/id.h)作为本次RPC的correlation_id。
+2. 根据Channel的创建方式，从进程级的[SocketMap](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/socket_map.h)中或从[LoadBalancer](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/load_balancer.h)中选择一台下游server作为本次RPC发送的目的地。
+3. 根据连接方式（单连接、连接池、短连接），选择一个[Socket](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/socket.h)。
+4. 如果开启验证且当前Socket没有被验证过时，第一个请求进入验证分支，其余请求会阻塞直到第一个包含认证信息的请求写入Socket。这是因为server端只对第一个请求进行验证。
+5. 根据Channel的协议，选择对应的序列化函数把request序列化至[IOBuf](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/base/iobuf.h)。
+6. 如果配置了超时，设置定时器。从这个点开始要避免使用Controller对象，因为在设定定时器后->有可能触发超时机制->调用到用户的异步回调->用户在回调中析构Controller。
+7. 发送准备阶段结束，若上述任何步骤出错，会调用Channel::HandleSendFailed。
+8. 将之前序列化好的IOBuf写出到Socket上，同时传入回调Channel::HandleSocketFailed，当连接断开、写失败等错误发生时会调用此回调。
+9. 如果是同步发送，Join correlation_id；如果是异步则至此client端返回。
+10. 网络上发消息+收消息。
+11. 收到response后，提取出其中的correlation_id，在O(1)时间内找到对应的Controller。这个过程中不需要查找全局哈希表，有良好的多核扩展性。
+12. 根据协议格式反序列化response。
+13. 调用Controller::OnRPCReturned，其中会根据错误码判断是否需要重试。如果是异步发送，调用用户回调。最后摧毁correlation_id唤醒Join着的线程。

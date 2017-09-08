@@ -1,8 +1,10 @@
-[RPC接口规范](http://gollum.baidu.com/RPCSpec)规定百度内使用protobuf作为通用的描述语言，我们谈论的Service默认指google::protobuf::Service。
+# 示例程序
 
-
+Echo的[server端代码](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/echo_c++/server.cpp)。
 
 # 填写proto文件
+
+RPC接口规范规定百度内使用protobuf作为通用的描述语言，我们谈论的Service默认指google::protobuf::Service。
 
 ```C++
 # 告诉protoc要生成C++ Service基类，如果是java或python，则应分别修改为java_generic_services和py_generic_services
@@ -913,3 +915,7 @@ process_io_write_second
 ### Q: json串="[1,2,3]"没法直接转为protobuf message
 
 不行，最外层必须是json object（大括号包围的）
+
+# 附:Server端基本流程
+
+![img](../images/server_side.png)
