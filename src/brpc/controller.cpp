@@ -829,8 +829,8 @@ void Controller::EndRPC(const CompletionInfo& info) {
             // mode is on. Otherwise there's a tricky deadlock:
             // void SomeService::CallMethod(...) { // -usercode_in_pthread=true
             //   ...
-            //   channel.CallMethod(...., baidu::rpc::DoNothing());
-            //   baidu::rpc::Join(cntl.call_id());
+            //   channel.CallMethod(...., brpc::DoNothing());
+            //   brpc::Join(cntl.call_id());
             //   ...
             // }
             // Join is not signalled when the done does not Run() and the done

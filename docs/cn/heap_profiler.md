@@ -8,7 +8,7 @@ baidu-rpc可以分析内存是被哪些函数占据的。heap profiler的原理�
 
 2. 在COMAKE的CPPFLAGS中增加`-DBRPC_ENABLE_HEAP_PROFILER`
 
-3. 在shell中`export TCMALLOC_SAMPLE_PARAMETER=524288`。该变量指每分配这么多字节内存时做一次统计，默认为0，代表不开启内存统计。[官方文档](http://gperftools.googlecode.com/svn/trunk/doc/tcmalloc.html)建议设置为524288。这个变量也可在运行前临时设置，如`TCMALLOC_SAMPLE_PARAMETER=524288 ./server`。如果没有这个环境变量，可能会看到这样的结果：
+3. 在shell中`export TCMALLOC_SAMPLE_PARAMETER=524288`。该变量指每分配这么多字节内存时做一次统计，默认为0，代表不开启内存统计。[官方文档](http://goog-perftools.sourceforge.net/doc/tcmalloc.html)建议设置为524288。这个变量也可在运行前临时设置，如`TCMALLOC_SAMPLE_PARAMETER=524288 ./server`。如果没有这个环境变量，可能会看到这样的结果：
 
    ```
    $ tools/pprof --text localhost:9002/pprof/heap           

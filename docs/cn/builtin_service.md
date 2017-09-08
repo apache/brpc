@@ -16,20 +16,40 @@
 
 # 主要服务
 
-- ​
+[status](status.md)
+
+[vars](vars.md)
+
+[connections](connections.md)
+
+[flags](flags.md)
+
+[rpcz](rpcz.md)
+
+[cpu profiler](cpu_profiler.md)
+
+[heap profiler](heap_profiler.md)
+
+[contention profiler](contention_profiler.md)
 
 # 其他服务
 
-[version服务](http://brpc.baidu.com:8765/version)可以查看服务器的版本。用户可通过Server::set_version()设置Server的版本，如果用户没有设置，框架会自动为用户生成，规则：`baidu_rpc_server_<service-name1>_<service-name2> ...`
+[version服务](http://brpc.baidu.com:8765/version)可以查看服务器的版本。用户可通过Server::set_version()设置Server的版本，如果用户没有设置，框架会自动为用户生成，规则：`brpc_server_<service-name1>_<service-name2> ...`
+
+![img](../images/version_service.png)
 
 [health服务](http://brpc.baidu.com:8765/health)可以探测服务的存活情况。
 
+![img](../images/health_service.png)
+
 [protobufs服务](http://brpc.baidu.com:8765/protobufs)可以查看程序中所有的protobuf结构体。
+
+![img](../images/protobufs_service.png)
 
 [vlog服务](http://brpc.baidu.com:8765/vlog)可以查看程序中当前可开启的[VLOG](streaming_log.md#VLOG)。
 
-dir服务可以浏览服务器上的所有文件，这个服务比较敏感，默认关闭。
+![img](../images/vlog_service.png)
 
-threads服务可以查看进程内所有线程的运行状况，调用时对程序性能较大，默认关闭。
+dir服务可以浏览服务器上的所有文件，这个服务很敏感，默认关闭也不建议打开。
 
-其他还有一些调试服务，如有需求请联系我们。
+threads服务可以查看进程内所有线程的运行状况，调用时对程序性能影响较大，默认关闭。

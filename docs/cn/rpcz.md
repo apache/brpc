@@ -6,6 +6,14 @@
 
 默认不开启，加入[-enable_rpcz](http://brpc.baidu.com:8765/flags/*rpcz*)选项会在启动后开启。
 
+| Name                       | Value                | Description                              | Defined At                             |
+| -------------------------- | -------------------- | ---------------------------------------- | -------------------------------------- |
+| enable_rpcz (R)            | true (default:false) | Turn on rpcz                             | src/baidu/rpc/builtin/rpcz_service.cpp |
+| rpcz_hex_log_id (R)        | false                | Show log_id in hexadecimal               | src/baidu/rpc/builtin/rpcz_service.cpp |
+| rpcz_database_dir          | ./rpc_data/rpcz      | For storing requests/contexts collected by rpcz. | src/baidu/rpc/span.cpp                 |
+| rpcz_keep_span_db          | false                | Don't remove DB of rpcz at program's exit | src/baidu/rpc/span.cpp                 |
+| rpcz_keep_span_seconds (R) | 3600                 | Keep spans for at most so many seconds   | src/baidu/rpc/span.cpp                 |
+
 若启动时未加-enable_rpcz，则可在启动后访问SERVER_URL/rpcz/enable动态开启rpcz，访问SERVER_URL/rpcz/disable则关闭，这两个链接等价于访问SERVER_URL/flags/enable_rpcz?setvalue=true和SERVER_URL/flags/enable_rpcz?setvalue=false。在r31010之后，rpc在html版本中增加了一个按钮可视化地开启和关闭。
 
 ![img](../images/rpcz_4.png)

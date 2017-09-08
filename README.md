@@ -2,7 +2,7 @@
 
 Most machines on internet communicate with each other via [TCP/IP](http://en.wikipedia.org/wiki/Internet_protocol_suite). However TCP/IP only guarantees reliable data transmissions, we need to abstract more to build services:
 
-* What is the format of data transmission? Different machine and network may have different byte-orders, directly sending in-memory data is not suitable. Fields in the data are added, modified or removed guadually, how do newer services talk with older services?
+* What is the format of data transmission? Different machines and networks may have different byte-orders, directly sending in-memory data is not suitable. Fields in the data are added, modified or removed guadually, how do newer services talk with older services?
 * Can TCP connection be reused for multiple requests to reduce overhead? Can multiple requests be sent through one TCP connection simultaneously?
 * How to talk with a cluster with many machines?
 * What should I do when the connection is broken? What if the server does not respond?
@@ -35,24 +35,21 @@ Common doubts on RPC:
 A RPC framework used throughout [Baidu](http://ir.baidu.com/phoenix.zhtml?c=188488&p=irol-irhome), with more than 600,000 instances. Only C++ implementation is opensourced right now.
 
 You can use it for:
-* Build a server that can talk in multiple protocols (**on same port**)
-  * restful http/https, h2/h2c (compatible with [grpc](https://github.com/grpc/grpc), will be opensourced soon).
+* Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
+  * restful http/https, h2/h2c (compatible with [grpc](https://github.com/grpc/grpc), will be opensourced soon). using http in baidu-rpc is much more friendly than [libcurl](https://curl.haxx.se/libcurl/).
+  * [redis](docs/cn/redis_client.md) and [memcached](docs/cn/memcache_client.md), thread-safe, more friendly and performant than the official clients
   * [rtmp](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building live-streaming services.
   * hadoop_rpc(not opensourced yet)
+  * [rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access) support via [openucx](https://github.com/openucx/ucx) (will be opensourced soon)
   * all sorts of protocols used in Baidu: baidu_std, [streaming_rpc](docs/cn/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc, and nshead-based ones.
   * Many protobuf-based protocols are accessible via HTTP+json, probably from another language.
-  * Services can handle requests [synchronously](docs/cn/server.md) or [asynchrounously](docs/cn/server.md#异步service).
-* Access all sorts of services
-  * http (much more friendly than [libcurl](https://curl.haxx.se/libcurl/)), h2/h2c (compatible with [grpc](https://github.com/grpc/grpc), will be opensourced soon)
-  * [redis](docs/cn/redis_client.md) and [memcached](docs/cn/memcache_client.md), thread-safe, more friendly and performant than the official clients
-  * [rtmp](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video), for building live-streaming services.
-  * all sorts of protocols used in Baidu: baidu_std, [streaming_rpc](docs/cn/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc, and nshead-based ones.
-  * Access service [synchronously](docs/cn/client.md#同步访问) or [asynchrounously](docs/cn/client.md#异步访问), or even [semi-synchronously](docs/cn/client.md#半同步).
+* Rich processing patterns
+  * Services can handle requests [synchronously](docs/cn/server.md) or [asynchronously](docs/cn/server.md#异步service).
+  * Access service [synchronously](docs/cn/client.md#同步访问) or [asynchronously](docs/cn/client.md#异步访问), or even [semi-synchronously](docs/cn/client.md#半同步).
   * Use [combo channels](docs/cn/combo_channel.md) to simplify complicated client patterns declaratively, including sharded and parallel accesses.
-* rdma support (will be opensourced soon)
 * Debug services [via http](docs/cn/builtin_service.md), and run online profilers.
 * Get [better latency and throughput](#better-latency-and-throughput).
-* [Extend baidu-rpc](docs/cn/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/cn/load_balancing.md#名字服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing), [new protocols](docs/cn/new_protocol.md). Extend them by your own or issue your requests.
+* [Extend baidu-rpc](docs/cn/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/cn/load_balancing.md#名字服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
 
 # Advantages of baidu-rpc
 
