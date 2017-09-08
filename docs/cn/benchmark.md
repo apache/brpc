@@ -30,7 +30,7 @@ INF在13年基于saber(kylin变种)和protobuf实现的RPC框架，hulu在实现
 
 ## brpc
 
-INF在2014年底开发至今的rpc产品，支持百度内所有协议（不限于protobuf），并第一次统一了百度内主要分布式系统的RPC框架。测试时其代码为[r31906](https://svn.baidu.com/public/tags/brpc/brpc_1-0-199-31906_PD_BL)（开发请使用@ci-base保持更新）。brpc既支持单连接也支持连接池，前者的结果用"**brpc**"指代，后者用“**brpc_mc**"指代。
+INF在2014年底开发至今的rpc产品，支持百度内所有协议（不限于protobuf），并第一次统一了百度内主要分布式系统的RPC框架。测试时其代码为[r31906](https://svn.baidu.com/public/tags/baidu-rpc/baidu-rpc_1-0-199-31906_PD_BL)（开发请使用@ci-base保持更新）。brpc既支持单连接也支持连接池，前者的结果用"**baidu-rpc**"指代，后者用“**baidu-rpc_mc**"指代。
 
 ## sofa-pbrpc
 

@@ -50,6 +50,11 @@ You can use it for:
 * Debug services [via http](docs/cn/builtin_service.md), and run online profilers.
 * Get [better latency and throughput](#better-latency-and-throughput).
 * [Extend brpc](docs/cn/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/cn/load_balancing.md#名字服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
+* Use cases inside Baidu
+  * [百度地图api入口](docs/cn/case_apicontrol.md)
+  * [联盟DSP](docs/cn/case_baidu_dsp.md)
+  * [ELF学习框架](docs/cn/case_elf.md)
+  * [云平台代理服务](docs/cn/case_ubrpc.md)
 
 # Advantages of brpc
 
@@ -67,7 +72,7 @@ We tried to make simple things simple. Take naming service as an example, in old
 
 ### Make services more reliable
 
-brpc is extensively used in brpc, with more than 600,000 instances and 500 kinds of services, from map-reduce, table storages, high-performance computing, machine learning, indexing servers, ranking servers…. It's been proven.
+brpc is extensively used in Baidu, with more than 600,000 instances and 500 kinds of services, from map-reduce, table storages, high-performance computing, machine learning, indexing servers, ranking servers…. It's been proven.
 
 brpc pays special attentions to development and maintenance efficency, you can [view internal status of servers](docs/cn/builtin_service.md) in web brower or with curl, you can analyze [cpu usages](docs/cn/cpu_profiler.md), [heap allocations](docs/cn/heap_profiler.md) and [lock contentions](docs/cn/contention_profiler.md) of services online, you can measure stats by [bvar](docs/cn/bvar.md), which is viewable in [/vars](docs/cn/vars.md).
 
