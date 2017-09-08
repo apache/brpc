@@ -32,7 +32,7 @@ Common doubts on RPC:
 
 # What is ![brpc](docs/images/logo.png)?
 
-A RPC framework used throughout [Baidu](http://ir.baidu.com/phoenix.zhtml?c=188488&p=irol-irhome), with more than 600,000 instances. Only C++ implementation is opensourced right now.
+A RPC framework used throughout [Baidu](http://ir.baidu.com/phoenix.zhtml?c=188488&p=irol-irhome), with **600,000+** instances and **500+** kinds of services, was called **baidu-rpc** inside Baidu. Only C++ implementation is opensourced right now.
 
 You can use it for:
 * Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
@@ -47,7 +47,7 @@ You can use it for:
   * Services can handle requests [synchronously](docs/cn/server.md) or [asynchronously](docs/cn/server.md#异步service).
   * Access service [synchronously](docs/cn/client.md#同步访问) or [asynchronously](docs/cn/client.md#异步访问), or even [semi-synchronously](docs/cn/client.md#半同步).
   * Use [combo channels](docs/cn/combo_channel.md) to simplify complicated client patterns declaratively, including sharded and parallel accesses.
-* Debug services [via http](docs/cn/builtin_service.md), and run online profilers.
+* Debug services [via http](docs/cn/builtin_service.md), and run  [cpu](docs/cn/cpu_profiler.md), [heap](docs/cn/heap_profiler.md) and [contention](docs/cn/contention_profiler.md) profilers.
 * Get [better latency and throughput](#better-latency-and-throughput).
 * [Extend brpc](docs/cn/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/cn/load_balancing.md#名字服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
 
@@ -67,13 +67,20 @@ We tried to make simple things simple. Take naming service as an example, in old
 
 ### Make services more reliable
 
-brpc is extensively used in Baidu, with more than 600,000 instances and 500 kinds of services, from map-reduce, table storages, high-performance computing, machine learning, indexing servers, ranking servers…. It's been proven.
+brpc is extensively used in Baidu, from:
+
+* map-reduce service & table storages
+* high-performance computing & model training
+* all sorts of indexing & ranking servers
+* ….
+
+It's been proven.
 
 brpc pays special attentions to development and maintenance efficency, you can [view internal status of servers](docs/cn/builtin_service.md) in web brower or with curl, you can analyze [cpu usages](docs/cn/cpu_profiler.md), [heap allocations](docs/cn/heap_profiler.md) and [lock contentions](docs/cn/contention_profiler.md) of services online, you can measure stats by [bvar](docs/cn/bvar.md), which is viewable in [/vars](docs/cn/vars.md).
 
 ### Better latency and throughput
 
-Although almost all RPC implementations claim that they're "high-performant", the number are probably just numbers. Being really high-performant in different scenarios is difficult. To make users easier, brpc goes much deeper at performance than other implementations. 
+Although almost all RPC implementations claim that they're "high-performant", the number are probably just numbers. Being really high-performant in different scenarios is difficult. To unify communication infra inside Baidu, brpc goes much deeper at performance than other implementations.
 
 * Reading and parsing requests from different clients is fully parallelized, and users don't need to distinguish between "IO-threads" and "Processing-threads".  Other implementations probably have "IO-threads" and "Processing-threads" and hash file descriptors(fd) into IO-threads. When a IO-thread handles one of its fds, other fds in the thread can't be handled. If a message is large, other fds are significantly delayed. Although different IO-threads run in parallel, you won't have many IO-threads since they don't have too much to do generally except reading/parsing from fds. If you have 10 IO-threads, one fd may affect 10% of all fds, which is unacceptable to industrial online services (requiring 99.99% availability). The problem will be worse, when fds are distributed unevenly accross IO-threads (unfortunately common), or the service is multi-tenancy (common in cloud services). In brpc, reading from different fds is parallelized and even processing different messages from one fd is parallelized as well. Parsing a large message does not block other messages from the same fd, not to mention other fds. More details can be found [here](docs/cn/io.md#收消息).
 * Writing into one fd and multiple fds are highly concurrent. When multiple threads write into the same fd (common for multiplexed connections), the first thread directly writes in-place and other threads submit their write requests in [wait-free](http://en.wikipedia.org/wiki/Non-blocking_algorithm#Wait-freedom) manner. One fd can be written into 5,000,000 16-byte messages per second by a couple of highly-contended threads. More details can be found [here](docs/cn/io.md#发消息).
