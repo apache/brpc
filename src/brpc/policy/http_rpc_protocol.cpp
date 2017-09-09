@@ -349,7 +349,9 @@ void ProcessHttpResponse(InputMessageBase* msg) {
         } else {
             butil::IOBufAsZeroCopyInputStream wrapper(res_body);
             std::string err;
-            if (!json2pb::JsonToProtoMessage(&wrapper, cntl->response(), &err)) {
+            json2pb::Json2PbOptions options;
+            options.base64_to_bytes = cntl->has_pb_bytes_to_base64();
+            if (!json2pb::JsonToProtoMessage(&wrapper, cntl->response(), options, &err)) {
                 cntl->SetFailed(ERESPONSE, "Fail to parse content, %s", err.c_str());
                 break;
             }
@@ -401,6 +403,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             // Serialize content as json
             std::string err;
             json2pb::Pb2JsonOptions opt;
+            opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
             opt.enum_option = (FLAGS_pb_enum_as_number
                                ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                : json2pb::OUTPUT_ENUM_BY_NAME);
@@ -612,6 +615,7 @@ static void SendHttpResponse(Controller *cntl,
         } else {
             std::string err;
             json2pb::Pb2JsonOptions opt;
+            opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
             opt.enum_option = (FLAGS_pb_enum_as_number
                                ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                : json2pb::OUTPUT_ENUM_BY_NAME);
@@ -1195,7 +1199,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     }
     // NOTE: accesses to builtin services are not counted as part of
     // concurrency, therefore are not limited by ServerOptions.max_concurrency.
-    if (!sp->is_builtin_service && !sp->is_tabbed) {
+    if (!sp->is_builtin_service && !sp->params.is_tabbed) {
         if (!server_accessor.AddConcurrency(cntl.get())) {
             cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
                             server->options().max_concurrency);
@@ -1226,7 +1230,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         cntl->SetFailed("Fail to new req or res");
         return SendHttpResponse(cntl.release(), server, method_status);
     }
-    if (sp->allow_http_body_to_pb &&
+    if (sp->params.allow_http_body_to_pb &&
         method->input_type()->field_count() > 0) {
         // A protobuf service. No matter if Content-type is set to
         // applcation/json or body is empty, we have to treat body as a json
@@ -1263,7 +1267,10 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             } else {
                 butil::IOBufAsZeroCopyInputStream wrapper(req_body);
                 std::string err;
-                if (!json2pb::JsonToProtoMessage(&wrapper, req.get(), &err)) {
+                json2pb::Json2PbOptions options;
+                options.base64_to_bytes = sp->params.pb_bytes_to_base64;
+                cntl->set_pb_bytes_to_base64(sp->params.pb_bytes_to_base64);
+                if (!json2pb::JsonToProtoMessage(&wrapper, req.get(), options, &err)) {
                     cntl->SetFailed(EREQUEST, "Fail to parse http body as %s, %s",
                                     req->GetDescriptor()->full_name().c_str(), err.c_str());
                     return SendHttpResponse(cntl.release(), server, method_status);

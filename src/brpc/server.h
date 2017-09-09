@@ -331,6 +331,11 @@ struct ServiceOptions {
     // with existing clients.
     // Default: true
     bool allow_http_body_to_pb;
+
+    // decode json string to protobuf bytes using base64 decoding when this 
+    // option is turned on.
+    // Default: false if BAIDU_INTERNAL is defined, otherwise true
+    bool pb_bytes_to_base64;
 };
 
 // Represent ports inside [min_port, max_port]
@@ -373,8 +378,15 @@ public:
     struct MethodProperty {
         bool is_builtin_service;
         bool own_method_status;
-        bool is_tabbed;
-        bool allow_http_body_to_pb;
+        // Parameters which have nothing to with management of services, but
+        // will be used when the service is queried.
+        struct OpaqueParams {
+            bool is_tabbed;
+            bool allow_http_body_to_pb;
+            bool pb_bytes_to_base64;
+            OpaqueParams();
+        };
+        OpaqueParams params;        
         // NULL if service of the method was never added as restful.
         // "@path1 @path2 ..." if the method was mapped from paths.
         std::string* http_url;

@@ -200,6 +200,9 @@ void Controller::InternalReset(bool in_constructor) {
     // defined in header. Better for cpu cache and faster for lookup.
     _span = NULL;
     _flags = 0;
+#ifndef BAIDU_INTERNAL
+    set_pb_bytes_to_base64(true);
+#endif
     _error_code = 0;
     _remote_side = butil::EndPoint();
     _local_side = butil::EndPoint();

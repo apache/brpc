@@ -257,8 +257,7 @@ RestfulMap::~RestfulMap() {
 // This function inserts a mapping into _dedup_map.
 bool RestfulMap::AddMethod(const RestfulMethodPath& path,
                            google::protobuf::Service* service,
-                           bool is_tabbed,
-                           bool allow_http_body_to_pb,
+                           const Server::MethodProperty::OpaqueParams& params,
                            const std::string& method_name,
                            MethodStatus* status) {
     if (service == NULL) {
@@ -289,8 +288,7 @@ bool RestfulMap::AddMethod(const RestfulMethodPath& path,
     RestfulMethodProperty& info = _dedup_map[dedup_key];
     info.is_builtin_service = false;
     info.own_method_status = false;
-    info.is_tabbed = is_tabbed;
-    info.allow_http_body_to_pb = allow_http_body_to_pb;
+    info.params = params;
     info.service = service;
     info.method = md;
     info.status = status;

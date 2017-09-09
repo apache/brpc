@@ -148,11 +148,15 @@ ServerOptions::ServerOptions()
     }
 }
 
+Server::MethodProperty::OpaqueParams::OpaqueParams()
+    : is_tabbed(false)
+    , allow_http_body_to_pb(true)
+    , pb_bytes_to_base64(false) {
+}
+
 Server::MethodProperty::MethodProperty()
     : is_builtin_service(false)
     , own_method_status(false)
-    , is_tabbed(false)
-    , allow_http_body_to_pb(true)
     , http_url(NULL)
     , service(NULL)
     , method(NULL)
@@ -388,7 +392,7 @@ Server::Server(ProfilerLinker)
     , _tab_info_list(NULL)
     , _global_restful_map(NULL)
     , _last_start_time(0)
-    , _derivative_thread(0)
+    , _derivative_thread(INVALID_BTHREAD)
     , _keytable_pool(NULL)
     , _concurrency(0) {
     BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,
@@ -398,14 +402,6 @@ Server::Server(ProfilerLinker)
 Server::~Server() {
     Stop(0);
     Join();
-    // Notice that we don't do this in Stop()/Join() because we may need to
-    // check the derivative vars during the joining process (especially when
-    // the server is bugged and stuck);
-    if (_derivative_thread != 0) {
-        bthread_stop(_derivative_thread);
-        bthread_join(_derivative_thread, NULL);
-        _derivative_thread = 0;
-    }
     ClearServices();
     FreeSSLContexts();
 
@@ -944,9 +940,9 @@ int Server::StartInternal(const butil::ip_t& ip,
     
     PutPidFileIfNeeded();
 
-    // Launch _derivative_thread if it's not started.
-    if (_derivative_thread == 0 &&
-        bthread_start_background(&_derivative_thread, NULL,
+    // Launch _derivative_thread.
+    CHECK_EQ(INVALID_BTHREAD, _derivative_thread);
+    if (bthread_start_background(&_derivative_thread, NULL,
                                  UpdateDerivedVars, this) != 0) {
         LOG(ERROR) << "Fail to create _derivative_thread";
         return -1;
@@ -1044,7 +1040,7 @@ int Server::Join() {
 
     if (_session_local_data_pool) {
         // We can't delete the pool right here because there's a bvar watching
-        // this pool in _derivative_thread which will not quit until server's dtor
+        // this pool in _derivative_thread which does not quit yet.
         _session_local_data_pool->Reset(NULL);
     }
     
@@ -1066,6 +1062,16 @@ int Server::Join() {
         CHECK_EQ(0, bthread_key_delete(_tl_options.tls_key));
         _tl_options.tls_key = INVALID_BTHREAD_KEY;
     }
+
+    // Have to join _derivative_thread, which may assume that server is running
+    // and services in server are not mutated, otherwise data race happens
+    // between Add/RemoveService after Join() and the thread.
+    if (_derivative_thread != INVALID_BTHREAD) {
+        bthread_stop(_derivative_thread);
+        bthread_join(_derivative_thread, NULL);
+        _derivative_thread = INVALID_BTHREAD;
+    }
+    
     g_running_server_count.fetch_sub(1, butil::memory_order_relaxed);
     _status = READY;
     return 0;
@@ -1117,8 +1123,9 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
         MethodProperty mp;
         mp.is_builtin_service = is_builtin_service;
         mp.own_method_status = true;
-        mp.is_tabbed = !!tabbed;
-        mp.allow_http_body_to_pb = svc_opt.allow_http_body_to_pb;
+        mp.params.is_tabbed = !!tabbed;
+        mp.params.allow_http_body_to_pb = svc_opt.allow_http_body_to_pb;
+        mp.params.pb_bytes_to_base64 = svc_opt.pb_bytes_to_base64;
         mp.service = service;
         mp.method = md;
         mp.status = new MethodStatus;
@@ -1201,9 +1208,12 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
                 if (_global_restful_map == NULL) {
                     _global_restful_map = new RestfulMap("");
                 }
+                MethodProperty::OpaqueParams params;
+                params.is_tabbed = !!tabbed;
+                params.allow_http_body_to_pb = svc_opt.allow_http_body_to_pb;
+                params.pb_bytes_to_base64 = svc_opt.pb_bytes_to_base64;
                 if (!_global_restful_map->AddMethod(
-                        mappings[i].path, service, !!tabbed,
-                        svc_opt.allow_http_body_to_pb,
+                        mappings[i].path, service, params,
                         mappings[i].method_name, mp->status)) {
                     LOG(ERROR) << "Fail to map `" << mappings[i].path
                                << "' to `" << full_method_name << '\'';
@@ -1235,8 +1245,11 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
             } else {
                 m = sp->restful_map;
             }
-            if (!m->AddMethod(mappings[i].path, service, !!tabbed,
-                              svc_opt.allow_http_body_to_pb,
+            MethodProperty::OpaqueParams params;
+            params.is_tabbed = !!tabbed;
+            params.allow_http_body_to_pb = svc_opt.allow_http_body_to_pb;
+            params.pb_bytes_to_base64 = svc_opt.pb_bytes_to_base64;
+            if (!m->AddMethod(mappings[i].path, service, params,
                               mappings[i].method_name, mp->status)) {
                 LOG(ERROR) << "Fail to map `" << mappings[i].path << "' to `"
                            << sd->full_name() << '.' << mappings[i].method_name
@@ -1288,8 +1301,13 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
 
 ServiceOptions::ServiceOptions()
     : ownership(SERVER_DOESNT_OWN_SERVICE)
-    , allow_http_body_to_pb(true) {
-}
+    , allow_http_body_to_pb(true)
+#ifdef BAIDU_INTERNAL
+    , pb_bytes_to_base64(false)
+#else
+    , pb_bytes_to_base64(true)
+#endif
+    {}
 
 int Server::AddService(google::protobuf::Service* service,
                        ServiceOwnership ownership) {

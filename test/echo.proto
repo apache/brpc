@@ -21,6 +21,14 @@ message ComboRequest {
     repeated EchoRequest requests = 1;
 };
 
+message BytesRequest {
+    required bytes databytes = 1;
+};
+
+message BytesResponse {
+    required bytes databytes = 1;
+};
+
 message ComboResponse {
     repeated EchoResponse responses = 1;
 };
@@ -28,6 +36,8 @@ message ComboResponse {
 service EchoService {
     rpc Echo(EchoRequest) returns (EchoResponse);
     rpc ComboEcho(ComboRequest) returns (ComboResponse);
+    rpc BytesEcho1(BytesRequest) returns (BytesResponse);
+    rpc BytesEcho2(BytesRequest) returns (BytesResponse);
 }
 
 message HttpRequest {}

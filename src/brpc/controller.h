@@ -115,6 +115,7 @@ friend void policy::ProcessMongoRequest(InputMessageBase*);
     static const uint32_t FLAGS_CLOSE_CONNECTION = (1 << 8);
     static const uint32_t FLAGS_LOG_ID = (1 << 9); // log_id is set
     static const uint32_t FLAGS_REQUEST_CODE = (1 << 10);
+    static const uint32_t FLAGS_PB_BYTES_TO_BASE64 = (1 << 11);
     
 public:
     Controller();
@@ -257,6 +258,11 @@ public:
     // may wish to suppress the error completely. To do this, call this
     // method before doing the RPC.
     void ignore_eovercrowded() { add_flag(FLAGS_IGNORE_EOVERCROWDED); }
+    
+    // Set if the field of bytes in protobuf message should be encoded
+    // to base64 string in HTTP request.
+    void set_pb_bytes_to_base64(bool f) { set_flag(FLAGS_PB_BYTES_TO_BASE64, f); }
+    bool has_pb_bytes_to_base64() { return has_flag(FLAGS_PB_BYTES_TO_BASE64); }
 
     // ------------------------------------------------------------------------
     //                      Server-side methods.

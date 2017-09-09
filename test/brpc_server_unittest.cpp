@@ -77,6 +77,7 @@ public:
 bool g_delete = false;
 const std::string EXP_REQUEST = "hello";
 const std::string EXP_RESPONSE = "world";
+const std::string EXP_REQUEST_BASE64 = "aGVsbG8=";
 
 class EchoServiceImpl : public test::EchoService {
 public:
@@ -98,6 +99,24 @@ public:
         } else {
             LOG(INFO) << "No sleep, protocol=" << cntl->request_protocol();
         }
+    }
+
+    virtual void BytesEcho1(google::protobuf::RpcController*,
+                            const test::BytesRequest* request,
+                            test::BytesResponse* response,
+                            google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        EXPECT_EQ(EXP_REQUEST, request->databytes());
+        response->set_databytes(request->databytes());
+    }
+
+    virtual void BytesEcho2(google::protobuf::RpcController*,
+                            const test::BytesRequest* request,
+                            test::BytesResponse* response,
+                            google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        EXPECT_EQ(EXP_REQUEST_BASE64, request->databytes());
+        response->set_databytes(request->databytes());
     }
 
     butil::atomic<int64_t> count;
@@ -1182,6 +1201,42 @@ TEST_F(ServerTest, add_builtin_service) {
     TestAddBuiltinService(brpc::PProfService::descriptor());
     if (brpc::FLAGS_enable_dir_service) {
         TestAddBuiltinService(brpc::DirService::descriptor());
+    }
+}
+
+TEST_F(ServerTest, base64_to_string) {
+    // We test two cases as following. If these two tests can be passed, we
+    // can prove that the pb_bytes_to_base64 flag is working in both client side
+    // and server side.
+    // 1. Client sets pb_bytes_to_base64 and server also sets pb_bytes_to_base64
+    // 2. Client sets pb_bytes_to_base64, but server doesn't set pb_bytes_to_base64
+    for (int i = 0; i < 2; ++i) {
+        brpc::Server server;
+        EchoServiceImpl echo_svc;
+        brpc::ServiceOptions service_opt;
+        service_opt.pb_bytes_to_base64 = (i == 0);
+        ASSERT_EQ(0, server.AddService(&echo_svc,
+                                       service_opt));
+        ASSERT_EQ(0, server.Start(8613, NULL));
+
+        brpc::Channel chan;
+        brpc::ChannelOptions opt;
+        opt.protocol = brpc::PROTOCOL_HTTP;
+        ASSERT_EQ(0, chan.Init("localhost:8613", &opt));
+        brpc::Controller cntl;
+        cntl.http_request().uri() = "/EchoService/BytesEcho" +
+                butil::string_printf("%d", i + 1);
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.http_request().set_content_type("application/json");
+        cntl.set_pb_bytes_to_base64(true);
+        test::BytesRequest req;
+        test::BytesResponse res;
+        req.set_databytes(EXP_REQUEST);
+        chan.CallMethod(NULL, &cntl, &req, &res, NULL);
+        EXPECT_FALSE(cntl.Failed());
+        EXPECT_EQ(EXP_REQUEST, res.databytes());
+        server.Stop(0);
+        server.Join();
     }
 }
 
