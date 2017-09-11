@@ -1,0 +1,9 @@
+syntax="proto2";
+option cc_generic_services = true;
+
+message HttpRequest {};
+message HttpResponse {};
+
+service ViewService {
+      rpc default_method(HttpRequest) returns (HttpResponse);
+};

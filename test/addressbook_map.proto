@@ -1,0 +1,39 @@
+message AddressNoMap {
+    required string addr = 1;
+}
+
+message AddressIntMap {
+    required string addr = 1;
+    message MapFieldEntry {
+        required string key = 1;
+        required int32 value = 2;
+    }
+    repeated MapFieldEntry numbers = 2;
+}
+
+message AddressStringMap {
+    required string addr = 1;
+    message MapFieldEntry {
+        required string key = 1;
+        required string value = 2;
+    }
+    repeated MapFieldEntry contacts = 2;
+}
+
+message AddressComplex {
+    required string addr = 1;
+    
+    message FriendEntry {
+        required string key = 1;
+        message Education {
+            required string school = 1;
+            required int32 year = 2;
+        }
+        repeated Education value = 2;
+    }
+    repeated FriendEntry friends = 2;
+}
+
+message haha {
+    repeated int32 a = 1;
+}

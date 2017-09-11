@@ -1,0 +1,47 @@
+syntax="proto2";
+import "brpc/options.proto";
+
+package brpc.policy;
+
+option cc_generic_services = true;
+option java_generic_services = true;
+option java_package="com.brpc.policy";
+option java_outer_classname="MongoProto";
+
+enum MongoOp {
+    OPREPLY = 1;
+    DBMSG = 1000;
+    DB_UPDATE = 2001;
+    DB_INSERT = 2002;
+    DB_QUERY = 2004;
+    DB_GETMORE = 2005;
+    DB_DELETE = 2006;
+    DB_KILLCURSORS = 2007;
+    DB_COMMAND = 2008;
+    DB_COMMANDREPLY = 2009;
+}
+
+message MongoHeader {
+    required int32 message_length = 1;
+    required int32 request_id = 2;
+    required int32 response_to = 3;
+    required MongoOp op_code = 4;
+}
+
+message MongoRequest {
+    required MongoHeader header = 1;
+    required string message = 2;
+}
+
+message MongoResponse {
+    required MongoHeader header = 1;
+    required int32 response_flags = 2;
+    required int64 cursor_id = 3;
+    required int32 starting_from = 4;
+    required int32 number_returned = 5;
+    required string message = 6;
+}
+
+service MongoService {
+    rpc default_method(MongoRequest) returns (MongoResponse);
+}

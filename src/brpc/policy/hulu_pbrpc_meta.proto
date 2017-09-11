@@ -1,0 +1,39 @@
+syntax="proto2";
+import "brpc/options.proto";                // For TalkType
+
+package brpc.policy;
+option java_package="com.brpc.policy";
+option java_outer_classname="HuluRpcProto";
+
+message HuluRpcRequestMeta {
+    required string service_name = 1;
+    required int32 method_index = 2;
+    optional int32 compress_type = 3;
+    optional int64 correlation_id = 4;
+    optional int64 log_id = 5;
+    optional ChunkInfo chuck_info = 6;
+
+    optional int64 trace_id = 7;
+    optional int64 parent_span_id = 8;
+    optional int64 span_id = 9;
+
+    optional TalkType request_talk_type = 10;
+    optional bytes user_data = 11;
+
+    optional int32 user_message_size = 12;
+    optional int64 user_defined_source_addr = 13;
+    optional string method_name = 14;
+    optional bytes credential_data = 15;
+}
+
+message HuluRpcResponseMeta {
+    optional int32 error_code = 1;
+    optional string error_text = 2;
+    optional sint64 correlation_id = 3;
+    optional int32 compress_type = 4;
+    optional ChunkInfo chuck_info = 5;
+    optional TalkType response_talk_type = 6;
+    optional bytes user_data = 7;
+    optional int32 user_message_size = 8;
+    optional int64 user_defined_source_addr = 9;
+}

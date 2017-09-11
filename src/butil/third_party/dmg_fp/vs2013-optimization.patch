@@ -1,0 +1,18 @@
+Index: base/third_party/dmg_fp/dtoa.cc
+diff --git a/base/third_party/dmg_fp/dtoa.cc b/base/third_party/dmg_fp/dtoa.cc
+index 4eb9f0efd94221b3ab95f84554bbc92f112bf973..b03ccff569f9403eb67a95737b0e19740e56ef33 100644
+--- a/base/third_party/dmg_fp/dtoa.cc
++++ b/base/third_party/dmg_fp/dtoa.cc
+@@ -179,6 +179,12 @@
+  *	used for input more than STRTOD_DIGLIM digits long (default 40).
+  */
+ 
++#if defined _MSC_VER && _MSC_VER == 1800
++// TODO(scottmg): VS2013 RC ICEs on a bunch of functions in this file.
++// This should be removed after RTM. See http://crbug.com/288948.
++#pragma optimize("", off)
++#endif
++
+ #define IEEE_8087
+ #define NO_HEX_FP
+ 

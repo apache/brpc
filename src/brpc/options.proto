@@ -1,0 +1,79 @@
+syntax="proto2";
+import "google/protobuf/descriptor.proto";
+
+package brpc;
+option java_package="com.brpc";
+option java_outer_classname="Options";
+
+enum TalkType {
+    TALK_TYPE_NORMAL = 0;
+    TALK_TYPE_ONEWAY = 1;
+}
+
+enum ConnectionType {
+    // bit-exclusive values since we may OR them to represent supported types.
+    CONNECTION_TYPE_UNKNOWN = 0;
+    CONNECTION_TYPE_SINGLE = 1;
+    CONNECTION_TYPE_POOLED = 2;
+    CONNECTION_TYPE_SHORT = 4;  
+}
+
+enum ProtocolType {
+    PROTOCOL_UNKNOWN = 0;
+    PROTOCOL_BAIDU_STD = 1;
+    PROTOCOL_STREAMING_RPC = 2;
+    PROTOCOL_HULU_PBRPC = 3;
+    PROTOCOL_SOFA_PBRPC = 4;
+    PROTOCOL_RTMP = 5;
+    PROTOCOL_HTTP = 6;
+    PROTOCOL_PUBLIC_PBRPC = 7;
+    PROTOCOL_NOVA_PBRPC = 8;
+    PROTOCOL_NSHEAD_CLIENT = 9;        // implemented in baidu-rpc-ub
+    PROTOCOL_NSHEAD = 10;
+    PROTOCOL_HADOOP_RPC = 11;
+    PROTOCOL_HADOOP_SERVER_RPC = 12;
+    PROTOCOL_MONGO = 13;               // server side only
+    PROTOCOL_UBRPC_COMPACK = 14;
+    PROTOCOL_DIDX_CLIENT = 15;         // Client side only
+    PROTOCOL_REDIS = 16;               // Client side only
+    PROTOCOL_MEMCACHE = 17;            // Client side only
+    PROTOCOL_ITP = 18;
+    PROTOCOL_NSHEAD_MCPACK = 19;
+    PROTOCOL_DISP_IDL = 20;            // Client side only
+    PROTOCOL_ERSDA_CLIENT = 21;        // Client side only
+    PROTOCOL_UBRPC_MCPACK2 = 22;       // Client side only
+    // Reserve special protocol for cds-agent, which depends on FIFO right now
+    PROTOCOL_CDS_AGENT = 23;           // Client side only
+    PROTOCOL_ESP = 24;           // Client side only
+}
+
+enum CompressType {
+    COMPRESS_TYPE_NONE = 0;
+    COMPRESS_TYPE_SNAPPY = 1;
+    COMPRESS_TYPE_GZIP = 2;
+    COMPRESS_TYPE_ZLIB = 3;
+    COMPRESS_TYPE_LZ4 = 4;
+}
+
+message ChunkInfo {
+    required int64 stream_id = 1;
+    required int64 chunk_id = 2;
+}
+
+extend google.protobuf.ServiceOptions {
+    // Timeout in milliseconds, at service level.
+    optional int64 service_timeout = 90000 [default = 10000];
+}
+
+extend google.protobuf.MethodOptions {
+    // Talk type.
+    optional TalkType request_talk_type = 90001 [default = TALK_TYPE_NORMAL];
+    optional TalkType response_talk_type = 90002 [default = TALK_TYPE_NORMAL];
+
+    // If set, override service_timeout.
+    optional int64 method_timeout = 90003;
+
+    // Compression for request/response.
+    optional CompressType request_compression = 90004 [default = COMPRESS_TYPE_NONE];
+    optional CompressType response_compression = 90005 [default = COMPRESS_TYPE_NONE];
+}

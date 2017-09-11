@@ -1,0 +1,14 @@
+syntax="proto2";
+package brpc;
+
+option cc_generic_services = true;
+
+message GetJsRequest {}
+message GetJsResponse {}
+
+service js {
+    rpc sorttable(GetJsRequest) returns (GetJsResponse);
+    rpc jquery_min(GetJsRequest) returns (GetJsResponse);
+    rpc flot_min(GetJsRequest) returns (GetJsResponse);
+    rpc viz_min(GetJsRequest) returns (GetJsResponse);
+}

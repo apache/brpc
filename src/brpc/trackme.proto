@@ -1,0 +1,34 @@
+syntax="proto2";
+import "brpc/options.proto";
+option cc_generic_services=true;
+
+package brpc;
+
+// The request sent to -trackme_server
+message TrackMeRequest {
+  // the svn revision when baidu-rp being compiled, which will be checked
+  // by server to tell if the version contains bugs
+  optional int64 rpc_version = 1;
+  optional string server_addr = 2;    
+};
+
+enum TrackMeSeverity {
+  TrackMeOK = 0;
+  TrackMeWarning = 1;
+  TrackMeFatal = 2;
+};
+
+// The response from -trackme_server
+message TrackMeResponse {
+  // Print an ERROR log with error_text when severity=TrackMeFatal
+  // Print a WARNING log with error_text when severity=TrackMeWarning
+  // Do nothing when severity=TrackMeOk
+  optional TrackMeSeverity severity = 1; 
+  optional string error_text = 2;
+  // If this field is set, send trackme requests with this interval.
+  optional int32 new_interval = 3;
+};
+
+service TrackMeService {
+  rpc TrackMe(TrackMeRequest) returns (TrackMeResponse);
+}

@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# source shflags from current directory
+mydir="${BASH_SOURCE%/*}"
+if [[ ! -d "$mydir" ]]; then mydir="$PWD"; fi
+. $mydir/shflags
+
+# define command-line flags
+DEFINE_string 'data' '' 'message body of http' 'd'
+DEFINE_string 'content_type' '' 'content type of http'
+DEFINE_string 'json' '' 'json message' 'j'
+DEFINE_string 'auth' 'mock_user|mock_roles|' 'for giano authentication'
+DEFINE_integer 'cid' '0' 'An identifier to associate response with request'
+DEFINE_integer 'log_id' '0' 'Optionally set by user'
+
+# parse the command-line
+FLAGS "$@" || exit 1
+eval set -- "${FLAGS_ARGV}"
+
+# Printing to stderr
+function error() {
+    >&2 echo "probe: $@"
+}
+
+if [[ "$@" == "" ]]; then
+    flags_help
+    exit 1
+fi
+
+curl_cm="-H 'Correlation-ID: ${FLAGS_cid}' -H 'Log-ID: ${FLAGS_log_id}'"
+
+
+if [ "$FLAGS_json" != "" ]; then
+    curl_cm="$curl_cm -H 'Content-Type: application/json' -d '$FLAGS_json'"
+else
+    if [ "$FLAGS_content_type" != "" ]; then
+        curl_cm="$curl_cm -H 'Content-Type: ${FLAGS_content_type}'"
+    fi
+    if [ "$FLAGS_data" != "" ]; then
+        curl_cm="$curl_cm -d '$FLAGS_data'"
+    fi
+fi
+
+if [ "$FLAGS_auth" != "" ]; then
+    curl_cm="$curl_cm -H 'Authorization: ${FLAGS_auth}'"
+fi
+
+sh -c "curl -i $curl_cm -X POST $@"
+echo

@@ -1,0 +1,24 @@
+syntax="proto2";
+import "brpc/options.proto";
+
+package brpc;
+
+option java_package="com.brpc";
+option java_outer_classname="NsheadProto";
+
+message NsheadMeta {
+    // Returned by `MethodDescriptor::full_name'
+    // Something likd "test.EchoService.Echo"
+    required string full_method_name = 1;      
+    
+    optional int64 correlation_id = 2;
+    optional int64 log_id = 3;
+    optional int32 attachment_size = 4;
+    optional CompressType compress_type = 5;
+
+    optional int64 trace_id = 6;
+    optional int64 span_id = 7;
+    optional int64 parent_span_id = 8;
+
+    optional bytes user_string = 9;
+}

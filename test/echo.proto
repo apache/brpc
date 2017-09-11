@@ -1,0 +1,71 @@
+syntax="proto2";
+import "idl_options.proto";
+option (idl_support) = true;
+option cc_generic_services = true;
+package test;
+
+message EchoRequest {
+    required string message = 1;
+    optional int32 code = 2;
+    optional bool close_fd = 3;
+    optional int32 sleep_us = 4;
+    optional int32 server_fail = 5;
+};
+
+message EchoResponse {
+    required string message = 1;
+    repeated int32 code_list = 2;
+};
+
+message ComboRequest {
+    repeated EchoRequest requests = 1;
+};
+
+message BytesRequest {
+    required bytes databytes = 1;
+};
+
+message BytesResponse {
+    required bytes databytes = 1;
+};
+
+message ComboResponse {
+    repeated EchoResponse responses = 1;
+};
+
+service EchoService {
+    rpc Echo(EchoRequest) returns (EchoResponse);
+    rpc ComboEcho(ComboRequest) returns (ComboResponse);
+    rpc BytesEcho1(BytesRequest) returns (BytesResponse);
+    rpc BytesEcho2(BytesRequest) returns (BytesResponse);
+}
+
+message HttpRequest {}
+message HttpResponse {}
+service DownloadService {
+    rpc Download(HttpRequest) returns (HttpResponse);
+    rpc DownloadFailed(HttpRequest) returns (HttpResponse);
+}
+
+service UserNamingService {
+    rpc ListNames(HttpRequest) returns (HttpResponse);
+    rpc Touch(HttpRequest) returns (HttpResponse);
+};
+
+enum State0 {
+    STATE0_NUM_0 = 0;
+    STATE0_NUM_1 = 1;
+    STATE0_NUM_2 = 2;
+};
+
+enum State1 {
+    STATE1_NUM_0 = 0;
+    STATE1_NUM_1 = 1;
+};
+
+message Message1 {
+    required State0 stat = 1;
+};
+message Message2 {
+    required State1 stat = 1;
+};

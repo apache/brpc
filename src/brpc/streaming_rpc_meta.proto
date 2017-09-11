@@ -1,0 +1,32 @@
+syntax="proto2";
+import "brpc/options.proto";
+
+package brpc;
+option java_package="com.brpc";
+option java_outer_classname="StreamingRpcProto";
+
+message StreamSettings {
+    required int64 stream_id = 1;
+    optional bool need_feedback = 2 [default = false];
+    optional bool writable = 3 [default = false];
+}
+
+enum FrameType {
+    FRAME_TYPE_UNKNOWN = 0;
+    FRAME_TYPE_RST = 1;
+    FRAME_TYPE_CLOSE = 2;
+    FRAME_TYPE_DATA = 3;
+    FRAME_TYPE_FEEDBACK= 4;
+}
+
+message StreamFrameMeta {
+    required int64 stream_id = 1;
+    optional int64 source_stream_id = 2;
+    optional FrameType frame_type = 3;
+    optional bool has_continuation = 4;
+    optional Feedback feedback = 5;
+}
+
+message Feedback {
+    optional int64 consumed_size = 1;
+}

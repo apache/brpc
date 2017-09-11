@@ -1,0 +1,147 @@
+syntax="proto2";
+import "google/protobuf/descriptor.proto";
+
+package brpc;
+
+option cc_generic_services = true;
+option java_generic_services = true;
+option java_package = "com.brpc";
+option java_outer_classname = "BuiltinService";
+
+message IndexRequest {}
+message IndexResponse {} 
+message FlagsRequest {}
+message FlagsResponse {} 
+message VersionRequest {}
+message VersionResponse {}
+message HealthRequest{}
+message HealthResponse {}
+message StatusRequest {}
+message StatusResponse {}
+message ProtobufsRequest {}
+message ProtobufsResponse {}
+message ConnectionsRequest {}
+message ConnectionsResponse {}
+message ListRequest {}
+message ListResponse {
+    repeated google.protobuf.ServiceDescriptorProto service = 1;
+}
+message VarsRequest {}
+message VarsResponse {}
+message BthreadsRequest {}
+message BthreadsResponse {}
+message IdsRequest {}
+message IdsResponse{}
+message SocketsRequest {}
+message SocketsResponse {}
+message RpczRequest {}
+message RpczResponse {}
+message ThreadsRequest {}
+message ThreadsResponse {}
+message DirRequest {}
+message DirResponse {}
+message VLogRequest {}
+message VLogResponse {}
+message BadMethodRequest {
+    required string service_name = 1;
+}
+message BadMethodResponse {}
+
+service index {
+    rpc default_method(IndexRequest) returns (IndexResponse);
+}
+
+service version {
+    rpc default_method(VersionRequest) returns (VersionResponse);
+}
+
+service health {
+    rpc default_method(HealthRequest) returns (HealthResponse);
+}
+
+service status {
+    rpc default_method(StatusRequest) returns (StatusResponse);
+}
+
+service protobufs {
+    rpc default_method(ProtobufsRequest) returns (ProtobufsResponse);
+}
+
+service connections {
+    rpc default_method(ConnectionsRequest) returns (ConnectionsResponse);
+}
+
+service list {
+    rpc default_method(ListRequest) returns (ListResponse);
+}
+
+service threads {
+    rpc default_method(ThreadsRequest) returns (ThreadsResponse);
+}
+
+service vlog {
+    rpc default_method(VLogRequest) returns (VLogResponse);
+}
+
+service bthreads {
+    rpc default_method(BthreadsRequest) returns (BthreadsResponse);
+}
+
+service ids {
+    rpc default_method(IdsRequest) returns (IdsResponse);
+}
+
+service sockets {
+    rpc default_method(SocketsRequest) returns (SocketsResponse);
+}
+
+service badmethod {
+    rpc no_method(BadMethodRequest) returns (BadMethodResponse);
+}
+
+message ProfileRequest {}
+message ProfileResponse {}
+
+service pprof {
+    rpc profile(ProfileRequest) returns (ProfileResponse);
+    rpc contention(ProfileRequest) returns (ProfileResponse);
+    rpc heap(ProfileRequest) returns (ProfileResponse);
+    rpc symbol(ProfileRequest) returns (ProfileResponse);
+    rpc cmdline(ProfileRequest) returns (ProfileResponse);
+    rpc growth(ProfileRequest) returns (ProfileResponse);
+}
+
+message HotspotsRequest {}
+message HotspotsResponse {}
+
+service hotspots {
+    rpc cpu(HotspotsRequest) returns (HotspotsResponse);
+    rpc cpu_non_responsive(HotspotsRequest) returns (HotspotsResponse);
+    rpc heap(HotspotsRequest) returns (HotspotsResponse);
+    rpc heap_non_responsive(HotspotsRequest) returns (HotspotsResponse);
+    rpc growth(HotspotsRequest) returns (HotspotsResponse);
+    rpc growth_non_responsive(HotspotsRequest) returns (HotspotsResponse);
+    rpc contention(HotspotsRequest) returns (HotspotsResponse);
+    rpc contention_non_responsive(HotspotsRequest) returns (HotspotsResponse);
+}
+
+service flags {
+    rpc default_method(FlagsRequest) returns (FlagsResponse);
+}
+
+service vars {
+    rpc default_method(VarsRequest) returns (VarsResponse);
+}
+
+service rpcz {
+    rpc enable(RpczRequest) returns (RpczResponse);
+    rpc disable(RpczRequest) returns (RpczResponse);
+    rpc stats(RpczRequest) returns (RpczResponse);
+    rpc hex_log_id(RpczRequest) returns (RpczResponse);
+    rpc dec_log_id(RpczRequest) returns (RpczResponse);
+    rpc default_method(RpczRequest) returns (RpczResponse);
+}
+
+service dir {
+    rpc default_method(DirRequest) returns (DirResponse);
+}

@@ -1,0 +1,139 @@
+Index: reader.h
+===================================================================
+--- reader.h	(revision 30390)
++++ reader.h	(working copy)
+@@ -156,10 +156,10 @@
+ 
+     bool Null();
+     bool Bool(bool b);
+-    bool Int(int i);
+-    bool Uint(unsigned i);
+-    bool Int64(int64_t i);
+-    bool Uint64(uint64_t i);
++    bool AddInt(int i);
++    bool AddUint(unsigned i);
++    bool AddInt64(int64_t i);
++    bool AddUint64(uint64_t i);
+     bool Double(double d);
+     bool String(const Ch* str, SizeType length, bool copy);
+     bool StartObject();
+@@ -186,10 +186,10 @@
+     bool Default() { return true; }
+     bool Null() { return static_cast<Override&>(*this).Default(); }
+     bool Bool(bool) { return static_cast<Override&>(*this).Default(); }
+-    bool Int(int) { return static_cast<Override&>(*this).Default(); }
+-    bool Uint(unsigned) { return static_cast<Override&>(*this).Default(); }
+-    bool Int64(int64_t) { return static_cast<Override&>(*this).Default(); }
+-    bool Uint64(uint64_t) { return static_cast<Override&>(*this).Default(); }
++    bool AddInt(int) { return static_cast<Override&>(*this).Default(); }
++    bool AddUint(unsigned) { return static_cast<Override&>(*this).Default(); }
++    bool AddInt64(int64_t) { return static_cast<Override&>(*this).Default(); }
++    bool AddUint64(uint64_t) { return static_cast<Override&>(*this).Default(); }
+     bool Double(double) { return static_cast<Override&>(*this).Default(); }
+     bool String(const Ch*, SizeType, bool) { return static_cast<Override&>(*this).Default(); }
+     bool StartObject() { return static_cast<Override&>(*this).Default(); }
+@@ -967,15 +967,15 @@
+         else {
+             if (use64bit) {
+                 if (minus)
+-                    cont = handler.Int64(static_cast<int64_t>(~i64 + 1));
++                    cont = handler.AddInt64(static_cast<int64_t>(~i64 + 1));
+                 else
+-                    cont = handler.Uint64(i64);
++                    cont = handler.AddUint64(i64);
+             }
+             else {
+                 if (minus)
+-                    cont = handler.Int(static_cast<int32_t>(~i + 1));
++                    cont = handler.AddInt(static_cast<int32_t>(~i + 1));
+                 else
+-                    cont = handler.Uint(i);
++                    cont = handler.AddUint(i);
+             }
+         }
+         if (!cont)
+Index: writer.h
+===================================================================
+--- writer.h	(revision 30390)
++++ writer.h	(working copy)
+@@ -107,10 +107,10 @@
+ 
+     bool Null()                 { Prefix(kNullType);   return WriteNull(); }
+     bool Bool(bool b)           { Prefix(b ? kTrueType : kFalseType); return WriteBool(b); }
+-    bool Int(int i)             { Prefix(kNumberType); return WriteInt(i); }
+-    bool Uint(unsigned u)       { Prefix(kNumberType); return WriteUint(u); }
+-    bool Int64(int64_t i64)     { Prefix(kNumberType); return WriteInt64(i64); }
+-    bool Uint64(uint64_t u64)   { Prefix(kNumberType); return WriteUint64(u64); }
++    bool AddInt(int i)             { Prefix(kNumberType); return WriteInt(i); }
++    bool AddUint(unsigned u)       { Prefix(kNumberType); return WriteUint(u); }
++    bool AddInt64(int64_t i64)     { Prefix(kNumberType); return WriteInt64(i64); }
++    bool AddUint64(uint64_t u64)   { Prefix(kNumberType); return WriteUint64(u64); }
+ 
+     //! Writes the given \c double value to the stream
+     /*!
+Index: document.h
+===================================================================
+--- document.h	(revision 30390)
++++ document.h	(working copy)
+@@ -1537,10 +1537,10 @@
+     
+         default:
+             RAPIDJSON_ASSERT(GetType() == kNumberType);
+-            if (IsInt())            return handler.Int(data_.n.i.i);
+-            else if (IsUint())      return handler.Uint(data_.n.u.u);
+-            else if (IsInt64())     return handler.Int64(data_.n.i64);
+-            else if (IsUint64())    return handler.Uint64(data_.n.u64);
++            if (IsInt())            return handler.AddInt(data_.n.i.i);
++            else if (IsUint())      return handler.AddUint(data_.n.u.u);
++            else if (IsInt64())     return handler.AddInt64(data_.n.i64);
++            else if (IsUint64())    return handler.AddUint64(data_.n.u64);
+             else                    return handler.Double(data_.n.d);
+         }
+     }
+@@ -1941,10 +1941,10 @@
+     // Implementation of Handler
+     bool Null() { new (stack_.template Push<ValueType>()) ValueType(); return true; }
+     bool Bool(bool b) { new (stack_.template Push<ValueType>()) ValueType(b); return true; }
+-    bool Int(int i) { new (stack_.template Push<ValueType>()) ValueType(i); return true; }
+-    bool Uint(unsigned i) { new (stack_.template Push<ValueType>()) ValueType(i); return true; }
+-    bool Int64(int64_t i) { new (stack_.template Push<ValueType>()) ValueType(i); return true; }
+-    bool Uint64(uint64_t i) { new (stack_.template Push<ValueType>()) ValueType(i); return true; }
++    bool AddInt(int i) { new (stack_.template Push<ValueType>()) ValueType(i); return true; }
++    bool AddUint(unsigned i) { new (stack_.template Push<ValueType>()) ValueType(i); return true; }
++    bool AddInt64(int64_t i) { new (stack_.template Push<ValueType>()) ValueType(i); return true; }
++    bool AddUint64(uint64_t i) { new (stack_.template Push<ValueType>()) ValueType(i); return true; }
+     bool Double(double d) { new (stack_.template Push<ValueType>()) ValueType(d); return true; }
+ 
+     bool String(const Ch* str, SizeType length, bool copy) { 
+Index: pointer.h
+===================================================================
+--- pointer.h	(revision 30390)
++++ pointer.h	(working copy)
+@@ -271,7 +271,7 @@
+ 
+     //! Append a token by value, and return a new Pointer
+     /*!
+-        \param value Value (either Uint or String) to be appended.
++        \param value Value (either AddUint or String) to be appended.
+         \param allocator Allocator for the newly return Pointer.
+         \return A new Pointer with appended token.
+     */
+Index: prettywriter.h
+===================================================================
+--- prettywriter.h	(revision 30390)
++++ prettywriter.h	(working copy)
+@@ -64,10 +64,10 @@
+ 
+     bool Null()                 { PrettyPrefix(kNullType);   return Base::WriteNull(); }
+     bool Bool(bool b)           { PrettyPrefix(b ? kTrueType : kFalseType); return Base::WriteBool(b); }
+-    bool Int(int i)             { PrettyPrefix(kNumberType); return Base::WriteInt(i); }
+-    bool Uint(unsigned u)       { PrettyPrefix(kNumberType); return Base::WriteUint(u); }
+-    bool Int64(int64_t i64)     { PrettyPrefix(kNumberType); return Base::WriteInt64(i64); }
+-    bool Uint64(uint64_t u64)   { PrettyPrefix(kNumberType); return Base::WriteUint64(u64);  }
++    bool AddInt(int i)             { PrettyPrefix(kNumberType); return Base::WriteInt(i); }
++    bool AddUint(unsigned u)       { PrettyPrefix(kNumberType); return Base::WriteUint(u); }
++    bool AddInt64(int64_t i64)     { PrettyPrefix(kNumberType); return Base::WriteInt64(i64); }
++    bool AddUint64(uint64_t u64)   { PrettyPrefix(kNumberType); return Base::WriteUint64(u64);  }
+     bool Double(double d)       { PrettyPrefix(kNumberType); return Base::WriteDouble(d); }
+ 
+     bool String(const Ch* str, SizeType length, bool copy = false) {
