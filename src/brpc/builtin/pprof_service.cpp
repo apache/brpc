@@ -28,6 +28,7 @@
 #include "brpc/closure_guard.h"             // ClosureGuard
 #include "brpc/builtin/pprof_service.h"
 #include "brpc/builtin/common.h"
+#include "brpc/details/tcmalloc_extension.h"
 #include "bthread/bthread.h"                // bthread_usleep
 #include "butil/fd_guard.h"
 
@@ -36,9 +37,6 @@ extern char *program_invocation_name;
 int __attribute__((weak)) ProfilerStart(const char* fname);
 void __attribute__((weak)) ProfilerStop();
 }
-
-void __attribute__((weak)) TCMallocGetHeapSample(std::string* writer);
-void __attribute__((weak)) TCMallocGetHeapGrowthStacks(std::string* writer);
 
 namespace bthread {
 bool ContentionProfilerStart(const char* filename);
@@ -204,7 +202,8 @@ void PProfService::heap(
     ::google::protobuf::Closure* done) {
     ClosureGuard done_guard(done);
     Controller* cntl = static_cast<Controller*>(controller_base);
-    if ((void*)TCMallocGetHeapSample == NULL) {
+    MallocExtension* malloc_ext = MallocExtension::instance();
+    if (malloc_ext == NULL) {
         cntl->SetFailed(ENOMETHOD, "%s, to enable heap profiler, check out "
                         "docs/cn/heap_profiler.md",
                         berror(ENOMETHOD));
@@ -220,7 +219,7 @@ void PProfService::heap(
     LOG(INFO) << " requests for heap profile";
 
     std::string obj;
-    TCMallocGetHeapSample(&obj);
+    malloc_ext->GetHeapSample(&obj);
     cntl->http_response().set_content_type("text/plain");
     cntl->response_attachment().append(obj);    
 }
@@ -232,7 +231,8 @@ void PProfService::growth(
     ::google::protobuf::Closure* done) {
     ClosureGuard done_guard(done);
     Controller* cntl = static_cast<Controller*>(controller_base);
-    if ((void*)TCMallocGetHeapGrowthStacks == NULL) {
+    MallocExtension* malloc_ext = MallocExtension::instance();
+    if (malloc_ext == NULL) {
         cntl->SetFailed(ENOMETHOD, "%s, to enable growth profiler, check out "
                         "docs/cn/heap_profiler.md",
                         berror(ENOMETHOD));
@@ -248,7 +248,7 @@ void PProfService::growth(
     LOG(INFO) << " requests for growth profile";
 
     std::string obj;
-    TCMallocGetHeapGrowthStacks(&obj);
+    malloc_ext->GetHeapGrowthStacks(&obj);
     cntl->http_response().set_content_type("text/plain");
     cntl->response_attachment().append(obj);    
 }

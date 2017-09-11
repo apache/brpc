@@ -1,3 +1,9 @@
+// Baidu RPC - A framework to host and access services throughout Baidu.
+// Copyright (c) 2014 Baidu.com, Inc. All Rights Reserved
+
+// Author: The baidu-rpc authors (pbrpc@baidu.com)
+// Date: Wed Dec  3 15:08:36 CST 2014
+
 // This file pastes google/malloc_extension.h and implements
 // TCMallocGetHeapSample in the last sections.
 
@@ -65,7 +71,7 @@ static const int kMallocHistogramSize = 64;
 
 typedef std::string MallocExtensionWriter;
 
-namespace butil {
+namespace base {
 struct MallocRange;
 }
 
@@ -120,7 +126,7 @@ class PERFTOOLS_DLL_DECL MallocExtension {
   //
   // This is a best-effort interface useful only for performance
   // analysis.  The implementation may not call func at all.
-  typedef void (RangeFunction)(void*, const butil::MallocRange*);
+  typedef void (RangeFunction)(void*, const base::MallocRange*);
   virtual void Ranges(void* arg, RangeFunction func);
 
   // -------------------------------------------------------------------
@@ -314,12 +320,3 @@ class PERFTOOLS_DLL_DECL MallocExtension {
   // in the address space size.
   virtual void** ReadHeapGrowthStackTraces();
 };
-
-// Following functions will not be linked when BRPC_ENABLE_HEAP_PROFILER is
-// undefined.
-void TCMallocGetHeapSample(std::string* writer) {
-    MallocExtension::instance()->GetHeapSample(writer);
-}
-void TCMallocGetHeapGrowthStacks(std::string* writer) {
-    MallocExtension::instance()->GetHeapGrowthStacks(writer);
-}

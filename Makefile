@@ -11,8 +11,9 @@ CXXFLAGS=$(CPPFLAGS) -g -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-
 CFLAGS=$(CPPFLAGS) -g -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
 HDRPATHS=-I./src $(addprefix -I, $(HDRS))
 LIBPATHS = $(addprefix -L, $(LIBS))
+COMMA = ,
+SOPATHS = $(addprefix -Wl$(COMMA)-rpath=, $(LIBS))
 SRCEXTS = .c .cc .cpp .proto
-HDREXTS = .h .hpp
 
 #required by butil/crc32.cc to boost performance for 10x
 ifeq ($(shell test $(GCC_VERSION) -ge 40400; echo $$?),0)
@@ -195,7 +196,7 @@ JSON2PB_OBJS = $(addsuffix .o, $(basename $(JSON2PB_SOURCES)))
 BRPC_DIRS = src/brpc src/brpc/details src/brpc/builtin src/brpc/policy
 BRPC_SOURCES = $(foreach d,$(BRPC_DIRS),$(wildcard $(addprefix $(d)/*,$(SRCEXTS))))
 BRPC_PROTOS = $(filter %.proto,$(BRPC_SOURCES))
-BRPC_CFAMILIES = $(filter-out %.proto,$(BRPC_SOURCES))
+BRPC_CFAMILIES = $(filter-out %.proto %.pb.cc,$(BRPC_SOURCES))
 BRPC_OBJS = $(BRPC_PROTOS:.proto=.pb.o) $(addsuffix .o, $(basename $(BRPC_CFAMILIES)))
 
 MCPACK2PB_SOURCES = \
@@ -209,7 +210,7 @@ OBJS=$(BUTIL_OBJS) $(BVAR_OBJS) $(BTHREAD_OBJS) $(JSON2PB_OBJS) $(MCPACK2PB_OBJS
 DEBUG_OBJS = $(OBJS:.o=.dbg.o)
 
 .PHONY:all
-all:  protoc-gen-mcpack libbrpc.a output/include output/lib output/bin
+all:  protoc-gen-mcpack libbrpc.a libbrpc.so output/include output/lib output/bin
 
 .PHONY:debug
 debug: libbrpc.dbg.a
@@ -217,7 +218,7 @@ debug: libbrpc.dbg.a
 .PHONY:clean
 clean:clean_debug
 	@echo "Cleaning"
-	@rm -rf mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a $(OBJS) output/include output/lib output/bin
+	@rm -rf src/mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a libbrpc.so $(OBJS) output/include output/lib output/bin
 
 .PHONY:clean_debug
 clean_debug:
@@ -232,6 +233,10 @@ libbrpc.a:$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
 	@echo "Packing $@"
 	@ar crs $@ $(OBJS)
 
+libbrpc.so:$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
+	@echo "Linking $@"
+	$(CXX) -shared -o $@ $(HDRPATHS) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $(OBJS) -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+
 libbrpc.dbg.a:$(BRPC_PROTOS:.proto=.pb.h) $(DEBUG_OBJS)
 	@echo "Packing $@"
 	@ar crs $@ $(DEBUG_OBJS)
@@ -244,7 +249,7 @@ output/include:
 	@cp src/idl_options.proto src/idl_options.pb.h $@
 
 .PHONY:output/lib
-output/lib:libbrpc.a
+output/lib:libbrpc.a libbrpc.so
 	@echo "Copying to $@"
 	@mkdir -p $@
 	@cp $^ $@

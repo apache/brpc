@@ -30,13 +30,6 @@ void ProfilerStop(const char*);
 #endif
 #endif
 
-#if defined(BRPC_ENABLE_HEAP_PROFILER) || defined(BAIDU_RPC_ENABLE_HEAP_PROFILER)
-#include <string>
-void TCMallocGetHeapSample(std::string* writer);
-void TCMallocGetHeapGrowthStacks(std::string* writer);
-#endif
-
-
 namespace brpc {
 
 // defined in src/brpc/builtin/index_service.cpp
@@ -49,7 +42,7 @@ extern int PROFILER_LINKER_DUMMY;
 struct ProfilerLinker {
     // [ Must be inlined ]
     // This function is included by user's compilation unit to force
-    // linking of ProfilerStart()/ProfilerStop()/TCMallocGetHeapSample()
+    // linking of ProfilerStart()/ProfilerStop()
     // etc when corresponding macros are defined.
     inline ProfilerLinker() {
         
@@ -64,10 +57,6 @@ struct ProfilerLinker {
     
 #if defined(BRPC_ENABLE_HEAP_PROFILER) || defined(BAIDU_RPC_ENABLE_HEAP_PROFILER)
         heap_profiler_enabled = true;
-        if (PROFILER_LINKER_DUMMY != 0/*must be false*/) {
-            TCMallocGetHeapSample(NULL);
-            TCMallocGetHeapGrowthStacks(NULL);
-        }
 #endif
     }
 };

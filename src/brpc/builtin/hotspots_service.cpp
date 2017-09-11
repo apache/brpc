@@ -24,14 +24,12 @@
 #include "brpc/reloadable_flags.h"
 #include "brpc/builtin/pprof_perl.h"
 #include "brpc/builtin/hotspots_service.h"
+#include "brpc/details/tcmalloc_extension.h"
 
 extern "C" {
 int __attribute__((weak)) ProfilerStart(const char* fname);
 void __attribute__((weak)) ProfilerStop();
 }
-
-void __attribute__((weak)) TCMallocGetHeapSample(std::string* writer);
-void __attribute__((weak)) TCMallocGetHeapGrowthStacks(std::string* writer);
 
 namespace bthread {
 bool ContentionProfilerStart(const char* filename);
@@ -661,7 +659,8 @@ static void DoProfiling(ProfilingType type,
         }
         bthread::ContentionProfilerStop();
     } else if (type == PROFILING_HEAP) {
-        if ((void*)TCMallocGetHeapSample == NULL) {
+        MallocExtension* malloc_ext = MallocExtension::instance();
+        if (malloc_ext == NULL) {
             os << "Heap profiler is not enabled"
                << (use_html ? "</body></html>" : "\n");
             os.move_to(resp);
@@ -669,7 +668,7 @@ static void DoProfiling(ProfilingType type,
             return NotifyWaiters(type, cntl, view);
         }
         std::string obj;
-        TCMallocGetHeapSample(&obj);
+        malloc_ext->GetHeapSample(&obj);
         if (!WriteSmallFile(prof_name, obj)) {
             os << "Fail to write " << prof_name
                << (use_html ? "</body></html>" : "\n");
@@ -679,7 +678,8 @@ static void DoProfiling(ProfilingType type,
             return NotifyWaiters(type, cntl, view);
         }
     } else if (type == PROFILING_GROWTH) {
-        if ((void*)TCMallocGetHeapGrowthStacks == NULL) {
+        MallocExtension* malloc_ext = MallocExtension::instance();
+        if (malloc_ext == NULL) {
             os << "Growth profiler is not enabled"
                << (use_html ? "</body></html>" : "\n");
             os.move_to(resp);
@@ -687,7 +687,7 @@ static void DoProfiling(ProfilingType type,
             return NotifyWaiters(type, cntl, view);
         }
         std::string obj;
-        TCMallocGetHeapGrowthStacks(&obj);
+        malloc_ext->GetHeapGrowthStacks(&obj);
         if (!WriteSmallFile(prof_name, obj)) {
             os << "Fail to write " << prof_name
                << (use_html ? "</body></html>" : "\n");
