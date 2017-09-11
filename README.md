@@ -117,9 +117,9 @@ Check out [benchmark](docs/cn/benchmark.md) for a comparison between brpc and ot
     * [Build HTTP service](docs/cn/http_service.md)
     * [Build Nshead service](docs/cn/nshead_service.md)
     * [Debug server issues](docs/cn/server_debugging.md)
-    * [Avalanche](docs/cn/avalanche_effect.md)
-    * [iobuf](docs/cn/iobuf.md)
-    * [streaming_log](docs/cn/streaming_log.md)
+    * [Avalanche](docs/cn/avalanche.md)
+    * [live streaming](docs/cn/live_streaming.md)
+    * [json2pb](docs/cn/json2pb.md)
   * [Builtin Services](docs/cn/builtin_service.md)
     * [status](docs/cn/status.md)
     * [vars](docs/cn/vars.md)
@@ -135,6 +135,10 @@ Check out [benchmark](docs/cn/benchmark.md) for a comparison between brpc and ot
     * [rpc_view](docs/cn/rpc_view.md)
     * [benchmark_http](docs/cn/benchmark_http.md)
     * [parallel_http](docs/cn/parallel_http.md)
+  * Others
+    * [IOBuf](docs/cn/iobuf.md)
+    * [Streaming Log](docs/cn/streaming_log.md)
+    * [FlatMap](docs/cn/flatmap.md)
   * RPC in depth
     * [New Protocol](docs/cn/new_protocol.md)
     * [atomic instructions](docs/cn/atomic_instructions.md)

@@ -167,7 +167,6 @@ void ProcessXXXRequest(InputMessageBase* msg_base) {
 - InputMessageBase::socket_id()被移除，而通过socket()可以直接访问到对应Socket的指针。ProcessXXX函数中Address Socket的代码可以移除。
   ProcessXXXRequest开头的修改一般是这样：
 ```c++
-
 void ProcessXXXRequest(InputMessageBase* msg_base) {
      const int64_t start_parse_us = butil::cpuwide_time_us();
 -    MostCommonMessage* msg = static_cast<MostCommonMessage*>(msg_base);
