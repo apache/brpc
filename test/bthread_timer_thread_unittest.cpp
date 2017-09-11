@@ -53,12 +53,8 @@ public:
             _sleep_ms = 0;
             bthread::futex_wake_private(&_sleep_ms, 1);
         } else {
-            LOG(ERROR) << "No need to wakeup " << noflush;
-            if (_name) {
-                LOG(ERROR) << "`" << _name << "' task_id=" << _task_id;
-            } else {
-                LOG(ERROR) << "task_id=" << _task_id;
-            }
+            LOG(ERROR) << "No need to wakeup "
+                       << (_name ? _name : "") << " task_id=" << _task_id;
         }
     }
 

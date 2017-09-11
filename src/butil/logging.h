@@ -20,101 +20,32 @@
 #ifndef BASE_LOGGING_H_
 #define BASE_LOGGING_H_
 
-// Replace macros of glog. If glog is included after this header, it will be
-// blocked by the defined _LOGGING_H_, otherwise all major macros provided
-// by glog will be undefined.
-// Many macros(VLOG_FIRST_N, VPLOG_EVERY_N ...) are not provided by glog yet
-// but may be extended in future, so we undefine them as well.
-#ifndef _LOGGING_H_
-#define _LOGGING_H_
-#endif
-#undef LOG_IS_ON
-#undef LOG_STREAM
-#undef LOG
-#undef LOG_IF
-#undef LOG_EVERY_N
-#undef LOG_IF_EVERY_N
-#undef LOG_FIRST_N
-#undef LOG_IF_FIRST_N
-#undef LOG_ASSERT
-#undef SYSLOG
-#undef SYSLOG_IF
-#undef SYSLOG_EVERY_N
-#undef SYSLOG_IF_EVERY_N
-#undef SYSLOG_FIRST_N
-#undef SYSLOG_IF_FIRST_N
-#undef SYSLOG_ASSERT
-#undef VLOG_IS_ON
-#undef VLOG_STREAM
-#undef VLOG
-#undef VLOG_IF
-#undef VLOG_EVERY_N
-#undef VLOG_IF_EVERY_N
-#undef VLOG_FIRST_N
-#undef VLOG_IF_FIRST_N
-#undef VPLOG_STREAM
-#undef VPLOG
-#undef VPLOG_IF
-#undef VPLOG_EVERY_N
-#undef VPLOG_IF_EVERY_N
-#undef VPLOG_FIRST_N
-#undef VPLOG_IF_FIRST_N
-#undef PLOG_STREAM
-#undef PLOG
-#undef PLOG_IF
-#undef PLOG_EVERY_N
-#undef PLOG_IF_EVERY_N
-#undef PLOG_FIRST_N
-#undef PLOG_IF_FIRST_N
-#undef CHECK
-#undef CHECK_EQ
-#undef CHECK_NE
-#undef CHECK_LE
-#undef CHECK_LT
-#undef CHECK_GE
-#undef CHECK_GT
-#undef PCHECK
-#undef DLOG_IS_ON
-#undef DLOG
-#undef DLOG_IF
-#undef DLOG_ASSERT
-#undef DLOG_EVERY_N
-#undef DLOG_IF_EVERY_N
-#undef DLOG_FIRST_N
-#undef DLOG_IF_FIRST_N
-#undef DPLOG
-#undef DPLOG_IF
-#undef DPLOG_EVERY_N
-#undef DPLOG_IF_EVERY_N
-#undef DPLOG_FIRST_N
-#undef DPLOG_IF_FIRST_N
-#undef DVLOG
-#undef DVLOG_IF
-#undef DVLOG_EVERY_N
-#undef DVLOG_IF_EVERY_N
-#undef DVLOG_FIRST_N
-#undef DVLOG_IF_FIRST_N
-#undef DVPLOG
-#undef DVPLOG_IF
-#undef DVPLOG_EVERY_N
-#undef DVPLOG_IF_EVERY_N
-#undef DVPLOG_FIRST_N
-#undef DVPLOG_IF_FIRST_N
-#undef DCHECK
-#undef DCHECK_EQ
-#undef DCHECK_NE
-#undef DCHECK_LE
-#undef DCHECK_LT
-#undef DCHECK_GE
-#undef DCHECK_GT
-#undef DPCHECK
-#undef NOTREACHED
-#undef RAW_LOG
-#undef RAW_CHECK
+#include <butil/config.h>   // BRPC_WITH_GLOG
 
 #include <string>
 #include <cstring>
 #include <sstream>
+#include "butil/macros.h"    // BAIDU_CONCAT
+#include "butil/atomicops.h" // Used by LOG_EVERY_N, LOG_FIRST_N etc
+#include "butil/time.h"      // gettimeofday_us()
+
+#if BRPC_WITH_GLOG
+# include <glog/logging.h>
+# include <glog/raw_logging.h>
+// define macros that not implemented in glog
+# if DCHECK_IS_ON() 
+#  define DPLOG(...) PLOG(__VA_ARGS__)
+#  define DPLOG_IF(...) PLOG_IF(__VA_ARGS__)
+#  define DPCHECK(...) PCHECK(__VA_ARGS__)
+#  define DVPLOG(...) VLOG(__VA_ARGS__)
+# else 
+#  define DPLOG(...) DLOG(__VA_ARGS__)
+#  define DPLOG_IF(...) DLOG_IF(__VA_ARGS__)
+#  define DPCHECK(...) DCHECK(__VA_ARGS__)
+#  define DVPLOG(...) DVLOG(__VA_ARGS__)
+# endif
+
+#else
 
 #ifdef BAIDU_INTERNAL
 // gejun: com_log.h includes ul_def.h, undef conflict macros
@@ -129,6 +60,7 @@
 #undef Exchange
 #endif // BAIDU_INTERNAL
 
+#include <inttypes.h>
 #include <gflags/gflags_declare.h>
 
 #include "butil/base_export.h"
@@ -137,10 +69,6 @@
 #include "butil/strings/string_piece.h"
 #include "butil/build_config.h"
 #include "butil/synchronization/lock.h"
-#include "butil/macros.h"    // BAIDU_CONCAT
-#include "butil/atomicops.h" // Used by LOG_EVERY_N, LOG_FIRST_N etc
-#include "butil/time.h"      // gettimeofday_us()
-
 //
 // Optional message capabilities
 // -----------------------------
@@ -449,7 +377,7 @@ const LogSeverity BLOG_0 = BLOG_ERROR;
 // we determine what variable will dynamically control logging at this site:
 // it's either FLAGS_verbose or an appropriate internal variable
 // matching the current source file that represents results of
-// parsing of --verbose_module flag and/or SetVLOGLevel calls.
+// parsing of --vmodule flag and/or SetVLOGLevel calls.
 # define BAIDU_VLOG_IS_ON(verbose_level, filepath)                      \
     ({ static const int* vlocal = &::logging::VLOG_UNINITIALIZED;       \
         const int saved_verbose_level = (verbose_level);                \
@@ -459,15 +387,15 @@ const LogSeverity BLOG_0 = BLOG_ERROR;
              (::logging::add_vlog_site(&vlocal, filepath, __LINE__,     \
                                        saved_verbose_level))); })
 #else
-// GNU extensions not available, so we do not support --verbose_module.
+// GNU extensions not available, so we do not support --vmodule.
 // Dynamic value of FLAGS_verbose always controls the logging level.
 # define BAIDU_VLOG_IS_ON(verbose_level, filepath)      \
-    (::logging::FLAGS_verbose >= (verbose_level))
+    (::logging::FLAGS_v >= (verbose_level))
 #endif
 
 #define VLOG_IS_ON(verbose_level) BAIDU_VLOG_IS_ON(verbose_level, __FILE__)
 
-DECLARE_int32(verbose);
+DECLARE_int32(v);
 
 extern const int VLOG_UNINITIALIZED;
 
@@ -494,37 +422,6 @@ void print_vlog_sites(VLogSitePrinter*);
 #define BAIDU_LAZY_STREAM(stream, condition)                            \
     !(condition) ? (void) 0 : ::logging::LogMessageVoidify() & (stream)
 
-// Helper macro included by all *_EVERY_N macros.
-#define BAIDU_LOG_IF_EVERY_N_IMPL(logifmacro, severity, condition, N)   \
-    static ::butil::subtle::Atomic32 BAIDU_CONCAT(logeveryn_, __LINE__) = -1; \
-    const static int BAIDU_CONCAT(logeveryn_sc_, __LINE__) = (N);       \
-    const int BAIDU_CONCAT(logeveryn_c_, __LINE__) =                    \
-        ::butil::subtle::NoBarrier_AtomicIncrement(&BAIDU_CONCAT(logeveryn_, __LINE__), 1); \
-    logifmacro(severity, (condition) && BAIDU_CONCAT(logeveryn_c_, __LINE__) / \
-               BAIDU_CONCAT(logeveryn_sc_, __LINE__) * BAIDU_CONCAT(logeveryn_sc_, __LINE__) \
-               == BAIDU_CONCAT(logeveryn_c_, __LINE__))
-
-// Helper macro included by all *_FIRST_N macros.
-#define BAIDU_LOG_IF_FIRST_N_IMPL(logifmacro, severity, condition, N)   \
-    static ::butil::subtle::Atomic32 BAIDU_CONCAT(logfstn_, __LINE__) = 0; \
-    logifmacro(severity, (condition) && BAIDU_CONCAT(logfstn_, __LINE__) < N && \
-               ::butil::subtle::NoBarrier_AtomicIncrement(&BAIDU_CONCAT(logfstn_, __LINE__), 1) <= N)
-
-// Helper macro included by all *_EVERY_SECOND macros.
-#define BAIDU_LOG_IF_EVERY_SECOND_IMPL(logifmacro, severity, condition) \
-    static ::butil::subtle::Atomic64 BAIDU_CONCAT(logeverys_, __LINE__) = 0; \
-    const int64_t BAIDU_CONCAT(logeverys_ts_, __LINE__) = ::butil::gettimeofday_us(); \
-    const int64_t BAIDU_CONCAT(logeverys_seen_, __LINE__) = BAIDU_CONCAT(logeverys_, __LINE__); \
-    logifmacro(severity, (condition) && BAIDU_CONCAT(logeverys_ts_, __LINE__) >= \
-               (BAIDU_CONCAT(logeverys_seen_, __LINE__) + 1000000L) &&  \
-               ::butil::subtle::NoBarrier_CompareAndSwap(                \
-                   &BAIDU_CONCAT(logeverys_, __LINE__),                 \
-                   BAIDU_CONCAT(logeverys_seen_, __LINE__),             \
-                   BAIDU_CONCAT(logeverys_ts_, __LINE__))               \
-               == BAIDU_CONCAT(logeverys_seen_, __LINE__))
-
-// ===============================================================
-
 // We use the preprocessor's merging operator, "##", so that, e.g.,
 // LOG(INFO) becomes the token BAIDU_COMPACK_LOG(INFO).  There's some funny
 // subtle difference between ostream member streaming functions (e.g.,
@@ -543,34 +440,6 @@ void print_vlog_sites(VLogSitePrinter*);
 // FIXME(gejun): Should always crash.
 #define LOG_ASSERT(condition)                                           \
     LOG_IF(FATAL, !(condition)) << "Assert failed: " #condition ". "
-
-// Print a log after every N calls. First call always prints.
-// Each call to this macro has a cost of relaxed atomic increment.
-// The corresponding macro in glog is not thread-safe while this is.
-#define LOG_EVERY_N(severity, N)                                \
-    BAIDU_LOG_IF_EVERY_N_IMPL(LOG_IF, severity, true, N)
-#define LOG_IF_EVERY_N(severity, condition, N)                  \
-    BAIDU_LOG_IF_EVERY_N_IMPL(LOG_IF, severity, condition, N)
-
-// Print logs for first N calls.
-// Almost zero overhead when the log was printed for N times
-// The corresponding macro in glog is not thread-safe while this is.
-#define LOG_FIRST_N(severity, N)                                \
-    BAIDU_LOG_IF_FIRST_N_IMPL(LOG_IF, severity, true, N)
-#define LOG_IF_FIRST_N(severity, condition, N)                  \
-    BAIDU_LOG_IF_FIRST_N_IMPL(LOG_IF, severity, condition, N)
-
-// Print a log for at most once. (not present in glog)
-// Almost zero overhead when the log was printed.
-#define LOG_ONCE(severity) LOG_FIRST_N(severity, 1)
-#define LOG_IF_ONCE(severity, condition) LOG_IF_FIRST_N(severity, condition, 1)
-
-// Print a log every second. (not present in glog). First call always prints.
-// Each call to this macro has a cost of calling gettimeofday.
-#define LOG_EVERY_SECOND(severity)                                \
-    BAIDU_LOG_IF_EVERY_SECOND_IMPL(LOG_IF, severity, true)
-#define LOG_IF_EVERY_SECOND(severity, condition)                \
-    BAIDU_LOG_IF_EVERY_SECOND_IMPL(LOG_IF, severity, condition)
 
 #define SYSLOG(severity) LOG(severity)
 #define SYSLOG_IF(severity, condition) LOG_IF(severity, condition)
@@ -639,24 +508,6 @@ void print_vlog_sites(VLogSitePrinter*);
     BAIDU_LAZY_STREAM(VPLOG_STREAM(verbose_level),              \
                       VLOG_IS_ON(verbose_level) && (condition))
 
-#define VPLOG_EVERY_N(verbose_level, N)                         \
-    BAIDU_LOG_IF_EVERY_N_IMPL(VPLOG_IF, verbose_level, true, N)
-#define VPLOG_IF_EVERY_N(verbose_level, condition, N)                   \
-    BAIDU_LOG_IF_EVERY_N_IMPL(VPLOG_IF, verbose_level, condition, N)
-
-#define VPLOG_FIRST_N(verbose_level, N)                                 \
-    BAIDU_LOG_IF_FIRST_N_IMPL(VPLOG_IF, verbose_level, true, N)
-#define VPLOG_IF_FIRST_N(verbose_level, condition, N)                    \
-    BAIDU_LOG_IF_FIRST_N_IMPL(VPLOG_IF, verbose_level, condition, N)
-
-#define VPLOG_ONCE(verbose_level) VPLOG_FIRST_N(verbose_level, 1)
-#define VPLOG_IF_ONCE(verbose_level, condition) VPLOG_IF_FIRST_N(verbose_level, condition, 1)
-
-#define VPLOG_EVERY_SECOND(verbose_level)                        \
-    BAIDU_LOG_IF_EVERY_SECOND_IMPL(VPLOG_IF, verbose_level, true)
-#define VPLOG_IF_EVERY_SECOND(verbose_level, condition)                  \
-    BAIDU_LOG_IF_EVERY_SECOND_IMPL(VPLOG_IF, verbose_level, condition)
-
 #if defined(OS_WIN)
 #define PLOG_STREAM(severity)                                           \
     BAIDU_COMPACT_LOG_EX(severity, Win32ErrorLogMessage,                \
@@ -671,24 +522,6 @@ void print_vlog_sites(VLogSitePrinter*);
     BAIDU_LAZY_STREAM(PLOG_STREAM(severity), LOG_IS_ON(severity))
 #define PLOG_IF(severity, condition)                                    \
     BAIDU_LAZY_STREAM(PLOG_STREAM(severity), LOG_IS_ON(severity) && (condition))
-
-#define PLOG_EVERY_N(severity, N)                               \
-    BAIDU_LOG_IF_EVERY_N_IMPL(PLOG_IF, severity, true, N)
-#define PLOG_IF_EVERY_N(severity, condition, N)                 \
-    BAIDU_LOG_IF_EVERY_N_IMPL(PLOG_IF, severity, condition, N)
-
-#define PLOG_FIRST_N(severity, N)                               \
-    BAIDU_LOG_IF_FIRST_N_IMPL(PLOG_IF, severity, true, N)
-#define PLOG_IF_FIRST_N(severity, condition, N)                 \
-    BAIDU_LOG_IF_FIRST_N_IMPL(PLOG_IF, severity, condition, N)
-
-#define PLOG_ONCE(severity) PLOG_FIRST_N(severity, 1)
-#define PLOG_IF_ONCE(severity, condition) PLOG_IF_FIRST_N(severity, condition, 1)
-
-#define PLOG_EVERY_SECOND(severity)                             \
-    BAIDU_LOG_IF_EVERY_SECOND_IMPL(PLOG_IF, severity, true)
-#define PLOG_IF_EVERY_SECOND(severity, condition)                       \
-    BAIDU_LOG_IF_EVERY_SECOND_IMPL(PLOG_IF, severity, condition)
 
 // The actual stream used isn't important.
 #define BAIDU_EAT_STREAM_PARAMS                                           \
@@ -801,17 +634,13 @@ BAIDU_DEFINE_CHECK_OP_IMPL(GT, > )
 #define CHECK_GE(val1, val2) BAIDU_CHECK_OP(GE, >=, val1, val2)
 #define CHECK_GT(val1, val2) BAIDU_CHECK_OP(GT, > , val1, val2)
 
-#if defined(NDEBUG)
-#define ENABLE_DLOG 0
+#if defined(NDEBUG) && !defined(DCHECK_ALWAYS_ON)
+#define DCHECK_IS_ON() 0
 #else
-#define ENABLE_DLOG 1
+#define DCHECK_IS_ON() 1
 #endif
 
-#if defined(NDEBUG) && !defined(DCHECK_ALWAYS_ON)
-#define DCHECK_IS_ON 0
-#else
-#define DCHECK_IS_ON 1
-#endif
+#define ENABLE_DLOG DCHECK_IS_ON()
 
 // Definitions for DLOG et al.
 
@@ -934,19 +763,9 @@ BAIDU_DEFINE_CHECK_OP_IMPL(GT, > )
 #define DVPLOG2_IF(virtual_path, verbose_level, condition)              \
     VPLOG2_IF(virtual_path, verbose_level, ENABLE_DLOG && (condition))
 
-// DEBUG_MODE is for uses like
-//   if (DEBUG_MODE) foo.CheckThatFoo();
-// instead of
-//   #ifndef NDEBUG
-//     foo.CheckThatFoo();
-//   #endif
-//
-// We tie its state to ENABLE_DLOG.
-enum { DEBUG_MODE = ENABLE_DLOG };
-
 // Definitions for DCHECK et al.
 
-#if DCHECK_IS_ON
+#if DCHECK_IS_ON()
 
 const LogSeverity BLOG_DCHECK = BLOG_FATAL;
 
@@ -962,17 +781,17 @@ const LogSeverity BLOG_DCHECK = BLOG_INFO;
 // This behavior is different from DLOG_IF et al.
 
 #define DCHECK(condition)                                               \
-    BAIDU_LAZY_STREAM(LOG_STREAM(DCHECK), DCHECK_IS_ON && !(condition)) \
+    BAIDU_LAZY_STREAM(LOG_STREAM(DCHECK), DCHECK_IS_ON() && !(condition)) \
     << "Check failed: " #condition ". "
 
 #define DPCHECK(condition)                                              \
-    BAIDU_LAZY_STREAM(PLOG_STREAM(DCHECK), DCHECK_IS_ON && !(condition)) \
+    BAIDU_LAZY_STREAM(PLOG_STREAM(DCHECK), DCHECK_IS_ON() && !(condition)) \
     << "Check failed: " #condition ". "
 
 // Helper macro for binary operators.
 // Don't use this macro directly in your code, use DCHECK_EQ et al below.
 #define BAIDU_DCHECK_OP(name, op, val1, val2)                           \
-    if (DCHECK_IS_ON)                                                   \
+    if (DCHECK_IS_ON())                                                   \
         if (std::string* _result =                                      \
             ::logging::Check##name##Impl((val1), (val2),                \
                                          #val1 " " #op " " #val2))      \
@@ -1005,14 +824,6 @@ const LogSeverity BLOG_DCHECK = BLOG_INFO;
 #define DCHECK_LT(val1, val2) BAIDU_DCHECK_OP(LT, < , val1, val2)
 #define DCHECK_GE(val1, val2) BAIDU_DCHECK_OP(GE, >=, val1, val2)
 #define DCHECK_GT(val1, val2) BAIDU_DCHECK_OP(GT, > , val1, val2)
-
-
-#if defined(NDEBUG) && defined(OS_CHROMEOS)
-#define NOTREACHED() LOG(ERROR) << "NOTREACHED() hit in "       \
-    << __FUNCTION__ << ". "
-#else
-#define NOTREACHED() DCHECK(false)
-#endif
 
 #if defined(OS_WIN)
 typedef unsigned long SystemErrorCode;
@@ -1229,7 +1040,7 @@ BASE_EXPORT void RawLog(int level, const char* message);
 #define RAW_LOG(level, message)                         \
     ::logging::RawLog(::logging::BLOG_##level, message)
 
-#define RAW_CHECK(condition)                                            \
+#define RAW_CHECK(condition, message)                                   \
     do {                                                                \
         if (!(condition))                                               \
             ::logging::RawLog(::logging::BLOG_FATAL, "Check failed: " #condition "\n"); \
@@ -1273,6 +1084,8 @@ inline std::ostream& operator<<(std::ostream& out, const std::wstring& wstr) {
 //   4 -- [default] LOG(ERROR) at runtime
 //   5 -- LOG(ERROR) at runtime, only once per call-site
 
+#endif // BRPC_WITH_GLOG
+
 #ifndef NOTIMPLEMENTED_POLICY
 #if defined(OS_ANDROID) && defined(OFFICIAL_BUILD)
 #define NOTIMPLEMENTED_POLICY 0
@@ -1309,5 +1122,116 @@ inline std::ostream& operator<<(std::ostream& out, const std::wstring& wstr) {
     } while(0);                                                 \
     BAIDU_EAT_STREAM_PARAMS
 #endif
+
+#if defined(NDEBUG) && defined(OS_CHROMEOS)
+#define NOTREACHED() LOG(ERROR) << "NOTREACHED() hit in "       \
+    << __FUNCTION__ << ". "
+#else
+#define NOTREACHED() DCHECK(false)
+#endif
+
+// Helper macro included by all *_EVERY_N macros.
+#define BAIDU_LOG_IF_EVERY_N_IMPL(logifmacro, severity, condition, N)   \
+    static ::butil::subtle::Atomic32 BAIDU_CONCAT(logeveryn_, __LINE__) = -1; \
+    const static int BAIDU_CONCAT(logeveryn_sc_, __LINE__) = (N);       \
+    const int BAIDU_CONCAT(logeveryn_c_, __LINE__) =                    \
+        ::butil::subtle::NoBarrier_AtomicIncrement(&BAIDU_CONCAT(logeveryn_, __LINE__), 1); \
+    logifmacro(severity, (condition) && BAIDU_CONCAT(logeveryn_c_, __LINE__) / \
+               BAIDU_CONCAT(logeveryn_sc_, __LINE__) * BAIDU_CONCAT(logeveryn_sc_, __LINE__) \
+               == BAIDU_CONCAT(logeveryn_c_, __LINE__))
+
+// Helper macro included by all *_FIRST_N macros.
+#define BAIDU_LOG_IF_FIRST_N_IMPL(logifmacro, severity, condition, N)   \
+    static ::butil::subtle::Atomic32 BAIDU_CONCAT(logfstn_, __LINE__) = 0; \
+    logifmacro(severity, (condition) && BAIDU_CONCAT(logfstn_, __LINE__) < N && \
+               ::butil::subtle::NoBarrier_AtomicIncrement(&BAIDU_CONCAT(logfstn_, __LINE__), 1) <= N)
+
+// Helper macro included by all *_EVERY_SECOND macros.
+#define BAIDU_LOG_IF_EVERY_SECOND_IMPL(logifmacro, severity, condition) \
+    static ::butil::subtle::Atomic64 BAIDU_CONCAT(logeverys_, __LINE__) = 0; \
+    const int64_t BAIDU_CONCAT(logeverys_ts_, __LINE__) = ::butil::gettimeofday_us(); \
+    const int64_t BAIDU_CONCAT(logeverys_seen_, __LINE__) = BAIDU_CONCAT(logeverys_, __LINE__); \
+    logifmacro(severity, (condition) && BAIDU_CONCAT(logeverys_ts_, __LINE__) >= \
+               (BAIDU_CONCAT(logeverys_seen_, __LINE__) + 1000000L) &&  \
+               ::butil::subtle::NoBarrier_CompareAndSwap(                \
+                   &BAIDU_CONCAT(logeverys_, __LINE__),                 \
+                   BAIDU_CONCAT(logeverys_seen_, __LINE__),             \
+                   BAIDU_CONCAT(logeverys_ts_, __LINE__))               \
+               == BAIDU_CONCAT(logeverys_seen_, __LINE__))
+
+// ===============================================================
+
+// Print a log for at most once. (not present in glog)
+// Almost zero overhead when the log was printed.
+#ifndef LOG_ONCE
+# define LOG_ONCE(severity) LOG_FIRST_N(severity, 1)
+# define LOG_IF_ONCE(severity, condition) LOG_IF_FIRST_N(severity, condition, 1)
+#endif
+
+// Print a log after every N calls. First call always prints.
+// Each call to this macro has a cost of relaxed atomic increment.
+// The corresponding macro in glog is not thread-safe while this is.
+#ifndef LOG_EVERY_N
+# define LOG_EVERY_N(severity, N)                                \
+     BAIDU_LOG_IF_EVERY_N_IMPL(LOG_IF, severity, true, N)
+# define LOG_IF_EVERY_N(severity, condition, N)                  \
+     BAIDU_LOG_IF_EVERY_N_IMPL(LOG_IF, severity, condition, N)
+#endif
+
+// Print logs for first N calls.
+// Almost zero overhead when the log was printed for N times
+// The corresponding macro in glog is not thread-safe while this is.
+#ifndef LOG_FIRST_N
+# define LOG_FIRST_N(severity, N)                                \
+     BAIDU_LOG_IF_FIRST_N_IMPL(LOG_IF, severity, true, N)
+# define LOG_IF_FIRST_N(severity, condition, N)                  \
+     BAIDU_LOG_IF_FIRST_N_IMPL(LOG_IF, severity, condition, N)
+#endif
+
+// Print a log every second. (not present in glog). First call always prints.
+// Each call to this macro has a cost of calling gettimeofday.
+#ifndef LOG_EVERY_SECOND
+# define LOG_EVERY_SECOND(severity)                                \
+     BAIDU_LOG_IF_EVERY_SECOND_IMPL(LOG_IF, severity, true)
+# define LOG_IF_EVERY_SECOND(severity, condition)                \
+     BAIDU_LOG_IF_EVERY_SECOND_IMPL(LOG_IF, severity, condition)
+#endif
+
+#ifndef PLOG_EVERY_N
+# define PLOG_EVERY_N(severity, N)                               \
+     BAIDU_LOG_IF_EVERY_N_IMPL(PLOG_IF, severity, true, N)
+# define PLOG_IF_EVERY_N(severity, condition, N)                 \
+     BAIDU_LOG_IF_EVERY_N_IMPL(PLOG_IF, severity, condition, N)
+#endif
+
+#ifndef PLOG_FIRST_N
+# define PLOG_FIRST_N(severity, N)                               \
+     BAIDU_LOG_IF_FIRST_N_IMPL(PLOG_IF, severity, true, N)
+# define PLOG_IF_FIRST_N(severity, condition, N)                 \
+     BAIDU_LOG_IF_FIRST_N_IMPL(PLOG_IF, severity, condition, N)
+#endif
+
+#ifndef PLOG_ONCE
+# define PLOG_ONCE(severity) PLOG_FIRST_N(severity, 1)
+# define PLOG_IF_ONCE(severity, condition) PLOG_IF_FIRST_N(severity, condition, 1)
+#endif
+
+#ifndef PLOG_EVERY_SECOND
+# define PLOG_EVERY_SECOND(severity)                             \
+     BAIDU_LOG_IF_EVERY_SECOND_IMPL(PLOG_IF, severity, true)
+# define PLOG_IF_EVERY_SECOND(severity, condition)                       \
+     BAIDU_LOG_IF_EVERY_SECOND_IMPL(PLOG_IF, severity, condition)
+#endif
+
+// DEBUG_MODE is for uses like
+//   if (DEBUG_MODE) foo.CheckThatFoo();
+// instead of
+//   #ifndef NDEBUG
+//     foo.CheckThatFoo();
+//   #endif
+//
+// We tie its state to ENABLE_DLOG.
+enum { DEBUG_MODE = DCHECK_IS_ON() };
+
 
 #endif  // BASE_LOGGING_H_

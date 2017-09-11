@@ -108,13 +108,15 @@ void PProfService::profile(
         return;
     }
     // Log requester
-    LOG(INFO) << cntl->remote_side() << noflush;
+    std::ostringstream client_info;
+    client_info << cntl->remote_side();
     if (cntl->auth_context()) {
-        LOG(INFO) << "(auth=" << cntl->auth_context()->user() << ')' << noflush;
+        client_info << "(auth=" << cntl->auth_context()->user() << ')';
     } else {
-        LOG(INFO) << "(no auth)" << noflush;
+        client_info << "(no auth)";
     }
-    LOG(INFO) << " requests for cpu profile for " << sleep_sec << " seconds";
+    LOG(INFO) << client_info.str() << " requests for cpu profile for "
+              << sleep_sec << " seconds";
 
     char prof_name[256];
     if (MakeProfName(PROFILING_CPU, prof_name, sizeof(prof_name)) != 0) {
@@ -163,13 +165,15 @@ void PProfService::contention(
         return;
     }
     // Log requester
-    LOG(INFO) << cntl->remote_side() << noflush;
+    std::ostringstream client_info;
+    client_info << cntl->remote_side();
     if (cntl->auth_context()) {
-        LOG(INFO) << "(auth=" << cntl->auth_context()->user() << ')' << noflush;
+        client_info << "(auth=" << cntl->auth_context()->user() << ')';
     } else {
-        LOG(INFO) << "(no auth)" << noflush;
+        client_info << "(no auth)";
     }
-    LOG(INFO) << " requests for contention profile for " << sleep_sec << " seconds";
+    LOG(INFO) << client_info.str() << " requests for contention profile for "
+              << sleep_sec << " seconds";
 
     char prof_name[256];
     if (MakeProfName(PROFILING_CONTENTION, prof_name, sizeof(prof_name)) != 0) {
@@ -210,13 +214,14 @@ void PProfService::heap(
         return;
     }
     // Log requester
-    LOG(INFO) << cntl->remote_side() << noflush;
+    std::ostringstream client_info;
+    client_info << cntl->remote_side();
     if (cntl->auth_context()) {
-        LOG(INFO) << "(auth=" << cntl->auth_context()->user() << ')' << noflush;
+        client_info << "(auth=" << cntl->auth_context()->user() << ')';
     } else {
-        LOG(INFO) << "(no auth)" << noflush;
+        client_info << "(no auth)";
     }
-    LOG(INFO) << " requests for heap profile";
+    LOG(INFO) << client_info.str() << " requests for heap profile";
 
     std::string obj;
     malloc_ext->GetHeapSample(&obj);
@@ -239,13 +244,14 @@ void PProfService::growth(
         return;
     }
     // Log requester
-    LOG(INFO) << cntl->remote_side() << noflush;
+    std::ostringstream client_info;
+    client_info << cntl->remote_side();
     if (cntl->auth_context()) {
-        LOG(INFO) << "(auth=" << cntl->auth_context()->user() << ')' << noflush;
+        client_info << "(auth=" << cntl->auth_context()->user() << ')';
     } else {
-        LOG(INFO) << "(no auth)" << noflush;
+        client_info << "(no auth)";
     }
-    LOG(INFO) << " requests for growth profile";
+    LOG(INFO) << client_info.str() << " requests for growth profile";
 
     std::string obj;
     malloc_ext->GetHeapGrowthStacks(&obj);

@@ -168,15 +168,16 @@ void NamingServiceThread::Actions::ResetServers(
     }
 
     if (!_removed.empty() || !_added.empty()) {
-        LOG(INFO) << butil::class_name_str(*_owner->_ns) << "(\"" 
-                  << _owner->_service_name << "\"):" << noflush;
+        std::ostringstream info;
+        info << butil::class_name_str(*_owner->_ns) << "(\"" 
+             << _owner->_service_name << "\"):";
         if (!_added.empty()) {
-            LOG(INFO) << " added "<< _added.size() << noflush;
+            info << " added "<< _added.size();
         }
         if (!_removed.empty()) {
-            LOG(INFO) << " removed " << _removed.size() << noflush;
+            info << " removed " << _removed.size();
         }
-        LOG(INFO);
+        LOG(INFO) << info.str();
     }
 
     EndWait(servers.empty() ? ENODATA : 0);

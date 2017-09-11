@@ -16,9 +16,10 @@
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
 #include <errno.h>                       // errno
-#include <vector>                        // std::vector
-#include <algorithm>                     // std::find
 #include <pthread.h>                     // pthread_key_t
+#include <stdio.h>
+#include <algorithm>                     // std::find
+#include <vector>                        // std::vector
 
 namespace butil {
 namespace detail {

@@ -94,7 +94,7 @@ bool FileDescriptorTableInjection::Move(int src, int dest) {
 
 void FileDescriptorTableInjection::Close(int fd) {
   int ret = IGNORE_EINTR(close(fd));
-  DPCHECK(ret == 0);
+  DCHECK(ret == 0);
 }
 
 }  // namespace butil

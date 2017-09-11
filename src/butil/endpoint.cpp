@@ -26,6 +26,7 @@
 #include "butil/endpoint.h"                    // ip_t
 #include "butil/logging.h"
 #include "butil/memory/singleton_on_pthread_once.h"
+#include "butil/strings/string_piece.h"
 
 __BEGIN_DECLS
 int BAIDU_WEAK bthread_connect(

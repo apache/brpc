@@ -9,9 +9,11 @@
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 
+#if !BRPC_WITH_GLOG
+
 namespace logging {
 DECLARE_bool(crash_on_fatal_log);
-DECLARE_int32(verbose);
+DECLARE_int32(v);
 
 namespace {
 
@@ -52,10 +54,10 @@ public:
     }
     virtual void TearDown() {
         ::logging::FLAGS_crash_on_fatal_log = _old_crash_on_fatal_log;
-        if (::logging::FLAGS_verbose != 0) {
+        if (::logging::FLAGS_v != 0) {
             // Clear -verbose to avoid affecting other tests.
-            ASSERT_FALSE(google::SetCommandLineOption("verbose", "0").empty());
-            ASSERT_FALSE(google::SetCommandLineOption("verbose_module", "").empty());
+            ASSERT_FALSE(google::SetCommandLineOption("v", "0").empty());
+            ASSERT_FALSE(google::SetCommandLineOption("vmodule", "").empty());
         }
     }
 private:
@@ -203,7 +205,7 @@ TEST_F(LoggingTest, DebugLoggingReleaseBehavior) {
 TEST_F(LoggingTest, DcheckStreamsAreLazy) {
   MockLogSource mock_log_source;
   EXPECT_CALL(mock_log_source, Log()).Times(0);
-#if DCHECK_IS_ON
+#if DCHECK_IS_ON()
   DCHECK(true) << mock_log_source.Log();
   DCHECK_EQ(0, 0) << mock_log_source.Log();
 #else
@@ -218,27 +220,27 @@ TEST_F(LoggingTest, DcheckStreamsAreLazy) {
 TEST_F(LoggingTest, Dcheck) {
 #if defined(NDEBUG) && !defined(DCHECK_ALWAYS_ON)
   // Release build.
-  EXPECT_FALSE(DCHECK_IS_ON);
+  EXPECT_FALSE(DCHECK_IS_ON());
   EXPECT_FALSE(DLOG_IS_ON(DCHECK));
 #elif defined(NDEBUG) && defined(DCHECK_ALWAYS_ON)
   // Release build with real DCHECKS.
   SetLogAssertHandler(&LogSink);
-  EXPECT_TRUE(DCHECK_IS_ON);
+  EXPECT_TRUE(DCHECK_IS_ON());
   EXPECT_FALSE(DLOG_IS_ON(DCHECK));
 #else
   // Debug build.
   SetLogAssertHandler(&LogSink);
-  EXPECT_TRUE(DCHECK_IS_ON);
+  EXPECT_TRUE(DCHECK_IS_ON());
   EXPECT_TRUE(DLOG_IS_ON(DCHECK));
 #endif
 
   EXPECT_EQ(0, log_sink_call_count);
   DCHECK(false);
-  EXPECT_EQ(DCHECK_IS_ON ? 1 : 0, log_sink_call_count);
+  EXPECT_EQ(DCHECK_IS_ON() ? 1 : 0, log_sink_call_count);
   DPCHECK(false);
-  EXPECT_EQ(DCHECK_IS_ON ? 2 : 0, log_sink_call_count);
+  EXPECT_EQ(DCHECK_IS_ON() ? 2 : 0, log_sink_call_count);
   DCHECK_EQ(0, 1);
-  EXPECT_EQ(DCHECK_IS_ON ? 3 : 0, log_sink_call_count);
+  EXPECT_EQ(DCHECK_IS_ON() ? 3 : 0, log_sink_call_count);
 }
 
 TEST_F(LoggingTest, DcheckReleaseBehavior) {
@@ -312,11 +314,11 @@ TEST_F(LoggingTest, log_at) {
 TEST_F(LoggingTest, vlog_sanity) {
     ::logging::FLAGS_crash_on_fatal_log = false;
 
-    EXPECT_FALSE(google::SetCommandLineOption("verbose", "1").empty());
+    EXPECT_FALSE(google::SetCommandLineOption("v", "1").empty());
     
-    EXPECT_FALSE(google::SetCommandLineOption("verbose_module",
+    EXPECT_FALSE(google::SetCommandLineOption("vmodule",
                                                "logging_unittest=1").empty());
-    EXPECT_FALSE(google::SetCommandLineOption("verbose_module",
+    EXPECT_FALSE(google::SetCommandLineOption("vmodule",
                                                "logging_UNITTEST=2").empty());
 
     for (int i = 0; i < 10; ++i) {
@@ -332,7 +334,7 @@ TEST_F(LoggingTest, vlog_sanity) {
     VLOG_NE(0) << "always on";
     EXPECT_EQ("always on", LOG_STREAM(INFO).content_str());
 
-    EXPECT_FALSE(google::SetCommandLineOption("verbose_module",
+    EXPECT_FALSE(google::SetCommandLineOption("vmodule",
                                               "logging_unittest=0").empty());
     for (int i = 0; i < 10; ++i) {
         VLOG_NE(i) << "vlog " << i;
@@ -340,7 +342,7 @@ TEST_F(LoggingTest, vlog_sanity) {
     EXPECT_EQ("", LOG_STREAM(VERBOSE).content_str());
     EXPECT_EQ("vlog 0", LOG_STREAM(INFO).content_str());
 
-    EXPECT_FALSE(google::SetCommandLineOption("verbose_module",
+    EXPECT_FALSE(google::SetCommandLineOption("vmodule",
                      "logging_unittest=0,logging_unittest=1").empty());
     for (int i = 0; i < 10; ++i) {
         VLOG_NE(i) << "vlog " << i;
@@ -348,7 +350,7 @@ TEST_F(LoggingTest, vlog_sanity) {
     EXPECT_EQ("vlog 1", LOG_STREAM(VERBOSE).content_str());
     EXPECT_EQ("vlog 0", LOG_STREAM(INFO).content_str());
 
-    EXPECT_FALSE(google::SetCommandLineOption("verbose_module",
+    EXPECT_FALSE(google::SetCommandLineOption("vmodule",
                      "logging_unittest=1,logging_unittest=0").empty());
     for (int i = 0; i < 10; ++i) {
         VLOG_NE(i) << "vlog " << i;
@@ -356,14 +358,14 @@ TEST_F(LoggingTest, vlog_sanity) {
     EXPECT_EQ("", LOG_STREAM(VERBOSE).content_str());
     EXPECT_EQ("vlog 0", LOG_STREAM(INFO).content_str());
 
-    EXPECT_FALSE(google::SetCommandLineOption("verbose_module", "").empty());
+    EXPECT_FALSE(google::SetCommandLineOption("vmodule", "").empty());
     for (int i = 0; i < 10; ++i) {
         VLOG_NE(i) << "vlog " << i;
     }
     EXPECT_EQ("vlog 1", LOG_STREAM(VERBOSE).content_str());
     EXPECT_EQ("vlog 0", LOG_STREAM(INFO).content_str());
 
-    EXPECT_FALSE(google::SetCommandLineOption("verbose_module",
+    EXPECT_FALSE(google::SetCommandLineOption("vmodule",
                                                "logg?ng_*=2").empty());
     for (int i = 0; i < 10; ++i) {
         VLOG_NE(i) << "vlog " << i;
@@ -371,7 +373,7 @@ TEST_F(LoggingTest, vlog_sanity) {
     EXPECT_EQ("vlog 1vlog 2", LOG_STREAM(VERBOSE).content_str());
     EXPECT_EQ("vlog 0", LOG_STREAM(INFO).content_str());
 
-    EXPECT_FALSE(google::SetCommandLineOption("verbose_module",
+    EXPECT_FALSE(google::SetCommandLineOption("vmodule",
         "foo=3,logging_unittest=3, logg?ng_*=2 , logging_*=1 ").empty());
     for (int i = 0; i < 10; ++i) {
         VLOG_NE(i) << "vlog " << i;
@@ -385,7 +387,7 @@ TEST_F(LoggingTest, vlog_sanity) {
     EXPECT_EQ("vlog 1vlog 3", LOG_STREAM(VERBOSE).content_str());
 
     EXPECT_FALSE(google::SetCommandLineOption(
-                     "verbose_module",
+                     "vmodule",
                      "foo/bar0/0=2,foo/bar/1=3, 2=4, foo/*/3=5, */ba?/4=6,"
                      "/5=7,/foo/bar/6=8,foo2/bar/7=9,foo/bar/8=9").empty());
     VLOG2_NE("foo/bar/0", 2) << " vlog0";
@@ -461,8 +463,8 @@ TEST_F(LoggingTest, debug_level) {
     DLOG(NOTICE) << foo(&run_foo);
     DLOG(DEBUG) << foo(&run_foo);
 
-    EXPECT_FALSE(google::SetCommandLineOption("verbose_module", "").empty());
-    EXPECT_FALSE(google::SetCommandLineOption("verbose", "1").empty());
+    EXPECT_FALSE(google::SetCommandLineOption("vmodule", "").empty());
+    EXPECT_FALSE(google::SetCommandLineOption("v", "1").empty());
     DVLOG(1) << foo(&run_foo);
     DVLOG2("a/b/c", 1) << foo(&run_foo);
 
@@ -522,3 +524,4 @@ TEST_F(LoggingTest, limited_logging) {
 }  // namespace
 
 }  // namespace logging
+#endif

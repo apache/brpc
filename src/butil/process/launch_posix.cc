@@ -91,9 +91,9 @@ sigset_t SetSignalMask(const sigset_t& new_sigmask) {
   // but Android's pthread_sigmask() was broken until 4.1:
   // https://code.google.com/p/android/issues/detail?id=15337
   // http://stackoverflow.com/questions/13777109/pthread-sigmask-on-android-not-working
-  RAW_CHECK(sigprocmask(SIG_SETMASK, &new_sigmask, &old_sigmask) == 0);
+  RAW_CHECK(sigprocmask(SIG_SETMASK, &new_sigmask, &old_sigmask) == 0, "");
 #else
-  RAW_CHECK(pthread_sigmask(SIG_SETMASK, &new_sigmask, &old_sigmask) == 0);
+  RAW_CHECK(pthread_sigmask(SIG_SETMASK, &new_sigmask, &old_sigmask) == 0, "");
 #endif
   return old_sigmask;
 }
@@ -157,7 +157,7 @@ void ResetChildSignalHandlersToDefaults(void) {
       // If the number of signals in the Linux kernel changes, someone should
       // look at this code.
       const int kNumberOfSignals = 64;
-      RAW_CHECK(signum == kNumberOfSignals + 1);
+      RAW_CHECK(signum == kNumberOfSignals + 1, "");
 #endif  // !defined(NDEBUG)
       break;
     }
@@ -311,7 +311,7 @@ bool LaunchProcess(const std::vector<std::string>& argv,
     // process, so we check that a thread is not being created by mistake
     // and that signal handling follows the process-creation rules.
     RAW_CHECK(
-        !(options.clone_flags & (CLONE_SIGHAND | CLONE_THREAD | CLONE_VM)));
+        !(options.clone_flags & (CLONE_SIGHAND | CLONE_THREAD | CLONE_VM)), "");
     pid = syscall(__NR_clone, options.clone_flags, 0, 0, 0);
   } else
 #endif

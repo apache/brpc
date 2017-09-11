@@ -138,6 +138,7 @@ SocketMap::~SocketMap() {
         bthread_join(_close_idle_thread, NULL);
     }
     if (!_map.empty()) {
+        std::ostringstream err;
         int nleft = 0;
         for (Map::iterator it = _map.begin(); it != _map.end(); ++it) {
             SingleConnection* sc = &it->second;
@@ -146,13 +147,13 @@ SocketMap::~SocketMap() {
                 sc->ref_count != 0) {
                 ++nleft;
                 if (nleft == 0) {
-                    LOG(ERROR) << "Left in SocketMap(" << this << "):" << noflush;
+                    err << "Left in SocketMap(" << this << "):";
                 }
-                LOG(ERROR) << ' ' << *sc->socket << noflush;
+                err << ' ' << *sc->socket;
             }
         }
         if (nleft) {
-            LOG(ERROR);
+            LOG(ERROR) << err.str();
         }
     }
     if (_this_map_bvar) {

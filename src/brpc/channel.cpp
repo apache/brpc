@@ -16,6 +16,7 @@
 //          Rujie Jiang(jiangrujie@baidu.com)
 //          Zhangyi Chen(chenzhangyi01@baidu.com)
 
+#include <inttypes.h>
 #include <google/protobuf/descriptor.h>
 #include <gflags/gflags.h>
 #include "butil/time.h"                               // milliseconds_from_now

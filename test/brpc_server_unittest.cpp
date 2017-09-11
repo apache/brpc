@@ -1194,7 +1194,9 @@ TEST_F(ServerTest, add_builtin_service) {
     if (brpc::FLAGS_enable_threads_service) {
         TestAddBuiltinService(brpc::ThreadsService::descriptor());
     }
+#if !BRPC_WITH_GLOG
     TestAddBuiltinService(brpc::VLogService::descriptor());
+#endif
     TestAddBuiltinService(brpc::FlagsService::descriptor());
     TestAddBuiltinService(brpc::VarsService::descriptor());
     TestAddBuiltinService(brpc::RpczService::descriptor());
@@ -1247,8 +1249,10 @@ TEST_F(ServerTest, too_big_message) {
                                    brpc::SERVER_DOESNT_OWN_SERVICE));
     ASSERT_EQ(0, server.Start(8613, NULL));
 
+#if !BRPC_WITH_GLOG
     logging::StringSink log_str;
     logging::LogSink* old_sink = logging::SetLogSink(&log_str);
+#endif
 
     brpc::Channel chan;
     ASSERT_EQ(0, chan.Init("localhost:8613", NULL));
@@ -1260,12 +1264,14 @@ TEST_F(ServerTest, too_big_message) {
     stub.Echo(&cntl, &req, &res, NULL);
     EXPECT_TRUE(cntl.Failed());
 
+#if !BRPC_WITH_GLOG
     ASSERT_EQ(&log_str, logging::SetLogSink(old_sink));
     std::ostringstream expected_log;
     expected_log << " is bigger than " << brpc::FLAGS_max_body_size
                  << " bytes, the connection will be closed."
                     " Set max_body_size to allow bigger messages";
     ASSERT_NE(std::string::npos, log_str.find(expected_log.str()));
+#endif
 
     server.Stop(0);
     server.Join();
