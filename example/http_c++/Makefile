@@ -8,8 +8,13 @@ CXXFLAGS = -std=c++0x -g -DNDEBUG -O2 -D__const__= -pipe -W -Wall -Werror -Wno-u
 ifeq ($(NEED_GPERFTOOLS), 1)
 	CXXFLAGS+=-DBRPC_ENABLE_CPU_PROFILER -DBRPC_ENABLE_HEAP_PROFILER
 endif
-HDRPATHS = -I$(BRPC_PATH)/output/include $(addprefix -I, $(HDRS))
-LIBPATHS = -L$(BRPC_PATH)/output/lib $(addprefix -L, $(LIBS))
+HDRS+=$(BRPC_PATH)/output/include
+LIBS+=$(BRPC_PATH)/output/lib
+HDRPATHS = $(addprefix -I, $(HDRS))
+LIBPATHS = $(addprefix -L, $(LIBS))
+COMMA=,
+SOPATHS=$(addprefix -Wl$(COMMA)-rpath=, $(LIBS))
+
 STATIC_LINKINGS += -lbrpc
 
 CLIENT_SOURCES = http_client.cpp
@@ -33,15 +38,27 @@ clean:
 
 http_client:$(CLIENT_OBJS)
 	@echo "Linking $@"
+ifneq ("$(LINK_SO)", "")
+	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
+else
 	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
+endif
 
 benchmark_http:$(BENCHMARK_OBJS)
 	@echo "Linking $@"
+ifneq ("$(LINK_SO)", "")
+	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
+else
 	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
+endif
 
 http_server:$(PROTO_OBJS) $(SERVER_OBJS)
 	@echo "Linking $@"
+ifneq ("$(LINK_SO)", "")
+	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
+else
 	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
+endif
 
 %.pb.cc %.pb.h:%.proto
 	@echo "Generating $@"
