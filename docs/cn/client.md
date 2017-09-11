@@ -15,11 +15,11 @@ Client指发起请求的一端，在brpc中没有对应的实体，取而代之�
 
 Channel可以**被所有线程共用**，你不需要为每个线程创建独立的Channel，也不需要用锁互斥。不过Channel的创建和Init并不是线程安全的，请确保在Init成功后再被多线程访问，在没有线程访问后再析构。
 
-一些RPC实现中有RpcClient的概念，包含了Client端的配置信息和资源管理。brpc不需要这些，以往在RpcClient中配置的线程数、长短连接等等要么被加入了Channel，要么可以通过gflags全局配置，这么做的好处：
+一些RPC实现中有ClientManager的概念，包含了Client端的配置信息和资源管理。brpc不需要这些，以往在ClientManager中配置的线程数、长短连接等等要么被加入了brpc::ChannelOptions，要么可以通过gflags全局配置，这么做的好处：
 
-1. 方便。你不需要在创建Channel时传入RpcClient，也不需要存储RpcClient。以往不少代码需要传递RpcClient，比较麻烦。gflags使你无需写代码就能通过命令行或配置文件改变程序的行为。
-2. 共用资源。比如server和channel可以共用后台线程。
-3. 生命周期。析构RpcClient的过程很容易出错，现在由框架负责则不会有问题。
+1. 方便。你不需要在创建Channel时传入ClientManager，也不需要存储ClientManager。否则不少代码需要一层层地传递ClientManager，很麻烦。gflags使一些全局行为的配置更加简单。
+2. 共用资源。比如server和channel可以共用后台线程。(bthread的工作线程)
+3. 生命周期。析构ClientManager的过程很容易出错，现在由框架负责则不会有问题。
 
 就像大部分类那样，Channel必须在**Init**之后才能使用，options为NULL时所有参数取默认值，如果你要使用非默认值，这么做就行了：
 ```c++
@@ -28,17 +28,19 @@ options.xxx = yyy;
 ...
 channel.Init(..., &options);
 ```
+注意Channel不会修改options，Init结束后不会再访问options。所以options一般就像上面代码中那样放栈上。
+
 Init函数分为连接一台服务器和连接服务集群。
 
 # 连接一台服务器
 
 ```c++
-// options为NULL时取默认值。注意Channel不会修改options，Init结束后不会再访问options。所以options一般放栈上。
+// options为NULL时取默认值
 int Init(EndPoint server_addr_and_port, const ChannelOptions* options);
 int Init(const char* server_addr_and_port, const ChannelOptions* options);
 int Init(const char* server_addr, int port, const ChannelOptions* options);
 ```
-这类Channel连接的服务器往往有固定的ip地址，不需要名字服务和负载均衡，创建起来相对轻量。但是**请勿频繁创建使用域名的Channel**。这需要查询dns，可能最多耗时10秒。
+这类Init连接的服务器往往有固定的ip地址，不需要名字服务和负载均衡，创建起来相对轻量。但是**请勿频繁创建使用域名的Channel**。这需要查询dns，可能最多耗时10秒(查询DNS的默认超时)。
 
 合法的“server_addr_and_port”：
 - 127.0.0.1:80
