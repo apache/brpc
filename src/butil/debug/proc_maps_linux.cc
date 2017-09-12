@@ -103,7 +103,7 @@ bool ParseProcMaps(const std::string& input,
     // Due to splitting on '\n' the last line should be empty.
     if (i == lines.size() - 1) {
       if (!lines[i].empty()) {
-        DPLOG(WARNING) << "Last line not empty";
+        DLOG(WARNING) << "Last line not empty";
         return false;
       }
       break;

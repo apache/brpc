@@ -93,8 +93,10 @@ class LeakTracker : public LinkNode<LeakTracker<T> > {
         stacktraces[count] = allocation_stack;
 
       ++count;
-        LOG(ERROR) << "Leaked " << node << " which was allocated by:";
-        //allocation_stack.OutputToStream(&LOG_STREAM(ERROR));
+      std::ostringstream err;
+      err << "Leaked " << node << " which was allocated by:";
+      allocation_stack.OutputToStream(&err);
+      LOG(ERROR) << err.str();
     }
 
     CHECK_EQ(0u, count);
