@@ -11,28 +11,28 @@
 - No class named brpc::Client.
 
 # Channel
-Client-side is the one sending requests, it's called [brpc::Channel](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h) rather "Client" in brpc. A channel may represent the communication line to one server or multiple servers, which can be used to call that Server's services. 
+Client-side sends requests. It's called [Channel](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h) rather "Client" in brpc. A channel may represent a communication line to one server or multiple servers, which can be used to call services. 
 
-A Channel can be **shared by all threads**. Yon don't need to create separate Channel for each thread, and you don't need to protect Channel.CallMethod with lock. But creation/Init/destroying of Channel is **not** thread-safe,  make sure the channel is initialized and destroyed only by one thread.
+A Channel can be **shared by all threads** in the process. Yon don't need to create separate Channels for each thread, and you don't need to synchronize Channel.CallMethod with lock. However creation and destroying of Channel is **not** thread-safe,  make sure the channel is initialized and destroyed only by one thread.
 
-Some RPC implementations have so-called "ClientManager", including configurations and resource management of the client-side, which is not needed by brpc. "thread-num", "connection-type" put in "ClientManager" are supported either via brpc::ChannelOptions or a global gflag. Advantages of doing so:
+Some RPC implementations have so-called "ClientManager", including configurations and resource management at the client-side, which is not needed by brpc. "thread-num", "connection-type" such parameters are either in brpc::ChannelOptions or global gflags. Advantages of doing so:
 
-1. Convenience. You don't have to pass in a "ClientManager" when the Channel is created, and you don't have to store the "ClientManager". Otherwise many code have to pass "ClientManager" layer by layer, which is troublesome. gflags makes configurations of some global behaviors easier.
-2. Share resources. For example, server and channel share background threads. (workers of bthread)
+1. Convenience. You don't have to pass a "ClientManager" when the Channel is created, and you don't have to store the "ClientManager". Otherwise many code have to pass "ClientManager" layer by layer, which is troublesome. gflags makes configurations of global behaviors easier.
+2. Share resources. For example, servers and channels in brpc share background threads (workers of bthread).
 3. Better management of Lifetime. Destructing a "ClientManager" is very error-prone, which is managed by brpc right now.
 
-Like most classes, Channel must be **Init()**-ed before usage. Parameters take default values when options is NULL. If you want to use non-default values, just code as follows:
+Like most classes, Channel must be **Init()**-ed before usage. Parameters take default values when `options` is NULL. If you want to use non-default values, code as follows:
 ```c++
 brpc::ChannelOptions options;  // including default values
 options.xxx = yyy;
 ...
 channel.Init(..., &options);
 ```
-Note that Channel does not modify `options` and not access `options` when Init() is complete, thus options is put on stack generally as in above code. 
+Note that Channel neither modifies `options` nor accesses `options` after completion of Init(), thus options can be put on stack safely as in above code. Channel.options() gets options being used by the Channel.
 
 Init() can connect one server or multiple servers(a cluster).
 
-# Connect one server
+# Connect a server
 
 ```c++
 // Take default values when options is NULL.
@@ -44,64 +44,62 @@ The server connected by these Init() has fixed IP address genrally. The creation
 
 Valid "server_addr_and_port":
 - 127.0.0.1:80
-- [cq01-cos-dev00.cq01.baidu.com](http://cq01-cos-dev00.cq01.baidu.com/):8765
+- cq01-cos-dev00.cq01.baidu.com:8765
 - localhost:9000
 
 Invalid "server_addr_and_port": 
 - 127.0.0.1:90000     # too large port
 - 10.39.2.300:8000   # invalid ip
 
-# 连接服务集群
+# Connect a cluster
 
 ```c++
 int Init(const char* naming_service_url,
          const char* load_balancer_name,
          const ChannelOptions* options);
 ```
-options为NULL时取默认值. 注意Channel不会存储options, Init结束后也不会再访问options. 所以options随用随建放栈上就行了. channel.options()可以获得channel正在使用的所有选项. 
+Channels created by those Init() get server list from the NamingService specified by `naming_service_url` periodically or driven-by-events, and send request to one server chosen from the list according to the algorithm specified by `load_balancer_name` . 
 
-这类Channel需要定期从名字服务中获得服务器列表, 并通过负载均衡算法选择出一台或若干台机器发送请求. 创建和析构此类Channel牵涉到较多的资源, 比如在创建时得访问一次名字服务（否则便不知道有哪些服务器可选）. 由于Channel可被多个线程共用, 一般也没有必要动态创建. 
+You **should not** create such channels ad-hocly each time before a RPC, because creation and destroying of such channels relate to more resources, say NamingService needs to be accessed once at creation otherwise servers to connection are unknown. On the other hand, channels can be shared by multiple threads safely and has no need to be created frequently.
 
-你**不应该**在每次请求前动态地创建此类（连接服务集群的）Channel. 
+If `load_balancer_name` is NULL or empty, this Init() is just the one for single server and `naming_service_url` should be "ip:port" or "host:port" of the server. You can unify initialization of all channels with this Init(). For example, you can put values of `naming_service_url` and `load_balancer_name` in the configuration file, set `load_balancer_name` to empty for a single server and a valid algorithm for a cluster.
 
-r31806之后当load_balancer_name为NULL或空时, 此Init转为连接单台server, naming_service_url应该是server的ip+port 或 域名+port. 你可以通过这个Init函数统一Channel的初始化方式. 比如你可以把naming_service_url和load_balancer_name放在配置文件中, 要连接单台server时把load_balancer_name置空, 要连接多台server时则设置一个有效的算法名称. 
+## Naming Service
 
-## 名字服务
-
-名字服务把一个名字映射为可修改的机器列表, 在client端的位置如下: 
+Naming service maps a name to a modifiable list of servers, it's positioned as follows at client-side: 
 
 ![img](../images/ns.png)
 
-有了名字服务后上游记录的是一个名字, 而不是每一台下游机器. 而当下游机器变化时, 就只需要修改名字服务中的列表, 而不需要逐台修改每个上游, 因为上游会定期请求或被推送最新的列表. 这个过程也常被称为"解耦上下游". 通过naming_service_url选择名字服务, 一般形式是"**protocol://service_name**"
+With the help of naming service, the client remembers a name instead of every concreate servers. When the servers are added or removed, only the mapping in the naming service is changed, rather than modifying every client that may access the cluster. This process is called "decoupling upstreams and downstreams". General form of `naming_service_url`  is "**protocol://service_name**".
 
-### bns://<bns-name>
+### bns://\<bns-name\>
 
-BNS是百度内常用的名字服务, 比如bns://rdev.matrix.all, 其中"bns"是protocol, "rdev.matrix.all"是service-name. 相关一个gflag是-ns_access_interval: ![img](../images/ns_access_interval.png)
+BNS is the common naming service inside Baidu. For example: in "bns://rdev.matrix.all", "bns" is protocol and "rdev.matrix.all" is service-name. A related gflag is -ns_access_interval: ![img](../images/ns_access_interval.png)
 
-如果bns中显示不为空, 但Channel却说找不到服务器, 那么有可能bns列表中的机器状态位（status）为非0, 含义为机器不可用, 所以不会被加入到server候选集中, 具体可通过命令行查看: 
+If BNS displays non-empty list, but Channel says "no servers", the status bit of the machine in BNS is probably non-zero, meaning the machine is unavailable and as a correspondence not added as server candidates of the Channel. Status bits can be viewed by: 
 
 `get_instance_by_service [bns_node_name] -s`
 
-### file://<path>
+### file://\<path\>
 
-服务器列表放在path所在的文件里, 比如"file://conf/local_machine_list"中的"conf/local_machine_list"对应一个文件, 其中每行应是一台服务器的地址. 当文件更新时, 框架会重新加载. 
+Servers are put in the file specified by `path`, for example: in "file://conf/local_machine_list", "conf/local_machine_list" is the file and each line of the file should be address of a server. brpc reloads the file when it's updated.
 
-### list://<addr1>,<addr2>...
+### list://\<addr1\>,\<addr2\>...
 
- 服务器列表直接跟在list://之后, 以逗号分隔, 比如"list://db-bce-81-3-186.db01:7000,m1-bce-44-67-72.m1:7000,cp01-rd-cos-006.cp01:7000" 中有三个地址. 
+Servers are directly put after list://, separated by comma. For example: "list://db-bce-81-3-186.db01:7000,m1-bce-44-67-72.m1:7000,cp01-rd-cos-006.cp01:7000" has 3 addresses.
 
-### http://<url>
+### http://\<url\>
 
- 连接一个域名下所有的机器, 例如http://www.baidu.com:80 , 注意连接单点的Init（两个参数）虽然也可传入域名, 但只会连接域名下的一台机器. 
+Connect all servers under the domain, for example: http://www.baidu.com:80. Note that although the Init() for a single server(2 arguments) accepts hostname as well, it only connects one server under the domain.
 
-### 名字服务过滤器
+### Naming Service Filter
 
-当名字服务获得机器列表后, 可以自定义一个过滤器进行筛选, 最后把结果传递给负载均衡: 
+Users can filter servers got from the NamingService before sending to LoadBalancer.
 
 ![img](../images/ns_filter.jpg)
 
-过滤器的接口如下: 
-```
+Interface of the filter: 
+```c++
 // naming_service_filter.h
 class NamingServiceFilter {
 public:
@@ -116,8 +114,11 @@ struct ServerNode {
     std::string tag;
 };
 ```
-常见的业务策略如根据bns中每个server不同tag进行过滤, 自定义的过滤器配置在ChannelOptions中, 默认为NULL（不过滤）: 
-```
+The most common usage is filtering by server tags.
+
+Customized filter is set to ChannelOptions and being NULL by default (not filter)
+
+```c++
 class MyNamingServiceFilter : public brpc::NamingServiceFilter {
 public:
     bool Accept(const brpc::ServerNode& server) const {
@@ -135,37 +136,37 @@ int main() {
 }
 ```
 
-## 负载均衡
+## Load Balancer
 
-当下游机器超过一台时, 我们需要分割流量, 此过程一般称为负载均衡, 在client端的位置如下图所示: 
+When there're more than one servers to access, we need to divide the traffic. The process is often called load balancing, which is positioned as follows at client-side.
 
 ![img](../images/lb.png)
 
-理想的算法是每个请求都得到及时的处理, 且任意机器crash对全局影响较小. 但由于client端无法及时获得server端的拥塞信息, 而且负载均衡算法不能耗费太多的cpu, 一般来说用户得根据具体的场景选择合适的算法, 目前rpc提供的算法有（通过load_balancer_name指定）: 
+The ideal algorithm is to make every request being processed in-time, and crash of any server makes minimal impact. However clients cannot know delays or congestions happened at servers in realtime, and load balancing algorithms should be light-weight generally, users need to choose proper algorithms for their use cases. Algorithms provided by brpc right now (specified by `load_balancer_name`): 
 
 ### rr
 
-即round robin, 总是选择列表中的下一台服务器, 结尾的下一台是开头, 无需其他设置. 比如有3台机器a,b,c, 那么框架会依次向a, b, c, a, b, c, ...发送请求. 注意这个算法的前提是服务器的配置, 网络条件, 负载都是类似的. 
+which is round robin. Always choose the next server inside the list, the next of the last server is the first one. No other settings. For example there're 3 servers: a,b,c, then brpc will send requests to a, b, c, a, b, c, ... one-by-one. Note that presumption of using this algorithm is the machine specs, network latencies, server loads are similar. 
 
 ### random
 
-随机从列表中选择一台服务器, 无需其他设置. 和round robin类似, 这个算法的前提也是服务器都是类似的. 
+Randomly choose one server from the list, no other settings. Similarly with round robin, the algorithm assumes that servers to access are similar.
 
 ### la
 
-locality-aware, 优先选择延时低的下游, 直到其延时高于其他机器, 无需其他设置. 实现原理请查看[Locality-aware load balancing](lalb.md). 
+which is locality-aware. Perfer servers with lower latencies, until the latency is higher than others, no other settings. Check out [Locality-aware load balancing](lalb.md) for more details.
 
 ### c_murmurhash or c_md5
 
-一致性哈希, 与简单hash的不同之处在于增加或删除机器时不会使分桶结果剧烈变化, 特别适合cache类服务. 
+which is consistent hashing. Adding or removing servers does not make targets of all requests change as in simple hashing, especially suitable for caching services.
 
-发起RPC前需要设置Controller.set_request_code(), 否则RPC会失败. request_code一般是请求中主键部分的32位哈希值, **不需要和负载均衡使用的哈希算法一致**. 比如用c_murmurhash算法也可以用md5计算哈希值. 
+Controller.set_request_code() needs to set before RPC otherwise the RPC will fail. request_code is often the 32-bit hash code of key part of the request, and the hashing algorithm does not need to be same with the one used by load balancer. Say `c_murmurhash`  can use md5 to compute request code of the request as well.
 
-[brpc/policy/hasher.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/policy/hasher.h)中包含了常用的hash函数. 如果用std::string key代表请求的主键, controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size()))就正确地设置了request_code. 
+[brpc/policy/hasher.h includes common hash functions. If `std::string key` stands for the key part of the request, controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size())) sets request_code correctly. 
 
-注意甄别请求中的"主键"部分和"属性"部分, 不要为了偷懒或通用, 就把请求的所有内容一股脑儿计算出哈希值, 属性的变化会使请求的目的地发生剧烈的变化. 另外也要注意padding问题, 比如struct Foo { int32_t a; int64_t b; }在64位机器上a和b之间有4个字节的空隙, 内容未定义, 如果像hash(&foo, sizeof(foo))这样计算哈希值, 结果就是未定义的, 得把内容紧密排列或序列化后再算. 
+Do distinguish "the key part" and "attributes" of the request. Don't compute hash code by the full content of the request just for laziness. Minor changes in attributes may make a totally different hash code and change target server dramatically. Another cause is padding, for example: `struct Foo { int32_t a; int64_t b; }` has a 4-byte gap between `a` and `b` on 64-bit machines, which is undefined. When the request_code is computed by `hash(&foo, sizeof(foo))`,  the result is undefined. The data needs to be packed or serialized before hashing.
 
-实现原理请查看[Consistent Hashing](consistent_hashing.md). 
+Check out [Consistent Hashing](consistent_hashing.md) for more details. 
 
 ## 健康检查
 

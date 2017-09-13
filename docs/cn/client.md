@@ -28,7 +28,7 @@ options.xxx = yyy;
 ...
 channel.Init(..., &options);
 ```
-注意Channel不会修改options，Init结束后不会再访问options。所以options一般就像上面代码中那样放栈上。
+注意Channel不会修改options，Init结束后不会再访问options。所以options一般就像上面代码中那样放栈上。Channel.options()可以获得channel在使用的所有选项。
 
 Init函数分为连接一台服务器和连接服务集群。
 
@@ -44,7 +44,7 @@ int Init(const char* server_addr, int port, const ChannelOptions* options);
 
 合法的“server_addr_and_port”：
 - 127.0.0.1:80
-- [cq01-cos-dev00.cq01.baidu.com](http://cq01-cos-dev00.cq01.baidu.com/):8765
+- cq01-cos-dev00.cq01.baidu.com:8765
 - localhost:9000
 
 不合法的"server_addr_and_port"：
@@ -58,13 +58,11 @@ int Init(const char* naming_service_url,
          const char* load_balancer_name,
          const ChannelOptions* options);
 ```
-options为NULL时取默认值。注意Channel不会存储options，Init结束后也不会再访问options。所以options随用随建放栈上就行了。channel.options()可以获得channel正在使用的所有选项。
+这类Channel需要定期从`naming_service_url`指定的名字服务中获得服务器列表，并通过`load_balancer_name`指定的负载均衡算法选择出一台机器发送请求。
 
-这类Channel需要定期从名字服务中获得服务器列表，并通过负载均衡算法选择出一台或若干台机器发送请求。创建和析构此类Channel牵涉到较多的资源，比如在创建时得访问一次名字服务（否则便不知道有哪些服务器可选）。由于Channel可被多个线程共用，一般也没有必要动态创建。
+你**不应该**在每次请求前动态地创建此类（连接服务集群的）Channel。因为创建和析构此类Channel牵涉到较多的资源，比如在创建时得访问一次名字服务，否则便不知道有哪些服务器可选。由于Channel可被多个线程共用，一般也没有必要动态创建。
 
-你**不应该**在每次请求前动态地创建此类（连接服务集群的）Channel。
-
-r31806之后当load_balancer_name为NULL或空时，此Init转为连接单台server，naming_service_url应该是server的ip+port 或 域名+port。你可以通过这个Init函数统一Channel的初始化方式。比如你可以把naming_service_url和load_balancer_name放在配置文件中，要连接单台server时把load_balancer_name置空，要连接多台server时则设置一个有效的算法名称。
+当`load_balancer_name`为NULL或空时，此Init等同于连接单台server的Init，`naming_service_url`应该是"ip:port"或"域名:port"。你可以通过这个Init函数统一Channel的初始化方式。比如你可以把`naming_service_url`和`load_balancer_name`放在配置文件中，要连接单台server时把`load_balancer_name`置空，要连接服务集群时则设置一个有效的算法名称。
 
 ## 名字服务
 
@@ -72,27 +70,27 @@ r31806之后当load_balancer_name为NULL或空时，此Init转为连接单台ser
 
 ![img](../images/ns.png)
 
-有了名字服务后上游记录的是一个名字，而不是每一台下游机器。而当下游机器变化时，就只需要修改名字服务中的列表，而不需要逐台修改每个上游，因为上游会定期请求或被推送最新的列表。这个过程也常被称为“解耦上下游”。通过naming_service_url选择名字服务，一般形式是"**protocol://service_name**"
+有了名字服务后client记录的是一个名字，而不是每一台下游机器。而当下游机器变化时，就只需要修改名字服务中的列表，而不需要逐台修改每个上游，因为上游会定期请求或被推送最新的列表。这个过程也常被称为“解耦上下游”。`naming_service_url`的一般形式是"**protocol://service_name**"
 
-### bns://<bns-name>
+### bns://\<bns-name\>
 
 BNS是百度内常用的名字服务，比如bns://rdev.matrix.all，其中"bns"是protocol，"rdev.matrix.all"是service-name。相关一个gflag是-ns_access_interval: ![img](../images/ns_access_interval.png)
 
-如果bns中显示不为空，但Channel却说找不到服务器，那么有可能bns列表中的机器状态位（status）为非0，含义为机器不可用，所以不会被加入到server候选集中，具体可通过命令行查看：
+如果BNS中显示不为空，但Channel却说找不到服务器，那么有可能BNS列表中的机器状态位（status）为非0，含义为机器不可用，所以不会被加入到server候选集中．状态位可通过命令行查看：
 
 `get_instance_by_service [bns_node_name] -s`
 
-### file://<path>
+### file://\<path\>
 
-服务器列表放在path所在的文件里，比如"file://conf/local_machine_list"中的“conf/local_machine_list”对应一个文件，其中每行应是一台服务器的地址。当文件更新时，框架会重新加载。
+服务器列表放在`path`所在的文件里，比如"file://conf/local_machine_list"中的“conf/local_machine_list”对应一个文件，其中每行应是一台服务器的地址。当文件更新时, brpc会重新加载。
 
-### list://<addr1>,<addr2>...
+### list://\<addr1\>,\<addr2\>...
 
- 服务器列表直接跟在list://之后，以逗号分隔，比如"list://db-bce-81-3-186.db01:7000,m1-bce-44-67-72.m1:7000,cp01-rd-cos-006.cp01:7000" 中有三个地址。
+服务器列表直接跟在list://之后，以逗号分隔，比如"list://db-bce-81-3-186.db01:7000,m1-bce-44-67-72.m1:7000,cp01-rd-cos-006.cp01:7000" 中有三个地址。
 
-### http://<url>
+### http://\<url\>
 
- 连接一个域名下所有的机器, 例如http://www.baidu.com:80 ，注意连接单点的Init（两个参数）虽然也可传入域名，但只会连接域名下的一台机器。
+连接一个域名下所有的机器, 例如http://www.baidu.com:80 ，注意连接单点的Init（两个参数）虽然也可传入域名，但只会连接域名下的一台机器。
 
 ### 名字服务过滤器
 
@@ -101,7 +99,7 @@ BNS是百度内常用的名字服务，比如bns://rdev.matrix.all，其中"bns"
 ![img](../images/ns_filter.jpg)
 
 过滤器的接口如下：
-```
+```c++
 // naming_service_filter.h
 class NamingServiceFilter {
 public:
@@ -116,8 +114,11 @@ struct ServerNode {
     std::string tag;
 };
 ```
-常见的业务策略如根据bns中每个server不同tag进行过滤，自定义的过滤器配置在ChannelOptions中，默认为NULL（不过滤）：
-```
+常见的业务策略如根据server的tag进行过滤。
+
+自定义的过滤器配置在ChannelOptions中，默认为NULL（不过滤）。
+
+```c++
 class MyNamingServiceFilter : public brpc::NamingServiceFilter {
 public:
     bool Accept(const brpc::ServerNode& server) const {
@@ -141,11 +142,11 @@ int main() {
 
 ![img](../images/lb.png)
 
-理想的算法是每个请求都得到及时的处理，且任意机器crash对全局影响较小。但由于client端无法及时获得server端的拥塞信息，而且负载均衡算法不能耗费太多的cpu，一般来说用户得根据具体的场景选择合适的算法，目前rpc提供的算法有（通过load_balancer_name指定）：
+理想的算法是每个请求都得到及时的处理，且任意机器crash对全局影响较小。但由于client端无法及时获得server端的延迟或拥塞，而且负载均衡算法不能耗费太多的cpu，一般来说用户得根据具体的场景选择合适的算法，目前rpc提供的算法有（通过load_balancer_name指定）：
 
 ### rr
 
-即round robin，总是选择列表中的下一台服务器，结尾的下一台是开头，无需其他设置。比如有3台机器a,b,c，那么框架会依次向a, b, c, a, b, c, ...发送请求。注意这个算法的前提是服务器的配置，网络条件，负载都是类似的。
+即round robin，总是选择列表中的下一台服务器，结尾的下一台是开头，无需其他设置。比如有3台机器a,b,c，那么brpc会依次向a, b, c, a, b, c, ...发送请求。注意这个算法的前提是服务器的配置，网络条件，负载都是类似的。
 
 ### random
 
