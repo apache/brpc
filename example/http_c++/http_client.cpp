@@ -13,11 +13,11 @@
 // limitations under the License.
 
 // - Access pb services via HTTP
-//   ./http_client http://db-rpc-dev00.db01.baidu.com:8765/EchoService/Echo -d '{"message":"hello"}'
+//   ./http_client http://www.foo.com:8765/EchoService/Echo -d '{"message":"hello"}'
 // - Access builtin services
-//   ./http_client http://db-rpc-dev00.db01.baidu.com:8765/vars/rpc_server*
-// - Access www.baidu.com
-//   ./http_client www.baidu.com
+//   ./http_client http://www.foo.com:8765/vars/rpc_server*
+// - Access www.foo.com
+//   ./http_client www.foo.com
 
 #include <gflags/gflags.h>
 #include <butil/logging.h>
@@ -38,7 +38,7 @@ int main(int argc, char* argv[]) {
     google::ParseCommandLineFlags(&argc, &argv, true);
 
     if (argc != 2) {
-        LOG(ERROR) << "Usage: ./http_client \"www.baidu.com\"";
+        LOG(ERROR) << "Usage: ./http_client \"www.foo.com\"";
         return -1;
     }
     char* url = argv[1];
