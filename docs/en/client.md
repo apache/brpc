@@ -60,7 +60,7 @@ int Init(const char* naming_service_url,
 ```
 Channels created by above Init() get server list from the NamingService specified by `naming_service_url` periodically or driven-by-events, and send request to one server chosen from the list according to the algorithm specified by `load_balancer_name` . 
 
-You **should not** create such channels ad-hocly each time before a RPC, because creation and destroying of such channels relate to many resources, say NamingService needs to be accessed once at creation otherwise server candidates are unknown. On the other hand, channels are shareable by multiple threads safely and has no need to be created frequently.
+You **should not** create such channels ad-hocly each time before a RPC, because creation and destroying of such channels relate to many resources, say NamingService needs to be accessed once at creation otherwise server candidates are unknown. On the other hand, channels are able to be shared by multiple threads safely and has no need to be created frequently.
 
 If `load_balancer_name` is NULL or empty, this Init() is just the one for connecting single server and `naming_service_url` should be "ip:port" or "host:port" of the server. Thus you can unify initialization of all channels with this Init(). For example, you can put values of `naming_service_url` and `load_balancer_name` in configuration file, and set `load_balancer_name` to empty for single server and a valid algorithm for a cluster.
 
@@ -70,33 +70,33 @@ Naming service maps a name to a modifiable list of servers. It's positioned as f
 
 ![img](../images/ns.png)
 
-With the help of naming service, the client remembers a name instead of every concrete server. When the servers are added or removed, only mapping in the naming service is changed, rather than telling every client that may access the cluster. This process is called "decoupling up and downstreams". Back to implementation details, the client does remember every single server and will access NamingService periodically or be pushed with latest server list. 
+With the help of naming service, the client remembers a name instead of every concrete server. When the servers are added or removed, only mapping in the naming service is changed, rather than telling every client that may access the cluster. This process is called "decoupling up and downstreams". Back to implementation details, the client does remember every server and will access NamingService periodically or be pushed with latest server list. The impl. has minimal impact on RPC latencies and very small pressure on the system providing naming service.
 
 General form of `naming_service_url`  is "**protocol://service_name**".
 
 ### bns://\<bns-name\>
 
-BNS is the common naming service inside Baidu. For example: in "bns://rdev.matrix.all", "bns" is protocol and "rdev.matrix.all" is service-name. A related gflag is -ns_access_interval: ![img](../images/ns_access_interval.png)
+BNS is the most common naming service inside Baidu. In "bns://rdev.matrix.all", "bns" is protocol and "rdev.matrix.all" is service-name. A related gflag is -ns_access_interval: ![img](../images/ns_access_interval.png)
 
-If BNS displays non-empty list, but Channel says "no servers", the status bit of the machine in BNS is probably non-zero, meaning the machine is unavailable and as a correspondence not added as server candidates of the Channel. Status bits can be viewed by: 
+If the list in BNS is non-empty, but Channel says "no servers", the status bit of the machine in BNS is probably non-zero, which means the machine is unavailable and as a correspondence not added as server candidates of the Channel. Status bits can be checked by: 
 
 `get_instance_by_service [bns_node_name] -s`
 
 ### file://\<path\>
 
-Servers are put in the file specified by `path`, for example: in "file://conf/local_machine_list", "conf/local_machine_list" is the file and each line of the file should be address of a server. brpc reloads the file when it's updated.
+Servers are put in the file specified by `path`. In "file://conf/local_machine_list", "conf/local_machine_list" is the file and each line in the file is address of a server. brpc reloads the file when it's updated.
 
 ### list://\<addr1\>,\<addr2\>...
 
-Servers are directly put after list://, separated by comma. For example: "list://db-bce-81-3-186.db01:7000,m1-bce-44-67-72.m1:7000,cp01-rd-cos-006.cp01:7000" has 3 addresses.
+Servers are directly written after list://, separated by comma. For example: "list://db-bce-81-3-186.db01:7000,m1-bce-44-67-72.m1:7000,cp01-rd-cos-006.cp01:7000" has 3 addresses.
 
 ### http://\<url\>
 
-Connect all servers under the domain, for example: http://www.baidu.com:80. Note that although the Init() for a single server(2 arguments) accepts hostname as well, it only connects one server under the domain.
+Connect all servers under the domain, for example: http://www.baidu.com:80. Note: although Init() for connecting single server(2 parameters) accepts hostname as well, it only connects one server under the domain.
 
 ### Naming Service Filter
 
-Users can filter servers got from the NamingService before sending to LoadBalancer.
+Users can filter servers got from the NamingService before pushing to LoadBalancer.
 
 ![img](../images/ns_filter.jpg)
 
@@ -118,7 +118,7 @@ struct ServerNode {
 ```
 The most common usage is filtering by server tags.
 
-Customized filter is set to ChannelOptions and being NULL by default (not filter)
+Customized filter is set to ChannelOptions to take effects. NULL by default means not filter.
 
 ```c++
 class MyNamingServiceFilter : public brpc::NamingServiceFilter {
@@ -140,15 +140,15 @@ int main() {
 
 ## Load Balancer
 
-When there're more than one servers to access, we need to divide the traffic. The process is often called load balancing, which is positioned as follows at client-side.
+When there're more than one server to access, we need to divide the traffic. The process is called load balancing, which is positioned as follows at client-side.
 
 ![img](../images/lb.png)
 
-The ideal algorithm is to make every request being processed in-time, and crash of any server makes minimal impact. However clients cannot know delays or congestions happened at servers in realtime, and load balancing algorithms should be light-weight generally, users need to choose proper algorithms for their use cases. Algorithms provided by brpc right now (specified by `load_balancer_name`): 
+The ideal algorithm is to make every request being processed in-time, and crash of any server makes minimal impact. However clients are not able to know delays or congestions happened at servers in realtime, and load balancing algorithms should be light-weight generally, users need to choose proper algorithms for their use cases. Algorithms provided by brpc (specified by `load_balancer_name`): 
 
 ### rr
 
-which is round robin. Always choose the next server inside the list, the next of the last server is the first one. No other settings. For example there're 3 servers: a,b,c, then brpc will send requests to a, b, c, a, b, c, ... one-by-one. Note that presumption of using this algorithm is the machine specs, network latencies, server loads are similar. 
+which is round robin. Always choose next server inside the list, next of the last server is the first one. No other settings. For example there're 3 servers: a,b,c, brpc will send requests to a, b, c, a, b, c, … and so on. Note that presumption of using this algorithm is the machine specs, network latencies, server loads are similar. 
 
 ### random
 
@@ -160,29 +160,29 @@ which is locality-aware. Perfer servers with lower latencies, until the latency 
 
 ### c_murmurhash or c_md5
 
-which is consistent hashing. Adding or removing servers does not make targets of all requests change as in simple hashing, especially suitable for caching services.
+which is consistent hashing. Adding or removing servers does not make destinations of requests change as dramatically as in simple hashing. It's especially suitable for caching services.
 
-Controller.set_request_code() needs to set before RPC otherwise the RPC will fail. request_code is often the 32-bit hash code of key part of the request, and the hashing algorithm does not need to be same with the one used by load balancer. Say `c_murmurhash`  can use md5 to compute request code of the request as well.
+Need to set Controller.set_request_code() before RPC otherwise the RPC will fail. request_code is often a 32-bit hash code of "key part" of the request, and the hashing algorithm does not need to be same with the one used by load balancer. Say `c_murmurhash`  can use md5 to compute request_code of the request as well.
 
-[brpc/policy/hasher.h includes common hash functions. If `std::string key` stands for the key part of the request, controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size())) sets request_code correctly. 
+[src/brpc/policy/hasher.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/policy/hasher.h) includes common hash functions. If `std::string key` stands for key part of the request, controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size())) sets request_code correctly. 
 
-Do distinguish "the key part" and "attributes" of the request. Don't compute hash code by the full content of the request just for laziness. Minor changes in attributes may make a totally different hash code and change target server dramatically. Another cause is padding, for example: `struct Foo { int32_t a; int64_t b; }` has a 4-byte gap between `a` and `b` on 64-bit machines, which is undefined. When the request_code is computed by `hash(&foo, sizeof(foo))`,  the result is undefined. The data needs to be packed or serialized before hashing.
+Do distinguish "key" and "attributes" of the request. Don't compute request_code by full content of the request just for quick. Minor change in attributes may result in totally different hash code and change destination dramatically. Another cause is padding, for example: `struct Foo { int32_t a; int64_t b; }` has a 4-byte undefined gap between `a` and `b` on 64-bit machines, result of `hash(&foo, sizeof(foo))` is undefined. Fields need to be packed or serialized before hashing.
 
 Check out [Consistent Hashing](consistent_hashing.md) for more details. 
 
 ## Health checking
 
-Servers whose connections are lost are isolated temporarily to prevent them from being selected by LoadBalancer. brpc connects isolated servers periodically to test if they become healthy again. The interval is controlled by gflag -health_check_interval:
+Servers whose connections are lost are isolated temporarily to prevent them from being selected by LoadBalancer. brpc connects isolated servers periodically to test if they're healthy again. The interval is controlled by gflag -health_check_interval:
 
 | Name                      | Value | Description                              | Defined At              |
 | ------------------------- | ----- | ---------------------------------------- | ----------------------- |
 | health_check_interval （R） | 3     | seconds between consecutive health-checkings | src/brpc/socket_map.cpp |
 
-Once a server is connected, it resumes as a server candidate inside LoadBalancer. If a server was removed from NamingService during health-checking, brpc removes it from health-checking as well.
+Once a server is connected, it resumes as a server candidate inside LoadBalancer. If a server is removed from NamingService during health-checking, brpc removes it from health-checking as well.
 
 # Launch RPC
 
-Generally, we don't use Channel.CallMethod directly, instead we call XXX_Stub generated by protobuf, since the process feels more like a "method call". The stub has few member fields, being suitable(and recommended) to be put on stack instead of new(). Surely the stub can be saved and re-used as well. Channel.CallMethod and stub are both **thread-safe**, and accessible by multiple threads simultaneously. For example: 
+Generally, we don't use Channel.CallMethod directly, instead we call XXX_Stub generated by protobuf, which feels more like a "method call". The stub has few member fields, being suitable(and recommended) to be put on stack instead of new(). Surely the stub can be saved and re-used as well. Channel.CallMethod and stub are both **thread-safe** and accessible by multiple threads simultaneously. For example: 
 ```c++
 XXX_Stub stub(&channel);
 stub.some_method(controller, request, response, done);
@@ -191,13 +191,13 @@ Or even:
 ```c++
 XXX_Stub(&channel).some_method(controller, request, response, done);
 ```
-A exception is http client, which is not related to protobuf much. You can call CallMethod directly to launch a http call, setting all parameters to NULL except `Controller` and `done`, check [Access HTTP](http_client.md) for more. 
+A exception is http client, which is not related to protobuf much. Call CallMethod directly to make a http call, setting all parameters to NULL except for `Controller` and `done`, check [Access HTTP](http_client.md) for details. 
 
 ## Synchronous call
 
-Meaning: CallMethod blocks until response from server is received or error occurred (including timedout). 
+CallMethod blocks until response from server is received or error occurred (including timedout). 
 
-Since CallMethod in Synchronous call means completion of RPC, response/controller will not be used by brpc again, they can be put on stack safely. Note: if request/response has many fields and being large on size, they'd better be allocated on heap.
+response/controller in synchronous call will not be used by brpc again after CallMethod, they can be put on stack safely. Note: if request/response has many fields and being large on size, they'd better be allocated on heap.
 ```c++
 MyRequest request;
 MyResponse response;
@@ -216,13 +216,13 @@ if (cntl->Failed()) {
 
 ## Asynchronous call
 
-Meaning: Pass a callback `done` to CallMethod, which will be resumed after sending request, rather than completion of RPC. When the response from server is received  or error occurred(including timedout), done->Run() is called. The continuation code for post-processing the RPC should be put in done->Run(), rather than after CallMethod. 
+Pass a callback `done` to CallMethod, which resumes after sending request, rather than completion of RPC. When the response from server is received  or error occurred(including timedout), done->Run() is called. Post-processing code of the RPC should be put in done->Run() instead of after CallMethod. 
 
-Because finish of CallMethod does not mean completion of RPC, response/controller may still be referenced by brpc and done->Run(), generally they should be allocated on heap and deleted in done->Run(). If deletion is too early, done->Run() may access invalid memory.
+Because end of CallMethod does not mean completion of RPC, response/controller may still be used by brpc or done->Run(). Generally they should be allocated on heap and deleted in done->Run(). If they're deleted too early, done->Run() may access invalid memory.
 
-You can new these objects individually and create done by [NewCallback](#use-newcallback), or make Response and Controller be member of done, and [new them together](#Inherit-google::protobuf::Closure). Former one is recommended. 
+You can new these objects individually and create done by [NewCallback](#use-newcallback), or make response/controller be member of done and [new them together](#Inherit-google::protobuf::Closure). Former one is recommended. 
 
-**Request and Channel can be destructed immediately after asynchronous CallMethod**. They're different from response/controller. Note that "immediately" means destruction of request/Channel can happen **after** CallMethod, not during CallMethod. Deleting a Channel being used by another thread results in undefined behavior (crash at best). 
+**Request and Channel can be destroyed immediately after asynchronous CallMethod**, which is different from response/controller. Note that "immediately" means destruction of request/Channel can happen **after** CallMethod, not during CallMethod. Deleting a Channel just being used by another thread results in undefined behavior (crash at best). 
 
 ### Use NewCallback
 ```c++
@@ -251,7 +251,7 @@ Since protobuf 3 changes NewCallback to private, brpc puts NewCallback in [src/b
 
 ### Inherit google::protobuf::Closure
 
-Drawback of using NewCallback is you have to allocate memory on heap at least 3 times: response, controller, done. If profiler shows that the memory allocation is a hotspot, you can consider inheriting Closure by your own, and put response/controller as member fields. Doing so combines 3 new into one, but the code will be worse to read. Don't do this if memory allocation is not an issue.
+Drawback of using NewCallback is you have to allocate memory on heap at least 3 times: response, controller, done. If profiler shows that the memory allocation is a hotspot, you can consider inheriting Closure by your own, and enclose response/controller as member fields. Doing so combines 3 new into one, but the code will be worse to read. Don't do this if memory allocation is not an issue.
 ```c++
 class OnRPCDone: public google::protobuf::Closure {
 public:
@@ -281,16 +281,16 @@ stub.some_method(&done->cntl, &request, &done->response, done);
 
 ### What will happen when the callback is very complicated?
 
-No special impact, the callback will run in separate bthread, without blocking other sessions. You can do all sorts of things in callback.
+No special impact, the callback will run in separate bthread, without blocking other sessions. You can do all sorts of things in the callback.
 
 ### Does the callback run in the same thread that CallMethod runs?
 
-The callback must be run in a different bthread, even the RPC fails just after entering CallMethod. This avoids deadlock when the RPC is ongoing inside a lock(not recommended).
+The callback runs in a different bthread, even the RPC fails just after entering CallMethod. This avoids deadlock when the RPC is ongoing inside a lock(not recommended).
 
-## Join completion of RPC
-NOTE: When you want to launch multiple RPC in parallel, [ParallelChannel](combo_channel.md#parallelchannel) is probably more convenient. 
+## Wait for completion of RPC
+NOTE: [ParallelChannel](combo_channel.md#parallelchannel) is probably more convenient to  launch multiple RPCs in parallel
 
-Following code launches 2 asynchronous RPC and waits them to complete.
+Following code starts 2 asynchronous RPC and waits them to complete.
 ```c++
 const brpc::CallId cid1 = controller1->call_id();
 const brpc::CallId cid2 = controller2->call_id();
@@ -301,19 +301,18 @@ stub.method2(controller2, request2, response2, done2);
 brpc::Join(cid1);
 brpc::Join(cid2);
 ```
-Call Controller.call_id() to get an id **before launching RPC**, join the id after issuing the RPC. 
+Call `Controller.call_id()` to get an id **before launching RPC**, join the id after the RPC. 
 
-Join() waits until completion of RPC **and done->Run() is called**,  properties of Join: 
+Join() waits until completion of RPC **and end of done->Run()**,  properties of Join: 
 
-- If the RPC is complete, Join returns immediately.
-- Multiple threads can Join one id, they will all be woken up. 
-- Synchronous RPC can be Join-ed in another thread, although generally we don't do this.  
+- If the RPC is complete, Join() returns immediately.
+- Multiple threads can Join() one id, they will all be woken up. 
+- Synchronous RPC can be Join()-ed in another thread, although we rarely do this.  
 
-Join() was called JoinResponse() before, if you meet deprecated issues during compilation, rename it to Join(). 
+Join() was called JoinResponse() before, if you meet deprecated issues during compilation, rename to Join(). 
 
-Calling Join(controller->call_id()) after completion of RPC is **wrong**, do save call_id before RPC, otherwise the controller may be deleted by done at any time. 
+Calling `Join(controller->call_id())` after completion of RPC is **wrong**, do save call_id before RPC, otherwise the controller may be deleted by done at any time. The Join in following code is **wrong**. 
 
-The Join in following code is **wrong**. 
 ```c++
 static void on_rpc_done(Controller* controller, MyResponse* response) {
     ... Handle response ...
@@ -335,7 +334,7 @@ brpc::Join(controller2->call_id());   // WRONG, controller2 may be deleted by on
 
 ## Semi-synchronous
 
-Join can be used for implementing "Semi-synchronous" call: blocks until multiple asynchronous calls to complete. Since the callsite does not wake up before completion of all RPC, controller/response can be put on stack safely. 
+Join can be used for implementing "Semi-synchronous" call: blocks until multiple asynchronous calls to complete. Since the callsite blocks until completion of all RPC, controller/response can be put on stack safely. 
 ```c++
 brpc::Controller cntl1;
 brpc::Controller cntl2;
@@ -348,24 +347,24 @@ stub2.method2(&cntl2, &request2, &response2, brpc::DoNothing());
 brpc::Join(cntl1.call_id());
 brpc::Join(cntl2.call_id());
 ```
-brpc::DoNothing() gets a done doing nothing, specifically for semi-synchronous calls. Its lifetime is managed by brpc. 
+brpc::DoNothing() gets a closure doing nothing, specifically for semi-synchronous calls. Its lifetime is managed by brpc. 
 
-Note that in above code, we access `controller.call_id()` after completion of RPC, which is safe right here, because DoNothing does not delete controller as in on_rpc_done in previous section.
+Note that in above example, we access `controller.call_id()` after completion of RPC, which is safe right here, because DoNothing does not delete controller as in on_rpc_done in previous example.
 
 ## Cancel RPC
 
-brpc::StartCancel(call_id) cancels corresponding RPC, call_id must be got from Controller.call_id() **before launching RPC**, race conditions may occur at any other time. 
+`brpc::StartCancel(call_id)` cancels corresponding RPC, call_id must be got from Controller.call_id() **before launching RPC**, race conditions may occur at any other time. 
 
-NOTE: it's brpc::StartCancel(CallId), not controller.StartCancel(), which is forbidden and useless. 
+NOTE: it is `brpc::StartCancel(call_id)`, not `controller->StartCancel()`, which is forbidden and useless. The latter one is provided by protobuf by default and has serious race conditions on lifetime of controller. 
 
-As the name says, RPC does not complete yet just after calling StartCancel, you should not touch any field in Controller or delete any associated resource, they should be handled inside done->Run(). If you have to wait for completion of RPC in-place(no need to do this generally), call Join(call_id).
+As the name implies, RPC may not complete yet after calling StartCancel, you should not touch any field in Controller or delete any associated resources, they should be handled inside done->Run(). If you have to wait for completion of RPC in-place(not recommended), call Join(call_id).
 
 Facts about StartCancel: 
 
-- call_id can be cancelled before CallMethod, the RPC will complete immediately(and done will be called). 
+- call_id can be cancelled before CallMethod, the RPC will end immediately(and done will be called). 
 - call_id can be cancelled in another thread. 
-- Cancel an already-cancelled call_id has no effect. Inference: One call_id can be cancelled by multiple threads simultaneously, but only one of them has effect. 
-- Cancel here is a client-side feature, **the server-side may not cancel the operation necessarily**, server cancelation is a separate feature. 
+- Cancel an already-cancelled call_id has no effect. Inference: One call_id can be cancelled by multiple threads simultaneously, but only one of them takes effect. 
+- Cancel here is a client-only feature, **the server-side may not cancel the operation necessarily**, server cancelation is a separate feature. 
 
 ## Get server-side address and port
 
@@ -387,9 +386,11 @@ printf("local_side=%s\n", butil::endpoint2str(cntl->local_side()).c_str());
 ```
 ## Should brpc::Controller be reused?
 
-Not necessary to reuse deliberately. Although Controller has miscellaneous fields, some of them are buffers that can be re-used by calling Reset(). 
+Not necessary to reuse deliberately. 
 
-In most use cases, constructing a Controller and re-using a Controller(via Reset) has similar cost. For example snippet1 and snippet2 in code below perform similarily. 
+Controller has miscellaneous fields, some of them are buffers that can be re-used by calling Reset(). 
+
+In most use cases, constructing a Controller(snippet1) and re-using a Controller(snippet2) perform similarily.
 ```c++
 // snippet1
 for (int i = 0; i < n; ++i) {
@@ -412,19 +413,19 @@ If the Controller in snippet1 is new-ed on heap, snippet1 has extra cost of "hea
 
 Client-side settings has 3 parts: 
 
-- brpc::ChannelOptions: defined in [src/brpc/channel.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h), for initializing Channel, immutable once the initialization is done. 
-- brpc::Controller: defined in [src/brpc/controller.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)中, for overriding fields in ChannelOptions in some RPC, according to contexts. 
-- global gflags: for tuning global behaviors, unchanged generally. Read comments in [/flags page](flags.md) before setting. 
+- brpc::ChannelOptions: defined in [src/brpc/channel.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h), for initializing Channel, becoming immutable once the initialization is done. 
+- brpc::Controller: defined in [src/brpc/controller.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)中, for overriding fields in ChannelOptions in some RPC according to contexts. 
+- global gflags: for tuning global behaviors, being unchanged generally. Read comments in [/flags page](flags.md) before setting. 
 
-Controller contains data and options that request may not have. server and client share the same Controller class, but they may set different fields. You have to read comments in Controller carefully before usage. 
+Controller contains data and options that request may not have. server and client share the same Controller class, but they may set different fields. Read comments in Controller carefully before us. 
 
 A Controller corresponds to a RPC. A Controller can be re-used by another RPC after Reset(), but a Controller can't be used by multiple RPC simultaneously, no matter the RPCs are started from one thread or not.
 
 Properties of Controller: 
 1.  A Controller can only have one user. Without explicit statement, methods in Controller are **not** thread-safe by default. 
-2. Due to the fact that Controller is not shared generally, there's no need to manage Controller by shared_ptr. If you do, something might goes wrong. 
-3. Controller is constructed before RPC and destructed after RPC, some common patterns: 
-   - Put Controller on stack before synchronous RPC, be destructed automatically when out of scope. Note that Controller of asynchronous RPC **must not** be put on stack, otherwise the RPC may still run when the Controller is being destructed and result in undefined behavior.
+2.  Due to the fact that Controller is not shared generally, there's no need to manage Controller by shared_ptr. If you do, something might goes wrong. 
+3.  Controller is constructed before RPC and destructed after RPC, some common patterns: 
+   - Put Controller on stack before synchronous RPC, be destructed when out of scope. Note that Controller of asynchronous RPC **must not** be put on stack, otherwise the RPC may still run when the Controller is being destructed and result in undefined behavior.
    - new Controller before asynchronous RPC, delete in done. 
 
 ## Timeout
@@ -433,23 +434,25 @@ Properties of Controller:
 
 **ChannelOptions.connect_timeout_ms** is timeout in milliseconds for connecting part of all RPC via the Channel, Default value is 1 second, and -1 means no timeout for connecting. This value is limited to be never greater than timeout_ms. Note that this timeout is different from the connecting timeout in TCP, generally this timeout is smaller otherwise establishment of the connection may fail before this timeout due to timeout in TCP layer.
 
-NOTE1: timeout_ms in brpc is *deadline*, which means once it's reached, the RPC ends, no retries after the timeout. UB/hulu has session timeout and deadline timeout, do distinguish them before porting to brpc.
+NOTE1: timeout_ms in brpc is *deadline*, which means once it's reached, the RPC ends, no retries after the timeout. Other impl. may have session timeout and deadline timeout, do distinguish them before porting to brpc.
 
-NOTE2: error code of RPC timeout is **ERPCTIMEDOUT (1008) **, ETIMEDOUT is for connection timeout and retriable.
+NOTE2: error code of RPC timeout is **ERPCTIMEDOUT (1008) **, ETIMEDOUT is connection timeout and retriable.
 
-## 重试
+## Retry
 
-ChannelOptions.max_retry是该Channel上所有RPC的默认最大重试次数, Controller.set_max_retry()可修改某次RPC的值, 默认值3, 0表示不重试. 
+ChannelOptions.max_retry is maximum retrying count for all RPC via the channel, Controller.set_max_retry() overrides value for one RPC. Default value is 3, 0 means no retries. 
 
-r32111后Controller.retried_count()返回重试次数. r34717后Controller.has_backup_request()获知是否发送过backup_request. 
+Controller.retried_count() returns number of retries after r32111.
 
-**重试时框架会尽量避开之前尝试过的server. **
+Controller.has_backup_request() tells if backup_request was sent after r34717.
 
-重试的触发条件有(条件之间是AND关系）: 
-- 连接出错. 如果server一直没有返回, 但连接没有问题, 这种情况下不会重试. 如果你需要在一定时间后发送另一个请求, 使用backup request. 
-- 没到超时. 
-- 有剩余重试次数. Controller.set_max_retry(0)或ChannelOptions.max_retry = 0可关闭重试. 
-- 重试对错误可能有效. 比如请求有错时(EREQUEST)不会重试, 因为server总不会接受, 没有意义. 
+**servers tried before are not retried by best efforts**
+
+Conditions for retrying (AND relations）: 
+- Broken connection. If the server does not respond and connection is OK, retry is not triggered. If you need to send another request after some timeout, use backup request.
+- Timeout is not reached. 
+- Has retrying quota. Controller.set_max_retry(0) or ChannelOptions.max_retry = 0 disables retries. 
+- The retry makes sense. If the RPC fails due to request(EREQUEST), no retry will be done because server is very likely to reject the request again, retrying makes no sense here. 
 
 ### 连接出错
 

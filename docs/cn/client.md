@@ -164,7 +164,7 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 
 发起RPC前需要设置Controller.set_request_code()，否则RPC会失败。request_code一般是请求中主键部分的32位哈希值，**不需要和负载均衡使用的哈希算法一致**。比如用c_murmurhash算法也可以用md5计算哈希值。
 
-[brpc/policy/hasher.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/policy/hasher.h)中包含了常用的hash函数。如果用std::string key代表请求的主键，controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size()))就正确地设置了request_code。
+[src/brpc/policy/hasher.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/policy/hasher.h)中包含了常用的hash函数。如果用std::string key代表请求的主键，controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size()))就正确地设置了request_code。
 
 注意甄别请求中的“主键”部分和“属性”部分，不要为了偷懒或通用，就把请求的所有内容一股脑儿计算出哈希值，属性的变化会使请求的目的地发生剧烈的变化。另外也要注意padding问题，比如struct Foo { int32_t a; int64_t b; }在64位机器上a和b之间有4个字节的空隙，内容未定义，如果像hash(&foo, sizeof(foo))这样计算哈希值，结果就是未定义的，得把内容紧密排列或序列化后再算。
 
@@ -197,7 +197,7 @@ XXX_Stub(&channel).some_method(controller, request, response, done);
 
 指的是：CallMethod会阻塞到收到server端返回response或发生错误（包括超时）。
 
-由于同步访问中CallMethod结束意味着RPC结束，response/controller不再会被框架使用，它们都可以分配在栈上。注意，如果request/response字段特别多字节数特别大的话，还是更适合分配在堆上。
+同步访问中的response/controller不会在CallMethod后被框架使用，它们都可以分配在栈上。注意，如果request/response字段特别多字节数特别大的话，还是更适合分配在堆上。
 ```c++
 MyRequest request;
 MyResponse response;
@@ -311,9 +311,8 @@ Join()的行为是等到RPC结束**且done->Run()运行后**，一些Join的性�
 
 Join()在之前的版本叫做JoinResponse()，如果你在编译时被提示deprecated之类的，修改为Join()。
 
-在RPC调用后Join(controller->call_id())是**错误**的行为，一定要先把call_id保存下来。因为RPC调用后controller可能被随时开始运行的done删除。
+在RPC调用后`Join(controller->call_id())`是**错误**的行为，一定要先把call_id保存下来。因为RPC调用后controller可能被随时开始运行的done删除。下面代码的Join方式是**错误**的。
 
-下面代码的Join方式是**错误**的。
 ```c++
 static void on_rpc_done(Controller* controller, MyResponse* response) {
     ... Handle response ...
@@ -356,7 +355,7 @@ brpc::DoNothing()可获得一个什么都不干的done，专门用于半同步�
 
 brpc::StartCancel(call_id)可取消对应的RPC，call_id必须**在发起RPC前**通过Controller.call_id()获得，其他时刻都可能有race condition。
 
-注意：是brpc::StartCancel(CallId)，不是controller.StartCancel()，后者被禁用，没有效果。
+注意：是brpc::StartCancel(call_id)，不是controller->StartCancel()，后者被禁用，没有效果。后者是protobuf默认提供的接口，但是在controller对象的生命周期上有严重的竞争问题。
 
 顾名思义，StartCancel调用完成后RPC并未立刻结束，你不应该碰触Controller的任何字段或删除任何资源，它们自然会在RPC结束时被done中对应逻辑处理。如果你一定要在原地等到RPC结束（一般不需要），则可通过Join(call_id)。
 
@@ -389,7 +388,7 @@ printf("local_side=%s\n", butil::endpoint2str(cntl->local_side()).c_str());
 
 不用刻意地重用，但Controller是个大杂烩，可能会包含一些缓存，Reset()可以避免反复地创建这些缓存。
 
-在大部分场景下，构造Controller和重置Controller(通过Reset)的代价差不多，比如下面代码中的snippet1和snippet2性能差异不大。
+在大部分场景下，构造Controller(snippet1)和重置Controller(snippet2)的性能差异不大。
 ```c++
 // snippet1
 for (int i = 0; i < n; ++i) {
@@ -433,7 +432,7 @@ Controller的特点：
 
 **ChannelOptions.connect_timeout_ms**是对应Channel上所有RPC的连接超时，单位毫秒，默认值1秒。-1表示等到连接建立或出错，此值被限制为不能超过timeout_ms。注意此超时独立于TCP的连接超时，一般来说前者小于后者，反之则可能在connect_timeout_ms未达到前由于TCP连接超时而出错。
 
-注意1：brpc中的超时是deadline，超过就意味着RPC结束，超时后没有重试。UB/hulu中的超时既有单次访问的，也有代表deadline的。迁移到brpc时请仔细区分。
+注意1：brpc中的超时是deadline，超过就意味着RPC结束，超时后没有重试。其他实现可能既有单次访问的超时，也有代表deadline的超时。迁移到brpc时请仔细区分。
 
 注意2：RPC超时的错误码为**ERPCTIMEDOUT (1008)**，ETIMEDOUT的意思是连接超时，且可重试。
 
@@ -441,7 +440,9 @@ Controller的特点：
 
 ChannelOptions.max_retry是该Channel上所有RPC的默认最大重试次数，Controller.set_max_retry()可修改某次RPC的值，默认值3，0表示不重试。
 
-r32111后Controller.retried_count()返回重试次数。r34717后Controller.has_backup_request()获知是否发送过backup_request。
+r32111后Controller.retried_count()返回重试次数。
+
+r34717后Controller.has_backup_request()获知是否发送过backup_request。
 
 **重试时框架会尽量避开之前尝试过的server。**
 
