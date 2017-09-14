@@ -1,4 +1,4 @@
-这里特指“纯粹"的HTTP service，而不是可通过HTTP访问的pb服务。虽然用不到pb消息，但“纯粹”的HTTP Service也必须定义在.proto文件中，只是request和response都是空的结构体。这么做是确保所有的服务声明集中在proto文件中，而不是散列在.proto、程序、配置等多个地方。示例代码见[http_server.cpp](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/http_c++/http_server.cpp)。
+这里特指“纯粹"的HTTP service，而不是可通过HTTP访问的pb服务。虽然用不到pb消息，但“纯粹”的HTTP Service也必须定义在.proto文件中，只是request和response都是空的结构体。这么做是确保所有的服务声明集中在proto文件中，而不是散列在.proto、程序、配置等多个地方。示例代码见[http_server.cpp](https://github.com/brpc/brpc/blob/master/example/http_c++/http_server.cpp)。
 
 # URL前缀为/ServiceName/MethodName
 
@@ -226,7 +226,7 @@ cntl->http_response().set_content_type("text/html");
 
 ## Status Code
 
-status code是http response特有的字段，标记http请求的完成情况。请使用定义在[http_status_code.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/http_status_code.h)中的enum，遵守HTTP协议。
+status code是http response特有的字段，标记http请求的完成情况。请使用定义在[http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h)中的enum，遵守HTTP协议。
 
 ```c++
 // Get Status Code
@@ -250,7 +250,7 @@ cntl->http_response().SetHeader("Location", "http://bj.bs.bae.baidu.com/family/i
 
 ## Query String
 
-如上面的[HTTP headers](http_service.md#http-headers)中提到的那样，我们按约定成俗的方式来理解query string，即key1=value1&key2=value2&...。只有key而没有value也是可以的，仍然会被GetQuery查询到，只是值为空字符串，这常被用做bool型的开关。接口定义在[uri.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/uri.h)。
+如上面的[HTTP headers](http_service.md#http-headers)中提到的那样，我们按约定成俗的方式来理解query string，即key1=value1&key2=value2&...。只有key而没有value也是可以的，仍然会被GetQuery查询到，只是值为空字符串，这常被用做bool型的开关。接口定义在[uri.h](https://github.com/brpc/brpc/blob/master/src/brpc/uri.h)。
 
 ```c++
 const std::string* time_value = cntl->http_request().uri().GetQuery("time");
@@ -340,7 +340,7 @@ bool Controller::is_ssl() const;
 
 没有极端性能要求的产品线都有使用HTTP协议的倾向，特别是移动端产品线，所以我们很重视HTTP的实现质量，具体来说：
 
-- 使用了node.js的[http parser](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/details/http_parser.h)(部分来自nginx)解析http消息，这是一个轻量、优秀的实现。
+- 使用了node.js的[http parser](https://github.com/brpc/brpc/blob/master/src/brpc/details/http_parser.h)(部分来自nginx)解析http消息，这是一个轻量、优秀的实现。
 - 使用[rapidjson](https://github.com/miloyip/rapidjson)解析json，这是一个主打性能的json库，由一位腾讯专家开发。
 - 在最差情况下解析http请求的时间复杂度也是O(N)，其中N是请求的字节数。反过来说，如果解析代码要求http请求是完整的，那么它可能会花费O(N^2)的时间。HTTP请求普遍较大，这一点意义还是比较大的。
 - 来自不同client的http消息是高度并发的，即使相当复杂的http消息也不会影响对其他客户端的响应。其他rpc和[基于单线程reactor](threading_overview.md#单线程reactor)的各类http server往往难以做到这一点。

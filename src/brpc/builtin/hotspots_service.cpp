@@ -982,8 +982,8 @@ static void StartProfiling(ProfilingType type,
         os << "<p><span style='color:red'>Error:</span> "
            << type_str << " profiler is not enabled yet.</p>"
             "<p>To enable all profilers, link tcmalloc and define macros BRPC_ENABLE_CPU_PROFILER and BRPC_ENABLE_HEAP_PROFILER"
-            "</p><p>Or read docs: <a href='http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/docs/cn/cpu_profiler.md'>cpu_profiler.md</a>"
-            " and <a href='http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/docs/cn/heap_profiler.md'>heap_profiler.md</a>"
+            "</p><p>Or read docs: <a href='https://github.com/brpc/brpc/blob/master/docs/cn/cpu_profiler.md'>cpu_profiler.md</a>"
+            " and <a href='https://github.com/brpc/brpc/blob/master/docs/cn/heap_profiler.md'>heap_profiler.md</a>"
             "</p></body></html>";
         os.move_to(cntl->response_attachment());
         cntl->http_response().set_status_code(HTTP_STATUS_FORBIDDEN);

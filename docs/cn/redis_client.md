@@ -1,4 +1,4 @@
-[redis](http://redis.io/)是最近几年比较火的缓存服务，相比memcached在server端提供了更多的数据结构和操作方法，简化了用户的开发工作，在百度内有比较广泛的应用。为了使用户更快捷地访问redis并充分利用bthread的并发能力，brpc直接支持redis协议。示例程序：[example/redis_c++](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/example/redis_c++/)
+[redis](http://redis.io/)是最近几年比较火的缓存服务，相比memcached在server端提供了更多的数据结构和操作方法，简化了用户的开发工作，在百度内有比较广泛的应用。为了使用户更快捷地访问redis并充分利用bthread的并发能力，brpc直接支持redis协议。示例程序：[example/redis_c++](https://github.com/brpc/brpc/tree/master/example/redis_c++/)
 
 相比使用[hiredis](https://github.com/redis/hiredis)(官方client)的优势有：
 
@@ -103,7 +103,7 @@ CHECK_EQ(-10, response.reply(3).integer());
 
 # RedisRequest
 
-一个[RedisRequest](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/redis.h)可包含多个Command，调用AddCommand*增加命令，成功返回true，失败返回false并会打印调用处的栈。
+一个[RedisRequest](https://github.com/brpc/brpc/blob/master/src/brpc/redis.h)可包含多个Command，调用AddCommand*增加命令，成功返回true，失败返回false并会打印调用处的栈。
 
 ```c++
 bool AddCommand(const char* fmt, ...);
@@ -123,7 +123,7 @@ command_size()可获得（成功）加入的命令个数。
 
 # RedisResponse
 
-[RedisResponse](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/redis.h)可能包含一个或多个[RedisReply](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/redis_reply.h)，reply_size()可获得reply的个数，reply(i)可获得第i个reply的引用（从0计数）。注意在hiredis中，如果请求包含了N个command，获取结果也要调用N次redisGetReply。但在brpc中这是不必要的，RedisResponse已经包含了N个reply，通过reply(i)获取就行了。只要RPC成功，response.reply_size()应与request.command_size()相等，除非redis-server有bug（redis-server工作的基本前提就是response和request按序一一对应）
+[RedisResponse](https://github.com/brpc/brpc/blob/master/src/brpc/redis.h)可能包含一个或多个[RedisReply](https://github.com/brpc/brpc/blob/master/src/brpc/redis_reply.h)，reply_size()可获得reply的个数，reply(i)可获得第i个reply的引用（从0计数）。注意在hiredis中，如果请求包含了N个command，获取结果也要调用N次redisGetReply。但在brpc中这是不必要的，RedisResponse已经包含了N个reply，通过reply(i)获取就行了。只要RPC成功，response.reply_size()应与request.command_size()相等，除非redis-server有bug（redis-server工作的基本前提就是response和request按序一一对应）
 
 每个reply可能是：
 
