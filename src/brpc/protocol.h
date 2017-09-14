@@ -56,7 +56,7 @@ DECLARE_uint64(max_body_size);
 DECLARE_bool(log_error_text);
 
 // 3 steps to add a new Protocol:
-// Step1: Add a new ProtocolType in protocol/brpc/options.proto
+// Step1: Add a new ProtocolType in src/brpc/options.proto
 //        as identifier of the Protocol.
 // Step2: Implement callbacks of struct `Protocol' in policy/ directory.
 // Step3: Register the protocol in global.cpp using `RegisterProtocol'

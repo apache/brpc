@@ -9,7 +9,7 @@ r31687后，brpc支持通过protobuf访问ubrpc，不需要baidu-rpc-ub，也不
 1. 用[idl2proto](https://github.com/brpc/brpc/blob/master/tools/idl2proto)把idl文件转化为proto文件，老版本idl2proto不会转化idl中的service，需要手动转化。
 
    ```protobuf
-   // Converted from echo.idl by public/mcpack2pb/idl2proto
+   // Converted from echo.idl by brpc/tools/idl2proto
    import "idl_options.proto";
    option (idl_support) = true;
    option cc_generic_services = true;
@@ -59,13 +59,10 @@ r31687后，brpc支持通过protobuf访问ubrpc，不需要baidu-rpc-ub，也不
 
 2. 插入如下片段以使用代码生成插件。
 
-   注意--mcpack_out要和--cpp_out一致，你可以先设成--mcpack_out=.，执行comake2或bcloud后看错误信息中的--cpp_out的值，再把--mcpack_out设成一样的。
+   BRPC_PATH代表brpc产出的路径（包含bin include等目录），PROTOBUF_INCLUDE_PATH代表protobuf的包含路径。注意--mcpack_out要和--cpp_out一致。
 
-   ```python
-   PROTOC(ENV.WorkRoot()+"/third-64/protobuf/bin/protoc")
-   PROTOFLAGS("--plugin=protoc-gen-mcpack=" + ENV.WorkRoot() + "/public/mcpack2pb/protoc-gen-mcpack --mcpack_out=.")
-   PROTOFLAGS('--proto_path=' + ENV.WorkRoot() + 'public/mcpack2pb/')
-   PROTOFLAGS('--proto_path=' + ENV.WorkRoot() + 'third-64/protobuf/include/')
+   ```shell
+   protoc --plugin=protoc-gen-mcpack=$BRPC_PATH/bin/protoc-gen-mcpack --cpp_out=. --mcpack_out=. --proto_path=$BRPC_PATH/include --proto_path=PROTOBUF_INCLUDE_PATH
    ```
 
 3. 用channel发起访问。
@@ -371,6 +368,3 @@ channel.CallMethod(NULL, &cntl, &request, &response, NULL);    // 假设channel�
  
 // Process response. response.data() is the buffer, response.size() is the length.
 ```
-
-
-

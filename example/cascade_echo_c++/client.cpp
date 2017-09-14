@@ -32,7 +32,7 @@ DEFINE_string(server, "0.0.0.0:8000", "IP Address of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
-DEFINE_string(protocol, "baidu_std", "Protocol type. Defined in protocol/brpc/options.proto");
+DEFINE_string(protocol, "baidu_std", "Protocol type. Defined in src/brpc/options.proto");
 DEFINE_int32(depth, 0, "number of loop calls");
 // Don't send too frequently in this example
 DEFINE_int32(sleep_ms, 100, "milliseconds to sleep after each RPC");

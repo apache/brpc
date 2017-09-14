@@ -90,7 +90,7 @@ public:
     // Change data at the area. `data' must be as long as the reserved area.
     void assign(const Area&, const void* data);
 
-    // Go back for n bytes. Require public/iobuf > r32794
+    // Go back for n bytes.
     void backup(int n);
     
     // Returns bytes pushed and cut since creation of this stream.

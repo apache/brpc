@@ -272,7 +272,7 @@ $ curl -d '{"message":"hello"}' http://brpc.baidu.com:8765/EchoService/Echo
 
 ## json<=>pb
 
-json通过名字与pb字段一一对应，结构层次也应匹配。json中一定要包含pb的required字段，否则转化会失败，对应请求会被拒绝。json中可以包含pb中没有定义的字段，但不会作为pb的unknown字段被继续传递。转化规则详见[json <=> protobuf](idl_protobuf.md)。
+json通过名字与pb字段一一对应，结构层次也应匹配。json中一定要包含pb的required字段，否则转化会失败，对应请求会被拒绝。json中可以包含pb中没有定义的字段，但不会作为pb的unknown字段被继续传递。转化规则详见[json <=> protobuf](json2pb.md)。
 
 r34532后增加选项-pb_enum_as_number，开启后pb中的enum会转化为它的数值而不是名字，比如在`enum MyEnum { Foo = 1; Bar = 2; };`中不开启此选项时MyEnum类型的字段会转化为"Foo"或"Bar"，开启后为1或2。此选项同时影响client发出的请求和server返回的回复。由于转化为名字相比数值有更好的前后兼容性，此选项只应用于兼容无法处理enum为名字的场景。
 
@@ -314,7 +314,7 @@ server端会自动尝试其支持的协议，无需用户指定。`cntl->protoco
   options.nshead_service = new brpc::policy::NovaServiceAdaptor;
   ```
 
-- public/pbrpc协议，显示为"public_pbrpc" (r32206前显示为"nshead_server")，默认不启用，开启方式：
+- public_pbrpc协议，显示为"public_pbrpc" (r32206前显示为"nshead_server")，默认不启用，开启方式：
 
   ```c++
   #include <brpc/policy/public_pbrpc_protocol.h>

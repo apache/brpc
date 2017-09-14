@@ -23,28 +23,28 @@ com组（INF前身）在08年开发的RPC框架，在百度产品线广泛使用
 - nova_pbrpc：网盟在12年基于UB开发的RPC框架，用protobuf代替mcpack作为序列化方法，协议是nshead + user's protobuf。
 - public_pbrpc：INF在13年初基于UB开发的RPC框架，用protobuf代替mcpack作为序列化方法，但协议与nova_pbrpc不同，大致是nshead + meta protobuf。meta protobuf中有个string字段包含user's protobuf。由于用户数据要序列化两次，这个RPC的性能很差，没有被推广开来。
 
-我们以在网盟广泛使用的nova_pbrpc为UB的代表。测试时其代码为[r10500](https://svn.baidu.com/app/ecom/cm/trunk/pb-rpc)。早期的UB支持CPOOL和XPOOL，分别使用[select](http://linux.die.net/man/2/select)和[leader-follower模型](http://kircher-schwanninger.de/michael/publications/lf.pdf)，后来提供了EPOOL，使用[epoll](http://man7.org/linux/man-pages/man7/epoll.7.html)处理多路连接。鉴于产品线大都是用EPOOL模型，我们的UB配置也使用EPOOL。UB只支持[连接池](client.md#连接方式)，结果用“**ubrpc_mc**"指代（mc代表"multiple
+我们以在网盟广泛使用的nova_pbrpc为UB的代表。测试时其代码为r10500。早期的UB支持CPOOL和XPOOL，分别使用[select](http://linux.die.net/man/2/select)和[leader-follower模型](http://kircher-schwanninger.de/michael/publications/lf.pdf)，后来提供了EPOOL，使用[epoll](http://man7.org/linux/man-pages/man7/epoll.7.html)处理多路连接。鉴于产品线大都是用EPOOL模型，我们的UB配置也使用EPOOL。UB只支持[连接池](client.md#连接方式)，结果用“**ubrpc_mc**"指代（mc代表"multiple
 connection"）。虽然这个名称不太准确（见上文对ubrpc的介绍），但在本文的语境下，请默认ubrpc = UB。
 
 ## hulu-pbrpc
 
-INF在13年基于saber(kylin变种)和protobuf实现的RPC框架，hulu在实现上有较多问题：未封装的引用计数，混乱的生命周期，充斥的race conditions和ABA problems，运行质量不可靠，比如短链接从来没有能正常运行过。之后迅速被brpc代替，测试时其代码为：<https://svn.baidu.com/public/tags/hulu/pbrpc/pbrpc_2-0-15-27959_PD_BL>。hulu-pbrpc只支持单连接，结果用“**hulu-pbrpc**"指代。
+INF在13年基于saber(kylin变种)和protobuf实现的RPC框架，hulu在实现上有较多问题：未封装的引用计数，混乱的生命周期，充斥的race conditions和ABA problems，运行质量不可靠，比如短链接从来没有能正常运行过。之后迅速被brpc代替，测试时其代码为`pbrpc_2-0-15-27959_PD_BL`。hulu-pbrpc只支持单连接，结果用“**hulu-pbrpc**"指代。
 
 ## brpc
 
-INF在2014年底开发至今的rpc产品，支持百度内所有协议（不限于protobuf），并第一次统一了百度内主要分布式系统的RPC框架。测试时其代码为[r31906](https://svn.baidu.com/public/tags/baidu-rpc/baidu-rpc_1-0-199-31906_PD_BL)（开发请使用@ci-base保持更新）。brpc既支持单连接也支持连接池，前者的结果用"**baidu-rpc**"指代，后者用“**baidu-rpc_mc**"指代。
+INF在2014年底开发至今的rpc产品，支持百度内所有协议（不限于protobuf），并第一次统一了百度内主要分布式系统的RPC框架。测试时代码为r31906（开发请使用@ci-base保持更新）。brpc既支持单连接也支持连接池，前者的结果用"**baidu-rpc**"指代，后者用“**baidu-rpc_mc**"指代。
 
 ## sofa-pbrpc
 
-大搜在13年基于boost::asio和protobuf实现的RPC框架，有多个版本，咨询相关同学后，确认ps/opensource下的和github上的较新，且会定期同步。故测试使用使用ps/opensource下的版本。测试时其代码为：<https://svn.baidu.com/ps/opensource/branches/sofa-pbrpc/sofa-pbrpc_1-0-2_BRANCH/>。sofa-pbrpc只支持单连接，结果用“**sofa-pbrpc**”指代。
+大搜在13年基于boost::asio和protobuf实现的RPC框架，有多个版本，咨询相关同学后，确认ps/opensource下的和github上的较新，且会定期同步。故测试使用使用ps/opensource下的版本。测试时其代码为`sofa-pbrpc_1-0-2_BRANCH`。sofa-pbrpc只支持单连接，结果用“**sofa-pbrpc**”指代。
 
 ## apache thrift
 
-thrift是由facebook最早在07年开发的序列化方法和rpc框架，包含独特的序列化格式和IDL，支持很多编程语言。开源后改名[apache thrift](https://thrift.apache.org/)，fb自己有一个[fbthrift分支](https://github.com/facebook/fbthrift)，我们使用的是apache thrift。测试时其代码为[0.9](https://svn.baidu.com/third-64/tags/thrift/thrift_0-9-1-400_PD_BL)。thrift的缺点是：代码看似分层清晰，client和server选择很多，但没有一个足够通用，每个server实现都只能解决很小一块场景，每个client都线程不安全，实际使用很麻烦。由于thrift没有线程安全的client，所以每个线程中都得建立一个client，使用独立的连接。在测试中thrift其实是占了其他实现的便宜：它的client不需要处理多线程问题。thrift的结果用"**thrift_mc**"指代。
+thrift是由facebook最早在07年开发的序列化方法和rpc框架，包含独特的序列化格式和IDL，支持很多编程语言。开源后改名[apache thrift](https://thrift.apache.org/)，fb自己有一个[fbthrift分支](https://github.com/facebook/fbthrift)，我们使用的是apache thrift。测试时其代码为`thrift_0-9-1-400_PD_BL`。thrift的缺点是：代码看似分层清晰，client和server选择很多，但没有一个足够通用，每个server实现都只能解决很小一块场景，每个client都线程不安全，实际使用很麻烦。由于thrift没有线程安全的client，所以每个线程中都得建立一个client，使用独立的连接。在测试中thrift其实是占了其他实现的便宜：它的client不需要处理多线程问题。thrift的结果用"**thrift_mc**"指代。
 
 ## grpc
 
-由google开发的rpc框架，使用http/2和protobuf 3.0，测试时其代码为：<https://github.com/grpc/grpc/tree/release-0_11>。grpc并不是stubby，定位更像是为了推广http/2和protobuf 3.0，但鉴于很多人对它的表现很感兴趣，我们也（很麻烦地）把它加了进来。grpc的结果用"**grpc**"指代。
+由google开发的rpc框架，使用http/2和protobuf 3.0，测试时其代码为<https://github.com/grpc/grpc/tree/release-0_11>。grpc并不是stubby，定位更像是为了推广http/2和protobuf 3.0，但鉴于很多人对它的表现很感兴趣，我们也（很麻烦地）把它加了进来。grpc的结果用"**grpc**"指代。
 
 # 测试方法
 

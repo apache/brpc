@@ -51,7 +51,7 @@ brpc提供了[SampleIterator](https://github.com/brpc/brpc/blob/master/src/brpc/
 brpc::SampleIterator it("./rpc_data/rpc_dump/echo_server");         
 for (SampleRequest* req = it->Next(); req != NULL; req = it->Next()) {
     ...                    
-    // req->meta的类型是brpc::RpcDumpMeta，定义在protocol/brpc/rpc_dump.proto
+    // req->meta的类型是brpc::RpcDumpMeta，定义在src/brpc/rpc_dump.proto
     // req->request的类型是butil::IOBuf，对应格式说明中的"serialized request"
     // 使用结束后必须delete req。
 }

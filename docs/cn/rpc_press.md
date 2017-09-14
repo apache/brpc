@@ -3,7 +3,7 @@ rpc_press无需写代码就压测各种rpc server，目前支持的协议有：
 - 标准协议
 - hulu-pbrpc协议
 - sofa-pbrpc协议
-- public/pbrpc协议（老版pbrpc协议）
+- public_pbrpc协议（老版pbrpc协议）
 - nova-pbrpc协议     
 
 # 获取工具

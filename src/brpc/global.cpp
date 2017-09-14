@@ -369,7 +369,7 @@ static void GlobalInitializeOrDieImpl() {
                                        PackPublicPbrpcRequest,
                                        NULL, ProcessPublicPbrpcResponse,
                                        NULL, NULL, NULL,
-                                       // public/pbrpc server implementation
+                                       // public_pbrpc server implementation
                                        // doesn't support full duplex
                                        CONNECTION_TYPE_POOLED_AND_SHORT,
                                        "public_pbrpc" };

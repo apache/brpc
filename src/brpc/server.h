@@ -423,7 +423,7 @@ public:
     int Start(int port, const ServerOptions* opt);
     
     // Start on ip:port enclosed in butil::EndPoint which is defined in
-    // public/common/butil/endpoint.h
+    // src/butil/endpoint.h
     int Start(const butil::EndPoint& ip_port, const ServerOptions* opt);
 
     // Start on `ip_str' + any useable port in `port_range'
