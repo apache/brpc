@@ -1,6 +1,6 @@
 # Example
 
-[client-side code](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/example/echo_c++/client.cpp) of echo.
+[client-side code](https://github.com/brpc/brpc/blob/master/example/echo_c++/client.cpp) of echo.
 
 # Quick facts
 
@@ -11,7 +11,7 @@
 - No class named brpc::Client.
 
 # Channel
-Client-side sends requests. It's called [Channel](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h) rather than "Client" in brpc. A channel represents a communication line to one server or multiple servers, which can be used for calling services. 
+Client-side sends requests. It's called [Channel](https://github.com/brpc/brpc/blob/master/src/brpc/channel.h) rather than "Client" in brpc. A channel represents a communication line to one server or multiple servers, which can be used for calling services. 
 
 A Channel can be **shared by all threads** in the process. Yon don't need to create separate Channels for each thread, and you don't need to synchronize Channel.CallMethod with lock. However creation and destroying of Channel is **not** thread-safe,  make sure the channel is initialized and destroyed only by one thread.
 
@@ -164,7 +164,7 @@ which is consistent hashing. Adding or removing servers does not make destinatio
 
 Need to set Controller.set_request_code() before RPC otherwise the RPC will fail. request_code is often a 32-bit hash code of "key part" of the request, and the hashing algorithm does not need to be same with the one used by load balancer. Say `c_murmurhash`  can use md5 to compute request_code of the request as well.
 
-[src/brpc/policy/hasher.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/policy/hasher.h) includes common hash functions. If `std::string key` stands for key part of the request, controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size())) sets request_code correctly. 
+[src/brpc/policy/hasher.h](https://github.com/brpc/brpc/blob/master/src/brpc/policy/hasher.h) includes common hash functions. If `std::string key` stands for key part of the request, controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size())) sets request_code correctly. 
 
 Do distinguish "key" and "attributes" of the request. Don't compute request_code by full content of the request just for quick. Minor change in attributes may result in totally different hash code and change destination dramatically. Another cause is padding, for example: `struct Foo { int32_t a; int64_t b; }` has a 4-byte undefined gap between `a` and `b` on 64-bit machines, result of `hash(&foo, sizeof(foo))` is undefined. Fields need to be packed or serialized before hashing.
 
@@ -247,7 +247,7 @@ request.set_foo(...);
 cntl->set_timeout_ms(...);
 stub.some_method(cntl, &request, response, google::protobuf::NewCallback(OnRPCDone, response, cntl));
 ```
-Since protobuf 3 changes NewCallback to private, brpc puts NewCallback in [src/brpc/callback.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/callback.h) after r32035 (and add more overloads). If your program has compilation issues with NewCallback, replace google::protobuf::NewCallback with brpc::NewCallback. 
+Since protobuf 3 changes NewCallback to private, brpc puts NewCallback in [src/brpc/callback.h](https://github.com/brpc/brpc/blob/master/src/brpc/callback.h) after r32035 (and add more overloads). If your program has compilation issues with NewCallback, replace google::protobuf::NewCallback with brpc::NewCallback. 
 
 ### Inherit google::protobuf::Closure
 
@@ -368,7 +368,7 @@ Facts about StartCancel:
 
 ## Get server-side address and port
 
-remote_side() tells where request was sent to, the return type is [butil::EndPoint](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/butil/endpoint.h), which includes an ipv4 address and port. Calling this method before completion of RPC is undefined.
+remote_side() tells where request was sent to, the return type is [butil::EndPoint](https://github.com/brpc/brpc/blob/master/src/butil/endpoint.h), which includes an ipv4 address and port. Calling this method before completion of RPC is undefined.
 
 How to print: 
 ```c++
@@ -413,8 +413,8 @@ If the Controller in snippet1 is new-ed on heap, snippet1 has extra cost of "hea
 
 Client-side settings has 3 parts: 
 
-- brpc::ChannelOptions: defined in [src/brpc/channel.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h), for initializing Channel, becoming immutable once the initialization is done. 
-- brpc::Controller: defined in [src/brpc/controller.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)中, for overriding fields in ChannelOptions in some RPC according to contexts. 
+- brpc::ChannelOptions: defined in [src/brpc/channel.h](https://github.com/brpc/brpc/blob/master/src/brpc/channel.h), for initializing Channel, becoming immutable once the initialization is done. 
+- brpc::Controller: defined in [src/brpc/controller.h](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h)中, for overriding fields in ChannelOptions in some RPC according to contexts. 
 - global gflags: for tuning global behaviors, being unchanged generally. Read comments in [/flags page](flags.md) before setting. 
 
 Controller contains data and options that request may not have. server and client share the same Controller class, but they may set different fields. Read comments in Controller carefully before us. 
@@ -472,7 +472,7 @@ Controller.set_max_retry()或ChannelOptions.max_retry设置最大重试次数, �
 
 一些错误重试是没有意义的, 就不会重试, 比如请求有错时(EREQUEST)不会重试, 因为server总不会接受. 
 
-r32009后用户可以通过继承[brpc::RetryPolicy](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/retry_policy.h)自定义重试条件. r34642后通过cntl->response()可获得对应RPC的response. 对ERPCTIMEDOUT代表的RPC超时总是不重试, 即使RetryPolicy中允许. 
+r32009后用户可以通过继承[brpc::RetryPolicy](https://github.com/brpc/brpc/blob/master/src/brpc/retry_policy.h)自定义重试条件. r34642后通过cntl->response()可获得对应RPC的response. 对ERPCTIMEDOUT代表的RPC超时总是不重试, 即使RetryPolicy中允许. 
 
 比如brpc默认不重试HTTP相关的错误, 而你的程序中希望在碰到HTTP_STATUS_FORBIDDEN (403)时重试, 可以这么做: 
 ```c++
@@ -734,11 +734,11 @@ FATAL 04-07 20:00:03 7778 public/brpc/src/brpc/channel.cpp:123] Invalid address=
 
 主要步骤: 
 
-1. 创建一个[bthread_id](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/bthread/id.h)作为本次RPC的correlation_id. 
-2. 根据Channel的创建方式, 从进程级的[SocketMap](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/socket_map.h)中或从[LoadBalancer](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/load_balancer.h)中选择一台下游server作为本次RPC发送的目的地. 
+1. 创建一个[bthread_id](https://github.com/brpc/brpc/blob/master/src/bthread/id.h)作为本次RPC的correlation_id. 
+2. 根据Channel的创建方式, 从进程级的[SocketMap](https://github.com/brpc/brpc/blob/master/src/brpc/socket_map.h)中或从[LoadBalancer](https://github.com/brpc/brpc/blob/master/src/brpc/load_balancer.h)中选择一台下游server作为本次RPC发送的目的地. 
 3. 根据连接方式（单连接、连接池、短连接）, 选择一个[Socket](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/socket.h). 
 4. 如果开启验证且当前Socket没有被验证过时, 第一个请求进入验证分支, 其余请求会阻塞直到第一个包含认证信息的请求写入Socket. 这是因为server端只对第一个请求进行验证. 
-5. 根据Channel的协议, 选择对应的序列化函数把request序列化至[IOBuf](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/butil/iobuf.h). 
+5. 根据Channel的协议, 选择对应的序列化函数把request序列化至[IOBuf](https://github.com/brpc/brpc/blob/master/src/butil/iobuf.h). 
 6. 如果配置了超时, 设置定时器. 从这个点开始要避免使用Controller对象, 因为在设定定时器后->有可能触发超时机制->调用到用户的异步回调->用户在回调中析构Controller. 
 7. 发送准备阶段结束, 若上述任何步骤出错, 会调用Channel::HandleSendFailed. 
 8. 将之前序列化好的IOBuf写出到Socket上, 同时传入回调Channel::HandleSocketFailed, 当连接断开、写失败等错误发生时会调用此回调. 

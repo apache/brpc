@@ -1,4 +1,4 @@
-[public/bvar](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/tree/src/bvar/)是多线程环境下的计数器类库，方便记录和查看用户程序中的各类数值，它利用了thread local存储避免了cache bouncing，相比UbMonitor几乎不会给程序增加性能开销，也快于竞争频繁的原子操作。brpc集成了bvar，[/vars](http://brpc.baidu.com:8765/vars)可查看所有曝光的bvar，[/vars/VARNAME](http://brpc.baidu.com:8765/vars/rpc_socket_count)可查阅某个bvar，增加计数器的方法请查看[bvar](bvar.md)。brpc大量使用了bvar提供统计数值，当你需要在多线程环境中计数并展现时，应该第一时间想到bvar。但bvar不能代替所有的计数器，它的本质是把写时的竞争转移到了读：读得合并所有写过的线程中的数据，而不可避免地变慢了。当你读写都很频繁并得基于数值做一些逻辑判断时，你不应该用bvar。
+[public/bvar](https://github.com/brpc/brpc/tree/master/src/bvar/)是多线程环境下的计数器类库，方便记录和查看用户程序中的各类数值，它利用了thread local存储避免了cache bouncing，相比UbMonitor几乎不会给程序增加性能开销，也快于竞争频繁的原子操作。brpc集成了bvar，[/vars](http://brpc.baidu.com:8765/vars)可查看所有曝光的bvar，[/vars/VARNAME](http://brpc.baidu.com:8765/vars/rpc_socket_count)可查阅某个bvar，增加计数器的方法请查看[bvar](bvar.md)。brpc大量使用了bvar提供统计数值，当你需要在多线程环境中计数并展现时，应该第一时间想到bvar。但bvar不能代替所有的计数器，它的本质是把写时的竞争转移到了读：读得合并所有写过的线程中的数据，而不可避免地变慢了。当你读写都很频繁并得基于数值做一些逻辑判断时，你不应该用bvar。
 
 ## 查询方法
 
