@@ -42,7 +42,8 @@ You can use it for:
   * hadoop_rpc(not opensourced yet)
   * [rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access) support via [openucx](https://github.com/openucx/ucx) (will be opensourced soon)
   * all sorts of protocols used in Baidu: baidu_std, [streaming_rpc](docs/cn/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc, and nshead-based ones.
-  * Many protobuf-based protocols are accessible via HTTP+json, probably from another language.
+  * Access protobuf-based protocols with HTTP+json, probably from another language.
+  * Build distributed services using [RAFT consensus algorithm](https://raft.github.io) (will be opensourced at [braft](https://github.com/brpc/brpc/braft) soon)
 * Rich processing patterns
   * Services can handle requests [synchronously](docs/cn/server.md) or [asynchronously](docs/cn/server.md#异步service).
   * Access service [synchronously](docs/cn/client.md#同步访问) or [asynchronously](docs/cn/client.md#异步访问), or even [semi-synchronously](docs/cn/client.md#半同步).
