@@ -139,6 +139,7 @@ Check out [benchmark](docs/cn/benchmark.md) for a comparison between brpc and ot
     * [IOBuf](docs/cn/iobuf.md)
     * [Streaming Log](docs/cn/streaming_log.md)
     * [FlatMap](docs/cn/flatmap.md)
+    * [brpc外功修炼宝典](docs/cn/brpc_intro.pptx)(新人培训材料)
   * RPC in depth
     * [New Protocol](docs/cn/new_protocol.md)
     * [atomic instructions](docs/cn/atomic_instructions.md)

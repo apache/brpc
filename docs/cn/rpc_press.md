@@ -73,7 +73,7 @@ dummy_server启动时会在终端打印日志，一般按住ctrl点击那个链�
 
 ![img](../images/rpc_press_2.png)
 
-你可以通过-dummy_port参数修改dummy_server的端口，但请确保端口在8000到8999范围内，否则总是无法在浏览器中访问。
+你可以通过-dummy_port参数修改dummy_server的端口，请确保端口可以在浏览器中访问。
 
 如果你无法打开浏览器，命令行中也会定期打印信息：
 
