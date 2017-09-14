@@ -171,14 +171,14 @@ ProtocolType StringToProtocolType(const butil::StringPiece& name,
     //   "channel doesn't support protocol=unknown"
     // Some callsite may not need this log, so we keep a flag.
     if (print_log_on_unknown) {
-        LOG(ERROR) << "Unknown protocol `" << name << "', supported protocols:"
-                   << noflush;
+        std::ostringstream err;
+        err << "Unknown protocol `" << name << "', supported protocols:";
         for (size_t i = 0; i < MAX_PROTOCOL_SIZE; ++i) {
             if (protocol_map[i].valid.load(butil::memory_order_acquire)) {
-                LOG(ERROR) << ' ' << protocol_map[i].protocol.name << noflush;
+                err << ' ' << protocol_map[i].protocol.name;
             }
         }
-        LOG(ERROR);
+        LOG(ERROR) << err.str();
     }
     return PROTOCOL_UNKNOWN;
 }

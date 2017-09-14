@@ -192,6 +192,7 @@ void ReducerTest_window() {
     bvar::Window<bvar::Miner<int> > w8(&c3, 2);
     bvar::Window<bvar::Miner<int> > w9(&c3, 3);
 
+#if !BRPC_WITH_GLOG
     logging::StringSink log_str;
     logging::LogSink* old_sink = logging::SetLogSink(&log_str);
     c2.get_value();
@@ -200,6 +201,7 @@ void ReducerTest_window() {
                   "You should not call Reducer<int, bvar::detail::MaxTo<int>>"
                   "::get_value() when a Window<> is used because the operator"
                   " does not have inverse."));
+#endif
     const int N = 6000;
     int count = 0;
     int total_count = 0;
@@ -233,6 +235,7 @@ void ReducerTest_window() {
 }
 
 TEST_F(ReducerTest, window) {
+#if !BRPC_WITH_GLOG
     ReducerTest_window();
     logging::StringSink log_str;
     logging::LogSink* old_sink = logging::SetLogSink(&log_str);
@@ -241,6 +244,7 @@ TEST_F(ReducerTest, window) {
     if (log_str.find("Removed ") != std::string::npos) {
         ASSERT_NE(std::string::npos, log_str.find("Removed 3, sampled 0")) << log_str;
     }
+#endif
 }
 
 struct Foo {

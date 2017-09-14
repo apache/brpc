@@ -14,12 +14,13 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
+#if !BRPC_WITH_GLOG 
+
 #include "brpc/log.h"
 #include "brpc/controller.h"           // Controller
 #include "brpc/closure_guard.h"        // ClosureGuard
 #include "brpc/builtin/vlog_service.h"
 #include "brpc/builtin/common.h"
-
 
 namespace brpc {
 
@@ -91,3 +92,6 @@ void VLogService::default_method(::google::protobuf::RpcController* cntl_base,
 }
 
 } // namespace brpc
+
+#endif
+

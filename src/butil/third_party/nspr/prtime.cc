@@ -81,6 +81,7 @@
 #endif
 #include <errno.h>  /* for EINVAL */
 #include <time.h>
+#include <limits.h> /* INT_MAX */
 
 /* Implements the Unix localtime_r() function for windows */
 #if defined(OS_WIN)

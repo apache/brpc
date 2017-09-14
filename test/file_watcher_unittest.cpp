@@ -23,7 +23,6 @@ TEST_F(FileWatcherTest, random_op)
     
     for (int i=0; i<30; ++i) {
         if (rand() % 2) {
-            LOG(INFO) << "watch: " << noflush;
             const butil::FileWatcher::Change ret = fw.check_and_consume();
             switch (ret) {
             case butil::FileWatcher::UPDATED:
@@ -39,7 +38,6 @@ TEST_F(FileWatcherTest, random_op)
                 LOG(INFO) << fw.filepath() << " does not change or still not exist";
                 break;
             }
-            LOG(INFO);
         }
         
         switch (rand() % 2) {

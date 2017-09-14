@@ -51,8 +51,10 @@ private:
 int DebugSampler::_s_ndestroy = 0;
 
 TEST(SamplerTest, single_threaded) {
+#if !BRPC_WITH_GLOG
     logging::StringSink log_str;
     logging::LogSink* old_sink = logging::SetLogSink(&log_str);
+#endif
     const int N = 100;
     DebugSampler* s[N];
     for (int i = 0; i < N; ++i) {
@@ -69,11 +71,13 @@ TEST(SamplerTest, single_threaded) {
     }
     usleep(1010000);
     EXPECT_EQ(N, DebugSampler::_s_ndestroy);
+#if !BRPC_WITH_GLOG
     ASSERT_EQ(&log_str, logging::SetLogSink(old_sink));
     if (log_str.find("Removed ") != std::string::npos) {
         ASSERT_NE(std::string::npos, log_str.find("Removed 0, sampled 100"));
         ASSERT_NE(std::string::npos, log_str.find("Removed 100, sampled 0"));
     }
+#endif
 }
 
 void* check(void*) {
@@ -94,8 +98,10 @@ void* check(void*) {
 }
 
 TEST(SamplerTest, multi_threaded) {
+#if !BRPC_WITH_GLOG
     logging::StringSink log_str;
     logging::LogSink* old_sink = logging::SetLogSink(&log_str);
+#endif
     pthread_t th[10];
     DebugSampler::_s_ndestroy = 0;
     for (size_t i = 0; i < arraysize(th); ++i) {
@@ -106,10 +112,12 @@ TEST(SamplerTest, multi_threaded) {
     }
     sleep(1);
     EXPECT_EQ(100 * arraysize(th), (size_t)DebugSampler::_s_ndestroy);
+#if !BRPC_WITH_GLOG
     ASSERT_EQ(&log_str, logging::SetLogSink(old_sink));
     if (log_str.find("Removed ") != std::string::npos) {
         ASSERT_NE(std::string::npos, log_str.find("Removed 0, sampled 1000"));
         ASSERT_NE(std::string::npos, log_str.find("Removed 1000, sampled 0"));
     }
+#endif
 }
 } // namespace

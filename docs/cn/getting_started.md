@@ -89,6 +89,10 @@ If you want to use [cpu profiler](cpu_profiler.md) or [heap profiler](heap_profi
 
 When you remove tcmalloc, not only remove the linking with tcmalloc but also the macros: `-DBRPC_ENABLE_CPU_PROFILER` and `-DBRPC_ENABLE_HEAP_PROFILER`.
 
+## glog: 3.3+
+
+brpc implementes a default [logging utility](../../src/butil/logging.h) which conflicts with glog. To replace this with glog, add *--with-glog* to config_brpc.sh
+
 ## valgrind: 3.8+
 
 brpc detects valgrind automatically (and registers stacks of bthread). Older valgrind (say 3.2) is not supported.

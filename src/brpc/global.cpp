@@ -228,19 +228,19 @@ static void BaiduStreamingLogHandler(google::protobuf::LogLevel level,
                                      const std::string& message) {
     switch (level) {
     case google::protobuf::LOGLEVEL_INFO:
-        LOG_AT(INFO, filename, line) << message;
+        LOG(INFO) << filename << ':' << line << ' ' << message;
         return;
     case google::protobuf::LOGLEVEL_WARNING:
-        LOG_AT(WARNING, filename, line) << message;
+        LOG(WARNING) << filename << ':' << line << ' ' << message;
         return;
     case google::protobuf::LOGLEVEL_ERROR:
-        LOG_AT(ERROR, filename, line) << message;
+        LOG(ERROR) << filename << ':' << line << ' ' << message;
         return;
     case google::protobuf::LOGLEVEL_FATAL:
-        LOG_AT(FATAL, filename, line) << message;
+        LOG(FATAL) << filename << ':' << line << ' ' << message;
         return;
     }
-    LOG_AT(FATAL, filename, line) << message;
+    CHECK(false) << filename << ':' << line << ' ' << message;
 }
 
 static void GlobalInitializeOrDieImpl() {

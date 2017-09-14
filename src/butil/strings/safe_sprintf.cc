@@ -16,7 +16,7 @@
 // and we should _never_ include any logging code that is active in production
 // builds. Most notably, we should not include these logging functions in
 // unofficial release builds, even though those builds would otherwise have
-// DCHECKS() enabled.
+// DEBUG_CHECKS() enabled.
 // In other words; please do not remove the #ifdef around this #include.
 // Instead, in production builds we opt for returning a degraded result,
 // whenever an error is encountered.
@@ -31,7 +31,7 @@
 #include "butil/logging.h"
 #define DEBUG_CHECK RAW_CHECK
 #else
-#define DEBUG_CHECK(x) do { if (x) { } } while (0)
+#define DEBUG_CHECK(x, msg) do { if (x) { } } while (0)
 #endif
 
 namespace butil {
@@ -118,8 +118,8 @@ class Buffer {
                    static_cast<size_t>(std::numeric_limits<ssize_t>::max()),
                    kSSizeMax_is_the_max_value_of_an_ssize_t);
 #endif
-    DEBUG_CHECK(size > 0);
-    DEBUG_CHECK(size <= kSSizeMax);
+    DEBUG_CHECK(size > 0, "");
+    DEBUG_CHECK(size <= kSSizeMax, "");
   }
 
   ~Buffer() {
@@ -144,7 +144,7 @@ class Buffer {
   // |size_|, if the caller provided an insufficiently large output buffer.
   // But it will never be bigger than |kSSizeMax-1|.
   inline ssize_t GetCount() const {
-    DEBUG_CHECK(count_ < kSSizeMax);
+    DEBUG_CHECK(count_ < kSSizeMax, "");
     return static_cast<ssize_t>(count_);
   }
 
@@ -173,8 +173,8 @@ class Buffer {
   // Returns "false", iff the the |buffer_| filled up (i.e. |count_|
   // overflowed |size_|) at any time during padding.
   inline bool Pad(char pad, size_t padding, size_t len) {
-    DEBUG_CHECK(pad);
-    DEBUG_CHECK(padding <= kSSizeMax);
+    DEBUG_CHECK(pad, "");
+    DEBUG_CHECK(padding <= kSSizeMax, "");
     for (; padding > len; --padding) {
       if (!Out(pad)) {
         if (--padding) {
@@ -229,7 +229,7 @@ class Buffer {
     // the range 1..kSSizeMax-1.
     // This allows us to compute "kSSizeMax - 1 - inc" without incurring any
     // integer overflows.
-    DEBUG_CHECK(inc <= kSSizeMax - 1);
+    DEBUG_CHECK(inc <= kSSizeMax - 1, "");
     if (count_ > kSSizeMax - 1 - inc) {
       count_ = kSSizeMax - 1;
       return false;
@@ -276,12 +276,12 @@ bool Buffer::IToASCII(bool sign, bool upcase, int64_t i, int base,
                       char pad, size_t padding, const char* prefix) {
   // Sanity check for parameters. None of these should ever fail, but see
   // above for the rationale why we can't call CHECK().
-  DEBUG_CHECK(base >= 2);
-  DEBUG_CHECK(base <= 16);
-  DEBUG_CHECK(!sign || base == 10);
-  DEBUG_CHECK(pad == '0' || pad == ' ');
-  DEBUG_CHECK(padding <= kSSizeMax);
-  DEBUG_CHECK(!(sign && prefix && *prefix));
+  DEBUG_CHECK(base >= 2, "");
+  DEBUG_CHECK(base <= 16, "");
+  DEBUG_CHECK(!sign || base == 10, "");
+  DEBUG_CHECK(pad == '0' || pad == ' ', "");
+  DEBUG_CHECK(padding <= kSSizeMax, "");
+  DEBUG_CHECK(!(sign && prefix && *prefix), "");
 
   // Handle negative numbers, if the caller indicated that |i| should be
   // treated as a signed number; otherwise treat |i| as unsigned (even if the
@@ -461,7 +461,7 @@ ssize_t SafeSNPrintf(char* buf, size_t sz, const char* fmt, const Arg* args,
           if (padding > max_padding/10 ||
               10*padding > max_padding - (ch - '0')) {
             DEBUG_CHECK(padding <= max_padding/10 &&
-                        10*padding <= max_padding - (ch - '0'));
+                        10*padding <= max_padding - (ch - '0'), "");
             // Integer overflow detected. Skip the rest of the width until
             // we find the format character, then do the normal error handling.
           padding_overflow:
@@ -479,7 +479,7 @@ ssize_t SafeSNPrintf(char* buf, size_t sz, const char* fmt, const Arg* args,
             // kSSizeMax gets smaller than about 10, our earlier range checks
             // are incomplete. Unittests do trigger this artificial corner
             // case.
-            DEBUG_CHECK(padding <= max_padding);
+            DEBUG_CHECK(padding <= max_padding, "");
             goto padding_overflow;
           }
           ch = *fmt++;
@@ -493,14 +493,14 @@ ssize_t SafeSNPrintf(char* buf, size_t sz, const char* fmt, const Arg* args,
       case 'c': {  // Output an ASCII character.
         // Check that there are arguments left to be inserted.
         if (cur_arg >= max_args) {
-          DEBUG_CHECK(cur_arg < max_args);
+          DEBUG_CHECK(cur_arg < max_args, "");
           goto fail_to_expand;
         }
 
         // Check that the argument has the expected type.
         const Arg& arg = args[cur_arg++];
         if (arg.type != Arg::INT && arg.type != Arg::UINT) {
-          DEBUG_CHECK(arg.type == Arg::INT || arg.type == Arg::UINT);
+          DEBUG_CHECK(arg.type == Arg::INT || arg.type == Arg::UINT, "");
           goto fail_to_expand;
         }
 
@@ -521,7 +521,7 @@ ssize_t SafeSNPrintf(char* buf, size_t sz, const char* fmt, const Arg* args,
       case 'p': {  // Output a pointer value.
         // Check that there are arguments left to be inserted.
         if (cur_arg >= max_args) {
-          DEBUG_CHECK(cur_arg < max_args);
+          DEBUG_CHECK(cur_arg < max_args, "");
           goto fail_to_expand;
         }
 
@@ -531,7 +531,7 @@ ssize_t SafeSNPrintf(char* buf, size_t sz, const char* fmt, const Arg* args,
         if (ch != 'p') {
           // Check that the argument has the expected type.
           if (arg.type != Arg::INT && arg.type != Arg::UINT) {
-            DEBUG_CHECK(arg.type == Arg::INT || arg.type == Arg::UINT);
+            DEBUG_CHECK(arg.type == Arg::INT || arg.type == Arg::UINT, "");
             goto fail_to_expand;
           }
           i = arg.i;
@@ -558,7 +558,7 @@ ssize_t SafeSNPrintf(char* buf, size_t sz, const char* fmt, const Arg* args,
                      arg.i == 0) {  // Allow C++'s version of NULL
             i = 0;
           } else {
-            DEBUG_CHECK(arg.type == Arg::POINTER || arg.type == Arg::STRING);
+            DEBUG_CHECK(arg.type == Arg::POINTER || arg.type == Arg::STRING, "");
             goto fail_to_expand;
           }
 
@@ -579,7 +579,7 @@ ssize_t SafeSNPrintf(char* buf, size_t sz, const char* fmt, const Arg* args,
       case 's': {
         // Check that there are arguments left to be inserted.
         if (cur_arg >= max_args) {
-          DEBUG_CHECK(cur_arg < max_args);
+          DEBUG_CHECK(cur_arg < max_args, "");
           goto fail_to_expand;
         }
 
@@ -592,7 +592,7 @@ ssize_t SafeSNPrintf(char* buf, size_t sz, const char* fmt, const Arg* args,
                    arg.i == 0) {  // Allow C++'s version of NULL
           s = "<NULL>";
         } else {
-          DEBUG_CHECK(arg.type == Arg::STRING);
+          DEBUG_CHECK(arg.type == Arg::STRING, "");
           goto fail_to_expand;
         }
 
@@ -631,7 +631,7 @@ ssize_t SafeSNPrintf(char* buf, size_t sz, const char* fmt, const Arg* args,
         // Unknown or unsupported format character. Just copy verbatim to
         // output.
         buffer.Out('%');
-        DEBUG_CHECK(ch);
+        DEBUG_CHECK(ch, "");
         if (!ch) {
           goto end_of_format_string;
         }
@@ -670,7 +670,7 @@ ssize_t SafeSNPrintf(char* buf, size_t sz, const char* fmt) {
   const char* src = fmt;
   for (; *src; ++src) {
     buffer.Out(*src);
-    DEBUG_CHECK(src[0] != '%' || src[1] == '%');
+    DEBUG_CHECK(src[0] != '%' || src[1] == '%', "");
     if (src[0] == '%' && src[1] == '%') {
       ++src;
     }

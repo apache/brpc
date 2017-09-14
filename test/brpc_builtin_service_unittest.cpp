@@ -8,7 +8,7 @@
 #include <sys/socket.h>
 #include <fstream>
 #include <gtest/gtest.h>
-#include <google/gflags.h>
+#include <gflags/gflags.h>
 #include <gperftools/profiler.h>
 #include <google/protobuf/descriptor.h>
 #include "butil/time.h"
@@ -182,6 +182,7 @@ protected:
     }
     
     void TestVLog(bool use_html) {
+#if !BRPC_WITH_GLOG
         std::string expect_type = (use_html ? "text/html" : "text/plain");
         brpc::VLogService service;
         brpc::VLogRequest req;
@@ -194,6 +195,7 @@ protected:
         EXPECT_FALSE(cntl.Failed());
         EXPECT_EQ(expect_type, cntl.http_response().content_type());
         CheckContent(cntl, "test_builtin_service");
+#endif
     }
     
     void TestConnections(bool use_html) {

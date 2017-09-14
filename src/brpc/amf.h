@@ -22,6 +22,7 @@
 #include <google/protobuf/io/zero_copy_stream.h>
 #include <google/protobuf/message.h>
 #include "butil/sys_byteorder.h"
+#include "butil/strings/string_piece.h"
 
 
 namespace brpc {

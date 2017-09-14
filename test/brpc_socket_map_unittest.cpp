@@ -4,7 +4,7 @@
 // Date: Sun Jul 13 15:04:18 CST 2014
 
 #include <gtest/gtest.h>
-#include <google/gflags.h>
+#include <gflags/gflags.h>
 #include <gperftools/profiler.h>
 #include "brpc/socket.h"
 #include "brpc/socket_map.h"

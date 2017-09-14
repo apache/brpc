@@ -15,11 +15,11 @@ Client指发起请求的一端，在brpc中没有对应的实体，取而代之�
 
 Channel可以**被所有线程共用**，你不需要为每个线程创建独立的Channel，也不需要用锁互斥。不过Channel的创建和Init并不是线程安全的，请确保在Init成功后再被多线程访问，在没有线程访问后再析构。
 
-一些RPC实现中有RpcClient的概念，包含了Client端的配置信息和资源管理。brpc不需要这些，以往在RpcClient中配置的线程数、长短连接等等要么被加入了Channel，要么可以通过gflags全局配置，这么做的好处：
+一些RPC实现中有ClientManager的概念，包含了Client端的配置信息和资源管理。brpc不需要这些，以往在ClientManager中配置的线程数、长短连接等等要么被加入了brpc::ChannelOptions，要么可以通过gflags全局配置，这么做的好处：
 
-1. 方便。你不需要在创建Channel时传入RpcClient，也不需要存储RpcClient。以往不少代码需要传递RpcClient，比较麻烦。gflags使你无需写代码就能通过命令行或配置文件改变程序的行为。
-2. 共用资源。比如server和channel可以共用后台线程。
-3. 生命周期。析构RpcClient的过程很容易出错，现在由框架负责则不会有问题。
+1. 方便。你不需要在创建Channel时传入ClientManager，也不需要存储ClientManager。否则不少代码需要一层层地传递ClientManager，很麻烦。gflags使一些全局行为的配置更加简单。
+2. 共用资源。比如server和channel可以共用后台线程。(bthread的工作线程)
+3. 生命周期。析构ClientManager的过程很容易出错，现在由框架负责则不会有问题。
 
 就像大部分类那样，Channel必须在**Init**之后才能使用，options为NULL时所有参数取默认值，如果你要使用非默认值，这么做就行了：
 ```c++
@@ -28,21 +28,23 @@ options.xxx = yyy;
 ...
 channel.Init(..., &options);
 ```
+注意Channel不会修改options，Init结束后不会再访问options。所以options一般就像上面代码中那样放栈上。Channel.options()可以获得channel在使用的所有选项。
+
 Init函数分为连接一台服务器和连接服务集群。
 
 # 连接一台服务器
 
 ```c++
-// options为NULL时取默认值。注意Channel不会修改options，Init结束后不会再访问options。所以options一般放栈上。
+// options为NULL时取默认值
 int Init(EndPoint server_addr_and_port, const ChannelOptions* options);
 int Init(const char* server_addr_and_port, const ChannelOptions* options);
 int Init(const char* server_addr, int port, const ChannelOptions* options);
 ```
-这类Channel连接的服务器往往有固定的ip地址，不需要名字服务和负载均衡，创建起来相对轻量。但是**请勿频繁创建使用域名的Channel**。这需要查询dns，可能最多耗时10秒。
+这类Init连接的服务器往往有固定的ip地址，不需要名字服务和负载均衡，创建起来相对轻量。但是**请勿频繁创建使用域名的Channel**。这需要查询dns，可能最多耗时10秒(查询DNS的默认超时)。重用它们。
 
 合法的“server_addr_and_port”：
 - 127.0.0.1:80
-- [cq01-cos-dev00.cq01.baidu.com](http://cq01-cos-dev00.cq01.baidu.com/):8765
+- www.foo.com:8765
 - localhost:9000
 
 不合法的"server_addr_and_port"：
@@ -56,13 +58,11 @@ int Init(const char* naming_service_url,
          const char* load_balancer_name,
          const ChannelOptions* options);
 ```
-options为NULL时取默认值。注意Channel不会存储options，Init结束后也不会再访问options。所以options随用随建放栈上就行了。channel.options()可以获得channel正在使用的所有选项。
+这类Channel需要定期从`naming_service_url`指定的名字服务中获得服务器列表，并通过`load_balancer_name`指定的负载均衡算法选择出一台机器发送请求。
 
-这类Channel需要定期从名字服务中获得服务器列表，并通过负载均衡算法选择出一台或若干台机器发送请求。创建和析构此类Channel牵涉到较多的资源，比如在创建时得访问一次名字服务（否则便不知道有哪些服务器可选）。由于Channel可被多个线程共用，一般也没有必要动态创建。
+你**不应该**在每次请求前动态地创建此类（连接服务集群的）Channel。因为创建和析构此类Channel牵涉到较多的资源，比如在创建时得访问一次名字服务，否则便不知道有哪些服务器可选。由于Channel可被多个线程共用，一般也没有必要动态创建。
 
-你**不应该**在每次请求前动态地创建此类（连接服务集群的）Channel。
-
-r31806之后当load_balancer_name为NULL或空时，此Init转为连接单台server，naming_service_url应该是server的ip+port 或 域名+port。你可以通过这个Init函数统一Channel的初始化方式。比如你可以把naming_service_url和load_balancer_name放在配置文件中，要连接单台server时把load_balancer_name置空，要连接多台server时则设置一个有效的算法名称。
+当`load_balancer_name`为NULL或空时，此Init等同于连接单台server的Init，`naming_service_url`应该是"ip:port"或"域名:port"。你可以通过这个Init函数统一Channel的初始化方式。比如你可以把`naming_service_url`和`load_balancer_name`放在配置文件中，要连接单台server时把`load_balancer_name`置空，要连接服务集群时则设置一个有效的算法名称。
 
 ## 名字服务
 
@@ -70,27 +70,29 @@ r31806之后当load_balancer_name为NULL或空时，此Init转为连接单台ser
 
 ![img](../images/ns.png)
 
-有了名字服务后上游记录的是一个名字，而不是每一台下游机器。而当下游机器变化时，就只需要修改名字服务中的列表，而不需要逐台修改每个上游，因为上游会定期请求或被推送最新的列表。这个过程也常被称为“解耦上下游”。通过naming_service_url选择名字服务，一般形式是"**protocol://service_name**"
+有了名字服务后client记录的是一个名字，而不是每一台下游机器。而当下游机器变化时，就只需要修改名字服务中的列表，而不需要逐台修改每个上游。这个过程也常被称为“解耦上下游”。当然在具体实现上，上游会记录每一台下游机器，并定期向名字服务请求或被推送最新的列表，以避免在RPC请求时才去访问名字服务。使用名字服务一般不会对访问性能造成影响，对名字服务的压力也很小。
 
-### bns://<bns-name>
+`naming_service_url`的一般形式是"**protocol://service_name**"
+
+### bns://\<bns-name\>
 
 BNS是百度内常用的名字服务，比如bns://rdev.matrix.all，其中"bns"是protocol，"rdev.matrix.all"是service-name。相关一个gflag是-ns_access_interval: ![img](../images/ns_access_interval.png)
 
-如果bns中显示不为空，但Channel却说找不到服务器，那么有可能bns列表中的机器状态位（status）为非0，含义为机器不可用，所以不会被加入到server候选集中，具体可通过命令行查看：
+如果BNS中显示不为空，但Channel却说找不到服务器，那么有可能BNS列表中的机器状态位（status）为非0，含义为机器不可用，所以不会被加入到server候选集中．状态位可通过命令行查看：
 
 `get_instance_by_service [bns_node_name] -s`
 
-### file://<path>
+### file://\<path\>
 
-服务器列表放在path所在的文件里，比如"file://conf/local_machine_list"中的“conf/local_machine_list”对应一个文件，其中每行应是一台服务器的地址。当文件更新时，框架会重新加载。
+服务器列表放在`path`所在的文件里，比如"file://conf/local_machine_list"中的“conf/local_machine_list”对应一个文件，其中每行应是一台服务器的地址。当文件更新时, brpc会重新加载。
 
-### list://<addr1>,<addr2>...
+### list://\<addr1\>,\<addr2\>...
 
- 服务器列表直接跟在list://之后，以逗号分隔，比如"list://db-bce-81-3-186.db01:7000,m1-bce-44-67-72.m1:7000,cp01-rd-cos-006.cp01:7000" 中有三个地址。
+服务器列表直接跟在list://之后，以逗号分隔，比如"list://db-bce-81-3-186.db01:7000,m1-bce-44-67-72.m1:7000,cp01-rd-cos-006.cp01:7000" 中有三个地址。
 
-### http://<url>
+### http://\<url\>
 
- 连接一个域名下所有的机器, 例如http://www.baidu.com:80 ，注意连接单点的Init（两个参数）虽然也可传入域名，但只会连接域名下的一台机器。
+连接一个域名下所有的机器, 例如http://www.baidu.com:80 ，注意连接单点的Init（两个参数）虽然也可传入域名，但只会连接域名下的一台机器。
 
 ### 名字服务过滤器
 
@@ -99,7 +101,7 @@ BNS是百度内常用的名字服务，比如bns://rdev.matrix.all，其中"bns"
 ![img](../images/ns_filter.jpg)
 
 过滤器的接口如下：
-```
+```c++
 // naming_service_filter.h
 class NamingServiceFilter {
 public:
@@ -114,8 +116,11 @@ struct ServerNode {
     std::string tag;
 };
 ```
-常见的业务策略如根据bns中每个server不同tag进行过滤，自定义的过滤器配置在ChannelOptions中，默认为NULL（不过滤）：
-```
+常见的业务策略如根据server的tag进行过滤。
+
+自定义的过滤器配置在ChannelOptions中，默认为NULL（不过滤）。
+
+```c++
 class MyNamingServiceFilter : public brpc::NamingServiceFilter {
 public:
     bool Accept(const brpc::ServerNode& server) const {
@@ -139,11 +144,11 @@ int main() {
 
 ![img](../images/lb.png)
 
-理想的算法是每个请求都得到及时的处理，且任意机器crash对全局影响较小。但由于client端无法及时获得server端的拥塞信息，而且负载均衡算法不能耗费太多的cpu，一般来说用户得根据具体的场景选择合适的算法，目前rpc提供的算法有（通过load_balancer_name指定）：
+理想的算法是每个请求都得到及时的处理，且任意机器crash对全局影响较小。但由于client端无法及时获得server端的延迟或拥塞，而且负载均衡算法不能耗费太多的cpu，一般来说用户得根据具体的场景选择合适的算法，目前rpc提供的算法有（通过load_balancer_name指定）：
 
 ### rr
 
-即round robin，总是选择列表中的下一台服务器，结尾的下一台是开头，无需其他设置。比如有3台机器a,b,c，那么框架会依次向a, b, c, a, b, c, ...发送请求。注意这个算法的前提是服务器的配置，网络条件，负载都是类似的。
+即round robin，总是选择列表中的下一台服务器，结尾的下一台是开头，无需其他设置。比如有3台机器a,b,c，那么brpc会依次向a, b, c, a, b, c, ...发送请求。注意这个算法的前提是服务器的配置，网络条件，负载都是类似的。
 
 ### random
 
@@ -159,7 +164,7 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 
 发起RPC前需要设置Controller.set_request_code()，否则RPC会失败。request_code一般是请求中主键部分的32位哈希值，**不需要和负载均衡使用的哈希算法一致**。比如用c_murmurhash算法也可以用md5计算哈希值。
 
-[brpc/policy/hasher.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/policy/hasher.h)中包含了常用的hash函数。如果用std::string key代表请求的主键，controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size()))就正确地设置了request_code。
+[src/brpc/policy/hasher.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/policy/hasher.h)中包含了常用的hash函数。如果用std::string key代表请求的主键，controller.set_request_code(brpc::policy::MurmurHash32(key.data(), key.size()))就正确地设置了request_code。
 
 注意甄别请求中的“主键”部分和“属性”部分，不要为了偷懒或通用，就把请求的所有内容一股脑儿计算出哈希值，属性的变化会使请求的目的地发生剧烈的变化。另外也要注意padding问题，比如struct Foo { int32_t a; int64_t b; }在64位机器上a和b之间有4个字节的空隙，内容未定义，如果像hash(&foo, sizeof(foo))这样计算哈希值，结果就是未定义的，得把内容紧密排列或序列化后再算。
 
@@ -167,7 +172,7 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 
 ## 健康检查
 
-连接断开的server会被暂时隔离而不会被负载均衡算法选中，brpc会定期连接被隔离的server，间隔由参数-health_check_interval控制:
+连接断开的server会被暂时隔离而不会被负载均衡算法选中，brpc会定期连接被隔离的server，以检查他们是否恢复正常，间隔由参数-health_check_interval控制:
 
 | Name                      | Value | Description                              | Defined At              |
 | ------------------------- | ----- | ---------------------------------------- | ----------------------- |
@@ -190,9 +195,9 @@ XXX_Stub(&channel).some_method(controller, request, response, done);
 
 ## 同步访问
 
-同步访问指的是：CallMethod会阻塞到server端返回response或发生错误（包括超时）。
+指的是：CallMethod会阻塞到收到server端返回response或发生错误（包括超时）。
 
-由于同步访问中CallMethod结束意味着RPC结束，response/controller不再会被框架使用，它们都可以分配在栈上。注意，如果request/response字段特别多字节数特别大的话，还是更适合分配在堆上。
+同步访问中的response/controller不会在CallMethod后被框架使用，它们都可以分配在栈上。注意，如果request/response字段特别多字节数特别大的话，还是更适合分配在堆上。
 ```c++
 MyRequest request;
 MyResponse response;
@@ -203,7 +208,7 @@ request.set_foo(...);
 cntl.set_timeout_ms(...);
 stub.some_method(&cntl, &request, &response, NULL);
 if (cntl->Failed()) {
-    // RPC出错了
+    // RPC失败了. response里的值是未定义的，勿用。
 } else {
     // RPC成功了，response里有我们想要的回复数据。
 }
@@ -211,23 +216,22 @@ if (cntl->Failed()) {
 
 ## 异步访问
 
-异步访问指的是给CallMethod传递一个额外的回调对象done，CallMethod会在发出request后就结束了，而不是在RPC结束后。当server端返回response或发生错误（包括超时）时，done->Run()会被调用。对RPC的后续处理应该写在done->Run()里，而不是CallMethod后。
+指的是：给CallMethod传递一个额外的回调对象done，CallMethod在发出request后就结束了，而不是在RPC结束后。当server端返回response或发生错误（包括超时）时，done->Run()会被调用。对RPC的后续处理应该写在done->Run()里，而不是CallMethod后。
 
 由于CallMethod结束不意味着RPC结束，response/controller仍可能被框架及done->Run()使用，它们一般得创建在堆上，并在done->Run()中删除。如果提前删除了它们，那当done->Run()被调用时，将访问到无效内存。
 
-你可以独立地创建这些对象，并使用NewCallback生成done（见下文“使用NewCallback”），也可以把Response和Controller作为done的成员变量，一起new出来（见下文“继承google::protobuf::Closure”），一般使用前一种方法。
+你可以独立地创建这些对象，并使用[NewCallback](#使用NewCallback)生成done，也可以把Response和Controller作为done的成员变量，[一起new出来](#继承google::protobuf::Closure)，一般使用前一种方法。
 
-**发起异步请求后Request和Channel也可以立刻析构**。
-这两样和response/controller是不同的。请注意，这是说Channel的析构可以立刻发生在CallMethod**之后**，并不是说析构可以和CallMethod同时发生，删除正被另一个线程使用的Channel是未定义行为（很可能crash）。
+**发起异步请求后Request和Channel也可以立刻析构**。这两样和response/controller是不同的。注意:这是说Channel的析构可以立刻发生在CallMethod**之后**，并不是说析构可以和CallMethod同时发生，删除正被另一个线程使用的Channel是未定义行为（很可能crash）。
 
 ### 使用NewCallback
 ```c++
 static void OnRPCDone(MyResponse* response, brpc::Controller* cntl) {
-    // unique_ptr会帮助我们在return时自动删掉response/cntl，防止忘记。gcc 3.4下的unique_ptr是public/common提供的模拟版本。
+    // unique_ptr会帮助我们在return时自动删掉response/cntl，防止忘记。gcc 3.4下的unique_ptr是模拟版本。
     std::unique_ptr<MyResponse> response_guard(response);
     std::unique_ptr<brpc::Controller> cntl_guard(cntl);
     if (cntl->Failed()) {
-        // RPC出错了. response里的值是未定义的，勿用。
+        // RPC失败了. response里的值是未定义的，勿用。
     } else {
         // RPC成功了，response里有我们想要的数据。开始RPC的后续处理。    
     }
@@ -238,25 +242,25 @@ MyResponse* response = new MyResponse;
 brpc::Controller* cntl = new brpc::Controller;
 MyService_Stub stub(&channel);
  
-MyRequest request;  // you don't have to new request, even in an asynchronous call.
+MyRequest request;  // 你不用new request,即使在异步访问中.
 request.set_foo(...);
 cntl->set_timeout_ms(...);
 stub.some_method(cntl, &request, response, google::protobuf::NewCallback(OnRPCDone, response, cntl));
 ```
-由于protobuf 3把NewCallback设置为私有，r32035后brpc把NewCallback独立于[src/brpc/callback.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/callback.h)。如果你的程序出现NewCallback相关的编译错误，把google::protobuf::NewCallback替换为brpc::NewCallback就行了。
+由于protobuf 3把NewCallback设置为私有，r32035后brpc把NewCallback独立于[src/brpc/callback.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/callback.h)（并增加了一些重载）。如果你的程序出现NewCallback相关的编译错误，把google::protobuf::NewCallback替换为brpc::NewCallback就行了。
 
 ### 继承google::protobuf::Closure
 
-使用NewCallback的缺点是要分配三次内存：response, controller, done。如果profiler证明这儿的内存分配有瓶颈，可以考虑自己继承Closure，把response/controller作为成员变量，这样可以把三次new合并为一次。但缺点就是代码不够美观，如果内存分配不是瓶颈，别用这种方法。`
+使用NewCallback的缺点是要分配三次内存：response, controller, done。如果profiler证明这儿的内存分配有瓶颈，可以考虑自己继承Closure，把response/controller作为成员变量，这样可以把三次new合并为一次。但缺点就是代码不够美观，如果内存分配不是瓶颈，别用这种方法。
 ```c++
 class OnRPCDone: public google::protobuf::Closure {
 public:
     void Run() {
-        // unique_ptr会帮助我们在return时自动delete this，防止忘记。gcc 3.4下的unique_ptr是public/common提供的模拟版本。
+        // unique_ptr会帮助我们在return时自动delete this，防止忘记。gcc 3.4下的unique_ptr是模拟版本。
         std::unique_ptr<OnRPCDone> self_guard(this);
           
         if (cntl->Failed()) {
-            // RPC出错了. response里的值是未定义的，勿用。
+            // RPC失败了. response里的值是未定义的，勿用。
         } else {
             // RPC成功了，response里有我们想要的数据。开始RPC的后续处理。
         }
@@ -269,22 +273,22 @@ public:
 OnRPCDone* done = new OnRPCDone;
 MyService_Stub stub(&channel);
  
-MyRequest request;  // you don't have to new request, even in an asynchronous call.
+MyRequest request;  // 你不用new request,即使在异步访问中.
 request.set_foo(...);
 done->cntl.set_timeout_ms(...);
 stub.some_method(&done->cntl, &request, &done->response, done);
 ```
 
-### 如果异步访问中的回调函数特别复杂会有什么影响
+### 如果异步访问中的回调函数特别复杂会有什么影响吗?
 
 没有特别的影响，回调会运行在独立的bthread中，不会阻塞其他的逻辑。你可以在回调中做各种阻塞操作。
 
-### rpc发送处的代码和回调函数是在同一个线程里执行吗
+### rpc发送处的代码和回调函数是在同一个线程里执行吗?
 
 一定不在同一个线程里运行，即使该次rpc调用刚进去就失败了，回调也会在另一个bthread中运行。这可以在加锁进行rpc（不推荐）的代码中避免死锁。
 
 ## 等待RPC完成
-当你需要发起多个并发操作时，可能[ParallelChannel](combo_channel.md#parallelchannel)更方便。
+注意：当你需要发起多个并发操作时，可能[ParallelChannel](combo_channel.md#parallelchannel)更方便。
 
 如下代码发起两个异步RPC后等待它们完成。
 ```c++
@@ -299,17 +303,16 @@ brpc::Join(cid2);
 ```
 **在发起RPC前**调用Controller.call_id()获得一个id，发起RPC调用后Join那个id。
 
-Join()的行为是等到**RPC结束且调用了done后**，一些Join的性质如下：
+Join()的行为是等到RPC结束**且done->Run()运行后**，一些Join的性质如下：
 
 - 如果对应的RPC已经结束，Join将立刻返回。
-- 多个线程可以Join同一个id，RPC结束时都会醒来。
+- 多个线程可以Join同一个id，它们都会醒来。
 - 同步RPC也可以在另一个线程中被Join，但一般不会这么做。 
 
-Join()在之前的版本叫做JoinResponse()，如果你在编译时被提示deprecated之类的，请修改为Join()。
+Join()在之前的版本叫做JoinResponse()，如果你在编译时被提示deprecated之类的，修改为Join()。
 
-在RPC调用后Join(controller->call_id())是**错误**的行为，一定要先把call_id保存下来。因为RPC调用后controller可能被随时开始运行的done删除。
+在RPC调用后`Join(controller->call_id())`是**错误**的行为，一定要先把call_id保存下来。因为RPC调用后controller可能被随时开始运行的done删除。下面代码的Join方式是**错误**的。
 
-下面代码的Join方式是**错误**的。
 ```c++
 static void on_rpc_done(Controller* controller, MyResponse* response) {
     ... Handle response ...
@@ -331,7 +334,7 @@ brpc::Join(controller2->call_id());   // 错误，controller2可能被on_rpc_don
 
 ## 半同步
 
-Join可用来实现“半同步”操作：即等待多个异步操作返回。由于调用处的代码会等到多个RPC都结束后再醒来，所以controller和response都可以放栈上。
+Join可用来实现“半同步”访问：即等待多个异步访问完成。由于调用处的代码会等到所有RPC都结束后再醒来，所以controller和response都可以放栈上。
 ```c++
 brpc::Controller cntl1;
 brpc::Controller cntl2;
@@ -346,13 +349,13 @@ brpc::Join(cntl2.call_id());
 ```
 brpc::DoNothing()可获得一个什么都不干的done，专门用于半同步访问。它的生命周期由框架管理，用户不用关心。
 
-注意在上面的代码中，我们在RPC结束后又访问了controller.call_id()，这是没有问题的，因为DoNothing中并不会像上面的on_rpc_done中那样删除Controller。
+注意在上面的代码中，我们在RPC结束后又访问了controller.call_id()，这是没有问题的，因为DoNothing中并不会像上节中的on_rpc_done中那样删除Controller。
 
 ## 取消RPC
 
-brpc::StartCancel(CallId)可取消任意RPC，CallId必须**在发起RPC前**通过Controller.call_id()获得，其他时刻都可能有race condition。
+brpc::StartCancel(call_id)可取消对应的RPC，call_id必须**在发起RPC前**通过Controller.call_id()获得，其他时刻都可能有race condition。
 
-> 是brpc::StartCancel(CallId)，不是controller.StartCancel()，后者被禁用，没有效果。
+注意：是brpc::StartCancel(call_id)，不是controller->StartCancel()，后者被禁用，没有效果。后者是protobuf默认提供的接口，但是在controller对象的生命周期上有严重的竞争问题。
 
 顾名思义，StartCancel调用完成后RPC并未立刻结束，你不应该碰触Controller的任何字段或删除任何资源，它们自然会在RPC结束时被done中对应逻辑处理。如果你一定要在原地等到RPC结束（一般不需要），则可通过Join(call_id)。
 
@@ -361,7 +364,7 @@ brpc::StartCancel(CallId)可取消任意RPC，CallId必须**在发起RPC前**通
 - call_id在发起RPC前就可以被取消，RPC会直接结束（done仍会被调用）。
 - call_id可以在另一个线程中被取消。
 - 取消一个已经取消的call_id不会有任何效果。推论：同一个call_id可以被多个线程同时取消，但最多一次有效果。
-- 取消只是指client会忽略对应的RPC结果，**不意味着server端会取消对应的操作**，server cancelation是另一个功能。
+- 这里的取消是纯client端的功能，**server端未必会取消对应的操作**，server cancelation是另一个功能。
 
 ## 获取Server的地址和端口
 
@@ -381,11 +384,11 @@ r31384后通过local_side()方法可**在RPC结束后**获得发起RPC的地址�
 LOG(INFO) << "local_side=" << cntl->local_side(); 
 printf("local_side=%s\n", butil::endpoint2str(cntl->local_side()).c_str());
 ```
-## 新建brpc::Controller的代价大吗
+## 应该重用brpc::Controller吗?
 
-不大，不用刻意地重用，但Controller是个大杂烩，可能会包含一些缓存，Reset()可以避免反复地创建这些缓存。
+不用刻意地重用，但Controller是个大杂烩，可能会包含一些缓存，Reset()可以避免反复地创建这些缓存。
 
-在大部分场景下，构造Controller和重置Controller(通过Reset)的代价差不多，比如下面代码中的snippet1和snippet2性能差异不大。
+在大部分场景下，构造Controller(snippet1)和重置Controller(snippet2)的性能差异不大。
 ```c++
 // snippet1
 for (int i = 0; i < n; ++i) {
@@ -410,7 +413,7 @@ Client端的设置主要由三部分组成：
 
 - brpc::ChannelOptions: 定义在[src/brpc/channel.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/channel.h)中，用于初始化Channel，一旦初始化成功无法修改。
 - brpc::Controller: 定义在[src/brpc/controller.h](http://icode.baidu.com/repo/baidu/opensource/baidu-rpc/files/master/blob/src/brpc/controller.h)中，用于在某次RPC中覆盖ChannelOptions中的选项，可根据上下文每次均不同。
-- 全局gflags：常用于调节一些底层代码的行为，一般不用修改。请自行阅读服务/flags页面中的说明。
+- 全局gflags：常用于调节一些底层代码的行为，一般不用修改。请自行阅读服务[/flags页面](flags.md)中的说明。
 
 Controller包含了request中没有的数据和选项。server端和client端的Controller结构体是一样的，但使用的字段可能是不同的，你需要仔细阅读Controller中的注释，明确哪些字段可以在server端使用，哪些可以在client端使用。
 
@@ -419,26 +422,27 @@ Controller包含了request中没有的数据和选项。server端和client端的
 Controller的特点：
 1. 一个Controller只能有一个使用者，没有特殊说明的话，Controller中的方法默认线程不安全。
 2. 因为不能被共享，所以一般不会用共享指针管理Controller，如果你用共享指针了，很可能意味着出错了。
-3. 创建于开始RPC前，析构于RPC结束后，常见几种模式：
+3. Controller创建于开始RPC前，析构于RPC结束后，常见几种模式：
    - 同步RPC前Controller放栈上，出作用域后自行析构。注意异步RPC的Controller绝对不能放栈上，否则其析构时异步调用很可能还在进行中，从而引发未定义行为。
    - 异步RPC前new Controller，done中删除。
-   - 异步RPC前从某个全局或thread-local的pool中取出Controller，done中Reset()并归还pool。当然Reset()也可发生在取出时，但在归还时能更及时地释放资源。
 
 ## 超时
 
-**ChannelOptions.timeout_ms**是对应Channel上一次RPC的超时，Controller.set_timeout_ms()可修改某次RPC的值。单位毫秒，默认值1秒，最大值2^31（约24天），-1表示一直等到回复或错误。
+**ChannelOptions.timeout_ms**是对应Channel上所有RPC的总超时，Controller.set_timeout_ms()可修改某次RPC的值。单位毫秒，默认值1秒，最大值2^31（约24天），-1表示一直等到回复或错误。
 
-**ChannelOptions.connect_timeout_ms**是对应Channel上一次RPC的连接超时，单位毫秒，默认值1秒。-1表示等到连接建立或出错，此值被限制为不能超过timeout_ms。注意此超时独立于TCP的连接超时，一般来说前者小于后者，反之则可能在connect_timeout_ms未达到前由于TCP连接超时而出错。
+**ChannelOptions.connect_timeout_ms**是对应Channel上所有RPC的连接超时，单位毫秒，默认值1秒。-1表示等到连接建立或出错，此值被限制为不能超过timeout_ms。注意此超时独立于TCP的连接超时，一般来说前者小于后者，反之则可能在connect_timeout_ms未达到前由于TCP连接超时而出错。
 
-注意1：brpc中的超时是deadline，超过就意味着RPC结束。UB/hulu中的超时既有单次访问的，也有代表deadline的。迁移到brpc时请仔细区分。
+注意1：brpc中的超时是deadline，超过就意味着RPC结束，超时后没有重试。其他实现可能既有单次访问的超时，也有代表deadline的超时。迁移到brpc时请仔细区分。
 
-注意2：r31711后超时的错误码为**ERPCTIMEDOUT (1008)**，ETIMEDOUT的意思是连接超时。r31711前，超时的错误码是ETIMEDOUT (110)。原因：RPC内很早就区分了这两者，但考虑到linux下的使用习惯，在RPC结束前把ERPCTIMEDOUT改为了ETIMEDOUT。使用中我们逐渐发现不管是RPC内部实现（比如组合channel）还是一些用户场景都需要区分RPC超时和连接超时，综合考虑后决定不再合并这两个错误。如果你的程序中有诸如cntl->ErrorCode() == ETIMEDOUT的代码，你考虑下这里到底是否用对了，如果其实是在判RPC超时的话，得改成ERPCTIMEDOUT。
+注意2：RPC超时的错误码为**ERPCTIMEDOUT (1008)**，ETIMEDOUT的意思是连接超时，且可重试。
 
 ## 重试
 
 ChannelOptions.max_retry是该Channel上所有RPC的默认最大重试次数，Controller.set_max_retry()可修改某次RPC的值，默认值3，0表示不重试。
 
-r32111后Controller.retried_count()返回重试次数。r34717后Controller.has_backup_request()获知是否发送过backup_request。
+r32111后Controller.retried_count()返回重试次数。
+
+r34717后Controller.has_backup_request()获知是否发送过backup_request。
 
 **重试时框架会尽量避开之前尝试过的server。**
 

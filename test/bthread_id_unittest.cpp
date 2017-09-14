@@ -207,7 +207,7 @@ static void* locker(void* arg) {
     bthread_usleep(2000);
     EXPECT_EQ(0, bthread_id_unlock(id));
     tm.stop();
-    LOG(TRACE) << "Unlocked, tm=" << tm.u_elapsed();
+    LOG(INFO) << "Unlocked, tm=" << tm.u_elapsed();
     return NULL;
 }
 

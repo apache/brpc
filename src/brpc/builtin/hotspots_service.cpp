@@ -547,17 +547,18 @@ static void DoProfiling(ProfilingType type,
     }
 
     // Log requester
-    LOG(INFO) << cntl->remote_side() << noflush;
+    std::ostringstream client_info;
+    client_info << cntl->remote_side();
     if (cntl->auth_context()) {
-        LOG(INFO) << "(auth=" << cntl->auth_context()->user() << ')' << noflush;
+        client_info << "(auth=" << cntl->auth_context()->user() << ')';
     } else {
-        LOG(INFO) << "(no auth)" << noflush;
+        client_info << "(no auth)";
     }
-    LOG(INFO) << " requests for profiling " << ProfilingType2String(type) << noflush;
+    client_info << " requests for profiling " << ProfilingType2String(type);
     if (type == PROFILING_CPU || type == PROFILING_CONTENTION) {
-        LOG(INFO) << " for " << seconds << " seconds";
+        LOG(INFO) << client_info.str() << " for " << seconds << " seconds";
     } else {
-        LOG(INFO);
+        LOG(INFO) << client_info.str();
     }
     int64_t prof_id = 0;
     const std::string* prof_id_str =

@@ -65,7 +65,6 @@ public:
         }
     }
     ~SamplerCollector() {
-        VLOG(99) << "SamplerCollector is quiting";
         if (_created) {
             _stop = true;
             pthread_join(_tid, NULL);
@@ -93,7 +92,6 @@ private:
 };
 
 void SamplerCollector::run() {
-    VLOG(99) << "SamplerCollector starts to run";
     butil::LinkNode<Sampler> root;
     int consecutive_nosleep = 0;
     PassiveStatus<double> cumulated_time(get_cumulated_time, this);

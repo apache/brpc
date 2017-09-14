@@ -491,10 +491,14 @@ int Server::AddBuiltinServices() {
         LOG(ERROR) << "Fail to add ThreadsService";
         return -1;
     }
+
+#if !BRPC_WITH_GLOG
     if (AddBuiltinService(new (std::nothrow) VLogService)) {
         LOG(ERROR) << "Fail to add VLogService";
         return -1;
     }
+#endif
+
     if (AddBuiltinService(new (std::nothrow) PProfService)) {
         LOG(ERROR) << "Fail to add PProfService";
         return -1;
@@ -578,14 +582,15 @@ Acceptor* Server::BuildAcceptor() {
         }
     }
     if (!whitelist.empty()) {
-        LOG(ERROR) << "ServerOptions.enabled_protocols has unknown protocols=`"
-                   << noflush;
+        std::ostringstream err;
+        err << "ServerOptions.enabled_protocols has unknown protocols=`";
         for (std::set<std::string>::const_iterator it = whitelist.begin();
              it != whitelist.end(); ++it) {
-            LOG(ERROR) << *it << ' ' << noflush;
+            err << *it << ' ';
         }
-        LOG(ERROR) << '\'';
+        err << '\'';
         delete acceptor;
+        LOG(ERROR) << err.str();
         return NULL;
     }
     return acceptor;
@@ -950,13 +955,14 @@ int Server::StartInternal(const butil::ip_t& ip,
 
     // Print tips to server launcher.
     int http_port = _listen_addr.port;
-    LOG(INFO) << "Server[" << version() << "] is serving on port="
-              << _listen_addr.port << noflush;
+    std::ostringstream server_info;
+    server_info << "Server[" << version() << "] is serving on port="
+                << _listen_addr.port;
     if (_options.internal_port >= 0 && _options.has_builtin_services) {
         http_port = _options.internal_port;
-        LOG(INFO) << " and internal_port=" << _options.internal_port << noflush;
+        server_info << " and internal_port=" << _options.internal_port;
     }
-    LOG(INFO) << '.';
+    LOG(INFO) << server_info.str() << '.';
 
     if (_options.has_builtin_services) {
         LOG(INFO) << "Check out http://" << butil::my_hostname() << ':'

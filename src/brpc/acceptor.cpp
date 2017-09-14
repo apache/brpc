@@ -15,6 +15,7 @@
 // Authors: Rujie Jiang(jiangrujie@baidu.com)
 //          Ge,Jun(gejun@baidu.com)
 
+#include <inttypes.h>
 #include <gflags/gflags.h>
 #include "butil/fd_guard.h"                 // fd_guard 
 #include "butil/fd_utility.h"               // make_close_on_exec

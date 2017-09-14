@@ -232,24 +232,25 @@ private:
 
 inline IntRecorder& IntRecorder::operator<<(int64_t sample) {
     if (BAIDU_UNLIKELY((int64_t)(int)sample != sample)) {
+        const char* reason = NULL;
+        if (sample > std::numeric_limits<int>::max()) {
+            reason = "overflows";
+            sample = std::numeric_limits<int>::max();
+        } else {
+            reason = "underflows";
+            sample = std::numeric_limits<int>::min();
+        }
         // Truncate to be max or min of int. We're using 44 bits to store the
         // sum thus following aggregations are not likely to be over/underflow.
         if (!name().empty()) {
             LOG(WARNING) << "Input=" << sample << " to `" << name()
-                       << '\'' << noflush;
+                       << "\' " << reason;
         } else if (!_debug_name.empty()) {
             LOG(WARNING) << "Input=" << sample << " to `" << _debug_name
-                       << '\'' << noflush;
+                       << "\' " << reason;
         } else {
             LOG(WARNING) << "Input=" << sample << " to IntRecorder("
-                       << (void*)this << ')' << noflush;
-        }
-        if (sample > std::numeric_limits<int>::max()) {
-            LOG(WARNING) << " overflows";
-            sample = std::numeric_limits<int>::max();
-        } else {
-            LOG(WARNING) << " underflows";
-            sample = std::numeric_limits<int>::min();
+                       << (void*)this << ") " << reason;
         }
     }
     agent_type* agent = _combiner.get_or_create_tls_agent();

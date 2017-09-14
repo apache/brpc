@@ -108,10 +108,10 @@ struct ChannelOptions {
     const NamingServiceFilter* ns_filter;
 };
 
-// A Channel represents a communication line to a server which can be used
-// to call that Server's services. The server may be running on another
-// machine. Normally, you should not call a Channel directly, but instead
-// construct a stub Service wrapping it.
+// A Channel represents a communication line to one server or multiple servers
+// which can be used to call that Server's services. Servers may be running
+// on another machines. Normally, you should not call a Channel directly, but
+// instead construct a stub Service wrapping it.
 // Example:
 //   brpc::Channel channel;
 //   channel.Init("bns://rdev.matrix.all", "rr", NULL/*default options*/);

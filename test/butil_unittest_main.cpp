@@ -33,6 +33,8 @@ int main(int argc, char** argv) {
         core_limit.rlim_max = 0;
         setrlimit(RLIMIT_CORE, &core_limit);
     }
+#if !BRPC_WITH_GLOG
     CHECK(!google::SetCommandLineOption("crash_on_fatal_log", "true").empty());
+#endif
     return RUN_ALL_TESTS();
 }
