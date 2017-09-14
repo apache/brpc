@@ -12,8 +12,8 @@
 了解这些因素后可以更好的理解brpc中相关的设计。
 
 1. 拥塞时A服务最大qps的跳变是因为线程个数是**硬限**，单个请求的处理时间很大程度上决定了最大qps。而brpc server端默认在bthread中处理请求，个数是软限，单个请求超时只是阻塞所在的bthread，并不会影响为新请求建立新的bthread。brpc也提供了完整的异步接口，让用户可以进一步提高io-bound服务的并发度，降低服务被打满的可能性。
-2. brpc中[重试](client.md#重试)默认只在连接出错时发起，避免了流量放大，这是比较有效率的重试方式。如果需要基于超时重试，可以设置[backup request](client.md#backuprequest)，这类重试最多只有一次，放大程度降到了最低。brpc中的RPC超时是deadline，超过后RPC一定会结束，这让用户对服务的行为有更好的预判。在之前的一些实现中，RPC超时是单次超时*重试次数，在实践中容易误判。
-3. brpc server端的[max_concurrency选项](server.md#id-创建和设置Server-限制最大并发)控制了server的最大并发：当同时处理的请求数超过max_concurrency时，server会回复client错误，而不是继续积压。这一方面在服务开始的源头控制住了积压的请求数，尽量避免延生到用户缓冲或队列中，另一方面也让client尽快地去重试其他server，对集群来说是个更好的策略。
+2. brpc中[重试](client.md#重试)默认只在连接出错时发起，避免了流量放大，这是比较有效率的重试方式。如果需要基于超时重试，可以设置[backup request](client.md#重试)，这类重试最多只有一次，放大程度降到了最低。brpc中的RPC超时是deadline，超过后RPC一定会结束，这让用户对服务的行为有更好的预判。在之前的一些实现中，RPC超时是单次超时*重试次数，在实践中容易误判。
+3. brpc server端的[max_concurrency选项](server.md#限制最大并发)控制了server的最大并发：当同时处理的请求数超过max_concurrency时，server会回复client错误，而不是继续积压。这一方面在服务开始的源头控制住了积压的请求数，尽量避免延生到用户缓冲或队列中，另一方面也让client尽快地去重试其他server，对集群来说是个更好的策略。
 
 对于brpc的用户来说，要防止雪崩，主要注意两点：
 
