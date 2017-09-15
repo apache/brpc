@@ -12,7 +12,10 @@ machine running the code.
 $ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib
 $ make
 ```
+to change compiler to clang, add `--cxx=clang++ --cc=clang`.
+
 ### run example
+
 ```
 $ cd example/echo_c++
 $ make
@@ -48,6 +51,8 @@ Rerun config_brpc.sh and run make in test/
 $ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib64
 $ make
 ```
+to change compiler to clang, add `--cxx=clang++ --cc=clang`.
+
 ### run example
 
 ```
