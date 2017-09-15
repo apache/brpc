@@ -6,6 +6,9 @@
 *.lo
 *.o
 *.obj
+src/*.o
+src/*/*.o
+src/
 
 # Precompiled Headers
 *.gch
@@ -30,3 +33,15 @@
 *.exe
 *.out
 *.app
+
+# Generated sources
+src/butil/config.h
+config.mk
+src/*.pb.h
+src/*.pb.cc
+src/brpc/*.pb.h
+src/brpc/*.pb.cc
+src/brpc/**/*.pb.cc
+src/brpc/**/*.pb.h
+test/*.pb.h
+test/*.pb.cc
