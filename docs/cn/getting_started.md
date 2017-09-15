@@ -5,14 +5,13 @@ machine running the code.
 
 ## Ubuntu/LinuxMint/WSL
 ### compile
-1. install common deps: git g++ make libssl-dev
-2. install gflags protobuf leveldb: libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev. If you need to statically link leveldb, install libsnappy-dev as well.
+1. install common deps: `git g++ make libssl-dev`
+2. install gflags, protobuf, leveldb, including: `libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev`. If you need to statically link leveldb, install `libsnappy-dev` as well.
 3. git clone this repo. cd into the repo and run
 ```
 $ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib
+$ make
 ```
-4. make
-
 ### run example
 ```
 $ cd example/echo_c++
@@ -20,9 +19,10 @@ $ make
 $ ./echo_server &
 $ ./echo_client
 ```
+Examples link brpc statically, if you need to link libbrpc.so, `make clean` and `LINK_SO=1 make`
 
 ### run examples with cpu/heap profilers
-Install libgoogle-perftools-dev and re-run config_brpc.sh before compiling
+Install `libgoogle-perftools-dev` and re-run config_brpc.sh before compiling
 
 ### compile tests
 Install gmock and gtest, use the gtest embedded in gmock and don't install libgtest-dev
@@ -35,6 +35,31 @@ $ sudo mv lib*.a gtest/lib*.a /usr/lib
 $ sudo mv gtest/include/gtest /usr/include/
 ```
 Rerun config_brpc.sh and run make in test/
+
+## Fedora/centos
+
+### compile
+
+1. install common deps: `git g++ make openssl-devel`
+2. install gflags, protobuf, leveldb, including: `gflags-devel protobuf-devel protobuf-compiler leveldb-devel`.
+3. git clone this repo. cd into the repo and run
+
+```
+$ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib64
+$ make
+```
+### run example
+
+```
+$ cd example/echo_c++
+$ make
+$ ./echo_server &
+$ ./echo_client
+```
+Examples link brpc statically, if you need to link libbrpc.so, `make clean` and `LINK_SO=1 make`
+### run examples with cpu/heap profilers
+
+Install `gperftools-devel` and re-run config_brpc.sh before compiling
 
 # Supported deps
 
