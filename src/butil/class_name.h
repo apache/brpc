@@ -48,7 +48,6 @@ template <typename T> const char* class_name() {
 
 // Get typename of |obj|, in std::string
 template <typename T> std::string class_name_str(T const& obj) {
-    extern std::string demangle(const char* name);
     return demangle(typeid(obj).name());
 }
 
