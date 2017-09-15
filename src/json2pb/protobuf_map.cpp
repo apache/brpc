@@ -18,6 +18,7 @@ bool IsProtobufMap(const FieldDescriptor* field) {
     }
     const FieldDescriptor* key_desc = entry_desc->field(KEY_INDEX);
     if (NULL == key_desc
+        || key_desc->is_repeated()
         || key_desc->cpp_type() != FieldDescriptor::CPPTYPE_STRING
         || strcmp(KEY_NAME, key_desc->name().c_str()) != 0) {
         return false;
