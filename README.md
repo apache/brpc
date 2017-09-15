@@ -32,7 +32,7 @@ Common doubts on RPC:
 
 # What is ![brpc](docs/images/logo.png)?
 
-A RPC framework used throughout [Baidu](http://ir.baidu.com/phoenix.zhtml?c=188488&p=irol-irhome), with **600,000+** instances and **500+** kinds of services, was called **baidu-rpc** inside Baidu. Only C++ implementation is opensourced right now.
+A RPC framework used throughout [Baidu](http://ir.baidu.com/phoenix.zhtml?c=188488&p=irol-irhome), with **600,000+** instances(not counting clients) and **500+** kinds of services, called "**baidu-rpc**" inside Baidu. Only C++ implementation is opensourced right now.
 
 You can use it for:
 * Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
@@ -42,7 +42,8 @@ You can use it for:
   * hadoop_rpc(not opensourced yet)
   * [rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access) support via [openucx](https://github.com/openucx/ucx) (will be opensourced soon)
   * all sorts of protocols used in Baidu: baidu_std, [streaming_rpc](docs/cn/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc, and nshead-based ones.
-  * Many protobuf-based protocols are accessible via HTTP+json, probably from another language.
+  * Access protobuf-based protocols with HTTP+json, probably from another language.
+  * Build distributed services using [RAFT consensus algorithm](https://raft.github.io) (will be opensourced at [braft](https://github.com/brpc/braft) soon)
 * Rich processing patterns
   * Services can handle requests [synchronously](docs/cn/server.md) or [asynchronously](docs/cn/server.md#异步service).
   * Access service [synchronously](docs/cn/client.md#同步访问) or [asynchronously](docs/cn/client.md#异步访问), or even [semi-synchronously](docs/cn/client.md#半同步).
@@ -139,6 +140,7 @@ Check out [benchmark](docs/cn/benchmark.md) for a comparison between brpc and ot
     * [IOBuf](docs/cn/iobuf.md)
     * [Streaming Log](docs/cn/streaming_log.md)
     * [FlatMap](docs/cn/flatmap.md)
+    * [brpc外功修炼宝典](docs/cn/brpc_intro.pptx)(新人培训材料)
   * RPC in depth
     * [New Protocol](docs/cn/new_protocol.md)
     * [atomic instructions](docs/cn/atomic_instructions.md)

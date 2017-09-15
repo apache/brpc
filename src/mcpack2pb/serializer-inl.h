@@ -212,8 +212,7 @@ inline void OutputStream::backup(int n) {
     const int64_t nbackup = saved_bytecount - _zc_stream->ByteCount();
     if (nbackup != n + _size) {
         CHECK(false) << "Expect output stream backward for " << n + _size
-                     << " bytes, actually " << nbackup
-                     << " bytes, make sure public/iobuf is newer than r32794";
+                     << " bytes, actually " << nbackup << " bytes";
     }
     _size = 0;
     _fullsize = 0;

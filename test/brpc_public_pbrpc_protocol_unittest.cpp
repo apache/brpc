@@ -84,7 +84,7 @@ protected:
         _server._status = brpc::Server::RUNNING;
         _server._options.nshead_service =
             new brpc::policy::PublicPbrpcServiceAdaptor;
-        // public/pbrpc doesn't support authentication
+        // public_pbrpc doesn't support authentication
         // _server._options.auth = &_auth;
         
         EXPECT_EQ(0, pipe(_pipe_fds));

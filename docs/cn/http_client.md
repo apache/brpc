@@ -83,7 +83,7 @@ URL的一般形式如下图：
 
 确实，在简单使用场景下，这两者有所重复，但在复杂场景中，两者差别很大，比如：
 
-- 访问挂在bns下的多个http server。此时Channel.Init传入的是bns节点名称，对uri()的赋值则是包含Host的完整URL（比如"www.foo.com/index.html?name=value"），BNS下所有的http server都会看到"Host: [www.foo.com](http://www.foo.com/)"；uri()也可以是只包含路径的URL，比如"/index.html?name=value"，框架会以目标server的ip和port为Host，地址为10.46.188.39:8989的http server将会看到"Host: 10.46.188.39:8989"。
+- 访问挂在bns下的多个http server。此时Channel.Init传入的是bns节点名称，对uri()的赋值则是包含Host的完整URL（比如"www.foo.com/index.html?name=value"），BNS下所有的http server都会看到"Host: www.foo.com"；uri()也可以是只包含路径的URL，比如"/index.html?name=value"，框架会以目标server的ip和port为Host，地址为10.46.188.39:8989的http server将会看到"Host: 10.46.188.39:8989"。
 - 通过http proxy访问目标server。此时Channel.Init传入的是proxy server的地址，但uri()填入的是目标server的URL。
 
 # 常见设置

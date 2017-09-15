@@ -1,5 +1,5 @@
 syntax="proto2";
-// Converted from echo.idl by public/mcpack2pb/idl2proto
+// Converted from echo.idl by brpc/tools/idl2proto
 import "idl_options.proto";
 option (idl_support) = true;
 option cc_generic_services = true;

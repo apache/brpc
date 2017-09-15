@@ -18,9 +18,8 @@
 #include "brpc/log.h"
 #include "brpc/redis_command.h"
 
-// Defined in public/iobuf/butil/iobuf.cpp
+// Defined in src/butil/iobuf.cpp
 void* fast_memcpy(void *__restrict dest, const void *__restrict src, size_t n);
-
 
 namespace brpc {
 

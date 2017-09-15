@@ -26,7 +26,7 @@ namespace brpc {
 // NOTE: impl. are in brpc/protocol.cpp
 
 // Convert a case-insensitive string to corresponding ProtocolType which is
-// defined in protocol/brpc/options.proto
+// defined in src/brpc/options.proto
 // Returns: PROTOCOL_UNKNOWN on error.
 ProtocolType StringToProtocolType(const butil::StringPiece& type,
                                   bool print_log_on_unknown);

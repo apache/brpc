@@ -34,7 +34,7 @@
 namespace brpc {
 namespace policy {
 
-// Notes on public/pbrpc Protocol:
+// Notes on public_pbrpc Protocol:
 // 1 - It's based on nshead whose request has special `version' and
 //     `provider' field. However, these fields are not checked at
 //     server side
@@ -214,7 +214,7 @@ void SerializePublicPbrpcRequest(butil::IOBuf* buf, Controller* cntl,
                                  const google::protobuf::Message* request) {
     CompressType type = cntl->request_compress_type();
     if (type != COMPRESS_TYPE_NONE && type != COMPRESS_TYPE_SNAPPY) {
-        cntl->SetFailed(EREQUEST, "public/pbrpc doesn't support "
+        cntl->SetFailed(EREQUEST, "public_pbrpc doesn't support "
                         "compress type=%d", type);
         return;
     }

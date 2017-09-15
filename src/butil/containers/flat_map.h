@@ -119,7 +119,7 @@ struct BucketInfo {
 // NOTE: Objects stored in FlatMap MUST be copyable.
 template <typename _K, typename _T,
           // Compute hash code from key.
-          // Use public/murmurhash3 to make better distributions.
+          // Use src/butil/third_party/murmurhash3 to make better distributions.
           typename _Hash = DefaultHasher<_K>,
           // Test equivalence between stored-key and passed-key.
           // stored-key is always on LHS, passed-key is always on RHS.

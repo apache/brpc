@@ -1,22 +1,32 @@
-#ignore all files without extension
-*
-!*.*
-!*/
+# Prerequisites
+*.d
 
+# Compiled Object files
+*.slo
+*.lo
 *.o
-*.a
-*.log
-*.pb.cc
-*.pb.h
-*.prof
-/output
-/test/output
-#ignore hidden files
-.*
-*.swp
+*.obj
 
-docs/_site/
-docs/.sass-cache/
-docs/.jekyll-metadata
-docs/_pdf
-docs/.DS_Store
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app

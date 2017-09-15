@@ -512,7 +512,7 @@ Channel的默认协议是标准协议, 可通过设置ChannelOptions.protocol换
 - PROTOCOL_NOVA_PBRPC 或 "nova_pbrpc", 网盟的协议, 默认为连接池. 
 - PROTOCOL_HTTP 或 "http", http协议, 默认为连接池(Keep-Alive). 具体方法见[访问HTTP服务](http_client.md). 
 - PROTOCOL_SOFA_PBRPC 或 "sofa_pbrpc", sofa-pbrpc的协议, 默认为单连接. 
-- PROTOCOL_PUBLIC_PBRPC 或 "public_pbrpc", public/pbrpc的协议, 默认为连接池. 
+- PROTOCOL_PUBLIC_PBRPC 或 "public_pbrpc", public_pbrpc的协议, 默认为连接池. 
 - PROTOCOL_UBRPC_COMPACK 或 "ubrpc_compack", public/ubrpc的协议, 使用compack打包, 默认为连接池. 具体方法见[ubrpc (by protobuf)](ub_client.md). 相关的还有PROTOCOL_UBRPC_MCPACK2或ubrpc_mcpack2, 使用mcpack2打包. 
 - PROTOCOL_NSHEAD_CLIENT 或 "nshead_client", 这是发送brpc-ub中所有UBXXXRequest需要的协议, 默认为连接池. 具体方法见[访问ub](ub_client.md). 
 - PROTOCOL_NSHEAD 或 "nshead", 这是brpc中发送NsheadMessage需要的协议, 默认为连接池. 注意发送NsheadMessage的效果等同于发送brpc-ub中的UBRawBufferRequest, 但更加方便一点. 具体方法见[nshead+blob](ub_client.md#nshead-blob) . 
@@ -716,13 +716,13 @@ struct ChannelOptions {
 
 ### Q: Invalid address=`bns://group.user-persona.dumi.nj03'是什么意思
 ```
-FATAL 04-07 20:00:03 7778 public/brpc/src/brpc/channel.cpp:123] Invalid address=`bns://group.user-persona.dumi.nj03'. You should use Init(naming_service_name, load_balancer_name, options) to access multiple servers.
+FATAL 04-07 20:00:03 7778 src/brpc/channel.cpp:123] Invalid address=`bns://group.user-persona.dumi.nj03'. You should use Init(naming_service_name, load_balancer_name, options) to access multiple servers.
 ```
 访问bns要使用三个参数的Init, 它第二个参数是load_balancer_name, 而你这里用的是两个参数的Init, 框架当你是访问单点, 就会报这个错. 
 
 ### Q: 两个产品线都使用protobuf, 为什么不能互相访问
 
-协议 !=protobuf. protobuf负责打包, 协议负责定字段. 打包格式相同不意味着字段可以互通. 协议中可能会包含多个protobuf包, 以及额外的长度、校验码、magic number等等. 协议的互通是通过在RPC框架内转化为统一的编程接口完成的, 而不是在protobuf层面. 从广义上来说, protobuf也可以作为打包框架使用, 生成其他序列化格式的包, 像[idl<=>protobuf](idl_protobuf.md)就是通过protobuf生成了解析idl的代码. 
+协议 !=protobuf. protobuf负责打包, 协议负责定字段. 打包格式相同不意味着字段可以互通. 协议中可能会包含多个protobuf包, 以及额外的长度、校验码、magic number等等. 协议的互通是通过在RPC框架内转化为统一的编程接口完成的, 而不是在protobuf层面. 从广义上来说, protobuf也可以作为打包框架使用, 生成其他序列化格式的包, 像[idl<=>protobuf](mcpack2pb.md)就是通过protobuf生成了解析idl的代码. 
 
 ### Q: 为什么C++ client/server 能够互相通信,  和其他语言的client/server 通信会报序列化失败的错误
 
@@ -736,7 +736,7 @@ FATAL 04-07 20:00:03 7778 public/brpc/src/brpc/channel.cpp:123] Invalid address=
 
 1. 创建一个[bthread_id](https://github.com/brpc/brpc/blob/master/src/bthread/id.h)作为本次RPC的correlation_id. 
 2. 根据Channel的创建方式, 从进程级的[SocketMap](https://github.com/brpc/brpc/blob/master/src/brpc/socket_map.h)中或从[LoadBalancer](https://github.com/brpc/brpc/blob/master/src/brpc/load_balancer.h)中选择一台下游server作为本次RPC发送的目的地. 
-3. 根据连接方式（单连接、连接池、短连接）, 选择一个[Socket](https://svn.baidu.com/public/trunk/baidu-rpc/src/baidu/rpc/socket.h). 
+3. 根据连接方式（单连接、连接池、短连接）, 选择一个[Socket](https://github.com/brpc/brpc/blob/master/src/brpc/socket.h). 
 4. 如果开启验证且当前Socket没有被验证过时, 第一个请求进入验证分支, 其余请求会阻塞直到第一个包含认证信息的请求写入Socket. 这是因为server端只对第一个请求进行验证. 
 5. 根据Channel的协议, 选择对应的序列化函数把request序列化至[IOBuf](https://github.com/brpc/brpc/blob/master/src/butil/iobuf.h). 
 6. 如果配置了超时, 设置定时器. 从这个点开始要避免使用Controller对象, 因为在设定定时器后->有可能触发超时机制->调用到用户的异步回调->用户在回调中析构Controller. 

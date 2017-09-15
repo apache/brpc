@@ -81,7 +81,7 @@ sed -e ':a;N;$!ba;s/=\s*\n\+/=/g' $1 | \
         primitives["float"] = 1; \
         primitives["double"] = 1; \
         
-        print "// Converted from '$1' by public/mcpack2pb/idl2proto\n" \
+        print "// Converted from '$1' by brpc/tools/idl2proto\n" \
               "syntax=\"proto2\";\n" \
               "import \"idl_options.proto\";\n" \
               "option (idl_support) = true;\n\n" \

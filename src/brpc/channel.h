@@ -67,7 +67,7 @@ struct ChannelOptions {
     // Maximum: INT_MAX
     int max_retry;
     
-    // Serialization protocol, defined in protocol/brpc/options.proto
+    // Serialization protocol, defined in src/brpc/options.proto
     // NOTE: You can assign name of the protocol to this field as well, for
     // Example: options.protocol = "baidu_std";
     AdaptiveProtocolType protocol;

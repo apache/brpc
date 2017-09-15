@@ -28,7 +28,7 @@
 DEFINE_int32(thread_num, 50, "Number of threads to send requests");
 DEFINE_bool(use_bthread, false, "Use bthread to send requests");
 DEFINE_int32(attachment_size, 0, "Carry so many byte attachment along with requests");
-DEFINE_string(protocol, "baidu_std", "Protocol type. Defined in protocol/brpc/options.proto");
+DEFINE_string(protocol, "baidu_std", "Protocol type. Defined in src/brpc/options.proto");
 DEFINE_string(connection_type, "", "Connection type. Available values: single, pooled, short");
 DEFINE_string(server, "file://server_list", "Addresses of servers");
 DEFINE_string(load_balancer, "rr", "Name of load balancer");

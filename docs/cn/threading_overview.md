@@ -18,7 +18,7 @@
 
 ## 多线程reactor
 
-以[kylin](http://websvn.work.baidu.com/repos/public/list/trunk/kylin/?revision=HEAD), [boost::asio](http://www.boost.org/doc/libs/1_56_0/doc/html/boost_asio.html)为典型。一般由一个或多个线程分别运行event dispatcher，待事件发生后把event handler交给一个worker thread执行。由于百度内以SMP机器为主，这种可以利用多核的结构更加合适，多线程交换信息的方式也比多进程更多更简单，所以往往能让多核的负载更加均匀。不过由于cache一致性的限制，多线程reactor模型并不能获得线性于核数的扩展性，在特定的场景中，粗糙的多线程reactor实现跑在24核上甚至没有精致的单线程reactor实现跑在1个核上快。reactor有proactor变种，即用异步IO代替event dispatcher，boost::asio[在windows下](http://msdn.microsoft.com/en-us/library/aa365198(VS.85).aspx)就是proactor。
+以kylin, [boost::asio](http://www.boost.org/doc/libs/1_56_0/doc/html/boost_asio.html)为典型。一般由一个或多个线程分别运行event dispatcher，待事件发生后把event handler交给一个worker thread执行。由于百度内以SMP机器为主，这种可以利用多核的结构更加合适，多线程交换信息的方式也比多进程更多更简单，所以往往能让多核的负载更加均匀。不过由于cache一致性的限制，多线程reactor模型并不能获得线性于核数的扩展性，在特定的场景中，粗糙的多线程reactor实现跑在24核上甚至没有精致的单线程reactor实现跑在1个核上快。reactor有proactor变种，即用异步IO代替event dispatcher，boost::asio[在windows下](http://msdn.microsoft.com/en-us/library/aa365198(VS.85).aspx)就是proactor。
 
 多线程reactor的运行方式如下：
 

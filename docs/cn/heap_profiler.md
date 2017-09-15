@@ -47,14 +47,14 @@ WARNING: 12-26 10:01:25:   * 0 [src/brpc/input_messenger.cpp:132][4294969345] Au
 
 左上角的两个选择框作用分别是：
 
-- View：当前正在看的profile。选择<new profile>表示新建一个。新建完毕后，View选择框中会出现新profile，URL也会被修改为对应的地址。这意味着你可以通过粘贴URL分享结果，点击链接的人将看到和你一模一样的结果，而不是重做profiling的结果。你可以在框中选择之前的profile查看。历史profiie保留最近的32个，可通过[--max_profiles_kept](http://brpc.baidu.com:8765/flags/max_profiles_kept)调整。
+- View：当前正在看的profile。选择\<new profile\>表示新建一个。新建完毕后，View选择框中会出现新profile，URL也会被修改为对应的地址。这意味着你可以通过粘贴URL分享结果，点击链接的人将看到和你一模一样的结果，而不是重做profiling的结果。你可以在框中选择之前的profile查看。历史profiie保留最近的32个，可通过[--max_profiles_kept](http://brpc.baidu.com:8765/flags/max_profiles_kept)调整。
 - Diff：和选择的profile做对比。<none>表示什么都不选。如果你选择了之前的某个profile，那么将看到View框中的profile相比Diff框中profile的变化量。
 
 下图演示了勾选Diff和Text的效果。
 
 ![img](../images/heap_profiler_3.gif)
 
-你也可以使用pprof脚本（public/brpc/tools/pprof）在命令行中查看文本格式结果：
+你也可以使用pprof脚本（tools/pprof）在命令行中查看文本格式结果：
 
 ```
 $ tools/pprof --text db-rpc-dev00.db01:8765/pprof/heap    

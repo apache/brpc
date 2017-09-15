@@ -1,6 +1,6 @@
 ub是百度内广泛使用的老RPC框架，在迁移ub服务时不可避免地需要[访问ub-server](ub_client.md)或被ub-client访问。ub使用的协议种类很多，但都以nshead作为二进制包的头部，这类服务在brpc中统称为**“nshead service”**。
 
-nshead后大都使用mcpack/compack作为序列化格式，注意这不是“协议”。"协议"除了序列化格式，还涉及到各种特殊字段的定义，一种序列化格式可能会衍生出很多协议。ub没有定义标准协议，所以即使都使用mcpack/compack，产品线的通信协议也是五花八门，无法互通。鉴于此，我们提供了一套接口，让用户能够灵活的处理自己产品线的协议，同时享受brpc提供的builtin services等一系列框架福利。
+nshead后大都使用mcpack/compack作为序列化格式，注意这不是“协议”。"协议"除了序列化格式，还涉及到各种特殊字段的定义，一种序列化格式可能会衍生出很多协议。ub没有定义标准协议，所以即使都使用mcpack或compack，产品线的通信协议也是五花八门，无法互通。鉴于此，我们提供了一套接口，让用户能够灵活的处理自己产品线的协议，同时享受brpc提供的builtin services等一系列框架福利。
 
 # 使用ubrpc的服务
 
@@ -13,7 +13,7 @@ ubrpc协议的基本形式是nshead+compack或mcpack2，但compack或mcpack2中�
 使用脚本[idl2proto](https://github.com/brpc/brpc/blob/master/tools/idl2proto)把idl文件自动转化为proto文件，下面是转化后的proto文件。
 
 ```protobuf
-// Converted from echo.idl by public/mcpack2pb/idl2proto
+// Converted from echo.idl by brpc/tools/idl2proto
 import "idl_options.proto";
 option (idl_support) = true;
 option cc_generic_services = true;
@@ -60,15 +60,12 @@ service EchoService {
 };
 ```
 
-## 设置protoc和mcpack2pb的参数
+## 以插件方式运行protoc
 
-注意--mcpack_out要和--cpp_out一致，你可以先设成--mcpack_out=.，执行comake2或bcloud后看错误信息中的--cpp_out的值，再把--mcpack_out设成一样的。
+BRPC_PATH代表brpc产出的路径（包含bin include等目录），PROTOBUF_INCLUDE_PATH代表protobuf的包含路径。注意--mcpack_out要和--cpp_out一致。
 
-```pyton
-PROTOC(ENV.WorkRoot()+"/third-64/protobuf/bin/protoc")
-PROTOFLAGS("--plugin=protoc-gen-mcpack=" + ENV.WorkRoot() + "/public/mcpack2pb/protoc-gen-mcpack --mcpack_out=.")
-PROTOFLAGS('--proto_path=' + ENV.WorkRoot() + '/public/mcpack2pb/')
-PROTOFLAGS('--proto_path=' + ENV.WorkRoot() + '/third-64/protobuf/include/')
+```shell
+protoc --plugin=protoc-gen-mcpack=$BRPC_PATH/bin/protoc-gen-mcpack --cpp_out=. --mcpack_out=. --proto_path=$BRPC_PATH/include --proto_path=PROTOBUF_INCLUDE_PATH
 ```
 
 ## 实现生成的Service基类
@@ -172,7 +169,7 @@ idl是mcpack/compack的前端，用户只要在idl文件中描述schema，就可
 
 > **这个服务在继续使用mcpack/compack作为序列化格式，相比protobuf占用成倍的带宽和打包时间。**
 
-为了解决这个问题，我们提供了[mcpack2pb](idl_protobuf.md)，允许把protobuf作为mcpack/compack的前端。你只要写一份proto文件，就可以同时解析mcpack/compack和protobuf格式的请求。使用这个方法，使用idl描述的服务的可以平滑地改造为使用proto文件描述，而不用修改上游client（仍然使用mcpack/compack）。你产品线的服务可以逐个地从mcpack/compack/idl切换为protobuf，从而享受到性能提升，带宽节省，全新开发体验等好处。你可以自行在NsheadService使用public/mcpack2pb，也可以联系我们，提供更高质量的协议支持。
+为了解决这个问题，我们提供了[mcpack2pb](mcpack2pb.md)，允许把protobuf作为mcpack/compack的前端。你只要写一份proto文件，就可以同时解析mcpack/compack和protobuf格式的请求。使用这个方法，使用idl描述的服务的可以平滑地改造为使用proto文件描述，而不用修改上游client（仍然使用mcpack/compack）。你产品线的服务可以逐个地从mcpack/compack/idl切换为protobuf，从而享受到性能提升，带宽节省，全新开发体验等好处。你可以自行在NsheadService使用src/mcpack2pb，也可以联系我们，提供更高质量的协议支持。
 
 # 使用nshead+protobuf的服务
 
@@ -231,4 +228,3 @@ public:
                                           NsheadMessage* nshead_res) const = 0;
 };
 ```
-

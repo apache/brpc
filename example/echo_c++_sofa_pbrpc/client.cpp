@@ -25,7 +25,7 @@ DEFINE_string(server, "0.0.0.0:8000", "IP Address of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
-DEFINE_string(protocol, "sofa_pbrpc", "Protocol type. Defined in protocol/brpc/options.proto");
+DEFINE_string(protocol, "sofa_pbrpc", "Protocol type. Defined in src/brpc/options.proto");
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.

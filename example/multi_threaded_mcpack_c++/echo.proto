@@ -1,4 +1,4 @@
-// Converted from echo.idl by public/mcpack2pb/idl2proto
+// Converted from echo.idl by brpc/tools/idl2proto
 syntax="proto2";
 import "idl_options.proto";
 option (idl_support) = true;

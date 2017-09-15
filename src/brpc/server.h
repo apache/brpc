@@ -243,10 +243,8 @@ struct ServerOptions {
     // redirected by nginx or other http front-end servers), set this port
     // to a port number that's ONLY accessible from Baidu's internal network
     // so that you can check out the builtin services from this port while
-    // hiding them from public. This port is better inside 8000-8999 which
-    // is accessible from your web browser due to Baidu's firewall rules.
-    // Setting this option also enables security protection code which we
-    // may add constantly.
+    // hiding them from public. Setting this option also enables security
+    // protection code which we may add constantly.
     // Update: this option affects Tabbed services as well.
     // Default: -1
     int internal_port;
@@ -423,7 +421,7 @@ public:
     int Start(int port, const ServerOptions* opt);
     
     // Start on ip:port enclosed in butil::EndPoint which is defined in
-    // public/common/butil/endpoint.h
+    // src/butil/endpoint.h
     int Start(const butil::EndPoint& ip_port, const ServerOptions* opt);
 
     // Start on `ip_str' + any useable port in `port_range'
