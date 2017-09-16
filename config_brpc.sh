@@ -50,7 +50,7 @@ if [ -z "$HDRS_IN" ] || [ -z "$LIBS_IN" ]; then
 fi
 
 find_dir_of_lib() {
-    local lib=$(find ${LIBS_IN} -name "lib${1}.a" -o -name "lib${1}.so" | head -n1)
+    local lib=$(find ${LIBS_IN} -name "lib${1}.a" -o -name "lib${1}.so" -o -name "lib${1}.so.*" | head -n1)
     if [ ! -z "$lib" ]; then
         dirname $lib
     fi
@@ -183,9 +183,11 @@ append_to_output_libs() {
 # $1: libdir, $2: libname, $3: indentation
 append_to_output_linkings() {
     if [ -f $1/lib$2.a ]; then
+	append_to_output_libs $1 $3
         append_to_output "${3}STATIC_LINKINGS+=-l$2"
         export STATICALLY_LINKED_$2=1
     else
+	append_to_output_libs $1 $3
         append_to_output "${3}DYNAMIC_LINKINGS+=-l$2"
         export STATICALLY_LINKED_$2=0
     fi
@@ -217,6 +219,14 @@ else
 fi
 append_to_output "endif"
 
+# Check libunwind (required by tcmalloc and glog)
+UNWIND_LIB=$(find_dir_of_lib unwind)
+HAS_STATIC_UNWIND=""
+if [ -f $UNWIND_LIB/libunwind.a ]; then
+    HAS_STATIC_UNWIND="yes"
+fi
+REQUIRE_UNWIND=""
+
 OLD_HDRS=$HDRS
 OLD_LIBS=$LIBS
 append_to_output "ifeq (\$(NEED_GPERFTOOLS), 1)"
@@ -232,18 +242,19 @@ else
         if [ -f $TCMALLOC_LIB/libtcmalloc.so ]; then
             ldd $TCMALLOC_LIB/libtcmalloc.so > libtcmalloc.deps
             if grep -q libunwind libtcmalloc.deps; then
-                UNWIND_LIB=$(find_dir_of_lib unwind)
+                TCMALLOC_REQUIRE_UNWIND="yes"
                 REQUIRE_UNWIND="yes"
             fi
         fi
-        if [ -z "$REQUIRE_UNWIND" ]; then
+        if [ -z "$TCMALLOC_REQUIRE_UNWIND" ]; then
             append_to_output "    STATIC_LINKINGS+=-ltcmalloc_and_profiler"
-        elif [ -f $UNWIND_LIB/libunwind.a ]; then
-            append_to_output_libs "$UNWIND_LIB" "    "
+        elif [ ! -z "$HAS_STATIC_UNWIND" ]; then
             append_to_output "    STATIC_LINKINGS+=-ltcmalloc_and_profiler -lunwind"
             if grep -q liblzma libtcmalloc.deps; then
                 LZMA_LIB=$(find_dir_of_lib lzma)
-                append_to_output_linkings $LZMA_LIB lzma "    "
+                if [ ! -z "$LZMA_LIB" ]; then
+                    append_to_output_linkings $LZMA_LIB lzma "    "
+                fi
             fi
         else
             append_to_output "    DYNAMIC_LINKINGS+=-ltcmalloc_and_profiler"
@@ -264,13 +275,37 @@ if [ $WITH_GLOG != 0 ]; then
     else
         append_to_output_libs "$GLOG_LIB" "    "
         if [ -f $GLOG_LIB/libglog.a ]; then
-            append_to_output "    STATIC_LINKINGS+=-lglog"
+            if [ -f "$GLOG_LIB/libglog.so" ]; then
+                ldd $GLOG_LIB/libglog.so > libglog.deps 
+                if grep -q libunwind libglog.deps; then
+                    GLOG_REQUIRE_UNWIND="yes"
+                    REQUIRE_UNWIND="yes"
+                fi
+            fi
+            if [ -z "$GLOG_REQUIRE_UNWIND" ]; then
+                append_to_output "STATIC_LINKINGS+=-lglog"
+            elif [ ! -z "$HAS_STATIC_UNWIND" ]; then
+                append_to_output "STATIC_LINKINGS+=-lglog -lunwind"
+                if grep -q liblzma libglog.deps; then
+                    LZMA_LIB=$(find_dir_of_lib lzma)
+                    if [ ! -z "$LZMA_LIB" ]; then
+                        append_to_output_linkings $LZMA_LIB lzma
+                    fi
+                fi
+            else
+                append_to_output "DYNAMIC_LINKINGS+=-lglog"
+            fi
         else
-            append_to_output "    DYNAMIC_LINKINGS+=-lglog"
+            append_to_output "DYNAMIC_LINKINGS+=-lglog"
         fi
+        rm -f libglog.deps
     fi
 fi
 append_to_output "CPPFLAGS+=-DBRPC_WITH_GLOG=$WITH_GLOG"
+
+if [ ! -z "$REQUIRE_UNWIND" ]; then
+    append_to_output_libs "$UNWIND_LIB" "    "
+fi
 
 # required by UT
 #gtest

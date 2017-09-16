@@ -33,6 +33,13 @@
 # include <glog/logging.h>
 # include <glog/raw_logging.h>
 // define macros that not implemented in glog
+# ifndef DCHECK_IS_ON   // glog didn't define DCHECK_IS_ON in older version
+#  if defined(NDEBUG)
+#    define DCHECK_IS_ON() 0
+#  else
+#    define DCHECK_IS_ON() 1
+#  endif  // NDEBUG
+# endif // DCHECK_IS_ON
 # if DCHECK_IS_ON() 
 #  define DPLOG(...) PLOG(__VA_ARGS__)
 #  define DPLOG_IF(...) PLOG_IF(__VA_ARGS__)
