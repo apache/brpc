@@ -1,47 +1,17 @@
-# Prerequisites
-*.d
+#ignore all files without extension
+*
+!*.*
+!*/
 
-# Compiled Object files
-*.slo
-*.lo
 *.o
-*.obj
-src/*.o
-src/*/*.o
-src/
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
 *.a
-*.lib
+*.log
+*.pb.cc
+*.pb.h
+*.prof
+/output
+/test/output
 
-# Executables
-*.exe
-*.out
-*.app
-
-# Generated sources
-src/butil/config.h
-config.mk
-src/*.pb.h
-src/*.pb.cc
-src/brpc/*.pb.h
-src/brpc/*.pb.cc
-src/brpc/**/*.pb.cc
-src/brpc/**/*.pb.h
-test/*.pb.h
-test/*.pb.cc
+#ignore hidden files
+.*
+*.swp
