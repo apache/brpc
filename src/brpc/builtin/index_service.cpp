@@ -21,6 +21,7 @@
 #include "brpc/builtin/index_service.h"
 #include "brpc/builtin/status_service.h"
 #include "brpc/builtin/common.h"
+#include "brpc/details/tcmalloc_extension.h"
 
 namespace brpc {
 
@@ -36,7 +37,6 @@ DECLARE_bool(enable_threads_service);
 
 // Set in ProfilerLinker.
 bool cpu_profiler_enabled = false;
-bool heap_profiler_enabled = false;
 
 void IndexService::default_method(::google::protobuf::RpcController* controller,
                                   const IndexRequest*,
@@ -137,10 +137,10 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
            << Path("/hotspots/cpu", html_addr) << " : Profiling CPU"
            << (!cpu_profiler_enabled ? " (disabled)" : "") << NL
            << Path("/hotspots/heap", html_addr) << " : Profiling heap"
-           << (!heap_profiler_enabled ? " (disabled)" : "") << NL
+           << (!IsHeapProfilerEnabled() ? " (disabled)" : "") << NL
            << Path("/hotspots/growth", html_addr)
            << " : Profiling growth of heap"
-           << (!heap_profiler_enabled ? " (disabled)" : "") << NL;
+           << (!IsHeapProfilerEnabled() ? " (disabled)" : "") << NL;
     }
     os << "curl -H 'Content-Type: application/json' -d 'JSON' " << my_addr
        << "/ServiceName/MethodName : Call method by http+json" << NL

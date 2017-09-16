@@ -207,10 +207,14 @@ void PProfService::heap(
     ClosureGuard done_guard(done);
     Controller* cntl = static_cast<Controller*>(controller_base);
     MallocExtension* malloc_ext = MallocExtension::instance();
-    if (malloc_ext == NULL) {
-        cntl->SetFailed(ENOMETHOD, "%s, to enable heap profiler, check out "
-                        "docs/cn/heap_profiler.md",
-                        berror(ENOMETHOD));
+    if (malloc_ext == NULL || !has_TCMALLOC_SAMPLE_PARAMETER()) {
+        const char* extra_desc = "";
+        if (malloc_ext != NULL) {
+            extra_desc = " (no TCMALLOC_SAMPLE_PARAMETER in env)";
+        }
+        cntl->SetFailed(ENOMETHOD, "Heap profiler is not enabled%s,"
+                        "check out http://wiki.baidu.com/display/RPC",
+                        extra_desc);
         return;
     }
     // Log requester

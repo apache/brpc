@@ -70,6 +70,7 @@
 #include "brpc/restful.h"
 #include "brpc/rtmp.h"
 #include "brpc/builtin/common.h"               // GetProgramName
+#include "brpc/details/tcmalloc_extension.h"
 
 inline std::ostream& operator<<(std::ostream& os, const timeval& tm) {
     const char old_fill = os.fill();
@@ -207,30 +208,15 @@ static void PrintSupportedCompressions(std::ostream& os, void*) {
     }
 }
 
-static bool check_TCMALLOC_SAMPLE_PARAMETER() {
-    char* str = getenv("TCMALLOC_SAMPLE_PARAMETER");
-    if (str == NULL) {
-        return false;
-    }
-    char* endptr;
-    int val = strtol(str, &endptr, 10);
-    return (*endptr == '\0' && val > 0);
-}
-
-static bool has_TCMALLOC_SAMPLE_PARAMETER() {
-    static bool val = check_TCMALLOC_SAMPLE_PARAMETER();
-    return val;
-}
-
 static void PrintEnabledProfilers(std::ostream& os, void*) {
     if (cpu_profiler_enabled) {
         os << "cpu ";
     }
-    if (heap_profiler_enabled) {
+    if (IsHeapProfilerEnabled()) {
         if (has_TCMALLOC_SAMPLE_PARAMETER()) {
             os << "heap ";
         } else {
-            os << "heap(lack of TCMALLOC_SAMPLE_PARAMETER) ";
+            os << "heap(no TCMALLOC_SAMPLE_PARAMETER in env) ";
         }
     }
     os << "contention";

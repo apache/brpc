@@ -40,7 +40,6 @@ void ContentionProfilerStop();
 namespace brpc {
 
 extern bool cpu_profiler_enabled;
-extern bool heap_profiler_enabled;
 
 DEFINE_int32(max_profiling_seconds, 300, "upper limit of running time of profilers");
 BRPC_VALIDATE_GFLAG(max_profiling_seconds, NonNegativeInteger);
@@ -661,9 +660,12 @@ static void DoProfiling(ProfilingType type,
         bthread::ContentionProfilerStop();
     } else if (type == PROFILING_HEAP) {
         MallocExtension* malloc_ext = MallocExtension::instance();
-        if (malloc_ext == NULL) {
-            os << "Heap profiler is not enabled"
-               << (use_html ? "</body></html>" : "\n");
+        if (malloc_ext == NULL || !has_TCMALLOC_SAMPLE_PARAMETER()) {
+            os << "Heap profiler is not enabled";
+            if (malloc_ext != NULL) {
+                os << " (no TCMALLOC_SAMPLE_PARAMETER in env)";
+            }
+            os << '.' << (use_html ? "</body></html>" : "\n");
             os.move_to(resp);
             cntl->http_response().set_status_code(HTTP_STATUS_FORBIDDEN);
             return NotifyWaiters(type, cntl, view);
@@ -681,7 +683,7 @@ static void DoProfiling(ProfilingType type,
     } else if (type == PROFILING_GROWTH) {
         MallocExtension* malloc_ext = MallocExtension::instance();
         if (malloc_ext == NULL) {
-            os << "Growth profiler is not enabled"
+            os << "Growth profiler is not enabled."
                << (use_html ? "</body></html>" : "\n");
             os.move_to(resp);
             cntl->http_response().set_status_code(HTTP_STATUS_FORBIDDEN);
@@ -726,20 +728,27 @@ static void StartProfiling(ProfilingType type,
     const bool use_html = UseHTML(cntl->http_request());
     butil::IOBufBuilder os;
     bool enabled = false;
+    const char* extra_desc = "";
     if (type == PROFILING_CPU) {
         enabled = cpu_profiler_enabled;
     } else if (type == PROFILING_CONTENTION) {
         enabled = true;
-    } else if (type == PROFILING_HEAP || type == PROFILING_GROWTH) {
-        enabled = heap_profiler_enabled;
+    } else if (type == PROFILING_HEAP) {
+        enabled = IsHeapProfilerEnabled();
+        if (enabled && !has_TCMALLOC_SAMPLE_PARAMETER()) {
+            enabled = false;
+            extra_desc = " (no TCMALLOC_SAMPLE_PARAMETER in env)";
+        }
+    } else if (type == PROFILING_GROWTH) {
+        enabled = IsHeapProfilerEnabled();
     }
     const char* const type_str = ProfilingType2String(type);
     
     if (!use_html) {
         if (!enabled) {
-            os << "Error: " << type_str << " profiler is not enabled yet.\n"
-                "To enable all profilers, link tcmalloc and define macros BRPC_ENABLE_CPU_PROFILER and BRPC_ENABLE_HEAP_PROFILER\n"
-                "Or read the docs: docs/cn/{cpu_profiler.md,heap_profiler.md}\n";
+            os << "Error: " << type_str << " profiler is not enabled."
+               << extra_desc << "\n"
+                "Read the docs: docs/cn/{cpu_profiler.md,heap_profiler.md}\n";
             os.move_to(cntl->response_attachment());
             cntl->http_response().set_status_code(HTTP_STATUS_FORBIDDEN);
             return;
@@ -980,10 +989,10 @@ static void StartProfiling(ProfilingType type,
     
     if (!enabled && view == NULL) {
         os << "<p><span style='color:red'>Error:</span> "
-           << type_str << " profiler is not enabled yet.</p>"
-            "<p>To enable all profilers, link tcmalloc and define macros BRPC_ENABLE_CPU_PROFILER and BRPC_ENABLE_HEAP_PROFILER"
-            "</p><p>Or read docs: <a href='https://github.com/brpc/brpc/blob/master/docs/cn/cpu_profiler.md'>cpu_profiler.md</a>"
-            " and <a href='https://github.com/brpc/brpc/blob/master/docs/cn/heap_profiler.md'>heap_profiler.md</a>"
+           << type_str << " profiler is not enabled." << extra_desc << "</p>"
+            "<p>To enable all profilers, link tcmalloc and define macros BRPC_ENABLE_CPU_PROFILER"
+            "</p><p>Or read docs: <a href='https://github.com/brpc/brpc/blob/master/docs/cn/cpu_profiler.md'>cpu_profiler</a>"
+            " and <a href='https://github.com/brpc/brpc/blob/master/docs/cn/heap_profiler.md'>heap_profiler</a>"
             "</p></body></html>";
         os.move_to(cntl->response_attachment());
         cntl->http_response().set_status_code(HTTP_STATUS_FORBIDDEN);

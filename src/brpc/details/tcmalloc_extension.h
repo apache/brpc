@@ -311,3 +311,9 @@ class PERFTOOLS_DLL_DECL MallocExtension {
   // in the address space size.
   virtual void** ReadHeapGrowthStackTraces();
 };
+
+// True iff heap profiler is enabled.
+bool IsHeapProfilerEnabled();
+
+// True iff TCMALLOC_SAMPLE_PARAMETER is set in environment.
+bool has_TCMALLOC_SAMPLE_PARAMETER();

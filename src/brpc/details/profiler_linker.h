@@ -34,7 +34,6 @@ namespace brpc {
 
 // defined in src/brpc/builtin/index_service.cpp
 extern bool cpu_profiler_enabled;
-extern bool heap_profiler_enabled;
 
 // defined in src/brpc/controller.cpp
 extern int PROFILER_LINKER_DUMMY;
@@ -53,10 +52,6 @@ struct ProfilerLinker {
         if (PROFILER_LINKER_DUMMY != 0/*must be false*/) {
             ProfilerStart("this_function_should_never_run");
         }
-#endif
-    
-#if defined(BRPC_ENABLE_HEAP_PROFILER) || defined(BAIDU_RPC_ENABLE_HEAP_PROFILER)
-        heap_profiler_enabled = true;
 #endif
     }
 };
