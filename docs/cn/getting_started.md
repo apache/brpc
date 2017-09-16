@@ -3,11 +3,20 @@
 brpc prefers static linking if possible, so that deps don't have to be installed on every
 machine running the code. 
 
+brpc depends on following packages:
+
+* [gflags](https://github.com/gflags/gflags): Extensively used to specify global options.
+* [protobuf](https://github.com/google/protobuf): needless to say, pb is a must-have dep.
+* [leveldb](https://github.com/google/leveldb): required by [/rpcz](rpcz.md) to record RPCs for tracing.
+
 ## Ubuntu/LinuxMint/WSL
-### compile
-1. install common deps: `git g++ make libssl-dev`
-2. install gflags, protobuf, leveldb, including: `libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev`. If you need to statically link leveldb, install `libsnappy-dev` as well.
-3. git clone this repo. cd into the repo and run
+### Prepare deps
+install common deps: `git g++ make libssl-dev`
+
+install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb), including: `libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev`. If you need to statically link leveldb, install `libsnappy-dev` as well.
+
+### Compile brpc
+git clone brpc, cd into the repo and run
 ```
 $ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib
 $ make
@@ -22,10 +31,9 @@ $ make
 $ ./echo_server &
 $ ./echo_client
 ```
-Examples link brpc statically, if you need to link libbrpc.so, `make clean` and `LINK_SO=1 make`
+Examples link brpc statically, if you need to link the shared version, `make clean` and `LINK_SO=1 make`
 
-### run examples with cpu/heap profilers
-Install `libgoogle-perftools-dev` and re-run config_brpc.sh before compiling
+To run examples with cpu/heap profilers, install `libgoogle-perftools-dev` and re-run `config_brpc.sh` before compiling
 
 ### compile tests
 Install gmock and gtest, use the gtest embedded in gmock and don't install libgtest-dev
@@ -39,13 +47,17 @@ $ sudo mv gtest/include/gtest /usr/include/
 ```
 Rerun config_brpc.sh and run make in test/
 
-## Fedora/centos
+## Fedora/CentOS
 
-### compile
+### Prepare deps
 
-1. install common deps: `git g++ make openssl-devel`
-2. install gflags, protobuf, leveldb, including: `gflags-devel protobuf-devel protobuf-compiler leveldb-devel`.
-3. git clone this repo. cd into the repo and run
+install common deps: `git g++ make openssl-devel`
+
+install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb), including: `gflags-devel protobuf-devel protobuf-compiler leveldb-devel`.
+
+### Compile brpc
+
+git clone brpc, cd into the repo and run
 
 ```
 $ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib64
@@ -61,10 +73,42 @@ $ make
 $ ./echo_server &
 $ ./echo_client
 ```
-Examples link brpc statically, if you need to link libbrpc.so, `make clean` and `LINK_SO=1 make`
-### run examples with cpu/heap profilers
+Examples link brpc statically, if you need to link the shared version, `make clean` and `LINK_SO=1 make`
 
-Install `gperftools-devel` and re-run config_brpc.sh before compiling
+To run examples with cpu/heap profilers, install `gperftools-devel` and re-run `config_brpc.sh` before compiling
+
+## Linux with self-built deps
+
+### Prepare deps
+
+brpc builds itself to both static and shared libs by default, so it needs static and shared libs of deps to be built as well.
+
+Take [gflags](https://github.com/gflags/gflags) as example, which does not build shared lib by default, you need to pass options to `cmake` to change the behavior, like this:  `cmake . -DBUILD_SHARED_LIBS=1 -DBUILD_STATIC_LIBS=1`  then `make`.
+
+### Compile brpc
+
+Keep on with the gflags example, let `../gflags_dev` be where you clone gflags.
+
+git clone brpc. cd into the repo and run
+
+```
+$ sh config_brpc.sh --headers="../gflags_dev /usr/include" --libs="../gflags_dev /usr/lib64"
+$ make
+```
+
+to change compiler to clang, add `--cxx=clang++ --cc=clang`.
+
+Here we pass multiple paths to `--headers` and `--libs` to make the script search for multiple places. You can also group all deps and brpc into one directory, then pass the directory to --headers/--libs which actually search all subdirectories recursively and will find necessary files.
+
+```
+$ ls my_dev
+gflags_dev protobuf_dev leveldb_dev brpc_dev
+$ cd brpc_dev
+$ sh config_brpc.sh --headers=.. --libs=..
+$ make
+```
+
+Note: don't put ~ (tilde) in paths to --headers/--libs, it's not converted.
 
 # Supported deps
 
