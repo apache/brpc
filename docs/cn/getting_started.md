@@ -161,7 +161,7 @@ Another common issue with tcmalloc is that it does not return memory to system a
 
 If you want to use [cpu profiler](cpu_profiler.md) or [heap profiler](heap_profiler.md), do link `libtcmalloc_and_profiler.a`. These two profilers are based on tcmalloc.[contention profiler](contention_profiler.md) does not require tcmalloc.
 
-When you remove tcmalloc, not only remove the linking with tcmalloc but also the macros: `-DBRPC_ENABLE_CPU_PROFILER` and `-DBRPC_ENABLE_HEAP_PROFILER`.
+When you remove tcmalloc, not only remove the linking with tcmalloc but also the macros: `-DBRPC_ENABLE_CPU_PROFILER`.
 
 ## glog: 3.3+
 

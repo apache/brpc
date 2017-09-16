@@ -6,9 +6,7 @@ brpc可以分析内存是被哪些函数占据的。heap profiler的原理是每
 
    1. 如果tcmalloc使用frame pointer而不是libunwind回溯栈，请确保在CXXFLAGS或CFLAGS中加上`-fno-omit-frame-pointer`，否则函数间的调用关系会丢失，最后产生的图片中都是彼此独立的函数方框。
 
-2. 定义宏BRPC_ENABLE_HEAP_PROFILER, 一般加入编译参数-DBRPC_ENABLE_HEAP_PROFILER。
-
-3. 在shell中`export TCMALLOC_SAMPLE_PARAMETER=524288`。该变量指每分配这么多字节内存时做一次统计，默认为0，代表不开启内存统计。[官方文档](http://goog-perftools.sourceforge.net/doc/tcmalloc.html)建议设置为524288。这个变量也可在运行前临时设置，如`TCMALLOC_SAMPLE_PARAMETER=524288 ./server`。如果没有这个环境变量，可能会看到这样的结果：
+2. 在shell中`export TCMALLOC_SAMPLE_PARAMETER=524288`。该变量指每分配这么多字节内存时做一次统计，默认为0，代表不开启内存统计。[官方文档](http://goog-perftools.sourceforge.net/doc/tcmalloc.html)建议设置为524288。这个变量也可在运行前临时设置，如`TCMALLOC_SAMPLE_PARAMETER=524288 ./server`。如果没有这个环境变量，可能会看到这样的结果：
 
    ```
    $ tools/pprof --text localhost:9002/pprof/heap           
@@ -18,7 +16,7 @@ brpc可以分析内存是被哪些函数占据的。heap profiler的原理是每
    /home/gejun/pprof/echo_server.1419559063.localhost.pprof.heap: header size >= 2**16
    ```
 
-4. 如果只是brpc client或没有使用brpc，看[这里](dummy_server.md)。 
+3. 如果只是brpc client或没有使用brpc，看[这里](dummy_server.md)。 
 
 注意要关闭Server端的认证，否则可能会看到这个：
 
