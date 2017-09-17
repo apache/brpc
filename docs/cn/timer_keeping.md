@@ -14,7 +14,7 @@
 
 我们重点谈怎么解决多线程下的问题。
 
-一个惯例思路是把timer的需求散列到多个TimerThread，但这对TimerThread效果不好。注意我们上面提及到了那个“制约因素”：一旦插入的元素是最早的，要唤醒TimerThread。假设TimerThread足够多，以至于每个timer都散列到独立的TImerThread，那么每次它都要唤醒那个TimerThread。 “唤醒”意味着触发linux的调度函数，触发上下文切换。在非常流畅的系统中，这个开销大约是3-5微秒，这可比抢锁和同步cache还慢。这个因素是提高TimerThread扩展性的一个难点。多个TimerThread减少了对单个小顶堆的竞争压力，但同时也引入了更多唤醒。
+一个惯例思路是把timer的需求散列到多个TimerThread，但这对TimerThread效果不好。注意我们上面提及到了那个“制约因素”：一旦插入的元素是最早的，要唤醒TimerThread。假设TimerThread足够多，以至于每个timer都散列到独立的TimerThread，那么每次它都要唤醒那个TimerThread。 “唤醒”意味着触发linux的调度函数，触发上下文切换。在非常流畅的系统中，这个开销大约是3-5微秒，这可比抢锁和同步cache还慢。这个因素是提高TimerThread扩展性的一个难点。多个TimerThread减少了对单个小顶堆的竞争压力，但同时也引入了更多唤醒。
 
 另一个难点是删除。一般用id指代一个Timer。通过这个id删除Timer有两种方式：1.抢锁，通过一个map查到对应timer在小顶堆中的位置，定点删除，这个map要和堆同步维护。2.通过id找到Timer的内存结构，做个标记，留待TimerThread自行发现和删除。第一种方法让插入逻辑更复杂了，删除也要抢锁，线程竞争更激烈。第二种方法在小顶堆内留了一大堆已删除的元素，让堆明显变大，插入和删除都变慢。
 
