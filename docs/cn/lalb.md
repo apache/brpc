@@ -105,7 +105,7 @@ LoadBalancer是一个读远多于写的数据结构：大部分时候，所有�
 
 这个结构有广泛的应用场景：
 
-- reload词典。大部分时候词典都是只读的，不同线程同时查询时不应查询。
+- reload词典。大部分时候词典都是只读的，不同线程同时查询时不应互斥。
 - 可替换的全局callback。像butil/logging.cpp支持配置全局LogSink以重定向日志，这个LogSink就是一个带状态的callback。如果只是简单的全局变量，在替换后我们无法直接删除LogSink，因为可能还有都写线程在用。用DBD可以解决这个问题。
 
 ## weight tree
