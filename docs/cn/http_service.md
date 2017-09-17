@@ -295,13 +295,7 @@ if (encoding != NULL && *encoding == "gzip") {
 
 # 开启HTTPS
 
-要开启HTTPS，首先确保代码依赖了最新的openssl库
-
-```python
-CONFIGS('third-64/openssl@1.0.2.6123')
-```
-因为大部分机器自带的openssl版本很旧，有严重的安全漏洞，支持的加密算法也少，违背了开启SSL的初衷
-然后在设置ServerOptions中的SSLOptions
+要开启HTTPS，首先确保代码依赖了最新的openssl库。如果openssl版本很旧，会有严重的安全漏洞，支持的加密算法也少，违背了开启SSL的初衷。然后设置ServerOptions中的SSLOptions
 ```c++
 // 证书结构
 struct CertInfo {
