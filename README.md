@@ -2,7 +2,7 @@
 
 Most machines on internet communicate with each other via [TCP/IP](http://en.wikipedia.org/wiki/Internet_protocol_suite). However TCP/IP only guarantees reliable data transmissions, we need to abstract more to build services:
 
-* What is the format of data transmission? Different machines and networks may have different byte-orders, directly sending in-memory data is not suitable. Fields in the data are added, modified or removed guadually, how do newer services talk with older services?
+* What is the format of data transmission? Different machines and networks may have different byte-orders, directly sending in-memory data is not suitable. Fields in the data are added, modified or removed gradually, how do newer services talk with older services?
 * Can TCP connection be reused for multiple requests to reduce overhead? Can multiple requests be sent through one TCP connection simultaneously?
 * How to talk with a cluster with many machines?
 * What should I do when the connection is broken? What if the server does not respond?
