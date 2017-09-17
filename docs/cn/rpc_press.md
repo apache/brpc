@@ -1,10 +1,10 @@
 rpc_press无需写代码就压测各种rpc server，目前支持的协议有：
 
-- 标准协议
-- hulu-pbrpc协议
-- sofa-pbrpc协议
-- public_pbrpc协议（老版pbrpc协议）
-- nova-pbrpc协议     
+- baidu_std
+- hulu-pbrpc
+- sofa-pbrpc
+- public_pbrpc
+- nova_pbrpc
 
 # 获取工具
 
@@ -18,7 +18,7 @@ rpc_press会动态加载proto文件，无需把proto文件编译为c++源文件�
 
 rpc_press的所有的选项都来自命令行参数，而不是配置文件.
 
-如下的命令向下游0.0.0.0:8002用标准协议重复发送两个pb请求，分别转自'{"message":"hello"}和'{"message":"world"}，持续压力直到按ctrl-c，qps为100。
+如下的命令向下游0.0.0.0:8002用baidu_std重复发送两个pb请求，分别转自'{"message":"hello"}和'{"message":"world"}，持续压力直到按ctrl-c，qps为100。
 
 json也可以写在文件中，假如./input.json包含了上述两个请求，-input=./input.json也是可以的。
 
@@ -35,7 +35,7 @@ json也可以写在文件中，假如./input.json包含了上述两个请求，-
 - -lb_policy: 指定负载均衡算法，默认为空，可选项为: rr random la c_murmurhash c_md5，具体见[负载均衡](client.md#负载均衡)。
 - -timeout_ms: 设定超时,单位是毫秒(milliseconds),默认是1000(1秒)
 - -max_retry: 最大的重试次数,默认是3, 一般无需修改. brpc的重试行为具体请见[这里](client.md#重试).
-- -protocol: 连接server使用的协议，可选项见[协议](client.md#协议), 默认是baidu_std(标准协议)
+- -protocol: 连接server使用的协议，可选项见[协议](client.md#协议), 默认是baidu_std
 - -connection_type: 连接方式，可选项为: single pooled short，具体见[连接方式](client.md#连接方式)。默认会根据协议自动选择,无需指定.
 - -output: 如果不为空，response会转为json并写入这个文件，默认为空。
 - -duration：大于0时表示发送这么多秒的压力后退出，否则一直发直到按ctrl-c或进程被杀死。默认是0（一直发送）。
@@ -44,15 +44,15 @@ json也可以写在文件中，假如./input.json包含了上述两个请求，-
 
 常用的参数组合：
 
-- 向下游0.0.0.0:8002、用标准协议重复发送./input.json中的所有请求，持续压力直到按ctrl-c，qps为100。
+- 向下游0.0.0.0:8002、用baidu_std重复发送./input.json中的所有请求，持续压力直到按ctrl-c，qps为100。
   ./rpc_press -proto=echo.proto -method=example.EchoService.Echo -server=0.0.0.0:8002 -input=./input.json -qps=100
-- 以round-robin分流算法向bns://node-name代表的所有下游机器、用标准协议重复发送两个pb请求，持续压力直到按ctrl-c，qps为100。
+- 以round-robin分流算法向bns://node-name代表的所有下游机器、用baidu_std重复发送两个pb请求，持续压力直到按ctrl-c，qps为100。
   ./rpc_press -proto=echo.proto -method=example.EchoService.Echo -server=bns://node-name -lb_policy=rr -input='{"message":"hello"} {"message":"world"}' -qps=100
 - 向下游0.0.0.0:8002、用hulu协议重复发送两个pb请求，持续压力直到按ctrl-c，qps为100。
   ./rpc_press -proto=echo.proto -method=example.EchoService.Echo -server=0.0.0.0:8002 -protocol=hulu_pbrpc -input='{"message":"hello"} {"message":"world"}' -qps=100
-- 向下游0.0.0.0:8002、用标准协议重复发送两个pb请求，持续最大压力直到按ctrl-c。
+- 向下游0.0.0.0:8002、用baidu_std重复发送两个pb请求，持续最大压力直到按ctrl-c。
   ./rpc_press -proto=echo.proto -method=example.EchoService.Echo -server=0.0.0.0:8002 -input='{"message":"hello"} {"message":"world"}' -qps=0
-- 向下游0.0.0.0:8002、用标准协议重复发送两个pb请求，持续最大压力10秒钟。
+- 向下游0.0.0.0:8002、用baidu_std重复发送两个pb请求，持续最大压力10秒钟。
   ./rpc_press -proto=echo.proto -method=example.EchoService.Echo -server=0.0.0.0:8002 -input='{"message":"hello"} {"message":"world"}' -qps=0 -duration=10
 - echo.proto中import了另一个目录下的proto文件
   ./rpc_press -proto=echo.proto -inc=<another-dir-with-the-imported-proto> -method=example.EchoService.Echo -server=0.0.0.0:8002 -input='{"message":"hello"} {"message":"world"}' -qps=0 -duration=10

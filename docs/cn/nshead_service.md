@@ -181,7 +181,7 @@ idl是mcpack/compack的前端，用户只要在idl文件中描述schema，就可
 - Call ParseRequestFromIOBuf() to convert the body after nshead header to pb request, then call the pb method.
 - When user calls server's done to end the RPC, SerializeResponseToIOBuf() is called to convert pb response to binary data that will be appended after nshead header and sent back to client.
 
-这样做的好处是，这个服务还可以被其他使用protobuf的协议访问，比如标准协议，hulu协议，sofa协议等等。NsheadPbServiceAdaptor的主要接口如下。完整的example在[这里](https://github.com/brpc/brpc/tree/master/example/nshead_pb_extension_c++/)。
+这样做的好处是，这个服务还可以被其他使用protobuf的协议访问，比如baidu_std，hulu_pbrpc，sofa_pbrpc协议等等。NsheadPbServiceAdaptor的主要接口如下。完整的example在[这里](https://github.com/brpc/brpc/tree/master/example/nshead_pb_extension_c++/)。
 
 ```c++
 class NsheadPbServiceAdaptor : public NsheadService {

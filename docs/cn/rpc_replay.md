@@ -29,7 +29,7 @@ brpc通过一个[bvar::Collector](https://github.com/brpc/brpc/blob/master/src/b
 
 目录下的文件数不超过rpc_dump_max_files，超过后最老的文件被删除从而给新文件腾出位置。
 
-文件是二进制格式，格式与标准协议的二进制格式类似，每个请求的binary layout如下：
+文件是二进制格式，格式与baidu_std协议的二进制格式类似，每个请求的binary layout如下：
 
 ```
 "PRPC" (4 bytes magic string)

@@ -296,15 +296,15 @@ server.AddService(service, svc_opt);
 
 server端会自动尝试其支持的协议，无需用户指定。`cntl->protocol()`可获得当前协议。server能从一个listen端口建立不同协议的连接，不需要为不同的协议使用不同的listen端口，一个连接上也可以传输多种协议的数据包（但一般不会这么做），支持的协议有：
 
-- 标准协议，显示为"baidu_std"，默认启用。
+- 百度标准协议，显示为"baidu_std"，默认启用。
 
-- hulu协议，显示为"hulu"，默认启动。
+- hulu-pbrpc的协议，显示为"hulu_pbrpc"，默认启动。
 
 - http协议，显示为”http“，默认启用。
 
-- sofa协议，显示为”sofa“，默认启用。
+- sofa-pbrpc的协议，显示为”sofa_pbrpc“, 默认启用。
 
-- nova协议，显示为”nova“ (r32206前显示为"nshead_server")，默认不启用，开启方式：
+- nova协议，显示为”nova_pbrpc“, 默认不启用，开启方式：
 
   ```c++
   #include <brpc/policy/nova_pbrpc_protocol.h>
@@ -414,7 +414,7 @@ set_response_compress_type()设置response的压缩方式，默认不压缩。�
 
 ## 附件
 
-标准协议和hulu协议支持附件，这段数据由用户自定义，不经过protobuf的序列化。站在server的角度，设置在Controller::response_attachment()的附件会被client端收到，request_attachment()则包含了client端送来的附件。附件不受压缩选项影响。
+baidu_std和hulu_pbrpc协议支持附件，这段数据由用户自定义，不经过protobuf的序列化。站在server的角度，设置在Controller::response_attachment()的附件会被client端收到，request_attachment()则包含了client端送来的附件。附件不受压缩选项影响。
 
 在http协议中，附件对应[message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html)，比如要返回的数据就设置在response_attachment()中。
 
@@ -445,7 +445,7 @@ public:
 };
 ```
 
-当server收到连接上的第一个包时，会尝试解析出其中的身份信息部分（如标准协议里的auth字段、HTTP协议里的Authorization头），然后附带client地址信息一起调用`VerifyCredential`。
+当server收到连接上的第一个包时，会尝试解析出其中的身份信息部分（如baidu_std里的auth字段、HTTP协议里的Authorization头），然后附带client地址信息一起调用`VerifyCredential`。
 
 若返回0，表示验证成功，用户可以把验证后的信息填入`AuthContext`，后续可通过`controller->auth_context()获取，用户不需要关心controller->auth_context()的分配和释放`
 
