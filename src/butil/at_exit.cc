@@ -48,7 +48,7 @@ void AtExitManager::RegisterCallback(AtExitCallbackType func, void* param) {
   }
 
   AutoLock lock(g_top_manager->lock_);
-  g_top_manager->stack_.push({func, param});
+  g_top_manager->stack_.push(Callback{func, param});
 }
 
 // static

@@ -272,7 +272,8 @@
 #endif
 
 #ifndef BAIDU_NOEXCEPT
-# if defined(BASE_CXX11_ENABLED)
+// "noexcept" keyword was supported since GCC 4.6
+# if defined(BASE_CXX11_ENABLED) && GCC_VERSION >= 40600
 #  define BAIDU_NOEXCEPT noexcept
 # else
 #  define BAIDU_NOEXCEPT

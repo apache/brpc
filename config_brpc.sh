@@ -39,7 +39,7 @@ elif [ -z "$CXX" ]; then
 fi
 
 GCC_VERSION=$($CXX tools/print_gcc_version.cc -o print_gcc_version && ./print_gcc_version && rm ./print_gcc_version)
-if [ $GCC_VERSION -gt 0 ] && [ $GCC_VERSION -lt 40800 ]; then
+if [ $GCC_VERSION -gt 0 ] && [ $GCC_VERSION -lt 40407 ]; then
     >&2 $ECHO "GCC is too old, please install a newer version supporting C++11"
     exit 1
 fi

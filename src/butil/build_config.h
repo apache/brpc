@@ -165,6 +165,9 @@
 #define BASE_STRING16_ITERATOR_IS_CHAR16_POINTER
 #endif
 
+#define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 \
+                     + __GNUC_PATCHLEVEL__)
+
 #if defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L
 #define BASE_CXX11_ENABLED 1
 #endif
