@@ -128,8 +128,10 @@ ParseResult InputMessenger::CutInputMessage(
 }
 
 void* ProcessInputMessage(void* void_arg) {
-    InputMessageBase* msg = static_cast<InputMessageBase*>(void_arg);
-    msg->_process(msg);
+    if (void_arg != NULL) {
+        InputMessageBase* msg = static_cast<InputMessageBase*>(void_arg);
+        msg->_process(msg);
+    }
     return NULL;
 }
 

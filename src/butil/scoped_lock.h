@@ -28,7 +28,8 @@
 #include "butil/logging.h"
 #include "butil/errno.h"
 
-#if !defined(BASE_CXX11_ENABLED)
+// "decltype and call expressions" was supported since GCC 4.8.1
+#if !defined(BASE_CXX11_ENABLED) || GCC_VERSION < 40801
 #define BAIDU_SCOPED_LOCK(ref_of_lock)                                  \
     std::lock_guard<BAIDU_TYPEOF(ref_of_lock)>                          \
     BAIDU_CONCAT(scoped_locker_dummy_at_line_, __LINE__)(ref_of_lock)

@@ -147,7 +147,8 @@ public:
     }
 
     // implicit conversion to "bool"
-#if defined(BASE_CXX11_ENABLED)
+// "explicit conversion operators" was supported since GCC 4.5
+#if defined(BASE_CXX11_ENABLED) && GCC_VERSION >= 40500
     explicit operator bool () const BAIDU_NOEXCEPT {
         return px != 0;
     }
@@ -220,7 +221,8 @@ inline bool operator!=(const intrusive_ptr<T>& a, const intrusive_ptr<T>& b) {
 }
 #endif
 
-#if defined(BASE_CXX11_ENABLED)
+// "null pointer constant" was supported since GCC 4.6
+#if defined(BASE_CXX11_ENABLED) && GCC_VERSION >= 40600
 template<class T>
 inline bool operator==(const intrusive_ptr<T>& p, std::nullptr_t) BAIDU_NOEXCEPT {
     return p.get() == 0;

@@ -281,7 +281,17 @@ private:
 
 #define BASE_STATIC_ATOMIC_INIT(val) { (val) }
 
+// std::atomic<_Tp*>::store() is declared but not implemented until GCC 4.5.2
+#if GCC_VERSION < 40502
+namespace std {
+template<typename _Tp>
+void atomic<_Tp*>::store(_Tp* __p, memory_order __m) volatile
+{ atomic_address::store(__p, __m); }
+}  // namespace std
+#endif  // GCC_VERSION < 40502
+
 namespace butil {
+
 template <typename T> struct static_atomic {
     T val;
 
