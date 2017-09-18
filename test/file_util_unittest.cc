@@ -23,15 +23,12 @@
 #include <set>
 #include <vector>
 
-#include "butil/base_paths.h"
 #include "butil/file_util.h"
 #include "butil/files/file_enumerator.h"
 #include "butil/files/file_path.h"
 #include "butil/files/scoped_file.h"
 #include "butil/files/scoped_temp_dir.h"
-#include "butil/path_service.h"
 #include "butil/strings/utf_string_conversions.h"
-#include "test/test_file_util.h"
 #include "butil/threading/platform_thread.h"
 #include <gtest/gtest.h>
 #include <gtest/gtest.h>
