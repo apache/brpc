@@ -30,7 +30,6 @@ TEST_BUTIL_SOURCES = \
     callback_list_unittest.cc \
     callback_unittest.cc \
     cancelable_callback_unittest.cc \
-    command_line_unittest.cc \
     hash_tables_unittest.cc \
     linked_list_unittest.cc \
     mru_cache_unittest.cc \
@@ -85,7 +84,6 @@ TEST_BUTIL_SOURCES = \
     condition_variable_unittest.cc \
     lock_unittest.cc \
     waitable_event_unittest.cc \
-    sys_info_unittest.cc \
     type_traits_unittest.cc \
     non_thread_safe_unittest.cc \
     platform_thread_unittest.cc \
@@ -121,9 +119,7 @@ TEST_BUTIL_SOURCES = \
     crc32c_unittest.cc \
     iobuf_unittest.cc \
     test_switches.cc \
-    test_timeouts.cc \
     scoped_locale.cc \
-    test_file_util.cc \
     test_file_util_linux.cc \
     butil_unittest_main.cpp
 

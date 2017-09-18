@@ -60,7 +60,6 @@ typedef pthread_mutex_t* MutexHandle;
 #include <string>
 
 #include "butil/file_util.h"
-#include "butil/command_line.h"
 #include "butil/debug/alias.h"
 #include "butil/debug/debugger.h"
 #include "butil/debug/stack_trace.h"

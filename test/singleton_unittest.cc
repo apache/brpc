@@ -4,7 +4,6 @@
 
 #include "butil/at_exit.h"
 #include "butil/memory/singleton.h"
-#include "butil/path_service.h"
 #include <gtest/gtest.h>
 
 namespace {

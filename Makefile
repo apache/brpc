@@ -52,15 +52,12 @@ BUTIL_SOURCES = \
     src/butil/at_exit.cc \
     src/butil/atomicops_internals_x86_gcc.cc \
     src/butil/barrier_closure.cc \
-    src/butil/base_paths.cc \
-    src/butil/base_paths_posix.cc \
     src/butil/base64.cc \
     src/butil/base_switches.cc \
     src/butil/big_endian.cc \
     src/butil/bind_helpers.cc \
     src/butil/callback_helpers.cc \
     src/butil/callback_internal.cc \
-    src/butil/command_line.cc \
     src/butil/cpu.cc \
     src/butil/debug/alias.cc \
     src/butil/debug/asan_invalid_access.cc \
@@ -94,29 +91,10 @@ BUTIL_SOURCES = \
     src/butil/memory/aligned_memory.cc \
     src/butil/memory/ref_counted.cc \
     src/butil/memory/ref_counted_memory.cc \
-    src/butil/memory/shared_memory_posix.cc \
     src/butil/memory/singleton.cc \
     src/butil/memory/weak_ptr.cc \
-    src/butil/nix/mime_util_xdg.cc \
-    src/butil/nix/xdg_util.cc \
-    src/butil/path_service.cc \
     src/butil/posix/file_descriptor_shuffle.cc \
     src/butil/posix/global_descriptors.cc \
-    src/butil/process/internal_linux.cc \
-    src/butil/process/kill.cc \
-    src/butil/process/kill_posix.cc \
-    src/butil/process/launch.cc \
-    src/butil/process/launch_posix.cc \
-    src/butil/process/process_handle_linux.cc \
-    src/butil/process/process_handle_posix.cc \
-    src/butil/process/process_info_linux.cc \
-    src/butil/process/process_iterator.cc \
-    src/butil/process/process_iterator_linux.cc \
-    src/butil/process/process_linux.cc \
-    src/butil/process/process_metrics.cc \
-    src/butil/process/process_metrics_linux.cc \
-    src/butil/process/process_metrics_posix.cc \
-    src/butil/process/process_posix.cc \
     src/butil/rand_util.cc \
     src/butil/rand_util_posix.cc \
     src/butil/fast_rand.cpp \
@@ -139,9 +117,6 @@ BUTIL_SOURCES = \
     src/butil/synchronization/cancellation_flag.cc \
     src/butil/synchronization/condition_variable_posix.cc \
     src/butil/synchronization/waitable_event_posix.cc \
-    src/butil/sys_info.cc \
-    src/butil/sys_info_linux.cc \
-    src/butil/sys_info_posix.cc \
     src/butil/threading/non_thread_safe_impl.cc \
     src/butil/threading/platform_thread_linux.cc \
     src/butil/threading/platform_thread_posix.cc \
