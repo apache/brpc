@@ -7,8 +7,6 @@
 #include <stddef.h>
 #include <ostream>
 
-#include "butil/bind.h"
-#include "butil/callback.h"
 #include "butil/logging.h"
 
 namespace butil {
@@ -44,18 +42,13 @@ AtExitManager::~AtExitManager() {
 // static
 void AtExitManager::RegisterCallback(AtExitCallbackType func, void* param) {
   DCHECK(func);
-  RegisterTask(butil::Bind(func, param));
-}
-
-// static
-void AtExitManager::RegisterTask(butil::Closure task) {
   if (!g_top_manager) {
     NOTREACHED() << "Tried to RegisterCallback without an AtExitManager";
     return;
   }
 
   AutoLock lock(g_top_manager->lock_);
-  g_top_manager->stack_.push(task);
+  g_top_manager->stack_.push({func, param});
 }
 
 // static
@@ -68,8 +61,8 @@ void AtExitManager::ProcessCallbacksNow() {
   AutoLock lock(g_top_manager->lock_);
 
   while (!g_top_manager->stack_.empty()) {
-    butil::Closure task = g_top_manager->stack_.top();
-    task.Run();
+    Callback task = g_top_manager->stack_.top();
+    task.func(task.param);
     g_top_manager->stack_.pop();
   }
 }

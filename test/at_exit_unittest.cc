@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 #include "butil/at_exit.h"
-#include "butil/bind.h"
 
 #include <gtest/gtest.h>
 
@@ -76,12 +75,5 @@ TEST_F(AtExitTest, Param) {
   butil::AtExitManager::RegisterCallback(&ExpectParamIsNull, NULL);
   butil::AtExitManager::RegisterCallback(&ExpectParamIsCounter,
                                         &g_test_counter_1);
-  butil::AtExitManager::ProcessCallbacksNow();
-}
-
-TEST_F(AtExitTest, Task) {
-  ZeroTestCounters();
-  butil::AtExitManager::RegisterTask(butil::Bind(&ExpectParamIsCounter,
-                                               &g_test_counter_1));
   butil::AtExitManager::ProcessCallbacksNow();
 }

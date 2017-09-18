@@ -7,7 +7,6 @@
 
 #include "butil/memory/ref_counted.h"
 #include "butil/type_traits.h"
-#include "butil/tuple.h"
 #include "butil/build_config.h"
 
 // It is dangerous to post a task with a T* argument where T is a subtype of

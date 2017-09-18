@@ -21,15 +21,9 @@ LIBPATHS=$(addprefix -L, $(LIBS))
 TEST_BUTIL_SOURCES = \
     at_exit_unittest.cc \
     atomicops_unittest.cc \
-    barrier_closure_unittest.cc \
     base64_unittest.cc \
     big_endian_unittest.cc \
-    bind_unittest.cc \
     bits_unittest.cc \
-    callback_helpers_unittest.cc \
-    callback_list_unittest.cc \
-    callback_unittest.cc \
-    cancelable_callback_unittest.cc \
     hash_tables_unittest.cc \
     linked_list_unittest.cc \
     mru_cache_unittest.cc \
@@ -98,7 +92,6 @@ TEST_BUTIL_SOURCES = \
     time_unittest.cc \
     version_unittest.cc \
     logging_unittest.cc \
-    tuple_unittest.cc \
     cacheline_unittest.cpp \
     class_name_unittest.cpp \
     endpoint_unittest.cpp \
