@@ -34,15 +34,6 @@ BUTIL_SOURCES = \
     src/butil/third_party/nspr/prtime.cc \
     src/butil/third_party/symbolize/demangle.cc \
     src/butil/third_party/symbolize/symbolize.cc \
-    src/butil/third_party/xdg_mime/xdgmime.c \
-    src/butil/third_party/xdg_mime/xdgmimealias.c \
-    src/butil/third_party/xdg_mime/xdgmimecache.c \
-    src/butil/third_party/xdg_mime/xdgmimeglob.c \
-    src/butil/third_party/xdg_mime/xdgmimeicon.c \
-    src/butil/third_party/xdg_mime/xdgmimeint.c \
-    src/butil/third_party/xdg_mime/xdgmimemagic.c \
-    src/butil/third_party/xdg_mime/xdgmimeparent.c \
-    src/butil/third_party/xdg_user_dirs/xdg_user_dir_lookup.cc \
     src/butil/third_party/snappy/snappy-sinksource.cc \
     src/butil/third_party/snappy/snappy-stubs-internal.cc \
     src/butil/third_party/snappy/snappy.cc \

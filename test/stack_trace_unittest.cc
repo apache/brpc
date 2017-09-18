@@ -8,7 +8,6 @@
 
 #include "butil/debug/stack_trace.h"
 #include "butil/logging.h"
-#include "test/test_timeouts.h"
 #include <gtest/gtest.h>
 
 namespace butil {
