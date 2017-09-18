@@ -3,7 +3,7 @@ NEED_GTEST=1
 NEED_GMOCK=1
 include ../config.mk
 CPPFLAGS+=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS
-CPPFLAGS+=-DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES
+CPPFLAGS+=-DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES --include sstream_workaround.h
 CXXFLAGS+=$(CPPFLAGS) -g -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x
 
 #required by butil/crc32.cc to boost performance for 10x
@@ -46,7 +46,6 @@ TEST_BUTIL_SOURCES = \
     dir_reader_posix_unittest.cc \
     file_path_unittest.cc \
     file_unittest.cc \
-    path_service_unittest.cc \
     scoped_temp_dir_unittest.cc \
     guid_unittest.cc \
     hash_unittest.cc \
@@ -62,8 +61,6 @@ TEST_BUTIL_SOURCES = \
     weak_ptr_unittest.cc \
     observer_list_unittest.cc \
     file_descriptor_shuffle_unittest.cc \
-    process_metrics_unittest.cc \
-    process_util_unittest.cc \
     rand_util_unittest.cc \
     safe_numerics_unittest.cc \
     scoped_clear_errno_unittest.cc \
@@ -104,7 +101,6 @@ TEST_BUTIL_SOURCES = \
     version_unittest.cc \
     logging_unittest.cc \
     tuple_unittest.cc \
-    xdg_util_unittest.cc \
     cacheline_unittest.cpp \
     class_name_unittest.cpp \
     endpoint_unittest.cpp \
@@ -124,11 +120,9 @@ TEST_BUTIL_SOURCES = \
     flat_map_unittest.cpp \
     crc32c_unittest.cc \
     iobuf_unittest.cc \
-    multiprocess_func_list.cc \
     test_switches.cc \
     test_timeouts.cc \
     scoped_locale.cc \
-    multiprocess_test.cc \
     test_file_util.cc \
     test_file_util_linux.cc \
     butil_unittest_main.cpp
