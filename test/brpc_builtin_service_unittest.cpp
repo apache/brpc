@@ -648,8 +648,8 @@ TEST_F(BuiltinServiceTest, pprof) {
         ClosureChecker done;
         brpc::Controller cntl;
         service.heap(&cntl, NULL, NULL, &done);
-        // MUST fail since tcmalloc hasn't been linked in
-        EXPECT_EQ(brpc::ENOMETHOD, cntl.ErrorCode());
+        const int rc = getenv("TCMALLOC_SAMPLE_PARAMETER") ? 0 : brpc::ENOMETHOD;
+        EXPECT_EQ(rc, cntl.ErrorCode());
     }
     {
         ClosureChecker done;
