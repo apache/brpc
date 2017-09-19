@@ -52,7 +52,7 @@ enum ProtocolType {
 ```
 ## 实现回调
 
-均定义在struct Protocol中，该结构定义在[protocol.h](https://github.com/brpc/brpc/blob/master/src/brpc/protocol.h)。其中的parse必须实现，除此之外server端至少要实现process_request，client端至少要实现serialize_request，pack_request，process_response;
+均定义在struct Protocol中，该结构定义在[protocol.h](https://github.com/brpc/brpc/blob/master/src/brpc/protocol.h)。其中的parse必须实现，除此之外server端至少要实现process_request，client端至少要实现serialize_request，pack_request，process_response。
 
 实现协议回调还是比较困难的，这块的代码不会像供普通用户使用的那样，有较好的提示和保护，你得先靠自己搞清楚其他协议中的类似代码，然后再动手，最后发给我们做code review。
 
