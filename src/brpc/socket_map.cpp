@@ -156,10 +156,10 @@ SocketMap::~SocketMap() {
             LOG(ERROR) << err.str();
         }
     }
-    if (_this_map_bvar) {
-        delete _this_map_bvar;
-        _this_map_bvar = NULL;
-    }
+
+    delete _this_map_bvar;
+    _this_map_bvar = NULL;
+
     delete _options.socket_creator;
     _options.socket_creator = NULL;
 }
