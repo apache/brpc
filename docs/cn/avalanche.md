@@ -17,5 +17,5 @@
 
 对于brpc的用户来说，要防止雪崩，主要注意两点：
 
-1. 评估server的最大并发，设置合理的max_concurrency值。这个默认是不设的，也就是不限制。无论程序是同步还是异步，用户都可以通过 **最大qps \* 非拥塞时的延时**（秒）来评估最大并发，原理见[little's law](https://en.wikipedia.org/wiki/Little)，这两个量都可以在brpc中的内置服务中看到。max_concurrency与最大并发相等或大一些就行了。
+1. 评估server的最大并发，设置合理的max_concurrency值。这个默认是不设的，也就是不限制。无论程序是同步还是异步，用户都可以通过 **最大qps \* 非拥塞时的延时**（秒）来评估最大并发，原理见[little's law](https://en.wikipedia.org/wiki/Little%27s_law)，这两个量都可以在brpc中的内置服务中看到。max_concurrency与最大并发相等或大一些就行了。
 2. 注意考察重试发生时的行为，特别是在定制RetryPolicy时。如果你只是用默认的brpc重试，一般是安全的。但用户程序也常会自己做重试，比如通过一个Channel访问失败后，去访问另外一个Channel，这种情况下要想清楚重试发生时最差情况下请求量会放大几倍，服务是否可承受。
