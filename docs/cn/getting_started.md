@@ -1,7 +1,7 @@
 # BUILD
 
 brpc prefers static linking if possible, so that deps don't have to be installed on every
-machine running the code. 
+machine running the code.
 
 brpc depends on following packages:
 
@@ -23,7 +23,7 @@ $ make
 ```
 to change compiler to clang, add `--cxx=clang++ --cc=clang`.
 
-### run example
+### Run example
 
 ```
 $ cd example/echo_c++
@@ -33,12 +33,18 @@ $ ./echo_client
 ```
 Examples link brpc statically, if you need to link the shared version, `make clean` and `LINK_SO=1 make`
 
-To run examples with cpu/heap profilers, install `libgoogle-perftools-dev` and re-run `config_brpc.sh` before compiling
+To run examples with cpu/heap profilers, install `libgoogle-perftools-dev` and re-run `config_brpc.sh` before compiling.
 
-### compile tests
-Install libgtest-dev
+### Run tests
+Install libgtest-dev (which is not compiled yet) and run:
 
-Rerun config_brpc.sh and run make in test/
+```shell
+cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/
+```
+
+The directory of gtest source code may be changed, try `/usr/src/googletest/googletest` if `/usr/src/gtest` is not there.
+
+Rerun `config_brpc.sh`, `make` in test/, and `sh run_tests.sh`
 
 ## Fedora/CentOS
 
@@ -58,7 +64,7 @@ $ make
 ```
 to change compiler to clang, add `--cxx=clang++ --cc=clang`.
 
-### run example
+### Run example
 
 ```
 $ cd example/echo_c++
@@ -68,7 +74,13 @@ $ ./echo_client
 ```
 Examples link brpc statically, if you need to link the shared version, `make clean` and `LINK_SO=1 make`
 
-To run examples with cpu/heap profilers, install `gperftools-devel` and re-run `config_brpc.sh` before compiling
+To run examples with cpu/heap profilers, install `gperftools-devel` and re-run `config_brpc.sh` before compiling.
+
+### Run tests
+
+Install gtest-devel.
+
+Rerun `config_brpc.sh`, `make` in test/, and `sh run_tests.sh`
 
 ## Linux with self-built deps
 
@@ -125,7 +137,7 @@ no known issues.
 
 ## protobuf: 2.4-3.2
 
-Be compatible with pb 3.0 and pb 2.x with the same file: 
+Be compatible with pb 3.0 and pb 2.x with the same file:
 Don't use new types in proto3 and start the proto file with `syntax="proto2";`
 [tools/add_syntax_equal_proto2_to_all.sh](https://github.com/brpc/brpc/blob/master/tools/add_syntax_equal_proto2_to_all.sh)can add `syntax="proto2"` to all proto files without it.
 protobuf 3.3-3.4 is not tested yet.
