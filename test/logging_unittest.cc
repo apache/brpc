@@ -53,8 +53,8 @@ public:
         ::logging::FLAGS_crash_on_fatal_log = _old_crash_on_fatal_log;
         if (::logging::FLAGS_v != 0) {
             // Clear -verbose to avoid affecting other tests.
-            ASSERT_FALSE(google::SetCommandLineOption("v", "0").empty());
-            ASSERT_FALSE(google::SetCommandLineOption("vmodule", "").empty());
+            ASSERT_FALSE(GFLAGS_NS::SetCommandLineOption("v", "0").empty());
+            ASSERT_FALSE(GFLAGS_NS::SetCommandLineOption("vmodule", "").empty());
         }
     }
 private:
@@ -208,11 +208,11 @@ TEST_F(LoggingTest, log_at) {
 TEST_F(LoggingTest, vlog_sanity) {
     ::logging::FLAGS_crash_on_fatal_log = false;
 
-    EXPECT_FALSE(google::SetCommandLineOption("v", "1").empty());
+    EXPECT_FALSE(GFLAGS_NS::SetCommandLineOption("v", "1").empty());
     
-    EXPECT_FALSE(google::SetCommandLineOption("vmodule",
+    EXPECT_FALSE(GFLAGS_NS::SetCommandLineOption("vmodule",
                                                "logging_unittest=1").empty());
-    EXPECT_FALSE(google::SetCommandLineOption("vmodule",
+    EXPECT_FALSE(GFLAGS_NS::SetCommandLineOption("vmodule",
                                                "logging_UNITTEST=2").empty());
 
     for (int i = 0; i < 10; ++i) {
@@ -228,7 +228,7 @@ TEST_F(LoggingTest, vlog_sanity) {
     VLOG_NE(0) << "always on";
     EXPECT_EQ("always on", LOG_STREAM(INFO).content_str());
 
-    EXPECT_FALSE(google::SetCommandLineOption("vmodule",
+    EXPECT_FALSE(GFLAGS_NS::SetCommandLineOption("vmodule",
                                               "logging_unittest=0").empty());
     for (int i = 0; i < 10; ++i) {
         VLOG_NE(i) << "vlog " << i;
@@ -236,7 +236,7 @@ TEST_F(LoggingTest, vlog_sanity) {
     EXPECT_EQ("", LOG_STREAM(VERBOSE).content_str());
     EXPECT_EQ("vlog 0", LOG_STREAM(INFO).content_str());
 
-    EXPECT_FALSE(google::SetCommandLineOption("vmodule",
+    EXPECT_FALSE(GFLAGS_NS::SetCommandLineOption("vmodule",
                      "logging_unittest=0,logging_unittest=1").empty());
     for (int i = 0; i < 10; ++i) {
         VLOG_NE(i) << "vlog " << i;
@@ -244,7 +244,7 @@ TEST_F(LoggingTest, vlog_sanity) {
     EXPECT_EQ("vlog 1", LOG_STREAM(VERBOSE).content_str());
     EXPECT_EQ("vlog 0", LOG_STREAM(INFO).content_str());
 
-    EXPECT_FALSE(google::SetCommandLineOption("vmodule",
+    EXPECT_FALSE(GFLAGS_NS::SetCommandLineOption("vmodule",
                      "logging_unittest=1,logging_unittest=0").empty());
     for (int i = 0; i < 10; ++i) {
         VLOG_NE(i) << "vlog " << i;
@@ -252,14 +252,14 @@ TEST_F(LoggingTest, vlog_sanity) {
     EXPECT_EQ("", LOG_STREAM(VERBOSE).content_str());
     EXPECT_EQ("vlog 0", LOG_STREAM(INFO).content_str());
 
-    EXPECT_FALSE(google::SetCommandLineOption("vmodule", "").empty());
+    EXPECT_FALSE(GFLAGS_NS::SetCommandLineOption("vmodule", "").empty());
     for (int i = 0; i < 10; ++i) {
         VLOG_NE(i) << "vlog " << i;
     }
     EXPECT_EQ("vlog 1", LOG_STREAM(VERBOSE).content_str());
     EXPECT_EQ("vlog 0", LOG_STREAM(INFO).content_str());
 
-    EXPECT_FALSE(google::SetCommandLineOption("vmodule",
+    EXPECT_FALSE(GFLAGS_NS::SetCommandLineOption("vmodule",
                                                "logg?ng_*=2").empty());
     for (int i = 0; i < 10; ++i) {
         VLOG_NE(i) << "vlog " << i;
@@ -267,7 +267,7 @@ TEST_F(LoggingTest, vlog_sanity) {
     EXPECT_EQ("vlog 1vlog 2", LOG_STREAM(VERBOSE).content_str());
     EXPECT_EQ("vlog 0", LOG_STREAM(INFO).content_str());
 
-    EXPECT_FALSE(google::SetCommandLineOption("vmodule",
+    EXPECT_FALSE(GFLAGS_NS::SetCommandLineOption("vmodule",
         "foo=3,logging_unittest=3, logg?ng_*=2 , logging_*=1 ").empty());
     for (int i = 0; i < 10; ++i) {
         VLOG_NE(i) << "vlog " << i;
@@ -280,7 +280,7 @@ TEST_F(LoggingTest, vlog_sanity) {
     }
     EXPECT_EQ("vlog 1vlog 3", LOG_STREAM(VERBOSE).content_str());
 
-    EXPECT_FALSE(google::SetCommandLineOption(
+    EXPECT_FALSE(GFLAGS_NS::SetCommandLineOption(
                      "vmodule",
                      "foo/bar0/0=2,foo/bar/1=3, 2=4, foo/*/3=5, */ba?/4=6,"
                      "/5=7,/foo/bar/6=8,foo2/bar/7=9,foo/bar/8=9").empty());
@@ -357,8 +357,8 @@ TEST_F(LoggingTest, debug_level) {
     DLOG(NOTICE) << foo(&run_foo);
     DLOG(DEBUG) << foo(&run_foo);
 
-    EXPECT_FALSE(google::SetCommandLineOption("vmodule", "").empty());
-    EXPECT_FALSE(google::SetCommandLineOption("v", "1").empty());
+    EXPECT_FALSE(GFLAGS_NS::SetCommandLineOption("vmodule", "").empty());
+    EXPECT_FALSE(GFLAGS_NS::SetCommandLineOption("v", "1").empty());
     DVLOG(1) << foo(&run_foo);
     DVLOG2("a/b/c", 1) << foo(&run_foo);
 

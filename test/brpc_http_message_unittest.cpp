@@ -52,7 +52,7 @@ TEST(HttpMessageTest, http_method) {
 }
 
 TEST(HttpMessageTest, eof) {
-    google::SetCommandLineOption("verbose", "100");
+    GFLAGS_NS::SetCommandLineOption("verbose", "100");
     const char* http_request = 
         "GET /CloudApiControl/HttpServer/telematics/v3/weather?location=%E6%B5%B7%E5%8D%97%E7%9C%81%E7%9B%B4%E8%BE%96%E5%8E%BF%E7%BA%A7%E8%A1%8C%E6%94%BF%E5%8D%95%E4%BD%8D&output=json&ak=0l3FSP6qA0WbOzGRaafbmczS HTTP/1.1\r\n"
         "X-Host: api.map.baidu.com\r\n"

@@ -31,7 +31,7 @@ void EchoProcessHuluRequest(brpc::InputMessageBase* msg_base);
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
     brpc::Protocol dummy_protocol = 
                              { brpc::policy::ParseHuluMessage,
                                brpc::SerializeRequestDefault, 

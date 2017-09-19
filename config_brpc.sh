@@ -148,6 +148,13 @@ fi
 PROTOC=$(find_bin_or_die protoc)
 
 GFLAGS_HDR=$(find_dir_of_header_or_die gflags/gflags.h)
+# namespace of gflags may not be google, grep it from source.
+GFLAGS_NS=$(grep "namespace [a-z0-9]\+ {" $GFLAGS_HDR/gflags/gflags.h | head -1 | awk '{print $2}')
+if [ -z "$GFLAGS_NS" ]; then
+    >&2 $ECHO "Fail to grep namespace of gflags source $GFLAGS_HDR/gflags/gflags.h"
+    exit 1
+fi
+
 PROTOBUF_HDR=$(find_dir_of_header_or_die google/protobuf/message.h)
 LEVELDB_HDR=$(find_dir_of_header_or_die leveldb/db.h)
 
@@ -301,7 +308,8 @@ if [ $WITH_GLOG != 0 ]; then
         rm -f libglog.deps
     fi
 fi
-append_to_output "CPPFLAGS+=-DBRPC_WITH_GLOG=$WITH_GLOG"
+append_to_output "CPPFLAGS+=-DBRPC_WITH_GLOG=$WITH_GLOG -DGFLAGS_NS=$GFLAGS_NS"
+
 
 if [ ! -z "$REQUIRE_UNWIND" ]; then
     append_to_output_libs "$UNWIND_LIB" "    "

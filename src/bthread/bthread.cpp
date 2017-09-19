@@ -37,7 +37,7 @@ static bool validate_bthread_concurrency(const char*, int32_t val) {
     return bthread_setconcurrency(val) == 0;
 }
 const int ALLOW_UNUSED register_FLAGS_bthread_concurrency = 
-    ::google::RegisterFlagValidator(&FLAGS_bthread_concurrency,
+    ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_bthread_concurrency,
                                     validate_bthread_concurrency);
 
 BAIDU_CASSERT(sizeof(TaskControl*) == sizeof(butil::atomic<TaskControl*>), atomic_size_match);

@@ -48,7 +48,7 @@ int main(int argc, char* argv[]) {
     brpc::FLAGS_idle_timeout_second = 0;
     brpc::FLAGS_max_connection_pool_size = 0;
     testing::InitGoogleTest(&argc, argv);
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
     return RUN_ALL_TESTS();
 }
 

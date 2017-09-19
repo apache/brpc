@@ -86,7 +86,7 @@ private:
 };
 
 int main(int argc, char* argv[]) {
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
     
     brpc::Server server;
     server.set_version("trackme_server");

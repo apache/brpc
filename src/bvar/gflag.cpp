@@ -32,8 +32,8 @@ GFlag::GFlag(const butil::StringPiece& prefix,
 }
 
 void GFlag::describe(std::ostream& os, bool quote_string) const {
-    google::CommandLineFlagInfo info;
-    if (!google::GetCommandLineFlagInfo(gflag_name().c_str(), &info)) {
+    GFLAGS_NS::CommandLineFlagInfo info;
+    if (!GFLAGS_NS::GetCommandLineFlagInfo(gflag_name().c_str(), &info)) {
         if (quote_string) {
             os << '"';
         }
@@ -52,8 +52,8 @@ void GFlag::describe(std::ostream& os, bool quote_string) const {
 
 #ifdef BAIDU_INTERNAL
 void GFlag::get_value(boost::any* value) const {
-    google::CommandLineFlagInfo info;
-    if (!google::GetCommandLineFlagInfo(gflag_name().c_str(), &info)) {
+    GFLAGS_NS::CommandLineFlagInfo info;
+    if (!GFLAGS_NS::GetCommandLineFlagInfo(gflag_name().c_str(), &info)) {
         *value = "Unknown gflag=" + gflag_name();
     } else if (info.type == "string") {
         *value = info.current_value;
@@ -76,14 +76,14 @@ void GFlag::get_value(boost::any* value) const {
 
 std::string GFlag::get_value() const {
     std::string str;
-    if (!google::GetCommandLineOption(gflag_name().c_str(), &str)) {
+    if (!GFLAGS_NS::GetCommandLineOption(gflag_name().c_str(), &str)) {
         return "Unknown gflag=" + gflag_name();
     }
     return str;
 }
 
 bool GFlag::set_value(const char* value) {
-    return !google::SetCommandLineOption(gflag_name().c_str(), value).empty();
+    return !GFLAGS_NS::SetCommandLineOption(gflag_name().c_str(), value).empty();
 }
 
 }  // namespace bvar
