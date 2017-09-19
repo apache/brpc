@@ -150,7 +150,7 @@ PROTOC=$(find_bin_or_die protoc)
 GFLAGS_HDR=$(find_dir_of_header_or_die gflags/gflags.h)
 # namespace of gflags may not be google, grep it from source.
 GFLAGS_NS=$(grep "namespace [_A-Za-z0-9]\+ {" $GFLAGS_HDR/gflags/gflags_declare.h | head -1 | awk '{print $2}')
-if [ "$GFLAGS_NS" == "GFLAGS_NAMESPACE" ]; then
+if [ "$GFLAGS_NS" = "GFLAGS_NAMESPACE" ]; then
     GFLAGS_NS=$(grep "#define GFLAGS_NAMESPACE [_A-Za-z0-9]\+" $GFLAGS_HDR/gflags/gflags_declare.h | head -1 | awk '{print $3}')
 fi
 if [ -z "$GFLAGS_NS" ]; then
