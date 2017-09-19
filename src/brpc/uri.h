@@ -285,8 +285,8 @@ public:
     std::string modified_query();
 
 private:
-    QuerySplitter _qs;
     const std::string _query;
+    QuerySplitter _qs;
     std::string _modified_query;
     size_t _iterated_len;
     bool _removed_current_key_value;

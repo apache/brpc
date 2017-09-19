@@ -423,8 +423,8 @@ void QuerySplitter::split() {
 }
 
 QueryRemover::QueryRemover(const std::string& str)
-    : _qs(str.data(), str.data() + str.size())
-    , _query(str) 
+    : _query(str)
+    , _qs(_query.data(), _query.data() + _query.size())
     , _iterated_len(0)
     , _removed_current_key_value(false)
     , _ever_removed(false) {
