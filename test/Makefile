@@ -149,7 +149,7 @@ clean_bins:
 clean_debug:
 	@$(MAKE) -C.. clean_debug
 
-../libbrpc.dbg.a ../libbvar.dbg.a: FORCE
+../libbrpc.dbg.a: FORCE
 	@$(MAKE) -C.. debug
 
 FORCE:
@@ -160,9 +160,9 @@ test_butil:$(TEST_BUTIL_OBJS) ../libbrpc.dbg.a
 	@echo "Linking $@"
 	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
-test_bvar:$(TEST_BVAR_OBJS) ../libbvar.dbg.a
+test_bvar:$(TEST_BVAR_OBJS) ../libbrpc.dbg.a
 	@echo "Linking $@"
-	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
+	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $(TEST_BVAR_OBJS) ../libbvar.dbg.a -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
 bthread%unittest:bthread%unittest.o ../libbrpc.dbg.a
 	@echo "Linking $@"
