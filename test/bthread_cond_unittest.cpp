@@ -25,15 +25,6 @@ std::vector<long> wake_time;
 volatile bool stop = false;
 const long SIGNAL_INTERVAL_US = 10000;
 
-std::ostream& operator<<(std::ostream& os,
-                         const std::vector<bthread_t>& wake_tid) {
-    for (size_t i = 0; i < wake_tid.size(); ++i) {
-        os << i << ":" << wake_tid[i] << ' ';
-    }
-    return os;
-}
-
-
 void* signaler(void* void_arg) {
     Arg* a = (Arg*)void_arg;
     signal_start_time = butil::gettimeofday_us();
@@ -105,7 +96,7 @@ TEST(CondTest, sanity) {
         long delta = wake_time[i] - last_time - SIGNAL_INTERVAL_US;
         EXPECT_GT(wake_time[i], last_time);
         square_sum += delta * delta;
-        EXPECT_LT(abs(delta), 2000L) << "error[" << i << "]=" << delta << "="
+        EXPECT_LT(labs(delta), 2000L) << "error[" << i << "]=" << delta << "="
             << wake_time[i] << " - " << last_time;
     }
     printf("Average error is %fus\n", sqrt(square_sum / std::max(nbeforestop, 1UL)));
@@ -118,7 +109,7 @@ TEST(CondTest, sanity) {
     EXPECT_EQ(NW, count.size());
     for (size_t i = 0; i < NW; ++i) {
     }
-    size_t avg_count = wake_tid.size() / count.size();
+    int avg_count = (int)(wake_tid.size() / count.size());
     for (std::map<bthread_t, int>::iterator
              it = count.begin(); it != count.end(); ++it) {
         ASSERT_LE(abs(it->second - avg_count), 1)

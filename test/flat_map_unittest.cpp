@@ -176,15 +176,6 @@ TEST_F(FlatMapTest, seek_by_string_piece) {
     ASSERT_TRUE(m.seek(k3) == NULL);
 }
 
-inline int my_strcaseequal(const char* s1, const char* s2, size_t n) {
-    for (size_t i = 0; i < n; ++i) {
-        if (butil::ascii_tolower(s1[i]) != butil::ascii_tolower(s2[i])) {
-            return -1;
-        }
-    }
-    return 0;
-}
-
 TEST_F(FlatMapTest, to_lower) {
     for (int c = -128; c < 128; ++c) {
         ASSERT_EQ((char)::tolower(c), butil::ascii_tolower(c)) << "c=" << c;

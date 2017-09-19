@@ -21,11 +21,6 @@
 #include "echo.pb.h"
 
 namespace {
-void* RunClosure(void* arg) {
-    google::protobuf::Closure* done = (google::protobuf::Closure*)arg;
-    done->Run();
-    return NULL;
-}
 
 static const std::string EXP_REQUEST = "hello";
 static const std::string EXP_RESPONSE = "world";

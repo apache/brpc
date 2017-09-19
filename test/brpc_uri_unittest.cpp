@@ -456,10 +456,7 @@ TEST(URITest, query_remover_no_modify) {
     ++qr;
     ++qr;
     ASSERT_FALSE(qr);
-    ASSERT_EQ(qr.modified_query(), "key1=value1&key2=value2&key3=value3");
-    // if the query string is not modified, the returned value 
-    // should be a reference to the original string
-    ASSERT_EQ(qr.modified_query().data(), query.data());
+    ASSERT_EQ(qr.modified_query(), query);
 }
 
 TEST(URITest, query_remover_key_value_not_changed_after_modified_query) {

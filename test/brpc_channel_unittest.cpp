@@ -43,7 +43,6 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
 } // policy
 } // brpc
 
-namespace {
 int main(int argc, char* argv[]) {
     brpc::FLAGS_idle_timeout_second = 0;
     brpc::FLAGS_max_connection_pool_size = 0;
@@ -52,6 +51,7 @@ int main(int argc, char* argv[]) {
     return RUN_ALL_TESTS();
 }
 
+namespace {
 void* RunClosure(void* arg) {
     google::protobuf::Closure* done = (google::protobuf::Closure*)arg;
     done->Run();

@@ -239,17 +239,6 @@ TEST_F(BthreadTest, bthread_join) {
     ASSERT_EQ(0, bthread_start_urgent(&th, NULL, join_self, NULL));
 }
 
-void* small_func(void*) {
-    LOG(INFO) << "hello";
-    return NULL;
-}
-
-void* small_but_sleep_awhile_func(void*) {
-    LOG(INFO) << "hello2";
-    bthread_usleep(1000);
-    return NULL;
-}
-
 void* change_errno(void* arg) {
     errno = (intptr_t)arg;
     return NULL;

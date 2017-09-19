@@ -18,17 +18,6 @@ DECLARE_int32(max_connection_pool_size);
 
 namespace {
 butil::EndPoint g_endpoint;
-int main(int argc, char* argv[]) {
-    butil::str2endpoint("127.0.0.1:12345", &g_endpoint);
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
-
-void* RunClosure(void* arg) {
-    google::protobuf::Closure* done = (google::protobuf::Closure*)arg;
-    done->Run();
-    return NULL;
-}
 
 void* worker(void*) {
     const int ROUND = 2;
@@ -136,3 +125,9 @@ TEST_F(SocketMapTest, max_pool_size) {
     }
 }
 } //namespace
+
+int main(int argc, char* argv[]) {
+    butil::str2endpoint("127.0.0.1:12345", &g_endpoint);
+    testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}

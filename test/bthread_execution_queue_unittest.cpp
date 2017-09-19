@@ -70,8 +70,6 @@ TEST_F(ExecutionQueueTest, single_thread) {
     ASSERT_TRUE(stopped);
 }
 
-const static int OPS_PER_THREAD = 1000000;
-
 struct PushArg {
     bthread::ExecutionQueueId<LongIntTask> id;
     butil::atomic<int64_t> total_num;
