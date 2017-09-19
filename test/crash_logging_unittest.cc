@@ -7,7 +7,6 @@
 #include <map>
 #include <string>
 
-#include "butil/bind.h"
 #include <gtest/gtest.h>
 
 namespace {

@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <vector>
 
-#include "butil/bind.h"
 #include "butil/logging.h"
 #include "butil/memory/scoped_ptr.h"
 #include "butil/synchronization/condition_variable.h"

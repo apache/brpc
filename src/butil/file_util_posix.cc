@@ -43,7 +43,6 @@
 #include "butil/strings/stringprintf.h"
 #include "butil/strings/sys_string_conversions.h"
 #include "butil/strings/utf_string_conversions.h"
-#include "butil/sys_info.h"
 #include "butil/threading/thread_restrictions.h"
 #include "butil/time/time.h"
 

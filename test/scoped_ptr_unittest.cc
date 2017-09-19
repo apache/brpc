@@ -5,8 +5,6 @@
 #include "butil/memory/scoped_ptr.h"
 
 #include "butil/basictypes.h"
-#include "butil/bind.h"
-#include "butil/callback.h"
 #include <gtest/gtest.h>
 
 namespace {

@@ -81,10 +81,12 @@ TEST(EndPointTest, endpoint) {
     ASSERT_EQ(0, hostname2endpoint("localhost:65535", &p5)) << berror();
     ASSERT_EQ(0, hostname2endpoint("localhost:0", &p5));
 
+#ifdef BAIDU_INTERNAL
     butil::EndPoint p6;
     ASSERT_EQ(0, hostname2endpoint("tc-cm-et21.tc: 289 ", &p6));
     ASSERT_STREQ("10.23.249.73", butil::ip2str(p6.ip).c_str());
     ASSERT_EQ(289, p6.port);
+#endif
 }
 
 TEST(EndPointTest, hash_table) {

@@ -2,7 +2,7 @@
 
 brpc server在同端口支持所有的协议，大部分时候这对部署和运维更加方便。由于不同协议的格式大相径庭，严格地来说，同端口很难无二义地支持所有协议。出于解耦和可扩展性的考虑，也不太可能集中式地构建一个针对所有协议的分类器。我们的做法就是把协议归三类后逐个尝试：
 
-- 第一类协议：标记或特殊字符在最前面，比如[baidu_std](baidu_std.md)，hulu_pbrpc的前4个字符分别分别是PRPC和HULU，解析代码只需要检查前4个字节就可以知道协议是否匹配，最先尝试这类协议。这些协议在同一个连接上也可以共存。
+- 第一类协议：标记或特殊字符在最前面，比如[baidu_std](baidu_std.md)，hulu_pbrpc的前4个字符分别是PRPC和HULU，解析代码只需要检查前4个字节就可以知道协议是否匹配，最先尝试这类协议。这些协议在同一个连接上也可以共存。
 - 第二类协议：有较为复杂的语法，没有固定的协议标记或特殊字符，可能在解析一段输入后才能判断是否匹配，目前此类协议只有http。
 - 第三类协议：协议标记或特殊字符在中间，比如nshead的magic_num在第25-28字节。由于之前的字段均为二进制，难以判断正确性，在没有读取完28字节前，我们无法判定消息是不是nshead格式的，所以处理起来很麻烦，若其解析排在http之前，那么<=28字节的http消息便可能无法被解析，因为程序以为是“还未完整的nshead消息”。
 
@@ -52,7 +52,7 @@ enum ProtocolType {
 ```
 ## 实现回调
 
-均定义在struct Protocol中，该结构定义在[protocol.h](https://github.com/brpc/brpc/blob/master/src/brpc/protocol.h)。其中的parse必须实现，除此之外server端至少要实现process_request，client端至少要实现serialize_request，pack_request，process_response;
+均定义在struct Protocol中，该结构定义在[protocol.h](https://github.com/brpc/brpc/blob/master/src/brpc/protocol.h)。其中的parse必须实现，除此之外server端至少要实现process_request，client端至少要实现serialize_request，pack_request，process_response。
 
 实现协议回调还是比较困难的，这块的代码不会像供普通用户使用的那样，有较好的提示和保护，你得先靠自己搞清楚其他协议中的类似代码，然后再动手，最后发给我们做code review。
 

@@ -8,24 +8,12 @@
 
 #include "butil/debug/stack_trace.h"
 #include "butil/logging.h"
-#include "butil/process/kill.h"
-#include "butil/process/process_handle.h"
-#include "test/test_timeouts.h"
 #include <gtest/gtest.h>
-#include "test/multiprocess_func_list.h"
-
-#if defined(OS_POSIX) && !defined(OS_ANDROID) && !defined(OS_IOS)
-#include "test/multiprocess_test.h"
-#endif
 
 namespace butil {
 namespace debug {
 
-#if defined(OS_POSIX) && !defined(OS_ANDROID) && !defined(OS_IOS)
-typedef MultiProcessTest StackTraceTest;
-#else
 typedef testing::Test StackTraceTest;
-#endif
 
 // Note: On Linux, this test currently only fully works on Debug builds.
 // See comments in the #ifdef soup if you intend to change this.
@@ -134,23 +122,6 @@ TEST_F(StackTraceTest, DebugPrintBacktrace) {
 #endif  // !defined(__UCLIBC__)
 
 #if defined(OS_POSIX) && !defined(OS_ANDROID)
-#if !defined(OS_IOS)
-MULTIPROCESS_TEST_MAIN(MismatchedMallocChildProcess) {
-  char* pointer = new char[10];
-  delete pointer;
-  return 2;
-}
-
-// Regression test for StackDumpingSignalHandler async-signal unsafety.
-// Combined with tcmalloc's debugallocation, that signal handler
-// and e.g. mismatched new[]/delete would cause a hang because
-// of re-entering malloc.
-TEST_F(StackTraceTest, AsyncSignalUnsafeSignalHandlerHang) {
-  ProcessHandle child = SpawnChild("MismatchedMallocChildProcess");
-  ASSERT_NE(kNullProcessHandle, child);
-  ASSERT_TRUE(WaitForSingleProcess(child, TestTimeouts::action_timeout()));
-}
-#endif  // !defined(OS_IOS)
 
 namespace {
 
