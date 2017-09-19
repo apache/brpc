@@ -23,8 +23,8 @@ brpc中常见错误的打印内容列表如下：
 
 | 错误码            | 数值   | 重试   | 说明                                       | 日志                                       |
 | -------------- | ---- | ---- | ---------------------------------------- | ---------------------------------------- |
-| EAGAIN         | 11   | 是    | 同时异步发送的请求过多。r32803前为硬限（<1024)，出现频率较高；r32803后为软限，很少出现。 | Resource temporarily unavailable         |
-| ETIMEDOUT      | 110  | 是    | 在r31711后代表连接超时。r31711前代表RPC超时，相当于ERPCTIMEDOUT。 | Connection timed out                     |
+| EAGAIN         | 11   | 是    | 同时异步发送的请求过多。软限，很少出现。                     | Resource temporarily unavailable         |
+| ETIMEDOUT      | 110  | 是    | 连接超时。                                    | Connection timed out                     |
 | ENOSERVICE     | 1001 | 否    | 找不到服务，不太出现，一般会返回ENOMETHOD。               |                                          |
 | ENOMETHOD      | 1002 | 否    | 找不到方法。                                   | 形式广泛，常见如"Fail to find method=..."        |
 | EREQUEST       | 1003 | 否    | request格式或序列化错误，client端和server端都可能设置     | 形式广泛："Missing required fields in request: ...""Fail to parse request message, ...""Bad request" |
@@ -33,7 +33,7 @@ brpc中常见错误的打印内容列表如下：
 | EBACKUPREQUEST | 1007 | 是    | 触发backup request时设置，用户一般在/rpcz里看到        | “reached backup timeout=%dms"            |
 | ERPCTIMEDOUT   | 1008 | 否    | RPC超时                                    | "reached timeout=%dms"                   |
 | EFAILEDSOCKET  | 1009 | 是    | RPC进行过程中TCP连接出现问题                        | "The socket was SetFailed"               |
-| EHTTP          | 1010 | 否    | `r31923后失败的HTTP访问（非2xx状态码）均使用这个错误码。默认不重试，可通过RetryPolicy定制` | Bad http call                            |
+| EHTTP          | 1010 | 否    | 失败的HTTP访问（非2xx状态码）均使用这个错误码。默认不重试，可通过RetryPolicy定制 | Bad http call                            |
 | EOVERCROWDED   | 1011 | 是    | 连接上有过多的未发送数据，一般是由于同时发起了过多的异步访问。可通过参数-socket_max_unwritten_bytes控制，默认8MB。 | The server is overcrowded                |
 | EINTERNAL      | 2001 | 否    | Server端Controller.SetFailed没有指定错误码时使用的默认错误码。 | "Internal Server Error"                  |
 | ERESPONSE      | 2002 | 否    | response解析或格式错误，client端和server端都可能设置     | 形式广泛"Missing required fields in response: ...""Fail to parse response message, ""Bad response" |
