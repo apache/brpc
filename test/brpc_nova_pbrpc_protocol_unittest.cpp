@@ -18,7 +18,7 @@
 #include "brpc/policy/nova_pbrpc_protocol.h"
 #include "brpc/policy/most_common_message.h"
 #include "brpc/controller.h"
-#include "test/echo.pb.h"
+#include "echo.pb.h"
 
 namespace {
 void* RunClosure(void* arg) {

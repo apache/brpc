@@ -19,7 +19,7 @@
 #include "brpc/policy/hulu_pbrpc_protocol.h"
 #include "brpc/policy/most_common_message.h"
 #include "brpc/controller.h"
-#include "test/echo.pb.h"
+#include "echo.pb.h"
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);

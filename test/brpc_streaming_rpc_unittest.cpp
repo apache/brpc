@@ -9,7 +9,7 @@
 #include "brpc/controller.h"
 #include "brpc/channel.h"
 #include "brpc/stream_impl.h"
-#include "test/echo.pb.h"
+#include "echo.pb.h"
 
 class AfterAcceptStream {
 public:

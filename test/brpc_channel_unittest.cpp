@@ -26,7 +26,7 @@
 #include "brpc/selective_channel.h"
 #include "brpc/socket_map.h"
 #include "brpc/controller.h"
-#include "test/echo.pb.h"
+#include "echo.pb.h"
 #include "brpc/options.pb.h"
 
 namespace brpc {

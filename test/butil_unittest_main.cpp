@@ -6,7 +6,7 @@
 #include "butil/base_switches.h"
 #include "butil/at_exit.h"
 #include "butil/logging.h"
-#include "test/multiprocess_func_list.h"
+#include "multiprocess_func_list.h"
 
 // Disable coredumps by default to avoid generating a lot of coredumps
 // after running death tests.

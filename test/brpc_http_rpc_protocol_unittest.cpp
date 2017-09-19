@@ -19,7 +19,7 @@
 #include "brpc/channel.h"
 #include "brpc/policy/most_common_message.h"
 #include "brpc/controller.h"
-#include "test/echo.pb.h"
+#include "echo.pb.h"
 #include "brpc/policy/http_rpc_protocol.h"
 #include "json2pb/pb_to_json.h"
 #include "json2pb/json_to_pb.h"

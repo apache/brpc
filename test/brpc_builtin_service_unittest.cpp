@@ -37,7 +37,7 @@
 #include "brpc/builtin/sockets_service.h"      // SocketsService
 #include "brpc/builtin/common.h"
 #include "brpc/builtin/bad_method_service.h"
-#include "test/echo.pb.h"
+#include "echo.pb.h"
 
 DEFINE_bool(foo, false, "Flags for UT");
 BRPC_VALIDATE_GFLAG(foo, brpc::PassValidate);
@@ -194,7 +194,7 @@ protected:
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         EXPECT_EQ(expect_type, cntl.http_response().content_type());
-        CheckContent(cntl, "test_builtin_service");
+        CheckContent(cntl, "brpc_builtin_service_unittest");
 #endif
     }
     
@@ -655,8 +655,8 @@ TEST_F(BuiltinServiceTest, pprof) {
         ClosureChecker done;
         brpc::Controller cntl;
         service.growth(&cntl, NULL, NULL, &done);
-        // MUST fail since tcmalloc hasn't been linked in
-        EXPECT_EQ(brpc::ENOMETHOD, cntl.ErrorCode());
+        // linked tcmalloc in UT
+        EXPECT_EQ(0, cntl.ErrorCode());
     }
     {
         ClosureChecker done;
@@ -670,7 +670,7 @@ TEST_F(BuiltinServiceTest, pprof) {
         brpc::Controller cntl;
         service.cmdline(&cntl, NULL, NULL, &done);
         EXPECT_FALSE(cntl.Failed());
-        CheckContent(cntl, "test_builtin_service");
+        CheckContent(cntl, "brpc_builtin_service_unittest");
     }
 }
 

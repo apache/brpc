@@ -19,9 +19,6 @@
 
 namespace bvar {
 DECLARE_bool(bvar_log_dumpped);
-namespace detail {
-extern bool FLAGS_show_sampler_usage;
-}
 }
 
 template <typename T>
@@ -41,7 +38,6 @@ namespace {
 class VariableTest : public testing::Test {
 protected:
     void SetUp() {
-        bvar::detail::FLAGS_show_sampler_usage = false;
     }
     void TearDown() {
         ASSERT_EQ(0UL, bvar::Variable::count_exposed());

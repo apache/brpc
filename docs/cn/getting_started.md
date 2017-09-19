@@ -36,15 +36,8 @@ Examples link brpc statically, if you need to link the shared version, `make cle
 To run examples with cpu/heap profilers, install `libgoogle-perftools-dev` and re-run `config_brpc.sh` before compiling
 
 ### compile tests
-Install gmock and gtest, use the gtest embedded in gmock and don't install libgtest-dev
-```
-$ sudo apt-get install google-mock
-$ cd /usr/src
-$ sudo cmake .
-$ sudo make
-$ sudo mv lib*.a gtest/lib*.a /usr/lib
-$ sudo mv gtest/include/gtest /usr/include/
-```
+Install libgtest-dev
+
 Rerun config_brpc.sh and run make in test/
 
 ## Fedora/CentOS

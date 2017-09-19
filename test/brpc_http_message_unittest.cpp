@@ -9,7 +9,7 @@
 #include "brpc/server.h"
 #include "brpc/details/http_message.h"
 #include "brpc/policy/http_rpc_protocol.h"
-#include "test/echo.pb.h"
+#include "echo.pb.h"
 
 namespace brpc {
 namespace policy {

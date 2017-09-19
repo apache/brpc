@@ -8,7 +8,7 @@
 #include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/dynamic_message.h>
 #include "brpc/policy/baidu_rpc_meta.pb.h"
-#include "test/echo.pb.h"
+#include "echo.pb.h"
 
 namespace {
 using namespace google::protobuf;

@@ -37,9 +37,9 @@
 #include "brpc/channel.h"
 #include "brpc/socket_map.h"
 #include "brpc/controller.h"
-#include "test/echo.pb.h"
-#include "test/v1.pb.h"
-#include "test/v2.pb.h"
+#include "echo.pb.h"
+#include "v1.pb.h"
+#include "v2.pb.h"
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);

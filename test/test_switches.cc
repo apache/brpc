@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "test/test_switches.h"
+#include "test_switches.h"
 
 // Time (in milliseconds) that the tests should wait before timing out.
 // TODO(phajdan.jr): Clean up the switch names.

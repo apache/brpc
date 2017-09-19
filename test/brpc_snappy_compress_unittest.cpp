@@ -9,7 +9,7 @@
 #include "butil/macros.h"
 #include "butil/iobuf.h"
 #include "butil/time.h"
-#include "test/snappy_message.pb.h"
+#include "snappy_message.pb.h"
 #include "brpc/policy/snappy_compress.h"
 #include "brpc/policy/gzip_compress.h"
 
