@@ -102,7 +102,7 @@ typedef void (*ProcessRequest)(InputMessageBase* msg_base);
 
 ### process_response
 ```c++
-typedef void (*ProcessResponse)(InputMessageBase* msg);
+typedef void (*ProcessResponse)(InputMessageBase* msg_base);
 ```
 处理client端parse返回的消息，client端必须实现。可能会在和parse()不同的线程中运行。多个process_response可能同时运行。
 
@@ -149,65 +149,4 @@ Protocol http_protocol = { ParseHttpMessage,
 if (RegisterProtocol(PROTOCOL_HTTP, http_protocol) != 0) {
     exit(1);
 }
-```
-
-## r34386引入的不兼容
-
-为了进一步简化protocol的实现逻辑，r34386是一个不兼容改动，主要集中在下面几点：
-
-- ProcessXXX必须在处理结束时调用msg_base->Destroy()。在之前的版本中，这是由框架完成的。这个改动帮助我们隐藏处理EOF的代码（很晦涩），还可以在未来支持更异步的处理（退出ProcessXXX不意味着处理结束）。为了确保所有的退出分支都会调用msg_base->Destroy()，可以使用定义在[destroying_ptr.h](https://github.com/brpc/brpc/blob/master/src/brpc/destroying_ptr.h)中的DestroyingPtr<>，可能像这样：
-```c++
-void ProcessXXXRequest(InputMessageBase* msg_base) {
-    DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
-    ...
-}
-```
-
-- 具体请参考[其他协议](https://github.com/brpc/brpc/blob/master/src/brpc/policy/baidu_rpc_protocol.cpp)的实现。
-- InputMessageBase::socket_id()被移除，而通过socket()可以直接访问到对应Socket的指针。ProcessXXX函数中Address Socket的代码可以移除。
-  ProcessXXXRequest开头的修改一般是这样：
-```c++
-void ProcessXXXRequest(InputMessageBase* msg_base) {
-     const int64_t start_parse_us = butil::cpuwide_time_us();
--    MostCommonMessage* msg = static_cast<MostCommonMessage*>(msg_base);
-+    DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
-+    SocketUniquePtr socket(msg->ReleaseSocket());
-     const Server* server = static_cast<const Server*>(msg_base->arg());
-     ScopedNonServiceError non_service_error(server);
--    const SocketId sock = msg_base->socket_id();
--    SocketUniquePtr socket;
--    if (Socket::Address(sock, &socket) != 0) {
--        RPC_VLOG << "Fail to address client=" << sock;
--        return;
--    }
--    if (socket->CheckEOF()) {
--        // Received an EOF event
--        return;
--    }
-```
-ProcessXXXResponse开头的修改一般是这样：
-```c++
-void ProcessRpcResponse(InputMessageBase* msg_base) {
-     const int64_t start_parse_us = butil::cpuwide_time_us();
--    MostCommonMessage* msg = static_cast<MostCommonMessage*>(msg_base);
--    CheckEOFGuard eof_guard(msg->socket_id());
-+    DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
- 
-     ...
- 
--    // After a successful fight, EOF will no longer interrupt the
--    // following code. As a result, we can release `eof_guard'
--    eof_guard.check();
-```
-
-check_eof_guard.h被移除，所以对这个文件的include也得移除：
-
-```c++
--    #include "brpc/details/check_eof_guard.h"
-```
-
-- AddClientSideHandler被移除，用如下方法代替：
-```
--   if (AddClientSideHandler(handler) != 0) {
-+   if (get_or_new_client_side_messenger()->AddHandler(handler) != 0) {
 ```
