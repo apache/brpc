@@ -422,9 +422,9 @@ void QuerySplitter::split() {
     _is_split = true;
 }
 
-QueryRemover::QueryRemover(const std::string& str)
+QueryRemover::QueryRemover(const std::string* str)
     : _query(str)
-    , _qs(_query.data(), _query.data() + _query.size())
+    , _qs(str->data(), str->data() + str->size())
     , _iterated_len(0)
     , _removed_current_key_value(false)
     , _ever_removed(false) {
@@ -463,9 +463,9 @@ void QueryRemover::remove_current_key_and_value() {
     _removed_current_key_value = true;
     if (!_ever_removed) {
         _ever_removed = true;
-        size_t offset = key().data() - _query.data();
-        size_t len = offset - ((offset > 0 && _query[offset - 1] == '&')? 1: 0);
-        _modified_query.append(_query.data(), len);
+        size_t offset = key().data() - _query->data();
+        size_t len = offset - ((offset > 0 && (*_query)[offset - 1] == '&')? 1: 0);
+        _modified_query.append(_query->data(), len);
         _iterated_len += len;
     }
     return;
@@ -473,24 +473,24 @@ void QueryRemover::remove_current_key_and_value() {
 
 std::string QueryRemover::modified_query() {
     if (!_ever_removed) {
-        return _query;
+        return *_query;
     }
-    size_t offset = key().data() - _query.data();
+    size_t offset = key().data() - _query->data();
     // find out where the remaining string starts
     if (_removed_current_key_value) {
         size_t size = key_and_value().length();
-        while (offset + size < _query.size() && _query[offset + size] == '&') {
+        while (offset + size < _query->size() && (*_query)[offset + size] == '&') {
             // ingore unnecessary '&'
             size += 1;
         }
         offset += size;
     }
     _modified_query.resize(_iterated_len);
-    if (offset < _query.size()) {
+    if (offset < _query->size()) {
         if (!_modified_query.empty()) {
             _modified_query.push_back('&');
         }
-        _modified_query.append(_query, offset, std::string::npos);
+        _modified_query.append(*_query, offset, std::string::npos);
     }
     return _modified_query;
 }

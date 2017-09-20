@@ -329,7 +329,7 @@ TEST(URITest, copy_and_assign) {
 
 TEST(URITest, query_remover_sanity) {
     std::string query = "key1=value1&key2=value2&key3=value3";
-    brpc::QueryRemover qr(query);
+    brpc::QueryRemover qr(&query);
     ASSERT_TRUE(qr);
     ASSERT_EQ(qr.key(), "key1");
     ASSERT_EQ(qr.value(), "value1");
@@ -345,7 +345,7 @@ TEST(URITest, query_remover_sanity) {
 
 TEST(URITest, query_remover_remove_current_key_and_value) {
     std::string query = "key1=value1&key2=value2&key3=value3";
-    brpc::QueryRemover qr(query);
+    brpc::QueryRemover qr(&query);
     ASSERT_TRUE(qr);
     qr.remove_current_key_and_value();
     ASSERT_EQ(qr.modified_query(), "key2=value2&key3=value3");
@@ -366,7 +366,7 @@ TEST(URITest, query_remover_remove_current_key_and_value) {
 TEST(URITest, query_remover_random_remove) {
     std::string query = "key1=value1&key2=value2&key3=value3&key4=value4"
                         "&key5=value5&key6=value6";
-    brpc::QueryRemover qr(query);
+    brpc::QueryRemover qr(&query);
     ASSERT_TRUE(qr);
     ++qr;
     ++qr;
@@ -381,7 +381,7 @@ TEST(URITest, query_remover_random_remove) {
 TEST(URITest, query_remover_onekey_remove) {
     std::string query = "key1=value1&key2=value2&key3=value3&key4=value4"
                         "&key5=value5&key6=value6";
-    brpc::QueryRemover qr(query);
+    brpc::QueryRemover qr(&query);
     ASSERT_TRUE(qr);
     ++qr;
     ++qr;
@@ -399,7 +399,7 @@ TEST(URITest, query_remover_onekey_remove) {
 
 TEST(URITest, query_remover_consecutive_ampersand) {
     std::string query = "key1=value1&&&key2=value2&key3=value3&&";
-    brpc::QueryRemover qr(query);
+    brpc::QueryRemover qr(&query);
     ASSERT_TRUE(qr);
     qr.remove_current_key_and_value();
     ASSERT_EQ(qr.modified_query(), "key2=value2&key3=value3&&");
@@ -415,7 +415,7 @@ TEST(URITest, query_remover_consecutive_ampersand) {
 
 TEST(URITest, query_remover_only_equality) {
     std::string query ="key1=&&key2&=&key3=value3";
-    brpc::QueryRemover qr(query);
+    brpc::QueryRemover qr(&query);
     ASSERT_TRUE(qr);
     ASSERT_EQ(qr.key(), "key1");
     ASSERT_EQ(qr.value(), "");
@@ -436,7 +436,7 @@ TEST(URITest, query_remover_only_equality) {
 
 TEST(URITest, query_remover_only_one_key) {
     std::string query = "key1";
-    brpc::QueryRemover qr(query);
+    brpc::QueryRemover qr(&query);
     ASSERT_TRUE(qr);
     ASSERT_EQ(qr.key(), "key1");
     ASSERT_EQ(qr.value(), "");
@@ -448,7 +448,7 @@ TEST(URITest, query_remover_only_one_key) {
 
 TEST(URITest, query_remover_no_modify) {
     std::string query = "key1=value1&key2=value2&key3=value3";
-    brpc::QueryRemover qr(query);
+    brpc::QueryRemover qr(&query);
     ASSERT_TRUE(qr);
     ASSERT_EQ(qr.key(), "key1");
     ASSERT_EQ(qr.value(), "value1");
@@ -461,7 +461,7 @@ TEST(URITest, query_remover_no_modify) {
 
 TEST(URITest, query_remover_key_value_not_changed_after_modified_query) {
     std::string query = "key1=value1&key2=value2&key3=value3";
-    brpc::QueryRemover qr(query);
+    brpc::QueryRemover qr(&query);
     ASSERT_TRUE(qr);
     ++qr;
     ASSERT_EQ(qr.key(), "key2");
