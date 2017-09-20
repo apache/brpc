@@ -50,7 +50,7 @@ if [ -z "$HDRS_IN" ] || [ -z "$LIBS_IN" ]; then
 fi
 
 find_dir_of_lib() {
-    local lib=$(find ${LIBS_IN} -name "lib${1}.a" -o -name "lib${1}.so" -o -name "lib${1}.so.*" | head -n1)
+    local lib=$(find ${LIBS_IN} -name "lib${1}.a" -o -name "lib${1}.so" | head -n1)
     if [ ! -z "$lib" ]; then
         dirname $lib
     fi
