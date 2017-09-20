@@ -85,7 +85,7 @@ request.AddCommand("INCR counter1");
 request.AddCommand("DECR counter1");
 request.AddCommand("INCRBY counter1 10");
 request.AddCommand("DECRBY counter1 20");
-redis_channel.CallMethod(NULL, &cntl, &get_request, &response, NULL/*done*/);
+redis_channel.CallMethod(NULL, &cntl, &request, &response, NULL/*done*/);
 if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access redis-server";
     return -1;
