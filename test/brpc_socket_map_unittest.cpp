@@ -5,7 +5,6 @@
 
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#include <gperftools/profiler.h>
 #include "brpc/socket.h"
 #include "brpc/socket_map.h"
 #include "brpc/reloadable_flags.h"

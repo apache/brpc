@@ -201,7 +201,7 @@ libbrpc.a:$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
 
 libbrpc.so:$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
 	@echo "Linking $@"
-	$(CXX) -shared -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $(filter %.o,$^) -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+	@$(CXX) -shared -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $(filter %.o,$^) -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
 
 libbvar.dbg.a:$(BVAR_DEBUG_OBJS)
 	@echo "Packing $@"

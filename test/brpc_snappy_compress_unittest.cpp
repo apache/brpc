@@ -4,7 +4,7 @@
 // Date: 2015/01/20 19:01:06
 
 #include <gtest/gtest.h>
-#include <gperftools/profiler.h>
+#include "butil/gperftools_profiler.h"
 #include "butil/third_party/snappy/snappy.h"
 #include "butil/macros.h"
 #include "butil/iobuf.h"

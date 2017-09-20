@@ -8,6 +8,7 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/scoped_lock.h"
+#include "butil/gperftools_profiler.h"
 #include "bthread/bthread.h"
 #include "bthread/condition_variable.h"
 #include "bthread/stack.h"
@@ -196,14 +197,6 @@ TEST(CondTest, cpp_wrapper) {
 #ifndef COND_IN_PTHREAD
 #undef pthread_join
 #undef pthread_create
-#endif
-
-#define ENABLE_PROFILE
-#ifdef ENABLE_PROFILE
-# include <gperftools/profiler.h>
-#else
-# define ProfilerStart(a)
-# define ProfilerStop()
 #endif
 
 class Signal {

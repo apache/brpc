@@ -7,7 +7,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
-#include <gperftools/profiler.h>
+#include "butil/gperftools_profiler.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_utility.h"

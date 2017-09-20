@@ -7,18 +7,11 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/logging.h"
-#include <bthread/task_meta.h>
 #include "butil/logging.h"
+#include "butil/gperftools_profiler.h"
 #include "bthread/bthread.h"
 #include "bthread/unstable.h"
-
-#define ENABLE_PROFILE
-#ifdef ENABLE_PROFILE
-# include <gperftools/profiler.h>
-#else
-# define ProfilerStart(a)
-# define ProfilerStop()
-#endif
+#include "bthread/task_meta.h"
 
 namespace {
 class BthreadTest : public ::testing::Test{

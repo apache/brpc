@@ -8,12 +8,12 @@
 #include <sys/socket.h>
 #include <fcntl.h>  // F_GETFD
 #include <gtest/gtest.h>
-#include <gperftools/profiler.h>
-#include <bthread/unstable.h>
-#include <bthread/task_control.h>
+#include "butil/gperftools_profiler.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_utility.h"
+#include "bthread/unstable.h"
+#include "bthread/task_control.h"
 #include "brpc/socket.h"
 #include "brpc/errno.pb.h"
 #include "brpc/acceptor.h"

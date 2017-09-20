@@ -246,8 +246,6 @@ if [ -z "$TCMALLOC_LIB" ]; then
     append_to_output "    \$(error \"Fail to find gperftools\")"
 else
     append_to_output_libs "$TCMALLOC_LIB" "    "
-    TCMALLOC_HDR=$(find_dir_of_header_or_die google/profiler.h)
-    append_to_output_headers "$TCMALLOC_HDR" "    "
     if [ -f $TCMALLOC_LIB/libtcmalloc_and_profiler.a ]; then
         if [ -f $TCMALLOC_LIB/libtcmalloc.so ]; then
             ldd $TCMALLOC_LIB/libtcmalloc.so > libtcmalloc.deps

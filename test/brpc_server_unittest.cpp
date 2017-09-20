@@ -8,7 +8,6 @@
 #include <sys/socket.h>
 #include <fstream>
 #include <gtest/gtest.h>
-#include <gperftools/profiler.h>
 #include <google/protobuf/descriptor.h>
 #include "butil/time.h"
 #include "butil/macros.h"
