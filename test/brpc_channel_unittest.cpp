@@ -7,7 +7,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
-#include <gperftools/profiler.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
 #include "butil/time.h"
@@ -26,7 +25,7 @@
 #include "brpc/selective_channel.h"
 #include "brpc/socket_map.h"
 #include "brpc/controller.h"
-#include "test/echo.pb.h"
+#include "echo.pb.h"
 #include "brpc/options.pb.h"
 
 namespace brpc {
@@ -43,15 +42,15 @@ void SendRpcResponse(int64_t correlation_id, Controller* cntl,
 } // policy
 } // brpc
 
-namespace {
 int main(int argc, char* argv[]) {
     brpc::FLAGS_idle_timeout_second = 0;
     brpc::FLAGS_max_connection_pool_size = 0;
     testing::InitGoogleTest(&argc, argv);
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
     return RUN_ALL_TESTS();
 }
 
+namespace {
 void* RunClosure(void* arg) {
     google::protobuf::Closure* done = (google::protobuf::Closure*)arg;
     done->Run();

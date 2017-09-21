@@ -87,9 +87,9 @@ void IndexService::default_method(::google::protobuf::RpcController* controller,
     }
     os << '\n';
     if (use_html) {
-        os << "<a href=\"https://github.com/brpc/brpc/tree/master/\">Repo</a>";
+        os << "<a href=\"https://github.com/brpc/brpc\">github</a>";
     } else {
-        os << "Repo : https://github.com/brpc/brpc/tree/master/";
+        os << "github : https://github.com/brpc/brpc";
     }
     os << NL << NL;
     if (!as_more) {

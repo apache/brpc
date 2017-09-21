@@ -7,7 +7,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
-#include <gperftools/profiler.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
@@ -22,7 +21,7 @@
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
     return RUN_ALL_TESTS();
 }
 

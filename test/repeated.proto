@@ -1,3 +1,4 @@
+syntax="proto2";
 message Dummy {}
 
 message RepeatedMessage {

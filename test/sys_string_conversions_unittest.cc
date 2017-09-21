@@ -8,7 +8,7 @@
 #include "butil/strings/string_piece.h"
 #include "butil/strings/sys_string_conversions.h"
 #include "butil/strings/utf_string_conversions.h"
-#include "test/scoped_locale.h"
+#include "scoped_locale.h"
 #include <gtest/gtest.h>
 
 #ifdef WCHAR_T_IS_UTF32

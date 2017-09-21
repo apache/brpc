@@ -9,11 +9,11 @@
 #include "butil/rand_util.h"
 #include "butil/strings/string_number_conversions.h"
 #include "butil/sys_info.h"
-#include "test/multiprocess_test.h"
+#include "multiprocess_test.h"
 #include "butil/threading/platform_thread.h"
 #include "butil/time/time.h"
 #include <gtest/gtest.h>
-#include "test/multiprocess_func_list.h"
+#include "multiprocess_func_list.h"
 
 #if defined(OS_MACOSX)
 #include "butil/mac/scoped_nsautorelease_pool.h"

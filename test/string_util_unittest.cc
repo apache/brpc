@@ -12,10 +12,7 @@
 #include "butil/basictypes.h"
 #include "butil/strings/string16.h"
 #include "butil/strings/utf_string_conversions.h"
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-
-using ::testing::ElementsAre;
 
 namespace butil {
 

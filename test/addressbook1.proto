@@ -1,3 +1,4 @@
+syntax="proto2";
 message Ext {
   optional fixed32 age = 2;
   required bytes databyte = 3;

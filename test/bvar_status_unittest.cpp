@@ -14,17 +14,10 @@
 #include "bvar/bvar.h"
 #include <gtest/gtest.h>
 
-namespace bvar {
-namespace detail {
-extern bool FLAGS_show_sampler_usage;
-}
-}
-
 namespace {
 class StatusTest : public testing::Test {
 protected:
     void SetUp() {
-        bvar::detail::FLAGS_show_sampler_usage = false;
     }
     void TearDown() {
         ASSERT_EQ(0UL, bvar::Variable::count_exposed());

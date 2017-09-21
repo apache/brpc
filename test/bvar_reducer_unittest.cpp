@@ -49,7 +49,7 @@ TEST_F(ReducerTest, adder) {
     ASSERT_EQ(-5, reducer3.get_value());
 }
 
-const size_t OPS_PER_THREAD = 5000000;
+const size_t OPS_PER_THREAD = 500000;
 
 static void *thread_counter(void *arg) {
     bvar::Adder<uint64_t> *reducer = (bvar::Adder<uint64_t> *)arg;
@@ -297,7 +297,7 @@ TEST_F(ReducerTest, non_primitive_mt) {
     for (size_t i = 0; i < arraysize(th); ++i) {
         pthread_create(&th[i], NULL, string_appender, &cater);
     }
-    usleep(10000);
+    usleep(50000);
     g_stop = true;
     butil::hash_map<pthread_t, int> appended_count;
     for (size_t i = 0; i < arraysize(th); ++i) {

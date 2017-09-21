@@ -1,3 +1,4 @@
+syntax="proto2";
 message AddressNoMap {
     required string addr = 1;
 }

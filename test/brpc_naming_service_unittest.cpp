@@ -13,7 +13,7 @@
 #include "brpc/policy/file_naming_service.h"
 #include "brpc/policy/list_naming_service.h"
 #include "brpc/policy/remote_file_naming_service.h"
-#include "test/echo.pb.h"
+#include "echo.pb.h"
 #include "brpc/server.h"
 
 namespace {

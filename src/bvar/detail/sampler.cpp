@@ -25,8 +25,6 @@
 namespace bvar {
 namespace detail {
 
-// set to true in UT. Not using gflags since users hardly need to change it.
-bool FLAGS_show_sampler_usage = true;
 const int WARN_NOSLEEP_THRESHOLD = 2;
 
 // Combine two circular linked list into one.
@@ -94,11 +92,11 @@ private:
 void SamplerCollector::run() {
     butil::LinkNode<Sampler> root;
     int consecutive_nosleep = 0;
+#ifndef UNIT_TEST
     PassiveStatus<double> cumulated_time(get_cumulated_time, this);
-    bvar::PerSecond<bvar::PassiveStatus<double> > usage(&cumulated_time, 10);
-    if (FLAGS_show_sampler_usage) {
-        usage.expose("bvar_sampler_collector_usage");
-    }
+    bvar::PerSecond<bvar::PassiveStatus<double> > usage(
+            "bvar_sampler_collector_usage", &cumulated_time, 10);
+#endif
     while (!_stop) {
         int64_t abstime = butil::gettimeofday_us();
         Sampler* s = this->reset();

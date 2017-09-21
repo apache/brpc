@@ -7,18 +7,11 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/logging.h"
-#include <bthread/task_meta.h>
 #include "butil/logging.h"
+#include "butil/gperftools_profiler.h"
 #include "bthread/bthread.h"
 #include "bthread/unstable.h"
-
-#define ENABLE_PROFILE
-#ifdef ENABLE_PROFILE
-# include <gperftools/profiler.h>
-#else
-# define ProfilerStart(a)
-# define ProfilerStop()
-#endif
+#include "bthread/task_meta.h"
 
 namespace {
 class BthreadTest : public ::testing::Test{
@@ -237,17 +230,6 @@ TEST_F(BthreadTest, bthread_join) {
     // Joining self
     bthread_t th;
     ASSERT_EQ(0, bthread_start_urgent(&th, NULL, join_self, NULL));
-}
-
-void* small_func(void*) {
-    LOG(INFO) << "hello";
-    return NULL;
-}
-
-void* small_but_sleep_awhile_func(void*) {
-    LOG(INFO) << "hello2";
-    bthread_usleep(1000);
-    return NULL;
 }
 
 void* change_errno(void* arg) {
@@ -528,6 +510,6 @@ TEST_F(BthreadTest, too_many_nosignal_threads) {
 
 int main(int argc, char** argv) {
     testing::InitGoogleTest(&argc, argv);
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
     return RUN_ALL_TESTS();
 }

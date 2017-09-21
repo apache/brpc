@@ -11,14 +11,7 @@
 #include "bthread/butex.h"
 #include "bthread/task_control.h"
 #include "bthread/mutex.h"
-
-//#define ENABLE_PROFILE
-#ifdef ENABLE_PROFILE
-# include <gperftools/profiler.h>
-#else
-# define ProfilerStart(a)
-# define ProfilerStop()
-#endif
+#include "butil/gperftools_profiler.h"
 
 namespace {
 inline unsigned* get_butex(bthread_mutex_t & m) {

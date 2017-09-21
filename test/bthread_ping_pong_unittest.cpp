@@ -160,7 +160,7 @@ TEST(PingPongTest, ping_pong) {
 
         if (!FLAGS_use_futex && !FLAGS_use_butex) {
             // send the seed data.
-            char seed = 255;
+            unsigned char seed = 255;
             ASSERT_EQ(1L, write(pipe1[1], &seed, 1));
         } else if (FLAGS_use_futex) {
             ++*arg1->wait_addr;

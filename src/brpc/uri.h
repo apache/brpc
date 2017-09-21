@@ -265,7 +265,7 @@ private:
 // query.
 class QueryRemover {
 public:
-    QueryRemover(const std::string& str);
+    QueryRemover(const std::string* str);
 
     const butil::StringPiece& key() { return _qs.key();}
     const butil::StringPiece& value() { return _qs.value(); }
@@ -285,8 +285,8 @@ public:
     std::string modified_query();
 
 private:
+    const std::string* _query;
     QuerySplitter _qs;
-    const std::string _query;
     std::string _modified_query;
     size_t _iterated_len;
     bool _removed_current_key_value;

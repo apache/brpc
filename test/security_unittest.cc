@@ -155,6 +155,11 @@ TEST(SecurityTest, TCMALLOC_TEST(MemoryAllocationRestrictionsNewArray)) {
   #define DISABLE_ON_IOS_AND_WIN_AND_TSAN(function) function
 #endif
 
+
+// FIXME(gejun): following logic of the case, it definitely should crash, I don't
+// know why it's judged as failure.
+#if defined(FixedNewOverflow)
+
 // There are platforms where these tests are known to fail. We would like to
 // be able to easily check the status on the bots, but marking tests as
 // FAILS_ is too clunky.
@@ -173,9 +178,6 @@ void OverflowTestsSoftExpectTrue(bool overflow_detected) {
   }
 }
 
-// FIXME(gejun): following logic of the case, it definitely should crash, I don't
-// know why it's judged as failure.
-#if defined(FixedNewOverflow)
 // Test array[TooBig][X] and array[X][TooBig] allocations for int overflows.
 // IOS doesn't honor nothrow, so disable the test there.
 // Crashes on Windows Dbg builds, disable there as well.

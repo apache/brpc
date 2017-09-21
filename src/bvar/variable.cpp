@@ -53,7 +53,7 @@ static bool validate_bvar_abort_on_same_name(const char*, bool v) {
     }
     return true;
 }
-const bool ALLOW_UNUSED dummy_bvar_abort_on_same_name = ::google::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_abort_on_same_name = ::GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_bvar_abort_on_same_name, validate_bvar_abort_on_same_name);
 
 
@@ -703,25 +703,25 @@ static void* dumping_thread(void*) {
         DumpOptions options;
         std::string prefix;
         std::string tabs;
-        if (!google::GetCommandLineOption("bvar_dump_file", &filename)) {
+        if (!GFLAGS_NS::GetCommandLineOption("bvar_dump_file", &filename)) {
             LOG(ERROR) << "Fail to get gflag bvar_dump_file";
             return NULL;
         }
-        if (!google::GetCommandLineOption("bvar_dump_include",
+        if (!GFLAGS_NS::GetCommandLineOption("bvar_dump_include",
                                           &options.white_wildcards)) {
             LOG(ERROR) << "Fail to get gflag bvar_dump_include";
             return NULL;
         }
-        if (!google::GetCommandLineOption("bvar_dump_exclude",
+        if (!GFLAGS_NS::GetCommandLineOption("bvar_dump_exclude",
                                           &options.black_wildcards)) {
             LOG(ERROR) << "Fail to get gflag bvar_dump_exclude";
             return NULL;
         }
-        if (!google::GetCommandLineOption("bvar_dump_prefix", &prefix)) {
+        if (!GFLAGS_NS::GetCommandLineOption("bvar_dump_prefix", &prefix)) {
             LOG(ERROR) << "Fail to get gflag bvar_dump_prefix";
             return NULL;
         }
-        if (!google::GetCommandLineOption("bvar_dump_tabs", &tabs)) {
+        if (!GFLAGS_NS::GetCommandLineOption("bvar_dump_tabs", &tabs)) {
             LOG(ERROR) << "Fail to get gflags bvar_dump_tabs";
             return NULL;
         }
@@ -794,7 +794,7 @@ static bool validate_bvar_dump(const char*, bool enabled) {
     }
     return true;
 }
-const bool ALLOW_UNUSED dummy_bvar_dump = ::google::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_dump = ::GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_bvar_dump, validate_bvar_dump);
 
 // validators (to make these gflags reloadable in brpc)
@@ -809,11 +809,11 @@ static bool validate_bvar_dump_interval(const char*, int32_t v) {
     }
     return true;
 }
-const bool ALLOW_UNUSED dummy_bvar_dump_interval = ::google::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_dump_interval = ::GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_bvar_dump_interval, validate_bvar_dump_interval);
 
 static bool validate_bvar_log_dumpped(const char *, bool) { return true; }
-const bool ALLOW_UNUSED dummy_bvar_log_dumpped = ::google::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_log_dumpped = ::GFLAGS_NS::RegisterFlagValidator(
         &FLAGS_bvar_log_dumpped, validate_bvar_log_dumpped);
 
 static bool wakeup_dumping_thread(const char*, const std::string&) {
@@ -823,15 +823,15 @@ static bool wakeup_dumping_thread(const char*, const std::string&) {
     return true;
 }
 
-const bool ALLOW_UNUSED dummy_bvar_dump_file = ::google::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_dump_file = ::GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_bvar_dump_file, wakeup_dumping_thread);
-const bool ALLOW_UNUSED dummy_bvar_dump_filter = ::google::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_dump_filter = ::GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_bvar_dump_include, wakeup_dumping_thread);
-const bool ALLOW_UNUSED dummy_bvar_dump_exclude = ::google::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_dump_exclude = ::GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_bvar_dump_exclude, wakeup_dumping_thread);
-const bool ALLOW_UNUSED dummy_bvar_dump_prefix = ::google::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_dump_prefix = ::GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_bvar_dump_prefix, wakeup_dumping_thread);
-const bool ALLOW_UNUSED dummy_bvar_dump_tabs = ::google::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_dump_tabs = ::GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_bvar_dump_tabs, wakeup_dumping_thread);
 
 void to_underscored_name(std::string* name, const butil::StringPiece& src) {

@@ -1,6 +1,5 @@
 NEED_GPERFTOOLS=1
 NEED_GTEST=1
-NEED_GMOCK=1
 include ../config.mk
 CPPFLAGS+=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS
 CPPFLAGS+=-DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES --include sstream_workaround.h
@@ -15,8 +14,8 @@ ifeq ($(shell test $(GCC_VERSION) -ge 70000; echo $$?),0)
 	CXXFLAGS+=-Wno-aligned-new
 endif
 
-HDRPATHS=-I. -I.. -I../src $(addprefix -I, $(HDRS))
-LIBPATHS=$(addprefix -L, $(LIBS))
+HDRPATHS=-I. -I../src $(addprefix -I, $(HDRS))
+LIBPATHS=-L.. $(addprefix -L, $(LIBS))
 
 TEST_BUTIL_SOURCES = \
     at_exit_unittest.cc \
@@ -137,7 +136,7 @@ TEST_BINS = test_butil test_bvar $(TEST_BTHREAD_SOURCES:.cpp=) $(TEST_BRPC_SOURC
 all: $(TEST_BINS)
 
 .PHONY:clean
-clean:clean_bins clean_dbg
+clean:clean_bins clean_debug
 	@echo "Cleaning"
 	@rm -rf $(TEST_BUTIL_OBJS) $(TEST_BVAR_OBJS) $(TEST_BTHREAD_OBJS) \
 		$(TEST_BRPC_OBJS) $(TEST_PROTO_OBJS)
@@ -146,12 +145,12 @@ clean:clean_bins clean_dbg
 clean_bins:
 	@rm -rf $(TEST_BINS)
 
-.PHONY:clean_dbg
-clean_dbg:
+.PHONY:clean_debug
+clean_debug:
 	@$(MAKE) -C.. clean_debug
 
 ../libbrpc.dbg.a: FORCE
-	@$(MAKE) -C.. libbrpc.dbg.a
+	@$(MAKE) -C.. debug
 
 FORCE:
 
@@ -163,7 +162,7 @@ test_butil:$(TEST_BUTIL_OBJS) ../libbrpc.dbg.a
 
 test_bvar:$(TEST_BVAR_OBJS) ../libbrpc.dbg.a
 	@echo "Linking $@"
-	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
+	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $(TEST_BVAR_OBJS) ../libbvar.dbg.a -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
 bthread%unittest:bthread%unittest.o ../libbrpc.dbg.a
 	@echo "Linking $@"

@@ -8,7 +8,6 @@
 #include <sys/socket.h>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#include <gperftools/profiler.h>
 #include <google/protobuf/descriptor.h>
 #include "butil/time.h"
 #include "butil/macros.h"
@@ -22,16 +21,11 @@
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
     return RUN_ALL_TESTS();
 }
 
 namespace {
-void* RunClosure(void* arg) {
-    google::protobuf::Closure* done = (google::protobuf::Closure*)arg;
-    done->Run();
-    return NULL;
-}
 
 static const std::string EXP_REQUEST = "hello";
 static const std::string EXP_RESPONSE = "world";

@@ -84,8 +84,8 @@ void* sender(void* arg) {
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
-    google::SetUsageMessage("Send EchoRequest to server every second");
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::SetUsageMessage("Send EchoRequest to server every second");
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
     // A Channel represents a communication line to a Server. Notice that 
     // Channel is thread-safe and can be shared by all threads in your program.

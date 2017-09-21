@@ -19,13 +19,14 @@
 
 namespace bvar {
 DECLARE_bool(bvar_log_dumpped);
-namespace detail {
-extern bool FLAGS_show_sampler_usage;
-}
 }
 
+namespace {
+
+// overloading for operator<< does not work for gflags>=2.1
 template <typename T>
-std::ostream& operator<<(std::ostream& os, const std::vector<T>& vec) {
+std::string vec2string(const std::vector<T>& vec) {
+    std::ostringstream os;
     os << '[';
     if (!vec.empty()) {
         os << vec[0];
@@ -34,14 +35,12 @@ std::ostream& operator<<(std::ostream& os, const std::vector<T>& vec) {
         }
     }
     os << ']';
-    return os;
+    return os.str();
 }
 
-namespace {
 class VariableTest : public testing::Test {
 protected:
     void SetUp() {
-        bvar::detail::FLAGS_show_sampler_usage = false;
     }
     void TearDown() {
         ASSERT_EQ(0UL, bvar::Variable::count_exposed());
@@ -311,7 +310,7 @@ TEST_F(VariableTest, latency_recorder) {
     std::vector<std::string> names;
     bvar::Variable::list_exposed(&names);
     std::sort(names.begin(), names.end());
-    ASSERT_EQ(11UL, names.size()) << names;
+    ASSERT_EQ(11UL, names.size()) << vec2string(names);
     ASSERT_EQ("foo_bar_count", names[0]);
     ASSERT_EQ("foo_bar_latency", names[1]);
     ASSERT_EQ("foo_bar_latency_50", names[2]);
@@ -378,6 +377,6 @@ TEST_F(VariableTest, recursive_mutex) {
 
 int main(int argc, char** argv) {
     testing::InitGoogleTest(&argc, argv);
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
     return RUN_ALL_TESTS();
 }

@@ -50,7 +50,7 @@ if [ -z "$HDRS_IN" ] || [ -z "$LIBS_IN" ]; then
 fi
 
 find_dir_of_lib() {
-    local lib=$(find ${LIBS_IN} -name "lib${1}.a" -o -name "lib${1}.so" -o -name "lib${1}.so.*" | head -n1)
+    local lib=$(find ${LIBS_IN} -name "lib${1}.a" -o -name "lib${1}.so" | head -n1)
     if [ ! -z "$lib" ]; then
         dirname $lib
     fi
@@ -148,6 +148,16 @@ fi
 PROTOC=$(find_bin_or_die protoc)
 
 GFLAGS_HDR=$(find_dir_of_header_or_die gflags/gflags.h)
+# namespace of gflags may not be google, grep it from source.
+GFLAGS_NS=$(grep "namespace [_A-Za-z0-9]\+ {" $GFLAGS_HDR/gflags/gflags_declare.h | head -1 | awk '{print $2}')
+if [ "$GFLAGS_NS" = "GFLAGS_NAMESPACE" ]; then
+    GFLAGS_NS=$(grep "#define GFLAGS_NAMESPACE [_A-Za-z0-9]\+" $GFLAGS_HDR/gflags/gflags_declare.h | head -1 | awk '{print $3}')
+fi
+if [ -z "$GFLAGS_NS" ]; then
+    >&2 $ECHO "Fail to grep namespace of gflags source $GFLAGS_HDR/gflags/gflags_declare.h"
+    exit 1
+fi
+
 PROTOBUF_HDR=$(find_dir_of_header_or_die google/protobuf/message.h)
 LEVELDB_HDR=$(find_dir_of_header_or_die leveldb/db.h)
 
@@ -236,8 +246,6 @@ if [ -z "$TCMALLOC_LIB" ]; then
     append_to_output "    \$(error \"Fail to find gperftools\")"
 else
     append_to_output_libs "$TCMALLOC_LIB" "    "
-    TCMALLOC_HDR=$(find_dir_of_header_or_die google/profiler.h)
-    append_to_output_headers "$TCMALLOC_HDR" "    "
     if [ -f $TCMALLOC_LIB/libtcmalloc_and_profiler.a ]; then
         if [ -f $TCMALLOC_LIB/libtcmalloc.so ]; then
             ldd $TCMALLOC_LIB/libtcmalloc.so > libtcmalloc.deps
@@ -301,7 +309,8 @@ if [ $WITH_GLOG != 0 ]; then
         rm -f libglog.deps
     fi
 fi
-append_to_output "CPPFLAGS+=-DBRPC_WITH_GLOG=$WITH_GLOG"
+append_to_output "CPPFLAGS+=-DBRPC_WITH_GLOG=$WITH_GLOG -DGFLAGS_NS=$GFLAGS_NS"
+
 
 if [ ! -z "$REQUIRE_UNWIND" ]; then
     append_to_output_libs "$UNWIND_LIB" "    "
@@ -321,22 +330,6 @@ else
     append_to_output_headers $GTEST_HDR "    "
     append_to_output_linkings $GTEST_LIB gtest "    "
     append_to_output_linkings $GTEST_LIB gtest_main "    "
-fi
-append_to_output "endif"
-
-#gmock
-GMOCK_LIB=$(find_dir_of_lib gmock)
-HDRS=$OLD_HDRS
-LIBS=$OLD_LIBS
-append_to_output "ifeq (\$(NEED_GMOCK), 1)"
-if [ -z "$GMOCK_LIB" ]; then
-    append_to_output "    \$(error \"Fail to find gmock\")"
-else
-    GMOCK_HDR=$(find_dir_of_header_or_die gmock/gmock.h)
-    append_to_output_libs $GMOCK_LIB "    "
-    append_to_output_headers $GMOCK_HDR "    "
-    append_to_output_linkings $GMOCK_LIB gmock "    "
-    append_to_output_linkings $GMOCK_LIB gmock_main "    "
 fi
 append_to_output "endif"
 

@@ -9,14 +9,7 @@
 #include <bthread/countdown_event.h>
 #include "butil/time.h"
 #include "butil/fast_rand.h"
-
-#define ENABLE_PROFILE
-#ifdef ENABLE_PROFILE
-# include <gperftools/profiler.h>
-#else
-# define ProfilerStart(a)
-# define ProfilerStop()
-#endif
+#include "butil/gperftools_profiler.h"
 
 namespace {
 bool stopped = false;
@@ -69,8 +62,6 @@ TEST_F(ExecutionQueueTest, single_thread) {
     ASSERT_EQ(expected_result, result);
     ASSERT_TRUE(stopped);
 }
-
-const static int OPS_PER_THREAD = 1000000;
 
 struct PushArg {
     bthread::ExecutionQueueId<LongIntTask> id;

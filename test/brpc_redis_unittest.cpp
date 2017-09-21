@@ -1,8 +1,9 @@
 // Copyright (c) 2014 Baidu, Inc.
 // Date: Thu Jun 11 14:30:07 CST 2015
 
-#include <iostream>
+#ifdef BAIDU_INTERNAL
 
+#include <iostream>
 #include "butil/time.h"
 #include "butil/logging.h"
 #include <brpc/redis.h>
@@ -234,3 +235,4 @@ TEST_F(RedisTest, by_components) {
     ASSERT_EQ(-10, response.reply(3).integer());
 }
 } //namespace
+#endif // BAIDU_INTERNAL

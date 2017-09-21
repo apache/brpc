@@ -1324,7 +1324,7 @@ void* cut_into_fd(void* arg) {
         butil::IOBuf out;
         out.append(&to_write, sizeof(int));
         CHECK_EQ(out.pcut_into_file_descriptor(fd, offset + sizeof(int) * i), 
-                 sizeof(int));
+                 (ssize_t)sizeof(int));
     }
     return NULL;
 }
