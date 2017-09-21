@@ -174,7 +174,7 @@ int Variable::expose_impl(const butil::StringPiece& prefix,
         s_bvar_may_abort = true;
     }
         
-    LOG(FATAL) << "Already exposed `" << _name << "' whose value is `"
+    LOG(ERROR) << "Already exposed `" << _name << "' whose value is `"
                << describe_exposed(_name) << '\'';
     _name.clear();
     return -1;
