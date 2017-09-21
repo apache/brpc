@@ -375,7 +375,6 @@ void RtmpSubStream::OnStop() {
 
 class RtmpSubStreamCreator : public brpc::SubStreamCreator {
 public:
-    RtmpSubStreamCreator(brpc::RtmpClientSelector* client_selector);
     RtmpSubStreamCreator(const brpc::RtmpClient* client);
 
     ~RtmpSubStreamCreator();

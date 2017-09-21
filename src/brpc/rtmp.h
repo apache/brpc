@@ -864,22 +864,6 @@ struct RtmpRetryingClientStreamOptions : public RtmpClientStreamOptions {
     RtmpRetryingClientStreamOptions();
 };
 
-// The callback to run after getting a RtmpClient
-class OnGetRtmpClient {
-public:
-    virtual ~OnGetRtmpClient() {}
-    virtual void Run(const RtmpClient*) = 0;
-};
-
-// Base class for choosing a RtmpClient for RtmpRetryingClientStream dynamically.
-class RtmpClientSelector {
-public:
-    virtual ~RtmpClientSelector() {}
-    // Start getting a RtmpClient and call done->Run(client) when the client
-    // is got and ready.
-    virtual void StartGettingRtmpClient(OnGetRtmpClient* done) = 0;
-};
-
 // Base class for handling the messages received by a SubStream
 class RtmpMessageHandler {
 public:
