@@ -64,7 +64,7 @@ Only 3 (major) user headers: [Server](https://github.com/brpc/brpc/blob/master/s
 
 * Tweak parameters? Checkout [brpc/controller.h](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h). Note that the class is shared by server and channel. Methods are separated into 3 parts: client-side, server-side and both-side.
 
-We tried to make simple things simple. Take naming service as an example. In older RPC implementations you may need to copy a pile of obscure code to make it work, however, in brpc accessing BNS is expressed as `Init("bns://node-name"...`, DNS is "http://domain-name" and local machine list is "file:///home/work/server.list". Without any explanation, you know what it means.
+We tried to make simple things simple. Take naming service as an example. In older RPC implementations you may need to copy a pile of obscure code to make it work, however, in brpc accessing BNS is expressed as `Init("bns://node-name", ...)`, DNS is `Init("http://domain-name", ...)` and local machine list is `Init("file:///home/work/server.list", ...)`. Without any explanation, you know what it means.
 
 ### Make services more reliable
 
