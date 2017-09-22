@@ -51,14 +51,14 @@ if (!response.PopSet(NULL)) {
 ...
 ```
 
-上述的代码有如下注意点：
+There are some notes on the above code:
 
-- 请求类型必须为MemcacheRequest，回复类型必须为MemcacheResponse，否则CallMethod会失败。不需要stub，直接调用channel.CallMethod，method填NULL。
-- 调用request.XXX()增加操作，本例XXX=Set，一个request多次调用不同的操作，这些操作会被同时送到memcached（常被称为pipeline模式）。
-- 依次调用response.PopXXX()弹出操作结果，本例XXX=Set，成功返回true，失败返回false，调用response.LastError()可获得错误信息。XXX必须和request的依次对应，否则失败。本例中若用PopGet就会失败，错误信息为“not a GET response"。
-- Pop结果独立于RPC结果。即使Set失败，RPC可能还是成功的。RPC失败意味着连接断开，超时之类的。“不能把某个值设入memcached”对于RPC来说还是成功的。如果业务上认为要成功操作才算成功，那么你不仅要判RPC成功，还要判PopXXX是成功的。
+- The class of the request must be `MemcacheRequest`, and `MemcacheResponse` for the response, otherwise `CallMethod` will fail. `stub` is not necessary. Just call `channel.CallMethod` with `method` set to NULL.
+- Call `request.XXX()` to add operation, where `XXX=Set` in this case. Multiple operations on a single request will be sent to memcached in batch (often referred to as pipeline mode).
+- call `response.PopXXX()` pop-up operation results, where `XXX=Set` in this case. Return true on success, and false on failure, in which case use `response.LastError()` to get the error message. Operation `XXX` must correspond to request, otherwise it will fail. In the above example, a `PopGet` will fail with the error message of "not a GET response".
+- The results of `Pop` are independent of RPC result. Even if `Set` fails, RPC may still be successful. RPC failure means things like broken connection, timeout, and so on . *Can not put a value into memcached* is  still a successful RPC. AS a reulst, in order to make sure success of the entire process, you need to not only determine the success of RPC, but also the success of `PopXXX`.
 
-目前支持的请求操作有：
+Currently our supported operations are:
 
 ```c++
 bool Set(const Slice& key, const Slice& value, uint32_t flags, uint32_t exptime, uint64_t cas_value);
@@ -74,7 +74,7 @@ bool Touch(const Slice& key, uint32_t exptime);
 bool Version();
 ```
 
-对应的回复操作：
+And the corresponding reply operations:
 
 ```c++
 // Call LastError() of the response to check the error text when any following operation fails.
@@ -93,8 +93,8 @@ bool PopTouch();
 bool PopVersion(std::string* version);
 ```
 
-# 访问memcached集群
+# Access to memcached cluster
 
-建立一个使用c_md5负载均衡算法的channel，每个MemcacheRequest只包含一个操作或确保所有的操作始终落在同一台server，就能访问挂载在对应名字服务下的memcached集群了。如果request包含了多个操作，在当前实现下这些操作总会送向同一个server。比方说一个request中包含了多个Get操作，而对应的key分布在多个server上，那么结果就肯定不对了，这个情况下你必须把一个request分开为多个。
+If you want to access a memcached cluster mounted on some naming service, you should create a `Channel` that uses the c_md5 as the load balancing algorithm and make sure each `MemcacheRequest` contains only one operation or all operations fall on the same server. Since under the current implementation, multiple operations inside a single request will always be sent to the same server. For example, if a request contains a number of Get while the corresponding keys distribute in different servers, the result must be wrong, in which case you have to separate the request according to key distribution.
 
-或者你可以沿用常见的[twemproxy](https://github.com/twitter/twemproxy)方案。这个方案虽然需要额外部署proxy，还增加了延时，但client端仍可以像访问单点一样的访问它。
+Another choice is to follow the common [twemproxy](https://github.com/twitter/twemproxy) style. This allows the client can still access the cluster just like a single point, although it requires deployment of the proxy and the additional latency.

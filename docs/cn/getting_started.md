@@ -11,9 +11,24 @@ brpc depends on following packages:
 
 ## Ubuntu/LinuxMint/WSL
 ### Prepare deps
-install common deps: `git g++ make libssl-dev`
 
-install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb), including: `libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev`. If you need to statically link leveldb, install `libsnappy-dev` as well.
+- install common deps:
+
+```
+$ apt-get install git g++ make libssl-dev
+```
+
+- install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
+
+```
+$ apt-get install libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
+```
+
+- If you need to statically link leveldb:
+
+```
+$ apt-get install libsnappy-dev
+```
 
 ### Compile brpc
 git clone brpc, cd into the repo and run
