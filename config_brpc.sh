@@ -1,10 +1,22 @@
-if [ -z "$BASH" ]; then
+SYSTEM=$(uname -s)
+if [ "$SYSTEM" = "Darwin" ]; then
     ECHO=echo
+    SO=dylib
+    LDD="otool -L"
+    if [ "$(getopt -V)" = " --" ]; then
+        >&2 $ECHO "gnu-getopt must be installed and used"
+        exit 1
+    fi
 else
-    ECHO='echo -e'
+    if [ -z "$BASH" ]; then
+        ECHO=echo
+    else
+        ECHO='echo -e'
+    fi
+    SO=so
+    LDD=ldd
 fi
-# NOTE: This requires GNU getopt.  On Mac OS X and FreeBSD, you have to install this
-# separately; see below.
+
 TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog -n 'config_brpc' -- "$@"`
 WITH_GLOG=0
 
@@ -50,7 +62,7 @@ if [ -z "$HDRS_IN" ] || [ -z "$LIBS_IN" ]; then
 fi
 
 find_dir_of_lib() {
-    local lib=$(find ${LIBS_IN} -name "lib${1}.a" -o -name "lib${1}.so" | head -n1)
+    local lib=$(find ${LIBS_IN} -name "lib${1}.a" -o -name "lib${1}.$SO" | head -n1)
     if [ ! -z "$lib" ]; then
         dirname $lib
     fi
@@ -128,8 +140,8 @@ append_linking $PROTOBUF_LIB protobuf
 LEVELDB_LIB=$(find_dir_of_lib_or_die leveldb)
 # required by leveldb
 if [ -f $LEVELDB_LIB/libleveldb.a ]; then
-    if [ -f $LEVELDB_LIB/libleveldb.so ]; then
-        if ldd $LEVELDB_LIB/libleveldb.so | grep -q libsnappy; then
+    if [ -f $LEVELDB_LIB/libleveldb.$SO ]; then
+        if $LDD $LEVELDB_LIB/libleveldb.$SO | grep -q libsnappy; then
             SNAPPY_LIB=$(find_dir_of_lib snappy)
             REQUIRE_SNAPPY="yes"
         fi
@@ -247,8 +259,8 @@ if [ -z "$TCMALLOC_LIB" ]; then
 else
     append_to_output_libs "$TCMALLOC_LIB" "    "
     if [ -f $TCMALLOC_LIB/libtcmalloc_and_profiler.a ]; then
-        if [ -f $TCMALLOC_LIB/libtcmalloc.so ]; then
-            ldd $TCMALLOC_LIB/libtcmalloc.so > libtcmalloc.deps
+        if [ -f $TCMALLOC_LIB/libtcmalloc.$SO ]; then
+            $LDD $TCMALLOC_LIB/libtcmalloc.$SO > libtcmalloc.deps
             if grep -q libunwind libtcmalloc.deps; then
                 TCMALLOC_REQUIRE_UNWIND="yes"
                 REQUIRE_UNWIND="yes"
@@ -283,8 +295,8 @@ if [ $WITH_GLOG != 0 ]; then
     else
         append_to_output_libs "$GLOG_LIB" "    "
         if [ -f $GLOG_LIB/libglog.a ]; then
-            if [ -f "$GLOG_LIB/libglog.so" ]; then
-                ldd $GLOG_LIB/libglog.so > libglog.deps 
+            if [ -f "$GLOG_LIB/libglog.$SO" ]; then
+                $LDD $GLOG_LIB/libglog.$SO > libglog.deps
                 if grep -q libunwind libglog.deps; then
                     GLOG_REQUIRE_UNWIND="yes"
                     REQUIRE_UNWIND="yes"
