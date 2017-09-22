@@ -113,8 +113,6 @@ $ sh config_brpc.sh --headers=.. --libs=..
 $ make
 ```
 
-Note: don't put ~ (tilde) in paths to --headers/--libs, it's not converted.
-
 # Supported deps
 
 ## GCC: 4.8-7.1
