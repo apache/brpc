@@ -18,7 +18,7 @@
 
 # Cacheline
 
-没有任何竞争或只被一个线程访问的原子操作是比较快的，“竞争”指的是多个线程同时访问同一个[cacheline](https://en.wikipedia.org/wiki/CPU_cache#Cache_entries)。现代CPU为了以低价格获得高性能，大量使用了cache，并把cache分了多级。百度内常见的Intel E5-2620拥有32K的L1 dcache和icache，256K的L2 cache和15M的L3 cache。其中L1和L2cache为每个核心独有，L3则所有核心共享。一个核心写入自己的L1 cache是极快的(4 cycles, 2 ns)，但当另一个核心读或写同一处内存时，它得确认看到其他核心中对应的cacheline。对于软件来说，这个过程是原子的，不能在中间穿插其他代码，只能等待CPU完成[一致性同步](https://en.wikipedia.org/wiki/Cache_coherence)，这个复杂的算法相比其他操作耗时会很长，在E5-2620上竞争激烈时大约在700ns左右。所以访问被多个线程频繁共享的内存是比较慢的。
+没有任何竞争或只被一个线程访问的原子操作是比较快的，“竞争”指的是多个线程同时访问同一个[cacheline](https://en.wikipedia.org/wiki/CPU_cache#Cache_entries)。现代CPU为了以低价格获得高性能，大量使用了cache，并把cache分了多级。百度内常见的Intel E5-2620拥有32K的L1 dcache和icache，256K的L2 cache和15M的L3 cache。其中L1和L2cache为每个核心独有，L3则所有核心共享。一个核心写入自己的L1 cache是极快的(4 cycles, 2ns)，但当另一个核心读或写同一处内存时，它得确认看到其他核心中对应的cacheline。对于软件来说，这个过程是原子的，不能在中间穿插其他代码，只能等待CPU完成[一致性同步](https://en.wikipedia.org/wiki/Cache_coherence)，这个复杂的算法相比其他操作耗时会很长，在E5-2620上竞争激烈时大约在700ns左右。所以访问被多个线程频繁共享的内存是比较慢的。
 
 要提高性能，就要避免让CPU同步cacheline。这不单和原子指令本身的性能有关，还会影响到程序的整体性能。比如像一些临界区很小的场景，使用spinlock效果仍然不佳，问题就在于实现spinlock使用的exchange，fetch_add等指令必须在CPU同步好最新的cacheline后才能完成，看上去只有几条指令，花费若干微秒却不奇怪。最有效的解决方法很直白：**尽量避免共享**。从源头规避掉竞争是最好的，有竞争就要协调，而协调总是很难的。
 
