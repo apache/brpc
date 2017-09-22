@@ -12,22 +12,19 @@ brpc depends on following packages:
 ## Ubuntu/LinuxMint/WSL
 ### Prepare deps
 
-- install common deps:
-
+Install common deps:
 ```
-$ apt-get install git g++ make libssl-dev
-```
-
-- install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
-
-```
-$ apt-get install libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
+$ sudo apt-get install git g++ make libssl-dev
 ```
 
-- If you need to statically link leveldb:
-
+Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
 ```
-$ apt-get install libsnappy-dev
+$ sudo apt-get install libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
+```
+
+If you need to statically link leveldb:
+```
+$ sudo apt-get install libsnappy-dev
 ```
 
 ### Compile brpc
@@ -51,9 +48,10 @@ Examples link brpc statically, if you need to link the shared version, `make cle
 To run examples with cpu/heap profilers, install `libgoogle-perftools-dev` and re-run `config_brpc.sh` before compiling.
 
 ### Run tests
-Install libgtest-dev (which is not compiled yet) and run:
+Install and compile libgtest-dev (which is not compiled yet):
 
 ```shell
+sudo apt-get install libgtest-dev
 cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/
 ```
 
@@ -65,10 +63,15 @@ Rerun `config_brpc.sh`, `make` in test/, and `sh run_tests.sh`
 
 ### Prepare deps
 
-install common deps: `git g++ make openssl-devel`
+Install common deps:
+```
+sudo yum install git g++ make openssl-devel
+```
 
-install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb), including: `gflags-devel protobuf-devel protobuf-compiler leveldb-devel`.
-
+Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
+```
+sudo yum install gflags-devel protobuf-devel protobuf-compiler leveldb-devel
+```
 ### Compile brpc
 
 git clone brpc, cd into the repo and run
@@ -103,11 +106,15 @@ Rerun `config_brpc.sh`, `make` in test/, and `sh run_tests.sh`
 
 brpc builds itself to both static and shared libs by default, so it needs static and shared libs of deps to be built as well.
 
-Take [gflags](https://github.com/gflags/gflags) as example, which does not build shared lib by default, you need to pass options to `cmake` to change the behavior, like this:  `cmake . -DBUILD_SHARED_LIBS=1 -DBUILD_STATIC_LIBS=1`  then `make`.
+Take [gflags](https://github.com/gflags/gflags) as example, which does not build shared lib by default, you need to pass options to `cmake` to change the behavior:
+```
+cmake . -DBUILD_SHARED_LIBS=1 -DBUILD_STATIC_LIBS=1
+make
+```
 
 ### Compile brpc
 
-Keep on with the gflags example, let `../gflags_dev` be where you clone gflags.
+Keep on with the gflags example, let `../gflags_dev` be where gflags is cloned.
 
 git clone brpc. cd into the repo and run
 
