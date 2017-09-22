@@ -144,7 +144,7 @@ Call `Clear()` to reuse the `RedisRespones` object.
 
 For now please use [twemproxy](https://github.com/twitter/twemproxy) as a common way to wrap redis cluster so that it can be used just like a single node proxy, in which case you can just replace your hiredis with brpc. Accessing the cluster directly from client (using consistent hash) may reduce the delay, but at the cost of other management services. Make sure to double check that in redis document.
 
-If you maintain a redis cluster like the memcache all by yourself, it should be accessible using consistent hash. In general, you have to make sure each `RedisRequest` contains only one command or keys from multiple commands fall on the same server, since under the current implementation, if a request contains multiple commands, it will always be sent to the same server. For example, if a request contains a number of Get while the corresponding keys distribute in multiple servers, the result must be wrong, in which case you have to separate the request according to key distribution.
+If you maintain a redis cluster like the memcache all by yourself, it should be accessible using consistent hash. In general, you have to make sure each `RedisRequest` contains only one command or keys from multiple commands fall on the same server, since under the current implementation, if a request contains multiple commands, it will always be sent to the same server. For example, if a request contains a number of Get while the corresponding keys distribute in different servers, the result must be wrong, in which case you have to separate the request according to key distribution.
 
 # Debug
 
