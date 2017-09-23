@@ -1,8 +1,8 @@
-# 什么是bvar？
+# What is bvar?
 
-[bvar](https://github.com/brpc/brpc/blob/master/src/bvar)是多线程环境下的计数器类库，方便记录和查看用户程序中的各类数值，它利用了thread local存储避免了cache bouncing，相比UbMonitor几乎不会给程序增加性能开销，也快于竞争频繁的原子操作。brpc集成了bvar，[/vars](http://brpc.baidu.com:8765/vars)可查看所有曝光的bvar，[/vars/VARNAME](http://brpc.baidu.com:8765/vars/rpc_socket_count)可查阅某个bvar，在rpc中的具体使用方法请查看[这里](vars.md)。brpc大量使用了bvar提供统计数值，当你需要在多线程环境中计数并展现时，应该第一时间想到bvar。但bvar不能代替所有的计数器，它的本质是把写时的竞争转移到了读：读得合并所有写过的线程中的数据，而不可避免地变慢了。当你读写都很频繁并得基于数值做一些逻辑判断时，你不应该用bvar。
+[bvar](https://github.com/brpc/brpc/tree/master/src/bvar/) is a counting utility designed for multiple threaded applications. It stores data in thread local storage(TLS) to avoid costly cache bouncing caused by concurrent modification. It is much faster than UbMonitor(a legacy counting utility used inside Baidu) and atomic operation in highly contended scenarios. bvar is builtin within brpc, through [/vars](http://brpc.baidu.com:8765/vars) you can access all the exposed bvars inside the server, or a single one specified by [/vars/`VARNAME`](http://brpc.baidu.com:8765/vars/rpc_socket_count). Check out [bvar](https://github.com/brpc/brpc/blob/master/docs/cn/bvar.md) if you'd like add some bvars for you own services. bvar is widely used inside brpc to calculate indicators of internal status. It is **almost free** in most scenarios to collect data. If you are looking for a utility to collect and show internal status of your application, try bvar at the first time. However bvar is designed for general purpose counters, the read process of a single bvar have to combines all the TLS data from the threads that the very bvar has been written, which is very slow compared to the write process and atomic operations.
 
-# 什么是cache bouncing？
+## What is "cache bouncing"
 
 为了以较低的成本大幅提高性能，现代CPU都有[cache](https://en.wikipedia.org/wiki/CPU_cache)。百度内常见的Intel E5-2620拥有32K的L1 dcache和icache，256K的L2 cache和15M的L3 cache。其中L1和L2cache为每个核独有，L3则所有核共享。为了保证所有的核看到正确的内存数据，一个核在写入自己的L1 cache后，CPU会执行[Cache一致性](https://en.wikipedia.org/wiki/Cache_coherence)算法把对应的[cacheline](https://en.wikipedia.org/wiki/CPU_cache#Cache_entries)(一般是64字节)同步到其他核。这个过程并不很快，是微秒级的，相比之下写入L1 cache只需要若干纳秒。当很多线程在频繁修改某个字段时，这个字段所在的cacheline被不停地同步到不同的核上，就像在核间弹来弹去，这个现象就叫做cache bouncing。由于实现cache一致性往往有硬件锁，cache bouncing是一种隐式的的全局竞争。关于竞争请查阅[atomic instructions](atomic_instructions.md)。
 
@@ -12,7 +12,7 @@ cache bouncing使访问频繁修改的变量的开销陡增，甚至还会使访
 
 ![img](../images/bvar_perf.png)
 
-# 用noah监控bvar
+# 3.用noah监控bvar
 
 ![img](../images/bvar_flow.png)
 
@@ -28,9 +28,9 @@ cache bouncing使访问频繁修改的变量的开销陡增，甚至还会使访
 
 后面会在完善monitoring框架的过程中要求每个App添加新的必需字段。
 
-# RD要干的事情
+# 4.RD要干的事情
 
-## 定义bvar
+## 1.定义bvar
 
 ```c++
 #include <bvar/bvar.h>
@@ -152,7 +152,7 @@ public:
 }  // namespace butil
 ```
 
-## 打开bvar的dump功能
+## 2.打开bvar的dump功能
 
 bvar可以定期把进程内所有的bvar打印入一个文件中，默认不打开。有几种方法打开这个功能：
 
@@ -190,7 +190,7 @@ bvar的dump功能由如下参数控制，产品线根据自己的需求调节，
 | bvar_dump_prefix        | <app>                   | Every dumped name starts with this prefix |
 | bvar_dump_tabs          | 见代码                     | Dump bvar into different tabs according to the filters (seperated by semicolon), format: *(tab_name=wildcards) |
 
-## 编译并重启应用程序
+## 3.编译并重启应用程序
 
 检查monitor/bvar.<app>.data是否存在：
 
@@ -206,7 +206,7 @@ process_time_user : 0.741887
 process_username : "gejun"
 ```
 
-## 打开[noah](http://noah.baidu.com/)
+## 4.打开[noah](http://noah.baidu.com/)
 
 搜索监控节点：
 
