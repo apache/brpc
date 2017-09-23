@@ -12,7 +12,7 @@ Accessed through terminal:
 
 # Safe Mode
 
-To stay safe from attack, you **must** disable builtin services in the servers on public network, including the ones accessed by proxies(nginx or other http servers). Click [here](server.md#安全模式) for more details.
+To stay safe from attack, you **must** disable builtin services in the servers on public network, including the ones accessed by proxies(nginx or other http servers). Click [here](../cn/server.md#安全模式) for more details.
 
 # Main services:
 
@@ -20,17 +20,17 @@ To stay safe from attack, you **must** disable builtin services in the servers o
 
 [vars](vars.md)
 
-[connections](connections.md)
+[connections](../cn/connections.md)
 
-[flags](flags.md)
+[flags](../cn/flags.md)
 
-[rpcz](rpcz.md)
+[rpcz](../cn/rpcz.md)
 
-[cpu profiler](cpu_profiler.md)
+[cpu profiler](../cn/cpu_profiler.md)
 
-[heap profiler](heap_profiler.md)
+[heap profiler](../cn/heap_profiler.md)
 
-[contention profiler](contention_profiler.md)
+[contention profiler](../cn/contention_profiler.md)
 
 # Other services
 
