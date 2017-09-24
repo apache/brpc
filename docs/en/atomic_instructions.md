@@ -5,7 +5,7 @@ As the name suggests, atomic instructions cannot be divided into sub-instruction
 | Atomic Instructions(type of x is std::atomic<int>)               | effect                                       |
 | ---------------------------------------- | ---------------------------------------- |
 | x.load()                                 | return the value of x.                                   |
-| x.store(n)                               |                             |
+| x.store(n)                               | store n to x, nothing to return.                            |
 | x.exchange(n)                            | set x to n, and return the previous value                          |
 | x.compare_exchange_strong(expected_ref, desired) | If x is equal to expected_ref, x is set to desired and true is returned. Otherwise write current value to expected_ref and false is returned. |
 | x.compare_exchange_weak(expected_ref, desired) | When compared to compare_exchange_strong, it may suffer from [spurious wakeup](http://en.wikipedia.org/wiki/Spurious_wakeup)。 |
@@ -85,7 +85,7 @@ Another problem is that if the program read the old value, then nothing should b
 - Value is special. In above example, `ready=true` is a special value. Reading true from ready means that it is the new value. In this case, every special value has a meaning.
 - Always Accumulate. In some situations, there are no special values, we can use instructions like `fetch_add` to accumulate variables. As long as the range of value is big enough, the new value is different from the old value in a long period of time so that we can distinguish them from each other.
 
-More examples can be found [here]((http://www.boost.org/doc/libs/1_56_0/doc/html/atomic/usage_examples.html) in boost.atomic. The official description of atomic can be found [here](http://en.cppreference.com/w/cpp/atomic/atomic).
+More examples can be found [here](http://www.boost.org/doc/libs/1_56_0/doc/html/atomic/usage_examples.html) in boost.atomic. The official description of atomic can be found [here](http://en.cppreference.com/w/cpp/atomic/atomic).
 
 # wait-free & lock-free
 
@@ -96,4 +96,4 @@ please notice that it is common to think that algorithms using wait-free or lock
 - Race condition and ABA problem must be handled in lock-free and wait-free algorithms, which means the code may be more complex than that using locks when doing the same task.
 - Using mutex has an effect of backoff. Backoff means that when contention happens, it will find another way to avoid fierce contention. The thread getting an locked mutex will be put into sleep state to avoid cacheline synchronization, making the thread holding that mutex can complete the task quickly, which may increase the overall throughput.
 
-The low performance caused by mutex is because either the critical area is too big(limits the concurrency), or the critical area is too small(the overhead of context switch becomes prominent, adaptive mutex should be considered to use). The value of lock-free/wait-free is that it guarantees one thread or all threads always doing useful work, not for absolute high performance. But algorithms using lock-free/wait-free may probably have better performance in the situation where algorithm itself can be implemented using a few atomic instructions. Atomic instructions are also used to implement mutex, so if the algorithm can be done just using one or two atomic instructions, it could be faster than that using mutex. 
+The low performance caused by mutex is because either the critical area is too big(which limits the concurrency), or the critical area is too small(the overhead of context switch becomes prominent, adaptive mutex should be considered to use). The value of lock-free/wait-free is that it guarantees one thread or all threads always doing useful work, not for absolute high performance. But algorithms using lock-free/wait-free may probably have better performance in the situation where algorithm itself can be implemented using a few atomic instructions. Atomic instructions are also used to implement mutex, so if the algorithm can be done just using one or two atomic instructions, it could be faster than that using mutex. 
