@@ -1,7 +1,6 @@
 # BUILD
 
-brpc prefers static linking if possible, so that deps don't have to be installed on every
-machine running the code.
+brpc prefers static linking if possible, so that deps don't have to be installed on every machine running the code.
 
 brpc depends on following packages:
 
@@ -33,7 +32,9 @@ git clone brpc, cd into the repo and run
 $ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib
 $ make
 ```
-to change compiler to clang, add `--cxx=clang++ --cc=clang`.
+To change compiler to clang, add `--cxx=clang++ --cc=clang`.
+
+To not link debugging symbols, add `--nodebugsymbols` and compiled binaries will be much smaller.
 
 ### Run example
 
@@ -63,6 +64,11 @@ Rerun `config_brpc.sh`, `make` in test/, and `sh run_tests.sh`
 
 ### Prepare deps
 
+CentOS needs to install EPEL generally otherwise many packages are not available by default.
+```
+sudo yum install epel-release
+```
+
 Install common deps:
 ```
 sudo yum install git g++ make openssl-devel
@@ -80,7 +86,9 @@ git clone brpc, cd into the repo and run
 $ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib64
 $ make
 ```
-to change compiler to clang, add `--cxx=clang++ --cc=clang`.
+To change compiler to clang, add `--cxx=clang++ --cc=clang`.
+
+To not link debugging symbols, add `--nodebugsymbols` and compiled binaries will be much smaller.
 
 ### Run example
 
@@ -123,7 +131,9 @@ $ sh config_brpc.sh --headers="../gflags_dev /usr/include" --libs="../gflags_dev
 $ make
 ```
 
-to change compiler to clang, add `--cxx=clang++ --cc=clang`.
+To change compiler to clang, add `--cxx=clang++ --cc=clang`.
+
+To not link debugging symbols, add `--nodebugsymbols` and compiled binaries will be much smaller.
 
 Here we pass multiple paths to `--headers` and `--libs` to make the script search for multiple places. You can also group all deps and brpc into one directory, then pass the directory to --headers/--libs which actually search all subdirectories recursively and will find necessary files.
 
