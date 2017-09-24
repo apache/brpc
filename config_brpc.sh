@@ -17,8 +17,9 @@ else
     LDD=ldd
 fi
 
-TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog -n 'config_brpc' -- "$@"`
+TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog:,nodebugsymbols -n 'config_brpc' -- "$@"`
 WITH_GLOG=0
+DEBUGSYMBOLS=-g
 
 if [ $? != 0 ] ; then >&2 $ECHO "Terminating..."; exit 1 ; fi
 
@@ -33,6 +34,7 @@ while true; do
         --cc ) CC=$2; shift 2 ;;
         --cxx ) CXX=$2; shift 2 ;;
         --with-glog ) WITH_GLOG=1; shift 1 ;;
+        --nodebugsymbols ) DEBUGSYMBOLS=; shift 1 ;;
         -- ) shift; break ;;
         * ) break ;;
     esac
@@ -321,7 +323,7 @@ if [ $WITH_GLOG != 0 ]; then
         rm -f libglog.deps
     fi
 fi
-append_to_output "CPPFLAGS+=-DBRPC_WITH_GLOG=$WITH_GLOG -DGFLAGS_NS=$GFLAGS_NS"
+append_to_output "CPPFLAGS+=-DBRPC_WITH_GLOG=$WITH_GLOG -DGFLAGS_NS=$GFLAGS_NS $DEBUGSYMBOLS"
 
 
 if [ ! -z "$REQUIRE_UNWIND" ]; then
