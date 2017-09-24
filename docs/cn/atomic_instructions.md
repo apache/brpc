@@ -29,7 +29,7 @@
 
 # Memory fence
 
-仅靠原子累加实现不了对资源的访问控制，即使简单如[spinlock](https://en.wikipedia.org/wiki/Spinlock)或[引用计数](https://en.wikipedia.org/wiki/Reference_counting)，看上去正确的代码也可能会crash。这里的关键在于**重排指令**导致了读写一致性的变化。只要没有依赖，代码中在后面的指令（包括访存）就可能跑到前面去，[编译器](http://preshing.com/20120625/memory-ordering-at-compile-time/)和[CPU](https://en.wikipedia.org/wiki/Out-of-order_execution)都会这么做。这么做的动机非常自然，CPU要尽量塞满每个cycle，在单位时间内运行尽量多的指令。一个核心访问自己独有的cache是很快的，所以它能很好地管理好一致性问题。当软件依次写入a,b,c后，它能以a,b,c的顺序依次读到，哪怕在CPU层面是完全并发运行的。当代码只运行于单线程中时，重排对软件是透明的。但在多核环境中，这就不成立了。如上节中提到的，访存在等待cacheline同步时要花费数百纳秒，最高效地自然是同时同步多个cacheline，而不是一个个做。一个线程在代码中对多个变量的依次修改，可能会以不同的次序同步到另一个线程所在的核心上，CPU也许永远无法保证这个顺序如同TCP那样，有序修改有序读取，因为不同线程对数据的需求顺序是不同的，按需访问更合理（从而导致同步cacheline的序和写序不同）。如果其中第一个变量扮演了开关的作用，控制对后续变量对应资源的访问。那么当这些变量被一起同步到其他核心时，更新顺序可能变了，第一个变量未必是第一个更新的，其他线程可能还认为它代表着其他变量有效，而去访问了已经被删除的资源，从而导致未定义的行为。比如下面的代码片段：
+仅靠原子累加实现不了对资源的访问控制，即使简单如[spinlock](https://en.wikipedia.org/wiki/Spinlock)或[引用计数](https://en.wikipedia.org/wiki/Reference_counting)，看上去正确的代码也可能会crash。这里的关键在于**重排指令**导致了读写顺序的变化。只要没有依赖，代码中在后面的指令（包括访存）就可能跑到前面去，[编译器](http://preshing.com/20120625/memory-ordering-at-compile-time/)和[CPU](https://en.wikipedia.org/wiki/Out-of-order_execution)都会这么做。这么做的动机非常自然，CPU要尽量塞满每个cycle，在单位时间内运行尽量多的指令。一个核心访问自己独有的cache是很快的，所以它能很好地管理好一致性问题。当软件依次写入a,b,c后，它能以a,b,c的顺序依次读到，哪怕在CPU层面是完全并发运行的。当代码只运行于单线程中时，重排对软件是透明的。但在多核环境中，这就不成立了。如上节中提到的，访存在等待cacheline同步时要花费数百纳秒，最高效地自然是同时同步多个cacheline，而不是一个个做。一个线程在代码中对多个变量的依次修改，可能会以不同的次序同步到另一个线程所在的核心上，CPU也许永远无法保证这个顺序如同TCP那样，有序修改有序读取，因为不同线程对数据的需求顺序是不同的，按需访问更合理（从而导致同步cacheline的序和写序不同）。如果其中第一个变量扮演了开关的作用，控制对后续变量对应资源的访问。那么当这些变量被一起同步到其他核心时，更新顺序可能变了，第一个变量未必是第一个更新的，其他线程可能还认为它代表着其他变量有效，而去访问了已经被删除的资源，从而导致未定义的行为。比如下面的代码片段：
 
 ```c++
 // Thread 1
@@ -49,9 +49,9 @@ if (ready) {
 - 线程1中的ready = true可能会被编译器或cpu重排到p.init()之前，从而使线程2看到ready为true时，p仍然未初始化。
 - 即使没有重排，ready和p的值也会独立地同步到线程2所在核心的cache，线程2仍然可能在看到ready为true时看到未初始化的p。这种情况同样也会在线程2中发生，比如p.bar()中的一些代码被重排到检查ready之前。
 
-注：x86的load带acquire语意，store带release语意，上面的代码刨除编译器因素可以正确运行。
+注：x86的load带acquire语意，store带release语意，上面的代码刨除编译器和CPU因素可以正确运行。
 
-通过这个简单例子，你可以窥见原子指令编程的复杂性了吧。为了解决这个问题，CPU提供了[memory fence](http://en.wikipedia.org/wiki/Memory_barrier)，让用户可以声明访存指令间的可见性(visibility)关系，boost和C++11对memory fencing做了抽象，总结为如下几种[memory order](http://en.cppreference.com/w/cpp/atomic/memory_order).
+通过这个简单例子，你可以窥见原子指令编程的复杂性了吧。为了解决这个问题，CPU提供了[memory fence](http://en.wikipedia.org/wiki/Memory_barrier)，让用户可以声明访存指令间的可见性(visibility)关系，boost和C++11对memory fence做了抽象，总结为如下几种[memory order](http://en.cppreference.com/w/cpp/atomic/memory_order).
 
 | memory order         | 作用                                       |
 | -------------------- | ---------------------------------------- |
