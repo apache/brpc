@@ -4,7 +4,7 @@ Echo的[server端代码](https://github.com/brpc/brpc/blob/master/example/echo_c
 
 # 填写proto文件
 
-RPC接口规范规定百度内使用protobuf作为通用的描述语言，我们谈论的Service默认指google::protobuf::Service。
+请求、回复、服务的接口均定义在proto文件中。
 
 ```C++
 # 告诉protoc要生成C++ Service基类，如果是java或python，则应分别修改为java_generic_services和py_generic_services
@@ -24,11 +24,9 @@ service EchoService {
 
 protobuf的更多用法请阅读[protobuf官方文档](https://developers.google.com/protocol-buffers/docs/proto#options)。
 
-# 实现生成的Service基类
+# 实现生成的Service接口
 
 protoc运行后会生成echo.pb.cc和echo.pb.h文件，你得include echo.pb.h，实现其中的EchoService基类：
-
-**my_echo_service.cpp** 
 
 ```c++
 #include "echo.pb.h"
@@ -50,29 +48,31 @@ public:
 };
 ```
 
-当客户端发来请求时，Echo会被调用。4个参数的含义分别是：
+Service在插入[brpc.Server](https://github.com/brpc/brpc/blob/master/src/brpc/server.h)后才可能提供服务。
+
+当客户端发来请求时，Echo()会被调用。参数的含义分别是：
 
 **controller**
 
-在brpc中可以静态转为brpc::Controller（前提是这运行brpc的Server中），包含了所有request和response之外的参数集合，具体接口查阅[controller.h](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h)
+在brpc中可以静态转为brpc::Controller（前提是代码运行brpc.Server中），包含了所有request和response之外的参数集合，具体接口查阅[controller.h](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h)
 
 **request**
 
-请求，只读的，解析自client端发来的二进制数据包。
+请求，只读的，来自client端的数据包。
 
 **response**
 
-回复。需要你来填充，如果你没有填充所有的**required**字段，框架会发现并令该次调用失败。
+回复。需要用户填充，如果存在**required**字段没有被设置，该次调用会失败。
 
 **done**
 
-done包含了调用服务回调后的下一步动作，包括检查response正确性，序列化，打包，发送等逻辑。
+done由框架创建，递给服务回调，包含了调用服务回调后的后续动作，包括检查response正确性，序列化，打包，发送等逻辑。
 
-> 不管成功失败，done->Run()必须在请求处理完成后被调用。
+**不管成功失败，done->Run()必须在请求处理完成后被调用。**
 
-为什么框架不自己调用done？这是为了允许用户把done保存下来，在服务回调之后调用，即实现异步Service。
+为什么框架不自己调用done？这是为了允许用户把done保存下来，在服务回调之后的某事件发生时再调用，即实现**异步Service**。
 
-我们强烈建议使用**ClosureGuard**确保done->Run()被调用，即在服务回调开头的那句：
+强烈建议使用**ClosureGuard**确保done->Run()被调用，即在服务回调开头的那句：
 
 ```c++
 brpc::ClosureGuard done_guard(done);
@@ -80,7 +80,7 @@ brpc::ClosureGuard done_guard(done);
 
 不管在中间还是末尾脱离服务回调，都会使done_guard析构，其中会调用done->Run()。这个机制称为[RAII](https://en.wikipedia.org/wiki/Resource_Acquisition_Is_Initialization)。没有这个的话你得在每次return前都加上done->Run()，**极易忘记**。
 
-在异步Service中，退出服务回调时请求未处理完成，done->Run()不应被调用，done应被保存下来供以后调用，乍看起来，这里并不需要用ClosureGuard。但在实践中，异步Service照样会因各种原因跳出回调，如果不使用ClosureGuard，一些分支很可能会忘记done->Run()。所以我们同样建议使用done_guard，与同步Service不同的是，为了避免脱离函数时done->Run()被调用，你可以调用done_guard.release()来释放其中的done。
+在异步Service中，退出服务回调时请求未处理完成，done->Run()不应被调用，done应被保存下来供以后调用，乍看起来，这里并不需要用ClosureGuard。但在实践中，异步Service照样会因各种原因跳出回调，如果不使用ClosureGuard，一些分支很可能会在return前忘记done->Run()，所以我们也建议在异步service中使用done_guard，与同步Service不同的是，为了避免正常脱离函数时done->Run()也被调用，你可以调用done_guard.release()来释放其中的done。
 
 一般来说，同步Service和异步Service分别按如下代码处理done：
 
@@ -129,17 +129,15 @@ public:
 };
 ```
 
-Service在插入[brpc::Server](https://github.com/brpc/brpc/blob/master/src/brpc/server.h)后才可能提供服务。
-
 ## 标记当前调用为失败
 
-调用Controller.SetFailed()可以把当前调用设置为失败，当发送过程出现错误时，框架也会调用这个函数。用户一般是在服务的CallMethod里调用这个函数，比如某个处理环节出错，SetFailed()后便可调用done->Run()并跳出函数了（如果使用了ClosureGuard的话在跳出函数时会自动调用done，不用手动）。Server端的done的逻辑主要是发送response回client，当其发现用户调用了SetFailed()后，会把错误信息送回client。client收到后，它的Controller::Failed()会为true（成功时为false），Controller::ErrorCode()和Controller::ErrorText()则分别是错误码和错误信息。
+调用Controller.SetFailed()可以把当前调用设置为失败，当发送过程出现错误时，框架也会调用这个函数。用户一般是在服务的CallMethod里调用这个函数，比如某个处理环节出错，SetFailed()后确认done->Run()被调用了就可以跳出函数了(若使用了ClosureGuard，跳出函数时会自动调用done，不用手动)。Server端的done的逻辑主要是发送response回client，当其发现用户调用了SetFailed()后，会把错误信息送回client。client收到后，它的Controller::Failed()会为true（成功时为false），Controller::ErrorCode()和Controller::ErrorText()则分别是错误码和错误信息。
 
-对于http访问，用户还可以设置[status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html)，在server端一般是调用controller.http_response().set_status_code()，标准的status-code定义在[http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h)中。如果SetFailed了但没有设置status-code，默认设为brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR（500错误）
+用户可以为http访问设置[status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html)，在server端一般是调用`controller.http_response().set_status_code()`，标准的status-code定义在[http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h)中。如果SetFailed了但没有设置status-code，框架会代为选择和错误码最接近的status-code，实在没有相关的则填brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR（500错误）
 
-## 获取Client的地址和端口
+## 获取Client的地址
 
-controller->remote_side()可获得发送该请求的client地址和端口，类型是butil::EndPoint。如果client是nginx，remote_side()是nginx的ip。要获取真实client的ip，可以在nginx里设置proxy_header ClientIp $remote_addr; 在rpc中通过controller->http_request().GetHeader("ClientIp")获得对应的值。
+`controller->remote_side()`可获得发送该请求的client地址和端口，类型是butil::EndPoint。如果client是nginx，remote_side()是nginx的地址。要获取真实client的地址，可以在nginx里设置`proxy_header ClientIp $remote_addr;`, 在rpc中通过`controller->http_request().GetHeader("ClientIp")`获得对应的值。
 
 打印方式：
 
@@ -148,9 +146,9 @@ LOG(INFO) << "remote_side=" << cntl->remote_side();
 printf("remote_side=%s\n", butil::endpoint2str(cntl->remote_side()).c_str());
 ```
 
-## 获取Server的地址和端口
+## 获取Server的地址
 
-r31384前server在接受连接时会把server端的端口打印到日志中，但没有接口获得。r31384后调用controller->local_side()获得，类型是butil::EndPoint。
+controller->local_side()获得server端的地址，类型是butil::EndPoint。
 
 打印方式：
 
@@ -163,30 +161,28 @@ printf("local_side=%s\n", butil::endpoint2str(cntl->local_side()).c_str());
 
 即done->Run()在Service回调之外被调用。
 
-大多数Server在进入回调函数后使用brpc::ClosureGuard以确保在退出回调时done->Run()会被自动调用（向client发回response），这种是**同步service**。
+有些server以等待后端服务返回结果为主，且处理时间特别长，为了及时地释放出线程资源，更好的办法是把done注册到被等待事件的回调中，等到事件发生后再调用done->Run()。
 
-有些server以等待后端服务返回结果为主，且处理时间特别长，为了及时地释放出线程资源，更好的办法是把done注册到被等待事件的回调中，等到事件发生后再调用done->Run()，这种是**异步service**。
+异步service的最后一行一般是done_guard.release()以确保正常退出CallMethod时不会调用done->Run()。例子请看[example/session_data_and_thread_local](https://github.com/brpc/brpc/tree/master/example/session_data_and_thread_local/)。
 
-异步service的最后一行一般是done_guard.release()以确保done_guard在析构时不会调用done->Run()，而是在事件回调中调用。例子请看[example/session_data_and_thread_local](https://github.com/brpc/brpc/tree/master/example/session_data_and_thread_local/)。
-
-Service和Channel都可以使用done来表达后续的操作，但它们是完全不同的，请勿混淆：
+Service和Channel都可以使用done来表达后续的操作，但它们是**完全不同**的，请勿混淆：
 
 * Service的done由框架创建，用户处理请求后调用done把response发回给client。
-* Channel的done由用户创建，递给框架，待RPC结束后被框架调用以执行用户的后续代码。
+* Channel的done由用户创建，待RPC结束后被框架调用以执行用户的后续代码。
 
-# 插入Service
+在一个会访问下游服务的异步服务中会同时接触两者，容易搞混，请注意区分。
+
+# 加入Service
 
 默认构造后的Server不包含任何服务，也不会对外提供服务，仅仅是一个对象。
 
 通过AddService插入你的Service实例。
 
-**server.h**
-
 ```c++
 int AddService(google::protobuf::Service* service, ServiceOwnership ownership);
 ```
 
-若ownership参数为SERVER_OWNS_SERVICE，Server在析构时会一并删除Service，否则应设为SERVER_DOESNT_OWN_SERVICE。插入上节中的MyEchoService代码如下：
+若ownership参数为SERVER_OWNS_SERVICE，Server在析构时会一并删除Service，否则应设为SERVER_DOESNT_OWN_SERVICE。插入MyEchoService代码如下：
 
 ```c++
 brpc::Server server;
@@ -201,7 +197,7 @@ Server启动后你无法再修改其中的Service。
 
 # 启动
 
-**server.h**
+调用以下[Server](https://github.com/brpc/brpc/blob/master/src/brpc/server.h)的一下接口启动服务。
 
 ```c++
 int Start(const char* ip_and_port_str, const ServerOptions* opt);
@@ -210,9 +206,9 @@ int Start(int port, const ServerOptions* opt);
 int Start(const char *ip_str, PortRange port_range, const ServerOptions *opt);  // r32009后增加
 ```
 
-"localhost:9000", "cq01-cos-dev00.cq01:8000", “127.0.0.1:7000"都是合法的"ip_and_port_str"。其他重载形式请阅读[server.h](https://github.com/brpc/brpc/blob/master/src/brpc/server.h)。
+"localhost:9000", "cq01-cos-dev00.cq01:8000", “127.0.0.1:7000"都是合法的`ip_and_port_str`。
 
-options为NULL时所有参数取默认值，如果你要使用非默认值，这么做就行了：
+`options`为NULL时所有参数取默认值，如果你要使用非默认值，这么做就行了：
 
 ```c++
 brpc::ServerOptions options;  // 包含了默认值
@@ -228,19 +224,17 @@ server.Start(..., &options);
 # 停止
 
 ```c++
-server.Stop(closewait_ms); // r28921后closewait_ms无效
+server.Stop(closewait_ms); // closewait_ms实际无效，出于历史原因未删
 server.Join();
 ```
 
 Stop()不会阻塞，Join()会。分成两个函数的原因在于当多个Server需要退出时，可以先全部Stop再一起Join，如果一个个Stop/Join，可能得花费Server个数倍的等待时间。
 
-r28921之前：如果closewait_ms不会0，且还有请求在被处理，那么Server不会立刻关闭与client的连接，而是继续处理请求，同时对client发来的新请求立刻回复ELOGOFF错误以防止新请求加入，这个过程最多持续closewait_ms毫秒，之后Server会关闭所有连接并退出。
-
-r28921之后：closewait_ms失效，不管它是什么值，server在退出时总会等待所有正在被处理的请求完成，同时对新请求立刻回复ELOGOFF错误。这么做的原因在于只要server退出时仍有处理线程运行，就有访问到已释放内存的风险。如果你的server“退不掉”，很有可能是由于某个检索线程hang住了，
+不管closewait_ms是什么值，server在退出时会等待所有正在被处理的请求完成，同时对新请求立刻回复ELOGOFF错误以防止新请求加入。这么做的原因在于只要server退出时仍有处理线程运行，就有访问到已释放内存的风险。如果你的server“退不掉”，很有可能是由于某个检索线程没结束或忘记调用done了。
 
 当client看到ELOGOFF时，会跳过对应的server，并在其他server上重试对应的请求。所以在一般情况下brpc总是“优雅退出”的，重启或上线时几乎不会或只会丢失很少量的流量。
 
-r31371后增加了RunUntilAskedToQuit()函数，简化了大部分情况下server的运转和停止代码。在server.Start后，只需如下代码即会让server运行直到按到Ctrl-C。
+RunUntilAskedToQuit()函数可以在大部分情况下简化server的运转和停止代码。在server.Start后，只需如下代码即会让server运行直到按到Ctrl-C。
 
 ```c++
 // Wait until Ctrl-C is pressed, then Stop() and Join() the server.

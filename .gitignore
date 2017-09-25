@@ -9,9 +9,14 @@
 *.pb.cc
 *.pb.h
 *.prof
+*.so
 /output
 /test/output
 
 #ignore hidden files
 .*
 *.swp
+
+#ignore auto-generated files
+config.mk
+src/butil/config.h

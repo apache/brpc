@@ -7,7 +7,7 @@
 - **non_service_error**: "non"修饰的是“service_error"，后者即是分列在各个服务下的error，此外的error都计入non_service_error。服务处理过程中client断开连接导致无法成功写回response就算non_service_error。而服务内部对后端的连接断开属于服务内部逻辑，只要最终服务成功地返回了response，即使错误也是计入该服务的error，而不是non_service_error。
 - **connection_count**: 向该server发起请求的连接个数，不包含[对外连接](http://brpc.baidu.com:8765/vars/rpc_channel_connection_count)的个数。
 - **example.EchoService**: 服务的完整名称，包含名字空间。
-- **Echo (EchoRequest****) returns (EchoResponse****)**: 方法签名，一个服务可包含多个方法，点击request/response上的链接可查看对应的protobuf结构体。
+- **Echo (EchoRequest) returns (EchoResponse)**: 方法签名，一个服务可包含多个方法，点击request/response上的链接可查看对应的protobuf结构体。
 - **count**: 成功处理的请求总个数。
 - **error**: 失败的请求总个数。
 - **latency**: 在web界面下从右到左分别是过去60秒，60分钟，24小时，30天的平均延时。在文本界面下是10秒内([-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)控制）的平均延时。

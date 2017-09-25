@@ -43,7 +43,7 @@ void* joiner(void* arg) {
             LOG(FATAL) << "fail to join thread_" << th - (bthread_t*)arg;
         }
         long elp = butil::gettimeofday_us() - t1;
-        EXPECT_LE(labs(elp - (th - (bthread_t*)arg + 1) * 100000L), 5000L)
+        EXPECT_LE(labs(elp - (th - (bthread_t*)arg + 1) * 100000L), 10000L)
             << "timeout when joining thread_" << th - (bthread_t*)arg;
         LOG(INFO) << "Joined thread " << *th << " at " << elp << "us ["
                   << bthread_self() << "]";

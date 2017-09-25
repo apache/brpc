@@ -7,7 +7,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
-#include <gperftools/profiler.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
 #include "butil/time.h"
@@ -19,7 +18,7 @@
 #include "brpc/channel.h"
 #include "brpc/policy/most_common_message.h"
 #include "brpc/controller.h"
-#include "test/echo.pb.h"
+#include "echo.pb.h"
 #include "brpc/policy/http_rpc_protocol.h"
 #include "json2pb/pb_to_json.h"
 #include "json2pb/json_to_pb.h"
@@ -27,12 +26,12 @@
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
-    google::ParseCommandLineFlags(&argc, &argv, true);
-    if (google::SetCommandLineOption("socket_max_unwritten_bytes", "2000000").empty()) {
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    if (GFLAGS_NS::SetCommandLineOption("socket_max_unwritten_bytes", "2000000").empty()) {
         std::cerr << "Fail to set -socket_max_unwritten_bytes" << std::endl;
         return -1;
     }
-    if (google::SetCommandLineOption("crash_on_fatal_log", "true").empty()) {
+    if (GFLAGS_NS::SetCommandLineOption("crash_on_fatal_log", "true").empty()) {
         std::cerr << "Fail to set -crash_on_fatal_log" << std::endl;
         return -1;
     }
@@ -40,11 +39,6 @@ int main(int argc, char* argv[]) {
 }
 
 namespace {
-void* RunClosure(void* arg) {
-    google::protobuf::Closure* done = (google::protobuf::Closure*)arg;
-    done->Run();
-    return NULL;
-}
 
 static const std::string EXP_REQUEST = "hello";
 static const std::string EXP_RESPONSE = "world";

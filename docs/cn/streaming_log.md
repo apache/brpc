@@ -16,50 +16,10 @@ PLOG(FATAL) << "Fail to call function setting errno";
 VLOG(1) << "verbose log tier 1";
 CHECK_GT(1, 2) << "1 can't be greater than 2";
  
-// public/common >= r32401支持限制打印频率。
 LOG_EVERY_SECOND(INFO) << "High-frequent logs";
 LOG_EVERY_N(ERROR, 10) << "High-frequent logs";
 LOG_FIRST_N(INFO, 20) << "Logs that prints for at most 20 times";
 LOG_ONCE(WARNING) << "Logs that only prints once";
-```
-
-## 配置comlog
-
-```c++
-// logging默认重定向至comlog，要配置comlog的话，要额外include comlog_sink.h
-#include <butil/comlog_sink.h>
- 
-// 从./conf/log.conf读取comlog的配置。SetupFromConfig是我们提供的封装函数，不用像com_loadlog那样区分path和file。
-if (logging::ComlogSink::GetInstance()->SetupFromConfig("conf/log.conf") != 0) {
-    LOG(ERROR) << "Fail to setup comlog from conf/log.conf";
-    return -1;
-}
- 
-OR
- 
-// 直接调用com_loadlog从./conf/log.conf读取comlog的配置。
-if (com_loadlog("./conf", "log.conf") != 0) {
-    LOG(ERROR) << "Fail to com_loadlog";
-    return -1;
-}
- 
-OR
- 
-// 把日志打入./my_log/<process-name>.log中，comlog选项取默认值。
-logging::ComlogSinkOptions options;
-options.log_dir = "my_log";
-if (logging::ComlogSink::GetInstance()->Setup(&options) != 0) {
-    LOG(ERROR) << "Fail to setup comlog from options";
-    return -1;
-}
-  
-OR
- 
-// 把日志打入./log/<process-name>.log中，comlog选项取默认值。
-if (logging::ComlogSink::GetInstance()->Setup(NULL) != 0) {
-    LOG(ERROR) << "Fail to setup comlog by default options";
-    return -1;
-}
 ```
 
 # DESCRIPTION
@@ -122,17 +82,17 @@ LOG(WARNING) << "Unusual thing happened ..." << ...;
 LOG(TRACE) << "Something just took place..." << ...;
 ```
 
-streaming log的日志等级是comlog和glog的合集，具体的来说，下表是日志等级的映射关系：
+streaming log的日志等级与glog映射关系如下：
 
-| streaming log | comlog                       | glog                 | 使用场景                                     |
-| ------------- | ---------------------------- | -------------------- | ---------------------------------------- |
-| FATAL         | COMLOG_FATAL                 | FATAL (coredump)     | 致命错误。但由于百度内大部分FATAL实际上非致命，所以streaming log的FATAL默认不像glog那样直接coredump，除非打开了[-crash_on_fatal_log](http://brpc.baidu.com:8765/flags/crash_on_fatal_log) |
-| ERROR         | COMLOG_FATAL                 | ERROR                | 不致命的错误。                                  |
-| WARNING       | COMLOG_WARNING               | WARNING              | 不常见的分支。                                  |
-| NOTICE        | COMLOG_NOTICE                | -                    | 一般来说你不应该使用NOTICE，它用于打印重要的业务日志，若要使用务必和检索端同学确认。glog没有NOTICE。 |
-| INFO, TRACE   | COMLOG_TRACE                 | INFO                 | 打印重要的副作用。比如打开关闭了某某资源之类的。                 |
-| VLOG(n)       | COMLOG_TRACE                 | INFO                 | 打印分层的详细日志。                               |
-| DEBUG         | COMLOG_TRACEVLOG(1) (NDEBUG) | INFOVLOG(1) (NDEBUG) | 仅为代码兼容性，基本没有用。若要使日志仅在未定义NDEBUG时才打印，用DLOG/DPLOG/DVLOG等即可。 |
+| streaming log | glog                 | 使用场景                                     |
+| ------------- | -------------------- | ---------------------------------------- |
+| FATAL         | FATAL (coredump)     | 致命错误。但由于百度内大部分FATAL实际上非致命，所以streaming log的FATAL默认不像glog那样直接coredump，除非打开了[-crash_on_fatal_log](http://brpc.baidu.com:8765/flags/crash_on_fatal_log) |
+| ERROR         | ERROR                | 不致命的错误。                                  |
+| WARNING       | WARNING              | 不常见的分支。                                  |
+| NOTICE        | -                    | 一般来说你不应该使用NOTICE，它用于打印重要的业务日志，若要使用务必和检索端同学确认。glog没有NOTICE。 |
+| INFO, TRACE   | INFO                 | 打印重要的副作用。比如打开关闭了某某资源之类的。                 |
+| VLOG(n)       | INFO                 | 打印分层的详细日志。                               |
+| DEBUG         | INFOVLOG(1) (NDEBUG) | 仅为代码兼容性，基本没有用。若要使日志仅在未定义NDEBUG时才打印，用DLOG/DPLOG/DVLOG等即可。 |
 
 ## PLOG
 
@@ -148,7 +108,7 @@ if (fd < 0) {
 
 ## noflush
 
-如果你暂时不希望刷入comlog，加上noflush。这一般会用在打印循环中：
+如果你暂时不希望刷到屏幕，加上noflush。这一般会用在打印循环中：
 
 ```c++
 LOG(TRACE) << "Items:" << noflush;
@@ -158,7 +118,7 @@ for (iterator it = items.begin(); it != items.end(); ++it) {
 LOG(TRACE);
 ```
 
-前两次TRACE日志都没有刷到comlog，而是还记录在thread-local缓冲中，第三次TRACE日志则把缓冲都刷入了comlog。如果items里面有三个元素，不加noflush的打印结果可能是这样的：
+前两次TRACE日志都没有刷到屏幕，而是还记录在thread-local缓冲中，第三次TRACE日志则把缓冲都刷入了屏幕。如果items里面有三个元素，不加noflush的打印结果可能是这样的：
 
 ```
 TRACE: ... Items:
@@ -173,7 +133,7 @@ TRACE: ...  item3
 TRACE: ... Items: item1 item2 item3 
 ```
 
-r34694前noflush和调用处的pthread绑定，如果在noflush后发送了RPC（可能跨越pthread），那么日志输出可能不符合预期。r34694后noflush支持bthread，可以实现类似于UB的pushnotice的效果，即检索线程一路打印都暂不刷出（加上noflush），直到最后检索结束时再一次性刷出。注意，如果检索过程是异步的，就不应该使用noflush，因为异步显然会跨越bthread，使noflush仍然失效。
+noflush支持bthread，可以实现类似于UB的pushnotice的效果，即检索线程一路打印都暂不刷出（加上noflush），直到最后检索结束时再一次性刷出。注意，如果检索过程是异步的，就不应该使用noflush，因为异步显然会跨越bthread，使noflush仍然失效。
 
 ## LOG_IF
 
@@ -299,7 +259,7 @@ CHECK(x > y);    // Check failed: x > y.
 
 ## LogSink
 
-streaming log通过logging::SetLogSink修改日志刷入的目标，默认是屏幕。用户可以继承LogSink，实现自己的日志打印逻辑。我们默认提供了两个LogSink实现：
+streaming log通过logging::SetLogSink修改日志刷入的目标，默认是屏幕。用户可以继承LogSink，实现自己的日志打印逻辑。我们默认提供了个LogSink实现：
 
 ### StringSink
 
@@ -316,9 +276,3 @@ TEST_F(StreamingLogTest, log_at) {
     ::logging::SetLogSink(old_sink);
 }
 ```
-
-### ComlogSink
-
-定义在butil/comlog_sink.h中，把日志打印入comlog，主要用于线上系统，用法见[SYNOPSIS](#SYNOPSIS)一段。
-
-使用ComlogSink的streaming log可以和com_writelog, ul_writelog混用。你并不需要把程序中所有日志都换成streaming log。

@@ -7,9 +7,9 @@
 - 支持多种[连接方式](client.md#连接方式)。支持超时、backup request、取消、tracing、内置服务等一系列RPC基本福利。
 - 一个进程和一个redis-server只有一个连接。多个线程同时访问一个redis-server时更高效（见[性能](#性能)）。无论reply的组成多复杂，内存都会连续成块地分配，并支持短串优化(SSO)。
 
-像http一样，brpc保证在最差情况下解析redis reply的时间复杂度也是O(N)，N是reply的字节数，而不是O(N^2)。当reply是个较大的数组时，这是比较重要的。
+像http一样，brpc保证在最差情况下解析redis reply的时间复杂度也是O(N)，N是reply的字节数，而不是O($N^2$)。当reply是个较大的数组时，这是比较重要的。
 
-r32037后加上[-redis_verbose](#查看发出的请求和收到的回复)后会在stderr上打印出所有的redis request和response供调试。
+加上[-redis_verbose](#查看发出的请求和收到的回复)后会在stderr上打印出所有的redis request和response供调试。
 
 # 访问单台redis
 
@@ -85,7 +85,7 @@ request.AddCommand("INCR counter1");
 request.AddCommand("DECR counter1");
 request.AddCommand("INCRBY counter1 10");
 request.AddCommand("DECRBY counter1 20");
-redis_channel.CallMethod(NULL, &cntl, &get_request, &response, NULL/*done*/);
+redis_channel.CallMethod(NULL, &cntl, &request, &response, NULL/*done*/);
 if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access redis-server";
     return -1;
@@ -119,7 +119,7 @@ AddCommandByComponents类似hiredis中的redisCommandArgv，用户通过数组�
 
 command_size()可获得（成功）加入的命令个数。
 
-调用Clear()后可重用RedisReques
+调用Clear()后可重用RedisRequest
 
 # RedisResponse
 

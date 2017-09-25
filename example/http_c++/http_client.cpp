@@ -35,7 +35,7 @@ DECLARE_bool(http_verbose);
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
     if (argc != 2) {
         LOG(ERROR) << "Usage: ./http_client \"www.foo.com\"";

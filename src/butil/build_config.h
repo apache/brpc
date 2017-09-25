@@ -173,4 +173,6 @@
 #define nullptr NULL
 #endif
 
+#define HAVE_DLADDR
+
 #endif  // BASE_BUILD_CONFIG_H_

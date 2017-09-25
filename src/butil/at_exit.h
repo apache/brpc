@@ -9,7 +9,6 @@
 
 #include "butil/base_export.h"
 #include "butil/basictypes.h"
-#include "butil/callback.h"
 #include "butil/synchronization/lock.h"
 
 namespace butil {
@@ -42,9 +41,6 @@ class BASE_EXPORT AtExitManager {
   // the callback function is void func(void*).
   static void RegisterCallback(AtExitCallbackType func, void* param);
 
-  // Registers the specified task to be called at exit.
-  static void RegisterTask(butil::Closure task);
-
   // Calls the functions registered with RegisterCallback in LIFO order. It
   // is possible to register new callbacks after calling this function.
   static void ProcessCallbacksNow();
@@ -57,8 +53,12 @@ class BASE_EXPORT AtExitManager {
   explicit AtExitManager(bool shadow);
 
  private:
+  struct Callback {
+    AtExitCallbackType func;
+    void* param;
+  };
   butil::Lock lock_;
-  std::stack<butil::Closure> stack_;
+  std::stack<Callback> stack_;
   AtExitManager* next_manager_;  // Stack of managers to allow shadowing.
 
   DISALLOW_COPY_AND_ASSIGN(AtExitManager);

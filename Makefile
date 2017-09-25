@@ -7,8 +7,9 @@ include config.mk
 # 3. Removed -Werror: Not block compilation for non-vital warnings, especially when the
 #    code is tested on newer systems. If the code is used in production, add -Werror back
 CPPFLAGS+=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\"$(shell git rev-parse --short HEAD)\"
-CXXFLAGS+=$(CPPFLAGS) -g -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x
-CFLAGS+=$(CPPFLAGS) -g -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
+CXXFLAGS+=$(CPPFLAGS) -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x
+CFLAGS+=$(CPPFLAGS) -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
+DEBUG_CXXFLAGS = $(CXXFLAGS) -DUNIT_TEST -DBVAR_NOT_LINK_DEFAULT_VARIABLES
 HDRPATHS=-I./src $(addprefix -I, $(HDRS))
 LIBPATHS = $(addprefix -L, $(LIBS))
 COMMA = ,
@@ -34,33 +35,16 @@ BUTIL_SOURCES = \
     src/butil/third_party/nspr/prtime.cc \
     src/butil/third_party/symbolize/demangle.cc \
     src/butil/third_party/symbolize/symbolize.cc \
-    src/butil/third_party/xdg_mime/xdgmime.c \
-    src/butil/third_party/xdg_mime/xdgmimealias.c \
-    src/butil/third_party/xdg_mime/xdgmimecache.c \
-    src/butil/third_party/xdg_mime/xdgmimeglob.c \
-    src/butil/third_party/xdg_mime/xdgmimeicon.c \
-    src/butil/third_party/xdg_mime/xdgmimeint.c \
-    src/butil/third_party/xdg_mime/xdgmimemagic.c \
-    src/butil/third_party/xdg_mime/xdgmimeparent.c \
-    src/butil/third_party/xdg_user_dirs/xdg_user_dir_lookup.cc \
     src/butil/third_party/snappy/snappy-sinksource.cc \
     src/butil/third_party/snappy/snappy-stubs-internal.cc \
     src/butil/third_party/snappy/snappy.cc \
     src/butil/third_party/murmurhash3/murmurhash3.cpp \
-    src/butil/allocator/type_profiler_control.cc \
     src/butil/arena.cpp \
     src/butil/at_exit.cc \
     src/butil/atomicops_internals_x86_gcc.cc \
-    src/butil/barrier_closure.cc \
-    src/butil/base_paths.cc \
-    src/butil/base_paths_posix.cc \
     src/butil/base64.cc \
     src/butil/base_switches.cc \
     src/butil/big_endian.cc \
-    src/butil/bind_helpers.cc \
-    src/butil/callback_helpers.cc \
-    src/butil/callback_internal.cc \
-    src/butil/command_line.cc \
     src/butil/cpu.cc \
     src/butil/debug/alias.cc \
     src/butil/debug/asan_invalid_access.cc \
@@ -94,29 +78,10 @@ BUTIL_SOURCES = \
     src/butil/memory/aligned_memory.cc \
     src/butil/memory/ref_counted.cc \
     src/butil/memory/ref_counted_memory.cc \
-    src/butil/memory/shared_memory_posix.cc \
     src/butil/memory/singleton.cc \
     src/butil/memory/weak_ptr.cc \
-    src/butil/nix/mime_util_xdg.cc \
-    src/butil/nix/xdg_util.cc \
-    src/butil/path_service.cc \
     src/butil/posix/file_descriptor_shuffle.cc \
     src/butil/posix/global_descriptors.cc \
-    src/butil/process/internal_linux.cc \
-    src/butil/process/kill.cc \
-    src/butil/process/kill_posix.cc \
-    src/butil/process/launch.cc \
-    src/butil/process/launch_posix.cc \
-    src/butil/process/process_handle_linux.cc \
-    src/butil/process/process_handle_posix.cc \
-    src/butil/process/process_info_linux.cc \
-    src/butil/process/process_iterator.cc \
-    src/butil/process/process_iterator_linux.cc \
-    src/butil/process/process_linux.cc \
-    src/butil/process/process_metrics.cc \
-    src/butil/process/process_metrics_linux.cc \
-    src/butil/process/process_metrics_posix.cc \
-    src/butil/process/process_posix.cc \
     src/butil/rand_util.cc \
     src/butil/rand_util_posix.cc \
     src/butil/fast_rand.cpp \
@@ -139,9 +104,6 @@ BUTIL_SOURCES = \
     src/butil/synchronization/cancellation_flag.cc \
     src/butil/synchronization/condition_variable_posix.cc \
     src/butil/synchronization/waitable_event_posix.cc \
-    src/butil/sys_info.cc \
-    src/butil/sys_info_linux.cc \
-    src/butil/sys_info_posix.cc \
     src/butil/threading/non_thread_safe_impl.cc \
     src/butil/threading/platform_thread_linux.cc \
     src/butil/threading/platform_thread_posix.cc \
@@ -207,13 +169,15 @@ MCPACK2PB_SOURCES = \
 MCPACK2PB_OBJS = src/idl_options.pb.o $(addsuffix .o, $(basename $(MCPACK2PB_SOURCES)))
 
 OBJS=$(BUTIL_OBJS) $(BVAR_OBJS) $(BTHREAD_OBJS) $(JSON2PB_OBJS) $(MCPACK2PB_OBJS) $(BRPC_OBJS)
+
+BVAR_DEBUG_OBJS=$(BUTIL_OBJS:.o=.dbg.o) $(BVAR_OBJS:.o=.dbg.o)
 DEBUG_OBJS = $(OBJS:.o=.dbg.o)
 
 .PHONY:all
 all:  protoc-gen-mcpack libbrpc.a libbrpc.so output/include output/lib output/bin
 
 .PHONY:debug
-debug: libbrpc.dbg.a
+debug: libbrpc.dbg.a libbvar.dbg.a
 
 .PHONY:clean
 clean:clean_debug
@@ -222,7 +186,9 @@ clean:clean_debug
 
 .PHONY:clean_debug
 clean_debug:
-	@rm -rf libbrpc.dbg.a $(DEBUG_OBJS)
+	@rm -rf libbrpc.dbg.a libbvar.dbg.a $(DEBUG_OBJS)
+
+.PRECIOUS: %.o
 
 protoc-gen-mcpack: src/idl_options.pb.cc src/mcpack2pb/generator.o libbrpc.a
 	@echo "Linking $@"
@@ -231,15 +197,19 @@ protoc-gen-mcpack: src/idl_options.pb.cc src/mcpack2pb/generator.o libbrpc.a
 # force generation of pb headers before compiling to avoid fail-to-import issues in compiling pb.cc
 libbrpc.a:$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
 	@echo "Packing $@"
-	@ar crs $@ $(OBJS)
+	@ar crs $@ $(filter %.o,$^)
 
 libbrpc.so:$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
 	@echo "Linking $@"
-	$(CXX) -shared -o $@ $(HDRPATHS) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $(OBJS) -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+	@$(CXX) -shared -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $(filter %.o,$^) -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+
+libbvar.dbg.a:$(BVAR_DEBUG_OBJS)
+	@echo "Packing $@"
+	@ar crs $@ $^
 
 libbrpc.dbg.a:$(BRPC_PROTOS:.proto=.pb.h) $(DEBUG_OBJS)
 	@echo "Packing $@"
-	@ar crs $@ $(DEBUG_OBJS)
+	@ar crs $@ $(filter %.o,$^)
 
 .PHONY:output/include
 output/include:
@@ -270,7 +240,7 @@ output/bin:protoc-gen-mcpack
 
 %.dbg.o:%.cpp
 	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) -DBVAR_NOT_LINK_DEFAULT_VARIABLES $< -o $@
+	@$(CXX) -c $(HDRPATHS) $(DEBUG_CXXFLAGS) $< -o $@
 
 %.o:%.cc
 	@echo "Compiling $@"
@@ -278,7 +248,7 @@ output/bin:protoc-gen-mcpack
 
 %.dbg.o:%.cc
 	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@$(CXX) -c $(HDRPATHS) $(DEBUG_CXXFLAGS) $< -o $@
 
 %.o:%.c
 	@echo "Compiling $@"

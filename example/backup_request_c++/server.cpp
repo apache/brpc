@@ -32,7 +32,7 @@ DEFINE_int32(sleep_ms, 20, "Sleep so many milliseconds on even-th requests");
 // additional information in /status.
 namespace example {
 class SleepyEchoService : public EchoService
-                      , public brpc::Describable {
+                        , public brpc::Describable {
 public:
     SleepyEchoService() : _count(0) {};
     virtual ~SleepyEchoService() {};
@@ -52,8 +52,7 @@ public:
         // remove these logs in performance-sensitive servers.
         // You should also noticed that these logs are different from what
         // we wrote in other projects: they use << instead of printf-style
-        // functions. But don't worry, these logs are fully compatible with
-        // comlog. You can mix them with comlog or ullog functions freely.
+        // functions.
         // The noflush prevents the log from being flushed immediately.
         LOG(INFO) << "Received request[index=" << request->index()
                   << "] from " << cntl->remote_side() 
@@ -81,7 +80,7 @@ private:
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
     // Generally you only need one Server.
     brpc::Server server;

@@ -49,7 +49,7 @@ int RegisterCompressHandler(CompressType type,
 inline const CompressHandler* FindCompressHandler(CompressType type) {
     int index = type;
     if (index < 0 || index >= MAX_HANDLER_SIZE) {
-        LOG(FATAL) << "CompressType=" << type << " is out of range";
+        LOG(ERROR) << "CompressType=" << type << " is out of range";
         return NULL;
     }
     if (NULL == s_handler_map[index].Compress) {

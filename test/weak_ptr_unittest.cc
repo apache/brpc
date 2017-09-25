@@ -6,7 +6,6 @@
 
 #include <string>
 
-#include "butil/bind.h"
 #include "butil/debug/leak_annotations.h"
 #include "butil/memory/scoped_ptr.h"
 #include "butil/synchronization/waitable_event.h"

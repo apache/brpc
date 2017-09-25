@@ -44,13 +44,13 @@ DEFINE_bool(show_bthread_creation_in_vars, false, "When this flags is on, The ti
             "from bthread creation to first run will be recorded and shown "
             "in /vars");
 const bool ALLOW_UNUSED dummy_show_bthread_creation_in_vars =
-    ::google::RegisterFlagValidator(&FLAGS_show_bthread_creation_in_vars,
+    ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_show_bthread_creation_in_vars,
                                     pass_bool);
 
 DEFINE_bool(show_per_worker_usage_in_vars, false,
             "Show per-worker usage in /vars/bthread_per_worker_usage_<tid>");
 const bool ALLOW_UNUSED dummy_show_per_worker_usage_in_vars =
-    ::google::RegisterFlagValidator(&FLAGS_show_per_worker_usage_in_vars,
+    ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_show_per_worker_usage_in_vars,
                                     pass_bool);
 
 __thread TaskGroup* tls_task_group = NULL;

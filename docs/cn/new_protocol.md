@@ -2,7 +2,7 @@
 
 brpc server在同端口支持所有的协议，大部分时候这对部署和运维更加方便。由于不同协议的格式大相径庭，严格地来说，同端口很难无二义地支持所有协议。出于解耦和可扩展性的考虑，也不太可能集中式地构建一个针对所有协议的分类器。我们的做法就是把协议归三类后逐个尝试：
 
-- 第一类协议：标记或特殊字符在最前面，比如[baidu_std](baidu_std.md)，hulu_pbrpc的前4个字符分别分别是PRPC和HULU，解析代码只需要检查前4个字节就可以知道协议是否匹配，最先尝试这类协议。这些协议在同一个连接上也可以共存。
+- 第一类协议：标记或特殊字符在最前面，比如[baidu_std](baidu_std.md)，hulu_pbrpc的前4个字符分别是PRPC和HULU，解析代码只需要检查前4个字节就可以知道协议是否匹配，最先尝试这类协议。这些协议在同一个连接上也可以共存。
 - 第二类协议：有较为复杂的语法，没有固定的协议标记或特殊字符，可能在解析一段输入后才能判断是否匹配，目前此类协议只有http。
 - 第三类协议：协议标记或特殊字符在中间，比如nshead的magic_num在第25-28字节。由于之前的字段均为二进制，难以判断正确性，在没有读取完28字节前，我们无法判定消息是不是nshead格式的，所以处理起来很麻烦，若其解析排在http之前，那么<=28字节的http消息便可能无法被解析，因为程序以为是“还未完整的nshead消息”。
 
@@ -52,7 +52,7 @@ enum ProtocolType {
 ```
 ## 实现回调
 
-均定义在struct Protocol中，该结构定义在[protocol.h](https://github.com/brpc/brpc/blob/master/src/brpc/protocol.h)。其中的parse必须实现，除此之外server端至少要实现process_request，client端至少要实现serialize_request，pack_request，process_response;
+均定义在struct Protocol中，该结构定义在[protocol.h](https://github.com/brpc/brpc/blob/master/src/brpc/protocol.h)。其中的parse必须实现，除此之外server端至少要实现process_request，client端至少要实现serialize_request，pack_request，process_response。
 
 实现协议回调还是比较困难的，这块的代码不会像供普通用户使用的那样，有较好的提示和保护，你得先靠自己搞清楚其他协议中的类似代码，然后再动手，最后发给我们做code review。
 
@@ -102,7 +102,7 @@ typedef void (*ProcessRequest)(InputMessageBase* msg_base);
 
 ### process_response
 ```c++
-typedef void (*ProcessResponse)(InputMessageBase* msg);
+typedef void (*ProcessResponse)(InputMessageBase* msg_base);
 ```
 处理client端parse返回的消息，client端必须实现。可能会在和parse()不同的线程中运行。多个process_response可能同时运行。
 
@@ -149,65 +149,4 @@ Protocol http_protocol = { ParseHttpMessage,
 if (RegisterProtocol(PROTOCOL_HTTP, http_protocol) != 0) {
     exit(1);
 }
-```
-
-## r34386引入的不兼容
-
-为了进一步简化protocol的实现逻辑，r34386是一个不兼容改动，主要集中在下面几点：
-
-- ProcessXXX必须在处理结束时调用msg_base->Destroy()。在之前的版本中，这是由框架完成的。这个改动帮助我们隐藏处理EOF的代码（很晦涩），还可以在未来支持更异步的处理（退出ProcessXXX不意味着处理结束）。为了确保所有的退出分支都会调用msg_base->Destroy()，可以使用定义在[destroying_ptr.h](https://github.com/brpc/brpc/blob/master/src/brpc/destroying_ptr.h)中的DestroyingPtr<>，可能像这样：
-```c++
-void ProcessXXXRequest(InputMessageBase* msg_base) {
-    DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
-    ...
-}
-```
-
-- 具体请参考[其他协议](https://github.com/brpc/brpc/blob/master/src/brpc/policy/baidu_rpc_protocol.cpp)的实现。
-- InputMessageBase::socket_id()被移除，而通过socket()可以直接访问到对应Socket的指针。ProcessXXX函数中Address Socket的代码可以移除。
-  ProcessXXXRequest开头的修改一般是这样：
-```c++
-void ProcessXXXRequest(InputMessageBase* msg_base) {
-     const int64_t start_parse_us = butil::cpuwide_time_us();
--    MostCommonMessage* msg = static_cast<MostCommonMessage*>(msg_base);
-+    DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
-+    SocketUniquePtr socket(msg->ReleaseSocket());
-     const Server* server = static_cast<const Server*>(msg_base->arg());
-     ScopedNonServiceError non_service_error(server);
--    const SocketId sock = msg_base->socket_id();
--    SocketUniquePtr socket;
--    if (Socket::Address(sock, &socket) != 0) {
--        RPC_VLOG << "Fail to address client=" << sock;
--        return;
--    }
--    if (socket->CheckEOF()) {
--        // Received an EOF event
--        return;
--    }
-```
-ProcessXXXResponse开头的修改一般是这样：
-```c++
-void ProcessRpcResponse(InputMessageBase* msg_base) {
-     const int64_t start_parse_us = butil::cpuwide_time_us();
--    MostCommonMessage* msg = static_cast<MostCommonMessage*>(msg_base);
--    CheckEOFGuard eof_guard(msg->socket_id());
-+    DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
- 
-     ...
- 
--    // After a successful fight, EOF will no longer interrupt the
--    // following code. As a result, we can release `eof_guard'
--    eof_guard.check();
-```
-
-check_eof_guard.h被移除，所以对这个文件的include也得移除：
-
-```c++
--    #include "brpc/details/check_eof_guard.h"
-```
-
-- AddClientSideHandler被移除，用如下方法代替：
-```
--   if (AddClientSideHandler(handler) != 0) {
-+   if (get_or_new_client_side_messenger()->AddHandler(handler) != 0) {
 ```

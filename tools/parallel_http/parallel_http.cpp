@@ -97,7 +97,7 @@ void* access_thread(void* void_args) {
 
 int main(int argc, char** argv) {
     // Parse gflags. We recommend you to use gflags as well.
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
     
     // if (FLAGS_path.empty() || FLAGS_path[0] != '/') {
     //     FLAGS_path = "/" + FLAGS_path;
