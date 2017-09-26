@@ -9,7 +9,8 @@ include config.mk
 CPPFLAGS+=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\"$(shell git rev-parse --short HEAD)\"
 CXXFLAGS+=$(CPPFLAGS) -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x
 CFLAGS+=$(CPPFLAGS) -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
-DEBUG_CXXFLAGS = $(CXXFLAGS) -DUNIT_TEST -DBVAR_NOT_LINK_DEFAULT_VARIABLES
+DEBUG_CXXFLAGS = $(filter-out -DNDEBUG,$(CXXFLAGS)) -DUNIT_TEST -DBVAR_NOT_LINK_DEFAULT_VARIABLES
+DEBUG_CFLAGS = $(filter-out -DNDEBUG,$(CFLAGS)) -DUNIT_TEST
 HDRPATHS=-I./src $(addprefix -I, $(HDRS))
 LIBPATHS = $(addprefix -L, $(LIBS))
 COMMA = ,
@@ -236,7 +237,7 @@ output/bin:protoc-gen-mcpack
 
 %.o:%.cpp
 	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) -DNDEBUG $< -o $@
+	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.dbg.o:%.cpp
 	@echo "Compiling $@"
@@ -244,7 +245,7 @@ output/bin:protoc-gen-mcpack
 
 %.o:%.cc
 	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) -DNDEBUG $< -o $@
+	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.dbg.o:%.cc
 	@echo "Compiling $@"
@@ -252,8 +253,8 @@ output/bin:protoc-gen-mcpack
 
 %.o:%.c
 	@echo "Compiling $@"
-	@$(CC) -c $(HDRPATHS) $(CFLAGS) -DNDEBUG $< -o $@
+	@$(CC) -c $(HDRPATHS) $(CFLAGS) $< -o $@
 
 %.dbg.o:%.c
 	@echo "Compiling $@"
-	@$(CC) -c $(HDRPATHS) $(CFLAGS) $< -o $@
+	@$(CC) -c $(HDRPATHS) $(DEBUG_CFLAGS) $< -o $@
