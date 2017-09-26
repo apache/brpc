@@ -17,9 +17,9 @@ ParallelChannel (“pchan”)同时访问其包含的sub channel，并合并它�
 
 示例代码见[example/parallel_echo_c++](https://github.com/brpc/brpc/tree/master/example/parallel_echo_c++/)。
 
-任何brpc::ChannelBase的子类都可以加入ParallelChannel，包括ParallelChannel和其他组合Channel。用户可以设置ParallelChannelOptions.fail_limit来控制访问的最大失败次数(r31803前是ParallelChannel::set_fail_limit)，当失败的访问达到这个数目时，RPC call会立刻结束而不等待超时。
+任何brpc::ChannelBase的子类都可以加入ParallelChannel，包括ParallelChannel和其他组合Channel。用户可以设置ParallelChannelOptions.fail_limit来控制访问的最大失败次数，当失败的访问达到这个数目时，RPC call会立刻结束而不等待超时。
 
-当brpc >= 1.0.155.31351时，一个sub channel可多次加入同一个ParallelChannel。当你需要对同一个服务发起多次异步访问并等待它们完成的话，这很有用。
+一个sub channel可多次加入同一个ParallelChannel。当你需要对同一个服务发起多次异步访问并等待它们完成的话，这很有用。
 
 ParallelChannel的内部结构大致如下：
 
@@ -36,13 +36,13 @@ int AddChannel(brpc::ChannelBase* sub_channel,
                ResponseMerger* response_merger);
 ```
 
-当ownership为brpc::OWNS_CHANNEL时，sub_channel会在ParallelChannel析构时被删除。当brpc >= 1.0.155.31351时，由于一个sub channel可能会多次加入一个ParallelChannel，只要其中一个指明了ownership为brpc::OWNS_CHANNEL，那个sub channel就会在ParallelChannel析构时被删除（一次）。
+当ownership为brpc::OWNS_CHANNEL时，sub_channel会在ParallelChannel析构时被删除。由于一个sub channel可能会多次加入一个ParallelChannel，只要其中一个指明了ownership为brpc::OWNS_CHANNEL，那个sub channel就会在ParallelChannel析构时被删除（一次）。
 
 访问ParallelChannel时调用AddChannel是线程**不安全**的。
 
 ## CallMapper
 
-用于把对ParallelChannel的调用转化为对sub channel的调用。如果call_mapper是NULL，sub channel的请求就是ParallelChannel的请求，而response则New()自ParallelChannel的response。如果call_mapper不为NULL，则会在ParallelChannel析构时被删除。当brpc >= 1.0.105.30846时，call_mapper内含引用计数，一个call_mapper可与多个sub channel关联。
+用于把对ParallelChannel的调用转化为对sub channel的调用。如果call_mapper是NULL，sub channel的请求就是ParallelChannel的请求，而response则New()自ParallelChannel的response。如果call_mapper不为NULL，则会在ParallelChannel析构时被删除。call_mapper内含引用计数，一个call_mapper可与多个sub channel关联。
 
 ```c++
 class CallMapper {
