@@ -1,12 +1,12 @@
 # BUILD
 
-brpc prefers static linking if possible, so that deps don't have to be installed on every machine running the code.
+brpc prefers static linking of deps, so that they don't have to be installed on every machine running the app.
 
 brpc depends on following packages:
 
-* [gflags](https://github.com/gflags/gflags): Extensively used to specify global options.
-* [protobuf](https://github.com/google/protobuf): needless to say, pb is a must-have dep.
-* [leveldb](https://github.com/google/leveldb): required by [/rpcz](rpcz.md) to record RPCs for tracing.
+* [gflags](https://github.com/gflags/gflags): Extensively used to define global options.
+* [protobuf](https://github.com/google/protobuf): Serializations of messages, interfaces of services.
+* [leveldb](https://github.com/google/leveldb): Required by [/rpcz](rpcz.md) to record RPCs for tracing.
 
 ## Ubuntu/LinuxMint/WSL
 ### Prepare deps
