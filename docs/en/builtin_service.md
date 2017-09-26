@@ -1,6 +1,6 @@
 # About Builtin Services
 
-Builtin services expose internal status of servers, making development and debugging more efficient over brpc. brpc serves builting services via `HTTP`, which can be easily accessed through curl and browsers.  Servers respond *plain text* or *html* according to `User-Agent` in the request header, or you can append `?console=1` to the *uri* which forces servers to respond *plain text*. Here's an [example](http://brpc.baidu.com:8765/) running on our machine, check it out for more information about the builtin services. If the listen port is filtered(e.g. only ports in *8000-8999* can be accessed outside data centers in Baidu), you can run [rpc_view](rpc_view.md) to launch a proxy or run `curl \<SERVER-URL\>` inside data centers.
+Builtin services expose internal status of servers, making development and debugging more efficient over brpc. brpc serves builting services via `HTTP`, which can be easily accessed through curl and browsers.  Servers respond *plain text* or *html* according to `User-Agent` in the request header, or you can append `?console=1` to the *uri* which forces servers to respond *plain text*. Here's an [example](http://brpc.baidu.com:8765/) running on our machine, check it out for more information about the builtin services. If the listen port is filtered(e.g. not all ports can be accessed outside data centers in Baidu), you can run [rpc_view](rpc_view.md) to launch a proxy or run `curl \<SERVER-URL\>` inside data centers.
 
 Accessed through browsers:
 
