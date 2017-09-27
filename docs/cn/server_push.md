@@ -11,9 +11,9 @@ server push指的是server端发生某事件后立刻向client端发送消息，
 * client首先得认识server发来的消息，否则是鸡同鸭讲。
 * client还得知道怎么应对server发来的消息，如果client上没有对应的处理代码，仍然没用。
 
-换句话说，client得对server消息“有准备”，这种“准备”还往往依赖client当时的上下文。综合来看，由client告知server“我准备好了”(注册)，之后server再通知client是更普适的模式，**这个模式中的"push"就是"response"**。
+换句话说，client得对server消息“有准备”，这种“准备”还往往依赖client当时的上下文。综合来看，由client告知server“我准备好了”(注册)，之后server再通知client是更普适的模式，**这个模式中的"push"就是"response"**，一个超时很长或无限长RPC的response。
 
-在一些非常明确的场景中，注册可以被简化，如http2中的[push promise](https://tools.ietf.org/html/rfc7540#section-8.2)并不需要浏览器(client)向server注册，因为client和server都知道它们之间的任务就是让client尽快地下载必要的资源，且每个资源有唯一的URI。所以server可以直接向client推送资源及其URI，client看到这些资源时会缓存下来避免下次重复访问。类似的，一些协议提供的双向通信也是在限定的场景中提高推送效率，而不是实现通用的推送，比如多媒体流，格式固定的key/value对等。client默认能处理server所有可能推送的消息，以至于不需要额外的注册，但推送的本质仍是"response"。
+在一些非常明确的场景中，注册可以被简化，如http2中的[push promise](https://tools.ietf.org/html/rfc7540#section-8.2)并不需要浏览器(client)向server注册，因为client和server都知道它们之间的任务就是让client尽快地下载必要的资源，且每个资源有唯一的URI。所以server可以直接向client推送资源及其URI，client看到这些资源时会缓存下来避免下次重复访问。类似的，一些协议提供的双向通信也是在限定的场景中提高推送效率，而不是实现通用的推送，比如多媒体流，格式固定的key/value对等。client默认能处理server所有可能推送的消息，以至于不需要额外的注册，但推送仍可被视作"response"：client和server早已约定好的注册请求的response。
 
 # Restful回调
 
