@@ -1212,8 +1212,8 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         }
     } else if (security_mode) {
         cntl->SetFailed(EPERM, "Not allowed to access builtin services, try "
-                        "ServerOptions.internal_port=%d instead if you're inside"
-                        " Baidu's network", server->options().internal_port);
+                        "ServerOptions.internal_port=%d instead if you're in"
+                        " internal network", server->options().internal_port);
         cntl->http_response().set_status_code(HTTP_STATUS_FORBIDDEN);
         return SendHttpResponse(cntl.release(), server, method_status);
     }

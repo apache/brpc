@@ -241,7 +241,7 @@ struct ServerOptions {
     // Provide builtin services at this port rather than the port to Start().
     // When your server needs to be accessed from public (including traffic
     // redirected by nginx or other http front-end servers), set this port
-    // to a port number that's ONLY accessible from Baidu's internal network
+    // to a port number that's ONLY accessible from internal network
     // so that you can check out the builtin services from this port while
     // hiding them from public. Setting this option also enables security
     // protection code which we may add constantly.
