@@ -1,3 +1,5 @@
+[English version](../en/server.md)
+
 # 示例程序
 
 Echo的[server端代码](https://github.com/brpc/brpc/blob/master/example/echo_c++/server.cpp)。
@@ -176,13 +178,15 @@ Service和Channel都可以使用done来表达后续的操作，但它们是**完
 
 默认构造后的Server不包含任何服务，也不会对外提供服务，仅仅是一个对象。
 
-通过AddService插入你的Service实例。
+通过如下方法插入你的Service实例。
 
 ```c++
 int AddService(google::protobuf::Service* service, ServiceOwnership ownership);
 ```
 
-若ownership参数为SERVER_OWNS_SERVICE，Server在析构时会一并删除Service，否则应设为SERVER_DOESNT_OWN_SERVICE。插入MyEchoService代码如下：
+若ownership参数为SERVER_OWNS_SERVICE，Server在析构时会一并删除Service，否则应设为SERVER_DOESNT_OWN_SERVICE。
+
+插入MyEchoService代码如下：
 
 ```c++
 brpc::Server server;
@@ -283,7 +287,7 @@ server.AddService(service, svc_opt);
 
 # 协议支持
 
-server端会自动尝试其支持的协议，无需用户指定。`cntl->protocol()`可获得当前协议。server能从一个listen端口建立不同协议的连接，不需要为不同的协议使用不同的listen端口，一个连接上也可以传输多种协议的数据包（但一般不会这么做），支持的协议有：
+server端会自动尝试其支持的协议，无需用户指定。`cntl->protocol()`可获得当前协议。server能从一个listen端口建立不同协议的连接，不需要为不同的协议使用不同的listen端口，一个连接上也可以传输多种协议的数据包, 但一般不会这么做(也不建议)，支持的协议有：
 
 - [百度标准协议](baidu_std.md)，显示为"baidu_std"，默认启用。
 
@@ -469,7 +473,7 @@ Channel没有相应的选项，但可以通过选项-bthread_concurrency调整�
 
 在传统的同步server中，最大并发不会超过工作线程数，设定工作线程数量一般也限制了并发。但brpc的请求运行于bthread中，M个bthread会映射至N个worker中（一般M大于N），所以同步server的并发度可能超过worker数量。另一方面，虽然异步server的并发不受线程数控制，但有时也需要根据其他因素控制并发量。
 
-brpc支持设置server级和method级的最大并发，当server或method同时处理的请求数超过并发度限制时，它会立刻给client回复ELIMIT错误，而不会调用服务回调。看到ELIMIT错误的client应重试另一个server。这个选项可以防止server出现过度排队，或用于限制server占用的资源。
+brpc支持设置server级和method级的最大并发，当server或method同时处理的请求数超过并发度限制时，它会立刻给client回复**brpc::ELIMIT**错误，而不会调用服务回调。看到ELIMIT错误的client应重试另一个server。这个选项可以防止server出现过度排队，或用于限制server占用的资源。
 
 默认不开启。
 

@@ -1,3 +1,5 @@
+[中文版](../cn/server.md)
+
 # Example
 
 [server-side code](https://github.com/brpc/brpc/blob/master/example/echo_c++/server.cpp) of Echo.
@@ -82,14 +84,14 @@ brpc::ClosureGuard done_guard(done);
 
 Not matter the callback is exited from middle or end, done_guard will be destructed, in which done->Run() is called. The mechanism is called [RAII](https://en.wikipedia.org/wiki/Resource_Acquisition_Is_Initialization). Without done_guard, you have to remember to add done->Run() before each `return`, **which is very error-prone**.
 
-In asynchronous service, processing of the request is not completed when CallMethod() returns and done->Run() should not be called, instead it should be preserved for later usage. At first glance, we don't need ClosureGuard here. However in real applications, a synchronous service possibly fails in the middle and exits CallMethod() due to a lot of reasons. Without ClosureGuard, some error branches may forget to call done->Run() before return. Thus we still recommended using done_guard in asynchronous services. Different from synchronous service, to prevent done->Run() from being called at successful returns, you should call done_guard.release() to release the enclosed done.
+In asynchronous service, request is not processed completely when CallMethod() returns, thus done->Run() should not be called, instead it should be preserved somewhere and called later. At first glance, we don't need ClosureGuard here. However in real applications, asynchronous service may fail in the middle and exit CallMethod() as well. Without ClosureGuard, error branches may forget to call done->Run() before `return`. Thus done_guard is still recommended in asynchronous services. Different from synchronous services, to prevent done->Run() from being called at successful return of CallMethod, you should call done_guard.release() to remove done from the object.
 
-How synchronous service and asynchronous service handles done generally:
+How synchronous and asynchronous services handle done generally:
 
 ```c++
 class MyFooService: public FooService  {
 public:
-    // Synchronous service
+    // Synchronous
     void SyncFoo(::google::protobuf::RpcController* cntl_base,
                  const ::example::EchoRequest* request,
                  ::example::EchoResponse* response,
@@ -98,7 +100,7 @@ public:
          ...
     }
  
-    // Aynchronous service
+    // Aynchronous
     void AsyncFoo(::google::protobuf::RpcController* cntl_base,
                   const ::example::EchoRequest* request,
                   ::example::EchoResponse* response,
@@ -133,15 +135,15 @@ public:
 
 ## Set RPC to be failed
 
-Calling Controller.SetFailed() sets the RPC to be failed, if error occurs during sending response, brpc calls the method as well. Users generally calls the method in service's CallMethod(), For example if a processing stage fails, user may call SetFailed() and make sure done->Run() is called, then quit CallMethod (If ClosureGuard is used, done->Run() has no need to be called manually). The code inside server-side done sends response back to client. If SetFailed() was called, error information is sent to client. When client receives the response, its controller will be Failed() (false on success), Controller::ErrorCode() and Controller::ErrorText() are error code and error information respectively.
+Call Controller.SetFailed() to set the RPC to be failed. If error occurs during sending response, framework calls the method as well. Users often call the method in services' CallMethod(), For example if a stage of processing fails, user calls SetFailed() and call done->Run(), then quit CallMethod (If ClosureGuard is used, done->Run() is called automatically). The server-side done is created by framework and contains code sending response back to client. If SetFailed() is called, error information is sent to client instead of normal content. When client receives the response, its controller will be SetFailed() as well and Controller::Failed() will be true. In addition, Controller::ErrorCode() and Controller::ErrorText() are error code and error information respectively.
 
-User may set [status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html) for http calls, which is `controller.http_response().set_status_code()` at server-side. Standard status-code are defined in [http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h). If SetFailed() is called but status-code is unset, brpc chooses status-code closest to the error-code automatically. brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR(500) is set at worst.
+User may set [status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html) for http calls by calling `controller.http_response().set_status_code()` at server-side. Standard status-code are defined in [http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h). If SetFailed() is called but status-code is not set, brpc chooses status-code with closest semantics to the error-code. brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR(500) is chosen at worst.
 
 ## Get address of client
 
-controller->remote_side() gets address of the client sending the request. The returning type is butil::EndPoint.If client is nginx, remote_side() is address of nginx. To get address of the "real" client before nginx, set `proxy_header ClientIp $remote_addr;` in nginx and call `controller->http_request().GetHeader("ClientIp")` inside RPC to get the address.
+controller->remote_side() gets address of the client which sent the request. The return type is butil::EndPoint. If client is nginx, remote_side() is address of nginx. To get address of the "real" client before nginx, set `proxy_header ClientIp $remote_addr;` in nginx and call `controller->http_request().GetHeader("ClientIp")` in RPC to get the address.
 
-How to print:
+Printing method:
 
 ```c++
 LOG(INFO) << "remote_side=" << cntl->remote_side();
@@ -150,9 +152,9 @@ printf("remote_side=%s\n", butil::endpoint2str(cntl->remote_side()).c_str());
 
 ## Get address of server
 
-controller->local_side() gets server-side address of the RPC connection, returning type is butil::EndPoint.
+controller->local_side() gets server-side address of the RPC connection, return type is butil::EndPoint.
 
-How to print:
+Printing method:
 
 ```c++
 LOG(INFO) << "local_side=" << cntl->local_side();
@@ -161,30 +163,32 @@ printf("local_side=%s\n", butil::endpoint2str(cntl->local_side()).c_str());
 
 ## Asynchronous Service
 
-In which done->Run() is called after service's CallMethod().
+In which done->Run() is called after leaving service's CallMethod().
 
-Some server mainly proxes requests to backend servers and waits for the responses for a long time. To make better use of threads, storing done in corresponding event handlers which are triggered to run done->Run() after CallMethod(). This kind of service is **asynchronous**.
+Some server proxies requests to back-end servers and waits for responses that may come back after a long time. To make better use of threads, save done in corresponding event handlers which are triggered after CallMethod() and call done->Run() inside. This kind of service is **asynchronous**.
 
-Last line of asynchronous service is `done_guard.release()` generally to prevent done->Run() from being called at successful quit of CallMethod(). Check out [example/session_data_and_thread_local](https://github.com/brpc/brpc/tree/master/example/session_data_and_thread_local/) for a example.
+Last line of asynchronous service is often `done_guard.release()` to prevent done->Run() from being called at successful exit from CallMethod(). Check out [example/session_data_and_thread_local](https://github.com/brpc/brpc/tree/master/example/session_data_and_thread_local/) for a example.
 
-Service and Channel both use done to represent the continuation code after CallMethod, but they're **totally different**:
+Server-side and client-side both use done to represent the continuation code after leaving CallMethod, but they're **totally different**:
 
-* done of Service is created by brpc, called by user after processing of the request to send back response to client.
-* done of Channel is created by user, called by brpc to run post-processing code written by user after completion of RPC.
+* server-side done is created by framework, called by user after processing of the request to send back response to client.
+* client-side done is created by user, called by framework to run post-processing code written by user after completion of RPC.
 
-In an asynchronous service which may access other services, user may manipulate both done in one session, be careful.
+In an asynchronous service that may access other services, user probably manipulates both kinds of done, be careful.
 
 # Add Service
 
-A defaultly-constructed Server neither contains any service nor serves requests, just an object.
+A just default-constructed Server neither contains service nor serves requests, merely an object.
 
-Add a service with AddService().
+Add a service with following method:
 
 ```c++
 int AddService(google::protobuf::Service* service, ServiceOwnership ownership);
 ```
 
-If ownership is SERVER_OWNS_SERVICE, Server deletes the service at destruction. To prevent the deletion, set ownership to SERVER_DOESNT_OWN_SERVICE. The code to add MyEchoService:
+If `ownership` is SERVER_OWNS_SERVICE, server deletes the service at destruction. To prevent the deletion, set `ownership` to SERVER_DOESNT_OWN_SERVICE. 
+
+Following code adds MyEchoService:
 
 ```c++
 brpc::Server server;
@@ -195,7 +199,7 @@ if (server.AddService(&my_echo_service, brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
 }
 ```
 
-You cannot add or remove services when the server is started.
+You cannot add or remove services after the server is started.
 
 # Start server
 
@@ -221,7 +225,7 @@ server.Start(..., &options);
 
 ## Listen to multiple ports
 
-One server can only listens to one port(not counting ServerOptions.internal_port), you have to start N servers to listen to N ports.
+One server can only listen to one port (not counting ServerOptions.internal_port). To listen to N ports, start N servers .
 
 # Stop server
 
@@ -230,13 +234,13 @@ server.Stop(closewait_ms); // closewait_ms is useless actually, not deleted due 
 server.Join();
 ```
 
-Stop() does not block while Join() does. The reason for dividing them into two methods is: When multiple servers quit, users can Stop() all servers first and then Join() them together, otherwise servers can only be Stop()+Join() one-by-one and the total waiting time may add up to #server times at worst.
+Stop() does not block but Join() does. The reason for dividing them into two methods is: When multiple servers quit, users may Stop() all servers first, then Join() them together. Otherwise servers can only be Stop()+Join() one-by-one and the total waiting time may add up to number-of-servers times at worst.
 
-Regardless of the value of closewait_ms, server waits for all requests being processed when exiting, and  returns ELOGOFF errors to new requests immediately to prevent them from entering the service. The reason for this design is that as long as the server is still processing requests, there's risk of accessing released memory. If a Join() to your server "stucks", some thread is likely to hang on the request or done->Run() is not called.
+Regardless of the value of closewait_ms, server waits for all requests being processed before exiting and returns ELOGOFF errors to new requests immediately to prevent them from entering the service. The reason for the wait is that as long as the server is still processing requests, risk of accessing invalid(released) memory exists. If a Join() to a server "stucks", some thread must be blocked on a request or done->Run() is not called.
 
-When a client sees ELOGOFF, it skips the corresponding server and retry the request on another server. As a result, brpc server always "elegantly" exits, restarting the server does not lose traffic.
+When a client sees ELOGOFF, it skips the corresponding server and retry the request on another server. As a result, restarting a cluster with brpc clients/servers gradually should not lose traffic by default.
 
-RunUntilAskedToQuit() simplifies code on running and stopping the server in most cases. Following code runs the server until Ctrl-C is pressed.
+RunUntilAskedToQuit() simplifies the code to run and stop servers in most cases. Following code runs the server until Ctrl-C is pressed.
 
 ```c++
 // Wait until Ctrl-C is pressed, then Stop() and Join() the server.
@@ -245,11 +249,11 @@ server.RunUntilAskedToQuit();
 // server is stopped, write the code for releasing resources.
 ```
 
-Services can be added or removed after Join() and server can be Start() again.
+Services can be added or removed after Join() returns and server can be Start() again.
 
 # Accessed by HTTP client
 
-Services using protobuf can be accessed via http+json generally. The json string stored in http body is convertible to/from corresponding protobuf message. Take [echo server](https://github.com/brpc/brpc/blob/master/example/echo_c%2B%2B/server.cpp) as an example, it's accessible from [curl](https://curl.haxx.se/).
+Services using protobuf can be accessed via http+json generally. The json string stored in http body is convertible to/from corresponding protobuf message. [echo server](https://github.com/brpc/brpc/blob/master/example/echo_c%2B%2B/server.cpp) as an example, is accessible from [curl](https://curl.haxx.se/).
 
 ```shell
 # -H 'Content-Type: application/json' is optional
@@ -257,19 +261,19 @@ $ curl -d '{"message":"hello"}' http://brpc.baidu.com:8765/EchoService/Echo
 {"message":"hello"}
 ```
 
-Note: Set `Content-Type: application/proto`  to access services with http + protobuf-serialized-data, performing better at serialization.
+Note: Set `Content-Type: application/proto`  to access services with http + protobuf-serialized-data, which performs better at serialization.
 
 ## json<=>pb
 
 Json fields correspond to pb fields by matched names and message structures. The json must contain required fields in pb, otherwise conversion will fail and corresponding request will be rejected. The json may include undefined fields in pb, but they will be dropped rather than being stored in pb as unknown fields. Check out [json <=> protobuf](json2pb.md) for conversion rules.
 
-When -pb_enum_as_number is turned on, enums in pb are converted to values instead of names. For example in `enum MyEnum { Foo = 1; Bar = 2; };`, fields typed `MyEnum` are converted to "Foo" or "Bar" when the flag is off, 1 or 2 otherwise. This flag affects requests sent by client and responses returned by server both. Since conversion-to-name has better forward and backward compatibilities, this flag should only be turned on to adapt legacy code that are unable to parse enums from names.
+When -pb_enum_as_number is turned on, enums in pb are converted to values instead of names. For example in `enum MyEnum { Foo = 1; Bar = 2; };`, fields typed `MyEnum` are converted to "Foo" or "Bar" when the flag is off, 1 or 2 otherwise. This flag affects requests sent by clients and responses returned by servers both. Since "enum as name" has better forward and backward compatibilities, this flag should only be turned on to adapt legacy code that are unable to parse enumerations from names.
 
 ## Adapt old clients
 
-Early-version brpc allows pb service being accessed via http without setting the pb request, even if the request has required fields. This kind of service often parses http request and sets http response by its own, and does not touch the pb request. However this behavior is still very dangerous: a service with an undefined request. 
+Early-version brpc allows pb service being accessed via http without setting the pb request, even if there're required fields in. This kind of service often parses http requests and sets http responses by itself, and does not touch the pb request. However this behavior is still very dangerous: a service with an undefined request. 
 
-These services may meet issues after upgrading to latest brpc, which already deprecated the behavior for a long time. To help these services to upgrade, brpc allows bypassing the conversion from http body to pb request with some settings (so that users can parse http requests differently), the setting is as follows:
+This kind of services may meet issues after upgrading to latest brpc, which already deprecated the behavior for a long time. To help these services to upgrade, brpc allows bypassing the conversion from http body to pb request (so that users can parse http requests differently), the setting is as follows:
 
 ```c++
 brpc::ServiceOptions svc_opt;
@@ -281,11 +285,11 @@ server.AddService(service, svc_opt);
 
 After the setting, service does not convert http body to pb request after receiving http request, which also makes the pb request undefined. Users have to parse the http body by themselves when `cntl->request_protocol() == brpc::PROTOCOL_HTTP` is true which indicates the request is from http.
 
-As a correspondence, if cntl->response_attachment() is not empty and pb response is set as well, brpc does not report error anymore, instead cntl->response_attachment() will be used as body of the http response. This behavior does not relate to setting allow_http_body_to_pb or not. If the relaxation results in more users' errors, we may restrict it in future.
+As a correspondence, if cntl->response_attachment() is not empty and pb response is set as well, brpc does not report the ambiguous anymore, instead cntl->response_attachment() will be used as body of the http response. This behavior is unaffected by setting allow_http_body_to_pb or not. If the relaxation results in more users' errors, we may restrict it in future.
 
 # Protocols
 
-Server detects supported protocols automatically, without assignment from users. `cntl->protocol()` gets the protocol being used. Server is able to accept connections with different protocols from one port, users don't need to assign different ports for different protocols. Even one connection may transport messages in multiple protocols, although we rarely do this. Supported protocols:
+Server detects supported protocols automatically, without assignment from users. `cntl->protocol()` gets the protocol being used. Server is able to accept connections with different protocols from one port, users don't need to assign different ports for different protocols. Even one connection may transport messages in multiple protocols, although we rarely do this (and not recommend). Supported protocols:
 
 - [The standard protocol used in Baidu](baidu_std.md), shown as "baidu_std", enabled by default.
 
@@ -339,11 +343,11 @@ If you need more protocols, contact us.
 
 ## Version
 
-Server.set_version(…) sets name+version for the server, accessible from builtin service /version. Although it's called "version", the string set is recommended to include the service name rather than just a numeric version.
+Server.set_version(…) sets name+version for the server, accessible from the builtin service `/version`. Although it's called "version", the string set is recommended to include the service name rather than just a numeric version.
 
 ## Close idle connections
 
-If a connection does not read or write within the seconds specified by ServerOptions.idle_timeout_sec, it's treated as "idle" and will be closed by server. Default value is -1 which disables the feature.
+If a connection does not read or write within the seconds specified by ServerOptions.idle_timeout_sec, it's treated as "idle" and will be closed by server soon. Default value is -1 which disables the feature.
 
 If [-log_idle_connection_close](http://brpc.baidu.com:8765/flags/log_idle_connection_close) is turned on, a log will be printed before closing. 
 
@@ -359,31 +363,31 @@ If this field is non-empty, Server creates a file named so at start-up, with pid
 
 This feature only affects logging macros in [butil/logging.h](https://github.com/brpc/brpc/blob/master/src/butil/logging.h). 
 
-If [-log_hostname](http://brpc.baidu.com:8765/flags/log_hostname) is turned on, each line of log contains hostname so that users know machines where each lines are generated from aggregated logs.
+If [-log_hostname](http://brpc.baidu.com:8765/flags/log_hostname) is turned on, each line of log contains the hostname so that users know machines at where each line is generated from aggregated logs.
 
 ## Crash after printing FATAL log
 
 This feature only affects logging macros in [butil/logging.h](https://github.com/brpc/brpc/blob/master/src/butil/logging.h), glog crashes for FATAL log by default.
 
-If [-crash_on_fatal_log](http://brpc.baidu.com:8765/flags/crash_on_fatal_log) is turned on, program crashes after printing LOG(FATAL) or failing assertions by CHECK(), and generates coredump(with proper environmental settings). Default value is false. This flag can be turned on in testings to make sure the program never meet critical errors.
+If [-crash_on_fatal_log](http://brpc.baidu.com:8765/flags/crash_on_fatal_log) is turned on, program crashes after printing LOG(FATAL) or failed assertions by CHECK*(), and generates coredump (with proper environmental settings). Default value is false. This flag can be turned on in tests to make sure the program never hit critical errors.
 
 > A common convention: use ERROR for tolerable errors, FATAL for unacceptable and permanent errors.
 
 ## Minimum log level
 
-This feature is implemented by [butil/logging.h](https://github.com/brpc/brpc/blob/master/src/butil/logging.h) and glog separately, as a same-named flag.
+This feature is implemented by [butil/logging.h](https://github.com/brpc/brpc/blob/master/src/butil/logging.h) and glog separately, as a same-named gflag.
 
-Only logs **not less than** the log level specified by -minloglevel are printed. This flag can be modified at run-time. Correspondence between values and log levels: 0=INFO 1=NOTICE 2=WARNING 3=ERROR 4=FATAL, default value is 0.
+Only logs with levels **not less than** the level specified by -minloglevel are printed. This flag can be modified at run-time. Correspondence between values and log levels: 0=INFO 1=NOTICE 2=WARNING 3=ERROR 4=FATAL, default value is 0.
 
-Overhead of unprinted logs is just a "if" test and parameters are not evaluated (namely a parameter calls a function, if the log is not printed, the function is not called). Logs printed to LogSink may be filtered by the sink as well.
+Overhead of unprinted logs is just a "if" test and parameters are not evaluated (For example a parameter calls a function, if the log is not printed, the function is not called). Logs printed to LogSink may be filtered by the sink as well.
 
 ## Log error to clients
 
-The framework part of server does not print logs for specific client generally, because a lot of errors caused by clients may slow down server significantly due to frequent printing of logs. If you need to debug or just want the server to log all errors, turn on [-log_error_text](http://brpc.baidu.com:8765/flags/log_error_text).
+Framework does not print logs for specific client generally, because a lot of errors caused by clients may slow down server significantly due to frequent printing of logs. If you need to debug or just want the server to log all errors, turn on [-log_error_text](http://brpc.baidu.com:8765/flags/log_error_text).
 
 ## Limit sizes of messages
 
-To protect server and client, when a request received by server or a response received by client is too large, server or client rejects the message and closes the connection. The limit is controlled by [-max_body_size](http://brpc.baidu.com:8765/flags/max_body_size), in bytes.
+To protect servers and clients, when a request received by a server or a response received by a client is too large, the server or client rejects the message and closes the connection. The limit is controlled by [-max_body_size](http://brpc.baidu.com:8765/flags/max_body_size), in bytes.
 
 An error log is printed when a message is too large and rejected:
 
@@ -401,9 +405,9 @@ brpc removes the restriction from protobuf and controls the limit by -max_body_s
 
 ## Compression
 
-set_response_compress_type() sets compression method for response, no compression by default.
+`set_response_compress_type()` sets compression method for the response, no compression by default.
 
-Attachment is not compressed. Check out [here](http_service.md#compress-response-body) for compression of HTTP body.
+Attachment is not compressed. Check [here](http_service.md#compress-response-body) for compression of HTTP body.
 
 Supported compressions:
 
@@ -415,7 +419,7 @@ Read [Client-Compression](client.md#compression) for more comparisons.
 
 ## Attachment
 
-baidu_std and hulu_pbrpc supports attachments which are sent along with messages and set by users to bypass serialization of protobuf. From a server's perspective, data set in Controller.response_attachment() will be received by client while Controller.request_attachment() contains attachment sent from client.
+baidu_std and hulu_pbrpc supports attachments which are sent along with messages and set by users to bypass serialization of protobuf. From a server's perspective, data set in Controller.response_attachment() will be received by the client while Controller.request_attachment() contains attachment sent from the client.
 
 Attachment is not compressed by framework.
 
@@ -423,7 +427,7 @@ In http, attachment corresponds to [message body](http://www.w3.org/Protocols/rf
 
 ## Verify identities of clients
 
-Server-side needs to implement `Authenticator` to enable verifications:
+The server needs to implement `Authenticator` to enable verifications:
 
 ```c++
 class Authenticator {
@@ -447,19 +451,19 @@ public:
 };
 ```
 
-The authentication is connection-specific. When server receives the first request from a connection, it tries to parse related information inside (such as auth field in baidu_std, Authorization header in HTTP), and call `VerifyCredential` along with address of the client. If the method returns 0, which indicates success, user can put verified information into `AuthContext` and access it via `controller->auth_context()` laterly, whose lifetime is managed by framework. Otherwise the authentication is failed and the connection will be closed, which makes the client-side fail as well.
+The authentication is connection-specific. When server receives the first request from a connection, it tries to parse related information inside (such as auth field in baidu_std, Authorization header in HTTP), and call `VerifyCredential` along with address of the client. If the method returns 0, which indicates success, user can put verified information into `AuthContext` and access it via `controller->auth_context()` later, whose lifetime is managed by framework. Otherwise the authentication is failed and the connection will be closed, which makes the client-side fail as well.
 
-Subsequent requests are treated as verified without authenticating overhead.
+Subsequent requests are treated as already verified without authenticating overhead.
 
 Assigning an instance of implemented `Authenticator` to `ServerOptions.auth` enables authentication. The instance must be valid during lifetime of the server.
 
 ## Number of worker pthreads
 
-ServerOptions.num_threads controls the value, number of cpu cores by default(including HT).
+Controlled by `ServerOptions.num_threads` , number of cpu cores by default(including HT).
 
 NOTE: ServerOptions.num_threads is just a **hint**.
 
-Don't think that Server uses exactly so many workers because all servers and channels in the process share worker pthreads. Total number of threads is the maximum of all ServerOptions.num_threads and bthread_concurrency.  For example, a program has 2 servers with num_threads=24 and 36 respectively, and bthread_concurrency is 16. Then the number of worker pthreads is max (24, 36, 16) = 36, which is different from other RPC implementations which do summations generally.
+Don't think that Server uses exactly so many workers because all servers and channels in one process share worker pthreads. Total number of threads is the maximum of all ServerOptions.num_threads and bthread_concurrency.  For example, a program has 2 servers with num_threads=24 and 36 respectively, and bthread_concurrency is 16. Then the number of worker pthreads is max (24, 36, 16) = 36, which is different from other RPC implementations which do summations generally.
 
 Channel does not have a corresponding option, but user can change number of worker pthreads at client-side by setting gflag -bthread_concurrency.
 
@@ -471,31 +475,31 @@ In addition, brpc **does not separate "IO" and "processing" threads**. brpc know
 
 In traditional synchronous servers, max concurreny is limited by number of worker pthreads. Setting number of workers also limits concurrency. But brpc processes new requests in bthreads and M bthreads are mapped to N workers (M > N generally), synchronous server may have a concurrency higher than number of workers. On the other hand, although concurrency of asynchronous server is not limited by number of workers in principle, we need to limit it by other factors sometimes.
 
-brpc can limit concurrency at server-level and method-level. When number of requests processed by the server or method simultaneously would exceed the limit,  server responds the client with ELIMIT directly instead of invoking the service. A client seeing ELIMIT should retry another server (by best efforts). This options avoids over-queuing of requests at server-side, or limits related resources.
+brpc can limit concurrency at server-level and method-level. When number of requests processed by the server or method simultaneously would exceed the limit,  server responds the client with **brpc::ELIMIT** directly instead of invoking the service. A client seeing ELIMIT should retry another server (by best efforts). This options avoids over-queuing of requests at server-side and limits related resources.
 
 Disabled by default.
 
-### Why issue error to client instead of queuing request when the concurrency would exceed the limit?
+### Why issue error to the client instead of queuing the request when the concurrency hits limit?
 
-A server reaching max concurrency does not mean other servers in the same cluster reach the limit as well. Let client be aware of the error and try another server is a better strategy from a cluster perspective.
+A server reaching max concurrency does not mean that other servers in the same cluster reach the limit as well. Let client be aware of the error ASAP and try another server is a better strategy from a cluster view.
 
 ### Why not limit QPS?
 
-QPS is a second-level metric, which is not good at limiting request bursts. Max concurrency is closely related to available critical resources: number of "workers" or "slots" etc, thus better at preventing over-queuing.
+QPS is a second-level metric, which is not good at limiting sudden request bursts. Max concurrency is closely related to availability of critical resources: number of "workers" or "slots" etc, thus better at preventing over-queuing.
 
-In addition, when server is stable at latencies, limiting concurrency has similar effect as limiting QPS due to little's law. But the former one is much easier to implement: simple additions or minuses from a counter representing the concurrency. This is also the reason than most traffic control is implemented by limiting concurrency rather than QPS. For example the window in TCP is a kind of concurrency.
+In addition, when a server has stable latencies, limiting concurrency has similar effect as limiting QPS due to little's law. But the former one is much easier to implement: simple additions and minuses from a counter representing the concurrency. This is also the reason than most flow control is implemented by limiting concurrency rather than QPS. For example the window in TCP is a kind of concurrency.
 
 ### Calculate max concurrency
 
 MaxConcurrency = PeakQPS * AverageLatency  ([little's law](https://en.wikipedia.org/wiki/Little%27s_law))
 
-PeakQPS and AverageLatency are queries-per-second and latencies measured in a server being pushed to its limit provided that requests are not delayed severely (with an acceptable latency). Most services have performance tests before going online, multiplications of the two is just max concurrencies of the services.
+PeakQPS and AverageLatency are queries-per-second and latencies measured in a server being pushed to its limit provided that requests are not delayed severely (with an acceptable latency). Most services have performance tests before going online, multiplications of the two metrics calculates max concurrency of the service.
 
 ### Limit server-level concurrency
 
-Set ServerOptions.max_concurrency. Default value is 0 which means not limited. Accessing builtin services are not limited by this option.
+Set ServerOptions.max_concurrency. Default value is 0 which means not limited. Accesses to builtin services are not limited by this option.
 
-Server.ResetMaxConcurrency() is able to modify max_concurrency of the server after starting.
+Call Server.ResetMaxConcurrency() to modify max_concurrency of the server after starting.
 
 ### Limit method-level concurrency
 
@@ -507,45 +511,45 @@ server.MaxConcurrencyOf("example.EchoService", "Echo") = 10;
 server.MaxConcurrencyOf(&service, "Echo") = 10;
 ```
 
-The code is generally **after AddService, before Start() of the server**. When a setting fails(namely the method does not exist), server will fail to start and notify user to fix settings to MaxConcurrencyOf.
+The code is generally put **after AddService, before Start() of the server**. When a setting fails(namely the method does not exist), server will fail to start and notify user to fix settings on MaxConcurrencyOf.
 
-When method-level and server-level max_concurrency are both set, check server-level first, then the method-level one.
+When method-level and server-level max_concurrency are both set, framework checks server-level first, then the method-level one.
 
 NOTE: No service-level max_concurrency.
 
 ## pthread mode
 
-User code(client-side done, server-side CallMethod) runs in bthreads with 1MB stacks by default. But some of them cannot run in bthread, namely:
+User code(client-side done, server-side CallMethod) runs in bthreads with 1MB stacksize by default. But some of them cannot run in bthreads, namely:
 
-- JNI checks stack layout and cannot be run in bthread.
-- Extensively used pthread-local to pass session-level global data to functions. Storing data into pthread-local before a RPC and expecting the data read after RPC to equal to the one stored, is problematic. Although tcmalloc uses pthread/LWP-local as well, calls to malloc do not depend on each other, which is safe.
+- JNI checks stack layout and cannot be run in bthreads.
+- Extensively use pthread-local to pass session-level data to all sorts of functions. Store data into pthread-local before a RPC and expect the data read after RPC to equal to the one stored. These usages are problematic in bthreads which may switch to another pthread after resuming. As a contrast, although tcmalloc uses pthread/LWP-local as well, calls to malloc do not depend on each other, which is safe.
 
-brpc offers pthread mode to solve the issues. When **-usercode_in_pthread** is turned on, user code will be run in pthreads. Functions that would block bthreads will block pthreads.
+brpc offers pthread mode to solve the issues. When **-usercode_in_pthread** is turned on, user code will be run in pthreads. Functions that would block bthreads block pthreads.
 
 Performance issues when pthread mode is on:
 
-- Synchronous RPCs block worker pthreads, server often needs more workers (ServerOptions.num_threads), and scheduling efficiency will be slightly lower.
-- User code still runs in special bthreads, which use stacks of pthread workers. These special bthreads are scheduled same with normal bthreads and performance differences are negligible.
-- bthread supports an unique feature: yield pthread worker to a newly created bthread to reduce a context switch. brpc client uses this feature to reduce number of context switches in one RPC from 3 to 2. In a performance-demanding system, reducing context-switches significantly improves performance and distributions of latencies. However pthread-mode is not capable of doing this and slower in high-QPS systems.
-- Number of threads in pthread-mode is a hard limit. Once all threads are occupied, many requests will be queued rapidly and timed-out finally. A common example: When many requests to downstream servers are timedout, the upstream services may also be severely affected by a lot of blocking threads waiting for responses. Consider setting ServerOptions.max_concurrency to protect the server when pthread-mode is on. As a contrast, number of bthreads in bthread mode is a soft limit and reacts more smoothly to such kind of issues.
+- Since synchronous RPCs block worker pthreads, server often needs more workers (ServerOptions.num_threads), and scheduling efficiencies will be slightly lower.
+- User code still runs in special bthreads actually, which use stacks of pthread workers. These special bthreads are scheduled same with normal bthreads and performance differences are negligible.
+- bthread supports an unique feature: yield pthread worker to a newly created bthread to reduce a context switch. brpc client uses this feature to reduce number of context switches in one RPC from 3 to 2. In a performance-demanding system, reducing context-switches significantly improves performance and latency long-tails. However pthread-mode is not capable of doing this and slower in high-QPS systems.
+- Number of threads in pthread-mode is a hard limit. Once all threads are occupied, requests will be queued rapidly and many of them will be timed-out finally. A common example: When many requests to downstream servers are timedout, the upstream services may also be severely affected by a lot of blocking threads waiting for responses(within timeout). Consider setting ServerOptions.max_concurrency to protect the server when pthread-mode is on. As a contrast, number of bthreads in bthread mode is a soft limit and reacts more smoothly to such kind of issues.
 
 pthread-mode lets legacy code to try brpc more easily, but we still recommend refactoring the code with bthread-local or even not using TLS gradually, to turn off the option in future.
 
-## Safe mode
+## Security mode
 
-If requests are from public(including being proxyed by nginx etc), you have to be aware of some security issues.
+If requests are from public(including being proxied by nginx etc), you have to be aware of some security issues.
 
 ### Hide builtin services from public
 
 Builtin services are useful, on the other hand include a lot of internal information and shouldn't be exposed to public. There're multiple methods to hide builtin services from public:
 
-- Set internal port. Set ServerOptions.internal_port to a port which can **only be accessible from internal**. You can view builtin services via internal_port, while accesses from port to public(the one passed to Server.Start) should see following error:
+- Set internal port. Set ServerOptions.internal_port to a port which can **only be accessible from internal**. You can view builtin services via internal_port, while accesses from the public port (the one passed to Server.Start) should see following error:
 
   ```
   [a27eda84bcdeef529a76f22872b78305] Not allowed to access builtin services, try ServerOptions.internal_port=... instead if you're inside internal network
   ```
 
-- http proxies only proxy specified URLs. nginx etc is able to configure how to map different URLs. For example the configure below maps public traffic to /MyAPI to `/ServiceName/MethodName` of `target-server`. If builtin services like /status are accessed from public, nginx rejects the attempts directly.
+- http proxies only proxy specified URLs. nginx etc is able to configure how to map different URLs to back-end servers. For example the configure below maps public traffic to /MyAPI to `/ServiceName/MethodName` of `target-server`. If builtin services like /status are accessed from public, nginx rejects the attempts directly.
 ```nginx
   location /MyAPI {
       ...
@@ -564,15 +568,15 @@ brpc::WebEscape() escapes url to prevent injection attacks with malice.
 
 ### Not return addresses of internal servers
 
-Consider returning signatures of the addresses. For example after setting ServerOptions.internal_port, error information returned by server replaces addresses with their MD5 signatures.
+Consider returning signatures of the addresses. For example after setting ServerOptions.internal_port, addresses in error information returned by server is replaced by their MD5 signatures.
 
 ## Customize /health
 
-/health returns "OK" by default. If the content on /health needs to be customized: inherit [HealthReporter](https://github.com/brpc/brpc/blob/master/src/brpc/health_reporter.h) and implement code to generate the page(as in implementing other http services). Assign an instance to ServerOptions.health_reporter, which is not owned by server and must be valid during lifetime of server. Users may return richer information on status according to application requirements.
+/health returns "OK" by default. If the content on /health needs to be customized: inherit [HealthReporter](https://github.com/brpc/brpc/blob/master/src/brpc/health_reporter.h) and implement code to generate the page (like implementing other http services). Assign an instance to ServerOptions.health_reporter, which is not owned by server and must be valid during lifetime of the server. Users may return richer healthy information according to application requirements.
 
 ## thread-local variables
 
-Searching services inside Baidu use [thread-local storage](https://en.wikipedia.org/wiki/Thread-local_storage) (TLS) extensively. Some of them cache frequently used objects and reduce repeated creations, some of them pass contexts to global functions implicitly. You should avoid the latter usage as much as possible. Such functions cannot even run without TLS, being hard to test. brpc provides 3 mechanisms to solve issues related to thread-local storage.
+Searching services inside Baidu use [thread-local storage](https://en.wikipedia.org/wiki/Thread-local_storage) (TLS) extensively. Some of them cache frequently used objects to reduce repeated creations, some of them pass contexts to global functions implicitly. You should avoid the latter usage as much as possible. Such functions cannot even run without TLS, being hard to test. brpc provides 3 mechanisms to solve issues related to thread-local storage.
 
 ### session-local
 
@@ -657,13 +661,13 @@ int main(int argc, char* argv[]) {
 
 ### server-thread-local
 
-A server-thread-local is bound to **a call to service's CallMethod**, from entering service's CallMethod, to leaving the method. All server-thread-local data are reused as much as possible and will not be deleted before stopping server. server-thread-local is implemented as a special bthread-local.
+A server-thread-local is bound to **a call to service's CallMethod**, from entering service's CallMethod, to leaving the method. All server-thread-local data are reused as much as possible and will not be deleted before stopping the server. server-thread-local is implemented as a special bthread-local.
 
 After setting ServerOptions.thread_local_data_factory, call Controller.thread_local_data() to get a thread-local. If ServerOptions.thread_local_data_factory is unset, Controller.thread_local_data() always returns NULL. 
 
 If ServerOptions.reserved_thread_local_data is greater than 0, Server creates so many data before serving.
 
-**Difference with session-local**
+**Differences with session-local**
 
 session-local data is got from server-side Controller,  server-thread-local can be got globally from any function running directly or indirectly inside a thread created by the server.
 
@@ -753,7 +757,7 @@ These functions support both bthread and pthread. When they are called in bthrea
 
 Since brpc creates a bthread for each request, the bthread-local in the server behaves specially: a bthread created by server does not delete bthread-local data at exit, instead it returns the data to a pool in the server for later reuse. This prevents bthread-local from constructing and destructing frequently along with creation and destroying of bthreads. This mechanism is transparent to users.
 
-**Major interfaces**
+**Main interfaces**
 
 ```c++
 // Create a key value identifying a slot in a thread-specific data area.
@@ -873,21 +877,21 @@ A: The client-side probably uses pooled or short connections, and closes the con
 
 It's not an error, it's a common warning representing that remote side has closed the connection(EOF). This log might be useful for debugging problems. 
 
-Closed by default. Set gflag -log_connection_close to true to enable it. ([modify at run-time](flags.md#change-gflag-on-the-fly) is supported)
+Disabled by default. Set gflag -log_connection_close to true to enable it. ([modify at run-time](flags.md#change-gflag-on-the-fly) is supported)
 
 ### Q: Why does setting number of threads at server-side not work
 
 All brpc servers in one process [share worker pthreads](#Number-of-worker-pthreads), If multiple servers are created, number of worker pthreads is probably the maxmium of their ServerOptions.num_threads.
 
-### Q: Why does client-side latency much larger than the server-side one
+### Q: Why do client-side latencies much larger than the server-side ones
 
-server-side worker pthreads may be not enough and requests are signicantly delayed. Read [Server debugging](server_debugging.md) for tips and steps on debugging server-side issues.
+server-side worker pthreads may not be enough and requests are significantly delayed. Read [Server debugging](server_debugging.md) for steps on debugging server-side issues quickly.
 
 ### Q: Program may crash and generate coredumps unexplainable after switching to brpc
 
 brpc server runs code in bthreads with stacksize=1MB by default, while stacksize of pthreads is 10MB. It's possible that programs running normally on pthreads may meet stack overflow on bthreads.
 
-NOTE: It does mean that coredump of programs is likely to be caused by "stack overflow". Just because it's easy and quick to verify this factor and exclude the possibility.
+NOTE: It does mean that coredump of programs is likely to be caused by "stack overflow" on bthreads. We're talking about this simply because it's easy and quick to verify this factor and exclude the possibility.
 
 Solution: Add following gflags to adjust the stacksize. For example: `--stack_size_normal=10000000 --tc_stack_normal=1`. The first flag sets stacksize to 10MB and the second flag sets number of stacks cached by each worker pthread (to prevent reusing from global each time)
 
