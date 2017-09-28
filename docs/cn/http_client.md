@@ -148,7 +148,11 @@ Notes on http header:
 
 # 压缩request body
 
-调用Controller::set_request_compress_type(brpc::COMPRESS_TYPE_GZIP)可将http body用gzip压缩，并设置"Content-Encoding"为"gzip"。
+调用Controller::set_request_compress_type(baidu::rpc::COMPRESS_TYPE_GZIP)将尝试用gzip压缩http body。
+
+“尝试“指的是压缩有可能不发生，条件有：
+
+- body尺寸小于-http_body_compress_threshold指定的字节数，默认是512。这是因为gzip并不是一个很快的压缩算法，当body较小时，压缩增加的延时可能比网络传输省下的还多。
 
 # 解压response body
 

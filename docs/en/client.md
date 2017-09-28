@@ -601,9 +601,11 @@ set_log_id() sets a 64-bit integral log_id, which is sent to the server-side alo
 
 ## Attachment
 
-baidu_std and hulu_pbrpc supports attachment, which is set by user to bypass serialization of protobuf. As a client, the data in Controller::request_attachment() will be received by the server and response_attachment() contains attachment sent back by the server. Attachment is not compressed by brpc.
+baidu_std and hulu_pbrpc supports attachments which are sent along with messages and set by users to bypass serialization of protobuf. As a client, data set in Controller::request_attachment() will be received by server and response_attachment() contains attachment sent back by the server.
 
-In http, attachment corresponds to [message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html), namely the data to post is stored in request_attachment().
+Attachment is not compressed by framework.
+
+In http, attachment corresponds to [message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html), namely the data to post to server is stored in request_attachment().
 
 ## Authentication
 TODO: Describe how authentication methods are extended.

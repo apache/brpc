@@ -165,7 +165,9 @@ When server returns a non-2xx HTTP status code, the HTTP request is considered t
 
 # Compress Request Body
 
-Call `Controller::set_request_compress_type(brpc::COMPRESS_TYPE_GZIP)` and then the framework will use gzip to compress HTTP body and set `Content-Encoding` to gzip.
+Calling `Controller::set_request_compress_type(brpc::COMPRESS_TYPE_GZIP)` makes framework try to gzip the HTTP body. "try to" means the compression may not happen, because:
+
+* Size of body is smaller than bytes specified by -http_body_compress_threshold, which is 512 by default. The reason is that gzip is not a very fast compression algorithm, when body is small, the delay caused by compression may even larger than the latency saved by faster transportation.
 
 # Decompress Response Body
 
