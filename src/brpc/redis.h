@@ -210,7 +210,7 @@ private:
     RedisReply _first_reply;
     RedisReply* _other_replies;
     butil::Arena _arena;
-    uint32_t _nreply;
+    int _nreply;
     mutable int _cached_size_;
 
 friend void protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto_impl();

@@ -448,6 +448,35 @@ void RedisResponse::MergeFrom(const ::google::protobuf::Message& from) {
 
 void RedisResponse::MergeFrom(const RedisResponse& from) {
     GOOGLE_CHECK_NE(&from, this);
+    if (from._nreply == 0) {
+        return;
+    }
+    _cached_size_ += from._cached_size_;
+    if (_nreply == 0) {
+        _first_reply.CopyFromDifferentArena(from._first_reply, &_arena);
+    }
+    const int new_nreply = _nreply + from._nreply;
+    if (new_nreply == 1) {
+        _nreply = new_nreply;
+        return;
+    }
+    RedisReply* new_others =
+        (RedisReply*)_arena.allocate(sizeof(RedisReply) * (new_nreply - 1));
+    for (int i = 0; i < new_nreply - 1; ++i) {
+        new (new_others + i) RedisReply;
+    }
+    int new_other_index = 0;
+    for (int i = 1; i < _nreply; ++i) {
+        new_others[new_other_index++].CopyFromSameArena(
+            _other_replies[i - 1]);
+    }
+    for (int i = !_nreply; i < from._nreply; ++i) {
+        new_others[new_other_index++].CopyFromDifferentArena(
+            from.reply(i), &_arena);
+    }
+    DCHECK_EQ(new_nreply - 1, new_other_index);
+    _other_replies = new_others;
+    _nreply = new_nreply;
 }
 
 void RedisResponse::CopyFrom(const ::google::protobuf::Message& from) {

@@ -396,6 +396,10 @@ void MemcacheResponse::MergeFrom(const ::google::protobuf::Message& from) {
 
 void MemcacheResponse::MergeFrom(const MemcacheResponse& from) {
     GOOGLE_CHECK_NE(&from, this);
+    _err = from._err;
+    // responses of memcached according to their binary layout, should be
+    // directly concatenatible.
+    _buf.append(from._buf);
 }
 
 void MemcacheResponse::CopyFrom(const ::google::protobuf::Message& from) {
