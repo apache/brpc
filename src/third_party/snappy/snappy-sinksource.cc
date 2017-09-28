@@ -28,7 +28,7 @@
 
 #include <string.h>
 
-#include "butil/third_party/snappy/snappy-sinksource.h"
+#include "third_party/snappy/snappy-sinksource.h"
 
 namespace butil {
 namespace snappy {

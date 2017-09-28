@@ -43,7 +43,7 @@
 #include "butil/debug/leak_annotations.h"
 #include "butil/logging.h"
 #include "butil/memory/aligned_memory.h"
-#include "butil/third_party/dynamic_annotations/dynamic_annotations.h"
+#include "third_party/dynamic_annotations/dynamic_annotations.h"
 #include "butil/threading/thread_restrictions.h"
 
 // LazyInstance uses its own struct initializer-list style static

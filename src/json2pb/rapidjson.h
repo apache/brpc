@@ -14,18 +14,18 @@
 
 #endif
 
-#include "butil/third_party/rapidjson/allocators.h"
-#include "butil/third_party/rapidjson/document.h"
-#include "butil/third_party/rapidjson/encodedstream.h"
-#include "butil/third_party/rapidjson/encodings.h"
-#include "butil/third_party/rapidjson/filereadstream.h"
-#include "butil/third_party/rapidjson/filewritestream.h"
-#include "butil/third_party/rapidjson/prettywriter.h"
-#include "butil/third_party/rapidjson/rapidjson.h"
-#include "butil/third_party/rapidjson/reader.h"
-#include "butil/third_party/rapidjson/stringbuffer.h"
-#include "butil/third_party/rapidjson/writer.h"
-#include "butil/third_party/rapidjson/optimized_writer.h"
+#include "third_party/rapidjson/allocators.h"
+#include "third_party/rapidjson/document.h"
+#include "third_party/rapidjson/encodedstream.h"
+#include "third_party/rapidjson/encodings.h"
+#include "third_party/rapidjson/filereadstream.h"
+#include "third_party/rapidjson/filewritestream.h"
+#include "third_party/rapidjson/prettywriter.h"
+#include "third_party/rapidjson/rapidjson.h"
+#include "third_party/rapidjson/reader.h"
+#include "third_party/rapidjson/stringbuffer.h"
+#include "third_party/rapidjson/writer.h"
+#include "third_party/rapidjson/optimized_writer.h"
 
 #if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8)
 #pragma GCC diagnostic pop

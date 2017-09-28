@@ -18,7 +18,7 @@
 #include <queue>                           // heap functions
 #include "butil/scoped_lock.h"
 #include "butil/logging.h"
-#include "butil/third_party/murmurhash3/murmurhash3.h"   // fmix64
+#include "third_party/murmurhash3/murmurhash3.h"   // fmix64
 #include "butil/resource_pool.h"
 #include "bvar/bvar.h"
 #include "bthread/sys_futex.h"

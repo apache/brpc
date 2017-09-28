@@ -23,7 +23,7 @@
 #include "butil/time.h"
 #include "butil/fd_utility.h"                     // make_non_blocking
 #include "butil/logging.h"
-#include "butil/third_party/murmurhash3/murmurhash3.h"   // fmix32
+#include "third_party/murmurhash3/murmurhash3.h"   // fmix32
 #include "bthread/butex.h"                       // butex_*
 #include "bthread/task_group.h"                  // TaskGroup
 #include "bthread/bthread.h"                             // bthread_start_urgent

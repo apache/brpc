@@ -55,7 +55,7 @@
  * PR_ImplodeTime
  *   This was modified to use the Win32 SYSTEMTIME/FILETIME structures
  *   and the timezone offsets are applied to the FILETIME structure.
- * All types and macros are defined in the butil/third_party/prtime.h file.
+ * All types and macros are defined in the third_party/prtime.h file.
  * These have been copied from the following nspr files. We have only copied
  * over the types we need.
  * 1. prtime.h
@@ -66,7 +66,7 @@
  */
 
 #include "butil/logging.h"
-#include "butil/third_party/nspr/prtime.h"
+#include "third_party/nspr/prtime.h"
 #include "butil/build_config.h"
 
 #if defined(OS_WIN)

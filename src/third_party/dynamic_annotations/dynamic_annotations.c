@@ -35,11 +35,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "butil/third_party/dynamic_annotations/dynamic_annotations.h"
+#include "third_party/dynamic_annotations/dynamic_annotations.h"
 
 #ifdef __GNUC__
 /* valgrind.h uses gcc extensions so it won't build with other compilers */
-# include "butil/third_party/valgrind/valgrind.h"
+# include "third_party/valgrind/valgrind.h"
 #endif
 
 /* Compiler-based ThreadSanitizer defines

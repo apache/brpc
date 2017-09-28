@@ -5,7 +5,7 @@
 #include "butil/debug/proc_maps_linux.h"
 #include "butil/files/file_path.h"
 #include "butil/strings/stringprintf.h"
-#include "butil/third_party/dynamic_annotations/dynamic_annotations.h"
+#include "third_party/dynamic_annotations/dynamic_annotations.h"
 #include <gtest/gtest.h>
 
 namespace butil {

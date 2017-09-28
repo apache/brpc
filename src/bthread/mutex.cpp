@@ -31,7 +31,7 @@
 #include "butil/files/file_path.h"
 #include "butil/file_util.h"
 #include "butil/unique_ptr.h"
-#include "butil/third_party/murmurhash3/murmurhash3.h"
+#include "third_party/murmurhash3/murmurhash3.h"
 #include "butil/logging.h"
 #include "butil/object_pool.h"
 #include "bthread/butex.h"                       // butex_*

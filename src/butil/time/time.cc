@@ -10,7 +10,7 @@
 #include "butil/float_util.h"
 #include "butil/lazy_instance.h"
 #include "butil/logging.h"
-#include "butil/third_party/nspr/prtime.h"
+#include "third_party/nspr/prtime.h"
 
 namespace butil {
 

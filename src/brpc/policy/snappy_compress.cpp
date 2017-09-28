@@ -15,7 +15,7 @@
 // Authors: Jiang,Lin (jianglin05@baidu.com)
 
 #include "butil/logging.h"
-#include "butil/third_party/snappy/snappy.h"
+#include "third_party/snappy/snappy.h"
 #include "brpc/policy/snappy_compress.h"
 #include "brpc/protocol.h"
 

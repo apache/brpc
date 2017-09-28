@@ -8,7 +8,7 @@
 #include "butil/atomicops.h"
 #include "butil/basictypes.h"
 #include "butil/threading/platform_thread.h"
-#include "butil/third_party/dynamic_annotations/dynamic_annotations.h"
+#include "third_party/dynamic_annotations/dynamic_annotations.h"
 
 namespace butil {
 namespace internal {

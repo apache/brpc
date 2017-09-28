@@ -23,7 +23,7 @@
 #include "butil/scoped_lock.h"               // BAIDU_SCOPED_LOCK
 #include "butil/fast_rand.h"
 #include "butil/unique_ptr.h"
-#include "butil/third_party/murmurhash3/murmurhash3.h" // fmix64
+#include "third_party/murmurhash3/murmurhash3.h" // fmix64
 #include "bthread/errno.h"                  // ESTOP
 #include "bthread/butex.h"                  // butex_*
 #include "bthread/sys_futex.h"              // futex_wake_private

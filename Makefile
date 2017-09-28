@@ -27,19 +27,19 @@ ifeq ($(shell test $(GCC_VERSION) -ge 70000; echo $$?),0)
 endif
 
 BUTIL_SOURCES = \
-    src/butil/third_party/dmg_fp/g_fmt.cc \
-    src/butil/third_party/dmg_fp/dtoa_wrapper.cc \
-    src/butil/third_party/dynamic_annotations/dynamic_annotations.c \
-    src/butil/third_party/icu/icu_utf.cc \
-    src/butil/third_party/superfasthash/superfasthash.c \
-    src/butil/third_party/modp_b64/modp_b64.cc \
-    src/butil/third_party/nspr/prtime.cc \
-    src/butil/third_party/symbolize/demangle.cc \
-    src/butil/third_party/symbolize/symbolize.cc \
-    src/butil/third_party/snappy/snappy-sinksource.cc \
-    src/butil/third_party/snappy/snappy-stubs-internal.cc \
-    src/butil/third_party/snappy/snappy.cc \
-    src/butil/third_party/murmurhash3/murmurhash3.cpp \
+    src/third_party/dmg_fp/g_fmt.cc \
+    src/third_party/dmg_fp/dtoa_wrapper.cc \
+    src/third_party/dynamic_annotations/dynamic_annotations.c \
+    src/third_party/icu/icu_utf.cc \
+    src/third_party/superfasthash/superfasthash.c \
+    src/third_party/modp_b64/modp_b64.cc \
+    src/third_party/nspr/prtime.cc \
+    src/third_party/symbolize/demangle.cc \
+    src/third_party/symbolize/symbolize.cc \
+    src/third_party/snappy/snappy-sinksource.cc \
+    src/third_party/snappy/snappy-stubs-internal.cc \
+    src/third_party/snappy/snappy.cc \
+    src/third_party/murmurhash3/murmurhash3.cpp \
     src/butil/arena.cpp \
     src/butil/at_exit.cc \
     src/butil/atomicops_internals_x86_gcc.cc \

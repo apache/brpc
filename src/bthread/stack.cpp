@@ -22,8 +22,8 @@
 #include <stdlib.h>                               // posix_memalign
 #include "butil/macros.h"                          // BAIDU_CASSERT
 #include "butil/memory/singleton_on_pthread_once.h"
-#include "butil/third_party/dynamic_annotations/dynamic_annotations.h" // RunningOnValgrind
-#include "butil/third_party/valgrind/valgrind.h"   // VALGRIND_STACK_REGISTER
+#include "third_party/dynamic_annotations/dynamic_annotations.h" // RunningOnValgrind
+#include "third_party/valgrind/valgrind.h"   // VALGRIND_STACK_REGISTER
 #include "bvar/passive_status.h"
 #include "bthread/types.h"                        // BTHREAD_STACKTYPE_*
 #include "bthread/stack.h"

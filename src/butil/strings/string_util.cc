@@ -23,7 +23,7 @@
 #include "butil/memory/singleton.h"
 #include "butil/strings/utf_string_conversion_utils.h"
 #include "butil/strings/utf_string_conversions.h"
-#include "butil/third_party/icu/icu_utf.h"
+#include "third_party/icu/icu_utf.h"
 #include "butil/build_config.h"
 
 // Remove when this entire file is in namespace butil.

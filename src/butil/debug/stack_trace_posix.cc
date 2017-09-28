@@ -42,7 +42,7 @@
 #include "butil/build_config.h"
 
 #if defined(USE_SYMBOLIZE)
-#include "butil/third_party/symbolize/symbolize.h"
+#include "third_party/symbolize/symbolize.h"
 #endif
 
 namespace butil {
@@ -468,7 +468,7 @@ void WarmUpBacktrace() {
 //
 // The purpose of this class is to prepare and install a "file open" callback
 // needed by the stack trace symbolization code
-// (butil/third_party/symbolize/symbolize.h) so that it can function properly
+// (third_party/symbolize/symbolize.h) so that it can function properly
 // in a sandboxed process.  The caveat is that this class must be instantiated
 // before the sandboxing is enabled so that it can get the chance to open all
 // the object files that are loaded in the virtual address space of the current

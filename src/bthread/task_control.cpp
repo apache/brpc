@@ -19,7 +19,7 @@
 #include "butil/scoped_lock.h"             // BAIDU_SCOPED_LOCK
 #include "butil/errno.h"                   // berror
 #include "butil/logging.h"
-#include "butil/third_party/murmurhash3/murmurhash3.h"
+#include "third_party/murmurhash3/murmurhash3.h"
 #include "bthread/sys_futex.h"            // futex_wake_private
 #include "bthread/interrupt_pthread.h"
 #include "bthread/processor.h"            // cpu_relax
