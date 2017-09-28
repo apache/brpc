@@ -4,10 +4,10 @@
 
 # Fill the .proto
 
-Interfaces of requests, responses, services are all defined in proto files.
+Interfaces of requests, responses, services are defined in proto files.
 
 ```C++
-# Tell protoc to generate base classes for C++ Service. If language is java or python, modify to java_generic_services or py_generic_services.
+# Tell protoc to generate base classes for C++ Service. modify to java_generic_services or py_generic_services for java or python. 
 option cc_generic_services = true;
 
 message EchoRequest {
@@ -22,7 +22,7 @@ service EchoService {
 };
 ```
 
-Read [official docs of protobuf](https://developers.google.com/protocol-buffers/docs/proto#options) for more information about protobuf.
+Read [official documents on protobuf](https://developers.google.com/protocol-buffers/docs/proto#options) for more details about protobuf.
 
 # Implement generated interface
 
@@ -50,35 +50,37 @@ public:
 
 Service is not available before insertion into [brpc.Server](https://github.com/brpc/brpc/blob/master/src/brpc/server.h).
 
-When client sends request, Echo() is called. Meaning of parameters:
+When client sends request, Echo() is called. 
+
+Explain parameters:
 
 **controller**
 
-convertiable to brpc::Controller statically (provided the code runs in brpc.Server), containing parameters that can't included by request and response, check out [src/brpc/controller.h](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h) for details.
+Statically convertible to brpc::Controller  (provided that the code runs in brpc.Server). Contains parameters that can't be included by request and response, check out [src/brpc/controller.h](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h) for details.
 
 **request**
 
-read-only data message from a client.
+read-only message from a client.
 
 **response**
 
-Filled by user. If any **required** field is unset, the RPC will be failed.
+Filled by user. If any **required** field is not set, the RPC will fail.
 
 **done**
 
-done is created by brpc and passed to service's CallMethod(), including all actions after calling CallMethod(): validating response, serialization, packing, sending etc.
+Created by brpc and passed to service's CallMethod(), including all actions after leaving CallMethod(): validating response, serialization, sending back to client etc.
 
-**No matter the RPC is successful or not, done->Run() must be called after processing.**
+**No matter the RPC is successful or not, done->Run() must be called by user once and only once when the RPC is done.**
 
-Why not brpc calls done automatically? This is for allowing users to store done and call done->Run() due to some events after CallMethod(), which is **asynchronous service**.
+Why does brpc not call done->Run() automatically? Because users are able to store done somewhere and call done->Run() in some event handlers after leaving CallMethod(), which is an **asynchronous service**.
 
-We strongly recommend using **ClosureGuard** to make sure done->Run() is always called, which is the  beginning statement in above code snippet:
+We strongly recommend using **ClosureGuard** to make done->Run() always be called. Look at the beginning statement in above code snippet:
 
 ```c++
 brpc::ClosureGuard done_guard(done);
 ```
 
-Not matter the callback is exited from middle or the end, done_guard will be destructed, in which done->Run() will be called. The mechanism is called [RAII](https://en.wikipedia.org/wiki/Resource_Acquisition_Is_Initialization). Without done_guard, you have to add done->Run() before each return, **which is very easy to forget**.
+Not matter the callback is exited from middle or end, done_guard will be destructed, in which done->Run() is called. The mechanism is called [RAII](https://en.wikipedia.org/wiki/Resource_Acquisition_Is_Initialization). Without done_guard, you have to remember to add done->Run() before each `return`, **which is very error-prone**.
 
 In asynchronous service, processing of the request is not completed when CallMethod() returns and done->Run() should not be called, instead it should be preserved for later usage. At first glance, we don't need ClosureGuard here. However in real applications, a synchronous service possibly fails in the middle and exits CallMethod() due to a lot of reasons. Without ClosureGuard, some error branches may forget to call done->Run() before return. Thus we still recommended using done_guard in asynchronous services. Different from synchronous service, to prevent done->Run() from being called at successful returns, you should call done_guard.release() to release the enclosed done.
 
@@ -247,58 +249,57 @@ Services can be added or removed after Join() and server can be Start() again.
 
 # Accessed by HTTP client
 
-每个Protobuf Service默认可以通过HTTP访问, body被视为json串可通过名字与pb消息相互转化. 以[echo server](http://brpc.baidu.com:8765/)为例, 你可以通过http协议访问这个服务.
+Services using protobuf can be accessed via http+json generally. The json string stored in http body is convertible to/from corresponding protobuf message. Take [echo server](https://github.com/brpc/brpc/blob/master/example/echo_c%2B%2B/server.cpp) as an example, it's accessible from [curl](https://curl.haxx.se/).
 
 ```shell
-# before r31987
-$ curl -H 'Content-Type: application/json' -d '{"message":"hello"}' http://brpc.baidu.com:8765/EchoService/Echo
-{"message":"hello"}
-
-# after r31987
+# -H 'Content-Type: application/json' is optional
 $ curl -d '{"message":"hello"}' http://brpc.baidu.com:8765/EchoService/Echo
 {"message":"hello"}
 ```
 
-注意:
-
-- 在r31987前必须把Content-Type指定为applicaiton/json(-H选项), 否则服务器端不会做转化. r31987后不需要.
-- r34740之后可以指定Content-Type为application/proto (-H选项) 来传递protobuf二进制格式.
+Note: Set `Content-Type: application/proto`  to access services with http + protobuf-serialized-data, performing better at serialization.
 
 ## json<=>pb
 
-json通过名字与pb字段一一对应, 结构层次也应匹配. json中一定要包含pb的required字段, 否则转化会失败, 对应请求会被拒绝. json中可以包含pb中没有定义的字段, 但不会作为pb的unknown字段被继续传递. 转化规则详见[json <=> protobuf](json2pb.md).
+Json fields correspond to pb fields by matched names and message structures. The json must contain required fields in pb, otherwise conversion will fail and corresponding request will be rejected. The json may include undefined fields in pb, but they will be dropped rather than being stored in pb as unknown fields. Check out [json <=> protobuf](json2pb.md) for conversion rules.
 
-r34532后增加选项-pb_enum_as_number, 开启后pb中的enum会转化为它的数值而不是名字, 比如在`enum MyEnum { Foo = 1; Bar = 2; };`中不开启此选项时MyEnum类型的字段会转化为"Foo"或"Bar", 开启后为1或2. 此选项同时影响client发出的请求和server返回的回复. 由于转化为名字相比数值有更好的前后兼容性, 此选项只应用于兼容无法处理enum为名字的场景.
+When -pb_enum_as_number is turned on, enums in pb are converted to values instead of names. For example in `enum MyEnum { Foo = 1; Bar = 2; };`, fields typed `MyEnum` are converted to "Foo" or "Bar" when the flag is off, 1 or 2 otherwise. This flag affects requests sent by client and responses returned by server both. Since conversion-to-name has better forward and backward compatibilities, this flag should only be turned on to adapt legacy code that are unable to parse enums from names.
 
-## 兼容(很)老版本client
+## Adapt old clients
 
-15年时, brpc允许一个pb service被http协议访问时, 不设置pb请求, 即使里面有required字段. 一般来说这种service会自行解析http请求和设置http回复, 并不会访问pb请求. 但这也是非常危险的行为, 毕竟这是pb service, 但pb请求却是未定义的. 这种服务在升级到新版本rpc时会遇到障碍, 因为brpc早不允许这种行为. 为了帮助这种服务升级, r34953后brpc允许用户经过一些设置后不把http body自动转化为pb(从而可自行处理), 方法如下:
+Early-version brpc allows pb service being accessed via http without setting the pb request, even if the request has required fields. This kind of service often parses http request and sets http response by its own, and does not touch the pb request. However this behavior is still very dangerous: a service with an undefined request. 
+
+These services may meet issues after upgrading to latest brpc, which already deprecated the behavior for a long time. To help these services to upgrade, brpc allows bypassing the conversion from http body to pb request with some settings (so that users can parse http requests differently), the setting is as follows:
 
 ```c++
 brpc::ServiceOptions svc_opt;
 svc_opt.ownership = ...;
 svc_opt.restful_mappings = ...;
-svc_opt.allow_http_body_to_pb = false; //关闭http body至pb的自动转化
+svc_opt.allow_http_body_to_pb = false; // turn off conversion from http body to pb request
 server.AddService(service, svc_opt);
 ```
 
-如此设置后service收到http请求后不会尝试把body转化为pb请求, 所以pb请求总是未定义状态, 用户得根据`cntl->request_protocol() == brpc::PROTOCOL_HTTP`来判断请求是否是http, 并自行对http body进行解析.
+After the setting, service does not convert http body to pb request after receiving http request, which also makes the pb request undefined. Users have to parse the http body by themselves when `cntl->request_protocol() == brpc::PROTOCOL_HTTP` is true which indicates the request is from http.
 
-相应地, r34953中当cntl->response_attachment()不为空时(且pb回复不为空), 框架不再报错, 而是直接把cntl->response_attachment()作为回复的body. 这个功能和设置allow_http_body_to_pb与否无关, 如果放开自由度导致过多的用户犯错, 可能会有进一步的调整.
+As a correspondence, if cntl->response_attachment() is not empty and pb response is set as well, brpc does not report error anymore, instead cntl->response_attachment() will be used as body of the http response. This behavior does not relate to setting allow_http_body_to_pb or not. If the relaxation results in more users' errors, we may restrict it in future.
 
-# 协议支持
+# Protocols
 
-server端会自动尝试其支持的协议, 无需用户指定. `cntl->protocol()`可获得当前协议. server能从一个listen端口建立不同协议的连接, 不需要为不同的协议使用不同的listen端口, 一个连接上也可以传输多种协议的数据包(但一般不会这么做), 支持的协议有:
+Server detects supported protocols automatically, without assignment from users. `cntl->protocol()` gets the protocol being used. Server is able to accept connections with different protocols from one port, users don't need to assign different ports for different protocols. Even one connection may transport messages in multiple protocols, although we rarely do this. Supported protocols:
 
-- 百度标准协议, 显示为"baidu_std", 默认启用.
+- [The standard protocol used in Baidu](baidu_std.md), shown as "baidu_std", enabled by default.
 
-- hulu-pbrpc的协议, 显示为"hulu_pbrpc", 默认启动.
+- [Streaming RPC](streaming_rpc.md), shown as "streaming_rpc", enabled by default.
 
-- http协议, 显示为"http", 默认启用.
+- http 1.0/1.1, shown as "http", enabled by default.
 
-- sofa-pbrpc的协议, 显示为"sofa_pbrpc", 默认启用.
+- Protocol of RTMP, shown as "rtmp", enabled by default.
 
-- nova协议, 显示为"nova_pbrpc", 默认不启用, 开启方式:
+- Protocol of hulu-pbrpc, shown as "hulu_pbrpc", enabled by default.
+
+- Protocol of sofa-pbrpc, shown as "sofa_pbrpc", enabled by default.
+
+- Protocol of Baidu ads union, shown as "nova_pbrpc", disabled by default. Enabling method:
 
   ```c++
   #include <brpc/policy/nova_pbrpc_protocol.h>
@@ -308,7 +309,7 @@ server端会自动尝试其支持的协议, 无需用户指定. `cntl->protocol(
   options.nshead_service = new brpc::policy::NovaServiceAdaptor;
   ```
 
-- public_pbrpc协议, 显示为"public_pbrpc" (r32206前显示为"nshead_server"), 默认不启用, 开启方式:
+- Protocol of public_pbrpc, shown as "public_pbrpc", disabled by default. Enabling method:
 
   ```c++
   #include <brpc/policy/public_pbrpc_protocol.h>
@@ -318,7 +319,7 @@ server端会自动尝试其支持的协议, 无需用户指定. `cntl->protocol(
   options.nshead_service = new brpc::policy::PublicPbrpcServiceAdaptor;
   ```
 
-- nshead_mcpack协议, 显示为"nshead_mcpack", 默认不启用, 开启方式:
+- Protocol of nshead+mcpack, shown as "nshead_mcpack", disabled by default. Enabling method:
 
   ```c++
   #include <brpc/policy/nshead_mcpack_protocol.h>
@@ -328,23 +329,23 @@ server端会自动尝试其支持的协议, 无需用户指定. `cntl->protocol(
   options.nshead_service = new brpc::policy::NsheadMcpackAdaptor;
   ```
 
-  顾名思义, 这个协议的数据包由nshead+mcpack构成, mcpack中不包含特殊字段. 不同于用户基于NsheadService的实现, 这个协议使用了mcpack2pb: 任何protobuf service都可以接受这个协议的请求. 由于没有传递ErrorText的字段, 当发生错误时server只能关闭连接.
+  As the name implies, messages in this protocol are composed by nshead+mcpack, the mcpack does not include special fields. Different from implementations based on NsheadService by users, this protocol uses mcpack2pb which makes the service capable of handling both mcpack and pb with one piece of code. Due to lack of fields to carry ErrorText, server can only close connections when errors occur.
 
-- ITP协议, 显示为"itp", 默认不启用, 使用方式见[ITP](itp.md).
+- Read [Implement NsheadService](nshead_service.md) for UB related protocols.
 
-- 和UB相关的协议请阅读[实现NsheadService](nshead_service.md).
+If you need more protocols, contact us.
 
-如果你有更多的协议需求, 可以联系我们.
+# Settings
 
-# 设置
+## Version
 
-## 版本
+Server.set_version(…) sets name+version for the server, accessible from builtin service /version. Although it's called "version", the string set is recommended to include the service name rather than just a numeric version.
 
-Server.set_version(...)可以为server设置一个名称+版本, 可通过/version内置服务访问到. 名字中请包含服务名, 而不是仅仅是一个版本号.
+## Close idle connections
 
-## 关闭闲置连接
+If a connection does not read or write within the seconds specified by ServerOptions.idle_timeout_sec, it's treated as "idle" and will be closed by server. Default value is -1 which disables the feature.
 
-如果一个连接在ServerOptions.idle_timeout_sec对应的时间内没有读取或写出数据, 则被视为"闲置"而被server主动关闭, 打开[-log_idle_connection_close](http://brpc.baidu.com:8765/flags/log_idle_connection_close)后关闭前会打印一条日志. 默认值为-1, 代表不开启.
+If [-log_idle_connection_close](http://brpc.baidu.com:8765/flags/log_idle_connection_close) is turned on, a log will be printed before closing. 
 
 | Name                      | Value | Description                              | Defined At          |
 | ------------------------- | ----- | ---------------------------------------- | ------------------- |
@@ -352,153 +353,153 @@ Server.set_version(...)可以为server设置一个名称+版本, 可通过/versi
 
 ## pid_file
 
-```
-默认为空. 如果设置了此字段, Server启动时会创建一个同名文件, 内容为进程号.
-```
+If this field is non-empty, Server creates a file named so at start-up, with pid as the content. Empty by default.
 
-## 在每条日志后打印hostname
+## Print hostname in each line of log
 
-此功能只对[butil/logging.h](https://github.com/brpc/brpc/blob/master/src/butil/logging.h)中的日志宏有效. 打开[-log_hostname](http://brpc.baidu.com:8765/flags/log_hostname)后每条日志后都会带本机名称, 如果所有的日志需要汇总到一起进行分析, 这个功能可以帮助你了解某条日志来自哪台机器.
+This feature only affects logging macros in [butil/logging.h](https://github.com/brpc/brpc/blob/master/src/butil/logging.h). 
 
-## 打印FATAL日志后退出程序
+If [-log_hostname](http://brpc.baidu.com:8765/flags/log_hostname) is turned on, each line of log contains hostname so that users know machines where each lines are generated from aggregated logs.
 
-打开[-crash_on_fatal_log](http://brpc.baidu.com:8765/flags/crash_on_fatal_log)后如果程序使用LOG(FATAL)打印了异常日志或违反了CHECK宏中的断言, 那么程序会在打印日志后abort, 这一般也会产生coredump文件. 这个开关可在对程序的压力测试中打开, 以确认程序没有进入过严重错误的分支.
+## Crash after printing FATAL log
 
-> 虽然LOG(ERROR)在打印至comlog时也显示为FATAL, 但那只是因为comlog没有ERROR这个级别, ERROR并不受这个选项影响, LOG(ERROR)总不会导致程序退出. 一般的惯例是, ERROR表示可容忍的错误, FATAL代表不可逆转的错误.
+This feature only affects logging macros in [butil/logging.h](https://github.com/brpc/brpc/blob/master/src/butil/logging.h), glog crashes for FATAL log by default.
 
-## 最低日志级别
+If [-crash_on_fatal_log](http://brpc.baidu.com:8765/flags/crash_on_fatal_log) is turned on, program crashes after printing LOG(FATAL) or failing assertions by CHECK(), and generates coredump(with proper environmental settings). Default value is false. This flag can be turned on in testings to make sure the program never meet critical errors.
 
-此功能只对[butil/logging.h](https://github.com/brpc/brpc/blob/master/src/butil/logging.h)中的日志宏有效. 设置[-min_log_level](http://brpc.baidu.com:8765/flags/min_log_level)后只有**不低于**被设置日志级别的日志才会被打印, 这个选项可以动态修改. 设置值和日志级别的对应关系: 0=INFO 1=NOTICE 2=WARNING 3=ERROR 4=FATAL
+> A common convention: use ERROR for tolerable errors, FATAL for unacceptable and permanent errors.
 
-被拦住的日志产生的开销只是一次if判断, 也不会评估参数(比如某个参数调用了函数, 日志不打, 这个函数就不会被调用), 这和comlog是完全不同的. 如果日志最终打印到comlog, 那么还要经过comlog中的日志级别的过滤.
+## Minimum log level
 
-## 打印发送给client的错误
+This feature is implemented by [butil/logging.h](https://github.com/brpc/brpc/blob/master/src/butil/logging.h) and glog separately, as a same-named flag.
 
-server的框架部分在出现错误时一般是不打日志的, 因为当大量client出现错误时, 可能会导致server高频打印日志, 雪上加霜. 但有时为了调试问题, 或就是需要让server打印错误, 打开参数[-log_error_text](http://brpc.baidu.com:8765/flags/log_error_text)即可.
+Only logs **not less than** the log level specified by -minloglevel are printed. This flag can be modified at run-time. Correspondence between values and log levels: 0=INFO 1=NOTICE 2=WARNING 3=ERROR 4=FATAL, default value is 0.
 
-## 限制最大消息
+Overhead of unprinted logs is just a "if" test and parameters are not evaluated (namely a parameter calls a function, if the log is not printed, the function is not called). Logs printed to LogSink may be filtered by the sink as well.
 
-为了保护server和client, 当server收到的request或client收到的response过大时, server或client会拒收并关闭连接. 此最大尺寸由[-max_body_size](http://brpc.baidu.com:8765/flags/max_body_size)控制, 单位为字节.
+## Log error to clients
 
-超过最大消息时会打印如下错误日志:
+The framework part of server does not print logs for specific client generally, because a lot of errors caused by clients may slow down server significantly due to frequent printing of logs. If you need to debug or just want the server to log all errors, turn on [-log_error_text](http://brpc.baidu.com:8765/flags/log_error_text).
+
+## Limit sizes of messages
+
+To protect server and client, when a request received by server or a response received by client is too large, server or client rejects the message and closes the connection. The limit is controlled by [-max_body_size](http://brpc.baidu.com:8765/flags/max_body_size), in bytes.
+
+An error log is printed when a message is too large and rejected:
 
 ```
 FATAL: 05-10 14:40:05: * 0 src/brpc/input_messenger.cpp:89] A message from 127.0.0.1:35217(protocol=baidu_std) is bigger than 67108864 bytes, the connection will be closed. Set max_body_size to allow bigger messages
 ```
 
-protobuf中有[类似的限制](https://github.com/google/protobuf/blob/master/src/google/protobuf/io/coded_stream.h#L364), 在r34677之前, 即使用户设置了足够大的-max_body_size, 仍然有可能因为protobuf中的限制而被拒收, 出错时会打印如下日志:
+protobuf has [similar limits](https://github.com/google/protobuf/blob/master/src/google/protobuf/io/coded_stream.h#L364) and the error log is as follows:
 
 ```
 FATAL: 05-10 13:35:02: * 0 google/protobuf/io/coded_stream.cc:156] A protocol message was rejected because it was too big (more than 67108864 bytes). To increase the limit (or to disable these warnings), see CodedInputStream::SetTotalBytesLimit() in google/protobuf/io/coded_stream.h.
 ```
 
-在r34677后, brpc移除了protobuf中的限制, 只要-max_body_size足够大, protobuf不会再打印限制错误. 此功能对protobuf的版本没有要求.
+brpc removes the restriction from protobuf and controls the limit by -max_body_size solely: as long as the flag is large enough, messages will not be rejected and error logs will not be printed. This feature works for all versions of protobuf.
 
-## 压缩
+## Compression
 
-set_response_compress_type()设置response的压缩方式, 默认不压缩. 注意附件不会被压缩. HTTP body的压缩方法见[server压缩response body](http_client.md#压缩responsebody).
+set_response_compress_type() sets compression method for response, no compression by default.
 
-支持的压缩方法有:
+Attachment is not compressed. Check out [here](http_service.md#compress-response-body) for compression of HTTP body.
 
-- brpc::CompressTypeSnappy : [snanpy压缩](http://google.github.io/snappy/), 压缩和解压显著快于其他压缩方法, 但压缩率最低.
-- brpc::CompressTypeGzip : [gzip压缩](http://en.wikipedia.org/wiki/Gzip), 显著慢于snappy, 但压缩率高
-- brpc::CompressTypeZlib : [zlib压缩](http://en.wikipedia.org/wiki/Zlib), 比gzip快10%~20%, 压缩率略好于gzip, 但速度仍明显慢于snappy.
+Supported compressions:
 
-更具体的性能对比见[Client-压缩](client.md#压缩).
+- brpc::CompressTypeSnappy : [snanpy](http://google.github.io/snappy/), compression and decompression are very fast, but compression ratio is low.
+- brpc::CompressTypeGzip : [gzip](http://en.wikipedia.org/wiki/Gzip), significantly slower than snappy, with a higher compression ratio.
+- brpc::CompressTypeZlib : [zlib](http://en.wikipedia.org/wiki/Zlib), 10%~20% faster than gzip but still significantly slower than snappy, with slightly better compression ratio than gzip.
 
-## 附件
+Read [Client-Compression](client.md#compression) for more comparisons.
 
-baidu_std和hulu_pbrpc协议支持附件, 这段数据由用户自定义, 不经过protobuf的序列化. 站在server的角度, 设置在Controller::response_attachment()的附件会被client端收到, request_attachment()则包含了client端送来的附件. 附件不受压缩选项影响.
+## Attachment
 
-在http协议中, 附件对应[message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html), 比如要返回的数据就设置在response_attachment()中.
+baidu_std and hulu_pbrpc supports attachments which are sent along with messages and set by users to bypass serialization of protobuf. From a server's perspective, data set in Controller.response_attachment() will be received by client while Controller.request_attachment() contains attachment sent from client.
 
-## 验证client身份
+Attachment is not compressed by framework.
 
-如果server端要开启验证功能, 需要继承实现`Authenticator`中的`VerifyCredential`接口
+In http, attachment corresponds to [message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html), namely the data to post to client is stored in response_attachment().
+
+## Verify identities of clients
+
+Server-side needs to implement `Authenticator` to enable verifications:
 
 ```c++
-class Authenticator {                                                                                                                                                              
-public:                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
-    // Implement this method to verify credential information                                                                                                                      
-    // `auth_str' from `client_addr'. You can fill credential                                                                                                                      
-    // context (result) into `*out_ctx' and later fetch this                                                                                                                       
-    // pointer from `Controller'.                                                                                                                                                  
-    // Returns 0 on success, error code otherwise                                                                                                                                  
-    virtual int VerifyCredential(const std::string& auth_str,                                                                                                                      
-                                 const butil::EndPoint& client_addr,                                                                                                                
-                                 AuthContext* out_ctx) const = 0;                                                                                                                                                                                                                                                                                                     
-}; 
- 
+class Authenticator {
+public:
+    // Implement this method to verify credential information `auth_str' from
+    // `client_addr'. You can fill credential context (result) into `*out_ctx'
+    // and later fetch this pointer from `Controller'.
+    // Returns 0 on success, error code otherwise
+    virtual int VerifyCredential(const std::string& auth_str,
+                                 const base::EndPoint& client_addr,
+                                 AuthContext* out_ctx) const = 0;
+    }; 
+
 class AuthContext {
 public:
-    const std::string& user() const;
-    const std::string& group() const;
-    const std::string& roles() const;
-    const std::string& starter() const;
-    bool is_service() const;
+    const std::string& user() const;
+    const std::string& group() const;
+    const std::string& roles() const;
+    const std::string& starter() const;
+    bool is_service() const;
 };
 ```
 
-当server收到连接上的第一个包时, 会尝试解析出其中的身份信息部分(如baidu_std里的auth字段、HTTP协议里的Authorization头), 然后附带client地址信息一起调用`VerifyCredential`.
+The authentication is connection-specific. When server receives the first request from a connection, it tries to parse related information inside (such as auth field in baidu_std, Authorization header in HTTP), and call `VerifyCredential` along with address of the client. If the method returns 0, which indicates success, user can put verified information into `AuthContext` and access it via `controller->auth_context()` laterly, whose lifetime is managed by framework. Otherwise the authentication is failed and the connection will be closed, which makes the client-side fail as well.
 
-若返回0, 表示验证成功, 用户可以把验证后的信息填入`AuthContext`, 后续可通过`controller->auth_context()获取, 用户不需要关心controller->auth_context()的分配和释放`
+Subsequent requests are treated as verified without authenticating overhead.
 
-否则, 表示验证失败, 连接会被直接关闭, client访问失败.
+Assigning an instance of implemented `Authenticator` to `ServerOptions.auth` enables authentication. The instance must be valid during lifetime of the server.
 
-由于server的验证是基于连接的, `VerifyCredential`只会在每个连接建立之初调用, 后续请求默认通过验证.
+## Number of worker pthreads
 
-最后, 把实现的`Authenticator`实例赋值到`ServerOptions.auth`, 即开启验证功能, 需要保证该实例在整个server运行周期内都有效, 不能被析构.
+ServerOptions.num_threads controls the value, number of cpu cores by default(including HT).
 
-我们为公司统一的Giano验证方案提供了默认的Authenticator实现, 配合Giano的具体用法参看[Giano快速上手手册.pdf](http://wiki.baidu.com/download/attachments/37774685/Giano%E5%BF%AB%E9%80%9F%E4%B8%8A%E6%89%8B%E6%89%8B%E5%86%8C.pdf?version=1&modificationDate=1421990746000&api=v2)中的鉴权部分.
+NOTE: ServerOptions.num_threads is just a **hint**.
 
-server端开启giano认证的方式:
+Don't think that Server uses exactly so many workers because all servers and channels in the process share worker pthreads. Total number of threads is the maximum of all ServerOptions.num_threads and bthread_concurrency.  For example, a program has 2 servers with num_threads=24 and 36 respectively, and bthread_concurrency is 16. Then the number of worker pthreads is max (24, 36, 16) = 36, which is different from other RPC implementations which do summations generally.
 
-```c++
-// Create a baas::CredentialVerifier using Giano's API
-baas::CredentialVerifier verifier = CREATE_MOCK_VERIFIER(baas::sdk::BAAS_OK);
- 
-// Create a brpc::policy::GianoAuthenticator using the verifier we just created 
-// and then pass it into brpc::ServerOptions
-brpc::policy::GianoAuthenticator auth(NULL, &verifier);
-brpc::ServerOptions option;
-option.auth = &auth;
-```
+Channel does not have a corresponding option, but user can change number of worker pthreads at client-side by setting gflag -bthread_concurrency.
 
-## worker线程数
+In addition, brpc **does not separate "IO" and "processing" threads**. brpc knows how to assemble IO and processing code together to achieve better concurrency and efficiency.
 
-设置ServerOptions.num_threads即可, 默认是cpu core的个数(包含超线程的).
+## Limit concurrency
 
-> ServerOptions.num_threads仅仅是提示值.
+"Concurrency" may have 2 meanings: one is number of connections, another is number of requests processed simultaneously. Here we're talking about the latter one.
 
-你不能认为Server就用了这么多线程, 因为进程内的所有Server和Channel会共享线程资源, 线程总数是所有ServerOptions.num_threads和bthread_concurrency中的最大值. Channel没有相应的选项, 但可以通过--bthread_concurrency调整. 比如一个程序内有两个Server, num_threads分别为24和36, bthread_concurrency为16. 那么worker线程数为max(24, 36, 16) = 36. 这不同于其他RPC实现中往往是加起来.
+In traditional synchronous servers, max concurreny is limited by number of worker pthreads. Setting number of workers also limits concurrency. But brpc processes new requests in bthreads and M bthreads are mapped to N workers (M > N generally), synchronous server may have a concurrency higher than number of workers. On the other hand, although concurrency of asynchronous server is not limited by number of workers in principle, we need to limit it by other factors sometimes.
 
-另外, brpc**不区分**io线程和worker线程. brpc知道如何编排IO和处理代码, 以获得更高的并发度和线程利用率.
+brpc can limit concurrency at server-level and method-level. When number of requests processed by the server or method simultaneously would exceed the limit,  server responds the client with ELIMIT directly instead of invoking the service. A client seeing ELIMIT should retry another server (by best efforts). This options avoids over-queuing of requests at server-side, or limits related resources.
 
-## 限制最大并发
+Disabled by default.
 
-"并发"在中文背景下有两种含义, 一种是连接数, 一种是同时在处理的请求数. 有了[epoll](https://linux.die.net/man/4/epoll)之后我们就不太关心连接数了, brpc在所有上下文中提到的并发(concurrency)均指同时在处理的请求数, 不是连接数.
+### Why issue error to client instead of queuing request when the concurrency would exceed the limit?
 
-在传统的同步rpc server中, 最大并发不会超过worker线程数(上面的num_threads选项), 设定worker数量一般也限制了并发. 但brpc的请求运行于bthread中, M个bthread会映射至N个worker中(一般M大于N), 所以同步server的并发度可能超过worker数量. 另一方面, 异步server虽然占用的线程较少, 但有时也需要控制并发量.
+A server reaching max concurrency does not mean other servers in the same cluster reach the limit as well. Let client be aware of the error and try another server is a better strategy from a cluster perspective.
 
-brpc支持设置server级和method级的最大并发, 当server或method同时处理的请求数超过并发度限制时, 它会立刻给client回复ELIMIT错误, 而不会调用服务回调. 看到ELIMIT错误的client应尝试另一个server. 在一些情况下, 这个选项可以防止server出现过度排队, 或用于限制server占用的资源, 但在大部分情况下并无必要.
+### Why not limit QPS?
 
-### 为什么超过最大并发要立刻给client返回错误而不是排队？
+QPS is a second-level metric, which is not good at limiting request bursts. Max concurrency is closely related to available critical resources: number of "workers" or "slots" etc, thus better at preventing over-queuing.
 
-当前server达到最大并发并不意味着集群中的其他server也达到最大并发了, 立刻让client获知错误, 并去尝试另一台server在全局角度是更好的策略.
+In addition, when server is stable at latencies, limiting concurrency has similar effect as limiting QPS due to little's law. But the former one is much easier to implement: simple additions or minuses from a counter representing the concurrency. This is also the reason than most traffic control is implemented by limiting concurrency rather than QPS. For example the window in TCP is a kind of concurrency.
 
-### 选择最大并发数
+### Calculate max concurrency
 
-最大并发度=极限qps*平均延时([little's law](https://en.wikipedia.org/wiki/Little%27s_law)), 平均延时指的是server在正常服务状态(无积压)时的延时, 设置为计算结果或略大的值即可. 当server的延时较为稳定时, 限制最大并发的效果和限制qps是等价的. 但限制最大并发实现起来比限制qps容易多了, 只需要一个计数器加加减减即可, 这也是大部分流控都限制并发而不是qps的原因, 比如tcp中的"窗口"即是一种并发度.
+MaxConcurrency = PeakQPS * AverageLatency  ([little's law](https://en.wikipedia.org/wiki/Little%27s_law))
 
-### 限制server级别并发度
+PeakQPS and AverageLatency are queries-per-second and latencies measured in a server being pushed to its limit provided that requests are not delayed severely (with an acceptable latency). Most services have performance tests before going online, multiplications of the two is just max concurrencies of the services.
 
-设置ServerOptions.max_concurrency, 默认值0代表不限制. 访问内置服务不受此选项限制.
+### Limit server-level concurrency
 
-r34101后调用Server.ResetMaxConcurrency()可在server启动后动态修改server级别的max_concurrency.
+Set ServerOptions.max_concurrency. Default value is 0 which means not limited. Accessing builtin services are not limited by this option.
 
-### 限制method级别并发度
+Server.ResetMaxConcurrency() is able to modify max_concurrency of the server after starting.
 
-r34591后调用server.MaxConcurrencyOf("...") = ...可设置method级别的max_concurrency. 可能的设置方法有:
+### Limit method-level concurrency
+
+server.MaxConcurrencyOf("...") = … sets max_concurrency of the method. Possible settings:
 
 ```c++
 server.MaxConcurrencyOf("example.EchoService.Echo") = 10;
@@ -506,81 +507,82 @@ server.MaxConcurrencyOf("example.EchoService", "Echo") = 10;
 server.MaxConcurrencyOf(&service, "Echo") = 10;
 ```
 
-此设置一般**发生在AddService后, server启动前**. 当设置失败时(比如对应的method不存在), server会启动失败同时提示用户修正MaxConcurrencyOf设置错误.
+The code is generally **after AddService, before Start() of the server**. When a setting fails(namely the method does not exist), server will fail to start and notify user to fix settings to MaxConcurrencyOf.
 
-当method级别和server级别的max_concurrency都被设置时, 先检查server级别的, 再检查method级别的.
+When method-level and server-level max_concurrency are both set, check server-level first, then the method-level one.
 
-注意: 没有service级别的max_concurrency.
+NOTE: No service-level max_concurrency.
 
-## pthread模式
+## pthread mode
 
-用户代码(客户端的done, 服务器端的CallMethod)默认在栈为1M的bthread中运行. 但有些用户代码无法在bthread中运行, 比如:
+User code(client-side done, server-side CallMethod) runs in bthreads with 1MB stacks by default. But some of them cannot run in bthread, namely:
 
-- JNI会检查stack layout而无法在bthread中运行.
-- 代码中广泛地使用pthread local传递session数据(跨越了某次RPC), 短时间内无法修改. 请注意, 如果代码中完全不使用brpc的客户端, 在bthread中运行是没有问题的, 只要代码没有明确地支持bthread就会阻塞pthread, 并不会产生问题.
+- JNI checks stack layout and cannot be run in bthread.
+- Extensively used pthread-local to pass session-level global data to functions. Storing data into pthread-local before a RPC and expecting the data read after RPC to equal to the one stored, is problematic. Although tcmalloc uses pthread/LWP-local as well, calls to malloc do not depend on each other, which is safe.
 
-对于这些情况, brpc提供了pthread模式, 开启**-usercode_in_pthread**后, 用户代码均会在pthread中运行, 原先阻塞bthread的函数转而阻塞pthread.
+brpc offers pthread mode to solve the issues. When **-usercode_in_pthread** is turned on, user code will be run in pthreads. Functions that would block bthreads will block pthreads.
 
-**r33447前请勿在开启-usercode_in_pthread的代码中发起同步RPC, 只要同时进行的同步RPC个数超过工作线程数就会死锁. **
+Performance issues when pthread mode is on:
 
-打开pthread模式在性能上的注意点:
+- Synchronous RPCs block worker pthreads, server often needs more workers (ServerOptions.num_threads), and scheduling efficiency will be slightly lower.
+- User code still runs in special bthreads, which use stacks of pthread workers. These special bthreads are scheduled same with normal bthreads and performance differences are negligible.
+- bthread supports an unique feature: yield pthread worker to a newly created bthread to reduce a context switch. brpc client uses this feature to reduce number of context switches in one RPC from 3 to 2. In a performance-demanding system, reducing context-switches significantly improves performance and distributions of latencies. However pthread-mode is not capable of doing this and slower in high-QPS systems.
+- Number of threads in pthread-mode is a hard limit. Once all threads are occupied, many requests will be queued rapidly and timed-out finally. A common example: When many requests to downstream servers are timedout, the upstream services may also be severely affected by a lot of blocking threads waiting for responses. Consider setting ServerOptions.max_concurrency to protect the server when pthread-mode is on. As a contrast, number of bthreads in bthread mode is a soft limit and reacts more smoothly to such kind of issues.
 
-- 开启这个开关后, RPC操作都会阻塞pthread, server端一般需要设置更多的工作线程(ServerOptions.num_threads), 调度效率会略微降低.
-- pthread模式下运行用户代码的仍然是bthread, 只是很特殊, 会直接使用pthread worker的栈. 这些特殊bthread的调度方式和其他bthread是一致的, 这方面性能差异很小.
-- bthread端支持一个独特的功能: 把当前使用的pthread worker 让给另一个bthread运行, 以消除一次上下文切换. client端的实现利用了这点, 从而使一次RPC过程中3次上下文切换变为了2次. 在高QPS系统中, 消除上下文切换可以明显改善性能和延时分布. 但pthread模式不具备这个能力, 在高QPS系统中性能会有一定下降.
-- pthread模式中线程资源是硬限, 一旦线程被打满, 请求就会迅速拥塞而造成大量超时. 比如下游服务大量超时后, 上游服务可能由于线程大都在等待下游也被打满从而影响性能. 开启pthread模式后请考虑设置ServerOptions.max_concurrency以控制server的最大并发. 而在bthread模式中bthread个数是软限, 对此类问题的反应会更加平滑.
+pthread-mode lets legacy code to try brpc more easily, but we still recommend refactoring the code with bthread-local or even not using TLS gradually, to turn off the option in future.
 
-打开pthread模式可以让一些产品快速尝试brpc, 但我们仍然建议产品线逐渐地把代码改造为使用bthread local从而最终能关闭这个开关.
+## Safe mode
 
-## 安全模式
+If requests are from public(including being proxyed by nginx etc), you have to be aware of some security issues.
 
-如果你的服务流量来自外部(包括经过nginx等转发), 你需要注意一些安全因素:
+### Hide builtin services from public
 
-### 对外禁用内置服务
+Builtin services are useful, on the other hand include a lot of internal information and shouldn't be exposed to public. There're multiple methods to hide builtin services from public:
 
-内置服务很有用, 但包含了大量内部信息, 不应对外暴露. 有多种方式可以对外禁用内置服务:
-
-- 设置内部端口. 把ServerOptions.internal_port设为一个**仅允许内网访问**的端口. 你可通过internal_port访问到内置服务, 但通过对外端口(Server.Start时传入的那个)访问内置服务时将看到如下错误:
+- Set internal port. Set ServerOptions.internal_port to a port which can **only be accessible from internal**. You can view builtin services via internal_port, while accesses from port to public(the one passed to Server.Start) should see following error:
 
   ```
-  [a27eda84bcdeef529a76f22872b78305] Not allowed to access builtin services, try ServerOptions.internal_port=... instead if you're inside Baidu's network
+  [a27eda84bcdeef529a76f22872b78305] Not allowed to access builtin services, try ServerOptions.internal_port=... instead if you're inside internal network
   ```
 
-- 前端server指定转发路径. nginx等http server可配置URL的映射关系, 比如下面的配置把访问/MyAPI的外部流量映射到`target-server的/ServiceName/MethodName`. 当外部流量尝试访问内置服务, 比如说/status时, 将直接被nginx拒绝.
+- http proxies only proxy specified URLs. nginx etc is able to configure how to map different URLs. For example the configure below maps public traffic to /MyAPI to `/ServiceName/MethodName` of `target-server`. If builtin services like /status are accessed from public, nginx rejects the attempts directly.
 ```nginx
   location /MyAPI {
       ...
-      proxy_pass http://<target-server>/ServiceName/MethodName$query_string   # $query_string是nginx变量, 更多变量请查询http://nginx.org/en/docs/http/ngx_http_core_module.html
+      proxy_pass http://<target-server>/ServiceName/MethodName$query_string   # $query_string is a nginx varible, check out http://nginx.org/en/docs/http/ngx_http_core_module.html for more.
       ...
   }
 ```
-**请勿开启**-enable_dir_service和-enable_threads_service两个选项, 它们虽然很方便, 但会暴露服务器上的其他信息, 有安全隐患. 早于r30869 (1.0.106.30846)的rpc版本没有这两个选项而是默认打开了这两个服务, 请升级rpc确保它们关闭. 检查现有rpc服务是否打开了这两个开关:
+**Don't turn on** -enable_dir_service and -enable_threads_service on public services. Although they're convenient for debugging, they also expose too many information on the server. The script to check if the public service has enabled the options:
+
 ```shell
 curl -s -m 1 <HOSTNAME>:<PORT>/flags/enable_dir_service,enable_threads_service | awk '{if($3=="false"){++falsecnt}else if($3=="Value"){isrpc=1}}END{if(isrpc!=1||falsecnt==2){print "SAFE"}else{print "NOT SAFE"}}'
 ```
-### 对返回的URL进行转义
+### Escape URLs controllable from public
 
-可调用brpc::WebEscape()对url进行转义, 防止恶意URI注入攻击.
+brpc::WebEscape() escapes url to prevent injection attacks with malice.
 
-### 不返回内部server地址
+### Not return addresses of internal servers
 
-可以考虑对server地址做签名. 比如在设置internal_port后, server返回的错误信息中的IP信息是其MD5签名, 而不是明文.
+Consider returning signatures of the addresses. For example after setting ServerOptions.internal_port, error information returned by server replaces addresses with their MD5 signatures.
 
-## 定制/health页面
+## Customize /health
 
-/health页面默认返回"OK", r32162后可以定制/health页面的内容: 先继承[HealthReporter](https://github.com/brpc/brpc/blob/master/src/brpc/health_reporter.h), 在其中实现生成页面的逻辑(就像实现其他http service那样), 然后把实例赋给ServerOptions.health_reporter, 这个实例不被server拥有, 必须保证在server运行期间有效. 用户在定制逻辑中可以根据业务的运行状态返回更多样的状态信息.
+/health returns "OK" by default. If the content on /health needs to be customized: inherit [HealthReporter](https://github.com/brpc/brpc/blob/master/src/brpc/health_reporter.h) and implement code to generate the page(as in implementing other http services). Assign an instance to ServerOptions.health_reporter, which is not owned by server and must be valid during lifetime of server. Users may return richer information on status according to application requirements.
 
-## 私有变量
+## thread-local variables
 
-百度内的检索程序大量地使用了[thread-local storage](https://en.wikipedia.org/wiki/Thread-local_storage) (缩写tls), 有些是为了缓存频繁访问的对象以避免反复创建, 有些则是为了在全局函数间隐式地传递状态. 你应当尽量避免后者, 这样的函数难以测试, 不设置thread-local变量甚至无法运行. brpc中有三套机制解决和thread-local相关的问题.
+Searching services inside Baidu use [thread-local storage](https://en.wikipedia.org/wiki/Thread-local_storage) (TLS) extensively. Some of them cache frequently used objects and reduce repeated creations, some of them pass contexts to global functions implicitly. You should avoid the latter usage as much as possible. Such functions cannot even run without TLS, being hard to test. brpc provides 3 mechanisms to solve issues related to thread-local storage.
 
 ### session-local
 
-session-local data与一次检索绑定, 从进service回调开始, 到done被调用结束.  所有的session-local data在server停止时删除.
+A session-local data is bound to a **server-side RPC**: from entering CallMethod of the service, to calling the server-side done->Run(), no matter the service is synchronous or asynchronous. All session-local data are reused as much as possible and not deleted before stopping the server.
 
-session-local data得从server端的Controller获得,  server-thread-local可以在任意函数中获得, 只要这个函数直接或间接地运行在server线程中. 当service是同步时, session-local和server-thread-local基本没有差别, 除了前者需要Controller创建. 当service是异步时, 且你需要在done中访问到数据, 这时只能用session-local, 出了service回调后server-thread-local已经失效.
+After setting ServerOptions.session_local_data_factory, call Controller.session_local_data() to get a session-local data. If ServerOptions.session_local_data_factory is unset, Controller.session_local_data() always returns NULL. 
 
-**示例用法: **
+If ServerOptions.reserved_session_local_data is greater than 0, Server creates so many data before serving.
+
+**Example**
 
 ```c++
 struct MySessionLocalData {
@@ -608,10 +610,6 @@ public:
         ...
 ```
 
-**使用方法: **
-
-设置ServerOptions.session_local_data_factory后访问Controller.session_local_data()即可获得session-local数据. 若没有设置, Controller.session_local_data()总是返回NULL. 若ServerOptions.reserved_session_local_data大于0, Server会在启动前就创建这么多个数据.
-
 ```c++
 struct ServerOptions {
     ...
@@ -631,11 +629,9 @@ struct ServerOptions {
 };
 ```
 
-**实现session_local_data_factory**
+session_local_data_factory is typed [DataFactory](https://github.com/brpc/brpc/blob/master/src/brpc/data_factory.h). You have to implement CreateData and DestroyData inside.
 
-session_local_data_factory的类型为[DataFactory](https://github.com/brpc/brpc/blob/master/src/brpc/data_factory.h), 你需要实现其中的CreateData和DestroyData.
-
-注意: CreateData和DestroyData会被多个线程同时调用, 必须线程安全.
+NOTE: CreateData and DestroyData may be called by multiple threads simultaneously. Thread-safety is a must.
 
 ```c++
 class MySessionLocalDataFactory : public brpc::DataFactory {
@@ -661,9 +657,19 @@ int main(int argc, char* argv[]) {
 
 ### server-thread-local
 
-server-thread-local与一个检索线程绑定, 从进service回调开始, 到出service回调结束. 所有的server-thread-local data在server停止时删除. 在实现上server-thread-local是一个特殊的bthread-local.
+A server-thread-local is bound to **a call to service's CallMethod**, from entering service's CallMethod, to leaving the method. All server-thread-local data are reused as much as possible and will not be deleted before stopping server. server-thread-local is implemented as a special bthread-local.
 
-**示例用法: **
+After setting ServerOptions.thread_local_data_factory, call Controller.thread_local_data() to get a thread-local. If ServerOptions.thread_local_data_factory is unset, Controller.thread_local_data() always returns NULL. 
+
+If ServerOptions.reserved_thread_local_data is greater than 0, Server creates so many data before serving.
+
+**Difference with session-local**
+
+session-local data is got from server-side Controller,  server-thread-local can be got globally from any function running directly or indirectly inside a thread created by the server.
+
+session-local and server-thread-local are similar in a synchronous service, except that the former one has to be created from a Controller. If the service is asynchronous and the data needs to be accessed from done->Run(), session-local is the only option, because server-thread-local is already invalid after leaving service's CallMethod.
+
+**Example**
 
 ```c++
 struct MyThreadLocalData {
@@ -693,10 +699,6 @@ public:
         ...
 ```
 
-**使用方法: **
-
-设置ServerOptions.thread_local_data_factory后访问Controller.thread_local_data()即可获得thread-local数据. 若没有设置, Controller.thread_local_data()总是返回NULL. 若ServerOptions.reserved_thread_local_data大于0, Server会在启动前就创建这么多个数据.
-
 ```c++
 struct ServerOptions {
     ...
@@ -717,11 +719,9 @@ struct ServerOptions {
 };
 ```
 
-**实现thread_local_data_factory: **
+thread_local_data_factory is typed [DataFactory](https://github.com/brpc/brpc/blob/master/src/brpc/data_factory.h). You need to implement CreateData and DestroyData inside.
 
-thread_local_data_factory的类型为[DataFactory](https://github.com/brpc/brpc/blob/master/src/brpc/data_factory.h), 你需要实现其中的CreateData和DestroyData.
-
-注意: CreateData和DestroyData会被多个线程同时调用, 必须线程安全.
+NOTE: CreateData and DestroyData may be called by multiple threads simultaneously. Thread-safety is a must.
 
 ```c++
 class MyThreadLocalDataFactory : public brpc::DataFactory {
@@ -747,17 +747,13 @@ int main(int argc, char* argv[]) {
 
 ### bthread-local
 
-Session-local和server-thread-local对大部分server已经够用. 不过在一些情况下, 我们可能需要更通用的thread-local方案. 在这种情况下, 你可以使用bthread_key_create, bthread_key_destroy, bthread_getspecific, bthread_setspecific等函数, 它们的用法完全等同于[pthread中的函数](http://linux.die.net/man/3/pthread_key_create).
+Session-local and server-thread-local are enough for most servers. However, in some cases, we need a more general thread-local solution. In which case, you can use bthread_key_create, bthread_key_destroy, bthread_getspecific, bthread_setspecific etc, which are similar to [pthread equivalence](http://linux.die.net/man/3/pthread_key_create).
 
-这些函数同时支持bthread和pthread, 当它们在bthread中被调用时, 获得的是bthread私有变量, 而当它们在pthread中被调用时, 获得的是pthread私有变量. 但注意, 这里的"pthread私有变量"不是pthread_key_create创建的pthread-local, 使用pthread_key_create创建的pthread-local是无法被bthread_getspecific访问到的, 这是两个独立的体系. 由于pthread与LWP是1:1的关系, 由gcc的__thread, c++11的thread_local等声明的变量也可视作pthread-local, 同样无法被bthread_getspecific访问到.
+These functions support both bthread and pthread. When they are called in bthread, bthread private variables are returned; When they are called in pthread, pthread private variables are returned. Note that the "pthread private" here is not created by pthread_key_create, pthread-local created by pthread_key_create cannot be got by bthread_getspecific. __thread in GCC and thread_local in c++11 etc cannot be got by bthread_getspecific as well.
 
-由于brpc会为每个请求建立一个bthread, server中的bthread-local行为特殊: 当一个检索bthread退出时, 它并不删除bthread-local, 而是还回server的一个pool中, 以被其他bthread复用. 这可以避免bthread-local随着bthread的创建和退出而不停地构造和析构. 这对于用户是透明的.
+Since brpc creates a bthread for each request, the bthread-local in the server behaves specially: a bthread created by server does not delete bthread-local data at exit, instead it returns the data to a pool in the server for later reuse. This prevents bthread-local from constructing and destructing frequently along with creation and destroying of bthreads. This mechanism is transparent to users.
 
-**在使用bthread-local前确保brpc的版本 >= 1.0.130.31109**
-
-在那个版本之前的bthread-local没有在不同bthread间重用线程私有的存储(keytable). 由于brpc server会为每个请求创建一个bthread, bthread-local函数会频繁地创建和删除thread-local数据, 性能表现不佳. 之前的实现也无法在pthread中使用.
-
-**主要接口: **
+**Major interfaces**
 
 ```c++
 // Create a key value identifying a slot in a thread-specific data area.
@@ -797,37 +793,35 @@ extern int bthread_setspecific(bthread_key_t key, void* data) __THROW;
 extern void* bthread_getspecific(bthread_key_t key) __THROW;
 ```
 
-**使用步骤:**
+**How to use**
 
-- 创建一个bthread_key_t, 它代表一个bthread私有变量.
+Create a bthread_key_t which represents a kind of bthread-local variable.
 
-  ```c++
-  static void my_data_destructor(void* data) {
-      ...
-  }
+Use bthread_[get|set]specific to get and set bthread-local variables. First-time access to a bthread-local variable from a bthread returns NULL.
 
-  bthread_key_t tls_key;
+Delete a bthread_key_t after no thread is using bthread-local associated with the key. If a bthread_key_t is deleted during usage, related bthread-local data are leaked.
 
-  if (bthread_key_create(&tls_key, my_data_destructor) != 0) {
-      LOG(ERROR) << "Fail to create tls_key";
-      return -1;
-  }
-  ```
+```c++
+static void my_data_destructor(void* data) {
+    ...
+}
 
-- get/set bthread私有变量. 一个线程中第一次访问某个私有变量返回NULL.
+bthread_key_t tls_key;
 
-  ```c++
-  // in some thread ...
-  MyThreadLocalData* tls = static_cast<MyThreadLocalData*>(bthread_getspecific(tls_key));
-  if (tls == NULL) {  // First call to bthread_getspecific (and before any bthread_setspecific) returns NULL
-      tls = new MyThreadLocalData;   // Create thread-local data on demand.
-      CHECK_EQ(0, bthread_setspecific(tls_key, tls));  // set the data so that next time bthread_getspecific in the thread returns the data.
-  }
-  ```
-
-- 在所有线程都不使用某个bthread_key_t后删除它. 如果删除了一个仍在被使用的bthread_key_t, 相关的私有变量就泄露了.
-
-**示例代码:**
+if (bthread_key_create(&tls_key, my_data_destructor) != 0) {
+    LOG(ERROR) << "Fail to create tls_key";
+    return -1;
+}
+```
+```c++
+// in some thread ...
+MyThreadLocalData* tls = static_cast<MyThreadLocalData*>(bthread_getspecific(tls_key));
+if (tls == NULL) {  // First call to bthread_getspecific (and before any bthread_setspecific) returns NULL
+    tls = new MyThreadLocalData;   // Create thread-local data on demand.
+    CHECK_EQ(0, bthread_setspecific(tls_key, tls));  // set the data so that next time bthread_getspecific in the thread returns the data.
+}
+```
+**Example**
 
 ```c++
 static void my_thread_local_data_deleter(void* d) {
@@ -871,45 +865,45 @@ public:
 
 # FAQ
 
-### Q: Fail to write into fd=1865 SocketId=8905@10.208.245.43:54742@8230: Got EOF是什么意思
+### Q: Fail to write into fd=1865 SocketId=8905@10.208.245.43:54742@8230: Got EOF
 
-A: 一般是client端使用了连接池或短连接模式, 在RPC超时后会关闭连接, server写回response时发现连接已经关了就报这个错. Got EOF就是指之前已经收到了EOF(对端正常关闭了连接). client端使用单连接模式server端一般不会报这个.
+A: The client-side probably uses pooled or short connections, and closes the connection after RPC timedout, when server writes back response, it finds that the connection has been closed and reports this error. "Got EOF" just means the server has received EOF (remote side closes the connection normally). If the client side uses single connection, server rarely reports this error.
 
-### Q: Remote side of fd=9 SocketId=2@10.94.66.55:8000 was closed是什么意思
+### Q: Remote side of fd=9 SocketId=2@10.94.66.55:8000 was closed
 
-这不是错误, 是常见的warning日志, 表示对端关掉连接了(EOF). 这个日志有时对排查问题有帮助. r31210之后, 这个日志默认被关闭了. 如果需要打开, 可以把参数-log_connection_close设置为true(支持[动态修改](flags.md#change-gflag-on-the-fly))
+It's not an error, it's a common warning representing that remote side has closed the connection(EOF). This log might be useful for debugging problems. 
 
-### Q: 为什么server端线程数设了没用
+Closed by default. Set gflag -log_connection_close to true to enable it. ([modify at run-time](flags.md#change-gflag-on-the-fly) is supported)
 
-brpc同一个进程中所有的server[共用线程](#worker线程数), 如果创建了多个server, 最终的工作线程数是最大的那个.
+### Q: Why does setting number of threads at server-side not work
 
-### Q: 为什么client端的延时远大于server端的延时
+All brpc servers in one process [share worker pthreads](#Number-of-worker-pthreads), If multiple servers are created, number of worker pthreads is probably the maxmium of their ServerOptions.num_threads.
 
-可能是server端的工作线程不够用了, 出现了排队现象. 排查方法请查看[高效率排查服务卡顿](server_debugging.md).
+### Q: Why does client-side latency much larger than the server-side one
 
-### Q: 程序切换到rpc之后, 会出现莫名其妙的core, 像堆栈被写坏
+server-side worker pthreads may be not enough and requests are signicantly delayed. Read [Server debugging](server_debugging.md) for tips and steps on debugging server-side issues.
 
-brpc的Server是运行在bthread之上, 默认栈大小为1M, 而pthread默认栈大小为10M, 所以在pthread上正常运行的程序, 在bthread上可能遇到栈不足.
+### Q: Program may crash and generate coredumps unexplainable after switching to brpc
 
-解决方案: 添加以下gflag, 调整栈大小. 第一个表示调整栈大小为10M左右, 如有必要, 可以更大. 第二个表示每个工作线程cache的栈个数
+brpc server runs code in bthreads with stacksize=1MB by default, while stacksize of pthreads is 10MB. It's possible that programs running normally on pthreads may meet stack overflow on bthreads.
 
-**--stack_size_normal=10000000 --tc_stack_normal=1**
+NOTE: It does mean that coredump of programs is likely to be caused by "stack overflow". Just because it's easy and quick to verify this factor and exclude the possibility.
 
-注意: 不是说程序core了就意味着"栈不够大"了...只是因为这个试起来最容易, 所以优先排除掉可能性.
+Solution: Add following gflags to adjust the stacksize. For example: `--stack_size_normal=10000000 --tc_stack_normal=1`. The first flag sets stacksize to 10MB and the second flag sets number of stacks cached by each worker pthread (to prevent reusing from global each time)
 
 ### Q: Fail to open /proc/self/io
 
-有些内核没这个文件, 不影响服务正确性, 但如下几个bvar会无法更新:
+Some kernels do not provide this file. Correctness of the service is unaffected, but following bvars are not updated:
 ```
 process_io_read_bytes_second
 process_io_write_bytes_second
 process_io_read_second
 process_io_write_second
 ```
-### Q: json串="[1,2,3]"没法直接转为protobuf message
+### Q: json string "[1,2,3]" can't be converted to protobuf message
 
-不行, 最外层必须是json object(大括号包围的)
+This is not a valid json string, which must be a json object enclosed with braces {}.
 
-# 附:Server端基本流程
+# PS:Workflow at server-side
 
 ![img](../images/server_side.png)
