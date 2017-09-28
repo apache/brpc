@@ -25,7 +25,7 @@
 #include <ostream>                               // std::ostream
 #include <google/protobuf/io/zero_copy_stream.h> // ZeroCopyInputStream
 #include "butil/strings/string_piece.h"           // butil::StringPiece
-#include "butil/third_party/snappy/snappy-sinksource.h"
+#include "third_party/snappy/snappy-sinksource.h"
 #include "butil/zero_copy_stream_as_streambuf.h"
 #include "butil/macros.h"
 

@@ -42,7 +42,7 @@
 #include "butil/strings/string_piece.h"
 
 #if defined(USE_SYMBOLIZE)
-#include "butil/third_party/symbolize/symbolize.h"
+#include "third_party/symbolize/symbolize.h"
 #endif
 
 #if defined(OS_ANDROID)

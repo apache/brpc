@@ -17,7 +17,7 @@
 #include <google/protobuf/descriptor.h>            // MethodDescriptor
 #include <google/protobuf/message.h>               // Message
 #include <gflags/gflags.h>
-#include "butil/third_party/snappy/snappy.h"        // snappy::Compress
+#include "third_party/snappy/snappy.h"        // snappy::Compress
 #include "butil/time.h"
 #include "brpc/controller.h"                       // Controller
 #include "brpc/socket.h"                           // Socket

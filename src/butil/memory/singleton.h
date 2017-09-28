@@ -23,7 +23,7 @@
 #include "butil/atomicops.h"
 #include "butil/base_export.h"
 #include "butil/memory/aligned_memory.h"
-#include "butil/third_party/dynamic_annotations/dynamic_annotations.h"
+#include "third_party/dynamic_annotations/dynamic_annotations.h"
 #include "butil/threading/thread_restrictions.h"
 
 namespace butil {

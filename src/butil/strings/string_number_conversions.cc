@@ -14,7 +14,7 @@
 #include "butil/logging.h"
 #include "butil/scoped_clear_errno.h"
 #include "butil/strings/utf_string_conversions.h"
-#include "butil/third_party/dmg_fp/dmg_fp.h"
+#include "third_party/dmg_fp/dmg_fp.h"
 
 namespace butil {
 

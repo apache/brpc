@@ -5,7 +5,7 @@
 
 #include <gtest/gtest.h>
 #include "butil/gperftools_profiler.h"
-#include "butil/third_party/snappy/snappy.h"
+#include "third_party/snappy/snappy.h"
 #include "butil/macros.h"
 #include "butil/iobuf.h"
 #include "butil/time.h"

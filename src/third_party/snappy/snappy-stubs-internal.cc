@@ -1,5 +1,4 @@
-// Copyright (c) 2006, Google Inc.
-// All rights reserved.
+// Copyright 2011 Google Inc. All Rights Reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -26,3 +25,20 @@
 // THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+#include <algorithm>
+#include <string>
+
+#include "third_party/snappy/snappy-stubs-internal.h"
+
+namespace butil {
+namespace snappy {
+
+void Varint::Append32(std::string* s, uint32_t value) {
+  char buf[Varint::kMax32];
+  const char* p = Varint::Encode32(buf, value);
+  s->append(buf, p - buf);
+}
+
+}  // namespace snappy
+}  // namespace butil

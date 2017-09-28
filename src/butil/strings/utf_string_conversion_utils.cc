@@ -4,7 +4,7 @@
 
 #include "butil/strings/utf_string_conversion_utils.h"
 
-#include "butil/third_party/icu/icu_utf.h"
+#include "third_party/icu/icu_utf.h"
 
 namespace butil {
 

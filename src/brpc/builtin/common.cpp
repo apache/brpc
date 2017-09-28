@@ -21,7 +21,7 @@
 #include "butil/logging.h"
 #include "butil/fd_guard.h"                  // fd_guard
 #include "butil/file_util.h"                 // butil::FilePath
-#include "butil/third_party/murmurhash3/murmurhash3.h"
+#include "third_party/murmurhash3/murmurhash3.h"
 #include "brpc/server.h"
 #include "brpc/builtin/common.h"
 

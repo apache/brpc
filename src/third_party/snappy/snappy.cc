@@ -26,9 +26,9 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "butil/third_party/snappy/snappy.h"
-#include "butil/third_party/snappy/snappy-internal.h"
-#include "butil/third_party/snappy/snappy-sinksource.h"
+#include "third_party/snappy/snappy.h"
+#include "third_party/snappy/snappy-internal.h"
+#include "third_party/snappy/snappy-sinksource.h"
 
 #include <stdio.h>
 

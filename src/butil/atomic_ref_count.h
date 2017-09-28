@@ -12,7 +12,7 @@
 #define BASE_ATOMIC_REF_COUNT_H_
 
 #include "butil/atomicops.h"
-#include "butil/third_party/dynamic_annotations/dynamic_annotations.h"
+#include "third_party/dynamic_annotations/dynamic_annotations.h"
 
 namespace butil {
 

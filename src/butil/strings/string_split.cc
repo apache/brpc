@@ -7,7 +7,7 @@
 #include "butil/logging.h"
 #include "butil/strings/string_util.h"
 #include "butil/strings/utf_string_conversions.h"
-#include "butil/third_party/icu/icu_utf.h"
+#include "third_party/icu/icu_utf.h"
 
 namespace butil {
 

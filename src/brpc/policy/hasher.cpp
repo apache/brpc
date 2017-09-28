@@ -16,7 +16,7 @@
 
 #include <limits.h>
 #include <openssl/md5.h>
-#include "butil/third_party/murmurhash3/murmurhash3.h"
+#include "third_party/murmurhash3/murmurhash3.h"
 #include "brpc/policy/hasher.h"
 
 

@@ -6,7 +6,7 @@
 #include <time.h>
 
 #include "butil/compiler_specific.h"
-#include "butil/third_party/nspr/prtime.h"
+#include "third_party/nspr/prtime.h"
 #include "butil/time/time.h"
 #include <gtest/gtest.h>
 

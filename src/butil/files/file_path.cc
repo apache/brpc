@@ -19,7 +19,7 @@
 
 #if defined(OS_MACOSX)
 #include "butil/mac/scoped_cftyperef.h"
-#include "butil/third_party/icu/icu_utf.h"
+#include "third_party/icu/icu_utf.h"
 #endif
 
 #if defined(OS_WIN)

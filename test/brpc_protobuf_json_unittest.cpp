@@ -7,7 +7,7 @@
 #include <string>
 #include <google/protobuf/text_format.h>
 #include "butil/iobuf.h"
-#include "butil/third_party/rapidjson/rapidjson.h"
+#include "third_party/rapidjson/rapidjson.h"
 #include "butil/time.h"
 #include "butil/gperftools_profiler.h"
 #include "json2pb/pb_to_json.h"
