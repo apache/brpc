@@ -331,6 +331,14 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         // TODO: Save thread_return
         (void)thread_return;
 
+        // Logging must be done before returning the keytable, since the logging lib 
+        // use bthread local storage internally, or will cause memory leak.
+        // FIXME: the time from quiting fn to here is not counted into cputime
+        if (m->attr.flags & BTHREAD_LOG_START_AND_FINISH) {
+            LOG(INFO) << "Finished bthread " << m->tid << ", cputime="
+                      << m->stat.cputime_ns / 1000000.0 << "ms";
+        }
+
         // Clean tls variables, must be done before changing version_butex
         // otherwise another thread just joined this thread may not see side
         // effects of destructing tls variables.
@@ -353,12 +361,6 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
             }
         }
         butex_wake_except(m->version_butex, 0);
-
-        // FIXME: the time from quiting fn to here is not counted into cputime
-        if (m->attr.flags & BTHREAD_LOG_START_AND_FINISH) {
-            LOG(INFO) << "Finished bthread " << m->tid << ", cputime="
-                      << m->stat.cputime_ns / 1000000.0 << "ms";
-        }
 
         g->_control->_nbthreads << -1;
         g->set_remained(TaskGroup::_release_last_context, m);
@@ -625,13 +627,17 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     ++ g->_nswitch;
     // Switch to the task
     if (__builtin_expect(next_meta != cur_meta, 1)) {
+        g->_cur_meta = next_meta;
+        tls_bls = next_meta->local_storage;
+
+        // Logging must be done after switching the local storage, since the logging lib 
+        // use bthread local storage internally, or will cause memory leak.
         if ((cur_meta->attr.flags & BTHREAD_LOG_CONTEXT_SWITCH) ||
             (next_meta->attr.flags & BTHREAD_LOG_CONTEXT_SWITCH)) {
             LOG(INFO) << "Switch bthread: " << cur_meta->tid << " -> "
                       << next_meta->tid;
         }
-        g->_cur_meta = next_meta;
-        tls_bls = next_meta->local_storage;
+
         if (cur_meta->stack != NULL) {
             if (next_meta->stack != cur_meta->stack) {
                 jump_stack(cur_meta->stack, next_meta->stack);
