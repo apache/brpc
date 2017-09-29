@@ -113,7 +113,14 @@ public:
         if (started()) {
             return -1;
         }
+        _start_mutex.lock();
+        // Double check
+        if (started()) {
+            _start_mutex.unlock();
+            return -1;
+        }
         _epfd = epoll_create(epoll_size);
+        _start_mutex.unlock();
         if (_epfd < 0) {
             PLOG(FATAL) << "Fail to epoll_create";
             return -1;
@@ -334,6 +341,7 @@ private:
     int _epfd;
     bool _stop;
     bthread_t _tid;
+    butil::Mutex _start_mutex;
 };
 
 EpollThread epoll_thread[BTHREAD_EPOLL_THREAD_NUM];
