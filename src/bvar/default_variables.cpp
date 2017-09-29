@@ -24,7 +24,7 @@
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/scoped_lock.h"
 #include "butil/files/scoped_file.h"
-#include "butil/files/file_enumerator.h"
+#include "butil/files/dir_reader_posix.h"
 #include "butil/file_util.h"
 #include "bvar/passive_status.h"
 
@@ -249,18 +249,16 @@ public:
 // ==================================================
 
 static int get_fd_count(int limit) {
-    butil::FileEnumerator fd_enum(butil::FilePath("/proc/self/fd"),
-                                 false/*non recursive*/,
-                                 butil::FileEnumerator::FILES);
+    butil::DirReaderPosix dr("/proc/self/fd");
     int count = 0;
+    if (!dr.IsValid()) {
+        PLOG(WARNING) << "Fail to open /proc/self/fd";
+        return -1;
+    }
     // Have to limit the scaning which consumes a lot of CPU when #fd
     // are huge (100k+)
-    for (butil::FilePath name = fd_enum.Next();
-         !name.empty() && count <= limit;
-         name = fd_enum.Next(), ++count) {}
-    // FileEnumerator already filtered . and .., due to its implementation,
-    // the fd created by opendir is not counted as well.
-    return count;
+    for (; dr.Next() && count <= limit + 3; ++count) {}
+    return count - 3 /* skipped ., .. and the fd in dr*/;
 }
 
 extern PassiveStatus<int> g_fd_num;

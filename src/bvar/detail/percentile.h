@@ -242,7 +242,7 @@ friend class AddLatency;
     static const size_t SAMPLE_SIZE = SAMPLE_SIZE_IN;
     
     PercentileSamples() {
-        memset(this, 0, sizeof(PercentileSamples));
+        memset(this, 0, sizeof(*this));
     }
 
     ~PercentileSamples() {
