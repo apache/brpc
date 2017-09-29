@@ -866,8 +866,8 @@ int TaskGroup::stop_usleep(bthread_t tid) {
 
 void TaskGroup::yield(TaskGroup** pg) {
     TaskGroup* g = *pg;
-    ReadyToRunArgs args = { g->current_tid(), true };
-    g->set_remained(ready_to_run_in_worker_ignoresignal, &args);
+    ReadyToRunArgs args = { g->current_tid(), false };
+    g->set_remained(ready_to_run_in_worker, &args);
     sched(pg);
 }
 

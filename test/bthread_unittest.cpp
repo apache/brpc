@@ -513,3 +513,14 @@ int main(int argc, char** argv) {
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
     return RUN_ALL_TESTS();
 }
+
+void* yield_thread(void*) {
+    bthread_yield();
+    return NULL;
+}
+
+TEST_F(test_bthread_suite, yield_single_thread) {
+    bthread_t tid;
+    ASSERT_EQ(0, bthread_start_background(&tid, NULL, yield_thread, NULL));
+    ASSERT_EQ(0, bthread_join(tid, NULL));
+}
