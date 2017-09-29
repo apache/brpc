@@ -589,7 +589,7 @@ TEST_F(ExecutionQueueTest, random_cancel) {
     int64_t expected = 0;
     for (int i = 0; i < 100000; ++i) {
         bthread::TaskHandle h;
-        AddTask t;
+        AddTask t = {0};
         t.value = i;
         t.cancel_task = false;
         ASSERT_EQ(0, bthread::execution_queue_execute(queue_id, t, NULL, &h));
