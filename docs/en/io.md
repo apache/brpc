@@ -40,9 +40,9 @@ We can see that, Socket is similar to [shared_ptr](http://en.cppreference.com/w/
 
 Using SocketUniquePtr or SocketId depends on if a strong reference is needed. For example, Controller is used thoroughly inside RPC and has a lot of interactions with Socket, it uses SocketUniquePtr. Epoll notifies events on fds and events of a recycled socket can be ignored, so epoll uses SocketId. 
 
-As long as SocketUniquePtr is valid, the Socket enclosed will not be changed so that users have no need to care about race conditions and ABA problems, being safer to operate the shared socket. This method also circumvents implicit referential counting and make ownership of memory more clear, producing better-quality programs. brpc uses SocketUniquePtr and SocketId a lot to simplify related issues.
+As long as SocketUniquePtr is valid, the Socket enclosed will not be changed so that users have no need to care about race conditions and ABA problems, being safer to operate the shared socket. This method also circumvents implicit referential counting and makes ownership of memory more clear, producing better-quality programs. brpc uses SocketUniquePtr and SocketId a lot to simplify related issues.
 
-In fact, Socket manages not only the native fd but also other resources, such as SubChannel in SelectiveChannel is also manged by Socket, making SelectiveChannel choose a SubChannel just like a normal channel choosing a downstream server. The faked Socket even implements health checking. Streaming RPC also uses Socket to reuse the code on wait-free write.
+In fact, Socket manages not only the native fd but also other resources, such as SubChannel in SelectiveChannel is also managed by Socket, making SelectiveChannel choose a SubChannel just like a normal channel choosing a downstream server. The faked Socket even implements health checking. Streaming RPC also uses Socket to reuse the code on wait-free write.
 
 # The full picture
 
