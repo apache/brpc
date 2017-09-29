@@ -103,56 +103,47 @@ If user does not set host header and the URL does not have host as well,  for ex
 Take http request as an example (similar with http response), common operations are listed as follows:
 
 Access an HTTP header named `Foo`
-
 ```c++
 const std::string* value = cntl->http_request().GetHeader("Foo"); // NULL when not exist
 ```
 
 Set an HTTP header named `Foo`
-
 ```c++
 cntl->http_request().SetHeader("Foo", "value");
 ```
 
 Access a query named `Foo`
-
 ```c++
 const std::string* value = cntl->http_request().uri().GetQuery("Foo"); // NULL when not exist
 ```
 
 Set a query named `Foo`
-
 ```c++
 cntl->http_request().uri().SetQuery("Foo", "value");
 ```
 
 Set HTTP method
-
 ```c++
 cntl->http_request().set_method(brpc::HTTP_METHOD_POST);
 ```
 
 Set the URL
-
 ```c++
 cntl->http_request().uri() = "http://www.baidu.com";
 ```
 
 Set the `content-type`
-
 ```c++
 cntl->http_request().set_content_type("text/plain");
 ```
 
 Get HTTP body
-
 ```c++
 butil::IOBuf& buf = cntl->request_attachment();
 std::string str = cntl->request_attachment().to_string(); // trigger copy underlying
 ```
 
 Set HTTP body
-
 ```c++
 cntl->request_attachment().append("....");
 butil::IOBufBuilder os; os << "....";
@@ -160,7 +151,6 @@ os.move_to(cntl->request_attachment());
 ```
 
 Notes on http header:
-
 - field_name of the header is case-insensitive according to [rfc2616](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2). brpc supports case-insensitive field names and keeps same cases at printing as users set.
 - If multiple headers have same field names, according to [rfc2616](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2), values should be merged and separated by comma (,). Users figure out how to use this kind of values by their own.
 - Queries are separated by "&" and key/value in a query are separated by "=". Values can be omitted. For example, `key1=value1&key2&key3=value3` is a valid query string, in which the value for `key2` is an empty string.
