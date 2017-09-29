@@ -1,4 +1,4 @@
-我们都知道多核编程要用锁，以避免多个线程在修改同一个数据时产生[race condition](http://en.wikipedia.org/wiki/Race_condition)。当锁成为性能瓶颈时，我们又总想试着绕开它，而不可避免地接触了原子指令。但在实践中，用原子指令写出正确的代码是一件非常困难的事，琢磨不透的race condition、[ABA problem](https://en.wikipedia.org/wiki/ABA_problem)、[memory fence](https://en.wikipedia.org/wiki/Memory_barrier)很烧脑，这篇文章试图通过介绍[SMP](http://en.wikipedia.org/wiki/Symmetric_multiprocessing)架构下的原子指令帮助大家入门。C++11正式引入了[原子指令](http://en.cppreference.com/w/cpp/atomic/atomic)，我们就以其语法描述。
+我们都知道多核编程常用锁避免多个线程在修改同一个数据时产生[race condition](http://en.wikipedia.org/wiki/Race_condition)。当锁成为性能瓶颈时，我们又总想试着绕开它，而不可避免地接触了原子指令。但在实践中，用原子指令写出正确的代码是一件非常困难的事，琢磨不透的race condition、[ABA problem](https://en.wikipedia.org/wiki/ABA_problem)、[memory fence](https://en.wikipedia.org/wiki/Memory_barrier)很烧脑，这篇文章试图通过介绍[SMP](http://en.wikipedia.org/wiki/Symmetric_multiprocessing)架构下的原子指令帮助大家入门。C++11正式引入了[原子指令](http://en.cppreference.com/w/cpp/atomic/atomic)，我们就以其语法描述。
 
 顾名思义，原子指令是**对软件**不可再分的指令，比如x.fetch_add(n)指原子地给x加上n，这个指令**对软件**要么没做，要么完成，不会观察到中间状态。常见的原子指令有：
 
@@ -9,7 +9,7 @@
 | x.exchange(n)                            | 把x设为n，返回设定之前的值。                          |
 | x.compare_exchange_strong(expected_ref, desired) | 若x等于expected_ref，则设为desired，返回成功；否则把最新值写入expected_ref，返回失败。 |
 | x.compare_exchange_weak(expected_ref, desired) | 相比compare_exchange_strong可能有[spurious wakeup](http://en.wikipedia.org/wiki/Spurious_wakeup)。 |
-| x.fetch_add(n), x.fetch_sub(n), x.fetch_xxx(n) | x += n, x-= n（或更多指令），返回修改之前的值。           |
+| x.fetch_add(n), x.fetch_sub(n)           | 原子地做x += n, x-= n，返回修改之前的值。              |
 
 你已经可以用这些指令做原子计数，比如多个线程同时累加一个原子变量，以统计这些线程对一些资源的操作次数。但是，这可能会有两个问题：
 
@@ -18,12 +18,12 @@
 
 # Cacheline
 
-没有任何竞争或只被一个线程访问的原子操作是比较快的，“竞争”指的是多个线程同时访问同一个[cacheline](https://en.wikipedia.org/wiki/CPU_cache#Cache_entries)。现代CPU为了以低价格获得高性能，大量使用了cache，并把cache分了多级。百度内常见的Intel E5-2620拥有32K的L1 dcache和icache，256K的L2 cache和15M的L3 cache。其中L1和L2cache为每个核心独有，L3则所有核心共享。一个核心写入自己的L1 cache是极快的(4 cycles, 2ns)，但当另一个核心读或写同一处内存时，它得确认看到其他核心中对应的cacheline。对于软件来说，这个过程是原子的，不能在中间穿插其他代码，只能等待CPU完成[一致性同步](https://en.wikipedia.org/wiki/Cache_coherence)，这个复杂的算法相比其他操作耗时会很长，在E5-2620上竞争激烈时大约在700ns左右。所以访问被多个线程频繁共享的内存是比较慢的。
+没有任何竞争或只被一个线程访问的原子操作是比较快的，“竞争”指的是多个线程同时访问同一个[cacheline](https://en.wikipedia.org/wiki/CPU_cache#Cache_entries)。现代CPU为了以低价格获得高性能，大量使用了cache，并把cache分了多级。百度内常见的Intel E5-2620拥有32K的L1 dcache和icache，256K的L2 cache和15M的L3 cache。其中L1和L2 cache为每个核心独有，L3则所有核心共享。一个核心写入自己的L1 cache是极快的(4 cycles, ~2ns)，但当另一个核心读或写同一处内存时，它得确认看到其他核心中对应的cacheline。对于软件来说，这个过程是原子的，不能在中间穿插其他代码，只能等待CPU完成[一致性同步](https://en.wikipedia.org/wiki/Cache_coherence)，这个复杂的算法使得原子操作会变得很慢，在E5-2620上竞争激烈时fetch_add会耗费700纳秒左右。访问被多个线程频繁共享的内存往往是比较慢的。比如像一些临界区很小的场景，使用spinlock效果仍然不佳，问题就在于实现spinlock使用的exchange, fetch_add等指令必须等待最新的cacheline，看上去只有几条指令，花费若干微秒并不奇怪。
 
-要提高性能，就要避免让CPU同步cacheline。这不单和原子指令本身的性能有关，还会影响到程序的整体性能。比如像一些临界区很小的场景，使用spinlock效果仍然不佳，问题就在于实现spinlock使用的exchange，fetch_add等指令必须在CPU同步好最新的cacheline后才能完成，看上去只有几条指令，花费若干微秒却不奇怪。最有效的解决方法很直白：**尽量避免共享**。从源头规避掉竞争是最好的，有竞争就要协调，而协调总是很难的。
+要提高性能，就要避免让CPU频繁同步cacheline。这不单和原子指令本身的性能有关，还会影响到程序的整体性能。最有效的解决方法很直白：**尽量避免共享**。从源头规避掉竞争是最好的，有竞争就要协调，而协调总是很难的。
 
 - 一个依赖全局多生产者多消费者队列(MPMC)的程序难有很好的多核扩展性，因为这个队列的极限吞吐取决于同步cache的延时，而不是核心的个数。最好是用多个SPMC或多个MPSC队列，甚至多个SPSC队列代替，在源头就规避掉竞争。
-- 另一个例子是全局计数器，如果所有线程都频繁修改一个全局变量，性能就会很差，原因同样在于不同的核心在不停地同步同一个cacheline。如果这个计数器只是用作打打日志之类的，那我们完全可以让每个线程修改thread-local变量，在需要时再合并所有线程中的值，性能可能有几十倍的差别。
+- 另一个例子是全局计数器，如果所有线程都频繁修改一个全局变量，性能就会很差，原因同样在于不同的核心在不停地同步同一个cacheline。如果这个计数器只是用作打打日志之类的，那我们完全可以让每个线程修改thread-local变量，在需要时再合并所有线程中的值，性能可能有[几十倍的差别](bvar.md)。
 
 做不到完全不共享，那就尽量少共享。在一些读很多的场景下，也许可以降低写的频率以减少同步cacheline的次数，以加快读的平均性能。一个相关的编程陷阱是避免false sharing：这指的是那些不怎么被修改的变量，由于同一个cacheline中的另一个变量被频繁修改，而不得不经常等待cacheline同步而显著变慢了。多线程中的变量尽量按访问规律排列，频繁被其他线程的修改要放在独立的cacheline中。要让一个变量或结构体按cacheline对齐，可以include <butil/macros.h>然后使用BAIDU_CACHELINE_ALIGNMENT宏，用法请自行grep一下brpc的代码了解。
 
