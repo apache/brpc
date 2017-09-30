@@ -207,7 +207,7 @@ TRACE: 02-13 19:49:11:   * 0 client.cpp:180] Accessing redis server at qps=29271
 16878 gejun     20   0 48136 2508 1004 R 99.9  0.0  13:36.59 redis-server   // thread_num=200
 ```
 
-Note that the actual commands processed per second of redis-server is 10 times the QPS value, which is about 400K.  When thread_num equals 50 or higher, the CPU usage of the redis-server reaches its limit. Since redis-server runs in [single-thread reactor mode](threading_overview.md#单线程reactor), 99.9% on one core is the maximum CPU it can use.
+Note that the actual commands processed per second of redis-server is 10 times the QPS value, which is about 400K.  When thread_num equals 50 or higher, the CPU usage of the redis-server reaches its limit. Since redis-server runs in [single-threaded reactor mode](threading_overview.md#单线程reactor), 99.9% on one core is the maximum CPU it can use.
 
 Now start a client to send requests to redis-server from the same machine using 50 bthreads synchronously through connection pool.
 
