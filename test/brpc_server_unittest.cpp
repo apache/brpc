@@ -1277,10 +1277,11 @@ TEST_F(ServerTest, too_big_message) {
     server.Join();
 }
 
-void CheckCert(const char* address, const char* cert) {
-    std::string cmd = butil::string_printf(
-        "/usr/bin/curl -Ikv https://%s 2>&1 | grep %s", address, cert);
-    ASSERT_EQ(0, system(cmd.c_str()));
+void CheckCert(const char* fname, const char* cert) {
+    butil::ScopedFILE fp(fname, "r");
+    char buf[1024];
+    fgets(buf, sizeof(buf), fp);
+    ASSERT_EQ(0, strncmp(cert, buf + 1, strlen(cert))) << cert; // Skip the first blank
 }
 
 std::string GetRawPemString(const char* fname) {
@@ -1310,12 +1311,20 @@ TEST_F(ServerTest, ssl_sni) {
          options.ssl_options.certs.push_back(cert);
      }
      ASSERT_EQ(0, server.Start(8613, &options));
-     CheckCert("localhost:8613", "cert1");
-
+     {
+         std::string cmd = "/usr/bin/curl -Ikv https://localhost:8613 2>&1 "
+                 "| grep common | cut -d':' -f2 > cname.out";
+         ASSERT_EQ(0, system(cmd.c_str()));
+         CheckCert("cname.out", "cert1");
+     }
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-     CheckCert("localhost.localdomain:8613", "cert2");
+     {
+         std::string cmd = "/usr/bin/curl -Ikv https://localhost.localdomain:8613 "
+                 "2>&1 | grep common | cut -d':' -f2 > cname.out";
+         ASSERT_EQ(0, system(cmd.c_str()));
+         CheckCert("cname.out", "cert2");
+     }
 #endif  // SSL_CTRL_SET_TLSEXT_HOSTNAME
-     
      server.Stop(0);
      server.Join();
 }
@@ -1331,8 +1340,12 @@ TEST_F(ServerTest, ssl_reload) {
          options.ssl_options.default_cert = cert;
      }
      ASSERT_EQ(0, server.Start(8613, &options));
-     CheckCert("localhost:8613", "cert1");
-
+     {
+         std::string cmd = "/usr/bin/curl -Ikv https://localhost:8613 2>&1 "
+                 "| grep common | cut -d':' -f2 > cname.out";
+         ASSERT_EQ(0, system(cmd.c_str()));
+         CheckCert("cname.out", "cert1");
+     }
      {
          brpc::CertInfo cert;
          cert.certificate = GetRawPemString("cert2.crt");
@@ -1341,7 +1354,12 @@ TEST_F(ServerTest, ssl_reload) {
          ASSERT_EQ(0, server.AddCertificate(cert));
      }
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-    CheckCert("localhost.localdomain:8613", "cert2");
+     {
+         std::string cmd = "/usr/bin/curl -Ikv https://localhost.localdomain:8613 "
+                 "2>&1 | grep common | cut -d':' -f2 > cname.out";
+         ASSERT_EQ(0, system(cmd.c_str()));
+         CheckCert("cname.out", "cert2");
+     }
 #endif  // SSL_CTRL_SET_TLSEXT_HOSTNAME
 
      {
@@ -1351,7 +1369,12 @@ TEST_F(ServerTest, ssl_reload) {
          ASSERT_EQ(0, server.RemoveCertificate(cert));
      }
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-     CheckCert("localhost.localdomain:8613", "cert1");
+     {
+         std::string cmd = "/usr/bin/curl -Ikv https://localhost.localdomain:8613 "
+                 "2>&1 | grep common | cut -d':' -f2 > cname.out";
+         ASSERT_EQ(0, system(cmd.c_str()));
+         CheckCert("cname.out", "cert1");
+     }
 #endif  // SSL_CTRL_SET_TLSEXT_HOSTNAME
 
      {
@@ -1364,7 +1387,12 @@ TEST_F(ServerTest, ssl_reload) {
          ASSERT_EQ(0, server.ResetCertificates(certs));
      }
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-     CheckCert("localhost.localdomain:8613", "cert2");
+     {
+         std::string cmd = "/usr/bin/curl -Ikv https://localhost.localdomain:8613 "
+                 "2>&1 | grep common | cut -d':' -f2 > cname.out";
+         ASSERT_EQ(0, system(cmd.c_str()));
+         CheckCert("cname.out", "cert2");
+     }
 #endif  // SSL_CTRL_SET_TLSEXT_HOSTNAME
 
      server.Stop(0);
