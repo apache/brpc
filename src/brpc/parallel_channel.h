@@ -27,8 +27,7 @@
 
 namespace brpc {
 
-// Used in implementations of CallMapper::Map.
-// To rpc maintainer: values must be bitwise exclusive.
+// Possible values of SubCall.flag, MUST be bitwise exclusive.
 static const int DELETE_REQUEST = 1;
 static const int DELETE_RESPONSE = 2;
 static const int SKIP_SUB_CHANNEL = 4;
@@ -59,7 +58,7 @@ struct SubCall {
 
     // True if this object is constructed by Bad().
     bool is_bad() const {
-        return request == NULL || response == NULL || method == NULL;
+        return request == NULL || response == NULL;
     }
 
     // True if this object is constructed by Skip().
