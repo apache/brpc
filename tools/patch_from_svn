@@ -58,6 +58,7 @@ cat $PATCHFILE | sed -e 's/src\/baidu\/rpc\//src\/brpc\//g' \
             -e 's/<\(brpc\/[^>]*\)>/"\1"/g' \
             -e 's/<\(bvar\/[^>]*\)>/"\1"/g' \
             -e 's/<base\/\([^>]*\)>/"butil\/\1"/g' \
+            -e 's/"base\/\([^"]*\)"/"butil\/\1"/g' \
             -e 's/<\(bthread\/[^>]*\)>/"\1"/g' \
             -e 's/<\(mcpack2pb\/[^>]*\)>/"\1"/g' \
             -e 's/\<protobuf_json\>/json2pb/g' \

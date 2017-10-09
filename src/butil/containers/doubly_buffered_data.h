@@ -26,6 +26,7 @@
 #include "butil/macros.h"
 #include "butil/type_traits.h"
 #include "butil/errno.h"
+#include "butil/atomicops.h"
 
 namespace butil {
 
@@ -157,7 +158,8 @@ private:
         const Arg2& _arg2;
     };
 
-    const T* UnsafeRead() const { return _data + _index; }
+    const T* UnsafeRead() const
+    { return _data + _index.load(butil::memory_order_acquire); }
     Wrapper* AddWrapper();
     void RemoveWrapper(Wrapper*);
 
@@ -165,7 +167,7 @@ private:
     T _data[2];
 
     // Index of foreground instance.
-    short _index;
+    butil::atomic<int> _index;
 
     // Key to access thread-local wrappers.
     bool _created_key;
@@ -344,15 +346,20 @@ size_t DoublyBufferedData<T, TLS>::Modify(Fn& fn) {
     // AddWrapper() or RemoveWrapper() too long. Most of the time, modifications
     // are done by one thread, contention should be negligible.
     BAIDU_SCOPED_LOCK(_modify_mutex);
+    int bg_index = !_index.load(butil::memory_order_relaxed);
     // background instance is not accessed by other threads, being safe to
     // modify.
-    const size_t ret = fn(_data[!_index]);
+    const size_t ret = fn(_data[bg_index]);
     if (!ret) {
         return 0;
     }
 
     // Publish, flip background and foreground.
-    _index = !_index;
+    // The release fence matches with the acquire fence in UnsafeRead() to
+    // make readers which just begin to read the new foreground instance see
+    // all changes made in fn.
+    _index.store(bg_index, butil::memory_order_release);
+    bg_index = !bg_index;
     
     // Wait until all threads finishes current reading. When they begin next
     // read, they should see updated _index.
@@ -363,8 +370,8 @@ size_t DoublyBufferedData<T, TLS>::Modify(Fn& fn) {
         }
     }
 
-    const size_t ret2 = fn(_data[!_index]);
-    CHECK_EQ(ret2, ret) << "index=" << _index;
+    const size_t ret2 = fn(_data[bg_index]);
+    CHECK_EQ(ret2, ret) << "index=" << _index.load(butil::memory_order_relaxed);
     return ret2;
 }
 
