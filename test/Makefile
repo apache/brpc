@@ -1,9 +1,8 @@
 NEED_GPERFTOOLS=1
 NEED_GTEST=1
 include ../config.mk
-CPPFLAGS+=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS
-CPPFLAGS+=-DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES --include sstream_workaround.h
-CXXFLAGS+=$(CPPFLAGS) -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x
+CPPFLAGS+=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES --include sstream_workaround.h
+CXXFLAGS=$(CPPFLAGS) -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x
 
 #required by butil/crc32.cc to boost performance for 10x
 ifeq ($(shell test $(GCC_VERSION) -ge 40400; echo $$?),0)
@@ -128,7 +127,7 @@ TEST_BRPC_SOURCES = $(wildcard brpc_*unittest.cpp)
 TEST_BRPC_OBJS = $(addsuffix .o, $(basename $(TEST_BRPC_SOURCES))) 
 
 TEST_PROTO_SOURCES = $(wildcard *.proto)
-TEST_PROTO_OBJS =  $(TEST_PROTO_SOURCES:.proto=.pb.o)
+TEST_PROTO_OBJS = $(TEST_PROTO_SOURCES:.proto=.pb.o)
 
 TEST_BINS = test_butil test_bvar $(TEST_BTHREAD_SOURCES:.cpp=) $(TEST_BRPC_SOURCES:.cpp=)
 
@@ -138,8 +137,7 @@ all: $(TEST_BINS)
 .PHONY:clean
 clean:clean_bins clean_debug
 	@echo "Cleaning"
-	@rm -rf $(TEST_BUTIL_OBJS) $(TEST_BVAR_OBJS) $(TEST_BTHREAD_OBJS) \
-		$(TEST_BRPC_OBJS) $(TEST_PROTO_OBJS)
+	@rm -rf $(TEST_BUTIL_OBJS) $(TEST_BVAR_OBJS) $(TEST_BTHREAD_OBJS) $(TEST_BRPC_OBJS) $(TEST_PROTO_OBJS)
 
 .PHONY:clean_bins
 clean_bins:
@@ -156,19 +154,19 @@ FORCE:
 
 .PRECIOUS: %.o
 
-test_butil:$(TEST_BUTIL_OBJS) ../libbrpc.dbg.a
+test_butil:../libbrpc.dbg.a $(TEST_BUTIL_OBJS)
 	@echo "Linking $@"
 	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
-test_bvar:$(TEST_BVAR_OBJS) ../libbrpc.dbg.a
+test_bvar:../libbrpc.dbg.a $(TEST_BVAR_OBJS)
 	@echo "Linking $@"
 	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $(TEST_BVAR_OBJS) ../libbvar.dbg.a -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
-bthread%unittest:bthread%unittest.o ../libbrpc.dbg.a
+bthread%unittest:../libbrpc.dbg.a bthread%unittest.o
 	@echo "Linking $@"
 	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
-brpc_%_unittest:$(TEST_PROTO_OBJS) brpc_%_unittest.o ../libbrpc.dbg.a
+brpc_%_unittest:../libbrpc.dbg.a $(TEST_PROTO_OBJS) brpc_%_unittest.o
 	@echo "Linking $@"
 	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
