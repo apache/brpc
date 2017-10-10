@@ -1,6 +1,6 @@
 # BUILD
 
-brpc prefers static linking of deps, so that they don't have to be installed on every machine running the app.
+brpc prefers static linkages of deps, so that they don't have to be installed on every machine running the app.
 
 brpc depends on following packages:
 
@@ -149,13 +149,13 @@ $ make
 
 ## GCC: 4.8-7.1
 
-c++11 is  turned on by default to remove dependency on boost (atomic).
+c++11 is turned on by default to remove dependencies on boost (atomic).
 
 The over-aligned issues in GCC7 is suppressed temporarily now.
 
 Using other versions of gcc may generate warnings, contact us to fix.
 
-Adding `-D__const__=` to cxxflags in your makefiles is a must avoid [errno issue in gcc4+](thread_local.md)。
+Adding `-D__const__=` to cxxflags in your makefiles is a must to avoid [errno issue in gcc4+](thread_local.md).
 
 ## Clang: 3.5-4.0
 
@@ -170,7 +170,8 @@ no known issues.
 Be compatible with pb 3.x and pb 2.x with the same file:
 Don't use new types in proto3 and start the proto file with `syntax="proto2";`
 [tools/add_syntax_equal_proto2_to_all.sh](https://github.com/brpc/brpc/blob/master/tools/add_syntax_equal_proto2_to_all.sh)can add `syntax="proto2"` to all proto files without it.
-protobuf 3.3-3.4 is not tested yet.
+
+Arena in pb 3.x is not supported yet.
 
 ## gflags: 2.0-2.21
 
@@ -186,17 +187,17 @@ brpc does **not** link [tcmalloc](http://goog-perftools.sourceforge.net/doc/tcma
 
 Comparing to ptmalloc embedded in glibc, tcmalloc often improves performance. However different versions of tcmalloc may behave really differently. For example, tcmalloc 2.1 may make multi-threaded examples in brpc perform significantly worse(due to a spinlock in tcmalloc) than the one using tcmalloc 1.7 and 2.5. Even different minor versions may differ. When you program behave unexpectedly, remove tcmalloc or try another version.
 
-Code compiled with gcc 4.8.2 when linking to a tcmalloc compiled with earlier GCC may crash or deadlock before main(), E.g:
+Code compiled with gcc 4.8.2 and linked to a tcmalloc compiled with earlier GCC may crash or deadlock before main(), E.g:
 
 ![img](../images/tcmalloc_stuck.png)
 
-When you meet the issue, compile tcmalloc with the same GCC as the RPC code.
+When you meet the issue, compile tcmalloc with the same GCC.
 
 Another common issue with tcmalloc is that it does not return memory to system as early as ptmalloc. So when there's an invalid memory access, the program may not crash directly,  instead it crashes at a unrelated place, or even not crash. When you program has weird memory issues, try removing tcmalloc.
 
 If you want to use [cpu profiler](cpu_profiler.md) or [heap profiler](heap_profiler.md), do link `libtcmalloc_and_profiler.a`. These two profilers are based on tcmalloc.[contention profiler](contention_profiler.md) does not require tcmalloc.
 
-When you remove tcmalloc, not only remove the linking with tcmalloc but also the macros: `-DBRPC_ENABLE_CPU_PROFILER`.
+When you remove tcmalloc, not only remove the linkage with tcmalloc but also the macro `-DBRPC_ENABLE_CPU_PROFILER`.
 
 ## glog: 3.3+
 
