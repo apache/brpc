@@ -4,7 +4,7 @@
 
 **NOTE**: brpc only supports the binary protocol of memcache. There's little benefit to support the textual protocol which is replaced since memcached 1.3. If your memcached is older than 1.3, upgrade to a newer version.
 
-The advantages compared to [libmemcached](http://libmemcached.org/libMemcached.html) (the official client):
+Advantages compared to [libmemcached](http://libmemcached.org/libMemcached.html) (the official client):
 
 - Thread safety. No need to set up separate clients for each thread.
 - Support synchronous, asynchronous, semi-synchronous accesses etc. Support [ParallelChannel etc](combo_channel.md) to define access patterns declaratively.
@@ -97,6 +97,6 @@ bool PopVersion(std::string* version);
 
 # Request a memcached cluster
 
-Create a `Channel` using the `c_md5` as the load balancing algorithm to access a memcached cluster mounted under a naming service. Note that each `MemcacheRequest` should contain only one operation or all operations have the same key. Under current implementation, multiple operations inside a single request are always sent to a same server. If the corresponding keys are located at different servers, the result must be wrong. In which case, you have to divide the request into multilples which has one operation each.
+Create a `Channel` using the `c_md5` as the load balancing algorithm to access a memcached cluster mounted under a naming service. Note that each `MemcacheRequest` should contain only one operation or all operations have the same key. Under current implementation, multiple operations inside a single request are always sent to a same server. If the keys are located on different servers, the result must be wrong. In which case, you have to divide the request into multilple ones with one operation each.
 
 Another choice is to use the common [twemproxy](https://github.com/twitter/twemproxy) solution, which makes clients access the cluster just like accessing a single server, although the solution needs to deploy proxies and adds more latency.

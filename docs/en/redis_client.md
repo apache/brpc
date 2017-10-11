@@ -1,19 +1,21 @@
-[redis](http://redis.io/) has been one of the most popular cache service in recent years. Compared to memcached it provides users with more data structures and interfaces, which frees the user from lots of development and thus covers a wide range of applications in baidu. In order to speed up the access to redis and make full use of bthread concurrency, brpc directly support the redis protocol. For examples please refer to: [example/redis_c++](https://github.com/brpc/brpc/tree/master/example/redis_c++/)
+[中文版](../cn/redis_client.md)
 
-Compared to [hiredis](https://github.com/redis/hiredis) (the official redis client), we have advantages in:
+[redis](http://redis.io/) is one of the most popular caching service in recent years. Compared to memcached it provides users with more data structures and operations, speeding up developments. In order to access redis servers more conveniently and make full use of bthread's capability of concurrency, brpc directly supports the redis protocol. Check [example/redis_c++](https://github.com/brpc/brpc/tree/master/example/redis_c++/) for an example.
 
-- Thread safety. No need to set up a separate client for each thread.
-- Support access patterns of synchronous, asynchronous, batch synchronous, batch asynchronous. Can be used with ParallelChannel to enable access combinations.
-- Support various [connection types](client.md#Connection Type). Support timeout, backup request, cancellation, tracing, built-in services, and other basic benefits of the RPC framework.
-- Only a single connection between one process and one redis-server, which is more efficient when multiple threads access one redis-server at the same time (see [performance](#Performance)). The internal memory will be allocated block by block in succession regardless of the complexity of the reply, and short string optimization (SSO) is also implemented.
+Advantages compared to [hiredis](https://github.com/redis/hiredis) (the official redis client):
 
-Like http, brpc guarantees the time complexity of parsing redis reply is O(N) instead of O($N^2$) in the worst case, where N is the number of bytes of reply. This is important when reply consists of a large array.
+- Thread safety. No need to set up separate clients for each thread.
+- Support synchronous, asynchronous, semi-synchronous accesses etc. Support [ParallelChannel etc](combo_channel.md) to define access patterns declaratively.
+- Support various [connection types](client.md#connection-type). Support timeout, backup request, cancellation, tracing, built-in services, and other benefits offered by brpc.
+- All brpc clients in a process share a single connection to one redis-server, which is more efficient when multiple threads access one redis-server simultaneously (see [performance](#Performance)). Memory is allocated in blocks regardless of complexity of the reply, and short string optimization (SSO) is implemented to further improve performance.
 
-For debugging, please turn on [-redis_verbose](#Debug) to print all the redis request and response to stderr.
+Similarly with http, brpc guarantees that the time complexity of parsing redis replies is O(N) in worst cases rather than O(N^2) , where N is the number of bytes of reply. This is important when the reply consists of large arrays.
 
-# Request to single redis
+Turn on [-redis_verbose](#Debug) to print contents of all redis requests and responses to stderr, which is for debugging only.
 
-Create a `Channel` to access redis:
+# Request a redis server
+
+Create a `Channel` for accessing redis:
 
 ```c++
 #include <brpc/redis.h>
@@ -29,7 +31,7 @@ if (redis_channel.Init("0.0.0.0:6379", &options) != 0) {  // 6379 is the default
 ...
 ```
 
-Execute `SET` followed by `INCR`:
+Execute `SET`, then `INCR`:
 
 ```c++
 std::string my_key = "my_key_1";
@@ -45,11 +47,12 @@ if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access redis-server";
     return -1;
 }
+// Get a reply by calling response.reply(i)
 if (response.reply(0).is_error()) {
     LOG(ERROR) << "Fail to set";
     return -1;
 }
-// You can fetch and print response through the reply object
+// A reply is printable in multiple ways
 LOG(INFO) << response.reply(0).c_str()  // OK
           << response.reply(0)          // OK
           << response;                  // OK
@@ -69,13 +72,13 @@ if (response.reply(0).is_error()) {
     LOG(ERROR) << "Fail to incr";
     return -1;
 }
-// The increased value
+// A reply is printable in multiple ways
 LOG(INFO) << response.reply(0).integer()  // 2
           << response.reply(0)            // (integer) 2
           << response;                    // (integer) 2
 ```
 
-Execute `incr` and `decr` in batch
+Execute `incr` and `decr` in batch:
 
 ```c++
 brpc::RedisRequest request;
@@ -103,7 +106,7 @@ CHECK_EQ(-10, response.reply(3).integer());
 
 # RedisRequest
 
-A [RedisRequest](https://github.com/brpc/brpc/blob/master/src/brpc/redis.h) object can hold multiple Command by calling `AddCommand*`, which returns true on success and false on error along with the calling stack.
+A [RedisRequest](https://github.com/brpc/brpc/blob/master/src/brpc/redis.h) may contain multiple commands by calling `AddCommand*`, which returns true on success and false otherwise. **The callsite backtrace is also printed on error**.
 
 ```c++
 bool AddCommand(const char* fmt, ...);
@@ -111,46 +114,46 @@ bool AddCommandV(const char* fmt, va_list args);
 bool AddCommandByComponents(const butil::StringPiece* components, size_t n);
 ```
 
-The format parameter is compatible with hiredis: `%b` represents for binary data (pointer + length), and others are similar to those of `printf`. Some improvements have been made such as characters enclosed by single or double quotes will be recognized as a complete field regardless of the blanks inside the quote. For example, `AddCommand("Set 'a key with space' 'a value with space as well'")` sets value `a value with space as well` to key `a key with space`, while in hiredis it must be written as `redisvCommand(..., "SET% s% s", "a key with space", "a value with space as well");`
+Formatting is compatible with hiredis, namely `%b` corresponds to binary data (pointer + length), others are similar to those in `printf`. Some improvements have been made such as characters enclosed by single or double quotes are recognized as one field regardless of the spaces inside. For example, `AddCommand("Set 'a key with space' 'a value with space as well'")` sets value `a value with space as well` to key `a key with space`, while in hiredis the command must be written as `redisvCommand(..., "SET% s% s", "a key with space", "a value with space as well");`
 
-`AddCommandByComponents` is similar to `redisCommandArgv` in hiredis. Users specify each part of the command through an array. It's not the fastest way, but the most efficient, and it's immune to the escape problem, which usually occurs in `AddCommand` and `AddCommandV` . If you encounters an error of "quotation marks do not match" or "invalid format" when using `AddCommand` and `AddCommandV`, you should this method.
+`AddCommandByComponents` is similar to `redisCommandArgv` in hiredis. Users specify each part of the command in an array, which is immune to escaping issues often occurring in `AddCommand` and `AddCommandV`. If you encounter errors such as "Unmatched quote" or "invalid format" when using `AddCommand` and `AddCommandV`, try this method.
 
-If `AddCommand` fails, **subsequent `AddCommand` and `CallMethod` will also fail**. In general, there is no need to check whether `AddCommand*` failed or not, since it will be reflected through the RPC failure.
+If `AddCommand*` fails, subsequent `AddCommand*` and `CallMethod` also fail. In general, there is no need to check return value of `AddCommand*`, since the RPC fails directly anyway.
 
-Use `command_size()` to fetch the number of commands that have been added successfully.
+Use `command_size()` to get number of commands added successfully.
 
-Call `Clear()` to reuse the `RedisRequest` object.
+Call `Clear()` before re-using the `RedisRequest` object.
 
 # RedisResponse
 
-[RedisResponse](https://github.com/brpc/brpc/blob/master/src/brpc/redis.h) can contain one or multiple [RedisReply](https://github.com/brpc/brpc/blob/master/src/brpc/redis_reply.h) objects. Use `reply_size()` for the total number of the replies and `reply(i)` for reference to the i-th reply (based from 0). Note that in hiredis, you have to call `redisGetReply` for N times to fetch response to N commands, while it's unnecessary in brpc as `RedisResponse` has already included the N replies. As long as RPC is successful, `response.reply_size()` should be equal to `request.command_size()`, unless redis-server has a bug (It's a basic premise of the redis-server that response and request have one by one correspondence)
+A [RedisResponse](https://github.com/brpc/brpc/blob/master/src/brpc/redis.h) may contain one or multiple [RedisReply](https://github.com/brpc/brpc/blob/master/src/brpc/redis_reply.h)s. Use `reply_size()` for total number of replies and `reply(i)` for reference to the i-th reply (counting from 0). Note that in hiredis, if the request contains N commands, you have to call `redisGetReply` N times to get replies, while it's unnecessary in brpc as the `RedisResponse` already includes the N replies which are accessible by reply(i). As long as RPC is successful, `response.reply_size()` should be equal to `request.command_size()`, unless the redis-server is buggy. The precondition that redis works correctly is that replies correspond to commands one by one in the same sequence (positional correspondence).
 
-Each `RedisReply` object could be:
+Each `RedisReply` may be:
 
-- REDIS_REPLY_NIL: NULL in redis, which means value does not exist. Can be determined by `is_nil()`.
-- REDIS_REPLY_STATUS: Referred to `Simple String` in the redis document. It's usually used as the return value, such as the `OK` string returned by `SET`. Can be determined by `is_string()` (It's the same function for REDIS_REPLY_STRING, so users can't distinguish status from string for now). Use `c_str()` or `data()` to get the value.
-- REDIS_REPLY_STRING: Referred to `Bulk String` in the redis document. Most return values are of this type, including those can be `incr`ed. You can use `is_string()` to validate and `c_str()` or `data()` for the value.
-- REDIS_REPLY_ERROR: The error message when operation failed. Can be determined by `is_error()` and fetched by `error_message()`.
-- REDIS_REPLY_INTEGER: A 64-bit signed integer. Can be determined by `is_integer()` and fetched by `integer()`.
-- REDIS_REPLY_ARRAY: Array of replies. Can be determined by `is_array()`. Use `size()` for the total size of the array and `[i]` for the reference to the corresponding sub-reply.
+- REDIS_REPLY_NIL: NULL in redis, which means value does not exist. Testable by `is_nil()`.
+- REDIS_REPLY_STATUS: Referred to `Simple String` in the redis document, usually used as the status of operations, such as the `OK` returned by `SET`. Testable by `is_string()` (same function for REDIS_REPLY_STRING). Use `c_str()` or `data()` to get the value.
+- REDIS_REPLY_STRING: Referred to `Bulk String` in the redis document. Most return values are of this type, including those returned by `incr`. Testable by `is_string()`. Use `c_str()` or `data()` for the value.
+- REDIS_REPLY_ERROR: The error message for a failed operation. Testable by `is_error()`. Use `error_message()` to get the message.
+- REDIS_REPLY_INTEGER: A 64-bit signed integer. Testable by `is_integer()`. Use `integer()` to get the value.
+- REDIS_REPLY_ARRAY: Array of replies. Testable by `is_array()`. Use `size()` for size of the array and `[i]` for the reference to the corresponding sub-reply.
 
-For example, a response contains three replies: an integer, a string and an array (size = 2). Then we can use `response.reply(0).integer()`, `response.reply(1).c_str()`, and `repsonse.reply(2)[0], repsonse.reply(2)[1]` to fetch their values respectively. If the type is not correct, the call stack will be printed and an undefined is returned.
+If a response contains three replies: an integer, a string and an array with 2 items, we can use `response.reply(0).integer()`, `response.reply(1).c_str()`, and `repsonse.reply(2)[0]`, `repsonse.reply(2)[1]` to fetch values respectively. If the type is not correct, backtrace of the callsite is printed and an undefined value is returned.
 
-The ownership of all the reply objects belongs to `RedisResponse`. All relies will be destroyed when response has been freed. Also note that copy is forbidden for `RedisReply`.
+Ownership of all replies belongs to `RedisResponse`. All relies are destroyed when response is destroyed.
 
-Call `Clear()` to reuse the `RedisRespones` object.
+Call `Clear()` before re-using the `RedisRespones` object.
 
-# Request to redis cluster
+# Request a redis cluster
 
-For now please use [twemproxy](https://github.com/twitter/twemproxy) as a common way to wrap redis cluster so that it can be used just like a single node proxy, in which case you can just replace your hiredis with brpc. Accessing the cluster directly from client (using consistent hash) may reduce the delay, but at the cost of other management services. Make sure to double check that in redis document.
+Create a `Channel` using the consistent hashing as the load balancing algorithm(c_md5 or c_murmurhash) to access a redis cluster mounted under a naming service. Note that each `RedisRequest` should contain only one command or all commands have the same key. Under current implementation, multiple commands inside a single request are always sent to a same server. If the keys are located on different servers, the result must be wrong. In which case, you have to divide the request into multilple ones with one command each.
 
-If you maintain a redis cluster like the memcache all by yourself, it should be accessible using consistent hash. In general, you have to make sure each `RedisRequest` contains only one command or keys from multiple commands fall on the same server, since under the current implementation, if a request contains multiple commands, it will always be sent to the same server. For example, if a request contains a number of Get while the corresponding keys distribute in different servers, the result must be wrong, in which case you have to separate the request according to key distribution.
+Another choice is to use the common [twemproxy](https://github.com/twitter/twemproxy) solution, which makes clients access the cluster just like accessing a single server, although the solution needs to deploy proxies and adds more latency.
 
 # Debug
 
- Turn on [-redis_verbose](http://brpc.baidu.com:8765/flags/redis_verbose) to print all redis request and response to stderr. Note that this should only be used for debug instead of online production.
+Turn on [-redis_verbose](http://brpc.baidu.com:8765/flags/redis_verbose) to print contents of all redis requests and responses to stderr. Note that this should only be used for debugging rather than online services.
 
-Turn on [-redis_verbose_crlf2space](http://brpc.baidu.com:8765/flags/redis_verbose_crlf2space) to replace the `CRLF` (\r\n) with spaces for better readability.
+Turn on [-redis_verbose_crlf2space](http://brpc.baidu.com:8765/flags/redis_verbose_crlf2space) to replace the `CRLF` (\r\n) with spaces in debugging logs for better readability.
 
 | Name                     | Value | Description                              | Defined At                         |
 | ------------------------ | ----- | ---------------------------------------- | ---------------------------------- |
@@ -159,9 +162,9 @@ Turn on [-redis_verbose_crlf2space](http://brpc.baidu.com:8765/flags/redis_verbo
 
 # Performance
 
-redis version: 2.6.14 (latest version is 3.0+)
+redis version: 2.6.14
 
-Start a client to send requests to redis-server from the same machine using 1, 50, 200 bthreads synchronously. The time unit for latency is microseconds.
+Start a client to send requests to a redis-server on the same machine using 1, 50, 200 bthreads synchronously. The latency is in microseconds.
 
 ```
 $ ./client -use_bthread -thread_num 1
@@ -180,9 +183,9 @@ TRACE: 02-13 19:43:49:   * 0 client.cpp:180] Accessing redis server at qps=41167
 TRACE: 02-13 19:43:50:   * 0 client.cpp:180] Accessing redis server at qps=412583 latency=482
 ```
 
-The QPS reaches the limit after 200 threads, which is much higher than hiredis since brpc uses a single connection to redis-server by default and requests from multiple threads will be [merged in a wait-free way](io.md#发消息). As a result, from the redis-server's view, it received a bunch of requests and read/handle them in batch, thus getting much higher QPS than non-batched ones. The QPS drop in the following test using connection pool to visit redis-server is another proof.
+The peak QPS at 200 threads is much higher than hiredis since brpc uses a single connection to redis-server by default and requests from multiple threads are [merged in a wait-free way](io.md#sending-messages), making the redis-server receive requests in batch and reach a much higher QPS. The lower QPS in following test that uses pooled connections is another proof.
 
-Start a client to send requests (10 commands per request) to redis-server from the same machine using 1, 50, 200 bthreads synchronously. The time unit for latency is microseconds.
+Start a client to send requests in batch (10 commands per request) to redis-server on the same machine using 1, 50, 200 bthreads synchronously. The latency is in microseconds.
 
 ```
 $ ./client -use_bthread -thread_num 1 -batch 10  
@@ -207,9 +210,9 @@ TRACE: 02-13 19:49:11:   * 0 client.cpp:180] Accessing redis server at qps=29271
 16878 gejun     20   0 48136 2508 1004 R 99.9  0.0  13:36.59 redis-server   // thread_num=200
 ```
 
-Note that the actual commands processed per second of redis-server is 10 times the QPS value, which is about 400K.  When thread_num equals 50 or higher, the CPU usage of the redis-server reaches its limit. Since redis-server runs in [single-threaded reactor mode](threading_overview.md#单线程reactor), 99.9% on one core is the maximum CPU it can use.
+Note that the commands processed per second by the redis-server is the QPS times 10, which is about 400K.  When thread_num equals 50 or higher, the CPU usage of the redis-server reaches limit. Note that redis-server is a [single-threaded reactor](threading_overview.md#single-threaded-reactor), utilizing one core is the maximum that it can do.
 
-Now start a client to send requests to redis-server from the same machine using 50 bthreads synchronously through connection pool.
+Now start a client to send requests to redis-server on the same machine using 50 bthreads synchronously through pooled connections.
 
 ```
 $ ./client -use_bthread -connection_type pooled
@@ -221,11 +224,13 @@ TRACE: 02-13 18:07:42:   * 0 client.cpp:180] Accessing redis server at qps=75238
 16878 gejun     20   0 48136 2520 1004 R 99.9  0.0   9:52.33 redis-server
 ```
 
-We can see a tremendous drop of QPS compared to single connection and the redis-server has reached full CPU usage. The reason is that each time only one request from a connection can be read by the redis-server, which greatly increases the cost of IO operation.
+We can see a tremendous drop of QPS compared to the one using single connection above, and the redis-server has reached the CPU cap. The cause is that each time only one request can be read from a connection by the redis-server, which significantly increases cost of IO operations. This is also the peak performance of a hiredis client.
 
 # Command Line Interface
 
-example/redis_c++/redis_cli is a command line tool just like the official CLI, which shows the ability of brpc to handle the redis protocol. When you encounter an unexpected result from redis-server using brpc, you should try this CLI to debug interactively.
+[example/redis_c++/redis_cli](https://github.com/brpc/brpc/blob/master/example/redis_c%2B%2B/redis_cli.cpp) is a command line tool similar to the official CLI, demostrating brpc's capability to talk with redis servers. When unexpected results are got from a redis-server using a brpc client, you can debug with this tool interactively as well.
+
+Like the official CLI, `redis_cli <command>` runs the command directly, and `-server` which is address of the redis-server can be specified.
 
 ```
 $ ./redis_cli 
@@ -250,5 +255,3 @@ OK
 redis 127.0.0.1:6379> client getname
 "brpc-cli"
 ```
-
-Like the official CLI, `redis_cli <command>` can be used to issue commands directly, and use `-server` to specify the address of redis-server.
