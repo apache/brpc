@@ -1,198 +1,76 @@
+[中文版](../cn/bvar.md)
+
 # What is bvar?
 
-[bvar](https://github.com/brpc/brpc/tree/master/src/bvar/) is a counting utility designed for multiple threaded applications. It stores data in thread local storage(TLS) to avoid costly cache bouncing caused by concurrent modification. It is much faster than UbMonitor(a legacy counting utility used inside Baidu) and atomic operation in highly contended scenarios. bvar is builtin within brpc, through [/vars](http://brpc.baidu.com:8765/vars) you can access all the exposed bvars inside the server, or a single one specified by [/vars/`VARNAME`](http://brpc.baidu.com:8765/vars/rpc_socket_count). Check out [bvar](https://github.com/brpc/brpc/blob/master/docs/cn/bvar.md) if you'd like add some bvars for you own services. bvar is widely used inside brpc to calculate indicators of internal status. It is **almost free** in most scenarios to collect data. If you are looking for a utility to collect and show internal status of your application, try bvar at the first time. However bvar is designed for general purpose counters, the read process of a single bvar have to combines all the TLS data from the threads that the very bvar has been written, which is very slow compared to the write process and atomic operations.
+[bvar](https://github.com/brpc/brpc/tree/master/src/bvar/) is a set of counters to record and view miscellaneous statistics conveniently in multi-threaded applications. The implementation reduces cache bouncing by storing data in thread local storage(TLS), being much faster than UbMonitor(a legacy counting library inside Baidu) and even atomic operations in highly contended scenarios. brpc integrates bvar by default, namely all exposed bvars in a server are accessible through [/vars](http://brpc.baidu.com:8765/vars), and a single bvar is addressable by [/vars/VARNAME](http://brpc.baidu.com:8765/vars/rpc_socket_count). Read [vars](vars.md) to know how to query them in brpc servers. brpc extensively use bvar to expose internal status. If you are looking for an utility to collect and display metrics of your application, consider bvar in the first place. bvar definitely can't replace all counters, essentially it moves contentions occurred during write to read: which needs to combine all data written by all threads and becomes much slower than an ordinary read. If read and write on the counter are both frequent or decisions need to be made based on latest values, you should not use bvar.
 
-## What is "cache bouncing"
+To understand how bvar works, read [explanations on cacheline](atomic_instructions.md#cacheline) first, in which the mentioned counter example is just bvar. When many threads are modifying a counter, each thread writes into its own area without joining the global contention and all private data are combined at read, which is much slower than an ordinary one, but OK for low-frequency logging or display. The much faster and very-little-overhead write enables users to monitor systems from all aspects without worrying about hurting performance. This is the purpose that we designed bvar.
 
-为了以较低的成本大幅提高性能，现代CPU都有[cache](https://en.wikipedia.org/wiki/CPU_cache)。百度内常见的Intel E5-2620拥有32K的L1 dcache和icache，256K的L2 cache和15M的L3 cache。其中L1和L2cache为每个核独有，L3则所有核共享。为了保证所有的核看到正确的内存数据，一个核在写入自己的L1 cache后，CPU会执行[Cache一致性](https://en.wikipedia.org/wiki/Cache_coherence)算法把对应的[cacheline](https://en.wikipedia.org/wiki/CPU_cache#Cache_entries)(一般是64字节)同步到其他核。这个过程并不很快，是微秒级的，相比之下写入L1 cache只需要若干纳秒。当很多线程在频繁修改某个字段时，这个字段所在的cacheline被不停地同步到不同的核上，就像在核间弹来弹去，这个现象就叫做cache bouncing。由于实现cache一致性往往有硬件锁，cache bouncing是一种隐式的的全局竞争。关于竞争请查阅[atomic instructions](atomic_instructions.md)。
-
-cache bouncing使访问频繁修改的变量的开销陡增，甚至还会使访问同一个cacheline中不常修改的变量也变慢，这个现象是[false sharing](https://en.wikipedia.org/wiki/False_sharing)。按cacheline对齐能避免false sharing，但在某些情况下，我们甚至还能避免修改“必须”修改的变量。bvar便是这样一个例子，当很多线程都在累加一个计数器时，我们让每个线程累加私有的变量而不参与全局竞争，在读取时我们累加所有线程的私有变量。虽然读比之前慢多了，但由于这类计数器的读多为低频展现，慢点无所谓。而写就快多了，从微秒到纳秒，几百倍的差距使得用户可以无所顾忌地使用bvar，这便是我们设计bvar的目的。
-
-下图是bvar和原子变量，静态UbMonitor，动态UbMonitor的性能对比。可以看到bvar的耗时基本和线程数无关，一直保持在极低的水平（~20纳秒）。而动态UbMonitor在24核时每次累加的耗时达7微秒，这意味着使用300次bvar的开销才抵得上使用一次动态UbMonitor变量。
+Following graph compares overhead of bvar, atomics, static UbMonitor, dynamic UbMonitor when they're accessed by multiple threads simultaneously. We can see that overhead of bvar is not related to number of threads basically, and being constantly low (~20 nanoseconds). As a contrast, dynamic UbMonitor costs 7 microseconds on each operation when there're 24 threads, which is the overhead of using the bvar for 300 times.
 
 ![img](../images/bvar_perf.png)
 
-# 3.用noah监控bvar
+# Monitor bvar
+
+Following graph demonstrates how bvars in applications are monitored.
 
 ![img](../images/bvar_flow.png)
 
-- bvar 将被监控的项目定期打入文件：monitor/bvar.<app>.data。
-- noah 自动收集文件并生成图像。
-- App只需要注册相应的监控项即可。
+In which:
 
-每个App必须做到的最低监控要求如下：
+- APP means user's application which uses bvar API to record all sorts of metrics.
+- bvar periodically prints exposed bvars into a file (represented by "log") under directory $PWD/monitor/ . The "log" is different from an ordinary log that it's overwritten by newer content rather than concatenated.
+- The monitoring system collects dumped files (represented by noah), aggregates the data inside and plots curves.
 
-- **Error**: 要求系统中每个可能出现的error都有监控 
-- **Latency**: 系统对外的每个rpc请求的latency；  系统依赖的每个后台的每个request的latency;  (注： 相应的max_latency，系统框架会自动生成)
-- **QPS**: 系统对外的每个request的QPS; 系统依赖的每个后台的每个request的QPS.
+The APP is recommended to meet following requirements:
 
-后面会在完善monitoring框架的过程中要求每个App添加新的必需字段。
+- **Error**: Number of every kind of error that may occur. 
+- **Latency**: latencies(average/percentile) of each public RPC interface, latencies of each RPC to back-end servers.
+- **QPS**: QPS of each public RPC interface, QPS of each RPC to back-end servers.
 
-# 4.RD要干的事情
-
-## 1.定义bvar
-
-```c++
-#include <bvar/bvar.h>
- 
-namespace foo {
-namespace bar {
- 
-// bvar::Adder<T>用于累加，下面定义了一个统计read error总数的Adder。
-bvar::Adder<int> g_read_error;
-// 把bvar::Window套在其他bvar上就可以获得时间窗口内的值。
-bvar::Window<bvar::Adder<int> > g_read_error_minute("foo_bar", "read_error", &g_read_error, 60);
-//                                                     ^          ^                         ^
-//                                                    前缀       监控项名称                  60秒,忽略则为10秒
- 
-// bvar::LatencyRecorder是一个复合变量，可以统计：总量、qps、平均延时，延时分位值，最大延时。
-bvar::LatencyRecorder g_write_latency(“foo_bar", "write”);
-//                                      ^          ^
-//                                     前缀       监控项，别加latency！LatencyRecorder包含多个bvar，它们会加上各自的后缀，比如write_qps, write_latency等等。
- 
-// 定义一个统计“已推入task”个数的变量。
-bvar::Adder<int> g_task_pushed("foo_bar", "task_pushed");
-// 把bvar::PerSecond套在其他bvar上可以获得时间窗口内*平均每秒*的值，这里是每秒内推入task的个数。
-bvar::PerSecond<bvar::Adder<int> > g_task_pushed_second("foo_bar", "task_pushed_second", &g_task_pushed);
-//       ^                                                                                             ^
-//    和Window不同，PerSecond会除以时间窗口的大小.                                   时间窗口是最后一个参数，这里没填，就是默认10秒。
- 
-}  // bar
-}  // foo
-```
-
-在应用的地方：
-
-```c++
-// 碰到read error
-foo::bar::g_read_error << 1;
- 
-// write_latency是23ms
-foo::bar::g_write_latency << 23;
- 
-// 推入了1个task
-foo::bar::g_task_pushed << 1;
-```
-
-注意Window<>和PerSecond<>都是衍生变量，会自动更新，你不用给它们推值。
-
->  你当然也可以把bvar作为成员变量或局部变量，请阅读[bvar-c++](bvar_c++.md)。
-
-**确认变量名是全局唯一的！**否则会曝光失败，如果-bvar_abort_on_same_name为true，程序会直接abort。
-
-程序中有来自各种模块不同的bvar，为避免重名，建议如此命名：**模块_类名_指标**
-
-- **模块**一般是程序名，可以加上产品线的缩写，比如inf_ds，ecom_retrbs等等。
-- **类名**一般是类名或函数名，比如storage_manager, file_transfer, rank_stage1等等。
-- **指标**一般是count，qps，latency这类。
-
-一些正确的命名如下：
+Read [Quick introduction](bvar_c++.md#quick-introduction) to know how to add bvar in C++.  bvar already provides stats of many process-level and system-level variables by default, which are prefixed with `process_` and `system_`, such as:
 
 ```
-iobuf_block_count : 29                          # 模块=iobuf   类名=block  指标=count
-iobuf_block_memory : 237568                     # 模块=iobuf   类名=block  指标=memory
-process_memory_resident : 34709504              # 模块=process 类名=memory 指标=resident
-process_memory_shared : 6844416                 # 模块=process 类名=memory 指标=shared
-rpc_channel_connection_count : 0                # 模块=rpc     类名=channel_connection  指标=count
-rpc_controller_count : 1                        # 模块=rpc     类名=controller 指标=count
-rpc_socket_count : 6                            # 模块=rpc     类名=socket     指标=count
+process_context_switches_involuntary_second : 14
+process_context_switches_voluntary_second : 15760
+process_cpu_usage : 0.428
+process_cpu_usage_system : 0.142
+process_cpu_usage_user : 0.286
+process_disk_read_bytes_second : 0
+process_disk_write_bytes_second : 260902
+process_faults_major : 256
+process_faults_minor_second : 14
+process_memory_resident : 392744960
+system_core_count : 12
+system_loadavg_15m : 0.040
+system_loadavg_1m : 0.000
+system_loadavg_5m : 0.020
 ```
 
-目前bvar会做名字归一化，不管你打入的是foo::BarNum, foo.bar.num, foo bar num , foo-bar-num，最后都是foo_bar_num。
+and miscellaneous bvars used by brpc itself:
 
-关于指标：
-
-- 个数以_count为后缀，比如request_count, error_count。
-- 每秒的个数以_second为后缀，比如request_second, process_inblocks_second，已经足够明确，不用写成_count_second或_per_second。
-- 每分钟的个数以_minute为后缀，比如request_minute, process_inblocks_minute
-
-如果需要使用定义在另一个文件中的计数器，需要在头文件中声明对应的变量。
-
-```c++
-namespace foo {
-namespace bar {
-// 注意g_read_error_minute和g_task_pushed_per_second都是衍生的bvar，会自动更新，不要声明。
-extern bvar::Adder<int> g_read_error;
-extern bvar::LatencyRecorder g_write_latency;
-extern bvar::Adder<int> g_task_pushed;
-}  // bar
-}  // foo
+```
+bthread_switch_second : 20422
+bthread_timer_scheduled_second : 4
+bthread_timer_triggered_second : 4
+bthread_timer_usage : 2.64987e-05
+bthread_worker_count : 13
+bthread_worker_usage : 1.33733
+bvar_collector_dump_second : 0
+bvar_collector_dump_thread_usage : 0.000307385
+bvar_collector_grab_second : 0
+bvar_collector_grab_thread_usage : 1.9699e-05
+bvar_collector_pending_samples : 0
+bvar_dump_interval : 10
+bvar_revision : "34975"
+bvar_sampler_collector_usage : 0.00106495
+iobuf_block_count : 89
+iobuf_block_count_hit_tls_threshold : 0
+iobuf_block_memory : 729088
+iobuf_newbigview_second : 10
 ```
 
-**不要跨文件定义全局Window或PerSecond**
-
-不同编译单元中全局变量的初始化顺序是[未定义的](https://isocpp.org/wiki/faq/ctors#static-init-order)。在foo.cpp中定义`Adder<int> foo_count`，在foo_qps.cpp中定义`PerSecond<Adder<int> > foo_qps(&foo_count);`是**错误**的做法。
-
-计时可以使用butil::Timer，接口如下：
-
-```c++
-#include <butil/time.h>
-namespace butil {
-class Timer {
-public:
-    enum TimerType { STARTED };
-     
-    Timer();
- 
-    // butil::Timer tm(butil::Timer::STARTED);  // tm is already started after creation.
-    explicit Timer(TimerType);
- 
-    // Start this timer
-    void start();
-     
-    // Stop this timer
-    void stop();
- 
-    // Get the elapse from start() to stop().
-    int64_t n_elapsed() const;  // in nanoseconds
-    int64_t u_elapsed() const;  // in microseconds
-    int64_t m_elapsed() const;  // in milliseconds
-    int64_t s_elapsed() const;  // in seconds
-};
-}  // namespace butil
-```
-
-## 2.打开bvar的dump功能
-
-bvar可以定期把进程内所有的bvar打印入一个文件中，默认不打开。有几种方法打开这个功能：
-
-- 用[gflags](flags.md)解析输入参数，在程序启动时加入-bvar_dump。gflags的解析方法如下，在main函数处添加如下代码:
-```c++
-  #include <gflags/gflags.h>
-  ...
-  int main(int argc, char* argv[]) {
-      google::ParseCommandLineFlags(&argc, &argv, true/*表示把识别的参数从argc/argv中删除*/);
-      ...
-  }
-```
-- 不想用gflags解析参数，希望直接在程序中默认打开，在main函数处添加如下代码：
-```c++
-#include <gflags/gflags.h>
-...
-int main(int argc, char* argv[]) {
-    if (google::SetCommandLineOption("bvar_dump", "true").empty()) {
-        LOG(FATAL) << "Fail to enable bvar dump";
-    }
-    ...
-}
-```
-
-bvar的dump功能由如下参数控制，产品线根据自己的需求调节，需要提醒的是noah要求bvar_dump_file的后缀名是.data，请勿改成其他后缀。更具体的功能描述请阅读[Export all variables](bvar_c++.md#export-all-variables)。
-
-| 名称                      | 默认值                     | 作用                                       |
-| ----------------------- | ----------------------- | ---------------------------------------- |
-| bvar_abort_on_same_name | false                   | Abort when names of bvar are same        |
-| bvar_dump               | false                   | Create a background thread dumping all bvar periodically, all bvar_dump_* flags are not effective when this flag is off |
-| bvar_dump_exclude       | ""                      | Dump bvar excluded from these wildcards(separated by comma), empty means no exclusion |
-| bvar_dump_file          | monitor/bvar.<app>.data | Dump bvar into this file                 |
-| bvar_dump_include       | ""                      | Dump bvar matching these wildcards(separated by comma), empty means including all |
-| bvar_dump_interval      | 10                      | Seconds between consecutive dump         |
-| bvar_dump_prefix        | <app>                   | Every dumped name starts with this prefix |
-| bvar_dump_tabs          | 见代码                     | Dump bvar into different tabs according to the filters (seperated by semicolon), format: *(tab_name=wildcards) |
-
-## 3.编译并重启应用程序
-
-检查monitor/bvar.<app>.data是否存在：
+Turn on [dump feature](bvar_c++.md#export-all-variables) of bvar to export all exposed bvars to files, which are formatted just like above texts: each line is a pair of "name" and "value". Check if there're data under $PWD/monitor/ after enabling dump, for example:
 
 ```
 $ ls monitor/
@@ -206,20 +84,8 @@ process_time_user : 0.741887
 process_username : "gejun"
 ```
 
-## 4.打开[noah](http://noah.baidu.com/)
-
-搜索监控节点：
-
-![img](../images/bvar_noah1.png)
-
- 
-
-点击“文件”tab，勾选要查看的统计量，bvar已经统计了进程级的很多参数，大都以process开头。
+The monitoring system should combine data on every single machine periodically and provide on-demand queries. Take the "noah" system inside Baidu as an example, variables defined by bvar appear as metrics in noah, which can be checked by users to view historical curves.
 
 ![img](../images/bvar_noah2.png)
-
- 
-
-查看趋势图：
 
 ![img](../images/bvar_noah3.png)
