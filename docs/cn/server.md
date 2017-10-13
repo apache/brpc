@@ -379,6 +379,10 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 
 未打印日志的开销只是一次if判断，也不会评估参数(比如某个参数调用了函数，日志不打，这个函数就不会被调用）。如果日志最终打印到自定义LogSink，那么还要经过LogSink的过滤。
 
+## 归还空闲内存至系统
+
+选项-free_memory_to_system_interval表示每过这么多秒就尝试向系统归还空闲内存，<= 0表示不开启，默认值为0，若开启建议设为10及以上的值。此功能支持tcmalloc，之前程序中对`MallocExtension::instance()->ReleaseFreeMemory()`的定期调用可改成设置此选项。
+
 ## 打印发送给client的错误
 
 server的框架部分一般不针对个别client打印错误日志，因为当大量client出现错误时，可能导致server高频打印日志而严重影响性能。但有时为了调试问题，或就是需要让server打印错误，打开参数[-log_error_text](http://brpc.baidu.com:8765/flags/log_error_text)即可。

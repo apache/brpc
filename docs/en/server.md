@@ -381,6 +381,10 @@ Only logs with levels **not less than** the level specified by -minloglevel are 
 
 Overhead of unprinted logs is just a "if" test and parameters are not evaluated (For example a parameter calls a function, if the log is not printed, the function is not called). Logs printed to LogSink may be filtered by the sink as well.
 
+## Return free memory to system
+
+Set gflag -free_memory_to_system_interval to make the program try to return free memory to system every so many seconds, values <= 0 disable the feature. Default value is 0. To turn it on, values >= 10 are recommended. This feature supports tcmalloc, thus `MallocExtension::instance()->ReleaseFreeMemory()` periodically called in your program can be replaced by setting this flag.
+
 ## Log error to clients
 
 Framework does not print logs for specific client generally, because a lot of errors caused by clients may slow down server significantly due to frequent printing of logs. If you need to debug or just want the server to log all errors, turn on [-log_error_text](http://brpc.baidu.com:8765/flags/log_error_text).
