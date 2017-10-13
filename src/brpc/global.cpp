@@ -62,14 +62,24 @@
 #include "brpc/socket_map.h"          // SocketMapList
 #include "brpc/server.h"
 #include "brpc/trackme.h"             // TrackMe
-#include <malloc.h>                        // malloc_trim
 #include "brpc/details/usercode_backup_pool.h"
+#include <malloc.h>                   // malloc_trim
 #include "butil/fd_guard.h"
 #include "butil/files/file_watcher.h"
+
+extern "C" {
+// defined in gperftools/malloc_extension_c.h
+void BAIDU_WEAK MallocExtension_ReleaseFreeMemory(void);
+}
 
 namespace brpc {
 
 DECLARE_bool(usercode_in_pthread);
+
+DEFINE_int32(free_memory_to_system_interval, 0,
+             "Try to return free memory to system every so many seconds, "
+             "values <= 0 disables this feature");
+BRPC_VALIDATE_GFLAG(free_memory_to_system_interval, PassValidate);
 
 namespace policy {
 // Defined in http_rpc_protocol.cpp
@@ -177,7 +187,7 @@ static void* GlobalUpdate(void*) {
     const int WARN_NOSLEEP_THRESHOLD = 2;
     int64_t last_time_us = start_time_us;
     int consecutive_nosleep = 0;
-    //int64_t last_malloc_trim_time = start_time_us;
+    int64_t last_return_free_memory_time = start_time_us;
     while (1) {
         const int64_t sleep_us = 1000000L + last_time_us - butil::gettimeofday_us();
         if (sleep_us > 0) {
@@ -214,11 +224,24 @@ static void* GlobalUpdate(void*) {
             }
         }
 
-        // TODO: Add branch for tcmalloc.
-        // if (last_time_us > last_malloc_trim_time + 10*1000000L) {
-        //     last_malloc_trim_time = last_time_us;
-        //     malloc_trim(10*1024*1024/*leave 10M pad*/);
-        // }
+        const int return_mem_interval =
+            FLAGS_free_memory_to_system_interval/*reloadable*/;
+        if (return_mem_interval > 0 &&
+            last_time_us >= last_return_free_memory_time +
+            return_mem_interval * 1000000L) {
+            last_return_free_memory_time = last_time_us;
+            // TODO: Calling MallocExtension::instance()->ReleaseFreeMemory may
+            // crash the program in later calls to malloc, verified on tcmalloc
+            // 1.7 and 2.5, which means making the static member function weak
+            // in details/tcmalloc_extension.cpp is probably not correct, however
+            // it does work for heap profilers.
+            if (MallocExtension_ReleaseFreeMemory != NULL) {
+                MallocExtension_ReleaseFreeMemory();
+            } else {
+                // GNU specific.
+                malloc_trim(10 * 1024 * 1024/*leave 10M pad*/);
+            }
+        }
     }
     return NULL;
 }
