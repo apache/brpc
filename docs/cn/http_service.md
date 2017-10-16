@@ -6,7 +6,7 @@
 
 1. 填写proto文件。
 
-下面代码里的HttpRequest和HttpResponse都是空的，因为http数据在Controller中。http request的头在Controller.http_request()中，body在Controller.request_attachment()中。类似的，http response的头在Controller.http_response()，body在Controller.response_attachment()。
+   下面代码里的HttpRequest和HttpResponse都是空的，因为http数据在Controller中。http request的头在Controller.http_request()中，body在Controller.request_attachment()中。类似的，http response的头在Controller.http_response()，body在Controller.response_attachment()。
 
 ```protobuf
 option cc_generic_services = true;
@@ -48,7 +48,7 @@ public:
 };
 ```
 
-实现完毕插入Server后可通过如下URL访问，/HttpService/Echo后的部分在 cntl->http_request().unresolved_path()中，unresolved_path总是normalized。
+3. 实现完毕插入Server后可通过如下URL访问，/HttpService/Echo后的部分在 cntl->http_request().unresolved_path()中，unresolved_path总是normalized。
 
 | URL                        | 访问方法             | cntl->http_request().uri().path() | cntl->http_request().unresolved_path() |
 | -------------------------- | ---------------- | --------------------------------- | -------------------------------------- |
@@ -95,7 +95,7 @@ public:
 };
 ```
 
-实现完毕插入Server后可通过如下URL访问，/FileService之后的路径在cntl->http_request().unresolved_path()中 (r32097前被称为method_path)，unresolved_path总是normalized。
+3. 实现完毕插入Server后可通过如下URL访问，/FileService之后的路径在cntl->http_request().unresolved_path()中 ，unresolved_path总是normalized。
 
 | URL                             | 访问方法                       | cntl->http_request().uri().path() | cntl->http_request().unresolved_path() |
 | ------------------------------- | -------------------------- | --------------------------------- | -------------------------------------- |
@@ -106,7 +106,7 @@ public:
 
 # Restful URL
 
-r32097后，brpc支持为service中的每个方法指定一个URL。接口如下：
+brpc支持为service中的每个方法指定一个URL。接口如下：
 
 ```c++
 // 如果restful_mappings不为空, service中的方法可通过指定的URL被HTTP协议访问，而不是/ServiceName/MethodName. 
@@ -128,12 +128,11 @@ service QueueService {
 };
 ```
 
-如果我们像之前那样把它插入server，那么只能通过`/QueueService/start, /QueueService/stop等url来访问`。
+如果我们像之前那样把它插入server，那么只能通过`/QueueService/start, /QueueService/stop`等url来访问。
 
 而在调用AddService时指定第三个参数(restful_mappings)就能定制URL了，如下所示：
 
 ```c++
-// r33521前星号只能出现在最后
 if (server.AddService(&queue_svc,
                       brpc::SERVER_DOESNT_OWN_SERVICE,
                       "/v1/queue/start   => start,"
@@ -143,7 +142,7 @@ if (server.AddService(&queue_svc,
     return -1;
 }
  
-// r33521后星号可出现在中间
+// 星号可出现在中间
 if (server.AddService(&queue_svc,
                       brpc::SERVER_DOESNT_OWN_SERVICE,
                       "/v1/*/start   => start,"
@@ -154,7 +153,7 @@ if (server.AddService(&queue_svc,
 }
 ```
 
-上面代码中AddService的第三个参数分了三行，但实际上是一个字符串。这个字符串包含以逗号(,)分隔的三个映射关系，每个映射告诉brpc：在遇到箭头左侧的URL时调用右侧的方法。"/v1/queue/stats/*"中的星号可匹配任意字串。在r33521前星号只能加在URL最后。
+上面代码中AddService的第三个参数分了三行，但实际上是一个字符串。这个字符串包含以逗号(,)分隔的三个映射关系，每个映射告诉brpc：在遇到箭头左侧的URL时调用右侧的方法。"/v1/queue/stats/*"中的星号可匹配任意字串。
 
 关于映射规则：
 
@@ -162,8 +161,8 @@ if (server.AddService(&queue_svc,
 - service不要求是纯HTTP，pb service也支持。
 - 没有出现在映射中的方法仍旧通过/ServiceName/MethodName访问。出现在映射中的方法不再能通过/ServiceName/MethodName访问。
 - ==> ===> ...都是可以的。开头结尾的空格，额外的斜杠(/)，最后多余的逗号，都不要紧。
-- r33521前PATH和PATH/* 是冲突的，不能同时出现在一个字符串中。r33521后两者可以共存。
-- r33521前星号后不能有更多字符，r33521后可以，即支持后缀匹配。
+- PATH和PATH/*两者可以共存。
+- 星号后可以有更多字符，即支持后缀匹配。
 - 一个路径中只能出现一个星号。
 
 `cntl.http_request().unresolved_path()` 对应星号(*)匹配的部分，保证normalized：开头结尾都不包含斜杠(/)，中间斜杠不重复。比如：
@@ -294,37 +293,47 @@ if (encoding != NULL && *encoding == "gzip") {
 // cntl->request_attachment()中已经是解压后的数据了
 ```
 
-
-
 # 开启HTTPS
 
 要开启HTTPS，首先确保代码依赖了最新的openssl库。如果openssl版本很旧，会有严重的安全漏洞，支持的加密算法也少，违背了开启SSL的初衷。然后设置ServerOptions中的SSLOptions
 ```c++
-// 证书结构
+// Certificate structure
 struct CertInfo {
-    // PEM格式证书文件
-    // 当存在证书链时, 将所有证书链上的证书append为一个文件
-    std::string certificate_file;
-  
-    // PEM格式的密钥文件
-    std::string private_key_file;
-  
-    // 指定该证书绑定的域名，首字符支持通配符（类似*.abc.com）
-    // 访问这些域名的请求，会使用该证书进行SSL握手，在client最终显示该证书的信息
-    // 如果没指定此字段，程序会自动尝试从证书文件中提取域名信息
-    std::vector<std::string> sni_filters;
+    // Certificate in PEM format.
+    // Note that CN and alt subjects will be extracted from the certificate,
+    // and will be used as hostnames. Requests to this hostname (provided SNI
+    // extension supported) will be encrypted using this certifcate. 
+    // Supported both file path and raw string
+    std::string certificate;
+
+    // Private key in PEM format.
+    // Supported both file path and raw string based on prefix:
+    std::string private_key;
+        
+    // Additional hostnames besides those inside the certificate. Wildcards
+    // are supported but it can only appear once at the beginning (i.e. *.xxx.com).
+    std::vector<std::string> sni_filters;
 };
- 
+
 struct SSLOptions {
-    // 要加载的所有证书
-    std::vector<CertInfo> certs;
+    // Default certificate which will be loaded into server. Requests
+    // without hostname or whose hostname doesn't have a corresponding
+    // certificate will use this certificate. MUST be set to enable SSL.
+    CertInfo default_cert;
+    
+    // Additional certificates which will be loaded into server. These
+    // provide extra bindings between hostnames and certificates so that
+    // we can choose different certificates according to different hostnames.
+    // See `CertInfo' for detail.
+    std::vector<CertInfo> certs;
+
+    // When set, requests without hostname or whose hostname can't be found in
+    // any of the cerficates above will be dropped. Otherwise, `default_cert'
+    // will be used.
+    // Default: false
+    bool strict_sni;
  
-    // 当HTTPS请求到来时，会自动根据访问域名找相应的证书
-    // 如果没有找到相匹配的证书，默认情况使用certs中的第一张证书
-    // 除非开启strict_sni，则此时会拒绝该请求
-    bool strict_sni;
- 
-    // ... 其他选项
+    // ... Other options
 };
 ```
 其余选项还包括：密钥套件选择（推荐密钥ECDHE-RSA-AES256-GCM-SHA384，chrome默认第一优先密钥，安全性很高，但比较耗性能）、session复用等，具体见server.h
@@ -344,14 +353,14 @@ bool Controller::is_ssl() const;
 
 # 持续发送
 
-r33796前brpc server不适合发送超大或无限长的body。r33796后brpc server支持。方法如下:
+brpc server支持发送超大或无限长的body。方法如下:
 
 1. 调用Controller::CreateProgressiveAttachment()创建可持续发送的body。
   `boost::intrusive_ptr<brpc::ProgressiveAttachment> pa(cntl->CreateProgressiveAttachment());`
-  返回的ProgressiveAttachment对象需要用boost::intrusive_ptr<>管理，定义在brpc/progressive_attachment.h>中。
+  返回的ProgressiveAttachment对象需要用boost::intrusive_ptr<>管理，定义在`<brpc/progressive_attachment.h>`中。
 
 2. 调用ProgressiveAttachment::Write()发送数据。如果写入发生在server回调结束前，发送的数据将会被缓存直到回调结束发送了header部分后才会开始发送数据。如果写入发生在server回调结束后，发送的数据将立刻以chunked mode写出。 
-3. 发送完毕后确保所有的boost::intrusive_ptr<brpc::ProgressiveAttachment>都析构了。
+3. 发送完毕后确保所有的`boost::intrusive_ptr<brpc::ProgressiveAttachment>`都析构了。
 
 # 持续接收
 
@@ -361,7 +370,7 @@ r33796前brpc server不适合发送超大或无限长的body。r33796后brpc ser
 
 ### Q: brpc前的nginx报了final fail (ff)
 
-brpc server同端口支持多种协议，当它遇到非法HTTP请求并解析失败后，无法说这个请求一定是HTTP。在r31355之后，server会对query-string及之后出现解析错误的请求返回HTTP 400错误并关闭连接（因为有很大概率是HTTP请求），但如果是HTTP method错误，诸如出现GET、POST、HEAD等标准方法之外的东西或严重的格式错误（可能由HTTP client有bug导致），server仍会直接断开连接，导致nginx的ff。
+brpc server同端口支持多种协议，当它遇到非法HTTP请求并解析失败后，无法说这个请求一定是HTTP。server会对query-string及之后出现解析错误的请求返回HTTP 400错误并关闭连接（因为有很大概率是HTTP请求），但如果是HTTP method错误，诸如出现GET、POST、HEAD等标准方法之外的东西或严重的格式错误（可能由HTTP client有bug导致），server仍会直接断开连接，导致nginx的ff。
 
 解决方案: 在使用Nginx转发流量时，可以对$HTTP_method做一下过滤，只放行允许的方法。或者干脆在proxy时设置proxy_method为指定方法，来避免ff。 
 
