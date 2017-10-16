@@ -717,8 +717,4 @@ void ParallelChannel::Describe(
     os << "]";
 }
 
-// Avoid linking errors in ccover g++.
-const ResponseMerger::Result ResponseMerger::IGNORED;
-const ResponseMerger::Result ResponseMerger::CALL_FAILED;
-
 } // namespace brpc

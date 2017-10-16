@@ -318,7 +318,6 @@ public:
 
 inline ExecutionQueueOptions::ExecutionQueueOptions()
     : bthread_attr(BTHREAD_ATTR_NORMAL)
-    , max_tasks_size(1)
 {}
 
 template <typename T>

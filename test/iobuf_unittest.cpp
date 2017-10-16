@@ -504,7 +504,7 @@ TEST_F(IOBufTest, iobuf_sanity) {
 TEST_F(IOBufTest, copy_and_assign) {
     install_debug_allocator();
 
-    const size_t TARGET_SIZE = butil::IOBuf::BLOCK_SIZE * 2;
+    const size_t TARGET_SIZE = butil::IOBuf::DEFAULT_BLOCK_SIZE * 2;
     butil::IOBuf buf0;
     buf0.append("hello");
     ASSERT_EQ(1u, buf0._ref_num());

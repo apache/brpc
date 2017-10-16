@@ -124,9 +124,6 @@ public:
         // make the call to ParallelChannel fail.
         FAIL_ALL
     };
-    // [Deprecated]
-    static const Result IGNORED = FAIL;            // Use FAIL instead.
-    static const Result CALL_FAILED = FAIL_ALL;    // Use FAIL_ALL instead.
 
     ResponseMerger() { }
     virtual Result Merge(google::protobuf::Message* response,
