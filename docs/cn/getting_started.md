@@ -159,7 +159,7 @@ Adding `-D__const__=` to cxxflags in your makefiles is a must to avoid [errno is
 
 ## Clang: 3.5-4.0
 
-unittests can't be compiled with clang yet.
+no known issues.
 
 ## glibc: 2.12-2.25
 
