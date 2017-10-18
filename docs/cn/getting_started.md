@@ -13,7 +13,7 @@ brpc depends on following packages:
 
 Install common deps:
 ```
-$ sudo apt-get install git g++ make libssl-dev
+$ sudo apt-get install git g++ make libssl-dev realpath
 ```
 
 Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
