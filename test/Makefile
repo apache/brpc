@@ -14,7 +14,7 @@ ifeq ($(shell test $(GCC_VERSION) -ge 70000; echo $$?),0)
 endif
 
 HDRPATHS=-I. -I../src $(addprefix -I, $(HDRS))
-LIBPATHS=-L.. $(addprefix -L, $(LIBS))
+LIBPATHS=$(addprefix -L, $(LIBS))
 
 TEST_BUTIL_SOURCES = \
     at_exit_unittest.cc \
@@ -135,38 +135,35 @@ TEST_BINS = test_butil test_bvar $(TEST_BTHREAD_SOURCES:.cpp=) $(TEST_BRPC_SOURC
 all: $(TEST_BINS)
 
 .PHONY:clean
-clean:clean_bins clean_debug
+clean:clean_bins
 	@echo "Cleaning"
 	@rm -rf $(TEST_BUTIL_OBJS) $(TEST_BVAR_OBJS) $(TEST_BTHREAD_OBJS) $(TEST_BRPC_OBJS) $(TEST_PROTO_OBJS)
+	@$(MAKE) -C.. clean_debug
 
 .PHONY:clean_bins
 clean_bins:
 	@rm -rf $(TEST_BINS)
 
-.PHONY:clean_debug
-clean_debug:
-	@$(MAKE) -C.. clean_debug
-
-../libbrpc.dbg.a: FORCE
+libbrpc.dbg.a:
 	@$(MAKE) -C.. debug
 
 FORCE:
 
 .PRECIOUS: %.o
 
-test_butil:../libbrpc.dbg.a $(TEST_BUTIL_OBJS)
+test_butil:libbrpc.dbg.a $(TEST_BUTIL_OBJS)
 	@echo "Linking $@"
 	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
-test_bvar:../libbrpc.dbg.a $(TEST_BVAR_OBJS)
+test_bvar:libbrpc.dbg.a $(TEST_BVAR_OBJS)
 	@echo "Linking $@"
-	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $(TEST_BVAR_OBJS) ../libbvar.dbg.a -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
+	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $(TEST_BVAR_OBJS) libbvar.dbg.a -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
-bthread%unittest:../libbrpc.dbg.a bthread%unittest.o
+bthread%unittest:libbrpc.dbg.a bthread%unittest.o
 	@echo "Linking $@"
 	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
-brpc_%_unittest:../libbrpc.dbg.a $(TEST_PROTO_OBJS) brpc_%_unittest.o
+brpc_%_unittest:libbrpc.dbg.a $(TEST_PROTO_OBJS) brpc_%_unittest.o
 	@echo "Linking $@"
 	@$(CXX) -o $@ $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 
@@ -174,11 +171,11 @@ brpc_%_unittest:../libbrpc.dbg.a $(TEST_PROTO_OBJS) brpc_%_unittest.o
 	@echo "Generating $@"
 	@$(PROTOC) --cpp_out=. --proto_path=. --proto_path=../src --proto_path=$(PROTOBUF_HDR) $<
 
-%.o:%.cpp
+%.o:%.cpp | libbrpc.dbg.a
 	@echo "Compiling $@"
 	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
-%.o:%.cc
+%.o:%.cc | libbrpc.dbg.a
 	@echo "Compiling $@"
 	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
