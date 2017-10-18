@@ -652,6 +652,8 @@ void* Controller::RunEndRPC(void* arg) {
 
 inline bool does_error_affect_main_socket(int error_code) {
     return error_code == ECONNREFUSED ||
+        error_code == ENETUNREACH ||
+        error_code == EHOSTUNREACH ||
         error_code == EINVAL/*returned by connect "0.0.0.1"*/;
 }
 

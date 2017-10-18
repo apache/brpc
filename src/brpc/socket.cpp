@@ -1331,7 +1331,7 @@ void Socket::AfterAppConnected(int err, void* data) {
         }
     } else {
         SocketUniquePtr s(req->socket);
-        s->SetFailed(err, "Fail to make %s connected: %s",
+        s->SetFailed(err, "Fail to connect %s: %s",
                      s->description().c_str(), berror(err));
         s->ReleaseAllFailedWriteRequests(req);
     }
@@ -1491,7 +1491,7 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
     int ret = ConnectIfNot(opt.abstime, req);
     if (ret < 0) {
         saved_errno = errno;
-        SetFailed(errno, "Fail to make %s connected: %m", description().c_str());
+        SetFailed(errno, "Fail to connect %s directly: %m", description().c_str());
         goto FAIL_TO_WRITE;
     } else if (ret == 1) {
         // We are doing connection. Callback `KeepWriteIfConnected'
