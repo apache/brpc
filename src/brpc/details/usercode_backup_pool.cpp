@@ -163,7 +163,7 @@ void EndRunningUserCodeInPool(void (*fn)(void*), void* arg) {
     // all workers from being blocked and no responses will be processed
     // anymore (deadlocked).
     const UserCode usercode = { fn, arg };
-    BAIDU_SCOPED_LOCK(s_usercode_mutex);
+    pthread_mutex_lock(&s_usercode_mutex);
     s_usercode_pool->queue.push_back(usercode);
     // If the queue has too many items, we can't drop the user code
     // directly which often must be run, for example: client-side done.
@@ -175,6 +175,7 @@ void EndRunningUserCodeInPool(void (*fn)(void*), void* arg) {
          FLAGS_max_pending_in_each_backup_thread)) {
         g_too_many_usercode = true;
     }
+    pthread_mutex_unlock(&s_usercode_mutex);
     pthread_cond_signal(&s_usercode_cond);
 }
 
