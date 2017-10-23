@@ -1283,10 +1283,18 @@ TEST_F(ServerTest, too_big_message) {
     server.Join();
 }
 
-void CheckCert(const char* address, const char* cert) {
+struct EchoOpensslMsg {};
+inline std::ostream& operator<<(std::ostream& os, EchoOpensslMsg) {
+    std::ifstream t("openssl.msg");
+    return os << "============ The output of previous openssl ============\n"
+              << t.rdbuf()
+              << "\n============ The output ends here ============\n";
+}
+void CheckCert(const char* cname, const char* cert) {
     std::string cmd = butil::string_printf(
-        "/usr/bin/curl -Ikv https://%s", address);
-    ASSERT_EQ(0, system(cmd.c_str()));
+        "echo 'Q' | openssl s_client -connect localhost:8613 "
+        "-servername %s > openssl.msg &&  grep %s openssl.msg", cname, cert);
+    ASSERT_EQ(0, system(cmd.c_str())) << EchoOpensslMsg();
 }
 
 std::string GetRawPemString(const char* fname) {
@@ -1316,10 +1324,10 @@ TEST_F(ServerTest, ssl_sni) {
          options.ssl_options.certs.push_back(cert);
      }
      ASSERT_EQ(0, server.Start(8613, &options));
-     CheckCert("localhost:8613", "cert1");
+     CheckCert("localhost", "cert1");
 
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-     CheckCert("localhost.localdomain:8613", "cert2");
+     CheckCert("localhost.localdomain", "cert2");
 #endif  // SSL_CTRL_SET_TLSEXT_HOSTNAME
      
      server.Stop(0);
@@ -1337,7 +1345,7 @@ TEST_F(ServerTest, ssl_reload) {
          options.ssl_options.default_cert = cert;
      }
      ASSERT_EQ(0, server.Start(8613, &options));
-     CheckCert("localhost:8613", "cert1");
+     CheckCert("localhost", "cert1");
 
      {
          brpc::CertInfo cert;
@@ -1347,7 +1355,7 @@ TEST_F(ServerTest, ssl_reload) {
          ASSERT_EQ(0, server.AddCertificate(cert));
      }
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-    CheckCert("localhost.localdomain:8613", "cert2");
+    CheckCert("localhost.localdomain", "cert2");
 #endif  // SSL_CTRL_SET_TLSEXT_HOSTNAME
 
      {
@@ -1357,7 +1365,7 @@ TEST_F(ServerTest, ssl_reload) {
          ASSERT_EQ(0, server.RemoveCertificate(cert));
      }
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-     CheckCert("localhost.localdomain:8613", "cert1");
+     CheckCert("localhost.localdomain", "cert1");
 #endif  // SSL_CTRL_SET_TLSEXT_HOSTNAME
 
      {
@@ -1370,7 +1378,7 @@ TEST_F(ServerTest, ssl_reload) {
          ASSERT_EQ(0, server.ResetCertificates(certs));
      }
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-     CheckCert("localhost.localdomain:8613", "cert2");
+     CheckCert("localhost.localdomain", "cert2");
 #endif  // SSL_CTRL_SET_TLSEXT_HOSTNAME
 
      server.Stop(0);
