@@ -144,7 +144,7 @@ clean:clean_bins
 clean_bins:
 	@rm -rf $(TEST_BINS)
 
-libbrpc.dbg.a:
+libbrpc.dbg.a:FORCE
 	@$(MAKE) -C.. debug
 
 FORCE:
