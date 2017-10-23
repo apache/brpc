@@ -1283,10 +1283,17 @@ TEST_F(ServerTest, too_big_message) {
     server.Join();
 }
 
+struct EchoCurlMsg {};
+inline std::ostream& operator<<(std::ostream& os, EchoCurlMsg) {
+    std::ifstream t("curl.msg");
+    return os << "============ The output of previous curl ============\n"
+              << t.rdbuf()
+              << "\n============ The output ends here ============\n";
+}
 void CheckCert(const char* address, const char* cert) {
     std::string cmd = butil::string_printf(
-        "/usr/bin/curl -Ikv https://%s 2>&1 | grep %s", address, cert);
-    ASSERT_EQ(0, system(cmd.c_str()));
+        "/usr/bin/curl -Ikv https://%s >curl.msg 2>&1; grep %s curl.msg", address, cert);
+    ASSERT_EQ(0, system(cmd.c_str())) << EchoCurlMsg();
 }
 
 std::string GetRawPemString(const char* fname) {
