@@ -166,6 +166,13 @@ TEST_F(ServerTest, sanity) {
     }
     {
         brpc::Server server;
+        ASSERT_EQ(0, server.Start("localhost:0", NULL));
+        // port should be replaced with the actually used one.
+        ASSERT_NE(0, server.listen_address().port);
+    }
+
+    {
+        brpc::Server server;
         ASSERT_EQ(-1, server.Start(99999, NULL));
         ASSERT_EQ(0, server.Start(8613, NULL));
     }
