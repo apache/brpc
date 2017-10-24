@@ -12,13 +12,11 @@ env:
 
 before_install:
 # clang 3.4
-- if [ "$CXX" == "clang++" ]; then sudo add-apt-repository -y ppa:h-rayflood/llvm; fi
-- sudo apt-get update -qq
+- if [ "$CXX" == "clang++" ]; then sudo add-apt-repository -y ppa:h-rayflood/llvm; sudo apt-get update -qq; fi
 
 install:
 # clang 3.4
-- if [ "$CXX" == "clang++" ]; then sudo apt-get install --allow-unauthenticated -qq clang-3.4; fi
-- if [ "$CXX" == "clang++" ]; then export CXX="clang++-3.4"; fi
+- if [ "$CXX" == "clang++" ]; then sudo apt-get install --allow-unauthenticated -qq clang-3.4; export CXX="clang++-3.4" CC="clang-3.4"; fi
 - sudo apt-get install -qq realpath libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev
 - sudo apt-get install libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
 
