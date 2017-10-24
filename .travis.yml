@@ -1,12 +1,18 @@
 language: cpp
 
+compiler:
+- clang
+- gcc
+
+env:
+- PURPOSE=compile
+- PURPOSE=unittest
+
 sudo: required
 
 install:
-    - sudo apt-get install -qq realpath libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev
-    - sudo apt-get install libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
-    - sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --nodebugsymbols
-    - make -j4
+- sudo apt-get install -qq realpath libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev
+- sudo apt-get install libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
 
 script:
-    - cd test && sh ./run_tests.sh
+- sh build_in_travis_ci.sh
