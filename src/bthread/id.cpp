@@ -436,10 +436,9 @@ int bthread_id_lock_and_reset_range_verbose(
             uint32_t expected_ver = *butex;
             meta->mutex.unlock();
             ever_contended = true;
-            if (bthread::butex_wait(butex, expected_ver, NULL) < 0) {
-                if (errno != EWOULDBLOCK && errno != ESTOP) {
-                    return errno;
-                }
+            if (bthread::butex_wait(butex, expected_ver, NULL) < 0 &&
+                errno != EWOULDBLOCK && errno != EINTR) {
+                return errno;
             }
             meta->mutex.lock();
         } else { // bthread_id_about_to_destroy was called.
@@ -511,30 +510,25 @@ int bthread_id_join(bthread_id_t id) __THROW {
     const bthread::IdResourceId slot = bthread::get_slot(id);
     bthread::Id* const meta = address_resource(slot);
     if (!meta) {
+        // The id is not created yet, this join is definitely wrong.
         return EINVAL;
     }
     const uint32_t id_ver = bthread::get_version(id);
     uint32_t* join_butex = meta->join_butex;
-    bool stopped = false;
     while (1) {
         meta->mutex.lock();
         const bool has_ver = meta->has_version(id_ver);
         const uint32_t expected_ver = *join_butex;
         meta->mutex.unlock();
-        if (has_ver) {
-            if (bthread::butex_wait(join_butex, expected_ver, NULL) < 0) {
-                if (errno != EWOULDBLOCK && errno != ESTOP) {
-                    return errno;
-                }
-                if (errno == ESTOP) {
-                    stopped = true;
-                }
-            }
-        } else {
+        if (!has_ver) {
             break;
         }
+        if (bthread::butex_wait(join_butex, expected_ver, NULL) < 0 &&
+            errno != EWOULDBLOCK && errno != EINTR) {
+            return errno;
+        }
     }
-    return stopped ? ESTOP : 0;
+    return 0;
 }
 
 int bthread_id_trylock(bthread_id_t id, void** pdata) __THROW {

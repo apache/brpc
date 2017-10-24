@@ -292,7 +292,7 @@ struct StoppedWaiterArgs {
 void* stopped_waiter(void* void_arg) {
     StoppedWaiterArgs* args = (StoppedWaiterArgs*)void_arg;
     args->thread_started = true;
-    EXPECT_EQ(ESTOP, bthread_id_join(args->id));
+    EXPECT_EQ(0, bthread_id_join(args->id));
     EXPECT_EQ(get_version(args->id) + 4, bthread::id_value(args->id));
     return NULL;
 }
@@ -311,11 +311,6 @@ TEST(BthreadIdTest, stop_a_wait_after_fight_before_signal) {
         args[i].id = id1;
         args[i].thread_started = false;
         ASSERT_EQ(0, bthread_start_urgent(&th[i], NULL, stopped_waiter, &args[i]));
-    }
-    for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
-        if (!args[i].thread_started) {
-            bthread_usleep(1000);
-        }
     }
     // stop does not wake up bthread_id_join
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {

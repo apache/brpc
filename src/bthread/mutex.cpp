@@ -622,8 +622,10 @@ BAIDU_CASSERT(sizeof(unsigned) == sizeof(MutexInternal),
 inline int mutex_lock_contended(bthread_mutex_t* m) {
     butil::atomic<unsigned>* whole = (butil::atomic<unsigned>*)m->butex;
     while (whole->exchange(BTHREAD_MUTEX_CONTENDED) & BTHREAD_MUTEX_LOCKED) {
-        if (bthread::butex_wait(whole, BTHREAD_MUTEX_CONTENDED, NULL) < 0
-            && errno != EWOULDBLOCK) {
+        if (bthread::butex_wait(whole, BTHREAD_MUTEX_CONTENDED, NULL) < 0 &&
+            errno != EWOULDBLOCK && errno != EINTR/*note*/) {
+            // a mutex lock should ignore interrruptions in general since
+            // user code is unlikely to check the return value.
             return errno;
         }
     }
@@ -634,8 +636,10 @@ inline int mutex_timedlock_contended(
     bthread_mutex_t* m, const struct timespec* __restrict abstime) {
     butil::atomic<unsigned>* whole = (butil::atomic<unsigned>*)m->butex;
     while (whole->exchange(BTHREAD_MUTEX_CONTENDED) & BTHREAD_MUTEX_LOCKED) {
-        if (bthread::butex_wait(whole, BTHREAD_MUTEX_CONTENDED, abstime) < 0
-            && errno != EWOULDBLOCK) {
+        if (bthread::butex_wait(whole, BTHREAD_MUTEX_CONTENDED, abstime) < 0 &&
+            errno != EWOULDBLOCK && errno != EINTR/*note*/) {
+            // a mutex lock should ignore interrruptions in general since
+            // user code is unlikely to check the return value.
             return errno;
         }
     }

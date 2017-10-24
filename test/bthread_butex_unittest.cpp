@@ -223,7 +223,7 @@ TEST(ButexTest, stop_after_running) {
         const bthread_attr_t attr =
             (i == 0 ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL);
         bthread_t th;
-        ButexWaitArg arg = { butex, *butex, WAIT_MSEC, ESTOP };
+        ButexWaitArg arg = { butex, *butex, WAIT_MSEC, EINTR };
 
         tm.start();
         ASSERT_EQ(0, bthread_start_urgent(&th, &attr, wait_butex, &arg));
@@ -250,7 +250,7 @@ TEST(ButexTest, stop_before_running) {
         const bthread_attr_t attr =
             (i == 0 ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL) | BTHREAD_NOSIGNAL;
         bthread_t th;
-        ButexWaitArg arg = { butex, *butex, WAIT_MSEC, ESTOP };
+        ButexWaitArg arg = { butex, *butex, WAIT_MSEC, EINTR };
         
         tm.start();
         ASSERT_EQ(0, bthread_start_background(&th, &attr, wait_butex, &arg));
@@ -268,7 +268,7 @@ TEST(ButexTest, stop_before_running) {
 }
 
 void* join_the_waiter(void* arg) {
-    EXPECT_EQ(ESTOP, bthread_join((bthread_t)arg, NULL));
+    EXPECT_EQ(0, bthread_join((bthread_t)arg, NULL));
     return NULL;
 }
 
@@ -277,7 +277,7 @@ TEST(ButexTest, join_cant_be_wakeup) {
     int* butex = bthread::butex_create_checked<int>();
     *butex = 7;
     butil::Timer tm;
-    ButexWaitArg arg = { butex, *butex, 1000, ESTOP };
+    ButexWaitArg arg = { butex, *butex, 1000, EINTR };
 
     for (int i = 0; i < 2; ++i) {
         const bthread_attr_t attr =

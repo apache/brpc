@@ -231,12 +231,11 @@ public:
             return -1;
         }
 #endif        
-        const int rc = butex_wait(butex, expected_val, abstime);
-        if (rc < 0 && errno == EWOULDBLOCK) {
-            // EpollThread did wake up, there's data.
-            return 0;
+        if (butex_wait(butex, expected_val, abstime) < 0 &&
+            errno != EWOULDBLOCK && errno != EINTR) {
+            return -1;
         }
-        return rc;
+        return 0;
     }
 
     int fd_close(int fd) {
