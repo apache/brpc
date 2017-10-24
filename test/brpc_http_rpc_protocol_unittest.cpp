@@ -400,7 +400,7 @@ TEST_F(HttpTest, chunked_uploading) {
     const std::string exp_res = "{\"message\":\"world\"}";
     butil::ScopedFILE fp(res_fname.c_str(), "r");
     char buf[128];
-    fgets(buf, sizeof(buf), fp);
+    ASSERT_TRUE(fgets(buf, sizeof(buf), fp));
     EXPECT_EQ(exp_res, std::string(buf));
 }
 
