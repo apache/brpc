@@ -12,7 +12,7 @@ sudo: required
 
 install:
 - sudo apt-get install -qq realpath libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev
-- sudo apt-get install libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
+- sudo apt-get install libgtest-dev && cd /usr/src/gtest && sudo CXX=$CXX CC=$CC cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
 
 script:
 - sh build_in_travis_ci.sh
