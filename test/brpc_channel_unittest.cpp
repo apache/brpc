@@ -1291,7 +1291,8 @@ protected:
         CallMethod(&channel, &cntl, &req, &res, async);
         
         EXPECT_TRUE(brpc::EEOF == cntl.ErrorCode() ||
-                    brpc::ETOOMANYFAILS == cntl.ErrorCode()) << cntl.ErrorText();
+                    brpc::ETOOMANYFAILS == cntl.ErrorCode() ||
+                    ECONNRESET == cntl.ErrorCode()) << cntl.ErrorText();
         StopAndJoin();
     }
 
