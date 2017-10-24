@@ -208,7 +208,7 @@ TEST(ButexTest, wait_without_stop) {
         ASSERT_EQ(0, bthread_join(th, NULL));
         tm.stop();
         
-        ASSERT_LT(abs(tm.m_elapsed() - WAIT_MSEC), 20);
+        ASSERT_LT(labs(tm.m_elapsed() - WAIT_MSEC), 20);
     }
     bthread::butex_destroy(butex);
 }
@@ -232,7 +232,7 @@ TEST(ButexTest, stop_after_running) {
         ASSERT_EQ(0, bthread_join(th, NULL));
         tm.stop();
 
-        ASSERT_LT(abs(tm.m_elapsed() - SLEEP_MSEC), 10);
+        ASSERT_LT(labs(tm.m_elapsed() - SLEEP_MSEC), 10);
         // ASSERT_TRUE(bthread::get_task_control()->
         //             timer_thread()._idset.empty());
         ASSERT_EQ(EINVAL, bthread_stop(th));
@@ -319,9 +319,9 @@ TEST(ButexTest, stop_after_slept) {
         ASSERT_EQ(0, bthread_join(th, NULL));
         tm.stop();
         if (attr.stack_type == BTHREAD_STACKTYPE_PTHREAD) {
-            ASSERT_LT(abs(tm.m_elapsed() - SLEEP_MSEC), 15);
+            ASSERT_LT(labs(tm.m_elapsed() - SLEEP_MSEC), 15);
         } else {
-            ASSERT_LT(abs(tm.m_elapsed() - WAIT_MSEC), 15);
+            ASSERT_LT(labs(tm.m_elapsed() - WAIT_MSEC), 15);
         }
         // ASSERT_TRUE(bthread::get_task_control()->
         //             timer_thread()._idset.empty());
@@ -344,7 +344,7 @@ TEST(ButexTest, stop_just_when_sleeping) {
         ASSERT_EQ(0, bthread_join(th, NULL));
         tm.stop();
         if (attr.stack_type == BTHREAD_STACKTYPE_PTHREAD) {
-            ASSERT_LT(abs(tm.m_elapsed() - SLEEP_MSEC), 15);
+            ASSERT_LT(labs(tm.m_elapsed() - SLEEP_MSEC), 15);
         } else {
             ASSERT_LT(tm.m_elapsed(), 15);
         }
@@ -372,7 +372,7 @@ TEST(ButexTest, stop_before_sleeping) {
         tm.stop();
 
         if (attr.stack_type == BTHREAD_STACKTYPE_PTHREAD) {
-            ASSERT_LT(abs(tm.m_elapsed() - SLEEP_MSEC), 10);
+            ASSERT_LT(labs(tm.m_elapsed() - SLEEP_MSEC), 10);
         } else {
             ASSERT_LT(tm.m_elapsed(), 10);
         }
