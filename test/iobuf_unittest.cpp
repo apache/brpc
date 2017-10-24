@@ -77,7 +77,7 @@ void show_prof_and_rm(const char* bin_name, const char* filename, size_t topn) {
     } else {
         snprintf(cmd, sizeof(cmd), "if [ -e %s ] ; then CPUPROFILE_FREQUENCY=1000 ./pprof --text %s %s; rm -f %s; fi", filename, bin_name, filename, filename);
     }
-    system(cmd);
+    ASSERT_EQ(0, system(cmd));
 }
 
 static void check_memory_leak() {

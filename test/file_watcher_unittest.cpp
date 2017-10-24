@@ -14,8 +14,7 @@ protected:
 };
  
 //! gejun: check basic functions of butil::FileWatcher
-TEST_F(FileWatcherTest, random_op)
-{
+TEST_F(FileWatcherTest, random_op) {
     srand (time(0));
     
     butil::FileWatcher fw;
@@ -42,11 +41,11 @@ TEST_F(FileWatcherTest, random_op)
         
         switch (rand() % 2) {
         case 0:
-            system ("touch dummy_file");
+            ASSERT_EQ(0, system("touch dummy_file"));
             LOG(INFO) << "action: touch dummy_file";
             break;
         case 1:
-            system ("rm -f dummy_file");
+            ASSERT_EQ(0, system("rm -f dummy_file"));
             LOG(INFO) << "action: rm -f dummy_file";
             break;
         case 2:
@@ -56,6 +55,7 @@ TEST_F(FileWatcherTest, random_op)
         
         usleep (10000);
     }
-    system ("rm -f dummy_file");
+    ASSERT_EQ(0, system("rm -f dummy_file"));
 }
-}  
+
+}  // namespace
