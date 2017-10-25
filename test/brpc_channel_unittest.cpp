@@ -2440,7 +2440,7 @@ TEST_F(ChannelTest, global_channel_should_quit_successfully) {
     g_chan.Init("bns://qa-pbrpc.SAT.tjyx", "rr", NULL);
 }
 
-TEST_F(ChannelTest, unused) {
+TEST_F(ChannelTest, unused_call_id) {
     {
         brpc::Controller cntl;
     }

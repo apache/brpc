@@ -249,8 +249,6 @@ int PartitionChannel::Init(int num_partition_kinds,
     return 0;
 }
 
-void RunDoneByState(Controller*, google::protobuf::Closure*);
-
 void PartitionChannel::CallMethod(
     const google::protobuf::MethodDescriptor* method,
     google::protobuf::RpcController* controller,
@@ -263,7 +261,11 @@ void PartitionChannel::CallMethod(
         Controller* cntl = static_cast<Controller*>(controller);
         cntl->SetFailed(EINVAL, "PartitionChannel=%p is not initialized yet",
                         this);
-        RunDoneByState(cntl, done);
+        // This is a branch only entered by wrongly-used RPC, just call done
+        // in-place. See comments in channel.cpp on deadlock concerns.
+        if (done) {
+            done->Run();
+        }
     }
 }
 

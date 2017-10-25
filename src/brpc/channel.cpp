@@ -234,33 +234,6 @@ static void HandleBackupRequest(void* arg) {
     bthread_id_error(correlation_id, EBACKUPREQUEST);
 }
 
-static void* RunDone(void* arg) {
-    static_cast<google::protobuf::Closure*>(arg)->Run();
-    return NULL;
-}
-
-static void RunDoneInAnotherThread(google::protobuf::Closure* done) {
-    bthread_t bh;
-    bthread_attr_t attr = (FLAGS_usercode_in_pthread ?
-                           BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL);
-    if (bthread_start_background(&bh, &attr, RunDone, done) != 0) {
-        LOG(FATAL) << "Fail to start bthread";
-        done->Run();
-    }
-}
-
-void RunDoneByState(Controller* cntl,
-                    google::protobuf::Closure* done) {
-    if (done) {
-        if (cntl->_run_done_state == Controller::CALLMETHOD_CAN_RUN_DONE) {
-            cntl->_run_done_state = Controller::CALLMETHOD_DID_RUN_DONE;
-            done->Run();
-        } else {
-            RunDoneInAnotherThread(done);
-        }
-    }
-}
-
 void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
                          google::protobuf::RpcController* controller_base,
                          const google::protobuf::Message* request,
@@ -284,19 +257,27 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
                     correlation_id, NULL, 2 + cntl->max_retry());
     if (rc != 0) {
         CHECK_EQ(EINVAL, rc);
-        const int err = cntl->ErrorCode();
-        if (err != ECANCELED) {
-            // it's very likely that user reused a un-Reset() Controller.
-            cntl->SetFailed((err ? err : EINVAL), "call_id=%" PRId64 " was "
-                            "destroyed before CallMethod(), did you forget to "
-                            "Reset() the Controller?",
+        if (!cntl->FailedInline()) {
+            cntl->SetFailed(EINVAL, "Fail to lock call_id=%" PRId64,
                             correlation_id.value);
-        } else { 
-            // not warn for canceling which is common.
         }
-        RunDoneByState(cntl, done);
+        LOG_IF(ERROR, cntl->is_used_by_rpc())
+            << "Controller=" << cntl << " was used by another RPC before. "
+            "Did you forget to Reset() it before reuse?";
+        // Have to run done in-place. If the done runs in another thread,
+        // Join() on this RPC is no-op and probably ends earlier than running
+        // the callback and releases resources used in the callback.
+        // Since this branch is only entered by wrongly-used RPC, the
+        // potentially introduced deadlock(caused by locking RPC and done with
+        // the same non-recursive lock) is acceptable and removable by fixing
+        // user's code.
+        if (done) {
+            done->Run();
+        }
         return;
     }
+    cntl->set_used_by_rpc();
+
     if (cntl->_sender == NULL && IsTraceable(Span::tls_parent())) {
         const int64_t start_send_us = butil::cpuwide_time_us();
         const std::string* method_name = NULL;
@@ -351,6 +332,11 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         TooManyUserCode()) {
         cntl->SetFailed(ELIMIT, "Too many user code to run when "
                         "-usercode_in_pthread is on");
+        return cntl->HandleSendFailed();
+    }
+    if (cntl->FailedInline()) {
+        // probably failed before RPC, not called until all necessary
+        // parameters in `cntl' are set.
         return cntl->HandleSendFailed();
     }
     _serialize_request(&cntl->_request_buf, cntl, request);

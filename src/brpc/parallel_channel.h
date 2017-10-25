@@ -240,6 +240,7 @@ public:
     typedef std::vector<SubChan> ChannelList;
 
 protected:
+    static void* RunDoneAndDestroy(void* arg);
     int CheckHealth();
 
     ParallelChannelOptions _options;
