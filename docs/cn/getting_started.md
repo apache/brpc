@@ -75,7 +75,7 @@ sudo yum install git g++ make openssl-devel
 
 Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
 ```
-sudo yum install gflags-devel protobuf-devel protobuf-compiler leveldb-devel
+sudo yum install  gtest-devel gflags-devel protobuf-devel protobuf-compiler leveldb-devel
 ```
 ### Compile brpc
 
