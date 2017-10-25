@@ -154,8 +154,7 @@ void Controller::DeleteStuff() {
     _mongo_session_data.reset();
     delete _rpc_dump_meta;
 
-    if (_correlation_id != INVALID_BTHREAD_ID &&
-        !has_flag(FLAGS_DESTROYED_CID)) {
+    if (!is_used_by_rpc() && _correlation_id != INVALID_BTHREAD_ID) {
         CHECK_NE(EPERM, bthread_id_cancel(_correlation_id));
     }
     if (_oncancel_id != INVALID_BTHREAD_ID) {
@@ -860,7 +859,6 @@ void Controller::EndRPC(const CompletionInfo& info) {
 
         // Check comments in above branch on bthread_about_to_quit.
         bthread_about_to_quit();
-        add_flag(FLAGS_DESTROYED_CID);
         CHECK_EQ(0, bthread_id_unlock_and_destroy(saved_cid));
     }
 }

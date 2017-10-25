@@ -107,7 +107,6 @@ friend void policy::ProcessMongoRequest(InputMessageBase*);
     static const uint32_t FLAGS_READ_PROGRESSIVELY = (1 << 3);
     static const uint32_t FLAGS_PROGRESSIVE_READER = (1 << 4);
     static const uint32_t FLAGS_BACKUP_REQUEST = (1 << 5);
-    static const uint32_t FLAGS_DESTROYED_CID = (1 << 6);
     // Let _done delete the correlation_id, used by combo channels to
     // make lifetime of the correlation_id more flexible.
     static const uint32_t FLAGS_DESTROY_CID_IN_DONE = (1 << 7);
