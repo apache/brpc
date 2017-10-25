@@ -17,7 +17,7 @@ if ! sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --nodebugsymbols -
     exit 1
 fi
 if [ "$PURPOSE" = "compile" ]; then
-    make -j4
+    make -j4 && sh tools/make_all_examples
 elif [ "$PURPOSE" = "unittest" ]; then
     cd test && sh ./run_tests.sh
 else
