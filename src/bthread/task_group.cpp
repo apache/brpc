@@ -849,7 +849,7 @@ int TaskGroup::interrupt(bthread_t tid, TaskControl* c) {
         return rc;
     }
     // a bthread cannot wait on a butex and be sleepy at the same time.
-    CHECK_NE(!!sleep_id, !!w);
+    CHECK(!sleep_id || !w);
     if (w != NULL) {
         erase_from_butex_because_of_interruption(w);
         // If butex_wait() already wakes up before we set current_waiter back,
