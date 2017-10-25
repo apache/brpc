@@ -1009,7 +1009,7 @@ TEST_F(ServerTest, close_idle_connections) {
 
     const int cfd = tcp_connect(ep, NULL);
     ASSERT_GT(cfd, 0);
-    usleep(1000);
+    usleep(10000);
     brpc::ServerStatistics stat;
     server.GetStat(&stat);
     ASSERT_EQ(1ul, stat.connection_count);
