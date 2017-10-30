@@ -1,12 +1,21 @@
-This document describes the "pure" HTTP service rather than protobuf based ones (use pure pb as input/output format). The HTTP service declaration inside the .proto file is still necessary although the request/response structure is empty. The reason is to keep all the service declaration inside proto files rather than scattering in code, conf, proto and other places. For examples please refer to [http_server.cpp](https://github.com/brpc/brpc/blob/master/example/http_c++/http_server.cpp).
+[中文版](../cn/http_service.md)
 
-# URL Prefix: /ServiceName/MethodName
+This document talks about ordinary HTTP services rather than protobuf services accessible via HTTP. HTTP services in brpc have to declare interfaces with empty request and response in a .proto file. This requirement keeps all service declarations inside proto files rather than scattering in code, configurations, and proto files. Check [http_server.cpp](https://github.com/brpc/brpc/blob/master/example/http_c++/http_server.cpp) for an example.
 
-All protobuf based services can be accessed through URL `/ServiceName/MethodName` by default, where the `ServiceName` does not contain package name. This URL rule should cover many cases in general. The detail is as follows:
+# URL types
 
-1. Add service declaration in the proto file.
+## /ServiceName/MethodName as the prefix
 
-   Note that `HttpRequest` and `HttpResponse` are empty in the proto because the HTTP request body is inside  `Controller.request_attachment()` while the HTTP request header is inside `Controller.http_request()`. Similarly, those for the HTTP response locate in `Controller.response_attachment()` and `Controller.http_response()`.	
+Define a service named `ServiceName`(not including the package name), with a method named `MethodName` and empty request/response, the service will provide http service on `/ServiceName/MethodName` by default.
+
+The reason that request and response can be empty is that the HTTP data is in Controller:
+
+- Header of the http request is in Controller.http_request() and the body is in Controller.request_attachment().
+- Header of the http response is in Controller.http_response() and the body is in Controller.response_attachment().
+
+Implementation steps:
+
+1. Add the service declaration in a proto file.
 
 ```protobuf
 option cc_generic_services = true;
@@ -19,7 +28,7 @@ service HttpService {
 };
 ```
 
-2. Implement the service by inheriting the base class inside .pb.h which is the same process as other protobuf based services.
+2. Implement the service by inheriting the base class generated in .pb.h, which is same as protobuf services.
 
 ```c++
 class HttpServiceImpl : public HttpService {
@@ -32,11 +41,10 @@ public:
         brpc::ClosureGuard done_guard(done);
         brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
  
-        // Return plain text
+        // body is plain text
         cntl->http_response().set_content_type("text/plain");
        
-        // Print the query string and the request body
-        // and use these as response
+        // Use printed query string and body as the response.
         butil::IOBufBuilder os;
         os << "queries:";
         for (brpc::URI::QueryIterator it = cntl->http_request().uri().QueryBegin();
@@ -49,7 +57,7 @@ public:
 };
 ```
 
-3. Add the implemented service into Server and then access it using the following URL (Note that path 									after `/HttpService/Echo ` is filled into `cntl->http_request().unresolved_path()`, which is always 			normalized):
+3. After adding the implemented instance into the server, the service is accessible via following URLs (Note that the path after `/HttpService/Echo ` is filled into `cntl->http_request().unresolved_path()`, which is always normalized):
 
 | URL                        | Protobuf Method  | cntl->http_request().uri().path() | cntl->http_request().unresolved_path() |
 | -------------------------- | ---------------- | --------------------------------- | -------------------------------------- |
@@ -59,20 +67,20 @@ public:
 | /HttpService//Echo///Foo// | HttpService.Echo | "/HttpService//Echo///Foo//"      | "Foo"                                  |
 | /HttpService               | No such method   |                                   |                                        |
 
-# URL Prefix: /ServiceName
+## /ServiceName as the prefix
 
-Some resource management HTTP services may need this URL rule, such as a FileService to provide access to files: Use `/FileService/foobar.txt` to represent file `foobar.txt` in the working directory, or `/FileService/app/data/boot.cfg` to represent file `boot.cfg` in directory `app/data`.
+HTTP services to manage resources may need this kind of URL, such as `/FileService/foobar.txt` represents `./foobar.txt` and `/FileService/app/data/boot.cfg` represents `./app/data/boot.cfg`.
 
-To implement this:
+Implementation steps:
 
-1. In the proto file, use `FileService` as the service name and `default_method` for the method name.
+1. Use `FileService` as the service name and `default_method` as the method name in the proto file.
 
 ```protobuf
 option cc_generic_services = true;
- 
+
 message HttpRequest { };
 message HttpResponse { };
- 
+
 service FileService {
       rpc default_method(HttpRequest) returns (HttpResponse);
 }
@@ -96,7 +104,7 @@ public:
 };
 ```
 
-3. Add the implemented service into Server and then access it using the following URL (the path after `/FileService` locates in `cntl->http_request().unresolved_path()`, which is always normalized):
+3. After adding the implemented instance into the server, the service is accessible via following URLs (the path after `/FileService` is filled in `cntl->http_request().unresolved_path()`, which is always normalized):
 
 | URL                             | Protobuf Method            | cntl->http_request().uri().path() | cntl->http_request().unresolved_path() |
 | ------------------------------- | -------------------------- | --------------------------------- | -------------------------------------- |
@@ -105,21 +113,21 @@ public:
 | /FileService/mydir/123.txt      | FileService.default_method | "/FileService/mydir/123.txt"      | "mydir/123.txt"                        |
 | /FileService//mydir///123.txt// | FileService.default_method | "/FileService//mydir///123.txt//" | "mydir/123.txt"                        |
 
-# Restful URL
+## Restful URL
 
-brpc also supports to specify a URL for each method in a service:
+brpc supports specifying a URL for each method in a service. The API is as follows:
 
 ```c++
 // If `restful_mappings' is non-empty, the method in service can
-// be accessed by the specified URL rather than /ServiceName/MethodName. 
+// be accessed by the specified URL rather than /ServiceName/MethodName.
 // Mapping rules: "PATH1 => NAME1, PATH2 => NAME2 ..."
-// where `PATH' is a valid HTTP path and `NAME' is the method name.       
+// where `PATH' is a valid HTTP path and `NAME' is the method name.
 int AddService(google::protobuf::Service* service,
                ServiceOwnership ownership,
                butil::StringPiece restful_mappings);
 ```
 
-For example, the following `QueueService` contains several HTTP methods:
+`QueueService` defined below contains several HTTP methods. If the service is added into the server normally, it's accessible via URLs like `/QueueService/start` and ` /QueueService/stop`.
 
 ```protobuf
 service QueueService {
@@ -130,9 +138,7 @@ service QueueService {
 };
 ```
 
-If we add it into the server as before, it could only be accessed by URLs such as `/QueueService/start` or ` /QueueService/stop`.
-
-However, adding the third parameter `restful_mappings` in `AddService` allows us to customize URL:
+By specifying the 3rd parameter `restful_mappings` to `AddService`, the URL can be customized:
 
 ```c++
 if (server.AddService(&queue_svc,
@@ -154,19 +160,19 @@ if (server.AddService(&queue_svc,
 }
 ```
 
-There are 3 mappings in the third parameter (which is a string separated by comma) of `AddService` above. Each tells bpc to call the method at the right side of the arrow when it sees a incoming URL matching the left side. The star in `/v1/queue/stats/*` matches any string. 
+There are 3 mappings separated by comma in the 3rd parameter (which is a string spanning 3 lines) to the `AddService`. Each mapping tells brpc to call the method at right side of the arrow if the left side matches the URL. The asterisk in `/v1/queue/stats/*` matches any string.
 
-More about the mapping rules:
+More about mapping rules:
 
-- Multiple paths can map to the same method.
-- Besides pure HTTP services, protobuf based ones are also supported.
-- Methods that are not in the mapping can still be accessed by `/ServiceName/MethodName`. Otherwise, this rule will be disabled.
-- The lexical rules are relax. For example,  `==>` and ` ===>` the same. Extra spaces from the beginning and the end of the mapping string, extra slashes in the URL, and extra commas at the end, are ignored automatically.
-- The URL pattern `PATH` and `PATH/*` can coexist.
-- Characters can appear after asterisk, which means suffix matching is supported.
-- At most one star is allowed in a path.
+- Multiple paths can be mapped to a same method.
+- Both HTTP and protobuf services are supported.
+- Un-mapped methods are still accessible via `/ServiceName/MethodName`. Mapped methods are **not** accessible via `/ServiceName/MethodName` anymore.
+- `==>` and ` ===>` are both OK, namely extra spaces at the beginning or the end, extra slashes, extra commas at the end, are all accepted.
+- Pattern `PATH` and `PATH/*` can coexist.
+- Support suffix matching: characters can appear after the asterisk.
+- At most one asterisk is allowed in a path.
 
-The extra part after the asterisk can be obtained by `cntl.http_request().unresolved_path()`, which is ensured to be normalized: No slash from the beginning and the end. No repeated slash in the middle. For example, the following URL:
+The path after asterisk can be obtained by `cntl.http_request().unresolved_path()`, which is always normalized, namely no slashes at the beginning or the end, and no repeated slashes in the middle. For example:
 
 ![img](../images/restful_1.png)
 
@@ -174,11 +180,11 @@ or:
 
 ![img](../images/restful_2.png)
 
-will be normalized to `foo/bar`, where extra slashes from both sides and the middle are removed.
+in which unresolved_path are both `foo/bar`. The extra slashes at the left, the right, or the middle are removed.
 
 Note that `cntl.http_request().uri().path()` is not ensured to be normalized, which is `"//v1//queue//stats//foo///bar//////"` and `"//vars///foo////bar/////"` respectively in the above example.
 
-The built-in service page of `/status` shows all the methods along with their URLs, whose form are: `@URL1 @URL2` ...
+The built-in service page of `/status` shows customized URLs after the methods, in form of `@URL1 @URL2` ...
 
 ![img](../images/restful_3.png)
 
@@ -186,9 +192,12 @@ The built-in service page of `/status` shows all the methods along with their UR
 
 ## HTTP headers
 
-HTTP headers are a series of key value pairs, some of which are defined by the HTTP specification, while others are free to use.
+HTTP headers are a series of key/value pairs, some of them are defined by the HTTP specification, while others are free to use.
 
-It's easy to confuse HTTP headers with query string, which is part of the URL. Query string can also express the key value relationship using the form `key1=value1&key2=value2&...`, and it's simpler to manipulate on GUI such as browsers. However, this usage is more of a custom convention rather than part of the HTTP specification. According our observation, in general, HTTP headers are used for passing framework and protocol level parameters since they are part of the specification which will be recognized by all http servers, while query string, as part of the URL, is suitable for user-level parameters as it's easy to read and modify.
+Query strings are also key/value pairs. Differences between HTTP headers and query strings:
+
+* Although operations on HTTP headers are accurately defined by the http specification, but http headers cannot be modified directly from an address bar, they are often used for passing parameters of a protocol or framework.
+* Query strings is part of the URL and **often** in form of `key1=value1&key2=value2&...`, which is easy to read and modify. They're often used for passing application-level parameters. However format of query strings is not defined in HTTP spec, just a convention.
 
 ```c++
 // Get value for header "User-Agent" (case insensitive)
@@ -202,14 +211,14 @@ if (user_agent_str != NULL) {  // has the header
 cntl->http_response().SetHeader("Accept-encoding", "gzip");
 // Overwrite the previous header "Accept-encoding: deflate"
 cntl->http_response().SetHeader("Accept-encoding", "deflate");
-// Append value to the previous header so that it becomes 
+// Append value to the previous header so that it becomes
 // "Accept-encoding: deflate,gzip" (values separated by comma)
 cntl->http_response().AppendHeader("Accept-encoding", "gzip");
 ```
 
 ## Content-Type
 
-As a frequently used header, `Content-type` marks the type of the HTTP body, and it can be fetched through a specialized interface. Accordingly, it can't be fetched by `GetHeader()`.
+`Content-type` is a frequently used header for storing type of the HTTP body, and specially processed in brpc and accessible by `cntl->http_request().content_type()` . As a correspondence, `cntl->GetHeader("Content-Type")` returns nothing.
 
 ```c++
 // Get Content-Type
@@ -221,11 +230,11 @@ if (cntl->http_request().content_type() == "application/json") {
 cntl->http_response().set_content_type("text/html");
 ```
 
-If RPC fails (`Controller` has been `SetFailed`), the framework will overwrite `Content-Type` with `text/plain` and fill the response body with `Controller::ErrorText()`.
+If the RPC fails (`Controller` has been `SetFailed`), the framework overwrites `Content-Type` with `text/plain` and sets the response body with `Controller::ErrorText()`.
 
 ## Status Code
 
-Status code is a special field for HTTP response, which marks the completion status of the http request. Please use the `enums` defined in [http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h) to follow the HTTP specification.
+Status code is a special field in HTTP response to store processing result of the http request. Possible values are defined in [http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h).
 
 ```c++
 // Get Status Code
@@ -238,7 +247,7 @@ cntl->http_response().set_status_code(brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR);
 cntl->http_response().set_status_code(brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR, "My explanation of the error...");
 ```
 
-The following code implements server's redirection with status code 302:
+For example, following code implements redirection with status code 302:
 
 ```c++
 cntl->http_response().set_status_code(brpc::HTTP_STATUS_FOUND);
@@ -249,31 +258,39 @@ cntl->http_response().SetHeader("Location", "http://bj.bs.bae.baidu.com/family/i
 
 ## Query String
 
-As mentioned above in the [HTTP headers](http_service.md#http-headers), brpc interpret query string as in a custom convention, whose form is `key1=value1&key2=value2&…`. Keys without value are also acceptable and accessible through `GetQuery` (returns an empty string), which is often used as bool-type switch. The interface is defined in [uri.h](https://github.com/brpc/brpc/blob/master/src/brpc/uri.h).
+As mentioned in above [HTTP headers](#http-headers), query strings are interpreted in common convention, whose form is `key1=value1&key2=value2&…`. Keys without values are acceptable as well and accessible by `GetQuery` which returns an empty string. Such keys are often used as boolean flags. Full API are defined in [uri.h](https://github.com/brpc/brpc/blob/master/src/brpc/uri.h).
 
 ```c++
 const std::string* time_value = cntl->http_request().uri().GetQuery("time");
 if (time_value != NULL) {  // the query string is present
     LOG(TRACE) << "time = " << *time_value;
 }
- 
+
 ...
 cntl->http_request().uri().SetQuery("time", "2015/1/2");
 ```
 
-# Debug
+# Debugging
 
 Turn on [-http_verbose](http://brpc.baidu.com:8765/flags/http_verbose) to print contents of all http requests and responses to stderr. Note that this should only be used for debugging rather than online services.
 
-# Compress response body
+# Compress the response body
 
-HTTP services usually apply compression on the http body in order to reduce the transmission time of text-based pages and thus speed up the loading process effectively. 
+HTTP services often compress http bodies to reduce transmission latency of web pages and speed up the presentations to end users.
 
-Calls to `Controller::set_response_compress_type(brpc::COMPRESS_TYPE_GZIP)` will try to compress the http body using gzip and set `Content-Encoding` to `gzip`. It has no effect when request does not specify the `Accept-encoding` or value does not contain gzip. For example, curl does not support compression without option `—compressed`, thus the server will always return the uncompressed results.
+Call `Controller::set_response_compress_type(brpc::COMPRESS_TYPE_GZIP)` to **try to** compress the http body with gzip. "Try to" means the compression may not happen in following conditions:
 
-# Decompress request body
+* The request does not set `Accept-encoding` or the value does not contain "gzip". For example, curl does not support compression without option `--compressed`, in which case the server always returns uncompressed results.
 
-Due to generality concern, brpc won't decompress request body automatically. You can do it yourself as it's not that complicate:
+* Body size is less than the bytes specified by -http_body_compress_threshold (512 by default). gzip is not a very fast compression algorithm. When the body is small, the delay added by compression may be larger than the time saved by network transmission. No compression when the body is relatively small is probably a better choice.
+
+  | Name                         | Value | Description                              | Defined At                            |
+  | ---------------------------- | ----- | ---------------------------------------- | ------------------------------------- |
+  | http_body_compress_threshold | 512   | Not compress http body when it's less than so many bytes. | src/brpc/policy/http_rpc_protocol.cpp |
+
+# Decompress the request body
+
+Due to generality, brpc does not decompress request bodies automatically, but users can do the job by themselves as follows:
 
 ```c++
 #include <brpc/policy/gzip_compress.h>
@@ -292,7 +309,7 @@ if (encoding != NULL && *encoding == "gzip") {
 
 # Turn on HTTPS
 
-Make sure to update openssl library to the latest version before turning on HTTPS. Old verions of openssl have severe security problems and support only a few encryption algorithms, which conflicts with the purpose of using SSL. Set the `SSLOptions` inside `ServerOptions` to turn on HTTPS.
+Update openssl to the latest version before turning on HTTPS, since older versions of openssl may have severe security problems and support less encryption algorithms, which is against with the purpose of using SSL. Setup `ServerOptions.ssl_options` to turn on HTTPS.
 
 ```c++
 // Certificate structure
@@ -300,14 +317,14 @@ struct CertInfo {
     // Certificate in PEM format.
     // Note that CN and alt subjects will be extracted from the certificate,
     // and will be used as hostnames. Requests to this hostname (provided SNI
-    // extension supported) will be encrypted using this certifcate. 
+    // extension supported) will be encrypted using this certifcate.
     // Supported both file path and raw string
     std::string certificate;
 
     // Private key in PEM format.
     // Supported both file path and raw string based on prefix:
     std::string private_key;
-        
+
     // Additional hostnames besides those inside the certificate. Wildcards
     // are supported but it can only appear once at the beginning (i.e. *.xxx.com).
     std::vector<std::string> sni_filters;
@@ -318,7 +335,7 @@ struct SSLOptions {
     // without hostname or whose hostname doesn't have a corresponding
     // certificate will use this certificate. MUST be set to enable SSL.
     CertInfo default_cert;
-    
+
     // Additional certificates which will be loaded into server. These
     // provide extra bindings between hostnames and certificates so that
     // we can choose different certificates according to different hostnames.
@@ -334,50 +351,58 @@ struct SSLOptions {
     // ... Other options
 };
 ```
-Other options include: cipher suites (`ECDHE-RSA-AES256-GCM-SHA384` is recommended since it's the default suite used by chrome with the highest priority. It‘s one of the safest suites but costs more CPU), session reuse and so on. For more information please refer to [server.h](https://github.com/brpc/brpc/blob/master/src/brpc/server.h).
+Other options include: cipher suites (recommend using `ECDHE-RSA-AES256-GCM-SHA384` which is the default suite used by chrome, and one of the safest suites. The drawback is more CPU cost), session reuse and so on. Read [server.h](https://github.com/brpc/brpc/blob/master/src/brpc/server.h) for more information.
 
-After turning on HTTPS, you can still send HTTP requests to the same port. Server will identify whether it's HTTP or HTTPS automatically. The result can be fetched through `Controller` in service callback: 
-
-```c++
-bool Controller::is_ssl() const;
-```
+After turning on HTTPS, the service is still accessible by HTTP from the same port. The server identifies whether the request is HTTP or HTTPS automatically, and tell the result to users by `Controller::is_ssl()`. As you can see, the HTTPS in brpc is more like supporting an additional protocol, rather than providing an encrypted communication channel.
 
 # Performance
 
-Productions without extreme performance requirements tend to use HTTP protocol, especially those mobile products. As a result, we put great emphasis on the implementation quality of HTTP. To be more specific:
+Productions without extreme performance requirements tend to use HTTP protocol, especially mobile products. Thus we put great emphasis on implementation qualities of HTTP. To be more specific:
 
-- Use [http parser](https://github.com/brpc/brpc/blob/master/src/brpc/details/http_parser.h) (some part comes from nginx) of node.js to parse http message, which is a lightweight, excellent implementation.
-- Use [rapidjson](https://github.com/miloyip/rapidjson) to parse json, which is a json library developed by a Tencent expert for extreme performance.
-- In the worst case, the time complexity of parsing http requests is still O(N), where N is the number of request bytes. In other words, if the parsing code requires the http request to be complete, then it may cost O(N^2). This feature is very helpful since most HTTP requests have large body.
-- The process of multiple HTTP messages from different clients is highly concurrent. Even a complicate http messages won't affect response to other clients. It's difficult to achieve this for other rpc implementations and http servers based on [single-threaded reactor](threading_overview.md#单线程reactor).
+- Use [http parser](https://github.com/brpc/brpc/blob/master/src/brpc/details/http_parser.h) of node.js to parse http messages, which is a lightweight, well-written, and extensively used implementation.
+- Use [rapidjson](https://github.com/miloyip/rapidjson) to parse json, which is a json library focuses on performance.
+- In the worst case, the time complexity of parsing http requests is still O(N), where N is byte size of the request. As a contrast, parsing code that requires the http request to be complete, may cost O(N^2) time in the worst case. This feature is very helpful since many HTTP requests are large.
+- Processing HTTP messages from different clients is highly concurrent, even a pretty complicated http message does not block responding other clients. It's difficult to achieve this for other RPC implementations and http servers often based on [single-threaded reactor](threading_overview.md#single-threaded-reactor).
 
 # Progressive sending
 
-brpc server is also suitable for sending large or infinite size body. Uses the following method:
+brpc server is capable of sending large or infinite sized body, in following steps:
 
-1. Call `Controller::CreateProgressiveAttachment()` to create a body that can ben sent progressively. Use `boost::intrusive_ptr<>` to manage the returning `ProgressiveAttachment` object: `boost::intrusive_ptr <brpc::ProgressiveAttachment> pa (cntl->CreateProgressiveAttachment());`. The detail is defined in `<brpc/progressive_attachment.h>`.
-2. Call `ProgressiveAttachment::Write()` to send the data. If the write occurs before the end of server callback, the sent data will be cached until the server callback ends. It starts writing after the header portion is sent. If the write occurs after the server callback, the data sent will be written in chunked mode immediately.
-3. After sending, make sure that all `boost::intrusive_ptr<brpc::ProgressiveAttachment>` have been  destructed.
+1. Call `Controller::CreateProgressiveAttachment()` to create a body that can be written progressively. The returned `ProgressiveAttachment` object should be managed by `intrusive_ptr`
+  ```c++
+  #include <brpc/progressive_attachment.h>
+  ...
+  butil::intrusive_ptr<brpc::ProgressiveAttachment> pa (cntl->CreateProgressiveAttachment());
+  ```
+
+2. Call `ProgressiveAttachment::Write()` to send the data.
+
+   * If the write occurs before running of the server-side done, the sent data is cached until the done is called.
+   * If the write occurs after running of the server-side done, the sent data is written out in chunked mode immediately.
+
+3. After usage, destruct all `butil::intrusive_ptr<brpc::ProgressiveAttachment>` to release related resources.
 
 # Progressive receiving
 
-Currently brpc server doesn't support calling user's callback once it finishes parsing the header portion of the http request. In other words, it's not suitable for receiving large or infinite size body.
+Currently brpc server doesn't support calling the service callback once header part in the http request is parsed. In other words, brpc server is not suitable for receiving large or infinite sized body.
 
 # FAQ
 
-### Q: nginx which uses brpc as upstream encounters final fail (ff)
+### Q: The nginx before brpc encounters final fail
 
-brpc server supports running a variety of protocols on the same port. As a result, when it encounters an illegal HTTP request due to parsing failure, it can not be certain that this request is using HTTP. The server treats errors after paring the query-string portion with an HTTP 400 followed and then closes the connection, since it has a large probability that this is an HTTP request. However, for HTTP method errors (such as invalid methods other than GET, POST, HEAD, etc), or other serious format errors (may be caused by HTTP client bug), the server will close the connection immediately, which leads to nginx ff.
+The error is caused by that brpc server closes the http connection directly without sending a response.
 
-Solution: When using Nginx to forward traffic, filter out the unexpected HTTP method using `$HTTP_method`, or simply specify the HTTP method using `proxy_method` to avoid ff. 
+brpc server supports a variety of protocols on the same port. When a request is failed to be parsed in HTTP, it's hard to tell that the request is definitely in HTTP. If the request is very likely to be one, the server sends HTTP 400 errors and closes the connection. However, if the error is caused HTTP method(at the beginning) or ill-formed serialization (may be caused by bugs at the HTTP client), the server still closes the connection without sending a response, which leads to "final fail" at nginx.
+
+Solution: When using Nginx to forward traffic, set `$HTTP_method` to allowed HTTP methods or simply specify the HTTP method in `proxy_method`.
 
 ### Q: Does brpc support http chunked mode
 
-Yes
+Yes.
 
-### Q: Why does HTTP requests containing BASE64 encoded query string fail to parse sometimes?
+### Q: Why do HTTP requests containing BASE64 encoded query string fail to parse sometimes?
 
-According to the [HTTP specification](http://tools.ietf.org/html/rfc3986#section-2.2), the following characters need to be encoded using `%`.
+According to the [HTTP specification](http://tools.ietf.org/html/rfc3986#section-2.2), following characters need to be encoded with `%`.
 
 ```
        reserved    = gen-delims / sub-delims
@@ -388,6 +413,6 @@ According to the [HTTP specification](http://tools.ietf.org/html/rfc3986#section
                    / "*" / "+" / "," / ";" / "="
 ```
 
-Base64 encoded string may end with `=` or `==` (for example, `?wi=NDgwMDB8dGVzdA==&anothorkey=anothervalue`). These string may be parsed successfully, or may be not. It depends on the implementation which users should not assume.
+Base64 encoded string may end with `=` which is a reserved character (take `?wi=NDgwMDB8dGVzdA==&anothorkey=anothervalue` as an example). The strings may be parsed successfully, or may be not, depending on the implementation which should not be assumed in principle.
 
-One solution is to remove the trailing `=` since it won't affect the [Base64 decode](http://en.wikipedia.org/wiki/Base64#Padding). Another way is to encode the URI using Base64 followed by `%`, and then decode it using `%` followed by Base64 before access. 
+One solution is to remove the trailing `=` which does not affect the [Base64 decoding](http://en.wikipedia.org/wiki/Base64#Padding). Another method is to [percent-encode](https://en.wikipedia.org/wiki/Percent-encoding) the URI, and do percent-decoding before Base64 decoding.
