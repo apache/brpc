@@ -70,7 +70,7 @@ sudo yum install epel-release
 
 Install common deps:
 ```
-sudo yum install git g++ make openssl-devel
+sudo yum install git gcc-c++ make openssl-devel
 ```
 
 Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
