@@ -280,10 +280,10 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
 
         // There's a funny race condition here. After Socket::Create, messages
         // from the socket are already handled and a RPC is possibly done
-        // before the socket is added into _socket_map below. This is actually
-        // found in ChannelTest.skip_parallel in test/brpc_channel_unittest.cpp.
-        // When the race happens, the _messenger.ConnectionCount() may be 0
-        // even if the RPC is already done.
+        // before the socket is added into _socket_map below. This is found in
+        // ChannelTest.skip_parallel in test/brpc_channel_unittest.cpp (running
+        // on machines with few cores) where the _messenger.ConnectionCount()
+        // may surprisingly be 0 even if the RPC is already done.
 
         SocketUniquePtr sock;
         if (Socket::AddressFailedAsWell(socket_id, &sock) >= 0) {
