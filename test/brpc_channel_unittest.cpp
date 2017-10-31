@@ -418,7 +418,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }            
         StopAndJoin();
     }
@@ -519,7 +519,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }
         StopAndJoin();
     }
@@ -571,7 +571,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }
         StopAndJoin();
     }
@@ -615,7 +615,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }
         StopAndJoin();
     }
@@ -664,7 +664,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }
         StopAndJoin();
     }
@@ -725,7 +725,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }
         StopAndJoin();
     }
@@ -1026,7 +1026,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }            
         StopAndJoin();
     }
