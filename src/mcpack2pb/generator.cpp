@@ -765,12 +765,21 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
         (printer).Print(                                                \
             "  serializer.add_multiple_$type$($msg$.$lcfield$().data(), $msg$.$lcfield$_size());\n" \
             "  serializer.end_array();\n"                               \
-            "} else {\n"                                                \
-            "  serializer.add_null();\n"                                \
-            "}\n"                                                       \
+            "}"                                                         \
             , "msg", msg                                                \
             , "type", to_mcpack_typestr(cit, (field))                   \
             , "lcfield", (field)->lowercase_name());                    \
+        if ((field)->options().GetExtension(idl_on)) {                  \
+          (printer).Print(                                              \
+            " else {\n"                                                 \
+            "  serializer.add_empty_array();\n"                         \
+            "}\n");                                                     \
+        } else {                                                        \
+          (printer).Print(                                              \
+            " else {\n"                                                 \
+            "  serializer.add_null();\n"                                \
+            "}\n");                                                     \
+        }                                                               \
     } else if (looser_cond) {                                           \
         (printer).Print(                                                \
             "if ($msg$.$lcfield$_size()) {\n"                           \
@@ -783,12 +792,21 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
             "    serializer.add_$type$($msg$.$lcfield$(j));\n"          \
             "  }\n"                                                     \
             "  serializer.end_array();\n"                               \
-            "} else {\n"                                                \
-            "  serializer.add_null();\n"                                \
-            "}\n"                                                       \
+            "}"                                                         \
             , "msg", msg                                                \
             , "type", to_mcpack_typestr(cit, (field))                   \
             , "lcfield", (field)->lowercase_name());                    \
+        if ((field)->options().GetExtension(idl_on)) {                  \
+          (printer).Print(                                              \
+            " else {\n"                                                 \
+            "  serializer.add_empty_array();\n"                         \
+            "}\n");                                                     \
+        } else {                                                        \
+          (printer).Print(                                              \
+            " else {\n"                                                 \
+            "  serializer.add_null();\n"                                \
+            "}\n");                                                     \
+        }                                                               \
     } else {                                                            \
         if ((field)->type() == google::protobuf::FieldDescriptor::TYPE_ENUM) { \
             LOG(ERROR) << "Disallow converting " << (field)->full_name() \
@@ -993,12 +1011,20 @@ static bool generate_serializing(const google::protobuf::Descriptor* d,
                     "      serializer.end_object();\n"
                     "    }\n"
                     "    serializer.end_array();\n"
-                    "  }\n"
-                    "} else if (msg.$lcfield$_size()) {\n"
+                    "  }"
                     , "field", get_idl_name(f)
                     , "lcfield", f->lowercase_name()
                     , "vmsg2", var_name2);
-
+                if (f->options().GetExtension(idl_on)) {
+                    impl.Print(
+                       " else {\n"
+                       "    serializer.add_empty_array(\"$field$\");\n"
+                       "  }\n", "field", get_idl_name(f));
+                } else {
+                    impl.Print("\n");
+                }
+                impl.Print("} else if (msg.$lcfield$_size()) {\n"
+                    , "lcfield", f->lowercase_name());
                 impl.Indent();
                 impl.Print("serializer.begin_object(\"$field$\");\n"
                            , "field", get_idl_name(f));
@@ -1032,12 +1058,21 @@ static bool generate_serializing(const google::protobuf::Descriptor* d,
                                 "    serializer.end_object();\n"
                                 "  }\n"
                                 "  serializer.end_array();\n"
-                                "} else {\n"
-                                "  serializer.add_null();\n"
-                                "}\n"
+                                "}"
                                 , "vmsg3", var_name3
                                 , "lcfield", f->lowercase_name()
                                 , "lcfield2", f2->lowercase_name());
+                            if (f2->options().GetExtension(idl_on)) {
+                                impl.Print(
+                                " else {\n"
+                                "  serializer.add_empty_array();\n"
+                                "}\n");
+                            } else {
+                                impl.Print(
+                                " else {\n"
+                                "  serializer.add_null();\n"
+                                "}\n");
+                            }
                         } else {
                             impl.Print(
                                 "if (msg.$lcfield$(i).has_$lcfield2$()) {\n"
