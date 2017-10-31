@@ -19,7 +19,7 @@ if [ -d "$1/.svn" ]; then
     cd $CURRENT_DIR
 fi
 
-MODIFIED_PATCHFILE=$(basename $(basename $PATCHFILE .patch) .diff).brpc_os.patch
+MODIFIED_PATCHFILE=$(basename $(basename $PATCHFILE .patch) .diff).from_svn.patch
 
 # guess prefix of test files
 TEST_PREFIX="test_"
@@ -35,11 +35,11 @@ fi
 cat $PATCHFILE | sed -e 's/src\/baidu\/rpc\//src\/brpc\//g' \
             -e 's/\<baidu\/rpc\//brpc\//g' \
             -e 's/\<baidu\-rpc\([^-]\)/brpc\1/g' \
-            -e 's/\<src\/brpc\/test\/test_\(.*\)\.cpp/test\/brpc_\1_unittest.cpp/g' \
+            -e 's/\<src\/brpc\/test\/test_\(\S*\)\.cpp/test\/brpc_\1_unittest.cpp/g' \
             -e 's/\<test\/test_bthread\.cpp/test\/bthread_unittest.cpp/g' \
             -e 's/\<test\/test_object_pool\.cpp/test\/object_pool_unittest.cpp/g' \
             -e 's/\<test\/test_resource_pool\.cpp/test\/resource_pool_unittest.cpp/g' \
-            -e "s/\<test\/test_\(.*\)\.cpp/test\/${TEST_PREFIX}\1${TEST_SUFFIX}.cpp/g" \
+            -e "s/\<test\/test_\(\S*\)\.cpp/test\/${TEST_PREFIX}\1${TEST_SUFFIX}.cpp/g" \
             -e 's/\<namespace \+baidu *{/namespace brpc {/g' \
             -e 's/\<namespace \+rpc *{//g' \
             -e 's/} *\/\/ \+namespace \+baidu/} \/\/ namespace brpc/g' \
@@ -48,9 +48,7 @@ cat $PATCHFILE | sed -e 's/src\/baidu\/rpc\//src\/brpc\//g' \
             -e 's/\<rpc::/brpc::/g' \
             -e 's/\<base::/butil::/g' \
             -e 's/\<BAIDU_RPC_/BRPC_/g' \
-            -e 's/\<protocol\/\(.*\)\.proto/src\/\1.proto/g' \
-            -e 's/TEST_F(HttpMessageTest/TEST(HttpMessageTest/g' \
-            -e 's/TEST_F(URITest/TEST(URITest/g' \
+            -e 's/\<protocol\/\(\S*\)\.proto/src\/\1.proto/g' \
             -e 's/ bthread_cond\.cpp/ src\/bthread\/condition_variable.cpp/g' \
             -e 's/ bthread_\([^.]*\)\.cpp/ src\/bthread\/\1.cpp/g' \
             -e 's/ bthread_\([^.]*\)\.h/ src\/bthread\/\1.h/g' \
