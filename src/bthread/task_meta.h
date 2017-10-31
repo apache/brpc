@@ -49,9 +49,14 @@ struct TaskMeta {
     // [Not Reset]
     butil::atomic<ButexWaiter*> current_waiter;
     uint64_t current_sleep;
-    
+
+    // A builtin flag to mark if the thread is stopping.
     bool stop;
-    bool interruptible;
+
+    // The thread is interrupted and should wake up from some blocking ops.
+    bool interrupted;
+
+    // Scheduling of the thread can be delayed.
     bool about_to_quit;
     
     // [Not Reset] guarantee visibility of version_butex.

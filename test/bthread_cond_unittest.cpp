@@ -108,8 +108,6 @@ TEST(CondTest, sanity) {
         ++count[wake_tid[i]];
     }
     EXPECT_EQ(NW, count.size());
-    for (size_t i = 0; i < NW; ++i) {
-    }
     int avg_count = (int)(wake_tid.size() / count.size());
     for (std::map<bthread_t, int>::iterator
              it = count.begin(); it != count.end(); ++it) {

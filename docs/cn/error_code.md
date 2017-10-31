@@ -27,6 +27,7 @@ brpc中常见错误的打印内容列表如下：
 | -------------- | ---- | ---- | ---------------------------------------- | ---------------------------------------- |
 | EAGAIN         | 11   | 是    | 同时发送的请求过多。软限，很少出现。                       | Resource temporarily unavailable         |
 | ETIMEDOUT      | 110  | 是    | 连接超时。                                    | Connection timed out                     |
+| EHOSTDOWN      | 112  | 是    | 找不到可用的server。server可能停止服务了，也可能正在退出中(返回了ELOGOFF)。 | "Fail to select server from …"  "Not connected to … yet" |
 | ENOSERVICE     | 1001 | 否    | 找不到服务，不太出现，一般会返回ENOMETHOD。               |                                          |
 | ENOMETHOD      | 1002 | 否    | 找不到方法。                                   | 形式广泛，常见如"Fail to find method=..."        |
 | EREQUEST       | 1003 | 否    | request序列化错误，client端和server端都可能设置        | 形式广泛："Missing required fields in request: …" "Fail to parse request message, …"  "Bad request" |

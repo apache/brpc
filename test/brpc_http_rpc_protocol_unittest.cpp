@@ -198,14 +198,11 @@ TEST_F(HttpTest, indenting_ostream) {
 }
 
 TEST_F(HttpTest, parse_http_address) {
-    const std::string EXP_HOSTNAME = "cp01-rpc-dev01.cp01.baidu.com:9876";
+    const std::string EXP_HOSTNAME = "www.baidu.com:9876";
     butil::EndPoint EXP_ENDPOINT;
-    ASSERT_EQ(0, hostname2endpoint(EXP_HOSTNAME.c_str(), &EXP_ENDPOINT));
     {
-        butil::EndPoint ep;
         std::string url = "https://" + EXP_HOSTNAME;
-        EXPECT_TRUE(brpc::policy::ParseHttpServerAddress(&ep, url.c_str()));
-        EXPECT_EQ(EXP_ENDPOINT, ep);
+        EXPECT_TRUE(brpc::policy::ParseHttpServerAddress(&EXP_ENDPOINT, url.c_str()));
     }
     {
         butil::EndPoint ep;
@@ -403,7 +400,7 @@ TEST_F(HttpTest, chunked_uploading) {
     const std::string exp_res = "{\"message\":\"world\"}";
     butil::ScopedFILE fp(res_fname.c_str(), "r");
     char buf[128];
-    fgets(buf, sizeof(buf), fp);
+    ASSERT_TRUE(fgets(buf, sizeof(buf), fp));
     EXPECT_EQ(exp_res, std::string(buf));
 }
 

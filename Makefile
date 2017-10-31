@@ -180,16 +180,16 @@ PROTOS=$(BRPC_PROTOS) src/idl_options.proto
 all:  protoc-gen-mcpack libbrpc.a libbrpc.so output/include output/lib output/bin
 
 .PHONY:debug
-debug: libbrpc.dbg.a libbvar.dbg.a
+debug: test/libbrpc.dbg.a test/libbvar.dbg.a
 
 .PHONY:clean
-clean:clean_debug
+clean:
 	@echo "Cleaning"
 	@rm -rf src/mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a libbrpc.so $(OBJS) output/include output/lib output/bin $(PROTOS:.proto=.pb.h) $(PROTOS:.proto=.pb.cc)
 
 .PHONY:clean_debug
 clean_debug:
-	@rm -rf libbrpc.dbg.a libbvar.dbg.a $(DEBUG_OBJS)
+	@rm -rf test/libbrpc.dbg.a test/libbvar.dbg.a $(DEBUG_OBJS)
 
 .PRECIOUS: %.o
 
@@ -206,11 +206,11 @@ libbrpc.so:$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
 	@echo "Linking $@"
 	@$(CXX) -shared -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $(filter %.o,$^) -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
 
-libbvar.dbg.a:$(BVAR_DEBUG_OBJS)
+test/libbvar.dbg.a:$(BVAR_DEBUG_OBJS)
 	@echo "Packing $@"
 	@ar crs $@ $^
 
-libbrpc.dbg.a:$(BRPC_PROTOS:.proto=.pb.h) $(DEBUG_OBJS)
+test/libbrpc.dbg.a:$(BRPC_PROTOS:.proto=.pb.h) $(DEBUG_OBJS)
 	@echo "Packing $@"
 	@ar crs $@ $(filter %.o,$^)
 

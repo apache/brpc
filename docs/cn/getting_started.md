@@ -18,7 +18,7 @@ $ sudo apt-get install git g++ make libssl-dev
 
 Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
 ```
-$ sudo apt-get install libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
+$ sudo apt-get install realpath libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
 ```
 
 If you need to statically link leveldb:
@@ -52,8 +52,7 @@ To run examples with cpu/heap profilers, install `libgoogle-perftools-dev` and r
 Install and compile libgtest-dev (which is not compiled yet):
 
 ```shell
-sudo apt-get install libgtest-dev
-cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/
+sudo apt-get install libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
 ```
 
 The directory of gtest source code may be changed, try `/usr/src/googletest/googletest` if `/usr/src/gtest` is not there.
@@ -71,7 +70,7 @@ sudo yum install epel-release
 
 Install common deps:
 ```
-sudo yum install git g++ make openssl-devel
+sudo yum install git gcc-c++ make openssl-devel
 ```
 
 Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
@@ -159,7 +158,7 @@ Adding `-D__const__=` to cxxflags in your makefiles is a must to avoid [errno is
 
 ## Clang: 3.5-4.0
 
-unittests can't be compiled with clang yet.
+no known issues.
 
 ## glibc: 2.12-2.25
 

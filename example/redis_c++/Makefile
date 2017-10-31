@@ -1,6 +1,6 @@
 BRPC_PATH = ../../
 include $(BRPC_PATH)/config.mk
-CXXFLAGS+=$(CPPFLAGS) -std=c++0x -DNDEBUG -O2 -D__const__= -pipe -W -Wall -Werror -fPIC -fno-omit-frame-pointer
+CXXFLAGS+=$(CPPFLAGS) -std=c++0x -DNDEBUG -O2 -D__const__= -pipe -W -Wall -fPIC -fno-omit-frame-pointer
 HDRS+=$(BRPC_PATH)/output/include
 LIBS+=$(BRPC_PATH)/output/lib
 HDRPATHS = $(addprefix -I, $(HDRS))
