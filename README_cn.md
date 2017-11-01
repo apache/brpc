@@ -1,5 +1,3 @@
-[![Build Status](https://travis-ci.org/brpc/brpc.svg?branch=master)](https://travis-ci.org/brpc/brpc)
-
 [English version](README.md)
 
 # 什么是RPC?
