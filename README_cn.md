@@ -12,6 +12,7 @@
 * ...
 
 [RPC](http://en.wikipedia.org/wiki/Remote_procedure_call)可以解决这些问题，它把网络交互类比为“client访问server上的函数”：client向server发送request后开始等待，直到server收到、处理、回复client后，client又再度恢复并根据response做出反应。
+
 ![rpc.png](docs/images/rpc.png)
 
 我们来看看上面的一些问题是如何解决的：
