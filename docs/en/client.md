@@ -334,7 +334,7 @@ brpc::Join(controller1->call_id());   // WRONG, controller1 may be deleted by on
 brpc::Join(controller2->call_id());   // WRONG, controller2 may be deleted by on_rpc_done
 ```
 
-## Semi-synchronous
+## Semi-synchronous call
 
 Join can be used for implementing "Semi-synchronous" call: blocks until multiple asynchronous calls to complete. Since the callsite blocks until completion of all RPC, controller/response can be put on stack safely.
 ```c++
