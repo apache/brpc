@@ -830,7 +830,6 @@ TEST_F(HttpTest, skip_progressive_reading) {
     LOG(INFO) << "Sleep 3 seconds after destroy of Controller";
     sleep(3);
     const size_t new_written_bytes = svc.written_bytes();
-    EXPECT_FALSE(svc.ever_full());
     ASSERT_EQ(0, svc.last_errno());
     LOG(INFO) << "Server still wrote " << new_written_bytes - old_written_bytes;
     // The server side still wrote things.
