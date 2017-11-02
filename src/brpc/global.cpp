@@ -64,23 +64,23 @@
 #include "brpc/server.h"
 #include "brpc/trackme.h"             // TrackMe
 #include "brpc/details/usercode_backup_pool.h"
-#include <malloc.h>                        // malloc_trim
+#include <malloc.h>                   // malloc_trim
 #include "butil/fd_guard.h"
 #include "butil/files/file_watcher.h"
 
-extern "C" {		
-// defined in gperftools/malloc_extension_c.h		
-void BAIDU_WEAK MallocExtension_ReleaseFreeMemory(void);		
-}		
+extern "C" {
+// defined in gperftools/malloc_extension_c.h
+void BAIDU_WEAK MallocExtension_ReleaseFreeMemory(void);
+}
 
 namespace brpc {
 
 DECLARE_bool(usercode_in_pthread);
 
-DEFINE_int32(free_memory_to_system_interval, 0,		
-             "Try to return free memory to system every so many seconds, "		
-             "values <= 0 disables this feature");		
-BRPC_VALIDATE_GFLAG(free_memory_to_system_interval, PassValidate);		
+DEFINE_int32(free_memory_to_system_interval, 0,
+             "Try to return free memory to system every so many seconds, "
+             "values <= 0 disables this feature");
+BRPC_VALIDATE_GFLAG(free_memory_to_system_interval, PassValidate);
 
 namespace policy {
 // Defined in http_rpc_protocol.cpp
