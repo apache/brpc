@@ -45,6 +45,7 @@ namespace brpc {
 class Acceptor;
 class MethodStatus;
 class NsheadService;
+class ThriftFramedService;
 class SimpleDataPool;
 class MongoServiceAdaptor;
 class RestfulMap;
@@ -138,6 +139,11 @@ struct ServerOptions {
     // Owned by Server and deleted in server's destructor
     // Default: NULL
     NsheadService* nshead_service;
+
+    // Process requests in format of thrift_binary_head_t + blob.
+    // Owned by Server and deleted in server's destructor
+    // Default: NULL
+    ThriftFramedService* thrift_service;
 
     // Adaptor for Mongo protocol, check src/brpc/mongo_service_adaptor.h for details
     // The adaptor will not be deleted by server
@@ -241,7 +247,7 @@ struct ServerOptions {
     // Provide builtin services at this port rather than the port to Start().
     // When your server needs to be accessed from public (including traffic
     // redirected by nginx or other http front-end servers), set this port
-    // to a port number that's ONLY accessible from internal network
+    // to a port number that's ONLY accessible from Baidu's internal network
     // so that you can check out the builtin services from this port while
     // hiding them from public. Setting this option also enables security
     // protection code which we may add constantly.
@@ -409,25 +415,28 @@ public:
     Server(ProfilerLinker = ProfilerLinker());
     ~Server();
 
-    // A set of functions to start this server.
+    // Start this server. Use default options if `opt' is NULL.
+    // This function can be called multiple times if the server is completely
+    // stopped by Stop() and Join().
     // Returns 0 on success, -1 otherwise and errno is set appropriately.
-    // Notes:
-    // * Default options are taken if `opt' is NULL.
-    // * A server can be started more than once if the server is completely
-    //   stopped by Stop() and Join().
-    // * port can be 0, which makes kernel to choose a port dynamically.
     
-    // Start on an address in form of "0.0.0.0:8000".
+    // Start on a single address "0.0.0.0:8000".
     int Start(const char* ip_port_str, const ServerOptions* opt);
-    int Start(const butil::EndPoint& ip_port, const ServerOptions* opt);
+
     // Start on IP_ANY:port.
     int Start(int port, const ServerOptions* opt);
-    // Start on `ip_str' + any useable port in `range'
-    int Start(const char* ip_str, PortRange range, const ServerOptions *opt);
+    
+    // Start on ip:port enclosed in butil::EndPoint which is defined in
+    // src/butil/endpoint.h
+    int Start(const butil::EndPoint& ip_port, const ServerOptions* opt);
 
-    // NOTE: Stop() is paired with Join() to stop a server without losing
-    // requests. The point of separating them is that you can Stop() multiple
-    // servers before Join() them, in which case the total time to Join is
+    // Start on `ip_str' + any useable port in `port_range'
+    int Start(const char* ip_str, PortRange port_range,
+              const ServerOptions *opt);
+
+    // NOTE: Stop() is paired with Join() to stop a server with minimum lost
+    // of requests. The point of separating them is that you can Stop() 
+    // multiple servers before Join()-ing them, the total time to Join is 
     // time of the slowest Join(). Otherwise you have to Join() them one by
     // one, in which case the total time is sum of all Join().
 

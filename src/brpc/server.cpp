@@ -40,6 +40,7 @@
 #include "brpc/details/ssl_helper.h"           // CreateSSLContext
 #include "brpc/protocol.h"                     // ListProtocols
 #include "brpc/nshead_service.h"               // NsheadService
+#include "brpc/thrift_service.h"               // ThriftService
 #include "brpc/builtin/bad_method_service.h"   // BadMethodService
 #include "brpc/builtin/get_favicon_service.h"
 #include "brpc/builtin/get_js_service.h"
@@ -127,6 +128,7 @@ SSLOptions::SSLOptions()
 ServerOptions::ServerOptions()
     : idle_timeout_sec(-1)
     , nshead_service(NULL)
+    , thrift_service(NULL)
     , mongo_service_adaptor(NULL)
     , auth(NULL)
     , server_owns_auth(false)
@@ -208,15 +210,30 @@ static void PrintSupportedCompressions(std::ostream& os, void*) {
     }
 }
 
+static bool check_TCMALLOC_SAMPLE_PARAMETER() {
+    char* str = getenv("TCMALLOC_SAMPLE_PARAMETER");
+    if (str == NULL) {
+        return false;
+    }
+    char* endptr;
+    int val = strtol(str, &endptr, 10);
+    return (*endptr == '\0' && val > 0);
+}
+
+static bool has_TCMALLOC_SAMPLE_PARAMETER() {
+    static bool val = check_TCMALLOC_SAMPLE_PARAMETER();
+    return val;
+}
+
 static void PrintEnabledProfilers(std::ostream& os, void*) {
     if (cpu_profiler_enabled) {
         os << "cpu ";
     }
-    if (IsHeapProfilerEnabled()) {
+    if (IsHeapProfilerEnabled) {
         if (has_TCMALLOC_SAMPLE_PARAMETER()) {
             os << "heap ";
         } else {
-            os << "heap(no TCMALLOC_SAMPLE_PARAMETER in env) ";
+            os << "heap(lack of TCMALLOC_SAMPLE_PARAMETER) ";
         }
     }
     os << "contention";
@@ -315,6 +332,10 @@ void* Server::UpdateDerivedVars(void* arg) {
         server->options().nshead_service->Expose(prefix);
     }
 
+    if (server->options().thrift_service) {
+        server->options().thrift_service->Expose(prefix);
+    }
+
     int64_t last_time = butil::gettimeofday_us();
     int consecutive_nosleep = 0;
     while (1) {
@@ -396,6 +417,9 @@ Server::~Server() {
 
     delete _options.nshead_service;
     _options.nshead_service = NULL;
+
+    delete _options.thrift_service;
+    _options.thrift_service = NULL;
 
     delete _options.http_master_service;
     _options.http_master_service = NULL;
@@ -646,15 +670,6 @@ struct RevertServerStatus {
     }
 };
 
-static int get_port_from_fd(int fd) {
-    struct sockaddr_in addr;
-    socklen_t size = sizeof(addr);
-    if (getsockname(fd, (struct sockaddr*)&addr, &size) < 0) {
-        return -1;
-    }
-    return ntohs(addr.sin_port);
-}
-
 int Server::StartInternal(const butil::ip_t& ip,
                           const PortRange& port_range,
                           const ServerOptions *opt) {
@@ -886,15 +901,6 @@ int Server::StartInternal(const butil::ip_t& ip,
             }
             return -1;
         }
-        if (_listen_addr.port == 0) {
-            // port=0 makes kernel dynamically select a port from
-            // https://en.wikipedia.org/wiki/Ephemeral_port
-            _listen_addr.port = get_port_from_fd(sockfd);
-            if (_listen_addr.port <= 0) {
-                LOG(ERROR) << "Fail to get port from fd=" << sockfd;
-                return -1;
-            }
-        }
         if (_am == NULL) {
             _am = BuildAcceptor();
             if (NULL == _am) {
@@ -922,12 +928,6 @@ int Server::StartInternal(const butil::ip_t& ip,
         if (_options.internal_port  == _listen_addr.port) {
             LOG(ERROR) << "ServerOptions.internal_port=" << _options.internal_port
                        << " is same with port=" << _listen_addr.port << " to Start()";
-            return -1;
-        }
-        if (_options.internal_port == 0) {
-            LOG(ERROR) << "ServerOptions.internal_port cannot be 0, which"
-                " allocates a dynamic and probabaly unfiltered port,"
-                " against the purpose of \"being internal\".";
             return -1;
         }
         butil::EndPoint internal_point = _listen_addr;
@@ -1519,7 +1519,7 @@ void Server::GenerateVersionIfNeeded() {
     if (!_version.empty()) {
         return;
     }
-    int extra_count = !!_options.nshead_service + !!_options.rtmp_service;
+    int extra_count = !!_options.nshead_service + !!_options.rtmp_service + !!_options.thrift_service;
     _version.reserve((extra_count + service_count()) * 20);
     for (ServiceMap::const_iterator it = _fullname_service_map.begin();
          it != _fullname_service_map.end(); ++it) {
@@ -1536,6 +1536,13 @@ void Server::GenerateVersionIfNeeded() {
         }
         _version.append(butil::class_name_str(*_options.nshead_service));
     }
+    if (_options.thrift_service) {
+        if (!_version.empty()) {
+            _version.push_back('+');
+        }
+        _version.append(butil::class_name_str(*_options.thrift_service));
+    }
+
     if (_options.rtmp_service) {
         if (!_version.empty()) {
             _version.push_back('+');
