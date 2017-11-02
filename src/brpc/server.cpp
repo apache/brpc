@@ -210,30 +210,15 @@ static void PrintSupportedCompressions(std::ostream& os, void*) {
     }
 }
 
-static bool check_TCMALLOC_SAMPLE_PARAMETER() {
-    char* str = getenv("TCMALLOC_SAMPLE_PARAMETER");
-    if (str == NULL) {
-        return false;
-    }
-    char* endptr;
-    int val = strtol(str, &endptr, 10);
-    return (*endptr == '\0' && val > 0);
-}
-
-static bool has_TCMALLOC_SAMPLE_PARAMETER() {
-    static bool val = check_TCMALLOC_SAMPLE_PARAMETER();
-    return val;
-}
-
 static void PrintEnabledProfilers(std::ostream& os, void*) {
     if (cpu_profiler_enabled) {
         os << "cpu ";
     }
-    if (IsHeapProfilerEnabled) {
+    if (IsHeapProfilerEnabled()) {
         if (has_TCMALLOC_SAMPLE_PARAMETER()) {
             os << "heap ";
         } else {
-            os << "heap(lack of TCMALLOC_SAMPLE_PARAMETER) ";
+            os << "heap(no TCMALLOC_SAMPLE_PARAMETER in env) ";
         }
     }
     os << "contention";
@@ -670,6 +655,15 @@ struct RevertServerStatus {
     }
 };
 
+static int get_port_from_fd(int fd) {
+    struct sockaddr_in addr;
+    socklen_t size = sizeof(addr);
+    if (getsockname(fd, (struct sockaddr*)&addr, &size) < 0) {
+        return -1;
+    }
+    return ntohs(addr.sin_port);
+}
+
 int Server::StartInternal(const butil::ip_t& ip,
                           const PortRange& port_range,
                           const ServerOptions *opt) {
@@ -901,6 +895,15 @@ int Server::StartInternal(const butil::ip_t& ip,
             }
             return -1;
         }
+        if (_listen_addr.port == 0) {
+            // port=0 makes kernel dynamically select a port from
+            // https://en.wikipedia.org/wiki/Ephemeral_port
+            _listen_addr.port = get_port_from_fd(sockfd);
+            if (_listen_addr.port <= 0) {
+                LOG(ERROR) << "Fail to get port from fd=" << sockfd;
+                return -1;
+            }
+        }
         if (_am == NULL) {
             _am = BuildAcceptor();
             if (NULL == _am) {
@@ -928,6 +931,12 @@ int Server::StartInternal(const butil::ip_t& ip,
         if (_options.internal_port  == _listen_addr.port) {
             LOG(ERROR) << "ServerOptions.internal_port=" << _options.internal_port
                        << " is same with port=" << _listen_addr.port << " to Start()";
+            return -1;
+        }
+        if (_options.internal_port == 0) {
+            LOG(ERROR) << "ServerOptions.internal_port cannot be 0, which"
+                " allocates a dynamic and probabaly unfiltered port,"
+                " against the purpose of \"being internal\".";
             return -1;
         }
         butil::EndPoint internal_point = _listen_addr;

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
+// Authors: wangxuefeng (wangxuefeng@didichuxing.com)
 
 #include "butil/class_name.h"
 #include "brpc/thrift_service.h"
