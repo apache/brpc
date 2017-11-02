@@ -310,7 +310,6 @@ struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
         if (msg) {
             if (msg != DUMMY_USER_MESSAGE) {
                 butil::IOBuf dummy_buf;
-                RPC_VLOG << "reset_pipelined_count_and_user_message";
                 // We don't care about the return value since the request
                 // is already failed.
                 (void)msg->AppendAndDestroySelf(&dummy_buf, NULL);
