@@ -2,8 +2,8 @@
 // Author: Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date: 2015/03/17 15:34:52
 
-#ifndef  PROTOBUF_JSON_RAPIDJSON_H
-#define  PROTOBUF_JSON_RAPIDJSON_H
+#ifndef  BRPC_JSON2PB_RAPIDJSON_H
+#define  BRPC_JSON2PB_RAPIDJSON_H
 
 
 #if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8)
@@ -31,4 +31,4 @@
 #pragma GCC diagnostic pop
 #endif
 
-#endif  //PROTOBUF_JSON_RAPIDJSON_H
+#endif  //BRPC_JSON2PB_RAPIDJSON_H

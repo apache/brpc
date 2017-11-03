@@ -14,8 +14,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
-#ifndef BAIDU_BASE_BAIDU_SCOPED_LOCK_H
-#define BAIDU_BASE_BAIDU_SCOPED_LOCK_H
+#ifndef BUTIL_BAIDU_SCOPED_LOCK_H
+#define BUTIL_BAIDU_SCOPED_LOCK_H
 
 #include "butil/build_config.h"
 
@@ -396,4 +396,4 @@ void double_lock(std::unique_lock<Mutex1> &lck1, std::unique_lock<Mutex2> &lck2)
 
 };
 
-#endif  // BAIDU_BASE_BAIDU_SCOPED_LOCK_H
+#endif  // BUTIL_BAIDU_SCOPED_LOCK_H

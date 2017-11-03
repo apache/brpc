@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 10 17:40:58 CST 2012
 
-#ifndef BAIDU_BTHREAD_TASK_GROUP_H
-#define BAIDU_BTHREAD_TASK_GROUP_H
+#ifndef BTHREAD_TASK_GROUP_H
+#define BTHREAD_TASK_GROUP_H
 
 #include "butil/time.h"                             // cpuwide_time_ns
 #include "bthread/task_control.h"
@@ -250,4 +250,4 @@ friend class TaskControl;
 
 #include "task_group_inl.h"
 
-#endif  // BAIDU_BTHREAD_TASK_GROUP_H
+#endif  // BTHREAD_TASK_GROUP_H

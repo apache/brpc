@@ -17,8 +17,8 @@
 
 // Utility functions on file descriptor.
 
-#ifndef BAIDU_BASE_FD_UTILITY_H
-#define BAIDU_BASE_FD_UTILITY_H
+#ifndef BUTIL_FD_UTILITY_H
+#define BUTIL_FD_UTILITY_H
 
 namespace butil {
 
@@ -40,4 +40,4 @@ int make_no_delay(int socket);
 
 }  // namespace butil
 
-#endif  // BAIDU_BASE_FD_UTILITY_H
+#endif  // BUTIL_FD_UTILITY_H

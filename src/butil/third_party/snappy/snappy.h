@@ -36,8 +36,8 @@
 // using BMDiff and then compressing the output of BMDiff with
 // Snappy.
 
-#ifndef PUBLIC_COMMON_BASE_THIRD_PARTY_SNAPPY_SNAPPY_H__
-#define PUBLIC_COMMON_BASE_THIRD_PARTY_SNAPPY_SNAPPY_H__
+#ifndef BUTIL_THIRD_PARTY_SNAPPY_SNAPPY_H__
+#define BUTIL_THIRD_PARTY_SNAPPY_SNAPPY_H__
 
 #include "butil/basictypes.h"
 #include <string>
@@ -207,4 +207,4 @@ static const size_t kMaxHashTableSize = 1 << kMaxHashTableBits;
 }  // end namespace snappy
 }  // end namespace butil
 
-#endif  // PUBLIC_COMMON_BASE_THIRD_PARTY_SNAPPY_SNAPPY_H__
+#endif  // BUTIL_THIRD_PARTY_SNAPPY_SNAPPY_H__

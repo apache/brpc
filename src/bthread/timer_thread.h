@@ -15,8 +15,8 @@
 
 // Author: Ge,Jun (gejun@baidu.com)
 
-#ifndef BAIDU_BTHREAD_TIMER_THREAD_H
-#define BAIDU_BTHREAD_TIMER_THREAD_H
+#ifndef BTHREAD_TIMER_THREAD_H
+#define BTHREAD_TIMER_THREAD_H
 
 #include <vector>                     // std::vector
 #include <pthread.h>                  // pthread_*
@@ -106,4 +106,4 @@ TimerThread* get_global_timer_thread();
 
 }   // end namespace bthread
 
-#endif  // BAIDU_BTHREAD_TIMER_THREAD_H
+#endif  // BTHREAD_TIMER_THREAD_H

@@ -1,5 +1,5 @@
-#ifndef PUBLIC_COMMON_BASE_INTRUSIVE_PTR_HPP
-#define PUBLIC_COMMON_BASE_INTRUSIVE_PTR_HPP
+#ifndef BUTIL_INTRUSIVE_PTR_HPP
+#define BUTIL_INTRUSIVE_PTR_HPP
 
 //  Copyright (c) 2001, 2002 Peter Dimov
 //
@@ -293,4 +293,4 @@ inline size_t hash_value(const butil::intrusive_ptr<T>& sp) {
 
 }  // namespace BASE_HASH_NAMESPACE
 
-#endif  // PUBLIC_COMMON_BASE_INTRUSIVE_PTR_HPP
+#endif  // BUTIL_INTRUSIVE_PTR_HPP

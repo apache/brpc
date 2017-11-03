@@ -17,8 +17,8 @@
 
 // Iteratively split a string by one or multiple separators.
 
-#ifndef BAIDU_BASE_STRING_SPLITTER_H
-#define BAIDU_BASE_STRING_SPLITTER_H
+#ifndef BUTIL_STRING_SPLITTER_H
+#define BUTIL_STRING_SPLITTER_H
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -159,4 +159,4 @@ private:
 
 #include "butil/string_splitter_inl.h"
 
-#endif  // BAIDU_BASE_STRING_SPLITTER_H
+#endif  // BUTIL_STRING_SPLITTER_H

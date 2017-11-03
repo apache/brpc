@@ -1,5 +1,5 @@
-#ifndef BAIDU_BASE_UNIQUE_PTR_H
-#define BAIDU_BASE_UNIQUE_PTR_H
+#ifndef BUTIL_UNIQUE_PTR_H
+#define BUTIL_UNIQUE_PTR_H
 
 #include "butil/build_config.h"
 
@@ -469,4 +469,4 @@ operator>=(const unique_ptr<T1, D1>& x, const unique_ptr<T2, D2>& y) {
 }  // namespace std
 
 #endif  // BASE_CXX11_ENABLED
-#endif  // BAIDU_BASE_UNIQUE_PTR_H
+#endif  // BUTIL_UNIQUE_PTR_H

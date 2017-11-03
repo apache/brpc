@@ -15,8 +15,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon Dec 14 19:12:30 CST 2015
 
-#ifndef PUBLIC_BVAR_BVAR_COLLECTOR_H
-#define PUBLIC_BVAR_BVAR_COLLECTOR_H
+#ifndef BVAR_COLLECTOR_H
+#define BVAR_COLLECTOR_H
 
 #include "butil/containers/linked_list.h"
 #include "butil/fast_rand.h"
@@ -132,4 +132,4 @@ private:
 
 }  // namespace bvar
 
-#endif  // PUBLIC_BVAR_BVAR_COLLECTOR_H
+#endif  // BVAR_COLLECTOR_H

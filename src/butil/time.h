@@ -17,8 +17,8 @@
 
 // Measuring time
 
-#ifndef BAIDU_BUTIL_TIME_H
-#define BAIDU_BUTIL_TIME_H
+#ifndef BUTIL_TIME_H
+#define BUTIL_TIME_H
 
 #include <time.h>                            // timespec, clock_gettime
 #include <sys/time.h>                        // timeval, gettimeofday
@@ -348,4 +348,4 @@ private:
 
 }  // namespace butil
 
-#endif  // BAIDU_BUTIL_TIME_H
+#endif  // BUTIL_TIME_H

@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon Oct 19 17:17:36 CST 2015
 
-#ifndef PUBLIC_MCPACK2PB_MCPACK_SERIALIZER_INL_H
-#define PUBLIC_MCPACK2PB_MCPACK_SERIALIZER_INL_H
+#ifndef MCPACK2PB_MCPACK_SERIALIZER_INL_H
+#define MCPACK2PB_MCPACK_SERIALIZER_INL_H
 
 void* fast_memcpy(void *__restrict dest, const void *__restrict src, size_t n);
 
@@ -298,4 +298,4 @@ inline void Serializer::end_object_iso()
 
 }  // namespace mcpack2pb
 
-#endif  // PUBLIC_MCPACK2PB_MCPACK_SERIALIZER_INL_H
+#endif  // MCPACK2PB_MCPACK_SERIALIZER_INL_H

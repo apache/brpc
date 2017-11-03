@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 10 17:40:58 CST 2012
 
-#ifndef BAIDU_BTHREAD_TASK_CONTROL_H
-#define BAIDU_BTHREAD_TASK_CONTROL_H
+#ifndef BTHREAD_TASK_CONTROL_H
+#define BTHREAD_TASK_CONTROL_H
 
 #ifndef NDEBUG
 #include <iostream>                             // std::ostream
@@ -122,4 +122,4 @@ inline bvar::LatencyRecorder& TaskControl::exposed_pending_time() {
 
 }  // namespace bthread
 
-#endif  // BAIDU_BTHREAD_TASK_CONTROL_H
+#endif  // BTHREAD_TASK_CONTROL_H

@@ -16,8 +16,8 @@
    Date: Sun Aug 20 11:39:01 CST 2017
 */
 
-#ifndef BAIDU_BASE_SSL_COMPAT_H
-#define BAIDU_BASE_SSL_COMPAT_H
+#ifndef BUTIL_SSL_COMPAT_H
+#define BUTIL_SSL_COMPAT_H
 
 #include <openssl/ssl.h>
 #include <openssl/opensslv.h>
@@ -523,4 +523,4 @@ BRPC_INLINE int EVP_PKEY_base_id(const EVP_PKEY *pkey) {
 
 #endif /* OPENSSL_VERSION_NUMBER < 0x0090801fL */
 
-#endif /* BAIDU_BASE_SSL_COMPAT_H */
+#endif /* BUTIL_SSL_COMPAT_H */

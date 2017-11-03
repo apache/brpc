@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 22 17:30:12 CST 2014
 
-#ifndef BAIDU_BTHREAD_BUTEX_H
-#define BAIDU_BTHREAD_BUTEX_H
+#ifndef BTHREAD_BUTEX_H
+#define BTHREAD_BUTEX_H
 
 #include <errno.h>                               // users need to check errno
 #include <time.h>                                // timespec
@@ -69,4 +69,4 @@ int butex_wait(void* butex, int expected_value, const timespec* abstime);
 
 }  // namespace bthread
 
-#endif  // BAIDU_BTHREAD_BUTEX_H
+#endif  // BTHREAD_BUTEX_H
