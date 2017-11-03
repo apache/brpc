@@ -11,7 +11,7 @@ LIBPATHS = $(addprefix -L, $(LIBS))
 COMMA=,
 SOPATHS=$(addprefix -Wl$(COMMA)-rpath=, $(LIBS))
 
-STATIC_LINKINGS += -lbrpc
+STATIC_LINKINGS += -lbrpc -lthrift
 
 CLIENT_SOURCES = client.cpp
 SERVER_SOURCES = server.cpp
