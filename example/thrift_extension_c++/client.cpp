@@ -31,7 +31,6 @@
 
 bvar::LatencyRecorder g_latency_recorder("client");
 
-using apache::thrift::protocol::TBinaryProtocol;
 using apache::thrift::transport::TMemoryBuffer;
 
 using namespace std;
@@ -69,9 +68,8 @@ int main(int argc, char* argv[]) {
 
         // Append message to `request'
 
-        boost::shared_ptr<TMemoryBuffer> o_buffer(new TMemoryBuffer());
-        boost::shared_ptr<TBinaryProtocol> oprot(new TBinaryProtocol(o_buffer));
-
+        boost::shared_ptr<apache::thrift::transport::TMemoryBuffer> o_buffer(new apache::thrift::transport::TMemoryBuffer());
+        boost::shared_ptr<apache::thrift::protocol::TBinaryProtocol> oprot(new apache::thrift::protocol::TBinaryProtocol(o_buffer));
 
         // Construct request
         EchoRequest t_request;
@@ -109,8 +107,8 @@ int main(int argc, char* argv[]) {
 
 
         // Parse/Desrialize binary response to thrift response
-        boost::shared_ptr<TMemoryBuffer> buffer(new TMemoryBuffer());
-        boost::shared_ptr<TBinaryProtocol> iprot(new TBinaryProtocol(buffer));
+        boost::shared_ptr<apache::thrift::transport::TMemoryBuffer> buffer(new apache::thrift::transport::TMemoryBuffer());
+        boost::shared_ptr<apache::thrift::protocol::TBinaryProtocol> iprot(new apache::thrift::protocol::TBinaryProtocol(buffer));
 
         size_t body_len  = response.head.body_len;
         uint8_t* thrfit_b = (uint8_t*)malloc(body_len);
