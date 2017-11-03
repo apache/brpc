@@ -15,8 +15,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon Sep 22 22:23:13 CST 2014
 
-#ifndef BASE_DOUBLY_BUFFERED_DATA_H
-#define BASE_DOUBLY_BUFFERED_DATA_H
+#ifndef BUTIL_DOUBLY_BUFFERED_DATA_H
+#define BUTIL_DOUBLY_BUFFERED_DATA_H
 
 #include <vector>                                       // std::vector
 #include <pthread.h>
@@ -414,4 +414,4 @@ size_t DoublyBufferedData<T, TLS>::ModifyWithForeground(
 
 }  // namespace butil
 
-#endif  // BASE_DOUBLY_BUFFERED_DATA_H
+#endif  // BUTIL_DOUBLY_BUFFERED_DATA_H

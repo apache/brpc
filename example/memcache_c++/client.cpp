@@ -36,7 +36,7 @@ DEFINE_int32(batch, 1, "Pipelined Operations");
 
 bvar::LatencyRecorder g_latency_recorder("client");
 bvar::Adder<int> g_error_count("client_error_count");
-butil::static_atomic<int> g_sender_count = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<int> g_sender_count = BUTIL_STATIC_ATOMIC_INIT(0);
 
 static void* sender(void* arg) {
     google::protobuf::RpcChannel* channel = 

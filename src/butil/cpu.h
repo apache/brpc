@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_CPU_H_
-#define BASE_CPU_H_
+#ifndef BUTIL_CPU_H_
+#define BUTIL_CPU_H_
 
 #include <string>
 
@@ -12,7 +12,7 @@
 namespace butil {
 
 // Query information about the processor.
-class BASE_EXPORT CPU {
+class BUTIL_EXPORT CPU {
  public:
   // Constructor
   CPU();
@@ -87,4 +87,4 @@ class BASE_EXPORT CPU {
 
 }  // namespace butil
 
-#endif  // BASE_CPU_H_
+#endif  // BUTIL_CPU_H_

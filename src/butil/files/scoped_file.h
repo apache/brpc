@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_FILES_SCOPED_FILE_H_
-#define BASE_FILES_SCOPED_FILE_H_
+#ifndef BUTIL_FILES_SCOPED_FILE_H_
+#define BUTIL_FILES_SCOPED_FILE_H_
 
 #include <stdio.h>
 
@@ -18,7 +18,7 @@ namespace butil {
 namespace internal {
 
 #if defined(OS_POSIX)
-struct BASE_EXPORT ScopedFDCloseTraits {
+struct BUTIL_EXPORT ScopedFDCloseTraits {
   static int InvalidValue() {
     return -1;
   }
@@ -105,4 +105,4 @@ private:
 
 }  // namespace butil
 
-#endif  // BASE_FILES_SCOPED_FILE_H_
+#endif  // BUTIL_FILES_SCOPED_FILE_H_

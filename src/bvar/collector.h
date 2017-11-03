@@ -38,7 +38,7 @@ struct CollectorSpeedLimit {
 static const size_t COLLECTOR_SAMPLING_BASE = 16384;
 
 #define BVAR_COLLECTOR_SPEED_LIMIT_INITIALIZER                          \
-    { ::bvar::COLLECTOR_SAMPLING_BASE, false, BASE_STATIC_ATOMIC_INIT(0), 0 }
+    { ::bvar::COLLECTOR_SAMPLING_BASE, false, BUTIL_STATIC_ATOMIC_INIT(0), 0 }
 
 class Collected;
 

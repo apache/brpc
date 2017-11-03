@@ -20,8 +20,8 @@
 // boost::lockfree::spsc_queue or boost::lockfree::queue in multi-threaded
 // scenarios.
 
-#ifndef BASE_BOUNDED_QUEUE_H
-#define BASE_BOUNDED_QUEUE_H
+#ifndef BUTIL_BOUNDED_QUEUE_H
+#define BUTIL_BOUNDED_QUEUE_H
 
 #include "butil/macros.h"
 #include "butil/logging.h"
@@ -300,4 +300,4 @@ private:
 
 }  // namespace butil
 
-#endif  // BASE_BOUNDED_QUEUE_H
+#endif  // BUTIL_BOUNDED_QUEUE_H

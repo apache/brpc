@@ -4,8 +4,8 @@
 
 // This file is an internal atomic implementation, use butil/atomicops.h instead.
 
-#ifndef BASE_ATOMICOPS_INTERNALS_X86_MSVC_H_
-#define BASE_ATOMICOPS_INTERNALS_X86_MSVC_H_
+#ifndef BUTIL_ATOMICOPS_INTERNALS_X86_MSVC_H_
+#define BUTIL_ATOMICOPS_INTERNALS_X86_MSVC_H_
 
 #include <windows.h>
 
@@ -195,4 +195,4 @@ inline Atomic64 Release_CompareAndSwap(volatile Atomic64* ptr,
 }  // namespace butil::subtle
 }  // namespace butil
 
-#endif  // BASE_ATOMICOPS_INTERNALS_X86_MSVC_H_
+#endif  // BUTIL_ATOMICOPS_INTERNALS_X86_MSVC_H_

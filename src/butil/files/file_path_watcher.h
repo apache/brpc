@@ -4,8 +4,8 @@
 
 // This module provides a way to monitor a file or directory for changes.
 
-#ifndef BASE_FILES_FILE_PATH_WATCHER_H_
-#define BASE_FILES_FILE_PATH_WATCHER_H_
+#ifndef BUTIL_FILES_FILE_PATH_WATCHER_H_
+#define BUTIL_FILES_FILE_PATH_WATCHER_H_
 
 #include "butil/base_export.h"
 #include "butil/basictypes.h"
@@ -25,7 +25,7 @@ namespace butil {
 // detect the creation and deletion of files in a watched directory, but will
 // not detect modifications to those files. See file_path_watcher_kqueue.cc for
 // details.
-class BASE_EXPORT FilePathWatcher {
+class BUTIL_EXPORT FilePathWatcher {
  public:
   // Callback type for Watch(). |path| points to the file that was updated,
   // and |error| is true if the platform specific code detected an error. In
@@ -108,4 +108,4 @@ class BASE_EXPORT FilePathWatcher {
 
 }  // namespace butil
 
-#endif  // BASE_FILES_FILE_PATH_WATCHER_H_
+#endif  // BUTIL_FILES_FILE_PATH_WATCHER_H_

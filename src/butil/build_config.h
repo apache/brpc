@@ -12,8 +12,8 @@
 //    ARCH_CPU_X86 / ARCH_CPU_X86_64 / ARCH_CPU_X86_FAMILY (X86 or X86_64)
 //    ARCH_CPU_32_BITS / ARCH_CPU_64_BITS
 
-#ifndef BASE_BUILD_CONFIG_H_
-#define BASE_BUILD_CONFIG_H_
+#ifndef BUTIL_BUILD_CONFIG_H_
+#define BUTIL_BUILD_CONFIG_H_
 
 // A set of macros to use for platform detection.
 #if defined(__native_client__)
@@ -162,17 +162,17 @@
 #define STD_STRING_ITERATOR_IS_CHAR_POINTER
 // The compiler thinks butil::string16::const_iterator and "char16*" are
 // equivalent types.
-#define BASE_STRING16_ITERATOR_IS_CHAR16_POINTER
+#define BUTIL_STRING16_ITERATOR_IS_CHAR16_POINTER
 #endif
 
 #if defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L
-#define BASE_CXX11_ENABLED 1
+#define BUTIL_CXX11_ENABLED 1
 #endif
 
-#if !defined(BASE_CXX11_ENABLED)
+#if !defined(BUTIL_CXX11_ENABLED)
 #define nullptr NULL
 #endif
 
 #define HAVE_DLADDR
 
-#endif  // BASE_BUILD_CONFIG_H_
+#endif  // BUTIL_BUILD_CONFIG_H_

@@ -50,7 +50,7 @@ DEFINE_bool(show_socketmap_in_vars, false,
 BRPC_VALIDATE_GFLAG(show_socketmap_in_vars, PassValidate);
 
 static pthread_once_t g_socket_map_init = PTHREAD_ONCE_INIT;
-static butil::static_atomic<SocketMap*> g_socket_map = BASE_STATIC_ATOMIC_INIT(NULL);
+static butil::static_atomic<SocketMap*> g_socket_map = BUTIL_STATIC_ATOMIC_INIT(NULL);
 
 class GlobalSocketCreator : public SocketCreator {
 public:

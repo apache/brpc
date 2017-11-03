@@ -4,8 +4,8 @@
 
 // Derived from google3/util/gtl/stl_util.h
 
-#ifndef BASE_STL_UTIL_H_
-#define BASE_STL_UTIL_H_
+#ifndef BUTIL_STL_UTIL_H_
+#define BUTIL_STL_UTIL_H_
 
 #include <algorithm>
 #include <functional>
@@ -257,4 +257,4 @@ bool STLIncludes(const Arg1& a1, const Arg2& a2) {
 
 }  // namespace butil
 
-#endif  // BASE_STL_UTIL_H_
+#endif  // BUTIL_STL_UTIL_H_

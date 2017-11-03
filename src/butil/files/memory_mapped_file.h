@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_FILES_MEMORY_MAPPED_FILE_H_
-#define BASE_FILES_MEMORY_MAPPED_FILE_H_
+#ifndef BUTIL_FILES_MEMORY_MAPPED_FILE_H_
+#define BUTIL_FILES_MEMORY_MAPPED_FILE_H_
 
 #include "butil/base_export.h"
 #include "butil/basictypes.h"
@@ -18,7 +18,7 @@ namespace butil {
 
 class FilePath;
 
-class BASE_EXPORT MemoryMappedFile {
+class BUTIL_EXPORT MemoryMappedFile {
  public:
   // The default constructor sets all members to invalid/null values.
   MemoryMappedFile();
@@ -69,4 +69,4 @@ class BASE_EXPORT MemoryMappedFile {
 
 }  // namespace butil
 
-#endif  // BASE_FILES_MEMORY_MAPPED_FILE_H_
+#endif  // BUTIL_FILES_MEMORY_MAPPED_FILE_H_

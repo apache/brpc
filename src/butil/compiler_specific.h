@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_COMPILER_SPECIFIC_H_
-#define BASE_COMPILER_SPECIFIC_H_
+#ifndef BUTIL_COMPILER_SPECIFIC_H_
+#define BUTIL_COMPILER_SPECIFIC_H_
 
 #include "butil/build_config.h"
 
@@ -112,13 +112,13 @@
 #define NOINLINE
 #endif
 
-#ifndef BASE_FORCE_INLINE
+#ifndef BUTIL_FORCE_INLINE
 #if defined(COMPILER_MSVC)
-#define BASE_FORCE_INLINE    __forceinline
+#define BUTIL_FORCE_INLINE    __forceinline
 #else
-#define BASE_FORCE_INLINE inline __attribute__((always_inline))
+#define BUTIL_FORCE_INLINE inline __attribute__((always_inline))
 #endif
-#endif  // BASE_FORCE_INLINE
+#endif  // BUTIL_FORCE_INLINE
 
 // Specify memory alignment for structs, classes, etc.
 // Use like:
@@ -272,11 +272,11 @@
 #endif
 
 #ifndef BAIDU_NOEXCEPT
-# if defined(BASE_CXX11_ENABLED)
+# if defined(BUTIL_CXX11_ENABLED)
 #  define BAIDU_NOEXCEPT noexcept
 # else
 #  define BAIDU_NOEXCEPT
 # endif
 #endif
 
-#endif  // BASE_COMPILER_SPECIFIC_H_
+#endif  // BUTIL_COMPILER_SPECIFIC_H_

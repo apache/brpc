@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_TEST_TEST_SWITCHES_H_
-#define BASE_TEST_TEST_SWITCHES_H_
+#ifndef BUTIL_TEST_TEST_SWITCHES_H_
+#define BUTIL_TEST_TEST_SWITCHES_H_
 
 namespace switches {
 
@@ -28,4 +28,4 @@ extern const char kUiTestActionMaxTimeout[];
 
 }  // namespace switches
 
-#endif  // BASE_TEST_TEST_SWITCHES_H_
+#endif  // BUTIL_TEST_TEST_SWITCHES_H_

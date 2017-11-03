@@ -5,8 +5,8 @@
 // This file contains utility functions for dealing with the local
 // filesystem.
 
-#ifndef BASE_FILE_UTIL_H_
-#define BASE_FILE_UTIL_H_
+#ifndef BUTIL_FILE_UTIL_H_
+#define BUTIL_FILE_UTIL_H_
 
 #include "butil/build_config.h"
 
@@ -46,14 +46,14 @@ class Time;
 // Returns an absolute version of a relative path. Returns an empty path on
 // error. On POSIX, this function fails if the path does not exist. This
 // function can result in I/O so it can be slow.
-BASE_EXPORT FilePath MakeAbsoluteFilePath(const FilePath& input);
+BUTIL_EXPORT FilePath MakeAbsoluteFilePath(const FilePath& input);
 
 // Returns the total number of bytes used by all the files under |root_path|.
 // If the path does not exist the function returns 0.
 //
 // This function is implemented using the FileEnumerator class so it is not
 // particularly speedy in any platform.
-BASE_EXPORT int64_t ComputeDirectorySize(const FilePath& root_path);
+BUTIL_EXPORT int64_t ComputeDirectorySize(const FilePath& root_path);
 
 // Deletes the given path, whether it's a file or a directory.
 // If it's a directory, it's perfectly happy to delete all of the
@@ -67,7 +67,7 @@ BASE_EXPORT int64_t ComputeDirectorySize(const FilePath& root_path);
 //
 // WARNING: USING THIS WITH recursive==true IS EQUIVALENT
 //          TO "rm -rf", SO USE WITH CAUTION.
-BASE_EXPORT bool DeleteFile(const FilePath& path, bool recursive);
+BUTIL_EXPORT bool DeleteFile(const FilePath& path, bool recursive);
 
 #if defined(OS_WIN)
 // Schedules to delete the given path, whether it's a file or a directory, until
@@ -75,7 +75,7 @@ BASE_EXPORT bool DeleteFile(const FilePath& path, bool recursive);
 // Note:
 // 1) The file/directory to be deleted should exist in a temp folder.
 // 2) The directory to be deleted must be empty.
-BASE_EXPORT bool DeleteFileAfterReboot(const FilePath& path);
+BUTIL_EXPORT bool DeleteFileAfterReboot(const FilePath& path);
 #endif
 
 // Moves the given path, whether it's a file or a directory.
@@ -83,7 +83,7 @@ BASE_EXPORT bool DeleteFileAfterReboot(const FilePath& path);
 // on different volumes, this will attempt to copy and delete. Returns
 // true for success.
 // This function fails if either path contains traversal components ('..').
-BASE_EXPORT bool Move(const FilePath& from_path, const FilePath& to_path);
+BUTIL_EXPORT bool Move(const FilePath& from_path, const FilePath& to_path);
 
 // Renames file |from_path| to |to_path|. Both paths must be on the same
 // volume, or the function will fail. Destination file will be created
@@ -91,7 +91,7 @@ BASE_EXPORT bool Move(const FilePath& from_path, const FilePath& to_path);
 // temporary files. On Windows it preserves attributes of the target file.
 // Returns true on success, leaving *error unchanged.
 // Returns false on failure and sets *error appropriately, if it is non-NULL.
-BASE_EXPORT bool ReplaceFile(const FilePath& from_path,
+BUTIL_EXPORT bool ReplaceFile(const FilePath& from_path,
                              const FilePath& to_path,
                              File::Error* error);
 
@@ -100,7 +100,7 @@ BASE_EXPORT bool ReplaceFile(const FilePath& from_path,
 //
 // This function keeps the metadata on Windows. The read only bit on Windows is
 // not kept.
-BASE_EXPORT bool CopyFile(const FilePath& from_path, const FilePath& to_path);
+BUTIL_EXPORT bool CopyFile(const FilePath& from_path, const FilePath& to_path);
 
 // Copies the given path, and optionally all subdirectories and their contents
 // as well.
@@ -112,28 +112,28 @@ BASE_EXPORT bool CopyFile(const FilePath& from_path, const FilePath& to_path);
 // applies.
 //
 // If you only need to copy a file use CopyFile, it's faster.
-BASE_EXPORT bool CopyDirectory(const FilePath& from_path,
+BUTIL_EXPORT bool CopyDirectory(const FilePath& from_path,
                                const FilePath& to_path,
                                bool recursive);
 
 // Returns true if the given path exists on the local filesystem,
 // false otherwise.
-BASE_EXPORT bool PathExists(const FilePath& path);
+BUTIL_EXPORT bool PathExists(const FilePath& path);
 
 // Returns true if the given path is writable by the user, false otherwise.
-BASE_EXPORT bool PathIsWritable(const FilePath& path);
+BUTIL_EXPORT bool PathIsWritable(const FilePath& path);
 
 // Returns true if the given path exists and is a directory, false otherwise.
-BASE_EXPORT bool DirectoryExists(const FilePath& path);
+BUTIL_EXPORT bool DirectoryExists(const FilePath& path);
 
 // Returns true if the contents of the two files given are equal, false
 // otherwise.  If either file can't be read, returns false.
-BASE_EXPORT bool ContentsEqual(const FilePath& filename1,
+BUTIL_EXPORT bool ContentsEqual(const FilePath& filename1,
                                const FilePath& filename2);
 
 // Returns true if the contents of the two text files given are equal, false
 // otherwise.  This routine treats "\r\n" and "\n" as equivalent.
-BASE_EXPORT bool TextContentsEqual(const FilePath& filename1,
+BUTIL_EXPORT bool TextContentsEqual(const FilePath& filename1,
                                    const FilePath& filename2);
 
 // Reads the file at |path| into |contents| and returns true on success and
@@ -143,7 +143,7 @@ BASE_EXPORT bool TextContentsEqual(const FilePath& filename1,
 // file before the error occurred.
 // |contents| may be NULL, in which case this function is useful for its side
 // effect of priming the disk cache (could be used for unit tests).
-BASE_EXPORT bool ReadFileToString(const FilePath& path, std::string* contents);
+BUTIL_EXPORT bool ReadFileToString(const FilePath& path, std::string* contents);
 
 // Reads the file at |path| into |contents| and returns true on success and
 // false on error.  For security reasons, a |path| containing path traversal
@@ -154,7 +154,7 @@ BASE_EXPORT bool ReadFileToString(const FilePath& path, std::string* contents);
 // |max_size|.
 // |contents| may be NULL, in which case this function is useful for its side
 // effect of priming the disk cache (could be used for unit tests).
-BASE_EXPORT bool ReadFileToString(const FilePath& path,
+BUTIL_EXPORT bool ReadFileToString(const FilePath& path,
                                   std::string* contents,
                                   size_t max_size);
 
@@ -163,16 +163,16 @@ BASE_EXPORT bool ReadFileToString(const FilePath& path,
 // Read exactly |bytes| bytes from file descriptor |fd|, storing the result
 // in |buffer|. This function is protected against EINTR and partial reads.
 // Returns true iff |bytes| bytes have been successfully read from |fd|.
-BASE_EXPORT bool ReadFromFD(int fd, char* buffer, size_t bytes);
+BUTIL_EXPORT bool ReadFromFD(int fd, char* buffer, size_t bytes);
 
 // Creates a symbolic link at |symlink| pointing to |target|.  Returns
 // false on failure.
-BASE_EXPORT bool CreateSymbolicLink(const FilePath& target,
+BUTIL_EXPORT bool CreateSymbolicLink(const FilePath& target,
                                     const FilePath& symlink);
 
 // Reads the given |symlink| and returns where it points to in |target|.
 // Returns false upon failure.
-BASE_EXPORT bool ReadSymbolicLink(const FilePath& symlink, FilePath* target);
+BUTIL_EXPORT bool ReadSymbolicLink(const FilePath& symlink, FilePath* target);
 
 // Bits and masks of the file permission.
 enum FilePermissionBits {
@@ -195,15 +195,15 @@ enum FilePermissionBits {
 // Reads the permission of the given |path|, storing the file permission
 // bits in |mode|. If |path| is symbolic link, |mode| is the permission of
 // a file which the symlink points to.
-BASE_EXPORT bool GetPosixFilePermissions(const FilePath& path, int* mode);
+BUTIL_EXPORT bool GetPosixFilePermissions(const FilePath& path, int* mode);
 // Sets the permission of the given |path|. If |path| is symbolic link, sets
 // the permission of a file which the symlink points to.
-BASE_EXPORT bool SetPosixFilePermissions(const FilePath& path, int mode);
+BUTIL_EXPORT bool SetPosixFilePermissions(const FilePath& path, int mode);
 
 #endif  // OS_POSIX
 
 // Returns true if the given directory is empty
-BASE_EXPORT bool IsDirectoryEmpty(const FilePath& dir_path);
+BUTIL_EXPORT bool IsDirectoryEmpty(const FilePath& dir_path);
 
 // Get the temporary directory provided by the system.
 //
@@ -211,7 +211,7 @@ BASE_EXPORT bool IsDirectoryEmpty(const FilePath& dir_path);
 // instead of this function. Those variants will ensure that the proper
 // permissions are set so that other users on the system can't edit them while
 // they're open (which can lead to security issues).
-BASE_EXPORT bool GetTempDir(FilePath* path);
+BUTIL_EXPORT bool GetTempDir(FilePath* path);
 
 // Get the home directory. This is more complicated than just getenv("HOME")
 // as it knows to fall back on getpwent() etc.
@@ -219,37 +219,37 @@ BASE_EXPORT bool GetTempDir(FilePath* path);
 // You should not generally call this directly. Instead use DIR_HOME with the
 // path service which will use this function but cache the value.
 // Path service may also override DIR_HOME.
-BASE_EXPORT FilePath GetHomeDir();
+BUTIL_EXPORT FilePath GetHomeDir();
 
 // Creates a temporary file. The full path is placed in |path|, and the
 // function returns true if was successful in creating the file. The file will
 // be empty and all handles closed after this function returns.
-BASE_EXPORT bool CreateTemporaryFile(FilePath* path);
+BUTIL_EXPORT bool CreateTemporaryFile(FilePath* path);
 
 // Same as CreateTemporaryFile but the file is created in |dir|.
-BASE_EXPORT bool CreateTemporaryFileInDir(const FilePath& dir,
+BUTIL_EXPORT bool CreateTemporaryFileInDir(const FilePath& dir,
                                           FilePath* temp_file);
 
 // Create and open a temporary file.  File is opened for read/write.
 // The full path is placed in |path|.
 // Returns a handle to the opened file or NULL if an error occurred.
-BASE_EXPORT FILE* CreateAndOpenTemporaryFile(FilePath* path);
+BUTIL_EXPORT FILE* CreateAndOpenTemporaryFile(FilePath* path);
 
 // Similar to CreateAndOpenTemporaryFile, but the file is created in |dir|.
-BASE_EXPORT FILE* CreateAndOpenTemporaryFileInDir(const FilePath& dir,
+BUTIL_EXPORT FILE* CreateAndOpenTemporaryFileInDir(const FilePath& dir,
                                                   FilePath* path);
 
 // Create a new directory. If prefix is provided, the new directory name is in
 // the format of prefixyyyy.
 // NOTE: prefix is ignored in the POSIX implementation.
 // If success, return true and output the full path of the directory created.
-BASE_EXPORT bool CreateNewTempDirectory(const FilePath::StringType& prefix,
+BUTIL_EXPORT bool CreateNewTempDirectory(const FilePath::StringType& prefix,
                                         FilePath* new_temp_path);
 
 // Create a directory within another directory.
 // Extra characters will be appended to |prefix| to ensure that the
 // new directory does not have the same name as an existing directory.
-BASE_EXPORT bool CreateTemporaryDirInDir(const FilePath& base_dir,
+BUTIL_EXPORT bool CreateTemporaryDirInDir(const FilePath& base_dir,
                                          const FilePath::StringType& prefix,
                                          FilePath* new_dir);
 
@@ -260,19 +260,19 @@ BASE_EXPORT bool CreateTemporaryDirInDir(const FilePath& base_dir,
 // The directory is readable for all the users.
 // Returns true on success, leaving *error unchanged.
 // Returns false on failure and sets *error appropriately, if it is non-NULL.
-BASE_EXPORT bool CreateDirectoryAndGetError(const FilePath& full_path,
+BUTIL_EXPORT bool CreateDirectoryAndGetError(const FilePath& full_path,
                                             File::Error* error);
-BASE_EXPORT bool CreateDirectoryAndGetError(const FilePath& full_path,
+BUTIL_EXPORT bool CreateDirectoryAndGetError(const FilePath& full_path,
                                             File::Error* error,
                                             bool create_parents);
 
 // Backward-compatible convenience method for the above.
-BASE_EXPORT bool CreateDirectory(const FilePath& full_path);
-BASE_EXPORT bool CreateDirectory(const FilePath& full_path, bool create_parents);
+BUTIL_EXPORT bool CreateDirectory(const FilePath& full_path);
+BUTIL_EXPORT bool CreateDirectory(const FilePath& full_path, bool create_parents);
 
 
 // Returns the file size. Returns true on success.
-BASE_EXPORT bool GetFileSize(const FilePath& file_path, int64_t* file_size);
+BUTIL_EXPORT bool GetFileSize(const FilePath& file_path, int64_t* file_size);
 
 // Sets |real_path| to |path| with symbolic links and junctions expanded.
 // On windows, make sure the path starts with a lettered drive.
@@ -280,79 +280,79 @@ BASE_EXPORT bool GetFileSize(const FilePath& file_path, int64_t* file_size);
 // a directory or to a nonexistent path.  On windows, this function will
 // fail if |path| is a junction or symlink that points to an empty file,
 // or if |real_path| would be longer than MAX_PATH characters.
-BASE_EXPORT bool NormalizeFilePath(const FilePath& path, FilePath* real_path);
+BUTIL_EXPORT bool NormalizeFilePath(const FilePath& path, FilePath* real_path);
 
 #if defined(OS_WIN)
 
 // Given a path in NT native form ("\Device\HarddiskVolumeXX\..."),
 // return in |drive_letter_path| the equivalent path that starts with
 // a drive letter ("C:\...").  Return false if no such path exists.
-BASE_EXPORT bool DevicePathToDriveLetterPath(const FilePath& device_path,
+BUTIL_EXPORT bool DevicePathToDriveLetterPath(const FilePath& device_path,
                                              FilePath* drive_letter_path);
 
 // Given an existing file in |path|, set |real_path| to the path
 // in native NT format, of the form "\Device\HarddiskVolumeXX\..".
 // Returns false if the path can not be found. Empty files cannot
 // be resolved with this function.
-BASE_EXPORT bool NormalizeToNativeFilePath(const FilePath& path,
+BUTIL_EXPORT bool NormalizeToNativeFilePath(const FilePath& path,
                                            FilePath* nt_path);
 #endif
 
 // This function will return if the given file is a symlink or not.
-BASE_EXPORT bool IsLink(const FilePath& file_path);
+BUTIL_EXPORT bool IsLink(const FilePath& file_path);
 
 // Returns information about the given file path.
-BASE_EXPORT bool GetFileInfo(const FilePath& file_path, File::Info* info);
+BUTIL_EXPORT bool GetFileInfo(const FilePath& file_path, File::Info* info);
 
 // Sets the time of the last access and the time of the last modification.
-BASE_EXPORT bool TouchFile(const FilePath& path,
+BUTIL_EXPORT bool TouchFile(const FilePath& path,
                            const Time& last_accessed,
                            const Time& last_modified);
 
 // Wrapper for fopen-like calls. Returns non-NULL FILE* on success.
-BASE_EXPORT FILE* OpenFile(const FilePath& filename, const char* mode);
+BUTIL_EXPORT FILE* OpenFile(const FilePath& filename, const char* mode);
 
 // Closes file opened by OpenFile. Returns true on success.
-BASE_EXPORT bool CloseFile(FILE* file);
+BUTIL_EXPORT bool CloseFile(FILE* file);
 
 // Associates a standard FILE stream with an existing File. Note that this
 // functions take ownership of the existing File.
-BASE_EXPORT FILE* FileToFILE(File file, const char* mode);
+BUTIL_EXPORT FILE* FileToFILE(File file, const char* mode);
 
 // Truncates an open file to end at the location of the current file pointer.
 // This is a cross-platform analog to Windows' SetEndOfFile() function.
-BASE_EXPORT bool TruncateFile(FILE* file);
+BUTIL_EXPORT bool TruncateFile(FILE* file);
 
 // Reads at most the given number of bytes from the file into the buffer.
 // Returns the number of read bytes, or -1 on error.
-BASE_EXPORT int ReadFile(const FilePath& filename, char* data, int max_size);
+BUTIL_EXPORT int ReadFile(const FilePath& filename, char* data, int max_size);
 
 // Writes the given buffer into the file, overwriting any data that was
 // previously there.  Returns the number of bytes written, or -1 on error.
-BASE_EXPORT int WriteFile(const FilePath& filename, const char* data,
+BUTIL_EXPORT int WriteFile(const FilePath& filename, const char* data,
                           int size);
 
 #if defined(OS_POSIX)
 // Append the data to |fd|. Does not close |fd| when done.
-BASE_EXPORT int WriteFileDescriptor(const int fd, const char* data, int size);
+BUTIL_EXPORT int WriteFileDescriptor(const int fd, const char* data, int size);
 #endif
 
 // Append the given buffer into the file. Returns the number of bytes written,
 // or -1 on error.
-BASE_EXPORT int AppendToFile(const FilePath& filename,
+BUTIL_EXPORT int AppendToFile(const FilePath& filename,
                              const char* data, int size);
 
 // Gets the current working directory for the process.
-BASE_EXPORT bool GetCurrentDirectory(FilePath* path);
+BUTIL_EXPORT bool GetCurrentDirectory(FilePath* path);
 
 // Sets the current working directory for the process.
-BASE_EXPORT bool SetCurrentDirectory(const FilePath& path);
+BUTIL_EXPORT bool SetCurrentDirectory(const FilePath& path);
 
 // Attempts to find a number that can be appended to the |path| to make it
 // unique. If |path| does not exist, 0 is returned.  If it fails to find such
 // a number, -1 is returned. If |suffix| is not empty, also checks the
 // existence of it with the given suffix.
-BASE_EXPORT int GetUniquePathNumber(const FilePath& path,
+BUTIL_EXPORT int GetUniquePathNumber(const FilePath& path,
                                     const FilePath::StringType& suffix);
 
 #if defined(OS_POSIX)
@@ -367,7 +367,7 @@ BASE_EXPORT int GetUniquePathNumber(const FilePath& path,
 // * Are not symbolic links.
 // This is useful for checking that a config file is administrator-controlled.
 // |base| must contain |path|.
-BASE_EXPORT bool VerifyPathControlledByUser(const butil::FilePath& base,
+BUTIL_EXPORT bool VerifyPathControlledByUser(const butil::FilePath& base,
                                             const butil::FilePath& path,
                                             uid_t owner_uid,
                                             const std::set<gid_t>& group_gids);
@@ -381,12 +381,12 @@ BASE_EXPORT bool VerifyPathControlledByUser(const butil::FilePath& base,
 // the filesystem, are owned by the superuser, controlled by the group
 // "admin", are not writable by all users, and contain no symbolic links.
 // Will return false if |path| does not exist.
-BASE_EXPORT bool VerifyPathControlledByAdmin(const butil::FilePath& path);
+BUTIL_EXPORT bool VerifyPathControlledByAdmin(const butil::FilePath& path);
 #endif  // defined(OS_MACOSX) && !defined(OS_IOS)
 
 // Returns the maximum length of path component on the volume containing
 // the directory |path|, in the number of FilePath::CharType, or -1 on failure.
-BASE_EXPORT int GetMaximumPathComponentLength(const butil::FilePath& path);
+BUTIL_EXPORT int GetMaximumPathComponentLength(const butil::FilePath& path);
 
 #if defined(OS_LINUX)
 // Broad categories of file systems as returned by statfs() on Linux.
@@ -405,7 +405,7 @@ enum FileSystemType {
 
 // Attempts determine the FileSystemType for |path|.
 // Returns false if |path| doesn't exist.
-BASE_EXPORT bool GetFileSystemType(const FilePath& path, FileSystemType* type);
+BUTIL_EXPORT bool GetFileSystemType(const FilePath& path, FileSystemType* type);
 #endif
 
 #if defined(OS_POSIX)
@@ -414,7 +414,7 @@ BASE_EXPORT bool GetFileSystemType(const FilePath& path, FileSystemType* type);
 // depends on how /dev/shmem was mounted. As a result, you must supply whether
 // you intend to create executable shmem segments so this function can find
 // an appropriate location.
-BASE_EXPORT bool GetShmemTempDir(bool executable, FilePath* path);
+BUTIL_EXPORT bool GetShmemTempDir(bool executable, FilePath* path);
 #endif
 
 }  // namespace butil
@@ -443,12 +443,12 @@ namespace internal {
 
 // Same as Move but allows paths with traversal components.
 // Use only with extreme care.
-BASE_EXPORT bool MoveUnsafe(const FilePath& from_path,
+BUTIL_EXPORT bool MoveUnsafe(const FilePath& from_path,
                             const FilePath& to_path);
 
 // Same as CopyFile but allows paths with traversal components.
 // Use only with extreme care.
-BASE_EXPORT bool CopyFileUnsafe(const FilePath& from_path,
+BUTIL_EXPORT bool CopyFileUnsafe(const FilePath& from_path,
                                 const FilePath& to_path);
 
 #if defined(OS_WIN)
@@ -456,11 +456,11 @@ BASE_EXPORT bool CopyFileUnsafe(const FilePath& from_path,
 // Returns true if all operations succeed.
 // This function simulates Move(), but unlike Move() it works across volumes.
 // This function is not transactional.
-BASE_EXPORT bool CopyAndDeleteDirectory(const FilePath& from_path,
+BUTIL_EXPORT bool CopyAndDeleteDirectory(const FilePath& from_path,
                                         const FilePath& to_path);
 #endif  // defined(OS_WIN)
 
 }  // namespace internal
 }  // namespace butil
 
-#endif  // BASE_FILE_UTIL_H_
+#endif  // BUTIL_FILE_UTIL_H_

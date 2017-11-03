@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_SAFE_MATH_H_
-#define BASE_SAFE_MATH_H_
+#ifndef BUTIL_SAFE_MATH_H_
+#define BUTIL_SAFE_MATH_H_
 
 #include "butil/numerics/safe_math_impl.h"
 
@@ -191,7 +191,7 @@ class CheckedNumeric {
 //  * We skip range checks for floating points.
 //  * We skip range checks for destination integers with sufficient range.
 // TODO(jschuh): extract these out into templates.
-#define BASE_NUMERIC_ARITHMETIC_OPERATORS(NAME, OP, COMPOUND_OP)              \
+#define BUTIL_NUMERIC_ARITHMETIC_OPERATORS(NAME, OP, COMPOUND_OP)              \
   /* Binary arithmetic operator for CheckedNumerics of the same type. */      \
   template <typename T>                                                       \
   CheckedNumeric<typename ArithmeticPromotion<T>::type> operator OP(          \
@@ -254,13 +254,13 @@ class CheckedNumeric {
         OP CheckedNumeric<Promotion>::cast(rhs);                              \
   }
 
-BASE_NUMERIC_ARITHMETIC_OPERATORS(Add, +, += )
-BASE_NUMERIC_ARITHMETIC_OPERATORS(Sub, -, -= )
-BASE_NUMERIC_ARITHMETIC_OPERATORS(Mul, *, *= )
-BASE_NUMERIC_ARITHMETIC_OPERATORS(Div, /, /= )
-BASE_NUMERIC_ARITHMETIC_OPERATORS(Mod, %, %= )
+BUTIL_NUMERIC_ARITHMETIC_OPERATORS(Add, +, += )
+BUTIL_NUMERIC_ARITHMETIC_OPERATORS(Sub, -, -= )
+BUTIL_NUMERIC_ARITHMETIC_OPERATORS(Mul, *, *= )
+BUTIL_NUMERIC_ARITHMETIC_OPERATORS(Div, /, /= )
+BUTIL_NUMERIC_ARITHMETIC_OPERATORS(Mod, %, %= )
 
-#undef BASE_NUMERIC_ARITHMETIC_OPERATORS
+#undef BUTIL_NUMERIC_ARITHMETIC_OPERATORS
 
 }  // namespace internal
 
@@ -268,4 +268,4 @@ using internal::CheckedNumeric;
 
 }  // namespace butil
 
-#endif  // BASE_SAFE_MATH_H_
+#endif  // BUTIL_SAFE_MATH_H_

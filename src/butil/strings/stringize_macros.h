@@ -6,8 +6,8 @@
 // symbols (or their output) and manipulating preprocessor symbols
 // that define strings.
 
-#ifndef BASE_STRINGS_STRINGIZE_MACROS_H_
-#define BASE_STRINGS_STRINGIZE_MACROS_H_
+#ifndef BUTIL_STRINGS_STRINGIZE_MACROS_H_
+#define BUTIL_STRINGS_STRINGIZE_MACROS_H_
 
 #include "butil/build_config.h"
 
@@ -28,4 +28,4 @@
 //   STRINGIZE(B(y)) produces "myobj->FunctionCall(y)"
 #define STRINGIZE(x) STRINGIZE_NO_EXPANSION(x)
 
-#endif  // BASE_STRINGS_STRINGIZE_MACROS_H_
+#endif  // BUTIL_STRINGS_STRINGIZE_MACROS_H_

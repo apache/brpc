@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_DEBUG_CRASH_LOGGING_H_
-#define BASE_DEBUG_CRASH_LOGGING_H_
+#ifndef BUTIL_DEBUG_CRASH_LOGGING_H_
+#define BUTIL_DEBUG_CRASH_LOGGING_H_
 
 #include <string>
 #include <vector>
@@ -25,24 +25,24 @@ class StackTrace;
 
 // Set or clear a specific key-value pair from the crash metadata. Keys and
 // values are terminated at the null byte.
-BASE_EXPORT void SetCrashKeyValue(const butil::StringPiece& key,
+BUTIL_EXPORT void SetCrashKeyValue(const butil::StringPiece& key,
                                   const butil::StringPiece& value);
-BASE_EXPORT void ClearCrashKey(const butil::StringPiece& key);
+BUTIL_EXPORT void ClearCrashKey(const butil::StringPiece& key);
 
 // Records the given StackTrace into a crash key.
-BASE_EXPORT void SetCrashKeyToStackTrace(const butil::StringPiece& key,
+BUTIL_EXPORT void SetCrashKeyToStackTrace(const butil::StringPiece& key,
                                          const StackTrace& trace);
 
 // Formats |count| instruction pointers from |addresses| using %p and
 // sets the resulting string as a value for crash key |key|. A maximum of 23
 // items will be encoded, since breakpad limits values to 255 bytes.
-BASE_EXPORT void SetCrashKeyFromAddresses(const butil::StringPiece& key,
+BUTIL_EXPORT void SetCrashKeyFromAddresses(const butil::StringPiece& key,
                                           const void* const* addresses,
                                           size_t count);
 
 // A scoper that sets the specified key to value for the lifetime of the
 // object, and clears it on destruction.
-class BASE_EXPORT ScopedCrashKey {
+class BUTIL_EXPORT ScopedCrashKey {
  public:
   ScopedCrashKey(const butil::StringPiece& key, const butil::StringPiece& value);
   ~ScopedCrashKey();
@@ -54,7 +54,7 @@ class BASE_EXPORT ScopedCrashKey {
 };
 
 // Before setting values for a key, all the keys must be registered.
-struct BASE_EXPORT CrashKey {
+struct BUTIL_EXPORT CrashKey {
   // The name of the crash key, used in the above functions.
   const char* key_name;
 
@@ -70,11 +70,11 @@ struct BASE_EXPORT CrashKey {
 // the crash reporting implementation should allocate space for the registered
 // crash keys. |chunk_max_length| is the maximum size that a value in a single
 // chunk can be.
-BASE_EXPORT size_t InitCrashKeys(const CrashKey* const keys, size_t count,
+BUTIL_EXPORT size_t InitCrashKeys(const CrashKey* const keys, size_t count,
                                  size_t chunk_max_length);
 
 // Returns the correspnding crash key object or NULL for a given key.
-BASE_EXPORT const CrashKey* LookupCrashKey(const butil::StringPiece& key);
+BUTIL_EXPORT const CrashKey* LookupCrashKey(const butil::StringPiece& key);
 
 // In the platform crash reporting implementation, these functions set and
 // clear the NUL-termianted key-value pairs.
@@ -84,21 +84,21 @@ typedef void (*ClearCrashKeyValueFuncT)(const butil::StringPiece&);
 
 // Sets the function pointers that are used to integrate with the platform-
 // specific crash reporting libraries.
-BASE_EXPORT void SetCrashKeyReportingFunctions(
+BUTIL_EXPORT void SetCrashKeyReportingFunctions(
     SetCrashKeyValueFuncT set_key_func,
     ClearCrashKeyValueFuncT clear_key_func);
 
 // Helper function that breaks up a value according to the parameters
 // specified by the crash key object.
-BASE_EXPORT std::vector<std::string> ChunkCrashKeyValue(
+BUTIL_EXPORT std::vector<std::string> ChunkCrashKeyValue(
     const CrashKey& crash_key,
     const butil::StringPiece& value,
     size_t chunk_max_length);
 
 // Resets the crash key system so it can be reinitialized. For testing only.
-BASE_EXPORT void ResetCrashLoggingForTesting();
+BUTIL_EXPORT void ResetCrashLoggingForTesting();
 
 }  // namespace debug
 }  // namespace butil
 
-#endif  // BASE_DEBUG_CRASH_LOGGING_H_
+#endif  // BUTIL_DEBUG_CRASH_LOGGING_H_

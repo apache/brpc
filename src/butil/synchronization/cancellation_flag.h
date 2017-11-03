@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_SYNCHRONIZATION_CANCELLATION_FLAG_H_
-#define BASE_SYNCHRONIZATION_CANCELLATION_FLAG_H_
+#ifndef BUTIL_SYNCHRONIZATION_CANCELLATION_FLAG_H_
+#define BUTIL_SYNCHRONIZATION_CANCELLATION_FLAG_H_
 
 #include "butil/base_export.h"
 #include "butil/atomicops.h"
@@ -16,7 +16,7 @@ namespace butil {
 // is thread-safe.
 //
 // This class IS NOT intended for synchronization between threads.
-class BASE_EXPORT CancellationFlag {
+class BUTIL_EXPORT CancellationFlag {
  public:
   CancellationFlag() : flag_(false) {
 #if !defined(NDEBUG)
@@ -40,4 +40,4 @@ class BASE_EXPORT CancellationFlag {
 
 }  // namespace butil
 
-#endif  // BASE_SYNCHRONIZATION_CANCELLATION_FLAG_H_
+#endif  // BUTIL_SYNCHRONIZATION_CANCELLATION_FLAG_H_

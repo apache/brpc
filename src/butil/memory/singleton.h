@@ -16,8 +16,8 @@
 // and ideally a leaf dependency. Singletons get problematic when they attempt
 // to do too much in their destructor or have circular dependencies.
 
-#ifndef BASE_MEMORY_SINGLETON_H_
-#define BASE_MEMORY_SINGLETON_H_
+#ifndef BUTIL_MEMORY_SINGLETON_H_
+#define BUTIL_MEMORY_SINGLETON_H_
 
 #include "butil/at_exit.h"
 #include "butil/atomicops.h"
@@ -35,7 +35,7 @@ static const subtle::AtomicWord kBeingCreatedMarker = 1;
 
 // We pull out some of the functionality into a non-templated function, so that
 // we can implement the more complicated pieces out of line in the .cc file.
-BASE_EXPORT subtle::AtomicWord WaitForInstance(subtle::AtomicWord* instance);
+BUTIL_EXPORT subtle::AtomicWord WaitForInstance(subtle::AtomicWord* instance);
 
 }  // namespace internal
 }  // namespace butil
@@ -297,4 +297,4 @@ template <typename Type, typename Traits, typename DifferentiatingType>
 butil::subtle::AtomicWord Singleton<Type, Traits, DifferentiatingType>::
     instance_ = 0;
 
-#endif  // BASE_MEMORY_SINGLETON_H_
+#endif  // BUTIL_MEMORY_SINGLETON_H_

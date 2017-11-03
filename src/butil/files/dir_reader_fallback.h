@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_FILES_DIR_READER_FALLBACK_H_
-#define BASE_FILES_DIR_READER_FALLBACK_H_
+#ifndef BUTIL_FILES_DIR_READER_FALLBACK_H_
+#define BUTIL_FILES_DIR_READER_FALLBACK_H_
 
 namespace butil {
 
@@ -32,4 +32,4 @@ class DirReaderFallback {
 
 }  // namespace butil
 
-#endif  // BASE_FILES_DIR_READER_FALLBACK_H_
+#endif  // BUTIL_FILES_DIR_READER_FALLBACK_H_

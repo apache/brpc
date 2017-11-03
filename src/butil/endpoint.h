@@ -191,7 +191,7 @@ inline std::ostream& operator<<(std::ostream& os, const EndPointStr& ep_str) {
 }  // namespace butil
 
 
-namespace BASE_HASH_NAMESPACE {
+namespace BUTIL_HASH_NAMESPACE {
 
 // Implement methods for hashing a pair of integers, so they can be used as
 // keys in STL containers.

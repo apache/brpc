@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Thu Nov 22 13:57:56 CST 2012
 
-#ifndef BASE_IOBUF_H
-#define BASE_IOBUF_H
+#ifndef BUTIL_IOBUF_H
+#define BUTIL_IOBUF_H
 
 #include <sys/uio.h>                             // iovec
 #include <stdint.h>                              // uint32_t
@@ -669,4 +669,4 @@ inline void swap(butil::IOBuf& a, butil::IOBuf& b) {
 
 #include "butil/iobuf_inl.h"
 
-#endif  // BASE_IOBUF_H
+#endif  // BUTIL_IOBUF_H

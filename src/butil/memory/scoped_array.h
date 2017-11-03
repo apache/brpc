@@ -4,8 +4,8 @@
 // Author: CHEN Feng <chen3feng@gmail.com>
 // Created: 2013-03-02
 
-#ifndef BASE_SCOPED_ARRAY_H
-#define BASE_SCOPED_ARRAY_H
+#ifndef BUTIL_SCOPED_ARRAY_H
+#define BUTIL_SCOPED_ARRAY_H
 
 #include <assert.h>
 #include <stddef.h>
@@ -110,4 +110,4 @@ private:
 
 } // namespace butil
 
-#endif // BASE_SCOPED_ARRAY_H
+#endif // BUTIL_SCOPED_ARRAY_H

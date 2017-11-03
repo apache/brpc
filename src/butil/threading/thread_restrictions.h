@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_THREADING_THREAD_RESTRICTIONS_H_
-#define BASE_THREADING_THREAD_RESTRICTIONS_H_
+#ifndef BUTIL_THREADING_THREAD_RESTRICTIONS_H_
+#define BUTIL_THREADING_THREAD_RESTRICTIONS_H_
 
 #include "butil/base_export.h"
 #include "butil/basictypes.h"
@@ -109,11 +109,11 @@ class ThreadTestHelper;
 // only calls other functions in Chrome and not fopen(), you should go
 // add the AssertIOAllowed checks in the helper functions.
 
-class BASE_EXPORT ThreadRestrictions {
+class BUTIL_EXPORT ThreadRestrictions {
  public:
   // Constructing a ScopedAllowIO temporarily allows IO for the current
   // thread.  Doing this is almost certainly always incorrect.
-  class BASE_EXPORT ScopedAllowIO {
+  class BUTIL_EXPORT ScopedAllowIO {
    public:
     ScopedAllowIO() { previous_value_ = SetIOAllowed(true); }
     ~ScopedAllowIO() { SetIOAllowed(previous_value_); }
@@ -126,7 +126,7 @@ class BASE_EXPORT ThreadRestrictions {
 
   // Constructing a ScopedAllowSingleton temporarily allows accessing for the
   // current thread.  Doing this is almost always incorrect.
-  class BASE_EXPORT ScopedAllowSingleton {
+  class BUTIL_EXPORT ScopedAllowSingleton {
    public:
     ScopedAllowSingleton() { previous_value_ = SetSingletonAllowed(true); }
     ~ScopedAllowSingleton() { SetSingletonAllowed(previous_value_); }
@@ -236,7 +236,7 @@ public:
   // thread.  Doing this is almost always incorrect, which is why we limit who
   // can use this through friend. If you find yourself needing to use this, find
   // another way. Talk to jam or brettw.
-  class BASE_EXPORT ScopedAllowWait {
+  class BUTIL_EXPORT ScopedAllowWait {
    public:
     ScopedAllowWait() { previous_value_ = SetWaitAllowed(true); }
     ~ScopedAllowWait() { SetWaitAllowed(previous_value_); }
@@ -254,4 +254,4 @@ private:
 
 }  // namespace butil
 
-#endif  // BASE_THREADING_THREAD_RESTRICTIONS_H_
+#endif  // BUTIL_THREADING_THREAD_RESTRICTIONS_H_

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_FILES_SCOPED_TEMP_DIR_H_
-#define BASE_FILES_SCOPED_TEMP_DIR_H_
+#ifndef BUTIL_FILES_SCOPED_TEMP_DIR_H_
+#define BUTIL_FILES_SCOPED_TEMP_DIR_H_
 
 // An object representing a temporary / scratch directory that should be cleaned
 // up (recursively) when this object goes out of scope.  Note that since
@@ -20,7 +20,7 @@
 
 namespace butil {
 
-class BASE_EXPORT ScopedTempDir {
+class BUTIL_EXPORT ScopedTempDir {
  public:
   // No directory is owned/created initially.
   ScopedTempDir();
@@ -59,4 +59,4 @@ class BASE_EXPORT ScopedTempDir {
 
 }  // namespace butil
 
-#endif  // BASE_FILES_SCOPED_TEMP_DIR_H_
+#endif  // BUTIL_FILES_SCOPED_TEMP_DIR_H_

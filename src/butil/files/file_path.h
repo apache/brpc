@@ -99,8 +99,8 @@
 //    paths (sometimes)?", available at:
 //    http://blogs.msdn.com/oldnewthing/archive/2005/11/22/495740.aspx
 
-#ifndef BASE_FILES_FILE_PATH_H_
-#define BASE_FILES_FILE_PATH_H_
+#ifndef BUTIL_FILES_FILE_PATH_H_
+#define BUTIL_FILES_FILE_PATH_H_
 
 #include <stddef.h>
 #include <string>
@@ -126,7 +126,7 @@ namespace butil {
 
 // An abstraction to isolate users from the differences between native
 // pathnames on different platforms.
-class BASE_EXPORT FilePath {
+class BUTIL_EXPORT FilePath {
  public:
 #if defined(OS_POSIX)
   // On most platforms, native pathnames are char arrays, and the encoding
@@ -430,7 +430,7 @@ class BASE_EXPORT FilePath {
 }  // namespace butil
 
 // This is required by googletest to print a readable output on test failures.
-BASE_EXPORT extern void PrintTo(const butil::FilePath& path, std::ostream* out);
+BUTIL_EXPORT extern void PrintTo(const butil::FilePath& path, std::ostream* out);
 
 // Macros for string literal initialization of FilePath::CharType[], and for
 // using a FilePath::CharType[] in a printf-style format string.
@@ -446,7 +446,7 @@ BASE_EXPORT extern void PrintTo(const butil::FilePath& path, std::ostream* out);
 
 // Provide a hash function so that hash_sets and maps can contain FilePath
 // objects.
-namespace BASE_HASH_NAMESPACE {
+namespace BUTIL_HASH_NAMESPACE {
 #if defined(COMPILER_GCC)
 
 template<>
@@ -464,6 +464,6 @@ inline size_t hash_value(const butil::FilePath& f) {
 
 #endif  // COMPILER
 
-}  // namespace BASE_HASH_NAMESPACE
+}  // namespace BUTIL_HASH_NAMESPACE
 
-#endif  // BASE_FILES_FILE_PATH_H_
+#endif  // BUTIL_FILES_FILE_PATH_H_

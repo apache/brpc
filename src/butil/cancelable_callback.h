@@ -39,8 +39,8 @@
 // timeout.Cancel();  // Hopefully this is hit before the timeout callback runs.
 //
 
-#ifndef BASE_CANCELABLE_CALLBACK_H_
-#define BASE_CANCELABLE_CALLBACK_H_
+#ifndef BUTIL_CANCELABLE_CALLBACK_H_
+#define BUTIL_CANCELABLE_CALLBACK_H_
 
 #include "butil/base_export.h"
 #include "butil/bind.h"
@@ -269,4 +269,4 @@ typedef CancelableCallback<void(void)> CancelableClosure;
 
 }  // namespace butil
 
-#endif  // BASE_CANCELABLE_CALLBACK_H_
+#endif  // BUTIL_CANCELABLE_CALLBACK_H_

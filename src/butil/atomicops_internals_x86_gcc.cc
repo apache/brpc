@@ -14,7 +14,7 @@
 // depends on structs that are defined in that file.  If atomicops.h
 // doesn't sub-include that file, then we aren't needed, and shouldn't
 // try to do anything.
-#ifdef BASE_ATOMICOPS_INTERNALS_X86_GCC_H_
+#ifdef BUTIL_ATOMICOPS_INTERNALS_X86_GCC_H_
 
 // Inline cpuid instruction.  In PIC compilations, %ebx contains the address
 // of the global offset table.  To avoid breaking such executables, this code
@@ -97,4 +97,4 @@ AtomicOpsx86Initializer g_initer;
 
 #endif  // if x86
 
-#endif  // ifdef BASE_ATOMICOPS_INTERNALS_X86_GCC_H_
+#endif  // ifdef BUTIL_ATOMICOPS_INTERNALS_X86_GCC_H_

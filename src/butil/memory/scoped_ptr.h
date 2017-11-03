@@ -84,8 +84,8 @@
 // Note that PassAs<>() is implemented only for scoped_ptr<T>, but not for
 // scoped_ptr<T[]>. This is because casting array pointers may not be safe.
 
-#ifndef BASE_MEMORY_SCOPED_PTR_H_
-#define BASE_MEMORY_SCOPED_PTR_H_
+#ifndef BUTIL_MEMORY_SCOPED_PTR_H_
+#define BUTIL_MEMORY_SCOPED_PTR_H_
 
 // This is an implementation designed to match the anticipated future TR2
 // implementation of the scoped_ptr class.
@@ -578,4 +578,4 @@ scoped_ptr<T> make_scoped_ptr(T* ptr) {
   return scoped_ptr<T>(ptr);
 }
 
-#endif  // BASE_MEMORY_SCOPED_PTR_H_
+#endif  // BUTIL_MEMORY_SCOPED_PTR_H_

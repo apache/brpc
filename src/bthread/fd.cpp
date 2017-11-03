@@ -93,7 +93,7 @@ typedef butil::atomic<int> EpollButex;
 static EpollButex* const CLOSING_GUARD = (EpollButex*)(intptr_t)-1L;
 
 #ifndef NDEBUG
-butil::static_atomic<int> break_nums = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<int> break_nums = BUTIL_STATIC_ATOMIC_INIT(0);
 #endif
 
 // Able to address 67108864 file descriptors, should be enough.

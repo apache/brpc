@@ -168,7 +168,7 @@ inline uint32_t fmix32 ( uint32_t h ) {
 }
 
 TEST_F(EventDispatcherTest, dispatch_tasks) {
-#ifdef BASE_RESOURCE_POOL_NEED_FREE_ITEM_NUM
+#ifdef BUTIL_RESOURCE_POOL_NEED_FREE_ITEM_NUM
     const butil::ResourcePoolInfo old_info =
         butil::describe_resources<brpc::Socket>();
 #endif
@@ -247,7 +247,7 @@ TEST_F(EventDispatcherTest, dispatch_tasks) {
     const butil::ResourcePoolInfo info
         = butil::describe_resources<brpc::Socket>();
     LOG(INFO) << info;
-#ifdef BASE_RESOURCE_POOL_NEED_FREE_ITEM_NUM
+#ifdef BUTIL_RESOURCE_POOL_NEED_FREE_ITEM_NUM
     ASSERT_EQ(NCLIENT, info.free_item_num - old_info.free_item_num);
 #endif
 }

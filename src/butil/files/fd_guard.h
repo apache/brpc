@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
-#ifndef BASE_FD_GUARD_H
-#define BASE_FD_GUARD_H
+#ifndef BUTIL_FD_GUARD_H
+#define BUTIL_FD_GUARD_H
 
 #include "butil/files/scoped_file.h"
 
@@ -30,4 +30,4 @@ public:
 }  // files
 }  // base
 
-#endif  // BASE_FD_GUARD_H
+#endif  // BUTIL_FD_GUARD_H

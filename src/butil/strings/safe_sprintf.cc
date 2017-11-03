@@ -111,7 +111,7 @@ class Buffer {
 // This is because static_assert only works with compile-time constants, but
 // mac uses libstdc++4.2, android uses stlport and gcc doesn't support keyword
 // constexpr until 4.6, which all don't mark numeric_limits::max() as constexp.
-#if defined(BASE_CXX11_ENABLED) \
+#if defined(BUTIL_CXX11_ENABLED) \
     && !(defined(__GNUC__) && __GNUC__ * 10000 + __GNUC_MINOR__ * 100 < 40600) \
     && !defined(OS_ANDROID) && !defined(OS_MACOSX) && !defined(OS_IOS)
     BAIDU_CASSERT(kSSizeMaxConst == \

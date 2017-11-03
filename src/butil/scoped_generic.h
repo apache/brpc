@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_SCOPED_GENERIC_H_
-#define BASE_SCOPED_GENERIC_H_
+#ifndef BUTIL_SCOPED_GENERIC_H_
+#define BUTIL_SCOPED_GENERIC_H_
 
 #include <stdlib.h>
 
@@ -173,4 +173,4 @@ bool operator!=(const T& value, const ScopedGeneric<T, Traits>& scoped) {
 
 }  // namespace butil
 
-#endif  // BASE_SCOPED_GENERIC_H_
+#endif  // BUTIL_SCOPED_GENERIC_H_

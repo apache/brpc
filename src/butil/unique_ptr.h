@@ -3,7 +3,7 @@
 
 #include "butil/build_config.h"
 
-#if defined(BASE_CXX11_ENABLED)
+#if defined(BUTIL_CXX11_ENABLED)
 
 #include <memory>                                        // std::unique_ptr
 
@@ -468,5 +468,5 @@ operator>=(const unique_ptr<T1, D1>& x, const unique_ptr<T2, D2>& y) {
 
 }  // namespace std
 
-#endif  // BASE_CXX11_ENABLED
+#endif  // BUTIL_CXX11_ENABLED
 #endif  // BUTIL_UNIQUE_PTR_H
