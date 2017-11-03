@@ -72,4 +72,11 @@ if [ -z "$DO_RUN" ]; then
     EXTRA_ARGS="--dry-run $EXTRA_ARGS"
     echo "*** This is a dry-run. To really apply, run: DO_RUN=1 tools/patch_from_svn $1"
 fi
-patch -p0 -u $EXTRA_ARGS < $MODIFIED_PATCHFILE
+patch -p0 -u -l $EXTRA_ARGS < $MODIFIED_PATCHFILE
+if [ ! -z "$DO_RUN" ]; then
+    REJ_FILES=`find . -name "*.rej"`
+    if [ ! -z "$REJ_FILES" ]; then
+        echo "==== The patching is not done yet! Apply following rej files manually ===="
+        echo $REJ_FILES
+    fi
+fi
