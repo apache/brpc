@@ -15,8 +15,7 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Fri Aug 29 15:01:15 CST 2014
 
-#include <syscall.h>                         // SYS_clock_gettime
-#include <unistd.h>                          // syscall
+#include <unistd.h>                          // close
 #include <sys/types.h>                       // open
 #include <sys/stat.h>                        // ^
 #include <fcntl.h>                           // ^
