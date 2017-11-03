@@ -45,6 +45,7 @@ namespace brpc {
 class Acceptor;
 class MethodStatus;
 class NsheadService;
+class ThriftFramedService;
 class SimpleDataPool;
 class MongoServiceAdaptor;
 class RestfulMap;
@@ -138,6 +139,11 @@ struct ServerOptions {
     // Owned by Server and deleted in server's destructor
     // Default: NULL
     NsheadService* nshead_service;
+
+    // Process requests in format of thrift_binary_head_t + blob.
+    // Owned by Server and deleted in server's destructor
+    // Default: NULL
+    ThriftFramedService* thrift_service;
 
     // Adaptor for Mongo protocol, check src/brpc/mongo_service_adaptor.h for details
     // The adaptor will not be deleted by server

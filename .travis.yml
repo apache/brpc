@@ -11,8 +11,9 @@ env:
 - PURPOSE=unittest
 
 install:
-- sudo apt-get install -qq realpath libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev
+- sudo apt-get install -qq realpath libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev libboost-dev libssl-dev
 - sudo apt-get install libgtest-dev && cd /usr/src/gtest && sudo env "PATH=$PATH" cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
+- wget http://www.us.apache.org/dist/thrift/0.9.3/thrift-0.9.3.tar.gz && tar -xvf thrift-0.9.3.tar.gz && cd thrift-0.9.3/ &&  ./configure --prefix=/usr && make && sudo make install
 
 script:
 - sh build_in_travis_ci.sh

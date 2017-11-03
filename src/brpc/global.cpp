@@ -57,6 +57,7 @@
 #include "brpc/policy/nshead_mcpack_protocol.h"
 #include "brpc/policy/rtmp_protocol.h"
 #include "brpc/policy/esp_protocol.h"
+#include "brpc/policy/thrift_protocol.h"
 
 #include "brpc/input_messenger.h"     // get_or_new_client_side_messenger
 #include "brpc/socket_map.h"          // SocketMapList
@@ -418,6 +419,15 @@ static void GlobalInitializeOrDieImpl() {
                                  VerifyNsheadRequest, NULL, NULL,
                                  CONNECTION_TYPE_POOLED_AND_SHORT, "nshead" };
     if (RegisterProtocol(PROTOCOL_NSHEAD, nshead_protocol) != 0) {
+        exit(1);
+    }
+
+    Protocol thrift_binary_protocol = { ParseThriftBinaryMessage,
+                                 SerializeThriftBinaryRequest, PackThriftBinaryRequest,
+                                 ProcessThriftBinaryRequest, ProcessThriftBinaryResponse,
+                                 VerifyThriftBinaryRequest, NULL, NULL,
+                                 CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };
+    if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
         exit(1);
     }
 
