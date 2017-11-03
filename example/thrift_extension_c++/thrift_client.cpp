@@ -6,24 +6,18 @@
 
 #include <iostream>
 
-using namespace apache::thrift;
-using namespace apache::thrift::protocol;
-using namespace apache::thrift::transport;
-
-using namespace example;
-
 int main(int argc, char **argv) {
-  boost::shared_ptr<TSocket> socket(new TSocket("127.0.0.1", 8019));
-  boost::shared_ptr<TTransport> transport(new TFramedTransport(socket));
-  boost::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
+  std::shared_ptr<apache::thrift::TSocket> socket(new apache::thrift::TSocket("127.0.0.1", 8019));
+  std::shared_ptr<apache::thrift::transport::TTransport> transport(new apache::thrift::transport::TFramedTransport(socket));
+  std::shared_ptr<apache::thrift::protocol::TProtocol> protocol(new apache::thrift::protocol::TBinaryProtocol(transport));
 
-  EchoServiceClient client(protocol);
+  example::EchoServiceClient client(protocol);
   transport->open();
   
-  EchoRequest req;
+  example::EchoRequest req;
   req.data = "hello";
 
-  EchoResponse res;
+  example::EchoResponse res;
   client.Echo(res, req);
   
   std::cout << "Res: " << res.data << std::endl;

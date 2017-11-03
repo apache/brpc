@@ -13,7 +13,7 @@ env:
 install:
 - sudo apt-get install -qq realpath libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev libboost-dev libssl-dev
 - sudo apt-get install libgtest-dev && cd /usr/src/gtest && sudo env "PATH=$PATH" cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
-- wget http://www.us.apache.org/dist/thrift/0.9.3/thrift-0.9.3.tar.gz && tar -xvf thrift-0.9.3.tar.gz && cd thrift-0.9.3/ &&  ./configure --prefix=/usr --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no && make && sudo make install
+- wget http://www.us.apache.org/dist/thrift/0.9.3/thrift-0.9.3.tar.gz && tar -xvf thrift-0.9.3.tar.gz && cd thrift-0.9.3/ &&  ./configure --prefix=/usr --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no && make && sudo make install && cd -
 
 script:
 - sh build_in_travis_ci.sh
