@@ -11,7 +11,7 @@ LIBPATHS = $(addprefix -L, $(LIBS))
 COMMA=,
 SOPATHS=$(addprefix -Wl$(COMMA)-rpath=, $(LIBS))
 
-STATIC_LINKINGS += -lbrpc -lits-thrift
+STATIC_LINKINGS += -lbrpc
 
 CLIENT_SOURCES = client.cpp
 SERVER_SOURCES = server.cpp
@@ -56,13 +56,13 @@ endif
 
 libechothrift.a:
 	@echo "Generating thrift files"
-	@/home/wangxuefeng/work/third-64/thrift/bin/thrift --gen cpp echo.thrift
-	@g++ -c gen-cpp/echo_types.cpp -o echo_types.o -I/home/wangxuefeng/work/overall-eta-predictor/script/data/third-64-gcc485/thrift/include
-	@g++ -c gen-cpp/EchoService.cpp -o EchoService.o -I/home/wangxuefeng/work/overall-eta-predictor/script/data/third-64-gcc485/thrift/include
+	@thrift --gen cpp echo.thrift
+	@g++ -c gen-cpp/echo_types.cpp -o echo_types.o
+	@g++ -c gen-cpp/EchoService.cpp -o EchoService.o
 	@ar -crv libechothrift.a EchoService.o echo_types.o
 
 thrift_server: libechothrift.a
-	@g++ thrift_server.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp -I/home/wangxuefeng/work/overall-eta-predictor/script/data/third-64-gcc485/thrift/include -L/home/wangxuefeng/work/overall-eta-predictor/script/data/third-64-gcc485/thrift/lib -L/home/wangxuefeng/work/overall-eta-predictor/script/data/third-64-gcc485/libevent/lib -lthriftnb -lthrift -levent -lpthread -o thrift_server
+	@g++ thrift_server.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp -lthriftnb -lthrift -levent -lpthread -o thrift_server
 
 thrift_client: libechothrift.a
-	@g++ thrift_client.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp -I/home/wangxuefeng/work/overall-eta-predictor/script/data/third-64-gcc485/thrift/include -L/home/wangxuefeng/work/overall-eta-predictor/script/data/third-64-gcc485/thrift/lib -lthriftnb -lthrift -levent -lpthread -o thrift_client
+	@g++ thrift_client.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp -lthriftnb -lthrift -levent -lpthread -o thrift_client
