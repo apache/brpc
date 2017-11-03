@@ -7,9 +7,9 @@
 #include <iostream>
 
 int main(int argc, char **argv) {
-  std::shared_ptr<apache::thrift::TSocket> socket(new apache::thrift::TSocket("127.0.0.1", 8019));
-  std::shared_ptr<apache::thrift::transport::TTransport> transport(new apache::thrift::transport::TFramedTransport(socket));
-  std::shared_ptr<apache::thrift::protocol::TProtocol> protocol(new apache::thrift::protocol::TBinaryProtocol(transport));
+  boost::shared_ptr<apache::thrift::transport::TSocket> socket(new apache::thrift::transport::TSocket("127.0.0.1", 8019));
+  boost::shared_ptr<apache::thrift::transport::TTransport> transport(new apache::thrift::transport::TFramedTransport(socket));
+  boost::shared_ptr<apache::thrift::protocol::TProtocol> protocol(new apache::thrift::protocol::TBinaryProtocol(transport));
 
   example::EchoServiceClient client(protocol);
   transport->open();
