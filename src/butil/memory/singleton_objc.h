@@ -27,8 +27,8 @@
 //   ...
 //   Foo* widgetSingleton = SingletonObjC<Foo, FooSingletonTraits>::get();
 
-#ifndef BASE_MEMORY_SINGLETON_OBJC_H_
-#define BASE_MEMORY_SINGLETON_OBJC_H_
+#ifndef BUTIL_MEMORY_SINGLETON_OBJC_H_
+#define BUTIL_MEMORY_SINGLETON_OBJC_H_
 
 #import <Foundation/Foundation.h>
 #include "butil/memory/singleton.h"
@@ -57,4 +57,4 @@ template<typename Type,
 class SingletonObjC : public Singleton<Type, Traits, DifferentiatingType> {
 };
 
-#endif  // BASE_MEMORY_SINGLETON_OBJC_H_
+#endif  // BUTIL_MEMORY_SINGLETON_OBJC_H_

@@ -13,8 +13,8 @@
 // legibility rather than optimality. If future profiling identifies this as
 // a bottleneck, there is room for smaller values of 1 in the O(1). :]
 
-#ifndef BASE_CONTAINERS_MRU_CACHE_H_
-#define BASE_CONTAINERS_MRU_CACHE_H_
+#ifndef BUTIL_CONTAINERS_MRU_CACHE_H_
+#define BUTIL_CONTAINERS_MRU_CACHE_H_
 
 #include <list>
 #include <map>
@@ -307,4 +307,4 @@ class HashingMRUCache : public MRUCacheBase<KeyType,
 
 }  // namespace butil
 
-#endif  // BASE_CONTAINERS_MRU_CACHE_H_
+#endif  // BUTIL_CONTAINERS_MRU_CACHE_H_

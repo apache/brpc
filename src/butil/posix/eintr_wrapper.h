@@ -13,8 +13,8 @@
 // Don't wrap close calls in HANDLE_EINTR. Use IGNORE_EINTR if the return
 // value of close is significant. See http://crbug.com/269623.
 
-#ifndef BASE_POSIX_EINTR_WRAPPER_H_
-#define BASE_POSIX_EINTR_WRAPPER_H_
+#ifndef BUTIL_POSIX_EINTR_WRAPPER_H_
+#define BUTIL_POSIX_EINTR_WRAPPER_H_
 
 #include "butil/build_config.h"
 #include "butil/macros.h"   // BAIDU_TYPEOF
@@ -65,4 +65,4 @@
 
 #endif  // OS_POSIX
 
-#endif  // BASE_POSIX_EINTR_WRAPPER_H_
+#endif  // BUTIL_POSIX_EINTR_WRAPPER_H_

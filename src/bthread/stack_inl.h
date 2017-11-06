@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Sep  7 22:37:39 CST 2014
 
-#ifndef BAIDU_BTHREAD_ALLOCATE_STACK_INL_H
-#define BAIDU_BTHREAD_ALLOCATE_STACK_INL_H
+#ifndef BTHREAD_ALLOCATE_STACK_INL_H
+#define BTHREAD_ALLOCATE_STACK_INL_H
 
 DECLARE_int32(guard_page_size);
 DECLARE_int32(tc_stack_small);
@@ -192,4 +192,4 @@ template <> struct ObjectPoolValidator<
     
 }  // namespace butil
 
-#endif  // BAIDU_BTHREAD_ALLOCATE_STACK_INL_H
+#endif  // BTHREAD_ALLOCATE_STACK_INL_H

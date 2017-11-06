@@ -206,9 +206,9 @@ void reset_blockmem_allocate_and_deallocate() {
     blockmem_deallocate = ::free;
 }
 
-butil::static_atomic<size_t> g_nblock = BASE_STATIC_ATOMIC_INIT(0);
-butil::static_atomic<size_t> g_blockmem = BASE_STATIC_ATOMIC_INIT(0);
-butil::static_atomic<size_t> g_newbigview = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<size_t> g_nblock = BUTIL_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<size_t> g_blockmem = BUTIL_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<size_t> g_newbigview = BUTIL_STATIC_ATOMIC_INIT(0);
 
 }  // namespace iobuf
 
@@ -328,7 +328,7 @@ int get_tls_block_count() { return g_tls_data.num_blocks; }
 // Number of blocks that can't be returned to TLS which has too many block
 // already. This counter should be 0 in most scenarios, otherwise performance
 // of appending functions in IOPortal may be lowered.
-static butil::static_atomic<size_t> g_num_hit_tls_threshold = BASE_STATIC_ATOMIC_INIT(0);
+static butil::static_atomic<size_t> g_num_hit_tls_threshold = BUTIL_STATIC_ATOMIC_INIT(0);
 
 // Called in UT.
 void remove_tls_block_chain() {

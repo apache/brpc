@@ -62,7 +62,7 @@ struct UserCodeBackupPool {
 static pthread_mutex_t s_usercode_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t s_usercode_cond = PTHREAD_COND_INITIALIZER;
 static pthread_once_t s_usercode_init = PTHREAD_ONCE_INIT;
-butil::static_atomic<int> g_usercode_inplace = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<int> g_usercode_inplace = BUTIL_STATIC_ATOMIC_INIT(0);
 bool g_too_many_usercode = false;
 static UserCodeBackupPool* s_usercode_pool = NULL;
 

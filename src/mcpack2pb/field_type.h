@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon Oct 19 17:17:36 CST 2015
 
-#ifndef PUBLIC_MCPACK2PB_MCPACK_FIELD_TYPE_H
-#define PUBLIC_MCPACK2PB_MCPACK_FIELD_TYPE_H
+#ifndef MCPACK2PB_MCPACK_FIELD_TYPE_H
+#define MCPACK2PB_MCPACK_FIELD_TYPE_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -144,4 +144,4 @@ inline size_t get_primitive_type_size(FieldType type) {
 
 } // namespace mcpack2pb
 
-#endif // PUBLIC_MCPACK2PB_MCPACK_FIELD_TYPE_H
+#endif // MCPACK2PB_MCPACK_FIELD_TYPE_H

@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 10 17:40:58 CST 2012
 
-#ifndef BAIDU_BTHREAD_TASK_META_H
-#define BAIDU_BTHREAD_TASK_META_H
+#ifndef BTHREAD_TASK_META_H
+#define BTHREAD_TASK_META_H
 
 #include <pthread.h>                 // pthread_spin_init
 #include "bthread/butex.h"           // butex_construct/destruct
@@ -121,4 +121,4 @@ public:
 
 }  // namespace bthread
 
-#endif  // BAIDU_BTHREAD_TASK_META_H
+#endif  // BTHREAD_TASK_META_H

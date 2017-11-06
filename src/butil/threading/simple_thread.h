@@ -37,8 +37,8 @@
 //   // The SimpleThread object is still valid, however you may not call Join
 //   // or Start again.
 
-#ifndef BASE_THREADING_SIMPLE_THREAD_H_
-#define BASE_THREADING_SIMPLE_THREAD_H_
+#ifndef BUTIL_THREADING_SIMPLE_THREAD_H_
+#define BUTIL_THREADING_SIMPLE_THREAD_H_
 
 #include <string>
 #include <queue>
@@ -55,9 +55,9 @@ namespace butil {
 
 // This is the base SimpleThread.  You can derive from it and implement the
 // virtual Run method, or you can use the DelegateSimpleThread interface.
-class BASE_EXPORT SimpleThread : public PlatformThread::Delegate {
+class BUTIL_EXPORT SimpleThread : public PlatformThread::Delegate {
  public:
-  class BASE_EXPORT Options {
+  class BUTIL_EXPORT Options {
    public:
     Options() : stack_size_(0) { }
     ~Options() { }
@@ -120,9 +120,9 @@ class BASE_EXPORT SimpleThread : public PlatformThread::Delegate {
   bool joined_;                  // True if Join has been called.
 };
 
-class BASE_EXPORT DelegateSimpleThread : public SimpleThread {
+class BUTIL_EXPORT DelegateSimpleThread : public SimpleThread {
  public:
-  class BASE_EXPORT Delegate {
+  class BUTIL_EXPORT Delegate {
    public:
     Delegate() { }
     virtual ~Delegate() { }
@@ -150,7 +150,7 @@ class BASE_EXPORT DelegateSimpleThread : public SimpleThread {
 // JoinAll() will make sure that all outstanding work is processed, and wait
 // for everything to finish.  You can reuse a pool, so you can call Start()
 // again after you've called JoinAll().
-class BASE_EXPORT DelegateSimpleThreadPool
+class BUTIL_EXPORT DelegateSimpleThreadPool
     : public DelegateSimpleThread::Delegate {
  public:
   typedef DelegateSimpleThread::Delegate Delegate;
@@ -187,4 +187,4 @@ class BASE_EXPORT DelegateSimpleThreadPool
 
 }  // namespace butil
 
-#endif  // BASE_THREADING_SIMPLE_THREAD_H_
+#endif  // BUTIL_THREADING_SIMPLE_THREAD_H_

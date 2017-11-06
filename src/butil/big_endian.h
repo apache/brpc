@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_BIG_ENDIAN_H_
-#define BASE_BIG_ENDIAN_H_
+#ifndef BUTIL_BIG_ENDIAN_H_
+#define BUTIL_BIG_ENDIAN_H_
 
 #include "butil/base_export.h"
 #include "butil/basictypes.h"
@@ -49,7 +49,7 @@ inline void WriteBigEndian<uint8_t>(char buf[], uint8_t val) {
 
 // Allows reading integers in network order (big endian) while iterating over
 // an underlying buffer. All the reading functions advance the internal pointer.
-class BASE_EXPORT BigEndianReader {
+class BUTIL_EXPORT BigEndianReader {
  public:
   BigEndianReader(const char* buf, size_t len);
 
@@ -75,7 +75,7 @@ class BASE_EXPORT BigEndianReader {
 
 // Allows writing integers in network order (big endian) while iterating over
 // an underlying buffer. All the writing functions advance the internal pointer.
-class BASE_EXPORT BigEndianWriter {
+class BUTIL_EXPORT BigEndianWriter {
  public:
   BigEndianWriter(char* buf, size_t len);
 
@@ -99,4 +99,4 @@ class BASE_EXPORT BigEndianWriter {
 
 }  // namespace butil
 
-#endif  // BASE_BIG_ENDIAN_H_
+#endif  // BUTIL_BIG_ENDIAN_H_

@@ -17,8 +17,8 @@
 
 // Add customized errno.
 
-#ifndef BAIDU_BASE_BAIDU_ERRNO_H
-#define BAIDU_BASE_BAIDU_ERRNO_H
+#ifndef BUTIL_BAIDU_ERRNO_H
+#define BUTIL_BAIDU_ERRNO_H
 
 #define __const__
 #include <errno.h>                           // errno
@@ -77,4 +77,4 @@ template <int error_code> class BaiduErrnoHelper {};
 const char* berror(int error_code);
 const char* berror();
 
-#endif  //BAIDU_BASE_BAIDU_ERRNO_H
+#endif  //BUTIL_BAIDU_ERRNO_H

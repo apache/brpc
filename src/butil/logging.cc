@@ -961,7 +961,7 @@ void SetLastSystemErrorCode(SystemErrorCode err) {
 }
 
 #if defined(OS_WIN)
-BASE_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code) {
+BUTIL_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code) {
     const int error_message_buffer_size = 256;
     char msgbuf[error_message_buffer_size];
     DWORD flags = FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
@@ -976,7 +976,7 @@ BASE_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code) {
                               GetLastError(), error_code);
 }
 #elif defined(OS_POSIX)
-BASE_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code) {
+BUTIL_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code) {
     return berror(error_code);
 }
 #else

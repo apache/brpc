@@ -1,5 +1,5 @@
-#ifndef PUBLIC_COMMON_BASE_INTRUSIVE_PTR_HPP
-#define PUBLIC_COMMON_BASE_INTRUSIVE_PTR_HPP
+#ifndef BUTIL_INTRUSIVE_PTR_HPP
+#define BUTIL_INTRUSIVE_PTR_HPP
 
 //  Copyright (c) 2001, 2002 Peter Dimov
 //
@@ -95,7 +95,7 @@ public:
     }
 
 // Move support
-#if defined(BASE_CXX11_ENABLED)
+#if defined(BUTIL_CXX11_ENABLED)
     intrusive_ptr(intrusive_ptr && rhs) BAIDU_NOEXCEPT : px(rhs.px) {
         rhs.px = 0;
     }
@@ -147,7 +147,7 @@ public:
     }
 
     // implicit conversion to "bool"
-#if defined(BASE_CXX11_ENABLED)
+#if defined(BUTIL_CXX11_ENABLED)
     explicit operator bool () const BAIDU_NOEXCEPT {
         return px != 0;
     }
@@ -220,7 +220,7 @@ inline bool operator!=(const intrusive_ptr<T>& a, const intrusive_ptr<T>& b) {
 }
 #endif
 
-#if defined(BASE_CXX11_ENABLED)
+#if defined(BUTIL_CXX11_ENABLED)
 template<class T>
 inline bool operator==(const intrusive_ptr<T>& p, std::nullptr_t) BAIDU_NOEXCEPT {
     return p.get() == 0;
@@ -238,7 +238,7 @@ template<class T>
 inline bool operator!=(std::nullptr_t, const intrusive_ptr<T>& p) BAIDU_NOEXCEPT {
     return p.get() != 0;
 }
-#endif  // BASE_CXX11_ENABLED
+#endif  // BUTIL_CXX11_ENABLED
 
 template<class T>
 inline bool operator<(const intrusive_ptr<T>& a, const intrusive_ptr<T>& b) {
@@ -275,7 +275,7 @@ template<class Y> std::ostream & operator<< (std::ostream & os, const intrusive_
 } // namespace butil
 
 // hash_value
-namespace BASE_HASH_NAMESPACE {
+namespace BUTIL_HASH_NAMESPACE {
 
 #if defined(COMPILER_GCC)
 template<typename T>
@@ -291,6 +291,6 @@ inline size_t hash_value(const butil::intrusive_ptr<T>& sp) {
 }
 #endif  // COMPILER
 
-}  // namespace BASE_HASH_NAMESPACE
+}  // namespace BUTIL_HASH_NAMESPACE
 
-#endif  // PUBLIC_COMMON_BASE_INTRUSIVE_PTR_HPP
+#endif  // BUTIL_INTRUSIVE_PTR_HPP

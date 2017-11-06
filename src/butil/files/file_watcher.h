@@ -17,8 +17,8 @@
 
 // Watch timestamp of a file
 
-#ifndef BASE_FILES_FILE_WATCHER_H
-#define BASE_FILES_FILE_WATCHER_H
+#ifndef BUTIL_FILES_FILE_WATCHER_H
+#define BUTIL_FILES_FILE_WATCHER_H
 
 #include <stdint.h>                                 // int64_t
 #include <string>                                   // std::string
@@ -79,4 +79,4 @@ private:
 };
 }  // namespace butil
 
-#endif  // BASE_FILES_FILE_WATCHER_H
+#endif  // BUTIL_FILES_FILE_WATCHER_H

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_SCOPED_OBSERVER_H_
-#define BASE_SCOPED_OBSERVER_H_
+#ifndef BUTIL_SCOPED_OBSERVER_H_
+#define BUTIL_SCOPED_OBSERVER_H_
 
 #include <algorithm>
 #include <vector>
@@ -53,4 +53,4 @@ class ScopedObserver {
   DISALLOW_COPY_AND_ASSIGN(ScopedObserver);
 };
 
-#endif  // BASE_SCOPED_OBSERVER_H_
+#endif  // BUTIL_SCOPED_OBSERVER_H_

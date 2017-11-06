@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_FILES_FILE_H_
-#define BASE_FILES_FILE_H_
+#ifndef BUTIL_FILES_FILE_H_
+#define BUTIL_FILES_FILE_H_
 
 #include "butil/build_config.h"
 #if defined(OS_WIN)
@@ -52,7 +52,7 @@ typedef struct stat64 stat_wrapper_t;
 // obvious non-modifying way are marked as const. Any method that forward calls
 // to the OS is not considered const, even if there is no apparent change to
 // member variables.
-class BASE_EXPORT File {
+class BUTIL_EXPORT File {
   MOVE_ONLY_TYPE_FOR_CPP_03(File, RValue)
 
  public:
@@ -128,7 +128,7 @@ class BASE_EXPORT File {
   // make sure to update all functions that use it in file_util_{win|posix}.cc
   // too, and the ParamTraits<butil::PlatformFileInfo> implementation in
   // chrome/common/common_param_traits.cc.
-  struct BASE_EXPORT Info {
+  struct BUTIL_EXPORT Info {
     Info();
     ~Info();
 #if defined(OS_POSIX)
@@ -310,4 +310,4 @@ class BASE_EXPORT File {
 
 }  // namespace butil
 
-#endif  // BASE_FILES_FILE_H_
+#endif  // BUTIL_FILES_FILE_H_

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_STRINGS_STRING16_H_
-#define BASE_STRINGS_STRING16_H_
+#ifndef BUTIL_STRINGS_STRING16_H_
+#define BUTIL_STRINGS_STRING16_H_
 
 // WHAT:
 // A version of std::basic_string that provides 2-byte characters even when
@@ -51,12 +51,12 @@ typedef uint16_t char16;
 // char16 versions of the functions required by string16_char_traits; these
 // are based on the wide character functions of similar names ("w" or "wcs"
 // instead of "c16").
-BASE_EXPORT int c16memcmp(const char16* s1, const char16* s2, size_t n);
-BASE_EXPORT size_t c16len(const char16* s);
-BASE_EXPORT const char16* c16memchr(const char16* s, char16 c, size_t n);
-BASE_EXPORT char16* c16memmove(char16* s1, const char16* s2, size_t n);
-BASE_EXPORT char16* c16memcpy(char16* s1, const char16* s2, size_t n);
-BASE_EXPORT char16* c16memset(char16* s, char16 c, size_t n);
+BUTIL_EXPORT int c16memcmp(const char16* s1, const char16* s2, size_t n);
+BUTIL_EXPORT size_t c16len(const char16* s);
+BUTIL_EXPORT const char16* c16memchr(const char16* s, char16 c, size_t n);
+BUTIL_EXPORT char16* c16memmove(char16* s1, const char16* s2, size_t n);
+BUTIL_EXPORT char16* c16memcpy(char16* s1, const char16* s2, size_t n);
+BUTIL_EXPORT char16* c16memset(char16* s, char16 c, size_t n);
 
 struct string16_char_traits {
   typedef char16 char_type;
@@ -129,11 +129,11 @@ struct string16_char_traits {
 
 typedef std::basic_string<char16, butil::string16_char_traits> string16;
 
-BASE_EXPORT extern std::ostream& operator<<(std::ostream& out,
+BUTIL_EXPORT extern std::ostream& operator<<(std::ostream& out,
                                             const string16& str);
 
 // This is required by googletest to print a readable output on test failures.
-BASE_EXPORT extern void PrintTo(const string16& str, std::ostream* out);
+BUTIL_EXPORT extern void PrintTo(const string16& str, std::ostream* out);
 
 }  // namespace butil
 
@@ -177,8 +177,8 @@ BASE_EXPORT extern void PrintTo(const string16& str, std::ostream* out);
 // TODO(mark): File this bug with Apple and update this note with a bug number.
 
 extern template
-class BASE_EXPORT std::basic_string<butil::char16, butil::string16_char_traits>;
+class BUTIL_EXPORT std::basic_string<butil::char16, butil::string16_char_traits>;
 
 #endif  // WCHAR_T_IS_UTF32
 
-#endif  // BASE_STRINGS_STRING16_H_
+#endif  // BUTIL_STRINGS_STRING16_H_

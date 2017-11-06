@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_FLOAT_UTIL_H_
-#define BASE_FLOAT_UTIL_H_
+#ifndef BUTIL_FLOAT_UTIL_H_
+#define BUTIL_FLOAT_UTIL_H_
 
 #include "butil/build_config.h"
 
@@ -33,4 +33,4 @@ inline bool IsNaN(const Float& number) {
 
 }  // namespace butil
 
-#endif  // BASE_FLOAT_UTIL_H_
+#endif  // BUTIL_FLOAT_UTIL_H_

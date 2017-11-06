@@ -5,8 +5,8 @@
 // Compute murmurhash3 iteratively so that you don't have to buffer
 // everything in memory before computation. The APIs are similar with MD5
 
-#ifndef PUBLIC_COMMON_BASE_THIRD_PARTY_MURMURHASH3_MURMURHASH3_H
-#define PUBLIC_COMMON_BASE_THIRD_PARTY_MURMURHASH3_MURMURHASH3_H
+#ifndef BUTIL_THIRD_PARTY_MURMURHASH3_MURMURHASH3_H
+#define BUTIL_THIRD_PARTY_MURMURHASH3_MURMURHASH3_H
 
 // ======= Platform-specific functions and macros =======
 // Microsoft Visual Studio
@@ -99,4 +99,4 @@ void MurmurHash3_x64_128_Final(void* out, const MurmurHash3_x64_128_Context* ctx
 
 } // namespace butil
 
-#endif // PUBLIC_COMMON_BASE_THIRD_PARTY_MURMURHASH3_MURMURHASH3_H
+#endif // BUTIL_THIRD_PARTY_MURMURHASH3_MURMURHASH3_H

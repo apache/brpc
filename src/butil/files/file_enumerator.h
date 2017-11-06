@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_FILES_FILE_ENUMERATOR_H_
-#define BASE_FILES_FILE_ENUMERATOR_H_
+#ifndef BUTIL_FILES_FILE_ENUMERATOR_H_
+#define BUTIL_FILES_FILE_ENUMERATOR_H_
 
 #include <stack>
 #include <vector>
@@ -34,10 +34,10 @@ namespace butil {
 //                             FILE_PATH_LITERAL("*.txt"));
 //   for (butil::FilePath name = enum.Next(); !name.empty(); name = enum.Next())
 //     ...
-class BASE_EXPORT FileEnumerator {
+class BUTIL_EXPORT FileEnumerator {
  public:
   // Note: copy & assign supported.
-  class BASE_EXPORT FileInfo {
+  class BUTIL_EXPORT FileInfo {
    public:
     FileInfo();
     ~FileInfo();
@@ -156,4 +156,4 @@ class BASE_EXPORT FileEnumerator {
 
 }  // namespace butil
 
-#endif  // BASE_FILES_FILE_ENUMERATOR_H_
+#endif  // BUTIL_FILES_FILE_ENUMERATOR_H_

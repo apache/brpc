@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_MEMORY_REF_COUNTED_H_
-#define BASE_MEMORY_REF_COUNTED_H_
+#ifndef BUTIL_MEMORY_REF_COUNTED_H_
+#define BUTIL_MEMORY_REF_COUNTED_H_
 
 #include <cassert>
 
@@ -19,7 +19,7 @@ namespace butil {
 
 namespace subtle {
 
-class BASE_EXPORT RefCountedBase {
+class BUTIL_EXPORT RefCountedBase {
  public:
   bool HasOneRef() const { return ref_count_ == 1; }
 
@@ -78,7 +78,7 @@ class BASE_EXPORT RefCountedBase {
   DISALLOW_COPY_AND_ASSIGN(RefCountedBase);
 };
 
-class BASE_EXPORT RefCountedThreadSafeBase {
+class BUTIL_EXPORT RefCountedThreadSafeBase {
  public:
   bool HasOneRef() const;
 
@@ -349,4 +349,4 @@ scoped_refptr<T> make_scoped_refptr(T* t) {
   return scoped_refptr<T>(t);
 }
 
-#endif  // BASE_MEMORY_REF_COUNTED_H_
+#endif  // BUTIL_MEMORY_REF_COUNTED_H_

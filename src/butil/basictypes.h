@@ -8,8 +8,8 @@
 // Note that the macros and macro-like constructs that were formerly defined in
 // this file are now available separately in butil/macros.h.
 
-#ifndef BASE_BASICTYPES_H_
-#define BASE_BASICTYPES_H_
+#ifndef BUTIL_BASICTYPES_H_
+#define BUTIL_BASICTYPES_H_
 
 #include <limits.h>  // So we can set the bounds of our types.
 #include <stddef.h>  // For size_t.
@@ -32,4 +32,4 @@ const  int32_t kint32max  = (( int32_t) 0x7FFFFFFF);
 const  int64_t kint64min  = (( int64_t) 0x8000000000000000LL);
 const  int64_t kint64max  = (( int64_t) 0x7FFFFFFFFFFFFFFFLL);
 
-#endif  // BASE_BASICTYPES_H_
+#endif  // BUTIL_BASICTYPES_H_

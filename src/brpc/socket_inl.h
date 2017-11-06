@@ -21,30 +21,30 @@
 namespace brpc {
 
 // Utility functions to combine and extract SocketId.
-BASE_FORCE_INLINE SocketId
+BUTIL_FORCE_INLINE SocketId
 MakeSocketId(uint32_t version, butil::ResourceId<Socket> slot) {
     return SocketId((((uint64_t)version) << 32) | slot.value);
 }
 
-BASE_FORCE_INLINE butil::ResourceId<Socket> SlotOfSocketId(SocketId sid) {
+BUTIL_FORCE_INLINE butil::ResourceId<Socket> SlotOfSocketId(SocketId sid) {
     butil::ResourceId<Socket> id = { (sid & 0xFFFFFFFFul) };
     return id;
 }
 
-BASE_FORCE_INLINE uint32_t VersionOfSocketId(SocketId sid) {
+BUTIL_FORCE_INLINE uint32_t VersionOfSocketId(SocketId sid) {
     return (uint32_t)(sid >> 32);
 }
 
 // Utility functions to combine and extract Socket::_versioned_ref
-BASE_FORCE_INLINE uint32_t VersionOfVRef(uint64_t vref) {
+BUTIL_FORCE_INLINE uint32_t VersionOfVRef(uint64_t vref) {
     return (uint32_t)(vref >> 32);
 }
 
-BASE_FORCE_INLINE int32_t NRefOfVRef(uint64_t vref) {
+BUTIL_FORCE_INLINE int32_t NRefOfVRef(uint64_t vref) {
     return (int32_t)(vref & 0xFFFFFFFFul);
 }
 
-BASE_FORCE_INLINE uint64_t MakeVRef(uint32_t version, int32_t nref) {
+BUTIL_FORCE_INLINE uint64_t MakeVRef(uint32_t version, int32_t nref) {
     // 1: Intended conversion to uint32_t, nref=-1 is 00000000FFFFFFFF
     return (((uint64_t)version) << 32) | (uint32_t/*1*/)nref;
 }

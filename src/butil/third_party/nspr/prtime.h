@@ -49,8 +49,8 @@
  *---------------------------------------------------------------------------
  */
 
-#ifndef BASE_PRTIME_H__
-#define BASE_PRTIME_H__
+#ifndef BUTIL_PRTIME_H__
+#define BUTIL_PRTIME_H__
 
 #include <stdint.h>
 
@@ -244,9 +244,9 @@ NSPR_API(PRTimeParameters) PR_GMTParameters(const PRExplodedTime *gmt);
  * from the unit test.
  */
 
-BASE_EXPORT PRStatus PR_ParseTimeString (
+BUTIL_EXPORT PRStatus PR_ParseTimeString (
 	const char *string,
 	PRBool default_to_gmt,
 	PRTime *result);
 
-#endif  // BASE_PRTIME_H__
+#endif  // BUTIL_PRTIME_H__

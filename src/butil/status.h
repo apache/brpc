@@ -1,7 +1,7 @@
 // Copyright (c) 2015 Baidu, Inc.
 
-#ifndef BAIDU_BASE_STATUS_H
-#define BAIDU_BASE_STATUS_H
+#ifndef BUTIL_STATUS_H
+#define BUTIL_STATUS_H
 
 #include <stdarg.h>                       // va_list
 #include <stdlib.h>                       // free
@@ -139,4 +139,4 @@ inline std::ostream& operator<<(std::ostream& os, const Status& st) {
 
 }  // namespace butil
 
-#endif  // BAIDU_BASE_STATUS_H
+#endif  // BUTIL_STATUS_H

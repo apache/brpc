@@ -3,8 +3,8 @@
 // Author: Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date: 2014/10/29 15:01:09
 
-#ifndef  PROTOBUF_JSON_ZERO_COPY_STREAM_READER_H
-#define  PROTOBUF_JSON_ZERO_COPY_STREAM_READER_H
+#ifndef  BRPC_JSON2PB_ZERO_COPY_STREAM_READER_H
+#define  BRPC_JSON2PB_ZERO_COPY_STREAM_READER_H
 
 #include <google/protobuf/io/zero_copy_stream.h> // ZeroCopyInputStream
 
@@ -70,4 +70,4 @@ private:
 
 } // namespace json2pb
 
-#endif  //PROTOBUF_JSON_ZERO_COPY_STREAM_READER_H
+#endif  //BRPC_JSON2PB_ZERO_COPY_STREAM_READER_H

@@ -264,7 +264,7 @@ static int get_fd_count(int limit) {
 extern PassiveStatus<int> g_fd_num;
 
 const int MAX_FD_SCAN_COUNT = 10003;
-static butil::static_atomic<bool> s_ever_reached_fd_scan_limit = BASE_STATIC_ATOMIC_INIT(false);
+static butil::static_atomic<bool> s_ever_reached_fd_scan_limit = BUTIL_STATIC_ATOMIC_INIT(false);
 class FdReader {
 public:
     bool operator()(int* stat) const {

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_POSIX_FILE_DESCRIPTOR_SHUFFLE_H_
-#define BASE_POSIX_FILE_DESCRIPTOR_SHUFFLE_H_
+#ifndef BUTIL_POSIX_FILE_DESCRIPTOR_SHUFFLE_H_
+#define BUTIL_POSIX_FILE_DESCRIPTOR_SHUFFLE_H_
 
 // This code exists to shuffle file descriptors, which is commonly needed when
 // forking subprocesses. The naive approach (just call dup2 to set up the
@@ -47,7 +47,7 @@ class InjectionDelegate {
 
 // An implementation of the InjectionDelegate interface using the file
 // descriptor table of the current process as the domain.
-class BASE_EXPORT FileDescriptorTableInjection : public InjectionDelegate {
+class BUTIL_EXPORT FileDescriptorTableInjection : public InjectionDelegate {
   virtual bool Duplicate(int* result, int fd) OVERRIDE;
   virtual bool Move(int src, int dest) OVERRIDE;
   virtual void Close(int fd) OVERRIDE;
@@ -69,10 +69,10 @@ struct InjectionArc {
 
 typedef std::vector<InjectionArc> InjectiveMultimap;
 
-BASE_EXPORT bool PerformInjectiveMultimap(const InjectiveMultimap& map,
+BUTIL_EXPORT bool PerformInjectiveMultimap(const InjectiveMultimap& map,
                                           InjectionDelegate* delegate);
 
-BASE_EXPORT bool PerformInjectiveMultimapDestructive(
+BUTIL_EXPORT bool PerformInjectiveMultimapDestructive(
     InjectiveMultimap* map,
     InjectionDelegate* delegate);
 
@@ -84,4 +84,4 @@ static inline bool ShuffleFileDescriptors(InjectiveMultimap* map) {
 
 }  // namespace butil
 
-#endif  // BASE_POSIX_FILE_DESCRIPTOR_SHUFFLE_H_
+#endif  // BUTIL_POSIX_FILE_DESCRIPTOR_SHUFFLE_H_

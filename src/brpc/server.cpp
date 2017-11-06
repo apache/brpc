@@ -99,7 +99,7 @@ const char* status_str(Server::Status s) {
     return "UNKNOWN_STATUS";
 }
 
-butil::static_atomic<int> g_running_server_count = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<int> g_running_server_count = BUTIL_STATIC_ATOMIC_INIT(0);
 
 DEFINE_bool(reuse_addr, true, "Bind to ports in TIME_WAIT state");
 BRPC_VALIDATE_GFLAG(reuse_addr, PassValidate);

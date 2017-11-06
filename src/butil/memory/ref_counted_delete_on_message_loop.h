@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_MEMORY_REF_COUNTED_DELETE_ON_MESSAGE_LOOP_H_
-#define BASE_MEMORY_REF_COUNTED_DELETE_ON_MESSAGE_LOOP_H_
+#ifndef BUTIL_MEMORY_REF_COUNTED_DELETE_ON_MESSAGE_LOOP_H_
+#define BUTIL_MEMORY_REF_COUNTED_DELETE_ON_MESSAGE_LOOP_H_
 
 #include "butil/location.h"
 #include "butil/logging.h"
@@ -67,4 +67,4 @@ class RefCountedDeleteOnMessageLoop : public subtle::RefCountedThreadSafeBase {
 
 }  // namespace butil
 
-#endif  // BASE_MEMORY_REF_COUNTED_DELETE_ON_MESSAGE_LOOP_H_
+#endif  // BUTIL_MEMORY_REF_COUNTED_DELETE_ON_MESSAGE_LOOP_H_

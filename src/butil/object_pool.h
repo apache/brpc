@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#ifndef BTHREAD_BASE_OBJECT_POOL_H
-#define BTHREAD_BASE_OBJECT_POOL_H
+#ifndef BUTIL_OBJECT_POOL_H
+#define BUTIL_OBJECT_POOL_H
 
 #include <cstddef>                       // size_t
 
@@ -109,4 +109,4 @@ template <typename T> ObjectPoolInfo describe_objects() {
 
 }  // namespace butil
 
-#endif  // BTHREAD_BASE_OBJECT_POOL_H
+#endif  // BUTIL_OBJECT_POOL_H

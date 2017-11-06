@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon Oct 19 17:17:36 CST 2015
 
-#ifndef PUBLIC_MCPACK2PB_MCPACK_SERIALIZER_H
-#define PUBLIC_MCPACK2PB_MCPACK_SERIALIZER_H
+#ifndef MCPACK2PB_MCPACK_SERIALIZER_H
+#define MCPACK2PB_MCPACK_SERIALIZER_H
 
 #include <limits>
 #include <google/protobuf/io/zero_copy_stream.h>
@@ -282,4 +282,4 @@ private:
 
 #include "mcpack2pb/serializer-inl.h"
 
-#endif  // PUBLIC_MCPACK2PB_MCPACK_SERIALIZER_H
+#endif  // MCPACK2PB_MCPACK_SERIALIZER_H

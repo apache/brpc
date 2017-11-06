@@ -44,7 +44,6 @@ BUTIL_SOURCES = \
     src/butil/at_exit.cc \
     src/butil/atomicops_internals_x86_gcc.cc \
     src/butil/base64.cc \
-    src/butil/base_switches.cc \
     src/butil/big_endian.cc \
     src/butil/cpu.cc \
     src/butil/debug/alias.cc \

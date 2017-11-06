@@ -15,8 +15,8 @@
 // a second thread, and their methods call (Arm() and Disarm()) return very
 // quickly.
 
-#ifndef BASE_THREADING_WATCHDOG_H_
-#define BASE_THREADING_WATCHDOG_H_
+#ifndef BUTIL_THREADING_WATCHDOG_H_
+#define BUTIL_THREADING_WATCHDOG_H_
 
 #include <string>
 
@@ -29,7 +29,7 @@
 
 namespace butil {
 
-class BASE_EXPORT Watchdog {
+class BUTIL_EXPORT Watchdog {
  public:
   // Constructor specifies how long the Watchdog will wait before alarming.
   Watchdog(const TimeDelta& duration,
@@ -91,4 +91,4 @@ class BASE_EXPORT Watchdog {
 
 }  // namespace butil
 
-#endif  // BASE_THREADING_WATCHDOG_H_
+#endif  // BUTIL_THREADING_WATCHDOG_H_

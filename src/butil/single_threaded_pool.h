@@ -15,8 +15,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
-#ifndef BASE_SINGLE_THREADED_POOL_H
-#define BASE_SINGLE_THREADED_POOL_H
+#ifndef BUTIL_SINGLE_THREADED_POOL_H
+#define BUTIL_SINGLE_THREADED_POOL_H
 
 #include <stdlib.h>   // malloc & free
 
@@ -131,4 +131,4 @@ private:
 
 }  // namespace butil
 
-#endif  // BASE_SINGLE_THREADED_POOL_H
+#endif  // BUTIL_SINGLE_THREADED_POOL_H

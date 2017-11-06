@@ -9,19 +9,7 @@
 #include "butil/macros.h"
 #include "butil/logging.h"
 
-namespace butil {
-extern const clockid_t monotonic_clockid;
-extern const uint64_t invariant_cpu_freq;
-}
-
 namespace {
-
-TEST(BaiduTimeTest, cpuwide_time) {
-    const long t1 = butil::cpuwide_time_us();
-    usleep(10000);
-    const long t2 = butil::cpuwide_time_us();
-    printf("elp=%luus freq=%lu\n", t2-t1, butil::invariant_cpu_freq);
-}
 
 TEST(BaiduTimeTest, diff_between_gettimeofday_and_REALTIME) {
     long t1 = butil::gettimeofday_us();
@@ -45,20 +33,6 @@ const char* clock_desc[] = {
     "CLOCK_SGI_CYCLE",                //10
     "CLOCK_TAI"                       //11
 };
-
-TEST(BaiduTimeTest, fast_realtime) {
-    for (size_t i = 0; i < 10; ++i) {
-        long t1 = butil::gettimeofday_us();
-        timespec time;
-        clock_gettime(CLOCK_REALTIME, &time);
-        long t2 = butil::timespec_to_microseconds(time);
-        butil::fast_realtime(&time);
-        long t3 = butil::timespec_to_microseconds(time);
-        long t4 = butil::fast_realtime_ns() / 1000L;
-        LOG(INFO) << "t1=" << t1 << " t2=" << t2 << " t3=" << t3 << " t4=" << t4;
-        usleep(7000);
-    }
-}
 
 TEST(BaiduTimeTest, cost_of_timer) {
     printf("sizeof(time_t)=%lu\n", sizeof(time_t));
@@ -90,13 +64,6 @@ TEST(BaiduTimeTest, cost_of_timer) {
 
     t1.start();
     for (size_t i = 0; i < N; ++i) {
-        s += butil::fast_realtime_ns();
-    }
-    t1.stop();
-    printf("fast_realtime_ns takes %luns\n", t1.n_elapsed() / N);
-    
-    t1.start();
-    for (size_t i = 0; i < N; ++i) {
         s += butil::gettimeofday_us();
     }
     t1.stop();
@@ -104,11 +71,17 @@ TEST(BaiduTimeTest, cost_of_timer) {
 
     t1.start();
     for (size_t i = 0; i < N; ++i) {
-        timespec ts2;
-        butil::fast_realtime(&ts2);
+        time(NULL);
     }
     t1.stop();
-    printf("fast_realtime takes %luns\n", t1.n_elapsed() / N);
+    printf("time(NULL) takes %luns\n", t1.n_elapsed() / N);
+
+    t1.start();
+    for (size_t i = 0; i < N; ++i) {
+        s += butil::monotonic_time_ns();
+    }
+    t1.stop();
+    printf("monotonic_time_ns takes %luns\n", t1.n_elapsed() / N);
 
     for (size_t i = 0; i < arraysize(clock_desc); ++i) {
         if (0 == syscall(SYS_clock_gettime, (clockid_t)i, &ts)) {
@@ -130,13 +103,6 @@ TEST(BaiduTimeTest, cost_of_timer) {
                    clock_desc[i], t1.n_elapsed() / N);
         }
     }
-
-    t1.start();
-    for (size_t i = 0; i < N; ++i) {
-        time(NULL);
-    }
-    t1.stop();
-    printf("time(NULL) takes %luns\n", t1.n_elapsed() / N);
 }
 
 TEST(BaiduTimeTest, timespec) {
@@ -209,19 +175,13 @@ TEST(BaiduTimeTest, every_many_us) {
     const long start_time = butil::gettimeofday_ms();
     while (1) {
         if (every_10ms) {
-            printf("enter this branch at %lums\n", butil::gettimeofday_ms() - start_time);
+            printf("enter this branch at %lums\n",
+                   butil::gettimeofday_ms() - start_time);
             if (++i >= 10) {
                 break;
             }
         }
     }
-}
-
-TEST(BaiduTimeTest, monotonic_time) {
-    const long t1 = butil::monotonic_time_ms();
-    usleep(10000L);
-    const long t2 = butil::monotonic_time_ms();
-    printf("clockid=%d %lums\n", butil::monotonic_clockid, t2-t1);
 }
 
 TEST(BaiduTimeTest, timer_auto_start) {

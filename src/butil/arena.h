@@ -17,8 +17,8 @@
 
 // Do small memory allocations on continuous blocks.
 
-#ifndef BAIDU_BASE_ARENA_H
-#define BAIDU_BASE_ARENA_H
+#ifndef BUTIL_ARENA_H
+#define BUTIL_ARENA_H
 
 #include <stdint.h>
 #include "butil/macros.h"
@@ -80,4 +80,4 @@ inline void* Arena::allocate(size_t n) {
 
 }  // namespace butil
 
-#endif  // BAIDU_BASE_ARENA_H
+#endif  // BUTIL_ARENA_H

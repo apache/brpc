@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_MEMORY_SCOPED_OPEN_PROCESS_H_
-#define BASE_MEMORY_SCOPED_OPEN_PROCESS_H_
+#ifndef BUTIL_MEMORY_SCOPED_OPEN_PROCESS_H_
+#define BUTIL_MEMORY_SCOPED_OPEN_PROCESS_H_
 
 #include "butil/process/process_handle.h"
 
@@ -45,4 +45,4 @@ class ScopedOpenProcess {
 };
 }  // namespace butil
 
-#endif  // BASE_MEMORY_SCOPED_OPEN_PROCESS_H_
+#endif  // BUTIL_MEMORY_SCOPED_OPEN_PROCESS_H_

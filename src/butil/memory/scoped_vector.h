@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_MEMORY_SCOPED_VECTOR_H_
-#define BASE_MEMORY_SCOPED_VECTOR_H_
+#ifndef BUTIL_MEMORY_SCOPED_VECTOR_H_
+#define BUTIL_MEMORY_SCOPED_VECTOR_H_
 
 #include <vector>
 
@@ -134,4 +134,4 @@ class ScopedVector {
   std::vector<T*> v_;
 };
 
-#endif  // BASE_MEMORY_SCOPED_VECTOR_H_
+#endif  // BUTIL_MEMORY_SCOPED_VECTOR_H_

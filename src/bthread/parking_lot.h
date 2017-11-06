@@ -16,8 +16,8 @@
 // Author: chenzhangyi01@baidu.com, gejun@baidu.com
 // Date: 2017/07/27 23:07:06
 
-#ifndef  PUBLIC_BTHREAD_PARKING_LOT_H
-#define  PUBLIC_BTHREAD_PARKING_LOT_H
+#ifndef BTHREAD_PARKING_LOT_H
+#define BTHREAD_PARKING_LOT_H
 
 #include "butil/atomicops.h"
 #include "bthread/sys_futex.h"
@@ -69,4 +69,4 @@ private:
 
 }  // namespace bthread
 
-#endif  //PUBLIC_BTHREAD_PARKING_LOT_H
+#endif  // BTHREAD_PARKING_LOT_H

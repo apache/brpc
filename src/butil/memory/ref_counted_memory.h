@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_MEMORY_REF_COUNTED_MEMORY_H_
-#define BASE_MEMORY_REF_COUNTED_MEMORY_H_
+#ifndef BUTIL_MEMORY_REF_COUNTED_MEMORY_H_
+#define BUTIL_MEMORY_REF_COUNTED_MEMORY_H_
 
 #include <string>
 #include <vector>
@@ -17,7 +17,7 @@ namespace butil {
 // A generic interface to memory. This object is reference counted because one
 // of its two subclasses own the data they carry, and we need to have
 // heterogeneous containers of these two types of memory.
-class BASE_EXPORT RefCountedMemory
+class BUTIL_EXPORT RefCountedMemory
     : public butil::RefCountedThreadSafe<RefCountedMemory> {
  public:
   // Retrieves a pointer to the beginning of the data we point to. If the data
@@ -43,7 +43,7 @@ class BASE_EXPORT RefCountedMemory
 
 // An implementation of RefCountedMemory, where the ref counting does not
 // matter.
-class BASE_EXPORT RefCountedStaticMemory : public RefCountedMemory {
+class BUTIL_EXPORT RefCountedStaticMemory : public RefCountedMemory {
  public:
   RefCountedStaticMemory()
       : data_(NULL), length_(0) {}
@@ -65,7 +65,7 @@ class BASE_EXPORT RefCountedStaticMemory : public RefCountedMemory {
 };
 
 // An implementation of RefCountedMemory, where we own the data in a vector.
-class BASE_EXPORT RefCountedBytes : public RefCountedMemory {
+class BUTIL_EXPORT RefCountedBytes : public RefCountedMemory {
  public:
   RefCountedBytes();
 
@@ -97,7 +97,7 @@ class BASE_EXPORT RefCountedBytes : public RefCountedMemory {
 
 // An implementation of RefCountedMemory, where the bytes are stored in an STL
 // string. Use this if your data naturally arrives in that format.
-class BASE_EXPORT RefCountedString : public RefCountedMemory {
+class BUTIL_EXPORT RefCountedString : public RefCountedMemory {
  public:
   RefCountedString();
 
@@ -124,7 +124,7 @@ class BASE_EXPORT RefCountedString : public RefCountedMemory {
 // An implementation of RefCountedMemory that holds a chunk of memory
 // previously allocated with malloc or calloc, and that therefore must be freed
 // using free().
-class BASE_EXPORT RefCountedMallocedMemory : public butil::RefCountedMemory {
+class BUTIL_EXPORT RefCountedMallocedMemory : public butil::RefCountedMemory {
  public:
   RefCountedMallocedMemory(void* data, size_t length);
 
@@ -143,4 +143,4 @@ class BASE_EXPORT RefCountedMallocedMemory : public butil::RefCountedMemory {
 
 }  // namespace butil
 
-#endif  // BASE_MEMORY_REF_COUNTED_MEMORY_H_
+#endif  // BUTIL_MEMORY_REF_COUNTED_MEMORY_H_

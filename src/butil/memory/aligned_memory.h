@@ -31,8 +31,8 @@
 //   scoped_ptr<float, AlignedFreeDeleter> my_array(
 //       static_cast<float*>(AlignedAlloc(size, alignment)));
 
-#ifndef BASE_MEMORY_ALIGNED_MEMORY_H_
-#define BASE_MEMORY_ALIGNED_MEMORY_H_
+#ifndef BUTIL_MEMORY_ALIGNED_MEMORY_H_
+#define BUTIL_MEMORY_ALIGNED_MEMORY_H_
 
 #include "butil/base_export.h"
 #include "butil/basictypes.h"
@@ -51,7 +51,7 @@ namespace butil {
 template <size_t Size, size_t ByteAlignment>
 struct AlignedMemory {};
 
-#define BASE_DECL_ALIGNED_MEMORY(byte_alignment) \
+#define BUTIL_DECL_ALIGNED_MEMORY(byte_alignment) \
     template <size_t Size> \
     class AlignedMemory<Size, byte_alignment> { \
      public: \
@@ -75,23 +75,23 @@ struct AlignedMemory {};
 // does not understand ALIGNAS(ALIGNOF(Type)) or ALIGNAS(template_param).
 // Greater than 4096 alignment is not supported by some compilers, so 4096 is
 // the maximum specified here.
-BASE_DECL_ALIGNED_MEMORY(1);
-BASE_DECL_ALIGNED_MEMORY(2);
-BASE_DECL_ALIGNED_MEMORY(4);
-BASE_DECL_ALIGNED_MEMORY(8);
-BASE_DECL_ALIGNED_MEMORY(16);
-BASE_DECL_ALIGNED_MEMORY(32);
-BASE_DECL_ALIGNED_MEMORY(64);
-BASE_DECL_ALIGNED_MEMORY(128);
-BASE_DECL_ALIGNED_MEMORY(256);
-BASE_DECL_ALIGNED_MEMORY(512);
-BASE_DECL_ALIGNED_MEMORY(1024);
-BASE_DECL_ALIGNED_MEMORY(2048);
-BASE_DECL_ALIGNED_MEMORY(4096);
+BUTIL_DECL_ALIGNED_MEMORY(1);
+BUTIL_DECL_ALIGNED_MEMORY(2);
+BUTIL_DECL_ALIGNED_MEMORY(4);
+BUTIL_DECL_ALIGNED_MEMORY(8);
+BUTIL_DECL_ALIGNED_MEMORY(16);
+BUTIL_DECL_ALIGNED_MEMORY(32);
+BUTIL_DECL_ALIGNED_MEMORY(64);
+BUTIL_DECL_ALIGNED_MEMORY(128);
+BUTIL_DECL_ALIGNED_MEMORY(256);
+BUTIL_DECL_ALIGNED_MEMORY(512);
+BUTIL_DECL_ALIGNED_MEMORY(1024);
+BUTIL_DECL_ALIGNED_MEMORY(2048);
+BUTIL_DECL_ALIGNED_MEMORY(4096);
 
-#undef BASE_DECL_ALIGNED_MEMORY
+#undef BUTIL_DECL_ALIGNED_MEMORY
 
-BASE_EXPORT void* AlignedAlloc(size_t size, size_t alignment);
+BUTIL_EXPORT void* AlignedAlloc(size_t size, size_t alignment);
 
 inline void AlignedFree(void* ptr) {
 #if defined(COMPILER_MSVC)
@@ -111,4 +111,4 @@ struct AlignedFreeDeleter {
 
 }  // namespace butil
 
-#endif  // BASE_MEMORY_ALIGNED_MEMORY_H_
+#endif  // BUTIL_MEMORY_ALIGNED_MEMORY_H_

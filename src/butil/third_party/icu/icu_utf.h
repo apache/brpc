@@ -14,8 +14,8 @@
 *   created by: Markus W. Scherer
 */
 
-#ifndef BASE_THIRD_PARTY_ICU_ICU_UTF_H_
-#define BASE_THIRD_PARTY_ICU_ICU_UTF_H_
+#ifndef BUTIL_THIRD_PARTY_ICU_ICU_UTF_H_
+#define BUTIL_THIRD_PARTY_ICU_ICU_UTF_H_
 
 #include "butil/basictypes.h"
 
@@ -388,4 +388,4 @@ UChar32 utf8_nextCharSafeBody(const uint8_t *s, int32_t *pi, int32_t length, UCh
 
 }  // namesapce base_icu
 
-#endif  // BASE_THIRD_PARTY_ICU_ICU_UTF_H_
+#endif  // BUTIL_THIRD_PARTY_ICU_ICU_UTF_H_

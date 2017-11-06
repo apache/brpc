@@ -81,7 +81,7 @@ inline TaskControl* get_or_new_task_control() {
 
 __thread TaskGroup* tls_task_group_nosignal = NULL;
 
-BASE_FORCE_INLINE int
+BUTIL_FORCE_INLINE int
 start_from_non_worker(bthread_t* __restrict tid,
                       const bthread_attr_t* __restrict attr,
                       void * (*fn)(void*),

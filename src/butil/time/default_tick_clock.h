@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_DEFAULT_TICK_CLOCK_H_
-#define BASE_DEFAULT_TICK_CLOCK_H_
+#ifndef BUTIL_DEFAULT_TICK_CLOCK_H_
+#define BUTIL_DEFAULT_TICK_CLOCK_H_
 
 #include "butil/base_export.h"
 #include "butil/compiler_specific.h"
@@ -12,7 +12,7 @@
 namespace butil {
 
 // DefaultClock is a Clock implementation that uses TimeTicks::Now().
-class BASE_EXPORT DefaultTickClock : public TickClock {
+class BUTIL_EXPORT DefaultTickClock : public TickClock {
  public:
   virtual ~DefaultTickClock();
 
@@ -22,4 +22,4 @@ class BASE_EXPORT DefaultTickClock : public TickClock {
 
 }  // namespace butil
 
-#endif  // BASE_DEFAULT_CLOCK_H_
+#endif  // BUTIL_DEFAULT_CLOCK_H_

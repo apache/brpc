@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_THREADING_THREAD_CHECKER_H_
-#define BASE_THREADING_THREAD_CHECKER_H_
+#ifndef BUTIL_THREADING_THREAD_CHECKER_H_
+#define BUTIL_THREADING_THREAD_CHECKER_H_
 
 // Apart from debug builds, we also enable the thread checker in
 // builds with DCHECK_ALWAYS_ON so that trybots and waterfall bots
@@ -80,4 +80,4 @@ class ThreadChecker : public ThreadCheckerDoNothing {
 
 }  // namespace butil
 
-#endif  // BASE_THREADING_THREAD_CHECKER_H_
+#endif  // BUTIL_THREADING_THREAD_CHECKER_H_
