@@ -7,6 +7,4 @@ summary:
     thrift_client/thrift_server:
         thrift cpp version
 
-build:
-    you need to add thrift as dep library in config.mk
 

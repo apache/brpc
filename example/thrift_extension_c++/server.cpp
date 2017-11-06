@@ -1,4 +1,4 @@
-// Copyright (c) 2014 Baidu, Inc.
+// Copyright (c) 2016 Baidu, Inc.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,16 +25,12 @@
 #include "gen-cpp/EchoService.h"
 #include "gen-cpp/echo_types.h"
 
+#include "thrift_utils.h"
+
 DEFINE_int32(port, 8019, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
 DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
-
-using apache::thrift::protocol::TBinaryProtocol;
-using apache::thrift::transport::TMemoryBuffer;
-
-using namespace std;
-using namespace example;
 
 // Adapt your own thrift-based protocol to use brpc 
 class MyThriftProtocol : public brpc::ThriftFramedService {
@@ -55,63 +51,33 @@ public:
             return;
         }
 
-        boost::shared_ptr<TMemoryBuffer> buffer(new TMemoryBuffer());
-        boost::shared_ptr<TBinaryProtocol> iprot(new TBinaryProtocol(buffer));
-        EchoRequest t_request;
-
-        size_t body_len  = request.head.body_len;
-        uint8_t* thrfit_b = (uint8_t*)malloc(body_len);
-        const size_t k = request.body.copy_to(thrfit_b, body_len);
-        if ( k != body_len) {
-            cntl->CloseConnection("Close connection due to copy thrift binary message error");
+        example::EchoRequest thrift_request;
+		std::string function_name;
+		int32_t seqid;
+		
+		// 
+		if (!serilize_thrift_client_message<example::EchoService_Echo_args>(request, 
+			&thrift_request, &function_name, &seqid)) {
+			cntl->CloseConnection("Close connection due to serilize thrift client reuqest error!");
+			LOG(ERROR) << "serilize thrift client reuqest error!";
             return;
+		}
 
-        }
+		LOG(INFO) << "RPC funcname: " << function_name
+			<< "thrift request data: " << thrift_request.data;
 
-        EchoService_Echo_args args;
-        buffer->resetBuffer(thrfit_b, body_len);
+		example::EchoResponse thrift_response;
+		// Proc RPC , just append a simple string
+        thrift_response.data = thrift_request.data + " world";
 
-        int32_t rseqid = 0;
-        std::string fname;
-        ::apache::thrift::protocol::TMessageType mtype;
+		if (!deserilize_thrift_client_message<example::EchoService_Echo_result>(thrift_response,
+			function_name, seqid, response)) {
+			cntl->CloseConnection("Close connection due to deserilize thrift client response error!");
+			LOG(ERROR) << "deserilize thrift client response error!";
+            return;
+		}
 
-        // deserilize thrift message
-        iprot->readMessageBegin(fname, mtype, rseqid);
-
-        args.read(iprot.get());
-        iprot->readMessageEnd();
-        iprot->getTransport()->readEnd();
-
-        t_request = args.request;
-
-        std::cout << "RPC funcname: " << fname << std::endl;
-        std::cout << "request.data: " << t_request.data << std::endl;
-
-        boost::shared_ptr<TMemoryBuffer> o_buffer(new TMemoryBuffer());
-        boost::shared_ptr<TBinaryProtocol> oprot(new TBinaryProtocol(o_buffer));
-
-        // Proc RPC
-        EchoResponse t_response;
-        t_response.data = t_request.data + " world";
-
-        EchoService_Echo_result result;
-        result.success = t_response;
-        result.__isset.success = true;
-
-        // serilize response
-        oprot->writeMessageBegin("Echo", ::apache::thrift::protocol::T_REPLY, 0);
-        result.write(oprot.get());
-        oprot->writeMessageEnd();
-        oprot->getTransport()->writeEnd();
-        oprot->getTransport()->flush();
-
-        butil::IOBuf buf;
-        std::string s = o_buffer->getBufferAsString();
-
-        buf.append(s);
-        response->body = buf;
-
-        printf("process in MyThriftProtocol\n");
+        LOG(INFO) << "success process thrift request in brpc";
     }
 };
 

@@ -11,7 +11,7 @@ LIBPATHS = $(addprefix -L, $(LIBS))
 COMMA=,
 SOPATHS=$(addprefix -Wl$(COMMA)-rpath=, $(LIBS))
 
-STATIC_LINKINGS += -lbrpc -lthrift
+STATIC_LINKINGS += -lbrpc -lthrift -lgflags
 
 CLIENT_SOURCES = client.cpp
 SERVER_SOURCES = server.cpp
@@ -28,7 +28,7 @@ all: echo_client echo_server thrift_server thrift_client libechothrift.a
 .PHONY:clean
 clean:
 	@echo "Cleaning"
-	@rm -rf echo_client echo_server $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS) $(SERVER_OBJS) thrift_server thrift_client EchoService.o echo_types.o libechothrift.a
+	@rm -rf echo_client echo_server $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS) $(SERVER_OBJS) thrift_server thrift_client EchoService.o echo_types.o libechothrift.a gen-cpp
 
 echo_client:$(PROTO_OBJS) $(CLIENT_OBJS) libechothrift.a
 	@echo "Linking $@"
@@ -46,23 +46,23 @@ else
 	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ libechothrift.a -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
 endif
 
-%.o:%.cpp
+%.o:%.cpp libechothrift.a
 	@echo "Compiling $@"
 	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
-%.o:%.cc
+%.o:%.cc libechothrift.a
 	@echo "Compiling $@"
 	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 libechothrift.a:
 	@echo "Generating thrift files"
 	@thrift --gen cpp echo.thrift
-	@g++ -c gen-cpp/echo_types.cpp -o echo_types.o
-	@g++ -c gen-cpp/EchoService.cpp -o EchoService.o
+	@$(CXX) -c gen-cpp/echo_types.cpp -o echo_types.o
+	@$(CXX) -c gen-cpp/EchoService.cpp -o EchoService.o
 	@ar -crv libechothrift.a EchoService.o echo_types.o
 
 thrift_server: libechothrift.a
-	@g++ thrift_server.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp -lthriftnb -lthrift -levent -lpthread -o thrift_server
+	@$(CXX) thrift_server.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp $(HDRPATHS) $(LIBPATHS) $(CXXFLAGS) $(STATIC_LINKINGS) -lthriftnb -lthrift -levent -lpthread -o thrift_server
 
 thrift_client: libechothrift.a
-	@g++ thrift_client.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp -lthriftnb -lthrift -levent -lpthread -o thrift_client
+	@$(CXX) thrift_client.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp $(HDRPATHS) $(LIBPATHS) $(CXXFLAGS) $(STATIC_LINKINGS) -lthriftnb -lthrift -levent -lpthread -o thrift_client

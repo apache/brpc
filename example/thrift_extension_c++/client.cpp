@@ -1,4 +1,4 @@
-// Copyright (c) 2014 Baidu, Inc.
+// Copyright (c) 2017 Baidu, Inc.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// A client sending requests to server every 1 second.
+// A client sending thrift requests to server every 1 second.
 
 #include <gflags/gflags.h>
 
@@ -29,12 +29,9 @@
 #include "gen-cpp/EchoService.h"
 #include "gen-cpp/echo_types.h"
 
+#include "thrift_utils.h"
+
 bvar::LatencyRecorder g_latency_recorder("client");
-
-using apache::thrift::transport::TMemoryBuffer;
-
-using namespace std;
-using namespace example;
 
 DEFINE_string(server, "0.0.0.0:8019", "IP Address of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
@@ -66,31 +63,17 @@ int main(int argc, char* argv[]) {
         brpc::ThriftBinaryMessage response;
         brpc::Controller cntl;
 
-        // Append message to `request'
+		// Thrift Req
+		example::EchoRequest thrift_request;
+		thrift_request.data = "hello";
 
-        boost::shared_ptr<apache::thrift::transport::TMemoryBuffer> o_buffer(new apache::thrift::transport::TMemoryBuffer());
-        boost::shared_ptr<apache::thrift::protocol::TBinaryProtocol> oprot(new apache::thrift::protocol::TBinaryProtocol(o_buffer));
-
-        // Construct request
-        EchoRequest t_request;
-        t_request.data = "hello";
-
-        // Serialize thrift request to binary request
-        oprot->writeMessageBegin("Echo", ::apache::thrift::protocol::T_CALL, 0);
-
-        EchoService_Echo_pargs args;
-        args.request = &t_request;
-        args.write(oprot.get());
-
-        oprot->writeMessageEnd();
-        oprot->getTransport()->writeEnd();
-        oprot->getTransport()->flush();
-
-        butil::IOBuf buf;
-        std::string s = o_buffer->getBufferAsString();
-
-        buf.append(s);
-        request.body = buf;
+		std::string function_name = "Echo";
+		int32_t seqid = 0;
+		
+		if (!serilize_thrift_server_message<example::EchoService_Echo_pargs>(thrift_request, function_name, seqid, &request)) {
+			LOG(ERROR) << "serilize_thrift_server_message error!";
+			continue;
+		}
 
         cntl.set_log_id(log_id ++);  // set by user
 
@@ -105,71 +88,20 @@ int main(int argc, char* argv[]) {
             g_latency_recorder << cntl.latency_us();
         }
 
+		example::EchoResponse thrift_response;
+		if (!deserilize_thrift_server_message<example::EchoService_Echo_presult>(response, &function_name, &seqid, &thrift_response)) {
+			LOG(ERROR) << "deserilize_thrift_server_message error!";
+			continue;
+		}
 
-        // Parse/Desrialize binary response to thrift response
-        boost::shared_ptr<apache::thrift::transport::TMemoryBuffer> buffer(new apache::thrift::transport::TMemoryBuffer());
-        boost::shared_ptr<apache::thrift::protocol::TBinaryProtocol> iprot(new apache::thrift::protocol::TBinaryProtocol(buffer));
-
-        size_t body_len  = response.head.body_len;
-        uint8_t* thrfit_b = (uint8_t*)malloc(body_len);
-        const size_t k = response.body.copy_to(thrfit_b, body_len);
-        if ( k != body_len) {
-            std::cout << "copy_to error!" << std::endl;
-            printf("k: %lu, body_len: %lu\n", k, body_len);
-            return -1;
-
-        }
-
-        buffer->resetBuffer(thrfit_b, body_len);
-
-        int32_t rseqid = 0;
-        std::string fname;          // Thrift function name
-        ::apache::thrift::protocol::TMessageType mtype;
-
-        try {
-            iprot->readMessageBegin(fname, mtype, rseqid);
-            if (mtype == ::apache::thrift::protocol::T_EXCEPTION) {
-                ::apache::thrift::TApplicationException x;
-                x.read(iprot.get());
-                iprot->readMessageEnd();
-                iprot->getTransport()->readEnd();
-                throw x;
-            }
-            if (mtype != ::apache::thrift::protocol::T_REPLY) {
-                iprot->skip(::apache::thrift::protocol::T_STRUCT);
-                iprot->readMessageEnd();
-                iprot->getTransport()->readEnd();
-            }
-            if (fname.compare("Echo") != 0) {
-                iprot->skip(::apache::thrift::protocol::T_STRUCT);
-                iprot->readMessageEnd();
-                iprot->getTransport()->readEnd();
-            }
-
-            EchoResponse t_response;
-            EchoService_Echo_presult result;
-            result.success = &t_response;
-            result.read(iprot.get());
-            iprot->readMessageEnd();
-            iprot->getTransport()->readEnd();
-
-            if (!result.__isset.success) {
-                // _return pointer has now been filled
-                std::cout << "result.success not set!" << std::endl;
-                return -1;
-            }
-
-            std::cout << "response: " << t_response.data << std::endl;
-        
-        } catch (...) {
-
-            std::cout << "Thrift Exception!" << std::endl;
-        }
-
+		LOG(INFO) << "Thrift function_name: " << function_name
+			<< "Thrift Res data: " << thrift_response.data;
 
         LOG_EVERY_SECOND(INFO)
             << "Sending thrift requests at qps=" << g_latency_recorder.qps(1)
             << " latency=" << g_latency_recorder.latency(1);
+		
+		sleep(1);
     }
 
     LOG(INFO) << "EchoClient is going to quit";
