@@ -52,30 +52,30 @@ public:
         }
 
         example::EchoRequest thrift_request;
-		std::string function_name;
-		int32_t seqid;
-		
-		// 
-		if (!serilize_thrift_client_message<example::EchoService_Echo_args>(request, 
-			&thrift_request, &function_name, &seqid)) {
-			cntl->CloseConnection("Close connection due to serilize thrift client reuqest error!");
-			LOG(ERROR) << "serilize thrift client reuqest error!";
+        std::string function_name;
+        int32_t seqid;
+        
+        // 
+        if (!serilize_thrift_client_message<example::EchoService_Echo_args>(request, 
+            &thrift_request, &function_name, &seqid)) {
+            cntl->CloseConnection("Close connection due to serilize thrift client reuqest error!");
+            LOG(ERROR) << "serilize thrift client reuqest error!";
             return;
-		}
+        }
 
-		LOG(INFO) << "RPC funcname: " << function_name
-			<< "thrift request data: " << thrift_request.data;
+        LOG(INFO) << "RPC funcname: " << function_name
+            << "thrift request data: " << thrift_request.data;
 
-		example::EchoResponse thrift_response;
-		// Proc RPC , just append a simple string
+        example::EchoResponse thrift_response;
+        // Proc RPC , just append a simple string
         thrift_response.data = thrift_request.data + " world";
 
-		if (!deserilize_thrift_client_message<example::EchoService_Echo_result>(thrift_response,
-			function_name, seqid, response)) {
-			cntl->CloseConnection("Close connection due to deserilize thrift client response error!");
-			LOG(ERROR) << "deserilize thrift client response error!";
+        if (!deserilize_thrift_client_message<example::EchoService_Echo_result>(thrift_response,
+            function_name, seqid, response)) {
+            cntl->CloseConnection("Close connection due to deserilize thrift client response error!");
+            LOG(ERROR) << "deserilize thrift client response error!";
             return;
-		}
+        }
 
         LOG(INFO) << "success process thrift request in brpc";
     }

@@ -63,17 +63,17 @@ int main(int argc, char* argv[]) {
         brpc::ThriftBinaryMessage response;
         brpc::Controller cntl;
 
-		// Thrift Req
-		example::EchoRequest thrift_request;
-		thrift_request.data = "hello";
+        // Thrift Req
+        example::EchoRequest thrift_request;
+        thrift_request.data = "hello";
 
-		std::string function_name = "Echo";
-		int32_t seqid = 0;
-		
-		if (!serilize_thrift_server_message<example::EchoService_Echo_pargs>(thrift_request, function_name, seqid, &request)) {
-			LOG(ERROR) << "serilize_thrift_server_message error!";
-			continue;
-		}
+        std::string function_name = "Echo";
+        int32_t seqid = 0;
+        
+        if (!serilize_thrift_server_message<example::EchoService_Echo_pargs>(thrift_request, function_name, seqid, &request)) {
+            LOG(ERROR) << "serilize_thrift_server_message error!";
+            continue;
+        }
 
         cntl.set_log_id(log_id ++);  // set by user
 
@@ -88,20 +88,20 @@ int main(int argc, char* argv[]) {
             g_latency_recorder << cntl.latency_us();
         }
 
-		example::EchoResponse thrift_response;
-		if (!deserilize_thrift_server_message<example::EchoService_Echo_presult>(response, &function_name, &seqid, &thrift_response)) {
-			LOG(ERROR) << "deserilize_thrift_server_message error!";
-			continue;
-		}
+        example::EchoResponse thrift_response;
+        if (!deserilize_thrift_server_message<example::EchoService_Echo_presult>(response, &function_name, &seqid, &thrift_response)) {
+            LOG(ERROR) << "deserilize_thrift_server_message error!";
+            continue;
+        }
 
-		LOG(INFO) << "Thrift function_name: " << function_name
-			<< "Thrift Res data: " << thrift_response.data;
+        LOG(INFO) << "Thrift function_name: " << function_name
+            << "Thrift Res data: " << thrift_response.data;
 
         LOG_EVERY_SECOND(INFO)
             << "Sending thrift requests at qps=" << g_latency_recorder.qps(1)
             << " latency=" << g_latency_recorder.latency(1);
-		
-		sleep(1);
+        
+        sleep(1);
     }
 
     LOG(INFO) << "EchoClient is going to quit";

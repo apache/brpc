@@ -31,13 +31,13 @@ DEFINE_int32(port, 8019, "Port of server");
 
 class EchoServiceHandler : virtual public example::EchoServiceIf {
 public:
-	EchoServiceHandler() {}
+    EchoServiceHandler() {}
 
-	void Echo(example::EchoResponse& res, const example::EchoRequest& req) {
+    void Echo(example::EchoResponse& res, const example::EchoRequest& req) {
         // Process request, just attach a simple string.
-		res.data = req.data + " world";
-		return;
-	}
+        res.data = req.data + " world";
+        return;
+    }
 
 };
 
@@ -52,7 +52,7 @@ int main(int argc, char *argv[]) {
             apache::thrift::concurrency::PosixThreadFactory::NORMAL, 1, false));
 
     boost::shared_ptr<apache::thrift::server::TProcessor> processor(
-		new example::EchoServiceProcessor(handler));
+        new example::EchoServiceProcessor(handler));
     boost::shared_ptr<apache::thrift::protocol::TProtocolFactory> protocol_factory(
         new apache::thrift::protocol::TBinaryProtocolFactory());
     boost::shared_ptr<apache::thrift::transport::TTransportFactory> transport_factory(
@@ -68,5 +68,5 @@ int main(int argc, char *argv[]) {
         protocol_factory, FLAGS_port, thread_mgr);
 
     server.serve();  
-	return 0;
+    return 0;
 }

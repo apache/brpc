@@ -32,11 +32,11 @@ int main(int argc, char **argv) {
     google::ParseCommandLineFlags(&argc, &argv, true);
 
     boost::shared_ptr<apache::thrift::transport::TSocket> socket(
-		new apache::thrift::transport::TSocket(FLAGS_server, FLAGS_port));
+        new apache::thrift::transport::TSocket(FLAGS_server, FLAGS_port));
     boost::shared_ptr<apache::thrift::transport::TTransport> transport(
-		new apache::thrift::transport::TFramedTransport(socket));
+        new apache::thrift::transport::TFramedTransport(socket));
     boost::shared_ptr<apache::thrift::protocol::TProtocol> protocol(
-		new apache::thrift::protocol::TBinaryProtocol(transport));
+        new apache::thrift::protocol::TBinaryProtocol(transport));
 
     example::EchoServiceClient client(protocol);
     transport->open();
