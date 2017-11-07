@@ -39,6 +39,8 @@ int64_t monotonic_time_ns() {
     return now.tv_sec * 1000000000L + now.tv_nsec;
 }
 
+namespace detail {
+
 // read_cpu_frequency() is modified from source code of glibc.
 int64_t read_cpu_frequency(bool* invariant_tsc) {
     /* We read the information from the /proc filesystem.  It contains at
@@ -109,5 +111,6 @@ int64_t read_invariant_cpu_frequency() {
 }
 
 int64_t invariant_cpu_freq = -1;
+}  // namespace detail
 
 }  // namespace butil

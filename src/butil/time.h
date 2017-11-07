@@ -210,6 +210,11 @@ inline uint64_t clock_cycles() {
         );
     return ((uint64_t)hi << 32) | lo;
 }
+extern int64_t read_invariant_cpu_frequency();
+// Be positive iff:
+// 1 Intel x86_64 CPU (multiple cores) supporting constant_tsc and
+// nonstop_tsc(check flags in /proc/cpuinfo)
+extern int64_t invariant_cpu_freq;
 }  // namespace detail
 
 // ---------------------------------------------------------------
@@ -219,25 +224,19 @@ inline uint64_t clock_cycles() {
 // note: Inlining shortens time cost per-call for 15ns in a loop of many
 //       calls to this function.
 inline int64_t cpuwide_time_ns() {
-    extern int64_t read_invariant_cpu_frequency();
-    // Be positive iff:
-    // 1 Intel x86_64 CPU (multiple cores) supporting constant_tsc and
-    // nonstop_tsc(check flags in /proc/cpuinfo)
-    extern int64_t invariant_cpu_freq;
-    
-    if (invariant_cpu_freq > 0) {
+    if (detail::invariant_cpu_freq > 0) {
         const uint64_t tsc = detail::clock_cycles();
-        const uint64_t sec = tsc / invariant_cpu_freq;
+        const uint64_t sec = tsc / detail::invariant_cpu_freq;
         // TODO: should be OK until CPU's frequency exceeds 16GHz.
-        return (tsc - sec * invariant_cpu_freq) * 1000000000L /
-            invariant_cpu_freq + sec * 1000000000L;
-    } else if (!invariant_cpu_freq) {
+        return (tsc - sec * detail::invariant_cpu_freq) * 1000000000L /
+            detail::invariant_cpu_freq + sec * 1000000000L;
+    } else if (!detail::invariant_cpu_freq) {
         // Lack of necessary features, return system-wide monotonic time instead.
         return monotonic_time_ns();
     } else {
         // Use a thread-unsafe method(OK to us) to initialize the freq
         // to save a "if" test comparing to using a local static variable
-        invariant_cpu_freq = read_invariant_cpu_frequency();
+        detail::invariant_cpu_freq = detail::read_invariant_cpu_frequency();
         return cpuwide_time_ns();
     }
 }
