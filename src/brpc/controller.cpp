@@ -648,6 +648,9 @@ void* Controller::RunEndRPC(void* arg) {
 }
 
 inline bool does_error_affect_main_socket(int error_code) {
+    // Errors tested in this function are reported by pooled connections
+    // and very likely to indicate that the server-side is down and the socket
+    // should be health-checked.
     return error_code == ECONNREFUSED ||
         error_code == ENETUNREACH ||
         error_code == EHOSTUNREACH ||
@@ -732,13 +735,8 @@ void Controller::Call::OnComplete(Controller* c, int error_code/*note*/,
     sending_sock.reset(NULL);
     
     if (need_feedback) {
-        LoadBalancer::CallInfo info;
-        info.in.begin_time_us = begin_time_us;
-        info.in.has_request_code = c->has_request_code();
-        info.in.request_code = c->request_code();
-        info.in.excluded = NULL;
-        info.server_id = peer_id;
-        info.error_code = error_code;
+        const LoadBalancer::CallInfo info =
+            { begin_time_us, peer_id, error_code, c };
         c->_lb->Feedback(info);
     }
 }
@@ -947,7 +945,8 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _current_call.peer_id = _single_server_id;
     } else {
         LoadBalancer::SelectIn sel_in =
-            { start_realtime_us, has_request_code(), _request_code, _accessed };
+            { start_realtime_us, true,
+              has_request_code(), _request_code, _accessed };
         LoadBalancer::SelectOut sel_out(&tmp_sock);
         const int rc = _lb->SelectServer(sel_in, &sel_out);
         if (rc != 0) {

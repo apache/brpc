@@ -425,23 +425,9 @@ int Channel::CheckHealth() {
         return -1;
     } else {
         SocketUniquePtr tmp_sock;
-        LoadBalancer::SelectIn sel_in = { 0, false, 0, NULL };
+        LoadBalancer::SelectIn sel_in = { 0, false, false, 0, NULL };
         LoadBalancer::SelectOut sel_out(&tmp_sock);
-        const int rc = _lb->SelectServer(sel_in, &sel_out);
-        if (rc != 0) {
-            return rc;
-        }
-        if (sel_out.need_feedback) {
-            LoadBalancer::CallInfo info;
-            info.in.begin_time_us = 0;
-            info.in.has_request_code = false;
-            info.in.request_code = 0;
-            info.in.excluded = NULL;
-            info.server_id = tmp_sock->id();
-            info.error_code = ECANCELED;
-            _lb->Feedback(info);
-        }
-        return 0;
+        return _lb->SelectServer(sel_in, &sel_out);
     }
 }
 

@@ -74,6 +74,17 @@ DEFINE_int32(max_connection_pool_size, 100,
              "maximum pooled connection count to a single endpoint");
 BRPC_VALIDATE_GFLAG(max_connection_pool_size, PassValidate);
 
+DEFINE_int32(connect_timeout_as_unreachable, 3,
+             "If the socket failed to connect due to ETIMEDOUT for so many "
+             "times *continuously*, the error is changed to ENETUNREACH which "
+             "fails the main socket as well when this socket is pooled.");
+
+static bool validate_connect_timeout_as_unreachable(const char*, int32_t v) {
+    return v >= 2 && v < 1000/*large enough*/;
+}
+BRPC_VALIDATE_GFLAG(connect_timeout_as_unreachable,
+                         validate_connect_timeout_as_unreachable);
+
 const int WAIT_EPOLLOUT_TIMEOUT_MS = 50;
 
 #ifdef BAIDU_INTERNAL
@@ -144,9 +155,12 @@ public:
     // which has the disadvantage that accesses to different pools contend
     // with each other.
     butil::atomic<SocketPool*> socket_pool;
-
+    
     // The socket newing this object.
     SocketId creator_socket_id;
+
+    // Counting number of continuous ETIMEDOUT
+    butil::atomic<int> num_continuous_connect_timeouts;
 
     // _in_size, _in_num_messages, _out_size, _out_num_messages of pooled
     // sockets are counted into the corresponding fields in their _main_socket.
@@ -168,6 +182,7 @@ public:
 Socket::SharedPart::SharedPart(SocketId creator_socket_id2)
     : socket_pool(NULL)
     , creator_socket_id(creator_socket_id2)
+    , num_continuous_connect_timeouts(0)
     , in_size(0)
     , in_num_messages(0)
     , out_size(0)
@@ -1320,6 +1335,10 @@ void Socket::AfterAppConnected(int err, void* data) {
     WriteRequest* req = static_cast<WriteRequest*>(data);
     if (err == 0) {
         Socket* const s = req->socket;
+        SharedPart* sp = s->GetSharedPart();
+        if (sp) {
+            sp->num_continuous_connect_timeouts.store(0, butil::memory_order_relaxed);
+        }
         // requests are not setup yet. check the comment on Setup() in Write()
         req->Setup(s);
         bthread_t th;
@@ -1330,6 +1349,18 @@ void Socket::AfterAppConnected(int err, void* data) {
         }
     } else {
         SocketUniquePtr s(req->socket);
+        if (err == ETIMEDOUT) {
+            SharedPart* sp = s->GetOrNewSharedPart();
+            if (sp->num_continuous_connect_timeouts.fetch_add(
+                    1, butil::memory_order_relaxed) + 1 >=
+                FLAGS_connect_timeout_as_unreachable) {
+                // the race between store and fetch_add(in another thread) is
+                // OK since a critial error is about to return.
+                sp->num_continuous_connect_timeouts.store(
+                    0, butil::memory_order_relaxed);
+                err = ENETUNREACH;
+            }
+        }
         s->SetFailed(err, "Fail to connect %s: %s",
                      s->description().c_str(), berror(err));
         s->ReleaseAllFailedWriteRequests(req);
