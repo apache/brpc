@@ -70,4 +70,92 @@ The possible reason:
 
 If blocking is inevitable, please consider asynchronous method.
 
+### exclude the suspect of working threads are not enough
 
+If working threads are not enough, you can try to dynamically adjust the number of threads. Switch to the /flags page and click the (R) in the right of bthread_concurrency:
+
+![img](../images/bthread_concurrency_1.png)
+
+Just enter the new thread number and confirm:
+
+![img](../images/bthread_concurrency_2.png)
+
+Back to the /flags page, you can see that bthread_concurrency has become the new value.
+
+![img](../images/bthread_concurrency_3.png)
+
+However, adjusting the number of threads may not be useful. If the worker threads are largely blocked by visiting downstreams, it is useless to adjust the thread number since the real bottleneck is in the back-end and adjusting the thread number to a larger value just make the blocking time of each thread become longer.
+
+For example, in our example, the worker threads are still full of work after the thread number is resized.
+
+![img](../images/full_worker_usage_2.png)
+
+### exclude the suspect of lock
+
+If the program is blocked by some lock, it can also present features of io-bound. First use [contention profiler](contention_profiler.md) to check the contention status of locks.
+
+### use rpcz
+
+rpcz can help you see all the recent requests and the time(us) spent in each phase while processing them.
+
+![img](../images/rpcz.png)
+
+Click on a span link to see when the RPC started, the spent time in each phase and when it ended.
+
+![img](../images/rpcz_2.png)
+
+This is a typical example that server is blocked severely. It takes 20ms from receiving the request to starting running, indicating that the server does not have enough worker threads to get the job done in time.
+
+For now the information of this span is less, we can add some in the program. You can use TRACEPRINTF print logs to rpcz. Printed content is embedded in the time stream of rpcz.
+
+![img](../images/trace_printf.png)
+
+After Re-running, you can check the span and it really contains the content we added by TRACEPRINTF.
+
+![img](../images/rpcz_3.png)
+
+Before running to the first TRACEPRINTF, the user callback has already run for 2051ms(suppose it meets our expectation), followed by foobar() that took 8036ms, which is expected to return very fast. The range has been further reduced.
+
+Repeat this process until you find the function that caused the problem.
+
+## Use bvar
+
+TRACEPRINTF is mainly suitable for functions that called several times, so if a function is called many times, or the function itself has a small overhead, it is not appropriate to print logs to rpcz every time. You can use bvar instead.
+
+[bvar](bvar.md) is a multi-threaded counting library, which can record the value passed from user at an extreme low cost and almost does not affect the program behavior compared to logging.
+
+Follow the code below to monitor the runtime of foobar.
+
+```c++
+#include <butil/time.h>
+#include <bvar/bvar.h>
+ 
+bvar::LatencyRecorder g_foobar_latency("foobar");
+ 
+...
+void search() {
+    ...
+    butil::Timer tm;
+    tm.start();
+    foobar();
+    tm.stop();
+    g_foobar_latency << tm.u_elapsed();
+    ...
+}
+```
+
+After rerunning the program, enter foobar in the search box of vars. The result is shown as below:
+
+![img](../images/foobar_bvar.png)
+
+Click on a bvar and you can see a dynamic figure. For example, after clicking on cdf:
+
+![img](../images/foobar_latency_cdf.png)
+
+Depending on the distribution of delays, you can infer the overall behavior of this function, how it behaves for most requests and how it behaves for long tails.
+
+You can continue this process in the subroutine, add more bvar, compare the different distributions, and finally locate the source.
+
+### Use brpc client only
+
+You have to open the dummy server to provide built-in services, see [here](dummy_server.md).

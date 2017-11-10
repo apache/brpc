@@ -80,7 +80,7 @@ rpc_server_8765_example_echo_service_echo_qps : 57
 
 ![img](../images/bthread_concurrency_2.png)
 
-回到flags界面可以看到bthread_concurrency已变成了新值。
+回到/flags界面可以看到bthread_concurrency已变成了新值。
 
 ![img](../images/bthread_concurrency_3.png)
 
