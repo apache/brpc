@@ -4,7 +4,7 @@
 
 [![Build Status](https://travis-ci.org/brpc/brpc.svg?branch=master)](https://travis-ci.org/brpc/brpc)
 
-# 什么是?
+# 什么是brpc?
 
 百度内最常使用的工业级RPC框架, 有超过**600,000**个实例(不包含client)和**500**多种服务, 在百度内叫做"**baidu-rpc**". 目前只开源C++版本。
 
