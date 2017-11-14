@@ -139,7 +139,8 @@ BUTIL_SOURCES = \
     src/butil/zero_copy_stream_as_streambuf.cpp \
     src/butil/crc32c.cc \
     src/butil/containers/case_ignored_flat_map.cpp \
-    src/butil/iobuf.cpp
+    src/butil/iobuf.cpp \
+    src/butil/popen.cpp
 
 BUTIL_OBJS = $(addsuffix .o, $(basename $(BUTIL_SOURCES)))
 

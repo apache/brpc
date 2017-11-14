@@ -376,7 +376,7 @@ public:
     struct MethodProperty {
         bool is_builtin_service;
         bool own_method_status;
-        // Parameters which have nothing to with management of services, but
+        // Parameters which have nothing to do with management of services, but
         // will be used when the service is queried.
         struct OpaqueParams {
             bool is_tabbed;

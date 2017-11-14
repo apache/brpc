@@ -112,6 +112,7 @@ TEST_BUTIL_SOURCES = \
     test_switches.cc \
     scoped_locale.cc \
     test_file_util_linux.cc \
+    popen_unittest.cpp \
     butil_unittest_main.cpp
 
 
