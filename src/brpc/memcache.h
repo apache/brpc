@@ -230,6 +230,12 @@ public:
 
     static const char* status_str(Status);
 
+    // Although the implementation of this function looks somewhat weird, 
+    // we did not find a better way to provide auth failure check for user codes.
+    bool IsAuthFailure() const { 
+        return (_err == "Auth failure");
+    }
+
 private:
     bool PopCounter(uint8_t command, uint64_t* new_value, uint64_t* cas_value);
     bool PopStore(uint8_t command, uint64_t* cas_value);
