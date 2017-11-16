@@ -35,22 +35,21 @@ constexpr char kPadding[1] = {'\0'};
 // To get the couchbase authentication protocol, see
 // https://developer.couchbase.com/documentation/server/3.x/developer/dev-guide-3.0/sasl.html
 int CouchbaseAuthenticator::GenerateCredential(std::string* auth_str) const {
-  const brpc::policy::MemcacheRequestHeader header = {
-      brpc::policy::MC_MAGIC_REQUEST, brpc::policy::MC_BINARY_SASL_AUTH,
-      butil::HostToNet16(sizeof(kPlainAuthCommand) - 1), 0, 0, 0,
-      butil::HostToNet32(sizeof(kPlainAuthCommand) + 1 +
-                         bucket_name_.length() * 2 + bucket_password_.length()),
-      0, 0};
-  butil::IOBuf in;
-  in.append(&header, sizeof(header));
-  in.append(kPlainAuthCommand, sizeof(kPlainAuthCommand) - 1);
-  in.append(bucket_name_.c_str(), bucket_name_.length());
-  in.append(kPadding, sizeof(kPadding));
-  in.append(bucket_name_.c_str(), bucket_name_.length());
-  in.append(kPadding, sizeof(kPadding));
-  in.append(bucket_password_.c_str(), bucket_password_.length());
-  auth_str->assign(in.to_string().c_str(), in.size());
-  return 0;
+    const brpc::policy::MemcacheRequestHeader header = {
+        brpc::policy::MC_MAGIC_REQUEST, brpc::policy::MC_BINARY_SASL_AUTH,
+        butil::HostToNet16(sizeof(kPlainAuthCommand) - 1), 0, 0, 0,
+        butil::HostToNet32(sizeof(kPlainAuthCommand) + 1 +
+                           bucket_name_.length() * 2 + bucket_password_.length()),
+        0, 0};
+    auth_str->clear();
+    auth_str->append(reinterpret_cast<const char*>(&header), sizeof(header));
+    auth_str->append(kPlainAuthCommand, sizeof(kPlainAuthCommand) - 1);
+    auth_str->append(bucket_name_);
+    auth_str->append(kPadding, sizeof(kPadding));
+    auth_str->append(bucket_name_);
+    auth_str->append(kPadding, sizeof(kPadding));
+    auth_str->append(bucket_password_);
+    return 0;
 }
 
 }  // namespace policy

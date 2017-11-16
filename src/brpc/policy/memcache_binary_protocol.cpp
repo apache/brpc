@@ -130,8 +130,11 @@ ParseResult ParseMemcacheMessage(butil::IOBuf* source,
             if (header->status != 0) {
                 LOG(ERROR) << "Failed to authenticate the couchbase bucket."
                            << "All the following commands will result in auth failure.";
+                return MakeParseError(PARSE_ERROR_NO_RESOURCE, 
+                                      "Fail to authenticate with the couchbase bucket");
             }
-            msg = static_cast<MostCommonMessage*>(socket->release_parsing_context());
+            DestroyingPtr<MostCommonMessage> auth_msg(
+                 static_cast<MostCommonMessage*>(socket->release_parsing_context()));
             socket->GivebackPipelinedInfo(pi);
         } else {
             if (++msg->pi.count >= pi.count) {
