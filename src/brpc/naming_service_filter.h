@@ -13,10 +13,15 @@
 // limitations under the License.
 
 // Authors: Rujie Jiang (jiangrujie@baidu.com)
+//          Kevin.XU (xuhuahai@sogou-inc.com)
+
 
 #ifndef BRPC_NAMING_SERVICE_FILTER_H
 #define BRPC_NAMING_SERVICE_FILTER_H
 
+#include <utility>                    //pair
+#include <vector>
+#include <string>
 #include "brpc/naming_service.h"      // ServerNode
 
 
@@ -31,8 +36,41 @@ public:
     virtual bool Accept(const ServerNode& server) const = 0;
 };
 
+class BasicServiceFilter {
+public:
+    virtual ~BasicServiceFilter() {}
+
+    // Return true to take this `server' as a candidate to issue RPC
+    // Return false to filter it out
+    virtual bool Accept(const std::vector<std::pair<std::string,std::string> > &tags) const = 0;
+};
+
+class DefaultNamingServiceFilter : public NamingServiceFilter {
+public:
+    ~DefaultNamingServiceFilter() {}
+
+    // Register 
+    void RegisterBasicFilter(BasicServiceFilter* basicServiceFilter);
+
+    bool Accept(const ServerNode& server) const;
+private:
+    std::vector<BasicServiceFilter *> _filters;
+};
+
+class DefaultBasicServiceFilter : public BasicServiceFilter {
+public:
+    DefaultBasicServiceFilter(const std::string& name, const std::string& value)
+        :_name(name),_value(value){}
+    ~DefaultBasicServiceFilter() {}
+
+    // Accept
+    bool Accept(const std::vector<std::pair<std::string,std::string> > &tags) const;
+private:
+    std::string   _name;   // Expected tag name 
+    std::string   _value;  // Expected tag value
+};
+
+
 } // namespace brpc
-
-
 
 #endif // BRPC_NAMING_SERVICE_FILTER_H

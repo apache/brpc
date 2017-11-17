@@ -1,0 +1,35 @@
+syntax="proto2";
+
+package sogou.nlu.rpc;
+
+option java_package = "sogou.nlu.rpc";
+option java_outer_classname = "sogou.nlu.rpc";
+option py_generic_services = true;
+option java_generic_services = true;
+option cc_generic_services = true;
+
+
+message NrpcMeta {
+    optional NrpcRequestMeta request = 1;
+    optional NrpcResponseMeta response = 2;
+    optional int64 correlation_id = 3;
+}
+
+
+message NrpcRequestMeta {
+    required string service_name = 1;
+    required string method_name = 2;
+    optional bytes request_body = 3;
+    optional int64 log_id = 4;
+    optional int64 trace_id = 5;
+    optional int64 span_id = 6;
+    optional int64 parent_span_id = 7;
+}
+
+
+message NrpcResponseMeta {
+    optional int32 error_code = 1;
+    optional string error_text = 2;
+    optional bytes response_body = 3;
+}
+
