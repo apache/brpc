@@ -273,19 +273,3 @@ install(
 	)
 
 
-#######################Test########################
-set(EchoClient_SOURCES
-        ${TOPDIR}/example/echo/echo.pb.cc
-        ${TOPDIR}/example/echo/client.cpp
-        )
-add_executable(EchoClient ${EchoClient_SOURCES})
-target_link_libraries(EchoClient brpc)
-
-
-set(EchoServer_SOURCES
-        ${TOPDIR}/example/echo/echo.pb.cc
-        ${TOPDIR}/example/echo/server.cpp
-        )
-add_executable(EchoServer ${EchoServer_SOURCES})
-target_link_libraries(EchoServer brpc)
-
