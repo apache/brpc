@@ -45,7 +45,6 @@ enum ProtocolType {
     // Reserve special protocol for cds-agent, which depends on FIFO right now
     PROTOCOL_CDS_AGENT = 23;           // Client side only
     PROTOCOL_ESP = 24;           // Client side only
-    PROTOCOL_NRPC = 25;          // Both Server & Client
 }
 
 enum CompressType {
