@@ -23,7 +23,7 @@
 #include "echo/echo.pb.h"
 
 
-DEFINE_string(ns_url, "etcdns://sogou.example.EchoService", "IP Address of server");
+DEFINE_string(ns_url, "etcdns://sogou.nlu.rpc.example.EchoService", "IP Address of server");
 DEFINE_int32(interval_ms, 1000, "Milliseconds between consecutive requests");
 
 

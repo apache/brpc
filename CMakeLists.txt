@@ -8,7 +8,7 @@
 # Written by Kevin.XU @ 2017.11.16
 
 
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 2.8)
 project(brpc)
 
 set(TOPDIR .)
@@ -39,7 +39,6 @@ set(BUTIL_SOURCES
     ${TOPDIR}/src/butil/at_exit.cc
     ${TOPDIR}/src/butil/atomicops_internals_x86_gcc.cc
     ${TOPDIR}/src/butil/base64.cc
-    ${TOPDIR}/src/butil/base_switches.cc
     ${TOPDIR}/src/butil/big_endian.cc
     ${TOPDIR}/src/butil/cpu.cc
     ${TOPDIR}/src/butil/debug/alias.cc
@@ -136,6 +135,7 @@ set(BUTIL_SOURCES
     ${TOPDIR}/src/butil/crc32c.cc
     ${TOPDIR}/src/butil/containers/case_ignored_flat_map.cpp
     ${TOPDIR}/src/butil/iobuf.cpp
+    ${TOPDIR}/src/butil/popen.cpp
     )
 
 aux_source_directory(${TOPDIR}/src/bvar BVAR_SOURCES1)
@@ -220,9 +220,6 @@ find_library(CURL_LIB NAMES curl)
 find_path(YAJL_HEADER NAMES yajl/yajl_tree.h)
 find_library(YAJL_LIB NAMES yajl)
 
-find_path(CPPJSON_HEADER NAMES json/json.h)
-find_library(CPPJSON_LIB NAMES cppjson)
-
 ##############################################################
 
 include_directories(
@@ -231,7 +228,6 @@ include_directories(
         ${LEVELDB_HEADER}
         ${CURL_HEADER} 
         ${YAJL_HEADER}
-        ${CPPJSON_HEADER}
         )
 
 add_library(brpc SHARED ${SOURCES})
@@ -250,7 +246,6 @@ target_link_libraries(brpc
 	${PROTOC_LIB}
         ${CURL_LIB}
         ${YAJL_LIB}
-        ${CPPJSON_LIB}
 	)
 
 	

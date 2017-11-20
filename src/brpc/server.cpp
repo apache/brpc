@@ -28,7 +28,6 @@
 #include <fcntl.h>                                  // O_CREAT
 #include <sys/stat.h>                               // mkdir
 #include <gflags/gflags.h>
-#include <json/json.h>
 #include <google/protobuf/service.h>                // google::protobuf::Service
 #include <google/protobuf/descriptor.h>             // ServiceDescriptor
 #include "idl_options.pb.h"                         // option(idl_support)
@@ -82,10 +81,13 @@
 #include "brpc/details/tcmalloc_extension.h"
 #include "brpc/service.h"
 #include "brpc/cmd_flags.h"
-#include "butil/third_party/etcdc/base64.h"
+#include "butil/base64.h"
+#include "butil/third_party/rapidjson/document.h"
+#include "butil/third_party/rapidjson/writer.h"
+#include "butil/third_party/rapidjson/stringbuffer.h"
 #include "butil/third_party/etcdc/cetcd_array.h"
 #include "butil/third_party/etcdc/cetcd.h"
-#include "butil/strings/string_split.h"
+
 
 
 inline std::ostream& operator<<(std::ostream& os, const timeval& tm) {
@@ -114,7 +116,7 @@ const char* status_str(Server::Status s) {
     return "UNKNOWN_STATUS";
 }
 
-butil::static_atomic<int> g_running_server_count = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<int> g_running_server_count = BUTIL_STATIC_ATOMIC_INIT(0);
 
 DEFINE_bool(reuse_addr, true, "Bind to ports in TIME_WAIT state");
 BRPC_VALIDATE_GFLAG(reuse_addr, PassValidate);
@@ -470,14 +472,17 @@ void Server::RunServiceCheck(){
         //////////////////////////////////////////
         int serviceCount = 0;
         //ROOT
-        Json::Value rootElement(Json::objectValue);
+        rapidjson::Document rootdoc;
+        rootdoc.SetObject();
+        rapidjson::Document::AllocatorType& allocator = rootdoc.GetAllocator();
         //node
-        Json::Value nodeElement(Json::objectValue);
-        nodeElement["ip"] = nodeIP;
-        nodeElement["port"] = nodePort;
-        rootElement["node"] = nodeElement;
+        rapidjson::Value nodeElement(rapidjson::kObjectType);
+        rapidjson::Value ipVal(nodeIP.c_str(), allocator);
+        nodeElement.AddMember("ip", ipVal, allocator);
+        nodeElement.AddMember("port", nodePort, allocator);
+        rootdoc.AddMember("node", nodeElement, allocator);
         //tags
-        Json::Value tagsElement(Json::objectValue);
+        rapidjson::Value tagsElement(rapidjson::kObjectType);
         std::vector<std::string> tokens;
         butil::SplitString(nodeTags,';',&tokens);
         if(!tokens.empty()){
@@ -487,13 +492,15 @@ void Server::RunServiceCheck(){
                 std::vector<std::string> tokens2;
                 butil::SplitString(tagText,'=',&tokens2);
                 if(tokens2.size() == 2){
-                    tagsElement[tokens2[0]] = tokens2[1];
+                    rapidjson::Value key(tokens2[0].c_str(), allocator);
+                    rapidjson::Value value(tokens2[1].c_str(), allocator);
+                    tagsElement.AddMember(key, value, allocator);
                 }
             }
         }
-        rootElement["tags"] = tagsElement;
+        rootdoc.AddMember("tags", tagsElement, allocator);
         //services
-        Json::Value nodeServicesElement(Json::arrayValue);
+        rapidjson::Value nodeServicesElement(rapidjson::kArrayType);
         for (ServiceMap::const_iterator it = _fullname_service_map.begin(); 
             it != _fullname_service_map.end(); ++it) {
             const std::string & serviceFullName = it->first;
@@ -509,17 +516,22 @@ void Server::RunServiceCheck(){
             if(!baseService->checkValid()){
                 continue;
             }
-            nodeServicesElement.append(serviceFullName);
+            rapidjson::Value val(serviceFullName.c_str(), allocator);
+            nodeServicesElement.PushBack(val, allocator);
             ++serviceCount;
         }
-        rootElement["services"] = nodeServicesElement;
+        rootdoc.AddMember("services", nodeServicesElement, allocator);
         // Write service register information to Etcd
         if(serviceCount > 0){
             //Generate string
-            Json::FastWriter writer;
-            std::string content = writer.write(rootElement);
+            rapidjson::StringBuffer buffer;
+            rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+            rootdoc.Accept(writer);
+            std::string content = buffer.GetString();
+
             std::string encoded;
-            if (!Base64::Encode(content, &encoded)) {
+            butil::Base64Encode(content, &encoded);
+            if (encoded.empty()) {
                 LOG(ERROR) << "Failed to encode input string '" << content << "'";
             }else{
                 encoded = prefix + encoded;

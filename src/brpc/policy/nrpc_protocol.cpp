@@ -118,7 +118,7 @@ ParseResult ParseNrpcMessage(butil::IOBuf* source, Socket* socket,
     source->pop_front(sizeof(header_buf));
     MostCommonMessage* msg = MostCommonMessage::Get();
     source->cutn(&msg->meta, body_size - HEADER_LEN);
-    LOG(WARNING) << "ParseNrpcMessage";
+    //LOG(WARNING) << "ParseNrpcMessage";
     return MakeMessage(msg);
 }
 
@@ -260,7 +260,7 @@ void SendNrpcResponse(int64_t correlation_id,
         method_status.release()->OnResponded(
             !cntl->Failed(), butil::cpuwide_time_us() - start_parse_us);
     }
-    LOG(WARNING) << "SendNrpcResponse";
+    //LOG(WARNING) << "SendNrpcResponse";
 }
 
 struct CallMethodInBackupThreadArgs2 {
@@ -460,7 +460,7 @@ void ProcessNrpcRequest(InputMessageBase* msg_base) {
     SendNrpcResponse(nrpcMeta.correlation_id(), cntl.release(), 
                     req.release(), res.release(), socket.release(), server,
                     method_status, -1);
-    LOG(WARNING) << "ProcessNrpcRequest";
+    //LOG(WARNING) << "ProcessNrpcRequest";
 }
 
 bool VerifyNrpcRequest(const InputMessageBase* msg_base) {
@@ -520,7 +520,7 @@ void ProcessNrpcResponse(InputMessageBase* msg_base) {
     // error code if it version check of `cid' fails
     msg.reset();  // optional, just release resourse ASAP
     accessor.OnResponse(cid, saved_error);
-    LOG(WARNING) << "ProcessNrpcResponse";    
+    //LOG(WARNING) << "ProcessNrpcResponse";    
 }
 
 void PackNrpcRequest(butil::IOBuf* req_buf,

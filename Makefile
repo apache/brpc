@@ -40,6 +40,9 @@ BUTIL_SOURCES = \
     src/butil/third_party/snappy/snappy-stubs-internal.cc \
     src/butil/third_party/snappy/snappy.cc \
     src/butil/third_party/murmurhash3/murmurhash3.cpp \
+    src/butil/third_party/etcdc/sds/sds.c \
+    src/butil/third_party/etcdc/cetcd_array.c \
+    src/butil/third_party/etcdc/cetcd.c \
     src/butil/arena.cpp \
     src/butil/at_exit.cc \
     src/butil/atomicops_internals_x86_gcc.cc \

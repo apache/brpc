@@ -14,7 +14,10 @@
 
 // Authors: Kevin.XU (xuhuahai@sogou-inc.com)
 
-#include <json/json.h>
+#include "butil/logging.h"
+#include "butil/third_party/rapidjson/document.h"
+#include "butil/third_party/rapidjson/writer.h"
+#include "butil/third_party/rapidjson/stringbuffer.h"
 #include "naming_service_filter.h"
 
 namespace brpc {
@@ -24,22 +27,19 @@ void DefaultNamingServiceFilter::RegisterBasicFilter(BasicServiceFilter* basicSe
 }
 
 bool DefaultNamingServiceFilter::Accept(const ServerNode& server) const{
-    Json::Reader reader;
-    Json::Value rootElement;
-    reader.parse(server.tag, rootElement, false);
-    Json::Value NULLVALUE;
-    std::vector<std::pair<std::string,std::string> > tags;
-    if(!rootElement.empty()){
-        Json::Value::Members names = rootElement.getMemberNames();
-        Json::Value::Members::iterator nameIter = names.begin();
-        for(;nameIter!=names.end();++nameIter){
-            std::string name = *nameIter;
-            const Json::Value & valueElement = rootElement.get(name,NULLVALUE);
-            if(valueElement != NULLVALUE){
-                tags.push_back( std::make_pair(name,valueElement.asString()) );
-            }
-        }
+    rapidjson::Document doc;
+    if(doc.Parse(server.tag.c_str()).HasParseError()){
+        LOG(WARNING) << "Parse tag failed : " << server.tag;
+        return false;
     }
+
+    std::vector<std::pair<std::string,std::string> > tags;
+    for (rapidjson::Value::MemberIterator itr = doc.MemberBegin();
+            itr != doc.MemberEnd(); ++itr)
+    {
+        tags.push_back( std::make_pair(itr->name.GetString(),itr->value.GetString()) );
+    }
+
     std::vector<BasicServiceFilter *>::const_iterator it = _filters.cbegin();
     for(;it!=_filters.cend();++it){
         BasicServiceFilter * filter = *it;

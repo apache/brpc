@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include <gflags/gflags.h>
-#include <json/json.h>
 #include <string>
 #include <vector>
 
@@ -25,7 +24,10 @@
 #include "brpc/cmd_flags.h"
 #include "brpc/policy/etcd_naming_service.h"
 #include "butil/strings/string_split.h"
-#include "butil/third_party/etcdc/base64.h"
+#include "butil/base64.h"
+#include "butil/third_party/rapidjson/document.h"
+#include "butil/third_party/rapidjson/writer.h"
+#include "butil/third_party/rapidjson/stringbuffer.h"
 #include "butil/third_party/etcdc/cetcd_array.h"
 #include "butil/third_party/etcdc/cetcd.h"
 
@@ -83,33 +85,56 @@ int EtcdNamingService::GetServers(const char *service_name,
         for(;providerIter!=result.end();++providerIter){
             std::string & value = *providerIter;
             std::string decoded;
-            if (!Base64::Decode(value, &decoded)) {
+            butil::Base64Decode(value, &decoded);
+            if (decoded.empty()) {
                 LOG(WARNING) << "Failed to decode base64 string '" << value << "'";
             }else{
                 LOG(INFO) << "Found service provider : " << decoded;
-                Json::Reader reader;
-                Json::Value rootElement;
-                reader.parse(decoded, rootElement, false);
-                Json::Value& nodeElement = rootElement["node"];
-                std::string ipString = nodeElement["ip"].asString();
+                rapidjson::Document doc;
+                if(doc.Parse(decoded.c_str()).HasParseError()){
+                    LOG(WARNING) << "Parse provider failed : " << decoded;
+                    continue;
+                }
+
+                // Get ip & port
+                rapidjson::Value& nodeElement = doc["node"];
+                std::string ipString = nodeElement["ip"].GetString();
                 butil::ip_t ip;
                 if (butil::str2ip(ipString.c_str(), &ip) != 0) {
                     LOG(WARNING) << "Invalid ip=" << ipString;
                     continue;
                 }
-                int port = nodeElement["port"].asInt();
+                int port = nodeElement["port"].GetInt();
+
+                // Get tags
                 std::string tags("");
-                Json::Value& nodeTagsElement = rootElement["tags"];
-                Json::FastWriter writer;
-                tags = writer.write(nodeTagsElement);
-                Json::Value& nodeServicesElement = rootElement["services"];
-                if (nodeServicesElement.isArray() && nodeServicesElement.size() > 0) {
-                    for (size_t i = 0; i < nodeServicesElement.size(); i++) {
-                        Json::Value& nodeServiceElement = nodeServicesElement[(Json::ArrayIndex)i];
-                        std::string serviceName = nodeServiceElement.asString();
-                        servers->push_back(ServerNode(ip, port, tags));
+                rapidjson::Value& nodeTagsElement = doc["tags"];
+                rapidjson::Document tagsdocument;
+                tagsdocument.SetObject();
+                rapidjson::Document::AllocatorType& allocator = tagsdocument.GetAllocator();
+                for (rapidjson::Value::MemberIterator itr = nodeTagsElement.MemberBegin();
+                    itr != nodeTagsElement.MemberEnd(); ++itr)
+                {
+                    tagsdocument.AddMember(itr->name, itr->value, allocator);
+                }
+                if( !tagsdocument.ObjectEmpty() ){
+                    rapidjson::StringBuffer buffer;
+                    rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+                    tagsdocument.Accept(writer);
+                    tags = buffer.GetString();
+                }
+
+                // Get service names
+                rapidjson::Value& nodeServicesElement = doc["services"];
+                if(nodeServicesElement.IsArray()){
+                    for (rapidjson::SizeType i = 0; i < nodeServicesElement.Size(); i++){
+                        std::string serviceName = nodeServicesElement[i].GetString();
+                        if(serviceName == service_name){
+                            servers->push_back(ServerNode(ip, port, tags));
+                        }
                     }
                 }
+
             }
         }
     }else{
