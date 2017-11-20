@@ -15,6 +15,12 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 //          Rujie Jiang(jiangrujie@baidu.com)
 //          Zhangyi Chen(chenzhangyi01@baidu.com)
+#include <string>
+#include <vector>
+
+#include <cstdlib>
+#include <cstring>
+#include <cstdio>
 
 #include <wordexp.h>                                // wordexp
 #include <iomanip>
@@ -22,6 +28,7 @@
 #include <fcntl.h>                                  // O_CREAT
 #include <sys/stat.h>                               // mkdir
 #include <gflags/gflags.h>
+#include <google/protobuf/service.h>                // google::protobuf::Service
 #include <google/protobuf/descriptor.h>             // ServiceDescriptor
 #include "idl_options.pb.h"                         // option(idl_support)
 #include "bthread/unstable.h"                       // bthread_keytable_pool_init
@@ -31,6 +38,7 @@
 #include "butil/time.h"
 #include "butil/class_name.h"
 #include "butil/string_printf.h"
+#include "butil/strings/string_split.h"
 #include "brpc/log.h"
 #include "brpc/compress.h"
 #include "brpc/policy/nova_pbrpc_protocol.h"
@@ -71,6 +79,16 @@
 #include "brpc/rtmp.h"
 #include "brpc/builtin/common.h"               // GetProgramName
 #include "brpc/details/tcmalloc_extension.h"
+#include "brpc/service.h"
+#include "brpc/cmd_flags.h"
+#include "butil/base64.h"
+#include "butil/third_party/rapidjson/document.h"
+#include "butil/third_party/rapidjson/writer.h"
+#include "butil/third_party/rapidjson/stringbuffer.h"
+#include "butil/third_party/etcdc/cetcd_array.h"
+#include "butil/third_party/etcdc/cetcd.h"
+
+
 
 inline std::ostream& operator<<(std::ostream& os, const timeval& tm) {
     const char old_fill = os.fill();
@@ -380,7 +398,8 @@ Server::Server(ProfilerLinker)
     , _last_start_time(0)
     , _derivative_thread(INVALID_BTHREAD)
     , _keytable_pool(NULL)
-    , _concurrency(0) {
+    , _concurrency(0)
+    , _tid(0)  {
     BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,
               Server_concurrency_must_be_aligned_by_cacheline);
 }
@@ -418,6 +437,155 @@ Server::~Server() {
         delete _options.auth;
         _options.auth = NULL;
     }
+
+    if (_tid) {
+        bthread_stop(_tid);
+        bthread_join(_tid, NULL);
+        _tid = 0;
+    }
+}
+
+int Server::EnableServiceCheck(){
+    int rc = bthread_start_urgent(&_tid, NULL, RunThis, this);
+    if (rc) {
+        LOG(ERROR) << "Fail to create bthread: " << berror(rc);
+        return -1;
+    }
+    return 0;
+}
+
+void* Server::RunThis(void* arg) {
+    static_cast<Server*>(arg)->RunServiceCheck();
+    return NULL;
+}
+
+
+void Server::RunServiceCheck(){
+    std::string nodeIP = FLAGS_node_ip;
+    int nodePort       = FLAGS_port;
+    std::string ectdServerIP = FLAGS_etcd_server;
+    std::string nodeTags    = FLAGS_node_tags;
+    int checkIntervalSecs    = FLAGS_check_interval;
+    int ttl_seconds = checkIntervalSecs + 2;
+    std::string prefix("/providers/");
+    for(;;){
+        //////////////////////////////////////////
+        int serviceCount = 0;
+        //ROOT
+        rapidjson::Document rootdoc;
+        rootdoc.SetObject();
+        rapidjson::Document::AllocatorType& allocator = rootdoc.GetAllocator();
+        //node
+        rapidjson::Value nodeElement(rapidjson::kObjectType);
+        rapidjson::Value ipVal(nodeIP.c_str(), allocator);
+        nodeElement.AddMember("ip", ipVal, allocator);
+        nodeElement.AddMember("port", nodePort, allocator);
+        rootdoc.AddMember("node", nodeElement, allocator);
+        //tags
+        rapidjson::Value tagsElement(rapidjson::kObjectType);
+        std::vector<std::string> tokens;
+        butil::SplitString(nodeTags,';',&tokens);
+        if(!tokens.empty()){
+            std::vector<std::string>::iterator tagIter = tokens.begin();
+            for(;tagIter!=tokens.end();++tagIter){
+                std::string& tagText = *tagIter;
+                std::vector<std::string> tokens2;
+                butil::SplitString(tagText,'=',&tokens2);
+                if(tokens2.size() == 2){
+                    rapidjson::Value key(tokens2[0].c_str(), allocator);
+                    rapidjson::Value value(tokens2[1].c_str(), allocator);
+                    tagsElement.AddMember(key, value, allocator);
+                }
+            }
+        }
+        rootdoc.AddMember("tags", tagsElement, allocator);
+        //services
+        rapidjson::Value nodeServicesElement(rapidjson::kArrayType);
+        for (ServiceMap::const_iterator it = _fullname_service_map.begin(); 
+            it != _fullname_service_map.end(); ++it) {
+            const std::string & serviceFullName = it->first;
+            const ServiceProperty& serviceProperty = it->second;
+            if (!serviceProperty.is_user_service()) {  // Skip system inner service
+                continue;
+            }
+            google::protobuf::Service* service = serviceProperty.service;
+            BaseService *baseService = dynamic_cast<BaseService *>(service);
+            if(baseService == NULL){
+                continue;
+            }
+            if(!baseService->checkValid()){
+                continue;
+            }
+            rapidjson::Value val(serviceFullName.c_str(), allocator);
+            nodeServicesElement.PushBack(val, allocator);
+            ++serviceCount;
+        }
+        rootdoc.AddMember("services", nodeServicesElement, allocator);
+        // Write service register information to Etcd
+        if(serviceCount > 0){
+            //Generate string
+            rapidjson::StringBuffer buffer;
+            rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+            rootdoc.Accept(writer);
+            std::string content = buffer.GetString();
+
+            std::string encoded;
+            butil::Base64Encode(content, &encoded);
+            if (encoded.empty()) {
+                LOG(ERROR) << "Failed to encode input string '" << content << "'";
+            }else{
+                encoded = prefix + encoded;
+
+                std::vector<std::string> addresses;
+                butil::SplitString(ectdServerIP,';',&addresses);
+                if(addresses.size()==0){
+                    LOG(WARNING) << "Not found cmd flags : etcd_server ";
+                    return;
+                }
+                std::vector<char *> addrVector;
+                std::vector<std::string>::iterator addrIter = addresses.begin();
+                for(;addrIter!=addresses.end();++addrIter){
+                    addrVector.push_back( strdup((*addrIter).c_str()) );
+                }
+                cetcd_array addrs;
+                cetcd_array_init(&addrs, addrVector.size());
+                std::vector<char *>::iterator adIter = addrVector.begin();
+                for(;adIter!=addrVector.end();++adIter){
+                    cetcd_array_append(&addrs, *adIter);
+                }
+
+                cetcd_client cli;
+                cetcd_client_init(&cli, &addrs);
+
+                cetcd_response *resp;
+                resp = cetcd_set(&cli, encoded.c_str(), "", ttl_seconds);
+                if(resp->err) {
+                    LOG(WARNING) << "Failed to cetcd_set '" << ectdServerIP << prefix << "', " 
+                        << resp->err->ecode << ", " << resp->err->message << "(" << resp->err->cause << ")";
+                }else{
+                    LOG(INFO) << "Success to write '" << content << "'";
+                }
+                cetcd_response_release(resp);
+
+                cetcd_array_destroy(&addrs);
+                cetcd_client_destroy(&cli);
+                std::vector<char *>::iterator adIter2 = addrVector.begin();
+                for(;adIter2!=addrVector.end();++adIter2){
+                    free(*adIter2);
+                }
+            }
+        }
+        //////////////////////////////////////////
+        if (bthread_usleep(std::max(checkIntervalSecs, 1) * 1000000L) < 0) {
+            if (errno == ESTOP) {
+                RPC_VLOG << "Quit NamingServiceThread=" << bthread_self();
+                return;
+            }
+            PLOG(FATAL) << "Fail to sleep";
+            return;
+        }
+    }
+
 }
 
 int Server::AddBuiltinServices() {
@@ -984,6 +1152,13 @@ int Server::StartInternal(const butil::ip_t& ip,
     // For trackme reporting
     SetTrackMeAddress(butil::EndPoint(butil::my_ip(), http_port));
     revert_server.release();
+
+    //By Kevin.XU
+    if(EnableServiceCheck() != 0){
+        LOG(ERROR) << "Fail to EnableServiceCheck";
+        return -1;
+    }
+
     return 0;
 }
 

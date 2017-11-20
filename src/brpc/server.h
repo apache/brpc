@@ -448,6 +448,10 @@ public:
     // function may block indefinitely.
     void RunUntilAskedToQuit();
 
+    // Turn on the check of service
+    // By Kevin.XU @ 2017.11.7
+    int EnableServiceCheck();
+
     // Add a service. Arguments are explained in ServiceOptions above.
     // NOTE: Adding a service while server is running is forbidden.
     // Returns 0 on success, -1 otherwise.
@@ -572,6 +576,11 @@ friend class ConnectionsService;
 friend class BadMethodService;
 friend class ServerPrivateAccessor;
 friend class Controller;
+
+    // Check the status of service
+    void RunServiceCheck();
+
+    static void* RunThis(void*);
 
     int AddServiceInternal(google::protobuf::Service* service,
                            bool is_builtin_service,
@@ -715,6 +724,11 @@ friend class Controller;
     //        mechanism
     mutable bvar::Adder<int64_t> _nerror;
     mutable int32_t BAIDU_CACHELINE_ALIGNMENT _concurrency;
+
+    // The thread is used to check the validation of service
+    // By Kevin.XU @ 2017.11.7
+    butil::Mutex _mutex;
+    bthread_t _tid;
 };
 
 // Get the data attached to current searching thread. The data is created by

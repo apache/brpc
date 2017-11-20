@@ -23,6 +23,7 @@
 #ifdef BAIDU_INTERNAL
 #include "brpc/policy/baidu_naming_service.h"
 #endif
+#include "brpc/policy/etcd_naming_service.h"
 #include "brpc/policy/file_naming_service.h"
 #include "brpc/policy/list_naming_service.h"
 #include "brpc/policy/domain_naming_service.h"
@@ -57,6 +58,7 @@
 #include "brpc/policy/nshead_mcpack_protocol.h"
 #include "brpc/policy/rtmp_protocol.h"
 #include "brpc/policy/esp_protocol.h"
+#include "brpc/policy/nrpc_protocol.h"
 
 #include "brpc/input_messenger.h"     // get_or_new_client_side_messenger
 #include "brpc/socket_map.h"          // SocketMapList
@@ -97,6 +99,7 @@ struct GlobalExtensions {
 #ifdef BAIDU_INTERNAL
     BaiduNamingService bns;
 #endif
+    EtcdNamingService etcdns;
     FileNamingService fns;
     ListNamingService lns;
     DomainNamingService dns;
@@ -306,6 +309,7 @@ static void GlobalInitializeOrDieImpl() {
 #ifdef BAIDU_INTERNAL
     NamingServiceExtension()->RegisterOrDie("bns", &g_ext->bns);
 #endif
+    NamingServiceExtension()->RegisterOrDie("etcdns", &g_ext->etcdns);
     NamingServiceExtension()->RegisterOrDie("file", &g_ext->fns);
     NamingServiceExtension()->RegisterOrDie("list", &g_ext->lns);
     NamingServiceExtension()->RegisterOrDie("http", &g_ext->dns);
@@ -499,6 +503,15 @@ static void GlobalInitializeOrDieImpl() {
         NULL, NULL, NULL,
         CONNECTION_TYPE_POOLED_AND_SHORT, "esp"};
     if (RegisterProtocol(PROTOCOL_ESP, esp_protocol) != 0) {
+        exit(1);
+    }
+
+    Protocol nrpc_protocol = { ParseNrpcMessage,
+                                SerializeRequestDefault, PackNrpcRequest,
+                                ProcessNrpcRequest, ProcessNrpcResponse,
+                                VerifyNrpcRequest, NULL, NULL,
+                                CONNECTION_TYPE_ALL, "nrpc" };
+    if (RegisterProtocol(PROTOCOL_NRPC, nrpc_protocol) != 0) {
         exit(1);
     }
 
