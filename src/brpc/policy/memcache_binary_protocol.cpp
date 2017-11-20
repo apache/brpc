@@ -128,8 +128,7 @@ ParseResult ParseMemcacheMessage(butil::IOBuf* source,
         source->cutn(&msg->meta, total_body_length);
         if (header->command == MC_BINARY_SASL_AUTH) {
             if (header->status != 0) {
-                LOG(ERROR) << "Failed to authenticate the couchbase bucket."
-                           << "All the following commands will result in auth failure.";
+                LOG(ERROR) << "Failed to authenticate the couchbase bucket.";
                 return MakeParseError(PARSE_ERROR_NO_RESOURCE, 
                                       "Fail to authenticate with the couchbase bucket");
             }
