@@ -106,4 +106,4 @@ brpc欢迎贡献代码，特别是对不同平台，协议的扩展代码。
 
 提交PR后请检查如下内容：
 
-* [travis-ci](https://travis-ci.org/brpc/brpc)中的编译和单测均已成功。
+* [travis-ci](https://travis-ci.org/brpc/brpc/pull_requests)中的编译和单测均已成功。

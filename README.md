@@ -105,4 +105,4 @@ Make sure the code meets following requirements before submitting your PR:
 
 Check following items after submitting the PR:
 
-- Compilations and unittests in [travis-ci](https://travis-ci.org/brpc/brpc) are passed.
+- Compilations and unittests in [travis-ci](https://travis-ci.org/brpc/brpc/pull_requests) are passed.
