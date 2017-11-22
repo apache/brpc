@@ -14,18 +14,22 @@
 
 // Authors: Kevin.XU (xuhuahai@sogou-inc.com)
 
-#ifndef  BRPC_SERVICE_H
-#define  BRPC_SERVICE_H
+#ifndef  BRPC_SERVICE_VALIDATE_LISTENER_H
+#define  BRPC_SERVICE_VALIDATE_LISTENER_H
+
+#include <vector>
+#include <string>
 
 namespace brpc {
 
 // For all kinds of business services
-class BaseService {
+class BaseServiceValidateListener {
 public:
-    virtual ~BaseService() {}
+    virtual ~BaseServiceValidateListener() {}
 
-    // Check validation of service
-    virtual bool checkValid() = 0;
+    // pass valid services' names
+    virtual void onValidServices(const std::vector<std::string> &validServiceFullNames) = 0;
+    
 };
 
 } // namespace brpc

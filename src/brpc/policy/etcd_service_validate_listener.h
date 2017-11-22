@@ -1,4 +1,4 @@
-// Copyright (c) 2015 Baidu, Inc.
+// Copyright (c) 2014 Baidu, Inc.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,21 +14,27 @@
 
 // Authors: Kevin.XU (xuhuahai@sogou-inc.com)
 
-#ifndef  BRPC_SERVICE_H
-#define  BRPC_SERVICE_H
+#ifndef  BRPC_POLICY_ETCD_SERVICE_VALIDATE_LISTENER_H
+#define  BRPC_POLICY_ETCD_SERVICE_VALIDATE_LISTENER_H
+
+#include <vector>
+
+#include "brpc/service_validate_listener.h"
 
 namespace brpc {
+namespace policy {
 
-// For all kinds of business services
-class BaseService {
+
+// Acquire server list from Etcd, aka ETCDNS
+class EtcdServiceValidateListener : public BaseServiceValidateListener {
 public:
-    virtual ~BaseService() {}
 
-    // Check validation of service
-    virtual bool checkValid() = 0;
+    void onValidServices(const std::vector<std::string> &validServiceFullNames);
+
 };
 
+}  // namespace policy
 } // namespace brpc
 
+#endif //BRPC_POLICY_ETCD_SERVICE_VALIDATE_LISTENER_H
 
-#endif  //BRPC_SERVICE_H

@@ -35,6 +35,7 @@
 #include "brpc/builtin/tabbed.h"
 #include "brpc/details/profiler_linker.h"
 #include "brpc/health_reporter.h"
+#include "brpc/service_validate_listener.h"
 
 extern "C" {
 struct ssl_ctx_st;
@@ -287,6 +288,9 @@ struct ServerOptions {
     // All names inside must be valid, check protocols name in global.cpp
     // Default: empty (all protocols)
     std::string enabled_protocols;
+
+    // If this field is on,  onValidServices() will called periodly
+    BaseServiceValidateListener* service_Validate_listener;
 };
 
 // This struct is originally designed to contain basic statistics of the

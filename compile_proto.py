@@ -40,12 +40,12 @@ print('Found {}'.format(protoc))
 PROTOBUF_HOME = os.environ['PROTOBUF_HOME']
 print('PROTOBUF_HOME = {}'.format(PROTOBUF_HOME))
 
-def generate_proto(common_include_path, outputDir, source, require = True):
+def generate_proto(common_include_path, outputDir, source, simulation = False):
     """Invokes the Protocol Compiler to generate a .cc from the given
     .proto file.  Does nothing if the output already exists and is newer than
     the input."""
 
-    if not require and not os.path.exists(source):
+    if not os.path.exists(source):
         return
     
     print('-------------------------------------------------------')
@@ -71,6 +71,9 @@ def generate_proto(common_include_path, outputDir, source, require = True):
         print('remove old header file : {}'.format(headerFilePath))
         os.remove(headerFilePath)
 
+    if simulation:
+        return
+
     if ( os.path.exists(dirPath) and os.path.exists(source) ):
         print("Generate cpp files for %s" % source)
 
@@ -86,6 +89,7 @@ def generate_proto(common_include_path, outputDir, source, require = True):
 
         protoc_command = [ protoc, '--cpp_out={}'.format(outputDir), 
             '--proto_path={}'.format( PROTOBUF_HOME + '/include/' ), 
+            '--proto_path=./src', 
             '--proto_path={}'.format(common_include_path), source ]
 
         # Must change to the directory which contains *.proto
@@ -111,15 +115,20 @@ def travel_directory(directory_path):
     return result
     
 
-def process_dir(directory_path):
+def process_dir(directory_path, simulation = False):
     proto_file_path_list = travel_directory(directory_path)
     for item in proto_file_path_list:
-        generate_proto(directory_path,directory_path,item)
+        generate_proto(directory_path,directory_path,item,simulation)
 
     
 if __name__ == '__main__':
+    simulation = False
+    if len(sys.argv) > 1:
+        simulation_arg = sys.argv[1]
+        if simulation_arg.lower() == 'true':
+            simulation = True
     currentRealPath = os.path.realpath('.')
     print(currentRealPath)
-    process_dir('./src')
-    process_dir('./example')
+    process_dir('./src', simulation)
+    process_dir('./example', simulation)
         
