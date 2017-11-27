@@ -1,6 +1,22 @@
 # Usage:
-# export PROTOBUF_HOME=/usr/local/protobuf3
-# python compile_proto.py
+# export GFLAGS_HEADER_PATH=/usr/local/include
+# export GFLAGS_LIB_PATH=/usr/local/lib
+# export PB_HEADER_PATH=/usr/local/include
+# export PB_LIB_PATH=/usr/local/lib
+# export LEVELDB_HEADER_PATH=/usr/local/include
+# export LEVELDB_LIB_PATH=/usr/local/lib
+# export GLOG_HEADER_PATH=/usr/local/include
+# export GLOG_LIB_PATH=/usr/local/lib
+# export RT_LIB_PATH=/usr/lib64
+# export SSL_LIB_PATH=/usr/lib64
+# export CRYPTO_LIB_PATH=/usr/lib64
+# export DL_LIB_PATH=/usr/lib64
+# export Z_LIB_PATH=/usr/lib64
+# export CURL_HEADER_PATH=/usr/include
+# export CURL_LIB_PATH=/usr/lib64
+# export YAJL_HEADER_PATH=/usr/local/include
+# export YAJL_LIB_PATH=/usr/local/lib
+# python3 compile_proto.py
 # mkdir build 
 # cd build 
 # cmake ..
@@ -46,42 +62,42 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4 -msse4.2")
 
 
 ############################static library##################################
-find_path(GFLAGS_HEADER NAMES gflags/gflags.h)
-find_library(GFLAGS_LIB NAMES gflags)
+find_path(GFLAGS_HEADER NAMES gflags/gflags.h PATHS $ENV{GFLAGS_HEADER_PATH})
+find_library(GFLAGS_LIB NAMES gflags PATHS $ENV{GFLAGS_LIB_PATH})
 
 #protobuf 3.2
-find_path(PROTOBUF_HEADER NAMES google/protobuf/stubs/common.h PATHS $ENV{PROTOBUF_HOME}/include)
-find_library(PROTOBUF_LIB NAMES protobuf PATHS $ENV{PROTOBUF_HOME}/lib)
+find_path(PROTOBUF_HEADER NAMES google/protobuf/stubs/common.h PATHS $ENV{PB_HEADER_PATH})
+find_library(PROTOBUF_LIB NAMES protobuf PATHS $ENV{PB_LIB_PATH})
 
-find_path(LEVELDB_HEADER NAMES leveldb/db.h)
-find_library(LEVELDB_LIB NAMES leveldb)
+find_path(LEVELDB_HEADER NAMES leveldb/db.h PATHS $ENV{LEVELDB_HEADER_PATH})
+find_library(LEVELDB_LIB NAMES leveldb PATHS $ENV{LEVELDB_LIB_PATH})
 
 if(WITH_GLOG)
-    find_path(GLOG_HEADER NAMES glog/logging.h)
-    find_library(GLOG_LIB NAMES glog)
+    find_path(GLOG_HEADER NAMES glog/logging.h PATHS $ENV{GLOG_HEADER_PATH})
+    find_library(GLOG_LIB NAMES glog PATHS $ENV{GLOG_LIB_PATH})
 endif()
 
 ############################dynamic library##################################
 find_package(Threads)
 
-find_library(RT_LIB NAMES rt)
+find_library(RT_LIB NAMES rt PATHS $ENV{RT_LIB_PATH})
 
-find_library(SSL_LIB NAMES ssl)
+find_library(SSL_LIB NAMES ssl PATHS $ENV{SSL_LIB_PATH})
 
-find_library(CRYPTO_LIB NAMES crypto)
+find_library(CRYPTO_LIB NAMES crypto PATHS $ENV{CRYPTO_LIB_PATH})
 
-find_library(DL_LIB NAMES dl)
+find_library(DL_LIB NAMES dl PATHS $ENV{DL_LIB_PATH})
 
-find_library(Z_LIB NAMES z)
+find_library(Z_LIB NAMES z PATHS $ENV{Z_LIB_PATH})
 
 #protobuf 3.2
-find_library(PROTOC_LIB NAMES protoc PATHS $ENV{PROTOBUF_HOME}/lib)
+find_library(PROTOC_LIB NAMES protoc PATHS $ENV{PB_LIB_PATH})
 
-find_path(CURL_HEADER NAMES curl/curl.h)
-find_library(CURL_LIB NAMES curl)
+find_path(CURL_HEADER NAMES curl/curl.h PATHS $ENV{CURL_HEADER_PATH})
+find_library(CURL_LIB NAMES curl PATHS $ENV{CURL_LIB_PATH})
 
-find_path(YAJL_HEADER NAMES yajl/yajl_tree.h)
-find_library(YAJL_LIB NAMES yajl)
+find_path(YAJL_HEADER NAMES yajl/yajl_tree.h PATHS $ENV{YAJL_HEADER_PATH})
+find_library(YAJL_LIB NAMES yajl PATHS $ENV{YAJL_LIB_PATH})
 
 ##############################################################
 

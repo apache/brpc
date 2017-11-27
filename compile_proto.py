@@ -37,7 +37,7 @@ else:
 
 print('Found {}'.format(protoc))
 
-PROTOBUF_HOME = os.environ['PROTOBUF_HOME']
+PROTOBUF_HOME = os.environ.get("PROTOBUF_HOME") or '/usr/local'
 print('PROTOBUF_HOME = {}'.format(PROTOBUF_HOME))
 
 def generate_proto(common_include_path, outputDir, source, simulation = False):
