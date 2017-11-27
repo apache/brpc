@@ -67,8 +67,8 @@
 // C++ ABI in the future.
 //
 
-#ifndef BASE_DEMANGLE_H_
-#define BASE_DEMANGLE_H_
+#ifndef BUTIL_DEMANGLE_H_
+#define BUTIL_DEMANGLE_H_
 
 #include "config.h"
 
@@ -81,4 +81,4 @@ bool Demangle(const char *mangled, char *out, int out_size);
 
 _END_GOOGLE_NAMESPACE_
 
-#endif  // BASE_DEMANGLE_H_
+#endif  // BUTIL_DEMANGLE_H_

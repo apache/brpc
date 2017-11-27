@@ -18,8 +18,8 @@
 
 // Inlined implementations of some methods defined in iobuf.h
 
-#ifndef BASE_IOBUF_INL_H
-#define BASE_IOBUF_INL_H
+#ifndef BUTIL_IOBUF_INL_H
+#define BUTIL_IOBUF_INL_H
 
 void* fast_memcpy(void *__restrict dest, const void *__restrict src, size_t n);
 
@@ -289,4 +289,4 @@ inline size_t IOBufBytesIterator::copy_and_forward(std::string* s, size_t n) {
 
 }  // namespace butil
 
-#endif  // BASE_IOBUF_INL_H
+#endif  // BUTIL_IOBUF_INL_H

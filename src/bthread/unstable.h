@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 10 17:40:58 CST 2012
 
-#ifndef BAIDU_BTHREAD_BTHREAD_UNSTABLE_H
-#define BAIDU_BTHREAD_BTHREAD_UNSTABLE_H
+#ifndef BTHREAD_UNSTABLE_H
+#define BTHREAD_UNSTABLE_H
 
 #include <pthread.h>
 #include <sys/socket.h>
@@ -124,4 +124,4 @@ extern void bthread_keytable_pool_reserve(
 
 __END_DECLS
 
-#endif  // BAIDU_BTHREAD_BTHREAD_UNSTABLE_H
+#endif  // BTHREAD_UNSTABLE_H

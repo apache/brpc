@@ -77,17 +77,11 @@ int main(int argc, char* argv[]) {
         // the response comes back or error occurs(including timedout).
         stub.Echo(&cntl, &request, &response, NULL);
         if (!cntl.Failed()) {
-            if (cntl.response_attachment().empty()) {
-                LOG(INFO) << "Received response from " << cntl.remote_side()
-                          << ": " << response.message()
-                          << " latency=" << cntl.latency_us() << "us";
-            } else {
-                LOG(INFO) << "Received response from " << cntl.remote_side()
-                          << " to " << cntl.local_side()
-                          << ": " << response.message() << " (attached="
-                          << cntl.response_attachment() << ")"
-                          << " latency=" << cntl.latency_us() << "us";
-            }
+            LOG(INFO) << "Received response from " << cntl.remote_side()
+                << " to " << cntl.local_side()
+                << ": " << response.message() << " (attached="
+                << cntl.response_attachment() << ")"
+                << " latency=" << cntl.latency_us() << "us";
         } else {
             LOG(WARNING) << cntl.ErrorText();
         }

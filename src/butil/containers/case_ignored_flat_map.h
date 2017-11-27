@@ -15,8 +15,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Dec  4 14:57:27 CST 2016
 
-#ifndef BASE_CASE_IGNORED_FLAT_MAP_H
-#define BASE_CASE_IGNORED_FLAT_MAP_H
+#ifndef BUTIL_CASE_IGNORED_FLAT_MAP_H
+#define BUTIL_CASE_IGNORED_FLAT_MAP_H
 
 #include "butil/containers/flat_map.h"
 
@@ -67,4 +67,4 @@ class CaseIgnoredFlatSet : public butil::FlatMap<
 
 } // namespace butil
 
-#endif  // BASE_CASE_IGNORED_FLAT_MAP_H
+#endif  // BUTIL_CASE_IGNORED_FLAT_MAP_H

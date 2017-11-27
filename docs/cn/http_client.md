@@ -1,4 +1,8 @@
-http client的例子见[example/http_c++](https://github.com/brpc/brpc/blob/master/example/http_c++/http_client.cpp)
+[English version](../en/http_client.md)
+
+# 示例
+
+[example/http_c++](https://github.com/brpc/brpc/blob/master/example/http_c++/http_client.cpp)
 
 # 创建Channel
 
@@ -15,7 +19,7 @@ if (channel.Init("www.baidu.com" /*any url*/, &options) != 0) {
 }
 ```
 
-http channel也支持bns地址。
+http channel也支持bns地址或其他NamingService。
 
 # GET
 
@@ -25,13 +29,13 @@ cntl.http_request().uri() = "www.baidu.com/index.html";  // 设置为待访问�
 channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
 ```
 
-HTTP和protobuf无关，所以除了Controller和done，CallMethod的其他参数均为NULL。如果要异步操作，最后一个参数传入done。
+HTTP和protobuf关系不大，所以除了Controller和done，CallMethod的其他参数均为NULL。如果要异步操作，最后一个参数传入done。
 
-`cntl.response_attachment()`是回复的body，类型也是butil::IOBuf。注意IOBuf转化为std::string（通过to_string()接口）是需要分配内存并拷贝所有内容的，如果关注性能，你的处理过程应该尽量直接支持IOBuf，而不是要求连续内存。
+`cntl.response_attachment()`是回复的body，类型也是butil::IOBuf。IOBuf可通过to_string()转化为std::string，但是需要分配内存并拷贝所有内容，如果关注性能，处理过程应直接支持IOBuf，而不要求连续内存。
 
 # POST
 
-默认的HTTP Method为GET，如果需要做POST，则需要设置。待POST的数据应置入request_attachment()，它([butil::IOBuf](https://github.com/brpc/brpc/blob/master/src/butil/iobuf.h))可以直接append std::string或char*
+默认的HTTP Method为GET，可设置为POST或[更多http method](https://github.com/brpc/brpc/blob/master/src/brpc/http_method.h)。待POST的数据应置入request_attachment()，它([butil::IOBuf](https://github.com/brpc/brpc/blob/master/src/butil/iobuf.h))可以直接append std::string或char*。
 
 ```c++
 brpc::Controller cntl;
@@ -41,7 +45,7 @@ cntl.request_attachment().append("{\"message\":\"hello world!\"}");
 channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
 ```
 
-需要大量打印过程的body建议使用butil::IOBufBuilder，它的用法和std::ostringstream是一样的。对于有大量对象要打印的场景，IOBufBuilder会简化代码，并且效率也更高。
+需要大量打印过程的body建议使用butil::IOBufBuilder，它的用法和std::ostringstream是一样的。对于有大量对象要打印的场景，IOBufBuilder简化了代码，效率也可能比c-style printf更高。
 
 ```c++
 brpc::Controller cntl;
@@ -79,12 +83,20 @@ URL的一般形式如下图：
 //                                               interpretable as extension
 ```
 
-问题：Channel为什么不直接利用Init时传入的URL，而需要给uri()再设置一次？
+在上面例子中可以看到，Channel.Init()和cntl.http_request().uri()被设置了相同的URL。为什么Channel为什么不直接利用Init时传入的URL，而需要给uri()再设置一次？
 
 确实，在简单使用场景下，这两者有所重复，但在复杂场景中，两者差别很大，比如：
 
-- 访问挂在bns下的多个http server。此时Channel.Init传入的是bns节点名称，对uri()的赋值则是包含Host的完整URL（比如"www.foo.com/index.html?name=value"），BNS下所有的http server都会看到"Host: www.foo.com"；uri()也可以是只包含路径的URL，比如"/index.html?name=value"，框架会以目标server的ip和port为Host，地址为10.46.188.39:8989的http server将会看到"Host: 10.46.188.39:8989"。
+- 访问名字服务(如BNS)下的多个http server。此时Channel.Init传入的是对该名字服务有意义的名称（如BNS中的节点名称），对uri()的赋值则是包含Host的完整URL(比如"www.foo.com/index.html?name=value")。
 - 通过http proxy访问目标server。此时Channel.Init传入的是proxy server的地址，但uri()填入的是目标server的URL。
+
+## Host字段
+
+若用户自己填写了host字段(http header)，框架不会修改。
+
+若用户没有填且URL中包含host，比如http://www.foo.com/path，则http request中会包含"Host: www.foo.com"。
+
+若用户没有填且URL不包含host，比如"/index.html?name=value"，则框架会以目标server的ip和port为Host，地址为10.46.188.39:8989的http server将会看到"Host: 10.46.188.39:8989"。
 
 # 常见设置
 
@@ -132,27 +144,29 @@ os.move_to(cntl->request_attachment());
 
 Notes on http header:
 
-- 根据 HTTP 协议[规定](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2)， header 的 field_name部分不区分大小写。brpc对于field_name大小写保持不变，且仍然支持大小写不敏感。
-- 如果 HTTP 头中出现了相同的 field_name, 根据协议[规定](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2)，value将被合并到一起， 中间用逗号(,) 分隔， 具体value如何理解，需要用户自己确定.
+- 根据[rfc2616](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2)，header的field_name部分不区分大小写。brpc支持大小写不敏感，同时还能在打印时保持field_name大小写与用户设定的相同。
+- 如果HTTP头中出现了相同的field_name, 根据[rfc2616](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2)，value应合并到一起，用逗号(,)分隔，用户自己确定如何理解和处理此类value.
 - query之间用"&"分隔, key和value之间用"="分隔, value可以省略，比如key1=value1&key2&key3=value3中key2是合理的query，值为空字符串。
 
-# 查看client发出的请求和收到的回复
+# 查看HTTP消息
 
 打开[-http_verbose](http://brpc.baidu.com:8765/flags/http_verbose)即可在stderr看到所有的http request和response，注意这应该只用于线下调试，而不是线上程序。 
 
-# HTTP的错误处理
+# HTTP错误
 
-当Server返回的http status code不是2xx时，该次http访问即视为失败，client端会设置对应的ErrorCode：
-
-- 所有错误被统一为EHTTP。如果用户发现`cntl->ErrorCode()`为EHTTP，那么可以检查`cntl->http_response().status_code()`以获得具体的http错误。同时http body会置入`cntl->response_attachment()`，用户可以把代表错误的html或json传递回来。
+当Server返回的http status code不是2xx时，该次http访问被视为失败，client端会把`cntl->ErrorCode()`设置为EHTTP，用户可通过`cntl->http_response().status_code()`获得具体的http错误。同时server端可以把代表错误的html或json置入`cntl->response_attachment()`作为http body传递回来。
 
 # 压缩request body
 
-调用Controller::set_request_compress_type(brpc::COMPRESS_TYPE_GZIP)可将http body用gzip压缩，并设置"Content-Encoding"为"gzip"。
+调用Controller::set_request_compress_type(baidu::rpc::COMPRESS_TYPE_GZIP)将尝试用gzip压缩http body。
+
+“尝试”指的是压缩有可能不发生，条件有：
+
+- body尺寸小于-http_body_compress_threshold指定的字节数，默认是512。这是因为gzip并不是一个很快的压缩算法，当body较小时，压缩增加的延时可能比网络传输省下的还多。
 
 # 解压response body
 
-出于通用性考虑且解压代码不复杂，brpc不会自动解压response body，用户可以自己做，方法如下：
+出于通用性考虑brpc不会自动解压response body，解压代码并不复杂，用户可以自己做，方法如下：
 
 ```c++
 #include <brpc/policy/gzip_compress.h>
@@ -171,7 +185,7 @@ if (encoding != NULL && *encoding == "gzip") {
 
 # 持续下载
 
-通常下载一个超长的body时，需要一直等待直到body完整才会视作RPC结束，这个过程中超长body都会存在内存中，如果body是无限长的（比如直播用的flv文件），那么内存会持续增长，直到超时。这样的http client不适合下载大文件。
+http client往往需要等待到body下载完整才结束RPC，这个过程中body都会存在内存中，如果body超长或无限长（比如直播用的flv文件），那么内存会持续增长，直到超时。这样的http client不适合下载大文件。
 
 brpc client支持在读取完body前就结束RPC，让用户在RPC结束后再读取持续增长的body。注意这个功能不等同于“支持http chunked mode”，brpc的http实现一直支持解析chunked mode，这里的问题是如何让用户处理超长或无限长的body，和body是否以chunked mode传输无关。
 

@@ -34,8 +34,8 @@
 //  - is thread safe for copying and deletion
 //  - supports weak_ptrs
 
-#ifndef BASE_MEMORY_LINKED_PTR_H_
-#define BASE_MEMORY_LINKED_PTR_H_
+#ifndef BUTIL_MEMORY_LINKED_PTR_H_
+#define BUTIL_MEMORY_LINKED_PTR_H_
 
 #include "butil/logging.h"  // for CHECK macros
 
@@ -178,4 +178,4 @@ linked_ptr<T> make_linked_ptr(T* ptr) {
   return linked_ptr<T>(ptr);
 }
 
-#endif  // BASE_MEMORY_LINKED_PTR_H_
+#endif  // BUTIL_MEMORY_LINKED_PTR_H_

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_MEMORY_RAW_SCOPED_REFPTR_MISMATCH_CHECKER_H_
-#define BASE_MEMORY_RAW_SCOPED_REFPTR_MISMATCH_CHECKER_H_
+#ifndef BUTIL_MEMORY_RAW_SCOPED_REFPTR_MISMATCH_CHECKER_H_
+#define BUTIL_MEMORY_RAW_SCOPED_REFPTR_MISMATCH_CHECKER_H_
 
 #include "butil/memory/ref_counted.h"
 #include "butil/type_traits.h"
@@ -125,4 +125,4 @@ struct ParamsUseScopedRefptrCorrectly<Tuple8<A, B, C, D, E, F, G, H> > {
 
 }  // namespace butil
 
-#endif  // BASE_MEMORY_RAW_SCOPED_REFPTR_MISMATCH_CHECKER_H_
+#endif  // BUTIL_MEMORY_RAW_SCOPED_REFPTR_MISMATCH_CHECKER_H_

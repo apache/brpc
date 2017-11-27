@@ -378,8 +378,7 @@ static const char* ParseNamingServiceUrl(const char* url, char* protocol) {
             protocol[p1 - url] = '\0';
             const char* p2 = p1;
             if (*++p2 == '/' && *++p2 == '/') {
-                for ( ; *p2 == '/'; ++p2);
-                return p2;
+                return p2 + 1;
             }
         }
     }

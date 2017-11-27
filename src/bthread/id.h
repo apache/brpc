@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 10 17:40:58 CST 2012
 
-#ifndef BAIDU_BTHREAD_BTHREAD_ID_H
-#define BAIDU_BTHREAD_BTHREAD_ID_H
+#ifndef BTHREAD_ID_H
+#define BTHREAD_ID_H
 
 #include "butil/macros.h"              // BAIDU_SYMBOLSTR
 #include "bthread/types.h"
@@ -187,4 +187,4 @@ int bthread_id_list_reset2_bthreadsafe(bthread_id_list_t* list, int error_code,
                                        bthread_mutex_t* mutex) __THROW;
 #endif
 
-#endif  // BAIDU_BTHREAD_BTHREAD_ID_H
+#endif  // BTHREAD_ID_H

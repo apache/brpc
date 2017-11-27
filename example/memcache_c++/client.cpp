@@ -20,11 +20,15 @@
 #include <butil/string_printf.h>
 #include <brpc/channel.h>
 #include <brpc/memcache.h>
+#include <brpc/policy/couchbase_authenticator.h>
 
 DEFINE_int32(thread_num, 10, "Number of threads to send requests");
 DEFINE_bool(use_bthread, false, "Use bthread to send requests");
+DEFINE_bool(use_couchbase, false, "Use couchbase.");
 DEFINE_string(connection_type, "", "Connection type. Available values: single, pooled, short");
 DEFINE_string(server, "0.0.0.0:11211", "IP Address of server");
+DEFINE_string(bucket_name, "", "Couchbase bucktet name");
+DEFINE_string(bucket_password, "", "Couchbase bucket password");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
@@ -36,7 +40,7 @@ DEFINE_int32(batch, 1, "Pipelined Operations");
 
 bvar::LatencyRecorder g_latency_recorder("client");
 bvar::Adder<int> g_error_count("client_error_count");
-butil::static_atomic<int> g_sender_count = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<int> g_sender_count = BUTIL_STATIC_ATOMIC_INIT(0);
 
 static void* sender(void* arg) {
     google::protobuf::RpcChannel* channel = 
@@ -109,6 +113,13 @@ int main(int argc, char* argv[]) {
     options.connection_type = FLAGS_connection_type;
     options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
     options.max_retry = FLAGS_max_retry;
+    if (FLAGS_use_couchbase && !FLAGS_bucket_name.empty()) {
+        brpc::policy::CouchbaseAuthenticator* auth =
+            new brpc::policy::CouchbaseAuthenticator(FLAGS_bucket_name,
+                                                     FLAGS_bucket_password);
+        options.auth = auth;
+    }
+
     if (channel.Init(FLAGS_server.c_str(), FLAGS_load_balancer.c_str(), &options) != 0) {
         LOG(ERROR) << "Fail to initialize channel";
         return -1;
@@ -179,6 +190,9 @@ int main(int argc, char* argv[]) {
         } else {
             bthread_join(tids[i], NULL);
         }
+    }
+    if (options.auth) {
+        delete options.auth;
     }
 
     return 0;

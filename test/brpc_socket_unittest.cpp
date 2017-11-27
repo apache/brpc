@@ -1,4 +1,4 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
+// brpc - A framework to host and access services throughout Baidu.
 // Copyright (c) 2014 Baidu, Inc.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
@@ -8,12 +8,12 @@
 #include <sys/socket.h>
 #include <fcntl.h>  // F_GETFD
 #include <gtest/gtest.h>
-#include <gperftools/profiler.h>
-#include <bthread/unstable.h>
-#include <bthread/task_control.h>
+#include "butil/gperftools_profiler.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/fd_utility.h"
+#include "bthread/unstable.h"
+#include "bthread/task_control.h"
 #include "brpc/socket.h"
 #include "brpc/errno.pb.h"
 #include "brpc/acceptor.h"
@@ -497,7 +497,7 @@ TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
         ASSERT_EQ(wait_id.value, data.id.value);
         ASSERT_EQ(ECONNREFUSED, data.error_code);
         ASSERT_TRUE(butil::StringPiece(data.error_text).starts_with(
-                        "Fail to make SocketId="));
+                        "Fail to connect SocketId="));
 #else
         ASSERT_EQ(-1, s->Write(&src));
         ASSERT_EQ(ECONNREFUSED, errno);
@@ -577,7 +577,7 @@ TEST_F(SocketTest, health_check) {
     ASSERT_EQ(wait_id.value, data.id.value);
     ASSERT_EQ(ECONNREFUSED, data.error_code);
     ASSERT_TRUE(butil::StringPiece(data.error_text).starts_with(
-                    "Fail to make SocketId="));
+                    "Fail to connect SocketId="));
     if (use_my_message) {
         ASSERT_TRUE(appended_msg);
     }

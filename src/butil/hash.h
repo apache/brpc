@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_HASH_H_
-#define BASE_HASH_H_
+#ifndef BUTIL_HASH_H_
+#define BUTIL_HASH_H_
 
 #include <limits>
 #include <string>
@@ -15,7 +15,7 @@
 namespace butil {
 
 // WARNING: This hash function should not be used for any cryptographic purpose.
-BASE_EXPORT uint32_t SuperFastHash(const char* data, int len);
+BUTIL_EXPORT uint32_t SuperFastHash(const char* data, int len);
 
 // Computes a hash of a memory buffer |data| of a given |length|.
 // WARNING: This hash function should not be used for any cryptographic purpose.
@@ -35,4 +35,4 @@ inline uint32_t Hash(const std::string& str) {
 
 }  // namespace butil
 
-#endif  // BASE_HASH_H_
+#endif  // BUTIL_HASH_H_

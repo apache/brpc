@@ -19,8 +19,8 @@
 // are not threadsafe because operations on different bits may modify a same
 // integer.
 
-#ifndef BASE_BIT_ARRAY_H
-#define BASE_BIT_ARRAY_H
+#ifndef BUTIL_BIT_ARRAY_H
+#define BUTIL_BIT_ARRAY_H
 
 #include <stdint.h>
 
@@ -98,4 +98,4 @@ inline size_t bit_array_first1(const uint64_t* array, size_t begin, size_t end)
 
 }  // end namespace butil
 
-#endif  // BASE_BIT_ARRAY_H
+#endif  // BUTIL_BIT_ARRAY_H

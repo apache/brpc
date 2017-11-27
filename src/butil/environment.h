@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_ENVIRONMENT_H_
-#define BASE_ENVIRONMENT_H_
+#ifndef BUTIL_ENVIRONMENT_H_
+#define BUTIL_ENVIRONMENT_H_
 
 #include <map>
 #include <string>
@@ -18,12 +18,12 @@ namespace butil {
 namespace env_vars {
 
 #if defined(OS_POSIX)
-BASE_EXPORT extern const char kHome[];
+BUTIL_EXPORT extern const char kHome[];
 #endif
 
 }  // namespace env_vars
 
-class BASE_EXPORT Environment {
+class BUTIL_EXPORT Environment {
  public:
   virtual ~Environment();
 
@@ -63,7 +63,7 @@ typedef std::map<NativeEnvironmentString, NativeEnvironmentString>
 // which is a concatenated list of null-terminated 16-bit strings. The end is
 // marked by a double-null terminator. The size of the returned string will
 // include the terminators.
-BASE_EXPORT string16 AlterEnvironment(const wchar_t* env,
+BUTIL_EXPORT string16 AlterEnvironment(const wchar_t* env,
                                       const EnvironmentMap& changes);
 
 #elif defined(OS_POSIX)
@@ -79,7 +79,7 @@ typedef std::map<NativeEnvironmentString, NativeEnvironmentString>
 // returned array will have appended to it the storage for the array itself so
 // there is only one pointer to manage, but this means that you can't copy the
 // array without keeping the original around.
-BASE_EXPORT scoped_ptr<char*[]> AlterEnvironment(
+BUTIL_EXPORT scoped_ptr<char*[]> AlterEnvironment(
     const char* const* env,
     const EnvironmentMap& changes);
 
@@ -87,4 +87,4 @@ BASE_EXPORT scoped_ptr<char*[]> AlterEnvironment(
 
 }  // namespace butil
 
-#endif  // BASE_ENVIRONMENT_H_
+#endif  // BUTIL_ENVIRONMENT_H_

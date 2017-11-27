@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_POSIX_GLOBAL_DESCRIPTORS_H_
-#define BASE_POSIX_GLOBAL_DESCRIPTORS_H_
+#ifndef BUTIL_POSIX_GLOBAL_DESCRIPTORS_H_
+#define BUTIL_POSIX_GLOBAL_DESCRIPTORS_H_
 
 #include "butil/build_config.h"
 
@@ -33,7 +33,7 @@ namespace butil {
 // It maps from an abstract key to a descriptor. If independent modules each
 // need to define keys, then values should be chosen randomly so as not to
 // collide.
-class BASE_EXPORT GlobalDescriptors {
+class BUTIL_EXPORT GlobalDescriptors {
  public:
   typedef uint32_t Key;
   typedef std::pair<Key, int> KeyFDPair;
@@ -71,4 +71,4 @@ class BASE_EXPORT GlobalDescriptors {
 
 }  // namespace butil
 
-#endif  // BASE_POSIX_GLOBAL_DESCRIPTORS_H_
+#endif  // BUTIL_POSIX_GLOBAL_DESCRIPTORS_H_

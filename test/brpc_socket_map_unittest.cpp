@@ -1,11 +1,10 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
+// brpc - A framework to host and access services throughout Baidu.
 // Copyright (c) 2014 Baidu, Inc.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#include <gperftools/profiler.h>
 #include "brpc/socket.h"
 #include "brpc/socket_map.h"
 #include "brpc/reloadable_flags.h"
@@ -57,7 +56,7 @@ TEST_F(SocketMapTest, idle_timeout) {
     brpc::SocketId id;
     // Socket still exists since it has not reached timeout yet
     ASSERT_EQ(0, brpc::SocketMapFind(g_endpoint, &id));
-    sleep(TIMEOUT + 1);
+    usleep(TIMEOUT * 1000000L + 1100000L);
     // Socket should be removed after timeout
     ASSERT_EQ(-1, brpc::SocketMapFind(g_endpoint, &id));
 
@@ -67,7 +66,7 @@ TEST_F(SocketMapTest, idle_timeout) {
     ASSERT_EQ(0, brpc::SocketMapFind(g_endpoint, &id));
     // Change `FLAGS_idle_timeout_second' to 0 to disable checking
     brpc::FLAGS_defer_close_second = 0;
-    sleep(1);
+    usleep(1100000L);
     // And then Socket should be removed
     ASSERT_EQ(-1, brpc::SocketMapFind(g_endpoint, &id));
 
@@ -83,7 +82,7 @@ TEST_F(SocketMapTest, idle_timeout) {
     id = ptr->id();
     ptr->ReturnToPool();
     ptr.reset(NULL);
-    sleep(TIMEOUT + 1);
+    usleep(TIMEOUT * 1000000L + 2000000L);
     // Pooled connection should be `ReleaseAdditionalReference',
     // which destroyed the Socket. As a result `GetSocketFromPool'
     // should return a new one

@@ -8,6 +8,7 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/scoped_lock.h"
+#include "butil/gperftools_profiler.h"
 #include "bthread/bthread.h"
 #include "bthread/condition_variable.h"
 #include "bthread/stack.h"
@@ -96,7 +97,7 @@ TEST(CondTest, sanity) {
         long delta = wake_time[i] - last_time - SIGNAL_INTERVAL_US;
         EXPECT_GT(wake_time[i], last_time);
         square_sum += delta * delta;
-        EXPECT_LT(labs(delta), 2000L) << "error[" << i << "]=" << delta << "="
+        EXPECT_LT(labs(delta), 10000L) << "error[" << i << "]=" << delta << "="
             << wake_time[i] << " - " << last_time;
     }
     printf("Average error is %fus\n", sqrt(square_sum / std::max(nbeforestop, 1UL)));
@@ -107,8 +108,6 @@ TEST(CondTest, sanity) {
         ++count[wake_tid[i]];
     }
     EXPECT_EQ(NW, count.size());
-    for (size_t i = 0; i < NW; ++i) {
-    }
     int avg_count = (int)(wake_tid.size() / count.size());
     for (std::map<bthread_t, int>::iterator
              it = count.begin(); it != count.end(); ++it) {
@@ -196,14 +195,6 @@ TEST(CondTest, cpp_wrapper) {
 #ifndef COND_IN_PTHREAD
 #undef pthread_join
 #undef pthread_create
-#endif
-
-#define ENABLE_PROFILE
-#ifdef ENABLE_PROFILE
-# include <gperftools/profiler.h>
-#else
-# define ProfilerStart(a)
-# define ProfilerStop()
 #endif
 
 class Signal {

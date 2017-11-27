@@ -167,10 +167,6 @@ const ConnectionType CONNECTION_TYPE_ALL =
                      (int)CONNECTION_TYPE_POOLED |
                      (int)CONNECTION_TYPE_SHORT);
 
-// DEPRECATED: old names.
-const ProtocolType PROTOCOL_BAIDU_RPC = PROTOCOL_BAIDU_STD;
-const ProtocolType PROTOCOL_MEMCACHE_BINARY = PROTOCOL_MEMCACHE;
-
 // [thread-safe] 
 // Register `protocol' using key=`type'. 
 // Returns 0 on success, -1 otherwise

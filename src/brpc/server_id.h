@@ -76,7 +76,7 @@ private:
 } // namespace brpc
 
 
-namespace BASE_HASH_NAMESPACE {
+namespace BUTIL_HASH_NAMESPACE {
 #if defined(COMPILER_GCC)
 template<>
 struct hash<brpc::ServerId> {

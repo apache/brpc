@@ -50,7 +50,7 @@ DEFINE_bool(show_socketmap_in_vars, false,
 BRPC_VALIDATE_GFLAG(show_socketmap_in_vars, PassValidate);
 
 static pthread_once_t g_socket_map_init = PTHREAD_ONCE_INIT;
-static butil::static_atomic<SocketMap*> g_socket_map = BASE_STATIC_ATOMIC_INIT(NULL);
+static butil::static_atomic<SocketMap*> g_socket_map = BUTIL_STATIC_ATOMIC_INIT(NULL);
 
 class GlobalSocketCreator : public SocketCreator {
 public:
@@ -326,15 +326,13 @@ void SocketMap::List(std::vector<butil::EndPoint>* pts) {
     }
 }
 
-void SocketMap::ListOrphans(int defer_seconds,
-                            std::vector<butil::EndPoint>* out) {
+void SocketMap::ListOrphans(int64_t defer_us, std::vector<butil::EndPoint>* out) {
     out->clear();
-    int64_t now = butil::cpuwide_time_s();
+    const int64_t now = butil::cpuwide_time_us();
     BAIDU_SCOPED_LOCK(_mutex);
     for (Map::iterator it = _map.begin(); it != _map.end(); ++it) {
         SingleConnection& sc = it->second;
-        if (sc.ref_count == 0
-            && now - sc.no_ref_us / 1000000L > defer_seconds) {
+        if (sc.ref_count == 0 && now - sc.no_ref_us >= defer_us) {
             out->push_back(it->first);
         }
     }
@@ -378,7 +376,7 @@ void SocketMap::WatchConnections() {
         const int defer_seconds = _options.defer_close_second_dynamic ?
             *_options.defer_close_second_dynamic :
             _options.defer_close_second;
-        ListOrphans(defer_seconds, &orphan_sockets);
+        ListOrphans(defer_seconds * 1000000L, &orphan_sockets);
         for (size_t i = 0; i < orphan_sockets.size(); ++i) {
             RemoveInternal(orphan_sockets[i], (SocketId)-1, true);
         }

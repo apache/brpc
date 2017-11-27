@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 10 17:40:58 CST 2012
 
-#ifndef BAIDU_BTHREAD_TASK_GROUP_INL_H
-#define BAIDU_BTHREAD_TASK_GROUP_INL_H
+#ifndef BTHREAD_TASK_GROUP_INL_H
+#define BTHREAD_TASK_GROUP_INL_H
 
 namespace bthread {
 
@@ -103,4 +103,4 @@ inline void TaskGroup::flush_nosignal_tasks_remote() {
 
 }  // namespace bthread
 
-#endif  // BAIDU_BTHREAD_TASK_GROUP_INL_H
+#endif  // BTHREAD_TASK_GROUP_INL_H

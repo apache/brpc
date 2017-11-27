@@ -97,9 +97,17 @@ public:
     // Print fields into ostream
     void Print(std::ostream& os) const;
 
+    // Copy from another reply allocating on a different Arena, and allocate
+    // required memory with `self_arena'.
+    void CopyFromDifferentArena(const RedisReply& other,
+                                butil::Arena* self_arena);
+
+    // Copy from another reply allocating on a same Arena.
+    void CopyFromSameArena(const RedisReply& other);
+
 private:
-    // RedisReply does not own the memory (pointed by internal pointers),
-    // Copying is extremely dangerous and must be disabled.
+    // RedisReply does not own the memory of fields, copying must be done
+    // by calling CopyFrom[Different|Same]Arena.
     DISALLOW_COPY_AND_ASSIGN(RedisReply);
     
     RedisReplyType _type;
@@ -211,7 +219,13 @@ inline void RedisReply::Clear() {
     _data.array.replies = NULL;
 }
 
-} // namespace brpc
+inline void RedisReply::CopyFromSameArena(const RedisReply& other) {
+    _type = other._type;
+    _length = other._length;
+    _data.padding[0] = other._data.padding[0];
+    _data.padding[1] = other._data.padding[1];
+}
 
+} // namespace brpc
 
 #endif  // BRPC_REDIS_H

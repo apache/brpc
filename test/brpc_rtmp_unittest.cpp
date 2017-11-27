@@ -1,4 +1,4 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
+// brpc - A framework to host and access services throughout Baidu.
 // Copyright (c) 2014 Baidu, Inc.
 
 // Date: Fri May 20 15:52:22 CST 2016
@@ -7,7 +7,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
-#include <gperftools/profiler.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
@@ -376,7 +375,6 @@ void RtmpSubStream::OnStop() {
 
 class RtmpSubStreamCreator : public brpc::SubStreamCreator {
 public:
-    RtmpSubStreamCreator(brpc::RtmpClientSelector* client_selector);
     RtmpSubStreamCreator(const brpc::RtmpClient* client);
 
     ~RtmpSubStreamCreator();

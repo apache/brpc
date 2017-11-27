@@ -1,3 +1,5 @@
+[中文版](../cn/client.md)
+
 # Example
 
 [client-side code](https://github.com/brpc/brpc/blob/master/example/echo_c++/client.cpp) of echo.
@@ -11,7 +13,7 @@
 - No class named brpc::Client.
 
 # Channel
-Client-side sends requests. It's called [Channel](https://github.com/brpc/brpc/blob/master/src/brpc/channel.h) rather than "Client" in brpc. A channel represents a communication line to one server or multiple servers, which can be used for calling services.
+Client-side of RPC sends requests. It's called [Channel](https://github.com/brpc/brpc/blob/master/src/brpc/channel.h) rather than "Client" in brpc. A channel represents a communication line to one server or multiple servers, which can be used for calling services.
 
 A Channel can be **shared by all threads** in the process. Yon don't need to create separate Channels for each thread, and you don't need to synchronize Channel.CallMethod with lock. However creation and destroying of Channel is **not** thread-safe,  make sure the channel is initialized and destroyed only by one thread.
 
@@ -332,7 +334,7 @@ brpc::Join(controller1->call_id());   // WRONG, controller1 may be deleted by on
 brpc::Join(controller2->call_id());   // WRONG, controller2 may be deleted by on_rpc_done
 ```
 
-## Semi-synchronous
+## Semi-synchronous call
 
 Join can be used for implementing "Semi-synchronous" call: blocks until multiple asynchronous calls to complete. Since the callsite blocks until completion of all RPC, controller/response can be put on stack safely.
 ```c++
@@ -427,6 +429,10 @@ Properties of Controller:
 3.  Controller is constructed before RPC and destructed after RPC, some common patterns:
    - Put Controller on stack before synchronous RPC, be destructed when out of scope. Note that Controller of asynchronous RPC **must not** be put on stack, otherwise the RPC may still run when the Controller is being destructed and result in undefined behavior.
    - new Controller before asynchronous RPC, delete in done.
+
+## Number of worker pthreads
+
+There's **no** independent thread pool for client in brpc. All Channels and Servers share the same backing threads via [bthread](bthread.md).  Setting number of worker pthreads in Server works for Client as well if Server is in used. Or just specify the [gflag](flags.md) [-bthread_concurrency](brpc.baidu.com:8765/flags/bthread_concurrency) to set the global number of worker pthreads.
 
 ## Timeout
 
@@ -601,12 +607,36 @@ set_log_id() sets a 64-bit integral log_id, which is sent to the server-side alo
 
 ## Attachment
 
-baidu_std and hulu_pbrpc supports attachment, which is set by user to bypass serialization of protobuf. As a client, the data in Controller::request_attachment() will be received by the server and response_attachment() contains attachment sent back by the server. Attachment is not compressed by brpc.
+baidu_std and hulu_pbrpc supports attachments which are sent along with messages and set by users to bypass serialization of protobuf. As a client, data set in Controller::request_attachment() will be received by server and response_attachment() contains attachment sent back by the server.
 
-In http, attachment corresponds to [message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html), namely the data to post is stored in request_attachment().
+Attachment is not compressed by framework.
+
+In http, attachment corresponds to [message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html), namely the data to post to server is stored in request_attachment().
 
 ## Authentication
-TODO: Describe how authentication methods are extended.
+Generally there are 2 ways of authentication at the client side:
+
+1. Request-based authentication: Each request carries authentication information. It's more flexible since the authentication information can contain fields based on this particular request. However, this leads to a performance loss due to the extra payload in each request.
+2. Connection-based authentication: Once a TCP connection has been established, the client sends an authentication packet. After it has been verfied by the server, subsequent requests on this connection no longer needs authentication. Compared with the former, this method can only some static information such as local IP in the authentication packet. However, it has better performance especially under single connection / connection pool scenario.
+
+It's very simple to implement the first method by just adding authentication data format into the request proto definition. Then send it as normal RPC in each request. To achieve the second one, brpc provides an interface for users to implement:
+
+```c++
+class Authenticator {
+public:
+    virtual ~Authenticator() {}
+
+    // Implement this method to generate credential information
+    // into `auth_str' which will be sent to `VerifyCredential'
+    // at server side. This method will be called on client side.
+    // Returns 0 on success, error code otherwise
+    virtual int GenerateCredential(std::string* auth_str) const = 0;
+};
+```
+
+When the user calls the RPC interface with a single connection to the same server, the framework guarantee that once the TCP connection has been established, the first request on the connection will contain the authentication string generated by `GenerateCredential`. Subsequent requests will not carried that string. The entire sending process is still highly concurrent since it won't wait for the authentication result. If the verification succeeds, all requests return without error. Otherwise, if the verification fails, generally the server will close the connection and those requests will receive the corresponding error.
+
+Currently only those protocols support client authentication: [baidu_std](../cn/baidu_std.md) (default protocol), HTTP, hulu_pbrpc, ESP. For customized protocols, generally speaking, users could call the `Authenticator`'s interface to generate authentication string during the request packing process in order to support authentication.
 
 ## Reset
 

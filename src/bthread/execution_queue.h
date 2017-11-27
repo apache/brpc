@@ -133,11 +133,6 @@ struct ExecutionQueueOptions {
     // Attribute of the bthread which execute runs on
     // default: BTHREAD_ATTR_NORMAL
     bthread_attr_t bthread_attr;
-
-    // DEPRECATED!!! 
-    // max size of tasks passed to execute
-    // default: 1
-    size_t max_tasks_size;
 };
 
 // Start a ExecutionQueue. If |options| is NULL, the queue will be created with

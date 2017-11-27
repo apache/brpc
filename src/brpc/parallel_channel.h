@@ -27,8 +27,7 @@
 
 namespace brpc {
 
-// Used in implementations of CallMapper::Map.
-// To rpc maintainer: values must be bitwise exclusive.
+// Possible values of SubCall.flag, MUST be bitwise exclusive.
 static const int DELETE_REQUEST = 1;
 static const int DELETE_RESPONSE = 2;
 static const int SKIP_SUB_CHANNEL = 4;
@@ -59,7 +58,7 @@ struct SubCall {
 
     // True if this object is constructed by Bad().
     bool is_bad() const {
-        return request == NULL || response == NULL || method == NULL;
+        return request == NULL || response == NULL;
     }
 
     // True if this object is constructed by Skip().
@@ -125,9 +124,6 @@ public:
         // make the call to ParallelChannel fail.
         FAIL_ALL
     };
-    // [Deprecated]
-    static const Result IGNORED = FAIL;            // Use FAIL instead.
-    static const Result CALL_FAILED = FAIL_ALL;    // Use FAIL_ALL instead.
 
     ResponseMerger() { }
     virtual Result Merge(google::protobuf::Message* response,
@@ -244,6 +240,7 @@ public:
     typedef std::vector<SubChan> ChannelList;
 
 protected:
+    static void* RunDoneAndDestroy(void* arg);
     int CheckHealth();
 
     ParallelChannelOptions _options;

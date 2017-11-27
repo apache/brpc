@@ -1,7 +1,10 @@
 saved_pwd_before_making=$PWD
-for file in `find example -name Makefile`; do
+for file in `find tools example -name Makefile`; do
     cd $(dirname $file)
-    echo -e "\n[$file]"
-    make -sj4
+    echo
+    echo "[$file]"
+    if ! make -sj4; then
+        exit 1
+    fi
     cd $saved_pwd_before_making
 done

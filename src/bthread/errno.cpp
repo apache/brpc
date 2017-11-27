@@ -21,7 +21,7 @@
 // Define errno in bthread/errno.h
 extern const int ESTOP = -20;
 
-BAIDU_REGISTER_ERRNO(ESTOP, "the thread is stopping")
+BAIDU_REGISTER_ERRNO(ESTOP, "The structure is stopping")
 
 extern "C" {
 

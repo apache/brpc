@@ -18,8 +18,8 @@
 // Get name of a class. For example, class_name<T>() returns the name of T
 // (with namespace prefixes). This is useful in template classes.
 
-#ifndef BAIDU_BASE_CLASS_NAME_H
-#define BAIDU_BASE_CLASS_NAME_H
+#ifndef BUTIL_CLASS_NAME_H
+#define BUTIL_CLASS_NAME_H
 
 #include <typeinfo>
 #include <string>                                // std::string
@@ -53,4 +53,4 @@ template <typename T> std::string class_name_str(T const& obj) {
 
 }  // namespace butil
 
-#endif  // BAIDU_BASE_CLASS_NAME_H
+#endif  // BUTIL_CLASS_NAME_H

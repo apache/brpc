@@ -15,8 +15,8 @@
 // Author Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date 2014/09/22 11:57:43
 
-#ifndef  BAIDU_BVAR__COMBINER_H
-#define  BAIDU_BVAR__COMBINER_H
+#ifndef  BVAR_COMBINER_H
+#define  BVAR_COMBINER_H
 
 #include <string>                       // std::string
 #include <vector>                       // std::vector
@@ -341,4 +341,4 @@ private:
 }  // namespace detail
 }  // namespace bvar
 
-#endif  //BAIDU_BVAR__COMBINER_H
+#endif  // BVAR_COMBINER_H

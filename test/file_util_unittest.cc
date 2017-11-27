@@ -16,6 +16,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/types.h>
 #endif
 
 #include <algorithm>
@@ -182,11 +183,33 @@ const int FILES_AND_DIRECTORIES =
 class FileUtilTest : public testing::Test {
  protected:
   virtual void SetUp() OVERRIDE {
+#if defined(OS_POSIX)
+    if (getuid() == 0) {
+      is_root_ = true;
+      ASSERT_EQ(0, setegid(65534));
+      ASSERT_EQ(0, seteuid(65534));
+    } else {
+      is_root_ = false;
+    }
+#endif
     testing::Test::SetUp();
     ASSERT_TRUE(temp_dir_.CreateUniqueTempDir());
   }
+#if defined(OS_POSIX)
+  virtual void TearDown() OVERRIDE {
+     if (is_root_) {
+       ASSERT_EQ(0, seteuid(0));
+       ASSERT_EQ(0, setegid(0));
+       is_root_ = false;
+     }
+    testing::Test::TearDown();
+  }
+#endif
 
   ScopedTempDir temp_dir_;
+#if defined(OS_POSIX)
+  bool is_root_;
+#endif
 };
 
 // Collects all the results from the given file enumerator, and provides an
@@ -767,7 +790,9 @@ TEST_F(FileUtilTest, ChangeFilePermissionsAndWrite) {
   EXPECT_FALSE(mode & FILE_PERMISSION_WRITE_BY_USER);
   // Make sure the file can't be write.
   EXPECT_EQ(-1, WriteFile(file_name, kData.data(), kData.length()));
-  EXPECT_FALSE(PathIsWritable(file_name));
+  if (!is_root_) {
+    EXPECT_FALSE(PathIsWritable(file_name));
+  }
 
   // Give read permission.
   EXPECT_TRUE(SetPosixFilePermissions(file_name,
@@ -2176,7 +2201,7 @@ class VerifyPathControlledByUserTest : public FileUtilTest {
     ok_gids_.insert(stat_buf.st_gid);
     bad_gids_.insert(stat_buf.st_gid + 1);
 
-    ASSERT_EQ(uid_, getuid());  // This process should be the owner.
+    ASSERT_EQ(uid_, geteuid());  // This process should be the owner.
 
     // To ensure that umask settings do not cause the initial state
     // of permissions to be different from what we expect, explicitly
@@ -2196,6 +2221,11 @@ class VerifyPathControlledByUserTest : public FileUtilTest {
         ChangePosixFilePermissions(
             sub_dir_, enabled_permissions, disabled_permissions));
   }
+#if defined(OS_POSIX)
+  virtual void TearDown() OVERRIDE {
+    FileUtilTest::TearDown();
+  }
+#endif
 
   FilePath base_dir_;
   FilePath sub_dir_;

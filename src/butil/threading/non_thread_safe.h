@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_THREADING_NON_THREAD_SAFE_H_
-#define BASE_THREADING_NON_THREAD_SAFE_H_
+#ifndef BUTIL_THREADING_NON_THREAD_SAFE_H_
+#define BUTIL_THREADING_NON_THREAD_SAFE_H_
 
 // Classes deriving from NonThreadSafe may need to suppress MSVC warning 4275:
 // non dll-interface class 'Bar' used as base for dll-interface class 'Foo'.
@@ -68,4 +68,4 @@ typedef NonThreadSafeDoNothing NonThreadSafe;
 
 }  // namespace butil
 
-#endif  // BASE_THREADING_NON_THREAD_SAFE_H_
+#endif  // BUTIL_THREADING_NON_THREAD_SAFE_H_

@@ -1,3 +1,5 @@
+[English version](../en/client.md)
+
 # 示例程序
 
 Echo的[client端代码](https://github.com/brpc/brpc/blob/master/example/echo_c++/client.cpp)。
@@ -426,6 +428,10 @@ Controller的特点：
    - 同步RPC前Controller放栈上，出作用域后自行析构。注意异步RPC的Controller绝对不能放栈上，否则其析构时异步调用很可能还在进行中，从而引发未定义行为。
    - 异步RPC前new Controller，done中删除。
 
+## 线程数
+
+和大部分的RPC框架不同，brpc中并没有独立的Client线程池。所有Channel和Server通过[bthread](http://wiki.baidu.com/display/RPC/bthread)共享相同的线程池. 如果你的程序同样使用了brpc的server, 仅仅需要设置Server的线程数。 或者可以通过[gflags](http://wiki.baidu.com/display/RPC/flags)设置[-bthread_concurrency](http://brpc.baidu.com:8765/flags/bthread_concurrency)来设置全局的线程数.
+
 ## 超时
 
 **ChannelOptions.timeout_ms**是对应Channel上所有RPC的总超时，Controller.set_timeout_ms()可修改某次RPC的值。单位毫秒，默认值1秒，最大值2^31（约24天），-1表示一直等到回复或错误。
@@ -599,7 +605,29 @@ baidu_std和hulu_pbrpc协议支持附件，这段数据由用户自定义，不�
 在http协议中，附件对应[message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html)，比如要POST的数据就设置在request_attachment()中。
 
 ## 认证
-TODO: Describe how authentication methods are extended.
+client端的认证一般分为2种：
+
+1. 基于请求的认证：每次请求都会带上认证信息。这种方式比较灵活，认证信息中可以含有本次请求中的字段，但是缺点是每次请求都会需要认证，性能上有所损失
+2. 基于连接的认证：当TCP连接建立后，client发送认证包，认证成功后，后续该连接上的请求不再需要认证。相比前者，这种方式灵活度不高（一般ren认证包里只能携带本机一些静态信息），但性能较好，一般用于单连接/连接池场景
+
+针对第一种认证场景，在实现上非常简单，将认证的格式定义加到请求结构体中，每次当做正常RPC发送出去即可；针对第二种场景，brpc提供了一种机制，只要用户继承实现：
+
+```c++
+class Authenticator {
+public:
+    virtual ~Authenticator() {}
+
+    // Implement this method to generate credential information
+    // into `auth_str' which will be sent to `VerifyCredential'
+    // at server side. This method will be called on client side.
+    // Returns 0 on success, error code otherwise
+    virtual int GenerateCredential(std::string* auth_str) const = 0;
+};
+```
+
+那么当用户并发调用RPC接口用单连接往同一个server发请求时，框架会自动保证：建立TCP连接后，连接上的第一个请求中会带有上述`GenerateCredential`产生的认证包，其余剩下的并发请求不会带有认证信息，依次排在第一个请求之后。整个发送过程依旧是并发的，并不会等第一个请求先返回。若server端认证成功，那么所有请求都能成功返回；若认证失败，一般server端则会关闭连接，这些请求则会收到相应错误。
+
+目前自带协议中支持客户端认证的有：[baidu_std](baidu_std.md)(默认协议), HTTP, hulu_pbrpc, ESP。对于自定义协议，一般可以在组装请求阶段，调用Authenticator接口生成认证串，来支持客户端认证。
 
 ## 重置
 

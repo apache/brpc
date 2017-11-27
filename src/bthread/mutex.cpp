@@ -295,7 +295,7 @@ void SampledContention::destroy() {
 }
 
 // Remember the conflict hashes for troubleshooting, should be 0 at most of time.
-static butil::static_atomic<int64_t> g_nconflicthash = BASE_STATIC_ATOMIC_INIT(0);
+static butil::static_atomic<int64_t> g_nconflicthash = BUTIL_STATIC_ATOMIC_INIT(0);
 static int64_t get_nconflicthash(void*) {
     return g_nconflicthash.load(butil::memory_order_relaxed);
 }
@@ -351,12 +351,12 @@ void ContentionProfilerStop() {
     LOG(ERROR) << "Contention profiler is not started!";
 }
 
-BASE_FORCE_INLINE bool
+BUTIL_FORCE_INLINE bool
 is_contention_site_valid(const bthread_contention_site_t& cs) {
     return cs.sampling_range;
 }
 
-BASE_FORCE_INLINE void
+BUTIL_FORCE_INLINE void
 make_contention_site_invalid(bthread_contention_site_t* cs) {
     cs->sampling_range = 0;
 }
@@ -508,7 +508,7 @@ void submit_contention(const bthread_contention_site_t& csite, int64_t now_ns) {
     tls_inside_lock = false;
 }
 
-BASE_FORCE_INLINE int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
+BUTIL_FORCE_INLINE int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
     // Don't change behavior of lock when profiler is off.
     if (!g_cp ||
         // collecting code including backtrace() and submit() may call
@@ -560,7 +560,7 @@ BASE_FORCE_INLINE int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
     return rc;
 }
 
-BASE_FORCE_INLINE int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
+BUTIL_FORCE_INLINE int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
     // Don't change behavior of unlock when profiler is off.
     if (!g_cp || tls_inside_lock) {
         // This branch brings an issue that an entry created by
@@ -622,8 +622,10 @@ BAIDU_CASSERT(sizeof(unsigned) == sizeof(MutexInternal),
 inline int mutex_lock_contended(bthread_mutex_t* m) {
     butil::atomic<unsigned>* whole = (butil::atomic<unsigned>*)m->butex;
     while (whole->exchange(BTHREAD_MUTEX_CONTENDED) & BTHREAD_MUTEX_LOCKED) {
-        if (bthread::butex_wait(whole, BTHREAD_MUTEX_CONTENDED, NULL) < 0
-            && errno != EWOULDBLOCK) {
+        if (bthread::butex_wait(whole, BTHREAD_MUTEX_CONTENDED, NULL) < 0 &&
+            errno != EWOULDBLOCK && errno != EINTR/*note*/) {
+            // a mutex lock should ignore interrruptions in general since
+            // user code is unlikely to check the return value.
             return errno;
         }
     }
@@ -634,8 +636,10 @@ inline int mutex_timedlock_contended(
     bthread_mutex_t* m, const struct timespec* __restrict abstime) {
     butil::atomic<unsigned>* whole = (butil::atomic<unsigned>*)m->butex;
     while (whole->exchange(BTHREAD_MUTEX_CONTENDED) & BTHREAD_MUTEX_LOCKED) {
-        if (bthread::butex_wait(whole, BTHREAD_MUTEX_CONTENDED, abstime) < 0
-            && errno != EWOULDBLOCK) {
+        if (bthread::butex_wait(whole, BTHREAD_MUTEX_CONTENDED, abstime) < 0 &&
+            errno != EWOULDBLOCK && errno != EINTR/*note*/) {
+            // a mutex lock should ignore interrruptions in general since
+            // user code is unlikely to check the return value.
             return errno;
         }
     }

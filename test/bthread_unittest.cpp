@@ -7,18 +7,11 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/logging.h"
-#include <bthread/task_meta.h>
 #include "butil/logging.h"
+#include "butil/gperftools_profiler.h"
 #include "bthread/bthread.h"
 #include "bthread/unstable.h"
-
-#define ENABLE_PROFILE
-#ifdef ENABLE_PROFILE
-# include <gperftools/profiler.h>
-#else
-# define ProfilerStart(a)
-# define ProfilerStop()
-#endif
+#include "bthread/task_meta.h"
 
 namespace {
 class BthreadTest : public ::testing::Test{
@@ -414,7 +407,7 @@ TEST_F(BthreadTest, stop_sleep) {
     ASSERT_EQ(0, bthread_stop(th));
     ASSERT_EQ(0, bthread_join(th, NULL));
     tm.stop();
-    ASSERT_LE(abs(tm.m_elapsed() - 10), 5);
+    ASSERT_LE(labs(tm.m_elapsed() - 10), 5);
 }
 
 TEST_F(BthreadTest, bthread_exit) {
@@ -513,10 +506,16 @@ TEST_F(BthreadTest, too_many_nosignal_threads) {
         ASSERT_EQ(0, bthread_start_urgent(&tid, &attr, dummy_thread, NULL));
     }
 }
-} // namespace
 
-int main(int argc, char** argv) {
-    testing::InitGoogleTest(&argc, argv);
-    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
-    return RUN_ALL_TESTS();
+static void* yield_thread(void*) {
+    bthread_yield();
+    return NULL;
 }
+
+TEST_F(BthreadTest, yield_single_thread) {
+    bthread_t tid;
+    ASSERT_EQ(0, bthread_start_background(&tid, NULL, yield_thread, NULL));
+    ASSERT_EQ(0, bthread_join(tid, NULL));
+}
+
+} // namespace

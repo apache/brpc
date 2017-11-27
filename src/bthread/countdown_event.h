@@ -16,8 +16,8 @@
 // Author: Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date: 2016/06/03 13:06:40
 
-#ifndef  PUBLIC_BTHREAD_COUNTDOWN_EVENT_H
-#define  PUBLIC_BTHREAD_COUNTDOWN_EVENT_H
+#ifndef BTHREAD_COUNTDOWN_EVENT_H
+#define BTHREAD_COUNTDOWN_EVENT_H
 
 #include "bthread/bthread.h"
 
@@ -38,11 +38,14 @@ public:
     // Decrease the counter by |sig|
     void signal(int sig = 1);
 
-    // Block current thread until the counter reaches 0
-    void wait();
+    // Block current thread until the counter reaches 0.
+    // Returns 0 on success, error code otherwise.
+    // This method never returns EINTR.
+    int wait();
 
     // Block the current thread until the counter reaches 0 or duetime has expired
-    // Returns 0 on success, ETIMEDOUT otherwise.
+    // Returns 0 on success, error code otherwise. ETIMEDOUT is for timeout.
+    // This method never returns EINTR.
     int timed_wait(const timespec& duetime);
 
 private:
@@ -52,4 +55,4 @@ private:
 
 }  // namespace bthread
 
-#endif  //PUBLIC_BTHREAD_COUNTDOWN_EVENT_H
+#endif  // BTHREAD_COUNTDOWN_EVENT_H

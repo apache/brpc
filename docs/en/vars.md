@@ -1,26 +1,28 @@
-[bvar](https://github.com/brpc/brpc/tree/master/src/bvar/) is a counting utility for multi threaded scenario, it stores data in thread local storage which avoids cache bouncing. It is much faster than UbMonitor(a legacy counting utility used inside Baidu) and atomic operations in highly contended scenario. bvar is builtin within brpc, through [/vars](http://brpc.baidu.com:8765/vars) you can access all the exposed bvars, or a very single one specified by [/vars/VARNAME](http://brpc.baidu.com:8765/vars/rpc_socket_count). Check out [bvar](bvar.md) if you'd like add some bvars for you own services. bvar is widely used inside brpc to calculate indicators. bvar is **almost free** in most scenarios to collect data.  If you are finding a utility to count and show internal status of a multi threaded apllication, you shoud try bvar at the first time. bvar is not suitable for general purpose counters, the read process of a single bvar have to combines all the TLS data in the threads that the very bvar has been written so that it's very slow(compared to the write process and atomic operations).
+[中文版](../cn/vars.md)
 
-## Check out bvars
+[bvar](https://github.com/brpc/brpc/tree/master/src/bvar/) is a set of counters to record and view miscellaneous statistics conveniently in multi-threaded applications. The implementation reduces cache bouncing by storing data in thread local storage(TLS), being much faster than UbMonitor(a legacy counting library inside Baidu) and even atomic operations in highly contended scenarios. brpc integrates bvar by default, namely all exposed bvars in a server are accessible through [/vars](http://brpc.baidu.com:8765/vars), and a single bvar is addressable by [/vars/VARNAME](http://brpc.baidu.com:8765/vars/rpc_socket_count). Read [bvar](bvar.md) to know how to add bvars for your program. brpc extensively use bvar to expose internal status. If you are looking for an utility to collect and display metrics of your application, consider bvar in the first place. bvar definitely can't replace all counters, essentially it moves contentions occurred during write to read: which needs to combine all data written by all threads and becomes much slower than an ordinary read. If read and write on the counter are both frequent or decisions need to be made based on latest values, you should not use bvar.
 
-[/vars](http://brpc.baidu.com:8765/vars) : List all the bvars
+## Query methods
 
-[/vars/NAME](http://brpc.baidu.com:8765/vars/rpc_socket_count)：Lookup for the bvar whose name is `NAME`
+[/vars](http://brpc.baidu.com:8765/vars) : List all exposed bvars
 
-[/vars/NAME1,NAME2,NAME3](http://brpc.baidu.com:8765/vars/pid;process_cpu_usage;rpc_controller_count)：Lookup the bvars whose name are `NAME1`, `NAME2` or `NAME3`.
+[/vars/NAME](http://brpc.baidu.com:8765/vars/rpc_socket_count)：List the bvar whose name is `NAME`
 
-[/vars/foo*,b$r](http://brpc.baidu.com:8765/vars/rpc_server*_count;iobuf_blo$k_*)：Lookup for the bvar whose name matches the given pattern. Note that `$` replaces `?` to represent a single character since `?` is reserved in URL.
+[/vars/NAME1,NAME2,NAME3](http://brpc.baidu.com:8765/vars/pid;process_cpu_usage;rpc_controller_count)：List bvars whose names are either `NAME1`, `NAME2` or `NAME3`.
 
-The following animation shows how you can lookup bvars with pattern. You can paste the URI to other forks who will see excatcly the same contents through this URI.
+[/vars/foo*,b$r](http://brpc.baidu.com:8765/vars/rpc_server*_count;iobuf_blo$k_*): List bvars whose names match given wildcard patterns. Note that `$` matches a single character instead of `?` which is a reserved character in URL.
+
+Following animation shows how to find bvars with wildcard patterns. You can copy and paste the URL to others who will see same bvars that you see. (values may change)
 
 ![img](../images/vars_1.gif)
 
-There's also a search box in the front of /vars. You can lookup for bvars with parts of the names. Different names can be specareted by `,` `:` or ` `.
+There's a search box in the upper-left corner on /vars page, in which you can type part of the names to locate bvars. Different patterns are separated by `,` `:` or space.
 
 ![img](../images/vars_2.gif)
 
-It's OK to access /vars throught terminal with curl as well：
+/vars is accessible from terminal as well:
 
-```
+```shell
 $ curl brpc.baidu.com:8765/vars/bthread*
 bthread_creation_count : 125134
 bthread_creation_latency : 3
@@ -38,42 +40,48 @@ bthread_num_workers : 24
 bthread_worker_usage : 1.01056
 ```
 
-## Check out the historical values
+## View historical trends
 
-You can click for almost all the numerical bvar to check out their historical values. Every clickable bvar store values in the recent `60s/60m/24h/30d`, *174* numbers in total。It takes about 1M memory when there are 1000 clickable bvars.
+Clicking on most of the numerical bvars shows historical trends. Each clickable bvar records values in recent *60 seconds, 60 minutes, 24 hours and 30 days*, which are *174* numbers in total. 1000 clickable bvars take roughly 1M memory.
 
 ![img](../images/vars_3.gif)
 
-## 统计和查看分位值
+## Calculate and view percentiles
 
-A percentile indicats the value below which a given percentage of samples in a group of samples. E.g. there are 1000 in a very time window，The 500-th in the sorted set(1000 * 50%) is the value 50%-percentile(says median),  the number at the 990-th is 99%-percentile(1000 * 99%)，the number at 999-th is 99.9%-percentile. Percentiles shows more formation about the latency distribution than average latency, which is very important for you are calculating the SAL of the service. 对于最常见的延时统计，平均值很难反映出实质性的内容，99.9%分位值往往更加关键，它决定了系统能做什么。
+x-ile (short for x-th percentile) is the value ranked at N * x%-th position amongst a group of ordered values. E.g. there are 1000 values inside a time window, sort them in ascending order first. The 500-th value(1000 * 50%) in the ordered list is 50-ile(a.k.a median), the 990-th(1000 * 99%) value is 99-ile, the 999-th value is 99.9-ile. Percentiles give more information about the latency distribution than average latencies, and being helpful for understanding behaviors of the system. Industrial-level services often require SLA to be not less than 99.97% (the requirement for 2nd-level services inside Baidu, >=99.99% for 1st-level services), even if a system has good average latencies, a bad long-tail area may significantly lower and break SLA. Percentiles do help analyzing the long-tail area.
 
-分位值可以绘制为CDF曲线和按时间变化时间。
+Percentiles can be plotted as a CDF or a percentiles-over-time curve.
+
+**Following diagram plots percentiles as CDF**, where the X-axis is the ratio(ranked-position/total-number) and the Y-axis is the corresponding percentile. E.g. The Y-axis value corresponding to X=50% is 50-ile. If a system requires that "99.9% requests need to be processed within xx milliseconds", you should check the value at 99.9%.
 
 ![img](../images/vars_4.png)
 
-上图是CDF曲线。纵轴是延时。横轴是小于纵轴数值的数据比例。很明显地，这个图就是由从10%到99.99%的所有分位值组成。比如横轴=50%处对应的纵轴值便是50%分位值。那为什么要叫它CDF？CDF是[Cumulative Distribution Function](https://en.wikipedia.org/wiki/Cumulative_distribution_function)的缩写。当我们选定一个纵轴值x时，对应横轴的含义是"数值 <= x的比例”，如果数值是来自随机采样，那么含义即为“数值 <= x的概率”，这不就是概率的定义么？CDF的导数是[概率密度函数](https://en.wikipedia.org/wiki/Probability_density_function)，换句话说如果我们把CDF的纵轴分为很多小段，对每个小段计算两端对应的横轴值之差，并把这个差作为新的横轴，那么我们便绘制了PDF曲线，就像（横着的）正态分布，泊松分布那样。但密度会放大差距，中位数的密度往往很高，在PDF中很醒目，这使得边上的长尾相对很扁而不易查看，所以大部分系统测试结果选择CDF曲线而不是PDF曲线。
+Why do we call it [CDF](https://en.wikipedia.org/wiki/Cumulative_distribution_function) ? When a Y=y is chosen, the corresponding X means "percentage of values <= y". Since values are sampled randomly (and uniformly), the X can be viewed as "probability of values <= y", or P(values <= y), which is just the definition of CDF.
 
-可以用一些简单规则衡量CDF曲线好坏：
+Derivative of the CDF is [PDF](https://en.wikipedia.org/wiki/Probability_density_function). If we divide the Y-axis of the CDF into many small-range segments, calculate the difference between X-axis value of both ends of each segment, and use the difference as new value for X-axis, a PDF curve would be plotted, just like a normal distribution rotated 90 degrees clockwise. However density of the median is often much higher than others in a PDF and probably make long-tail area very flat and hard to read. As a result, systems prefer showing distributions in CDF rather than PDF.
 
-- 越平越好。一条水平线是最理想的，这意味着所有的数值都相等，没有任何等待，拥塞，停顿。当然这是不可能的。
-- 99%之后越窄越好：99%之后是长尾的聚集地，对大部分系统的SLA有重要影响，越少越好。如果存储系统给出的性能指标是"99.9%的读请求在xx毫秒内完成“，那么你就得看下99.9%那儿的值；如果检索系统给出的性能指标是”99.99%的请求在xx毫秒内返回“，那么你得关注99.99%分位值。
+Here're 2 simple rules to check if a CDF curve is good or not:
 
-一条真实的好CDF曲线的特征是”斜率很小，尾部很窄“。 
+- The flatter the better. A horizontal line is an ideal CDF curve which means that there're no waitings, congestions or pauses, very unlikely in practice.
+- The area between 99% and 100% should be as small as possible: right-side of 99% is the long-tail area, which has a significant impact on SLA.
+
+A CDF with slowly ascending curve and small long-tail area is great in practice. 
+
+**Following diagram plots percentiles over time** and has four curves. The X-axis is time and Y-axis from top to bottom are 99.9% 99% 90% 50% percentiles respectively, plotted in lighter and lighter colors (from orange to yellow). 
 
 ![img](../images/vars_5.png)
 
-上图是按时间变化曲线。包含了4条曲线，横轴是时间，纵轴从上到下分别对应99.9%，99%，90%，50%分位值。颜色从上到下也越来越浅（从橘红到土黄）。滑动鼠标可以阅读对应数据点的值，上图中显示是”39秒种前的99%分位值是330微秒”。这幅图中不包含99.99%的曲线，因为99.99%分位值常明显大于99.9%及以下的分位值，画在一起的话会使得其他曲线变得很”矮“，难以辨认。你可以点击以"_latency_9999"结尾的bvar独立查看99.99%曲线，当然，你也可以独立查看50%,90%,99%,99.9%等曲线。按时间变化曲线可以看到分位值的变化趋势，对分析系统的性能变化很实用。
+Hovering mouse over the curves shows corresponding values at the time. The tooltip in above diagram means "The 99% percentile of latency before 39 seconds is 330 **microseconds**". The diagram does not include the 99.99-ile curve which is usually significantly higher than others, making others hard to read. You may click bvars ended with "\_latency\_9999" to read the 99.99-ile curve separately. This diagram shows how percentiles change over time, which is helpful to analyze performance regressions of systems.
 
-brpc的服务都会自动统计延时分布，用户不用自己加了。如下图所示：
+brpc calculates latency distributions of services automatically, which do not need users to add manually. The metrics are as follows:
 
 ![img](../images/vars_6.png)
 
-你可以用bvar::LatencyRecorder统计非brpc服务的延时，这么做(更具体的使用方法请查看[bvar-c++](bvar_c++.md)):
+`bvar::LatencyRecorder` is able to calculate latency distributions of any code, as depicted below. (checkout [bvar-c++](bvar_c++.md) for details):
 
 ```c++
 #include <bvar/bvar.h>
- 
+
 ...
 bvar::LatencyRecorder g_latency_recorder("client");  // expose this recorder
 ... 
@@ -84,10 +92,10 @@ void foo() {
 }
 ```
 
-如果这个程序使用了brpc server，那么你应该已经可以在/vars看到client_latency, client_latency_cdf等变量，点击便可查看动态曲线。如下图所示：
+If the application already starts a brpc server, values like `client_latency`, `client_latency_cdf` can be viewed from `/vars` as follows. Clicking them to see (dynamically-updated) curves:
 
 ![img](../images/vars_7.png)
 
 ## Non brpc server
 
-如果这个程序只是一个brpc client或根本没有使用brpc，并且你也想看到动态曲线，看[这里](dummy_server.md)。
+If your program only uses brpc client or even not use brpc, and you also want to view the curves, check [here](../cn/dummy_server.md).

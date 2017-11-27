@@ -50,9 +50,6 @@ public:
         // The purpose of following logs is to help you to understand
         // how clients interact with servers more intuitively. You should 
         // remove these logs in performance-sensitive servers.
-        // You should also noticed that these logs are different from what
-        // we wrote in other projects: they use << instead of printf-style
-        // functions.
         // The noflush prevents the log from being flushed immediately.
         LOG(INFO) << "Received request[index=" << request->index()
                   << "] from " << cntl->remote_side() 

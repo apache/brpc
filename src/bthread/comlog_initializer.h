@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon Sep 15 10:51:15 CST 2014
 
-#ifndef PUBLIC_BTHREAD_BTHREAD_COMLOG_INITIALIZER_H
-#define PUBLIC_BTHREAD_BTHREAD_COMLOG_INITIALIZER_H
+#ifndef BTHREAD_COMLOG_INITIALIZER_H
+#define BTHREAD_COMLOG_INITIALIZER_H
 
 #include <com_log.h>                       // com_openlog_r, com_closelog_r
 #include <butil/macros.h>
@@ -43,4 +43,4 @@ private:
 
 }
 
-#endif // PUBLIC_BTHREAD_BTHREAD_COMLOG_INITIALIZER_H
+#endif // BTHREAD_COMLOG_INITIALIZER_H

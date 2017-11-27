@@ -8,8 +8,8 @@
 // The implementation includes annotations to avoid some false positives
 // when using data race detection tools.
 
-#ifndef BASE_ATOMIC_REF_COUNT_H_
-#define BASE_ATOMIC_REF_COUNT_H_
+#ifndef BUTIL_ATOMIC_REF_COUNT_H_
+#define BUTIL_ATOMIC_REF_COUNT_H_
 
 #include "butil/atomicops.h"
 #include "butil/third_party/dynamic_annotations/dynamic_annotations.h"
@@ -77,4 +77,4 @@ inline bool AtomicRefCountIsZero(volatile AtomicRefCount *ptr) {
 
 }  // namespace butil
 
-#endif  // BASE_ATOMIC_REF_COUNT_H_
+#endif  // BUTIL_ATOMIC_REF_COUNT_H_

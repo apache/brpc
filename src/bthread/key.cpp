@@ -66,8 +66,8 @@ static size_t nkey = 0;
 static uint32_t s_free_keys[KEYS_MAX];
 
 // Stats.
-static butil::static_atomic<size_t> nkeytable = BASE_STATIC_ATOMIC_INIT(0);
-static butil::static_atomic<size_t> nsubkeytable = BASE_STATIC_ATOMIC_INIT(0);
+static butil::static_atomic<size_t> nkeytable = BUTIL_STATIC_ATOMIC_INIT(0);
+static butil::static_atomic<size_t> nsubkeytable = BUTIL_STATIC_ATOMIC_INIT(0);
 
 // The second-level array.
 // Align with cacheline to avoid false sharing.

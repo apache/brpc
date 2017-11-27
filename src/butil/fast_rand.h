@@ -15,8 +15,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Thu Dec 31 13:35:39 CST 2015
 
-#ifndef PUBLIC_COMMON_BASE_FAST_RAND_H
-#define PUBLIC_COMMON_BASE_FAST_RAND_H
+#ifndef BUTIL_FAST_RAND_H
+#define BUTIL_FAST_RAND_H
 
 #include <stdint.h>
 
@@ -65,4 +65,4 @@ double fast_rand_double();
 
 }
 
-#endif  // PUBLIC_COMMON_BASE_FAST_RAND_H
+#endif  // BUTIL_FAST_RAND_H

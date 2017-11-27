@@ -1,4 +1,4 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
+// brpc - A framework to host and access services throughout Baidu.
 // Copyright (c) 2014 Baidu, Inc.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
@@ -9,8 +9,8 @@
 #include <fstream>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#include <gperftools/profiler.h>
 #include <google/protobuf/descriptor.h>
+#include "butil/gperftools_profiler.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "brpc/socket.h"

@@ -15,8 +15,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sat Dec  3 13:11:32 CST 2016
 
-#ifndef BASE_POOLED_MAP_H
-#define BASE_POOLED_MAP_H
+#ifndef BUTIL_POOLED_MAP_H
+#define BUTIL_POOLED_MAP_H
 
 #include "butil/single_threaded_pool.h"
 #include <new>
@@ -177,7 +177,7 @@ bool operator!=(const PooledAllocator<T1, S1>& a, const PooledAllocator<T2, S2>&
 
 // Since this allocator can't be exchanged(check impl. of operator==) nor
 // copied, specializing swap() is a must to make map.swap() work.
-#if !defined(BASE_CXX11_ENABLED)
+#if !defined(BUTIL_CXX11_ENABLED)
 #include <algorithm>  // std::swap until C++11
 #else
 #include <utility>    // std::swap since C++11
@@ -191,4 +191,4 @@ inline void swap(::butil::details::PooledAllocator<T1, BLOCK_SIZE> &lhs,
 }
 }  // namespace std
 
-#endif  // BASE_POOLED_MAP_H
+#endif  // BUTIL_POOLED_MAP_H

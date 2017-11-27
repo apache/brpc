@@ -154,9 +154,8 @@ void Controller::DeleteStuff() {
     _mongo_session_data.reset();
     delete _rpc_dump_meta;
 
-    if (_correlation_id != INVALID_BTHREAD_ID &&
-        !has_flag(FLAGS_DESTROYED_CID)) {
-        bthread_id_cancel(_correlation_id);
+    if (!is_used_by_rpc() && _correlation_id != INVALID_BTHREAD_ID) {
+        CHECK_NE(EPERM, bthread_id_cancel(_correlation_id));
     }
     if (_oncancel_id != INVALID_BTHREAD_ID) {
         bthread_id_error(_oncancel_id, 0);
@@ -206,8 +205,6 @@ void Controller::InternalReset(bool in_constructor) {
     _error_code = 0;
     _remote_side = butil::EndPoint();
     _local_side = butil::EndPoint();
-    _begin_time_us = 0;
-    _end_time_us = 0;
     _session_local_data = NULL;
     _server = NULL;
     _oncancel_id = INVALID_BTHREAD_ID;
@@ -222,8 +219,10 @@ void Controller::InternalReset(bool in_constructor) {
     _backup_request_ms = UNSET_MAGIC_NUM;
     _connect_timeout_ms = UNSET_MAGIC_NUM;
     _abstime_us = -1;
+    _timeout_id = 0;
+    _begin_time_us = 0;
+    _end_time_us = 0;
     _tos = 0;
-    _run_done_state = CALLMETHOD_CANNOT_RUN_DONE;
     _preferred_index = -1;
     _request_compress_type = COMPRESS_TYPE_NONE;
     _response_compress_type = COMPRESS_TYPE_NONE;
@@ -242,7 +241,6 @@ void Controller::InternalReset(bool in_constructor) {
     _pack_request = NULL;
     _method = NULL;
     _auth = NULL;
-    _timeout_id = 0;
     _idl_names = idl_single_req_single_res;
     _idl_result = IDL_VOID_RESULT;
     _http_request = NULL;
@@ -630,11 +628,10 @@ END_OF_RPC:
         bthread_attr_t attr = (FLAGS_usercode_in_pthread ?
                                BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL);
         _tmp_completion_info = info;
-        if (bthread_start_background(&bt, &attr, RunEndRPC, this) == 0) {
-            return;
+        if (bthread_start_background(&bt, &attr, RunEndRPC, this) != 0) {
+            LOG(FATAL) << "Fail to start bthread";
+            EndRPC(info);
         }
-        LOG(FATAL) << "Fail to start bthread";
-        EndRPC(info);
     } else {
         if (_done != NULL/*Note[_done]*/ &&
             !has_flag(FLAGS_DESTROY_CID_IN_DONE)/*Note[cid]*/) {
@@ -651,7 +648,12 @@ void* Controller::RunEndRPC(void* arg) {
 }
 
 inline bool does_error_affect_main_socket(int error_code) {
+    // Errors tested in this function are reported by pooled connections
+    // and very likely to indicate that the server-side is down and the socket
+    // should be health-checked.
     return error_code == ECONNREFUSED ||
+        error_code == ENETUNREACH ||
+        error_code == EHOSTUNREACH ||
         error_code == EINVAL/*returned by connect "0.0.0.1"*/;
 }
 
@@ -733,13 +735,8 @@ void Controller::Call::OnComplete(Controller* c, int error_code/*note*/,
     sending_sock.reset(NULL);
     
     if (need_feedback) {
-        LoadBalancer::CallInfo info;
-        info.in.begin_time_us = begin_time_us;
-        info.in.has_request_code = c->has_request_code();
-        info.in.request_code = c->request_code();
-        info.in.excluded = NULL;
-        info.server_id = peer_id;
-        info.error_code = error_code;
+        const LoadBalancer::CallInfo info =
+            { begin_time_us, peer_id, error_code, c };
         c->_lb->Feedback(info);
     }
 }
@@ -860,7 +857,6 @@ void Controller::EndRPC(const CompletionInfo& info) {
 
         // Check comments in above branch on bthread_about_to_quit.
         bthread_about_to_quit();
-        add_flag(FLAGS_DESTROYED_CID);
         CHECK_EQ(0, bthread_id_unlock_and_destroy(saved_cid));
     }
 }
@@ -892,18 +888,20 @@ void Controller::SubmitSpan() {
 }
 
 void Controller::HandleSendFailed() {
-    // NOTE: Must launch new thread to run the callback in an asynchronous
-    // call. Users may hold a lock before asynchronus CallMethod returns and
-    // grab the same lock inside done->Run(). If we call done->Run() in the
-    // same stack of CallMethod, we're deadlocked.
-    // We don't need to run the callback with new thread in a sync call since
-    // the created thread needs to be joined anyway before CallMethod ends.
     if (!FailedInline()) {
         SetFailed("Must be SetFailed() before calling HandleSendFailed()");
         LOG(FATAL) << ErrorText();
     }
-    CompletionInfo info = { current_id(), false };
-    OnVersionedRPCReturned(info, _done != NULL, _error_code);
+    const CompletionInfo info = { current_id(), false };
+    // NOTE: Launch new thread to run the callback in an asynchronous call
+    // (and done is not allowed to run in-place)
+    // Users may hold a lock before asynchronus CallMethod returns and
+    // grab the same lock inside done->Run(). If done->Run() is called in the
+    // same stack of CallMethod, the code is deadlocked.
+    // We don't need to run the callback in new thread in a sync call since
+    // the created thread needs to be joined anyway before end of CallMethod.
+    const bool new_bthread = (_done != NULL && !is_done_allowed_to_run_in_place());
+    OnVersionedRPCReturned(info, new_bthread, _error_code);
 }
 
 void Controller::IssueRPC(int64_t start_realtime_us) {
@@ -947,7 +945,8 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _current_call.peer_id = _single_server_id;
     } else {
         LoadBalancer::SelectIn sel_in =
-            { start_realtime_us, has_request_code(), _request_code, _accessed };
+            { start_realtime_us, true,
+              has_request_code(), _request_code, _accessed };
         LoadBalancer::SelectOut sel_out(&tmp_sock);
         const int rc = _lb->SelectServer(sel_in, &sel_out);
         if (rc != 0) {
@@ -1120,6 +1119,16 @@ void Controller::set_auth_context(const AuthContext* ctx) {
 int Controller::HandleSocketFailed(bthread_id_t id, void* data, int error_code,
                                    const std::string& error_text) {
     Controller* cntl = static_cast<Controller*>(data);
+    if (!cntl->is_used_by_rpc()) {
+        // Cannot destroy the call_id before RPC otherwise an async RPC
+        // using the controller cannot be joined and related resources may be
+        // destroyed before done->Run() running in another bthread.
+        // The error set will be detected in Channel::CallMethod and fail
+        // the RPC.
+        cntl->SetFailed(error_code, "Cancel call_id=%" PRId64
+                        " before CallMethod()", id.value);
+        return bthread_id_unlock(id);
+    }
     const int saved_error = cntl->ErrorCode();
     if (error_code == ERPCTIMEDOUT) {
         cntl->SetFailed(error_code, "Reached timeout=%" PRId64 "ms @%s",

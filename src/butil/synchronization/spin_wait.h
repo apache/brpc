@@ -12,8 +12,8 @@
 // We provide a simple one argument spin wait (for 1 second), and a generic
 // spin wait (for longer periods of time).
 
-#ifndef BASE_SYNCHRONIZATION_SPIN_WAIT_H_
-#define BASE_SYNCHRONIZATION_SPIN_WAIT_H_
+#ifndef BUTIL_SYNCHRONIZATION_SPIN_WAIT_H_
+#define BUTIL_SYNCHRONIZATION_SPIN_WAIT_H_
 
 #include "butil/threading/platform_thread.h"
 #include "butil/time/time.h"
@@ -47,4 +47,4 @@
     } \
   } while (0)
 
-#endif  // BASE_SYNCHRONIZATION_SPIN_WAIT_H_
+#endif  // BUTIL_SYNCHRONIZATION_SPIN_WAIT_H_

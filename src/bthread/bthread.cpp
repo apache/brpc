@@ -45,7 +45,7 @@ BAIDU_CASSERT(sizeof(TaskControl*) == sizeof(butil::atomic<TaskControl*>), atomi
 pthread_mutex_t g_task_control_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Referenced in rpc, needs to be extern.
 // Notice that we can't declare the variable as atomic<TaskControl*> which
-// may not initialized before creating bthreads before main().
+// are not constructed before main().
 TaskControl* g_task_control = NULL;
 
 extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
@@ -81,7 +81,7 @@ inline TaskControl* get_or_new_task_control() {
 
 __thread TaskGroup* tls_task_group_nosignal = NULL;
 
-BASE_FORCE_INLINE int
+BUTIL_FORCE_INLINE int
 start_from_non_worker(bthread_t* __restrict tid,
                       const bthread_attr_t* __restrict attr,
                       void * (*fn)(void*),
@@ -105,8 +105,6 @@ start_from_non_worker(bthread_t* __restrict tid,
     return c->choose_one_group()->start_background<true>(
         tid, attr, fn, arg);
 }
-
-int stop_butex_wait(bthread_t tid);
 
 struct TidTraits {
     static const size_t BLOCK_SIZE = 63;
@@ -169,23 +167,17 @@ void bthread_flush() __THROW {
     }
 }
 
+int bthread_interrupt(bthread_t tid) __THROW {
+    return bthread::TaskGroup::interrupt(tid, bthread::get_task_control());
+}
+
 int bthread_stop(bthread_t tid) __THROW {
-    if (bthread::stop_butex_wait(tid) < 0) {
-        return errno;
-    }
-    bthread::TaskGroup* g = bthread::tls_task_group;
-    if (!g) {
-        bthread::TaskControl* c = bthread::get_or_new_task_control();
-        if (!c) {
-            return ENOMEM;
-        }
-        g = c->choose_one_group();
-    }
-    return g->stop_usleep(tid);
+    bthread::TaskGroup::set_stopped(tid);
+    return bthread_interrupt(tid);
 }
 
 int bthread_stopped(bthread_t tid) __THROW {
-    return bthread::TaskGroup::stopped(tid);
+    return (int)bthread::TaskGroup::is_stopped(tid);
 }
 
 bthread_t bthread_self(void) __THROW {
@@ -319,7 +311,6 @@ int bthread_usleep(uint64_t microseconds) __THROW {
     if (NULL != g && !g->is_current_pthread_task()) {
         return bthread::TaskGroup::usleep(&g, microseconds);
     }
-    // TODO: return ESTOP for pthread_task
     return ::usleep(microseconds);
 }
 

@@ -6,12 +6,12 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
-#include <gperftools/profiler.h>
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/scoped_lock.h"
 #include "butil/fd_utility.h"
 #include "butil/logging.h"
+#include "butil/gperftools_profiler.h"
 #include "bthread/bthread.h"
 #include "bthread/task_control.h"
 #include "bthread/task_group.h"

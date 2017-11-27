@@ -95,7 +95,18 @@ int bthread_cond_wait(bthread_cond_t* __restrict c,
     bthread_mutex_unlock(m);
     int rc1 = 0;
     if (bthread::butex_wait(ic->seq, expected_seq, NULL) < 0 &&
-        errno != EWOULDBLOCK) {
+        errno != EWOULDBLOCK && errno != EINTR/*note*/) {
+        // EINTR should not be returned by cond_*wait according to docs on
+        // pthread, however spurious wake-up is OK, just as we do here
+        // so that users can check flags in the loop often companioning
+        // with the cond_wait ASAP. For example:
+        //   mutex.lock();
+        //   while (!stop && other-predicates) {
+        //     cond_wait(&mutex);
+        //   }
+        //   mutex.unlock();
+        // After interruption, above code should wake up from the cond_wait
+        // soon and check the `stop' flag and other predicates.
         rc1 = errno;
     }
     const int rc2 = bthread_mutex_lock_contended(m);
@@ -118,7 +129,8 @@ int bthread_cond_timedwait(bthread_cond_t* __restrict c,
     bthread_mutex_unlock(m);
     int rc1 = 0;
     if (bthread::butex_wait(ic->seq, expected_seq, abstime) < 0 &&
-        errno != EWOULDBLOCK) {
+        errno != EWOULDBLOCK && errno != EINTR/*note*/) {
+        // note: see comments in bthread_cond_wait on EINTR.
         rc1 = errno;
     }
     const int rc2 = bthread_mutex_lock_contended(m);

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_CLOCK_H_
-#define BASE_CLOCK_H_
+#ifndef BUTIL_CLOCK_H_
+#define BUTIL_CLOCK_H_
 
 #include "butil/base_export.h"
 #include "butil/time/time.h"
@@ -25,7 +25,7 @@ namespace butil {
 //
 // See TickClock (butil/time/tick_clock.h) for the equivalent interface for
 // TimeTicks.
-class BASE_EXPORT Clock {
+class BUTIL_EXPORT Clock {
  public:
   virtual ~Clock();
 
@@ -37,4 +37,4 @@ class BASE_EXPORT Clock {
 
 }  // namespace butil
 
-#endif  // BASE_CLOCK_H_
+#endif  // BUTIL_CLOCK_H_

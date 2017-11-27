@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 10 17:40:58 CST 2012
 
-#ifndef BAIDU_BTHREAD_TASK_GROUP_H
-#define BAIDU_BTHREAD_TASK_GROUP_H
+#ifndef BTHREAD_TASK_GROUP_H
+#define BTHREAD_TASK_GROUP_H
 
 #include "butil/time.h"                             // cpuwide_time_ns
 #include "bthread/task_control.h"
@@ -117,8 +117,9 @@ public:
     // Returns 0 on success, -1 otherwise and errno is set.
     static int get_attr(bthread_t tid, bthread_attr_t* attr);
 
-    // Returns non-zero the `tid' is stopped, 0 otherwise.
-    static int stopped(bthread_t tid);
+    // Get/set TaskMeta.stop of the tid.
+    static void set_stopped(bthread_t tid);
+    static bool is_stopped(bthread_t tid);
 
     // The bthread running run_main_task();
     bthread_t main_tid() const { return _main_tid; }
@@ -163,9 +164,9 @@ public:
     // Call this instead of delete.
     void destroy_self();
 
-    // Wake up `tid' if it's sleeping.
-    // Returns 0 on success, error code otherwise.
-    int stop_usleep(bthread_t tid);
+    // Wake up blocking ops in the thread.
+    // Returns 0 on success, errno otherwise.
+    static int interrupt(bthread_t tid, TaskControl* c);
 
     // Get the meta associate with the task.
     static TaskMeta* address_meta(bthread_t tid);
@@ -249,4 +250,4 @@ friend class TaskControl;
 
 #include "task_group_inl.h"
 
-#endif  // BAIDU_BTHREAD_TASK_GROUP_H
+#endif  // BTHREAD_TASK_GROUP_H

@@ -63,6 +63,54 @@ protected:
     void TearDown() {}
 };
 
+void AssertReplyEqual(const brpc::RedisReply& reply1,
+                      const brpc::RedisReply& reply2) {
+    if (&reply1 == &reply2) {
+        return;
+    }
+    CHECK_EQ(reply1.type(), reply2.type());
+    switch (reply1.type()) {
+    case brpc::REDIS_REPLY_ARRAY:
+        ASSERT_EQ(reply1.size(), reply2.size());
+        for (size_t j = 0; j < reply1.size(); ++j) {
+            ASSERT_NE(&reply1[j], &reply2[j]); // from different arena
+            AssertReplyEqual(reply1[j], reply2[j]);
+        }
+        break;
+    case brpc::REDIS_REPLY_INTEGER:
+        ASSERT_EQ(reply1.integer(), reply2.integer());
+        break;
+    case brpc::REDIS_REPLY_NIL:
+        break;
+    case brpc::REDIS_REPLY_STRING:
+        // fall through
+    case brpc::REDIS_REPLY_STATUS:
+        ASSERT_NE(reply1.c_str(), reply2.c_str()); // from different arena
+        ASSERT_STREQ(reply1.c_str(), reply2.c_str());
+        break;
+    case brpc::REDIS_REPLY_ERROR:
+        ASSERT_NE(reply1.error_message(), reply2.error_message()); // from different arena
+        ASSERT_STREQ(reply1.error_message(), reply2.error_message());
+        break;
+    }
+}
+
+void AssertResponseEqual(const brpc::RedisResponse& r1,
+                         const brpc::RedisResponse& r2,
+                         int repeated_times = 1) {
+    if (&r1 == &r2) {
+        ASSERT_EQ(repeated_times, 1);
+        return;
+    }
+    ASSERT_EQ(r2.reply_size()* repeated_times, r1.reply_size());
+    for (int j = 0; j < repeated_times; ++j) {
+        for (int i = 0; i < r2.reply_size(); ++i) {
+            ASSERT_NE(&r2.reply(i), &r1.reply(j * r2.reply_size() + i));
+            AssertReplyEqual(r2.reply(i), r1.reply(j * r2.reply_size() + i));
+        }
+    }
+}
+
 TEST_F(RedisTest, sanity) {
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_REDIS;
@@ -175,6 +223,11 @@ TEST_F(RedisTest, keys_with_spaces) {
     ASSERT_EQ("he2 he2 da2", response.reply(5).data());
     ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(6).type());
     ASSERT_EQ("he3 he3 da3", response.reply(6).data());
+
+    brpc::RedisResponse response2 = response;
+    AssertResponseEqual(response2, response);
+    response2.MergeFrom(response);
+    AssertResponseEqual(response2, response, 2);
 }
 
 TEST_F(RedisTest, incr_and_decr) {
@@ -201,6 +254,11 @@ TEST_F(RedisTest, incr_and_decr) {
     ASSERT_EQ(10, response.reply(2).integer());
     ASSERT_EQ(brpc::REDIS_REPLY_INTEGER, response.reply(3).type());
     ASSERT_EQ(-10, response.reply(3).integer());
+
+    brpc::RedisResponse response2 = response;
+    AssertResponseEqual(response2, response);
+    response2.MergeFrom(response);
+    AssertResponseEqual(response2, response, 2);
 }
 
 TEST_F(RedisTest, by_components) {
@@ -233,6 +291,11 @@ TEST_F(RedisTest, by_components) {
     ASSERT_EQ(10, response.reply(2).integer());
     ASSERT_EQ(brpc::REDIS_REPLY_INTEGER, response.reply(3).type());
     ASSERT_EQ(-10, response.reply(3).integer());
+
+    brpc::RedisResponse response2 = response;
+    AssertResponseEqual(response2, response);
+    response2.MergeFrom(response);
+    AssertResponseEqual(response2, response, 2);
 }
 } //namespace
 #endif // BAIDU_INTERNAL

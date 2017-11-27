@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Wed Jul 30 11:47:19 CST 2014
 
-#ifndef BAIDU_BTHREAD_ERRNO_H
-#define BAIDU_BTHREAD_ERRNO_H
+#ifndef BTHREAD_ERRNO_H
+#define BTHREAD_ERRNO_H
 
 #include <errno.h>                    // errno
 #include "butil/errno.h"               // berror(), DEFINE_BTHREAD_ERRNO
@@ -36,4 +36,4 @@ extern const int ESTOP;
 
 __END_DECLS
 
-#endif  //BAIDU_BTHREAD_ERRNO_H
+#endif  //BTHREAD_ERRNO_H

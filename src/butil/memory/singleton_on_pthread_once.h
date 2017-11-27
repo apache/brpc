@@ -15,8 +15,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Thu Dec 15 14:37:39 CST 2016
 
-#ifndef BASE_MEMORY_SINGLETON_ON_PTHREAD_ONCE_H
-#define BASE_MEMORY_SINGLETON_ON_PTHREAD_ONCE_H
+#ifndef BUTIL_MEMORY_SINGLETON_ON_PTHREAD_ONCE_H
+#define BUTIL_MEMORY_SINGLETON_ON_PTHREAD_ONCE_H
 
 #include <pthread.h>
 #include "butil/atomicops.h"
@@ -72,4 +72,4 @@ inline T* has_leaky_singleton() {
 
 } // namespace butil
 
-#endif // BASE_MEMORY_SINGLETON_ON_PTHREAD_ONCE_H
+#endif // BUTIL_MEMORY_SINGLETON_ON_PTHREAD_ONCE_H

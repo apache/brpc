@@ -43,7 +43,7 @@ BAIDU_CASSERT(BTHREAD_STACKTYPE_NORMAL == STACK_TYPE_NORMAL, must_match);
 BAIDU_CASSERT(BTHREAD_STACKTYPE_LARGE == STACK_TYPE_LARGE, must_match);
 BAIDU_CASSERT(STACK_TYPE_MAIN == 0, must_be_0);
 
-static butil::static_atomic<int64_t> s_stack_count = BASE_STATIC_ATOMIC_INIT(0);
+static butil::static_atomic<int64_t> s_stack_count = BUTIL_STATIC_ATOMIC_INIT(0);
 static int64_t get_stack_count(void*) {
     return s_stack_count.load(butil::memory_order_relaxed);
 }

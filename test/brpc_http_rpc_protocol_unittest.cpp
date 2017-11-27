@@ -1,4 +1,4 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
+// brpc - A framework to host and access services throughout Baidu.
 // Copyright (c) 2014 Baidu, Inc.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
@@ -7,7 +7,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
-#include <gperftools/profiler.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
 #include "butil/time.h"
@@ -199,14 +198,11 @@ TEST_F(HttpTest, indenting_ostream) {
 }
 
 TEST_F(HttpTest, parse_http_address) {
-    const std::string EXP_HOSTNAME = "cp01-rpc-dev01.cp01.baidu.com:9876";
+    const std::string EXP_HOSTNAME = "www.baidu.com:9876";
     butil::EndPoint EXP_ENDPOINT;
-    ASSERT_EQ(0, hostname2endpoint(EXP_HOSTNAME.c_str(), &EXP_ENDPOINT));
     {
-        butil::EndPoint ep;
         std::string url = "https://" + EXP_HOSTNAME;
-        EXPECT_TRUE(brpc::policy::ParseHttpServerAddress(&ep, url.c_str()));
-        EXPECT_EQ(EXP_ENDPOINT, ep);
+        EXPECT_TRUE(brpc::policy::ParseHttpServerAddress(&EXP_ENDPOINT, url.c_str()));
     }
     {
         butil::EndPoint ep;
@@ -404,7 +400,7 @@ TEST_F(HttpTest, chunked_uploading) {
     const std::string exp_res = "{\"message\":\"world\"}";
     butil::ScopedFILE fp(res_fname.c_str(), "r");
     char buf[128];
-    fgets(buf, sizeof(buf), fp);
+    ASSERT_TRUE(fgets(buf, sizeof(buf), fp));
     EXPECT_EQ(exp_res, std::string(buf));
 }
 
@@ -834,7 +830,6 @@ TEST_F(HttpTest, skip_progressive_reading) {
     LOG(INFO) << "Sleep 3 seconds after destroy of Controller";
     sleep(3);
     const size_t new_written_bytes = svc.written_bytes();
-    EXPECT_FALSE(svc.ever_full());
     ASSERT_EQ(0, svc.last_errno());
     LOG(INFO) << "Server still wrote " << new_written_bytes - old_written_bytes;
     // The server side still wrote things.

@@ -6,8 +6,8 @@
 // the low-level platform-specific abstraction to the OS's threading interface.
 // You should instead be using a message-loop driven Thread, see thread.h.
 
-#ifndef BASE_THREADING_PLATFORM_THREAD_H_
-#define BASE_THREADING_PLATFORM_THREAD_H_
+#ifndef BUTIL_THREADING_PLATFORM_THREAD_H_
+#define BUTIL_THREADING_PLATFORM_THREAD_H_
 
 #include "butil/base_export.h"
 #include "butil/basictypes.h"
@@ -122,11 +122,11 @@ enum ThreadPriority{
 };
 
 // A namespace for low-level thread functions.
-class BASE_EXPORT PlatformThread {
+class BUTIL_EXPORT PlatformThread {
  public:
   // Implement this interface to run code on a background thread.  Your
   // ThreadMain method will be called on the newly created thread.
-  class BASE_EXPORT Delegate {
+  class BUTIL_EXPORT Delegate {
    public:
     virtual void ThreadMain() = 0;
 
@@ -197,4 +197,4 @@ class BASE_EXPORT PlatformThread {
 
 }  // namespace butil
 
-#endif  // BASE_THREADING_PLATFORM_THREAD_H_
+#endif  // BUTIL_THREADING_PLATFORM_THREAD_H_

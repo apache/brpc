@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_DEBUG_LEAK_TRACKER_H_
-#define BASE_DEBUG_LEAK_TRACKER_H_
+#ifndef BUTIL_DEBUG_LEAK_TRACKER_H_
+#define BUTIL_DEBUG_LEAK_TRACKER_H_
 
 #include "butil/build_config.h"
 
@@ -135,4 +135,4 @@ class LeakTracker : public LinkNode<LeakTracker<T> > {
 }  // namespace debug
 }  // namespace butil
 
-#endif  // BASE_DEBUG_LEAK_TRACKER_H_
+#endif  // BUTIL_DEBUG_LEAK_TRACKER_H_

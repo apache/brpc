@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_FILES_FILE_PATH_WATCHER_KQUEUE_H_
-#define BASE_FILES_FILE_PATH_WATCHER_KQUEUE_H_
+#ifndef BUTIL_FILES_FILE_PATH_WATCHER_KQUEUE_H_
+#define BUTIL_FILES_FILE_PATH_WATCHER_KQUEUE_H_
 
 #include <sys/event.h>
 #include <vector>
@@ -129,4 +129,4 @@ class FilePathWatcherKQueue : public FilePathWatcher::PlatformDelegate,
 
 }  // namespace butil
 
-#endif  // BASE_FILES_FILE_PATH_WATCHER_KQUEUE_H_
+#endif  // BUTIL_FILES_FILE_PATH_WATCHER_KQUEUE_H_

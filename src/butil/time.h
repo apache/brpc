@@ -17,8 +17,8 @@
 
 // Measuring time
 
-#ifndef BAIDU_BASE_TIME_H
-#define BAIDU_BASE_TIME_H
+#ifndef BUTIL_BAIDU_TIME_H
+#define BUTIL_BAIDU_TIME_H
 
 #include <time.h>                            // timespec, clock_gettime
 #include <sys/time.h>                        // timeval, gettimeofday
@@ -184,7 +184,6 @@ inline timeval seconds_to_timeval(int64_t s) {
 
 // ---------------------------------------------------------------
 // Get system-wide monotonic time.
-// Cost ~85ns on 2.6.32_1-12-0-0, Intel(R) Xeon(R) CPU E5620 @ 2.40GHz
 // ---------------------------------------------------------------
 extern int64_t monotonic_time_ns();
 
@@ -211,26 +210,35 @@ inline uint64_t clock_cycles() {
         );
     return ((uint64_t)hi << 32) | lo;
 }
+extern int64_t read_invariant_cpu_frequency();
+// Be positive iff:
+// 1 Intel x86_64 CPU (multiple cores) supporting constant_tsc and
+// nonstop_tsc(check flags in /proc/cpuinfo)
+extern int64_t invariant_cpu_freq;
 }  // namespace detail
 
 // ---------------------------------------------------------------
 // Get cpu-wide (wall-) time.
 // Cost ~9ns on Intel(R) Xeon(R) CPU E5620 @ 2.40GHz
 // ---------------------------------------------------------------
+// note: Inlining shortens time cost per-call for 15ns in a loop of many
+//       calls to this function.
 inline int64_t cpuwide_time_ns() {
-    extern const uint64_t invariant_cpu_freq;  // will be non-zero iff:
-    // 1 Intel x86_64 CPU (multiple cores) supporting constant_tsc and
-    // nonstop_tsc(check flags in /proc/cpuinfo)
-    
-    if (invariant_cpu_freq) {
+    if (detail::invariant_cpu_freq > 0) {
         const uint64_t tsc = detail::clock_cycles();
-        const uint64_t sec = tsc / invariant_cpu_freq;
+        const uint64_t sec = tsc / detail::invariant_cpu_freq;
         // TODO: should be OK until CPU's frequency exceeds 16GHz.
-        return (tsc - sec * invariant_cpu_freq) * 1000000000L /
-            invariant_cpu_freq + sec * 1000000000L;
+        return (tsc - sec * detail::invariant_cpu_freq) * 1000000000L /
+            detail::invariant_cpu_freq + sec * 1000000000L;
+    } else if (!detail::invariant_cpu_freq) {
+        // Lack of necessary features, return system-wide monotonic time instead.
+        return monotonic_time_ns();
+    } else {
+        // Use a thread-unsafe method(OK to us) to initialize the freq
+        // to save a "if" test comparing to using a local static variable
+        detail::invariant_cpu_freq = detail::read_invariant_cpu_frequency();
+        return cpuwide_time_ns();
     }
-    // Lack of necessary features, return system-wide monotonic time instead.
-    return monotonic_time_ns();
 }
 
 inline int64_t cpuwide_time_us() {
@@ -337,60 +345,6 @@ private:
     int64_t _start;
 };
 
-// NOTE: Don't call fast_realtime*! they're still experimental.
-inline int64_t fast_realtime_ns() {
-    extern const uint64_t invariant_cpu_freq;
-    extern __thread int64_t tls_cpuwidetime_ns;
-    extern __thread int64_t tls_realtime_ns;
-    
-    if (invariant_cpu_freq) {
-        // 1 Intel x86_64 CPU (multiple cores) supporting constant_tsc and
-        // nonstop_tsc(check flags in /proc/cpuinfo)
-    
-        const uint64_t tsc = detail::clock_cycles();
-        const uint64_t sec = tsc / invariant_cpu_freq;
-        // TODO: should be OK until CPU's frequency exceeds 16GHz.
-        const int64_t diff = (tsc - sec * invariant_cpu_freq) * 1000000000L /
-            invariant_cpu_freq + sec * 1000000000L - tls_cpuwidetime_ns;
-        if (__builtin_expect(diff < 10000000, 1)) {
-            return diff + tls_realtime_ns;
-        }
-        timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        tls_cpuwidetime_ns += diff;
-        tls_realtime_ns = timespec_to_nanoseconds(ts);
-        return tls_realtime_ns;
-    }
-    timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    return timespec_to_nanoseconds(ts);
-}
-
-inline int fast_realtime(timespec* ts) {
-    extern const uint64_t invariant_cpu_freq;
-    extern __thread int64_t tls_cpuwidetime_ns;
-    extern __thread int64_t tls_realtime_ns;
-    
-    if (invariant_cpu_freq) {    
-        const uint64_t tsc = detail::clock_cycles();
-        const uint64_t sec = tsc / invariant_cpu_freq;
-        // TODO: should be OK until CPU's frequency exceeds 16GHz.
-        const int64_t diff = (tsc - sec * invariant_cpu_freq) * 1000000000L /
-            invariant_cpu_freq + sec * 1000000000L - tls_cpuwidetime_ns;
-        if (__builtin_expect(diff < 10000000, 1)) {
-            const int64_t now = diff + tls_realtime_ns;
-            ts->tv_sec = now / 1000000000L;
-            ts->tv_nsec = now - ts->tv_sec * 1000000000L;
-            return 0;
-        }
-        const int rc = clock_gettime(CLOCK_REALTIME, ts);
-        tls_cpuwidetime_ns += diff;
-        tls_realtime_ns = timespec_to_nanoseconds(*ts);
-        return rc;
-    }
-    return clock_gettime(CLOCK_REALTIME, ts);
-}
-
 }  // namespace butil
 
-#endif  // BAIDU_BASE_TIME_H
+#endif  // BUTIL_BAIDU_TIME_H

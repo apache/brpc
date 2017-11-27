@@ -51,8 +51,8 @@
 // malloc() and other unsafe operations.  It should be both
 // thread-safe and async-signal-safe.
 
-#ifndef BASE_SYMBOLIZE_H_
-#define BASE_SYMBOLIZE_H_
+#ifndef BUTIL_SYMBOLIZE_H_
+#define BUTIL_SYMBOLIZE_H_
 
 #include "utilities.h"
 #include "config.h"
@@ -152,4 +152,4 @@ bool Symbolize(void *pc, char *out, int out_size);
 
 _END_GOOGLE_NAMESPACE_
 
-#endif  // BASE_SYMBOLIZE_H_
+#endif  // BUTIL_SYMBOLIZE_H_

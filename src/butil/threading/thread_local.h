@@ -48,8 +48,8 @@
 //     return Singleton<ThreadLocalPointer<MyClass> >::get()->Get();
 //   }
 
-#ifndef BASE_THREADING_THREAD_LOCAL_H_
-#define BASE_THREADING_THREAD_LOCAL_H_
+#ifndef BUTIL_THREADING_THREAD_LOCAL_H_
+#define BUTIL_THREADING_THREAD_LOCAL_H_
 
 #include "butil/base_export.h"
 #include "butil/basictypes.h"
@@ -63,7 +63,7 @@ namespace butil {
 namespace internal {
 
 // Helper functions that abstract the cross-platform APIs.  Do not use directly.
-struct BASE_EXPORT ThreadLocalPlatform {
+struct BUTIL_EXPORT ThreadLocalPlatform {
 #if defined(OS_WIN)
   typedef unsigned long SlotType;
 #elif defined(OS_ANDROID)
@@ -130,4 +130,4 @@ class ThreadLocalBoolean {
 
 }  // namespace butil
 
-#endif  // BASE_THREADING_THREAD_LOCAL_H_
+#endif  // BUTIL_THREADING_THREAD_LOCAL_H_

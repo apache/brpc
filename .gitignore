@@ -1,4 +1,5 @@
-#ignore all files without extension
+# Ignore all files without extension.
+# If you need to git-add a file without extension, add -f
 *
 !*.*
 !*/
@@ -13,10 +14,10 @@
 /output
 /test/output
 
-#ignore hidden files
+# Ignore hidden files
 .*
 *.swp
 
-#ignore auto-generated files
+# Ignore auto-generated files
 config.mk
 src/butil/config.h

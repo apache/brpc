@@ -15,8 +15,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jun 23 15:03:24 CST 2015
 
-#ifndef BAIDU_BASE_FIND_CSTR_H
-#define BAIDU_BASE_FIND_CSTR_H
+#ifndef BUTIL_FIND_CSTR_H
+#define BUTIL_FIND_CSTR_H
 
 #include <string>
 #include <map>
@@ -149,4 +149,4 @@ find_lowered_cstr(std::map<std::string, T, C, A>& m,
 
 }  // namespace butil
 
-#endif  // BAIDU_BASE_FIND_CSTR_H
+#endif  // BUTIL_FIND_CSTR_H
