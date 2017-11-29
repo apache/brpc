@@ -125,6 +125,11 @@ public:
     void set_readable_progressive_attachment(ReadableProgressiveAttachment* s)
     { _cntl->_rpa.reset(s); }
 
+    ControllerPrivateAccessor &set_with_auth(bool with_auth) {
+        _cntl->set_flag(Controller::FLAGS_REQUEST_WITH_AUTH, with_auth);
+        return *this;
+    }
+    bool with_auth() const { return _cntl->has_flag(Controller::FLAGS_REQUEST_WITH_AUTH); }
 private:
     Controller* _cntl;
 };

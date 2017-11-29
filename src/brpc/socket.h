@@ -128,9 +128,11 @@ struct PipelinedInfo {
     PipelinedInfo() { reset(); }
     void reset() {
         count = 0;
+        with_auth = false;
         id_wait = INVALID_BTHREAD_ID;
     }
     uint32_t count;
+    bool with_auth;
     bthread_id_t id_wait;
 };
 
@@ -217,9 +219,11 @@ public:
         // Default: false
         bool ignore_eovercrowded;
 
+        bool with_auth;
+
         WriteOptions()
             : id_wait(INVALID_BTHREAD_ID), abstime(NULL)
-            , pipelined_count(0), ignore_eovercrowded(false) {}
+            , pipelined_count(0), ignore_eovercrowded(false), with_auth(false) {}
     };
     int Write(butil::IOBuf *msg, const WriteOptions* options = NULL);
     
