@@ -15,6 +15,7 @@
 // Author: Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date: 2017/11/04 17:37:43
 
+#include <gflags/gflags.h>
 #include "butil/build_config.h"
 #include "butil/logging.h"
 
@@ -31,7 +32,7 @@ uint64_t BAIDU_WEAK bthread_usleep(uint64_t microseconds);
 
 namespace butil {
 
-const int CHILD_STACK_SIZE = 64 * 1024;
+const int CHILD_STACK_SIZE = 256 * 1024;
 
 struct ChildArgs {
     const char* cmd;
@@ -48,7 +49,7 @@ int launch_child_process(void* args) {
     _exit(1);
 }
 
-int read_command_output(std::ostream& os, const char* cmd) {
+int read_command_output_through_clone(std::ostream& os, const char* cmd) {
     int pipe_fd[2];
     if (pipe(pipe_fd) != 0) {
         PLOG(ERROR) << "Fail to pipe";
@@ -71,7 +72,7 @@ int read_command_output(std::ostream& os, const char* cmd) {
     child_stack = child_stack_mem + CHILD_STACK_SIZE;  
                                // ^ Assume stack grows downward
     cpid = clone(launch_child_process, child_stack,
-                       __WCLONE | CLONE_VM | SIGCHLD, &args);
+                 __WCLONE | CLONE_VM | SIGCHLD | CLONE_UNTRACED, &args);
     if (cpid < 0) {
         PLOG(ERROR) << "Fail to clone child process";
         rc = -1;
@@ -97,7 +98,7 @@ int read_command_output(std::ostream& os, const char* cmd) {
     pipe_fd[0] = -1;
 
     for (;;) {
-        pid_t wpid = waitpid(cpid, &wstatus, WNOHANG);
+        pid_t wpid = waitpid(cpid, &wstatus, WNOHANG | __WALL);
         if (wpid > 0) {
             break;
         }
@@ -141,15 +142,15 @@ END:
     return rc;
 }
 
-}  // namespace butil 
+DEFINE_bool(run_command_through_clone, false,
+            "(Linux specific) Run command with clone syscall to "
+            "avoid the costly page table duplication");
 
-#else  // OS_LINUX
+#endif // OS_LINUX
 
 #include <stdio.h>
 
-namespace butil {
-
-int read_command_output(std::ostream& os, const char* cmd) {
+int read_command_output_through_popen(std::ostream& os, const char* cmd) {
     FILE* pipe = popen(cmd, "r");
     if (pipe == NULL) {
         return -1;
@@ -170,9 +171,31 @@ int read_command_output(std::ostream& os, const char* cmd) {
             // retry;
         }
     }
-    return pclose(pipe);
+
+    const int wstatus = pclose(pipe);
+
+    if (wstatus < 0) {
+        return wstatus;
+    }
+    if (WIFEXITED(wstatus)) {
+        return WEXITSTATUS(wstatus);
+    }
+    if (WIFSIGNALED(wstatus)) {
+        os << "Child process was killed by signal "
+           << WTERMSIG(wstatus);
+    }
+    errno = ECHILD;
+    return -1;
 }
 
-}  // namespace butil 
+int read_command_output(std::ostream& os, const char* cmd) {
+#if !defined(OS_LINUX)
+    return read_command_output_through_popen(os, cmd);
+#else
+    return FLAGS_run_command_through_clone
+        ? read_command_output_through_clone(os, cmd)
+        : read_command_output_through_popen(os, cmd);
+#endif
+}
 
-#endif  // OS_LINUX
+}  // namespace butil
