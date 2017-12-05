@@ -1,13 +1,23 @@
-set(EchoClient_SOURCES
-    ${CMAKE_SOURCE_DIR}/example/echo/echo.pb.cc
-    ${CMAKE_SOURCE_DIR}/example/echo/client.cpp
-    )
-add_executable(EchoClient ${EchoClient_SOURCES})
-target_link_libraries(EchoClient brpc)
-
-set(EchoServer_SOURCES
-    ${CMAKE_SOURCE_DIR}/example/echo/echo.pb.cc
-    ${CMAKE_SOURCE_DIR}/example/echo/server.cpp
-    )
-add_executable(EchoServer ${EchoServer_SOURCES})
-target_link_libraries(EchoServer brpc)
+add_subdirectory(http_c++)
+add_subdirectory(asynchronous_echo_c++)
+add_subdirectory(backup_request_c++)
+add_subdirectory(cancel_c++)
+add_subdirectory(cascade_echo_c++)
+add_subdirectory(dynamic_partition_echo_c++)
+add_subdirectory(echo_c++)
+add_subdirectory(echo_c++_hulu_pbrpc)
+add_subdirectory(echo_c++_sofa_pbrpc)
+add_subdirectory(echo_c++_ubrpc_compack)
+add_subdirectory(memcache_c++)
+add_subdirectory(multi_threaded_echo_c++)
+add_subdirectory(multi_threaded_echo_fns_c++)
+add_subdirectory(multi_threaded_mcpack_c++)
+add_subdirectory(nshead_extension_c++)
+add_subdirectory(nshead_pb_extension_c++)
+add_subdirectory(parallel_echo_c++)
+add_subdirectory(partition_echo_c++)
+# need readline library
+#add_subdirectory(redis_c++)
+add_subdirectory(selective_echo_c++)
+add_subdirectory(session_data_and_thread_local)
+add_subdirectory(streaming_echo_c++)

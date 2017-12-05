@@ -59,6 +59,11 @@ include_directories(
         ${PROTOBUF_HEADER} 
         ${LEVELDB_HEADER}
         )
+ 
+# for *.so
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+# for *.a
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 ADD_SUBDIRECTORY(src)
-#ADD_SUBDIRECTORY(example)
+ADD_SUBDIRECTORY(example)
