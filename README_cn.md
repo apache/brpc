@@ -100,7 +100,7 @@ brpc欢迎贡献代码，特别是对不同平台，协议的扩展代码。
 
 提交PR前请确认你的代码符合如下要求：
 
-* 符合[google C++代码规范](https://google.github.io/styleguide/cppguide.html), 并把1个tab设置为4个空格。
+* 符合[google C++代码规范](https://google.github.io/styleguide/cppguide.html), 且一次缩进为4个空格。
 * 代码出现的位置和其定位相符。比如对于某特定协议的扩展代码不该出现在server.cpp, channel.cpp这些较为通用的类中，而一些非常通用的改动也不该深藏在某个特定协议的cpp中。
 * 有对应的单测代码。
 

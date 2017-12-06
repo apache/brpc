@@ -99,7 +99,7 @@ brpc welcomes contributions, especially those on adapting different platforms an
 
 Make sure the code meets following requirements before submitting your PR:
 
-- Conforms to [google C++ coding style](https://google.github.io/styleguide/cppguide.html) and set 1 tab to 4 spaces.
+- The code conforms to [google C++ coding style](https://google.github.io/styleguide/cppguide.html) and is indented by 4 spaces.
 - The code appears where it should be. For example the code to support an extra protocol should not be put in general classes like server.cpp, channel.cpp, while a general modification would better not be hidden inside a very specific protocol.
 - Has unittests.
 
