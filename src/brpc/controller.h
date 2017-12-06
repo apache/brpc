@@ -116,7 +116,7 @@ friend void policy::ProcessMongoRequest(InputMessageBase*);
     static const uint32_t FLAGS_PB_BYTES_TO_BASE64 = (1 << 11);
     static const uint32_t FLAGS_ALLOW_DONE_TO_RUN_IN_PLACE = (1 << 12);
     static const uint32_t FLAGS_USED_BY_RPC = (1 << 13);
-    static const uint32_t FLAGS_REQUEST_WITH_AUTH = (1 << 14);
+    static const uint32_t FLAGS_REQUEST_WITH_AUTH = (1 << 15);
     
 public:
     Controller();

@@ -188,9 +188,7 @@ void PackRedisRequest(butil::IOBuf* buf,
             return cntl->SetFailed(EREQUEST, "Fail to generate credential");
         }
         buf->append(auth_str);
-        ControllerPrivateAccessor(cntl).set_with_auth(true);
-    } else {
-        ControllerPrivateAccessor(cntl).set_with_auth(false);
+        ControllerPrivateAccessor(cntl).add_with_auth();
     }
 
     buf->append(request);

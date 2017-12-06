@@ -1,7 +1,7 @@
 // Copyright (c) 2014 Baidu, Inc.
 // Date: Thu Jun 11 14:30:07 CST 2015
 
-#ifdef BAIDU_INTERNAL
+#if defined(BAIDU_INTERNAL)
 
 #include <iostream>
 #include "butil/time.h"
