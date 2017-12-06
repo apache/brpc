@@ -86,7 +86,6 @@ BRPC_VALIDATE_GFLAG(connect_timeout_as_unreachable,
                          validate_connect_timeout_as_unreachable);
 
 const int WAIT_EPOLLOUT_TIMEOUT_MS = 50;
-static const uint32_t REDIS_AUTH_FLAG = (1ul << 15);
 
 #ifdef BAIDU_INTERNAL
 #define BRPC_AUXTHREAD_ATTR                                        \
@@ -305,9 +304,12 @@ struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
     Socket* socket;
     
     uint32_t pipelined_count() const {
-        return (_pc_and_udmsg >> 48) & 0xFFFF;
+        return (_pc_and_udmsg >> 48) & 0x7FFF;
     }
-    void clear_pipelined_count() {
+    bool is_with_auth() const {
+        return _pc_and_udmsg & 0x8000000000000000ULL;
+    }
+    void clear_pipelined_count_and_with_auth() {
         _pc_and_udmsg &= 0xFFFFFFFFFFFFULL;
     }
     SocketMessage* user_message() const {
@@ -318,8 +320,8 @@ struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
     }
     void set_pipelined_count_and_user_message(
         uint32_t pc, SocketMessage* msg, bool with_auth) {
-        if (pc != 0 && with_auth) {
-          pc |= REDIS_AUTH_FLAG;
+        if (with_auth) {
+          pc |= (1 << 15);
         }
         _pc_and_udmsg = ((uint64_t)pc << 48) | (uint64_t)(uintptr_t)msg;
     }
@@ -371,10 +373,10 @@ void Socket::WriteRequest::Setup(Socket* s) {
         // which is common in cache servers: memcache, redis...
         // The struct will be popped when reading a message from the socket.
         PipelinedInfo pi;
-        pi.count = pc & (~REDIS_AUTH_FLAG);
-        pi.with_auth = pc & REDIS_AUTH_FLAG;
+        pi.count = pc;
+        pi.with_auth = is_with_auth();
         pi.id_wait = id_wait;
-        clear_pipelined_count(); // avoid being pushed again
+        clear_pipelined_count_and_with_auth(); // avoid being pushed again
         s->PushPipelinedInfo(pi);
     }
 }

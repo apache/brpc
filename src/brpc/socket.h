@@ -214,16 +214,21 @@ public:
         // Will be queued to implement positional correspondence with responses
         // Default: 0
         uint32_t pipelined_count;
+
+        // [Only effective when pipelined_count is non-zero]
+        // The request contains authenticating information which will be
+        // responded by the server and processed specially when dealing
+        // with the response.
+        bool with_auth;
         
         // Do not return EOVERCROWDED
         // Default: false
         bool ignore_eovercrowded;
 
-        bool with_auth;
-
         WriteOptions()
             : id_wait(INVALID_BTHREAD_ID), abstime(NULL)
-            , pipelined_count(0), ignore_eovercrowded(false), with_auth(false) {}
+            , pipelined_count(0), with_auth(false)
+            , ignore_eovercrowded(false) {}
     };
     int Write(butil::IOBuf *msg, const WriteOptions* options = NULL);
     
