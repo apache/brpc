@@ -8,6 +8,7 @@
 #include "butil/logging.h"
 #include <brpc/redis.h>
 #include <brpc/channel.h>
+#include <brpc/policy/redis_authenticator.h>
 #include <gtest/gtest.h>
 
 namespace brpc {
@@ -297,5 +298,110 @@ TEST_F(RedisTest, by_components) {
     response2.MergeFrom(response);
     AssertResponseEqual(response2, response, 2);
 }
+
+TEST_F(RedisTest, auth) {
+    // config auth
+    {
+        brpc::ChannelOptions options;
+        options.protocol = brpc::PROTOCOL_REDIS;
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("0.0.0.0:6479", &options));
+        brpc::RedisRequest request;
+        brpc::RedisResponse response;
+        brpc::Controller cntl;
+
+        butil::StringPiece comp1[] = { "set", "passwd", "my_redis" };
+        butil::StringPiece comp2[] = { "config", "set", "requirepass", "my_redis" };
+        butil::StringPiece comp3[] = { "auth", "my_redis" };
+        butil::StringPiece comp4[] = { "get", "passwd" };
+
+        request.AddCommandByComponents(comp1, arraysize(comp1));
+        request.AddCommandByComponents(comp2, arraysize(comp2));
+        request.AddCommandByComponents(comp3, arraysize(comp3));
+        request.AddCommandByComponents(comp4, arraysize(comp4));
+
+        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(4, response.reply_size());
+        ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(0).type());
+        ASSERT_STREQ("OK", response.reply(0).c_str());
+        ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(1).type());
+        ASSERT_STREQ("OK", response.reply(1).c_str());
+        ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(2).type());
+        ASSERT_STREQ("OK", response.reply(2).c_str());
+        ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(3).type());
+        ASSERT_STREQ("my_redis", response.reply(3).c_str());
+    }
+
+    // Auth failed
+    {
+        brpc::ChannelOptions options;
+        options.protocol = brpc::PROTOCOL_REDIS;
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("0.0.0.0:6479", &options));
+        brpc::RedisRequest request;
+        brpc::RedisResponse response;
+        brpc::Controller cntl;
+
+        butil::StringPiece comp1[] = { "get", "passwd" };
+
+        request.AddCommandByComponents(comp1, arraysize(comp1));
+
+        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(1, response.reply_size());
+        ASSERT_EQ(brpc::REDIS_REPLY_ERROR, response.reply(0).type());
+    }
+
+    // Auth with RedisAuthenticator && clear auth
+    {
+        brpc::ChannelOptions options;
+        options.protocol = brpc::PROTOCOL_REDIS;
+        brpc::Channel channel;
+        brpc::policy::RedisAuthenticator* auth =
+          new brpc::policy::RedisAuthenticator("my_redis");
+        options.auth = auth;
+        ASSERT_EQ(0, channel.Init("0.0.0.0:6479", &options));
+        brpc::RedisRequest request;
+        brpc::RedisResponse response;
+        brpc::Controller cntl;
+
+        butil::StringPiece comp1[] = { "get", "passwd" };
+        butil::StringPiece comp2[] = { "config", "set", "requirepass", "" };
+
+        request.AddCommandByComponents(comp1, arraysize(comp1));
+        request.AddCommandByComponents(comp2, arraysize(comp2));
+
+        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(2, response.reply_size());
+        ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(0).type());
+        ASSERT_STREQ("my_redis", response.reply(0).c_str());
+        ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(1).type());
+        ASSERT_STREQ("OK", response.reply(1).c_str());
+    }
+
+    // check noauth.
+    {
+        brpc::ChannelOptions options;
+        options.protocol = brpc::PROTOCOL_REDIS;
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("0.0.0.0:6479", &options));
+        brpc::RedisRequest request;
+        brpc::RedisResponse response;
+        brpc::Controller cntl;
+
+        butil::StringPiece comp1[] = { "get", "passwd" };
+
+        request.AddCommandByComponents(comp1, arraysize(comp1));
+
+        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(1, response.reply_size());
+        ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(0).type());
+        ASSERT_STREQ("my_redis", response.reply(0).c_str());
+    }
+}
+
 } //namespace
 #endif // BAIDU_INTERNAL
