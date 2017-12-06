@@ -86,10 +86,10 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
 
         if (pi.with_auth) {
             if (msg->response.reply_size() != 1 ||
-                (!(msg->response.reply(0).type() == brpc::REDIS_REPLY_STATUS &&
-                  msg->response.reply(0).data().compare("OK") == 0))) {
+                !(msg->response.reply(0).type() == brpc::REDIS_REPLY_STATUS &&
+                  msg->response.reply(0).data().compare("OK") == 0)) {
                 LOG(ERROR) << "Redis Auth failed: " << msg->response;
-                return MakeParseError(PARSE_ERROR_NO_RESOURCE, 
+                return MakeParseError(PARSE_ERROR_NO_RESOURCE,
                                       "Fail to authenticate with Redis");
             }
 
