@@ -18,6 +18,15 @@ COPTS = [
     "-DGFLAGS_NS=google",
 ]
 
+LINKOPTS = [
+    "-lpthread",
+    "-lrt",
+    "-lssl",
+    "-lcrypto",
+    "-ldl",
+    "-lz",
+]
+
 genrule(
     name = "config_h",
     outs = [
@@ -154,7 +163,7 @@ BUTIL_SRCS = [
     "src/butil/containers/case_ignored_flat_map.cpp",
     "src/butil/iobuf.cpp",
     "src/butil/popen.cpp",
-   ]
+]
 
 
 cc_library(
@@ -179,6 +188,7 @@ cc_library(
         "src/",
     ],
     copts = COPTS,
+    linkopts = LINKOPTS,
 )
 
 cc_library(
@@ -199,6 +209,7 @@ cc_library(
         ":butil",
     ],
     copts = COPTS,
+    linkopts = LINKOPTS,
 )
 
 cc_library(
@@ -218,6 +229,7 @@ cc_library(
         ":bvar",
     ],
     copts = COPTS,
+    linkopts = LINKOPTS,
 )
 
 cc_library(
@@ -235,6 +247,7 @@ cc_library(
         ":butil",
     ],
     copts = COPTS,
+    linkopts = LINKOPTS,
 )
 
 cc_library(
@@ -251,8 +264,10 @@ cc_library(
     deps = [
         ":butil",
         ":cc_brpc_internal_proto",
+        "@com_google_protobuf//:protoc_lib",
     ],
     copts = COPTS,
+    linkopts = LINKOPTS,
 )
 
 brpc_proto_library(
@@ -291,6 +306,7 @@ cc_library(
         "@com_github_google_leveldb//:leveldb",
     ],
     copts = COPTS,
+    linkopts = LINKOPTS,
     visibility = ["//visibility:public"],
 )
 
