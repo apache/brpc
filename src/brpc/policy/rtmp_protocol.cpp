@@ -2214,8 +2214,9 @@ bool RtmpChunkStream::OnDataMessageAMF0(
             // Ignore empty metadata (seen in pulling streams from quanmin)
             return false;
         }
-        AMFObject metadata;
-        if (!ReadAMFObject(&metadata, &istream)) {
+        RtmpMetaData metadata;
+        metadata.timestamp = mh.timestamp;
+        if (!ReadAMFObject(&metadata.data, &istream)) {
             RTMP_ERROR(socket, mh) << "Fail to read metadata";
             return false;
         }
