@@ -36,7 +36,7 @@ DEFINE_string(protocol, "baidu_std", "Protocol type. Defined in src/brpc/options
 DEFINE_int32(depth, 0, "number of loop calls");
 // Don't send too frequently in this example
 DEFINE_int32(sleep_ms, 100, "milliseconds to sleep after each RPC");
-DEFINE_int32(dummy_port, 0, "Launch dummy server at this port");
+DEFINE_int32(dummy_port, -1, "Launch dummy server at this port");
 
 bvar::LatencyRecorder g_latency_recorder("client");
 
@@ -122,7 +122,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (FLAGS_dummy_port > 0) {
+    if (FLAGS_dummy_port >= 0) {
         brpc::StartDummyServerAt(FLAGS_dummy_port);
     }
 

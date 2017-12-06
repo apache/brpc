@@ -126,7 +126,7 @@ static long ReadPortOfDummyServer(const char* filename) {
                    << (nr == 0 ? "nothing to read" : berror());
         return -1;
     }
-    port_str[sizeof(port_str)-1] = '\0';
+    port_str[std::min((size_t)nr, sizeof(port_str)-1)] = '\0';
     const char* p = port_str;
     for (; isspace(*p); ++p) {}
     char* endptr = NULL;

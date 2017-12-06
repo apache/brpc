@@ -139,7 +139,7 @@ int main(int argc, char* argv[]) {
     }
     LOG(INFO) << "Set " << FLAGS_batch * FLAGS_thread_num << " values";
 
-    if (FLAGS_dummy_port > 0) {
+    if (FLAGS_dummy_port >= 0) {
         brpc::StartDummyServerAt(FLAGS_dummy_port);
     }
 

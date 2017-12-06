@@ -1645,7 +1645,7 @@ static pthread_mutex_t g_dummy_server_mutex = PTHREAD_MUTEX_INITIALIZER;
 static Server* g_dummy_server = NULL;
 
 int StartDummyServerAt(int port, ProfilerLinker) {
-    if (port <= 0 || port >= 65536) {
+    if (port < 0 || port >= 65536) {
         LOG(ERROR) << "Invalid port=" << port;
         return -1;
     }
