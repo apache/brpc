@@ -21,7 +21,7 @@ You can use it to:
   * Access service [synchronously](docs/en/client.md#synchronus-call) or [asynchronously](docs/en/client.md#asynchronous-call), or even [semi-synchronously](docs/en/client.md#semi-synchronous-call).
   * Use [combo channels](docs/en/combo_channel.md) to simplify complicated client patterns declaratively, including sharded and parallel accesses.
 * Debug services [via http](docs/en/builtin_service.md), and run  [cpu](docs/cn/cpu_profiler.md), [heap](docs/cn/heap_profiler.md) and [contention](docs/cn/contention_profiler.md) profilers.
-* Get [better latency and throughput](#better-latency-and-throughput).
+* Get [better latency and throughput](docs/en/overview.md#better-latency-and-throughput).
 * [Extend brpc](docs/en/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/cn/load_balancing.md#名字服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
 
 # Try it!

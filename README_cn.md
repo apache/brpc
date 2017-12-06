@@ -22,7 +22,7 @@
   * 通过[同步](docs/cn/client.md#同步访问)、[异步](docs/cn/client.md#异步访问)或[半同步](docs/cn/client.md#半同步)访问服务。
   * 使用[组合channels](docs/cn/combo_channel.md)声明式地简化复杂的分库或并发访问。
 * [通过http](docs/cn/builtin_service.md)调试服务, 使用[cpu](docs/cn/cpu_profiler.md), [heap](docs/cn/heap_profiler.md), [contention](docs/cn/contention_profiler.md) profilers.
-* 获得[更好的延时和吞吐](#更好的延时和吞吐).
+* 获得[更好的延时和吞吐](docs/cn/overview.md#更好的延时和吞吐).
 * 把你组织中使用的协议快速地[加入brpc](docs/cn/new_protocol.md)，或定制各类组件, 包括[名字服务](docs/cn/load_balancing.md#名字服务) (dns, zk, etcd), [负载均衡](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
 
 # 试一下!
