@@ -179,7 +179,7 @@ inline int unsleep_if_necessary(ButexBthreadWaiter* w,
     return 0;
 }
 
-// Using ObjectPool(which never frees memory) to solve the race between
+// Use ObjectPool(which never frees memory) to solve the race between
 // butex_wake() and butex_destroy(). The race is as follows:
 //
 //   class Event {
@@ -212,30 +212,29 @@ inline int unsleep_if_necessary(ButexBthreadWaiter* w,
 //     event.wait();
 //   } <-- event destroyed
 //   
-// Summary: Thread1 passes a stateful condition to thread2 and wait until
-// the the condition is signalled, which basically means the associated
+// Summary: Thread1 passes a stateful condition to Thread2 and waits until
+// the condition being signalled, which basically means the associated
 // job is done and Thread1 can release related resources including the mutex
-// and condition. The scenario is fine and code is correct.
-// The race needs a closer look. If we look into the unlock at /*1*/, it
-// may have different implementations, but the last step is probably an
-// atomic store and butex_wake(), like this:
+// and condition. The scenario is fine and the code is correct.
+// The race needs a closer look. The unlock at /*1*/ may have different 
+// implementations, but in which the last step is probably an atomic store
+// and butex_wake(), like this:
 //
 //   locked->store(0);
 //   butex_wake(locked);
 //
-// `locked' represents the locking status of the mutex. The issue is that
-// just after the store(), the mutex is already unlocked, the code in
+// The `locked' represents the locking status of the mutex. The issue is that
+// just after the store(), the mutex is already unlocked and the code in
 // Event.wait() may successfully grab the lock and go through everything
-// left and leave foo() function, destroying the mutex and butex, thus the
-// butex_wake(locked) may crash.
+// left and leave foo() function, destroying the mutex and butex, making
+// the butex_wake(locked) crash.
 // To solve this issue, one method is to add reference before store and
-// release the reference after butex_wake. However this kind of
-// reference-counting needs to be added in nearly every user scenario of
-// butex_wake(), which is very error-prone. Another method is never freeing
-// butex, the side effect is that butex_wake() may wake up an unrelated
-// butex(the one reuses the memory) and cause spurious wakeups. According
-// to our observations, the race is infrequent, even rare. The extra spurious
-// wakeup should be acceptable.
+// release the reference after butex_wake. However reference countings need
+// to be added in nearly every user scenario of butex_wake(), which is very
+// error-prone. Another method is never freeing butex, with the side effect 
+// that butex_wake() may wake up an unrelated butex(the one reuses the memory)
+// and cause spurious wakeups. According to our observations, the race is 
+// infrequent, even rare. The extra spurious wakeups should be acceptable.
 
 void* butex_create() {
     Butex* b = butil::get_object<Butex>();
@@ -493,7 +492,7 @@ static void wait_for_butex(void* arg) {
     ButexBthreadWaiter* const bw = static_cast<ButexBthreadWaiter*>(arg);
     Butex* const b = bw->initial_butex;
     // 1: waiter with timeout should have waiter_state == WAITER_STATE_READY
-    //    before they're are queued, otherwise the waiter is already timedout
+    //    before they're queued, otherwise the waiter is already timedout
     //    and removed by TimerThread, in which case we should stop queueing.
     //
     // Visibility of waiter_state:
@@ -503,9 +502,9 @@ static void wait_for_butex(void* arg) {
     //                                      tt_lock { get task }
     //                                      waiter_lock { waiter_state=TIMEDOUT }
     //    waiter_lock { use waiter_state }
-    // tt_lock represents TimerThread::_mutex. Obviously visibility of
-    // waiter_state are sequenced by two locks, both threads are guaranteed to
-    // see the correct value.
+    // tt_lock represents TimerThread::_mutex. Visibility of waiter_state is
+    // sequenced by two locks, both threads are guaranteed to see the correct
+    // value.
     {
         BAIDU_SCOPED_LOCK(b->waiter_lock);
         if (b->value.load(butil::memory_order_relaxed) != bw->expected_value) {
