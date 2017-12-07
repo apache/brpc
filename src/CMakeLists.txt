@@ -3,23 +3,44 @@ project(lib)
 include(FindProtobuf)
 find_package(Protobuf REQUIRED)
 include_directories(${PROTOBUF_INCLUDE_DIR})
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
-file(GLOB PROTOS "*.proto" "brpc/*.proto" "brpc/policy/*.proto")
+file(GLOB PROTOS "*.proto")
 list(APPEND PROTO_FLAGS -I${CMAKE_CURRENT_BINARY_DIR})
-
 foreach(PROTO ${PROTOS})
     get_filename_component(PROTO_WE ${PROTO} NAME_WE)
 
-    #list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/${PROTO_WE}.pb.cc")
-    #list(APPEND PROTO_HDRS "${CMAKE_CURRENT_BINARY_DIR}/${PROTO_WE}.pb.h")
+    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/${PROTO_WE}.pb.cc")
 
     execute_process(
-        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} ${PROTO}
+        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src ${PROTO}
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     )
 endforeach()
 
-#add_library(proto ${PROTO_SRCS} ${PROTO_HDRS})
+file(GLOB brpc_PROTOS "brpc/*.proto")
+foreach(PROTO ${brpc_PROTOS})
+    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
+
+    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/${PROTO_WE}.pb.cc")
+
+    execute_process(
+        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/ ${PROTO}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    )
+endforeach()
+
+file(GLOB brpc_policy_PROTOS "brpc/policy/*.proto")
+foreach(PROTO ${brpc_policy_PROTOS})
+    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
+
+    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/policy/${PROTO_WE}.pb.cc")
+
+    execute_process(
+        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/policy ${PROTO}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    )
+endforeach()
+
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/third_party/dmg_fp/g_fmt.cc
@@ -155,9 +176,8 @@ set(MCPACK2PB_SOURCES
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/mcpack2pb.cpp
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/parser.cpp
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/serializer.cpp
-    ${CMAKE_SOURCE_DIR}/src/idl_options.pb.cc
+    #${CMAKE_SOURCE_DIR}/src/idl_options.pb.cc
     )
-
 
 set(SOURCES
     ${BUTIL_SOURCES}
@@ -170,6 +190,7 @@ set(SOURCES
     ${BRPC_SOURCES2}
     ${BRPC_SOURCES3}
     ${BRPC_SOURCES4}
+    ${PROTO_SRCS}
     )
 
 add_library(brpc SHARED ${SOURCES})
