@@ -1,0 +1,5 @@
+add_executable(nshead_extension_client client.cpp)
+target_link_libraries(nshead_extension_client brpc)
+
+add_executable(nshead_extension_server server.cpp)
+target_link_libraries(nshead_extension_server brpc)
