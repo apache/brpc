@@ -176,7 +176,6 @@ set(MCPACK2PB_SOURCES
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/mcpack2pb.cpp
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/parser.cpp
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/serializer.cpp
-    #${CMAKE_SOURCE_DIR}/src/idl_options.pb.cc
     )
 
 set(SOURCES

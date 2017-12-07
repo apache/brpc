@@ -45,9 +45,6 @@ set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEBUG_SYMBOLS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x")
 set(CMAKE_C_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer")
 
-#add_definitions(-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS)
-#add_definitions(-DPROTOBUF_INLINE_NOT_IN_HEADERS=0)
-
 #required by butil/crc32.cc to boost performance for 10x
 if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.4)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4 -msse4.2")
@@ -75,7 +72,6 @@ if(WITH_GLOG)
     find_library(GLOG_LIB NAMES glog)
     include_directories(${GLOG_HEADER})
 endif()
-
 
 #protobuf 3.2
 find_library(PROTOC_LIB NAMES protoc PATHS $ENV{PB_LIB_PATH})
