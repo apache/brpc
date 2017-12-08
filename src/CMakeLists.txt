@@ -1,5 +1,3 @@
-project(lib)
-
 include(FindProtobuf)
 find_package(Protobuf REQUIRED)
 include_directories(${PROTOBUF_INCLUDE_DIR})
@@ -7,9 +5,7 @@ file(GLOB PROTOS "*.proto")
 list(APPEND PROTO_FLAGS -I${CMAKE_CURRENT_BINARY_DIR})
 foreach(PROTO ${PROTOS})
     get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-
     list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/${PROTO_WE}.pb.cc")
-
     execute_process(
         COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src ${PROTO}
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -19,9 +15,7 @@ endforeach()
 file(GLOB brpc_PROTOS "brpc/*.proto")
 foreach(PROTO ${brpc_PROTOS})
     get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-
     list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/${PROTO_WE}.pb.cc")
-
     execute_process(
         COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/ ${PROTO}
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -197,7 +191,8 @@ add_library(brpc_static STATIC ${SOURCES})
 
 target_link_libraries(brpc 
     ${CMAKE_THREAD_LIBS_INIT} 
-    ${GFLAGS_LIB} 
+    #${GFLAGS_LIB} 
+    ${GFLAGS_LIBRARY}
     ${PROTOBUF_LIB} 
     ${LEVELDB_LIB} 
     rt
