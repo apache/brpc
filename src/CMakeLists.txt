@@ -190,7 +190,8 @@ add_library(brpc SHARED ${SOURCES})
 add_library(brpc_static STATIC ${SOURCES})
 
 target_link_libraries(brpc 
-    ${CMAKE_THREAD_LIBS_INIT} 
+    #${CMAKE_THREAD_LIBS_INIT} 
+    ${THREADS_LIB}
     #${GFLAGS_LIB} 
     ${GFLAGS_LIBRARY}
     ${PROTOBUF_LIB} 
