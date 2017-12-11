@@ -35,6 +35,7 @@ foreach(PROTO ${brpc_policy_PROTOS})
 endforeach()
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/src)
 
 set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/third_party/dmg_fp/g_fmt.cc
