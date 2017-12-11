@@ -29,8 +29,11 @@
 extern "C" {
 uint64_t BAIDU_WEAK bthread_usleep(uint64_t microseconds);
 }
+#endif
 
 namespace butil {
+
+#if defined(OS_LINUX)
 
 const int CHILD_STACK_SIZE = 256 * 1024;
 
