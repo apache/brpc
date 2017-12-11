@@ -16,3 +16,11 @@ install:
 
 script:
 - sh build_in_travis_ci.sh
+
+addons:
+  apt:
+    sources:
+      - george-edison55-precise-backports
+    packages:
+      - cmake-data
+      - cmake
