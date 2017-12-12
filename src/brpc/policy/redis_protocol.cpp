@@ -85,9 +85,14 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         }
 
         if (pi.with_auth) {
+            // Support SSDB auth reply. SSDB returns 1 on RESP pipelined `auth` command
+            // Error happens when the reply is neither Redis OK nor SSDB "1".
             if (msg->response.reply_size() != 1 ||
-                !(msg->response.reply(0).type() == brpc::REDIS_REPLY_STATUS &&
-                  msg->response.reply(0).data().compare("OK") == 0)) {
+                (!(msg->response.reply(0).type() == brpc::REDIS_REPLY_STATUS &&
+                  msg->response.reply(0).data().compare("OK") == 0)
+                 && !(msg->response.reply(0).type() == brpc::REDIS_REPLY_ARRAY
+                       && msg->response.reply(0).size() == 1
+                       && msg->response.reply(0)[0].data().compare("1") == 0))) {
                 LOG(ERROR) << "Redis Auth failed: " << msg->response;
                 return MakeParseError(PARSE_ERROR_NO_RESOURCE,
                                       "Fail to authenticate with Redis");
