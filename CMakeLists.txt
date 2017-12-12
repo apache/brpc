@@ -60,8 +60,7 @@ if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.0))
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-aligned-new")
 endif()
 
-#find_package(Threads REQUIRED)
-include(FindThreads)
+find_package(Threads REQUIRED)
 
 #find_path(GFLAGS_HEADER NAMES gflags/gflags.h)
 #find_library(GFLAGS_LIB NAMES gflags)
