@@ -1,0 +1,1 @@
+build --copt -DHAVE_ZLIB=1

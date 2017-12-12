@@ -66,9 +66,5 @@ cc_library(
         "-DOS_LINUX",
         "-DLEVELDB_PLATFORM_POSIX=1",
         "-DLEVELDB_ATOMIC_PRESENT",
-        "-fno-builtin-memcmp",
-        "-DOS_LINUX",
-        "-DLEVELDB_PLATFORM_POSIX=1",
-        "-DLEVELDB_ATOMIC_PRESENT",
     ],
 )
