@@ -61,13 +61,14 @@ if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.0))
 endif()
 
 #find_package(Threads REQUIRED)
+include(FindThreads)
 
 #find_path(GFLAGS_HEADER NAMES gflags/gflags.h)
 #find_library(GFLAGS_LIB NAMES gflags)
 #find_package(gflags REQUIRED)
 
-find_path(THREADS_HEADER NAMES pthread.h)
-find_library(THREADS_LIB NAMES pthread)
+#find_path(THREADS_HEADER NAMES pthread.h)
+#find_library(THREADS_LIB NAMES pthread)
 
 find_path(PROTOBUF_HEADER NAMES google/protobuf/stubs/common.h)
 find_library(PROTOBUF_LIB NAMES protobuf)
@@ -88,7 +89,7 @@ include_directories(
         ${PROTOBUF_HEADER}
         ${LEVELDB_HEADER}
         ${THREAD_HEADER}
-        ${THREADS_HEADER}
+        #${THREADS_HEADER}
         )
 
 # for *.so
