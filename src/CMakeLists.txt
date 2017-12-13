@@ -195,7 +195,7 @@ install(TARGETS brpc
         )
 
 install(
-        DIRECTORY src/
+        DIRECTORY ${CMAKE_SOURCE_DIR}/src/
         DESTINATION include
         FILES_MATCHING 
 	PATTERN "*.h*"
