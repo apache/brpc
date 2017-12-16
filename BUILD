@@ -189,6 +189,7 @@ cc_library(
     ],
     copts = COPTS,
     linkopts = LINKOPTS,
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -210,6 +211,7 @@ cc_library(
     ],
     copts = COPTS,
     linkopts = LINKOPTS,
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -230,6 +232,7 @@ cc_library(
     ],
     copts = COPTS,
     linkopts = LINKOPTS,
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -248,6 +251,7 @@ cc_library(
     ],
     copts = COPTS,
     linkopts = LINKOPTS,
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -268,6 +272,7 @@ cc_library(
     ],
     copts = COPTS,
     linkopts = LINKOPTS,
+    visibility = ["//visibility:public"],
 )
 
 brpc_proto_library(
@@ -281,6 +286,7 @@ brpc_proto_library(
     deps = [
         "@com_google_protobuf//:cc_wkt_protos"
     ],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(

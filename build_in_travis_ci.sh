@@ -20,6 +20,8 @@ if [ "$PURPOSE" = "compile" ]; then
     make -j4 && sh tools/make_all_examples
 elif [ "$PURPOSE" = "unittest" ]; then
     cd test && sh ./run_tests.sh
+elif [ "$PURPOSE" = "bazel_build"]; then
+    bazel build --copt -DHAVE_ZLIB=1 //...
 else
     echo "Unknown purpose=\"$PURPOSE\""
 fi
