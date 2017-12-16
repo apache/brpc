@@ -9,7 +9,7 @@ compiler:
 env:
 - PURPOSE=compile
 - PURPOSE=unittest
-- PURPOSE=bazel_build
+- PURPOSE=compile-with-bazel
 
 before_install:
 - wget --no-clobber https://github.com/bazelbuild/bazel/releases/download/0.8.1/bazel_0.8.1-linux-x86_64.deb
