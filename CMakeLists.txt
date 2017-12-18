@@ -78,6 +78,8 @@ find_library(PROTOBUF_LIB NAMES protobuf)
 find_path(LEVELDB_HEADER NAMES leveldb/db.h)
 find_library(LEVELDB_LIB NAMES leveldb)
 
+message("CMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}")
+
 if(WITH_GLOG)
     find_path(GLOG_HEADER NAMES glog/logging.h)
     find_library(GLOG_LIB NAMES glog)
