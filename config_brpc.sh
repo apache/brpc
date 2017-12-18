@@ -64,7 +64,7 @@ if [ -z "$HDRS_IN" ] || [ -z "$LIBS_IN" ]; then
 fi
 
 find_dir_of_lib() {
-    local lib=$(find ${LIBS_IN} -name "lib${1}.a" -o -name "lib${1}.$SO" | head -n1)
+    local lib=$(find ${LIBS_IN} -name "lib${1}.a" -o -name "lib${1}.$SO" 2>/dev/null | head -n1)
     if [ ! -z "$lib" ]; then
         dirname $lib
     fi
@@ -84,7 +84,7 @@ find_bin() {
     if [ ! -z "$TARGET_BIN" ]; then
         $ECHO $TARGET_BIN
     else
-        find ${LIBS_IN} -name "$1" | head -n1
+        find ${LIBS_IN} -name "$1" 2>/dev/null | head -n1
     fi
 }
 find_bin_or_die() {
