@@ -256,9 +256,12 @@ cc_library(
 
 cc_library(
     name = "mcpack2pb",
-    srcs = glob([
-        "src/mcpack2pb/*.cpp",
-    ]),
+    srcs = [
+        "src/mcpack2pb/field_type.cpp",
+        "src/mcpack2pb/mcpack2pb.cpp",
+        "src/mcpack2pb/parser.cpp",
+        "src/mcpack2pb/serializer.cpp",
+    ],
     hdrs = glob([
         "src/mcpack2pb/*.h",
     ]),
@@ -267,7 +270,7 @@ cc_library(
     ],
     deps = [
         ":butil",
-        ":cc_brpc_internal_proto",
+        ":cc_brpc_idl_options_proto",
         "@com_google_protobuf//:protoc_lib",
     ],
     copts = COPTS,
@@ -276,14 +279,25 @@ cc_library(
 )
 
 brpc_proto_library(
+    name = "cc_brpc_idl_options_proto",
+    srcs = [
+        "src/idl_options.proto",
+    ],
+    deps = [
+        "@com_google_protobuf//:cc_wkt_protos"
+    ],
+    visibility = ["//visibility:public"],
+)
+
+brpc_proto_library(
     name = "cc_brpc_internal_proto",
     srcs = glob([
-        "src/idl_options.proto",
         "src/brpc/*.proto",
         "src/brpc/policy/*.proto",
     ]),
     include = "src/",
     deps = [
+        ":cc_brpc_idl_options_proto",
         "@com_google_protobuf//:cc_wkt_protos"
     ],
     visibility = ["//visibility:public"],
@@ -310,6 +324,20 @@ cc_library(
         ":mcpack2pb",
         ":cc_brpc_internal_proto",
         "@com_github_google_leveldb//:leveldb",
+    ],
+    copts = COPTS,
+    linkopts = LINKOPTS,
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "protoc-gen-mcpack",
+    srcs = [
+        "src/mcpack2pb/generator.cpp",
+    ],
+    deps = [
+        ":cc_brpc_idl_options_proto",
+        ":brpc",
     ],
     copts = COPTS,
     linkopts = LINKOPTS,
