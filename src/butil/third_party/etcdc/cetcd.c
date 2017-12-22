@@ -10,6 +10,9 @@
 #include <sys/select.h>
 #include <pthread.h>
 
+static pthread_mutex_t mutex_global = PTHREAD_MUTEX_INITIALIZER;
+static int inited_global = 0; //record the times of 'init'
+
 enum ETCD_API_TYPE {
     ETCD_KEYS,
     ETCD_MEMBERS
@@ -53,10 +56,19 @@ void *cetcd_cluster_request(cetcd_client *cli, cetcd_request *req);
 int cetcd_curl_setopt(CURL *curl, cetcd_watcher *watcher);
 
 void cetcd_client_init(cetcd_client *cli, cetcd_array *addresses) {
+    
+	pthread_mutex_lock(&mutex_global);
+	if(inited_global == 0){
+		curl_global_init(CURL_GLOBAL_ALL);
+		inited_global = 1;
+	}else{
+		inited_global++;
+	}
+	pthread_mutex_unlock(&mutex_global);
+    
     size_t i;
     cetcd_array *addrs;
     cetcd_string addr;
-    curl_global_init(CURL_GLOBAL_ALL);
     srand(time(0));
 
     cli->keys_space =   "v2/keys";
@@ -113,8 +125,16 @@ void cetcd_client_destroy(cetcd_client *cli) {
     sdsfree(cli->settings.user);
     sdsfree(cli->settings.password);
     curl_easy_cleanup(cli->curl);
-    curl_global_cleanup();
     cetcd_array_destroy(&cli->watchers);
+    
+	pthread_mutex_lock(&mutex_global);
+	if(inited_global > 0){
+		inited_global--;
+		if(inited_global == 0){
+			curl_global_cleanup();
+		}
+	}
+	pthread_mutex_unlock(&mutex_global);
 }
 void cetcd_client_release(cetcd_client *cli){
     if (cli) {
