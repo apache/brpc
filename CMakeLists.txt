@@ -27,14 +27,14 @@ set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 find_package(GFLAGS REQUIRED)
 
 execute_process(
-    COMMAND bash -c "grep \"namespace [_A-Za-z0-9]\\+ {\" ${GFLAGS_INCLUDE_PATH}/gflags/gflags_declare.h | head -1 | awk '{print $2}'"
+    COMMAND bash -c "grep \"namespace [_A-Za-z0-9]\\+ {\" ${GFLAGS_INCLUDE_PATH}/gflags/gflags_declare.h | head -1 | awk '{print $2}' | tr -d '\n'"
     OUTPUT_VARIABLE GFLAGS_NS
 )
 message("GFLAGS_INCLUDE_PATH=${GFLAGS_INCLUDE_PATH}")
 # STREQUAL not works. Use MATCHES as workaround
 if(${GFLAGS_NS} MATCHES ".*GFLAGS_NAMESPACE.*")
     execute_process(
-        COMMAND bash -c "grep \"#define GFLAGS_NAMESPACE [_A-Za-z0-9]\\+\" ${GFLAGS_INCLUDE_PATH}/gflags/gflags_declare.h | head -1 | awk '{printf(\"%s\",$3)}'"
+        COMMAND bash -c "grep \"#define GFLAGS_NAMESPACE [_A-Za-z0-9]\\+\" ${GFLAGS_INCLUDE_PATH}/gflags/gflags_declare.h | head -1 | awk '{print $3}' | tr -d '\n'"
         OUTPUT_VARIABLE GFLAGS_NS
     )
 endif()

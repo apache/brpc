@@ -224,9 +224,8 @@ install(TARGETS brpc
         ARCHIVE DESTINATION lib
         )
 
-install(DIRECTORY src/
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/
         DESTINATION include
         FILES_MATCHING 
-        PATTERN "*.h*"
-        PATTERN "*.proto"
+        PATTERN "*.h"
         )
