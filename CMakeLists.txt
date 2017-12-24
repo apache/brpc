@@ -30,7 +30,6 @@ execute_process(
     COMMAND bash -c "grep \"namespace [_A-Za-z0-9]\\+ {\" ${GFLAGS_INCLUDE_PATH}/gflags/gflags_declare.h | head -1 | awk '{print $2}' | tr -d '\n'"
     OUTPUT_VARIABLE GFLAGS_NS
 )
-message("GFLAGS_INCLUDE_PATH=${GFLAGS_INCLUDE_PATH}")
 # STREQUAL not works. Use MATCHES as workaround
 if(${GFLAGS_NS} MATCHES ".*GFLAGS_NAMESPACE.*")
     execute_process(
@@ -78,8 +77,6 @@ find_library(PROTOBUF_LIB NAMES protobuf)
 
 find_path(LEVELDB_HEADER NAMES leveldb/db.h)
 find_library(LEVELDB_LIB NAMES leveldb)
-
-message("CMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}")
 
 if(WITH_GLOG)
     find_path(GLOG_HEADER NAMES glog/logging.h)
