@@ -17,11 +17,9 @@ if ! sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --nodebugsymbols -
     exit 1
 fi
 if [ "$PURPOSE" = "compile" ]; then
-    #make -j4 && sh tools/make_all_examples
-    echo "1"
+    make -j4 && sh tools/make_all_examples
 elif [ "$PURPOSE" = "unittest" ]; then
-    #cd test && sh ./run_tests.sh && cd ../
-    echo "2"
+    cd test && sh ./run_tests.sh && cd ../
 else
     echo "Unknown purpose=\"$PURPOSE\""
 fi

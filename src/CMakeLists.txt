@@ -34,7 +34,6 @@ foreach(PROTO ${brpc_policy_PROTOS})
     )
 endforeach()
 
-message("CMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}")
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
@@ -216,17 +215,32 @@ set(protoc_gen_mcpack_SOURCES
 add_executable(protoc-gen-mcpack ${protoc_gen_mcpack_SOURCES})
 target_link_libraries(protoc-gen-mcpack brpc)
     
+
+get_property(LIB64 GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS)
+if ("${LIB64}" STREQUAL "TRUE")
+    set(LIBSUFFIX 64)
+else()
+    set(LIBSUFFIX "")
+endif()
+
 #install directory
 # cmake -DCMAKE_INSTALL_PREFIX=/usr
 install(TARGETS brpc
         RUNTIME DESTINATION bin
-        LIBRARY DESTINATION lib
-        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib${LIBSUFFIX}
+        ARCHIVE DESTINATION lib${LIBSUFFIX}
         )
 
-install(DIRECTORY src/
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/
         DESTINATION include
         FILES_MATCHING 
-        PATTERN "*.h*"
-        PATTERN "*.proto"
+        PATTERN "*.h"
+        PATTERN "*.hpp"
+        )
+
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/
+        DESTINATION include
+        FILES_MATCHING
+        PATTERN "*.h"
+        PATTERN "*.hpp"
         )
