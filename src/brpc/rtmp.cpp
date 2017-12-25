@@ -1363,14 +1363,10 @@ int RtmpStreamBase::SendVideoMessage(const RtmpVideoMessage& msg) {
         return -1;
     }
     if (!policy::is_video_frame_type_valid(msg.frame_type)) {
-        LOG(ERROR) << "Invalid frame_type=" << (int)msg.frame_type;
-        errno = EINVAL;
-        return -1;
+        LOG(WARNING) << "Invalid frame_type=" << (int)msg.frame_type;
     }
     if (!policy::is_video_codec_valid(msg.codec)) {
-        LOG(ERROR) << "Invalid codec=" << (int)msg.codec;
-        errno = EINVAL;
-        return -1;
+        LOG(WARNING) << "Invalid codec=" << (int)msg.codec;
     }
     if (_paused) {
         errno = EPERM;
@@ -1400,9 +1396,7 @@ int RtmpStreamBase::SendAVCMessage(const RtmpAVCMessage& msg) {
         return -1;
     }
     if (!policy::is_video_frame_type_valid(msg.frame_type)) {
-        LOG(ERROR) << "Invalid frame_type=" << (int)msg.frame_type;
-        errno = EINVAL;
-        return -1;
+        LOG(WARNING) << "Invalid frame_type=" << (int)msg.frame_type;
     }
     if (_paused) {
         errno = EPERM;
