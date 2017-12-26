@@ -1,13 +1,23 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 2.8.10)
 project(brpc C CXX)
 
-if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.8)
-    #message(FATAL_ERROR "GCC is too old, please install a newer version supporting C++11")
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    # require at least gcc 4.8
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.8)
+        message(FATAL_ERROR "GCC is too old, please install a newer version supporting C++11")
+    endif()
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    # require at least clang 3.3
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 3.3)
+        message(FATAL_ERROR "Clang is too old, please install a newer version supporting C++11")
+    endif()
+else()
+    message(WARNING "You are using an unsupported compiler! Compilation has only been tested with Clang and GCC.")
 endif()
 
 option(WITH_GLOG "With glog" OFF)
 option(BRPC_DEBUG "With debug symbol" ON)
-option(BUILD_EXAMPLE "Whether building examples" OFF)
+option(BUILD_EXAMPLE "Whether building examples" ON)
 option(BUILD_UNIT_TESTS "Whether building unit tests" OFF)
 
 if(WITH_GLOG)
@@ -30,8 +40,7 @@ execute_process(
     COMMAND bash -c "grep \"namespace [_A-Za-z0-9]\\+ {\" ${GFLAGS_INCLUDE_PATH}/gflags/gflags_declare.h | head -1 | awk '{print $2}' | tr -d '\n'"
     OUTPUT_VARIABLE GFLAGS_NS
 )
-# STREQUAL not works. Use MATCHES as workaround
-if(${GFLAGS_NS} MATCHES ".*GFLAGS_NAMESPACE.*")
+if(${GFLAGS_NS} STREQUAL "GFLAGS_NAMESPACE")
     execute_process(
         COMMAND bash -c "grep \"#define GFLAGS_NAMESPACE [_A-Za-z0-9]\\+\" ${GFLAGS_INCLUDE_PATH}/gflags/gflags_declare.h | head -1 | awk '{print $3}' | tr -d '\n'"
         OUTPUT_VARIABLE GFLAGS_NS
@@ -63,15 +72,6 @@ if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.0))
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-aligned-new")
 endif()
 
-#find_package(Threads REQUIRED)
-
-#find_path(GFLAGS_HEADER NAMES gflags/gflags.h)
-#find_library(GFLAGS_LIB NAMES gflags)
-#find_package(gflags REQUIRED)
-
-#find_path(THREADS_HEADER NAMES pthread.h)
-#find_library(THREADS_LIB NAMES pthread)
-
 find_path(PROTOBUF_HEADER NAMES google/protobuf/stubs/common.h)
 find_library(PROTOBUF_LIB NAMES protobuf)
 
@@ -91,7 +91,6 @@ include_directories(
         ${PROTOBUF_HEADER}
         ${LEVELDB_HEADER}
         ${THREAD_HEADER}
-        #${THREADS_HEADER}
         )
 
 # for *.so
