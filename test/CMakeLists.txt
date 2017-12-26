@@ -1,6 +1,3 @@
-include(FindProtobuf)
-find_package(Protobuf REQUIRED)
-include_directories(${PROTOBUF_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 file(GLOB PROTOS "*.proto")
 list(APPEND PROTO_FLAGS -I${CMAKE_CURRENT_BINARY_DIR})

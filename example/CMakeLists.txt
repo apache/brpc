@@ -1,7 +1,3 @@
-include(FindProtobuf)
-find_package(Protobuf REQUIRED)
-include_directories(${PROTOBUF_INCLUDE_DIR})
-
 add_subdirectory(http_c++)
 add_subdirectory(asynchronous_echo_c++)
 add_subdirectory(backup_request_c++)
