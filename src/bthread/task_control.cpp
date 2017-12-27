@@ -204,7 +204,7 @@ int TaskControl::add_workers(int num) {
 }
 
 TaskGroup* TaskControl::choose_one_group() {
-    const size_t ngroup = _ngroup.load(butil::memory_order_relaxed);
+    const size_t ngroup = _ngroup.load(butil::memory_order_acquire);
     if (ngroup != 0) {
         return _groups[butil::fast_rand_less_than(ngroup)];
     }
