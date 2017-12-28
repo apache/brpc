@@ -13,7 +13,7 @@ fi
 echo "build combination: PURPOSE=$PURPOSE CXX=$CXX CC=$CC"
 
 if [ "$PURPOSE" = "compile-with-bazel" ]; then
-    bazel build -j8 --copt -DHAVE_ZLIB=1 //...
+    bazel build -j 8 --copt -DHAVE_ZLIB=1 //...
     exit 0
 fi
 
