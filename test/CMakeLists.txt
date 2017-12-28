@@ -1,6 +1,5 @@
-include(FindProtobuf)
-find_package(Protobuf REQUIRED)
-include_directories(${PROTOBUF_INCLUDE_DIR})
+find_package(Gperftools)
+include_directories(${GPERFTOOLS_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 file(GLOB PROTOS "*.proto")
 list(APPEND PROTO_FLAGS -I${CMAKE_CURRENT_BINARY_DIR})
@@ -15,12 +14,14 @@ endforeach()
 
 find_path(GTEST_HEADER NAMES gtest/gtest.h)
 find_library(GTEST_LIB NAMES gtest)
+find_library(GTEST_MAIN_LIB NAMES gtest_main)
 
-set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES --include ${CMAKE_SOURCE_DIR}/test/sstream_workaround.h")
-set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x")
+set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES -include ${CMAKE_SOURCE_DIR}/test/sstream_workaround.h")
+set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
 
 
 SET(TEST_BUTIL_SOURCES
+    #${CMAKE_SOURCE_DIR}/test/popen_unittest.cpp
     ${CMAKE_SOURCE_DIR}/test/at_exit_unittest.cc
     ${CMAKE_SOURCE_DIR}/test/atomicops_unittest.cc
     ${CMAKE_SOURCE_DIR}/test/base64_unittest.cc
@@ -116,10 +117,28 @@ SET(TEST_BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/test/test_switches.cc
     ${CMAKE_SOURCE_DIR}/test/scoped_locale.cc
     ${CMAKE_SOURCE_DIR}/test/test_file_util_linux.cc
-    ${CMAKE_SOURCE_DIR}/test/popen_unittest.cpp
     ${CMAKE_SOURCE_DIR}/test/butil_unittest_main.cpp
     ${CMAKE_SOURCE_DIR}/test/butil_unittest_main.cpp
 	)
     
+file(GLOB TEST_BVAR_SRCS "bvar_*_unittest.cpp")
+add_executable(test_bvar ${TEST_BVAR_SRCS} ${PROTO_SRCS})
+target_link_libraries(test_bvar brpc ${GTEST_LIB} ${GPERFTOOLS_LIBRARIES})
+
 add_executable(test_butil ${TEST_BUTIL_SOURCES} ${PROTO_SRCS})
 target_link_libraries(test_butil brpc ${GTEST_LIB})
+
+file(GLOB BTHREAD_UNITTESTS "bthread*unittest.cpp")
+foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
+    get_filename_component(BTHREAD_UT_WE ${BTHREAD_UT} NAME_WE)
+    add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT} ${PROTO_SRCS})
+    target_link_libraries(${BTHREAD_UT_WE} brpc ${GTEST_MAIN_LIB} ${GPERFTOOLS_LIBRARIES} ${GTEST_LIB})
+endforeach()
+
+file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
+foreach(BRPC_UT ${BRPC_UNITTESTS})
+    get_filename_component(BRPC_UT_WE ${BRPC_UT} NAME_WE)
+    add_executable(${BRPC_UT_WE} ${BRPC_UT} ${PROTO_SRCS})
+    target_link_libraries(${BRPC_UT_WE} brpc ${GTEST_MAIN_LIB} ${GPERFTOOLS_LIBRARIES} ${GTEST_LIB})
+endforeach()
+

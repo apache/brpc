@@ -1,13 +1,23 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 2.8.10)
 project(brpc C CXX)
 
-if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.8)
-    #message(FATAL_ERROR "GCC is too old, please install a newer version supporting C++11")
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    # require at least gcc 4.8
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.8)
+        message(FATAL_ERROR "GCC is too old, please install a newer version supporting C++11")
+    endif()
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    # require at least clang 3.3
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 3.3)
+        message(FATAL_ERROR "Clang is too old, please install a newer version supporting C++11")
+    endif()
+else()
+    message(WARNING "You are using an unsupported compiler! Compilation has only been tested with Clang and GCC.")
 endif()
 
 option(WITH_GLOG "With glog" OFF)
 option(BRPC_DEBUG "With debug symbol" ON)
-option(BUILD_EXAMPLE "Whether building examples" OFF)
+option(BUILD_EXAMPLE "Whether building examples" ON)
 option(BUILD_UNIT_TESTS "Whether building unit tests" OFF)
 
 if(WITH_GLOG)
@@ -30,8 +40,7 @@ execute_process(
     COMMAND bash -c "grep \"namespace [_A-Za-z0-9]\\+ {\" ${GFLAGS_INCLUDE_PATH}/gflags/gflags_declare.h | head -1 | awk '{print $2}' | tr -d '\n'"
     OUTPUT_VARIABLE GFLAGS_NS
 )
-# STREQUAL not works. Use MATCHES as workaround
-if(${GFLAGS_NS} MATCHES ".*GFLAGS_NAMESPACE.*")
+if(${GFLAGS_NS} STREQUAL "GFLAGS_NAMESPACE")
     execute_process(
         COMMAND bash -c "grep \"#define GFLAGS_NAMESPACE [_A-Za-z0-9]\\+\" ${GFLAGS_INCLUDE_PATH}/gflags/gflags_declare.h | head -1 | awk '{print $3}' | tr -d '\n'"
         OUTPUT_VARIABLE GFLAGS_NS
@@ -49,31 +58,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CPP_FLAGS "-DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS")
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEBUG_SYMBOL}")
-
 set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
 set(CMAKE_C_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer")
 SET(CMAKE_EXE_LINKER_FLAGS "-pthread")
 
-#required by butil/crc32.cc to boost performance for 10x
-if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4))
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4 -msse4.2")
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    #required by butil/crc32.cc to boost performance for 10x
+    if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4))
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4 -msse4.2")
+    endif()
+    if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.0))
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-aligned-new")
+    endif()
 endif()
 
-if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.0))
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-aligned-new")
-endif()
-
-#find_package(Threads REQUIRED)
-
-#find_path(GFLAGS_HEADER NAMES gflags/gflags.h)
-#find_library(GFLAGS_LIB NAMES gflags)
-#find_package(gflags REQUIRED)
-
-#find_path(THREADS_HEADER NAMES pthread.h)
-#find_library(THREADS_LIB NAMES pthread)
-
-find_path(PROTOBUF_HEADER NAMES google/protobuf/stubs/common.h)
-find_library(PROTOBUF_LIB NAMES protobuf)
+include(FindProtobuf)
 
 find_path(LEVELDB_HEADER NAMES leveldb/db.h)
 find_library(LEVELDB_LIB NAMES leveldb)
@@ -88,10 +87,8 @@ find_library(PROTOC_LIB NAMES protoc)
 
 include_directories(
         ${GFLAGS_INCLUDE_PATH}
-        ${PROTOBUF_HEADER}
+        ${PROTOBUF_INCLUDE_DIRS}
         ${LEVELDB_HEADER}
-        ${THREAD_HEADER}
-        #${THREADS_HEADER}
         )
 
 # for *.so

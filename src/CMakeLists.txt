@@ -1,6 +1,3 @@
-include(FindProtobuf)
-find_package(Protobuf REQUIRED)
-include_directories(${PROTOBUF_INCLUDE_DIR})
 file(GLOB PROTOS "*.proto")
 list(APPEND PROTO_FLAGS -I${CMAKE_CURRENT_BINARY_DIR})
 foreach(PROTO ${PROTOS})
@@ -191,18 +188,15 @@ add_library(brpc SHARED ${SOURCES})
 add_library(brpc_static STATIC ${SOURCES})
 
 target_link_libraries(brpc 
-    #${CMAKE_THREAD_LIBS_INIT} 
-    #${THREADS_LIB}
-    #${GFLAGS_LIB} 
     ${GFLAGS_LIBRARY}
-    ${PROTOBUF_LIB} 
+    ${PROTOBUF_LIBRARIES}
     ${LEVELDB_LIB} 
+    ${PROTOC_LIB}
     rt
     ssl
     crypto
     dl
     z
-    ${PROTOC_LIB}
     )
 
 if(WITH_GLOG)
@@ -215,7 +209,6 @@ set(protoc_gen_mcpack_SOURCES
 add_executable(protoc-gen-mcpack ${protoc_gen_mcpack_SOURCES})
 target_link_libraries(protoc-gen-mcpack brpc)
     
-
 get_property(LIB64 GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS)
 if ("${LIB64}" STREQUAL "TRUE")
     set(LIBSUFFIX 64)
