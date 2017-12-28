@@ -4,6 +4,10 @@ exports_files(["LICENSE"])
 
 load(":bazel/brpc.bzl", "brpc_proto_library")
 
+config_setting(
+    name = "glog_mode",
+    define_values = {"with_glog": "1"}
+)
 
 COPTS = [
     "-DBTHREAD_USE_FAST_PTHREAD_MUTEX",
@@ -14,9 +18,11 @@ COPTS = [
     "-D__STDC_FORMAT_MACROS",
     "-D__STDC_LIMIT_MACROS",
     "-D__STDC_CONSTANT_MACROS",
-    "-DBRPC_WITH_GLOG=0",
     "-DGFLAGS_NS=google",
-]
+] + select({
+    ":glog_mode": ["-DBRPC_WITH_GLOG=1"],
+    "//conditions:default": ["-DBRPC_WITH_GLOG=0"],
+})
 
 LINKOPTS = [
     "-lpthread",
@@ -32,7 +38,7 @@ genrule(
     outs = [
         "src/butil/config.h",
     ],
-    cmd = """cat << EOF  >$@
+    cmd = """cat << EOF  >$@""" + """
 // This file is auto-generated.
 #ifndef  BUTIL_CONFIG_H
 #define  BUTIL_CONFIG_H
@@ -40,13 +46,15 @@ genrule(
 #ifdef BRPC_WITH_GLOG
 #undef BRPC_WITH_GLOG
 #endif
-#define BRPC_WITH_GLOG 0
-
+#define BRPC_WITH_GLOG """ + select({
+    ":glog_mode": "1",
+    "//conditions:default": "0",
+}) +
+"""
 #endif  // BUTIL_CONFIG_H
 EOF
     """
 )
-
 
 BUTIL_SRCS = [
     "src/butil/third_party/dmg_fp/g_fmt.cc",
@@ -183,6 +191,7 @@ cc_library(
     deps = [
         "@com_google_protobuf//:protobuf",
         "@com_github_gflags_gflags//:gflags",
+        "@com_github_google_glog//:glog",
     ],
     includes = [
         "src/",
