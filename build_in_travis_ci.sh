@@ -26,14 +26,17 @@ fi
 
 echo "start building by cmake"
 rm -rf build && mkdir build && cd build
-if ! cmake -DBRPC_DEBUG=OFF -DBUILD_EXAMPLE=ON -DBUILD_UNIT_TESTS=ON ..; then
-    echo "Fail to generate Makefile by cmake"
-    exit 1
-fi
-
 if [ "$PURPOSE" = "compile" ]; then
+    if ! cmake -DBRPC_DEBUG=OFF -DBUILD_EXAMPLE=ON -DBUILD_UNIT_TESTS=OFF ..; then
+        echo "Fail to generate Makefile by cmake"
+        exit 1
+    fi
     make -j4
 elif [ "$PURPOSE" = "unittest" ]; then
+    if ! cmake -DBRPC_DEBUG=OFF -DBUILD_EXAMPLE=OFF -DBUILD_UNIT_TESTS=ON ..; then
+        echo "Fail to generate Makefile by cmake"
+        exit 1
+    fi
     make -j4 && cd test && sh ./run_tests.sh && cd ../
 else
     echo "Unknown purpose=\"$PURPOSE\""
