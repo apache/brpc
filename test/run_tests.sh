@@ -2,7 +2,6 @@
 test_num=0
 failed_test=""
 rc=0
-make -j4
 test_bins="test_butil test_bvar bthread*unittest brpc*unittest"
 for test_bin in $test_bins; do
     test_num=$((test_num + 1))

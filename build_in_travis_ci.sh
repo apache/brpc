@@ -19,14 +19,14 @@ fi
 if [ "$PURPOSE" = "compile" ]; then
     make -j4 && sh tools/make_all_examples
 elif [ "$PURPOSE" = "unittest" ]; then
-    cd test && sh ./run_tests.sh && cd ../
+    cd test && make -j4 && sh ./run_tests.sh && cd ../
 else
     echo "Unknown purpose=\"$PURPOSE\""
 fi
 
 echo "start building by cmake"
 rm -rf build && mkdir build && cd build
-if ! cmake -DBRPC_DEBUG=OFF -DBUILD_EXAMPLE=ON -DBUILD_UNIT_TESTS=OFF ..; then
+if ! cmake -DBRPC_DEBUG=OFF -DBUILD_EXAMPLE=ON -DBUILD_UNIT_TESTS=ON ..; then
     echo "Fail to generate Makefile by cmake"
     exit 1
 fi
@@ -34,7 +34,7 @@ fi
 if [ "$PURPOSE" = "compile" ]; then
     make -j4
 elif [ "$PURPOSE" = "unittest" ]; then
-    echo "todo"
+    make -j4 && cd test && sh ./run_tests.sh && cd ../
 else
     echo "Unknown purpose=\"$PURPOSE\""
 fi
