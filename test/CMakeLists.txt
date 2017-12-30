@@ -27,7 +27,7 @@ file(COPY ${CMAKE_SOURCE_DIR}/test/jsonout DESTINATION ${CMAKE_CURRENT_BINARY_DI
 file(COPY ${CMAKE_SOURCE_DIR}/test/run_tests.sh DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 SET(TEST_BUTIL_SOURCES
-    #${CMAKE_SOURCE_DIR}/test/popen_unittest.cpp
+    ${CMAKE_SOURCE_DIR}/test/popen_unittest.cpp
     ${CMAKE_SOURCE_DIR}/test/at_exit_unittest.cc
     ${CMAKE_SOURCE_DIR}/test/atomicops_unittest.cc
     ${CMAKE_SOURCE_DIR}/test/base64_unittest.cc
