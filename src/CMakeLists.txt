@@ -184,8 +184,13 @@ set(SOURCES
     ${PROTO_SRCS}
     )
 
-add_library(brpc SHARED ${SOURCES})
-add_library(brpc_static STATIC ${SOURCES})
+add_library(OBJ_LIB OBJECT ${SOURCES})
+
+# shared libraries need PIC
+set_property(TARGET ${OBJ_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
+
+add_library(brpc SHARED $<TARGET_OBJECTS:OBJ_LIB>)
+add_library(brpc_static STATIC $<TARGET_OBJECTS:OBJ_LIB>)
 
 target_link_libraries(brpc 
     ${GFLAGS_LIBRARY}

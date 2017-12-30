@@ -267,19 +267,20 @@ target_link_libraries(test_bvar
     z
     )
 
-add_executable(test_butil ${TEST_BUTIL_SOURCES} ${PROTO_SRCS})
+add_library(PROTO_OBJ OBJECT ${PROTO_SRCS})
+add_executable(test_butil ${TEST_BUTIL_SOURCES} $<TARGET_OBJECTS:PROTO_OBJ>)
 target_link_libraries(test_butil brpc ${GTEST_LIB})
 
 file(GLOB BTHREAD_UNITTESTS "bthread*unittest.cpp")
 foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
     get_filename_component(BTHREAD_UT_WE ${BTHREAD_UT} NAME_WE)
-    add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT} ${PROTO_SRCS})
+    add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT} $<TARGET_OBJECTS:PROTO_OBJ>)
     target_link_libraries(${BTHREAD_UT_WE} brpc ${GTEST_MAIN_LIB} ${GPERFTOOLS_LIBRARIES} ${GTEST_LIB})
 endforeach()
 
 file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
 foreach(BRPC_UT ${BRPC_UNITTESTS})
     get_filename_component(BRPC_UT_WE ${BRPC_UT} NAME_WE)
-    add_executable(${BRPC_UT_WE} ${BRPC_UT} ${PROTO_SRCS})
+    add_executable(${BRPC_UT_WE} ${BRPC_UT} $<TARGET_OBJECTS:PROTO_OBJ>)
     target_link_libraries(${BRPC_UT_WE} brpc ${GTEST_MAIN_LIB} ${GPERFTOOLS_LIBRARIES} ${GTEST_LIB})
 endforeach()
