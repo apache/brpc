@@ -171,7 +171,6 @@ set(MCPACK2PB_SOURCES
     )
 
 set(SOURCES
-    ${BUTIL_SOURCES}
     ${BVAR_SOURCES1}
     ${BVAR_SOURCES2}
     ${BTHREAD_SOURCES}
@@ -185,12 +184,14 @@ set(SOURCES
     )
 
 add_library(OBJ_LIB OBJECT ${SOURCES})
+add_library(BUTIL_LIB OBJECT ${BUTIL_SOURCES})
 
 # shared libraries need PIC
 set_property(TARGET ${OBJ_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
+set_property(TARGET ${BUTIL_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
 
-add_library(brpc SHARED $<TARGET_OBJECTS:OBJ_LIB>)
-add_library(brpc_static STATIC $<TARGET_OBJECTS:OBJ_LIB>)
+add_library(brpc SHARED $<TARGET_OBJECTS:OBJ_LIB> $<TARGET_OBJECTS:BUTIL_LIB>)
+add_library(brpc_static STATIC $<TARGET_OBJECTS:OBJ_LIB> $<TARGET_OBJECTS:BUTIL_LIB>)
 
 target_link_libraries(brpc 
     ${GFLAGS_LIBRARY}
