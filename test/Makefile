@@ -108,7 +108,7 @@ TEST_BUTIL_SOURCES = \
     baidu_time_unittest.cpp \
     flat_map_unittest.cpp \
     crc32c_unittest.cc \
-    iobuf_unittest.cc \
+    iobuf_unittest.cpp \
     test_switches.cc \
     scoped_locale.cc \
     test_file_util_linux.cc \

@@ -5,8 +5,14 @@ exports_files(["LICENSE"])
 load(":bazel/brpc.bzl", "brpc_proto_library")
 
 config_setting(
-    name = "glog_mode",
-    define_values = {"with_glog": "1"}
+    name = "with_glog",
+    define_values = {"with_glog": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "unittest",
+    define_values = {"unittest": "true"},
 )
 
 COPTS = [
@@ -20,7 +26,7 @@ COPTS = [
     "-D__STDC_CONSTANT_MACROS",
     "-DGFLAGS_NS=google",
 ] + select({
-    ":glog_mode": ["-DBRPC_WITH_GLOG=1"],
+    ":with_glog": ["-DBRPC_WITH_GLOG=1"],
     "//conditions:default": ["-DBRPC_WITH_GLOG=0"],
 })
 
@@ -47,7 +53,7 @@ genrule(
 #undef BRPC_WITH_GLOG
 #endif
 #define BRPC_WITH_GLOG """ + select({
-    ":glog_mode": "1",
+    ":with_glog": "1",
     "//conditions:default": "0",
 }) +
 """
@@ -191,12 +197,20 @@ cc_library(
     deps = [
         "@com_google_protobuf//:protobuf",
         "@com_github_gflags_gflags//:gflags",
-        "@com_github_google_glog//:glog",
-    ],
+    ] + select({
+        ":with_glog": ["@com_github_google_glog//:glog"],
+        "//conditions:default": [],
+    }),
     includes = [
         "src/",
     ],
-    copts = COPTS,
+    copts = COPTS + select({
+        ":unittest": [
+            "-DBVAR_NOT_LINK_DEFAULT_VARIABLES",
+            "-DUNIT_TEST",
+        ],
+        "//conditions:default": [],
+    }),
     linkopts = LINKOPTS,
     visibility = ["//visibility:public"],
 )
@@ -206,7 +220,13 @@ cc_library(
     srcs = glob([
         "src/bvar/*.cpp",
         "src/bvar/detail/*.cpp",
-    ]),
+    ],
+    exclude = [
+        "src/bvar/default_variables.cpp",
+    ]) + select({
+        ":unittest": [],
+        "//conditions:default": ["src/bvar/default_variables.cpp"],
+    }),
     hdrs = glob([
         "src/bvar/*.h",
         "src/bvar/utils/*.h",
@@ -218,7 +238,13 @@ cc_library(
     deps = [
         ":butil",
     ],
-    copts = COPTS,
+    copts = COPTS + select({
+        ":unittest": [
+            "-DBVAR_NOT_LINK_DEFAULT_VARIABLES",
+            "-DUNIT_TEST",
+        ],
+        "//conditions:default": [],
+    }),
     linkopts = LINKOPTS,
     visibility = ["//visibility:public"],
 )
