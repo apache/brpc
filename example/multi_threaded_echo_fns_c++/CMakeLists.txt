@@ -3,7 +3,12 @@ get_filename_component(HEADER_DIR ${PROTO_HEADER} DIRECTORY)
 include_directories(${HEADER_DIR})
 
 add_executable(multi_threaded_echo_fns_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
-target_link_libraries(multi_threaded_echo_fns_client brpc)
-
 add_executable(multi_threaded_echo_fns_server server.cpp ${PROTO_SRC} ${PROTO_HEADER})
-target_link_libraries(multi_threaded_echo_fns_server brpc)
+
+if(EXAMPLE_LINK_SO)
+    target_link_libraries(multi_threaded_echo_fns_client brpc)
+    target_link_libraries(multi_threaded_echo_fns_server brpc)
+else()
+    target_link_libraries(multi_threaded_echo_fns_client brpc_static ${DYNAMIC_LIB})
+    target_link_libraries(multi_threaded_echo_fns_server brpc_static ${DYNAMIC_LIB})
+endif()

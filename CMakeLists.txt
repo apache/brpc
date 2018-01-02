@@ -19,6 +19,7 @@ option(WITH_GLOG "With glog" OFF)
 option(BRPC_DEBUG "With debug symbol" ON)
 option(BUILD_EXAMPLE "Whether building examples" ON)
 option(BUILD_UNIT_TESTS "Whether building unit tests" OFF)
+option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
 
 if(WITH_GLOG)
     set(WITH_GLOG_VAL "1")
@@ -90,6 +91,18 @@ include_directories(
         ${PROTOBUF_INCLUDE_DIRS}
         ${LEVELDB_HEADER}
         )
+
+set(DYNAMIC_LIB
+    ${GFLAGS_LIBRARY}
+    ${PROTOBUF_LIBRARIES}
+    ${LEVELDB_LIB}
+    ${PROTOC_LIB}
+    rt
+    ssl
+    crypto
+    dl
+    z
+    )
 
 # for *.so
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)

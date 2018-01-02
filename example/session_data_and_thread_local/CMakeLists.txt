@@ -3,7 +3,12 @@ get_filename_component(HEADER_DIR ${PROTO_HEADER} DIRECTORY)
 include_directories(${HEADER_DIR})
 
 add_executable(session_data_and_thread_local_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
-target_link_libraries(session_data_and_thread_local_client brpc)
-
 add_executable(session_data_and_thread_local_server server.cpp ${PROTO_SRC} ${PROTO_HEADER})
-target_link_libraries(session_data_and_thread_local_server brpc)
+
+if(EXAMPLE_LINK_SO)
+    target_link_libraries(session_data_and_thread_local_client brpc)
+    target_link_libraries(session_data_and_thread_local_server brpc)
+else()
+    target_link_libraries(session_data_and_thread_local_client brpc_static ${DYNAMIC_LIB})
+    target_link_libraries(session_data_and_thread_local_server brpc_static ${DYNAMIC_LIB})
+endif()

@@ -3,7 +3,14 @@ get_filename_component(HEADER_DIR ${PROTO_HEADER} DIRECTORY)
 include_directories(${HEADER_DIR})
 
 add_executable(echo_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
-target_link_libraries(echo_client brpc)
-
 add_executable(echo_server server.cpp ${PROTO_SRC} ${PROTO_HEADER})
-target_link_libraries(echo_server brpc)
+
+if(EXAMPLE_LINK_SO)
+    message("EXAMPLE_LINK_SO")
+    target_link_libraries(echo_client brpc)
+    target_link_libraries(echo_server brpc)
+else()
+    message("not EXAMPLE_LINK_SO")
+    target_link_libraries(echo_client brpc_static ${DYNAMIC_LIB})
+    target_link_libraries(echo_server brpc_static ${DYNAMIC_LIB})
+endif()

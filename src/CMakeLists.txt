@@ -193,17 +193,7 @@ set_property(TARGET ${BUTIL_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
 add_library(brpc SHARED $<TARGET_OBJECTS:OBJ_LIB> $<TARGET_OBJECTS:BUTIL_LIB>)
 add_library(brpc_static STATIC $<TARGET_OBJECTS:OBJ_LIB> $<TARGET_OBJECTS:BUTIL_LIB>)
 
-target_link_libraries(brpc 
-    ${GFLAGS_LIBRARY}
-    ${PROTOBUF_LIBRARIES}
-    ${LEVELDB_LIB} 
-    ${PROTOC_LIB}
-    rt
-    ssl
-    crypto
-    dl
-    z
-    )
+target_link_libraries(brpc ${DYNAMIC_LIB})
 
 if(WITH_GLOG)
     target_link_libraries(brpc ${GLOG_LIB})

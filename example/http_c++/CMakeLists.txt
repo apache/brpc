@@ -3,10 +3,15 @@ get_filename_component(HEADER_DIR ${PROTO_HEADER} DIRECTORY)
 include_directories(${HEADER_DIR})
 
 add_executable(http_client http_client.cpp)
-target_link_libraries(http_client brpc)
-
 add_executable(http_server http_server.cpp ${PROTO_SRC} ${PROTO_HEADER})
-target_link_libraries(http_server brpc)
-
 add_executable(benchmark_http benchmark_http.cpp)
-target_link_libraries(benchmark_http brpc)
+
+if(EXAMPLE_LINK_SO)
+    target_link_libraries(http_server brpc)
+    target_link_libraries(http_client brpc)
+    target_link_libraries(benchmark_http brpc)
+else()
+    target_link_libraries(http_server brpc_static ${DYNAMIC_LIB})
+    target_link_libraries(http_client brpc_static ${DYNAMIC_LIB})
+    target_link_libraries(benchmark_http brpc_static ${DYNAMIC_LIB})
+endif()

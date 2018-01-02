@@ -1,5 +1,10 @@
 add_executable(nshead_extension_client client.cpp)
-target_link_libraries(nshead_extension_client brpc)
-
 add_executable(nshead_extension_server server.cpp)
-target_link_libraries(nshead_extension_server brpc)
+
+if(EXAMPLE_LINK_SO)
+    target_link_libraries(nshead_extension_client brpc)
+    target_link_libraries(nshead_extension_server brpc)
+else()
+    target_link_libraries(nshead_extension_client brpc_static ${DYNAMIC_LIB})
+    target_link_libraries(nshead_extension_server brpc_static ${DYNAMIC_LIB})
+endif()
