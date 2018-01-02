@@ -14,9 +14,14 @@
 #include "brpc/socket.h"
 #include "brpc/policy/round_robin_load_balancer.h"
 #include "brpc/policy/randomized_load_balancer.h"
+#include "brpc/policy/primary_load_balancer.h"
 #include "brpc/policy/locality_aware_load_balancer.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
 #include "brpc/policy/hasher.h"
+
+DECLARE_int32(primary_lb_check_interval_us);
+DECLARE_int32(primary_lb_failure_window_s);
+DECLARE_int32(primary_lb_failure_count_threshold);
 
 namespace brpc {
 namespace policy {
@@ -514,4 +519,74 @@ TEST_F(LoadBalancerTest, consistent_hashing) {
         }
     }
 }
+
+TEST_F(LoadBalancerTest, primary_lb) {
+    FLAGS_primary_lb_failure_count_threshold = 3;
+
+    brpc::LoadBalancer* lb = new brpc::policy::PrimaryLoadBalancer;
+
+    brpc::Controller *suc_ctrl = new brpc::Controller();
+    ASSERT_EQ(0, suc_ctrl->ErrorCode());
+    brpc::Controller *fail_ctrl = new brpc::Controller();
+    fail_ctrl->SetFailed(-1, "fail_test");
+    ASSERT_EQ(-1, fail_ctrl->ErrorCode());
+
+    brpc::LoadBalancer::CallInfo suc_info, fail_info;
+    suc_info.controller = suc_ctrl;
+    fail_info.controller = fail_ctrl;
+
+    // Accessing empty lb should result in error.
+    brpc::SocketUniquePtr ptr;
+    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0, NULL };
+    brpc::LoadBalancer::SelectOut out(&ptr);
+    out.need_feedback = false;
+    ASSERT_EQ(ENODATA, lb->SelectServer(in, &out));
+
+    std::vector<brpc::ServerId> ids;
+    for (int i = 0; i < 2; ++i) {
+        char addr[32];
+        snprintf(addr, sizeof(addr), "192.%d.1.%d:8080", i, i);
+        butil::EndPoint dummy;
+        ASSERT_EQ(0, str2endpoint(addr, &dummy));
+        brpc::ServerId id(8888);
+        brpc::SocketOptions options;
+        options.remote_side = dummy;
+        options.user = new SaveRecycle;
+        ASSERT_EQ(0, brpc::Socket::Create(options, &id.id));
+        ids.push_back(id);
+        ASSERT_TRUE(lb->AddServer(id));
+    }
+
+    ASSERT_EQ(0, lb->SelectServer(in, &out));
+    ASSERT_EQ(ids[0].id, out.ptr->get()->id());
+
+    fail_info.server_id = ids[0].id;
+    suc_info.server_id = ids[0].id;
+    for (int i = 0; i < FLAGS_primary_lb_failure_count_threshold  - 1; i++) {
+        lb->Feedback(fail_info);
+    }
+    ASSERT_EQ(0, lb->SelectServer(in, &out));
+    ASSERT_EQ(ids[0].id, out.ptr->get()->id());
+    lb->Feedback(fail_info);
+    // Bvar window's precision is 1s.
+    sleep(1);
+    // Server 0 failed.
+    lb->Feedback(fail_info);
+    ASSERT_EQ(0, lb->SelectServer(in, &out));
+    ASSERT_EQ(ids[1].id, out.ptr->get()->id());
+    // Server 0 recovered.
+    lb->Feedback(suc_info);
+    sleep(1);
+    ASSERT_EQ(0, lb->SelectServer(in, &out));
+    ASSERT_EQ(ids[0].id, out.ptr->get()->id());
+
+    for (size_t i = 0; i < ids.size(); ++i) {
+        ASSERT_EQ(0, brpc::Socket::SetFailed(ids[i].id));
+    }
+
+    delete suc_ctrl;
+    delete fail_ctrl;
+    delete lb;
+}
+
 } //namespace
