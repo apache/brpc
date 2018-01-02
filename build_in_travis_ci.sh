@@ -11,8 +11,7 @@ if [ -z "$CC" ]; then
     exit 1
 fi
 
-function runcmd()
-{
+runcmd(){
     eval $@
     [[ $? != 0 ]] && {
         exit 1
@@ -30,7 +29,7 @@ if [ "$PURPOSE" = "compile-with-bazel" ]; then
     runcmd "bazel test -c opt --copt -DHAVE_ZLIB=1 --define=with_glog=true  --define=unittest=true //..."
     exit 0
 fi
-    
+
 # The default env in travis-ci is Ubuntu.
 if ! sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --nodebugsymbols --cxx=$CXX --cc=$CC; then
     echo "Fail to configure brpc"
