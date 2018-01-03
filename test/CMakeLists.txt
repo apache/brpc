@@ -16,8 +16,19 @@ find_path(GTEST_HEADER NAMES gtest/gtest.h)
 find_library(GTEST_LIB NAMES gtest)
 find_library(GTEST_MAIN_LIB NAMES gtest_main)
 
+set(CMAKE_CPP_FLAGS "-DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES -include ${CMAKE_SOURCE_DIR}/test/sstream_workaround.h")
 set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    #required by butil/crc32.cc to boost performance for 10x
+    if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4))
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4 -msse4.2")
+    endif()
+    if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.0))
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-aligned-new")
+    endif()
+endif()
 
 file(COPY ${CMAKE_SOURCE_DIR}/test/cert1.key DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 file(COPY ${CMAKE_SOURCE_DIR}/test/cert2.key DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
