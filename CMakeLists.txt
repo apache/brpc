@@ -121,26 +121,6 @@ foreach(PROTO ${PROTOS})
     )
 endforeach()
 
-file(GLOB brpc_PROTOS "src/brpc/*.proto")
-foreach(PROTO ${brpc_PROTOS})
-    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/${PROTO_WE}.pb.cc")
-    execute_process(
-        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/ ${PROTO}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
-endforeach()
-
-file(GLOB brpc_policy_PROTOS "src/brpc/policy/*.proto")
-foreach(PROTO ${brpc_policy_PROTOS})
-    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/policy/${PROTO_WE}.pb.cc")
-    execute_process(
-        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/policy ${PROTO}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
-endforeach()
-
 set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/third_party/dmg_fp/g_fmt.cc
     ${CMAKE_SOURCE_DIR}/src/butil/third_party/dmg_fp/dtoa_wrapper.cc
@@ -289,15 +269,13 @@ set(SOURCES
     ${BRPC_SOURCES4}
     ${PROTO_SRCS}
     )
-
+ 
 ADD_SUBDIRECTORY(src)
 if(BUILD_EXAMPLE)
     ADD_SUBDIRECTORY(example)
 endif()
 if(BUILD_UNIT_TESTS)
     ADD_SUBDIRECTORY(test)
-    #enable_testing()
-    #add_test(NAME test_butil COMMAND test_butil)
 endif()
 
 #install directory

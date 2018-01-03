@@ -39,4 +39,3 @@ install(TARGETS brpc
         LIBRARY DESTINATION lib${LIBSUFFIX}
         ARCHIVE DESTINATION lib${LIBSUFFIX}
         )
-
