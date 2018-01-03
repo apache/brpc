@@ -27,7 +27,7 @@ fi
 echo "start building by cmake"
 rm -rf build && mkdir build && cd build
 if [ "$PURPOSE" = "compile" ]; then
-    if ! cmake -DBRPC_DEBUG=OFF -DBUILD_EXAMPLE=ON -DBUILD_UNIT_TESTS=OFF ..; then
+    if ! cmake -DBRPC_DEBUG=OFF -DBUILD_EXAMPLE=OFF -DBUILD_UNIT_TESTS=OFF ..; then
         echo "Fail to generate Makefile by cmake"
         exit 1
     fi

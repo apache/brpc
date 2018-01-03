@@ -5,7 +5,7 @@ file(GLOB PROTOS "*.proto")
 list(APPEND PROTO_FLAGS -I${CMAKE_CURRENT_BINARY_DIR})
 foreach(PROTO ${PROTOS})
     get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/${PROTO_WE}.pb.cc")
+    list(APPEND TEST_PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/${PROTO_WE}.pb.cc")
     execute_process(
         COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/test ${PROTO}
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -27,7 +27,7 @@ file(COPY ${CMAKE_SOURCE_DIR}/test/jsonout DESTINATION ${CMAKE_CURRENT_BINARY_DI
 file(COPY ${CMAKE_SOURCE_DIR}/test/run_tests.sh DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 SET(TEST_BUTIL_SOURCES
-    ${CMAKE_SOURCE_DIR}/test/popen_unittest.cpp
+    #${CMAKE_SOURCE_DIR}/test/popen_unittest.cpp
     ${CMAKE_SOURCE_DIR}/test/at_exit_unittest.cc
     ${CMAKE_SOURCE_DIR}/test/atomicops_unittest.cc
     ${CMAKE_SOURCE_DIR}/test/base64_unittest.cc
@@ -127,43 +127,51 @@ SET(TEST_BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/test/butil_unittest_main.cpp
 	)
 
-set(BVAR_SOURCES1
-    ${CMAKE_SOURCE_DIR}/src/bvar/collector.cpp
-    ${CMAKE_SOURCE_DIR}/src/bvar/gflag.cpp
-    ${CMAKE_SOURCE_DIR}/src/bvar/latency_recorder.cpp
-    ${CMAKE_SOURCE_DIR}/src/bvar/variable.cpp
-    )
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/bvar/detail BVAR_SOURCES2)
+# -DBVAR_NOT_LINK_DEFAULT_VARIABLES not work for gcc >= 5.0, just remove the file to prevent linking into unit tests
+set(BVAR_SOURCE ${BVAR_SOURCES1} ${BVAR_SOURCES2})
+list(REMOVE_ITEM BVAR_SOURCE ${CMAKE_SOURCE_DIR}/src/bvar/default_variables.cpp)
+add_library(BUTIL_DEBUG_LIB OBJECT ${BUTIL_SOURCES})
+add_library(OBJ_DEBUG_LIB OBJECT ${SOURCES})
 
 file(GLOB TEST_BVAR_SRCS "bvar_*_unittest.cpp")
-add_executable(test_bvar $<TARGET_OBJECTS:BUTIL_LIB> ${BVAR_SOURCES1} ${BVAR_SOURCES2} ${TEST_BVAR_SRCS})
-target_link_libraries(test_bvar
-    ${PROTOBUF_LIBRARIES}
-    ${GTEST_LIB}
-    ${GPERFTOOLS_LIBRARIES}
-    ${GFLAGS_LIBRARY}
-    ${PROTOC_LIB}
-    rt
-    ssl
-    crypto
-    dl
-    z
-    )
+add_executable(test_bvar $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>
+                         ${BVAR_SOURCE}
+                         ${TEST_BVAR_SRCS})
+target_link_libraries(test_bvar ${GTEST_LIB}
+                                ${GPERFTOOLS_LIBRARIES}
+                                ${DYNAMIC_LIB})
 
-add_library(PROTO_OBJ OBJECT ${PROTO_SRCS})
-add_executable(test_butil ${TEST_BUTIL_SOURCES} $<TARGET_OBJECTS:PROTO_OBJ>)
-target_link_libraries(test_butil brpc ${GTEST_LIB})
+add_library(PROTO_OBJ OBJECT ${TEST_PROTO_SRCS})
+add_executable(test_butil ${TEST_BUTIL_SOURCES}
+                          $<TARGET_OBJECTS:PROTO_OBJ>
+                          $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>
+                          $<TARGET_OBJECTS:OBJ_DEBUG_LIB>)
+target_link_libraries(test_butil ${GTEST_LIB} ${GPERFTOOLS_LIBRARIES} ${DYNAMIC_LIB})
 
 file(GLOB BTHREAD_UNITTESTS "bthread*unittest.cpp")
 foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
     get_filename_component(BTHREAD_UT_WE ${BTHREAD_UT} NAME_WE)
-    add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT} $<TARGET_OBJECTS:PROTO_OBJ>)
-    target_link_libraries(${BTHREAD_UT_WE} brpc ${GTEST_MAIN_LIB} ${GPERFTOOLS_LIBRARIES} ${GTEST_LIB})
+    add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT} 
+                                    $<TARGET_OBJECTS:PROTO_OBJ>
+                                    $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>
+                                    $<TARGET_OBJECTS:OBJ_DEBUG_LIB>)
+    target_link_libraries(${BTHREAD_UT_WE}
+                          ${GTEST_MAIN_LIB}
+                          ${GTEST_LIB}
+                          ${GPERFTOOLS_LIBRARIES}
+                          ${DYNAMIC_LIB})
 endforeach()
 
 file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
 foreach(BRPC_UT ${BRPC_UNITTESTS})
     get_filename_component(BRPC_UT_WE ${BRPC_UT} NAME_WE)
-    add_executable(${BRPC_UT_WE} ${BRPC_UT} $<TARGET_OBJECTS:PROTO_OBJ>)
-    target_link_libraries(${BRPC_UT_WE} brpc ${GTEST_MAIN_LIB} ${GPERFTOOLS_LIBRARIES} ${GTEST_LIB})
+    add_executable(${BRPC_UT_WE} ${BRPC_UT}
+                                 $<TARGET_OBJECTS:PROTO_OBJ>
+                                 $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>
+                                 $<TARGET_OBJECTS:OBJ_DEBUG_LIB>)
+    target_link_libraries(${BRPC_UT_WE}
+                          ${GTEST_MAIN_LIB}
+                          ${GPERFTOOLS_LIBRARIES}
+                          ${GTEST_LIB}
+                          ${DYNAMIC_LIB})
 endforeach()

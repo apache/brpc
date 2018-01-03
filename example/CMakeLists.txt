@@ -1,3 +1,7 @@
+if(BUILD_UNIT_TESTS)
+    return()
+endif()
+
 add_subdirectory(http_c++)
 add_subdirectory(asynchronous_echo_c++)
 add_subdirectory(backup_request_c++)
