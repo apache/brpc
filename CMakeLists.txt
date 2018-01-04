@@ -16,18 +16,18 @@ else()
 endif()
 
 option(WITH_GLOG "With glog" OFF)
-option(BRPC_DEBUG "With debug symbol" ON)
+option(DEBUG "Print debug logs" OFF)
+option(WITH_DEBUG_SYMBOLS "With debug symbols" OFF)
 option(BUILD_EXAMPLE "Whether building examples" OFF)
 option(BUILD_UNIT_TESTS "Whether building unit tests" OFF)
 option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
 
+set(WITH_GLOG_VAL "0")
 if(WITH_GLOG)
     set(WITH_GLOG_VAL "1")
-else()
-    set(WITH_GLOG_VAL "0")
 endif()
 
-if(BRPC_DEBUG)
+if(WITH_DEBUG_SYMBOLS)
     set(DEBUG_SYMBOL "-g")
 endif()
 
@@ -272,7 +272,7 @@ set(SOURCES
     ${BRPC_SOURCES4}
     ${PROTO_SRCS}
     )
- 
+
 ADD_SUBDIRECTORY(src)
 if(BUILD_EXAMPLE)
     ADD_SUBDIRECTORY(example)
@@ -281,18 +281,9 @@ if(BUILD_UNIT_TESTS)
     ADD_SUBDIRECTORY(test)
 endif()
 
-#install directory
-# cmake -DCMAKE_INSTALL_PREFIX=/usr
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/
         DESTINATION include
         FILES_MATCHING 
-        PATTERN "*.h"
-        PATTERN "*.hpp"
-        )
-
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        DESTINATION include
-        FILES_MATCHING
         PATTERN "*.h"
         PATTERN "*.hpp"
         )

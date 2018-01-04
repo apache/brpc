@@ -141,31 +141,29 @@ SET(TEST_BUTIL_SOURCES
 # -DBVAR_NOT_LINK_DEFAULT_VARIABLES not work for gcc >= 5.0, just remove the file to prevent linking into unit tests
 set(BVAR_SOURCE ${BVAR_SOURCES1} ${BVAR_SOURCES2})
 list(REMOVE_ITEM BVAR_SOURCE ${CMAKE_SOURCE_DIR}/src/bvar/default_variables.cpp)
-add_library(BUTIL_DEBUG_LIB OBJECT ${BUTIL_SOURCES})
-add_library(OBJ_DEBUG_LIB OBJECT ${SOURCES})
 
 file(GLOB TEST_BVAR_SRCS "bvar_*_unittest.cpp")
-add_executable(test_bvar $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>
+add_executable(test_bvar $<TARGET_OBJECTS:BUTIL_LIB>
                          ${BVAR_SOURCE}
                          ${TEST_BVAR_SRCS})
 target_link_libraries(test_bvar ${GTEST_LIB}
                                 ${GPERFTOOLS_LIBRARIES}
                                 ${DYNAMIC_LIB})
 
-add_library(PROTO_OBJ OBJECT ${TEST_PROTO_SRCS})
+add_library(TEST_PROTO_OBJ OBJECT ${TEST_PROTO_SRCS})
 add_executable(test_butil ${TEST_BUTIL_SOURCES}
-                          $<TARGET_OBJECTS:PROTO_OBJ>
-                          $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>
-                          $<TARGET_OBJECTS:OBJ_DEBUG_LIB>)
+                          $<TARGET_OBJECTS:TEST_PROTO_OBJ>
+                          $<TARGET_OBJECTS:BUTIL_LIB>
+                          $<TARGET_OBJECTS:OBJ_LIB>)
 target_link_libraries(test_butil ${GTEST_LIB} ${GPERFTOOLS_LIBRARIES} ${DYNAMIC_LIB})
 
 file(GLOB BTHREAD_UNITTESTS "bthread*unittest.cpp")
 foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
     get_filename_component(BTHREAD_UT_WE ${BTHREAD_UT} NAME_WE)
     add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT} 
-                                    $<TARGET_OBJECTS:PROTO_OBJ>
-                                    $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>
-                                    $<TARGET_OBJECTS:OBJ_DEBUG_LIB>)
+                                    $<TARGET_OBJECTS:TEST_PROTO_OBJ>
+                                    $<TARGET_OBJECTS:BUTIL_LIB>
+                                    $<TARGET_OBJECTS:OBJ_LIB>)
     target_link_libraries(${BTHREAD_UT_WE}
                           ${GTEST_MAIN_LIB}
                           ${GTEST_LIB}
@@ -177,9 +175,9 @@ file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
 foreach(BRPC_UT ${BRPC_UNITTESTS})
     get_filename_component(BRPC_UT_WE ${BRPC_UT} NAME_WE)
     add_executable(${BRPC_UT_WE} ${BRPC_UT}
-                                 $<TARGET_OBJECTS:PROTO_OBJ>
-                                 $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>
-                                 $<TARGET_OBJECTS:OBJ_DEBUG_LIB>)
+                                 $<TARGET_OBJECTS:TEST_PROTO_OBJ>
+                                 $<TARGET_OBJECTS:BUTIL_LIB>
+                                 $<TARGET_OBJECTS:OBJ_LIB>)
     target_link_libraries(${BRPC_UT_WE}
                           ${GTEST_MAIN_LIB}
                           ${GPERFTOOLS_LIBRARIES}
