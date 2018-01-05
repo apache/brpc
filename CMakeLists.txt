@@ -283,6 +283,8 @@ set(SOURCES
     ${PROTO_SRCS}
     )
 
+message("SOURCES=${SOURCES}")
+
 add_subdirectory(src)
 if(BUILD_EXAMPLE)
     add_subdirectory(example)
