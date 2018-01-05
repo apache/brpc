@@ -2,6 +2,9 @@ if(BUILD_UNIT_TESTS)
     return()
 endif()
 
+find_package(Gperftools)
+include_directories(${GPERFTOOLS_INCLUDE_DIR})
+
 add_subdirectory(http_c++)
 add_subdirectory(asynchronous_echo_c++)
 add_subdirectory(backup_request_c++)
@@ -21,7 +24,7 @@ add_subdirectory(nshead_pb_extension_c++)
 add_subdirectory(parallel_echo_c++)
 add_subdirectory(partition_echo_c++)
 # need readline library
-#add_subdirectory(redis_c++)
+# add_subdirectory(redis_c++)
 add_subdirectory(selective_echo_c++)
 add_subdirectory(session_data_and_thread_local)
 add_subdirectory(streaming_echo_c++)

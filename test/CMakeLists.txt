@@ -139,7 +139,7 @@ SET(TEST_BUTIL_SOURCES
 	)
 
 # -DBVAR_NOT_LINK_DEFAULT_VARIABLES not work for gcc >= 5.0, just remove the file to prevent linking into unit tests
-set(BVAR_SOURCE ${BVAR_SOURCES1} ${BVAR_SOURCES2})
+set(BVAR_SOURCE ${BVAR_SOURCES} ${BVAR_DETAIL_SOURCES})
 list(REMOVE_ITEM BVAR_SOURCE ${CMAKE_SOURCE_DIR}/src/bvar/default_variables.cpp)
 
 file(GLOB TEST_BVAR_SRCS "bvar_*_unittest.cpp")

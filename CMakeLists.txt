@@ -18,8 +18,8 @@ endif()
 option(WITH_GLOG "With glog" OFF)
 option(DEBUG "Print debug logs" OFF)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" OFF)
-option(BUILD_EXAMPLE "Whether building examples" OFF)
-option(BUILD_UNIT_TESTS "Whether building unit tests" OFF)
+option(BUILD_EXAMPLE "Whether to build examples" OFF)
+option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
 
 set(WITH_GLOG_VAL "0")
@@ -113,7 +113,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # for *.a
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
-file(GLOB PROTOS "src/*.proto")
+file(GLOB PROTOS "${CMAKE_SOURCE_DIR}/src/*.proto")
 list(APPEND PROTO_FLAGS -I${CMAKE_CURRENT_BINARY_DIR})
 foreach(PROTO ${PROTOS})
     get_filename_component(PROTO_WE ${PROTO} NAME_WE)
@@ -124,25 +124,8 @@ foreach(PROTO ${PROTOS})
     )
 endforeach()
 
-file(GLOB brpc_PROTOS "src/brpc/*.proto")
-foreach(PROTO ${brpc_PROTOS})
-    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/${PROTO_WE}.pb.cc")
-    execute_process(
-        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/ ${PROTO}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
-endforeach()
-
-file(GLOB brpc_policy_PROTOS "src/brpc/policy/*.proto")
-foreach(PROTO ${brpc_policy_PROTOS})
-    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/policy/${PROTO_WE}.pb.cc")
-    execute_process(
-        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/policy ${PROTO}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
-endforeach()
+file(GLOB BRPC_PROTOS "${CMAKE_SOURCE_DIR}/src/brpc/*.proto")
+file(GLOB BRPC_POLICY_PROTOS "${CMAKE_SOURCE_DIR}/src/brpc/policy/*.proto")
 
 # list all source files
 set(BUTIL_SOURCES
@@ -262,17 +245,17 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/popen.cpp
     )
 
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/bvar BVAR_SOURCES1)
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/bvar/detail BVAR_SOURCES2)
+aux_source_directory(${CMAKE_SOURCE_DIR}/src/bvar BVAR_SOURCES)
+aux_source_directory(${CMAKE_SOURCE_DIR}/src/bvar/detail BVAR_DETAIL_SOURCES)
 
 aux_source_directory(${CMAKE_SOURCE_DIR}/src/bthread BTHREAD_SOURCES)
 
 aux_source_directory(${CMAKE_SOURCE_DIR}/src/json2pb JSON2PB_SOURCES)
 
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/brpc BRPC_SOURCES1)
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/brpc/details BRPC_SOURCES2)
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/brpc/builtin BRPC_SOURCES3)
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/brpc/policy BRPC_SOURCES4)
+aux_source_directory(${CMAKE_SOURCE_DIR}/src/brpc BRPC_SOURCES)
+aux_source_directory(${CMAKE_SOURCE_DIR}/src/brpc/details BRPC_DETAILS_SOURCES)
+aux_source_directory(${CMAKE_SOURCE_DIR}/src/brpc/builtin BRPC_BUILTIN_SOURCES)
+aux_source_directory(${CMAKE_SOURCE_DIR}/src/brpc/policy BRPC_POLICY_SOURCES)
 
 set(MCPACK2PB_SOURCES
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/field_type.cpp
@@ -282,16 +265,18 @@ set(MCPACK2PB_SOURCES
     )
 
 set(SOURCES
-    ${BVAR_SOURCES1}
-    ${BVAR_SOURCES2}
+    ${BVAR_SOURCES}
+    ${BVAR_DETAIL_SOURCES}
     ${BTHREAD_SOURCES}
     ${JSON2PB_SOURCES}
     ${MCPACK2PB_SOURCES}
-    ${BRPC_SOURCES1}
-    ${BRPC_SOURCES2}
-    ${BRPC_SOURCES3}
-    ${BRPC_SOURCES4}
+    ${BRPC_SOURCES}
+    ${BRPC_DETAILS_SOURCES}
+    ${BRPC_BUILTIN_SOURCES}
+    ${BRPC_POLICY_SOURCES}
     ${PROTO_SRCS}
+    ${BRPC_PROTOS}
+    ${BRPC_POLICY_PROTOS}
     )
 
 add_subdirectory(src)
@@ -305,13 +290,6 @@ endif()
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/
         DESTINATION include
         FILES_MATCHING 
-        PATTERN "*.h"
-        PATTERN "*.hpp"
-        )
-
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/
-        DESTINATION include
-        FILES_MATCHING
         PATTERN "*.h"
         PATTERN "*.hpp"
         )
