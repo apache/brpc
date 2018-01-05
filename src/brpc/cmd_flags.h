@@ -20,7 +20,7 @@
 
 #include <gflags/gflags.h>
 
-
+DECLARE_bool(debug_mode);
 DECLARE_string(etcd_server);
 DECLARE_int32(port);
 DECLARE_string(node_ip);

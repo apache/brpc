@@ -17,6 +17,7 @@
 #include "cmd_flags.h"
 
 // used by Kevin.XU
+DEFINE_bool(debug_mode, false, "Debug mode, default is closed");
 DEFINE_string(etcd_server, "http://127.0.0.1:2379", "The url which access Etcd node");
 DEFINE_int32(port, 8000, "TCP Port of this server");
 DEFINE_string(node_ip, "127.0.0.1", "The IP address which the current node listen");

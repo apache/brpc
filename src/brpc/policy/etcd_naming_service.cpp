@@ -39,7 +39,7 @@ static std::string prefix("/providers/");
 
 int EtcdNamingService::GetServers(const char *service_name,
                                    std::vector<ServerNode>* servers) {
-    
+
     std::string ectdServerIP = FLAGS_etcd_server;
     servers->clear();
     
@@ -89,7 +89,9 @@ int EtcdNamingService::GetServers(const char *service_name,
             if (decoded.empty()) {
                 LOG(WARNING) << "Failed to decode base64 string '" << value << "'";
             }else{
-                LOG(INFO) << "Found service provider : " << decoded;
+                if(FLAGS_debug_mode){
+                    LOG(INFO) << "Found service provider : " << decoded;
+                }
                 rapidjson::Document doc;
                 if(doc.Parse(decoded.c_str()).HasParseError()){
                     LOG(WARNING) << "Parse provider failed : " << decoded;

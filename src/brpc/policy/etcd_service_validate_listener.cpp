@@ -133,7 +133,9 @@ void EtcdServiceValidateListener::onValidServices(
             LOG(WARNING) << "Failed to cetcd_set '" << ectdServerIP << prefix << "', " 
                         << resp->err->ecode << ", " << resp->err->message << "(" << resp->err->cause << ")";
         }else{
-            LOG(INFO) << "Success to write '" << content << "'";
+            if(FLAGS_debug_mode){
+                LOG(INFO) << "Success to write '" << content << "'";
+            }
         }
         cetcd_response_release(resp);
 
