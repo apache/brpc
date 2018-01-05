@@ -12,6 +12,7 @@ include_directories(${CMAKE_SOURCE_DIR}/src)
 add_library(BUTIL_LIB OBJECT ${BUTIL_SOURCES})
 add_library(OBJ_LIB OBJECT ${SOURCES})
 
+# shared library needs POSITION_INDEPENDENT_CODE
 set_property(TARGET ${OBJ_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
 set_property(TARGET ${BUTIL_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
 
@@ -40,6 +41,12 @@ endif()
 #install directory
 # cmake -DCMAKE_INSTALL_PREFIX=/usr
 install(TARGETS brpc
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib${LIBSUFFIX}
+        ARCHIVE DESTINATION lib${LIBSUFFIX}
+        )
+
+install(TARGETS brpc_static
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib${LIBSUFFIX}
         ARCHIVE DESTINATION lib${LIBSUFFIX}
