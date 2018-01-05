@@ -282,6 +282,10 @@ set(SOURCES
     ${BRPC_SOURCES}
     ${PROTO_SRCS}
     )
+message("BVAR_SOURCES=${BVAR_SOURCES}")
+message("BTHREAD_SOURCES=${BTHREAD_SOURCES}")
+message("BRPC_SOURCES=${BRPC_SOURCES}")
+message("SOURCES=${SOURCES}")
 
 add_subdirectory(src)
 if(BUILD_EXAMPLE)
