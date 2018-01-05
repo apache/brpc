@@ -28,7 +28,7 @@ TEST(PopenTest, posix_popen) {
     oss.str("");
     rc = butil::read_command_output_through_popen(oss, "exit 1");
     EXPECT_EQ(1, rc) << berror(errno);
-    ASSERT_TRUE(oss.str().empty()) << oss;
+    ASSERT_TRUE(oss.str().empty()) << oss.str();
     oss.str("");
     rc = butil::read_command_output_through_popen(oss, "kill -9 $$");
     ASSERT_EQ(-1, rc);
@@ -59,7 +59,7 @@ TEST(PopenTest, clone) {
     oss.str("");
     rc = butil::read_command_output_through_clone(oss, "exit 1");
     ASSERT_EQ(1, rc) << berror(errno);
-    ASSERT_TRUE(oss.str().empty()) << oss;
+    ASSERT_TRUE(oss.str().empty()) << oss.str();
     oss.str("");
     rc = butil::read_command_output_through_clone(oss, "kill -9 $$");
     ASSERT_EQ(-1, rc);

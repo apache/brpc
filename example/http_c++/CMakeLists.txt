@@ -1,0 +1,21 @@
+protobuf_generate_cpp(PROTO_SRC PROTO_HEADER http.proto)
+get_filename_component(HEADER_DIR ${PROTO_HEADER} DIRECTORY)
+include_directories(${HEADER_DIR})
+
+set(CMAKE_CPP_FLAGS "-DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -DNDEBUG -O2 -D__const__= -pipe -W -Wall -Wno-unused-parameter -fPIC -fno-omit-frame-pointer")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBRPC_ENABLE_CPU_PROFILER")
+
+add_executable(http_client http_client.cpp)
+add_executable(http_server http_server.cpp ${PROTO_SRC} ${PROTO_HEADER})
+add_executable(benchmark_http benchmark_http.cpp)
+
+if(EXAMPLE_LINK_SO)
+    target_link_libraries(http_server brpc ${GPERFTOOLS_LIBRARIES})
+    target_link_libraries(http_client brpc ${GPERFTOOLS_LIBRARIES})
+    target_link_libraries(benchmark_http brpc ${GPERFTOOLS_LIBRARIES})
+else()
+    target_link_libraries(http_server brpc_static ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
+    target_link_libraries(http_client brpc_static ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
+    target_link_libraries(benchmark_http brpc_static ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
+endif()
