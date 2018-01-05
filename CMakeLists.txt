@@ -231,10 +231,10 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/popen.cpp
     )
 
-file(GLOB_RECURSE BVAR_SOURCES "${CMAKE_SOURCE_DIR}/src/bvar/*.cpp" "${CMAKE_SOURCE_DIR}/src/bvar/*.cc")
-file(GLOB_RECURSE BTHREAD_SOURCES "${CMAKE_SOURCE_DIR}/src/bthread/*.cpp" "${CMAKE_SOURCE_DIR}/src/bthread/*.cc")
-file(GLOB_RECURSE JSON2PB_SOURCES "${CMAKE_SOURCE_DIR}/src/json2pb/*.cpp" "${CMAKE_SOURCE_DIR}/src/json2pb/*.cc")
-file(GLOB_RECURSE BRPC_SOURCES "${CMAKE_SOURCE_DIR}/src/brpc/*.cpp" "${CMAKE_SOURCE_DIR}/src/brpc/*.cc")
+file(GLOB_RECURSE BVAR_SOURCES "${CMAKE_SOURCE_DIR}/src/bvar/*.cpp")
+file(GLOB_RECURSE BTHREAD_SOURCES "${CMAKE_SOURCE_DIR}/src/bthread/*.cpp")
+file(GLOB_RECURSE JSON2PB_SOURCES "${CMAKE_SOURCE_DIR}/src/json2pb/*.cpp")
+file(GLOB_RECURSE BRPC_SOURCES "${CMAKE_SOURCE_DIR}/src/brpc/*.cpp")
 
 set(MCPACK2PB_SOURCES
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/field_type.cpp
