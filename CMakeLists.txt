@@ -124,8 +124,25 @@ foreach(PROTO ${PROTOS})
     )
 endforeach()
 
-file(GLOB BRPC_PROTOS "${CMAKE_SOURCE_DIR}/src/brpc/*.proto")
-file(GLOB BRPC_POLICY_PROTOS "${CMAKE_SOURCE_DIR}/src/brpc/policy/*.proto")
+file(GLOB BRPC_PROTOS "src/brpc/*.proto")
+foreach(PROTO ${BRPC_PROTOS})
+    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
+    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/${PROTO_WE}.pb.cc")
+    execute_process(
+        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/ ${PROTO}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    )
+endforeach()
+
+file(GLOB BRPC_POLICY_PROTOS "src/brpc/policy/*.proto")
+foreach(PROTO ${BRPC_POLICY_PROTOS})
+    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
+    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/policy/${PROTO_WE}.pb.cc")
+    execute_process(
+        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/policy ${PROTO}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    )
+endforeach()
 
 # list all source files
 set(BUTIL_SOURCES
@@ -245,17 +262,10 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/popen.cpp
     )
 
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/bvar BVAR_SOURCES)
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/bvar/detail BVAR_DETAIL_SOURCES)
-
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/bthread BTHREAD_SOURCES)
-
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/json2pb JSON2PB_SOURCES)
-
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/brpc BRPC_SOURCES)
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/brpc/details BRPC_DETAILS_SOURCES)
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/brpc/builtin BRPC_BUILTIN_SOURCES)
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/brpc/policy BRPC_POLICY_SOURCES)
+file(GLOB_RECURSE BVAR_SOURCES "${CMAKE_SOURCE_DIR}/src/bvar/*.cpp" "${CMAKE_SOURCE_DIR}/src/bvar/*.cc")
+file(GLOB_RECURSE BTHREAD_SOURCES "${CMAKE_SOURCE_DIR}/src/bthread/*.cpp" "${CMAKE_SOURCE_DIR}/src/bthread/*.cc")
+file(GLOB_RECURSE JSON2PB_SOURCES "${CMAKE_SOURCE_DIR}/src/json2pb/*.cpp" "${CMAKE_SOURCE_DIR}/src/json2pb/*.cc")
+file(GLOB_RECURSE BRPC_SOURCES "${CMAKE_SOURCE_DIR}/src/brpc/*.cpp" "${CMAKE_SOURCE_DIR}/src/brpc/*.cc")
 
 set(MCPACK2PB_SOURCES
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/field_type.cpp
@@ -266,17 +276,11 @@ set(MCPACK2PB_SOURCES
 
 set(SOURCES
     ${BVAR_SOURCES}
-    ${BVAR_DETAIL_SOURCES}
     ${BTHREAD_SOURCES}
     ${JSON2PB_SOURCES}
     ${MCPACK2PB_SOURCES}
     ${BRPC_SOURCES}
-    ${BRPC_DETAILS_SOURCES}
-    ${BRPC_BUILTIN_SOURCES}
-    ${BRPC_POLICY_SOURCES}
     ${PROTO_SRCS}
-    ${BRPC_PROTOS}
-    ${BRPC_POLICY_PROTOS}
     )
 
 add_subdirectory(src)
