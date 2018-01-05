@@ -1,0 +1,6 @@
+#ifndef  BUTIL_CONFIG_H
+#define  BUTIL_CONFIG_H
+
+#cmakedefine BRPC_WITH_GLOG @WITH_GLOG_VAL@
+
+#endif  // BUTIL_CONFIG_H

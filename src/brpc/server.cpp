@@ -15,6 +15,12 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 //          Rujie Jiang(jiangrujie@baidu.com)
 //          Zhangyi Chen(chenzhangyi01@baidu.com)
+#include <string>
+#include <vector>
+
+#include <cstdlib>
+#include <cstring>
+#include <cstdio>
 
 #include <wordexp.h>                                // wordexp
 #include <iomanip>
@@ -22,6 +28,7 @@
 #include <fcntl.h>                                  // O_CREAT
 #include <sys/stat.h>                               // mkdir
 #include <gflags/gflags.h>
+#include <google/protobuf/service.h>                // google::protobuf::Service
 #include <google/protobuf/descriptor.h>             // ServiceDescriptor
 #include "idl_options.pb.h"                         // option(idl_support)
 #include "bthread/unstable.h"                       // bthread_keytable_pool_init
@@ -71,6 +78,8 @@
 #include "brpc/rtmp.h"
 #include "brpc/builtin/common.h"               // GetProgramName
 #include "brpc/details/tcmalloc_extension.h"
+#include "brpc/service.h"
+#include "brpc/cmd_flags.h"
 
 inline std::ostream& operator<<(std::ostream& os, const timeval& tm) {
     const char old_fill = os.fill();
@@ -143,7 +152,8 @@ ServerOptions::ServerOptions()
     , has_builtin_services(true)
     , http_master_service(NULL)
     , health_reporter(NULL)
-    , rtmp_service(NULL) {
+    , rtmp_service(NULL)
+    , service_Validate_listener(NULL) {
     if (s_ncore > 0) {
         num_threads = s_ncore + 1;
     }
@@ -380,7 +390,8 @@ Server::Server(ProfilerLinker)
     , _last_start_time(0)
     , _derivative_thread(INVALID_BTHREAD)
     , _keytable_pool(NULL)
-    , _concurrency(0) {
+    , _concurrency(0)
+    , _tid(0)  {
     BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,
               Server_concurrency_must_be_aligned_by_cacheline);
 }
@@ -418,6 +429,63 @@ Server::~Server() {
         delete _options.auth;
         _options.auth = NULL;
     }
+
+    if (_tid) {
+        bthread_stop(_tid);
+        bthread_join(_tid, NULL);
+        _tid = 0;
+    }
+}
+int Server::EnableServiceCheck(){
+    int rc = bthread_start_urgent(&_tid, NULL, RunThis, this);
+    if (rc) {
+        LOG(ERROR) << "Fail to create bthread: " << berror(rc);
+        return -1;
+    }
+    return 0;
+}
+
+void* Server::RunThis(void* arg) {
+    static_cast<Server*>(arg)->RunServiceCheck();
+    return NULL;
+}
+
+
+void Server::RunServiceCheck(){
+    int checkIntervalSecs    = FLAGS_check_interval;
+    for(;;){
+        std::vector<std::string> validServiceNames;
+        // Check all business services
+        for (ServiceMap::const_iterator it = _fullname_service_map.begin(); 
+            it != _fullname_service_map.end(); ++it) {
+            const std::string & serviceFullName = it->first;
+            const ServiceProperty& serviceProperty = it->second;
+            if (!serviceProperty.is_user_service()) {  // Skip system inner service
+                continue;
+            }
+            google::protobuf::Service* service = serviceProperty.service;
+            BaseService *baseService = dynamic_cast<BaseService *>(service);
+            if(baseService == NULL){
+                continue;
+            }
+            if(!baseService->checkValid()){
+                continue;
+            }
+            validServiceNames.push_back(serviceFullName);
+        }
+        if(_options.service_Validate_listener){
+            _options.service_Validate_listener->onValidServices(validServiceNames);
+        }
+        if (bthread_usleep(std::max(checkIntervalSecs, 1) * 1000000L) < 0) {
+            if (errno == ESTOP) {
+                RPC_VLOG << "Quit RunServiceCheckThread=" << bthread_self();
+                return;
+            }
+            PLOG(FATAL) << "Fail to sleep";
+            return;
+        }
+    }
+
 }
 
 int Server::AddBuiltinServices() {
@@ -984,6 +1052,13 @@ int Server::StartInternal(const butil::ip_t& ip,
     // For trackme reporting
     SetTrackMeAddress(butil::EndPoint(butil::my_ip(), http_port));
     revert_server.release();
+
+    //By Kevin.XU
+    if(EnableServiceCheck() != 0){
+        LOG(ERROR) << "Fail to EnableServiceCheck";
+        return -1;
+    }
+
     return 0;
 }
 
