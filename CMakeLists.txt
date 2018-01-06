@@ -18,9 +18,7 @@ endif()
 option(WITH_GLOG "With glog" OFF)
 option(DEBUG "Print debug logs" OFF)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" OFF)
-option(BUILD_EXAMPLE "Whether to build examples" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
-option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
 
 set(WITH_GLOG_VAL "0")
 if(WITH_GLOG)
@@ -50,7 +48,6 @@ endif()
 
 include_directories(
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/example
     ${CMAKE_CURRENT_BINARY_DIR}
 )
 
@@ -284,9 +281,6 @@ set(SOURCES
     )
 
 add_subdirectory(src)
-if(BUILD_EXAMPLE)
-    add_subdirectory(example)
-endif()
 if(BUILD_UNIT_TESTS)
     add_subdirectory(test)
 endif()
