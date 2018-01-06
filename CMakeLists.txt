@@ -113,20 +113,6 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # for *.a
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
-file(GLOB PROTOS "${CMAKE_SOURCE_DIR}/src/*.proto")
-list(APPEND PROTO_FLAGS -I${CMAKE_CURRENT_BINARY_DIR})
-foreach(PROTO ${PROTOS})
-    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/${PROTO_WE}.pb.cc")
-    execute_process(
-        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src ${PROTO}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
-endforeach()
-
-file(GLOB BRPC_PROTOS "${CMAKE_SOURCE_DIR}/src/brpc/*.proto")
-file(GLOB BRPC_POLICY_PROTOS "${CMAKE_SOURCE_DIR}/src/brpc/policy/*.proto")
-
 # list all source files
 set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/third_party/dmg_fp/g_fmt.cc
@@ -245,17 +231,10 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/popen.cpp
     )
 
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/bvar BVAR_SOURCES)
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/bvar/detail BVAR_DETAIL_SOURCES)
-
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/bthread BTHREAD_SOURCES)
-
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/json2pb JSON2PB_SOURCES)
-
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/brpc BRPC_SOURCES)
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/brpc/details BRPC_DETAILS_SOURCES)
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/brpc/builtin BRPC_BUILTIN_SOURCES)
-aux_source_directory(${CMAKE_SOURCE_DIR}/src/brpc/policy BRPC_POLICY_SOURCES)
+file(GLOB_RECURSE BVAR_SOURCES "${CMAKE_SOURCE_DIR}/src/bvar/*.cpp")
+file(GLOB_RECURSE BTHREAD_SOURCES "${CMAKE_SOURCE_DIR}/src/bthread/*.cpp")
+file(GLOB_RECURSE JSON2PB_SOURCES "${CMAKE_SOURCE_DIR}/src/json2pb/*.cpp")
+file(GLOB_RECURSE BRPC_SOURCES "${CMAKE_SOURCE_DIR}/src/brpc/*.cpp")
 
 set(MCPACK2PB_SOURCES
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/field_type.cpp
@@ -264,20 +243,47 @@ set(MCPACK2PB_SOURCES
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/serializer.cpp
     )
 
+file(GLOB PROTOS "${CMAKE_SOURCE_DIR}/src/*.proto")
+list(APPEND PROTO_FLAGS -I${CMAKE_CURRENT_BINARY_DIR})
+foreach(PROTO ${PROTOS})
+    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
+    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/${PROTO_WE}.pb.cc")
+    execute_process(
+        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src ${PROTO}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    )
+endforeach()
+
+file(GLOB BRPC_PROTOS "src/brpc/*.proto")
+foreach(PROTO ${BRPC_PROTOS})
+    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
+    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/${PROTO_WE}.pb.cc")
+    execute_process(
+        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/ ${PROTO}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    )
+endforeach()
+
+file(GLOB BRPC_POLICY_PROTOS "src/brpc/policy/*.proto")
+foreach(PROTO ${BRPC_POLICY_PROTOS})
+    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
+    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/policy/${PROTO_WE}.pb.cc")
+    execute_process(
+        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/policy ${PROTO}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    )
+endforeach()
+
 set(SOURCES
     ${BVAR_SOURCES}
-    ${BVAR_DETAIL_SOURCES}
     ${BTHREAD_SOURCES}
     ${JSON2PB_SOURCES}
     ${MCPACK2PB_SOURCES}
     ${BRPC_SOURCES}
-    ${BRPC_DETAILS_SOURCES}
-    ${BRPC_BUILTIN_SOURCES}
-    ${BRPC_POLICY_SOURCES}
     ${PROTO_SRCS}
-    ${BRPC_PROTOS}
-    ${BRPC_POLICY_PROTOS}
     )
+
+message("SOURCES=${SOURCES}")
 
 add_subdirectory(src)
 if(BUILD_EXAMPLE)
