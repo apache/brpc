@@ -166,7 +166,7 @@ void PerfTest(Mutex* mutex,
     g_started = false;
     g_stopped = false;
     ThreadId threads[thread_num];
-    PerfArgs<Mutex> args[thread_num];
+    std::vector<PerfArgs<Mutex> > args(thread_num);
     for (int i = 0; i < thread_num; ++i) {
         args[i].mutex = mutex;
         create_fn(&threads[i], NULL, add_with_mutex<Mutex>, &args[i]);
