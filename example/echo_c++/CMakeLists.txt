@@ -3,32 +3,33 @@ project(echo_c++ C CXX)
 
 # if you want to specify the path of brpc header and lib,
 # set the following two variables.
-#set(CMAKE_INCLUDE_PATH /home/zjs/gitrepo/brpc/build)
-#set(CMAKE_LIBRARY_PATH /home/zjs/gitrepo/brpc/build/lib)
+#set(CMAKE_INCLUDE_PATH /path/to/include)
+#set(CMAKE_LIBRARY_PATH /path/to/lib)
 
 option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
-
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FindThreads)
 include(FindProtobuf)
 protobuf_generate_cpp(PROTO_SRC PROTO_HEADER echo.proto)
-get_filename_component(HEADER_DIR ${PROTO_HEADER} DIRECTORY)
-include_directories(${HEADER_DIR})
+# include PROTO_HEADER
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-find_path(BRPC_HEADER NAMES brpc/server.h)
+find_path(BRPC_INCLUDE_PATH NAMES brpc/server.h)
 if(EXAMPLE_LINK_SO)
     find_library(BRPC_LIB NAMES brpc)
 else()
     find_library(BRPC_LIB NAMES libbrpc_static.a brpc)
 endif()
-include_directories(${BRPC_HEADER})
-message("BRPC_HEADER=${BRPC_HEADER}")
-message("BRPC_LIB=${BRPC_LIB}")
+if((NOT BRPC_INCLUDE_PATH) OR (NOT BRPC_LIB))
+    message(FATAL_ERROR "Fail to find brpc")
+endif()
+include_directories(${BRPC_INCLUDE_PATH})
 
 find_path(GFLAGS_INCLUDE_PATH gflags/gflags.h)
 find_library(GFLAGS_LIBRARY NAMES gflags libgflags)
+if((NOT GFLAGS_INCLUDE_PATH) OR (NOT GFLAGS_LIBRARY))
+    message(FATAL_ERROR "Fail to find gflags")
+endif()
 include_directories(${GFLAGS_INCLUDE_PATH})
 
 execute_process(
@@ -44,9 +45,24 @@ endif()
 set(CMAKE_CPP_FLAGS "-DGFLAGS_NS=${GFLAGS_NS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -DNDEBUG -O2 -D__const__= -pipe -W -Wall -Wno-unused-parameter -fPIC -fno-omit-frame-pointer")
 
-find_path(LEVELDB_HEADER NAMES leveldb/db.h)
+if(CMAKE_VERSION VERSION_LESS "3.1.3")
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11")
+    endif()
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11")
+    endif()
+else()
+    set(CMAKE_CXX_STANDARD 11)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+endif()
+
+find_path(LEVELDB_INCLUDE_PATH NAMES leveldb/db.h)
 find_library(LEVELDB_LIB NAMES leveldb)
-include_directories(${LEVELDB_HEADER})
+if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
+    message(FATAL_ERROR "Fail to find leveldb")
+endif()
+include_directories(${LEVELDB_INCLUDE_PATH})
 
 add_executable(echo_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
 add_executable(echo_server server.cpp ${PROTO_SRC} ${PROTO_HEADER})
