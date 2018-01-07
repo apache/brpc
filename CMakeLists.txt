@@ -91,21 +91,30 @@ endif()
 include(FindProtobuf)
 include(FindThreads)
 
-find_path(LEVELDB_HEADER NAMES leveldb/db.h)
+find_path(LEVELDB_INCLUDE_PATH NAMES leveldb/db.h)
 find_library(LEVELDB_LIB NAMES leveldb)
+if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
+    message(FATAL_ERROR "Fail to find leveldb")
+endif()
 
 if(WITH_GLOG)
-    find_path(GLOG_HEADER NAMES glog/logging.h)
+    find_path(GLOG_INCLUDE_PATH NAMES glog/logging.h)
     find_library(GLOG_LIB NAMES glog)
-    include_directories(${GLOG_HEADER})
+    if((NOT GLOG_INCLUDE_PATH) OR (NOT GLOG_LIB))
+        message(FATAL_ERROR "Fail to find glog")
+    endif()
+    include_directories(${GLOG_INCLUDE_PATH})
 endif()
 
 find_library(PROTOC_LIB NAMES protoc)
+if(NOT PROTOC_LIB)
+    message(FATAL_ERROR "Fail to find protoc lib")
+endif()
 
 include_directories(
         ${GFLAGS_INCLUDE_PATH}
         ${PROTOBUF_INCLUDE_DIRS}
-        ${LEVELDB_HEADER}
+        ${LEVELDB_INCLUDE_PATH}
         )
 
 set(DYNAMIC_LIB
