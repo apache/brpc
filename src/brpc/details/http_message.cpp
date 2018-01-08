@@ -116,10 +116,11 @@ int HttpMessage::on_header_value(http_parser *parser,
                     << http_message->_url << " HTTP/" << parser->http_major
                     << '.' << parser->http_minor;
             } else {
+                // NOTE: http_message->header().status_code() may not be set yet.
                 *vs << "[HTTP RESPONSE @" << butil::my_ip() << "]\n< HTTP/"
                     << parser->http_major
                     << '.' << parser->http_minor << ' ' << parser->status_code
-                    << ' ' << http_message->header().reason_phrase();
+                    << ' ' << HttpReasonPhrase(parser->status_code);
             }
         }
         if (first_entry) {
@@ -215,7 +216,11 @@ int HttpMessage::OnBody(const char *at, const size_t length) {
             // only add prefix at first entry.
             *_vmsgbuilder << "\n<\n";
         }
-        if (_read_body_progressively) {
+        if (_read_body_progressively &&
+            // If the status_code is non-OK, the body is likely to be the error
+            // description which is very helpful for debugging. Otherwise
+            // the body is probably streaming data which is too long to print.
+            header().status_code() == HTTP_STATUS_OK) {
             std::cerr << _vmsgbuilder->buf() << std::endl;
             delete _vmsgbuilder;
             _vmsgbuilder = NULL;

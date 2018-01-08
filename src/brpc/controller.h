@@ -333,7 +333,7 @@ public:
     // Tell RPC to close the connection instead of sending back response.
     // If this controller was not SetFailed() before, ErrorCode() will be
     // set to ECLOSE.
-    // Notice that the actual closing does not take place immediately.
+    // NOTE: the underlying connection is not closed immediately.
     void CloseConnection(const char* reason_fmt, ...);
 
     // True if CloseConnection() was called.
@@ -384,6 +384,10 @@ public:
     
     // Causes Failed() to return true on the client side.  "reason" will be
     // incorporated into the message returned by ErrorText().
+    // NOTE: Change http_response().status_code() according to `error_code'
+    // as well if the protocol is HTTP. If you want to overwrite the 
+    // status_code, call http_response().set_status_code() after SetFailed()
+    // (rather than before SetFailed)
     void SetFailed(const std::string& reason);
     void SetFailed(int error_code, const char* reason_fmt, ...)
         __attribute__ ((__format__ (__printf__, 3, 4)));

@@ -47,9 +47,9 @@ void IdsService::default_method(::google::protobuf::RpcController* cntl_base,
         if (*endptr == '\0' || *endptr == '/') {
             bthread::id_status(id, os);
         } else {
-            cntl->http_response().set_status_code(HTTP_STATUS_NOT_FOUND);
             cntl->SetFailed(ENOMETHOD, "path=%s is not a bthread_id",
                             constraint.c_str());
+            return;
         }
     }
     os.move_to(cntl->response_attachment());

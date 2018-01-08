@@ -486,6 +486,7 @@ TEST_F(ServerTest, missing_required_fields) {
     http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     ASSERT_TRUE(cntl.Failed());
     ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    LOG(INFO) << cntl.ErrorText();
     ASSERT_EQ(brpc::HTTP_STATUS_BAD_REQUEST, cntl.http_response().status_code());
     ASSERT_EQ(0, service_v1.ncalled.load());
 

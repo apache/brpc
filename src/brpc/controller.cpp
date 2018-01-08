@@ -355,6 +355,30 @@ void Controller::AppendServerIdentiy() {
     }
 }
 
+// Defined in http_rpc_protocol.cpp
+namespace policy {
+int ErrorCode2StatusCode(int error_code);
+}
+
+inline void UpdateResponseHeader(Controller* cntl) {
+    DCHECK(cntl->Failed());
+    if (cntl->request_protocol() == PROTOCOL_HTTP) {
+        if (cntl->ErrorCode() != EHTTP) {
+            // We assume that status code is already set along with EHTTP.
+            cntl->http_response().set_status_code(
+                policy::ErrorCode2StatusCode(cntl->ErrorCode()));
+        }
+        if (cntl->server() != NULL) {
+            // Override HTTP body at server-side to conduct error text
+            // to the client.
+            // The client-side should preserve body which may be a piece
+            // of useable data rather than error text.
+            cntl->response_attachment().clear();
+            cntl->response_attachment().append(cntl->ErrorText());
+        }
+    }
+}
+
 void Controller::SetFailed(const std::string& reason) {
     _error_code = -1;
     if (!_error_text.empty()) {
@@ -370,6 +394,7 @@ void Controller::SetFailed(const std::string& reason) {
         _span->set_error_code(_error_code);
         _span->Annotate(reason);
     }
+    UpdateResponseHeader(this);
 }
 
 void Controller::SetFailed(int error_code, const char* reason_fmt, ...) {
@@ -398,6 +423,7 @@ void Controller::SetFailed(int error_code, const char* reason_fmt, ...) {
         _span->set_error_code(_error_code);
         _span->AnnotateCStr(_error_text.c_str() + old_size, 0);
     }
+    UpdateResponseHeader(this);
 }
 
 void Controller::CloseConnection(const char* reason_fmt, ...) {
@@ -425,6 +451,7 @@ void Controller::CloseConnection(const char* reason_fmt, ...) {
         _span->set_error_code(_error_code);
         _span->AnnotateCStr(_error_text.c_str() + old_size, 0);
     }
+    UpdateResponseHeader(this);
 }
 
 bool Controller::IsCanceled() const {
