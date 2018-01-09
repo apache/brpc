@@ -345,7 +345,7 @@ TEST_F(StreamingRpcTest, idle_timeout) {
     test::EchoService_Stub stub(&channel);
     stub.Echo(&cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText() << " request_stream=" << request_stream;
-    usleep(20 * 1000 + 800);
+    usleep(10 * 1000 + 800);
     ASSERT_EQ(0, brpc::StreamClose(request_stream));
     while (!handler.stopped()) {
         usleep(100);
