@@ -312,21 +312,18 @@ endif()
 
 file(COPY ${CMAKE_CURRENT_BINARY_DIR}/idl_options.pb.h
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include)
-
 file(COPY ${CMAKE_CURRENT_BINARY_DIR}/brpc/
         DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include/brpc/
         FILES_MATCHING 
         PATTERN "*.h"
         PATTERN "*.hpp"
         )
-
 file(COPY ${CMAKE_SOURCE_DIR}/src/
         DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include/
         FILES_MATCHING
         PATTERN "*.h"
         PATTERN "*.hpp"
         )
-
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/
         DESTINATION include
         FILES_MATCHING
