@@ -131,9 +131,12 @@ set(DYNAMIC_LIB
     )
 
 # for *.so
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 # for *.a
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
+
+# for protoc-gen-mcpack
+set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/output/bin)
 
 # list all source files
 set(BUTIL_SOURCES
@@ -309,6 +312,19 @@ add_subdirectory(src)
 if(BUILD_UNIT_TESTS)
     add_subdirectory(test)
 endif()
+
+#[[
+file(COPY brpc/options.pb.h DESTINATION CMAKE_CURRENT_BINARY_DIR}/output/include)
+file(GLOB_RECURSE PUBLIC_HEADERS "*.h")
+message("PUBLIC_HEADERS=${PUBLIC_HEADERS}")
+
+foreach(HEADER ${PUBLIC_HEADERS})
+    get_filename_component(HEADER_PATH ${HEADER} PATH)
+    file(COPY ${HEADER} DESTINATION 
+    message("HEADER_PATH=${HEADER_PATH}")
+endforeach()
+file(COPY ${PUBLIC_HEADERS} DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include)
+]]
 
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/
         DESTINATION include
