@@ -1,12 +1,14 @@
 cmake_minimum_required(VERSION 2.8.10)
 project(backup_request_c++ C CXX)
 
-# if you want to specify the path of brpc header and lib,
-# set the following two variables.
-#set(CMAKE_INCLUDE_PATH /path/to/include)
-#set(CMAKE_LIBRARY_PATH /path/to/lib)
-
 option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
+
+execute_process(
+    COMMAND bash -c "find ${CMAKE_SOURCE_DIR}/../.. -type d -name \"include\" | xargs dirname | tr -d '\n'"
+    OUTPUT_VARIABLE OUTPUT_PATH
+)
+
+set(CMAKE_PREFIX_PATH ${OUTPUT_PATH})
 
 include(FindThreads)
 include(FindProtobuf)

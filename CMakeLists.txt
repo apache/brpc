@@ -135,9 +135,6 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 # for *.a
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 
-# for protoc-gen-mcpack
-set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/output/bin)
-
 # list all source files
 set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/third_party/dmg_fp/g_fmt.cc
@@ -313,22 +310,26 @@ if(BUILD_UNIT_TESTS)
     add_subdirectory(test)
 endif()
 
-#[[
-file(COPY brpc/options.pb.h DESTINATION CMAKE_CURRENT_BINARY_DIR}/output/include)
-file(GLOB_RECURSE PUBLIC_HEADERS "*.h")
-message("PUBLIC_HEADERS=${PUBLIC_HEADERS}")
+file(COPY ${CMAKE_CURRENT_BINARY_DIR}/idl_options.pb.h
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include)
 
-foreach(HEADER ${PUBLIC_HEADERS})
-    get_filename_component(HEADER_PATH ${HEADER} PATH)
-    file(COPY ${HEADER} DESTINATION 
-    message("HEADER_PATH=${HEADER_PATH}")
-endforeach()
-file(COPY ${PUBLIC_HEADERS} DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include)
-]]
+file(COPY ${CMAKE_CURRENT_BINARY_DIR}/brpc/
+        DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include/brpc/
+        FILES_MATCHING 
+        PATTERN "*.h"
+        PATTERN "*.hpp"
+        )
+
+file(COPY ${CMAKE_SOURCE_DIR}/src/
+        DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include/
+        FILES_MATCHING
+        PATTERN "*.h"
+        PATTERN "*.hpp"
+        )
 
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/
         DESTINATION include
-        FILES_MATCHING 
+        FILES_MATCHING
         PATTERN "*.h"
         PATTERN "*.hpp"
         )
