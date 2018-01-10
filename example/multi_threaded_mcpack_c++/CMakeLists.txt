@@ -1,16 +1,14 @@
 cmake_minimum_required(VERSION 2.8.10)
 project(multi_threaded_mcpack_c++ C CXX)
 
-# if you want to specify the path of brpc header and lib,
-# set the following two variables.
-#set(CMAKE_INCLUDE_PATH /path/to/include)
-#set(CMAKE_LIBRARY_PATH /path/to/lib)
-
 option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
-set(PROTOC_GEN_MCPACK_PATH "" CACHE STRING "the path to protoc_gen_mcpack")
-if("${PROTOC_GEN_MCPACK_PATH}" STREQUAL "")
-    message(FATAL_ERROR "Please set PROTOC_GEN_MCPACK_PATH variable(-DPROTOC_GEN_MCPACK_PATH=<value>).")
-endif()
+
+execute_process(
+    COMMAND bash -c "find ${CMAKE_SOURCE_DIR}/../.. -type d -name \"include\" | xargs dirname | tr -d '\n'"
+    OUTPUT_VARIABLE OUTPUT_PATH
+)
+
+set(CMAKE_PREFIX_PATH ${OUTPUT_PATH})
 
 include(FindThreads)
 include(FindProtobuf)
@@ -84,7 +82,7 @@ set(DYNAMIC_LIB
     )
 
 execute_process(
-    COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR} --plugin=protoc-gen-mcpack=${PROTOC_GEN_MCPACK_PATH}/protoc-gen-mcpack --mcpack_out=${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_SOURCE_DIR}/echo.proto
+    COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR} --plugin=protoc-gen-mcpack=${OUTPUT_PATH}/bin/protoc-gen-mcpack --mcpack_out=${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_SOURCE_DIR}/echo.proto
 	WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 

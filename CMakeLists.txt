@@ -131,9 +131,9 @@ set(DYNAMIC_LIB
     )
 
 # for *.so
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 # for *.a
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 
 # list all source files
 set(BUTIL_SOURCES
@@ -310,9 +310,23 @@ if(BUILD_UNIT_TESTS)
     add_subdirectory(test)
 endif()
 
+file(COPY ${CMAKE_CURRENT_BINARY_DIR}/idl_options.pb.h
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include)
+file(COPY ${CMAKE_CURRENT_BINARY_DIR}/brpc/
+        DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include/brpc/
+        FILES_MATCHING 
+        PATTERN "*.h"
+        PATTERN "*.hpp"
+        )
+file(COPY ${CMAKE_SOURCE_DIR}/src/
+        DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include/
+        FILES_MATCHING
+        PATTERN "*.h"
+        PATTERN "*.hpp"
+        )
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/
         DESTINATION include
-        FILES_MATCHING 
+        FILES_MATCHING
         PATTERN "*.h"
         PATTERN "*.hpp"
         )
