@@ -309,6 +309,7 @@ add_subdirectory(src)
 if(BUILD_UNIT_TESTS)
     add_subdirectory(test)
 endif()
+add_subdirectory(tools)
 
 file(COPY ${CMAKE_CURRENT_BINARY_DIR}/idl_options.pb.h
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include)
