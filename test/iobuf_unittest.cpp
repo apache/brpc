@@ -17,7 +17,11 @@
 #include <butil/fd_guard.h>
 #include <butil/errno.h>
 #include <butil/fast_rand.h>
+#if BAZEL_TEST
+#include "test/iobuf.pb.h"
+#else
 #include "iobuf.pb.h"
+#endif   // BAZEL_TEST
 
 namespace butil {
 namespace iobuf {

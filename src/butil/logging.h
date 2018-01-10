@@ -22,6 +22,7 @@
 
 #include <butil/config.h>   // BRPC_WITH_GLOG
 
+#include <inttypes.h>
 #include <string>
 #include <cstring>
 #include <sstream>
