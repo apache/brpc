@@ -18,9 +18,7 @@ endif()
 option(WITH_GLOG "With glog" OFF)
 option(DEBUG "Print debug logs" OFF)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" OFF)
-option(BUILD_EXAMPLE "Whether to build examples" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
-option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
 
 set(WITH_GLOG_VAL "0")
 if(WITH_GLOG)
@@ -50,7 +48,6 @@ endif()
 
 include_directories(
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/example
     ${CMAKE_CURRENT_BINARY_DIR}
 )
 
@@ -58,14 +55,28 @@ execute_process(
     COMMAND bash -c "git rev-parse --short HEAD | tr -d '\n'"
     OUTPUT_VARIABLE BRPC_REVISION
 )
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_CPP_FLAGS "-DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\\\"${BRPC_REVISION}\\\" -D__STRICT_ANSI__")
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEBUG_SYMBOL}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
 set(CMAKE_C_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer")
+
+macro(use_cxx11)
+if(CMAKE_VERSION VERSION_LESS "3.1.3")
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+    endif()
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+    endif()
+else()
+    set(CMAKE_CXX_STANDARD 11)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+endif()
+endmacro(use_cxx11)
+
+use_cxx11()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     #required by butil/crc32.cc to boost performance for 10x
@@ -78,22 +89,32 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif()
 
 include(FindProtobuf)
+include(FindThreads)
 
-find_path(LEVELDB_HEADER NAMES leveldb/db.h)
+find_path(LEVELDB_INCLUDE_PATH NAMES leveldb/db.h)
 find_library(LEVELDB_LIB NAMES leveldb)
+if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
+    message(FATAL_ERROR "Fail to find leveldb")
+endif()
 
 if(WITH_GLOG)
-    find_path(GLOG_HEADER NAMES glog/logging.h)
+    find_path(GLOG_INCLUDE_PATH NAMES glog/logging.h)
     find_library(GLOG_LIB NAMES glog)
-    include_directories(${GLOG_HEADER})
+    if((NOT GLOG_INCLUDE_PATH) OR (NOT GLOG_LIB))
+        message(FATAL_ERROR "Fail to find glog")
+    endif()
+    include_directories(${GLOG_INCLUDE_PATH})
 endif()
 
 find_library(PROTOC_LIB NAMES protoc)
+if(NOT PROTOC_LIB)
+    message(FATAL_ERROR "Fail to find protoc lib")
+endif()
 
 include_directories(
         ${GFLAGS_INCLUDE_PATH}
         ${PROTOBUF_INCLUDE_DIRS}
-        ${LEVELDB_HEADER}
+        ${LEVELDB_INCLUDE_PATH}
         )
 
 set(DYNAMIC_LIB
@@ -101,6 +122,7 @@ set(DYNAMIC_LIB
     ${PROTOBUF_LIBRARIES}
     ${LEVELDB_LIB}
     ${PROTOC_LIB}
+    ${CMAKE_THREAD_LIBS_INIT}
     rt
     ssl
     crypto
@@ -109,9 +131,9 @@ set(DYNAMIC_LIB
     )
 
 # for *.so
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 # for *.a
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 
 # list all source files
 set(BUTIL_SOURCES
@@ -283,19 +305,28 @@ set(SOURCES
     ${PROTO_SRCS}
     )
 
-message("SOURCES=${SOURCES}")
-
 add_subdirectory(src)
-if(BUILD_EXAMPLE)
-    add_subdirectory(example)
-endif()
 if(BUILD_UNIT_TESTS)
     add_subdirectory(test)
 endif()
 
+file(COPY ${CMAKE_CURRENT_BINARY_DIR}/idl_options.pb.h
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include)
+file(COPY ${CMAKE_CURRENT_BINARY_DIR}/brpc/
+        DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include/brpc/
+        FILES_MATCHING 
+        PATTERN "*.h"
+        PATTERN "*.hpp"
+        )
+file(COPY ${CMAKE_SOURCE_DIR}/src/
+        DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include/
+        FILES_MATCHING
+        PATTERN "*.h"
+        PATTERN "*.hpp"
+        )
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/
         DESTINATION include
-        FILES_MATCHING 
+        FILES_MATCHING
         PATTERN "*.h"
         PATTERN "*.hpp"
         )

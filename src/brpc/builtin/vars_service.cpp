@@ -318,11 +318,9 @@ void VarsService::default_method(::google::protobuf::RpcController* cntl_base,
             cntl->http_response().set_content_type("application/json");
             os.move_to(cntl->response_attachment());
         } else if (rc < 0) {
-            cntl->http_response().set_status_code(HTTP_STATUS_NOT_FOUND);
             cntl->SetFailed(ENOMETHOD, "Fail to find any bvar by `%s'",
                             cntl->http_request().unresolved_path().c_str());
         } else {
-            cntl->http_response().set_status_code(HTTP_STATUS_NOT_FOUND);
             cntl->SetFailed(ENODATA, "`%s' does not have value series",
                             cntl->http_request().unresolved_path().c_str());
         }
@@ -419,7 +417,6 @@ void VarsService::default_method(::google::protobuf::RpcController* cntl_base,
         return;
     }
     if (!options.white_wildcards.empty() && ndump == 0) {
-        cntl->http_response().set_status_code(HTTP_STATUS_NOT_FOUND);
         cntl->SetFailed(ENOMETHOD, "Fail to find any bvar by `%s'",
                         options.white_wildcards.c_str());
     }

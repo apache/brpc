@@ -43,7 +43,6 @@ void SocketsService::default_method(::google::protobuf::RpcController* cntl_base
         if (*endptr == '\0' || *endptr == '/') {
             Socket::DebugSocket(os, sid);
         } else {
-            cntl->http_response().set_status_code(HTTP_STATUS_NOT_FOUND);
             cntl->SetFailed(ENOMETHOD, "path=%s is not a SocketId",
                             constraint.c_str());
         }

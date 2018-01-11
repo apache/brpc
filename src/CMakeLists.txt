@@ -24,6 +24,9 @@ target_link_libraries(brpc ${DYNAMIC_LIB})
 if(WITH_GLOG)
     target_link_libraries(brpc ${GLOG_LIB})
 endif()
+
+# for protoc-gen-mcpack
+set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/output/bin)
     
 set(protoc_gen_mcpack_SOURCES
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/generator.cpp

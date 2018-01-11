@@ -372,7 +372,6 @@ static void DisplayResult(Controller* cntl,
             if (use_html) {
                 resp.append("</pre></body></html>");
             }
-            cntl->http_response().set_status_code(HTTP_STATUS_OK);
             return;
         }
     }
@@ -481,7 +480,6 @@ static void DisplayResult(Controller* cntl,
     if (use_html) {
         resp.append("</pre></body></html>");
     }
-    cntl->http_response().set_status_code(HTTP_STATUS_OK);
 }
 
 static void DoProfiling(ProfilingType type,

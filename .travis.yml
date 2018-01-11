@@ -9,6 +9,11 @@ compiler:
 env:
 - PURPOSE=compile
 - PURPOSE=unittest
+- PURPOSE=compile-with-bazel
+
+before_install:
+- wget --no-clobber https://github.com/bazelbuild/bazel/releases/download/0.8.1/bazel_0.8.1-linux-x86_64.deb
+- sudo dpkg -i bazel_0.8.1-linux-x86_64.deb
 
 install:
 - sudo apt-get install -qq realpath libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev

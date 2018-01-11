@@ -251,6 +251,9 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         // in correlation_id. negative max_retry causes undefined behavior.
         cntl->set_max_retry(0);
     }
+    // HTTP needs this field to be set before any SetFailed()
+    cntl->_request_protocol = _options.protocol;
+    cntl->_preferred_index = _preferred_index;
     cntl->_retry_policy = _options.retry_policy;
     const CallId correlation_id = cntl->call_id();
     const int rc = bthread_id_lock_and_reset_range(
@@ -321,8 +324,6 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         cntl->_single_server_id = _server_id;
         cntl->_remote_side = _server_address;
     }
-    cntl->_request_protocol = _options.protocol;
-    cntl->_preferred_index = _preferred_index;
 
     // Share the lb with controller.
     cntl->_lb = _lb;
