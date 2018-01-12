@@ -23,10 +23,6 @@ echo "build combination: PURPOSE=$PURPOSE CXX=$CXX CC=$CC"
 
 if [ "$PURPOSE" = "compile-with-bazel" ]; then
     runcmd "bazel build -j 12 -c opt --copt -DHAVE_ZLIB=1 //..."
-    runcmd "bazel test -j 12 -c opt --copt -DHAVE_ZLIB=1 --define=unittest=true //..."
-    # Build with glog
-    runcmd "bazel build -j 12 -c opt --copt -DHAVE_ZLIB=1 --define=with_glog=true //..."
-    runcmd "bazel test -j 12 -c opt --copt -DHAVE_ZLIB=1 --define=with_glog=true  --define=unittest=true //..."
     exit 0
 fi
 
