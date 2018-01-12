@@ -301,9 +301,9 @@ void InputMessenger::OnNewMessages(Socket* m) {
                     if (handlers[index].verify(msg.get())) {
                         m->SetAuthentication(0);
                     } else {
-                        m->SetAuthentication(EAUTH);
+                        m->SetAuthentication(ERPCAUTH);
                         LOG(WARNING) << "Fail to authenticate " << *m;
-                        m->SetFailed(EAUTH, "Fail to authenticate %s",
+                        m->SetFailed(ERPCAUTH, "Fail to authenticate %s",
                                      m->description().c_str());
                         return;
                     }

@@ -133,7 +133,7 @@ extern "C" {
 int bthread_start_urgent(bthread_t* __restrict tid,
                          const bthread_attr_t* __restrict attr,
                          void * (*fn)(void*),
-                         void* __restrict arg) __THROW {
+                         void* __restrict arg) {
     bthread::TaskGroup* g = bthread::tls_task_group;
     if (g) {
         // start from worker
@@ -145,7 +145,7 @@ int bthread_start_urgent(bthread_t* __restrict tid,
 int bthread_start_background(bthread_t* __restrict tid,
                              const bthread_attr_t* __restrict attr,
                              void * (*fn)(void*),
-                             void* __restrict arg) __THROW {
+                             void* __restrict arg) {
     bthread::TaskGroup* g = bthread::tls_task_group;
     if (g) {
         // start from worker
@@ -154,7 +154,7 @@ int bthread_start_background(bthread_t* __restrict tid,
     return bthread::start_from_non_worker(tid, attr, fn, arg);
 }
 
-void bthread_flush() __THROW {
+void bthread_flush() {
     bthread::TaskGroup* g = bthread::tls_task_group;
     if (g) {
         return g->flush_nosignal_tasks();
@@ -167,20 +167,20 @@ void bthread_flush() __THROW {
     }
 }
 
-int bthread_interrupt(bthread_t tid) __THROW {
+int bthread_interrupt(bthread_t tid) {
     return bthread::TaskGroup::interrupt(tid, bthread::get_task_control());
 }
 
-int bthread_stop(bthread_t tid) __THROW {
+int bthread_stop(bthread_t tid) {
     bthread::TaskGroup::set_stopped(tid);
     return bthread_interrupt(tid);
 }
 
-int bthread_stopped(bthread_t tid) __THROW {
+int bthread_stopped(bthread_t tid) {
     return (int)bthread::TaskGroup::is_stopped(tid);
 }
 
-bthread_t bthread_self(void) __THROW {
+bthread_t bthread_self(void) {
     bthread::TaskGroup* g = bthread::tls_task_group;
     // note: return 0 for main tasks now, which include main thread and
     // all work threads. So that we can identify main tasks from logs
@@ -191,7 +191,7 @@ bthread_t bthread_self(void) __THROW {
     return INVALID_BTHREAD;
 }
 
-int bthread_equal(bthread_t t1, bthread_t t2) __THROW {
+int bthread_equal(bthread_t t1, bthread_t t2) {
     return t1 == t2;
 }
 
@@ -204,28 +204,28 @@ void bthread_exit(void* retval) {
     }
 }
 
-int bthread_join(bthread_t tid, void** thread_return) __THROW {
+int bthread_join(bthread_t tid, void** thread_return) {
     return bthread::TaskGroup::join(tid, thread_return);
 }
 
-int bthread_attr_init(bthread_attr_t* a) __THROW {
+int bthread_attr_init(bthread_attr_t* a) {
     *a = BTHREAD_ATTR_NORMAL;
     return 0;
 }
 
-int bthread_attr_destroy(bthread_attr_t*) __THROW {
+int bthread_attr_destroy(bthread_attr_t*) {
     return 0;
 }
 
-int bthread_getattr(bthread_t tid, bthread_attr_t* attr) __THROW {
+int bthread_getattr(bthread_t tid, bthread_attr_t* attr) {
     return bthread::TaskGroup::get_attr(tid, attr);
 }
 
-int bthread_getconcurrency(void) __THROW {
+int bthread_getconcurrency(void) {
     return bthread::FLAGS_bthread_concurrency;
 }
 
-int bthread_setconcurrency(int num) __THROW {
+int bthread_setconcurrency(int num) {
     if (num < BTHREAD_MIN_CONCURRENCY || num > BTHREAD_MAX_CONCURRENCY) {
         LOG(ERROR) << "Invalid concurrency=" << num;
         return EINVAL;
@@ -264,7 +264,7 @@ int bthread_setconcurrency(int num) __THROW {
     return (num == bthread::FLAGS_bthread_concurrency ? 0 : EPERM);
 }
 
-int bthread_about_to_quit() __THROW {
+int bthread_about_to_quit() {
     bthread::TaskGroup* g = bthread::tls_task_group;
     if (g != NULL) {
         g->current_task()->about_to_quit = true;
@@ -274,7 +274,7 @@ int bthread_about_to_quit() __THROW {
 }
 
 int bthread_timer_add(bthread_timer_t* id, timespec abstime,
-                      void (*on_timer)(void*), void* arg) __THROW {
+                      void (*on_timer)(void*), void* arg) {
     bthread::TaskControl* c = bthread::get_or_new_task_control();
     if (c == NULL) {
         return ENOMEM;
@@ -291,7 +291,7 @@ int bthread_timer_add(bthread_timer_t* id, timespec abstime,
     return ESTOP;
 }
 
-int bthread_timer_del(bthread_timer_t id) __THROW {
+int bthread_timer_del(bthread_timer_t id) {
     bthread::TaskControl* c = bthread::get_task_control();
     if (c != NULL) {
         bthread::TimerThread* tt = bthread::get_global_timer_thread();
@@ -306,7 +306,7 @@ int bthread_timer_del(bthread_timer_t id) __THROW {
     return EINVAL;
 }
 
-int bthread_usleep(uint64_t microseconds) __THROW {
+int bthread_usleep(uint64_t microseconds) {
     bthread::TaskGroup* g = bthread::tls_task_group;
     if (NULL != g && !g->is_current_pthread_task()) {
         return bthread::TaskGroup::usleep(&g, microseconds);
@@ -314,16 +314,17 @@ int bthread_usleep(uint64_t microseconds) __THROW {
     return ::usleep(microseconds);
 }
 
-int bthread_yield(void) __THROW {
+int bthread_yield(void) {
     bthread::TaskGroup* g = bthread::tls_task_group;
     if (NULL != g && !g->is_current_pthread_task()) {
         bthread::TaskGroup::yield(&g);
         return 0;
     }
-    return pthread_yield();
+    // pthread_yield is not available on MAC
+    return sched_yield();
 }
 
-int bthread_set_worker_startfn(void (*start_fn)()) __THROW {
+int bthread_set_worker_startfn(void (*start_fn)()) {
     if (start_fn == NULL) {
         return EINVAL;
     }
@@ -331,7 +332,7 @@ int bthread_set_worker_startfn(void (*start_fn)()) __THROW {
     return 0;
 }
 
-void bthread_stop_world() __THROW {
+void bthread_stop_world() {
     bthread::TaskControl* c = bthread::get_task_control();
     if (c != NULL) {
         c->stop_and_join();
@@ -340,7 +341,7 @@ void bthread_stop_world() __THROW {
 
 int bthread_list_init(bthread_list_t* list,
                       unsigned /*size*/,
-                      unsigned /*conflict_size*/) __THROW {
+                      unsigned /*conflict_size*/) {
     list->impl = new (std::nothrow) bthread::TidList;
     if (NULL == list->impl) {
         return ENOMEM;
@@ -353,19 +354,19 @@ int bthread_list_init(bthread_list_t* list,
     return 0;
 }
 
-void bthread_list_destroy(bthread_list_t* list) __THROW {
+void bthread_list_destroy(bthread_list_t* list) {
     delete static_cast<bthread::TidList*>(list->impl);
     list->impl = NULL;
 }
 
-int bthread_list_add(bthread_list_t* list, bthread_t id) __THROW {
+int bthread_list_add(bthread_list_t* list, bthread_t id) {
     if (list->impl == NULL) {
         return EINVAL;
     }
     return static_cast<bthread::TidList*>(list->impl)->add(id);
 }
 
-int bthread_list_stop(bthread_list_t* list) __THROW {
+int bthread_list_stop(bthread_list_t* list) {
     if (list->impl == NULL) {
         return EINVAL;
     }
@@ -373,7 +374,7 @@ int bthread_list_stop(bthread_list_t* list) __THROW {
     return 0;
 }
 
-int bthread_list_join(bthread_list_t* list) __THROW {
+int bthread_list_join(bthread_list_t* list) {
     if (list->impl == NULL) {
         return EINVAL;
     }

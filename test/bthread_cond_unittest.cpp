@@ -115,7 +115,7 @@ TEST(CondTest, sanity) {
             << "bthread=" << it->first
             << " count=" << it->second
             << " avg=" << avg_count;
-        printf("%lu wakes up %d times\n", it->first, it->second);
+        printf("%" PRId64 " wakes up %d times\n", it->first, it->second);
     }
 
     bthread_cond_destroy(&a.c);

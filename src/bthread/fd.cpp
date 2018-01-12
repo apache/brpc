@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Thu Aug  7 18:56:27 CST 2014
 
+#include "butil/compat.h"
 #include <new>                                   // std::nothrow
-#include <sys/epoll.h>                           // epoll_*
 #include <sys/poll.h>                            // poll()
 #include "butil/atomicops.h"
 #include "butil/time.h"
@@ -420,7 +420,7 @@ int pthread_fd_wait(int fd, unsigned epoll_events,
 
 extern "C" {
 
-int bthread_fd_wait(int fd, unsigned epoll_events) __THROW {
+int bthread_fd_wait(int fd, unsigned epoll_events) {
     if (fd < 0) {
         errno = EINVAL;
         return -1;
@@ -434,7 +434,7 @@ int bthread_fd_wait(int fd, unsigned epoll_events) __THROW {
 }
 
 int bthread_fd_timedwait(int fd, unsigned epoll_events,
-                         const timespec* abstime) __THROW {
+                         const timespec* abstime) {
     if (NULL == abstime) {
         return bthread_fd_wait(fd, epoll_events);
     }
@@ -451,7 +451,7 @@ int bthread_fd_timedwait(int fd, unsigned epoll_events,
 }
 
 int bthread_connect(int sockfd, const sockaddr* serv_addr,
-                    socklen_t addrlen) __THROW {
+                    socklen_t addrlen) {
     bthread::TaskGroup* g = bthread::tls_task_group;
     if (NULL == g || g->is_current_pthread_task()) {
         return ::connect(sockfd, serv_addr, addrlen);
@@ -480,7 +480,7 @@ int bthread_connect(int sockfd, const sockaddr* serv_addr,
 }
 
 // This does not wake pthreads calling bthread_fd_*wait.
-int bthread_close(int fd) __THROW {
+int bthread_close(int fd) {
     return bthread::get_epoll_thread(fd).fd_close(fd);
 }
 

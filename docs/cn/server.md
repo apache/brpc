@@ -768,7 +768,7 @@ Session-local和server-thread-local对大部分server已经够用。不过在一
 // when the key is destroyed. `destructor' is not called if the value
 // associated is NULL when the key is destroyed.
 // Returns 0 on success, error code otherwise.
-extern int bthread_key_create(bthread_key_t* key, void (*destructor)(void* data)) __THROW;
+extern int bthread_key_create(bthread_key_t* key, void (*destructor)(void* data));
  
 // Delete a key previously returned by bthread_key_create().
 // It is the responsibility of the application to free the data related to
@@ -776,7 +776,7 @@ extern int bthread_key_create(bthread_key_t* key, void (*destructor)(void* data)
 // this function. Any destructor that may have been associated with key
 // will no longer be called upon thread exit.
 // Returns 0 on success, error code otherwise.
-extern int bthread_key_delete(bthread_key_t key) __THROW;
+extern int bthread_key_delete(bthread_key_t key);
  
 // Store `data' in the thread-specific slot identified by `key'.
 // bthread_setspecific() is callable from within destructor. If the application
@@ -791,12 +791,12 @@ extern int bthread_key_delete(bthread_key_t key) __THROW;
 // in the server.
 // Returns 0 on success, error code otherwise.
 // If the key is invalid or deleted, return EINVAL.
-extern int bthread_setspecific(bthread_key_t key, void* data) __THROW;
+extern int bthread_setspecific(bthread_key_t key, void* data);
  
 // Return current value of the thread-specific slot identified by `key'.
 // If bthread_setspecific() had not been called in the thread, return NULL.
 // If the key is invalid or deleted, return NULL.
-extern void* bthread_getspecific(bthread_key_t key) __THROW;
+extern void* bthread_getspecific(bthread_key_t key);
 ```
 
 **使用方法**

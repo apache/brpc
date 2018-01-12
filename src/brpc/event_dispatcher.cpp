@@ -15,12 +15,12 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 //          Rujie Jiang (jiangrujie@baidu.com)
 
-#include <gflags/gflags.h>                           // DEFINE_int32
-#include <sys/epoll.h>                               // epoll_create
+#include <gflags/gflags.h>                            // DEFINE_int32
+#include "butil/compat.h"
 #include "butil/fd_utility.h"                         // make_close_on_exec
 #include "butil/logging.h"                            // LOG
 #include "butil/third_party/murmurhash3/murmurhash3.h"// fmix32
-#include "bthread/bthread.h"                         // bthread_start_background
+#include "bthread/bthread.h"                          // bthread_start_background
 #include "brpc/event_dispatcher.h"
 #ifdef BRPC_SOCKET_HAS_EOF
 #include "brpc/details/has_epollrdhup.h"

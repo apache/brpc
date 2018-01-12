@@ -3,8 +3,13 @@
 // Date: 2010-12-04 11:59
 
 #include <gtest/gtest.h>
+#include "butil/build_config.h"
+
+#if defined(OS_LINUX)
 #include <syscall.h>                         // SYS_clock_gettime
 #include <unistd.h>                          // syscall
+#endif
+
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/logging.h"
@@ -45,14 +50,14 @@ TEST(BaiduTimeTest, cost_of_timer) {
         t2.stop();
     }
     t1.stop();
-    printf("Timer::stop() takes %ldns\n", t1.n_elapsed() / N);
+    printf("Timer::stop() takes %" PRId64 "ns\n", t1.n_elapsed() / N);
 
     t1.start();
     for (size_t i = 0; i < N; ++i) {
         clock();
     }
     t1.stop();
-    printf("clock() takes %ldns\n", t1.n_elapsed() / N);
+    printf("clock() takes %" PRId64 "ns\n", t1.n_elapsed() / N);
 
     long s = 0;
     t1.start();
@@ -60,46 +65,48 @@ TEST(BaiduTimeTest, cost_of_timer) {
         s += butil::cpuwide_time_ns();
     }
     t1.stop();
-    printf("cpuwide_time() takes %ldns\n", t1.n_elapsed() / N);
+    printf("cpuwide_time() takes %" PRId64 "ns\n", t1.n_elapsed() / N);
 
     t1.start();
     for (size_t i = 0; i < N; ++i) {
         s += butil::gettimeofday_us();
     }
     t1.stop();
-    printf("gettimeofday_us takes %luns\n", t1.n_elapsed() / N);
+    printf("gettimeofday_us takes %" PRId64 "ns\n", t1.n_elapsed() / N);
 
     t1.start();
     for (size_t i = 0; i < N; ++i) {
         time(NULL);
     }
     t1.stop();
-    printf("time(NULL) takes %luns\n", t1.n_elapsed() / N);
+    printf("time(NULL) takes %" PRId64 "ns\n", t1.n_elapsed() / N);
 
     t1.start();
     for (size_t i = 0; i < N; ++i) {
         s += butil::monotonic_time_ns();
     }
     t1.stop();
-    printf("monotonic_time_ns takes %luns\n", t1.n_elapsed() / N);
+    printf("monotonic_time_ns takes %" PRId64 "ns\n", t1.n_elapsed() / N);
 
     for (size_t i = 0; i < arraysize(clock_desc); ++i) {
+#if defined(OS_LINUX)
         if (0 == syscall(SYS_clock_gettime, (clockid_t)i, &ts)) {
             t1.start();
             for (size_t j = 0; j < N; ++j) {
                 syscall(SYS_clock_gettime, (clockid_t)i, &ts);
             }
             t1.stop();
-            printf("sys   clock_gettime(%s) takes %luns\n",
+            printf("sys   clock_gettime(%s) takes %" PRId64 "ns\n",
                    clock_desc[i], t1.n_elapsed() / N);
         }
+#endif
         if (0 == clock_gettime((clockid_t)i, &ts)) {
             t1.start();
             for (size_t j = 0; j < N; ++j) {
                 clock_gettime((clockid_t)i, &ts);
             }
             t1.stop();
-            printf("glibc clock_gettime(%s) takes %luns\n",
+            printf("glibc clock_gettime(%s) takes %" PRId64 "ns\n",
                    clock_desc[i], t1.n_elapsed() / N);
         }
     }
@@ -175,7 +182,7 @@ TEST(BaiduTimeTest, every_many_us) {
     const long start_time = butil::gettimeofday_ms();
     while (1) {
         if (every_10ms) {
-            printf("enter this branch at %lums\n",
+            printf("enter this branch at %" PRId64 "ms\n",
                    butil::gettimeofday_ms() - start_time);
             if (++i >= 10) {
                 break;
@@ -188,7 +195,7 @@ TEST(BaiduTimeTest, timer_auto_start) {
     butil::Timer t(butil::Timer::STARTED);
     usleep(100);
     t.stop();
-    printf("Cost %ldus\n", t.u_elapsed());
+    printf("Cost %" PRId64 "us\n", t.u_elapsed());
 }
 
 }

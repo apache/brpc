@@ -378,7 +378,7 @@ void bthread_keytable_pool_reserve(bthread_keytable_pool_t* pool,
 
 int bthread_key_create2(bthread_key_t* key,
                         void (*dtor)(void*, const void*),
-                        const void* dtor_args) __THROW {
+                        const void* dtor_args) {
     uint32_t index = 0;
     {
         BAIDU_SCOPED_LOCK(bthread::s_key_mutex);
@@ -401,7 +401,7 @@ int bthread_key_create2(bthread_key_t* key,
     return 0;
 }
 
-int bthread_key_create(bthread_key_t* key, void (*dtor)(void*)) __THROW {
+int bthread_key_create(bthread_key_t* key, void (*dtor)(void*)) {
     if (dtor == NULL) {
         return bthread_key_create2(key, NULL, NULL);
     } else {
@@ -409,7 +409,7 @@ int bthread_key_create(bthread_key_t* key, void (*dtor)(void*)) __THROW {
     }
 }
 
-int bthread_key_delete(bthread_key_t key) __THROW {
+int bthread_key_delete(bthread_key_t key) {
     if (key.index < bthread::KEYS_MAX &&
         key.version == bthread::s_key_info[key.index].version) {
         BAIDU_SCOPED_LOCK(bthread::s_key_mutex);
@@ -432,7 +432,7 @@ int bthread_key_delete(bthread_key_t key) __THROW {
 //  -> bthread_getspecific fails to borrow_keytable and returns NULL.
 //  -> bthread_setspecific succeeds to borrow_keytable and overwrites old data
 //     at the position with newly created data, the old data is leaked.
-int bthread_setspecific(bthread_key_t key, void* data) __THROW {
+int bthread_setspecific(bthread_key_t key, void* data) {
     bthread::KeyTable* kt = bthread::tls_bls.keytable;
     if (NULL == kt) {
         kt = new (std::nothrow) bthread::KeyTable;
@@ -452,7 +452,7 @@ int bthread_setspecific(bthread_key_t key, void* data) __THROW {
     return kt->set_data(key, data);
 }
 
-void* bthread_getspecific(bthread_key_t key) __THROW {
+void* bthread_getspecific(bthread_key_t key) {
     bthread::KeyTable* kt = bthread::tls_bls.keytable;
     if (kt) {
         return kt->get_data(key);
@@ -470,7 +470,7 @@ void* bthread_getspecific(bthread_key_t key) __THROW {
     return NULL;
 }
 
-void bthread_assign_data(void* data) __THROW {
+void bthread_assign_data(void* data) {
     bthread::tls_bls.assigned_data = data;
     bthread::TaskGroup* const g = bthread::tls_task_group;
     if (g) {
@@ -478,7 +478,7 @@ void bthread_assign_data(void* data) __THROW {
     }
 }
 
-void* bthread_get_assigned_data() __THROW {
+void* bthread_get_assigned_data() {
     return bthread::tls_bls.assigned_data;
 }
 

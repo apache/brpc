@@ -19,9 +19,11 @@
 #ifndef BTHREAD_SYS_FUTEX_H
 #define BTHREAD_SYS_FUTEX_H
 
-#include <syscall.h>                    // SYS_futex
+#include "butil/build_config.h"         // OS_MACOSX
 #include <unistd.h>                     // syscall
 #include <time.h>                       // timespec
+#if defined(OS_LINUX)
+#include <syscall.h>                    // SYS_futex
 #include <linux/futex.h>                // FUTEX_WAIT, FUTEX_WAKE
 
 namespace bthread {
@@ -47,5 +49,26 @@ inline int futex_requeue_private(void* addr1, int nwake, void* addr2) {
 }
 
 }  // namespace bthread
+
+#elif defined(OS_MACOSX)
+
+namespace bthread {
+inline int futex_wait_private(
+    void* addr1, int expected, const timespec* timeout) {
+    return -1;
+}
+
+inline int futex_wake_private(void* addr1, int nwake) {
+    return -1;
+}
+
+inline int futex_requeue_private(void* addr1, int nwake, void* addr2) {
+    return -1;
+}
+}  // namespace bthread
+
+#else
+#error "Unsupported OS"
+#endif
 
 #endif // BTHREAD_SYS_FUTEX_H

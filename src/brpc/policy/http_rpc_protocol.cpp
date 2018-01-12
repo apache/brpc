@@ -39,7 +39,7 @@
 #include "brpc/policy/http_rpc_protocol.h"
 
 extern "C" {
-void bthread_assign_data(void* data) __THROW;
+void bthread_assign_data(void* data);
 }
 
 namespace brpc {
@@ -197,7 +197,7 @@ static void PrintMessage(const butil::IOBuf& inbuf,
     if (!has_content) {
         buf2.append(buf1);
     } else {
-        size_t nskipped = 0;
+        uint64_t nskipped = 0;
         if (buf1.size() > (size_t)FLAGS_http_verbose_max_body_length) {
             nskipped = buf1.size() - (size_t)FLAGS_http_verbose_max_body_length;
             buf1.pop_back(nskipped);
@@ -528,7 +528,7 @@ int ErrorCode2StatusCode(int error_code) {
     case ENOSERVICE:
     case ENOMETHOD:
         return HTTP_STATUS_NOT_FOUND;
-    case EAUTH:
+    case ERPCAUTH:
         return HTTP_STATUS_UNAUTHORIZED;
     case EREQUEST:
     case EINVAL:

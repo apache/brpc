@@ -410,7 +410,7 @@ AudioSpecificConfig::AudioSpecificConfig()
 butil::Status AudioSpecificConfig::Create(const butil::IOBuf& buf) {
     if (buf.size() < 2u) {
         return butil::Status(EINVAL, "data_size=%" PRIu64 " is too short",
-                                    buf.size());
+                             (uint64_t)buf.size());
     }
     char tmpbuf[2];
     buf.copy_to(tmpbuf, arraysize(tmpbuf));
@@ -419,7 +419,7 @@ butil::Status AudioSpecificConfig::Create(const butil::IOBuf& buf) {
 
 butil::Status AudioSpecificConfig::Create(const void* data, size_t len) {
     if (len < 2u) {
-        return butil::Status(EINVAL, "data_size=%" PRIu64 " is too short", len);
+        return butil::Status(EINVAL, "data_size=%" PRIu64 " is too short", (uint64_t)len);
     }
     uint8_t profile_ObjectType = ((const char*)data)[0];
     uint8_t samplingFrequencyIndex = ((const char*)data)[1];

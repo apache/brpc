@@ -39,7 +39,7 @@
 #include "brpc/details/server_private_accessor.h"
 
 extern "C" {
-void bthread_assign_data(void* data) __THROW;
+void bthread_assign_data(void* data);
 }
 
 
@@ -647,7 +647,7 @@ void PackRpcRequest(butil::IOBuf* req_buf,
     if (request_stream_id != INVALID_STREAM_ID) {
         SocketUniquePtr ptr;
         if (Socket::Address(request_stream_id, &ptr) != 0) {
-            return cntl->SetFailed(EREQUEST, "Stream=%lu was closed", 
+            return cntl->SetFailed(EREQUEST, "Stream=%" PRIu64 " was closed", 
                                    request_stream_id);
         }
         Stream *s = (Stream*)ptr->conn();

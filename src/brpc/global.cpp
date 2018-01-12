@@ -19,6 +19,7 @@
 #include <fcntl.h>                               // O_RDONLY
 #include <signal.h>
 
+#include "butil/build_config.h"                  // OS_LINUX
 // Naming services
 #ifdef BAIDU_INTERNAL
 #include "brpc/policy/baidu_naming_service.h"
@@ -63,7 +64,9 @@
 #include "brpc/server.h"
 #include "brpc/trackme.h"             // TrackMe
 #include "brpc/details/usercode_backup_pool.h"
+#if defined(OS_LINUX)
 #include <malloc.h>                   // malloc_trim
+#endif
 #include "butil/fd_guard.h"
 #include "butil/files/file_watcher.h"
 
@@ -238,8 +241,10 @@ static void* GlobalUpdate(void*) {
             if (MallocExtension_ReleaseFreeMemory != NULL) {
                 MallocExtension_ReleaseFreeMemory();
             } else {
+#if defined(OS_LINUX)
                 // GNU specific.
                 malloc_trim(10 * 1024 * 1024/*leave 10M pad*/);
+#endif
             }
         }
     }

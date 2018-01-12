@@ -67,7 +67,6 @@ BUTIL_SOURCES = \
     src/butil/files/scoped_file.cc \
     src/butil/files/scoped_temp_dir.cc \
     src/butil/file_util.cc \
-    src/butil/file_util_linux.cc \
     src/butil/file_util_posix.cc \
     src/butil/guid.cc \
     src/butil/guid_posix.cc \
@@ -105,7 +104,6 @@ BUTIL_SOURCES = \
     src/butil/synchronization/condition_variable_posix.cc \
     src/butil/synchronization/waitable_event_posix.cc \
     src/butil/threading/non_thread_safe_impl.cc \
-    src/butil/threading/platform_thread_linux.cc \
     src/butil/threading/platform_thread_posix.cc \
     src/butil/threading/simple_thread.cc \
     src/butil/threading/thread_checker_impl.cc \
@@ -141,6 +139,15 @@ BUTIL_SOURCES = \
     src/butil/containers/case_ignored_flat_map.cpp \
     src/butil/iobuf.cpp \
     src/butil/popen.cpp
+
+ifeq ($(SYSTEM), Linux)
+    BUTIL_SOURCES += src/butil/file_util_linux.cc \
+		src/butil/threading/platform_thread_linux.cc
+endif
+ifeq ($(SYSTEM), Darwin)
+    BUTIL_SOURCES += src/butil/mac/bundle_locations.mm \
+		src/butil/mac/foundation_util.mm
+endif
 
 BUTIL_OBJS = $(addsuffix .o, $(basename $(BUTIL_SOURCES)))
 
@@ -250,6 +257,14 @@ output/bin:protoc-gen-mcpack
 	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.dbg.o:%.cc
+	@echo "Compiling $@"
+	@$(CXX) -c $(HDRPATHS) $(DEBUG_CXXFLAGS) $< -o $@
+
+%.o:%.mm
+	@echo "Compiling $@"
+	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+
+%.dbg.o:%.mm
 	@echo "Compiling $@"
 	@$(CXX) -c $(HDRPATHS) $(DEBUG_CXXFLAGS) $< -o $@
 

@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <dlfcn.h>                               // dlsym
 #include <stdlib.h>                              // getenv
 #include "butil/compiler_specific.h"

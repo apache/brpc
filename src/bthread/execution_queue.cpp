@@ -24,14 +24,13 @@
 
 namespace bthread {
 
-BAIDU_CASSERT(sizeof(TaskNode) == 128, sizeof_TaskNode_must_be_128);
+//May be false on different platforms
+//BAIDU_CASSERT(sizeof(TaskNode) == 128, sizeof_TaskNode_must_be_128);
+//BAIDU_CASSERT(offsetof(TaskNode, static_task_mem) + sizeof(TaskNode().static_task_mem) == 128, sizeof_TaskNode_must_be_128);
 BAIDU_CASSERT(sizeof(ExecutionQueue<int>) == sizeof(ExecutionQueueBase),
               sizeof_ExecutionQueue_must_be_the_same_with_ExecutionQueueBase);
 BAIDU_CASSERT(sizeof(TaskIterator<int>) == sizeof(TaskIteratorBase),
               sizeof_TaskIterator_must_be_the_same_with_TaskIteratorBase);
-BAIDU_CASSERT(offsetof(TaskNode, static_task_mem)
-                + sizeof(TaskNode().static_task_mem) == 128,
-              sizeof_TaskNode_must_be_128);
 namespace /*anonymous*/ {
 typedef butil::ResourceId<ExecutionQueueBase> slot_id_t;
 

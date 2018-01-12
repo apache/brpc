@@ -365,7 +365,7 @@ void TaskControl::signal_task(int num_task) {
     if (num_task > 2) {
         num_task = 2;
     }
-    int start_index = butil::fmix64(pthread_self()) % PARKING_LOT_NUM;
+    int start_index = butil::fmix64(pthread_numeric_id()) % PARKING_LOT_NUM;
     num_task -= _pl[start_index].signal(1);
     if (num_task > 0) {
         for (int i = 1; i < PARKING_LOT_NUM && num_task > 0; ++i) {

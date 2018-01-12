@@ -3,7 +3,6 @@
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <fcntl.h>  // F_GETFD
@@ -392,7 +391,7 @@ void* FailedWriter(void* void_arg) {
     WriterArg* arg = static_cast<WriterArg*>(void_arg);
     brpc::SocketUniquePtr sock;
     if (brpc::Socket::Address(arg->socket_id, &sock) < 0) {
-        printf("Fail to address SocketId=%lu\n", arg->socket_id);
+        printf("Fail to address SocketId=%" PRIu64 "\n", arg->socket_id);
         return NULL;
     }
     char buf[32];
@@ -667,7 +666,7 @@ void* Writer(void* void_arg) {
     WriterArg* arg = static_cast<WriterArg*>(void_arg);
     brpc::SocketUniquePtr sock;
     if (brpc::Socket::Address(arg->socket_id, &sock) < 0) {
-        printf("Fail to address SocketId=%lu\n", arg->socket_id);
+        printf("Fail to address SocketId=%" PRIu64 "\n", arg->socket_id);
         return NULL;
     }
     char buf[32];
@@ -683,7 +682,7 @@ void* Writer(void* void_arg) {
                 --i;
                 continue;
             }
-            printf("Fail to write into SocketId=%lu, %s\n",
+            printf("Fail to write into SocketId=%" PRIu64 ", %s\n",
                    arg->socket_id, berror());
             break;
         }
@@ -788,7 +787,7 @@ void* FastWriter(void* void_arg) {
     WriterArg* arg = static_cast<WriterArg*>(void_arg);
     brpc::SocketUniquePtr sock;
     if (brpc::Socket::Address(arg->socket_id, &sock) < 0) {
-        printf("Fail to address SocketId=%lu\n", arg->socket_id);
+        printf("Fail to address SocketId=%" PRIu64 "\n", arg->socket_id);
         return NULL;
     }
     char buf[] = "hello reader side!";
@@ -806,7 +805,7 @@ void* FastWriter(void* void_arg) {
                 ++nretry;
                 continue;
             }
-            printf("Fail to write into SocketId=%lu, %s\n",
+            printf("Fail to write into SocketId=%" PRIu64 ", %s\n",
                    arg->socket_id, berror());
             break;
         }
@@ -879,14 +878,14 @@ TEST_F(SocketTest, multi_threaded_write_perf) {
 
     butil::Timer tm;
     ProfilerStart("write.prof");
-    const size_t old_nread = reader_arg.nread;
+    const uint64_t old_nread = reader_arg.nread;
     tm.start();
     sleep(2);
     tm.stop();
-    const size_t new_nread = reader_arg.nread;
+    const uint64_t new_nread = reader_arg.nread;
     ProfilerStop();
 
-    printf("tp=%luM/s\n", (new_nread - old_nread) / tm.u_elapsed());
+    printf("tp=%" PRIu64 "M/s\n", (new_nread - old_nread) / tm.u_elapsed());
     
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
         args[i].times = 0;

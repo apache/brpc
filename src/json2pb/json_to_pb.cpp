@@ -52,9 +52,9 @@ static void string_append_value(const rapidjson::Value& value,
     } else if (value.IsUint()) {
         butil::string_appendf(output, "%u", value.GetUint());
     } else if (value.IsInt64()) {
-        butil::string_appendf(output, "%ld", value.GetInt64());
+        butil::string_appendf(output, "%" PRId64, value.GetInt64());
     } else if (value.IsUint64()) {
-        butil::string_appendf(output, "%lu", value.GetUint64());
+        butil::string_appendf(output, "%" PRIu64, value.GetUint64());
     } else if (value.IsDouble()) {
         butil::string_appendf(output, "%f", value.GetDouble());
     } else if (value.IsString()) {

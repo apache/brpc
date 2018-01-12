@@ -219,7 +219,7 @@ TimerThread::TaskId TimerThread::schedule(
     }
     // Hashing by pthread id is better for cache locality.
     const Bucket::ScheduleResult result = 
-        _buckets[butil::fmix64(pthread_self()) % _options.num_buckets]
+        _buckets[butil::fmix64(pthread_numeric_id()) % _options.num_buckets]
         .schedule(fn, arg, abstime);
     if (result.earlier) {
         bool earlier = false;

@@ -30,7 +30,6 @@ TEST_BUTIL_SOURCES = \
     cpu_unittest.cc \
     crash_logging_unittest.cc \
     leak_tracker_unittest.cc \
-    proc_maps_linux_unittest.cc \
     stack_trace_unittest.cc \
     environment_unittest.cc \
     file_util_unittest.cc \
@@ -111,10 +110,13 @@ TEST_BUTIL_SOURCES = \
     iobuf_unittest.cpp \
     test_switches.cc \
     scoped_locale.cc \
-    test_file_util_linux.cc \
     popen_unittest.cpp \
     butil_unittest_main.cpp
 
+ifeq ($(SYSTEM), Linux)
+    TEST_BUTIL_SOURCES += test_file_util_linux.cc \
+						  proc_maps_linux_unittest.cc
+endif
 
 TEST_BUTIL_OBJS = iobuf.pb.o $(addsuffix .o, $(basename $(TEST_BUTIL_SOURCES))) 
 

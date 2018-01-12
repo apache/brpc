@@ -46,7 +46,7 @@ void ThreadsService::default_method(::google::protobuf::RpcController* cntl_base
     }
     pstack_output.move_to(resp);
     tm.stop();
-    resp.append(butil::string_printf("\n\ntime=%lums", tm.m_elapsed()));
+    resp.append(butil::string_printf("\n\ntime=%" PRId64 "ms", tm.m_elapsed()));
 }
 
 } // namespace brpc
