@@ -29,6 +29,12 @@ namespace bthread {
 
 DEFINE_int32(bthread_concurrency, 8 + BTHREAD_EPOLL_THREAD_NUM,
              "Number of pthread workers");
+
+DEFINE_int32(bthread_min_concurrency, 0,
+            "Initial number of pthread workers which will be added on-demand."
+            " The laziness is disabled when this value is non-positive,"
+            " and workers will be created eagerly according to -bthread_concurrency and bthread_setconcurrency(). ");
+
 static bool never_set_bthread_concurrency = true;
 
 static bool validate_bthread_concurrency(const char*, int32_t val) {
@@ -39,6 +45,12 @@ static bool validate_bthread_concurrency(const char*, int32_t val) {
 const int ALLOW_UNUSED register_FLAGS_bthread_concurrency = 
     ::GFLAGS_NS::RegisterFlagValidator(&FLAGS_bthread_concurrency,
                                     validate_bthread_concurrency);
+
+static bool validate_bthread_min_concurrency(const char*, int32_t val);
+
+const int ALLOW_UNUSED register_FLAGS_bthread_min_concurrency =
+    ::google::RegisterFlagValidator(&FLAGS_bthread_min_concurrency,
+                                    validate_bthread_min_concurrency);
 
 BAIDU_CASSERT(sizeof(TaskControl*) == sizeof(butil::atomic<TaskControl*>), atomic_size_match);
 
@@ -70,13 +82,37 @@ inline TaskControl* get_or_new_task_control() {
     if (NULL == c) {
         return NULL;
     }
-    if (c->init(FLAGS_bthread_concurrency) != 0) {
+    int concurrency = FLAGS_bthread_min_concurrency > 0 ?
+        FLAGS_bthread_min_concurrency :
+        FLAGS_bthread_concurrency;
+    if (c->init(concurrency) != 0) {
         LOG(ERROR) << "Fail to init g_task_control";
         delete c;
         return NULL;
     }
     p->store(c, butil::memory_order_release);
     return c;
+}
+
+static bool validate_bthread_min_concurrency(const char*, int32_t val) {
+    if (val <= 0) {
+        return true;
+    }
+    if (val < BTHREAD_MIN_CONCURRENCY || val > FLAGS_bthread_concurrency) {
+        return false;
+    }
+    TaskControl* c = get_task_control();
+    if (!c) {
+        return true;
+    }
+    BAIDU_SCOPED_LOCK(g_task_control_mutex);
+    int concurrency = c->concurrency();
+    if (val > concurrency) {
+        int added = c->add_workers(val - concurrency);
+        return added == (val - concurrency);
+    } else {
+        return true;
+    }
 }
 
 __thread TaskGroup* tls_task_group_nosignal = NULL;
@@ -229,6 +265,16 @@ int bthread_setconcurrency(int num) {
     if (num < BTHREAD_MIN_CONCURRENCY || num > BTHREAD_MAX_CONCURRENCY) {
         LOG(ERROR) << "Invalid concurrency=" << num;
         return EINVAL;
+    }
+    if (bthread::FLAGS_bthread_min_concurrency > 0) {
+        if (num < bthread::FLAGS_bthread_min_concurrency) {
+            return EINVAL;
+        }
+        if (bthread::never_set_bthread_concurrency) {
+            bthread::never_set_bthread_concurrency = false;
+        }
+        bthread::FLAGS_bthread_concurrency = num;
+        return 0;
     }
     bthread::TaskControl* c = bthread::get_task_control();
     if (c != NULL) {
