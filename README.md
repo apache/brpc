@@ -95,7 +95,7 @@ You can use it to:
 
 # Contribute code
 
-**If you can fix any of the issues or add new features, you're welcome to send the PR to us. If the PR is accepted, your contribution will be scored from 0 to 5 points according to the difficulty and quality (higher is better). If you get 10 points, you can contact us for interviewing opportunities or recommendation letter for your future jobs.**
+**If you can fix any of the issues or add new features, you're welcome to send the PR to us. If the PR is accepted, your contribution will be scored from 0 to 5 points according to the difficulty and quality (higher is better). If you accumulate 10 points, you can contact us for interviewing opportunities or recommendation letter for your future jobs.**
 
 Make sure your code meets following requirements before submitting the PR:
 
