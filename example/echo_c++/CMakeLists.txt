@@ -79,10 +79,5 @@ set(DYNAMIC_LIB
     dl
     )
 
-if(EXAMPLE_LINK_SO)
-    target_link_libraries(echo_client ${BRPC_LIB} ${DYNAMIC_LIB})
-    target_link_libraries(echo_server ${BRPC_LIB} ${DYNAMIC_LIB})
-else()
-    target_link_libraries(echo_client ${BRPC_LIB} ${DYNAMIC_LIB})
-    target_link_libraries(echo_server ${BRPC_LIB} ${DYNAMIC_LIB})
-endif()
+target_link_libraries(echo_client ${BRPC_LIB} ${DYNAMIC_LIB})
+target_link_libraries(echo_server ${BRPC_LIB} ${DYNAMIC_LIB})

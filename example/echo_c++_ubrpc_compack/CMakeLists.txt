@@ -84,11 +84,5 @@ execute_process(
 add_executable(echo_ubrpc_compack_client client.cpp ${CMAKE_CURRENT_BINARY_DIR}/echo.pb.cc)
 add_executable(echo_ubrpc_compack_server server.cpp ${CMAKE_CURRENT_BINARY_DIR}/echo.pb.cc)
 
-if(EXAMPLE_LINK_SO)
-    target_link_libraries(echo_ubrpc_compack_client ${BRPC_LIB} ${DYNAMIC_LIB})
-    target_link_libraries(echo_ubrpc_compack_server ${BRPC_LIB} ${DYNAMIC_LIB})
-else()
-    target_link_libraries(echo_ubrpc_compack_client ${BRPC_LIB} ${DYNAMIC_LIB})
-    target_link_libraries(echo_ubrpc_compack_server ${BRPC_LIB} ${DYNAMIC_LIB})
-endif()
-
+target_link_libraries(echo_ubrpc_compack_client ${BRPC_LIB} ${DYNAMIC_LIB})
+target_link_libraries(echo_ubrpc_compack_server ${BRPC_LIB} ${DYNAMIC_LIB})

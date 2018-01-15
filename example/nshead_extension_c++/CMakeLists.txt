@@ -79,10 +79,5 @@ set(DYNAMIC_LIB
 add_executable(nshead_extension_client client.cpp)
 add_executable(nshead_extension_server server.cpp)
 
-if(EXAMPLE_LINK_SO)
-    target_link_libraries(nshead_extension_client ${BRPC_LIB} ${DYNAMIC_LIB})
-    target_link_libraries(nshead_extension_server ${BRPC_LIB} ${DYNAMIC_LIB})
-else()
-    target_link_libraries(nshead_extension_client ${BRPC_LIB} ${DYNAMIC_LIB})
-    target_link_libraries(nshead_extension_server ${BRPC_LIB} ${DYNAMIC_LIB})
-endif()
+target_link_libraries(nshead_extension_client ${BRPC_LIB} ${DYNAMIC_LIB})
+target_link_libraries(nshead_extension_server ${BRPC_LIB} ${DYNAMIC_LIB})
