@@ -35,7 +35,17 @@ int64_t monotonic_time_ns() {
     // use the RAW version does not make sense anymore.
     // NOTE: Not inline to keep ABI-compatible with previous versions.
     timespec now;
+#ifdef __MACH__ // OS X does not have clock_gettime, use clock_get_time
+    clock_serv_t cclock;
+    mach_timespec_t mts;
+    host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+    clock_get_time(cclock, &mts);
+    mach_port_deallocate(mach_task_self(), cclock);
+    now.tv_sec = mts.tv_sec;
+    now.tv_nsec = mts.tv_nsec;
+#else
     clock_gettime(CLOCK_MONOTONIC, &now);
+#endif
     return now.tv_sec * 1000000000L + now.tv_nsec;
 }
 

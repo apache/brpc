@@ -177,7 +177,6 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/files/scoped_file.cc
     ${CMAKE_SOURCE_DIR}/src/butil/files/scoped_temp_dir.cc
     ${CMAKE_SOURCE_DIR}/src/butil/file_util.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/file_util_linux.cc
     ${CMAKE_SOURCE_DIR}/src/butil/file_util_posix.cc
     ${CMAKE_SOURCE_DIR}/src/butil/guid.cc
     ${CMAKE_SOURCE_DIR}/src/butil/guid_posix.cc
@@ -215,7 +214,6 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/synchronization/condition_variable_posix.cc
     ${CMAKE_SOURCE_DIR}/src/butil/synchronization/waitable_event_posix.cc
     ${CMAKE_SOURCE_DIR}/src/butil/threading/non_thread_safe_impl.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/threading/platform_thread_linux.cc
     ${CMAKE_SOURCE_DIR}/src/butil/threading/platform_thread_posix.cc
     ${CMAKE_SOURCE_DIR}/src/butil/threading/simple_thread.cc
     ${CMAKE_SOURCE_DIR}/src/butil/threading/thread_checker_impl.cc
@@ -252,6 +250,16 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/iobuf.cpp
     ${CMAKE_SOURCE_DIR}/src/butil/popen.cpp
     )
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(BUTIL_SOURCES ${BUTIL_SOURCES}
+        ${CMAKE_SOURCE_DIR}/src/butil/file_util_linux.cc
+        ${CMAKE_SOURCE_DIR}/src/butil/threading/platform_thread_linux.cc)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(BUTIL_SOURCES ${BUTIL_SOURCES}
+        ${CMAKE_SOURCE_DIR}/src/butil/mac/bundle_locations.mm
+        ${CMAKE_SOURCE_DIR}/src/butil/mac/foundation_util.mm)
+endif()
 
 file(GLOB_RECURSE BVAR_SOURCES "${CMAKE_SOURCE_DIR}/src/bvar/*.cpp")
 file(GLOB_RECURSE BTHREAD_SOURCES "${CMAKE_SOURCE_DIR}/src/bthread/*.cpp")
