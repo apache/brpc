@@ -19,7 +19,17 @@ namespace {
 TEST(BaiduTimeTest, diff_between_gettimeofday_and_REALTIME) {
     long t1 = butil::gettimeofday_us();
     timespec time;
+#ifdef __MACH__ // OS X does not have clock_gettime, use clock_get_time
+    clock_serv_t cclock;
+    mach_timespec_t mts;
+    host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+    clock_get_time(cclock, &mts);
+    mach_port_deallocate(mach_task_self(), cclock);
+    time.tv_sec = mts.tv_sec;
+    time.tv_nsec = mts.tv_nsec;
+#else
     clock_gettime(CLOCK_REALTIME, &time);
+#endif
     long t2 = butil::timespec_to_microseconds(time);
     LOG(INFO) << "t1=" << t1 << " t2=" << t2;
 }
@@ -100,6 +110,7 @@ TEST(BaiduTimeTest, cost_of_timer) {
                    clock_desc[i], t1.n_elapsed() / N);
         }
 #endif
+#if !defined(OS_MACOSX)
         if (0 == clock_gettime((clockid_t)i, &ts)) {
             t1.start();
             for (size_t j = 0; j < N; ++j) {
@@ -109,6 +120,7 @@ TEST(BaiduTimeTest, cost_of_timer) {
             printf("glibc clock_gettime(%s) takes %" PRId64 "ns\n",
                    clock_desc[i], t1.n_elapsed() / N);
         }
+#endif
     }
 }
 

@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 2.8.10)
 project(brpc C CXX)
 
+# Enable MACOSX_RPATH. Run "cmake --help-policy CMP0042" for policy details.
+cmake_policy(SET CMP0042 NEW)
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # require at least gcc 4.8
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.8)
@@ -123,6 +126,7 @@ set(DYNAMIC_LIB
     ${LEVELDB_LIB}
     ${PROTOC_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
+    pthread
     rt
     ssl
     crypto

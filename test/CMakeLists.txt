@@ -53,7 +53,6 @@ SET(TEST_BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/test/cpu_unittest.cc
     ${CMAKE_SOURCE_DIR}/test/crash_logging_unittest.cc
     ${CMAKE_SOURCE_DIR}/test/leak_tracker_unittest.cc
-    ${CMAKE_SOURCE_DIR}/test/proc_maps_linux_unittest.cc
     ${CMAKE_SOURCE_DIR}/test/stack_trace_unittest.cc
     ${CMAKE_SOURCE_DIR}/test/environment_unittest.cc
     ${CMAKE_SOURCE_DIR}/test/file_util_unittest.cc
@@ -134,10 +133,15 @@ SET(TEST_BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/test/iobuf_unittest.cpp
     ${CMAKE_SOURCE_DIR}/test/test_switches.cc
     ${CMAKE_SOURCE_DIR}/test/scoped_locale.cc
-    ${CMAKE_SOURCE_DIR}/test/test_file_util_linux.cc
     ${CMAKE_SOURCE_DIR}/test/butil_unittest_main.cpp
     ${CMAKE_SOURCE_DIR}/test/butil_unittest_main.cpp
 	)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+SET(TEST_BUTIL_SOURCES ${TEST_BUTIL_SOURCES}
+    ${CMAKE_SOURCE_DIR}/test/proc_maps_linux_unittest.cc
+    ${CMAKE_SOURCE_DIR}/test/test_file_util_linux.cc)
+endif()
 
 # -DBVAR_NOT_LINK_DEFAULT_VARIABLES not work for gcc >= 5.0, just remove the file to prevent linking into unit tests
 list(REMOVE_ITEM BVAR_SOURCES ${CMAKE_SOURCE_DIR}/src/bvar/default_variables.cpp)
