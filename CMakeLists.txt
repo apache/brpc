@@ -126,13 +126,17 @@ set(DYNAMIC_LIB
     ${LEVELDB_LIB}
     ${PROTOC_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
-    pthread
-    rt
     ssl
     crypto
     dl
     z
     )
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(DYNAMIC_LIB ${DYNAMIC_LIB} rt)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(DYNAMIC_LIB ${DYNAMIC_LIB} pthread)
+endif()
 
 # for *.so
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)

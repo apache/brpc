@@ -35,7 +35,10 @@ int64_t monotonic_time_ns() {
     // use the RAW version does not make sense anymore.
     // NOTE: Not inline to keep ABI-compatible with previous versions.
     timespec now;
-#ifdef __MACH__ // OS X does not have clock_gettime, use clock_get_time
+#ifdef __MACH__
+    // OS X does not have clock_gettime, use clock_get_time.
+    // The value returned is a monotonically increasing value according to
+    // https://opensource.apple.com/source/xnu/xnu-792.13.8/osfmk/man/clock_get_time.html
     clock_serv_t cclock;
     mach_timespec_t mts;
     host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
