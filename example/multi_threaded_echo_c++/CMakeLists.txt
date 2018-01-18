@@ -84,10 +84,5 @@ set(DYNAMIC_LIB
 add_executable(multi_threaded_echo_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
 add_executable(multi_threaded_echo_server server.cpp ${PROTO_SRC} ${PROTO_HEADER})
 
-if(EXAMPLE_LINK_SO)
-    target_link_libraries(multi_threaded_echo_client ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
-    target_link_libraries(multi_threaded_echo_server ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
-else()
-    target_link_libraries(multi_threaded_echo_client ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
-    target_link_libraries(multi_threaded_echo_server ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
-endif()
+target_link_libraries(multi_threaded_echo_client ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
+target_link_libraries(multi_threaded_echo_server ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})

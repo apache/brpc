@@ -79,10 +79,5 @@ set(DYNAMIC_LIB
 add_executable(cancel_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
 add_executable(cancel_server server.cpp ${PROTO_SRC} ${PROTO_HEADER})
 
-if(EXAMPLE_LINK_SO)
-    target_link_libraries(cancel_client ${BRPC_LIB} ${DYNAMIC_LIB})
-    target_link_libraries(cancel_server ${BRPC_LIB} ${DYNAMIC_LIB})
-else()
-    target_link_libraries(cancel_client ${BRPC_LIB} ${DYNAMIC_LIB})
-    target_link_libraries(cancel_server ${BRPC_LIB} ${DYNAMIC_LIB})
-endif()
+target_link_libraries(cancel_client ${BRPC_LIB} ${DYNAMIC_LIB})
+target_link_libraries(cancel_server ${BRPC_LIB} ${DYNAMIC_LIB})

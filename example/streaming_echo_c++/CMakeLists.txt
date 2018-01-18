@@ -79,10 +79,5 @@ set(DYNAMIC_LIB
 add_executable(streaming_echo_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
 add_executable(streaming_echo_server server.cpp ${PROTO_SRC} ${PROTO_HEADER})
 
-if(EXAMPLE_LINK_SO)
-    target_link_libraries(streaming_echo_client ${BRPC_LIB} ${DYNAMIC_LIB})
-    target_link_libraries(streaming_echo_server ${BRPC_LIB} ${DYNAMIC_LIB})
-else()
-    target_link_libraries(streaming_echo_client ${BRPC_LIB} ${DYNAMIC_LIB})
-    target_link_libraries(streaming_echo_server ${BRPC_LIB} ${DYNAMIC_LIB})
-endif()
+target_link_libraries(streaming_echo_client ${BRPC_LIB} ${DYNAMIC_LIB})
+target_link_libraries(streaming_echo_server ${BRPC_LIB} ${DYNAMIC_LIB})

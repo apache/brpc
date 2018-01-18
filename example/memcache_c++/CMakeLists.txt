@@ -78,8 +78,4 @@ set(DYNAMIC_LIB
 
 add_executable(memcache_client client.cpp)
 
-if(EXAMPLE_LINK_SO)
-    target_link_libraries(memcache_client ${BRPC_LIB} ${DYNAMIC_LIB})
-else()
-    target_link_libraries(memcache_client ${BRPC_LIB} ${DYNAMIC_LIB})
-endif()
+target_link_libraries(memcache_client ${BRPC_LIB} ${DYNAMIC_LIB})

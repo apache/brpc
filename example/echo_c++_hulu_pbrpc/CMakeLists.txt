@@ -79,10 +79,5 @@ set(DYNAMIC_LIB
 add_executable(echo_hulu_pbrpc_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
 add_executable(echo_hulu_pbrpc_server server.cpp ${PROTO_SRC} ${PROTO_HEADER})
 
-if(EXAMPLE_LINK_SO)
-    target_link_libraries(echo_hulu_pbrpc_client ${BRPC_LIB} ${DYNAMIC_LIB})
-    target_link_libraries(echo_hulu_pbrpc_server ${BRPC_LIB} ${DYNAMIC_LIB})
-else()
-    target_link_libraries(echo_hulu_pbrpc_client ${BRPC_LIB} ${DYNAMIC_LIB})
-    target_link_libraries(echo_hulu_pbrpc_server ${BRPC_LIB} ${DYNAMIC_LIB})
-endif()
+target_link_libraries(echo_hulu_pbrpc_client ${BRPC_LIB} ${DYNAMIC_LIB})
+target_link_libraries(echo_hulu_pbrpc_server ${BRPC_LIB} ${DYNAMIC_LIB})

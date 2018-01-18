@@ -85,11 +85,5 @@ add_executable(redis_cli redis_cli.cpp)
 add_executable(redis_press redis_press.cpp)
 
 set(AUX_LIB readline ncurses)
-if(EXAMPLE_LINK_SO)
-    target_link_libraries(redis_cli ${BRPC_LIB} ${DYNAMIC_LIB} ${AUX_LIB})
-    target_link_libraries(redis_press ${BRPC_LIB} ${DYNAMIC_LIB} ${AUX_LIB})
-else()
-    target_link_libraries(redis_cli ${BRPC_LIB} ${DYNAMIC_LIB} ${AUX_LIB})
-    target_link_libraries(redis_press ${BRPC_LIB} ${DYNAMIC_LIB} ${AUX_LIB})
-endif()
-
+target_link_libraries(redis_cli ${BRPC_LIB} ${DYNAMIC_LIB} ${AUX_LIB})
+target_link_libraries(redis_press ${BRPC_LIB} ${DYNAMIC_LIB} ${AUX_LIB})

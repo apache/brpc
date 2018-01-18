@@ -89,10 +89,5 @@ execute_process(
 add_executable(multi_threaded_mcpack_client client.cpp ${CMAKE_CURRENT_BINARY_DIR}/echo.pb.cc)
 add_executable(multi_threaded_mcpack_server server.cpp ${CMAKE_CURRENT_BINARY_DIR}/echo.pb.cc)
 
-if(EXAMPLE_LINK_SO)
-    target_link_libraries(multi_threaded_mcpack_client ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
-    target_link_libraries(multi_threaded_mcpack_server ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
-else()
-    target_link_libraries(multi_threaded_mcpack_client ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
-    target_link_libraries(multi_threaded_mcpack_server ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
-endif()
+target_link_libraries(multi_threaded_mcpack_client ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
+target_link_libraries(multi_threaded_mcpack_server ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
