@@ -389,6 +389,20 @@ Set gflag -free_memory_to_system_interval to make the program try to return free
 
 Framework does not print logs for specific client generally, because a lot of errors caused by clients may slow down server significantly due to frequent printing of logs. If you need to debug or just want the server to log all errors, turn on [-log_error_text](http://brpc.baidu.com:8765/flags/log_error_text).
 
+## Customize percentiles of latency
+
+Latency percentiles showed are **80** (was 50 before), 90, 99, 99.9, 99.99 by default. The first 3 ones can be changed by gflags -bvar_latency_p1, -bvar_latency_p2, -bvar_latency_p3 respectively。
+
+Following are correct settings:
+```shell
+-bvar_latency_p3=97   # p3 is changed from default 99 to 97
+-bvar_latency_p1=60 -bvar_latency_p2=80 -bvar_latency_p3=95
+```
+Following are wrong settings:
+```shell
+-bvar_latency_p3=100   # the value must be inside [1,99] inclusive，otherwise gflags fails to parse
+-bvar_latency_p1=-1    # ^
+```
 ## Limit sizes of messages
 
 To protect servers and clients, when a request received by a server or a response received by a client is too large, the server or client rejects the message and closes the connection. The limit is controlled by [-max_body_size](http://brpc.baidu.com:8765/flags/max_body_size), in bytes.

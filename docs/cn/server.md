@@ -387,6 +387,21 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 
 server的框架部分一般不针对个别client打印错误日志，因为当大量client出现错误时，可能导致server高频打印日志而严重影响性能。但有时为了调试问题，或就是需要让server打印错误，打开参数[-log_error_text](http://brpc.baidu.com:8765/flags/log_error_text)即可。
 
+## 定制延时的分位值
+
+显示的服务延时分位值**默认**为**80** (曾经为50), 90, 99, 99.9, 99.99，前三项可分别通过-bvar_latency_p1, -bvar_latency_p2, -bvar_latency_p3三个gflags定制。
+
+以下是正确的设置：
+```shell
+-bvar_latency_p3=97   # p3从默认99修改为97
+-bvar_latency_p1=60 -bvar_latency_p2=80 -bvar_latency_p3=95
+```
+以下是错误的设置：
+```shell
+-bvar_latency_p3=100   # 设置值必须在[1,99]闭区间内，gflags解析会失败
+-bvar_latency_p1=-1    # 同上
+```
+
 ## 限制最大消息
 
 为了保护server和client，当server收到的request或client收到的response过大时，server或client会拒收并关闭连接。此最大尺寸由[-max_body_size](http://brpc.baidu.com:8765/flags/max_body_size)控制，单位为字节。
