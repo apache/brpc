@@ -209,7 +209,7 @@ XXX_Stub stub(&channel);
 request.set_foo(...);
 cntl.set_timeout_ms(...);
 stub.some_method(&cntl, &request, &response, NULL);
-if (cntl->Failed()) {
+if (cntl.Failed()) {
     // RPC failed. fields in response are undefined, don't use.
 } else {
     // RPC succeeded, response has what we want.
