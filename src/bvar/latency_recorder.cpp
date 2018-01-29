@@ -30,11 +30,11 @@ DEFINE_int32(bvar_latency_p3, 99, "Third latency percentile");
 static bool valid_percentile(const char*, int32_t v) {
     return v > 0 && v < 100;
 }
-const bool ALLOW_UNUSED dummy_bvar_latency_p1 = ::google::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_latency_p1 = ::GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_bvar_latency_p1, valid_percentile);
-const bool ALLOW_UNUSED dummy_bvar_latency_p2 = ::google::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_latency_p2 = ::GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_bvar_latency_p2, valid_percentile);
-const bool ALLOW_UNUSED dummy_bvar_latency_p3 = ::google::RegisterFlagValidator(
+const bool ALLOW_UNUSED dummy_bvar_latency_p3 = ::GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_bvar_latency_p3, valid_percentile);
 
 namespace detail {
