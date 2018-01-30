@@ -17,7 +17,7 @@ endif()
 
 option(BRPC_WITH_GLOG "With glog" OFF)
 option(DEBUG "Print debug logs" OFF)
-option(WITH_DEBUG_SYMBOLS "With debug symbols" OFF)
+option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 
 set(WITH_GLOG_VAL "0")

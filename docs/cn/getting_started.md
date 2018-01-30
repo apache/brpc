@@ -67,7 +67,7 @@ $ mkdir build && cd build && cmake .. && make
 ```
 To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
 
-Use `cmake -DWITH_DEBUG_SYMBOLS=ON ..` to link debugging symbols.
+To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
 
 **Run example with cmake**
 ```
@@ -142,7 +142,7 @@ $ mkdir build && cd build && cmake .. && make
 ```
 To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
 
-Use `cmake -DWITH_DEBUG_SYMBOLS=ON ..` to link debugging symbols.
+To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
 
 **Run example**
 
@@ -208,7 +208,7 @@ $ mkdir build && cd build && cmake -DCMAKE_INCLUDE_PATH="/path/to/dep1/include;/
 
 To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
 
-Add `-DWITH_DEBUG_SYMBOLS=ON` to link debugging symbols.
+To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
 
 # Supported deps
 
