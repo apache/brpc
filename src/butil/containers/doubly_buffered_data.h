@@ -27,6 +27,7 @@
 #include "butil/type_traits.h"
 #include "butil/errno.h"
 #include "butil/atomicops.h"
+#include "butil/unique_ptr.h"
 
 namespace butil {
 
@@ -238,17 +239,17 @@ private:
 template <typename T, typename TLS>
 typename DoublyBufferedData<T, TLS>::Wrapper*
 DoublyBufferedData<T, TLS>::AddWrapper() {
-    Wrapper* w = new (std::nothrow) Wrapper(this);
+    std::unique_ptr<Wrapper> w(new (std::nothrow) Wrapper(this));
     if (NULL == w) {
         return NULL;
     }
     try {
         BAIDU_SCOPED_LOCK(_wrappers_mutex);
-        _wrappers.push_back(w);
+        _wrappers.push_back(w.get());
     } catch (std::exception& e) {
         return NULL;
     }
-    return w;
+    return w.release();
 }
 
 // Called when thread quits.
