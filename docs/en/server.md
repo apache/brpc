@@ -403,6 +403,17 @@ Following are wrong settings:
 -bvar_latency_p3=100   # the value must be inside [1,99] inclusive，otherwise gflags fails to parse
 -bvar_latency_p1=-1    # ^
 ```
+## Change stacksize
+
+brpc server runs code in bthreads with stacksize=1MB by default, while stacksize of pthreads is 10MB. It's possible that programs running normally on pthreads may meet stack overflow on bthreads.
+
+Set following gflags to enlarge the stacksize.
+```shell
+--stack_size_normal=10000000  # sets stacksize to roughly 10MB
+--tc_stack_normal=1           # sets number of stacks cached by each worker pthread to prevent reusing from global pool each time, default value is 8
+```
+NOTE: It does mean that coredump of programs is likely to be caused by "stack overflow" on bthreads. We're talking about this simply because it's easy and quick to verify this factor and exclude the possibility.
+
 ## Limit sizes of messages
 
 To protect servers and clients, when a request received by a server or a response received by a client is too large, the server or client rejects the message and closes the connection. The limit is controlled by [-max_body_size](http://brpc.baidu.com:8765/flags/max_body_size), in bytes.
@@ -904,14 +915,6 @@ All brpc servers in one process [share worker pthreads](#Number-of-worker-pthrea
 ### Q: Why do client-side latencies much larger than the server-side ones
 
 server-side worker pthreads may not be enough and requests are significantly delayed. Read [Server debugging](server_debugging.md) for steps on debugging server-side issues quickly.
-
-### Q: Program may crash and generate coredumps unexplainable after switching to brpc
-
-brpc server runs code in bthreads with stacksize=1MB by default, while stacksize of pthreads is 10MB. It's possible that programs running normally on pthreads may meet stack overflow on bthreads.
-
-NOTE: It does mean that coredump of programs is likely to be caused by "stack overflow" on bthreads. We're talking about this simply because it's easy and quick to verify this factor and exclude the possibility.
-
-Solution: Add following gflags to adjust the stacksize. For example: `--stack_size_normal=10000000 --tc_stack_normal=1`. The first flag sets stacksize to 10MB and the second flag sets number of stacks cached by each worker pthread (to prevent reusing from global each time)
 
 ### Q: Fail to open /proc/self/io
 
