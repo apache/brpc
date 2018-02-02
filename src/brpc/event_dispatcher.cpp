@@ -26,7 +26,11 @@
 #include "brpc/details/has_epollrdhup.h"
 #endif
 #include "brpc/reloadable_flags.h"
-
+#if defined(OS_MACOSX)
+#include <sys/types.h>
+#include <sys/event.h>
+#include <sys/time.h>
+#endif
 
 namespace brpc {
 
@@ -41,11 +45,19 @@ EventDispatcher::EventDispatcher()
     , _tid(0)
     , _consumer_thread_attr(BTHREAD_ATTR_NORMAL)
 {
+#if defined(OS_LINUX)
     _epfd = epoll_create(1024 * 1024);
     if (_epfd < 0) {
         PLOG(FATAL) << "Fail to create epoll";
         return;
     }
+#elif defined(OS_MACOSX)
+    _epfd = kqueue();
+    if (_epfd < 0) {
+        PLOG(FATAL) << "Fail to create kqueue";
+        return;
+    }
+#endif
     CHECK_EQ(0, butil::make_close_on_exec(_epfd));
 
     _wakeup_fds[0] = -1;
@@ -71,7 +83,11 @@ EventDispatcher::~EventDispatcher() {
 
 int EventDispatcher::Start(const bthread_attr_t* consumer_thread_attr) {
     if (_epfd < 0) {
+#if defined(OS_LINUX)
         LOG(FATAL) << "epoll was not created";
+#elif defined(OS_MACOSX)
+        LOG(FATAL) << "kqueue was not created";
+#endif
         return -1;
     }
     
@@ -81,7 +97,7 @@ int EventDispatcher::Start(const bthread_attr_t* consumer_thread_attr) {
         return -1;
     }
 
-    // Set _consumer_thread_attr before creating epoll thread to make sure
+    // Set _consumer_thread_attr before creating epoll/kqueue thread to make sure
     // everyting seems sane to the thread.
     _consumer_thread_attr = (consumer_thread_attr  ?
                              *consumer_thread_attr : BTHREAD_ATTR_NORMAL);
@@ -94,7 +110,7 @@ int EventDispatcher::Start(const bthread_attr_t* consumer_thread_attr) {
     int rc = bthread_start_background(
         &_tid, &_consumer_thread_attr, RunThis, this);
     if (rc) {
-        LOG(FATAL) << "Fail to create epoll thread: " << berror(rc);
+        LOG(FATAL) << "Fail to create epoll/kqueue thread: " << berror(rc);
         return -1;
     }
     return 0;
@@ -108,8 +124,15 @@ void EventDispatcher::Stop() {
     _stop = true;
 
     if (_epfd >= 0) {
+#if defined(OS_LINUX)
         epoll_event evt = { EPOLLOUT,  { NULL } };
         epoll_ctl(_epfd, EPOLL_CTL_ADD, _wakeup_fds[1], &evt);
+#elif define(OS_MACOSX)
+        kevent kqueue_event;
+        EV_SET(&kqueue_event, _wakeup_fds[1], EVFILT_WRITE, EV_ADD | EV_ENABLE | EV_CLEAR,
+                    0, 0, NULL);
+        kevent(_epfd, &kqueue_event, 1, NULL, 0, NULL);
+#endif
     }
 }
 
@@ -126,6 +149,7 @@ int EventDispatcher::AddEpollOut(SocketId socket_id, int fd, bool pollin) {
         return -1;
     }
 
+#if defined(OS_LINUX)
     epoll_event evt;
     evt.data.u64 = socket_id;
     evt.events = EPOLLOUT | EPOLLET;
@@ -144,6 +168,22 @@ int EventDispatcher::AddEpollOut(SocketId socket_id, int fd, bool pollin) {
             return -1;
         }
     }
+#elif define(OS_MACOSX)
+    kevent evt;
+    //TODO: add EV_EOF
+    EV_SET(&evt, fd, EVFILT_WRITE, EV_ADD | EV_ENABLE | EV_CLEAR,
+                0, 0, (void*)socket_id);
+    if (kevent(_epfd, &evt, 1, NULL, 0, NULL) < 0) {
+        return -1;
+    }
+    if (pollin) {
+        EV_SET(&evt, fd, EVFILT_READ, EV_ADD | EV_ENABLE | EV_CLEAR,
+                    0, 0, (void*)socket_id);
+        if (kevent(_epfd, &evt, 1, NULL, 0, NULL) < 0) {
+            return -1;
+        }
+    }
+#endif
     return 0;
 }
 
