@@ -332,7 +332,7 @@ public:
     
     // Start to process edge-triggered events from the fd.
     // This function does not block caller.
-    static int StartInputEvent(SocketId id, uint32_t epoll_events,
+    static int StartInputEvent(SocketId id, uint32_t events,
                                const bthread_attr_t& thread_attr);
 
     static const int PROGRESS_INIT = 1;

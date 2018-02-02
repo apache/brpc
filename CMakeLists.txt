@@ -114,10 +114,22 @@ if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
 endif()
 
+find_path(SSL_INCLUDE_PATH NAMES openssl/ssl.h)
+find_library(SSL_LIB NAMES ssl)
+if ((NOT SSL_INCLUDE_PATH) OR (NOT SSL_LIB))
+    message(FATAL_ERROR "Fail to find ssl")
+endif()
+
+find_library(CRYPTO_LIB NAMES crypto)
+if (NOT CRYPTO_LIB)
+    message(FATAL_ERROR "Fail to find crypto")
+endif()
+
 include_directories(
         ${GFLAGS_INCLUDE_PATH}
         ${PROTOBUF_INCLUDE_DIRS}
         ${LEVELDB_INCLUDE_PATH}
+        ${SSL_INCLUDE_PATH}
         )
 
 set(DYNAMIC_LIB
@@ -126,8 +138,8 @@ set(DYNAMIC_LIB
     ${LEVELDB_LIB}
     ${PROTOC_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
-    ssl
-    crypto
+    ${SSL_LIB}
+    ${CRYPTO_LIB}
     dl
     z
     )

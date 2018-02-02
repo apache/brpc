@@ -40,6 +40,9 @@
 #include "brpc/stream_impl.h"
 #include "brpc/shared_object.h"
 #include "brpc/policy/rtmp_protocol.h"  // FIXME
+#if defined(OS_MACOSX)
+#include <sys/event.h>
+#endif
 
 namespace bthread {
 size_t __attribute__((weak))
@@ -1865,7 +1868,7 @@ AuthContext* Socket::mutable_auth_context() {
     return _auth_context;
 }
 
-int Socket::StartInputEvent(SocketId id, uint32_t epoll_events,
+int Socket::StartInputEvent(SocketId id, uint32_t events,
                             const bthread_attr_t& thread_attr) {
     SocketUniquePtr s;
     if (Address(id, &s) < 0) {
@@ -1877,11 +1880,15 @@ int Socket::StartInputEvent(SocketId id, uint32_t epoll_events,
         return 0;
     }
     if (s->fd() < 0) {
-        CHECK(!(epoll_events & EPOLLIN)) << "epoll_events=" << epoll_events;
+#if defined(OS_LINUX)
+        CHECK(!(events & EPOLLIN)) << "epoll_events=" << events;
+#elif defined(OS_MACOSX)
+        CHECK((short)events != EVFILT_READ) << "kqueue filter=" << events;
+#endif
         return -1;
     }
 
-    // if (epoll_events & has_epollrdhup) {
+    // if (events & has_epollrdhup) {
     //     s->_eof = 1;
     // }
     // Passing e[i].events causes complex visibility issues and
