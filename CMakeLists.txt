@@ -147,7 +147,17 @@ set(DYNAMIC_LIB
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(DYNAMIC_LIB ${DYNAMIC_LIB} rt)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    set(DYNAMIC_LIB ${DYNAMIC_LIB} pthread)
+    set(DYNAMIC_LIB ${DYNAMIC_LIB}
+        pthread
+        "-framework CoreFoundation"
+        "-framework CoreGraphics"
+        "-framework CoreData"
+        "-framework CoreText"
+        "-framework Security"
+        "-framework Foundation"
+        "-Wl,-U,_MallocExtension_ReleaseFreeMemory"
+        "-Wl,-U,_ProfilerStart"
+        "-Wl,-U,_ProfilerStop")
 endif()
 
 # for *.so
@@ -226,7 +236,6 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/strings/string_util.cc
     ${CMAKE_SOURCE_DIR}/src/butil/strings/string_util_constants.cc
     ${CMAKE_SOURCE_DIR}/src/butil/strings/stringprintf.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/strings/sys_string_conversions_posix.cc
     ${CMAKE_SOURCE_DIR}/src/butil/strings/utf_offset_string_conversions.cc
     ${CMAKE_SOURCE_DIR}/src/butil/strings/utf_string_conversion_utils.cc
     ${CMAKE_SOURCE_DIR}/src/butil/strings/utf_string_conversions.cc
@@ -274,11 +283,17 @@ set(BUTIL_SOURCES
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(BUTIL_SOURCES ${BUTIL_SOURCES}
         ${CMAKE_SOURCE_DIR}/src/butil/file_util_linux.cc
-        ${CMAKE_SOURCE_DIR}/src/butil/threading/platform_thread_linux.cc)
+        ${CMAKE_SOURCE_DIR}/src/butil/threading/platform_thread_linux.cc
+        ${CMAKE_SOURCE_DIR}/src/butil/strings/sys_string_conversions_posix.cc)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(BUTIL_SOURCES ${BUTIL_SOURCES}
         ${CMAKE_SOURCE_DIR}/src/butil/mac/bundle_locations.mm
-        ${CMAKE_SOURCE_DIR}/src/butil/mac/foundation_util.mm)
+        ${CMAKE_SOURCE_DIR}/src/butil/mac/foundation_util.mm
+        ${CMAKE_SOURCE_DIR}/src/butil/file_util_mac.mm
+        ${CMAKE_SOURCE_DIR}/src/butil/threading/platform_thread_mac.mm
+        ${CMAKE_SOURCE_DIR}/src/butil/strings/sys_string_conversions_mac.mm
+        ${CMAKE_SOURCE_DIR}/src/butil/time/time_mac.cc
+        ${CMAKE_SOURCE_DIR}/src/butil/mac/scoped_mach_port.cc)
 endif()
 
 file(GLOB_RECURSE BVAR_SOURCES "${CMAKE_SOURCE_DIR}/src/bvar/*.cpp")

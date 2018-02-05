@@ -100,11 +100,11 @@ __BEGIN_DECLS
    The "size" parameter is a hint specifying the number of file
    descriptors to be associated with the new instance.  The fd
    returned by epoll_create() should be closed with close().  */
-extern int epoll_create (int __size);
+inline int epoll_create (int __size) { return 0;}
 
 /* Same as epoll_create but with an FLAGS parameter.  The unused SIZE
    parameter has been dropped.  */
-extern int epoll_create1 (int __flags);
+inline int epoll_create1 (int __flags) {return 0;}
 
 
 /* Manipulate an epoll instance "epfd". Returns 0 in case of success,
@@ -113,8 +113,8 @@ extern int epoll_create1 (int __flags);
    constants defined above. The "fd" parameter is the target of the
    operation. The "event" parameter describes which events the caller
    is interested in and any associated user data.  */
-extern int epoll_ctl (int __epfd, int __op, int __fd,
-              struct epoll_event *__event);
+inline int epoll_ctl (int __epfd, int __op, int __fd,
+              struct epoll_event *__event) {return 0;}
 
 /* Wait for events on an epoll instance "epfd". Returns the number of
    triggered events returned in "events" buffer. Or -1 in case of
@@ -126,8 +126,8 @@ extern int epoll_ctl (int __epfd, int __op, int __fd,
 
    This function is a cancellation point and therefore not marked with
   .  */
-extern int epoll_wait (int __epfd, struct epoll_event *__events,
-               int __maxevents, int __timeout);
+inline int epoll_wait (int __epfd, struct epoll_event *__events,
+               int __maxevents, int __timeout) { return 0;}
 
 __END_DECLS
 

@@ -34,7 +34,9 @@
 #include "butil/fd_guard.h"
 
 extern "C" {
+#if defined(OS_LINUX)
 extern char *program_invocation_name;
+#endif
 int __attribute__((weak)) ProfilerStart(const char* fname);
 void __attribute__((weak)) ProfilerStop();
 }
@@ -453,7 +455,11 @@ static void LoadSymbols() {
     info.start_addr = 0;
     info.end_addr = std::numeric_limits<uintptr_t>::max();
     info.offset = 0;
+#if defined(OS_LINUX)
     info.path = program_invocation_name;
+#elif defined(OS_MACOSX)
+    info.path = getprogname();
+#endif
     ExtractSymbolsFromBinary(symbol_map, info);
 
     butil::Timer tm2;

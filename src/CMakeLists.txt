@@ -19,12 +19,7 @@ set_property(TARGET ${BUTIL_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
 add_library(brpc SHARED $<TARGET_OBJECTS:BUTIL_LIB> $<TARGET_OBJECTS:OBJ_LIB>)
 add_library(brpc_static STATIC $<TARGET_OBJECTS:BUTIL_LIB> $<TARGET_OBJECTS:OBJ_LIB>)
 
-target_link_libraries(brpc ${DYNAMIC_LIB}
-                      "-framework CoreFoundation"
-                      "-framework CoreGraphics"
-                      "-framework CoreData"
-                      "-framework CoreText"
-                      "-framework Security")
+target_link_libraries(brpc ${DYNAMIC_LIB})
 
 if(WITH_GLOG)
     target_link_libraries(brpc ${GLOG_LIB})

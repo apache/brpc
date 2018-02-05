@@ -25,9 +25,17 @@ BAIDU_REGISTER_ERRNO(ESTOP, "The structure is stopping")
 
 extern "C" {
 
+#if defined(OS_LINUX)
 extern int *__errno_location() __attribute__((__const__));
 
 int *bthread_errno_location() {
     return __errno_location();
 }
+#elif defined(OS_MACOSX)
+// TODO(zhujiashun): find workaround
+int *bthread_errno_location() {
+    return &errno;
+}
+#endif
+
 }  // extern "C"

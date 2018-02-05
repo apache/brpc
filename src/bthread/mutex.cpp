@@ -402,10 +402,16 @@ static pthread_once_t init_sys_mutex_lock_once = PTHREAD_ONCE_INIT;
 // Call _dl_sym which is a private function in glibc to workaround the malloc
 // causing deadlock temporarily. This fix is hardly portable.
 static void init_sys_mutex_lock() {
+#if defined(OS_LINUX)
     // TODO: may need dlvsym when GLIBC has multiple versions of a same symbol.
     // http://blog.fesnel.com/blog/2009/08/25/preloading-with-multiple-symbol-versions
     sys_pthread_mutex_lock = (MutexOp)_dl_sym(RTLD_NEXT, "pthread_mutex_lock", (void*)init_sys_mutex_lock);
     sys_pthread_mutex_unlock = (MutexOp)_dl_sym(RTLD_NEXT, "pthread_mutex_unlock", (void*)init_sys_mutex_lock);
+#elif defined(OS_MACOSX)
+    // TODO: look workaround for dlsym on mac
+    sys_pthread_mutex_lock = (MutexOp)dlsym(RTLD_NEXT, "pthread_mutex_lock");
+    sys_pthread_mutex_unlock = (MutexOp)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
+#endif
 }
 
 // Make sure pthread functions are ready before main().
