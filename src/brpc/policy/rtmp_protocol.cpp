@@ -2264,7 +2264,7 @@ bool RtmpChunkStream::OnCommandMessageAMF0(
 }
 
 bool RtmpChunkStream::OnDataMessageAMF3(
-    const RtmpMessageHeader& mh, base::IOBuf* msg_body, Socket* socket) {
+    const RtmpMessageHeader& mh, butil::IOBuf* msg_body, Socket* socket) {
     msg_body->pop_front(1);
     return OnDataMessageAMF0(mh, msg_body, socket);
 }
@@ -2276,7 +2276,7 @@ bool RtmpChunkStream::OnSharedObjectMessageAMF3(
 }
 
 bool RtmpChunkStream::OnCommandMessageAMF3(
-    const RtmpMessageHeader& mh, base::IOBuf* msg_body, Socket* socket) {
+    const RtmpMessageHeader& mh, butil::IOBuf* msg_body, Socket* socket) {
     msg_body->pop_front(1);
     return OnCommandMessageAMF0(mh, msg_body, socket);
 }
