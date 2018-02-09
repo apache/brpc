@@ -39,8 +39,12 @@ public:
     void Describe(std::ostream&, const DescribeOptions& options);
 
 private:
-    // The value is configured weight for each server.
-    using Servers = std::map<SocketId, int>;
+    struct Servers {
+        // The value is configured weight for each server.
+        std::vector<std::pair<SocketId, int>> server_list;
+        // The value is the index of the server in "server_list".
+        std::map<SocketId, size_t> server_map;
+    };
     // The value is current weight for a server. 
     // It will be changed in the selection of servers.
     using TLS = std::map<SocketId, int>;

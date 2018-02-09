@@ -21,14 +21,20 @@
 namespace brpc {
 namespace policy {
 
+static const int EraseBatchSize = 100;
+
 bool WeightedRoundRobinLoadBalancer::Add(Servers& bg, const ServerId& id) {
-    if (bg.find(id.id) != bg.end()) {
-        return false;
+    if (bg.server_list.capacity() < 128) {
+        bg.server_list.reserve(128);
     }
     int weight = 0;
     if (butil::StringToInt(id.tag, &weight) && weight > 0) {
-        bg.emplace(id.id, weight);
-        return true;
+        bool insert_server = 
+                 bg.server_map.emplace(id.id, bg.server_list.size()).second;
+        if (insert_server) {
+            bg.server_list.emplace_back(id.id, weight);
+            return true;
+        }
     } else {
         LOG(ERROR) << "Invalid weight is set: " << id.tag;
     }
@@ -36,8 +42,13 @@ bool WeightedRoundRobinLoadBalancer::Add(Servers& bg, const ServerId& id) {
 }
 
 bool WeightedRoundRobinLoadBalancer::Remove(Servers& bg, const ServerId& id) {
-    if (bg.find(id.id) != bg.end()) {
-        bg.erase(id.id);
+    auto iter = bg.server_map.find(id.id);
+    if (iter != bg.server_map.end()) {
+        const size_t index = iter->second;
+        bg.server_list[index] = bg.server_list.back();
+        bg.server_map[bg.server_list[index].first] = index;
+        bg.server_list.pop_back();
+        bg.server_map.erase(iter);
         return true;
     }
     return false;
@@ -92,7 +103,7 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
     if (_db_servers.Read(&s) != 0) {
         return ENOMEM;
     }
-    if (s->empty()) {
+    if (s->server_list.empty()) {
         return ENODATA;
     }
     TLS& tls = s.tls();
@@ -100,7 +111,7 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
     int total_weight = 0;
     // TODO: each thread requsts service as the same sequence.
     // We can set a random beginning position for each thread.
-    for (const auto& server : *s) {
+    for (const auto& server : s->server_list) {
         // A new server is added or the wrr fisrt run.
         // Add the servers into TLS.
         const SocketId server_id = server.first;
@@ -118,10 +129,10 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
     }
     // If too many servers were removed from _db_servers(name service),
     // remove these servers from TLS.
-    if (s->size() + 100 < tls.size()) {
+    if (s->server_list.size() + EraseBatchSize < tls.size()) {
         auto iter = tls.begin(); 
         while (iter != tls.end()) {
-            if (s->find(iter->first) == s->end()) {
+            if (s->server_map.find(iter->first) == s->server_map.end()) {
                 iter = tls.erase(iter);
             } else {
                 ++iter;
@@ -158,8 +169,8 @@ void WeightedRoundRobinLoadBalancer::Describe(
     if (_db_servers.Read(&s) != 0) {
         os << "fail to read _db_servers";
     } else {
-        os << "n=" << s->size() << ':';
-        for (const auto& server : *s) {
+        os << "n=" << s->server_list.size() << ':';
+        for (const auto& server : s->server_list) {
             os << ' ' << server.first << '(' << server.second << ')';
         }
     }
