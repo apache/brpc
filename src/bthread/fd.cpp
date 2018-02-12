@@ -19,8 +19,10 @@
 #include "butil/compat.h"
 #include <new>                                   // std::nothrow
 #include <sys/poll.h>                            // poll()
+#if defined(OS_MACOSX)
 #include <sys/types.h>                           // struct kevent
 #include <sys/event.h>                           // kevent(), kqueue()
+#endif
 #include "butil/atomicops.h"
 #include "butil/time.h"
 #include "butil/fd_utility.h"                     // make_non_blocking
