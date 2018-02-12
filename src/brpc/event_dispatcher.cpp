@@ -129,7 +129,7 @@ void EventDispatcher::Stop() {
         epoll_ctl(_epfd, EPOLL_CTL_ADD, _wakeup_fds[1], &evt);
 #elif defined(OS_MACOSX)
         struct kevent kqueue_event;
-        EV_SET(&kqueue_event, _wakeup_fds[1], EVFILT_WRITE, EV_ADD | EV_ENABLE | EV_CLEAR,
+        EV_SET(&kqueue_event, _wakeup_fds[1], EVFILT_WRITE, EV_ADD | EV_ENABLE,
                     0, 0, NULL);
         kevent(_epfd, &kqueue_event, 1, NULL, 0, NULL);
 #endif

@@ -1712,8 +1712,12 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
             break;
             
         case SSL_ERROR_WANT_READ:
-            // Wait for EPOLLIN to finish renegotiation
+            // Wait for read event to finish renegotiation
+#if defined(OS_LINUX)
             if (bthread_fd_wait(fd(), EPOLLIN) == 0) {
+#elif defined(OS_MACOSX)
+            if (bthread_fd_wait(fd(), EVFILT_READ) == 0) {
+#endif
                 need_continue = true;
             }
             break;
@@ -1794,8 +1798,12 @@ ssize_t Socket::DoRead(size_t size_hint) {
             break;
             
         case SSL_ERROR_WANT_WRITE:
-            // Wait for EPOLLOUT to finish renegotiation
+            // Wait for write event to finish renegotiation
+#if defined(OS_LINUX)
             if (bthread_fd_wait(fd(), EPOLLOUT) == 0) {
+#elif defined(OS_MACOSX)
+            if (bthread_fd_wait(fd(), EVFILT_WRITE) == 0) {
+#endif
                 need_continue = true;
             }
             break;
