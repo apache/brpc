@@ -15,8 +15,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Sep 16 12:39:12 CST 2014
 
-#ifndef BAIDU_BASE_THREAD_LOCAL_INL_H
-#define BAIDU_BASE_THREAD_LOCAL_INL_H
+#ifndef BUTIL_THREAD_LOCAL_INL_H
+#define BUTIL_THREAD_LOCAL_INL_H
 
 namespace butil {
 
@@ -48,4 +48,4 @@ template <typename T> inline T* get_thread_local() {
 
 }  // namespace butil
 
-#endif  // BAIDU_BASE_THREAD_LOCAL_INL_H
+#endif  // BUTIL_THREAD_LOCAL_INL_H

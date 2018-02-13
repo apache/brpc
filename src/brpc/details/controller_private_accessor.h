@@ -125,6 +125,9 @@ public:
     void set_readable_progressive_attachment(ReadableProgressiveAttachment* s)
     { _cntl->_rpa.reset(s); }
 
+    void add_with_auth() {
+        _cntl->add_flag(Controller::FLAGS_REQUEST_WITH_AUTH);
+    }
 private:
     Controller* _cntl;
 };

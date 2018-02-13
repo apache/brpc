@@ -27,12 +27,12 @@
 namespace brpc {
 namespace policy {
 
-DEFINE_bool(quadratic_latency, false, "Divide square of latency");
-DEFINE_int64(min_weight, 1000, "minimum weight");
-DEFINE_int64(dev_multiple, 0, "Multiple of deviation");
-DEFINE_bool(count_inflight, true, "Adjust weight by inflight requests");
-
-BRPC_VALIDATE_GFLAG(dev_multiple, NonNegativeInteger);
+DEFINE_int64(min_weight, 1000, "Minimum weight of a node in LALB");
+DEFINE_double(punish_inflight_ratio, 1.5, "Decrease weight proportionally if "
+              "average latency of the inflight requests exeeds average "
+              "latency of the node times this ratio");
+DEFINE_double(punish_error_ratio, 1.2,
+              "Multiply latencies caused by errors with this ratio");
 
 static const int64_t DEFAULT_QPS = 1;
 static const size_t INITIAL_WEIGHT_TREE_SIZE = 128;
@@ -304,12 +304,12 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
             }
         } else if (Socket::Address(info.server_id, out->ptr) == 0
                    && !(*out->ptr)->IsLogOff()) {
-            if (!FLAGS_count_inflight) {
-                return 0;
-            }
             if ((ntry + 1) == n  // Instead of fail with EHOSTDOWN, we prefer
                                  // choosing the server again.
                 || !ExcludedServers::IsExcluded(in.excluded, info.server_id)) {
+                if (!in.changable_weights) {
+                    return 0;
+                }
                 const Weight::AddInflightResult r =
                     info.weight->AddInflight(in, index, dice - left);
                 if (r.weight_diff) {
@@ -324,7 +324,7 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
             if (++ntry >= n) {
                 break;
             }
-        } else if (FLAGS_count_inflight) {
+        } else if (in.changable_weights) {
             const int64_t diff =
                 info.weight->MarkFailed(index, total / n);
             if (diff) {
@@ -349,19 +349,7 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
     return EHOSTDOWN;
 }
 
-void LocalityAwareLoadBalancer::Feedback(const CallInfo& info) {
-    // Make latency larger when error is caused by backup request or timedout.
-    // If we don't do this, there's not much difference between a timedout
-    // request and a successful request camed back just before timeout.
-    int64_t latency_percent = 0;
-    if (info.error_code == 0) {
-        latency_percent = 100;
-    } else if (info.error_code == EBACKUPREQUEST) {
-        latency_percent = 150;
-    } else if (info.error_code == ERPCTIMEDOUT) {
-        latency_percent = 200;
-    } // else we will not update any weight on other errors
-        
+void LocalityAwareLoadBalancer::Feedback(const CallInfo& info) {        
     butil::DoublyBufferedData<Servers>::ScopedPtr s;
     if (_db_servers.Read(&s) != 0) {
         return;
@@ -372,7 +360,7 @@ void LocalityAwareLoadBalancer::Feedback(const CallInfo& info) {
     }
     const size_t index = *pindex;
     Weight* w = s->weight_tree[index].weight;
-    const int64_t diff = w->Update(info, index, latency_percent);
+    const int64_t diff = w->Update(info, index);
     if (diff != 0) {
         s->UpdateParentWeights(diff, index);
         _total.fetch_add(diff, butil::memory_order_relaxed);
@@ -380,8 +368,9 @@ void LocalityAwareLoadBalancer::Feedback(const CallInfo& info) {
 }
 
 int64_t LocalityAwareLoadBalancer::Weight::Update(
-    const CallInfo& info, size_t index, int64_t latency_percent) {
+    const CallInfo& ci, size_t index) {
     const int64_t end_time_us = butil::gettimeofday_us();
+    const int64_t latency = end_time_us - ci.begin_time_us;
     BAIDU_SCOPED_LOCK(_mutex);
     if (Disabled()) {
         // The weight was disabled and will be removed soon, do nothing
@@ -389,46 +378,85 @@ int64_t LocalityAwareLoadBalancer::Weight::Update(
         return 0;
     }
 
-    _begin_time_sum -= info.in.begin_time_us;
+    _begin_time_sum -= ci.begin_time_us;
     --_begin_time_count;
-    
-    const int64_t latency =
-        (end_time_us - info.in.begin_time_us) * latency_percent / 100;
+
     if (latency <= 0) {
-        // error happens or time skews, ignore the sample.
+        // time skews, ignore the sample.
         return 0;
     }
-
-    // Update latency and QPS
-    TimeInfo tm_info = { latency, end_time_us, latency * (double)latency };
-    if (!_time_q.empty()) {
-        tm_info.latency_sum += _time_q.bottom()->latency_sum;
-        tm_info.squared_latency_sum += _time_q.bottom()->squared_latency_sum;
+    if (ci.error_code == 0) {
+        // Add a new entry
+        TimeInfo tm_info = { latency, end_time_us };
+        if (!_time_q.empty()) {
+            tm_info.latency_sum += _time_q.bottom()->latency_sum;
+        }
+        _time_q.elim_push(tm_info);
+    } else {
+        // Accumulate into the last entry so that errors always decrease
+        // the overall QPS and latency.
+        // Note that the latency used is linearly mixed from the real latency
+        // (of an errorous call) and the timeout, so that errors that are more
+        // unlikely to be solved by later retries are punished more.
+        // Examples:
+        //   max_retry=0: always use timeout
+        //   max_retry=1, retried=0: latency
+        //   max_retry=1, retried=1: timeout
+        //   max_retry=2, retried=0: latency
+        //   max_retry=2, retried=1: (latency + timeout) / 2
+        //   max_retry=2, retried=2: timeout
+        //   ...
+        int ndone = 1;
+        int nleft = 0;
+        if (ci.controller->max_retry() > 0) {
+            ndone = ci.controller->retried_count();
+            nleft = ci.controller->max_retry() - ndone;
+        }
+        const int64_t err_latency =
+            (nleft * (int64_t)(latency * FLAGS_punish_error_ratio)
+             + ndone * ci.controller->timeout_ms() * 1000L) / (ndone + nleft);
+        
+        if (!_time_q.empty()) {
+            TimeInfo* ti = _time_q.bottom();
+            ti->latency_sum += err_latency;
+            ti->end_time_us = end_time_us;
+        } else {
+            // If the first response is error, enlarge the latency as timedout
+            // since we know nothing about the normal latency yet.
+            const TimeInfo tm_info = {
+                std::max(err_latency, ci.controller->timeout_ms() * 1000L),
+                end_time_us
+            };
+            _time_q.push(tm_info);
+        }
     }
-    _time_q.elim_push(tm_info);
-    const int64_t top = _time_q.top()->end_time_us;
+        
+    const int64_t top_time_us = _time_q.top()->end_time_us;
     const size_t n = _time_q.size();
     int64_t scaled_qps = DEFAULT_QPS * WEIGHT_SCALE;
-    if (end_time_us > top) {
-        // will not overflow.
-        scaled_qps = (n - 1) * 1000000L * WEIGHT_SCALE / (end_time_us - top);
-        if (scaled_qps < WEIGHT_SCALE) {
-            scaled_qps = WEIGHT_SCALE;
+    if (end_time_us > top_time_us) {        
+        // Only calculate scaled_qps when the queue is full or the elapse
+        // between bottom and top is reasonably large(so that error of the
+        // calculated QPS is probably smaller).
+        if (n == _time_q.capacity() ||
+            end_time_us >= top_time_us + 1000000L/*1s*/) { 
+            // will not overflow.
+            scaled_qps = (n - 1) * 1000000L * WEIGHT_SCALE / (end_time_us - top_time_us);
+            if (scaled_qps < WEIGHT_SCALE) {
+                scaled_qps = WEIGHT_SCALE;
+            }
         }
-        _avg_latency = (tm_info.latency_sum - _time_q.top()->latency_sum) / (n - 1);
-        double avg_squared_latency = (tm_info.squared_latency_sum -
-                                      _time_q.top()->squared_latency_sum) / (n - 1);
-        _dev = (int64_t)sqrt(avg_squared_latency - _avg_latency * (double)_avg_latency);
+        _avg_latency = (_time_q.bottom()->latency_sum -
+                        _time_q.top()->latency_sum) / (n - 1);
+    } else if (n == 1) {
+        _avg_latency = _time_q.bottom()->latency_sum;
     } else {
-        _avg_latency = latency;
-        _dev = _avg_latency;
+        // end_time_us <= top_time_us && n > 1: the QPS is so high that
+        // the time elapse between top and bottom is 0(possible in examples),
+        // or time skews, we don't update the weight for safety.
+        return 0;
     }
-
-    if (FLAGS_quadratic_latency) {
-        _base_weight = scaled_qps / _avg_latency * 100000 / _avg_latency;
-    } else {
-        _base_weight = scaled_qps / _avg_latency;
-    }
+    _base_weight = scaled_qps / _avg_latency;
     return ResetWeight(index, end_time_us);
 }
 
@@ -449,9 +477,8 @@ void LocalityAwareLoadBalancer::Weight::Describe(std::ostream& os, int64_t now) 
     size_t n = _time_q.size();
     double qps = 0;
     int64_t avg_latency = _avg_latency;
-    int64_t dev = _dev;
     if (n <= 1UL) {
-        qps = DEFAULT_QPS;
+        qps = 0;
     } else {
         if (n == _time_q.capacity()) {
             --n;
@@ -471,7 +498,6 @@ void LocalityAwareLoadBalancer::Weight::Describe(std::ostream& os, int64_t now) 
         os << " inflight_delay=0";
     }
     os  << " avg_latency=" << avg_latency
-        << " dev=" << dev
         << " expected_qps=" << qps;
 }
 
@@ -492,7 +518,14 @@ void LocalityAwareLoadBalancer::Describe(
         os << '[';
         for (size_t i = 0; i < n; ++i) {
             const ServerInfo & info = s->weight_tree[i];
-            os << "\n{id=" << info.server_id << " left="
+            os << "\n{id=" << info.server_id;
+            {
+                SocketUniquePtr tmp_ptr;
+                if (Socket::Address(info.server_id, &tmp_ptr) != 0) {
+                    os << "(broken)";
+                }
+            }
+            os << " left="
                << info.left->load(butil::memory_order_relaxed) << ' ';
             info.weight->Describe(os, now);
             os << '}';
@@ -511,7 +544,6 @@ LocalityAwareLoadBalancer::Weight::Weight(int64_t initial_weight)
     , _old_index((size_t)-1L)
     , _old_weight(0)
     , _avg_latency(0)
-    , _dev(0)
     , _time_q(_time_q_items, sizeof(_time_q_items), butil::NOT_OWN_STORAGE) {
 }
 

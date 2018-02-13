@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 10 17:40:58 CST 2012
 
-#ifndef BAIDU_BTHREAD_TASK_META_H
-#define BAIDU_BTHREAD_TASK_META_H
+#ifndef BTHREAD_TASK_META_H
+#define BTHREAD_TASK_META_H
 
 #include <pthread.h>                 // pthread_spin_init
 #include "bthread/butex.h"           // butex_construct/destruct
@@ -49,9 +49,14 @@ struct TaskMeta {
     // [Not Reset]
     butil::atomic<ButexWaiter*> current_waiter;
     uint64_t current_sleep;
-    
+
+    // A builtin flag to mark if the thread is stopping.
     bool stop;
-    bool interruptible;
+
+    // The thread is interrupted and should wake up from some blocking ops.
+    bool interrupted;
+
+    // Scheduling of the thread can be delayed.
     bool about_to_quit;
     
     // [Not Reset] guarantee visibility of version_butex.
@@ -116,4 +121,4 @@ public:
 
 }  // namespace bthread
 
-#endif  // BAIDU_BTHREAD_TASK_META_H
+#endif  // BTHREAD_TASK_META_H

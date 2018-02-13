@@ -38,6 +38,10 @@ DEFINE_int32(task_group_yield_before_idle, 0,
 
 namespace bthread {
 
+DECLARE_int32(bthread_concurrency);
+DECLARE_int32(bthread_min_concurrency);
+
+extern pthread_mutex_t g_task_control_mutex;
 extern BAIDU_THREAD_LOCAL TaskGroup* tls_task_group;
 void (*g_worker_startfn)() = NULL;
 
@@ -204,7 +208,7 @@ int TaskControl::add_workers(int num) {
 }
 
 TaskGroup* TaskControl::choose_one_group() {
-    const size_t ngroup = _ngroup.load(butil::memory_order_relaxed);
+    const size_t ngroup = _ngroup.load(butil::memory_order_acquire);
     if (ngroup != 0) {
         return _groups[butil::fast_rand_less_than(ngroup)];
     }
@@ -365,7 +369,7 @@ void TaskControl::signal_task(int num_task) {
     if (num_task > 2) {
         num_task = 2;
     }
-    int start_index = butil::fmix64(pthread_self()) % PARKING_LOT_NUM;
+    int start_index = butil::fmix64(pthread_numeric_id()) % PARKING_LOT_NUM;
     num_task -= _pl[start_index].signal(1);
     if (num_task > 0) {
         for (int i = 1; i < PARKING_LOT_NUM && num_task > 0; ++i) {
@@ -373,6 +377,15 @@ void TaskControl::signal_task(int num_task) {
                 start_index = 0;
             }
             num_task -= _pl[start_index].signal(1);
+        }
+    }
+    if (num_task > 0 &&
+        FLAGS_bthread_min_concurrency > 0 &&    // test min_concurrency for performance
+        _concurrency.load(butil::memory_order_relaxed) < FLAGS_bthread_concurrency) {
+        // TODO: Reduce this lock
+        BAIDU_SCOPED_LOCK(g_task_control_mutex);
+        if (_concurrency.load(butil::memory_order_acquire) < FLAGS_bthread_concurrency) {
+            add_workers(1);
         }
     }
 }

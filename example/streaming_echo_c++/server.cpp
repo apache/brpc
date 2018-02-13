@@ -32,11 +32,11 @@ public:
     virtual int on_received_messages(brpc::StreamId id, 
                                      butil::IOBuf *const messages[], 
                                      size_t size) {
-        LOG(INFO) << "Received from Stream=" << id << ": " << noflush;
+        std::ostringstream os;
         for (size_t i = 0; i < size; ++i) {
-            LOG(INFO) << "msg[" << i << "]=" << *messages[i] << noflush;
+            os << "msg[" << i << "]=" << *messages[i];
         }
-        LOG(INFO);
+        LOG(INFO) << "Received from Stream=" << id << ": " << os.str();
         return 0;
     }
     virtual void on_idle_timeout(brpc::StreamId id) {
@@ -81,7 +81,7 @@ private:
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
     // Generally you only need one Server.
     brpc::Server server;

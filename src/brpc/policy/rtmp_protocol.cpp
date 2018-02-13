@@ -1790,7 +1790,7 @@ bool RtmpChunkStream::OnMessage(const RtmpBasicHeader& bh,
                                 const RtmpMessageHeader& mh,
                                 butil::IOBuf* msg_body,
                                 Socket* socket) {
-    // Make sure msg_body is consistent with the header. Rrevious code
+    // Make sure msg_body is consistent with the header. Previous code
     // forgot to clear msg_body before appending new message.
     CHECK_EQ((size_t)mh.message_length, msg_body->size());
     
@@ -2169,12 +2169,10 @@ bool RtmpChunkStream::OnVideoMessage(
     msg.frame_type = (FlvVideoFrameType)((first_byte >> 4) & 0xF);
     msg.codec = (FlvVideoCodec)(first_byte & 0xF);
     if (!is_video_frame_type_valid(msg.frame_type)) {
-        RTMP_ERROR(socket, mh) << "Invalid frame_type=" << (int)msg.frame_type;
-        return false;
+        RTMP_WARNING(socket, mh) << "Invalid frame_type=" << (int)msg.frame_type;
     }
     if (!is_video_codec_valid(msg.codec)) {
-        RTMP_ERROR(socket, mh) << "Invalid codec=" << (int)msg.codec;
-        return false;
+        RTMP_WARNING(socket, mh) << "Invalid codec=" << (int)msg.codec;
     }
     msg_body->swap(msg.data);
 
@@ -2214,8 +2212,9 @@ bool RtmpChunkStream::OnDataMessageAMF0(
             // Ignore empty metadata (seen in pulling streams from quanmin)
             return false;
         }
-        AMFObject metadata;
-        if (!ReadAMFObject(&metadata, &istream)) {
+        RtmpMetaData metadata;
+        metadata.timestamp = mh.timestamp;
+        if (!ReadAMFObject(&metadata.data, &istream)) {
             RTMP_ERROR(socket, mh) << "Fail to read metadata";
             return false;
         }
@@ -3537,7 +3536,6 @@ butil::Status
 RtmpCreateStreamMessage::AppendAndDestroySelf(butil::IOBuf* out, Socket* s) {
     std::unique_ptr<RtmpCreateStreamMessage> destroy_self(this);
     if (s == NULL) {  // abandoned
-        RPC_VLOG << "[DEBUG] Socket=NULL";
         return butil::Status::OK();
     }
     // Serialize createStream command
@@ -3597,8 +3595,6 @@ RtmpCreateStreamMessage::AppendAndDestroySelf(butil::IOBuf* out, Socket* s) {
         socket->SetFailed(EINVAL, "Fail to serialize message");
         return butil::Status(EINVAL, "Fail to serialize message");
     }
-    RPC_VLOG << "[DEBUG] Succeed to call AppendAndDestroySelf, size=" << out->size()
-             << " SocketId=" << s->id();
     return butil::Status::OK();
 }
 

@@ -18,6 +18,7 @@
 #include <gflags/gflags.h>
 #include "butil/files/file_enumerator.h"
 #include "butil/file_util.h"                     // butil::FilePath
+#include "butil/popen.h"                        // butil::read_command_output
 #include "brpc/log.h"
 #include "brpc/controller.h"
 #include "brpc/server.h"
@@ -360,7 +361,7 @@ static void DisplayResult(Controller* cntl,
                 // retry;
             }
         }
-        CHECK_EQ(0, fclose(fp));
+        PLOG_IF(ERROR, fclose(fp) != 0) << "Fail to close fp";
         if (succ) {
             RPC_VLOG << "Hit cache=" << expected_result_name;
             os.move_to(resp);
@@ -371,7 +372,6 @@ static void DisplayResult(Controller* cntl,
             if (use_html) {
                 resp.append("</pre></body></html>");
             }
-            cntl->http_response().set_status_code(HTTP_STATUS_OK);
             return;
         }
     }
@@ -403,35 +403,11 @@ static void DisplayResult(Controller* cntl,
             }
             g_written_pprof_perl = true;
         }
-        errno = 0; // popen may not set errno, clear it to make sure if
+        errno = 0; // read_command_output may not set errno, clear it to make sure if
                    // we see non-zero errno, it's real error.
-        FILE* pipe = popen(cmd.c_str(), "r");
-        if (pipe == NULL) {
-            os << "Fail to popen `" << cmd << "', " << berror()
-               << (use_html ? "</body></html>" : "\n");
-            os.move_to(resp);
-            cntl->http_response().set_status_code(
-                HTTP_STATUS_INTERNAL_SERVER_ERROR);
-            return;
-        }
-        char buffer[1024];
-        while (1) {
-            size_t nr = fread(buffer, 1, sizeof(buffer), pipe);
-            if (nr != 0) {
-                prof_result.append(buffer, nr);
-            }
-            if (nr != sizeof(buffer)) {
-                if (feof(pipe)) {
-                    break;
-                } else if (ferror(pipe)) {
-                    LOG(ERROR) << "Encountered error while reading for the pipe";
-                    break;
-                }
-                // retry;
-            }
-        }
-        if (pclose(pipe) != 0) {
-            // NOTE: pclose may fail if the command failed to run, quit normal.
+        butil::IOBufBuilder pprof_output;
+        const int rc = butil::read_command_output(pprof_output, cmd.c_str());
+        if (rc != 0) {
             butil::FilePath path(pprof_tool);
             if (!butil::PathExists(path)) {
                 // Write the script again.
@@ -440,48 +416,57 @@ static void DisplayResult(Controller* cntl,
                 os << path.value() << " was removed, recreate ...\n\n";
                 continue;
             }
-        } else {
-            // Cache result in file.
-            char result_name[256];
-            MakeCacheName(result_name, sizeof(result_name), prof_name,
-                          GetBaseName(base_name), use_text, show_ccount);
+            if (rc < 0) {
+                os << "Fail to execute `" << cmd << "', " << berror()
+                   << (use_html ? "</body></html>" : "\n");
+                os.move_to(resp);
+                cntl->http_response().set_status_code(
+                    HTTP_STATUS_INTERNAL_SERVER_ERROR);
+                return;
+            }
+            // cmd returns non zero, quit normally 
+        }
+        pprof_output.move_to(prof_result);
+        // Cache result in file.
+        char result_name[256];
+        MakeCacheName(result_name, sizeof(result_name), prof_name,
+                      GetBaseName(base_name), use_text, show_ccount);
 
-            // Append the profile name as the visual reminder for what
-            // current profile is.
-            butil::IOBuf before_label;
-            butil::IOBuf tmp;
-            if (cntl->http_request().uri().GetQuery("view") == NULL) {
-                tmp.append(prof_name);
-                tmp.append("[addToProfEnd]");
+        // Append the profile name as the visual reminder for what
+        // current profile is.
+        butil::IOBuf before_label;
+        butil::IOBuf tmp;
+        if (cntl->http_request().uri().GetQuery("view") == NULL) {
+            tmp.append(prof_name);
+            tmp.append("[addToProfEnd]");
+        }
+        if (prof_result.cut_until(&before_label, ",label=\"") == 0) {
+            tmp.append(before_label);
+            tmp.append(",label=\"[");
+            tmp.append(GetBaseName(prof_name));
+            if (base_name) {
+                tmp.append(" - ");
+                tmp.append(GetBaseName(base_name));
             }
-            if (prof_result.cut_until(&before_label, ",label=\"") == 0) {
-                tmp.append(before_label);
-                tmp.append(",label=\"[");
-                tmp.append(GetBaseName(prof_name));
-                if (base_name) {
-                    tmp.append(" - ");
-                    tmp.append(GetBaseName(base_name));
-                }
-                tmp.append("]\\l");
-                tmp.append(prof_result);
-                tmp.swap(prof_result);
-            } else {
-                // Assume it's text. append before result directly.
-                tmp.append("[");
-                tmp.append(GetBaseName(prof_name));
-                if (base_name) {
-                    tmp.append(" - ");
-                    tmp.append(GetBaseName(base_name));
-                }
-                tmp.append("]\n");
-                tmp.append(prof_result);
-                tmp.swap(prof_result);
+            tmp.append("]\\l");
+            tmp.append(prof_result);
+            tmp.swap(prof_result);
+        } else {
+            // Assume it's text. append before result directly.
+            tmp.append("[");
+            tmp.append(GetBaseName(prof_name));
+            if (base_name) {
+                tmp.append(" - ");
+                tmp.append(GetBaseName(base_name));
             }
-            
-            if (!WriteSmallFile(result_name, prof_result)) {
-                LOG(ERROR) << "Fail to write " << result_name;
-                CHECK(butil::DeleteFile(butil::FilePath(result_name), false));
-            }
+            tmp.append("]\n");
+            tmp.append(prof_result);
+            tmp.swap(prof_result);
+        }
+        
+        if (!WriteSmallFile(result_name, prof_result)) {
+            LOG(ERROR) << "Fail to write " << result_name;
+            CHECK(butil::DeleteFile(butil::FilePath(result_name), false));
         }
         break;
     }
@@ -495,7 +480,6 @@ static void DisplayResult(Controller* cntl,
     if (use_html) {
         resp.append("</pre></body></html>");
     }
-    cntl->http_response().set_status_code(HTTP_STATUS_OK);
 }
 
 static void DoProfiling(ProfilingType type,
@@ -863,6 +847,10 @@ static void StartProfiling(ProfilingType type,
     os <<
         "    var index = data.indexOf('digraph ');\n"
         "    if (index == -1) {\n"
+        "      var selEnd = data.indexOf('[addToProfEnd]');\n"
+        "      if (selEnd != -1) {\n"
+        "        data = data.substring(selEnd + '[addToProfEnd]'.length);\n"
+        "      }\n"
         "      $(\"#profiling-result\").html('<pre>' + data + '</pre>');\n"
         "    } else {\n"
         "      $(\"#profiling-result\").html('Plotting ...');\n"

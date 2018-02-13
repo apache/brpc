@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_SYNCHRONIZATION_WAITABLE_EVENT_H_
-#define BASE_SYNCHRONIZATION_WAITABLE_EVENT_H_
+#ifndef BUTIL_SYNCHRONIZATION_WAITABLE_EVENT_H_
+#define BUTIL_SYNCHRONIZATION_WAITABLE_EVENT_H_
 
 #include "butil/base_export.h"
 #include "butil/basictypes.h"
@@ -41,7 +41,7 @@ class TimeDelta;
 // by a Windows event object.  This is intentional.  If you are writing Windows
 // specific code and you need other features of a Windows event, then you might
 // be better off just using an Windows event directly.
-class BASE_EXPORT WaitableEvent {
+class BUTIL_EXPORT WaitableEvent {
  public:
   // If manual_reset is true, then to set the event state to non-signaled, a
   // consumer must call the Reset method.  If this parameter is false, then the
@@ -179,4 +179,4 @@ class BASE_EXPORT WaitableEvent {
 
 }  // namespace butil
 
-#endif  // BASE_SYNCHRONIZATION_WAITABLE_EVENT_H_
+#endif  // BUTIL_SYNCHRONIZATION_WAITABLE_EVENT_H_

@@ -116,8 +116,8 @@ TEST(BthreadIdTest, error_is_destroy) {
     OnResetArg arg = { { 0 }, 0 };
     ASSERT_EQ(0, bthread_id_create(&id1, &arg, on_reset));
     ASSERT_EQ(get_version(id1), bthread::id_value(id1));
-    ASSERT_EQ(0, bthread_id_error(id1, EBADFD));
-    ASSERT_EQ(EBADFD, arg.error_code);
+    ASSERT_EQ(0, bthread_id_error(id1, EBADF));
+    ASSERT_EQ(EBADF, arg.error_code);
     ASSERT_EQ(id1.value, arg.id.value);
     ASSERT_EQ(get_version(id1) + 4, bthread::id_value(id1));
 }
@@ -128,8 +128,8 @@ TEST(BthreadIdTest, error_is_destroy_ranged) {
     ASSERT_EQ(0, bthread_id_create_ranged(&id1, &arg, on_reset, 2));
     bthread_id_t id2 = { id1.value + 1 };
     ASSERT_EQ(get_version(id1), bthread::id_value(id2));
-    ASSERT_EQ(0, bthread_id_error(id2, EBADFD));
-    ASSERT_EQ(EBADFD, arg.error_code);
+    ASSERT_EQ(0, bthread_id_error(id2, EBADF));
+    ASSERT_EQ(EBADF, arg.error_code);
     ASSERT_EQ(id2.value, arg.id.value);
     ASSERT_EQ(get_version(id1) + 5, bthread::id_value(id2));
 }
@@ -138,7 +138,7 @@ TEST(BthreadIdTest, default_error_is_destroy) {
     bthread_id_t id1;
     ASSERT_EQ(0, bthread_id_create(&id1, NULL, NULL));
     ASSERT_EQ(get_version(id1), bthread::id_value(id1));
-    ASSERT_EQ(0, bthread_id_error(id1, EBADFD));
+    ASSERT_EQ(0, bthread_id_error(id1, EBADF));
     ASSERT_EQ(get_version(id1) + 4, bthread::id_value(id1));
 }
 
@@ -148,11 +148,11 @@ TEST(BthreadIdTest, doubly_destroy) {
     bthread_id_t id2 = { id1.value + 1 };
     ASSERT_EQ(get_version(id1), bthread::id_value(id1));
     ASSERT_EQ(get_version(id1), bthread::id_value(id2));
-    ASSERT_EQ(0, bthread_id_error(id1, EBADFD));
+    ASSERT_EQ(0, bthread_id_error(id1, EBADF));
     ASSERT_EQ(get_version(id1) + 5, bthread::id_value(id1));
     ASSERT_EQ(get_version(id1) + 5, bthread::id_value(id2));
-    ASSERT_EQ(EINVAL, bthread_id_error(id1, EBADFD));
-    ASSERT_EQ(EINVAL, bthread_id_error(id2, EBADFD));
+    ASSERT_EQ(EINVAL, bthread_id_error(id1, EBADF));
+    ASSERT_EQ(EINVAL, bthread_id_error(id2, EBADF));
 }
 
 static int on_numeric_error(bthread_id_t id, void* data, int error_code) {
@@ -284,10 +284,16 @@ TEST(BthreadIdTest, join_after_destroy_before_unlock) {
     ASSERT_EQ(1UL, non_null_ret);
 }
 
-void* stopped_waiter(void* arg) {
-    bthread_id_t id = { (uintptr_t)arg };
-    EXPECT_EQ(ESTOP, bthread_id_join(id));
-    EXPECT_EQ(get_version(id) + 4, bthread::id_value(id));
+struct StoppedWaiterArgs {
+    bthread_id_t id;
+    bool thread_started;
+};
+
+void* stopped_waiter(void* void_arg) {
+    StoppedWaiterArgs* args = (StoppedWaiterArgs*)void_arg;
+    args->thread_started = true;
+    EXPECT_EQ(0, bthread_id_join(args->id));
+    EXPECT_EQ(get_version(args->id) + 4, bthread::id_value(args->id));
     return NULL;
 }
 
@@ -300,18 +306,21 @@ TEST(BthreadIdTest, stop_a_wait_after_fight_before_signal) {
     ASSERT_EQ(0, bthread_id_trylock(id1, &data));
     ASSERT_EQ(&x, data);
     bthread_t th[8];
+    StoppedWaiterArgs args[ARRAY_SIZE(th)];
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
-        ASSERT_EQ(0, bthread_start_urgent(&th[i], NULL, stopped_waiter,
-                                          (void*)(intptr_t)id1.value));
+        args[i].id = id1;
+        args[i].thread_started = false;
+        ASSERT_EQ(0, bthread_start_urgent(&th[i], NULL, stopped_waiter, &args[i]));
     }
+    // stop does not wake up bthread_id_join
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
         bthread_stop(th[i]);
     }
-    // stop does not wake up bthread_id_join
     bthread_usleep(10000);
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
         ASSERT_TRUE(bthread::TaskGroup::exists(th[i]));
     }
+    // destroy the id to end the joinings.
     ASSERT_EQ(0, bthread_id_unlock_and_destroy(id1));
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
         ASSERT_EQ(0, bthread_join(th[i], NULL));
@@ -326,7 +335,7 @@ void* waiter(void* arg) {
 }
 
 int handle_data(bthread_id_t id, void* data, int error_code) {
-    EXPECT_EQ(EBADFD, error_code);
+    EXPECT_EQ(EBADF, error_code);
     ++*(int*)data;
     EXPECT_EQ(0, bthread_id_unlock_and_destroy(id));
     return 0;
@@ -348,7 +357,7 @@ TEST(BthreadIdTest, list_signal) {
         ASSERT_EQ(0, pthread_create(&th[i], NULL, waiter, (void*)(intptr_t)id[i].value));
     }
     bthread_usleep(10000);
-    ASSERT_EQ(0, bthread_id_list_reset(&list, EBADFD));
+    ASSERT_EQ(0, bthread_id_list_reset(&list, EBADF));
 
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
         ASSERT_EQ((int)(i + 1), data[i]);

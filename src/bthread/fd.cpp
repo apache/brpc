@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Thu Aug  7 18:56:27 CST 2014
 
+#include "butil/compat.h"
 #include <new>                                   // std::nothrow
-#include <sys/epoll.h>                           // epoll_*
 #include <sys/poll.h>                            // poll()
 #include "butil/atomicops.h"
 #include "butil/time.h"
@@ -93,7 +93,7 @@ typedef butil::atomic<int> EpollButex;
 static EpollButex* const CLOSING_GUARD = (EpollButex*)(intptr_t)-1L;
 
 #ifndef NDEBUG
-butil::static_atomic<int> break_nums = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<int> break_nums = BUTIL_STATIC_ATOMIC_INIT(0);
 #endif
 
 // Able to address 67108864 file descriptors, should be enough.
@@ -113,7 +113,14 @@ public:
         if (started()) {
             return -1;
         }
+        _start_mutex.lock();
+        // Double check
+        if (started()) {
+            _start_mutex.unlock();
+            return -1;
+        }
         _epfd = epoll_create(epoll_size);
+        _start_mutex.unlock();
         if (_epfd < 0) {
             PLOG(FATAL) << "Fail to epoll_create";
             return -1;
@@ -224,12 +231,11 @@ public:
             return -1;
         }
 #endif        
-        const int rc = butex_wait(butex, expected_val, abstime);
-        if (rc < 0 && errno == EWOULDBLOCK) {
-            // EpollThread did wake up, there's data.
-            return 0;
+        if (butex_wait(butex, expected_val, abstime) < 0 &&
+            errno != EWOULDBLOCK && errno != EINTR) {
+            return -1;
         }
-        return rc;
+        return 0;
     }
 
     int fd_close(int fd) {
@@ -334,6 +340,7 @@ private:
     int _epfd;
     bool _stop;
     bthread_t _tid;
+    butil::Mutex _start_mutex;
 };
 
 EpollThread epoll_thread[BTHREAD_EPOLL_THREAD_NUM];
@@ -413,7 +420,7 @@ int pthread_fd_wait(int fd, unsigned epoll_events,
 
 extern "C" {
 
-int bthread_fd_wait(int fd, unsigned epoll_events) __THROW {
+int bthread_fd_wait(int fd, unsigned epoll_events) {
     if (fd < 0) {
         errno = EINVAL;
         return -1;
@@ -427,7 +434,7 @@ int bthread_fd_wait(int fd, unsigned epoll_events) __THROW {
 }
 
 int bthread_fd_timedwait(int fd, unsigned epoll_events,
-                         const timespec* abstime) __THROW {
+                         const timespec* abstime) {
     if (NULL == abstime) {
         return bthread_fd_wait(fd, epoll_events);
     }
@@ -444,7 +451,7 @@ int bthread_fd_timedwait(int fd, unsigned epoll_events,
 }
 
 int bthread_connect(int sockfd, const sockaddr* serv_addr,
-                    socklen_t addrlen) __THROW {
+                    socklen_t addrlen) {
     bthread::TaskGroup* g = bthread::tls_task_group;
     if (NULL == g || g->is_current_pthread_task()) {
         return ::connect(sockfd, serv_addr, addrlen);
@@ -473,7 +480,7 @@ int bthread_connect(int sockfd, const sockaddr* serv_addr,
 }
 
 // This does not wake pthreads calling bthread_fd_*wait.
-int bthread_close(int fd) __THROW {
+int bthread_close(int fd) {
     return bthread::get_epoll_thread(fd).fd_close(fd);
 }
 

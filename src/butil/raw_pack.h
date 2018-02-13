@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef BASE_RAW_PACK_H
-#define BASE_RAW_PACK_H
+#ifndef BUTIL_RAW_PACK_H
+#define BUTIL_RAW_PACK_H
 
 #include "butil/sys_byteorder.h"
 
@@ -89,4 +89,4 @@ private:
 
 }  // namespace butil
 
-#endif  // BASE_RAW_PACK_H
+#endif  // BUTIL_RAW_PACK_H

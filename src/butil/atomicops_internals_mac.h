@@ -4,8 +4,8 @@
 
 // This file is an internal atomic implementation, use butil/atomicops.h instead.
 
-#ifndef BASE_ATOMICOPS_INTERNALS_MAC_H_
-#define BASE_ATOMICOPS_INTERNALS_MAC_H_
+#ifndef BUTIL_ATOMICOPS_INTERNALS_MAC_H_
+#define BUTIL_ATOMICOPS_INTERNALS_MAC_H_
 
 #include <libkern/OSAtomic.h>
 
@@ -194,4 +194,4 @@ inline Atomic64 Release_Load(volatile const Atomic64* ptr) {
 }   // namespace butil::subtle
 }   // namespace butil
 
-#endif  // BASE_ATOMICOPS_INTERNALS_MAC_H_
+#endif  // BUTIL_ATOMICOPS_INTERNALS_MAC_H_

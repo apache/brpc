@@ -32,7 +32,7 @@ DEFINE_string(http_content_type, "application/json", "Content type of http reque
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
     
     // A Channel represents a communication line to a Server. Notice that 
     // Channel is thread-safe and can be shared by all threads in your program.
@@ -77,17 +77,11 @@ int main(int argc, char* argv[]) {
         // the response comes back or error occurs(including timedout).
         stub.Echo(&cntl, &request, &response, NULL);
         if (!cntl.Failed()) {
-            if (cntl.response_attachment().empty()) {
-                LOG(INFO) << "Received response from " << cntl.remote_side()
-                          << ": " << response.message()
-                          << " latency=" << cntl.latency_us() << "us";
-            } else {
-                LOG(INFO) << "Received response from " << cntl.remote_side()
-                          << " to " << cntl.local_side()
-                          << ": " << response.message() << " (attached="
-                          << cntl.response_attachment() << ")"
-                          << " latency=" << cntl.latency_us() << "us";
-            }
+            LOG(INFO) << "Received response from " << cntl.remote_side()
+                << " to " << cntl.local_side()
+                << ": " << response.message() << " (attached="
+                << cntl.response_attachment() << ")"
+                << " latency=" << cntl.latency_us() << "us";
         } else {
             LOG(WARNING) << cntl.ErrorText();
         }

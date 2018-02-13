@@ -1,7 +1,8 @@
 saved_pwd_before_making=$PWD
-for file in `find example -name Makefile`; do
+for file in `find tools example -name CMakeFiles -type d -prune -o -name CMakeLists.txt -print`; do
     cd $(dirname $file)
-    echo -e "\n[$file]"
-    make -s clean
+    echo
+    echo "[$file]"
+    rm -rf build
     cd $saved_pwd_before_making
 done

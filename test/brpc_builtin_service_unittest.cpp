@@ -1,16 +1,15 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
+// brpc - A framework to host and access services throughout Baidu.
 // Copyright (c) 2014 Baidu, Inc.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#include <gperftools/profiler.h>
 #include <google/protobuf/descriptor.h>
+#include "butil/gperftools_profiler.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "brpc/socket.h"
@@ -37,7 +36,7 @@
 #include "brpc/builtin/sockets_service.h"      // SocketsService
 #include "brpc/builtin/common.h"
 #include "brpc/builtin/bad_method_service.h"
-#include "test/echo.pb.h"
+#include "echo.pb.h"
 
 DEFINE_bool(foo, false, "Flags for UT");
 BRPC_VALIDATE_GFLAG(foo, brpc::PassValidate);
@@ -70,7 +69,7 @@ public:
             bthread_usleep(req->sleep_us());
         }
         char buf[32];
-        snprintf(buf, sizeof(buf), "%lx", cntl->trace_id());
+        snprintf(buf, sizeof(buf), "%" PRIu64, cntl->trace_id());
         res->set_message(buf);
     }
 };
@@ -117,7 +116,7 @@ void CheckFieldInContent(const brpc::Controller& cntl,
 void CheckAnnotation(const brpc::Controller& cntl, int64_t expect) {
     const std::string& content = cntl.response_attachment().to_string();
     std::string expect_str;
-    butil::string_printf(&expect_str, "MyAnnotation: %ld", expect);
+    butil::string_printf(&expect_str, "MyAnnotation: %" PRId64, expect);
     std::size_t pos = content.find(expect_str);
     ASSERT_TRUE(pos != std::string::npos) << expect;
 }
@@ -194,7 +193,7 @@ protected:
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
         EXPECT_EQ(expect_type, cntl.http_response().content_type());
-        CheckContent(cntl, "test_builtin_service");
+        CheckContent(cntl, "brpc_builtin_service_unittest");
 #endif
     }
     
@@ -453,7 +452,7 @@ protected:
             ClosureChecker done;
             brpc::Controller cntl;
             SetUpController(&cntl, use_html);
-            snprintf(querystr_buf, sizeof(querystr_buf), "%ld", log_id);
+            snprintf(querystr_buf, sizeof(querystr_buf), "%" PRId64, log_id);
             cntl.http_request().uri()
                     .SetQuery(brpc::LOG_ID_STR, querystr_buf);
             service.default_method(&cntl, &req, &res, &done);
@@ -648,15 +647,15 @@ TEST_F(BuiltinServiceTest, pprof) {
         ClosureChecker done;
         brpc::Controller cntl;
         service.heap(&cntl, NULL, NULL, &done);
-        // MUST fail since tcmalloc hasn't been linked in
-        EXPECT_EQ(brpc::ENOMETHOD, cntl.ErrorCode());
+        const int rc = getenv("TCMALLOC_SAMPLE_PARAMETER") ? 0 : brpc::ENOMETHOD;
+        EXPECT_EQ(rc, cntl.ErrorCode());
     }
     {
         ClosureChecker done;
         brpc::Controller cntl;
         service.growth(&cntl, NULL, NULL, &done);
-        // MUST fail since tcmalloc hasn't been linked in
-        EXPECT_EQ(brpc::ENOMETHOD, cntl.ErrorCode());
+        // linked tcmalloc in UT
+        EXPECT_EQ(0, cntl.ErrorCode());
     }
     {
         ClosureChecker done;
@@ -670,7 +669,7 @@ TEST_F(BuiltinServiceTest, pprof) {
         brpc::Controller cntl;
         service.cmdline(&cntl, NULL, NULL, &done);
         EXPECT_FALSE(cntl.Failed());
-        CheckContent(cntl, "test_builtin_service");
+        CheckContent(cntl, "brpc_builtin_service_unittest");
     }
 }
 

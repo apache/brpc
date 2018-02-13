@@ -58,16 +58,6 @@ public:
         os << "\nbody: " << cntl->request_attachment() << '\n';
         os.move_to(cntl->response_attachment());
     }
-
-    void EchoProtobuf(google::protobuf::RpcController*,
-                      const HttpRequest* request,
-                      HttpResponse* response,
-                      google::protobuf::Closure* done) {
-        // This object helps you to call done->Run() in RAII style. If you need
-        // to process the request asynchronously, pass done_guard.release().
-        brpc::ClosureGuard done_guard(done);
-        response->set_message(request->message());
-    }
 };
 
 // Service with dynamic path.
@@ -160,7 +150,7 @@ public:
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
     // Generally you only need one Server.
     brpc::Server server;

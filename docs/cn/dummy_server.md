@@ -18,26 +18,6 @@
  
 int main() {
     ...
-    brpc::Server dummy_server;
-    brpc::ServerOptions dummy_server_options;
-    dummy_server_options.num_threads = 0;  // 不要改变寄主程序的线程数。
-    if (dummy_server.Start(8888/*port*/, &dummy_server_options) != 0) {
-        LOG(FATAL) << "Fail to start dummy server";
-        return -1;
-    }
-    ...
-}
-```
-
-r31803之后加入dummy server更容易了，只要一行：
-
-```c++
-#include <brpc/server.h>
- 
-...
- 
-int main() {
-    ...
     brpc::StartDummyServerAt(8888/*port*/);
     ...
 }

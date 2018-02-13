@@ -33,7 +33,7 @@
 #include "brpc/details/usercode_backup_pool.h"
 
 extern "C" {
-void bthread_assign_data(void* data) __THROW;
+void bthread_assign_data(void* data);
 }
 
 
@@ -382,6 +382,12 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
             break;
         }
 
+        if (socket->is_overcrowded()) {
+            cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
+                            butil::endpoint2str(socket->remote_side()).c_str());
+            break;
+        }
+
         if (!server_accessor.AddConcurrency(cntl.get())) {
             cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
                             server->options().max_concurrency);
@@ -510,7 +516,7 @@ void ProcessSofaResponse(InputMessageBase* msg_base) {
             cntl->SetFailed(
                 ERESPONSE, "Fail to parse response message, "
                 "CompressType=%d, response_size=%" PRIu64, 
-                res_cmp_type, msg->payload.length());
+                res_cmp_type, (uint64_t)msg->payload.length());
         } else {
             cntl->set_response_compress_type(res_cmp_type);
         }

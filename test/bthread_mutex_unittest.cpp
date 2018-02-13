@@ -3,6 +3,7 @@
 // Date: Sun Jul 13 15:04:18 CST 2014
 
 #include <gtest/gtest.h>
+#include "butil/compat.h"
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/string_printf.h"
@@ -11,14 +12,7 @@
 #include "bthread/butex.h"
 #include "bthread/task_control.h"
 #include "bthread/mutex.h"
-
-//#define ENABLE_PROFILE
-#ifdef ENABLE_PROFILE
-# include <gperftools/profiler.h>
-#else
-# define ProfilerStart(a)
-# define ProfilerStop()
-#endif
+#include "butil/gperftools_profiler.h"
 
 namespace {
 inline unsigned* get_butex(bthread_mutex_t & m) {
@@ -30,8 +24,8 @@ int c = 0;
 void* locker(void* arg) {
     bthread_mutex_t* m = (bthread_mutex_t*)arg;
     bthread_mutex_lock(m);
-    printf("[%lu] I'm here, %d, %lums\n", pthread_self(), ++c,
-           butil::cpuwide_time_ms() - start_time);
+    printf("[%" PRIu64 "] I'm here, %d, %" PRId64 "ms\n", 
+           pthread_numeric_id(), ++c, butil::cpuwide_time_ms() - start_time);
     bthread_usleep(10000);
     bthread_mutex_unlock(m);
     return NULL;
@@ -173,7 +167,7 @@ void PerfTest(Mutex* mutex,
     g_started = false;
     g_stopped = false;
     ThreadId threads[thread_num];
-    PerfArgs<Mutex> args[thread_num];
+    std::vector<PerfArgs<Mutex> > args(thread_num);
     for (int i = 0; i < thread_num; ++i) {
         args[i].mutex = mutex;
         create_fn(&threads[i], NULL, add_with_mutex<Mutex>, &args[i]);

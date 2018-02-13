@@ -18,16 +18,7 @@
 #define BRPC_PROFILER_LINKER_H
 
 #if defined(BRPC_ENABLE_CPU_PROFILER) || defined(BAIDU_RPC_ENABLE_CPU_PROFILER)
-#ifdef __cplusplus
-extern "C" {
-#endif
-// Suppress warning of `google/profiler.h' which has been deprecated since
-// gperftools-2.2
-void ProfilerStart(const char*);
-void ProfilerStop(const char*);
-#ifdef __cplusplus
-}
-#endif
+#include "butil/gperftools_profiler.h"
 #endif
 
 namespace brpc {

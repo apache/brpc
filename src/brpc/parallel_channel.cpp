@@ -51,7 +51,9 @@ private:
         , _current_fail(0)
         , _current_done(0)
         , _cntl(cntl)
-        , _user_done(user_done) {
+        , _user_done(user_done)
+        , _callmethod_bthread(INVALID_BTHREAD)
+        , _callmethod_pthread(0) {
     }
 
     ~ParallelChannelDone() { }
@@ -137,7 +139,7 @@ public:
         for (int i = 0; i < ndone; ++i) {
             new (d->sub_done(i)) SubDone;
             d->sub_done(i)->cntl.ApplyClientSettings(settings);
-            d->sub_done(i)->cntl._run_done_state = Controller::CALLMETHOD_CAN_RUN_DONE;
+            d->sub_done(i)->cntl.allow_done_to_run_in_place();
         }
         // Setup the map for finding sub_done of i-th sub_channel
         if (ndone != nchan) {
@@ -194,6 +196,21 @@ public:
     static void* RunOnComplete(void* arg) {
         static_cast<ParallelChannelDone*>(arg)->OnComplete();
         return NULL;
+    }
+
+    // For otherwhere to know if they're in the same thread.
+    void SaveThreadInfoOfCallsite() {
+        _callmethod_bthread = bthread_self();
+        if (_callmethod_bthread == INVALID_BTHREAD) {
+            _callmethod_pthread = pthread_self();
+        }
+    }
+
+    bool IsSameThreadAsCallMethod() const {
+        if (_callmethod_bthread != INVALID_BTHREAD) {
+            return bthread_self() == _callmethod_bthread;
+        }
+        return pthread_self() == _callmethod_pthread;
     }
     
     void OnSubDoneRun(SubDone* fin) {
@@ -261,7 +278,8 @@ public:
         butil::atomic_thread_fence(butil::memory_order_acquire);
 
         if (fin != NULL &&
-            fin->cntl._run_done_state == Controller::CALLMETHOD_DID_RUN_DONE) {
+            !_cntl->is_done_allowed_to_run_in_place() &&
+            IsSameThreadAsCallMethod()) {
             // A sub channel's CallMethod calls a subdone directly, create a
             // thread to run OnComplete.
             bthread_t bh;
@@ -413,9 +431,12 @@ private:
     butil::atomic<uint32_t> _current_done;
     Controller* _cntl;
     google::protobuf::Closure* _user_done;
+    bthread_t _callmethod_bthread;
+    pthread_t _callmethod_pthread;
     SubDone _sub_done[0];
 };
 
+// Used in controller.cpp
 void DestroyParallelChannelDone(google::protobuf::Closure* c) {
     ParallelChannelDone::Destroy(static_cast<ParallelChannelDone*>(c));
 }
@@ -512,7 +533,17 @@ static void HandleTimeout(void* arg) {
     bthread_id_error(correlation_id, ERPCTIMEDOUT);
 }
 
-void RunDoneByState(Controller*, google::protobuf::Closure*);
+void* ParallelChannel::RunDoneAndDestroy(void* arg) {
+    Controller* c = static_cast<Controller*>(arg);
+    // Move done out from the controller.
+    google::protobuf::Closure* done = c->_done;
+    c->_done = NULL;
+    // Save call_id from the controller which may be deleted after Run().
+    const bthread_id_t cid = c->call_id();
+    done->Run();
+    CHECK_EQ(0, bthread_id_unlock_and_destroy(cid));
+    return NULL;
+}
 
 void ParallelChannel::CallMethod(
     const google::protobuf::MethodDescriptor* method,
@@ -530,25 +561,30 @@ void ParallelChannel::CallMethod(
     const int rc = bthread_id_lock(cid, NULL);
     if (rc != 0) {
         CHECK_EQ(EINVAL, rc);
-        const int err = cntl->ErrorCode();
-        if (err != ECANCELED) {
-            // it's very likely that user reused a un-Reset() Controller.
-            cntl->SetFailed((err ? err : EINVAL),
-                            "call_id=%lld was destroyed before CallMethod(), "
-                            "did you forget to Reset() the Controller?",
-                            (long long)cid.value);
-        } else {
-            // not warn for canceling which is common.
+        if (!cntl->FailedInline()) {
+            cntl->SetFailed(EINVAL, "Fail to lock call_id=%" PRId64, cid.value);
         }
-        RunDoneByState(cntl, done);
+        LOG_IF(ERROR, cntl->is_used_by_rpc())
+            << "Controller=" << cntl << " was used by another RPC before. "
+            "Did you forget to Reset() it before reuse?";
+        // Have to run done in-place.
+        // Read comment in CallMethod() in channel.cpp for details.
+        if (done) {
+            done->Run();
+        }
         return;
     }
+    cntl->set_used_by_rpc();
 
     ParallelChannelDone* d = NULL;
     int ndone = nchan;
     int fail_limit = 1;
     DEFINE_SMALL_ARRAY(SubCall, aps, nchan, 64);
 
+    if (cntl->FailedInline()) {
+        // The call_id is cancelled before RPC.
+        goto FAIL;
+    }
     // we don't support http whose response is NULL.
     if (response == NULL) {
         cntl->SetFailed(EINVAL, "response must be non-NULL");
@@ -634,8 +670,9 @@ void ParallelChannel::CallMethod(
     } else {
         cntl->_abstime_us = -1;
     }
+    d->SaveThreadInfoOfCallsite();
     CHECK_EQ(0, bthread_id_unlock(cid));
-    // Don't touch cntl again.
+    // Don't touch `cntl' and `d' again (for async RPC)
     
     for (int i = 0, j = 0; i < nchan; ++i) {
         if (!aps[i].is_skip()) {
@@ -655,13 +692,27 @@ void ParallelChannel::CallMethod(
     return;
 
 FAIL:
+    // The RPC was failed after locking call_id and before calling sub channels.
     if (d) {
-        // The call ends before calling CallMethod of any sub channel, we
-        // set the _done to NULL to make sure cntl->sub(any_index) is NULL.
+        // Set the _done to NULL to make sure cntl->sub(any_index) is NULL.
         cntl->_done = NULL;
         ParallelChannelDone::Destroy(d);
     }
-    RunDoneByState(cntl, done);
+    if (done) {
+        if (!cntl->is_done_allowed_to_run_in_place()) {
+            bthread_t bh;
+            bthread_attr_t attr = (FLAGS_usercode_in_pthread ?
+                                   BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL);
+            // Hack: save done in cntl->_done to remove a malloc of args.
+            cntl->_done = done;
+            if (bthread_start_background(&bh, &attr, RunDoneAndDestroy, cntl) == 0) {
+                return;
+            }
+            cntl->_done = NULL;
+            LOG(FATAL) << "Fail to start bthread";
+        }
+        done->Run();
+    }
     CHECK_EQ(0, bthread_id_unlock_and_destroy(cid));
 }
 
@@ -716,9 +767,5 @@ void ParallelChannel::Describe(
     }
     os << "]";
 }
-
-// Avoid linking errors in ccover g++.
-const ResponseMerger::Result ResponseMerger::IGNORED;
-const ResponseMerger::Result ResponseMerger::CALL_FAILED;
 
 } // namespace brpc

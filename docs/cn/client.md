@@ -1,3 +1,5 @@
+[English version](../en/client.md)
+
 # 示例程序
 
 Echo的[client端代码](https://github.com/brpc/brpc/blob/master/example/echo_c++/client.cpp)。
@@ -426,6 +428,10 @@ Controller的特点：
    - 同步RPC前Controller放栈上，出作用域后自行析构。注意异步RPC的Controller绝对不能放栈上，否则其析构时异步调用很可能还在进行中，从而引发未定义行为。
    - 异步RPC前new Controller，done中删除。
 
+## 线程数
+
+和大部分的RPC框架不同，brpc中并没有独立的Client线程池。所有Channel和Server通过[bthread](http://wiki.baidu.com/display/RPC/bthread)共享相同的线程池. 如果你的程序同样使用了brpc的server, 仅仅需要设置Server的线程数。 或者可以通过[gflags](http://wiki.baidu.com/display/RPC/flags)设置[-bthread_concurrency](http://brpc.baidu.com:8765/flags/bthread_concurrency)来设置全局的线程数.
+
 ## 超时
 
 **ChannelOptions.timeout_ms**是对应Channel上所有RPC的总超时，Controller.set_timeout_ms()可修改某次RPC的值。单位毫秒，默认值1秒，最大值2^31（约24天），-1表示一直等到回复或错误。
@@ -530,13 +536,13 @@ brpc支持以下连接方式：
 - 连接池：每次RPC前取用空闲连接，结束后归还，一个连接上最多只有一个请求，一个client对一台server可能有多条连接。http 1.1和各类使用nshead的协议都是这个方式。
 - 单连接：进程内所有client与一台server最多只有一个连接，一个连接上可能同时有多个请求，回复返回顺序和请求顺序不需要一致，这是baidu_std，hulu_pbrpc，sofa_pbrpc协议的默认选项。
 
-|            | 短连接                                      | 连接池                   | 单连接                 |
-| ---------- | ---------------------------------------- | --------------------- | ------------------- |
-| 长连接        | 否                                        | 是                     | 是                   |
-| server端连接数 | qps*latency (原理见[little's law](https://en.wikipedia.org/wiki/Little%27s_law)) | qps*latency           | 1                   |
-| 极限qps      | 差，且受限于单机端口数                              | 中等                    | 高                   |
-| latency    | 1.5RTT(connect) + 1RTT + 处理时间            | 1RTT + 处理时间           | 1RTT + 处理时间         |
-| cpu占用      | 高, 每次都要tcp connect                       | 中等, 每个请求都要一次sys write | 低, 合并写出在大流量时减少cpu占用 |
+|                     | 短连接                                      | 连接池                   | 单连接                 |
+| ------------------- | ---------------------------------------- | --------------------- | ------------------- |
+| 长连接                 | 否                                        | 是                     | 是                   |
+| server端连接数(单client) | qps*latency (原理见[little's law](https://en.wikipedia.org/wiki/Little%27s_law)) | qps*latency           | 1                   |
+| 极限qps               | 差，且受限于单机端口数                              | 中等                    | 高                   |
+| latency             | 1.5RTT(connect) + 1RTT + 处理时间            | 1RTT + 处理时间           | 1RTT + 处理时间         |
+| cpu占用               | 高, 每次都要tcp connect                       | 中等, 每个请求都要一次sys write | 低, 合并写出在大流量时减少cpu占用 |
 
 框架会为协议选择默认的连接方式，用户**一般不用修改**。若需要，把ChannelOptions.connection_type设为：
 
@@ -590,7 +596,7 @@ brpc支持[Streaming RPC](streaming_rpc.md)，这是一种应用层的连接，�
 
 ## log_id
 
-通过set_log_id()可设置log_id。这个id会被送到服务器端，一般会被打在日志里，从而把一次检索经过的所有服务串联起来。不同产品线可能有不同的叫法。一些产品线有字符串格式的“s值”，内容也是64位的16进制数，可以转成整型后再设入log_id。
+通过set_log_id()可设置64位整型log_id。这个id会和请求一起被送到服务器端，一般会被打在日志里，从而把一次检索经过的所有服务串联起来。字符串格式的需要转化为64位整形才能设入log_id。
 
 ## 附件
 
@@ -598,23 +604,30 @@ baidu_std和hulu_pbrpc协议支持附件，这段数据由用户自定义，不�
 
 在http协议中，附件对应[message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html)，比如要POST的数据就设置在request_attachment()中。
 
-## giano认证
+## 认证
+client端的认证一般分为2种：
+
+1. 基于请求的认证：每次请求都会带上认证信息。这种方式比较灵活，认证信息中可以含有本次请求中的字段，但是缺点是每次请求都会需要认证，性能上有所损失
+2. 基于连接的认证：当TCP连接建立后，client发送认证包，认证成功后，后续该连接上的请求不再需要认证。相比前者，这种方式灵活度不高（一般ren认证包里只能携带本机一些静态信息），但性能较好，一般用于单连接/连接池场景
+
+针对第一种认证场景，在实现上非常简单，将认证的格式定义加到请求结构体中，每次当做正常RPC发送出去即可；针对第二种场景，brpc提供了一种机制，只要用户继承实现：
+
+```c++
+class Authenticator {
+public:
+    virtual ~Authenticator() {}
+
+    // Implement this method to generate credential information
+    // into `auth_str' which will be sent to `VerifyCredential'
+    // at server side. This method will be called on client side.
+    // Returns 0 on success, error code otherwise
+    virtual int GenerateCredential(std::string* auth_str) const = 0;
+};
 ```
 
-// Create a baas::CredentialGenerator using Giano's API
-baas::CredentialGenerator generator = CREATE_MOCK_PERSONAL_GENERATOR(
-    "mock_user", "mock_roles", "mock_group", baas::sdk::BAAS_OK);
- 
-// Create a brpc::policy::GianoAuthenticator using the generator we just created 
-// and then pass it into brpc::ChannelOptions
-brpc::policy::GianoAuthenticator auth(&generator, NULL);
-brpc::ChannelOptions option;
-option.auth = &auth;
-```
-首先通过调用Giano API生成验证器baas::CredentialGenerator，具体可参看[Giano快速上手手册.pdf](http://wiki.baidu.com/download/attachments/37774685/Giano%E5%BF%A
-B%E9%80%9F%E4%B8%8A%E6%89%8B%E6%89%8B%E5%86%8C.pdf?version=1&modificationDate=1421990746000&api=v2)。然后按照如上代码一步步将其设置到brpc::ChannelOptions里去。
+那么当用户并发调用RPC接口用单连接往同一个server发请求时，框架会自动保证：建立TCP连接后，连接上的第一个请求中会带有上述`GenerateCredential`产生的认证包，其余剩下的并发请求不会带有认证信息，依次排在第一个请求之后。整个发送过程依旧是并发的，并不会等第一个请求先返回。若server端认证成功，那么所有请求都能成功返回；若认证失败，一般server端则会关闭连接，这些请求则会收到相应错误。
 
-当client设置认证后，任何一个新连接建立后都必须首先发送一段验证信息（通过Giano认证器生成），才能发送后续请求。认证成功后，该连接上的后续请求不会再带有验证消息。
+目前自带协议中支持客户端认证的有：[baidu_std](baidu_std.md)(默认协议), HTTP, hulu_pbrpc, ESP。对于自定义协议，一般可以在组装请求阶段，调用Authenticator接口生成认证串，来支持客户端认证。
 
 ## 重置
 
@@ -624,7 +637,11 @@ B%E9%80%9F%E4%B8%8A%E6%89%8B%E6%89%8B%E5%86%8C.pdf?version=1&modificationDate=14
 
 ## 压缩
 
-set_request_compress_type()设置request的压缩方式，默认不压缩。注意：附件不会被压缩。HTTP body的压缩方法见[client压缩request body](http_client#压缩request-body)。
+set_request_compress_type()设置request的压缩方式，默认不压缩。
+
+注意：附件不会被压缩。
+
+HTTP body的压缩方法见[client压缩request body](http_client#压缩request-body)。
 
 支持的压缩方法有：
 
@@ -670,13 +687,13 @@ set_request_compress_type()设置request的压缩方式，默认不压缩。注�
 
 ### Q: brpc能用unix domain socket吗
 
-不能。因为同机socket并不走网络，相比domain socket性能只会略微下降，替换为domain socket意义不大。以后可能会扩展支持。
+不能。同机TCP socket并不走网络，相比unix domain socket性能只会略微下降。一些不能用TCP socket的特殊场景可能会需要，以后可能会扩展支持。
 
-### Q: Fail to connect to xx.xx.xx.xx:xxxx, Connection refused是什么意思
+### Q: Fail to connect to xx.xx.xx.xx:xxxx, Connection refused
 
 一般是对端server没打开端口（很可能挂了）。 
 
-### Q: 经常遇到Connection timedout(不在一个机房)
+### Q: 经常遇到至另一个机房的Connection timedout
 
 ![img](../images/connection_timedout.png)
 
@@ -700,33 +717,29 @@ struct ChannelOptions {
 };
 ```
 
-注意连接超时不是RPC超时，RPC超时打印的日志是"Reached timeout=..."。
+注意: 连接超时不是RPC超时，RPC超时打印的日志是"Reached timeout=..."。
 
 ### Q: 为什么同步方式是好的，异步就crash了
 
-重点检查Controller，Response和done的生命周期。在异步访问中，RPC调用结束并不意味着RPC整个过程结束，而是要在done被调用后才会结束。所以这些对象不应在调用RPC后就释放，而是要在done里面释放。所以你一般不能把这些对象分配在栈上，而应该使用NewCallback等方式分配在堆上。详见[异步访问](client.md#异步访问)。
+重点检查Controller，Response和done的生命周期。在异步访问中，RPC调用结束并不意味着RPC整个过程结束，而是在进入done->Run()时才会结束。所以这些对象不应在调用RPC后就释放，而是要在done->Run()里释放。你一般不能把这些对象分配在栈上，而应该分配在堆上。详见[异步访问](client.md#异步访问)。
 
-### Q: 我怎么确认server处理了我的请求
+### Q: 怎么确保请求只被处理一次
 
-不一定能。当response返回且成功时，我们确认这个过程一定成功了。当response返回且失败时，我们确认这个过程一定失败了。但当response没有返回时，它可能失败，也可能成功。如果我们选择重试，那一个成功的过程也可能会被再执行一次。所以一般来说RPC服务都应当考虑[幂等](http://en.wikipedia.org/wiki/Idempotence)问题，否则重试可能会导致多次叠加副作用而产生意向不到的结果。比如以读为主的检索服务大都没有副作用而天然幂等，无需特殊处理。而像写也很多的存储服务则要在设计时就加入版本号或序列号之类的机制以拒绝已经发生的过程，保证幂等。
+这不是RPC层面的事情。当response返回且成功时，我们确认这个过程一定成功了。当response返回且失败时，我们确认这个过程一定失败了。但当response没有返回时，它可能失败，也可能成功。如果我们选择重试，那一个成功的过程也可能会被再执行一次。一般来说带副作用的RPC服务都应当考虑[幂等](http://en.wikipedia.org/wiki/Idempotence)问题，否则重试可能会导致多次叠加副作用而产生意向不到的结果。只有读的检索服务大都没有副作用而天然幂等，无需特殊处理。而带写的存储服务则要在设计时就加入版本号或序列号之类的机制以拒绝已经发生的过程，保证幂等。
 
-### Q: BNS中机器列表已经配置了,但是RPC报"Fail to select server, No data available"错误
-
-使用get_instance_by_service -s your_bns_name 来检查一下所有机器的status状态，  只有status为0的机器才能被client访问.
-
-### Q: Invalid address=`bns://group.user-persona.dumi.nj03'是什么意思
+### Q: Invalid address=`bns://group.user-persona.dumi.nj03'
 ```
 FATAL 04-07 20:00:03 7778 src/brpc/channel.cpp:123] Invalid address=`bns://group.user-persona.dumi.nj03'. You should use Init(naming_service_name, load_balancer_name, options) to access multiple servers.
 ```
-访问bns要使用三个参数的Init，它第二个参数是load_balancer_name，而你这里用的是两个参数的Init，框架当你是访问单点，就会报这个错。
+访问名字服务要使用三个参数的Init，其中第二个参数是load_balancer_name，而这里用的是两个参数的Init，框架认为是访问单点，就会报这个错。
 
-### Q: 两个产品线都使用protobuf，为什么不能互相访问
+### Q: 两端都用protobuf，为什么不能互相访问
 
-协议 !=protobuf。protobuf负责打包，协议负责定字段。打包格式相同不意味着字段可以互通。协议中可能会包含多个protobuf包，以及额外的长度、校验码、magic number等等。协议的互通是通过在RPC框架内转化为统一的编程接口完成的，而不是在protobuf层面。从广义上来说，protobuf也可以作为打包框架使用，生成其他序列化格式的包，像[idl<=>protobuf](mcpack2pb.md)就是通过protobuf生成了解析idl的代码。
+**协议 !=protobuf**。protobuf负责一个包的序列化，协议中的一个消息可能会包含多个protobuf包，以及额外的长度、校验码、magic number等等。打包格式相同不意味着协议可以互通。在brpc中写一份代码就能服务多协议的能力是通过把不同协议的数据转化为统一的编程接口完成的，而不是在protobuf层面。
 
 ### Q: 为什么C++ client/server 能够互相通信， 和其他语言的client/server 通信会报序列化失败的错误
 
-检查一下C++ 版本是否开启了压缩 (Controller::set_compress_type), 目前 python/JAVA版的rpc框架还没有实现压缩，互相返回会出现问题。 
+检查一下C++ 版本是否开启了压缩 (Controller::set_compress_type), 目前其他语言的rpc框架还没有实现压缩，互相返回会出现问题。 
 
 # 附:Client端基本流程
 
@@ -737,13 +750,13 @@ FATAL 04-07 20:00:03 7778 src/brpc/channel.cpp:123] Invalid address=`bns://group
 1. 创建一个[bthread_id](https://github.com/brpc/brpc/blob/master/src/bthread/id.h)作为本次RPC的correlation_id。
 2. 根据Channel的创建方式，从进程级的[SocketMap](https://github.com/brpc/brpc/blob/master/src/brpc/socket_map.h)中或从[LoadBalancer](https://github.com/brpc/brpc/blob/master/src/brpc/load_balancer.h)中选择一台下游server作为本次RPC发送的目的地。
 3. 根据连接方式（单连接、连接池、短连接），选择一个[Socket](https://github.com/brpc/brpc/blob/master/src/brpc/socket.h)。
-4. 如果开启验证且当前Socket没有被验证过时，第一个请求进入验证分支，其余请求会阻塞直到第一个包含认证信息的请求写入Socket。这是因为server端只对第一个请求进行验证。
+4. 如果开启验证且当前Socket没有被验证过时，第一个请求进入验证分支，其余请求会阻塞直到第一个包含认证信息的请求写入Socket。server端只对第一个请求进行验证。
 5. 根据Channel的协议，选择对应的序列化函数把request序列化至[IOBuf](https://github.com/brpc/brpc/blob/master/src/butil/iobuf.h)。
-6. 如果配置了超时，设置定时器。从这个点开始要避免使用Controller对象，因为在设定定时器后->有可能触发超时机制->调用到用户的异步回调->用户在回调中析构Controller。
+6. 如果配置了超时，设置定时器。从这个点开始要避免使用Controller对象，因为在设定定时器后随时可能触发超时->调用到用户的超时回调->用户在回调中析构Controller。
 7. 发送准备阶段结束，若上述任何步骤出错，会调用Channel::HandleSendFailed。
 8. 将之前序列化好的IOBuf写出到Socket上，同时传入回调Channel::HandleSocketFailed，当连接断开、写失败等错误发生时会调用此回调。
-9. 如果是同步发送，Join correlation_id；如果是异步则至此client端返回。
+9. 如果是同步发送，Join correlation_id；否则至此CallMethod结束。
 10. 网络上发消息+收消息。
 11. 收到response后，提取出其中的correlation_id，在O(1)时间内找到对应的Controller。这个过程中不需要查找全局哈希表，有良好的多核扩展性。
 12. 根据协议格式反序列化response。
-13. 调用Controller::OnRPCReturned，其中会根据错误码判断是否需要重试。如果是异步发送，调用用户回调。最后摧毁correlation_id唤醒Join着的线程。
+13. 调用Controller::OnRPCReturned，可能会根据错误码判断是否需要重试，或让RPC结束。如果是异步发送，调用用户回调。最后摧毁correlation_id唤醒Join着的线程。

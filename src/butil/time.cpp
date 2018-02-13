@@ -15,8 +15,7 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Fri Aug 29 15:01:15 CST 2014
 
-#include <syscall.h>                         // SYS_clock_gettime
-#include <unistd.h>                          // syscall
+#include <unistd.h>                          // close
 #include <sys/types.h>                       // open
 #include <sys/stat.h>                        // ^
 #include <fcntl.h>                           // ^
@@ -31,47 +30,29 @@
 
 namespace butil {
 
-clockid_t get_monotonic_clockid() {
-    // http://lxr.free-electrons.com/source/include/uapi/linux/time.h#L44
-    const clockid_t MY_CLOCK_MONOTONIC_RAW = 4;
-    
-    timespec ts;
-    if (0 == syscall(SYS_clock_gettime, MY_CLOCK_MONOTONIC_RAW, &ts)) {
-        return MY_CLOCK_MONOTONIC_RAW;
-    }
-    return CLOCK_MONOTONIC;
-}
-
-extern const clockid_t monotonic_clockid = get_monotonic_clockid();
-
 int64_t monotonic_time_ns() {
+    // MONOTONIC_RAW is slower than MONOTONIC in linux 2.6.32, trying to
+    // use the RAW version does not make sense anymore.
+    // NOTE: Not inline to keep ABI-compatible with previous versions.
     timespec now;
-    syscall(SYS_clock_gettime, monotonic_clockid, &now);
+#ifdef __MACH__ // OS X does not have clock_gettime, use clock_get_time
+    clock_serv_t cclock;
+    mach_timespec_t mts;
+    host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+    clock_get_time(cclock, &mts);
+    mach_port_deallocate(mach_task_self(), cclock);
+    now.tv_sec = mts.tv_sec;
+    now.tv_nsec = mts.tv_nsec;
+#else
+    clock_gettime(CLOCK_MONOTONIC, &now);
+#endif
     return now.tv_sec * 1000000000L + now.tv_nsec;
 }
 
-/*
-   read_cpu_frequency() is modified from source code of glibc.
-   
-   Copyright (C) 2002 Free Software Foundation, Inc.
-   This file is part of the GNU C Library.
-   Contributed by Ulrich Drepper <drepper@redhat.com>, 2002.
+namespace detail {
 
-   The GNU C Library is free software; you can redistribute it and/or
-   modify it under the terms of the GNU Lesser General Public
-   License as published by the Free Software Foundation; either
-   version 2.1 of the License, or (at your option) any later version.
-
-   The GNU C Library is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-   Lesser General Public License for more details.
-
-   You should have received a copy of the GNU Lesser General Public
-   License along with the GNU C Library; if not, write to the Free
-   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307 USA.  */
-uint64_t read_cpu_frequency(bool* invariant_tsc) {
+// read_cpu_frequency() is modified from source code of glibc.
+int64_t read_cpu_frequency(bool* invariant_tsc) {
     /* We read the information from the /proc filesystem.  It contains at
        least one line like
        cpu MHz         : 497.840237
@@ -84,7 +65,7 @@ uint64_t read_cpu_frequency(bool* invariant_tsc) {
         return 0;
     }
 
-    uint64_t result = 0;
+    int64_t result = 0;
     char buf[4096];  // should be enough
     const ssize_t n = read(fd, buf, sizeof(buf));
     if (n > 0) {
@@ -129,15 +110,17 @@ uint64_t read_cpu_frequency(bool* invariant_tsc) {
     return result;
 }
 
-uint64_t read_invariant_cpu_frequency() {
+// Return value must be >= 0
+int64_t read_invariant_cpu_frequency() {
     bool invariant_tsc = false;
-    const uint64_t freq = read_cpu_frequency(&invariant_tsc);
-    return (invariant_tsc ? freq : 0);
+    const int64_t freq = read_cpu_frequency(&invariant_tsc);
+    if (!invariant_tsc || freq < 0) {
+        return 0;
+    }
+    return freq;
 }
 
-extern const uint64_t invariant_cpu_freq = read_invariant_cpu_frequency();
-
-__thread int64_t tls_realtime_ns = 0;
-__thread int64_t tls_cpuwidetime_ns = 0;
+int64_t invariant_cpu_freq = -1;
+}  // namespace detail
 
 }  // namespace butil

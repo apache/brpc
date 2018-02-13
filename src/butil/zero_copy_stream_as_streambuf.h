@@ -15,8 +15,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Thu Nov 22 13:57:56 CST 2012
 
-#ifndef BAIDU_BASE_ZERO_COPY_STREAM_AS_STREAMBUF_H
-#define BAIDU_BASE_ZERO_COPY_STREAM_AS_STREAMBUF_H
+#ifndef BUTIL_ZERO_COPY_STREAM_AS_STREAMBUF_H
+#define BUTIL_ZERO_COPY_STREAM_AS_STREAMBUF_H
 
 #include <streambuf>
 #include <google/protobuf/io/zero_copy_stream.h>
@@ -49,4 +49,4 @@ private:
 
 }  // namespace butil
 
-#endif  // BAIDU_BASE_ZERO_COPY_STREAM_AS_STREAMBUF_H
+#endif  // BUTIL_ZERO_COPY_STREAM_AS_STREAMBUF_H

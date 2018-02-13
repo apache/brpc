@@ -1,9 +1,8 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
 // Copyright (c) 2017 Baidu, Inc
 // Date: Thu Jan 19 16:19:30 CST 2017
 
-#ifndef BASE_SYNCHRONIZATION_LOCK_H_
-#define BASE_SYNCHRONIZATION_LOCK_H_
+#ifndef BUTIL_SYNCHRONIZATION_LOCK_H_
+#define BUTIL_SYNCHRONIZATION_LOCK_H_
 
 #include "butil/build_config.h"
 #if defined(OS_WIN)
@@ -14,11 +13,12 @@
 
 #include "butil/base_export.h"
 #include "butil/macros.h"
+#include "butil/compat.h"
 
 namespace butil {
 
 // A convenient wrapper for an OS specific critical section.  
-class BASE_EXPORT Mutex {
+class BUTIL_EXPORT Mutex {
     DISALLOW_COPY_AND_ASSIGN(Mutex);
 public:
 #if defined(OS_WIN)
@@ -95,7 +95,7 @@ friend class WinVistaCondVar;
 };
 
 // TODO: Remove this type.
-class BASE_EXPORT Lock : public Mutex {
+class BUTIL_EXPORT Lock : public Mutex {
     DISALLOW_COPY_AND_ASSIGN(Lock);
 public:
     Lock() {}
@@ -150,4 +150,4 @@ private:
 
 }  // namespace butil
 
-#endif  // BASE_SYNCHRONIZATION_LOCK_H_
+#endif  // BUTIL_SYNCHRONIZATION_LOCK_H_

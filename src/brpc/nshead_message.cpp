@@ -195,6 +195,7 @@ void NsheadMessage::MergeFrom(const ::google::protobuf::Message& from) {
 
 void NsheadMessage::MergeFrom(const NsheadMessage& from) {
     GOOGLE_CHECK_NE(&from, this);
+    // No way to merge two nshead messages, just overwrite.
     head = from.head;
     body = from.body;
 }

@@ -1,8 +1,8 @@
 // Copyright (c) 2015 Baidu, Inc.
 // Author: Jiang,Lin (jianglin05@baidu.com)
 // Date: 2015/05/26 16:59:16
-#ifndef PROTOBUF_JSON_ENCODE_DECODE_H
-#define PROTOBUF_JSON_ENCODE_DECODE_H
+#ifndef BRPC_JSON2PB_ENCODE_DECODE_H
+#define BRPC_JSON2PB_ENCODE_DECODE_H
 
 namespace json2pb {
 
@@ -27,4 +27,4 @@ bool decode_name(const std::string& content, std::string& decoded_content);
 
 }
 
-#endif  //PROTOBUF_JSON_ENCODE_DECODE_H
+#endif  //BRPC_JSON2PB_ENCODE_DECODE_H

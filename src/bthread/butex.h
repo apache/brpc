@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 22 17:30:12 CST 2014
 
-#ifndef BAIDU_BTHREAD_BUTEX_H
-#define BAIDU_BTHREAD_BUTEX_H
+#ifndef BTHREAD_BUTEX_H
+#define BTHREAD_BUTEX_H
 
 #include <errno.h>                               // users need to check errno
 #include <time.h>                                // timespec
@@ -64,14 +64,9 @@ int butex_requeue(void* butex1, void* butex2);
 // abstime is not NULL.
 // About |abstime|:
 //   Different from FUTEX_WAIT, butex_wait uses absolute time.
+// Returns 0 on success, -1 otherwise and errno is set.
 int butex_wait(void* butex, int expected_value, const timespec* abstime);
-
-// Same with butex_wait except that this function cannot be woken up by
-// bthread_stop(), although this function still returns -1(ESTOP) after
-// wake-up.
-int butex_wait_uninterruptible(void* butex, int expected_value,
-                               const timespec* abstime);
 
 }  // namespace bthread
 
-#endif  // BAIDU_BTHREAD_BUTEX_H
+#endif  // BTHREAD_BUTEX_H

@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 10 17:40:58 CST 2012
 
-#ifndef BAIDU_BTHREAD_BTHREAD_TYPES_H
-#define BAIDU_BTHREAD_BTHREAD_TYPES_H
+#ifndef BTHREAD_TYPES_H
+#define BTHREAD_TYPES_H
 
 #include <stdint.h>                            // uint64_t
 #if defined(__cplusplus)
@@ -220,4 +220,4 @@ typedef struct {
 
 typedef uint64_t bthread_timer_t;
 
-#endif  // BAIDU_BTHREAD_BTHREAD_TYPES_H
+#endif  // BTHREAD_TYPES_H

@@ -961,7 +961,7 @@ void SetLastSystemErrorCode(SystemErrorCode err) {
 }
 
 #if defined(OS_WIN)
-BASE_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code) {
+BUTIL_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code) {
     const int error_message_buffer_size = 256;
     char msgbuf[error_message_buffer_size];
     DWORD flags = FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
@@ -976,7 +976,7 @@ BASE_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code) {
                               GetLastError(), error_code);
 }
 #elif defined(OS_POSIX)
-BASE_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code) {
+BUTIL_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code) {
     return berror(error_code);
 }
 #else
@@ -1384,7 +1384,7 @@ static bool validate_vmodule(const char*, const std::string& vmodule) {
     return on_reset_vmodule(vmodule.c_str()) == 0;
 }
 
-const bool ALLOW_UNUSED validate_vmodule_dummy = google::RegisterFlagValidator(
+const bool ALLOW_UNUSED validate_vmodule_dummy = GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_vmodule, &validate_vmodule);
 
 // [Thread-safe] Reset FLAGS_v.
@@ -1414,7 +1414,7 @@ static bool validate_v(const char*, int32_t v) {
     return true;
 }
 
-const bool ALLOW_UNUSED validate_v_dummy = google::RegisterFlagValidator(
+const bool ALLOW_UNUSED validate_v_dummy = GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_v, &validate_v);
 
 static bool PassValidate(const char*, bool) {
@@ -1422,16 +1422,16 @@ static bool PassValidate(const char*, bool) {
 }
 
 const bool ALLOW_UNUSED validate_crash_on_fatal_log =
-    google::RegisterFlagValidator(&FLAGS_crash_on_fatal_log, PassValidate);
+    GFLAGS_NS::RegisterFlagValidator(&FLAGS_crash_on_fatal_log, PassValidate);
 
 const bool ALLOW_UNUSED validate_print_stack_on_check =
-    google::RegisterFlagValidator(&FLAGS_print_stack_on_check, PassValidate);
+    GFLAGS_NS::RegisterFlagValidator(&FLAGS_print_stack_on_check, PassValidate);
 
 static bool NonNegativeInteger(const char*, int32_t v) {
     return v >= 0;
 }
 
-const bool ALLOW_UNUSED validate_min_log_level = google::RegisterFlagValidator(
+const bool ALLOW_UNUSED validate_min_log_level = GFLAGS_NS::RegisterFlagValidator(
     &FLAGS_minloglevel, NonNegativeInteger);
 
 }  // namespace logging

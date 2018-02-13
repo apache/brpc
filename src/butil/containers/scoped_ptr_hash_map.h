@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_CONTAINERS_SCOPED_PTR_HASH_MAP_H_
-#define BASE_CONTAINERS_SCOPED_PTR_HASH_MAP_H_
+#ifndef BUTIL_CONTAINERS_SCOPED_PTR_HASH_MAP_H_
+#define BUTIL_CONTAINERS_SCOPED_PTR_HASH_MAP_H_
 
 #include <algorithm>
 #include <utility>
@@ -154,4 +154,4 @@ class ScopedPtrHashMap {
 
 }  // namespace butil
 
-#endif  // BASE_CONTAINERS_SCOPED_PTR_HASH_MAP_H_
+#endif  // BUTIL_CONTAINERS_SCOPED_PTR_HASH_MAP_H_

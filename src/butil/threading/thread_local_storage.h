@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_THREADING_THREAD_LOCAL_STORAGE_H_
-#define BASE_THREADING_THREAD_LOCAL_STORAGE_H_
+#ifndef BUTIL_THREADING_THREAD_LOCAL_STORAGE_H_
+#define BUTIL_THREADING_THREAD_LOCAL_STORAGE_H_
 
 #include "butil/base_export.h"
 #include "butil/basictypes.h"
@@ -21,7 +21,7 @@ namespace internal {
 // WARNING: You should *NOT* be using this class directly.
 // PlatformThreadLocalStorage is low-level abstraction to the OS's TLS
 // interface, you should instead be using ThreadLocalStorage::StaticSlot/Slot.
-class BASE_EXPORT PlatformThreadLocalStorage {
+class BUTIL_EXPORT PlatformThreadLocalStorage {
  public:
 
 #if defined(OS_WIN)
@@ -75,7 +75,7 @@ class BASE_EXPORT PlatformThreadLocalStorage {
 
 // Wrapper for thread local storage.  This class doesn't do much except provide
 // an API for portability.
-class BASE_EXPORT ThreadLocalStorage {
+class BUTIL_EXPORT ThreadLocalStorage {
  public:
 
   // Prototype for the TLS destructor function, which can be optionally used to
@@ -94,7 +94,7 @@ class BASE_EXPORT ThreadLocalStorage {
   //   ThreadLocalStorage::StaticSlot my_slot = TLS_INITIALIZER;
   // If you're not using a static variable, use the convenience class
   // ThreadLocalStorage::Slot (below) instead.
-  struct BASE_EXPORT StaticSlot {
+  struct BUTIL_EXPORT StaticSlot {
     // Set up the TLS slot.  Called by the constructor.
     // 'destructor' is a pointer to a function to perform per-thread cleanup of
     // this object.  If set to NULL, no cleanup is done for this TLS slot.
@@ -124,7 +124,7 @@ class BASE_EXPORT ThreadLocalStorage {
 
   // A convenience wrapper around StaticSlot with a constructor. Can be used
   // as a member variable.
-  class BASE_EXPORT Slot : public StaticSlot {
+  class BUTIL_EXPORT Slot : public StaticSlot {
    public:
     // Calls StaticSlot::Initialize().
     explicit Slot(TLSDestructorFunc destructor = NULL);
@@ -141,4 +141,4 @@ class BASE_EXPORT ThreadLocalStorage {
 
 }  // namespace butil
 
-#endif  // BASE_THREADING_THREAD_LOCAL_STORAGE_H_
+#endif  // BUTIL_THREADING_THREAD_LOCAL_STORAGE_H_

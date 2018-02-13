@@ -200,7 +200,7 @@ static void* replay_thread(void* arg) {
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
     if (FLAGS_dir.empty() ||
         !butil::DirectoryExists(butil::FilePath(FLAGS_dir))) {
@@ -208,7 +208,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    if (FLAGS_dummy_port > 0) {
+    if (FLAGS_dummy_port >= 0) {
         brpc::StartDummyServerAt(FLAGS_dummy_port);
     }
     

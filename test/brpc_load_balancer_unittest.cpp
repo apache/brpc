@@ -1,14 +1,13 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
+// brpc - A framework to host and access services throughout Baidu.
 // Copyright (c) 2014 Baidu, Inc.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <map>
 #include <gtest/gtest.h>
-#include <gperftools/profiler.h>
+#include "butil/gperftools_profiler.h"
 #include "butil/time.h"
 #include "butil/containers/doubly_buffered_data.h"
 #include "brpc/socket.h"
@@ -20,7 +19,6 @@
 
 namespace brpc {
 namespace policy {
-DECLARE_bool(count_inflight);
 extern uint32_t CRCHash32(const char *key, size_t len);
 }}
 
@@ -201,7 +199,7 @@ void* select_server(void* arg) {
     brpc::LoadBalancer* c = sa->lb;
     brpc::SocketUniquePtr ptr;
     CountMap *selected_count = new CountMap;
-    brpc::LoadBalancer::SelectIn in = { 0, false, 0u, NULL };
+    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
     brpc::LoadBalancer::SelectOut out(&ptr);
     uint32_t rand_seed = rand();
     if (sa->hash) {
@@ -233,9 +231,6 @@ class SaveRecycle : public brpc::SocketUser {
 };
 
 TEST_F(LoadBalancerTest, update_while_selection) {
-    const bool saved = brpc::policy::FLAGS_count_inflight;
-    brpc::policy::FLAGS_count_inflight = false;
-    
     for (size_t round = 0; round < 4; ++round) {
         brpc::LoadBalancer* lb = NULL;
         SelectArg sa = { NULL, NULL};
@@ -256,7 +251,7 @@ TEST_F(LoadBalancerTest, update_while_selection) {
 
         // Accessing empty lb should result in error.
         brpc::SocketUniquePtr ptr;
-        brpc::LoadBalancer::SelectIn in = { 0, true, 0, NULL };
+        brpc::LoadBalancer::SelectIn in = { 0, false, true, 0, NULL };
         brpc::LoadBalancer::SelectOut out(&ptr);
         ASSERT_EQ(ENODATA, lb->SelectServer(in, &out));
 
@@ -344,12 +339,9 @@ TEST_F(LoadBalancerTest, update_while_selection) {
         }
         delete lb;
     }
-    brpc::policy::FLAGS_count_inflight = saved;
 }
 
 TEST_F(LoadBalancerTest, fairness) {
-    const bool saved = brpc::policy::FLAGS_count_inflight;
-    brpc::policy::FLAGS_count_inflight = false;
     for (size_t round = 0; round < 4; ++round) {
         brpc::LoadBalancer* lb = NULL;
         SelectArg sa = { NULL, NULL};
@@ -447,7 +439,6 @@ TEST_F(LoadBalancerTest, fairness) {
         }
         delete lb;
     }
-    brpc::policy::FLAGS_count_inflight = saved;
 }
 
 TEST_F(LoadBalancerTest, consistent_hashing) {
@@ -492,7 +483,7 @@ TEST_F(LoadBalancerTest, consistent_hashing) {
         const size_t SELECT_TIMES = 1000000;
         std::map<butil::EndPoint, size_t> times;
         brpc::SocketUniquePtr ptr;
-        brpc::LoadBalancer::SelectIn in = { 0, false, 0u, NULL };
+        brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
         ::brpc::LoadBalancer::SelectOut out(&ptr);
         for (size_t i = 0; i < SELECT_TIMES; ++i) {
             in.has_request_code = true;

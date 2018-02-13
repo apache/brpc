@@ -16,8 +16,8 @@
 //         Ge,Jun (gejun@baidu.com)
 // Date: Thu Oct 28 15:23:09 2010
 
-#ifndef BASE_FILES_TEMP_FILE_H
-#define BASE_FILES_TEMP_FILE_H
+#ifndef BUTIL_FILES_TEMP_FILE_H
+#define BUTIL_FILES_TEMP_FILE_H
 
 #include "butil/macros.h"
 
@@ -73,4 +73,4 @@ private:
 
 } // namespace butil
 
-#endif  // BASE_FILES_TEMP_FILE_H
+#endif  // BUTIL_FILES_TEMP_FILE_H

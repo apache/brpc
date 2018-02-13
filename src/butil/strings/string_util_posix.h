@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_STRINGS_STRING_UTIL_POSIX_H_
-#define BASE_STRINGS_STRING_UTIL_POSIX_H_
+#ifndef BUTIL_STRINGS_STRING_UTIL_POSIX_H_
+#define BUTIL_STRINGS_STRING_UTIL_POSIX_H_
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -49,4 +49,4 @@ inline int vswprintf(wchar_t* buffer, size_t size,
 
 }  // namespace butil
 
-#endif  // BASE_STRINGS_STRING_UTIL_POSIX_H_
+#endif  // BUTIL_STRINGS_STRING_UTIL_POSIX_H_

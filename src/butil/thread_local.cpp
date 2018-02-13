@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <algorithm>                     // std::find
 #include <vector>                        // std::vector
+#include <stdlib.h>                      // abort, atexit
 
 namespace butil {
 namespace detail {

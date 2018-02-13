@@ -2,14 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_AT_EXIT_H_
-#define BASE_AT_EXIT_H_
+#ifndef BUTIL_AT_EXIT_H_
+#define BUTIL_AT_EXIT_H_
 
 #include <stack>
 
 #include "butil/base_export.h"
 #include "butil/basictypes.h"
-#include "butil/callback.h"
 #include "butil/synchronization/lock.h"
 
 namespace butil {
@@ -28,7 +27,7 @@ namespace butil {
 // When the exit_manager object goes out of scope, all the registered
 // callbacks and singleton destructors will be called.
 
-class BASE_EXPORT AtExitManager {
+class BUTIL_EXPORT AtExitManager {
  public:
   typedef void (*AtExitCallbackType)(void*);
 
@@ -42,9 +41,6 @@ class BASE_EXPORT AtExitManager {
   // the callback function is void func(void*).
   static void RegisterCallback(AtExitCallbackType func, void* param);
 
-  // Registers the specified task to be called at exit.
-  static void RegisterTask(butil::Closure task);
-
   // Calls the functions registered with RegisterCallback in LIFO order. It
   // is possible to register new callbacks after calling this function.
   static void ProcessCallbacksNow();
@@ -57,8 +53,12 @@ class BASE_EXPORT AtExitManager {
   explicit AtExitManager(bool shadow);
 
  private:
+  struct Callback {
+    AtExitCallbackType func;
+    void* param;
+  };
   butil::Lock lock_;
-  std::stack<butil::Closure> stack_;
+  std::stack<Callback> stack_;
   AtExitManager* next_manager_;  // Stack of managers to allow shadowing.
 
   DISALLOW_COPY_AND_ASSIGN(AtExitManager);
@@ -73,4 +73,4 @@ class ShadowingAtExitManager : public AtExitManager {
 
 }  // namespace butil
 
-#endif  // BASE_AT_EXIT_H_
+#endif  // BUTIL_AT_EXIT_H_

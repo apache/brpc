@@ -1,3 +1,4 @@
+syntax="proto2";
 message ExtEncDec {
   optional fixed32 Aa_ge_Z040_ = 2;
   optional bytes databyte_Z040_std_Z058__Z058_string_Z041_ = 3;

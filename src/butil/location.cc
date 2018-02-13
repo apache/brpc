@@ -89,7 +89,7 @@ LocationSnapshot::~LocationSnapshot() {
 #if defined(COMPILER_MSVC)
 __declspec(noinline)
 #endif
-BASE_EXPORT const void* GetProgramCounter() {
+BUTIL_EXPORT const void* GetProgramCounter() {
 #if defined(COMPILER_MSVC)
   return _ReturnAddress();
 #elif defined(COMPILER_GCC) && !defined(OS_NACL)

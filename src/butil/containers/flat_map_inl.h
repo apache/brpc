@@ -15,8 +15,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Wed Nov 27 12:59:20 CST 2013
 
-#ifndef BASE_FLAT_MAP_INL_H
-#define BASE_FLAT_MAP_INL_H
+#ifndef BUTIL_FLAT_MAP_INL_H
+#define BUTIL_FLAT_MAP_INL_H
 
 namespace butil {
 
@@ -646,4 +646,4 @@ typename FlatMap<_K, _T, _H, _E, _S>::const_iterator FlatMap<_K, _T, _H, _E, _S>
 
 }  // namespace butil
 
-#endif  //BASE_FLAT_MAP_INL_H
+#endif  //BUTIL_FLAT_MAP_INL_H

@@ -1094,7 +1094,7 @@ butil::Status TsWriter::Write(const RtmpAudioMessage& msg) {
         }
         if (aac_msg.data.size() > 0x1fff) {
             return butil::Status(EINVAL, "Invalid AAC data_size=%" PRIu64,
-                                aac_msg.data.size());
+                                (uint64_t)aac_msg.data.size());
         }
         
         // the frame length is the AAC raw data plus the adts header size.

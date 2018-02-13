@@ -7,8 +7,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef BASE_CRC32C_H
-#define BASE_CRC32C_H
+#ifndef BUTIL_CRC32C_H
+#define BUTIL_CRC32C_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -49,4 +49,4 @@ inline uint32_t Unmask(uint32_t masked_crc) {
 }  // namespace crc32c
 }  // namespace butil
 
-#endif  // BASE_CRC32C_H
+#endif  // BUTIL_CRC32C_H

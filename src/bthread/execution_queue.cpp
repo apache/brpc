@@ -24,14 +24,13 @@
 
 namespace bthread {
 
-BAIDU_CASSERT(sizeof(TaskNode) == 128, sizeof_TaskNode_must_be_128);
+//May be false on different platforms
+//BAIDU_CASSERT(sizeof(TaskNode) == 128, sizeof_TaskNode_must_be_128);
+//BAIDU_CASSERT(offsetof(TaskNode, static_task_mem) + sizeof(TaskNode().static_task_mem) == 128, sizeof_TaskNode_must_be_128);
 BAIDU_CASSERT(sizeof(ExecutionQueue<int>) == sizeof(ExecutionQueueBase),
               sizeof_ExecutionQueue_must_be_the_same_with_ExecutionQueueBase);
 BAIDU_CASSERT(sizeof(TaskIterator<int>) == sizeof(TaskIteratorBase),
               sizeof_TaskIterator_must_be_the_same_with_TaskIteratorBase);
-BAIDU_CASSERT(offsetof(TaskNode, static_task_mem)
-                + sizeof(TaskNode().static_task_mem) == 128,
-              sizeof_TaskNode_must_be_128);
 namespace /*anonymous*/ {
 typedef butil::ResourceId<ExecutionQueueBase> slot_id_t;
 
@@ -206,17 +205,19 @@ void ExecutionQueueBase::_on_recycle() {
 int ExecutionQueueBase::join(uint64_t id) {
     const slot_id_t slot = slot_of_id(id);
     ExecutionQueueBase* const m = butil::address_resource(slot);
-    if (BAIDU_LIKELY(m != NULL)) {
-        int expected = _version_of_id(id);
-        // 1: acquire fence to make the join thread sees the newest changes
-        // when it sees the unmatch of _join_butex and id
-        while (expected == 
-                m->_join_butex->load(butil::memory_order_acquire/*1*/)) {
-            butex_wait(m->_join_butex, expected, NULL);
-        }
-        return 0;
+    if (m == NULL) {
+        // The queue is not created yet, this join is definitely wrong.
+        return EINVAL;
     }
-    return EINVAL;
+    int expected = _version_of_id(id);
+    // acquire fence makes this thread see changes before changing _join_butex.
+    while (expected == m->_join_butex->load(butil::memory_order_acquire)) {
+        if (butex_wait(m->_join_butex, expected, NULL) < 0 &&
+            errno != EWOULDBLOCK && errno != EINTR) {
+            return errno;
+        }
+    }
+    return 0;
 }
 
 int ExecutionQueueBase::stop() {

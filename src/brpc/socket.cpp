@@ -16,7 +16,7 @@
 //          Rujie Jiang (jiangrujie@baidu.com)
 //          Zhangyi Chen (chenzhangyi01@baidu.com)
 
-#include <sys/epoll.h>                           // EPOLLIN
+#include "butil/compat.h"                        // OS_MACOSX
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <netinet/tcp.h>                         // getsockopt
@@ -73,6 +73,17 @@ DEFINE_int64(socket_max_unwritten_bytes, 64 * 1024 * 1024,
 DEFINE_int32(max_connection_pool_size, 100,
              "maximum pooled connection count to a single endpoint");
 BRPC_VALIDATE_GFLAG(max_connection_pool_size, PassValidate);
+
+DEFINE_int32(connect_timeout_as_unreachable, 3,
+             "If the socket failed to connect due to ETIMEDOUT for so many "
+             "times *continuously*, the error is changed to ENETUNREACH which "
+             "fails the main socket as well when this socket is pooled.");
+
+static bool validate_connect_timeout_as_unreachable(const char*, int32_t v) {
+    return v >= 2 && v < 1000/*large enough*/;
+}
+BRPC_VALIDATE_GFLAG(connect_timeout_as_unreachable,
+                         validate_connect_timeout_as_unreachable);
 
 const int WAIT_EPOLLOUT_TIMEOUT_MS = 50;
 
@@ -144,9 +155,12 @@ public:
     // which has the disadvantage that accesses to different pools contend
     // with each other.
     butil::atomic<SocketPool*> socket_pool;
-
+    
     // The socket newing this object.
     SocketId creator_socket_id;
+
+    // Counting number of continuous ETIMEDOUT
+    butil::atomic<int> num_continuous_connect_timeouts;
 
     // _in_size, _in_num_messages, _out_size, _out_num_messages of pooled
     // sockets are counted into the corresponding fields in their _main_socket.
@@ -168,6 +182,7 @@ public:
 Socket::SharedPart::SharedPart(SocketId creator_socket_id2)
     : socket_pool(NULL)
     , creator_socket_id(creator_socket_id2)
+    , num_continuous_connect_timeouts(0)
     , in_size(0)
     , in_num_messages(0)
     , out_size(0)
@@ -278,7 +293,7 @@ bool Socket::CreatedByConnect() const {
 }
 
 SocketMessage* const DUMMY_USER_MESSAGE = (SocketMessage*)0x1;
-const uint32_t MAX_PIPELINED_COUNT = 65536;
+const uint32_t MAX_PIPELINED_COUNT = 32768;
 
 struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
     static WriteRequest* const UNCONNECTED;
@@ -289,9 +304,12 @@ struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
     Socket* socket;
     
     uint32_t pipelined_count() const {
-        return (_pc_and_udmsg >> 48) & 0xFFFF;
+        return (_pc_and_udmsg >> 48) & 0x7FFF;
     }
-    void clear_pipelined_count() {
+    bool is_with_auth() const {
+        return _pc_and_udmsg & 0x8000000000000000ULL;
+    }
+    void clear_pipelined_count_and_with_auth() {
         _pc_and_udmsg &= 0xFFFFFFFFFFFFULL;
     }
     SocketMessage* user_message() const {
@@ -301,7 +319,10 @@ struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
         _pc_and_udmsg &= 0xFFFF000000000000ULL;
     }
     void set_pipelined_count_and_user_message(
-        uint32_t pc, SocketMessage* msg) {
+        uint32_t pc, SocketMessage* msg, bool with_auth) {
+        if (with_auth) {
+          pc |= (1 << 15);
+        }
         _pc_and_udmsg = ((uint64_t)pc << 48) | (uint64_t)(uintptr_t)msg;
     }
 
@@ -310,12 +331,11 @@ struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
         if (msg) {
             if (msg != DUMMY_USER_MESSAGE) {
                 butil::IOBuf dummy_buf;
-                RPC_VLOG << "reset_pipelined_count_and_user_message";
                 // We don't care about the return value since the request
                 // is already failed.
                 (void)msg->AppendAndDestroySelf(&dummy_buf, NULL);
             }
-            set_pipelined_count_and_user_message(0, NULL);
+            set_pipelined_count_and_user_message(0, NULL, false);
             return true;
         }
         return false;
@@ -354,8 +374,9 @@ void Socket::WriteRequest::Setup(Socket* s) {
         // The struct will be popped when reading a message from the socket.
         PipelinedInfo pi;
         pi.count = pc;
+        pi.with_auth = is_with_auth();
         pi.id_wait = id_wait;
-        clear_pipelined_count(); // avoid being pushed again
+        clear_pipelined_count_and_with_auth(); // avoid being pushed again
         s->PushPipelinedInfo(pi);
     }
 }
@@ -1321,6 +1342,10 @@ void Socket::AfterAppConnected(int err, void* data) {
     WriteRequest* req = static_cast<WriteRequest*>(data);
     if (err == 0) {
         Socket* const s = req->socket;
+        SharedPart* sp = s->GetSharedPart();
+        if (sp) {
+            sp->num_continuous_connect_timeouts.store(0, butil::memory_order_relaxed);
+        }
         // requests are not setup yet. check the comment on Setup() in Write()
         req->Setup(s);
         bthread_t th;
@@ -1331,7 +1356,19 @@ void Socket::AfterAppConnected(int err, void* data) {
         }
     } else {
         SocketUniquePtr s(req->socket);
-        s->SetFailed(err, "Fail to make %s connected: %s",
+        if (err == ETIMEDOUT) {
+            SharedPart* sp = s->GetOrNewSharedPart();
+            if (sp->num_continuous_connect_timeouts.fetch_add(
+                    1, butil::memory_order_relaxed) + 1 >=
+                FLAGS_connect_timeout_as_unreachable) {
+                // the race between store and fetch_add(in another thread) is
+                // OK since a critial error is about to return.
+                sp->num_continuous_connect_timeouts.store(
+                    0, butil::memory_order_relaxed);
+                err = ENETUNREACH;
+            }
+        }
+        s->SetFailed(err, "Fail to connect %s: %s",
                      s->description().c_str(), berror(err));
         s->ReleaseAllFailedWriteRequests(req);
     }
@@ -1426,7 +1463,7 @@ int Socket::Write(butil::IOBuf* data, const WriteOptions* options_in) {
     req->next = WriteRequest::UNCONNECTED;
     req->id_wait = opt.id_wait;
     req->set_pipelined_count_and_user_message(
-        opt.pipelined_count, DUMMY_USER_MESSAGE);
+        opt.pipelined_count, DUMMY_USER_MESSAGE, opt.with_auth);
     return StartWrite(req, opt);
 }
 
@@ -1461,7 +1498,7 @@ int Socket::Write(SocketMessagePtr<>& msg, const WriteOptions* options_in) {
     // wait until it points to a valid WriteRequest or NULL.
     req->next = WriteRequest::UNCONNECTED;
     req->id_wait = opt.id_wait;
-    req->set_pipelined_count_and_user_message(opt.pipelined_count, msg.release());
+    req->set_pipelined_count_and_user_message(opt.pipelined_count, msg.release(), opt.with_auth);
     return StartWrite(req, opt);
 }
 
@@ -1491,7 +1528,7 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
     int ret = ConnectIfNot(opt.abstime, req);
     if (ret < 0) {
         saved_errno = errno;
-        SetFailed(errno, "Fail to make %s connected: %m", description().c_str());
+        SetFailed(errno, "Fail to connect %s directly: %m", description().c_str());
         goto FAIL_TO_WRITE;
     } else if (ret == 1) {
         // We are doing connection. Callback `KeepWriteIfConnected'
@@ -1690,7 +1727,7 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
                 LOG(WARNING) << "Fail to write into ssl_fd=" << fd()
                              << ": " << SSLError(e);
             }
-            errno = EBADFD;
+            errno = ESSL;
             break;
         }
         }
@@ -1769,7 +1806,7 @@ ssize_t Socket::DoRead(size_t size_hint) {
             } else if (e != 0) {
                 LOG(WARNING) << "Fail to read from ssl_fd=" << fd()
                              << ": " << SSLError(e);
-                errno = EBADFD;
+                errno = ESSL;
             } else {
                 // System error with corresponding errno set
             }
@@ -2020,7 +2057,26 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
        << "\nrecycle_flag=" << ptr->_recycle_flag.load(butil::memory_order_relaxed)
        << "\ncid=" << ptr->_correlation_id
        << "\nwrite_head=" << ptr->_write_head.load(butil::memory_order_relaxed);
-    // Print tcp_info, this is linux-specific
+#if defined(OS_MACOSX)
+    struct tcp_connection_info ti;
+    socklen_t len = sizeof(ti);
+    if (fd >= 0 && getsockopt(fd, IPPROTO_TCP, TCP_CONNECTION_INFO, &ti, &len) == 0) {
+        os << "\ntcpi_state=" << (uint32_t)ti.tcpi_state
+           << "\ntcpi_snd_wscale=" << (uint32_t)ti.tcpi_snd_wscale
+           << "\ntcpi_rcv_wscale=" << (uint32_t)ti.tcpi_rcv_wscale
+           << "\ntcpi_options=" << (uint32_t)ti.tcpi_options
+           << "\ntcpi_flags=" << (uint32_t)ti.tcpi_flags
+           << "\ntcpi_rto=" << ti.tcpi_rto
+           << "\ntcpi_maxseg=" << ti.tcpi_maxseg
+           << "\ntcpi_snd_ssthresh=" << ti.tcpi_snd_ssthresh
+           << "\ntcpi_snd_cwnd=" << ti.tcpi_snd_cwnd
+           << "\ntcpi_snd_wnd=" << ti.tcpi_snd_wnd
+           << "\ntcpi_snd_sbbytes=" << ti.tcpi_snd_sbbytes
+           << "\ntcpi_rcv_wnd=" << ti.tcpi_rcv_wnd
+           << "\ntcpi_srtt=" << ti.tcpi_srtt
+           << "\ntcpi_rttvar=" << ti.tcpi_rttvar;
+    }
+#elif defined(OS_LINUX)
     struct tcp_info ti;
     socklen_t len = sizeof(ti);
     if (fd >= 0 && getsockopt(fd, SOL_TCP, TCP_INFO, &ti, &len) == 0) {
@@ -2047,13 +2103,14 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
            << "\ntcpi_last_ack_recv=" << ti.tcpi_last_ack_recv
            << "\ntcpi_pmtu=" << ti.tcpi_pmtu
            << "\ntcpi_rcv_ssthresh=" << ti.tcpi_rcv_ssthresh
-           << "\ntcpi_rtt=" << ti.tcpi_rtt
+           << "\ntcpi_rtt=" << ti.tcpi_rtt  // smoothed
            << "\ntcpi_rttvar=" << ti.tcpi_rttvar
            << "\ntcpi_snd_ssthresh=" << ti.tcpi_snd_ssthresh
            << "\ntcpi_snd_cwnd=" << ti.tcpi_snd_cwnd
            << "\ntcpi_advmss=" << ti.tcpi_advmss
            << "\ntcpi_reordering=" << ti.tcpi_reordering;
     }
+#endif
 }
 
 int Socket::CheckHealth() {

@@ -30,7 +30,7 @@ DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
-DEFINE_int32(dummy_port, 0, "Launch dummy server at this port");
+DEFINE_int32(dummy_port, -1, "Launch dummy server at this port");
 DEFINE_string(protocol, "http", "http or h2c");
 
 bvar::LatencyRecorder g_latency_recorder("client");
@@ -71,7 +71,7 @@ static void* sender(void* arg) {
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
     // A Channel represents a communication line to a Server. Notice that 
     // Channel is thread-safe and can be shared by all threads in your program.
@@ -106,7 +106,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (FLAGS_dummy_port > 0) {
+    if (FLAGS_dummy_port >= 0) {
         brpc::StartDummyServerAt(FLAGS_dummy_port);
     }
 

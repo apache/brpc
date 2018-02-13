@@ -18,7 +18,6 @@
 #include "butil/logging.h"
 #include "brpc/redis_reply.h"
 
-
 namespace brpc {
 
 //BAIDU_CASSERT(sizeof(RedisReply) == 24, size_match);
@@ -275,6 +274,54 @@ void RedisReply::Print(std::ostream& os) const {
         break;
     default:
         os << "UnknownType=" << _type;
+        break;
+    }
+}
+
+void RedisReply::CopyFromDifferentArena(const RedisReply& other,
+                                        butil::Arena* arena) {
+    _type = other._type;
+    _length = other._length;
+    switch (_type) {
+    case REDIS_REPLY_ARRAY: {
+        RedisReply* subs = (RedisReply*)arena->allocate(sizeof(RedisReply) * _length);
+        if (subs == NULL) {
+            LOG(FATAL) << "Fail to allocate RedisReply[" << _length << "]";
+            return;
+        }
+        for (uint32_t i = 0; i < _length; ++i) {
+            new (&subs[i]) RedisReply;
+        }
+        _data.array.last_index = other._data.array.last_index;
+        if (_data.array.last_index > 0) {
+            for (int i = 0; i < _data.array.last_index; ++i) {
+                subs[i].CopyFromDifferentArena(other._data.array.replies[i], arena);
+            }
+        }
+        _data.array.replies = subs;
+    }
+        break;
+    case REDIS_REPLY_INTEGER:
+        _data.integer = other._data.integer;
+        break;
+    case REDIS_REPLY_NIL:
+        break;
+    case REDIS_REPLY_STRING:
+        // fall through
+    case REDIS_REPLY_ERROR:
+        // fall through
+    case REDIS_REPLY_STATUS:
+        if (_length < sizeof(_data.short_str)) {
+            memcpy(_data.short_str, other._data.short_str, _length + 1);
+        } else {
+            char* d = (char*)arena->allocate((_length/8 + 1)*8);
+            if (d == NULL) {
+                LOG(FATAL) << "Fail to allocate string[" << _length << "]";
+                return;
+            }
+            memcpy(d, other._data.long_str, _length + 1);
+            _data.long_str = d;
+        }
         break;
     }
 }

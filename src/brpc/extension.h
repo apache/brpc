@@ -18,7 +18,6 @@
 #define BRPC_EXTENSION_H
 
 #include <string>
-#include <error.h>
 #include "butil/scoped_lock.h"
 #include "butil/logging.h"
 #include "butil/containers/case_ignored_flat_map.h"

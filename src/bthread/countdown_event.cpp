@@ -50,15 +50,18 @@ void CountdownEvent::signal(int sig) {
     butex_wake_all(saved_butex);
 }
 
-void CountdownEvent::wait() {
+int CountdownEvent::wait() {
     _wait_was_invoked = true;
     for (;;) {
         const int seen_counter = 
             ((butil::atomic<int>*)_butex)->load(butil::memory_order_acquire);
         if (seen_counter <= 0) {
-            return;
+            return 0;
         }
-        butex_wait(_butex, seen_counter, NULL);
+        if (butex_wait(_butex, seen_counter, NULL) < 0 &&
+            errno != EWOULDBLOCK && errno != EINTR) {
+            return errno;
+        }
     }
 }
 
@@ -93,8 +96,8 @@ int CountdownEvent::timed_wait(const timespec& duetime) {
         if (seen_counter <= 0) {
             return 0;
         }
-        const int rc = butex_wait(_butex, seen_counter, &duetime);
-        if (rc < 0 && errno != EWOULDBLOCK) {
+        if (butex_wait(_butex, seen_counter, &duetime) < 0 &&
+            errno != EWOULDBLOCK && errno != EINTR) {
             return errno;
         }
     }

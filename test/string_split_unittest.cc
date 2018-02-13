@@ -5,14 +5,20 @@
 #include "butil/strings/string_split.h"
 
 #include "butil/strings/utf_string_conversions.h"
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-
-using ::testing::ElementsAre;
 
 namespace butil {
 
 namespace {
+
+void AssertElements(std::vector<std::string>& result,
+                    const char* const expected_data[],
+                    size_t data_size) {
+    ASSERT_EQ(data_size, result.size());
+    for (size_t i = 0; i < data_size; ++i) {
+        ASSERT_STREQ(expected_data[i], result[i].c_str());
+    }
+}
 
 #if !defined(WCHAR_T_IS_UTF16)
 // Overload SplitString with a wide-char version to make it easier to
@@ -165,8 +171,8 @@ TEST_F(SplitStringIntoKeyValuePairsTest, DelimiterInValue) {
 TEST(SplitStringUsingSubstrTest, EmptyString) {
   std::vector<std::string> results;
   SplitStringUsingSubstr(std::string(), "DELIMITER", &results);
-  ASSERT_EQ(1u, results.size());
-  EXPECT_THAT(results, ElementsAre(""));
+  const char* const expected[] = { "" };
+  AssertElements(results, expected, arraysize(expected));
 }
 
 TEST(StringUtilTest, SplitString) {
@@ -236,8 +242,8 @@ TEST(StringUtilTest, SplitString) {
 TEST(SplitStringUsingSubstrTest, StringWithNoDelimiter) {
   std::vector<std::string> results;
   SplitStringUsingSubstr("alongwordwithnodelimiter", "DELIMITER", &results);
-  ASSERT_EQ(1u, results.size());
-  EXPECT_THAT(results, ElementsAre("alongwordwithnodelimiter"));
+  const char* const expected[] = { "alongwordwithnodelimiter" };
+  AssertElements(results, expected, arraysize(expected));
 }
 
 TEST(SplitStringUsingSubstrTest, LeadingDelimitersSkipped) {
@@ -246,8 +252,8 @@ TEST(SplitStringUsingSubstrTest, LeadingDelimitersSkipped) {
       "DELIMITERDELIMITERDELIMITERoneDELIMITERtwoDELIMITERthree",
       "DELIMITER",
       &results);
-  ASSERT_EQ(6u, results.size());
-  EXPECT_THAT(results, ElementsAre("", "", "", "one", "two", "three"));
+  const char* const expected[] = { "", "", "", "one", "two", "three" };
+  AssertElements(results, expected, arraysize(expected));
 }
 
 TEST(SplitStringUsingSubstrTest, ConsecutiveDelimitersSkipped) {
@@ -256,8 +262,9 @@ TEST(SplitStringUsingSubstrTest, ConsecutiveDelimitersSkipped) {
       "unoDELIMITERDELIMITERDELIMITERdosDELIMITERtresDELIMITERDELIMITERcuatro",
       "DELIMITER",
       &results);
-  ASSERT_EQ(7u, results.size());
-  EXPECT_THAT(results, ElementsAre("uno", "", "", "dos", "tres", "", "cuatro"));
+  const char* const expected[] = { "uno", "", "", "dos", "tres", "", "cuatro" };
+  AssertElements(results, expected, arraysize(expected));
+
 }
 
 TEST(SplitStringUsingSubstrTest, TrailingDelimitersSkipped) {
@@ -266,9 +273,8 @@ TEST(SplitStringUsingSubstrTest, TrailingDelimitersSkipped) {
       "unDELIMITERdeuxDELIMITERtroisDELIMITERquatreDELIMITERDELIMITERDELIMITER",
       "DELIMITER",
       &results);
-  ASSERT_EQ(7u, results.size());
-  EXPECT_THAT(
-      results, ElementsAre("un", "deux", "trois", "quatre", "", "", ""));
+  const char* const expected[] = { "un", "deux", "trois", "quatre", "", "", "" };
+  AssertElements(results, expected, arraysize(expected));
 }
 
 TEST(StringSplitTest, StringSplitDontTrim) {

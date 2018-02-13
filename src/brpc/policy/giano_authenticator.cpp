@@ -39,14 +39,11 @@ GianoAuthenticator::GianoAuthenticator(const baas::CredentialGenerator* gen,
 }
 
 GianoAuthenticator::~GianoAuthenticator() {
-    if (_generator) {
-        delete _generator;
-        _generator = NULL;
-    }
-    if (_verifier) {
-        delete _verifier;
-        _verifier = NULL;
-    }
+    delete _generator;
+    _generator = NULL;
+
+    delete _verifier;
+    _verifier = NULL;
 }
 
 int GianoAuthenticator::GenerateCredential(std::string* auth_str) const {

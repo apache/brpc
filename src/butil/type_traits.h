@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_TYPE_TRAITS_H
-#define BASE_TYPE_TRAITS_H
+#ifndef BUTIL_TYPE_TRAITS_H
+#define BUTIL_TYPE_TRAITS_H
 
 #include <cstddef>  // For size_t.
 #include "butil/build_config.h"
 
-#if defined(BASE_CXX11_ENABLED)
+#if defined(BUTIL_CXX11_ENABLED)
 #include <type_traits>
 #endif
 
@@ -91,7 +91,7 @@ template<> struct is_floating_point<long double> : true_type { };
 template <typename T> struct is_pointer : false_type {};
 template <typename T> struct is_pointer<T*> : true_type {};
 
-#if defined(BASE_CXX11_ENABLED)
+#if defined(BUTIL_CXX11_ENABLED)
 template <class T> struct is_pod : std::is_pod<T> {};
 #else
 // We can't get is_pod right without compiler help, so fail conservatively.
@@ -345,4 +345,4 @@ template <typename T> struct is_enum<const volatile T> : is_enum<T> { };
 
 }  // namespace butil
 
-#endif  // BASE_TYPE_TRAITS_H
+#endif  // BUTIL_TYPE_TRAITS_H

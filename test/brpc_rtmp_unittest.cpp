@@ -1,4 +1,4 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
+// brpc - A framework to host and access services throughout Baidu.
 // Copyright (c) 2014 Baidu, Inc.
 
 // Date: Fri May 20 15:52:22 CST 2016
@@ -7,7 +7,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
-#include <gperftools/profiler.h>
 #include <gflags/gflags.h>
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
@@ -22,7 +21,7 @@
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
     return RUN_ALL_TESTS();
 }
 
@@ -339,7 +338,7 @@ public:
     explicit RtmpSubStream(brpc::RtmpMessageHandler* mh)
         : _message_handler(mh) {}
     // @RtmpStreamBase
-    void OnMetaData(brpc::AMFObject*, const butil::StringPiece&);
+    void OnMetaData(brpc::RtmpMetaData*, const butil::StringPiece&);
     void OnSharedObjectMessage(brpc::RtmpSharedObjectMessage* msg);
     void OnAudioMessage(brpc::RtmpAudioMessage* msg);
     void OnVideoMessage(brpc::RtmpVideoMessage* msg);
@@ -353,7 +352,7 @@ void RtmpSubStream::OnFirstMessage() {
     _message_handler->OnPlayable();
 }
 
-void RtmpSubStream::OnMetaData(brpc::AMFObject* obj, const butil::StringPiece& name) {
+void RtmpSubStream::OnMetaData(brpc::RtmpMetaData* obj, const butil::StringPiece& name) {
     _message_handler->OnMetaData(obj, name);
 }
 
@@ -376,7 +375,6 @@ void RtmpSubStream::OnStop() {
 
 class RtmpSubStreamCreator : public brpc::SubStreamCreator {
 public:
-    RtmpSubStreamCreator(brpc::RtmpClientSelector* client_selector);
     RtmpSubStreamCreator(const brpc::RtmpClient* client);
 
     ~RtmpSubStreamCreator();

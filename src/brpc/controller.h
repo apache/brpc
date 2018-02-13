@@ -20,12 +20,12 @@
 // To brpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
 
-#include <gflags/gflags.h>                          // Users often need gflags
-#include "butil/intrusive_ptr.hpp"                   // butil::intrusive_ptr
-#include "bthread/errno.h"                          // Redefine errno
-#include "butil/endpoint.h"                          // butil::EndPoint
-#include "butil/iobuf.h"                             // butil::IOBuf
-#include "bthread/types.h"                          // bthread_id_t
+#include <gflags/gflags.h>                     // Users often need gflags
+#include "butil/intrusive_ptr.hpp"             // butil::intrusive_ptr
+#include "bthread/errno.h"                     // Redefine errno
+#include "butil/endpoint.h"                    // butil::EndPoint
+#include "butil/iobuf.h"                       // butil::IOBuf
+#include "bthread/types.h"                     // bthread_id_t
 #include "brpc/options.pb.h"                   // CompressType
 #include "brpc/errno.pb.h"                     // error code
 #include "brpc/http_header.h"                  // HttpHeader
@@ -40,6 +40,11 @@
 #include "brpc/callback.h"
 #include "brpc/progressive_attachment.h"       // ProgressiveAttachment
 #include "brpc/progressive_reader.h"           // ProgressiveReader
+
+// EAUTH is defined in MAC
+#ifndef EAUTH
+#define EAUTH ERPCAUTH
+#endif
 
 namespace brpc {
 class Span;
@@ -96,7 +101,6 @@ friend class SelectiveChannel;
 friend class schan::Sender;
 friend class schan::SubDone;
 friend class policy::OnServerStreamCreated;
-friend void RunDoneByState(Controller*, google::protobuf::Closure*);
 friend int StreamCreate(StreamId*, Controller&, const StreamOptions*);
 friend int StreamAccept(StreamId*, Controller&, const StreamOptions*);
 friend void policy::ProcessMongoRequest(InputMessageBase*);
@@ -108,7 +112,6 @@ friend void policy::ProcessMongoRequest(InputMessageBase*);
     static const uint32_t FLAGS_READ_PROGRESSIVELY = (1 << 3);
     static const uint32_t FLAGS_PROGRESSIVE_READER = (1 << 4);
     static const uint32_t FLAGS_BACKUP_REQUEST = (1 << 5);
-    static const uint32_t FLAGS_DESTROYED_CID = (1 << 6);
     // Let _done delete the correlation_id, used by combo channels to
     // make lifetime of the correlation_id more flexible.
     static const uint32_t FLAGS_DESTROY_CID_IN_DONE = (1 << 7);
@@ -116,6 +119,9 @@ friend void policy::ProcessMongoRequest(InputMessageBase*);
     static const uint32_t FLAGS_LOG_ID = (1 << 9); // log_id is set
     static const uint32_t FLAGS_REQUEST_CODE = (1 << 10);
     static const uint32_t FLAGS_PB_BYTES_TO_BASE64 = (1 << 11);
+    static const uint32_t FLAGS_ALLOW_DONE_TO_RUN_IN_PLACE = (1 << 12);
+    static const uint32_t FLAGS_USED_BY_RPC = (1 << 13);
+    static const uint32_t FLAGS_REQUEST_WITH_AUTH = (1 << 15);
     
 public:
     Controller();
@@ -262,7 +268,20 @@ public:
     // Set if the field of bytes in protobuf message should be encoded
     // to base64 string in HTTP request.
     void set_pb_bytes_to_base64(bool f) { set_flag(FLAGS_PB_BYTES_TO_BASE64, f); }
-    bool has_pb_bytes_to_base64() { return has_flag(FLAGS_PB_BYTES_TO_BASE64); }
+    bool has_pb_bytes_to_base64() const { return has_flag(FLAGS_PB_BYTES_TO_BASE64); }
+
+    // Tell RPC that done of the RPC can be run in the same thread where
+    // the RPC is issued, otherwise done is always run in a different thread.
+    // In current implementation, this option only affects RPC that fails
+    // before sending the request.
+    // This option is *rarely* needed by ordinary users. Don't set this option
+    // if you don't know the consequences. Read implementions in channel.cpp
+    // and controller.cpp to know more.
+    void allow_done_to_run_in_place()
+    { add_flag(FLAGS_ALLOW_DONE_TO_RUN_IN_PLACE); }
+    // True iff above method was called.
+    bool is_done_allowed_to_run_in_place() const
+    { return has_flag(FLAGS_ALLOW_DONE_TO_RUN_IN_PLACE); }
 
     // ------------------------------------------------------------------------
     //                      Server-side methods.
@@ -319,7 +338,7 @@ public:
     // Tell RPC to close the connection instead of sending back response.
     // If this controller was not SetFailed() before, ErrorCode() will be
     // set to ECLOSE.
-    // Notice that the actual closing does not take place immediately.
+    // NOTE: the underlying connection is not closed immediately.
     void CloseConnection(const char* reason_fmt, ...);
 
     // True if CloseConnection() was called.
@@ -370,6 +389,10 @@ public:
     
     // Causes Failed() to return true on the client side.  "reason" will be
     // incorporated into the message returned by ErrorText().
+    // NOTE: Change http_response().status_code() according to `error_code'
+    // as well if the protocol is HTTP. If you want to overwrite the 
+    // status_code, call http_response().set_status_code() after SetFailed()
+    // (rather than before SetFailed)
     void SetFailed(const std::string& reason);
     void SetFailed(int error_code, const char* reason_fmt, ...)
         __attribute__ ((__format__ (__printf__, 3, 4)));
@@ -506,11 +529,6 @@ private:
     // Append server information to `_error_text'
     void AppendServerIdentiy();
 
-    // Used by ParallelChannel
-    static const int8_t CALLMETHOD_CANNOT_RUN_DONE = 0;
-    static const int8_t CALLMETHOD_CAN_RUN_DONE = 1;
-    static const int8_t CALLMETHOD_DID_RUN_DONE = 2;
-
     // Contexts for tracking and ending a sent request.
     // One RPC to a channel may send several requests due to retrying.
     struct Call {
@@ -557,7 +575,10 @@ private:
     inline void set_flag(uint32_t f, bool t)
     { return t ? add_flag(f) : clear_flag(f); }
     inline bool has_flag(uint32_t f) const { return _flags & f; }
- 
+
+    void set_used_by_rpc() { add_flag(FLAGS_USED_BY_RPC); }
+    bool is_used_by_rpc() const { return has_flag(FLAGS_USED_BY_RPC); }
+
 private:
     // NOTE: align and group fields to make Controller as compact as possible.
 
@@ -603,9 +624,7 @@ private:
     // Begin/End time of a single RPC call (since Epoch in microseconds)
     int64_t _begin_time_us;
     int64_t _end_time_us;
-
     short _tos;    // Type of service.
-    int8_t _run_done_state;
     // The index of parse function which `InputMessenger' will use
     int _preferred_index;
     CompressType _request_compress_type;

@@ -69,7 +69,6 @@ inline bool is_video_codec_valid(FlvVideoCodec id) {
     return (id >= FLV_VIDEO_JPEG && id <= FLV_VIDEO_HEVC);
 }
 
-
 // Get literal form of the message type.
 const char* messagetype2str(RtmpMessageType);
 const char* messagetype2str(uint8_t);

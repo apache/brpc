@@ -15,8 +15,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
-#ifndef BAIDU_BASE_THREAD_LOCAL_H
-#define BAIDU_BASE_THREAD_LOCAL_H
+#ifndef BUTIL_THREAD_LOCAL_H
+#define BUTIL_THREAD_LOCAL_H
 
 #include <new>                      // std::nothrow
 #include <cstddef>                  // NULL
@@ -76,4 +76,4 @@ template <typename T> void delete_object(void* arg) {
 
 #include "thread_local_inl.h"
 
-#endif  // BAIDU_BASE_THREAD_LOCAL_H
+#endif  // BUTIL_THREAD_LOCAL_H

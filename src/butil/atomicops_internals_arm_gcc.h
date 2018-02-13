@@ -6,8 +6,8 @@
 //
 // LinuxKernelCmpxchg and Barrier_AtomicIncrement are from Google Gears.
 
-#ifndef BASE_ATOMICOPS_INTERNALS_ARM_GCC_H_
-#define BASE_ATOMICOPS_INTERNALS_ARM_GCC_H_
+#ifndef BUTIL_ATOMICOPS_INTERNALS_ARM_GCC_H_
+#define BUTIL_ATOMICOPS_INTERNALS_ARM_GCC_H_
 
 #if defined(OS_QNX)
 #include <sys/cpuinline.h>
@@ -291,4 +291,4 @@ inline Atomic32 Release_Load(volatile const Atomic32* ptr) {
 }  // namespace butil::subtle
 }  // namespace butil
 
-#endif  // BASE_ATOMICOPS_INTERNALS_ARM_GCC_H_
+#endif  // BUTIL_ATOMICOPS_INTERNALS_ARM_GCC_H_

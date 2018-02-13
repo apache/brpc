@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon Oct 19 17:17:36 CST 2015
 
-#ifndef PUBLIC_MCPACK2PB_MCPACK_PARSER_INL_H
-#define PUBLIC_MCPACK2PB_MCPACK_PARSER_INL_H
+#ifndef MCPACK2PB_MCPACK_PARSER_INL_H
+#define MCPACK2PB_MCPACK_PARSER_INL_H
 
 namespace mcpack2pb {
 
@@ -261,4 +261,4 @@ inline T ISOArrayIterator::as_fp() const {
 
 }  // namespace mcpack2pb
 
-#endif  // PUBLIC_MCPACK2PB_MCPACK_PARSER_INL_H
+#endif  // MCPACK2PB_MCPACK_PARSER_INL_H

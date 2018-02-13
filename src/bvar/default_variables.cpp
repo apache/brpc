@@ -24,7 +24,7 @@
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/scoped_lock.h"
 #include "butil/files/scoped_file.h"
-#include "butil/files/file_enumerator.h"
+#include "butil/files/dir_reader_posix.h"
 #include "butil/file_util.h"
 #include "bvar/passive_status.h"
 
@@ -47,18 +47,18 @@ struct ProcStat {
     int session;
     int tty_nr;
     int tpgid;
-    uint32_t flags;
-    uint64_t minflt;
-    uint64_t cminflt;
-    uint64_t majflt;
-    uint64_t cmajflt;
-    uint64_t utime;
-    uint64_t stime;
-    uint64_t cutime;
-    uint64_t cstime;
-    int64_t priority;
-    int64_t nice;
-    int64_t num_threads;
+    unsigned flags;
+    unsigned long minflt;
+    unsigned long cminflt;
+    unsigned long majflt;
+    unsigned long cmajflt;
+    unsigned long utime;
+    unsigned long stime;
+    unsigned long cutime;
+    unsigned long cstime;
+    long priority;
+    long nice;
+    long num_threads;
 };
 
 // Read status from /proc/self/stat. Information from `man proc' is out of date,
@@ -159,13 +159,13 @@ public:
 // ==================================================
 
 struct ProcMemory {
-    int64_t size;      // total program size
-    int64_t resident;  // resident set size
-    int64_t share;     // shared pages
-    int64_t trs;       // text (code)
-    int64_t drs;       // data/stack
-    int64_t lrs;       // library
-    int64_t dt;        // dirty pages
+    long size;      // total program size
+    long resident;  // resident set size
+    long share;     // shared pages
+    long trs;       // text (code)
+    long drs;       // data/stack
+    long lrs;       // library
+    long dt;        // dirty pages
 };
 
 static bool read_proc_memory(ProcMemory &m) {
@@ -249,24 +249,22 @@ public:
 // ==================================================
 
 static int get_fd_count(int limit) {
-    butil::FileEnumerator fd_enum(butil::FilePath("/proc/self/fd"),
-                                 false/*non recursive*/,
-                                 butil::FileEnumerator::FILES);
+    butil::DirReaderPosix dr("/proc/self/fd");
     int count = 0;
+    if (!dr.IsValid()) {
+        PLOG(WARNING) << "Fail to open /proc/self/fd";
+        return -1;
+    }
     // Have to limit the scaning which consumes a lot of CPU when #fd
     // are huge (100k+)
-    for (butil::FilePath name = fd_enum.Next();
-         !name.empty() && count <= limit;
-         name = fd_enum.Next(), ++count) {}
-    // FileEnumerator already filtered . and .., due to its implementation,
-    // the fd created by opendir is not counted as well.
-    return count;
+    for (; dr.Next() && count <= limit + 3; ++count) {}
+    return count - 3 /* skipped ., .. and the fd in dr*/;
 }
 
 extern PassiveStatus<int> g_fd_num;
 
 const int MAX_FD_SCAN_COUNT = 10003;
-static butil::static_atomic<bool> s_ever_reached_fd_scan_limit = BASE_STATIC_ATOMIC_INIT(false);
+static butil::static_atomic<bool> s_ever_reached_fd_scan_limit = BUTIL_STATIC_ATOMIC_INIT(false);
 class FdReader {
 public:
     bool operator()(int* stat) const {
@@ -560,7 +558,7 @@ PassiveStatus<std::string> g_username(
     "process_username", get_username, NULL);
 
 BVAR_DEFINE_PROC_STAT_FIELD(minflt);
-PerSecond<PassiveStatus<uint64_t> > g_minflt_second(
+PerSecond<PassiveStatus<unsigned long> > g_minflt_second(
     "process_faults_minor_second", &g_minflt);
 BVAR_DEFINE_PROC_STAT_FIELD2(majflt, "process_faults_major");
 

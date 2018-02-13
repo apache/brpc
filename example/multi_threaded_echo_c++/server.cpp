@@ -55,10 +55,10 @@ DEFINE_bool(h, false, "print help information");
 
 int main(int argc, char* argv[]) {
     std::string help_str = "dummy help infomation";
-    google::SetUsageMessage(help_str);
+    GFLAGS_NS::SetUsageMessage(help_str);
 
     // Parse gflags. We recommend you to use gflags as well.
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
     if (FLAGS_h) {
         fprintf(stderr, "%s\n%s\n%s", help_str.c_str(), help_str.c_str(), help_str.c_str());

@@ -36,14 +36,14 @@ DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(backup_timeout_ms, -1, "backup timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
-DEFINE_int32(dummy_port, 0, "Launch dummy server at this port");
+DEFINE_int32(dummy_port, -1, "Launch dummy server at this port");
 DEFINE_string(http_content_type, "application/json", "Content type of http request");
 
 std::string g_attachment;
 
 bvar::LatencyRecorder g_latency_recorder("client");
 bvar::Adder<int> g_error_count("client_error_count");
-butil::static_atomic<int> g_sender_count = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<int> g_sender_count = BUTIL_STATIC_ATOMIC_INIT(0);
 
 static void* sender(void* arg) {
     // Normally, you should not call a Channel directly, but instead construct
@@ -93,7 +93,7 @@ static void* sender(void* arg) {
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
     // A Channel represents a communication line to a Server. Notice that 
     // Channel is thread-safe and can be shared by all threads in your program.
@@ -115,7 +115,7 @@ int main(int argc, char* argv[]) {
         g_attachment.resize(FLAGS_attachment_size, 'a');
     }
 
-    if (FLAGS_dummy_port > 0) {
+    if (FLAGS_dummy_port >= 0) {
         brpc::StartDummyServerAt(FLAGS_dummy_port);
     }
 

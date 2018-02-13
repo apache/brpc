@@ -6,7 +6,6 @@
 
 #include "butil/synchronization/cancellation_flag.h"
 
-#include "butil/bind.h"
 #include "butil/logging.h"
 #include "butil/synchronization/spin_wait.h"
 #include "butil/time/time.h"

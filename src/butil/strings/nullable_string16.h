@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_STRINGS_NULLABLE_STRING16_H_
-#define BASE_STRINGS_NULLABLE_STRING16_H_
+#ifndef BUTIL_STRINGS_NULLABLE_STRING16_H_
+#define BUTIL_STRINGS_NULLABLE_STRING16_H_
 
 #include <iosfwd>
 
@@ -38,9 +38,9 @@ inline bool operator!=(const NullableString16& a, const NullableString16& b) {
   return !(a == b);
 }
 
-BASE_EXPORT std::ostream& operator<<(std::ostream& out,
+BUTIL_EXPORT std::ostream& operator<<(std::ostream& out,
                                      const NullableString16& value);
 
 }  // namespace
 
-#endif  // BASE_STRINGS_NULLABLE_STRING16_H_
+#endif  // BUTIL_STRINGS_NULLABLE_STRING16_H_

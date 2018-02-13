@@ -1,55 +1,59 @@
-# About Builtin Services
+[中文版](../cn/builtin_service.md)
 
-Builtin services expose internal status of servers, making development and debugging more efficient over brpc. brpc serves builting services via `HTTP`,  which can be easily accessed through curl and browsers.  Servers respond *plain text* or *html* according to `User-Agent` in the request header, or you can append `?console=1` to the *uri* which forces servers to respond *plain text*. Here's an [example](http://brpc.baidu.com:8765/) running on our machine, check it out for more information about the builtin services. If the listen port is filtered(e.g. only ports in *8000-8999* can be accessed outside data centers), you can run [rpc_view](rpc_view.md) to launch a proxy or run curl \<SERVER-URL\> inside data centers.
+# Builtin Services
 
-Accessed through browsers:
+Builtin services expose internal status of servers in different pespectives, making development and debugging over brpc more efficient. brpc serves builting services via HTTP, which can be easily accessed through curl and web browsers. Servers respond plain text or html according to `User-Agent` in the request header, or you may append `?console=1` to the uri to force the server to respond in plain text. Check the [example](http://brpc.baidu.com:8765/) running on our dev machine(only accessible from Baidu internal) for more details. If the port is forbidden from where you run curl or web browser (e.g. not all ports are accessible from a web browser inside Baidu), you can use [rpc_view](rpc_view.md) for proxying.
+
+Following 2 screenshots show accesses to builtin services from a web browser and a terminal respectively.  Note that the logo is the codename inside Baidu, and being modified to brpc in opensourced version.
+
+**From a web browser**
 
 ![img](../images/builtin_service_more.png)
 
- Accessed through terminal:
+**From a terminal**
 
- ![img](../images/builtin_service_from_console.png)
+![img](../images/builtin_service_from_console.png)
 
-# Safe Mode
+# Security Mode
 
-To stay safe from attack, you **must** disable builtin services in the servers on public network, including the ones with proxies(nginx or other http servers). Click [here](server.md#安全模式) for more details.
+To avoid potential attacks and information leaks, builtin services **must** be hidden on servers that may be accessed from public, including the ones proxied by nginx or other http servers. Click [here](server.md#security-mode) for more details.
 
 # Main services:
 
-[status](status.md)
+[/status](status.md): displays brief status of all services.
 
-[vars](vars.md)
+[/vars](vars.md): lists user-customizable counters on miscellaneous metrics.
 
-[connections](connections.md)
+[/connections](../cn/connections.md): lists all connections and their stats.
 
-[flags](flags.md)
+[/flags](../cn/flags.md): lists all gflags, some of them are modifiable at run-time.
 
-[rpcz](rpcz.md)
+[/rpcz](../cn/rpcz.md): traces all RPCs.
 
-[cpu profiler](cpu_profiler.md)
+[cpu profiler](../cn/cpu_profiler.md): analyzes CPU hotspots.
 
-[heap profiler](heap_profiler.md)
+[heap profiler](../cn/heap_profiler.md): shows how memory are allocated.
 
-[contention profiler](contention_profiler.md)
+[contention profiler](../cn/contention_profiler.md): analyzes lock contentions.
 
 # Other services
 
-
-
-[version service](http://brpc.baidu.com:8765/version) shows the version of the server。Invoke Server::set_version() to specify version of your server, or brpc would generate a default version in like `brpc_server_<service-name1>_<service-name2> ...`
+[/version](http://brpc.baidu.com:8765/version) shows version of the server. Call Server::set_version() to specify version of the server, or brpc would generate a default version like `brpc_server_<service-name1>_<service-name2> ...`
 
 ![img](../images/version_service.png)
 
-[health service](http://brpc.baidu.com:8765/health) shows whether this server is alive or not.
+[/health](http://brpc.baidu.com:8765/health) shows whether this server is alive or not.
 
 ![img](../images/health_service.png)
 
-[protobufs service](http://brpc.baidu.com:8765/protobufs) shows scheme of all the protobuf messages insides the server.
+[/protobufs](http://brpc.baidu.com:8765/protobufs) shows scheme of all protobuf messages inside the server.
 
 ![img](../images/protobufs_service.png)
 
-[vlog service](http://brpc.baidu.com:8765/vlog) shows all the [VLOG](streaming_log.md#VLOG) that can be enable(not work with glog).
+[/vlog](http://brpc.baidu.com:8765/vlog) shows all the [VLOG](streaming_log.md#VLOG) that can be enabled(not working with glog).
 
 ![img](../images/vlog_service.png)
 
+/dir: browses all files on the server, convenient but too dangerous, disabled by default.
 
+/threads: displays information of all threads of the process, hurting performance significantly when being turned on, disabled by default.

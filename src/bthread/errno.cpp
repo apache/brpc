@@ -21,11 +21,11 @@
 // Define errno in bthread/errno.h
 extern const int ESTOP = -20;
 
-BAIDU_REGISTER_ERRNO(ESTOP, "the thread is stopping")
+BAIDU_REGISTER_ERRNO(ESTOP, "The structure is stopping")
 
 extern "C" {
 
-extern int *__errno_location() __THROW __attribute__((__const__));
+extern int *__errno_location() __attribute__((__const__));
 
 int *bthread_errno_location() {
     return __errno_location();

@@ -17,8 +17,8 @@
 
 // Wrappers of IP and port.
 
-#ifndef BAIDU_BASE_ENDPOINT_H
-#define BAIDU_BASE_ENDPOINT_H
+#ifndef BUTIL_ENDPOINT_H
+#define BUTIL_ENDPOINT_H
 
 #include <netinet/in.h>                          // in_addr
 #include <iostream>                              // std::ostream
@@ -191,7 +191,7 @@ inline std::ostream& operator<<(std::ostream& os, const EndPointStr& ep_str) {
 }  // namespace butil
 
 
-namespace BASE_HASH_NAMESPACE {
+namespace BUTIL_HASH_NAMESPACE {
 
 // Implement methods for hashing a pair of integers, so they can be used as
 // keys in STL containers.
@@ -216,4 +216,4 @@ struct hash<butil::EndPoint> {
 
 }
 
-#endif  // BAIDU_BASE_ENDPOINT_H
+#endif  // BUTIL_ENDPOINT_H

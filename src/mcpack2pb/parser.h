@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon Oct 19 17:17:36 CST 2015
 
-#ifndef PUBLIC_MCPACK2PB_MCPACK_PARSER_H
-#define PUBLIC_MCPACK2PB_MCPACK_PARSER_H
+#ifndef MCPACK2PB_MCPACK_PARSER_H
+#define MCPACK2PB_MCPACK_PARSER_H
 
 #include <limits>  // std::numeric_limits
 #include <google/protobuf/io/zero_copy_stream.h>
@@ -267,4 +267,4 @@ private:
 
 #include "mcpack2pb/parser-inl.h"
 
-#endif  // PUBLIC_MCPACK2PB_MCPACK_PARSER_H
+#endif  // MCPACK2PB_MCPACK_PARSER_H

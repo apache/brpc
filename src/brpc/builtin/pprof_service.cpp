@@ -23,6 +23,7 @@
 #include "butil/file_util.h"                 // butil::FilePath
 #include "butil/files/scoped_file.h"         // ScopedFILE
 #include "butil/time.h"
+#include "butil/popen.h"                    // butil::read_command_output
 #include "brpc/log.h"
 #include "brpc/controller.h"                // Controller
 #include "brpc/closure_guard.h"             // ClosureGuard
@@ -289,16 +290,15 @@ static int ExtractSymbolsFromBinary(
     tm.start();
     std::string cmd = "nm -C -p ";
     cmd.append(lib_info.path);
-    FILE* pipe = popen(cmd.c_str(), "r");
-    if (pipe == NULL) {
-        LOG(FATAL) << "Fail to popen `" << cmd << "'";
+    std::stringstream ss;
+    const int rc = butil::read_command_output(ss, cmd.c_str());
+    if (rc < 0) {
+        LOG(ERROR) << "Fail to popen `" << cmd << "'";
         return -1;
     }
-    char* line = NULL;
-    size_t line_len = 0;
-    ssize_t nr = 0;
-    while ((nr = getline(&line, &line_len, pipe)) != -1) {
-        butil::StringSplitter sp(line, ' ');
+    std::string line;
+    while (std::getline(ss, line)) {
+        butil::StringSplitter sp(line.c_str(), ' ');
         if (sp == NULL) {
             continue;
         }
@@ -381,8 +381,6 @@ static int ExtractSymbolsFromBinary(
     if (addr_map.find(lib_info.end_addr) == addr_map.end()) {
         addr_map[lib_info.end_addr] = std::string();
     }
-    pclose(pipe);
-    free(line);
     tm.stop();
     RPC_VLOG << "Loaded " << lib_info.path << " in " << tm.m_elapsed() << "ms";
     return 0;

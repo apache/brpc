@@ -15,8 +15,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Nov 7 21:43:34 CST 2010
 
-#ifndef BAIDU_BASE_SYNCHRONOUS_EVENT_H
-#define BAIDU_BASE_SYNCHRONOUS_EVENT_H
+#ifndef BUTIL_SYNCHRONOUS_EVENT_H
+#define BUTIL_SYNCHRONOUS_EVENT_H
 
 #include <vector>                             // std::vector
 #include <algorithm>                          // std::find
@@ -228,4 +228,4 @@ public:
 }  // end namespace detail
 }  // end namespace butil
 
-#endif  // BAIDU_BASE_SYNCHRONOUS_EVENT_H
+#endif  // BUTIL_SYNCHRONOUS_EVENT_H

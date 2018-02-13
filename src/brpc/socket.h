@@ -128,9 +128,11 @@ struct PipelinedInfo {
     PipelinedInfo() { reset(); }
     void reset() {
         count = 0;
+        with_auth = false;
         id_wait = INVALID_BTHREAD_ID;
     }
     uint32_t count;
+    bool with_auth;
     bthread_id_t id_wait;
 };
 
@@ -212,6 +214,12 @@ public:
         // Will be queued to implement positional correspondence with responses
         // Default: 0
         uint32_t pipelined_count;
+
+        // [Only effective when pipelined_count is non-zero]
+        // The request contains authenticating information which will be
+        // responded by the server and processed specially when dealing
+        // with the response.
+        bool with_auth;
         
         // Do not return EOVERCROWDED
         // Default: false
@@ -219,7 +227,8 @@ public:
 
         WriteOptions()
             : id_wait(INVALID_BTHREAD_ID), abstime(NULL)
-            , pipelined_count(0), ignore_eovercrowded(false) {}
+            , pipelined_count(0), with_auth(false)
+            , ignore_eovercrowded(false) {}
     };
     int Write(butil::IOBuf *msg, const WriteOptions* options = NULL);
     
@@ -442,6 +451,9 @@ public:
 
     // A brief description of this socket, consistent with os << *this
     std::string description() const;
+
+    // Returns true if the remote side is overcrowded.
+    bool is_overcrowded() const { return _overcrowded; }
 
 private:
     DISALLOW_COPY_AND_ASSIGN(Socket);

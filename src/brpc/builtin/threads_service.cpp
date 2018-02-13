@@ -16,6 +16,7 @@
 
 #include "butil/time.h"
 #include "butil/logging.h"
+#include "butil/popen.h"
 #include "brpc/controller.h"           // Controller
 #include "brpc/closure_guard.h"        // ClosureGuard
 #include "brpc/builtin/threads_service.h"
@@ -37,23 +38,15 @@ void ThreadsService::default_method(::google::protobuf::RpcController* cntl_base
     std::string cmd = butil::string_printf("pstack %lld", (long long)getpid());
     butil::Timer tm;
     tm.start();
-    FILE* pipe = popen(cmd.c_str(), "r");
-    if (pipe == NULL) {
-        LOG(FATAL) << "Fail to popen `" << cmd << "'";
+    butil::IOBufBuilder pstack_output;
+    const int rc = butil::read_command_output(pstack_output, cmd.c_str());
+    if (rc < 0) {
+        LOG(ERROR) << "Fail to popen `" << cmd << "'";
         return;
     }
-    read_portal.append_from_file_descriptor(fileno(pipe), MAX_READ);
-    resp.swap(read_portal);
-    
-    // Call fread, otherwise following error will be reported:
-    //   sed: couldn't flush stdout: Broken pipe
-    // and pclose will fail:
-    //   CHECK failed: 0 == pclose(pipe): Resource temporarily unavailable
-    size_t fake_buf;
-    butil::ignore_result(fread(&fake_buf, sizeof(fake_buf), 1, pipe));
-    CHECK_EQ(0, pclose(pipe)) << berror();
+    pstack_output.move_to(resp);
     tm.stop();
-    resp.append(butil::string_printf("\n\ntime=%lums", tm.m_elapsed()));
+    resp.append(butil::string_printf("\n\ntime=%" PRId64 "ms", tm.m_elapsed()));
 }
 
 } // namespace brpc

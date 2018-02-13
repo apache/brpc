@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Thu Nov 22 13:57:56 CST 2012
 
-#ifndef BASE_IOBUF_H
-#define BASE_IOBUF_H
+#ifndef BUTIL_IOBUF_H
+#define BUTIL_IOBUF_H
 
 #include <sys/uio.h>                             // iovec
 #include <stdint.h>                              // uint32_t
@@ -58,9 +58,6 @@ public:
     static const size_t MAX_BLOCK_SIZE = (1 << 16);
     static const size_t MAX_PAYLOAD = MAX_BLOCK_SIZE - 16/*impl dependent*/;
     static const size_t INITIAL_CAP = 32; // must be power of 2
-
-    // [Deprecated] be here only because older base-rpc still uses it.
-    static const size_t BLOCK_SIZE = DEFAULT_BLOCK_SIZE;
 
     struct Block;
 
@@ -271,24 +268,18 @@ public:
     // Copy min(n, length()) bytes starting from `pos' at front side into `buf'.
     // Returns bytes copied.
     size_t copy_to(void* buf, size_t n = (size_t)-1L, size_t pos = 0) const;
-    BAIDU_DEPRECATED size_t copy(void* buf, size_t n = (size_t)-1L) const
-    { return copy_to(buf, n, 0); }
 
     // NOTE: first parameter is not std::string& because user may passes
     // a pointer of std::string by mistake, in which case, compiler would
     // call the void* version which crashes definitely.
     size_t copy_to(std::string* s, size_t n = (size_t)-1L, size_t pos = 0) const;
     size_t append_to(std::string* s, size_t n = (size_t)-1L, size_t pos = 0) const;
-    BAIDU_DEPRECATED size_t copy(std::string* s, size_t n = (size_t)-1L) const
-    { return copy_to(s, n, 0); }
 
     // Copy min(n, length()) bytes staring from `pos' at front side into
     // `cstr' and end it with '\0'.
     // `cstr' must be as long as min(n, length())+1.
     // Returns bytes copied (not including ending '\0')
     size_t copy_to_cstr(char* cstr, size_t n = (size_t)-1L, size_t pos = 0) const;
-    BAIDU_DEPRECATED size_t copy_cstr(char* s, size_t n = (size_t)-1L) const
-    { return copy_to_cstr(s, n, 0); }
 
     // Convert all data in this buffer to a std::string.
     std::string to_string() const;
@@ -678,4 +669,4 @@ inline void swap(butil::IOBuf& a, butil::IOBuf& b) {
 
 #include "butil/iobuf_inl.h"
 
-#endif  // BASE_IOBUF_H
+#endif  // BUTIL_IOBUF_H

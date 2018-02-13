@@ -1,4 +1,4 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
+// brpc - A framework to host and access services throughout Baidu.
 // Copyright (c) 2014 Baidu, Inc.
 
 // Date: 2015/10/22 16:28:44
@@ -9,7 +9,7 @@
 #include "brpc/controller.h"
 #include "brpc/channel.h"
 #include "brpc/stream_impl.h"
-#include "test/echo.pb.h"
+#include "echo.pb.h"
 
 class AfterAcceptStream {
 public:

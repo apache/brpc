@@ -17,8 +17,8 @@
 
 // Wrappers of unix domain sockets, mainly for unit-test of network stuff.
 
-#ifndef BAIDU_BASE_UNIX_SOCKET_H
-#define BAIDU_BASE_UNIX_SOCKET_H
+#ifndef BUTIL_UNIX_SOCKET_H
+#define BUTIL_UNIX_SOCKET_H
 
 namespace butil {
 
@@ -36,4 +36,4 @@ int unix_socket_connect(const char* sockname);
 
 }  // namespace butil
 
-#endif  // BAIDU_BASE_UNIX_SOCKET_H
+#endif  // BUTIL_UNIX_SOCKET_H

@@ -292,7 +292,7 @@ CheckedAbs(T value, RangeConstraint* validity) {
 
 // These are the floating point stubs that the compiler needs to see. Only the
 // negation operation is ever called.
-#define BASE_FLOAT_ARITHMETIC_STUBS(NAME)                        \
+#define BUTIL_FLOAT_ARITHMETIC_STUBS(NAME)                        \
   template <typename T>                                          \
   typename enable_if<std::numeric_limits<T>::is_iec559, T>::type \
   Checked##NAME(T, T, RangeConstraint*) {                        \
@@ -300,13 +300,13 @@ CheckedAbs(T value, RangeConstraint* validity) {
     return 0;                                                    \
   }
 
-BASE_FLOAT_ARITHMETIC_STUBS(Add)
-BASE_FLOAT_ARITHMETIC_STUBS(Sub)
-BASE_FLOAT_ARITHMETIC_STUBS(Mul)
-BASE_FLOAT_ARITHMETIC_STUBS(Div)
-BASE_FLOAT_ARITHMETIC_STUBS(Mod)
+BUTIL_FLOAT_ARITHMETIC_STUBS(Add)
+BUTIL_FLOAT_ARITHMETIC_STUBS(Sub)
+BUTIL_FLOAT_ARITHMETIC_STUBS(Mul)
+BUTIL_FLOAT_ARITHMETIC_STUBS(Div)
+BUTIL_FLOAT_ARITHMETIC_STUBS(Mod)
 
-#undef BASE_FLOAT_ARITHMETIC_STUBS
+#undef BUTIL_FLOAT_ARITHMETIC_STUBS
 
 template <typename T>
 typename enable_if<std::numeric_limits<T>::is_iec559, T>::type CheckedNeg(

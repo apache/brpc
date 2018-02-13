@@ -14,22 +14,10 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
+#include <unistd.h>                    // write, _exit
+#include <gflags/gflags.h>
 #include "butil/macros.h"
 #include "brpc/reloadable_flags.h"
-
-namespace google {
-extern bool RegisterFlagValidator(const bool* flag,
-                                  bool (*validate_fn)(const char*, bool));
-extern bool RegisterFlagValidator(const int32_t* flag,
-                                  bool (*validate_fn)(const char*, int32_t));
-extern bool RegisterFlagValidator(const int64_t* flag,
-                                  bool (*validate_fn)(const char*, int64_t));
-extern bool RegisterFlagValidator(const uint64_t* flag,
-                                  bool (*validate_fn)(const char*, uint64_t));
-extern bool RegisterFlagValidator(const double* flag,
-                                  bool (*validate_fn)(const char*, double));
-} // namespace google
-
 
 namespace brpc {
 
@@ -66,7 +54,7 @@ bool NonNegativeInteger(const char*, int64_t val) {
 template <typename T>
 static bool RegisterFlagValidatorOrDieImpl(
     const T* flag, bool (*validate_fn)(const char*, T val)) {
-    if (::google::RegisterFlagValidator(flag, validate_fn)) {
+    if (GFLAGS_NS::RegisterFlagValidator(flag, validate_fn)) {
         return true;
     }
     // Error printed by gflags does not have newline. Add one to it.

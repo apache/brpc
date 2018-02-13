@@ -97,7 +97,7 @@ public:
 private:
     void RemoveInternal(const butil::EndPoint& pt, SocketId id,
                         bool remove_orphan);
-    void ListOrphans(int defer_seconds, std::vector<butil::EndPoint>* out);
+    void ListOrphans(int64_t defer_us, std::vector<butil::EndPoint>* out);
     void WatchConnections();
     static void* RunWatchConnections(void*);
     void Print(std::ostream& os);

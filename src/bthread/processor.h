@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Fri Dec  5 13:40:57 CST 2014
 
-#ifndef BAIDU_BTHREAD_PROCESSOR_H
-#define BAIDU_BTHREAD_PROCESSOR_H
+#ifndef BTHREAD_PROCESSOR_H
+#define BTHREAD_PROCESSOR_H
 
 // Pause instruction to prevent excess processor bus usage, only works in GCC
 # ifndef cpu_relax
@@ -44,4 +44,4 @@
         errno = saved_errno;                                            \
     } while (0)
 
-#endif // BAIDU_BTHREAD_PROCESSOR_H
+#endif // BTHREAD_PROCESSOR_H

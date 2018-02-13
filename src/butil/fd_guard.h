@@ -15,8 +15,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
-#ifndef BAIDU_BASE_FD_GUARD_H
-#define BAIDU_BASE_FD_GUARD_H
+#ifndef BUTIL_FD_GUARD_H
+#define BUTIL_FD_GUARD_H
 
 #include <unistd.h>                                  // close()
 
@@ -74,4 +74,4 @@ private:
 
 }  // namespace butil
 
-#endif  // BAIDU_BASE_FD_GUARD_H
+#endif  // BUTIL_FD_GUARD_H
