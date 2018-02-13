@@ -26,7 +26,7 @@ If you need to statically link leveldb:
 $ sudo apt-get install libsnappy-dev
 ```
 
-### Compile brpc
+### Compile brpc with config_brpc.sh
 git clone brpc, cd into the repo and run
 ```
 $ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib
@@ -36,15 +36,7 @@ To change compiler to clang, add `--cxx=clang++ --cc=clang`.
 
 To not link debugging symbols, add `--nodebugsymbols` and compiled binaries will be much smaller.
 
-### Compile brpc with cmake
-```
-$ mkdir build && cd build && cmake .. && make
-```
-To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
-
-Use `cmake -DWITH_DEBUG_SYMBOLS=ON ..` to link debugging symbols.
-
-### Run example
+**Run example**
 
 ```
 $ cd example/echo_c++
@@ -52,20 +44,13 @@ $ make
 $ ./echo_server &
 $ ./echo_client
 ```
+
 Examples link brpc statically, if you need to link the shared version, `make clean` and `LINK_SO=1 make`
 
 To run examples with cpu/heap profilers, install `libgoogle-perftools-dev` and re-run `config_brpc.sh` before compiling.
 
-### Run example with cmake
-```
-$ cd example/echo_c++
-$ mkdir build && cd build && cmake .. && make
-$ ./echo_server &
-$ ./echo_client
-```
-Examples link brpc statically, if you need to link the shared version, use `cmake -DEXAMPLE_LINK_SO=ON ..`
+**Run tests**
 
-### Run tests
 Install and compile libgtest-dev (which is not compiled yet):
 
 ```shell
@@ -76,7 +61,24 @@ The directory of gtest source code may be changed, try `/usr/src/googletest/goog
 
 Rerun `config_brpc.sh`, `make` in test/, and `sh run_tests.sh`
 
-### Run tests with cmake
+### Compile brpc with cmake
+```
+$ mkdir build && cd build && cmake .. && make
+```
+To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
+
+To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
+
+**Run example with cmake**
+```
+$ cd example/echo_c++
+$ mkdir build && cd build && cmake .. && make
+$ ./echo_server &
+$ ./echo_client
+```
+Examples link brpc statically, if you need to link the shared version, use `cmake -DEXAMPLE_LINK_SO=ON ..`
+
+**Run tests**
 
 Install gtest like just written above.
 
@@ -103,7 +105,7 @@ Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.co
 ```
 sudo yum install gflags-devel protobuf-devel protobuf-compiler leveldb-devel
 ```
-### Compile brpc
+### Compile brpc with config_brpc.sh
 
 git clone brpc, cd into the repo and run
 
@@ -115,15 +117,7 @@ To change compiler to clang, add `--cxx=clang++ --cc=clang`.
 
 To not link debugging symbols, add `--nodebugsymbols` and compiled binaries will be much smaller.
 
-### Compile brpc with cmake
-```
-$ mkdir build && cd build && cmake .. && make
-```
-To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
-
-Use `cmake -DWITH_DEBUG_SYMBOLS=ON ..` to link debugging symbols.
-
-### Run example
+**Run example**
 
 ```
 $ cd example/echo_c++
@@ -131,11 +125,27 @@ $ make
 $ ./echo_server &
 $ ./echo_client
 ```
+
 Examples link brpc statically, if you need to link the shared version, `make clean` and `LINK_SO=1 make`
 
 To run examples with cpu/heap profilers, install `gperftools-devel` and re-run `config_brpc.sh` before compiling.
 
-### Run example with cmake
+**Run tests**
+
+Install gtest-devel.
+
+Rerun `config_brpc.sh`, `make` in test/, and `sh run_tests.sh`
+
+### Compile brpc with cmake
+```
+$ mkdir build && cd build && cmake .. && make
+```
+To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
+
+To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
+
+**Run example**
+
 ```
 $ cd example/echo_c++
 $ mkdir build && cd build && cmake .. && make
@@ -144,13 +154,7 @@ $ ./echo_client
 ```
 Examples link brpc statically, if you need to link the shared version, use `cmake -DEXAMPLE_LINK_SO=ON ..`
 
-### Run tests
-
-Install gtest-devel.
-
-Rerun `config_brpc.sh`, `make` in test/, and `sh run_tests.sh`
-
-### Run tests with cmake
+**Run tests**
 
 ```
 $ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make
@@ -204,7 +208,7 @@ $ mkdir build && cd build && cmake -DCMAKE_INCLUDE_PATH="/path/to/dep1/include;/
 
 To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
 
-Add `-DWITH_DEBUG_SYMBOLS=ON` to link debugging symbols.
+To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
 
 # Supported deps
 
@@ -262,7 +266,7 @@ When you remove tcmalloc, not only remove the linkage with tcmalloc but also the
 
 ## glog: 3.3+
 
-brpc implements a default [logging utility](../../src/butil/logging.h) which conflicts with glog. To replace this with glog, add *--with-glog* to config_brpc.sh or add `-DWITH_GLOG=ON` to cmake.
+brpc implements a default [logging utility](../../src/butil/logging.h) which conflicts with glog. To replace this with glog, add *--with-glog* to config_brpc.sh or add `-DBRPC_WITH_GLOG=ON` to cmake.
 
 ## valgrind: 3.8+
 

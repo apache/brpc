@@ -386,12 +386,19 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             cntl->SetFailed(ELOGOFF, "Server is stopping");
             break;
         }
+
+        if (socket->is_overcrowded()) {
+            cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
+                            butil::endpoint2str(socket->remote_side()).c_str());
+            break;
+        }
         
         if (!server_accessor.AddConcurrency(cntl.get())) {
             cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
                             server->options().max_concurrency);
             break;
         }
+
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {
             cntl->SetFailed(ELIMIT, "Too many user code to run when"
                             " -usercode_in_pthread is on");
