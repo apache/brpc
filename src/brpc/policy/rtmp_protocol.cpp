@@ -1790,7 +1790,7 @@ bool RtmpChunkStream::OnMessage(const RtmpBasicHeader& bh,
                                 const RtmpMessageHeader& mh,
                                 butil::IOBuf* msg_body,
                                 Socket* socket) {
-    // Make sure msg_body is consistent with the header. Rrevious code
+    // Make sure msg_body is consistent with the header. Previous code
     // forgot to clear msg_body before appending new message.
     CHECK_EQ((size_t)mh.message_length, msg_body->size());
     
