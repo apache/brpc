@@ -77,6 +77,8 @@ BAIDU_REGISTER_ERRNO(brpc::EITP, "Bad Itp response");
 
 namespace brpc {
 
+DEFINE_bool(graceful_quit_on_sigterm, false, "Register SIGTERM handle func to quit graceful");
+
 const IdlNames idl_single_req_single_res = { "req", "res" };
 const IdlNames idl_single_req_multi_res = { "req", "" };
 const IdlNames idl_multi_req_single_res = { "", "res" };
@@ -1403,15 +1405,17 @@ static void RegisterQuitSignalOrDie() {
         }
     }
 
-    prev = signal(SIGTERM, quit_handler);
-    if (prev != SIG_DFL &&
-        prev != SIG_IGN) { // shell may install SIGTERM of background jobs with SIG_IGN
-        if (prev == SIG_ERR) {
-            LOG(ERROR) << "Fail to register SIGTERM, abort";
-            abort();
-        } else {
-            s_prev_sigterm_handler = prev;
-            LOG(WARNING) << "SIGTERM was installed with " << prev;
+    if (FLAGS_graceful_quit_on_sigterm) {
+        prev = signal(SIGTERM, quit_handler);
+        if (prev != SIG_DFL &&
+            prev != SIG_IGN) { // shell may install SIGTERM of background jobs with SIG_IGN
+            if (prev == SIG_ERR) {
+                LOG(ERROR) << "Fail to register SIGTERM, abort";
+                abort();
+            } else {
+                s_prev_sigterm_handler = prev;
+                LOG(WARNING) << "SIGTERM was installed with " << prev;
+            }
         }
     }
 }
