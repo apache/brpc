@@ -2264,9 +2264,9 @@ bool RtmpChunkStream::OnCommandMessageAMF0(
 }
 
 bool RtmpChunkStream::OnDataMessageAMF3(
-    const RtmpMessageHeader&, butil::IOBuf*, Socket*) {
-    LOG(ERROR) << "Not implemented";
-    return false;
+    const RtmpMessageHeader& mh, base::IOBuf* msg_body, Socket* socket) {
+    msg_body->pop_front(1);
+    return OnDataMessageAMF0(mh, msg_body, socket);
 }
 
 bool RtmpChunkStream::OnSharedObjectMessageAMF3(
@@ -2276,9 +2276,9 @@ bool RtmpChunkStream::OnSharedObjectMessageAMF3(
 }
 
 bool RtmpChunkStream::OnCommandMessageAMF3(
-    const RtmpMessageHeader&, butil::IOBuf*, Socket*) {
-    LOG(ERROR) << "Not implemented";
-    return false;
+    const RtmpMessageHeader& mh, base::IOBuf* msg_body, Socket* socket) {
+    msg_body->pop_front(1);
+    return OnCommandMessageAMF0(mh, msg_body, socket);
 }
 
 bool RtmpChunkStream::OnAggregateMessage(
@@ -2385,7 +2385,7 @@ bool RtmpChunkStream::OnConnect(const RtmpMessageHeader& mh,
             info.set_code(RTMP_STATUS_CODE_CONNECT_SUCCESS);
             info.set_level(RTMP_INFO_LEVEL_STATUS);
             info.set_description("Connection succeeded");
-            info.set_objectencoding(RTMP_AMF0);
+            info.set_objectencoding(req->objectencoding());
         } else {
             info.set_code(RTMP_STATUS_CODE_CONNECT_REJECTED);
             info.set_level(RTMP_INFO_LEVEL_ERROR);
