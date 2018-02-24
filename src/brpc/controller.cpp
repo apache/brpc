@@ -77,6 +77,8 @@ BAIDU_REGISTER_ERRNO(brpc::EITP, "Bad Itp response");
 
 namespace brpc {
 
+DEFINE_bool(graceful_quit_on_sigterm, false, "Register SIGTERM handle func to quit graceful");
+
 const IdlNames idl_single_req_single_res = { "req", "res" };
 const IdlNames idl_single_req_multi_res = { "req", "" };
 const IdlNames idl_multi_req_single_res = { "", "res" };
@@ -1374,25 +1376,46 @@ typedef sighandler_t SignalHandler;
 #endif
 
 static volatile bool s_signal_quit = false;
-static SignalHandler s_prev_handler = NULL;
+static SignalHandler s_prev_sigint_handler = NULL;
+static SignalHandler s_prev_sigterm_handler = NULL;
+
 static void quit_handler(int signo) {
-    s_signal_quit = true; 
-    if (s_prev_handler) {
-        s_prev_handler(signo);
+    s_signal_quit = true;
+    if (SIGINT == signo && s_prev_sigint_handler) {
+        s_prev_sigint_handler(signo);
+    }
+    if (SIGTERM == signo && s_prev_sigterm_handler) {
+        s_prev_sigterm_handler(signo);
     }
 }
+
 static pthread_once_t register_quit_signal_once = PTHREAD_ONCE_INIT;
+
 static void RegisterQuitSignalOrDie() {
     // Not thread-safe.
-    const SignalHandler prev = signal(SIGINT, quit_handler);
-    if (prev != SIG_DFL && 
+    SignalHandler prev = signal(SIGINT, quit_handler);
+    if (prev != SIG_DFL &&
         prev != SIG_IGN) { // shell may install SIGINT of background jobs with SIG_IGN
         if (prev == SIG_ERR) {
             LOG(ERROR) << "Fail to register SIGINT, abort";
             abort();
-        } else { 
-            s_prev_handler = prev;
+        } else {
+            s_prev_sigint_handler = prev;
             LOG(WARNING) << "SIGINT was installed with " << prev;
+        }
+    }
+
+    if (FLAGS_graceful_quit_on_sigterm) {
+        prev = signal(SIGTERM, quit_handler);
+        if (prev != SIG_DFL &&
+            prev != SIG_IGN) { // shell may install SIGTERM of background jobs with SIG_IGN
+            if (prev == SIG_ERR) {
+                LOG(ERROR) << "Fail to register SIGTERM, abort";
+                abort();
+            } else {
+                s_prev_sigterm_handler = prev;
+                LOG(WARNING) << "SIGTERM was installed with " << prev;
+            }
         }
     }
 }
