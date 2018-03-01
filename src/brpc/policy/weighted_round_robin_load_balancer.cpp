@@ -14,6 +14,7 @@
 
 // Authors: Daojin Cai (caidaojin@qiyi.com)
 
+#include "butil/fast_rand.h"
 #include "brpc/socket.h"
 #include "brpc/policy/weighted_round_robin_load_balancer.h"
 #include "butil/strings/string_number_conversions.h"
@@ -21,7 +22,24 @@
 namespace brpc {
 namespace policy {
 
-static const int EraseBatchSize = 100;
+bool IsCoprime(uint32_t num1, uint32_t num2) {
+    uint32_t temp;
+    if (num1 < num2) {
+        temp = num1;
+        num1 = num2;
+        num2 = temp;
+    }
+    while (true) {
+        temp = num1 % num2;
+        if (temp == 0) { 
+            break; 
+        } else {
+            num1 = num2;
+            num2 = temp;
+        }
+    }
+    return num2 == 1;
+}
 
 bool WeightedRoundRobinLoadBalancer::Add(Servers& bg, const ServerId& id) {
     if (bg.server_list.capacity() < 128) {
@@ -33,6 +51,7 @@ bool WeightedRoundRobinLoadBalancer::Add(Servers& bg, const ServerId& id) {
                  bg.server_map.emplace(id.id, bg.server_list.size()).second;
         if (insert_server) {
             bg.server_list.emplace_back(id.id, weight);
+            bg.weight_sum += weight;
             return true;
         }
     } else {
@@ -45,6 +64,7 @@ bool WeightedRoundRobinLoadBalancer::Remove(Servers& bg, const ServerId& id) {
     auto iter = bg.server_map.find(id.id);
     if (iter != bg.server_map.end()) {
         const size_t index = iter->second;
+        bg.weight_sum -= bg.server_list[index].second;
         bg.server_list[index] = bg.server_list.back();
         bg.server_map[bg.server_list[index].first] = index;
         bg.server_list.pop_back();
@@ -107,47 +127,100 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
         return ENODATA;
     }
     TLS& tls = s.tls();
-    int64_t best = -1;
-    int total_weight = 0;
-    // TODO: each thread requsts service as the same sequence.
-    // We can set a random beginning position for each thread.
-    for (const auto& server : s->server_list) {
-        // A new server is added or the wrr fisrt run.
-        // Add the servers into TLS.
-        const SocketId server_id = server.first;
-        auto iter = tls.emplace(server_id, 0).first;
-        if (ExcludedServers::IsExcluded(in.excluded, server_id)
-            || Socket::Address(server_id, out->ptr) != 0
-            || (*out->ptr)->IsLogOff()) {
-            continue;
-        }
-        iter->second += server.second;
-        total_weight += server.second;
-        if (best == -1 || tls[server_id] > tls[best]) {
-            best = server_id;
-        }
+    if (tls.IsNeededCaculateNewStride(s->weight_sum, s->server_list.size())) {
+      tls.stride = GetStride(s->weight_sum, s->server_list.size()); 
+      tls.offset = butil::fast_rand_less_than(tls.stride);
     }
-    // If too many servers were removed from _db_servers(name service),
-    // remove these servers from TLS.
-    if (s->server_list.size() + EraseBatchSize < tls.size()) {
-        auto iter = tls.begin(); 
-        while (iter != tls.end()) {
-            if (s->server_map.find(iter->first) == s->server_map.end()) {
-                iter = tls.erase(iter);
-            } else {
-                ++iter;
-            }
-        }
+    // If server list changed, the position may be out of range.
+    tls.position %= s->server_list.size();
+    // Check whether remain server was removed from server list.
+    if (tls.HasRemainServer() && 
+        s->server_map.find(tls.remain_server.first) == s->server_map.end()) {
+        tls.ResetRemainServer();
     }
-    if (best != -1) {
-        tls[best] -= total_weight;
+    for ( uint32_t i = 0; i != tls.stride; ++i) {
+        int64_t best = GetBestServer(s->server_list, tls, tls.stride);
         if (!ExcludedServers::IsExcluded(in.excluded, best)
             && Socket::Address(best, out->ptr) == 0
             && !(*out->ptr)->IsLogOff()) {
             return 0;
         }
-    }  
+    }
     return EHOSTDOWN;
+}
+
+int64_t WeightedRoundRobinLoadBalancer::GetBestServer(
+            const std::vector<std::pair<SocketId, int>>& server_list,
+            TLS& tls, uint32_t stride) {
+    uint32_t comp_weight = 0;
+    int64_t final_server = -1;
+    while (stride > 0) {
+      if (tls.HasRemainServer()) {
+          uint32_t remain_weight = tls.remain_server.second;
+          if (remain_weight < stride) {
+              TryToGetFinalServer(tls, tls.remain_server, 
+                                  comp_weight, &final_server);
+              tls.ResetRemainServer();
+              stride -= remain_weight;
+          } else if (remain_weight == stride) {
+              TryToGetFinalServer(tls, tls.remain_server,
+                                  comp_weight, &final_server);
+              tls.ResetRemainServer();
+              break;
+          } else {
+              TryToGetFinalServer(tls,  
+                  std::pair<SocketId, int>(tls.remain_server.first, stride),
+                  comp_weight, &final_server);
+              tls.remain_server.second -= stride;
+              break;
+          }
+      } else {
+          uint32_t weight = server_list[tls.position].second;
+          if (weight < stride) {
+              TryToGetFinalServer(tls, server_list[tls.position], 
+                                  comp_weight, &final_server);
+              stride -= weight;
+              tls.UpdatePosition(server_list.size()); 
+          } else if (weight == stride) {
+              TryToGetFinalServer(tls, server_list[tls.position], 
+                                  comp_weight, &final_server);
+              tls.UpdatePosition(server_list.size()); 
+              break; 
+          } else {
+              TryToGetFinalServer(tls, 
+                  std::pair<SocketId, int>(
+                      server_list[tls.position].first, stride), 
+                  comp_weight, &final_server);
+              tls.SetRemainServer(server_list[tls.position].first, 
+                                  weight - stride);
+              tls.UpdatePosition(server_list.size()); 
+              break;
+          }
+      }
+    }
+    return final_server;
+}
+
+uint32_t WeightedRoundRobinLoadBalancer::GetStride(
+    const uint32_t weight_sum, const uint32_t num) {
+    uint32_t average_weight = weight_sum / num;
+    // The stride is the first number which is greater than or equal to 
+    // average weight and coprime to weight_sum.
+    while (!IsCoprime(weight_sum, average_weight)) {
+       ++average_weight;
+    }
+    return average_weight;  
+}
+
+void WeightedRoundRobinLoadBalancer::TryToGetFinalServer(
+    const TLS& tls, const std::pair<SocketId, int> server, 
+    uint32_t& comp_weight, int64_t* final_server) {
+    if (*final_server == -1) {
+        comp_weight += server.second;
+        if (comp_weight >= tls.offset) {
+            *final_server = server.first;
+        }
+    }
 }
 
 LoadBalancer* WeightedRoundRobinLoadBalancer::New() const {

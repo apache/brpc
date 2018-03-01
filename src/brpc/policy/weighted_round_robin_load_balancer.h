@@ -44,14 +44,55 @@ private:
         std::vector<std::pair<SocketId, int>> server_list;
         // The value is the index of the server in "server_list".
         std::map<SocketId, size_t> server_map;
+        uint32_t weight_sum = 0;
     };
-    // The value is current weight for a server. 
-    // It will be changed in the selection of servers.
-    using TLS = std::map<SocketId, int>;
+    struct TLS {
+        TLS(): remain_server(0, 0) { }
+        uint32_t position = 0;
+        uint32_t stride = 0;
+        uint32_t offset = 0;
+        std::pair<SocketId, int> remain_server;
+        bool HasRemainServer() const {
+            return remain_server.second != 0;
+        }
+        void SetRemainServer(const SocketId id, const int weight) {
+            remain_server.first = id;
+            remain_server.second = weight;
+        }
+        void ResetRemainServer() {
+            remain_server.second = 0;
+        }
+        void UpdatePosition(const uint32_t size) {
+            ++position;
+            position %= size;
+        }
+        // If server list changed, we need caculate a new stride.
+        bool IsNeededCaculateNewStride(const uint32_t curr_weight_sum, 
+                                       const uint32_t curr_servers_num) {
+            if (curr_weight_sum != weight_sum 
+                || curr_servers_num != servers_num) {
+                weight_sum = curr_weight_sum;
+                servers_num = curr_servers_num;
+                return true;
+            }
+            return false;
+        }
+    private:
+        uint32_t weight_sum = 0;
+        uint32_t servers_num = 0;
+    };
     static bool Add(Servers& bg, const ServerId& id);
     static bool Remove(Servers& bg, const ServerId& id);
     static size_t BatchAdd(Servers& bg, const std::vector<ServerId>& servers);
     static size_t BatchRemove(Servers& bg, const std::vector<ServerId>& servers);
+    static int64_t GetBestServer(
+                       const std::vector<std::pair<SocketId, int>>& server_list,
+                       TLS& tls, uint32_t stride);
+    // Get a reasonable stride according to weights configured of servers. 
+    static uint32_t GetStride(const uint32_t weight_sum, const uint32_t num);
+    static void TryToGetFinalServer(const TLS& tls, 
+                             const std::pair<SocketId, int> server, 
+                             uint32_t& comp_weight, int64_t* final_server);
 
     butil::DoublyBufferedData<Servers, TLS> _db_servers;
 };
