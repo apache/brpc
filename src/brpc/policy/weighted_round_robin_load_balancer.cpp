@@ -139,7 +139,7 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
         tls.ResetRemainServer();
     }
     for ( uint32_t i = 0; i != tls.stride; ++i) {
-        int64_t best = GetBestServer(s->server_list, tls, tls.stride);
+        int64_t best = GetBestServer(s->server_list, tls);
         if (!ExcludedServers::IsExcluded(in.excluded, best)
             && Socket::Address(best, out->ptr) == 0
             && !(*out->ptr)->IsLogOff()) {
@@ -150,10 +150,11 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
 }
 
 int64_t WeightedRoundRobinLoadBalancer::GetBestServer(
-            const std::vector<std::pair<SocketId, int>>& server_list,
-            TLS& tls, uint32_t stride) {
+            const std::vector<std::pair<SocketId, int>>& server_list, 
+            TLS& tls) {
     uint32_t comp_weight = 0;
     int64_t final_server = -1;
+    uint32_t stride = tls.stride;
     while (stride > 0) {
       if (tls.HasRemainServer()) {
           uint32_t remain_weight = tls.remain_server.second;

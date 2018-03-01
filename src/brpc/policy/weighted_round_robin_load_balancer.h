@@ -87,7 +87,7 @@ private:
     static size_t BatchRemove(Servers& bg, const std::vector<ServerId>& servers);
     static int64_t GetBestServer(
                        const std::vector<std::pair<SocketId, int>>& server_list,
-                       TLS& tls, uint32_t stride);
+                       TLS& tls);
     // Get a reasonable stride according to weights configured of servers. 
     static uint32_t GetStride(const uint32_t weight_sum, const uint32_t num);
     static void TryToGetFinalServer(const TLS& tls, 
