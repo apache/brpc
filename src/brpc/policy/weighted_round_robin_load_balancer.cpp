@@ -154,39 +154,26 @@ int64_t WeightedRoundRobinLoadBalancer::GetBestServer(
             TLS& tls) {
     uint32_t comp_weight = 0;
     int64_t final_server = -1;
-    uint32_t stride = tls.stride;
+    int stride = tls.stride;
+    int weight = 0;
     while (stride > 0) {
       if (tls.HasRemainServer()) {
-          uint32_t remain_weight = tls.remain_server.second;
-          if (remain_weight < stride) {
+          weight = tls.remain_server.second;
+          if (weight <= stride) {
               TryToGetFinalServer(tls, tls.remain_server, 
                                   comp_weight, &final_server);
               tls.ResetRemainServer();
-              stride -= remain_weight;
-          } else if (remain_weight == stride) {
-              TryToGetFinalServer(tls, tls.remain_server,
-                                  comp_weight, &final_server);
-              tls.ResetRemainServer();
-              break;
           } else {
               TryToGetFinalServer(tls,  
                   std::pair<SocketId, int>(tls.remain_server.first, stride),
                   comp_weight, &final_server);
               tls.remain_server.second -= stride;
-              break;
           }
       } else {
-          uint32_t weight = server_list[tls.position].second;
-          if (weight < stride) {
+          weight = server_list[tls.position].second;
+          if (weight <= stride) {
               TryToGetFinalServer(tls, server_list[tls.position], 
                                   comp_weight, &final_server);
-              stride -= weight;
-              tls.UpdatePosition(server_list.size()); 
-          } else if (weight == stride) {
-              TryToGetFinalServer(tls, server_list[tls.position], 
-                                  comp_weight, &final_server);
-              tls.UpdatePosition(server_list.size()); 
-              break; 
           } else {
               TryToGetFinalServer(tls, 
                   std::pair<SocketId, int>(
@@ -194,10 +181,10 @@ int64_t WeightedRoundRobinLoadBalancer::GetBestServer(
                   comp_weight, &final_server);
               tls.SetRemainServer(server_list[tls.position].first, 
                                   weight - stride);
-              tls.UpdatePosition(server_list.size()); 
-              break;
           }
+          tls.UpdatePosition(server_list.size()); 
       }
+      stride -= weight;
     }
     return final_server;
 }
