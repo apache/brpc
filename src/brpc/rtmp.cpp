@@ -1013,9 +1013,6 @@ void RtmpConnect::StartConnect(
         return done(EINVAL, data);
     }
 
-    // Save to callback to call when RTMP connect is done.
-    ctx->SetConnectCallback(done, data);
-
     const RtmpClientOptions* _client_options = ctx->client_options();
     if (_client_options && _client_options->simplified_rtmp) {
         ctx->set_simplified_rtmp(true);
@@ -1025,9 +1022,11 @@ void RtmpConnect::StartConnect(
         }
         ctx->SetState(s->remote_side(), policy::RtmpContext::STATE_RECEIVED_S2);
         ctx->set_create_stream_with_play_or_publish(true);
-        ctx->OnConnected(0);
-        return;
+        return done(0, data);
     }
+
+    // Save to callback to call when RTMP connect is done.
+    ctx->SetConnectCallback(done, data);
         
     // Initiate the rtmp handshake.
     bool is_simple_handshake = false;
@@ -1786,7 +1785,7 @@ void RtmpClientStream::OnStopInternal() {
         return CallOnStop();
     }
 
-    if (!_rtmpsock->Failed()) {
+    if (!_rtmpsock->Failed() && _chunk_stream_id != 0) {
         // SRS requires closeStream which is sent over this stream.
         butil::IOBuf req_buf1;
         {

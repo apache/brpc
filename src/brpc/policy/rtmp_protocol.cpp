@@ -3445,7 +3445,7 @@ public:
              AMFInputStream* istream, Socket* socket);
     void Cancel();
 private:
-    RtmpClientStream* _stream;
+    butil::intrusive_ptr<RtmpClientStream> _stream;
     CallId _call_id;
 };
 
@@ -3509,7 +3509,7 @@ void OnServerStreamCreated::Run(bool error,
         // to avoid the race between OnStreamCreationDone and a failed OnStatus,
         // because the former function runs in another bthread and may run later
         // than OnStatus which needs to see the stream.
-        if (!ctx->AddClientStream(_stream)) {
+        if (!ctx->AddClientStream(_stream.get())) {
             cntl->SetFailed(EINVAL, "Fail to add client stream_id=%u", stream_id);
             break;
         }
