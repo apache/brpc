@@ -177,8 +177,9 @@ int64_t WeightedRoundRobinLoadBalancer::GetBestServer(
     if (tls.HasRemainServer()) {
         final_server = tls.remain_server.first;
     } else {
-        final_server = tls.position == 0 ? server_list.size() -1 
-                                           : tls.position -1;
+        size_t index = tls.position == 0 ? server_list.size() - 1 
+                                      : tls.position - 1;
+        final_server = server_list[index].first;
     }
     return final_server;
 }
