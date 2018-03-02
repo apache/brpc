@@ -50,7 +50,6 @@ private:
         TLS(): remain_server(0, 0) { }
         uint32_t position = 0;
         uint32_t stride = 0;
-        uint32_t offset = 0;
         std::pair<SocketId, int> remain_server;
         bool HasRemainServer() const {
             return remain_server.second != 0;
