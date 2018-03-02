@@ -89,9 +89,6 @@ private:
                        TLS& tls);
     // Get a reasonable stride according to weights configured of servers. 
     static uint32_t GetStride(const uint32_t weight_sum, const uint32_t num);
-    static void TryToGetFinalServer(const TLS& tls, 
-                             const std::pair<SocketId, int> server, 
-                             uint32_t& comp_weight, int64_t* final_server);
 
     butil::DoublyBufferedData<Servers, TLS> _db_servers;
 };
