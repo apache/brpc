@@ -39,27 +39,31 @@ public:
     void Describe(std::ostream&, const DescribeOptions& options);
 
 private:
+    struct Server {
+        Server(SocketId s_id = 0, int s_w = 0): id(s_id), weight(s_w) {}
+        SocketId id;
+        int weight;
+    };
     struct Servers {
         // The value is configured weight for each server.
-        std::vector<std::pair<SocketId, int>> server_list;
+        std::vector<Server> server_list;
         // The value is the index of the server in "server_list".
         std::map<SocketId, size_t> server_map;
         uint32_t weight_sum = 0;
     };
     struct TLS {
-        TLS(): remain_server(0, 0) { }
         uint32_t position = 0;
         uint32_t stride = 0;
-        std::pair<SocketId, int> remain_server;
+        Server remain_server;
         bool HasRemainServer() const {
-            return remain_server.second != 0;
+            return remain_server.weight != 0;
         }
         void SetRemainServer(const SocketId id, const int weight) {
-            remain_server.first = id;
-            remain_server.second = weight;
+            remain_server.id = id;
+            remain_server.weight = weight;
         }
         void ResetRemainServer() {
-            remain_server.second = 0;
+            remain_server.weight = 0;
         }
         void UpdatePosition(const uint32_t size) {
             ++position;
@@ -84,9 +88,8 @@ private:
     static bool Remove(Servers& bg, const ServerId& id);
     static size_t BatchAdd(Servers& bg, const std::vector<ServerId>& servers);
     static size_t BatchRemove(Servers& bg, const std::vector<ServerId>& servers);
-    static int64_t GetBestServer(
-                       const std::vector<std::pair<SocketId, int>>& server_list,
-                       TLS& tls);
+    static int64_t GetServerInNextStride(const std::vector<Server>& server_list,
+                                         TLS& tls);
     // Get a reasonable stride according to weights configured of servers. 
     static uint32_t GetStride(const uint32_t weight_sum, const uint32_t num);
 
