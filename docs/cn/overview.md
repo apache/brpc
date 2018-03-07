@@ -6,10 +6,10 @@
 
 - 数据以什么格式传输？不同机器间，网络间可能是不同的字节序，直接传输内存数据显然是不合适的；随着业务变化，数据字段往往要增加或删减，怎么兼容前后不同版本的格式？
 - 一个TCP连接可以被多个请求复用以减少开销么？多个请求可以同时发往一个TCP连接么?
-- 如何访问一个包含很多机器的集群？
-- 连接断开时应该干什么？万一server不发送回复怎么办？
-
-* ...
+- 如何管理和访问很多机器？
+- 连接断开时应该干什么？
+- 万一server不发送回复怎么办？
+- ...
 
 [RPC](http://en.wikipedia.org/wiki/Remote_procedure_call)可以解决这些问题，它把网络交互类比为“client访问server上的函数”：client向server发送request后开始等待，直到server收到、处理、回复client后，client又再度恢复并根据response做出反应。
 
@@ -17,10 +17,11 @@
 
 我们来看看上面的一些问题是如何解决的：
 
-- RPC需要序列化，[protobuf](https://github.com/google/protobuf)在这方面做的很好。用户填写protobuf::Message类型的request，RPC结束后，从同为protobuf::Message类型的response中取出结果。protobuf有较好的前后兼容性，方便业务调整字段。http广泛使用[json](http://www.json.org/)作为序列化方法。
-- 用户不需要关心连接是如何建立的，但可以选择不同的[连接方式](client.md#连接方式)：短连接，连接池，单连接。
-- 一个集群中的所有机器一般通过名字服务被发现，可基于[DNS](https://en.wikipedia.org/wiki/Domain_Name_System), [ZooKeeper](https://zookeeper.apache.org/), [etcd](https://github.com/coreos/etcd)等实现。在百度内，我们使用BNS (Baidu Naming Service)。brpc也提供["list://"和"file://"](client.md#名字服务)。用户可以指定负载均衡算法，让RPC每次选出一台机器发送请求，包括: round-robin, randomized, [consistent-hashing](consistent_hashing.md)(murmurhash3 or md5)和 [locality-aware](lalb.md).
-- 连接断开时按用户的配置进行重试。如果server没有在给定时间内返回response，那么client会返回超时错误。
+- 数据需要序列化，[protobuf](https://github.com/google/protobuf)在这方面做的不错。用户填写protobuf::Message类型的request，RPC结束后，从同为protobuf::Message类型的response中取出结果。protobuf有较好的前后兼容性，方便业务调整字段。http广泛使用[json](http://www.json.org/)作为序列化方法。
+- 用户无需关心连接如何建立，但可以选择不同的[连接方式](client.md#连接方式)：短连接，连接池，单连接。
+- 大量机器一般通过名字服务被发现，可基于[DNS](https://en.wikipedia.org/wiki/Domain_Name_System), [ZooKeeper](https://zookeeper.apache.org/), [etcd](https://github.com/coreos/etcd)等实现。在百度内，我们使用BNS (Baidu Naming Service)。brpc也提供["list://"和"file://"](client.md#名字服务)。用户可以指定负载均衡算法，让RPC每次选出一台机器发送请求，包括: round-robin, randomized, [consistent-hashing](consistent_hashing.md)(murmurhash3 or md5)和 [locality-aware](lalb.md).
+- 连接断开时可以重试。
+- 如果server没有在给定时间内回复，client会返回超时错误。
 
 # 哪里可以使用RPC?
 
@@ -40,7 +41,7 @@ RPC不是万能的抽象，否则我们也不需要TCP/IP这一层了。但是�
 
 你可以使用它：
 
-* 搭建一个能在**同端口**支持多协议的服务, 或访问各种服务
+* 搭建能在**一个端口**支持多协议的服务, 或访问各种服务
   * restful http/https, h2/h2c (与[grpc](https://github.com/grpc/grpc)兼容, 即将开源). 使用brpc的http实现比[libcurl](https://curl.haxx.se/libcurl/)方便多了。
   * [redis](redis_client.md)和[memcached](memcache_client.md), 线程安全，比官方client更方便。
   * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), 可用于搭建[直播服务](live_streaming.md).
