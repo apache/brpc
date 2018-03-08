@@ -739,8 +739,9 @@ TEST(StringNumberConversionsTest, StringToDouble) {
     double output;
     errno = 1;
     EXPECT_EQ(cases[i].success, StringToDouble(cases[i].input, &output));
-    if (cases[i].success)
+    if (cases[i].success) {
       EXPECT_EQ(1, errno) << i;  // confirm that errno is unchanged.
+    }
     EXPECT_DOUBLE_EQ(cases[i].output, output);
   }
 

@@ -385,7 +385,7 @@ TEST(FDTest, timeout) {
     ASSERT_EQ(0, pthread_join(th, NULL));
     ASSERT_EQ(0, bthread_join(bth, NULL));
     tm.stop();
-    ASSERT_LT(tm.m_elapsed(), 60);
+    ASSERT_LT(tm.m_elapsed(), 80);
     ASSERT_EQ(0, bthread_close(fds[0]));
     ASSERT_EQ(0, bthread_close(fds[1]));
 }

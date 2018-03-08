@@ -21,7 +21,7 @@ add_library(brpc-static STATIC $<TARGET_OBJECTS:BUTIL_LIB> $<TARGET_OBJECTS:OBJ_
 
 target_link_libraries(brpc-shared ${DYNAMIC_LIB})
 
-if(WITH_GLOG)
+if(BRPC_WITH_GLOG)
     target_link_libraries(brpc-shared ${GLOG_LIB})
 endif()
 
