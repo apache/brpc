@@ -55,20 +55,6 @@ private:
         uint32_t position = 0;
         uint32_t stride = 0;
         Server remain_server;
-        bool HasRemainServer() const {
-            return remain_server.weight != 0;
-        }
-        void SetRemainServer(const SocketId id, const int weight) {
-            remain_server.id = id;
-            remain_server.weight = weight;
-        }
-        void ResetRemainServer() {
-            remain_server.weight = 0;
-        }
-        void UpdatePosition(const uint32_t size) {
-            ++position;
-            position %= size;
-        }
         // If server list changed, we need caculate a new stride.
         bool IsNeededCaculateNewStride(const uint32_t curr_weight_sum, 
                                        const uint32_t curr_servers_num) {
@@ -90,8 +76,6 @@ private:
     static size_t BatchRemove(Servers& bg, const std::vector<ServerId>& servers);
     static int64_t GetServerInNextStride(const std::vector<Server>& server_list,
                                          TLS& tls);
-    // Get a reasonable stride according to weights configured of servers. 
-    static uint32_t GetStride(const uint32_t weight_sum, const uint32_t num);
 
     butil::DoublyBufferedData<Servers, TLS> _db_servers;
 };
