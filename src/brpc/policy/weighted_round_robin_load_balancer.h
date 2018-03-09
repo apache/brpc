@@ -40,24 +40,24 @@ public:
 
 private:
     struct Server {
-        Server(SocketId s_id = 0, int s_w = 0): id(s_id), weight(s_w) {}
+        Server(SocketId s_id = 0, uint32_t s_w = 0): id(s_id), weight(s_w) {}
         SocketId id;
-        int weight;
+        uint32_t weight;
     };
     struct Servers {
         // The value is configured weight for each server.
         std::vector<Server> server_list;
         // The value is the index of the server in "server_list".
         std::map<SocketId, size_t> server_map;
-        uint32_t weight_sum = 0;
+        uint64_t weight_sum = 0;
     };
     struct TLS {
-        uint32_t position = 0;
-        uint32_t stride = 0;
+        size_t position = 0;
+        uint64_t stride = 0;
         Server remain_server;
         // If server list changed, we need caculate a new stride.
-        bool IsNeededCaculateNewStride(const uint32_t curr_weight_sum, 
-                                       const uint32_t curr_servers_num) {
+        bool IsNeededCaculateNewStride(const uint64_t curr_weight_sum, 
+                                       const size_t curr_servers_num) {
             if (curr_weight_sum != weight_sum 
                 || curr_servers_num != servers_num) {
                 weight_sum = curr_weight_sum;
@@ -67,14 +67,14 @@ private:
             return false;
         }
     private:
-        uint32_t weight_sum = 0;
-        uint32_t servers_num = 0;
+        uint64_t weight_sum = 0;
+        size_t servers_num = 0;
     };
     static bool Add(Servers& bg, const ServerId& id);
     static bool Remove(Servers& bg, const ServerId& id);
     static size_t BatchAdd(Servers& bg, const std::vector<ServerId>& servers);
     static size_t BatchRemove(Servers& bg, const std::vector<ServerId>& servers);
-    static int64_t GetServerInNextStride(const std::vector<Server>& server_list,
+    static SocketId GetServerInNextStride(const std::vector<Server>& server_list,
                                          TLS& tls);
 
     butil::DoublyBufferedData<Servers, TLS> _db_servers;

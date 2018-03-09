@@ -389,7 +389,7 @@ TEST_F(LoadBalancerTest, fairness) {
                 id.tag = "100";
             } else if (4 == round) {
                 if ( i % 50 == 0) {
-                    id.tag = std::to_string(i / 50 * 100 + butil::fast_rand_less_than(40) + 80); 
+                    id.tag = std::to_string(i*2 + butil::fast_rand_less_than(40) + 80); 
                 } else {
                     id.tag = std::to_string(butil::fast_rand_less_than(40) + 80);
                 }
@@ -437,13 +437,6 @@ TEST_F(LoadBalancerTest, fairness) {
         size_t count_sum = 0;
         size_t count_squared_sum = 0;
         std::cout << lb_name << ':' << '\n';
-        if (3 == round || 4 == round) {
-            std::cout << "configured weight: " << std::endl;
-            std::ostringstream os;
-            brpc::DescribeOptions opt;
-            lb->Describe(os, opt);
-            std::cout << os.str() << std::endl;
-        }
 
         if (round != 3 && round !=4) { 
             for (size_t i = 0; i < ids.size(); ++i) {
@@ -458,22 +451,27 @@ TEST_F(LoadBalancerTest, fairness) {
                       << ": average=" << count_sum/ids.size()
                       << " deviation=" << sqrt(count_squared_sum * ids.size() 
                           - count_sum * count_sum) / ids.size() << std::endl;
-       } else { // for weighted round robin load balancer
-           double scaling_count_sum = 0.0;
-           double scaling_count_squared_sum = 0.0;
-           for (size_t i = 0; i < ids.size(); ++i) {
-               size_t count = total_count[ids[i].id];
-               ASSERT_NE(0ul, count) << "i=" << i;
-               std::cout << i << '=' << count << ' ';
-               double scaling_count = static_cast<double>(count) / std::stoi(ids[i].tag);
-               scaling_count_sum += scaling_count;
-               scaling_count_squared_sum += scaling_count * scaling_count;
-           }
-           std::cout << '\n'
-                     << ": scaling average=" << scaling_count_sum/ids.size()
-                     << " scaling deviation=" << sqrt(scaling_count_squared_sum * ids.size() 
-                         - scaling_count_sum * scaling_count_sum) / ids.size() << std::endl;
-       }
+        } else { // for weighted round robin load balancer
+            std::cout << "configured weight: " << std::endl;
+            std::ostringstream os;
+            brpc::DescribeOptions opt;
+            lb->Describe(os, opt);
+            std::cout << os.str() << std::endl;
+            double scaling_count_sum = 0.0;
+            double scaling_count_squared_sum = 0.0;
+            for (size_t i = 0; i < ids.size(); ++i) {
+                size_t count = total_count[ids[i].id];
+                ASSERT_NE(0ul, count) << "i=" << i;
+                std::cout << i << '=' << count << ' ';
+                double scaling_count = static_cast<double>(count) / std::stoi(ids[i].tag);
+                scaling_count_sum += scaling_count;
+                scaling_count_squared_sum += scaling_count * scaling_count;
+            }
+            std::cout << '\n'
+                      << ": scaling average=" << scaling_count_sum/ids.size()
+                      << " scaling deviation=" << sqrt(scaling_count_squared_sum * ids.size() 
+                          - scaling_count_sum * scaling_count_sum) / ids.size() << std::endl;
+        }
         for (size_t i = 0; i < ids.size(); ++i) {
             ASSERT_EQ(0, brpc::Socket::SetFailed(ids[i].id));
         }
