@@ -49,6 +49,9 @@ bool IsCoprime(uint32_t num1, uint32_t num2) {
 
 // Get a reasonable stride according to weights configured of servers. 
 uint32_t GetStride(const uint32_t weight_sum, const uint32_t num) {
+    if (weight_sum == 1) {
+      return 1;
+    } 
     uint32_t average_weight = weight_sum / num;
     auto iter = std::lower_bound(prime_stride.begin(), prime_stride.end(), 
                                  average_weight);
