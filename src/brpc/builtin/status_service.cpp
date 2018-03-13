@@ -58,11 +58,9 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
         os << "</head><body>";
         server->PrintTabsBody(os, "status");
         os << "<div class=\"layer1\">\n";
-    }
-    // non_service_error
-    if (use_html) {
         os << "<p class=\"variable\">";
     }
+    // non_service_error
     os << "non_service_error: ";
     if (use_html) {
         os << "<span id=\"value-" << server->_nerror.name() << "\">";

@@ -328,9 +328,7 @@ void InputMessenger::OnNewMessages(Socket* m) {
         }
     }
 
-    if (read_eof) {
-        m->SetEOF();
-    }
+    m->SetEOF();
 }
 
 InputMessenger::InputMessenger(size_t capacity)

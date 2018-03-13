@@ -228,9 +228,9 @@ inline Serializer::GroupInfo* Serializer::push_group_info() {
         return NULL;
     }
     if (_group_info_more == NULL) {
-        _group_info_more =
-            (GroupInfo*)malloc((MAX_DEPTH + 1 - arraysize(_group_info_fast))
-                               * sizeof(GroupInfo));
+        _group_info_more = new GroupInfo[(MAX_DEPTH + 1 - 
+                                arraysize(_group_info_fast))
+                               * sizeof(GroupInfo))];
         if (_group_info_more == NULL) {
             return NULL;
         }

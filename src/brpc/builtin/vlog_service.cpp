@@ -83,9 +83,6 @@ void VLogService::default_method(::google::protobuf::RpcController* cntl_base,
     print_vlog_sites(&printer);
     if (use_html) {
         os << "</table>\n";
-    }
-        
-    if (use_html) {
         os << "</body></html>\n";
     }
     os.move_to(cntl->response_attachment());

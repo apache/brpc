@@ -71,6 +71,7 @@ inline bool url_wildcmp(const char* wild, const char* str) {
             ++str;
         } else {
             wild = mp;
+            // Is it guaranteed that cp is not nullptr always here?
             str = cp++;
         }
     }

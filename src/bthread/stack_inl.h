@@ -53,7 +53,6 @@ template <typename StackClass> struct StackFactory {
                 return;
             }
             context = bthread_make_fcontext(storage.bottom, storage.stacksize, entry);
-            stacktype = (StackType)StackClass::stacktype;
         }
         ~Wrapper() {
             if (context) {
