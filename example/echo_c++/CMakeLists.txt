@@ -66,6 +66,16 @@ if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
 endif()
 include_directories(${LEVELDB_INCLUDE_PATH})
 
+find_library(SSL_LIB NAMES ssl)
+if (NOT SSL_LIB)
+    message(FATAL_ERROR "Fail to find ssl")
+endif()
+
+find_library(CRYPTO_LIB NAMES crypto)
+if (NOT CRYPTO_LIB)
+    message(FATAL_ERROR "Fail to find crypto")
+endif()
+
 add_executable(echo_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
 add_executable(echo_server server.cpp ${PROTO_SRC} ${PROTO_HEADER})
 
@@ -74,10 +84,24 @@ set(DYNAMIC_LIB
     ${GFLAGS_LIBRARY}
     ${PROTOBUF_LIBRARIES}
     ${LEVELDB_LIB}
-    ssl
-    crypto
+    ${SSL_LIB}
+    ${CRYPTO_LIB}
     dl
     )
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(DYNAMIC_LIB ${DYNAMIC_LIB}
+        pthread
+        "-framework CoreFoundation"
+        "-framework CoreGraphics"
+        "-framework CoreData"
+        "-framework CoreText"
+        "-framework Security"
+        "-framework Foundation"
+        "-Wl,-U,_MallocExtension_ReleaseFreeMemory"
+        "-Wl,-U,_ProfilerStart"
+        "-Wl,-U,_ProfilerStop")
+endif()
 
 target_link_libraries(echo_client ${BRPC_LIB} ${DYNAMIC_LIB})
 target_link_libraries(echo_server ${BRPC_LIB} ${DYNAMIC_LIB})
