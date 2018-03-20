@@ -37,23 +37,15 @@ set(protoc_gen_mcpack_SOURCES
 add_executable(protoc-gen-mcpack ${protoc_gen_mcpack_SOURCES})
 target_link_libraries(protoc-gen-mcpack brpc-shared)
     
-get_property(LIB64 GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS)
-if ("${LIB64}" STREQUAL "TRUE")
-    set(LIBSUFFIX 64)
-else()
-    set(LIBSUFFIX "")
-endif()
-
 #install directory
-# cmake -DCMAKE_INSTALL_PREFIX=/usr
 install(TARGETS brpc-shared
-        RUNTIME DESTINATION bin
-        LIBRARY DESTINATION lib${LIBSUFFIX}
-        ARCHIVE DESTINATION lib${LIBSUFFIX}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         )
 
 install(TARGETS brpc-static
-        RUNTIME DESTINATION bin
-        LIBRARY DESTINATION lib${LIBSUFFIX}
-        ARCHIVE DESTINATION lib${LIBSUFFIX}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         )

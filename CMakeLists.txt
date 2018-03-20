@@ -29,6 +29,8 @@ if(WITH_DEBUG_SYMBOLS)
     set(DEBUG_SYMBOL "-g")
 endif()
 
+include(GNUInstallDirs)
+
 configure_file(${CMAKE_SOURCE_DIR}/config.h.in ${CMAKE_SOURCE_DIR}/src/butil/config.h @ONLY)
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
@@ -337,7 +339,7 @@ file(COPY ${CMAKE_SOURCE_DIR}/src/
         PATTERN "*.hpp"
         )
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/output/include/
-        DESTINATION include
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         FILES_MATCHING
         PATTERN "*.h"
         PATTERN "*.hpp"
