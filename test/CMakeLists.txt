@@ -12,9 +12,16 @@ foreach(PROTO ${PROTOS})
     )
 endforeach()
 
-find_path(GTEST_HEADER NAMES gtest/gtest.h)
-find_library(GTEST_LIB NAMES gtest)
-find_library(GTEST_MAIN_LIB NAMES gtest_main)
+option(BRPC_DOWNLOAD_GTEST "Download and build a fresh copy of googletest. Requires Internet access." OFF)
+set(BRPC_SYSTEM_GTEST_SOURCE_DIR "" CACHE PATH "System googletest source directory.")
+
+if(BRPC_DOWNLOAD_GTEST)
+  include(SetupGtest)
+elseif(BRPC_SYSTEM_GTEST_SOURCE_DIR)
+  add_subdirectory("${BRPC_SYSTEM_GTEST_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/system-googletest-build")
+else()
+  message(FATAL_ERROR "Googletest is not available")
+endif()
 
 set(CMAKE_CPP_FLAGS "-DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES -D__STRICT_ANSI__ -include ${CMAKE_SOURCE_DIR}/test/sstream_workaround.h")
@@ -146,7 +153,7 @@ file(GLOB TEST_BVAR_SRCS "bvar_*_unittest.cpp")
 add_executable(test_bvar $<TARGET_OBJECTS:BUTIL_LIB>
                          ${BVAR_SOURCES}
                          ${TEST_BVAR_SRCS})
-target_link_libraries(test_bvar ${GTEST_LIB}
+target_link_libraries(test_bvar gtest
                                 ${GPERFTOOLS_LIBRARIES}
                                 ${DYNAMIC_LIB})
 
@@ -155,7 +162,7 @@ add_executable(test_butil ${TEST_BUTIL_SOURCES}
                           $<TARGET_OBJECTS:TEST_PROTO_OBJ>
                           $<TARGET_OBJECTS:BUTIL_LIB>
                           $<TARGET_OBJECTS:OBJ_LIB>)
-target_link_libraries(test_butil ${GTEST_LIB} ${GPERFTOOLS_LIBRARIES} ${DYNAMIC_LIB})
+target_link_libraries(test_butil gtest ${GPERFTOOLS_LIBRARIES} ${DYNAMIC_LIB})
 
 file(GLOB BTHREAD_UNITTESTS "bthread*unittest.cpp")
 foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
@@ -165,8 +172,7 @@ foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
                                     $<TARGET_OBJECTS:BUTIL_LIB>
                                     $<TARGET_OBJECTS:OBJ_LIB>)
     target_link_libraries(${BTHREAD_UT_WE}
-                          ${GTEST_MAIN_LIB}
-                          ${GTEST_LIB}
+                          gtest_main
                           ${GPERFTOOLS_LIBRARIES}
                           ${DYNAMIC_LIB})
 endforeach()
@@ -179,7 +185,7 @@ foreach(BRPC_UT ${BRPC_UNITTESTS})
                                  $<TARGET_OBJECTS:BUTIL_LIB>
                                  $<TARGET_OBJECTS:OBJ_LIB>)
     target_link_libraries(${BRPC_UT_WE}
-                          ${GTEST_MAIN_LIB}
+                          gtest_main
                           ${GPERFTOOLS_LIBRARIES}
                           ${GTEST_LIB}
                           ${DYNAMIC_LIB})
