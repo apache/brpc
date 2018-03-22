@@ -152,6 +152,10 @@ The ideal algorithm is to make every request being processed in-time, and crash 
 
 which is round robin. Always choose next server inside the list, next of the last server is the first one. No other settings. For example there're 3 servers: a,b,c, brpc will send requests to a, b, c, a, b, c, … and so on. Note that presumption of using this algorithm is the machine specs, network latencies, server loads are similar.
 
+### wrr
+
+which is weighted round robin. Choose the next server according to the configured weight. The chances a server is selected is consistent with its weight, and the algorithm can make each server selection scattered.
+
 ### random
 
 Randomly choose one server from the list, no other settings. Similarly with round robin, the algorithm assumes that servers to access are similar.
