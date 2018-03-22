@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.10)
 project(brpc C CXX)
 
+set(BRPC_VERSION 0.9.0)
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # require at least gcc 4.8
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.8)
@@ -131,8 +133,10 @@ set(DYNAMIC_LIB
     dl
     z
     )
+set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lrt -lssl -lcrypto -ldl -lz")
 if(BRPC_WITH_GLOG)
     set(DYNAMIC_LIB ${DYNAMIC_LIB} ${GLOG_LIB})
+    set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lglog")
 endif()
 
 # for *.so
@@ -344,3 +348,7 @@ install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/output/include/
         PATTERN "*.h"
         PATTERN "*.hpp"
         )
+
+# Install pkgconfig
+configure_file(cmake/brpc.pc.in ${CMAKE_BINARY_DIR}/brpc.pc @ONLY)
+install(FILES ${CMAKE_BINARY_DIR}/brpc.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
