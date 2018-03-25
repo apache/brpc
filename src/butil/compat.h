@@ -16,34 +16,44 @@
 __BEGIN_DECLS
 
 // Implement pthread_spinlock_t for MAC.
-struct pthread_spinlock_t {
-    dispatch_semaphore_t sem;
-};
+
+typedef int pthread_spinlock_t;
 
 inline int pthread_spin_init(pthread_spinlock_t *__lock, int __pshared) {
-    if (__pshared != 0) {
-        return EINVAL;
-    }
-    __lock->sem = dispatch_semaphore_create(1);
+    __asm__ __volatile__ ("" ::: "memory");
+    *__lock = 0;
     return 0;
 }
 
 inline int pthread_spin_destroy(pthread_spinlock_t *__lock) {
-    // TODO(gejun): Not see any destructive API on dispatch_semaphore
     (void)__lock;
     return 0;
 }
 
 inline int pthread_spin_lock(pthread_spinlock_t *__lock) {
-    return (int)dispatch_semaphore_wait(__lock->sem, DISPATCH_TIME_FOREVER);
+    while (1) {
+        int i;
+        for (i=0; i < 10000; i++) {
+            if (__sync_bool_compare_and_swap(__lock, 0, 1)) {
+                return 0;
+            }
+        }
+        sched_yield();
+    }
+    return 0;
 }
 
 inline int pthread_spin_trylock(pthread_spinlock_t *__lock) {
-    return dispatch_semaphore_wait(__lock->sem, DISPATCH_TIME_NOW) == 0;
+    if (__sync_bool_compare_and_swap(__lock, 0, 1)) {
+        return 0;
+    }
+    return EBUSY;
 }
 
 inline int pthread_spin_unlock(pthread_spinlock_t *__lock) {
-    return dispatch_semaphore_signal(__lock->sem);
+    __asm__ __volatile__ ("" ::: "memory");
+    *__lock = 0;
+    return 0;
 }
 
 __END_DECLS

@@ -235,6 +235,7 @@ void return_keytable(bthread_keytable_pool_t* pool, KeyTable* kt) {
 
 static void cleanup_pthread() {
     KeyTable* kt = tls_bls.keytable;
+    //TODO(zhujiashun): thread local storage not works in macos using clang
     if (kt) {
         delete kt;
         // After deletion: tls may be set during deletion.

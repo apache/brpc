@@ -16,6 +16,10 @@
 #include "bthread/bthread.h"
 #include "bthread/task_control.h"
 #include "bthread/task_group.h"
+#if defined(OS_MACOSX)
+#include <sys/types.h>                           // struct kevent
+#include <sys/event.h>                           // kevent(), kqueue()
+#endif
 
 #define RUN_EPOLL_IN_BTHREAD
 
@@ -93,10 +97,18 @@ void* epoll_thread(void* arg) {
     EpollMeta* em = (EpollMeta*)arg;
     em->nthread = 0;
     em->nfold = 0;
+#if defined(OS_LINUX)
     epoll_event e[32];
+#elif defined(OS_MACOSX)
+    struct kevent e[32];
+#endif
 
     while (!server_stop) {
+#if defined(OS_LINUX)
         const int n = epoll_wait(em->epfd, e, ARRAY_SIZE(e), -1);
+#elif defined(OS_MACOSX)
+        const int n = kevent(em->epfd, NULL, 0, e, ARRAY_SIZE(e), NULL);
+#endif
         if (server_stop) {
             break;
         }
@@ -104,12 +116,20 @@ void* epoll_thread(void* arg) {
             if (EINTR == errno) {
                 continue;
             }
+#if defined(OS_LINUX)
             PLOG(FATAL) << "Fail to epoll_wait";
+#elif defined(OS_MACOSX)
+            PLOG(FATAL) << "Fail to kevent";
+#endif
             break;
         }
 
         for (int i = 0; i < n; ++i) {
+#if defined(OS_LINUX)
             SocketMeta* m = (SocketMeta*)e[i].data.ptr;
+#elif defined(OS_MACOSX)
+            SocketMeta* m = (SocketMeta*)e[i].udata;
+#endif
             if (m->req.fetch_add(1, butil::memory_order_acquire) == 0) {
                 bthread_t th;
                 bthread_start_urgent(
@@ -187,7 +207,11 @@ TEST(DispatcherTest, dispatch_tasks) {
     SocketMeta* sm[NCLIENT];
 
     for (size_t i = 0; i < NEPOLL; ++i) {
+#if defined(OS_LINUX)
         epfd[i] = epoll_create(1024);
+#elif defined(OS_MACOSX)
+        epfd[i] = kqueue();
+#endif
         ASSERT_GT(epfd[i], 0);
     }
     
@@ -204,8 +228,14 @@ TEST(DispatcherTest, dispatch_tasks) {
         ASSERT_EQ(0, butil::make_non_blocking(m->fd));
         sm[i] = m;
 
+#if defined(OS_LINUX)
         epoll_event evt = { (uint32_t)(EPOLLIN | EPOLLET), { m } };
         ASSERT_EQ(0, epoll_ctl(m->epfd, EPOLL_CTL_ADD, m->fd, &evt));
+#elif defined(OS_MACOSX)
+        struct kevent kqueue_event;
+        EV_SET(&kqueue_event, m->fd, EVFILT_READ, EV_ADD | EV_ENABLE | EV_CLEAR, 0, 0, m);
+        ASSERT_EQ(0, kevent(m->epfd, &kqueue_event, 1, NULL, 0, NULL));
+#endif
 
         cm[i] = new ClientMeta;
         cm[i]->fd = fds[i * 2 + 1];
@@ -255,8 +285,14 @@ TEST(DispatcherTest, dispatch_tasks) {
     }
     server_stop = true;
     for (size_t i = 0; i < NEPOLL; ++i) {
+#if defined(OS_LINUX)
         epoll_event evt = { EPOLLOUT,  { NULL } };
         ASSERT_EQ(0, epoll_ctl(epfd[i], EPOLL_CTL_ADD, 0, &evt));
+#elif defined(OS_MACOSX)
+        struct kevent kqueue_event;
+        EV_SET(&kqueue_event, 0, EVFILT_WRITE, EV_ADD | EV_ENABLE, 0, 0, NULL);
+        ASSERT_EQ(0, kevent(epfd[i], &kqueue_event, 1, NULL, 0, NULL));
+#endif
 #ifdef RUN_EPOLL_IN_BTHREAD
         bthread_join(eth[i], NULL);
 #else

@@ -170,7 +170,7 @@ int EventDispatcher::AddEpollOut(SocketId socket_id, int fd, bool pollin) {
     }
 #elif defined(OS_MACOSX)
     struct kevent evt;
-    //TODO: add EV_EOF
+    //TODO(zhujiashun): add EV_EOF
     EV_SET(&evt, fd, EVFILT_WRITE, EV_ADD | EV_ENABLE | EV_CLEAR,
                 0, 0, (void*)socket_id);
     if (kevent(_epfd, &evt, 1, NULL, 0, NULL) < 0) {

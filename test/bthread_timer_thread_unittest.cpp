@@ -34,7 +34,17 @@ public:
     void run()
     {
         timespec current_time;
+#ifdef __MACH__ // OS X does not have clock_gettime, use clock_get_time
+        clock_serv_t cclock;
+        mach_timespec_t mts;
+        host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+        clock_get_time(cclock, &mts);
+        mach_port_deallocate(mach_task_self(), cclock);
+        current_time.tv_sec = mts.tv_sec;
+        current_time.tv_nsec = mts.tv_nsec;
+#else
         clock_gettime(CLOCK_REALTIME, &current_time);
+#endif
         if (_name) {
             LOG(INFO) << "Run `" << _name << "' task_id=" << _task_id;
         } else {
@@ -171,7 +181,17 @@ public:
             
     void run()
     {
+#ifdef __MACH__ // OS X does not have clock_gettime, use clock_get_time
+        clock_serv_t cclock;
+        mach_timespec_t mts;
+        host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+        clock_get_time(cclock, &mts);
+        mach_port_deallocate(mach_task_self(), cclock);
+        _running_time.tv_sec = mts.tv_sec;
+        _running_time.tv_nsec = mts.tv_nsec;
+#else
         clock_gettime(CLOCK_REALTIME, &_running_time);
+#endif
         EXPECT_EQ(_expected_unschedule_result,
                   _timer_thread->unschedule(_keeper1->_task_id));
         _keeper2->schedule(_timer_thread);
@@ -231,7 +251,17 @@ TEST(TimerThreadTest, schedule_and_unschedule_in_task) {
 
     timer_thread.stop_and_join();
     timespec finish_time;
+#ifdef __MACH__ // OS X does not have clock_gettime, use clock_get_time
+    clock_serv_t cclock;
+    mach_timespec_t mts;
+    host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+    clock_get_time(cclock, &mts);
+    mach_port_deallocate(mach_task_self(), cclock);
+    finish_time.tv_sec = mts.tv_sec;
+    finish_time.tv_nsec = mts.tv_nsec;
+#else
     clock_gettime(CLOCK_REALTIME, &finish_time);
+#endif
 
     keeper1.expect_not_run();
     keeper2.expect_first_run(test_task1._running_time);

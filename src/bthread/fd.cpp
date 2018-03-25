@@ -363,14 +363,16 @@ private:
 # endif
 #endif
             for (int i = 0; i < n; ++i) {
-#ifdef BAIDU_KERNEL_FIXED_EPOLLONESHOT_BUG
+#if defined(OS_LINUX)
+# ifdef BAIDU_KERNEL_FIXED_EPOLLONESHOT_BUG
                 EpollButex* butex = static_cast<EpollButex*>(e[i].data.ptr);
-#elif defined(OS_MACOSX)
-                EpollButex* butex = static_cast<EpollButex*>(e[i].udata);
-#else
+# else
                 butil::atomic<EpollButex*>* pbutex = fd_butexes.get(e[i].data.fd);
                 EpollButex* butex = pbutex ?
                     pbutex->load(butil::memory_order_consume) : NULL;
+# endif
+#elif defined(OS_MACOSX)
+                EpollButex* butex = static_cast<EpollButex*>(e[i].udata);
 #endif
                 if (butex != NULL && butex != CLOSING_GUARD) {
                     butex->fetch_add(1, butil::memory_order_relaxed);
@@ -405,6 +407,7 @@ static inline EpollThread& get_epoll_thread(int fd) {
     return et;
 }
 
+//TODO(zhujiashun): change name
 int stop_and_join_epoll_threads() {
     // Returns -1 if any epoll thread failed to stop.
     int rc = 0;
