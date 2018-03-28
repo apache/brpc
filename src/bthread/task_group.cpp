@@ -142,7 +142,7 @@ void TaskGroup::run_main_task() {
     std::unique_ptr<bvar::PerSecond<bvar::PassiveStatus<double> > > usage_bvar;
     
     TaskGroup* dummy = this;
-    bthread_t tid;
+    bthread_t tid; //tid is not initialized, and it would be presented to sched_to if wait_task just returned -1. Any problem?
     while (wait_task(&tid)) {
         TaskGroup::sched_to(&dummy, tid);
         DCHECK_EQ(this, dummy);
