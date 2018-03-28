@@ -282,36 +282,31 @@ set(MCPACK2PB_SOURCES
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/serializer.cpp
     )
 
-file(GLOB PROTOS "${CMAKE_SOURCE_DIR}/src/*.proto")
-list(APPEND PROTO_FLAGS -I${CMAKE_CURRENT_BINARY_DIR})
-foreach(PROTO ${PROTOS})
-    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/${PROTO_WE}.pb.cc")
-    execute_process(
-        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src ${PROTO}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
-endforeach()
-
-file(GLOB BRPC_PROTOS "src/brpc/*.proto")
-foreach(PROTO ${BRPC_PROTOS})
-    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/${PROTO_WE}.pb.cc")
-    execute_process(
-        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/ ${PROTO}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
-endforeach()
-
-file(GLOB BRPC_POLICY_PROTOS "src/brpc/policy/*.proto")
-foreach(PROTO ${BRPC_POLICY_PROTOS})
-    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/policy/${PROTO_WE}.pb.cc")
-    execute_process(
-        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/policy ${PROTO}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
-endforeach()
+include(CompileProto)
+set(PROTO_FILES idl_options.proto
+                brpc/rtmp.proto
+                brpc/rpc_dump.proto
+                brpc/get_favicon.proto
+                brpc/span.proto
+                brpc/builtin_service.proto
+                brpc/get_js.proto
+                brpc/errno.proto
+                brpc/nshead_meta.proto
+                brpc/options.proto
+                brpc/policy/baidu_rpc_meta.proto
+                brpc/policy/hulu_pbrpc_meta.proto
+                brpc/policy/public_pbrpc_meta.proto
+                brpc/policy/sofa_pbrpc_meta.proto
+                brpc/policy/mongo.proto
+                brpc/trackme.proto
+                brpc/streaming_rpc_meta.proto)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/output/include/brpc)
+set(PROTOC_FLAGS ${PROTOC_FLAGS} -I${PROTOBUF_INCLUDE_DIR})
+compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_BINARY_DIR} 
+                                    ${CMAKE_BINARY_DIR}/output/include
+                                    ${CMAKE_SOURCE_DIR}/src 
+                                    "${PROTO_FILES}")
+add_library(PROTO_LIB OBJECT ${PROTO_SRCS} ${PROTO_HDRS})
 
 set(SOURCES
     ${BVAR_SOURCES}
@@ -319,7 +314,6 @@ set(SOURCES
     ${JSON2PB_SOURCES}
     ${MCPACK2PB_SOURCES}
     ${BRPC_SOURCES}
-    ${PROTO_SRCS}
     )
 
 add_subdirectory(src)
@@ -328,8 +322,6 @@ if(BUILD_UNIT_TESTS)
 endif()
 add_subdirectory(tools)
 
-file(COPY ${CMAKE_CURRENT_BINARY_DIR}/idl_options.pb.h
-     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include)
 file(COPY ${CMAKE_CURRENT_BINARY_DIR}/brpc/
         DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include/brpc/
         FILES_MATCHING 

@@ -16,8 +16,12 @@ add_library(OBJ_LIB OBJECT ${SOURCES})
 set_property(TARGET ${OBJ_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
 set_property(TARGET ${BUTIL_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
 
-add_library(brpc-shared SHARED $<TARGET_OBJECTS:BUTIL_LIB> $<TARGET_OBJECTS:OBJ_LIB>)
-add_library(brpc-static STATIC $<TARGET_OBJECTS:BUTIL_LIB> $<TARGET_OBJECTS:OBJ_LIB>)
+add_library(brpc-shared SHARED $<TARGET_OBJECTS:BUTIL_LIB> 
+                               $<TARGET_OBJECTS:OBJ_LIB>
+                               $<TARGET_OBJECTS:PROTO_LIB>)
+add_library(brpc-static STATIC $<TARGET_OBJECTS:BUTIL_LIB>
+                               $<TARGET_OBJECTS:OBJ_LIB>
+                               $<TARGET_OBJECTS:PROTO_LIB>)
 
 target_link_libraries(brpc-shared ${DYNAMIC_LIB})
 
