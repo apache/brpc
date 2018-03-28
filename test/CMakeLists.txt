@@ -22,7 +22,7 @@ compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_BINARY_DIR}/test
                                     "${TEST_PROTO_FILES}")
 add_library(TEST_PROTO_LIB OBJECT ${PROTO_SRCS} ${PROTO_HDRS})
 
-option(BRPC_DOWNLOAD_GTEST "Download and build a fresh copy of googletest. Requires Internet access." OFF)
+option(BRPC_DOWNLOAD_GTEST "Download and build a fresh copy of googletest. Requires Internet access." ON)
 set(BRPC_SYSTEM_GTEST_SOURCE_DIR "" CACHE PATH "System googletest source directory.")
 
 if(BRPC_DOWNLOAD_GTEST)
