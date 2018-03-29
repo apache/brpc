@@ -26,11 +26,11 @@ option(BRPC_DOWNLOAD_GTEST "Download and build a fresh copy of googletest. Requi
 set(BRPC_SYSTEM_GTEST_SOURCE_DIR "" CACHE PATH "System googletest source directory.")
 
 if(BRPC_DOWNLOAD_GTEST)
-  include(SetupGtest)
+    include(SetupGtest)
 elseif(BRPC_SYSTEM_GTEST_SOURCE_DIR)
-  add_subdirectory("${BRPC_SYSTEM_GTEST_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/system-googletest-build")
+    add_subdirectory("${BRPC_SYSTEM_GTEST_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/system-googletest-build")
 else()
-  message(FATAL_ERROR "Googletest is not available")
+    message(FATAL_ERROR "Googletest is not available")
 endif()
 
 set(CMAKE_CPP_FLAGS "-DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
