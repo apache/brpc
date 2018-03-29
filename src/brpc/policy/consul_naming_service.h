@@ -37,8 +37,8 @@ private:
 
     NamingService* New() const;
 
-    int DegradeToFilenamingServiceIfNeed(const char* service_name,
-                                         std::vector<ServerNode>* servers);
+    int DegradeToOtherServiceIfNeed(const char* service_name,
+                                    std::vector<ServerNode>* servers);
 
     void Destroy();
 
