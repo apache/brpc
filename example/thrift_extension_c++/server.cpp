@@ -19,8 +19,8 @@
 #include <brpc/server.h>
 #include <brpc/thrift_service.h>
 
-#include "thrift/transport/TBufferTransports.h"
-#include "thrift/protocol/TBinaryProtocol.h"
+#include <thrift/protocol/TBinaryProtocol.h>
+#include <thrift/transport/TBufferTransports.h>
 
 #include "gen-cpp/EchoService.h"
 #include "gen-cpp/echo_types.h"
@@ -31,6 +31,19 @@ DEFINE_int32(port, 8019, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
 DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
+
+class EchoServiceHandler : virtual public example::EchoServiceIf {
+public:
+    EchoServiceHandler() {}
+
+    void Echo(example::EchoResponse& res, const example::EchoRequest& req) {
+        // Process request, just attach a simple string.
+        res.data = req.data + " world";
+        LOG(INFO) << "Echo req.data: " << req.data;
+        return;
+    }
+
+};
 
 // Adapt your own thrift-based protocol to use brpc 
 class MyThriftProtocol : public brpc::ThriftFramedService {
@@ -51,34 +64,18 @@ public:
             return;
         }
 
-        example::EchoRequest thrift_request;
-        std::string function_name;
-        int32_t seqid;
-        
-        // 
-        if (!serilize_thrift_client_message<example::EchoService_Echo_args>(request, 
-            &thrift_request, &function_name, &seqid)) {
-            cntl->CloseConnection("Close connection due to serilize thrift client reuqest error!");
-            LOG(ERROR) << "serilize thrift client reuqest error!";
-            return;
+        // Just an example, you don't need to new the processor each time.
+        boost::shared_ptr<EchoServiceHandler> service_hander(new EchoServiceHandler());
+        boost::shared_ptr<example::EchoServiceProcessor> processor(
+            new example::EchoServiceProcessor(service_hander));
+        if (brpc_thrift_server_helper(request, response, processor)) {
+            LOG(INFO) << "success to process thrift request in brpc";
+        } else {
+            LOG(INFO) << "failed to process thrift request in brpc";
         }
 
-        LOG(INFO) << "RPC funcname: " << function_name
-            << "thrift request data: " << thrift_request.data;
-
-        example::EchoResponse thrift_response;
-        // Proc RPC , just append a simple string
-        thrift_response.data = thrift_request.data + " world";
-
-        if (!deserilize_thrift_client_message<example::EchoService_Echo_result>(thrift_response,
-            function_name, seqid, response)) {
-            cntl->CloseConnection("Close connection due to deserilize thrift client response error!");
-            LOG(ERROR) << "deserilize thrift client response error!";
-            return;
-        }
-
-        LOG(INFO) << "success process thrift request in brpc";
     }
+
 };
 
 int main(int argc, char* argv[]) {

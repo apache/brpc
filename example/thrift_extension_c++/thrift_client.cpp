@@ -45,12 +45,14 @@ int main(int argc, char **argv) {
     req.data = "hello";
 
     example::EchoResponse res;
-    client.Echo(res, req);
 
-    LOG(INFO)
-        << "Req: " << req.data
-        << "Res: " << res.data;
+    while (1) {
+        client.Echo(res, req);
 
+        LOG(INFO) << "Req: " << req.data
+                  << "Res: " << res.data;
+        sleep(1);
+    }
     transport->close();
 
     return 0;

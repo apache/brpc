@@ -14,140 +14,104 @@
 
 // utils for serilize/deserilize thrift binary message to thrift obj.
 
-#include "thrift/transport/TBufferTransports.h"
-#include "thrift/protocol/TBinaryProtocol.h"
+#include <brpc/channel.h>
 
-template <typename THRIFT_ARG, typename THRIFT_REQ>
-bool serilize_thrift_client_message(const brpc::ThriftBinaryMessage& request,
-	THRIFT_REQ* thrift_request, std::string* function_name, int32_t* seqid) {
-	
-	boost::shared_ptr<apache::thrift::transport::TMemoryBuffer> buffer(
-		new apache::thrift::transport::TMemoryBuffer());
-	boost::shared_ptr<apache::thrift::protocol::TBinaryProtocol> iprot(
-		new apache::thrift::protocol::TBinaryProtocol(buffer));
+#include <boost/make_shared.hpp>
 
-	size_t body_len  = request.head.body_len;
-	uint8_t* thrift_buffer = (uint8_t*)malloc(body_len);
-	const size_t k = request.body.copy_to(thrift_buffer, body_len);
-	if ( k != body_len) {
-		free(thrift_buffer);
-		return false;
-	}
+#include <thrift/transport/TBufferTransports.h>
+#include <thrift/protocol/TBinaryProtocol.h>
 
-	THRIFT_ARG args;
-	buffer->resetBuffer(thrift_buffer, body_len);
-	apache::thrift::protocol::TMessageType mtype;
+template <class T>
+class BrpcThriftClient {
 
-	// deserilize thrift message
-	iprot->readMessageBegin(*function_name, mtype, *seqid);
+public:
+  BrpcThriftClient() {
 
-	args.read(iprot.get());
-	iprot->readMessageEnd();
-	iprot->getTransport()->readEnd();
+    out_buffer_ = boost::make_shared<apache::thrift::transport::TMemoryBuffer>();
+    out_ = boost::make_shared<apache::thrift::protocol::TBinaryProtocol>(out_buffer_);
 
-	*thrift_request = args.request;
+    in_buffer_ = boost::make_shared<apache::thrift::transport::TMemoryBuffer>();
+    in_ = boost::make_shared<apache::thrift::protocol::TBinaryProtocol>(in_buffer_);
 
-	free(thrift_buffer);
-	return true;
+    client_ = boost::make_shared<T>(in_, out_);
+  }
+
+  boost::shared_ptr<T> get_thrift_client() {
+    return client_;
+  }
+
+ void call_method(brpc::Channel* channel, brpc::Controller* cntl) {
+
+      brpc::ThriftBinaryMessage request;
+      brpc::ThriftBinaryMessage response;
+
+      in_buffer_->resetBuffer();
+
+      butil::IOBuf buf;
+      buf.append(out_buffer_->getBufferAsString());
+      request.body = buf;
+      
+      // send the request the server
+      // Because `done'(last parameter) is NULL, this function waits until
+      // the response comes back or error occurs(including timedout).
+      channel->CallMethod(NULL, cntl, &request, &response, NULL);
+      if (!cntl->Failed()) {
+          size_t body_len  = response.head.body_len;
+          uint8_t* thrift_buffer = (uint8_t*)malloc(body_len);
+          const size_t k = response.body.copy_to(thrift_buffer, body_len);
+          if ( k != body_len) {
+              free(thrift_buffer);
+              cntl->SetFailed("copy response buf failed!");
+              return;
+          }
+          in_buffer_->resetBuffer(thrift_buffer, body_len);
+      }
+      return;
+  }
+
+private:
+    boost::shared_ptr<T> client_;
+    boost::shared_ptr<apache::thrift::transport::TMemoryBuffer> out_buffer_;
+    boost::shared_ptr<apache::thrift::transport::TMemoryBuffer> in_buffer_;
+    boost::shared_ptr<apache::thrift::protocol::TBinaryProtocol> in_;
+    boost::shared_ptr<apache::thrift::protocol::TBinaryProtocol> out_;
+
+};
+
+
+bool brpc_thrift_server_helper(const brpc::ThriftBinaryMessage& request,
+                              brpc::ThriftBinaryMessage* response,
+                              boost::shared_ptr<apache::thrift::TDispatchProcessor> processor) {
+    boost::shared_ptr<apache::thrift::transport::TMemoryBuffer> in_buffer(
+        new apache::thrift::transport::TMemoryBuffer());
+    boost::shared_ptr<apache::thrift::protocol::TBinaryProtocol> in(
+        new apache::thrift::protocol::TBinaryProtocol(in_buffer));
+
+    boost::shared_ptr<apache::thrift::transport::TMemoryBuffer> out_buffer(
+        new apache::thrift::transport::TMemoryBuffer());
+    boost::shared_ptr<apache::thrift::protocol::TBinaryProtocol> out(
+        new apache::thrift::protocol::TBinaryProtocol(out_buffer));
+
+    // Cut the thrift buffer and parse thrift message
+    size_t body_len  = request.head.body_len;
+    uint8_t* thrift_buffer = (uint8_t*)malloc(body_len);
+
+    const size_t k = request.body.copy_to(thrift_buffer, body_len);
+    if ( k != body_len) {
+        free(thrift_buffer);
+        return false;
+    }
+
+    in_buffer->resetBuffer(thrift_buffer, body_len);
+
+    if (processor->process(in, out, NULL)) {
+        butil::IOBuf buf;
+        std::string s = out_buffer->getBufferAsString();
+        buf.append(s);
+        response->body = buf;
+    } else {
+        return false;
+    }
+    return true;
 }
 
-template <typename THRIFT_ARG, typename THRIFT_RES>
-bool deserilize_thrift_client_message(const THRIFT_RES& thrift_response,
-	const std::string& function_name, const int32_t seqid, brpc::ThriftBinaryMessage* response) {
-
-	boost::shared_ptr<apache::thrift::transport::TMemoryBuffer> o_buffer(
-		new apache::thrift::transport::TMemoryBuffer());
-	boost::shared_ptr<apache::thrift::protocol::TBinaryProtocol> oprot(
-		new apache::thrift::protocol::TBinaryProtocol(o_buffer));
-
-	THRIFT_ARG result;
-	result.success = thrift_response;
-	result.__isset.success = true;
-
-	// serilize response
-	oprot->writeMessageBegin(function_name, ::apache::thrift::protocol::T_REPLY, seqid);
-	result.write(oprot.get());
-	oprot->writeMessageEnd();
-	oprot->getTransport()->writeEnd();
-	oprot->getTransport()->flush();
-
-	butil::IOBuf buf;
-	std::string s = o_buffer->getBufferAsString();
-	buf.append(s);
-
-	response->body = buf;
-
-	return true;
-}
-
-template <typename THRIFT_ARG, typename THRIFT_REQ>
-bool serilize_thrift_server_message(const THRIFT_REQ& thrift_request,
-	const std::string& function_name, const int32_t seqid, brpc::ThriftBinaryMessage* request) {
-	
-	boost::shared_ptr<apache::thrift::transport::TMemoryBuffer> o_buffer(
-		new apache::thrift::transport::TMemoryBuffer());
-	boost::shared_ptr<apache::thrift::protocol::TBinaryProtocol> oprot(
-		new apache::thrift::protocol::TBinaryProtocol(o_buffer));
-
-	oprot->writeMessageBegin(function_name, apache::thrift::protocol::T_CALL, seqid);
-
-	THRIFT_ARG args;
-	args.request = &thrift_request;
-	args.write(oprot.get());
-
-	oprot->writeMessageEnd();
-	oprot->getTransport()->writeEnd();
-	oprot->getTransport()->flush();
-
-	butil::IOBuf buf;
-	std::string s = o_buffer->getBufferAsString();
-
-	buf.append(s);
-	request->body = buf;
-	
-	return true;
-}
-
-template<typename THRIFT_ARG, typename THRIFT_RES>
-bool deserilize_thrift_server_message(const brpc::ThriftBinaryMessage& response,
-	std::string* function_name, int32_t* seqid, THRIFT_RES* thrift_response) {
-	
-	boost::shared_ptr<apache::thrift::transport::TMemoryBuffer> buffer(
-		new apache::thrift::transport::TMemoryBuffer());
-	boost::shared_ptr<apache::thrift::protocol::TBinaryProtocol> iprot(
-		new apache::thrift::protocol::TBinaryProtocol(buffer));
-
-	size_t body_len  = response.head.body_len;
-	uint8_t* thrift_buffer = (uint8_t*)malloc(body_len);
-	const size_t k = response.body.copy_to(thrift_buffer, body_len);
-	if ( k != body_len) {
-		free(thrift_buffer);
-		return false;
-	}
-
-	buffer->resetBuffer(thrift_buffer, body_len);
-
-	apache::thrift::protocol::TMessageType mtype;
-
-	try {
-		iprot->readMessageBegin(*function_name, mtype, *seqid);
-		
-		THRIFT_ARG result;
-		result.success = thrift_response;
-		result.read(iprot.get());
-		iprot->readMessageEnd();
-		iprot->getTransport()->readEnd();
-
-		if (!result.__isset.success) {
-			free(thrift_buffer);
-			return false;
-		}
-	} catch (...) {
-		free(thrift_buffer);
-		return false;
-	}
-
-	free(thrift_buffer);
-	return true;
-
-}

@@ -23,8 +23,8 @@
 #include <brpc/thrift_binary_message.h>
 #include <bvar/bvar.h>
 
-#include "thrift/transport/TBufferTransports.h"
-#include "thrift/protocol/TBinaryProtocol.h"
+#include <thrift/transport/TBufferTransports.h>
+#include <thrift/protocol/TBinaryProtocol.h>
 
 #include "gen-cpp/EchoService.h"
 #include "gen-cpp/echo_types.h"
@@ -58,28 +58,27 @@ int main(int argc, char* argv[]) {
 
     // Send a request and wait for the response every 1 second.
     int log_id = 0;
+
+    boost::shared_ptr<BrpcThriftClient<example::EchoServiceClient>> client = 
+        boost::make_shared<BrpcThriftClient<example::EchoServiceClient>>();
+
     while (!brpc::IsAskedToQuit()) {
-        brpc::ThriftBinaryMessage request;
-        brpc::ThriftBinaryMessage response;
         brpc::Controller cntl;
+        cntl.set_log_id(log_id ++);  // set by user
 
         // Thrift Req
         example::EchoRequest thrift_request;
+        example::EchoResponse thrift_response;
         thrift_request.data = "hello";
 
-        std::string function_name = "Echo";
-        int32_t seqid = 0;
-        
-        if (!serilize_thrift_server_message<example::EchoService_Echo_pargs>(thrift_request, function_name, seqid, &request)) {
-            LOG(ERROR) << "serilize_thrift_server_message error!";
-            continue;
-        }
+        // util the Thrift client's send_XXX method, actuall do serilize work inside
+        client->get_thrift_client()->send_Echo(thrift_request);
 
-        cntl.set_log_id(log_id ++);  // set by user
+        // do rpc call actually
+        client->call_method(&channel, &cntl);
 
-        // Because `done'(last parameter) is NULL, this function waits until
-        // the response comes back or error occurs(including timedout).
-        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        // util the Thrift client's recv_XXX method, actuall do deserilize work inside
+        client->get_thrift_client()->recv_Echo(thrift_response);
 
         if (cntl.Failed()) {
             LOG(ERROR) << "Fail to send thrift request, " << cntl.ErrorText();
@@ -88,14 +87,7 @@ int main(int argc, char* argv[]) {
             g_latency_recorder << cntl.latency_us();
         }
 
-        example::EchoResponse thrift_response;
-        if (!deserilize_thrift_server_message<example::EchoService_Echo_presult>(response, &function_name, &seqid, &thrift_response)) {
-            LOG(ERROR) << "deserilize_thrift_server_message error!";
-            continue;
-        }
-
-        LOG(INFO) << "Thrift function_name: " << function_name
-            << "Thrift Res data: " << thrift_response.data;
+        LOG(INFO) << "Thrift Res data: " << thrift_response.data;
 
         LOG_EVERY_SECOND(INFO)
             << "Sending thrift requests at qps=" << g_latency_recorder.qps(1)
