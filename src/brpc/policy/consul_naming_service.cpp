@@ -41,14 +41,14 @@ DEFINE_string(consul_url_parameter, "?stale&passing",
               "The query string of request consul for discovering service.");
 DEFINE_int32(consul_connect_timeout_ms, 200,
              "Timeout for creating connections to consul in milliseconds");
-DEFINE_int32(consul_blocking_query_wait_secs, 600,
+DEFINE_int32(consul_blocking_query_wait_secs, 60,
              "Maximum duration for the blocking request in secs.");
 DEFINE_bool(consul_enable_degrade_to_file_naming_service, false,
             "Use local backup file when consul cannot connect");
 DEFINE_string(consul_file_naming_service_dir, "",
     "When it degraded to file naming service, the file with name of the "
     "service name will be searched in this dir to use.");
-DEFINE_int32(consul_retry_interval_ms, 50,
+DEFINE_int32(consul_retry_interval_ms, 500,
              "Wait so many milliseconds before retry when error happens");
 
 constexpr char kConsulIndex[] = "X-Consul-Index";
@@ -60,8 +60,8 @@ std::string RapidjsonValueToString(const rapidjson::Value& value) {
     return buffer.GetString();
 }
 
-int ConsulNamingService::DegradeToOtherServiceIfNeed(const char* service_name,
-                                                     std::vector<ServerNode>* servers) {
+int ConsulNamingService::DegradeToOtherServiceIfNeeded(const char* service_name,
+                                                       std::vector<ServerNode>* servers) {
     if (FLAGS_consul_enable_degrade_to_file_naming_service && !_backup_file_loaded) {
         _backup_file_loaded = true;
         const std::string file(FLAGS_consul_file_naming_service_dir + service_name);
@@ -81,7 +81,7 @@ int ConsulNamingService::GetServers(const char* service_name,
         opt.timeout_ms = (FLAGS_consul_blocking_query_wait_secs + 10) * butil::Time::kMillisecondsPerSecond;
         if (_channel.Init(FLAGS_consul_agent_addr.c_str(), "rr", &opt) != 0) {
             LOG(ERROR) << "Fail to init channel to consul at " << FLAGS_consul_agent_addr;
-            return DegradeToOtherServiceIfNeed(service_name, servers);
+            return DegradeToOtherServiceIfNeeded(service_name, servers);
         }
         _consul_connected = true;
     }
@@ -105,7 +105,7 @@ int ConsulNamingService::GetServers(const char* service_name,
     if (cntl.Failed()) {
         LOG(ERROR) << "Fail to access " << consul_url << ": "
                    << cntl.ErrorText();
-        return DegradeToOtherServiceIfNeed(service_name, servers);
+        return DegradeToOtherServiceIfNeeded(service_name, servers);
     }
 
     const std::string* index = cntl.http_response().GetHeader(kConsulIndex);
@@ -146,7 +146,7 @@ int ConsulNamingService::GetServers(const char* service_name,
             !service["Address"].IsString() ||
             !service.HasMember("Port") ||
             !service["Port"].IsUint()) {
-            LOG(ERROR) << "Invalid service: "
+            LOG(ERROR) << "Service with no valid address or port: "
                        << RapidjsonValueToString(service);
             continue;
         }
@@ -162,12 +162,23 @@ int ConsulNamingService::GetServers(const char* service_name,
 
         ServerNode node;
         node.addr = end_point;
-        // Tags in consul is an array, here we only use the first one.
-        if (service.HasMember("Tags") &&
-            service["Tags"].IsArray() &&
-            service["Tags"].Size() > 0 &&
-            service["Tags"][0].IsString()) {
-            node.tag = service["Tags"][0].GetString();
+        if (service.HasMember("Tags")) {
+            if (service["Tags"].IsArray()) {
+                if (service["Tags"].Size() > 0) {
+                    // Tags in consul is an array, here we only use the first one.
+                    if (service["Tags"][0].IsString()) {
+                        node.tag = service["Tags"][0].GetString();
+                    } else {
+                        LOG(ERROR) << "First tag returned by consul is not string, service: "
+                                   << RapidjsonValueToString(service);
+                        continue;
+                    }
+                }
+            } else {
+                LOG(ERROR) << "Service tags returned by consul is not json array, service: "
+                           << RapidjsonValueToString(service);
+                continue;
+            }
         }
 
         if (presence.insert(node).second) {
