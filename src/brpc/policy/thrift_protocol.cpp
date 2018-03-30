@@ -271,7 +271,7 @@ void ProcessThriftBinaryRequest(InputMessageBase* msg_base) {
         .set_peer_id(socket->id())
         .set_remote_side(socket->remote_side())
         .set_local_side(socket->local_side())
-        .set_request_protocol(PROTOCOL_NSHEAD);
+        .set_request_protocol(PROTOCOL_THRIFT);
 
     // Tag the bthread with this server's key for thread_local_data().
     if (server->thread_local_options().thread_local_data_factory) {
@@ -284,7 +284,7 @@ void ProcessThriftBinaryRequest(InputMessageBase* msg_base) {
         accessor.set_span(span);
         //span->set_log_id(req_head->log_id);
         span->set_remote_side(cntl->remote_side());
-        span->set_protocol(PROTOCOL_NSHEAD);
+        span->set_protocol(PROTOCOL_THRIFT);
         span->set_received_us(msg->received_us());
         span->set_start_parse_us(start_parse_us);
         span->set_request_size(sizeof(thrift_binary_head_t) + req_head->body_len);

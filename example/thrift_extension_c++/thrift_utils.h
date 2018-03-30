@@ -66,6 +66,7 @@ public:
           }
           in_buffer_->resetBuffer(thrift_buffer, body_len);
       }
+      free(thrift_buffer);
       return;
   }
 
@@ -110,8 +111,11 @@ bool brpc_thrift_server_helper(const brpc::ThriftBinaryMessage& request,
         buf.append(s);
         response->body = buf;
     } else {
+        free(thrift_buffer);
         return false;
     }
+
+    free(thrift_buffer);
     return true;
 }
 

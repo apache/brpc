@@ -93,7 +93,7 @@ int main(int argc, char* argv[]) {
             << "Sending thrift requests at qps=" << g_latency_recorder.qps(1)
             << " latency=" << g_latency_recorder.latency(1);
         
-        sleep(1);
+        //sleep(1);
     }
 
     LOG(INFO) << "EchoClient is going to quit";
