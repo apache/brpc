@@ -58,27 +58,22 @@ int main(int argc, char* argv[]) {
 
     // Send a request and wait for the response every 1 second.
     int log_id = 0;
-
-    boost::shared_ptr<BrpcThriftClient<example::EchoServiceClient>> client = 
-        boost::make_shared<BrpcThriftClient<example::EchoServiceClient>>();
+    
+    apache::thrift::transport::TThriftBrpcHelperTransport* transport;
+    auto client = InitThriftClient<example::EchoServiceClient>(&channel, &transport);
 
     while (!brpc::IsAskedToQuit()) {
         brpc::Controller cntl;
         cntl.set_log_id(log_id ++);  // set by user
+
+        transport->set_controller(&cntl);
 
         // Thrift Req
         example::EchoRequest thrift_request;
         example::EchoResponse thrift_response;
         thrift_request.data = "hello";
 
-        // util the Thrift client's send_XXX method, actuall do serilize work inside
-        client->get_thrift_client()->send_Echo(thrift_request);
-
-        // do rpc call actually
-        client->call_method(&channel, &cntl);
-
-        // util the Thrift client's recv_XXX method, actuall do deserilize work inside
-        client->get_thrift_client()->recv_Echo(thrift_response);
+        client->Echo(thrift_response, thrift_request);
 
         if (cntl.Failed()) {
             LOG(ERROR) << "Fail to send thrift request, " << cntl.ErrorText();

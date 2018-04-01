@@ -3,7 +3,6 @@ include $(BRPC_PATH)/config.mk
 # Notes on the flags:
 # 1. Added -fno-omit-frame-pointer: perf/tcmalloc-profiler use frame pointers by default
 # 2. Added -D__const__= : Avoid over-optimizations of TLS variables by GCC>=4.8
-#CXXFLAGS = -std=c++0x -g -DDEBUG -D__const__= -DBRPC_ENABLE_CPU_PROFILER -pipe -W -Wall -Werror -Wno-unused-parameter -fPIC -fno-omit-frame-pointer
 CXXFLAGS = -std=c++0x -g -DDEBUG -D__const__= -pipe -W -Wall -Werror -Wno-unused-parameter -fPIC -fno-omit-frame-pointer
 HDRS+=$(BRPC_PATH)/output/include
 LIBS+=$(BRPC_PATH)/output/lib
@@ -14,8 +13,8 @@ SOPATHS=$(addprefix -Wl$(COMMA)-rpath=, $(LIBS))
 
 STATIC_LINKINGS += -lbrpc -lthrift -lgflags
 
-CLIENT_SOURCES = client.cpp
-SERVER_SOURCES = server.cpp
+CLIENT_SOURCES = client.cpp thrift_brpc_helper_transport.cpp
+SERVER_SOURCES = server.cpp thrift_brpc_helper_transport.cpp
 PROTOS = $(wildcard *.proto)
 
 PROTO_OBJS = $(PROTOS:.proto=.pb.o)
@@ -24,7 +23,7 @@ CLIENT_OBJS = $(addsuffix .o, $(basename $(CLIENT_SOURCES)))
 SERVER_OBJS = $(addsuffix .o, $(basename $(SERVER_SOURCES))) 
 
 .PHONY:all
-all: echo_client echo_server thrift_server thrift_client libechothrift.a
+all: echo_client echo_server thrift_server thrift_client libechothrift.a client.o server.o
 
 .PHONY:clean
 clean:

@@ -51,7 +51,7 @@ int main(int argc, char **argv) {
 
         LOG(INFO) << "Req: " << req.data
                   << "Res: " << res.data;
-        sleep(1);
+        //sleep(1);
     }
     transport->close();
 
