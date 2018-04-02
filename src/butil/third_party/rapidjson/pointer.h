@@ -18,7 +18,7 @@
 #include "document.h"
 #include "internal/itoa.h"
 
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 
 static const SizeType kPointerInvalidIndex = ~SizeType(0);  //!< Represents an invalid index in GenericPointer::Token
 
@@ -1308,6 +1308,6 @@ bool EraseValueByPointer(T& root, const CharType(&source)[N]) {
 
 //@}
 
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 #endif // RAPIDJSON_POINTER_H_

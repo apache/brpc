@@ -31,7 +31,7 @@ RAPIDJSON_DIAG_OFF(6334)
 #endif
 
 //@cond RAPIDJSON_INTERNAL
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 namespace internal {
 
 // Helper to wrap/convert arbitrary types to void, useful for arbitrary type matching
@@ -149,29 +149,29 @@ template <typename T> struct RemoveSfinaeTag;
 template <typename T> struct RemoveSfinaeTag<SfinaeTag&(*)(T)> { typedef T Type; };
 
 #define RAPIDJSON_REMOVEFPTR_(type) \
-    typename ::RAPIDJSON_NAMESPACE::internal::RemoveSfinaeTag \
-        < ::RAPIDJSON_NAMESPACE::internal::SfinaeTag&(*) type>::Type
+    typename ::BUTIL_RAPIDJSON_NAMESPACE::internal::RemoveSfinaeTag \
+        < ::BUTIL_RAPIDJSON_NAMESPACE::internal::SfinaeTag&(*) type>::Type
 
 #define RAPIDJSON_ENABLEIF(cond) \
-    typename ::RAPIDJSON_NAMESPACE::internal::EnableIf \
+    typename ::BUTIL_RAPIDJSON_NAMESPACE::internal::EnableIf \
         <RAPIDJSON_REMOVEFPTR_(cond)>::Type * = NULL
 
 #define RAPIDJSON_DISABLEIF(cond) \
-    typename ::RAPIDJSON_NAMESPACE::internal::DisableIf \
+    typename ::BUTIL_RAPIDJSON_NAMESPACE::internal::DisableIf \
         <RAPIDJSON_REMOVEFPTR_(cond)>::Type * = NULL
 
 #define RAPIDJSON_ENABLEIF_RETURN(cond,returntype) \
-    typename ::RAPIDJSON_NAMESPACE::internal::EnableIf \
+    typename ::BUTIL_RAPIDJSON_NAMESPACE::internal::EnableIf \
         <RAPIDJSON_REMOVEFPTR_(cond), \
          RAPIDJSON_REMOVEFPTR_(returntype)>::Type
 
 #define RAPIDJSON_DISABLEIF_RETURN(cond,returntype) \
-    typename ::RAPIDJSON_NAMESPACE::internal::DisableIf \
+    typename ::BUTIL_RAPIDJSON_NAMESPACE::internal::DisableIf \
         <RAPIDJSON_REMOVEFPTR_(cond), \
          RAPIDJSON_REMOVEFPTR_(returntype)>::Type
 
 } // namespace internal
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 //@endcond
 
 #if defined(__GNUC__) || defined(_MSC_VER)

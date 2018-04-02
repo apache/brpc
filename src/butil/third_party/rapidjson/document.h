@@ -63,7 +63,7 @@ RAPIDJSON_DIAG_OFF(effc++)
 #include <utility> // std::move
 #endif
 
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 
 // Forward declaration.
 template <typename Encoding, typename Allocator>
@@ -2030,7 +2030,7 @@ GenericValue<Encoding,Allocator>::GenericValue(const GenericValue<Encoding,Sourc
     }
 }
 
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 #if defined(_MSC_VER) || defined(__GNUC__)
 RAPIDJSON_DIAG_POP

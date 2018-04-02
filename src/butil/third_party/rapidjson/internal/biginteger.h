@@ -21,7 +21,7 @@
 #include <intrin.h> // for _umul128
 #endif
 
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 namespace internal {
 
 class BigInteger {
@@ -275,6 +275,6 @@ private:
 };
 
 } // namespace internal
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 #endif // RAPIDJSON_BIGINTEGER_H_
