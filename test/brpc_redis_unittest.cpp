@@ -1,7 +1,6 @@
 // Copyright (c) 2014 Baidu, Inc.
 // Date: Thu Jun 11 14:30:07 CST 2015
 
-#if defined(BAIDU_INTERNAL)
 
 #include <iostream>
 #include "butil/time.h"
@@ -59,7 +58,9 @@ class RedisTest : public testing::Test {
 protected:
     RedisTest() {}
     void SetUp() {
+#if defined(BAIDU_INTERNAL)
         pthread_once(&download_redis_server_once, DownloadRedisServer);
+#endif
     }
     void TearDown() {}
 };
@@ -112,6 +113,7 @@ void AssertResponseEqual(const brpc::RedisResponse& r1,
     }
 }
 
+#if defined(BAIDU_INTERNAL)
 TEST_F(RedisTest, sanity) {
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_REDIS;
@@ -403,5 +405,30 @@ TEST_F(RedisTest, auth) {
     }
 }
 
-} //namespace
 #endif // BAIDU_INTERNAL
+
+TEST_F(RedisTest, cmd_format) {
+    brpc::RedisRequest request;
+    // set empty string
+    request.AddCommand("set a ''");
+    ASSERT_STREQ("*3\r\n$3\r\nset\r\n$1\r\na\r\n$0\r\n\r\n", 
+		request._buf.to_string().c_str());
+    request.Clear();
+
+    request.AddCommand("mset b '' c ''");
+    ASSERT_STREQ("*5\r\n$4\r\nmset\r\n$1\r\nb\r\n$0\r\n\r\n$1\r\nc\r\n$0\r\n\r\n",
+		request._buf.to_string().c_str());
+    request.Clear();
+    // set non-empty string
+    request.AddCommand("set a 123");
+    ASSERT_STREQ("*3\r\n$3\r\nset\r\n$1\r\na\r\n$3\r\n123\r\n", 
+		request._buf.to_string().c_str());
+    request.Clear();
+
+    request.AddCommand("mset b '' c ccc");
+    ASSERT_STREQ("*5\r\n$4\r\nmset\r\n$1\r\nb\r\n$0\r\n\r\n$1\r\nc\r\n$3\r\nccc\r\n",
+		request._buf.to_string().c_str());
+    request.Clear();
+    
+}
+} //namespace

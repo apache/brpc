@@ -78,12 +78,14 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
     char quote_char = 0;
     const char* quote_pos = fmt;
     int nargs = 0;
+    bool is_empty_component = false;
     for (; *c; ++c) {
         if (*c != '%' || c[1] == '\0') {
             if (*c == ' ') {
                 if (quote_char) {
                     compbuf.push_back(*c);
-                } else if (!compbuf.empty()) {
+                } else if (!compbuf.empty() || is_empty_component) {
+                    is_empty_component = false;
                     AppendHeader(nocount_buf, '$', compbuf.size());
                     compbuf.append("\r\n", 2);
                     nocount_buf.append(compbuf);
@@ -95,6 +97,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                     quote_char = *c;
                     quote_pos = c;
                 } else if (quote_char == *c) {  // end quote
+                    is_empty_component = (c - quote_pos == 1) ? true : false; // for empty string
                     quote_char = 0;
                 } else {
                     compbuf.push_back(*c);
@@ -235,7 +238,7 @@ RedisCommandFormatV(butil::IOBuf* outbuf, const char* fmt, va_list ap) {
                             quote_pos, quote_pos - fmt);
     }
     
-    if (!compbuf.empty()) {
+    if (!compbuf.empty() || is_empty_component) {
         AppendHeader(nocount_buf, '$', compbuf.size());
         compbuf.append("\r\n", 2);
         nocount_buf.append(compbuf);
@@ -273,11 +276,13 @@ RedisCommandNoFormat(butil::IOBuf* outbuf, const butil::StringPiece& cmd) {
     int ncomponent = 0;
     char quote_char = 0;
     const char* quote_pos = cmd.data();
+    bool is_empty_component = false;
     for (const char* c = cmd.data(); c != cmd.data() + cmd.size(); ++c) {
         if (*c == ' ') {
             if (quote_char) {
                 compbuf.push_back(*c);
-            } else if (!compbuf.empty()) {
+            } else if (!compbuf.empty() || is_empty_component) {
+                is_empty_component = false;
                 AppendHeader(nocount_buf, '$', compbuf.size());
                 compbuf.append("\r\n", 2);
                 nocount_buf.append(compbuf);
@@ -289,6 +294,7 @@ RedisCommandNoFormat(butil::IOBuf* outbuf, const butil::StringPiece& cmd) {
                 quote_char = *c;
                 quote_pos = c;
             } else if (quote_char == *c) {  // end quote
+                is_empty_component = (c - quote_pos == 1) ? true : false; // for empty string
                 quote_char = 0;
             } else {
                 compbuf.push_back(*c);
@@ -303,7 +309,7 @@ RedisCommandNoFormat(butil::IOBuf* outbuf, const butil::StringPiece& cmd) {
                             quote_pos, quote_pos - cmd.data());
     }
     
-    if (!compbuf.empty()) {
+    if (!compbuf.empty() || is_empty_component) {
         AppendHeader(nocount_buf, '$', compbuf.size());
         compbuf.append("\r\n", 2);
         nocount_buf.append(compbuf);
