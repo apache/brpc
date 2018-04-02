@@ -17,7 +17,7 @@
 
 #include "../rapidjson.h"
 
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 namespace internal {
 
 //! Computes integer powers of 10 in double (10.0^n).
@@ -50,6 +50,6 @@ inline double Pow10(int n) {
 }
 
 } // namespace internal
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 #endif // RAPIDJSON_POW10_

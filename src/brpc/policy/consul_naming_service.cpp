@@ -53,9 +53,9 @@ DEFINE_int32(consul_retry_interval_ms, 500,
 
 constexpr char kConsulIndex[] = "X-Consul-Index";
 
-std::string RapidjsonValueToString(const rapidjson::Value& value) {
-    rapidjson::StringBuffer buffer;
-    rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
+std::string RapidjsonValueToString(const BUTIL_RAPIDJSON_NAMESPACE::Value& value) {
+    BUTIL_RAPIDJSON_NAMESPACE::StringBuffer buffer;
+    BUTIL_RAPIDJSON_NAMESPACE::PrettyWriter<BUTIL_RAPIDJSON_NAMESPACE::StringBuffer> writer(buffer);
     value.Accept(writer);
     return buffer.GetString();
 }
@@ -126,7 +126,7 @@ int ConsulNamingService::GetServers(const char* service_name,
     // set to de-duplicate and keep the order.
     std::set<ServerNode> presence;
 
-    rapidjson::Document services;
+    BUTIL_RAPIDJSON_NAMESPACE::Document services;
     services.Parse(cntl.response_attachment().to_string().c_str());
     if (!services.IsArray()) {
         LOG(ERROR) << "The consul's response for "
@@ -134,14 +134,14 @@ int ConsulNamingService::GetServers(const char* service_name,
         return -1;
     }
 
-    for (rapidjson::SizeType i = 0; i < services.Size(); ++i) {
+    for (BUTIL_RAPIDJSON_NAMESPACE::SizeType i = 0; i < services.Size(); ++i) {
         if (!services[i].HasMember("Service")) {
             LOG(ERROR) << "No service info in node: "
                        << RapidjsonValueToString(services[i]);
             continue;
         }
 
-        const rapidjson::Value& service = services[i]["Service"];
+        const BUTIL_RAPIDJSON_NAMESPACE::Value& service = services[i]["Service"];
         if (!service.HasMember("Address") ||
             !service["Address"].IsString() ||
             !service.HasMember("Port") ||

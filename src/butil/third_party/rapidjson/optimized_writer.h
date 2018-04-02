@@ -7,7 +7,7 @@
 
 #include "writer.h"
 
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 
 //! Optimized writer
 /*! This class mainly inherit writer class in rapidjson
@@ -96,6 +96,6 @@ private:
     OptimizedWriter(const OptimizedWriter&);
     OptimizedWriter& operator=(const OptimizedWriter&);
 };
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 #endif // RAPIDJSON_OPTIMIZED_WRITER_H
