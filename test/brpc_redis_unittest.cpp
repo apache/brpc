@@ -429,6 +429,21 @@ TEST_F(RedisTest, cmd_format) {
     ASSERT_STREQ("*5\r\n$4\r\nmset\r\n$1\r\nb\r\n$0\r\n\r\n$1\r\nc\r\n$3\r\nccc\r\n",
 		request._buf.to_string().c_str());
     request.Clear();
+
+    request.AddCommand("get ''key value");  // == get key value
+    ASSERT_STREQ("*3\r\n$3\r\nget\r\n$3\r\nkey\r\n$5\r\nvalue\r\n", request._buf.to_string().c_str());
+    request.Clear();
+
+    request.AddCommand("get key'' value");  // == get key value
+    ASSERT_STREQ("*3\r\n$3\r\nget\r\n$3\r\nkey\r\n$5\r\nvalue\r\n", request._buf.to_string().c_str());
+    request.Clear();
+
+    request.AddCommand("get 'ext'key   value  ");  // == get extkey value
+    ASSERT_STREQ("*3\r\n$3\r\nget\r\n$6\r\nextkey\r\n$5\r\nvalue\r\n", request._buf.to_string().c_str());
+    request.Clear();
     
+    request.AddCommand("  get   key'ext'   value  ");  // == get keyext value
+    ASSERT_STREQ("*3\r\n$3\r\nget\r\n$6\r\nkeyext\r\n$5\r\nvalue\r\n", request._buf.to_string().c_str());
+    request.Clear();
 }
 } //namespace
