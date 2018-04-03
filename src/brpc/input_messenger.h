@@ -25,6 +25,10 @@
 
 namespace brpc {
 
+namespace rdma {
+class RdmaEndpoint;
+}
+
 struct InputMessageHandler {
     // The callback to cut a message from `source'.
     // Returned message will be passed to process_request or process_response
@@ -68,6 +72,7 @@ struct InputMessageHandler {
 // Process messages from connections.
 // `Message' corresponds to a client's request or a server's response.
 class InputMessenger : public SocketUser {
+friend class rdma::RdmaEndpoint;
 public:
     explicit InputMessenger(size_t capacity = 128);
     ~InputMessenger();

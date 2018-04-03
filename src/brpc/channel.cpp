@@ -31,6 +31,9 @@
 #include "brpc/channel.h"
 #include "brpc/details/usercode_backup_pool.h"  // TooManyUserCode
 #include "brpc/policy/esp_authenticator.h"
+#ifdef BRPC_RDMA
+#include "brpc/rdma/rdma_global.h"
+#endif
 
 
 namespace brpc {
@@ -183,6 +186,14 @@ int Channel::Init(butil::EndPoint server_addr_and_port,
     if (InitChannelOptions(options) != 0) {
         return -1;
     }
+#ifdef BRPC_RDMA
+    if (strcmp(_options.protocol.name(), "rdma") == 0) {
+        if (!rdma::GetGlobalRdmaBuffer()) {
+            LOG(WARNING) << "Fail to initialize rdma environment";
+            return -1;
+        }
+    }
+#endif
     const int port = server_addr_and_port.port;
     if (port < 0 || port > 65535) {
         LOG(ERROR) << "Invalid port=" << port;
@@ -207,6 +218,14 @@ int Channel::Init(const char* ns_url,
     if (InitChannelOptions(options) != 0) {
         return -1;
     }
+#ifdef BRPC_RDMA
+    if (strcmp(_options.protocol.name(), "rdma") == 0) {
+        if (!rdma::GetGlobalRdmaBuffer()) {
+            LOG(WARNING) << "Fail to initialize rdma environment";
+            return -1;
+        }
+    }
+#endif
     LoadBalancerWithNaming* lb = new (std::nothrow) LoadBalancerWithNaming;
     if (NULL == lb) {
         LOG(FATAL) << "Fail to new LoadBalancerWithNaming";

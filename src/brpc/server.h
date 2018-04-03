@@ -670,6 +670,7 @@ friend class Controller;
     bool _failed_to_set_max_concurrency_of_method;
     Acceptor* _am;
     Acceptor* _internal_am;
+    void* _rdma_am;
     
     // Use method->full_name() as key
     MethodMap _method_map;
@@ -715,6 +716,9 @@ friend class Controller;
     //        mechanism
     mutable bvar::Adder<int64_t> _nerror;
     mutable int32_t BAIDU_CACHELINE_ALIGNMENT _concurrency;
+
+    // if the rdma protocol is allowed
+    bool _rdma_enabled;
 };
 
 // Get the data attached to current searching thread. The data is created by

@@ -20,6 +20,7 @@ endif()
 option(BRPC_WITH_GLOG "With glog" OFF)
 option(DEBUG "Print debug logs" OFF)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
+option(WITH_RDMA "With RDMA" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 
 set(WITH_GLOG_VAL "0")
@@ -137,6 +138,13 @@ set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lrt -lssl -lcrypt
 if(BRPC_WITH_GLOG)
     set(DYNAMIC_LIB ${DYNAMIC_LIB} ${GLOG_LIB})
     set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lglog")
+endif()
+
+# for rdma extension
+if(WITH_RDMA)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBRPC_RDMA")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DBRPC_RDMA")
+    link_libraries("-libverbs -lrdmacm -lnl")
 endif()
 
 # for *.so
@@ -293,7 +301,9 @@ set(PROTO_FILES idl_options.proto
                 brpc/errno.proto
                 brpc/nshead_meta.proto
                 brpc/options.proto
+                brpc/rdma/rdma.proto
                 brpc/policy/baidu_rpc_meta.proto
+                brpc/policy/rdma_meta.proto
                 brpc/policy/hulu_pbrpc_meta.proto
                 brpc/policy/public_pbrpc_meta.proto
                 brpc/policy/sofa_pbrpc_meta.proto

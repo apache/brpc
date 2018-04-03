@@ -23,6 +23,10 @@
 
 namespace brpc {
 
+namespace rdma {
+class RdmaEndpoint;
+}
+
 // Messages returned by Parse handlers must extend this class
 class InputMessageBase : public Destroyable {
 protected:
@@ -53,6 +57,7 @@ private:
 friend class InputMessenger;
 friend void* ProcessInputMessage(void*);
 friend class Stream;
+friend class rdma::RdmaEndpoint;
     int64_t _received_us;
     int64_t _base_real_us;
     SocketUniquePtr _socket;

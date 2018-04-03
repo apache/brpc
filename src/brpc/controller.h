@@ -65,6 +65,11 @@ namespace schan {
 class Sender;
 class SubDone;
 }
+namespace rdma {
+    class RdmaAcceptor;
+    class RdmaConnServiceImpl;
+    class RdmaEndpoint;
+}
 
 // For serializing/parsing from idl services.
 struct IdlNames {
@@ -100,6 +105,9 @@ friend class ServerPrivateAccessor;
 friend class SelectiveChannel;
 friend class schan::Sender;
 friend class schan::SubDone;
+friend class rdma::RdmaAcceptor;
+friend class rdma::RdmaConnServiceImpl;
+friend class rdma::RdmaEndpoint;
 friend class policy::OnServerStreamCreated;
 friend int StreamCreate(StreamId*, Controller&, const StreamOptions*);
 friend int StreamAccept(StreamId*, Controller&, const StreamOptions*);
@@ -122,6 +130,7 @@ friend void policy::ProcessMongoRequest(InputMessageBase*);
     static const uint32_t FLAGS_ALLOW_DONE_TO_RUN_IN_PLACE = (1 << 12);
     static const uint32_t FLAGS_USED_BY_RPC = (1 << 13);
     static const uint32_t FLAGS_REQUEST_WITH_AUTH = (1 << 15);
+    static const uint32_t FLAGS_ENABLE_RDMA = (1 << 16);
     
 public:
     Controller();

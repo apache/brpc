@@ -25,10 +25,15 @@
 
 namespace brpc {
 
+namespace rdma {
+class RdmaEventDispatcher;
+}
+
 // Dispatch edge-triggered events of file descriptors to consumers
 // running in separate bthreads.
 class EventDispatcher {
 friend class Socket;
+friend class rdma::RdmaEventDispatcher;
 public:
     EventDispatcher();
     
@@ -76,7 +81,7 @@ private:
     static void* RunThis(void* arg);
 
     // Thread entry.
-    void Run();
+    virtual void Run();
 
     // Remove the file descriptor `fd' from epoll.
     int RemoveConsumer(int fd);

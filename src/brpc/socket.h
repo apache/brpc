@@ -47,6 +47,11 @@ namespace schan {
 class ChannelBalancer;
 }
 
+namespace rdma {
+class RdmaEndpoint;
+class RdmaAcceptor;
+}
+
 class Socket;
 class AuthContext;
 class EventDispatcher;
@@ -162,6 +167,8 @@ struct SocketOptions {
     Destroyable* initial_parsing_context;
 };
 
+SocketMessage* const DUMMY_USER_MESSAGE = (SocketMessage*)0x1;
+
 // Abstractions on reading from and writing into file descriptors.
 // NOTE: accessed by multiple threads(frequently), align it by cacheline.
 class BAIDU_CACHELINE_ALIGNMENT/*note*/ Socket {
@@ -175,9 +182,58 @@ friend class Controller;
 friend class policy::ConsistentHashingLoadBalancer;
 friend class policy::RtmpContext;
 friend class schan::ChannelBalancer;
+friend class rdma::RdmaAcceptor;
+friend class rdma::RdmaEndpoint;
     class SharedPart;
     struct Forbidden {};
-    struct WriteRequest;
+
+    struct BAIDU_CACHELINE_ALIGNMENT WriteRequest {
+        static WriteRequest* const UNCONNECTED;
+        butil::IOBuf data;
+        WriteRequest* next;
+        bthread_id_t id_wait;
+        Socket* socket;
+        uint32_t pipelined_count() const {
+            return (_pc_and_udmsg >> 48) & 0x7FFF;
+        }
+        bool is_with_auth() const {
+            return _pc_and_udmsg & 0x8000000000000000ULL;
+        }
+        void clear_pipelined_count_and_with_auth() {
+            _pc_and_udmsg &= 0xFFFFFFFFFFFFULL;
+        }
+        SocketMessage* user_message() const {
+            return (SocketMessage*)(_pc_and_udmsg & 0xFFFFFFFFFFFFULL);
+        }
+        void clear_user_message() {
+            _pc_and_udmsg &= 0xFFFF000000000000ULL;
+        }
+        void set_pipelined_count_and_user_message(
+                uint32_t pc, SocketMessage* msg, bool with_auth) {
+            if (with_auth) {
+                pc |= (1 << 15);
+            }
+            _pc_and_udmsg = ((uint64_t)pc << 48) | (uint64_t)(uintptr_t)msg;
+        }
+        bool reset_pipelined_count_and_user_message() {
+            SocketMessage* msg = user_message();
+            if (msg) {
+                if (msg != DUMMY_USER_MESSAGE) {
+                    butil::IOBuf dummy_buf;
+                    // We don't care about the return value since the request
+                    // is already failed.
+                    (void)msg->AppendAndDestroySelf(&dummy_buf, NULL);
+                }
+                set_pipelined_count_and_user_message(0, NULL, false);
+                return true;
+            }
+            return false;
+        }
+        // Register pipelined_count and user_message
+        void Setup(Socket* s);
+        private:
+        uint64_t _pc_and_udmsg;
+    };
 
 public:
     const static int STREAM_FAKE_FD = INT_MAX;
@@ -225,10 +281,18 @@ public:
         // Default: false
         bool ignore_eovercrowded;
 
+        // write into rdma channel or not
+        bool use_rdma;
+
+        // used for rdma_endpoint
+        void* rdma_arg;
+
         WriteOptions()
             : id_wait(INVALID_BTHREAD_ID), abstime(NULL)
             , pipelined_count(0), with_auth(false)
-            , ignore_eovercrowded(false) {}
+            , ignore_eovercrowded(false)
+            , use_rdma(false)
+            , rdma_arg(NULL) {}
     };
     int Write(butil::IOBuf *msg, const WriteOptions* options = NULL);
     
@@ -254,6 +318,9 @@ public:
 
     // `user' parameter passed to Create().
     SocketUser* user() const { return _user; }
+
+    // RdmaEndpoint of this Socket
+    rdma::RdmaEndpoint* rdma_ep() { return _rdma_ep; }
 
     // `conn' parameter passed to Create()
     void set_conn(SocketConnection* conn) { _conn = conn; }
@@ -584,6 +651,9 @@ friend void DereferenceSocket(Socket*);
 
     void CancelUnwrittenBytes(size_t bytes);
 
+    // Release rdma resource
+    void ReleaseRdmaResource();
+
 private:
     // unsigned 32-bit version + signed 32-bit referenced-count.
     // Meaning of version:
@@ -738,6 +808,9 @@ private:
 
     butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
+
+    // rdma endpoint
+    rdma::RdmaEndpoint* _rdma_ep;
 };
 
 } // namespace brpc
