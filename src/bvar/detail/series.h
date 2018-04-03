@@ -41,7 +41,7 @@ struct ProbablyAddtition {
     ProbablyAddtition(const Op& op) {
         T res(32);
         call_op_returning_void(op, res, T(64));
-        _ok = (res == 96);  // works for integral/floating point.
+        _ok = (res == T(96));  // works for integral/floating point.
     }
     operator bool() const { return _ok; }
 private:

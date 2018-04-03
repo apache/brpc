@@ -41,6 +41,11 @@
 #include "brpc/progressive_attachment.h"       // ProgressiveAttachment
 #include "brpc/progressive_reader.h"           // ProgressiveReader
 
+// EAUTH is defined in MAC
+#ifndef EAUTH
+#define EAUTH ERPCAUTH
+#endif
+
 namespace brpc {
 class Span;
 class Server;

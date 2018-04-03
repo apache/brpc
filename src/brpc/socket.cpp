@@ -16,7 +16,7 @@
 //          Rujie Jiang (jiangrujie@baidu.com)
 //          Zhangyi Chen (chenzhangyi01@baidu.com)
 
-#include <sys/epoll.h>                           // EPOLLIN
+#include "butil/compat.h"                        // OS_MACOSX
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <netinet/tcp.h>                         // getsockopt
@@ -1727,7 +1727,7 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
                 LOG(WARNING) << "Fail to write into ssl_fd=" << fd()
                              << ": " << SSLError(e);
             }
-            errno = EBADFD;
+            errno = ESSL;
             break;
         }
         }
@@ -1806,7 +1806,7 @@ ssize_t Socket::DoRead(size_t size_hint) {
             } else if (e != 0) {
                 LOG(WARNING) << "Fail to read from ssl_fd=" << fd()
                              << ": " << SSLError(e);
-                errno = EBADFD;
+                errno = ESSL;
             } else {
                 // System error with corresponding errno set
             }
@@ -2057,7 +2057,26 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
        << "\nrecycle_flag=" << ptr->_recycle_flag.load(butil::memory_order_relaxed)
        << "\ncid=" << ptr->_correlation_id
        << "\nwrite_head=" << ptr->_write_head.load(butil::memory_order_relaxed);
-    // Print tcp_info, this is linux-specific
+#if defined(OS_MACOSX)
+    struct tcp_connection_info ti;
+    socklen_t len = sizeof(ti);
+    if (fd >= 0 && getsockopt(fd, IPPROTO_TCP, TCP_CONNECTION_INFO, &ti, &len) == 0) {
+        os << "\ntcpi_state=" << (uint32_t)ti.tcpi_state
+           << "\ntcpi_snd_wscale=" << (uint32_t)ti.tcpi_snd_wscale
+           << "\ntcpi_rcv_wscale=" << (uint32_t)ti.tcpi_rcv_wscale
+           << "\ntcpi_options=" << (uint32_t)ti.tcpi_options
+           << "\ntcpi_flags=" << (uint32_t)ti.tcpi_flags
+           << "\ntcpi_rto=" << ti.tcpi_rto
+           << "\ntcpi_maxseg=" << ti.tcpi_maxseg
+           << "\ntcpi_snd_ssthresh=" << ti.tcpi_snd_ssthresh
+           << "\ntcpi_snd_cwnd=" << ti.tcpi_snd_cwnd
+           << "\ntcpi_snd_wnd=" << ti.tcpi_snd_wnd
+           << "\ntcpi_snd_sbbytes=" << ti.tcpi_snd_sbbytes
+           << "\ntcpi_rcv_wnd=" << ti.tcpi_rcv_wnd
+           << "\ntcpi_srtt=" << ti.tcpi_srtt
+           << "\ntcpi_rttvar=" << ti.tcpi_rttvar;
+    }
+#elif defined(OS_LINUX)
     struct tcp_info ti;
     socklen_t len = sizeof(ti);
     if (fd >= 0 && getsockopt(fd, SOL_TCP, TCP_INFO, &ti, &len) == 0) {
@@ -2084,13 +2103,14 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
            << "\ntcpi_last_ack_recv=" << ti.tcpi_last_ack_recv
            << "\ntcpi_pmtu=" << ti.tcpi_pmtu
            << "\ntcpi_rcv_ssthresh=" << ti.tcpi_rcv_ssthresh
-           << "\ntcpi_rtt=" << ti.tcpi_rtt
+           << "\ntcpi_rtt=" << ti.tcpi_rtt  // smoothed
            << "\ntcpi_rttvar=" << ti.tcpi_rttvar
            << "\ntcpi_snd_ssthresh=" << ti.tcpi_snd_ssthresh
            << "\ntcpi_snd_cwnd=" << ti.tcpi_snd_cwnd
            << "\ntcpi_advmss=" << ti.tcpi_advmss
            << "\ntcpi_reordering=" << ti.tcpi_reordering;
     }
+#endif
 }
 
 int Socket::CheckHealth() {

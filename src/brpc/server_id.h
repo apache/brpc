@@ -20,10 +20,10 @@
 // To brpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
 
+#include <vector>
 #include "butil/containers/hash_tables.h"   // hash
 #include "butil/containers/flat_map.h"
 #include "brpc/socket_id.h"
-
 
 namespace brpc {
 

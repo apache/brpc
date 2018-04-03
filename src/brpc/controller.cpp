@@ -21,6 +21,7 @@
 #include <google/protobuf/descriptor.h>
 #include <gflags/gflags.h>
 #include "bthread/bthread.h"
+#include "butil/build_config.h"    // OS_MACOSX
 #include "butil/string_printf.h"
 #include "butil/logging.h"
 #include "butil/time.h"
@@ -53,7 +54,7 @@
 BAIDU_REGISTER_ERRNO(brpc::ENOSERVICE, "No such service");
 BAIDU_REGISTER_ERRNO(brpc::ENOMETHOD, "No such method");
 BAIDU_REGISTER_ERRNO(brpc::EREQUEST, "Bad request");
-BAIDU_REGISTER_ERRNO(brpc::EAUTH, "Authentication failed");
+BAIDU_REGISTER_ERRNO(brpc::ERPCAUTH, "Authentication failed");
 BAIDU_REGISTER_ERRNO(brpc::ETOOMANYFAILS, "Too many sub channels failed");
 BAIDU_REGISTER_ERRNO(brpc::EPCHANFINISH, "ParallelChannel finished");
 BAIDU_REGISTER_ERRNO(brpc::EBACKUPREQUEST, "Sending backup request");
@@ -75,6 +76,8 @@ BAIDU_REGISTER_ERRNO(brpc::EITP, "Bad Itp response");
 
 
 namespace brpc {
+
+DEFINE_bool(graceful_quit_on_sigterm, false, "Register SIGTERM handle func to quit graceful");
 
 const IdlNames idl_single_req_single_res = { "req", "res" };
 const IdlNames idl_single_req_multi_res = { "req", "" };
@@ -1265,7 +1268,7 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
     if (!FailedInline()) {
         if (Socket::Address(_request_stream, &ptr) != 0) {
             if (!FailedInline()) {
-                SetFailed(EREQUEST, "Request stream=%lu was closed before responded",
+                SetFailed(EREQUEST, "Request stream=%" PRIu64 " was closed before responded",
                                      _request_stream);
             }
         } else if (_remote_stream_settings == NULL) {
@@ -1366,26 +1369,53 @@ bool Controller::is_ssl() const {
     return s ? (s->ssl_state() == SSL_CONNECTED) : false;
 }
 
+#if defined(OS_MACOSX)
+typedef sig_t SignalHandler;
+#else
+typedef sighandler_t SignalHandler;
+#endif
+
 static volatile bool s_signal_quit = false;
-static sighandler_t s_prev_handler = NULL;
+static SignalHandler s_prev_sigint_handler = NULL;
+static SignalHandler s_prev_sigterm_handler = NULL;
+
 static void quit_handler(int signo) {
-    s_signal_quit = true; 
-    if (s_prev_handler) {
-        s_prev_handler(signo);
+    s_signal_quit = true;
+    if (SIGINT == signo && s_prev_sigint_handler) {
+        s_prev_sigint_handler(signo);
+    }
+    if (SIGTERM == signo && s_prev_sigterm_handler) {
+        s_prev_sigterm_handler(signo);
     }
 }
+
 static pthread_once_t register_quit_signal_once = PTHREAD_ONCE_INIT;
+
 static void RegisterQuitSignalOrDie() {
     // Not thread-safe.
-    const sighandler_t prev = signal(SIGINT, quit_handler);
-    if (prev != SIG_DFL && 
+    SignalHandler prev = signal(SIGINT, quit_handler);
+    if (prev != SIG_DFL &&
         prev != SIG_IGN) { // shell may install SIGINT of background jobs with SIG_IGN
         if (prev == SIG_ERR) {
             LOG(ERROR) << "Fail to register SIGINT, abort";
             abort();
-        } else { 
-            s_prev_handler = prev;
+        } else {
+            s_prev_sigint_handler = prev;
             LOG(WARNING) << "SIGINT was installed with " << prev;
+        }
+    }
+
+    if (FLAGS_graceful_quit_on_sigterm) {
+        prev = signal(SIGTERM, quit_handler);
+        if (prev != SIG_DFL &&
+            prev != SIG_IGN) { // shell may install SIGTERM of background jobs with SIG_IGN
+            if (prev == SIG_ERR) {
+                LOG(ERROR) << "Fail to register SIGTERM, abort";
+                abort();
+            } else {
+                s_prev_sigterm_handler = prev;
+                LOG(WARNING) << "SIGTERM was installed with " << prev;
+            }
         }
     }
 }

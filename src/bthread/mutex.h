@@ -25,13 +25,13 @@
 
 __BEGIN_DECLS
 extern int bthread_mutex_init(bthread_mutex_t* __restrict mutex,
-                              const bthread_mutexattr_t* __restrict mutex_attr) __THROW;
-extern int bthread_mutex_destroy(bthread_mutex_t* mutex) __THROW;
-extern int bthread_mutex_trylock(bthread_mutex_t* mutex) __THROW;
-extern int bthread_mutex_lock(bthread_mutex_t* mutex) __THROW;
+                              const bthread_mutexattr_t* __restrict mutex_attr);
+extern int bthread_mutex_destroy(bthread_mutex_t* mutex);
+extern int bthread_mutex_trylock(bthread_mutex_t* mutex);
+extern int bthread_mutex_lock(bthread_mutex_t* mutex);
 extern int bthread_mutex_timedlock(bthread_mutex_t* __restrict mutex,
-                                   const struct timespec* __restrict abstime) __THROW;
-extern int bthread_mutex_unlock(bthread_mutex_t* mutex) __THROW;
+                                   const struct timespec* __restrict abstime);
+extern int bthread_mutex_unlock(bthread_mutex_t* mutex);
 __END_DECLS
 
 namespace bthread {

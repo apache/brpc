@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.10)
 project(brpc C CXX)
 
+set(BRPC_VERSION 0.9.0)
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # require at least gcc 4.8
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.8)
@@ -15,19 +17,21 @@ else()
     message(WARNING "You are using an unsupported compiler! Compilation has only been tested with Clang and GCC.")
 endif()
 
-option(WITH_GLOG "With glog" OFF)
+option(BRPC_WITH_GLOG "With glog" OFF)
 option(DEBUG "Print debug logs" OFF)
-option(WITH_DEBUG_SYMBOLS "With debug symbols" OFF)
+option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 
 set(WITH_GLOG_VAL "0")
-if(WITH_GLOG)
+if(BRPC_WITH_GLOG)
     set(WITH_GLOG_VAL "1")
 endif()
 
 if(WITH_DEBUG_SYMBOLS)
     set(DEBUG_SYMBOL "-g")
 endif()
+
+include(GNUInstallDirs)
 
 configure_file(${CMAKE_SOURCE_DIR}/config.h.in ${CMAKE_SOURCE_DIR}/src/butil/config.h @ONLY)
 
@@ -97,7 +101,7 @@ if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
     message(FATAL_ERROR "Fail to find leveldb")
 endif()
 
-if(WITH_GLOG)
+if(BRPC_WITH_GLOG)
     find_path(GLOG_INCLUDE_PATH NAMES glog/logging.h)
     find_library(GLOG_LIB NAMES glog)
     if((NOT GLOG_INCLUDE_PATH) OR (NOT GLOG_LIB))
@@ -129,6 +133,11 @@ set(DYNAMIC_LIB
     dl
     z
     )
+set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lrt -lssl -lcrypto -ldl -lz")
+if(BRPC_WITH_GLOG)
+    set(DYNAMIC_LIB ${DYNAMIC_LIB} ${GLOG_LIB})
+    set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lglog")
+endif()
 
 # for *.so
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
@@ -177,7 +186,6 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/files/scoped_file.cc
     ${CMAKE_SOURCE_DIR}/src/butil/files/scoped_temp_dir.cc
     ${CMAKE_SOURCE_DIR}/src/butil/file_util.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/file_util_linux.cc
     ${CMAKE_SOURCE_DIR}/src/butil/file_util_posix.cc
     ${CMAKE_SOURCE_DIR}/src/butil/guid.cc
     ${CMAKE_SOURCE_DIR}/src/butil/guid_posix.cc
@@ -215,7 +223,6 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/synchronization/condition_variable_posix.cc
     ${CMAKE_SOURCE_DIR}/src/butil/synchronization/waitable_event_posix.cc
     ${CMAKE_SOURCE_DIR}/src/butil/threading/non_thread_safe_impl.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/threading/platform_thread_linux.cc
     ${CMAKE_SOURCE_DIR}/src/butil/threading/platform_thread_posix.cc
     ${CMAKE_SOURCE_DIR}/src/butil/threading/simple_thread.cc
     ${CMAKE_SOURCE_DIR}/src/butil/threading/thread_checker_impl.cc
@@ -253,6 +260,16 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/popen.cpp
     )
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(BUTIL_SOURCES ${BUTIL_SOURCES}
+        ${CMAKE_SOURCE_DIR}/src/butil/file_util_linux.cc
+        ${CMAKE_SOURCE_DIR}/src/butil/threading/platform_thread_linux.cc)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(BUTIL_SOURCES ${BUTIL_SOURCES}
+        ${CMAKE_SOURCE_DIR}/src/butil/mac/bundle_locations.mm
+        ${CMAKE_SOURCE_DIR}/src/butil/mac/foundation_util.mm)
+endif()
+
 file(GLOB_RECURSE BVAR_SOURCES "${CMAKE_SOURCE_DIR}/src/bvar/*.cpp")
 file(GLOB_RECURSE BTHREAD_SOURCES "${CMAKE_SOURCE_DIR}/src/bthread/*.cpp")
 file(GLOB_RECURSE JSON2PB_SOURCES "${CMAKE_SOURCE_DIR}/src/json2pb/*.cpp")
@@ -265,36 +282,31 @@ set(MCPACK2PB_SOURCES
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/serializer.cpp
     )
 
-file(GLOB PROTOS "${CMAKE_SOURCE_DIR}/src/*.proto")
-list(APPEND PROTO_FLAGS -I${CMAKE_CURRENT_BINARY_DIR})
-foreach(PROTO ${PROTOS})
-    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/${PROTO_WE}.pb.cc")
-    execute_process(
-        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src ${PROTO}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
-endforeach()
-
-file(GLOB BRPC_PROTOS "src/brpc/*.proto")
-foreach(PROTO ${BRPC_PROTOS})
-    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/${PROTO_WE}.pb.cc")
-    execute_process(
-        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/ ${PROTO}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
-endforeach()
-
-file(GLOB BRPC_POLICY_PROTOS "src/brpc/policy/*.proto")
-foreach(PROTO ${BRPC_POLICY_PROTOS})
-    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/policy/${PROTO_WE}.pb.cc")
-    execute_process(
-        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/policy ${PROTO}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
-endforeach()
+include(CompileProto)
+set(PROTO_FILES idl_options.proto
+                brpc/rtmp.proto
+                brpc/rpc_dump.proto
+                brpc/get_favicon.proto
+                brpc/span.proto
+                brpc/builtin_service.proto
+                brpc/get_js.proto
+                brpc/errno.proto
+                brpc/nshead_meta.proto
+                brpc/options.proto
+                brpc/policy/baidu_rpc_meta.proto
+                brpc/policy/hulu_pbrpc_meta.proto
+                brpc/policy/public_pbrpc_meta.proto
+                brpc/policy/sofa_pbrpc_meta.proto
+                brpc/policy/mongo.proto
+                brpc/trackme.proto
+                brpc/streaming_rpc_meta.proto)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/output/include/brpc)
+set(PROTOC_FLAGS ${PROTOC_FLAGS} -I${PROTOBUF_INCLUDE_DIR})
+compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_BINARY_DIR} 
+                                    ${CMAKE_BINARY_DIR}/output/include
+                                    ${CMAKE_SOURCE_DIR}/src 
+                                    "${PROTO_FILES}")
+add_library(PROTO_LIB OBJECT ${PROTO_SRCS} ${PROTO_HDRS})
 
 set(SOURCES
     ${BVAR_SOURCES}
@@ -302,16 +314,14 @@ set(SOURCES
     ${JSON2PB_SOURCES}
     ${MCPACK2PB_SOURCES}
     ${BRPC_SOURCES}
-    ${PROTO_SRCS}
     )
 
 add_subdirectory(src)
 if(BUILD_UNIT_TESTS)
     add_subdirectory(test)
 endif()
+add_subdirectory(tools)
 
-file(COPY ${CMAKE_CURRENT_BINARY_DIR}/idl_options.pb.h
-     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include)
 file(COPY ${CMAKE_CURRENT_BINARY_DIR}/brpc/
         DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include/brpc/
         FILES_MATCHING 
@@ -324,9 +334,13 @@ file(COPY ${CMAKE_SOURCE_DIR}/src/
         PATTERN "*.h"
         PATTERN "*.hpp"
         )
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/
-        DESTINATION include
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/output/include/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         FILES_MATCHING
         PATTERN "*.h"
         PATTERN "*.hpp"
         )
+
+# Install pkgconfig
+configure_file(cmake/brpc.pc.in ${CMAKE_BINARY_DIR}/brpc.pc @ONLY)
+install(FILES ${CMAKE_BINARY_DIR}/brpc.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)

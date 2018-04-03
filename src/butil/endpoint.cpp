@@ -15,6 +15,7 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
+#include "butil/build_config.h"                // OS_MACOSX
 #include <arpa/inet.h>                         // inet_pton, inet_ntop
 #include <netdb.h>                             // gethostbyname_r
 #include <unistd.h>                            // gethostname
@@ -111,6 +112,15 @@ int hostname2ip(const char* hostname, ip_t* ip) {
         for (; isspace(*hostname); ++hostname);
     }
 
+#if defined(OS_MACOSX)
+    // gethostbyname on MAC is thread-safe (with current usage) since the
+    // returned hostent is TLS. Check following link for the ref:
+    // https://lists.apple.com/archives/darwin-dev/2006/May/msg00008.html
+    struct hostent* result = gethostbyname(hostname);
+    if (result == NULL) {
+        return -1;
+    }
+#else
     char aux_buf[1024];
     int error = 0;
     struct hostent ent;
@@ -119,6 +129,7 @@ int hostname2ip(const char* hostname, ip_t* ip) {
                         &result, &error) != 0 || result == NULL) {
         return -1; 
     }
+#endif // defined(OS_MACOSX)
     // Only fetch the first address here
     bcopy((char*)result->h_addr, (char*)ip, result->h_length);
     return 0;

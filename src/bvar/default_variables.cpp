@@ -47,18 +47,18 @@ struct ProcStat {
     int session;
     int tty_nr;
     int tpgid;
-    uint32_t flags;
-    uint64_t minflt;
-    uint64_t cminflt;
-    uint64_t majflt;
-    uint64_t cmajflt;
-    uint64_t utime;
-    uint64_t stime;
-    uint64_t cutime;
-    uint64_t cstime;
-    int64_t priority;
-    int64_t nice;
-    int64_t num_threads;
+    unsigned flags;
+    unsigned long minflt;
+    unsigned long cminflt;
+    unsigned long majflt;
+    unsigned long cmajflt;
+    unsigned long utime;
+    unsigned long stime;
+    unsigned long cutime;
+    unsigned long cstime;
+    long priority;
+    long nice;
+    long num_threads;
 };
 
 // Read status from /proc/self/stat. Information from `man proc' is out of date,
@@ -159,13 +159,13 @@ public:
 // ==================================================
 
 struct ProcMemory {
-    int64_t size;      // total program size
-    int64_t resident;  // resident set size
-    int64_t share;     // shared pages
-    int64_t trs;       // text (code)
-    int64_t drs;       // data/stack
-    int64_t lrs;       // library
-    int64_t dt;        // dirty pages
+    long size;      // total program size
+    long resident;  // resident set size
+    long share;     // shared pages
+    long trs;       // text (code)
+    long drs;       // data/stack
+    long lrs;       // library
+    long dt;        // dirty pages
 };
 
 static bool read_proc_memory(ProcMemory &m) {
@@ -558,7 +558,7 @@ PassiveStatus<std::string> g_username(
     "process_username", get_username, NULL);
 
 BVAR_DEFINE_PROC_STAT_FIELD(minflt);
-PerSecond<PassiveStatus<uint64_t> > g_minflt_second(
+PerSecond<PassiveStatus<unsigned long> > g_minflt_second(
     "process_faults_minor_second", &g_minflt);
 BVAR_DEFINE_PROC_STAT_FIELD2(majflt, "process_faults_major");
 

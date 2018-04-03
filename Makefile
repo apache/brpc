@@ -6,7 +6,7 @@ include config.mk
 # 2. Added -D__const__= : Avoid over-optimizations of TLS variables by GCC>=4.8
 # 3. Removed -Werror: Not block compilation for non-vital warnings, especially when the
 #    code is tested on newer systems. If the code is used in production, add -Werror back
-CPPFLAGS+=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\"$(shell git rev-parse --short HEAD)\"
+CPPFLAGS+=-DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DNDEBUG -DBRPC_REVISION=\"$(shell git rev-parse --short HEAD)\"
 CXXFLAGS=$(CPPFLAGS) -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer -std=c++0x
 CFLAGS=$(CPPFLAGS) -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer
 DEBUG_CXXFLAGS = $(filter-out -DNDEBUG,$(CXXFLAGS)) -DUNIT_TEST -DBVAR_NOT_LINK_DEFAULT_VARIABLES
@@ -67,7 +67,6 @@ BUTIL_SOURCES = \
     src/butil/files/scoped_file.cc \
     src/butil/files/scoped_temp_dir.cc \
     src/butil/file_util.cc \
-    src/butil/file_util_linux.cc \
     src/butil/file_util_posix.cc \
     src/butil/guid.cc \
     src/butil/guid_posix.cc \
@@ -105,7 +104,6 @@ BUTIL_SOURCES = \
     src/butil/synchronization/condition_variable_posix.cc \
     src/butil/synchronization/waitable_event_posix.cc \
     src/butil/threading/non_thread_safe_impl.cc \
-    src/butil/threading/platform_thread_linux.cc \
     src/butil/threading/platform_thread_posix.cc \
     src/butil/threading/simple_thread.cc \
     src/butil/threading/thread_checker_impl.cc \
@@ -141,6 +139,15 @@ BUTIL_SOURCES = \
     src/butil/containers/case_ignored_flat_map.cpp \
     src/butil/iobuf.cpp \
     src/butil/popen.cpp
+
+ifeq ($(SYSTEM), Linux)
+    BUTIL_SOURCES += src/butil/file_util_linux.cc \
+		src/butil/threading/platform_thread_linux.cc
+endif
+ifeq ($(SYSTEM), Darwin)
+    BUTIL_SOURCES += src/butil/mac/bundle_locations.mm \
+		src/butil/mac/foundation_util.mm
+endif
 
 BUTIL_OBJS = $(addsuffix .o, $(basename $(BUTIL_SOURCES)))
 
@@ -250,6 +257,14 @@ output/bin:protoc-gen-mcpack
 	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.dbg.o:%.cc
+	@echo "Compiling $@"
+	@$(CXX) -c $(HDRPATHS) $(DEBUG_CXXFLAGS) $< -o $@
+
+%.o:%.mm
+	@echo "Compiling $@"
+	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+
+%.dbg.o:%.mm
 	@echo "Compiling $@"
 	@$(CXX) -c $(HDRPATHS) $(DEBUG_CXXFLAGS) $< -o $@
 

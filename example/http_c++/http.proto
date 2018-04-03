@@ -3,12 +3,8 @@ package example;
 
 option cc_generic_services = true;
 
-message HttpRequest { 
-  optional bytes message = 1;
-};
-message HttpResponse {
-  optional bytes message = 1;
-};
+message HttpRequest {};
+message HttpResponse {};
 
 service HttpService {
   rpc Echo(HttpRequest) returns (HttpResponse);

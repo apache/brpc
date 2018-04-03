@@ -3,7 +3,6 @@
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <fstream>
@@ -70,7 +69,7 @@ public:
             bthread_usleep(req->sleep_us());
         }
         char buf[32];
-        snprintf(buf, sizeof(buf), "%lx", cntl->trace_id());
+        snprintf(buf, sizeof(buf), "%" PRIu64, cntl->trace_id());
         res->set_message(buf);
     }
 };
@@ -117,7 +116,7 @@ void CheckFieldInContent(const brpc::Controller& cntl,
 void CheckAnnotation(const brpc::Controller& cntl, int64_t expect) {
     const std::string& content = cntl.response_attachment().to_string();
     std::string expect_str;
-    butil::string_printf(&expect_str, "MyAnnotation: %ld", expect);
+    butil::string_printf(&expect_str, "MyAnnotation: %" PRId64, expect);
     std::size_t pos = content.find(expect_str);
     ASSERT_TRUE(pos != std::string::npos) << expect;
 }
@@ -453,7 +452,7 @@ protected:
             ClosureChecker done;
             brpc::Controller cntl;
             SetUpController(&cntl, use_html);
-            snprintf(querystr_buf, sizeof(querystr_buf), "%ld", log_id);
+            snprintf(querystr_buf, sizeof(querystr_buf), "%" PRId64, log_id);
             cntl.http_request().uri()
                     .SetQuery(brpc::LOG_ID_STR, querystr_buf);
             service.default_method(&cntl, &req, &res, &done);

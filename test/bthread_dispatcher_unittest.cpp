@@ -2,7 +2,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#include <sys/epoll.h>
+#include <sys/uio.h>               // writev
+#include "butil/compat.h"
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
@@ -181,7 +182,7 @@ TEST(DispatcherTest, dispatch_tasks) {
     bthread_t eth[NEPOLL];
     EpollMeta* em[NEPOLL];
     int fds[2 * NCLIENT];
-    bthread_t cth[NCLIENT];
+    pthread_t cth[NCLIENT];
     ClientMeta* cm[NCLIENT];
     SocketMeta* sm[NCLIENT];
 
@@ -203,7 +204,7 @@ TEST(DispatcherTest, dispatch_tasks) {
         ASSERT_EQ(0, butil::make_non_blocking(m->fd));
         sm[i] = m;
 
-        epoll_event evt = { EPOLLIN | EPOLLET, { m } };
+        epoll_event evt = { (uint32_t)(EPOLLIN | EPOLLET), { m } };
         ASSERT_EQ(0, epoll_ctl(m->epfd, EPOLL_CTL_ADD, m->fd, &evt));
 
         cm[i] = new ClientMeta;

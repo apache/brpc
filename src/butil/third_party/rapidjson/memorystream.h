@@ -17,7 +17,7 @@
 
 #include "rapidjson.h"
 
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 
 //! Represents an in-memory input byte stream.
 /*!
@@ -56,6 +56,6 @@ struct MemoryStream {
     size_t size_;       //!< Size of the stream.
 };
 
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 #endif // RAPIDJSON_MEMORYBUFFER_H_

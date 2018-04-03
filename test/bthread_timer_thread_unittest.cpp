@@ -68,7 +68,7 @@ public:
     {
         ASSERT_TRUE(!_run_times.empty());
         long diff = timespec_diff_us(_run_times[0], expect_run_time);
-        EXPECT_LE(labs(diff), 10000);
+        EXPECT_LE(labs(diff), 50000);
     }
     
     void expect_not_run() {

@@ -225,13 +225,28 @@ void ConnectionsService::PrintConnections(
             if (rttfd < 0 && first_sub != NULL) {
                 rttfd = first_sub->fd();
             }
-            // get rtt, this is linux-specific
+
+            bool got_rtt = false;
+            uint32_t srtt = 0;
+            uint32_t rtt_var = 0;
+            // get rtt
+#if defined(OS_LINUX)
             struct tcp_info ti;
             socklen_t len = sizeof(ti);
-            char rtt_display[32];
             if (0 == getsockopt(rttfd, SOL_TCP, TCP_INFO, &ti, &len)) {
+                got_rtt = true;
+            }
+#elif defined(OS_MACOSX)
+            struct tcp_connection_info ti;
+            socklen_t len = sizeof(ti);
+            if (0 == getsockopt(rttfd, IPPROTO_TCP, TCP_CONNECTION_INFO, &ti, &len)) {
+                got_rtt = true;
+            }
+#endif
+            char rtt_display[32];
+            if (got_rtt) {
                 snprintf(rtt_display, sizeof(rtt_display), "%.1f/%.1f",
-                         ti.tcpi_rtt / 1000.0, ti.tcpi_rttvar / 1000.0);
+                         srtt / 1000.0, rtt_var / 1000.0);
             } else {
                 strcpy(rtt_display, "-");
             }

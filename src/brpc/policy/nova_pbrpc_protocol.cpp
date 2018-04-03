@@ -76,7 +76,8 @@ void NovaServiceAdaptor::ParseRequestFromIOBuf(
     if (!ParseFromCompressedData(raw_req.body, pb_req, type)) {
         cntl->SetFailed(EREQUEST, "Fail to parse request message, "
                         "CompressType=%s, request_size=%" PRIu64,
-                        CompressTypeToCStr(type), raw_req.body.length());
+                        CompressTypeToCStr(type),
+                        (uint64_t)raw_req.body.length());
     } else {
         cntl->set_request_compress_type(type);
     }

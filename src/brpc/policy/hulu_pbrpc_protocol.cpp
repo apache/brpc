@@ -35,7 +35,7 @@
 #include "brpc/details/usercode_backup_pool.h"
 
 extern "C" {
-void bthread_assign_data(void* data) __THROW;
+void bthread_assign_data(void* data);
 }
 
 
@@ -418,6 +418,12 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
             break;
         }
 
+        if (socket->is_overcrowded()) {
+            cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
+                            butil::endpoint2str(socket->remote_side()).c_str());
+            break;
+        }
+
         if (!server_accessor.AddConcurrency(cntl.get())) {
             cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
                             server->options().max_concurrency);
@@ -591,7 +597,7 @@ void ProcessHuluResponse(InputMessageBase* msg_base) {
                     ERESPONSE, "Fail to parse response message, "
                     "CompressType=%s, response_size=%" PRIu64, 
                     CompressTypeToCStr(res_cmp_type),
-                    msg->payload.length());
+                    (uint64_t)msg->payload.length());
             }
         } // else silently ignore the response.
         HuluController* hulu_controller = dynamic_cast<HuluController*>(cntl);

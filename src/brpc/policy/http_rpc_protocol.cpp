@@ -39,7 +39,7 @@
 #include "brpc/policy/http_rpc_protocol.h"
 
 extern "C" {
-void bthread_assign_data(void* data) __THROW;
+void bthread_assign_data(void* data);
 }
 
 namespace brpc {
@@ -197,7 +197,7 @@ static void PrintMessage(const butil::IOBuf& inbuf,
     if (!has_content) {
         buf2.append(buf1);
     } else {
-        size_t nskipped = 0;
+        uint64_t nskipped = 0;
         if (buf1.size() > (size_t)FLAGS_http_verbose_max_body_length) {
             nskipped = buf1.size() - (size_t)FLAGS_http_verbose_max_body_length;
             buf1.pop_back(nskipped);
@@ -528,7 +528,7 @@ int ErrorCode2StatusCode(int error_code) {
     case ENOSERVICE:
     case ENOMETHOD:
         return HTTP_STATUS_NOT_FOUND;
-    case EAUTH:
+    case ERPCAUTH:
         return HTTP_STATUS_UNAUTHORIZED;
     case EREQUEST:
     case EINVAL:
@@ -1183,6 +1183,11 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     // NOTE: accesses to builtin services are not counted as part of
     // concurrency, therefore are not limited by ServerOptions.max_concurrency.
     if (!sp->is_builtin_service && !sp->params.is_tabbed) {
+        if (socket->is_overcrowded()) {
+            cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
+                            butil::endpoint2str(socket->remote_side()).c_str());
+            return SendHttpResponse(cntl.release(), server, method_status);
+        }
         if (!server_accessor.AddConcurrency(cntl.get())) {
             cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
                             server->options().max_concurrency);

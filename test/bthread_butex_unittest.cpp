@@ -43,7 +43,7 @@ void* joiner(void* arg) {
             LOG(FATAL) << "fail to join thread_" << th - (bthread_t*)arg;
         }
         long elp = butil::gettimeofday_us() - t1;
-        EXPECT_LE(labs(elp - (th - (bthread_t*)arg + 1) * 100000L), 10000L)
+        EXPECT_LE(labs(elp - (th - (bthread_t*)arg + 1) * 100000L), 15000L)
             << "timeout when joining thread_" << th - (bthread_t*)arg;
         LOG(INFO) << "Joined thread " << *th << " at " << elp << "us ["
                   << bthread_self() << "]";
@@ -208,7 +208,7 @@ TEST(ButexTest, wait_without_stop) {
         ASSERT_EQ(0, bthread_join(th, NULL));
         tm.stop();
         
-        ASSERT_LT(labs(tm.m_elapsed() - WAIT_MSEC), 20);
+        ASSERT_LT(labs(tm.m_elapsed() - WAIT_MSEC), 40);
     }
     bthread::butex_destroy(butex);
 }
@@ -232,7 +232,7 @@ TEST(ButexTest, stop_after_running) {
         ASSERT_EQ(0, bthread_join(th, NULL));
         tm.stop();
 
-        ASSERT_LT(labs(tm.m_elapsed() - SLEEP_MSEC), 10);
+        ASSERT_LT(labs(tm.m_elapsed() - SLEEP_MSEC), 25);
         // ASSERT_TRUE(bthread::get_task_control()->
         //             timer_thread()._idset.empty());
         ASSERT_EQ(EINVAL, bthread_stop(th));

@@ -80,7 +80,7 @@ inline std::ostream& operator<<(std::ostream& os, const timeval& tm) {
 }
 
 extern "C" {
-void* bthread_get_assigned_data() __THROW;
+void* bthread_get_assigned_data();
 }
 
 namespace brpc {
