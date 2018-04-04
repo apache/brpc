@@ -96,6 +96,15 @@ Servers are directly written after list://, separated by comma. For example: "li
 
 Connect all servers under the domain, for example: http://www.baidu.com:80. Note: although Init() for connecting single server(2 parameters) accepts hostname as well, it only connects one server under the domain.
 
+### consul://\<service-name\>
+
+Get a list of services with the specified service name through consul. By default, only services with the status of passing are obtained. 
+
+If consul is not accessible when the brpc service is restarted, the naming service can be automatically downgraded to the file naming service to obtain the service list. The service list file can be generated through the consul-template, which will save the latest downstream service node before the consul is unavailable. When consul recovers, naming service can automatically switch back to consul naming service.
+
+In addition to the first request to the consul, subsequent requests to the consul use long polling. Long polling means that consul returns results only when the service list updates or requests time out. 
+
+
 ### Naming Service Filter
 
 Users can filter servers got from the NamingService before pushing to LoadBalancer.

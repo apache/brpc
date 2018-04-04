@@ -96,6 +96,14 @@ BNS是百度内常用的名字服务，比如bns://rdev.matrix.all，其中"bns"
 
 连接一个域名下所有的机器, 例如http://www.baidu.com:80 ，注意连接单点的Init（两个参数）虽然也可传入域名，但只会连接域名下的一台机器。
 
+### consul://\<service-name\>
+
+通过consul获取服务名称为service-name的服务列表，默认只获取状态为passing的服务。
+
+当brpc服务重启时如果consul不可访问，服务可自动降级到file naming service获取服务列表。服务列表文件可通过consul-template生成，里面会保存consul不可用之前最新的下游服务节点。当consul恢复时可自动恢复到consul naming service。
+
+除了对consul的首次请求，后续对consul的请求都采用long polling的方式，即仅当服务列表更新或请求超时后consul才返回结果。
+
 ### 名字服务过滤器
 
 当名字服务获得机器列表后，可以自定义一个过滤器进行筛选，最后把结果传递给负载均衡：
