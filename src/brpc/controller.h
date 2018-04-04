@@ -434,6 +434,11 @@ public:
     void set_idl_result(int64_t result) { _idl_result = result; }
     int64_t idl_result() const { return _idl_result; }
 
+    void set_thrift_method_name(std::string method_name) {
+        _thrift_method_name = method_name;
+    }
+    std::string thrift_method_name() { return _thrift_method_name; }
+
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request
@@ -664,6 +669,9 @@ private:
     StreamId _response_stream;
     // Defined at both sides
     StreamSettings *_remote_stream_settings;
+
+    // Thrift method name, only used when thrift protocol enabled
+    std::string _thrift_method_name;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be

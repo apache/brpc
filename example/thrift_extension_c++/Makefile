@@ -3,7 +3,7 @@ include $(BRPC_PATH)/config.mk
 # Notes on the flags:
 # 1. Added -fno-omit-frame-pointer: perf/tcmalloc-profiler use frame pointers by default
 # 2. Added -D__const__= : Avoid over-optimizations of TLS variables by GCC>=4.8
-CXXFLAGS = -std=c++0x -g -DDEBUG -D__const__= -pipe -W -Wall -Werror -Wno-unused-parameter -fPIC -fno-omit-frame-pointer
+CXXFLAGS = -std=c++0x -g -DENABLE_THRIFT_FRAMED_PROTOCOL -DDEBUG -D__const__= -pipe -W -Wall -Werror -Wno-unused-parameter -fPIC -fno-omit-frame-pointer
 HDRS+=$(BRPC_PATH)/output/include
 LIBS+=$(BRPC_PATH)/output/lib
 HDRPATHS = $(addprefix -I, $(HDRS))
@@ -13,8 +13,8 @@ SOPATHS=$(addprefix -Wl$(COMMA)-rpath=, $(LIBS))
 
 STATIC_LINKINGS += -lbrpc -lthrift -lgflags
 
-CLIENT_SOURCES = client.cpp thrift_brpc_helper_transport.cpp
-SERVER_SOURCES = server.cpp thrift_brpc_helper_transport.cpp
+CLIENT_SOURCES = client.cpp
+SERVER_SOURCES = server.cpp
 PROTOS = $(wildcard *.proto)
 
 PROTO_OBJS = $(PROTOS:.proto=.pb.o)

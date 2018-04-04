@@ -422,6 +422,7 @@ static void GlobalInitializeOrDieImpl() {
         exit(1);
     }
 
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
     Protocol thrift_binary_protocol = { ParseThriftBinaryMessage,
                                  SerializeThriftBinaryRequest, PackThriftBinaryRequest,
                                  ProcessThriftBinaryRequest, ProcessThriftBinaryResponse,
@@ -430,6 +431,7 @@ static void GlobalInitializeOrDieImpl() {
     if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
         exit(1);
     }
+#endif //ENABLE_THRIFT_FRAMED_PROTOCOL
 
     Protocol mc_binary_protocol = { ParseMemcacheMessage,
                                     SerializeMemcacheRequest,

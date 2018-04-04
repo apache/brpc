@@ -50,8 +50,8 @@ int main(int argc, char **argv) {
         client.Echo(res, req);
 
         LOG(INFO) << "Req: " << req.data
-                  << "Res: " << res.data;
-        //sleep(1);
+                  << " Res: " << res.data;
+        sleep(1);
     }
     transport->close();
 

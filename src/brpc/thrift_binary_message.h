@@ -26,9 +26,10 @@
 #include <google/protobuf/generated_message_reflection.h>
 #include "google/protobuf/descriptor.pb.h"
 
-#include "brpc/thrift_binary_head.h"                           // thrfit_binary_head_t
+#include "brpc/thrift_binary_head.h"               // thrfit_binary_head_t
 #include "butil/iobuf.h"                           // IOBuf
 
+#include <thrift/protocol/TBinaryProtocol.h>
 
 namespace brpc {
 
@@ -42,7 +43,7 @@ class ThriftBinaryMessage : public ::google::protobuf::Message {
 public:
     thrift_binary_head_t head;
     butil::IOBuf body;
-    
+
 public:
     ThriftBinaryMessage();
     virtual ~ThriftBinaryMessage();
@@ -78,6 +79,9 @@ public:
     int GetCachedSize() const { return ByteSize(); }
     ::google::protobuf::Metadata GetMetadata() const;
 
+    virtual uint32_t write(::apache::thrift::protocol::TProtocol* oprot) { return 0;}
+    virtual uint32_t read(::apache::thrift::protocol::TProtocol* iprot) { return 0;}
+
 private:
     void SharedCtor();
     void SharedDtor();
@@ -91,7 +95,28 @@ friend void protobuf_ShutdownFile_baidu_2frpc_2fthrift_binary_5fmessage_2eproto(
     static ThriftBinaryMessage* default_instance_;
 };
 
-} // namespace brpc
+template <typename T>
+class ThriftMessage : public ThriftBinaryMessage {
 
+public:
+    ThriftMessage(T* thrift_message) {
+        thrift_message_ = thrift_message;
+    }
+
+    virtual ~ThriftMessage() {}
+
+    virtual uint32_t write(::apache::thrift::protocol::TProtocol* oprot) {
+        return thrift_message_->write(oprot);
+    }
+
+    virtual uint32_t read(::apache::thrift::protocol::TProtocol* iprot) {
+        return thrift_message_->read(iprot);
+    }
+
+private:
+    T* thrift_message_;
+};
+
+} // namespace brpc
 
 #endif  // BRPC_THRIFT_BINARY_MESSAGE_H

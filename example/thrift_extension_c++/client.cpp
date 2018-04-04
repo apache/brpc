@@ -16,8 +16,12 @@
 
 #include <gflags/gflags.h>
 
+#include "gen-cpp/EchoService.h"
+#include "gen-cpp/echo_types.h"
+
 #include <butil/logging.h>
 #include <butil/time.h>
+#include <butil/thrift_utils.h>
 #include <butil/strings/string_piece.h>
 #include <brpc/channel.h>
 #include <brpc/thrift_binary_message.h>
@@ -25,11 +29,6 @@
 
 #include <thrift/transport/TBufferTransports.h>
 #include <thrift/protocol/TBinaryProtocol.h>
-
-#include "gen-cpp/EchoService.h"
-#include "gen-cpp/echo_types.h"
-
-#include "thrift_utils.h"
 
 bvar::LatencyRecorder g_latency_recorder("client");
 
@@ -58,22 +57,28 @@ int main(int argc, char* argv[]) {
 
     // Send a request and wait for the response every 1 second.
     int log_id = 0;
-    
-    apache::thrift::transport::TThriftBrpcHelperTransport* transport;
-    auto client = InitThriftClient<example::EchoServiceClient>(&channel, &transport);
+
+    std::string query_string = "hello";
+    for(auto i = 0; i < 1000000; i++) {
+        query_string += " test";
+    }
 
     while (!brpc::IsAskedToQuit()) {
         brpc::Controller cntl;
         cntl.set_log_id(log_id ++);  // set by user
-
-        transport->set_controller(&cntl);
 
         // Thrift Req
         example::EchoRequest thrift_request;
         example::EchoResponse thrift_response;
         thrift_request.data = "hello";
 
-        client->Echo(thrift_response, thrift_request);
+        // wrapper thrift raw request into ThriftMessage
+        brpc::ThriftMessage<example::EchoRequest> req(&thrift_request);
+        brpc::ThriftMessage<example::EchoResponse> res(&thrift_response);
+
+        cntl.set_thrift_method_name("Echo");
+
+        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
 
         if (cntl.Failed()) {
             LOG(ERROR) << "Fail to send thrift request, " << cntl.ErrorText();
@@ -88,9 +93,13 @@ int main(int argc, char* argv[]) {
             << "Sending thrift requests at qps=" << g_latency_recorder.qps(1)
             << " latency=" << g_latency_recorder.latency(1);
         
-        //sleep(1);
+        sleep(1);
     }
 
     LOG(INFO) << "EchoClient is going to quit";
     return 0;
 }
+
+template class brpc::ThriftMessage<example::EchoRequest>;
+template class brpc::ThriftMessage<example::EchoResponse>;
+

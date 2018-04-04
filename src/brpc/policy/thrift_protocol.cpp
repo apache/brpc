@@ -17,12 +17,15 @@
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
+
+#include <boost/make_shared.hpp>
+
 #include "butil/time.h" 
-#include "butil/iobuf.h"                         // butil::IOBuf
+#include "butil/iobuf.h"                        // butil::IOBuf
 #include "brpc/log.h"
-#include "brpc/controller.h"               // Controller
-#include "brpc/socket.h"                   // Socket
-#include "brpc/server.h"                   // Server
+#include "brpc/controller.h"                    // Controller
+#include "brpc/socket.h"                        // Socket
+#include "brpc/server.h"                        // Server
 #include "brpc/span.h"
 #include "brpc/details/server_private_accessor.h"
 #include "brpc/details/controller_private_accessor.h"
@@ -31,10 +34,12 @@
 #include "brpc/policy/thrift_protocol.h"
 #include "brpc/details/usercode_backup_pool.h"
 
+#include <thrift/transport/TBufferTransports.h>
+#include <thrift/protocol/TBinaryProtocol.h>
+
 extern "C" {
 void bthread_assign_data(void* data) __THROW;
 }
-
 
 namespace brpc {
 
@@ -358,6 +363,93 @@ void ProcessThriftBinaryResponse(InputMessageBase* msg_base) {
         msg->meta.copy_to(&response->head, sizeof(thrift_binary_head_t));
         response->head.body_len = ntohl(response->head.body_len);
         msg->payload.swap(response->body);
+
+        uint32_t body_len = response->head.body_len;
+        // Deserialize binary message to thrift message
+        uint8_t* thrift_buffer =
+            static_cast<uint8_t*>(new uint8_t[body_len]);
+
+        const size_t k = response->body.copy_to(thrift_buffer, body_len);
+        if ( k != body_len) {
+          cntl->SetFailed("copy response body to thrift buffer failed!");
+          delete [] thrift_buffer;
+          return;
+        }
+
+        auto in_buffer =
+            boost::make_shared<apache::thrift::transport::TMemoryBuffer>();
+        auto in_portocol =
+            boost::make_shared<apache::thrift::protocol::TBinaryProtocol>(in_buffer);
+
+        in_buffer->resetBuffer(thrift_buffer, body_len,
+            ::apache::thrift::transport::TMemoryBuffer::TAKE_OWNERSHIP);
+
+        // The following code was taken from thrift auto generate code
+        int32_t rseqid = 0;
+        std::string fname;
+        ::apache::thrift::protocol::TMessageType mtype;
+        
+        in_portocol->readMessageBegin(fname, mtype, rseqid);
+        if (mtype == ::apache::thrift::protocol::T_EXCEPTION) {
+          cntl->SetFailed("thrift process server response exception!");
+          return;
+        }
+        if (mtype != ::apache::thrift::protocol::T_REPLY) {
+          in_portocol->skip(::apache::thrift::protocol::T_STRUCT);
+          in_portocol->readMessageEnd();
+          in_portocol->getTransport()->readEnd();
+        }
+        if (fname.compare(cntl->thrift_method_name()) != 0) {
+          in_portocol->skip(::apache::thrift::protocol::T_STRUCT);
+          in_portocol->readMessageEnd();
+          in_portocol->getTransport()->readEnd();
+        }
+
+        // presult section
+        apache::thrift::protocol::TInputRecursionTracker tracker(*in_portocol);
+        uint32_t xfer = 0;
+        ::apache::thrift::protocol::TType ftype;
+        int16_t fid;
+        
+        xfer += in_portocol->readStructBegin(fname);
+        
+        using ::apache::thrift::protocol::TProtocolException;
+        bool success = false;
+
+        while (true)
+        {
+          xfer += in_portocol->readFieldBegin(fname, ftype, fid);
+          if (ftype == ::apache::thrift::protocol::T_STOP) {
+            break;
+          }
+          switch (fid)
+          {
+            case 0:
+              if (ftype == ::apache::thrift::protocol::T_STRUCT) {
+                xfer += response->read(in_portocol.get());
+                success = true;
+              } else {
+                xfer += in_portocol->skip(ftype);
+              }
+              break;
+            default:
+              xfer += in_portocol->skip(ftype);
+              break;
+          }
+          xfer += in_portocol->readFieldEnd();
+        }
+        
+        xfer += in_portocol->readStructEnd();
+        // end presult section
+
+        in_portocol->readMessageEnd();
+        in_portocol->getTransport()->readEnd();
+        
+        if (!success) {
+          cntl->SetFailed("thrift process server response exception!");
+          return;
+        }
+
     } // else just ignore the response.
 
     // Unlocks correlation_id inside. Revert controller's
@@ -383,11 +475,64 @@ void SerializeThriftBinaryRequest(butil::IOBuf* request_buf, Controller* cntl,
     ControllerPrivateAccessor accessor(cntl);
 
     const ThriftBinaryMessage* req = (const ThriftBinaryMessage*)req_base;
+    
     thrift_binary_head_t head = req->head;
 
-    head.body_len = ntohl(req->body.size());
+    auto out_buffer =
+        boost::make_shared<apache::thrift::transport::TMemoryBuffer>();
+    auto out_portocol =
+        boost::make_shared<apache::thrift::protocol::TBinaryProtocol>(out_buffer);
+
+    std::string thrift_method_name = cntl->thrift_method_name();
+    // we should do more check on the thrift method name, but since it is rare when
+    // the method_name is just some white space or something else
+    if (cntl->thrift_method_name() == "" ||
+        cntl->thrift_method_name().length() < 1 ||
+        cntl->thrift_method_name()[0] == ' ') {
+        return cntl->SetFailed(ENOMETHOD,
+            "invalid thrift method name or method name empty!");
+    }
+
+    // The following code was taken from thrift auto generated code
+    // send_xxx
+    int32_t cseqid = 0;
+    out_portocol->writeMessageBegin(thrift_method_name,
+        ::apache::thrift::protocol::T_CALL, cseqid);
+
+    // xxx_pargs write
+    uint32_t xfer = 0;
+    apache::thrift::protocol::TOutputRecursionTracker tracker(*out_portocol);
+
+    std::string struct_begin_str = "ThriftService_" + thrift_method_name + "_pargs";
+    xfer += out_portocol->writeStructBegin(struct_begin_str.c_str());
+    xfer += out_portocol->writeFieldBegin("request", ::apache::thrift::protocol::T_STRUCT, 1);
+
+    // request's write
+    ThriftBinaryMessage* r = const_cast<ThriftBinaryMessage*>(req);
+    xfer += r->write(out_portocol.get());
+    // end request's write
+
+    xfer += out_portocol->writeFieldEnd();
+    
+    xfer += out_portocol->writeFieldStop();
+    xfer += out_portocol->writeStructEnd();
+    // end xxx_pargs write
+
+    out_portocol->writeMessageEnd();
+    out_portocol->getTransport()->writeEnd();
+    out_portocol->getTransport()->flush();
+    // end send_xxx
+    // end thrift auto generated code
+
+    butil::IOBuf buf;
+    buf.append(out_buffer->getBufferAsString());
+
+    head.body_len = ntohl(buf.size());
     request_buf->append(&head, sizeof(head));
-    request_buf->append(req->body);
+    // end auto generate code
+
+    request_buf->append(buf);
+
 }
 
 void PackThriftBinaryRequest(

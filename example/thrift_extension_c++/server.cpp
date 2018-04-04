@@ -16,6 +16,7 @@
 
 #include <gflags/gflags.h>
 #include <butil/logging.h>
+#include <butil/thrift_utils.h>
 #include <brpc/server.h>
 #include <brpc/thrift_service.h>
 
@@ -24,8 +25,6 @@
 
 #include "gen-cpp/EchoService.h"
 #include "gen-cpp/echo_types.h"
-
-#include "thrift_utils.h"
 
 DEFINE_int32(port, 8019, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
