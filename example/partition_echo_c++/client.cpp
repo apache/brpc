@@ -154,7 +154,7 @@ int main(int argc, char* argv[]) {
     tids.resize(FLAGS_thread_num);
     if (!FLAGS_use_bthread) {
         for (int i = 0; i < FLAGS_thread_num; ++i) {
-            if (pthread_create(&tids[i], NULL, sender, &channel) != 0) {
+            if (pthread_create((pthread_t*)&tids[i], NULL, sender, &channel) != 0) {
                 LOG(ERROR) << "Fail to create pthread";
                 return -1;
             }
@@ -190,7 +190,7 @@ int main(int argc, char* argv[]) {
         pthread_mutex_unlock(&g_latency_mutex);
 
         const int64_t avg_latency = (latency_sum - last_latency_sum) /
-            std::max(nsuccess - last_counter, 1L);
+            std::max(nsuccess - last_counter, 1LL);
         LOG(INFO) << "Sending EchoRequest at qps=" << nsuccess - last_counter
                   << " latency=" << avg_latency;
         last_counter = nsuccess;
@@ -200,7 +200,7 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "EchoClient is going to quit";
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         if (!FLAGS_use_bthread) {
-            pthread_join(tids[i], NULL);
+            pthread_join((pthread_t)tids[i], NULL);
         } else {
             bthread_join(tids[i], NULL);
         }

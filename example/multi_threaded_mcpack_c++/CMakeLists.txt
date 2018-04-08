@@ -71,15 +71,39 @@ if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
 endif()
 include_directories(${LEVELDB_INCLUDE_PATH})
 
+find_library(SSL_LIB NAMES ssl)
+if (NOT SSL_LIB)
+    message(FATAL_ERROR "Fail to find ssl")
+endif()
+
+find_library(CRYPTO_LIB NAMES crypto)
+if (NOT CRYPTO_LIB)
+    message(FATAL_ERROR "Fail to find crypto")
+endif()
+
 set(DYNAMIC_LIB
     ${CMAKE_THREAD_LIBS_INIT}
     ${GFLAGS_LIBRARY}
     ${PROTOBUF_LIBRARIES}
     ${LEVELDB_LIB}
-    ssl
-    crypto
+    ${SSL_LIB}
+    ${CRYPTO_LIB}
     dl
     )
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(DYNAMIC_LIB ${DYNAMIC_LIB}
+        pthread
+        "-framework CoreFoundation"
+        "-framework CoreGraphics"
+        "-framework CoreData"
+        "-framework CoreText"
+        "-framework Security"
+        "-framework Foundation"
+        "-Wl,-U,_MallocExtension_ReleaseFreeMemory"
+        "-Wl,-U,_ProfilerStart"
+        "-Wl,-U,_ProfilerStop")
+endif()
 
 execute_process(
     COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR} --plugin=protoc-gen-mcpack=${OUTPUT_PATH}/bin/protoc-gen-mcpack --mcpack_out=${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_SOURCE_DIR}/echo.proto
