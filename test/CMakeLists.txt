@@ -143,32 +143,48 @@ SET(TEST_BUTIL_SOURCES ${TEST_BUTIL_SOURCES}
     ${CMAKE_SOURCE_DIR}/test/test_file_util_linux.cc)
 endif()
 
+# bthread_* functions are used in logging.cc, and they need to be marked as
+# weak symbols explicitly in Darwin system.
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(DYNAMIC_LIB ${DYNAMIC_LIB}
+                    "-Wl,-U,_bthread_getspecific"
+                    "-Wl,-U,_bthread_setspecific"
+                    "-Wl,-U,_bthread_key_create")
+endif()
+
+# create executable
+add_library(TEST_PROTO_OBJ OBJECT ${TEST_PROTO_SRCS})
+add_executable(test_butil ${TEST_BUTIL_SOURCES}
+                          ${CMAKE_CURRENT_BINARY_DIR}/iobuf.pb.cc
+                          $<TARGET_OBJECTS:BUTIL_LIB>)
+
+target_link_libraries(test_butil ${GTEST_LIB}
+                                 ${GPERFTOOLS_LIBRARIES}
+                                 ${DYNAMIC_LIB})
+
 # -DBVAR_NOT_LINK_DEFAULT_VARIABLES not work for gcc >= 5.0, just remove the file to prevent linking into unit tests
 list(REMOVE_ITEM BVAR_SOURCES ${CMAKE_SOURCE_DIR}/src/bvar/default_variables.cpp)
 
+add_library(BVAR_OBJ OBJECT ${BVAR_SOURCES})
 file(GLOB TEST_BVAR_SRCS "bvar_*_unittest.cpp")
 add_executable(test_bvar $<TARGET_OBJECTS:BUTIL_LIB>
-                         ${BTHREAD_SOURCES}
-                         ${BVAR_SOURCES}
+                         $<TARGET_OBJECTS:BVAR_OBJ>
                          ${TEST_BVAR_SRCS})
 target_link_libraries(test_bvar ${GTEST_LIB}
                                 ${GPERFTOOLS_LIBRARIES}
                                 ${DYNAMIC_LIB})
 
-add_library(TEST_PROTO_OBJ OBJECT ${TEST_PROTO_SRCS})
-add_executable(test_butil ${TEST_BUTIL_SOURCES}
-                          $<TARGET_OBJECTS:TEST_PROTO_OBJ>
-                          $<TARGET_OBJECTS:BUTIL_LIB>
-                          $<TARGET_OBJECTS:OBJ_LIB>)
-target_link_libraries(test_butil ${GTEST_LIB} ${GPERFTOOLS_LIBRARIES} ${DYNAMIC_LIB})
-
+add_library(BTHREAD_OBJ OBJECT ${BTHREAD_SOURCES})
+add_library(PROTO_OBJ OBJECT ${PROTO_SRCS})
 file(GLOB BTHREAD_UNITTESTS "bthread*unittest.cpp")
 foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
     get_filename_component(BTHREAD_UT_WE ${BTHREAD_UT} NAME_WE)
     add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT} 
-                                    $<TARGET_OBJECTS:TEST_PROTO_OBJ>
                                     $<TARGET_OBJECTS:BUTIL_LIB>
-                                    $<TARGET_OBJECTS:OBJ_LIB>)
+                                    $<TARGET_OBJECTS:BVAR_OBJ>
+                                    $<TARGET_OBJECTS:BTHREAD_OBJ>
+                                    $<TARGET_OBJECTS:PROTO_OBJ>
+                                    $<TARGET_OBJECTS:TEST_PROTO_OBJ>)
     target_link_libraries(${BTHREAD_UT_WE}
                           ${GTEST_MAIN_LIB}
                           ${GTEST_LIB}

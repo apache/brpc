@@ -664,6 +664,7 @@ TEST_F(BuiltinServiceTest, pprof) {
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "num_symbols");
     }
+#if defined(OS_LINUX)
     {
         ClosureChecker done;
         brpc::Controller cntl;
@@ -671,6 +672,7 @@ TEST_F(BuiltinServiceTest, pprof) {
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "brpc_builtin_service_unittest");
     }
+#endif
 }
 
 TEST_F(BuiltinServiceTest, dir) {
@@ -695,7 +697,11 @@ TEST_F(BuiltinServiceTest, dir) {
         cntl.http_request()._unresolved_path = "/usr/include/errno.h";
         service.default_method(&cntl, &req, &res, &done);
         EXPECT_FALSE(cntl.Failed());
+#if defined(OS_LINUX)
         CheckContent(cntl, "ERRNO_H");
+#elif defined(OS_MACOSX)
+        CheckContent(cntl, "sys/errno.h");
+#endif
     }
     {
         // Open a file that doesn't exist
