@@ -470,11 +470,9 @@ int pthread_fd_wait(int fd, unsigned events,
         diff_ms = (abstime_us - now_us + 999L) / 1000L;
     }
 #if defined(OS_LINUX)
-    const short poll_events =
-        bthread::epoll_to_poll_events(events);
+    const short poll_events = bthread::epoll_to_poll_events(events);
 #elif defined(OS_MACOSX)
-    const short poll_events =
-        bthread::kqueue_to_poll_events(events);
+    const short poll_events = bthread::kqueue_to_poll_events(events);
 #endif
     if (poll_events == 0) {
         errno = EINVAL;

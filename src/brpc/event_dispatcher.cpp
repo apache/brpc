@@ -57,6 +57,8 @@ EventDispatcher::EventDispatcher()
         PLOG(FATAL) << "Fail to create kqueue";
         return;
     }
+#else
+    #error Not implemented
 #endif
     CHECK_EQ(0, butil::make_close_on_exec(_epfd));
 
