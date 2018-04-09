@@ -101,6 +101,54 @@ void ThriftFramedClosure::Run() {
     if (_do_respond) {
         // response uses request's head as default.
         _response.head = _request.head;
+
+        if (_response.thrift_raw_instance) {
+            if (_controller.thrift_method_name() == "" ||
+                _controller.thrift_method_name().length() < 1 ||
+                _controller.thrift_method_name()[0] == ' ') {
+                _controller.SetFailed(ENOMETHOD,
+                    "invalid thrift method name or method name empty!");
+                return;
+            }
+
+            auto out_buffer =
+                boost::make_shared<apache::thrift::transport::TMemoryBuffer>();
+            auto oprot =
+                boost::make_shared<apache::thrift::protocol::TBinaryProtocol>(out_buffer);
+
+            // The following code was taken and modified from thrift auto generated code
+            oprot->writeMessageBegin(_controller.thrift_method_name(),
+                ::apache::thrift::protocol::T_REPLY, _controller.thrift_seq_id());
+
+            uint32_t xfer = 0;
+
+            xfer += oprot->writeStructBegin("placeholder");
+
+            xfer += oprot->writeFieldBegin("success",
+                ::apache::thrift::protocol::T_STRUCT, 0);
+            if (_response.thrift_raw_instance && _response.thrift_raw_instance_writer) {
+                xfer += _response.thrift_raw_instance_writer(
+                    _response.thrift_raw_instance, oprot.get());
+            } else {
+                _controller.SetFailed(ERESPONSE, "thrift_raw_instance or"
+                    "thrift_raw_instance_writer is null!");
+
+            }
+            xfer += oprot->writeFieldEnd();
+
+            xfer += oprot->writeFieldStop();
+            xfer += oprot->writeStructEnd();
+
+            oprot->writeMessageEnd();
+            oprot->getTransport()->writeEnd();
+            oprot->getTransport()->flush();
+            // End thrfit auto generated code
+
+            butil::IOBuf buf;
+            buf.append(out_buffer->getBufferAsString());
+            _response.body =buf;
+        }
+
         uint32_t length = _response.body.length();
         _response.head.body_len = htonl(length);
     

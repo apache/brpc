@@ -123,6 +123,9 @@ void ThriftBinaryMessage::SharedCtor() {
 
 ThriftBinaryMessage::~ThriftBinaryMessage() {
     SharedDtor();
+    if (thrift_raw_instance && thrift_raw_instance_deleter) {
+        thrift_raw_instance_deleter(thrift_raw_instance);
+    }
 }
 
 void ThriftBinaryMessage::SharedDtor() {

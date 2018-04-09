@@ -67,14 +67,11 @@ int main(int argc, char* argv[]) {
         brpc::Controller cntl;
         cntl.set_log_id(log_id ++);  // set by user
 
-        // Thrift Req
-        example::EchoRequest thrift_request;
-        example::EchoResponse thrift_response;
-        thrift_request.data = "hello";
-
         // wrapper thrift raw request into ThriftMessage
-        brpc::ThriftMessage<example::EchoRequest> req(&thrift_request);
-        brpc::ThriftMessage<example::EchoResponse> res(&thrift_response);
+        brpc::ThriftMessage<example::EchoRequest> req;
+        brpc::ThriftMessage<example::EchoResponse> res;
+
+        req.raw().data = "hello";
 
         cntl.set_thrift_method_name("Echo");
 
@@ -87,13 +84,14 @@ int main(int argc, char* argv[]) {
             g_latency_recorder << cntl.latency_us();
         }
 
-        LOG(INFO) << "Thrift Res data: " << thrift_response.data;
+        LOG(INFO) << "Thrift Res data: " << res.raw().data;
 
         LOG_EVERY_SECOND(INFO)
             << "Sending thrift requests at qps=" << g_latency_recorder.qps(1)
             << " latency=" << g_latency_recorder.latency(1);
-        
+
         sleep(1);
+
     }
 
     LOG(INFO) << "EchoClient is going to quit";

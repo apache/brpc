@@ -434,10 +434,20 @@ public:
     void set_idl_result(int64_t result) { _idl_result = result; }
     int64_t idl_result() const { return _idl_result; }
 
+    void set_thrift_method_name(std::string& method_name) {
+        _thrift_method_name = method_name;
+    }
+
     void set_thrift_method_name(std::string method_name) {
         _thrift_method_name = method_name;
     }
+
     std::string thrift_method_name() { return _thrift_method_name; }
+
+    void set_thrift_seq_id(uint32_t seq_id) {
+        _thrift_seq_id = seq_id;
+    }
+    uint32_t thrift_seq_id() { return _thrift_seq_id; }
 
 private:
     struct CompletionInfo {
@@ -672,6 +682,7 @@ private:
 
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;
+    uint32_t _thrift_seq_id;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be
