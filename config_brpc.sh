@@ -64,7 +64,7 @@ if [ -z "$HDRS_IN" ] || [ -z "$LIBS_IN" ]; then
 fi
 
 find_dir_of_lib() {
-    local lib=$(find ${LIBS_IN} -name "lib${1}.a" -o -name "lib${1}.$SO" | head -n1)
+    local lib=$(find ${LIBS_IN} -name "lib${1}.a" -o -name "lib${1}.$SO" 2>/dev/null | head -n1)
     if [ ! -z "$lib" ]; then
         dirname $lib
     fi
@@ -84,7 +84,7 @@ find_bin() {
     if [ ! -z "$TARGET_BIN" ]; then
         $ECHO $TARGET_BIN
     else
-        find ${LIBS_IN} -name "$1" | head -n1
+        find ${LIBS_IN} -name "$1" 2>/dev/null | head -n1
     fi
 }
 find_bin_or_die() {
@@ -119,7 +119,7 @@ find_dir_of_header_or_die() {
 
 # Inconvenient to check these headers in baidu-internal
 #PTHREAD_HDR=$(find_dir_of_header_or_die pthread.h)
-#OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h)
+OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h)
 
 STATIC_LINKINGS=
 DYNAMIC_LINKINGS="-lpthread -lrt -lssl -lcrypto -ldl -lz"
@@ -175,7 +175,7 @@ fi
 PROTOBUF_HDR=$(find_dir_of_header_or_die google/protobuf/message.h)
 LEVELDB_HDR=$(find_dir_of_header_or_die leveldb/db.h)
 
-HDRS=$($ECHO "$GFLAGS_HDR\n$PROTOBUF_HDR\n$LEVELDB_HDR" | sort | uniq)
+HDRS=$($ECHO "$GFLAGS_HDR\n$PROTOBUF_HDR\n$LEVELDB_HDR\n$OPENSSL_HDR" | sort | uniq)
 LIBS=$($ECHO "$GFLAGS_LIB\n$PROTOBUF_LIB\n$LEVELDB_LIB\n$SNAPPY_LIB" | sort | uniq)
 
 absent_in_the_list() {
@@ -218,6 +218,7 @@ append_to_output_linkings() {
 }
 
 #can't use \n in texts because sh does not support -e
+append_to_output "SYSTEM=$SYSTEM"
 append_to_output "HDRS=$($ECHO $HDRS)"
 append_to_output "LIBS=$($ECHO $LIBS)"
 append_to_output "PROTOC=$PROTOC"
@@ -227,6 +228,14 @@ append_to_output "CXX=$CXX"
 append_to_output "GCC_VERSION=$GCC_VERSION"
 append_to_output "STATIC_LINKINGS=$STATIC_LINKINGS"
 append_to_output "DYNAMIC_LINKINGS=$DYNAMIC_LINKINGS"
+CPPFLAGS="-DBRPC_WITH_GLOG=$WITH_GLOG -DGFLAGS_NS=$GFLAGS_NS"
+if [ ! -z "$DEBUGSYMBOLS" ]; then
+    CPPFLAGS="${CPPFLAGS} $DEBUGSYMBOLS"
+fi
+if [ "$SYSTEM" = "Darwin" ]; then
+    CPPFLAGS="${CPPFLAGS} -Wno-deprecated-declarations"
+fi
+append_to_output "CPPFLAGS=${CPPFLAGS}"
 
 append_to_output "ifeq (\$(NEED_LIBPROTOC), 1)"
 PROTOC_LIB=$(find $PROTOBUF_LIB -name "libprotoc.*" | head -n1)
@@ -271,7 +280,6 @@ if [ $WITH_GLOG != 0 ]; then
         append_to_output "STATIC_LINKINGS+=-lglog"
     fi
 fi
-append_to_output "CPPFLAGS+=-DBRPC_WITH_GLOG=$WITH_GLOG -DGFLAGS_NS=$GFLAGS_NS $DEBUGSYMBOLS"
 
 # required by UT
 #gtest

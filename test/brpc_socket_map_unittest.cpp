@@ -82,7 +82,7 @@ TEST_F(SocketMapTest, idle_timeout) {
     id = ptr->id();
     ptr->ReturnToPool();
     ptr.reset(NULL);
-    usleep(TIMEOUT * 1000000L + 1100000L);
+    usleep(TIMEOUT * 1000000L + 2000000L);
     // Pooled connection should be `ReleaseAdditionalReference',
     // which destroyed the Socket. As a result `GetSocketFromPool'
     // should return a new one

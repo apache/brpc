@@ -155,9 +155,9 @@ int expose(const butil::StringPiece& prefix, const butil::StringPiece& name);
 bvar::Adder<int> count1;
 
 count1 << 10 << 20 << 30;   // values add up to 60.
-count1.expose("my_count");  // expose the variable globally
+count1.expose("count1");  // expose the variable globally
 CHECK_EQ("60", bvar::Variable::describe_exposed("count1"));
-my_count.expose("another_name_for_count1");  // expose the variable with another name
+count1.expose("another_name_for_count1");  // expose the variable with another name
 CHECK_EQ("", bvar::Variable::describe_exposed("count1"));
 CHECK_EQ("60", bvar::Variable::describe_exposed("another_name_for_count1"));
 

@@ -18,6 +18,7 @@
 #ifndef  BVAR_DETAIL_SAMPLER_H
 #define  BVAR_DETAIL_SAMPLER_H
 
+#include <vector>
 #include "butil/containers/linked_list.h"// LinkNode
 #include "butil/scoped_lock.h"           // BAIDU_SCOPED_LOCK
 #include "butil/logging.h"               // LOG()

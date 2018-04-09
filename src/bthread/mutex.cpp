@@ -689,7 +689,7 @@ void FastPthreadMutex::unlock() {
 extern "C" {
 
 int bthread_mutex_init(bthread_mutex_t* __restrict m,
-                       const bthread_mutexattr_t* __restrict) __THROW {
+                       const bthread_mutexattr_t* __restrict) {
     bthread::make_contention_site_invalid(&m->csite);
     m->butex = bthread::butex_create_checked<unsigned>();
     if (!m->butex) {
@@ -699,12 +699,12 @@ int bthread_mutex_init(bthread_mutex_t* __restrict m,
     return 0;
 }
 
-int bthread_mutex_destroy(bthread_mutex_t* m) __THROW {
+int bthread_mutex_destroy(bthread_mutex_t* m) {
     bthread::butex_destroy(m->butex);
     return 0;
 }
 
-int bthread_mutex_trylock(bthread_mutex_t* m) __THROW {
+int bthread_mutex_trylock(bthread_mutex_t* m) {
     bthread::MutexInternal* split = (bthread::MutexInternal*)m->butex;
     if (!split->locked.exchange(1, butil::memory_order_acquire)) {
         return 0;
@@ -716,7 +716,7 @@ int bthread_mutex_lock_contended(bthread_mutex_t* m) {
     return bthread::mutex_lock_contended(m);
 }
 
-int bthread_mutex_lock(bthread_mutex_t* m) __THROW {
+int bthread_mutex_lock(bthread_mutex_t* m) {
     bthread::MutexInternal* split = (bthread::MutexInternal*)m->butex;
     if (!split->locked.exchange(1, butil::memory_order_acquire)) {
         return 0;
@@ -743,7 +743,7 @@ int bthread_mutex_lock(bthread_mutex_t* m) __THROW {
 }
 
 int bthread_mutex_timedlock(bthread_mutex_t* __restrict m,
-                            const struct timespec* __restrict abstime) __THROW {
+                            const struct timespec* __restrict abstime) {
     bthread::MutexInternal* split = (bthread::MutexInternal*)m->butex;
     if (!split->locked.exchange(1, butil::memory_order_acquire)) {
         return 0;
@@ -774,7 +774,7 @@ int bthread_mutex_timedlock(bthread_mutex_t* __restrict m,
     return rc;
 }
 
-int bthread_mutex_unlock(bthread_mutex_t* m) __THROW {
+int bthread_mutex_unlock(bthread_mutex_t* m) {
     butil::atomic<unsigned>* whole = (butil::atomic<unsigned>*)m->butex;
     bthread_contention_site_t saved_csite = {0, 0};
     if (bthread::is_contention_site_valid(m->csite)) {
@@ -799,10 +799,10 @@ int bthread_mutex_unlock(bthread_mutex_t* m) __THROW {
     return 0;
 }
 
-int pthread_mutex_lock (pthread_mutex_t *__mutex) __THROW {
+int pthread_mutex_lock (pthread_mutex_t *__mutex) {
     return bthread::pthread_mutex_lock_impl(__mutex);
 }
-int pthread_mutex_unlock (pthread_mutex_t *__mutex) __THROW {
+int pthread_mutex_unlock (pthread_mutex_t *__mutex) {
     return bthread::pthread_mutex_unlock_impl(__mutex);
 }
 

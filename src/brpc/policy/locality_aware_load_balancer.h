@@ -31,7 +31,7 @@ namespace brpc {
 namespace policy {
 
 DECLARE_int64(min_weight);
-DECLARE_int64(dev_multiple);
+DECLARE_double(punish_inflight_ratio);
 
 // Locality-aware is an iterative algorithm to send requests to servers which
 // have lowest expected latencies. Read docs/cn/lalb.md to get a peek at the
@@ -54,7 +54,6 @@ private:
     struct TimeInfo {
         int64_t latency_sum;         // microseconds
         int64_t end_time_us;
-        double squared_latency_sum;  // for calculating deviation
     };
     
     class Servers;
@@ -68,7 +67,7 @@ private:
 
         // Called in Feedback() to recalculate _weight.
         // Returns diff of _weight.
-        int64_t Update(const CallInfo&, size_t index, int64_t latency_percent);
+        int64_t Update(const CallInfo&, size_t index);
 
         // Weight of self. Notice that this value may change at any time.
         int64_t volatile_value() const { return _weight; }
@@ -100,7 +99,6 @@ private:
         size_t _old_index;
         int64_t _old_weight;
         int64_t _avg_latency;
-        int64_t _dev;
         butil::BoundedQueue<TimeInfo> _time_q;
         // content of _time_q
         TimeInfo _time_q_items[RECV_QUEUE_SIZE];
@@ -168,15 +166,10 @@ inline int64_t LocalityAwareLoadBalancer::Weight::ResetWeight(
     if (_begin_time_count > 0) {
         const int64_t inflight_delay =
             now_us - _begin_time_sum / _begin_time_count;
-        // note: we only punish latencies at least twice of average latency
-        // when FLAGS_dev_multiple is 0.
-        int64_t punish_latency = _avg_latency * 2;
-        const int64_t dev = FLAGS_dev_multiple * _dev;
-        if (dev > 0) {
-            punish_latency = _avg_latency + dev;
-        }            
+        const int64_t punish_latency =
+            (int64_t)(_avg_latency * FLAGS_punish_inflight_ratio);
         if (inflight_delay >= punish_latency && _avg_latency > 0) {
-            new_weight = new_weight * _avg_latency / inflight_delay;
+            new_weight = new_weight * punish_latency / inflight_delay;
         }
     }
     if (new_weight < FLAGS_min_weight) {

@@ -45,7 +45,6 @@ void BthreadsService::default_method(::google::protobuf::RpcController* cntl_bas
         if (*endptr == '\0' || *endptr == '/') {
             ::bthread::print_task(os, tid);
         } else {
-            cntl->http_response().set_status_code(HTTP_STATUS_NOT_FOUND);
             cntl->SetFailed(ENOMETHOD, "path=%s is not a bthread id",
                             constraint.c_str());
         }

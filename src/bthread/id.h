@@ -42,7 +42,7 @@ __BEGIN_DECLS
 // Returns 0 on success, error code otherwise.
 int bthread_id_create(
     bthread_id_t* id, void* data,
-    int (*on_error)(bthread_id_t id, void* data, int error_code)) __THROW;
+    int (*on_error)(bthread_id_t id, void* data, int error_code));
 
 // When this function is called successfully, *id, *id+1 ... *id + range - 1
 // are mapped to same internal entity. Operations on any of the id work as
@@ -53,16 +53,16 @@ int bthread_id_create(
 int bthread_id_create_ranged(
     bthread_id_t* id, void* data,
     int (*on_error)(bthread_id_t id, void* data, int error_code),
-    int range) __THROW;
+    int range);
 
 // Wait until `id' being destroyed.
 // Waiting on a destroyed bthread_id_t returns immediately.
 // Returns 0 on success, error code otherwise.
-int bthread_id_join(bthread_id_t id) __THROW;
+int bthread_id_join(bthread_id_t id);
 
 // Destroy a created but never-used bthread_id_t.
 // Returns 0 on success, EINVAL otherwise.
-int bthread_id_cancel(bthread_id_t id) __THROW;
+int bthread_id_cancel(bthread_id_t id);
 
 // Issue an error to `id'.
 // If `id' is not locked, lock the id and run `on_error' immediately. Otherwise
@@ -73,7 +73,7 @@ int bthread_id_cancel(bthread_id_t id) __THROW;
     bthread_id_error_verbose(id, err, __FILE__ ":" BAIDU_SYMBOLSTR(__LINE__))
 
 int bthread_id_error_verbose(bthread_id_t id, int error_code, 
-                             const char *location) __THROW;
+                             const char *location);
 
 // Make other bthread_id_lock/bthread_id_trylock on the id fail, the id must
 // already be locked. If the id is unlocked later rather than being destroyed,
@@ -81,12 +81,12 @@ int bthread_id_error_verbose(bthread_id_t id, int error_code,
 // waiting on a bthread_id which will be destroyed soon but still needs to
 // be joinable.
 // Returns 0 on success, error code otherwise.
-int bthread_id_about_to_destroy(bthread_id_t id) __THROW;
+int bthread_id_about_to_destroy(bthread_id_t id);
 
 // Try to lock `id' (for using the data exclusively)
 // On success return 0 and set `pdata' with the `data' parameter to
 // bthread_id_create[_ranged], EBUSY on already locked, error code otherwise.
-int bthread_id_trylock(bthread_id_t id, void** pdata) __THROW;
+int bthread_id_trylock(bthread_id_t id, void** pdata);
 
 // Lock `id' (for using the data exclusively). If `id' is locked
 // by others, wait until `id' is unlocked or destroyed.
@@ -95,7 +95,7 @@ int bthread_id_trylock(bthread_id_t id, void** pdata) __THROW;
 #define bthread_id_lock(id, pdata)                                      \
     bthread_id_lock_verbose(id, pdata, __FILE__ ":" BAIDU_SYMBOLSTR(__LINE__))
 int bthread_id_lock_verbose(bthread_id_t id, void** pdata, 
-                            const char *location) __THROW;
+                            const char *location);
 
 // Lock `id' (for using the data exclusively) and reset the range. If `id' is 
 // locked by others, wait until `id' is unlocked or destroyed. if `range' if
@@ -105,18 +105,18 @@ int bthread_id_lock_verbose(bthread_id_t id, void** pdata,
                                __FILE__ ":" BAIDU_SYMBOLSTR(__LINE__))
 int bthread_id_lock_and_reset_range_verbose(
     bthread_id_t id, void **pdata, 
-    int range, const char *location) __THROW;
+    int range, const char *location);
 
 // Unlock `id'. Must be called after a successful call to bthread_id_trylock()
 // or bthread_id_lock().
 // Returns 0 on success, error code otherwise.
-int bthread_id_unlock(bthread_id_t id) __THROW;
+int bthread_id_unlock(bthread_id_t id);
 
 // Unlock and destroy `id'. Waiters blocking on bthread_id_join() or
 // bthread_id_lock() will wake up. Must be called after a successful call to
 // bthread_id_trylock() or bthread_id_lock().
 // Returns 0 on success, error code otherwise.
-int bthread_id_unlock_and_destroy(bthread_id_t id) __THROW;
+int bthread_id_unlock_and_destroy(bthread_id_t id);
 
 // **************************************************************************
 // bthread_id_list_xxx functions are NOT thread-safe unless explicitly stated
@@ -127,16 +127,16 @@ int bthread_id_unlock_and_destroy(bthread_id_t id) __THROW;
 // compatibility.
 int bthread_id_list_init(bthread_id_list_t* list,
                          unsigned /*size*/,
-                         unsigned /*conflict_size*/) __THROW;
+                         unsigned /*conflict_size*/);
 // Destroy the list.
-void bthread_id_list_destroy(bthread_id_list_t* list) __THROW;
+void bthread_id_list_destroy(bthread_id_list_t* list);
 
 // Add a bthread_id_t into the list.
-int bthread_id_list_add(bthread_id_list_t* list, bthread_id_t id) __THROW;
+int bthread_id_list_add(bthread_id_list_t* list, bthread_id_t id);
 
 // Swap internal fields of two lists.
 void bthread_id_list_swap(bthread_id_list_t* dest, 
-                          bthread_id_list_t* src) __THROW;
+                          bthread_id_list_t* src);
 
 // Issue error_code to all bthread_id_t inside `list' and clear `list'.
 // Notice that this function iterates all id inside the list and may call
@@ -151,12 +151,12 @@ void bthread_id_list_swap(bthread_id_list_t* dest,
 //   UNLOCK;
 //   bthread_id_list_reset(&tmplist, error_code);
 //   bthread_id_list_destroy(&tmplist);
-int bthread_id_list_reset(bthread_id_list_t* list, int error_code) __THROW;
+int bthread_id_list_reset(bthread_id_list_t* list, int error_code);
 // Following 2 functions wrap above process.
 int bthread_id_list_reset_pthreadsafe(
-    bthread_id_list_t* list, int error_code, pthread_mutex_t* mutex) __THROW;
+    bthread_id_list_t* list, int error_code, pthread_mutex_t* mutex);
 int bthread_id_list_reset_bthreadsafe(
-    bthread_id_list_t* list, int error_code, bthread_mutex_t* mutex) __THROW;
+    bthread_id_list_t* list, int error_code, bthread_mutex_t* mutex);
 
 __END_DECLS
 
@@ -166,25 +166,25 @@ __END_DECLS
 int bthread_id_create2(
     bthread_id_t* id, void* data,
     int (*on_error)(bthread_id_t id, void* data, int error_code,
-                    const std::string& error_text)) __THROW;
+                    const std::string& error_text));
 int bthread_id_create2_ranged(
     bthread_id_t* id, void* data,
     int (*on_error)(bthread_id_t id, void* data, int error_code,
                     const std::string& error_text),
-    int range) __THROW;
+    int range);
 #define bthread_id_error2(id, ec, et)                                   \
     bthread_id_error2_verbose(id, ec, et, __FILE__ ":" BAIDU_SYMBOLSTR(__LINE__))
 int bthread_id_error2_verbose(bthread_id_t id, int error_code,
                               const std::string& error_text,
-                              const char *location) __THROW;
+                              const char *location);
 int bthread_id_list_reset2(bthread_id_list_t* list, int error_code,
-                           const std::string& error_text) __THROW;
+                           const std::string& error_text);
 int bthread_id_list_reset2_pthreadsafe(bthread_id_list_t* list, int error_code,
                                        const std::string& error_text,
-                                       pthread_mutex_t* mutex) __THROW;
+                                       pthread_mutex_t* mutex);
 int bthread_id_list_reset2_bthreadsafe(bthread_id_list_t* list, int error_code,
                                        const std::string& error_text,
-                                       bthread_mutex_t* mutex) __THROW;
+                                       bthread_mutex_t* mutex);
 #endif
 
 #endif  // BTHREAD_ID_H

@@ -118,13 +118,13 @@ butil::Status FlvWriter::Write(const RtmpAudioMessage& msg) {
     return butil::Status::OK();
 }
 
-butil::Status FlvWriter::Write(const AMFObject& metadata) {
+butil::Status FlvWriter::Write(const RtmpMetaData& metadata) {
     butil::IOBuf req_buf;
     {
         butil::IOBufAsZeroCopyOutputStream zc_stream(&req_buf);
         AMFOutputStream ostream(&zc_stream);
         WriteAMFString(RTMP_AMF0_ON_META_DATA, &ostream);
-        WriteAMFObject(metadata, &ostream);
+        WriteAMFObject(metadata.data, &ostream);
         if (!ostream.good()) {
             return butil::Status(EINVAL, "Fail to serialize metadata");
         }
@@ -140,8 +140,8 @@ butil::Status FlvWriter::Write(const AMFObject& metadata) {
     // FLV tag
     *p++ = FLV_TAG_SCRIPT_DATA;
     policy::WriteBigEndian3Bytes(&p, req_buf.size());
-    policy::WriteBigEndian3Bytes(&p, 0);
-    *p++ = 0;
+    policy::WriteBigEndian3Bytes(&p, (metadata.timestamp & 0xFFFFFF));
+    *p++ = (metadata.timestamp >> 24) & 0xFF;
     policy::WriteBigEndian3Bytes(&p, 0); // StreamID
     _buf->append(buf, p - buf);
     _buf->append(req_buf);
@@ -195,7 +195,7 @@ butil::Status FlvReader::PeekMessageType(FlvTagType* type_out) {
 
 butil::Status FlvReader::Read(RtmpVideoMessage* msg) {
     char tags[11];
-    const char* p = (const char*)_buf->fetch(tags, sizeof(tags));
+    const unsigned char* p = (const unsigned char*)_buf->fetch(tags, sizeof(tags));
     if (p == NULL) {
         return butil::Status(EAGAIN, "Fail to read, not enough data");
     }
@@ -223,7 +223,7 @@ butil::Status FlvReader::Read(RtmpVideoMessage* msg) {
 
 butil::Status FlvReader::Read(RtmpAudioMessage* msg) {
     char tags[11];
-    const char* p = (const char*)_buf->fetch(tags, sizeof(tags));
+    const unsigned char* p = (const unsigned char*)_buf->fetch(tags, sizeof(tags));
     if (p == NULL) {
         return butil::Status(EAGAIN, "Fail to read, not enough data");
     }
@@ -250,9 +250,9 @@ butil::Status FlvReader::Read(RtmpAudioMessage* msg) {
     return butil::Status::OK();
 }
 
-butil::Status FlvReader::Read(AMFObject* msg, std::string* name) {
+butil::Status FlvReader::Read(RtmpMetaData* msg, std::string* name) {
     char tags[11];
-    const char* p = (const char*)_buf->fetch(tags, sizeof(tags));
+    const unsigned char* p = (const unsigned char*)_buf->fetch(tags, sizeof(tags));
     if (p == NULL) {
         return butil::Status(EAGAIN, "Fail to read, not enough data");
     }
@@ -260,6 +260,8 @@ butil::Status FlvReader::Read(AMFObject* msg, std::string* name) {
         return butil::Status(EINVAL, "Fail to parse RtmpScriptMessage");
     }
     uint32_t msg_size = policy::ReadBigEndian3Bytes(p + 1);
+    uint32_t timestamp = policy::ReadBigEndian3Bytes(p + 4);
+    timestamp |= (*(p + 7) << 24);
     if (_buf->length() < 11 + msg_size + 4/*PreviousTagSize*/) {
         return butil::Status(EAGAIN, "Fail to read, not enough data");
     }
@@ -273,10 +275,11 @@ butil::Status FlvReader::Read(AMFObject* msg, std::string* name) {
         if (!ReadAMFString(name, &istream)) {
             return butil::Status(EINVAL, "Fail to read AMF string");
         }
-        if (!ReadAMFObject(msg, &istream)) {
+        if (!ReadAMFObject(&msg->data, &istream)) {
             return butil::Status(EINVAL, "Fail to read AMF object");
         }
     }
+    msg->timestamp = timestamp;
     return butil::Status::OK();
 }
 
@@ -407,7 +410,7 @@ AudioSpecificConfig::AudioSpecificConfig()
 butil::Status AudioSpecificConfig::Create(const butil::IOBuf& buf) {
     if (buf.size() < 2u) {
         return butil::Status(EINVAL, "data_size=%" PRIu64 " is too short",
-                                    buf.size());
+                             (uint64_t)buf.size());
     }
     char tmpbuf[2];
     buf.copy_to(tmpbuf, arraysize(tmpbuf));
@@ -416,7 +419,7 @@ butil::Status AudioSpecificConfig::Create(const butil::IOBuf& buf) {
 
 butil::Status AudioSpecificConfig::Create(const void* data, size_t len) {
     if (len < 2u) {
-        return butil::Status(EINVAL, "data_size=%" PRIu64 " is too short", len);
+        return butil::Status(EINVAL, "data_size=%" PRIu64 " is too short", (uint64_t)len);
     }
     uint8_t profile_ObjectType = ((const char*)data)[0];
     uint8_t samplingFrequencyIndex = ((const char*)data)[1];
@@ -1010,9 +1013,6 @@ void RtmpConnect::StartConnect(
         return done(EINVAL, data);
     }
 
-    // Save to callback to call when RTMP connect is done.
-    ctx->SetConnectCallback(done, data);
-
     const RtmpClientOptions* _client_options = ctx->client_options();
     if (_client_options && _client_options->simplified_rtmp) {
         ctx->set_simplified_rtmp(true);
@@ -1022,9 +1022,11 @@ void RtmpConnect::StartConnect(
         }
         ctx->SetState(s->remote_side(), policy::RtmpContext::STATE_RECEIVED_S2);
         ctx->set_create_stream_with_play_or_publish(true);
-        ctx->OnConnected(0);
-        return;
+        return done(0, data);
     }
+
+    // Save to callback to call when RTMP connect is done.
+    ctx->SetConnectCallback(done, data);
         
     // Initiate the rtmp handshake.
     bool is_simple_handshake = false;
@@ -1260,20 +1262,20 @@ int RtmpStreamBase::SendControlMessage(
     return _rtmpsock->Write(msg);
 }
 
-int RtmpStreamBase::SendMetaData(const AMFObject& metadata,
+int RtmpStreamBase::SendMetaData(const RtmpMetaData& metadata,
                                  const butil::StringPiece& name) {
     butil::IOBuf req_buf;
     {
         butil::IOBufAsZeroCopyOutputStream zc_stream(&req_buf);
         AMFOutputStream ostream(&zc_stream);
         WriteAMFString(name, &ostream);
-        WriteAMFObject(metadata, &ostream);
+        WriteAMFObject(metadata.data, &ostream);
         if (!ostream.good()) {
             LOG(ERROR) << "Fail to serialize metadata";
             return -1;
         }
     }
-    return SendMessage(0, policy::RTMP_MESSAGE_DATA_AMF0, req_buf);
+    return SendMessage(metadata.timestamp, policy::RTMP_MESSAGE_DATA_AMF0, req_buf);
 }
 
 int RtmpStreamBase::SendSharedObjectMessage(const RtmpSharedObjectMessage&) {
@@ -1360,14 +1362,10 @@ int RtmpStreamBase::SendVideoMessage(const RtmpVideoMessage& msg) {
         return -1;
     }
     if (!policy::is_video_frame_type_valid(msg.frame_type)) {
-        LOG(ERROR) << "Invalid frame_type=" << (int)msg.frame_type;
-        errno = EINVAL;
-        return -1;
+        LOG(WARNING) << "Invalid frame_type=" << (int)msg.frame_type;
     }
     if (!policy::is_video_codec_valid(msg.codec)) {
-        LOG(ERROR) << "Invalid codec=" << (int)msg.codec;
-        errno = EINVAL;
-        return -1;
+        LOG(WARNING) << "Invalid codec=" << (int)msg.codec;
     }
     if (_paused) {
         errno = EPERM;
@@ -1397,9 +1395,7 @@ int RtmpStreamBase::SendAVCMessage(const RtmpAVCMessage& msg) {
         return -1;
     }
     if (!policy::is_video_frame_type_valid(msg.frame_type)) {
-        LOG(ERROR) << "Invalid frame_type=" << (int)msg.frame_type;
-        errno = EINVAL;
-        return -1;
+        LOG(WARNING) << "Invalid frame_type=" << (int)msg.frame_type;
     }
     if (_paused) {
         errno = EPERM;
@@ -1445,9 +1441,9 @@ void RtmpStreamBase::OnUserData(void*) {
               << "] ignored UserData{}";
 }
 
-void RtmpStreamBase::OnMetaData(AMFObject* metadata, const butil::StringPiece& name) {
+void RtmpStreamBase::OnMetaData(RtmpMetaData* metadata, const butil::StringPiece& name) {
     LOG(INFO) << remote_side() << '[' << stream_id()
-              << "] ignored MetaData{" << *metadata << '}'
+              << "] ignored MetaData{" << metadata->data << '}'
               << " name{" << name << '}';
 }
 
@@ -1504,7 +1500,7 @@ void RtmpStreamBase::CallOnUserData(void* data) {
     }
 }
 
-void RtmpStreamBase::CallOnMetaData(AMFObject* obj, const butil::StringPiece& name) {
+void RtmpStreamBase::CallOnMetaData(RtmpMetaData* obj, const butil::StringPiece& name) {
     if (BeginProcessingMessage("OnMetaData()")) {
         OnMetaData(obj, name);
         EndProcessingMessage();
@@ -1789,7 +1785,7 @@ void RtmpClientStream::OnStopInternal() {
         return CallOnStop();
     }
 
-    if (!_rtmpsock->Failed()) {
+    if (!_rtmpsock->Failed() && _chunk_stream_id != 0) {
         // SRS requires closeStream which is sent over this stream.
         butil::IOBuf req_buf1;
         {
@@ -2245,7 +2241,7 @@ void RetryingClientMessageHandler::OnUserData(void* msg) {
     _parent->CallOnUserData(msg);
 }
 
-void RetryingClientMessageHandler::OnMetaData(brpc::AMFObject* metadata, const butil::StringPiece& name) {
+void RetryingClientMessageHandler::OnMetaData(brpc::RtmpMetaData* metadata, const butil::StringPiece& name) {
     _parent->CallOnMetaData(metadata, name);
 }
 
@@ -2407,7 +2403,7 @@ int RtmpRetryingClientStream::AcquireStreamToSend(
     return 0;
 }
 
-int RtmpRetryingClientStream::SendMetaData(const AMFObject& obj, const butil::StringPiece& name) {
+int RtmpRetryingClientStream::SendMetaData(const RtmpMetaData& obj, const butil::StringPiece& name) {
     butil::intrusive_ptr<RtmpStreamBase> ptr;
     if (AcquireStreamToSend(&ptr) != 0) {
         return -1;

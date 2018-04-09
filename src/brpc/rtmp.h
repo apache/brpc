@@ -365,6 +365,11 @@ enum RtmpObjectEncoding {
 }; 
 const char* RtmpObjectEncoding2Str(RtmpObjectEncoding);
 
+struct RtmpMetaData {
+    uint32_t timestamp;
+    AMFObject data;
+};
+
 struct RtmpSharedObjectMessage {
     // Not implemented yet.
 };
@@ -383,7 +388,7 @@ public:
     // Append a video/audio/metadata message into the output buffer.
     butil::Status Write(const RtmpVideoMessage&);
     butil::Status Write(const RtmpAudioMessage&);
-    butil::Status Write(const AMFObject&);
+    butil::Status Write(const RtmpMetaData&);
 private:
     bool _write_header;
     butil::IOBuf* _buf;
@@ -409,7 +414,7 @@ public:
     // PeekMessageType, caller should call Read(RtmpAudioMessage*) subsequently.
     butil::Status Read(RtmpVideoMessage* msg);
     butil::Status Read(RtmpAudioMessage* msg);
-    butil::Status Read(AMFObject* object, std::string* object_name);
+    butil::Status Read(RtmpMetaData* object, std::string* object_name);
 
 private:
     butil::Status ReadHeader();
@@ -505,7 +510,7 @@ public:
     // simultaneously.
     // NOTE: Inputs can be modified and consumed.
     virtual void OnUserData(void* msg);
-    virtual void OnMetaData(AMFObject*, const butil::StringPiece&);
+    virtual void OnMetaData(RtmpMetaData*, const butil::StringPiece&);
     virtual void OnSharedObjectMessage(RtmpSharedObjectMessage* msg);
     virtual void OnAudioMessage(RtmpAudioMessage* msg);
     virtual void OnVideoMessage(RtmpVideoMessage* msg);
@@ -521,7 +526,7 @@ public:
     
     // Send media messages to the peer.
     // Returns 0 on success, -1 otherwise.
-    virtual int SendMetaData(const AMFObject&, 
+    virtual int SendMetaData(const RtmpMetaData&,
                              const butil::StringPiece& name = "onMetaData");
     virtual int SendSharedObjectMessage(const RtmpSharedObjectMessage& msg);
     virtual int SendAudioMessage(const RtmpAudioMessage& msg);
@@ -598,7 +603,7 @@ friend class policy::OnServerStreamCreated;
     bool BeginProcessingMessage(const char* fun_name);
     void EndProcessingMessage();
     void CallOnUserData(void* data);
-    void CallOnMetaData(AMFObject*, const butil::StringPiece&);
+    void CallOnMetaData(RtmpMetaData*, const butil::StringPiece&);
     void CallOnSharedObjectMessage(RtmpSharedObjectMessage* msg);
     void CallOnAudioMessage(RtmpAudioMessage* msg);
     void CallOnVideoMessage(RtmpVideoMessage* msg);
@@ -869,7 +874,7 @@ class RtmpMessageHandler {
 public:
     virtual void OnPlayable() = 0;
     virtual void OnUserData(void*) = 0;
-    virtual void OnMetaData(brpc::AMFObject* metadata, const butil::StringPiece& name) = 0;
+    virtual void OnMetaData(brpc::RtmpMetaData* metadata, const butil::StringPiece& name) = 0;
     virtual void OnAudioMessage(brpc::RtmpAudioMessage* msg) = 0;
     virtual void OnVideoMessage(brpc::RtmpVideoMessage* msg) = 0;
     virtual void OnSharedObjectMessage(RtmpSharedObjectMessage* msg) = 0;
@@ -886,7 +891,7 @@ public:
 
     void OnPlayable();
     void OnUserData(void*);
-    void OnMetaData(brpc::AMFObject* metadata, const butil::StringPiece& name);
+    void OnMetaData(brpc::RtmpMetaData* metadata, const butil::StringPiece& name);
     void OnAudioMessage(brpc::RtmpAudioMessage* msg);
     void OnVideoMessage(brpc::RtmpVideoMessage* msg);
     void OnSharedObjectMessage(RtmpSharedObjectMessage* msg);
@@ -929,7 +934,7 @@ public:
     // If the stream is recreated, following methods may return -1 and set
     // errno to ERTMPPUBLISHABLE for once. (so that users can be notified to
     // resend metadata or header messages).
-    int SendMetaData(const AMFObject&,
+    int SendMetaData(const RtmpMetaData&,
                      const butil::StringPiece& name = "onMetaData");
     int SendSharedObjectMessage(const RtmpSharedObjectMessage& msg);
     int SendAudioMessage(const RtmpAudioMessage& msg);

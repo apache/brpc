@@ -251,6 +251,9 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         // in correlation_id. negative max_retry causes undefined behavior.
         cntl->set_max_retry(0);
     }
+    // HTTP needs this field to be set before any SetFailed()
+    cntl->_request_protocol = _options.protocol;
+    cntl->_preferred_index = _preferred_index;
     cntl->_retry_policy = _options.retry_policy;
     const CallId correlation_id = cntl->call_id();
     const int rc = bthread_id_lock_and_reset_range(
@@ -321,8 +324,6 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         cntl->_single_server_id = _server_id;
         cntl->_remote_side = _server_address;
     }
-    cntl->_request_protocol = _options.protocol;
-    cntl->_preferred_index = _preferred_index;
 
     // Share the lb with controller.
     cntl->_lb = _lb;
@@ -425,23 +426,9 @@ int Channel::CheckHealth() {
         return -1;
     } else {
         SocketUniquePtr tmp_sock;
-        LoadBalancer::SelectIn sel_in = { 0, false, 0, NULL };
+        LoadBalancer::SelectIn sel_in = { 0, false, false, 0, NULL };
         LoadBalancer::SelectOut sel_out(&tmp_sock);
-        const int rc = _lb->SelectServer(sel_in, &sel_out);
-        if (rc != 0) {
-            return rc;
-        }
-        if (sel_out.need_feedback) {
-            LoadBalancer::CallInfo info;
-            info.in.begin_time_us = 0;
-            info.in.has_request_code = false;
-            info.in.request_code = 0;
-            info.in.excluded = NULL;
-            info.server_id = tmp_sock->id();
-            info.error_code = ECANCELED;
-            _lb->Feedback(info);
-        }
-        return 0;
+        return _lb->SelectServer(sel_in, &sel_out);
     }
 }
 

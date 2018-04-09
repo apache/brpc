@@ -19,8 +19,9 @@
 #include <sys/types.h>
 #include <stddef.h>                         // size_t
 #include <gflags/gflags.h>
-#include "butil/macros.h"                    // ARRAY_SIZE
-#include "butil/scoped_lock.h"               // BAIDU_SCOPED_LOCK
+#include "butil/compat.h"                   // OS_MACOSX
+#include "butil/macros.h"                   // ARRAY_SIZE
+#include "butil/scoped_lock.h"              // BAIDU_SCOPED_LOCK
 #include "butil/fast_rand.h"
 #include "butil/unique_ptr.h"
 #include "butil/third_party/murmurhash3/murmurhash3.h" // fmix64
@@ -112,7 +113,7 @@ bool TaskGroup::wait_task(bthread_t* tid) {
     do {
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
         if (_last_pl_state.stopped()) {
-            return -1;
+            return false;
         }
         _pl->wait(_last_pl_state);
         if (steal_task(tid)) {
@@ -121,7 +122,7 @@ bool TaskGroup::wait_task(bthread_t* tid) {
 #else
         const ParkingLot::State st = _pl->get_state();
         if (st.stopped()) {
-            return -1;
+            return false;
         }
         if (steal_task(tid)) {
             return true;
@@ -151,8 +152,13 @@ void TaskGroup::run_main_task() {
         }
         if (FLAGS_show_per_worker_usage_in_vars && !usage_bvar) {
             char name[32];
+#if defined(OS_MACOSX)
+            snprintf(name, sizeof(name), "bthread_worker_usage_%" PRIu64,
+                     pthread_numeric_id());
+#else
             snprintf(name, sizeof(name), "bthread_worker_usage_%ld",
                      (long)syscall(SYS_gettid));
+#endif
             usage_bvar.reset(new bvar::PerSecond<bvar::PassiveStatus<double> >
                              (name, &cumulated_cputime, 1));
         }
@@ -184,7 +190,7 @@ TaskGroup::TaskGroup(TaskControl* c)
 {
     _steal_seed = butil::fast_rand();
     _steal_offset = OFFSET_TABLE[_steal_seed % ARRAY_SIZE(OFFSET_TABLE)];
-    _pl = &c->_pl[butil::fmix64(pthread_self()) % TaskControl::PARKING_LOT_NUM];
+    _pl = &c->_pl[butil::fmix64(pthread_numeric_id()) % TaskControl::PARKING_LOT_NUM];
     CHECK(c);
 }
 

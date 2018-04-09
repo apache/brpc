@@ -86,7 +86,7 @@ ParseResult InputMessenger::CutInputMessage(
             // The protocol is fixed at client-side, no need to try others.
             LOG(ERROR) << "Fail to parse response from " << m->remote_side()
                        << " by " << _handlers[preferred].name 
-                       << " (client's protocol)";
+                       << " at client-side";
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
         // Clear context before trying next protocol which probably has
@@ -301,9 +301,9 @@ void InputMessenger::OnNewMessages(Socket* m) {
                     if (handlers[index].verify(msg.get())) {
                         m->SetAuthentication(0);
                     } else {
-                        m->SetAuthentication(EAUTH);
+                        m->SetAuthentication(ERPCAUTH);
                         LOG(WARNING) << "Fail to authenticate " << *m;
-                        m->SetFailed(EAUTH, "Fail to authenticate %s",
+                        m->SetFailed(ERPCAUTH, "Fail to authenticate %s",
                                      m->description().c_str());
                         return;
                     }

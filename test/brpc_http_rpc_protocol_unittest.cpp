@@ -277,7 +277,7 @@ TEST_F(HttpTest, process_request_logoff) {
     _server._status = brpc::Server::READY;
     ProcessMessage(brpc::policy::ProcessHttpRequest, msg, false);
     ASSERT_EQ(1ll, _server._nerror.get_value());
-    CheckResponseCode(false, brpc::HTTP_STATUS_FORBIDDEN);
+    CheckResponseCode(false, brpc::HTTP_STATUS_SERVICE_UNAVAILABLE);
 }
 
 TEST_F(HttpTest, process_request_wrong_method) {
@@ -570,8 +570,12 @@ TEST_F(HttpTest, read_failed_chunked_response) {
     cntl.http_request().uri() = "/DownloadService/DownloadFailed";
     cntl.response_will_be_read_progressively();
     channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
-    ASSERT_TRUE(cntl.response_attachment().empty());
-    ASSERT_TRUE(cntl.Failed()) << cntl.ErrorText();
+    EXPECT_TRUE(cntl.response_attachment().empty());
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_NE(cntl.ErrorText().find("HTTP/1.1 500 Internal Server Error"),
+              std::string::npos) << cntl.ErrorText();
+    ASSERT_NE(cntl.ErrorText().find("Intentionally set controller failed"),
+              std::string::npos) << cntl.ErrorText();
     ASSERT_EQ(0, svc.last_errno());
 }
 

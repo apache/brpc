@@ -26,7 +26,7 @@ If you need to statically link leveldb:
 $ sudo apt-get install libsnappy-dev
 ```
 
-### Compile brpc
+### Compile brpc with config_brpc.sh
 git clone brpc, cd into the repo and run
 ```
 $ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib
@@ -36,7 +36,7 @@ To change compiler to clang, add `--cxx=clang++ --cc=clang`.
 
 To not link debugging symbols, add `--nodebugsymbols` and compiled binaries will be much smaller.
 
-### Run example
+**Run example**
 
 ```
 $ cd example/echo_c++
@@ -44,11 +44,13 @@ $ make
 $ ./echo_server &
 $ ./echo_client
 ```
+
 Examples link brpc statically, if you need to link the shared version, `make clean` and `LINK_SO=1 make`
 
 To run examples with cpu/heap profilers, install `libgoogle-perftools-dev` and re-run `config_brpc.sh` before compiling.
 
-### Run tests
+**Run tests**
+
 Install and compile libgtest-dev (which is not compiled yet):
 
 ```shell
@@ -58,6 +60,32 @@ sudo apt-get install libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo m
 The directory of gtest source code may be changed, try `/usr/src/googletest/googletest` if `/usr/src/gtest` is not there.
 
 Rerun `config_brpc.sh`, `make` in test/, and `sh run_tests.sh`
+
+### Compile brpc with cmake
+```
+$ mkdir build && cd build && cmake .. && make
+```
+To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
+
+To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
+
+**Run example with cmake**
+```
+$ cd example/echo_c++
+$ mkdir build && cd build && cmake .. && make
+$ ./echo_server &
+$ ./echo_client
+```
+Examples link brpc statically, if you need to link the shared version, use `cmake -DEXAMPLE_LINK_SO=ON ..`
+
+**Run tests**
+
+Install gtest like just written above.
+
+```
+$ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make
+$ cd test && sh run_tests.sh
+```
 
 ## Fedora/CentOS
 
@@ -77,7 +105,7 @@ Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.co
 ```
 sudo yum install gflags-devel protobuf-devel protobuf-compiler leveldb-devel
 ```
-### Compile brpc
+### Compile brpc with config_brpc.sh
 
 git clone brpc, cd into the repo and run
 
@@ -89,7 +117,7 @@ To change compiler to clang, add `--cxx=clang++ --cc=clang`.
 
 To not link debugging symbols, add `--nodebugsymbols` and compiled binaries will be much smaller.
 
-### Run example
+**Run example**
 
 ```
 $ cd example/echo_c++
@@ -97,15 +125,41 @@ $ make
 $ ./echo_server &
 $ ./echo_client
 ```
+
 Examples link brpc statically, if you need to link the shared version, `make clean` and `LINK_SO=1 make`
 
 To run examples with cpu/heap profilers, install `gperftools-devel` and re-run `config_brpc.sh` before compiling.
 
-### Run tests
+**Run tests**
 
 Install gtest-devel.
 
 Rerun `config_brpc.sh`, `make` in test/, and `sh run_tests.sh`
+
+### Compile brpc with cmake
+```
+$ mkdir build && cd build && cmake .. && make
+```
+To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
+
+To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
+
+**Run example**
+
+```
+$ cd example/echo_c++
+$ mkdir build && cd build && cmake .. && make
+$ ./echo_server &
+$ ./echo_client
+```
+Examples link brpc statically, if you need to link the shared version, use `cmake -DEXAMPLE_LINK_SO=ON ..`
+
+**Run tests**
+
+```
+$ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make
+$ cd test && sh run_tests.sh
+```
 
 ## Linux with self-built deps
 
@@ -143,6 +197,18 @@ $ cd brpc_dev
 $ sh config_brpc.sh --headers=.. --libs=..
 $ make
 ```
+
+### Compile brpc with cmake
+
+git clone brpc. cd into the repo and run
+
+```
+$ mkdir build && cd build && cmake -DCMAKE_INCLUDE_PATH="/path/to/dep1/include;/path/to/dep2/include" -DCMAKE_LIBRARY_PATH="/path/to/dep1/lib;/path/to/dep2/lib" .. && make
+```
+
+To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
+
+To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
 
 # Supported deps
 
@@ -192,7 +258,7 @@ Code compiled with gcc 4.8.2 and linked to a tcmalloc compiled with earlier GCC 
 
 When you meet the issue, compile tcmalloc with the same GCC.
 
-Another common issue with tcmalloc is that it does not return memory to system as early as ptmalloc. So when there's an invalid memory access, the program may not crash directly,  instead it crashes at a unrelated place, or even not crash. When you program has weird memory issues, try removing tcmalloc.
+Another common issue with tcmalloc is that it does not return memory to system as early as ptmalloc. So when there's an invalid memory access, the program may not crash directly, instead it crashes at a unrelated place, or even not crash. When you program has weird memory issues, try removing tcmalloc.
 
 If you want to use [cpu profiler](cpu_profiler.md) or [heap profiler](heap_profiler.md), do link `libtcmalloc_and_profiler.a`. These two profilers are based on tcmalloc.[contention profiler](contention_profiler.md) does not require tcmalloc.
 
@@ -200,11 +266,11 @@ When you remove tcmalloc, not only remove the linkage with tcmalloc but also the
 
 ## glog: 3.3+
 
-brpc implementes a default [logging utility](../../src/butil/logging.h) which conflicts with glog. To replace this with glog, add *--with-glog* to config_brpc.sh
+brpc implements a default [logging utility](../../src/butil/logging.h) which conflicts with glog. To replace this with glog, add *--with-glog* to config_brpc.sh or add `-DBRPC_WITH_GLOG=ON` to cmake.
 
 ## valgrind: 3.8+
 
-brpc detects valgrind automatically (and registers stacks of bthread). Older valgrind (say 3.2) is not supported.
+brpc detects valgrind automatically (and registers stacks of bthread). Older valgrind(say 3.2) is not supported.
 
 # Track instances
 

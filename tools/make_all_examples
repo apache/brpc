@@ -1,9 +1,9 @@
 saved_pwd_before_making=$PWD
-for file in `find tools example -name Makefile`; do
+for file in `find tools example -name CMakeFiles -type d -prune -o -name CMakeLists.txt -print`; do
     cd $(dirname $file)
     echo
     echo "[$file]"
-    if ! make -sj4; then
+    if ! ( rm -rf build && mkdir build && cd build && cmake .. && make -sj4 ); then
         exit 1
     fi
     cd $saved_pwd_before_making

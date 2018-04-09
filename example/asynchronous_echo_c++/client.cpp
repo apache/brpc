@@ -39,16 +39,10 @@ void HandleEchoResponse(
         LOG(WARNING) << "Fail to send EchoRequest, " << cntl->ErrorText();
         return;
     }
-    if (cntl->response_attachment().empty()) {
-        LOG(INFO) << "Received response from " << cntl->remote_side()
-                   << ": " << response->message()
-                   << " latency=" << cntl->latency_us() << "us";
-    } else {
-        LOG(INFO) << "Received response from " << cntl->remote_side()
-                   << ": " << response->message() << " (attached="
-                   << cntl->response_attachment() << ")"
-                   << " latency=" << cntl->latency_us() << "us";
-    }
+    LOG(INFO) << "Received response from " << cntl->remote_side()
+        << ": " << response->message() << " (attached="
+        << cntl->response_attachment() << ")"
+        << " latency=" << cntl->latency_us() << "us";
 }
                         
 

@@ -2,7 +2,7 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#include <sys/epoll.h>
+#include "butil/compat.h"
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/utsname.h>                           // uname
@@ -181,7 +181,11 @@ TEST(FDTest, ping_pong) {
     const size_t NEPOLL = 2;
 
     int epfd[NEPOLL];
+#ifdef RUN_EPOLL_IN_BTHREAD
     bthread_t eth[NEPOLL];
+#else
+    pthread_t eth[NEPOLL];
+#endif
     int fds[2 * NCLIENT];
     bthread_t cth[NCLIENT];
     ClientMeta* cm[NCLIENT];
@@ -226,7 +230,7 @@ TEST(FDTest, ping_pong) {
         EpollMeta *em = new EpollMeta;
         em->epfd = epfd[i];
 #ifdef RUN_EPOLL_IN_BTHREAD
-        eth[i] = bthread_start_urgent(epoll_thread, em, NULL);
+        ASSERT_EQ(0, bthread_start_urgent(&eth[i], epoll_thread, em, NULL);
 #else
         ASSERT_EQ(0, pthread_create(&eth[i], NULL, epoll_thread, em));
 #endif
@@ -381,7 +385,7 @@ TEST(FDTest, timeout) {
     ASSERT_EQ(0, pthread_join(th, NULL));
     ASSERT_EQ(0, bthread_join(bth, NULL));
     tm.stop();
-    ASSERT_LT(tm.m_elapsed(), 60);
+    ASSERT_LT(tm.m_elapsed(), 80);
     ASSERT_EQ(0, bthread_close(fds[0]));
     ASSERT_EQ(0, bthread_close(fds[1]));
 }

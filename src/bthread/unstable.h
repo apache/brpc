@@ -34,21 +34,21 @@
 __BEGIN_DECLS
 
 // Schedule tasks created by BTHREAD_NOSIGNAL
-extern void bthread_flush() __THROW;
+extern void bthread_flush();
 
 // Mark the calling bthread as "about to quit". When the bthread is scheduled,
 // worker pthreads are not notified.
-extern int bthread_about_to_quit() __THROW;
+extern int bthread_about_to_quit();
 
 // Run `on_timer(arg)' at or after real-time `abstime'. Put identifier of the
 // timer into *id.
 // Return 0 on success, errno otherwise.
 extern int bthread_timer_add(bthread_timer_t* id, timespec abstime,
-                             void (*on_timer)(void*), void* arg) __THROW;
+                             void (*on_timer)(void*), void* arg);
 
 // Unschedule the timer associated with `id'.
 // Returns: 0 - exist & not-run; 1 - still running; EINVAL - not exist.
-extern int bthread_timer_del(bthread_timer_t id) __THROW;
+extern int bthread_timer_del(bthread_timer_t id);
 
 // Suspend caller thread until the file descriptor `fd' has `epoll_events'.
 // Returns 0 on success, -1 otherwise and errno is set.
@@ -56,13 +56,13 @@ extern int bthread_timer_del(bthread_timer_t id) __THROW;
 // current implementation relies on EPOLL_CTL_ADD and EPOLL_CTL_DEL which
 // are not scalable, don't use bthread_fd_*wait functions in performance
 // critical scenario.
-extern int bthread_fd_wait(int fd, unsigned epoll_events) __THROW;
+extern int bthread_fd_wait(int fd, unsigned epoll_events);
 
 // Suspend caller thread until the file descriptor `fd' has `epoll_events'
 // or CLOCK_REALTIME reached `abstime' if abstime is not NULL.
 // Returns 0 on success, -1 otherwise and errno is set.
 extern int bthread_fd_timedwait(int fd, unsigned epoll_events,
-                                const timespec* abstime) __THROW;
+                                const timespec* abstime);
 
 // Close file descriptor `fd' and wake up all threads waiting on it.
 // User should call this function instead of close(2) if bthread_fd_wait,
@@ -70,21 +70,21 @@ extern int bthread_fd_timedwait(int fd, unsigned epoll_events,
 // otherwise waiters will suspend indefinitely and bthread's internal epoll
 // may work abnormally after fork() is called.
 // NOTE: This function does not wake up pthread waiters.(tested on linux 2.6.32)
-extern int bthread_close(int fd) __THROW;
+extern int bthread_close(int fd);
 
 // Replacement of connect(2) in bthreads.
 extern int bthread_connect(int sockfd, const sockaddr* serv_addr,
-                           socklen_t addrlen) __THROW;
+                           socklen_t addrlen);
 
 // Add a startup function that each pthread worker will run at the beginning
 // To run code at the end, use butil::thread_atexit()
 // Returns 0 on success, error code otherwise.
-extern int bthread_set_worker_startfn(void (*start_fn)()) __THROW;
+extern int bthread_set_worker_startfn(void (*start_fn)());
 
 // Stop all bthread and worker pthreads.
 // You should avoid calling this function which may cause bthread after main()
 // suspend indefinitely.
-extern void bthread_stop_world() __THROW;
+extern void bthread_stop_world();
 
 // Create a bthread_key_t with an additional arg to destructor.
 // Generally the dtor_arg is for passing the creator of data so that we can
@@ -92,7 +92,7 @@ extern void bthread_stop_world() __THROW;
 // have to do an extra heap allocation to contain data and its creator.
 extern int bthread_key_create2(bthread_key_t* key,
                                void (*destructor)(void* data, const void* dtor_arg),
-                               const void* dtor_arg) __THROW;
+                               const void* dtor_arg);
 
 // CAUTION: functions marked with [PRC INTERNAL] are NOT supposed to be called
 // by RPC users.

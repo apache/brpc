@@ -9,7 +9,7 @@ Create a file named dummy_server.port which contains a port number(such as 8888)
 
 # brpc is not used at all
 
-You must manually add the dummy server. You have to first read [Getting Started](getting_started.md) to learn how to download and compile brpc, and then add the following code snippet at the program entry:
+You must manually add the dummy server. First read [Getting Started](getting_started.md) to learn how to download and compile brpc, and then add the following code snippet at the program entry:
 
 ```c++
 #include <brpc/server.h>

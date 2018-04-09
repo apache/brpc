@@ -58,9 +58,9 @@ protected:
     PassiveStatus<int64_t> _count;
     PassiveStatus<int64_t> _qps;
     PercentileWindow _latency_percentile_window;
-    PassiveStatus<int64_t> _latency_50;
-    PassiveStatus<int64_t> _latency_90;
-    PassiveStatus<int64_t> _latency_99;
+    PassiveStatus<int64_t> _latency_p1;
+    PassiveStatus<int64_t> _latency_p2;
+    PassiveStatus<int64_t> _latency_p3;
     PassiveStatus<int64_t> _latency_999;  // 99.9%
     PassiveStatus<int64_t> _latency_9999; // 99.99%
     CDF _latency_cdf;
@@ -125,7 +125,7 @@ public:
     int64_t latency() const
     { return _latency_window.get_value().get_average_int(); }
 
-    // Get 50/90/99/99.9-ile latencies in recent window_size-to-ctor seconds.
+    // Get p1/p2/p3/99.9-ile latencies in recent window_size-to-ctor seconds.
     Vector<int64_t, 4> latency_percentiles() const;
 
     // Get the max latency in recent window_size-to-ctor seconds.

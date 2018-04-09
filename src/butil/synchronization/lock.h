@@ -13,6 +13,7 @@
 
 #include "butil/base_export.h"
 #include "butil/macros.h"
+#include "butil/compat.h"
 
 namespace butil {
 

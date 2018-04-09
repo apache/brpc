@@ -338,7 +338,7 @@ public:
     explicit RtmpSubStream(brpc::RtmpMessageHandler* mh)
         : _message_handler(mh) {}
     // @RtmpStreamBase
-    void OnMetaData(brpc::AMFObject*, const butil::StringPiece&);
+    void OnMetaData(brpc::RtmpMetaData*, const butil::StringPiece&);
     void OnSharedObjectMessage(brpc::RtmpSharedObjectMessage* msg);
     void OnAudioMessage(brpc::RtmpAudioMessage* msg);
     void OnVideoMessage(brpc::RtmpVideoMessage* msg);
@@ -352,7 +352,7 @@ void RtmpSubStream::OnFirstMessage() {
     _message_handler->OnPlayable();
 }
 
-void RtmpSubStream::OnMetaData(brpc::AMFObject* obj, const butil::StringPiece& name) {
+void RtmpSubStream::OnMetaData(brpc::RtmpMetaData* obj, const butil::StringPiece& name) {
     _message_handler->OnMetaData(obj, name);
 }
 

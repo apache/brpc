@@ -109,14 +109,21 @@
     \brief   provide custom rapidjson namespace (closing expression)
     \see RAPIDJSON_NAMESPACE
 */
-#ifndef RAPIDJSON_NAMESPACE
-#define RAPIDJSON_NAMESPACE rapidjson
+// NOTE:
+// Add prefix 'BUTIL_' to original 'RAPIDJSON_NAMESPACE', 'RAPIDJSON_NAMESPACE_BEGIN'
+// and 'RAPIDJSON_NAMESPACE_END', and set BUTIL_RAPIDJSON_NAMESPACE to butil::rapidjson,
+// in order to distinguish with other version RapidJSON in a single binary. (Please refer
+// to the reason mentioned in the comments above)
+// When using RapidJSON API inside brpc, please use 'BUTIL_RAPIDJSON_NAMESPACE::' instead of
+// 'rapidjson::'.
+#ifndef BUTIL_RAPIDJSON_NAMESPACE
+#define BUTIL_RAPIDJSON_NAMESPACE butil::rapidjson
 #endif
-#ifndef RAPIDJSON_NAMESPACE_BEGIN
-#define RAPIDJSON_NAMESPACE_BEGIN namespace RAPIDJSON_NAMESPACE {
+#ifndef BUTIL_RAPIDJSON_NAMESPACE_BEGIN
+#define BUTIL_RAPIDJSON_NAMESPACE_BEGIN namespace butil { namespace rapidjson {
 #endif
-#ifndef RAPIDJSON_NAMESPACE_END
-#define RAPIDJSON_NAMESPACE_END }
+#ifndef BUTIL_RAPIDJSON_NAMESPACE_END
+#define BUTIL_RAPIDJSON_NAMESPACE_END } }
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -313,20 +320,20 @@
 #ifdef RAPIDJSON_DOXYGEN_RUNNING
 #define RAPIDJSON_NO_SIZETYPEDEFINE
 #endif
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 //! Size type (for string lengths, array sizes, etc.)
 /*! RapidJSON uses 32-bit array/string indices even on 64-bit platforms,
     instead of using \c size_t. Users may override the SizeType by defining
     \ref RAPIDJSON_NO_SIZETYPEDEFINE.
 */
 typedef unsigned SizeType;
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 #endif
 
 // always import std::size_t to rapidjson namespace
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 using std::size_t;
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 ///////////////////////////////////////////////////////////////////////////////
 // RAPIDJSON_ASSERT
@@ -350,11 +357,11 @@ RAPIDJSON_NAMESPACE_END
 // Adopt from boost
 #ifndef RAPIDJSON_STATIC_ASSERT
 //!@cond RAPIDJSON_HIDDEN_FROM_DOXYGEN
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 template <bool x> struct STATIC_ASSERTION_FAILURE;
 template <> struct STATIC_ASSERTION_FAILURE<true> { enum { value = 1 }; };
 template<int x> struct StaticAssertTest {};
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 #define RAPIDJSON_JOIN(X, Y) RAPIDJSON_DO_JOIN(X, Y)
 #define RAPIDJSON_DO_JOIN(X, Y) RAPIDJSON_DO_JOIN2(X, Y)
@@ -373,8 +380,8 @@ RAPIDJSON_NAMESPACE_END
     \hideinitializer
  */
 #define RAPIDJSON_STATIC_ASSERT(x) \
-    typedef ::RAPIDJSON_NAMESPACE::StaticAssertTest< \
-      sizeof(::RAPIDJSON_NAMESPACE::STATIC_ASSERTION_FAILURE<bool(x) >)> \
+    typedef ::BUTIL_RAPIDJSON_NAMESPACE::StaticAssertTest< \
+      sizeof(::BUTIL_RAPIDJSON_NAMESPACE::STATIC_ASSERTION_FAILURE<bool(x) >)> \
     RAPIDJSON_JOIN(StaticAssertTypedef, __LINE__) RAPIDJSON_STATIC_ASSERT_UNUSED_ATTRIBUTE
 #endif
 
@@ -496,9 +503,9 @@ RAPIDJSON_NAMESPACE_END
 
 /*! \namespace rapidjson
     \brief main RapidJSON namespace
-    \see RAPIDJSON_NAMESPACE
+    \see BUTIL_RAPIDJSON_NAMESPACE
 */
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 
 ///////////////////////////////////////////////////////////////////////////////
 //  Stream
@@ -655,6 +662,6 @@ enum Type {
     kNumberType = 6     //!< number
 };
 
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 #endif // RAPIDJSON_RAPIDJSON_H_

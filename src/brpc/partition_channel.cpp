@@ -457,9 +457,7 @@ int DynamicPartitionChannel::Init(
         LOG(ERROR) << "Fail to get NamingServiceThread";
         return -1;
     }
-    ChannelOptions schan_options;
-    schan_options.succeed_without_server = ns_opt.succeed_without_server;
-    if (_schan.Init("_dynpart", &schan_options) != 0) {
+    if (_schan.Init("_dynpart", options_in) != 0) {
         LOG(ERROR) << "Fail to init _schan";
         return -1;
     }

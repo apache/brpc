@@ -208,7 +208,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    if (FLAGS_dummy_port > 0) {
+    if (FLAGS_dummy_port >= 0) {
         brpc::StartDummyServerAt(FLAGS_dummy_port);
     }
     

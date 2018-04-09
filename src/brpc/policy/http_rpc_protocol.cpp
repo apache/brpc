@@ -39,7 +39,7 @@
 #include "brpc/policy/http_rpc_protocol.h"
 
 extern "C" {
-void bthread_assign_data(void* data) __THROW;
+void bthread_assign_data(void* data);
 }
 
 namespace brpc {
@@ -197,7 +197,7 @@ static void PrintMessage(const butil::IOBuf& inbuf,
     if (!has_content) {
         buf2.append(buf1);
     } else {
-        size_t nskipped = 0;
+        uint64_t nskipped = 0;
         if (buf1.size() > (size_t)FLAGS_http_verbose_max_body_length) {
             nskipped = buf1.size() - (size_t)FLAGS_http_verbose_max_body_length;
             buf1.pop_back(nskipped);
@@ -264,11 +264,20 @@ void ProcessHttpResponse(InputMessageBase* msg) {
             accessor.set_readable_progressive_attachment(imsg_guard.get());
             const int sc = res_header->status_code();
             if (sc < 200 || sc >= 300) {
-                cntl->SetFailed(EHTTP, "HTTP/%d.%d %d %s",
+                // Even if the body is for streaming purpose, a non-OK status
+                // code indicates that the body is probably the error text
+                // which is helpful for debugging.
+                // content may be binary data, so the size limit is a must.
+                std::string body_str;
+                res_body.copy_to(
+                    &body_str, std::min((int)res_body.size(),
+                                        FLAGS_http_max_error_length));
+                cntl->SetFailed(EHTTP, "HTTP/%d.%d %d %s: %.*s",
                                 res_header->major_version(),
                                 res_header->minor_version(),
                                 static_cast<int>(res_header->status_code()),
-                                res_header->reason_phrase());
+                                res_header->reason_phrase(),
+                                (int)body_str.size(), body_str.c_str());
             } else if (cntl->response() != NULL &&
                        cntl->response()->GetDescriptor()->field_count() != 0) {
                 cntl->SetFailed(ERESPONSE, "A protobuf response can't be parsed"
@@ -284,7 +293,6 @@ void ProcessHttpResponse(InputMessageBase* msg) {
             if (!res_body.empty()) {
                 // Use content as error text if it's present. Notice that
                 // content may be binary data, so the size limit is a must.
-                // TODO: Print body in better way.
                 std::string body_str;
                 res_body.copy_to(
                     &body_str, std::min((int)res_body.size(),
@@ -363,29 +371,19 @@ void ProcessHttpResponse(InputMessageBase* msg) {
     accessor.OnResponse(cid, saved_error);
 }
 
-void UpdateResponseHeader(int status_code, Controller* cntl) {
-    DCHECK(cntl->Failed());
-    HttpHeader* resp_header = &cntl->http_response();
-    resp_header->set_status_code(status_code);
-    cntl->response_attachment().clear();
-    cntl->response_attachment().append(cntl->ErrorText());
-}
-
 void SerializeHttpRequest(butil::IOBuf* /*not used*/,
                           Controller* cntl,
                           const google::protobuf::Message* request) {
     if (request != NULL) {
         // If request is not NULL, message body will be serialized json,
         if (!request->IsInitialized()) {
-            cntl->SetFailed(
+            return cntl->SetFailed(
                 EREQUEST, "Missing required fields in request: %s",
                 request->InitializationErrorString().c_str());
-            return UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
         }
         if (!cntl->request_attachment().empty()) {
-            cntl->SetFailed(EREQUEST, "request_attachment must be empty "
-                            "when request is not NULL");
-            return UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
+            return cntl->SetFailed(EREQUEST, "request_attachment must be empty "
+                                   "when request is not NULL");
         }
         butil::IOBufAsZeroCopyOutputStream wrapper(&cntl->request_attachment());
         const HttpContentType content_type
@@ -394,10 +392,8 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             // Serialize content as protobuf
             if (!request->SerializeToZeroCopyStream(&wrapper)) {
                 cntl->request_attachment().clear();
-                cntl->SetFailed(EREQUEST, "Fail to serialize %s",
-                                request->GetTypeName().c_str());
-                UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
-                return;
+                return cntl->SetFailed(EREQUEST, "Fail to serialize %s",
+                                       request->GetTypeName().c_str());
             }
         } else {
             // Serialize content as json
@@ -409,10 +405,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
                                : json2pb::OUTPUT_ENUM_BY_NAME);
             if (!json2pb::ProtoMessageToJson(*request, &wrapper, opt, &err)) {
                 cntl->request_attachment().clear();
-                cntl->SetFailed(EREQUEST, "Fail to convert request to json, %s",
-                                err.c_str());
-                UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
-                return;
+                return cntl->SetFailed(EREQUEST, "Fail to convert request to json, %s", err.c_str());
             }
             // Set content-type if user did not.
             if (cntl->http_request().content_type().empty()) {
@@ -425,15 +418,13 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
     }
     // Make RPC fail if uri() is not OK (previous SetHttpURL/operator= failed)
     if (!cntl->http_request().uri().status().ok()) {
-        cntl->SetFailed(EREQUEST, "%s",
+        return cntl->SetFailed(EREQUEST, "%s",
                         cntl->http_request().uri().status().error_cstr());
-        return UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
     }
     if (cntl->request_compress_type() != COMPRESS_TYPE_NONE) {
         if (cntl->request_compress_type() != COMPRESS_TYPE_GZIP) {
-            cntl->SetFailed(EREQUEST, "http does not support %s",
+            return cntl->SetFailed(EREQUEST, "http does not support %s",
                             CompressTypeToCStr(cntl->request_compress_type()));
-            return UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
         }
         const size_t request_size = cntl->request_attachment().size();
         if (request_size >= (size_t)FLAGS_http_body_compress_threshold) {
@@ -499,17 +490,14 @@ void PackHttpRequest(butil::IOBuf* buf,
                      const butil::IOBuf& /*unused*/,
                      const Authenticator* auth) {
     if (cntl->connection_type() == CONNECTION_TYPE_SINGLE) {
-        cntl->SetFailed(EREQUEST, "http can't work with CONNECTION_TYPE_SINGLE");
-        return UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
+        return cntl->SetFailed(EREQUEST, "http can't work with CONNECTION_TYPE_SINGLE");
     }
     ControllerPrivateAccessor accessor(cntl);
     HttpHeader* header = &cntl->http_request();
     if (auth != NULL && header->GetHeader(common->AUTHORIZATION) == NULL) {
         std::string auth_data;
         if (auth->GenerateCredential(&auth_data) != 0) {
-            cntl->SetFailed(EREQUEST, "Fail to GenerateCredential");
-            UpdateResponseHeader(HTTP_STATUS_BAD_REQUEST, cntl);
-            return;
+            return cntl->SetFailed(EREQUEST, "Fail to GenerateCredential");
         }
         header->SetHeader(common->AUTHORIZATION, auth_data);
     }
@@ -534,12 +522,13 @@ inline bool SupportGzip(Controller* cntl) {
     return encodings->find(common->GZIP) != std::string::npos;
 }
 
-inline int ErrorCode2StatusCode(int error_code) {
+// Called in controller.cpp as well
+int ErrorCode2StatusCode(int error_code) {
     switch (error_code) {
     case ENOSERVICE:
     case ENOMETHOD:
         return HTTP_STATUS_NOT_FOUND;
-    case EAUTH:
+    case ERPCAUTH:
         return HTTP_STATUS_UNAUTHORIZED;
     case EREQUEST:
     case EINVAL:
@@ -609,8 +598,7 @@ static void SendHttpResponse(Controller *cntl,
                     res_header->set_content_type(common->CONTENT_TYPE_PROTO);
                 }
             } else {
-                cntl->SetFailed(ERESPONSE, "Fail to serialize %s",
-                                res->GetTypeName().c_str());
+                cntl->SetFailed(ERESPONSE, "Fail to serialize %s", res->GetTypeName().c_str());
             }
         } else {
             std::string err;
@@ -625,8 +613,7 @@ static void SendHttpResponse(Controller *cntl,
                     res_header->set_content_type(common->CONTENT_TYPE_JSON);
                 }
             } else {
-                cntl->SetFailed(ERESPONSE, "Fail to convert response to json, %s",
-                                err.c_str());
+                cntl->SetFailed(ERESPONSE, "Fail to convert response to json, %s", err.c_str());
             }
         }
     }
@@ -733,8 +720,7 @@ static void SendHttpResponse(Controller *cntl,
         // EPIPE is common in pooled connections + backup requests.
         const int errcode = errno;
         PLOG_IF(WARNING, errcode != EPIPE) << "Fail to write into " << *socket;
-        cntl->SetFailed(errcode, "Fail to write into %s",
-                        socket->description().c_str());
+        cntl->SetFailed(errcode, "Fail to write into %s", socket->description().c_str());
         return;
     }
     if (span) {
@@ -1131,8 +1117,6 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     
     if (!server->IsRunning()) {
         cntl->SetFailed(ELOGOFF, "Server is stopping");
-        cntl->http_response().set_status_code(HTTP_STATUS_FORBIDDEN);
-        cntl->http_response().SetHeader(common->CONNECTION, common->CLOSE);
         return SendHttpResponse(cntl.release(), server, NULL);
     }
 
@@ -1172,7 +1156,6 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         } else {
             cntl->SetFailed(ENOMETHOD, "Fail to find method on `%s'", path.c_str());
         }
-        cntl->http_response().set_status_code(HTTP_STATUS_NOT_FOUND);
         return SendHttpResponse(cntl.release(), server, NULL);
     } else if (sp->service->GetDescriptor() == BadMethodService::descriptor()) {
         BadMethodRequest breq;
@@ -1200,6 +1183,11 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     // NOTE: accesses to builtin services are not counted as part of
     // concurrency, therefore are not limited by ServerOptions.max_concurrency.
     if (!sp->is_builtin_service && !sp->params.is_tabbed) {
+        if (socket->is_overcrowded()) {
+            cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
+                            butil::endpoint2str(socket->remote_side()).c_str());
+            return SendHttpResponse(cntl.release(), server, method_status);
+        }
         if (!server_accessor.AddConcurrency(cntl.get())) {
             cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
                             server->options().max_concurrency);
@@ -1214,7 +1202,6 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         cntl->SetFailed(EPERM, "Not allowed to access builtin services, try "
                         "ServerOptions.internal_port=%d instead if you're in"
                         " internal network", server->options().internal_port);
-        cntl->http_response().set_status_code(HTTP_STATUS_FORBIDDEN);
         return SendHttpResponse(cntl.release(), server, method_status);
     }
     
@@ -1242,7 +1229,6 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 cntl->SetFailed(EREQUEST, "%s needs to be created from a"
                                 " non-empty json, it has required fields.",
                                 req->GetDescriptor()->full_name().c_str());
-                cntl->http_response().set_status_code(HTTP_STATUS_BAD_REQUEST);
                 return SendHttpResponse(cntl.release(), server, method_status);
             } // else all fields of the request are optional.
         } else {

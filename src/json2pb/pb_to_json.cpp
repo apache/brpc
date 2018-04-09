@@ -268,10 +268,10 @@ bool ProtoMessageToJsonStream(const google::protobuf::Message& message,
     PbToJsonConverter converter(options);
     bool succ = false;
     if (options.pretty_json) {    
-        rapidjson::PrettyWriter<OutputStream> writer(os);
+        BUTIL_RAPIDJSON_NAMESPACE::PrettyWriter<OutputStream> writer(os);
         succ = converter.Convert(message, writer); 
     } else {
-        rapidjson::OptimizedWriter<OutputStream> writer(os);
+        BUTIL_RAPIDJSON_NAMESPACE::OptimizedWriter<OutputStream> writer(os);
         succ = converter.Convert(message, writer); 
     }
     if (!succ && error) {
@@ -287,7 +287,7 @@ bool ProtoMessageToJson(const google::protobuf::Message& message,
                         std::string* error) {
     // TODO(gejun): We could further wrap a std::string as a buffer to reduce
     // a copying.
-    rapidjson::StringBuffer buffer;
+    BUTIL_RAPIDJSON_NAMESPACE::StringBuffer buffer;
     if (json2pb::ProtoMessageToJsonStream(message, options, buffer, error)) {
         json->append(buffer.GetString(), buffer.GetSize());
         return true;
