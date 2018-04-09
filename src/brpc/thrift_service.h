@@ -14,11 +14,13 @@
 
 // Authors: wangxuefeng (wangxuefeng@didichuxing.com)
 
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+
 #ifndef BRPC_THRIFT_SERVICE_H
 #define BRPC_THRIFT_SERVICE_H
 
 #include "brpc/controller.h"                        // Controller
-#include "brpc/thrift_binary_message.h"             // ThriftFramedMessage
+#include "brpc/thrift_framed_message.h"             // ThriftFramedMessage
 #include "brpc/describable.h"
 
 
@@ -127,3 +129,6 @@ private:
 
 
 #endif // BRPC_THRIFT_SERVICE_H
+
+#endif
+

@@ -24,7 +24,7 @@
 #include <butil/thrift_utils.h>
 #include <butil/strings/string_piece.h>
 #include <brpc/channel.h>
-#include <brpc/thrift_binary_message.h>
+#include <brpc/thrift_framed_message.h>
 #include <bvar/bvar.h>
 
 #include <thrift/transport/TBufferTransports.h>

@@ -20,7 +20,7 @@
 #include <boost/make_shared.hpp>
 
 #include <brpc/channel.h>
-#include <brpc/thrift_binary_message.h>
+#include <brpc/thrift_framed_message.h>
 
 #include <thrift/TDispatchProcessor.h>
 #include <thrift/transport/TBufferTransports.h>

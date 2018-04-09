@@ -317,9 +317,11 @@ void* Server::UpdateDerivedVars(void* arg) {
         server->options().nshead_service->Expose(prefix);
     }
 
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
     if (server->options().thrift_service) {
         server->options().thrift_service->Expose(prefix);
     }
+#endif
 
     int64_t last_time = butil::gettimeofday_us();
     int consecutive_nosleep = 0;
@@ -403,8 +405,10 @@ Server::~Server() {
     delete _options.nshead_service;
     _options.nshead_service = NULL;
 
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
     delete _options.thrift_service;
     _options.thrift_service = NULL;
+#endif
 
     delete _options.http_master_service;
     _options.http_master_service = NULL;
@@ -1545,12 +1549,15 @@ void Server::GenerateVersionIfNeeded() {
         }
         _version.append(butil::class_name_str(*_options.nshead_service));
     }
+
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
     if (_options.thrift_service) {
         if (!_version.empty()) {
             _version.push_back('+');
         }
         _version.append(butil::class_name_str(*_options.thrift_service));
     }
+#endif
 
     if (_options.rtmp_service) {
         if (!_version.empty()) {

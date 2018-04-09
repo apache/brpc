@@ -14,8 +14,10 @@
 
 // Authors: wangxuefeng (wangxuefeng@didichuxing.com)
 
-#ifndef BRPC_THRIFT_BINARY_MESSAGE_H
-#define BRPC_THRIFT_BINARY_MESSAGE_H
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+
+#ifndef BRPC_THRIFT_FRAMED_MESSAGE_H
+#define BRPC_THRIFT_FRAMED_MESSAGE_H
 
 #include <functional>
 #include <string>
@@ -227,4 +229,6 @@ private:
 
 } // namespace brpc
 
-#endif  // BRPC_THRIFT_BINARY_MESSAGE_H
+#endif  // BRPC_THRIFT_FRAMED_MESSAGE_H
+
+#endif

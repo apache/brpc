@@ -14,11 +14,13 @@
 
 // Authors: wangxuefeng (wangxuefeng@didichuxing.com)
 
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+
 #ifndef BRPC_POLICY_THRIFT_PROTOCOL_H
 #define BRPC_POLICY_THRIFT_PROTOCOL_H
 
 #include "brpc/protocol.h"
-#include "brpc/thrift_binary_message.h"
+#include "brpc/thrift_framed_message.h"
 
 namespace brpc {
 namespace policy {
@@ -52,3 +54,4 @@ bool VerifyThriftFramedRequest(const InputMessageBase *msg);
 
 
 #endif // BRPC_POLICY_THRIFT_PROTOCOL_H
+#endif

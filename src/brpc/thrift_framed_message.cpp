@@ -14,8 +14,10 @@
 
 // Authors: wangxuefeng (wangxuefeng@didichuxing.com)
 
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+
 #define INTERNAL_SUPPRESS_PROTOBUF_FIELD_DEPRECATION
-#include "brpc/thrift_binary_message.h"
+#include "brpc/thrift_framed_message.h"
 
 #include <algorithm>
 #include "butil/logging.h"
@@ -39,7 +41,7 @@ void protobuf_AssignDesc_baidu_2frpc_2fthrift_binary_5fmessage_2eproto() {
     protobuf_AddDesc_baidu_2frpc_2fthrift_binary_5fmessage_2eproto();
     const ::google::protobuf::FileDescriptor* file =
         ::google::protobuf::DescriptorPool::generated_pool()->FindFileByName(
-            "baidu/rpc/thrift_binary_message.proto");
+            "baidu/rpc/thrift_framed_message.proto");
     GOOGLE_CHECK(file != NULL);
     ThriftFramedMessage_descriptor_ = file->message_type(0);
 }
@@ -73,10 +75,10 @@ void protobuf_AddDesc_baidu_2frpc_2fthrift_binary_5fmessage_2eproto_impl() {
     ::google::protobuf::protobuf_AddDesc_google_2fprotobuf_2fdescriptor_2eproto();
 #endif
     ::google::protobuf::DescriptorPool::InternalAddGeneratedFile(
-       "\n\033thrift_binary_message.proto\022\004brpc\"\025\n\023T"
+       "\n\033thrift_framed_message.proto\022\004brpc\"\025\n\023T"
        "hriftBinaryMessage", 58);
      ::google::protobuf::MessageFactory::InternalRegisterGeneratedFile(
-       "thrift_binary_message.proto", &protobuf_RegisterTypes);
+       "thrift_framed_message.proto", &protobuf_RegisterTypes);
      ThriftFramedMessage::default_instance_ = new ThriftFramedMessage();
      ThriftFramedMessage::default_instance_->InitAsDefaultInstance();
      ::google::protobuf::internal::OnShutdown(&protobuf_ShutdownFile_baidu_2frpc_2fthrift_binary_5fmessage_2eproto);
@@ -235,3 +237,5 @@ void ThriftFramedMessage::Swap(ThriftFramedMessage* other) {
 }
 
 } // namespace brpc
+
+#endif

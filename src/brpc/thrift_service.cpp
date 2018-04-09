@@ -13,6 +13,7 @@
 // limitations under the License.
 
 // Authors: wangxuefeng (wangxuefeng@didichuxing.com)
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
 
 #include "butil/class_name.h"
 #include "brpc/thrift_service.h"
@@ -59,3 +60,5 @@ void ThriftFramedService::Expose(const butil::StringPiece& prefix) {
 }
 
 } // namespace brpc
+
+#endif
