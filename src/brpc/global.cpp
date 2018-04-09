@@ -423,10 +423,10 @@ static void GlobalInitializeOrDieImpl() {
     }
 
 #ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
-    Protocol thrift_binary_protocol = { ParseThriftBinaryMessage,
-                                 SerializeThriftBinaryRequest, PackThriftBinaryRequest,
-                                 ProcessThriftBinaryRequest, ProcessThriftBinaryResponse,
-                                 VerifyThriftBinaryRequest, NULL, NULL,
+    Protocol thrift_binary_protocol = { ParseThriftFramedMessage,
+                                 SerializeThriftFramedRequest, PackThriftFramedRequest,
+                                 ProcessThriftFramedRequest, ProcessThriftFramedResponse,
+                                 VerifyThriftFramedRequest, NULL, NULL,
                                  CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };
     if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
         exit(1);

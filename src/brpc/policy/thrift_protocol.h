@@ -24,18 +24,18 @@ namespace brpc {
 namespace policy {
 
 // Parse binary protocol format of thrift framed
-ParseResult ParseThriftBinaryMessage(butil::IOBuf* source, Socket* socket, bool read_eof, const void *arg);
+ParseResult ParseThriftFramedMessage(butil::IOBuf* source, Socket* socket, bool read_eof, const void *arg);
 
 // Actions to a (client) request in thrift binary framed format
-void ProcessThriftBinaryRequest(InputMessageBase* msg);
+void ProcessThriftFramedRequest(InputMessageBase* msg);
 
 // Actions to a (server) response in thrift binary framed format
-void ProcessThriftBinaryResponse(InputMessageBase* msg);
+void ProcessThriftFramedResponse(InputMessageBase* msg);
 
-void SerializeThriftBinaryRequest(butil::IOBuf* request_buf, Controller* controller,
+void SerializeThriftFramedRequest(butil::IOBuf* request_buf, Controller* controller,
                             const google::protobuf::Message* request);
 
-void PackThriftBinaryRequest(
+void PackThriftFramedRequest(
     butil::IOBuf* packet_buf,
     SocketMessage**,
     uint64_t correlation_id,
@@ -45,7 +45,7 @@ void PackThriftBinaryRequest(
     const Authenticator*);
 
 // Verify authentication information in thrift binary format
-bool VerifyThriftBinaryRequest(const InputMessageBase *msg);
+bool VerifyThriftFramedRequest(const InputMessageBase *msg);
 
 } // namespace policy
 } // namespace brpc

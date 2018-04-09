@@ -18,7 +18,7 @@
 #define BRPC_THRIFT_SERVICE_H
 
 #include "brpc/controller.h"                        // Controller
-#include "brpc/thrift_binary_message.h"             // ThriftBinaryMessage
+#include "brpc/thrift_binary_message.h"             // ThriftFramedMessage
 #include "brpc/describable.h"
 
 
@@ -29,7 +29,7 @@ class Server;
 class MethodStatus;
 class StatusService;
 namespace policy {
-void ProcessThriftBinaryRequest(InputMessageBase* msg_base);
+void ProcessThriftFramedRequest(InputMessageBase* msg_base);
 }
 
 // The continuation of request processing. Namely send response back to client.
@@ -56,7 +56,7 @@ public:
     void DoNotRespond();
 
 private:
-friend void policy::ProcessThriftBinaryRequest(InputMessageBase* msg_base);
+friend void policy::ProcessThriftFramedRequest(InputMessageBase* msg_base);
 friend class DeleteThriftFramedClosure;
     // Only callable by Run().
     ~ThriftFramedClosure();
@@ -64,8 +64,8 @@ friend class DeleteThriftFramedClosure;
     Socket* _socket_ptr;
     const Server* _server;
     int64_t _start_parse_us;
-    ThriftBinaryMessage _request;
-    ThriftBinaryMessage _response;
+    ThriftFramedMessage _request;
+    ThriftFramedMessage _response;
     bool _do_respond;
     void* _additional_space;
     Controller _controller;
@@ -98,10 +98,10 @@ public:
     //   request     The thrift_binary request received.
     //   response    The thrift_binary response that you should fill in.
     //   done        You must call done->Run() to end the processing.
-    virtual void ProcessThriftBinaryRequest(const Server& server,
+    virtual void ProcessThriftFramedRequest(const Server& server,
                                       Controller* controller,
-                                      const ThriftBinaryMessage& request,
-                                      ThriftBinaryMessage* response,
+                                      const ThriftFramedMessage& request,
+                                      ThriftFramedMessage* response,
                                       ThriftFramedClosure* done) = 0;
 
     // Put descriptions into the stream.
@@ -110,14 +110,14 @@ public:
 private:
 DISALLOW_COPY_AND_ASSIGN(ThriftFramedService);
 friend class ThriftFramedClosure;
-friend void policy::ProcessThriftBinaryRequest(InputMessageBase* msg_base);
+friend void policy::ProcessThriftFramedRequest(InputMessageBase* msg_base);
 friend class StatusService;
 friend class Server;
 
 private:
     void Expose(const butil::StringPiece& prefix);
     
-    // Tracking status of non ThriftBinaryPbService
+    // Tracking status of non ThriftFramedPbService
     MethodStatus* _status;
     size_t _additional_space;
     std::string _cached_name;

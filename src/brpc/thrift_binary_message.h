@@ -20,6 +20,8 @@
 #include <functional>
 #include <string>
 
+#include <boost/make_shared.hpp>
+
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/generated_message_util.h>
 #include <google/protobuf/repeated_field.h>
@@ -53,7 +55,7 @@ void protobuf_AssignDesc_baidu_2frpc_2fthrift_binary_5fmessage_2eproto();
 void protobuf_ShutdownFile_baidu_2frpc_2fthrift_binary_5fmessage_2eproto();
 
 // Representing a thrift_binary request or response.
-class ThriftBinaryMessage : public ::google::protobuf::Message {
+class ThriftFramedMessage : public ::google::protobuf::Message {
 public:
     thrift_binary_head_t head;
     butil::IOBuf body;
@@ -62,28 +64,28 @@ public:
     void* thrift_raw_instance;
 
 public:
-    ThriftBinaryMessage();
-    virtual ~ThriftBinaryMessage();
+    ThriftFramedMessage();
+    virtual ~ThriftFramedMessage();
   
-    ThriftBinaryMessage(const ThriftBinaryMessage& from);
+    ThriftFramedMessage(const ThriftFramedMessage& from);
   
-    inline ThriftBinaryMessage& operator=(const ThriftBinaryMessage& from) {
+    inline ThriftFramedMessage& operator=(const ThriftFramedMessage& from) {
         CopyFrom(from);
         return *this;
     }
   
     static const ::google::protobuf::Descriptor* descriptor();
-    static const ThriftBinaryMessage& default_instance();
+    static const ThriftFramedMessage& default_instance();
   
-    void Swap(ThriftBinaryMessage* other);
+    void Swap(ThriftFramedMessage* other);
   
     // implements Message ----------------------------------------------
   
-    ThriftBinaryMessage* New() const;
+    ThriftFramedMessage* New() const;
     void CopyFrom(const ::google::protobuf::Message& from);
     void MergeFrom(const ::google::protobuf::Message& from);
-    void CopyFrom(const ThriftBinaryMessage& from);
-    void MergeFrom(const ThriftBinaryMessage& from);
+    void CopyFrom(const ThriftFramedMessage& from);
+    void MergeFrom(const ThriftFramedMessage& from);
     void Clear();
     bool IsInitialized() const;
   
@@ -188,11 +190,11 @@ friend void protobuf_AssignDesc_baidu_2frpc_2fthrift_binary_5fmessage_2eproto();
 friend void protobuf_ShutdownFile_baidu_2frpc_2fthrift_binary_5fmessage_2eproto();
 
     void InitAsDefaultInstance();
-    static ThriftBinaryMessage* default_instance_;
+    static ThriftFramedMessage* default_instance_;
 };
 
 template <typename T>
-class ThriftMessage : public ThriftBinaryMessage {
+class ThriftMessage : public ThriftFramedMessage {
 
 public:
     ThriftMessage() {

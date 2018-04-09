@@ -48,10 +48,10 @@ public:
 // Adapt your own thrift-based protocol to use brpc 
 class MyThriftProtocol : public brpc::ThriftFramedService {
 public:
-    void ProcessThriftBinaryRequest(const brpc::Server&,
+    void ProcessThriftFramedRequest(const brpc::Server&,
                               brpc::Controller* cntl,
-                              const brpc::ThriftBinaryMessage& request,
-                              brpc::ThriftBinaryMessage* response, 
+                              const brpc::ThriftFramedMessage& request,
+                              brpc::ThriftFramedMessage* response, 
                               brpc::ThriftFramedClosure* done) {
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().
@@ -81,10 +81,10 @@ public:
 // Adapt your own thrift-based protocol to use brpc 
 class MyThriftProtocolAnother : public brpc::ThriftFramedService {
 public:
-    void ProcessThriftBinaryRequest(const brpc::Server&,
+    void ProcessThriftFramedRequest(const brpc::Server&,
                               brpc::Controller* cntl,
-                              const brpc::ThriftBinaryMessage& request,
-                              brpc::ThriftBinaryMessage* response, 
+                              const brpc::ThriftFramedMessage& request,
+                              brpc::ThriftFramedMessage* response, 
                               brpc::ThriftFramedClosure* done) {
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().
@@ -97,7 +97,7 @@ public:
             return;
         }
 
-        brpc::ThriftBinaryMessage request_ref = request;
+        brpc::ThriftFramedMessage request_ref = request;
 
         example::EchoRequest* req = request_ref.cast<example::EchoRequest>();
         example::EchoResponse* res = response->cast<example::EchoResponse>();

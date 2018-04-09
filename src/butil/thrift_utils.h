@@ -28,8 +28,8 @@
 
 namespace brpc {
 
-bool brpc_thrift_server_helper(const brpc::ThriftBinaryMessage& request,
-                      brpc::ThriftBinaryMessage* response,
+bool brpc_thrift_server_helper(const brpc::ThriftFramedMessage& request,
+                      brpc::ThriftFramedMessage* response,
                       boost::shared_ptr<::apache::thrift::TDispatchProcessor> processor) {
 
     auto in_buffer =
