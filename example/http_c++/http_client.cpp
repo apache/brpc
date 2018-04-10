@@ -38,7 +38,7 @@ int main(int argc, char* argv[]) {
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
     if (argc != 2) {
-        LOG(ERROR) << "Usage: ./http_client \"www.foo.com\"";
+        LOG(ERROR) << "Usage: ./http_client \"http(s)://www.foo.com\"";
         return -1;
     }
     char* url = argv[1];

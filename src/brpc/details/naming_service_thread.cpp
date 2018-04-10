@@ -58,7 +58,7 @@ NamingServiceThread::Actions::~Actions() {
     // Remove all sockets from SocketMap
     for (std::vector<ServerNode>::const_iterator it = _last_servers.begin();
          it != _last_servers.end(); ++it) {
-        SocketMapRemove(it->addr);
+        SocketMapRemove(SocketMapKey(it->addr));
     }
     EndWait(0);
 }
@@ -107,7 +107,10 @@ void NamingServiceThread::Actions::ResetServers(
     for (size_t i = 0; i < _added.size(); ++i) {
         ServerNodeWithId tagged_id;
         tagged_id.node = _added[i];
-        CHECK_EQ(SocketMapInsert(_added[i].addr, &tagged_id.id), 0);
+        // TODO: For each unique SocketMapKey (i.e. SSL settings), insert a new
+        //       Socket. SocketMapKey may be passed through AddWatcher. Make sure
+        //       to pick those Sockets with the right settings during OnAddedServers
+        CHECK_EQ(SocketMapInsert(SocketMapKey(_added[i].addr), &tagged_id.id), 0);
         _added_sockets.push_back(tagged_id);
     }
 
@@ -115,7 +118,7 @@ void NamingServiceThread::Actions::ResetServers(
     for (size_t i = 0; i < _removed.size(); ++i) {
         ServerNodeWithId tagged_id;
         tagged_id.node = _removed[i];
-        CHECK_EQ(0, SocketMapFind(_removed[i].addr, &tagged_id.id));
+        CHECK_EQ(0, SocketMapFind(SocketMapKey(_removed[i].addr), &tagged_id.id));
         _removed_sockets.push_back(tagged_id);
     }
 
@@ -164,7 +167,9 @@ void NamingServiceThread::Actions::ResetServers(
     }
 
     for (size_t i = 0; i < _removed.size(); ++i) {
-        SocketMapRemove(_removed[i].addr);
+        // TODO: Remove all Sockets that have the same address in SocketMapKey.peer
+        //       We may need another data structure to avoid linear cost
+        SocketMapRemove(SocketMapKey(_removed[i].addr));
     }
 
     if (!_removed.empty() || !_added.empty()) {

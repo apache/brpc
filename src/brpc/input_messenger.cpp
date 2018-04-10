@@ -19,6 +19,7 @@
 #include "butil/logging.h"                       // CHECK
 #include "butil/time.h"                          // cpuwide_time_us
 #include "butil/fd_utility.h"                    // make_non_blocking
+#include "bthread/bthread.h"                     // bthread_start_background
 #include "bthread/unstable.h"                   // bthread_flush
 #include "bvar/bvar.h"                          // bvar::Adder
 #include "brpc/options.pb.h"               // ProtocolType
@@ -173,7 +174,6 @@ void InputMessenger::OnNewMessages(Socket* m) {
     //   is batched(notice the BTHREAD_NOSIGNAL and bthread_flush).
     // - Verify will always be called in this bthread at most once and before
     //   any process.
-    
     InputMessenger* messenger = static_cast<InputMessenger*>(m->user());
     const InputMessageHandler* handlers = messenger->_handlers;
     int progress = Socket::PROGRESS_INIT;

@@ -966,6 +966,51 @@ ssize_t IOBuf::cut_into_SSL_channel(SSL* ssl, int* ssl_error) {
     return nw;
 }
 
+ssize_t IOBuf::cut_multiple_into_SSL_channel(SSL* ssl, IOBuf* const* pieces,
+                                             size_t count, int* ssl_error) {
+    ssize_t nw = 0;
+    *ssl_error = SSL_ERROR_NONE;
+    for (size_t i = 0; i < count; ) {
+        if (pieces[i]->empty()) {
+            ++i;
+            continue;
+        }
+
+        ssize_t rc = pieces[i]->cut_into_SSL_channel(ssl, ssl_error);
+        if (rc > 0) {
+            nw += rc;
+        } else {
+            if (rc < 0) {
+                if (*ssl_error == SSL_ERROR_WANT_WRITE
+                    || (*ssl_error == SSL_ERROR_SYSCALL
+                        && BIO_fd_non_fatal_error(errno) == 1)) {
+                    // Non fatal error, tell caller to write again
+                    *ssl_error = SSL_ERROR_WANT_WRITE;
+                } else {
+                    // Other errors are fatal
+                    return rc;
+                }
+            }
+            if (nw == 0) {
+                nw = rc;    // Nothing written yet, overwrite nw
+            }
+            break;
+        }
+    }
+
+    // Flush remaining data inside the BIO buffer layer
+    BIO* wbio = SSL_get_wbio(ssl);
+    if (BIO_wpending(wbio) > 0) {
+        int rc = BIO_flush(wbio);
+        if (rc <= 0 && BIO_fd_non_fatal_error(errno) == 0) {
+            // Fatal error during BIO_flush
+            *ssl_error = SSL_ERROR_SYSCALL;
+            return rc;
+        }
+    }
+    return nw;
+}
+
 ssize_t IOBuf::pcut_multiple_into_file_descriptor(
     int fd, off_t offset, IOBuf* const* pieces, size_t count) {
     if (BAIDU_UNLIKELY(count == 0)) {
@@ -1571,27 +1616,47 @@ ssize_t IOPortal::pappend_from_file_descriptor(
     return nr;
 }
 
-ssize_t IOPortal::append_from_SSL_channel(SSL* ssl, int* ssl_error) {
-    if (!_block) {
-        _block = iobuf::acquire_tls_block();
-        if (BAIDU_UNLIKELY(!_block)) {
-            errno = ENOMEM;
-            *ssl_error = SSL_ERROR_SYSCALL;
-            return -1;
+ssize_t IOPortal::append_from_SSL_channel(
+    SSL* ssl, int* ssl_error, size_t max_count) {
+    size_t nr = 0;
+    do {
+        if (!_block) {
+            _block = iobuf::acquire_tls_block();
+            if (BAIDU_UNLIKELY(!_block)) {
+                errno = ENOMEM;
+                *ssl_error = SSL_ERROR_SYSCALL;
+                return -1;
+            }
         }
-    }
-    const int nr = SSL_read(ssl, _block->data + _block->size, _block->left_space());
-    *ssl_error = SSL_get_error(ssl, nr);
-    if (nr > 0) {
-        const IOBuf::BlockRef r = { (uint32_t)_block->size, (uint32_t)nr, _block };
-        _push_back_ref(r);
-        _block->size += nr;
-        if (_block->full()) {
-            Block* const saved_next = _block->portal_next;
-            _block->dec_ref();  // _block may be deleted
-            _block = saved_next;
+
+        const size_t read_len = std::min(_block->left_space(), max_count - nr);
+        const int rc = SSL_read(ssl, _block->data + _block->size, read_len);
+        *ssl_error = SSL_get_error(ssl, rc);
+        if (rc > 0) {
+            const IOBuf::BlockRef r = { (uint32_t)_block->size, (uint32_t)rc, _block };
+            _push_back_ref(r);
+            _block->size += rc;
+            if (_block->full()) {
+                Block* const saved_next = _block->portal_next;
+                _block->dec_ref();  // _block may be deleted
+                _block = saved_next;
+            }
+            nr += rc;
+        } else {
+            if (rc < 0) {
+                if (*ssl_error == SSL_ERROR_WANT_READ
+                    || (*ssl_error == SSL_ERROR_SYSCALL
+                        && BIO_fd_non_fatal_error(errno) == 1)) {
+                    // Non fatal error, tell caller to read again
+                    *ssl_error = SSL_ERROR_WANT_READ;
+                } else {
+                    // Other errors are fatal
+                    return rc;
+                }
+            }
+            return (nr > 0 ? nr : rc);
         }
-    }
+    } while (nr < max_count);
     return nr;
 }
 

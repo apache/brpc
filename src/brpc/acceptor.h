@@ -18,6 +18,7 @@
 #ifndef BRPC_ACCEPTOR_H
 #define BRPC_ACCEPTOR_H
 
+#include "bthread/bthread.h"                       // bthread_t
 #include "butil/synchronization/condition_variable.h"
 #include "butil/containers/flat_map.h"
 #include "brpc/input_messenger.h"
