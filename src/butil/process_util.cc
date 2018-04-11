@@ -25,7 +25,7 @@
 #include <sys/uio.h>
 #include <unistd.h>                     // read, gitpid
 #include <sstream>                      // std::ostringstream
-#include <butil/popen.h>                 // read_command_output
+#include <butil/popen.h>                // read_command_output
 
 namespace butil {
 

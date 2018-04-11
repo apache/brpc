@@ -27,6 +27,7 @@
 #include "butil/files/dir_reader_posix.h"
 #include "butil/file_util.h"
 #include "butil/process_util.h"            // ReadCommandLine
+#include <butil/popen.h>                   // read_command_output
 #include "bvar/passive_status.h"
 
 namespace bvar {
@@ -62,16 +63,17 @@ struct ProcStat {
     long num_threads;
 };
 
-// Read status from /proc/self/stat. Information from `man proc' is out of date,
-// see http://man7.org/linux/man-pages/man5/proc.5.html
 static bool read_proc_status(ProcStat &stat) {
+    stat = ProcStat();
+    errno = 0;
+#if defined(OS_LINUX)
+    // Read status from /proc/self/stat. Information from `man proc' is out of date,
+    // see http://man7.org/linux/man-pages/man5/proc.5.html
     butil::ScopedFILE fp("/proc/self/stat", "r");
     if (NULL == fp) {
         PLOG_ONCE(WARNING) << "Fail to open /proc/self/stat";
         return false;
     }
-    stat = ProcStat();
-    errno = 0;
     if (fscanf(fp, "%d %*s %c "
                "%d %d %d %d %d "
                "%u %lu %lu %lu "
@@ -86,6 +88,30 @@ static bool read_proc_status(ProcStat &stat) {
         return false;
     }
     return true;
+#elif defined(OS_MACOSX)
+    memset(&stat, 0, sizeof(stat));
+    static pid_t pid = getpid();
+    std::ostringstream oss;
+    char cmdbuf[128];
+    snprintf(cmdbuf, sizeof(cmdbuf),
+            "ps -p %ld -o pid,ppid,pgid,sess"
+            ",tpgid,flags,pri,nice | tail -n1", (long)pid);
+    if (butil::read_command_output(oss, cmdbuf) != 0) {
+        LOG(ERROR) << "Fail to read cmdline";
+        return -1;
+    }
+    const std::string& result = oss.str();
+    if (sscanf(result.c_str(), "%d %d %d %d"
+                              "%d %u %ld %ld",
+               &stat.pid, &stat.ppid, &stat.pgrp, &stat.session,
+               &stat.tpgid, &stat.flags, &stat.priority, &stat.nice) != 8) {
+        PLOG(WARNING) << "Fail to sscanf";
+        return false;
+    }
+    return true;
+#else
+    return false;
+#endif
 }
 
 // Reduce pressures to functions to get system metrics.
@@ -170,13 +196,14 @@ struct ProcMemory {
 };
 
 static bool read_proc_memory(ProcMemory &m) {
+    m = ProcMemory();
+    errno = 0;
+#if defined(OS_LINUX)
     butil::ScopedFILE fp("/proc/self/statm", "r");
     if (NULL == fp) {
         PLOG_ONCE(WARNING) << "Fail to open /proc/self/statm";
         return false;
     }
-    m = ProcMemory();
-    errno = 0;
     if (fscanf(fp, "%ld %ld %ld %ld %ld %ld %ld",
                &m.size, &m.resident, &m.share,
                &m.trs, &m.drs, &m.lrs, &m.dt) != 7) {
@@ -184,6 +211,29 @@ static bool read_proc_memory(ProcMemory &m) {
         return false;
     }
     return true;
+#elif defined(OS_MACOSX)
+    memset(&m, 0, sizeof(m));
+    static pid_t pid = getpid();
+    static int64_t pagesize = getpagesize();
+    std::ostringstream oss;
+    char cmdbuf[128];
+    snprintf(cmdbuf, sizeof(cmdbuf), "ps -p %ld -o rss=,vsz=", (long)pid);
+    if (butil::read_command_output(oss, cmdbuf) != 0) {
+        LOG(ERROR) << "Fail to read cmdline";
+        return -1;
+    }
+    const std::string& result = oss.str();
+    if (sscanf(result.c_str(), "%ld %ld", &m.resident, &m.size) != 2) {
+        PLOG(WARNING) << "Fail to sscanf";
+        return false;
+    }
+    // resident and size in Kbytes
+    m.resident = m.resident * 1024 / pagesize;
+    m.size = m.size * 1024 / pagesize;
+    return true;
+#else
+    return false;
+#endif
 }
 
 class ProcMemoryReader {
