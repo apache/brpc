@@ -24,6 +24,7 @@
 #include "butil/files/scoped_file.h"         // ScopedFILE
 #include "butil/time.h"
 #include "butil/popen.h"                    // butil::read_command_output
+#include "butil/process_util.h"             // butil::ReadCommandLine
 #include "brpc/log.h"
 #include "brpc/controller.h"                // Controller
 #include "brpc/closure_guard.h"             // ClosureGuard
@@ -557,9 +558,9 @@ void PProfService::cmdline(::google::protobuf::RpcController* controller_base,
     Controller* cntl = static_cast<Controller*>(controller_base);
     cntl->http_response().set_content_type("text/plain" /*FIXME*/);
     char buf[1024];  // should be enough?
-    const ssize_t nr = ReadCommandLine(buf, sizeof(buf), true);
+    const ssize_t nr = butil::ReadCommandLine(buf, sizeof(buf), true);
     if (nr < 0) {
-        cntl->SetFailed(ENOENT, "Fail to read /proc/self/cmdline");
+        cntl->SetFailed(ENOENT, "Fail to read cmdline");
         return;
     }
     cntl->response_attachment().append(buf, nr);

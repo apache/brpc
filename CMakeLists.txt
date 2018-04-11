@@ -221,6 +221,7 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/memory/weak_ptr.cc
     ${CMAKE_SOURCE_DIR}/src/butil/posix/file_descriptor_shuffle.cc
     ${CMAKE_SOURCE_DIR}/src/butil/posix/global_descriptors.cc
+    ${CMAKE_SOURCE_DIR}/src/butil/process_util.cc
     ${CMAKE_SOURCE_DIR}/src/butil/rand_util.cc
     ${CMAKE_SOURCE_DIR}/src/butil/rand_util_posix.cc
     ${CMAKE_SOURCE_DIR}/src/butil/fast_rand.cpp

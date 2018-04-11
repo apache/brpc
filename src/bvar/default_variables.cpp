@@ -26,6 +26,7 @@
 #include "butil/files/scoped_file.h"
 #include "butil/files/dir_reader_posix.h"
 #include "butil/file_util.h"
+#include "butil/process_util.h"            // ReadCommandLine
 #include "bvar/passive_status.h"
 
 namespace bvar {
@@ -480,12 +481,16 @@ static std::string read_first_line(const char* filepath) {
     return result;
 }
 
-struct ReadProcSelfCmdline {
+struct ReadSelfCmdline {
     std::string content;
-    ReadProcSelfCmdline() : content(read_first_line("/proc/self/cmdline")) {}
+    ReadSelfCmdline() {
+        char buf[1024];
+        const ssize_t nr = butil::ReadCommandLine(buf, sizeof(buf), true);
+        content.append(buf, nr);
+    }
 };
 static void get_cmdline(std::ostream& os, void*) {
-    os << butil::get_leaky_singleton<ReadProcSelfCmdline>()->content;
+    os << butil::get_leaky_singleton<ReadSelfCmdline>()->content;
 }
 
 struct ReadProcVersion {

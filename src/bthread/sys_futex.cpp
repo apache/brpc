@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Author: Zhu,Jiashun (zhujiahun@baidu.com)
+// Author: Zhu,Jiashun (zhujiashun@baidu.com)
 // Date: Wed Mar 14 17:44:58 CST 2018
 
 #include "bthread/sys_futex.h"
