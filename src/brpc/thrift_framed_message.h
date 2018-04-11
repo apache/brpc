@@ -61,9 +61,12 @@ class ThriftFramedMessage : public ::google::protobuf::Message {
 public:
     thrift_binary_head_t head;
     butil::IOBuf body;
-    std::function< void (void*) > thrift_raw_instance_deleter;
-    std::function<uint32_t (void*, ::apache::thrift::protocol::TProtocol*) > thrift_raw_instance_writer; 
+    void (*thrift_raw_instance_deleter) (void*);
+    uint32_t (*thrift_raw_instance_writer) (void*, ::apache::thrift::protocol::TProtocol*);
     void* thrift_raw_instance;
+
+    int32_t thrift_message_seq_id;
+    std::string method_name;
 
 public:
     ThriftFramedMessage();
@@ -130,11 +133,10 @@ public:
 
             // The following code was taken and modified from thrift auto generated code
 
-            int32_t rseqid = 0;
             std::string fname;
             ::apache::thrift::protocol::TMessageType mtype;
 
-            in_portocol->readMessageBegin(fname, mtype, rseqid);
+            in_portocol->readMessageBegin(method_name, mtype, thrift_message_seq_id);
 
             apache::thrift::protocol::TInputRecursionTracker tracker(*in_portocol);
             uint32_t xfer = 0;

@@ -121,6 +121,9 @@ ThriftFramedMessage::ThriftFramedMessage(const ThriftFramedMessage& from)
 
 void ThriftFramedMessage::SharedCtor() {
     memset(&head, 0, sizeof(head));
+    thrift_raw_instance = nullptr;
+    thrift_message_seq_id = 0;
+    method_name = "";
 }
 
 ThriftFramedMessage::~ThriftFramedMessage() {

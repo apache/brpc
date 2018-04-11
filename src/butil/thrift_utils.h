@@ -28,7 +28,7 @@
 
 namespace brpc {
 
-bool brpc_thrift_server_helper(const brpc::ThriftFramedMessage& request,
+bool brpc_thrift_server_helper(const brpc::ThriftFramedMessage* request,
                       brpc::ThriftFramedMessage* response,
                       boost::shared_ptr<::apache::thrift::TDispatchProcessor> processor) {
 
@@ -43,10 +43,10 @@ bool brpc_thrift_server_helper(const brpc::ThriftFramedMessage& request,
         boost::make_shared<apache::thrift::protocol::TBinaryProtocol>(out_buffer);
 
     // Cut the thrift buffer and parse thrift message
-    size_t body_len  = request.head.body_len;
+    size_t body_len  = request->head.body_len;
     auto thrift_buffer = static_cast<uint8_t*>(new uint8_t[body_len]);
 
-    const size_t k = request.body.copy_to(thrift_buffer, body_len);
+    const size_t k = request->body.copy_to(thrift_buffer, body_len);
     if ( k != body_len) {
         delete [] thrift_buffer;
         return false;
@@ -55,7 +55,10 @@ bool brpc_thrift_server_helper(const brpc::ThriftFramedMessage& request,
     in_buffer->resetBuffer(thrift_buffer, body_len);
 
     if (processor->process(in_portocol, out_portocol, NULL)) {
-        response->body.append(out_buffer->getBufferAsString());
+        uint8_t* buf;
+        uint32_t sz;
+        out_buffer->getBuffer(&buf, &sz);
+        response->body.append(buf, sz);
     } else {
         delete [] thrift_buffer;
         return false;

@@ -454,11 +454,6 @@ public:
 
     std::string thrift_method_name() { return _thrift_method_name; }
 
-    void set_thrift_seq_id(uint32_t seq_id) {
-        _thrift_seq_id = seq_id;
-    }
-    uint32_t thrift_seq_id() { return _thrift_seq_id; }
-
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request

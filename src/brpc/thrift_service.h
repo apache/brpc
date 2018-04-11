@@ -102,7 +102,7 @@ public:
     //   done        You must call done->Run() to end the processing.
     virtual void ProcessThriftFramedRequest(const Server& server,
                                       Controller* controller,
-                                      const ThriftFramedMessage& request,
+                                      ThriftFramedMessage* request,
                                       ThriftFramedMessage* response,
                                       ThriftFramedClosure* done) = 0;
 

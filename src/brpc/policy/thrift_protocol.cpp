@@ -36,6 +36,7 @@
 #include "brpc/policy/thrift_protocol.h"
 #include "brpc/details/usercode_backup_pool.h"
 
+#include <thrift/Thrift.h>
 #include <thrift/transport/TBufferTransports.h>
 #include <thrift/protocol/TBinaryProtocol.h>
 
@@ -105,11 +106,12 @@ void ThriftFramedClosure::Run() {
         _response.head = _request.head;
 
         if (_response.thrift_raw_instance) {
-            if (_controller.thrift_method_name() == "" ||
-                _controller.thrift_method_name().length() < 1 ||
-                _controller.thrift_method_name()[0] == ' ') {
+            std::string method_name = _request.method_name;
+            if (method_name == "" ||
+                method_name.length() < 1 ||
+                method_name[0] == ' ') {
                 _controller.SetFailed(ENOMETHOD,
-                    "invalid thrift method name or method name empty!");
+                    "invalid thrift method name or method name empty in server!");
                 return;
             }
 
@@ -119,8 +121,8 @@ void ThriftFramedClosure::Run() {
                 boost::make_shared<apache::thrift::protocol::TBinaryProtocol>(out_buffer);
 
             // The following code was taken and modified from thrift auto generated code
-            oprot->writeMessageBegin(_controller.thrift_method_name(),
-                ::apache::thrift::protocol::T_REPLY, _controller.thrift_seq_id());
+            oprot->writeMessageBegin(method_name,
+                ::apache::thrift::protocol::T_REPLY, _request.thrift_message_seq_id);
 
             uint32_t xfer = 0;
 
@@ -146,9 +148,10 @@ void ThriftFramedClosure::Run() {
             oprot->getTransport()->flush();
             // End thrfit auto generated code
 
-            butil::IOBuf buf;
-            buf.append(out_buffer->getBufferAsString());
-            _response.body =buf;
+            uint8_t* buf;
+            uint32_t sz;
+            out_buffer->getBuffer(&buf, &sz);
+            _response.body.append(buf, sz);
         }
 
         uint32_t length = _response.body.length();
@@ -232,7 +235,7 @@ struct CallMethodInBackupThreadArgs {
     ThriftFramedService* service;
     const Server* server;
     Controller* controller;
-    const ThriftFramedMessage* request;
+    ThriftFramedMessage* request;
     ThriftFramedMessage* response;
     ThriftFramedClosure* done;
 };
@@ -240,7 +243,7 @@ struct CallMethodInBackupThreadArgs {
 static void CallMethodInBackupThread(void* void_args) {
     CallMethodInBackupThreadArgs* args = (CallMethodInBackupThreadArgs*)void_args;
     args->service->ProcessThriftFramedRequest(*args->server, args->controller,
-                                        *args->request, args->response,
+                                        args->request, args->response,
                                         args->done);
     delete args;
 }
@@ -248,14 +251,14 @@ static void CallMethodInBackupThread(void* void_args) {
 static void EndRunningCallMethodInPool(ThriftFramedService* service,
                                        const Server& server,
                                        Controller* controller,
-                                       const ThriftFramedMessage& request,
+                                       ThriftFramedMessage* request,
                                        ThriftFramedMessage* response,
                                        ThriftFramedClosure* done) {
     CallMethodInBackupThreadArgs* args = new CallMethodInBackupThreadArgs;
     args->service = service;
     args->server = &server;
     args->controller = controller;
-    args->request = &request;
+    args->request = request;
     args->response = response;
     args->done = done;
     return EndRunningUserCodeInPool(CallMethodInBackupThread, args);
@@ -370,15 +373,23 @@ void ProcessThriftFramedRequest(InputMessageBase* msg_base) {
         span->set_start_callback_us(butil::cpuwide_time_us());
         span->AsParent();
     }
-    if (!FLAGS_usercode_in_pthread) {
-        return service->ProcessThriftFramedRequest(*server, cntl, *req, res, thrift_done);
-    }
-    if (BeginRunningUserCode()) {
-        service->ProcessThriftFramedRequest(*server, cntl, *req, res, thrift_done);
-        return EndRunningUserCodeInPlace();
-    } else {
-        return EndRunningCallMethodInPool(
-            service, *server, cntl, *req, res, thrift_done);
+
+    try {
+        if (!FLAGS_usercode_in_pthread) {
+            return service->ProcessThriftFramedRequest(*server, cntl,
+                req, res, thrift_done);
+        }
+        if (BeginRunningUserCode()) {
+            service->ProcessThriftFramedRequest(*server, cntl, req, res, thrift_done);
+            return EndRunningUserCodeInPlace();
+        } else {
+            return EndRunningCallMethodInPool(
+                service, *server, cntl, req, res, thrift_done);
+        }
+    } catch (::apache::thrift::TException& e) {
+        cntl->SetFailed(EREQUEST, "Invalid request data, reason: %s", e.what());
+    } catch (...) {
+        cntl->SetFailed(EINTERNAL, "Internal server error!");
     }
 
 }
@@ -574,14 +585,15 @@ void SerializeThriftFramedRequest(butil::IOBuf* request_buf, Controller* cntl,
     // end send_xxx
     // end thrift auto generated code
 
-    butil::IOBuf buf;
-    buf.append(out_buffer->getBufferAsString());
+    uint8_t* buf;
+    uint32_t sz;
+    out_buffer->getBuffer(&buf, &sz);
 
-    head.body_len = ntohl(buf.size());
+    head.body_len = ntohl(sz);
     request_buf->append(&head, sizeof(head));
     // end auto generate code
 
-    request_buf->append(buf);
+    request_buf->append(buf, sz);
 
 }
 

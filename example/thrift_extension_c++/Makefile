@@ -23,12 +23,12 @@ CLIENT_OBJS = $(addsuffix .o, $(basename $(CLIENT_SOURCES)))
 SERVER_OBJS = $(addsuffix .o, $(basename $(SERVER_SOURCES))) 
 
 .PHONY:all
-all: echo_client echo_server thrift_server thrift_client libechothrift.a client.o server.o
+all: echo_client echo_server native_server native_client libechothrift.a client.o server.o
 
 .PHONY:clean
 clean:
 	@echo "Cleaning"
-	@rm -rf echo_client echo_server $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS) $(SERVER_OBJS) thrift_server thrift_client EchoService.o echo_types.o libechothrift.a gen-cpp
+	@rm -rf echo_client echo_server $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS) $(SERVER_OBJS) native_server native_client EchoService.o echo_types.o libechothrift.a gen-cpp gen-py
 
 echo_client:$(PROTO_OBJS) $(CLIENT_OBJS) libechothrift.a
 	@echo "Linking $@"
@@ -57,12 +57,13 @@ endif
 libechothrift.a:
 	@echo "Generating thrift files"
 	@thrift --gen cpp echo.thrift
+	@thrift --gen py echo.thrift
 	@$(CXX) -c gen-cpp/echo_types.cpp -o echo_types.o
 	@$(CXX) -c gen-cpp/EchoService.cpp -o EchoService.o
 	@ar -crv libechothrift.a EchoService.o echo_types.o
 
-thrift_server: libechothrift.a
-	@$(CXX) thrift_server.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp $(HDRPATHS) $(LIBPATHS) $(CXXFLAGS) $(STATIC_LINKINGS) -lthriftnb -lthrift -levent -lpthread -o thrift_server
+native_server: libechothrift.a
+	@$(CXX) native_server.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp $(HDRPATHS) $(LIBPATHS) $(CXXFLAGS) $(STATIC_LINKINGS) -lthriftnb -lthrift -levent -lpthread -o native_server
 
-thrift_client: libechothrift.a
-	@$(CXX) thrift_client.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp $(HDRPATHS) $(LIBPATHS) $(CXXFLAGS) $(STATIC_LINKINGS) -lthriftnb -lthrift -levent -lpthread -o thrift_client
+native_client: libechothrift.a
+	@$(CXX) native_client.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp $(HDRPATHS) $(LIBPATHS) $(CXXFLAGS) $(STATIC_LINKINGS) -lthriftnb -lthrift -levent -lpthread -o native_client

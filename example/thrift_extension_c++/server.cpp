@@ -30,7 +30,7 @@ DEFINE_int32(port, 8019, "TCP Port of this server");
 DEFINE_int32(port2, 8018, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
-DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
+DEFINE_int32(max_concurrency, 1, "Limit of request processing in parallel");
 
 class EchoServiceHandler : virtual public example::EchoServiceIf {
 public:
@@ -39,7 +39,7 @@ public:
     void Echo(example::EchoResponse& res, const example::EchoRequest& req) {
         // Process request, just attach a simple string.
         res.data = req.data + " world";
-        //LOG(INFO) << "Echo req.data: " << req.data;
+        LOG(INFO) << "Echo req.data: " << req.data;
         return;
     }
 
@@ -50,7 +50,7 @@ class MyThriftProtocol : public brpc::ThriftFramedService {
 public:
     void ProcessThriftFramedRequest(const brpc::Server&,
                               brpc::Controller* cntl,
-                              const brpc::ThriftFramedMessage& request,
+                              brpc::ThriftFramedMessage* request,
                               brpc::ThriftFramedMessage* response, 
                               brpc::ThriftFramedClosure* done) {
         // This object helps you to call done->Run() in RAII style. If you need
@@ -79,11 +79,11 @@ public:
 };
 
 // Adapt your own thrift-based protocol to use brpc 
-class MyThriftProtocolAnother : public brpc::ThriftFramedService {
+class MyThriftProtocolPbManner : public brpc::ThriftFramedService {
 public:
     void ProcessThriftFramedRequest(const brpc::Server&,
                               brpc::Controller* cntl,
-                              const brpc::ThriftFramedMessage& request,
+                              brpc::ThriftFramedMessage* request,
                               brpc::ThriftFramedMessage* response, 
                               brpc::ThriftFramedClosure* done) {
         // This object helps you to call done->Run() in RAII style. If you need
@@ -97,13 +97,8 @@ public:
             return;
         }
 
-        brpc::ThriftFramedMessage request_ref = request;
-
-        example::EchoRequest* req = request_ref.cast<example::EchoRequest>();
+        example::EchoRequest* req = request->cast<example::EchoRequest>();
         example::EchoResponse* res = response->cast<example::EchoResponse>();
-
-        // MUST set the thrift method name, we need this info when serializing response.
-        cntl->set_thrift_method_name("Echo");
 
         // process with req and res
         res->data = req->data + " world another!";
@@ -133,7 +128,7 @@ int main(int argc, char* argv[]) {
 
     brpc::Server server2;
     brpc::ServerOptions options2;
-    options2.thrift_service = new MyThriftProtocolAnother;
+    options2.thrift_service = new MyThriftProtocolPbManner;
     options2.idle_timeout_sec = FLAGS_idle_timeout_s;
     options2.max_concurrency = FLAGS_max_concurrency;
 
