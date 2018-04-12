@@ -291,7 +291,6 @@ static bool read_load_average(LoadAverage &m) {
         return -1;
     }
     const std::string& result = oss.str();
-    LOG(INFO) << "result = " << result;
     if (sscanf(result.c_str(), "{ %lf %lf %lf }",
                &m.loadavg_1m, &m.loadavg_5m, &m.loadavg_15m) != 3) {
         PLOG(WARNING) << "Fail to sscanf";
@@ -527,6 +526,7 @@ struct DiskStat {
 };
 
 static bool read_disk_stat(DiskStat* s) {
+#if defined(OS_LINUX)
     butil::ScopedFILE fp("/proc/diskstats", "r");
     if (NULL == fp) {
         PLOG_ONCE(WARNING) << "Fail to open /proc/diskstats";
@@ -552,7 +552,12 @@ static bool read_disk_stat(DiskStat* s) {
         PLOG(WARNING) << "Fail to fscanf";
         return false;
     }
+#elif defined(OS_MACOSX)
+    // TODO(zhujiashun)
     return true;
+#else
+    return true;
+#endif
 }
 
 class DiskStatReader {
@@ -574,28 +579,6 @@ public:
 
 // =====================================
 
-static std::string read_first_line(const char* filepath) {
-    char * line = NULL;
-    size_t len = 0;
-    butil::ScopedFILE fp(filepath, "r");
-    if (fp == NULL) {
-        return "";
-    }
-    std::string result;
-    ssize_t nr = getline(&line, &len, fp);
-    if (nr != -1) {
-        for (ssize_t i = 0; i < nr; ++i) {
-            if (line[i] == '\0') {
-                line[i] = ' ';
-            }
-        }
-        for (; nr >= 1 && isspace(line[nr - 1]); --nr) {}  // trim.
-        result.assign(line, nr);
-    }
-    free(line);
-    return result;
-}
-
 struct ReadSelfCmdline {
     std::string content;
     ReadSelfCmdline() {
@@ -608,12 +591,19 @@ static void get_cmdline(std::ostream& os, void*) {
     os << butil::get_leaky_singleton<ReadSelfCmdline>()->content;
 }
 
-struct ReadProcVersion {
+struct ReadVersion {
     std::string content;
-    ReadProcVersion() : content(read_first_line("/proc/version")) {}
+    ReadVersion() {
+        std::ostringstream oss;
+        if (butil::read_command_output(oss, "uname -ap") != 0) {
+            LOG(ERROR) << "Fail to read kernel version";
+            return;
+        }
+        content.append(oss.str());
+    }
 };
 static void get_kernel_version(std::ostream& os, void*) {
-    os << butil::get_leaky_singleton<ReadProcVersion>()->content;
+    os << butil::get_leaky_singleton<ReadVersion>()->content;
 }
 
 // ======================================
