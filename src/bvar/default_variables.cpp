@@ -29,6 +29,10 @@
 #include "butil/process_util.h"            // ReadCommandLine
 #include <butil/popen.h>                   // read_command_output
 #include "bvar/passive_status.h"
+#if defined(OS_MACOSX)
+#include <libproc.h>
+#include <sys/resource.h>
+#endif
 
 namespace bvar {
 
@@ -89,6 +93,7 @@ static bool read_proc_status(ProcStat &stat) {
     }
     return true;
 #elif defined(OS_MACOSX)
+    // TODO(zhujiashun): get remaining state in MacOS.
     memset(&stat, 0, sizeof(stat));
     static pid_t pid = getpid();
     std::ostringstream oss;
@@ -97,7 +102,7 @@ static bool read_proc_status(ProcStat &stat) {
             "ps -p %ld -o pid,ppid,pgid,sess"
             ",tpgid,flags,pri,nice | tail -n1", (long)pid);
     if (butil::read_command_output(oss, cmdbuf) != 0) {
-        LOG(ERROR) << "Fail to read cmdline";
+        LOG(ERROR) << "Fail to read stat";
         return -1;
     }
     const std::string& result = oss.str();
@@ -212,6 +217,7 @@ static bool read_proc_memory(ProcMemory &m) {
     }
     return true;
 #elif defined(OS_MACOSX)
+    // TODO(zhujiashun): get remaining memory info in MacOS.
     memset(&m, 0, sizeof(m));
     static pid_t pid = getpid();
     static int64_t pagesize = getpagesize();
@@ -219,7 +225,7 @@ static bool read_proc_memory(ProcMemory &m) {
     char cmdbuf[128];
     snprintf(cmdbuf, sizeof(cmdbuf), "ps -p %ld -o rss=,vsz=", (long)pid);
     if (butil::read_command_output(oss, cmdbuf) != 0) {
-        LOG(ERROR) << "Fail to read cmdline";
+        LOG(ERROR) << "Fail to read memory state";
         return -1;
     }
     const std::string& result = oss.str();
@@ -264,6 +270,7 @@ struct LoadAverage {
 };
 
 static bool read_load_average(LoadAverage &m) {
+#if defined(OS_LINUX)
     butil::ScopedFILE fp("/proc/loadavg", "r");
     if (NULL == fp) {
         PLOG_ONCE(WARNING) << "Fail to open /proc/loadavg";
@@ -277,6 +284,24 @@ static bool read_load_average(LoadAverage &m) {
         return false;
     }
     return true;
+#elif defined(OS_MACOSX)
+    std::ostringstream oss;
+    if (butil::read_command_output(oss, "sysctl -n vm.loadavg") != 0) {
+        LOG(ERROR) << "Fail to read loadavg";
+        return -1;
+    }
+    const std::string& result = oss.str();
+    LOG(INFO) << "result = " << result;
+    if (sscanf(result.c_str(), "{ %lf %lf %lf }",
+               &m.loadavg_1m, &m.loadavg_5m, &m.loadavg_15m) != 3) {
+        PLOG(WARNING) << "Fail to sscanf";
+        return false;
+    }
+    return true;
+
+#else
+    return false;
+#endif
 }
 
 class LoadAverageReader {
@@ -300,6 +325,7 @@ public:
 // ==================================================
 
 static int get_fd_count(int limit) {
+#if defined(OS_LINUX)
     butil::DirReaderPosix dr("/proc/self/fd");
     int count = 0;
     if (!dr.IsValid()) {
@@ -310,6 +336,28 @@ static int get_fd_count(int limit) {
     // are huge (100k+)
     for (; dr.Next() && count <= limit + 3; ++count) {}
     return count - 3 /* skipped ., .. and the fd in dr*/;
+#elif defined(OS_MACOSX)
+    static pid_t pid = getpid();
+    std::ostringstream oss;
+    char cmdbuf[128];
+    snprintf(cmdbuf, sizeof(cmdbuf),
+            "lsof -p %ld | grep -v \"txt\" | wc -l", (long)pid);
+    if (butil::read_command_output(oss, cmdbuf) != 0) {
+        LOG(ERROR) << "Fail to read open files";
+        return -1;
+    }
+    const std::string& result = oss.str();
+    int count = 0;
+    if (sscanf(result.c_str(), "%d", &count) != 1) {
+        PLOG(WARNING) << "Fail to sscanf";
+        return -1;
+    }
+    // skipped . and first column line
+    count = count - 2;
+    return std::min(count, limit);
+#else
+    return 0;
+#endif
 }
 
 extern PassiveStatus<int> g_fd_num;
@@ -371,6 +419,7 @@ struct ProcIO {
 };
 
 static bool read_proc_io(ProcIO* s) {
+#if defined(OS_LINUX)
     butil::ScopedFILE fp("/proc/self/io", "r");
     if (NULL == fp) {
         PLOG_ONCE(WARNING) << "Fail to open /proc/self/io";
@@ -385,6 +434,22 @@ static bool read_proc_io(ProcIO* s) {
         return false;
     }
     return true;
+#elif defined(OS_MACOSX)
+    // TODO(zhujiashun): get rchar, wchar, syscr, syscw, cancelled_write_bytes
+    // in MacOS.
+    memset(s, 0, sizeof(ProcIO));
+    static pid_t pid = getpid();
+    rusage_info_current rusage;
+    if (proc_pid_rusage(pid, RUSAGE_INFO_CURRENT, (void **)&rusage) != 0) {
+        PLOG(WARNING) << "Fail to proc_pid_rusage";
+        return false;
+    }
+    s->read_bytes = rusage.ri_diskio_bytesread;
+    s->write_bytes = rusage.ri_diskio_byteswritten;
+    return true;
+#else 
+    return false;
+#endif
 }
 
 class ProcIOReader {
