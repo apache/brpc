@@ -444,14 +444,9 @@ public:
     void set_idl_result(int64_t result) { _idl_result = result; }
     int64_t idl_result() const { return _idl_result; }
 
-    void set_thrift_method_name(std::string& method_name) {
+    void set_thrift_method_name(const std::string& method_name) {
         _thrift_method_name = method_name;
     }
-
-    void set_thrift_method_name(std::string method_name) {
-        _thrift_method_name = method_name;
-    }
-
     std::string thrift_method_name() { return _thrift_method_name; }
 
 private:
