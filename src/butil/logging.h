@@ -53,6 +53,9 @@
 #  define DVPLOG(...) DVLOG(__VA_ARGS__)
 # endif
 
+#define LOG_AT(severity, file, line)                                    \
+    google::LogMessage(file, line, google::severity).stream()
+
 #else
 
 #ifdef BAIDU_INTERNAL

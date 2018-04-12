@@ -22,6 +22,20 @@
 #include "butil/time.h"
 #include "bthread/mutex.h"
 
+__BEGIN_DECLS
+extern int bthread_cond_init(bthread_cond_t* __restrict cond,
+                             const bthread_condattr_t* __restrict cond_attr);
+extern int bthread_cond_destroy(bthread_cond_t* cond);
+extern int bthread_cond_signal(bthread_cond_t* cond);
+extern int bthread_cond_broadcast(bthread_cond_t* cond);
+extern int bthread_cond_wait(bthread_cond_t* __restrict cond,
+                             bthread_mutex_t* __restrict mutex);
+extern int bthread_cond_timedwait(
+    bthread_cond_t* __restrict cond,
+    bthread_mutex_t* __restrict mutex,
+    const struct timespec* __restrict abstime);
+__END_DECLS
+
 namespace bthread {
 
 class ConditionVariable {

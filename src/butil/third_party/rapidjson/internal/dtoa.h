@@ -23,7 +23,7 @@
 #include "diyfp.h"
 #include "ieee754.h"
 
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 namespace internal {
 
 #ifdef __GNUC__
@@ -212,6 +212,6 @@ RAPIDJSON_DIAG_POP
 #endif
 
 } // namespace internal
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 #endif // RAPIDJSON_DTOA_

@@ -1183,6 +1183,11 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     // NOTE: accesses to builtin services are not counted as part of
     // concurrency, therefore are not limited by ServerOptions.max_concurrency.
     if (!sp->is_builtin_service && !sp->params.is_tabbed) {
+        if (socket->is_overcrowded()) {
+            cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
+                            butil::endpoint2str(socket->remote_side()).c_str());
+            return SendHttpResponse(cntl.release(), server, method_status);
+        }
         if (!server_accessor.AddConcurrency(cntl.get())) {
             cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
                             server->options().max_concurrency);

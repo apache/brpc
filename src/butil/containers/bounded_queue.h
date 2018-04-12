@@ -66,7 +66,7 @@ public:
     };
     
     // Construct a queue with the given capacity.
-    // The malloc() may fail sliently, call initialized() to test validity
+    // The malloc() may fail silently, call initialized() to test validity
     // of the queue.
     explicit BoundedQueue(size_t capacity)
         : _count(0)

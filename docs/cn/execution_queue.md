@@ -143,9 +143,9 @@ struct TaskOptions {
     bool in_place_if_possible;
 };
  
-const static TaskOptions TASK_OPTIONS_NORMAL = TaskOptions(false, false);
-const static TaskOptions TASK_OPTIONS_URGENT = TaskOptions(true, false);
-const static TaskOptions TASK_OPTIONS_INPLACE = TaskOptions(false, true);
+const static TaskOptions TASK_OPTIONS_NORMAL = TaskOptions(/*high_priority=*/ false, /*in_place_if_possible=*/ false);
+const static TaskOptions TASK_OPTIONS_URGENT = TaskOptions(/*high_priority=*/ true, /*in_place_if_possible=*/ false);
+const static TaskOptions TASK_OPTIONS_INPLACE = TaskOptions(/*high_priority=*/ false, /*in_place_if_possible=*/ true);
  
 // Thread-safe and Wait-free.
 // Execute a task with defaut TaskOptions (normal task);

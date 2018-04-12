@@ -27,7 +27,7 @@ RAPIDJSON_DIAG_OFF(effc++)
 RAPIDJSON_DIAG_OFF(overflow)
 #endif
 
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 
 ///////////////////////////////////////////////////////////////////////////////
 // Encoding
@@ -616,7 +616,7 @@ struct Transcoder<Encoding, Encoding> {
     }
 };
 
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 #if defined(__GNUC__) || defined(_MSV_VER)
 RAPIDJSON_DIAG_POP

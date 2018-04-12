@@ -1,17 +1,22 @@
-BRPC_PATH = ../../
+NEED_GPERFTOOLS=1
+BRPC_PATH=../..
 include $(BRPC_PATH)/config.mk
 # Notes on the flags:
 # 1. Added -fno-omit-frame-pointer: perf/tcmalloc-profiler use frame pointers by default
 # 2. Added -D__const__= : Avoid over-optimizations of TLS variables by GCC>=4.8
 CXXFLAGS+=$(CPPFLAGS) -std=c++0x -DNDEBUG -O2 -D__const__= -pipe -W -Wall -Wno-unused-parameter -fPIC -fno-omit-frame-pointer
+ifeq ($(NEED_GPERFTOOLS), 1)
+	CXXFLAGS+=-DBRPC_ENABLE_CPU_PROFILER
+endif
 HDRS+=$(BRPC_PATH)/output/include
 LIBS+=$(BRPC_PATH)/output/lib
-HDRPATHS = $(addprefix -I, $(HDRS))
-LIBPATHS = $(addprefix -L, $(LIBS))
+
+HDRPATHS=$(addprefix -I, $(HDRS))
+LIBPATHS=$(addprefix -L, $(LIBS))
 COMMA=,
 SOPATHS=$(addprefix -Wl$(COMMA)-rpath=, $(LIBS))
 
-STATIC_LINKINGS += -lbrpc
+STATIC_LINKINGS+=-lbrpc
 
 CLIENT_SOURCES = client.cpp
 SERVER_SOURCES = server.cpp

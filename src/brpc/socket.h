@@ -452,6 +452,9 @@ public:
     // A brief description of this socket, consistent with os << *this
     std::string description() const;
 
+    // Returns true if the remote side is overcrowded.
+    bool is_overcrowded() const { return _overcrowded; }
+
 private:
     DISALLOW_COPY_AND_ASSIGN(Socket);
 

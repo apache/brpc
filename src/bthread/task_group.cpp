@@ -113,7 +113,7 @@ bool TaskGroup::wait_task(bthread_t* tid) {
     do {
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
         if (_last_pl_state.stopped()) {
-            return -1;
+            return false;
         }
         _pl->wait(_last_pl_state);
         if (steal_task(tid)) {
@@ -122,7 +122,7 @@ bool TaskGroup::wait_task(bthread_t* tid) {
 #else
         const ParkingLot::State st = _pl->get_state();
         if (st.stopped()) {
-            return -1;
+            return false;
         }
         if (steal_task(tid)) {
             return true;

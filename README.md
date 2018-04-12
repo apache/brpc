@@ -4,7 +4,7 @@
 
 # ![brpc](docs/images/logo.png)
 
-A industrial-grade RPC framework used throughout [Baidu](http://ir.baidu.com/phoenix.zhtml?c=188488&p=irol-irhome), with a million+ instances(not counting clients) and thousands kinds of services, called "**baidu-rpc**" inside Baidu. Only C++ implementation is opensourced right now.
+A industrial-grade RPC framework used throughout [Baidu](http://ir.baidu.com/phoenix.zhtml?c=188488&p=irol-irhome), with 1,000,000+ instances(not counting clients) and thousands kinds of services, called "**baidu-rpc**" inside Baidu. Only C++ implementation is opensourced right now.
 
 You can use it to:
 * Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
@@ -15,11 +15,9 @@ You can use it to:
   * [rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access) support (will be opensourced)
   * all sorts of protocols used in Baidu: [baidu_std](docs/cn/baidu_std.md), [streaming_rpc](docs/en/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc, and nshead-based ones.
   * Access protobuf-based protocols with HTTP+json, probably from another language.
-  * Build [HA](https://en.wikipedia.org/wiki/High_availability) distributed services using an industrial-grade implementation of [RAFT consensus algorithm](https://raft.github.io) (will be opensourced at [braft](https://github.com/brpc/braft))
-* Create rich processing patterns
-  * Services can handle requests [synchronously](docs/en/server.md) or [asynchronously](docs/en/server.md#asynchronous-service).
-  * Access service [synchronously](docs/en/client.md#synchronus-call) or [asynchronously](docs/en/client.md#asynchronous-call), or even [semi-synchronously](docs/en/client.md#semi-synchronous-call).
-  * Use [combo channels](docs/en/combo_channel.md) to simplify complicated client patterns declaratively, including sharded and parallel accesses.
+  * Build [HA](https://en.wikipedia.org/wiki/High_availability) distributed services using an industrial-grade implementation of [RAFT consensus algorithm](https://raft.github.io) which is opensourced at [braft](https://github.com/brpc/braft)
+* Servers can handle requests [synchronously](docs/en/server.md) or [asynchronously](docs/en/server.md#asynchronous-service).
+* Clients can access servers [synchronously](docs/en/client.md#synchronus-call), [asynchronously](docs/en/client.md#asynchronous-call), [semi-synchronously](docs/en/client.md#semi-synchronous-call), or use [combo channels](docs/en/combo_channel.md) to simplify sharded or parallel accesses declaratively.
 * Debug services [via http](docs/en/builtin_service.md), and run  [cpu](docs/cn/cpu_profiler.md), [heap](docs/cn/heap_profiler.md) and [contention](docs/cn/contention_profiler.md) profilers.
 * Get [better latency and throughput](docs/en/overview.md#better-latency-and-throughput).
 * [Extend brpc](docs/en/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/cn/load_balancing.md#名字服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
@@ -75,7 +73,8 @@ You can use it to:
     * [IOBuf](docs/en/iobuf.md)
     * [Streaming Log](docs/en/streaming_log.md)
     * [FlatMap](docs/cn/flatmap.md)
-    * [brpc外功修炼宝典](docs/cn/brpc_intro.pptx)(新人培训材料)
+    * [brpc外功修炼宝典](docs/cn/brpc_intro.pptx)(training material)
+    * [A tutorial on building large-scale services](docs/en/tutorial_on_building_services.pptx)(training material)
   * RPC in depth
     * [New Protocol](docs/en/new_protocol.md)
     * [Atomic instructions](docs/en/atomic_instructions.md)

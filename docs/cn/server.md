@@ -387,6 +387,32 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 
 server的框架部分一般不针对个别client打印错误日志，因为当大量client出现错误时，可能导致server高频打印日志而严重影响性能。但有时为了调试问题，或就是需要让server打印错误，打开参数[-log_error_text](http://brpc.baidu.com:8765/flags/log_error_text)即可。
 
+## 定制延时的分位值
+
+显示的服务延时分位值**默认**为**80** (曾经为50), 90, 99, 99.9, 99.99，前三项可分别通过-bvar_latency_p1, -bvar_latency_p2, -bvar_latency_p3三个gflags定制。
+
+以下是正确的设置：
+```shell
+-bvar_latency_p3=97   # p3从默认99修改为97
+-bvar_latency_p1=60 -bvar_latency_p2=80 -bvar_latency_p3=95
+```
+以下是错误的设置：
+```shell
+-bvar_latency_p3=100   # 设置值必须在[1,99]闭区间内，gflags解析会失败
+-bvar_latency_p1=-1    # 同上
+```
+
+## 设置栈大小
+
+brpc的Server是运行在bthread之上，默认栈大小为1MB，而pthread默认栈大小为10MB，所以在pthread上正常运行的程序，在bthread上可能遇到栈不足。
+
+可设置如下的gflag以调整栈的大小:
+```shell
+--stack_size_normal=10000000    # 表示调整栈大小为10M左右
+--tc_stack_normal=1             # 默认为8，表示每个worker缓存的栈的个数(以加快分配速度)，size越大，缓存数目可以适当调小(以减少内存占用)
+```
+注意：不是说程序coredump就意味着”栈不够大“，只是因为这个试起来最容易，所以优先排除掉可能性。事实上百度内如此多的应用也很少碰到栈不够大的情况。
+
 ## 限制最大消息
 
 为了保护server和client，当server收到的request或client收到的response过大时，server或client会拒收并关闭连接。此最大尺寸由[-max_body_size](http://brpc.baidu.com:8765/flags/max_body_size)控制，单位为字节。
@@ -429,7 +455,7 @@ baidu_std和hulu_pbrpc协议支持传递附件，这段数据由用户自定义�
 
 ## 验证client身份
 
-如果server端要开启验证功能，需要实现`Authenticator`中的接口：
+如果server端要开启验证功能，需要实现`Authenticator`中的接口:
 
 ```c++
 class Authenticator {
@@ -888,14 +914,6 @@ brpc同一个进程中所有的server[共用线程](#worker线程数)，如果�
 ### Q: 为什么client端的延时远大于server端的延时
 
 可能是server端的工作线程不够用了，出现了排队现象。排查方法请查看[高效率排查服务卡顿](server_debugging.md)。
-
-### Q: 程序切换到brpc之后出现了像堆栈写坏的coredump
-
-brpc的Server是运行在bthread之上，默认栈大小为1MB，而pthread默认栈大小为10MB，所以在pthread上正常运行的程序，在bthread上可能遇到栈不足。
-
-注意：不是说程序core了就意味着”栈不够大“，只是因为这个试起来最容易，所以优先排除掉可能性。事实上百度内如此多的应用也很少碰到栈不够大的情况。
-
-解决方案：添加以下gflags以调整栈大小，比如`--stack_size_normal=10000000 --tc_stack_normal=1`。第一个flag把栈大小修改为10MB，第二个flag表示每个工作线程缓存的栈的个数(避免每次都从全局拿).
 
 ### Q: Fail to open /proc/self/io
 
