@@ -1,7 +1,22 @@
+// Copyright (c) 2018 Baidu, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Authors: Ge,Jun (gejun@baidu.com)
+//          Jiashun Zhu(zhujiashun@baidu.com)
+
 #ifndef BUTIL_COMPAT_H
 #define BUTIL_COMPAT_H
-
-// TODO: Some functions in this header are not implemented yet.
 
 #include "butil/build_config.h"
 #include <pthread.h>
@@ -16,44 +31,32 @@
 __BEGIN_DECLS
 
 // Implement pthread_spinlock_t for MAC.
-
-typedef int pthread_spinlock_t;
-
+struct pthread_spinlock_t {
+    dispatch_semaphore_t sem;
+};
 inline int pthread_spin_init(pthread_spinlock_t *__lock, int __pshared) {
-    __asm__ __volatile__ ("" ::: "memory");
-    *__lock = 0;
+    if (__pshared != 0) {
+        return EINVAL;
+    }
+    __lock->sem = dispatch_semaphore_create(1);
     return 0;
 }
-
 inline int pthread_spin_destroy(pthread_spinlock_t *__lock) {
+    // TODO(gejun): Not see any destructive API on dispatch_semaphore
     (void)__lock;
     return 0;
 }
-
 inline int pthread_spin_lock(pthread_spinlock_t *__lock) {
-    while (1) {
-        int i;
-        for (i=0; i < 10000; i++) {
-            if (__sync_bool_compare_and_swap(__lock, 0, 1)) {
-                return 0;
-            }
-        }
-        sched_yield();
-    }
-    return 0;
+    return (int)dispatch_semaphore_wait(__lock->sem, DISPATCH_TIME_FOREVER);
 }
-
 inline int pthread_spin_trylock(pthread_spinlock_t *__lock) {
-    if (__sync_bool_compare_and_swap(__lock, 0, 1)) {
+    if (dispatch_semaphore_wait(__lock->sem, DISPATCH_TIME_NOW) == 0) {
         return 0;
     }
     return EBUSY;
 }
-
 inline int pthread_spin_unlock(pthread_spinlock_t *__lock) {
-    __asm__ __volatile__ ("" ::: "memory");
-    *__lock = 0;
-    return 0;
+    return dispatch_semaphore_signal(__lock->sem);
 }
 
 __END_DECLS
