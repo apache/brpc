@@ -16,7 +16,6 @@
 
 #include <gflags/gflags.h>
 #include <butil/logging.h>
-#include <butil/thrift_utils.h>
 #include <brpc/server.h>
 #include <brpc/thrift_service.h>
 
@@ -30,7 +29,7 @@ DEFINE_int32(port, 8019, "TCP Port of this server");
 DEFINE_int32(port2, 8018, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
-DEFINE_int32(max_concurrency, 1, "Limit of request processing in parallel");
+DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
 
 class EchoServiceHandler : virtual public example::EchoServiceIf {
 public:
@@ -64,15 +63,14 @@ public:
             return;
         }
 
-        // Just an example, you don't need to new the processor each time.
-        boost::shared_ptr<EchoServiceHandler> service_hander(new EchoServiceHandler());
-        boost::shared_ptr<example::EchoServiceProcessor> processor(
-            new example::EchoServiceProcessor(service_hander));
-        if (brpc_thrift_server_helper(request, response, processor)) {
-            LOG(INFO) << "success to process thrift request in brpc";
-        } else {
-            LOG(INFO) << "failed to process thrift request in brpc";
-        }
+        auto handler = new EchoServiceHandler();
+        example::EchoRequest* req = request->cast<example::EchoRequest>();
+        example::EchoResponse* res = response->cast<example::EchoResponse>();
+
+        // process with req and res
+        handler->Echo(*res, *req);
+
+        LOG(INFO) << "success to process thrift request in brpc with handler";
 
     }
 

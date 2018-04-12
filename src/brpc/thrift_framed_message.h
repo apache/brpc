@@ -121,15 +121,14 @@ public:
 
             // Cut the thrift buffer and parse thrift message
             size_t body_len  = head.body_len;
-            auto thrift_buffer = static_cast<uint8_t*>(new uint8_t[body_len]);
+            std::unique_ptr<uint8_t[]>thrift_buffer(new uint8_t[body_len]);
 
-            const size_t k = body.copy_to(thrift_buffer, body_len);
+            const size_t k = body.copy_to(thrift_buffer.get(), body_len);
             if ( k != body_len) {
-                delete [] thrift_buffer;
                 return false;
             }
 
-            in_buffer->resetBuffer(thrift_buffer, body_len);
+            in_buffer->resetBuffer(thrift_buffer.get(), body_len);
 
             // The following code was taken and modified from thrift auto generated code
 
@@ -174,9 +173,6 @@ public:
             in_portocol->readMessageEnd();
             in_portocol->getTransport()->readEnd();
             // End thrfit auto generated code
-
-            delete [] thrift_buffer;
-            
         }
 
         thrift_raw_instance_deleter = &thrift_framed_message_deleter<T>;

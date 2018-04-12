@@ -427,13 +427,11 @@ void ProcessThriftFramedResponse(InputMessageBase* msg_base) {
 
         uint32_t body_len = response->head.body_len;
         // Deserialize binary message to thrift message
-        uint8_t* thrift_buffer =
-            static_cast<uint8_t*>(new uint8_t[body_len]);
+        std::unique_ptr<uint8_t[]>thrift_buffer(new uint8_t[body_len]);
 
-        const size_t k = response->body.copy_to(thrift_buffer, body_len);
+        const size_t k = response->body.copy_to(thrift_buffer.get(), body_len);
         if ( k != body_len) {
           cntl->SetFailed("copy response body to thrift buffer failed!");
-          delete [] thrift_buffer;
           return;
         }
 
@@ -442,8 +440,7 @@ void ProcessThriftFramedResponse(InputMessageBase* msg_base) {
         auto in_portocol =
             boost::make_shared<apache::thrift::protocol::TBinaryProtocol>(in_buffer);
 
-        in_buffer->resetBuffer(thrift_buffer, body_len,
-            ::apache::thrift::transport::TMemoryBuffer::TAKE_OWNERSHIP);
+        in_buffer->resetBuffer(thrift_buffer.get(), body_len);
 
         // The following code was taken from thrift auto generate code
         int32_t rseqid = 0;
