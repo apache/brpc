@@ -4,7 +4,7 @@ project(multi_threaded_mcpack_c++ C CXX)
 option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
 
 execute_process(
-    COMMAND bash -c "find ${CMAKE_SOURCE_DIR}/../.. -type d -name \"include\" | xargs dirname | tr -d '\n'"
+    COMMAND bash -c "find ${CMAKE_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | xargs dirname | tr -d '\n'"
     OUTPUT_VARIABLE OUTPUT_PATH
 )
 

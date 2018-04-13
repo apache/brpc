@@ -4,12 +4,11 @@ project(cascade_echo_c++ C CXX)
 option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
 
 execute_process(
-    COMMAND bash -c "find ${CMAKE_SOURCE_DIR}/../.. -type d -name \"include\" | xargs dirname | tr -d '\n'"
+    COMMAND bash -c "find ${CMAKE_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | xargs dirname | tr -d '\n'"
     OUTPUT_VARIABLE OUTPUT_PATH
 )
 
 set(CMAKE_PREFIX_PATH ${OUTPUT_PATH})
-
 include(FindThreads)
 include(FindProtobuf)
 protobuf_generate_cpp(PROTO_SRC PROTO_HEADER echo.proto)
