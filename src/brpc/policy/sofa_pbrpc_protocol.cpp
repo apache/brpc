@@ -207,7 +207,6 @@ static void SendSofaResponse(int64_t correlation_id,
                              Controller* cntl, 
                              const google::protobuf::Message* req,
                              const google::protobuf::Message* res,
-                             Socket* socket_raw,
                              const Server* server,
                              MethodStatus* method_status_raw,
                              long start_parse_us) {
@@ -217,7 +216,7 @@ static void SendSofaResponse(int64_t correlation_id,
         span->set_start_send_us(butil::cpuwide_time_us());
     }
     ScopedMethodStatus method_status(method_status_raw);
-    SocketUniquePtr sock(socket_raw);
+    Socket* sock = accessor.get_sending_socket();
     std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
@@ -313,7 +312,8 @@ void EndRunningCallMethodInPool(
 void ProcessSofaRequest(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
-    SocketUniquePtr socket(msg->ReleaseSocket());
+    SocketUniquePtr socket_guard(msg->ReleaseSocket());
+    Socket* socket = socket_guard.get();
     const Server* server = static_cast<const Server*>(msg_base->arg());
     ScopedNonServiceError non_service_error(server);
 
@@ -356,7 +356,8 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
         .set_remote_side(socket->remote_side())
         .set_local_side(socket->local_side())
         .set_auth_context(socket->auth_context())
-        .set_request_protocol(PROTOCOL_SOFA_PBRPC);
+        .set_request_protocol(PROTOCOL_SOFA_PBRPC)
+        .move_in_server_receiving_sock(socket_guard);
 
     // Tag the bthread with this server's key for thread_local_data().
     if (server->thread_local_options().thread_local_data_factory) {
@@ -369,12 +370,13 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
             0/*meta.trace_id()*/, 0/*meta.span_id()*/,
             0/*meta.parent_span_id()*/, msg->base_real_us());
         accessor.set_span(span);
-        span->set_remote_side(socket->remote_side());
+        span->set_remote_side(cntl->remote_side());
         span->set_protocol(PROTOCOL_SOFA_PBRPC);
         span->set_received_us(msg->received_us());
         span->set_start_parse_us(start_parse_us);
         span->set_request_size(msg->meta.size() + msg->payload.size() + 24);
     }
+
     MethodStatus* method_status = NULL;
     do {
         if (!server->IsRunning()) {
@@ -436,10 +438,10 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
         // `socket' will be held until response has been sent
         google::protobuf::Closure* done = ::brpc::NewCallback<
             int64_t, Controller*, const google::protobuf::Message*,
-            const google::protobuf::Message*, Socket*, const Server*,
+            const google::protobuf::Message*, const Server*,
                   MethodStatus *, long>(
                     &SendSofaResponse, correlation_id, cntl.get(),
-                    req.get(), res.get(), socket.release(), server,
+                    req.get(), res.get(), server,
                     method_status, start_parse_us);
         // `cntl', `req' and `res' will be deleted inside `done'
         if (span) {
@@ -464,7 +466,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
     // `cntl', `req' and `res' will be deleted inside `SendSofaResponse'
     // `socket' will be held until response has been sent
     SendSofaResponse(correlation_id, cntl.release(),
-                     req.release(), res.release(), socket.release(), server,
+                     req.release(), res.release(), server,
                      method_status, -1);
 }
 

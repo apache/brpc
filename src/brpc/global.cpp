@@ -15,6 +15,7 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 
 #include <openssl/ssl.h>
+#include <openssl/conf.h>
 #include <gflags/gflags.h>
 #include <fcntl.h>                               // O_RDONLY
 #include <signal.h>
@@ -298,6 +299,8 @@ static void GlobalInitializeOrDieImpl() {
 
     // Initialize openssl library
     SSL_library_init();
+    // Load the openssl.cnf under the default location
+    OPENSSL_config(NULL);
     SSL_load_error_strings();
     if (SSLThreadInit() != 0 || SSLDHInit() != 0) {
         exit(1);
