@@ -608,7 +608,46 @@ baidu_std和hulu_pbrpc协议支持附件，这段数据由用户自定义，不�
 
 在http协议中，附件对应[message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html)，比如要POST的数据就设置在request_attachment()中。
 
+## 开启SSL
+
+要开启SSL，首先确保代码依赖了最新的openssl库。如果openssl版本很旧，会有严重的安全漏洞，支持的加密算法也少，违背了开启SSL的初衷。然后设置`ChannelOptions.ssl_options`，具体见[ssl_option.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_option.h)。
+
+```c++
+// SSL options at client side
+struct ChannelSSLOptions {
+    // Whether to enable SSL on the channel.
+    // Default: false
+    bool enable;
+    
+    // Cipher suites used for SSL handshake.
+    // The format of this string should follow that in `man 1 cipers'.
+    // Default: "DEFAULT"
+    std::string ciphers;
+    
+    // SSL protocols used for SSL handshake, separated by comma.
+    // Available protocols: SSLv3, TLSv1, TLSv1.1, TLSv1.2
+    // Default: TLSv1, TLSv1.1, TLSv1.2
+    std::string protocols;
+    
+    // When set, fill this into the SNI extension field during handshake,
+    // which can be used by the server to locate the right certificate. 
+    // Default: empty
+    std::string sni_name;
+    
+    // Options used to verify the server's certificate
+    // Default: see above
+    VerifyOptions verify;
+    
+    // ... Other options
+};
+```
+
+- 目前只有连接单点的Channel可以开启SSL访问，使用了名字服务的Channel**不支持开启SSL**。
+- 开启后，该Channel上任何协议的请求，都会被SSL加密后发送。如果希望某些请求不加密，需要额外再创建一个Channel。
+- 针对HTTPS做了些易用性优化：`Channel.Init`时能自动识别https://前缀，自动开启SSL；-http_verbose时也会输出证书信息。
+
 ## 认证
+
 client端的认证一般分为2种：
 
 1. 基于请求的认证：每次请求都会带上认证信息。这种方式比较灵活，认证信息中可以含有本次请求中的字段，但是缺点是每次请求都会需要认证，性能上有所损失
