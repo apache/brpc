@@ -336,6 +336,9 @@ static int get_fd_count(int limit) {
     for (; dr.Next() && count <= limit + 3; ++count) {}
     return count - 3 /* skipped ., .. and the fd in dr*/;
 #elif defined(OS_MACOSX)
+    // TODO(zhujiashun): following code will cause core dump with some 
+    // probability under mac when program exits. Fix it.
+    /* 
     static pid_t pid = getpid();
     std::ostringstream oss;
     char cmdbuf[128];
@@ -354,6 +357,8 @@ static int get_fd_count(int limit) {
     // skipped . and first column line
     count = count - 2;
     return std::min(count, limit);
+    */
+    return 0;
 #else
     return 0;
 #endif

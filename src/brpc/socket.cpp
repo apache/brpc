@@ -1809,16 +1809,20 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
         switch (ssl_error) {
         case SSL_ERROR_WANT_READ:
 #if defined(OS_LINUX)
-            if (bthread_fd_wait(fd(), EPOLLIN) != 0) {
+            if (bthread_fd_wait(fd, EPOLLIN) != 0) {
 #elif defined(OS_MACOSX)
-            if (bthread_fd_wait(fd(), EVFILT_READ) != 0) {
+            if (bthread_fd_wait(fd, EVFILT_READ) != 0) {
 #endif
                 return -1;
             }
             break;
 
         case SSL_ERROR_WANT_WRITE:
+#if defined(OS_LINUX)
             if (bthread_fd_wait(fd, EPOLLOUT) != 0) {
+#elif defined(OS_MACOSX)
+            if (bthread_fd_wait(fd, EVFILT_WRITE) != 0) {
+#endif
                 return -1;
             }
             break;
