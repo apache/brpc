@@ -8,7 +8,6 @@
 #include "butil/strings/string_piece.h"
 #include "butil/build_config.h"
 #include <gtest/gtest.h>
-#include <fstream>
 
 namespace butil {
 extern int read_command_output_through_clone(std::ostream&, const char*);

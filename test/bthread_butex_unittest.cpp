@@ -25,14 +25,8 @@ TEST(ButexTest, wait_on_already_timedout_butex) {
     uint32_t* butex = bthread::butex_create_checked<uint32_t>();
     ASSERT_TRUE(butex);
     timespec now;
-#ifdef __MACH__ // OS X does not have clock_gettime, use clock_get_time
-    clock_serv_t cclock;
-    mach_timespec_t mts;
-    host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
-    ASSERT_EQ(0, clock_get_time(cclock, &mts));
-    mach_port_deallocate(mach_task_self(), cclock);
-    now.tv_sec = mts.tv_sec;
-    now.tv_nsec = mts.tv_nsec;
+#if defined(OS_MACOSX)
+    ASSERT_EQ(0, clock_gettime(CALENDAR_CLOCK, &now));
 #else
     ASSERT_EQ(0, clock_gettime(CLOCK_REALTIME, &now));
 #endif

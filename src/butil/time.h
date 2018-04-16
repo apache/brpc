@@ -28,7 +28,7 @@
 #include <mach/clock.h>
 #include <mach/mach.h>
 
-inline void clock_gettime(clock_id_t id, timespec* time) {
+inline int clock_gettime(clock_id_t id, timespec* time) {
     // clock_gettime is not available in MacOS, use clock_get_time instead
     clock_serv_t cclock;
     mach_timespec_t mts;
@@ -37,6 +37,7 @@ inline void clock_gettime(clock_id_t id, timespec* time) {
     mach_port_deallocate(mach_task_self(), cclock);
     time->tv_sec = mts.tv_sec;
     time->tv_nsec = mts.tv_nsec;
+    return 0;
 }
 #endif
 
