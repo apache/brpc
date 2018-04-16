@@ -70,8 +70,8 @@ ssize_t ReadCommandLine(char* buf, size_t len, bool with_args) {
         return nr;
     } else {
         for (ssize_t i = 0; i < nr; ++i) {
-            // The result in macos is ended with '\n'
-            if (buf[i] == '\0' || buf[i] == '\n') {
+            // The command in macos is separated with space and ended with '\n'
+            if (buf[i] == '\0' || buf[i] == '\n' || buf[i] == ' ') {
                 return i;
             }
         }

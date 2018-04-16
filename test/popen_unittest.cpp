@@ -36,11 +36,7 @@ TEST(PopenTest, posix_popen) {
     ASSERT_EQ(errno, ECHILD);
     ASSERT_TRUE(butil::StringPiece(oss.str()).ends_with("was killed by signal 9"));
     oss.str("");
-#if !defined(OS_LINUX)
     rc = butil::read_command_output_through_popen(oss, "kill -15 $$");
-#else
-    rc = butil::read_command_output_through_clone(oss, "kill -15 $$");
-#endif
     ASSERT_EQ(-1, rc);
     ASSERT_EQ(errno, ECHILD);
     ASSERT_TRUE(butil::StringPiece(oss.str()).ends_with("was killed by signal 15"));
@@ -48,11 +44,7 @@ TEST(PopenTest, posix_popen) {
     // TODO(zhujiashun): Fix this in macos
     /*
     oss.str("");
-#if !defined(OS_LINUX)
      ASSERT_EQ(0, butil::read_command_output_through_popen(oss, "for i in `seq 1 100000`; do echo -n '=' ; done"));
-#else
-    ASSERT_EQ(0, butil::read_command_output_through_clone(oss, "for i in `seq 1 100000`; do echo -n '=' ; done"));
-#endif
     ASSERT_EQ(100000u, oss.str().length());
     std::string expected;
     expected.resize(100000, '=');
@@ -64,53 +56,32 @@ TEST(PopenTest, posix_popen) {
 
 TEST(PopenTest, clone) {
     std::ostringstream oss;
-#if !defined(OS_LINUX)
-    int rc = butil::read_command_output_through_popen(oss, "echo \"Hello World\"");
-#else
     int rc = butil::read_command_output_through_clone(oss, "echo \"Hello World\"");
-#endif
     ASSERT_EQ(0, rc) << berror(errno);
     ASSERT_EQ("Hello World\n", oss.str());
 
     oss.str("");
-#if !defined(OS_LINUX)
-    rc = butil::read_command_output_through_popen(oss, "exit 1");
-#else
     rc = butil::read_command_output_through_clone(oss, "exit 1");
-#endif
     ASSERT_EQ(1, rc) << berror(errno);
     ASSERT_TRUE(oss.str().empty()) << oss.str();
     oss.str("");
-#if !defined(OS_LINUX)
-    rc = butil::read_command_output_through_popen(oss, "kill -9 $$");
-#else
     rc = butil::read_command_output_through_clone(oss, "kill -9 $$");
-#endif
     ASSERT_EQ(-1, rc);
     ASSERT_EQ(errno, ECHILD);
     ASSERT_TRUE(butil::StringPiece(oss.str()).ends_with("was killed by signal 9"));
     oss.str("");
-#if !defined(OS_LINUX)
-    rc = butil::read_command_output_through_popen(oss, "kill -15 $$");
-#else
     rc = butil::read_command_output_through_clone(oss, "kill -15 $$");
-#endif
     ASSERT_EQ(-1, rc);
     ASSERT_EQ(errno, ECHILD);
     ASSERT_TRUE(butil::StringPiece(oss.str()).ends_with("was killed by signal 15"));
 
     oss.str("");
-#if !defined(OS_LINUX)
-    ASSERT_EQ(0, butil::read_command_output_through_popen(oss, "for i in `seq 1 100000`; do echo -n '=' ; done"));
-#else
     ASSERT_EQ(0, butil::read_command_output_through_clone(oss, "for i in `seq 1 100000`; do echo -n '=' ; done"));
-#endif
     ASSERT_EQ(100000u, oss.str().length());
     std::string expected;
     expected.resize(100000, '=');
     ASSERT_EQ(expected, oss.str());
 }
-
 
 struct CounterArg {
     volatile int64_t counter;

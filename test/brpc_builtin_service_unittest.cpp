@@ -664,7 +664,6 @@ TEST_F(BuiltinServiceTest, pprof) {
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "num_symbols");
     }
-#if defined(OS_LINUX)
     {
         ClosureChecker done;
         brpc::Controller cntl;
@@ -672,7 +671,6 @@ TEST_F(BuiltinServiceTest, pprof) {
         EXPECT_FALSE(cntl.Failed());
         CheckContent(cntl, "brpc_builtin_service_unittest");
     }
-#endif
 }
 
 TEST_F(BuiltinServiceTest, dir) {
