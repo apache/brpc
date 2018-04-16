@@ -163,6 +163,11 @@ public:
     // and the ssl error code will be filled into `ssl_error'
     ssize_t cut_into_SSL_channel(struct ssl_st* ssl, int* ssl_error);
 
+    // Cut `count' number of `pieces' into SSL channel `ssl'.
+    // Returns bytes cut on success, -1 otherwise and errno is set.
+    static ssize_t cut_multiple_into_SSL_channel(
+        struct ssl_st* ssl, IOBuf* const* pieces, size_t count, int* ssl_error);
+
     // Cut `count' number of `pieces' into file descriptor `fd'.
     // Returns bytes cut on success, -1 otherwise and errno is set.
     static ssize_t cut_multiple_into_file_descriptor(
@@ -431,9 +436,10 @@ public:
     // If `offset' is negative, does exactly what append_from_file_descriptor does.
     ssize_t pappend_from_file_descriptor(int fd, off_t offset, size_t max_count);
 
-    // Read from SSL channel `ssl'. Returns what `SSL_read' returns
-    // and the ssl error code will be filled into `ssl_error'
-    ssize_t append_from_SSL_channel(struct ssl_st* ssl, int* ssl_error);
+    // Read as many bytes as possible from SSL channel `ssl', and stop until `max_count'.
+    // Returns total bytes read and the ssl error code will be filled into `ssl_error'
+    ssize_t append_from_SSL_channel(struct ssl_st* ssl, int* ssl_error,
+                                    size_t max_count = 1024*1024);
 
     // Remove all data inside and return cached blocks.
     void clear();

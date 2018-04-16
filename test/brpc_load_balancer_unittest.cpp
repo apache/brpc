@@ -7,8 +7,10 @@
 #include <sys/socket.h>
 #include <map>
 #include <gtest/gtest.h>
+#include "bthread/bthread.h"
 #include "butil/gperftools_profiler.h"
 #include "butil/time.h"
+#include "butil/fast_rand.h"
 #include "butil/containers/doubly_buffered_data.h"
 #include "brpc/describable.h"
 #include "brpc/socket.h"

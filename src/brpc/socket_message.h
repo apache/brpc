@@ -17,6 +17,8 @@
 #ifndef BRPC_SOCKET_MESSAGE_H
 #define BRPC_SOCKET_MESSAGE_H
 
+#include "butil/status.h"                          // butil::Status
+
 
 namespace brpc {
 

@@ -617,7 +617,46 @@ Attachment is not compressed by framework.
 
 In http, attachment corresponds to [message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html), namely the data to post to server is stored in request_attachment().
 
+## Turn on SSL
+
+Update openssl to the latest version before turning on SSL, since older versions of openssl may have severe security problems and support less encryption algorithms, which is against with the purpose of using SSL. Setup `ChannelOptions.ssl_options` to turn on SSL. Refer to [ssl_option.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_option.h) for more details.
+
+```c++
+// SSL options at client side
+struct ChannelSSLOptions {
+    // Whether to enable SSL on the channel.
+    // Default: false
+    bool enable;
+    
+    // Cipher suites used for SSL handshake.
+    // The format of this string should follow that in `man 1 cipers'.
+    // Default: "DEFAULT"
+    std::string ciphers;
+    
+    // SSL protocols used for SSL handshake, separated by comma.
+    // Available protocols: SSLv3, TLSv1, TLSv1.1, TLSv1.2
+    // Default: TLSv1, TLSv1.1, TLSv1.2
+    std::string protocols;
+    
+    // When set, fill this into the SNI extension field during handshake,
+    // which can be used by the server to locate the right certificate. 
+    // Default: empty
+    std::string sni_name;
+    
+    // Options used to verify the server's certificate
+    // Default: see above
+    VerifyOptions verify;
+    
+    // ... Other options
+};
+```
+
+- Currently only Channels which connect to a single server (by corresponding `Init`) support SSL request. Those connect to a cluster (using `NamingService`) **do NOT support SSL**.
+- After turning on SSL, all requests through this Channel will be encrypted. Users should create another Channel for non-SSL requests if needed.
+- Some accessibility optimization for HTTPS: `Channel.Init` recognize https:// prefix and turn on SSL automatically; -http_verbose will print certificate information if SSL connected.
+
 ## Authentication
+
 Generally there are 2 ways of authentication at the client side:
 
 1. Request-based authentication: Each request carries authentication information. It's more flexible since the authentication information can contain fields based on this particular request. However, this leads to a performance loss due to the extra payload in each request.

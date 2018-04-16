@@ -23,13 +23,14 @@
 #include <deque>                               // std::deque
 #include <set>                                 // std::set
 #include "butil/atomicops.h"                    // butil::atomic
-#include "bthread/types.h"                     // bthread_id_t
+#include "bthread/types.h"                      // bthread_id_t
 #include "butil/iobuf.h"                        // butil::IOBuf, IOPortal
 #include "butil/macros.h"                       // DISALLOW_COPY_AND_ASSIGN
 #include "butil/endpoint.h"                     // butil::EndPoint
 #include "butil/resource_pool.h"                // butil::ResourceId
-#include "bthread/butex.h"                     // butex_create_checked
+#include "bthread/butex.h"                      // butex_create_checked
 #include "brpc/authenticator.h"           // Authenticator
+#include "brpc/errno.pb.h"                // EFAILEDSOCKET
 #include "brpc/details/ssl_helper.h"      // SSLState
 #include "brpc/stream.h"                  // StreamId
 #include "brpc/destroyable.h"             // Destroyable
@@ -86,7 +87,7 @@ public:
 
     // Cut IOBufs into fd or SSL Channel
     virtual ssize_t CutMessageIntoFileDescriptor(int, butil::IOBuf**, size_t) = 0;
-    virtual ssize_t CutMessageIntoSSLChannel(butil::IOBuf *, SSL*, int*) = 0;
+    virtual ssize_t CutMessageIntoSSLChannel(SSL*, butil::IOBuf**, size_t) = 0;
 };
 
 // Application-level connect. After TCP connected, the client sends some
@@ -154,7 +155,9 @@ struct SocketOptions {
     // one thread at any time.
     void (*on_edge_triggered_events)(Socket*);
     int health_check_interval_s;
+    bool owns_ssl_ctx;
     SSL_CTX* ssl_ctx;
+    std::string sni_name;
     bthread_keytable_pool_t* keytable_pool;
     SocketConnection* conn;
     AppConnect* app_connect;
@@ -388,7 +391,7 @@ public:
     void CheckEOF();
     
     SSLState ssl_state() const { return _ssl_state; }
-    void set_ssl_state(SSLState s) { _ssl_state = s; }
+    X509* GetPeerCertificate() const;
     
     // Print debugging inforamtion of `id' into the ostream.
     static void DebugSocket(std::ostream&, SocketId id);
@@ -465,6 +468,13 @@ private:
 friend void DereferenceSocket(Socket*);
 
     static int Status(SocketId, int32_t* nref = NULL);  // for unit-test.
+
+    // Perform SSL handshake after TCP connection has been established.
+    // Create SSL session inside and block (in bthread) until handshake
+    // has completed. Application layer I/O is forbidden during this
+    // process to avoid concurrent I/O on the underlying fd
+    // Returns 0 on success, -1 otherwise
+    int SSLHandshake(int fd, bool server_mode);
 
     // Based upon whether the underlying channel is using SSL (if
     // SSLState is SSL_UNKNOWN, try to detect at first), read data
@@ -544,6 +554,7 @@ friend void DereferenceSocket(Socket*);
     // Callback when connection event reaches (succeeded or not)
     // This callback will be passed to `Connect'
     static int KeepWriteIfConnected(int fd, int err, void* data);
+    static void CheckConnectedAndKeepWrite(int fd, int err, void* data);
     static void AfterAppConnected(int err, void* data);
 
     static void CreateVarsOnce();
@@ -627,6 +638,9 @@ private:
     // carefully before implementing the callback.
     void (*_on_edge_triggered_events)(Socket*);
 
+    // Original options used to create this Socket
+    SocketOptions _options;
+
     // A set of callbacks to monitor important events of this socket.
     // Initialized by SocketOptions.user
     SocketUser* _user;
@@ -693,7 +707,6 @@ private:
     AuthContext* _auth_context;
 
     SSLState _ssl_state;
-    SSL_CTX* _ssl_ctx;               // not owner
     SSL* _ssl_session;               // owner
 
     // Pass from controller, for progressive reading.

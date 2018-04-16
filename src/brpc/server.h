@@ -30,6 +30,7 @@
 #include "bvar/bvar.h"
 #include "butil/containers/case_ignored_flat_map.h"  // [CaseIgnored]FlatMap
 #include "brpc/controller.h"                   // brpc::Controller
+#include "brpc/ssl_option.h"                   // ServerSSLOptions
 #include "brpc/describable.h"                  // User often needs this
 #include "brpc/data_factory.h"                 // DataFactory
 #include "brpc/builtin/tabbed.h"
@@ -49,77 +50,6 @@ class SimpleDataPool;
 class MongoServiceAdaptor;
 class RestfulMap;
 class RtmpService;
-
-struct CertInfo {
-    // Certificate in PEM format.
-    // Note that CN and alt subjects will be extracted from the certificate,
-    // and will be used as hostnames. Requests to this hostname (provided SNI
-    // extension supported) will be encrypted using this certifcate. 
-    // Supported both file path and raw string
-    std::string certificate;
-
-    // Private key in PEM format.
-    // Supported both file path and raw string based on prefix:
-    std::string private_key;
-        
-    // Additional hostnames besides those inside the certificate. Wildcards
-    // are supported but it can only appear once at the beginning (i.e. *.xxx.com).
-    std::vector<std::string> sni_filters;
-};
-
-struct SSLOptions {
-    // Constructed with default options
-    SSLOptions();
-
-    // Default certificate which will be loaded into server. Requests
-    // without hostname or whose hostname doesn't have a corresponding
-    // certificate will use this certificate. MUST be set to enable SSL.
-    CertInfo default_cert;
-    
-    // Additional certificates which will be loaded into server. These
-    // provide extra bindings between hostnames and certificates so that
-    // we can choose different certificates according to different hostnames.
-    // See `CertInfo' for detail.
-    std::vector<CertInfo> certs;
-
-    // When set, requests without hostname or whose hostname can't be found in
-    // any of the cerficates above will be dropped. Otherwise, `default_cert'
-    // will be used.
-    // Default: false
-    bool strict_sni;
-
-    // When set, SSLv3 requests will be dropped. Strongly recommended since
-    // SSLv3 has been found suffering from severe security problems. Note that
-    // some old versions of browsers may use SSLv3 by default such as IE6.0
-    // Default: true
-    bool disable_ssl3;
-
-    // Maximum lifetime for a session to be cached inside OpenSSL in seconds.
-    // A session can be reused (initiated by client) to save handshake before
-    // it reaches this timeout.
-    // Default: 300
-    int session_lifetime_s;
-
-    // Maximum number of cached sessions. When cache is full, no more new
-    // session will be added into the cache until SSL_CTX_flush_sessions is
-    // called (automatically by SSL_read/write). A special value is 0, which
-    // means no limit.
-    // Default: 20480
-    int session_cache_size;
-
-    // Cipher suites allowed for each SSL handshake. The format of this string
-    // should follow that in `man 1 cipers'. If empty, OpenSSL will choose
-    // a default cipher based on the certificate information
-    // Default: ""
-    std::string ciphers;
-
-    // Name of the elliptic curve used to generate ECDH ephemerial keys
-    // Default: prime256v1
-    std::string ecdhe_curve_name;
-    
-    // TODO: Support NPN & ALPN
-    // TODO: Support OSCP stapling
-};
 
 struct ServerOptions {
     // Constructed with default options.
@@ -260,8 +190,8 @@ struct ServerOptions {
     // Enable more secured code which protects internal information from exposure.
     bool security_mode() const { return internal_port >= 0 || !has_builtin_services; }
 
-    // SSL related options. Refer to `SSLOptions' for details
-    SSLOptions ssl_options;
+    // SSL related options. Refer to `ServerSSLOptions' for details
+    ServerSSLOptions ssl_options;
     
     // [CAUTION] This option is for implementing specialized http proxies,
     // most users don't need it. Don't change this option unless you fully

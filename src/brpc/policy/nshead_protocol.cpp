@@ -39,8 +39,7 @@ void bthread_assign_data(void* data);
 namespace brpc {
 
 NsheadClosure::NsheadClosure(void* additional_space)
-    : _socket_ptr(NULL)
-    , _server(NULL)
+    : _server(NULL)
     , _start_parse_us(0)
     , _do_respond(true)
     , _additional_space(additional_space) {
@@ -65,7 +64,6 @@ public:
 void NsheadClosure::Run() {
     // Recycle itself after `Run'
     std::unique_ptr<NsheadClosure, DeleteNsheadClosure> recycle_ctx(this);
-    SocketUniquePtr sock(_socket_ptr);
     ScopedRemoveConcurrency remove_concurrency_dummy(_server, &_controller);
 
     ControllerPrivateAccessor accessor(&_controller);
@@ -73,6 +71,7 @@ void NsheadClosure::Run() {
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
+    Socket* sock = accessor.get_sending_socket();
     ScopedMethodStatus method_status(_server->options().nshead_service->_status);
     if (!method_status) {
         // Judge errors belongings.
@@ -208,7 +207,8 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();   
 
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
-    SocketUniquePtr socket(msg->ReleaseSocket());
+    SocketUniquePtr socket_guard(msg->ReleaseSocket());
+    Socket* socket = socket_guard.get();
     const Server* server = static_cast<const Server*>(msg_base->arg());
     ScopedNonServiceError non_service_error(server);
     
@@ -250,7 +250,6 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
     req->head = *req_head;
     msg->payload.swap(req->body);
     nshead_done->_start_parse_us = start_parse_us;
-    nshead_done->_socket_ptr = socket.get();
     nshead_done->_server = server;
     
     ServerPrivateAccessor server_accessor(server);
@@ -266,7 +265,8 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
         .set_peer_id(socket->id())
         .set_remote_side(socket->remote_side())
         .set_local_side(socket->local_side())
-        .set_request_protocol(PROTOCOL_NSHEAD);
+        .set_request_protocol(PROTOCOL_NSHEAD)
+        .move_in_server_receiving_sock(socket_guard);
 
     // Tag the bthread with this server's key for thread_local_data().
     if (server->thread_local_options().thread_local_data_factory) {
@@ -309,7 +309,6 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
 
     msg.reset();  // optional, just release resourse ASAP
     // `socket' will be held until response has been sent
-    socket.release();
     if (span) {
         span->ResetServerSpanName(service->_cached_name);
         span->set_start_callback_us(butil::cpuwide_time_us());

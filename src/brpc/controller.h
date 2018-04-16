@@ -46,6 +46,10 @@
 #define EAUTH ERPCAUTH
 #endif
 
+extern "C" {
+struct x509_st;
+}
+
 namespace brpc {
 class Span;
 class Server;
@@ -306,6 +310,12 @@ public:
     // Returns the authenticated result. NULL if there is no authentication
     const AuthContext* auth_context() const { return _auth_context; }
 
+    // Whether the underlying channel is using SSL
+    bool is_ssl() const;
+
+    // Get the peer certificate, which can be printed by ostream
+    x509_st* get_peer_certificate() const;
+
     // Mutable header of http response.
     HttpHeader& http_response() {
         if (_http_response == NULL) {
@@ -380,9 +390,6 @@ public:
     // Protocol of the request sent by client or received by server.
     ProtocolType request_protocol() const { return _request_protocol; }
 
-    // Whether the underlying channel is using SSL
-    bool is_ssl() const;
-    
     // Resets the Controller to its initial state so that it may be reused in
     // a new call.  Must NOT be called while an RPC is in progress.
     void Reset() { InternalReset(false); }
