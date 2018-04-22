@@ -45,12 +45,25 @@ public:
     int32_t ref;
 };
 
-static std::unordered_map<void*, SimuFutex> s_futex_map;
 static pthread_mutex_t s_futex_map_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_once_t init_futex_map_once = PTHREAD_ONCE_INIT;
+static std::unordered_map<void*, SimuFutex>* s_futex_map = NULL;
+static void InitFutexMap() {
+    // Leave memory to process's clean up.
+    s_futex_map = new (std::nothrow) std::unordered_map<void*, SimuFutex>();
+    if (NULL == s_futex_map) {
+        exit(1);
+    }
+    return;
+}
 
 int futex_wait_private(void* addr1, int expected, const timespec* timeout) {
+    if (pthread_once(&init_futex_map_once, InitFutexMap) != 0) {
+        LOG(FATAL) << "Fail to pthread_once";
+        exit(1);
+    }
     std::unique_lock<pthread_mutex_t> mu(s_futex_map_mutex);
-    SimuFutex& simu_futex = s_futex_map[addr1];
+    SimuFutex& simu_futex = (*s_futex_map)[addr1];
     ++simu_futex.ref;
     mu.unlock();
 
@@ -80,16 +93,20 @@ int futex_wait_private(void* addr1, int expected, const timespec* timeout) {
 
     std::unique_lock<pthread_mutex_t> mu1(s_futex_map_mutex);
     if (--simu_futex.ref == 0) {
-        s_futex_map.erase(addr1);
+        s_futex_map->erase(addr1);
     }
     mu1.unlock();
     return rc;
 }
 
 int futex_wake_private(void* addr1, int nwake) {
+    if (pthread_once(&init_futex_map_once, InitFutexMap) != 0) {
+        LOG(FATAL) << "Fail to pthread_once";
+        exit(1);
+    }
     std::unique_lock<pthread_mutex_t> mu(s_futex_map_mutex);
-    auto it = s_futex_map.find(addr1);
-    if (it == s_futex_map.end()) {
+    auto it = s_futex_map->find(addr1);
+    if (it == s_futex_map->end()) {
         return 0;
     }
     SimuFutex& simu_futex = it->second;
@@ -113,7 +130,7 @@ int futex_wake_private(void* addr1, int nwake) {
 
     std::unique_lock<pthread_mutex_t> mu2(s_futex_map_mutex);
     if (--simu_futex.ref == 0) {
-        s_futex_map.erase(addr1);
+        s_futex_map->erase(addr1);
     }
     mu2.unlock();
     return nwakedup;

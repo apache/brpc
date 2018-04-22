@@ -450,11 +450,7 @@ int pthread_fd_wait(int fd, unsigned events,
     int diff_ms = -1;
     if (abstime) {
         timespec now;
-#ifdef __MACH__
-        clock_gettime(CALENDAR_CLOCK, &now);
-#else
         clock_gettime(CLOCK_REALTIME, &now);
-#endif
         int64_t now_us = butil::timespec_to_microseconds(now);
         int64_t abstime_us = butil::timespec_to_microseconds(*abstime);
         if (abstime_us <= now_us) {

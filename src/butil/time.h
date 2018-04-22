@@ -28,7 +28,12 @@
 #include <mach/clock.h>
 #include <mach/mach.h>
 
-inline int clock_gettime(clock_id_t id, timespec* time) {
+# ifndef clock_gettime
+# define CLOCK_REALTIME CALENDAR_CLOCK
+# define CLOCK_MONOTONIC SYSTEM_CLOCK
+
+typedef int clockid_t;
+inline int clock_gettime(clockid_t id, timespec* time) {
     // clock_gettime is not available in MacOS, use clock_get_time instead
     clock_serv_t cclock;
     mach_timespec_t mts;
@@ -39,6 +44,7 @@ inline int clock_gettime(clock_id_t id, timespec* time) {
     time->tv_nsec = mts.tv_nsec;
     return 0;
 }
+# endif
 #endif
 
 namespace butil {
@@ -104,11 +110,7 @@ inline timespec seconds_from(timespec start_time, int64_t seconds) {
 // --------------------------------------------------------------------
 inline timespec nanoseconds_from_now(int64_t nanoseconds) {
     timespec time;
-#ifdef __MACH__
-    clock_gettime(CALENDAR_CLOCK, &time);
-#else
     clock_gettime(CLOCK_REALTIME, &time);
-#endif
     return nanoseconds_from(time, nanoseconds);
 }
 
@@ -126,11 +128,7 @@ inline timespec seconds_from_now(int64_t seconds) {
 
 inline timespec timespec_from_now(const timespec& span) {
     timespec time;
-#ifdef __MACH__
-    clock_gettime(CALENDAR_CLOCK, &time);
-#else
     clock_gettime(CLOCK_REALTIME, &time);
-#endif
     timespec_add(&time, span);
     return time;
 }

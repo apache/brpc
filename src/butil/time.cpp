@@ -35,13 +35,7 @@ int64_t monotonic_time_ns() {
     // use the RAW version does not make sense anymore.
     // NOTE: Not inline to keep ABI-compatible with previous versions.
     timespec now;
-#ifdef __MACH__
-    // The value returned is a monotonically increasing value according to
-    // https://opensource.apple.com/source/xnu/xnu-792.13.8/osfmk/man/clock_get_time.html
-    clock_gettime(CALENDAR_CLOCK, &now);
-#else
     clock_gettime(CLOCK_MONOTONIC, &now);
-#endif
     return now.tv_sec * 1000000000L + now.tv_nsec;
 }
 
