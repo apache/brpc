@@ -1730,7 +1730,7 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
         }
     }
 
-    CHECK(ssl_state() == SSL_CONNECTED);
+    CHECK_EQ(SSL_CONNECTED, ssl_state());
     if (_conn) {
         // TODO: Separate SSL stuff from SocketConnection
         return _conn->CutMessageIntoSSLChannel(_ssl_session, data_list, ndata);
@@ -1870,7 +1870,7 @@ ssize_t Socket::DoRead(size_t size_hint) {
         return _read_buf.append_from_file_descriptor(fd(), size_hint);
     }
 
-    CHECK(ssl_state() == SSL_CONNECTED) << ssl_state();
+    CHECK_EQ(SSL_CONNECTED, ssl_state());
     int ssl_error = 0;
     ssize_t nr = _read_buf.append_from_SSL_channel(_ssl_session, &ssl_error, size_hint);
     switch (ssl_error) {
