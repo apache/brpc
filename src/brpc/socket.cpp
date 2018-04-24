@@ -660,6 +660,9 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     }
     *id = m->_this_id;
     m->_options = options;
+    if (m->_ssl_state == SSL_UNKNOWN) {
+        CHECK(m->_options.ssl_ctx);
+    }
     return 0;
 }
 
@@ -1771,6 +1774,9 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
     if (_options.ssl_ctx == NULL) {
         if (server_mode) {
             LOG(ERROR) << "Lack SSL configuration to handle SSL request";
+            std::stringstream ss;
+            DebugSocket(ss, id());
+            LOG(ERROR) << ss;
             return -1;
         }
         return 0;
