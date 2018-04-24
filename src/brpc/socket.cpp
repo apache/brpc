@@ -1769,6 +1769,10 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
 
 int Socket::SSLHandshake(int fd, bool server_mode) {
     if (_options.ssl_ctx == NULL) {
+        if (server_mode) {
+            LOG(ERROR) << "Lack SSL configuration to handle SSL request";
+            return -1;
+        }
         return 0;
     }
 
@@ -1866,7 +1870,7 @@ ssize_t Socket::DoRead(size_t size_hint) {
         return _read_buf.append_from_file_descriptor(fd(), size_hint);
     }
 
-    CHECK(ssl_state() == SSL_CONNECTED);
+    CHECK(ssl_state() == SSL_CONNECTED) << ssl_state();
     int ssl_error = 0;
     ssize_t nr = _read_buf.append_from_SSL_channel(_ssl_session, &ssl_error, size_hint);
     switch (ssl_error) {
