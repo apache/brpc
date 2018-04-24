@@ -22,8 +22,6 @@
 #include <functional>
 #include <string>
 
-#include <boost/make_shared.hpp>
-
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/generated_message_util.h>
 #include <google/protobuf/repeated_field.h>
@@ -33,23 +31,11 @@
 
 #include "brpc/thrift_binary_head.h"               // thrfit_binary_head_t
 #include "butil/iobuf.h"                           // IOBuf
+#include "butil/thrift_utils.h"
 
 #include <thrift/protocol/TBinaryProtocol.h>
-#include <thrift/transport/TBufferTransports.h>
 
 namespace brpc {
-
-template <typename T>
-void thrift_framed_message_deleter(void* p) {
-   delete static_cast<T*>(p);
-}
-
-template <typename T>
-uint32_t thrift_framed_message_writer(void* p, ::apache::thrift::protocol::TProtocol* prot) {
-    T* writer = static_cast<T*>(p);
-    return writer->write(prot);
-    
-}
 
 // Internal implementation detail -- do not call these.
 void protobuf_AddDesc_baidu_2frpc_2fthrift_binary_5fmessage_2eproto();
@@ -62,7 +48,7 @@ public:
     thrift_binary_head_t head;
     butil::IOBuf body;
     void (*thrift_raw_instance_deleter) (void*);
-    uint32_t (*thrift_raw_instance_writer) (void*, ::apache::thrift::protocol::TProtocol*);
+    uint32_t (*thrift_raw_instance_writer) (void*, void*);
     void* thrift_raw_instance;
 
     int32_t thrift_message_seq_id;
@@ -103,76 +89,24 @@ public:
     int GetCachedSize() const { return ByteSize(); }
     ::google::protobuf::Metadata GetMetadata() const;
 
-    virtual uint32_t write(::apache::thrift::protocol::TProtocol* oprot) { return 0;}
-    virtual uint32_t read(::apache::thrift::protocol::TProtocol* iprot) { return 0;}
+    virtual uint32_t write(void* oprot) { return 0;}
+    virtual uint32_t read(void* iprot) { return 0;}
 
     template<typename T>
     T* cast() {
 
         thrift_raw_instance = new T;
+        assert(thrift_raw_instance);
 
         // serilize binary thrift message to thrift struct request
         // for response, we just return the new instance and deserialize it in Closure
-        if (body.size() > 0) {
-            auto in_buffer =
-                boost::make_shared<apache::thrift::transport::TMemoryBuffer>();
-            auto in_portocol =
-                boost::make_shared<apache::thrift::protocol::TBinaryProtocol>(in_buffer);
-
-            // Cut the thrift buffer and parse thrift message
-            size_t body_len  = head.body_len;
-            std::unique_ptr<uint8_t[]>thrift_buffer(new uint8_t[body_len]);
-
-            const size_t k = body.copy_to(thrift_buffer.get(), body_len);
-            if ( k != body_len) {
-                return false;
+        if (body.size() > 0 ) {
+            if (serialize_iobuf_to_thrift_message<T>(body, thrift_raw_instance,
+                    &method_name, &thrift_message_seq_id)) {
+            } else {
+                delete static_cast<T*>(thrift_raw_instance);
+                return nullptr;
             }
-
-            in_buffer->resetBuffer(thrift_buffer.get(), body_len);
-
-            // The following code was taken and modified from thrift auto generated code
-
-            std::string fname;
-            ::apache::thrift::protocol::TMessageType mtype;
-
-            in_portocol->readMessageBegin(method_name, mtype, thrift_message_seq_id);
-
-            apache::thrift::protocol::TInputRecursionTracker tracker(*in_portocol);
-            uint32_t xfer = 0;
-            ::apache::thrift::protocol::TType ftype;
-            int16_t fid;
-
-            xfer += in_portocol->readStructBegin(fname);
-
-            using ::apache::thrift::protocol::TProtocolException;
-            
-            while (true)
-            {
-              xfer += in_portocol->readFieldBegin(fname, ftype, fid);
-              if (ftype == ::apache::thrift::protocol::T_STOP) {
-                break;
-              }
-              switch (fid)
-              {
-                case 1:
-                  if (ftype == ::apache::thrift::protocol::T_STRUCT) {
-                    xfer += static_cast<T*>(thrift_raw_instance)->read(in_portocol.get());
-                  } else {
-                    xfer += in_portocol->skip(ftype);
-                  }
-                  break;
-                default:
-                  xfer += in_portocol->skip(ftype);
-                  break;
-              }
-              xfer += in_portocol->readFieldEnd();
-            }
-            
-            xfer += in_portocol->readStructEnd();
-
-            in_portocol->readMessageEnd();
-            in_portocol->getTransport()->readEnd();
-            // End thrfit auto generated code
         }
 
         thrift_raw_instance_deleter = &thrift_framed_message_deleter<T>;
@@ -209,15 +143,15 @@ public:
         return *this;
     }
 
-    virtual uint32_t write(::apache::thrift::protocol::TProtocol* oprot) {
-        return thrift_message_->write(oprot);
+    virtual uint32_t write(void* oprot) {
+        return thrift_message_->write(static_cast<::apache::thrift::protocol::TProtocol*>(oprot));
     }
 
-    virtual uint32_t read(::apache::thrift::protocol::TProtocol* iprot) {
-        return thrift_message_->read(iprot);
+    virtual uint32_t read(void* iprot) {
+        return thrift_message_->read(static_cast<::apache::thrift::protocol::TProtocol*>(iprot));
     }
 
-    T& raw(){
+    T& raw() {
         return *thrift_message_;
     }
 
@@ -227,6 +161,6 @@ private:
 
 } // namespace brpc
 
-#endif  // BRPC_THRIFT_FRAMED_MESSAGE_H
+#endif // BRPC_THRIFT_FRAMED_MESSAGE_H
 
-#endif
+#endif //ENABLE_THRIFT_FRAMED_PROTOCOL

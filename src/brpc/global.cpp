@@ -96,6 +96,8 @@ using namespace policy;
 
 const char* const DUMMY_SERVER_PORT_FILE = "dummy_server.port";
 
+void __attribute__((weak)) RegisterThriftFramedProtocol();
+
 struct GlobalExtensions {
     GlobalExtensions()
         : ch_mh_lb(MurmurHash32)
@@ -433,17 +435,6 @@ static void GlobalInitializeOrDieImpl() {
         exit(1);
     }
 
-#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
-    Protocol thrift_binary_protocol = { ParseThriftFramedMessage,
-                                 SerializeThriftFramedRequest, PackThriftFramedRequest,
-                                 ProcessThriftFramedRequest, ProcessThriftFramedResponse,
-                                 VerifyThriftFramedRequest, NULL, NULL,
-                                 CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };
-    if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
-        exit(1);
-    }
-#endif //ENABLE_THRIFT_FRAMED_PROTOCOL
-
     Protocol mc_binary_protocol = { ParseMemcacheMessage,
                                     SerializeMemcacheRequest,
                                     PackMemcacheRequest,
@@ -471,6 +462,12 @@ static void GlobalInitializeOrDieImpl() {
                                 CONNECTION_TYPE_POOLED, "mongo" };
     if (RegisterProtocol(PROTOCOL_MONGO, mongo_protocol) != 0) {
         exit(1);
+    }
+
+    // Register Thrift framed protocol if linked
+
+    if (brpc::RegisterThriftFramedProtocol) {
+        brpc::RegisterThriftFramedProtocol();
     }
 
     // Only valid at client side

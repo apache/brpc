@@ -19,7 +19,6 @@
 #include "brpc/thrift_service.h"
 #include "brpc/details/method_status.h"
 
-
 namespace brpc {
 
 BAIDU_CASSERT(sizeof(thrift_binary_head_t) == 4, sizeof_thrift_must_be_4);
@@ -34,7 +33,7 @@ ThriftFramedService::ThriftFramedService(const ThriftFramedServiceOptions& optio
     if (options.generate_status) {
         _status = new (std::nothrow) MethodStatus;
         LOG_IF(FATAL, _status == NULL) << "Fail to new MethodStatus";
-    }
+    }    
 }
 
 ThriftFramedService::~ThriftFramedService() {

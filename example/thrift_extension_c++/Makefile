@@ -11,7 +11,7 @@ LIBPATHS = $(addprefix -L, $(LIBS))
 COMMA=,
 SOPATHS=$(addprefix -Wl$(COMMA)-rpath=, $(LIBS))
 
-STATIC_LINKINGS += -lbrpc -lthrift -lgflags
+STATIC_LINKINGS += -lbrpc -lthrift -lgflags -Wl,--whole-archive -lbrpc_thrift -Wl,--no-whole-archive -levent
 
 CLIENT_SOURCES = client.cpp
 SERVER_SOURCES = server.cpp
@@ -32,19 +32,11 @@ clean:
 
 echo_client:$(PROTO_OBJS) $(CLIENT_OBJS) libechothrift.a
 	@echo "Linking $@"
-ifneq ("$(LINK_SO)", "")
 	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
-else
-	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
-endif
 
 echo_server:$(PROTO_OBJS) $(SERVER_OBJS) libechothrift.a
 	@echo "Linking $@"
-ifneq ("$(LINK_SO)", "")
 	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ libechothrift.a -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
-else
-	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ libechothrift.a -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
-endif
 
 %.o:%.cpp libechothrift.a
 	@echo "Compiling $@"
@@ -63,7 +55,7 @@ libechothrift.a:
 	@ar -crv libechothrift.a EchoService.o echo_types.o
 
 native_server: libechothrift.a
-	@$(CXX) native_server.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp $(HDRPATHS) $(LIBPATHS) $(CXXFLAGS) $(STATIC_LINKINGS) -lthriftnb -lthrift -levent -lpthread -o native_server
+	@$(CXX) native_server.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp $(HDRPATHS) $(LIBPATHS) $(CXXFLAGS) -lthriftnb -lthrift -levent -lpthread -lgflags -lbrpc -lbrpc_thrift -o native_server
 
 native_client: libechothrift.a
-	@$(CXX) native_client.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp $(HDRPATHS) $(LIBPATHS) $(CXXFLAGS) $(STATIC_LINKINGS) -lthriftnb -lthrift -levent -lpthread -o native_client
+	@$(CXX) native_client.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp $(HDRPATHS) $(LIBPATHS) $(CXXFLAGS) -lthriftnb -lthrift -levent -lpthread -lgflags -lbrpc -lbrpc_thrift -o native_client

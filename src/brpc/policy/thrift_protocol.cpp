@@ -533,7 +533,7 @@ void SerializeThriftFramedRequest(butil::IOBuf* request_buf, Controller* cntl,
     ControllerPrivateAccessor accessor(cntl);
 
     const ThriftFramedMessage* req = (const ThriftFramedMessage*)req_base;
-    
+
     thrift_binary_head_t head = req->head;
 
     auto out_buffer =
@@ -623,6 +623,19 @@ void PackThriftFramedRequest(
 }
 
 } // namespace policy
+
+void RegisterThriftFramedProtocol() {
+
+    Protocol thrift_binary_protocol = {policy::ParseThriftFramedMessage,
+                                 policy::SerializeThriftFramedRequest, policy::PackThriftFramedRequest,
+                                 policy::ProcessThriftFramedRequest, policy::ProcessThriftFramedResponse,
+                                 policy::VerifyThriftFramedRequest, NULL, NULL,
+                                 CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };
+    if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
+        exit(1);
+    }
+}
+
 } // namespace brpc
 
 #endif

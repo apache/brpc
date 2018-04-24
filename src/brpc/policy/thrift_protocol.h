@@ -20,7 +20,6 @@
 #define BRPC_POLICY_THRIFT_PROTOCOL_H
 
 #include "brpc/protocol.h"
-#include "brpc/thrift_framed_message.h"
 
 namespace brpc {
 namespace policy {

@@ -22,6 +22,9 @@
 #include <algorithm>
 #include "butil/logging.h"
 
+#include <brpc/protocol.h>                          // RegisterProtocol
+#include <brpc/policy/thrift_protocol.h>
+
 #include <google/protobuf/stubs/once.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/wire_format_lite_inl.h>
@@ -121,9 +124,11 @@ ThriftFramedMessage::ThriftFramedMessage(const ThriftFramedMessage& from)
 
 void ThriftFramedMessage::SharedCtor() {
     memset(&head, 0, sizeof(head));
+    thrift_raw_instance_deleter = nullptr;
     thrift_raw_instance = nullptr;
     thrift_message_seq_id = 0;
-    method_name = "";
+    method_name = "";    
+    //RegisterThriftFramedProtocolDummy dummy;
 }
 
 ThriftFramedMessage::~ThriftFramedMessage() {
