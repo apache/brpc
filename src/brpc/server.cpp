@@ -37,7 +37,7 @@
 #include "brpc/global.h"
 #include "brpc/socket_map.h"                   // SocketMapList
 #include "brpc/acceptor.h"                     // Acceptor
-#include "brpc/details/ssl_helper.h"           // CreateSSLContext
+#include "brpc/details/ssl_helper.h"           // CreateServerSSLContext
 #include "brpc/protocol.h"                     // ListProtocols
 #include "brpc/nshead_service.h"               // NsheadService
 #include "brpc/thrift_service.h"               // ThriftService
@@ -116,14 +116,6 @@ const int INITIAL_CERT_MAP = 64;
 // NOTE: never make s_ncore extern const whose ctor seq against other
 // compilation units is undefined.
 const int s_ncore = sysconf(_SC_NPROCESSORS_ONLN);
-
-SSLOptions::SSLOptions()
-    : strict_sni(false)
-    , disable_ssl3(true)
-    , session_lifetime_s(300)
-    , session_cache_size(20480)
-    , ecdhe_curve_name("prime256v1")
-{}
 
 ServerOptions::ServerOptions()
     : idle_timeout_sec(-1)
@@ -1761,8 +1753,8 @@ int Server::AddCertificate(const CertInfo& cert) {
 
     SSLContext ssl_ctx;
     ssl_ctx.filters = cert.sni_filters;
-    ssl_ctx.ctx = CreateSSLContext(cert.certificate, cert.private_key,
-                                   _options.ssl_options, &ssl_ctx.filters);
+    ssl_ctx.ctx = CreateServerSSLContext(cert.certificate, cert.private_key,
+                                         _options.ssl_options, &ssl_ctx.filters);
     if (ssl_ctx.ctx == NULL) {
         return -1;
     }
@@ -1876,7 +1868,7 @@ int Server::ResetCertificates(const std::vector<CertInfo>& certs) {
 
         SSLContext ssl_ctx;
         ssl_ctx.filters = certs[i].sni_filters;
-        ssl_ctx.ctx = CreateSSLContext(
+        ssl_ctx.ctx = CreateServerSSLContext(
             certs[i].certificate, certs[i].private_key,
             _options.ssl_options, &ssl_ctx.filters);
         if (ssl_ctx.ctx == NULL) {

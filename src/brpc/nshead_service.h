@@ -24,7 +24,6 @@
 
 namespace brpc {
 
-class Socket;
 class Server;
 class MethodStatus;
 class StatusService;
@@ -61,7 +60,6 @@ friend class DeleteNsheadClosure;
     // Only callable by Run().
     ~NsheadClosure();
 
-    Socket* _socket_ptr;
     const Server* _server;
     int64_t _start_parse_us;
     NsheadMessage _request;

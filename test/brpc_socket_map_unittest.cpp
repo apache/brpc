@@ -17,6 +17,7 @@ DECLARE_int32(max_connection_pool_size);
 
 namespace {
 butil::EndPoint g_endpoint;
+brpc::SocketMapKey g_key(g_endpoint);
 
 void* worker(void*) {
     const int ROUND = 2;
@@ -25,9 +26,9 @@ void* worker(void*) {
     for (int i = 0; i < ROUND * 2; ++i) {
         for (int j = 0; j < COUNT; ++j) {
             if (i % 2 == 0) {
-                EXPECT_EQ(0, brpc::SocketMapInsert(g_endpoint, &id));
+                EXPECT_EQ(0, brpc::SocketMapInsert(g_key, &id));
             } else {
-                brpc::SocketMapRemove(g_endpoint);
+                brpc::SocketMapRemove(g_key);
             }
         }
     }
@@ -55,23 +56,23 @@ TEST_F(SocketMapTest, idle_timeout) {
     }
     brpc::SocketId id;
     // Socket still exists since it has not reached timeout yet
-    ASSERT_EQ(0, brpc::SocketMapFind(g_endpoint, &id));
+    ASSERT_EQ(0, brpc::SocketMapFind(g_key, &id));
     usleep(TIMEOUT * 1000000L + 1100000L);
     // Socket should be removed after timeout
-    ASSERT_EQ(-1, brpc::SocketMapFind(g_endpoint, &id));
+    ASSERT_EQ(-1, brpc::SocketMapFind(g_key, &id));
 
     brpc::FLAGS_defer_close_second = TIMEOUT * 10;
-    ASSERT_EQ(0, brpc::SocketMapInsert(g_endpoint, &id));
-    brpc::SocketMapRemove(g_endpoint);
-    ASSERT_EQ(0, brpc::SocketMapFind(g_endpoint, &id));
+    ASSERT_EQ(0, brpc::SocketMapInsert(g_key, &id));
+    brpc::SocketMapRemove(g_key);
+    ASSERT_EQ(0, brpc::SocketMapFind(g_key, &id));
     // Change `FLAGS_idle_timeout_second' to 0 to disable checking
     brpc::FLAGS_defer_close_second = 0;
     usleep(1100000L);
     // And then Socket should be removed
-    ASSERT_EQ(-1, brpc::SocketMapFind(g_endpoint, &id));
+    ASSERT_EQ(-1, brpc::SocketMapFind(g_key, &id));
 
     brpc::SocketId main_id;
-    ASSERT_EQ(0, brpc::SocketMapInsert(g_endpoint, &main_id));
+    ASSERT_EQ(0, brpc::SocketMapInsert(g_key, &main_id));
     brpc::FLAGS_idle_timeout_second = TIMEOUT;
     brpc::SocketUniquePtr main_ptr;
     brpc::SocketUniquePtr ptr;
@@ -91,7 +92,7 @@ TEST_F(SocketMapTest, idle_timeout) {
     ASSERT_TRUE(main_ptr.get());
     main_ptr.reset();
     ASSERT_NE(id, ptr->id());
-    brpc::SocketMapRemove(g_endpoint);
+    brpc::SocketMapRemove(g_key);
 }
 
 TEST_F(SocketMapTest, max_pool_size) {
@@ -100,7 +101,7 @@ TEST_F(SocketMapTest, max_pool_size) {
     brpc::FLAGS_max_connection_pool_size = MAXSIZE;
 
     brpc::SocketId main_id;
-    ASSERT_EQ(0, brpc::SocketMapInsert(g_endpoint, &main_id));
+    ASSERT_EQ(0, brpc::SocketMapInsert(g_key, &main_id));
 
     brpc::SocketUniquePtr ptrs[TOTALSIZE];
     for (int i = 0; i < TOTALSIZE; ++i) {
@@ -126,7 +127,7 @@ TEST_F(SocketMapTest, max_pool_size) {
 } //namespace
 
 int main(int argc, char* argv[]) {
-    butil::str2endpoint("127.0.0.1:12345", &g_endpoint);
+    butil::str2endpoint("127.0.0.1:12345", &g_key.peer);
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }

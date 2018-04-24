@@ -11,6 +11,9 @@ env:
 - PURPOSE=unittest
 - PURPOSE=compile-with-bazel
 
+before_script:
+- ulimit -c unlimited -S       # enable core dumps
+
 before_install:
 - wget --no-clobber https://github.com/bazelbuild/bazel/releases/download/0.8.1/bazel_0.8.1-linux-x86_64.deb
 - sudo dpkg -i bazel_0.8.1-linux-x86_64.deb
@@ -18,6 +21,7 @@ before_install:
 install:
 - sudo apt-get install -qq realpath libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev libboost-dev libssl-dev libevent-dev libboost-test-dev
 - sudo apt-get install libgtest-dev && cd /usr/src/gtest && sudo env "PATH=$PATH" cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
+- sudo apt-get install -y gdb  # install gdb
 - wget http://www.us.apache.org/dist/thrift/0.9.3/thrift-0.9.3.tar.gz && tar -xf thrift-0.9.3.tar.gz && cd thrift-0.9.3/ &&  ./configure --prefix=/usr --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no && make && sudo make install && cd -
 
 script:

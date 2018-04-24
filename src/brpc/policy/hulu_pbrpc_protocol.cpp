@@ -48,7 +48,8 @@ namespace policy {
 //    problems on machines with different byte order)
 // 3. Use service->name() (rather than service->full_name()) + method_index
 //    to locate method defined in .proto file
-// 4. `user_message_size' is set iff request/response has attachment
+// 4. 'user_message_size' is the size of protobuf request,
+//    and should be set iff request/response has attachment
 // 5. Not supported:
 //    chunk_info                   - hulu doesn't support either
 //    TalkType                     - nobody has use this so far in hulu
@@ -222,7 +223,6 @@ static void SendHuluResponse(int64_t correlation_id,
                              HuluController* cntl, 
                              const google::protobuf::Message* req,
                              const google::protobuf::Message* res,
-                             Socket* socket_ptr,
                              const Server* server,
                              MethodStatus* method_status_raw,
                              long start_parse_us) {
@@ -232,7 +232,7 @@ static void SendHuluResponse(int64_t correlation_id,
         span->set_start_send_us(butil::cpuwide_time_us());
     }
     ScopedMethodStatus method_status(method_status_raw);
-    SocketUniquePtr sock(socket_ptr);
+    Socket* sock = accessor.get_sending_socket();
     std::unique_ptr<HuluController, LogErrorTextAndDelete> recycle_cntl(cntl);
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
@@ -336,7 +336,8 @@ void EndRunningCallMethodInPool(
 void ProcessHuluRequest(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
-    SocketUniquePtr socket(msg->ReleaseSocket());
+    SocketUniquePtr socket_guard(msg->ReleaseSocket());
+    Socket* socket = socket_guard.get();
     const Server* server = static_cast<const Server*>(msg_base->arg());
     ScopedNonServiceError non_service_error(server);
 
@@ -382,7 +383,8 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
         .set_remote_side(socket->remote_side())
         .set_local_side(socket->local_side())
         .set_auth_context(socket->auth_context())
-        .set_request_protocol(PROTOCOL_HULU_PBRPC);
+        .set_request_protocol(PROTOCOL_HULU_PBRPC)
+        .move_in_server_receiving_sock(socket_guard);
 
     if (meta.has_user_data()) {
         cntl->set_request_user_data(meta.user_data());
@@ -405,12 +407,13 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
             msg->base_real_us());
         accessor.set_span(span);
         span->set_log_id(meta.log_id());
-        span->set_remote_side(socket->remote_side());
+        span->set_remote_side(cntl->remote_side());
         span->set_protocol(PROTOCOL_HULU_PBRPC);
         span->set_received_us(msg->received_us());
         span->set_start_parse_us(start_parse_us);
         span->set_request_size(msg->payload.size() + msg->meta.size() + 12);
     }
+
     MethodStatus* method_status = NULL;
     do {
         if (!server->IsRunning()) {
@@ -492,10 +495,10 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
         // `socket' will be held until response has been sent
         google::protobuf::Closure* done = ::brpc::NewCallback<
             int64_t, HuluController*, const google::protobuf::Message*,
-            const google::protobuf::Message*, Socket*, const Server*,
+            const google::protobuf::Message*, const Server*,
                   MethodStatus *, long>(
                 &SendHuluResponse, correlation_id, cntl.get(),
-                req.get(), res.get(), socket.release(), server,
+                req.get(), res.get(), server,
                 method_status, start_parse_us);
         if (span) {
             span->set_start_callback_us(butil::cpuwide_time_us());
@@ -519,7 +522,7 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
     // `cntl', `req' and `res' will be deleted inside `SendHuluResponse'
     // `socket' will be held until response has been sent
     SendHuluResponse(correlation_id, cntl.release(),
-                     req.release(), res.release(), socket.release(), server,
+                     req.release(), res.release(), server,
                      method_status, -1);
 }
 

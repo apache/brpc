@@ -17,6 +17,7 @@
 
 #include <gflags/gflags.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h> // StringOutputStream
+#include "bthread/bthread.h"                      // bthread_id_xx
 #include "bthread/unstable.h"                     // bthread_timer_del
 #include "brpc/log.h"
 #include "brpc/callback.h"                   // Closure
@@ -1056,9 +1057,8 @@ public:
         : _connect_options(connect_options) {
     }
 
-    int CreateSocket(const butil::EndPoint& pt, SocketId* id) {
-        SocketOptions sock_opt;
-        sock_opt.remote_side = pt;
+    int CreateSocket(const SocketOptions& opt, SocketId* id) {
+        SocketOptions sock_opt = opt;
         sock_opt.app_connect = new RtmpConnect;
         sock_opt.initial_parsing_context = new policy::RtmpContext(&_connect_options, NULL);
         return get_client_side_messenger()->Create(sock_opt, id);
@@ -1661,7 +1661,7 @@ void RtmpClientStream::ReplaceSocketForStream(
         }
     } else {
         if (_client_impl->socket_map().Insert(
-                (*inout)->remote_side(), &esid) != 0) {
+                SocketMapKey((*inout)->remote_side()), &esid) != 0) {
             cntl->SetFailed(EINVAL, "Fail to get the RTMP socket");
             return;
         }
