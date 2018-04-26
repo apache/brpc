@@ -34,11 +34,7 @@ public:
     void run()
     {
         timespec current_time;
-#if defined(OS_MACOSX)
-        clock_gettime(CALENDAR_CLOCK, &current_time);
-#else
         clock_gettime(CLOCK_REALTIME, &current_time);
-#endif
         if (_name) {
             LOG(INFO) << "Run `" << _name << "' task_id=" << _task_id;
         } else {
