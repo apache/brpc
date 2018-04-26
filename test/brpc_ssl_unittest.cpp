@@ -331,4 +331,6 @@ TEST_F(SSLTest, ssl_perf) {
     ASSERT_EQ(0, pthread_create(&spid, NULL, ssl_perf_server , serv_ssl));
     ASSERT_EQ(0, pthread_join(cpid, NULL));
     ASSERT_EQ(0, pthread_join(spid, NULL));
+    close(clifd);
+    close(servfd);
 }

@@ -651,6 +651,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     }
     m->_last_writetime_us.store(cpuwide_now, butil::memory_order_relaxed);
     m->_unwritten_bytes.store(0, butil::memory_order_relaxed);
+    m->_options = options;
     CHECK(NULL == m->_write_head.load(butil::memory_order_relaxed));
     // Must be last one! Internal fields of this Socket may be access
     // just after calling ResetFileDescriptor.
@@ -662,7 +663,6 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
         return -1;
     }
     *id = m->_this_id;
-    m->_options = options;
     return 0;
 }
 
@@ -1733,7 +1733,7 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
         }
     }
 
-    CHECK(ssl_state() == SSL_CONNECTED);
+    CHECK_EQ(SSL_CONNECTED, ssl_state());
     if (_conn) {
         // TODO: Separate SSL stuff from SocketConnection
         return _conn->CutMessageIntoSSLChannel(_ssl_session, data_list, ndata);
@@ -1772,6 +1772,10 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
 
 int Socket::SSLHandshake(int fd, bool server_mode) {
     if (_options.ssl_ctx == NULL) {
+        if (server_mode) {
+            LOG(ERROR) << "Lack SSL configuration to handle SSL request";
+            return -1;
+        }
         return 0;
     }
 
@@ -1877,7 +1881,7 @@ ssize_t Socket::DoRead(size_t size_hint) {
         return _read_buf.append_from_file_descriptor(fd(), size_hint);
     }
 
-    CHECK(ssl_state() == SSL_CONNECTED);
+    CHECK_EQ(SSL_CONNECTED, ssl_state());
     int ssl_error = 0;
     ssize_t nr = _read_buf.append_from_SSL_channel(_ssl_session, &ssl_error, size_hint);
     switch (ssl_error) {

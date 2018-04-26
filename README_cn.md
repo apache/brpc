@@ -76,6 +76,7 @@
     * [FlatMap](docs/cn/flatmap.md)
     * [brpc外功修炼宝典](docs/cn/brpc_intro.pptx)(培训材料)
     * [搭建大型服务入门](docs/en/tutorial_on_building_services.pptx)(培训材料)
+    * [brpc内功修炼宝典](docs/en/brpc_internal.pptx)(培训材料)
   * 深入RPC
     * [New Protocol](docs/cn/new_protocol.md)
     * [Atomic instructions](docs/cn/atomic_instructions.md)
