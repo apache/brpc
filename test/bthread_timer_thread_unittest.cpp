@@ -171,11 +171,7 @@ public:
             
     void run()
     {
-#if defined(OS_MACOSX)
-        clock_gettime(CALENDAR_CLOCK, &_running_time);
-#else
         clock_gettime(CLOCK_REALTIME, &_running_time);
-#endif
         EXPECT_EQ(_expected_unschedule_result,
                   _timer_thread->unschedule(_keeper1->_task_id));
         _keeper2->schedule(_timer_thread);
@@ -235,11 +231,7 @@ TEST(TimerThreadTest, schedule_and_unschedule_in_task) {
 
     timer_thread.stop_and_join();
     timespec finish_time;
-#if defined(OS_MACOSX)
-    clock_gettime(CALENDAR_CLOCK, &finish_time);
-#else
     clock_gettime(CLOCK_REALTIME, &finish_time);
-#endif
 
     keeper1.expect_not_run();
     keeper2.expect_first_run(test_task1._running_time);

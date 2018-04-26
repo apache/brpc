@@ -25,11 +25,7 @@ TEST(ButexTest, wait_on_already_timedout_butex) {
     uint32_t* butex = bthread::butex_create_checked<uint32_t>();
     ASSERT_TRUE(butex);
     timespec now;
-#if defined(OS_MACOSX)
-    ASSERT_EQ(0, clock_gettime(CALENDAR_CLOCK, &now));
-#else
     ASSERT_EQ(0, clock_gettime(CLOCK_REALTIME, &now));
-#endif
     *butex = 1;
     ASSERT_EQ(-1, bthread::butex_wait(butex, 1, &now));
     ASSERT_EQ(ETIMEDOUT, errno);

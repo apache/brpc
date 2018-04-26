@@ -33,15 +33,24 @@
 # define CLOCK_MONOTONIC SYSTEM_CLOCK
 
 typedef int clockid_t;
+// clock_gettime is not available in MacOS < 10.12
 inline int clock_gettime(clockid_t id, timespec* time) {
-    // clock_gettime is not available in MacOS, use clock_get_time instead
-    clock_serv_t cclock;
-    mach_timespec_t mts;
-    host_get_clock_service(mach_host_self(), id, &cclock);
-    clock_get_time(cclock, &mts);
-    mach_port_deallocate(mach_task_self(), cclock);
-    time->tv_sec = mts.tv_sec;
-    time->tv_nsec = mts.tv_nsec;
+    if (id == CLOCK_MONOTONIC) {
+        clock_serv_t cclock;
+        mach_timespec_t mts;
+        host_get_clock_service(mach_host_self(), id, &cclock);
+        clock_get_time(cclock, &mts);
+        mach_port_deallocate(mach_task_self(), cclock);
+        time->tv_sec = mts.tv_sec;
+        time->tv_nsec = mts.tv_nsec;
+    } else if (id == CLOCK_REALTIME) {
+        struct timeval now;
+        if (gettimeofday(&now, NULL) < 0) {
+            return -1;
+        }
+        time->tv_sec = now.tv_sec;
+        time->tv_nsec = now.tv_usec * 1000;
+    }
     return 0;
 }
 # endif
