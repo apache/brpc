@@ -53,8 +53,7 @@ class RtmpService;
 class SocketSSLContext;
 
 struct ServerOptions {
-    // Constructed with default options.
-    ServerOptions();
+    ServerOptions();  // Constructed with default options.
         
     // connections without data transmission for so many seconds will be closed
     // Default: -1 (disabled)

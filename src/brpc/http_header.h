@@ -63,6 +63,12 @@ public:
     // True if the message is from HTTP2.
     bool is_http2() const { return major_version() == 2; }
 
+    // Id of the HTTP2 stream where the message is from.
+    // 0 when is_http2() is false.
+    int h2_stream_id() const { return _h2_stream_id; }
+
+    H2Error h2_error() const { return _h2_error; }
+
     // Get/set "Content-Type". Notice that you can't get "Content-Type"
     // via GetHeader().
     // possible values: "text/plain", "application/json" ...
@@ -154,6 +160,8 @@ friend void policy::ProcessHttpRequest(InputMessageBase *msg);
     std::string _content_type;
     std::string _unresolved_path;
     std::pair<int, int> _version;
+    int _h2_stream_id;
+    H2Error _h2_error;
 };
 
 const HttpHeader& DefaultHttpHeader();
