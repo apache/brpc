@@ -1,0 +1,9 @@
+diff a/src/brpc/options.proto b/src/brpc/options.proto	(rejected hunks)
+@@ -53,6 +53,7 @@ enum ProtocolType {
+     // Reserve special protocol for cds-agent, which depends on FIFO right now
+     PROTOCOL_CDS_AGENT = 23;           // Client side only
+     PROTOCOL_ESP = 24;           // Client side only
++    PROTOCOL_HTTP2 = 25;
+ }
+ 
+ message ChunkInfo {

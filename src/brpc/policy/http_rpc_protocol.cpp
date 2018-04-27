@@ -35,8 +35,8 @@
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/builtin/index_service.h"        // IndexService
 #include "brpc/policy/gzip_compress.h"
+#include "brpc/policy/http2_rpc_protocol.h"
 #include "brpc/details/usercode_backup_pool.h"
-#include "brpc/policy/http_rpc_protocol.h"
 
 extern "C" {
 void bthread_assign_data(void* data);
@@ -215,7 +215,14 @@ void ProcessHttpResponse(InputMessageBase* msg) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<HttpContext> imsg_guard(static_cast<HttpContext*>(msg));
     Socket* socket = imsg_guard->socket();
-    uint64_t cid_value = socket->correlation_id();
+    uint64_t cid_value;
+    const bool is_http2 = imsg_guard->header().is_http2();
+    if (is_http2) {
+        H2StreamContext* http2_sctx = static_cast<H2StreamContext*>(msg);
+        cid_value = http2_sctx->correlation_id();
+    } else {
+        cid_value = socket->correlation_id();
+    }
     if (cid_value == 0) {
         LOG(WARNING) << "Fail to find correlation_id from " << *socket;
         return;
@@ -230,7 +237,7 @@ void ProcessHttpResponse(InputMessageBase* msg) {
     }
 
     ControllerPrivateAccessor accessor(cntl);
-    
+
     Span* span = accessor.span();
     if (span) {
         span->set_base_real_us(msg->base_real_us());
@@ -247,15 +254,17 @@ void ProcessHttpResponse(InputMessageBase* msg) {
     const int saved_error = cntl->ErrorCode();
 
     do {
-        // If header has "Connection: close", close the connection.
-        const std::string* conn_cmd = res_header->GetHeader(common->CONNECTION);
-        if (conn_cmd != NULL && 0 == strcasecmp(conn_cmd->c_str(), "close")) {
-            // Server asked to close the connection.
-            if (imsg_guard->read_body_progressively()) {
-                // Close the socket when reading completes.
-                socket->read_will_be_progressive(CONNECTION_TYPE_SHORT);
-            } else {
-                socket->SetFailed();
+        if (!is_http2) {
+            // If header has "Connection: close", close the connection.
+            const std::string* conn_cmd = res_header->GetHeader(common->CONNECTION);
+            if (conn_cmd != NULL && 0 == strcasecmp(conn_cmd->c_str(), "close")) {
+                // Server asked to close the connection.
+                if (imsg_guard->read_body_progressively()) {
+                    // Close the socket when reading completes.
+                    socket->read_will_be_progressive(CONNECTION_TYPE_SHORT);
+                } else {
+                    socket->SetFailed();
+                }
             }
         }
 
@@ -632,23 +641,25 @@ static void SendHttpResponse(Controller *cntl,
     // or the server sent a Connection: close response header. If such a
     // response header exists, the client must close its end of the connection
     // after receiving the response.
-    const std::string* res_conn = res_header->GetHeader(common->CONNECTION);
-    if (res_conn == NULL || strcasecmp(res_conn->c_str(), "close") != 0) {
-        const std::string* req_conn = req_header->GetHeader(common->CONNECTION);
-        if (req_header->before_http_1_1()) {
-            if (req_conn != NULL &&
-                strcasecmp(req_conn->c_str(), "keep-alive") == 0) {
-                res_header->SetHeader(common->CONNECTION, common->KEEP_ALIVE);
+    if (!req_header->is_http2()) {
+        const std::string* res_conn = res_header->GetHeader(common->CONNECTION);
+        if (res_conn == NULL || strcasecmp(res_conn->c_str(), "close") != 0) {
+            const std::string* req_conn =
+                req_header->GetHeader(common->CONNECTION);
+            if (req_header->before_http_1_1()) {
+                if (req_conn != NULL &&
+                    strcasecmp(req_conn->c_str(), "keep-alive") == 0) {
+                    res_header->SetHeader(common->CONNECTION, common->KEEP_ALIVE);
+                }
+            } else {
+                if (req_conn != NULL &&
+                    strcasecmp(req_conn->c_str(), "close") == 0) {
+                    res_header->SetHeader(common->CONNECTION, common->CLOSE);
+                }
             }
-        } else {
-            if (req_conn != NULL &&
-                strcasecmp(req_conn->c_str(), "close") == 0) {
-                res_header->SetHeader(common->CONNECTION, common->CLOSE);
-            }
-        }
-    } // else user explicitly set Connection:close, clients of
-    // HTTP 1.1/1.0/0.9 should all close the connection.
-
+        } // else user explicitly set Connection:close, clients of
+        // HTTP 1.1/1.0/0.9 should all close the connection.
+    }
     if (cntl->Failed()) {
         // Set status-code with default value(converted from error code)
         // if user did not set it.
@@ -703,19 +714,38 @@ static void SendHttpResponse(Controller *cntl,
     // users to set max_concurrency.
     Socket::WriteOptions wopt;
     wopt.ignore_eovercrowded = true;
-    butil::IOBuf* content = NULL;
-    if (cntl->Failed() || !cntl->has_progressive_writer()) {
-        content = &cntl->response_attachment();
+    if (req_header->is_http2()) {
+        SocketMessagePtr<H2UnsentResponse> h2_response(H2UnsentResponse::New(cntl));
+        if (h2_response == NULL) {
+            LOG(ERROR) << "Fail to make http2 response";
+            errno = EINVAL;
+            rc = -1;
+        } else {
+            if (FLAGS_http_verbose) {
+                butil::IOBuf desc;
+                h2_response->Describe(&desc);
+                std::cerr << desc << std::endl;
+            }
+            if (span) {
+                span->set_response_size(h2_response->EstimatedByteSize());
+            }
+            rc = socket->Write(h2_response, &wopt);
+        }
+    } else {
+        butil::IOBuf* content = NULL;
+        if (cntl->Failed() || !cntl->has_progressive_writer()) {
+            content = &cntl->response_attachment();
+        }
+        butil::IOBuf res_buf;
+        SerializeHttpResponse(&res_buf, res_header, content);
+        if (FLAGS_http_verbose) {
+            PrintMessage(res_buf, false, !!content);
+        }
+        if (span) {
+            span->set_response_size(res_buf.size());
+        }
+        rc = socket->Write(&res_buf, &wopt);
     }
-    butil::IOBuf res_buf;
-    SerializeHttpResponse(&res_buf, res_header, content);
-    if (FLAGS_http_verbose) {
-        PrintMessage(res_buf, false, !!content);
-    }
-    if (span) {
-        span->set_response_size(res_buf.size());
-    }
-    rc = socket->Write(&res_buf, &wopt);
 
     if (rc != 0) {
         // EPIPE is common in pooled connections + backup requests.
@@ -1110,7 +1140,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         span->set_remote_side(user_addr);
         span->set_received_us(msg->received_us());
         span->set_start_parse_us(start_parse_us);
-        span->set_protocol(PROTOCOL_HTTP);
+        span->set_protocol(req_header.is_http2() ? PROTOCOL_HTTP2 : PROTOCOL_HTTP);
         span->set_request_size(imsg_guard->parsed_length());
     }
     

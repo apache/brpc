@@ -38,6 +38,7 @@
 #include "brpc/details/profiler_linker.h"
 #include "brpc/health_reporter.h"
 #include "brpc/adaptive_max_concurrency.h"
+#include "brpc/http2.h"
 
 namespace brpc {
 
@@ -228,6 +229,9 @@ struct ServerOptions {
     // All names inside must be valid, check protocols name in global.cpp
     // Default: empty (all protocols)
     std::string enabled_protocols;
+
+    // Customize parameters of HTTP2, defined in http2.h
+    H2Settings http2_settings;    
 
 private:
     // SSLOptions is large and not often used, allocate it on heap to
