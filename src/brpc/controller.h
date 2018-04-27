@@ -207,6 +207,11 @@ public:
         return *_http_request;
     }
     bool has_http_request() const { return _http_request; }
+    HttpHeader* release_http_request() {
+        HttpHeader* const tmp = _http_request;
+        _http_request = NULL;
+        return tmp;
+    }
 
     // User attached data or body of http request, which is wired to network
     // directly instead of being serialized into protobuf messages.
@@ -324,6 +329,11 @@ public:
         return *_http_response;
     }
     bool has_http_response() const { return _http_response; }
+    HttpHeader* release_http_response() {
+        HttpHeader* const tmp = _http_response;
+        _http_response = NULL;
+        return tmp;
+    }
     
     // User attached data or body of http response, which is wired to network
     // directly instead of being serialized into protobuf messages.

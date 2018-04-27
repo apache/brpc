@@ -36,6 +36,7 @@
 #include "brpc/builtin/tabbed.h"
 #include "brpc/details/profiler_linker.h"
 #include "brpc/health_reporter.h"
+#include "brpc/http2.h"
 
 extern "C" {
 struct ssl_ctx_st;
@@ -52,8 +53,7 @@ class RestfulMap;
 class RtmpService;
 
 struct ServerOptions {
-    // Constructed with default options.
-    ServerOptions();
+    ServerOptions();  // Constructed with default options.
         
     // connections without data transmission for so many seconds will be closed
     // Default: -1 (disabled)
@@ -217,6 +217,9 @@ struct ServerOptions {
     // All names inside must be valid, check protocols name in global.cpp
     // Default: empty (all protocols)
     std::string enabled_protocols;
+
+    // Customize parameters of HTTP2, defined in http2.h
+    H2Settings http2_settings;    
 };
 
 // This struct is originally designed to contain basic statistics of the

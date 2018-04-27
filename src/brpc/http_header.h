@@ -23,6 +23,7 @@
 #include "brpc/uri.h"              // URI
 #include "brpc/http_method.h"      // HttpMethod
 #include "brpc/http_status_code.h"
+#include "brpc/http2.h"
 
 // To rpc developers: DON'T put impl. details here, use opaque pointers instead.
 
@@ -31,6 +32,7 @@ namespace brpc {
 class InputMessageBase;
 namespace policy {
 void ProcessHttpRequest(InputMessageBase *msg);
+class H2StreamContext;
 }
 
 // Non-body part of a HTTP message.
@@ -60,6 +62,12 @@ public:
 
     // True if the message is from HTTP2.
     bool is_http2() const { return major_version() == 2; }
+
+    // Id of the HTTP2 stream where the message is from.
+    // 0 when is_http2() is false.
+    int h2_stream_id() const { return _h2_stream_id; }
+
+    H2Error h2_error() const { return _h2_error; }
 
     // Get/set "Content-Type". Notice that you can't get "Content-Type"
     // via GetHeader().
@@ -135,6 +143,7 @@ public:
 private:
 friend class HttpMessage;
 friend class HttpMessageSerializer;
+friend class policy::H2StreamContext;
 friend void policy::ProcessHttpRequest(InputMessageBase *msg);
 
     std::string& GetOrAddHeader(const std::string& key) {
@@ -151,6 +160,8 @@ friend void policy::ProcessHttpRequest(InputMessageBase *msg);
     std::string _content_type;
     std::string _unresolved_path;
     std::pair<int, int> _version;
+    int _h2_stream_id;
+    H2Error _h2_error;
 };
 
 const HttpHeader& DefaultHttpHeader();

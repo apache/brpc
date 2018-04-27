@@ -1920,6 +1920,37 @@ IOBufAppender::IOBufAppender()
     , _zc_stream(&_buf) {
 }
 
+size_t IOBufBytesIterator::append_and_forward(butil::IOBuf* buf, size_t n) {
+    size_t nc = 0;
+    while (nc < n && _bytes_left != 0) {
+        const IOBuf::BlockRef& r = _buf->_ref_at(_block_count - 1);
+        const size_t block_size = _block_end - _block_begin;
+        const size_t to_copy = std::min(block_size, n - nc);
+        IOBuf::BlockRef r2 = { (uint32_t)(_block_begin - r.block->data),
+                               (uint32_t)to_copy, r.block };
+        buf->_push_back_ref(r2);
+        _block_begin += to_copy;
+        _bytes_left -= to_copy;
+        nc += to_copy;
+        if (_block_begin == _block_end) {
+            try_next_block();
+        }
+    }
+    return nc;
+}
+
+bool IOBufBytesIterator::forward_one_block(const void** data, size_t* size) {
+    if (_bytes_left == 0) {
+        return false;
+    }
+    const size_t block_size = _block_end - _block_begin;
+    *data = _block_begin;
+    *size = block_size;
+    _bytes_left -= block_size;
+    try_next_block();
+    return true;
+}
+
 }  // namespace butil
 
 void* fast_memcpy(void *__restrict dest, const void *__restrict src, size_t n) {

@@ -375,7 +375,7 @@ _T* FlatMap<_K, _T, _H, _E, _S>::insert(const key_type& key,
 
 template <typename _K, typename _T, typename _H, typename _E, bool _S>
 template <typename K2>
-size_t FlatMap<_K, _T, _H, _E, _S>::erase(const K2& key) {
+size_t FlatMap<_K, _T, _H, _E, _S>::erase(const K2& key, _T* old_value) {
     if (!initialized()) {
         return 0;
     }
@@ -386,6 +386,9 @@ size_t FlatMap<_K, _T, _H, _E, _S>::erase(const K2& key) {
         return 0;
     }
     if (_eql(first_node.element().first_ref(), key)) {
+        if (old_value) {
+            *old_value = first_node.element().second_ref();
+        }
         if (first_node.next == NULL) {
             first_node.element().~Element();
             first_node.set_invalid();
@@ -421,6 +424,9 @@ size_t FlatMap<_K, _T, _H, _E, _S>::erase(const K2& key) {
     Bucket *last_p = &first_node;
     while (p) {
         if (_eql(p->element().first_ref(), key)) {
+            if (old_value) {
+                *old_value = p->element().second_ref();
+            }
             last_p->next = p->next;
             p->element().~Element();
             _pool.back(p);

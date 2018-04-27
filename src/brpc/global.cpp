@@ -49,6 +49,7 @@
 #include "brpc/protocol.h"
 #include "brpc/policy/baidu_rpc_protocol.h"
 #include "brpc/policy/http_rpc_protocol.h"
+#include "brpc/policy/http2_rpc_protocol.h"
 #include "brpc/policy/hulu_pbrpc_protocol.h"
 #include "brpc/policy/nova_pbrpc_protocol.h"
 #include "brpc/policy/public_pbrpc_protocol.h"
@@ -378,6 +379,17 @@ static void GlobalInitializeOrDieImpl() {
                                CONNECTION_TYPE_POOLED_AND_SHORT,
                                "http" };
     if (RegisterProtocol(PROTOCOL_HTTP, http_protocol) != 0) {
+        exit(1);
+    }
+
+    Protocol http2_protocol = { ParseH2Message,
+                                SerializeHttpRequest, PackH2Request,
+                                ProcessHttpRequest, ProcessHttpResponse,
+                                VerifyHttpRequest, ParseHttpServerAddress,
+                                GetHttpMethodName,
+                                CONNECTION_TYPE_SINGLE,
+                                "h2c" };
+    if (RegisterProtocol(PROTOCOL_HTTP2, http2_protocol) != 0) {
         exit(1);
     }
 
