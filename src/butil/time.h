@@ -24,53 +24,16 @@
 #include <sys/time.h>                        // timeval, gettimeofday
 #include <stdint.h>                          // int64_t, uint64_t
 
-#ifdef __MACH__
-#include <mach/clock.h>
+#if defined(NO_CLOCK_GETTIME_IN_MAC)
 #include <mach/mach.h>
-#include <mach/mach_time.h>
-
-# ifndef clock_gettime
 # define CLOCK_REALTIME CALENDAR_CLOCK
 # define CLOCK_MONOTONIC SYSTEM_CLOCK
 
-#include <pthread.h>
-#include <stdlib.h>                           // exit
-
 typedef int clockid_t;
 
-static mach_timebase_info_data_t timebase;
-static timespec inittime;
-static uint64_t initticks;
-
-static pthread_once_t init_clock_once = PTHREAD_ONCE_INIT;
-static void InitClock() {
-    if (mach_timebase_info(&timebase) != 0) {
-        exit(1);
-    }
-    timeval micro;
-    if (gettimeofday(&micro, NULL) != 0) {
-        exit(1);
-    }
-    inittime.tv_sec = micro.tv_sec;
-    inittime.tv_nsec = micro.tv_usec * 1000L;
-    initticks = mach_absolute_time();
-}
-
 // clock_gettime is not available in MacOS < 10.12
-inline int clock_gettime(clockid_t id, timespec* time) {
-    if (pthread_once(&init_clock_once, InitClock) != 0) {
-        exit(1);
-    }
-    uint64_t clock = mach_absolute_time() - initticks;
-    uint64_t elapsed = clock * (uint64_t)timebase.numer / (uint64_t)timebase.denom;
-    *time = inittime;
-    time->tv_sec += elapsed / 1000000000L;
-    time->tv_nsec += elapsed % 1000000000L;
-    time->tv_sec += time->tv_nsec / 1000000000L;
-    time->tv_nsec = time->tv_nsec % 1000000000L;
-    return 0;
-}
-# endif
+int clock_gettime(clockid_t id, timespec* time);
+
 #endif
 
 namespace butil {
