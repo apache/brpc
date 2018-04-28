@@ -94,4 +94,7 @@ Total: 2954 samples
 
 # MacOS的额外配置
 
-在MacOS下，gperftools中的perl pprof脚本会丢失函数名字，解决办法是需要自行下载[standalone pprof](https://github.com/google/pprof)，并把下载的pprof二进制文件路径写入环境变量GOOGLE_PPROF_BINARY_PATH中，profiler才能正常工作。
+在MacOS下，gperftools中的perl pprof脚本无法将函数地址转变成函数名，解决办法是：
+
+1. 安装[standalone pprof](https://github.com/google/pprof)，并把下载的pprof二进制文件路径写入环境变量GOOGLE_PPROF_BINARY_PATH中
+2. 安装llvm-symbolizer（将函数符号转化为函数名），直接用brew安装即可：`brew install llvm`

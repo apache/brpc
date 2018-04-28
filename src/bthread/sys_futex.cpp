@@ -107,6 +107,7 @@ int futex_wake_private(void* addr1, int nwake) {
     std::unique_lock<pthread_mutex_t> mu(s_futex_map_mutex);
     auto it = s_futex_map->find(addr1);
     if (it == s_futex_map->end()) {
+        mu.unlock();
         return 0;
     }
     SimuFutex& simu_futex = it->second;
