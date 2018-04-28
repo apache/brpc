@@ -29,9 +29,9 @@
 #include <google/protobuf/generated_message_reflection.h>
 #include "google/protobuf/descriptor.pb.h"
 
-#include "brpc/thrift_binary_head.h"               // thrfit_binary_head_t
-#include "butil/iobuf.h"                           // IOBuf
-#include "butil/thrift_utils.h"
+#include "brpc/details/thrift_binary_head.h"               // thrfit_binary_head_t
+#include "brpc/details/thrift_utils.h"
+#include "butil/iobuf.h"
 
 #include <thrift/protocol/TBinaryProtocol.h>
 

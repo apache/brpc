@@ -21,8 +21,6 @@
 
 #include <boost/make_shared.hpp>
 
-#include <brpc/channel.h>
-
 #include <thrift/TDispatchProcessor.h>
 #include <thrift/transport/TBufferTransports.h>
 #include <thrift/protocol/TBinaryProtocol.h>

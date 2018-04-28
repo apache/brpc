@@ -247,7 +247,7 @@ if [ $WITH_THRIFT != 0 ]; then
     CPPFLAGS="${CPPFLAGS} -DENABLE_THRIFT_FRAMED_PROTOCOL"
 
     if [ -f "$THRIFT_LIB/libthriftnb.$SO" ]; then
-        append_to_output "DYNAMIC_LINKINGS+=-lthriftnb"
+        append_to_output "DYNAMIC_LINKINGS+=-lthriftnb -levent -lthrift"
     else
         append_to_output "STATIC_LINKINGS+=-lthriftnb"
     fi
