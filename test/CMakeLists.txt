@@ -189,6 +189,13 @@ foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
                           ${DYNAMIC_LIB})
 endforeach()
 
+# for rdma extension
+if(WITH_RDMA)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBRPC_RDMA")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DBRPC_RDMA")
+    link_libraries("-libverbs -lrdmacm -lnl")
+endif()
+
 file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
 foreach(BRPC_UT ${BRPC_UNITTESTS})
     get_filename_component(BRPC_UT_WE ${BRPC_UT} NAME_WE)

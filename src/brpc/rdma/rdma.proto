@@ -1,0 +1,15 @@
+syntax="proto2";
+option cc_generic_services = true;
+
+package brpc.rdma;
+
+message RdmaConnRequest {
+};
+
+message RdmaConnResponse {
+    required uint64 socketid = 1;
+};
+
+service RdmaConnService {
+    rpc RdmaConnect(RdmaConnRequest) returns (RdmaConnResponse);
+};

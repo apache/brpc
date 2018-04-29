@@ -82,6 +82,9 @@ ParseResult InputMessenger::CutInputMessage(
             return result;
         }
         if (m->CreatedByConnect() &&
+#ifdef BRPC_RDMA
+            (ProtocolType)preferred != PROTOCOL_RDMA &&
+#endif
             // baidu_std may fall to streaming_rpc
             (ProtocolType)preferred != PROTOCOL_BAIDU_STD) {
             // The protocol is fixed at client-side, no need to try others.

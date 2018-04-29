@@ -1111,6 +1111,14 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     wopt.ignore_eovercrowded = has_flag(FLAGS_IGNORE_EOVERCROWDED);
     int rc;
     size_t packet_size = 0;
+#ifdef BRPC_RDMA
+    if (_request_protocol == PROTOCOL_RDMA) {
+        wopt.use_rdma = true;
+        wopt.rdma_arg = const_cast<Authenticator*>(using_auth);
+    } else {
+        wopt.use_rdma = false;
+    }
+#endif
     if (user_packet_guard) {
         if (span) {
             packet_size = user_packet_guard->EstimatedByteSize();

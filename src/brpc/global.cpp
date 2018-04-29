@@ -72,6 +72,10 @@
 #endif
 #include "butil/fd_guard.h"
 #include "butil/files/file_watcher.h"
+#ifdef BRPC_RDMA
+#include "brpc/policy/rdma_protocol.h"
+#include "brpc/rdma/rdma_global.h"
+#endif
 
 extern "C" {
 // defined in gperftools/malloc_extension_c.h
@@ -79,6 +83,12 @@ void BAIDU_WEAK MallocExtension_ReleaseFreeMemory(void);
 }
 
 namespace brpc {
+
+#ifdef BRPC_RDMA
+namespace rdma {
+DECLARE_int32(rdma_preregister_memory_size_mb);
+}
+#endif
 
 DECLARE_bool(usercode_in_pthread);
 
@@ -516,6 +526,18 @@ static void GlobalInitializeOrDieImpl() {
         exit(1);
     }
 
+#ifdef BRPC_RDMA
+    Protocol rdma_protocol = {
+        ParseRdmaRpcMessage,
+        SerializeRdmaRpcRequest, PackRdmaRpcRequest,
+        ProcessRdmaRpcRequest, ProcessRdmaRpcResponse,
+        VerifyRdmaRpcRequest, NULL, NULL,
+        CONNECTION_TYPE_ALL, "rdma" };
+    if (RegisterProtocol(PROTOCOL_RDMA, rdma_protocol) != 0) {
+        exit(1);
+    }
+#endif
+
     std::vector<Protocol> protocols;
     ListProtocols(&protocols);
     for (size_t i = 0; i < protocols.size(); ++i) {
@@ -546,6 +568,12 @@ static void GlobalInitializeOrDieImpl() {
     bthread_t th;
     CHECK(bthread_start_background(&th, NULL, GlobalUpdate, NULL) == 0)
         << "Fail to start GlobalUpdate";
+#ifdef BRPC_RDMA
+    if (rdma::FLAGS_rdma_preregister_memory_size_mb <= 0) {
+        rdma::FLAGS_rdma_preregister_memory_size_mb = 1024;
+    }
+    rdma::GetGlobalRdmaBuffer();  // initialize memory pool
+#endif
 }
 
 void GlobalInitializeOrDie() {

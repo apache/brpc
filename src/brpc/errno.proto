@@ -21,6 +21,7 @@ enum Errno {
     EEOF                    = 1014;  // Got EOF
     EUNUSED                 = 1015;  // The socket was not needed
     ESSL                    = 1016;  // SSL related error
+    ERDMA                   = 1017;  // RDMA related error
 
     // Errno caused by server
     EINTERNAL               = 2001;  // Internal Server Error

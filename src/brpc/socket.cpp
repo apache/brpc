@@ -41,6 +41,9 @@
 #include "brpc/stream_impl.h"
 #include "brpc/shared_object.h"
 #include "brpc/policy/rtmp_protocol.h"  // FIXME
+#ifdef BRPC_RDMA
+#include "brpc/rdma/rdma_endpoint.h"
+#endif
 
 namespace bthread {
 size_t __attribute__((weak))
@@ -299,61 +302,7 @@ bool Socket::CreatedByConnect() const {
     return _user == static_cast<SocketUser*>(get_client_side_messenger());
 }
 
-SocketMessage* const DUMMY_USER_MESSAGE = (SocketMessage*)0x1;
 const uint32_t MAX_PIPELINED_COUNT = 32768;
-
-struct BAIDU_CACHELINE_ALIGNMENT Socket::WriteRequest {
-    static WriteRequest* const UNCONNECTED;
-    
-    butil::IOBuf data;
-    WriteRequest* next;
-    bthread_id_t id_wait;
-    Socket* socket;
-    
-    uint32_t pipelined_count() const {
-        return (_pc_and_udmsg >> 48) & 0x7FFF;
-    }
-    bool is_with_auth() const {
-        return _pc_and_udmsg & 0x8000000000000000ULL;
-    }
-    void clear_pipelined_count_and_with_auth() {
-        _pc_and_udmsg &= 0xFFFFFFFFFFFFULL;
-    }
-    SocketMessage* user_message() const {
-        return (SocketMessage*)(_pc_and_udmsg & 0xFFFFFFFFFFFFULL);
-    }
-    void clear_user_message() {
-        _pc_and_udmsg &= 0xFFFF000000000000ULL;
-    }
-    void set_pipelined_count_and_user_message(
-        uint32_t pc, SocketMessage* msg, bool with_auth) {
-        if (with_auth) {
-          pc |= (1 << 15);
-        }
-        _pc_and_udmsg = ((uint64_t)pc << 48) | (uint64_t)(uintptr_t)msg;
-    }
-
-    bool reset_pipelined_count_and_user_message() {
-        SocketMessage* msg = user_message();
-        if (msg) {
-            if (msg != DUMMY_USER_MESSAGE) {
-                butil::IOBuf dummy_buf;
-                // We don't care about the return value since the request
-                // is already failed.
-                (void)msg->AppendAndDestroySelf(&dummy_buf, NULL);
-            }
-            set_pipelined_count_and_user_message(0, NULL, false);
-            return true;
-        }
-        return false;
-    }
-
-    // Register pipelined_count and user_message
-    void Setup(Socket* s);
-    
-private:
-    uint64_t _pc_and_udmsg;
-};
 
 void Socket::WriteRequest::Setup(Socket* s) {
     SocketMessage* msg = user_message();
@@ -463,6 +412,9 @@ Socket::Socket(Forbidden)
     CreateVarsOnce();
     pthread_mutex_init(&_id_wait_list_mutex, NULL);
     _epollout_butex = bthread::butex_create_checked<butil::atomic<int> >();
+#ifdef BRPC_RDMA
+    _rdma_ep = new (std::nothrow) rdma::RdmaEndpoint(this);
+#endif
 }
 
 Socket::~Socket() {
@@ -660,6 +612,9 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
         return -1;
     }
     *id = m->_this_id;
+#ifdef BRPC_RDMA
+    m->_rdma_ep->Init();
+#endif
     return 0;
 }
 
@@ -688,6 +643,10 @@ int Socket::WaitAndReset(int32_t expected_nref) {
             break;
         }
     }
+
+#ifdef BRPC_RDMA
+    ReleaseRdmaResource();
+#endif
 
     // It's safe to close previous fd (provided expected_nref is correct).
     const int prev_fd = _fd.exchange(-1, butil::memory_order_relaxed);
@@ -741,6 +700,9 @@ int Socket::WaitAndReset(int32_t expected_nref) {
 void Socket::Revive() {
     const uint32_t id_ver = VersionOfSocketId(_this_id);
     uint64_t vref = _versioned_ref.load(butil::memory_order_relaxed);
+#ifdef BRPC_RDMA
+    _rdma_ep->Init();
+#endif
     while (1) {
         CHECK_EQ(id_ver + 1, VersionOfVRef(vref));
         
@@ -781,6 +743,11 @@ int Socket::ReleaseAdditionalReference() {
 }
 
 int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
+#ifdef BRPC_RDMA
+    if (_rdma_ep) {
+        _rdma_ep->SetFailed();
+    }
+#endif
     if (error_code == 0) {
         CHECK(false) << "error_code is 0";
         error_code = EFAILEDSOCKET;
@@ -1013,6 +980,9 @@ void Socket::OnRecycle() {
     if (sp) {
         sp->RemoveRefManually();
     }
+#ifdef BRPC_RDMA
+    ReleaseRdmaResource();
+#endif
     const int prev_fd = _fd.exchange(-1, butil::memory_order_relaxed);
     if (ValidFileDescriptor(prev_fd)) {
         if (_on_edge_triggered_events != NULL) {
@@ -1543,6 +1513,19 @@ int Socket::Write(SocketMessagePtr<>& msg, const WriteOptions* options_in) {
 }
 
 int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
+#ifdef BRPC_RDMA
+    if (opt.use_rdma) {
+        CHECK(_rdma_ep != NULL);
+        req->socket = this;
+        if (_rdma_ep->Write(req, opt.rdma_arg) == 0) {
+            return 0;
+        }
+    }
+    if (Failed()) {
+        ReturnFailedWriteRequest(req, non_zero_error_code(), _error_text);
+        return -1;
+    }
+#endif
     // Release fence makes sure the thread getting request sees *req
     WriteRequest* const prev_head =
         _write_head.exchange(req, butil::memory_order_release);
@@ -2539,6 +2522,14 @@ SocketId Socket::main_socket_id() const {
         return sp->creator_socket_id;
     }
     return (SocketId)-1;
+}
+
+void Socket::ReleaseRdmaResource() {
+#ifdef BRPC_RDMA
+    if (_rdma_ep != NULL) {
+        _rdma_ep->CleanUp();
+    }
+#endif
 }
 
 void Socket::OnProgressiveReadCompleted() {

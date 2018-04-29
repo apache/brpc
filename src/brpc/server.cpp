@@ -71,6 +71,11 @@
 #include "brpc/rtmp.h"
 #include "brpc/builtin/common.h"               // GetProgramName
 #include "brpc/details/tcmalloc_extension.h"
+#ifdef BRPC_RDMA
+#include "brpc/rdma/rdma_global.h"
+#include "brpc/rdma/rdma_acceptor.h"
+#include "brpc/rdma/rdma_conn_service_impl.h"
+#endif
 
 inline std::ostream& operator<<(std::ostream& os, const timeval& tm) {
     const char old_fill = os.fill();
@@ -366,13 +371,15 @@ Server::Server(ProfilerLinker)
     , _failed_to_set_max_concurrency_of_method(false)
     , _am(NULL)
     , _internal_am(NULL)
+    , _rdma_am(NULL)
     , _first_service(NULL)
     , _tab_info_list(NULL)
     , _global_restful_map(NULL)
     , _last_start_time(0)
     , _derivative_thread(INVALID_BTHREAD)
     , _keytable_pool(NULL)
-    , _concurrency(0) {
+    , _concurrency(0)
+    , _rdma_enabled(false) {
     BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,
               Server_concurrency_must_be_aligned_by_cacheline);
 }
@@ -396,6 +403,10 @@ Server::~Server() {
     _am = NULL;
     delete _internal_am;
     _internal_am = NULL;
+#ifdef BRPC_RDMA
+    delete (rdma::RdmaAcceptor*)_rdma_am;
+    _rdma_am = NULL;
+#endif
 
     delete _tab_info_list;
     _tab_info_list = NULL;
@@ -506,6 +517,12 @@ int Server::AddBuiltinServices() {
         LOG(ERROR) << "Fail to add GetJsService";
         return -1;
     }
+#ifdef BRPC_RDMA
+    if (AddBuiltinService(new (std::nothrow) rdma::RdmaConnServiceImpl)) {
+        LOG(ERROR) << "Fail to add RdmaConnService";
+        return -1;
+    }
+#endif
     return 0;
 }
 
@@ -523,6 +540,16 @@ Acceptor* Server::BuildAcceptor() {
     for (butil::StringSplitter sp(_options.enabled_protocols.c_str(), ' ');
          sp; ++sp) {
         std::string protocol(sp.field(), sp.length());
+#ifdef BRPC_RDMA
+        if (protocol == "rdma") {
+            if (!rdma::GetGlobalRdmaBuffer()) {
+                LOG(WARNING) << "Fail to initialize rdma environment, "
+                    << "do not use rdma protocol";
+                continue;
+            }
+            _rdma_enabled = true;
+        }
+#endif
         whitelist.insert(protocol);
     }
     const bool has_whitelist = !whitelist.empty();
@@ -894,6 +921,23 @@ int Server::StartInternal(const butil::ip_t& ip,
                 return -1;
             }
         }
+#ifdef BRPC_RDMA
+        if (_rdma_enabled) {
+            rdma::GetGlobalRdmaBuffer();
+            if (_rdma_am == NULL) {
+                _rdma_am = new (std::nothrow) rdma::RdmaAcceptor;
+                if (NULL == _rdma_am) {
+                    LOG(ERROR) << "Fail to build rdma acceptor";
+                    // We allow the server running, but rdma cannot be used
+                }
+            }
+            if (_rdma_am &&
+                ((rdma::RdmaAcceptor*)_rdma_am)->StartAccept(_listen_addr)) {
+                LOG(ERROR) << "Fail to start rdma acceptor";
+                // We allow the server running, but rdma cannot be used
+            }
+        }
+#endif
         // Set `_status' to RUNNING before accepting connections
         // to prevent requests being rejected as ELOGOFF
         _status = RUNNING;
@@ -1031,6 +1075,13 @@ int Server::Stop(int timeout_ms) {
         // TODO: calculate timeout?
         _internal_am->StopAccept(timeout_ms);
     }
+
+#ifdef BRPC_RDMA
+    if (_rdma_am) {
+        ((rdma::RdmaAcceptor*)_rdma_am)->StopAccept(timeout_ms);
+    }
+#endif
+    
     return 0;
 }
 
@@ -1045,6 +1096,12 @@ int Server::Join() {
     if (_internal_am) {
         _internal_am->Join();
     }
+
+#ifdef BRPC_RDMA
+    if (_rdma_am) {
+        ((rdma::RdmaAcceptor*)_rdma_am)->Join();
+    }
+#endif
 
     if (_session_local_data_pool) {
         // We can't delete the pool right here because there's a bvar watching
@@ -1079,7 +1136,7 @@ int Server::Join() {
         bthread_join(_derivative_thread, NULL);
         _derivative_thread = INVALID_BTHREAD;
     }
-    
+
     g_running_server_count.fetch_sub(1, butil::memory_order_relaxed);
     _status = READY;
     return 0;
