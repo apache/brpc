@@ -24,27 +24,16 @@
 #include <sys/time.h>                        // timeval, gettimeofday
 #include <stdint.h>                          // int64_t, uint64_t
 
-#ifdef __MACH__
-#include <mach/clock.h>
+#if defined(NO_CLOCK_GETTIME_IN_MAC)
 #include <mach/mach.h>
-
-# ifndef clock_gettime
 # define CLOCK_REALTIME CALENDAR_CLOCK
 # define CLOCK_MONOTONIC SYSTEM_CLOCK
 
 typedef int clockid_t;
-inline int clock_gettime(clockid_t id, timespec* time) {
-    // clock_gettime is not available in MacOS, use clock_get_time instead
-    clock_serv_t cclock;
-    mach_timespec_t mts;
-    host_get_clock_service(mach_host_self(), id, &cclock);
-    clock_get_time(cclock, &mts);
-    mach_port_deallocate(mach_task_self(), cclock);
-    time->tv_sec = mts.tv_sec;
-    time->tv_nsec = mts.tv_nsec;
-    return 0;
-}
-# endif
+
+// clock_gettime is not available in MacOS < 10.12
+int clock_gettime(clockid_t id, timespec* time);
+
 #endif
 
 namespace butil {
