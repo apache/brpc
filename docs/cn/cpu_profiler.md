@@ -3,7 +3,7 @@ brpc可以分析程序中的热点函数。
 # 开启方法
 
 1. 链接`libtcmalloc_and_profiler.a`
-   1. 这么写也开启了tcmalloc，不建议单独链接cpu profiler而不链接tcmalloc，可能越界访问导致[crash](https://github.com/gperftools/gperftools/blob/master/README#L226)**。**可能由于tcmalloc不及时归还内存，越界访问不会crash。
+   1. 这么写也开启了tcmalloc，不建议单独链接cpu profiler而不链接tcmalloc，可能越界访问导致[crash](https://github.com/gperftools/gperftools/blob/master/README#L226).可能由于tcmalloc不及时归还内存，越界访问不会crash。
    2. 如果tcmalloc使用frame pointer而不是libunwind回溯栈，请确保在CXXFLAGS或CFLAGS中加上`-fno-omit-frame-pointer`，否则函数间的调用关系会丢失，最后产生的图片中都是彼此独立的函数方框。
 2. 定义宏BRPC_ENABLE_CPU_PROFILER, 一般加入编译参数-DBRPC_ENABLE_CPU_PROFILER。
 3. 如果只是brpc client或没有使用brpc，看[这里](dummy_server.md)。 
