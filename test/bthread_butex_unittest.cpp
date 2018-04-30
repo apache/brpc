@@ -295,7 +295,7 @@ TEST(ButexTest, join_cant_be_wakeup) {
         ASSERT_EQ(0, bthread_join(th2, NULL));
         ASSERT_EQ(0, bthread_join(th, NULL));
         tm.stop();
-        ASSERT_LT(tm.m_elapsed(), WAIT_MSEC + 10);
+        ASSERT_LT(tm.m_elapsed(), WAIT_MSEC + 15);
         ASSERT_EQ(EINVAL, bthread_stop(th));
         ASSERT_EQ(EINVAL, bthread_stop(th2));
     }

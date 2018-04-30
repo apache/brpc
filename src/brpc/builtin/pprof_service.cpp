@@ -24,6 +24,7 @@
 #include "butil/files/scoped_file.h"         // ScopedFILE
 #include "butil/time.h"
 #include "butil/popen.h"                    // butil::read_command_output
+#include "butil/process_util.h"             // butil::ReadCommandLine
 #include "brpc/log.h"
 #include "brpc/controller.h"                // Controller
 #include "brpc/closure_guard.h"             // ClosureGuard
@@ -34,7 +35,9 @@
 #include "butil/fd_guard.h"
 
 extern "C" {
+#if defined(OS_LINUX)
 extern char *program_invocation_name;
+#endif
 int __attribute__((weak)) ProfilerStart(const char* fname);
 void __attribute__((weak)) ProfilerStop();
 }
@@ -453,7 +456,11 @@ static void LoadSymbols() {
     info.start_addr = 0;
     info.end_addr = std::numeric_limits<uintptr_t>::max();
     info.offset = 0;
+#if defined(OS_LINUX)
     info.path = program_invocation_name;
+#elif defined(OS_MACOSX)
+    info.path = getprogname();
+#endif
     ExtractSymbolsFromBinary(symbol_map, info);
 
     butil::Timer tm2;
@@ -551,9 +558,9 @@ void PProfService::cmdline(::google::protobuf::RpcController* controller_base,
     Controller* cntl = static_cast<Controller*>(controller_base);
     cntl->http_response().set_content_type("text/plain" /*FIXME*/);
     char buf[1024];  // should be enough?
-    const ssize_t nr = ReadCommandLine(buf, sizeof(buf), true);
+    const ssize_t nr = butil::ReadCommandLine(buf, sizeof(buf), true);
     if (nr < 0) {
-        cntl->SetFailed(ENOENT, "Fail to read /proc/self/cmdline");
+        cntl->SetFailed(ENOENT, "Fail to read cmdline");
         return;
     }
     cntl->response_attachment().append(buf, nr);

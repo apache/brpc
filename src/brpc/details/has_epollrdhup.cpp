@@ -28,7 +28,6 @@
 #define EPOLLRDHUP 0x2000
 #endif
 
-
 namespace brpc {
 
 static unsigned int check_epollrdhup() {

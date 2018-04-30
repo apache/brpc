@@ -14,16 +14,23 @@ DEBUG_CFLAGS = $(filter-out -DNDEBUG,$(CFLAGS)) -DUNIT_TEST
 HDRPATHS=-I./src $(addprefix -I, $(HDRS))
 LIBPATHS = $(addprefix -L, $(LIBS))
 COMMA = ,
-SOPATHS = $(addprefix -Wl$(COMMA)-rpath=, $(LIBS))
+SOPATHS = $(addprefix -Wl$(COMMA)-rpath$(COMMA), $(LIBS))
 SRCEXTS = .c .cc .cpp .proto
+
+TARGET_LIB_DY = libbrpc.so
+ifeq ($(SYSTEM),Darwin)
+    TARGET_LIB_DY = libbrpc.dylib
+endif
 
 #required by butil/crc32.cc to boost performance for 10x
 ifeq ($(shell test $(GCC_VERSION) -ge 40400; echo $$?),0)
 	CXXFLAGS+=-msse4 -msse4.2
 endif
 #not solved yet
-ifeq ($(shell test $(GCC_VERSION) -ge 70000; echo $$?),0)
+ifeq ($(CC),gcc)
+ ifeq ($(shell test $(GCC_VERSION) -ge 70000; echo $$?),0)
 	CXXFLAGS+=-Wno-aligned-new
+ endif
 endif
 
 BUTIL_SOURCES = \
@@ -81,6 +88,7 @@ BUTIL_SOURCES = \
     src/butil/memory/weak_ptr.cc \
     src/butil/posix/file_descriptor_shuffle.cc \
     src/butil/posix/global_descriptors.cc \
+    src/butil/process_util.cc \
     src/butil/rand_util.cc \
     src/butil/rand_util_posix.cc \
     src/butil/fast_rand.cpp \
@@ -96,7 +104,6 @@ BUTIL_SOURCES = \
     src/butil/strings/string_util.cc \
     src/butil/strings/string_util_constants.cc \
     src/butil/strings/stringprintf.cc \
-    src/butil/strings/sys_string_conversions_posix.cc \
     src/butil/strings/utf_offset_string_conversions.cc \
     src/butil/strings/utf_string_conversion_utils.cc \
     src/butil/strings/utf_string_conversions.cc \
@@ -142,11 +149,17 @@ BUTIL_SOURCES = \
 
 ifeq ($(SYSTEM), Linux)
     BUTIL_SOURCES += src/butil/file_util_linux.cc \
-		src/butil/threading/platform_thread_linux.cc
+        src/butil/threading/platform_thread_linux.cc \
+        src/butil/strings/sys_string_conversions_posix.cc
 endif
 ifeq ($(SYSTEM), Darwin)
     BUTIL_SOURCES += src/butil/mac/bundle_locations.mm \
-		src/butil/mac/foundation_util.mm
+		src/butil/mac/foundation_util.mm \
+		src/butil/file_util_mac.mm \
+		src/butil/threading/platform_thread_mac.mm \
+		src/butil/strings/sys_string_conversions_mac.mm \
+		src/butil/time/time_mac.cc \
+		src/butil/mac/scoped_mach_port.cc
 endif
 
 BUTIL_OBJS = $(addsuffix .o, $(basename $(BUTIL_SOURCES)))
@@ -184,7 +197,7 @@ DEBUG_OBJS = $(OBJS:.o=.dbg.o)
 PROTOS=$(BRPC_PROTOS) src/idl_options.proto
 
 .PHONY:all
-all:  protoc-gen-mcpack libbrpc.a libbrpc.so output/include output/lib output/bin
+all:  protoc-gen-mcpack libbrpc.a $(TARGET_LIB_DY) output/include output/lib output/bin
 
 .PHONY:debug
 debug: test/libbrpc.dbg.a test/libbvar.dbg.a
@@ -192,7 +205,7 @@ debug: test/libbrpc.dbg.a test/libbvar.dbg.a
 .PHONY:clean
 clean:
 	@echo "Cleaning"
-	@rm -rf src/mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a libbrpc.so $(OBJS) output/include output/lib output/bin $(PROTOS:.proto=.pb.h) $(PROTOS:.proto=.pb.cc)
+	@rm -rf src/mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a $(TARGET_LIB_DY) $(OBJS) output/include output/lib output/bin $(PROTOS:.proto=.pb.h) $(PROTOS:.proto=.pb.cc)
 
 .PHONY:clean_debug
 clean_debug:
@@ -202,16 +215,24 @@ clean_debug:
 
 protoc-gen-mcpack: src/idl_options.pb.cc src/mcpack2pb/generator.o libbrpc.a
 	@echo "Linking $@"
+ifeq ($(SYSTEM),Linux)
 	@$(CXX) -o $@ $(HDRPATHS) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
+else ifeq ($(SYSTEM),Darwin)
+	@$(CXX) -o $@ $(HDRPATHS) $(LIBPATHS) $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+endif
 
 # force generation of pb headers before compiling to avoid fail-to-import issues in compiling pb.cc
 libbrpc.a:$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
 	@echo "Packing $@"
 	@ar crs $@ $(filter %.o,$^)
 
-libbrpc.so:$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
+$(TARGET_LIB_DY):$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
 	@echo "Linking $@"
+ifeq ($(SYSTEM),Linux)
 	@$(CXX) -shared -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $(filter %.o,$^) -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+else ifeq ($(SYSTEM),Darwin)
+	@$(CXX) -dynamiclib -Wl,-headerpad_max_install_names -o $@ -install_name @rpath/$@ $(LIBPATHS) $(SOPATHS) $(filter %.o,$^) $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+endif
 
 test/libbvar.dbg.a:$(BVAR_DEBUG_OBJS)
 	@echo "Packing $@"
@@ -229,7 +250,7 @@ output/include:
 	@cp src/idl_options.proto src/idl_options.pb.h $@
 
 .PHONY:output/lib
-output/lib:libbrpc.a libbrpc.so
+output/lib:libbrpc.a $(TARGET_LIB_DY)
 	@echo "Copying to $@"
 	@mkdir -p $@
 	@cp $^ $@

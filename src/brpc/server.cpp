@@ -1563,7 +1563,11 @@ void Server::PutPidFileIfNeeded() {
         std::string dir_name =_options.pid_file.substr(0, pos + 1);
         int rc = mkdir(dir_name.c_str(), 
                        S_IFDIR | S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP);
-        if (rc != 0 && errno != EEXIST) {
+        if (rc != 0 && errno != EEXIST
+#if defined(OS_MACOSX)
+        && errno != EISDIR
+#endif
+        ) {
             PLOG(WARNING) << "Fail to create " << dir_name;
             _options.pid_file.clear();
             return;
