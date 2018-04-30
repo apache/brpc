@@ -1,4 +1,4 @@
-NEED_GPERFTOOLS=1
+NEED_GPERFTOOLS=0
 BRPC_PATH=../..
 include $(BRPC_PATH)/config.mk
 # Notes on the flags:
