@@ -299,8 +299,7 @@ static void GlobalInitializeOrDieImpl() {
 
     // Initialize openssl library
     SSL_library_init();
-    // Load the openssl.cnf under the default location
-    OPENSSL_config(NULL);
+    // RPC doesn't require openssl.cnf, users can load it by themselves if needed
     SSL_load_error_strings();
     if (SSLThreadInit() != 0 || SSLDHInit() != 0) {
         exit(1);
