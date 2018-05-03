@@ -233,7 +233,7 @@ $ brew install gflags protobuf leveldb
 ### Compile brpc with config_brpc.sh
 git clone brpc, cd into the repo and run
 ```
-$ sh config_brpc.sh --headers=/usr/local/include --libs=/usr/local/lib --cc=gcc --cxx=clang++
+$ sh config_brpc.sh --headers=/usr/local/include --libs=/usr/local/lib --cc=clang --cxx=clang++
 $ make
 ```
 To not link debugging symbols, add `--nodebugsymbols` and compiled binaries will be much smaller.
