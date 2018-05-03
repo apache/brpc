@@ -21,10 +21,10 @@
 
 #include <butil/logging.h>
 #include <butil/time.h>
-#include <butil/thrift_utils.h>
 #include <butil/strings/string_piece.h>
 #include <brpc/channel.h>
-#include <brpc/thrift_framed_message.h>
+#include <brpc/details/thrift_utils.h>
+#include <brpc/thrift_message.h>
 #include <bvar/bvar.h>
 
 #include <thrift/transport/TBufferTransports.h>
@@ -68,8 +68,8 @@ int main(int argc, char* argv[]) {
         cntl.set_log_id(log_id ++);  // set by user
 
         // wrapper thrift raw request into ThriftMessage
-        brpc::ThriftMessage<example::EchoRequest> req;
-        brpc::ThriftMessage<example::EchoResponse> res;
+        brpc::ThriftTemplateMessage<example::EchoRequest> req;
+        brpc::ThriftTemplateMessage<example::EchoResponse> res;
 
         req.raw().data = "hello";
 
@@ -98,6 +98,4 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-template class brpc::ThriftMessage<example::EchoRequest>;
-template class brpc::ThriftMessage<example::EchoResponse>;
 

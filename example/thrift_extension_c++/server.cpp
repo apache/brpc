@@ -45,13 +45,15 @@ public:
 };
 
 // Adapt your own thrift-based protocol to use brpc 
-class MyThriftProtocol : public brpc::ThriftFramedService {
+class MyThriftProtocol : public brpc::ThriftService {
 public:
+    MyThriftProtocol(EchoServiceHandler* handler) : _handler(handler) { }
+
     void ProcessThriftFramedRequest(const brpc::Server&,
                               brpc::Controller* cntl,
-                              brpc::ThriftFramedMessage* request,
-                              brpc::ThriftFramedMessage* response, 
-                              brpc::ThriftFramedClosure* done) {
+                              brpc::ThriftMessage* request,
+                              brpc::ThriftMessage* response,
+                              brpc::ThriftClosure* done) {
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().
         brpc::ClosureGuard done_guard(done);
@@ -63,27 +65,35 @@ public:
             return;
         }
 
-        auto handler = new EchoServiceHandler();
         example::EchoRequest* req = request->cast<example::EchoRequest>();
         example::EchoResponse* res = response->cast<example::EchoResponse>();
 
         // process with req and res
-        handler->Echo(*res, *req);
+        if (_handler) {
+            _handler->Echo(*res, *req);
+        } else {
+            cntl->CloseConnection("Close connection due to no valid handler");
+            LOG(ERROR) << "Fail to process thrift request due to no valid handler";
+            return;
+        }
 
         LOG(INFO) << "success to process thrift request in brpc with handler";
 
     }
 
+private:
+    EchoServiceHandler* _handler;
+
 };
 
 // Adapt your own thrift-based protocol to use brpc 
-class MyThriftProtocolPbManner : public brpc::ThriftFramedService {
+class MyThriftProtocolPbManner : public brpc::ThriftService {
 public:
     void ProcessThriftFramedRequest(const brpc::Server&,
                               brpc::Controller* cntl,
-                              brpc::ThriftFramedMessage* request,
-                              brpc::ThriftFramedMessage* response, 
-                              brpc::ThriftFramedClosure* done) {
+                              brpc::ThriftMessage* request,
+                              brpc::ThriftMessage* response,
+                              brpc::ThriftClosure* done) {
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().
         brpc::ClosureGuard done_guard(done);
@@ -114,7 +124,10 @@ int main(int argc, char* argv[]) {
 
     brpc::Server server;
     brpc::ServerOptions options;
-    options.thrift_service = new MyThriftProtocol;
+
+    auto thrift_service_handler = new EchoServiceHandler();
+
+    options.thrift_service = new MyThriftProtocol(thrift_service_handler);
     options.idle_timeout_sec = FLAGS_idle_timeout_s;
     options.max_concurrency = FLAGS_max_concurrency;
 

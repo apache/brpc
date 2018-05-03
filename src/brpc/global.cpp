@@ -97,7 +97,7 @@ using namespace policy;
 
 const char* const DUMMY_SERVER_PORT_FILE = "dummy_server.port";
 
-void __attribute__((weak)) RegisterThriftFramedProtocol();
+void __attribute__((weak)) RegisterThriftProtocol();
 
 struct GlobalExtensions {
     GlobalExtensions()
@@ -469,8 +469,8 @@ static void GlobalInitializeOrDieImpl() {
 
     // Register Thrift framed protocol if linked
 
-    if (brpc::RegisterThriftFramedProtocol) {
-        brpc::RegisterThriftFramedProtocol();
+    if (brpc::RegisterThriftProtocol) {
+        brpc::RegisterThriftProtocol();
     }
 
     // Only valid at client side

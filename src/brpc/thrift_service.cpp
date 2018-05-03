@@ -23,12 +23,12 @@ namespace brpc {
 
 BAIDU_CASSERT(sizeof(thrift_binary_head_t) == 4, sizeof_thrift_must_be_4);
 
-ThriftFramedService::ThriftFramedService() : _additional_space(0) {
+ThriftService::ThriftService() : _additional_space(0) {
     _status = new (std::nothrow) MethodStatus;
     LOG_IF(FATAL, _status == NULL) << "Fail to new MethodStatus";
 }
 
-ThriftFramedService::ThriftFramedService(const ThriftFramedServiceOptions& options)
+ThriftService::ThriftService(const ThriftServiceOptions& options)
     : _status(NULL), _additional_space(options.additional_space) {
     if (options.generate_status) {
         _status = new (std::nothrow) MethodStatus;
@@ -36,16 +36,16 @@ ThriftFramedService::ThriftFramedService(const ThriftFramedServiceOptions& optio
     }    
 }
 
-ThriftFramedService::~ThriftFramedService() {
+ThriftService::~ThriftService() {
     delete _status;
     _status = NULL;
 }
 
-void ThriftFramedService::Describe(std::ostream &os, const DescribeOptions&) const {
+void ThriftService::Describe(std::ostream &os, const DescribeOptions&) const {
     os << butil::class_name_str(*this);
 }
 
-void ThriftFramedService::Expose(const butil::StringPiece& prefix) {
+void ThriftService::Expose(const butil::StringPiece& prefix) {
     _cached_name = butil::class_name_str(*this);
     if (_status == NULL) {
         return;

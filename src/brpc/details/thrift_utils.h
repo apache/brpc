@@ -21,6 +21,8 @@
 
 #include <boost/make_shared.hpp>
 
+#include "butil/iobuf.h"
+
 #include <thrift/TDispatchProcessor.h>
 #include <thrift/transport/TBufferTransports.h>
 #include <thrift/protocol/TBinaryProtocol.h>

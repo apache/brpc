@@ -17,7 +17,7 @@
 #ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
 
 #define INTERNAL_SUPPRESS_PROTOBUF_FIELD_DEPRECATION
-#include "brpc/thrift_framed_message.h"
+#include "brpc/thrift_message.h"
 
 #include <algorithm>
 #include "butil/logging.h"
@@ -36,7 +36,7 @@
 namespace brpc {
 
 namespace {
-const ::google::protobuf::Descriptor* ThriftFramedMessage_descriptor_ = NULL;
+const ::google::protobuf::Descriptor* ThriftMessage_descriptor_ = NULL;
 }  // namespace
 
 
@@ -46,7 +46,7 @@ void protobuf_AssignDesc_baidu_2frpc_2fthrift_binary_5fmessage_2eproto() {
         ::google::protobuf::DescriptorPool::generated_pool()->FindFileByName(
             "baidu/rpc/thrift_framed_message.proto");
     GOOGLE_CHECK(file != NULL);
-    ThriftFramedMessage_descriptor_ = file->message_type(0);
+    ThriftMessage_descriptor_ = file->message_type(0);
 }
 
 namespace {
@@ -60,13 +60,13 @@ inline void protobuf_AssignDescriptorsOnce() {
 void protobuf_RegisterTypes(const ::std::string&) {
     protobuf_AssignDescriptorsOnce();
     ::google::protobuf::MessageFactory::InternalRegisterGeneratedMessage(
-        ThriftFramedMessage_descriptor_, &ThriftFramedMessage::default_instance());
+        ThriftMessage_descriptor_, &ThriftMessage::default_instance());
 }
 
 }  // namespace
 
 void protobuf_ShutdownFile_baidu_2frpc_2fthrift_binary_5fmessage_2eproto() {
-    delete ThriftFramedMessage::default_instance_;
+    delete ThriftMessage::default_instance_;
 }
 
 void protobuf_AddDesc_baidu_2frpc_2fthrift_binary_5fmessage_2eproto_impl() {
@@ -82,8 +82,8 @@ void protobuf_AddDesc_baidu_2frpc_2fthrift_binary_5fmessage_2eproto_impl() {
        "hriftBinaryMessage", 58);
      ::google::protobuf::MessageFactory::InternalRegisterGeneratedFile(
        "thrift_framed_message.proto", &protobuf_RegisterTypes);
-     ThriftFramedMessage::default_instance_ = new ThriftFramedMessage();
-     ThriftFramedMessage::default_instance_->InitAsDefaultInstance();
+     ThriftMessage::default_instance_ = new ThriftMessage();
+     ThriftMessage::default_instance_->InitAsDefaultInstance();
      ::google::protobuf::internal::OnShutdown(&protobuf_ShutdownFile_baidu_2frpc_2fthrift_binary_5fmessage_2eproto);
 
 }
@@ -108,64 +108,64 @@ struct StaticDescriptorInitializer_baidu_2frpc_2fthrift_binary_5fmessage_2eproto
 #ifndef _MSC_VER
 #endif  // !_MSC_VER
 
-ThriftFramedMessage::ThriftFramedMessage()
+ThriftMessage::ThriftMessage()
     : ::google::protobuf::Message() {
     SharedCtor();
 }
 
-void ThriftFramedMessage::InitAsDefaultInstance() {
+void ThriftMessage::InitAsDefaultInstance() {
 }
 
-ThriftFramedMessage::ThriftFramedMessage(const ThriftFramedMessage& from)
+ThriftMessage::ThriftMessage(const ThriftMessage& from)
     : ::google::protobuf::Message() {
     SharedCtor();
     MergeFrom(from);
 }
 
-void ThriftFramedMessage::SharedCtor() {
+void ThriftMessage::SharedCtor() {
     memset(&head, 0, sizeof(head));
     thrift_raw_instance_deleter = nullptr;
     thrift_raw_instance = nullptr;
     thrift_message_seq_id = 0;
     method_name = "";    
-    //RegisterThriftFramedProtocolDummy dummy;
+    //RegisterThriftProtocolDummy dummy;
 }
 
-ThriftFramedMessage::~ThriftFramedMessage() {
+ThriftMessage::~ThriftMessage() {
     SharedDtor();
     if (thrift_raw_instance && thrift_raw_instance_deleter) {
         thrift_raw_instance_deleter(thrift_raw_instance);
     }
 }
 
-void ThriftFramedMessage::SharedDtor() {
+void ThriftMessage::SharedDtor() {
     if (this != default_instance_) {
     }
 }
 
-const ::google::protobuf::Descriptor* ThriftFramedMessage::descriptor() {
+const ::google::protobuf::Descriptor* ThriftMessage::descriptor() {
     protobuf_AssignDescriptorsOnce();
-    return ThriftFramedMessage_descriptor_;
+    return ThriftMessage_descriptor_;
 }
 
-const ThriftFramedMessage& ThriftFramedMessage::default_instance() {
+const ThriftMessage& ThriftMessage::default_instance() {
     if (default_instance_ == NULL)
         protobuf_AddDesc_baidu_2frpc_2fthrift_binary_5fmessage_2eproto();
     return *default_instance_;
 }
 
-ThriftFramedMessage* ThriftFramedMessage::default_instance_ = NULL;
+ThriftMessage* ThriftMessage::default_instance_ = NULL;
 
-ThriftFramedMessage* ThriftFramedMessage::New() const {
-    return new ThriftFramedMessage;
+ThriftMessage* ThriftMessage::New() const {
+    return new ThriftMessage;
 }
 
-void ThriftFramedMessage::Clear() {
+void ThriftMessage::Clear() {
     memset(&head, 0, sizeof(head));
     body.clear();
 }
 
-bool ThriftFramedMessage::MergePartialFromCodedStream(
+bool ThriftMessage::MergePartialFromCodedStream(
     ::google::protobuf::io::CodedInputStream* input) {
 #define DO_(EXPRESSION) if (!(EXPRESSION)) return false
     ::google::protobuf::uint32 tag;
@@ -179,55 +179,55 @@ bool ThriftFramedMessage::MergePartialFromCodedStream(
 #undef DO_
 }
 
-void ThriftFramedMessage::SerializeWithCachedSizes(
+void ThriftMessage::SerializeWithCachedSizes(
     ::google::protobuf::io::CodedOutputStream*) const {
 }
 
-::google::protobuf::uint8* ThriftFramedMessage::SerializeWithCachedSizesToArray(
+::google::protobuf::uint8* ThriftMessage::SerializeWithCachedSizesToArray(
     ::google::protobuf::uint8* target) const {
     return target;
 }
 
-int ThriftFramedMessage::ByteSize() const {
+int ThriftMessage::ByteSize() const {
     return sizeof(thrift_binary_head_t) + body.size();
 }
 
-void ThriftFramedMessage::MergeFrom(const ::google::protobuf::Message& from) {
+void ThriftMessage::MergeFrom(const ::google::protobuf::Message& from) {
     GOOGLE_CHECK_NE(&from, this);
-    const ThriftFramedMessage* source =
-        ::google::protobuf::internal::dynamic_cast_if_available<const ThriftFramedMessage*>(
+    const ThriftMessage* source =
+        ::google::protobuf::internal::dynamic_cast_if_available<const ThriftMessage*>(
             &from);
     if (source == NULL) {
-        LOG(ERROR) << "Can only merge from ThriftFramedMessage";
+        LOG(ERROR) << "Can only merge from ThriftMessage";
         return;
     } else {
         MergeFrom(*source);
     }
 }
 
-void ThriftFramedMessage::MergeFrom(const ThriftFramedMessage& from) {
+void ThriftMessage::MergeFrom(const ThriftMessage& from) {
     GOOGLE_CHECK_NE(&from, this);
     head = from.head;
     body = from.body;
 }
 
-void ThriftFramedMessage::CopyFrom(const ::google::protobuf::Message& from) {
+void ThriftMessage::CopyFrom(const ::google::protobuf::Message& from) {
     if (&from == this) return;
     Clear();
     MergeFrom(from);
 }
 
-void ThriftFramedMessage::CopyFrom(const ThriftFramedMessage& from) {
+void ThriftMessage::CopyFrom(const ThriftMessage& from) {
     if (&from == this) return;
     Clear();
     MergeFrom(from);
 }
 
-bool ThriftFramedMessage::IsInitialized() const {
+bool ThriftMessage::IsInitialized() const {
     return true;
 }
 
-void ThriftFramedMessage::Swap(ThriftFramedMessage* other) {
+void ThriftMessage::Swap(ThriftMessage* other) {
     if (other != this) {
         const thrift_binary_head_t tmp = other->head;
         other->head = head;
@@ -236,10 +236,10 @@ void ThriftFramedMessage::Swap(ThriftFramedMessage* other) {
     }
 }
 
-::google::protobuf::Metadata ThriftFramedMessage::GetMetadata() const {
+::google::protobuf::Metadata ThriftMessage::GetMetadata() const {
     protobuf_AssignDescriptorsOnce();
     ::google::protobuf::Metadata metadata;
-    metadata.descriptor = ThriftFramedMessage_descriptor_;
+    metadata.descriptor = ThriftMessage_descriptor_;
     metadata.reflection = NULL;
     return metadata;
 }

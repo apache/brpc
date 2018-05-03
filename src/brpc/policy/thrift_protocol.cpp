@@ -46,7 +46,7 @@ void bthread_assign_data(void* data) __THROW;
 
 namespace brpc {
 
-ThriftFramedClosure::ThriftFramedClosure(void* additional_space)
+ThriftClosure::ThriftClosure(void* additional_space)
     : _socket_ptr(NULL)
     , _server(NULL)
     , _start_parse_us(0)
@@ -54,25 +54,25 @@ ThriftFramedClosure::ThriftFramedClosure(void* additional_space)
     , _additional_space(additional_space) {
 }
 
-ThriftFramedClosure::~ThriftFramedClosure() {
+ThriftClosure::~ThriftClosure() {
     LogErrorTextAndDelete(false)(&_controller);
 }
 
-void ThriftFramedClosure::DoNotRespond() {
+void ThriftClosure::DoNotRespond() {
     _do_respond = false;
 }
 
-class DeleteThriftFramedClosure {
+class DeleteThriftClosure {
 public:
-    void operator()(ThriftFramedClosure* done) const {
-        done->~ThriftFramedClosure();
+    void operator()(ThriftClosure* done) const {
+        done->~ThriftClosure();
         free(done);
     }
 };
 
-void ThriftFramedClosure::Run() {
+void ThriftClosure::Run() {
     // Recycle itself after `Run'
-    std::unique_ptr<ThriftFramedClosure, DeleteThriftFramedClosure> recycle_ctx(this);
+    std::unique_ptr<ThriftClosure, DeleteThriftClosure> recycle_ctx(this);
     SocketUniquePtr sock(_socket_ptr);
     ScopedRemoveConcurrency remove_concurrency_dummy(_server, &_controller);
 
@@ -187,7 +187,7 @@ void ThriftFramedClosure::Run() {
     }
 }
 
-void ThriftFramedClosure::SetMethodName(const std::string& full_method_name) {
+void ThriftClosure::SetMethodName(const std::string& full_method_name) {
     ControllerPrivateAccessor accessor(&_controller);
     Span* span = accessor.span();
     if (span) {
@@ -197,7 +197,7 @@ void ThriftFramedClosure::SetMethodName(const std::string& full_method_name) {
 
 namespace policy {
 
-ParseResult ParseThriftFramedMessage(butil::IOBuf* source,
+ParseResult ParseThriftMessage(butil::IOBuf* source,
                                Socket*, bool /*read_eof*/, const void* /*arg*/) {
 
     char header_buf[sizeof(thrift_binary_head_t) + 3];
@@ -232,12 +232,12 @@ ParseResult ParseThriftFramedMessage(butil::IOBuf* source,
 }
 
 struct CallMethodInBackupThreadArgs {
-    ThriftFramedService* service;
+    ThriftService* service;
     const Server* server;
     Controller* controller;
-    ThriftFramedMessage* request;
-    ThriftFramedMessage* response;
-    ThriftFramedClosure* done;
+    ThriftMessage* request;
+    ThriftMessage* response;
+    ThriftClosure* done;
 };
 
 static void CallMethodInBackupThread(void* void_args) {
@@ -248,12 +248,12 @@ static void CallMethodInBackupThread(void* void_args) {
     delete args;
 }
 
-static void EndRunningCallMethodInPool(ThriftFramedService* service,
+static void EndRunningCallMethodInPool(ThriftService* service,
                                        const Server& server,
                                        Controller* controller,
-                                       ThriftFramedMessage* request,
-                                       ThriftFramedMessage* response,
-                                       ThriftFramedClosure* done) {
+                                       ThriftMessage* request,
+                                       ThriftMessage* response,
+                                       ThriftClosure* done) {
     CallMethodInBackupThreadArgs* args = new CallMethodInBackupThreadArgs;
     args->service = service;
     args->server = &server;
@@ -264,7 +264,7 @@ static void EndRunningCallMethodInPool(ThriftFramedService* service,
     return EndRunningUserCodeInPool(CallMethodInBackupThread, args);
 };
 
-void ProcessThriftFramedRequest(InputMessageBase* msg_base) {
+void ProcessThriftRequest(InputMessageBase* msg_base) {
 
     const int64_t start_parse_us = butil::cpuwide_time_us();   
 
@@ -278,7 +278,7 @@ void ProcessThriftFramedRequest(InputMessageBase* msg_base) {
     thrift_binary_head_t *req_head = (thrift_binary_head_t *)p;
     req_head->body_len = ntohl(req_head->body_len);
 
-    ThriftFramedService* service = server->options().thrift_service;
+    ThriftService* service = server->options().thrift_service;
     if (service == NULL) {
         LOG_EVERY_SECOND(WARNING) 
             << "Received thrift request however the server does not set"
@@ -287,9 +287,9 @@ void ProcessThriftFramedRequest(InputMessageBase* msg_base) {
         return;
     }
 
-    void* space = malloc(sizeof(ThriftFramedClosure) + service->_additional_space);
+    void* space = malloc(sizeof(ThriftClosure) + service->_additional_space);
     if (!space) {
-        LOG(FATAL) << "Fail to new ThriftFramedClosure";
+        LOG(FATAL) << "Fail to new ThriftClosure";
         socket->SetFailed();
         return;
     }
@@ -303,12 +303,12 @@ void ProcessThriftFramedRequest(InputMessageBase* msg_base) {
     
     void* sub_space = NULL;
     if (service->_additional_space) {
-        sub_space = (char*)space + sizeof(ThriftFramedClosure);
+        sub_space = (char*)space + sizeof(ThriftClosure);
     }
-    ThriftFramedClosure* thrift_done = new (space) ThriftFramedClosure(sub_space);
+    ThriftClosure* thrift_done = new (space) ThriftClosure(sub_space);
     Controller* cntl = &(thrift_done->_controller);
-    ThriftFramedMessage* req = &(thrift_done->_request);
-    ThriftFramedMessage* res = &(thrift_done->_response);
+    ThriftMessage* req = &(thrift_done->_request);
+    ThriftMessage* res = &(thrift_done->_response);
 
     req->head = *req_head;
     msg->payload.swap(req->body);
@@ -321,7 +321,7 @@ void ProcessThriftFramedRequest(InputMessageBase* msg_base) {
     const bool security_mode = server->options().security_mode() &&
                                socket->user() == server_accessor.acceptor();
     // Initialize log_id with the log_id in thrift. Notice that the protocols
-    // on top of ThriftFramedService may pack log_id in meta or user messages and
+    // on top of ThriftService may pack log_id in meta or user messages and
     // overwrite the value.
     //cntl->set_log_id(req_head->log_id);
     accessor.set_server(server)
@@ -394,11 +394,11 @@ void ProcessThriftFramedRequest(InputMessageBase* msg_base) {
 
 }
 
-void ProcessThriftFramedResponse(InputMessageBase* msg_base) {
+void ProcessThriftResponse(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     
-    // Fetch correlation id that we saved before in `PacThriftFramedRequest'
+    // Fetch correlation id that we saved before in `PacThriftRequest'
     const CallId cid = { static_cast<uint64_t>(msg->socket()->correlation_id()) };
     Controller* cntl = NULL;
     const int rc = bthread_id_lock(cid, (void**)&cntl);
@@ -417,8 +417,8 @@ void ProcessThriftFramedResponse(InputMessageBase* msg_base) {
         span->set_start_parse_us(start_parse_us);
     }
 
-    // MUST be ThriftFramedMessage (checked in SerializeThriftFramedRequest)
-    ThriftFramedMessage* response = (ThriftFramedMessage*)cntl->response();
+    // MUST be ThriftMessage (checked in SerializeThriftRequest)
+    ThriftMessage* response = (ThriftMessage*)cntl->response();
     const int saved_error = cntl->ErrorCode();
     if (response != NULL) {
         msg->meta.copy_to(&response->head, sizeof(thrift_binary_head_t));
@@ -516,7 +516,7 @@ void ProcessThriftFramedResponse(InputMessageBase* msg_base) {
     accessor.OnResponse(cid, saved_error);
 }
 
-bool VerifyThriftFramedRequest(const InputMessageBase* msg_base) {
+bool VerifyThriftRequest(const InputMessageBase* msg_base) {
     Server* server = (Server*)msg_base->arg();
     if (server->options().auth) {
         LOG(WARNING) << "thrift does not support authentication";
@@ -525,14 +525,14 @@ bool VerifyThriftFramedRequest(const InputMessageBase* msg_base) {
     return true;
 }
 
-void SerializeThriftFramedRequest(butil::IOBuf* request_buf, Controller* cntl,
+void SerializeThriftRequest(butil::IOBuf* request_buf, Controller* cntl,
                             const google::protobuf::Message* req_base) {
     if (req_base == NULL) {
         return cntl->SetFailed(EREQUEST, "request is NULL");
     }
     ControllerPrivateAccessor accessor(cntl);
 
-    const ThriftFramedMessage* req = (const ThriftFramedMessage*)req_base;
+    const ThriftMessage* req = (const ThriftMessage*)req_base;
 
     thrift_binary_head_t head = req->head;
 
@@ -566,7 +566,7 @@ void SerializeThriftFramedRequest(butil::IOBuf* request_buf, Controller* cntl,
     xfer += out_portocol->writeFieldBegin("request", ::apache::thrift::protocol::T_STRUCT, 1);
 
     // request's write
-    ThriftFramedMessage* r = const_cast<ThriftFramedMessage*>(req);
+    ThriftMessage* r = const_cast<ThriftMessage*>(req);
     xfer += r->write(out_portocol.get());
     // end request's write
 
@@ -594,7 +594,7 @@ void SerializeThriftFramedRequest(butil::IOBuf* request_buf, Controller* cntl,
 
 }
 
-void PackThriftFramedRequest(
+void PackThriftRequest(
     butil::IOBuf* packet_buf,
     SocketMessage**,
     uint64_t correlation_id,
@@ -624,12 +624,12 @@ void PackThriftFramedRequest(
 
 } // namespace policy
 
-void RegisterThriftFramedProtocol() {
+void RegisterThriftProtocol() {
 
-    Protocol thrift_binary_protocol = {policy::ParseThriftFramedMessage,
-                                 policy::SerializeThriftFramedRequest, policy::PackThriftFramedRequest,
-                                 policy::ProcessThriftFramedRequest, policy::ProcessThriftFramedResponse,
-                                 policy::VerifyThriftFramedRequest, NULL, NULL,
+    Protocol thrift_binary_protocol = {policy::ParseThriftMessage,
+                                 policy::SerializeThriftRequest, policy::PackThriftRequest,
+                                 policy::ProcessThriftRequest, policy::ProcessThriftResponse,
+                                 policy::VerifyThriftRequest, NULL, NULL,
                                  CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };
     if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
         exit(1);
