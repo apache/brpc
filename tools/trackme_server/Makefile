@@ -3,7 +3,7 @@ include $(BRPC_PATH)/config.mk
 CXXFLAGS = $(CPPFLAGS) -std=c++0x -DNDEBUG -O2 -D__const__= -pipe -W -Wall -fPIC -fno-omit-frame-pointer
 HDRPATHS = -I$(BRPC_PATH)/output/include $(addprefix -I, $(HDRS))
 LIBPATHS = -L$(BRPC_PATH)/output/lib $(addprefix -L, $(LIBS))
-STATIC_LINKINGS += -lbrpc
+STATIC_LINKINGS += $(BRPC_PATH)/output/lib/libbrpc.a
 
 SOURCES = $(wildcard *.cpp)
 OBJS = $(addsuffix .o, $(basename $(SOURCES))) 
@@ -18,7 +18,11 @@ clean:
 
 trackme_server:$(OBJS)
 	@echo "Linking $@"
+ifeq ($(SYSTEM),Linux)
 	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
+else ifeq ($(SYSTEM),Darwin)
+	@$(CXX) $(LIBPATHS) $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
+endif
 
 %.o:%.cpp
 	@echo "Compiling $@"

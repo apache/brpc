@@ -15,7 +15,6 @@
 
 #include "butil/basictypes.h"
 #include "butil/logging.h"
-#include "butil/mac/mach_logging.h"
 #include "butil/mac/scoped_cftyperef.h"
 #include "butil/mac/scoped_mach_port.h"
 
@@ -47,7 +46,7 @@ uint64_t ComputeCurrentTicks() {
     // whether mach_timebase_info has already been called.  This is
     // recommended by Apple's QA1398.
     kern_return_t kr = mach_timebase_info(&timebase_info);
-    MACH_DCHECK(kr == KERN_SUCCESS, kr) << "mach_timebase_info";
+    DCHECK(kr == KERN_SUCCESS) << "Fail to call mach_timebase_info";
   }
 
   // mach_absolute_time is it when it comes to ticks on the Mac.  Other calls
@@ -82,11 +81,11 @@ uint64_t ComputeThreadTicks() {
   }
 
   kern_return_t kr = thread_info(
-      thread,
+      thread.get(),
       THREAD_BASIC_INFO,
       reinterpret_cast<thread_info_t>(&thread_info_data),
       &thread_info_count);
-  MACH_DCHECK(kr == KERN_SUCCESS, kr) << "thread_info";
+  DCHECK(kr == KERN_SUCCESS) << "Fail to call thread_info";
 
   return (thread_info_data.user_time.seconds *
               butil::Time::kMicrosecondsPerSecond) +

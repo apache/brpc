@@ -6,7 +6,7 @@ include $(BRPC_PATH)/config.mk
 CXXFLAGS = $(CPPFLAGS) -std=c++0x -DNDEBUG -O2 -D__const__= -pipe -W -Wall -Wno-unused-parameter -fPIC -fno-omit-frame-pointer
 HDRPATHS = -I$(BRPC_PATH)/output/include $(addprefix -I, $(HDRS))
 LIBPATHS = -L$(BRPC_PATH)/output/lib $(addprefix -L, $(LIBS))
-STATIC_LINKINGS += -lbrpc
+STATIC_LINKINGS += $(BRPC_PATH)/output/lib/libbrpc.a
 
 CLIENT_SOURCES = rpc_view.cpp
 PROTOS = $(wildcard *.proto)
@@ -25,7 +25,11 @@ clean:
 
 rpc_view:$(PROTO_OBJS) $(CLIENT_OBJS)
 	@echo "Linking $@"
+ifeq ($(SYSTEM),Linux)
 	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
+else ifeq ($(SYSTEM),Darwin)
+	@$(CXX) $(LIBPATHS) $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
+endif
 
 %.pb.cc %.pb.h:%.proto
 	@echo "Generating $@"

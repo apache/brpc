@@ -17,6 +17,7 @@
 #include "brpc/details/hpack.h"
 
 #include <limits>                                       // std::numeric_limits
+#include <vector>
 #include "butil/containers/bounded_queue.h"              // butil::BoundedQueue
 #include "butil/containers/flat_map.h"                   // butil::FlatMap
 

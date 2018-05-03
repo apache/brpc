@@ -41,6 +41,9 @@
 #include "brpc/stream_impl.h"
 #include "brpc/shared_object.h"
 #include "brpc/policy/rtmp_protocol.h"  // FIXME
+#if defined(OS_MACOSX)
+#include <sys/event.h>
+#endif
 
 namespace bthread {
 size_t __attribute__((weak))
@@ -648,6 +651,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     }
     m->_last_writetime_us.store(cpuwide_now, butil::memory_order_relaxed);
     m->_unwritten_bytes.store(0, butil::memory_order_relaxed);
+    m->_options = options;
     CHECK(NULL == m->_write_head.load(butil::memory_order_relaxed));
     // Must be last one! Internal fields of this Socket may be access
     // just after calling ResetFileDescriptor.
@@ -659,7 +663,6 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
         return -1;
     }
     *id = m->_this_id;
-    m->_options = options;
     return 0;
 }
 
@@ -1730,7 +1733,7 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
         }
     }
 
-    CHECK(ssl_state() == SSL_CONNECTED);
+    CHECK_EQ(SSL_CONNECTED, ssl_state());
     if (_conn) {
         // TODO: Separate SSL stuff from SocketConnection
         return _conn->CutMessageIntoSSLChannel(_ssl_session, data_list, ndata);
@@ -1769,6 +1772,10 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
 
 int Socket::SSLHandshake(int fd, bool server_mode) {
     if (_options.ssl_ctx == NULL) {
+        if (server_mode) {
+            LOG(ERROR) << "Lack SSL configuration to handle SSL request";
+            return -1;
+        }
         return 0;
     }
 
@@ -1805,13 +1812,21 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
         int ssl_error = SSL_get_error(_ssl_session, rc);
         switch (ssl_error) {
         case SSL_ERROR_WANT_READ:
+#if defined(OS_LINUX)
             if (bthread_fd_wait(fd, EPOLLIN) != 0) {
+#elif defined(OS_MACOSX)
+            if (bthread_fd_wait(fd, EVFILT_READ) != 0) {
+#endif
                 return -1;
             }
             break;
 
         case SSL_ERROR_WANT_WRITE:
+#if defined(OS_LINUX)
             if (bthread_fd_wait(fd, EPOLLOUT) != 0) {
+#elif defined(OS_MACOSX)
+            if (bthread_fd_wait(fd, EVFILT_WRITE) != 0) {
+#endif
                 return -1;
             }
             break;
@@ -1866,7 +1881,7 @@ ssize_t Socket::DoRead(size_t size_hint) {
         return _read_buf.append_from_file_descriptor(fd(), size_hint);
     }
 
-    CHECK(ssl_state() == SSL_CONNECTED);
+    CHECK_EQ(SSL_CONNECTED, ssl_state());
     int ssl_error = 0;
     ssize_t nr = _read_buf.append_from_SSL_channel(_ssl_session, &ssl_error, size_hint);
     switch (ssl_error) {
@@ -1949,7 +1964,7 @@ AuthContext* Socket::mutable_auth_context() {
     return _auth_context;
 }
 
-int Socket::StartInputEvent(SocketId id, uint32_t epoll_events,
+int Socket::StartInputEvent(SocketId id, uint32_t events,
                             const bthread_attr_t& thread_attr) {
     SocketUniquePtr s;
     if (Address(id, &s) < 0) {
@@ -1961,11 +1976,15 @@ int Socket::StartInputEvent(SocketId id, uint32_t epoll_events,
         return 0;
     }
     if (s->fd() < 0) {
-        CHECK(!(epoll_events & EPOLLIN)) << "epoll_events=" << epoll_events;
+#if defined(OS_LINUX)
+        CHECK(!(events & EPOLLIN)) << "epoll_events=" << events;
+#elif defined(OS_MACOSX)
+        CHECK((short)events != EVFILT_READ) << "kqueue filter=" << events;
+#endif
         return -1;
     }
 
-    // if (epoll_events & has_epollrdhup) {
+    // if (events & has_epollrdhup) {
     //     s->_eof = 1;
     // }
     // Passing e[i].events causes complex visibility issues and

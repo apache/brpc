@@ -14,9 +14,7 @@ LIBS+=$(BRPC_PATH)/output/lib
 HDRPATHS=$(addprefix -I, $(HDRS))
 LIBPATHS=$(addprefix -L, $(LIBS))
 COMMA=,
-SOPATHS=$(addprefix -Wl$(COMMA)-rpath=, $(LIBS))
-
-STATIC_LINKINGS+=-lbrpc
+SOPATHS=$(addprefix -Wl$(COMMA)-rpath$(COMMA), $(LIBS))
 
 CLIENT_SOURCES = client.cpp
 SERVER_SOURCES = server.cpp
@@ -26,6 +24,21 @@ PROTO_OBJS = $(PROTOS:.proto=.pb.o)
 PROTO_GENS = $(PROTOS:.proto=.pb.h) $(PROTOS:.proto=.pb.cc)
 CLIENT_OBJS = $(addsuffix .o, $(basename $(CLIENT_SOURCES))) 
 SERVER_OBJS = $(addsuffix .o, $(basename $(SERVER_SOURCES))) 
+
+ifeq ($(SYSTEM),Darwin)
+ ifneq ("$(LINK_SO)", "")
+	STATIC_LINKINGS += -lbrpc
+ else
+	# *.a must be explicitly specified in clang
+	STATIC_LINKINGS += $(BRPC_PATH)/output/lib/libbrpc.a
+ endif
+	LINK_OPTIONS_SO = $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+	LINK_OPTIONS = $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+else ifeq ($(SYSTEM),Linux)
+	STATIC_LINKINGS += -lbrpc
+	LINK_OPTIONS_SO = -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+	LINK_OPTIONS = -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
+endif
 
 .PHONY:all
 all: echo_client echo_server
@@ -38,17 +51,17 @@ clean:
 echo_client:$(PROTO_OBJS) $(CLIENT_OBJS)
 	@echo "Linking $@"
 ifneq ("$(LINK_SO)", "")
-	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
+	@$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
 else
-	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
+	@$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
 endif
 
 echo_server:$(PROTO_OBJS) $(SERVER_OBJS)
 	@echo "Linking $@"
 ifneq ("$(LINK_SO)", "")
-	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
+	@$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
 else
-	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
+	@$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
 endif
 
 %.pb.cc %.pb.h:%.proto

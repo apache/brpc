@@ -16,15 +16,15 @@
 
 #include <iomanip>
 #include <sys/time.h>
-#include <fcntl.h>                          // O_RDONLY
+#include <fcntl.h>                           // O_RDONLY
 #include <gflags/gflags.h>
 #include "butil/logging.h"
 #include "butil/fd_guard.h"                  // fd_guard
 #include "butil/file_util.h"                 // butil::FilePath
 #include "butil/third_party/murmurhash3/murmurhash3.h"
+#include "butil/process_util.h"              // ReadCommandLine
 #include "brpc/server.h"
 #include "brpc/builtin/common.h"
-
 
 namespace brpc {
 
@@ -310,42 +310,6 @@ const char* ProfilingType2String(ProfilingType t) {
     return "unknown";
 }
 
-ssize_t ReadCommandLine(char* buf, size_t len, bool with_args) {
-    butil::fd_guard fd(open("/proc/self/cmdline", O_RDONLY));
-    if (fd < 0) {
-        LOG(ERROR) << "Fail to open /proc/self/cmdline";
-        return -1;
-    }
-    ssize_t nr = read(fd, buf, len);
-    if (nr <= 0) {
-        LOG(ERROR) << "Fail to read /proc/self/cmdline";
-        return -1;
-    }
-    if (with_args) {
-        if ((size_t)nr == len) {
-            LOG(ERROR) << "buf is not big enough";
-            return -1;
-        }
-        for (ssize_t i = 0; i < nr; ++i) {
-            if (buf[i] == '\0') {
-                buf[i] = '\n';
-            }
-        }
-        return nr;
-    } else {
-        for (ssize_t i = 0; i < nr; ++i) {
-            if (buf[i] == '\0') {
-                return i;
-            }
-        }
-        if ((size_t)nr == len) {
-            LOG(ERROR) << "buf is not big enough";
-            return -1;
-        }
-        return nr;
-    }
-}
-
 int FileChecksum(const char* file_path, unsigned char* checksum) {
     butil::fd_guard fd(open(file_path, O_RDONLY));
     if (fd < 0) {
@@ -367,7 +331,7 @@ static pthread_once_t create_program_name_once = PTHREAD_ONCE_INIT;
 static const char* s_program_name = "unknown";
 static char s_cmdline[256];
 static void CreateProgramName() {
-    const ssize_t nr = ReadCommandLine(s_cmdline, sizeof(s_cmdline) - 1, false);
+    const ssize_t nr = butil::ReadCommandLine(s_cmdline, sizeof(s_cmdline) - 1, false);
     if (nr > 0) {
         s_cmdline[nr] = '\0';
         s_program_name = s_cmdline;
