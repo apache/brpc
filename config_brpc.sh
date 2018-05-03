@@ -1,6 +1,6 @@
 SYSTEM=$(uname -s)
 if [ "$SYSTEM" = "Darwin" ]; then
-    ECHO='echo -e'
+    ECHO='echo'
     SO=dylib
     LDD="otool -L"
     if [ "$(getopt -V)" = " --" ]; then
