@@ -8,10 +8,10 @@ brpc depends on following packages:
 * [protobuf](https://github.com/google/protobuf): Serializations of messages, interfaces of services.
 * [leveldb](https://github.com/google/leveldb): Required by [/rpcz](rpcz.md) to record RPCs for tracing.
 
-# Supported System
+# Supported Environment
 
-* [Ubuntu/LinuxMint/WSL](#ubuntu/linuxmint/wsl)
-* [Fedora/CentOS](#fedora/centos)
+* [Ubuntu/LinuxMint/WSL](#ubuntulinuxmintwsl)
+* [Fedora/CentOS](#fedoracentos)
 * [Linux with self-built deps](#linux-with-self-built-deps)
 * [MacOS](#macos)
 
