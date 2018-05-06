@@ -4,7 +4,7 @@ note:
 summary:
     echo_client/echo_server:
         brpc + thrift protocol version
-    thrift_client/thrift_server:
-        thrift cpp version
+    native_client/native_server:
+        native thrift cpp version
 
 
