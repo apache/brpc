@@ -10,6 +10,8 @@ env:
 - PURPOSE=compile
 - PURPOSE=unittest
 - PURPOSE=compile-with-bazel
+  global:
+    - MAKEFLAGS="-j 2"
 
 before_script:
 - ulimit -c unlimited -S       # enable core dumps
