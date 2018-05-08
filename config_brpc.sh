@@ -17,8 +17,9 @@ else
     LDD=ldd
 fi
 
-TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,nodebugsymbols -n 'config_brpc' -- "$@"`
+TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,nodebugsymbols -n 'config_brpc' -- "$@"`
 WITH_GLOG=0
+WITH_THRIFT=0
 DEBUGSYMBOLS=-g
 
 if [ $? != 0 ] ; then >&2 $ECHO "Terminating..."; exit 1 ; fi
@@ -34,6 +35,7 @@ while true; do
         --cc ) CC=$2; shift 2 ;;
         --cxx ) CXX=$2; shift 2 ;;
         --with-glog ) WITH_GLOG=1; shift 1 ;;
+        --with-thrift) WITH_THRIFT=1; shift 1 ;;
         --nodebugsymbols ) DEBUGSYMBOLS=; shift 1 ;;
         -- ) shift; break ;;
         * ) break ;;
@@ -128,18 +130,18 @@ OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h)
 STATIC_LINKINGS=
 DYNAMIC_LINKINGS="-lpthread -lssl -lcrypto -ldl -lz"
 if [ "$SYSTEM" = "Linux" ]; then
-	DYNAMIC_LINKINGS+=" -lrt"
+    DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -lrt"
 fi
 if [ "$SYSTEM" = "Darwin" ]; then
-	DYNAMIC_LINKINGS+=" -framework CoreFoundation"
-	DYNAMIC_LINKINGS+=" -framework CoreGraphics"
-	DYNAMIC_LINKINGS+=" -framework CoreData"
-	DYNAMIC_LINKINGS+=" -framework CoreText"
-	DYNAMIC_LINKINGS+=" -framework Security"
-	DYNAMIC_LINKINGS+=" -framework Foundation"
-	DYNAMIC_LINKINGS+=" -Wl,-U,_MallocExtension_ReleaseFreeMemory"
-	DYNAMIC_LINKINGS+=" -Wl,-U,_ProfilerStart"
-	DYNAMIC_LINKINGS+=" -Wl,-U,_ProfilerStop"
+	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -framework CoreFoundation"
+	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -framework CoreGraphics"
+	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -framework CoreData"
+	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -framework CoreText"
+	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -framework Security"
+	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -framework Foundation"
+	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_MallocExtension_ReleaseFreeMemory"
+	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_ProfilerStart"
+	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_ProfilerStop"
 fi
 append_linking() {
     if [ -f $1/lib${2}.a ]; then
@@ -275,6 +277,22 @@ if [ "$SYSTEM" = "Darwin" ]; then
         CPPFLAGS="${CPPFLAGS} -DNO_CLOCK_GETTIME_IN_MAC"
     fi
 fi
+
+if [ $WITH_THRIFT != 0 ]; then
+    THRIFT_LIB=$(find_dir_of_lib_or_die thriftnb)
+    THRIFT_HDR=$(find_dir_of_header_or_die thrift/Thrift.h)
+    append_to_output_libs "$THRIFT_LIB"
+    append_to_output_headers "$THRIFT_HDR"
+
+    CPPFLAGS="${CPPFLAGS} -DENABLE_THRIFT_FRAMED_PROTOCOL"
+
+    if [ -f "$THRIFT_LIB/libthriftnb.$SO" ]; then
+        append_to_output "DYNAMIC_LINKINGS+=-lthriftnb -levent -lthrift"
+    else
+        append_to_output "STATIC_LINKINGS+=-lthriftnb"
+    fi
+fi
+
 append_to_output "CPPFLAGS=${CPPFLAGS}"
 
 append_to_output "ifeq (\$(NEED_LIBPROTOC), 1)"
