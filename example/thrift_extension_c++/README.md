@@ -1,4 +1,4 @@
-note:
+Note:
     Only thrift framed transport supported now, in another words, only working on thrift nonblocking mode.
 
 summary:
