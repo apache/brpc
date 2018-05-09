@@ -15,6 +15,8 @@
 #include "brpc/policy/file_naming_service.h"
 #include "brpc/policy/list_naming_service.h"
 #include "brpc/policy/remote_file_naming_service.h"
+#include "brpc/global.h"
+#include "brpc/details/shared_naming_service.h"
 #include "echo.pb.h"
 #include "brpc/server.h"
 
@@ -30,7 +32,15 @@ DECLARE_string(consul_service_discovery_url);
 } // brpc
 
 namespace {
-TEST(NamingServiceTest, sanity) {
+
+class NamingServiceTest : public testing::Test {
+protected:
+    void SetUp() {
+        brpc::GlobalInitializeOrDie();
+    }
+    void TearDown() {}
+};
+TEST_F(NamingServiceTest, sanity) {
     std::vector<brpc::ServerNode> servers;
 
 #ifdef BAIDU_INTERNAL
@@ -97,7 +107,14 @@ TEST(NamingServiceTest, sanity) {
     }
 }
 
-TEST(NamingServiceTest, invalid_port) {
+TEST_F(NamingServiceTest, fail_to_get_shared_naming_service) {
+    butil::intrusive_ptr<brpc::SharedNamingService> ns;
+    ASSERT_EQ(-1, brpc::GetSharedNamingService(&ns, "foobar", NULL));
+    ASSERT_EQ(-1, brpc::GetSharedNamingService(&ns, "foobar://", NULL));
+    ASSERT_EQ(-1, brpc::GetSharedNamingService(&ns, "file://never_exist", NULL));
+}
+
+TEST_F(NamingServiceTest, invalid_port) {
     std::vector<brpc::ServerNode> servers;
 
 #ifdef BAIDU_INTERNAL
@@ -111,7 +128,7 @@ TEST(NamingServiceTest, invalid_port) {
     ASSERT_EQ(-1, dns.GetServers("brpc.baidu.com:99999", &servers));
 }
 
-TEST(NamingServiceTest, wrong_name) {
+TEST_F(NamingServiceTest, wrong_name) {
     std::vector<brpc::ServerNode> servers;
 
 #ifdef BAIDU_INTERNAL
@@ -178,7 +195,7 @@ public:
     butil::atomic<int64_t> touch_count;
 };
 
-TEST(NamingServiceTest, remotefile) {
+TEST_F(NamingServiceTest, remotefile) {
     brpc::Server server1;
     UserNamingServiceImpl svc1;
     ASSERT_EQ(0, server1.AddService(&svc1, brpc::SERVER_DOESNT_OWN_SERVICE));
@@ -355,7 +372,7 @@ public:
     butil::atomic<int64_t> touch_count;
 };
 
-TEST(NamingServiceTest, consul_with_backup_file) {
+TEST_F(NamingServiceTest, consul_with_backup_file) {
     brpc::policy::FLAGS_consul_enable_degrade_to_file_naming_service = true;
     const char *address_list[] =  {
         "10.127.0.1:1234",
@@ -394,7 +411,7 @@ TEST(NamingServiceTest, consul_with_backup_file) {
                                    restful_map.c_str()));
     ASSERT_EQ(0, server.Start("localhost:8500", NULL));
 
-    bthread_usleep(1000000);
+    bthread_usleep(5000000);
 
     butil::EndPoint n1;
     ASSERT_EQ(0, butil::str2endpoint("10.121.36.189:8003", &n1));

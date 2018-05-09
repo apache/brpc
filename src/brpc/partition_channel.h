@@ -26,7 +26,7 @@
 
 namespace brpc {
 
-class NamingServiceThread;
+class SharedNamingService;
 class PartitionChannelBase;
 
 // Representing a partition kind.
@@ -119,7 +119,7 @@ private:
     int CheckHealth();
 
     PartitionChannelBase* _pchan;
-    butil::intrusive_ptr<NamingServiceThread> _nsthread_ptr;
+    butil::intrusive_ptr<SharedNamingService> _nsthread_ptr;
     PartitionParser* _parser;
 };
 
@@ -162,7 +162,7 @@ private:
 
     SelectiveChannel _schan;
     Partitioner* _partitioner;
-    butil::intrusive_ptr<NamingServiceThread> _nsthread_ptr;
+    butil::intrusive_ptr<SharedNamingService> _nsthread_ptr;
     PartitionParser* _parser;
 };
 

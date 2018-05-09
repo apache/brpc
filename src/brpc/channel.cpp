@@ -227,7 +227,7 @@ int Channel::Init(const char* ns_url,
         LOG(FATAL) << "Fail to new LoadBalancerWithNaming";
         return -1;        
     }
-    GetNamingServiceThreadOptions ns_opt;
+    GetSharedNamingServiceOptions ns_opt;
     ns_opt.succeed_without_server = _options.succeed_without_server;
     ns_opt.log_succeed_without_server = _options.log_succeed_without_server;
     if (lb->Init(ns_url, lb_name, _options.ns_filter, &ns_opt) != 0) {

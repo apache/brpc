@@ -1,4 +1,4 @@
-// Copyright (c) 2014 Baidu, Inc.
+// Copyright (c) 2014 brpc authors.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,8 +16,7 @@
 
 #include <gflags/gflags.h>
 #include "brpc/reloadable_flags.h"
-#include "brpc/load_balancer.h"
-
+#include "brpc/details/shared_load_balancer.h"
 
 namespace brpc {
 
@@ -65,7 +64,7 @@ SharedLoadBalancer::~SharedLoadBalancer() {
 int SharedLoadBalancer::Init(const char* lb_name) {
     const LoadBalancer* lb = LoadBalancerExtension()->Find(lb_name);
     if (lb == NULL) {
-        LOG(FATAL) << "Fail to find LoadBalancer by `" << lb_name << "'";
+        LOG(ERROR) << "Fail to find LoadBalancer by `" << lb_name << "'";
         return -1;
     }
     LoadBalancer* lb_copy = lb->New();
@@ -88,5 +87,6 @@ void SharedLoadBalancer::Describe(std::ostream& os,
         _lb->Describe(os, options);
     }
 }
+
 
 } // namespace brpc

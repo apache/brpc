@@ -16,8 +16,8 @@
 
 #include "butil/containers/flat_map.h"
 #include "brpc/log.h"
-#include "brpc/load_balancer.h"
-#include "brpc/details/naming_service_thread.h"
+#include "brpc/details/shared_load_balancer.h"
+#include "brpc/details/shared_naming_service.h"
 #include "brpc/partition_channel.h"
 #include "brpc/global.h"
 
@@ -221,12 +221,12 @@ int PartitionChannel::Init(int num_partition_kinds,
         LOG(ERROR) << "Parameter[partition_parser] must be non-NULL";
         return -1;
     }
-    GetNamingServiceThreadOptions ns_opt;
+    GetSharedNamingServiceOptions ns_opt;
     if (options_in) {
         ns_opt.succeed_without_server = options_in->succeed_without_server;
     }
-    if (GetNamingServiceThread(&_nsthread_ptr, ns_url, &ns_opt) != 0) {
-        LOG(ERROR) << "Fail to get NamingServiceThread";
+    if (GetSharedNamingService(&_nsthread_ptr, ns_url, &ns_opt) != 0) {
+        LOG(ERROR) << "Fail to get SharedNamingService";
         return -1;
     }
     _pchan = new (std::nothrow) PartitionChannelBase;
@@ -449,12 +449,12 @@ int DynamicPartitionChannel::Init(
         LOG(ERROR) << "Parameter[partition_parser] must be non-NULL";
         return -1;
     }
-    GetNamingServiceThreadOptions ns_opt;
+    GetSharedNamingServiceOptions ns_opt;
     if (options_in) {
         ns_opt.succeed_without_server = options_in->succeed_without_server;
     }
-    if (GetNamingServiceThread(&_nsthread_ptr, ns_url, &ns_opt) != 0) {
-        LOG(ERROR) << "Fail to get NamingServiceThread";
+    if (GetSharedNamingService(&_nsthread_ptr, ns_url, &ns_opt) != 0) {
+        LOG(ERROR) << "Fail to get SharedNamingService";
         return -1;
     }
     if (_schan.Init("_dynpart", options_in) != 0) {

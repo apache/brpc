@@ -44,6 +44,7 @@
 #include "brpc/rpc_dump.pb.h"
 #include "brpc/details/usercode_backup_pool.h"  // RunUserCode
 #include "brpc/mongo_service_adaptor.h"
+#include "brpc/details/shared_load_balancer.h"
 
 // Force linking the .o in UT (which analysis deps by inclusions)
 #include "brpc/parallel_channel.h"

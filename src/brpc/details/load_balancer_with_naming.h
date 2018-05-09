@@ -18,8 +18,8 @@
 #define BRPC_LOAD_BALANCER_WITH_NAMING_H
 
 #include "butil/intrusive_ptr.hpp"
-#include "brpc/load_balancer.h"
-#include "brpc/details/naming_service_thread.h"         // NamingServiceWatcher
+#include "brpc/details/shared_load_balancer.h"
+#include "brpc/details/shared_naming_service.h"    // NamingServiceWatcher
 
 
 namespace brpc {
@@ -32,15 +32,16 @@ public:
 
     int Init(const char* ns_url, const char* lb_name,
              const NamingServiceFilter* filter,
-             const GetNamingServiceThreadOptions* options);
-    
+             const GetSharedNamingServiceOptions* options);
+
+protected:
     void OnAddedServers(const std::vector<ServerId>& servers);
     void OnRemovedServers(const std::vector<ServerId>& servers);
 
     void Describe(std::ostream& os, const DescribeOptions& options);
 
 private:
-    butil::intrusive_ptr<NamingServiceThread> _nsthread_ptr;
+    butil::intrusive_ptr<SharedNamingService> _nsthread_ptr;
 };
 
 } // namespace brpc

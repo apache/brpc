@@ -149,7 +149,7 @@ pthread_once_t register_mock_protocol = PTHREAD_ONCE_INIT;
 class ChannelTest : public ::testing::Test{
 protected:
     ChannelTest() 
-        : _ep(butil::IP_ANY, 8787)
+        : _ep(butil::IP_ANY, 9787)
         , _close_fd_once(false) {
         pthread_once(&register_mock_protocol, register_protocol);
         const brpc::InputMessageHandler pairs[] = {
@@ -1866,7 +1866,7 @@ TEST_F(ChannelTest, init_using_naming_service) {
     brpc::LoadBalancerWithNaming* lb =
         dynamic_cast<brpc::LoadBalancerWithNaming*>(channel->_lb.get());
     ASSERT_TRUE(lb != NULL);
-    brpc::NamingServiceThread* ns = lb->_nsthread_ptr.get();
+    brpc::SharedNamingService* ns = lb->_nsthread_ptr.get();
 
     {
         const int NUM = 10;

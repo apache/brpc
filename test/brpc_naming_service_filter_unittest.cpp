@@ -9,7 +9,7 @@
 #include "butil/files/temp_file.h"
 #include "brpc/socket.h"
 #include "brpc/channel.h"
-#include "brpc/load_balancer.h"
+#include "brpc/details/shared_load_balancer.h"
 #include "brpc/policy/file_naming_service.h"
 
 class NamingServiceFilterTest : public testing::Test {

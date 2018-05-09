@@ -17,7 +17,7 @@
 #ifndef  BRPC_POLICY_CONSUL_NAMING_SERVICE
 #define  BRPC_POLICY_CONSUL_NAMING_SERVICE
 
-#include "brpc/naming_service.h"
+#include "brpc/periodic_naming_service.h"
 #include "brpc/channel.h"
 
 
@@ -25,22 +25,17 @@ namespace brpc {
 class Channel;
 namespace policy {
 
-class ConsulNamingService : public NamingService {
+class ConsulNamingService : public PeriodicNamingService {
 private:
-    int RunNamingService(const char* service_name,
-                         NamingServiceActions* actions);
-
-    int GetServers(const char* service_name,
-                   std::vector<ServerNode>* servers);
-
     void Describe(std::ostream& os, const DescribeOptions&) const;
 
     NamingService* New() const;
 
+    int GetServers(const char* service_name,
+                   std::vector<ServerNode>* servers);
+
     int DegradeToOtherServiceIfNeeded(const char* service_name,
                                       std::vector<ServerNode>* servers);
-
-    void Destroy();
 
 private:
     Channel _channel;

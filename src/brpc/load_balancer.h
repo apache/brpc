@@ -17,14 +17,11 @@
 #ifndef BRPC_LOAD_BALANCER_H
 #define BRPC_LOAD_BALANCER_H
 
-#include "bvar/passive_status.h"
 #include "brpc/describable.h"
 #include "brpc/destroyable.h"
 #include "brpc/excluded_servers.h"                // ExcludedServers
-#include "brpc/shared_object.h"                   // SharedObject
 #include "brpc/server_id.h"                       // ServerId
 #include "brpc/extension.h"                       // Extension<T>
-
 
 namespace brpc {
 
@@ -98,80 +95,11 @@ public:
     // successful and out->need_feedback was set to true.
     virtual void Feedback(const CallInfo& /*info*/) { }
 
-    // Create/destroy an instance.
-    // Caller is responsible for Destroy() the instance after usage.
+    // Create an instance which will be destroyed by Destroy() (inherited from Destroyable)
     virtual LoadBalancer* New() const = 0;
 
 protected:
     virtual ~LoadBalancer() { }
-};
-
-DECLARE_bool(show_lb_in_vars);
-
-// A intrusively shareable load balancer created from name.
-class SharedLoadBalancer : public SharedObject, public NonConstDescribable {
-public:
-    SharedLoadBalancer();
-    ~SharedLoadBalancer();
-
-    int Init(const char* lb_name);
-
-    int SelectServer(const LoadBalancer::SelectIn& in,
-                     LoadBalancer::SelectOut* out) {
-        if (FLAGS_show_lb_in_vars && !_exposed) {
-            ExposeLB();
-        }
-        return _lb->SelectServer(in, out);
-    }
-
-    void Feedback(const LoadBalancer::CallInfo& info) { _lb->Feedback(info); }
-    
-    bool AddServer(const ServerId& server) {
-        if (_lb->AddServer(server)) {
-            _weight_sum.fetch_add(1, butil::memory_order_relaxed);
-            return true;
-        }
-        return false;
-    }
-    bool RemoveServer(const ServerId& server) {
-        if (_lb->RemoveServer(server)) {
-            _weight_sum.fetch_sub(1, butil::memory_order_relaxed);
-            return true;
-        }
-        return false;
-    }
-    
-    size_t AddServersInBatch(const std::vector<ServerId>& servers) {
-        size_t n = _lb->AddServersInBatch(servers);
-        if (n) {
-            _weight_sum.fetch_add(n, butil::memory_order_relaxed);
-        }
-        return n;
-    }
-
-    size_t RemoveServersInBatch(const std::vector<ServerId>& servers) {
-        size_t n = _lb->RemoveServersInBatch(servers);
-        if (n) {
-            _weight_sum.fetch_sub(n, butil::memory_order_relaxed);
-        }
-        return n;
-    }
-
-    virtual void Describe(std::ostream& os, const DescribeOptions&);
-
-    virtual int Weight() {
-        return _weight_sum.load(butil::memory_order_relaxed);
-    }
-
-private:
-    static void DescribeLB(std::ostream& os, void* arg);
-    void ExposeLB();
-
-    LoadBalancer* _lb;
-    butil::atomic<int> _weight_sum;
-    volatile bool _exposed;
-    butil::Mutex _st_mutex;
-    bvar::PassiveStatus<std::string> _st;
 };
 
 // For registering global instances.

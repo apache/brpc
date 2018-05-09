@@ -18,17 +18,40 @@
 #define BRPC_PERIODIC_NAMING_SERVICE_H
 
 #include "brpc/naming_service.h"
+#include "butil/build_config.h"
 
+// TODO: Move into build_config.h
+#ifndef BASE_FINAL
+# if defined(BASE_CXX11_ENABLED)
+#  define BASE_FINAL final
+# else
+#  define BASE_FINAL
+# endif
+#endif
 
 namespace brpc {
 
+class AccessNamingServiceTask;
+
+// Overwrite GetServers which will be called every -ns_access_interval seconds.
 class PeriodicNamingService : public NamingService {
+friend class AccessNamingServiceTask;
 protected:
+    PeriodicNamingService() : _task(NULL) {}
+
     virtual int GetServers(const char *service_name,
                            std::vector<ServerNode>* servers) = 0;
-    
-    int RunNamingService(const char* service_name,
-                         NamingServiceActions* actions);
+protected:
+    // @NamingService
+    void RunNamingService(const char* service_name,
+                          NamingServiceActions* actions);
+
+    // @Destroyable
+    void Destroy() BASE_FINAL;
+
+private:
+    // Not using intrusive_ptr to hide the inclusion.
+    AccessNamingServiceTask* _task;
 };
 
 } // namespace brpc

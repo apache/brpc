@@ -68,10 +68,6 @@ NamingService* BaiduNamingService::New() const {
     return new BaiduNamingService;
 }
 
-void BaiduNamingService::Destroy() {
-    delete this;
-}
-
 }  // namespace policy
 } // namespace brpc
 #endif  // BAIDU_INTERNAL

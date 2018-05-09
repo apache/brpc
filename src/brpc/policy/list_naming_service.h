@@ -25,12 +25,9 @@ namespace policy {
 
 class ListNamingService : public NamingService {
 private:
-    int RunNamingService(const char* service_name,
-                         NamingServiceActions* actions);
+    void RunNamingService(const char* service_name,
+                          NamingServiceActions* actions);
 
-    // We don't need a dedicated bthread to run this static NS.
-    bool RunNamingServiceReturnsQuickly() { return true; }
-    
     int GetServers(const char *service_name,
                    std::vector<ServerNode>* servers);
 
@@ -39,6 +36,9 @@ private:
     NamingService* New() const;
     
     void Destroy();
+
+private:
+    std::unique_ptr<NamingServiceActions> _actions;
 };
 
 }  // namespace policy

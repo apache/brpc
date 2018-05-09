@@ -34,8 +34,6 @@ public:
     void Describe(std::ostream& os, const DescribeOptions&) const;
     
     NamingService* New() const;
-    
-    void Destroy();
 };
 
 }  // namespace policy

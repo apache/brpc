@@ -27,12 +27,12 @@ LoadBalancerWithNaming::~LoadBalancerWithNaming() {
 
 int LoadBalancerWithNaming::Init(const char* ns_url, const char* lb_name,
                                  const NamingServiceFilter* filter,
-                                 const GetNamingServiceThreadOptions* options) {
+                                 const GetSharedNamingServiceOptions* options) {
     if (SharedLoadBalancer::Init(lb_name) != 0) {
         return -1;
     }
-    if (GetNamingServiceThread(&_nsthread_ptr, ns_url, options) != 0) {
-        LOG(FATAL) << "Fail to get NamingServiceThread";
+    if (GetSharedNamingService(&_nsthread_ptr, ns_url, options) != 0) {
+        LOG(ERROR) << "Fail to get SharedNamingService";
         return -1;
     }
     if (_nsthread_ptr->AddWatcher(this, filter) != 0) {
