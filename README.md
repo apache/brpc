@@ -107,4 +107,5 @@ Check following items after submitting the PR:
 
 - Compilations and unittests in [travis-ci](https://travis-ci.org/brpc/brpc/pull_requests) are passed.
 
-
+# Feedback
+Please report bugs, concerns, suggestions by issues, or join QQ-group 498837325 to discuss problems around source code.
