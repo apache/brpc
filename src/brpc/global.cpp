@@ -467,10 +467,11 @@ static void GlobalInitializeOrDieImpl() {
     }
 
     // Register Thrift framed protocol if linked
-
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
     if (brpc::RegisterThriftProtocol) {
         brpc::RegisterThriftProtocol();
     }
+#endif
 
     // Only valid at client side
     Protocol ubrpc_compack_protocol = {
