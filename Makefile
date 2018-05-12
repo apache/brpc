@@ -193,6 +193,7 @@ MCPACK2PB_OBJS = src/idl_options.pb.o $(addsuffix .o, $(basename $(MCPACK2PB_SOU
 
 ifeq (ENABLE_THRIFT_FRAMED_PROTOCOL, $(findstring ENABLE_THRIFT_FRAMED_PROTOCOL, $(CPPFLAGS)))
     THRIFT_OBJS = $(addsuffix .o, $(basename $(THRIFT_SOURCES)))
+    libbrpc_thrift = $(libbrpc_thrift.a)
 endif
 
 OBJS=$(BUTIL_OBJS) $(BVAR_OBJS) $(BTHREAD_OBJS) $(JSON2PB_OBJS) $(MCPACK2PB_OBJS) $(BRPC_OBJS)
@@ -203,7 +204,7 @@ DEBUG_OBJS = $(OBJS:.o=.dbg.o)
 PROTOS=$(BRPC_PROTOS) src/idl_options.proto
 
 .PHONY:all
-all:  protoc-gen-mcpack libbrpc.a $(TARGET_LIB_DY) libbrpc_thrift.a  output/include output/lib output/bin
+all:  protoc-gen-mcpack libbrpc.a $(TARGET_LIB_DY) $(libbrpc_thrift) output/include output/lib output/bin
 
 .PHONY:debug
 debug: test/libbrpc.dbg.a test/libbvar.dbg.a
@@ -211,7 +212,7 @@ debug: test/libbrpc.dbg.a test/libbvar.dbg.a
 .PHONY:clean
 clean:
 	@echo "Cleaning"
-	@rm -rf src/mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a $(TARGET_LIB_DY) libbrpc_thrift.a $(OBJS) output/include output/lib output/bin $(PROTOS:.proto=.pb.h) $(PROTOS:.proto=.pb.cc)
+	@rm -rf src/mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a $(TARGET_LIB_DY) $(libbrpc_thrift) $(OBJS) output/include output/lib output/bin $(PROTOS:.proto=.pb.h) $(PROTOS:.proto=.pb.cc)
 
 .PHONY:clean_debug
 clean_debug:
@@ -248,9 +249,11 @@ test/libbrpc.dbg.a:$(BRPC_PROTOS:.proto=.pb.h) $(DEBUG_OBJS)
 	@echo "Packing $@"
 	@ar crs $@ $(filter %.o,$^)
 
+ifeq (ENABLE_THRIFT_FRAMED_PROTOCOL, $(findstring ENABLE_THRIFT_FRAMED_PROTOCOL, $(CPPFLAGS)))
 libbrpc_thrift.a:$(THRIFT_OBJS)
 	@echo "Packing $@"
 	@ar crs $@ $(filter %.o,$^)
+endif
 
 .PHONY:output/include
 output/include:
@@ -260,7 +263,7 @@ output/include:
 	@cp src/idl_options.proto src/idl_options.pb.h $@
 
 .PHONY:output/lib
-output/lib:libbrpc.a $(TARGET_LIB_DY) libbrpc_thrift.a
+output/lib:libbrpc.a $(TARGET_LIB_DY) $(libbrpc_thrift)
 	@echo "Copying to $@"
 	@mkdir -p $@
 	@cp $^ $@
