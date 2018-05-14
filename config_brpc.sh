@@ -1,6 +1,10 @@
 SYSTEM=$(uname -s)
 if [ "$SYSTEM" = "Darwin" ]; then
-    ECHO='echo -e'
+    if [ -z "$BASH" ] || [ "$BASH" = "/bin/sh" ] ; then
+        ECHO=echo
+    else
+        ECHO='echo -e'
+    fi
     SO=dylib
     LDD="otool -L"
     if [ "$(getopt -V)" = " --" ]; then
