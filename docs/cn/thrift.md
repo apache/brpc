@@ -1,3 +1,5 @@
+[English Version](../en/thrift.md)
+
 [thrift](https://thrift.apache.org/)是近几年应用较广的Facebook发布的RPC服务, 为了使用户更方便,快捷的利用bthread的并发能力，brpc实现并支持thrift工作在NonBlocking模式下的协议(FramedProtocol), 注意本文中所说的thrift协议一律指的是此种情况下的thrift协议.
 示例程序：[example/thrift_extension_c++](https://github.com/brpc/brpc/tree/master/example/thrift_extension_c++/)
 
@@ -23,7 +25,7 @@ sudo make install
 ```bash
 sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --nodebugsymbols --with-thrift
 ```
-编译完成后会生成libbrpc.a 和libbrpc_thrift.a, thrift扩展协议支持以静态库的方式提供给用户, 用户在需要启用thrift协议的时候链接即可
+编译完成后会生成libbrpc.a 和libbrpc_thrift.a, thrift扩展协议以静态库的方式提供给用户, 用户在需要启用thrift协议的时候链接即可
 
 # Thrift 原生消息定义, echo.thrift:
 ```c++
