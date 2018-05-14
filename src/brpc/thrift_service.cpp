@@ -21,8 +21,6 @@
 
 namespace brpc {
 
-BAIDU_CASSERT(sizeof(thrift_binary_head_t) == 4, sizeof_thrift_must_be_4);
-
 ThriftService::ThriftService() : _additional_space(0) {
     _status = new (std::nothrow) MethodStatus;
     LOG_IF(FATAL, _status == NULL) << "Fail to new MethodStatus";

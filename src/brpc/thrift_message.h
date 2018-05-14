@@ -29,7 +29,6 @@
 #include <google/protobuf/generated_message_reflection.h>
 #include "google/protobuf/descriptor.pb.h"
 
-#include "brpc/details/thrift_binary_head.h"               // thrfit_binary_head_t
 #include "brpc/details/thrift_utils.h"
 #include "butil/iobuf.h"
 
@@ -38,14 +37,20 @@
 namespace brpc {
 
 // Internal implementation detail -- do not call these.
-void protobuf_AddDesc_baidu_2frpc_2fthrift_binary_5fmessage_2eproto();
-void protobuf_AssignDesc_baidu_2frpc_2fthrift_binary_5fmessage_2eproto();
-void protobuf_ShutdownFile_baidu_2frpc_2fthrift_binary_5fmessage_2eproto();
+void protobuf_AddDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
+void protobuf_AssignDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
+void protobuf_ShutdownFile_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
 
-// Representing a thrift_binary request or response.
-class ThriftMessage : public ::google::protobuf::Message {
+static const int32_t THRIFT_HEAD_VERSION_MASK = (int32_t)0xffffff00;
+static const int32_t THRIFT_HEAD_VERSION_1 = (int32_t)0x80010000;
+struct thrift_head_t {
+    int32_t  body_len;
+};
+
+// Representing a thrift framed request or response.
+class ThriftFramedMessage : public ::google::protobuf::Message {
 public:
-    thrift_binary_head_t head;
+    thrift_head_t head;
     butil::IOBuf body;
     void (*thrift_raw_instance_deleter) (void*);
     uint32_t (*thrift_raw_instance_writer) (void*, void*);
@@ -55,28 +60,28 @@ public:
     std::string method_name;
 
 public:
-    ThriftMessage();
-    virtual ~ThriftMessage();
+    ThriftFramedMessage();
+    virtual ~ThriftFramedMessage();
   
-    ThriftMessage(const ThriftMessage& from);
+    ThriftFramedMessage(const ThriftFramedMessage& from);
   
-    inline ThriftMessage& operator=(const ThriftMessage& from) {
+    inline ThriftFramedMessage& operator=(const ThriftFramedMessage& from) {
         CopyFrom(from);
         return *this;
     }
   
     static const ::google::protobuf::Descriptor* descriptor();
-    static const ThriftMessage& default_instance();
+    static const ThriftFramedMessage& default_instance();
   
-    void Swap(ThriftMessage* other);
+    void Swap(ThriftFramedMessage* other);
   
     // implements Message ----------------------------------------------
   
-    ThriftMessage* New() const;
+    ThriftFramedMessage* New() const;
     void CopyFrom(const ::google::protobuf::Message& from);
     void MergeFrom(const ::google::protobuf::Message& from);
-    void CopyFrom(const ThriftMessage& from);
-    void MergeFrom(const ThriftMessage& from);
+    void CopyFrom(const ThriftFramedMessage& from);
+    void MergeFrom(const ThriftFramedMessage& from);
     void Clear();
     bool IsInitialized() const;
   
@@ -93,12 +98,11 @@ public:
     virtual uint32_t read(void* iprot) { return 0;}
 
     template<typename T>
-    T* cast() {
-
+    T* Cast() {
         thrift_raw_instance = new T;
         assert(thrift_raw_instance);
 
-        // serilize binary thrift message to thrift struct request
+        // serialize binary thrift message to thrift struct request
         // for response, we just return the new instance and deserialize it in Closure
         if (body.size() > 0 ) {
             if (serialize_iobuf_to_thrift_message<T>(body, thrift_raw_instance,
@@ -118,27 +122,27 @@ private:
     void SharedCtor();
     void SharedDtor();
 private:
-friend void protobuf_AddDesc_baidu_2frpc_2fthrift_binary_5fmessage_2eproto_impl();
-friend void protobuf_AddDesc_baidu_2frpc_2fthrift_binary_5fmessage_2eproto();
-friend void protobuf_AssignDesc_baidu_2frpc_2fthrift_binary_5fmessage_2eproto();
-friend void protobuf_ShutdownFile_baidu_2frpc_2fthrift_binary_5fmessage_2eproto();
+friend void protobuf_AddDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto_impl();
+friend void protobuf_AddDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
+friend void protobuf_AssignDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
+friend void protobuf_ShutdownFile_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
 
     void InitAsDefaultInstance();
-    static ThriftMessage* default_instance_;
+    static ThriftFramedMessage* default_instance_;
 };
 
 template <typename T>
-class ThriftTemplateMessage : public ThriftMessage {
+class ThriftMessage : public ThriftFramedMessage {
 
 public:
-    ThriftTemplateMessage() {
+    ThriftMessage() {
         thrift_message_ = new T;
         assert(thrift_message_ != nullptr);
     }
 
-    virtual ~ThriftTemplateMessage() { delete thrift_message_; }
+    virtual ~ThriftMessage() { delete thrift_message_; }
 
-    ThriftTemplateMessage<T>& operator= (const ThriftTemplateMessage<T>& other) {
+    ThriftMessage<T>& operator= (const ThriftMessage<T>& other) {
         *thrift_message_ = *(other.thrift_message_);
         return *this;
     }

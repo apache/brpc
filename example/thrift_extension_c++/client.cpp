@@ -68,8 +68,8 @@ int main(int argc, char* argv[]) {
         cntl.set_log_id(log_id ++);  // set by user
 
         // wrapper thrift raw request into ThriftMessage
-        brpc::ThriftTemplateMessage<example::EchoRequest> req;
-        brpc::ThriftTemplateMessage<example::EchoResponse> res;
+        brpc::ThriftMessage<example::EchoRequest> req;
+        brpc::ThriftMessage<example::EchoResponse> res;
 
         req.raw().data = "hello";
 

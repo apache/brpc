@@ -20,7 +20,7 @@
 #define BRPC_THRIFT_SERVICE_H
 
 #include "brpc/controller.h"                        // Controller
-#include "brpc/thrift_message.h"             // ThriftMessage
+#include "brpc/thrift_message.h"                    // ThriftFramedMessage
 #include "brpc/describable.h"
 
 
@@ -66,8 +66,8 @@ friend class DeleteThriftClosure;
     Socket* _socket_ptr;
     const Server* _server;
     int64_t _start_parse_us;
-    ThriftMessage _request;
-    ThriftMessage _response;
+    ThriftFramedMessage _request;
+    ThriftFramedMessage _response;
     bool _do_respond;
     void* _additional_space;
     Controller _controller;
@@ -102,8 +102,8 @@ public:
     //   done        You must call done->Run() to end the processing.
     virtual void ProcessThriftFramedRequest(const Server& server,
                                       Controller* controller,
-                                      ThriftMessage* request,
-                                      ThriftMessage* response,
+                                      ThriftFramedMessage* request,
+                                      ThriftFramedMessage* response,
                                       ThriftClosure* done) = 0;
 
     // Put descriptions into the stream.

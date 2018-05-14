@@ -12,20 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// utils for serilize/deserilize thrift binary message to brpc protobuf obj.
+// utils for serialize/parse thrift binary message to brpc protobuf obj.
 
 #ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
 
 #ifndef BRPC_THRIFT_UTILS_H
 #define BRPC_THRIFT_UTILS_H
 
-#include <boost/make_shared.hpp>
-
 #include "butil/iobuf.h"
 
 #include <thrift/TDispatchProcessor.h>
 #include <thrift/transport/TBufferTransports.h>
 #include <thrift/protocol/TBinaryProtocol.h>
+
+// _THRIFT_STDCXX_H_ is defined by thrift/stdcxx.h which was added since thrift 0.11.0
+// TDispatcherProcessor.h above uses shared_ptr and should include stdcxx.h
+#ifndef THRIFT_STDCXX
+ #if defined(_THRIFT_STDCXX_H_)
+ # define THRIFT_STDCXX apache::thrift::stdcxx
+ #else
+ # define THRIFT_STDCXX boost
+ #endif
+#endif
 
 namespace brpc {
 
@@ -45,9 +53,9 @@ bool serialize_iobuf_to_thrift_message(butil::IOBuf& body,
     void* thrift_raw_instance, std::string* method_name, int32_t* thrift_message_seq_id) {
 
     auto in_buffer =
-        boost::make_shared<apache::thrift::transport::TMemoryBuffer>();
+        THRIFT_STDCXX::make_shared<apache::thrift::transport::TMemoryBuffer>();
     auto in_portocol =
-        boost::make_shared<apache::thrift::protocol::TBinaryProtocol>(in_buffer);
+        THRIFT_STDCXX::make_shared<apache::thrift::protocol::TBinaryProtocol>(in_buffer);
     
     // Cut the thrift buffer and parse thrift message
     size_t body_len  = body.size();
