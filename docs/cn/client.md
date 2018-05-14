@@ -543,6 +543,7 @@ Channel的默认协议是baidu_std，可通过设置ChannelOptions.protocol换�
 - PROTOCOL_REDIS 或 "redis"，redis 1.2后的协议（也是hiredis支持的协议），默认为单连接。具体方法见[访问Redis](redis_client.md)。
 - PROTOCOL_NSHEAD_MCPACK 或 "nshead_mcpack", 顾名思义，格式为nshead + mcpack，使用mcpack2pb适配，默认为连接池。
 - PROTOCOL_ESP 或 "esp"，访问使用esp协议的服务，默认为连接池。
+- PROTOCOL_THRIFT 或 "thrift"，访问使用thrift协议的服务，默认为连接池, 具体方法见[访问thrift](thrift.md)。
 
 ## 连接方式
 
