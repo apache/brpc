@@ -8,7 +8,7 @@
 // of hash_map. Allows all platforms to use |butil::hash_map| and
 // |butil::hash_set|.
 //  eg:
-//   butil::hash_map<int> my_map;
+//   butil::hash_map<int, std::string> my_map;
 //   butil::hash_set<int> my_set;
 //
 // NOTE: It is an explicit non-goal of this class to provide a generic hash
