@@ -77,6 +77,7 @@
 extern "C" {
 // defined in gperftools/malloc_extension_c.h
 void BAIDU_WEAK MallocExtension_ReleaseFreeMemory(void);
+void BAIDU_WEAK RegisterThriftProtocol();
 }
 
 namespace brpc {
@@ -97,7 +98,6 @@ using namespace policy;
 
 const char* const DUMMY_SERVER_PORT_FILE = "dummy_server.port";
 
-void __attribute__((weak)) RegisterThriftProtocol();
 
 struct GlobalExtensions {
     GlobalExtensions()
@@ -467,9 +467,8 @@ static void GlobalInitializeOrDieImpl() {
     }
 
     // Register Thrift framed protocol if linked
-
-    if (brpc::RegisterThriftProtocol) {
-        brpc::RegisterThriftProtocol();
+    if (RegisterThriftProtocol) {
+        RegisterThriftProtocol();
     }
 
     // Only valid at client side

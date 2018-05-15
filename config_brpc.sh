@@ -276,7 +276,7 @@ if [ ! -z "$DEBUGSYMBOLS" ]; then
 fi
 if [ "$SYSTEM" = "Darwin" ]; then
     CPPFLAGS="${CPPFLAGS} -Wno-deprecated-declarations"
-    version=`system_profiler SPSoftwareDataType | grep "System Version" | awk '{print $5}' | awk -F. '{printf "%d.%d", $1, $2}'`
+    version=`sw_vers -productVersion | awk -F '.' '{print $1 "." $2}'`
     if [[ `echo "$version<10.12" | bc -l` == 1 ]]; then
         CPPFLAGS="${CPPFLAGS} -DNO_CLOCK_GETTIME_IN_MAC"
     fi
