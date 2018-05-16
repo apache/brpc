@@ -22,6 +22,7 @@ option(DEBUG "Print debug logs" OFF)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
 option(WITH_RDMA "With RDMA" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
+option(BUILD_BENCHMARK "Whether to build benchmark" ON)
 
 set(WITH_GLOG_VAL "0")
 if(BRPC_WITH_GLOG)
@@ -143,7 +144,6 @@ endif()
 # for rdma extension
 if(WITH_RDMA)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBRPC_RDMA")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DBRPC_RDMA")
     link_libraries("-libverbs -lrdmacm -lnl")
 endif()
 
@@ -302,8 +302,8 @@ set(PROTO_FILES idl_options.proto
                 brpc/nshead_meta.proto
                 brpc/options.proto
                 brpc/rdma/rdma.proto
-                brpc/policy/baidu_rpc_meta.proto
                 brpc/policy/rdma_meta.proto
+                brpc/policy/baidu_rpc_meta.proto
                 brpc/policy/hulu_pbrpc_meta.proto
                 brpc/policy/public_pbrpc_meta.proto
                 brpc/policy/sofa_pbrpc_meta.proto
@@ -329,6 +329,9 @@ set(SOURCES
 add_subdirectory(src)
 if(BUILD_UNIT_TESTS)
     add_subdirectory(test)
+endif()
+if(BUILD_BENCHMARK)
+    add_subdirectory(benchmark)
 endif()
 add_subdirectory(tools)
 
