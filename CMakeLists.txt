@@ -133,7 +133,14 @@ if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
 endif()
 
-find_path(SSL_INCLUDE_PATH NAMES openssl/ssl.h)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(OPENSSL_ROOT_DIR
+        "/usr/local/opt/openssl"    # Homebrew installed OpenSSL
+        )
+endif()
+
+include(FindOpenSSL)
+set(SSL_INCLUDE_PATH ${OPENSSL_INCLUDE_DIR})
 find_library(SSL_LIB NAMES ssl)
 if ((NOT SSL_INCLUDE_PATH) OR (NOT SSL_LIB))
     message(FATAL_ERROR "Fail to find ssl")
@@ -163,7 +170,18 @@ set(DYNAMIC_LIB
     dl
     z
     )
-set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lrt -lssl -lcrypto -ldl -lz")
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lrt -lssl -lcrypto -ldl -lz")
+
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ldl -lz")
+
+else()
+    set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lrt -lssl -lcrypto -ldl -lz")
+
+endif()
+
 if(BRPC_WITH_GLOG)
     set(DYNAMIC_LIB ${DYNAMIC_LIB} ${GLOG_LIB})
     set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lglog")
