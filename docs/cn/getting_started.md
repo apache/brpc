@@ -222,7 +222,7 @@ To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compi
 
 Install common deps:
 ```
-$ brew install openssl git gnu-getopt
+$ brew install openssl git gnu-getopt coreutils
 ```
 
 Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
