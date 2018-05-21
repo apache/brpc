@@ -51,7 +51,7 @@ foo::bar::g_task_pushed << 1;
 - `bvar::Miner<T>` : 求最小值，默认std::numeric_limits<T>::max()，varname << N相当于varname = min(varname, N)。
 - `bvar::IntRecorder` : 求自使用以来的平均值。注意这里的定语不是“一段时间内”。一般要通过Window衍生出时间窗口内的平均值。
 - `bvar::Window<VAR>` : 获得某个bvar在一段时间内的累加值。Window衍生于已存在的bvar，会自动更新。
-- `bvar::PerSecond<VAR>` : 或的某个bvar在一段时间内平均每秒的累加值。PerSecond也是会自动更新的衍生变量。
+- `bvar::PerSecond<VAR>` : 获得某个bvar在一段时间内平均每秒的累加值。PerSecond也是会自动更新的衍生变量。
 - `bvar::LatencyRecorder` : 专用于记录延时和qps的变量。输入延时，平均延时/最大延时/qps/总次数 都有了。
 
 **确认变量名是全局唯一的！**否则会曝光失败，如果-bvar_abort_on_same_name为true，程序会直接abort。
