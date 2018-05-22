@@ -1,6 +1,10 @@
 SYSTEM=$(uname -s)
 if [ "$SYSTEM" = "Darwin" ]; then
-    ECHO='echo -e'
+    if [ -z "$BASH" ] || [ "$BASH" = "/bin/sh" ] ; then
+        ECHO=echo
+    else
+        ECHO='echo -e'
+    fi
     SO=dylib
     LDD="otool -L"
     if [ "$(getopt -V)" = " --" ]; then
@@ -142,6 +146,7 @@ if [ "$SYSTEM" = "Darwin" ]; then
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_MallocExtension_ReleaseFreeMemory"
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_ProfilerStart"
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_ProfilerStop"
+	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_RegisterThriftProtocol"
 fi
 append_linking() {
     if [ -f $1/lib${2}.a ]; then
@@ -272,7 +277,7 @@ if [ ! -z "$DEBUGSYMBOLS" ]; then
 fi
 if [ "$SYSTEM" = "Darwin" ]; then
     CPPFLAGS="${CPPFLAGS} -Wno-deprecated-declarations"
-    version=`system_profiler SPSoftwareDataType | grep "System Version" | awk '{print $5}' | awk -F. '{printf "%d.%d", $1, $2}'`
+    version=`sw_vers -productVersion | awk -F '.' '{print $1 "." $2}'`
     if [[ `echo "$version<10.12" | bc -l` == 1 ]]; then
         CPPFLAGS="${CPPFLAGS} -DNO_CLOCK_GETTIME_IN_MAC"
     fi
