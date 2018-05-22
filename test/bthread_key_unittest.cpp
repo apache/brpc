@@ -74,7 +74,7 @@ static void worker1_impl(Counters* cs) {
             << "i=" << i << " is_bthread=" << !!bthread_self();
             
     }
-    // Sleep awhile to make some context switches. TLS should be unchanged.
+    // Sleep a while to make some context switches. TLS should be unchanged.
     bthread_usleep(10000);
     
     for (size_t i = 0; i < arraysize(k); ++i) {

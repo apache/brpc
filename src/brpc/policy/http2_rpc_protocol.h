@@ -58,7 +58,7 @@ inline H2ParseResult MakeH2Message(H2StreamContext* msg)
 { return H2ParseResult(msg); }
 
 class H2Context;
-class H2FrameHead;
+struct H2FrameHead;
 
 enum H2StreamState {
     H2_STREAM_IDLE = 0,

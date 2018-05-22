@@ -33,7 +33,7 @@ else()
     message(FATAL_ERROR "Googletest is not available")
 endif()
 
-set(CMAKE_CPP_FLAGS "-DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
+set(CMAKE_CPP_FLAGS "${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES -D__STRICT_ANSI__ -include ${CMAKE_SOURCE_DIR}/test/sstream_workaround.h")
 set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
 use_cxx11()
@@ -70,7 +70,6 @@ SET(TEST_BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/test/cpu_unittest.cc
     ${CMAKE_SOURCE_DIR}/test/crash_logging_unittest.cc
     ${CMAKE_SOURCE_DIR}/test/leak_tracker_unittest.cc
-    ${CMAKE_SOURCE_DIR}/test/proc_maps_linux_unittest.cc
     ${CMAKE_SOURCE_DIR}/test/stack_trace_unittest.cc
     ${CMAKE_SOURCE_DIR}/test/environment_unittest.cc
     ${CMAKE_SOURCE_DIR}/test/file_util_unittest.cc
@@ -151,38 +150,56 @@ SET(TEST_BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/test/iobuf_unittest.cpp
     ${CMAKE_SOURCE_DIR}/test/test_switches.cc
     ${CMAKE_SOURCE_DIR}/test/scoped_locale.cc
-    ${CMAKE_SOURCE_DIR}/test/test_file_util_linux.cc
     ${CMAKE_SOURCE_DIR}/test/butil_unittest_main.cpp
     ${CMAKE_SOURCE_DIR}/test/butil_unittest_main.cpp
 	)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+SET(TEST_BUTIL_SOURCES ${TEST_BUTIL_SOURCES}
+    ${CMAKE_SOURCE_DIR}/test/proc_maps_linux_unittest.cc
+    ${CMAKE_SOURCE_DIR}/test/test_file_util_linux.cc)
+endif()
+
+# bthread_* functions are used in logging.cc, and they need to be marked as
+# weak symbols explicitly in Darwin system.
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(DYNAMIC_LIB ${DYNAMIC_LIB}
+                    "-Wl,-U,_bthread_getspecific"
+                    "-Wl,-U,_bthread_setspecific"
+                    "-Wl,-U,_bthread_key_create")
+endif()
+
+# create executable
+add_executable(test_butil ${TEST_BUTIL_SOURCES}
+                          ${CMAKE_CURRENT_BINARY_DIR}/iobuf.pb.cc
+                          $<TARGET_OBJECTS:BUTIL_LIB>)
+target_link_libraries(test_butil gtest
+                                 ${GPERFTOOLS_LIBRARIES}
+                                 ${DYNAMIC_LIB})
+
 # -DBVAR_NOT_LINK_DEFAULT_VARIABLES not work for gcc >= 5.0, just remove the file to prevent linking into unit tests
 list(REMOVE_ITEM BVAR_SOURCES ${CMAKE_SOURCE_DIR}/src/bvar/default_variables.cpp)
 
+add_library(BVAR_OBJ OBJECT ${BVAR_SOURCES})
 file(GLOB TEST_BVAR_SRCS "bvar_*_unittest.cpp")
 add_executable(test_bvar $<TARGET_OBJECTS:BUTIL_LIB>
-                         $<TARGET_OBJECTS:PROTO_LIB>
-                         ${BVAR_SOURCES}
+                         $<TARGET_OBJECTS:BVAR_OBJ>
                          ${TEST_BVAR_SRCS})
 target_link_libraries(test_bvar gtest
                                 ${GPERFTOOLS_LIBRARIES}
                                 ${DYNAMIC_LIB})
 
-add_executable(test_butil ${TEST_BUTIL_SOURCES}
-                          $<TARGET_OBJECTS:TEST_PROTO_LIB>
-                          $<TARGET_OBJECTS:BUTIL_LIB>
-                          $<TARGET_OBJECTS:OBJ_LIB>
-                          $<TARGET_OBJECTS:PROTO_LIB>)
-target_link_libraries(test_butil gtest ${GPERFTOOLS_LIBRARIES} ${DYNAMIC_LIB})
-
+add_library(BTHREAD_OBJ OBJECT ${BTHREAD_SOURCES})
+add_library(PROTO_OBJ OBJECT ${PROTO_SRCS})
 file(GLOB BTHREAD_UNITTESTS "bthread*unittest.cpp")
 foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
     get_filename_component(BTHREAD_UT_WE ${BTHREAD_UT} NAME_WE)
     add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT} 
-                                    $<TARGET_OBJECTS:TEST_PROTO_LIB>
                                     $<TARGET_OBJECTS:BUTIL_LIB>
-                                    $<TARGET_OBJECTS:OBJ_LIB>
-                                    $<TARGET_OBJECTS:PROTO_LIB>)
+                                    $<TARGET_OBJECTS:BVAR_OBJ>
+                                    $<TARGET_OBJECTS:BTHREAD_OBJ>
+                                    $<TARGET_OBJECTS:PROTO_LIB>
+                                    $<TARGET_OBJECTS:TEST_PROTO_LIB>)
     target_link_libraries(${BTHREAD_UT_WE}
                           gtest_main
                           ${GPERFTOOLS_LIBRARIES}

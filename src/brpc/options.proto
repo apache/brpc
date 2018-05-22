@@ -44,8 +44,9 @@ enum ProtocolType {
     PROTOCOL_UBRPC_MCPACK2 = 22;       // Client side only
     // Reserve special protocol for cds-agent, which depends on FIFO right now
     PROTOCOL_CDS_AGENT = 23;           // Client side only
-    PROTOCOL_ESP = 24;           // Client side only
+    PROTOCOL_ESP = 24;                 // Client side only
     PROTOCOL_HTTP2 = 25;
+    PROTOCOL_THRIFT = 26;              // Server side only
 }
 
 enum CompressType {

@@ -98,6 +98,9 @@ inline iov_function get_preadv_func() {
         PLOG(WARNING) << "Fail to open /dev/zero";
         return user_preadv;
     }
+#if defined(OS_MACOSX)
+    return user_preadv;
+#endif
     char dummy[1];
     iovec vec = { dummy, sizeof(dummy) };
     const int rc = syscall(SYS_preadv, (int)fd, &vec, 1, 0);
@@ -115,6 +118,9 @@ inline iov_function get_pwritev_func() {
         PLOG(ERROR) << "Fail to open /dev/null";
         return user_pwritev;
     }
+#if defined(OS_MACOSX)
+    return user_pwritev;
+#endif
     char dummy[1];
     iovec vec = { dummy, sizeof(dummy) };
     const int rc = syscall(SYS_pwritev, (int)fd, &vec, 1, 0);

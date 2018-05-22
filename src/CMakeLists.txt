@@ -29,6 +29,11 @@ if(BRPC_WITH_GLOG)
     target_link_libraries(brpc-shared ${GLOG_LIB})
 endif()
 
+if(BRPC_WITH_THRIFT)
+    target_link_libraries(brpc-shared thrift)
+    target_link_libraries(brpc-static thrift)
+endif()
+
 SET_TARGET_PROPERTIES(brpc-static PROPERTIES OUTPUT_NAME brpc CLEAN_DIRECT_OUTPUT 1)
 SET_TARGET_PROPERTIES(brpc-shared PROPERTIES OUTPUT_NAME brpc CLEAN_DIRECT_OUTPUT 1)
 

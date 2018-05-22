@@ -56,7 +56,7 @@ extern int bthread_timer_del(bthread_timer_t id);
 // current implementation relies on EPOLL_CTL_ADD and EPOLL_CTL_DEL which
 // are not scalable, don't use bthread_fd_*wait functions in performance
 // critical scenario.
-extern int bthread_fd_wait(int fd, unsigned epoll_events);
+extern int bthread_fd_wait(int fd, unsigned events);
 
 // Suspend caller thread until the file descriptor `fd' has `epoll_events'
 // or CLOCK_REALTIME reached `abstime' if abstime is not NULL.

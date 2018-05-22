@@ -107,3 +107,7 @@
 提交PR后请检查如下内容：
 
 * [travis-ci](https://travis-ci.org/brpc/brpc/pull_requests)中的编译和单测均已成功。
+
+# 反馈问题
+
+bug、修改建议、疑惑都欢迎提在issue中，或加入qq群498837325交流源码方面的问题。
