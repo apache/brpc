@@ -1,18 +1,19 @@
 [中文版](../cn/thrift.md)
 
-[thrift](https://thrift.apache.org/)is a RPC framework used widely in production area which was developed by Facebook, In order to access thrift servers more conveniently and make full use of bthread's capability of concurrency, brpc directly supports the thrift protocol.
+[thrift](https://thrift.apache.org/)is a RPC framework used widely in production environment which was developed by Facebook. In order to access thrift servers more conveniently and make full use of concurrency ability of bthread, brpc directly supports the thrift protocol.
 Check [example/thrift_extension_c++](https://github.com/brpc/brpc/tree/master/example/thrift_extension_c++/) for an example.
 
 Advantages compared to the official thrift client:
 - Thread safety. No need to set up separate clients for each thread.
-- Support synchronous, asynchronous, semi-synchronous accesses etc. Support [ParallelChannel etc](combo_channel.md) to define access patterns declaratively.
+- Supports synchronous, asynchronous, batch synchronous, batch asynchronous, and other access methods. Combination channels such as ParallelChannel are also supported.
 - Support various connection types(short, connection pool). Support timeout, backup request, cancellation, tracing, built-in services, and other benefits offered by brpc.
 
 # Compile and Run
-In order to not depend on and compile with thrift library for most of the users, the thrift protocol wasn't supported in brpc by default. configure brpc with --with-thrift if you want to enable thrift protocol in brpc(actually it works with a Macro ENABLE_THRIFT_FRAMED_PROTOCOL)
+In order to not depend on and compile with thrift library for most users, the thrift protocol wasn't supported in brpc by default. Configure brpc with --with-thrift if you want to enable thrift protocol in brpc.
 
 Install Thrift in Ubuntu
 ```bash
+Download thrift source code from offical [web site](https://thrift.apache.org/download)
 wget http://www.us.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz
 tar -xf thrift-0.11.0.tar.gz
 cd thrift-0.11.0/
@@ -20,11 +21,13 @@ cd thrift-0.11.0/
 make CPPFLAGS=-DFORCE_BOOST_SMART_PTR -j 3 -s
 sudo make install
 ```
+Debian please refer [offical wiki]](https://thrift.apache.org/docs/install/debian)
+
 Configure with thrift support
 ```bash
 sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --nodebugsymbols --with-thrift
 ```
-Link with libbrpc_thrift.a if the user want to enable thrift protocol
+Thrift extension was supported via static library, libbrpc.a was generated after compile, link with it if users want to enable thrift protocol.
 
 # Thrift message definition, echo.thrift:
 ```c++
@@ -68,7 +71,7 @@ if (thrift_channel.Init(Flags_server.c_str(), FLAGS_load_balancer.c_str(), &opti
 }
 ...
 ```
-construct thrift request and send to server, ThriftMessage is a template class, the native thrift message was delegated by and can be accessed directly by raw() method.
+Construct a thrift request and send it to server, ThriftMessage is a template class that hosts thrift navtive messages, raw() methods can directly manipulate native thrift messages.
 
 ```c++
  // wrapper thrift raw request into ThriftMessage
@@ -88,9 +91,9 @@ construct thrift request and send to server, ThriftMessage is a template class, 
  } 
 ```
 
-# Server process with thrift message
-User need to implement it's own thrift handler which was inherited from brpc::ThriftService
-Only the method name can obtained in server side due to the limit of thrift protocol itself, the service name wasn't passed to server actually, it means that only one thrift service can be set in one brpc server
+# Server side processing upstream thrift requests
+Users need to implement their own thrift handler which was inherited from brpc::ThriftService.
+Due to the limitation of thrift protocol itself, only the method name can be obtained on the server (via the controller.thrift_method_name() method), and the service name cannot be obtained. This is consistent with the native thrift implementation, which means that there can only be one thrift service in one brpc server.
 ```c++
 // Implement User Thrift Service handler
 class MyThriftProtocolPbManner : public brpc::ThriftService {

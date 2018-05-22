@@ -5,15 +5,16 @@
 
 相比使用官方原生的优势有：
 
-- 线程安全。用户不需要为每个线程建立独立的client。
-- 支持同步、异步、批量同步、批量异步等访问方式，能使用ParallelChannel等组合访问方式。
-- 支持多种连接方式(连接池, 短连接), 支持超时、backup request、取消、tracing、内置服务等一系列RPC基本福利。
+- 线程安全。用户不需要为每个线程建立独立的client.
+- 支持同步、异步、批量同步、批量异步等访问方式，能使用ParallelChannel等组合访问方式.
+- 支持多种连接方式(连接池, 短连接), 支持超时、backup request、取消、tracing、内置服务等一系列RPC基本福利.
 
 # 编译依赖及运行
-默认brpc编译是不启用thrift协议支持的, 目的是在用户不需要thrift协议支持的情况下可以不安装thrift依赖. 如果用户启用thrift协议的话, 在配置brpc环境的时候加上--with-thrift参数(实际上是在Makefile里面启用ENABLE_THRIFT_FRAMED_PROTOCOL宏)
+默认brpc编译是不启用thrift协议支持的, 目的是在用户不需要thrift协议支持的情况下可以不安装thrift依赖. 如果用户启用thrift协议的话, 在配置brpc环境的时候加上--with-thrift参数.
 
 安装thrift依赖, ubuntu环境下
 ```bash
+从[官网](https://thrift.apache.org/download)下载thrift源代码
 wget http://www.us.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz
 tar -xf thrift-0.11.0.tar.gz
 cd thrift-0.11.0/
@@ -21,11 +22,14 @@ cd thrift-0.11.0/
 make CPPFLAGS=-DFORCE_BOOST_SMART_PTR -j 3 -s
 sudo make install
 ```
+Debian请参考[官方wiki]](https://thrift.apache.org/docs/install/debian)
+
 配置brpc支持thrift协议
 ```bash
 sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --nodebugsymbols --with-thrift
 ```
-编译完成后会生成libbrpc.a 和libbrpc_thrift.a, thrift扩展协议以静态库的方式提供给用户, 用户在需要启用thrift协议的时候链接即可
+编译完成后会生成libbrpc.a, thrift扩展协议以静态库的方式提供给用户, 用户在需要启用thrift协议的时候链接即可.
+
 
 # Thrift 原生消息定义, echo.thrift:
 ```c++
