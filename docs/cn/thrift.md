@@ -14,11 +14,11 @@
 
 安装thrift依赖, ubuntu环境下
 ```bash
-wget http://www.us.apache.org/dist/thrift/0.9.3/thrift-0.9.3.tar.gz
-tar -xf thrift-0.9.3.tar.gz
-cd thrift-0.9.3/
+wget http://www.us.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz
+tar -xf thrift-0.11.0.tar.gz
+cd thrift-0.11.0/
 ./configure --prefix=/usr --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no
-make -j 3 -s
+make CPPFLAGS=-DFORCE_BOOST_SMART_PTR -j 3 -s
 sudo make install
 ```
 配置brpc支持thrift协议
@@ -69,12 +69,12 @@ if (thrift_channel.Init(Flags_server.c_str(), FLAGS_load_balancer.c_str(), &opti
 }
 ...
 ```
-构造thrift请求, 并发送, ThriftTemplateMessage是模板类, 里面托管了thrift原生消息, 通过raw()方法可以可以直接操作原生thrift消息
+构造thrift请求, 并发送, ThriftMessage是模板类, 里面托管了thrift原生消息, 通过raw()方法可以可以直接操作原生thrift消息
 ```c++
  // wrapper thrift raw request into ThriftMessage
  // example::[EchoRequest/EchoResponse]是thrfit原生定义的消息(通过thrift代码生成工具生成)
- brpc::ThriftTemplateMessage<example::EchoRequest> req;
- brpc::ThriftTemplateMessage<example::EchoResponse> res;
+ brpc::ThriftMessage<example::EchoRequest> req;
+ brpc::ThriftMessage<example::EchoResponse> res;
 
  req.raw().data = "hello";
 
@@ -112,8 +112,8 @@ public:
             return;
         }
 
-        example::EchoRequest* req = request->cast<example::EchoRequest>();
-        example::EchoResponse* res = response->cast<example::EchoResponse>();
+        example::EchoRequest* req = request->Cast<example::EchoRequest>();
+        example::EchoResponse* res = response->Cast<example::EchoResponse>();
 
         // process with req and res
         res->data = req->data + "user data";

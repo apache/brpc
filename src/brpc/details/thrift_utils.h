@@ -32,6 +32,7 @@
  # define THRIFT_STDCXX apache::thrift::stdcxx
  #else
  # define THRIFT_STDCXX boost
+ #include <boost/make_shared.hpp>
  #endif
 #endif
 
