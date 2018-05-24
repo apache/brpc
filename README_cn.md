@@ -41,7 +41,8 @@
     * [错误码](docs/cn/error_code.md)
     * [组合channels](docs/cn/combo_channel.md)
     * [访问HTTP](docs/cn/http_client.md)
-    * [访问UB](docs/cn/ub_client.md)
+    * [访问thrift](docs/cn/thrift.md#client端访问thrift-server)
+    * [访问UB](docs/cn/ub_client.md)
     * [Streaming RPC](docs/cn/streaming_rpc.md)
     * [访问redis](docs/cn/redis_client.md)
     * [访问memcached](docs/cn/memcache_client.md)
@@ -50,6 +51,7 @@
   * Server
     * [基础功能](docs/cn/server.md)
     * [搭建HTTP服务](docs/cn/http_service.md)
+    * [搭建thrift服务](docs/cn/thrift.md#server端处理thrift请求)
     * [搭建Nshead服务](docs/cn/nshead_service.md)
     * [高效率排查server卡顿](docs/cn/server_debugging.md)
     * [推送](docs/cn/server_push.md)
