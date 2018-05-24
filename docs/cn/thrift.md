@@ -9,7 +9,7 @@
 - 支持同步、异步、批量同步、批量异步等访问方式，能使用ParallelChannel等组合访问方式.
 - 支持多种连接方式(连接池, 短连接), 支持超时、backup request、取消、tracing、内置服务等一系列RPC基本福利.
 
-# 编译依赖及运行
+# 编译
 为了复用解析代码，brpc对thrift的支持仍需要依赖thrift库以及thrift生成的代码，thrift格式怎么写，代码怎么生成，怎么编译等问题请参考thrift官方文档。
 
 brpc默认不启用thrift支持也不需要thrift依赖。但如果需用thrift协议, 配置brpc环境的时候需加上--with-thrift参数.
@@ -56,8 +56,7 @@ if (thrift_channel.Init(Flags_server.c_str(), FLAGS_load_balancer.c_str(), &opti
 
 ...
 
-// wrapper thrift raw request into ThriftMessage
-// example::[EchoRequest/EchoResponse]是thrfit原生定义的消息(通过thrift代码生成工具生成)
+// example::[EchoRequest/EchoResponse]是thrift生成的消息
 brpc::ThriftMessage<example::EchoRequest> req;
 brpc::ThriftMessage<example::EchoResponse> res;
 
