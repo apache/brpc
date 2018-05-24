@@ -10,7 +10,9 @@
 - 支持多种连接方式(连接池, 短连接), 支持超时、backup request、取消、tracing、内置服务等一系列RPC基本福利.
 
 # 编译依赖及运行
-brpc编译默认不启用thrift协议支持, 目的是在用户不需要thrift协议支持时可以不安装thrift依赖. 如果用户启用thrift协议, 配置brpc环境的时候需加上--with-thrift参数.
+为了复用解析代码，brpc对thrift的支持仍需要依赖thrift库以及thrift生成的代码，thrift格式怎么写，代码怎么生成，怎么编译等问题请参考thrift官方文档。
+
+brpc默认不启用thrift支持也不需要thrift依赖。但如果需用thrift协议, 配置brpc环境的时候需加上--with-thrift参数.
 
 Ubuntu环境下安装thrift依赖
 先参考[官方wiki](https://thrift.apache.org/docs/install/debian)安装好必备的依赖和工具，然后从[官网](https://thrift.apache.org/download)下载thrift源代码，解压编译。
@@ -19,34 +21,14 @@ wget http://www.us.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz
 tar -xf thrift-0.11.0.tar.gz
 cd thrift-0.11.0/
 ./configure --prefix=/usr --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no
-make CPPFLAGS=-DFORCE_BOOST_SMART_PTR -j 3 -s
+make CPPFLAGS=-DFORCE_BOOST_SMART_PTR -j 4 -s
 sudo make install
 ```
 
-配置brpc支持thrift协议
+配置brpc支持thrift协议后make。编译完成后会生成libbrpc.a, 其中包含了支持thrift协议的扩展代码, 像正常使用brpc的代码一样链接即可。
 ```bash
 sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --with-thrift
 ```
-编译完成后会生成libbrpc.a, 其中包含了支持thrift协议的扩展代码, 像正常使用brpc的代码一样链接即可。
-
-# Thrift 原生消息定义, echo.thrift:
-```c++
-namespace cpp example
-
-struct EchoRequest {
-    1: required string data;
-    2: required i32 s;
-}
-
-struct EchoResponse {
-    1: required string data;
-}
-
-service EchoService {
-    EchoResponse Echo(1:EchoRequest request);
-}
-```
-
 
 # Client端访问thrift server
 基本步骤：
