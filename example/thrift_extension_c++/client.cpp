@@ -58,11 +58,6 @@ int main(int argc, char* argv[]) {
     // Send a request and wait for the response every 1 second.
     int log_id = 0;
 
-    std::string query_string = "hello";
-    for(auto i = 0; i < 1000000; i++) {
-        query_string += " test";
-    }
-
     while (!brpc::IsAskedToQuit()) {
         brpc::Controller cntl;
         cntl.set_log_id(log_id ++);  // set by user
