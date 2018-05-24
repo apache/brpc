@@ -49,7 +49,7 @@ You can use it to:
     * [Dummy server](docs/en/dummy_server.md)
   * Server
     * [Basics](docs/en/server.md)
-    * [Serve HTTP](docs/en/http_service.md)
+    * [Serve HTTP](docs/en/http_service.md)
     * [Serve thrift](docs/en/thrift.md#server-processes-thrift-requests)
     * [Serve Nshead](docs/cn/nshead_service.md)
     * [Debug server issues](docs/cn/server_debugging.md)
