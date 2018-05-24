@@ -23,7 +23,6 @@
 #include <butil/time.h>
 #include <butil/strings/string_piece.h>
 #include <brpc/channel.h>
-#include <brpc/details/thrift_utils.h>
 #include <brpc/thrift_message.h>
 #include <bvar/bvar.h>
 
