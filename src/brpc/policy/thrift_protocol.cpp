@@ -632,6 +632,8 @@ void PackThriftRequest(
 
 } // namespace policy
 
+extern "C" {
+
 void RegisterThriftProtocol() {
 
     Protocol thrift_binary_protocol = {policy::ParseThriftMessage,
@@ -639,11 +641,11 @@ void RegisterThriftProtocol() {
                                  policy::ProcessThriftRequest, policy::ProcessThriftResponse,
                                  policy::VerifyThriftRequest, NULL, NULL,
                                  CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };
-    if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
+    if (brpc::RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
         exit(1);
     }
 }
-
+}
 } // namespace brpc
 
 #endif

@@ -73,7 +73,7 @@ int main(int argc, char* argv[]) {
 
         req.raw().data = "hello";
 
-        cntl.set_thrift_method_name("Echo");
+        //cntl.set_thrift_method_name("Echo");
 
         channel.CallMethod(NULL, &cntl, &req, &res, NULL);
 
