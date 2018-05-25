@@ -1,3 +1,5 @@
+[中文版](../cn/streaming_rpc.md)
+
 # Overview
 
 There are some scenarios when the client or server needs to send huge amount of data, which may grow over time or is too large to put into the RPC attachment. For example, it could be the replica or snapshot transmitting between different nodes in a distributed system. Although we could send data segmentation across multiple RPC between client and server, this will introduce the following problems:
