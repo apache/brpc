@@ -631,21 +631,21 @@ void PackThriftRequest(
 }
 
 } // namespace policy
+} // namespace brpc
 
 extern "C" {
 
 void RegisterThriftProtocol() {
 
-    Protocol thrift_binary_protocol = {policy::ParseThriftMessage,
-                                 policy::SerializeThriftRequest, policy::PackThriftRequest,
-                                 policy::ProcessThriftRequest, policy::ProcessThriftResponse,
-                                 policy::VerifyThriftRequest, NULL, NULL,
-                                 CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };
-    if (brpc::RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
+    brpc::Protocol thrift_binary_protocol = {brpc::policy::ParseThriftMessage,
+                                 brpc::policy::SerializeThriftRequest, brpc::policy::PackThriftRequest,
+                                 brpc::policy::ProcessThriftRequest, brpc::policy::ProcessThriftResponse,
+                                 brpc::policy::VerifyThriftRequest, NULL, NULL,
+                                 brpc::CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };
+    if (brpc::RegisterProtocol(brpc::PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
         exit(1);
     }
 }
 }
-} // namespace brpc
 
 #endif
