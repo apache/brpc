@@ -15,6 +15,18 @@ config_setting(
     define_values = {"unittest": "true"},
 )
 
+config_setting(
+    name = "darwin",
+    values = {"cpu": "darwin"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux",
+    values = {"cpu": "linux"},
+    visibility = ["//visibility:public"],
+)
+
 COPTS = [
     "-DBTHREAD_USE_FAST_PTHREAD_MUTEX",
     "-D__const__=",
@@ -32,12 +44,16 @@ COPTS = [
 
 LINKOPTS = [
     "-lpthread",
-    "-lrt",
-    "-lssl",
-    "-lcrypto",
     "-ldl",
     "-lz",
-]
+] + select({
+    ":darwin": [],
+    "//conditions:default": [
+      "-lrt",
+      "-lssl",
+      "-lcrypto",
+    ],
+})
 
 genrule(
     name = "config_h",
@@ -103,7 +119,6 @@ BUTIL_SRCS = [
     "src/butil/files/scoped_file.cc",
     "src/butil/files/scoped_temp_dir.cc",
     "src/butil/file_util.cc",
-    "src/butil/file_util_linux.cc",
     "src/butil/file_util_posix.cc",
     "src/butil/guid.cc",
     "src/butil/guid_posix.cc",
@@ -118,6 +133,7 @@ BUTIL_SRCS = [
     "src/butil/memory/weak_ptr.cc",
     "src/butil/posix/file_descriptor_shuffle.cc",
     "src/butil/posix/global_descriptors.cc",
+    "src/butil/process_util.cc",
     "src/butil/rand_util.cc",
     "src/butil/rand_util_posix.cc",
     "src/butil/fast_rand.cpp",
@@ -133,7 +149,6 @@ BUTIL_SRCS = [
     "src/butil/strings/string_util.cc",
     "src/butil/strings/string_util_constants.cc",
     "src/butil/strings/stringprintf.cc",
-    "src/butil/strings/sys_string_conversions_posix.cc",
     "src/butil/strings/utf_offset_string_conversions.cc",
     "src/butil/strings/utf_string_conversion_utils.cc",
     "src/butil/strings/utf_string_conversions.cc",
@@ -141,7 +156,6 @@ BUTIL_SRCS = [
     "src/butil/synchronization/condition_variable_posix.cc",
     "src/butil/synchronization/waitable_event_posix.cc",
     "src/butil/threading/non_thread_safe_impl.cc",
-    "src/butil/threading/platform_thread_linux.cc",
     "src/butil/threading/platform_thread_posix.cc",
     "src/butil/threading/simple_thread.cc",
     "src/butil/threading/thread_checker_impl.cc",
@@ -177,8 +191,82 @@ BUTIL_SRCS = [
     "src/butil/containers/case_ignored_flat_map.cpp",
     "src/butil/iobuf.cpp",
     "src/butil/popen.cpp",
-]
+] + select({
+        ":darwin": [
+            "src/butil/time/time_mac.cc",
+            "src/butil/mac/scoped_mach_port.cc",
+        ],
+        "//conditions:default": [
+            "src/butil/file_util_linux.cc",
+            "src/butil/threading/platform_thread_linux.cc",
+            "src/butil/strings/sys_string_conversions_posix.cc",
+        ],
+})
 
+objc_library(
+    name = "macos_lib",
+    hdrs = [":config_h",
+        "src/butil/atomicops.h",
+        "src/butil/atomicops_internals_atomicword_compat.h",
+        "src/butil/atomicops_internals_mac.h",
+        "src/butil/base_export.h",        
+        "src/butil/basictypes.h",
+        "src/butil/build_config.h",
+        "src/butil/compat.h",
+        "src/butil/compiler_specific.h",
+        "src/butil/containers/hash_tables.h",
+        "src/butil/debug/debugger.h",
+        "src/butil/debug/leak_annotations.h",
+        "src/butil/file_util.h",
+        "src/butil/file_descriptor_posix.h",
+        "src/butil/files/file_path.h",
+        "src/butil/files/file.h",
+        "src/butil/files/scoped_file.h",
+        "src/butil/lazy_instance.h",
+        "src/butil/logging.h",
+        "src/butil/mac/bundle_locations.h",
+        "src/butil/mac/foundation_util.h",
+        "src/butil/mac/scoped_cftyperef.h",
+        "src/butil/mac/scoped_typeref.h",
+        "src/butil/macros.h",
+        "src/butil/memory/aligned_memory.h",
+        "src/butil/memory/scoped_policy.h",
+        "src/butil/memory/scoped_ptr.h",
+        "src/butil/move.h",
+        "src/butil/port.h",
+        "src/butil/posix/eintr_wrapper.h",
+        "src/butil/scoped_generic.h",
+        "src/butil/strings/string16.h",
+        "src/butil/strings/string_piece.h",
+        "src/butil/strings/string_util.h",
+        "src/butil/strings/string_util_posix.h",
+        "src/butil/strings/sys_string_conversions.h",
+        "src/butil/synchronization/lock.h",
+        "src/butil/time/time.h",
+        "src/butil/time.h",        
+        "src/butil/third_party/dynamic_annotations/dynamic_annotations.h",
+        "src/butil/threading/platform_thread.h",
+        "src/butil/threading/thread_restrictions.h",
+        "src/butil/threading/thread_id_name_manager.h",
+        "src/butil/type_traits.h",
+    ],
+    non_arc_srcs = [
+        "src/butil/mac/bundle_locations.mm",
+        "src/butil/mac/foundation_util.mm",
+        "src/butil/file_util_mac.mm",
+        "src/butil/threading/platform_thread_mac.mm",
+        "src/butil/strings/sys_string_conversions_mac.mm",
+    ],
+    deps = [
+        "@com_github_gflags_gflags//:gflags",
+    ] + select({
+        ":with_glog": ["@com_github_google_glog//:glog"],
+        "//conditions:default": [],
+    }),
+    includes = ["src/"],
+    enable_modules = True,
+    tags = ["manual"],
+)
 
 cc_library(
     name = "butil",
@@ -199,6 +287,7 @@ cc_library(
         "@com_github_gflags_gflags//:gflags",
     ] + select({
         ":with_glog": ["@com_github_google_glog//:glog"],
+        ":darwin": [":macos_lib"],
         "//conditions:default": [],
     }),
     includes = [
