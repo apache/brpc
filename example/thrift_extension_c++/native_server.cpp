@@ -19,6 +19,7 @@
 #include <butil/logging.h>
 
 #include "gen-cpp/EchoService.h"
+
 #include <thrift/protocol/TBinaryProtocol.h>
 #include <thrift/server/TSimpleServer.h>
 #include <thrift/transport/TServerSocket.h>
@@ -27,9 +28,11 @@
 #include <thrift/concurrency/PosixThreadFactory.h>
 
 // _THRIFT_STDCXX_H_ is defined by thrift/stdcxx.h which was added since thrift 0.11.0
+#include <thrift/TProcessor.h> // to include stdcxx.h if present
 #ifndef THRIFT_STDCXX
  #if defined(_THRIFT_STDCXX_H_)
  # define THRIFT_STDCXX apache::thrift::stdcxx
+ #include <thrift/transport/TNonblockingServerSocket.h>
  #else
  # define THRIFT_STDCXX boost
  #endif
@@ -67,14 +70,23 @@ int main(int argc, char *argv[]) {
         new apache::thrift::transport::TBufferedTransportFactory());
     THRIFT_STDCXX::shared_ptr<apache::thrift::concurrency::ThreadManager> thread_mgr(
         apache::thrift::concurrency::ThreadManager::newSimpleThreadManager(2));
+
     thread_mgr->threadFactory(thread_factory);
 
     thread_mgr->start();
 
+#if defined(_THRIFT_STDCXX_H_)
+    THRIFT_STDCXX::shared_ptr<apache::thrift::transport::TNonblockingServerSocket> server_transport = 
+        THRIFT_STDCXX::make_shared<apache::thrift::transport::TNonblockingServerSocket>(FLAGS_port);
+
     apache::thrift::server::TNonblockingServer server(processor,
         transport_factory, transport_factory, protocol_factory,
-        protocol_factory, FLAGS_port, thread_mgr);
-
+        protocol_factory, server_transport);
+#else
+    apache::thrift::server::TNonblockingServer server(processor,
+        transport_factory, transport_factory, protocol_factory,
+        protocol_factory, FLAGS_port);
+#endif
     server.serve();  
     return 0;
 }

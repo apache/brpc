@@ -33,6 +33,7 @@
  #else
  # include <boost/make_shared.hpp>
  # define THRIFT_STDCXX boost
+ #include <boost/make_shared.hpp>
  #endif
 #endif
 

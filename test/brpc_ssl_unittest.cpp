@@ -25,7 +25,7 @@ void ExtractHostnames(X509* x, std::vector<std::string>* hostnames);
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
     brpc::GlobalInitializeOrDie();
     return RUN_ALL_TESTS();
 }

@@ -56,8 +56,9 @@ TEST(VersionTest, GetVersionFromString) {
   for (size_t i = 0; i < ARRAYSIZE_UNSAFE(cases); ++i) {
     Version version(cases[i].input);
     EXPECT_EQ(cases[i].success, version.IsValid());
-    if (cases[i].success)
+    if (cases[i].success) {
       EXPECT_EQ(cases[i].parts, version.components().size());
+    }
   }
 }
 
