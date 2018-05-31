@@ -783,6 +783,8 @@ private:
 
     butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
+
+    SocketUniquePtr _agent_socket;
 };
 
 } // namespace brpc
