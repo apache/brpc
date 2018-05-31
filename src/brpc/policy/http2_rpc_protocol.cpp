@@ -1563,6 +1563,7 @@ void H2GlobalStreamCreator::ReplaceSocketForStream(
 
 void H2GlobalStreamCreator::OnStreamCreationDone(
     SocketUniquePtr& sending_sock, Controller* cntl) {
+    // TODO(zhujiashun): when server can not be connected, this can happen.
     CHECK(false) << "Never run";
 }
 
