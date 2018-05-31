@@ -1534,10 +1534,7 @@ void H2GlobalStreamCreator::ReplaceSocketForStream(
             break;
         }
         H2Context* ctx = static_cast<H2Context*>((*inout)->_agent_socket->parsing_context());
-        if (ctx == NULL) {
-            break;
-        }
-        if (ctx->RunOutStreams()) {
+        if (ctx && ctx->RunOutStreams()) {
             break;
         }
         (*inout)->_agent_socket->ReAddress(inout);
