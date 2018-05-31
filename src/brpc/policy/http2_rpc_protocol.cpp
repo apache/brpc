@@ -169,6 +169,7 @@ public:
     void Destroy() { delete this; }
 
     int AllocateClientStreamId();
+    bool RunOutStreams();
     // Try to map stream_id to ctx if stream_id does not exist before
     // Returns true on success, false otherwise.
     bool TryToInsertStream(int stream_id, H2StreamContext* ctx);
@@ -317,13 +318,20 @@ int H2Context::Init() {
 }
 
 inline int H2Context::AllocateClientStreamId() {
-    if (_last_client_stream_id > 0x7FFFFFFF) {
-        // run out stream id
+    if (RunOutStreams()) {
         return -1;
     }
     const int id = _last_client_stream_id;
     _last_client_stream_id += 2;
     return id;
+}
+
+inline bool H2Context::RunOutStreams() {
+    if (_last_client_stream_id > 0x7FFFFFFF) {
+        // run out stream id
+        return true;
+    }
+    return false;
 }
 
 H2StreamContext* H2Context::RemoveStream(int stream_id) {
@@ -1518,16 +1526,42 @@ void PackH2Request(butil::IOBuf*,
     }
 }
 
-class H2GlobalStreamCreator : public StreamCreator {
-protected:
-    void ReplaceSocketForStream(SocketUniquePtr* inout, Controller* cntl);
-    void OnStreamCreationDone(SocketUniquePtr& sending_sock, Controller* cntl);
-    void CleanupSocketForStream(Socket* prev_sock, Controller* cntl,
-                                int error_code);
-};
-
 void H2GlobalStreamCreator::ReplaceSocketForStream(
-    SocketUniquePtr*, Controller*) {
+    SocketUniquePtr* inout, Controller* cntl) {
+    std::unique_lock<butil::Mutex> mu(_mutex);
+    do {
+        if (!(*inout)->_agent_socket) {
+            break;
+        }
+        H2Context* ctx = static_cast<H2Context*>((*inout)->_agent_socket->parsing_context());
+        if (ctx == NULL) {
+            break;
+        }
+        if (ctx->RunOutStreams()) {
+            break;
+        }
+        (*inout)->_agent_socket->ReAddress(inout);
+        return;
+    } while (0);
+
+    LOG(INFO) << "Ready to create h2 agent socket";
+    SocketId sid;
+    SocketOptions opt = (*inout)->_options;
+    // Only main socket can be the owner of ssl_ctx
+    opt.owns_ssl_ctx = false;
+    opt.health_check_interval_s = -1;
+    if (get_client_side_messenger()->Create(opt, &sid) != 0) {
+        cntl->SetFailed(EINVAL, "Fail to create H2 socket");
+        return;
+    }
+    SocketUniquePtr tmp_ptr;
+    if (Socket::Address(sid, &tmp_ptr) != 0) {
+        cntl->SetFailed(EFAILEDSOCKET, "Fail to address H2 socketId=%" PRIu64, sid);
+        return;
+    }
+    (*inout)->_agent_socket.swap(tmp_ptr);
+    (*inout)->_agent_socket->ReAddress(inout);
+    return;
 }
 
 void H2GlobalStreamCreator::OnStreamCreationDone(
@@ -1537,7 +1571,7 @@ void H2GlobalStreamCreator::OnStreamCreationDone(
 
 void H2GlobalStreamCreator::CleanupSocketForStream(
     Socket* prev_sock, Controller* cntl, int error_code) {
-
+    CHECK(false) << "Never run";
 }
 
 StreamCreator* get_h2_global_stream_creator() {

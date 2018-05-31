@@ -211,6 +211,16 @@ void PackH2Request(butil::IOBuf* buf,
                    const butil::IOBuf& request,
                    const Authenticator* auth);
 
+class H2GlobalStreamCreator : public StreamCreator {
+protected:
+    void ReplaceSocketForStream(SocketUniquePtr* inout, Controller* cntl);
+    void OnStreamCreationDone(SocketUniquePtr& sending_sock, Controller* cntl);
+    void CleanupSocketForStream(Socket* prev_sock, Controller* cntl,
+                                int error_code);
+private:
+    butil::Mutex _mutex;
+};
+
 }  // namespace policy
 
 } // namespace brpc

@@ -465,6 +465,12 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
         header->SetHeader(common->CONNECTION, common->KEEP_ALIVE);
     }
 
+    if (accessor.request_protocol() == PROTOCOL_HTTP2) {
+        cntl->set_stream_creator(get_h2_global_stream_creator());
+    } else {
+        LOG(INFO) << "in SerializeHttpRequest, is_http2=0";
+    }
+
     // Set url to /ServiceName/MethodName when we're about to call protobuf
     // services (indicated by non-NULL method).
     const google::protobuf::MethodDescriptor* method = cntl->method();
