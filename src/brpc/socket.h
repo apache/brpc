@@ -42,6 +42,7 @@ namespace brpc {
 namespace policy {
 class ConsistentHashingLoadBalancer;
 class RtmpContext;
+class H2GlobalStreamCreator;
 }  // namespace policy
 namespace schan {
 class ChannelBalancer;
@@ -185,6 +186,7 @@ friend class policy::ConsistentHashingLoadBalancer;
 friend class policy::RtmpContext;
 friend class schan::ChannelBalancer;
 friend class HealthCheckTask;
+friend class policy::H2GlobalStreamCreator;
     class SharedPart;
     struct Forbidden {};
     struct WriteRequest;
@@ -759,6 +761,8 @@ private:
 
     butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
+
+    SocketUniquePtr _agent_socket;
 };
 
 } // namespace brpc

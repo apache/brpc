@@ -1060,6 +1060,8 @@ void Socket::OnRecycle() {
 
     delete _stream_set;
     _stream_set = NULL;
+
+    _agent_socket.reset(NULL);
     
     s_vars->nsocket << -1;
 }
