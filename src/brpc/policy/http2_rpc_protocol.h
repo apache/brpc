@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Authors: Ge,Jun (gejun@baidu.com)
+//          Jiashun Zhu(zhujiashun@baidu.com)
+
 #ifndef BAIDU_RPC_POLICY_HTTP2_RPC_PROTOCOL_H
 #define BAIDU_RPC_POLICY_HTTP2_RPC_PROTOCOL_H
 

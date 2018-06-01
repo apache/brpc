@@ -921,4 +921,30 @@ TEST_F(HttpTest, broken_socket_stops_progressive_reading) {
     ASSERT_TRUE(reader->destroyed());
     ASSERT_EQ(ECONNRESET, reader->destroying_status().error_code());
 }
+
+TEST_F(HttpTest, http2_sanity) {
+    const int port = 8923;
+    brpc::Server server;
+    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    EXPECT_EQ(0, server.Start(port, NULL));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = "h2c";
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+
+    test::EchoRequest req;
+    req.set_message(EXP_REQUEST);
+    test::EchoResponse res;
+    int log_duration = 10000;
+    for (int i = 0; i < 200000; ++i) {
+        brpc::Controller cntl;
+        cntl.http_request().set_content_type("application/json");
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.http_request().uri() = "/EchoService/Echo";
+        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+        ASSERT_FALSE(cntl.Failed());
+        ASSERT_EQ(EXP_RESPONSE, res.message());
+    }
+}
 } //namespace
