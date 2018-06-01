@@ -1,4 +1,4 @@
-// Copyright (c) 2015 Baidu, Inc.
+// Copyright (c) 2014 Baidu, Inc.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+// Authors: Ge,Jun (gejun@baidu.com)
+//          Jiashun Zhu(zhujiashun@baidu.com)
 
 #include "brpc/policy/http2_rpc_protocol.h"
 #include "brpc/details/controller_private_accessor.h"
@@ -284,6 +287,11 @@ H2Context::H2Context(Socket* socket, const Server* server)
         _unack_local_settings.initial_window_size = FLAGS_http2_client_initial_window_size;
         _unack_local_settings.max_frame_size = FLAGS_http2_client_max_frame_size;
     }
+#if defined(UNIT_TEST)
+    // In ut, we hope _last_client_stream_id run out quickly to test the correctness
+    // of creating new h2 socket
+    _last_client_stream_id = 0x7FFE795F;
+#endif
 }
 
 H2Context::~H2Context() {
@@ -1528,12 +1536,17 @@ void PackH2Request(butil::IOBuf*,
 
 void H2GlobalStreamCreator::ReplaceSocketForStream(
     SocketUniquePtr* inout, Controller* cntl) {
+    // Although the critical section looks huge, it should rarely be contended
+    // since timeout of RPC is much larger than the delay of sending.
     std::unique_lock<butil::Mutex> mu(_mutex);
     do {
         if (!(*inout)->_agent_socket) {
             break;
         }
         H2Context* ctx = static_cast<H2Context*>((*inout)->_agent_socket->parsing_context());
+        // According to https://httpwg.org/specs/rfc7540.html#StreamIdentifiers:
+        // A client that is unable to establish a new stream identifier can establish
+        // a new connection for new streams. 
         if (ctx && ctx->RunOutStreams()) {
             break;
         }
@@ -1541,12 +1554,12 @@ void H2GlobalStreamCreator::ReplaceSocketForStream(
         return;
     } while (0);
 
-    LOG(INFO) << "Ready to create h2 agent socket";
     SocketId sid;
     SocketOptions opt = (*inout)->_options;
     // Only main socket can be the owner of ssl_ctx
     opt.owns_ssl_ctx = false;
     opt.health_check_interval_s = -1;
+    // TODO(zhujiashun): Predictively create socket to improve performance
     if (get_client_side_messenger()->Create(opt, &sid) != 0) {
         cntl->SetFailed(EINVAL, "Fail to create H2 socket");
         return;
@@ -1557,19 +1570,22 @@ void H2GlobalStreamCreator::ReplaceSocketForStream(
         return;
     }
     (*inout)->_agent_socket.swap(tmp_ptr);
+    mu.unlock();
     (*inout)->_agent_socket->ReAddress(inout);
+    if (tmp_ptr) {
+        tmp_ptr->ReleaseAdditionalReference();
+    }
     return;
 }
 
 void H2GlobalStreamCreator::OnStreamCreationDone(
     SocketUniquePtr& sending_sock, Controller* cntl) {
-    // TODO(zhujiashun): when server can not be connected, this can happen.
-    CHECK(false) << "Never run";
+    // If any error happens during the time of sending rpc, this function
+    // would be called. Currently just do nothing.
 }
 
 void H2GlobalStreamCreator::CleanupSocketForStream(
     Socket* prev_sock, Controller* cntl, int error_code) {
-    CHECK(false) << "Never run";
 }
 
 StreamCreator* get_h2_global_stream_creator() {
