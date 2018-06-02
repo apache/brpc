@@ -754,6 +754,11 @@ private:
     butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
 
+    // In some protocols, certain resources may run out according to 
+    // protocol spec. For example, http2 streamId would run out after
+    // long time running and a new socket should be created. In order
+    // not to affect main socket, _agent_socket are introduced to 
+    // represent the communication socket.
     SocketUniquePtr _agent_socket;
 };
 
