@@ -164,6 +164,7 @@ private:
 class H2StreamContext : public HttpContext {
 public:
     H2StreamContext();
+    ~H2StreamContext();
     void Init(H2Context* conn_ctx, int stream_id);
 
     H2StreamContext(H2Context* conn_ctx, int stream_id);
@@ -198,6 +199,7 @@ friend class H2Context;
 #endif
     bool _stream_ended;
     butil::atomic<int64_t> _remote_window_size;
+    butil::atomic<int64_t> _local_window_size;
     uint64_t _correlation_id;
     butil::IOBuf _remaining_header_fragment;
 };
