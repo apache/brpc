@@ -936,7 +936,6 @@ TEST_F(HttpTest, http2_sanity) {
     test::EchoRequest req;
     req.set_message(EXP_REQUEST);
     test::EchoResponse res;
-    int log_duration = 10000;
     for (int i = 0; i < 200000; ++i) {
         brpc::Controller cntl;
         cntl.http_request().set_content_type("application/json");
