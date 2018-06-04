@@ -308,7 +308,7 @@ H2Context::H2Context(Socket* socket, const Server* server)
     }
 #if defined(UNIT_TEST)
     // In ut, we hope _last_client_stream_id run out quickly to test the correctness
-    // of creating new h2 socket
+    // of creating new h2 socket. This value is 100,000 less than 0x7FFFFFFF.
     _last_client_stream_id = 0x7FFE795F;
 #endif
 }
@@ -334,8 +334,10 @@ H2StreamContext::H2StreamContext()
 }
 
 H2StreamContext::~H2StreamContext() {
-    int64_t diff = _conn_ctx->local_settings().initial_window_size - _local_window_size;
-    _conn_ctx->ReclaimWindowSize(diff);
+    if (_conn_ctx) {
+        int64_t diff = _conn_ctx->local_settings().initial_window_size - _local_window_size;
+        _conn_ctx->ReclaimWindowSize(diff);
+    }
 }
 
 int H2Context::Init() {
@@ -581,6 +583,7 @@ H2ParseResult H2Context::OnHeaders(
         _last_server_stream_id = frame_head.stream_id;
         sctx = new H2StreamContext(this, frame_head.stream_id);
         if (!TryToInsertStream(frame_head.stream_id, sctx)) {
+            delete sctx;
             LOG(ERROR) << "Fail to insert stream_id=" << frame_head.stream_id;
             return MakeH2Error(H2_PROTOCOL_ERROR);
         }
@@ -997,6 +1000,7 @@ ParseResult ParseH2Message(butil::IOBuf *source, Socket *socket,
         const Server* server = static_cast<const Server*>(arg);
         ctx = new H2Context(socket, server);
         if (ctx->Init() != 0) {
+            delete ctx;
             LOG(ERROR) << "Fail to init H2Context";
             return MakeParseError(PARSE_ERROR_NO_RESOURCE);
         }
@@ -1357,6 +1361,7 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
         CHECK(socket->CreatedByConnect());
         ctx = new H2Context(socket, NULL);
         if (ctx->Init() != 0) {
+            delete ctx;
             socket->SetFailed(EFAILEDSOCKET, "Fail to init H2Context");
             return butil::Status(EFAILEDSOCKET, "Fail to init H2Context");
         }
