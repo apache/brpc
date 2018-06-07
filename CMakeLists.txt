@@ -133,22 +133,19 @@ if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
 endif()
 
-find_path(SSL_INCLUDE_PATH NAMES openssl/ssl.h)
-find_library(SSL_LIB NAMES ssl)
-if ((NOT SSL_INCLUDE_PATH) OR (NOT SSL_LIB))
-    message(FATAL_ERROR "Fail to find ssl")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(OPENSSL_ROOT_DIR
+        "/usr/local/opt/openssl"    # Homebrew installed OpenSSL
+        )
 endif()
 
-find_library(CRYPTO_LIB NAMES crypto)
-if (NOT CRYPTO_LIB)
-    message(FATAL_ERROR "Fail to find crypto")
-endif()
+include(FindOpenSSL)
 
 include_directories(
         ${GFLAGS_INCLUDE_PATH}
         ${PROTOBUF_INCLUDE_DIRS}
         ${LEVELDB_INCLUDE_PATH}
-        ${SSL_INCLUDE_PATH}
+        ${OPENSSL_INCLUDE_DIR}
         )
 
 set(DYNAMIC_LIB
@@ -158,12 +155,13 @@ set(DYNAMIC_LIB
     ${PROTOC_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
     ${THRIFT_LIB}
-    ${SSL_LIB}
-    ${CRYPTO_LIB}
+    ${OPENSSL_LIBRARIES}
+    ${OPENSSL_CRYPTO_LIBRARY}
     dl
     z
     )
-set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lrt -lssl -lcrypto -ldl -lz")
+set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ldl -lz")
+
 if(BRPC_WITH_GLOG)
     set(DYNAMIC_LIB ${DYNAMIC_LIB} ${GLOG_LIB})
     set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lglog")
@@ -171,6 +169,7 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(DYNAMIC_LIB ${DYNAMIC_LIB} rt)
+    set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lrt")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(DYNAMIC_LIB ${DYNAMIC_LIB}
         pthread
@@ -355,9 +354,9 @@ set(PROTO_FILES idl_options.proto
                 brpc/streaming_rpc_meta.proto)
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/output/include/brpc)
 set(PROTOC_FLAGS ${PROTOC_FLAGS} -I${PROTOBUF_INCLUDE_DIR})
-compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_BINARY_DIR} 
+compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_BINARY_DIR}
                                     ${CMAKE_BINARY_DIR}/output/include
-                                    ${CMAKE_SOURCE_DIR}/src 
+                                    ${CMAKE_SOURCE_DIR}/src
                                     "${PROTO_FILES}")
 add_library(PROTO_LIB OBJECT ${PROTO_SRCS} ${PROTO_HDRS})
 
@@ -377,7 +376,7 @@ add_subdirectory(tools)
 
 file(COPY ${CMAKE_CURRENT_BINARY_DIR}/brpc/
         DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include/brpc/
-        FILES_MATCHING 
+        FILES_MATCHING
         PATTERN "*.h"
         PATTERN "*.hpp"
         )
