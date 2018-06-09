@@ -22,7 +22,7 @@ brpc is designed to add new protocols at any time, just proceed as follows:
 
 Add new protocol type in ProtocolType in [options.proto](https://github.com/brpc/brpc/blob/master/src/brpc/options.proto). If you need to add new protocol, please contact us to add it for you to make sure there is no conflict with protocols of others.
 
-Currently we support in ProtocolType(at the end of 2016):
+Currently we support in ProtocolType(at the middle of 2018):
 ```c++
 enum ProtocolType {
     PROTOCOL_UNKNOWN = 0;
@@ -48,6 +48,10 @@ enum ProtocolType {
     PROTOCOL_DISP_IDL = 20;            // Client side only
     PROTOCOL_ERSDA_CLIENT = 21;        // Client side only
     PROTOCOL_UBRPC_MCPACK2 = 22;       // Client side only
+    // Reserve special protocol for cds-agent, which depends on FIFO right now
+    PROTOCOL_CDS_AGENT = 23;           // Client side only
+    PROTOCOL_ESP = 24;                 // Client side only
+    PROTOCOL_THRIFT = 25;              // Server side only
 }
 ```
 ## Implement Callbacks

@@ -22,7 +22,7 @@ brpc就是设计为可随时扩展新协议的，步骤如下：
 
 在[options.proto](https://github.com/brpc/brpc/blob/master/src/brpc/options.proto)的ProtocolType中增加新协议类型，如果你需要的话可以联系我们增加，以确保不会和其他人的需求重合。
 
-目前的ProtocolType（16年底）:
+目前的ProtocolType（18年中）:
 ```c++
 enum ProtocolType {
     PROTOCOL_UNKNOWN = 0;
@@ -48,6 +48,10 @@ enum ProtocolType {
     PROTOCOL_DISP_IDL = 20;            // Client side only
     PROTOCOL_ERSDA_CLIENT = 21;        // Client side only
     PROTOCOL_UBRPC_MCPACK2 = 22;       // Client side only
+    // Reserve special protocol for cds-agent, which depends on FIFO right now
+    PROTOCOL_CDS_AGENT = 23;           // Client side only
+    PROTOCOL_ESP = 24;                 // Client side only
+    PROTOCOL_THRIFT = 25;              // Server side only
 }
 ```
 ## 实现回调
