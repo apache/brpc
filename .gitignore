@@ -11,6 +11,7 @@
 *.pb.h
 *.prof
 *.so
+*.dylib
 /output
 /test/output
 

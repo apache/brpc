@@ -66,6 +66,7 @@ BAIDU_REGISTER_ERRNO(brpc::ERTMPPUBLISHABLE, "RtmpRetryingClientStream is publis
 BAIDU_REGISTER_ERRNO(brpc::ERTMPCREATESTREAM, "createStream was rejected by the RTMP server");
 BAIDU_REGISTER_ERRNO(brpc::EEOF, "Got EOF");
 BAIDU_REGISTER_ERRNO(brpc::EUNUSED, "The socket was not needed");
+BAIDU_REGISTER_ERRNO(brpc::ESSL, "SSL related operation failed");
 
 BAIDU_REGISTER_ERRNO(brpc::EINTERNAL, "General internal error");
 BAIDU_REGISTER_ERRNO(brpc::ERESPONSE, "Bad response");
@@ -251,6 +252,7 @@ void Controller::InternalReset(bool in_constructor) {
     _request_stream = INVALID_STREAM_ID;
     _response_stream = INVALID_STREAM_ID;
     _remote_stream_settings = NULL;
+    _thrift_method_name = "";
 }
 
 Controller::Call::Call(Controller::Call* rhs)
@@ -1367,6 +1369,11 @@ void Controller::set_mongo_session_data(MongoContext* data) {
 bool Controller::is_ssl() const {
     Socket* s = _current_call.sending_sock.get();
     return s ? (s->ssl_state() == SSL_CONNECTED) : false;
+}
+
+x509_st* Controller::get_peer_certificate() const {
+    Socket* s = _current_call.sending_sock.get();
+    return s ? s->GetPeerCertificate() : NULL;
 }
 
 #if defined(OS_MACOSX)

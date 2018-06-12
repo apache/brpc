@@ -46,6 +46,10 @@
 #define EAUTH ERPCAUTH
 #endif
 
+extern "C" {
+struct x509_st;
+}
+
 namespace brpc {
 class Span;
 class Server;
@@ -306,6 +310,12 @@ public:
     // Returns the authenticated result. NULL if there is no authentication
     const AuthContext* auth_context() const { return _auth_context; }
 
+    // Whether the underlying channel is using SSL
+    bool is_ssl() const;
+
+    // Get the peer certificate, which can be printed by ostream
+    x509_st* get_peer_certificate() const;
+
     // Mutable header of http response.
     HttpHeader& http_response() {
         if (_http_response == NULL) {
@@ -380,9 +390,6 @@ public:
     // Protocol of the request sent by client or received by server.
     ProtocolType request_protocol() const { return _request_protocol; }
 
-    // Whether the underlying channel is using SSL
-    bool is_ssl() const;
-    
     // Resets the Controller to its initial state so that it may be reused in
     // a new call.  Must NOT be called while an RPC is in progress.
     void Reset() { InternalReset(false); }
@@ -443,6 +450,11 @@ public:
     //  result
     void set_idl_result(int64_t result) { _idl_result = result; }
     int64_t idl_result() const { return _idl_result; }
+
+    void set_thrift_method_name(const std::string& method_name) {
+        _thrift_method_name = method_name;
+    }
+    std::string thrift_method_name() { return _thrift_method_name; }
 
 private:
     struct CompletionInfo {
@@ -674,6 +686,10 @@ private:
     StreamId _response_stream;
     // Defined at both sides
     StreamSettings *_remote_stream_settings;
+
+    // Thrift method name, only used when thrift protocol enabled
+    std::string _thrift_method_name;
+    uint32_t _thrift_seq_id;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be

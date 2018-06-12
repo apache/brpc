@@ -15,6 +15,7 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 
 #include <openssl/ssl.h>
+#include <openssl/conf.h>
 #include <gflags/gflags.h>
 #include <fcntl.h>                               // O_RDONLY
 #include <signal.h>
@@ -61,6 +62,7 @@
 #include "brpc/policy/nshead_mcpack_protocol.h"
 #include "brpc/policy/rtmp_protocol.h"
 #include "brpc/policy/esp_protocol.h"
+#include "brpc/policy/thrift_protocol.h"
 
 #include "brpc/input_messenger.h"     // get_or_new_client_side_messenger
 #include "brpc/socket_map.h"          // SocketMapList
@@ -76,6 +78,7 @@
 extern "C" {
 // defined in gperftools/malloc_extension_c.h
 void BAIDU_WEAK MallocExtension_ReleaseFreeMemory(void);
+void BAIDU_WEAK RegisterThriftProtocol();
 }
 
 namespace brpc {
@@ -95,6 +98,7 @@ void InitCommonStrings();
 using namespace policy;
 
 const char* const DUMMY_SERVER_PORT_FILE = "dummy_server.port";
+
 
 struct GlobalExtensions {
     GlobalExtensions()
@@ -300,6 +304,7 @@ static void GlobalInitializeOrDieImpl() {
 
     // Initialize openssl library
     SSL_library_init();
+    // RPC doesn't require openssl.cnf, users can load it by themselves if needed
     SSL_load_error_strings();
     if (SSLThreadInit() != 0 || SSLDHInit() != 0) {
         exit(1);
@@ -462,6 +467,11 @@ static void GlobalInitializeOrDieImpl() {
                                 CONNECTION_TYPE_POOLED, "mongo" };
     if (RegisterProtocol(PROTOCOL_MONGO, mongo_protocol) != 0) {
         exit(1);
+    }
+
+    // Register Thrift framed protocol if linked
+    if (RegisterThriftProtocol) {
+        RegisterThriftProtocol();
     }
 
     // Only valid at client side

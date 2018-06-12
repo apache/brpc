@@ -28,6 +28,46 @@
 
 #include "butil/time.h"
 
+#if defined(NO_CLOCK_GETTIME_IN_MAC)
+#include <mach/clock.h>                      // mach_absolute_time
+#include <mach/mach_time.h>                  // mach_timebase_info
+#include <pthread.h>                         // pthread_once
+#include <stdlib.h>                          // exit
+
+static mach_timebase_info_data_t s_timebase;
+static timespec s_init_time;
+static uint64_t s_init_ticks;
+static pthread_once_t s_init_clock_once = PTHREAD_ONCE_INIT;
+
+static void InitClock() {
+    if (mach_timebase_info(&s_timebase) != 0) {
+        exit(1);
+    }
+    timeval now;
+    if (gettimeofday(&now, NULL) != 0) {
+        exit(1);
+    }
+    s_init_time.tv_sec = now.tv_sec;
+    s_init_time.tv_nsec = now.tv_usec * 1000L;
+    s_init_ticks = mach_absolute_time();
+}
+
+int clock_gettime(clockid_t id, timespec* time) {
+    if (pthread_once(&s_init_clock_once, InitClock) != 0) {
+        exit(1);
+    }
+    uint64_t clock = mach_absolute_time() - s_init_ticks;
+    uint64_t elapsed = clock * (uint64_t)s_timebase.numer / (uint64_t)s_timebase.denom;
+    *time = s_init_time;
+    time->tv_sec += elapsed / 1000000000L;
+    time->tv_nsec += elapsed % 1000000000L;
+    time->tv_sec += time->tv_nsec / 1000000000L;
+    time->tv_nsec = time->tv_nsec % 1000000000L;
+    return 0;
+}
+
+#endif
+
 namespace butil {
 
 int64_t monotonic_time_ns() {
@@ -35,17 +75,7 @@ int64_t monotonic_time_ns() {
     // use the RAW version does not make sense anymore.
     // NOTE: Not inline to keep ABI-compatible with previous versions.
     timespec now;
-#ifdef __MACH__ // OS X does not have clock_gettime, use clock_get_time
-    clock_serv_t cclock;
-    mach_timespec_t mts;
-    host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
-    clock_get_time(cclock, &mts);
-    mach_port_deallocate(mach_task_self(), cclock);
-    now.tv_sec = mts.tv_sec;
-    now.tv_nsec = mts.tv_nsec;
-#else
     clock_gettime(CLOCK_MONOTONIC, &now);
-#endif
     return now.tv_sec * 1000000000L + now.tv_nsec;
 }
 

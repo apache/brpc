@@ -14,6 +14,7 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
+#include "bthread/bthread.h"                  // bthread_id_xx
 #include "bthread/unstable.h"                 // bthread_timer_add
 #include "butil/atomicops.h"
 #include "butil/time.h"

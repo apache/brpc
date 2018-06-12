@@ -4,7 +4,7 @@ project(session_data_and_thread_local C CXX)
 option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
 
 execute_process(
-    COMMAND bash -c "find ${CMAKE_SOURCE_DIR}/../.. -type d -name \"include\" | xargs dirname | tr -d '\n'"
+    COMMAND bash -c "find ${CMAKE_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | head -n1 | xargs dirname | tr -d '\n'"
     OUTPUT_VARIABLE OUTPUT_PATH
 )
 
@@ -48,7 +48,15 @@ if(${GFLAGS_NS} STREQUAL "GFLAGS_NAMESPACE")
         OUTPUT_VARIABLE GFLAGS_NS
     )
 endif()
-set(CMAKE_CPP_FLAGS "-DGFLAGS_NS=${GFLAGS_NS}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    include(CheckFunctionExists)
+    CHECK_FUNCTION_EXISTS(clock_gettime HAVE_CLOCK_GETTIME)
+    if(NOT HAVE_CLOCK_GETTIME)
+        set(DEFINE_CLOCK_GETTIME "-DNO_CLOCK_GETTIME_IN_MAC")
+    endif()
+endif()
+
+set(CMAKE_CPP_FLAGS "${DEFINE_CLOCK_GETTIME} -DGFLAGS_NS=${GFLAGS_NS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -DNDEBUG -O2 -D__const__= -pipe -W -Wall -Wno-unused-parameter -fPIC -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBRPC_ENABLE_CPU_PROFILER")
 
@@ -71,23 +79,50 @@ if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
 endif()
 include_directories(${LEVELDB_INCLUDE_PATH})
 
+find_path(LEVELDB_INCLUDE_PATH NAMES leveldb/db.h)
+find_library(LEVELDB_LIB NAMES leveldb)
+if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
+    message(FATAL_ERROR "Fail to find leveldb")
+endif()
+include_directories(${LEVELDB_INCLUDE_PATH})
+
+find_library(SSL_LIB NAMES ssl)
+if (NOT SSL_LIB)
+    message(FATAL_ERROR "Fail to find ssl")
+endif()
+
+find_library(CRYPTO_LIB NAMES crypto)
+if (NOT CRYPTO_LIB)
+    message(FATAL_ERROR "Fail to find crypto")
+endif()
+
 set(DYNAMIC_LIB
     ${CMAKE_THREAD_LIBS_INIT}
     ${GFLAGS_LIBRARY}
     ${PROTOBUF_LIBRARIES}
     ${LEVELDB_LIB}
-    ssl
-    crypto
+    ${SSL_LIB}
+    ${CRYPTO_LIB}
     dl
     )
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(DYNAMIC_LIB ${DYNAMIC_LIB}
+        pthread
+        "-framework CoreFoundation"
+        "-framework CoreGraphics"
+        "-framework CoreData"
+        "-framework CoreText"
+        "-framework Security"
+        "-framework Foundation"
+        "-Wl,-U,_MallocExtension_ReleaseFreeMemory"
+        "-Wl,-U,_ProfilerStart"
+        "-Wl,-U,_ProfilerStop"
+        "-Wl,-U,_RegisterThriftProtocol")
+endif()
 
 add_executable(session_data_and_thread_local_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
 add_executable(session_data_and_thread_local_server server.cpp ${PROTO_SRC} ${PROTO_HEADER})
 
-if(EXAMPLE_LINK_SO)
-    target_link_libraries(session_data_and_thread_local_client ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
-    target_link_libraries(session_data_and_thread_local_server ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
-else()
-    target_link_libraries(session_data_and_thread_local_client ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
-    target_link_libraries(session_data_and_thread_local_server ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
-endif()
+target_link_libraries(session_data_and_thread_local_client ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
+target_link_libraries(session_data_and_thread_local_server ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})

@@ -113,19 +113,21 @@ int main(int argc, char* argv[]) {
         brpc::StartDummyServerAt(FLAGS_dummy_port);
     }
 
-    std::vector<bthread_t> tids;
-    tids.resize(FLAGS_thread_num);
+    std::vector<bthread_t> bids;
+    std::vector<pthread_t> pids;
     if (!FLAGS_use_bthread) {
+        pids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
-            if (pthread_create(&tids[i], NULL, sender, &channel) != 0) {
+            if (pthread_create(&pids[i], NULL, sender, &channel) != 0) {
                 LOG(ERROR) << "Fail to create pthread";
                 return -1;
             }
         }
     } else {
+        bids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
             if (bthread_start_background(
-                    &tids[i], NULL, sender, &channel) != 0) {
+                    &bids[i], NULL, sender, &channel) != 0) {
                 LOG(ERROR) << "Fail to create bthread";
                 return -1;
             }
@@ -141,9 +143,9 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "EchoClient is going to quit";
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         if (!FLAGS_use_bthread) {
-            pthread_join(tids[i], NULL);
+            pthread_join(pids[i], NULL);
         } else {
-            bthread_join(tids[i], NULL);
+            bthread_join(bids[i], NULL);
         }
     }
 

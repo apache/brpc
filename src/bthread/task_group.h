@@ -127,6 +127,10 @@ public:
     // Routine of the main task which should be called from a dedicated pthread.
     void run_main_task();
 
+    // current_task is a function in macOS 10.0+
+#ifdef current_task
+#undef current_task
+#endif
     // Meta/Identifier of current task in this group.
     TaskMeta* current_task() const { return _cur_meta; }
     bthread_t current_tid() const { return _cur_meta->tid; }

@@ -2,17 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/strings/sys_string_conversions.h"
+#include "butil/strings/sys_string_conversions.h"
 
 #import <Foundation/Foundation.h>
 
 #include <vector>
 
-#include "base/mac/foundation_util.h"
-#include "base/mac/scoped_cftyperef.h"
-#include "base/strings/string_piece.h"
+#include "butil/mac/foundation_util.h"
+#include "butil/mac/scoped_cftyperef.h"
+#include "butil/strings/string_piece.h"
 
-namespace base {
+namespace butil {
 
 namespace {
 
@@ -78,7 +78,7 @@ static OutStringType STLStringToSTLStringWithEncodingsT(
   if (in_length == 0)
     return OutStringType();
 
-  base::ScopedCFTypeRef<CFStringRef> cfstring(CFStringCreateWithBytesNoCopy(
+  butil::ScopedCFTypeRef<CFStringRef> cfstring(CFStringCreateWithBytesNoCopy(
       NULL,
       reinterpret_cast<const UInt8*>(in.data()),
       in_length * sizeof(typename InStringType::value_type),
@@ -152,12 +152,12 @@ CFStringRef SysUTF16ToCFStringRef(const string16& utf16) {
 }
 
 NSString* SysUTF8ToNSString(const std::string& utf8) {
-  return (NSString*)base::mac::CFTypeRefToNSObjectAutorelease(
+  return (NSString*)butil::mac::CFTypeRefToNSObjectAutorelease(
       SysUTF8ToCFStringRef(utf8));
 }
 
 NSString* SysUTF16ToNSString(const string16& utf16) {
-  return (NSString*)base::mac::CFTypeRefToNSObjectAutorelease(
+  return (NSString*)butil::mac::CFTypeRefToNSObjectAutorelease(
       SysUTF16ToCFStringRef(utf16));
 }
 
@@ -183,4 +183,4 @@ string16 SysNSStringToUTF16(NSString* nsstring) {
   return SysCFStringRefToUTF16(reinterpret_cast<CFStringRef>(nsstring));
 }
 
-}  // namespace base
+}  // namespace butil

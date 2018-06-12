@@ -53,18 +53,13 @@ inline int futex_requeue_private(void* addr1, int nwake, void* addr2) {
 #elif defined(OS_MACOSX)
 
 namespace bthread {
-inline int futex_wait_private(
-    void* addr1, int expected, const timespec* timeout) {
-    return -1;
-}
 
-inline int futex_wake_private(void* addr1, int nwake) {
-    return -1;
-}
+int futex_wait_private(void* addr1, int expected, const timespec* timeout);
 
-inline int futex_requeue_private(void* addr1, int nwake, void* addr2) {
-    return -1;
-}
+int futex_wake_private(void* addr1, int nwake);
+
+int futex_requeue_private(void* addr1, int nwake, void* addr2);
+
 }  // namespace bthread
 
 #else

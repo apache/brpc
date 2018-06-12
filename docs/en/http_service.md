@@ -307,54 +307,6 @@ if (encoding != NULL && *encoding == "gzip") {
 // cntl->request_attachment() contains the data after decompression
 ```
 
-# Turn on HTTPS
-
-Update openssl to the latest version before turning on HTTPS, since older versions of openssl may have severe security problems and support less encryption algorithms, which is against with the purpose of using SSL. Setup `ServerOptions.ssl_options` to turn on HTTPS.
-
-```c++
-// Certificate structure
-struct CertInfo {
-    // Certificate in PEM format.
-    // Note that CN and alt subjects will be extracted from the certificate,
-    // and will be used as hostnames. Requests to this hostname (provided SNI
-    // extension supported) will be encrypted using this certifcate.
-    // Supported both file path and raw string
-    std::string certificate;
-
-    // Private key in PEM format.
-    // Supported both file path and raw string based on prefix:
-    std::string private_key;
-
-    // Additional hostnames besides those inside the certificate. Wildcards
-    // are supported but it can only appear once at the beginning (i.e. *.xxx.com).
-    std::vector<std::string> sni_filters;
-};
-
-struct SSLOptions {
-    // Default certificate which will be loaded into server. Requests
-    // without hostname or whose hostname doesn't have a corresponding
-    // certificate will use this certificate. MUST be set to enable SSL.
-    CertInfo default_cert;
-
-    // Additional certificates which will be loaded into server. These
-    // provide extra bindings between hostnames and certificates so that
-    // we can choose different certificates according to different hostnames.
-    // See `CertInfo' for detail.
-    std::vector<CertInfo> certs;
-
-    // When set, requests without hostname or whose hostname can't be found in
-    // any of the cerficates above will be dropped. Otherwise, `default_cert'
-    // will be used.
-    // Default: false
-    bool strict_sni;
- 
-    // ... Other options
-};
-```
-Other options include: cipher suites (recommend using `ECDHE-RSA-AES256-GCM-SHA384` which is the default suite used by chrome, and one of the safest suites. The drawback is more CPU cost), session reuse and so on. Read [server.h](https://github.com/brpc/brpc/blob/master/src/brpc/server.h) for more information.
-
-After turning on HTTPS, the service is still accessible by HTTP from the same port. The server identifies whether the request is HTTP or HTTPS automatically, and tell the result to users by `Controller::is_ssl()`. As you can see, the HTTPS in brpc is more like supporting an additional protocol, rather than providing an encrypted communication channel.
-
 # Performance
 
 Productions without extreme performance requirements tend to use HTTP protocol, especially mobile products. Thus we put great emphasis on implementation qualities of HTTP. To be more specific:
