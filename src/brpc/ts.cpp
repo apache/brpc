@@ -251,7 +251,6 @@ void TsPacket::Reset() {
     _transport_scrambling_control = TS_SCRAMBLED_DISABLED;
     _adaptation_field_control = TS_AF_RESERVED;
     _continuity_counter = 0;
-    _adaptation_field = NULL;
     _payload = NULL;
     _modified = false;
 }
@@ -581,7 +580,6 @@ int TsAdaptationField::Encode(
             return -1;
         }
     }
-    p += nb_af_reserved;
     return 0;
 }
 
@@ -730,7 +728,6 @@ int TsPayloadPES::Encode(void* data) const {
         if (PES_extension_flag_2) { p += 1 + PES_extension_field_length; }
     }
     // stuffing_byte
-    p += nb_stuffings;
     return 0;
 }
 

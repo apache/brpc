@@ -273,7 +273,7 @@ FlatMap<_K, _T, _H, _E, _S>::operator=(const FlatMap<_K, _T, _H, _E, _S>& rhs) {
         free(_buckets);
         _nbucket = rhs._nbucket;
         // note: need an extra bucket to let iterator know where buckets end
-        _buckets = (Bucket*)malloc(sizeof(Bucket) * (_nbucket + 1/*note*/));
+        _buckets = new Bucket[sizeof(Bucket) * (_nbucket + 1/*note*/)];
         if (NULL == _buckets) {
             LOG(ERROR) << "Fail to new _buckets";
             return;
@@ -332,7 +332,7 @@ int FlatMap<_K, _T, _H, _E, _S>::init(size_t nbucket, u_int load_factor) {
     _nbucket = flatmap_round(nbucket);
     _load_factor = load_factor;
                                 
-    _buckets = (Bucket*)malloc(sizeof(Bucket) * (_nbucket + 1));
+    _buckets = new Bucket[sizeof(Bucket) * (_nbucket + 1)];
     if (NULL == _buckets) {
         LOG(ERROR) << "Fail to new _buckets";
         return -1;

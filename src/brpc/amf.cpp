@@ -63,7 +63,9 @@ AMFField::AMFField(const AMFField& rhs)
     if (rhs.IsString()) {
         if (!rhs._is_shortstr) {
             _str = (char*)malloc(rhs._strsize + 1);
-            memcpy(_str, rhs._str, rhs._strsize + 1);
+            if (_str != NULL) {
+                memcpy(_str, rhs._str, rhs._strsize + 1);
+            }
         }
     } else if (rhs.IsObject()) {
         _obj = new AMFObject(*rhs._obj);
@@ -73,6 +75,7 @@ AMFField::AMFField(const AMFField& rhs)
 }
 
 AMFField& AMFField::operator=(const AMFField& rhs) {
+    assert(this != &rhs);
     Clear();
     _type = rhs._type;
     _is_shortstr = rhs._is_shortstr;
@@ -81,7 +84,9 @@ AMFField& AMFField::operator=(const AMFField& rhs) {
     if (rhs.IsString()) {
         if (!_is_shortstr) {
             _str = (char*)malloc(rhs._strsize + 1);
-            memcpy(_str, rhs._str, rhs._strsize + 1);
+            if (_str != NULL) {
+                memcpy(_str, rhs._str, rhs._strsize + 1);
+            }
         }
     } else if (rhs.IsObject()) {
         _obj = new AMFObject(*rhs._obj);
@@ -145,8 +150,10 @@ void AMFField::SetString(const butil::StringPiece& str) {
         _type = AMF_MARKER_STRING;
         _is_shortstr = true;
         _strsize = str.size();
-        memcpy(_shortstr, str.data(), str.size());
-        _shortstr[str.size()] = '\0';
+        if (_shortstr != NULL) {
+            memcpy(_shortstr, str.data(), str.size());
+            _shortstr[str.size()] = '\0';
+        }
     } else {
         _type = (str.size() < 65536u ?
                  AMF_MARKER_STRING : AMF_MARKER_LONG_STRING);
@@ -889,6 +896,7 @@ AMFArray::AMFArray(const AMFArray& rhs)
 }
 
 AMFArray& AMFArray::operator=(const AMFArray& rhs) {
+    assert(this != &rhs);
     if (_size < rhs._size) {
         this->~AMFArray();
         return *new (this) AMFArray(rhs);

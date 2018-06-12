@@ -187,7 +187,7 @@ private:
     // you are confused
     static int64_t _extend_sign_bit(const uint64_t sum) {
         return (((1ul << (64ul - SUM_BIT_WIDTH + 1)) - 1) 
-               * ((1ul << (SUM_BIT_WIDTH - 1) & sum)))
+               * (1ul << (SUM_BIT_WIDTH - 1) & sum))
                | (int64_t)sum;
     }
 

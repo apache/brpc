@@ -1030,9 +1030,6 @@ int Server::Stop(int timeout_ms) {
     if (_status != RUNNING) {
         return -1;
     }
-    if (_status != RUNNING) {
-        return -1;
-    }
     _status = STOPPING;
     
     LOG(INFO) << "Server[" << version() << "] is going to quit";
@@ -1374,45 +1371,47 @@ void Server::RemoveMethodsOf(google::protobuf::Service* service) {
             _method_map.erase(full_name_wo_ns);
         }
 
-        if (mp->http_url) {
-            butil::StringSplitter at_sp(mp->http_url->c_str(), '@');
-            for (; at_sp; ++at_sp) {
-                butil::StringPiece path(at_sp.field(), at_sp.length());
-                path.trim_spaces();
-                butil::StringSplitter slash_sp(
-                    path.data(), path.data() + path.size(), '/');
-                if (slash_sp == NULL) {
-                    LOG(ERROR) << "Invalid http_url=" << *mp->http_url;
-                    break;
-                }
-                butil::StringPiece v_svc_name(slash_sp.field(), slash_sp.length());
-                const ServiceProperty* vsp = FindServicePropertyByName(v_svc_name);
-                if (vsp == NULL) {
-                    if (_global_restful_map) {
-                        std::string path_str;
-                        path.CopyToString(&path_str);
-                        if (_global_restful_map->RemoveByPathString(path_str)) {
-                            continue;
-                        }
+        if (mp != NULL) {
+            if (mp->http_url) {
+                butil::StringSplitter at_sp(mp->http_url->c_str(), '@');
+                for (; at_sp; ++at_sp) {
+                    butil::StringPiece path(at_sp.field(), at_sp.length());
+                    path.trim_spaces();
+                    butil::StringSplitter slash_sp(
+                        path.data(), path.data() + path.size(), '/');
+                    if (slash_sp == NULL) {
+                        LOG(ERROR) << "Invalid http_url=" << *mp->http_url;
+                        break;
                     }
-                    LOG(ERROR) << "Impossible: service=" << v_svc_name
-                               << " for restful_map does not exist";
-                    break;
+                    butil::StringPiece v_svc_name(slash_sp.field(), slash_sp.length());
+                    const ServiceProperty* vsp = FindServicePropertyByName(v_svc_name);
+                    if (vsp == NULL) {
+                        if (_global_restful_map) {
+                            std::string path_str;
+                            path.CopyToString(&path_str);
+                            if (_global_restful_map->RemoveByPathString(path_str)) {
+                                continue;
+                            }
+                        }
+                        LOG(ERROR) << "Impossible: service=" << v_svc_name
+                                << " for restful_map does not exist";
+                        break;
+                    }
+                    std::string path_str;
+                    path.CopyToString(&path_str);
+                    if (!vsp->restful_map->RemoveByPathString(path_str)) {
+                        LOG(ERROR) << "Fail to find path=" << path
+                                << " in restful_map of service=" << v_svc_name;
+                    }
                 }
-                std::string path_str;
-                path.CopyToString(&path_str);
-                if (!vsp->restful_map->RemoveByPathString(path_str)) {
-                    LOG(ERROR) << "Fail to find path=" << path
-                               << " in restful_map of service=" << v_svc_name;
-                }
+                delete mp->http_url;
             }
-            delete mp->http_url;
-        }
 
-        if (mp != NULL && mp->own_method_status) {
-            delete mp->status;
+            if (mp->own_method_status) {
+                delete mp->status;
+            }
+            _method_map.erase(md->full_name());
         }
-        _method_map.erase(md->full_name());
     }
 }
 
