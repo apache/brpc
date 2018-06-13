@@ -20,6 +20,7 @@
 #include "butil/macros.h"
 #include "brpc/socket.h"
 #include "brpc/policy/primary_load_balancer.h"
+#include "brpc/controller.h"
 
 // primary_lb_failure_window_s and primary_lb_failure_count_threshold should be set recording to 
 // the timeout value, if timeout value of the channel is large, primary_lb_failure_window_s is
