@@ -203,7 +203,7 @@ DEBUG_OBJS = $(OBJS:.o=.dbg.o)
 PROTOS=$(BRPC_PROTOS) src/idl_options.proto
 
 .PHONY:all
-all:  protoc-gen-mcpack libbrpc.a $(TARGET_LIB_DY) output/include output/lib output/bin
+all:  protoc-gen-mcpack libbrpc.a output/include output/lib output/bin
 
 .PHONY:debug
 debug: test/libbrpc.dbg.a test/libbvar.dbg.a

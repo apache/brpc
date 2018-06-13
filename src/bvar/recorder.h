@@ -63,12 +63,15 @@ struct Stat {
 };
 
 inline std::ostream& operator<<(std::ostream& os, const Stat& s) {
+    return os << s.get_average_double();
+    /*
     const int64_t v = s.get_average_int();
     if (v != 0) {
         return os << v;
     } else {
         return os << s.get_average_double();
     }
+    */
 }
 
 // For calculating average of numbers.
