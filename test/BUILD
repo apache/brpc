@@ -33,14 +33,15 @@ COPTS = [
 
 LINKOPTS = [
     "-lpthread",
+    "-lssl",
+    "-lcrypto",
     "-ldl",
     "-lz",
 ] + select({
     ":darwin": [],
     "//conditions:default": [
       "-lrt",
-      "-lssl",
-      "-lcrypto",
+
     ],
 })
 
