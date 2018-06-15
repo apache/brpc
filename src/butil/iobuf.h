@@ -53,11 +53,13 @@ class IOBuf {
 friend class IOBufAsZeroCopyInputStream;
 friend class IOBufAsZeroCopyOutputStream;
 public:
-    static const size_t DEFAULT_BLOCK_SIZE = 8192;
-    static const size_t DEFAULT_PAYLOAD = DEFAULT_BLOCK_SIZE - 16/*impl dependent*/;
-    static const size_t MAX_BLOCK_SIZE = (1 << 16);
-    static const size_t MAX_PAYLOAD = MAX_BLOCK_SIZE - 16/*impl dependent*/;
+    static const size_t DEFAULT_BLOCK_SIZE;
+    static const size_t DEFAULT_PAYLOAD;
+    static const size_t MAX_BLOCK_SIZE;
+    static const size_t MAX_PAYLOAD;
     static const size_t INITIAL_CAP = 32; // must be power of 2
+
+    static const size_t MAX_HUGE_BLOCK_SIZE = (1UL << 32) - 1;
 
     struct Block;
 
@@ -199,7 +201,18 @@ public:
     // Append a character to back side. (with copying)
     // Returns 0 on success, -1 otherwise.
     int push_back(char c);
-    
+
+    // Append `data` with `count` bytes to back side(without copying).
+    // `data` should be allocated before calling this function, and the
+    // Block doesn't own the `data` memory. `cb` is callback function
+    // to release `data` memory.
+    // Return 0 on success, -1 otherwise.
+    // NOTICE: This function can be called only when HUGE_BLOCK enabled.
+    // Example:
+    //   void* data = malloc(1024);
+    //   foo.append_zerocopy(data, 1024, free);
+    int append_zerocopy(void const* data, size_t count, void (*cb)(void*));
+
     // Append `data' with `count' bytes to back side. (with copying)
     // Returns 0 on success(include count == 0), -1 otherwise.
     int append(void const* data, size_t count);

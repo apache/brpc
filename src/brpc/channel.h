@@ -110,6 +110,10 @@ struct ChannelOptions {
     // This object is NOT owned by channel and should remain valid when
     // channel is used.
     const NamingServiceFilter* ns_filter;
+
+    // Let this channel use rdma rather than tcp.
+    // Default: false
+    bool use_rdma;
 };
 
 // A Channel represents a communication line to one server or multiple servers

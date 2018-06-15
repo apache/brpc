@@ -38,6 +38,15 @@ set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__con
 set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
 use_cxx11()
 
+if(BRPC_WITH_RDMA)
+    set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBRPC_RDMA")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBRPC_RDMA")
+endif()
+if(IOBUF_WITH_HUGE_BLOCK)
+    set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DIOBUF_HUGE_BLOCK")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DIOBUF_HUGE_BLOCK")
+endif()
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     #required by butil/crc32.cc to boost performance for 10x
     if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4))

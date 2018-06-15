@@ -33,13 +33,14 @@ namespace brpc {
 // The following fields uniquely define a Socket. In other word,
 // Socket can't be shared between 2 different SocketMapKeys
 struct SocketMapKey {
-    SocketMapKey(const butil::EndPoint& pt,
+    SocketMapKey(const butil::EndPoint& pt, bool rdma = false,
                  ChannelSSLOptions ssl = ChannelSSLOptions(),
                  const Authenticator* auth2 = NULL)
-            : peer(pt), ssl_options(ssl), auth(auth2)
+            : peer(pt), use_rdma(rdma), ssl_options(ssl), auth(auth2)
     {}
 
     butil::EndPoint peer;
+    bool use_rdma;
     ChannelSSLOptions ssl_options;
     const Authenticator* auth;
 };

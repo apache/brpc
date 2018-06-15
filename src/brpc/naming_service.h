@@ -40,6 +40,7 @@ struct ServerNode {
     explicit ServerNode(const butil::EndPoint& pt) : addr(pt) {}
 
     butil::EndPoint addr;
+    bool use_rdma;
     std::string tag;
 };
 

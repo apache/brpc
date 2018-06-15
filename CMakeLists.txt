@@ -24,6 +24,8 @@ option(BRPC_WITH_GLOG "With glog" OFF)
 option(DEBUG "Print debug logs" OFF)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
 option(BRPC_WITH_THRIFT "With thrift framed protocol supported" OFF)
+option(BRPC_WITH_RDMA "Whether to build brpc with RDMA" OFF)
+option(IOBUF_WITH_HUGE_BLOCK "Whether to build iobuf with huge block" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 
 set(WITH_GLOG_VAL "0")
@@ -148,6 +150,14 @@ include_directories(
         ${OPENSSL_INCLUDE_DIR}
         )
 
+if(BRPC_WITH_RDMA)
+    set(RDMA_DYNAMIC_LIB
+        ibverbs
+        rdmacm
+        nl
+        )
+endif()
+
 set(DYNAMIC_LIB
     ${GFLAGS_LIBRARY}
     ${PROTOBUF_LIBRARIES}
@@ -157,6 +167,7 @@ set(DYNAMIC_LIB
     ${THRIFT_LIB}
     ${OPENSSL_LIBRARIES}
     ${OPENSSL_CRYPTO_LIBRARY}
+    ${RDMA_DYNAMIC_LIB}
     dl
     z
     )

@@ -31,6 +31,7 @@
 #include "brpc/channel.h"
 #include "brpc/details/usercode_backup_pool.h"       // TooManyUserCode
 #include "brpc/policy/esp_authenticator.h"
+#include "brpc/rdma/rdma_helper.h"              // rdma::GlobalRdmaInitializeOrDie
 
 
 namespace brpc {
@@ -50,6 +51,7 @@ ChannelOptions::ChannelOptions()
     , auth(NULL)
     , retry_policy(NULL)
     , ns_filter(NULL)
+    , use_rdma(false)
 {}
 
 Channel::Channel(ProfilerLinker)
@@ -63,14 +65,43 @@ Channel::Channel(ProfilerLinker)
 Channel::~Channel() {
     if (_server_id != (SocketId)-1) {
         SocketMapRemove(SocketMapKey(_server_address,
+                                     _options.use_rdma,
                                      _options.ssl_options,
                                      _options.auth));
     }
 }
 
+#ifdef BRPC_RDMA
+static bool OptionsAvailableForRdma(const ChannelOptions* opt) {
+    if (opt->ssl_options.enable) {
+        // TODO: Make RDMA available for SSL
+        LOG(WARNING) << "Cannot use SSL and RDMA at the same time";
+        return false;
+    }
+    if (!rdma::SupportedByRdma(opt->protocol.name())) {
+        // TODO: Make RDMA available for other protocols
+        LOG(WARNING) << "Cannot use " << opt->protocol.name()
+                     << " over RDMA";
+        return false;
+    }
+    return true;
+}
+#endif
+
 int Channel::InitChannelOptions(const ChannelOptions* options) {
     if (options) {  // Override default options if user provided one.
         _options = *options;
+    }
+    if (_options.use_rdma) {
+#ifndef BRPC_RDMA
+        LOG(WARNING) << "This libbrpc.a does not support RDMA";
+        return -1;
+#else
+        if (!OptionsAvailableForRdma(&_options)) {
+            return -1;
+        }
+        rdma::GlobalRdmaInitializeOrDie();
+#endif
     }
     const Protocol* protocol = FindProtocol(_options.protocol);
     if (NULL == protocol || !protocol->support_client()) {
@@ -203,6 +234,7 @@ int Channel::Init(butil::EndPoint server_addr_and_port,
     }
     _server_address = server_addr_and_port;
     if (SocketMapInsert(SocketMapKey(server_addr_and_port,
+                                     _options.use_rdma,
                                      _options.ssl_options,
                                      _options.auth), &_server_id) != 0) {
         LOG(ERROR) << "Fail to insert into SocketMap";
@@ -230,6 +262,7 @@ int Channel::Init(const char* ns_url,
     GetNamingServiceThreadOptions ns_opt;
     ns_opt.succeed_without_server = _options.succeed_without_server;
     ns_opt.log_succeed_without_server = _options.log_succeed_without_server;
+    ns_opt.use_rdma = _options.use_rdma;
     if (lb->Init(ns_url, lb_name, _options.ns_filter, &ns_opt) != 0) {
         LOG(ERROR) << "Fail to initialize LoadBalancerWithNaming";
         delete lb;

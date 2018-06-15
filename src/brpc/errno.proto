@@ -29,4 +29,8 @@ enum Errno {
     ELIMIT                  = 2004;  // Reached server's limit on resources
     ECLOSE                  = 2005;  // Close socket initiatively
     EITP                    = 2006;  // Failed Itp response
+
+    // Errno related to RDMA (may happen at both sides)
+    ERDMA                   = 3001;  // RDMA verbs error
+    ERDMACM                 = 3002;  // Rdmacm error
 }

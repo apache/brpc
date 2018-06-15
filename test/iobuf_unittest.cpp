@@ -585,7 +585,7 @@ TEST_F(IOBufTest, copy_to) {
     butil::IOBuf b;
     const std::string seed = "abcdefghijklmnopqrstuvwxyz";
     std::string src;
-    for (size_t i = 0; i < 1000; ++i) {
+    for (size_t i = 0; i < 20000; ++i) {
         src.append(seed);
     }
     b.append(src);
@@ -1088,7 +1088,8 @@ TEST_F(IOBufTest, extended_backup) {
         butil::iobuf::remove_tls_block_chain();
         butil::IOBuf src;
         const int BLKSIZE = (i == 0 ? 1024 : butil::IOBuf::DEFAULT_BLOCK_SIZE);
-        const int PLDSIZE = BLKSIZE - 16; // impl dependent.
+        const int HDRSIZE = butil::IOBuf::DEFAULT_BLOCK_SIZE - butil::IOBuf::DEFAULT_PAYLOAD;
+        const int PLDSIZE = BLKSIZE - HDRSIZE;
         butil::IOBufAsZeroCopyOutputStream out_stream1(&src, BLKSIZE);
         butil::IOBufAsZeroCopyOutputStream out_stream2(&src);
         butil::IOBufAsZeroCopyOutputStream & out_stream =
@@ -1217,6 +1218,7 @@ TEST_F(IOBufTest, backup_in_another_thread) {
 TEST_F(IOBufTest, own_block) {
     butil::IOBuf buf;
     const ssize_t BLOCK_SIZE = 1024;
+    const int HDRSIZE = butil::IOBuf::DEFAULT_BLOCK_SIZE - butil::IOBuf::DEFAULT_PAYLOAD;
     butil::IOBuf::Block *saved_tls_block = butil::iobuf::get_tls_block_head();
     butil::IOBufAsZeroCopyOutputStream wrapper(&buf, BLOCK_SIZE);
     int alloc_size = 0;
@@ -1232,7 +1234,7 @@ TEST_F(IOBufTest, own_block) {
     }
     ASSERT_EQ(static_cast<size_t>(alloc_size), buf.length());
     ASSERT_EQ(saved_tls_block, butil::iobuf::get_tls_block_head());
-    ASSERT_EQ(butil::iobuf::block_cap(buf._front_ref().block), BLOCK_SIZE - 16);
+    ASSERT_EQ(butil::iobuf::block_cap(buf._front_ref().block), BLOCK_SIZE - HDRSIZE);
 }
 
 struct Foo1 {
@@ -1555,4 +1557,52 @@ TEST_F(IOBufTest, copy_to_string_from_iterator) {
     }
     ASSERT_EQ(nc, b0.length());
 }
+
+#ifdef IOBUF_HUGE_BLOCK
+void debug_block_is_deallocated(void* b) {
+    if (1ul == s_set.erase(b)) {
+        ASSERT_TRUE(false) << "The Block=" << b << "isn't deallocated in cb";
+        operator delete(b);
+    }
+}
+
+TEST_F(IOBufTest, append_user_data_without_copy) {
+    butil::TempFile file;
+    file.save("dummy");
+    butil::fd_guard fd(open(file.fname(), O_RDWR | O_TRUNC));
+    ASSERT_TRUE(fd >= 0) << file.fname() << ' ' << berror();
+    butil::IOBuf buf;
+    int const len = 4 * 1024 * 1024;
+    char* str = (char*)malloc(len);;
+    ASSERT_TRUE(str);
+
+    ASSERT_EQ(0, buf.append_zerocopy(str, len, NULL));
+    ASSERT_EQ(len, buf.cut_into_file_descriptor(fd));
+
+    butil::IOPortal b0;
+    int offset = 0;
+    int need_read = len;
+    int nread = 0;
+    while ((nread = b0.pappend_from_file_descriptor(fd, offset, need_read)) > 0) {
+        need_read -= nread;
+        offset += nread;
+    }
+    ASSERT_EQ(len, b0.length());
+    char* tmp = (char*)malloc(len);;
+    ASSERT_TRUE(tmp);
+    ASSERT_EQ(0, memcmp((const void*)(str), b0.fetch(tmp, b0.length()), b0.length()));
+}
+
+TEST_F(IOBufTest, append_with_release_cb) {
+    butil::IOBuf b0;
+    int const len = 1024;
+    char* data = (char*)debug_block_allocate(len);;
+    ASSERT_EQ(0, b0.append_zerocopy(data, len, debug_block_deallocate));
+    ASSERT_EQ(len, b0.length());
+    std::string out;
+    ASSERT_EQ(1024, b0.cutn(&out, len));
+    debug_block_is_deallocated((void*)data);
+}
+#endif
+
 } // namespace

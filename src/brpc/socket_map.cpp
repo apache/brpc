@@ -109,6 +109,7 @@ void ComputeSocketMapKeyChecksum(const SocketMapKey& key,
     std::size_t ephash = butil::DefaultHasher<butil::EndPoint>()(key.peer);
     SAFE_MEMCOPY(buf, cur_len, &ephash, sizeof(ephash));
     SAFE_MEMCOPY(buf, cur_len, &key.auth, sizeof(key.auth));
+    SAFE_MEMCOPY(buf, cur_len, &key.use_rdma, sizeof(key.use_rdma));
 
     const ChannelSSLOptions& ssl = key.ssl_options;
     SAFE_MEMCOPY(buf, cur_len, &ssl.enable, sizeof(ssl.enable));
@@ -289,6 +290,7 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id) {
     SocketId tmp_id;
     SocketOptions opt;
     opt.remote_side = key.peer;
+    opt.use_rdma = key.use_rdma;
     // Can't save SSL_CTX in SocketMap since SingleConnection's desctruction
     // may happen before Socket's destruction (remove Channel before RPC complete)
     opt.owns_ssl_ctx = true;

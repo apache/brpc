@@ -46,6 +46,7 @@ struct GetNamingServiceThreadOptions {
     
     bool succeed_without_server;
     bool log_succeed_without_server;
+    bool use_rdma;
 };
 
 // A dedicated thread to map a name to ServerIds
@@ -102,7 +103,8 @@ private:
 
     static void ServerNodeWithId2ServerId(
         const std::vector<ServerNodeWithId>& src,
-        std::vector<ServerId>* dst, const NamingServiceFilter* filter);
+        std::vector<ServerId>* dst, const NamingServiceFilter* filter,
+        bool use_rdma);
 
     butil::Mutex _mutex;
     bthread_t _tid;

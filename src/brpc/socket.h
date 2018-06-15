@@ -47,6 +47,10 @@ class RtmpContext;
 namespace schan {
 class ChannelBalancer;
 }
+namespace rdma {
+class RdmaCompletionQueue;
+class RdmaEndpoint;
+}
 
 class Socket;
 class AuthContext;
@@ -157,6 +161,7 @@ struct SocketOptions {
     int health_check_interval_s;
     bool owns_ssl_ctx;
     SSL_CTX* ssl_ctx;
+    bool use_rdma;
     std::string sni_name;
     bthread_keytable_pool_t* keytable_pool;
     SocketConnection* conn;
@@ -178,6 +183,8 @@ friend class Controller;
 friend class policy::ConsistentHashingLoadBalancer;
 friend class policy::RtmpContext;
 friend class schan::ChannelBalancer;
+friend class rdma::RdmaCompletionQueue;  // for use of keytable_pool
+friend class rdma::RdmaEndpoint;
     class SharedPart;
     struct Forbidden {};
     struct WriteRequest;
@@ -551,6 +558,10 @@ friend void DereferenceSocket(Socket*);
     // Callback when an EpollOutRequest reaches timeout
     static void HandleEpollOutTimeout(void* arg);
 
+    // Try to wake socket just like epollout has arrived
+    // Used by RdmaEndpoint
+    void WakeAsEpollOut();
+
     // Callback when connection event reaches (succeeded or not)
     // This callback will be passed to `Connect'
     static int KeepWriteIfConnected(int fd, int err, void* data);
@@ -596,6 +607,13 @@ friend void DereferenceSocket(Socket*);
     void CancelUnwrittenBytes(size_t bytes);
 
 private:
+    // The on/off state of RDMA
+    enum RdmaState {
+        RDMA_ON,
+        RDMA_OFF,
+        RDMA_UNKNOWN
+    };
+
     // unsigned 32-bit version + signed 32-bit referenced-count.
     // Meaning of version:
     // * Created version: no SetFailed() is called on the Socket yet. Must be
@@ -751,6 +769,11 @@ private:
 
     butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
+
+    // The RdmaEndpoint
+    rdma::RdmaEndpoint* _rdma_ep;
+    // Should use RDMA or not
+    RdmaState _rdma_state;
 };
 
 } // namespace brpc

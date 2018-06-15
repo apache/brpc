@@ -223,6 +223,10 @@ struct ServerOptions {
     // All names inside must be valid, check protocols name in global.cpp
     // Default: empty (all protocols)
     std::string enabled_protocols;
+
+    // Whether the server uses rdma or not
+    // Default: false
+    bool use_rdma;
 };
 
 // This struct is originally designed to contain basic statistics of the

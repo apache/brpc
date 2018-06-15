@@ -59,6 +59,9 @@ NamingServiceThread::Actions::~Actions() {
     for (std::vector<ServerNode>::const_iterator it = _last_servers.begin();
          it != _last_servers.end(); ++it) {
         SocketMapRemove(SocketMapKey(it->addr));
+#ifdef BRPC_RDMA
+        SocketMapRemove(SocketMapKey(it->addr, true));
+#endif
     }
     EndWait(0);
 }
@@ -107,19 +110,35 @@ void NamingServiceThread::Actions::ResetServers(
     for (size_t i = 0; i < _added.size(); ++i) {
         ServerNodeWithId tagged_id;
         tagged_id.node = _added[i];
+        tagged_id.node.use_rdma = false;
         // TODO: For each unique SocketMapKey (i.e. SSL settings), insert a new
         //       Socket. SocketMapKey may be passed through AddWatcher. Make sure
         //       to pick those Sockets with the right settings during OnAddedServers
         CHECK_EQ(SocketMapInsert(SocketMapKey(_added[i].addr), &tagged_id.id), 0);
         _added_sockets.push_back(tagged_id);
+#ifdef BRPC_RDMA
+        // add socket for RDMA
+        tagged_id.node = _added[i];
+        tagged_id.node.use_rdma = true;
+        CHECK_EQ(SocketMapInsert(SocketMapKey(_added[i].addr, true), &tagged_id.id), 0);
+        _added_sockets.push_back(tagged_id);
+#endif
     }
 
     _removed_sockets.clear();
     for (size_t i = 0; i < _removed.size(); ++i) {
         ServerNodeWithId tagged_id;
         tagged_id.node = _removed[i];
+        tagged_id.node.use_rdma = false;
         CHECK_EQ(0, SocketMapFind(SocketMapKey(_removed[i].addr), &tagged_id.id));
         _removed_sockets.push_back(tagged_id);
+#ifdef BRPC_RDMA
+        // remove socket for RDMA
+        tagged_id.node = _removed[i];
+        tagged_id.node.use_rdma = true;
+        CHECK_EQ(0, SocketMapFind(SocketMapKey(_removed[i].addr, true), &tagged_id.id));
+        _removed_sockets.push_back(tagged_id);
+#endif
     }
 
     // Refresh sockets
@@ -144,7 +163,8 @@ void NamingServiceThread::Actions::ResetServers(
                            _sockets.end());
     }
     std::vector<ServerId> removed_ids;
-    ServerNodeWithId2ServerId(_removed_sockets, &removed_ids, NULL);
+    ServerNodeWithId2ServerId(_removed_sockets, &removed_ids, NULL,
+                              _owner->_options.use_rdma);
 
     {
         BAIDU_SCOPED_LOCK(_owner->_mutex);
@@ -159,7 +179,8 @@ void NamingServiceThread::Actions::ResetServers(
             }
 
             std::vector<ServerId> added_ids;
-            ServerNodeWithId2ServerId(_added_sockets, &added_ids, it->second);
+            ServerNodeWithId2ServerId(_added_sockets, &added_ids, it->second,
+                                      _owner->_options.use_rdma);
             if (!_added_sockets.empty()) {
                 it->first->OnAddedServers(added_ids);
             }
@@ -170,6 +191,9 @@ void NamingServiceThread::Actions::ResetServers(
         // TODO: Remove all Sockets that have the same address in SocketMapKey.peer
         //       We may need another data structure to avoid linear cost
         SocketMapRemove(SocketMapKey(_removed[i].addr));
+#ifdef BRPC_RDMA
+        SocketMapRemove(SocketMapKey(_removed[i].addr, true));
+#endif
     }
 
     if (!_removed.empty() || !_added.empty()) {
@@ -233,7 +257,8 @@ NamingServiceThread::~NamingServiceThread() {
     {
         BAIDU_SCOPED_LOCK(_mutex);
         std::vector<ServerId> to_be_removed;
-        ServerNodeWithId2ServerId(_last_sockets, &to_be_removed, NULL);
+        ServerNodeWithId2ServerId(_last_sockets, &to_be_removed, NULL,
+                                  _options.use_rdma);
         if (!_last_sockets.empty()) {
             for (std::map<NamingServiceWatcher*,
                           const NamingServiceFilter*>::iterator
@@ -299,11 +324,15 @@ int NamingServiceThread::WaitForFirstBatchOfServers() {
 
 void NamingServiceThread::ServerNodeWithId2ServerId(
     const std::vector<ServerNodeWithId>& src,
-    std::vector<ServerId>* dst, const NamingServiceFilter* filter) {
+    std::vector<ServerId>* dst, const NamingServiceFilter* filter,
+    bool use_rdma) {
     dst->reserve(src.size());
     for (std::vector<ServerNodeWithId>::const_iterator
              it = src.begin(); it != src.end(); ++it) {
         if (filter && !filter->Accept(it->node)) {
+            continue;
+        }
+        if (it->node.use_rdma != use_rdma) {
             continue;
         }
         ServerId socket;
@@ -323,7 +352,8 @@ int NamingServiceThread::AddWatcher(NamingServiceWatcher* watcher,
     if (_watchers.insert(std::make_pair(watcher, filter)).second) {
         if (!_last_sockets.empty()) {
             std::vector<ServerId> added_ids;
-            ServerNodeWithId2ServerId(_last_sockets, &added_ids, filter);
+            ServerNodeWithId2ServerId(_last_sockets, &added_ids, filter,
+                                      _options.use_rdma);
             watcher->OnAddedServers(added_ids);
         }
         return 0;

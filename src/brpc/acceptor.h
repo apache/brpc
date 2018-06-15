@@ -25,6 +25,9 @@
 
 
 namespace brpc {
+namespace rdma {
+class RdmaCommunicationManager;
+}
 
 struct ConnectStatistics {
 };
@@ -46,14 +49,20 @@ public:
     explicit Acceptor(bthread_keytable_pool_t* pool = NULL);
     ~Acceptor();
 
-    // [thread-safe] Accept connections from `listened_fd'. Ownership of
-    // `listened_fd' is also transferred to `Acceptor'. Can be called
-    // multiple times if the last `StartAccept' has been completely stopped
-    // by calling `StopAccept' and `Join'. Connections that has no data
-    // transmission for `idle_timeout_sec' will be closed automatically iff
-    // `idle_timeout_sec' > 0
+    // [thread-safe] Accept connections from `listened_fd' and `listened_rdma'.
+    // Ownership of `listened_fd' and `listened_rdma' is also transferred to
+    // `Acceptor'. Can be called multiple times if the last `StartAccept' has
+    // been completely stopped by calling `StopAccept' and `Join'. Connections
+    // that has no data transmission for `idle_timeout_sec' will be closed
+    // automatically iff `idle_timeout_sec' > 0
     // Return 0 on success, -1 otherwise.
-    int StartAccept(int listened_fd, int idle_timeout_sec, SSL_CTX* ssl_ctx);
+    int StartAccept(int listened_fd,
+                    rdma::RdmaCommunicationManager* listened_rdma,
+                    int idle_timeout_sec, SSL_CTX* ssl_ctx);
+    // Just accept at TCP fd
+    int StartAccept(int listened_fd, int idle_timeout_sec, SSL_CTX* ssl_ctx) {
+        return StartAccept(listened_fd, NULL, idle_timeout_sec, ssl_ctx);
+    }
 
     // [thread-safe] Stop accepting connections.
     // `closewait_ms' is not used anymore.
@@ -80,6 +89,9 @@ private:
     // Accept connections.
     static void OnNewConnectionsUntilEAGAIN(Socket* m);
     static void OnNewConnections(Socket* m);
+    // Accept RDMA connections.
+    static void OnNewRdmaConnectionsUntilEAGAIN(Socket* m);
+    static void OnNewRdmaConnections(Socket* m);
 
     static void* CloseIdleConnections(void* arg);
     
@@ -95,8 +107,13 @@ private:
     bthread_t _close_idle_tid;
 
     int _listened_fd;
-    // The Socket tso accept connections.
+    // The Socket to accept connections.
     SocketId _acception_id;
+
+    // The rdmacm used for listenning
+    rdma::RdmaCommunicationManager* _listened_rdma;
+    // The Socket to accept RDMA connections.
+    SocketId _rdma_acception_id;
 
     butil::Mutex _map_mutex;
     butil::ConditionVariable _empty_cond;

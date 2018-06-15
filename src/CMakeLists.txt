@@ -6,6 +6,16 @@ elseif(NOT DEBUG)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DNDEBUG")
 endif()
 
+if(BRPC_WITH_RDMA)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBRPC_RDMA")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DBRPC_RDMA")
+endif()
+
+if (IOBUF_WITH_HUGE_BLOCK)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DIOBUF_HUGE_BLOCK")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DIOBUF_HUGE_BLOCK")
+endif()
+
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/src)
 

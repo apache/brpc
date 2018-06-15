@@ -31,6 +31,17 @@
 #include "butil/iobuf.h"
 
 namespace butil {
+#ifdef IOBUF_HUGE_BLOCK
+const size_t IOBuf::DEFAULT_BLOCK_SIZE = 256 * 1024;
+const size_t IOBuf::MAX_BLOCK_SIZE = 1024 * 1024;
+const size_t IOBuf::DEFAULT_PAYLOAD = IOBuf::DEFAULT_BLOCK_SIZE - 40;
+const size_t IOBuf::MAX_PAYLOAD = IOBuf::MAX_BLOCK_SIZE - 40;
+#else
+const size_t IOBuf::DEFAULT_BLOCK_SIZE = 8192;
+const size_t IOBuf::MAX_BLOCK_SIZE = (1 << 16);
+const size_t IOBuf::DEFAULT_PAYLOAD = IOBuf::DEFAULT_BLOCK_SIZE - 16;
+const size_t IOBuf::MAX_PAYLOAD = IOBuf::MAX_BLOCK_SIZE - 16;
+#endif
 namespace iobuf {
 
 typedef ssize_t (*iov_function)(int fd, const struct iovec *vector,
@@ -232,11 +243,35 @@ size_t IOBuf::new_bigview_count() {
 
 struct IOBuf::Block {
     butil::atomic<int> nshared;
+#ifdef IOBUF_HUGE_BLOCK
+    uint32_t size;
+    uint32_t cap;
+#else
     uint16_t size;
     uint16_t cap;
+#endif
     Block* portal_next;
+#ifdef IOBUF_HUGE_BLOCK
+    void (*release_cb)(void*);
+    char* data;
+#else
     char data[0];
-        
+#endif
+
+#ifdef IOBUF_HUGE_BLOCK
+    // if data memory is not allocated in IOBuf, set nshared to be 0.
+    explicit Block(size_t block_size, bool inner_mem = true)
+        : nshared((inner_mem) ? 1 : 0), size(0), cap(block_size - sizeof(IOBuf::Block))
+        , portal_next(NULL), release_cb(NULL), data(NULL) {
+        assert(block_size <= (MAX_HUGE_BLOCK_SIZE + sizeof(IOBuf::Block)));
+        if (!inner_mem) {
+            return;
+        }
+        data = (char*)((char*)this + sizeof(IOBuf::Block));
+        iobuf::g_nblock.fetch_add(1, butil::memory_order_relaxed);
+        iobuf::g_blockmem.fetch_add(block_size, butil::memory_order_relaxed);
+    }
+#else
     explicit Block(size_t block_size)
         : nshared(1), size(0), cap(block_size - offsetof(Block, data))
         , portal_next(NULL) {
@@ -244,6 +279,7 @@ struct IOBuf::Block {
         iobuf::g_nblock.fetch_add(1, butil::memory_order_relaxed);
         iobuf::g_blockmem.fetch_add(block_size, butil::memory_order_relaxed);
     }
+#endif
 
     void inc_ref() {
         nshared.fetch_add(1, butil::memory_order_relaxed);
@@ -251,10 +287,26 @@ struct IOBuf::Block {
         
     void dec_ref() {
         if (nshared.fetch_sub(1, butil::memory_order_release) == 1) {
+#ifdef IOBUF_HUGE_BLOCK
+            if (this->data != ((char*)this + sizeof(IOBuf::Block))) {
+                // mean `data` memory is not allocated in IOBuf
+                if (release_cb) {
+                    release_cb((void *)data);
+                }
+                this->~Block();
+                iobuf::blockmem_deallocate(this);
+                return;
+            }
+#endif
             butil::atomic_thread_fence(butil::memory_order_acquire);
             iobuf::g_nblock.fetch_sub(1, butil::memory_order_relaxed);
+#ifdef IOBUF_HUGE_BLOCK
+            iobuf::g_blockmem.fetch_sub(cap + sizeof(IOBuf::Block),
+                                        butil::memory_order_relaxed);
+#else
             iobuf::g_blockmem.fetch_sub(cap + offsetof(Block, data),
                                         butil::memory_order_relaxed);
+#endif
             this->~Block();
             iobuf::blockmem_deallocate(this);
         }
@@ -277,10 +329,24 @@ IOBuf::Block* get_portal_next(IOBuf::Block const* b) {
     return b->portal_next;
 }
 
+#ifdef IOBUF_HUGE_BLOCK
+uint32_t block_cap(IOBuf::Block const *b) {
+#else
 uint16_t block_cap(IOBuf::Block const *b) {
+#endif
     return b->cap;
 }
 
+#ifdef IOBUF_HUGE_BLOCK
+inline IOBuf::Block* create_block(const size_t block_size, bool inner_mem = true) {
+    size_t alloc_size = (inner_mem) ? block_size : sizeof(IOBuf::Block);
+    void* mem = iobuf::blockmem_allocate(alloc_size);
+    if (BAIDU_LIKELY(mem != NULL)) {
+        return new (mem) IOBuf::Block(block_size, inner_mem);
+    }
+    return NULL;
+}
+#else
 inline IOBuf::Block* create_block(const size_t block_size) {
     void* mem = iobuf::blockmem_allocate(block_size);
     if (BAIDU_LIKELY(mem != NULL)) {
@@ -288,6 +354,7 @@ inline IOBuf::Block* create_block(const size_t block_size) {
     }
     return NULL;
 }
+#endif
 
 inline IOBuf::Block* create_block() {
     return create_block(IOBuf::DEFAULT_BLOCK_SIZE);
@@ -510,7 +577,6 @@ BAIDU_CASSERT(IOBuf::DEFAULT_BLOCK_SIZE/4096*4096 == IOBuf::DEFAULT_BLOCK_SIZE,
               sizeof_block_should_be_multiply_of_4096);
 
 const IOBuf::Area IOBuf::INVALID_AREA;
-const size_t IOBuf::DEFAULT_PAYLOAD;
 
 IOBuf::IOBuf(const IOBuf& rhs) {
     if (rhs._small()) {
@@ -1090,6 +1156,27 @@ int IOBuf::push_back(char c) {
     ++b->size;
     _push_back_ref(r);
     return 0;
+}
+
+int IOBuf::append_zerocopy(void const* data, size_t count, void (*cb)(void*)) {
+#ifndef IOBUF_HUGE_BLOCK
+    LOG(FATAL) << "Not supported, append_zerocopy is supported only for huge block";
+    return -1;
+#else
+    if (BAIDU_UNLIKELY(!data || count <= 0)) {
+        return -1;
+    }
+    IOBuf::Block* b = iobuf::create_block(count + sizeof(IOBuf::Block), false);
+    if (BAIDU_UNLIKELY(!b)) {
+        return -1;
+    }
+    b->data = (char *)data;
+    b->release_cb = cb;
+    const IOBuf::BlockRef r = { b->size, b->cap, b };
+    _push_back_ref(r);
+
+    return 0;
+#endif
 }
 
 int IOBuf::append(char const* s) {
@@ -1744,7 +1831,11 @@ IOBufAsZeroCopyOutputStream::IOBufAsZeroCopyOutputStream(
     , _cur_block(NULL)
     , _byte_count(0) {
     
+#ifdef IOBUF_HUGE_BLOCK
+    if (_block_size <= sizeof(IOBuf::Block)) {
+#else
     if (_block_size <= offsetof(IOBuf::Block, data)) {
+#endif
         throw std::invalid_argument("block_size is too small");
     }
 }
