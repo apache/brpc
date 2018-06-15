@@ -534,8 +534,9 @@ ParseResult H2Context::Consume(
             wopt.ignore_eovercrowded = true;
             if (_socket->Write(&sendbuf, &wopt) != 0) {
                 LOG(WARNING) << "Fail to send GOAWAY";
+                return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
-            return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
+            return MakeMessage(NULL);
         }
     } else {
         return MakeParseError(PARSE_ERROR_NO_RESOURCE);
@@ -900,9 +901,10 @@ H2ParseResult H2Context::OnPing(
 
 H2ParseResult H2Context::OnGoAway(
     butil::IOBufBytesIterator&, const H2FrameHead&) {
-    _socket->SetFailed(ELOGOFF, "Received GOAWAY from %s",
-                       butil::endpoint2str(_socket->remote_side()).c_str());
-    return MakeH2Error(H2_PROTOCOL_ERROR);
+    // TODO(zhujiashun): deal with the stream identifier of the
+    // last peer-initiated stream that was or might be processed
+    // on the sending endpoint in this connection.
+    return MakeH2Message(NULL);
 }
                           
 H2ParseResult H2Context::OnWindowUpdate(
