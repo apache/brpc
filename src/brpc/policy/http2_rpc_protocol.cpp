@@ -42,6 +42,9 @@ DEFINE_bool(http2_hpack_encode_name, false,
 DEFINE_bool(http2_hpack_encode_value, false,
             "Encode value in HTTP2 headers with huffman encoding");
 
+DEFINE_int32(http2_window_update_size, 2048,
+             "Initial window update size for flow control");
+
 const char* H2StreamState2Str(H2StreamState s) {
     switch (s) {
     case H2_STREAM_IDLE: return "idle";
@@ -232,7 +235,8 @@ friend void InitFrameHandlers();
     typedef butil::FlatMap<int, H2StreamContext*> StreamMap;
     butil::Mutex _stream_mutex;
     StreamMap _pending_streams;
-    butil::atomic<int64_t> _pending_conn_window_size;
+    butil::Mutex _conn_window_mutex;;
+    int64_t _pending_conn_window_size;
 };
 
 inline bool add_window_size(butil::atomic<int64_t>* window_size, int64_t diff) {
@@ -966,19 +970,17 @@ void H2Context::ReclaimWindowSize(int64_t size) {
     // Spec does not stipulate how a receiver decides when to send this frame or the value
     // that it sends, nor does it specify how a sender chooses to send packets.
     // Implementations are able to select any algorithm that suits their needs.
-
-    // TODO(zhujiashun): optimize the number of WINDOW_UPDATE frame
-    //int64_t before_add = _pending_conn_window_size.fetch_add(
-    //                        size, butil::memory_order_relaxed);
-    //if (before_add > local_settings().initial_window_size / 3) {
-    //    int64_t old_value = _pending_conn_window_size.exchange(0, butil::memory_order_relaxed);
-    //    if (old_value) {
-    //    }
-    //}
-
+    {
+        std::unique_lock<butil::Mutex> mu(_stream_mutex);
+        _pending_conn_window_size += size;
+        if (_pending_conn_window_size < FLAGS_http2_window_update_size) {
+            return;
+        }
+        _pending_conn_window_size -= FLAGS_http2_window_update_size;
+    }
     char cwinbuf[FRAME_HEAD_SIZE + 4];
     SerializeFrameHead(cwinbuf, 4, H2_FRAME_WINDOW_UPDATE, 0, 0);
-    SaveUint32(cwinbuf + FRAME_HEAD_SIZE, size);
+    SaveUint32(cwinbuf + FRAME_HEAD_SIZE, FLAGS_http2_window_update_size);
     butil::IOBuf sendbuf;
     sendbuf.append(cwinbuf, sizeof(cwinbuf));
     Socket::WriteOptions wopt;
