@@ -45,13 +45,24 @@ COPTS = [
 LINKOPTS = [
     "-lpthread",
     "-ldl",
-    "-lz",
+    "-lz", 
+    "-lssl",
+    "-lcrypto",
 ] + select({
-    ":darwin": [],
+    ":darwin": [
+        "-framework CoreFoundation",
+        "-framework CoreGraphics",
+        "-framework CoreData",
+        "-framework CoreText",
+        "-framework Security",
+        "-framework Foundation",
+        "-Wl,-U,_MallocExtension_ReleaseFreeMemory",
+        "-Wl,-U,_ProfilerStart",
+        "-Wl,-U,_ProfilerStop",
+        "-Wl,-U,_RegisterThriftProtocol",
+    ],
     "//conditions:default": [
       "-lrt",
-      "-lssl",
-      "-lcrypto",
     ],
 })
 
