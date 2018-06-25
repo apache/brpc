@@ -203,7 +203,7 @@ DEBUG_OBJS = $(OBJS:.o=.dbg.o)
 PROTOS=$(BRPC_PROTOS) src/idl_options.proto
 
 .PHONY:all
-all:  protoc-gen-mcpack libbrpc.a $(TARGET_LIB_DY) output/include output/lib output/bin
+all:  protoc-gen-mcpack $(TARGET_LIB_DY) output/include output/lib output/bin
 
 .PHONY:debug
 debug: test/libbrpc.dbg.a test/libbvar.dbg.a
@@ -211,7 +211,7 @@ debug: test/libbrpc.dbg.a test/libbvar.dbg.a
 .PHONY:clean
 clean:
 	@echo "Cleaning"
-	@rm -rf src/mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a $(TARGET_LIB_DY) $(OBJS) output/include output/lib output/bin $(PROTOS:.proto=.pb.h) $(PROTOS:.proto=.pb.cc)
+	@rm -rf src/mcpack2pb/generator.o protoc-gen-mcpack $(TARGET_LIB_DY) $(OBJS) output/include output/lib output/bin $(PROTOS:.proto=.pb.h) $(PROTOS:.proto=.pb.cc)
 
 .PHONY:clean_debug
 clean_debug:
@@ -219,18 +219,13 @@ clean_debug:
 
 .PRECIOUS: %.o
 
-protoc-gen-mcpack: src/idl_options.pb.cc src/mcpack2pb/generator.o libbrpc.a
+protoc-gen-mcpack: src/idl_options.pb.cc src/mcpack2pb/generator.o 
 	@echo "Linking $@"
 ifeq ($(SYSTEM),Linux)
 	@$(CXX) -o $@ $(HDRPATHS) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 else ifeq ($(SYSTEM),Darwin)
 	@$(CXX) -o $@ $(HDRPATHS) $(LIBPATHS) $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
 endif
-
-# force generation of pb headers before compiling to avoid fail-to-import issues in compiling pb.cc
-libbrpc.a:$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
-	@echo "Packing $@"
-	@ar crs $@ $(filter %.o,$^)
 
 $(TARGET_LIB_DY):$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
 	@echo "Linking $@"
@@ -254,12 +249,6 @@ output/include:
 	@for dir in `find src -type f -name "*.h" -exec dirname {} \\; | sed -e 's/^src\///g' -e '/^src$$/d' | sort | uniq`; do mkdir -p $@/$$dir && cp src/$$dir/*.h $@/$$dir/; done
 	@for dir in `find src -type f -name "*.hpp" -exec dirname {} \\; | sed -e 's/^src\///g' -e '/^src$$/d' | sort | uniq`; do mkdir -p $@/$$dir && cp src/$$dir/*.hpp $@/$$dir/; done
 	@cp src/idl_options.proto src/idl_options.pb.h $@
-
-.PHONY:output/lib
-output/lib:libbrpc.a $(TARGET_LIB_DY)
-	@echo "Copying to $@"
-	@mkdir -p $@
-	@cp $^ $@
 
 .PHONY:output/bin
 output/bin:protoc-gen-mcpack
