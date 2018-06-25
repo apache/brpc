@@ -218,6 +218,9 @@ To change compiler to clang, overwrite environment variable CC and CXX to clang 
 To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
 
 ## MacOS
+
+Note: In the same running environment, the performance of the current Mac version is about 2.5 times worse than the Linux version. If your service is performance-critical, do not use MacOS as your production environment.
+
 ### Prepare deps
 
 Install common deps:
