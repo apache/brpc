@@ -95,7 +95,7 @@ public:
         example::EchoRequest* req = request->Cast<example::EchoRequest>();
         example::EchoResponse* res = response->Cast<example::EchoResponse>();
 
-        // Get method-name for thrift via cntl->thrift_method_name()
+        // Get method-name for thrift via request->method_name() after Cast() was called
         if (_native_handler) {
             _native_handler->Echo(*res, *req);
         } else {
