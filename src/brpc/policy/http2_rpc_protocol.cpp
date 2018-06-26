@@ -24,6 +24,7 @@ namespace brpc {
 
 DECLARE_bool(http_verbose);
 DECLARE_int32(http_verbose_max_body_length);
+DECLARE_int32(health_check_interval);
 
 namespace policy {
 
@@ -1678,7 +1679,7 @@ void H2GlobalStreamCreator::ReplaceSocketForStream(
     SocketOptions opt = (*inout)->_options;
     // Only main socket can be the owner of ssl_ctx
     opt.owns_ssl_ctx = false;
-    opt.health_check_interval_s = -1;
+    opt.health_check_interval_s = FLAGS_health_check_interval;
     // TODO(zhujiashun): Predictively create socket to improve performance
     if (get_client_side_messenger()->Create(opt, &sid) != 0) {
         cntl->SetFailed(EINVAL, "Fail to create H2 socket");
