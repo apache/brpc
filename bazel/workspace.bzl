@@ -3,8 +3,8 @@
 def brpc_workspace():
   native.http_archive(
       name = "com_google_protobuf",
-      strip_prefix = "protobuf-b04e5cba356212e4e8c66c61bbe0c3a20537c5b9",
-      url = "https://github.com/google/protobuf/archive/b04e5cba356212e4e8c66c61bbe0c3a20537c5b9.tar.gz",
+      strip_prefix = "protobuf-ab8edf1dbe2237b4717869eaab11a2998541ad8d",
+      url = "https://github.com/google/protobuf/archive/ab8edf1dbe2237b4717869eaab11a2998541ad8d.tar.gz",
   )
   
   
