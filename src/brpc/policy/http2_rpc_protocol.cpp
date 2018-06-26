@@ -1665,7 +1665,8 @@ void H2GlobalStreamCreator::ReplaceSocketForStream(
     // since timeout of RPC is much larger than the delay of sending.
     std::unique_lock<butil::Mutex> mu(_mutex);
     do {
-        if (!(*inout)->_agent_socket) {
+        if (!(*inout)->_agent_socket ||
+            (*inout)->_agent_socket->Failed()) {
             break;
         }
         H2Context* ctx = static_cast<H2Context*>((*inout)->_agent_socket->parsing_context());
@@ -1683,7 +1684,7 @@ void H2GlobalStreamCreator::ReplaceSocketForStream(
     SocketOptions opt = (*inout)->_options;
     // Only main socket can be the owner of ssl_ctx
     opt.owns_ssl_ctx = false;
-    opt.health_check_interval_s = FLAGS_health_check_interval;
+    opt.health_check_interval_s = -1;
     // TODO(zhujiashun): Predictively create socket to improve performance
     if (get_client_side_messenger()->Create(opt, &sid) != 0) {
         cntl->SetFailed(EINVAL, "Fail to create H2 socket");
@@ -1694,6 +1695,7 @@ void H2GlobalStreamCreator::ReplaceSocketForStream(
         cntl->SetFailed(EFAILEDSOCKET, "Fail to address H2 socketId=%" PRIu64, sid);
         return;
     }
+    tmp_ptr->ShareStats(inout->get());
     (*inout)->_agent_socket.swap(tmp_ptr);
     mu.unlock();
     (*inout)->_agent_socket->ReAddress(inout);
