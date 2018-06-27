@@ -29,6 +29,7 @@ Config brpc with thrift support, then make. The compiled libbrpc.a includes exte
 ```bash
 sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --with-thrift
 ```
+PS: Please Define ENABLE_THRIFT_FRAMED_PROTOCOL Marco in user code in order to make it work when including thrift utils headers in brpc.
 
 # Client accesses thrift server
 Steps：
