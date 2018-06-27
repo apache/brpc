@@ -1,5 +1,12 @@
 package(default_visibility = ["//visibility:public"])
 
+
+config_setting(
+    name = "darwin",
+    values = {"cpu": "darwin"},
+    visibility = ["//visibility:public"],
+)
+
 SOURCES = ["db/builder.cc",
          "db/c.cc",
          "db/dbformat.cc",
@@ -63,8 +70,13 @@ cc_library(
     ],
     copts = [
         "-fno-builtin-memcmp",
-        "-DOS_LINUX",
         "-DLEVELDB_PLATFORM_POSIX=1",
         "-DLEVELDB_ATOMIC_PRESENT",
     ],
+    defines = [
+        "LEVELDB_PLATFORM_POSIX",
+    ] + select({
+        ":darwin": ["OS_MACOSX"],
+        "//conditions:default": [],
+    }),
 )

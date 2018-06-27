@@ -21,11 +21,6 @@ runcmd(){
 
 echo "build combination: PURPOSE=$PURPOSE CXX=$CXX CC=$CC"
 
-if [ "$PURPOSE" = "compile-with-bazel" ]; then
-    runcmd "bazel build -j 12 -c opt --copt -DHAVE_ZLIB=1 //..."
-    exit 0
-fi
-
 # The default env in travis-ci is Ubuntu.
 if ! sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --nodebugsymbols --cxx=$CXX --cc=$CC; then
     echo "Fail to configure brpc"
