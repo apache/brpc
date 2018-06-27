@@ -29,6 +29,7 @@ sudo make install
 ```bash
 sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --with-thrift
 ```
+注意: 在编译用户代码的时候, 请定义ENABLE_THRIFT_FRAMED_PROTOCOL宏, 否则在include brpc中thrift协议相关头文件后, 实际并不生效
 
 # Client端访问thrift server
 基本步骤：
