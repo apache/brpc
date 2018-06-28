@@ -31,9 +31,13 @@
 #include "butil/iobuf.h"
 
 namespace butil {
+// NOTE:
+// Currently, the block_pool implementation used by RDMA is coupled with
+// these block size. If the following values are changed, please make sure
+// the block_pool can still work.
 #ifdef IOBUF_HUGE_BLOCK
 const size_t IOBuf::DEFAULT_BLOCK_SIZE = 256 * 1024;
-const size_t IOBuf::MAX_BLOCK_SIZE = 1024 * 1024;
+const size_t IOBuf::MAX_BLOCK_SIZE = 2048 * 1024;
 const size_t IOBuf::DEFAULT_PAYLOAD = IOBuf::DEFAULT_BLOCK_SIZE - 40;
 const size_t IOBuf::MAX_PAYLOAD = IOBuf::MAX_BLOCK_SIZE - 40;
 #else

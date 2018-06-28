@@ -68,7 +68,7 @@ set(DYNAMIC_LIB
     z
     ibverbs
     rdmacm
-    nl
+    #nl  # Some versions of OFED may require this lib
     tcmalloc
     )
 

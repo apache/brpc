@@ -205,7 +205,7 @@ private:
 
     // Random number used in RDMA connection (as cookies for security)
     // See rdma_endpoint.cpp to get more details.
-    char _rand[RANDOM_LENGTH];
+    char _rand_str[RANDOM_LENGTH];
 
     DISALLOW_COPY_AND_ASSIGN(RdmaEndpoint);
 };

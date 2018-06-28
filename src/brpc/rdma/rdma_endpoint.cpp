@@ -21,6 +21,7 @@
 #include <butil/logging.h>                   // CHECK, LOG
 #include <butil/object_pool.h>               // return_object
 #include <butil/rand_util.h>                 // RandBytes
+#include <butil/sys_byteorder.h>             // NetToHost/HostToNet
 #include <gflags/gflags.h>
 #include "brpc/errno.pb.h"
 #include "brpc/event_dispatcher.h"
@@ -42,32 +43,6 @@ DEFINE_int32(rdma_sbuf_size, 1048576, "Send buffer size for RDMA");
 DEFINE_int32(rdma_rbuf_size, 1048576, "Recv buffer size for RDMA");
 DEFINE_bool(rdma_recv_zerocopy, true, "Enable zerocopy for receive side");
 
-#ifndef htonll
-static inline uint64_t htonll(uint64_t num) {
-#if defined(__LITTLE_ENDIAN)
-    return static_cast<uint64_t>(htonl(static_cast<uint32_t>(num >> 32))) |
-        (static_cast<uint64_t>(htonl(static_cast<uint32_t>(num))) << 32);
-#elif defined(__BIG_ENDIAN)
-    return num;
-#else
-#error Could not determine endianness.
-#endif
-}
-#endif
-
-#ifndef ntohll
-static inline uint64_t ntohll(uint64_t num) {
-#if defined(__LITTLE_ENDIAN)
-    return static_cast<uint64_t>(ntohl(static_cast<uint32_t>(num >> 32))) |
-        (static_cast<uint64_t>(ntohl(static_cast<uint32_t>(num))) << 32);
-#elif defined(__BIG_ENDIAN)
-    return num;
-#else
-#error Could not determine endianness.
-#endif
-}
-#endif
-
 // DO NOT change this value unless you know the safe value!!!
 // This is the number of reserved WRs in SQ/RQ for pure ACK.
 static const size_t RESERVED_WR_NUM = 3;
@@ -75,28 +50,29 @@ static const size_t RESERVED_WR_NUM = 3;
 struct RdmaConnectRequestData {
     void Serialize(char* data) const {
         uint64_t* tmp = (uint64_t*)data;
-        *tmp = htonll(sid);
-        memcpy(data + sizeof(sid), rand, sizeof(rand));
-        uint64_t* rq = (uint64_t*)(&data[sizeof(sid) + sizeof(rand)]);
-        *rq = htonl(rq_size);
+        *tmp = butil::HostToNet64(sid);
+        memcpy(data + sizeof(sid), rand_str, sizeof(rand_str));
+        uint64_t* rq = (uint64_t*)(&data[sizeof(sid) + sizeof(rand_str)]);
+        *rq = butil::HostToNet32(rq_size);
         uint64_t* sq = (uint64_t*)(&data[Length() - sizeof(sq_size)]);
-        *sq = htonl(sq_size);
+        *sq = butil::HostToNet32(sq_size);
     }
 
     void Deserialize(char* data) {
-        sid = ntohll(*(uint64_t*)data);
-        memcpy(rand, data + sizeof(sid), RANDOM_LENGTH);
-        rq_size = ntohl(*(uint32_t*)((char*)data + sizeof(sid) + sizeof(rand)));
-        sq_size = ntohl(*(uint32_t*)((char*)data + sizeof(sid) +
-                                     sizeof(rand) + sizeof(rq_size)));
+        sid = butil::NetToHost64(*(uint64_t*)data);
+        memcpy(rand_str, data + sizeof(sid), RANDOM_LENGTH);
+        rq_size = butil::NetToHost32(*(uint32_t*)
+                  ((char*)data + sizeof(sid) + sizeof(rand_str)));
+        sq_size = butil::NetToHost32(*(uint32_t*)((char*)data + sizeof(sid) +
+                  sizeof(rand_str) + sizeof(rq_size)));
     }
 
     size_t Length() const {
-        return sizeof(sid) + sizeof(rand) + sizeof(rq_size) + sizeof(sq_size);
+        return sizeof(sid) + sizeof(rand_str) + sizeof(rq_size) + sizeof(sq_size);
     }
 
     uint64_t sid;
-    char rand[RANDOM_LENGTH];
+    char rand_str[RANDOM_LENGTH];
     uint32_t rq_size;
     uint32_t sq_size;
 };
@@ -104,14 +80,14 @@ struct RdmaConnectRequestData {
 struct RdmaConnectResponseData {
     void Serialize(char* data) const {
         uint32_t* rq = (uint32_t*)data;
-        *rq = htonl(rq_size);
+        *rq = butil::HostToNet32(rq_size);
         uint64_t* sq = (uint64_t*)(&data[sizeof(rq_size)]);
-        *sq = htonl(sq_size);
+        *sq = butil::HostToNet32(sq_size);
     }
 
     void Deserialize(char* data) {
-        rq_size = ntohl(*(uint32_t*)data);
-        sq_size = ntohl(*(uint32_t*)((char*)data + sizeof(rq_size)));
+        rq_size = butil::NetToHost32(*(uint32_t*)data);
+        sq_size = butil::NetToHost32(*(uint32_t*)((char*)data + sizeof(rq_size)));
     }
 
     size_t Length() const {
@@ -305,7 +281,7 @@ int RdmaEndpoint::HandshakeAtServer(RdmaCMEvent event) {
             _socket->_rdma_state = Socket::RDMA_OFF;
             return _socket->_read_buf.size();
         }
-        memcpy(_rand, tmp + MAGIC_LENGTH, RANDOM_LENGTH);
+        memcpy(_rand_str, tmp + MAGIC_LENGTH, RANDOM_LENGTH);
 
         if (InitPipe(_pipefd) < 0) {
             return -1;
@@ -313,7 +289,7 @@ int RdmaEndpoint::HandshakeAtServer(RdmaCMEvent event) {
 
         _handshake_buf.clear();
         _status = HELLO_S;
-        uint64_t sid = htonll(_socket->id());
+        uint64_t sid = butil::HostToNet64(_socket->id());
         char* tmp2 = (char*)&sid;
         int sid_len = sizeof(sid);
         ssize_t left_len = sid_len;
@@ -400,7 +376,7 @@ int RdmaEndpoint::StartHandshake() {
     // local side according to the ip address. (We assume that the ip
     // address of the servers in one cluster share the same ip prefix.)
     if (!DestinationInRdmaCluster(
-                ntohl(butil::ip2int(_socket->remote_side().ip)))) {
+            butil::NetToHost64(butil::ip2int(_socket->remote_side().ip)))) {
         LOG(WARNING) << "Destination is not in current RDMA cluster";
         _socket->_rdma_state = Socket::RDMA_OFF;
         return 0;
@@ -409,8 +385,8 @@ int RdmaEndpoint::StartHandshake() {
 
     char tmp[HELLO_LENGTH];
     memcpy(tmp, MAGIC_STR, MAGIC_LENGTH);
-    butil::RandBytes(_rand, RANDOM_LENGTH);
-    memcpy(tmp + MAGIC_LENGTH, _rand, RANDOM_LENGTH);
+    butil::RandBytes(_rand_str, RANDOM_LENGTH);
+    memcpy(tmp + MAGIC_LENGTH, _rand_str, RANDOM_LENGTH);
     ssize_t left_len = HELLO_LENGTH;
 
     // Make sure _status==HELLO_C
@@ -450,7 +426,7 @@ int RdmaEndpoint::HandshakeAtClient(RdmaCMEvent event) {
         char tmp[sid_len];
         _handshake_buf.copy_to(tmp, sid_len);
         SocketId* sid_addr = (SocketId*)tmp;
-        _remote_sid = ntohll(*sid_addr);
+        _remote_sid = butil::NetToHost64(*sid_addr);
         if (_remote_sid == 0) {
             // Server may not use RDMA
             _handshake_buf.clear();
@@ -508,7 +484,7 @@ int RdmaEndpoint::HandshakeAtClient(RdmaCMEvent event) {
 
         RdmaConnectRequestData req;
         req.sid = _remote_sid;
-        memcpy(req.rand, _rand, RANDOM_LENGTH);
+        memcpy(req.rand_str, _rand_str, RANDOM_LENGTH);
         req.rq_size = _rq_size;
         req.sq_size = _sq_size;
         char data[req.Length()];
@@ -662,7 +638,7 @@ ssize_t RdmaEndpoint::DoCutFromIOBufList(
     ibv_sge sglist[max_sge];
     wr.sg_list = sglist;
     wr.opcode = IBV_WR_SEND_WITH_IMM;
-    wr.imm_data = htonl(imm);
+    wr.imm_data = butil::HostToNet32(imm);
     size_t sge_index = 0;
     uint32_t lkey = 0;
     while (sge_index < (uint32_t)max_sge &&
@@ -777,7 +753,7 @@ int RdmaEndpoint::SendImm(uint32_t imm) {
     memset(&wr, 0, sizeof(wr));
     wr.wr_id = _socket->id();
     wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
-    wr.imm_data = htonl(imm);
+    wr.imm_data = butil::HostToNet32(imm);
     wr.send_flags |= IBV_SEND_SOLICITED;
     wr.send_flags |= IBV_SEND_SIGNALED;
 
@@ -999,7 +975,7 @@ int RdmaEndpoint::InitializeFromAccept(
     }
 
     // Check validity of random number
-    if (memcmp(ep->_rand, req.rand, RANDOM_LENGTH) != 0) {
+    if (memcmp(ep->_rand_str, req.rand_str, RANDOM_LENGTH) != 0) {
         LOG_EVERY_SECOND(WARNING) << "Random number is not matched";
         // Do not set the Socket to failed because it may be an attack
         return -1;
