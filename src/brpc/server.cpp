@@ -618,6 +618,17 @@ int Server::InitializeOnce() {
         LOG(ERROR) << "Fail to init _ssl_ctx_map";
         return -1;
     }
+    const ConcurrencyLimiter* cl 
+        = ConcurrencyLimiterExtension()->Find("constant");
+    if (NULL == cl) {
+        LOG(FATAL) << "Fail to find ConcurrentLimiter by `constant`";
+    }
+    ConcurrencyLimiter* cl_copy = cl->New();
+    if (NULL == cl_copy) {
+        LOG(FATAL) << "Fail to new ConcurrencyLimiter";
+    }
+    _cl = cl_copy;
+
     _status = READY;
     return 0;
 }
@@ -879,17 +890,6 @@ int Server::StartInternal(const butil::ip_t& ip,
     // the strategy you set in ServerOptions to limit the maximum concurrency, 
     // unless you have set a constant maximum concurrency for this method 
     // before starting the server.
-    const ConcurrencyLimiter* cl 
-        = ConcurrencyLimiterExtension()->Find("constant");
-    if (NULL == cl) {
-        LOG(FATAL) << "Fail to find ConcurrentLimiter by `constant`";
-    }
-    ConcurrencyLimiter* cl_copy = cl->New();
-    if (NULL == cl_copy) {
-        LOG(FATAL) << "Fail to new ConcurrencyLimiter";
-    }
-    _cl = cl_copy;
-
     if (_options.max_concurrency == "constant") {
         _cl->MaxConcurrency() = _options.max_concurrency;
     } else {
