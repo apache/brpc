@@ -889,33 +889,32 @@ int Server::StartInternal(const butil::ip_t& ip,
         LOG(FATAL) << "Fail to new ConcurrencyLimiter";
     }
     _cl = cl_copy;
+
     if (_options.max_concurrency == "constant") {
         _cl->MaxConcurrency() = _options.max_concurrency;
     } else {
         _cl->MaxConcurrency() = 0;
-    }
-
-    for (MethodMap::iterator it = _method_map.begin();
-        it != _method_map.end(); ++it) {
-        if (NULL != it->second.status->_cl) {
-            continue;
+        for (MethodMap::iterator it = _method_map.begin();
+            it != _method_map.end(); ++it) {
+            if (it->second.is_builtin_service) {
+                continue;
+            }
+            const ConcurrencyLimiter* cl = NULL;
+            cl = ConcurrencyLimiterExtension()->Find(
+                    _options.max_concurrency.name().c_str());
+            if (NULL == cl) {
+                LOG(FATAL) << "Fail to find ConcurrencyLimiter by `"
+                           << _options.max_concurrency.name() << '`'; 
+                return -1;
+            }
+            ConcurrencyLimiter* cl_copy = cl->New();
+            if (NULL == cl_copy) {
+                LOG(FATAL) << "Fail to find ConcurrencyLimiter by `"
+                           << _options.max_concurrency.name() << '`'; 
+                return -1;
+            }
+            it->second.status->ResetConcurrencyLimiter(cl_copy);
         }
-        const ConcurrencyLimiter* cl = NULL;
-        const std::string cl_name = it->second.is_builtin_service ? 
-            "constant" : _options.max_concurrency.name();
-        cl = ConcurrencyLimiterExtension()->Find(cl_name.c_str());
-        if (NULL == cl) {
-            LOG(FATAL) << "Fail to find ConcurrencyLimiter by `"
-                       << _options.max_concurrency.name() << '`'; 
-            return -1;
-        }
-        ConcurrencyLimiter* cl_copy = cl->New();
-        if (NULL == cl_copy) {
-            LOG(FATAL) << "Fail to find ConcurrencyLimiter by `"
-                       << _options.max_concurrency.name() << '`'; 
-            return -1;
-        }
-        it->second.status->_cl = cl_copy;
     }
 
     // Create listening ports

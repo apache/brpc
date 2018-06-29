@@ -29,7 +29,18 @@ MethodStatus::MethodStatus()
     : _cl(NULL)
     , _nprocessing_bvar(cast_nprocessing, &_nprocessing)
     , _nrefused_per_second(&_nrefused_bvar, 1)
-    , _nprocessing(0) {}
+    , _nprocessing(0) {
+    const ConcurrencyLimiter* cl 
+        = ConcurrencyLimiterExtension()->Find("constant");
+    if (NULL == cl) {
+        LOG(FATAL) << "Fail to find ConcurrentLimiter by `constant`";
+    }
+    ConcurrencyLimiter* cl_copy = cl->New();
+    if (NULL == cl_copy) {
+        LOG(FATAL) << "Fail to new ConcurrencyLimiter";
+    }
+    _cl = cl_copy;
+}
 
 MethodStatus::~MethodStatus() {
     if (_cl) {

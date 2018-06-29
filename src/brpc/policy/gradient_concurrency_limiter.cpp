@@ -38,7 +38,7 @@ DEFINE_int32(gradient_cl_min_sample_count, 100,
 DEFINE_int32(gradient_cl_adjust_smooth, 50,
     "Smooth coefficient for adjust the max concurrency, the value is 0-99,"
     "the larger the value, the smaller the amount of each change");
-DEFINE_int32(gradient_cl_initial_max_concurrency, 600,
+DEFINE_int32(gradient_cl_initial_max_concurrency, 400,
     "Initial max concurrency for grandient concurrency limiter");
 DEFINE_bool(gradient_cl_enable_error_punish, true,
     "Whether to consider failed requests when calculating maximum concurrency");

@@ -119,8 +119,7 @@ struct ServerOptions {
     // NOTE: Once you have chosen the automatic concurrency limit strategy, brpc
     // ONLY limits concurrency at the method level, And each method will use
     // the strategy you set in ServerOptions to limit the maximum concurrency, 
-    // unless you have set a maximum concurrency for this method before starting
-    // the server.
+    // even if you have set a maximum concurrency through `SetMaxConcurrencyOf`.
  
     AdaptiveMaxConcurrency max_concurrency;
 

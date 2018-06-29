@@ -160,7 +160,7 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
                     }
                     const MethodStatus* mp_status = mp->status;
                     if (NULL != mp_status && mp_status->max_concurrency() > 0) {
-                        os << " max_concurrency=" << mp->status->max_concurrency();
+                        os << " max_concurrency=" << mp_status->max_concurrency();
                     }
                 }
                 os << "</h4>\n";

@@ -25,7 +25,6 @@
 
 namespace brpc {
 
-class Server;
 class Controller;
 // Record accessing stats of a method.
 class MethodStatus : public Describable {
@@ -58,10 +57,16 @@ public:
     }
 
     int& max_concurrency() { return _cl->MaxConcurrency(); }
+
+    void ResetConcurrencyLimiter(ConcurrencyLimiter* cl) {
+        if (_cl) {
+            _cl->Destroy();
+        }
+        _cl = cl;
+    }
     
 private:
 friend class ScopedMethodStatus;
-friend class Server;
     DISALLOW_COPY_AND_ASSIGN(MethodStatus);
     void OnError();
 
