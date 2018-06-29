@@ -425,6 +425,10 @@ Server::~Server() {
         delete _options.auth;
         _options.auth = NULL;
     }
+    if (_cl) {
+        _cl->Destroy();
+        _cl = NULL;
+    }
 }
 
 int Server::AddBuiltinServices() {
@@ -662,6 +666,8 @@ static int get_port_from_fd(int fd) {
     return ntohs(addr.sin_port);
 }
 
+static int g_default_max_concurrency_of_method = 0;
+
 int Server::StartInternal(const butil::ip_t& ip,
                           const PortRange& port_range,
                           const ServerOptions *opt) {
@@ -832,8 +838,6 @@ int Server::StartInternal(const butil::ip_t& ip,
         }
     }
     
-    _concurrency = 0;
-
     if (_options.has_builtin_services &&
         _builtin_service_count <= 0 &&
         AddBuiltinServices() != 0) {
@@ -868,6 +872,50 @@ int Server::StartInternal(const butil::ip_t& ip,
             _options.num_threads = BTHREAD_MIN_CONCURRENCY;
         }
         bthread_setconcurrency(_options.num_threads);
+    }
+
+    // Once you have chosen the automatic concurrency limit strategy, brpc 
+    // ONLY limits concurrency at the method level, And each method will use
+    // the strategy you set in ServerOptions to limit the maximum concurrency, 
+    // unless you have set a constant maximum concurrency for this method 
+    // before starting the server.
+    const ConcurrencyLimiter* cl 
+        = ConcurrencyLimiterExtension()->Find("constant");
+    if (NULL == cl) {
+        LOG(FATAL) << "Fail to find ConcurrentLimiter by `constant`";
+    }
+    ConcurrencyLimiter* cl_copy = cl->New();
+    if (NULL == cl_copy) {
+        LOG(FATAL) << "Fail to new ConcurrencyLimiter";
+    }
+    _cl = cl_copy;
+    if (_options.max_concurrency == "constant") {
+        _cl->MaxConcurrency() = _options.max_concurrency;
+    } else {
+        _cl->MaxConcurrency() = 0;
+    }
+
+    for (MethodMap::iterator it = _method_map.begin();
+        it != _method_map.end(); ++it) {
+        if (NULL != it->second.status->_cl) {
+            continue;
+        }
+        const ConcurrencyLimiter* cl = NULL;
+        const std::string cl_name = it->second.is_builtin_service ? 
+            "constant" : _options.max_concurrency.name();
+        cl = ConcurrencyLimiterExtension()->Find(cl_name.c_str());
+        if (NULL == cl) {
+            LOG(FATAL) << "Fail to find ConcurrencyLimiter by `"
+                       << _options.max_concurrency.name() << '`'; 
+            return -1;
+        }
+        ConcurrencyLimiter* cl_copy = cl->New();
+        if (NULL == cl_copy) {
+            LOG(FATAL) << "Fail to find ConcurrencyLimiter by `"
+                       << _options.max_concurrency.name() << '`'; 
+            return -1;
+        }
+        it->second.status->_cl = cl_copy;
     }
 
     // Create listening ports
@@ -1963,12 +2011,16 @@ int Server::ResetMaxConcurrency(int max_concurrency) {
         LOG(WARNING) << "ResetMaxConcurrency is only allowd for a Running Server";
         return -1;
     }
-    // Assume that modifying int32 is atomical in X86
-    _options.max_concurrency = max_concurrency;
+    if (_options.max_concurrency != "constant") {
+        LOG(WARNING)
+            << "ResetMaxConcurrency is only allowed for "
+               "constant concurrency limiter";
+        return -1;
+    } else {
+        _cl->MaxConcurrency() = max_concurrency;
+    }
     return 0;
 }
-
-static int g_default_max_concurrency_of_method = 0;
 
 int& Server::MaxConcurrencyOf(MethodProperty* mp) {
     if (mp->status == NULL) {
@@ -1984,7 +2036,8 @@ int Server::MaxConcurrencyOf(const MethodProperty* mp) const {
     if (mp == NULL || mp->status == NULL) {
         return 0;
     }
-    return mp->status->max_concurrency();
+    const MethodStatus* mp_status = mp->status;
+    return mp_status->max_concurrency();
 }
 
 int& Server::MaxConcurrencyOf(const butil::StringPiece& full_method_name) {
@@ -2072,4 +2125,4 @@ int Server::SSLSwitchCTXByHostname(struct ssl_st* ssl,
 }
 #endif // SSL_CTRL_SET_TLSEXT_HOSTNAME
 
-} // namespace brpc
+}  // namespace brpc

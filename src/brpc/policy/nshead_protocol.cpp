@@ -72,7 +72,8 @@ void NsheadClosure::Run() {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
     Socket* sock = accessor.get_sending_socket();
-    ScopedMethodStatus method_status(_server->options().nshead_service->_status);
+    ScopedMethodStatus method_status(_server->options().nshead_service->_status,
+                                     &_controller, butil::cpuwide_time_us());
     if (!method_status) {
         // Judge errors belongings.
         // may not be accurate, but it does not matter too much.
@@ -125,7 +126,7 @@ void NsheadClosure::Run() {
     }
     if (method_status) {
         method_status.release()->OnResponded(
-            !_controller.Failed(), butil::cpuwide_time_us() - _received_us);
+            _controller.ErrorCode(), butil::cpuwide_time_us() - _received_us);
     }
 }
 
@@ -296,8 +297,9 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
             break;
         }
         if (!server_accessor.AddConcurrency(cntl)) {
-            cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
-                            server->options().max_concurrency);
+            cntl->SetFailed(
+                    ELIMIT, "Reached server's max_concurrency=%d",
+                    static_cast<int>(server->options().max_concurrency));
             break;
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {

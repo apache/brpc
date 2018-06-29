@@ -95,9 +95,12 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
            << "_connection_count\" class=\"flot-placeholder\"></div></div>";
     }
     os << '\n';
-    const int max_concurrency = server->options().max_concurrency;
-    if (max_concurrency > 0) {
-        os << "max_concurrency: " << max_concurrency << '\n';
+    const AdaptiveMaxConcurrency max_concurrency = 
+        server->options().max_concurrency;
+    if (max_concurrency == "constant") {
+        os << "max_concurrency: " << static_cast<int>(max_concurrency) << '\n';
+    } else {
+        os << "concurrency limiter: " << max_concurrency.name() << '\n';
     }
     os << '\n';
     
@@ -155,7 +158,8 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
                     if (mp->http_url) {
                         os << " @" << *mp->http_url;
                     }
-                    if (mp->status && mp->status->max_concurrency() > 0) {
+                    const MethodStatus* mp_status = mp->status;
+                    if (NULL != mp_status && mp_status->max_concurrency() > 0) {
                         os << " max_concurrency=" << mp->status->max_concurrency();
                     }
                 }
@@ -167,8 +171,9 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
                     if (mp->http_url) {
                         os << " @" << *mp->http_url;
                     }
-                    if (mp->status && mp->status->max_concurrency() > 0) {
-                        os << " max_concurrency=" << mp->status->max_concurrency();
+                    const MethodStatus* mp_status = mp->status;
+                    if (NULL != mp_status && mp_status->max_concurrency() > 0) {
+                        os << " max_concurrency=" << mp_status->max_concurrency();
                     }
                 }
                 os << '\n';

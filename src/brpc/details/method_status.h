@@ -20,10 +20,13 @@
 #include "butil/macros.h"                  // DISALLOW_COPY_AND_ASSIGN
 #include "bvar/bvar.h"                    // vars
 #include "brpc/describable.h"
+#include "brpc/concurrency_limiter.h"
 
 
 namespace brpc {
 
+class Server;
+class Controller;
 // Record accessing stats of a method.
 class MethodStatus : public Describable {
 public:
@@ -36,12 +39,12 @@ public:
     bool OnRequested();
 
     // Call this when the method just finished.
-    // `success' : successful call or not.
+    // `error_code' : The error code obtained from the controller. Equal to 
+    // 0 when the call is successful.
     // `latency_us' : microseconds taken by a successful call. Latency can
     // be measured in this utility class as well, but the callsite often
-    // did the time keeping and the cost is better saved. If `success' is
-    // false, `latency_us' is not used.
-    void OnResponded(bool success, int64_t latency_us);
+    // did the time keeping and the cost is better saved. 
+    void OnResponded(int error_code, int64_t latency_us);
 
     // Expose internal vars.
     // Return 0 on success, -1 otherwise.
@@ -50,18 +53,24 @@ public:
     // Describe internal vars, used by /status
     void Describe(std::ostream &os, const DescribeOptions&) const;
 
-    int max_concurrency() const { return _max_concurrency; }
-    int& max_concurrency() { return _max_concurrency; }
+    int max_concurrency() const { 
+        return const_cast<const ConcurrencyLimiter*>(_cl)->MaxConcurrency(); 
+    }
+
+    int& max_concurrency() { return _cl->MaxConcurrency(); }
     
 private:
 friend class ScopedMethodStatus;
+friend class Server;
     DISALLOW_COPY_AND_ASSIGN(MethodStatus);
     void OnError();
 
-    int _max_concurrency;
-    bvar::Adder<int64_t>         _nerror;
-    bvar::LatencyRecorder        _latency_rec;
-    bvar::PassiveStatus<int>     _nprocessing_bvar;
+    ConcurrencyLimiter* _cl;
+    bvar::Adder<int64_t>  _nerror;
+    bvar::LatencyRecorder _latency_rec;
+    bvar::PassiveStatus<int>  _nprocessing_bvar;
+    bvar::Adder<uint32_t> _nrefused_bvar;
+    bvar::Window<bvar::Adder<uint32_t>> _nrefused_per_second;
     butil::atomic<int> BAIDU_CACHELINE_ALIGNMENT _nprocessing;
 };
 
@@ -69,13 +78,12 @@ friend class ScopedMethodStatus;
 // an error will be counted.
 class ScopedMethodStatus {
 public:
-    ScopedMethodStatus(MethodStatus* status) : _status(status) {}
-    ~ScopedMethodStatus() {
-        if (_status) {
-            _status->OnError();
-            _status = NULL;
-        }
-    }
+    ScopedMethodStatus(MethodStatus* status, Controller* c, 
+                       int64_t start_parse_us)
+        : _status(status) 
+        , _c(c)
+        , _start_parse_us(start_parse_us) {}
+    ~ScopedMethodStatus();
     MethodStatus* release() {
         MethodStatus* tmp = _status;
         _status = NULL;
@@ -85,22 +93,27 @@ public:
 private:
     DISALLOW_COPY_AND_ASSIGN(ScopedMethodStatus);
     MethodStatus* _status;
+    Controller* _c;
+    uint64_t _start_parse_us;
 };
 
 inline bool MethodStatus::OnRequested() {
-    const int last_nproc = _nprocessing.fetch_add(1, butil::memory_order_relaxed);
-    // _max_concurrency may be changed by user at any time.
-    const int saved_max_concurrency = _max_concurrency;
-    return (saved_max_concurrency <= 0 || last_nproc < saved_max_concurrency);
+    _nprocessing.fetch_add(1, butil::memory_order_relaxed);
+    bool should_refuse = !_cl->OnRequested();
+    if (should_refuse) {
+        _nrefused_bvar << 1;
+    }
+    return !should_refuse;
 }
 
-inline void MethodStatus::OnResponded(bool success, int64_t latency) {
-    if (success) {
+inline void MethodStatus::OnResponded(int error_code, int64_t latency) {
+    if (error_code == 0) {
         _latency_rec << latency;
         _nprocessing.fetch_sub(1, butil::memory_order_relaxed);
     } else {
         OnError();
     }
+    _cl->OnResponded(error_code, latency);
 }
 
 inline void MethodStatus::OnError() {

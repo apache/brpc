@@ -215,7 +215,7 @@ static void SendSofaResponse(int64_t correlation_id,
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
-    ScopedMethodStatus method_status(method_status_raw);
+    ScopedMethodStatus method_status(method_status_raw, cntl, start_parse_us);
     Socket* sock = accessor.get_sending_socket();
     std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
@@ -296,7 +296,7 @@ static void SendSofaResponse(int64_t correlation_id,
     }
     if (method_status) {
         method_status.release()->OnResponded(
-            !cntl->Failed(), butil::cpuwide_time_us() - received_us);
+            cntl->ErrorCode(), butil::cpuwide_time_us() - received_us);
     }
 }
 
@@ -391,8 +391,9 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
         }
 
         if (!server_accessor.AddConcurrency(cntl.get())) {
-            cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
-                            server->options().max_concurrency);
+            cntl->SetFailed(
+                    ELIMIT, "Reached server's max_concurrency=%d",
+                    static_cast<int>(server->options().max_concurrency));
             break;
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {
@@ -415,7 +416,8 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
             if (!method_status->OnRequested()) {
                 cntl->SetFailed(ELIMIT, "Reached %s's max_concurrency=%d",
                                 sp->method->full_name().c_str(),
-                                method_status->max_concurrency());
+                                const_cast<MethodStatus*>(
+                                    method_status)->max_concurrency());
                 break;
             }
         }

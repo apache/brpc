@@ -60,7 +60,7 @@ SendMongoResponse::~SendMongoResponse() {
 
 void SendMongoResponse::Run() {
     std::unique_ptr<SendMongoResponse> delete_self(this);
-    ScopedMethodStatus method_status(status);
+    ScopedMethodStatus method_status(status, &cntl, butil::cpuwide_time_us());
     Socket* socket = ControllerPrivateAccessor(&cntl).get_sending_socket();
 
     if (cntl.IsCloseConnection()) {
@@ -104,7 +104,7 @@ void SendMongoResponse::Run() {
     }
     if (method_status) {
         method_status.release()->OnResponded(
-            !cntl.Failed(), butil::cpuwide_time_us() - received_us);
+            cntl.ErrorCode(), butil::cpuwide_time_us() - received_us);
     }
 }
 
@@ -224,8 +224,9 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
         }
 
         if (!ServerPrivateAccessor(server).AddConcurrency(&(mongo_done->cntl))) {
-            mongo_done->cntl.SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
-                            server->options().max_concurrency);
+            mongo_done->cntl.SetFailed(
+                    ELIMIT, "Reached server's max_concurrency=%d",
+                    static_cast<int>(server->options().max_concurrency));
             break;
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {
@@ -248,7 +249,8 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
                 mongo_done->cntl.SetFailed(
                     ELIMIT, "Reached %s's max_concurrency=%d",
                     mp->method->full_name().c_str(),
-                    method_status->max_concurrency());
+                    const_cast<const MethodStatus*>(
+                        method_status)->max_concurrency());
                 break;
             }
         }

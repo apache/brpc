@@ -36,6 +36,7 @@
 #include "brpc/builtin/tabbed.h"
 #include "brpc/details/profiler_linker.h"
 #include "brpc/health_reporter.h"
+#include "brpc/concurrency_limiter.h"
 
 extern "C" {
 struct ssl_ctx_st;
@@ -114,7 +115,13 @@ struct ServerOptions {
     // shall try another server.
     // NOTE: accesses to builtin services are not limited by this option.
     // Default: 0 (unlimited)
-    int max_concurrency;
+    // NOTE: Once you have chosen the automatic concurrency limit strategy, brpc
+    // ONLY limits concurrency at the method level, And each method will use
+    // the strategy you set in ServerOptions to limit the maximum concurrency, 
+    // unless you have set a maximum concurrency for this method before starting
+    // the server.
+ 
+    AdaptiveMaxConcurrency max_concurrency;
 
     // -------------------------------------------------------
     // Differences between session-local and thread-local data
@@ -476,10 +483,15 @@ public:
     // current_tab_name is the tab highlighted.
     void PrintTabsBody(std::ostream& os, const char* current_tab_name) const;
 
+    
     // Reset the max_concurrency set by ServerOptions.max_concurrency after
-    // Server is started.
+    // Server is started. 
     // The concurrency will be limited by the new value if this function is
     // successfully returned.
+    // Note: You may call this interface ONLY if you use the CONSTANT 
+    // maximum concurrency, like `options.max_concurrency = 1000`. If you 
+    // have chosen another maximum concurrency limit policy, 
+    // eg: `options.max_concurrency = "auto"`, it will directly return -1. 
     // Returns 0 on success, -1 otherwise.
     int ResetMaxConcurrency(int max_concurrency);
 
@@ -488,6 +500,12 @@ public:
     //    server.MaxConcurrencyOf("example.EchoService.Echo") = 10;
     // or server.MaxConcurrencyOf("example.EchoService", "Echo") = 10;
     // or server.MaxConcurrencyOf(&service, "Echo") = 10;
+    // or server.MaxConcurrencyOf(&service, "Echo") = "auto";
+    // Note: You should NOT set the max_concurrency when you have choosen an 
+    // auto concurrency limiter, eg `options.max_concurrency = "auto"`.If you
+    // still called non-const version of the interface, it would return the 
+    // method's current maximum concurrency correctly. But your changes to the
+    // maximum concurrency will not take effect.
     int& MaxConcurrencyOf(const butil::StringPiece& full_method_name);
     int MaxConcurrencyOf(const butil::StringPiece& full_method_name) const;
     
@@ -650,6 +668,7 @@ friend class Controller;
     //        Replace `ServerPrivateAccessor' with other private-access
     //        mechanism
     mutable bvar::Adder<int64_t> _nerror;
+    ConcurrencyLimiter* _cl;
     mutable int32_t BAIDU_CACHELINE_ALIGNMENT _concurrency;
 };
 

@@ -65,6 +65,11 @@
 # include "brpc/policy/thrift_protocol.h"
 #endif
 
+// Concurrency Limiters
+#include "brpc/concurrency_limiter.h"
+#include "brpc/policy/gradient_concurrency_limiter.h"
+#include "brpc/policy/constant_concurrency_limiter.h"
+
 #include "brpc/input_messenger.h"     // get_or_new_client_side_messenger
 #include "brpc/socket_map.h"          // SocketMapList
 #include "brpc/server.h"
@@ -99,6 +104,7 @@ using namespace policy;
 
 const char* const DUMMY_SERVER_PORT_FILE = "dummy_server.port";
 
+void __attribute__((weak)) RegisterThriftProtocol();
 
 struct GlobalExtensions {
     GlobalExtensions()
@@ -120,6 +126,9 @@ struct GlobalExtensions {
     ConsistentHashingLoadBalancer ch_mh_lb;
     ConsistentHashingLoadBalancer ch_md5_lb;
     DynPartLoadBalancer dynpart_lb;
+
+    GradientConcurrencyLimiter gradient_cl;
+    ConstantConcurrencyLimiter constant_cl;
 };
 
 static pthread_once_t register_extensions_once = PTHREAD_ONCE_INIT;
@@ -549,6 +558,11 @@ static void GlobalInitializeOrDieImpl() {
             }
         }
     }
+
+    // Concurrency Limiters
+    ConcurrencyLimiterExtension()->RegisterOrDie("auto", &g_ext->gradient_cl);    
+    ConcurrencyLimiterExtension()->RegisterOrDie("gradient", &g_ext->gradient_cl);
+    ConcurrencyLimiterExtension()->RegisterOrDie("constant", &g_ext->constant_cl);    
 
     if (FLAGS_usercode_in_pthread) {
         // Optional. If channel/server are initialized before main(), this
