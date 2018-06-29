@@ -18,6 +18,7 @@
 #define BRPC_POLICY_GRANDIENT_CONCURRENCY_LIMITER_H
 
 #include "brpc/concurrency_limiter.h"
+#include "bvar/bvar.h"
 
 namespace brpc {
 namespace policy {
@@ -49,13 +50,11 @@ private:
             : start_time_us(0)
             , succ_count(0)
             , failed_count(0)
-            , min_latency_us(-1)
             , total_failed_us(0)
             , total_succ_us(0) {}
         int64_t start_time_us;
         int32_t succ_count;
         int32_t failed_count;
-        int64_t min_latency_us;
         int64_t total_failed_us;
         int64_t total_succ_us;
     };

@@ -17,10 +17,8 @@
 #ifndef BRPC_CONCURRENCY_LIMITER_H
 #define BRPC_CONCURRENCY_LIMITER_H
                                             
-#include "bvar/passive_status.h"
 #include "brpc/describable.h"
 #include "brpc/destroyable.h"
-#include "brpc/adaptive_max_concurrency.h"   
 #include "brpc/extension.h"                       // Extension<T>
 
 namespace brpc {

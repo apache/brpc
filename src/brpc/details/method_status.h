@@ -107,7 +107,7 @@ inline bool MethodStatus::OnRequested() {
 }
 
 inline void MethodStatus::OnResponded(int error_code, int64_t latency) {
-    if (error_code == 0) {
+    if (0 == error_code) {
         _latency_rec << latency;
         _nprocessing.fetch_sub(1, butil::memory_order_relaxed);
     } else {

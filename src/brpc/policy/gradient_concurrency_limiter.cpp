@@ -31,10 +31,10 @@ namespace policy {
 DEFINE_int32(gradient_cl_sampling_interval_us, 1000, 
     "Interval for sampling request in gradient concurrency limiter");
 DEFINE_int32(gradient_cl_sample_window_size_ms, 1000,
-    "Sample window size for update concurrency in grandient "
+    "Sample window size for update max concurrency in grandient "
     "concurrency limiter");
 DEFINE_int32(gradient_cl_min_sample_count, 100,
-    "Minium sample count for update concurrency");
+    "Minium sample count for update max concurrency");
 DEFINE_int32(gradient_cl_adjust_smooth, 50,
     "Smooth coefficient for adjust the max concurrency, the value is 0-99,"
     "the larger the value, the smaller the amount of each change");
@@ -45,10 +45,10 @@ DEFINE_bool(gradient_cl_enable_error_punish, true,
 DEFINE_int32(gradient_cl_max_error_punish_ms, 3000,
     "The maximum time wasted for a single failed request");
 DEFINE_double(gradient_cl_fail_punish_aggressive, 1.0,
-    "Use the failed request to punish minRTT. The larger the configuration"
-    "item, the more aggressive the penalty strategy.");
-DEFINE_int32(gradient_cl_window_count, 30,
-    "Sample windows count for compute history min average rtt");
+    "Use the failed requests to punish normal requests. The larger the "
+    "configuration item, the more aggressive the penalty strategy.");
+DEFINE_int32(gradient_cl_window_count, 20,
+    "Sample windows count for compute history min average latency");
 DEFINE_int32(gradient_cl_task_per_req, 3,
     "How many tasks will be generated for each request, calculate the maximum "
     "concurrency of a system by calculating the maximum possible concurrent "
@@ -164,11 +164,6 @@ void GradientConcurrencyLimiter::AddSample(int error_code, int64_t latency_us,
         _sw.total_failed_us += latency_us;
     } else if (error_code == 0) {
         ++_sw.succ_count;
-        if (_sw.min_latency_us < 0) {
-            _sw.min_latency_us = latency_us;
-        } else {
-            _sw.min_latency_us = std::min(latency_us, _sw.min_latency_us);
-        }
         _sw.total_succ_us += latency_us;
     }
 
@@ -195,7 +190,6 @@ void GradientConcurrencyLimiter::ResetSampleWindow(int64_t sampling_time_us) {
     _sw.failed_count = 0;
     _sw.total_failed_us = 0;
     _sw.total_succ_us = 0;
-    _sw.min_latency_us = -1;
 }
 
 void GradientConcurrencyLimiter::UpdateConcurrency() {

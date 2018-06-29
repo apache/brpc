@@ -37,6 +37,7 @@
 #include "brpc/details/profiler_linker.h"
 #include "brpc/health_reporter.h"
 #include "brpc/concurrency_limiter.h"
+#include "brpc/adaptive_max_concurrency.h"
 
 extern "C" {
 struct ssl_ctx_st;
@@ -485,7 +486,7 @@ public:
 
     
     // Reset the max_concurrency set by ServerOptions.max_concurrency after
-    // Server is started. 
+    // Server is started.
     // The concurrency will be limited by the new value if this function is
     // successfully returned.
     // Note: You may call this interface ONLY if you use the CONSTANT 
