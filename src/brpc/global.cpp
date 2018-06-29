@@ -476,7 +476,6 @@ static void GlobalInitializeOrDieImpl() {
     }
 
     // Register Thrift framed protocol if linked
-
     if (RegisterThriftProtocol) {
         RegisterThriftProtocol();
     }
