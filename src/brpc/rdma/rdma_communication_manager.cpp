@@ -320,7 +320,7 @@ void RdmaCommunicationManager::ReleaseQP() {
         rdma_cm_id* cm_id = (rdma_cm_id*)_cm_id;
 
         if (cm_id->qp) {
-            ibv_destroy_qp(cm_id->qp);
+            rdma_destroy_qp(cm_id);
             cm_id->qp = NULL;
         }
     }

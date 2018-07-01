@@ -82,7 +82,7 @@ void* AllocBlock(size_t size);
 int DeallocBlock(void* buf);
 
 // Get the region ID of the given buf
-uint32_t GetRegionId(void* buf);
+uint32_t GetRegionId(const void* buf);
 
 }  // namespace rdma
 }  // namespace brpc

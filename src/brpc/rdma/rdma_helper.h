@@ -46,7 +46,7 @@ void* GetRdmaProtectionDomain();
 in_addr GetRdmaIP();
 
 // Return lkey of the given address
-uint32_t GetLKey(void* buf);
+uint32_t GetLKey(const void* buf);
 
 // Get max_sge supported by the device
 int GetRdmaMaxSge();

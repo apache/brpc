@@ -83,7 +83,7 @@ static std::vector<butil::Mutex*> g_lock[BLOCK_SIZE_COUNT];
 static butil::Mutex g_extend_lock;
 static IdleNode* g_ready_list[BLOCK_SIZE_COUNT];
 
-static inline Region* GetRegion(void* buf) {
+static inline Region* GetRegion(const void* buf) {
     if (!buf) {
         errno = EINVAL;
         return NULL;
@@ -103,7 +103,7 @@ static inline Region* GetRegion(void* buf) {
     return r;
 }
 
-uint32_t GetRegionId(void* buf) {
+uint32_t GetRegionId(const void* buf) {
     Region* r = GetRegion(buf);
     if (!r) {
         return 0;

@@ -568,14 +568,13 @@ private:
                 break;
             }
             butil::IOBuf::BlockRef const& r = _ref_at(i);
-            uint32_t this_lkey = GetLKey(r.block);
+            uint32_t this_lkey = GetLKey(backing_block(i).data());
             if (*lkey == 0) {
                 *lkey = this_lkey;
             } else if (this_lkey != *lkey) {
                 break;
             }
-            char* start = (char*)r.block + r.offset +
-                butil::IOBuf::DEFAULT_BLOCK_SIZE - butil::IOBuf::DEFAULT_PAYLOAD;
+            char* start = (char*)backing_block(i).data();
             if (*lkey == 0) {
                 // This block is not in the registered memory. It may be
                 // allocated before we call GlobalRdmaInitializeOrDie. We try

@@ -75,7 +75,7 @@ static void* (*g_mem_alloc)(size_t) = NULL;
 static void (*g_mem_dealloc)(void*) = NULL;
 
 butil::Mutex g_addr_map_lock;
-typedef butil::FlatMap<void*, ibv_mr*> AddrMap;
+typedef butil::FlatMap<const void*, ibv_mr*> AddrMap;
 static AddrMap* g_addr_map = NULL;
 
 // Read sysfs file
@@ -500,6 +500,7 @@ void DeregisterMemoryForRdma(void* buf) {
     ibv_mr** mr = g_addr_map->seek(buf);
     if (mr && *mr) {
         ibv_dereg_mr(*mr);
+        g_addr_map->erase(buf);
     }
 #endif
 }
@@ -528,7 +529,7 @@ void* GetRdmaProtectionDomain() {
 #endif
 }
 
-uint32_t GetLKey(void* buf) {
+uint32_t GetLKey(const void* buf) {
 #ifndef BRPC_RDMA
     CHECK(false) << "This should not happen";
     return 0;

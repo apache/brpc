@@ -371,6 +371,11 @@ struct StartClientOptions {
         , single_connection(true) { }
 };
 
+void FreeBuf(void* buf) {
+    rdma::DeregisterMemoryForRdma(buf);
+    free(buf);
+}
+
 void* StartClient(void* arg) {
     StartClientOptions* opt = (StartClientOptions*)arg;
 
@@ -390,13 +395,18 @@ void* StartClient(void* arg) {
     Controller cntl;
     std::string message("hello world!");
     butil::IOBuf attachment;
+    std::string att_str = "hello world!";
+    att_str = att_str.substr(0, std::min(att_str.size(), opt->att_size));
     if (!opt->large_block) {
-        // Default iobuf block
-        std::string att;
+        std::string att(att_str);
         att.resize(opt->att_size, 'a');
         attachment.append(att);
     } else {
-        // Large iobuf block
+#ifdef IOBUF_HUGE_BLOCK
+        char* data = (char*)malloc(opt->att_size);
+        rdma::RegisterMemoryForRdma(data, opt->att_size);
+        attachment.append_zerocopy(data, opt->att_size, FreeBuf);
+#else
         butil::IOBufAsZeroCopyOutputStream os(&attachment,
                 butil::IOBuf::MAX_BLOCK_SIZE);
         void* data = NULL;
@@ -409,6 +419,8 @@ void* StartClient(void* arg) {
         if (total_len > opt->att_size) {
             os.BackUp(total_len - opt->att_size);
         }
+#endif
+        strcpy(const_cast<char*>(attachment.backing_block(0).data()), att_str.c_str());
     }
 
     int cnt = 100;
@@ -422,6 +434,9 @@ void* StartClient(void* arg) {
         EXPECT_EQ(0, cntl.ErrorCode());
         EXPECT_EQ(0, request.message().compare(response.message()));
         EXPECT_EQ(opt->att_size, cntl.response_attachment().size());
+        butil::IOBuf tmp;
+        cntl.response_attachment().cutn(&tmp, att_str.size());
+        EXPECT_EQ(att_str, tmp.to_string());
         cntl.Reset();
     }
 

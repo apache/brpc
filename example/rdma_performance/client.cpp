@@ -19,6 +19,7 @@
 #include <vector>
 #include <butil/atomicops.h>
 #include <butil/logging.h>
+#include <butil/rand_util.h>
 #include <brpc/channel.h>
 #include <brpc/rdma/rdma_helper.h>
 #include <bthread/bthread.h>
@@ -53,10 +54,12 @@ public:
         }
         if (FLAGS_specify_attachment_addr) {
             _addr = malloc(attachment_size);
+            butil::RandBytes(_addr, attachment_size);
             brpc::rdma::RegisterMemoryForRdma(_addr, attachment_size);
             _attachment.append_zerocopy(_addr, attachment_size, NULL);
         } else {
-            _attachment.reserve(attachment_size);
+            std::string att = butil::RandBytesAsString(attachment_size);
+            _attachment.append(att);
         }
         _echo_attachment = echo_attachment;
     }
@@ -110,6 +113,10 @@ public:
             if (cntl.Failed()) {
                 LOG(ERROR) << "RPC call failed: " << cntl.ErrorText();
                 break;
+            }
+
+            if (FLAGS_echo_attachment) {
+                CHECK(test->_attachment == cntl.response_attachment());
             }
 
             g_latency_recorder << cntl.latency_us();
