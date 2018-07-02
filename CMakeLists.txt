@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 2.8.10)
 project(brpc C CXX)
 
 # Enable MACOSX_RPATH. Run "cmake --help-policy CMP0042" for policy details.
-cmake_policy(SET CMP0042 NEW)
+if(POLICY CMP0042)
+    cmake_policy(SET CMP0042 NEW)
+endif()
 
 set(BRPC_VERSION 0.9.0)
 
@@ -38,7 +40,6 @@ endif()
 if(BRPC_WITH_THRIFT)
     set(THRIFT_CPP_FLAG "-DENABLE_THRIFT_FRAMED_PROTOCOL")
     set(THRIFT_LIB "thriftnb")
-    message("Enable thrift framed procotol")
 endif()
 
 include(GNUInstallDirs)
@@ -326,6 +327,17 @@ file(GLOB_RECURSE BVAR_SOURCES "${CMAKE_SOURCE_DIR}/src/bvar/*.cpp")
 file(GLOB_RECURSE BTHREAD_SOURCES "${CMAKE_SOURCE_DIR}/src/bthread/*.cpp")
 file(GLOB_RECURSE JSON2PB_SOURCES "${CMAKE_SOURCE_DIR}/src/json2pb/*.cpp")
 file(GLOB_RECURSE BRPC_SOURCES "${CMAKE_SOURCE_DIR}/src/brpc/*.cpp")
+file(GLOB_RECURSE THRIFT_SOURCES "thrift*.cpp")
+
+if(BRPC_WITH_THRIFT)
+    message("brpc compile with thrift proctol")
+else()
+    # Remove thrift sources
+    foreach(v ${THRIFT_SOURCES})
+        list(REMOVE_ITEM BRPC_SOURCES ${v})
+    endforeach()
+    set(THRIFT_SOURCES "")
+endif()
 
 set(MCPACK2PB_SOURCES
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/field_type.cpp
@@ -366,6 +378,7 @@ set(SOURCES
     ${JSON2PB_SOURCES}
     ${MCPACK2PB_SOURCES}
     ${BRPC_SOURCES}
+    ${THRIFT_SOURCES}
     )
 
 add_subdirectory(src)

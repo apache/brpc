@@ -14,8 +14,6 @@
 
 // utils for serialize/parse thrift binary message to brpc protobuf obj.
 
-#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
-
 #ifndef BRPC_THRIFT_UTILS_H
 #define BRPC_THRIFT_UTILS_H
 
@@ -120,4 +118,3 @@ bool serialize_iobuf_to_thrift_message(butil::IOBuf& body,
 
 #endif //BRPC_THRIFT_UTILS_H
 
-#endif //ENABLE_THRIFT_FRAMED_PROTOCOL
