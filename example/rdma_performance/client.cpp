@@ -33,7 +33,7 @@ DEFINE_int32(attachment_size, -1, "Attachment size is used (in KB)");
 DEFINE_bool(specify_attachment_addr, false, "Specify the address of attachment");
 DEFINE_bool(echo_attachment, false, "Select whether attachment should be echo");
 DEFINE_string(protocol, "baidu_std", "Protocol type.");
-DEFINE_string(server, "0.0.0.0:8002", "IP Address of server");
+DEFINE_string(servers, "0.0.0.0:8002", "IP Address of server");
 DEFINE_bool(use_rdma, true, "Use RDMA or not");
 DEFINE_int32(rpc_timeout_ms, -1, "RPC call timeout");
 DEFINE_int32(test_seconds, 20, "Test running time");
@@ -42,6 +42,7 @@ DEFINE_int32(test_iterations, 0, "Test iterations");
 bvar::LatencyRecorder g_latency_recorder("client");
 bvar::LatencyRecorder g_cpu_recorder("server_cpu");
 butil::atomic<uint64_t> g_total_bytes;
+std::vector<std::string> g_servers;
 
 class PerformanceTest {
 public:
@@ -78,7 +79,8 @@ public:
         options.connection_type = "pooled";
         options.timeout_ms = FLAGS_rpc_timeout_ms;
         options.max_retry = 0;
-        if (_channel.Init(FLAGS_server.c_str(), &options) != 0) {
+        std::string server = g_servers[butil::RandInt(0, g_servers.size() - 1)];
+        if (_channel.Init(server.c_str(), &options) != 0) {
             LOG(ERROR) << "Fail to initialize channel";
             return -1;
         }
@@ -192,6 +194,15 @@ int main(int argc, char* argv[]) {
     }
 
     bthread_setconcurrency(sysconf(_SC_NPROCESSORS_ONLN));
+
+    std::string::size_type pos1 = 0;
+    std::string::size_type pos2 = FLAGS_servers.find('+');
+    while (pos2 != std::string::npos) {
+        g_servers.push_back(FLAGS_servers.substr(pos1, pos2 - pos1));
+        pos1 = pos2 + 1;
+        pos2 = FLAGS_servers.find('+', pos1);
+    }
+    g_servers.push_back(FLAGS_servers.substr(pos1));
 
     if (FLAGS_thread_num > 0 && FLAGS_attachment_size >= 0) {
         Test(FLAGS_thread_num, FLAGS_attachment_size);
