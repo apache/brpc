@@ -358,8 +358,10 @@ void RdmaCompletionQueue::PollCQ(Socket* m) {
 
             if (wc[i].status != IBV_WC_SUCCESS) {
                 errno = ERDMA;
-                PLOG(WARNING) << "Fail to handle RDMA completion";
-                s->SetFailed(errno, "Fail to handle RDMA completion");
+                PLOG(WARNING) << "Fail to handle RDMA completion, error status("
+                              << wc[i].status << ")";
+                s->SetFailed(errno, "Fail to handle RDMA completion, error status: %d",
+                             wc[i].status);
                 continue;
             }
 
