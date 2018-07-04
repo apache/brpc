@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 2.8.10)
 project(brpc C CXX)
 
 # Enable MACOSX_RPATH. Run "cmake --help-policy CMP0042" for policy details.
-cmake_policy(SET CMP0042 NEW)
+if(POLICY CMP0042)
+    cmake_policy(SET CMP0042 NEW)
+endif()
 
 set(BRPC_VERSION 0.9.0)
 
@@ -20,14 +22,14 @@ else()
     message(WARNING "You are using an unsupported compiler! Compilation has only been tested with Clang and GCC.")
 endif()
 
-option(BRPC_WITH_GLOG "With glog" OFF)
+option(WITH_GLOG "With glog" OFF)
 option(DEBUG "Print debug logs" OFF)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
-option(BRPC_WITH_THRIFT "With thrift framed protocol supported" OFF)
+option(WITH_THRIFT "With thrift framed protocol supported" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 
 set(WITH_GLOG_VAL "0")
-if(BRPC_WITH_GLOG)
+if(WITH_GLOG)
     set(WITH_GLOG_VAL "1")
 endif()
 
@@ -35,10 +37,9 @@ if(WITH_DEBUG_SYMBOLS)
     set(DEBUG_SYMBOL "-g")
 endif()
 
-if(BRPC_WITH_THRIFT)
+if(WITH_THRIFT)
     set(THRIFT_CPP_FLAG "-DENABLE_THRIFT_FRAMED_PROTOCOL")
     set(THRIFT_LIB "thriftnb")
-    message("Enable thrift framed procotol")
 endif()
 
 include(GNUInstallDirs)
@@ -119,7 +120,7 @@ if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
     message(FATAL_ERROR "Fail to find leveldb")
 endif()
 
-if(BRPC_WITH_GLOG)
+if(WITH_GLOG)
     find_path(GLOG_INCLUDE_PATH NAMES glog/logging.h)
     find_library(GLOG_LIB NAMES glog)
     if((NOT GLOG_INCLUDE_PATH) OR (NOT GLOG_LIB))
@@ -162,7 +163,7 @@ set(DYNAMIC_LIB
     )
 set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ldl -lz")
 
-if(BRPC_WITH_GLOG)
+if(WITH_GLOG)
     set(DYNAMIC_LIB ${DYNAMIC_LIB} ${GLOG_LIB})
     set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lglog")
 endif()
@@ -326,6 +327,17 @@ file(GLOB_RECURSE BVAR_SOURCES "${CMAKE_SOURCE_DIR}/src/bvar/*.cpp")
 file(GLOB_RECURSE BTHREAD_SOURCES "${CMAKE_SOURCE_DIR}/src/bthread/*.cpp")
 file(GLOB_RECURSE JSON2PB_SOURCES "${CMAKE_SOURCE_DIR}/src/json2pb/*.cpp")
 file(GLOB_RECURSE BRPC_SOURCES "${CMAKE_SOURCE_DIR}/src/brpc/*.cpp")
+file(GLOB_RECURSE THRIFT_SOURCES "thrift*.cpp")
+
+if(WITH_THRIFT)
+    message("brpc compile with thrift proctol")
+else()
+    # Remove thrift sources
+    foreach(v ${THRIFT_SOURCES})
+        list(REMOVE_ITEM BRPC_SOURCES ${v})
+    endforeach()
+    set(THRIFT_SOURCES "")
+endif()
 
 set(MCPACK2PB_SOURCES
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/field_type.cpp
@@ -366,6 +378,7 @@ set(SOURCES
     ${JSON2PB_SOURCES}
     ${MCPACK2PB_SOURCES}
     ${BRPC_SOURCES}
+    ${THRIFT_SOURCES}
     )
 
 add_subdirectory(src)

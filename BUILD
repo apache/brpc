@@ -11,6 +11,12 @@ config_setting(
 )
 
 config_setting(
+    name = "with_thrift",
+    define_values = {"with_thrift": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "unittest",
     define_values = {"unittest": "true"},
 )
@@ -40,6 +46,9 @@ COPTS = [
 ] + select({
     ":with_glog": ["-DBRPC_WITH_GLOG=1"],
     "//conditions:default": ["-DBRPC_WITH_GLOG=0"],
+}) + select({
+    ":with_thrift": ["-DENABLE_THRIFT_FRAMED_PROTOCOL=1"],
+    "//conditions:default": [""],
 })
 
 LINKOPTS = [
@@ -64,6 +73,12 @@ LINKOPTS = [
     "//conditions:default": [
       "-lrt",
     ],
+}) + select({
+    ":with_thrift": [
+        "-lthriftnb",
+        "-levent",
+        "-lthrift"],
+    "//conditions:default": [],
 })
 
 genrule(
@@ -443,7 +458,17 @@ cc_library(
     srcs = glob([
         "src/brpc/*.cpp",
         "src/brpc/**/*.cpp",
-    ]),
+    ],
+    exclude = [
+        "src/brpc/thrift_service.cpp",
+        "src/brpc/thrift_message.cpp",
+        "src/brpc/policy/thrift_protocol.cpp",
+    ]) + select({
+        ":with_thrift" : glob([
+            "src/brpc/thrift*.cpp",
+            "src/brpc/**/thrift*.cpp"]),
+        "//conditions:default" : [],
+    }),
     hdrs = glob([
         "src/brpc/*.h",
         "src/brpc/**/*.h"

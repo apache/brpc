@@ -28,8 +28,9 @@ sudo make install
 Config brpc with thrift support, then make. The compiled libbrpc.a includes extended code for thrift support and can be linked normally as in other brpc projects.
 ```bash
 sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --with-thrift
+#or use cmake
+mkdir build && cd build && cmake ../ -DWITH_THRIFT=1
 ```
-PS: Please Define ENABLE_THRIFT_FRAMED_PROTOCOL Marco in user code in order to make it work when including thrift utils headers in brpc.
 
 # Client accesses thrift server
 Steps：

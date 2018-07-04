@@ -77,7 +77,10 @@
 extern "C" {
 // defined in gperftools/malloc_extension_c.h
 void BAIDU_WEAK MallocExtension_ReleaseFreeMemory(void);
-void BAIDU_WEAK RegisterThriftProtocol();
+// Register Thrift Protocol if thrift was enabled
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+    void RegisterThriftProtocol();
+#endif
 }
 
 namespace brpc {
@@ -466,10 +469,10 @@ static void GlobalInitializeOrDieImpl() {
         exit(1);
     }
 
-    // Register Thrift framed protocol if linked
-    if (RegisterThriftProtocol) {
-        RegisterThriftProtocol();
-    }
+// Use Macro is more straight forward than weak link technology(becasue of static link issue)
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+    RegisterThriftProtocol();
+#endif
 
     // Only valid at client side
     Protocol ubrpc_compack_protocol = {

@@ -14,8 +14,6 @@
 
 // Authors: wangxuefeng (wangxuefeng@didichuxing.com)
 
-#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
-
 #define INTERNAL_SUPPRESS_PROTOBUF_FIELD_DEPRECATION
 #include "brpc/thrift_message.h"
 
@@ -246,4 +244,3 @@ void ThriftFramedMessage::Swap(ThriftFramedMessage* other) {
 
 } // namespace brpc
 
-#endif
