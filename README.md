@@ -26,7 +26,7 @@ You can use it to:
 # Try it!
 
 * Read [overview](docs/en/overview.md) to know where brpc can be used and its advantages.
-* Read [building steps](docs/cn/getting_started.md) to get started and play with [examples](https://github.com/brpc/brpc/tree/master/example/).
+* Read [getting started](docs/cn/getting_started.md) for building steps and play with [examples](https://github.com/brpc/brpc/tree/master/example/).
 * Docs:
   * [Performance benchmark](docs/cn/benchmark.md)
   * [bvar](docs/en/bvar.md)
