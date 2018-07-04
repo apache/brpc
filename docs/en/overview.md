@@ -50,7 +50,7 @@ You can use it to:
 * Clients can access servers [synchronously](client.md#synchronus-call), [asynchronously](client.md#asynchronous-call), [semi-synchronously](client.md#semi-synchronous-call), or use [combo channels](combo_channel.md) to simplify sharded or parallel accesses declaratively.
 * Debug services [via http](builtin_service.md), and run  [cpu](../cn/cpu_profiler.md), [heap](../cn/heap_profiler.md) and [contention](../cn/contention_profiler.md) profilers.
 * Get [better latency and throughput](#better-latency-and-throughput).
-* [Extend brpc](new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](../cn/load_balancing.md#名字服务) (dns, zk, etcd), [load balancers](../cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
+* [Extend brpc](new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](../cn/load_balancing.md#命名服务) (dns, zk, etcd), [load balancers](../cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
 
 # Advantages of brpc
 

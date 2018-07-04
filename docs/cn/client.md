@@ -42,7 +42,7 @@ int Init(EndPoint server_addr_and_port, const ChannelOptions* options);
 int Init(const char* server_addr_and_port, const ChannelOptions* options);
 int Init(const char* server_addr, int port, const ChannelOptions* options);
 ```
-这类Init连接的服务器往往有固定的ip地址，不需要名字服务和负载均衡，创建起来相对轻量。但是**请勿频繁创建使用域名的Channel**。这需要查询dns，可能最多耗时10秒(查询DNS的默认超时)。重用它们。
+这类Init连接的服务器往往有固定的ip地址，不需要命名服务和负载均衡，创建起来相对轻量。但是**请勿频繁创建使用域名的Channel**。这需要查询dns，可能最多耗时10秒(查询DNS的默认超时)。重用它们。
 
 合法的“server_addr_and_port”：
 - 127.0.0.1:80
@@ -60,25 +60,25 @@ int Init(const char* naming_service_url,
          const char* load_balancer_name,
          const ChannelOptions* options);
 ```
-这类Channel需要定期从`naming_service_url`指定的名字服务中获得服务器列表，并通过`load_balancer_name`指定的负载均衡算法选择出一台机器发送请求。
+这类Channel需要定期从`naming_service_url`指定的命名服务中获得服务器列表，并通过`load_balancer_name`指定的负载均衡算法选择出一台机器发送请求。
 
-你**不应该**在每次请求前动态地创建此类（连接服务集群的）Channel。因为创建和析构此类Channel牵涉到较多的资源，比如在创建时得访问一次名字服务，否则便不知道有哪些服务器可选。由于Channel可被多个线程共用，一般也没有必要动态创建。
+你**不应该**在每次请求前动态地创建此类（连接服务集群的）Channel。因为创建和析构此类Channel牵涉到较多的资源，比如在创建时得访问一次命名服务，否则便不知道有哪些服务器可选。由于Channel可被多个线程共用，一般也没有必要动态创建。
 
 当`load_balancer_name`为NULL或空时，此Init等同于连接单台server的Init，`naming_service_url`应该是"ip:port"或"域名:port"。你可以通过这个Init函数统一Channel的初始化方式。比如你可以把`naming_service_url`和`load_balancer_name`放在配置文件中，要连接单台server时把`load_balancer_name`置空，要连接服务集群时则设置一个有效的算法名称。
 
-## 名字服务
+## 命名服务
 
-名字服务把一个名字映射为可修改的机器列表，在client端的位置如下：
+命名服务把一个名字映射为可修改的机器列表，在client端的位置如下：
 
 ![img](../images/ns.png)
 
-有了名字服务后client记录的是一个名字，而不是每一台下游机器。而当下游机器变化时，就只需要修改名字服务中的列表，而不需要逐台修改每个上游。这个过程也常被称为“解耦上下游”。当然在具体实现上，上游会记录每一台下游机器，并定期向名字服务请求或被推送最新的列表，以避免在RPC请求时才去访问名字服务。使用名字服务一般不会对访问性能造成影响，对名字服务的压力也很小。
+有了命名服务后client记录的是一个名字，而不是每一台下游机器。而当下游机器变化时，就只需要修改命名服务中的列表，而不需要逐台修改每个上游。这个过程也常被称为“解耦上下游”。当然在具体实现上，上游会记录每一台下游机器，并定期向命名服务请求或被推送最新的列表，以避免在RPC请求时才去访问命名服务。使用命名服务一般不会对访问性能造成影响，对命名服务的压力也很小。
 
 `naming_service_url`的一般形式是"**protocol://service_name**"
 
 ### bns://\<bns-name\>
 
-BNS是百度内常用的名字服务，比如bns://rdev.matrix.all，其中"bns"是protocol，"rdev.matrix.all"是service-name。相关一个gflag是-ns_access_interval: ![img](../images/ns_access_interval.png)
+BNS是百度内常用的命名服务，比如bns://rdev.matrix.all，其中"bns"是protocol，"rdev.matrix.all"是service-name。相关一个gflag是-ns_access_interval: ![img](../images/ns_access_interval.png)
 
 如果BNS中显示不为空，但Channel却说找不到服务器，那么有可能BNS列表中的机器状态位（status）为非0，含义为机器不可用，所以不会被加入到server候选集中．状态位可通过命令行查看：
 
@@ -108,9 +108,9 @@ BNS是百度内常用的名字服务，比如bns://rdev.matrix.all，其中"bns"
 
 如果consul不可访问，服务可自动降级到file naming service获取服务列表。此功能默认关闭，可通过设置-consul\_enable\_degrade\_to\_file\_naming\_service来打开。服务列表文件目录通过-consul \_file\_naming\_service\_dir来设置，使用service-name作为文件名。该文件可通过consul-template生成，里面会保存consul不可用之前最新的下游服务节点。当consul恢复时可自动恢复到consul naming service。
 
-### 名字服务过滤器
+### 命名服务过滤器
 
-当名字服务获得机器列表后，可以自定义一个过滤器进行筛选，最后把结果传递给负载均衡：
+当命名服务获得机器列表后，可以自定义一个过滤器进行筛选，最后把结果传递给负载均衡：
 
 ![img](../images/ns_filter.jpg)
 
@@ -196,7 +196,7 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 | ------------------------- | ----- | ---------------------------------------- | ----------------------- |
 | health_check_interval （R） | 3     | seconds between consecutive health-checkings | src/brpc/socket_map.cpp |
 
-一旦server被连接上，它会恢复为可用状态。如果在隔离过程中，server从名字服务中删除了，brpc也会停止连接尝试。
+一旦server被连接上，它会恢复为可用状态。如果在隔离过程中，server从命名服务中删除了，brpc也会停止连接尝试。
 
 # 发起访问
 
@@ -655,7 +655,7 @@ struct ChannelSSLOptions {
 };
 ```
 
-- 目前只有连接单点的Channel可以开启SSL访问，使用了名字服务的Channel**不支持开启SSL**。
+- 目前只有连接单点的Channel可以开启SSL访问，使用了命名服务的Channel**不支持开启SSL**。
 - 开启后，该Channel上任何协议的请求，都会被SSL加密后发送。如果希望某些请求不加密，需要额外再创建一个Channel。
 - 针对HTTPS做了些易用性优化：`Channel.Init`时能自动识别https://前缀，自动开启SSL；-http_verbose时也会输出证书信息。
 
@@ -787,7 +787,7 @@ struct ChannelOptions {
 ```
 FATAL 04-07 20:00:03 7778 src/brpc/channel.cpp:123] Invalid address=`bns://group.user-persona.dumi.nj03'. You should use Init(naming_service_name, load_balancer_name, options) to access multiple servers.
 ```
-访问名字服务要使用三个参数的Init，其中第二个参数是load_balancer_name，而这里用的是两个参数的Init，框架认为是访问单点，就会报这个错。
+访问命名服务要使用三个参数的Init，其中第二个参数是load_balancer_name，而这里用的是两个参数的Init，框架认为是访问单点，就会报这个错。
 
 ### Q: 两端都用protobuf，为什么不能互相访问
 
