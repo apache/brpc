@@ -98,18 +98,30 @@ Servers are put in the file specified by `path`. For example, in "file://conf/ma
 10.24.234.18
 10.24.234.19
 ```
-Pros: easy to modify, convenient for unittests. Cons: need to update every client when the list changes, not suitable for online deployment.
+
+Pros: easy to modify, convenient for unittests.
+
+Cons: need to update every client when the list changes, not suitable for online deployment.
 
 ### list://\<addr1\>,\<addr2\>...
 
 Servers are directly written after list://, separated by comma. For example: "list://db-bce-81-3-186.db01:7000,m1-bce-44-67-72.m1:7000,cp01-rd-cos-006.cp01:7000" has 3 addresses.
+
 Tags can be appended to addresses, separated with one or more spaces. Same address + different tags are treated as different instances.
-Pros: directly configurable in CLI, convenient for unittests. Cons: cannot be updated at runtime, not suitable for online deployment at all.
+
+Pros: directly configurable in CLI, convenient for unittests.
+
+Cons: cannot be updated at runtime, not suitable for online deployment at all.
 
 ### http://\<url\>
 
-Connect all servers under the domain, for example: http://www.baidu.com:80. Note: although Init() for connecting single server(2 parameters) accepts hostname as well, it only connects one server under the domain.
-Pros: Versatility of DNS, useable both in private or public network. Cons: limited by transmission formats of DNS, unable to implement notification mechanisms.
+Connect all servers under the domain, for example: http://www.baidu.com:80. 
+
+Note: although Init() for connecting single server(2 parameters) accepts hostname as well, it only connects one server under the domain.
+
+Pros: Versatility of DNS, useable both in private or public network.
+
+Cons: limited by transmission formats of DNS, unable to implement notification mechanisms.
 
 ### consul://\<service-name\>
 
@@ -131,8 +143,11 @@ tag was used for implementing "coarse-grained wrr": different tags are appended 
 
 ### VIP related issues
 VIP is often the public IP of layer-4 load balancer, which proxies traffic to RS behide. When a client connects to the VIP, a connection is established to a chosen RS. When the client connection is broken, the connection to the RS is reset as well.
+
 If one client establishes only one connection to the VIP("single" connection type in brpc), all traffic from the client lands on one RS. If number of clients are large enough, each RS should gets many connections and roughly balanced, at least from the cluster perspective. However, if clients are not large enough or workload from clients are very different, some RS may be overloaded. Another issue is that when multiple VIP are listed together, the traffic to them may not be proportional to the number of RS behide them.
+
 One solution to these issues is to use "pooled" connection type, so that one client may create multiple connections to one VIP (roughly the max concurrency recently) to make traffic land on different RS. If more than one VIP are present, consider using [wrr load balancing](#wrr) to assign weights to different VIP, or add different tags to VIP to form more instances.
+
 Note: When the client uses "single" connection type, even if one VIP appended with different tags can get more traffic, the connection is still one. This is decided by current implementation in brpc.
 
 ### Naming Service Filter
