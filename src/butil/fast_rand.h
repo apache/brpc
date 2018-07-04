@@ -63,6 +63,9 @@ template <typename T> T fast_rand_in(T min, T max) {
 // Cost: ~15ns
 double fast_rand_double();
 
+// Generate a byte-array of a given length at the given address
+void fast_rand_bytes(void* addr, size_t len);
+
 }
 
 #endif  // BUTIL_FAST_RAND_H

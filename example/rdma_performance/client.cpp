@@ -18,8 +18,8 @@
 #include <unistd.h>
 #include <vector>
 #include <butil/atomicops.h>
+#include <butil/fast_rand.h>
 #include <butil/logging.h>
-#include <butil/rand_util.h>
 #include <brpc/channel.h>
 #include <brpc/rdma/rdma_helper.h>
 #include <bthread/bthread.h>
@@ -53,21 +53,23 @@ public:
         } else {
             attachment_size *= 1024;
         }
+
+        _addr = malloc(attachment_size);
+        butil::fast_rand_bytes(_addr, attachment_size);
         if (FLAGS_specify_attachment_addr) {
-            _addr = malloc(attachment_size);
-            butil::RandBytes(_addr, attachment_size);
             brpc::rdma::RegisterMemoryForRdma(_addr, attachment_size);
             _attachment.append_zerocopy(_addr, attachment_size, NULL);
         } else {
-            std::string att = butil::RandBytesAsString(attachment_size);
-            _attachment.append(att);
+            _attachment.append(_addr, attachment_size);
         }
         _echo_attachment = echo_attachment;
     }
 
     ~PerformanceTest() {
         if (_addr) {
-            brpc::rdma::DeregisterMemoryForRdma(_addr);
+            if (FLAGS_specify_attachment_addr) {
+                brpc::rdma::DeregisterMemoryForRdma(_addr);
+            }
             free(_addr);
         }
     }
@@ -79,7 +81,7 @@ public:
         options.connection_type = "pooled";
         options.timeout_ms = FLAGS_rpc_timeout_ms;
         options.max_retry = 0;
-        std::string server = g_servers[butil::RandInt(0, g_servers.size() - 1)];
+        std::string server = g_servers[butil::fast_rand() % g_servers.size()];
         if (_channel.Init(server.c_str(), &options) != 0) {
             LOG(ERROR) << "Fail to initialize channel";
             return -1;

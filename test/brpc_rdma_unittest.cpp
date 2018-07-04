@@ -612,6 +612,25 @@ TEST_F(RdmaTest, handshake_failure_incorrect_sid) {
     StopServer();
 }
 
+TEST_F(RdmaTest, client_incomplete_hello_during_handshake) {
+    StartServer();
+
+    sockaddr_in addr;
+    bzero((char*)&addr, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(PORT);
+
+    butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+    EXPECT_TRUE(sockfd >= 0);
+    EXPECT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
+    EXPECT_EQ(rdma::MAGIC_LENGTH,
+        write(sockfd, rdma::MAGIC_STR, rdma::MAGIC_LENGTH));
+    sleep(3);  // sleep to let the server release the idle connection
+    EXPECT_EQ(0, _server._am->ConnectionCount());
+
+    StopServer();
+}
+
 TEST_F(RdmaTest, client_miss_during_handshake) {
     StartServer();
 
@@ -624,7 +643,7 @@ TEST_F(RdmaTest, client_miss_during_handshake) {
     butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     EXPECT_TRUE(sockfd >= 0);
     EXPECT_EQ(0, connect(sockfd, (sockaddr*)&addr, sizeof(sockaddr)));
-    EXPECT_EQ(rdma::MAGIC_LENGTH, 
+    EXPECT_EQ(rdma::MAGIC_LENGTH,
         write(sockfd, rdma::MAGIC_STR, rdma::MAGIC_LENGTH));
     EXPECT_EQ(rdma::RANDOM_LENGTH,
         write(sockfd, &rand, rdma::RANDOM_LENGTH));

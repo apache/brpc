@@ -151,11 +151,25 @@ include_directories(
         )
 
 if(BRPC_WITH_RDMA)
+    find_library(RDMACM NAMES rdmacm)
+    if(NOT RDMACM)
+        message(FATAL_ERROR "Fail to find rdmacm lib")
+    endif()
+    find_library(IBVERBS NAMES ibverbs)
+    if(NOT IBVERBS)
+        message(FATAL_ERROR "Fail to find ibverbs lib")
+    endif()
     set(RDMA_DYNAMIC_LIB
         ibverbs
         rdmacm
-        #nl  # Some versions of OFED may require this lib
         )
+    find_library(NL NAMES nl)
+    if (NL)
+        set(RDMA_DYNAMIC_LIB
+            ${RDMA_DYNAMIC_LIB}
+            nl
+            )
+    endif()
 endif()
 
 set(DYNAMIC_LIB

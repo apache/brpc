@@ -49,9 +49,14 @@ public:
     RdmaCompletionQueue();
     ~RdmaCompletionQueue();
 
-    // Create one non-shared CQ, or return a shared CQ
-    // The given s refer to the caller's Socket
-    static RdmaCompletionQueue* GetOne(Socket* s, int cq_size = 0);
+    // Whether the CQs are shared
+    static bool IsShared();
+
+    // Create one non-shared CQ, the given s refer to the caller's Socket
+    static RdmaCompletionQueue* NewOne(Socket* s, int cq_size);
+
+    // Get a shared CQ
+    static RdmaCompletionQueue* GetOne();
 
     // Initialize the CQ on the given cpu core id.
     // Return 0 if success, -1 if failed.
@@ -62,9 +67,6 @@ public:
 
     // Stop and join PollCQ thread
     void StopAndJoin();
-
-    // Whether the CQ is shared
-    bool IsShared() const;
 
     // Get CQ
     void* GetCQ() const;

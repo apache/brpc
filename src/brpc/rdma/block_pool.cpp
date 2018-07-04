@@ -33,7 +33,7 @@ DEFINE_int32(rdma_memory_pool_initial_size_mb, 1024,
              "Initial size of memory pool for RDMA (MB), should >=64");
 DEFINE_int32(rdma_memory_pool_increase_size_mb, 1024,
              "Increased size of memory pool for RDMA (MB), should >=64");
-DEFINE_int32(rdma_memory_pool_max_regions, 16, "Max number of regions");
+DEFINE_int32(rdma_memory_pool_max_regions, 1, "Max number of regions");
 DEFINE_int32(rdma_memory_pool_buckets, 4, "Number of buckets to reduce race");
 
 struct IdleNode {
@@ -223,21 +223,34 @@ void* InitBlockPool(Callback cb) {
 }
 
 static inline void PickReadyBlocks(int block_type, uint64_t index) {
-    g_idle_list[block_type][index] = g_ready_list[block_type];
-    g_ready_list[block_type] = g_ready_list[block_type]->next;
-    g_idle_list[block_type][index]->next = NULL;
+    IdleNode* node = g_ready_list[block_type];
+    IdleNode* last_node = NULL;
+    while (node) {
+        Region* r = GetRegion(node->start);
+        CHECK(r != NULL);
+        if (((uintptr_t)node->start - r->start) * g_buckets / r->size == index) {
+            g_idle_list[block_type][index] = node;
+            if (last_node) {
+                last_node->next = node->next;
+            } else {
+                g_ready_list[block_type] = node->next;
+            }
+            node->next = NULL;
+            break;
+        }
+        last_node = node;
+        node = node->next;
+    }
 }
 
 static void* AllocBlockFrom(int block_type) {
     void* ptr = NULL;
-    uint64_t index = butil::fast_rand_less_than(g_buckets);
+    uint64_t index = butil::fast_rand() % g_buckets;
     BAIDU_SCOPED_LOCK(*g_lock[block_type][index]);
     IdleNode* node = g_idle_list[block_type][index];
     if (!node) {
         BAIDU_SCOPED_LOCK(g_extend_lock);
-        if (g_ready_list[block_type]) {
-            PickReadyBlocks(block_type, index);
-        }
+        PickReadyBlocks(block_type, index);
         node = g_idle_list[block_type][index];
         if (!node) {
             // There is no block left, extend a new region
@@ -304,11 +317,10 @@ int DeallocBlock(void* buf) {
 
     node->start = buf;
     node->len = block_size;
-    uint64_t index = butil::fast_rand_less_than(g_buckets);
+    uint64_t index = ((uintptr_t)buf - r->start) * g_buckets / r->size;
     {
         BAIDU_SCOPED_LOCK(*g_lock[block_type][index]);
-        IdleNode* head = g_idle_list[block_type][index];
-        node->next = head;
+        node->next = g_idle_list[block_type][index];
         g_idle_list[block_type][index] = node;
     }
     return 0;

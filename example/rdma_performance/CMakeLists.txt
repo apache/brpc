@@ -57,19 +57,19 @@ if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
 endif()
 include_directories(${LEVELDB_INCLUDE_PATH})
 
+find_library(TCMALLOC NAMES tcmalloc)
+
 set(DYNAMIC_LIB
     ${CMAKE_THREAD_LIBS_INIT}
     ${GFLAGS_LIBRARY}
     ${PROTOBUF_LIBRARIES}
     ${LEVELDB_LIB}
+    ${TCMALLOC}
+    ${RDMA_DYNAMIC_LIB}
     ssl
     crypto
     dl
     z
-    ibverbs
-    rdmacm
-    #nl  # Some versions of OFED may require this lib
-    tcmalloc
     )
 
 add_executable(perf_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})

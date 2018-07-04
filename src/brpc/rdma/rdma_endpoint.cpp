@@ -17,10 +17,10 @@
 #ifdef BRPC_RDMA
 #include <infiniband/verbs.h>
 #endif
+#include <butil/fast_rand.h>                 // fast_rand
 #include <butil/fd_utility.h>
 #include <butil/logging.h>                   // CHECK, LOG
 #include <butil/object_pool.h>               // return_object
-#include <butil/rand_util.h>                 // RandBytes
 #include <butil/sys_byteorder.h>             // NetToHost/HostToNet
 #include <gflags/gflags.h>
 #include "brpc/errno.pb.h"
@@ -51,24 +51,26 @@ struct RdmaConnectRequestData {
     void Serialize(char* data) const {
         uint64_t* tmp = (uint64_t*)data;
         *tmp = butil::HostToNet64(sid);
-        memcpy(data + sizeof(sid), rand_str, sizeof(rand_str));
-        uint64_t* rq = (uint64_t*)(&data[sizeof(sid) + sizeof(rand_str)]);
+        memcpy(data + offsetof(RdmaConnectRequestData, rand_str),
+               rand_str, sizeof(rand_str));
+        uint32_t* rq = (uint32_t*)(data + offsetof(RdmaConnectRequestData, rq_size));
         *rq = butil::HostToNet32(rq_size);
-        uint64_t* sq = (uint64_t*)(&data[Length() - sizeof(sq_size)]);
+        uint32_t* sq = (uint32_t*)(data + offsetof(RdmaConnectRequestData, sq_size));
         *sq = butil::HostToNet32(sq_size);
     }
 
-    void Deserialize(char* data) {
+    void Parse(char* data) {
         sid = butil::NetToHost64(*(uint64_t*)data);
-        memcpy(rand_str, data + sizeof(sid), RANDOM_LENGTH);
-        rq_size = butil::NetToHost32(*(uint32_t*)
-                  ((char*)data + sizeof(sid) + sizeof(rand_str)));
-        sq_size = butil::NetToHost32(*(uint32_t*)((char*)data + sizeof(sid) +
-                  sizeof(rand_str) + sizeof(rq_size)));
+        memcpy(rand_str, data + offsetof(RdmaConnectRequestData, rand_str),
+               RANDOM_LENGTH);
+        rq_size = butil::NetToHost32(
+                  *(uint32_t*)(data + offsetof(RdmaConnectRequestData, rq_size)));
+        sq_size = butil::NetToHost32(
+                  *(uint32_t*)(data + offsetof(RdmaConnectRequestData, sq_size)));
     }
 
     size_t Length() const {
-        return sizeof(sid) + sizeof(rand_str) + sizeof(rq_size) + sizeof(sq_size);
+        return sizeof(RdmaConnectRequestData);
     }
 
     uint64_t sid;
@@ -81,17 +83,18 @@ struct RdmaConnectResponseData {
     void Serialize(char* data) const {
         uint32_t* rq = (uint32_t*)data;
         *rq = butil::HostToNet32(rq_size);
-        uint64_t* sq = (uint64_t*)(&data[sizeof(rq_size)]);
+        uint32_t* sq = (uint32_t*)(data + offsetof(RdmaConnectResponseData, sq_size));
         *sq = butil::HostToNet32(sq_size);
     }
 
-    void Deserialize(char* data) {
+    void Parse(char* data) {
         rq_size = butil::NetToHost32(*(uint32_t*)data);
-        sq_size = butil::NetToHost32(*(uint32_t*)((char*)data + sizeof(rq_size)));
+        sq_size = butil::NetToHost32(
+                  *(uint32_t*)(data + offsetof(RdmaConnectResponseData, sq_size)));
     }
 
     size_t Length() const {
-        return sizeof(rq_size) + sizeof(sq_size);
+        return sizeof(RdmaConnectResponseData);
     }
 
     uint32_t rq_size;
@@ -272,6 +275,11 @@ int RdmaEndpoint::HandshakeAtServer(RdmaCMEvent event) {
             return -1;
         }
 
+        if (_handshake_buf.size() < HELLO_LENGTH) {
+            errno = EAGAIN;
+            return -1;
+        }
+
         char tmp[HELLO_LENGTH];
         _handshake_buf.copy_to(tmp, HELLO_LENGTH);
         if (strncmp(tmp, MAGIC_STR, MAGIC_LENGTH) != 0) {
@@ -302,7 +310,9 @@ int RdmaEndpoint::HandshakeAtServer(RdmaCMEvent event) {
                 PLOG(WARNING) << "Fail to write on fd=" << _socket->fd();
                 return -1;
             }
-            left_len -= nw;
+            if (nw > 0) {
+                left_len -= nw;
+            }
         } while (left_len > 0);
 
         break;
@@ -383,9 +393,10 @@ int RdmaEndpoint::StartHandshake() {
     }
     _status = HELLO_C;
 
+    butil::fast_rand_bytes(_rand_str, RANDOM_LENGTH);
+
     char tmp[HELLO_LENGTH];
     memcpy(tmp, MAGIC_STR, MAGIC_LENGTH);
-    butil::RandBytes(_rand_str, RANDOM_LENGTH);
     memcpy(tmp + MAGIC_LENGTH, _rand_str, RANDOM_LENGTH);
     ssize_t left_len = HELLO_LENGTH;
 
@@ -401,7 +412,9 @@ int RdmaEndpoint::StartHandshake() {
             PLOG(WARNING) << "Fail to write on fd=" << _socket->fd();
             return -1;
         }
-        left_len -= nw;
+        if (nw > 0) {
+            left_len -= nw;
+        }
     } while (left_len > 0);
 
     return 0;
@@ -419,6 +432,11 @@ int RdmaEndpoint::HandshakeAtClient(RdmaCMEvent event) {
     case HELLO_C: {
         if (event != RDMACM_EVENT_NONE) {
             errno = EPROTO;
+            return -1;
+        }
+
+        if (_handshake_buf.size() < sizeof(SocketId)) {
+            errno = EAGAIN;
             return -1;
         }
 
@@ -510,7 +528,7 @@ int RdmaEndpoint::HandshakeAtClient(RdmaCMEvent event) {
             return -1;
         }
         RdmaConnectResponseData res;
-        res.Deserialize((char*)data);
+        res.Parse((char*)data);
         if (res.rq_size < _sq_size) {
             _local_window_capacity = res.rq_size;
             _window_size.store(res.rq_size, butil::memory_order_relaxed);
@@ -584,9 +602,26 @@ private:
                 append_len = (append_len < butil::IOBuf::DEFAULT_PAYLOAD) ?
                     append_len : butil::IOBuf::DEFAULT_PAYLOAD;
                 RdmaIOBuf tmp;
-                if (tmp.append(start, append_len) < 0) {
+                // NOTE:
+                // append(void*, size_t) does not guarantee that data will be
+                // copied to a new block. Thus we use IOBufAsZeroCopyOutputStream.
+                butil::IOBufAsZeroCopyOutputStream os(
+                        &tmp, butil::IOBuf::DEFAULT_BLOCK_SIZE);
+                int size = 0;
+                void* buf = NULL;
+                if (!os.Next(&buf, &size) ||
+                        (uint64_t)size < butil::IOBuf::DEFAULT_PAYLOAD) {
+                    // Memory is not enough for preparing a block
+                    errno = ENOMEM;
                     return -1;
                 }
+                memcpy(buf, start, append_len);
+                os.BackUp(butil::IOBuf::DEFAULT_PAYLOAD - append_len);
+                if (GetLKey(tmp.backing_block(0).data()) == 0) {
+                    errno = ENOMEM;
+                    return -1;
+                }
+
                 len = tmp.cut_into_sglist_and_iobuf(&list[i], to,
                         max_sge, append_len, lkey);
                 cutn(&tmp, len);
@@ -894,9 +929,13 @@ int RdmaEndpoint::AllocateResources() {
 #else
     CHECK(_rcm != NULL);
 
-    // The capacity size of CQ is not easy to estimate.
-    // Empirically, we use twice the sum of SQ+RQ size.
-    _rcq = RdmaCompletionQueue::GetOne(_socket, 2 * (_sq_size + _rq_size));
+    if (RdmaCompletionQueue::IsShared()) {
+        _rcq = RdmaCompletionQueue::GetOne();
+    } else {
+        // The capacity size of CQ is not easy to estimate.
+        // Empirically, we use twice the sum of SQ+RQ size.
+        _rcq = RdmaCompletionQueue::NewOne(_socket, 2 * (_sq_size + _rq_size));
+    }
     if (!_rcq) {
         return -1;
     }
@@ -959,7 +998,7 @@ int RdmaEndpoint::InitializeFromAccept(
 
     // Find the associated Socket
     RdmaConnectRequestData req;
-    req.Deserialize(data);
+    req.Parse(data);
     SocketUniquePtr s;
     if (Socket::Address(req.sid, &s) < 0) {
         LOG_EVERY_SECOND(WARNING) << "Invalid Socket id for rdma_accept";
