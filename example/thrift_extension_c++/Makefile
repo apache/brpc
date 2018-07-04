@@ -11,7 +11,7 @@ LIBPATHS = $(addprefix -L, $(LIBS))
 COMMA=,
 SOPATHS=$(addprefix -Wl$(COMMA)-rpath=, $(LIBS))
 
-STATIC_LINKINGS += -lthrift -lgflags -lbrpc -levent -lpthread -lssl -lcrypto -ldl -lz -lrt -lleveldb
+STATIC_LINKINGS += -lthrift -lgflags -lbrpc -levent
 
 CLIENT_SOURCES = client.cpp
 SERVER_SOURCES = server.cpp
@@ -32,11 +32,11 @@ clean:
 
 echo_client:$(PROTO_OBJS) $(CLIENT_OBJS) libechothrift.a
 	@echo "Linking $@"
-	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) -o $@
+	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
 
 echo_server:$(PROTO_OBJS) $(SERVER_OBJS) libechothrift.a
 	@echo "Linking $@"
-	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ libechothrift.a -Xlinker "-)" $(STATIC_LINKINGS) -o $@
+	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ libechothrift.a -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
 
 %.o:%.cpp libechothrift.a
 	@echo "Compiling $@"
