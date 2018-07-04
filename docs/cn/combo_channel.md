@@ -169,7 +169,7 @@ SelectiveChannel的重试独立于其中的sub channel，当SelectiveChannel访�
 
 ## 使用SelectiveChannel
 
-SelectiveChannel的初始化和普通Channel基本一样，但Init不需要指定名字服务，因为SelectiveChannel通过AddChannel动态添加sub channel，而普通Channel通过名字服务动态管理server。
+SelectiveChannel的初始化和普通Channel基本一样，但Init不需要指定命名服务，因为SelectiveChannel通过AddChannel动态添加sub channel，而普通Channel通过命名服务动态管理server。
 
 ```c++
 #include <brpc/selective_channel.h>
@@ -203,11 +203,11 @@ if (schan.AddChannel(sub_channel, NULL/*ChannelHandle*/) != 0) {  // 第二个�
 
 访问SelectiveChannel的方式和普通Channel是一样的。
 
-## 例子: 往多个名字服务分流
+## 例子: 往多个命名服务分流
 
-一些场景中我们需要向多个名字服务下的机器分流，原因可能有：
+一些场景中我们需要向多个命名服务下的机器分流，原因可能有：
 
-- 完成同一个检索功能的机器被挂载到了不同的名字服务下。
+- 完成同一个检索功能的机器被挂载到了不同的命名服务下。
 - 机器被拆成了多个组，流量先分流给一个组，再分流到组内机器。组间的分流方式和组内有所不同。
 
 这都可以通过SelectiveChannel完成。
@@ -243,11 +243,11 @@ stub.FooMethod(&cntl, &request, &response, NULL);
 
 # PartitionChannel
 
-[PartitionChannel](https://github.com/brpc/brpc/blob/master/src/brpc/partition_channel.h)是特殊的ParallelChannel，它会根据名字服务中的tag自动建立对应分库的sub channel。这样用户就可以把所有的分库机器挂在一个名字服务内，通过tag来指定哪台机器对应哪个分库。示例代码见[example/partition_echo_c++](https://github.com/brpc/brpc/tree/master/example/partition_echo_c++/)。
+[PartitionChannel](https://github.com/brpc/brpc/blob/master/src/brpc/partition_channel.h)是特殊的ParallelChannel，它会根据命名服务中的tag自动建立对应分库的sub channel。这样用户就可以把所有的分库机器挂在一个命名服务内，通过tag来指定哪台机器对应哪个分库。示例代码见[example/partition_echo_c++](https://github.com/brpc/brpc/tree/master/example/partition_echo_c++/)。
 
 ParititonChannel只能处理一种分库方法，当用户需要多种分库方法共存，或从一个分库方法平滑地切换为另一种分库方法时，可以使用DynamicPartitionChannel，它会根据不同的分库方式动态地建立对应的sub PartitionChannel，并根据容量把请求分配给不同的分库。示例代码见[example/dynamic_partition_echo_c++](https://github.com/brpc/brpc/tree/master/example/dynamic_partition_echo_c++/)。
 
-如果分库在不同的名字服务内，那么用户得自行用ParallelChannel组装，即每个sub channel对应一个分库（使用不同的名字服务）。ParellelChannel的使用方法见[上面](#ParallelChannel)。
+如果分库在不同的命名服务内，那么用户得自行用ParallelChannel组装，即每个sub channel对应一个分库（使用不同的命名服务）。ParellelChannel的使用方法见[上面](#ParallelChannel)。
 
 ## 使用PartitionChannel
 
@@ -336,7 +336,7 @@ TRACE: 09-06 10:40:42:   * 0 server.cpp:192] S[0]=0 S[1]=0 S[2]=0 [total=0]
     ...
 ```
 
-名字服务"file://server_list"的内容是：
+命名服务"file://server_list"的内容是：
 ```
 0.0.0.0:8004  0/3  # 表示3分库中的第一个分库，其他依次类推
 0.0.0.0:8004  1/3
@@ -401,7 +401,7 @@ TRACE: 09-06 10:57:15:   * 0 server.cpp:192] S[0]=208453 S[1]=276803 S[2]=0 [tot
 
 一次RPC要访问三次8004或四次8005，8004和8005流量比是3:4，说明Client以1:1的比例访问了3分库和4分库。这个比例关系取决于其容量。容量的计算是递归的：
 
-- 普通Channel的容量等于它其中所有server的容量之和。如果名字服务没有配置权值，单个server的容量为1。
+- 普通Channel的容量等于它其中所有server的容量之和。如果命名服务没有配置权值，单个server的容量为1。
 - ParallelChannel或PartitionChannel的容量等于它其中Sub Channel容量的最小值。
 - SelectiveChannel的容量等于它其中Sub Channel的容量之和。
 - DynamicPartitionChannel的容量等于它其中Sub PartitionChannel的容量之和。

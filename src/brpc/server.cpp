@@ -40,7 +40,9 @@
 #include "brpc/details/ssl_helper.h"           // CreateServerSSLContext
 #include "brpc/protocol.h"                     // ListProtocols
 #include "brpc/nshead_service.h"               // NsheadService
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
 #include "brpc/thrift_service.h"               // ThriftService
+#endif
 #include "brpc/builtin/bad_method_service.h"   // BadMethodService
 #include "brpc/builtin/get_favicon_service.h"
 #include "brpc/builtin/get_js_service.h"

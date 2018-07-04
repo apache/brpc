@@ -1,6 +1,12 @@
 
 load("//:bazel/brpc.bzl", "brpc_proto_library")
 
+config_setting(
+    name = "darwin",
+    values = {"cpu": "darwin"},
+    visibility = ["//visibility:public"],
+)
+
 COPTS = [
     "-D__STDC_FORMAT_MACROS",
     "-DBTHREAD_USE_FAST_PTHREAD_MUTEX",
@@ -27,12 +33,17 @@ COPTS = [
 
 LINKOPTS = [
     "-lpthread",
-    "-lrt",
     "-lssl",
     "-lcrypto",
     "-ldl",
     "-lz",
-]
+] + select({
+    ":darwin": [],
+    "//conditions:default": [
+      "-lrt",
+
+    ],
+})
 
 TEST_BUTIL_SOURCES = [
     "at_exit_unittest.cc",
@@ -48,7 +59,6 @@ TEST_BUTIL_SOURCES = [
     "cpu_unittest.cc",
     "crash_logging_unittest.cc",
     "leak_tracker_unittest.cc",
-    "proc_maps_linux_unittest.cc",
     "stack_trace_unittest.cc",
     "environment_unittest.cc",
     "file_util_unittest.cc",
@@ -129,10 +139,15 @@ TEST_BUTIL_SOURCES = [
     "iobuf_unittest.cpp",
     "test_switches.cc",
     "scoped_locale.cc",
-    "test_file_util_linux.cc",
     #"popen_unittest.cpp",
     "butil_unittest_main.cpp",
-]
+] + select({
+        "@bazel_tools//tools/osx:darwin": [],
+        "//conditions:default": [
+           "test_file_util_linux.cc",
+           "proc_maps_linux_unittest.cc",
+        ],
+})
 
 proto_library(
     name = "test_proto",

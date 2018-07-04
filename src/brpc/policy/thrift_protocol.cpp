@@ -14,8 +14,6 @@
 
 // Authors: wangxuefeng (wangxuefeng@didichuxing.com)
 
-#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
-
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
@@ -648,4 +646,3 @@ void RegisterThriftProtocol() {
 }
 }
 
-#endif

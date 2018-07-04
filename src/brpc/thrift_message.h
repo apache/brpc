@@ -14,8 +14,6 @@
 
 // Authors: wangxuefeng (wangxuefeng@didichuxing.com)
 
-#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
-
 #ifndef BRPC_THRIFT_MESSAGE_H
 #define BRPC_THRIFT_MESSAGE_H
 
@@ -167,4 +165,3 @@ private:
 
 #endif // BRPC_THRIFT_MESSAGE_H
 
-#endif //ENABLE_THRIFT_FRAMED_PROTOCOL
