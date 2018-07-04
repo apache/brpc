@@ -34,8 +34,8 @@ eval set -- "$TEMP"
 # Convert to abspath always so that generated mk is include-able from everywhere
 while true; do
     case "$1" in
-        --headers ) HDRS_IN="$(realpath $2)"; shift 2 ;;
-        --libs ) LIBS_IN="$(realpath $2)"; shift 2 ;;
+        --headers ) HDRS_IN="$(readlink -e $2)"; shift 2 ;;
+        --libs ) LIBS_IN="$(readlink -e $2)"; shift 2 ;;
         --cc ) CC=$2; shift 2 ;;
         --cxx ) CXX=$2; shift 2 ;;
         --with-glog ) WITH_GLOG=1; shift 1 ;;

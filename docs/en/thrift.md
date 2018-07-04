@@ -29,7 +29,7 @@ Config brpc with thrift support, then make. The compiled libbrpc.a includes exte
 ```bash
 sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --with-thrift
 #or use cmake
-mkdir build && cd build && cmake ../ -DBRPC_WITH_THRIFT=1
+mkdir build && cd build && cmake ../ -DWITH_THRIFT=1
 ```
 
 # Client accesses thrift server

@@ -29,7 +29,7 @@ sudo make install
 ```bash
 sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --with-thrift
 #或者使用cmake
-mkdir build && cd build && cmake ../ -DBRPC_WITH_THRIFT=1
+mkdir build && cd build && cmake ../ -DWITH_THRIFT=1
 ```
 
 # Client端访问thrift server
