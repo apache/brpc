@@ -19,6 +19,7 @@
 #endif
 #include <pthread.h>
 #include <unistd.h>
+#include <butil/atomicops.h>                         // atomic
 #include <butil/fast_rand.h>                         // fast_rand
 #include <butil/fd_utility.h>                        // make_non_blocking
 #include <butil/logging.h>                           // LOG
@@ -55,6 +56,8 @@ static bool g_use_polling = false;
 static bool g_bind_cpu = false;
 static RdmaCompletionQueue* g_cqs = NULL;
 static RdmaCQAssignPolicy* g_cq_policy = NULL;
+
+static butil::atomic<uint32_t> g_active_conn_num(0);
 
 RdmaCompletionQueue::RdmaCompletionQueue()
     : _cq(NULL)
@@ -102,6 +105,7 @@ RdmaCompletionQueue* RdmaCompletionQueue::NewOne(Socket* s, int cq_size) {
         return NULL;
     }
 
+    g_active_conn_num.fetch_add(1, butil::memory_order_relaxed);
     rcq->_ep_sid = s->id();
     return rcq;
 }
@@ -109,6 +113,7 @@ RdmaCompletionQueue* RdmaCompletionQueue::NewOne(Socket* s, int cq_size) {
 RdmaCompletionQueue* RdmaCompletionQueue::GetOne() {
     CHECK(g_cq_policy != NULL);
     CHECK(g_cq_num > 0);
+    g_active_conn_num.fetch_add(1, butil::memory_order_relaxed);
     return &g_cqs[g_cq_policy->Assign()];
 }
 
@@ -212,6 +217,7 @@ void RdmaCompletionQueue::CleanUp() {
 
 void RdmaCompletionQueue::Release() {
     g_cq_policy->Return(_cpu_index);
+    g_active_conn_num.fetch_sub(1, butil::memory_order_relaxed);
 }
 
 int RdmaCompletionQueue::GetAndAckEvents() {
@@ -256,6 +262,33 @@ static inline void CQError() {
                << "Application exit.";
     exit(1);
 }
+
+#ifdef BRPC_RDMA
+static void ParseRdmaCompletion(ibv_wc& wc, RdmaCompletion* rc) {
+    switch (wc.opcode) {
+    case IBV_WC_SEND: {
+        rc->type = RDMA_EVENT_SEND;
+        break;
+    }
+    case IBV_WC_RECV: {
+        rc->type = RDMA_EVENT_RECV;
+        break;
+    }
+    case IBV_WC_RECV_RDMA_WITH_IMM: {
+        rc->type = RDMA_EVENT_RECV_WITH_IMM;
+        break;
+    }
+    case IBV_WC_RDMA_WRITE: {
+        rc->type = RDMA_EVENT_WRITE;
+        break;
+    }
+    default:
+        rc->type = RDMA_EVENT_ERROR;
+    }
+    rc->len = wc.byte_len;
+    rc->imm = ntohl(wc.imm_data);
+}
+#endif
 
 void* RdmaCompletionQueue::PollThis(void* arg) {
     RdmaCompletionQueue* rcq = (RdmaCompletionQueue*)arg;
@@ -344,8 +377,6 @@ void RdmaCompletionQueue::PollCQ(Socket* m) {
         }
         notified = false;
 
-        const int64_t received_us = butil::cpuwide_time_us();
-        const int64_t base_realtime = butil::gettimeofday_us() - received_us;
         for (int i = 0; i < cnt; ++i) {
             if (s == NULL || s->id() != wc[i].wr_id) {
                 s.reset(NULL);
@@ -367,33 +398,10 @@ void RdmaCompletionQueue::PollCQ(Socket* m) {
                 continue;
             }
 
-            RdmaCompletion* rc = butil::get_object<RdmaCompletion>();
-            switch (wc[i].opcode) {
-            case IBV_WC_SEND: {
-                rc->type = RDMA_EVENT_SEND;
-                break;
-            }
-            case IBV_WC_RECV: {
-                rc->type = RDMA_EVENT_RECV;
-                break;
-            }
-            case IBV_WC_RECV_RDMA_WITH_IMM: {
-                rc->type = RDMA_EVENT_RECV_WITH_IMM;
-                break;
-            }
-            case IBV_WC_RDMA_WRITE: {
-                rc->type = RDMA_EVENT_WRITE;
-                break;
-            }
-            default:
-                rc->type = RDMA_EVENT_ERROR;
-            }
-            rc->len = wc[i].byte_len;
-            rc->imm = ntohl(wc[i].imm_data);
-
             if (g_cq_num == 0) {
-                ssize_t nr = s->_rdma_ep->HandleCompletion(*rc);
-                butil::return_object<RdmaCompletion>(rc);
+                RdmaCompletion rc;
+                ParseRdmaCompletion(wc[i], &rc);
+                ssize_t nr = s->_rdma_ep->HandleCompletion(rc);
                 if (nr < 0) {
                     PLOG(WARNING) << "Fail to handle RDMA completion";
                     s->SetFailed(errno, "Fail to handle RDMA completion");
@@ -403,13 +411,13 @@ void RdmaCompletionQueue::PollCQ(Socket* m) {
                     continue;
                 }
 
-                InputMessenger* messenger =
-                        static_cast<InputMessenger*>(s->user());
-                if (messenger->ProcessNewMessage(s.get(), nr, false,
-                            received_us, base_realtime, last_msg) < 0) {
+                InputMessenger* messenger = static_cast<InputMessenger*>(s->user());
+                if (messenger->ProcessReceivedData(s.get(), nr, false, last_msg) < 0) {
                     continue;
                 }
             } else {
+                RdmaCompletion* rc = butil::get_object<RdmaCompletion>();
+                ParseRdmaCompletion(wc[i], rc);
                 SocketUniquePtr tmp;
                 s->ReAddress(&tmp);
                 rc->socket = tmp.get();
@@ -558,7 +566,14 @@ void GlobalCQRelease() {
     for (int i = 0; i < g_cq_num; ++i) {
         g_cqs[i].StopAndJoin();
     }
-    // Do not release g_cqs and g_cq_policy to avoid segmentation fault
+
+    // We must wait for all CQs released
+    while (g_active_conn_num.load(butil::memory_order_relaxed) > 0) {
+        usleep(10);
+    }
+
+    delete [] g_cqs;
+    delete g_cq_policy;
 }
 
 }  // namespace rdma

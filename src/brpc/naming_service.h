@@ -33,11 +33,11 @@ namespace brpc {
 struct ServerNode {
     ServerNode() {}
     ServerNode(butil::ip_t ip, int port, const std::string& tag2)
-        : addr(ip, port), tag(tag2) {}
+        : addr(ip, port), use_rdma(false), tag(tag2) {}
     ServerNode(const butil::EndPoint& pt, const std::string& tag2)
-        : addr(pt), tag(tag2) {}
-    ServerNode(butil::ip_t ip, int port) : addr(ip, port) {}
-    explicit ServerNode(const butil::EndPoint& pt) : addr(pt) {}
+        : addr(pt), use_rdma(false), tag(tag2) {}
+    ServerNode(butil::ip_t ip, int port) : addr(ip, port), use_rdma(false) {}
+    explicit ServerNode(const butil::EndPoint& pt) : addr(pt), use_rdma(false) {}
 
     butil::EndPoint addr;
     bool use_rdma;

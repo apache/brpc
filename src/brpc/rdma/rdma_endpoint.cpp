@@ -157,6 +157,7 @@ void RdmaEndpoint::Reset() {
     _status = UNINITIALIZED;
     _sbuf.clear();
     _rbuf.clear();
+    _rbuf_data.clear();
     _accumulated_ack = 0;
     _unsolicited = 0;
     _sq_current = 0;
@@ -768,7 +769,10 @@ ssize_t RdmaEndpoint::CutFromIOBufList(
         _sq_current = 0;
     }
 
-    // Update counters
+    // Update _window_size. Note that _window_size will never be negative.
+    // Because there is at most one thread can enter this function for each
+    // Socket, and the other thread of HandleCompletion can only add this
+    // counter.
     _window_size.fetch_sub(1, butil::memory_order_relaxed);
 
     return nw;
@@ -973,14 +977,11 @@ void RdmaEndpoint::DeallocateResources() {
         // In fact, the execution thread must have jumpped out the loop
         // if we get here.
     }
-    _sbuf.clear();
-    _rbuf.clear();
-    _rbuf_data.clear();
 
     delete _rcm;
     _rcm = NULL;
     if (_rcq) {
-        if (_rcq->IsShared()) {
+        if (RdmaCompletionQueue::IsShared()) {
             _rcq->Release();
         } else {
             delete _rcq;
@@ -1055,6 +1056,10 @@ int RdmaEndpoint::InitializeFromAccept(
 
 int RdmaEndpoint::CompletionThread(void* arg,
         bthread::TaskIterator<RdmaCompletion*>& iter) {
+    // NOTE: This function can be called only when shared CQ is used.
+    // It is similar to InputMessenger::OnNewMessages: the last message
+    // is processed in the current bthread.
+
     SocketUniquePtr s;
     InputMessenger::InputMessageClosure last_msg;
 
@@ -1079,11 +1084,8 @@ int RdmaEndpoint::CompletionThread(void* arg,
             continue;
         }
 
-        const int64_t received_us = butil::cpuwide_time_us();
-        const int64_t base_realtime = butil::gettimeofday_us() - received_us;
         InputMessenger* messenger = static_cast<InputMessenger*>(s->user());
-        if (messenger->ProcessNewMessage(s.get(), nr, false,
-                    received_us, base_realtime, last_msg) < 0) {
+        if (messenger->ProcessReceivedData(s.get(), nr, false, last_msg) < 0) {
             continue;
         }
     }

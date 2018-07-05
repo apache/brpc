@@ -78,10 +78,13 @@ static const size_t BLOCK_SIZE[BLOCK_SIZE_COUNT] =
 #endif
 
 // For each block size, there are some buckets of idle list to reduce race.
-static std::vector<IdleNode*> g_idle_list[BLOCK_SIZE_COUNT];
-static std::vector<butil::Mutex*> g_lock[BLOCK_SIZE_COUNT];
-static butil::Mutex g_extend_lock;
-static IdleNode* g_ready_list[BLOCK_SIZE_COUNT];
+struct GlobalInfo {
+    std::vector<IdleNode*> idle_list[BLOCK_SIZE_COUNT];
+    std::vector<butil::Mutex*> lock[BLOCK_SIZE_COUNT];
+    butil::Mutex extend_lock;
+    IdleNode* ready_list[BLOCK_SIZE_COUNT];
+};
+static GlobalInfo* g_info = NULL;
 
 static inline Region* GetRegion(const void* buf) {
     if (!buf) {
@@ -170,8 +173,8 @@ static void* ExtendBlockPool(size_t region_size, int block_type) {
     for (int i = 0; i < g_buckets; ++i) {
         node[i]->start = (void*)(region->start + i * (region_size / g_buckets));
         node[i]->len = region_size / g_buckets;
-        node[i]->next = g_ready_list[block_type];
-        g_ready_list[block_type] = node[i];
+        node[i]->next = g_info->ready_list[block_type];
+        g_info->ready_list[block_type] = node[i];
     }
 
     return region_base;
@@ -203,37 +206,42 @@ void* InitBlockPool(Callback cb) {
     if (FLAGS_rdma_memory_pool_buckets >= 1) {
         g_buckets = FLAGS_rdma_memory_pool_buckets;
     }
-    for (size_t i = 0; i < BLOCK_SIZE_COUNT; ++i) {
-        g_idle_list[i].resize(g_buckets, NULL);
-        g_lock[i].resize(g_buckets, NULL);
+    g_info = new (std::nothrow) GlobalInfo;
+    if (!g_info) {
+        return NULL;
+    }
+    for (int i = 0; i < BLOCK_SIZE_COUNT; ++i) {
+        g_info->idle_list[i].resize(g_buckets, NULL);
+        g_info->lock[i].resize(g_buckets, NULL);
         for (int j = 0; j < g_buckets; ++j) {
-            g_lock[i][j] = new (std::nothrow) butil::Mutex;
-            if (!g_lock[i][j]) {
-                for (size_t l = 0; l <= i; ++l) {
+            g_info->lock[i][j] = new (std::nothrow) butil::Mutex;
+            if (!g_info->lock[i][j]) {
+                for (int l = 0; l <= i; ++l) {
                     for (int k = 0; k < j; ++k) {
-                        delete g_lock[l][k];
+                        delete g_info->lock[l][k];
                         return NULL;
                     }
                 }
             }
         }
+        g_info->ready_list[i] = NULL;
     }
     return ExtendBlockPool(FLAGS_rdma_memory_pool_initial_size_mb,
                            BLOCK_DEFAULT);
 }
 
 static inline void PickReadyBlocks(int block_type, uint64_t index) {
-    IdleNode* node = g_ready_list[block_type];
+    IdleNode* node = g_info->ready_list[block_type];
     IdleNode* last_node = NULL;
     while (node) {
         Region* r = GetRegion(node->start);
         CHECK(r != NULL);
         if (((uintptr_t)node->start - r->start) * g_buckets / r->size == index) {
-            g_idle_list[block_type][index] = node;
+            g_info->idle_list[block_type][index] = node;
             if (last_node) {
                 last_node->next = node->next;
             } else {
-                g_ready_list[block_type] = node->next;
+                g_info->ready_list[block_type] = node->next;
             }
             node->next = NULL;
             break;
@@ -246,12 +254,12 @@ static inline void PickReadyBlocks(int block_type, uint64_t index) {
 static void* AllocBlockFrom(int block_type) {
     void* ptr = NULL;
     uint64_t index = butil::fast_rand() % g_buckets;
-    BAIDU_SCOPED_LOCK(*g_lock[block_type][index]);
-    IdleNode* node = g_idle_list[block_type][index];
+    BAIDU_SCOPED_LOCK(*g_info->lock[block_type][index]);
+    IdleNode* node = g_info->idle_list[block_type][index];
     if (!node) {
-        BAIDU_SCOPED_LOCK(g_extend_lock);
+        BAIDU_SCOPED_LOCK(g_info->extend_lock);
         PickReadyBlocks(block_type, index);
-        node = g_idle_list[block_type][index];
+        node = g_info->idle_list[block_type][index];
         if (!node) {
             // There is no block left, extend a new region
             if (!ExtendBlockPool(FLAGS_rdma_memory_pool_increase_size_mb,
@@ -263,7 +271,7 @@ static void* AllocBlockFrom(int block_type) {
             }
         }
     }
-    node = g_idle_list[block_type][index];
+    node = g_info->idle_list[block_type][index];
     if (node) {
         ptr = node->start;
         if (node->len > BLOCK_SIZE[block_type]) {
@@ -271,7 +279,7 @@ static void* AllocBlockFrom(int block_type) {
             node->len -= BLOCK_SIZE[block_type];
         } else {
             CHECK(node->len == BLOCK_SIZE[block_type]);
-            g_idle_list[block_type][index] = node->next;
+            g_info->idle_list[block_type][index] = node->next;
             butil::return_object<IdleNode>(node);
         }
     }
@@ -319,9 +327,9 @@ int DeallocBlock(void* buf) {
     node->len = block_size;
     uint64_t index = ((uintptr_t)buf - r->start) * g_buckets / r->size;
     {
-        BAIDU_SCOPED_LOCK(*g_lock[block_type][index]);
-        node->next = g_idle_list[block_type][index];
-        g_idle_list[block_type][index] = node;
+        BAIDU_SCOPED_LOCK(*g_info->lock[block_type][index]);
+        node->next = g_info->idle_list[block_type][index];
+        g_info->idle_list[block_type][index] = node;
     }
     return 0;
 }
@@ -330,22 +338,24 @@ int DeallocBlock(void* buf) {
 void DestroyBlockPool() {
     for (int i = 0; i < BLOCK_SIZE_COUNT; ++i) {
         for (int j = 0; j < g_buckets; ++j) {
-            IdleNode* node = g_idle_list[i][j];
+            IdleNode* node = g_info->idle_list[i][j];
             while (node) {
                 IdleNode* tmp = node->next;
                 butil::return_object<IdleNode>(node);
                 node = tmp;
             }
-            g_idle_list[i][j] = NULL;
+            g_info->idle_list[i][j] = NULL;
         }
-        IdleNode* node = g_ready_list[i];
+        IdleNode* node = g_info->ready_list[i];
         while (node) {
             IdleNode* tmp = node->next;
             butil::return_object<IdleNode>(node);
             node = tmp;
         }
-        g_ready_list[i] = NULL;
+        g_info->ready_list[i] = NULL;
     }
+    delete g_info;
+    g_info = NULL;
     for (int i = 0; i < g_region_num; ++i) {
         Region* r = g_regions[i];
         if (!r) {
@@ -377,7 +387,7 @@ size_t GetBlockSize(int type) {
 size_t GetGlobalLen(int block_type) {
     size_t len = 0;
     for (int i = 0; i < g_buckets; ++i) {
-        IdleNode* node = g_idle_list[block_type][i];
+        IdleNode* node = g_info->idle_list[block_type][i];
         while (node) {
             len += node->len;
             node = node->next;

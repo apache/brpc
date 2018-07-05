@@ -64,7 +64,7 @@ template <typename T> T fast_rand_in(T min, T max) {
 double fast_rand_double();
 
 // Generate a byte-array of a given length at the given address
-void fast_rand_bytes(void* addr, size_t len);
+void fast_rand_bytes(void* addr, uint64_t len);
 
 }
 

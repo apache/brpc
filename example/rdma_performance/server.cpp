@@ -33,7 +33,7 @@ public:
     PerfTestServiceImpl() {}
     ~PerfTestServiceImpl() {};
 
-    void Test(google::protobuf::RpcController* cntl_butil,
+    void Test(google::protobuf::RpcController* cntl_base,
               const PerfTestRequest* request,
               PerfTestResponse* response,
               google::protobuf::Closure* done) {
@@ -51,7 +51,7 @@ public:
         }
         if (request->echo_attachment()) {
             brpc::Controller* cntl =
-                static_cast<brpc::Controller*>(cntl_butil);
+                static_cast<brpc::Controller*>(cntl_base);
             cntl->response_attachment().append(cntl->request_attachment());
         }
     }

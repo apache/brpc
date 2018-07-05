@@ -124,10 +124,14 @@ private:
     private:
         InputMessageBase* _msg;
     };
-    // Process a new message just received
-    int ProcessNewMessage(
+
+    // Process data just received in Socket m
+    //   bytes: the received data size
+    //   read_eof: whether the Socket has read EOF already or not
+    //   last_msg: an InputMessageClosure used for processing in the current bthread
+    //             must be a reference!!!
+    int ProcessReceivedData(
             Socket* m, ssize_t bytes, bool read_eof,
-            const uint64_t received_us, const uint64_t base_realtime,
             InputMessageClosure& last_msg);
 
     // Find a valid scissor from `handlers' to cut off `header' and `payload'

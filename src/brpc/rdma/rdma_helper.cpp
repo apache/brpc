@@ -55,6 +55,8 @@ static int g_max_sge = 0;
 #ifdef BRPC_RDMA
 DEFINE_string(rdma_cluster, "0.0.0.0/0",
               "The ip address prefix of current cluster which supports RDMA");
+DEFINE_string(rdma_device, "", "The name of the HCA device used "
+                               "(Empty means using the first active device)");
 
 struct RdmaCluster {
     uint32_t ip;
@@ -64,8 +66,8 @@ struct RdmaCluster {
 static RdmaCluster g_cluster = { 0, 0 };
 
 static const size_t SYSFS_SIZE = 4096;
-static ibv_context** g_context = NULL;
-static int g_device_index = 0;
+static ibv_context** g_devices = NULL;
+static ibv_context* g_context = NULL;
 static SocketId g_async_socket;
 static ibv_pd* g_pd = NULL;
 static std::vector<ibv_mr*>* g_mrs = NULL;
@@ -88,7 +90,7 @@ static ssize_t ReadFile(std::string& path, void* data) {
 }
 
 static void GlobalRelease() {
-    // We do not set `g_async_socket' to falied explicitly to avoid
+    // We do not set `g_async_socket' to failed explicitly to avoid
     // close async_fd twice.
 
     {
@@ -118,9 +120,9 @@ static void GlobalRelease() {
         g_pd = NULL;
     }
 
-    if (g_context) {
-        rdma_free_devices(g_context);
-        g_context = NULL;
+    if (g_devices) {
+        rdma_free_devices(g_devices);
+        g_devices = NULL;
     }
 }
 
@@ -174,8 +176,8 @@ void BlockDeallocate(void* buf) {
         errno = EINVAL;
         return;
     }
+    // This may happen after GlobalRelease
     if (DeallocBlock(buf) < 0 && errno == ERANGE) {
-        // This may happen after GlobalRelease
         BAIDU_SCOPED_LOCK(g_addr_map_lock);
         if (g_addr_map) {
             ibv_mr** mr = g_addr_map->seek(buf);
@@ -243,7 +245,7 @@ static void OnRdmaAsyncEvent(Socket* m) {
     int progress = Socket::PROGRESS_INIT;
     do {
         ibv_async_event event;
-        if (ibv_get_async_event(g_context[g_device_index], &event) < 0) {
+        if (ibv_get_async_event(g_context, &event) < 0) {
             break;
         }
         switch (event.event_type) {
@@ -284,6 +286,11 @@ static void OnRdmaAsyncEvent(Socket* m) {
     } while (true);
 }
 
+static inline void ExitWithError() {
+    GlobalRelease();
+    exit(1);
+}
+
 #endif
 
 static void GlobalRdmaInitializeOrDieImpl() {
@@ -300,47 +307,56 @@ static void GlobalRdmaInitializeOrDieImpl() {
     }
 
     int num = 0;
-    g_context = rdma_get_devices(&num);
+    g_devices = rdma_get_devices(&num);
     if (num == 0) {
-        PLOG(ERROR) << "Fail to find rdma device";
+        PLOG(ERROR) << "Fail to find RDMA device";
         exit(1);
     }
 
-    // Find the first active device
-    // Currently we only use the first active device
     int device_index = -1;
     for (int i = 0; i < num; ++i) {
+        // TODO: try to support multiple active ports
         ibv_port_attr attr;
-        if (ibv_query_port(g_context[i], 1, &attr) < 0) {
-            PLOG(ERROR) << "Fail to query device port";
-            GlobalRelease();
-            exit(1);
+        if (ibv_query_port(g_devices[i], 1, &attr) < 0) {
+            continue;
         }
-        if (attr.state == IBV_PORT_ACTIVE) {
+        if (attr.state != IBV_PORT_ACTIVE) {
+            continue;
+        } else {
+            if (device_index != -1) {
+                LOG(ERROR) << "This server has more than one active RDMA device. "
+                              "Since currently we do not support multiple active "
+                              "devices, try to 1) disable extra devices; 2) make them "
+                              "bonding together; 3) specify a device with --rdma_device.";
+                ExitWithError();
+            }
             device_index = i;
-            break;
+        }
+        if (FLAGS_rdma_device.size() > 0) {
+            if (strcmp(g_devices[i]->device->name, FLAGS_rdma_device.c_str()) == 0) {
+                break;
+            } else {
+                device_index = -1;
+            }
         }
     }
     if (device_index < 0) {
-        LOG(ERROR) << "Fail to find active device port";
-        GlobalRelease();
-        exit(1);
+        LOG(ERROR) << "Fail to find active RDMA device " << FLAGS_rdma_device;
+        ExitWithError();
     }
-    g_device_index = device_index;
+    g_context = g_devices[device_index];
 
     // Find the IP address corresponding to this device
-    char* dev_path = g_context[device_index]->device->ibdev_path;
+    char* dev_path = g_context->device->ibdev_path;
     std::string dev_resource_path = butil::string_printf(
             "%s/device/resource", dev_path);
     char dev_resource[SYSFS_SIZE];
     if (ReadFile(dev_resource_path, dev_resource) < 0) {
         LOG(ERROR) << "Fail to find device sysfs at " << dev_resource_path;
-        GlobalRelease();
-        exit(1);
+        ExitWithError();
     }
-
-    // Map ibdev (e.g. mlx5_0) to netdev (e.g. eth0)
-    // Must compare sysfs file
+    // Map ibdev (e.g. mlx5_0) to netdev (e.g. eth0), must compare sysfs file
+    // TODO: this method cannot handle bonding mode, see more in ibdev2netdev
     ifaddrs* ifap = NULL;
     ifaddrs* ifaptr = NULL;
     bool found = false;
@@ -365,72 +381,62 @@ static void GlobalRdmaInitializeOrDieImpl() {
         freeifaddrs(ifap);
     }
     if (!found) {
-        PLOG(ERROR) << "Fail to find address of rdma device";
-        GlobalRelease();
-        exit(1);
+        LOG(WARNING) << "Fail to find address of RDMA device. "
+                        "Do not use 0.0.0.0/127.0.0.1 to do local connection.";
     }
 
     // Create protection domain
-    g_pd = ibv_alloc_pd(g_context[device_index]);
+    g_pd = ibv_alloc_pd(g_context);
     if (!g_pd) {
         PLOG(ERROR) << "Fail to allocate protection domain";
-        GlobalRelease();
-        exit(1);
+        ExitWithError();
     }
 
     g_mrs = new (std::nothrow) std::vector<ibv_mr*>;
     if (!g_mrs) {
         PLOG(ERROR) << "Fail to allocate a RDMA MR list";
-        GlobalRelease();
-        exit(1);
+        ExitWithError();
     }
 
     ibv_device_attr attr;
-    if (ibv_query_device(g_context[device_index], &attr) < 0) {
+    if (ibv_query_device(g_context, &attr) < 0) {
         PLOG(ERROR) << "Fail to get the device information";
-        GlobalRelease();
-        exit(1);
+        ExitWithError();
     }
     g_max_sge = attr.max_sge;
 
     // Initialize RDMA memory pool (block_pool)
     if (!InitBlockPool(RdmaRegisterMemory)) {
         PLOG(ERROR) << "Fail to initialize RDMA memory pool";
-        GlobalRelease();
-        exit(1);
+        ExitWithError();
     }
 
     if (GlobalCQInit() < 0) {
-        GlobalRelease();
-        exit(1);
+        ExitWithError();
     }
 
     g_addr_map = new (std::nothrow) AddrMap;
     if (!g_addr_map) {
         PLOG(WARNING) << "Fail to construct g_addr_map";
-        GlobalRelease();
-        exit(1);
+        ExitWithError();
     }
 
     if (g_addr_map->init(65536) < 0) {
         PLOG(WARNING) << "Fail to initialize g_addr_map";
-        GlobalRelease();
-        exit(1);
+        ExitWithError();
     }
 
     SocketOptions opt;
-    opt.fd = g_context[g_device_index]->async_fd;
+    opt.fd = g_context->async_fd;
     butil::make_close_on_exec(opt.fd);
     if (butil::make_non_blocking(opt.fd) < 0) {
         PLOG(WARNING) << "Fail to set async_fd to nonblocking";
-        GlobalRelease();
-        exit(1);
+        ExitWithError();
     }
     opt.on_edge_triggered_events = OnRdmaAsyncEvent;
     if (Socket::Create(opt, &g_async_socket) < 0) {
         LOG(WARNING) << "Fail to create socket to get async event of RDMA";
-        GlobalRelease();
-        exit(1);
+        ExitWithError();
     }
 
     atexit(GlobalRelease);
@@ -515,7 +521,7 @@ int GetRdmaMaxSge() {
 
 void* GetRdmaContext() {
 #ifdef BRPC_RDMA
-    return g_context[g_device_index];
+    return g_context;
 #else
     return NULL;
 #endif

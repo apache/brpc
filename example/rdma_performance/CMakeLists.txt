@@ -1,12 +1,14 @@
 cmake_minimum_required(VERSION 2.8.10)
-project(perf_test C CXX)
+project(rdma_performance C CXX)
 
 option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
 
 execute_process(
-    COMMAND bash -c "find ${CMAKE_SOURCE_DIR}/../.. -type d -name \"include\" | xargs dirname | tr -d '\n'"
+    COMMAND bash -c "find ${CMAKE_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | head -n1 | xargs dirname | tr -d '\n'"
     OUTPUT_VARIABLE OUTPUT_PATH
 )
+
+option(WITH_TCALLOC "With tcmalloc supported" OFF)
 
 set(CMAKE_PREFIX_PATH ${OUTPUT_PATH})
 
@@ -16,6 +18,15 @@ protobuf_generate_cpp(PROTO_SRC PROTO_HEADER test.proto)
 # include PROTO_HEADER
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
+find_path(BRPC_INCLUDE_PATH NAMES brpc/server.h)
+if(EXAMPLE_LINK_SO)
+    find_library(BRPC_LIB NAMES brpc)
+else()
+    find_library(BRPC_LIB NAMES libbrpc.a brpc)
+endif()
+if((NOT BRPC_INCLUDE_PATH) OR (NOT BRPC_LIB))
+    message(FATAL_ERROR "Fail to find brpc")
+endif()
 include_directories(${BRPC_INCLUDE_PATH})
 
 find_path(GFLAGS_INCLUDE_PATH gflags/gflags.h)
@@ -35,6 +46,14 @@ if(${GFLAGS_NS} STREQUAL "GFLAGS_NAMESPACE")
         OUTPUT_VARIABLE GFLAGS_NS
     )
 endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    include(CheckFunctionExists)
+    CHECK_FUNCTION_EXISTS(clock_gettime HAVE_CLOCK_GETTIME)
+    if(NOT HAVE_CLOCK_GETTIME)
+        set(DEFINE_CLOCK_GETTIME "-DNO_CLOCK_GETTIME_IN_MAC")
+    endif()
+endif()
+
 set(CMAKE_CPP_FLAGS "-DGFLAGS_NS=${GFLAGS_NS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -DNDEBUG -O2 -D__const__= -pipe -W -Wall -Wno-unused-parameter -fPIC -fno-omit-frame-pointer")
 
@@ -57,22 +76,71 @@ if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
 endif()
 include_directories(${LEVELDB_INCLUDE_PATH})
 
-find_library(TCMALLOC NAMES tcmalloc)
+find_library(SSL_LIB NAMES ssl)
+if (NOT SSL_LIB)
+    message(FATAL_ERROR "Fail to find ssl")
+endif()
+
+find_library(CRYPTO_LIB NAMES crypto)
+if (NOT CRYPTO_LIB)
+    message(FATAL_ERROR "Fail to find crypto")
+endif()
+
+find_library(RDMACM NAMES rdmacm)
+if(NOT RDMACM)
+    message(FATAL_ERROR "Fail to find rdmacm lib")
+endif()
+find_library(IBVERBS NAMES ibverbs)
+if(NOT IBVERBS)
+    message(FATAL_ERROR "Fail to find ibverbs lib")
+endif()
+set(RDMA_DYNAMIC_LIB
+    ibverbs
+    rdmacm
+    )
+find_library(NL NAMES nl)
+if (NL)
+    set(RDMA_DYNAMIC_LIB
+        ${RDMA_DYNAMIC_LIB}
+        nl
+        )
+endif()
+
+if (WITH_TCMALLOC)
+    find_library(TCMALLOC NAMES tcmalloc)
+endif()
+find_library(GZIP NAMES z)
+
+add_executable(perf_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
+add_executable(perf_server server.cpp ${PROTO_SRC} ${PROTO_HEADER})
 
 set(DYNAMIC_LIB
     ${CMAKE_THREAD_LIBS_INIT}
     ${GFLAGS_LIBRARY}
     ${PROTOBUF_LIBRARIES}
     ${LEVELDB_LIB}
+    ${SSL_LIB}
+    ${CRYPTO_LIB}
     ${TCMALLOC}
+    ${GZIP}
     ${RDMA_DYNAMIC_LIB}
-    ssl
-    crypto
     dl
-    z
     )
 
-add_executable(perf_client client.cpp ${PROTO_SRC} ${PROTO_HEADER})
-add_executable(perf_server server.cpp ${PROTO_SRC} ${PROTO_HEADER} $<TARGET_OBJECTS:OBJ_LIB>)
-target_link_libraries(perf_client brpc-static ${DYNAMIC_LIB})
-target_link_libraries(perf_server brpc-static ${DYNAMIC_LIB})
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(DYNAMIC_LIB ${DYNAMIC_LIB}
+        pthread
+        "-framework CoreFoundation"
+        "-framework CoreGraphics"
+        "-framework CoreData"
+        "-framework CoreText"
+        "-framework Security"
+        "-framework Foundation"
+        "-Wl,-U,_MallocExtension_ReleaseFreeMemory"
+        "-Wl,-U,_ProfilerStart"
+        "-Wl,-U,_ProfilerStop"
+        "-Wl,-U,_RegisterThriftProtocol")
+endif()
+
+target_link_libraries(perf_client ${BRPC_LIB} ${DYNAMIC_LIB})
+target_link_libraries(perf_server ${BRPC_LIB} ${DYNAMIC_LIB})

@@ -176,11 +176,79 @@ void InputMessenger::InputMessageClosure::reset(InputMessageBase* m) {
     _msg = m;
 }
 
-int InputMessenger::ProcessNewMessage(
+void InputMessenger::OnNewMessages(Socket* m) {
+    // Notes:
+    // - If the socket has only one message, the message will be parsed and
+    //   processed in this bthread. nova-pbrpc and http works in this way.
+    // - If the socket has several messages, all messages will be parsed (
+    //   meaning cutting from butil::IOBuf. serializing from protobuf is part of
+    //   "process") in this bthread. All messages except the last one will be
+    //   processed in separate bthreads. To minimize the overhead, scheduling
+    //   is batched(notice the BTHREAD_NOSIGNAL and bthread_flush).
+    // - Verify will always be called in this bthread at most once and before
+    //   any process.
+    InputMessenger* messenger = static_cast<InputMessenger*>(m->user());
+    int progress = Socket::PROGRESS_INIT;
+
+    // Notice that all *return* no matter successful or not will run last
+    // message, even if the socket is about to be closed. This should be
+    // OK in most cases.
+    InputMessageClosure last_msg;
+    bool read_eof = false;
+    while (!read_eof) {
+        // Calculate bytes to be read.
+        size_t once_read = m->_avg_msg_size * 16;
+        if (once_read < MIN_ONCE_READ) {
+            once_read = MIN_ONCE_READ;
+        } else if (once_read > MAX_ONCE_READ) {
+            once_read = MAX_ONCE_READ;
+        }
+
+        // Read.
+        const ssize_t nr = m->DoRead(once_read);
+        if (nr <= 0) {
+            if (0 == nr) {
+                // Set `read_eof' flag and proceed to feed EOF into `Protocol'
+                // (implied by m->_read_buf.empty), which may produce a new
+                // `InputMessageBase' under some protocols such as HTTP
+                LOG_IF(WARNING, FLAGS_log_connection_close)
+                        << "Remote side of " << *m << " was closed";
+                read_eof = true;                
+            } else if (errno != EAGAIN) {
+                if (errno == EINTR) {
+                    continue;  // just retry
+                }
+                const int saved_errno = errno;
+                PLOG(WARNING) << "Fail to read from " << *m;
+                m->SetFailed(saved_errno, "Fail to read from %s: %s",
+                             m->description().c_str(), berror(saved_errno));
+                return;
+            } else if (!m->MoreReadEvents(&progress)) {
+                return;
+            } else { // new events during processing
+                continue;
+            }
+        }
+
+        // Only process data here when it is received from TCP fd (RDMA_OFF)
+        if (m->_rdma_state == Socket::RDMA_OFF && messenger->ProcessReceivedData(
+                    m, nr, read_eof, last_msg) < 0) {
+            return;
+        }
+    }
+
+    if (read_eof) {
+        m->SetEOF();
+    }
+}
+
+int InputMessenger::ProcessReceivedData(
         Socket* m, ssize_t bytes, bool read_eof,
-        const uint64_t received_us, const uint64_t base_realtime,
         InputMessageClosure& last_msg) {
     m->AddInputBytes(bytes);
+
+    const int64_t received_us = butil::cpuwide_time_us();
+    const int64_t base_realtime = butil::gettimeofday_us() - received_us;
 
     // Avoid this socket to be closed due to idle_timeout_s
     m->_last_readtime_us.store(received_us, butil::memory_order_relaxed);
@@ -286,74 +354,6 @@ int InputMessenger::ProcessNewMessage(
         bthread_flush();
     }
     return 0;
-}
-
-void InputMessenger::OnNewMessages(Socket* m) {
-    // Notes:
-    // - If the socket has only one message, the message will be parsed and
-    //   processed in this bthread. nova-pbrpc and http works in this way.
-    // - If the socket has several messages, all messages will be parsed (
-    //   meaning cutting from butil::IOBuf. serializing from protobuf is part of
-    //   "process") in this bthread. All messages except the last one will be
-    //   processed in separate bthreads. To minimize the overhead, scheduling
-    //   is batched(notice the BTHREAD_NOSIGNAL and bthread_flush).
-    // - Verify will always be called in this bthread at most once and before
-    //   any process.
-    InputMessenger* messenger = static_cast<InputMessenger*>(m->user());
-    int progress = Socket::PROGRESS_INIT;
-
-    // Notice that all *return* no matter successful or not will run last
-    // message, even if the socket is about to be closed. This should be
-    // OK in most cases.
-    InputMessageClosure last_msg;
-    bool read_eof = false;
-    while (!read_eof) {
-        const int64_t received_us = butil::cpuwide_time_us();
-        const int64_t base_realtime = butil::gettimeofday_us() - received_us;
-
-        // Calculate bytes to be read.
-        size_t once_read = m->_avg_msg_size * 16;
-        if (once_read < MIN_ONCE_READ) {
-            once_read = MIN_ONCE_READ;
-        } else if (once_read > MAX_ONCE_READ) {
-            once_read = MAX_ONCE_READ;
-        }
-
-        // Read.
-        const ssize_t nr = m->DoRead(once_read);
-        if (nr <= 0) {
-            if (0 == nr) {
-                // Set `read_eof' flag and proceed to feed EOF into `Protocol'
-                // (implied by m->_read_buf.empty), which may produce a new
-                // `InputMessageBase' under some protocols such as HTTP
-                LOG_IF(WARNING, FLAGS_log_connection_close)
-                        << "Remote side of " << *m << " was closed";
-                read_eof = true;                
-            } else if (errno != EAGAIN) {
-                if (errno == EINTR) {
-                    continue;  // just retry
-                }
-                const int saved_errno = errno;
-                PLOG(WARNING) << "Fail to read from " << *m;
-                m->SetFailed(saved_errno, "Fail to read from %s: %s",
-                             m->description().c_str(), berror(saved_errno));
-                return;
-            } else if (!m->MoreReadEvents(&progress)) {
-                return;
-            } else { // new events during processing
-                continue;
-            }
-        }
-
-        if (m->_rdma_state == Socket::RDMA_OFF && messenger->ProcessNewMessage(
-                    m, nr, read_eof, received_us, base_realtime, last_msg) < 0) {
-            return;
-        }
-    }
-
-    if (read_eof) {
-        m->SetEOF();
-    }
 }
 
 InputMessenger::InputMessenger(size_t capacity)
