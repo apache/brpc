@@ -58,7 +58,7 @@ NamingServiceThread::Actions::~Actions() {
     // Remove all sockets from SocketMap
     for (std::vector<ServerNode>::const_iterator it = _last_servers.begin();
          it != _last_servers.end(); ++it) {
-        SocketMapRemove(SocketMapKey(it->addr));
+        SocketMapRemove(SocketMapKey(it->addr, it->tag));
     }
     EndWait(0);
 }
@@ -118,7 +118,7 @@ void NamingServiceThread::Actions::ResetServers(
     for (size_t i = 0; i < _removed.size(); ++i) {
         ServerNodeWithId tagged_id;
         tagged_id.node = _removed[i];
-        CHECK_EQ(0, SocketMapFind(SocketMapKey(_removed[i].addr), &tagged_id.id));
+        CHECK_EQ(0, SocketMapFind(SocketMapKey(_removed[i].addr, _removed[i].tag), &tagged_id.id));
         _removed_sockets.push_back(tagged_id);
     }
 
@@ -169,7 +169,7 @@ void NamingServiceThread::Actions::ResetServers(
     for (size_t i = 0; i < _removed.size(); ++i) {
         // TODO: Remove all Sockets that have the same address in SocketMapKey.peer
         //       We may need another data structure to avoid linear cost
-        SocketMapRemove(SocketMapKey(_removed[i].addr));
+        SocketMapRemove(SocketMapKey(_removed[i].addr, _removed[i].tag));
     }
 
     if (!_removed.empty() || !_added.empty()) {
