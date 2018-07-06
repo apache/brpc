@@ -124,8 +124,6 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
             && Socket::Address(id, out->ptr) == 0
             && !(*out->ptr)->IsLogOff()) {
             s.tls() = tls;
-            //LOG(INFO) << "Ken, server_list.size: " << n << " tls.offset: " << tls.offset << " id: " << id;
-
             return 0;
         }
     }
