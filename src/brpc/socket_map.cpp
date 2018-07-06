@@ -108,6 +108,9 @@ void ComputeSocketMapKeyChecksum(const SocketMapKey& key,
 
     std::size_t ephash = butil::DefaultHasher<butil::EndPoint>()(key.peer);
     SAFE_MEMCOPY(buf, cur_len, &ephash, sizeof(ephash));
+
+    SAFE_MEMCOPY(buf, cur_len, key.tag.c_str(), key.tag.size());
+    
     SAFE_MEMCOPY(buf, cur_len, &key.auth, sizeof(key.auth));
 
     const ChannelSSLOptions& ssl = key.ssl_options;
@@ -295,7 +298,8 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id) {
     opt.ssl_ctx = ssl_ctx.get();
     opt.sni_name = key.ssl_options.sni_name;
     if (_options.socket_creator->CreateSocket(opt, &tmp_id) != 0) {
-        PLOG(FATAL) << "Fail to create socket to " << key.peer;
+        PLOG(FATAL) << "Fail to create socket to " << key.peer
+                    << " tag: " << key.tag;
         return -1;
     }
     ssl_ctx.release();

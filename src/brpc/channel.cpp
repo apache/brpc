@@ -63,6 +63,7 @@ Channel::Channel(ProfilerLinker)
 Channel::~Channel() {
     if (_server_id != (SocketId)-1) {
         SocketMapRemove(SocketMapKey(_server_address,
+                                     "",
                                      _options.ssl_options,
                                      _options.auth));
     }
@@ -203,6 +204,7 @@ int Channel::Init(butil::EndPoint server_addr_and_port,
     }
     _server_address = server_addr_and_port;
     if (SocketMapInsert(SocketMapKey(server_addr_and_port,
+                                     "",
                                      _options.ssl_options,
                                      _options.auth), &_server_id) != 0) {
         LOG(ERROR) << "Fail to insert into SocketMap";

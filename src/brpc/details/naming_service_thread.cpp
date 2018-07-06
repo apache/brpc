@@ -110,7 +110,7 @@ void NamingServiceThread::Actions::ResetServers(
         // TODO: For each unique SocketMapKey (i.e. SSL settings), insert a new
         //       Socket. SocketMapKey may be passed through AddWatcher. Make sure
         //       to pick those Sockets with the right settings during OnAddedServers
-        CHECK_EQ(SocketMapInsert(SocketMapKey(_added[i].addr), &tagged_id.id), 0);
+        CHECK_EQ(SocketMapInsert(SocketMapKey(_added[i].addr, _added[i].tag), &tagged_id.id), 0);
         _added_sockets.push_back(tagged_id);
     }
 
