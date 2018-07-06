@@ -21,6 +21,17 @@ set(CMAKE_PREFIX_PATH ${OUTPUT_PATH})
 include(FindThreads)
 include(FindProtobuf)
 
+# Search for libthrift* by best effort. If it is not found and brpc is
+# compiled with thrift protocol enabled, a link error would be reported.
+find_library(THRIFT_LIB NAMES thrift)
+if (NOT THRIFT_LIB)
+    set(THRIFT_LIB "")
+endif()
+find_library(THRIFTNB_LIB NAMES thriftnb)
+if (NOT THRIFTNB_LIB)
+    set(THRIFTNB_LIB "")
+endif()
+
 find_path(BRPC_INCLUDE_PATH NAMES brpc/server.h)
 if(EXAMPLE_LINK_SO)
     find_library(BRPC_LIB NAMES brpc)
@@ -96,6 +107,8 @@ set(DYNAMIC_LIB
     ${LEVELDB_LIB}
     ${SSL_LIB}
     ${CRYPTO_LIB}
+    ${THRIFT_LIB}
+    ${THRIFTNB_LIB}
     dl
     )
 
@@ -110,8 +123,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "-framework Foundation"
         "-Wl,-U,_MallocExtension_ReleaseFreeMemory"
         "-Wl,-U,_ProfilerStart"
-        "-Wl,-U,_ProfilerStop"
-        "-Wl,-U,_RegisterThriftProtocol")
+        "-Wl,-U,_ProfilerStop")
 endif()
 
 add_executable(redis_cli redis_cli.cpp)

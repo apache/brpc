@@ -39,7 +39,8 @@ endif()
 
 if(WITH_THRIFT)
     set(THRIFT_CPP_FLAG "-DENABLE_THRIFT_FRAMED_PROTOCOL")
-    set(THRIFT_LIB "thriftnb")
+    set(THRIFTNB_LIB "thriftnb")
+    set(THRIFT_LIB "thrift")
 endif()
 
 include(GNUInstallDirs)
@@ -156,6 +157,7 @@ set(DYNAMIC_LIB
     ${PROTOC_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
     ${THRIFT_LIB}
+    ${THRIFTNB_LIB}
     ${OPENSSL_LIBRARIES}
     ${OPENSSL_CRYPTO_LIBRARY}
     dl
@@ -182,8 +184,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "-framework Foundation"
         "-Wl,-U,_MallocExtension_ReleaseFreeMemory"
         "-Wl,-U,_ProfilerStart"
-        "-Wl,-U,_ProfilerStop"
-        "-Wl,-U,_RegisterThriftProtocol")
+        "-Wl,-U,_ProfilerStop")
 endif()
 
 # for *.so
