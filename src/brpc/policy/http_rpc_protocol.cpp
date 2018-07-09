@@ -557,9 +557,9 @@ static void SendHttpResponse(Controller *cntl,
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
+    std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
     ScopedMethodStatus method_status(method_status_raw, server, 
                                      cntl, received_us);
-    std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
     Socket* socket = accessor.get_sending_socket();
