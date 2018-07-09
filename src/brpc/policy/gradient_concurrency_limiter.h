@@ -17,8 +17,9 @@
 #ifndef BRPC_POLICY_GRANDIENT_CONCURRENCY_LIMITER_H
 #define BRPC_POLICY_GRANDIENT_CONCURRENCY_LIMITER_H
 
-#include "brpc/concurrency_limiter.h"
 #include "bvar/bvar.h"
+#include "butil/containers/bounded_queue.h"
+#include "brpc/concurrency_limiter.h"
 
 namespace brpc {
 namespace policy {
@@ -29,6 +30,7 @@ public:
     ~GradientConcurrencyLimiter() {}
     bool OnRequested() override;
     void OnResponded(int error_code, int64_t latency_us) override;
+    int CurrentMaxConcurrency() const override;
     int MaxConcurrency() const override;
     
     // For compatibility with the MaxConcurrencyOf() interface. When using 
@@ -38,6 +40,7 @@ public:
     // concurrency. But your changes to the maximum concurrency will not take
     // effect.
     int& MaxConcurrency() override;
+
 
     int Expose(const butil::StringPiece& prefix) override;
     GradientConcurrencyLimiter* New() const override;
@@ -60,11 +63,13 @@ private:
     };
 
     struct WindowSnap {
-        WindowSnap(int64_t latency_us, int32_t concurrency)
+        WindowSnap(int64_t latency_us, int32_t concurrency, int32_t succ_req)
             : avg_latency_us(latency_us)
-            , actuall_concurrency(concurrency) {}
+            , actual_concurrency(concurrency)
+            , total_succ_req(succ_req) {}
         int64_t avg_latency_us;
-        int32_t actuall_concurrency;
+        int32_t actual_concurrency;
+        int32_t total_succ_req;
     };
 
     void AddSample(int error_code, int64_t latency_us, int64_t sampling_time_us);
@@ -74,12 +79,13 @@ private:
     void ResetSampleWindow(int64_t sampling_time_us);
     
     SampleWindow _sw;
-    std::vector<WindowSnap> _ws_queue;
+    butil::BoundedQueue<WindowSnap> _ws_queue;
     uint32_t _ws_index;
     int32_t _unused_max_concurrency;
     butil::Mutex _sw_mutex;
     bvar::PassiveStatus<int32_t> _max_concurrency_bvar;
     butil::atomic<int64_t> BAIDU_CACHELINE_ALIGNMENT _last_sampling_time_us;
+    butil::atomic<int32_t> BAIDU_CACHELINE_ALIGNMENT _total_succ_req;
     butil::atomic<int32_t> BAIDU_CACHELINE_ALIGNMENT _max_concurrency;
     butil::atomic<int32_t> BAIDU_CACHELINE_ALIGNMENT _current_concurrency;
 };

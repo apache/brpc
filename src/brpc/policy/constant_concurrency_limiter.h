@@ -32,8 +32,9 @@ public:
 
     bool OnRequested() override;
     void OnResponded(int error_code, int64_t latency_us) override;
-    virtual int MaxConcurrency() const override;
-    virtual int& MaxConcurrency() override;
+    int CurrentMaxConcurrency() const override;
+    int MaxConcurrency() const override;
+    int& MaxConcurrency() override;
 
     int Expose(const butil::StringPiece& prefix) override;
     ConstantConcurrencyLimiter* New() const override;

@@ -40,6 +40,8 @@ public:
     virtual int MaxConcurrency() const = 0;
 
     virtual int& MaxConcurrency() = 0;
+
+    virtual int CurrentMaxConcurrency() const = 0;
 };
 
 inline Extension<const ConcurrencyLimiter>* ConcurrencyLimiterExtension() {

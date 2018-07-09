@@ -39,7 +39,7 @@ ConnectionType StringToConnectionType(const butil::StringPiece& type,
     }
     LOG_IF(ERROR, print_log_on_unknown && !type.empty())
         << "Unknown connection_type `" << type
-        << "`, supported types: single pooled short";
+        << "', supported types: single pooled short";
     return CONNECTION_TYPE_UNKNOWN;
 }
 

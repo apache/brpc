@@ -215,12 +215,12 @@ static void SendSofaResponse(int64_t correlation_id,
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
-    ScopedMethodStatus method_status(method_status_raw, cntl, start_parse_us);
+    ScopedMethodStatus method_status(method_status_raw, server, 
+                                     cntl, received_us);
     Socket* sock = accessor.get_sending_socket();
     std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
-    ScopedRemoveConcurrency remove_concurrency_dummy(server, cntl);
 
     if (cntl->IsCloseConnection()) {
         sock->SetFailed();
@@ -293,10 +293,6 @@ static void SendSofaResponse(int64_t correlation_id,
     if (span) {
         // TODO: this is not sent
         span->set_sent_us(butil::cpuwide_time_us());
-    }
-    if (method_status) {
-        method_status.release()->OnResponded(
-            cntl->ErrorCode(), butil::cpuwide_time_us() - received_us);
     }
 }
 
@@ -416,8 +412,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
             if (!method_status->OnRequested()) {
                 cntl->SetFailed(ELIMIT, "Reached %s's max_concurrency=%d",
                                 sp->method->full_name().c_str(),
-                                const_cast<MethodStatus*>(
-                                    method_status)->max_concurrency());
+                                method_status->current_max_concurrency());
                 break;
             }
         }

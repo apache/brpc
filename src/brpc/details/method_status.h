@@ -26,6 +26,7 @@
 namespace brpc {
 
 class Controller;
+class Server;
 // Record accessing stats of a method.
 class MethodStatus : public Describable {
 public:
@@ -52,6 +53,10 @@ public:
     // Describe internal vars, used by /status
     void Describe(std::ostream &os, const DescribeOptions&) const;
 
+    int current_max_concurrency() const {
+        return _cl->CurrentMaxConcurrency();
+    }
+
     int max_concurrency() const { 
         return const_cast<const ConcurrencyLimiter*>(_cl)->MaxConcurrency(); 
     }
@@ -68,7 +73,6 @@ public:
 private:
 friend class ScopedMethodStatus;
     DISALLOW_COPY_AND_ASSIGN(MethodStatus);
-    void OnError();
 
     ConcurrencyLimiter* _cl;
     bvar::Adder<int64_t>  _nerror;
@@ -79,51 +83,43 @@ friend class ScopedMethodStatus;
     butil::atomic<int> BAIDU_CACHELINE_ALIGNMENT _nprocessing;
 };
 
-// If release() is not called before destruction of this object,
-// an error will be counted.
 class ScopedMethodStatus {
 public:
-    ScopedMethodStatus(MethodStatus* status, Controller* c, 
+    ScopedMethodStatus(MethodStatus* status, 
+                       const Server* server,
+                       Controller* c, 
                        int64_t start_parse_us)
         : _status(status) 
+        , _server(server)
         , _c(c)
         , _start_parse_us(start_parse_us) {}
     ~ScopedMethodStatus();
-    MethodStatus* release() {
-        MethodStatus* tmp = _status;
-        _status = NULL;
-        return tmp;
-    }
     operator MethodStatus* () const { return _status; }
 private:
     DISALLOW_COPY_AND_ASSIGN(ScopedMethodStatus);
     MethodStatus* _status;
+    const Server* _server;
     Controller* _c;
     uint64_t _start_parse_us;
 };
 
 inline bool MethodStatus::OnRequested() {
     _nprocessing.fetch_add(1, butil::memory_order_relaxed);
-    bool should_refuse = !_cl->OnRequested();
-    if (should_refuse) {
-        _nrefused_bvar << 1;
-    }
-    return !should_refuse;
+    if (_cl->OnRequested()) {
+        return true;
+    } 
+    _nrefused_bvar << 1;
+    return false;
 }
 
 inline void MethodStatus::OnResponded(int error_code, int64_t latency) {
+    _nprocessing.fetch_sub(1, butil::memory_order_relaxed);
     if (0 == error_code) {
         _latency_rec << latency;
-        _nprocessing.fetch_sub(1, butil::memory_order_relaxed);
     } else {
-        OnError();
+        _nerror << 1;
     }
     _cl->OnResponded(error_code, latency);
-}
-
-inline void MethodStatus::OnError() {
-    _nerror << 1;
-    _nprocessing.fetch_sub(1, butil::memory_order_relaxed);
 }
 
 } // namespace brpc

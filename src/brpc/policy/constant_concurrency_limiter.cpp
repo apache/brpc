@@ -32,6 +32,10 @@ void ConstantConcurrencyLimiter::OnResponded(int error_code, int64_t latency) {
     _current_concurrency.fetch_sub(1, butil::memory_order_relaxed);
 }
 
+int ConstantConcurrencyLimiter::CurrentMaxConcurrency() const {
+    return _max_concurrency;
+}
+
 int ConstantConcurrencyLimiter::MaxConcurrency() const {
     return _max_concurrency;
 }

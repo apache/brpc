@@ -16,8 +16,9 @@
 
 #include <limits>
 #include "butil/macros.h"
-#include "brpc/details/method_status.h"
 #include "brpc/controller.h"
+#include "brpc/details/server_private_accessor.h"
+#include "brpc/details/method_status.h"
 
 namespace brpc {
 
@@ -141,6 +142,7 @@ ScopedMethodStatus::~ScopedMethodStatus() {
         _status->OnResponded(_c->ErrorCode(), butil::cpuwide_time_us() - _start_parse_us);
         _status = NULL;
     }
+    ServerPrivateAccessor(_server).RemoveConcurrency(_c);
 }
 
 }  // namespace brpc

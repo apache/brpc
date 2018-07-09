@@ -28,13 +28,13 @@ DECLARE_int32(task_group_runqueue_capacity);
 namespace brpc {
 namespace policy {
 
-DEFINE_int32(gradient_cl_sampling_interval_us, 1000, 
+DEFINE_int32(gradient_cl_sampling_interval_us, 100, 
     "Interval for sampling request in gradient concurrency limiter");
 DEFINE_int32(gradient_cl_sample_window_size_ms, 1000,
     "Sample window size for update max concurrency in grandient "
     "concurrency limiter");
 DEFINE_int32(gradient_cl_min_sample_count, 100,
-    "Minium sample count for update max concurrency");
+    "Minimum sample count for update max concurrency");
 DEFINE_int32(gradient_cl_adjust_smooth, 50,
     "Smooth coefficient for adjust the max concurrency, the value is 0-99,"
     "the larger the value, the smaller the amount of each change");
@@ -44,41 +44,35 @@ DEFINE_bool(gradient_cl_enable_error_punish, true,
     "Whether to consider failed requests when calculating maximum concurrency");
 DEFINE_int32(gradient_cl_max_error_punish_ms, 3000,
     "The maximum time wasted for a single failed request");
-DEFINE_double(gradient_cl_fail_punish_aggressive, 1.0,
+DEFINE_double(gradient_cl_fail_punish_ratio, 1.0,
     "Use the failed requests to punish normal requests. The larger the "
     "configuration item, the more aggressive the penalty strategy.");
-DEFINE_int32(gradient_cl_window_count, 20,
+DEFINE_int32(gradient_cl_window_count, 30,
     "Sample windows count for compute history min average latency");
-DEFINE_int32(gradient_cl_task_per_req, 3,
-    "How many tasks will be generated for each request, calculate the maximum "
-    "concurrency of a system by calculating the maximum possible concurrent "
-    "tasks.When the maximum concurrency is automatically adjusted by "
-    "gradient_cl, the estimated maximum concurrency will not exceed the value. "
-    "When this configuration is less than or equal to 0, it does not take "
-    "effect.");
+DEFINE_int32(gradient_cl_reserved_concurrency, 0,
+    "The maximum concurrency reserved when the service is not overloaded."
+    "When the traffic increases, the larger the configuration item, the "
+    "faster the maximum concurrency grows until the server is fully loaded."
+    "When the value is less than or equal to 0, square root of current "
+    "concurrency is used.");
+DEFINE_double(gradient_cl_min_reduce_ratio, 0.5,
+    "The minimum reduce ratio of maximum concurrency per calculation."
+    " The value should be 0-1");
 
 static int32_t cast_max_concurrency(void* arg) {
     return *(int32_t*) arg;
 }
 
 GradientConcurrencyLimiter::GradientConcurrencyLimiter()
-    : _ws_index(0)
+    : _ws_queue(FLAGS_gradient_cl_window_count)
+    , _ws_index(0)
     , _unused_max_concurrency(0)
     , _max_concurrency_bvar(cast_max_concurrency, &_max_concurrency)
     , _last_sampling_time_us(0)
+    , _total_succ_req(0)
     , _max_concurrency(FLAGS_gradient_cl_initial_max_concurrency)
     , _current_concurrency(0) {
-        if (FLAGS_gradient_cl_task_per_req > 0) {
-            int32_t config_max_concurrency = bthread::FLAGS_bthread_concurrency * 
-                FLAGS_task_group_runqueue_capacity / FLAGS_gradient_cl_task_per_req;
-            if (config_max_concurrency < _max_concurrency.load()) {
-                _max_concurrency.store(config_max_concurrency);
-                LOG(WARNING) 
-                    << "The value of gradient_cl_initial_max_concurrency is " 
-                    << "to large and is adjusted to " << config_max_concurrency;
-            }
-        }
-    }
+}
 
 void GradientConcurrencyLimiter::Describe(
     std::ostream& os, const DescribeOptions& options) {
@@ -90,6 +84,10 @@ void GradientConcurrencyLimiter::Describe(
     os << "current_max_concurrency:" 
        << _max_concurrency.load(butil::memory_order_relaxed);
     os << '}';
+}
+
+int GradientConcurrencyLimiter::CurrentMaxConcurrency() const {
+    return _max_concurrency.load(butil::memory_order_relaxed);
 }
 
 int GradientConcurrencyLimiter::MaxConcurrency() const {
@@ -131,6 +129,12 @@ bool GradientConcurrencyLimiter::OnRequested() {
 void GradientConcurrencyLimiter::OnResponded(int error_code, 
                                              int64_t latency_us) {
     _current_concurrency.fetch_sub(1, butil::memory_order_relaxed);
+    if (0 == error_code) {
+        _total_succ_req.fetch_add(1, butil::memory_order_relaxed);
+    } else if (ELIMIT == error_code) {
+        return;
+    }
+
     int64_t now_time_us = butil::gettimeofday_us();
     int64_t last_sampling_time_us = 
         _last_sampling_time_us.load(butil::memory_order_relaxed);
@@ -155,7 +159,6 @@ void GradientConcurrencyLimiter::AddSample(int error_code, int64_t latency_us,
     }
 
     if (error_code != 0 && 
-        error_code != ELIMIT &&
         FLAGS_gradient_cl_enable_error_punish) {
         ++_sw.failed_count;
         latency_us = 
@@ -167,21 +170,22 @@ void GradientConcurrencyLimiter::AddSample(int error_code, int64_t latency_us,
         _sw.total_succ_us += latency_us;
     }
 
-    if (sampling_time_us - _sw.start_time_us >= 
-        FLAGS_gradient_cl_sample_window_size_ms * 1000 &&
-        (_sw.succ_count + _sw.failed_count) > 
-            FLAGS_gradient_cl_min_sample_count) {
-        if (_sw.succ_count > 0) {
-            UpdateConcurrency();
-            ResetSampleWindow(sampling_time_us);
-        } else {
-            LOG_EVERY_N(ERROR, 100) << "All request failed";
-        }
-    } else if (sampling_time_us - _sw.start_time_us >=
-        FLAGS_gradient_cl_sample_window_size_ms * 1000) {
+    if (sampling_time_us - _sw.start_time_us < 
+            FLAGS_gradient_cl_sample_window_size_ms * 1000) {
+        return;
+    } else if (_sw.succ_count + _sw.failed_count < 
+        FLAGS_gradient_cl_min_sample_count) {
         LOG_EVERY_N(INFO, 100) << "Insufficient sample size";
+    } else if (_sw.succ_count > 0) {
+        UpdateConcurrency();
+        ResetSampleWindow(sampling_time_us);
+    } else {
+        LOG(ERROR) << "All request failed, resize max_concurrency";
+        int32_t current_concurrency = 
+            _current_concurrency.load(butil::memory_order_relaxed);
+        _current_concurrency.store(
+            current_concurrency / 2, butil::memory_order_relaxed);
     }
-
 }
 
 void GradientConcurrencyLimiter::ResetSampleWindow(int64_t sampling_time_us) {
@@ -195,59 +199,51 @@ void GradientConcurrencyLimiter::ResetSampleWindow(int64_t sampling_time_us) {
 void GradientConcurrencyLimiter::UpdateConcurrency() {
     int32_t current_concurrency = _current_concurrency.load();
     int max_concurrency = _max_concurrency.load();
+    int32_t total_succ_req = _total_succ_req.exchange(0, butil::memory_order_relaxed);
 
     int64_t failed_punish = _sw.total_failed_us * 
-        FLAGS_gradient_cl_fail_punish_aggressive;
+        FLAGS_gradient_cl_fail_punish_ratio;
     int64_t avg_latency = 
         (failed_punish + _sw.total_succ_us) / _sw.succ_count;
     avg_latency = std::max(static_cast<int64_t>(1), avg_latency);
 
-    WindowSnap snap(avg_latency, current_concurrency);
-    if (static_cast<int>(_ws_queue.size()) < FLAGS_gradient_cl_window_count) {
-        _ws_queue.push_back(snap);
-    } else {
-        _ws_queue[_ws_index % _ws_queue.size()] = snap;
-    }
+    WindowSnap snap(avg_latency, current_concurrency, total_succ_req);
+    _ws_queue.elim_push(snap);
     ++_ws_index;
-    int64_t min_avg_latency_us = _ws_queue.front().avg_latency_us; 
-    int32_t safe_concurrency = _ws_queue.front().actuall_concurrency;
-    for (const auto& ws : _ws_queue) {
-        if (min_avg_latency_us > ws.avg_latency_us) {
-            min_avg_latency_us = ws.avg_latency_us;
-            safe_concurrency = ws.actuall_concurrency;
-        } else if (min_avg_latency_us == ws.avg_latency_us) {
+    int64_t min_avg_latency_us = _ws_queue.bottom()->avg_latency_us; 
+    int32_t safe_concurrency = _ws_queue.bottom()->actual_concurrency;
+    for (size_t i = 0; i < _ws_queue.size(); ++i) {
+        const WindowSnap& snap = *(_ws_queue.bottom(i));
+        if (min_avg_latency_us > snap.avg_latency_us) {
+            min_avg_latency_us = snap.avg_latency_us;
+            safe_concurrency = snap.actual_concurrency;
+        } else if (min_avg_latency_us == snap.avg_latency_us) {
             safe_concurrency = std::max(safe_concurrency, 
-                                        ws.actuall_concurrency);
+                                        snap.actual_concurrency);
         }
     }
                                 
-    int smooth = 50;
-    if (FLAGS_gradient_cl_adjust_smooth >= 0 &&
-        FLAGS_gradient_cl_adjust_smooth < 99) {
-        smooth = FLAGS_gradient_cl_adjust_smooth;
-    } else {
+    int smooth = FLAGS_gradient_cl_adjust_smooth;
+    if (smooth <= 0 || smooth > 99) {
         LOG_EVERY_N(WARNING, 100) 
-            << "GFLAG `gradient_cl_adjust_smooth` should be 0-99,"
+            << "GFLAG `gradient_cl_adjust_smooth' should be 0-99,"
             << "current: " << FLAGS_gradient_cl_adjust_smooth
             << ", will compute with the defalut smooth value(50)";
+        smooth = 50;
     }
-    int queue_size = std::sqrt(max_concurrency);
+
+    int reserved_concurrency = FLAGS_gradient_cl_reserved_concurrency;
+    if (reserved_concurrency <= 0) {
+        reserved_concurrency = std::ceil(std::sqrt(max_concurrency));
+    } 
     double fix_gradient = std::min(
             1.0, double(min_avg_latency_us) / avg_latency);
     int32_t next_concurrency = std::ceil(
-        max_concurrency * fix_gradient + queue_size);
+        max_concurrency * fix_gradient + reserved_concurrency);
     next_concurrency = std::ceil(
         (max_concurrency * smooth + next_concurrency * (100 - smooth)) / 100);
 
-    next_concurrency = std::max(next_concurrency, max_concurrency / 2);
-    next_concurrency = std::max(next_concurrency, safe_concurrency / 2);
-    if (FLAGS_gradient_cl_task_per_req > 0) {
-        int32_t config_max_concurrency = bthread::FLAGS_bthread_concurrency * 
-            FLAGS_task_group_runqueue_capacity / FLAGS_gradient_cl_task_per_req;
-        next_concurrency = std::min(config_max_concurrency, next_concurrency);
-    }
-
-    if (current_concurrency + queue_size < max_concurrency &&
+    if (current_concurrency + reserved_concurrency < max_concurrency &&
         max_concurrency < next_concurrency) {
         LOG(INFO)
             << "No need to expand the maximum concurrency"
@@ -257,20 +253,45 @@ void GradientConcurrencyLimiter::UpdateConcurrency() {
             << ", current_max_concurrency:" << max_concurrency
             << ", next_max_concurrency:" << next_concurrency;
         return;
+    } 
+    if (fix_gradient < 1.0 && max_concurrency < next_concurrency) {
+        for (size_t i = 0; i < _ws_queue.size(); ++i) {
+            const WindowSnap& snap = *(_ws_queue.bottom(i));
+            if (current_concurrency > snap.actual_concurrency &&
+                total_succ_req < snap.total_succ_req) {
+                int32_t fixed_next_concurrency = 
+                    std::ceil(snap.actual_concurrency * 
+                    snap.avg_latency_us / avg_latency);
+                next_concurrency = 
+                    std::min(next_concurrency, fixed_next_concurrency);
+            }
+        }
     }
+
+    double min_reduce_ratio = FLAGS_gradient_cl_min_reduce_ratio;
+    if (min_reduce_ratio <= 0.0 || min_reduce_ratio >= 1.0) {
+        LOG(INFO)
+            << "GFLAG `gradient_cl_min_reduce_ratio' should "
+            << "be 0-1, current:" << FLAGS_gradient_cl_min_reduce_ratio
+            << " , will compute with the default value(0.5)";
+        min_reduce_ratio = 50;
+    }
+    next_concurrency = std::max(
+            next_concurrency, int32_t(max_concurrency * min_reduce_ratio));
+    next_concurrency = std::max(
+            next_concurrency, int32_t(safe_concurrency * min_reduce_ratio));
+
     LOG(INFO)
         << "Update max_concurrency by gradient limiter:"
-        << " pre_max_concurrency=" << max_concurrency 
+        << " pre_max_concurrency:" << max_concurrency 
         << ", min_avg_latency:" << min_avg_latency_us << "us"
         << ", sampling_avg_latency:" << avg_latency << "us"
         << ", failed_punish:" << failed_punish << "us"
-        << ", succ total:" << _sw.total_succ_us << "us"
-        << ", currency_concurrency=" << current_concurrency
         << ", fix_gradient=" << fix_gradient
         << ", succ sample count" << _sw.succ_count
         << ", failed sample count" << _sw.failed_count
-        << ", safe_concurrency" << safe_concurrency
-        << ", next_max_concurrency=" << next_concurrency;
+        << ", current_concurrency:" << current_concurrency
+        << ", next_max_concurrency:" << next_concurrency;
     _max_concurrency.store(next_concurrency, butil::memory_order_relaxed);
 }
 

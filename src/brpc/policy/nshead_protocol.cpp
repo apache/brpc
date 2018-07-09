@@ -64,7 +64,6 @@ public:
 void NsheadClosure::Run() {
     // Recycle itself after `Run'
     std::unique_ptr<NsheadClosure, DeleteNsheadClosure> recycle_ctx(this);
-    ScopedRemoveConcurrency remove_concurrency_dummy(_server, &_controller);
 
     ControllerPrivateAccessor accessor(&_controller);
     Span* span = accessor.span();
@@ -73,7 +72,8 @@ void NsheadClosure::Run() {
     }
     Socket* sock = accessor.get_sending_socket();
     ScopedMethodStatus method_status(_server->options().nshead_service->_status,
-                                     &_controller, butil::cpuwide_time_us());
+                                     _server, &_controller, 
+                                     _received_us);
     if (!method_status) {
         // Judge errors belongings.
         // may not be accurate, but it does not matter too much.
@@ -123,10 +123,6 @@ void NsheadClosure::Run() {
     if (span) {
         // TODO: this is not sent
         span->set_sent_us(butil::cpuwide_time_us());
-    }
-    if (method_status) {
-        method_status.release()->OnResponded(
-            _controller.ErrorCode(), butil::cpuwide_time_us() - _received_us);
     }
 }
 

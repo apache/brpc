@@ -118,20 +118,6 @@ private:
     const Server* _server;
 };
 
-class ScopedRemoveConcurrency {
-public:
-    ScopedRemoveConcurrency(const Server* server, const Controller* c)
-        : _server(server), _cntl(c) {}
-    ~ScopedRemoveConcurrency() {
-        ServerPrivateAccessor(_server).RemoveConcurrency(_cntl);
-    }
-private:
-    DISALLOW_COPY_AND_ASSIGN(ScopedRemoveConcurrency);
-    const Server* _server;
-    const Controller* _cntl;
-};
-
-
 } // namespace brpc
 
 
