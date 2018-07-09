@@ -243,6 +243,19 @@ void GradientConcurrencyLimiter::UpdateConcurrency() {
     next_concurrency = std::ceil(
         (max_concurrency * smooth + next_concurrency * (100 - smooth)) / 100);
 
+    double min_reduce_ratio = FLAGS_gradient_cl_min_reduce_ratio;
+    if (min_reduce_ratio <= 0.0 || min_reduce_ratio >= 1.0) {
+        LOG(INFO)
+            << "GFLAG `gradient_cl_min_reduce_ratio' should "
+            << "be 0-1, current:" << FLAGS_gradient_cl_min_reduce_ratio
+            << " , will compute with the default value(0.5)";
+        min_reduce_ratio = 50;
+    }
+    next_concurrency = std::max(
+            next_concurrency, int32_t(max_concurrency * min_reduce_ratio));
+    next_concurrency = std::max(
+            next_concurrency, int32_t(safe_concurrency * min_reduce_ratio));
+
     if (current_concurrency + reserved_concurrency < max_concurrency &&
         max_concurrency < next_concurrency) {
         LOG(INFO)
@@ -258,7 +271,8 @@ void GradientConcurrencyLimiter::UpdateConcurrency() {
         for (size_t i = 0; i < _ws_queue.size(); ++i) {
             const WindowSnap& snap = *(_ws_queue.bottom(i));
             if (current_concurrency > snap.actual_concurrency &&
-                total_succ_req < snap.total_succ_req) {
+                total_succ_req < snap.total_succ_req &&
+                avg_latency > snap.avg_latency_us) {
                 int32_t fixed_next_concurrency = 
                     std::ceil(snap.actual_concurrency * 
                     snap.avg_latency_us / avg_latency);
@@ -267,19 +281,6 @@ void GradientConcurrencyLimiter::UpdateConcurrency() {
             }
         }
     }
-
-    double min_reduce_ratio = FLAGS_gradient_cl_min_reduce_ratio;
-    if (min_reduce_ratio <= 0.0 || min_reduce_ratio >= 1.0) {
-        LOG(INFO)
-            << "GFLAG `gradient_cl_min_reduce_ratio' should "
-            << "be 0-1, current:" << FLAGS_gradient_cl_min_reduce_ratio
-            << " , will compute with the default value(0.5)";
-        min_reduce_ratio = 50;
-    }
-    next_concurrency = std::max(
-            next_concurrency, int32_t(max_concurrency * min_reduce_ratio));
-    next_concurrency = std::max(
-            next_concurrency, int32_t(safe_concurrency * min_reduce_ratio));
 
     LOG(INFO)
         << "Update max_concurrency by gradient limiter:"
