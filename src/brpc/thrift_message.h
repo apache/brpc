@@ -92,8 +92,8 @@ public:
     int GetCachedSize() const { return ByteSize(); }
     ::google::protobuf::Metadata GetMetadata() const;
 
-    virtual uint32_t write(void* oprot) { return 0;}
-    virtual uint32_t read(void* iprot) { return 0;}
+    virtual uint32_t write(void* /*oprot*/) { return 0;}
+    virtual uint32_t read(void* /*iprot*/) { return 0;}
 
     template<typename T>
     T* Cast() {
