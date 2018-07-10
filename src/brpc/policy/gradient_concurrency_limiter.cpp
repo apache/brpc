@@ -249,7 +249,7 @@ void GradientConcurrencyLimiter::UpdateConcurrency() {
             << "GFLAG `gradient_cl_min_reduce_ratio' should "
             << "be 0-1, current:" << FLAGS_gradient_cl_min_reduce_ratio
             << " , will compute with the default value(0.5)";
-        min_reduce_ratio = 50;
+        min_reduce_ratio = 0.5;
     }
     next_concurrency = std::max(
             next_concurrency, int32_t(max_concurrency * min_reduce_ratio));
