@@ -55,7 +55,6 @@ public:
     void* thrift_raw_instance;
 
     int32_t thrift_message_seq_id;
-    std::string method_name;
 
 public:
     ThriftFramedMessage();
@@ -103,8 +102,7 @@ public:
         // serialize binary thrift message to thrift struct request
         // for response, we just return the new instance and deserialize it in Closure
         if (body.size() > 0 ) {
-            if (serialize_iobuf_to_thrift_message<T>(body, thrift_raw_instance,
-                    &method_name, &thrift_message_seq_id)) {
+            if (serialize_iobuf_to_thrift_message<T>(body, thrift_raw_instance, &thrift_message_seq_id)) {
             } else {
                 delete static_cast<T*>(thrift_raw_instance);
                 return nullptr;
