@@ -127,6 +127,7 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
             return 0;
         }
     }
+
     s.tls() = tls;
     return EHOSTDOWN;
 }

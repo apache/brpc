@@ -97,7 +97,7 @@ public:
         example::EchoRequest* req = request->Cast<example::EchoRequest>();
         example::EchoResponse* res = response->Cast<example::EchoResponse>();
 
-        // 通过request->method_name()获得被访问的方法名, 必须在Cast()被调用之后
+        // 通过cntl->thrift_method_name()获得被访问的方法名
         if (_native_handler) {
             _native_handler->Echo(*res, *req);
         } else {

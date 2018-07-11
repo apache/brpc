@@ -34,12 +34,14 @@ namespace brpc {
 // Socket can't be shared between 2 different SocketMapKeys
 struct SocketMapKey {
     SocketMapKey(const butil::EndPoint& pt,
+                 const std::string tag2 = "",
                  ChannelSSLOptions ssl = ChannelSSLOptions(),
                  const Authenticator* auth2 = NULL)
-            : peer(pt), ssl_options(ssl), auth(auth2)
+            : peer(pt), tag(tag2), ssl_options(ssl), auth(auth2)
     {}
 
     butil::EndPoint peer;
+    const std::string tag;
     ChannelSSLOptions ssl_options;
     const Authenticator* auth;
 };
@@ -139,11 +141,12 @@ private:
     //    (regard the hash collision to be zero)
     struct SocketMapKeyChecksum {
         explicit SocketMapKeyChecksum(const SocketMapKey& key)
-                : peer(key.peer) {
+                : peer(key.peer), tag(key.tag) {
             ComputeSocketMapKeyChecksum(key, checksum);
         }
 
         butil::EndPoint peer;
+        std::string tag;
         unsigned char checksum[16];
 
         inline bool operator==(const SocketMapKeyChecksum& rhs) const {
