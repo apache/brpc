@@ -125,8 +125,6 @@ void ThriftFramedMessage::SharedCtor() {
     thrift_raw_instance_deleter = nullptr;
     thrift_raw_instance = nullptr;
     thrift_message_seq_id = 0;
-    method_name = "";    
-    //RegisterThriftProtocolDummy dummy;
 }
 
 ThriftFramedMessage::~ThriftFramedMessage() {
