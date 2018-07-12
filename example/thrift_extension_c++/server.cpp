@@ -80,8 +80,7 @@ public:
             res->data = req->data + " (processed directly)";
         }
 
-        LOG(INFO) << "Process success in server side for thrift_method_name: " <<
-            cntl->thrift_method_name();
+
     }
 
 private:
