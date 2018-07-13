@@ -454,7 +454,7 @@ public:
     void set_thrift_method_name(const std::string& method_name) {
         _thrift_method_name = method_name;
     }
-    std::string thrift_method_name() { return _thrift_method_name; }
+    const std::string& thrift_method_name() { return _thrift_method_name; }
 
 private:
     struct CompletionInfo {
