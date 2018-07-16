@@ -14,6 +14,7 @@
 #include <butil/fd_utility.h>
 #include <butil/iobuf.h>
 #include <butil/string_printf.h>
+#include <butil/sys_byteorder.h>
 #include "brpc/acceptor.h"
 #include "brpc/channel.h"
 #include "brpc/controller.h"
@@ -541,28 +542,6 @@ TEST_F(RdmaTest, success_multi_clients) {
     StopServer();
 }
 
-static inline uint64_t htonll(uint64_t num) {
-#if defined(__LITTLE_ENDIAN)
-    return static_cast<uint64_t>(htonl(static_cast<uint32_t>(num >> 32))) |
-        (static_cast<uint64_t>(htonl(static_cast<uint32_t>(num))) << 32);
-#elif defined(__BIG_ENDIAN)
-    return num;
-#else
-#error Could not determine endianness.
-#endif
-}
-
-static inline uint64_t ntohll(uint64_t num) {
-#if defined(__LITTLE_ENDIAN)
-    return static_cast<uint64_t>(ntohl(static_cast<uint32_t>(num >> 32))) |
-        (static_cast<uint64_t>(ntohl(static_cast<uint32_t>(num))) << 32);
-#elif defined(__BIG_ENDIAN)
-    return num;
-#else
-#error Could not determine endianness.
-#endif
-}
-
 TEST_F(RdmaTest, handshake_failure_incorrect_sid) {
     StartServer();
 
@@ -599,7 +578,7 @@ TEST_F(RdmaTest, handshake_failure_incorrect_sid) {
     EXPECT_EQ(0, rdma_resolve_addr(cm_id, NULL, (sockaddr*)&addr, 1));
     EXPECT_EQ(0, rdma_resolve_route(cm_id, 1));
     std::string tmp;
-    butil::string_printf(&tmp, "%ld%s", htonll(sid), "0000");
+    butil::string_printf(&tmp, "%ld%s", butil::HostToNet64(sid), "0000");
     rdma_conn_param param;
     rdma::InitRdmaConnParam(&param, tmp.c_str(), tmp.size());
     EXPECT_EQ(-1, rdma_connect(cm_id, &param));  // should fail

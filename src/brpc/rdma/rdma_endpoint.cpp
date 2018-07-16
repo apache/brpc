@@ -564,6 +564,9 @@ bool RdmaEndpoint::IsWritable() const {
     return _window_size.load(butil::memory_order_relaxed) > 0;
 }
 
+const size_t BLOCK_HEADER_LEN = butil::IOBuf::DEFAULT_BLOCK_SIZE -
+                                butil::IOBuf::DEFAULT_PAYLOAD;
+
 // RdmaIOBuf inherits from IOBuf to provide a new function.
 // The reason is that we need to use some protected member function of IOBuf.
 class RdmaIOBuf : public butil::IOBuf {
@@ -576,7 +579,7 @@ private:
             size_t max_sge, size_t max_len, uint32_t* lkey) {
 #ifndef BRPC_RDMA
         CHECK(false) << "This should not happen";
-        return 0;
+        return -1;
 #else
         ibv_sge* list = (ibv_sge*)sglist;
         size_t len = 0;
@@ -587,44 +590,49 @@ private:
                 break;
             }
             butil::IOBuf::BlockRef const& r = _ref_at(i);
-            uint32_t this_lkey = GetLKey(backing_block(i).data());
+            char* start = (char*)backing_block(i).data();
+            uint32_t this_lkey = 0;
+            if ((char*)r.block + BLOCK_HEADER_LEN == start) {
+                this_lkey = GetLKey((char*)r.block);
+            } else {
+                this_lkey = GetLKey(backing_block(i).data());
+            }
             if (*lkey == 0) {
                 *lkey = this_lkey;
             } else if (this_lkey != *lkey) {
                 break;
             }
-            char* start = (char*)backing_block(i).data();
             if (*lkey == 0) {
                 // This block is not in the registered memory. It may be
                 // allocated before we call GlobalRdmaInitializeOrDie. We try
                 // to copy this block into the block_pool.
                 CHECK(i == 0);  // should be the first block
                 size_t append_len = (r.length < max_len) ? r.length : max_len;
-                append_len = (append_len < butil::IOBuf::DEFAULT_PAYLOAD) ?
-                    append_len : butil::IOBuf::DEFAULT_PAYLOAD;
+                append_len = append_len < butil::IOBuf::DEFAULT_PAYLOAD ?
+                             append_len : butil::IOBuf::DEFAULT_PAYLOAD;
                 RdmaIOBuf tmp;
                 // NOTE:
                 // append(void*, size_t) does not guarantee that data will be
                 // copied to a new block. Thus we use IOBufAsZeroCopyOutputStream.
-                butil::IOBufAsZeroCopyOutputStream os(
-                        &tmp, butil::IOBuf::DEFAULT_BLOCK_SIZE);
+                butil::IOBufAsZeroCopyOutputStream os(&tmp, append_len + BLOCK_HEADER_LEN);
                 int size = 0;
                 void* buf = NULL;
-                if (!os.Next(&buf, &size) ||
-                        (uint64_t)size < butil::IOBuf::DEFAULT_PAYLOAD) {
+                if (!os.Next(&buf, &size) || (uint64_t)size < append_len) {
                     // Memory is not enough for preparing a block
+                    tmp.clear();  // must clear before setting errno
+                    errno = ENOMEM;
+                    return -1;
+                }
+                if (GetLKey(tmp._ref_at(0).block) == 0) {
+                    tmp.clear();  // must clear before setting errno
                     errno = ENOMEM;
                     return -1;
                 }
                 memcpy(buf, start, append_len);
-                os.BackUp(butil::IOBuf::DEFAULT_PAYLOAD - append_len);
-                if (GetLKey(tmp.backing_block(0).data()) == 0) {
-                    errno = ENOMEM;
-                    return -1;
-                }
 
                 len = tmp.cut_into_sglist_and_iobuf(&list[i], to,
                         max_sge, append_len, lkey);
+                CHECK(len > 0);
                 cutn(&tmp, len);
                 return len;
             }
@@ -764,6 +772,9 @@ ssize_t RdmaEndpoint::CutFromIOBufList(
 
     ssize_t nw = DoCutFromIOBufList(data_list, ndata, &_sbuf[_sq_current],
             _new_rq_wrs.exchange(0, butil::memory_order_relaxed));
+    if (nw < 0) {
+        return -1;
+    }
     ++_sq_current;
     if (_sq_current == _sq_size) {
         _sq_current = 0;
