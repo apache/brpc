@@ -15,26 +15,32 @@ STATIC_LINKINGS += -lthrift -lgflags -lbrpc -levent
 
 CLIENT_SOURCES = client.cpp
 SERVER_SOURCES = server.cpp
+SERVER2_SOURCES = server2.cpp
 PROTOS = $(wildcard *.proto)
 
 PROTO_OBJS = $(PROTOS:.proto=.pb.o)
 PROTO_GENS = $(PROTOS:.proto=.pb.h) $(PROTOS:.proto=.pb.cc)
-CLIENT_OBJS = $(addsuffix .o, $(basename $(CLIENT_SOURCES))) 
-SERVER_OBJS = $(addsuffix .o, $(basename $(SERVER_SOURCES))) 
+CLIENT_OBJS = $(addsuffix .o, $(basename $(CLIENT_SOURCES)))
+SERVER_OBJS = $(addsuffix .o, $(basename $(SERVER_SOURCES)))
+SERVER2_OBJS = $(addsuffix .o, $(basename $(SERVER2_SOURCES)))
 
 .PHONY:all
-all: echo_client echo_server native_server native_client libechothrift.a client.o server.o
+all: echo_client echo_server echo_server2 native_server native_client libechothrift.a client.o server.o
 
 .PHONY:clean
 clean:
 	@echo "Cleaning"
-	@rm -rf echo_client echo_server $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS) $(SERVER_OBJS) native_server native_client EchoService.o echo_types.o libechothrift.a gen-cpp gen-py
+	@rm -rf echo_client echo_server echo_server2 $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS) $(SERVER_OBJS) $(SERVER2_OBJS) native_server native_client EchoService.o echo_types.o libechothrift.a gen-cpp gen-py
 
 echo_client:$(PROTO_OBJS) $(CLIENT_OBJS) libechothrift.a
 	@echo "Linking $@"
 	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
 
 echo_server:$(PROTO_OBJS) $(SERVER_OBJS) libechothrift.a
+	@echo "Linking $@"
+	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ libechothrift.a -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
+
+echo_server2:$(PROTO_OBJS) $(SERVER2_OBJS) libechothrift.a
 	@echo "Linking $@"
 	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ libechothrift.a -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
 

@@ -351,7 +351,6 @@ void ThriftClosure::DoRun() {
 
 ParseResult ParseThriftMessage(butil::IOBuf* source,
                                Socket*, bool /*read_eof*/, const void* /*arg*/) {
-
     char header_buf[sizeof(thrift_head_t) + 4];
     const size_t n = source->copy_to(header_buf, sizeof(header_buf));
     if (n < sizeof(header_buf)) {

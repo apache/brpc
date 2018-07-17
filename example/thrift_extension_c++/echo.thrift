@@ -2,8 +2,12 @@
 namespace cpp example
 
 struct EchoRequest {
-    1: required string data;
-    2: required i32 s;
+    1: optional string data;
+    2: optional i32 need_by_proxy;
+}
+
+struct ProxyRequest {
+    2: optional i32 need_by_proxy;
 }
 
 struct EchoResponse {

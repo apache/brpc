@@ -51,7 +51,7 @@ public:
         // to process the request asynchronously, pass done_guard.release().
         brpc::ClosureGuard done_guard(done);
 
-        res->data = req->data + " (processed)";
+        res->data = req->data + " (Echo)";
     }
 };
 

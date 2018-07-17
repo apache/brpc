@@ -62,7 +62,8 @@ int main(int argc, char* argv[]) {
         example::EchoRequest req;
         example::EchoResponse res;
 
-        req.data = "hello";
+        req.__set_data("hello");
+        req.__set_need_by_proxy(10);
 
         stub.CallMethod("Echo", &cntl, &req, &res, NULL);
 
@@ -71,7 +72,7 @@ int main(int argc, char* argv[]) {
             sleep(1); // Remove this sleep in production code.
         } else {
             g_latency_recorder << cntl.latency_us();
-            LOG(INFO) << "Thrift Response: " << res.data;
+            LOG(INFO) << "Thrift Response: " << res;
         }
 
         LOG_EVERY_SECOND(INFO)

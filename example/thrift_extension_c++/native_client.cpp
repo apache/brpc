@@ -51,15 +51,15 @@ int main(int argc, char **argv) {
     transport->open();
 
     example::EchoRequest req;
-    req.data = "hello";
+    req.__set_data("hello");
+    req.__set_need_by_proxy(10);
 
     example::EchoResponse res;
 
     while (1) {
         try {
             client.Echo(res, req);
-            LOG(INFO) << "Req: " << req.data
-                      << " Res: " << res.data;
+            LOG(INFO) << "Req=" << req << " Res=" << res;
         } catch (std::exception& e) {
             LOG(ERROR) << "Fail to rpc, " << e.what();
         }
