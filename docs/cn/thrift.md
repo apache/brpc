@@ -28,6 +28,8 @@ sudo make install
 配置brpc支持thrift协议后make。编译完成后会生成libbrpc.a, 其中包含了支持thrift协议的扩展代码, 像正常使用brpc的代码一样链接即可。
 ```bash
 sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --with-thrift
+#或者使用cmake
+mkdir build && cd build && cmake ../ -DWITH_THRIFT=1
 ```
 
 # Client端访问thrift server

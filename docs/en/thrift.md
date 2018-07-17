@@ -28,6 +28,8 @@ sudo make install
 Config brpc with thrift support, then make. The compiled libbrpc.a includes extended code for thrift support and can be linked normally as in other brpc projects.
 ```bash
 sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --with-thrift
+#or use cmake
+mkdir build && cd build && cmake ../ -DWITH_THRIFT=1
 ```
 
 # Client accesses thrift server
@@ -95,7 +97,7 @@ public:
         example::EchoRequest* req = request->Cast<example::EchoRequest>();
         example::EchoResponse* res = response->Cast<example::EchoResponse>();
 
-        // Get method-name for thrift via cntl->thrift_method_name()
+        // Get method-name for thrift by cntl->thrift_method_name();
         if (_native_handler) {
             _native_handler->Echo(*res, *req);
         } else {

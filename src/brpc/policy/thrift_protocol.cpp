@@ -14,8 +14,6 @@
 
 // Authors: wangxuefeng (wangxuefeng@didichuxing.com)
 
-#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
-
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
@@ -53,6 +51,38 @@ void bthread_assign_data(void* data) __THROW;
 }
 
 namespace brpc {
+
+static int32_t parse_thrift_method_name(const butil::IOBuf& body, std::string* method_name) {
+
+    // Thrift protocol format:
+    // Version + Message type + Length + Method + Sequence Id
+    //   |             |          |        |          |
+    //   2     +       2      +   4    +   >0   +     4
+    if (body.size() < 12) {
+        LOG(ERROR) << "No Enough data to get method name, request body size: " << body.size();
+        return -1;
+    }
+
+    char version_and_len_buf[8];
+    size_t k = body.copy_to(version_and_len_buf, sizeof(version_and_len_buf));
+    if (k != sizeof(version_and_len_buf) ) {
+        LOG(ERROR) << "copy "<< sizeof(version_and_len_buf) << " bytes from body failed";
+        return -1;
+    }
+
+    uint32_t method_name_length = ntohl(*(int32_t*)(version_and_len_buf + 4));
+
+    char fname[method_name_length];
+    k = body.copy_to(fname, method_name_length, sizeof(version_and_len_buf));
+    if ( k != method_name_length) {
+        LOG(ERROR) << "copy " << method_name_length << " bytes from body failed";
+        return -1;
+    }
+
+    method_name->assign(fname, method_name_length);
+    return sizeof(version_and_len_buf) + method_name_length;
+
+}
 
 ThriftClosure::ThriftClosure(void* additional_space)
     : _socket_ptr(NULL)
@@ -114,7 +144,7 @@ void ThriftClosure::Run() {
         _response.head = _request.head;
 
         if (_response.thrift_raw_instance) {
-            std::string method_name = _request.method_name;
+            const std::string& method_name = _controller.thrift_method_name();
             if (method_name == "" ||
                 method_name.length() < 1 ||
                 method_name[0] == ' ') {
@@ -250,6 +280,15 @@ struct CallMethodInBackupThreadArgs {
 
 static void CallMethodInBackupThread(void* void_args) {
     CallMethodInBackupThreadArgs* args = (CallMethodInBackupThreadArgs*)void_args;
+
+    std::string method_name;
+    if (parse_thrift_method_name(args->request->body, &method_name) < 0) {
+        LOG(ERROR) << "Fail to get thrift method name";
+        delete args;
+        return;
+    }
+
+    args->controller->set_thrift_method_name(method_name);
     args->service->ProcessThriftFramedRequest(*args->server, args->controller,
                                         args->request, args->response,
                                         args->done);
@@ -382,22 +421,37 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
         span->AsParent();
     }
 
-    try {
-        if (!FLAGS_usercode_in_pthread) {
+    std::string method_name;
+    if (parse_thrift_method_name(req->body, &method_name) < 0) {
+        cntl->SetFailed(EREQUEST, "Fail to get thrift method name!");
+        return;
+    }
+    cntl->set_thrift_method_name(method_name);
+
+    if (!FLAGS_usercode_in_pthread) {
+        try {
             return service->ProcessThriftFramedRequest(*server, cntl,
                 req, res, thrift_done);
+        } catch (::apache::thrift::TException& e) {
+            cntl->SetFailed(EREQUEST, "Invalid request data, reason: %s", e.what());
+        } catch (...) {
+            cntl->SetFailed(EINTERNAL, "Internal server error!");
         }
-        if (BeginRunningUserCode()) {
+
+    }
+
+    if (BeginRunningUserCode()) {
+        try {
             service->ProcessThriftFramedRequest(*server, cntl, req, res, thrift_done);
-            return EndRunningUserCodeInPlace();
-        } else {
-            return EndRunningCallMethodInPool(
-                service, *server, cntl, req, res, thrift_done);
+        } catch (::apache::thrift::TException& e) {
+               cntl->SetFailed(EREQUEST, "Invalid request data, reason: %s", e.what());
+        } catch (...) {
+           cntl->SetFailed(EINTERNAL, "Internal server error!");
         }
-    } catch (::apache::thrift::TException& e) {
-        cntl->SetFailed(EREQUEST, "Invalid request data, reason: %s", e.what());
-    } catch (...) {
-        cntl->SetFailed(EINTERNAL, "Internal server error!");
+        return EndRunningUserCodeInPlace();
+    } else {
+        return EndRunningCallMethodInPool(
+            service, *server, cntl, req, res, thrift_done);
     }
 
 }
@@ -648,4 +702,3 @@ void RegisterThriftProtocol() {
 }
 }
 
-#endif

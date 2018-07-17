@@ -14,8 +14,6 @@
 
 // Authors: wangxuefeng (wangxuefeng@didichuxing.com)
 
-#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
-
 #define INTERNAL_SUPPRESS_PROTOBUF_FIELD_DEPRECATION
 #include "brpc/thrift_message.h"
 
@@ -127,8 +125,6 @@ void ThriftFramedMessage::SharedCtor() {
     thrift_raw_instance_deleter = nullptr;
     thrift_raw_instance = nullptr;
     thrift_message_seq_id = 0;
-    method_name = "";    
-    //RegisterThriftProtocolDummy dummy;
 }
 
 ThriftFramedMessage::~ThriftFramedMessage() {
@@ -246,4 +242,3 @@ void ThriftFramedMessage::Swap(ThriftFramedMessage* other) {
 
 } // namespace brpc
 
-#endif

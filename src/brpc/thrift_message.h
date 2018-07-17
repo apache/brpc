@@ -14,8 +14,6 @@
 
 // Authors: wangxuefeng (wangxuefeng@didichuxing.com)
 
-#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
-
 #ifndef BRPC_THRIFT_MESSAGE_H
 #define BRPC_THRIFT_MESSAGE_H
 
@@ -57,7 +55,6 @@ public:
     void* thrift_raw_instance;
 
     int32_t thrift_message_seq_id;
-    std::string method_name;
 
 public:
     ThriftFramedMessage();
@@ -94,8 +91,8 @@ public:
     int GetCachedSize() const { return ByteSize(); }
     ::google::protobuf::Metadata GetMetadata() const;
 
-    virtual uint32_t write(void* oprot) { return 0;}
-    virtual uint32_t read(void* iprot) { return 0;}
+    virtual uint32_t write(void* /*oprot*/) { return 0;}
+    virtual uint32_t read(void* /*iprot*/) { return 0;}
 
     template<typename T>
     T* Cast() {
@@ -105,8 +102,7 @@ public:
         // serialize binary thrift message to thrift struct request
         // for response, we just return the new instance and deserialize it in Closure
         if (body.size() > 0 ) {
-            if (serialize_iobuf_to_thrift_message<T>(body, thrift_raw_instance,
-                    &method_name, &thrift_message_seq_id)) {
+            if (serialize_iobuf_to_thrift_message<T>(body, thrift_raw_instance, &thrift_message_seq_id)) {
             } else {
                 delete static_cast<T*>(thrift_raw_instance);
                 return nullptr;
@@ -167,4 +163,3 @@ private:
 
 #endif // BRPC_THRIFT_MESSAGE_H
 
-#endif //ENABLE_THRIFT_FRAMED_PROTOCOL

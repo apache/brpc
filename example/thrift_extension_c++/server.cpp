@@ -18,7 +18,7 @@
 #include <butil/logging.h>
 #include <brpc/server.h>
 #include <brpc/thrift_service.h>
-
+#include <brpc/details/thrift_utils.h>
 #include <thrift/protocol/TBinaryProtocol.h>
 #include <thrift/transport/TBufferTransports.h>
 
@@ -65,6 +65,7 @@ public:
             return;
         }
 
+        // get method name by cntl->thrift_method_name() if needed
         example::EchoRequest* req = request->Cast<example::EchoRequest>();
         example::EchoResponse* res = response->Cast<example::EchoResponse>();
 
@@ -78,6 +79,8 @@ public:
         } else {
             res->data = req->data + " (processed directly)";
         }
+
+
     }
 
 private:

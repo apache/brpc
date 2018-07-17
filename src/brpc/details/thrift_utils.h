@@ -14,12 +14,11 @@
 
 // utils for serialize/parse thrift binary message to brpc protobuf obj.
 
-#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
-
 #ifndef BRPC_THRIFT_UTILS_H
 #define BRPC_THRIFT_UTILS_H
 
 #include "butil/iobuf.h"
+#include "butil/logging.h"
 
 #include <thrift/TDispatchProcessor.h>
 #include <thrift/transport/TBufferTransports.h>
@@ -51,8 +50,8 @@ uint32_t thrift_framed_message_writer(void* p, void* prot) {
 }
 
 template<typename T>
-bool serialize_iobuf_to_thrift_message(butil::IOBuf& body,
-    void* thrift_raw_instance, std::string* method_name, int32_t* thrift_message_seq_id) {
+bool serialize_iobuf_to_thrift_message(const butil::IOBuf& body,
+    void* thrift_raw_instance, int32_t* thrift_message_seq_id) {
 
     auto in_buffer =
         THRIFT_STDCXX::make_shared<apache::thrift::transport::TMemoryBuffer>();
@@ -75,7 +74,7 @@ bool serialize_iobuf_to_thrift_message(butil::IOBuf& body,
     std::string fname;
     ::apache::thrift::protocol::TMessageType mtype;
     
-    in_portocol->readMessageBegin(*method_name, mtype, *thrift_message_seq_id);
+    in_portocol->readMessageBegin(fname, mtype, *thrift_message_seq_id);
     
     apache::thrift::protocol::TInputRecursionTracker tracker(*in_portocol);
     uint32_t xfer = 0;
@@ -120,4 +119,3 @@ bool serialize_iobuf_to_thrift_message(butil::IOBuf& body,
 
 #endif //BRPC_THRIFT_UTILS_H
 
-#endif //ENABLE_THRIFT_FRAMED_PROTOCOL
