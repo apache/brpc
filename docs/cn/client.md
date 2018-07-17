@@ -96,6 +96,18 @@ BNS是百度内常用的名字服务，比如bns://rdev.matrix.all，其中"bns"
 
 连接一个域名下所有的机器, 例如http://www.baidu.com:80 ，注意连接单点的Init（两个参数）虽然也可传入域名，但只会连接域名下的一台机器。
 
+### consul://\<service-name\>
+
+通过consul获取服务名称为service-name的服务列表。consul的默认地址是localhost:8500，可通过gflags设置-consul\_agent\_addr来修改。consul的连接超时时间默认是200ms，可通过-consul\_connect\_timeout\_ms来修改。
+
+默认在consul请求参数中添加[stale](https://www.consul.io/api/index.html#consistency-modes)和passing（仅返回状态为passing的服务列表），可通过gflags中-consul\_url\_parameter改变[consul请求参数](https://www.consul.io/api/health.html#parameters-2)。
+
+除了对consul的首次请求，后续对consul的请求都采用[long polling](https://www.consul.io/api/index.html#blocking-queries)的方式，即仅当服务列表更新或请求超时后consul才返回结果，这里超时时间默认为60s，可通过-consul\_blocking\_query\_wait\_secs来设置。
+
+若consul返回的服务列表[响应格式](https://www.consul.io/api/health.html#sample-response-2)有错误，或者列表中所有服务都因为地址、端口等关键字段缺失或无法解析而被过滤，consul naming server会拒绝更新服务列表，并在一段时间后（默认500ms，可通过-consul\_retry\_interval\_ms设置）重新访问consul。
+
+如果consul不可访问，服务可自动降级到file naming service获取服务列表。此功能默认关闭，可通过设置-consul\_enable\_degrade\_to\_file\_naming\_service来打开。服务列表文件目录通过-consul \_file\_naming\_service\_dir来设置，使用service-name作为文件名。该文件可通过consul-template生成，里面会保存consul不可用之前最新的下游服务节点。当consul恢复时可自动恢复到consul naming service。
+
 ### 名字服务过滤器
 
 当名字服务获得机器列表后，可以自定义一个过滤器进行筛选，最后把结果传递给负载均衡：
@@ -154,7 +166,7 @@ int main() {
 
 ### wrr
 
-即weighted round robin, 根据服务器列表配置的权重值来选择服务器。服务器被选到的机会正比于其权重值，并且该算法能保证同一服务器被选到的机会较均衡的散开。
+即weighted round robin, 根据服务器列表配置的权重值来选择服务器。服务器被选到的机会正比于其权重值，并且该算法能保证同一服务器被选到的结果较均衡的散开。
 
 ### random
 
@@ -531,6 +543,7 @@ Channel的默认协议是baidu_std，可通过设置ChannelOptions.protocol换�
 - PROTOCOL_REDIS 或 "redis"，redis 1.2后的协议（也是hiredis支持的协议），默认为单连接。具体方法见[访问Redis](redis_client.md)。
 - PROTOCOL_NSHEAD_MCPACK 或 "nshead_mcpack", 顾名思义，格式为nshead + mcpack，使用mcpack2pb适配，默认为连接池。
 - PROTOCOL_ESP 或 "esp"，访问使用esp协议的服务，默认为连接池。
+- PROTOCOL_THRIFT 或 "thrift"，访问使用thrift协议的服务，默认为连接池, 具体方法见[访问thrift](thrift.md)。
 
 ## 连接方式
 
@@ -608,7 +621,46 @@ baidu_std和hulu_pbrpc协议支持附件，这段数据由用户自定义，不�
 
 在http协议中，附件对应[message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html)，比如要POST的数据就设置在request_attachment()中。
 
+## 开启SSL
+
+要开启SSL，首先确保代码依赖了最新的openssl库。如果openssl版本很旧，会有严重的安全漏洞，支持的加密算法也少，违背了开启SSL的初衷。然后设置`ChannelOptions.ssl_options`，具体见[ssl_option.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_option.h)。
+
+```c++
+// SSL options at client side
+struct ChannelSSLOptions {
+    // Whether to enable SSL on the channel.
+    // Default: false
+    bool enable;
+    
+    // Cipher suites used for SSL handshake.
+    // The format of this string should follow that in `man 1 cipers'.
+    // Default: "DEFAULT"
+    std::string ciphers;
+    
+    // SSL protocols used for SSL handshake, separated by comma.
+    // Available protocols: SSLv3, TLSv1, TLSv1.1, TLSv1.2
+    // Default: TLSv1, TLSv1.1, TLSv1.2
+    std::string protocols;
+    
+    // When set, fill this into the SNI extension field during handshake,
+    // which can be used by the server to locate the right certificate. 
+    // Default: empty
+    std::string sni_name;
+    
+    // Options used to verify the server's certificate
+    // Default: see above
+    VerifyOptions verify;
+    
+    // ... Other options
+};
+```
+
+- 目前只有连接单点的Channel可以开启SSL访问，使用了名字服务的Channel**不支持开启SSL**。
+- 开启后，该Channel上任何协议的请求，都会被SSL加密后发送。如果希望某些请求不加密，需要额外再创建一个Channel。
+- 针对HTTPS做了些易用性优化：`Channel.Init`时能自动识别https://前缀，自动开启SSL；-http_verbose时也会输出证书信息。
+
 ## 认证
+
 client端的认证一般分为2种：
 
 1. 基于请求的认证：每次请求都会带上认证信息。这种方式比较灵活，认证信息中可以含有本次请求中的字段，但是缺点是每次请求都会需要认证，性能上有所损失
