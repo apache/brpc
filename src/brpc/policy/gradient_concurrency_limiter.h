@@ -36,7 +36,6 @@ public:
     int Expose(const butil::StringPiece& prefix) override;
     GradientConcurrencyLimiter* New() const override;
     void Destroy() override;
-    void Describe(std::ostream&, const DescribeOptions& options) override;
 
 private:
     struct SampleWindow {
@@ -76,9 +75,9 @@ private:
     butil::Mutex _sw_mutex;
     bvar::PassiveStatus<int32_t> _max_concurrency_bvar;
     butil::atomic<int64_t> BAIDU_CACHELINE_ALIGNMENT _last_sampling_time_us;
+    butil::atomic<int32_t> _max_concurrency;
     butil::atomic<int32_t> BAIDU_CACHELINE_ALIGNMENT _total_succ_req;
-    butil::atomic<int32_t> BAIDU_CACHELINE_ALIGNMENT _max_concurrency;
-    butil::atomic<int32_t> BAIDU_CACHELINE_ALIGNMENT _current_concurrency;
+    butil::atomic<int32_t> _current_concurrency;
 };
 
 }  // namespace policy

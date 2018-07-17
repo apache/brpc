@@ -474,15 +474,15 @@ static void GlobalInitializeOrDieImpl() {
         exit(1);
     }
 
-// Use Macro is more straight forward than weak link technology(becasue of static link issue)  +    // Register Thrift framed protocol if linked
+// Use Macro is more straight forward than weak link technology(becasue of static link issue)
 #ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
-    Protocol thrift_binary_protocol = {  
-        policy::ParseThriftMessage,    
-        policy::SerializeThriftRequest, policy::PackThriftRequest, 
-        policy::ProcessThriftRequest, policy::ProcessThriftResponse,   
-        policy::VerifyThriftRequest, NULL, NULL,   
-        CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };  
-        if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {  
+    Protocol thrift_binary_protocol = {
+        policy::ParseThriftMessage,
+        policy::SerializeThriftRequest, policy::PackThriftRequest,
+        policy::ProcessThriftRequest, policy::ProcessThriftResponse,
+        policy::VerifyThriftRequest, NULL, NULL,
+        CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };
+        if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
             exit(1);
         }
 #endif

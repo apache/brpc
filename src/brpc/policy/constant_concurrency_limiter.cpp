@@ -52,17 +52,5 @@ void ConstantConcurrencyLimiter::Destroy() {
     delete this;
 }
 
-void ConstantConcurrencyLimiter::Describe(
-    std::ostream& os, const DescribeOptions& options) {
-    if (!options.verbose) {
-        os << "constant_cl";
-        return;
-    }
-    os << "Constant{";
-    os << "current_max_concurrency:" 
-       << _max_concurrency;
-    os << '}';
-}
-
 }  // namespace policy
 }  // namespace brpc

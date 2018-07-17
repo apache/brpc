@@ -69,21 +69,9 @@ GradientConcurrencyLimiter::GradientConcurrencyLimiter()
     , _unused_max_concurrency(0)
     , _max_concurrency_bvar(cast_max_concurrency, &_max_concurrency)
     , _last_sampling_time_us(0)
-    , _total_succ_req(0)
     , _max_concurrency(FLAGS_gradient_cl_initial_max_concurrency)
+    , _total_succ_req(0)
     , _current_concurrency(0) {
-}
-
-void GradientConcurrencyLimiter::Describe(
-    std::ostream& os, const DescribeOptions& options) {
-    if (!options.verbose) {
-        os << "gradient_cl";
-        return;
-    }
-    os << "Gradient{";
-    os << "current_max_concurrency:" 
-       << _max_concurrency.load(butil::memory_order_relaxed);
-    os << '}';
 }
 
 int GradientConcurrencyLimiter::MaxConcurrency() const {

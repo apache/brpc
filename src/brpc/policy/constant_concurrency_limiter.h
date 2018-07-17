@@ -38,7 +38,6 @@ public:
     int Expose(const butil::StringPiece& prefix) override;
     ConstantConcurrencyLimiter* New() const override;
     void Destroy() override;
-    void Describe(std::ostream&, const DescribeOptions& options) override;
 
 private:
     int32_t _max_concurrency;

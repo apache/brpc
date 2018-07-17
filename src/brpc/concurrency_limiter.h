@@ -23,7 +23,7 @@
 
 namespace brpc {
 
-class ConcurrencyLimiter : public NonConstDescribable, public Destroyable {
+class ConcurrencyLimiter : public Destroyable {
 public:
     ConcurrencyLimiter() {}
 
