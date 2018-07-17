@@ -116,7 +116,7 @@ WriteThriftMessageBegin(char* buf,
 }
 
 bool ReadThriftStruct(const butil::IOBuf& body,
-                      ::apache::thrift::TBase* raw_msg,
+                      ThriftMessageBase* raw_msg,
                       int16_t expected_fid) {
     const size_t body_len  = body.size();
     uint8_t* thrift_buffer = new uint8_t[body_len];
@@ -143,7 +143,7 @@ bool ReadThriftStruct(const butil::IOBuf& body,
         }
         if (fid == expected_fid) {
             if (ftype == ::apache::thrift::protocol::T_STRUCT) {
-                xfer += raw_msg->read(&iprot);
+                xfer += raw_msg->Read(&iprot);
                 success = true;
             } else {
                 xfer += iprot.skip(ftype);
@@ -299,7 +299,7 @@ void ThriftClosure::DoRun() {
         xfer += oprot.writeFieldBegin("success",
                                       ::apache::thrift::protocol::T_STRUCT,
                                       THRIFT_RESPONSE_FID);
-        xfer += _response.raw_instance()->write(&oprot);
+        xfer += _response.raw_instance()->Write(&oprot);
         xfer += oprot.writeFieldEnd();
         xfer += oprot.writeFieldStop();
         xfer += oprot.writeStructEnd();
@@ -457,7 +457,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
     uint32_t seq_id;
     ::apache::thrift::protocol::TMessageType mtype;
     butil::Status st = ReadThriftMessageBegin(
-        &msg->payload, accessor.mutable_thrift_method_name(), &mtype, &seq_id);
+        &msg->payload, &cntl->_thrift_method_name, &mtype, &seq_id);
     if (!st.ok()) {
         cntl->SetFailed(EREQUEST, "%s", st.error_cstr());
         return thrift_done->Run();
@@ -680,7 +680,7 @@ void SerializeThriftRequest(butil::IOBuf* request_buf, Controller* cntl,
                                       THRIFT_REQUEST_FID);
 
         // request's write
-        xfer += req->raw_instance()->write(&oprot);
+        xfer += req->raw_instance()->Write(&oprot);
         
         xfer += oprot.writeFieldEnd();
         xfer += oprot.writeFieldStop();

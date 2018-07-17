@@ -61,9 +61,11 @@ class RpcDumpMeta;
 class MongoContext;
 class RetryPolicy;
 class InputMessageBase;
+class ThriftStub;
 namespace policy {
 class OnServerStreamCreated;
 void ProcessMongoRequest(InputMessageBase*);
+void ProcessThriftRequest(InputMessageBase*);
 }
 namespace schan {
 class Sender;
@@ -102,12 +104,14 @@ friend class ParallelChannelDone;
 friend class ControllerPrivateAccessor;
 friend class ServerPrivateAccessor;
 friend class SelectiveChannel;
+friend class ThriftStub;
 friend class schan::Sender;
 friend class schan::SubDone;
 friend class policy::OnServerStreamCreated;
 friend int StreamCreate(StreamId*, Controller&, const StreamOptions*);
 friend int StreamAccept(StreamId*, Controller&, const StreamOptions*);
 friend void policy::ProcessMongoRequest(InputMessageBase*);
+friend void policy::ProcessThriftRequest(InputMessageBase*);
     // << Flags >>
     static const uint32_t FLAGS_IGNORE_EOVERCROWDED = 1;
     static const uint32_t FLAGS_SECURITY_MODE = (1 << 1);
