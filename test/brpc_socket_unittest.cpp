@@ -19,6 +19,9 @@
 #include "brpc/policy/hulu_pbrpc_protocol.h"
 #include "brpc/policy/most_common_message.h"
 #include "brpc/nshead.h"
+#if defined(OS_MACOSX)
+#include <sys/event.h>
+#endif
 
 #define CONNECT_IN_KEEPWRITE 1;
 
@@ -361,7 +364,11 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
                 bthread_usleep(1000);
                 ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L) << "Too long!";
             }
+#if defined(OS_LINUX)
             ASSERT_EQ(0, bthread_fd_wait(s->fd(), EPOLLIN));
+#elif defined(OS_MACOSX)
+            ASSERT_EQ(0, bthread_fd_wait(s->fd(), EVFILT_READ));
+#endif
             char dest[sizeof(buf)];
             ASSERT_EQ(meta_len + len, (size_t)read(s->fd(), dest, sizeof(dest)));
             ASSERT_EQ(0, memcmp(buf + 12, dest, meta_len + len));

@@ -22,6 +22,7 @@
 #include "butil/unique_ptr.h"
 #include "butil/logging.h"
 #include "butil/ssl_compat.h"
+#include "butil/string_splitter.h"
 #include "brpc/socket.h"
 #include "brpc/details/ssl_helper.h"
 
@@ -57,6 +58,29 @@ const char* SSLStateToString(SSLState s) {
         return "SSL_CONNECTED";
     }
     return "Bad SSLState";
+}
+
+static int ParseSSLProtocols(const std::string& str_protocol) {
+    int protocol_flag = 0;
+    butil::StringSplitter sp(str_protocol.data(),
+                             str_protocol.data() + str_protocol.size(), ',');
+    for (; sp; ++sp) {
+        butil::StringPiece protocol(sp.field(), sp.length());
+        protocol.trim_spaces();
+        if (strncasecmp(protocol.data(), "SSLv3", protocol.size()) == 0) {
+            protocol_flag |= SSLv3;
+        } else if (strncasecmp(protocol.data(), "TLSv1", protocol.size()) == 0) {
+            protocol_flag |= TLSv1;
+        } else if (strncasecmp(protocol.data(), "TLSv1.1", protocol.size()) == 0) {
+            protocol_flag |= TLSv1_1;
+        } else if (strncasecmp(protocol.data(), "TLSv1.2", protocol.size()) == 0) {
+            protocol_flag |= TLSv1_2;
+        } else {
+            LOG(ERROR) << "Unknown SSL protocol=" << protocol;
+            return -1;
+        }
+    }
+    return protocol_flag;
 }
 
 std::ostream& operator<<(std::ostream& os, const SSLError& ssl) {
@@ -105,9 +129,7 @@ static void SSLInfoCallback(const SSL* ssl, int where, int ret) {
     }
 
     if (where & SSL_CB_HANDSHAKE_START) {
-        if (s->ssl_state() == SSL_CONNECTING) {
-            s->set_ssl_state(SSL_CONNECTED);
-        } else if (s->ssl_state() == SSL_CONNECTED) {
+        if (s->ssl_state() == SSL_CONNECTED) {
             // Disable renegotiation (CVE-2009-3555)
             LOG(ERROR) << "Close " << *s << " due to insecure "
                        << "renegotiation detected (CVE-2009-3555)";
@@ -180,7 +202,7 @@ static DH* SSLGetDHCallback(SSL* ssl, int exp, int keylen) {
 }
 #endif  // OPENSSL_NO_DH
 
-static void ExtractHostnames(X509* x, std::vector<std::string>* hostnames) {
+void ExtractHostnames(X509* x, std::vector<std::string>* hostnames) {
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
     STACK_OF(GENERAL_NAME)* names = (STACK_OF(GENERAL_NAME)*)
             X509_get_ext_d2i(x, NID_subject_alt_name, NULL, NULL);
@@ -207,7 +229,7 @@ static void ExtractHostnames(X509* x, std::vector<std::string>* hostnames) {
         char* str = NULL;
         X509_NAME_ENTRY* entry = X509_NAME_get_entry(xname, i);
         const int len = ASN1_STRING_to_UTF8((unsigned char**)&str, 
-                                 X509_NAME_ENTRY_get_data(entry));
+                                            X509_NAME_ENTRY_get_data(entry));
         if (len >= 0) {
             std::string hostname(str, len);
             hostnames->push_back(hostname);
@@ -216,10 +238,10 @@ static void ExtractHostnames(X509* x, std::vector<std::string>* hostnames) {
     }
 }
 
-struct FreeSSLCTX {
-    inline void operator()(SSL_CTX* ctx) const {
-        if (ctx != NULL) {
-            SSL_CTX_free(ctx);
+struct FreeSSL {
+    inline void operator()(SSL* ssl) const {
+        if (ssl != NULL) {
+            SSL_free(ssl);
         }
     }
 };
@@ -248,35 +270,28 @@ struct FreeEVPKEY {
     }
 };
 
-SSL_CTX* CreateSSLContext(const std::string& certificate,
-                          const std::string& private_key,
-                          const SSLOptions& options,
-                          std::vector<std::string>* hostnames) {
-    std::unique_ptr<SSL_CTX, FreeSSLCTX> ssl_ctx(
-        SSL_CTX_new(SSLv23_server_method()));
-    if (!ssl_ctx) {
-        LOG(ERROR) << "Fail to new SSL_CTX: " << SSLError(ERR_get_error());
-        return NULL;
-    }
-
+static int LoadCertificate(SSL_CTX* ctx,
+                           const std::string& certificate,
+                           const std::string& private_key,
+                           std::vector<std::string>* hostnames) {
     // Load the private key
     if (IsPemString(private_key)) {
         std::unique_ptr<BIO, FreeBIO> kbio(
             BIO_new_mem_buf((void*)private_key.c_str(), -1));
         std::unique_ptr<EVP_PKEY, FreeEVPKEY> key(
             PEM_read_bio_PrivateKey(kbio.get(), NULL, 0, NULL));
-        if (SSL_CTX_use_PrivateKey(ssl_ctx.get(), key.get()) != 1) {
+        if (SSL_CTX_use_PrivateKey(ctx, key.get()) != 1) {
             LOG(ERROR) << "Fail to load " << private_key << ": "
                        << SSLError(ERR_get_error());
-            return NULL;
+            return -1;
         }
 
     } else {
         if (SSL_CTX_use_PrivateKey_file(
-                ssl_ctx.get(), private_key.c_str(), SSL_FILETYPE_PEM) != 1) {
+                ctx, private_key.c_str(), SSL_FILETYPE_PEM) != 1) {
             LOG(ERROR) << "Fail to load " << private_key << ": "
                        << SSLError(ERR_get_error());
-            return NULL;
+            return -1;
         }
     }
 
@@ -289,7 +304,7 @@ SSL_CTX* CreateSSLContext(const std::string& certificate,
         if (BIO_read_filename(cbio.get(), certificate.c_str()) <= 0) {
             LOG(ERROR) << "Fail to read " << certificate << ": "
                        << SSLError(ERR_get_error());
-            return NULL;
+            return -1;
         }
     }
     std::unique_ptr<X509, FreeX509> x(
@@ -297,32 +312,32 @@ SSL_CTX* CreateSSLContext(const std::string& certificate,
     if (!x) {
         LOG(ERROR) << "Fail to parse " << certificate << ": "
                    << SSLError(ERR_get_error());
-        return NULL;
+        return -1;
     }
     
     // Load the main certficate
-    if (SSL_CTX_use_certificate(ssl_ctx.get(), x.get()) != 1) {
+    if (SSL_CTX_use_certificate(ctx, x.get()) != 1) {
         LOG(ERROR) << "Fail to load " << certificate << ": "
                    << SSLError(ERR_get_error());
-        return NULL;
+        return -1;
     }
 
     // Load the certificate chain
 #if (OPENSSL_VERSION_NUMBER >= 0x10002000L)
-    SSL_CTX_clear_chain_certs(ssl_ctx.get());
+    SSL_CTX_clear_chain_certs(ctx);
 #else
-    if (ssl_ctx->extra_certs != NULL) {
-        sk_X509_pop_free(ssl_ctx->extra_certs, X509_free);
-        ssl_ctx->extra_certs = NULL;
+    if (ctx->extra_certs != NULL) {
+        sk_X509_pop_free(ctx->extra_certs, X509_free);
+        ctx->extra_certs = NULL;
     }
 #endif
     X509* ca = NULL;
     while ((ca = PEM_read_bio_X509(cbio.get(), NULL, 0, NULL))) {
-        if (SSL_CTX_add_extra_chain_cert(ssl_ctx.get(), ca) != 1) {
+        if (SSL_CTX_add_extra_chain_cert(ctx, ca) != 1) {
             LOG(ERROR) << "Fail to load chain certificate in "
                        << certificate << ": " << SSLError(ERR_get_error());
             X509_free(ca);
-            return NULL;
+            return -1;
         }
     }
 
@@ -331,17 +346,25 @@ SSL_CTX* CreateSSLContext(const std::string& certificate,
                      || ERR_GET_REASON(err) != PEM_R_NO_START_LINE)) {
         LOG(ERROR) << "Fail to read chain certificate in "
                    << certificate << ": " << SSLError(ERR_get_error());
-        return NULL;
+        return -1;
     }
     ERR_clear_error();
 
     // Validate certificate and private key 
-    if (SSL_CTX_check_private_key(ssl_ctx.get()) != 1) {
+    if (SSL_CTX_check_private_key(ctx) != 1) {
         LOG(ERROR) << "Fail to verify " << private_key << ": "
                    << SSLError(ERR_get_error());
-        return NULL;
+        return -1;
     }
 
+    if (hostnames != NULL) {
+        ExtractHostnames(x.get(), hostnames);
+    }
+    return 0;
+}
+
+static int SetSSLOptions(SSL_CTX* ctx, const std::string& ciphers,
+                         int protocols, const VerifyOptions& verify) {
     long ssloptions = SSL_OP_ALL    // All known workarounds for bugs
             | SSL_OP_NO_SSLv2
 #ifdef SSL_OP_NO_COMPRESSION
@@ -349,36 +372,135 @@ SSL_CTX* CreateSSLContext(const std::string& certificate,
 #endif  // SSL_OP_NO_COMPRESSION
             | SSL_OP_CIPHER_SERVER_PREFERENCE
             | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION;
-    if (options.disable_ssl3) {
+
+    if (!(protocols & SSLv3)) {
         ssloptions |= SSL_OP_NO_SSLv3;
     }
+    if (!(protocols & TLSv1)) {
+        ssloptions |= SSL_OP_NO_TLSv1;
+    }
+
+#ifdef SSL_OP_NO_TLSv1_1
+    if (!(protocols & TLSv1_1)) {
+        ssloptions |= SSL_OP_NO_TLSv1_1;
+    }
+#endif  // SSL_OP_NO_TLSv1_1
+
+#ifdef SSL_OP_NO_TLSv1_2
+    if (!(protocols & TLSv1_2)) {
+        ssloptions |= SSL_OP_NO_TLSv1_2;
+    }
+#endif  // SSL_OP_NO_TLSv1_2
+    SSL_CTX_set_options(ctx, ssloptions);
 
     long sslmode = SSL_MODE_ENABLE_PARTIAL_WRITE
-#ifdef SSL_MODE_RELEASE_BUFFERS
-            | SSL_MODE_RELEASE_BUFFERS
-#endif  // SSL_MODE_RELEASE_BUFFERS
             | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER;
-    SSL_CTX_set_options(ssl_ctx.get(), ssloptions);
-    SSL_CTX_set_mode(ssl_ctx.get(), sslmode);
+    SSL_CTX_set_mode(ctx, sslmode);
 
-    // TODO: Support client certification validation
-    SSL_CTX_set_verify(ssl_ctx.get(), SSL_VERIFY_NONE, NULL);
-
-    if (!options.ciphers.empty() &&
-        SSL_CTX_set_cipher_list(ssl_ctx.get(),
-                                options.ciphers.c_str()) != 1) {
-        LOG(ERROR) << "Fail to set cipher list to " << options.ciphers
+    if (!ciphers.empty() &&
+        SSL_CTX_set_cipher_list(ctx, ciphers.c_str()) != 1) {
+        LOG(ERROR) << "Fail to set cipher list to " << ciphers
                    << ": " << SSLError(ERR_get_error());
+        return -1;
+    }
+
+    // TODO: Verify the CNAME in certificate matches the requesting host
+    if (verify.verify_depth > 0) {
+        SSL_CTX_set_verify(ctx, (SSL_VERIFY_PEER
+                                 | SSL_VERIFY_FAIL_IF_NO_PEER_CERT), NULL);
+        SSL_CTX_set_verify_depth(ctx, verify.verify_depth);
+        std::string cafile = verify.ca_file_path;
+        if (cafile.empty()) {
+            cafile = X509_get_default_cert_area() + std::string("/cert.pem");
+        }
+        if (SSL_CTX_load_verify_locations(ctx, cafile.c_str(), NULL) == 0) {
+            if (verify.ca_file_path.empty()) {
+                LOG(WARNING) << "Fail to load default CA file " << cafile
+                             << ": " << SSLError(ERR_get_error());
+            } else {
+                LOG(ERROR) << "Fail to load CA file " << cafile
+                           << ": " << SSLError(ERR_get_error());
+                return -1;
+            }
+        }
+    } else {
+        SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
+    }
+
+    SSL_CTX_set_info_callback(ctx, SSLInfoCallback);
+#if OPENSSL_VERSION_NUMBER >= 0x00907000L
+    // To detect and protect from heartbleed attack
+    SSL_CTX_set_msg_callback(ctx, SSLMessageCallback);
+#endif
+
+    return 0;
+}
+
+SSL_CTX* CreateClientSSLContext(const ChannelSSLOptions& options) {
+    if (!options.enable) {
         return NULL;
     }
 
+    std::unique_ptr<SSL_CTX, FreeSSLCTX> ssl_ctx(
+        SSL_CTX_new(SSLv23_client_method()));
+    if (!ssl_ctx) {
+        LOG(ERROR) << "Fail to new SSL_CTX: " << SSLError(ERR_get_error());
+        return NULL;
+    }
+
+    if (!options.client_cert.certificate.empty()
+        && LoadCertificate(ssl_ctx.get(),
+                           options.client_cert.certificate,
+                           options.client_cert.private_key, NULL) != 0) {
+        return NULL;
+    }
+
+    int protocols = ParseSSLProtocols(options.protocols);
+    if (protocols < 0
+        || SetSSLOptions(ssl_ctx.get(), options.ciphers,
+                         protocols, options.verify) != 0) {
+        return NULL;
+    }
+
+    SSL_CTX_set_session_cache_mode(ssl_ctx.get(), SSL_SESS_CACHE_CLIENT);
+    return ssl_ctx.release();
+}
+
+SSL_CTX* CreateServerSSLContext(const std::string& certificate,
+                                const std::string& private_key,
+                                const ServerSSLOptions& options,
+                                std::vector<std::string>* hostnames) {
+    std::unique_ptr<SSL_CTX, FreeSSLCTX> ssl_ctx(
+        SSL_CTX_new(SSLv23_server_method()));
+    if (!ssl_ctx) {
+        LOG(ERROR) << "Fail to new SSL_CTX: " << SSLError(ERR_get_error());
+        return NULL;
+    }
+
+    if (LoadCertificate(ssl_ctx.get(), certificate,
+                        private_key, hostnames) != 0) {
+        return NULL;
+    }
+
+    int protocols = TLSv1 | TLSv1_1 | TLSv1_2;
+    if (!options.disable_ssl3) {
+        protocols |= SSLv3;
+    }
+    if (SetSSLOptions(ssl_ctx.get(), options.ciphers,
+                      protocols, options.verify) != 0) {
+        return NULL;
+    }
+
+#ifdef SSL_MODE_RELEASE_BUFFERS
+    if (options.release_buffer) {
+        long sslmode = SSL_CTX_get_mode(ssl_ctx.get());
+        sslmode |= SSL_MODE_RELEASE_BUFFERS;
+        SSL_CTX_set_mode(ssl_ctx.get(), sslmode);
+    }
+#endif  // SSL_MODE_RELEASE_BUFFERS
+
     SSL_CTX_set_timeout(ssl_ctx.get(), options.session_lifetime_s);
     SSL_CTX_sess_set_cache_size(ssl_ctx.get(), options.session_cache_size);
-
-    SSL_CTX_set_info_callback(ssl_ctx.get(), SSLInfoCallback);
-#if OPENSSL_VERSION_NUMBER >= 0x00907000L
-    SSL_CTX_set_msg_callback(ssl_ctx.get(), SSLMessageCallback);
-#endif
 
 #ifndef OPENSSL_NO_DH
     SSL_CTX_set_tmp_dh_callback(ssl_ctx.get(), SSLGetDHCallback);
@@ -398,12 +520,8 @@ SSL_CTX* CreateSSLContext(const std::string& certificate,
 
 #endif  // OPENSSL_NO_DH
 
-    if (hostnames != NULL) {
-        ExtractHostnames(x.get(), hostnames);
-    }
     return ssl_ctx.release();
 }
-
 
 SSL* CreateSSLSession(SSL_CTX* ctx, SocketId id, int fd, bool server_mode) {
     if (ctx == NULL) {
@@ -420,6 +538,7 @@ SSL* CreateSSLSession(SSL_CTX* ctx, SocketId id, int fd, bool server_mode) {
         SSL_free(ssl);
         return NULL;
     }
+
     if (server_mode) {
         SSL_set_accept_state(ssl);
     } else {
@@ -427,6 +546,21 @@ SSL* CreateSSLSession(SSL_CTX* ctx, SocketId id, int fd, bool server_mode) {
     }
     SSL_set_app_data(ssl, id);
     return ssl;
+}
+
+void AddBIOBuffer(SSL* ssl, int fd, int bufsize) {
+    BIO* rbio = BIO_new(BIO_f_buffer());
+    BIO_set_buffer_size(rbio, bufsize);
+    BIO* rfd = BIO_new(BIO_s_fd());
+    BIO_set_fd(rfd, fd, 0);
+    rbio  = BIO_push(rbio, rfd);
+
+    BIO* wbio = BIO_new(BIO_f_buffer());
+    BIO_set_buffer_size(wbio, bufsize);
+    BIO* wfd = BIO_new(BIO_s_fd());
+    BIO_set_fd(wfd, fd, 0);
+    wbio = BIO_push(wbio, wfd);
+    SSL_set_bio(ssl, rbio, wbio);
 }
 
 SSLState DetectSSLState(int fd, int* error_code) {
@@ -637,3 +771,50 @@ int SSLDHInit() {
 }
 
 } // namespace brpc
+
+std::ostream& operator<<(std::ostream& os, SSL* ssl) {
+    os << "[SSL HANDSHAKE]"
+       << "\n* cipher: " << SSL_get_cipher(ssl)
+       << "\n* protocol: " << SSL_get_version(ssl)
+       << "\n* verify: " << (SSL_get_verify_mode(ssl) & SSL_VERIFY_PEER
+                             ? "success" : "none")
+       << "\n";
+
+    X509* cert = SSL_get_peer_certificate(ssl);
+    if (cert) {
+        os << "\n" << cert;
+    }
+    return os;
+}
+
+std::ostream& operator<<(std::ostream& os, X509* cert) {
+    BIO* buf = BIO_new(BIO_s_mem());
+    if (buf == NULL) {
+        return os;
+    }
+    BIO_printf(buf, "[CERTIFICATE]");
+
+    BIO_printf(buf, "\n* subject: ");
+    X509_NAME_print(buf, X509_get_subject_name(cert), 0);
+    BIO_printf(buf, "\n* start date: ");
+    ASN1_TIME_print(buf, X509_get_notBefore(cert));
+    BIO_printf(buf, "\n* expire date: ");
+    ASN1_TIME_print(buf, X509_get_notAfter(cert));
+
+    BIO_printf(buf, "\n* common name: ");
+    std::vector<std::string> hostnames;
+    brpc::ExtractHostnames(cert, &hostnames);
+    for (size_t i = 0; i < hostnames.size(); ++i) {
+        BIO_printf(buf, "%s; ", hostnames[i].c_str());
+    }
+
+    BIO_printf(buf, "\n* issuer: ");
+    X509_NAME_print(buf, X509_get_issuer_name(cert), 0);
+
+    BIO_printf(buf, "\n");
+
+    char* bufp = NULL;
+    int len = BIO_get_mem_data(buf, &bufp);
+    os << butil::StringPiece(bufp, len);
+    return os;
+}

@@ -8,6 +8,13 @@ brpc depends on following packages:
 * [protobuf](https://github.com/google/protobuf): Serializations of messages, interfaces of services.
 * [leveldb](https://github.com/google/leveldb): Required by [/rpcz](rpcz.md) to record RPCs for tracing.
 
+# Supported Environment
+
+* [Ubuntu/LinuxMint/WSL](#ubuntulinuxmintwsl)
+* [Fedora/CentOS](#fedoracentos)
+* [Linux with self-built deps](#linux-with-self-built-deps)
+* [MacOS](#macos)
+
 ## Ubuntu/LinuxMint/WSL
 ### Prepare deps
 
@@ -18,7 +25,7 @@ $ sudo apt-get install git g++ make libssl-dev
 
 Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
 ```
-$ sudo apt-get install realpath libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
+$ sudo apt-get install libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
 ```
 
 If you need to statically link leveldb:
@@ -210,6 +217,78 @@ To change compiler to clang, overwrite environment variable CC and CXX to clang 
 
 To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
 
+## MacOS
+
+Note: In the same running environment, the performance of the current Mac version is about 2.5 times worse than the Linux version. If your service is performance-critical, do not use MacOS as your production environment.
+
+### Prepare deps
+
+Install common deps:
+```
+$ brew install openssl git gnu-getopt coreutils
+```
+
+Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
+```
+$ brew install gflags protobuf leveldb
+```
+
+### Compile brpc with config_brpc.sh
+git clone brpc, cd into the repo and run
+```
+$ sh config_brpc.sh --headers=/usr/local/include --libs=/usr/local/lib --cc=clang --cxx=clang++
+$ make
+```
+To not link debugging symbols, add `--nodebugsymbols` and compiled binaries will be much smaller.
+
+**Run example**
+
+```
+$ cd example/echo_c++
+$ make
+$ ./echo_server &
+$ ./echo_client
+```
+
+Examples link brpc statically, if you need to link the shared version, `make clean` and `LINK_SO=1 make`
+
+To run examples with cpu/heap profilers, install `gperftools` and re-run `config_brpc.sh` before compiling.
+
+**Run tests**
+
+Install and compile googletest (which is not compiled yet):
+
+```shell
+git clone https://github.com/google/googletest && cd googletest/googletest && mkdir build && cd build && cmake .. && make && sudo mv libgtest* /usr/lib/ && cd -
+```
+
+Rerun `config_brpc.sh`, `make` in test/, and `sh run_tests.sh`
+
+### Compile brpc with cmake
+```
+$ mkdir build && cd build && cmake .. && make
+```
+
+To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
+
+**Run example with cmake**
+```
+$ cd example/echo_c++
+$ mkdir build && cd build && cmake .. && make
+$ ./echo_server &
+$ ./echo_client
+```
+Examples link brpc statically, if you need to link the shared version, use `cmake -DEXAMPLE_LINK_SO=ON ..`
+
+**Run tests**
+
+Install gtest like just written above.
+
+```
+$ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make
+$ cd test && sh run_tests.sh
+```
+
 # Supported deps
 
 ## GCC: 4.8-7.1
@@ -266,7 +345,7 @@ When you remove tcmalloc, not only remove the linkage with tcmalloc but also the
 
 ## glog: 3.3+
 
-brpc implements a default [logging utility](../../src/butil/logging.h) which conflicts with glog. To replace this with glog, add *--with-glog* to config_brpc.sh or add `-DBRPC_WITH_GLOG=ON` to cmake.
+brpc implements a default [logging utility](../../src/butil/logging.h) which conflicts with glog. To replace this with glog, add *--with-glog* to config_brpc.sh or add `-DWITH_GLOG=ON` to cmake.
 
 ## valgrind: 3.8+
 

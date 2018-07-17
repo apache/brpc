@@ -1,11 +1,11 @@
 // Copyright (c) 2014 Baidu, Inc.
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -15,6 +15,7 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 
 #include <openssl/ssl.h>
+#include <openssl/conf.h>
 #include <gflags/gflags.h>
 #include <fcntl.h>                               // O_RDONLY
 #include <signal.h>
@@ -28,6 +29,7 @@
 #include "brpc/policy/list_naming_service.h"
 #include "brpc/policy/domain_naming_service.h"
 #include "brpc/policy/remote_file_naming_service.h"
+#include "brpc/policy/consul_naming_service.h"
 
 // Load Balancers
 #include "brpc/policy/round_robin_load_balancer.h"
@@ -59,6 +61,9 @@
 #include "brpc/policy/nshead_mcpack_protocol.h"
 #include "brpc/policy/rtmp_protocol.h"
 #include "brpc/policy/esp_protocol.h"
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+# include "brpc/policy/thrift_protocol.h"
+#endif
 
 #include "brpc/input_messenger.h"     // get_or_new_client_side_messenger
 #include "brpc/socket_map.h"          // SocketMapList
@@ -94,6 +99,7 @@ using namespace policy;
 
 const char* const DUMMY_SERVER_PORT_FILE = "dummy_server.port";
 
+
 struct GlobalExtensions {
     GlobalExtensions()
         : ch_mh_lb(MurmurHash32)
@@ -105,6 +111,7 @@ struct GlobalExtensions {
     ListNamingService lns;
     DomainNamingService dns;
     RemoteFileNamingService rfns;
+    ConsulNamingService cns;
 
     RoundRobinLoadBalancer rr_lb;
     WeightedRoundRobinLoadBalancer wrr_lb;
@@ -163,7 +170,7 @@ extern butil::static_atomic<int> g_running_server_count;
 static int GetRunningServerCount(void*) {
     return g_running_server_count.load(butil::memory_order_relaxed);
 }
-    
+
 // Update global stuff periodically.
 static void* GlobalUpdate(void*) {
     // Expose variables.
@@ -180,7 +187,7 @@ static void* GlobalUpdate(void*) {
         "iobuf_block_memory", GetIOBufBlockMemory, NULL);
     bvar::PassiveStatus<int> var_running_server_count(
         "rpc_server_count", GetRunningServerCount, NULL);
-    
+
     butil::FileWatcher fw;
     if (fw.init_from_not_exist(DUMMY_SERVER_PORT_FILE) < 0) {
         LOG(FATAL) << "Fail to init FileWatcher on `" << DUMMY_SERVER_PORT_FILE << "'";
@@ -201,16 +208,16 @@ static void* GlobalUpdate(void*) {
                 break;
             }
             consecutive_nosleep = 0;
-        } else {            
+        } else {
             if (++consecutive_nosleep >= WARN_NOSLEEP_THRESHOLD) {
                 consecutive_nosleep = 0;
                 LOG(WARNING) << __FUNCTION__ << " is too busy!";
             }
         }
         last_time_us = butil::gettimeofday_us();
-        
+
         TrackMe();
-        
+
         if (!IsDummyServerRunning()
             && g_running_server_count.load(butil::memory_order_relaxed) == 0
             && fw.check_and_consume() > 0) {
@@ -279,14 +286,14 @@ static void GlobalInitializeOrDieImpl() {
     // may be called before main() only seeing gflags with default  //
     // values even if the gflags will be set after main().          //
     //////////////////////////////////////////////////////////////////
-    
-    // Ignore SIGPIPE. 
+
+    // Ignore SIGPIPE.
     struct sigaction oldact;
-    if (sigaction(SIGPIPE, NULL, &oldact) != 0 || 
+    if (sigaction(SIGPIPE, NULL, &oldact) != 0 ||
             (oldact.sa_handler == NULL && oldact.sa_sigaction == NULL)) {
         CHECK(NULL == signal(SIGPIPE, SIG_IGN));
     }
-    
+
     // Make GOOGLE_LOG print to comlog device
     SetLogHandler(&BaiduStreamingLogHandler);
 
@@ -296,6 +303,7 @@ static void GlobalInitializeOrDieImpl() {
 
     // Initialize openssl library
     SSL_library_init();
+    // RPC doesn't require openssl.cnf, users can load it by themselves if needed
     SSL_load_error_strings();
     if (SSLThreadInit() != 0 || SSLDHInit() != 0) {
         exit(1);
@@ -303,7 +311,7 @@ static void GlobalInitializeOrDieImpl() {
 
     // Defined in http_rpc_protocol.cpp
     InitCommonStrings();
-    
+
     // Leave memory of these extensions to process's clean up.
     g_ext = new(std::nothrow) GlobalExtensions();
     if (NULL == g_ext) {
@@ -317,6 +325,7 @@ static void GlobalInitializeOrDieImpl() {
     NamingServiceExtension()->RegisterOrDie("list", &g_ext->lns);
     NamingServiceExtension()->RegisterOrDie("http", &g_ext->dns);
     NamingServiceExtension()->RegisterOrDie("remotefile", &g_ext->rfns);
+    NamingServiceExtension()->RegisterOrDie("consul", &g_ext->cns);
 
     // Load Balancers
     LoadBalancerExtension()->RegisterOrDie("rr", &g_ext->rr_lb);
@@ -355,7 +364,7 @@ static void GlobalInitializeOrDieImpl() {
     }
 
     Protocol streaming_protocol = { ParseStreamingMessage,
-                                    NULL, NULL, ProcessStreamingMessage, 
+                                    NULL, NULL, ProcessStreamingMessage,
                                     ProcessStreamingMessage,
                                     NULL, NULL, NULL,
                                     CONNECTION_TYPE_SINGLE, "streaming_rpc" };
@@ -363,7 +372,7 @@ static void GlobalInitializeOrDieImpl() {
     if (RegisterProtocol(PROTOCOL_STREAMING_RPC, streaming_protocol) != 0) {
         exit(1);
     }
-    
+
     Protocol http_protocol = { ParseHttpMessage,
                                SerializeHttpRequest, PackHttpRequest,
                                ProcessHttpRequest, ProcessHttpResponse,
@@ -374,7 +383,7 @@ static void GlobalInitializeOrDieImpl() {
     if (RegisterProtocol(PROTOCOL_HTTP, http_protocol) != 0) {
         exit(1);
     }
-    
+
     Protocol hulu_protocol = { ParseHuluMessage,
                                SerializeRequestDefault, PackHuluRequest,
                                ProcessHuluRequest, ProcessHuluResponse,
@@ -417,7 +426,7 @@ static void GlobalInitializeOrDieImpl() {
         exit(1);
     }
 
-    // Only valid at server side. We generalize all the protocols that 
+    // Only valid at server side. We generalize all the protocols that
     // prefixes with nshead as `nshead_protocol' and specify the content
     // parsing after nshead by ServerOptions.nshead_service.
     Protocol nshead_protocol = { ParseNsheadMessage,
@@ -458,6 +467,19 @@ static void GlobalInitializeOrDieImpl() {
         exit(1);
     }
 
+// Use Macro is more straight forward than weak link technology(becasue of static link issue)
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+    Protocol thrift_binary_protocol = {
+        policy::ParseThriftMessage,
+        policy::SerializeThriftRequest, policy::PackThriftRequest,
+        policy::ProcessThriftRequest, policy::ProcessThriftResponse,
+        policy::VerifyThriftRequest, NULL, NULL,
+        CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };
+    if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
+        exit(1);
+    }
+#endif
+
     // Only valid at client side
     Protocol ubrpc_compack_protocol = {
         ParseNsheadMessage,
@@ -488,7 +510,7 @@ static void GlobalInitializeOrDieImpl() {
     if (RegisterProtocol(PROTOCOL_NSHEAD_MCPACK, nshead_mcpack_protocol) != 0) {
         exit(1);
     }
-    
+
     Protocol rtmp_protocol = {
         ParseRtmpMessage,
         SerializeRtmpRequest, PackRtmpRequest,
@@ -536,7 +558,7 @@ static void GlobalInitializeOrDieImpl() {
         InitUserCodeBackupPoolOnceOrDie();
     }
 
-    // We never join GlobalUpdate, let it quit with the process. 
+    // We never join GlobalUpdate, let it quit with the process.
     bthread_t th;
     CHECK(bthread_start_background(&th, NULL, GlobalUpdate, NULL) == 0)
         << "Fail to start GlobalUpdate";

@@ -26,7 +26,7 @@ json也可以写在文件中，假如./input.json包含了上述两个请求，-
 
 - -proto：指定相关的proto文件名。
 - -method：指定方法名，形式必须是package.service.method。
-- -server：当-lb_policy为空时，是服务器的ip:port；当-lb_policy不为空时，是集群地址，比如bns://node-name, file://server_list等等。具体见[名字服务](client.md#名字服务)。
+- -server：当-lb_policy为空时，是服务器的ip:port；当-lb_policy不为空时，是集群地址，比如bns://node-name, file://server_list等等。具体见[命名服务](client.md#命名服务)。
 - -input: 指定json请求或包含json请求的文件。r32157后json间不需要分隔符，r32157前json间用分号分隔。
 
 可选参数:

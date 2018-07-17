@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 2.8.10)
 project(brpc C CXX)
 
+# Enable MACOSX_RPATH. Run "cmake --help-policy CMP0042" for policy details.
+if(POLICY CMP0042)
+    cmake_policy(SET CMP0042 NEW)
+endif()
+
+set(BRPC_VERSION 0.9.0)
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # require at least gcc 4.8
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.8)
@@ -15,19 +22,28 @@ else()
     message(WARNING "You are using an unsupported compiler! Compilation has only been tested with Clang and GCC.")
 endif()
 
-option(BRPC_WITH_GLOG "With glog" OFF)
+option(WITH_GLOG "With glog" OFF)
 option(DEBUG "Print debug logs" OFF)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
+option(WITH_THRIFT "With thrift framed protocol supported" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 
 set(WITH_GLOG_VAL "0")
-if(BRPC_WITH_GLOG)
+if(WITH_GLOG)
     set(WITH_GLOG_VAL "1")
 endif()
 
 if(WITH_DEBUG_SYMBOLS)
     set(DEBUG_SYMBOL "-g")
 endif()
+
+if(WITH_THRIFT)
+    set(THRIFT_CPP_FLAG "-DENABLE_THRIFT_FRAMED_PROTOCOL")
+    set(THRIFTNB_LIB "thriftnb")
+    set(THRIFT_LIB "thrift")
+endif()
+
+include(GNUInstallDirs)
 
 configure_file(${CMAKE_SOURCE_DIR}/config.h.in ${CMAKE_SOURCE_DIR}/src/butil/config.h @ONLY)
 
@@ -56,9 +72,17 @@ execute_process(
     OUTPUT_VARIABLE BRPC_REVISION
 )
 
-set(CMAKE_CPP_FLAGS "-DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    include(CheckFunctionExists)
+    CHECK_FUNCTION_EXISTS(clock_gettime HAVE_CLOCK_GETTIME)
+    if(NOT HAVE_CLOCK_GETTIME)
+        set(DEFINE_CLOCK_GETTIME "-DNO_CLOCK_GETTIME_IN_MAC")
+    endif()
+endif()
+
+set(CMAKE_CPP_FLAGS "${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\\\"${BRPC_REVISION}\\\" -D__STRICT_ANSI__")
-set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEBUG_SYMBOL}")
+set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEBUG_SYMBOL} ${THRIFT_CPP_FLAG}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
 set(CMAKE_C_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer")
 
@@ -97,7 +121,7 @@ if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
     message(FATAL_ERROR "Fail to find leveldb")
 endif()
 
-if(BRPC_WITH_GLOG)
+if(WITH_GLOG)
     find_path(GLOG_INCLUDE_PATH NAMES glog/logging.h)
     find_library(GLOG_LIB NAMES glog)
     if((NOT GLOG_INCLUDE_PATH) OR (NOT GLOG_LIB))
@@ -111,10 +135,19 @@ if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(OPENSSL_ROOT_DIR
+        "/usr/local/opt/openssl"    # Homebrew installed OpenSSL
+        )
+endif()
+
+include(FindOpenSSL)
+
 include_directories(
         ${GFLAGS_INCLUDE_PATH}
         ${PROTOBUF_INCLUDE_DIRS}
         ${LEVELDB_INCLUDE_PATH}
+        ${OPENSSL_INCLUDE_DIR}
         )
 
 set(DYNAMIC_LIB
@@ -123,12 +156,36 @@ set(DYNAMIC_LIB
     ${LEVELDB_LIB}
     ${PROTOC_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
-    rt
-    ssl
-    crypto
+    ${THRIFT_LIB}
+    ${THRIFTNB_LIB}
+    ${OPENSSL_LIBRARIES}
+    ${OPENSSL_CRYPTO_LIBRARY}
     dl
     z
     )
+set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ldl -lz")
+
+if(WITH_GLOG)
+    set(DYNAMIC_LIB ${DYNAMIC_LIB} ${GLOG_LIB})
+    set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lglog")
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(DYNAMIC_LIB ${DYNAMIC_LIB} rt)
+    set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lrt")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(DYNAMIC_LIB ${DYNAMIC_LIB}
+        pthread
+        "-framework CoreFoundation"
+        "-framework CoreGraphics"
+        "-framework CoreData"
+        "-framework CoreText"
+        "-framework Security"
+        "-framework Foundation"
+        "-Wl,-U,_MallocExtension_ReleaseFreeMemory"
+        "-Wl,-U,_ProfilerStart"
+        "-Wl,-U,_ProfilerStop")
+endif()
 
 # for *.so
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
@@ -177,7 +234,6 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/files/scoped_file.cc
     ${CMAKE_SOURCE_DIR}/src/butil/files/scoped_temp_dir.cc
     ${CMAKE_SOURCE_DIR}/src/butil/file_util.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/file_util_linux.cc
     ${CMAKE_SOURCE_DIR}/src/butil/file_util_posix.cc
     ${CMAKE_SOURCE_DIR}/src/butil/guid.cc
     ${CMAKE_SOURCE_DIR}/src/butil/guid_posix.cc
@@ -192,6 +248,7 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/memory/weak_ptr.cc
     ${CMAKE_SOURCE_DIR}/src/butil/posix/file_descriptor_shuffle.cc
     ${CMAKE_SOURCE_DIR}/src/butil/posix/global_descriptors.cc
+    ${CMAKE_SOURCE_DIR}/src/butil/process_util.cc
     ${CMAKE_SOURCE_DIR}/src/butil/rand_util.cc
     ${CMAKE_SOURCE_DIR}/src/butil/rand_util_posix.cc
     ${CMAKE_SOURCE_DIR}/src/butil/fast_rand.cpp
@@ -207,7 +264,6 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/strings/string_util.cc
     ${CMAKE_SOURCE_DIR}/src/butil/strings/string_util_constants.cc
     ${CMAKE_SOURCE_DIR}/src/butil/strings/stringprintf.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/strings/sys_string_conversions_posix.cc
     ${CMAKE_SOURCE_DIR}/src/butil/strings/utf_offset_string_conversions.cc
     ${CMAKE_SOURCE_DIR}/src/butil/strings/utf_string_conversion_utils.cc
     ${CMAKE_SOURCE_DIR}/src/butil/strings/utf_string_conversions.cc
@@ -215,7 +271,6 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/synchronization/condition_variable_posix.cc
     ${CMAKE_SOURCE_DIR}/src/butil/synchronization/waitable_event_posix.cc
     ${CMAKE_SOURCE_DIR}/src/butil/threading/non_thread_safe_impl.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/threading/platform_thread_linux.cc
     ${CMAKE_SOURCE_DIR}/src/butil/threading/platform_thread_posix.cc
     ${CMAKE_SOURCE_DIR}/src/butil/threading/simple_thread.cc
     ${CMAKE_SOURCE_DIR}/src/butil/threading/thread_checker_impl.cc
@@ -253,10 +308,37 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/popen.cpp
     )
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(BUTIL_SOURCES ${BUTIL_SOURCES}
+        ${CMAKE_SOURCE_DIR}/src/butil/file_util_linux.cc
+        ${CMAKE_SOURCE_DIR}/src/butil/threading/platform_thread_linux.cc
+        ${CMAKE_SOURCE_DIR}/src/butil/strings/sys_string_conversions_posix.cc)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(BUTIL_SOURCES ${BUTIL_SOURCES}
+        ${CMAKE_SOURCE_DIR}/src/butil/mac/bundle_locations.mm
+        ${CMAKE_SOURCE_DIR}/src/butil/mac/foundation_util.mm
+        ${CMAKE_SOURCE_DIR}/src/butil/file_util_mac.mm
+        ${CMAKE_SOURCE_DIR}/src/butil/threading/platform_thread_mac.mm
+        ${CMAKE_SOURCE_DIR}/src/butil/strings/sys_string_conversions_mac.mm
+        ${CMAKE_SOURCE_DIR}/src/butil/time/time_mac.cc
+        ${CMAKE_SOURCE_DIR}/src/butil/mac/scoped_mach_port.cc)
+endif()
+
 file(GLOB_RECURSE BVAR_SOURCES "${CMAKE_SOURCE_DIR}/src/bvar/*.cpp")
 file(GLOB_RECURSE BTHREAD_SOURCES "${CMAKE_SOURCE_DIR}/src/bthread/*.cpp")
 file(GLOB_RECURSE JSON2PB_SOURCES "${CMAKE_SOURCE_DIR}/src/json2pb/*.cpp")
 file(GLOB_RECURSE BRPC_SOURCES "${CMAKE_SOURCE_DIR}/src/brpc/*.cpp")
+file(GLOB_RECURSE THRIFT_SOURCES "thrift*.cpp")
+
+if(WITH_THRIFT)
+    message("brpc compile with thrift proctol")
+else()
+    # Remove thrift sources
+    foreach(v ${THRIFT_SOURCES})
+        list(REMOVE_ITEM BRPC_SOURCES ${v})
+    endforeach()
+    set(THRIFT_SOURCES "")
+endif()
 
 set(MCPACK2PB_SOURCES
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/field_type.cpp
@@ -265,36 +347,31 @@ set(MCPACK2PB_SOURCES
     ${CMAKE_SOURCE_DIR}/src/mcpack2pb/serializer.cpp
     )
 
-file(GLOB PROTOS "${CMAKE_SOURCE_DIR}/src/*.proto")
-list(APPEND PROTO_FLAGS -I${CMAKE_CURRENT_BINARY_DIR})
-foreach(PROTO ${PROTOS})
-    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/${PROTO_WE}.pb.cc")
-    execute_process(
-        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src ${PROTO}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
-endforeach()
-
-file(GLOB BRPC_PROTOS "src/brpc/*.proto")
-foreach(PROTO ${BRPC_PROTOS})
-    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/${PROTO_WE}.pb.cc")
-    execute_process(
-        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/ ${PROTO}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
-endforeach()
-
-file(GLOB BRPC_POLICY_PROTOS "src/brpc/policy/*.proto")
-foreach(PROTO ${BRPC_POLICY_PROTOS})
-    get_filename_component(PROTO_WE ${PROTO} NAME_WE)
-    list(APPEND PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/brpc/policy/${PROTO_WE}.pb.cc")
-    execute_process(
-        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} ${PROTO_FLAGS} --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${PROTOBUF_INCLUDE_DIR} --proto_path=${CMAKE_SOURCE_DIR}/src --proto_path=${CMAKE_SOURCE_DIR}/src/brpc/policy ${PROTO}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
-endforeach()
+include(CompileProto)
+set(PROTO_FILES idl_options.proto
+                brpc/rtmp.proto
+                brpc/rpc_dump.proto
+                brpc/get_favicon.proto
+                brpc/span.proto
+                brpc/builtin_service.proto
+                brpc/get_js.proto
+                brpc/errno.proto
+                brpc/nshead_meta.proto
+                brpc/options.proto
+                brpc/policy/baidu_rpc_meta.proto
+                brpc/policy/hulu_pbrpc_meta.proto
+                brpc/policy/public_pbrpc_meta.proto
+                brpc/policy/sofa_pbrpc_meta.proto
+                brpc/policy/mongo.proto
+                brpc/trackme.proto
+                brpc/streaming_rpc_meta.proto)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/output/include/brpc)
+set(PROTOC_FLAGS ${PROTOC_FLAGS} -I${PROTOBUF_INCLUDE_DIR})
+compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_BINARY_DIR}
+                                    ${CMAKE_BINARY_DIR}/output/include
+                                    ${CMAKE_SOURCE_DIR}/src
+                                    "${PROTO_FILES}")
+add_library(PROTO_LIB OBJECT ${PROTO_SRCS} ${PROTO_HDRS})
 
 set(SOURCES
     ${BVAR_SOURCES}
@@ -302,7 +379,7 @@ set(SOURCES
     ${JSON2PB_SOURCES}
     ${MCPACK2PB_SOURCES}
     ${BRPC_SOURCES}
-    ${PROTO_SRCS}
+    ${THRIFT_SOURCES}
     )
 
 add_subdirectory(src)
@@ -311,11 +388,9 @@ if(BUILD_UNIT_TESTS)
 endif()
 add_subdirectory(tools)
 
-file(COPY ${CMAKE_CURRENT_BINARY_DIR}/idl_options.pb.h
-     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include)
 file(COPY ${CMAKE_CURRENT_BINARY_DIR}/brpc/
         DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include/brpc/
-        FILES_MATCHING 
+        FILES_MATCHING
         PATTERN "*.h"
         PATTERN "*.hpp"
         )
@@ -326,8 +401,12 @@ file(COPY ${CMAKE_SOURCE_DIR}/src/
         PATTERN "*.hpp"
         )
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/output/include/
-        DESTINATION include
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         FILES_MATCHING
         PATTERN "*.h"
         PATTERN "*.hpp"
         )
+
+# Install pkgconfig
+configure_file(cmake/brpc.pc.in ${CMAKE_BINARY_DIR}/brpc.pc @ONLY)
+install(FILES ${CMAKE_BINARY_DIR}/brpc.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)

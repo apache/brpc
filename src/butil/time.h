@@ -24,6 +24,18 @@
 #include <sys/time.h>                        // timeval, gettimeofday
 #include <stdint.h>                          // int64_t, uint64_t
 
+#if defined(NO_CLOCK_GETTIME_IN_MAC)
+#include <mach/mach.h>
+# define CLOCK_REALTIME CALENDAR_CLOCK
+# define CLOCK_MONOTONIC SYSTEM_CLOCK
+
+typedef int clockid_t;
+
+// clock_gettime is not available in MacOS < 10.12
+int clock_gettime(clockid_t id, timespec* time);
+
+#endif
+
 namespace butil {
 
 // Get SVN revision of this copy.

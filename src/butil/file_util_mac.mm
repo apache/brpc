@@ -2,18 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/file_util.h"
+#include "butil/file_util.h"
 
 #import <Foundation/Foundation.h>
 #include <copyfile.h>
 
-#include "base/basictypes.h"
-#include "base/files/file_path.h"
-#include "base/mac/foundation_util.h"
-#include "base/strings/string_util.h"
-#include "base/threading/thread_restrictions.h"
+#include "butil/basictypes.h"
+#include "butil/files/file_path.h"
+#include "butil/mac/foundation_util.h"
+#include "butil/strings/string_util.h"
+#include "butil/threading/thread_restrictions.h"
 
-namespace base {
+namespace butil {
 namespace internal {
 
 bool CopyFileUnsafe(const FilePath& from_path, const FilePath& to_path) {
@@ -24,18 +24,18 @@ bool CopyFileUnsafe(const FilePath& from_path, const FilePath& to_path) {
 
 }  // namespace internal
 
-bool GetTempDir(base::FilePath* path) {
+bool GetTempDir(butil::FilePath* path) {
   NSString* tmp = NSTemporaryDirectory();
   if (tmp == nil)
     return false;
-  *path = base::mac::NSStringToFilePath(tmp);
+  *path = butil::mac::NSStringToFilePath(tmp);
   return true;
 }
 
 FilePath GetHomeDir() {
   NSString* tmp = NSHomeDirectory();
   if (tmp != nil) {
-    FilePath mac_home_dir = base::mac::NSStringToFilePath(tmp);
+    FilePath mac_home_dir = butil::mac::NSStringToFilePath(tmp);
     if (!mac_home_dir.empty())
       return mac_home_dir;
   }
@@ -49,4 +49,4 @@ FilePath GetHomeDir() {
   return FilePath("/tmp");
 }
 
-}  // namespace base
+}  // namespace butil

@@ -8,22 +8,21 @@
 
 你可以使用它：
 
-* 搭建一个能在**同端口**支持多协议的服务, 或访问各种服务
+* 搭建能在**一个端口**支持多协议的服务, 或访问各种服务
   * restful http/https, h2/h2c (与[grpc](https://github.com/grpc/grpc)兼容, 即将开源). 使用brpc的http实现比[libcurl](https://curl.haxx.se/libcurl/)方便多了。
   * [redis](docs/cn/redis_client.md)和[memcached](docs/cn/memcache_client.md), 线程安全，比官方client更方便。
   * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), 可用于搭建[直播服务](docs/cn/live_streaming.md).
   * hadoop_rpc(可能开源)
   * 支持[rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access)(即将开源)
+  * 支持[thrift](docs/cn/thrift.md) , 线程安全，比官方client更方便
   * 各种百度内使用的协议: [baidu_std](docs/cn/baidu_std.md), [streaming_rpc](docs/cn/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc和使用nshead的各种协议.
   * 从其他语言通过HTTP+json访问基于protobuf的协议.
-  * 基于工业级的[RAFT算法](https://raft.github.io)实现搭建[高可用](https://en.wikipedia.org/wiki/High_availability)分布式系统 (即将在[braft](https://github.com/brpc/braft)开源)
-* 创建丰富的访问模式
-  * 服务都能以[同步](docs/cn/server.md)或[异步](docs/cn/server.md#异步service)方式处理请求。
-  * 通过[同步](docs/cn/client.md#同步访问)、[异步](docs/cn/client.md#异步访问)或[半同步](docs/cn/client.md#半同步)访问服务。
-  * 使用[组合channels](docs/cn/combo_channel.md)声明式地简化复杂的分库或并发访问。
-* [通过http](docs/cn/builtin_service.md)调试服务, 使用[cpu](docs/cn/cpu_profiler.md), [heap](docs/cn/heap_profiler.md), [contention](docs/cn/contention_profiler.md) profilers.
+  * 基于工业级的[RAFT算法](https://raft.github.io)实现搭建[高可用](https://en.wikipedia.org/wiki/High_availability)分布式系统，已在[braft](https://github.com/brpc/braft)开源。
+* Server能[同步](docs/cn/server.md)或[异步](docs/cn/server.md#异步service)处理请求。
+* Client支持[同步](docs/cn/client.md#同步访问)、[异步](docs/cn/client.md#异步访问)、[半同步](docs/cn/client.md#半同步)，或使用[组合channels](docs/cn/combo_channel.md)简化复杂的分库或并发访问。
+* [通过http界面](docs/cn/builtin_service.md)调试服务, 使用[cpu](docs/cn/cpu_profiler.md), [heap](docs/cn/heap_profiler.md), [contention](docs/cn/contention_profiler.md) profilers.
 * 获得[更好的延时和吞吐](docs/cn/overview.md#更好的延时和吞吐).
-* 把你组织中使用的协议快速地[加入brpc](docs/cn/new_protocol.md)，或定制各类组件, 包括[名字服务](docs/cn/load_balancing.md#名字服务) (dns, zk, etcd), [负载均衡](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
+* 把你组织中使用的协议快速地[加入brpc](docs/cn/new_protocol.md)，或定制各类组件, 包括[命名服务](docs/cn/load_balancing.md#命名服务) (dns, zk, etcd), [负载均衡](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
 
 # 试一下!
 
@@ -42,6 +41,7 @@
     * [错误码](docs/cn/error_code.md)
     * [组合channels](docs/cn/combo_channel.md)
     * [访问HTTP](docs/cn/http_client.md)
+    * [访问thrift](docs/cn/thrift.md#client端访问thrift-server)
     * [访问UB](docs/cn/ub_client.md)
     * [Streaming RPC](docs/cn/streaming_rpc.md)
     * [访问redis](docs/cn/redis_client.md)
@@ -51,6 +51,7 @@
   * Server
     * [基础功能](docs/cn/server.md)
     * [搭建HTTP服务](docs/cn/http_service.md)
+    * [搭建thrift服务](docs/cn/thrift.md#server端处理thrift请求)
     * [搭建Nshead服务](docs/cn/nshead_service.md)
     * [高效率排查server卡顿](docs/cn/server_debugging.md)
     * [推送](docs/cn/server_push.md)
@@ -76,7 +77,9 @@
     * [IOBuf](docs/cn/iobuf.md)
     * [Streaming Log](docs/cn/streaming_log.md)
     * [FlatMap](docs/cn/flatmap.md)
-    * [brpc外功修炼宝典](docs/cn/brpc_intro.pptx)(新人培训材料)
+    * [brpc外功修炼宝典](docs/cn/brpc_intro.pptx)(培训材料)
+    * [搭建大型服务入门](docs/en/tutorial_on_building_services.pptx)(培训材料)
+    * [brpc内功修炼宝典](docs/en/brpc_internal.pptx)(培训材料)
   * 深入RPC
     * [New Protocol](docs/cn/new_protocol.md)
     * [Atomic instructions](docs/cn/atomic_instructions.md)
@@ -107,3 +110,7 @@
 提交PR后请检查如下内容：
 
 * [travis-ci](https://travis-ci.org/brpc/brpc/pull_requests)中的编译和单测均已成功。
+
+# 反馈问题
+
+bug、修改建议、疑惑都欢迎提在issue中，或加入qq群498837325交流源码方面的问题。

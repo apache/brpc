@@ -22,6 +22,9 @@
 #include "brpc/details/method_status.h"        // MethodStatus
 #include "brpc/builtin/status_service.h"
 #include "brpc/nshead_service.h"       // NsheadService
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+#include "brpc/thrift_service.h"       // ThriftService
+#endif
 #include "brpc/rtmp.h"                 // RtmpService
 #include "brpc/builtin/common.h"
 
@@ -187,6 +190,19 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
         nshead_svc->_status->Describe(os, desc_options);
         os << '\n';
     }
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+    const ThriftService* thrift_svc = server->options().thrift_service;
+    if (thrift_svc && thrift_svc->_status) {
+        DescribeOptions options;
+        options.verbose = false;
+        options.use_html = use_html;
+        os << (use_html ? "<h3>" : "[");
+        thrift_svc->Describe(os, options);
+        os << (use_html ? "</h3>\n" : "]\n");
+        thrift_svc->_status->Describe(os, desc_options);
+        os << '\n';
+    }
+#endif
     if (policy::g_server_msg_status) {
         DescribeOptions options;
         options.verbose = false;

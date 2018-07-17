@@ -16,6 +16,7 @@
 
 #include <map>
 #include <gflags/gflags.h>
+#include "bthread/bthread.h"                         // bthread_id_xx
 #include "brpc/socket.h"                             // SocketUser
 #include "brpc/load_balancer.h"                      // LoadBalancer
 #include "brpc/details/controller_private_accessor.h"        // RPCSender

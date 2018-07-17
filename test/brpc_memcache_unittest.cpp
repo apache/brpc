@@ -1,8 +1,6 @@
 // Copyright (c) 2014 Baidu, Inc.
 // Date: Thu Jun 11 14:30:07 CST 2015
 
-#ifdef BAIDU_INTERNAL
-
 #include <iostream>
 #include "butil/time.h"
 #include "butil/logging.h"
@@ -22,53 +20,91 @@ int main(int argc, char* argv[]) {
 
 namespace {
 static pthread_once_t download_memcached_once = PTHREAD_ONCE_INIT;
+static pid_t g_mc_pid = -1;
 
 static void RemoveMemcached() {
-    puts("Removing memcached...");
-    system("rm -rf memcached_for_test");
+    puts("[Stopping memcached]");
+    char cmd[256];
+#if defined(BAIDU_INTERNAL)
+    snprintf(cmd, sizeof(cmd), "kill %d; rm -rf memcached_for_test", g_mc_pid);
+#else
+    snprintf(cmd, sizeof(cmd), "kill %d", g_mc_pid);
+#endif
+    CHECK(0 == system(cmd));
+    // Wait for mc to stop
+    usleep(50000);
 }
 
-static void DownloadMemcached() {
+#define MEMCACHED_BIN "memcached"
+#define MEMCACHED_PORT "11211"
+
+static void RunMemcached() {
+#if defined(BAIDU_INTERNAL)
     puts("Downloading memcached...");
-    system("pkill memcached; mkdir -p memcached_for_test && cd memcached_for_test && svn co https://svn.baidu.com/third-64/tags/memcached/memcached_1-4-15-100_PD_BL/bin");
+    if (system("mkdir -p memcached_for_test && cd memcached_for_test && svn co https://svn.baidu.com/third-64/tags/memcached/memcached_1-4-15-100_PD_BL/bin") != 0) {
+        puts("Fail to get memcached from svn");
+        return;
+    }
+# undef MEMCACHED_BIN
+# define MEMCACHED_BIN "memcached_for_test/bin/memcached";
+#else
+    if (system("which " MEMCACHED_BIN) != 0) {
+        puts("Fail to find " MEMCACHED_BIN ", following tests will be skipped");
+        return;
+    }
+#endif
     atexit(RemoveMemcached);
+
+    g_mc_pid = fork();
+    if (g_mc_pid < 0) {
+        puts("Fail to fork");
+        exit(1);
+    } else if (g_mc_pid == 0) {
+        puts("[Starting memcached]");
+        char* const argv[] = { (char*)MEMCACHED_BIN,
+                               (char*)"--port", (char*)MEMCACHED_PORT,
+                               NULL };
+        if (execvp(MEMCACHED_BIN, argv) < 0) {
+            puts("Fail to run " MEMCACHED_BIN);
+            exit(1);
+        }
+    }
+    // Wait for memcached to start.
+    usleep(50000);
 }
 
 class MemcacheTest : public testing::Test {
 protected:
-    MemcacheTest() : _pid(-1) {}
+    MemcacheTest() {}
     void SetUp() {
-        pthread_once(&download_memcached_once, DownloadMemcached);
-
-        _pid = fork();
-        if (_pid < 0) {
-            puts("Fail to fork");
-            exit(1);
-        } else if (_pid == 0) {
-            puts("[Starting memcached]");
-            char* const argv[] = { (char*)"memcached_for_test/bin/memcached", NULL };
-            execv("memcached_for_test/bin/memcached", argv);
-        }
-        usleep(10000);
+        pthread_once(&download_memcached_once, RunMemcached);
     }
     void TearDown() {
-        puts("[Stopping memcached]");
-        char cmd[64];
-        snprintf(cmd, sizeof(cmd), "kill %d", _pid);
-        CHECK(0 == system(cmd));
     }
-private:
-    pid_t _pid;
 };
 
 TEST_F(MemcacheTest, sanity) {
+    if (g_mc_pid < 0) {
+        puts("Skipped due to absence of memcached");
+        return;
+    }
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_MEMCACHE;
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("0.0.0.0:11211", &options));
+    ASSERT_EQ(0, channel.Init("0.0.0.0:" MEMCACHED_PORT, &options));
     brpc::MemcacheRequest request;
     brpc::MemcacheResponse response;
     brpc::Controller cntl;
+
+    // Clear all contents in MC which is still holding older data after
+    // restarting in Ubuntu 18.04 (mc=1.5.6)
+    request.Flush(0);
+    channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_TRUE(response.PopFlush());
+
+    cntl.Reset();
+    request.Clear();
     request.Get("hello");
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
@@ -119,10 +155,14 @@ TEST_F(MemcacheTest, sanity) {
 }
 
 TEST_F(MemcacheTest, incr_and_decr) {
+    if (g_mc_pid < 0) {
+        puts("Skipped due to absence of memcached");
+        return;
+    }
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_MEMCACHE;
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("0.0.0.0:11211", &options));
+    ASSERT_EQ(0, channel.Init("0.0.0.0:" MEMCACHED_PORT, &options));
     brpc::MemcacheRequest request;
     brpc::MemcacheResponse response;
     brpc::Controller cntl;
@@ -150,10 +190,14 @@ TEST_F(MemcacheTest, incr_and_decr) {
 }
 
 TEST_F(MemcacheTest, version) {
+    if (g_mc_pid < 0) {
+        puts("Skipped due to absence of memcached");
+        return;
+    }
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_MEMCACHE;
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("0.0.0.0:11211", &options));
+    ASSERT_EQ(0, channel.Init("0.0.0.0:" MEMCACHED_PORT, &options));
     brpc::MemcacheRequest request;
     brpc::MemcacheResponse response;
     brpc::Controller cntl;
@@ -165,5 +209,3 @@ TEST_F(MemcacheTest, version) {
     std::cout << "version=" << version << std::endl;
 }
 } //namespace
-
-#endif // BAIDU_INTERNAL

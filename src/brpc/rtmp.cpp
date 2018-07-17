@@ -17,6 +17,7 @@
 
 #include <gflags/gflags.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h> // StringOutputStream
+#include "bthread/bthread.h"                      // bthread_id_xx
 #include "bthread/unstable.h"                     // bthread_timer_del
 #include "brpc/log.h"
 #include "brpc/callback.h"                   // Closure
@@ -118,17 +119,7 @@ butil::Status FlvWriter::Write(const RtmpAudioMessage& msg) {
     return butil::Status::OK();
 }
 
-butil::Status FlvWriter::Write(const RtmpMetaData& metadata) {
-    butil::IOBuf req_buf;
-    {
-        butil::IOBufAsZeroCopyOutputStream zc_stream(&req_buf);
-        AMFOutputStream ostream(&zc_stream);
-        WriteAMFString(RTMP_AMF0_ON_META_DATA, &ostream);
-        WriteAMFObject(metadata.data, &ostream);
-        if (!ostream.good()) {
-            return butil::Status(EINVAL, "Fail to serialize metadata");
-        }
-    }
+butil::Status FlvWriter::WriteScriptData(const butil::IOBuf& req_buf, uint32_t timestamp) {
     char buf[32];
     char* p = buf;
     if (!_write_header) {
@@ -140,8 +131,8 @@ butil::Status FlvWriter::Write(const RtmpMetaData& metadata) {
     // FLV tag
     *p++ = FLV_TAG_SCRIPT_DATA;
     policy::WriteBigEndian3Bytes(&p, req_buf.size());
-    policy::WriteBigEndian3Bytes(&p, (metadata.timestamp & 0xFFFFFF));
-    *p++ = (metadata.timestamp >> 24) & 0xFF;
+    policy::WriteBigEndian3Bytes(&p, (timestamp & 0xFFFFFF));
+    *p++ = (timestamp >> 24) & 0xFF;
     policy::WriteBigEndian3Bytes(&p, 0); // StreamID
     _buf->append(buf, p - buf);
     _buf->append(req_buf);
@@ -150,6 +141,35 @@ butil::Status FlvWriter::Write(const RtmpMetaData& metadata) {
     policy::WriteBigEndian4Bytes(&p, 11 + req_buf.size());
     _buf->append(buf, p - buf);
     return butil::Status::OK();
+}
+
+butil::Status FlvWriter::Write(const RtmpCuePoint& cuepoint) {
+    butil::IOBuf req_buf;
+    {
+        butil::IOBufAsZeroCopyOutputStream zc_stream(&req_buf);
+        AMFOutputStream ostream(&zc_stream);
+        WriteAMFString(RTMP_AMF0_SET_DATAFRAME, &ostream);
+        WriteAMFString(RTMP_AMF0_ON_CUE_POINT, &ostream);
+        WriteAMFObject(cuepoint.data, &ostream);
+        if (!ostream.good()) {
+            return butil::Status(EINVAL, "Fail to serialize cuepoint");
+        }
+    }
+    return WriteScriptData(req_buf, cuepoint.timestamp);
+}
+
+butil::Status FlvWriter::Write(const RtmpMetaData& metadata) {
+    butil::IOBuf req_buf;
+    {
+        butil::IOBufAsZeroCopyOutputStream zc_stream(&req_buf);
+        AMFOutputStream ostream(&zc_stream);
+        WriteAMFString(RTMP_AMF0_ON_META_DATA, &ostream);
+        WriteAMFObject(metadata.data, &ostream);
+        if (!ostream.good()) {
+            return butil::Status(EINVAL, "Fail to serialize metadata");
+        }
+    }
+    return WriteScriptData(req_buf, metadata.timestamp);
 }
 
 FlvReader::FlvReader(butil::IOBuf* buf)
@@ -1013,9 +1033,6 @@ void RtmpConnect::StartConnect(
         return done(EINVAL, data);
     }
 
-    // Save to callback to call when RTMP connect is done.
-    ctx->SetConnectCallback(done, data);
-
     const RtmpClientOptions* _client_options = ctx->client_options();
     if (_client_options && _client_options->simplified_rtmp) {
         ctx->set_simplified_rtmp(true);
@@ -1025,9 +1042,11 @@ void RtmpConnect::StartConnect(
         }
         ctx->SetState(s->remote_side(), policy::RtmpContext::STATE_RECEIVED_S2);
         ctx->set_create_stream_with_play_or_publish(true);
-        ctx->OnConnected(0);
-        return;
+        return done(0, data);
     }
+
+    // Save to callback to call when RTMP connect is done.
+    ctx->SetConnectCallback(done, data);
         
     // Initiate the rtmp handshake.
     bool is_simple_handshake = false;
@@ -1057,9 +1076,8 @@ public:
         : _connect_options(connect_options) {
     }
 
-    int CreateSocket(const butil::EndPoint& pt, SocketId* id) {
-        SocketOptions sock_opt;
-        sock_opt.remote_side = pt;
+    int CreateSocket(const SocketOptions& opt, SocketId* id) {
+        SocketOptions sock_opt = opt;
         sock_opt.app_connect = new RtmpConnect;
         sock_opt.initial_parsing_context = new policy::RtmpContext(&_connect_options, NULL);
         return get_client_side_messenger()->Create(sock_opt, id);
@@ -1263,6 +1281,22 @@ int RtmpStreamBase::SendControlMessage(
     return _rtmpsock->Write(msg);
 }
 
+int RtmpStreamBase::SendCuePoint(const RtmpCuePoint& cuepoint) {
+    butil::IOBuf req_buf;
+    {
+        butil::IOBufAsZeroCopyOutputStream zc_stream(&req_buf);
+        AMFOutputStream ostream(&zc_stream);
+        WriteAMFString(RTMP_AMF0_SET_DATAFRAME, &ostream);
+        WriteAMFString(RTMP_AMF0_ON_CUE_POINT, &ostream);
+        WriteAMFObject(cuepoint.data, &ostream);
+        if (!ostream.good()) {
+            LOG(ERROR) << "Fail to serialize cuepoint";
+            return -1;
+        }
+    }
+    return SendMessage(cuepoint.timestamp, policy::RTMP_MESSAGE_DATA_AMF0, req_buf);
+}
+
 int RtmpStreamBase::SendMetaData(const RtmpMetaData& metadata,
                                  const butil::StringPiece& name) {
     butil::IOBuf req_buf;
@@ -1442,6 +1476,11 @@ void RtmpStreamBase::OnUserData(void*) {
               << "] ignored UserData{}";
 }
 
+void RtmpStreamBase::OnCuePoint(RtmpCuePoint* cuepoint) {
+    LOG(INFO) << remote_side() << '[' << stream_id()
+              << "] ignored CuePoint{" << cuepoint->data << '}';
+}
+
 void RtmpStreamBase::OnMetaData(RtmpMetaData* metadata, const butil::StringPiece& name) {
     LOG(INFO) << remote_side() << '[' << stream_id()
               << "] ignored MetaData{" << metadata->data << '}'
@@ -1497,6 +1536,13 @@ void RtmpStreamBase::EndProcessingMessage() {
 void RtmpStreamBase::CallOnUserData(void* data) {
     if (BeginProcessingMessage("OnUserData()")) {
         OnUserData(data);
+        EndProcessingMessage();
+    }
+}
+
+void RtmpStreamBase::CallOnCuePoint(RtmpCuePoint* obj) {
+    if (BeginProcessingMessage("OnCuePoint()")) {
+        OnCuePoint(obj);
         EndProcessingMessage();
     }
 }
@@ -1662,7 +1708,7 @@ void RtmpClientStream::ReplaceSocketForStream(
         }
     } else {
         if (_client_impl->socket_map().Insert(
-                (*inout)->remote_side(), &esid) != 0) {
+                SocketMapKey((*inout)->remote_side()), &esid) != 0) {
             cntl->SetFailed(EINVAL, "Fail to get the RTMP socket");
             return;
         }
@@ -1786,7 +1832,7 @@ void RtmpClientStream::OnStopInternal() {
         return CallOnStop();
     }
 
-    if (!_rtmpsock->Failed()) {
+    if (!_rtmpsock->Failed() && _chunk_stream_id != 0) {
         // SRS requires closeStream which is sent over this stream.
         butil::IOBuf req_buf1;
         {
@@ -2242,6 +2288,10 @@ void RetryingClientMessageHandler::OnUserData(void* msg) {
     _parent->CallOnUserData(msg);
 }
 
+void RetryingClientMessageHandler::OnCuePoint(brpc::RtmpCuePoint* cuepoint) {
+    _parent->CallOnCuePoint(cuepoint);
+}
+
 void RetryingClientMessageHandler::OnMetaData(brpc::RtmpMetaData* metadata, const butil::StringPiece& name) {
     _parent->CallOnMetaData(metadata, name);
 }
@@ -2402,6 +2452,14 @@ int RtmpRetryingClientStream::AcquireStreamToSend(
     }
     *ptr = _using_sub_stream;
     return 0;
+}
+
+int RtmpRetryingClientStream::SendCuePoint(const RtmpCuePoint& obj) {
+    butil::intrusive_ptr<RtmpStreamBase> ptr;
+    if (AcquireStreamToSend(&ptr) != 0) {
+        return -1;
+    }
+    return ptr->SendCuePoint(obj);
 }
 
 int RtmpRetryingClientStream::SendMetaData(const RtmpMetaData& obj, const butil::StringPiece& name) {

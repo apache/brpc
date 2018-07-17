@@ -6,10 +6,10 @@
 
 - 数据以什么格式传输？不同机器间，网络间可能是不同的字节序，直接传输内存数据显然是不合适的；随着业务变化，数据字段往往要增加或删减，怎么兼容前后不同版本的格式？
 - 一个TCP连接可以被多个请求复用以减少开销么？多个请求可以同时发往一个TCP连接么?
-- 如何访问一个包含很多机器的集群？
-- 连接断开时应该干什么？万一server不发送回复怎么办？
-
-* ...
+- 如何管理和访问很多机器？
+- 连接断开时应该干什么？
+- 万一server不发送回复怎么办？
+- ...
 
 [RPC](http://en.wikipedia.org/wiki/Remote_procedure_call)可以解决这些问题，它把网络交互类比为“client访问server上的函数”：client向server发送request后开始等待，直到server收到、处理、回复client后，client又再度恢复并根据response做出反应。
 
@@ -17,10 +17,11 @@
 
 我们来看看上面的一些问题是如何解决的：
 
-- RPC需要序列化，[protobuf](https://github.com/google/protobuf)在这方面做的很好。用户填写protobuf::Message类型的request，RPC结束后，从同为protobuf::Message类型的response中取出结果。protobuf有较好的前后兼容性，方便业务调整字段。http广泛使用[json](http://www.json.org/)作为序列化方法。
-- 用户不需要关心连接是如何建立的，但可以选择不同的[连接方式](client.md#连接方式)：短连接，连接池，单连接。
-- 一个集群中的所有机器一般通过名字服务被发现，可基于[DNS](https://en.wikipedia.org/wiki/Domain_Name_System), [ZooKeeper](https://zookeeper.apache.org/), [etcd](https://github.com/coreos/etcd)等实现。在百度内，我们使用BNS (Baidu Naming Service)。brpc也提供["list://"和"file://"](client.md#名字服务)。用户可以指定负载均衡算法，让RPC每次选出一台机器发送请求，包括: round-robin, randomized, [consistent-hashing](consistent_hashing.md)(murmurhash3 or md5)和 [locality-aware](lalb.md).
-- 连接断开时按用户的配置进行重试。如果server没有在给定时间内返回response，那么client会返回超时错误。
+- 数据需要序列化，[protobuf](https://github.com/google/protobuf)在这方面做的不错。用户填写protobuf::Message类型的request，RPC结束后，从同为protobuf::Message类型的response中取出结果。protobuf有较好的前后兼容性，方便业务调整字段。http广泛使用[json](http://www.json.org/)作为序列化方法。
+- 用户无需关心连接如何建立，但可以选择不同的[连接方式](client.md#连接方式)：短连接，连接池，单连接。
+- 大量机器一般通过命名服务被发现，可基于[DNS](https://en.wikipedia.org/wiki/Domain_Name_System), [ZooKeeper](https://zookeeper.apache.org/), [etcd](https://github.com/coreos/etcd)等实现。在百度内，我们使用BNS (Baidu Naming Service)。brpc也提供["list://"和"file://"](client.md#命名服务)。用户可以指定负载均衡算法，让RPC每次选出一台机器发送请求，包括: round-robin, randomized, [consistent-hashing](consistent_hashing.md)(murmurhash3 or md5)和 [locality-aware](lalb.md).
+- 连接断开时可以重试。
+- 如果server没有在给定时间内回复，client会返回超时错误。
 
 # 哪里可以使用RPC?
 
@@ -40,7 +41,7 @@ RPC不是万能的抽象，否则我们也不需要TCP/IP这一层了。但是�
 
 你可以使用它：
 
-* 搭建一个能在**同端口**支持多协议的服务, 或访问各种服务
+* 搭建能在**一个端口**支持多协议的服务, 或访问各种服务
   * restful http/https, h2/h2c (与[grpc](https://github.com/grpc/grpc)兼容, 即将开源). 使用brpc的http实现比[libcurl](https://curl.haxx.se/libcurl/)方便多了。
   * [redis](redis_client.md)和[memcached](memcache_client.md), 线程安全，比官方client更方便。
   * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), 可用于搭建[直播服务](live_streaming.md).
@@ -48,14 +49,12 @@ RPC不是万能的抽象，否则我们也不需要TCP/IP这一层了。但是�
   * 支持[rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access)(即将开源)
   * 各种百度内使用的协议: [baidu_std](baidu_std.md), [streaming_rpc](streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc和使用nshead的各种协议.
   * 从其他语言通过HTTP+json访问基于protobuf的协议.
-  * 基于工业级的[RAFT算法](https://raft.github.io)实现搭建[高可用](https://en.wikipedia.org/wiki/High_availability)分布式系统 (即将在[braft](https://github.com/brpc/braft)开源)
-* 创建丰富的访问模式
-  * 服务都能以[同步](server.md)或[异步](server.md#异步service)方式处理请求。
-  * 通过[同步](client.md#同步访问)、[异步](client.md#异步访问)或[半同步](client.md#半同步)访问服务。
-  * 使用[组合channels](combo_channel.md)声明式地简化复杂的分库或并发访问。
-* [通过http](builtin_service.md)调试服务, 使用[cpu](cpu_profiler.md), [heap](heap_profiler.md), [contention](contention_profiler.md) profilers.
+  * 基于工业级的[RAFT算法](https://raft.github.io)实现搭建[高可用](https://en.wikipedia.org/wiki/High_availability)分布式系统，已在[braft](https://github.com/brpc/braft)开源。
+* Server能[同步](docs/cn/server.md)或[异步](docs/cn/server.md#异步service)处理请求。
+* Client支持[同步](docs/cn/client.md#同步访问)、[异步](docs/cn/client.md#异步访问)、[半同步](docs/cn/client.md#半同步)，或使用[组合channels](docs/cn/combo_channel.md)简化复杂的分库或并发访问。
+* [通过http界面](docs/cn/builtin_service.md)调试服务, 使用[cpu](docs/cn/cpu_profiler.md), [heap](docs/cn/heap_profiler.md), [contention](docs/cn/contention_profiler.md) profilers.
 * 获得[更好的延时和吞吐](#更好的延时和吞吐).
-* 把你组织中使用的协议快速地[加入brpc](new_protocol.md)，或定制各类组件, 包括[名字服务](load_balancing.md#名字服务) (dns, zk, etcd), [负载均衡](load_balancing.md#负载均衡) (rr, random, consistent hashing)
+* 把你组织中使用的协议快速地[加入brpc](new_protocol.md)，或定制各类组件, 包括[命名服务](load_balancing.md#命名服务) (dns, zk, etcd), [负载均衡](load_balancing.md#负载均衡) (rr, random, consistent hashing)
 
 # brpc的优势
 
@@ -67,7 +66,7 @@ RPC不是万能的抽象，否则我们也不需要TCP/IP这一层了。但是�
 * 访问服务? 包含[brpc/channel.h](https://github.com/brpc/brpc/blob/master/src/brpc/channel.h)并参考注释或[示例](https://github.com/brpc/brpc/blob/master/example/echo_c++/client.cpp).
 * 调整参数? 看看[brpc/controller.h](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h). 注意这个类是Server和Channel共用的，分成了三段，分别标记为Client-side, Server-side和Both-side methods。
 
-我们尝试让事情变得更加简单，以名字服务为例，在其他RPC实现中，你也许需要复制一长段晦涩的代码才可使用，而在brpc中访问BNS可以这么写"bns://node-name"，DNS是`Init("http://domain-name", ...)`，本地文件列表是"file:///home/work/server.list"，相信不用解释，你也能明白这些代表什么。
+我们尝试让事情变得更加简单，以命名服务为例，在其他RPC实现中，你也许需要复制一长段晦涩的代码才可使用，而在brpc中访问BNS可以这么写"bns://node-name"，DNS是`Init("http://domain-name", ...)`，本地文件列表是"file:///home/work/server.list"，相信不用解释，你也能明白这些代表什么。
 
 ### 使服务更加可靠
 

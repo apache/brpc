@@ -20,6 +20,7 @@
 #define MCPACK2PB_MCPACK_SERIALIZER_H
 
 #include <limits>
+#include <vector>
 #include <google/protobuf/io/zero_copy_stream.h>
 #include "butil/logging.h"
 #include "butil/strings/string_piece.h"

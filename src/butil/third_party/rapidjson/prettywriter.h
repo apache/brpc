@@ -22,7 +22,7 @@ RAPIDJSON_DIAG_PUSH
 RAPIDJSON_DIAG_OFF(effc++)
 #endif
 
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 
 //! Writer with indentation and spacing.
 /*!
@@ -198,7 +198,7 @@ private:
     PrettyWriter& operator=(const PrettyWriter&);
 };
 
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 #ifdef __GNUC__
 RAPIDJSON_DIAG_POP

@@ -308,52 +308,6 @@ if (encoding != NULL && *encoding == "gzip") {
 // cntl->request_attachment()中已经是解压后的数据了
 ```
 
-# 开启HTTPS
-
-要开启HTTPS，首先确保代码依赖了最新的openssl库。如果openssl版本很旧，会有严重的安全漏洞，支持的加密算法也少，违背了开启SSL的初衷。然后设置ServerOptions.ssl_options.
-```c++
-// Certificate structure
-struct CertInfo {
-    // Certificate in PEM format.
-    // Note that CN and alt subjects will be extracted from the certificate,
-    // and will be used as hostnames. Requests to this hostname (provided SNI
-    // extension supported) will be encrypted using this certifcate.
-    // Supported both file path and raw string
-    std::string certificate;
-
-    // Private key in PEM format.
-    // Supported both file path and raw string based on prefix:
-    std::string private_key;
-
-    // Additional hostnames besides those inside the certificate. Wildcards
-    // are supported but it can only appear once at the beginning (i.e. *.xxx.com).
-    std::vector<std::string> sni_filters;
-};
-
-struct SSLOptions {
-    // Default certificate which will be loaded into server. Requests
-    // without hostname or whose hostname doesn't have a corresponding
-    // certificate will use this certificate. MUST be set to enable SSL.
-    CertInfo default_cert;
-
-    // Additional certificates which will be loaded into server. These
-    // provide extra bindings between hostnames and certificates so that
-    // we can choose different certificates according to different hostnames.
-    // See `CertInfo' for detail.
-    std::vector<CertInfo> certs;
-
-    // When set, requests without hostname or whose hostname can't be found in
-    // any of the cerficates above will be dropped. Otherwise, `default_cert'
-    // will be used.
-    // Default: false
-    bool strict_sni;
- 
-    // ... Other options
-};
-```
-其余选项还包括：密钥套件选择（推荐密钥ECDHE-RSA-AES256-GCM-SHA384，chrome默认第一优先密钥，安全性很高，但比较耗性能）、session复用等，具体见[server.h](https://github.com/brpc/brpc/blob/master/src/brpc/server.h)。
-开启HTTPS后，原先的HTTP请求仍可以通过同一个端口被访问，Server会自动判断哪些是HTTP，哪些是HTTPS；用户可通过Controller::is_ssl()判断是否是HTTPS。从这一点来说，brpc中的HTTPS更多是让server多支持一种协议，而不适合作为加密通道。
-
 # 性能
 
 没有极端性能要求的产品都有使用HTTP协议的倾向，特别是移动产品，所以我们很重视HTTP的实现质量，具体来说：
@@ -391,7 +345,7 @@ brpc server支持发送超大或无限长的body。方法如下:
 
 这个错误在于brpc server直接关闭了http连接而没有发送任何回复。
 
-brpc server同端口支持多种协议，当它无法解析某个http请求时无法说这个请求一定是HTTP。server会对一些基本可确认是HTTP的请求返回HTTP 400错误并关闭连接，但如果是HTTP method错误(在http包开头)或严重的格式错误（可能由HTTP client的bug导致），server仍会直接断开连接，导致nginx的final fail。
+brpc server一个端口支持多种协议，当它无法解析某个http请求时无法说这个请求一定是HTTP。server会对一些基本可确认是HTTP的请求返回HTTP 400错误并关闭连接，但如果是HTTP method错误(在http包开头)或严重的格式错误（可能由HTTP client的bug导致），server仍会直接断开连接，导致nginx的final fail。
 
 解决方案: 在使用Nginx转发流量时，通过指定$HTTP_method只放行允许的方法或者干脆设置proxy_method为指定方法。
 
