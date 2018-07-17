@@ -44,6 +44,7 @@
  # define THRIFT_STDCXX apache::thrift::stdcxx
  #else
  # define THRIFT_STDCXX boost
+ # include <boost/make_shared.hpp>
  #endif
 #endif
 
@@ -72,15 +73,15 @@ ReadThriftMessageBegin(butil::IOBuf* body,
     // Version + Message type + Length + Method + Sequence Id
     //   |             |          |        |          |
     //   3     +       1      +   4    +   >0   +     4
-    char version_and_len_buf[8];
+    uint32_t version_and_len_buf[2];
     size_t k = body->copy_to(version_and_len_buf, sizeof(version_and_len_buf));
     if (k != sizeof(version_and_len_buf) ) {
         return butil::Status(-1, "Fail to copy %" PRIu64 " bytes from body",
                              sizeof(version_and_len_buf));
     }
     *mtype = (apache::thrift::protocol::TMessageType)
-        (ntohl(*(uint32_t*)version_and_len_buf) & 0x000000FF);
-    const uint32_t method_name_length = ntohl(*(uint32_t*)(version_and_len_buf + 4));
+        (ntohl(version_and_len_buf[0]) & 0x000000FF);
+    const uint32_t method_name_length = ntohl(version_and_len_buf[1]);
     if (method_name_length > MAX_THRIFT_METHOD_NAME_LENGTH) {
         return butil::Status(-1, "method_name_length=%u is too long",
                              method_name_length);
@@ -92,7 +93,9 @@ ReadThriftMessageBegin(butil::IOBuf* body,
         return butil::Status(-1, "Fail to cut %" PRIu64 " bytes", sizeof(buf));
     }
     method_name->assign(buf + sizeof(version_and_len_buf), method_name_length);
-    *seq_id = ntohl(*(uint32_t*)(buf + sizeof(version_and_len_buf) + method_name_length));
+    // suppress strict-aliasing warning
+    uint32_t* p_seq_id = (uint32_t*)(buf + sizeof(version_and_len_buf) + method_name_length);
+    *seq_id = ntohl(*p_seq_id);
     return butil::Status::OK();
 }
 
@@ -317,7 +320,9 @@ void ThriftClosure::DoRun() {
     } else {
         const size_t mb_size = ThriftMessageBeginSize(method_name);
         char buf[sizeof(thrift_head_t) + mb_size];
-        ((thrift_head_t*)buf)->body_len = htonl(mb_size + _response.body.size());
+        // suppress strict-aliasing warning
+        thrift_head_t* head = (thrift_head_t*)buf;
+        head->body_len = htonl(mb_size + _response.body.size());
         WriteThriftMessageBegin(buf + sizeof(thrift_head_t), method_name,
                                 ::apache::thrift::protocol::T_REPLY, seq_id);
         write_buf.append(buf, sizeof(buf));
@@ -364,8 +369,9 @@ ParseResult ParseThriftMessage(butil::IOBuf* source,
                  << " doesn't match THRIFT_VERSION=" << THRIFT_HEAD_VERSION_1;
         return MakeParseError(PARSE_ERROR_TRY_OTHERS);
     }
-
-    const uint32_t body_len = ntohl(((thrift_head_t*)header_buf)->body_len);
+    // suppress strict-aliasing warning
+    thrift_head_t* head = (thrift_head_t*)header_buf;
+    const uint32_t body_len = ntohl(head->body_len);
     if (body_len > FLAGS_max_body_size) {
         return MakeParseError(PARSE_ERROR_TOO_BIG_DATA);
     } else if (source->length() < sizeof(thrift_head_t) + body_len) {
@@ -700,7 +706,9 @@ void SerializeThriftRequest(butil::IOBuf* request_buf, Controller* cntl,
     } else {
         const size_t mb_size = ThriftMessageBeginSize(method_name);
         char buf[sizeof(thrift_head_t) + mb_size];
-        ((thrift_head_t*)buf)->body_len = htonl(mb_size + req->body.size());
+        // suppress strict-aliasing warning
+        thrift_head_t* head = (thrift_head_t*)buf;
+        head->body_len = htonl(mb_size + req->body.size());
         WriteThriftMessageBegin(buf + sizeof(thrift_head_t), method_name,
                                 ::apache::thrift::protocol::T_CALL, 0/*seq_id*/);
         request_buf->append(buf, sizeof(buf));
