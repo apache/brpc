@@ -123,3 +123,23 @@ private:
         return -1;
     }
 ```
+
+# 简单的和原生thrift性能对比实验
+测试环境: 48核  2.30GHz
+## server端返回client发送的"hello"字符串
+框架 | 线程数 | QPS | 平响 | cpu利用率
+---- | --- | --- | --- | ---
+native thrift | 60 | 6.9w | 0.9ms | 2.8%
+brpc thrift | 60 | 30w | 0.2ms | 18%
+
+## server端返回"hello" * 1000 字符串
+框架 | 线程数 | QPS | 平响 | cpu利用率
+---- | --- | --- | --- | ---
+native thrift | 60 | 5.2w | 1.1ms | 4.5%
+brpc thrift | 60 | 19.5w | 0.3ms | 22%
+
+## server端做比较复杂的数学计算并返回"hello" * 1000 字符串
+框架 | 线程数 | QPS | 平响 | cpu利用率
+---- | --- | --- | --- | ---
+native thrift | 60 | 1.7w | 3.5ms | 76%
+brpc thrift | 60 | 2.1w | 2.9ms | 93%

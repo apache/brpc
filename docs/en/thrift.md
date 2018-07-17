@@ -123,3 +123,23 @@ Set the implemented service to ServerOptions.thrift_service and start the servic
         return -1;
     }
 ```
+
+# Performance test for native thrift compare with brpc thrift implementaion
+Test Env: 48 core  2.30GHz
+## server side return string "hello" sent from client
+Framework | Threads Num | QPS | Avg lantecy | CPU
+---- | --- | --- | --- | ---
+native thrift | 60 | 6.9w | 0.9ms | 2.8%
+brpc thrift | 60 | 30w | 0.2ms | 18%
+
+## server side return string "hello" * 1000
+Framework | Threads Num | QPS | Avg lantecy | CPU
+---- | --- | --- | --- | ---
+native thrift | 60 | 5.2w | 1.1ms | 4.5%
+brpc thrift | 60 | 19.5w | 0.3ms | 22%
+
+## server side do some complicated math and return string "hello" * 1000
+Framework | Threads Num | QPS | Avg lantecy | CPU
+---- | --- | --- | --- | ---
+native thrift | 60 | 1.7w | 3.5ms | 76%
+brpc thrift | 60 | 2.1w | 2.9ms | 93%
