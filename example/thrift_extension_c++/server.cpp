@@ -18,11 +18,6 @@
 #include <butil/logging.h>
 #include <brpc/server.h>
 #include <brpc/thrift_service.h>
-#include <brpc/details/thrift_utils.h>
-#include <thrift/protocol/TBinaryProtocol.h>
-#include <thrift/transport/TBufferTransports.h>
-
-#include "gen-cpp/EchoService.h"
 #include "gen-cpp/echo_types.h"
 
 DEFINE_int32(port, 8019, "TCP Port of this server");
@@ -30,62 +25,34 @@ DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
 DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
 
-class EchoServiceHandler : virtual public example::EchoServiceIf {
+// Adapt your own thrift-based protocol to use brpc 
+class EchoServiceImpl : public brpc::ThriftService {
 public:
-    EchoServiceHandler() {}
-
-    void Echo(example::EchoResponse& res, const example::EchoRequest& req) {
-        // Process request, just attach a simple string.
-        res.data = req.data + " (processed by handler)";
-        return;
+    void ProcessThriftFramedRequest(brpc::Controller* cntl,
+                                    brpc::ThriftFramedMessage* req,
+                                    brpc::ThriftFramedMessage* res,
+                                    google::protobuf::Closure* done) override {
+        // Dispatch calls to different methods
+        if (cntl->thrift_method_name() == "Echo") {
+            return Echo(cntl, req->Cast<example::EchoRequest>(),
+                        res->Cast<example::EchoResponse>(), done);
+        } else {
+            cntl->SetFailed(brpc::ENOMETHOD, "Fail to find method=%s",
+                            cntl->thrift_method_name().c_str());
+            done->Run();
+        }
     }
 
-};
-
-static std::atomic<int> g_counter(0);
-
-// Adapt your own thrift-based protocol to use brpc 
-class MyThriftProtocol : public brpc::ThriftService {
-public:
-    explicit MyThriftProtocol(EchoServiceHandler* handler) : _handler(handler) { }
-
-    void ProcessThriftFramedRequest(const brpc::Server&,
-                              brpc::Controller* cntl,
-                              brpc::ThriftFramedMessage* request,
-                              brpc::ThriftFramedMessage* response,
-                              brpc::ThriftClosure* done) {
+    void Echo(brpc::Controller* cntl,
+              const example::EchoRequest* req,
+              example::EchoResponse* res,
+              google::protobuf::Closure* done) {
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().
         brpc::ClosureGuard done_guard(done);
 
-        if (cntl->Failed()) {
-            // NOTE: You can send back a response containing error information
-            // back to client instead of closing the connection.
-            cntl->CloseConnection("Close connection due to previous error");
-            return;
-        }
-
-        // get method name by cntl->thrift_method_name() if needed
-        example::EchoRequest* req = request->Cast<example::EchoRequest>();
-        example::EchoResponse* res = response->Cast<example::EchoResponse>();
-
-        if (g_counter++ % 2 == 0) {
-            if (!_handler) {
-                cntl->CloseConnection("Close connection due to no valid handler");
-                LOG(ERROR) << "No valid handler";
-                return;
-            }
-            _handler->Echo(*res, *req);
-        } else {
-            res->data = req->data + " (processed directly)";
-        }
-
-
+        res->data = req->data + " (processed)";
     }
-
-private:
-    EchoServiceHandler* _handler;
-
 };
 
 int main(int argc, char* argv[]) {
@@ -95,8 +62,7 @@ int main(int argc, char* argv[]) {
     brpc::Server server;
     brpc::ServerOptions options;
 
-    EchoServiceHandler thrift_service_handler;
-    options.thrift_service = new MyThriftProtocol(&thrift_service_handler);
+    options.thrift_service = new EchoServiceImpl;
     options.idle_timeout_sec = FLAGS_idle_timeout_s;
     options.max_concurrency = FLAGS_max_concurrency;
 

@@ -54,31 +54,25 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    // Send a request and wait for the response every 1 second.
-    int log_id = 0;
+    brpc::ThriftStub stub(&channel);
 
+    // Send a request and wait for the response every 1 second.
     while (!brpc::IsAskedToQuit()) {
         brpc::Controller cntl;
-        cntl.set_log_id(log_id ++);  // set by user
+        example::EchoRequest req;
+        example::EchoResponse res;
 
-        // wrapper thrift raw request into ThriftMessage
-        brpc::ThriftMessage<example::EchoRequest> req;
-        brpc::ThriftMessage<example::EchoResponse> res;
+        req.data = "hello";
 
-        req.raw().data = "hello";
-
-        cntl.set_thrift_method_name("Echo");
-
-        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+        stub.CallMethod("Echo", &cntl, &req, &res, NULL);
 
         if (cntl.Failed()) {
             LOG(ERROR) << "Fail to send thrift request, " << cntl.ErrorText();
             sleep(1); // Remove this sleep in production code.
         } else {
             g_latency_recorder << cntl.latency_us();
+            LOG(INFO) << "Thrift Response: " << res.data;
         }
-
-        LOG(INFO) << "Thrift Res data: " << res.raw().data;
 
         LOG_EVERY_SECOND(INFO)
             << "Sending thrift requests at qps=" << g_latency_recorder.qps(1)

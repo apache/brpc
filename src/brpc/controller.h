@@ -451,9 +451,6 @@ public:
     void set_idl_result(int64_t result) { _idl_result = result; }
     int64_t idl_result() const { return _idl_result; }
 
-    void set_thrift_method_name(const std::string& method_name) {
-        _thrift_method_name = method_name;
-    }
     const std::string& thrift_method_name() { return _thrift_method_name; }
 
 private:
@@ -689,7 +686,6 @@ private:
 
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;
-    uint32_t _thrift_seq_id;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be

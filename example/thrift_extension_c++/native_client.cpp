@@ -56,10 +56,13 @@ int main(int argc, char **argv) {
     example::EchoResponse res;
 
     while (1) {
-        client.Echo(res, req);
-
-        LOG(INFO) << "Req: " << req.data
-                  << " Res: " << res.data;
+        try {
+            client.Echo(res, req);
+            LOG(INFO) << "Req: " << req.data
+                      << " Res: " << res.data;
+        } catch (std::exception& e) {
+            LOG(ERROR) << "Fail to rpc, " << e.what();
+        }
         sleep(1);
     }
     transport->close();

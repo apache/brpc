@@ -8,6 +8,7 @@
 - 线程安全。用户不需要为每个线程建立独立的client.
 - 支持同步、异步、批量同步、批量异步等访问方式，能使用ParallelChannel等组合访问方式.
 - 支持多种连接方式(连接池, 短连接), 支持超时、backup request、取消、tracing、内置服务等一系列RPC基本福利.
+- 性能更好.
 
 # 编译
 为了复用解析代码，brpc对thrift的支持仍需要依赖thrift库以及thrift生成的代码，thrift格式怎么写，代码怎么生成，怎么编译等问题请参考thrift官方文档。
@@ -35,13 +36,13 @@ mkdir build && cd build && cmake ../ -DWITH_THRIFT=1
 # Client端访问thrift server
 基本步骤：
 - 创建一个协议设置为brpc::PROTOCOL_THRIFT的Channel
-- 定义brpc::ThriftMessage<原生Request>作为请求，brpc::ThriftMessage<原生Response>作为回复。raw()方法可以操作原生thrift消息。
-- 通过Controller::set_thrift_method_name()设置thrift方法名。
+- 创建brpc::ThriftStub
+- 使用原生Request和原生Response>发起访问
 
 示例代码如下：
 ```c++
 #include <brpc/channel.h>
-#include <brpc/thrift_message.h>         // 定义了ThriftMessage
+#include <brpc/thrift_message.h>         // 定义了ThriftStub
 ...
 
 DEFINE_string(server, "0.0.0.0:8019", "IP Address of thrift server");
@@ -56,16 +57,15 @@ if (thrift_channel.Init(Flags_server.c_str(), FLAGS_load_balancer.c_str(), &opti
    return -1;
 }
 
+brpc::ThriftStub stub(&thrift_channel);
 ...
 
 // example::[EchoRequest/EchoResponse]是thrift生成的消息
-brpc::ThriftMessage<example::EchoRequest> req;
-brpc::ThriftMessage<example::EchoResponse> res;
+example::EchoRequest req;
+example::EchoResponse res;
+req.data = "hello";
 
-req.raw().data = "hello";
-cntl.set_thrift_method_name("Echo");
-
-channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+stub.CallMethod("Echo", &cntl, &req, &res, NULL);
 
 if (cntl.Failed()) {
     LOG(ERROR) << "Fail to send thrift request, " << cntl.ErrorText();
@@ -76,36 +76,33 @@ if (cntl.Failed()) {
 # Server端处理thrift请求
 用户通过继承brpc::ThriftService实现处理逻辑，既可以调用thrift生成的handler以直接复用原有的函数入口，也可以像protobuf服务那样直接读取request和设置response。
 ```c++
-class MyThriftProtocol : public brpc::ThriftService {
+class EchoServiceImpl : public brpc::ThriftService {
 public:
-    void ProcessThriftFramedRequest(const brpc::Server&,
-                              brpc::Controller* cntl,
-                              brpc::ThriftFramedMessage* request,
-                              brpc::ThriftFramedMessage* response,
-                              brpc::ThriftClosure* done) {
+    void ProcessThriftFramedRequest(brpc::Controller* cntl,
+                                    brpc::ThriftFramedMessage* req,
+                                    brpc::ThriftFramedMessage* res,
+                                    google::protobuf::Closure* done) override {
+        // Dispatch calls to different methods
+        if (cntl->thrift_method_name() == "Echo") {
+            return Echo(cntl, req->Cast<example::EchoRequest>(),
+                        res->Cast<example::EchoResponse>(), done);
+        } else {
+            cntl->SetFailed(brpc::ENOMETHOD, "Fail to find method=%s",
+                            cntl->thrift_method_name().c_str());
+            done->Run();
+        }
+    }
+
+    void Echo(brpc::Controller* cntl,
+              const example::EchoRequest* req,
+              example::EchoResponse* res,
+              google::protobuf::Closure* done) {
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().
         brpc::ClosureGuard done_guard(done);
 
-        if (cntl->Failed()) {
-            // NOTE: You can send back a response containing error information
-            // back to client instead of closing the connection.
-            cntl->CloseConnection("Close connection due to previous error");
-            return;
-        }
-
-        example::EchoRequest* req = request->Cast<example::EchoRequest>();
-        example::EchoResponse* res = response->Cast<example::EchoResponse>();
-
-        // 通过cntl->thrift_method_name()获得被访问的方法名
-        if (_native_handler) {
-            _native_handler->Echo(*res, *req);
-        } else {
-            res->data = req->data + "user data";
-        }
+        res->data = req->data + " (processed)";
     }
-private:
-    EchoServiceHandler* _native_handler;
 };
 ```
 
@@ -113,7 +110,7 @@ private:
 ```c++
     brpc::Server server;
     brpc::ServerOptions options;
-    options.thrift_service = new MyThriftProtocol;
+    options.thrift_service = new EchoServiceImpl;
     options.idle_timeout_sec = FLAGS_idle_timeout_s;
     options.max_concurrency = FLAGS_max_concurrency;
 

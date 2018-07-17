@@ -61,7 +61,9 @@
 #include "brpc/policy/nshead_mcpack_protocol.h"
 #include "brpc/policy/rtmp_protocol.h"
 #include "brpc/policy/esp_protocol.h"
-#include "brpc/policy/thrift_protocol.h"
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+# include "brpc/policy/thrift_protocol.h"
+#endif
 
 #include "brpc/input_messenger.h"     // get_or_new_client_side_messenger
 #include "brpc/socket_map.h"          // SocketMapList
@@ -77,10 +79,6 @@
 extern "C" {
 // defined in gperftools/malloc_extension_c.h
 void BAIDU_WEAK MallocExtension_ReleaseFreeMemory(void);
-// Register Thrift Protocol if thrift was enabled
-#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
-    void RegisterThriftProtocol();
-#endif
 }
 
 namespace brpc {
@@ -471,7 +469,15 @@ static void GlobalInitializeOrDieImpl() {
 
 // Use Macro is more straight forward than weak link technology(becasue of static link issue)
 #ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
-    RegisterThriftProtocol();
+    Protocol thrift_binary_protocol = {
+        policy::ParseThriftMessage,
+        policy::SerializeThriftRequest, policy::PackThriftRequest,
+        policy::ProcessThriftRequest, policy::ProcessThriftResponse,
+        policy::VerifyThriftRequest, NULL, NULL,
+        CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };
+    if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
+        exit(1);
+    }
 #endif
 
     // Only valid at client side

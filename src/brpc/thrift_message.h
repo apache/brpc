@@ -27,10 +27,11 @@
 #include <google/protobuf/generated_message_reflection.h>
 #include "google/protobuf/descriptor.pb.h"
 
-#include "brpc/details/thrift_utils.h"
 #include "butil/iobuf.h"
+#include "brpc/channel_base.h"
+#include "brpc/controller.h"
 
-#include <thrift/protocol/TBinaryProtocol.h>
+#include <thrift/TBase.h>
 
 namespace brpc {
 
@@ -39,33 +40,35 @@ void protobuf_AddDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
 void protobuf_AssignDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
 void protobuf_ShutdownFile_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
 
-static const int32_t THRIFT_HEAD_VERSION_MASK = (int32_t)0xffffff00;
-static const int32_t THRIFT_HEAD_VERSION_1 = (int32_t)0x80010000;
-struct thrift_head_t {
-    int32_t  body_len;
-};
+class ThriftStub;
+
+static const int16_t THRIFT_INVALID_FID = -1;
+static const int16_t THRIFT_REQUEST_FID = 1;
+static const int16_t THRIFT_RESPONSE_FID = 0;
 
 // Representing a thrift framed request or response.
 class ThriftFramedMessage : public ::google::protobuf::Message {
+friend class ThriftStub;
 public:
-    thrift_head_t head;
-    butil::IOBuf body;
-    void (*thrift_raw_instance_deleter) (void*);
-    uint32_t (*thrift_raw_instance_writer) (void*, void*);
-    void* thrift_raw_instance;
-
-    int32_t thrift_message_seq_id;
+    butil::IOBuf body; // ~= "{ raw_instance }"
+    int16_t field_id;  // must be set when body is set.
+    
+private:
+    bool _own_raw_instance;
+    ::apache::thrift::TBase* _raw_instance;
 
 public:
+    ::apache::thrift::TBase* raw_instance() const { return _raw_instance; }
+
+    template <typename T> T* Cast();
+    
     ThriftFramedMessage();
+
     virtual ~ThriftFramedMessage();
   
-    ThriftFramedMessage(const ThriftFramedMessage& from);
+    ThriftFramedMessage(const ThriftFramedMessage& from) = delete;
   
-    inline ThriftFramedMessage& operator=(const ThriftFramedMessage& from) {
-        CopyFrom(from);
-        return *this;
-    }
+    ThriftFramedMessage& operator=(const ThriftFramedMessage& from) = delete;
   
     static const ::google::protobuf::Descriptor* descriptor();
     static const ThriftFramedMessage& default_instance();
@@ -91,29 +94,6 @@ public:
     int GetCachedSize() const { return ByteSize(); }
     ::google::protobuf::Metadata GetMetadata() const;
 
-    virtual uint32_t write(void* /*oprot*/) { return 0;}
-    virtual uint32_t read(void* /*iprot*/) { return 0;}
-
-    template<typename T>
-    T* Cast() {
-        thrift_raw_instance = new T;
-        assert(thrift_raw_instance);
-
-        // serialize binary thrift message to thrift struct request
-        // for response, we just return the new instance and deserialize it in Closure
-        if (body.size() > 0 ) {
-            if (serialize_iobuf_to_thrift_message<T>(body, thrift_raw_instance, &thrift_message_seq_id)) {
-            } else {
-                delete static_cast<T*>(thrift_raw_instance);
-                return nullptr;
-            }
-        }
-
-        thrift_raw_instance_deleter = &thrift_framed_message_deleter<T>;
-        thrift_raw_instance_writer = &thrift_framed_message_writer<T>;
-        return static_cast<T*>(thrift_raw_instance);
-    }
-
 private:
     void SharedCtor();
     void SharedDtor();
@@ -127,37 +107,53 @@ friend void protobuf_ShutdownFile_baidu_2frpc_2fthrift_framed_5fmessage_2eproto(
     static ThriftFramedMessage* default_instance_;
 };
 
-template <typename T>
-class ThriftMessage : public ThriftFramedMessage {
-
+class ThriftStub {
 public:
-    ThriftMessage() {
-        thrift_message_ = new T;
-        assert(thrift_message_ != nullptr);
-    }
+    explicit ThriftStub(ChannelBase* channel) : _channel(channel) {}
 
-    virtual ~ThriftMessage() { delete thrift_message_; }
+    void CallMethod(const char* method_name,
+                    Controller* cntl,
+                    const ::apache::thrift::TBase* raw_request,
+                    ::apache::thrift::TBase* raw_response,
+                    ::google::protobuf::Closure* done);
 
-    ThriftMessage<T>& operator= (const ThriftMessage<T>& other) {
-        *thrift_message_ = *(other.thrift_message_);
-        return *this;
-    }
-
-    virtual uint32_t write(void* oprot) {
-        return thrift_message_->write(static_cast<::apache::thrift::protocol::TProtocol*>(oprot));
-    }
-
-    virtual uint32_t read(void* iprot) {
-        return thrift_message_->read(static_cast<::apache::thrift::protocol::TProtocol*>(iprot));
-    }
-
-    T& raw() {
-        return *thrift_message_;
-    }
+    void CallMethod(const char* method_name,
+                    Controller* cntl,
+                    const ThriftFramedMessage* req,
+                    ThriftFramedMessage* res,
+                    ::google::protobuf::Closure* done);
 
 private:
-    T* thrift_message_;
+    ChannelBase* _channel;
 };
+
+namespace policy {
+// Implemented in policy/thrift_protocol.cpp
+bool ReadThriftStruct(const butil::IOBuf& body,
+                      ::apache::thrift::TBase* raw_msg,
+                      int16_t expected_fid);
+}
+
+template <typename T>
+T* ThriftFramedMessage::Cast() {
+    if (_raw_instance) {
+        T* p = dynamic_cast<T*>(_raw_instance);
+        if (p) {
+            return p;
+        }
+        delete p;
+    }
+    T* raw_msg = new T;
+    _raw_instance = raw_msg;
+    _own_raw_instance = true;
+
+    if (!body.empty()) {
+        if (!policy::ReadThriftStruct(body, raw_msg, field_id)) {
+            LOG(ERROR) << "Fail to read xxx";
+        }
+    }
+    return raw_msg;
+}
 
 } // namespace brpc
 

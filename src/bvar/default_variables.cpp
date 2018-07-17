@@ -557,11 +557,12 @@ static bool read_disk_stat(DiskStat* s) {
         PLOG(WARNING) << "Fail to fscanf";
         return false;
     }
+    return true;
 #elif defined(OS_MACOSX)
     // TODO(zhujiashun)
-    return true;
+    return false;
 #else
-    return true;
+    return false;
 #endif
 }
 

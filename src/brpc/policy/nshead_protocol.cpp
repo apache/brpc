@@ -308,7 +308,6 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
     } while (false);
 
     msg.reset();  // optional, just release resourse ASAP
-    // `socket' will be held until response has been sent
     if (span) {
         span->ResetServerSpanName(service->_cached_name);
         span->set_start_callback_us(butil::cpuwide_time_us());
@@ -376,7 +375,6 @@ void SerializeNsheadRequest(butil::IOBuf* request_buf, Controller* cntl,
     if (req_base == NULL) {
         return cntl->SetFailed(EREQUEST, "request is NULL");
     }
-    ControllerPrivateAccessor accessor(cntl);
     if (req_base->GetDescriptor() != NsheadMessage::descriptor()) {
         return cntl->SetFailed(EINVAL, "Type of request must be NsheadMessage");
     }
