@@ -143,5 +143,4 @@ inline void MethodStatus::OnResponded(int error_code, int64_t latency) {
 
 } // namespace brpc
 
-
 #endif  //BRPC_METHOD_STATUS_H
