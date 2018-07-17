@@ -619,17 +619,6 @@ int Server::InitializeOnce() {
         LOG(ERROR) << "Fail to init _ssl_ctx_map";
         return -1;
     }
-    const ConcurrencyLimiter* cl 
-        = ConcurrencyLimiterExtension()->Find("constant");
-    if (NULL == cl) {
-        LOG(FATAL) << "Fail to find ConcurrentLimiter by `constant`";
-    }
-    ConcurrencyLimiter* cl_copy = cl->New();
-    if (NULL == cl_copy) {
-        LOG(FATAL) << "Fail to new ConcurrencyLimiter";
-    }
-    _cl = cl_copy;
-
     _status = READY;
     return 0;
 }
@@ -886,35 +875,38 @@ int Server::StartInternal(const butil::ip_t& ip,
         bthread_setconcurrency(_options.num_threads);
     }
 
-    // Once you have chosen the automatic concurrency limit strategy, brpc 
-    // ONLY limits concurrency at the method level, And each method will use
-    // the strategy you set in ServerOptions to limit the maximum concurrency, 
-    // unless you have set a constant maximum concurrency for this method 
-    // before starting the server.
-    if (_options.max_concurrency == "constant") {
-        _cl->MaxConcurrency() = _options.max_concurrency;
-    } else {
-        _cl->MaxConcurrency() = 0;
+    if (_options.max_concurrency == "constant" && 
+        static_cast<int>(_options.max_concurrency) != 0) {
+        const ConcurrencyLimiter* constant_cl = 
+            ConcurrencyLimiterExtension()->Find("constant");
+        if (NULL == constant_cl) {
+            LOG(FATAL) << "Fail to find ConcurrencyLimiter by `constant'";
+        }
+        ConcurrencyLimiter* cl_copy = constant_cl->New();
+        if (NULL == cl_copy) {
+            LOG(FATAL) << "Fail to new ConcurrencyLimiter";
+        }
+        _cl = cl_copy;
+        _cl->MaxConcurrencyRef() = _options.max_concurrency;
+    } else if (_options.max_concurrency != "constant") {
+        const ConcurrencyLimiter* cl = NULL;
+        cl = ConcurrencyLimiterExtension()->Find(
+                _options.max_concurrency.name().c_str());
+        if (NULL == cl) {
+            LOG(FATAL) << "Fail to find ConcurrencyLimiter by `"
+                       << _options.max_concurrency.name() << '`'; 
+            return -1;
+        }
         for (MethodMap::iterator it = _method_map.begin();
             it != _method_map.end(); ++it) {
             if (it->second.is_builtin_service) {
                 continue;
             }
-            const ConcurrencyLimiter* cl = NULL;
-            cl = ConcurrencyLimiterExtension()->Find(
-                    _options.max_concurrency.name().c_str());
-            if (NULL == cl) {
-                LOG(FATAL) << "Fail to find ConcurrencyLimiter by `"
-                           << _options.max_concurrency.name() << '`'; 
-                return -1;
-            }
             ConcurrencyLimiter* cl_copy = cl->New();
             if (NULL == cl_copy) {
-                LOG(FATAL) << "Fail to find ConcurrencyLimiter by `"
-                           << _options.max_concurrency.name() << '`'; 
-                return -1;
+                LOG(FATAL) << "Fail to new ConcurrencyLimiter";
             }
-            it->second.status->ResetConcurrencyLimiter(cl_copy);
+            it->second.status->SetConcurrencyLimiter(cl_copy);
         }
     }
 
@@ -2007,32 +1999,29 @@ bool Server::ClearCertMapping(CertMaps& bg) {
 }
 
 int Server::ResetMaxConcurrency(int max_concurrency) {
-    if (!IsRunning()) {
-        LOG(WARNING) << "ResetMaxConcurrency is only allowd for a Running Server";
-        return -1;
-    }
-    if (_options.max_concurrency != "constant") {
-        LOG(WARNING)
-            << "ResetMaxConcurrency is only allowed for "
-               "constant concurrency limiter";
-        return -1;
-    } else {
-        _cl->MaxConcurrency() = max_concurrency;
-    }
+    LOG(WARNING) << "ResetMaxConcurrency is already deprecated";
     return 0;
 }
 
 int& Server::MaxConcurrencyOf(MethodProperty* mp) {
+    if (IsRunning()) {
+        LOG(WARNING) << "MaxConcurrencyOf is only allowd before Server started";
+        return g_default_max_concurrency_of_method;
+    }
     if (mp->status == NULL) {
         LOG(ERROR) << "method=" << mp->method->full_name()
                    << " does not support max_concurrency";
         _failed_to_set_max_concurrency_of_method = true;
         return g_default_max_concurrency_of_method;
     }
-    return mp->status->max_concurrency();
+    return mp->status->max_concurrency_ref();
 }
 
 int Server::MaxConcurrencyOf(const MethodProperty* mp) const {
+    if (IsRunning()) {
+        LOG(WARNING) << "MaxConcurrencyOf is only allowd before Server started";
+        return g_default_max_concurrency_of_method;
+    }
     if (mp == NULL || mp->status == NULL) {
         return 0;
     }

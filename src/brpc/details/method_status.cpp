@@ -31,20 +31,10 @@ MethodStatus::MethodStatus()
     , _nprocessing_bvar(cast_nprocessing, &_nprocessing)
     , _nrefused_per_second(&_nrefused_bvar, 1)
     , _nprocessing(0) {
-    const ConcurrencyLimiter* cl 
-        = ConcurrencyLimiterExtension()->Find("constant");
-    if (NULL == cl) {
-        LOG(FATAL) << "Fail to find ConcurrentLimiter by `constant`";
-    }
-    ConcurrencyLimiter* cl_copy = cl->New();
-    if (NULL == cl_copy) {
-        LOG(FATAL) << "Fail to new ConcurrencyLimiter";
-    }
-    _cl = cl_copy;
 }
 
 MethodStatus::~MethodStatus() {
-    if (_cl) {
+    if (NULL != _cl) {
         _cl->Destroy();
         _cl = NULL;
     }
@@ -63,7 +53,7 @@ int MethodStatus::Expose(const butil::StringPiece& prefix) {
     if (_latency_rec.expose(prefix) != 0) {
         return -1;
     }
-    if (_cl->Expose(prefix) != 0) {
+    if (NULL != _cl && _cl->Expose(prefix) != 0) {
         return -1;
     }
     return 0;

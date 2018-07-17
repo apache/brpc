@@ -86,19 +86,11 @@ void GradientConcurrencyLimiter::Describe(
     os << '}';
 }
 
-int GradientConcurrencyLimiter::CurrentMaxConcurrency() const {
-    return _max_concurrency.load(butil::memory_order_relaxed);
-}
-
 int GradientConcurrencyLimiter::MaxConcurrency() const {
     return _max_concurrency.load(butil::memory_order_relaxed);
 }
 
-int& GradientConcurrencyLimiter::MaxConcurrency() {
-    _unused_max_concurrency 
-        = _max_concurrency.load(butil::memory_order_relaxed);
-    LOG_EVERY_N(WARNING, 1000) 
-        << "Try to modify max concurrency in automatic limiter(gradient)";
+int& GradientConcurrencyLimiter::MaxConcurrencyRef() {
     return _unused_max_concurrency;
 }
 

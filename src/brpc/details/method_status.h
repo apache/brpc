@@ -53,18 +53,35 @@ public:
     // Describe internal vars, used by /status
     void Describe(std::ostream &os, const DescribeOptions&) const;
 
-    int current_max_concurrency() const {
-        return _cl->CurrentMaxConcurrency();
+    int max_concurrency() const {
+        if (NULL == _cl) {
+            return 0;
+        } else {
+            return _cl->MaxConcurrency();
+        }
     }
 
-    int max_concurrency() const { 
-        return const_cast<const ConcurrencyLimiter*>(_cl)->MaxConcurrency(); 
+    // Note: This method is not thread safe and can only be called before
+    // the server is started. 
+    int& max_concurrency_ref() {
+        if (NULL == _cl) {
+            const ConcurrencyLimiter* cl = 
+                ConcurrencyLimiterExtension()->Find("constant");
+            if (NULL == cl) {
+                LOG(FATAL) << "Fail to find ConcurrentLimiter by `constant`";
+            }
+            ConcurrencyLimiter* cl_copy = cl->New();
+            if (NULL == cl_copy) {
+                LOG(FATAL) << "Fail to new ConcurrencyLimiter";
+            }
+            _cl = cl_copy;
+
+       }
+       return _cl->MaxConcurrencyRef(); 
     }
 
-    int& max_concurrency() { return _cl->MaxConcurrency(); }
-
-    void ResetConcurrencyLimiter(ConcurrencyLimiter* cl) {
-        if (_cl) {
+    void SetConcurrencyLimiter(ConcurrencyLimiter* cl) {
+        if (NULL != _cl) {
             _cl->Destroy();
         }
         _cl = cl;
@@ -105,7 +122,7 @@ private:
 
 inline bool MethodStatus::OnRequested() {
     _nprocessing.fetch_add(1, butil::memory_order_relaxed);
-    if (_cl->OnRequested()) {
+    if (NULL == _cl || _cl->OnRequested()) {
         return true;
     } 
     _nrefused_bvar << 1;
@@ -119,7 +136,9 @@ inline void MethodStatus::OnResponded(int error_code, int64_t latency) {
     } else {
         _nerror << 1;
     }
-    _cl->OnResponded(error_code, latency);
+    if (NULL != _cl) {
+        _cl->OnResponded(error_code, latency);
+    }
 }
 
 } // namespace brpc

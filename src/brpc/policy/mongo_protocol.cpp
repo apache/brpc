@@ -246,7 +246,7 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
                 mongo_done->cntl.SetFailed(
                     ELIMIT, "Reached %s's max_concurrency=%d",
                     mp->method->full_name().c_str(),
-                    method_status->current_max_concurrency());
+                    method_status->max_concurrency());
                 break;
             }
         }

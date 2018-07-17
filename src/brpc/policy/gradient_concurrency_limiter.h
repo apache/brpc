@@ -30,17 +30,8 @@ public:
     ~GradientConcurrencyLimiter() {}
     bool OnRequested() override;
     void OnResponded(int error_code, int64_t latency_us) override;
-    int CurrentMaxConcurrency() const override;
     int MaxConcurrency() const override;
-    
-    // For compatibility with the MaxConcurrencyOf() interface. When using 
-    // an automatic concurrency adjustment strategy, you should not manually 
-    // adjust the maximum concurrency. In spite of this, calling this 
-    // interface is safe and it can normally return the current maximum 
-    // concurrency. But your changes to the maximum concurrency will not take
-    // effect.
-    int& MaxConcurrency() override;
-
+    int& MaxConcurrencyRef() override;
 
     int Expose(const butil::StringPiece& prefix) override;
     GradientConcurrencyLimiter* New() const override;

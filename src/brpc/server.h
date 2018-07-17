@@ -119,7 +119,7 @@ struct ServerOptions {
     // NOTE: Once you have chosen the automatic concurrency limit strategy, brpc
     // ONLY limits concurrency at the method level, And each method will use
     // the strategy you set in ServerOptions to limit the maximum concurrency, 
-    // even if you have set a maximum concurrency through `SetMaxConcurrencyOf`.
+    // even if you have set a maximum concurrency through `MaxConcurrencyOf`.
  
     AdaptiveMaxConcurrency max_concurrency;
 
@@ -484,15 +484,7 @@ public:
     void PrintTabsBody(std::ostream& os, const char* current_tab_name) const;
 
     
-    // Reset the max_concurrency set by ServerOptions.max_concurrency after
-    // Server is started.
-    // The concurrency will be limited by the new value if this function is
-    // successfully returned.
-    // Note: You may call this interface ONLY if you use the CONSTANT 
-    // maximum concurrency, like `options.max_concurrency = 1000`. If you 
-    // have chosen another maximum concurrency limit policy, 
-    // eg: `options.max_concurrency = "auto"`, it will directly return -1. 
-    // Returns 0 on success, -1 otherwise.
+    // This method is already deprecated.You should NOT call it anymore.
     int ResetMaxConcurrency(int max_concurrency);
 
     // Get/set max_concurrency associated with a method.
@@ -500,11 +492,10 @@ public:
     //    server.MaxConcurrencyOf("example.EchoService.Echo") = 10;
     // or server.MaxConcurrencyOf("example.EchoService", "Echo") = 10;
     // or server.MaxConcurrencyOf(&service, "Echo") = 10;
-    // or server.MaxConcurrencyOf(&service, "Echo") = "auto";
-    // Note: You should NOT set the max_concurrency when you have choosen an 
-    // auto concurrency limiter, eg `options.max_concurrency = "auto"`.If you
-    // still called non-const version of the interface, it would return the 
-    // method's current maximum concurrency correctly. But your changes to the
+    // Note: These interfaces can ONLY be called before the server is started.
+    // And you should NOT set the max_concurrency when you are going to choose
+    // an auto concurrency limiter, eg `options.max_concurrency = "auto"`.If you
+    // still called non-const version of the interface, your changes to the
     // maximum concurrency will not take effect.
     int& MaxConcurrencyOf(const butil::StringPiece& full_method_name);
     int MaxConcurrencyOf(const butil::StringPiece& full_method_name) const;

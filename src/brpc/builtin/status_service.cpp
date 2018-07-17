@@ -158,9 +158,10 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
                     if (mp->http_url) {
                         os << " @" << *mp->http_url;
                     }
-                    const MethodStatus* mp_status = mp->status;
-                    if (NULL != mp_status && mp_status->max_concurrency() > 0) {
-                        os << " max_concurrency=" << mp_status->max_concurrency();
+                    if (NULL != mp->status && 
+                        mp->status->max_concurrency() > 0) {
+                        os << " current_max_concurrency=" 
+                           << mp->status->max_concurrency();
                     }
                 }
                 os << "</h4>\n";
@@ -171,9 +172,10 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
                     if (mp->http_url) {
                         os << " @" << *mp->http_url;
                     }
-                    const MethodStatus* mp_status = mp->status;
-                    if (NULL != mp_status && mp_status->max_concurrency() > 0) {
-                        os << " max_concurrency=" << mp_status->max_concurrency();
+                    if (NULL != mp->status && 
+                        mp->status->max_concurrency() > 0) {
+                        os << " max_concurrency=" 
+                           << mp->status->max_concurrency();
                     }
                 }
                 os << '\n';
