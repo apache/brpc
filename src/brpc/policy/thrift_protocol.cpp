@@ -122,7 +122,7 @@ bool ReadThriftStruct(const butil::IOBuf& body,
                       ThriftMessageBase* raw_msg,
                       int16_t expected_fid) {
     const size_t body_len  = body.size();
-    uint8_t* thrift_buffer = new uint8_t[body_len];
+    uint8_t* thrift_buffer = (uint8_t*)malloc(body_len);
     body.copy_to(thrift_buffer, body_len);
     auto in_buffer =
         THRIFT_STDCXX::make_shared<apache::thrift::transport::TMemoryBuffer>(
@@ -165,7 +165,7 @@ bool ReadThriftStruct(const butil::IOBuf& body,
 void ReadThriftException(const butil::IOBuf& body,
                          ::apache::thrift::TApplicationException* x) {
     size_t body_len  = body.size();
-    uint8_t* thrift_buffer = new uint8_t[body_len];
+    uint8_t* thrift_buffer = (uint8_t*)malloc(body_len);
     body.copy_to(thrift_buffer, body_len);
     auto in_buffer =
         THRIFT_STDCXX::make_shared<apache::thrift::transport::TMemoryBuffer>(
