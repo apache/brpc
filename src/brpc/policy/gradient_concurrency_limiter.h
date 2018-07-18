@@ -52,26 +52,23 @@ private:
         int64_t total_succ_us;
     };
 
-    struct WindowSnap {
-        WindowSnap(int64_t latency_us, int32_t concurrency, int32_t succ_req)
-            : avg_latency_us(latency_us)
-            , actual_concurrency(concurrency)
-            , total_succ_req(succ_req) {}
-        int64_t avg_latency_us;
-        int32_t actual_concurrency;
-        int32_t total_succ_req;
-    };
-
     void AddSample(int error_code, int64_t latency_us, int64_t sampling_time_us);
+    int NextResetCount();
 
-    //NOT thread-safe, should be called in AddSample()
-    void UpdateConcurrency();
+    // The following methods are not thread safe and can only be called 
+    // in AppSample()
+    void UpdateConcurrency(int64_t sampling_time_us);
+    void UpdateMinLatency(int64_t latency_us);
+    void UpdateQps(int32_t succ_count, int64_t sampling_time_us);
     void ResetSampleWindow(int64_t sampling_time_us);
+    void AddMinLatency(int64_t latency_us);
     
     SampleWindow _sw;
-    butil::BoundedQueue<WindowSnap> _ws_queue;
-    uint32_t _ws_index;
     int32_t _unused_max_concurrency;
+    int _reset_count;
+    int64_t _min_latency_us;
+    const double _smooth;
+    int32_t _ema_qps;
     butil::Mutex _sw_mutex;
     bvar::PassiveStatus<int32_t> _max_concurrency_bvar;
     butil::atomic<int64_t> BAIDU_CACHELINE_ALIGNMENT _last_sampling_time_us;
