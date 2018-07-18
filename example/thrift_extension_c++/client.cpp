@@ -16,18 +16,13 @@
 
 #include <gflags/gflags.h>
 
-#include "gen-cpp/EchoService.h"
 #include "gen-cpp/echo_types.h"
 
 #include <butil/logging.h>
 #include <butil/time.h>
-#include <butil/strings/string_piece.h>
 #include <brpc/channel.h>
 #include <brpc/thrift_message.h>
 #include <bvar/bvar.h>
-
-#include <thrift/transport/TBufferTransports.h>
-#include <thrift/protocol/TBinaryProtocol.h>
 
 bvar::LatencyRecorder g_latency_recorder("client");
 
