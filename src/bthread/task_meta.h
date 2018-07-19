@@ -83,7 +83,9 @@ struct TaskMeta {
     int64_t cpuwide_start_ns;
     TaskStatistics stat;
 
-    // bthread local storage.
+    // bthread local storage, sync with tls_bls (defined in task_group.cpp)
+    // when the bthread is created or destroyed.
+    // DO NOT use this field directly, use tls_bls instead.
     LocalStorage local_storage;
 
 public:
