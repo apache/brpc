@@ -211,8 +211,8 @@ void GradientConcurrencyLimiter::UpdateConcurrency(int64_t sampling_time_us) {
     int32_t saved_min_latency_us = _min_latency_us;
     if (--_reset_count == 0) {
         _reset_count = NextResetCount();
-        _min_latency_us = -1;
         if (current_concurrency >= max_concurrency - 2) {
+            _min_latency_us = -1;
             next_concurrency -= std::sqrt(max_concurrency);
             next_concurrency = std::max(next_concurrency, reserved_concurrency);
         } else {
