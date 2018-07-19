@@ -40,7 +40,9 @@
 #include "brpc/details/ssl_helper.h"           // CreateServerSSLContext
 #include "brpc/protocol.h"                     // ListProtocols
 #include "brpc/nshead_service.h"               // NsheadService
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
 #include "brpc/thrift_service.h"               // ThriftService
+#endif
 #include "brpc/builtin/bad_method_service.h"   // BadMethodService
 #include "brpc/builtin/get_favicon_service.h"
 #include "brpc/builtin/get_js_service.h"
@@ -1030,9 +1032,6 @@ int Server::Stop(int timeout_ms) {
     if (_status != RUNNING) {
         return -1;
     }
-    if (_status != RUNNING) {
-        return -1;
-    }
     _status = STOPPING;
     
     LOG(INFO) << "Server[" << version() << "] is going to quit";
@@ -1373,7 +1372,10 @@ void Server::RemoveMethodsOf(google::protobuf::Service* service) {
             full_name_wo_ns.append(md->name());
             _method_map.erase(full_name_wo_ns);
         }
-
+        if (mp == NULL) {
+            LOG(ERROR) << "Fail to find method=" << md->full_name();
+            continue;
+        }
         if (mp->http_url) {
             butil::StringSplitter at_sp(mp->http_url->c_str(), '@');
             for (; at_sp; ++at_sp) {
@@ -1409,7 +1411,7 @@ void Server::RemoveMethodsOf(google::protobuf::Service* service) {
             delete mp->http_url;
         }
 
-        if (mp != NULL && mp->own_method_status) {
+        if (mp->own_method_status) {
             delete mp->status;
         }
         _method_map.erase(md->full_name());

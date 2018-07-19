@@ -414,6 +414,9 @@ public:
     // Put all sockets in _shared_part->socket_pool into `list'.
     void ListPooledSockets(std::vector<SocketId>* list, size_t max_count = 0);
 
+    // Return true on success
+    bool GetPooledSocketStats(int* numfree, int* numinflight);
+
     // Create a socket connecting to the same place of main_socket.
     static int GetShortSocket(Socket* main_socket,
                               SocketUniquePtr* short_socket);

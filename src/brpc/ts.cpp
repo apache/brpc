@@ -251,7 +251,6 @@ void TsPacket::Reset() {
     _transport_scrambling_control = TS_SCRAMBLED_DISABLED;
     _adaptation_field_control = TS_AF_RESERVED;
     _continuity_counter = 0;
-    _adaptation_field = NULL;
     _payload = NULL;
     _modified = false;
 }

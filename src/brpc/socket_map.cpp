@@ -169,6 +169,8 @@ void SocketMapList(std::vector<SocketId>* ids) {
     SocketMap* m = get_client_side_socket_map();
     if (m) {
         m->List(ids);
+    } else {
+        ids->clear();
     }
 }
 

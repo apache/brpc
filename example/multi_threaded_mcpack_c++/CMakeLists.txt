@@ -16,6 +16,17 @@ protobuf_generate_cpp(PROTO_SRC PROTO_HEADER echo.proto)
 # include PROTO_HEADER
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
+# Search for libthrift* by best effort. If it is not found and brpc is
+# compiled with thrift protocol enabled, a link error would be reported.
+find_library(THRIFT_LIB NAMES thrift)
+if (NOT THRIFT_LIB)
+    set(THRIFT_LIB "")
+endif()
+find_library(THRIFTNB_LIB NAMES thriftnb)
+if (NOT THRIFTNB_LIB)
+    set(THRIFTNB_LIB "")
+endif()
+
 find_path(GPERFTOOLS_INCLUDE_DIR NAMES gperftools/heap-profiler.h)
 find_library(GPERFTOOLS_LIBRARIES NAMES tcmalloc_and_profiler)
 include_directories(${GPERFTOOLS_INCLUDE_DIR})
@@ -96,6 +107,8 @@ set(DYNAMIC_LIB
     ${LEVELDB_LIB}
     ${SSL_LIB}
     ${CRYPTO_LIB}
+    ${THRIFT_LIB}
+    ${THRIFTNB_LIB}
     dl
     )
 
@@ -110,8 +123,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "-framework Foundation"
         "-Wl,-U,_MallocExtension_ReleaseFreeMemory"
         "-Wl,-U,_ProfilerStart"
-        "-Wl,-U,_ProfilerStop"
-        "-Wl,-U,_RegisterThriftProtocol")
+        "-Wl,-U,_ProfilerStop")
 endif()
 
 execute_process(

@@ -87,7 +87,7 @@ URL的一般形式如下图：
 
 确实，在简单使用场景下，这两者有所重复，但在复杂场景中，两者差别很大，比如：
 
-- 访问名字服务(如BNS)下的多个http server。此时Channel.Init传入的是对该名字服务有意义的名称（如BNS中的节点名称），对uri()的赋值则是包含Host的完整URL(比如"www.foo.com/index.html?name=value")。
+- 访问命名服务(如BNS)下的多个http server。此时Channel.Init传入的是对该命名服务有意义的名称（如BNS中的节点名称），对uri()的赋值则是包含Host的完整URL(比如"www.foo.com/index.html?name=value")。
 - 通过http proxy访问目标server。此时Channel.Init传入的是proxy server的地址，但uri()填入的是目标server的URL。
 
 ## Host字段
