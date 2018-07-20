@@ -82,6 +82,8 @@ public:
         delete _channel;
     }
 
+    inline bool IsStop() { return _stop; }
+
     int Init() {
         brpc::ChannelOptions options;
         options.use_rdma = FLAGS_use_rdma;
@@ -100,7 +102,6 @@ public:
         test::PerfTestResponse response;
         test::PerfTestRequest request;
         request.set_echo_attachment(_echo_attachment);
-        cntl.request_attachment().append(_attachment);
         stub.Test(&cntl, &request, &response, NULL);
         if (cntl.Failed()) {
             LOG(ERROR) << "RPC call failed: " << cntl.ErrorText();
@@ -161,8 +162,6 @@ public:
         
         test->SendRequest();
 
-        while (!test->_stop) {
-        }
         return NULL;
     }
 
@@ -198,7 +197,7 @@ void Test(int thread_num, int attachment_size) {
                 PerformanceTest::RunTest, tests[k]);
     }
     for (int k = 0; k < thread_num; ++k) {
-        bthread_join(tid[k], NULL);
+        while (!tests[k]->IsStop()) continue;
     }
     uint64_t end_time = butil::gettimeofday_us();
     double throughput = g_total_bytes / 1.048576 / (end_time - start_time);

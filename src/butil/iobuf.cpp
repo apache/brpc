@@ -297,8 +297,7 @@ struct IOBuf::Block {
                 if (release_cb) {
                     release_cb((void *)data);
                 }
-                this->~Block();
-                iobuf::blockmem_deallocate(this);
+                delete this;
                 return;
             }
 #endif
@@ -341,16 +340,6 @@ uint16_t block_cap(IOBuf::Block const *b) {
     return b->cap;
 }
 
-#ifdef IOBUF_HUGE_BLOCK
-inline IOBuf::Block* create_block(const size_t block_size, bool inner_mem = true) {
-    size_t alloc_size = (inner_mem) ? block_size : sizeof(IOBuf::Block);
-    void* mem = iobuf::blockmem_allocate(alloc_size);
-    if (BAIDU_LIKELY(mem != NULL)) {
-        return new (mem) IOBuf::Block(block_size, inner_mem);
-    }
-    return NULL;
-}
-#else
 inline IOBuf::Block* create_block(const size_t block_size) {
     void* mem = iobuf::blockmem_allocate(block_size);
     if (BAIDU_LIKELY(mem != NULL)) {
@@ -358,7 +347,6 @@ inline IOBuf::Block* create_block(const size_t block_size) {
     }
     return NULL;
 }
-#endif
 
 inline IOBuf::Block* create_block() {
     return create_block(IOBuf::DEFAULT_BLOCK_SIZE);
@@ -1170,7 +1158,8 @@ int IOBuf::append_zerocopy(void const* data, size_t count, void (*cb)(void*)) {
     if (BAIDU_UNLIKELY(!data || count <= 0)) {
         return -1;
     }
-    IOBuf::Block* b = iobuf::create_block(count + sizeof(IOBuf::Block), false);
+    IOBuf::Block* b = new (std::nothrow) IOBuf::Block(
+            count + sizeof(IOBuf::Block), false);
     if (BAIDU_UNLIKELY(!b)) {
         return -1;
     }

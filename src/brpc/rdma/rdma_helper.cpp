@@ -178,12 +178,14 @@ void BlockDeallocate(void* buf) {
     }
     // This may happen after GlobalRelease
     if (DeallocBlock(buf) < 0 && errno == ERANGE) {
-        BAIDU_SCOPED_LOCK(g_addr_map_lock);
-        if (g_addr_map) {
-            ibv_mr** mr = g_addr_map->seek(buf);
-            if (mr && *mr) {
-                ibv_dereg_mr(*mr);
-                g_addr_map->erase(buf);
+        {
+            BAIDU_SCOPED_LOCK(g_addr_map_lock);
+            if (g_addr_map) {
+                ibv_mr** mr = g_addr_map->seek(buf);
+                if (mr && *mr) {
+                    ibv_dereg_mr(*mr);
+                    g_addr_map->erase(buf);
+                }
             }
         }
         // Note that a block allocated before RDMA is initialized can

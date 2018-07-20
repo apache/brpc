@@ -954,7 +954,7 @@ int RdmaEndpoint::AllocateResources() {
     if (!_rcq) {
         return -1;
     }
-    if (_rcq->IsShared()) {
+    if (RdmaCompletionQueue::IsShared()) {
         bthread::ExecutionQueueOptions options;
         options.bthread_attr = FLAGS_usercode_in_pthread ?
                                BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL;
@@ -982,11 +982,13 @@ int RdmaEndpoint::AllocateResources() {
 }
 
 void RdmaEndpoint::DeallocateResources() {
-    if (bthread::execution_queue_address(_completion_queue) != NULL) {
-        bthread::execution_queue_stop(_completion_queue);
-        // Do not join the execution queue, which may incur deadlock.
-        // In fact, the execution thread must have jumpped out the loop
-        // if we get here.
+    if (RdmaCompletionQueue::IsShared()) {
+        if (bthread::execution_queue_address(_completion_queue) != NULL) {
+            bthread::execution_queue_stop(_completion_queue);
+            // Do not join the execution queue, which may incur deadlock.
+            // In fact, the execution thread must have jumpped out the loop
+            // if we get here.
+        }
     }
 
     delete _rcm;
