@@ -42,6 +42,9 @@ namespace rdma {
 DEFINE_int32(rdma_sbuf_size, 1048576, "Send buffer size for RDMA");
 DEFINE_int32(rdma_rbuf_size, 1048576, "Recv buffer size for RDMA");
 DEFINE_bool(rdma_recv_zerocopy, true, "Enable zerocopy for receive side");
+DEFINE_bool(rdma_disable_local_connection, true,
+            "Disable local RDMA connection");
+DEFINE_bool(rdma_trace_verbose, false, "Print log message verbosely");
 
 // DO NOT change this value unless you know the safe value!!!
 // This is the number of reserved WRs in SQ/RQ for pure ACK.
@@ -388,10 +391,23 @@ int RdmaEndpoint::StartHandshake() {
     // address of the servers in one cluster share the same ip prefix.)
     if (!DestinationInRdmaCluster(
             butil::NetToHost64(butil::ip2int(_socket->remote_side().ip)))) {
-        LOG(WARNING) << "Destination is not in current RDMA cluster";
+        LOG_IF(WARNING, FLAGS_rdma_trace_verbose)
+                << "Destination is not in current RDMA cluster";
         _socket->_rdma_state = Socket::RDMA_OFF;
         return 0;
     }
+
+    // Since local RDMA connection still needs to pass the NIC, which may
+    // suffer from the PCIe bandwidth bottleneck, it should be allowed
+    // to disable RDMA for local connection.
+    if (FLAGS_rdma_disable_local_connection &&
+        IsLocalIP(_socket->_remote_side.ip)) {
+        LOG_IF(WARNING, FLAGS_rdma_trace_verbose)
+                << "Do not use RDMA for local connection";
+        _socket->_rdma_state = Socket::RDMA_OFF;
+        return 0;
+    }
+
     _status = HELLO_C;
 
     butil::fast_rand_bytes(_rand_str, RANDOM_LENGTH);
@@ -539,6 +555,8 @@ int RdmaEndpoint::HandshakeAtClient(RdmaCMEvent event) {
         }
 
         _status = ESTABLISHED;
+        LOG_IF(INFO, FLAGS_rdma_trace_verbose)
+                << "RDMA connection established";
         _socket->_rdma_state = Socket::RDMA_ON;
         _socket->WakeAsEpollOut();
         break;

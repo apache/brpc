@@ -45,6 +45,9 @@ void* GetRdmaProtectionDomain();
 // Get global RDMA IP
 in_addr GetRdmaIP();
 
+// Whether the give addr is the local address
+bool IsLocalIP(in_addr addr);
+
 // Return lkey of the given address
 uint32_t GetLKey(const void* buf);
 

@@ -405,7 +405,8 @@ static void GlobalRdmaInitializeOrDieImpl() {
         PLOG(ERROR) << "Fail to get the device information";
         ExitWithError();
     }
-    g_max_sge = attr.max_sge;
+    // Too large sge consumes too much memory for QP
+    g_max_sge = attr.max_sge < 6 ? attr.max_sge : 6;
 
     // Initialize RDMA memory pool (block_pool)
     if (!InitBlockPool(RdmaRegisterMemory)) {
@@ -515,6 +516,16 @@ void DeregisterMemoryForRdma(void* buf) {
 
 in_addr GetRdmaIP() {
     return g_rdma_ip;
+}
+
+bool IsLocalIP(in_addr addr) {
+    butil::ip_t local_ip;
+    butil::str2ip("127.0.0.1", &local_ip);
+    if (addr.s_addr == butil::ip2int(local_ip) ||
+        addr.s_addr == 0 || addr == g_rdma_ip) {
+        return true;;
+    }
+    return false;
 }
 
 int GetRdmaMaxSge() {

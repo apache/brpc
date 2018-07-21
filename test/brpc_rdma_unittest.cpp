@@ -40,6 +40,7 @@ namespace brpc {
 namespace rdma {
 DECLARE_int32(rdma_cq_num);
 DECLARE_int32(rdma_cq_size);
+DECLARE_bool(rdma_disable_local_connection);
 extern bool DestinationInGivenCluster(std::string prefix, in_addr_t addr);
 extern void InitRdmaConnParam(rdma_conn_param* p, const char* data, size_t len);
 }
@@ -1386,6 +1387,7 @@ TEST_F(RdmaTest, client_does_not_support_rdma) {
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
     google::ParseCommandLineFlags(&argc, &argv, true);
+    rdma::FLAGS_rdma_disable_local_connection = false;
     return RUN_ALL_TESTS();
 }
 

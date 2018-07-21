@@ -19,7 +19,6 @@
 #include <rdma/rdma_cma.h>
 #endif
 #include <arpa/inet.h>
-#include <ifaddrs.h>
 #include <butil/fd_utility.h>                     // make_non_blocking
 #include <butil/logging.h>
 #include <butil/unique_ptr.h>
@@ -199,21 +198,13 @@ int RdmaCommunicationManager::ResolveAddr(butil::EndPoint& remote_ep) {
     CHECK(_cm_id != NULL);
     rdma_cm_id* cm_id = (rdma_cm_id*)_cm_id;
 
-    // Automatically find local RDMA address
-    // We cannot use 127.0.0.1 or 0.0.0.0 for RDMA directly, because
-    // the resources used are bound to a specific RDMA NIC.
-    bool no_ip = false;
-    butil::ip_t local_ip;
-    butil::str2ip("127.0.0.1", &local_ip);
-    if (butil::ip2int(remote_ep.ip) == butil::ip2int(local_ip) ||
-            butil::ip2int(remote_ep.ip) == 0) {
-        no_ip = true;
-    }
-
     sockaddr_in* addr = &cm_id->route.addr.dst_sin;
     addr->sin_family = AF_INET;
     addr->sin_port = htons(remote_ep.port);
-    if (no_ip) {
+    // Automatically find local RDMA address
+    // We cannot use 127.0.0.1 or 0.0.0.0 for RDMA directly, because
+    // the resources used are bound to a specific RDMA NIC.
+    if (IsLocalIP(remote_ep.ip)) {
         addr->sin_addr = GetRdmaIP();
     } else {
         addr->sin_addr = remote_ep.ip;
