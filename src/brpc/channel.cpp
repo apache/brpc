@@ -44,6 +44,7 @@ ChannelOptions::ChannelOptions()
     , timeout_ms(500)
     , backup_request_ms(-1)
     , max_retry(3)
+    , enable_circuit_breaker(false)
     , protocol(PROTOCOL_BAIDU_STD)
     , connection_type(CONNECTION_TYPE_UNKNOWN)
     , succeed_without_server(true)
@@ -383,6 +384,7 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     cntl->_request_protocol = _options.protocol;
     cntl->_preferred_index = _preferred_index;
     cntl->_retry_policy = _options.retry_policy;
+    cntl->_enable_circuit_breaker = _options.enable_circuit_breaker;
     const CallId correlation_id = cntl->call_id();
     const int rc = bthread_id_lock_and_reset_range(
                     correlation_id, NULL, 2 + cntl->max_retry());

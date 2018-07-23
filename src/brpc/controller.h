@@ -559,11 +559,12 @@ private:
         void Reset();
         void OnComplete(Controller* c, int error_code, bool responded);
 
-        int nretry;                // sent in nretry-th retry.
-        bool need_feedback;        // The LB needs feedback.
+        int nretry;                   // sent in nretry-th retry.
+        bool need_feedback;           // The LB needs feedback.
+        bool enable_circuit_breaker;  // The channel enabled circuit_breaker
         bool touched_by_stream_creator;
-        SocketId peer_id;          // main server id
-        int64_t begin_time_us;     // sent real time.
+        SocketId peer_id;            // main server id
+        int64_t begin_time_us;       // sent real time.
         // The actual `Socket' for sending RPC. It's socket id will be
         // exactly the same as `peer_id' if `_connection_type' is
         // CONNECTION_TYPE_SINGLE. Otherwise, it may be a temporary
@@ -621,6 +622,7 @@ private:
     // Some of them are copied from `Channel' which might be destroyed
     // after CallMethod.
     int _max_retry;
+    bool _enable_circuit_breaker;
     const RetryPolicy* _retry_policy;
     // Synchronization object for one RPC call. It remains unchanged even 
     // when retry happens. Synchronous RPC will wait on this id.

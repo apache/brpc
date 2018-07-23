@@ -69,6 +69,12 @@ struct ChannelOptions {
     // Maximum: INT_MAX
     int max_retry;
     
+    // When the error rate of an endpoint is too high, deactivate the node. 
+    // Note that this deactive is GLOBAL, and the endpoint will become 
+    // unavailable for the next period of time after the deactive.
+    // Default: false
+    bool enable_circuit_breaker;
+
     // Serialization protocol, defined in src/brpc/options.proto
     // NOTE: You can assign name of the protocol to this field as well, for
     // Example: options.protocol = "baidu_std";

@@ -37,6 +37,7 @@
 #include "brpc/options.pb.h"              // ConnectionType
 #include "brpc/socket_id.h"               // SocketId
 #include "brpc/socket_message.h"          // SocketMessagePtr
+#include "brpc/circuit_breaker.h"         // CircuitBreaker
 
 namespace brpc {
 namespace policy {
@@ -314,6 +315,14 @@ public:
     int SetFailed(int error_code, const char* error_fmt, ...)
         __attribute__ ((__format__ (__printf__, 3, 4)));
     static int SetFailed(SocketId id);
+
+    void FeedbackCircuitBreaker(int error_code, int64_t latency_us) {
+        if (!_circuit_breaker.OnCallEnd(error_code, latency_us)) {
+            LOG(ERROR) 
+                << "Socket[" << *this << "] deactivted by circuit breaker";
+            SetFailed();
+        }
+    }
 
     bool Failed() const;
 
@@ -759,6 +768,8 @@ private:
 
     butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
+
+    CircuitBreaker _circuit_breaker;
 };
 
 } // namespace brpc
