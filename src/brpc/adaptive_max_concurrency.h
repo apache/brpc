@@ -35,6 +35,13 @@ public:
         : _name("constant")
         , _max_concurrency(max_concurrency) {}
     
+    // Non-trivial destructor to prevent AdaptiveMaxConcurrency from being 
+    // passed to variadic arguments without explicit type conversion.
+    // eg: 
+    // printf("%d", options.max_concurrency)                  // compile error
+    // printf("%d", static_cast<int>(options.max_concurrency) // ok
+    ~AdaptiveMaxConcurrency() {}
+
     AdaptiveMaxConcurrency(const butil::StringPiece& name);
 
     void operator=(int max_concurrency) {
