@@ -20,9 +20,9 @@
 
 namespace brpc {
 
-DEFINE_int32(circuit_breaker_short_window_size, 30,
+DEFINE_int32(circuit_breaker_short_window_size, 100,
     "Short window sample size.");
-DEFINE_int32(circuit_breaker_long_window_size, 100,
+DEFINE_int32(circuit_breaker_long_window_size, 1000,
     "Long window sample size.");
 DEFINE_int32(circuit_breaker_short_window_error_percent, 5,
     "The maximum error rate allowed by the short window, ranging from 0-99.");
