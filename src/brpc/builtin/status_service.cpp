@@ -171,7 +171,7 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
                         os << " @" << *mp->http_url;
                     }
                     if (mp->status && mp->status->max_concurrency() > 0) {
-                    os << " max_concurrency=" << mp->status->max_concurrency();
+                        os << " max_concurrency=" << mp->status->max_concurrency();
                     }
                 }
                 os << '\n';

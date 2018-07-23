@@ -482,9 +482,9 @@ static void GlobalInitializeOrDieImpl() {
         policy::ProcessThriftRequest, policy::ProcessThriftResponse,
         policy::VerifyThriftRequest, NULL, NULL,
         CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };
-        if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
-            exit(1);
-        }
+    if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
+        exit(1);
+    }
 #endif
 
     // Only valid at client side
