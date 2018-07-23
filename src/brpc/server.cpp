@@ -875,20 +875,21 @@ int Server::StartInternal(const butil::ip_t& ip,
         bthread_setconcurrency(_options.num_threads);
     }
 
-    if (_options.max_concurrency == "constant" && 
-        static_cast<int>(_options.max_concurrency) != 0) {
-        const ConcurrencyLimiter* constant_cl = 
-            ConcurrencyLimiterExtension()->Find("constant");
-        if (NULL == constant_cl) {
-            LOG(FATAL) << "Fail to find ConcurrencyLimiter by `constant'";
+    if (_options.max_concurrency == "constant") {
+        if (static_cast<int>(_options.max_concurrency) != 0) {
+            const ConcurrencyLimiter* constant_cl = 
+                ConcurrencyLimiterExtension()->Find("constant");
+            if (NULL == constant_cl) {
+                LOG(FATAL) << "Fail to find ConcurrencyLimiter by `constant'";
+            }
+            ConcurrencyLimiter* cl_copy = constant_cl->New();
+            if (NULL == cl_copy) {
+                LOG(FATAL) << "Fail to new ConcurrencyLimiter";
+            }
+            _cl = cl_copy;
+            _cl->MaxConcurrencyRef() = _options.max_concurrency;
         }
-        ConcurrencyLimiter* cl_copy = constant_cl->New();
-        if (NULL == cl_copy) {
-            LOG(FATAL) << "Fail to new ConcurrencyLimiter";
-        }
-        _cl = cl_copy;
-        _cl->MaxConcurrencyRef() = _options.max_concurrency;
-    } else if (_options.max_concurrency != "constant") {
+    } else {
         const ConcurrencyLimiter* cl = NULL;
         cl = ConcurrencyLimiterExtension()->Find(
                 _options.max_concurrency.name().c_str());

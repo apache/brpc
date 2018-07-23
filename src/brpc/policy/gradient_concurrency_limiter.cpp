@@ -184,7 +184,7 @@ void GradientConcurrencyLimiter::UpdateMinLatency(int64_t latency_us) {
 
 void GradientConcurrencyLimiter::UpdateQps(int32_t succ_count, 
                                            int64_t sampling_time_us) {
-    int32_t qps = double(succ_count) / (sampling_time_us - _sw.start_time_us)
+    double qps = double(succ_count) / (sampling_time_us - _sw.start_time_us)
                   * 1000 * 1000;
     _ema_qps = _ema_qps * _smooth + qps * (1 - _smooth);
 }

@@ -95,7 +95,7 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
            << "_connection_count\" class=\"flot-placeholder\"></div></div>";
     }
     os << '\n';
-    const AdaptiveMaxConcurrency max_concurrency = 
+    const AdaptiveMaxConcurrency& max_concurrency = 
         server->options().max_concurrency;
     if (max_concurrency == "constant") {
         os << "max_concurrency: " << static_cast<int>(max_concurrency) << '\n';
