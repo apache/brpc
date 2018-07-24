@@ -90,6 +90,8 @@ static ssize_t ReadFile(std::string& path, void* data) {
 }
 
 static void GlobalRelease() {
+    sleep(1);  // avoid unload library too early
+
     // We do not set `g_async_socket' to failed explicitly to avoid
     // close async_fd twice.
 

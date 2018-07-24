@@ -199,6 +199,8 @@ private:
 
     // Only used when shared CQ is enabled
     bthread::ExecutionQueueId<RdmaCompletion*> _completion_queue;
+    // Whether the _completion_queue is valid
+    bool _completion_queue_valid;
 
     // pipe fd used for waking handshake
     int _pipefd[2];

@@ -127,6 +127,7 @@ RdmaEndpoint::RdmaEndpoint(Socket* s)
     , _new_rq_wrs(0)
     , _remote_sid(0)
     , _completion_queue()
+    , _completion_queue_valid(false)
 {
     _pipefd[0] = -1;
     _pipefd[1] = -1;
@@ -582,6 +583,7 @@ bool RdmaEndpoint::IsWritable() const {
     return _window_size.load(butil::memory_order_relaxed) > 0;
 }
 
+#ifdef BRPC_RDMA
 const size_t BLOCK_HEADER_LEN = butil::IOBuf::DEFAULT_BLOCK_SIZE -
                                 butil::IOBuf::DEFAULT_PAYLOAD;
 
@@ -593,39 +595,28 @@ private:
     // Cut the current IOBuf to ibv_sge list and `to' for at most first max_sge
     // blocks or first max_len bytes.
     // Return: the bytes included in the sglist, or -1 if failed
-    ssize_t cut_into_sglist_and_iobuf(void* sglist, butil::IOBuf* to,
-            size_t max_sge, size_t max_len, uint32_t* lkey) {
-#ifndef BRPC_RDMA
-        CHECK(false) << "This should not happen";
-        return -1;
-#else
-        ibv_sge* list = (ibv_sge*)sglist;
+    ssize_t cut_into_sglist_and_iobuf(ibv_sge* sglist, butil::IOBuf* to,
+                                      size_t max_sge, size_t max_len) {
         size_t len = 0;
-        const size_t nref = _ref_num();
-        size_t num = (nref < max_sge) ? nref : max_sge;
-        for (size_t i = 0; i < num; ++i) {
-            if (len == max_len) {
+        for (size_t i = 0; i < max_sge; ++i) {
+            if (len == max_len || _ref_num() == 0) {
                 break;
             }
-            butil::IOBuf::BlockRef const& r = _ref_at(i);
-            char* start = (char*)backing_block(i).data();
-            uint32_t this_lkey = 0;
+            CHECK(len < max_len);
+            butil::IOBuf::BlockRef const& r = _ref_at(0);
+            char* start = (char*)backing_block(0).data();
+            uint32_t lkey = 0;
             if ((char*)r.block + BLOCK_HEADER_LEN == start) {
-                this_lkey = GetLKey((char*)r.block);
+                lkey = GetLKey((char*)r.block);
             } else {
-                this_lkey = GetLKey(backing_block(i).data());
+                lkey = GetLKey(backing_block(0).data());
             }
-            if (*lkey == 0) {
-                *lkey = this_lkey;
-            } else if (this_lkey != *lkey) {
-                break;
-            }
-            if (*lkey == 0) {
+            if (lkey == 0) {
                 // This block is not in the registered memory. It may be
                 // allocated before we call GlobalRdmaInitializeOrDie. We try
                 // to copy this block into the block_pool.
-                CHECK(i == 0);  // should be the first block
-                size_t append_len = (r.length < max_len) ? r.length : max_len;
+                size_t append_len = r.length < (max_len - len) ?
+                                    r.length : (max_len - len);
                 append_len = append_len < butil::IOBuf::DEFAULT_PAYLOAD ?
                              append_len : butil::IOBuf::DEFAULT_PAYLOAD;
                 RdmaIOBuf tmp;
@@ -641,42 +632,38 @@ private:
                     errno = ENOMEM;
                     return -1;
                 }
-                if (GetLKey(tmp._ref_at(0).block) == 0) {
+                lkey = GetLKey(tmp._ref_at(0).block);
+                if (lkey == 0) {
                     tmp.clear();  // must clear before setting errno
                     errno = ENOMEM;
                     return -1;
                 }
                 memcpy(buf, start, append_len);
 
-                len = tmp.cut_into_sglist_and_iobuf(&list[i], to,
-                        max_sge, append_len, lkey);
-                CHECK(len > 0);
-                cutn(&tmp, len);
-                return len;
+                sglist[i].addr = (uint64_t)tmp.backing_block(0).data();
+                sglist[i].length = append_len;
+                sglist[i].lkey = lkey;
+                tmp.cutn(to, append_len);
+                cutn(&tmp, append_len);
+                len += append_len;
+                continue;
             }
             if (len + r.length > max_len) {
-                if (r.length <= butil::IOBuf::DEFAULT_PAYLOAD) {
-                    // Leave it for the next WR to avoid spliting blocks
-                    break;
-                } else {
-                    // Split the block to comply with size for receiving
-                    list[i].length = max_len - len;
-                    len = max_len;
-                }
+                // Split the block to comply with size for receiving
+                sglist[i].length = max_len - len;
+                len = max_len;
             } else {
-                list[i].length = r.length;
+                sglist[i].length = r.length;
                 len += r.length;
             }
-            list[i].addr = (uint64_t)start;
-            list[i].lkey = *lkey;
-        }
-        if (len > 0) {
-            cutn(to, len);
+            sglist[i].addr = (uint64_t)start;
+            sglist[i].lkey = lkey;
+            cutn(to, sglist[i].length);
         }
         return len;
-#endif
     }
 };
+#endif
 
 // Note this function is coupled with the implementation of IOBuf
 ssize_t RdmaEndpoint::DoCutFromIOBufList(
@@ -701,7 +688,6 @@ ssize_t RdmaEndpoint::DoCutFromIOBufList(
     wr.opcode = IBV_WR_SEND_WITH_IMM;
     wr.imm_data = butil::HostToNet32(imm);
     size_t sge_index = 0;
-    uint32_t lkey = 0;
     while (sge_index < (uint32_t)max_sge &&
            total_len < butil::IOBuf::DEFAULT_PAYLOAD) {
         if (data->size() == 0) {
@@ -716,16 +702,11 @@ ssize_t RdmaEndpoint::DoCutFromIOBufList(
 
         ssize_t len = data->cut_into_sglist_and_iobuf(
                 &sglist[sge_index], to, max_sge - sge_index,
-                butil::IOBuf::DEFAULT_PAYLOAD - total_len, &lkey);
+                butil::IOBuf::DEFAULT_PAYLOAD - total_len);
         if (len < 0) {
             return -1;
         }
-        if (len == 0) {
-            // It happens when:
-            // 1. lkey is not same with the next block
-            // 2. The next block is a full block
-            break;
-        }
+        CHECK(len > 0);
         total_len += len;
         sge_index = to->backing_block_num();
     }
@@ -981,6 +962,7 @@ int RdmaEndpoint::AllocateResources() {
                 &_completion_queue, &options, CompletionThread, this) < 0) {
             return -1;
         }
+        _completion_queue_valid = true;
     }
 
     _qp = _rcm->CreateQP(_sq_size + RESERVED_WR_NUM,
@@ -1000,13 +982,14 @@ int RdmaEndpoint::AllocateResources() {
 }
 
 void RdmaEndpoint::DeallocateResources() {
-    if (RdmaCompletionQueue::IsShared()) {
+    if (_completion_queue_valid) {
         if (bthread::execution_queue_address(_completion_queue) != NULL) {
             bthread::execution_queue_stop(_completion_queue);
             // Do not join the execution queue, which may incur deadlock.
             // In fact, the execution thread must have jumpped out the loop
             // if we get here.
         }
+        _completion_queue_valid = false;
     }
 
     delete _rcm;

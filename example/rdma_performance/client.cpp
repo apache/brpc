@@ -197,7 +197,9 @@ void Test(int thread_num, int attachment_size) {
                 PerformanceTest::RunTest, tests[k]);
     }
     for (int k = 0; k < thread_num; ++k) {
-        while (!tests[k]->IsStop()) continue;
+        while (!tests[k]->IsStop()) {
+            usleep(1);
+        }
     }
     uint64_t end_time = butil::gettimeofday_us();
     double throughput = g_total_bytes / 1.048576 / (end_time - start_time);

@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <vector>
 #include <butil/fast_rand.h>
+#include <butil/iobuf.h>
 #include <butil/object_pool.h>
 #include <bthread/bthread.h>
 #include <gflags/gflags.h>
@@ -63,19 +64,13 @@ static Callback g_cb = NULL;
 // TODO:
 // This implementation is still coupled with the block size defined in IOBuf.
 // We have to update the settings here if the block size of IOBuf is changed.
-// Try to make it uncoupled with IOBuf in future. If this is fixed, remember
-// to update the NOTE in iobuf.cpp too.
+// Try to make it uncoupled with IOBuf in future.
 static const int BLOCK_DEFAULT = 0;
 static const int BLOCK_2_DEFAULT = 1;
 static const int BLOCK_4_DEFAULT = 2;
 static const int BLOCK_8_DEFAULT = 3;
 static const int BLOCK_SIZE_COUNT = 4;
-static const size_t BLOCK_SIZE[BLOCK_SIZE_COUNT] =
-#ifdef IOBUF_HUGE_BLOCK
-        { 256 * 1024, 512 * 1024, 1024 * 1024, 2048 * 1024 };
-#else
-        { 8192, 16384, 32768, 65536 };
-#endif
+static size_t g_block_size[BLOCK_SIZE_COUNT];
 
 // For each block size, there are some buckets of idle list to reduce race.
 struct GlobalInfo {
@@ -127,8 +122,8 @@ static void* ExtendBlockPool(size_t region_size, int block_type) {
     }
 
     // Regularize region size
-    region_size = region_size * BYTES_IN_MB / BLOCK_SIZE[block_type] / g_buckets;
-    region_size *= BLOCK_SIZE[block_type] * g_buckets;
+    region_size = region_size * BYTES_IN_MB / g_block_size[block_type] / g_buckets;
+    region_size *= g_block_size[block_type] * g_buckets;
 
     Region* region = new (std::nothrow) Region;
     if (!region) {
@@ -226,6 +221,11 @@ void* InitBlockPool(Callback cb) {
         }
         g_info->ready_list[i] = NULL;
     }
+    size_t bsize = butil::IOBuf::DEFAULT_BLOCK_SIZE;
+    g_block_size[BLOCK_DEFAULT] = bsize;
+    g_block_size[BLOCK_2_DEFAULT] = bsize * 2;
+    g_block_size[BLOCK_4_DEFAULT] = bsize * 4;
+    g_block_size[BLOCK_8_DEFAULT] = bsize * 8;
     return ExtendBlockPool(FLAGS_rdma_memory_pool_initial_size_mb,
                            BLOCK_DEFAULT);
 }
@@ -274,11 +274,11 @@ static void* AllocBlockFrom(int block_type) {
     node = g_info->idle_list[block_type][index];
     if (node) {
         ptr = node->start;
-        if (node->len > BLOCK_SIZE[block_type]) {
-            node->start = (char*)node->start + BLOCK_SIZE[block_type];
-            node->len -= BLOCK_SIZE[block_type];
+        if (node->len > g_block_size[block_type]) {
+            node->start = (char*)node->start + g_block_size[block_type];
+            node->len -= g_block_size[block_type];
         } else {
-            CHECK(node->len == BLOCK_SIZE[block_type]);
+            CHECK(node->len == g_block_size[block_type]);
             g_info->idle_list[block_type][index] = node->next;
             butil::return_object<IdleNode>(node);
         }
@@ -287,13 +287,13 @@ static void* AllocBlockFrom(int block_type) {
 }
 
 void* AllocBlock(size_t size) {
-    if (size == 0 || size > BLOCK_SIZE[BLOCK_SIZE_COUNT - 1]) {
+    if (size == 0 || size > g_block_size[BLOCK_SIZE_COUNT - 1]) {
         errno = EINVAL;
         return NULL;
     }
     void* ptr = NULL;
     for (int i = 0; i < BLOCK_SIZE_COUNT; ++i) {
-        if (size <= BLOCK_SIZE[i]) {
+        if (size <= g_block_size[i]) {
             ptr = AllocBlockFrom(i);;
             break;
         }
@@ -314,7 +314,7 @@ int DeallocBlock(void* buf) {
     }
 
     uint32_t block_type = r->block_type;
-    size_t block_size = BLOCK_SIZE[block_type];
+    size_t block_size = g_block_size[block_type];
 
     IdleNode* node = butil::get_object<IdleNode>();
     if (!node) {
@@ -380,7 +380,7 @@ int GetBlockType(void* buf) {
 
 // Just for UT
 size_t GetBlockSize(int type) {
-    return BLOCK_SIZE[type];
+    return g_block_size[type];
 }
 
 // Just for UT

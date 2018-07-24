@@ -63,6 +63,7 @@ class MyEchoService : public ::test::EchoService {
             return;
         }
         if (req->close_fd()) {
+            usleep(1);
             LOG(INFO) << "close fd...";
             cntl->CloseConnection("Close connection according to request");
             return;
@@ -780,8 +781,6 @@ TEST_F(RdmaTest, handshake_incorrect_protocol_client) {
         write(sockfd, &rand, rdma::RANDOM_LENGTH));
     EXPECT_EQ(rdma::RANDOM_LENGTH,
         write(sockfd, &rand, rdma::RANDOM_LENGTH));
-    usleep(100000);
-    EXPECT_EQ(0, _server._am->ConnectionCount());
 
     StopServer();
 }
@@ -1387,7 +1386,9 @@ TEST_F(RdmaTest, client_does_not_support_rdma) {
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
     google::ParseCommandLineFlags(&argc, &argv, true);
+#ifdef BRPC_RDMA
     rdma::FLAGS_rdma_disable_local_connection = false;
+#endif
     return RUN_ALL_TESTS();
 }
 

@@ -585,7 +585,11 @@ TEST_F(IOBufTest, copy_to) {
     butil::IOBuf b;
     const std::string seed = "abcdefghijklmnopqrstuvwxyz";
     std::string src;
-    for (size_t i = 0; i < 20000; ++i) {
+    size_t num = 2000;;
+    if (num < butil::IOBuf::DEFAULT_PAYLOAD / seed.size()) {
+        num = butil::IOBuf::DEFAULT_PAYLOAD / seed.size() + 3;
+    }
+    for (size_t i = 0; i < num; ++i) {
         src.append(seed);
     }
     b.append(src);
