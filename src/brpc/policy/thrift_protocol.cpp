@@ -225,7 +225,6 @@ void ThriftClosure::DoRun() {
     // Recycle itself after `Run'
     std::unique_ptr<ThriftClosure> recycle_ctx(this);
     const Server* server = _controller.server();
-    ScopedRemoveConcurrency remove_concurrency_dummy(server, &_controller);
 
     ControllerPrivateAccessor accessor(&_controller);
     Span* span = accessor.span();
@@ -236,7 +235,7 @@ void ThriftClosure::DoRun() {
     ScopedMethodStatus method_status(
         server->options().thrift_service ? 
         server->options().thrift_service->_status : NULL,
-        _server, &_controller, cpuwide_start_us());
+        &_controller, _received_us);
     if (!method_status) {
         // Judge errors belongings.
         // may not be accurate, but it does not matter too much.
@@ -349,10 +348,6 @@ void ThriftClosure::DoRun() {
     if (span) {
         // TODO: this is not sent
         span->set_sent_us(butil::cpuwide_time_us());
-    }
-    if (method_status) {
-        method_status.release()->OnResponded(
-            !_controller.Failed(), butil::cpuwide_time_us() - _received_us);
     }
 }
 

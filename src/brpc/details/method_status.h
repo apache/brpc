@@ -103,11 +103,9 @@ friend class ScopedMethodStatus;
 class ScopedMethodStatus {
 public:
     ScopedMethodStatus(MethodStatus* status, 
-                       const Server* server,
                        Controller* c, 
                        int64_t start_parse_us)
         : _status(status) 
-        , _server(server)
         , _c(c)
         , _start_parse_us(start_parse_us) {}
     ~ScopedMethodStatus();
@@ -115,7 +113,6 @@ public:
 private:
     DISALLOW_COPY_AND_ASSIGN(ScopedMethodStatus);
     MethodStatus* _status;
-    const Server* _server;
     Controller* _c;
     uint64_t _start_parse_us;
 };

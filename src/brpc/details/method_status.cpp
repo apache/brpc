@@ -132,7 +132,7 @@ ScopedMethodStatus::~ScopedMethodStatus() {
         _status->OnResponded(_c->ErrorCode(), butil::cpuwide_time_us() - _start_parse_us);
         _status = NULL;
     }
-    ServerPrivateAccessor(_server).RemoveConcurrency(_c);
+    ServerPrivateAccessor(_c->server()).RemoveConcurrency(_c);
 }
 
 }  // namespace brpc

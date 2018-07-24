@@ -72,8 +72,7 @@ void NsheadClosure::Run() {
     }
     Socket* sock = accessor.get_sending_socket();
     ScopedMethodStatus method_status(_server->options().nshead_service->_status,
-                                     _server, &_controller, 
-                                     _received_us);
+                                     &_controller, _received_us);
     if (!method_status) {
         // Judge errors belongings.
         // may not be accurate, but it does not matter too much.

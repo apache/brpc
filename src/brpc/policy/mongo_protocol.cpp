@@ -60,8 +60,7 @@ SendMongoResponse::~SendMongoResponse() {
 
 void SendMongoResponse::Run() {
     std::unique_ptr<SendMongoResponse> delete_self(this);
-    ScopedMethodStatus method_status(status, server, 
-                                     &cntl, received_us);
+    ScopedMethodStatus method_status(status, &cntl, received_us);
     Socket* socket = ControllerPrivateAccessor(&cntl).get_sending_socket();
 
     if (cntl.IsCloseConnection()) {

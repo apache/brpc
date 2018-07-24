@@ -147,8 +147,7 @@ void SendRpcResponse(int64_t correlation_id,
     }
     Socket* sock = accessor.get_sending_socket();
     std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
-    ScopedMethodStatus method_status(method_status_raw, server, 
-                                     cntl, received_us);
+    ScopedMethodStatus method_status(method_status_raw, cntl, received_us);
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
     
