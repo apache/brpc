@@ -237,7 +237,9 @@ void GradientConcurrencyLimiter::UpdateConcurrency(int64_t sampling_time_us) {
         << ", failed sample count" << _sw.failed_count
         << ", current_concurrency:" << current_concurrency
         << ", next_max_concurrency:" << next_concurrency;
-    _max_concurrency.store(next_concurrency, butil::memory_order_relaxed);
+    if (next_concurrency != max_concurrency) {
+        _max_concurrency.store(next_concurrency, butil::memory_order_relaxed);
+    }
 }
 
 }  // namespace policy
