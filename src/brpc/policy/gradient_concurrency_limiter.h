@@ -52,12 +52,12 @@ private:
         int64_t total_succ_us;
     };
 
-    void AddSample(int error_code, int64_t latency_us, int64_t sampling_time_us);
+    int32_t AddSample(int error_code, int64_t latency_us, int64_t sampling_time_us);
     int NextResetCount();
 
     // The following methods are not thread safe and can only be called 
     // in AppSample()
-    void UpdateConcurrency(int64_t sampling_time_us);
+    int32_t UpdateMaxConcurrency(int64_t sampling_time_us);
     void UpdateMinLatency(int64_t latency_us);
     void UpdateQps(int32_t succ_count, int64_t sampling_time_us);
     void ResetSampleWindow(int64_t sampling_time_us);
@@ -73,7 +73,7 @@ private:
     bvar::PassiveStatus<int32_t> _max_concurrency_bvar;
     butil::atomic<int64_t> BAIDU_CACHELINE_ALIGNMENT _last_sampling_time_us;
     butil::atomic<int32_t> _max_concurrency;
-    butil::atomic<int32_t> BAIDU_CACHELINE_ALIGNMENT _total_succ_req;
+    butil::atomic<int32_t> _total_succ_req;
     butil::atomic<int32_t> _current_concurrency;
 };
 
