@@ -41,13 +41,13 @@ namespace policy {
 struct SendMongoResponse : public google::protobuf::Closure {
     SendMongoResponse(const Server *server) :
         status(NULL),
-        start_callback_us(0L),
+        received_us(0L),
         server(server) {}
     ~SendMongoResponse();
     void Run();
 
     MethodStatus* status;
-    long start_callback_us;
+    int64_t received_us;
     const Server *server;
     Controller cntl;
     MongoRequest req;
@@ -104,7 +104,7 @@ void SendMongoResponse::Run() {
     }
     if (method_status) {
         method_status.release()->OnResponded(
-            !cntl.Failed(), butil::cpuwide_time_us() - start_callback_us);
+            !cntl.Failed(), butil::cpuwide_time_us() - received_us);
     }
 }
 
@@ -267,7 +267,7 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
         mongo_done->req.mutable_header()->set_op_code(
                 static_cast<MongoOp>(header->op_code));
         mongo_done->res.mutable_header()->set_response_to(header->request_id);
-        mongo_done->start_callback_us = butil::cpuwide_time_us();
+        mongo_done->received_us = msg->received_us();
 
         google::protobuf::Service* svc = mp->service;
         const google::protobuf::MethodDescriptor* method = mp->method;

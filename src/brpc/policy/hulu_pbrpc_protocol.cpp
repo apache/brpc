@@ -225,7 +225,7 @@ static void SendHuluResponse(int64_t correlation_id,
                              const google::protobuf::Message* res,
                              const Server* server,
                              MethodStatus* method_status_raw,
-                             long start_parse_us) {
+                             int64_t received_us) {
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
@@ -320,7 +320,7 @@ static void SendHuluResponse(int64_t correlation_id,
     }
     if (method_status) {
         method_status.release()->OnResponded(
-            !cntl->Failed(), butil::cpuwide_time_us() - start_parse_us);
+            !cntl->Failed(), butil::cpuwide_time_us() - received_us);
     }
 }
 
@@ -487,19 +487,21 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
                             CompressTypeToCStr(req_cmp_type), reqsize);
             break;
         }
-        // optional, just release resourse ASAP
-        msg.reset();
-        req_buf.clear();
 
         res.reset(svc->GetResponsePrototype(method).New());
         // `socket' will be held until response has been sent
         google::protobuf::Closure* done = ::brpc::NewCallback<
             int64_t, HuluController*, const google::protobuf::Message*,
             const google::protobuf::Message*, const Server*,
-                  MethodStatus *, long>(
+                  MethodStatus *, int64_t>(
                 &SendHuluResponse, correlation_id, cntl.get(),
                 req.get(), res.get(), server,
-                method_status, start_parse_us);
+                method_status, msg->received_us());
+
+        // optional, just release resourse ASAP
+        msg.reset();
+        req_buf.clear();
+
         if (span) {
             span->set_start_callback_us(butil::cpuwide_time_us());
             span->AsParent();
@@ -523,7 +525,7 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
     // `socket' will be held until response has been sent
     SendHuluResponse(correlation_id, cntl.release(),
                      req.release(), res.release(), server,
-                     method_status, -1);
+                     method_status, msg->received_us());
 }
 
 bool VerifyHuluRequest(const InputMessageBase* msg_base) {

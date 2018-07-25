@@ -195,14 +195,14 @@ private:
 friend void ProcessThriftRequest(InputMessageBase* msg_base);
 
     butil::atomic<int> _run_counter;
-    int64_t _start_parse_us;
+    int64_t _received_us;
     ThriftFramedMessage _request;
     ThriftFramedMessage _response;
     Controller _controller;
 };
 
 inline ThriftClosure::ThriftClosure()
-    : _run_counter(0), _start_parse_us(0) {
+    : _run_counter(0), _received_us(0) {
 }
 
 ThriftClosure::~ThriftClosure() {
@@ -350,7 +350,7 @@ void ThriftClosure::DoRun() {
     }
     if (method_status) {
         method_status.release()->OnResponded(
-            !_controller.Failed(), butil::cpuwide_time_us() - _start_parse_us);
+            !_controller.Failed(), butil::cpuwide_time_us() - _received_us);
     }
 }
 
@@ -446,7 +446,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
     Controller* cntl = &(thrift_done->_controller);
     ThriftFramedMessage* req = &(thrift_done->_request);
     ThriftFramedMessage* res = &(thrift_done->_response);
-    thrift_done->_start_parse_us = start_parse_us;
+    thrift_done->_received_us = msg->received_us();
 
     ServerPrivateAccessor server_accessor(server);
     const bool security_mode = server->options().security_mode() &&
@@ -533,6 +533,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
     } while (false);
 
     msg.reset();  // optional, just release resourse ASAP
+
     if (span) {
         span->ResetServerSpanName(cntl->thrift_method_name());
         span->set_start_callback_us(butil::cpuwide_time_us());
