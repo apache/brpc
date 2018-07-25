@@ -53,6 +53,8 @@ public:
     // Describe internal vars, used by /status
     void Describe(std::ostream &os, const DescribeOptions&) const;
 
+    // Current maximum concurrency of method.
+    // Return 0 if the maximum concurrency is not restricted.
     int max_concurrency() const {
         if (NULL == _cl) {
             return 0;
@@ -61,35 +63,15 @@ public:
         }
     }
 
-    // Note: This method is not thread safe and can only be called before
-    // the server is started. 
-    int& max_concurrency_ref() {
-        if (NULL == _cl) {
-            const ConcurrencyLimiter* cl = 
-                ConcurrencyLimiterExtension()->Find("constant");
-            if (NULL == cl) {
-                LOG(FATAL) << "Fail to find ConcurrentLimiter by `constant`";
-            }
-            ConcurrencyLimiter* cl_copy = cl->New();
-            if (NULL == cl_copy) {
-                LOG(FATAL) << "Fail to new ConcurrencyLimiter";
-            }
-            _cl = cl_copy;
-
-       }
-       return _cl->MaxConcurrencyRef(); 
-    }
-
-    void SetConcurrencyLimiter(ConcurrencyLimiter* cl) {
-        if (NULL != _cl) {
-            _cl->Destroy();
-        }
-        _cl = cl;
-    }
-    
 private:
 friend class ScopedMethodStatus;
+friend class Server;
     DISALLOW_COPY_AND_ASSIGN(MethodStatus);
+
+    // Note: Following methods are not thread safe and can only be called 
+    // before the server is started. 
+    int& max_concurrency_ref();
+    void SetConcurrencyLimiter(ConcurrencyLimiter* cl);
 
     ConcurrencyLimiter* _cl;
     bvar::Adder<int64_t>  _nerror;
