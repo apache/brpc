@@ -876,6 +876,7 @@ int Server::StartInternal(const butil::ip_t& ip,
         static_cast<int>(_options.max_concurrency) != 0) {
         _cl = ConcurrencyLimiter::CreateConcurrencyLimiterOrDie(
             _options.max_concurrency);
+        _cl->Expose("Global_Concurrency_Limiter");
     }
     for (MethodMap::iterator it = _method_map.begin();
         it != _method_map.end(); ++it) {
@@ -883,7 +884,7 @@ int Server::StartInternal(const butil::ip_t& ip,
             continue;
         }
         if (it->second.max_concurrency == "constant" &&
-            static_cast<int>(_options.max_concurrency) == 0) {
+            static_cast<int>(it->second.max_concurrency) == 0) {
             continue;
         }
         it->second.status->SetConcurrencyLimiter(
@@ -1982,6 +1983,14 @@ bool Server::ClearCertMapping(CertMaps& bg) {
 int Server::ResetMaxConcurrency(int max_concurrency) {
     LOG(WARNING) << "ResetMaxConcurrency is already deprecated";
     return 0;
+}
+
+int Server::MaxConcurrency() const {
+    if (NULL != _cl) {
+        return _cl->MaxConcurrency();
+    } else {
+        return g_default_max_concurrency_of_method;
+    }
 }
 
 AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(MethodProperty* mp) {

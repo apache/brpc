@@ -22,6 +22,7 @@
 namespace brpc {
 namespace policy {
 
+DEFINE_int32(gradient_cl_peak_qps_window_size, 30, "");
 DEFINE_int32(gradient_cl_sampling_interval_us, 100, 
     "Interval for sampling request in gradient concurrency limiter");
 DEFINE_int32(gradient_cl_sample_window_size_ms, 1000,
@@ -56,7 +57,8 @@ GradientConcurrencyLimiter::GradientConcurrencyLimiter()
     : _reset_count(NextResetCount())
     , _min_latency_us(-1)
     , _smooth(FLAGS_gradient_cl_adjust_smooth)
-    , _ema_qps(0)
+    , _ema_peak_qps(-1)
+    , _qps_bq(FLAGS_gradient_cl_peak_qps_window_size)
     , _max_concurrency_bvar(cast_max_concurrency, &_max_concurrency)
     , _last_sampling_time_us(0)
     , _total_succ_req(0)
@@ -178,15 +180,21 @@ void GradientConcurrencyLimiter::UpdateMinLatency(int64_t latency_us) {
 
 void GradientConcurrencyLimiter::UpdateQps(int32_t succ_count, 
                                            int64_t sampling_time_us) {
-    double qps = succ_count / (sampling_time_us - _sw.start_time_us) * 1000000.0;
-    _ema_qps = _ema_qps * _smooth + qps * (1 - _smooth);
+    double qps = 1000000.0 * succ_count / (sampling_time_us - _sw.start_time_us);
+    _qps_bq.elim_push(qps);
+    double peak_qps = *(_qps_bq.bottom());
+
+    for (size_t i = 0; i < _qps_bq.size(); ++i) {
+        peak_qps = std::max(*(_qps_bq.bottom(i)), peak_qps);
+    }
+    _ema_peak_qps = _ema_peak_qps * _smooth + peak_qps * (1 - _smooth);
 }
 
 int32_t GradientConcurrencyLimiter::UpdateMaxConcurrency(int64_t sampling_time_us) {
     int32_t current_concurrency = _current_concurrency.load();
     int32_t total_succ_req = 
         _total_succ_req.exchange(0, butil::memory_order_relaxed);
-    int64_t failed_punish = 
+    double failed_punish = 
         _sw.total_failed_us * FLAGS_gradient_cl_fail_punish_ratio;
     int64_t avg_latency = 
         std::ceil((failed_punish + _sw.total_succ_us) / _sw.succ_count);
@@ -199,7 +207,7 @@ int32_t GradientConcurrencyLimiter::UpdateMaxConcurrency(int64_t sampling_time_u
     } 
 
     int32_t next_max_concurrency = 
-        std::ceil(_ema_qps * _min_latency_us / 1000000.0);
+        std::ceil(_ema_peak_qps * _min_latency_us / 1000000.0);
     if (--_reset_count == 0) {
         _reset_count = NextResetCount();
         if (current_concurrency >= _max_concurrency - 2) {

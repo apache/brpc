@@ -1187,7 +1187,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         }
         if (!server_accessor.AddConcurrency(cntl.get())) {
             cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
-                            static_cast<int>(server->options().max_concurrency));
+                            server->MaxConcurrency());
             return SendHttpResponse(cntl.release(), server, method_status, msg->received_us());
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {

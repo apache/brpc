@@ -488,6 +488,9 @@ public:
     // This method is already deprecated.You should NOT call it anymore.
     int ResetMaxConcurrency(int max_concurrency);
 
+    // Server's current max concurrency
+    int MaxConcurrency() const;
+
     // Get/set max_concurrency associated with a method.
     // Example:
     //    server.MaxConcurrencyOf("example.EchoService.Echo") = 10;

@@ -59,13 +59,14 @@ private:
     void ResetSampleWindow(int64_t sampling_time_us);
     void UpdateMinLatency(int64_t latency_us);
     void UpdateQps(int32_t succ_count, int64_t sampling_time_us);
+    double peak_qps();
     
     SampleWindow _sw;
-    int32_t _unused_max_concurrency;
     int _reset_count;
     int64_t _min_latency_us;
     const double _smooth;
-    double _ema_qps;
+    double _ema_peak_qps;
+    butil::BoundedQueue<double> _qps_bq;
     butil::Mutex _sw_mutex;
     bvar::PassiveStatus<int32_t> _max_concurrency_bvar;
     butil::atomic<int64_t> BAIDU_CACHELINE_ALIGNMENT _last_sampling_time_us;
