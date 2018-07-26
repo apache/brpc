@@ -28,7 +28,7 @@ ConcurrencyLimiter* ConcurrencyLimiter::CreateConcurrencyLimiterOrDie(
     ConcurrencyLimiter* cl_copy = cl->New();
     CHECK(cl_copy != NULL) << "Fail to new ConcurrencyLimiter";
     if (max_concurrency == "constant") {
-        cl_copy->SetMaxConcurrency(max_concurrency);
+        cl_copy->_max_concurrency = max_concurrency;
     }
     return cl_copy;
 } 

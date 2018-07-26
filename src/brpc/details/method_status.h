@@ -68,9 +68,8 @@ friend class ScopedMethodStatus;
 friend class Server;
     DISALLOW_COPY_AND_ASSIGN(MethodStatus);
 
-    // Note: Following methods are not thread safe and can only be called 
+    // Note: SetConcurrencyLimiter() is not thread safe and can only be called 
     // before the server is started. 
-    int& max_concurrency_ref();
     void SetConcurrencyLimiter(ConcurrencyLimiter* cl);
 
     ConcurrencyLimiter* _cl;

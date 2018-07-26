@@ -49,7 +49,7 @@ public:
 
     void RemoveConcurrency(const Controller* c) {
         if (c->has_flag(Controller::FLAGS_ADDED_CONCURRENCY)){
-            CHECK(_server->_cl != NULL) 
+            CHECK(_server->_cl != NULL);
             _server->_cl->OnResponded(c->ErrorCode(), c->latency_us());
         }
     }

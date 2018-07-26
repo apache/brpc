@@ -127,22 +127,6 @@ void MethodStatus::Describe(
                 _nprocessing, options, false);
 }
 
-int& MethodStatus::max_concurrency_ref() {
-    if (NULL == _cl) {
-         const ConcurrencyLimiter* cl = 
-             ConcurrencyLimiterExtension()->Find("constant");
-         if (NULL == cl) {
-             LOG(FATAL) << "Fail to find ConcurrentLimiter by `constant`";
-         }
-         ConcurrencyLimiter* cl_copy = cl->New();
-         if (NULL == cl_copy) {
-             LOG(FATAL) << "Fail to new ConcurrencyLimiter";
-         }
-         _cl = cl_copy;
-    }
-    return _cl->MaxConcurrencyRef(); 
-}
-
 void MethodStatus::SetConcurrencyLimiter(ConcurrencyLimiter* cl) {
     if (NULL != _cl) {
         _cl->Destroy();
