@@ -393,8 +393,12 @@ inline void ProcessThriftFramedRequestNoExcept(ThriftService* service,
     // we can still set `cntl' in the catch branch.
     try {
         service->ProcessThriftFramedRequest(cntl, req, res, done);
-    } catch (::apache::thrift::TException& e) {
+    } catch (std::exception& e) {
         cntl->SetFailed(EINTERNAL, "Catched exception: %s", e.what());
+    } catch (std::string& e) {
+        cntl->SetFailed(EINTERNAL, "Catched std::string: %s", e.c_str());
+    } catch (const char* e) {
+        cntl->SetFailed(EINTERNAL, "Catched const char*: %s", e);
     } catch (...) {
         cntl->SetFailed(EINTERNAL, "Catched unknown exception");
     }
