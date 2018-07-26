@@ -660,7 +660,6 @@ friend class Controller;
     //        mechanism
     mutable bvar::Adder<int64_t> _nerror;
     ConcurrencyLimiter* _cl;
-    mutable int32_t BAIDU_CACHELINE_ALIGNMENT _concurrency;
 };
 
 // Get the data attached to current searching thread. The data is created by

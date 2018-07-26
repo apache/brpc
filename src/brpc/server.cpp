@@ -382,10 +382,7 @@ Server::Server(ProfilerLinker)
     , _last_start_time(0)
     , _derivative_thread(INVALID_BTHREAD)
     , _keytable_pool(NULL)
-    , _cl(NULL)
-    , _concurrency(0) {
-    BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,
-              Server_concurrency_must_be_aligned_by_cacheline);
+    , _cl(NULL) {
 }
 
 Server::~Server() {
