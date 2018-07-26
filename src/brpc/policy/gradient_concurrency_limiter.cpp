@@ -156,19 +156,18 @@ int32_t GradientConcurrencyLimiter::AddSample(int error_code,
     }
 
     if (sampling_time_us - _sw.start_time_us < 
-            FLAGS_gradient_cl_sample_window_size_ms * 1000) {
+            FLAGS_gradient_cl_sample_window_size_ms * 1000 ||
+        _sw.succ_count + _sw.failed_count <
+            FLAGS_gradient_cl_min_sample_count) {
         return 0;
     }
-    if (_sw.succ_count + _sw.failed_count < 
-        FLAGS_gradient_cl_min_sample_count) {
-        LOG_EVERY_N(INFO, 100) << "Insufficient sample count";
-        return 0;
-    } else if (_sw.succ_count > 0) {
+
+    if(_sw.succ_count > 0) {
         int max_concurrency = UpdateMaxConcurrency(sampling_time_us);
         ResetSampleWindow(sampling_time_us);
         return max_concurrency;
     } else {
-        LOG(ERROR) << "All request failed, resize max_concurrency";
+        // All request failed
         int32_t current_concurrency = 
             _current_concurrency.load(butil::memory_order_relaxed);
         _current_concurrency.store(
