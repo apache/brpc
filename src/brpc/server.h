@@ -334,6 +334,7 @@ public:
         google::protobuf::Service* service;
         const google::protobuf::MethodDescriptor* method;
         MethodStatus* status;
+        AdaptiveMaxConcurrency max_concurrency;
 
         MethodProperty();
     };
@@ -497,15 +498,15 @@ public:
     // an auto concurrency limiter, eg `options.max_concurrency = "auto"`.If you
     // still called non-const version of the interface, your changes to the
     // maximum concurrency will not take effect.
-    int& MaxConcurrencyOf(const butil::StringPiece& full_method_name);
+    AdaptiveMaxConcurrency& MaxConcurrencyOf(const butil::StringPiece& full_method_name);
     int MaxConcurrencyOf(const butil::StringPiece& full_method_name) const;
     
-    int& MaxConcurrencyOf(const butil::StringPiece& full_service_name,
+    AdaptiveMaxConcurrency& MaxConcurrencyOf(const butil::StringPiece& full_service_name,
                           const butil::StringPiece& method_name);
     int MaxConcurrencyOf(const butil::StringPiece& full_service_name,
                          const butil::StringPiece& method_name) const;
 
-    int& MaxConcurrencyOf(google::protobuf::Service* service,
+    AdaptiveMaxConcurrency& MaxConcurrencyOf(google::protobuf::Service* service,
                           const butil::StringPiece& method_name);
     int MaxConcurrencyOf(google::protobuf::Service* service,
                          const butil::StringPiece& method_name) const;
@@ -599,7 +600,7 @@ friend class Controller;
     static bool ResetCertMappings(CertMaps& bg, const SSLContextMap& ctx_map);
     static bool ClearCertMapping(CertMaps& bg);
 
-    int& MaxConcurrencyOf(MethodProperty*);
+    AdaptiveMaxConcurrency& MaxConcurrencyOf(MethodProperty*);
     int MaxConcurrencyOf(const MethodProperty*) const;
     
     DISALLOW_COPY_AND_ASSIGN(Server);

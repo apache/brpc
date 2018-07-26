@@ -36,8 +36,6 @@ DEFINE_int32(gradient_cl_initial_max_concurrency, 40,
     "Initial max concurrency for grandient concurrency limiter");
 DEFINE_bool(gradient_cl_enable_error_punish, true,
     "Whether to consider failed requests when calculating maximum concurrency");
-DEFINE_int32(gradient_cl_max_error_punish_ms, 3000,
-    "The maximum time wasted for a single failed request");
 DEFINE_double(gradient_cl_fail_punish_ratio, 1.0,
     "Use the failed requests to punish normal requests. The larger the "
     "configuration item, the more aggressive the penalty strategy.");
@@ -55,24 +53,15 @@ static int32_t cast_max_concurrency(void* arg) {
 }
 
 GradientConcurrencyLimiter::GradientConcurrencyLimiter()
-    : _unused_max_concurrency(0)
-    , _reset_count(NextResetCount())
+    : _reset_count(NextResetCount())
     , _min_latency_us(-1)
     , _smooth(FLAGS_gradient_cl_adjust_smooth)
     , _ema_qps(0)
     , _max_concurrency_bvar(cast_max_concurrency, &_max_concurrency)
     , _last_sampling_time_us(0)
-    , _max_concurrency(FLAGS_gradient_cl_initial_max_concurrency)
     , _total_succ_req(0)
     , _current_concurrency(0) {
-}
-
-int GradientConcurrencyLimiter::MaxConcurrency() const {
-    return _max_concurrency.load(butil::memory_order_relaxed);
-}
-
-int& GradientConcurrencyLimiter::MaxConcurrencyRef() {
-    return _unused_max_concurrency;
+    _max_concurrency = FLAGS_gradient_cl_initial_max_concurrency;
 }
 
 int GradientConcurrencyLimiter::Expose(const butil::StringPiece& prefix) {
@@ -93,14 +82,13 @@ void GradientConcurrencyLimiter::Destroy() {
 bool GradientConcurrencyLimiter::OnRequested() {
     const int32_t current_concurrency = 
         _current_concurrency.fetch_add(1, butil::memory_order_relaxed);
-    if (current_concurrency >= _max_concurrency.load(butil::memory_order_relaxed)) {
+    if (current_concurrency >= _max_concurrency) {
         return false;
     }
     return true;
 }
 
-void GradientConcurrencyLimiter::OnResponded(int error_code, 
-                                             int64_t latency_us) {
+void GradientConcurrencyLimiter::OnResponded(int error_code, int64_t latency_us) {
     _current_concurrency.fetch_sub(1, butil::memory_order_relaxed);
     if (0 == error_code) {
         _total_succ_req.fetch_add(1, butil::memory_order_relaxed);
@@ -145,9 +133,6 @@ int32_t GradientConcurrencyLimiter::AddSample(int error_code,
     if (error_code != 0 && 
         FLAGS_gradient_cl_enable_error_punish) {
         ++_sw.failed_count;
-        latency_us = 
-            std::min(int64_t(FLAGS_gradient_cl_max_error_punish_ms) * 1000,
-                     latency_us);
         _sw.total_failed_us += latency_us;
     } else if (error_code == 0) {
         ++_sw.succ_count;
@@ -187,22 +172,18 @@ void GradientConcurrencyLimiter::UpdateMinLatency(int64_t latency_us) {
     if (_min_latency_us <= 0) {
         _min_latency_us = latency_us;
     } else if (latency_us < _min_latency_us) {
-        _min_latency_us = 
-            _min_latency_us * _smooth + latency_us * (1 - _smooth);
+        _min_latency_us = _min_latency_us * _smooth + latency_us * (1 - _smooth);
     }
 }
 
 void GradientConcurrencyLimiter::UpdateQps(int32_t succ_count, 
                                            int64_t sampling_time_us) {
-    double qps = double(succ_count) / (sampling_time_us - _sw.start_time_us)
-                  * 1000 * 1000;
+    double qps = succ_count / (sampling_time_us - _sw.start_time_us) * 1000000.0;
     _ema_qps = _ema_qps * _smooth + qps * (1 - _smooth);
 }
 
-int32_t GradientConcurrencyLimiter::UpdateMaxConcurrency(
-    int64_t sampling_time_us) {
+int32_t GradientConcurrencyLimiter::UpdateMaxConcurrency(int64_t sampling_time_us) {
     int32_t current_concurrency = _current_concurrency.load();
-    int max_concurrency = _max_concurrency.load();
     int32_t total_succ_req = 
         _total_succ_req.exchange(0, butil::memory_order_relaxed);
     int64_t failed_punish = 
@@ -214,20 +195,20 @@ int32_t GradientConcurrencyLimiter::UpdateMaxConcurrency(
 
     int reserved_concurrency = FLAGS_gradient_cl_reserved_concurrency;
     if (reserved_concurrency <= 0) {
-        reserved_concurrency = std::ceil(std::sqrt(max_concurrency));
+        reserved_concurrency = std::ceil(std::sqrt(_max_concurrency));
     } 
 
     int32_t next_max_concurrency = 
         std::ceil(_ema_qps * _min_latency_us / 1000000.0);
     if (--_reset_count == 0) {
         _reset_count = NextResetCount();
-        if (current_concurrency >= max_concurrency - 2) {
+        if (current_concurrency >= _max_concurrency - 2) {
             _min_latency_us = -1;
-            next_max_concurrency -= std::sqrt(max_concurrency);
+            next_max_concurrency -= std::sqrt(_max_concurrency);
             next_max_concurrency = 
                 std::max(next_max_concurrency, reserved_concurrency);
         } else {
-            // current_concurrency < max_concurrency means the server is 
+            // current_concurrency < _max_concurrency means the server is 
             // not overloaded and does not need to detect noload_latency by 
             // lowering the maximum concurrency
             next_max_concurrency += reserved_concurrency;
@@ -236,12 +217,11 @@ int32_t GradientConcurrencyLimiter::UpdateMaxConcurrency(
         next_max_concurrency += reserved_concurrency;
     }
 
-    if (next_max_concurrency != max_concurrency) {
-        _max_concurrency.store(next_max_concurrency, butil::memory_order_relaxed);
+    if (next_max_concurrency != _max_concurrency) {
+        _max_concurrency = next_max_concurrency;
     }
     return next_max_concurrency;
 }
 
 }  // namespace policy
 }  // namespace brpc
-

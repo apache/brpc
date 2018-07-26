@@ -14,33 +14,27 @@
 //
 // Authors: Lei He (helei@qiyi.com)
 
-#ifndef BRPC_POLICY_CONSTANT_CONCURRENCY_LIMITER_H
-#define BRPC_POLICY_CONSTANT_CONCURRENCY_LIMITER_H
-
 #include "brpc/concurrency_limiter.h"
 
 namespace brpc {
-namespace policy {
 
-class ConstantConcurrencyLimiter : public ConcurrencyLimiter {
-public:
-    ConstantConcurrencyLimiter() {}
+ConcurrencyLimiter* ConcurrencyLimiter::CreateConcurrencyLimiterOrDie(
+    const AdaptiveMaxConcurrency& max_concurrency) {
+    if (max_concurrency == "constant" && static_cast<int>(max_concurrency) == 0) {
+        return NULL;
+    }
+    
+    const ConcurrencyLimiter* cl = 
+        ConcurrencyLimiterExtension()->Find(max_concurrency.name().c_str());
+    CHECK(cl != NULL) 
+        << "Fail to find ConcurrencyLimiter by `" 
+        << max_concurrency.name() << "'";
+    ConcurrencyLimiter* cl_copy = cl->New();
+    CHECK(cl_copy != NULL) << "Fail to new ConcurrencyLimiter";
+    if (max_concurrency == "constant") {
+        cl_copy->SetMaxConcurrency(max_concurrency);
+    }
+    return cl_copy;
+} 
 
-    ~ConstantConcurrencyLimiter() {}
-
-    bool OnRequested() override;
-    void OnResponded(int error_code, int64_t latency_us) override;
-
-    int Expose(const butil::StringPiece& prefix) override;
-    ConstantConcurrencyLimiter* New() const override;
-    void Destroy() override;
-
-private:
-    butil::atomic<int32_t> _current_concurrency;
-};
-
-}  // namespace policy
 }  // namespace brpc
-
-
-#endif // BRPC_POLICY_CONSTANT_CONCURRENCY_LIMITER_H

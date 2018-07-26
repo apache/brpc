@@ -20,12 +20,13 @@
 #include "brpc/describable.h"
 #include "brpc/destroyable.h"
 #include "brpc/extension.h"                       // Extension<T>
+#include "brpc/adaptive_max_concurrency.h"        // AdaptiveMaxConcurrency
 
 namespace brpc {
 
 class ConcurrencyLimiter : public Destroyable {
 public:
-    ConcurrencyLimiter() {}
+    ConcurrencyLimiter(): _max_concurrency(0) {}
 
     // This method should be called each time a request comes in. It returns
     // false when the concurrency reaches the upper limit, otherwise it 
@@ -43,14 +44,7 @@ public:
     // Returns the current maximum concurrency. Note that the maximum 
     // concurrency of some ConcurrencyLimiters(eg: `auto', `gradient') 
     // is dynamically changing.
-    virtual int MaxConcurrency() const = 0;
-
-    // Returns the reference of maximum concurrency. mainly used to explicitly
-    // specify the maximum concurrency. This method can only be called before
-    // the server starts. 
-    // NOTE: When using automatic concurrency limiter(eg: `auto', `gradient'),
-    // the specified maximum concurrency will NOT take effect.
-    virtual int& MaxConcurrencyRef() = 0;
+    int MaxConcurrency() { return _max_concurrency; };
 
     // Expose internal vars. NOT thread-safe.
     // Return 0 on success, -1 otherwise.
@@ -61,6 +55,13 @@ public:
     virtual ConcurrencyLimiter* New() const = 0;
 
     virtual ~ConcurrencyLimiter() {}
+
+    static ConcurrencyLimiter* CreateConcurrencyLimiterOrDie(
+        const AdaptiveMaxConcurrency& max_concurrency);
+
+protected:
+    // Assume int32_t is atomic in x86
+    int32_t _max_concurrency;
 };
 
 inline Extension<const ConcurrencyLimiter>* ConcurrencyLimiterExtension() {

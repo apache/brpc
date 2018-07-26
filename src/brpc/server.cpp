@@ -664,7 +664,7 @@ static int get_port_from_fd(int fd) {
     return ntohs(addr.sin_port);
 }
 
-static int g_default_max_concurrency_of_method = 0;
+static AdaptiveMaxConcurrency g_default_max_concurrency_of_method = 0;
 
 int Server::StartInternal(const butil::ip_t& ip,
                           const PortRange& port_range,
@@ -872,42 +872,25 @@ int Server::StartInternal(const butil::ip_t& ip,
         bthread_setconcurrency(_options.num_threads);
     }
 
-    if (_options.max_concurrency == "constant") {
-        if (static_cast<int>(_options.max_concurrency) != 0) {
-            const ConcurrencyLimiter* constant_cl = 
-                ConcurrencyLimiterExtension()->Find("constant");
-            if (NULL == constant_cl) {
-                LOG(FATAL) << "Fail to find ConcurrencyLimiter by `constant'";
-            }
-            ConcurrencyLimiter* cl_copy = constant_cl->New();
-            if (NULL == cl_copy) {
-                LOG(FATAL) << "Fail to new ConcurrencyLimiter";
-            }
-            _cl = cl_copy;
-            _cl->MaxConcurrencyRef() = _options.max_concurrency;
-        }
-    } else {
-        const ConcurrencyLimiter* cl = NULL;
-        cl = ConcurrencyLimiterExtension()->Find(
-                _options.max_concurrency.name().c_str());
-        if (NULL == cl) {
-            LOG(FATAL) << "Fail to find ConcurrencyLimiter by `"
-                       << _options.max_concurrency.name() << '`'; 
-            return -1;
-        }
-        for (MethodMap::iterator it = _method_map.begin();
-            it != _method_map.end(); ++it) {
-            if (it->second.is_builtin_service) {
-                continue;
-            }
-            ConcurrencyLimiter* cl_copy = cl->New();
-            if (NULL == cl_copy) {
-                LOG(FATAL) << "Fail to new ConcurrencyLimiter";
-            }
-            it->second.status->SetConcurrencyLimiter(cl_copy);
-        }
+    if (_options.max_concurrency != "constant" || 
+        static_cast<int>(_options.max_concurrency) != 0) {
+        _cl = ConcurrencyLimiter::CreateConcurrencyLimiterOrDie(
+            _options.max_concurrency);
     }
-
+    for (MethodMap::iterator it = _method_map.begin();
+        it != _method_map.end(); ++it) {
+        if (it->second.is_builtin_service) {
+            continue;
+        }
+        if (it->second.max_concurrency == "constant" &&
+            static_cast<int>(_options.max_concurrency) == 0) {
+            continue;
+        }
+        it->second.status->SetConcurrencyLimiter(
+          ConcurrencyLimiter::CreateConcurrencyLimiterOrDie(
+              it->second.max_concurrency));
+    }
+    
     // Create listening ports
     if (port_range.min_port > port_range.max_port) {
         LOG(ERROR) << "Invalid port_range=[" << port_range.min_port << '-'
@@ -2001,18 +1984,19 @@ int Server::ResetMaxConcurrency(int max_concurrency) {
     return 0;
 }
 
-int& Server::MaxConcurrencyOf(MethodProperty* mp) {
+AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(MethodProperty* mp) {
     if (IsRunning()) {
         LOG(WARNING) << "MaxConcurrencyOf is only allowd before Server started";
         return g_default_max_concurrency_of_method;
     }
+    //TODO
     if (mp->status == NULL) {
         LOG(ERROR) << "method=" << mp->method->full_name()
                    << " does not support max_concurrency";
         _failed_to_set_max_concurrency_of_method = true;
         return g_default_max_concurrency_of_method;
     }
-    return mp->status->max_concurrency_ref();
+    return mp->max_concurrency;
 }
 
 int Server::MaxConcurrencyOf(const MethodProperty* mp) const {
@@ -2023,11 +2007,10 @@ int Server::MaxConcurrencyOf(const MethodProperty* mp) const {
     if (mp == NULL || mp->status == NULL) {
         return 0;
     }
-    const MethodStatus* mp_status = mp->status;
-    return mp_status->max_concurrency();
+    return mp->max_concurrency;
 }
 
-int& Server::MaxConcurrencyOf(const butil::StringPiece& full_method_name) {
+AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(const butil::StringPiece& full_method_name) {
     MethodProperty* mp = _method_map.seek(full_method_name);
     if (mp == NULL) {
         LOG(ERROR) << "Fail to find method=" << full_method_name;
@@ -2041,7 +2024,7 @@ int Server::MaxConcurrencyOf(const butil::StringPiece& full_method_name) const {
     return MaxConcurrencyOf(_method_map.seek(full_method_name));
 }
 
-int& Server::MaxConcurrencyOf(const butil::StringPiece& full_service_name,
+AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(const butil::StringPiece& full_service_name,
                               const butil::StringPiece& method_name) {
     MethodProperty* mp = const_cast<MethodProperty*>(
         FindMethodPropertyByFullName(full_service_name, method_name));
@@ -2060,7 +2043,7 @@ int Server::MaxConcurrencyOf(const butil::StringPiece& full_service_name,
                                 full_service_name, method_name));
 }
 
-int& Server::MaxConcurrencyOf(google::protobuf::Service* service,
+AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(google::protobuf::Service* service,
                               const butil::StringPiece& method_name) {
     return MaxConcurrencyOf(service->GetDescriptor()->full_name(), method_name);
 }

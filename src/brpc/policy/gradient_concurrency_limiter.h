@@ -30,8 +30,6 @@ public:
     ~GradientConcurrencyLimiter() {}
     bool OnRequested() override;
     void OnResponded(int error_code, int64_t latency_us) override;
-    int MaxConcurrency() const override;
-    int& MaxConcurrencyRef() override;
 
     int Expose(const butil::StringPiece& prefix) override;
     GradientConcurrencyLimiter* New() const override;
@@ -58,10 +56,9 @@ private:
     // The following methods are not thread safe and can only be called 
     // in AppSample()
     int32_t UpdateMaxConcurrency(int64_t sampling_time_us);
+    void ResetSampleWindow(int64_t sampling_time_us);
     void UpdateMinLatency(int64_t latency_us);
     void UpdateQps(int32_t succ_count, int64_t sampling_time_us);
-    void ResetSampleWindow(int64_t sampling_time_us);
-    void AddMinLatency(int64_t latency_us);
     
     SampleWindow _sw;
     int32_t _unused_max_concurrency;
@@ -72,7 +69,6 @@ private:
     butil::Mutex _sw_mutex;
     bvar::PassiveStatus<int32_t> _max_concurrency_bvar;
     butil::atomic<int64_t> BAIDU_CACHELINE_ALIGNMENT _last_sampling_time_us;
-    butil::atomic<int32_t> _max_concurrency;
     butil::atomic<int32_t> _total_succ_req;
     butil::atomic<int32_t> _current_concurrency;
 };
