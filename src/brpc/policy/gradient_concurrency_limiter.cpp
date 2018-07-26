@@ -119,8 +119,7 @@ void GradientConcurrencyLimiter::OnResponded(int error_code,
                 last_sampling_time_us, now_time_us, 
                 butil::memory_order_relaxed);
         if (sample_this_call) {
-            int32_t max_concurrency = 
-                AddSample(error_code, latency_us, now_time_us);
+            int32_t max_concurrency = AddSample(error_code, latency_us, now_time_us);
             if (max_concurrency != 0) {
                 LOG(INFO) 
                     << "MaxConcurrency updated by gradient limiter:"
@@ -132,13 +131,13 @@ void GradientConcurrencyLimiter::OnResponded(int error_code,
 
 int GradientConcurrencyLimiter::NextResetCount() {
     int max_reset_count = FLAGS_gradient_cl_reset_count;
-    return rand() % (max_reset_count / 2) + max_reset_count / 2;
+    return butil::fast_rand_less_than(max_reset_count / 2) + max_reset_count / 2;
 }
 
 int32_t GradientConcurrencyLimiter::AddSample(int error_code, 
                                               int64_t latency_us, 
                                               int64_t sampling_time_us) {
-    BAIDU_SCOPED_LOCK(_sw_mutex);
+    std::unique_lock<butil::Mutex> lock_guard(_sw_mutex);
     if (_sw.start_time_us == 0) {
         _sw.start_time_us = sampling_time_us;
     }
@@ -219,7 +218,7 @@ int32_t GradientConcurrencyLimiter::UpdateMaxConcurrency(
     } 
 
     int32_t next_max_concurrency = 
-        std::ceil(_ema_qps * _min_latency_us / 1000.0 / 1000);
+        std::ceil(_ema_qps * _min_latency_us / 1000000.0);
     if (--_reset_count == 0) {
         _reset_count = NextResetCount();
         if (current_concurrency >= max_concurrency - 2) {

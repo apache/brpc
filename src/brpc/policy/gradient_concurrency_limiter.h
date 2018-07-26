@@ -68,7 +68,7 @@ private:
     int _reset_count;
     int64_t _min_latency_us;
     const double _smooth;
-    int32_t _ema_qps;
+    double _ema_qps;
     butil::Mutex _sw_mutex;
     bvar::PassiveStatus<int32_t> _max_concurrency_bvar;
     butil::atomic<int64_t> BAIDU_CACHELINE_ALIGNMENT _last_sampling_time_us;
