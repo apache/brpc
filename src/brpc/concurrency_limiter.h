@@ -26,7 +26,7 @@ namespace brpc {
 
 class ConcurrencyLimiter : public Destroyable {
 public:
-    ConcurrencyLimiter(): _max_concurrency(0) {}
+    ConcurrencyLimiter() : _max_concurrency(0) {}
 
     // This method should be called each time a request comes in. It returns
     // false when the concurrency reaches the upper limit, otherwise it 
@@ -56,6 +56,8 @@ public:
 
     virtual ~ConcurrencyLimiter() {}
 
+    // Create ConcurrencyLimiter* and coredump if it fails.
+    // Caller is responsible for Destroy() the instance after usage.
     static ConcurrencyLimiter* CreateConcurrencyLimiterOrDie(
         const AdaptiveMaxConcurrency& max_concurrency);
 

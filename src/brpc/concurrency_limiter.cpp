@@ -20,10 +20,6 @@ namespace brpc {
 
 ConcurrencyLimiter* ConcurrencyLimiter::CreateConcurrencyLimiterOrDie(
     const AdaptiveMaxConcurrency& max_concurrency) {
-    if (max_concurrency == "constant" && static_cast<int>(max_concurrency) == 0) {
-        return NULL;
-    }
-    
     const ConcurrencyLimiter* cl = 
         ConcurrencyLimiterExtension()->Find(max_concurrency.name().c_str());
     CHECK(cl != NULL) 

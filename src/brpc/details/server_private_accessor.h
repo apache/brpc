@@ -40,17 +40,16 @@ public:
 
     // Returns true if the `max_concurrency' limit is not reached.
     bool AddConcurrency(Controller* c) {
-        c->add_flag(Controller::FLAGS_ADDED_CONCURRENCY);
         if (NULL != _server->_cl) {
+            c->add_flag(Controller::FLAGS_ADDED_CONCURRENCY);
             return _server->_cl->OnRequested();
-        } else {
-            return true;
-        }
+        } 
+        return true;
     }
 
     void RemoveConcurrency(const Controller* c) {
-        if (c->has_flag(Controller::FLAGS_ADDED_CONCURRENCY) &&
-            NULL != _server->_cl) {
+        if (c->has_flag(Controller::FLAGS_ADDED_CONCURRENCY)){
+            CHECK(_server->_cl != NULL) 
             _server->_cl->OnResponded(c->ErrorCode(), c->latency_us());
         }
     }
