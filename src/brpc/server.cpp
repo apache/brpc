@@ -881,15 +881,15 @@ int Server::StartInternal(const butil::ip_t& ip,
     for (MethodMap::iterator it = _method_map.begin();
         it != _method_map.end(); ++it) {
         if (it->second.is_builtin_service) {
-            continue;
-        }
-        if (it->second.max_concurrency == "constant" &&
+            it->second.status->SetConcurrencyLimiter(NULL);
+        } else if (it->second.max_concurrency == "constant" &&
             static_cast<int>(it->second.max_concurrency) == 0) {
-            continue;
+            it->second.status->SetConcurrencyLimiter(NULL);
+        } else {
+            it->second.status->SetConcurrencyLimiter(
+                ConcurrencyLimiter::CreateConcurrencyLimiterOrDie(
+                    it->second.max_concurrency));
         }
-        it->second.status->SetConcurrencyLimiter(
-          ConcurrencyLimiter::CreateConcurrencyLimiterOrDie(
-              it->second.max_concurrency));
     }
     
     // Create listening ports
