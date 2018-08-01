@@ -85,17 +85,17 @@ class ScopedMethodStatus {
 public:
     ScopedMethodStatus(MethodStatus* status, 
                        Controller* c, 
-                       int64_t start_parse_us)
+                       int64_t received_us)
         : _status(status) 
         , _c(c)
-        , _start_parse_us(start_parse_us) {}
+        , _received_us(received_us) {}
     ~ScopedMethodStatus();
     operator MethodStatus* () const { return _status; }
 private:
     DISALLOW_COPY_AND_ASSIGN(ScopedMethodStatus);
     MethodStatus* _status;
     Controller* _c;
-    uint64_t _start_parse_us;
+    uint64_t _received_us;
 };
 
 inline bool MethodStatus::OnRequested() {
