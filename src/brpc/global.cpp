@@ -67,7 +67,7 @@
 
 // Concurrency Limiters
 #include "brpc/concurrency_limiter.h"
-#include "brpc/policy/gradient_concurrency_limiter.h"
+#include "brpc/policy/auto_concurrency_limiter.h"
 #include "brpc/policy/constant_concurrency_limiter.h"
 
 #include "brpc/input_messenger.h"     // get_or_new_client_side_messenger
@@ -125,7 +125,7 @@ struct GlobalExtensions {
     ConsistentHashingLoadBalancer ch_md5_lb;
     DynPartLoadBalancer dynpart_lb;
 
-    GradientConcurrencyLimiter gradient_cl;
+    AutoConcurrencyLimiter auto_cl;
     ConstantConcurrencyLimiter constant_cl;
 };
 
@@ -558,8 +558,7 @@ static void GlobalInitializeOrDieImpl() {
     }
 
     // Concurrency Limiters
-    ConcurrencyLimiterExtension()->RegisterOrDie("auto", &g_ext->gradient_cl);    
-    ConcurrencyLimiterExtension()->RegisterOrDie("gradient", &g_ext->gradient_cl);
+    ConcurrencyLimiterExtension()->RegisterOrDie("auto", &g_ext->auto_cl);
     ConcurrencyLimiterExtension()->RegisterOrDie("constant", &g_ext->constant_cl);    
 
     if (FLAGS_usercode_in_pthread) {

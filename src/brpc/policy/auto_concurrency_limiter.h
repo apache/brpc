@@ -14,8 +14,8 @@
 //
 // Authors: Lei He (helei@qiyi.com)
 
-#ifndef BRPC_POLICY_GRANDIENT_CONCURRENCY_LIMITER_H
-#define BRPC_POLICY_GRANDIENT_CONCURRENCY_LIMITER_H
+#ifndef BRPC_POLICY_AUTO_CONCURRENCY_LIMITER_H
+#define BRPC_POLICY_AUTO_CONCURRENCY_LIMITER_H
 
 #include "bvar/bvar.h"
 #include "butil/containers/bounded_queue.h"
@@ -24,15 +24,15 @@
 namespace brpc {
 namespace policy {
 
-class GradientConcurrencyLimiter : public ConcurrencyLimiter {
+class AutoConcurrencyLimiter : public ConcurrencyLimiter {
 public:
-    GradientConcurrencyLimiter();
-    ~GradientConcurrencyLimiter() {}
+    AutoConcurrencyLimiter();
+    ~AutoConcurrencyLimiter() {}
     bool OnRequested() override;
     void OnResponded(int error_code, int64_t latency_us) override;
 
     int Expose(const butil::StringPiece& prefix) override;
-    GradientConcurrencyLimiter* New() const override;
+    AutoConcurrencyLimiter* New() const override;
     void Destroy() override;
 
 private:
@@ -78,4 +78,4 @@ private:
 }  // namespace brpc
 
 
-#endif // BRPC_POLICY_GRANDIENT_CONCURRENCY_LIMITER_H
+#endif // BRPC_POLICY_AUTO_CONCURRENCY_LIMITER_H
