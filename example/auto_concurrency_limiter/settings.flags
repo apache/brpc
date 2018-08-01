@@ -1,0 +1,7 @@
+--ABTest=true
+--auto_cl_min_reserved_concurrency=20
+--case_file=test_case.json
+
+--client_frequent_interval_us=5000000
+
+--server_frequent_interval_us=5000000
