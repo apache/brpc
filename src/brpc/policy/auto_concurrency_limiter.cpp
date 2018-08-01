@@ -46,6 +46,14 @@ DEFINE_int32(auto_cl_reserved_concurrency, 0,
     "faster the maximum concurrency grows until the server is fully loaded."
     "When the value is less than or equal to 0, square root of current "
     "concurrency is used.");
+DEFINE_int32(auto_cl_min_reserved_concurrency, 10, 
+        "Minimum value of reserved concurrency, When the value is less than "
+        "or equal to 0, the minimum value of the reserved concurrency is not "
+        "limited.");
+DEFINE_int32(auto_cl_max_reserved_concurrency, 40, 
+        "Maximum value of reserved concurrency, When the value is less than "
+        "or equal to 0, the maximum value of the reserved concurrency is not "
+        "limited.");
 DEFINE_int32(auto_cl_reset_count, 30, 
     "The service's latency will be re-measured every `reset_count' windows.");
 
@@ -205,6 +213,14 @@ int32_t AutoConcurrencyLimiter::UpdateMaxConcurrency(int64_t sampling_time_us) {
     if (reserved_concurrency <= 0) {
         reserved_concurrency = std::ceil(std::sqrt(_max_concurrency));
     } 
+    if (FLAGS_auto_cl_min_reserved_concurrency > 0) {
+        reserved_concurrency = std::max(FLAGS_auto_cl_min_reserved_concurrency,
+                                        reserved_concurrency);
+    }
+    if (FLAGS_auto_cl_max_reserved_concurrency > 0) {
+        reserved_concurrency = std::min(FLAGS_auto_cl_max_reserved_concurrency,
+                                        reserved_concurrency);
+    }
 
     int32_t next_max_concurrency = 
         std::ceil(_ema_peak_qps * _min_latency_us / 1000000.0);
