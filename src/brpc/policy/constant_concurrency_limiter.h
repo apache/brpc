@@ -24,7 +24,7 @@ namespace policy {
 
 class ConstantConcurrencyLimiter : public ConcurrencyLimiter {
 public:
-    ConstantConcurrencyLimiter() {}
+    ConstantConcurrencyLimiter() : _current_concurrency(0) {}
 
     ~ConstantConcurrencyLimiter() {}
 

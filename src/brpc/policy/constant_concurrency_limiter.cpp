@@ -20,9 +20,9 @@ namespace brpc {
 namespace policy {
 
 bool ConstantConcurrencyLimiter::OnRequested() {
-    const int32_t current_concurreny = 
+    const int32_t current_concurrency = 
         _current_concurrency.fetch_add(1, butil::memory_order_relaxed);
-    if (_max_concurrency != 0 && current_concurreny >= _max_concurrency) {
+    if (_max_concurrency != 0 && current_concurrency >= _max_concurrency) {
         return false;
     }
     return true;
