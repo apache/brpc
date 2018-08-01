@@ -44,7 +44,7 @@ public:
     // Returns the current maximum concurrency. Note that the maximum 
     // concurrency of some ConcurrencyLimiters(eg: `auto', `gradient') 
     // is dynamically changing.
-    int MaxConcurrency() { return _max_concurrency; };
+    int max_concurrency() { return _max_concurrency; };
 
     // Expose internal vars. NOT thread-safe.
     // Return 0 on success, -1 otherwise.

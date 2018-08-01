@@ -59,7 +59,7 @@ public:
         if (NULL == _cl) {
             return 0;
         } else {
-            return _cl->MaxConcurrency();
+            return _cl->max_concurrency();
         }
     }
 

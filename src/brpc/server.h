@@ -489,7 +489,7 @@ public:
     int ResetMaxConcurrency(int max_concurrency);
 
     // Server's current max concurrency
-    int MaxConcurrency() const;
+    int max_concurrency() const;
 
     // Get/set max_concurrency associated with a method.
     // Example:

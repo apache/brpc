@@ -222,7 +222,7 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
         if (!ServerPrivateAccessor(server).AddConcurrency(&(mongo_done->cntl))) {
             mongo_done->cntl.SetFailed(
                 ELIMIT, "Reached server's max_concurrency=%d",
-                server->MaxConcurrency());
+                server->max_concurrency());
             break;
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {

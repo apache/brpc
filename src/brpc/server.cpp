@@ -1985,9 +1985,9 @@ int Server::ResetMaxConcurrency(int max_concurrency) {
     return 0;
 }
 
-int Server::MaxConcurrency() const {
+int Server::max_concurrency() const {
     if (NULL != _cl) {
-        return _cl->MaxConcurrency();
+        return _cl->max_concurrency();
     } else {
         return g_default_max_concurrency_of_method;
     }
@@ -1998,7 +1998,6 @@ AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(MethodProperty* mp) {
         LOG(WARNING) << "MaxConcurrencyOf is only allowd before Server started";
         return g_default_max_concurrency_of_method;
     }
-    //TODO
     if (mp->status == NULL) {
         LOG(ERROR) << "method=" << mp->method->full_name()
                    << " does not support max_concurrency";

@@ -294,7 +294,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
         if (!server_accessor.AddConcurrency(cntl)) {
             cntl->SetFailed(
                 ELIMIT, "Reached server's max_concurrency=%d",
-                server->MaxConcurrency());
+                server->max_concurrency());
             break;
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {
