@@ -13,9 +13,9 @@
 # 编译
 为了复用解析代码，brpc对thrift的支持仍需要依赖thrift库以及thrift生成的代码，thrift格式怎么写，代码怎么生成，怎么编译等问题请参考thrift官方文档。
 
-brpc默认不启用thrift支持也不需要thrift依赖。但如果需用thrift协议, 配置brpc环境的时候需加上--with-thrift参数.
+brpc默认不启用thrift支持也不需要thrift依赖。但如果需用thrift协议, 配置brpc环境的时候需加上--with-thrift或-DWITH_THRIFT=ON.
 
-Ubuntu环境下安装thrift依赖
+Linux下安装thrift依赖
 先参考[官方wiki](https://thrift.apache.org/docs/install/debian)安装好必备的依赖和工具，然后从[官网](https://thrift.apache.org/download)下载thrift源代码，解压编译。
 ```bash
 wget http://www.us.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz
@@ -28,10 +28,14 @@ sudo make install
 
 配置brpc支持thrift协议后make。编译完成后会生成libbrpc.a, 其中包含了支持thrift协议的扩展代码, 像正常使用brpc的代码一样链接即可。
 ```bash
+# Ubuntu
 sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --with-thrift
-#或者使用cmake
+# Fedora/CentOS
+sh config_brpc.sh --headers=/usr/include --libs=/usr/lib64 --with-thrift
+# Or use cmake
 mkdir build && cd build && cmake ../ -DWITH_THRIFT=1
 ```
+更多编译选项请阅读[Getting Started](docs/cn/getting_started.md)。
 
 # Client端访问thrift server
 基本步骤：

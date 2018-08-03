@@ -56,7 +56,7 @@ To not link debugging symbols, add `--nodebugsymbols` and compiled binaries will
 
 To use brpc with glog, add `--with-glog`.
 
-To enable thrift support, install thrift first and add `--with-thrift`.
+To enable [thrift support](docs/en/thrift.md), install thrift first and add `--with-thrift`.
 
 **Run example**
 
@@ -86,7 +86,7 @@ To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compi
 
 To use brpc with glog, add `-DWITH_GLOG=ON`.
 
-To enable thrift support, install thrift first and add `-DWITH_THRIFT=ON`.
+To enable [thrift support](docs/en/thrift.md), install thrift first and add `-DWITH_THRIFT=ON`.
 
 **Run example with cmake**
 ```shell
@@ -147,7 +147,7 @@ To not link debugging symbols, add `--nodebugsymbols` and compiled binaries will
 
 To use brpc with glog, add `--with-glog`.
 
-To enable thrift support, install thrift first and add `--with-thrift`.
+To enable [thrift support](docs/en/thrift.md), install thrift first and add `--with-thrift`.
 
 **Run example**
 
@@ -177,7 +177,7 @@ To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compi
 
 To use brpc with glog, add `-DWITH_GLOG=ON`.
 
-To enable thrift support, install thrift first and add `-DWITH_THRIFT=ON`.
+To enable [thrift support](docs/en/thrift.md), install thrift first and add `-DWITH_THRIFT=ON`.
 
 **Run example**
 
@@ -227,7 +227,7 @@ To not link debugging symbols, add `--nodebugsymbols` and compiled binaries will
 
 To use brpc with glog, add `--with-glog`.
 
-To enable thrift support, install thrift first and add `--with-thrift`.
+To enable [thrift support](docs/en/thrift.md), install thrift first and add `--with-thrift`.
 
 ```shell
 $ ls my_dev
@@ -251,7 +251,7 @@ To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compi
 
 To use brpc with glog, add `-DWITH_GLOG=ON`.
 
-To enable thrift support, install thrift first and add `-DWITH_THRIFT=ON`.
+To enable [thrift support](docs/en/thrift.md), install thrift first and add `-DWITH_THRIFT=ON`.
 
 ## MacOS
 
@@ -289,7 +289,7 @@ To not link debugging symbols, add `--nodebugsymbols` and compiled binaries will
 
 To use brpc with glog, add `--with-glog`.
 
-To enable thrift support, install thrift first and add `--with-thrift`.
+To enable [thrift support](docs/en/thrift.md), install thrift first and add `--with-thrift`.
 
 **Run example**
 
@@ -318,7 +318,7 @@ To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compi
 
 To use brpc with glog, add `-DWITH_GLOG=ON`.
 
-To enable thrift support, install thrift first and add `-DWITH_THRIFT=ON`.
+To enable [thrift support](docs/en/thrift.md), install thrift first and add `-DWITH_THRIFT=ON`.
 
 **Run example with cmake**
 ```shell
