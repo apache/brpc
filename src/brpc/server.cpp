@@ -877,7 +877,13 @@ int Server::StartInternal(const butil::ip_t& ip,
         _cl = ConcurrencyLimiter::CreateConcurrencyLimiterOrDie(
             _options.max_concurrency);
         _cl->Expose("Global_Concurrency_Limiter");
+    } else {
+        if (_cl) {
+            _cl->Destroy();
+        }
+        _cl = NULL;
     }
+
     for (MethodMap::iterator it = _method_map.begin();
         it != _method_map.end(); ++it) {
         if (it->second.is_builtin_service) {
