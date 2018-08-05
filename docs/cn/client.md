@@ -605,11 +605,11 @@ brpc支持以下连接方式：
 
 - CONNECTION_TYPE_SINGLE 或 "single" 为单连接
 
-- CONNECTION_TYPE_POOLED 或 "pooled" 为连接池, 与单个远端的最大连接数由-max_connection_pool_size控制:
+- CONNECTION_TYPE_POOLED 或 "pooled" 为连接池, 单个远端对应的连接池最多能容纳的连接数由-max_connection_pool_size控制。注意,此选项不等价于“最大连接数”。需要连接时只要没有闲置的，就会新建；归还时，若池中已有max_connection_pool_size个连接的话，会直接关闭。max_connection_pool_size的取值要符合并发，否则超出的部分会被频繁建立和关闭，效果类似短连接。若max_connection_pool_size为0，就近似于完全的短连接。
 
   | Name                         | Value | Description                              | Defined At          |
   | ---------------------------- | ----- | ---------------------------------------- | ------------------- |
-  | max_connection_pool_size (R) | 100   | maximum pooled connection count to a single endpoint | src/brpc/socket.cpp |
+  | max_connection_pool_size (R) | 100   | Max number of pooled connections to a single endpoint | src/brpc/socket.cpp |
 
 - CONNECTION_TYPE_SHORT 或 "short" 为短连接
 

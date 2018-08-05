@@ -77,7 +77,7 @@ DEFINE_int64(socket_max_unwritten_bytes, 64 * 1024 * 1024,
              " Socket.Write fails with EOVERCROWDED");
 
 DEFINE_int32(max_connection_pool_size, 100,
-             "maximum pooled connection count to a single endpoint");
+             "Max number of pooled connections to a single endpoint");
 BRPC_VALIDATE_GFLAG(max_connection_pool_size, PassValidate);
 
 DEFINE_int32(connect_timeout_as_unreachable, 3,
