@@ -147,15 +147,6 @@ public:
     void set_timeout_ms(int64_t timeout_ms);
     int64_t timeout_ms() const { return _timeout_ms; }
 
-    // Set timeout of the request trace deadline (in milliseconds)
-    void set_request_trace_timeout_ms(int64_t timeout_ms);
-    
-    // Set the request trace deadline. We suggest you to use 
-    // set_request_trace_timeout_ms for root request.
-    void set_request_trace_deadline(int64_t request_trace_deadline) {
-        _request_trace_deadline = request_trace_deadline;
-    }
-	
     // Set/get the delay to send backup request in milliseconds. Use
     // ChannelOptions.backup_request_ms on unset.
     void set_backup_request_ms(int64_t timeout_ms);
@@ -384,11 +375,6 @@ public:
     // Get the data attached to a mongo session(practically a socket).
     MongoContext* mongo_session_data() { return _mongo_session_data.get(); }
     
-    // Get a request trace deadline timestamp.
-    int64_t request_trace_deadline() const;
-    // Get remain milliseconds to the request trace deadline.
-    int64_t get_request_trace_remain_ms() const;
-	
     // -------------------------------------------------------------------
     //                      Both-side methods.
     // Following methods can be called from both client and server. But they
@@ -470,14 +456,7 @@ public:
     void set_idl_result(int64_t result) { _idl_result = result; }
     int64_t idl_result() const { return _idl_result; }
 
-    bool has_request_trace_deadline() const { 
-        return _request_trace_deadline != UNSET_MAGIC_NUM; 
-    }
-
-    void set_thrift_method_name(const std::string& method_name) {
-        _thrift_method_name = method_name;
-    }
-    std::string thrift_method_name() { return _thrift_method_name; }
+    const std::string& thrift_method_name() { return _thrift_method_name; }
 
 private:
     struct CompletionInfo {
@@ -644,17 +623,13 @@ private:
 
     // Used by ParallelChannel
     int _fail_limit;
-
+    
     uint32_t _pipelined_count;
 
     // [Timeout related]
     int32_t _timeout_ms;
     int32_t _connect_timeout_ms;
     int32_t _backup_request_ms;
-    // Deadline of this rpc trace(since the Epoch in microseconds),
-    // set by root request of the rpc trace, and each child node of trace
-    // can judge root rpc request timed out or not according to the value. 
-    int64_t _request_trace_deadline;
     // Deadline of this RPC (since the Epoch in microseconds).
     int64_t _abstime_us;
     // Timer registered to trigger RPC timeout event
@@ -716,7 +691,6 @@ private:
 
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;
-    uint32_t _thrift_seq_id;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be
