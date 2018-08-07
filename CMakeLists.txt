@@ -2,9 +2,7 @@ cmake_minimum_required(VERSION 2.8.10)
 project(brpc C CXX)
 
 # Enable MACOSX_RPATH. Run "cmake --help-policy CMP0042" for policy details.
-if(POLICY CMP0042)
-    cmake_policy(SET CMP0042 NEW)
-endif()
+cmake_policy(SET CMP0042 NEW)
 
 set(BRPC_VERSION 0.9.0)
 
@@ -22,14 +20,14 @@ else()
     message(WARNING "You are using an unsupported compiler! Compilation has only been tested with Clang and GCC.")
 endif()
 
-option(WITH_GLOG "With glog" OFF)
+option(BRPC_WITH_GLOG "With glog" OFF)
 option(DEBUG "Print debug logs" OFF)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
-option(WITH_THRIFT "With thrift framed protocol supported" OFF)
+option(BRPC_WITH_THRIFT "With thrift framed protocol supported" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 
 set(WITH_GLOG_VAL "0")
-if(WITH_GLOG)
+if(BRPC_WITH_GLOG)
     set(WITH_GLOG_VAL "1")
 endif()
 
@@ -37,10 +35,10 @@ if(WITH_DEBUG_SYMBOLS)
     set(DEBUG_SYMBOL "-g")
 endif()
 
-if(WITH_THRIFT)
+if(BRPC_WITH_THRIFT)
     set(THRIFT_CPP_FLAG "-DENABLE_THRIFT_FRAMED_PROTOCOL")
-    set(THRIFTNB_LIB "thriftnb")
-    set(THRIFT_LIB "thrift")
+    set(THRIFT_LIB "thriftnb")
+    message("Enable thrift framed procotol")
 endif()
 
 include(GNUInstallDirs)
@@ -121,7 +119,7 @@ if ((NOT LEVELDB_INCLUDE_PATH) OR (NOT LEVELDB_LIB))
     message(FATAL_ERROR "Fail to find leveldb")
 endif()
 
-if(WITH_GLOG)
+if(BRPC_WITH_GLOG)
     find_path(GLOG_INCLUDE_PATH NAMES glog/logging.h)
     find_library(GLOG_LIB NAMES glog)
     if((NOT GLOG_INCLUDE_PATH) OR (NOT GLOG_LIB))
@@ -157,7 +155,6 @@ set(DYNAMIC_LIB
     ${PROTOC_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
     ${THRIFT_LIB}
-    ${THRIFTNB_LIB}
     ${OPENSSL_LIBRARIES}
     ${OPENSSL_CRYPTO_LIBRARY}
     dl
@@ -165,7 +162,7 @@ set(DYNAMIC_LIB
     )
 set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ldl -lz")
 
-if(WITH_GLOG)
+if(BRPC_WITH_GLOG)
     set(DYNAMIC_LIB ${DYNAMIC_LIB} ${GLOG_LIB})
     set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lglog")
 endif()
@@ -184,7 +181,8 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "-framework Foundation"
         "-Wl,-U,_MallocExtension_ReleaseFreeMemory"
         "-Wl,-U,_ProfilerStart"
-        "-Wl,-U,_ProfilerStop")
+        "-Wl,-U,_ProfilerStop"
+        "-Wl,-U,_RegisterThriftProtocol")
 endif()
 
 # for *.so
@@ -379,7 +377,6 @@ set(SOURCES
     ${JSON2PB_SOURCES}
     ${MCPACK2PB_SOURCES}
     ${BRPC_SOURCES}
-    ${THRIFT_SOURCES}
     )
 
 add_subdirectory(src)

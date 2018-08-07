@@ -124,6 +124,7 @@ struct ChannelOptions {
 class Channel : public ChannelBase {
 friend class Controller;
 friend class SelectiveChannel;
+friend class CouchbaseChannel;
 public:
     Channel(ProfilerLinker = ProfilerLinker());
     ~Channel();
