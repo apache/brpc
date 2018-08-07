@@ -66,6 +66,7 @@ private:
     int64_t _min_latency_us;
     const double _smooth;
     double _ema_peak_qps;
+    int _rest_noload_count;
     butil::BoundedQueue<double> _qps_bq;
     butil::Mutex _sw_mutex;
     bvar::PassiveStatus<int32_t> _max_concurrency_bvar;
