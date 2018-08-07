@@ -111,7 +111,7 @@ public:
     butil::IOBuf& raw_buffer() { return _buf; }
     const butil::IOBuf& raw_buffer() const { return _buf; }
     
-private:
+protected:
     bool GetOrDelete(uint8_t command, const butil::StringPiece& key);
     bool Counter(uint8_t command, const butil::StringPiece& key, uint64_t delta,
                  uint64_t initial_value, uint32_t exptime);
@@ -172,6 +172,7 @@ public:
         STATUS_EINVAL = 0x04,
         STATUS_NOT_STORED = 0x05,
         STATUS_DELTA_BADVAL = 0x06,
+        STATUS_NOT_MY_VBUCKET = 0x07,
         STATUS_AUTH_ERROR = 0x20,
         STATUS_AUTH_CONTINUE = 0x21,
         STATUS_UNKNOWN_COMMAND = 0x81,
@@ -230,7 +231,7 @@ public:
 
     static const char* status_str(Status);
 
-private:
+protected:
     bool PopCounter(uint8_t command, uint64_t* new_value, uint64_t* cas_value);
     bool PopStore(uint8_t command, uint64_t* cas_value);
 
