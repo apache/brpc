@@ -933,7 +933,7 @@ TEST_F(RdmaTest, cq_overrun) {
     }
 
     int32_t saved_cq_size = rdma::FLAGS_rdma_cq_size;
-    rdma::FLAGS_rdma_cq_size = 2;
+    rdma::FLAGS_rdma_cq_size = 1;
     StartServer();
 
     int call_num = 128;

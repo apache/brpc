@@ -44,6 +44,7 @@ struct IdleNode {
 };
 
 struct Region {
+    Region() { start = 0; }
     uintptr_t start;
     size_t size;
     uint32_t block_type;
@@ -54,7 +55,7 @@ static const int MAX_REGIONS = 16;
 
 static int g_buckets = 1;
 static int g_max_regions = MAX_REGIONS;
-static Region* g_regions[MAX_REGIONS];
+static Region g_regions[MAX_REGIONS];
 static int g_region_num = 0;
 
 // This callback is used when extending a new region
@@ -89,12 +90,12 @@ static inline Region* GetRegion(const void* buf) {
     Region* r = NULL;
     uintptr_t addr = (uintptr_t)buf;
     for (int i = 0; i < g_max_regions; ++i) {
-        if (g_regions[i] == NULL) {
+        if (g_regions[i].start == 0) {
             break;
         }
-        if (addr >= g_regions[i]->start &&
-            addr < g_regions[i]->start + g_regions[i]->size) {
-            r = g_regions[i];
+        if (addr >= g_regions[i].start &&
+            addr < g_regions[i].start + g_regions[i].size) {
+            r = &g_regions[i];
             break;
         }
     }
@@ -125,23 +126,15 @@ static void* ExtendBlockPool(size_t region_size, int block_type) {
     region_size = region_size * BYTES_IN_MB / g_block_size[block_type] / g_buckets;
     region_size *= g_block_size[block_type] * g_buckets;
 
-    Region* region = new (std::nothrow) Region;
-    if (!region) {
-        PLOG_EVERY_SECOND(ERROR) << "Memory not enough";
-        return NULL;
-    }
-
     void* region_base = NULL;
     if (posix_memalign(&region_base, 4096, region_size) != 0) {
         PLOG_EVERY_SECOND(ERROR) << "Memory not enough";
-        delete region;
         return NULL;
     }
 
     uint32_t id = g_cb(region_base, region_size);
     if (id == 0) {
         free(region_base);
-        delete region;
         return NULL;
     }
 
@@ -154,16 +147,15 @@ static void* ExtendBlockPool(size_t region_size, int block_type) {
                 butil::return_object<IdleNode>(node[j]);
             }
             free(region_base);
-            delete region;
             return NULL;
         }
     }
  
+    Region* region = &g_regions[g_region_num++];
     region->start = (uintptr_t)region_base;
     region->size = region_size;
     region->id = id;
     region->block_type = block_type;
-    g_regions[g_region_num++] = region;
 
     for (int i = 0; i < g_buckets; ++i) {
         node[i]->start = (void*)(region->start + i * (region_size / g_buckets));
@@ -264,7 +256,12 @@ static void* AllocBlockFrom(int block_type) {
             // There is no block left, extend a new region
             if (!ExtendBlockPool(FLAGS_rdma_memory_pool_increase_size_mb,
                                  block_type)) {
-                LOG_EVERY_SECOND(ERROR) << "Fail to extend new region";
+                LOG_EVERY_SECOND(ERROR) << "Fail to extend new region. "
+                                        << "You can set the size of memory pool larger. "
+                                        << "Refer to the help message of these flags: "
+                                        << "rdma_memory_pool_initial_size_mb, "
+                                        << "rdma_memory_pool_increase_size_mb, "
+                                        << "rdma_memory_pool_max_regions.";
                 return NULL;
             } else {
                 PickReadyBlocks(block_type, index);
@@ -357,13 +354,11 @@ void DestroyBlockPool() {
     delete g_info;
     g_info = NULL;
     for (int i = 0; i < g_region_num; ++i) {
-        Region* r = g_regions[i];
-        if (!r) {
+        if (g_regions[i].start == 0) {
             break;
         }
-        free((void*)r->start);
-        delete r;
-        g_regions[i] = NULL;
+        free((void*)g_regions[i].start);
+        g_regions[i].start = 0;
     }
     g_region_num = 0;
     g_cb = NULL;

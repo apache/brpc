@@ -628,14 +628,10 @@ private:
                 void* buf = NULL;
                 if (!os.Next(&buf, &size) || (uint64_t)size < append_len) {
                     // Memory is not enough for preparing a block
-                    tmp.clear();  // must clear before setting errno
-                    errno = ENOMEM;
                     return -1;
                 }
                 lkey = GetLKey(tmp._ref_at(0).block);
                 if (lkey == 0) {
-                    tmp.clear();  // must clear before setting errno
-                    errno = ENOMEM;
                     return -1;
                 }
                 memcpy(buf, start, append_len);
@@ -704,6 +700,9 @@ ssize_t RdmaEndpoint::DoCutFromIOBufList(
                 &sglist[sge_index], to, max_sge - sge_index,
                 butil::IOBuf::DEFAULT_PAYLOAD - total_len);
         if (len < 0) {
+            // Do not set errno in cut_into_sglist_and_iobuf because
+            // it may be overwritten by IOBuf::~IOBuf.
+            errno = ENOMEM;
             return -1;
         }
         CHECK(len > 0);

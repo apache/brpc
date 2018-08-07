@@ -567,13 +567,7 @@ void GlobalCQRelease() {
         g_cqs[i].StopAndJoin();
     }
 
-    // We must wait for all CQs released
-    while (g_active_conn_num.load(butil::memory_order_relaxed) > 0) {
-        usleep(10);
-    }
-
-    delete [] g_cqs;
-    delete g_cq_policy;
+    // Do not delete g_cqs and g_cq_policy here
 }
 
 }  // namespace rdma
