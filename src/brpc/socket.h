@@ -316,13 +316,7 @@ public:
         __attribute__ ((__format__ (__printf__, 3, 4)));
     static int SetFailed(SocketId id);
 
-    void FeedbackCircuitBreaker(int error_code, int64_t latency_us) {
-        if (!_circuit_breaker.OnCallEnd(error_code, latency_us)) {
-            LOG(ERROR) 
-                << "Socket[" << *this << "] deactivted by circuit breaker";
-            SetFailed();
-        }
-    }
+    void FeedbackCircuitBreaker(int error_code, int64_t latency_us);
 
     bool Failed() const;
 

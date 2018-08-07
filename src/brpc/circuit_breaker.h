@@ -28,21 +28,19 @@ public:
 
     ~CircuitBreaker() {}
 
-    // Sampling the current rpc. Returns false if the endpoint needs to 
-    // be deactivated. Otherwise return true.
+    // Sampling the current rpc. Returns false if a node needs to 
+    // be isolated. Otherwise return true.
     // error_code: Error_code of this call, 0 means success.
     // latency: Time cost of this call.
-    // Note: Once OnCallEnd() determines that a node needs to be deactivated,
+    // Note: Once OnCallEnd() determined that a node needs to be isolated,
     // it will always return false until you call Reset(). Usually Reset() 
     // will be called in the health check thread.
     bool OnCallEnd(int error_code, int64_t latency);
 
-    // Reset circuit breaker, will erase the historical data and start 
-    // sampling again.
-    // This method is thread safe, and it is inefficient, you better 
-    // call it only when you need.
+    // Reset CircuitBreaker and clear history data. will erase the historical 
+    // data and start sampling again. Before you call this method, you need to
+    // ensure that no one else is calling OnCallEnd.
     void Reset();
-
 private:
     class EmaErrorRecorder {
     public:
@@ -53,7 +51,6 @@ private:
     private:
         int64_t UpdateLatency(int64_t latency);
         bool UpdateErrorCost(int64_t latency, int64_t ema_latency);
-        void OnStarting(int error_code, int64_t latency);
 
         const int _window_size;
         const int _max_error_percent;
@@ -64,23 +61,9 @@ private:
         butil::atomic<int64_t> _ema_latency;
         butil::atomic<bool> _broken;
     };
-    typedef std::vector<std::unique_ptr<EmaErrorRecorder>> ErrRecorderList;
 
-    static bool ResetEmaRecorders(ErrRecorderList& recorders) {
-        for (auto& recorder : recorders) {
-            recorder->Reset();
-        }
-        return true;
-    }
-    
-    static bool AddErrorRecorder(ErrRecorderList& recorders,
-                                 int window_size, int max_error_percent){
-        recorders.emplace_back(
-            new EmaErrorRecorder(window_size, max_error_percent));
-        return true;
-    }
-
-    butil::DoublyBufferedData<ErrRecorderList> _recorders;
+    EmaErrorRecorder _long_window;
+    EmaErrorRecorder _short_window;
 };
 
 }  // namespace brpc

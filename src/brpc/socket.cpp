@@ -42,6 +42,7 @@
 #include "brpc/shared_object.h"
 #include "brpc/policy/rtmp_protocol.h"  // FIXME
 #include "brpc/periodic_task.h"
+#include "brpc/circuit_breaker.h"       // CircuitBreaker
 #if defined(OS_MACOSX)
 #include <sys/event.h>
 #endif
@@ -176,6 +177,8 @@ public:
 
     // For computing stats.
     ExtendedSocketStat* extended_stat;
+
+    CircuitBreaker circuit_breaker;
 
     explicit SharedPart(SocketId creator_socket_id);
     ~SharedPart();
@@ -737,7 +740,12 @@ int Socket::WaitAndReset(int32_t expected_nref) {
             _pipeline_q->clear();
         }
     }
-    _circuit_breaker.Reset();
+    
+    SharedPart* sp = GetSharedPart();
+    if (sp) {
+        sp->circuit_breaker.Reset();
+    }
+
     CHECK(NULL == _write_head.load(butil::memory_order_relaxed));
     CHECK_EQ(0, _unwritten_bytes.load(butil::memory_order_relaxed));
     CHECK(!_overcrowded);
@@ -872,6 +880,14 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
 
 int Socket::SetFailed() {
     return SetFailed(EFAILEDSOCKET, NULL);
+}
+
+void Socket::FeedbackCircuitBreaker(int error_code, int64_t latency_us) {
+    if (!GetOrNewSharedPart()->circuit_breaker.OnCallEnd(error_code, latency_us)) {
+        LOG(ERROR) 
+            << "Socket[" << *this << "] deactivted by circuit breaker";
+        SetFailed();
+    }
 }
 
 int Socket::ReleaseReferenceIfIdle(int idle_seconds) {

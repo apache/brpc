@@ -90,6 +90,14 @@ bool CircuitBreaker::EmaErrorRecorder::OnCallEnd(int error_code,
     return healthy;
 }
 
+void CircuitBreaker::EmaErrorRecorder::Reset() {
+    _init_completed.store(false, butil::memory_order_relaxed);
+    _sample_count.store(0, butil::memory_order_relaxed);
+    _ema_error_cost.store(0, butil::memory_order_relaxed);
+    _ema_latency.store(0, butil::memory_order_relaxed);
+    _broken.store(false, butil::memory_order_relaxed);
+}
+
 int64_t CircuitBreaker::EmaErrorRecorder::UpdateLatency(int64_t latency) {
     while (true) {
         int64_t ema_latency = _ema_latency.load(butil::memory_order_relaxed);
@@ -139,48 +147,21 @@ bool CircuitBreaker::EmaErrorRecorder::UpdateErrorCost(int64_t error_cost,
     return true;
 }
 
-void CircuitBreaker::EmaErrorRecorder::Reset() {
-    _init_completed.store(false, butil::memory_order_relaxed);
-    _sample_count.store(0, butil::memory_order_relaxed);
-    _ema_error_cost.store(0, butil::memory_order_relaxed);
-    _ema_latency.store(0, butil::memory_order_relaxed);
-    _broken.store(false, butil::memory_order_relaxed);
-}
-
-CircuitBreaker::CircuitBreaker() {
-    auto short_recorder_adder = 
-        std::bind(&CircuitBreaker::AddErrorRecorder, 
-                  std::placeholders::_1, 
-                  FLAGS_circuit_breaker_short_window_size,
-                  FLAGS_circuit_breaker_short_window_error_percent);
-    auto long_recorder_adder = 
-        std::bind(&CircuitBreaker::AddErrorRecorder,
-                  std::placeholders::_1,
-                  FLAGS_circuit_breaker_long_window_size,
-                  FLAGS_circuit_breaker_long_window_error_percent);
-    _recorders.Modify(short_recorder_adder);
-    _recorders.Modify(long_recorder_adder);
-}
-
-void CircuitBreaker::Reset() {
-    auto recorder_reseter = std::bind(&CircuitBreaker::ResetEmaRecorders,
-                                      std::placeholders::_1);
-    _recorders.Modify(recorder_reseter);
+CircuitBreaker::CircuitBreaker()
+    : _long_window(FLAGS_circuit_breaker_long_window_size,
+                   FLAGS_circuit_breaker_long_window_error_percent)
+    , _short_window(FLAGS_circuit_breaker_short_window_size,
+                    FLAGS_circuit_breaker_short_window_error_percent) {
 }
 
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
-    butil::DoublyBufferedData<ErrRecorderList>::ScopedPtr p;
-    if (0 == _recorders.Read(&p)) {
-        for (auto& recorder : (*p)) {
-            if (!recorder->OnCallEnd(error_code, latency)) {
-                return false;
-            }
-        }
-        return true;
-    } else {
-        LOG(WARNING) << "EmaErrorRecorder no data";
-        return true;
-    }
+    return _long_window.OnCallEnd(error_code, latency) && 
+           _short_window.OnCallEnd(error_code, latency);
+}
+
+void CircuitBreaker::Reset() {
+    _long_window.Reset();
+    _short_window.Reset();
 }
 
 }  // namespace brpc
