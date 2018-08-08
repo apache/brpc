@@ -62,6 +62,8 @@ class MongoContext;
 class RetryPolicy;
 class InputMessageBase;
 class ThriftStub;
+class CouchbaseChannel;
+class CouchbaseDone;
 namespace policy {
 class OnServerStreamCreated;
 void ProcessMongoRequest(InputMessageBase*);
@@ -110,6 +112,8 @@ friend class CouchbaseDone;
 friend class schan::Sender;
 friend class schan::SubDone;
 friend class policy::OnServerStreamCreated;
+friend class CouchbaseChannel;
+friend class CouchbaseDone;
 friend int StreamCreate(StreamId*, Controller&, const StreamOptions*);
 friend int StreamAccept(StreamId*, Controller&, const StreamOptions*);
 friend void policy::ProcessMongoRequest(InputMessageBase*);
