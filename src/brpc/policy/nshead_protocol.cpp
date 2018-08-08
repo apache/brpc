@@ -40,7 +40,7 @@ namespace brpc {
 
 NsheadClosure::NsheadClosure(void* additional_space)
     : _server(NULL)
-    , _start_parse_us(0)
+    , _received_us(0)
     , _do_respond(true)
     , _additional_space(additional_space) {
 }
@@ -125,7 +125,7 @@ void NsheadClosure::Run() {
     }
     if (method_status) {
         method_status.release()->OnResponded(
-            !_controller.Failed(), butil::cpuwide_time_us() - cpuwide_start_us());
+            !_controller.Failed(), butil::cpuwide_time_us() - _received_us);
     }
 }
 
@@ -249,7 +249,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
 
     req->head = *req_head;
     msg->payload.swap(req->body);
-    nshead_done->_start_parse_us = start_parse_us;
+    nshead_done->_received_us = msg->received_us();
     nshead_done->_server = server;
     
     ServerPrivateAccessor server_accessor(server);

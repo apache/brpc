@@ -67,7 +67,7 @@ SendNsheadPbResponse::SendNsheadPbResponse(
 
 void SendNsheadPbResponse::Run() {
     MethodStatus* saved_status = status;
-    const int64_t saved_start_us = done->cpuwide_start_us();
+    const int64_t received_us = done->received_us();
     if (!cntl->IsCloseConnection()) {
         adaptor->SerializeResponseToIOBuf(meta, cntl, pbres.get(), ns_res);
     }
@@ -85,7 +85,7 @@ void SendNsheadPbResponse::Run() {
     // back response.
     if (saved_status) {
         saved_status->OnResponded(
-            !saved_failed, butil::cpuwide_time_us() - saved_start_us);
+            !saved_failed, butil::cpuwide_time_us() - received_us);
     }
     saved_done->Run();
 }

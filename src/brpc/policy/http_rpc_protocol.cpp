@@ -551,7 +551,7 @@ static void SendHttpResponse(Controller *cntl,
                              const google::protobuf::Message *res,
                              const Server* server,
                              MethodStatus* method_status_raw,
-                             long start_parse_us) {
+                             int64_t received_us) {
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
@@ -729,14 +729,16 @@ static void SendHttpResponse(Controller *cntl,
     }
     if (method_status) {
         method_status.release()->OnResponded(
-            !cntl->Failed(), butil::cpuwide_time_us() - start_parse_us);
+            !cntl->Failed(), butil::cpuwide_time_us() - received_us);
     }
 }
 
 inline void SendHttpResponse(Controller *cntl, const Server* svr,
-                             MethodStatus* method_status) {
-    SendHttpResponse(cntl, NULL, NULL, svr, method_status, -1);
+                             MethodStatus* method_status,
+                             int64_t received_us) {
+    SendHttpResponse(cntl, NULL, NULL, svr, method_status, received_us);
 }
+
 
 // Normalize the sub string of `uri_path' covered by `splitter' and
 // put it into `unresolved_path'
@@ -1117,7 +1119,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     
     if (!server->IsRunning()) {
         cntl->SetFailed(ELOGOFF, "Server is stopping");
-        return SendHttpResponse(cntl.release(), server, NULL);
+        return SendHttpResponse(cntl.release(), server, NULL, msg->received_us());
     }
 
     if (server->options().http_master_service) {
@@ -1127,16 +1129,16 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             svc->GetDescriptor()->FindMethodByName(common->DEFAULT_METHOD);
         if (md == NULL) {
             cntl->SetFailed(ENOMETHOD, "No default_method in http_master_service");
-            return SendHttpResponse(cntl.release(), server, NULL);
+            return SendHttpResponse(cntl.release(), server, NULL, msg->received_us());
         }
         accessor.set_method(md);
         cntl->request_attachment().swap(req_body);
         google::protobuf::Closure* done = brpc::NewCallback<
             Controller*, const google::protobuf::Message*,
             const google::protobuf::Message*, const Server*,
-            MethodStatus *, long>(
+            MethodStatus *, int64_t>(
                 &SendHttpResponse, cntl.get(), NULL, NULL, server,
-                NULL, start_parse_us);
+                NULL, msg->received_us());
         if (span) {
             span->ResetServerSpanName(md->full_name());
             span->set_start_callback_us(butil::cpuwide_time_us());
@@ -1156,14 +1158,14 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         } else {
             cntl->SetFailed(ENOMETHOD, "Fail to find method on `%s'", path.c_str());
         }
-        return SendHttpResponse(cntl.release(), server, NULL);
+        return SendHttpResponse(cntl.release(), server, NULL, msg->received_us());
     } else if (sp->service->GetDescriptor() == BadMethodService::descriptor()) {
         BadMethodRequest breq;
         BadMethodResponse bres;
         butil::StringSplitter split(path.c_str(), '/');
         breq.set_service_name(std::string(split.field(), split.length()));
         sp->service->CallMethod(sp->method, cntl.get(), &breq, &bres, NULL);
-        return SendHttpResponse(cntl.release(), server, NULL);
+        return SendHttpResponse(cntl.release(), server, NULL, msg->received_us());
     }
     // Switch to service-specific error.
     non_service_error.release();
@@ -1173,7 +1175,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             cntl->SetFailed(ELIMIT, "Reached %s's max_concurrency=%d",
                             sp->method->full_name().c_str(),
                             method_status->max_concurrency());
-            return SendHttpResponse(cntl.release(), server, method_status);
+            return SendHttpResponse(cntl.release(), server, method_status, msg->received_us());
         }
     }
     
@@ -1186,23 +1188,23 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         if (socket->is_overcrowded()) {
             cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
                             butil::endpoint2str(socket->remote_side()).c_str());
-            return SendHttpResponse(cntl.release(), server, method_status);
+            return SendHttpResponse(cntl.release(), server, method_status, msg->received_us());
         }
         if (!server_accessor.AddConcurrency(cntl.get())) {
             cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
                             server->options().max_concurrency);
-            return SendHttpResponse(cntl.release(), server, method_status);
+            return SendHttpResponse(cntl.release(), server, method_status, msg->received_us());
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {
             cntl->SetFailed(ELIMIT, "Too many user code to run when"
                             " -usercode_in_pthread is on");
-            return SendHttpResponse(cntl.release(), server, method_status);
+            return SendHttpResponse(cntl.release(), server, method_status, msg->received_us());
         }
     } else if (security_mode) {
         cntl->SetFailed(EPERM, "Not allowed to access builtin services, try "
                         "ServerOptions.internal_port=%d instead if you're in"
                         " internal network", server->options().internal_port);
-        return SendHttpResponse(cntl.release(), server, method_status);
+        return SendHttpResponse(cntl.release(), server, method_status, msg->received_us());
     }
     
     google::protobuf::Service* svc = sp->service;
@@ -1215,7 +1217,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     if (__builtin_expect(!req || !res, 0)) {
         PLOG(FATAL) << "Fail to new req or res";
         cntl->SetFailed("Fail to new req or res");
-        return SendHttpResponse(cntl.release(), server, method_status);
+        return SendHttpResponse(cntl.release(), server, method_status, msg->received_us());
     }
     if (sp->params.allow_http_body_to_pb &&
         method->input_type()->field_count() > 0) {
@@ -1229,7 +1231,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 cntl->SetFailed(EREQUEST, "%s needs to be created from a"
                                 " non-empty json, it has required fields.",
                                 req->GetDescriptor()->full_name().c_str());
-                return SendHttpResponse(cntl.release(), server, method_status);
+                return SendHttpResponse(cntl.release(), server, method_status, msg->received_us());
             } // else all fields of the request are optional.
         } else {
             const std::string* encoding =
@@ -1240,7 +1242,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 butil::IOBuf uncompressed;
                 if (!policy::GzipDecompress(req_body, &uncompressed)) {
                     cntl->SetFailed(EREQUEST, "Fail to un-gzip request body");
-                    return SendHttpResponse(cntl.release(), server, method_status);
+                    return SendHttpResponse(cntl.release(), server, method_status, msg->received_us());
                 }
                 req_body.swap(uncompressed);
             }
@@ -1248,7 +1250,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 if (!ParsePbFromIOBuf(req.get(), req_body)) {
                     cntl->SetFailed(EREQUEST, "Fail to parse http body as %s",
                                     req->GetDescriptor()->full_name().c_str());
-                    return SendHttpResponse(cntl.release(), server, method_status);
+                    return SendHttpResponse(cntl.release(), server, method_status, msg->received_us());
                 }
             } else {
                 butil::IOBufAsZeroCopyInputStream wrapper(req_body);
@@ -1259,7 +1261,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                 if (!json2pb::JsonToProtoMessage(&wrapper, req.get(), options, &err)) {
                     cntl->SetFailed(EREQUEST, "Fail to parse http body as %s, %s",
                                     req->GetDescriptor()->full_name().c_str(), err.c_str());
-                    return SendHttpResponse(cntl.release(), server, method_status);
+                    return SendHttpResponse(cntl.release(), server, method_status, msg->received_us());
                 }
             }
         }
@@ -1268,15 +1270,16 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         cntl->request_attachment().swap(req_body);
     }
     
-    imsg_guard.reset();  // optional, just release resourse ASAP
-
     google::protobuf::Closure* done = brpc::NewCallback<
         Controller*, const google::protobuf::Message*,
         const google::protobuf::Message*, const Server*,
-        MethodStatus *, long>(
+        MethodStatus *, int64_t>(
             &SendHttpResponse, cntl.get(),
             req.get(), res.get(), server,
-            method_status, start_parse_us);
+            method_status, msg->received_us());
+
+    imsg_guard.reset();  // optional, just release resourse ASAP
+
     if (span) {
         span->set_start_callback_us(butil::cpuwide_time_us());
         span->AsParent();

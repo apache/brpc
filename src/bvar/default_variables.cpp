@@ -20,6 +20,10 @@
 #include <sys/resource.h>                  // getrusage
 #include <dirent.h>                        // dirent
 #include <iomanip>                         // setw
+#if defined(OS_MACOSX)
+#include <libproc.h>
+#include <sys/resource.h>
+#endif
 #include "butil/time.h"
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/scoped_lock.h"
@@ -27,12 +31,8 @@
 #include "butil/files/dir_reader_posix.h"
 #include "butil/file_util.h"
 #include "butil/process_util.h"            // ReadCommandLine
-#include <butil/popen.h>                   // read_command_output
+#include "butil/popen.h"                   // read_command_output
 #include "bvar/passive_status.h"
-#if defined(OS_MACOSX)
-#include <libproc.h>
-#include <sys/resource.h>
-#endif
 
 namespace bvar {
 

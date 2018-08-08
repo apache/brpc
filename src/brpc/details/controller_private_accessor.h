@@ -129,8 +129,6 @@ public:
         _cntl->add_flag(Controller::FLAGS_REQUEST_WITH_AUTH);
     }
 
-    std::string* mutable_thrift_method_name() { return &_cntl->_thrift_method_name; }
-
 private:
     Controller* _cntl;
 };

@@ -114,7 +114,6 @@ void PackEspRequest(butil::IOBuf* packet_buf,
 }
 
 void ProcessEspResponse(InputMessageBase* msg_base) {
-
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     

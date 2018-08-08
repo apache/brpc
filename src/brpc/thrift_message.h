@@ -28,10 +28,18 @@
 #include "google/protobuf/descriptor.pb.h"
 
 #include "butil/iobuf.h"
+#include "butil/class_name.h"
 #include "brpc/channel_base.h"
 #include "brpc/controller.h"
 
-#include <thrift/TBase.h>
+namespace apache {
+namespace thrift {
+class TBase;
+namespace protocol {
+class TProtocol;
+}
+}
+}
 
 namespace brpc {
 
@@ -46,6 +54,16 @@ static const int16_t THRIFT_INVALID_FID = -1;
 static const int16_t THRIFT_REQUEST_FID = 1;
 static const int16_t THRIFT_RESPONSE_FID = 0;
 
+// Problem: TBase is absent in thrift 0.9.3
+// Solution: Wrap native messages with templates into instances inheriting
+//   from ThriftMessageBase which can be stored and handled uniformly.
+class ThriftMessageBase {
+public:
+    virtual ~ThriftMessageBase() {};
+    virtual uint32_t Read(::apache::thrift::protocol::TProtocol* iprot) = 0;
+    virtual uint32_t Write(::apache::thrift::protocol::TProtocol* oprot) const = 0;
+};
+
 // Representing a thrift framed request or response.
 class ThriftFramedMessage : public ::google::protobuf::Message {
 friend class ThriftStub;
@@ -55,10 +73,10 @@ public:
     
 private:
     bool _own_raw_instance;
-    ::apache::thrift::TBase* _raw_instance;
+    ThriftMessageBase* _raw_instance;
 
 public:
-    ::apache::thrift::TBase* raw_instance() const { return _raw_instance; }
+    ThriftMessageBase* raw_instance() const { return _raw_instance; }
 
     template <typename T> T* Cast();
     
@@ -111,10 +129,11 @@ class ThriftStub {
 public:
     explicit ThriftStub(ChannelBase* channel) : _channel(channel) {}
 
+    template <typename REQUEST, typename RESPONSE>
     void CallMethod(const char* method_name,
                     Controller* cntl,
-                    const ::apache::thrift::TBase* raw_request,
-                    ::apache::thrift::TBase* raw_response,
+                    const REQUEST* raw_request,
+                    RESPONSE* raw_response,
                     ::google::protobuf::Closure* done);
 
     void CallMethod(const char* method_name,
@@ -130,32 +149,109 @@ private:
 namespace policy {
 // Implemented in policy/thrift_protocol.cpp
 bool ReadThriftStruct(const butil::IOBuf& body,
-                      ::apache::thrift::TBase* raw_msg,
+                      ThriftMessageBase* raw_msg,
                       int16_t expected_fid);
 }
+
+namespace details {
+
+template <typename T>
+class ThriftMessageWrapper final : public ThriftMessageBase {
+public:
+    ThriftMessageWrapper() : msg_ptr(NULL) {}
+    ThriftMessageWrapper(T* msg2) : msg_ptr(msg2) {}
+    virtual ~ThriftMessageWrapper() {}
+    // NOTE: "T::" makes the function call work around vtable
+    uint32_t Read(::apache::thrift::protocol::TProtocol* iprot) override final
+    { return msg_ptr->T::read(iprot); }
+    uint32_t Write(::apache::thrift::protocol::TProtocol* oprot) const override final
+    { return msg_ptr->T::write(oprot); }
+    T* msg_ptr;
+};
+
+template <typename T>
+class ThriftMessageHolder final : public ThriftMessageBase {
+public:
+    virtual ~ThriftMessageHolder() {}
+    // NOTE: "T::" makes the function call work around vtable
+    uint32_t Read(::apache::thrift::protocol::TProtocol* iprot) override final
+    { return msg.T::read(iprot); }
+    uint32_t Write(::apache::thrift::protocol::TProtocol* oprot) const override final
+    { return msg.T::write(oprot); }
+    T msg;
+};
+
+// A wrapper closure to own additional stuffs required by ThriftStub
+template <typename RESPONSE>
+class ThriftDoneWrapper : public ::google::protobuf::Closure {
+public:
+    explicit ThriftDoneWrapper(::google::protobuf::Closure* done)
+        : _done(done) {}
+    void Run() override {
+        _done->Run();
+        delete this;
+    }
+private:
+    ::google::protobuf::Closure* _done;
+public:
+    ThriftMessageWrapper<RESPONSE> raw_response_wrapper;
+    ThriftFramedMessage response;
+};
+
+} // namespace details
 
 template <typename T>
 T* ThriftFramedMessage::Cast() {
     if (_raw_instance) {
-        T* p = dynamic_cast<T*>(_raw_instance);
+        auto p = dynamic_cast<details::ThriftMessageHolder<T>*>(_raw_instance);
         if (p) {
-            return p;
+            return &p->msg;
         }
-        delete p;
+        delete _raw_instance;
     }
-    T* raw_msg = new T;
-    _raw_instance = raw_msg;
+    auto raw_msg_wrapper = new details::ThriftMessageHolder<T>;
+    T* raw_msg = &raw_msg_wrapper->msg;
+    _raw_instance = raw_msg_wrapper;
     _own_raw_instance = true;
 
     if (!body.empty()) {
-        if (!policy::ReadThriftStruct(body, raw_msg, field_id)) {
-            LOG(ERROR) << "Fail to read xxx";
+        if (!policy::ReadThriftStruct(body, _raw_instance, field_id)) {
+            LOG(ERROR) << "Fail to parse " << butil::class_name<T>();
         }
     }
     return raw_msg;
 }
 
+template <typename REQUEST, typename RESPONSE>
+void ThriftStub::CallMethod(const char* method_name,
+                            Controller* cntl,
+                            const REQUEST* raw_request,
+                            RESPONSE* raw_response,
+                            ::google::protobuf::Closure* done) {
+    cntl->_thrift_method_name.assign(method_name);
+
+    details::ThriftMessageWrapper<REQUEST>
+        raw_request_wrapper(const_cast<REQUEST*>(raw_request));
+    ThriftFramedMessage request;
+    request._raw_instance = &raw_request_wrapper;
+
+    if (done == NULL) {
+        // response is guaranteed to be unused after a synchronous RPC, no
+        // need to allocate it on heap.
+        ThriftFramedMessage response;
+        details::ThriftMessageWrapper<RESPONSE> raw_response_wrapper(raw_response);
+        response._raw_instance = &raw_response_wrapper;
+        _channel->CallMethod(NULL, cntl, &request, &response, NULL);
+    } else {
+        // Let the new_done own the response and release it after Run().
+        details::ThriftDoneWrapper<RESPONSE>* new_done =
+            new details::ThriftDoneWrapper<RESPONSE>(done);
+        new_done->raw_response_wrapper.msg_ptr = raw_response;
+        new_done->response._raw_instance = &new_done->raw_response_wrapper;
+        _channel->CallMethod(NULL, cntl, &request, &new_done->response, new_done);
+    }
+}
+
 } // namespace brpc
 
 #endif // BRPC_THRIFT_MESSAGE_H
-

@@ -209,7 +209,7 @@ static void SendSofaResponse(int64_t correlation_id,
                              const google::protobuf::Message* res,
                              const Server* server,
                              MethodStatus* method_status_raw,
-                             long start_parse_us) {
+                             int64_t received_us) {
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
@@ -296,7 +296,7 @@ static void SendSofaResponse(int64_t correlation_id,
     }
     if (method_status) {
         method_status.release()->OnResponded(
-            !cntl->Failed(), butil::cpuwide_time_us() - start_parse_us);
+            !cntl->Failed(), butil::cpuwide_time_us() - received_us);
     }
 }
 
@@ -432,17 +432,19 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
                             req_cmp_type, (int)msg->payload.size());
             break;
         }
-        msg.reset();  // optional, just release resourse ASAP
 
         res.reset(svc->GetResponsePrototype(method).New());
         // `socket' will be held until response has been sent
         google::protobuf::Closure* done = ::brpc::NewCallback<
             int64_t, Controller*, const google::protobuf::Message*,
             const google::protobuf::Message*, const Server*,
-                  MethodStatus *, long>(
+                  MethodStatus *, int64_t>(
                     &SendSofaResponse, correlation_id, cntl.get(),
                     req.get(), res.get(), server,
-                    method_status, start_parse_us);
+                    method_status, msg->received_us());
+
+        msg.reset();  // optional, just release resourse ASAP
+
         // `cntl', `req' and `res' will be deleted inside `done'
         if (span) {
             span->set_start_callback_us(butil::cpuwide_time_us());
@@ -467,7 +469,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
     // `socket' will be held until response has been sent
     SendSofaResponse(correlation_id, cntl.release(),
                      req.release(), res.release(), server,
-                     method_status, -1);
+                     method_status, msg->received_us());
 }
 
 bool VerifySofaRequest(const InputMessageBase* msg_base) {

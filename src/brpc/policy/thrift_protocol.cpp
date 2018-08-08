@@ -44,6 +44,7 @@
  # define THRIFT_STDCXX apache::thrift::stdcxx
  #else
  # define THRIFT_STDCXX boost
+ # include <boost/make_shared.hpp>
  #endif
 #endif
 
@@ -72,15 +73,15 @@ ReadThriftMessageBegin(butil::IOBuf* body,
     // Version + Message type + Length + Method + Sequence Id
     //   |             |          |        |          |
     //   3     +       1      +   4    +   >0   +     4
-    char version_and_len_buf[8];
+    uint32_t version_and_len_buf[2];
     size_t k = body->copy_to(version_and_len_buf, sizeof(version_and_len_buf));
     if (k != sizeof(version_and_len_buf) ) {
         return butil::Status(-1, "Fail to copy %" PRIu64 " bytes from body",
                              sizeof(version_and_len_buf));
     }
     *mtype = (apache::thrift::protocol::TMessageType)
-        (ntohl(*(uint32_t*)version_and_len_buf) & 0x000000FF);
-    const uint32_t method_name_length = ntohl(*(uint32_t*)(version_and_len_buf + 4));
+        (ntohl(version_and_len_buf[0]) & 0x000000FF);
+    const uint32_t method_name_length = ntohl(version_and_len_buf[1]);
     if (method_name_length > MAX_THRIFT_METHOD_NAME_LENGTH) {
         return butil::Status(-1, "method_name_length=%u is too long",
                              method_name_length);
@@ -92,7 +93,9 @@ ReadThriftMessageBegin(butil::IOBuf* body,
         return butil::Status(-1, "Fail to cut %" PRIu64 " bytes", sizeof(buf));
     }
     method_name->assign(buf + sizeof(version_and_len_buf), method_name_length);
-    *seq_id = ntohl(*(uint32_t*)(buf + sizeof(version_and_len_buf) + method_name_length));
+    // suppress strict-aliasing warning
+    uint32_t* p_seq_id = (uint32_t*)(buf + sizeof(version_and_len_buf) + method_name_length);
+    *seq_id = ntohl(*p_seq_id);
     return butil::Status::OK();
 }
 
@@ -116,10 +119,10 @@ WriteThriftMessageBegin(char* buf,
 }
 
 bool ReadThriftStruct(const butil::IOBuf& body,
-                      ::apache::thrift::TBase* raw_msg,
+                      ThriftMessageBase* raw_msg,
                       int16_t expected_fid) {
     const size_t body_len  = body.size();
-    uint8_t* thrift_buffer = new uint8_t[body_len];
+    uint8_t* thrift_buffer = (uint8_t*)malloc(body_len);
     body.copy_to(thrift_buffer, body_len);
     auto in_buffer =
         THRIFT_STDCXX::make_shared<apache::thrift::transport::TMemoryBuffer>(
@@ -143,7 +146,7 @@ bool ReadThriftStruct(const butil::IOBuf& body,
         }
         if (fid == expected_fid) {
             if (ftype == ::apache::thrift::protocol::T_STRUCT) {
-                xfer += raw_msg->read(&iprot);
+                xfer += raw_msg->Read(&iprot);
                 success = true;
             } else {
                 xfer += iprot.skip(ftype);
@@ -162,7 +165,7 @@ bool ReadThriftStruct(const butil::IOBuf& body,
 void ReadThriftException(const butil::IOBuf& body,
                          ::apache::thrift::TApplicationException* x) {
     size_t body_len  = body.size();
-    uint8_t* thrift_buffer = new uint8_t[body_len];
+    uint8_t* thrift_buffer = (uint8_t*)malloc(body_len);
     body.copy_to(thrift_buffer, body_len);
     auto in_buffer =
         THRIFT_STDCXX::make_shared<apache::thrift::transport::TMemoryBuffer>(
@@ -192,14 +195,14 @@ private:
 friend void ProcessThriftRequest(InputMessageBase* msg_base);
 
     butil::atomic<int> _run_counter;
-    int64_t _start_parse_us;
+    int64_t _received_us;
     ThriftFramedMessage _request;
     ThriftFramedMessage _response;
     Controller _controller;
 };
 
 inline ThriftClosure::ThriftClosure()
-    : _run_counter(0), _start_parse_us(0) {
+    : _run_counter(0), _received_us(0) {
 }
 
 ThriftClosure::~ThriftClosure() {
@@ -299,7 +302,7 @@ void ThriftClosure::DoRun() {
         xfer += oprot.writeFieldBegin("success",
                                       ::apache::thrift::protocol::T_STRUCT,
                                       THRIFT_RESPONSE_FID);
-        xfer += _response.raw_instance()->write(&oprot);
+        xfer += _response.raw_instance()->Write(&oprot);
         xfer += oprot.writeFieldEnd();
         xfer += oprot.writeFieldStop();
         xfer += oprot.writeStructEnd();
@@ -317,7 +320,9 @@ void ThriftClosure::DoRun() {
     } else {
         const size_t mb_size = ThriftMessageBeginSize(method_name);
         char buf[sizeof(thrift_head_t) + mb_size];
-        ((thrift_head_t*)buf)->body_len = htonl(mb_size + _response.body.size());
+        // suppress strict-aliasing warning
+        thrift_head_t* head = (thrift_head_t*)buf;
+        head->body_len = htonl(mb_size + _response.body.size());
         WriteThriftMessageBegin(buf + sizeof(thrift_head_t), method_name,
                                 ::apache::thrift::protocol::T_REPLY, seq_id);
         write_buf.append(buf, sizeof(buf));
@@ -345,7 +350,7 @@ void ThriftClosure::DoRun() {
     }
     if (method_status) {
         method_status.release()->OnResponded(
-            !_controller.Failed(), butil::cpuwide_time_us() - _start_parse_us);
+            !_controller.Failed(), butil::cpuwide_time_us() - _received_us);
     }
 }
 
@@ -364,8 +369,9 @@ ParseResult ParseThriftMessage(butil::IOBuf* source,
                  << " doesn't match THRIFT_VERSION=" << THRIFT_HEAD_VERSION_1;
         return MakeParseError(PARSE_ERROR_TRY_OTHERS);
     }
-
-    const uint32_t body_len = ntohl(((thrift_head_t*)header_buf)->body_len);
+    // suppress strict-aliasing warning
+    thrift_head_t* head = (thrift_head_t*)header_buf;
+    const uint32_t body_len = ntohl(head->body_len);
     if (body_len > FLAGS_max_body_size) {
         return MakeParseError(PARSE_ERROR_TOO_BIG_DATA);
     } else if (source->length() < sizeof(thrift_head_t) + body_len) {
@@ -387,8 +393,12 @@ inline void ProcessThriftFramedRequestNoExcept(ThriftService* service,
     // we can still set `cntl' in the catch branch.
     try {
         service->ProcessThriftFramedRequest(cntl, req, res, done);
-    } catch (::apache::thrift::TException& e) {
+    } catch (std::exception& e) {
         cntl->SetFailed(EINTERNAL, "Catched exception: %s", e.what());
+    } catch (std::string& e) {
+        cntl->SetFailed(EINTERNAL, "Catched std::string: %s", e.c_str());
+    } catch (const char* e) {
+        cntl->SetFailed(EINTERNAL, "Catched const char*: %s", e);
     } catch (...) {
         cntl->SetFailed(EINTERNAL, "Catched unknown exception");
     }
@@ -440,7 +450,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
     Controller* cntl = &(thrift_done->_controller);
     ThriftFramedMessage* req = &(thrift_done->_request);
     ThriftFramedMessage* res = &(thrift_done->_response);
-    thrift_done->_start_parse_us = start_parse_us;
+    thrift_done->_received_us = msg->received_us();
 
     ServerPrivateAccessor server_accessor(server);
     const bool security_mode = server->options().security_mode() &&
@@ -457,7 +467,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
     uint32_t seq_id;
     ::apache::thrift::protocol::TMessageType mtype;
     butil::Status st = ReadThriftMessageBegin(
-        &msg->payload, accessor.mutable_thrift_method_name(), &mtype, &seq_id);
+        &msg->payload, &cntl->_thrift_method_name, &mtype, &seq_id);
     if (!st.ok()) {
         cntl->SetFailed(EREQUEST, "%s", st.error_cstr());
         return thrift_done->Run();
@@ -527,6 +537,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
     } while (false);
 
     msg.reset();  // optional, just release resourse ASAP
+
     if (span) {
         span->ResetServerSpanName(cntl->thrift_method_name());
         span->set_start_callback_us(butil::cpuwide_time_us());
@@ -680,7 +691,7 @@ void SerializeThriftRequest(butil::IOBuf* request_buf, Controller* cntl,
                                       THRIFT_REQUEST_FID);
 
         // request's write
-        xfer += req->raw_instance()->write(&oprot);
+        xfer += req->raw_instance()->Write(&oprot);
         
         xfer += oprot.writeFieldEnd();
         xfer += oprot.writeFieldStop();
@@ -700,7 +711,9 @@ void SerializeThriftRequest(butil::IOBuf* request_buf, Controller* cntl,
     } else {
         const size_t mb_size = ThriftMessageBeginSize(method_name);
         char buf[sizeof(thrift_head_t) + mb_size];
-        ((thrift_head_t*)buf)->body_len = htonl(mb_size + req->body.size());
+        // suppress strict-aliasing warning
+        thrift_head_t* head = (thrift_head_t*)buf;
+        head->body_len = htonl(mb_size + req->body.size());
         WriteThriftMessageBegin(buf + sizeof(thrift_head_t), method_name,
                                 ::apache::thrift::protocol::T_CALL, 0/*seq_id*/);
         request_buf->append(buf, sizeof(buf));

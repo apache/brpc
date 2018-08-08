@@ -226,53 +226,12 @@ void ThriftFramedMessage::Swap(ThriftFramedMessage* other) {
     return metadata;
 }
 
-// A wrapper closure to own the additional response required by ThriftStub
-class ThriftFramedMessageAndDone : public ::google::protobuf::Closure {
-public:
-    explicit ThriftFramedMessageAndDone(::google::protobuf::Closure* done)
-        : _done(done) {}
-    
-    void Run() override { _done->Run(); }
-    
-    ThriftFramedMessage response;
-    
-private:
-    ::google::protobuf::Closure* _done;
-};
-
-void ThriftStub::CallMethod(const char* method_name,
-                            Controller* cntl,
-                            const ::apache::thrift::TBase* raw_request,
-                            ::apache::thrift::TBase* raw_response,
-                            ::google::protobuf::Closure* done) {
-    ControllerPrivateAccessor(cntl).mutable_thrift_method_name()->assign(method_name);
-
-    ThriftFramedMessage request;
-    request._own_raw_instance = false;
-    request._raw_instance = const_cast<::apache::thrift::TBase*>(raw_request);
-
-    if (done == NULL) {
-        // response is guaranteed to be unused after a synchronous RPC, no
-        // need to allocate it on heap.
-        ThriftFramedMessage response;
-        response._own_raw_instance = false;
-        response._raw_instance = raw_response;
-        _channel->CallMethod(NULL, cntl, &request, &response, NULL);
-    } else {
-        // Let the new_done own the response and release it after Run().
-        ThriftFramedMessageAndDone* new_done = new ThriftFramedMessageAndDone(done);
-        new_done->response._own_raw_instance = false;
-        new_done->response._raw_instance = raw_response;
-        _channel->CallMethod(NULL, cntl, &request, &new_done->response, new_done);
-    }
-}
-
 void ThriftStub::CallMethod(const char* method_name,
                             Controller* cntl,
                             const ThriftFramedMessage* req,
                             ThriftFramedMessage* res,
                             ::google::protobuf::Closure* done) {
-    ControllerPrivateAccessor(cntl).mutable_thrift_method_name()->assign(method_name);
+    cntl->_thrift_method_name.assign(method_name);
     _channel->CallMethod(NULL, cntl, req, res, done);
 }
 
