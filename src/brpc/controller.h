@@ -102,14 +102,14 @@ friend class ParallelChannelDone;
 friend class ControllerPrivateAccessor;
 friend class ServerPrivateAccessor;
 friend class SelectiveChannel;
-friend class CouchbaseChannel;
-friend class CouchbaseDone;
 friend class schan::Sender;
 friend class schan::SubDone;
 friend class policy::OnServerStreamCreated;
 friend int StreamCreate(StreamId*, Controller&, const StreamOptions*);
 friend int StreamAccept(StreamId*, Controller&, const StreamOptions*);
 friend void policy::ProcessMongoRequest(InputMessageBase*);
+friend class CouchbaseChannel;
+friend class CouchbaseDone;
     // << Flags >>
     static const uint32_t FLAGS_IGNORE_EOVERCROWDED = 1;
     static const uint32_t FLAGS_SECURITY_MODE = (1 << 1);
