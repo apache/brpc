@@ -957,6 +957,30 @@ ssize_t IOBuf::pcut_into_file_descriptor(int fd, off_t offset, size_t size_hint)
     return nw;
 }
 
+ssize_t IOBuf::cut_into_writer(IWriter* writer, size_t size_hint) {
+    if (empty()) {
+        return 0;
+    }
+    const size_t nref = std::min(_ref_num(), IOBUF_IOV_MAX);
+    struct iovec vec[nref];
+    size_t nvec = 0;
+    size_t cur_len = 0;
+
+    do {
+        IOBuf::BlockRef const& r = _ref_at(nvec);
+        vec[nvec].iov_base = r.block->data + r.offset;
+        vec[nvec].iov_len = r.length;
+        ++nvec;
+        cur_len += r.length;
+    } while (nvec < nref && cur_len < size_hint);
+
+    const ssize_t nw = writer->WriteV(vec, nvec);
+    if (nw > 0) {
+        pop_front(nw);
+    }
+    return nw;
+}
+
 ssize_t IOBuf::cut_into_SSL_channel(SSL* ssl, int* ssl_error) {
     *ssl_error = SSL_ERROR_NONE;
     if (empty()) {
@@ -1056,6 +1080,41 @@ ssize_t IOBuf::pcut_multiple_into_file_descriptor(
     }
     return nw;
 }
+
+ssize_t IOBuf::cut_multiple_into_writer(
+        IWriter* writer, IOBuf* const* pieces, size_t count) {
+    if (BAIDU_UNLIKELY(count == 0)) {
+        return 0;
+    }
+    if (1UL == count) {
+        return pieces[0]->cut_into_writer(writer);
+    }
+    struct iovec vec[IOBUF_IOV_MAX];
+    size_t nvec = 0;
+    for (size_t i = 0; i < count; ++i) {
+        const IOBuf* p = pieces[i];
+        const size_t nref = p->_ref_num();
+        for (size_t j = 0; j < nref && nvec < IOBUF_IOV_MAX; ++j, ++nvec) {
+            IOBuf::BlockRef const& r = p->_ref_at(j);
+            vec[nvec].iov_base = r.block->data + r.offset;
+            vec[nvec].iov_len = r.length;
+        }
+    }
+
+    const ssize_t nw = writer->WriteV(vec, nvec);
+    if (nw <= 0) {
+        return nw;
+    }
+    size_t npop_all = nw;
+    for (size_t i = 0; i < count; ++i) {
+        npop_all -= pieces[i]->pop_front(npop_all);
+        if (npop_all == 0) {
+            break;
+        }
+    }
+    return nw;
+}
+
 
 void IOBuf::append(const IOBuf& other) {
     const size_t nref = other._ref_num();
@@ -1621,6 +1680,62 @@ ssize_t IOPortal::pappend_from_file_descriptor(
     } while (total_len);
     return nr;
 }
+
+ssize_t IOPortal::append_from_reader(IReader* reader, size_t max_count) {
+    iovec vec[MAX_APPEND_IOVEC];
+    int nvec = 0;
+    size_t space = 0;
+    Block* prev_p = NULL;
+    Block* p = _block;
+    // Prepare at most MAX_APPEND_IOVEC blocks or space of blocks >= max_count
+    do {
+        if (p == NULL) {
+            p = iobuf::acquire_tls_block();
+            if (BAIDU_UNLIKELY(!p)) {
+                errno = ENOMEM;
+                return -1;
+            }
+            if (prev_p != NULL) {
+                prev_p->portal_next = p;
+            } else {
+                _block = p;
+            }
+        }
+        vec[nvec].iov_base = p->data + p->size;
+        vec[nvec].iov_len = std::min(p->left_space(), max_count - space);
+        space += vec[nvec].iov_len;
+        ++nvec;
+        if (space >= max_count || nvec >= MAX_APPEND_IOVEC) {
+            break;
+        }
+        prev_p = p;
+        p = p->portal_next;
+    } while (1);
+
+    const ssize_t nr = reader->ReadV(vec, nvec);
+    if (nr <= 0) {  // -1 or 0
+        if (empty()) {
+            return_cached_blocks();
+        }
+        return nr;
+    }
+
+    size_t total_len = nr;
+    do {
+        const size_t len = std::min(total_len, _block->left_space());
+        total_len -= len;
+        const IOBuf::BlockRef r = { _block->size, (uint32_t)len, _block };
+        _push_back_ref(r);
+        _block->size += len;
+        if (_block->full()) {
+            Block* const saved_next = _block->portal_next;
+            _block->dec_ref();  // _block may be deleted
+            _block = saved_next;
+        }
+    } while (total_len);
+    return nr;
+}
+
 
 ssize_t IOPortal::append_from_SSL_channel(
     SSL* ssl, int* ssl_error, size_t max_count) {

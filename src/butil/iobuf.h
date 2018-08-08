@@ -28,6 +28,7 @@
 #include "butil/third_party/snappy/snappy-sinksource.h"
 #include "butil/zero_copy_stream_as_streambuf.h"
 #include "butil/macros.h"
+#include "butil/reader_writer.h"
 
 // For IOBuf::appendv(const const_iovec*, size_t). The only difference of this
 // struct from iovec (defined in sys/uio.h) is that iov_base is `const void*'
@@ -143,6 +144,10 @@ public:
     // std::string version, `delim' could be binary
     int cut_until(IOBuf* out, const std::string& delim);
 
+    // Cut at most `size_hint' bytes(approximately) into the writer
+    // Returns bytes cut on success, -1 otherwise and errno is set.
+    ssize_t cut_into_writer(IWriter* writer, size_t size_hint = 1024*1024);
+
     // Cut at most `size_hint' bytes(approximately) into the file descriptor
     // Returns bytes cut on success, -1 otherwise and errno is set.
     ssize_t cut_into_file_descriptor(int fd, size_t size_hint = 1024*1024);
@@ -163,12 +168,12 @@ public:
     // and the ssl error code will be filled into `ssl_error'
     ssize_t cut_into_SSL_channel(struct ssl_st* ssl, int* ssl_error);
 
-    // Cut `count' number of `pieces' into SSL channel `ssl'.
+    // Cut `count' number of `pieces' into the writer.
     // Returns bytes cut on success, -1 otherwise and errno is set.
-    static ssize_t cut_multiple_into_SSL_channel(
-        struct ssl_st* ssl, IOBuf* const* pieces, size_t count, int* ssl_error);
+    static ssize_t cut_multiple_into_writer(
+        IWriter* writer, IOBuf* const* pieces, size_t count);
 
-    // Cut `count' number of `pieces' into file descriptor `fd'.
+    // Cut `count' number of `pieces' into the file descriptor.
     // Returns bytes cut on success, -1 otherwise and errno is set.
     static ssize_t cut_multiple_into_file_descriptor(
         int fd, IOBuf* const* pieces, size_t count);
@@ -181,6 +186,11 @@ public:
     // Returns bytes cut on success, -1 otherwise and errno is set.
     static ssize_t pcut_multiple_into_file_descriptor(
         int fd, off_t offset, IOBuf* const* pieces, size_t count);
+
+    // Cut `count' number of `pieces' into SSL channel `ssl'.
+    // Returns bytes cut on success, -1 otherwise and errno is set.
+    static ssize_t cut_multiple_into_SSL_channel(
+        struct ssl_st* ssl, IOBuf* const* pieces, size_t count, int* ssl_error);
 
     // Append another IOBuf to back side, payload of the IOBuf is shared
     // rather than copied.
@@ -427,10 +437,13 @@ public:
     ~IOPortal();
     IOPortal& operator=(const IOPortal& rhs);
         
+    // Read at most `max_count' bytes from the reader and append to self.
+    ssize_t append_from_reader(IReader* reader, size_t max_count);
+
     // Read at most `max_count' bytes from file descriptor `fd' and
     // append to self.
     ssize_t append_from_file_descriptor(int fd, size_t max_count);
-    
+ 
     // Read at most `max_count' bytes from file descriptor `fd' at a given
     // offset and append to self. The file offset is not changed.
     // If `offset' is negative, does exactly what append_from_file_descriptor does.
