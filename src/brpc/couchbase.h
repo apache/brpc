@@ -106,6 +106,9 @@ public:
     int ParseRequest(std::string* key, 
                      policy::MemcacheBinaryCommand* command) const;
 
+    bool BuildNewWithVBucketId(CouchbaseRequest* request, 
+                               const size_t vbucket_id) const;
+
     bool ReplicasGet(const butil::StringPiece& key);
 
 private:

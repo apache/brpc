@@ -140,8 +140,8 @@ butil::Status VBucketMapReader::OnReadOnePart(const void* data, size_t length) {
         std::string complete = _buf.substr(pos, new_pos);
         butil::VBUCKET_CONFIG_HANDLE vb = 
             butil::vbucket_config_parse_string(complete.c_str());
+        _listener->UpdateVBucketMap(vb);
         if (vb != nullptr) {
-            _listener->UpdateVBucketMap(vb);
             butil::vbucket_config_destroy(vb);
         }
         pos = new_pos + kSeparator.size();
@@ -206,8 +206,8 @@ CouchbaseServerListener::~CouchbaseServerListener() {
 void CouchbaseServerListener::InitVBucketMap(const std::string& str) {
     butil::VBUCKET_CONFIG_HANDLE vb = 
         butil::vbucket_config_parse_string(str.c_str());
+    UpdateVBucketMap(vb);
     if (vb != nullptr) {
-        UpdateVBucketMap(vb);
         butil::vbucket_config_destroy(vb);
     }
 }
@@ -399,7 +399,12 @@ void CouchbaseChannel::CallMethod(const google::protobuf::MethodDescriptor* meth
                 cntl->SetFailed(ENODATA,"failed to get mapped channel");
                 break;
             }
-            channel->CallMethod(nullptr, cntl, request, response, done);
+            CouchbaseRequest new_req;
+            if (!req->BuildNewWithVBucketId(&new_req, vb_index)) {
+                cntl->SetFailed("failed to add vbucket id");
+                break;
+            }
+            channel->CallMethod(nullptr, cntl, &new_req, response, done);
         }
 
         while(FLAGS_retry_during_rebalance) {
