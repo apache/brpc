@@ -29,13 +29,34 @@ int CouchbaseRequest::ParseRequest(
         return -1;
     }
     _buf.copy_to(&header, sizeof(header));
-    // TODO: need check header.total_body_length
-    if (header.key_length == 0) {
+    const uint16_t key_len = butil::NetToHost16(header.key_length);
+    if (key_len == 0) {
         return 1;
     }
     *command = static_cast<policy::MemcacheBinaryCommand>(header.command);
-    _buf.copy_to(key, header.key_length, sizeof(header) + header.extras_length);
+    _buf.copy_to(key, key_len, sizeof(header) + header.extras_length);
     return 0;
+}
+
+bool CouchbaseRequest::BuildNewWithVBucketId(CouchbaseRequest* request, 
+                                             const size_t vbucket_id) const {
+    if (this == request) {
+        return false;
+    }
+    const size_t n = _buf.size();
+    policy::MemcacheRequestHeader header;
+    if (n < sizeof(header)) {
+        return false;
+    }
+    _buf.copy_to(&header, sizeof(header));
+    header.vbucket_id = butil::HostToNet16(vbucket_id);
+    request->Clear();
+    if (request->_buf.append(&header, sizeof(header)) != 0) {
+        return false;
+    }
+    _buf.append_to(&request->_buf, n - sizeof(header), sizeof(header));
+    request->_pipelined_count = _pipelined_count;
+    return true;
 }
 
 bool CouchbaseRequest::ReplicasGet(const butil::StringPiece& key) {
