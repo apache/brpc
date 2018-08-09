@@ -375,49 +375,39 @@ void CouchbaseChannel::CallMethod(const google::protobuf::MethodDescriptor* meth
     const CouchbaseRequest* req = reinterpret_cast<const CouchbaseRequest*>(request);
     Controller* cntl = static_cast<Controller*>(controller);
     Channel* channel = nullptr;
-    do {
-        std::string key;
-        policy::MemcacheBinaryCommand command;
-        // Do not support Flush/Version
-        if (req->ParseRequest(&key, &command) != 0) {
-            cntl->SetFailed("failed to parse key and command from request");
-            break;
-        }
-        {
-            butil::DoublyBufferedData<VBucketServerMap>::ScopedPtr vb_map;
-            if(_vbucket_map.Read(&vb_map) != 0) {
-                cntl->SetFailed(ENOMEM, "failed to read vbucket map");
-                break;
-            }
-            if (vb_map->_version == 0) {
-                cntl->SetFailed(ENODATA, "vbucket map is not initialize");
-                break;
-            } 
-            const size_t vb_index = Hash(key, vb_map->_vbucket.size());
-            channel = SelectMasterChannel(vb_map.get(), vb_index);
-            if (channel == nullptr) {
-                cntl->SetFailed(ENODATA,"failed to get mapped channel");
-                break;
-            }
-            CouchbaseRequest new_req;
-            if (!req->BuildNewWithVBucketId(&new_req, vb_index)) {
-                cntl->SetFailed("failed to add vbucket id");
-                break;
-            }
-            channel->CallMethod(nullptr, cntl, &new_req, response, done);
-        }
-
-        while(FLAGS_retry_during_rebalance) {
-            // TODO: retry in case of rebalance/failover
-            break;
-        }
+    ClosureGuard done_guard(done);
+    std::string key;
+    policy::MemcacheBinaryCommand command;
+    // Do not support Flush/Version
+    if (req->ParseRequest(&key, &command) != 0) {
+        cntl->SetFailed("failed to parse key and command from request");
         return;
-    } while (false);
-    if (cntl->FailedInline()) {
-        if (done) {
-            done->Run();
-        }
     }
+    {
+        butil::DoublyBufferedData<VBucketServerMap>::ScopedPtr vb_map;
+        if(_vbucket_map.Read(&vb_map) != 0) {
+            cntl->SetFailed(ENOMEM, "failed to read vbucket map");
+            return;
+        }
+        if (vb_map->_version == 0) {
+            cntl->SetFailed(ENODATA, "vbucket map is not initialize");
+            return;
+        } 
+        const size_t vb_index = Hash(key, vb_map->_vbucket.size());
+        channel = SelectMasterChannel(vb_map.get(), vb_index);
+        if (channel == nullptr) {
+            cntl->SetFailed(ENODATA,"failed to get mapped channel");
+            return;
+        }
+        CouchbaseRequest new_req;
+        if (!req->BuildNewWithVBucketId(&new_req, vb_index)) {
+            cntl->SetFailed("failed to add vbucket id");
+            return;
+        }
+        done_guard.release();
+        channel->CallMethod(nullptr, cntl, &new_req, response, done);
+    }
+    return;
 }
 
 Channel* CouchbaseChannel::SelectMasterChannel(
