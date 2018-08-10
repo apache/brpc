@@ -147,59 +147,9 @@ inline iov_function get_pwritev_func() {
 
 #endif  // ARCH_CPU_X86_64
 
-static const size_t FAST_MEMCPY_MAXSIZE = 123;
-template <size_t size> struct FastMemcpyBlock {
-    int data[size];
-};
-template <> struct FastMemcpyBlock<0> { };
-
-template <size_t size> class FastMemcpy {
-public:
-    typedef FastMemcpyBlock<size / sizeof(int)> Block;
-
-    static void* copy(void *dest, const void *src) {
-        *(Block*)dest = *(Block*)src;
-        if ((size % sizeof(int)) > 2) {
-            ((char*)dest)[size-3] = ((char*)src)[size-3];
-        }
-        if ((size % sizeof(int)) > 1) {
-            ((char*)dest)[size-2] = ((char*)src)[size-2];
-        }
-        if ((size % sizeof(int)) > 0) {
-            ((char*)dest)[size-1] = ((char*)src)[size-1];
-        }
-        return dest;
-    }
-};
-
-typedef void* (*CopyFn)(void*, const void*);
-static CopyFn g_fast_memcpy_fn[FAST_MEMCPY_MAXSIZE + 1];
-
-template <size_t size>
-struct InitFastMemcpy : public InitFastMemcpy<size-1> {
-    InitFastMemcpy() {
-        g_fast_memcpy_fn[size] = FastMemcpy<size>::copy;
-    }
-};
-template <>
-class InitFastMemcpy<0> {
-public:
-    InitFastMemcpy() {
-        g_fast_memcpy_fn[0] = FastMemcpy<0>::copy;
-    }
-};
-
 inline void* cp(void *__restrict dest, const void *__restrict src, size_t n) {
-#if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8))
-    // memcpy in gcc 4.8 seems to be faster.
+    // memcpy in gcc 4.8 seems to be faster enough.
     return memcpy(dest, src, n);
-#else
-    if (n <= FAST_MEMCPY_MAXSIZE) {
-        static InitFastMemcpy<FAST_MEMCPY_MAXSIZE> _init_cp_dummy;
-        return g_fast_memcpy_fn[n](dest, src);
-    }
-    return memcpy(dest, src, n);
-#endif
 }
 
 // Function pointers to allocate or deallocate memory for a IOBuf::Block
