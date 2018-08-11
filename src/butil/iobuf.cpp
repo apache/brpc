@@ -195,8 +195,8 @@ struct IOBuf::Block {
     uint32_t cap;
     Block* portal_next;
     // When flag is 0, data points to `size` bytes starting at `(char*)this+sizeof(Block)'
-    // When flag & IOBUF_BLOCK_FLAGS_USER_DATA is not 0, data points the user data and
-    // there's a UserDataExtension object put at `(char*)this+sizeof(Block)'
+    // When flag & IOBUF_BLOCK_FLAGS_USER_DATA is non-0, data points to the user data and
+    // the deleter is put in UserDataExtension at `(char*)this+sizeof(Block)'
     char* data;
         
     Block(char* data_in, uint32_t data_size)
