@@ -132,7 +132,7 @@ void deallocate_stack_storage(StackStorage* s) {
         VALGRIND_STACK_DEREGISTER(s->valgrind_stack_id);
     }
     const int memsize = s->stacksize + s->guardsize;
-    if ((char*)s->bottom <= (char*)NULL + memsize) {
+    if ((uintptr_t)s->bottom <= (uintptr_t)memsize) {
         return;
     }
     s_stack_count.fetch_sub(1, butil::memory_order_relaxed);

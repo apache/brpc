@@ -38,6 +38,10 @@ IOBuf::Block* get_portal_next(IOBuf::Block const* b);
 }
 
 namespace {
+
+const size_t BLOCK_OVERHEAD = 32; //impl dependent
+const size_t DEFAULT_PAYLOAD = butil::IOBuf::DEFAULT_BLOCK_SIZE - BLOCK_OVERHEAD;
+
 void check_tls_block() {
     ASSERT_EQ((butil::IOBuf::Block*)NULL, butil::iobuf::get_tls_block_head());
     printf("tls_block of butil::IOBuf was deleted\n");
@@ -146,7 +150,7 @@ TEST_F(IOBufTest, pop_front) {
     ASSERT_EQ(0UL, buf.length());
     ASSERT_TRUE(buf.empty());
 
-    for (size_t i = 0; i < butil::IOBuf::DEFAULT_PAYLOAD * 3/2; ++i) {
+    for (size_t i = 0; i < DEFAULT_PAYLOAD * 3/2; ++i) {
         s.push_back(i);
     }
     buf.append(s);
@@ -187,7 +191,7 @@ TEST_F(IOBufTest, pop_back) {
     ASSERT_EQ(0UL, buf.length());
     ASSERT_TRUE(buf.empty());
 
-    for (size_t i = 0; i < butil::IOBuf::DEFAULT_PAYLOAD * 3/2; ++i) {
+    for (size_t i = 0; i < DEFAULT_PAYLOAD * 3/2; ++i) {
         s.push_back(i);
     }
     buf.append(s);
@@ -250,15 +254,15 @@ TEST_F(IOBufTest, appendv) {
               b.to_string());
 
     // Append some long stuff.
-    const size_t full_len = butil::IOBuf::DEFAULT_PAYLOAD * 9;
+    const size_t full_len = DEFAULT_PAYLOAD * 9;
     char* str = (char*)malloc(full_len);
     ASSERT_TRUE(str);
     const size_t len1 = full_len / 6;
     const size_t len2 = full_len / 3;
     const size_t len3 = full_len - len1 - len2;
-    ASSERT_GT(len1, (size_t)butil::IOBuf::DEFAULT_PAYLOAD);
-    ASSERT_GT(len2, (size_t)butil::IOBuf::DEFAULT_PAYLOAD);
-    ASSERT_GT(len3, (size_t)butil::IOBuf::DEFAULT_PAYLOAD);
+    ASSERT_GT(len1, (size_t)DEFAULT_PAYLOAD);
+    ASSERT_GT(len2, (size_t)DEFAULT_PAYLOAD);
+    ASSERT_GT(len3, (size_t)DEFAULT_PAYLOAD);
     ASSERT_EQ(full_len, len1 + len2 + len3);
 
     for (size_t i = 0; i < full_len; ++i) {
@@ -293,11 +297,11 @@ TEST_F(IOBufTest, reserve) {
     ASSERT_EQ("goodohello blahblahfoobar", b.to_string());
 
     // append a long string and assign again.
-    std::string s1(butil::IOBuf::DEFAULT_PAYLOAD * 3, '\0');
+    std::string s1(DEFAULT_PAYLOAD * 3, '\0');
     for (size_t i = 0; i < s1.size(); ++i) {
         s1[i] = i * 7;
     }
-    ASSERT_EQ(butil::IOBuf::DEFAULT_PAYLOAD * 3, s1.size());
+    ASSERT_EQ(DEFAULT_PAYLOAD * 3, s1.size());
     // remove everything after reserved area
     ASSERT_GE(b.size(), NRESERVED1);
     b.pop_back(b.size() - NRESERVED1);
@@ -309,7 +313,7 @@ TEST_F(IOBufTest, reserve) {
     // Reserve long
     b.pop_back(b.size() - NRESERVED1);
     ASSERT_EQ(NRESERVED1, b.size());
-    const size_t NRESERVED2 = butil::IOBuf::DEFAULT_PAYLOAD * 3;
+    const size_t NRESERVED2 = DEFAULT_PAYLOAD * 3;
     const butil::IOBuf::Area a2 = b.reserve(NRESERVED2);
     ASSERT_EQ(NRESERVED1 + NRESERVED2, b.size());
     b.append(s1);
@@ -589,7 +593,7 @@ TEST_F(IOBufTest, copy_to) {
         src.append(seed);
     }
     b.append(src);
-    ASSERT_GT(b.size(), butil::IOBuf::DEFAULT_PAYLOAD);
+    ASSERT_GT(b.size(), DEFAULT_PAYLOAD);
     std::string s1;
     ASSERT_EQ(src.size(), b.copy_to(&s1));
     ASSERT_EQ(src, s1);
@@ -599,11 +603,11 @@ TEST_F(IOBufTest, copy_to) {
     ASSERT_EQ(src.substr(0, 32), s2);
 
     std::string s3;
-    const std::string expected = src.substr(butil::IOBuf::DEFAULT_PAYLOAD - 1, 33);
-    ASSERT_EQ(33u, b.copy_to(&s3, 33, butil::IOBuf::DEFAULT_PAYLOAD - 1));
+    const std::string expected = src.substr(DEFAULT_PAYLOAD - 1, 33);
+    ASSERT_EQ(33u, b.copy_to(&s3, 33, DEFAULT_PAYLOAD - 1));
     ASSERT_EQ(expected, s3);
 
-    ASSERT_EQ(33u, b.append_to(&s3, 33, butil::IOBuf::DEFAULT_PAYLOAD - 1));
+    ASSERT_EQ(33u, b.append_to(&s3, 33, DEFAULT_PAYLOAD - 1));
     ASSERT_EQ(expected + expected, s3);
 
     butil::IOBuf b1;
@@ -615,10 +619,10 @@ TEST_F(IOBufTest, copy_to) {
     ASSERT_EQ(src.substr(0, 32), b2.to_string());
 
     butil::IOBuf b3;
-    ASSERT_EQ(33u, b.append_to(&b3, 33, butil::IOBuf::DEFAULT_PAYLOAD - 1));
+    ASSERT_EQ(33u, b.append_to(&b3, 33, DEFAULT_PAYLOAD - 1));
     ASSERT_EQ(expected, b3.to_string());
 
-    ASSERT_EQ(33u, b.append_to(&b3, 33, butil::IOBuf::DEFAULT_PAYLOAD - 1));
+    ASSERT_EQ(33u, b.append_to(&b3, 33, DEFAULT_PAYLOAD - 1));
     ASSERT_EQ(expected + expected, b3.to_string());
 }
 
@@ -1088,7 +1092,7 @@ TEST_F(IOBufTest, extended_backup) {
         butil::iobuf::remove_tls_block_chain();
         butil::IOBuf src;
         const int BLKSIZE = (i == 0 ? 1024 : butil::IOBuf::DEFAULT_BLOCK_SIZE);
-        const int PLDSIZE = BLKSIZE - 16; // impl dependent.
+        const int PLDSIZE = BLKSIZE - BLOCK_OVERHEAD;
         butil::IOBufAsZeroCopyOutputStream out_stream1(&src, BLKSIZE);
         butil::IOBufAsZeroCopyOutputStream out_stream2(&src);
         butil::IOBufAsZeroCopyOutputStream & out_stream =
@@ -1146,14 +1150,14 @@ TEST_F(IOBufTest, backup_iobuf_never_called_next) {
         ASSERT_TRUE(dummy_stream.Next(&dummy_data, &dummy_size));
     }
     butil::IOBuf src;
-    const size_t N = butil::IOBuf::DEFAULT_PAYLOAD * 2;
+    const size_t N = DEFAULT_PAYLOAD * 2;
     src.resize(N);
     ASSERT_EQ(2u, src.backing_block_num());
     ASSERT_EQ(N, src.size());
     butil::IOBufAsZeroCopyOutputStream out_stream(&src);
     out_stream.BackUp(1); // also succeed.
     ASSERT_EQ(-1, out_stream.ByteCount());
-    ASSERT_EQ(butil::IOBuf::DEFAULT_PAYLOAD * 2 - 1, src.size());
+    ASSERT_EQ(DEFAULT_PAYLOAD * 2 - 1, src.size());
     ASSERT_EQ(2u, src.backing_block_num());
     void* data0 = NULL;
     int size0 = 0;
@@ -1232,7 +1236,7 @@ TEST_F(IOBufTest, own_block) {
     }
     ASSERT_EQ(static_cast<size_t>(alloc_size), buf.length());
     ASSERT_EQ(saved_tls_block, butil::iobuf::get_tls_block_head());
-    ASSERT_EQ(butil::iobuf::block_cap(buf._front_ref().block), BLOCK_SIZE - 16);
+    ASSERT_EQ(butil::iobuf::block_cap(buf._front_ref().block), BLOCK_SIZE - BLOCK_OVERHEAD);
 }
 
 struct Foo1 {
@@ -1555,4 +1559,84 @@ TEST_F(IOBufTest, copy_to_string_from_iterator) {
     }
     ASSERT_EQ(nc, b0.length());
 }
+
+static void* my_free_params = NULL;
+static void my_free(void* m) {
+    free(m);
+    my_free_params = m;
+}
+    
+TEST_F(IOBufTest, append_user_data_and_consume) {
+    butil::IOBuf b0;
+    const int REP = 16;
+    const int len = REP * 256;
+    char* data = (char*)malloc(len);
+    for (int i = 0; i < 256; ++i) {
+        for (int j = 0; j < REP; ++j) {
+            data[i * REP + j] = (char)i;
+        }
+    }
+    my_free_params = NULL;
+    ASSERT_EQ(0, b0.append_user_data(data, len, my_free));
+    ASSERT_EQ(1UL, b0._ref_num());
+    butil::IOBuf::BlockRef r = b0._front_ref();
+    ASSERT_EQ(1, butil::iobuf::block_shared_count(r.block));
+    ASSERT_EQ(len, b0.size());
+    std::string out;
+    ASSERT_EQ(len, b0.cutn(&out, len));
+    ASSERT_TRUE(b0.empty());
+    ASSERT_EQ(data, my_free_params);
+        
+    ASSERT_EQ(len, out.size());
+    // note: cannot memcmp with data which is already free-ed
+    for (int i = 0; i < 256; ++i) {
+        for (int j = 0; j < REP; ++j) {
+            ASSERT_EQ((char)i, out[i * REP + j]);
+        }
+    }
+}
+
+TEST_F(IOBufTest, append_user_data_and_share) {
+    butil::IOBuf b0;
+    const int REP = 16;
+    const int len = REP * 256;
+    char* data = (char*)malloc(len);
+    for (int i = 0; i < 256; ++i) {
+        for (int j = 0; j < REP; ++j) {
+            data[i * REP + j] = (char)i;
+        }
+    }
+    my_free_params = NULL;
+    ASSERT_EQ(0, b0.append_user_data(data, len, my_free));
+    ASSERT_EQ(1UL, b0._ref_num());
+    butil::IOBuf::BlockRef r = b0._front_ref();
+    ASSERT_EQ(1, butil::iobuf::block_shared_count(r.block));
+    ASSERT_EQ(len, b0.size());
+
+    {
+        butil::IOBuf bufs[256];
+        for (int i = 0; i < 256; ++i) {
+            ASSERT_EQ(REP, b0.cutn(&bufs[i], REP));
+            ASSERT_EQ(len - (i+1) * REP, b0.size());
+            if (i != 255) {
+                ASSERT_EQ(1UL, b0._ref_num());
+                butil::IOBuf::BlockRef r = b0._front_ref();
+                ASSERT_EQ(i + 2, butil::iobuf::block_shared_count(r.block));
+            } else {
+                ASSERT_EQ(0UL, b0._ref_num());
+                ASSERT_TRUE(b0.empty());
+            }
+        }
+        ASSERT_EQ(NULL, my_free_params);
+        for (int i = 0; i < 256; ++i) {
+            std::string out = bufs[i].to_string();
+            ASSERT_EQ(REP, out.size());
+            for (int j = 0; j < REP; ++j) {
+                ASSERT_EQ((char)i, out[j]);
+            }
+        }
+    }
+    ASSERT_EQ(data, my_free_params);
+}
+
 } // namespace
