@@ -180,33 +180,84 @@ size_t IOBuf::new_bigview_count() {
     return iobuf::g_newbigview.load(butil::memory_order_relaxed);
 }
 
+const uint16_t IOBUF_BLOCK_FLAGS_USER_DATA = 0x1;
+typedef void (*UserDataDeleter)(void*);
+
+struct UserDataExtension {
+    UserDataDeleter deleter;
+};
+
 struct IOBuf::Block {
     butil::atomic<int> nshared;
-    uint16_t size;
-    uint16_t cap;
+    uint16_t flags;
+    uint16_t abi_check;  // original cap, never be zero.
+    uint32_t size;
+    uint32_t cap;
     Block* portal_next;
-    char data[0];
+    // When flag is 0, data points to `size` bytes starting at `(char*)this+sizeof(Block)'
+    // When flag & IOBUF_BLOCK_FLAGS_USER_DATA is not 0, data points the user data and
+    // there's a UserDataExtension object put at `(char*)this+sizeof(Block)'
+    char* data;
         
-    explicit Block(size_t block_size)
-        : nshared(1), size(0), cap(block_size - offsetof(Block, data))
-        , portal_next(NULL) {
-        assert(block_size <= MAX_BLOCK_SIZE);
+    Block(char* data_in, uint32_t data_size)
+        : nshared(1)
+        , flags(0)
+        , abi_check(0)
+        , size(0)
+        , cap(data_size)
+        , portal_next(NULL)
+        , data(data_in) {
         iobuf::g_nblock.fetch_add(1, butil::memory_order_relaxed);
-        iobuf::g_blockmem.fetch_add(block_size, butil::memory_order_relaxed);
+        iobuf::g_blockmem.fetch_add(data_size + sizeof(Block),
+                                    butil::memory_order_relaxed);
+    }
+
+    Block(char* data_in, uint32_t data_size, UserDataDeleter deleter)
+        : nshared(1)
+        , flags(IOBUF_BLOCK_FLAGS_USER_DATA)
+        , abi_check(0)
+        , size(data_size)
+        , cap(data_size)
+        , portal_next(NULL)
+        , data(data_in) {
+        get_user_data_extension()->deleter = deleter;
+    }
+
+    // Undefined behavior when (flags & IOBUF_BLOCK_FLAGS_USER_DATA) is 0.
+    UserDataExtension* get_user_data_extension() {
+        char* p = (char*)this;
+        return (UserDataExtension*)(p + sizeof(Block));
+    }
+
+    inline void check_abi() {
+#ifndef NDEBUG
+        if (abi_check != 0) {
+            LOG(FATAL) << "Your program seems to wrongly contain two "
+                "ABI-incompatible implementations of IOBuf";
+        }
+#endif
     }
 
     void inc_ref() {
+        check_abi();
         nshared.fetch_add(1, butil::memory_order_relaxed);
     }
         
     void dec_ref() {
+        check_abi();
         if (nshared.fetch_sub(1, butil::memory_order_release) == 1) {
             butil::atomic_thread_fence(butil::memory_order_acquire);
-            iobuf::g_nblock.fetch_sub(1, butil::memory_order_relaxed);
-            iobuf::g_blockmem.fetch_sub(cap + offsetof(Block, data),
-                                        butil::memory_order_relaxed);
-            this->~Block();
-            iobuf::blockmem_deallocate(this);
+            if (!flags) {
+                iobuf::g_nblock.fetch_sub(1, butil::memory_order_relaxed);
+                iobuf::g_blockmem.fetch_sub(cap + sizeof(Block),
+                                            butil::memory_order_relaxed);
+                this->~Block();
+                iobuf::blockmem_deallocate(this);
+            } else if (flags & IOBUF_BLOCK_FLAGS_USER_DATA) {
+                get_user_data_extension()->deleter(data);
+                this->~Block();
+                free(this);
+            }
         }
     }
 
@@ -227,16 +278,21 @@ IOBuf::Block* get_portal_next(IOBuf::Block const* b) {
     return b->portal_next;
 }
 
-uint16_t block_cap(IOBuf::Block const *b) {
+uint32_t block_cap(IOBuf::Block const *b) {
     return b->cap;
 }
 
 inline IOBuf::Block* create_block(const size_t block_size) {
-    void* mem = iobuf::blockmem_allocate(block_size);
-    if (BAIDU_LIKELY(mem != NULL)) {
-        return new (mem) IOBuf::Block(block_size);
+    if (block_size > 0xFFFFFFFFULL) {
+        LOG(FATAL) << "block_size=" << block_size << " is too large";
+        return NULL;
     }
-    return NULL;
+    char* mem = (char*)iobuf::blockmem_allocate(block_size);
+    if (mem == NULL) {
+        return NULL;
+    }
+    return new (mem) IOBuf::Block(mem + sizeof(IOBuf::Block),
+                                  block_size - sizeof(IOBuf::Block));
 }
 
 inline IOBuf::Block* create_block() {
@@ -460,7 +516,6 @@ BAIDU_CASSERT(IOBuf::DEFAULT_BLOCK_SIZE/4096*4096 == IOBuf::DEFAULT_BLOCK_SIZE,
               sizeof_block_should_be_multiply_of_4096);
 
 const IOBuf::Area IOBuf::INVALID_AREA;
-const size_t IOBuf::DEFAULT_PAYLOAD;
 
 IOBuf::IOBuf(const IOBuf& rhs) {
     if (rhs._small()) {
@@ -1155,6 +1210,24 @@ int IOBuf::appendv(const const_iovec* vec, size_t n) {
         b->size += total_cp;
         _push_back_ref(r);
     }
+    return 0;
+}
+
+int IOBuf::append_user_data(void* data, size_t size, void (*deleter)(void*)) {
+    if (size > 0xFFFFFFFFULL - 100) {
+        LOG(FATAL) << "data_size=" << size << " is too large";
+        return -1;
+    }
+    char* mem = (char*)malloc(sizeof(IOBuf::Block) + sizeof(UserDataExtension));
+    if (mem == NULL) {
+        return -1;
+    }
+    if (deleter == NULL) {
+        deleter = ::free;
+    }
+    IOBuf::Block* b = new (mem) IOBuf::Block((char*)data, size, deleter);
+    const IOBuf::BlockRef r = { 0, b->cap, b };
+    _move_back_ref(r);
     return 0;
 }
 
@@ -1947,7 +2020,7 @@ void IOBufAsSnappySink::Append(const char* bytes, size_t n) {
 
 char* IOBufAsSnappySink::GetAppendBuffer(size_t length, char* scratch) {
     // TODO: butil::IOBuf supports dynamic sized blocks.
-    if (length <= _buf->DEFAULT_PAYLOAD) {
+    if (length <= 8000/*just a hint*/) {
         if (_buf_stream.Next(reinterpret_cast<void**>(&_cur_buf), &_cur_len)) { 
             if (_cur_len >= static_cast<int>(length)) {
                 return _cur_buf;

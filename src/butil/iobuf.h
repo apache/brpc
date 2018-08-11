@@ -55,9 +55,6 @@ friend class IOBufAsZeroCopyInputStream;
 friend class IOBufAsZeroCopyOutputStream;
 public:
     static const size_t DEFAULT_BLOCK_SIZE = 8192;
-    static const size_t DEFAULT_PAYLOAD = DEFAULT_BLOCK_SIZE - 16/*impl dependent*/;
-    static const size_t MAX_BLOCK_SIZE = (1 << 16);
-    static const size_t MAX_PAYLOAD = MAX_BLOCK_SIZE - 16/*impl dependent*/;
     static const size_t INITIAL_CAP = 32; // must be power of 2
 
     struct Block;
@@ -235,6 +232,11 @@ public:
     // Returns 0 on success, -1 otherwise.
     // NOTE: Returns 0 when `s' is empty.
     int append(const std::string& s);
+
+    // Append the user-data to back side WITHOUT copying.
+    // The user-data can be split and shared by smaller IOBufs and will be
+    // deleted using the deleter func when no IOBuf references it anymore.
+    int append_user_data(void* data, size_t size, void (*deleter)(void*));
 
     // Resizes the buf to a length of n characters.
     // If n is smaller than the current length, all bytes after n will be
