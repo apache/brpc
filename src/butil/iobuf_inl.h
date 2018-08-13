@@ -156,6 +156,14 @@ inline const IOBuf::BlockRef& IOBuf::_ref_at(size_t i) const {
     return _small() ? _sv.refs[i] : _bv.ref_at(i);
 }
 
+inline const IOBuf::BlockRef* IOBuf::_pref_at(size_t i) const {
+    if (_small()) {
+        return i < (!!_sv.refs[0].block + !!_sv.refs[1].block) ? &_sv.refs[i] : NULL;
+    } else {
+        return i < _bv.nref ? &_bv.ref_at(i) : NULL;
+    }
+}
+
 inline bool operator==(const IOBuf::BlockRef& r1, const IOBuf::BlockRef& r2) {
     return r1.offset == r2.offset && r1.length == r2.length &&
         r1.block == r2.block;

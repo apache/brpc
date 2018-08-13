@@ -389,6 +389,10 @@ protected:
     BlockRef& _ref_at(size_t i);
     const BlockRef& _ref_at(size_t i) const;
 
+    // Get pointer to n-th BlockRef(counting from front)
+    // If i is out-of-range, NULL is returned.
+    const BlockRef* _pref_at(size_t i) const;
+
 private:    
     union {
         BigView _bv;
@@ -490,18 +494,15 @@ class IOBufAsZeroCopyInputStream
 public:
     explicit IOBufAsZeroCopyInputStream(const IOBuf&);
 
-    // @ZeroCopyInputStream
-    bool Next(const void** data, int* size);
-    void BackUp(int count);
-    bool Skip(int count);
-    google::protobuf::int64 ByteCount() const;
+    bool Next(const void** data, int* size) override;
+    void BackUp(int count) override;
+    bool Skip(int count) override;
+    google::protobuf::int64 ByteCount() const override;
 
 private:
-    int _nref;
     int _ref_index;
     int _add_offset;
     google::protobuf::int64 _byte_count;
-    const IOBuf::BlockRef* _cur_ref;
     const IOBuf* _buf;
 };
 
@@ -525,10 +526,9 @@ public:
     IOBufAsZeroCopyOutputStream(IOBuf*, uint32_t block_size);
     ~IOBufAsZeroCopyOutputStream();
 
-    // @ZeroCopyOutputStream
-    bool Next(void** data, int* size);
-    void BackUp(int count); // `count' can be as long as ByteCount()
-    google::protobuf::int64 ByteCount() const;
+    bool Next(void** data, int* size) override;
+    void BackUp(int count) override; // `count' can be as long as ByteCount()
+    google::protobuf::int64 ByteCount() const override;
 
 private:
     void _release_block();

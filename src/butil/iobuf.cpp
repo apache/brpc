@@ -1809,60 +1809,55 @@ void IOPortal::return_cached_blocks_impl(Block* b) {
 }
 
 IOBufAsZeroCopyInputStream::IOBufAsZeroCopyInputStream(const IOBuf& buf)
-    : _nref(buf._ref_num())
-    , _ref_index(0)
+    : _ref_index(0)
     , _add_offset(0)
     , _byte_count(0)
     , _buf(&buf) {
-    _cur_ref = (_nref > 0 ? &buf._ref_at(0) : NULL);
 }
 
 bool IOBufAsZeroCopyInputStream::Next(const void** data, int* size) {
-    if (_cur_ref != NULL) {
-        *data = _cur_ref->block->data + _cur_ref->offset + _add_offset;
-        // Impl. of Backup/Skip guarantees that _add_offset < _cur_ref->length.
-        *size = _cur_ref->length - _add_offset;
-        _byte_count += _cur_ref->length - _add_offset;
-        _add_offset = 0;
-        ++_ref_index;
-        _cur_ref = (_ref_index < _nref ? &_buf->_ref_at(_ref_index) : NULL);
-        return true;
+    const IOBuf::BlockRef* cur_ref = _buf->_pref_at(_ref_index);
+    if (cur_ref == NULL) {
+        return false;
     }
-    return false;
+    *data = cur_ref->block->data + cur_ref->offset + _add_offset;
+    // Impl. of Backup/Skip guarantees that _add_offset < cur_ref->length.
+    *size = cur_ref->length - _add_offset;
+    _byte_count += cur_ref->length - _add_offset;
+    _add_offset = 0;
+    ++_ref_index;
+    return true;
 }
 
 void IOBufAsZeroCopyInputStream::BackUp(int count) {
     if (_ref_index > 0) {
-        --_ref_index;
-        _cur_ref = &_buf->_ref_at(_ref_index);
-        CHECK(_add_offset == 0 && _cur_ref->length >= (uint32_t)count)
+        const IOBuf::BlockRef* cur_ref = _buf->_pref_at(--_ref_index);
+        CHECK(_add_offset == 0 && cur_ref->length >= (uint32_t)count)
             << "BackUp() is not after a Next()";
-        _add_offset = _cur_ref->length - count;
+        _add_offset = cur_ref->length - count;
         _byte_count -= count;
     } else {
         LOG(FATAL) << "BackUp an empty ZeroCopyInputStream";
     }
 }
 
+// Skips a number of bytes.  Returns false if the end of the stream is
+// reached or some input error occurred.  In the end-of-stream case, the
+// stream is advanced to the end of the stream (so ByteCount() will return
+// the total size of the stream).
 bool IOBufAsZeroCopyInputStream::Skip(int count) {
-    if (_cur_ref != NULL) {
-        do {
-            const int left_bytes = _cur_ref->length - _add_offset;
-            if (count < left_bytes) {
-                _add_offset += count;
-                _byte_count += count;
-                return true;
-            }
-            count -= left_bytes;
-            _add_offset = 0;
-            _byte_count += left_bytes; 
-            if (++_ref_index < _nref) {
-                _cur_ref = &_buf->_ref_at(_ref_index);
-                continue;
-            }
-            _cur_ref = NULL;
-            return false;
-        } while (1);
+    const IOBuf::BlockRef* cur_ref = _buf->_pref_at(_ref_index);
+    while (cur_ref) {
+        const int left_bytes = cur_ref->length - _add_offset;
+        if (count < left_bytes) {
+            _add_offset += count;
+            _byte_count += count;
+            return true;
+        }
+        count -= left_bytes;
+        _add_offset = 0;
+        _byte_count += left_bytes;
+        cur_ref = _buf->_pref_at(++_ref_index);
     }
     return false;
 }
