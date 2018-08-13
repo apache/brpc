@@ -33,7 +33,7 @@ DEFINE_int32(timeout_ms, 3000, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 0, "Max retries(not including the first RPC)"); 
 DEFINE_int32(case_interval, 20, "Intervals for different test cases");
 DEFINE_int32(client_qps_change_interval_us, 50000, 
-    "The interval for client changes the sending speed");
+             "The interval for client changes the sending speed");
 DEFINE_string(case_file, "", "File path for test_cases");
 
 void DisplayStage(const test::Stage& stage) {
