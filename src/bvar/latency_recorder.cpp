@@ -265,6 +265,8 @@ void LatencyRecorder::hide() {
     _latency_p3.hide();
     _latency_999.hide();
     _latency_9999.hide();
+    _latency_cdf.hide();
+    _latency_percentile.hide();
 }
 
 LatencyRecorder& LatencyRecorder::operator<<(int64_t latency) {
