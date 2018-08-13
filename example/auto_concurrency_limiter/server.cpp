@@ -31,14 +31,18 @@
 DEFINE_int32(logoff_ms, 2000, "Maximum duration of server's LOGOFF state "
              "(waiting for client to close connection before server stops)");
 DEFINE_int32(server_bthread_concurrency, 4, "For compute max qps");
-DEFINE_int32(server_sync_sleep_us, 2500, "For compute max qps");
+DEFINE_int32(server_sync_sleep_us, 2500, "For compute maximum qps");
 // max qps = 1000 / 2.5 * 4 = 1600
 
 DEFINE_int32(control_server_port, 9000, "");
-DEFINE_int32(echo_port, 9001, "");
-DEFINE_int32(cntl_port, 9000, "TCP Port of this server");
-DEFINE_string(case_file, "", "");
-DEFINE_int32(server_frequent_interval_us, 10000, "");
+DEFINE_int32(echo_port, 9001, "TCP Port of echo server");
+DEFINE_int32(cntl_port, 9000, "TCP Port of controller server");
+DEFINE_string(case_file, "", "File path for test_cases");
+DEFINE_int32(latency_change_interval_us, 50000, "Intervalt for server side changes the latency");
+DEFINE_int32(server_max_concurrency, 0, "Echo Server's max_concurrency");
+DEFINE_bool(use_usleep, false, 
+        "EchoServer uses ::usleep or bthread_usleep to simulate latency "
+        "when processing requests");
 
 
 bthread::TimerThread g_timer_thread;
@@ -110,9 +114,8 @@ public:
             return;
         }
         ComputeLatency();
-        timespec ts;
-        ts.tv_nsec = FLAGS_server_frequent_interval_us * 1000;
-        g_timer_thread.schedule(TimerTask, (void*)this, ts);
+        g_timer_thread.schedule(TimerTask, (void*)this, 
+            butil::microseconds_from_now(FLAGS_latency_change_interval_us));
     }
 
     virtual void Echo(google::protobuf::RpcController* cntl_base,
@@ -122,7 +125,11 @@ public:
         brpc::ClosureGuard done_guard(done); 
         response->set_message("hello");
         ::usleep(FLAGS_server_sync_sleep_us);
-        bthread_usleep(_latency.load(butil::memory_order_relaxed));
+        if (FLAGS_use_usleep) {
+            ::usleep(_latency.load(butil::memory_order_relaxed));
+        } else {
+            bthread_usleep(_latency.load(butil::memory_order_relaxed));
+        }
     }
 
     void ComputeLatency() {
@@ -213,9 +220,11 @@ public:
             CHECK(!_server.IsRunning()) << "Continuous StartCase";
             const test::TestCase& test_case = _case_set.test_case(_case_index++);
             _echo_service->SetTestCase(test_case);
+            brpc::ServerOptions options;
+//            options.max_concurrency = 15;
             _server.MaxConcurrencyOf("test.EchoService.Echo") = test_case.max_concurrency();
 
-            _server.Start(FLAGS_echo_port, NULL);            
+            _server.Start(FLAGS_echo_port, &options);            
             _echo_service->StartTestCase();
             response->set_message("CaseStarted");
         } else if (message == "StopCase") {

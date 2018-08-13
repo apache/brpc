@@ -1,7 +1,11 @@
---ABTest=true
---auto_cl_min_reserved_concurrency=20
---case_file=test_case.json
+--case_file=test_case_test
+--client_qps_change_interval_us=50000
+--max_retry=0
 
---client_frequent_interval_us=5000000
+--auto_cl_overload_threshold=0.3
+--auto_cl_initial_max_concurrency=16
 
---server_frequent_interval_us=5000000
+--latency_change_interval_us=50000
+--server_bthread_concurrency=4
+--server_sync_sleep_us=2500
+--use_usleep=false

@@ -31,9 +31,10 @@ DEFINE_string(cntl_server, "0.0.0.0:9000", "IP Address of server");
 DEFINE_string(echo_server, "0.0.0.0:9001", "IP Address of server");
 DEFINE_int32(timeout_ms, 3000, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 0, "Max retries(not including the first RPC)"); 
-DEFINE_int32(case_interval, 20, "");
-DEFINE_int32(client_frequent_interval_us, 10000, "");
-DEFINE_string(case_file, "", "");
+DEFINE_int32(case_interval, 20, "Intervals for different test cases");
+DEFINE_int32(client_qps_change_interval_us, 50000, 
+    "The interval for client changes the sending speed");
+DEFINE_string(case_file, "", "File path for test_cases");
 
 void DisplayStage(const test::Stage& stage) {
     std::string type;
@@ -156,10 +157,9 @@ struct TestCaseContext {
 void RunUpdateTask(void* data) {
     TestCaseContext* context = (TestCaseContext*)data;
     bool should_continue = context->Update();
-    timespec ts;
-    ts.tv_nsec = FLAGS_client_frequent_interval_us * 1000;
     if (should_continue) {
-        bthread::get_global_timer_thread()->schedule(RunUpdateTask, data, ts);
+        bthread::get_global_timer_thread()->schedule(RunUpdateTask, data, 
+            butil::microseconds_from_now(FLAGS_client_qps_change_interval_us));
     } else {
         context->running.store(false, butil::memory_order_release);
     }
@@ -173,6 +173,7 @@ void RunCase(test::ControlService_Stub &cntl_stub,
     options.protocol = FLAGS_protocol;
     options.connection_type = FLAGS_connection_type;
     options.timeout_ms = FLAGS_timeout_ms;
+    options.max_retry = FLAGS_max_retry;
     if (channel.Init(FLAGS_echo_server.c_str(), &options) != 0) {
         LOG(FATAL) << "Fail to initialize channel";
     }
@@ -186,9 +187,8 @@ void RunCase(test::ControlService_Stub &cntl_stub,
     CHECK(!cntl.Failed()) << "control failed";
 
     TestCaseContext context(test_case);
-    timespec ts;
-    ts.tv_nsec = FLAGS_client_frequent_interval_us * 1000;
-    bthread::get_global_timer_thread()->schedule(RunUpdateTask, &context, ts);
+    bthread::get_global_timer_thread()->schedule(RunUpdateTask, &context, 
+        butil::microseconds_from_now(FLAGS_client_qps_change_interval_us));
 
     while (context.running.load(butil::memory_order_acquire)) {
         test::NotifyRequest echo_req;

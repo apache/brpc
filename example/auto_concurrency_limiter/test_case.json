@@ -8,7 +8,7 @@
         {
             "lower_bound":3000,
             "upper_bound":3000,
-            "duration_sec":3,
+            "duration_sec":30,
             "type":2
         }
     ],
@@ -17,7 +17,7 @@
         {
             "lower_bound":20000,
             "upper_bound":20000,
-            "duration_sec":3,
+            "duration_sec":30,
             "type":2
         }
     ]
