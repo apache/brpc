@@ -51,7 +51,7 @@ private:
     };
 
     int32_t AddSample(int error_code, int64_t latency_us, int64_t sampling_time_us);
-    int64_t NextResetTime();
+    int64_t NextResetTime(int64_t sampling_time_us);
 
     // The following methods are not thread safe and can only be called 
     // in AppSample()
@@ -66,9 +66,9 @@ private:
     int64_t _reset_end_us;
     int64_t _min_latency_us;
     double _ema_peak_qps;
-    butil::BoundedQueue<double> _qps_bq;
+    std::deque<std::pair<int64_t, double>> _qps_deque;
 
-    const double _smooth;
+    const double _ema_factor;
     const double _overload_threshold;
 
     butil::Mutex _sw_mutex;
