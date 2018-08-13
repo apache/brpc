@@ -62,8 +62,8 @@ private:
     double peak_qps();
     
     SampleWindow _sw;
-    int64_t _reset_start_ms;
-    int64_t _reset_end_ms;
+    int64_t _reset_start_us;
+    int64_t _reset_end_us;
     int64_t _min_latency_us;
     double _ema_peak_qps;
     butil::BoundedQueue<double> _qps_bq;
