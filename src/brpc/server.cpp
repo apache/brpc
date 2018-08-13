@@ -876,7 +876,7 @@ int Server::StartInternal(const butil::ip_t& ip,
         static_cast<int>(_options.max_concurrency) != 0) {
         _cl = ConcurrencyLimiter::CreateConcurrencyLimiterOrDie(
             _options.max_concurrency);
-        _cl->Expose("Global_Concurrency_Limiter");
+        _cl->Expose("Server_Concurrency_Limiter");
     } else {
         if (_cl) {
             _cl->Destroy();

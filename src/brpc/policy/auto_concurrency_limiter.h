@@ -51,7 +51,7 @@ private:
     };
 
     int32_t AddSample(int error_code, int64_t latency_us, int64_t sampling_time_us);
-    int NextResetCount();
+    int64_t NextResetTime();
 
     // The following methods are not thread safe and can only be called 
     // in AppSample()
@@ -62,12 +62,15 @@ private:
     double peak_qps();
     
     SampleWindow _sw;
-    int _reset_count;
+    int64_t _reset_start_ms;
+    int64_t _reset_end_ms;
     int64_t _min_latency_us;
-    const double _smooth;
     double _ema_peak_qps;
-    int _rest_noload_count;
     butil::BoundedQueue<double> _qps_bq;
+
+    const double _smooth;
+    const double _overload_threshold;
+
     butil::Mutex _sw_mutex;
     bvar::PassiveStatus<int32_t> _max_concurrency_bvar;
     butil::atomic<int64_t> BAIDU_CACHELINE_ALIGNMENT _last_sampling_time_us;
