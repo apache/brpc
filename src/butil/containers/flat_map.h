@@ -259,7 +259,7 @@ public:
 
 private:
 template <typename _Map, typename _Element> friend class FlatMapIterator;
-template <typename _Map, typename _Element> friend class FlatMapSparseIterator;
+template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
     // True if buckets need to be resized before holding `size' elements.
     inline bool is_too_crowded(size_t size) const
     { return size * 100 >= _nbucket * _load_factor; }
