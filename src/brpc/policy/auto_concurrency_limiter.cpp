@@ -27,7 +27,7 @@ DEFINE_int32(auto_cl_min_sample_count, 100,
              "During the duration of the sampling window, if the number of "
              "requests collected is less than this value, the sampling window "
              "will be discarded.");
-DEFINE_int32(auto_cl_max_sample_count, 500,
+DEFINE_int32(auto_cl_max_sample_count, 200,
              "During the duration of the sampling window, once the number of "
              "requests collected is greater than this value, even if the "
              "duration of the window has not ended, the max_concurrency will "
@@ -115,7 +115,8 @@ void AutoConcurrencyLimiter::OnResponded(int error_code, int64_t latency_us) {
             if (max_concurrency != 0) {
                 LOG_EVERY_N(INFO, 60) 
                     << "MaxConcurrency updated by auto limiter,"
-                    << "current_max_concurrency:" << max_concurrency << " " << _min_latency_us;
+                    << "current_max_concurrency:" << max_concurrency 
+                    << ", min_latency_us: " << _min_latency_us;
             }
         }
     }
