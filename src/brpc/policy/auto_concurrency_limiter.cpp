@@ -145,7 +145,7 @@ int32_t AutoConcurrencyLimiter::AddSample(int error_code,
     }
 
     if (_sw.succ_count + _sw.failed_count < FLAGS_auto_cl_min_sample_count) {
-        if (sampling_time_us - _sw.sampling_time_us >= 
+        if (sampling_time_us - _sw.start_time_us >= 
             FLAGS_auto_cl_sample_window_size_ms * 1000) {
             // If the sample size is insufficient at the end of the sampling 
             // window, discard the entire sampling window
