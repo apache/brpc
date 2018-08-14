@@ -32,35 +32,33 @@ DEFINE_int32(auto_cl_max_sample_count, 500,
              "requests collected is greater than this value, even if the "
              "duration of the window has not ended, the max_concurrency will "
              "be updated and a new sampling window will be started.");
+DEFINE_double(auto_cl_sampling_interval_ms, 0.1, 
+             "Interval for sampling request in auto concurrency limiter");
 DEFINE_int32(auto_cl_initial_max_concurrency, 40,
              "Initial max concurrency for grandient concurrency limiter");
 DEFINE_int32(auto_cl_noload_latency_remeasure_interval_ms, 50000, 
              "Interval for remeasurement of noload_latency. In the period of "
              "remeasurement of noload_latency will halve max_concurrency.");
-DEFINE_int32(auto_cl_noload_latency_remeasure_period_ms, 2000, 
-             "The duration of the remeasurement of noload_latency.Note that "
-             "in the period of remeasurement, max_concurrency will be halved");
-DEFINE_double(auto_cl_sampling_interval_ms, 0.1, 
-             "Interval for sampling request in auto concurrency limiter");
 DEFINE_double(auto_cl_alpha_factor_for_ema, 0.1,
               "The smoothing coefficient used in the calculation of ema, "
               "the value range is 0-1. The smaller the value, the smaller "
               "the effect of a single sample_window on max_concurrency.");
-DEFINE_double(auto_cl_fail_punish_ratio, 1.0,
-              "Use the failed requests to punish normal requests. The larger "
-              "the configuration item, the more aggressive the penalty strategy.");
 DEFINE_double(auto_cl_overload_threshold, 0.3, 
               "Expected ratio of latency fluctuations");
 DEFINE_bool(auto_cl_enable_error_punish, true,
             "Whether to consider failed requests when calculating maximum concurrency");
+DEFINE_double(auto_cl_fail_punish_ratio, 1.0,
+              "Use the failed requests to punish normal requests. The larger "
+              "the configuration item, the more aggressive the penalty strategy.");
 
 static int32_t cast_max_concurrency(void* arg) {
     return *(int32_t*) arg;
 }
 
 AutoConcurrencyLimiter::AutoConcurrencyLimiter()
-    : _reset_start_us(NextResetTime(butil::gettimeofday_us()))
-    , _reset_end_us(0)
+    : _remeasure_start_us(NextResetTime(butil::gettimeofday_us()))
+    , _remeasure_end_us(0)
+    , _reset_latency_us(0)
     , _min_latency_us(-1)
     , _ema_peak_qps(-1)
     , _ema_factor(FLAGS_auto_cl_alpha_factor_for_ema)
@@ -219,15 +217,21 @@ int32_t AutoConcurrencyLimiter::UpdateMaxConcurrency(int64_t sampling_time_us) {
     UpdateMinLatency(avg_latency);
     UpdateQps(total_succ_req, sampling_time_us);
 
-    if (_reset_end_us > sampling_time_us) {
+    if (_remeasure_end_us > sampling_time_us && _reset_latency_us > 0) {
+        if (_reset_latency_us < sampling_time_us) {
+            _min_latency_us = -1;
+            _reset_latency_us = 0;
+        }
         return 0;
     }
 
     int next_max_concurrency = 0;
-    if (_reset_start_us <= sampling_time_us) {
+    if (_remeasure_start_us <= sampling_time_us) {
         _min_latency_us = -1;
-        _reset_start_us = NextResetTime(sampling_time_us);
-        _reset_end_us = sampling_time_us + FLAGS_auto_cl_noload_latency_remeasure_period_ms * 1000;
+        _remeasure_start_us = NextResetTime(sampling_time_us);
+        _reset_latency_us = sampling_time_us + avg_latency;
+        _remeasure_end_us = _reset_latency_us + 
+            2 * FLAGS_auto_cl_sample_window_size_ms * 1000;
         next_max_concurrency = _max_concurrency / 2;
     } else {
         int32_t noload_concurrency = 

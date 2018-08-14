@@ -62,8 +62,9 @@ private:
     double peak_qps();
     
     SampleWindow _sw;
-    int64_t _reset_start_us;
-    int64_t _reset_end_us;
+    int64_t _remeasure_start_us;
+    int64_t _remeasure_end_us;
+    int64_t _reset_latency_us;
     int64_t _min_latency_us;
     double _ema_peak_qps;
     std::deque<std::pair<int64_t, double>> _qps_deque;
