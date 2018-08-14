@@ -57,7 +57,6 @@ static int32_t cast_max_concurrency(void* arg) {
 
 AutoConcurrencyLimiter::AutoConcurrencyLimiter()
     : _remeasure_start_us(NextResetTime(butil::gettimeofday_us()))
-    , _remeasure_end_us(0)
     , _reset_latency_us(0)
     , _min_latency_us(-1)
     , _ema_peak_qps(-1)
@@ -217,22 +216,24 @@ int32_t AutoConcurrencyLimiter::UpdateMaxConcurrency(int64_t sampling_time_us) {
     UpdateMinLatency(avg_latency);
     UpdateQps(total_succ_req, sampling_time_us);
 
-    if (_remeasure_end_us > sampling_time_us && _reset_latency_us > 0) {
-        if (_reset_latency_us < sampling_time_us) {
-            _min_latency_us = -1;
-            _reset_latency_us = 0;
-        }
+    // Waiting for the current concurrent decline
+    if (_reset_latency_us > sampling_time_us) {
+        return 0;
+    }
+    // Remeasure min_latency when concurrency has dropped to low load
+    if (_reset_latency_us > 0 && _reset_latency_us < sampling_time_us) {
+        _min_latency_us = -1;
+        _reset_latency_us = 0;
+        _remeasure_start_us = NextResetTime(sampling_time_us);
         return 0;
     }
 
     int next_max_concurrency = 0;
+    // Remeasure min_latency at regular intervals
     if (_remeasure_start_us <= sampling_time_us) {
-        _min_latency_us = -1;
-        _remeasure_start_us = NextResetTime(sampling_time_us);
         _reset_latency_us = sampling_time_us + avg_latency;
-        _remeasure_end_us = _reset_latency_us + 
-            2 * FLAGS_auto_cl_sample_window_size_ms * 1000;
         next_max_concurrency = _max_concurrency / 2;
+        LOG(INFO) << "Prepare" << _max_concurrency;
     } else {
         int32_t noload_concurrency = 
             std::ceil(_min_latency_us * _ema_peak_qps / 1000000);

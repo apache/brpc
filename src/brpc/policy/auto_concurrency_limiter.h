@@ -63,7 +63,6 @@ private:
     
     SampleWindow _sw;
     int64_t _remeasure_start_us;
-    int64_t _remeasure_end_us;
     int64_t _reset_latency_us;
     int64_t _min_latency_us;
     double _ema_peak_qps;
