@@ -66,7 +66,6 @@ private:
     int64_t _reset_latency_us;
     int64_t _min_latency_us;
     double _ema_peak_qps;
-    std::deque<std::pair<int64_t, double>> _qps_deque;
 
     const double _ema_factor;
     const double _overload_threshold;
