@@ -872,16 +872,15 @@ int Server::StartInternal(const butil::ip_t& ip,
         bthread_setconcurrency(_options.num_threads);
     }
 
+    if (NULL != _cl) {
+        _cl->Destroy();
+        _cl = NULL;
+    }
     if (_options.max_concurrency != "constant" || 
         static_cast<int>(_options.max_concurrency) != 0) {
         _cl = ConcurrencyLimiter::CreateConcurrencyLimiterOrDie(
             _options.max_concurrency);
         _cl->Expose("Server_Concurrency_Limiter");
-    } else {
-        if (_cl) {
-            _cl->Destroy();
-        }
-        _cl = NULL;
     }
 
     for (MethodMap::iterator it = _method_map.begin();
