@@ -38,25 +38,19 @@ public:
         _server->_nerror << 1;
     }
 
-    // Returns true iff the `max_concurrency' limit is not reached.
+    // Returns true if the `max_concurrency' limit is not reached.
     bool AddConcurrency(Controller* c) {
-        if (_server->options().max_concurrency <= 0) {
-            return true;
-        }
-        if (butil::subtle::NoBarrier_AtomicIncrement(&_server->_concurrency, 1)
-            <= _server->options().max_concurrency) {
-            c->add_flag(Controller::FLAGS_ADDED_CONCURRENCY);
-            return true;
-        }
-        butil::subtle::NoBarrier_AtomicIncrement(&_server->_concurrency, -1);
-        return false;
+        if (NULL != _server->_cl) {
+            c->add_flag(Controller::FLAGS_CONCURRENCY_LIMITER_REQUESTED);
+            return _server->_cl->OnRequested();
+        } 
+        return true;
     }
 
-    // Remove the increment of AddConcurrency(). Must not be called when
-    // AddConcurrency() returned false.
     void RemoveConcurrency(const Controller* c) {
-        if (c->has_flag(Controller::FLAGS_ADDED_CONCURRENCY)) {
-            butil::subtle::NoBarrier_AtomicIncrement(&_server->_concurrency, -1);
+        if (c->has_flag(Controller::FLAGS_CONCURRENCY_LIMITER_REQUESTED)){
+            CHECK(_server->_cl != NULL);
+            _server->_cl->OnResponded(c->ErrorCode(), c->latency_us());
         }
     }
 
@@ -127,20 +121,6 @@ private:
     DISALLOW_COPY_AND_ASSIGN(ScopedNonServiceError);
     const Server* _server;
 };
-
-class ScopedRemoveConcurrency {
-public:
-    ScopedRemoveConcurrency(const Server* server, const Controller* c)
-        : _server(server), _cntl(c) {}
-    ~ScopedRemoveConcurrency() {
-        ServerPrivateAccessor(_server).RemoveConcurrency(_cntl);
-    }
-private:
-    DISALLOW_COPY_AND_ASSIGN(ScopedRemoveConcurrency);
-    const Server* _server;
-    const Controller* _cntl;
-};
-
 
 } // namespace brpc
 

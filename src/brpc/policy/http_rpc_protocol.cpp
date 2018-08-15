@@ -557,12 +557,11 @@ static void SendHttpResponse(Controller *cntl,
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
-    ScopedMethodStatus method_status(method_status_raw);
     std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
+    ScopedMethodStatus method_status(method_status_raw,cntl, received_us);
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
     Socket* socket = accessor.get_sending_socket();
-    ScopedRemoveConcurrency remove_concurrency_dummy(server, cntl);
     
     if (cntl->IsCloseConnection()) {
         socket->SetFailed();
@@ -726,10 +725,6 @@ static void SendHttpResponse(Controller *cntl,
     if (span) {
         // TODO: this is not sent
         span->set_sent_us(butil::cpuwide_time_us());
-    }
-    if (method_status) {
-        method_status.release()->OnResponded(
-            !cntl->Failed(), butil::cpuwide_time_us() - received_us);
     }
 }
 
@@ -1192,7 +1187,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         }
         if (!server_accessor.AddConcurrency(cntl.get())) {
             cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
-                            server->options().max_concurrency);
+                            server->max_concurrency());
             return SendHttpResponse(cntl.release(), server, method_status, msg->received_us());
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {

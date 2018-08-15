@@ -36,6 +36,8 @@
 #include "brpc/builtin/tabbed.h"
 #include "brpc/details/profiler_linker.h"
 #include "brpc/health_reporter.h"
+#include "brpc/concurrency_limiter.h"
+#include "brpc/adaptive_max_concurrency.h"
 
 extern "C" {
 struct ssl_ctx_st;
@@ -114,7 +116,12 @@ struct ServerOptions {
     // shall try another server.
     // NOTE: accesses to builtin services are not limited by this option.
     // Default: 0 (unlimited)
-    int max_concurrency;
+    // NOTE: Once you have chosen the automatic concurrency limit strategy, brpc
+    // ONLY limits concurrency at the method level, And each method will use
+    // the strategy you set in ServerOptions to limit the maximum concurrency, 
+    // even if you have set a maximum concurrency through `MaxConcurrencyOf`.
+ 
+    AdaptiveMaxConcurrency max_concurrency;
 
     // -------------------------------------------------------
     // Differences between session-local and thread-local data
@@ -327,6 +334,7 @@ public:
         google::protobuf::Service* service;
         const google::protobuf::MethodDescriptor* method;
         MethodStatus* status;
+        AdaptiveMaxConcurrency max_concurrency;
 
         MethodProperty();
     };
@@ -476,27 +484,32 @@ public:
     // current_tab_name is the tab highlighted.
     void PrintTabsBody(std::ostream& os, const char* current_tab_name) const;
 
-    // Reset the max_concurrency set by ServerOptions.max_concurrency after
-    // Server is started.
-    // The concurrency will be limited by the new value if this function is
-    // successfully returned.
-    // Returns 0 on success, -1 otherwise.
+    
+    // This method is already deprecated.You should NOT call it anymore.
     int ResetMaxConcurrency(int max_concurrency);
+
+    // Server's current max concurrency
+    int max_concurrency() const;
 
     // Get/set max_concurrency associated with a method.
     // Example:
     //    server.MaxConcurrencyOf("example.EchoService.Echo") = 10;
     // or server.MaxConcurrencyOf("example.EchoService", "Echo") = 10;
     // or server.MaxConcurrencyOf(&service, "Echo") = 10;
-    int& MaxConcurrencyOf(const butil::StringPiece& full_method_name);
+    // Note: These interfaces can ONLY be called before the server is started.
+    // And you should NOT set the max_concurrency when you are going to choose
+    // an auto concurrency limiter, eg `options.max_concurrency = "auto"`.If you
+    // still called non-const version of the interface, your changes to the
+    // maximum concurrency will not take effect.
+    AdaptiveMaxConcurrency& MaxConcurrencyOf(const butil::StringPiece& full_method_name);
     int MaxConcurrencyOf(const butil::StringPiece& full_method_name) const;
     
-    int& MaxConcurrencyOf(const butil::StringPiece& full_service_name,
+    AdaptiveMaxConcurrency& MaxConcurrencyOf(const butil::StringPiece& full_service_name,
                           const butil::StringPiece& method_name);
     int MaxConcurrencyOf(const butil::StringPiece& full_service_name,
                          const butil::StringPiece& method_name) const;
 
-    int& MaxConcurrencyOf(google::protobuf::Service* service,
+    AdaptiveMaxConcurrency& MaxConcurrencyOf(google::protobuf::Service* service,
                           const butil::StringPiece& method_name);
     int MaxConcurrencyOf(google::protobuf::Service* service,
                          const butil::StringPiece& method_name) const;
@@ -590,7 +603,7 @@ friend class Controller;
     static bool ResetCertMappings(CertMaps& bg, const SSLContextMap& ctx_map);
     static bool ClearCertMapping(CertMaps& bg);
 
-    int& MaxConcurrencyOf(MethodProperty*);
+    AdaptiveMaxConcurrency& MaxConcurrencyOf(MethodProperty*);
     int MaxConcurrencyOf(const MethodProperty*) const;
     
     DISALLOW_COPY_AND_ASSIGN(Server);
@@ -650,7 +663,7 @@ friend class Controller;
     //        Replace `ServerPrivateAccessor' with other private-access
     //        mechanism
     mutable bvar::Adder<int64_t> _nerror;
-    mutable int32_t BAIDU_CACHELINE_ALIGNMENT _concurrency;
+    ConcurrencyLimiter* _cl;
 };
 
 // Get the data attached to current searching thread. The data is created by

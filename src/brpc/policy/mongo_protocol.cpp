@@ -60,7 +60,7 @@ SendMongoResponse::~SendMongoResponse() {
 
 void SendMongoResponse::Run() {
     std::unique_ptr<SendMongoResponse> delete_self(this);
-    ScopedMethodStatus method_status(status);
+    ScopedMethodStatus method_status(status, &cntl, received_us);
     Socket* socket = ControllerPrivateAccessor(&cntl).get_sending_socket();
 
     if (cntl.IsCloseConnection()) {
@@ -101,10 +101,6 @@ void SendMongoResponse::Run() {
             PLOG(WARNING) << "Fail to write into " << *socket;
             return;
         }
-    }
-    if (method_status) {
-        method_status.release()->OnResponded(
-            !cntl.Failed(), butil::cpuwide_time_us() - received_us);
     }
 }
 
@@ -224,8 +220,9 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
         }
 
         if (!ServerPrivateAccessor(server).AddConcurrency(&(mongo_done->cntl))) {
-            mongo_done->cntl.SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
-                            server->options().max_concurrency);
+            mongo_done->cntl.SetFailed(
+                ELIMIT, "Reached server's max_concurrency=%d",
+                server->max_concurrency());
             break;
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {

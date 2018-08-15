@@ -16,6 +16,8 @@
 
 #include <limits>
 #include "butil/macros.h"
+#include "brpc/controller.h"
+#include "brpc/details/server_private_accessor.h"
 #include "brpc/details/method_status.h"
 
 namespace brpc {
@@ -25,22 +27,33 @@ static int cast_nprocessing(void* arg) {
 }
 
 MethodStatus::MethodStatus()
-    : _max_concurrency(0)
+    : _cl(NULL)
     , _nprocessing_bvar(cast_nprocessing, &_nprocessing)
+    , _nrefused_per_second(&_nrefused_bvar, 1)
     , _nprocessing(0) {
 }
 
 MethodStatus::~MethodStatus() {
+    if (NULL != _cl) {
+        _cl->Destroy();
+        _cl = NULL;
+    }
 }
 
 int MethodStatus::Expose(const butil::StringPiece& prefix) {
     if (_nprocessing_bvar.expose_as(prefix, "processing") != 0) {
         return -1;
     }
+    if (_nrefused_per_second.expose_as(prefix, "refused_per_second") != 0) {
+        return -1;
+    }
     if (_nerror.expose_as(prefix, "error") != 0) {
         return -1;
     }
     if (_latency_rec.expose(prefix) != 0) {
+        return -1;
+    }
+    if (NULL != _cl && _cl->Expose(prefix) != 0) {
         return -1;
     }
     return 0;
@@ -112,6 +125,21 @@ void MethodStatus::Describe(
     // to "processing" should be more understandable.
     OutputValue(os, "processing: ", _nprocessing_bvar.name(),
                 _nprocessing, options, false);
+}
+
+void MethodStatus::SetConcurrencyLimiter(ConcurrencyLimiter* cl) {
+    if (NULL != _cl) {
+        _cl->Destroy();
+    }
+    _cl = cl;
+}
+
+ScopedMethodStatus::~ScopedMethodStatus() {
+    if (_status) {
+        _status->OnResponded(_c->ErrorCode(), butil::cpuwide_time_us() - _received_us);
+        _status = NULL;
+    }
+    ServerPrivateAccessor(_c->server()).RemoveConcurrency(_c);
 }
 
 }  // namespace brpc
