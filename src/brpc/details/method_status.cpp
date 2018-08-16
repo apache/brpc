@@ -37,7 +37,7 @@ static int cast_cl(void* arg) {
 MethodStatus::MethodStatus()
     : _nconcurrency(0)
     , _nconcurrency_bvar(cast_int, &_nconcurrency)
-    , _eps_bvar(&_nerror)
+    , _eps_bvar(&_nerror_bvar)
     , _max_concurrency_bvar(cast_cl, &_cl)
 {
 }
@@ -49,7 +49,7 @@ int MethodStatus::Expose(const butil::StringPiece& prefix) {
     if (_nconcurrency_bvar.expose_as(prefix, "concurrency") != 0) {
         return -1;
     }
-    if (_nerror.expose_as(prefix, "error") != 0) {
+    if (_nerror_bvar.expose_as(prefix, "error") != 0) {
         return -1;
     }
     if (_eps_bvar.expose_as(prefix, "eps") != 0) {
@@ -105,7 +105,7 @@ void MethodStatus::Describe(
                 options, expand);
 
     // errorous requests
-    OutputValue(os, "error: ", _nerror.name(), _nerror.get_value(),
+    OutputValue(os, "error: ", _nerror_bvar.name(), _nerror_bvar.get_value(),
                 options, false);
     OutputValue(os, "eps: ", _eps_bvar.name(),
                 _eps_bvar.get_value(1), options, false);

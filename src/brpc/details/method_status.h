@@ -66,7 +66,7 @@ friend class Server;
 
     std::unique_ptr<ConcurrencyLimiter> _cl;
     butil::atomic<int> _nconcurrency;
-    bvar::Adder<int64_t>  _nerror;
+    bvar::Adder<int64_t>  _nerror_bvar;
     bvar::LatencyRecorder _latency_rec;
     bvar::PassiveStatus<int>  _nconcurrency_bvar;
     bvar::PerSecond<bvar::Adder<int64_t>> _eps_bvar;
@@ -103,7 +103,7 @@ inline void MethodStatus::OnResponded(int error_code, int64_t latency) {
     if (0 == error_code) {
         _latency_rec << latency;
     } else {
-        _nerror << 1;
+        _nerror_bvar << 1;
     }
     if (NULL != _cl) {
         _cl->OnResponded(error_code, latency);
