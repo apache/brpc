@@ -587,14 +587,19 @@ QPS是一个秒级的指标，无法很好地控制瞬间的流量爆发。而�
 
 设置ServerOptions.max_concurrency，默认值0代表不限制。访问内置服务不受此选项限制。
 
+Server.ResetMaxConcurrency()可在server启动后动态修改server级别的max_concurrency。
+
 ### 限制method级别并发度
 
-server.MaxConcurrencyOf("...") = ...可设置method级别的max_concurrency。可能的设置方法有：
+server.MaxConcurrencyOf("...") = ...可设置method级别的max_concurrency。也可以通过设置ServerOptions.method_max_concurrency一次性为所有的method设置最大并发。
+当ServerOptions.method_max_concurrency和server.MaxConcurrencyOf("...")=...同时被设置时，使用server.MaxConcurrencyOf()所设置的值。
 
 ```c++
-server.MaxConcurrencyOf("example.EchoService.Echo") = 10;
+ServerOptions.method_max_concurrency = 20;                   // Set the default maximum concurrency for all methods
+server.MaxConcurrencyOf("example.EchoService.Echo") = 10;    // Give priority to the value set by server.MaxConcurrencyOf()
 server.MaxConcurrencyOf("example.EchoService", "Echo") = 10;
 server.MaxConcurrencyOf(&service, "Echo") = 10;
+server.MaxConcurrencyOf("example.EchoService.Echo") = "10";  // You can also assign a string value
 ```
 
 此设置一般**发生在AddService后，server启动前**。当设置失败时（比如对应的method不存在），server会启动失败同时提示用户修正MaxConcurrencyOf设置错误。
@@ -604,17 +609,21 @@ server.MaxConcurrencyOf(&service, "Echo") = 10;
 注意：没有service级别的max_concurrency。
 
 ### 使用自适应限流算法
-实际生产环境中,最大并发并不一定是一成不变的。这个时候可以在Server级别使用自适应限流算法，同时将Method级别设置为不限制并发(即默认值):
+实际生产环境中,最大并发并不一定是一成不变的。这个时候可以使用自适应限流算法。自适应限流是method级别的。要使用自适应限流算法，把method的最大并发度设置为"auto"即可:
 
 ```c++
-brpc::Server server;
+// Set auto concurrency limiter for all method
 brpc::ServerOptions options;
-options.max_concurrency = "auto";                       // auto concurrency limiter
+options.method_max_concurrency = "auto";
+
+// Set auto concurrency limiter for specific method
+server.MaxConcurrencyOf("example.EchoService.Echo") = "auto";
 ```
 自适应限流的算法能够正常工作的前提是:
 1. 客户端开启了重试
 2. 服务端有多个节点，当一个节点返回过载时，客户端可以向其他节点发起重试
-更多细节可以看[这里](https://github.com/TousakaRin/brpc/blob/auto_concurrency_limiter/docs/cn/auto_concurrency_limiter.md)
+
+关于自适应限流的更多细节可以看[这里](https://github.com/brpc/brpc/blob/master/docs/cn/auto_concurrency_limiter.md)
 
 ## pthread模式
 

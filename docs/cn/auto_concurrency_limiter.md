@@ -16,27 +16,21 @@
 这两点是自适应限流能够良好工作的前提。
 
 ## 开启方法
-直接使用"auto"替换掉之前的最大并发值：
+自适应限流是method级别的限流方式，如果要为某个method开启自适应限流，只需要将它的最大并发设置为"auto"即可。
 
-```
-//constant max_concurrency
+```c++
+// Set auto concurrency limiter for all method
 brpc::ServerOptions options;
-options.max_concurrency = 100;   
+options.method_max_concurrency = "auto";
 
-// auto concurrency limiter
-brpc::ServerOptions options;
-options.max_concurrency = "auto";   
+// Set auto concurrency limiter for specific method
+server.MaxConcurrencyOf("example.EchoService.Echo") = "auto";
 ```
 
-**假如需要使用自适应限流，建议仅在Server级别开启自适应限流**，各个method都不限流(即使用默认值)，或者使用固定的最大并发。不要同时在Server和method都开启自适应限流:
-
-```
-brpc::Server server;
-brpc::ServerOptions options;
-options.max_concurrency = "auto";                       // Use auto concurrenty limiter only at the Server level
-server.MaxConcurrencyOf("test.EchoService.Echo") = 100; // constant max concurrency
-server.Start(FLAGS_echo_port, &options);
-```
+自适应限流的算法能够正常工作的前提是:
+1. 客户端开启了重试
+2. 服务端有多个节点，当一个节点返回过载时，客户端可以向其他节点发起重试
+更多细节可以看[这里](https://github.com/TousakaRin/brpc/blob/auto_concurrency_limiter/docs/cn/auto_concurrency_limiter.md)
 
 ## 自适应限流的实现
 

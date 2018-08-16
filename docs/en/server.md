@@ -588,6 +588,8 @@ PeakQPS and AverageLatency are queries-per-second and latencies measured in a se
 
 Set ServerOptions.max_concurrency. Default value is 0 which means not limited. Accesses to builtin services are not limited by this option.
 
+Call Server.ResetMaxConcurrency() to modify max_concurrency of the server after starting.
+
 ### Limit method-level concurrency
 
 server.MaxConcurrencyOf("...") = … sets max_concurrency of the method. Possible settings:
