@@ -611,7 +611,7 @@ brpc::Server server;
 brpc::ServerOptions options;
 options.max_concurrency = "auto";                       // auto concurrency limiter
 ```
-使用自适应限流的算法需要保证:
+使用自适应限流的算法能够正常工作的前提是:
 1. 客户端开启了重试
 2. 服务端有多个节点，当一个节点返回过载时，客户端可以向其他节点发起重试
 更多细节可以看[这里]()
