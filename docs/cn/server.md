@@ -614,7 +614,7 @@ options.max_concurrency = "auto";                       // auto concurrency limi
 使用自适应限流的算法需要保证:
 1. 客户端开启了重试
 2. 服务端有多个节点，当一个节点返回过载时，客户端可以向其他节点发起重试
-更多细节可以看[这里]()
+更多细节可以看[这里](https://github.com/TousakaRin/brpc/blob/auto_concurrency_limiter/docs/cn/auto_concurrency_limiter.md)
 
 ## pthread模式
 
