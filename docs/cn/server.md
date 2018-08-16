@@ -587,8 +587,6 @@ QPS是一个秒级的指标，无法很好地控制瞬间的流量爆发。而�
 
 设置ServerOptions.max_concurrency，默认值0代表不限制。访问内置服务不受此选项限制。
 
-Server.ResetMaxConcurrency()可在server启动后动态修改server级别的max_concurrency。
-
 ### 限制method级别并发度
 
 server.MaxConcurrencyOf("...") = ...可设置method级别的max_concurrency。可能的设置方法有：
@@ -604,6 +602,19 @@ server.MaxConcurrencyOf(&service, "Echo") = 10;
 当method级别和server级别的max_concurrency都被设置时，先检查server级别的，再检查method级别的。
 
 注意：没有service级别的max_concurrency。
+
+### 使用自适应限流算法
+实际生产环境中,最大并发并不一定是一成不变的。这个时候可以在Server级别使用自适应限流算法，同时将Method级别设置为不限制并发(即默认值):
+
+```c++
+brpc::Server server;
+brpc::ServerOptions options;
+options.max_concurrency = "auto";                       // auto concurrency limiter
+```
+使用自适应限流的算法需要保证:
+1. 客户端开启了重试
+2. 服务端有多个节点，当一个节点返回过载时，客户端可以向其他节点发起重试
+更多细节可以看[这里]()
 
 ## pthread模式
 
