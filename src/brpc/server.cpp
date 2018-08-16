@@ -273,7 +273,6 @@ void* Server::UpdateDerivedVars(void* arg) {
     std::vector<SocketId> internal_conns;
     
     server->_nerror_bvar.expose_as(prefix, "error");
-    //server->_nrefused_bvar.expose_as(prefix, "refused");
 
     bvar::PassiveStatus<timeval> uptime_st(
         prefix, "uptime", GetUptime, (void*)(intptr_t)start_us);
