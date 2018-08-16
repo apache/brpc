@@ -272,7 +272,7 @@ void* Server::UpdateDerivedVars(void* arg) {
     std::vector<SocketId> conns;
     std::vector<SocketId> internal_conns;
     
-    server->_nerror.expose_as(prefix, "error");
+    server->_nerror_bvar.expose_as(prefix, "error");
 
     bvar::PassiveStatus<timeval> uptime_st(
         prefix, "uptime", GetUptime, (void*)(intptr_t)start_us);
@@ -382,7 +382,9 @@ Server::Server(ProfilerLinker)
     , _last_start_time(0)
     , _derivative_thread(INVALID_BTHREAD)
     , _keytable_pool(NULL)
-    , _cl(NULL) {
+    , _concurrency(0) {
+    BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,	
+                  Server_concurrency_must_be_aligned_by_cacheline);
 }
 
 Server::~Server() {
@@ -422,10 +424,6 @@ Server::~Server() {
     if (_options.server_owns_auth) {
         delete _options.auth;
         _options.auth = NULL;
-    }
-    if (_cl) {
-        _cl->Destroy();
-        _cl = NULL;
     }
 }
 
@@ -664,6 +662,27 @@ static int get_port_from_fd(int fd) {
     return ntohs(addr.sin_port);
 }
 
+static bool CreateConcurrencyLimiter(const AdaptiveMaxConcurrency& amc,
+                                     ConcurrencyLimiter** out) {
+    if (amc.type() == AdaptiveMaxConcurrency::UNLIMITED()) {
+        *out = NULL;
+        return true;
+    }
+    const ConcurrencyLimiter* cl =
+        ConcurrencyLimiterExtension()->Find(amc.type().c_str());
+    if (cl == NULL) {
+        LOG(ERROR) << "Fail to find ConcurrencyLimiter by `" << amc.value() << "'";
+        return false;
+    }
+    ConcurrencyLimiter* cl_copy = cl->New(amc);
+    if (cl_copy == NULL) {
+        LOG(ERROR) << "Fail to new ConcurrencyLimiter";
+        return false;
+    }
+    *out = cl_copy;
+    return true;
+}
+
 static AdaptiveMaxConcurrency g_default_max_concurrency_of_method = 0;
 
 int Server::StartInternal(const butil::ip_t& ip,
@@ -835,6 +854,8 @@ int Server::StartInternal(const butil::ip_t& ip,
             }
         }
     }
+
+    _concurrency = 0;
     
     if (_options.has_builtin_services &&
         _builtin_service_count <= 0 &&
@@ -872,28 +893,21 @@ int Server::StartInternal(const butil::ip_t& ip,
         bthread_setconcurrency(_options.num_threads);
     }
 
-    if (NULL != _cl) {
-        _cl->Destroy();
-        _cl = NULL;
-    }
-    if (_options.max_concurrency != "constant" || 
-        static_cast<int>(_options.max_concurrency) != 0) {
-        _cl = ConcurrencyLimiter::CreateConcurrencyLimiterOrDie(
-            _options.max_concurrency);
-        _cl->Expose("Server_Concurrency_Limiter");
-    }
-
     for (MethodMap::iterator it = _method_map.begin();
         it != _method_map.end(); ++it) {
         if (it->second.is_builtin_service) {
             it->second.status->SetConcurrencyLimiter(NULL);
-        } else if (it->second.max_concurrency == "constant" &&
-            static_cast<int>(it->second.max_concurrency) == 0) {
-            it->second.status->SetConcurrencyLimiter(NULL);
         } else {
-            it->second.status->SetConcurrencyLimiter(
-                ConcurrencyLimiter::CreateConcurrencyLimiterOrDie(
-                    it->second.max_concurrency));
+            const AdaptiveMaxConcurrency* amc = &it->second.max_concurrency;
+            if (amc->type() == AdaptiveMaxConcurrency::UNLIMITED()) {
+                amc = &_options.method_max_concurrency;
+            }
+            ConcurrencyLimiter* cl = NULL;
+            if (!CreateConcurrencyLimiter(*amc, &cl)) {
+                LOG(ERROR) << "Fail to create ConcurrencyLimiter for method";
+                return -1;
+            }
+            it->second.status->SetConcurrencyLimiter(cl);
         }
     }
     
@@ -1986,16 +2000,13 @@ bool Server::ClearCertMapping(CertMaps& bg) {
 }
 
 int Server::ResetMaxConcurrency(int max_concurrency) {
-    LOG(WARNING) << "ResetMaxConcurrency is already deprecated";
-    return 0;
-}
-
-int Server::max_concurrency() const {
-    if (NULL != _cl) {
-        return _cl->max_concurrency();
-    } else {
-        return g_default_max_concurrency_of_method;
+    if (!IsRunning()) {
+        LOG(WARNING) << "ResetMaxConcurrency is only allowd for a Running Server";
+        return -1;
     }
+    // Assume that modifying int32 is atomical in X86
+    _options.max_concurrency = max_concurrency;
+    return 0;
 }
 
 AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(MethodProperty* mp) {

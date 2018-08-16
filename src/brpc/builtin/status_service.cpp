@@ -62,17 +62,19 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
         server->PrintTabsBody(os, "status");
         os << "<div class=\"layer1\">\n";
     }
+    os << "version: " << server->version() << '\n';
+
     // non_service_error
     if (use_html) {
         os << "<p class=\"variable\">";
     }
     os << "non_service_error: ";
     if (use_html) {
-        os << "<span id=\"value-" << server->_nerror.name() << "\">";
+        os << "<span id=\"value-" << server->_nerror_bvar.name() << "\">";
     }
-    os << server->_nerror.get_value();
+    os << server->_nerror_bvar.get_value();
     if (use_html) {
-        os << "</span></p><div class=\"detail\"><div id=\"" << server->_nerror.name()
+        os << "</span></p><div class=\"detail\"><div id=\"" << server->_nerror_bvar.name()
            << "\" class=\"flot-placeholder\"></div></div>";
     }
     os << '\n';
@@ -95,12 +97,14 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
            << "_connection_count\" class=\"flot-placeholder\"></div></div>";
     }
     os << '\n';
-    const AdaptiveMaxConcurrency& max_concurrency = 
-        server->options().max_concurrency;
-    if (max_concurrency == "constant") {
-        os << "max_concurrency: " << static_cast<int>(max_concurrency) << '\n';
+
+    // max_concurrency
+    os << "max_concurrency: ";
+    const int mc = server->options().max_concurrency;
+    if (mc <= 0) {
+        os << "unlimited";
     } else {
-        os << "concurrency limiter: " << max_concurrency.name() << '\n';
+        os << mc;
     }
     os << '\n';
     
@@ -158,9 +162,6 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
                     if (mp->http_url) {
                         os << " @" << *mp->http_url;
                     }
-                    if (mp->status && mp->status->max_concurrency() > 0) {
-                        os << " max_concurrency=" << mp->status->max_concurrency();
-                    }
                 }
                 os << "</h4>\n";
             } else {
@@ -169,9 +170,6 @@ void StatusService::default_method(::google::protobuf::RpcController* cntl_base,
                 if (mp) {
                     if (mp->http_url) {
                         os << " @" << *mp->http_url;
-                    }
-                    if (mp->status && mp->status->max_concurrency() > 0) {
-                        os << " max_concurrency=" << mp->status->max_concurrency();
                     }
                 }
                 os << '\n';

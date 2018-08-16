@@ -35,22 +35,22 @@ public:
     }
 
     void AddError() {
-        _server->_nerror << 1;
+        _server->_nerror_bvar << 1;
     }
 
     // Returns true if the `max_concurrency' limit is not reached.
     bool AddConcurrency(Controller* c) {
-        if (NULL != _server->_cl) {
-            c->add_flag(Controller::FLAGS_CONCURRENCY_LIMITER_REQUESTED);
-            return _server->_cl->OnRequested();
-        } 
-        return true;
+        if (_server->options().max_concurrency <= 0) {
+            return true;
+        }
+        c->add_flag(Controller::FLAGS_ADDED_CONCURRENCY);
+        return (butil::subtle::NoBarrier_AtomicIncrement(&_server->_concurrency, 1)
+                <= _server->options().max_concurrency);
     }
 
     void RemoveConcurrency(const Controller* c) {
-        if (c->has_flag(Controller::FLAGS_CONCURRENCY_LIMITER_REQUESTED)){
-            CHECK(_server->_cl != NULL);
-            _server->_cl->OnResponded(c->ErrorCode(), c->latency_us());
+        if (c->has_flag(Controller::FLAGS_ADDED_CONCURRENCY)) {
+            butil::subtle::NoBarrier_AtomicIncrement(&_server->_concurrency, -1);
         }
     }
 

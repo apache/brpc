@@ -232,10 +232,9 @@ void ThriftClosure::DoRun() {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
     Socket* sock = accessor.get_sending_socket();
-    ScopedMethodStatus method_status(
-        server->options().thrift_service ? 
-        server->options().thrift_service->_status : NULL,
-        &_controller, _received_us);
+    MethodStatus* method_status = (server->options().thrift_service ? 
+        server->options().thrift_service->_status : NULL);
+    ConcurrencyRemover concurrency_remover(method_status, &_controller, _received_us);
     if (!method_status) {
         // Judge errors belongings.
         // may not be accurate, but it does not matter too much.

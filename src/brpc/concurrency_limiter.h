@@ -24,15 +24,15 @@
 
 namespace brpc {
 
-class ConcurrencyLimiter : public Destroyable {
+class ConcurrencyLimiter {
 public:
-    ConcurrencyLimiter() : _max_concurrency(0) {}
+    virtual ~ConcurrencyLimiter() {}
 
     // This method should be called each time a request comes in. It returns
     // false when the concurrency reaches the upper limit, otherwise it 
     // returns true. Normally, when OnRequested returns false, you should 
     // return an ELIMIT error directly.
-    virtual bool OnRequested() = 0;
+    virtual bool OnRequested(int current_concurrency) = 0;
 
     // Each request should call this method before responding.
     // `error_code' : Error code obtained from the controller, 0 means success.
@@ -41,29 +41,13 @@ public:
     // still need to call OnResponded.
     virtual void OnResponded(int error_code, int64_t latency_us) = 0;
 
-    // Returns the current maximum concurrency. Note that the maximum 
-    // concurrency of some ConcurrencyLimiters(eg: `auto', `gradient') 
-    // is dynamically changing.
-    int max_concurrency() { return _max_concurrency; };
+    // Returns the latest max_concurrency.
+    // The return value is only for logging.
+    virtual int MaxConcurrency() = 0;
 
-    // Expose internal vars. NOT thread-safe.
-    // Return 0 on success, -1 otherwise.
-    virtual int Expose(const butil::StringPiece& prefix) = 0;
-
-    // Create/destroy an instance.
-    // Caller is responsible for Destroy() the instance after usage.
-    virtual ConcurrencyLimiter* New() const = 0;
-
-    virtual ~ConcurrencyLimiter() {}
-
-    // Create ConcurrencyLimiter* and coredump if it fails.
-    // Caller is responsible for Destroy() the instance after usage.
-    static ConcurrencyLimiter* CreateConcurrencyLimiterOrDie(
-        const AdaptiveMaxConcurrency& max_concurrency);
-
-protected:
-    // Assume int32_t is atomic in x86
-    int32_t _max_concurrency;
+    // Create an instance from the amc
+    // Caller is responsible for delete the instance after usage.
+    virtual ConcurrencyLimiter* New(const AdaptiveMaxConcurrency& amc) const = 0;
 };
 
 inline Extension<const ConcurrencyLimiter>* ConcurrencyLimiterExtension() {

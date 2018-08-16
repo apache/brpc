@@ -36,7 +36,6 @@
 #include "brpc/builtin/tabbed.h"
 #include "brpc/details/profiler_linker.h"
 #include "brpc/health_reporter.h"
-#include "brpc/concurrency_limiter.h"
 #include "brpc/adaptive_max_concurrency.h"
 
 extern "C" {
@@ -101,14 +100,14 @@ struct ServerOptions {
     // Default: #cpu-cores
     int num_threads;
 
-    // Limit number of requests processed in parallel. To limit the max
-    // concurrency of a method, use server.MaxConcurrencyOf("xxx") instead.
+    // Server-level max concurrency.
+    // "concurrency" = "number of requests processed in parallel"
     //
     // In a traditional server, number of pthread workers also limits
     // concurrency. However brpc runs requests in bthreads which are
     // mapped to pthread workers, when a bthread context switches, it gives
     // the pthread worker to another bthread, yielding a higher concurrency
-    // than number of pthreads. In some situation, higher concurrency may
+    // than number of pthreads. In some situations, higher concurrency may
     // consume more resources, to protect the server from running out of
     // resources, you may set this option.
     // If the server reaches the limitation, it responds client with ELIMIT
@@ -116,12 +115,11 @@ struct ServerOptions {
     // shall try another server.
     // NOTE: accesses to builtin services are not limited by this option.
     // Default: 0 (unlimited)
-    // NOTE: Once you have chosen the automatic concurrency limit strategy, brpc
-    // ONLY limits concurrency at the method level, And each method will use
-    // the strategy you set in ServerOptions to limit the maximum concurrency, 
-    // even if you have set a maximum concurrency through `MaxConcurrencyOf`.
- 
-    AdaptiveMaxConcurrency max_concurrency;
+    int max_concurrency;
+
+    // Default value of method-level max concurrencies,
+    // Overridable by Server.MaxConcurrencyOf().
+    AdaptiveMaxConcurrency method_max_concurrency;
 
     // -------------------------------------------------------
     // Differences between session-local and thread-local data
@@ -484,12 +482,8 @@ public:
     // current_tab_name is the tab highlighted.
     void PrintTabsBody(std::ostream& os, const char* current_tab_name) const;
 
-    
     // This method is already deprecated.You should NOT call it anymore.
     int ResetMaxConcurrency(int max_concurrency);
-
-    // Server's current max concurrency
-    int max_concurrency() const;
 
     // Get/set max_concurrency associated with a method.
     // Example:
@@ -659,11 +653,10 @@ friend class Controller;
     
     bthread_keytable_pool_t* _keytable_pool;
 
-    // FIXME: Temporarily for `ServerPrivateAccessor' to change this bvar
-    //        Replace `ServerPrivateAccessor' with other private-access
-    //        mechanism
-    mutable bvar::Adder<int64_t> _nerror;
-    ConcurrencyLimiter* _cl;
+    // mutable is required for `ServerPrivateAccessor' to change this bvar
+    mutable bvar::Adder<int64_t> _nerror_bvar;
+    mutable int32_t BAIDU_CACHELINE_ALIGNMENT _concurrency;
+
 };
 
 // Get the data attached to current searching thread. The data is created by

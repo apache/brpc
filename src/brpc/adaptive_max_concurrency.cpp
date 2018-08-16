@@ -16,14 +16,31 @@
 
 #include <cstring>
 #include <strings.h>
+#include "butil/string_printf.h"
 #include "butil/logging.h"
 #include "butil/strings/string_number_conversions.h"
 #include "brpc/adaptive_max_concurrency.h"
 
 namespace brpc {
 
+AdaptiveMaxConcurrency::AdaptiveMaxConcurrency()
+    : _value(UNLIMITED())
+    , _max_concurrency(0) {
+}
+
+AdaptiveMaxConcurrency::AdaptiveMaxConcurrency(int max_concurrency)
+    : _max_concurrency(0) {
+    if (max_concurrency <= 0) {
+        _value = UNLIMITED();
+        _max_concurrency = 0;
+    } else {
+        _value = butil::string_printf("%d", max_concurrency);
+        _max_concurrency = max_concurrency;
+    }
+}
+
 inline bool CompareStringPieceWithoutCase(
-        const butil::StringPiece& s1, const char* s2) {
+    const butil::StringPiece& s1, const char* s2) {
     DCHECK(s2 != NULL);
     if (std::strlen(s2) != s1.size()) {
         return false;
@@ -31,41 +48,61 @@ inline bool CompareStringPieceWithoutCase(
     return ::strncasecmp(s1.data(), s2, s1.size()) == 0;
 }
 
-AdaptiveMaxConcurrency::AdaptiveMaxConcurrency(const butil::StringPiece& name) {
-    if (butil::StringToInt(name, &_max_concurrency) && _max_concurrency >= 0) {
-        _name = "constant";
-    } else if (_max_concurrency < 0) {
-        LOG(FATAL) << "Invalid max_concurrency: " << name;
+AdaptiveMaxConcurrency::AdaptiveMaxConcurrency(const butil::StringPiece& value)
+    : _max_concurrency(0) {
+    int max_concurrency = 0;
+    if (butil::StringToInt(value, &max_concurrency)) {
+        operator=(max_concurrency);
     } else {
-        _name.assign(name.begin(), name.end());
-        _max_concurrency = 0;
+        value.CopyToString(&_value);
+        _max_concurrency = -1;
     }
 }
 
-void AdaptiveMaxConcurrency::operator=(const butil::StringPiece& name) {
+void AdaptiveMaxConcurrency::operator=(const butil::StringPiece& value) {
     int max_concurrency = 0;
-    if (butil::StringToInt(name, &max_concurrency) && max_concurrency >= 0) {
-        _name = "constant";
-        _max_concurrency = max_concurrency; 
-    } else if (max_concurrency < 0) {
-        LOG(ERROR) << "Fail to set max_concurrency, invalid value:" << name;
-    } else if (CompareStringPieceWithoutCase(name, "constant")) {
-        LOG(WARNING) 
-            << "If you want to use a constant maximum concurrency, assign "
-            << "an integer value directly to ServerOptions.max_concurrency "
-            << "like: `server_options.max_concurrency = 1000`";
-        _name.assign(name.begin(), name.end());
+    if (butil::StringToInt(value, &max_concurrency)) {
+        return operator=(max_concurrency);
+    } else {
+        value.CopyToString(&_value);
+        _max_concurrency = -1;
+    }
+}
+
+void AdaptiveMaxConcurrency::operator=(int max_concurrency) {
+    if (max_concurrency <= 0) {
+        _value = UNLIMITED();
         _max_concurrency = 0;
     } else {
-        _name.assign(name.begin(), name.end());
-        _max_concurrency = 0;
+        _value = butil::string_printf("%d", max_concurrency);
+        _max_concurrency = max_concurrency;
     }
+}
+
+const std::string& AdaptiveMaxConcurrency::type() const {
+    if (_max_concurrency > 0) {
+        return CONSTANT();
+    } else if (_max_concurrency == 0) {
+        return UNLIMITED();
+    } else {
+        return _value;
+    }
+}
+
+const std::string& AdaptiveMaxConcurrency::UNLIMITED() {
+    static std::string* s = new std::string("unlimited");
+    return *s;
+}
+
+const std::string& AdaptiveMaxConcurrency::CONSTANT() {
+    static std::string* s = new std::string("constant");
+    return *s;
 }
 
 bool operator==(const AdaptiveMaxConcurrency& adaptive_concurrency,
                 const butil::StringPiece& concurrency) {
     return CompareStringPieceWithoutCase(concurrency, 
-                                         adaptive_concurrency.name().c_str());
+                                         adaptive_concurrency.value().c_str());
 }
 
 }  // namespace brpc

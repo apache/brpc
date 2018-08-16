@@ -27,13 +27,14 @@ namespace policy {
 class AutoConcurrencyLimiter : public ConcurrencyLimiter {
 public:
     AutoConcurrencyLimiter();
-    ~AutoConcurrencyLimiter() {}
-    bool OnRequested() override;
+
+    bool OnRequested(int current_concurrency) override;
+    
     void OnResponded(int error_code, int64_t latency_us) override;
 
-    int Expose(const butil::StringPiece& prefix) override;
-    AutoConcurrencyLimiter* New() const override;
-    void Destroy() override;
+    int MaxConcurrency() override;
+
+    AutoConcurrencyLimiter* New(const AdaptiveMaxConcurrency&) const override;
 
 private:
     struct SampleWindow {
@@ -50,31 +51,31 @@ private:
         int64_t total_succ_us;
     };
 
-    int32_t AddSample(int error_code, int64_t latency_us, int64_t sampling_time_us);
+    void AddSample(int error_code, int64_t latency_us, int64_t sampling_time_us);
     int64_t NextResetTime(int64_t sampling_time_us);
 
     // The following methods are not thread safe and can only be called 
     // in AppSample()
-    int32_t UpdateMaxConcurrency(int64_t sampling_time_us);
+    void UpdateMaxConcurrency(int64_t sampling_time_us);
     void ResetSampleWindow(int64_t sampling_time_us);
     void UpdateMinLatency(int64_t latency_us);
     void UpdateQps(int32_t succ_count, int64_t sampling_time_us);
     double peak_qps();
-    
-    SampleWindow _sw;
+
+    // modified per sample-window or more
+    int _max_concurrency;
     int64_t _remeasure_start_us;
     int64_t _reset_latency_us;
-    int64_t _min_latency_us;
+    int64_t _min_latency_us; 
     double _ema_peak_qps;
-
-    const double _ema_factor;
-    const double _overload_threshold;
-
-    butil::Mutex _sw_mutex;
-    bvar::PassiveStatus<int32_t> _max_concurrency_bvar;
+  
+    // modified per sample.
     butil::atomic<int64_t> BAIDU_CACHELINE_ALIGNMENT _last_sampling_time_us;
-    butil::atomic<int32_t> _total_succ_req;
-    butil::atomic<int32_t> _current_concurrency;
+    butil::Mutex _sw_mutex;
+    SampleWindow _sw;
+
+    // modified per request.
+    butil::atomic<int32_t> BAIDU_CACHELINE_ALIGNMENT _total_succ_req;
 };
 
 }  // namespace policy

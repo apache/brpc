@@ -550,7 +550,7 @@ static void SendHttpResponse(Controller *cntl,
                              const google::protobuf::Message *req,
                              const google::protobuf::Message *res,
                              const Server* server,
-                             MethodStatus* method_status_raw,
+                             MethodStatus* method_status,
                              int64_t received_us) {
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
@@ -558,7 +558,7 @@ static void SendHttpResponse(Controller *cntl,
         span->set_start_send_us(butil::cpuwide_time_us());
     }
     std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
-    ScopedMethodStatus method_status(method_status_raw,cntl, received_us);
+    ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
     Socket* socket = accessor.get_sending_socket();
@@ -1166,10 +1166,10 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     non_service_error.release();
     MethodStatus* method_status = sp->status;
     if (method_status) {
-        if (!method_status->OnRequested()) {
-            cntl->SetFailed(ELIMIT, "Reached %s's max_concurrency=%d",
-                            sp->method->full_name().c_str(),
-                            method_status->max_concurrency());
+        int rejected_cc = 0;
+        if (!method_status->OnRequested(&rejected_cc)) {
+            cntl->SetFailed(ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
+                            sp->method->full_name().c_str(), rejected_cc);
             return SendHttpResponse(cntl.release(), server, method_status, msg->received_us());
         }
     }
@@ -1187,7 +1187,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         }
         if (!server_accessor.AddConcurrency(cntl.get())) {
             cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
-                            server->max_concurrency());
+                            server->options().max_concurrency);
             return SendHttpResponse(cntl.release(), server, method_status, msg->received_us());
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {

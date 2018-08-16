@@ -34,9 +34,9 @@ public:
     ~MethodStatus();
 
     // Call this function when the method is about to be called.
-    // Returns false when the request reaches max_concurrency to the method
-    // and is suggested to be rejected.
-    bool OnRequested();
+    // Returns false when the method is overloaded. If rejected_cc is not
+    // NULL, it's set with the rejected concurrency.
+    bool OnRequested(int* rejected_cc = NULL);
 
     // Call this when the method just finished.
     // `error_code' : The error code obtained from the controller. Equal to 
@@ -53,18 +53,10 @@ public:
     // Describe internal vars, used by /status
     void Describe(std::ostream &os, const DescribeOptions&) const;
 
-    // Current maximum concurrency of method.
-    // Return 0 if the maximum concurrency is not restricted.
-    int max_concurrency() const {
-        if (NULL == _cl) {
-            return 0;
-        } else {
-            return _cl->max_concurrency();
-        }
-    }
+    // Current max_concurrency of the method.
+    int MaxConcurrency() const { return _cl ? _cl->MaxConcurrency() : 0; }
 
 private:
-friend class ScopedMethodStatus;
 friend class Server;
     DISALLOW_COPY_AND_ASSIGN(MethodStatus);
 
@@ -72,47 +64,46 @@ friend class Server;
     // before the server is started. 
     void SetConcurrencyLimiter(ConcurrencyLimiter* cl);
 
-    ConcurrencyLimiter* _cl;
-    bvar::Adder<int64_t>  _nerror;
+    std::unique_ptr<ConcurrencyLimiter> _cl;
+    butil::atomic<int> _nconcurrency;
+    bvar::Adder<int64_t>  _nerror_bvar;
     bvar::LatencyRecorder _latency_rec;
-    bvar::PassiveStatus<int>  _nprocessing_bvar;
-    bvar::Adder<uint32_t> _nrefused_bvar;
-    bvar::Window<bvar::Adder<uint32_t>> _nrefused_per_second;
-    butil::atomic<int> BAIDU_CACHELINE_ALIGNMENT _nprocessing;
+    bvar::PassiveStatus<int>  _nconcurrency_bvar;
+    bvar::PerSecond<bvar::Adder<int64_t>> _eps_bvar;
+    bvar::PassiveStatus<int32_t> _max_concurrency_bvar;
 };
 
-class ScopedMethodStatus {
+class ConcurrencyRemover {
 public:
-    ScopedMethodStatus(MethodStatus* status, 
-                       Controller* c, 
-                       int64_t received_us)
+    ConcurrencyRemover(MethodStatus* status, Controller* c, int64_t received_us)
         : _status(status) 
         , _c(c)
         , _received_us(received_us) {}
-    ~ScopedMethodStatus();
-    operator MethodStatus* () const { return _status; }
+    ~ConcurrencyRemover();
 private:
-    DISALLOW_COPY_AND_ASSIGN(ScopedMethodStatus);
+    DISALLOW_COPY_AND_ASSIGN(ConcurrencyRemover);
     MethodStatus* _status;
     Controller* _c;
     uint64_t _received_us;
 };
 
-inline bool MethodStatus::OnRequested() {
-    _nprocessing.fetch_add(1, butil::memory_order_relaxed);
-    if (NULL == _cl || _cl->OnRequested()) {
+inline bool MethodStatus::OnRequested(int* rejected_cc) {
+    const int cc = _nconcurrency.fetch_add(1, butil::memory_order_relaxed) + 1;
+    if (NULL == _cl || _cl->OnRequested(cc)) {
         return true;
     } 
-    _nrefused_bvar << 1;
+    if (rejected_cc) {
+        *rejected_cc = cc;
+    }
     return false;
 }
 
 inline void MethodStatus::OnResponded(int error_code, int64_t latency) {
-    _nprocessing.fetch_sub(1, butil::memory_order_relaxed);
+    _nconcurrency.fetch_sub(1, butil::memory_order_relaxed);
     if (0 == error_code) {
         _latency_rec << latency;
     } else {
-        _nerror << 1;
+        _nerror_bvar << 1;
     }
     if (NULL != _cl) {
         _cl->OnResponded(error_code, latency);

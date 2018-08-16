@@ -17,7 +17,7 @@
 - **latency_cdf**: 用[CDF](https://en.wikipedia.org/wiki/Cumulative_distribution_function)展示分位值, 只能在html下查看。
 - **max_latency**: 在html下*从右到左*分别是过去60秒，60分钟，24小时，30天的最大延时。纯文本下是10秒内([-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)控制)的最大延时。
 - **qps**: 在html下从右到左分别是过去60秒，60分钟，24小时，30天的平均qps(Queries Per Second)。纯文本下是10秒内([-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)控制)的平均qps。
-- **processing**: 正在处理的请求个数。在压力归0后若此指标仍持续不为0，server则很有可能bug，比如忘记调用done了或卡在某个处理步骤上了。
+- **processing**: (新版改名为concurrency)正在处理的请求个数。在压力归0后若此指标仍持续不为0，server则很有可能bug，比如忘记调用done了或卡在某个处理步骤上了。
 
 
 用户可通过让对应Service实现[brpc::Describable](https://github.com/brpc/brpc/blob/master/src/brpc/describable.h)自定义在/status页面上的描述.

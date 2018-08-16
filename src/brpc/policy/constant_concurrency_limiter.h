@@ -24,19 +24,18 @@ namespace policy {
 
 class ConstantConcurrencyLimiter : public ConcurrencyLimiter {
 public:
-    ConstantConcurrencyLimiter() : _current_concurrency(0) {}
-
-    ~ConstantConcurrencyLimiter() {}
-
-    bool OnRequested() override;
+    explicit ConstantConcurrencyLimiter(int max_concurrency);
+    
+    bool OnRequested(int current_concurrency) override;
+    
     void OnResponded(int error_code, int64_t latency_us) override;
 
-    int Expose(const butil::StringPiece& prefix) override;
-    ConstantConcurrencyLimiter* New() const override;
-    void Destroy() override;
+    int MaxConcurrency() override;
+
+    ConstantConcurrencyLimiter* New(const AdaptiveMaxConcurrency&) const override;
 
 private:
-    butil::atomic<int32_t> _current_concurrency;
+    butil::atomic<int> _max_concurrency;
 };
 
 }  // namespace policy
