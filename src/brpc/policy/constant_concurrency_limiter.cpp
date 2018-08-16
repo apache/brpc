@@ -19,29 +19,25 @@
 namespace brpc {
 namespace policy {
 
-bool ConstantConcurrencyLimiter::OnRequested() {
-    const int32_t current_concurrency = 
-        _current_concurrency.fetch_add(1, butil::memory_order_relaxed);
-    if (_max_concurrency != 0 && current_concurrency >= _max_concurrency) {
-        return false;
-    }
-    return true;
+ConstantConcurrencyLimiter::ConstantConcurrencyLimiter(int max_concurrency)
+    : _max_concurrency(max_concurrency) {
+}
+
+bool ConstantConcurrencyLimiter::OnRequested(int current_concurrency) {
+    return current_concurrency <= _max_concurrency;
 }
 
 void ConstantConcurrencyLimiter::OnResponded(int error_code, int64_t latency) {
-    _current_concurrency.fetch_sub(1, butil::memory_order_relaxed);
 }
 
-int ConstantConcurrencyLimiter::Expose(const butil::StringPiece& prefix) {
-    return 0;
+int ConstantConcurrencyLimiter::MaxConcurrency() {
+    return _max_concurrency.load(butil::memory_order_relaxed);
 }
 
-ConstantConcurrencyLimiter* ConstantConcurrencyLimiter::New() const {
-    return new (std::nothrow) ConstantConcurrencyLimiter;
-}
-
-void ConstantConcurrencyLimiter::Destroy() {
-    delete this;
+ConstantConcurrencyLimiter*
+ConstantConcurrencyLimiter::New(const AdaptiveMaxConcurrency& amc) const {
+    CHECK_EQ(amc.type(), AdaptiveMaxConcurrency::CONSTANT());
+    return new ConstantConcurrencyLimiter(static_cast<int>(amc));
 }
 
 }  // namespace policy
