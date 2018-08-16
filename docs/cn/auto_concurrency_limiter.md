@@ -1,22 +1,25 @@
 # 自适应限流
 
-每个服务的处理能力都是有客观上限的。当服务接收请求的速度超过服务的处理速度时，服务就会过载。
+服务的处理能力是有客观上限的。当请求速度超过服务的处理速度时，服务就会过载。
 
-如果服务持续过载，会导致越来越多的请求积压在服务端，最终所有的请求都必须等待较长时间才能得到处理，从而使整个服务处于瘫痪状态。
+如果服务持续过载，会导致越来越多的请求积压，最终所有的请求都必须等待较长时间才能被处理，从而使整个服务处于瘫痪状态。
 
-与之相对的，如果直接拒绝掉一部分请求，反而能够让服务能够"及时"处理更多的请求。自适应限流能够动态的调整服务的最大并发，在保证服务不过载的前提下，让服务尽可能多的处理请求。
+与之相对的，如果直接拒绝掉一部分请求，反而能够让服务能够"及时"处理更多的请求。对应的方法就是[设置最大并发](https://github.com/brpc/brpc/blob/master/docs/cn/server.md#%E9%99%90%E5%88%B6%E6%9C%80%E5%A4%A7%E5%B9%B6%E5%8F%91)。
+
+自适应限流能动态调整服务的最大并发，在保证服务不过载的前提下，让服务尽可能多的处理请求。
 
 ## 使用场景
-通常情况下，要做到服务不过载的同时，尽可能的不浪费服务器的处理能力，只需要在上线前进行压力测试，设置一个合适的最大并发值就可以了。但是在微服务和集群被广泛应用的现在，服务的处理能力是会动态变化的。这个时候如果使用固定的最大并发，很可能带来各种问题。
+通常情况下要让服务不过载，只需在上线前进行压力测试，并通过little's law计算出最大并发度就可以了。但在服务数量多，拓扑复杂，且处理能力会逐渐变化的局面下，使用固定的最大并发会带来巨大的测试工作量，很不方便。自适应限流就是为了解决这个问题。
 
-自适应限流就是为了解决配置的固定最大并发可能会过时的问题。但是动态的估算服务的处理能力是一件很困难的事情，目前使用自适应限流的前提有两个：
-1. 客户端开启了重试功能
-2. 服务端有多个节点。当一个节点返回过载时，客户端可以向其他的节点发起重试
+使用自适应限流前建议做到：
+1. 客户端开启了重试功能。
 
-这两点是自适应限流能够良好工作的前提。
+2. 服务端有多个节点。
+
+这样当一个节点返回过载时，客户端可以向其他的节点发起重试，从而尽量不丢失流量。
 
 ## 开启方法
-自适应限流是method级别的限流方式，如果要为某个method开启自适应限流，只需要将它的最大并发设置为"auto"即可。
+目前只有method级别支持自适应限流。如果要为某个method开启自适应限流，只需要将它的最大并发设置为"auto"即可。
 
 ```c++
 // Set auto concurrency limiter for all method
@@ -27,32 +30,45 @@ options.method_max_concurrency = "auto";
 server.MaxConcurrencyOf("example.EchoService.Echo") = "auto";
 ```
 
-## 自适应限流的实现
+## 基本原理
+
+### 名词
+**concurrency**: 同时处理的请求数，又被称为“并发度”。
+
+**max_concurrency**: 允许的最大concurrency，又被称为“最大并发度”。
+
+**noload_latency**: 处理任务的平均延时，不包括排队时间。
+
+**min_latency**: 实际测定的latency中的较小值，当预估的最大并发度没有显著高于真实的并发度时，min_latency和noload_latency接近。
+
+**peak_qps**: 极限qps。注意是处理或回复的qps而不是接收的qps。
 
 ### Little's Law
 在服务处于稳定状态时: concurrency = latency * qps。 这是自适应限流的理论基础。
 
-当服务没有超载时，随着流量的上升，latency基本稳定(我们把这个latency记为noload_latency)，qps和concurrency呈线性关系一起上升。当流量超过服务的极限qps时，则concurrency和latency会一起上升，而qps会稳定在极限qps。所以假如一个服务的peakqps和noload_latency都比较稳定，那么它的最佳max_concurrency = noload_latency * peakqps。
+当服务没有超载时，随着流量的上升，latency基本稳定(接近noload_latency)，qps和concurrency呈线性关系一起上升。
 
-自适应限流所做的工作就是找到服务在低负载时的平均延迟 noload_latency 和peakqps， 并将最大并发设置为靠近 noload_latency * peakqps的一个值。 假如服务所设置的最大并发超过noload_latency * peakqps，那么 所有的请求都需要等待一段时间才能得到服务的处理。
+当流量超过服务的极限qps时，则concurrency和latency会一起上升，而qps会稳定在极限qps。
 
-自适应限流的工作流程类似TCP的[拥塞控制算法](https://en.wikipedia.org/wiki/TCP_congestion_control#TCP_BBR)，自适应限流算法会交替的测试noload_latency 和 peak_qps： 绝大部分时候通过尽可能的调高max_concurrency来接收并处理更多的请求，同时测量peakqps。少部分时候会主动降低max_concurrency来测量server的noload_latency. 和TCP的拥塞控制算法不同的是，服务端无法主动的控制请求的流量，只能在发现自身即将超载时，拒绝掉一部分请求。
+假如一个服务的peak_qps和noload_latency都比较稳定，那么它的最佳max_concurrency = noload_latency * peak_qps。
 
-## 计算公式:
+自适应限流就是要找到服务的noload_latency和peak_qps， 并将最大并发设置为靠近 noload_latency * peak_qps的一个值。
+
+### 计算公式
 
 自适应限流会不断的对请求进行采样，当采样窗口的样本数量足够时，会根据样本的平均延迟和服务当前的qps计算出下一个采样窗口的max_concurrency:
 
 > max_concurrency = peak_qps * ((2+alpha) * min_latency - avg_latency)
 
-alpha为预期内的avg_latency抖动幅度，默认0.3。
+alpha为可接受的延时上升幅度，默认0.3。
 
 avg_latency是当前采样窗口内所有请求的平均latency。
 
-peak_qps是最近一段时间实际测量到的qps的极大值。
+peak_qps是最近一段时间测量到的qps的极大值。
 
-min_latency是对实际的noload_latency的估算值。
+min_latency是最近一段时间测量到的latency较小值的ema，是noload_latency的估算值。
 
-按照Little's Law，当服务处于低负载时，avg_latency 约等于 min_latency，此时计算出来的最大并发会比实际并发高一些，保证了当流量上涨时，服务的max_concurrency能够和qps一起上涨。而当服务过载时，服务的当前qps约等于peakqps，同时avg_latency开始超过min_latency。此时max_concurrency则会逐渐缩小，保证服务不会过载。
+当服务处于低负载时，min_latency约等于noload_latency，此时计算出来的max_concurrency会高于实际并发，但低于真实并发，给流量上涨留探索空间。而当服务过载时，服务的qps约等于peak_qps，同时avg_latency开始明显超过min_latency，此时max_concurrency则会接近或小于实际并发，并通过定期衰减避免远离真实并发，保证服务不会过载。
 
 
 ### 使用采样窗口的平均latency而非最小latency来估计最佳并发
@@ -78,8 +94,6 @@ min_latency是对实际的noload_latency的估算值。
 
 ### 减少重新测量noload_latency时的流量损失
 
-
-
 每隔一段时间，自适应限流算法都会将max_concurrency缩小25%。并持续一段时间，然后将此时的avg_latency作为服务的noload_latency，以处理noload_latency上涨了的情况。测量noload_latency时，必须让先服务处于低负载的状态，因此对max_concurrency的缩小时难以避免的。
 
 为了减少max_concurrency缩小之后所带来的流量损失，需要尽可能的缩短测量的时间。根据前面的Little's Law，假如服务处于高负载状态，所有的请求都需要排队一段时间才能得到处理。所以缩小max_concurrency的最短持续的时间就是:
@@ -102,7 +116,7 @@ min_latency是对实际的noload_latency的估算值。
 
 
 ### noload_latency 和 qps 的平滑处理
-为了减少个别窗口的抖动对限流算法的影响，同时尽量降低计算开销，在计算min_latency和peakqps时，会通过使用[EMA](https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average)来进行平滑处理：
+为了减少个别窗口的抖动对限流算法的影响，同时尽量降低计算开销，在计算min_latency和peak_qps时，会通过使用[EMA](https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average)来进行平滑处理：
 
 ```
 if avg_latency > min_latency:
@@ -110,18 +124,18 @@ if avg_latency > min_latency:
 else:
     do_nothing
     
-if current_qps > peakqps:
-    peakqps = current_qps
+if current_qps > peak_qps:
+    peak_qps = current_qps
 else: 
-    peakqps = current_qps * ema_alpha / 10 + (1 - ema_alpha / 10) * peakqps
+    peak_qps = current_qps * ema_alpha / 10 + (1 - ema_alpha / 10) * peak_qps
 
 ```
 
-将peakqps的ema参数置为min_latency的ema参数的十分之一的原因是: peakqps 下降了通常并不意味着极限qps也下降了。而min_latency下降了，通常意味着noload_latency确实下降了。
+将peak_qps的ema参数置为min_latency的ema参数的十分之一的原因是: peak_qps 下降了通常并不意味着极限qps也下降了。而min_latency下降了，通常意味着noload_latency确实下降了。
 
 
 ### 提高qps增长的速度
-当服务启动时，由于服务本身需要进行一系列的初始化，tcp本身也有慢启动等一系列原因。服务在刚启动时的qps一定会很低。这就导致了服务启动时的max_concurrency也很低。而按照上面的计算公式，当max_concurrency很低的时候，预留给qps增长的冗余concurrency也很低(即：alpha * peakqps * min_latency)。从而会影响当流量增加时，服务max_concurrency的增加速度。
+当服务启动时，由于服务本身需要进行一系列的初始化，tcp本身也有慢启动等一系列原因。服务在刚启动时的qps一定会很低。这就导致了服务启动时的max_concurrency也很低。而按照上面的计算公式，当max_concurrency很低的时候，预留给qps增长的冗余concurrency也很低(即：alpha * peak_qps * min_latency)。从而会影响当流量增加时，服务max_concurrency的增加速度。
 
 假如从启动到打满qps的时间过长，这期间会损失大量流量。在这里我们采取的措施有两个，
 
