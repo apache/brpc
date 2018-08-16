@@ -27,37 +27,45 @@ namespace brpc {
 
 class AdaptiveMaxConcurrency{
 public:
-    AdaptiveMaxConcurrency() 
-        : _name("constant") 
-        , _max_concurrency(0) {}
-
-    AdaptiveMaxConcurrency(int max_concurrency) 
-        : _name("constant")
-        , _max_concurrency(max_concurrency) {}
+    AdaptiveMaxConcurrency();
+    AdaptiveMaxConcurrency(int max_concurrency);
+    AdaptiveMaxConcurrency(const butil::StringPiece& value);
     
     // Non-trivial destructor to prevent AdaptiveMaxConcurrency from being 
     // passed to variadic arguments without explicit type conversion.
     // eg: 
     // printf("%d", options.max_concurrency)                  // compile error
-    // printf("%d", static_cast<int>(options.max_concurrency) // ok
+    // printf("%s", options.max_concurrency.value().c_str()) // ok
     ~AdaptiveMaxConcurrency() {}
 
-    AdaptiveMaxConcurrency(const butil::StringPiece& name);
+    void operator=(int max_concurrency);
+    void operator=(const butil::StringPiece& value);
 
-    void operator=(int max_concurrency) {
-        _name = "constant";
-        _max_concurrency = max_concurrency;
-    }
-    void operator=(const butil::StringPiece& name);
-
+    // 0  for type="unlimited"
+    // >0 for type="constant"
+    // <0 for type="user-defined"
     operator int() const { return _max_concurrency; }
-    const std::string& name() const { return _name; } 
+
+    // "unlimited" for type="unlimited"
+    // "10" "20" "30" for type="constant"
+    // "user-defined" for type="user-defined"
+    const std::string& value() const { return _value; }
+
+    // "unlimited", "constant" or "user-defined"
+    const std::string& type() const;
+
+    // Get strings filled with "unlimited" and "constant"
+    static const std::string& UNLIMITED();
+    static const std::string& CONSTANT();
 
 private:
-    std::string _name;
+    std::string _value;
     int _max_concurrency;
 };
 
+inline std::ostream& operator<<(std::ostream& os, const AdaptiveMaxConcurrency& amc) {
+    return os << amc.value();
+}
 
 bool operator==(const AdaptiveMaxConcurrency& adaptive_concurrency,
                        const butil::StringPiece& concurrency);
