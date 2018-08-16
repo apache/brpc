@@ -107,7 +107,10 @@ const char* const DUMMY_SERVER_PORT_FILE = "dummy_server.port";
 struct GlobalExtensions {
     GlobalExtensions()
         : ch_mh_lb(MurmurHash32)
-        , ch_md5_lb(MD5Hash32){}
+        , ch_md5_lb(MD5Hash32)
+        , constant_cl(0) {
+    }
+    
 #ifdef BAIDU_INTERNAL
     BaiduNamingService bns;
 #endif
@@ -559,8 +562,8 @@ static void GlobalInitializeOrDieImpl() {
 
     // Concurrency Limiters
     ConcurrencyLimiterExtension()->RegisterOrDie("auto", &g_ext->auto_cl);
-    ConcurrencyLimiterExtension()->RegisterOrDie("constant", &g_ext->constant_cl);    
-
+    ConcurrencyLimiterExtension()->RegisterOrDie("constant", &g_ext->constant_cl);
+    
     if (FLAGS_usercode_in_pthread) {
         // Optional. If channel/server are initialized before main(), this
         // flag may be false at here even if it will be set to true after

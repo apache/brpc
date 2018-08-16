@@ -138,7 +138,7 @@ void SendRpcResponse(int64_t correlation_id,
                      const google::protobuf::Message* req,
                      const google::protobuf::Message* res,
                      const Server* server,
-                     MethodStatus* method_status_raw,
+                     MethodStatus* method_status,
                      int64_t received_us) {
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
@@ -147,7 +147,7 @@ void SendRpcResponse(int64_t correlation_id,
     }
     Socket* sock = accessor.get_sending_socket();
     std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
-    ScopedMethodStatus method_status(method_status_raw, cntl, received_us);
+    ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
     
@@ -392,7 +392,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         if (!server_accessor.AddConcurrency(cntl.get())) {
             cntl->SetFailed(
                 ELIMIT, "Reached server's max_concurrency=%d",
-                server->max_concurrency());
+                server->options().max_concurrency);
             break;
         }
 
@@ -435,10 +435,10 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         non_service_error.release();
         method_status = mp->status;
         if (method_status) {
-            if (!method_status->OnRequested()) {
-                cntl->SetFailed(ELIMIT, "Reached %s's max_concurrency=%d",
-                                mp->method->full_name().c_str(),
-                                method_status->max_concurrency());
+            int rejected_cc = 0;
+            if (!method_status->OnRequested(&rejected_cc)) {
+                cntl->SetFailed(ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
+                                mp->method->full_name().c_str(), rejected_cc);
                 break;
             }
         }

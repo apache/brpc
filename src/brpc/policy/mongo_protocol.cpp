@@ -60,7 +60,7 @@ SendMongoResponse::~SendMongoResponse() {
 
 void SendMongoResponse::Run() {
     std::unique_ptr<SendMongoResponse> delete_self(this);
-    ScopedMethodStatus method_status(status, &cntl, received_us);
+    ConcurrencyRemover concurrency_remover(status, &cntl, received_us);
     Socket* socket = ControllerPrivateAccessor(&cntl).get_sending_socket();
 
     if (cntl.IsCloseConnection()) {
@@ -222,7 +222,7 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
         if (!ServerPrivateAccessor(server).AddConcurrency(&(mongo_done->cntl))) {
             mongo_done->cntl.SetFailed(
                 ELIMIT, "Reached server's max_concurrency=%d",
-                server->max_concurrency());
+                server->options().max_concurrency);
             break;
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {
@@ -241,11 +241,11 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
         MethodStatus* method_status = mp->status;
         mongo_done->status = method_status;
         if (method_status) {
-            if (!method_status->OnRequested()) {
+            int rejected_cc = 0;
+            if (!method_status->OnRequested(&rejected_cc)) {
                 mongo_done->cntl.SetFailed(
-                    ELIMIT, "Reached %s's max_concurrency=%d",
-                    mp->method->full_name().c_str(),
-                    method_status->max_concurrency());
+                    ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
+                    mp->method->full_name().c_str(), rejected_cc);
                 break;
             }
         }

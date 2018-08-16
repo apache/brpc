@@ -71,8 +71,8 @@ void NsheadClosure::Run() {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
     Socket* sock = accessor.get_sending_socket();
-    ScopedMethodStatus method_status(_server->options().nshead_service->_status,
-                                     &_controller, _received_us);
+    MethodStatus* method_status = _server->options().nshead_service->_status;
+    ConcurrencyRemover concurrency_remover(method_status, &_controller, _received_us);
     if (!method_status) {
         // Judge errors belongings.
         // may not be accurate, but it does not matter too much.
@@ -294,7 +294,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
         if (!server_accessor.AddConcurrency(cntl)) {
             cntl->SetFailed(
                 ELIMIT, "Reached server's max_concurrency=%d",
-                server->max_concurrency());
+                server->options().max_concurrency);
             break;
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {
