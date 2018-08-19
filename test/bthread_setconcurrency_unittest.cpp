@@ -3,6 +3,7 @@
 // Date: Sun Jul 13 15:04:18 CST 2014
 
 #include <gtest/gtest.h>
+#include <gflags/gflags.h>
 #include "butil/atomicops.h"
 #include "butil/time.h"
 #include "butil/macros.h"
@@ -11,6 +12,11 @@
 #include <bthread/butex.h>
 #include "butil/logging.h"
 #include "bthread/bthread.h"
+#include "bthread/task_control.h"
+
+namespace bthread {
+    extern TaskControl* g_task_control;
+}
 
 namespace {
 void* dummy(void*) {
@@ -105,4 +111,71 @@ TEST(BthreadTest, setconcurrency_with_running_bthread) {
     //ASSERT_EQ(N, npthreads);
     LOG(INFO) << "Touched pthreads=" << npthreads;
 }
+
+void* sleep_proc(void*) {
+    usleep(100000);
+    return NULL;
+}
+
+void* add_concurrency_proc(void*) {
+    bthread_t tid;
+    bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, sleep_proc, NULL);
+    bthread_join(tid, NULL);
+    return NULL;
+}
+
+bool set_min_concurrency(int num) {
+    std::stringstream ss;
+    ss << num;
+    std::string ret = GFLAGS_NS::SetCommandLineOption("bthread_min_concurrency", ss.str().c_str());
+    return !ret.empty();
+}
+
+int get_min_concurrency() {
+    std::string ret;
+    GFLAGS_NS::GetCommandLineOption("bthread_min_concurrency", &ret);
+    return atoi(ret.c_str());
+}
+
+TEST(BthreadTest, min_concurrency) {
+    ASSERT_EQ(1, set_min_concurrency(-1)); // set min success
+    ASSERT_EQ(1, set_min_concurrency(0)); // set min success
+    ASSERT_EQ(0, get_min_concurrency());
+    int conn = bthread_getconcurrency();
+    int add_conn = 100;
+
+    ASSERT_EQ(0, set_min_concurrency(conn + 1)); // set min failed
+    ASSERT_EQ(0, get_min_concurrency());
+
+    ASSERT_EQ(1, set_min_concurrency(conn - 1)); // set min success
+    ASSERT_EQ(conn - 1, get_min_concurrency());
+
+    ASSERT_EQ(EINVAL, bthread_setconcurrency(conn - 2)); // set max failed
+    ASSERT_EQ(0, bthread_setconcurrency(conn + add_conn + 1)); // set max success
+    ASSERT_EQ(0, bthread_setconcurrency(conn + add_conn)); // set max success
+    ASSERT_EQ(conn + add_conn, bthread_getconcurrency());
+    ASSERT_EQ(conn, bthread::g_task_control->concurrency());
+
+    ASSERT_EQ(1, set_min_concurrency(conn + 1)); // set min success
+    ASSERT_EQ(conn + 1, get_min_concurrency());
+    ASSERT_EQ(conn + 1, bthread::g_task_control->concurrency());
+
+    std::vector<bthread_t> tids;
+    for (int i = 0; i < conn; ++i) {
+        bthread_t tid;
+        bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, sleep_proc, NULL);
+        tids.push_back(tid);
+    }
+    for (int i = 0; i < add_conn; ++i) {
+        bthread_t tid;
+        bthread_start_background(&tid, &BTHREAD_ATTR_SMALL, add_concurrency_proc, NULL);
+        tids.push_back(tid);
+    }
+    for (size_t i = 0; i < tids.size(); ++i) {
+        bthread_join(tids[i], NULL);
+    }
+    ASSERT_EQ(conn + add_conn, bthread_getconcurrency());
+    ASSERT_EQ(conn + add_conn, bthread::g_task_control->concurrency());
+}
+
 } // namespace

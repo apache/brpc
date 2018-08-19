@@ -313,7 +313,7 @@ TEST_F(VariableTest, latency_recorder) {
     ASSERT_EQ(11UL, names.size()) << vec2string(names);
     ASSERT_EQ("foo_bar_count", names[0]);
     ASSERT_EQ("foo_bar_latency", names[1]);
-    ASSERT_EQ("foo_bar_latency_50", names[2]);
+    ASSERT_EQ("foo_bar_latency_80", names[2]);
     ASSERT_EQ("foo_bar_latency_90", names[3]);
     ASSERT_EQ("foo_bar_latency_99", names[4]);
     ASSERT_EQ("foo_bar_latency_999", names[5]);
@@ -329,7 +329,7 @@ TEST_F(VariableTest, latency_recorder) {
     ASSERT_EQ(11UL, names.size());
     ASSERT_EQ("apple_pie_count", names[0]);
     ASSERT_EQ("apple_pie_latency", names[1]);
-    ASSERT_EQ("apple_pie_latency_50", names[2]);
+    ASSERT_EQ("apple_pie_latency_80", names[2]);
     ASSERT_EQ("apple_pie_latency_90", names[3]);
     ASSERT_EQ("apple_pie_latency_99", names[4]);
     ASSERT_EQ("apple_pie_latency_999", names[5]);
@@ -345,7 +345,7 @@ TEST_F(VariableTest, latency_recorder) {
     ASSERT_EQ(11UL, names.size());
     ASSERT_EQ("ba_na_na_count", names[0]);
     ASSERT_EQ("ba_na_na_latency", names[1]);
-    ASSERT_EQ("ba_na_na_latency_50", names[2]);
+    ASSERT_EQ("ba_na_na_latency_80", names[2]);
     ASSERT_EQ("ba_na_na_latency_90", names[3]);
     ASSERT_EQ("ba_na_na_latency_99", names[4]);
     ASSERT_EQ("ba_na_na_latency_999", names[5]);

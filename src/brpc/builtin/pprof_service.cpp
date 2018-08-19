@@ -23,6 +23,8 @@
 #include "butil/file_util.h"                 // butil::FilePath
 #include "butil/files/scoped_file.h"         // ScopedFILE
 #include "butil/time.h"
+#include "butil/popen.h"                    // butil::read_command_output
+#include "butil/process_util.h"             // butil::ReadCommandLine
 #include "brpc/log.h"
 #include "brpc/controller.h"                // Controller
 #include "brpc/closure_guard.h"             // ClosureGuard
@@ -33,7 +35,9 @@
 #include "butil/fd_guard.h"
 
 extern "C" {
+#if defined(OS_LINUX)
 extern char *program_invocation_name;
+#endif
 int __attribute__((weak)) ProfilerStart(const char* fname);
 void __attribute__((weak)) ProfilerStop();
 }
@@ -289,16 +293,15 @@ static int ExtractSymbolsFromBinary(
     tm.start();
     std::string cmd = "nm -C -p ";
     cmd.append(lib_info.path);
-    FILE* pipe = popen(cmd.c_str(), "r");
-    if (pipe == NULL) {
-        LOG(FATAL) << "Fail to popen `" << cmd << "'";
+    std::stringstream ss;
+    const int rc = butil::read_command_output(ss, cmd.c_str());
+    if (rc < 0) {
+        LOG(ERROR) << "Fail to popen `" << cmd << "'";
         return -1;
     }
-    char* line = NULL;
-    size_t line_len = 0;
-    ssize_t nr = 0;
-    while ((nr = getline(&line, &line_len, pipe)) != -1) {
-        butil::StringSplitter sp(line, ' ');
+    std::string line;
+    while (std::getline(ss, line)) {
+        butil::StringSplitter sp(line.c_str(), ' ');
         if (sp == NULL) {
             continue;
         }
@@ -381,8 +384,6 @@ static int ExtractSymbolsFromBinary(
     if (addr_map.find(lib_info.end_addr) == addr_map.end()) {
         addr_map[lib_info.end_addr] = std::string();
     }
-    pclose(pipe);
-    free(line);
     tm.stop();
     RPC_VLOG << "Loaded " << lib_info.path << " in " << tm.m_elapsed() << "ms";
     return 0;
@@ -455,7 +456,11 @@ static void LoadSymbols() {
     info.start_addr = 0;
     info.end_addr = std::numeric_limits<uintptr_t>::max();
     info.offset = 0;
+#if defined(OS_LINUX)
     info.path = program_invocation_name;
+#elif defined(OS_MACOSX)
+    info.path = getprogname();
+#endif
     ExtractSymbolsFromBinary(symbol_map, info);
 
     butil::Timer tm2;
@@ -553,9 +558,9 @@ void PProfService::cmdline(::google::protobuf::RpcController* controller_base,
     Controller* cntl = static_cast<Controller*>(controller_base);
     cntl->http_response().set_content_type("text/plain" /*FIXME*/);
     char buf[1024];  // should be enough?
-    const ssize_t nr = ReadCommandLine(buf, sizeof(buf), true);
+    const ssize_t nr = butil::ReadCommandLine(buf, sizeof(buf), true);
     if (nr < 0) {
-        cntl->SetFailed(ENOENT, "Fail to read /proc/self/cmdline");
+        cntl->SetFailed(ENOENT, "Fail to read cmdline");
         return;
     }
     cntl->response_attachment().append(buf, nr);

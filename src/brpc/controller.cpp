@@ -21,6 +21,7 @@
 #include <google/protobuf/descriptor.h>
 #include <gflags/gflags.h>
 #include "bthread/bthread.h"
+#include "butil/build_config.h"    // OS_MACOSX
 #include "butil/string_printf.h"
 #include "butil/logging.h"
 #include "butil/time.h"
@@ -53,7 +54,7 @@
 BAIDU_REGISTER_ERRNO(brpc::ENOSERVICE, "No such service");
 BAIDU_REGISTER_ERRNO(brpc::ENOMETHOD, "No such method");
 BAIDU_REGISTER_ERRNO(brpc::EREQUEST, "Bad request");
-BAIDU_REGISTER_ERRNO(brpc::EAUTH, "Authentication failed");
+BAIDU_REGISTER_ERRNO(brpc::ERPCAUTH, "Authentication failed");
 BAIDU_REGISTER_ERRNO(brpc::ETOOMANYFAILS, "Too many sub channels failed");
 BAIDU_REGISTER_ERRNO(brpc::EPCHANFINISH, "ParallelChannel finished");
 BAIDU_REGISTER_ERRNO(brpc::EBACKUPREQUEST, "Sending backup request");
@@ -65,6 +66,7 @@ BAIDU_REGISTER_ERRNO(brpc::ERTMPPUBLISHABLE, "RtmpRetryingClientStream is publis
 BAIDU_REGISTER_ERRNO(brpc::ERTMPCREATESTREAM, "createStream was rejected by the RTMP server");
 BAIDU_REGISTER_ERRNO(brpc::EEOF, "Got EOF");
 BAIDU_REGISTER_ERRNO(brpc::EUNUSED, "The socket was not needed");
+BAIDU_REGISTER_ERRNO(brpc::ESSL, "SSL related operation failed");
 
 BAIDU_REGISTER_ERRNO(brpc::EINTERNAL, "General internal error");
 BAIDU_REGISTER_ERRNO(brpc::ERESPONSE, "Bad response");
@@ -75,6 +77,8 @@ BAIDU_REGISTER_ERRNO(brpc::EITP, "Bad Itp response");
 
 
 namespace brpc {
+
+DEFINE_bool(graceful_quit_on_sigterm, false, "Register SIGTERM handle func to quit graceful");
 
 const IdlNames idl_single_req_single_res = { "req", "res" };
 const IdlNames idl_single_req_multi_res = { "req", "" };
@@ -248,6 +252,7 @@ void Controller::InternalReset(bool in_constructor) {
     _request_stream = INVALID_STREAM_ID;
     _response_stream = INVALID_STREAM_ID;
     _remote_stream_settings = NULL;
+    _thrift_method_name = "";
 }
 
 Controller::Call::Call(Controller::Call* rhs)
@@ -355,6 +360,30 @@ void Controller::AppendServerIdentiy() {
     }
 }
 
+// Defined in http_rpc_protocol.cpp
+namespace policy {
+int ErrorCode2StatusCode(int error_code);
+}
+
+inline void UpdateResponseHeader(Controller* cntl) {
+    DCHECK(cntl->Failed());
+    if (cntl->request_protocol() == PROTOCOL_HTTP) {
+        if (cntl->ErrorCode() != EHTTP) {
+            // We assume that status code is already set along with EHTTP.
+            cntl->http_response().set_status_code(
+                policy::ErrorCode2StatusCode(cntl->ErrorCode()));
+        }
+        if (cntl->server() != NULL) {
+            // Override HTTP body at server-side to conduct error text
+            // to the client.
+            // The client-side should preserve body which may be a piece
+            // of useable data rather than error text.
+            cntl->response_attachment().clear();
+            cntl->response_attachment().append(cntl->ErrorText());
+        }
+    }
+}
+
 void Controller::SetFailed(const std::string& reason) {
     _error_code = -1;
     if (!_error_text.empty()) {
@@ -370,6 +399,7 @@ void Controller::SetFailed(const std::string& reason) {
         _span->set_error_code(_error_code);
         _span->Annotate(reason);
     }
+    UpdateResponseHeader(this);
 }
 
 void Controller::SetFailed(int error_code, const char* reason_fmt, ...) {
@@ -398,6 +428,7 @@ void Controller::SetFailed(int error_code, const char* reason_fmt, ...) {
         _span->set_error_code(_error_code);
         _span->AnnotateCStr(_error_text.c_str() + old_size, 0);
     }
+    UpdateResponseHeader(this);
 }
 
 void Controller::CloseConnection(const char* reason_fmt, ...) {
@@ -425,6 +456,7 @@ void Controller::CloseConnection(const char* reason_fmt, ...) {
         _span->set_error_code(_error_code);
         _span->AnnotateCStr(_error_text.c_str() + old_size, 0);
     }
+    UpdateResponseHeader(this);
 }
 
 bool Controller::IsCanceled() const {
@@ -648,6 +680,9 @@ void* Controller::RunEndRPC(void* arg) {
 }
 
 inline bool does_error_affect_main_socket(int error_code) {
+    // Errors tested in this function are reported by pooled connections
+    // and very likely to indicate that the server-side is down and the socket
+    // should be health-checked.
     return error_code == ECONNREFUSED ||
         error_code == ENETUNREACH ||
         error_code == EHOSTUNREACH ||
@@ -732,13 +767,8 @@ void Controller::Call::OnComplete(Controller* c, int error_code/*note*/,
     sending_sock.reset(NULL);
     
     if (need_feedback) {
-        LoadBalancer::CallInfo info;
-        info.in.begin_time_us = begin_time_us;
-        info.in.has_request_code = c->has_request_code();
-        info.in.request_code = c->request_code();
-        info.in.excluded = NULL;
-        info.server_id = peer_id;
-        info.error_code = error_code;
+        const LoadBalancer::CallInfo info =
+            { begin_time_us, peer_id, error_code, c };
         c->_lb->Feedback(info);
     }
 }
@@ -947,7 +977,8 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _current_call.peer_id = _single_server_id;
     } else {
         LoadBalancer::SelectIn sel_in =
-            { start_realtime_us, has_request_code(), _request_code, _accessed };
+            { start_realtime_us, true,
+              has_request_code(), _request_code, _accessed };
         LoadBalancer::SelectOut sel_out(&tmp_sock);
         const int rc = _lb->SelectServer(sel_in, &sel_out);
         if (rc != 0) {
@@ -1008,8 +1039,8 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
             SetFailed(EINVAL, "Invalid connection_type=%d", (int)_connection_type);
             return HandleSendFailed();
         }
-        tmp_sock.reset();
         if (rc) {
+            tmp_sock.reset();
             SetFailed(rc, "Fail to get %s connection",
                       ConnectionTypeToString(_connection_type));
             return HandleSendFailed();
@@ -1019,6 +1050,12 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         // w/o trying other protocols. This is a must for (many) protocols that
         // can't be distinguished from other protocols w/o ambiguity.
         _current_call.sending_sock->set_preferred_index(_preferred_index);
+        // Set preferred_index of main_socket as well to make it easier to
+        // debug and observe from /connections.
+        if (tmp_sock->preferred_index() < 0) {
+            tmp_sock->set_preferred_index(_preferred_index);
+        }
+        tmp_sock.reset();
     }
     if (_tos > 0) {
         _current_call.sending_sock->set_type_of_service(_tos);
@@ -1077,6 +1114,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     wopt.id_wait = cid;
     wopt.abstime = pabstime;
     wopt.pipelined_count = _pipelined_count;
+    wopt.with_auth = has_flag(FLAGS_REQUEST_WITH_AUTH);
     wopt.ignore_eovercrowded = has_flag(FLAGS_IGNORE_EOVERCROWDED);
     int rc;
     size_t packet_size = 0;
@@ -1238,7 +1276,7 @@ void Controller::HandleStreamConnection(Socket *host_socket) {
     if (!FailedInline()) {
         if (Socket::Address(_request_stream, &ptr) != 0) {
             if (!FailedInline()) {
-                SetFailed(EREQUEST, "Request stream=%lu was closed before responded",
+                SetFailed(EREQUEST, "Request stream=%" PRIu64 " was closed before responded",
                                      _request_stream);
             }
         } else if (_remote_stream_settings == NULL) {
@@ -1339,26 +1377,58 @@ bool Controller::is_ssl() const {
     return s ? (s->ssl_state() == SSL_CONNECTED) : false;
 }
 
+x509_st* Controller::get_peer_certificate() const {
+    Socket* s = _current_call.sending_sock.get();
+    return s ? s->GetPeerCertificate() : NULL;
+}
+
+#if defined(OS_MACOSX)
+typedef sig_t SignalHandler;
+#else
+typedef sighandler_t SignalHandler;
+#endif
+
 static volatile bool s_signal_quit = false;
-static sighandler_t s_prev_handler = NULL;
+static SignalHandler s_prev_sigint_handler = NULL;
+static SignalHandler s_prev_sigterm_handler = NULL;
+
 static void quit_handler(int signo) {
-    s_signal_quit = true; 
-    if (s_prev_handler) {
-        s_prev_handler(signo);
+    s_signal_quit = true;
+    if (SIGINT == signo && s_prev_sigint_handler) {
+        s_prev_sigint_handler(signo);
+    }
+    if (SIGTERM == signo && s_prev_sigterm_handler) {
+        s_prev_sigterm_handler(signo);
     }
 }
+
 static pthread_once_t register_quit_signal_once = PTHREAD_ONCE_INIT;
+
 static void RegisterQuitSignalOrDie() {
     // Not thread-safe.
-    const sighandler_t prev = signal(SIGINT, quit_handler);
-    if (prev != SIG_DFL && 
+    SignalHandler prev = signal(SIGINT, quit_handler);
+    if (prev != SIG_DFL &&
         prev != SIG_IGN) { // shell may install SIGINT of background jobs with SIG_IGN
         if (prev == SIG_ERR) {
             LOG(ERROR) << "Fail to register SIGINT, abort";
             abort();
-        } else { 
-            s_prev_handler = prev;
+        } else {
+            s_prev_sigint_handler = prev;
             LOG(WARNING) << "SIGINT was installed with " << prev;
+        }
+    }
+
+    if (FLAGS_graceful_quit_on_sigterm) {
+        prev = signal(SIGTERM, quit_handler);
+        if (prev != SIG_DFL &&
+            prev != SIG_IGN) { // shell may install SIGTERM of background jobs with SIG_IGN
+            if (prev == SIG_ERR) {
+                LOG(ERROR) << "Fail to register SIGTERM, abort";
+                abort();
+            } else {
+                s_prev_sigterm_handler = prev;
+                LOG(WARNING) << "SIGTERM was installed with " << prev;
+            }
         }
     }
 }

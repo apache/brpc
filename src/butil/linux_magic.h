@@ -1,5 +1,5 @@
-#ifndef BASE_LINUX_MAGIC_H
-#define BASE_LINUX_MAGIC_H
+#ifndef BUTIL_LINUX_MAGIC_H
+#define BUTIL_LINUX_MAGIC_H
 
 #define ADFS_SUPER_MAGIC	0xadf5
 #define AFFS_SUPER_MAGIC	0xadff
@@ -59,4 +59,4 @@
 #define DEVPTS_SUPER_MAGIC	0x1cd1
 #define SOCKFS_MAGIC		0x534F434B
 
-#endif /* BASE_LINUX_MAGIC_H */
+#endif /* BUTIL_LINUX_MAGIC_H */

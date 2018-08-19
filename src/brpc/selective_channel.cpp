@@ -16,6 +16,7 @@
 
 #include <map>
 #include <gflags/gflags.h>
+#include "bthread/bthread.h"                         // bthread_id_xx
 #include "brpc/socket.h"                             // SocketUser
 #include "brpc/load_balancer.h"                      // LoadBalancer
 #include "brpc/details/controller_private_accessor.h"        // RPCSender
@@ -284,6 +285,7 @@ Sender::Sender(Controller* cntl,
 int Sender::IssueRPC(int64_t start_realtime_us) {
     _main_cntl->_current_call.need_feedback = false;
     LoadBalancer::SelectIn sel_in = { start_realtime_us,
+                                      true,
                                       _main_cntl->has_request_code(),
                                       _main_cntl->_request_code,
                                       _main_cntl->_accessed };

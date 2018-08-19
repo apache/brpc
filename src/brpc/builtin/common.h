@@ -103,12 +103,6 @@ const char* logo();
 // Convert ProfilingType to its description.
 const char* ProfilingType2String(ProfilingType t);
 
-// Read command line of this program. If `with_args' is true, args are
-// included and separated with spaces.
-// Returns length of the command line on sucess, -1 otherwise.
-// NOTE: `buf' does not end with zero.
-ssize_t ReadCommandLine(char* buf, size_t len, bool with_args);
-
 // Compute 128-bit checksum of the file at `file_path'.
 // Return 0 on success.
 int FileChecksum(const char* file_path, unsigned char* checksum);

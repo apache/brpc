@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon Jun 20 11:57:23 CST 2016
 
-#ifndef BAIDU_BTHREAD_LIST_OF_ABAFREE_ID_H
-#define BAIDU_BTHREAD_LIST_OF_ABAFREE_ID_H
+#ifndef BTHREAD_LIST_OF_ABAFREE_ID_H
+#define BTHREAD_LIST_OF_ABAFREE_ID_H
 
 #include <vector>
 #include <deque>
@@ -209,4 +209,4 @@ size_t ListOfABAFreeId<Id, IdTraits>::get_sizes(size_t* cnts, size_t n) {
 
 }  // namespace bthread
 
-#endif  // BAIDU_BTHREAD_LIST_OF_ABAFREE_ID_H
+#endif  // BTHREAD_LIST_OF_ABAFREE_ID_H

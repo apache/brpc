@@ -1,4 +1,4 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
+// brpc - A framework to host and access services throughout Baidu.
 // Copyright (c) 2014 Baidu, Inc.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
@@ -191,7 +191,7 @@ TEST_F(PublicPbrpcTest, process_request_failed_socket) {
     brpc::policy::MostCommonMessage* msg = MakeRequestMessage(&meta);
     _socket->SetFailed();
     ProcessMessage(brpc::policy::ProcessNsheadRequest, msg, false);
-    ASSERT_EQ(0ll, _server._nerror.get_value());
+    ASSERT_EQ(0ll, _server._nerror_bvar.get_value());
     CheckResponseCode(true, 0);
 }
 
@@ -204,7 +204,7 @@ TEST_F(PublicPbrpcTest, process_request_logoff) {
     brpc::policy::MostCommonMessage* msg = MakeRequestMessage(&meta);
     _server._status = brpc::Server::READY;
     ProcessMessage(brpc::policy::ProcessNsheadRequest, msg, false);
-    ASSERT_EQ(1ll, _server._nerror.get_value());
+    ASSERT_EQ(1ll, _server._nerror_bvar.get_value());
     CheckResponseCode(false, brpc::ELOGOFF);
 }
 
@@ -216,7 +216,7 @@ TEST_F(PublicPbrpcTest, process_request_wrong_method) {
     body->set_id(0);
     brpc::policy::MostCommonMessage* msg = MakeRequestMessage(&meta);
     ProcessMessage(brpc::policy::ProcessNsheadRequest, msg, false);
-    ASSERT_EQ(1ll, _server._nerror.get_value());
+    ASSERT_EQ(1ll, _server._nerror_bvar.get_value());
     ASSERT_FALSE(_socket->Failed());
 }
 

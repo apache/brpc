@@ -19,17 +19,17 @@
 #include <inttypes.h>
 #include <google/protobuf/descriptor.h>
 #include <gflags/gflags.h>
-#include "butil/time.h"                               // milliseconds_from_now
+#include "butil/time.h"                              // milliseconds_from_now
 #include "butil/logging.h"
 #include "bthread/unstable.h"                        // bthread_timer_add
-#include "brpc/socket_map.h"                    // SocketMapInsert
+#include "brpc/socket_map.h"                         // SocketMapInsert
 #include "brpc/compress.h"
 #include "brpc/global.h"
 #include "brpc/span.h"
 #include "brpc/details/load_balancer_with_naming.h"
 #include "brpc/controller.h"
 #include "brpc/channel.h"
-#include "brpc/details/usercode_backup_pool.h"  // TooManyUserCode
+#include "brpc/details/usercode_backup_pool.h"       // TooManyUserCode
 #include "brpc/policy/esp_authenticator.h"
 
 
@@ -62,7 +62,9 @@ Channel::Channel(ProfilerLinker)
 
 Channel::~Channel() {
     if (_server_id != (SocketId)-1) {
-        SocketMapRemove(_server_address);
+        SocketMapRemove(SocketMapKey(_server_address,
+                                     _options.ssl_options,
+                                     _options.auth));
     }
 }
 
@@ -121,6 +123,15 @@ int Channel::InitChannelOptions(const ChannelOptions* options) {
         if (_options.auth == NULL) {
             _options.auth = policy::global_esp_authenticator();
         }
+    } else if (_options.protocol == brpc::PROTOCOL_HTTP) {
+        if (_raw_server_address.compare(0, 5, "https") == 0) {
+            _options.ssl_options.enable = true;
+            if (_options.ssl_options.sni_name.empty()) {
+                int port;
+                ParseHostAndPortFromURL(_raw_server_address.c_str(),
+                                        &_options.ssl_options.sni_name, &port);
+            }
+        }
     }
 
     return 0;
@@ -152,6 +163,7 @@ int Channel::Init(const char* server_addr_and_port,
             return -1;
         }
     }
+    _raw_server_address.assign(server_addr_and_port);
     return Init(point, options);
 }
 
@@ -174,6 +186,7 @@ int Channel::Init(const char* server_addr, int port,
             return -1;
         }
     }
+    _raw_server_address.assign(server_addr);
     return Init(point, options);
 }
 
@@ -189,7 +202,9 @@ int Channel::Init(butil::EndPoint server_addr_and_port,
         return -1;
     }
     _server_address = server_addr_and_port;
-    if (SocketMapInsert(server_addr_and_port, &_server_id) != 0) {
+    if (SocketMapInsert(SocketMapKey(server_addr_and_port,
+                                     _options.ssl_options,
+                                     _options.auth), &_server_id) != 0) {
         LOG(ERROR) << "Fail to insert into SocketMap";
         return -1;
     }
@@ -251,6 +266,9 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         // in correlation_id. negative max_retry causes undefined behavior.
         cntl->set_max_retry(0);
     }
+    // HTTP needs this field to be set before any SetFailed()
+    cntl->_request_protocol = _options.protocol;
+    cntl->_preferred_index = _preferred_index;
     cntl->_retry_policy = _options.retry_policy;
     const CallId correlation_id = cntl->call_id();
     const int rc = bthread_id_lock_and_reset_range(
@@ -321,8 +339,6 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         cntl->_single_server_id = _server_id;
         cntl->_remote_side = _server_address;
     }
-    cntl->_request_protocol = _options.protocol;
-    cntl->_preferred_index = _preferred_index;
 
     // Share the lb with controller.
     cntl->_lb = _lb;
@@ -425,23 +441,9 @@ int Channel::CheckHealth() {
         return -1;
     } else {
         SocketUniquePtr tmp_sock;
-        LoadBalancer::SelectIn sel_in = { 0, false, 0, NULL };
+        LoadBalancer::SelectIn sel_in = { 0, false, false, 0, NULL };
         LoadBalancer::SelectOut sel_out(&tmp_sock);
-        const int rc = _lb->SelectServer(sel_in, &sel_out);
-        if (rc != 0) {
-            return rc;
-        }
-        if (sel_out.need_feedback) {
-            LoadBalancer::CallInfo info;
-            info.in.begin_time_us = 0;
-            info.in.has_request_code = false;
-            info.in.request_code = 0;
-            info.in.excluded = NULL;
-            info.server_id = tmp_sock->id();
-            info.error_code = ECANCELED;
-            _lb->Feedback(info);
-        }
-        return 0;
+        return _lb->SelectServer(sel_in, &sel_out);
     }
 }
 

@@ -88,8 +88,8 @@
 //  Seeking 1000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 4/88/89/13
 //  Seeking 10000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 4/177/185/14
 
-#ifndef BASE_FLAT_MAP_H
-#define BASE_FLAT_MAP_H
+#ifndef BUTIL_FLAT_MAP_H
+#define BUTIL_FLAT_MAP_H
 
 #include <stdint.h>
 #include <functional>
@@ -259,7 +259,7 @@ public:
 
 private:
 template <typename _Map, typename _Element> friend class FlatMapIterator;
-template <typename _Map, typename _Element> friend class FlatMapSparseIterator;
+template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
     // True if buckets need to be resized before holding `size' elements.
     inline bool is_too_crowded(size_t size) const
     { return size * 100 >= _nbucket * _load_factor; }
@@ -382,7 +382,7 @@ private:
 
 // Implement DefaultHasher and DefaultEqualTo
 template <typename K>
-struct DefaultHasher : public BASE_HASH_NAMESPACE::hash<K> {
+struct DefaultHasher : public BUTIL_HASH_NAMESPACE::hash<K> {
 };
 
 template <>
@@ -480,4 +480,4 @@ _T* find_lowered_cstr(FlatMap<std::string, _T, _Hash, _Equal, _Sparse>& m,
 
 #include "butil/containers/flat_map_inl.h"
 
-#endif  //BASE_FLAT_MAP_H
+#endif  //BUTIL_FLAT_MAP_H

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_GTEST_PROD_UTIL_H_
-#define BASE_GTEST_PROD_UTIL_H_
+#ifndef BUTIL_GTEST_PROD_UTIL_H_
+#define BUTIL_GTEST_PROD_UTIL_H_
 
 // [ Copied from gtest/gtest_prod.h ]
 // When you need to test the private or protected members of a class,
@@ -82,4 +82,4 @@ friend class test_case_name##_##test_name##_Test
   class test_case_name##_##DISABLED_##test_name##_Test; \
   class test_case_name##_##FLAKY_##test_name##_Test
 
-#endif  // BASE_GTEST_PROD_UTIL_H_
+#endif  // BUTIL_GTEST_PROD_UTIL_H_

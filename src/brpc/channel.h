@@ -24,6 +24,7 @@
 #include <ostream>                               // std::ostream
 #include "bthread/errno.h"                       // Redefine errno
 #include "butil/intrusive_ptr.hpp"               // butil::intrusive_ptr
+#include "brpc/ssl_option.h"                // ChannelSSLOptions
 #include "brpc/channel_base.h"              // ChannelBase
 #include "brpc/adaptive_protocol_type.h"    // AdaptiveProtocolType
 #include "brpc/adaptive_connection_type.h"  // AdaptiveConnectionType
@@ -87,6 +88,9 @@ struct ChannelOptions {
     // Print a log when above situation happens.
     // Default: true.
     bool log_succeed_without_server;
+
+    // SSL related options. Refer to `ChannelSSLOptions' for details
+    ChannelSSLOptions ssl_options;
     
     // Turn on authentication for this channel if `auth' is not NULL.
     // Note `auth' will not be deleted by channel and must remain valid when
@@ -185,6 +189,7 @@ protected:
 
     int InitChannelOptions(const ChannelOptions* options);
 
+    std::string _raw_server_address;
     butil::EndPoint _server_address;
     SocketId _server_id;
     Protocol::SerializeRequest _serialize_request;

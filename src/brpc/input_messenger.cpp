@@ -19,6 +19,7 @@
 #include "butil/logging.h"                       // CHECK
 #include "butil/time.h"                          // cpuwide_time_us
 #include "butil/fd_utility.h"                    // make_non_blocking
+#include "bthread/bthread.h"                     // bthread_start_background
 #include "bthread/unstable.h"                   // bthread_flush
 #include "bvar/bvar.h"                          // bvar::Adder
 #include "brpc/options.pb.h"               // ProtocolType
@@ -58,9 +59,9 @@ const size_t MAX_ONCE_READ = 524288;
 
 ParseResult InputMessenger::CutInputMessage(
         Socket* m, size_t* index, bool read_eof) {
-    const int preferred = m->_preferred_index;
+    const int preferred = m->preferred_index();
     const int max_index = (int)_max_index.load(butil::memory_order_acquire);
-    // Try preferred handler first. The _preferred_index is set on last
+    // Try preferred handler first. The preferred_index is set on last
     // selection or by client.
     if (preferred >= 0 && preferred <= max_index
             && _handlers[preferred].parse != NULL) {
@@ -86,7 +87,7 @@ ParseResult InputMessenger::CutInputMessage(
             // The protocol is fixed at client-side, no need to try others.
             LOG(ERROR) << "Fail to parse response from " << m->remote_side()
                        << " by " << _handlers[preferred].name 
-                       << " (client's protocol)";
+                       << " at client-side";
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
         // Clear context before trying next protocol which probably has
@@ -94,7 +95,7 @@ ParseResult InputMessenger::CutInputMessage(
         if (m->parsing_context()) {
             m->reset_parsing_context(NULL);
         }
-        m->_preferred_index = -1;
+        m->set_preferred_index(-1);
     }
     for (int i = 0; i <= max_index; ++i) {
         if (i == preferred || _handlers[i].parse == NULL) {
@@ -104,7 +105,7 @@ ParseResult InputMessenger::CutInputMessage(
         ParseResult result = _handlers[i].parse(&m->_read_buf, m, read_eof, _handlers[i].arg);
         if (result.is_ok() ||
             result.error() == PARSE_ERROR_NOT_ENOUGH_DATA) {
-            m->_preferred_index = i;
+            m->set_preferred_index(i);
             *index = i;
             return result;
         } else if (result.error() != PARSE_ERROR_TRY_OTHERS) {
@@ -173,7 +174,6 @@ void InputMessenger::OnNewMessages(Socket* m) {
     //   is batched(notice the BTHREAD_NOSIGNAL and bthread_flush).
     // - Verify will always be called in this bthread at most once and before
     //   any process.
-    
     InputMessenger* messenger = static_cast<InputMessenger*>(m->user());
     const InputMessageHandler* handlers = messenger->_handlers;
     int progress = Socket::PROGRESS_INIT;
@@ -301,9 +301,9 @@ void InputMessenger::OnNewMessages(Socket* m) {
                     if (handlers[index].verify(msg.get())) {
                         m->SetAuthentication(0);
                     } else {
-                        m->SetAuthentication(EAUTH);
+                        m->SetAuthentication(ERPCAUTH);
                         LOG(WARNING) << "Fail to authenticate " << *m;
-                        m->SetFailed(EAUTH, "Fail to authenticate %s",
+                        m->SetFailed(ERPCAUTH, "Fail to authenticate %s",
                                      m->description().c_str());
                         return;
                     }

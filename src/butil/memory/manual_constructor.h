@@ -13,8 +13,8 @@
 //
 // For example usage, check out butil/containers/small_map.h.
 
-#ifndef BASE_MEMORY_MANUAL_CONSTRUCTOR_H_
-#define BASE_MEMORY_MANUAL_CONSTRUCTOR_H_
+#ifndef BUTIL_MEMORY_MANUAL_CONSTRUCTOR_H_
+#define BUTIL_MEMORY_MANUAL_CONSTRUCTOR_H_
 
 #include <stddef.h>
 
@@ -122,4 +122,4 @@ class ManualConstructor {
 
 }  // namespace butil
 
-#endif  // BASE_MEMORY_MANUAL_CONSTRUCTOR_H_
+#endif  // BUTIL_MEMORY_MANUAL_CONSTRUCTOR_H_

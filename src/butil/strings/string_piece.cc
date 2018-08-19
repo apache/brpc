@@ -249,7 +249,7 @@ size_t find_first_not_of(const StringPiece& self,
 }
 
 // 16-bit brute-force version.
-BASE_EXPORT size_t find_first_not_of(const StringPiece16& self,
+BUTIL_EXPORT size_t find_first_not_of(const StringPiece16& self,
                                      const StringPiece16& s,
                                      size_t pos) {
   if (self.size() == 0)

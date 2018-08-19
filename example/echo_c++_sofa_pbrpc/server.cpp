@@ -17,10 +17,8 @@
 #include <gflags/gflags.h>
 #include <butil/logging.h>
 #include <brpc/server.h>
-#include <brpc/policy/hulu_pbrpc_controller.h>
 #include "echo.pb.h"
 
-DEFINE_bool(echo_attachment, true, "Echo attachment as well");
 DEFINE_int32(port, 8000, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
@@ -49,27 +47,10 @@ public:
         // The purpose of following logs is to help you to understand
         // how clients interact with servers more intuitively. You should 
         // remove these logs in performance-sensitive servers.
-        // You should also noticed that these logs are different from what
-        // we wrote in other projects: they use << instead of printf-style
-        // functions. But don't worry, these logs are fully compatible with
-        // comlog. You can mix them with comlog or ullog functions freely.
-        // The noflush prevents the log from being flushed immediately.
         LOG(INFO) << "Received request[log_id=" << cntl->log_id() 
                   << "] from " << cntl->remote_side() 
-                  << " to " << cntl->local_side() << noflush;
-        brpc::policy::HuluController* hulu_controller
-                = dynamic_cast<brpc::policy::HuluController*>(cntl);
-        if (hulu_controller) {
-            LOG(INFO) << " " << " source_addr="
-                      << hulu_controller->request_source_addr()
-                      << " user_data=\"" << hulu_controller->request_user_data()
-                      << '\"' << noflush;
-        }
-        LOG(INFO) << ": " << request->message() << noflush;
-        if (!cntl->request_attachment().empty()) {
-            LOG(INFO) << " (attached=" << cntl->request_attachment() << ")" << noflush;
-        }
-        LOG(INFO);
+                  << " to " << cntl->local_side()
+                  << ": " << request->message();
 
         // Fill response.
         response->set_message(request->message());
@@ -77,17 +58,6 @@ public:
         // You can compress the response by setting Controller, but be aware
         // that compression may be costly, evaluate before turning on.
         // cntl->set_response_compress_type(brpc::COMPRESS_TYPE_GZIP);
-
-        if (FLAGS_echo_attachment) {
-            // Set attachment which is wired to network directly instead of
-            // being serialized into protobuf messages.
-            cntl->response_attachment().append(cntl->request_attachment());
-        }
-        if (hulu_controller) {
-            hulu_controller->set_response_source_addr(
-                    hulu_controller->request_source_addr() + 1);
-            hulu_controller->set_response_user_data("server user data");
-        }
     }
 };
 }  // namespace example

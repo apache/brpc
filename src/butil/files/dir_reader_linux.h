@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_FILES_DIR_READER_LINUX_H_
-#define BASE_FILES_DIR_READER_LINUX_H_
+#ifndef BUTIL_FILES_DIR_READER_LINUX_H_
+#define BUTIL_FILES_DIR_READER_LINUX_H_
 
 #include <errno.h>
 #include <fcntl.h>
@@ -95,4 +95,4 @@ class DirReaderLinux {
 
 }  // namespace butil
 
-#endif // BASE_FILES_DIR_READER_LINUX_H_
+#endif // BUTIL_FILES_DIR_READER_LINUX_H_

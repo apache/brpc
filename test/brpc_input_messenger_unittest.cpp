@@ -1,9 +1,8 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
+// brpc - A framework to host and access services throughout Baidu.
 // Copyright (c) 2014 Baidu, Inc.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>                   //

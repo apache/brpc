@@ -63,6 +63,7 @@ static void InitSupportedCommandMap() {
     butil::bit_array_set(supported_cmd_map, MC_BINARY_PREPEND);
     butil::bit_array_set(supported_cmd_map, MC_BINARY_STAT);
     butil::bit_array_set(supported_cmd_map, MC_BINARY_TOUCH);
+    butil::bit_array_set(supported_cmd_map, MC_BINARY_SASL_AUTH);
 }
 
 inline bool IsSupportedCommand(uint8_t command) {
@@ -125,14 +126,25 @@ ParseResult ParseMemcacheMessage(butil::IOBuf* source,
         msg->meta.append(&local_header, sizeof(local_header));
         source->pop_front(sizeof(*header));
         source->cutn(&msg->meta, total_body_length);
-        if (++msg->pi.count >= pi.count) {
-            CHECK_EQ(msg->pi.count, pi.count);
-            msg = static_cast<MostCommonMessage*>(socket->release_parsing_context());
-            msg->pi = pi;
-            return MakeMessage(msg);
-        } else {
+        if (header->command == MC_BINARY_SASL_AUTH) {
+            if (header->status != 0) {
+                LOG(ERROR) << "Failed to authenticate the couchbase bucket.";
+                return MakeParseError(PARSE_ERROR_NO_RESOURCE, 
+                                      "Fail to authenticate with the couchbase bucket");
+            }
+            DestroyingPtr<MostCommonMessage> auth_msg(
+                 static_cast<MostCommonMessage*>(socket->release_parsing_context()));
             socket->GivebackPipelinedInfo(pi);
-        }
+        } else {
+            if (++msg->pi.count >= pi.count) {
+                CHECK_EQ(msg->pi.count, pi.count);
+                msg = static_cast<MostCommonMessage*>(socket->release_parsing_context());
+                msg->pi = pi;
+                return MakeMessage(msg);
+            } else {
+                socket->GivebackPipelinedInfo(pi);
+            }
+        }    
     }
 }
 
@@ -196,9 +208,16 @@ void PackMemcacheRequest(butil::IOBuf* buf,
                          SocketMessage**,
                          uint64_t /*correlation_id*/,
                          const google::protobuf::MethodDescriptor*,
-                         Controller*,
+                         Controller* cntl,
                          const butil::IOBuf& request,
-                         const Authenticator* /*auth*/) {
+                         const Authenticator* auth) {
+    if (auth) {
+        std::string auth_str;
+        if (auth->GenerateCredential(&auth_str) != 0) {
+            return cntl->SetFailed(EREQUEST, "Fail to generate credential");
+        }
+        buf->append(auth_str);
+    }
     buf->append(request);
 }
 

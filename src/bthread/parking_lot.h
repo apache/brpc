@@ -16,8 +16,8 @@
 // Author: chenzhangyi01@baidu.com, gejun@baidu.com
 // Date: 2017/07/27 23:07:06
 
-#ifndef  PUBLIC_BTHREAD_PARKING_LOT_H
-#define  PUBLIC_BTHREAD_PARKING_LOT_H
+#ifndef BTHREAD_PARKING_LOT_H
+#define BTHREAD_PARKING_LOT_H
 
 #include "butil/atomicops.h"
 #include "bthread/sys_futex.h"
@@ -63,10 +63,10 @@ public:
         futex_wake_private(&_pending_signal, 10000);
     }
 private:
-    // higher 31 bits for signalling, MLB for stopping.
+    // higher 31 bits for signalling, LSB for stopping.
     butil::atomic<int> _pending_signal;
 };
 
 }  // namespace bthread
 
-#endif  //PUBLIC_BTHREAD_PARKING_LOT_H
+#endif  // BTHREAD_PARKING_LOT_H

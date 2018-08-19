@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_MD5_H_
-#define BASE_MD5_H_
+#ifndef BUTIL_MD5_H_
+#define BUTIL_MD5_H_
 
 #include "butil/base_export.h"
 #include "butil/strings/string_piece.h"
@@ -44,32 +44,32 @@ typedef char MD5Context[88];
 
 // Computes the MD5 sum of the given data buffer with the given length.
 // The given 'digest' structure will be filled with the result data.
-BASE_EXPORT void MD5Sum(const void* data, size_t length, MD5Digest* digest);
+BUTIL_EXPORT void MD5Sum(const void* data, size_t length, MD5Digest* digest);
 
 // Initializes the given MD5 context structure for subsequent calls to
 // MD5Update().
-BASE_EXPORT void MD5Init(MD5Context* context);
+BUTIL_EXPORT void MD5Init(MD5Context* context);
 
 // For the given buffer of |data| as a StringPiece, updates the given MD5
 // context with the sum of the data. You can call this any number of times
 // during the computation, except that MD5Init() must have been called first.
-BASE_EXPORT void MD5Update(MD5Context* context, const StringPiece& data);
+BUTIL_EXPORT void MD5Update(MD5Context* context, const StringPiece& data);
 
 // Finalizes the MD5 operation and fills the buffer with the digest.
-BASE_EXPORT void MD5Final(MD5Digest* digest, MD5Context* context);
+BUTIL_EXPORT void MD5Final(MD5Digest* digest, MD5Context* context);
 
 // MD5IntermediateFinal() generates a digest without finalizing the MD5
 // operation.  Can be used to generate digests for the input seen thus far,
 // without affecting the digest generated for the entire input.
-BASE_EXPORT void MD5IntermediateFinal(MD5Digest* digest,
+BUTIL_EXPORT void MD5IntermediateFinal(MD5Digest* digest,
                                       const MD5Context* context);
 
 // Converts a digest into human-readable hexadecimal.
-BASE_EXPORT std::string MD5DigestToBase16(const MD5Digest& digest);
+BUTIL_EXPORT std::string MD5DigestToBase16(const MD5Digest& digest);
 
 // Returns the MD5 (in hexadecimal) of a string.
-BASE_EXPORT std::string MD5String(const StringPiece& str);
+BUTIL_EXPORT std::string MD5String(const StringPiece& str);
 
 }  // namespace butil
 
-#endif  // BASE_MD5_H_
+#endif  // BUTIL_MD5_H_

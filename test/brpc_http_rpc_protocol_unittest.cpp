@@ -1,4 +1,4 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
+// brpc - A framework to host and access services throughout Baidu.
 // Copyright (c) 2014 Baidu, Inc.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
@@ -255,7 +255,7 @@ TEST_F(HttpTest, process_request_failed_socket) {
     brpc::policy::HttpContext* msg = MakePostRequestMessage("/EchoService/Echo");
     _socket->SetFailed();
     ProcessMessage(brpc::policy::ProcessHttpRequest, msg, false);
-    ASSERT_EQ(0ll, _server._nerror.get_value());
+    ASSERT_EQ(0ll, _server._nerror_bvar.get_value());
     CheckResponseCode(true, 0);
 }
 
@@ -263,12 +263,12 @@ TEST_F(HttpTest, reject_get_to_pb_services_with_required_fields) {
     brpc::policy::HttpContext* msg = MakeGetRequestMessage("/EchoService/Echo");
     _server._status = brpc::Server::RUNNING;
     ProcessMessage(brpc::policy::ProcessHttpRequest, msg, false);
-    ASSERT_EQ(0ll, _server._nerror.get_value());
+    ASSERT_EQ(0ll, _server._nerror_bvar.get_value());
     const brpc::Server::MethodProperty* mp =
         _server.FindMethodPropertyByFullName("test.EchoService.Echo");
     ASSERT_TRUE(mp);
     ASSERT_TRUE(mp->status);
-    ASSERT_EQ(1ll, mp->status->_nerror.get_value());
+    ASSERT_EQ(1ll, mp->status->_nerror_bvar.get_value());
     CheckResponseCode(false, brpc::HTTP_STATUS_BAD_REQUEST);
 }
 
@@ -276,14 +276,14 @@ TEST_F(HttpTest, process_request_logoff) {
     brpc::policy::HttpContext* msg = MakePostRequestMessage("/EchoService/Echo");
     _server._status = brpc::Server::READY;
     ProcessMessage(brpc::policy::ProcessHttpRequest, msg, false);
-    ASSERT_EQ(1ll, _server._nerror.get_value());
-    CheckResponseCode(false, brpc::HTTP_STATUS_FORBIDDEN);
+    ASSERT_EQ(1ll, _server._nerror_bvar.get_value());
+    CheckResponseCode(false, brpc::HTTP_STATUS_SERVICE_UNAVAILABLE);
 }
 
 TEST_F(HttpTest, process_request_wrong_method) {
     brpc::policy::HttpContext* msg = MakePostRequestMessage("/NO_SUCH_METHOD");
     ProcessMessage(brpc::policy::ProcessHttpRequest, msg, false);
-    ASSERT_EQ(1ll, _server._nerror.get_value());
+    ASSERT_EQ(1ll, _server._nerror_bvar.get_value());
     CheckResponseCode(false, brpc::HTTP_STATUS_NOT_FOUND);
 }
 
@@ -570,8 +570,12 @@ TEST_F(HttpTest, read_failed_chunked_response) {
     cntl.http_request().uri() = "/DownloadService/DownloadFailed";
     cntl.response_will_be_read_progressively();
     channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
-    ASSERT_TRUE(cntl.response_attachment().empty());
-    ASSERT_TRUE(cntl.Failed()) << cntl.ErrorText();
+    EXPECT_TRUE(cntl.response_attachment().empty());
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_NE(cntl.ErrorText().find("HTTP/1.1 500 Internal Server Error"),
+              std::string::npos) << cntl.ErrorText();
+    ASSERT_NE(cntl.ErrorText().find("Intentionally set controller failed"),
+              std::string::npos) << cntl.ErrorText();
     ASSERT_EQ(0, svc.last_errno());
 }
 
@@ -830,7 +834,6 @@ TEST_F(HttpTest, skip_progressive_reading) {
     LOG(INFO) << "Sleep 3 seconds after destroy of Controller";
     sleep(3);
     const size_t new_written_bytes = svc.written_bytes();
-    EXPECT_FALSE(svc.ever_full());
     ASSERT_EQ(0, svc.last_errno());
     LOG(INFO) << "Server still wrote " << new_written_bytes - old_written_bytes;
     // The server side still wrote things.

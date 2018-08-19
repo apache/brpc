@@ -1,8 +1,8 @@
 // Copyright (c) 2011 Baidu, Inc.
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
-#ifndef BAIDU_BASE_STRING_PRINTF_H
-#define BAIDU_BASE_STRING_PRINTF_H
+#ifndef BUTIL_STRING_PRINTF_H
+#define BUTIL_STRING_PRINTF_H
 
 #include <string>                                // std::string
 #include <stdarg.h>                              // va_list
@@ -34,4 +34,4 @@ int string_vappendf(std::string* output, const char* format, va_list args);
 
 }  // namespace butil
 
-#endif  // BAIDU_BASE_STRING_PRINTF_H
+#endif  // BUTIL_STRING_PRINTF_H

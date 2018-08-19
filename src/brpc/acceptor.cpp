@@ -278,6 +278,13 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
         }
         in_fd.release(); // transfer ownership to socket_id
 
+        // There's a funny race condition here. After Socket::Create, messages
+        // from the socket are already handled and a RPC is possibly done
+        // before the socket is added into _socket_map below. This is found in
+        // ChannelTest.skip_parallel in test/brpc_channel_unittest.cpp (running
+        // on machines with few cores) where the _messenger.ConnectionCount()
+        // may surprisingly be 0 even if the RPC is already done.
+
         SocketUniquePtr sock;
         if (Socket::AddressFailedAsWell(socket_id, &sock) >= 0) {
             bool is_running = true;
@@ -292,10 +299,11 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
                 am->_socket_map.insert(socket_id, ConnectStatistics());
             }
             if (!is_running) {
-                LOG(WARNING) << "Acceptor already stopped, discard "
-                             << "new connection, SocketId=" << socket_id;
-                sock->SetFailed(ELOGOFF, "Acceptor already stopped, discard "
-                                "new connection, SocketId=%" PRIu64, socket_id);
+                LOG(WARNING) << "Acceptor on fd=" << acception->fd()
+                    << " has been stopped, discard newly created " << *sock;
+                sock->SetFailed(ELOGOFF, "Acceptor on fd=%d has been stopped, "
+                        "discard newly created %s", acception->fd(),
+                        sock->description().c_str());
                 return;
             }
         } // else: The socket has already been destroyed, Don't add its id

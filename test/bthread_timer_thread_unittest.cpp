@@ -68,8 +68,7 @@ public:
     {
         ASSERT_TRUE(!_run_times.empty());
         long diff = timespec_diff_us(_run_times[0], expect_run_time);
-        EXPECT_GE(diff, 0);
-        EXPECT_LE(diff, kEpsilonUs);
+        EXPECT_LE(labs(diff), 50000);
     }
     
     void expect_not_run() {
@@ -89,9 +88,7 @@ private:
     const char* _name;
     int _sleep_ms;
     std::vector<timespec> _run_times;
-    static const long kEpsilonUs;
 };
-const long TimeKeeper::kEpsilonUs = 50000;  // 50,000 us, 1/20 second.
 
 TEST(TimerThreadTest, RunTasks) {
     bthread::TimerThread timer_thread;

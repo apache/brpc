@@ -89,7 +89,7 @@ int main(int argc, char* argv[]) {
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
     // set global log option
 
-    if (FLAGS_dummy_port > 0) {
+    if (FLAGS_dummy_port >= 0) {
         brpc::StartDummyServerAt(FLAGS_dummy_port);
     }
 

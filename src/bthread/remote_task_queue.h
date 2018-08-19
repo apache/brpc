@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun, 22 Jan 2017
 
-#ifndef BAIDU_BTHREAD_REMOTE_TASK_QUEUE_H
-#define BAIDU_BTHREAD_REMOTE_TASK_QUEUE_H
+#ifndef BTHREAD_REMOTE_TASK_QUEUE_H
+#define BTHREAD_REMOTE_TASK_QUEUE_H
 
 #include "butil/containers/bounded_queue.h"
 #include "butil/macros.h"
@@ -77,4 +77,4 @@ friend class TaskGroup;
 
 }  // namespace bthread
 
-#endif  // BAIDU_BTHREAD_REMOTE_TASK_QUEUE_H
+#endif  // BTHREAD_REMOTE_TASK_QUEUE_H

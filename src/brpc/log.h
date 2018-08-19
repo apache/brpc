@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef BAIDU_RPC_LOG_H
-#define BAIDU_RPC_LOG_H
+#ifndef BRPC_LOG_H
+#define BRPC_LOG_H
 
-#include <bthread/errno.h>
 #include <inttypes.h>  // PRId64 PRIu64
+#include "bthread/errno.h"
 
 #define RPC_VLOG_LEVEL     99
 #define RPC_VLOG_IS_ON     VLOG_IS_ON(RPC_VLOG_LEVEL)
@@ -25,4 +25,4 @@
 #define RPC_VLOG_IF(cond)  VLOG_IF(RPC_VLOG_LEVEL, (cond))
 #define RPC_VPLOG_IF(cond) VPLOG_IF(RPC_VLOG_LEVEL, (cond))
 
-#endif  // BAIDU_RPC_LOG_H
+#endif  // BRPC_LOG_H

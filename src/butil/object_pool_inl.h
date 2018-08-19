@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#ifndef BASE_OBJECT_POOL_INL_H
-#define BASE_OBJECT_POOL_INL_H
+#ifndef BUTIL_OBJECT_POOL_INL_H
+#define BUTIL_OBJECT_POOL_INL_H
 
 #include <iostream>                      // std::ostream
 #include <pthread.h>                     // pthread_mutex_t
@@ -28,7 +28,7 @@
 #include "butil/thread_local.h"           // BAIDU_THREAD_LOCAL
 #include <vector>
 
-#ifdef BASE_OBJECT_POOL_NEED_FREE_ITEM_NUM
+#ifdef BUTIL_OBJECT_POOL_NEED_FREE_ITEM_NUM
 #define BAIDU_OBJECT_POOL_FREE_ITEM_NUM_ADD1                    \
     (_global_nfree.fetch_add(1, butil::memory_order_relaxed))
 #define BAIDU_OBJECT_POOL_FREE_ITEM_NUM_SUB1                    \
@@ -60,7 +60,7 @@ struct ObjectPoolInfo {
     size_t block_item_num;
     size_t free_chunk_item_num;
     size_t total_size;
-#ifdef BASE_OBJECT_POOL_NEED_FREE_ITEM_NUM
+#ifdef BUTIL_OBJECT_POOL_NEED_FREE_ITEM_NUM
     size_t free_item_num;
 #endif
 };
@@ -277,7 +277,7 @@ public:
         info.item_num = 0;
         info.free_chunk_item_num = free_chunk_nitem();
         info.block_item_num = BLOCK_NITEM;
-#ifdef BASE_OBJECT_POOL_NEED_FREE_ITEM_NUM
+#ifdef BUTIL_OBJECT_POOL_NEED_FREE_ITEM_NUM
         info.free_item_num = _global_nfree.load(butil::memory_order_relaxed);
 #endif
 
@@ -493,7 +493,7 @@ private:
     std::vector<DynamicFreeChunk*> _free_chunks;
     pthread_mutex_t _free_chunks_mutex;
 
-#ifdef BASE_OBJECT_POOL_NEED_FREE_ITEM_NUM
+#ifdef BUTIL_OBJECT_POOL_NEED_FREE_ITEM_NUM
     static butil::static_atomic<size_t> _global_nfree;
 #endif
 };
@@ -508,16 +508,16 @@ BAIDU_THREAD_LOCAL typename ObjectPool<T>::LocalPool*
 ObjectPool<T>::_local_pool = NULL;
 
 template <typename T>
-butil::static_atomic<ObjectPool<T>*> ObjectPool<T>::_singleton = BASE_STATIC_ATOMIC_INIT(NULL);
+butil::static_atomic<ObjectPool<T>*> ObjectPool<T>::_singleton = BUTIL_STATIC_ATOMIC_INIT(NULL);
 
 template <typename T>
 pthread_mutex_t ObjectPool<T>::_singleton_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 template <typename T>
-static_atomic<long> ObjectPool<T>::_nlocal = BASE_STATIC_ATOMIC_INIT(0);
+static_atomic<long> ObjectPool<T>::_nlocal = BUTIL_STATIC_ATOMIC_INIT(0);
 
 template <typename T>
-butil::static_atomic<size_t> ObjectPool<T>::_ngroup = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<size_t> ObjectPool<T>::_ngroup = BUTIL_STATIC_ATOMIC_INIT(0);
 
 template <typename T>
 pthread_mutex_t ObjectPool<T>::_block_group_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -529,9 +529,9 @@ template <typename T>
 butil::static_atomic<typename ObjectPool<T>::BlockGroup*>
 ObjectPool<T>::_block_groups[OP_MAX_BLOCK_NGROUP] = {};
 
-#ifdef BASE_OBJECT_POOL_NEED_FREE_ITEM_NUM
+#ifdef BUTIL_OBJECT_POOL_NEED_FREE_ITEM_NUM
 template <typename T>
-butil::static_atomic<size_t> ObjectPool<T>::_global_nfree = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<size_t> ObjectPool<T>::_global_nfree = BUTIL_STATIC_ATOMIC_INIT(0);
 #endif
 
 inline std::ostream& operator<<(std::ostream& os,
@@ -543,11 +543,11 @@ inline std::ostream& operator<<(std::ostream& os,
               << "\nblock_item_num: " << info.block_item_num
               << "\nfree_chunk_item_num: " << info.free_chunk_item_num
               << "\ntotal_size: " << info.total_size
-#ifdef BASE_OBJECT_POOL_NEED_FREE_ITEM_NUM
+#ifdef BUTIL_OBJECT_POOL_NEED_FREE_ITEM_NUM
               << "\nfree_num: " << info.free_item_num
 #endif
         ;
 }
 }  // namespace butil
 
-#endif  // BASE_OBJECT_POOL_INL_H
+#endif  // BUTIL_OBJECT_POOL_INL_H

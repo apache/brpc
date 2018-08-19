@@ -60,8 +60,8 @@
 // Invalidating the factory's WeakPtrs un-binds it from the thread, allowing it
 // to be passed for a different thread to use or delete it.
 
-#ifndef BASE_MEMORY_WEAK_PTR_H_
-#define BASE_MEMORY_WEAK_PTR_H_
+#ifndef BUTIL_MEMORY_WEAK_PTR_H_
+#define BUTIL_MEMORY_WEAK_PTR_H_
 
 #include "butil/basictypes.h"
 #include "butil/base_export.h"
@@ -78,11 +78,11 @@ namespace internal {
 // These classes are part of the WeakPtr implementation.
 // DO NOT USE THESE CLASSES DIRECTLY YOURSELF.
 
-class BASE_EXPORT WeakReference {
+class BUTIL_EXPORT WeakReference {
  public:
   // Although Flag is bound to a specific thread, it may be deleted from another
   // via butil::WeakPtr::~WeakPtr().
-  class BASE_EXPORT Flag : public RefCountedThreadSafe<Flag> {
+  class BUTIL_EXPORT Flag : public RefCountedThreadSafe<Flag> {
    public:
     Flag();
 
@@ -107,7 +107,7 @@ class BASE_EXPORT WeakReference {
   scoped_refptr<const Flag> flag_;
 };
 
-class BASE_EXPORT WeakReferenceOwner {
+class BUTIL_EXPORT WeakReferenceOwner {
  public:
   WeakReferenceOwner();
   ~WeakReferenceOwner();
@@ -128,7 +128,7 @@ class BASE_EXPORT WeakReferenceOwner {
 // constructor by avoiding the need for a public accessor for ref_.  A
 // WeakPtr<T> cannot access the private members of WeakPtr<U>, so this
 // base class gives us a way to access ref_ in a protected fashion.
-class BASE_EXPORT WeakPtrBase {
+class BUTIL_EXPORT WeakPtrBase {
  public:
   WeakPtrBase();
   ~WeakPtrBase();
@@ -333,4 +333,4 @@ WeakPtr<Derived> AsWeakPtr(Derived* t) {
 
 }  // namespace butil
 
-#endif  // BASE_MEMORY_WEAK_PTR_H_
+#endif  // BUTIL_MEMORY_WEAK_PTR_H_

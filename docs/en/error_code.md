@@ -21,24 +21,25 @@ All error codes in brpc are defined in [errno.proto](https://github.com/brpc/brp
 
 Following table shows common error codes and their descriptions: 
 
-| Error Code     | Value | Retriable | Description                              | Logging message                          |
-| -------------- | ----- | --------- | ---------------------------------------- | ---------------------------------------- |
-| EAGAIN         | 11    | Yes       | Too many requests at the same time, hardly happening as it's a soft limit. | Resource temporarily unavailable         |
-| ETIMEDOUT      | 110   | Yes       | Connection timeout.                      | Connection timed out                     |
-| ENOSERVICE     | 1001  | No        | Can't locate the service, hardly happening and usually being ENOMETHOD instead |                                          |
-| ENOMETHOD      | 1002  | No        | Can't locate the method.                 | Misc forms, common ones are "Fail to find method=…" |
-| EREQUEST       | 1003  | No        | fail to serialize the request, may be set on either client-side or server-side | Misc forms: "Missing required fields in request: …" "Fail to parse request message, …"  "Bad request" |
-| EAUTH          | 1004  | No        | Authentication failed                    | "Authentication failed"                  |
-| ETOOMANYFAILS  | 1005  | No        | Too many sub-channel failures inside a ParallelChannel | "%d/%d channels failed, fail_limit=%d"   |
-| EBACKUPREQUEST | 1007  | Yes       | Set when backup requests are triggered. Not returned by ErrorCode() directly, viewable from spans in /rpcz | "reached backup timeout=%dms"            |
-| ERPCTIMEDOUT   | 1008  | No        | RPC timeout.                             | "reached timeout=%dms"                   |
-| EFAILEDSOCKET  | 1009  | Yes       | The connection is broken during RPC      | "The socket was SetFailed"               |
-| EHTTP          | 1010  | No        | HTTP responses with non 2xx status code are treated as failure and set with this code. No retry by default, changeable by customizing RetryPolicy. | Bad http call                            |
-| EOVERCROWDED   | 1011  | Yes       | Too many messages to buffer at the sender side. Usually caused by lots of concurrent asynchronous requests. Modifiable by `-socket_max_unwritten_bytes`, 8MB by default. | The server is overcrowded                |
-| EINTERNAL      | 2001  | No        | The default error for `Controller::SetFailed` without specifying a one. | Internal Server Error                    |
-| ERESPONSE      | 2002  | No        | fail to serialize the response, may be set on either client-side or server-side | Misc forms: "Missing required fields in response: …" "Fail to parse response message, " "Bad response" |
-| ELOGOFF        | 2003  | Yes       | Server has been stopped                  | "Server is going to quit"                |
-| ELIMIT         | 2004  | Yes       | Number of requests being  processed concurrently exceeds `ServerOptions.max_concurrency` | "Reached server's limit=%d on concurrent requests" |
+| Error Code     | Value | Retry | Description                              | Logging message                          |
+| -------------- | ----- | ----- | ---------------------------------------- | ---------------------------------------- |
+| EAGAIN         | 11    | Yes   | Too many requests at the same time, hardly happening as it's a soft limit. | Resource temporarily unavailable         |
+| ETIMEDOUT      | 110   | Yes   | Connection timeout.                      | Connection timed out                     |
+| EHOSTDOWN      | 112   | Yes   | No available server to send request. The servers may be stopped or stopping(returning ELOGOFF). | "Fail to select server from …"  "Not connected to … yet" |
+| ENOSERVICE     | 1001  | No    | Can't locate the service, hardly happening and usually being ENOMETHOD instead |                                          |
+| ENOMETHOD      | 1002  | No    | Can't locate the method.                 | Misc forms, common ones are "Fail to find method=…" |
+| EREQUEST       | 1003  | No    | fail to serialize the request, may be set on either client-side or server-side | Misc forms: "Missing required fields in request: …" "Fail to parse request message, …"  "Bad request" |
+| EAUTH          | 1004  | No    | Authentication failed                    | "Authentication failed"                  |
+| ETOOMANYFAILS  | 1005  | No    | Too many sub-channel failures inside a ParallelChannel | "%d/%d channels failed, fail_limit=%d"   |
+| EBACKUPREQUEST | 1007  | Yes   | Set when backup requests are triggered. Not returned by ErrorCode() directly, viewable from spans in /rpcz | "reached backup timeout=%dms"            |
+| ERPCTIMEDOUT   | 1008  | No    | RPC timeout.                             | "reached timeout=%dms"                   |
+| EFAILEDSOCKET  | 1009  | Yes   | The connection is broken during RPC      | "The socket was SetFailed"               |
+| EHTTP          | 1010  | No    | HTTP responses with non 2xx status code are treated as failure and set with this code. No retry by default, changeable by customizing RetryPolicy. | Bad http call                            |
+| EOVERCROWDED   | 1011  | Yes   | Too many messages to buffer at the sender side. Usually caused by lots of concurrent asynchronous requests. Modifiable by `-socket_max_unwritten_bytes`, 8MB by default. | The server is overcrowded                |
+| EINTERNAL      | 2001  | No    | The default error for `Controller::SetFailed` without specifying a one. | Internal Server Error                    |
+| ERESPONSE      | 2002  | No    | fail to serialize the response, may be set on either client-side or server-side | Misc forms: "Missing required fields in response: …" "Fail to parse response message, " "Bad response" |
+| ELOGOFF        | 2003  | Yes   | Server has been stopped                  | "Server is going to quit"                |
+| ELIMIT         | 2004  | Yes   | Number of requests being  processed concurrently exceeds `ServerOptions.max_concurrency` | "Reached server's limit=%d on concurrent requests" |
 
 # User-defined Error Code
 

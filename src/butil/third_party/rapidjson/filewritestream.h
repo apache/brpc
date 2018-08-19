@@ -18,7 +18,7 @@
 #include "rapidjson.h"
 #include <cstdio>
 
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 
 //! Wrapper of C file stream for input using fread().
 /*!
@@ -86,6 +86,6 @@ inline void PutN(FileWriteStream& stream, char c, size_t n) {
     stream.PutN(c, n);
 }
 
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 #endif // RAPIDJSON_FILESTREAM_H_

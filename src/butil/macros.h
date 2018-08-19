@@ -7,8 +7,8 @@
 // that are closely related to things that are commonly used that belong in this
 // file.)
 
-#ifndef BASE_MACROS_H_
-#define BASE_MACROS_H_
+#ifndef BUTIL_MACROS_H_
+#define BUTIL_MACROS_H_
 
 #include <stddef.h>  // For size_t.
 #include <string.h>  // For memcpy.
@@ -23,25 +23,25 @@
 #undef DISALLOW_EVIL_CONSTRUCTORS
 #undef DISALLOW_IMPLICIT_CONSTRUCTORS
 
-#if !defined(BASE_CXX11_ENABLED)
-#define BASE_DELETE_FUNCTION(decl) decl
+#if !defined(BUTIL_CXX11_ENABLED)
+#define BUTIL_DELETE_FUNCTION(decl) decl
 #else
-#define BASE_DELETE_FUNCTION(decl) decl = delete
+#define BUTIL_DELETE_FUNCTION(decl) decl = delete
 #endif
 
 // Put this in the private: declarations for a class to be uncopyable.
 #define DISALLOW_COPY(TypeName)                         \
-    BASE_DELETE_FUNCTION(TypeName(const TypeName&))
+    BUTIL_DELETE_FUNCTION(TypeName(const TypeName&))
 
 // Put this in the private: declarations for a class to be unassignable.
 #define DISALLOW_ASSIGN(TypeName)                               \
-    BASE_DELETE_FUNCTION(void operator=(const TypeName&))
+    BUTIL_DELETE_FUNCTION(void operator=(const TypeName&))
 
 // A macro to disallow the copy constructor and operator= functions
 // This should be used in the private: declarations for a class
 #define DISALLOW_COPY_AND_ASSIGN(TypeName)                      \
-    BASE_DELETE_FUNCTION(TypeName(const TypeName&));            \
-    BASE_DELETE_FUNCTION(void operator=(const TypeName&))
+    BUTIL_DELETE_FUNCTION(TypeName(const TypeName&));            \
+    BUTIL_DELETE_FUNCTION(void operator=(const TypeName&))
 
 // An older, deprecated, politically incorrect name for the above.
 // NOTE: The usage of this macro was banned from our code base, but some
@@ -57,7 +57,7 @@
 // that wants to prevent anyone from instantiating it. This is
 // especially useful for classes containing only static methods.
 #define DISALLOW_IMPLICIT_CONSTRUCTORS(TypeName) \
-    BASE_DELETE_FUNCTION(TypeName());            \
+    BUTIL_DELETE_FUNCTION(TypeName());            \
     DISALLOW_COPY_AND_ASSIGN(TypeName)
 
 // Concatenate numbers in c/c++ macros.
@@ -167,7 +167,7 @@ inline To implicit_cast(From const &f) {
 }
 }
 
-#if defined(BASE_CXX11_ENABLED)
+#if defined(BUTIL_CXX11_ENABLED)
 
 // C++11 supports compile-time assertion directly
 #define BAIDU_CASSERT(expr, msg) static_assert(expr, #msg)
@@ -211,7 +211,7 @@ template <> struct CAssert<false> { static const char * x; };
     enum { BAIDU_CONCAT(BAIDU_CONCAT(LINE_, __LINE__), __##msg) \
            = ::butil::CAssert<!!(expr)>::x };
 
-#endif  // BASE_CXX11_ENABLED
+#endif  // BUTIL_CXX11_ENABLED
 
 // The impl. of chrome does not work for offsetof(Object, private_filed)
 #undef COMPILE_ASSERT
@@ -327,7 +327,7 @@ enum LinkerInitialized { LINKER_INITIALIZED };
 #endif
 
 #ifndef BAIDU_TYPEOF
-# if defined(BASE_CXX11_ENABLED)
+# if defined(BUTIL_CXX11_ENABLED)
 #  define BAIDU_TYPEOF decltype
 # else
 #  ifdef _MSC_VER
@@ -336,7 +336,7 @@ enum LinkerInitialized { LINKER_INITIALIZED };
 #  else
 #   define BAIDU_TYPEOF typeof
 #  endif
-# endif // BASE_CXX11_ENABLED
+# endif // BUTIL_CXX11_ENABLED
 #endif  // BAIDU_TYPEOF
 
 // ptr:     the pointer to the member.
@@ -442,4 +442,4 @@ namespace {  /*anonymous namespace */                           \
 
 #endif  // __cplusplus
 
-#endif  // BASE_MACROS_H_
+#endif  // BUTIL_MACROS_H_

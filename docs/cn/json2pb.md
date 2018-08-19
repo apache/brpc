@@ -1,4 +1,4 @@
-baidu-rpc支持json和protobuf间的**双向**转化，实现于[json2pb](https://github.com/brpc/brpc/tree/master/src/json2pb/)，json解析使用[rapidjson](https://github.com/miloyip/rapidjson)。此功能对pb2.x和3.x均有效。pb3内置了[转换json](https://developers.google.com/protocol-buffers/docs/proto3#json)的功能。
+brpc支持json和protobuf间的**双向**转化，实现于[json2pb](https://github.com/brpc/brpc/tree/master/src/json2pb/)，json解析使用[rapidjson](https://github.com/miloyip/rapidjson)。此功能对pb2.x和3.x均有效。pb3内置了[转换json](https://developers.google.com/protocol-buffers/docs/proto3#json)的功能。
 
 by design, 通过HTTP + json访问protobuf服务是对外服务的常见方式，故转化必须精准，转化规则列举如下。
 
@@ -33,6 +33,21 @@ repeated int32 numbers = 1;
 // rapidjson
 {"numbers" : [12, 17, 1, 24] }
 ```
+
+## map
+
+满足如下条件的repeated MSG被视作json map :
+
+- MSG包含一个名为key的字段，类型为string，tag为1。
+- MSG包含一个名为value的字段，tag为2。
+- 不包含其他字段。
+
+这种"map"的属性有：
+
+- 自然不能确保key有序或不重复，用户视需求自行检查。
+- 与protobuf 3.x中的map二进制兼容，故3.x中的map使用pb2json也会正确地转化为json map。
+
+如果符合所有条件的repeated MSG并不需要被认为是json map，打破上面任一条件就行了: 在MSG中加入optional int32 this_message_is_not_map_entry = 3; 这个办法破坏了“不包含其他字段”这项，且不影响二进制兼容。也可以调换key和value的tag值，让前者为2后者为1，也使条件不再满足。
 
 ## integers
 

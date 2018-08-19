@@ -25,8 +25,8 @@
 // to use these.
 //
 
-#ifndef BASE_ATOMICOPS_H_
-#define BASE_ATOMICOPS_H_
+#ifndef BUTIL_ATOMICOPS_H_
+#define BUTIL_ATOMICOPS_H_
 
 #include <stdint.h>
 
@@ -166,7 +166,7 @@ Atomic64 Release_Load(volatile const Atomic64* ptr);
 #endif
 
 // ========= Provide butil::atomic<T> =========
-#if defined(BASE_CXX11_ENABLED)
+#if defined(BUTIL_CXX11_ENABLED)
 
 // gcc supports atomic thread fence since 4.8 checkout
 // https://gcc.gnu.org/gcc-4.7/cxx0x_status.html and
@@ -189,7 +189,7 @@ Atomic64 Release_Load(volatile const Atomic64* ptr);
 
 namespace std {
 
-BASE_FORCE_INLINE void atomic_thread_fence(memory_order v) {
+BUTIL_FORCE_INLINE void atomic_thread_fence(memory_order v) {
     switch (v) {
     case memory_order_relaxed:
         break;
@@ -205,7 +205,7 @@ BASE_FORCE_INLINE void atomic_thread_fence(memory_order v) {
     }
 }
 
-BASE_FORCE_INLINE void atomic_signal_fence(memory_order v) {
+BUTIL_FORCE_INLINE void atomic_signal_fence(memory_order v) {
     if (v != memory_order_relaxed) {
         __asm__ __volatile__("" : : : "memory");
     }
@@ -274,12 +274,12 @@ private:
 // static_atomic<> is a work-around for C++03 to declare global atomics
 // w/o constructing-order issues. It can also used in C++11 though.
 // Example:
-//   butil::static_atomic<int> g_counter = BASE_STATIC_ATOMIC_INIT(0);
+//   butil::static_atomic<int> g_counter = BUTIL_STATIC_ATOMIC_INIT(0);
 // Notice that to make static_atomic work for C++03, it cannot be
 // initialized by a constructor. Following code is wrong:
 //   butil::static_atomic<int> g_counter(0); // Not compile
 
-#define BASE_STATIC_ATOMIC_INIT(val) { (val) }
+#define BUTIL_STATIC_ATOMIC_INIT(val) { (val) }
 
 namespace butil {
 template <typename T> struct static_atomic {
@@ -317,4 +317,4 @@ private:
 };
 } // namespace butil
 
-#endif  // BASE_ATOMICOPS_H_
+#endif  // BUTIL_ATOMICOPS_H_

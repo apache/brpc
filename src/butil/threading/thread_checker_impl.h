@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_THREADING_THREAD_CHECKER_IMPL_H_
-#define BASE_THREADING_THREAD_CHECKER_IMPL_H_
+#ifndef BUTIL_THREADING_THREAD_CHECKER_IMPL_H_
+#define BUTIL_THREADING_THREAD_CHECKER_IMPL_H_
 
 #include "butil/base_export.h"
 #include "butil/synchronization/lock.h"
@@ -17,7 +17,7 @@ namespace butil {
 //
 // Note: You should almost always use the ThreadChecker class to get the
 // right version for your build configuration.
-class BASE_EXPORT ThreadCheckerImpl {
+class BUTIL_EXPORT ThreadCheckerImpl {
  public:
   ThreadCheckerImpl();
   ~ThreadCheckerImpl();
@@ -40,4 +40,4 @@ class BASE_EXPORT ThreadCheckerImpl {
 
 }  // namespace butil
 
-#endif  // BASE_THREADING_THREAD_CHECKER_IMPL_H_
+#endif  // BUTIL_THREADING_THREAD_CHECKER_IMPL_H_

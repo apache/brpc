@@ -9,10 +9,21 @@ compiler:
 env:
 - PURPOSE=compile
 - PURPOSE=unittest
+- PURPOSE=compile-with-bazel
+
+before_script:
+- ulimit -c unlimited -S       # enable core dumps
+
+before_install:
+- wget --no-clobber https://github.com/bazelbuild/bazel/releases/download/0.8.1/bazel_0.8.1-linux-x86_64.deb
+- sudo dpkg -i bazel_0.8.1-linux-x86_64.deb
+- wget http://www.us.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz && tar -xf thrift-0.11.0.tar.gz && cd thrift-0.11.0/ &&  ./configure --prefix=/usr --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no && make CPPFLAGS=-DFORCE_BOOST_SMART_PTR -j 3 -s && sudo make install && cd -
 
 install:
-- sudo apt-get install -qq realpath libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev
+- sudo apt-get install -qq realpath libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev libboost-dev libssl-dev libevent-dev libboost-test-dev
 - sudo apt-get install libgtest-dev && cd /usr/src/gtest && sudo env "PATH=$PATH" cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
+- sudo apt-get install -y gdb  # install gdb
 
 script:
+- if [[ "$PURPOSE" == "compile-with-bazel" ]]; then bazel build -j 12 -c opt --copt -DHAVE_ZLIB=1 //...          ; fi
 - sh build_in_travis_ci.sh

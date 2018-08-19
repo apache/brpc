@@ -35,7 +35,7 @@ public:
                 int (*on_connect)(int, int, void *), void *data);
     ssize_t CutMessageIntoFileDescriptor(int, butil::IOBuf **data_list,
                                          size_t size);
-    ssize_t CutMessageIntoSSLChannel(butil::IOBuf*, SSL*, int*);
+    ssize_t CutMessageIntoSSLChannel(SSL*, butil::IOBuf**, size_t);
     void BeforeRecycle(Socket *);
 
     // --------------------- SocketConnection --------------

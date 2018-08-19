@@ -9,7 +9,6 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/errno.h"
-#include <syscall.h>
 #include <limits.h>                            // INT_MAX
 #include "butil/atomicops.h"
 #include "bthread/bthread.h"
@@ -58,7 +57,7 @@ TEST(FutexTest, rdlock_performance) {
         ASSERT_EQ(0, pthread_create(&rth[i], NULL, read_thread, &lock1));
     }
 
-    const size_t t1 = butil::cpuwide_time_ns();
+    const int64_t t1 = butil::cpuwide_time_ns();
     for (size_t i = 0; i < N; ++i) {
         if (nthread) {
             lock1.fetch_add(1);
@@ -70,7 +69,7 @@ TEST(FutexTest, rdlock_performance) {
             }
         }
     }
-    const size_t t2 = butil::cpuwide_time_ns();
+    const int64_t t2 = butil::cpuwide_time_ns();
 
     bthread_usleep(3000000);
     stop = true;
@@ -86,7 +85,7 @@ TEST(FutexTest, rdlock_performance) {
         njob += *res;
         delete res;
     }
-    printf("wake %lu times, %ldns each, lock1=%d njob=%d\n",
+    printf("wake %lu times, %" PRId64 "ns each, lock1=%d njob=%d\n",
            N, (t2-t1)/N, lock1.load(), njob);
     ASSERT_EQ(N, (size_t)(lock1.load() + njob));
 }
@@ -119,7 +118,7 @@ TEST(FutexTest, futex_wake_many_waiters_perf) {
         nwakeup += bthread::futex_wake_private(&lock1, 1);
     }
     tm.stop();
-    printf("N=%lu, futex_wake a thread = %ldns\n", N, tm.n_elapsed() / N);
+    printf("N=%lu, futex_wake a thread = %" PRId64 "ns\n", N, tm.n_elapsed() / N);
     ASSERT_EQ(N, (size_t)nwakeup);
 
     const size_t REP = 10000;
@@ -130,7 +129,7 @@ TEST(FutexTest, futex_wake_many_waiters_perf) {
     }
     tm.stop();
     ASSERT_EQ(0, nwakeup);
-    printf("futex_wake nop = %ldns\n", tm.n_elapsed() / REP);
+    printf("futex_wake nop = %" PRId64 "ns\n", tm.n_elapsed() / REP);
 }
 
 butil::atomic<int> nevent(0);
@@ -146,7 +145,7 @@ void* waker(void* lock) {
     }
     tm.stop();
     EXPECT_EQ(0, nwakeup);
-    printf("futex_wake nop = %ldns\n", tm.n_elapsed() / REP);
+    printf("futex_wake nop = %" PRId64 "ns\n", tm.n_elapsed() / REP);
     return NULL;
 } 
 
@@ -171,7 +170,7 @@ void* batch_waker(void* lock) {
     }
     tm.stop();
     EXPECT_EQ(0, nwakeup);
-    printf("futex_wake nop = %ldns\n", tm.n_elapsed() / REP);
+    printf("futex_wake nop = %" PRId64 "ns\n", tm.n_elapsed() / REP);
     return NULL;
 } 
 

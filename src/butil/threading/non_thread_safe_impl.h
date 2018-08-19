@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_THREADING_NON_THREAD_SAFE_IMPL_H_
-#define BASE_THREADING_NON_THREAD_SAFE_IMPL_H_
+#ifndef BUTIL_THREADING_NON_THREAD_SAFE_IMPL_H_
+#define BUTIL_THREADING_NON_THREAD_SAFE_IMPL_H_
 
 #include "butil/base_export.h"
 #include "butil/threading/thread_checker_impl.h"
@@ -16,7 +16,7 @@ namespace butil {
 //
 // Note: You should almost always use the NonThreadSafe class to get
 // the right version of the class for your build configuration.
-class BASE_EXPORT NonThreadSafeImpl {
+class BUTIL_EXPORT NonThreadSafeImpl {
  public:
   bool CalledOnValidThread() const;
 
@@ -36,4 +36,4 @@ class BASE_EXPORT NonThreadSafeImpl {
 
 }  // namespace butil
 
-#endif  // BASE_THREADING_NON_THREAD_SAFE_IMPL_H_
+#endif  // BUTIL_THREADING_NON_THREAD_SAFE_IMPL_H_

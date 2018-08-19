@@ -17,8 +17,8 @@
 
 #include <limits.h>
 
-#ifndef BAIDU_BASE_STRING_SPLITTER_INL_H
-#define BAIDU_BASE_STRING_SPLITTER_INL_H
+#ifndef BUTIL_STRING_SPLITTER_INL_H
+#define BUTIL_STRING_SPLITTER_INL_H
 
 namespace butil {
 
@@ -311,4 +311,4 @@ int StringMultiSplitter::to_double(double* pv) const {
 
 }  // namespace butil
 
-#endif  // BAIDU_BASE_STRING_SPLITTER_INL_H
+#endif  // BUTIL_STRING_SPLITTER_INL_H

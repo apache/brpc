@@ -28,11 +28,15 @@
 
 namespace brpc {
 
+class Controller;
+
 // Select a server from a set of servers (in form of ServerId).
 class LoadBalancer : public NonConstDescribable, public Destroyable {
 public:
     struct SelectIn {
         int64_t begin_time_us;
+        // Weight of different nodes could be changed.
+        bool changable_weights;
         bool has_request_code;
         uint64_t request_code;
         const ExcludedServers* excluded;
@@ -46,9 +50,17 @@ public:
     };
 
     struct CallInfo {
-        LoadBalancer::SelectIn in;
+        // Exactly same with SelectIn.begin_time_us, may be different from
+        // controller->_begin_time_us which is beginning of the RPC.
+        int64_t begin_time_us;
+        // Remote side of the call.
         SocketId server_id;
+        // A RPC may have multiple calls, this error may be different from
+        // controller->ErrorCode();
         int error_code;
+        // The controller for the RPC. Should NOT be saved in Feedback()
+        // and used after the function.
+        const Controller* controller;
     };
 
     LoadBalancer() { }

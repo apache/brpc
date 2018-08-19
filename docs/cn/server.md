@@ -135,7 +135,7 @@ public:
 
 调用Controller.SetFailed()可以把当前调用设置为失败，当发送过程出现错误时，框架也会调用这个函数。用户一般是在服务的CallMethod里调用这个函数，比如某个处理环节出错，SetFailed()后确认done->Run()被调用了就可以跳出函数了(若使用了ClosureGuard，跳出函数时会自动调用done，不用手动)。Server端的done的逻辑主要是发送response回client，当其发现用户调用了SetFailed()后，会把错误信息送回client。client收到后，它的Controller::Failed()会为true（成功时为false），Controller::ErrorCode()和Controller::ErrorText()则分别是错误码和错误信息。
 
-用户可以为http访问设置[status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html)，在server端一般是调用`controller.http_response().set_status_code()`，标准的status-code定义在[http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h)中。如果SetFailed了但没有设置status-code，框架会代为选择和错误码最接近的status-code，实在没有相关的则填brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR（500错误）
+用户可以为http访问设置[status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html)，在server端一般是调用`controller.http_response().set_status_code()`，标准的status-code定义在[http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h)中。Controller.SetFailed也会设置status-code，值是与错误码含义最接近的status-code，没有相关的则填500错误(brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR)。如果你要覆盖status_code，设置代码一定要放在SetFailed()后，而不是之前。
 
 ## 获取Client的地址
 
@@ -387,6 +387,32 @@ Server.set_version(...)可以为server设置一个名称+版本，可通过/vers
 
 server的框架部分一般不针对个别client打印错误日志，因为当大量client出现错误时，可能导致server高频打印日志而严重影响性能。但有时为了调试问题，或就是需要让server打印错误，打开参数[-log_error_text](http://brpc.baidu.com:8765/flags/log_error_text)即可。
 
+## 定制延时的分位值
+
+显示的服务延时分位值**默认**为**80** (曾经为50), 90, 99, 99.9, 99.99，前三项可分别通过-bvar_latency_p1, -bvar_latency_p2, -bvar_latency_p3三个gflags定制。
+
+以下是正确的设置：
+```shell
+-bvar_latency_p3=97   # p3从默认99修改为97
+-bvar_latency_p1=60 -bvar_latency_p2=80 -bvar_latency_p3=95
+```
+以下是错误的设置：
+```shell
+-bvar_latency_p3=100   # 设置值必须在[1,99]闭区间内，gflags解析会失败
+-bvar_latency_p1=-1    # 同上
+```
+
+## 设置栈大小
+
+brpc的Server是运行在bthread之上，默认栈大小为1MB，而pthread默认栈大小为10MB，所以在pthread上正常运行的程序，在bthread上可能遇到栈不足。
+
+可设置如下的gflag以调整栈的大小:
+```shell
+--stack_size_normal=10000000    # 表示调整栈大小为10M左右
+--tc_stack_normal=1             # 默认为8，表示每个worker缓存的栈的个数(以加快分配速度)，size越大，缓存数目可以适当调小(以减少内存占用)
+```
+注意：不是说程序coredump就意味着”栈不够大“，只是因为这个试起来最容易，所以优先排除掉可能性。事实上百度内如此多的应用也很少碰到栈不够大的情况。
+
 ## 限制最大消息
 
 为了保护server和client，当server收到的request或client收到的response过大时，server或client会拒收并关闭连接。此最大尺寸由[-max_body_size](http://brpc.baidu.com:8765/flags/max_body_size)控制，单位为字节。
@@ -427,9 +453,69 @@ baidu_std和hulu_pbrpc协议支持传递附件，这段数据由用户自定义�
 
 在http协议中，附件对应[message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html)，比如要返回的数据就设置在response_attachment()中。
 
+## 开启SSL
+
+要开启SSL，首先确保代码依赖了最新的openssl库。如果openssl版本很旧，会有严重的安全漏洞，支持的加密算法也少，违背了开启SSL的初衷。然后设置`ServerOptions.ssl_options`，具体见[ssl_option.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_option.h)。
+
+```c++
+// Certificate structure
+struct CertInfo {
+    // Certificate in PEM format.
+    // Note that CN and alt subjects will be extracted from the certificate,
+    // and will be used as hostnames. Requests to this hostname (provided SNI
+    // extension supported) will be encrypted using this certifcate.
+    // Supported both file path and raw string
+    std::string certificate;
+
+    // Private key in PEM format.
+    // Supported both file path and raw string based on prefix:
+    std::string private_key;
+
+    // Additional hostnames besides those inside the certificate. Wildcards
+    // are supported but it can only appear once at the beginning (i.e. *.xxx.com).
+    std::vector<std::string> sni_filters;
+};
+
+// SSL options at server side
+struct ServerSSLOptions {
+    // Default certificate which will be loaded into server. Requests
+    // without hostname or whose hostname doesn't have a corresponding
+    // certificate will use this certificate. MUST be set to enable SSL.
+    CertInfo default_cert;
+    
+    // Additional certificates which will be loaded into server. These
+    // provide extra bindings between hostnames and certificates so that
+    // we can choose different certificates according to different hostnames.
+    // See `CertInfo' for detail.
+    std::vector<CertInfo> certs;
+    
+    // When set, requests without hostname or whose hostname can't be found in
+    // any of the cerficates above will be dropped. Otherwise, `default_cert'
+    // will be used.
+    // Default: false
+    bool strict_sni;
+ 
+    // ... Other options
+};
+```
+
+- Server端开启SSL**必须**要设置一张默认证书`default_cert`（默认SSL连接都用此证书），如果希望server能支持动态选择证书（如根据请求中域名，见[SNI](https://en.wikipedia.org/wiki/Server_Name_Indication)机制），则可以将这些证书加载到`certs`。最后用户还可以在Server运行时，动态增减这些动态证书：
+
+  ```c++
+  int AddCertificate(const CertInfo& cert);
+  int RemoveCertificate(const CertInfo& cert);
+  int ResetCertificates(const std::vector<CertInfo>& certs);
+  ```
+
+- 其余选项还包括：密钥套件选择（推荐密钥ECDHE-RSA-AES256-GCM-SHA384，chrome默认第一优先密钥，安全性很高，但比较耗性能）、session复用等。
+
+- SSL层在协议层之下（作用在Socket层），即开启后，所有协议（如HTTP）都支持用SSL加密后传输到Server，Server端会先进行SSL解密后，再把原始数据送到各个协议中去。
+
+- SSL开启后，端口仍然支持非SSL的连接访问，Server会自动判断哪些是SSL，哪些不是。如果要屏蔽非SSL访问，用户可通过`Controller::is_ssl()`判断是否是SSL，同时在[connections](connections.md)内置监控上也可以看到连接的SSL信息。
+
 ## 验证client身份
 
-如果server端要开启验证功能，需要实现`Authenticator`中的接口：
+如果server端要开启验证功能，需要实现`Authenticator`中的接口:
 
 ```c++
 class Authenticator {
@@ -505,12 +591,15 @@ Server.ResetMaxConcurrency()可在server启动后动态修改server级别的max_
 
 ### 限制method级别并发度
 
-server.MaxConcurrencyOf("...") = ...可设置method级别的max_concurrency。可能的设置方法有：
+server.MaxConcurrencyOf("...") = ...可设置method级别的max_concurrency。也可以通过设置ServerOptions.method_max_concurrency一次性为所有的method设置最大并发。
+当ServerOptions.method_max_concurrency和server.MaxConcurrencyOf("...")=...同时被设置时，使用server.MaxConcurrencyOf()所设置的值。
 
 ```c++
-server.MaxConcurrencyOf("example.EchoService.Echo") = 10;
+ServerOptions.method_max_concurrency = 20;                   // Set the default maximum concurrency for all methods
+server.MaxConcurrencyOf("example.EchoService.Echo") = 10;    // Give priority to the value set by server.MaxConcurrencyOf()
 server.MaxConcurrencyOf("example.EchoService", "Echo") = 10;
 server.MaxConcurrencyOf(&service, "Echo") = 10;
+server.MaxConcurrencyOf("example.EchoService.Echo") = "10";  // You can also assign a string value
 ```
 
 此设置一般**发生在AddService后，server启动前**。当设置失败时（比如对应的method不存在），server会启动失败同时提示用户修正MaxConcurrencyOf设置错误。
@@ -518,6 +607,23 @@ server.MaxConcurrencyOf(&service, "Echo") = 10;
 当method级别和server级别的max_concurrency都被设置时，先检查server级别的，再检查method级别的。
 
 注意：没有service级别的max_concurrency。
+
+### 使用自适应限流算法
+实际生产环境中,最大并发并不一定是一成不变的。这个时候可以使用自适应限流算法。自适应限流是method级别的。要使用自适应限流算法，把method的最大并发度设置为"auto"即可:
+
+```c++
+// Set auto concurrency limiter for all method
+brpc::ServerOptions options;
+options.method_max_concurrency = "auto";
+
+// Set auto concurrency limiter for specific method
+server.MaxConcurrencyOf("example.EchoService.Echo") = "auto";
+```
+自适应限流的算法能够正常工作的前提是:
+1. 客户端开启了重试
+2. 服务端有多个节点，当一个节点返回过载时，客户端可以向其他节点发起重试
+
+关于自适应限流的更多细节可以看[这里](https://github.com/brpc/brpc/blob/master/docs/cn/auto_concurrency_limiter.md)
 
 ## pthread模式
 
@@ -665,7 +771,7 @@ int main(int argc, char* argv[]) {
 
 server-thread-local与一次service回调绑定，从进service回调开始，到出service回调结束。所有的server-thread-local data会被尽量重用，在server停止前不会被删除。在实现上server-thread-local是一个特殊的bthread-local。
 
-设置ServerOptions.thread_local_data_factory后访问Controller.thread_local_data()即可获得thread-local数据。若没有设置，Controller.thread_local_data()总是返回NULL。
+设置ServerOptions.thread_local_data_factory后访问brpc::thread_local_data()即可获得thread-local数据。若没有设置，brpc::thread_local_data()总是返回NULL。
 
 若ServerOptions.reserved_thread_local_data大于0，Server会在启动前就创建这么多个数据。
 
@@ -768,7 +874,7 @@ Session-local和server-thread-local对大部分server已经够用。不过在一
 // when the key is destroyed. `destructor' is not called if the value
 // associated is NULL when the key is destroyed.
 // Returns 0 on success, error code otherwise.
-extern int bthread_key_create(bthread_key_t* key, void (*destructor)(void* data)) __THROW;
+extern int bthread_key_create(bthread_key_t* key, void (*destructor)(void* data));
  
 // Delete a key previously returned by bthread_key_create().
 // It is the responsibility of the application to free the data related to
@@ -776,7 +882,7 @@ extern int bthread_key_create(bthread_key_t* key, void (*destructor)(void* data)
 // this function. Any destructor that may have been associated with key
 // will no longer be called upon thread exit.
 // Returns 0 on success, error code otherwise.
-extern int bthread_key_delete(bthread_key_t key) __THROW;
+extern int bthread_key_delete(bthread_key_t key);
  
 // Store `data' in the thread-specific slot identified by `key'.
 // bthread_setspecific() is callable from within destructor. If the application
@@ -791,12 +897,12 @@ extern int bthread_key_delete(bthread_key_t key) __THROW;
 // in the server.
 // Returns 0 on success, error code otherwise.
 // If the key is invalid or deleted, return EINVAL.
-extern int bthread_setspecific(bthread_key_t key, void* data) __THROW;
+extern int bthread_setspecific(bthread_key_t key, void* data);
  
 // Return current value of the thread-specific slot identified by `key'.
 // If bthread_setspecific() had not been called in the thread, return NULL.
 // If the key is invalid or deleted, return NULL.
-extern void* bthread_getspecific(bthread_key_t key) __THROW;
+extern void* bthread_getspecific(bthread_key_t key);
 ```
 
 **使用方法**
@@ -888,14 +994,6 @@ brpc同一个进程中所有的server[共用线程](#worker线程数)，如果�
 ### Q: 为什么client端的延时远大于server端的延时
 
 可能是server端的工作线程不够用了，出现了排队现象。排查方法请查看[高效率排查服务卡顿](server_debugging.md)。
-
-### Q: 程序切换到brpc之后出现了像堆栈写坏的coredump
-
-brpc的Server是运行在bthread之上，默认栈大小为1MB，而pthread默认栈大小为10MB，所以在pthread上正常运行的程序，在bthread上可能遇到栈不足。
-
-注意：不是说程序core了就意味着”栈不够大“，只是因为这个试起来最容易，所以优先排除掉可能性。事实上百度内如此多的应用也很少碰到栈不够大的情况。
-
-解决方案：添加以下gflags以调整栈大小，比如`--stack_size_normal=10000000 --tc_stack_normal=1`。第一个flag把栈大小修改为10MB，第二个flag表示每个工作线程缓存的栈的个数(避免每次都从全局拿).
 
 ### Q: Fail to open /proc/self/io
 

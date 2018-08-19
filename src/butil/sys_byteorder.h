@@ -8,8 +8,8 @@
 // Use the functions defined here rather than using the platform-specific
 // functions directly.
 
-#ifndef BASE_SYS_BYTEORDER_H_
-#define BASE_SYS_BYTEORDER_H_
+#ifndef BUTIL_SYS_BYTEORDER_H_
+#define BUTIL_SYS_BYTEORDER_H_
 
 #include "butil/basictypes.h"
 #include "butil/build_config.h"
@@ -133,4 +133,4 @@ inline uint64_t HostToNet64(uint64_t x) {
 
 }  // namespace butil
 
-#endif  // BASE_SYS_BYTEORDER_H_
+#endif  // BUTIL_SYS_BYTEORDER_H_

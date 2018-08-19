@@ -48,17 +48,17 @@ Clicking on most of the numerical bvars shows historical trends. Each clickable 
 
 ## Calculate and view percentiles
 
-x-ile (short for x-th percentile) is the value ranked at N * x%-th position amongst a group of ordered values. E.g. there are 1000 values inside a time window, sort them in ascending order first. The 500-th value(1000 * 50%) in the ordered list is 50-ile(a.k.a median), the 990-th(1000 * 99%) value is 99-ile, the 999-th value is 99.9-ile. Percentiles give more information about the latency distribution than average latencies, and being helpful for understanding behaviors of the system. Industrial-level services often require SLA to be not less than 99.97% (the requirement for 2nd-level services inside Baidu, >=99.99% for 1st-level services), even if a system has good average latencies, a bad long-tail area may significantly lower and break SLA. Percentiles do help analyzing the long-tail area.
+x-ile (short for x-th percentile) is the value ranked at N * x%-th position amongst a group of ordered values. E.g. If there're 1000 values inside a time window, sort them in ascending order first. The 500-th value(1000 * 50%) in the ordered list is 50-ile(a.k.a median), the 990-th(1000 * 99%) value is 99-ile, the 999-th value is 99.9-ile. Percentiles give more information on how latencies distribute than mean values, and being helpful for analyzing behavior of the system more accurately. Industrial-grade services often require SLA to be not less than 99.97% (the requirement for 2nd-level services inside Baidu, >=99.99% for 1st-level services), even if a system has good average latencies, a bad long-tail area may still break SLA. Percentiles do help analyzing the long-tail area.
 
-Percentiles can be plotted as a CDF or a percentiles-over-time curve.
+Percentiles can be plotted as a CDF or percentiles-over-time curve.
 
-**Following diagram plots percentiles as CDF**, where the X-axis is the ratio(ranked-position/total-number) and the Y-axis is the corresponding percentile. E.g. The Y-axis value corresponding to X=50% is 50-ile. If a system requires that "99.9% requests need to be processed within xx milliseconds", you should check the value at 99.9%.
+**Following diagram plots percentiles as CDF**, where the X-axis is the ratio(ranked-position/total-number) and the Y-axis is the corresponding percentile. E.g. The Y value corresponding to X=50% is 50-ile. If a system requires that "99.9% requests need to be processed within Y milliseconds", you should check the Y at 99.9%.
 
 ![img](../images/vars_4.png)
 
 Why do we call it [CDF](https://en.wikipedia.org/wiki/Cumulative_distribution_function) ? When a Y=y is chosen, the corresponding X means "percentage of values <= y". Since values are sampled randomly (and uniformly), the X can be viewed as "probability of values <= y", or P(values <= y), which is just the definition of CDF.
 
-Derivative of the CDF is [PDF](https://en.wikipedia.org/wiki/Probability_density_function). If we divide the Y-axis of the CDF into many small-range segments, calculate the difference between X-axis value of both ends of each segment, and use the difference as new value for X-axis, a PDF curve would be plotted, just like a normal distribution rotated 90 degrees clockwise. However density of the median is often much higher than others in a PDF and probably make long-tail area very flat and hard to read. As a result, systems prefer showing distributions in CDF rather than PDF.
+Derivative of the CDF is [PDF](https://en.wikipedia.org/wiki/Probability_density_function). If we divide the Y-axis of the CDF into many small-range segments, calculate the difference between X values of both ends of each segment, and use the difference as new value for X-axis, a PDF curve would be plotted, just like a normal distribution rotated 90 degrees clockwise. However density of the median is often much higher than others in a PDF and probably make long-tail area very flat and hard to read. As a result, systems prefer showing distributions in CDF rather than PDF.
 
 Here're 2 simple rules to check if a CDF curve is good or not:
 

@@ -1,13 +1,13 @@
 // Copyright (c) 2014 Baidu, Inc.
 // Date: Thu Jun 11 14:30:07 CST 2015
 
-#ifdef BAIDU_INTERNAL
 
 #include <iostream>
 #include "butil/time.h"
 #include "butil/logging.h"
 #include <brpc/redis.h>
 #include <brpc/channel.h>
+#include <brpc/policy/redis_authenticator.h>
 #include <gtest/gtest.h>
 
 namespace brpc {
@@ -23,42 +23,67 @@ int main(int argc, char* argv[]) {
 namespace {
 static pthread_once_t download_redis_server_once = PTHREAD_ONCE_INIT;
 
-static pid_t redis_pid = -1; 
+static pid_t g_redis_pid = -1; 
 
 static void RemoveRedisServer() {
-    if (redis_pid > 0) {
+    if (g_redis_pid > 0) {
         puts("[Stopping redis-server]");
         char cmd[256];
-        snprintf(cmd, sizeof(cmd), "kill %d; rm -rf redis_server_for_test", redis_pid);
+#if defined(BAIDU_INTERNAL)
+        snprintf(cmd, sizeof(cmd), "kill %d; rm -rf redis_server_for_test", g_redis_pid);
+#else
+        snprintf(cmd, sizeof(cmd), "kill %d", g_redis_pid);
+#endif
         CHECK(0 == system(cmd));
+        // Wait for redis to stop
+        usleep(50000);
     }
 }
 
-static void DownloadRedisServer() {
+#define REDIS_SERVER_BIN "redis-server"
+#define REDIS_SERVER_PORT "6479"
+
+static void RunRedisServer() {
+#if defined(BAIDU_INTERNAL)
     puts("Downloading redis-server...");
-    system("pkill redis-server; mkdir -p redis_server_for_test && cd redis_server_for_test && svn co https://svn.baidu.com/third-64/tags/redis/redis_2-6-14-100_PD_BL/bin");
+    if (system("mkdir -p redis_server_for_test && cd redis_server_for_test && svn co https://svn.baidu.com/third-64/tags/redis/redis_2-6-14-100_PD_BL/bin") != 0) {
+        puts("Fail to get redis-server from svn");
+        return;
+    }
+# undef REDIS_SERVER_BIN
+# define REDIS_SERVER_BIN "redis_server_for_test/bin/redis-server";
+#else
+    if (system("which " REDIS_SERVER_BIN) != 0) {
+        puts("Fail to find " REDIS_SERVER_BIN ", following tests will be skipped");
+        return;
+    }
+#endif
     atexit(RemoveRedisServer);
 
-    redis_pid = fork();
-    if (redis_pid < 0) {
+    g_redis_pid = fork();
+    if (g_redis_pid < 0) {
         puts("Fail to fork");
         exit(1);
-    } else if (redis_pid == 0) {
+    } else if (g_redis_pid == 0) {
         puts("[Starting redis-server]");
-        char* const argv[] = { (char*)"redis_server_for_test/bin/redis-server",
-                               (char*)"--port", (char*)"6479",
+        char* const argv[] = { (char*)REDIS_SERVER_BIN,
+                               (char*)"--port", (char*)REDIS_SERVER_PORT,
                                NULL };
         unlink("dump.rdb");
-        execv("redis_server_for_test/bin/redis-server", argv);
+        if (execvp(REDIS_SERVER_BIN, argv) < 0) {
+            puts("Fail to run " REDIS_SERVER_BIN);
+            exit(1);
+        }
     }
-    usleep(10000);
+    // Wait for redis to start.
+    usleep(50000);
 }
 
 class RedisTest : public testing::Test {
 protected:
     RedisTest() {}
     void SetUp() {
-        pthread_once(&download_redis_server_once, DownloadRedisServer);
+        pthread_once(&download_redis_server_once, RunRedisServer);
     }
     void TearDown() {}
 };
@@ -112,10 +137,14 @@ void AssertResponseEqual(const brpc::RedisResponse& r1,
 }
 
 TEST_F(RedisTest, sanity) {
+    if (g_redis_pid < 0) {
+        puts("Skipped due to absence of redis-server");
+        return;
+    }
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_REDIS;
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("0.0.0.0:6479", &options));
+    ASSERT_EQ(0, channel.Init("0.0.0.0:" REDIS_SERVER_PORT, &options));
     brpc::RedisRequest request;
     brpc::RedisResponse response;
     brpc::Controller cntl;
@@ -187,10 +216,14 @@ TEST_F(RedisTest, sanity) {
 }
 
 TEST_F(RedisTest, keys_with_spaces) {
+    if (g_redis_pid < 0) {
+        puts("Skipped due to absence of redis-server");
+        return;
+    }
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_REDIS;
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("0.0.0.0:6479", &options));
+    ASSERT_EQ(0, channel.Init("0.0.0.0:" REDIS_SERVER_PORT, &options));
     brpc::RedisRequest request;
     brpc::RedisResponse response;
     brpc::Controller cntl;
@@ -231,10 +264,14 @@ TEST_F(RedisTest, keys_with_spaces) {
 }
 
 TEST_F(RedisTest, incr_and_decr) {
+    if (g_redis_pid < 0) {
+        puts("Skipped due to absence of redis-server");
+        return;
+    }
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_REDIS;
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("0.0.0.0:6479", &options));
+    ASSERT_EQ(0, channel.Init("0.0.0.0:" REDIS_SERVER_PORT, &options));
     brpc::RedisRequest request;
     brpc::RedisResponse response;
     brpc::Controller cntl;
@@ -262,10 +299,14 @@ TEST_F(RedisTest, incr_and_decr) {
 }
 
 TEST_F(RedisTest, by_components) {
+    if (g_redis_pid < 0) {
+        puts("Skipped due to absence of redis-server");
+        return;
+    }
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_REDIS;
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("0.0.0.0:6479", &options));
+    ASSERT_EQ(0, channel.Init("0.0.0.0:" REDIS_SERVER_PORT, &options));
     brpc::RedisRequest request;
     brpc::RedisResponse response;
     brpc::Controller cntl;
@@ -297,5 +338,156 @@ TEST_F(RedisTest, by_components) {
     response2.MergeFrom(response);
     AssertResponseEqual(response2, response, 2);
 }
+
+TEST_F(RedisTest, auth) {
+    if (g_redis_pid < 0) {
+        puts("Skipped due to absence of redis-server");
+        return;
+    }
+    // config auth
+    {
+        brpc::ChannelOptions options;
+        options.protocol = brpc::PROTOCOL_REDIS;
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("0.0.0.0:" REDIS_SERVER_PORT, &options));
+        brpc::RedisRequest request;
+        brpc::RedisResponse response;
+        brpc::Controller cntl;
+
+        butil::StringPiece comp1[] = { "set", "passwd", "my_redis" };
+        butil::StringPiece comp2[] = { "config", "set", "requirepass", "my_redis" };
+        butil::StringPiece comp3[] = { "auth", "my_redis" };
+        butil::StringPiece comp4[] = { "get", "passwd" };
+
+        request.AddCommandByComponents(comp1, arraysize(comp1));
+        request.AddCommandByComponents(comp2, arraysize(comp2));
+        request.AddCommandByComponents(comp3, arraysize(comp3));
+        request.AddCommandByComponents(comp4, arraysize(comp4));
+
+        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(4, response.reply_size());
+        ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(0).type());
+        ASSERT_STREQ("OK", response.reply(0).c_str());
+        ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(1).type());
+        ASSERT_STREQ("OK", response.reply(1).c_str());
+        ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(2).type());
+        ASSERT_STREQ("OK", response.reply(2).c_str());
+        ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(3).type());
+        ASSERT_STREQ("my_redis", response.reply(3).c_str());
+    }
+
+    // Auth failed
+    {
+        brpc::ChannelOptions options;
+        options.protocol = brpc::PROTOCOL_REDIS;
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("0.0.0.0:" REDIS_SERVER_PORT, &options));
+        brpc::RedisRequest request;
+        brpc::RedisResponse response;
+        brpc::Controller cntl;
+
+        butil::StringPiece comp1[] = { "get", "passwd" };
+
+        request.AddCommandByComponents(comp1, arraysize(comp1));
+
+        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(1, response.reply_size());
+        ASSERT_EQ(brpc::REDIS_REPLY_ERROR, response.reply(0).type());
+    }
+
+    // Auth with RedisAuthenticator && clear auth
+    {
+        brpc::ChannelOptions options;
+        options.protocol = brpc::PROTOCOL_REDIS;
+        brpc::Channel channel;
+        brpc::policy::RedisAuthenticator* auth =
+          new brpc::policy::RedisAuthenticator("my_redis");
+        options.auth = auth;
+        ASSERT_EQ(0, channel.Init("0.0.0.0:" REDIS_SERVER_PORT, &options));
+        brpc::RedisRequest request;
+        brpc::RedisResponse response;
+        brpc::Controller cntl;
+
+        butil::StringPiece comp1[] = { "get", "passwd" };
+        butil::StringPiece comp2[] = { "config", "set", "requirepass", "" };
+
+        request.AddCommandByComponents(comp1, arraysize(comp1));
+        request.AddCommandByComponents(comp2, arraysize(comp2));
+
+        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(2, response.reply_size());
+        ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(0).type());
+        ASSERT_STREQ("my_redis", response.reply(0).c_str());
+        ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(1).type());
+        ASSERT_STREQ("OK", response.reply(1).c_str());
+    }
+
+    // check noauth.
+    {
+        brpc::ChannelOptions options;
+        options.protocol = brpc::PROTOCOL_REDIS;
+        brpc::Channel channel;
+        ASSERT_EQ(0, channel.Init("0.0.0.0:" REDIS_SERVER_PORT, &options));
+        brpc::RedisRequest request;
+        brpc::RedisResponse response;
+        brpc::Controller cntl;
+
+        butil::StringPiece comp1[] = { "get", "passwd" };
+
+        request.AddCommandByComponents(comp1, arraysize(comp1));
+
+        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(1, response.reply_size());
+        ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(0).type());
+        ASSERT_STREQ("my_redis", response.reply(0).c_str());
+    }
+}
+
+TEST_F(RedisTest, cmd_format) {
+    if (g_redis_pid < 0) {
+        puts("Skipped due to absence of redis-server");
+        return;
+    }
+    brpc::RedisRequest request;
+    // set empty string
+    request.AddCommand("set a ''");
+    ASSERT_STREQ("*3\r\n$3\r\nset\r\n$1\r\na\r\n$0\r\n\r\n", 
+		request._buf.to_string().c_str());
+    request.Clear();
+
+    request.AddCommand("mset b '' c ''");
+    ASSERT_STREQ("*5\r\n$4\r\nmset\r\n$1\r\nb\r\n$0\r\n\r\n$1\r\nc\r\n$0\r\n\r\n",
+		request._buf.to_string().c_str());
+    request.Clear();
+    // set non-empty string
+    request.AddCommand("set a 123");
+    ASSERT_STREQ("*3\r\n$3\r\nset\r\n$1\r\na\r\n$3\r\n123\r\n", 
+		request._buf.to_string().c_str());
+    request.Clear();
+
+    request.AddCommand("mset b '' c ccc");
+    ASSERT_STREQ("*5\r\n$4\r\nmset\r\n$1\r\nb\r\n$0\r\n\r\n$1\r\nc\r\n$3\r\nccc\r\n",
+		request._buf.to_string().c_str());
+    request.Clear();
+
+    request.AddCommand("get ''key value");  // == get key value
+    ASSERT_STREQ("*3\r\n$3\r\nget\r\n$3\r\nkey\r\n$5\r\nvalue\r\n", request._buf.to_string().c_str());
+    request.Clear();
+
+    request.AddCommand("get key'' value");  // == get key value
+    ASSERT_STREQ("*3\r\n$3\r\nget\r\n$3\r\nkey\r\n$5\r\nvalue\r\n", request._buf.to_string().c_str());
+    request.Clear();
+
+    request.AddCommand("get 'ext'key   value  ");  // == get extkey value
+    ASSERT_STREQ("*3\r\n$3\r\nget\r\n$6\r\nextkey\r\n$5\r\nvalue\r\n", request._buf.to_string().c_str());
+    request.Clear();
+    
+    request.AddCommand("  get   key'ext'   value  ");  // == get keyext value
+    ASSERT_STREQ("*3\r\n$3\r\nget\r\n$6\r\nkeyext\r\n$5\r\nvalue\r\n", request._buf.to_string().c_str());
+    request.Clear();
+}
 } //namespace
-#endif // BAIDU_INTERNAL

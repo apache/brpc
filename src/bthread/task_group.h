@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 10 17:40:58 CST 2012
 
-#ifndef BAIDU_BTHREAD_TASK_GROUP_H
-#define BAIDU_BTHREAD_TASK_GROUP_H
+#ifndef BTHREAD_TASK_GROUP_H
+#define BTHREAD_TASK_GROUP_H
 
 #include "butil/time.h"                             // cpuwide_time_ns
 #include "bthread/task_control.h"
@@ -127,6 +127,10 @@ public:
     // Routine of the main task which should be called from a dedicated pthread.
     void run_main_task();
 
+    // current_task is a function in macOS 10.0+
+#ifdef current_task
+#undef current_task
+#endif
     // Meta/Identifier of current task in this group.
     TaskMeta* current_task() const { return _cur_meta; }
     bthread_t current_tid() const { return _cur_meta->tid; }
@@ -250,4 +254,4 @@ friend class TaskControl;
 
 #include "task_group_inl.h"
 
-#endif  // BAIDU_BTHREAD_TASK_GROUP_H
+#endif  // BTHREAD_TASK_GROUP_H

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_AT_EXIT_H_
-#define BASE_AT_EXIT_H_
+#ifndef BUTIL_AT_EXIT_H_
+#define BUTIL_AT_EXIT_H_
 
 #include <stack>
 
@@ -27,7 +27,7 @@ namespace butil {
 // When the exit_manager object goes out of scope, all the registered
 // callbacks and singleton destructors will be called.
 
-class BASE_EXPORT AtExitManager {
+class BUTIL_EXPORT AtExitManager {
  public:
   typedef void (*AtExitCallbackType)(void*);
 
@@ -73,4 +73,4 @@ class ShadowingAtExitManager : public AtExitManager {
 
 }  // namespace butil
 
-#endif  // BASE_AT_EXIT_H_
+#endif  // BUTIL_AT_EXIT_H_

@@ -32,8 +32,8 @@
 //     ptr->DoDoDo();  // MyClass::DoDoDo
 //   }
 
-#ifndef BASE_LAZY_INSTANCE_H_
-#define BASE_LAZY_INSTANCE_H_
+#ifndef BUTIL_LAZY_INSTANCE_H_
+#define BUTIL_LAZY_INSTANCE_H_
 
 #include <new>  // For placement new.
 
@@ -126,11 +126,11 @@ static const subtle::AtomicWord kLazyInstanceStateCreating = 1;
 // Check if instance needs to be created. If so return true otherwise
 // if another thread has beat us, wait for instance to be created and
 // return false.
-BASE_EXPORT bool NeedsLazyInstance(subtle::AtomicWord* state);
+BUTIL_EXPORT bool NeedsLazyInstance(subtle::AtomicWord* state);
 
 // After creating an instance, call this to register the dtor to be called
 // at program exit and to update the atomic state to hold the |new_instance|
-BASE_EXPORT void CompleteLazyInstance(subtle::AtomicWord* state,
+BUTIL_EXPORT void CompleteLazyInstance(subtle::AtomicWord* state,
                                       subtle::AtomicWord new_instance,
                                       void* lazy_instance,
                                       void (*dtor)(void*));
@@ -229,4 +229,4 @@ class LazyInstance {
 
 }  // namespace butil
 
-#endif  // BASE_LAZY_INSTANCE_H_
+#endif  // BUTIL_LAZY_INSTANCE_H_

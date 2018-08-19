@@ -137,7 +137,7 @@ public:
 
 Call Controller.SetFailed() to set the RPC to be failed. If error occurs during sending response, framework calls the method as well. Users often call the method in services' CallMethod(), For example if a stage of processing fails, user calls SetFailed() and call done->Run(), then quit CallMethod (If ClosureGuard is used, done->Run() is called automatically). The server-side done is created by framework and contains code sending response back to client. If SetFailed() is called, error information is sent to client instead of normal content. When client receives the response, its controller will be SetFailed() as well and Controller::Failed() will be true. In addition, Controller::ErrorCode() and Controller::ErrorText() are error code and error information respectively.
 
-User may set [status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html) for http calls by calling `controller.http_response().set_status_code()` at server-side. Standard status-code are defined in [http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h). If SetFailed() is called but status-code is not set, brpc chooses status-code with closest semantics to the error-code. brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR(500) is chosen at worst.
+User may set [status-code](http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html) for http calls by calling `controller.http_response().set_status_code()` at server-side. Standard status-code are defined in [http_status_code.h](https://github.com/brpc/brpc/blob/master/src/brpc/http_status_code.h). Controller.SetFailed() sets status-code as well with the value closest to the error-code in semantics. brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR(500) is chosen when there's no proper value.
 
 ## Get address of client
 
@@ -389,6 +389,31 @@ Set gflag -free_memory_to_system_interval to make the program try to return free
 
 Framework does not print logs for specific client generally, because a lot of errors caused by clients may slow down server significantly due to frequent printing of logs. If you need to debug or just want the server to log all errors, turn on [-log_error_text](http://brpc.baidu.com:8765/flags/log_error_text).
 
+## Customize percentiles of latency
+
+Latency percentiles showed are **80** (was 50 before), 90, 99, 99.9, 99.99 by default. The first 3 ones can be changed by gflags -bvar_latency_p1, -bvar_latency_p2, -bvar_latency_p3 respectively。
+
+Following are correct settings:
+```shell
+-bvar_latency_p3=97   # p3 is changed from default 99 to 97
+-bvar_latency_p1=60 -bvar_latency_p2=80 -bvar_latency_p3=95
+```
+Following are wrong settings:
+```shell
+-bvar_latency_p3=100   # the value must be inside [1,99] inclusive，otherwise gflags fails to parse
+-bvar_latency_p1=-1    # ^
+```
+## Change stacksize
+
+brpc server runs code in bthreads with stacksize=1MB by default, while stacksize of pthreads is 10MB. It's possible that programs running normally on pthreads may meet stack overflow on bthreads.
+
+Set following gflags to enlarge the stacksize.
+```shell
+--stack_size_normal=10000000  # sets stacksize to roughly 10MB
+--tc_stack_normal=1           # sets number of stacks cached by each worker pthread to prevent reusing from global pool each time, default value is 8
+```
+NOTE: It does mean that coredump of programs is likely to be caused by "stack overflow" on bthreads. We're talking about this simply because it's easy and quick to verify this factor and exclude the possibility.
+
 ## Limit sizes of messages
 
 To protect servers and clients, when a request received by a server or a response received by a client is too large, the server or client rejects the message and closes the connection. The limit is controlled by [-max_body_size](http://brpc.baidu.com:8765/flags/max_body_size), in bytes.
@@ -428,6 +453,66 @@ baidu_std and hulu_pbrpc supports attachments which are sent along with messages
 Attachment is not compressed by framework.
 
 In http, attachment corresponds to [message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html), namely the data to post to client is stored in response_attachment().
+
+## Turn on SSL
+
+Update openssl to the latest version before turning on SSL, since older versions of openssl may have severe security problems and support less encryption algorithms, which is against with the purpose of using SSL. Setup `ServerOptions.ssl_options` to turn on SSL. Refer to [ssl_option.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_option.h) for more details.
+
+```c++
+// Certificate structure
+struct CertInfo {
+    // Certificate in PEM format.
+    // Note that CN and alt subjects will be extracted from the certificate,
+    // and will be used as hostnames. Requests to this hostname (provided SNI
+    // extension supported) will be encrypted using this certifcate.
+    // Supported both file path and raw string
+    std::string certificate;
+
+    // Private key in PEM format.
+    // Supported both file path and raw string based on prefix:
+    std::string private_key;
+
+    // Additional hostnames besides those inside the certificate. Wildcards
+    // are supported but it can only appear once at the beginning (i.e. *.xxx.com).
+    std::vector<std::string> sni_filters;
+};
+
+// SSL options at server side
+struct ServerSSLOptions {
+    // Default certificate which will be loaded into server. Requests
+    // without hostname or whose hostname doesn't have a corresponding
+    // certificate will use this certificate. MUST be set to enable SSL.
+    CertInfo default_cert;
+    
+    // Additional certificates which will be loaded into server. These
+    // provide extra bindings between hostnames and certificates so that
+    // we can choose different certificates according to different hostnames.
+    // See `CertInfo' for detail.
+    std::vector<CertInfo> certs;
+    
+    // When set, requests without hostname or whose hostname can't be found in
+    // any of the cerficates above will be dropped. Otherwise, `default_cert'
+    // will be used.
+    // Default: false
+    bool strict_sni;
+ 
+    // ... Other options
+};
+```
+
+- To turn on SSL, users **MUST** provide a `default_cert`. For dynamic certificate selection (i.e. based on request hostname, a.k.a [SNI](https://en.wikipedia.org/wiki/Server_Name_Indication)), `certs` should be used to store those dynamic certificates. Finally, users can add/remove those certificates when server's running:
+
+  ```c++
+  int AddCertificate(const CertInfo& cert);
+  int RemoveCertificate(const CertInfo& cert);
+  int ResetCertificates(const std::vector<CertInfo>& certs);
+  ```
+
+- Other options include: cipher suites (recommend using `ECDHE-RSA-AES256-GCM-SHA384` which is the default suite used by chrome, and one of the safest suites. The drawback is more CPU cost), session reuse and so on. 
+
+- SSL layer works under protocol layer. As a result, all protocols (such as HTTP)  can provide SSL access when it's turned on. Server will decrypt the data first and then pass it into each protocol.
+
+- After turning on SSL, non-SSL access is still available for the same port. Server can automatically distinguish SSL from non-SSL requests. SSL-only mode can be implemented using `Controller::is_ssl()` in service's callback and `SetFailed` if it returns false. In the meanwhile, the builtin-service [connections](../cn/connections.md) also shows the SSL information for each connection.
 
 ## Verify identities of clients
 
@@ -667,7 +752,7 @@ int main(int argc, char* argv[]) {
 
 A server-thread-local is bound to **a call to service's CallMethod**, from entering service's CallMethod, to leaving the method. All server-thread-local data are reused as much as possible and will not be deleted before stopping the server. server-thread-local is implemented as a special bthread-local.
 
-After setting ServerOptions.thread_local_data_factory, call Controller.thread_local_data() to get a thread-local. If ServerOptions.thread_local_data_factory is unset, Controller.thread_local_data() always returns NULL. 
+After setting ServerOptions.thread_local_data_factory, call brpc::thread_local_data() to get a thread-local. If ServerOptions.thread_local_data_factory is unset, brpc::thread_local_data() always returns NULL. 
 
 If ServerOptions.reserved_thread_local_data is greater than 0, Server creates so many data before serving.
 
@@ -770,7 +855,7 @@ Since brpc creates a bthread for each request, the bthread-local in the server b
 // when the key is destroyed. `destructor' is not called if the value
 // associated is NULL when the key is destroyed.
 // Returns 0 on success, error code otherwise.
-extern int bthread_key_create(bthread_key_t* key, void (*destructor)(void* data)) __THROW;
+extern int bthread_key_create(bthread_key_t* key, void (*destructor)(void* data));
  
 // Delete a key previously returned by bthread_key_create().
 // It is the responsibility of the application to free the data related to
@@ -778,7 +863,7 @@ extern int bthread_key_create(bthread_key_t* key, void (*destructor)(void* data)
 // this function. Any destructor that may have been associated with key
 // will no longer be called upon thread exit.
 // Returns 0 on success, error code otherwise.
-extern int bthread_key_delete(bthread_key_t key) __THROW;
+extern int bthread_key_delete(bthread_key_t key);
  
 // Store `data' in the thread-specific slot identified by `key'.
 // bthread_setspecific() is callable from within destructor. If the application
@@ -793,12 +878,12 @@ extern int bthread_key_delete(bthread_key_t key) __THROW;
 // in the server.
 // Returns 0 on success, error code otherwise.
 // If the key is invalid or deleted, return EINVAL.
-extern int bthread_setspecific(bthread_key_t key, void* data) __THROW;
+extern int bthread_setspecific(bthread_key_t key, void* data);
  
 // Return current value of the thread-specific slot identified by `key'.
 // If bthread_setspecific() had not been called in the thread, return NULL.
 // If the key is invalid or deleted, return NULL.
-extern void* bthread_getspecific(bthread_key_t key) __THROW;
+extern void* bthread_getspecific(bthread_key_t key);
 ```
 
 **How to use**
@@ -890,14 +975,6 @@ All brpc servers in one process [share worker pthreads](#Number-of-worker-pthrea
 ### Q: Why do client-side latencies much larger than the server-side ones
 
 server-side worker pthreads may not be enough and requests are significantly delayed. Read [Server debugging](server_debugging.md) for steps on debugging server-side issues quickly.
-
-### Q: Program may crash and generate coredumps unexplainable after switching to brpc
-
-brpc server runs code in bthreads with stacksize=1MB by default, while stacksize of pthreads is 10MB. It's possible that programs running normally on pthreads may meet stack overflow on bthreads.
-
-NOTE: It does mean that coredump of programs is likely to be caused by "stack overflow" on bthreads. We're talking about this simply because it's easy and quick to verify this factor and exclude the possibility.
-
-Solution: Add following gflags to adjust the stacksize. For example: `--stack_size_normal=10000000 --tc_stack_normal=1`. The first flag sets stacksize to 10MB and the second flag sets number of stacks cached by each worker pthread (to prevent reusing from global each time)
 
 ### Q: Fail to open /proc/self/io
 

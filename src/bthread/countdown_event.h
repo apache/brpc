@@ -16,8 +16,8 @@
 // Author: Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date: 2016/06/03 13:06:40
 
-#ifndef  PUBLIC_BTHREAD_COUNTDOWN_EVENT_H
-#define  PUBLIC_BTHREAD_COUNTDOWN_EVENT_H
+#ifndef BTHREAD_COUNTDOWN_EVENT_H
+#define BTHREAD_COUNTDOWN_EVENT_H
 
 #include "bthread/bthread.h"
 
@@ -55,4 +55,4 @@ private:
 
 }  // namespace bthread
 
-#endif  //PUBLIC_BTHREAD_COUNTDOWN_EVENT_H
+#endif  // BTHREAD_COUNTDOWN_EVENT_H

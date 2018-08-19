@@ -1,0 +1,6 @@
+build --copt -DHAVE_ZLIB=1
+# bazel build with glog
+# build --define=with_glog=true
+build -c opt
+# unittest 
+test --define=unittest=true

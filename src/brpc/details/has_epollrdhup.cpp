@@ -14,6 +14,10 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
+#include "butil/build_config.h"
+
+#if defined(OS_LINUX)
+
 #include <sys/epoll.h>                             // epoll_create
 #include <sys/types.h>                             // socketpair
 #include <sys/socket.h>                            // ^
@@ -23,7 +27,6 @@
 #ifndef EPOLLRDHUP
 #define EPOLLRDHUP 0x2000
 #endif
-
 
 namespace brpc {
 
@@ -56,3 +59,11 @@ static unsigned int check_epollrdhup() {
 extern const unsigned int has_epollrdhup = check_epollrdhup();
 
 } // namespace brpc
+
+#else
+
+namespace brpc {
+extern const unsigned int has_epollrdhup = false;
+}
+
+#endif // defined(OS_LINUX)

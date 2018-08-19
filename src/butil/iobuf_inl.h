@@ -18,8 +18,8 @@
 
 // Inlined implementations of some methods defined in iobuf.h
 
-#ifndef BASE_IOBUF_INL_H
-#define BASE_IOBUF_INL_H
+#ifndef BUTIL_IOBUF_INL_H
+#define BUTIL_IOBUF_INL_H
 
 void* fast_memcpy(void *__restrict dest, const void *__restrict src, size_t n);
 
@@ -156,6 +156,14 @@ inline const IOBuf::BlockRef& IOBuf::_ref_at(size_t i) const {
     return _small() ? _sv.refs[i] : _bv.ref_at(i);
 }
 
+inline const IOBuf::BlockRef* IOBuf::_pref_at(size_t i) const {
+    if (_small()) {
+        return i < (size_t)(!!_sv.refs[0].block + !!_sv.refs[1].block) ? &_sv.refs[i] : NULL;
+    } else {
+        return i < _bv.nref ? &_bv.ref_at(i) : NULL;
+    }
+}
+
 inline bool operator==(const IOBuf::BlockRef& r1, const IOBuf::BlockRef& r2) {
     return r1.offset == r2.offset && r1.length == r2.length &&
         r1.block == r2.block;
@@ -289,4 +297,4 @@ inline size_t IOBufBytesIterator::copy_and_forward(std::string* s, size_t n) {
 
 }  // namespace butil
 
-#endif  // BASE_IOBUF_INL_H
+#endif  // BUTIL_IOBUF_INL_H

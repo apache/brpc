@@ -18,7 +18,7 @@
 #include "rapidjson.h"
 #include <cstdio>
 
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 
 //! File byte stream for input using fread().
 /*!
@@ -83,6 +83,6 @@ private:
     bool eof_;
 };
 
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 #endif // RAPIDJSON_FILESTREAM_H_

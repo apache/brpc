@@ -15,10 +15,28 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: 2014/09/22 11:57:43
 
-#include "bvar/latency_recorder.h"
+#include <gflags/gflags.h>
 #include "butil/unique_ptr.h"
+#include "bvar/latency_recorder.h"
 
 namespace bvar {
+
+// Reloading following gflags does not change names of the corresponding bvars.
+// Avoid reloading in practice.
+DEFINE_int32(bvar_latency_p1, 80, "First latency percentile");
+DEFINE_int32(bvar_latency_p2, 90, "Second latency percentile");
+DEFINE_int32(bvar_latency_p3, 99, "Third latency percentile");
+
+static bool valid_percentile(const char*, int32_t v) {
+    return v > 0 && v < 100;
+}
+const bool ALLOW_UNUSED dummy_bvar_latency_p1 = ::GFLAGS_NS::RegisterFlagValidator(
+    &FLAGS_bvar_latency_p1, valid_percentile);
+const bool ALLOW_UNUSED dummy_bvar_latency_p2 = ::GFLAGS_NS::RegisterFlagValidator(
+    &FLAGS_bvar_latency_p2, valid_percentile);
+const bool ALLOW_UNUSED dummy_bvar_latency_p3 = ::GFLAGS_NS::RegisterFlagValidator(
+    &FLAGS_bvar_latency_p3, valid_percentile);
+
 namespace detail {
 
 typedef PercentileSamples<1022> CombinedPercentileSamples;
@@ -93,9 +111,22 @@ static CombinedPercentileSamples* combine(PercentileWindow* w) {
 }
 
 template <int64_t numerator, int64_t denominator>
-int64_t get_percetile(void* arg) {
+static int64_t get_percetile(void* arg) {
     return ((LatencyRecorder*)arg)->latency_percentile(
             (double)numerator / double(denominator));
+}
+
+static int64_t get_p1(void* arg) {
+    LatencyRecorder* lr = static_cast<LatencyRecorder*>(arg);
+    return lr->latency_percentile(FLAGS_bvar_latency_p1 / 100.0);
+}
+static int64_t get_p2(void* arg) {
+    LatencyRecorder* lr = static_cast<LatencyRecorder*>(arg);
+    return lr->latency_percentile(FLAGS_bvar_latency_p2 / 100.0);
+}
+static int64_t get_p3(void* arg) {
+    LatencyRecorder* lr = static_cast<LatencyRecorder*>(arg);
+    return lr->latency_percentile(FLAGS_bvar_latency_p3 / 100.0);
 }
 
 static Vector<int64_t, 4> get_latencies(void *arg) {
@@ -105,9 +136,9 @@ static Vector<int64_t, 4> get_latencies(void *arg) {
     // other values and make other curves on the plotted graph small and
     // hard to read.
     Vector<int64_t, 4> result;
-    result[0] = cb->get_number(0.5);
-    result[1] = cb->get_number(0.90);
-    result[2] = cb->get_number(0.99);
+    result[0] = cb->get_number(FLAGS_bvar_latency_p1 / 100.0);
+    result[1] = cb->get_number(FLAGS_bvar_latency_p2 / 100.0);
+    result[2] = cb->get_number(FLAGS_bvar_latency_p3 / 100.0);
     result[3] = cb->get_number(0.999);
     return result;
 }
@@ -119,9 +150,9 @@ LatencyRecorderBase::LatencyRecorderBase(time_t window_size)
     , _count(get_recorder_count, &_latency)
     , _qps(get_window_recorder_qps, &_latency_window)
     , _latency_percentile_window(&_latency_percentile, window_size)
-    , _latency_50(get_percetile<50, 100>, this)
-    , _latency_90(get_percetile<90, 100>, this)
-    , _latency_99(get_percetile<99, 100>, this)
+    , _latency_p1(get_p1, this)
+    , _latency_p2(get_p2, this)
+    , _latency_p3(get_p3, this)
     , _latency_999(get_percetile<999, 1000>, this)
     , _latency_9999(get_percetile<9999, 10000>, this)
     , _latency_cdf(&_latency_percentile_window)
@@ -186,13 +217,17 @@ int LatencyRecorder::expose(const butil::StringPiece& prefix1,
     if (_qps.expose_as(prefix, "qps") != 0) {
         return -1;
     }
-    if (_latency_50.expose_as(prefix, "latency_50", DISPLAY_ON_PLAIN_TEXT) != 0) {
+    char namebuf[32];
+    snprintf(namebuf, sizeof(namebuf), "latency_%d", (int)FLAGS_bvar_latency_p1);
+    if (_latency_p1.expose_as(prefix, namebuf, DISPLAY_ON_PLAIN_TEXT) != 0) {
         return -1;
     }
-    if (_latency_90.expose_as(prefix, "latency_90", DISPLAY_ON_PLAIN_TEXT) != 0) {
+    snprintf(namebuf, sizeof(namebuf), "latency_%d", (int)FLAGS_bvar_latency_p2);
+    if (_latency_p2.expose_as(prefix, namebuf, DISPLAY_ON_PLAIN_TEXT) != 0) {
         return -1;
     }
-    if (_latency_99.expose_as(prefix, "latency_99", DISPLAY_ON_PLAIN_TEXT) != 0) {
+    snprintf(namebuf, sizeof(namebuf), "latency_%u", (int)FLAGS_bvar_latency_p3);
+    if (_latency_p3.expose_as(prefix, namebuf, DISPLAY_ON_PLAIN_TEXT) != 0) {
         return -1;
     }
     if (_latency_999.expose_as(prefix, "latency_999", DISPLAY_ON_PLAIN_TEXT) != 0) {
@@ -207,7 +242,10 @@ int LatencyRecorder::expose(const butil::StringPiece& prefix1,
     if (_latency_percentiles.expose_as(prefix, "latency_percentiles", DISPLAY_ON_HTML) != 0) {
         return -1;
     }
-    CHECK_EQ(0, _latency_percentiles.set_vector_names("50%,90%,99%,99.9%"));
+    snprintf(namebuf, sizeof(namebuf), "%d%%,%d%%,%d%%,99.9%%",
+             (int)FLAGS_bvar_latency_p1, (int)FLAGS_bvar_latency_p2,
+             (int)FLAGS_bvar_latency_p3);
+    CHECK_EQ(0, _latency_percentiles.set_vector_names(namebuf));
     return 0;
 }
 
@@ -222,11 +260,13 @@ void LatencyRecorder::hide() {
     _max_latency_window.hide();
     _count.hide();
     _qps.hide();
-    _latency_50.hide();
-    _latency_90.hide();
-    _latency_99.hide();
+    _latency_p1.hide();
+    _latency_p2.hide();
+    _latency_p3.hide();
     _latency_999.hide();
     _latency_9999.hide();
+    _latency_cdf.hide();
+    _latency_percentiles.hide();
 }
 
 LatencyRecorder& LatencyRecorder::operator<<(int64_t latency) {

@@ -17,8 +17,8 @@
 
 // Redirect LOG() into comlog.
 
-#ifndef BASE_COMLOG_SINK_H
-#define BASE_COMLOG_SINK_H
+#ifndef BUTIL_COMLOG_SINK_H
+#define BUTIL_COMLOG_SINK_H
 
 #include "butil/logging.h"
 
@@ -161,4 +161,4 @@ private:
 
 }  // namespace logging
 
-#endif  // BASE_COMLOG_SINK_H
+#endif  // BUTIL_COMLOG_SINK_H

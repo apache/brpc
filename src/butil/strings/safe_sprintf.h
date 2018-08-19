@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_STRINGS_SAFE_SPRINTF_H_
-#define BASE_STRINGS_SAFE_SPRINTF_H_
+#ifndef BUTIL_STRINGS_SAFE_SPRINTF_H_
+#define BUTIL_STRINGS_SAFE_SPRINTF_H_
 
 #include "butil/build_config.h"
 
@@ -175,15 +175,15 @@ struct Arg {
 
 // This is the internal function that performs the actual formatting of
 // an snprintf()-style format string.
-BASE_EXPORT ssize_t SafeSNPrintf(char* buf, size_t sz, const char* fmt,
+BUTIL_EXPORT ssize_t SafeSNPrintf(char* buf, size_t sz, const char* fmt,
                                  const Arg* args, size_t max_args);
 
 #if !defined(NDEBUG)
 // In debug builds, allow unit tests to artificially lower the kSSizeMax
 // constant that is used as a hard upper-bound for all buffers. In normal
 // use, this constant should always be std::numeric_limits<ssize_t>::max().
-BASE_EXPORT void SetSafeSPrintfSSizeMaxForTest(size_t max);
-BASE_EXPORT size_t GetSafeSPrintfSSizeMaxForTest();
+BUTIL_EXPORT void SetSafeSPrintfSSizeMaxForTest(size_t max);
+BUTIL_EXPORT size_t GetSafeSPrintfSSizeMaxForTest();
 #endif
 
 }  // namespace internal
@@ -405,7 +405,7 @@ ssize_t SafeSPrintf(char (&buf)[N], const char* fmt, T0 arg0) {
 }
 
 // Fast-path when we don't actually need to substitute any arguments.
-BASE_EXPORT ssize_t SafeSNPrintf(char* buf, size_t N, const char* fmt);
+BUTIL_EXPORT ssize_t SafeSNPrintf(char* buf, size_t N, const char* fmt);
 template<size_t N>
 inline ssize_t SafeSPrintf(char (&buf)[N], const char* fmt) {
   return SafeSNPrintf(buf, N, fmt);
@@ -414,4 +414,4 @@ inline ssize_t SafeSPrintf(char (&buf)[N], const char* fmt) {
 }  // namespace strings
 }  // namespace butil
 
-#endif  // BASE_STRINGS_SAFE_SPRINTF_H_
+#endif  // BUTIL_STRINGS_SAFE_SPRINTF_H_

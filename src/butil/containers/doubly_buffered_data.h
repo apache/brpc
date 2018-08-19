@@ -15,8 +15,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon Sep 22 22:23:13 CST 2014
 
-#ifndef BASE_DOUBLY_BUFFERED_DATA_H
-#define BASE_DOUBLY_BUFFERED_DATA_H
+#ifndef BUTIL_DOUBLY_BUFFERED_DATA_H
+#define BUTIL_DOUBLY_BUFFERED_DATA_H
 
 #include <vector>                                       // std::vector
 #include <pthread.h>
@@ -27,6 +27,7 @@
 #include "butil/type_traits.h"
 #include "butil/errno.h"
 #include "butil/atomicops.h"
+#include "butil/unique_ptr.h"
 
 namespace butil {
 
@@ -238,17 +239,17 @@ private:
 template <typename T, typename TLS>
 typename DoublyBufferedData<T, TLS>::Wrapper*
 DoublyBufferedData<T, TLS>::AddWrapper() {
-    Wrapper* w = new (std::nothrow) Wrapper(this);
+    std::unique_ptr<Wrapper> w(new (std::nothrow) Wrapper(this));
     if (NULL == w) {
         return NULL;
     }
     try {
         BAIDU_SCOPED_LOCK(_wrappers_mutex);
-        _wrappers.push_back(w);
+        _wrappers.push_back(w.get());
     } catch (std::exception& e) {
         return NULL;
     }
-    return w;
+    return w.release();
 }
 
 // Called when thread quits.
@@ -414,4 +415,4 @@ size_t DoublyBufferedData<T, TLS>::ModifyWithForeground(
 
 }  // namespace butil
 
-#endif  // BASE_DOUBLY_BUFFERED_DATA_H
+#endif  // BUTIL_DOUBLY_BUFFERED_DATA_H

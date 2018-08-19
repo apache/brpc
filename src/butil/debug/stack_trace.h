@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_DEBUG_STACK_TRACE_H_
-#define BASE_DEBUG_STACK_TRACE_H_
+#ifndef BUTIL_DEBUG_STACK_TRACE_H_
+#define BUTIL_DEBUG_STACK_TRACE_H_
 
 #include <iosfwd>
 #include <string>
@@ -25,7 +25,7 @@ namespace debug {
 // Enables stack dump to console output on exception and signals.
 // When enabled, the process will quit immediately. This is meant to be used in
 // unit_tests only! This is not thread-safe: only call from main thread.
-BASE_EXPORT bool EnableInProcessStackDumping();
+BUTIL_EXPORT bool EnableInProcessStackDumping();
 
 // A different version of EnableInProcessStackDumping that also works for
 // sandboxed processes.  For more details take a look at the description
@@ -34,12 +34,12 @@ BASE_EXPORT bool EnableInProcessStackDumping();
 // contents. In DEBUG builds, this function also opens the object files that
 // are loaded in memory and caches their file descriptors (this cannot be
 // done in official builds because it has security implications).
-BASE_EXPORT bool EnableInProcessStackDumpingForSandbox();
+BUTIL_EXPORT bool EnableInProcessStackDumpingForSandbox();
 
 // A stacktrace can be helpful in debugging. For example, you can include a
 // stacktrace member in a object (probably around #ifndef NDEBUG) so that you
 // can later see where the given object was created from.
-class BASE_EXPORT StackTrace {
+class BUTIL_EXPORT StackTrace {
  public:
   // Creates a stacktrace from the current location.
   StackTrace();
@@ -97,7 +97,7 @@ namespace internal {
 // conversion was successful or NULL otherwise. It never writes more than "sz"
 // bytes. Output will be truncated as needed, and a NUL character is always
 // appended.
-BASE_EXPORT char *itoa_r(intptr_t i,
+BUTIL_EXPORT char *itoa_r(intptr_t i,
                          char *buf,
                          size_t sz,
                          int base,
@@ -109,4 +109,4 @@ BASE_EXPORT char *itoa_r(intptr_t i,
 }  // namespace debug
 }  // namespace butil
 
-#endif  // BASE_DEBUG_STACK_TRACE_H_
+#endif  // BUTIL_DEBUG_STACK_TRACE_H_

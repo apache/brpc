@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Sep  7 22:37:39 CST 2014
 
-#ifndef BAIDU_BTHREAD_ALLOCATE_STACK_H
-#define BAIDU_BTHREAD_ALLOCATE_STACK_H
+#ifndef BTHREAD_ALLOCATE_STACK_H
+#define BTHREAD_ALLOCATE_STACK_H
 
 #include <assert.h>
 #include <gflags/gflags.h>          // DECLARE_int32
@@ -77,4 +77,4 @@ void jump_stack(ContextualStack* from, ContextualStack* to);
 
 #include "bthread/stack_inl.h"
 
-#endif  // BAIDU_BTHREAD_ALLOCATE_STACK_H
+#endif  // BTHREAD_ALLOCATE_STACK_H

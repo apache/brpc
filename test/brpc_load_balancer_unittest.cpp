@@ -1,17 +1,21 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
+// brpc - A framework to host and access services throughout Baidu.
 // Copyright (c) 2014 Baidu, Inc.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <map>
 #include <gtest/gtest.h>
+#include "bthread/bthread.h"
 #include "butil/gperftools_profiler.h"
 #include "butil/time.h"
+#include "butil/fast_rand.h"
 #include "butil/containers/doubly_buffered_data.h"
+#include "brpc/describable.h"
 #include "brpc/socket.h"
+#include "butil/strings/string_number_conversions.h"
+#include "brpc/policy/weighted_round_robin_load_balancer.h"
 #include "brpc/policy/round_robin_load_balancer.h"
 #include "brpc/policy/randomized_load_balancer.h"
 #include "brpc/policy/locality_aware_load_balancer.h"
@@ -20,7 +24,6 @@
 
 namespace brpc {
 namespace policy {
-DECLARE_bool(count_inflight);
 extern uint32_t CRCHash32(const char *key, size_t len);
 }}
 
@@ -201,7 +204,7 @@ void* select_server(void* arg) {
     brpc::LoadBalancer* c = sa->lb;
     brpc::SocketUniquePtr ptr;
     CountMap *selected_count = new CountMap;
-    brpc::LoadBalancer::SelectIn in = { 0, false, 0u, NULL };
+    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
     brpc::LoadBalancer::SelectOut out(&ptr);
     uint32_t rand_seed = rand();
     if (sa->hash) {
@@ -233,10 +236,7 @@ class SaveRecycle : public brpc::SocketUser {
 };
 
 TEST_F(LoadBalancerTest, update_while_selection) {
-    const bool saved = brpc::policy::FLAGS_count_inflight;
-    brpc::policy::FLAGS_count_inflight = false;
-    
-    for (size_t round = 0; round < 4; ++round) {
+    for (size_t round = 0; round < 5; ++round) {
         brpc::LoadBalancer* lb = NULL;
         SelectArg sa = { NULL, NULL};
         bool is_lalb = false;
@@ -247,6 +247,8 @@ TEST_F(LoadBalancerTest, update_while_selection) {
         } else if (round == 2) {
             lb = new LALB;
             is_lalb = true;
+        } else if (round == 3) {
+            lb = new brpc::policy::WeightedRoundRobinLoadBalancer;
         } else {
             lb = new brpc::policy::ConsistentHashingLoadBalancer(
                         ::brpc::policy::MurmurHash32);
@@ -256,7 +258,7 @@ TEST_F(LoadBalancerTest, update_while_selection) {
 
         // Accessing empty lb should result in error.
         brpc::SocketUniquePtr ptr;
-        brpc::LoadBalancer::SelectIn in = { 0, true, 0, NULL };
+        brpc::LoadBalancer::SelectIn in = { 0, false, true, 0, NULL };
         brpc::LoadBalancer::SelectOut out(&ptr);
         ASSERT_EQ(ENODATA, lb->SelectServer(in, &out));
 
@@ -270,6 +272,9 @@ TEST_F(LoadBalancerTest, update_while_selection) {
             butil::EndPoint dummy;
             ASSERT_EQ(0, str2endpoint(addr, &dummy));
             brpc::ServerId id(8888);
+            if (3 == round) {
+              id.tag = "1";
+            }
             brpc::SocketOptions options;
             options.remote_side = dummy;
             options.user = new SaveRecycle;
@@ -344,13 +349,10 @@ TEST_F(LoadBalancerTest, update_while_selection) {
         }
         delete lb;
     }
-    brpc::policy::FLAGS_count_inflight = saved;
 }
 
 TEST_F(LoadBalancerTest, fairness) {
-    const bool saved = brpc::policy::FLAGS_count_inflight;
-    brpc::policy::FLAGS_count_inflight = false;
-    for (size_t round = 0; round < 4; ++round) {
+    for (size_t round = 0; round < 6; ++round) {
         brpc::LoadBalancer* lb = NULL;
         SelectArg sa = { NULL, NULL};
         if (round == 0) {
@@ -359,6 +361,8 @@ TEST_F(LoadBalancerTest, fairness) {
             lb = new brpc::policy::RandomizedLoadBalancer;
         } else if (round == 2) {
             lb = new LALB;
+        } else if (3 == round || 4 == round) {
+            lb = new brpc::policy::WeightedRoundRobinLoadBalancer;
         } else {
             lb = new brpc::policy::ConsistentHashingLoadBalancer(
                     brpc::policy::MurmurHash32);
@@ -383,6 +387,15 @@ TEST_F(LoadBalancerTest, fairness) {
             butil::EndPoint dummy;
             ASSERT_EQ(0, str2endpoint(addr, &dummy));
             brpc::ServerId id(8888);
+            if (3 == round) {
+                id.tag = "100";
+            } else if (4 == round) {
+                if ( i % 50 == 0) {
+                    id.tag = std::to_string(i*2 + butil::fast_rand_less_than(40) + 80); 
+                } else {
+                    id.tag = std::to_string(butil::fast_rand_less_than(40) + 80);
+                }
+            }
             brpc::SocketOptions options;
             options.remote_side = dummy;
             options.user = new SaveRecycle;
@@ -426,18 +439,41 @@ TEST_F(LoadBalancerTest, fairness) {
         size_t count_sum = 0;
         size_t count_squared_sum = 0;
         std::cout << lb_name << ':' << '\n';
-        for (size_t i = 0; i < ids.size(); ++i) {
-            size_t count = total_count[ids[i].id];
-            ASSERT_NE(0ul, count) << "i=" << i;
-            std::cout << i << '=' << count << ' ';
-            count_sum += count;
-            count_squared_sum += count * count;
-        }
 
-        std::cout << '\n'
-                  << ": average=" << count_sum/ids.size()
-                  << " deviation=" << sqrt(count_squared_sum * ids.size() - count_sum * count_sum) / ids.size() << std::endl;
-        
+        if (round != 3 && round !=4) { 
+            for (size_t i = 0; i < ids.size(); ++i) {
+                size_t count = total_count[ids[i].id];
+                ASSERT_NE(0ul, count) << "i=" << i;
+                std::cout << i << '=' << count << ' ';
+                count_sum += count;
+                count_squared_sum += count * count;
+            }  
+ 
+            std::cout << '\n'
+                      << ": average=" << count_sum/ids.size()
+                      << " deviation=" << sqrt(count_squared_sum * ids.size() 
+                          - count_sum * count_sum) / ids.size() << std::endl;
+        } else { // for weighted round robin load balancer
+            std::cout << "configured weight: " << std::endl;
+            std::ostringstream os;
+            brpc::DescribeOptions opt;
+            lb->Describe(os, opt);
+            std::cout << os.str() << std::endl;
+            double scaling_count_sum = 0.0;
+            double scaling_count_squared_sum = 0.0;
+            for (size_t i = 0; i < ids.size(); ++i) {
+                size_t count = total_count[ids[i].id];
+                ASSERT_NE(0ul, count) << "i=" << i;
+                std::cout << i << '=' << count << ' ';
+                double scaling_count = static_cast<double>(count) / std::stoi(ids[i].tag);
+                scaling_count_sum += scaling_count;
+                scaling_count_squared_sum += scaling_count * scaling_count;
+            }
+            std::cout << '\n'
+                      << ": scaling average=" << scaling_count_sum/ids.size()
+                      << " scaling deviation=" << sqrt(scaling_count_squared_sum * ids.size() 
+                          - scaling_count_sum * scaling_count_sum) / ids.size() << std::endl;
+        }
         for (size_t i = 0; i < ids.size(); ++i) {
             ASSERT_EQ(0, brpc::Socket::SetFailed(ids[i].id));
         }
@@ -447,7 +483,6 @@ TEST_F(LoadBalancerTest, fairness) {
         }
         delete lb;
     }
-    brpc::policy::FLAGS_count_inflight = saved;
 }
 
 TEST_F(LoadBalancerTest, consistent_hashing) {
@@ -492,7 +527,7 @@ TEST_F(LoadBalancerTest, consistent_hashing) {
         const size_t SELECT_TIMES = 1000000;
         std::map<butil::EndPoint, size_t> times;
         brpc::SocketUniquePtr ptr;
-        brpc::LoadBalancer::SelectIn in = { 0, false, 0u, NULL };
+        brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
         ::brpc::LoadBalancer::SelectOut out(&ptr);
         for (size_t i = 0; i < SELECT_TIMES; ++i) {
             in.has_request_code = true;
@@ -522,4 +557,68 @@ TEST_F(LoadBalancerTest, consistent_hashing) {
         }
     }
 }
+
+TEST_F(LoadBalancerTest, weighted_round_robin) {
+    const char* servers[] = { 
+            "10.92.115.19:8831", 
+            "10.42.108.25:8832", 
+            "10.36.150.32:8833", 
+            "10.92.149.48:8834", 
+            "10.42.122.201:8835",
+            "10.42.122.202:8836"
+    };
+    std::string weight[] = {"3", "2", "7", "1ab", "-1", "0"};
+    std::map<butil::EndPoint, int> configed_weight;
+    brpc::policy::WeightedRoundRobinLoadBalancer wrrlb;
+
+    // Add server to selected list. The server with invalid weight will be skipped.
+    for (size_t i = 0; i < ARRAY_SIZE(servers); ++i) {
+        const char *addr = servers[i];
+        butil::EndPoint dummy;
+        ASSERT_EQ(0, str2endpoint(addr, &dummy));
+        brpc::ServerId id(8888);
+        brpc::SocketOptions options;
+        options.remote_side = dummy;
+        options.user = new SaveRecycle;
+        ASSERT_EQ(0, brpc::Socket::Create(options, &id.id));
+        id.tag = weight[i];
+        if ( i < 3 ) {
+            int weight_num = 0;
+            ASSERT_TRUE(butil::StringToInt(weight[i], &weight_num));
+            configed_weight[dummy] = weight_num;
+            EXPECT_TRUE(wrrlb.AddServer(id));
+        } else {
+            EXPECT_FALSE(wrrlb.AddServer(id));
+        }
+    }
+
+    // Select the best server according to weight configured.
+    // There are 3 valid servers with weight 3, 2 and 7 respectively.
+    // We run SelectServer for 12 times. The result number of each server seleted should be 
+    // consistent with weight configured.
+    std::map<butil::EndPoint, size_t> select_result;
+    brpc::SocketUniquePtr ptr;
+    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
+    brpc::LoadBalancer::SelectOut out(&ptr);
+    int total_weight = 12;
+    std::vector<butil::EndPoint> select_servers;
+    for (int i = 0; i != total_weight; ++i) {
+        EXPECT_EQ(0, wrrlb.SelectServer(in, &out));
+        select_servers.emplace_back(ptr->remote_side());
+        ++select_result[ptr->remote_side()];
+    }
+    
+    for (const auto& s : select_servers) {
+        std::cout << "1=" << s << ", ";
+    } 
+    std::cout << std::endl;   
+    // Check whether slected result is consistent with expected.
+    EXPECT_EQ(3, select_result.size());
+    for (const auto& result : select_result) {
+        std::cout << result.first << " result=" << result.second 
+                  << " configured=" << configed_weight[result.first] << std::endl;
+        EXPECT_EQ(result.second, configed_weight[result.first]);
+    }
+}
+
 } //namespace

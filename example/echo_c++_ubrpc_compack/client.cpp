@@ -108,17 +108,17 @@ int main(int argc, char* argv[]) {
             stub.EchoWithMultiArgs(&cntl, &multi_requests, &multi_responses, NULL);
         }
         if (!cntl.Failed()) {
-            LOG(INFO) << "Received response from " << cntl.remote_side()
-                       << ": " << noflush;
             if (!FLAGS_multi_args) {
-                LOG(INFO) << response.message() << noflush;
+                LOG(INFO) << "Received response from " << cntl.remote_side()
+                          << ": " << response.message()
+                          << " latency=" << cntl.latency_us() << "us";
             } else {
-                LOG(INFO) << "res1=" << multi_responses.res1().message()
+                LOG(INFO) << "Received response from " << cntl.remote_side()
+                          << ": res1=" << multi_responses.res1().message()
                           << " res2=" << multi_responses.res2().message()
                           << " result=" << cntl.idl_result()
-                          << noflush;
+                          << " latency=" << cntl.latency_us() << "us";
             }
-            LOG(INFO) << " latency=" << cntl.latency_us() << "us";
         } else {
             LOG(ERROR) << "Fail to send request, " << cntl.ErrorText();
         }

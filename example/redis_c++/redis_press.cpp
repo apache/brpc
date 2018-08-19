@@ -139,25 +139,27 @@ int main(int argc, char* argv[]) {
     }
     LOG(INFO) << "Set " << FLAGS_batch * FLAGS_thread_num << " values";
 
-    if (FLAGS_dummy_port > 0) {
+    if (FLAGS_dummy_port >= 0) {
         brpc::StartDummyServerAt(FLAGS_dummy_port);
     }
 
-    std::vector<bthread_t> tids;
+    std::vector<bthread_t> bids;
+    std::vector<pthread_t> pids;
+    bids.resize(FLAGS_thread_num);
+    pids.resize(FLAGS_thread_num);
     std::vector<SenderArgs> args;
-    tids.resize(FLAGS_thread_num);
     args.resize(FLAGS_thread_num);
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         args[i].base_index = i * FLAGS_batch;
         args[i].redis_channel = &channel;
         if (!FLAGS_use_bthread) {
-            if (pthread_create(&tids[i], NULL, sender, &args[i]) != 0) {
+            if (pthread_create(&pids[i], NULL, sender, &args[i]) != 0) {
                 LOG(ERROR) << "Fail to create pthread";
                 return -1;
             }
         } else {
             if (bthread_start_background(
-                    &tids[i], NULL, sender, &args[i]) != 0) {
+                    &bids[i], NULL, sender, &args[i]) != 0) {
                 LOG(ERROR) << "Fail to create bthread";
                 return -1;
             }
@@ -174,9 +176,9 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "redis_client is going to quit";
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         if (!FLAGS_use_bthread) {
-            pthread_join(tids[i], NULL);
+            pthread_join(pids[i], NULL);
         } else {
-            bthread_join(tids[i], NULL);
+            bthread_join(bids[i], NULL);
         }
     }
     return 0;

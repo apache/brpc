@@ -1,9 +1,8 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
+// brpc - A framework to host and access services throughout Baidu.
 // Copyright (c) 2014 Baidu, Inc.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
@@ -37,8 +36,7 @@ namespace policy {
 void SendRpcResponse(int64_t correlation_id, Controller* cntl, 
                      const google::protobuf::Message* req,
                      const google::protobuf::Message* res,
-                     Socket* socket_ptr, const Server* server_raw,
-                     MethodStatus *, long);
+                     const Server* server_raw, MethodStatus *, long);
 } // policy
 } // brpc
 
@@ -220,6 +218,9 @@ protected:
             EXPECT_TRUE(req->ParseFromZeroCopyStream(&wrapper2));
         }
         brpc::Controller* cntl = new brpc::Controller();
+        cntl->_current_call.peer_id = ptr->id();
+        cntl->_current_call.sending_sock.reset(ptr.release());
+        cntl->_server = &ts->_dummy;
 
         google::protobuf::Message* res =
               ts->_svc.GetResponsePrototype(method).New();
@@ -228,12 +229,11 @@ protected:
             int64_t, brpc::Controller*,
             const google::protobuf::Message*,
             const google::protobuf::Message*,
-            brpc::Socket*,
             const brpc::Server*,
             brpc::MethodStatus*, long>(
                 &brpc::policy::SendRpcResponse,
                 meta.correlation_id(), cntl, NULL, res,
-                ptr.release(), &ts->_dummy, NULL, -1);
+                &ts->_dummy, NULL, -1);
         ts->_svc.CallMethod(method, cntl, req, res, done);
     }
 
@@ -418,7 +418,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }            
         StopAndJoin();
     }
@@ -519,7 +519,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }
         StopAndJoin();
     }
@@ -571,7 +571,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }
         StopAndJoin();
     }
@@ -615,7 +615,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }
         StopAndJoin();
     }
@@ -664,7 +664,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }
         StopAndJoin();
     }
@@ -702,7 +702,7 @@ protected:
         CallMethod(&subchans[0], &cntl, &req, &res, false);
         ASSERT_TRUE(cntl.Failed());
         ASSERT_EQ(brpc::EINTERNAL, cntl.ErrorCode()) << cntl.ErrorText();
-        ASSERT_EQ("[E2001]Method ComboEcho() not implemented.", cntl.ErrorText());
+        ASSERT_EQ("[E2001][127.0.1.1:0]Method ComboEcho() not implemented.", cntl.ErrorText());
 
         // do the rpc call.
         cntl.Reset();
@@ -725,7 +725,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }
         StopAndJoin();
     }
@@ -1026,7 +1026,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }            
         StopAndJoin();
     }

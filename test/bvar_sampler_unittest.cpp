@@ -63,7 +63,8 @@ TEST(SamplerTest, single_threaded) {
     }
     usleep(1010000);
     for (int i = 0; i < N; ++i) {
-        ASSERT_EQ(1, s[i]->called_count()) << "i=" << i;
+        // LE: called once every second, may be called more than once
+        ASSERT_LE(1, s[i]->called_count()) << "i=" << i;
     }
     EXPECT_EQ(0, DebugSampler::_s_ndestroy);
     for (int i = 0; i < N; ++i) {
@@ -80,7 +81,7 @@ TEST(SamplerTest, single_threaded) {
 #endif
 }
 
-void* check(void*) {
+static void* check(void*) {
     const int N = 100;
     DebugSampler* s[N];
     for (int i = 0; i < N; ++i) {
@@ -89,7 +90,7 @@ void* check(void*) {
     }
     usleep(1010000);
     for (int i = 0; i < N; ++i) {
-        EXPECT_EQ(1, s[i]->called_count()) << "i=" << i;
+        EXPECT_LE(1, s[i]->called_count()) << "i=" << i;
     }
     for (int i = 0; i < N; ++i) {
         s[i]->destroy();

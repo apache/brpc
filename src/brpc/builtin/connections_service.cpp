@@ -30,6 +30,8 @@
 
 namespace brpc {
 
+int64_t GetChannelConnectionCount();
+
 DEFINE_bool(show_hostname_instead_of_ip, false,
             "/connections shows hostname instead of ip");
 BRPC_VALIDATE_GFLAG(show_hostname_instead_of_ip, PassValidate);
@@ -136,7 +138,7 @@ void ConnectionsService::PrintConnections(
         if (need_local) {
             os << "Local|";
         }
-        os << "SSL|Protocol |fd   |"
+        os << "SSL|Protocol    |fd   |"
             "InBytes/s|In/s  |InBytes/m |In/m    |"
             "OutBytes/s|Out/s |OutBytes/m|Out/m   |"
             "Rtt/Var(ms)|SocketId\n";
@@ -173,7 +175,7 @@ void ConnectionsService::PrintConnections(
                 os << min_width(ptr->local_side().port, 5) << bar;
             }
             os << min_width("-", 3) << bar
-               << min_width("-", 9) << bar
+               << min_width("-", 12) << bar
                << min_width("-", 5) << bar
                << min_width("-", 9) << bar
                << min_width("-", 6) << bar
@@ -190,13 +192,14 @@ void ConnectionsService::PrintConnections(
             // slow (because we have many connections here).
             int pref_index = ptr->preferred_index();
             SocketUniquePtr first_sub;
-            if (pref_index < 0) {
+            int numfree = 0;
+            int numinflight = 0;
+            if (ptr->fd() < 0) {
+                ptr->GetPooledSocketStats(&numfree, &numinflight);
                 // Check preferred_index of any pooled sockets.
                 ptr->ListPooledSockets(&first_id, 1);
                 if (!first_id.empty()) {
-                    if (Socket::Address(first_id[0], &first_sub) == 0) {
-                        pref_index = first_sub->preferred_index();
-                    }
+                    Socket::Address(first_id[0], &first_sub);
                 }
             }
             const char* pref_prot = "-";
@@ -225,13 +228,28 @@ void ConnectionsService::PrintConnections(
             if (rttfd < 0 && first_sub != NULL) {
                 rttfd = first_sub->fd();
             }
-            // get rtt, this is linux-specific
+
+            bool got_rtt = false;
+            uint32_t srtt = 0;
+            uint32_t rtt_var = 0;
+            // get rtt
+#if defined(OS_LINUX)
             struct tcp_info ti;
             socklen_t len = sizeof(ti);
-            char rtt_display[32];
             if (0 == getsockopt(rttfd, SOL_TCP, TCP_INFO, &ti, &len)) {
+                got_rtt = true;
+            }
+#elif defined(OS_MACOSX)
+            struct tcp_connection_info ti;
+            socklen_t len = sizeof(ti);
+            if (0 == getsockopt(rttfd, IPPROTO_TCP, TCP_CONNECTION_INFO, &ti, &len)) {
+                got_rtt = true;
+            }
+#endif
+            char rtt_display[32];
+            if (got_rtt) {
                 snprintf(rtt_display, sizeof(rtt_display), "%.1f/%.1f",
-                         ti.tcpi_rtt / 1000.0, ti.tcpi_rttvar / 1000.0);
+                         srtt / 1000.0, rtt_var / 1000.0);
             } else {
                 strcpy(rtt_display, "-");
             }
@@ -240,15 +258,22 @@ void ConnectionsService::PrintConnections(
                 if (ptr->local_side().port > 0) {
                     os << min_width(ptr->local_side().port, 5) << bar;
                 } else {
-                    os << min_width((first_sub ? "*" : "-"), 5) << bar;
+                    os << min_width("-", 5) << bar;
                 }
             }
-            os << SSLStateToYesNo(ptr->ssl_state(), use_html) << bar
-               << min_width(pref_prot, 9) << bar;
+            os << SSLStateToYesNo(ptr->ssl_state(), use_html) << bar;
+            char protname[32];
+            if (!ptr->CreatedByConnect()) {
+                snprintf(protname, sizeof(protname), "%s", pref_prot);
+            } else {
+                snprintf(protname, sizeof(protname), "%s*%d", pref_prot,
+                         numfree + numinflight);
+            }
+            os << min_width(protname, 12) << bar;
             if (ptr->fd() >= 0) {
                 os << min_width(ptr->fd(), 5) << bar;
             } else {
-                os << min_width((first_sub ? "*" : "-"), 5) << bar;
+                os << min_width("-", 5) << bar;
             }
             os << min_width(stat.in_size_s, 9) << bar
                << min_width(stat.in_num_messages_s, 6) << bar
@@ -328,7 +353,7 @@ void ConnectionsService::default_method(
         }
         conns.insert(conns.end(), internal_conns.begin(), internal_conns.end());
     }
-    os << "server_socket_count: " << num_conns << '\n';
+    os << "server_connection_count: " << num_conns << '\n';
     PrintConnections(os, conns, use_html, server, false/*need_local*/);
     if (has_uncopied) {
         // Notice that we don't put the link of givemeall directly because
@@ -341,7 +366,7 @@ void ConnectionsService::default_method(
 
     SocketMapList(&conns);
     os << (use_html ? "<br>\n" : "\n")
-       << "channel_socket_count: " << conns.size() << '\n';
+       << "channel_connection_count: " << GetChannelConnectionCount() << '\n';
     PrintConnections(os, conns, use_html, server, true/*need_local*/);
 
     if (use_html) {

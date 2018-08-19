@@ -24,7 +24,6 @@
 
 namespace brpc {
 
-class Socket;
 class Server;
 class MethodStatus;
 class StatusService;
@@ -49,8 +48,7 @@ public:
     // If subclass does not require space, this return value is NULL.
     void* additional_space() { return _additional_space; }
 
-    // The starting time of the RPC, got from butil::cpuwide_time_us().
-    int64_t cpuwide_start_us() const { return _start_parse_us; }
+    int64_t received_us() const { return _received_us; }
 
     // Don't send response back, used by MIMO.
     void DoNotRespond();
@@ -61,9 +59,8 @@ friend class DeleteNsheadClosure;
     // Only callable by Run().
     ~NsheadClosure();
 
-    Socket* _socket_ptr;
     const Server* _server;
-    int64_t _start_parse_us;
+    int64_t _received_us;
     NsheadMessage _request;
     NsheadMessage _response;
     bool _do_respond;

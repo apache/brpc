@@ -5,8 +5,8 @@
 // Defines some functions that intentionally do an invalid memory access in
 // order to trigger an AddressSanitizer (ASan) error report.
 
-#ifndef BASE_DEBUG_ASAN_INVALID_ACCESS_H_
-#define BASE_DEBUG_ASAN_INVALID_ACCESS_H_
+#ifndef BUTIL_DEBUG_ASAN_INVALID_ACCESS_H_
+#define BUTIL_DEBUG_ASAN_INVALID_ACCESS_H_
 
 #include "butil/base_export.h"
 #include "butil/compiler_specific.h"
@@ -17,13 +17,13 @@ namespace debug {
 #if defined(ADDRESS_SANITIZER) || defined(SYZYASAN)
 
 // Generates an heap buffer overflow.
-BASE_EXPORT NOINLINE void AsanHeapOverflow();
+BUTIL_EXPORT NOINLINE void AsanHeapOverflow();
 
 // Generates an heap buffer underflow.
-BASE_EXPORT NOINLINE void AsanHeapUnderflow();
+BUTIL_EXPORT NOINLINE void AsanHeapUnderflow();
 
 // Generates an use after free.
-BASE_EXPORT NOINLINE void AsanHeapUseAfterFree();
+BUTIL_EXPORT NOINLINE void AsanHeapUseAfterFree();
 
 #endif  // ADDRESS_SANITIZER || SYZYASAN
 
@@ -33,15 +33,15 @@ BASE_EXPORT NOINLINE void AsanHeapUseAfterFree();
 
 // Corrupts a memory block and makes sure that the corruption gets detected when
 // we try to free this block.
-BASE_EXPORT NOINLINE void AsanCorruptHeapBlock();
+BUTIL_EXPORT NOINLINE void AsanCorruptHeapBlock();
 
 // Corrupts the heap and makes sure that the corruption gets detected when a
 // crash occur.
-BASE_EXPORT NOINLINE void AsanCorruptHeap();
+BUTIL_EXPORT NOINLINE void AsanCorruptHeap();
 
 #endif  // SYZYASAN
 
 }  // namespace debug
 }  // namespace butil
 
-#endif  // BASE_DEBUG_ASAN_INVALID_ACCESS_H_
+#endif  // BUTIL_DEBUG_ASAN_INVALID_ACCESS_H_

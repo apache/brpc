@@ -25,7 +25,7 @@ DEFINE_bool(show_lb_in_vars, false, "Describe LoadBalancers in vars");
 BRPC_VALIDATE_GFLAG(show_lb_in_vars, PassValidate);
 
 // For assigning unique names for lb.
-static butil::static_atomic<int> g_lb_counter = BASE_STATIC_ATOMIC_INIT(0);
+static butil::static_atomic<int> g_lb_counter = BUTIL_STATIC_ATOMIC_INIT(0);
 
 void SharedLoadBalancer::DescribeLB(std::ostream& os, void* arg) {
     (static_cast<SharedLoadBalancer*>(arg))->Describe(os, DescribeOptions());

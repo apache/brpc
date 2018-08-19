@@ -15,6 +15,7 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
+#include "butil/build_config.h"                // OS_MACOSX
 #include <arpa/inet.h>                         // inet_pton, inet_ntop
 #include <netdb.h>                             // gethostbyname_r
 #include <unistd.h>                            // gethostname
@@ -22,11 +23,18 @@
 #include <string.h>                            // strcpy
 #include <stdio.h>                             // snprintf
 #include <stdlib.h>                            // strtol
+#include <gflags/gflags.h>
 #include "butil/fd_guard.h"                    // fd_guard
 #include "butil/endpoint.h"                    // ip_t
 #include "butil/logging.h"
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/strings/string_piece.h"
+
+#ifndef SO_REUSEPORT
+#define SO_REUSEPORT    15
+#endif
+//This option is supported since Linux 3.9.
+DEFINE_bool(reuse_port, false, "turn on support for SO_REUSEPORT socket option.");
 
 __BEGIN_DECLS
 int BAIDU_WEAK bthread_connect(
@@ -111,6 +119,15 @@ int hostname2ip(const char* hostname, ip_t* ip) {
         for (; isspace(*hostname); ++hostname);
     }
 
+#if defined(OS_MACOSX)
+    // gethostbyname on MAC is thread-safe (with current usage) since the
+    // returned hostent is TLS. Check following link for the ref:
+    // https://lists.apple.com/archives/darwin-dev/2006/May/msg00008.html
+    struct hostent* result = gethostbyname(hostname);
+    if (result == NULL) {
+        return -1;
+    }
+#else
     char aux_buf[1024];
     int error = 0;
     struct hostent ent;
@@ -119,6 +136,7 @@ int hostname2ip(const char* hostname, ip_t* ip) {
                         &result, &error) != 0 || result == NULL) {
         return -1; 
     }
+#endif // defined(OS_MACOSX)
     // Only fetch the first address here
     bcopy((char*)result->h_addr, (char*)ip, result->h_length);
     return 0;
@@ -302,6 +320,15 @@ int tcp_listen(EndPoint point, bool reuse_addr) {
             return -1;
         }
     }
+
+    if (FLAGS_reuse_port) {
+        const int on = 1;
+        if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT,
+                       &on, sizeof(on)) != 0) {
+            LOG(WARNING) << "Fail to setsockopt SO_REUSEPORT of sockfd=" << sockfd;
+        }
+    }
+
     struct sockaddr_in serv_addr;
     bzero((char*)&serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;

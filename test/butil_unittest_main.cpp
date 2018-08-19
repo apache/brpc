@@ -3,14 +3,11 @@
 #include <sys/resource.h>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#include "butil/base_switches.h"
 #include "butil/at_exit.h"
 #include "butil/logging.h"
 #include "multiprocess_func_list.h"
 
-// Disable coredumps by default to avoid generating a lot of coredumps
-// after running death tests.
-DEFINE_bool(disable_coredump, true, "Never core dump");
+DEFINE_bool(disable_coredump, false, "Never core dump");
 
 int main(int argc, char** argv) {
     butil::AtExitManager at_exit;

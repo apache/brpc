@@ -2,33 +2,33 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_BASE_EXPORT_H_
-#define BASE_BASE_EXPORT_H_
+#ifndef BUTIL_BASE_EXPORT_H_
+#define BUTIL_BASE_EXPORT_H_
 
 #if defined(COMPONENT_BUILD)
 #if defined(WIN32)
 
-#if defined(BASE_IMPLEMENTATION)
-#define BASE_EXPORT __declspec(dllexport)
-#define BASE_EXPORT_PRIVATE __declspec(dllexport)
+#if defined(BUTIL_IMPLEMENTATION)
+#define BUTIL_EXPORT __declspec(dllexport)
+#define BUTIL_EXPORT_PRIVATE __declspec(dllexport)
 #else
-#define BASE_EXPORT __declspec(dllimport)
-#define BASE_EXPORT_PRIVATE __declspec(dllimport)
-#endif  // defined(BASE_IMPLEMENTATION)
+#define BUTIL_EXPORT __declspec(dllimport)
+#define BUTIL_EXPORT_PRIVATE __declspec(dllimport)
+#endif  // defined(BUTIL_IMPLEMENTATION)
 
 #else  // defined(WIN32)
-#if defined(BASE_IMPLEMENTATION)
-#define BASE_EXPORT __attribute__((visibility("default")))
-#define BASE_EXPORT_PRIVATE __attribute__((visibility("default")))
+#if defined(BUTIL_IMPLEMENTATION)
+#define BUTIL_EXPORT __attribute__((visibility("default")))
+#define BUTIL_EXPORT_PRIVATE __attribute__((visibility("default")))
 #else
-#define BASE_EXPORT
-#define BASE_EXPORT_PRIVATE
-#endif  // defined(BASE_IMPLEMENTATION)
+#define BUTIL_EXPORT
+#define BUTIL_EXPORT_PRIVATE
+#endif  // defined(BUTIL_IMPLEMENTATION)
 #endif
 
 #else  // defined(COMPONENT_BUILD)
-#define BASE_EXPORT
-#define BASE_EXPORT_PRIVATE
+#define BUTIL_EXPORT
+#define BUTIL_EXPORT_PRIVATE
 #endif
 
-#endif  // BASE_BASE_EXPORT_H_
+#endif  // BUTIL_BASE_EXPORT_H_

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_DEBUG_PROC_MAPS_LINUX_H_
-#define BASE_DEBUG_PROC_MAPS_LINUX_H_
+#ifndef BUTIL_DEBUG_PROC_MAPS_LINUX_H_
+#define BUTIL_DEBUG_PROC_MAPS_LINUX_H_
 
 #include <string>
 #include <vector>
@@ -77,14 +77,14 @@ struct MappedMemoryRegion {
 // starting other threads.
 //
 // [1] http://kernelnewbies.org/Documents/SeqFileHowTo
-BASE_EXPORT bool ReadProcMaps(std::string* proc_maps);
+BUTIL_EXPORT bool ReadProcMaps(std::string* proc_maps);
 
 // Parses /proc/<pid>/maps input data and stores in |regions|. Returns true
 // and updates |regions| if and only if all of |input| was successfully parsed.
-BASE_EXPORT bool ParseProcMaps(const std::string& input,
+BUTIL_EXPORT bool ParseProcMaps(const std::string& input,
                                std::vector<MappedMemoryRegion>* regions);
 
 }  // namespace debug
 }  // namespace butil
 
-#endif  // BASE_DEBUG_PROC_MAPS_LINUX_H_
+#endif  // BUTIL_DEBUG_PROC_MAPS_LINUX_H_

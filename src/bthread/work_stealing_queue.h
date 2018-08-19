@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 10 17:40:58 CST 2012
 
-#ifndef BAIDU_BTHREAD_WORK_STEALING_QUEUE_H
-#define BAIDU_BTHREAD_WORK_STEALING_QUEUE_H
+#ifndef BTHREAD_WORK_STEALING_QUEUE_H
+#define BTHREAD_WORK_STEALING_QUEUE_H
 
 #include "butil/macros.h"
 #include "butil/atomicops.h"
@@ -151,4 +151,4 @@ private:
 
 }  // namespace bthread
 
-#endif  // BAIDU_BTHREAD_WORK_STEALING_QUEUE_H
+#endif  // BTHREAD_WORK_STEALING_QUEUE_H

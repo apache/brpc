@@ -1,0 +1,10 @@
+set(CMAKE_CPP_FLAGS "${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -DNDEBUG -O2 -D__const__= -D__STRICT_ANSI__ -pipe -W -Wall -Wno-unused-parameter -fPIC -fno-omit-frame-pointer")
+use_cxx11()
+set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/output/bin)
+
+add_subdirectory(parallel_http)
+add_subdirectory(rpc_press)
+add_subdirectory(rpc_replay)
+add_subdirectory(rpc_view)
+add_subdirectory(trackme_server)

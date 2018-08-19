@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#ifndef BTHREAD_BASE_RESOURCE_POOL_H
-#define BTHREAD_BASE_RESOURCE_POOL_H
+#ifndef BUTIL_RESOURCE_POOL_H
+#define BUTIL_RESOURCE_POOL_H
 
 #include <cstddef>                       // size_t
 
@@ -142,4 +142,4 @@ template <typename T> ResourcePoolInfo describe_resources() {
 
 }  // namespace butil
 
-#endif  // BTHREAD_BASE_RESOURCE_POOL_H
+#endif  // BUTIL_RESOURCE_POOL_H

@@ -97,6 +97,6 @@ bool PopVersion(std::string* version);
 
 # 访问memcached集群
 
-建立一个使用c_md5负载均衡算法的channel就能访问挂载在对应名字服务下的memcached集群了。注意每个MemcacheRequest应只包含一个操作或确保所有的操作是同一个key。如果request包含了多个操作，在当前实现下这些操作总会送向同一个server，假如对应的key分布在多个server上，那么结果就不对了，这个情况下你必须把一个request分开为多个，每个包含一个操作。
+建立一个使用c_md5负载均衡算法的channel就能访问挂载在对应命名服务下的memcached集群了。注意每个MemcacheRequest应只包含一个操作或确保所有的操作是同一个key。如果request包含了多个操作，在当前实现下这些操作总会送向同一个server，假如对应的key分布在多个server上，那么结果就不对了，这个情况下你必须把一个request分开为多个，每个包含一个操作。
 
 或者你可以沿用常见的[twemproxy](https://github.com/twitter/twemproxy)方案。这个方案虽然需要额外部署proxy，还增加了延时，但client端仍可以像访问单点一样的访问它。

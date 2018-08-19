@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_BASE64_H__
-#define BASE_BASE64_H__
+#ifndef BUTIL_BASE64_H__
+#define BUTIL_BASE64_H__
 
 #include <string>
 
@@ -13,12 +13,12 @@
 namespace butil {
 
 // Encodes the input string in base64.
-BASE_EXPORT void Base64Encode(const StringPiece& input, std::string* output);
+BUTIL_EXPORT void Base64Encode(const StringPiece& input, std::string* output);
 
 // Decodes the base64 input string.  Returns true if successful and false
 // otherwise.  The output string is only modified if successful.
-BASE_EXPORT bool Base64Decode(const StringPiece& input, std::string* output);
+BUTIL_EXPORT bool Base64Decode(const StringPiece& input, std::string* output);
 
 }  // namespace butil
 
-#endif  // BASE_BASE64_H__
+#endif  // BUTIL_BASE64_H__

@@ -16,8 +16,8 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon Oct 19 17:17:36 CST 2015
 
-#ifndef PUBLIC_MCPACK2PB_MCPACK_MCPACK2PB_H
-#define PUBLIC_MCPACK2PB_MCPACK_MCPACK2PB_H
+#ifndef MCPACK2PB_MCPACK_MCPACK2PB_H
+#define MCPACK2PB_MCPACK_MCPACK2PB_H
 
 #include <google/protobuf/message.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
@@ -159,4 +159,4 @@ inline bool MessageHandler::serialize_to_iobuf(
 
 } // namespace mcpack2pb
 
-#endif // PUBLIC_MCPACK2PB_MCPACK_MCPACK2PB_H
+#endif // MCPACK2PB_MCPACK_MCPACK2PB_H

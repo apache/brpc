@@ -1,6 +1,6 @@
 # server端多协议
 
-brpc server在同端口支持所有的协议，大部分时候这对部署和运维更加方便。由于不同协议的格式大相径庭，严格地来说，同端口很难无二义地支持所有协议。出于解耦和可扩展性的考虑，也不太可能集中式地构建一个针对所有协议的分类器。我们的做法就是把协议归三类后逐个尝试：
+brpc server一个端口支持多种协议，大部分时候这对部署和运维更加方便。由于不同协议的格式大相径庭，严格地来说，一个端口很难无二义地支持所有协议。出于解耦和可扩展性的考虑，也不太可能集中式地构建一个针对所有协议的分类器。我们的做法就是把协议归三类后逐个尝试：
 
 - 第一类协议：标记或特殊字符在最前面，比如[baidu_std](baidu_std.md)，hulu_pbrpc的前4个字符分别是PRPC和HULU，解析代码只需要检查前4个字节就可以知道协议是否匹配，最先尝试这类协议。这些协议在同一个连接上也可以共存。
 - 第二类协议：有较为复杂的语法，没有固定的协议标记或特殊字符，可能在解析一段输入后才能判断是否匹配，目前此类协议只有http。
@@ -22,7 +22,7 @@ brpc就是设计为可随时扩展新协议的，步骤如下：
 
 在[options.proto](https://github.com/brpc/brpc/blob/master/src/brpc/options.proto)的ProtocolType中增加新协议类型，如果你需要的话可以联系我们增加，以确保不会和其他人的需求重合。
 
-目前的ProtocolType（16年底）:
+目前的ProtocolType（18年中）:
 ```c++
 enum ProtocolType {
     PROTOCOL_UNKNOWN = 0;
@@ -48,6 +48,10 @@ enum ProtocolType {
     PROTOCOL_DISP_IDL = 20;            // Client side only
     PROTOCOL_ERSDA_CLIENT = 21;        // Client side only
     PROTOCOL_UBRPC_MCPACK2 = 22;       // Client side only
+    // Reserve special protocol for cds-agent, which depends on FIFO right now
+    PROTOCOL_CDS_AGENT = 23;           // Client side only
+    PROTOCOL_ESP = 24;                 // Client side only
+    PROTOCOL_THRIFT = 25;              // Server side only
 }
 ```
 ## 实现回调

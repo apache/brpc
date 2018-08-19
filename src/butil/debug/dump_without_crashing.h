@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_DEBUG_DUMP_WITHOUT_CRASHING_H_
-#define BASE_DEBUG_DUMP_WITHOUT_CRASHING_H_
+#ifndef BUTIL_DEBUG_DUMP_WITHOUT_CRASHING_H_
+#define BUTIL_DEBUG_DUMP_WITHOUT_CRASHING_H_
 
 #include "butil/base_export.h"
 #include "butil/compiler_specific.h"
@@ -14,14 +14,14 @@ namespace butil {
 namespace debug {
 
 // Handler to silently dump the current process without crashing.
-BASE_EXPORT void DumpWithoutCrashing();
+BUTIL_EXPORT void DumpWithoutCrashing();
 
 // Sets a function that'll be invoked to dump the current process when
 // DumpWithoutCrashing() is called.
-BASE_EXPORT void SetDumpWithoutCrashingFunction(void (CDECL *function)());
+BUTIL_EXPORT void SetDumpWithoutCrashingFunction(void (CDECL *function)());
 
 }  // namespace debug
 
 }  // namespace butil
 
-#endif  // BASE_DEBUG_DUMP_WITHOUT_CRASHING_H_
+#endif  // BUTIL_DEBUG_DUMP_WITHOUT_CRASHING_H_
