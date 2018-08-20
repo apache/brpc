@@ -17,7 +17,6 @@
 #ifndef BRPC_CIRCUIT_BREAKER_H
 #define BRPC_CIRCUIT_BREAKER_H
                                             
-#include "butil/containers/doubly_buffered_data.h"
 #include "butil/atomicops.h"
 
 namespace brpc {

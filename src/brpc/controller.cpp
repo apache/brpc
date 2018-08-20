@@ -778,8 +778,8 @@ void Controller::Call::OnComplete(Controller* c, int error_code/*note*/,
     if (enable_circuit_breaker) {
         SocketUniquePtr sock;
         if (Socket::Address(peer_id, &sock) == 0) {
-//            sock->GetSharedPart()->circuit_breaker.OnCallEnd(
-//                error_code, butil::gettimeofday_us() - begin_time_us);
+            sock->FeedbackCircuitBreaker(error_code, 
+                butil::gettimeofday_us() - begin_time_us);
         }
     }
 }

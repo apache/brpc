@@ -762,8 +762,6 @@ private:
 
     butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
-
-    CircuitBreaker _circuit_breaker;
 };
 
 } // namespace brpc
