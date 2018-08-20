@@ -46,6 +46,7 @@ BUTIL_SOURCES = \
     src/butil/third_party/snappy/snappy-sinksource.cc \
     src/butil/third_party/snappy/snappy-stubs-internal.cc \
     src/butil/third_party/snappy/snappy.cc \
+    src/butil/third_party/lz4/lz4.c \
     src/butil/third_party/murmurhash3/murmurhash3.cpp \
     src/butil/arena.cpp \
     src/butil/at_exit.cc \
