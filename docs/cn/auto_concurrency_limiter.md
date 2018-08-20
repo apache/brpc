@@ -30,7 +30,7 @@ options.method_max_concurrency = "auto";
 server.MaxConcurrencyOf("example.EchoService.Echo") = "auto";
 ```
 
-## 基本原理
+## 原理
 
 ### 名词
 **concurrency**: 同时处理的请求数，又被称为“并发度”。
@@ -39,7 +39,7 @@ server.MaxConcurrencyOf("example.EchoService.Echo") = "auto";
 
 **noload_latency**: 处理任务的平均延时，不包括排队时间。
 
-**min_latency**: 实际测定的latency中的较小值，当预估的最大并发度没有显著高于真实的并发度时，min_latency和noload_latency接近。
+**min_latency**: 实际测定的latency中的较小值的ema，当预估的最大并发度没有显著高于真实的并发度时，min_latency和noload_latency接近。
 
 **peak_qps**: 极限qps。注意是处理或回复的qps而不是接收的qps。
 
@@ -58,83 +58,63 @@ server.MaxConcurrencyOf("example.EchoService.Echo") = "auto";
 
 自适应限流会不断的对请求进行采样，当采样窗口的样本数量足够时，会根据样本的平均延迟和服务当前的qps计算出下一个采样窗口的max_concurrency:
 
-> max_concurrency = peak_qps * ((2+alpha) * min_latency - avg_latency)
+> max_concurrency = peak_qps * ((2+alpha) * min_latency - latency)
 
 alpha为可接受的延时上升幅度，默认0.3。
 
-avg_latency是当前采样窗口内所有请求的平均latency。
+latency是当前采样窗口内所有请求的平均latency。
 
 peak_qps是最近一段时间测量到的qps的极大值。
 
 min_latency是最近一段时间测量到的latency较小值的ema，是noload_latency的估算值。
 
-当服务处于低负载时，min_latency约等于noload_latency，此时计算出来的max_concurrency会高于实际并发，但低于真实并发，给流量上涨留探索空间。而当服务过载时，服务的qps约等于peak_qps，同时avg_latency开始明显超过min_latency，此时max_concurrency则会接近或小于实际并发，并通过定期衰减避免远离真实并发，保证服务不会过载。
-
-
-### 使用采样窗口的平均latency而非最小latency来估计最佳并发
-
-一些实现使用采样窗口内的最小latency和最近一段时间内的最小latency进行比较，并以此来调整服务的最大并发。
-
-这种做法有两个缺陷，第一是很容易出现bad case，假如最近一段时间内所有的请求都大于保存的min_latency，会直接导致max_concurrency不断的缩小。第二点是该方案只考虑了latency和concurrency，而忽略了实际的qps值，很容易在noload_latency发生变化时出问题。
+当服务处于低负载时，min_latency约等于noload_latency，此时计算出来的max_concurrency会高于实际并发，但低于真实并发，给流量上涨留探索空间。而当服务过载时，服务的qps约等于peak_qps，同时latency开始明显超过min_latency，此时max_concurrency则会接近或小于实际并发，并通过定期衰减避免远离真实并发，保证服务不会过载。
 
 
 ### 估算noload_latency
-服务的noload_latency并非是一成不变的，自适应限流必须能够正确的探测noload_latency的变化。当noload_latency下降时，是很容感知到的，因为这个时候avg_latency也会下降。难点在于当avg_latency上涨时，需要能够正确的辨别到底是服务过载了，还是noload_latency上涨了。
+服务的noload_latency并非是一成不变的，自适应限流必须能够正确的探测noload_latency的变化。当noload_latency下降时，是很容感知到的，因为这个时候latency也会下降。难点在于当latency上涨时，需要能够正确的辨别到底是服务过载了，还是noload_latency上涨了。
 
-我们尝试过多种方案：
-1. 取最近一段时间的最小avg_latency来近似noload_latency
-2. 取最近一段时间的avg_latency的平均值或者指数平均值来预测noload_latency
-3. 收集请求的平均排队等待时间，使用avg_latency-avg_queue_time作为noload_latency
-4. 每隔一段时间缩小max_concurrency，使服务进入低负载，以此时的avg_latency作为noload_latency
+可能的方案有：
+1. 取最近一段时间的最小latency来近似noload_latency
+2. 取最近一段时间的latency的各种平均值来预测noload_latency
+3. 收集请求的平均排队等待时间，使用latency - queue_time作为noload_latency
+4. 每隔一段时间缩小max_concurrency，过一小段时间后以此时的latency作为noload_latency
 
+方案1和方案2的问题在于：假如服务持续处于高负载，那么最近的所有latency都会高出noload_latency，从而使得算法估计的noload_latency不断升高。
 
-经过大量实验之后发现方案4是最通用的，虽然在重新测量noload_latency时需要缩小max_concurrency，从而损失一些流量，但是是可以通过其他的技术手段将这个损失减到最小。
+方案3的问题在于，假如服务的性能瓶颈在下游服务，那么请求在服务本身的排队等待时间无法反应整体的负载情况。
 
-方案1和方案2的存在同一个问题：尽管真正的noload_latency的上涨时，算法能够在一段时间之后正确的感知到，但即使noload_latency没有上涨，假如服务持续处于高负载，那么最近的所有avg_latency都会高出noload_latency，从而使得算法估计的noload_latency不断升高。而方案3的问题在于，假如服务的性能瓶颈在下游服务，那么请求的在服务本身的排队等待时间就无法反应服务的负载情况了。每隔一段时间缩小max_concurrency来测量noload_latency的方案是最不容易出现badcase的。
+方案4是最通用的，也经过了大量实验的考验。缩小max_concurrency和公式中的alpha存在关联。让我们做个假想实验，若latency极为稳定并都等于min_latency，那么公式简化为max_concurrency = peak_qps * latency * (1 + alpha)。根据little's law，qps最多为peak_qps * (1 + alpha). alpha是qps的"探索空间"，若alpha为0，则qps被锁定为peak_qps，算法可能无法探索到”极限qps“。但在qps已经达到极限qps时，alpha会使延时上升（已拥塞），此时测定的min_latency会大于noload_latency，一轮轮下去最终会导致min_latency不收敛。定期降低max_concurrency就是阻止这个过程，并给min_latency下降提供”探索空间“。
 
-### 减少重新测量noload_latency时的流量损失
+#### 减少重测时的流量损失
 
-每隔一段时间，自适应限流算法都会将max_concurrency缩小25%。并持续一段时间，然后将此时的avg_latency作为服务的noload_latency，以处理noload_latency上涨了的情况。测量noload_latency时，必须让先服务处于低负载的状态，因此对max_concurrency的缩小时难以避免的。
+每隔一段时间，自适应限流算法都会缩小max_concurrency，并持续一段时间，然后将此时的latency作为服务的noload_latency，以处理noload_latency上涨了的情况。测量noload_latency时，必须让先服务处于低负载的状态，因此对max_concurrency的缩小是难以避免的。
 
-为了减少max_concurrency缩小之后所带来的流量损失，需要尽可能的缩短测量的时间。根据前面的Little's Law，假如服务处于高负载状态，所有的请求都需要排队一段时间才能得到处理。所以缩小max_concurrency的最短持续的时间就是:
+由于max_concurrency < concurrency时，服务会拒绝掉所有的请求，限流算法将"排空所有的经历过排队等待的请求的时间" 设置为 latency * 2 ，以确保用于计算min_latency的样本绝大部分都是没有经过排队等待的。
 
-> 排空所有的经历过排队等待的请求的时间 + 收集足够样本以计算min_latency的时间
+由于服务的latency通常都不会太长，这种做法所带来的流量损失也很小。
 
-由于max_concurrency < concurrency时，服务会拒绝掉所有的请求，限流算法将"排空所有的经历过排队等待的请求的时间" 设置为 avg_latency * 2 ，以确保用于计算min_latency的样本绝大部分都是没有经过排队等待的。
-
-
-由于服务的avg_latency通常都不会太长，这种做法所带来的流量损失也很小。
-
-
-### 应对latency的抖动
-即使服务自身没有过载，avg_latency也会发生波动，根据Little's Law，avg_latency的波动会导致server的concurrency发生波动。
+#### 应对抖动
+即使服务自身没有过载，latency也会发生波动，根据Little's Law，latency的波动会导致server的concurrency发生波动。
 
 我们在设计自适应限流的计算公式时，考虑到了latency发生抖动的情况:
-当服vg_latency与min_latency很接近时，根据计算公式会得到一个较高max_concurrency来适应concurrency的波动，从而尽可能的减少“误杀”。同时，随着avg_latency的升高，max_concurrency会逐渐降低，以保护服务不会过载。
+当latency与min_latency很接近时，根据计算公式会得到一个较高max_concurrency来适应concurrency的波动，从而尽可能的减少“误杀”。同时，随着latency的升高，max_concurrency会逐渐降低，以保护服务不会过载。
 
-从另一个角度来说，当avg_latency也开始升高时，通常意味着某处(不一定是服务本身，也有可能是下游服务)消耗了大量CPU资源，这个时候缩小max_concurrency也是合理的。
+从另一个角度来说，当latency也开始升高时，通常意味着某处(不一定是服务本身，也有可能是下游服务)消耗了大量CPU资源，这个时候缩小max_concurrency也是合理的。
 
-
-### noload_latency 和 qps 的平滑处理
-为了减少个别窗口的抖动对限流算法的影响，同时尽量降低计算开销，在计算min_latency和peak_qps时，会通过使用[EMA](https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average)来进行平滑处理：
+#### 平滑处理
+为了减少个别窗口的抖动对限流算法的影响，同时尽量降低计算开销，计算min_latency时会通过使用[EMA](https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average)来进行平滑处理：
 
 ```
-if avg_latency > min_latency:
-    min_latency = avg_latency * ema_alpha  + (1 - ema_alpha) * min_latency
+if latency > min_latency:
+    min_latency = latency * ema_alpha  + (1 - ema_alpha) * min_latency
 else:
     do_nothing
-    
-if current_qps > peak_qps:
-    peak_qps = current_qps
-else: 
-    peak_qps = current_qps * ema_alpha / 10 + (1 - ema_alpha / 10) * peak_qps
-
 ```
 
-将peak_qps的ema参数置为min_latency的ema参数的十分之一的原因是: peak_qps 下降了通常并不意味着极限qps也下降了。而min_latency下降了，通常意味着noload_latency确实下降了。
+### 估算peak_qps
 
-
-### 提高qps增长的速度
+#### 提高qps增长的速度
 当服务启动时，由于服务本身需要进行一系列的初始化，tcp本身也有慢启动等一系列原因。服务在刚启动时的qps一定会很低。这就导致了服务启动时的max_concurrency也很低。而按照上面的计算公式，当max_concurrency很低的时候，预留给qps增长的冗余concurrency也很低(即：alpha * peak_qps * min_latency)。从而会影响当流量增加时，服务max_concurrency的增加速度。
 
 假如从启动到打满qps的时间过长，这期间会损失大量流量。在这里我们采取的措施有两个，
@@ -143,3 +123,26 @@ else:
 2. 计算公式方面，当current_qps > 保存的peak_qps时，直接进行更新，不进行平滑处理。
 
 在进行了这两个处理之后，绝大部分情况下都能够在2秒左右将qps打满。
+
+#### 平滑处理
+为了减少个别窗口的抖动对限流算法的影响，同时尽量降低计算开销，在计算peak_qps时，会通过使用[EMA](https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average)来进行平滑处理：
+
+```    
+if current_qps > peak_qps:
+    peak_qps = current_qps
+else: 
+    peak_qps = current_qps * ema_alpha / 10 + (1 - ema_alpha / 10) * peak_qps
+```
+将peak_qps的ema参数置为min_latency的ema参数的十分之一的原因是: peak_qps 下降了通常并不意味着极限qps也下降了。而min_latency下降了，通常意味着noload_latency确实下降了。
+
+### 与netflix gradient算法的对比
+
+netflix中的gradient算法公式为：max_concurrency = min_latency / latency * max_concurrency + queue_size。
+
+其中latency是采样窗口的最小latency，min_latency是最近多个采样窗口的最小latency。min_latency / latency就是算法中的“梯度”，当latency大于min_latency时，max_concurrency会逐渐减少；反之，max_concurrency会逐渐上升，从而让max_concurrency围绕在真实的最大并发附近。
+
+这个公式可以和本文的算法进行类比：
+
+* gradient算法中的latency和本算法的不同，前者的latency是最小值，后者是平均值。netflix的原意是最小值能更好地代表noload_latency，但实际上只要不对max_concurrency做定期衰减，不管最小值还是平均值都有可能不断上升使得算法不收敛。最小值并不能带来额外的好处，反而会使算法更不稳定。
+* gradient算法中的max_concurrency / latency从概念上和qps有关联（根据little's law)，但可能严重脱节。比如在min_latency重置前，若所有latency都小于min_latency，那么max_concurrency会不断下降甚至到0；但按照本算法，peak_qps和min_latency仍然是稳定的，它们计算出的max_concurrency也不会剧烈变动。究其本质，gradient算法在迭代max_concurrency时，latency并不能代表实际并发为max_concurrency时的延时，两者是脱节的，所以max_concurrency / latency的实际物理含义不明，与qps可能差异甚大，最后导致了很大的偏差。
+* gradient算法的queue_size推荐为sqrt(max_concurrency)，这是不合理的。netflix对queue_size的理解大概是代表各种不可控环节的缓存，比如socket里的，和并发度存在一定的正向关系情有可原。但在我们的理解中，这部分queue_size作用微乎其微，没有或用常量即可。我们关注的queue_size是给concurrency上升留出的探索空间: max_concurrency的更新是有延迟的，在并发从低到高的增长过程中，queue_size的作用就是在max_concurrency更新前不限制qps上升。而当concurrency高时，服务可能已经过载了，queue_size就应该小一点，防止进一步恶化延时。这里的queue_size和并发是反向关系。
