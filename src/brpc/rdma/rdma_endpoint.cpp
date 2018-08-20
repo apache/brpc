@@ -606,7 +606,7 @@ private:
             butil::IOBuf::BlockRef const& r = _ref_at(0);
             char* start = (char*)backing_block(0).data();
             uint32_t lkey = 0;
-            if ((char*)r.block + BLOCK_HEADER_LEN == start) {
+            if ((char*)r.block + BLOCK_HEADER_LEN + r.offset == start) {
                 lkey = GetLKey((char*)r.block);
             } else {
                 lkey = GetLKey(backing_block(0).data());
