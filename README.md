@@ -55,7 +55,7 @@ You can use it to:
     * [Debug server issues](docs/cn/server_debugging.md)
     * [Server push](docs/en/server_push.md)
     * [Avalanche](docs/cn/avalanche.md)
-    * [AutoConcurrencyLimiter](docs/cn/auto_concurrency_limiter.md)
+    * [Auto ConcurrencyLimiter](docs/cn/auto_concurrency_limiter.md)
     * [Media Server](https://github.com/brpc/media-server)
     * [json2pb](docs/cn/json2pb.md)
   * [Builtin Services](docs/en/builtin_service.md)

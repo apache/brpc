@@ -22,7 +22,7 @@
 目前只有method级别支持自适应限流。如果要为某个method开启自适应限流，只需要将它的最大并发设置为"auto"即可。
 
 ```c++
-// Set auto concurrency limiter for all method
+// Set auto concurrency limiter for all methods
 brpc::ServerOptions options;
 options.method_max_concurrency = "auto";
 
