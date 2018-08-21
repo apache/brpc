@@ -35,15 +35,15 @@ server.MaxConcurrencyOf("example.EchoService.Echo") = "auto";
 ### 名词
 **concurrency**: 同时处理的请求数，又被称为“并发度”。
 
-**max_concurrency**: 允许的最大concurrency，又被称为“最大并发度”。
+**max_concurrency**: 允许的最大concurrency，又被称为“最大并发度”。并发的物理含义是任务处理槽位，天然具有上限。当超过最大并发时，任务将无法被及时处理而被缓存在各种队列中，系统也会进入拥塞状态。
 
-**noload_latency**: 单纯处理任务的延时，不包括排队时间。另一种解释是负载近零的延时。
+**noload_latency**: 单纯处理任务的延时，不包括排队时间。另一种解释是负载近零的延时。由于任务处理要耗费cpu和等待网络延时，noload_latency天然具有下限。
 
 **min_latency**: 实际测定的latency中的较小值的ema，当并发度没有高于最大并发度时，min_latency和noload_latency接近。
 
-**peak_qps**: 极限qps。注意是处理或回复的qps而不是接收的qps。
+**peak_qps**: 极限qps。注意是处理或回复的qps而不是接收的qps。上限取决于max_concurrency / noload_latency，由于max_concurrency具有上限，noload_latency具有下限，qps天然有上限，和拥塞状况无关。
 
-**max_qps**: 实际测定的qps中的较大值。当并法度没有高于最大并法度时，max_qps和peak_qps接近。
+**max_qps**: 实际测定的qps中的较大值。无论拥塞与否，max_qps都和peak_qps接近。
 
 ### Little's Law
 在服务处于稳定状态时: concurrency = latency * qps。 这是自适应限流的理论基础。
