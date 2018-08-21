@@ -364,9 +364,9 @@ static void GlobalInitializeOrDieImpl() {
     if (RegisterCompressHandler(COMPRESS_TYPE_SNAPPY, snappy_compress) != 0) {
         exit(1);
     }
-    const CompressHandler lz4_compress =
+    const CompressHandler lz4_stream_compress =
             { LZ4Compress, LZ4Decompress, "lz4" };
-    if (RegisterCompressHandler(COMPRESS_TYPE_LZ4, lz4_compress) != 0) {
+    if (RegisterCompressHandler(COMPRESS_TYPE_LZ4, lz4_stream_compress) != 0) {
         exit(1);
     }
 

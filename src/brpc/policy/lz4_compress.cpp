@@ -21,111 +21,121 @@
 
 
 namespace brpc {
-    namespace policy {
-        bool LZ4Compress(const butil::IOBuf& data, butil::IOBuf* out) {
-            butil::IOBuf in(data);
+namespace policy {
 
-            LZ4_stream_t lz4Stream_body;
-            LZ4_stream_t* lz4Stream = &lz4Stream_body;
+bool LZ4Compress(const butil::IOBuf& data, butil::IOBuf* out) {
+    butil::IOBufBytesIterator in(data);
 
-            char inpBuf[2][BLOCK_BYTES];
-            int  inpBufIndex = 0;
+    butil::lz4::LZ4_stream_t lz4_stream_body;
+    butil::lz4::LZ4_stream_t* lz4_stream = &lz4_stream_body;
 
-            LZ4_resetStream(lz4Stream);
+    char inp_buf[2][BLOCK_BYTES];
+    int  inp_buf_index = 0;
 
-            for (;;) {
-                char* const inpPtr = inpBuf[inpBufIndex];
-                const int inpBytes = in.cutn(inpPtr,BLOCK_BYTES);
-                if (0 == inpBytes) {
-                    break;
-                }
+    butil::lz4::LZ4_resetStream(lz4_stream);
 
-                {
-                    char cmpBuf[LZ4_COMPRESSBOUND(BLOCK_BYTES)];
-                    const int cmpBytes = LZ4_compress_fast_continue(
-                            lz4Stream, inpPtr, cmpBuf, inpBytes, sizeof(cmpBuf), 1);
-                    if (cmpBytes <= 0) {
-                        LOG(WARNING) << "LZ4 Compress failed";
-                        return false;
-                    }
-                    out->append(&cmpBytes, sizeof(cmpBytes));
-                    out->append(&cmpBuf,cmpBytes);
-                }
+    for (;;) {
+        char* const inp_ptr = inp_buf[inp_buf_index];
+        const int inp_bytes = in.copy_and_forward(inp_ptr, BLOCK_BYTES);
 
-
-                inpBufIndex = (inpBufIndex + 1) % 2;
-            }
-
-            const int end = 0;
-            out->append(&end, sizeof(end));
-
-            return true;
+        if (0 == inp_bytes) {
+            break;
         }
 
-        bool LZ4Decompress(const butil::IOBuf& data, butil::IOBuf* out) {
-            butil::IOBuf in(data);
+        {
+            char cmp_buf[LZ4_COMPRESSBOUND(BLOCK_BYTES)];
+            const int cmp_bytes = butil::lz4::LZ4_compress_fast_continue(
+                                     lz4_stream, inp_ptr, cmp_buf, inp_bytes, sizeof(cmp_buf), 1);
 
-            LZ4_streamDecode_t lz4StreamDecode_body;
-            LZ4_streamDecode_t* lz4StreamDecode = &lz4StreamDecode_body;
-            LZ4_setStreamDecode(lz4StreamDecode, NULL, 0);
-
-            char decBuf[2][BLOCK_BYTES];
-            int  decBufIndex = 0;
-
-
-            for(;;) {
-                char cmpBuf[LZ4_COMPRESSBOUND(BLOCK_BYTES)];
-                int  cmpBytes = 0;
-
-                {
-                    in.cutn(&cmpBytes, sizeof(int));
-                    if(cmpBytes <= 0) {
-                        break;
-                    }
-
-                    in.cutn(&cmpBuf,cmpBytes);
-                }
-
-                {
-                    char* const decPtr = decBuf[decBufIndex];
-                    const int decBytes = LZ4_decompress_safe_continue(
-                            lz4StreamDecode, cmpBuf, decPtr, cmpBytes, BLOCK_BYTES);
-                    if(decBytes <= 0) {
-                        LOG(WARNING) << "LZ4 Uncompress failed";
-                        return false;
-                    }
-                    out->append(decPtr,decBytes);
-                }
-
-                decBufIndex = (decBufIndex + 1) % 2;
+            if (cmp_bytes <= 0) {
+                LOG(WARNING) << "LZ4 Compress failed";
+                return false;
             }
 
-            return true;
+            out->append(&cmp_bytes, sizeof(cmp_bytes));
+            out->append(&cmp_buf, cmp_bytes);
         }
 
 
-        bool LZ4Compress(const google::protobuf::Message& res, butil::IOBuf* buf) {
-            butil::IOBuf in;
-            butil::IOBufAsZeroCopyOutputStream wrapper(&in);
+        inp_buf_index = (inp_buf_index + 1) % 2;
+    }
 
-            if (res.SerializeToZeroCopyStream(&wrapper)) {
-                return LZ4Compress(in,buf);
+    const int end = 0;
+    out->append(&end, sizeof(end));
+
+    return true;
+}
+
+bool LZ4Decompress(const butil::IOBuf& data, butil::IOBuf* out) {
+    butil::IOBufBytesIterator in(data);
+
+    butil::lz4::LZ4_streamDecode_t lz4_stream_decode_body;
+    butil::lz4::LZ4_streamDecode_t* lz4_stream_decode = &lz4_stream_decode_body;
+    butil::lz4::LZ4_setStreamDecode(lz4_stream_decode, NULL, 0);
+
+    //Why does LZ4 use two cache blocks? You can refer to the following information.
+    //https://github.com/lz4/lz4/blob/dev/examples/blockStreaming_doubleBuffer.md
+    char dec_buf[2][BLOCK_BYTES];
+    int  dec_buf_index = 0;
+
+
+    for (;;) {
+        char cmp_buf[LZ4_COMPRESSBOUND(BLOCK_BYTES)];
+        int  cmp_bytes = 0;
+
+        {
+            in.copy_and_forward(&cmp_bytes, sizeof(int));
+
+            if (cmp_bytes <= 0) {
+                break;
             }
 
-            LOG(WARNING) << "Fail to serialize input pb=" << &res;
-            return false;
+            in.copy_and_forward(&cmp_buf, cmp_bytes);
         }
 
-        bool LZ4Decompress(const butil::IOBuf& data, google::protobuf::Message* req) {
-            butil::IOBuf out;
-            if(LZ4Decompress(data,&out) && ParsePbFromIOBuf(req,out)) {
-                return true;
+        {
+            char* const dec_ptr = dec_buf[dec_buf_index];
+            const int dec_bytes = butil::lz4::LZ4_decompress_safe_continue(
+                                     lz4_stream_decode, cmp_buf, dec_ptr, cmp_bytes, BLOCK_BYTES);
+
+            if (dec_bytes <= 0) {
+                LOG(WARNING) << "LZ4 Uncompress failed";
+                return false;
             }
 
-            LOG(WARNING) << "Fail to lz4::Uncompress, size=" << data.size();
-            return false;
+            out->append(dec_ptr, dec_bytes);
         }
 
+        dec_buf_index = (dec_buf_index + 1) % 2;
+    }
 
-    }  // namespace policy
+    return true;
+}
+
+
+bool LZ4Compress(const google::protobuf::Message& res, butil::IOBuf* buf) {
+    butil::IOBuf in;
+    butil::IOBufAsZeroCopyOutputStream wrapper(&in);
+
+    if (res.SerializeToZeroCopyStream(&wrapper)) {
+        return LZ4Compress(in, buf);
+    }
+
+    LOG(WARNING) << "Fail to serialize input pb=" << &res;
+    return false;
+}
+
+bool LZ4Decompress(const butil::IOBuf& data, google::protobuf::Message* req) {
+    butil::IOBuf out;
+
+    if (LZ4Decompress(data, &out) && ParsePbFromIOBuf(req, out)) {
+        return true;
+    }
+
+    LOG(WARNING) << "Fail to lz4::Uncompress, size=" << data.size();
+    return false;
+}
+
+
+}  // namespace policy
 } // namespace

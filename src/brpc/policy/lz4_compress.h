@@ -23,21 +23,21 @@
 const uint32_t BLOCK_BYTES = 1024 * 8;
 
 namespace brpc {
-    namespace policy {
+namespace policy {
 
 // Compress serialized `msg' into `buf'.
-        bool LZ4Compress(const google::protobuf::Message& msg, butil::IOBuf* buf);
+bool LZ4Compress(const google::protobuf::Message& msg, butil::IOBuf* buf);
 
 // Parse `msg' from decompressed `buf'
-        bool LZ4Decompress(const butil::IOBuf& data, google::protobuf::Message* msg);
+bool LZ4Decompress(const butil::IOBuf& data, google::protobuf::Message* msg);
 
 // Put compressed `data' into `out'.
-        bool LZ4Compress(const butil::IOBuf& data, butil::IOBuf* out);
+bool LZ4Compress(const butil::IOBuf& data, butil::IOBuf* out);
 
 // Put decompressed `data' into `out'.
-        bool LZ4Decompress(const butil::IOBuf& data, butil::IOBuf* out);
+bool LZ4Decompress(const butil::IOBuf& data, butil::IOBuf* out);
 
-    }  // namespace policy
+}  // namespace policy
 } // namespace brpc
 
 
