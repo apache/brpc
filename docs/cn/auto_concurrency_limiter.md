@@ -9,7 +9,7 @@
 自适应限流能动态调整服务的最大并发，在保证服务不过载的前提下，让服务尽可能多的处理请求。
 
 ## 使用场景
-通常情况下要让服务不过载，只需在上线前进行压力测试，并通过little's law计算出最大并发度就可以了。但在服务数量多，拓扑复杂，且处理能力会逐渐变化的局面下，使用固定的最大并发会带来巨大的测试工作量，很不方便。自适应限流就是为了解决这个问题。
+通常情况下要让服务不过载，只需在上线前进行压力测试，并通过little's law计算出best_max_concurrency就可以了。但在服务数量多，拓扑复杂，且处理能力会逐渐变化的局面下，使用固定的最大并发会带来巨大的测试工作量，很不方便。自适应限流就是为了解决这个问题。
 
 使用自适应限流前建议做到：
 1. 客户端开启了重试功能。
@@ -39,13 +39,13 @@ server.MaxConcurrencyOf("example.EchoService.Echo") = "auto";
 
 **best_max_concurrency**: 并发的物理含义是任务处理槽位，天然存在上限，这个上限就是best_max_concurrency。若max_concurrency设置的过大，则concurrency可能大于best_max_concurrency，任务将无法被及时处理而暂存在各种队列中排队，系统也会进入拥塞状态。若max_concurrency设置的过小，则concurrency总是会小于best_max_concurrency，限制系统达到本可以达到的更高吞吐。
 
-**noload_latency**: 单纯处理任务的延时，不包括排队时间。另一种解释是低负载的延时。由于正确处理任务得经历必要的环节，其中会耗费cpu或等待下游返回，noload_latency是一个服务固有的属性。
+**noload_latency**: 单纯处理任务的延时，不包括排队时间。另一种解释是低负载的延时。由于正确处理任务得经历必要的环节，其中会耗费cpu或等待下游返回，noload_latency是一个服务固有的属性，但可能随时间逐渐改变（由于内存碎片，压力变化，业务数据变化等因素）。
 
-**min_latency**: 实际测定的latency中的较小值的ema，当并发度没有高于最大并发度时，min_latency和noload_latency接近。
+**min_latency**: 实际测定的latency中的较小值的ema，当concurrency不大于best_max_concurrency时，min_latency和noload_latency接近(可能轻微上升）。
 
-**peak_qps**: 极限qps。注意是处理或回复的qps而不是接收的qps。上限取决于best_max_concurrency / noload_latency，这两个量都是服务的固有属性，故peak_qps也是服务的固有属性，和拥塞状况无关。
+**peak_qps**: qps的上限。注意是处理或回复的qps而不是接收的qps。值取决于best_max_concurrency / noload_latency，这两个量都是服务的固有属性，故peak_qps也是服务的固有属性，和拥塞状况无关，但可能随时间逐渐改变。
 
-**max_qps**: 实际测定的qps中的较大值。无论拥塞与否，max_qps都和peak_qps接近。
+**max_qps**: 实际测定的qps中的较大值。由于qps具有上限，max_qps总是会小于peak_qps，不论拥塞与否。
 
 ### Little's Law
 在服务处于稳定状态时: concurrency = latency * qps。 这是自适应限流的理论基础。
@@ -150,4 +150,4 @@ netflix中的gradient算法公式为：max_concurrency = min_latency / latency *
 * gradient算法中的latency和本算法的不同，前者的latency是最小值，后者是平均值。netflix的原意是最小值能更好地代表noload_latency，但实际上只要不对max_concurrency做定期衰减，不管最小值还是平均值都有可能不断上升使算法不收敛。最小值并不能带来额外的好处，反而会使算法更不稳定。
 * gradient算法中的max_concurrency / latency从概念上和qps有关联（根据little's law)，但可能严重脱节。比如在重测
 min_latency前，若所有latency都小于min_latency，那么max_concurrency会不断下降甚至到0；但按照本算法，max_qps和min_latency仍然是稳定的，它们计算出的max_concurrency也不会剧烈变动。究其本质，gradient算法在迭代max_concurrency时，latency并不能代表实际并发为max_concurrency时的延时，两者是脱节的，所以max_concurrency / latency的实际物理含义不明，与qps可能差异甚大，最后导致了很大的偏差。
-* gradient算法的queue_size推荐为sqrt(max_concurrency)，这是不合理的。netflix对queue_size的理解大概是代表各种不可控环节的缓存，比如socket里的，和并发度存在一定的正向关系情有可原。但在我们的理解中，这部分queue_size作用微乎其微，没有或用常量即可。我们关注的queue_size是给concurrency上升留出的探索空间: max_concurrency的更新是有延迟的，在并发从低到高的增长过程中，queue_size的作用就是在max_concurrency更新前不限制qps上升。而当concurrency高时，服务可能已经过载了，queue_size就应该小一点，防止进一步恶化延时。这里的queue_size和并发是反向关系。
+* gradient算法的queue_size推荐为sqrt(max_concurrency)，这是不合理的。netflix对queue_size的理解大概是代表各种不可控环节的缓存，比如socket里的，和max_concurrency存在一定的正向关系情有可原。但在我们的理解中，这部分queue_size作用微乎其微，没有或用常量即可。我们关注的queue_size是给concurrency上升留出的探索空间: max_concurrency的更新是有延迟的，在并发从低到高的增长过程中，queue_size的作用就是在max_concurrency更新前不限制qps上升。而当concurrency高时，服务可能已经过载了，queue_size就应该小一点，防止进一步恶化延时。这里的queue_size和并发是反向关系。
