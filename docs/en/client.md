@@ -613,11 +613,11 @@ brpc chooses best connection type for the protocol by default, users generally h
 
 - CONNECTION_TYPE_SINGLE or "single" : single connection
 
-- CONNECTION_TYPE_POOLED or "pooled": pooled connection. Max number of connections from one client to one server is limited by -max_connection_pool_size:
+- CONNECTION_TYPE_POOLED or "pooled": pooled connection. Max number of pooled connections from one client to one server is limited by -max_connection_pool_size. Note the number is not same as "max number of connections". New connections are always created when there's no idle ones in the pool; the returned connections are closed immediately when the pool already has max_connection_pool_size connections. Value of max_connection_pool_size should respect the concurrency, otherwise the connnections that can't be pooled are created and closed frequently which behaves similarly as short connections. If max_connection_pool_size is 0, the pool behaves just like fully short connections. 
 
   | Name                         | Value | Description                              | Defined At          |
   | ---------------------------- | ----- | ---------------------------------------- | ------------------- |
-  | max_connection_pool_size (R) | 100   | maximum pooled connection count to a single endpoint | src/brpc/socket.cpp |
+  | max_connection_pool_size (R) | 100   | Max number of pooled connections to a single endpoint | src/brpc/socket.cpp |
 
 - CONNECTION_TYPE_SHORT or "short" : short connection
 

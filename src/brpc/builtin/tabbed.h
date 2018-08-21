@@ -20,7 +20,6 @@
 #include <string>
 #include <vector>
 
-
 namespace brpc {
 
 // Contain the information for showing a tab.

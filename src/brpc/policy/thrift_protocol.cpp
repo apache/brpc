@@ -195,14 +195,14 @@ private:
 friend void ProcessThriftRequest(InputMessageBase* msg_base);
 
     butil::atomic<int> _run_counter;
-    int64_t _start_parse_us;
+    int64_t _received_us;
     ThriftFramedMessage _request;
     ThriftFramedMessage _response;
     Controller _controller;
 };
 
 inline ThriftClosure::ThriftClosure()
-    : _run_counter(0), _start_parse_us(0) {
+    : _run_counter(0), _received_us(0) {
 }
 
 ThriftClosure::~ThriftClosure() {
@@ -225,7 +225,6 @@ void ThriftClosure::DoRun() {
     // Recycle itself after `Run'
     std::unique_ptr<ThriftClosure> recycle_ctx(this);
     const Server* server = _controller.server();
-    ScopedRemoveConcurrency remove_concurrency_dummy(server, &_controller);
 
     ControllerPrivateAccessor accessor(&_controller);
     Span* span = accessor.span();
@@ -233,8 +232,9 @@ void ThriftClosure::DoRun() {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
     Socket* sock = accessor.get_sending_socket();
-    ScopedMethodStatus method_status(server->options().thrift_service ?
-                                     server->options().thrift_service->_status : NULL);
+    MethodStatus* method_status = (server->options().thrift_service ? 
+        server->options().thrift_service->_status : NULL);
+    ConcurrencyRemover concurrency_remover(method_status, &_controller, _received_us);
     if (!method_status) {
         // Judge errors belongings.
         // may not be accurate, but it does not matter too much.
@@ -348,10 +348,6 @@ void ThriftClosure::DoRun() {
         // TODO: this is not sent
         span->set_sent_us(butil::cpuwide_time_us());
     }
-    if (method_status) {
-        method_status.release()->OnResponded(
-            !_controller.Failed(), butil::cpuwide_time_us() - _start_parse_us);
-    }
 }
 
 ParseResult ParseThriftMessage(butil::IOBuf* source,
@@ -393,8 +389,12 @@ inline void ProcessThriftFramedRequestNoExcept(ThriftService* service,
     // we can still set `cntl' in the catch branch.
     try {
         service->ProcessThriftFramedRequest(cntl, req, res, done);
-    } catch (::apache::thrift::TException& e) {
+    } catch (std::exception& e) {
         cntl->SetFailed(EINTERNAL, "Catched exception: %s", e.what());
+    } catch (std::string& e) {
+        cntl->SetFailed(EINTERNAL, "Catched std::string: %s", e.c_str());
+    } catch (const char* e) {
+        cntl->SetFailed(EINTERNAL, "Catched const char*: %s", e);
     } catch (...) {
         cntl->SetFailed(EINTERNAL, "Catched unknown exception");
     }
@@ -446,7 +446,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
     Controller* cntl = &(thrift_done->_controller);
     ThriftFramedMessage* req = &(thrift_done->_request);
     ThriftFramedMessage* res = &(thrift_done->_response);
-    thrift_done->_start_parse_us = start_parse_us;
+    thrift_done->_received_us = msg->received_us();
 
     ServerPrivateAccessor server_accessor(server);
     const bool security_mode = server->options().security_mode() &&
@@ -522,7 +522,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
         }
         if (!server_accessor.AddConcurrency(cntl)) {
             cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
-                            server->options().max_concurrency);
+                            server->max_concurrency());
             break;
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {
@@ -533,6 +533,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
     } while (false);
 
     msg.reset();  // optional, just release resourse ASAP
+
     if (span) {
         span->ResetServerSpanName(cntl->thrift_method_name());
         span->set_start_callback_us(butil::cpuwide_time_us());

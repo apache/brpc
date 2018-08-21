@@ -205,32 +205,46 @@ bool RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena) {
     return false;
 }
 
-static void PrintBinaryData(std::ostream& os, const butil::StringPiece& s) {
-    // Check for non-ascii characters first so that we can print ascii data
-    // (most cases) fast, rather than printing char-by-char as we do in the
-    // binary_data=true branch.
-    bool binary_data = false;
-    for (size_t i = 0; i < s.size(); ++i) {
-        if (s[i] <= 0) {
-            binary_data = true;
-            break;
+class RedisStringPrinter {
+public:
+    RedisStringPrinter(const char* str, size_t length)
+        : _str(str, length) {}
+    void Print(std::ostream& os) const;
+private:
+    butil::StringPiece _str;
+};
+
+static std::ostream&
+operator<<(std::ostream& os, const RedisStringPrinter& printer) {
+    printer.Print(os);
+    return os;
+}
+
+void RedisStringPrinter::Print(std::ostream& os) const {
+    size_t flush_start = 0;
+    for (size_t i = 0; i < _str.size(); ++i) {
+        const char c = _str[i];
+        if (c <= 0) { // unprintable chars
+            if (i != flush_start) {
+                os << butil::StringPiece(_str.data() + flush_start, i - flush_start);
+            }
+            char buf[8] = "\\u0000";
+            uint8_t d1 = ((uint8_t)c) & 0xF;
+            uint8_t d2 = ((uint8_t)c) >> 4;
+            buf[4] = (d1 < 10 ? d1 + '0' : (d1 - 10) + 'A');
+            buf[5] = (d2 < 10 ? d2 + '0' : (d2 - 10) + 'A');
+            os << butil::StringPiece(buf, 6);
+            flush_start = i + 1;
+        } else if (c == '"' || c == '\\') {  // need to escape
+            if (i != flush_start) {
+                os << butil::StringPiece(_str.data() + flush_start, i - flush_start);
+            }
+            os << '\\' << c;
+            flush_start = i + 1;
         }
     }
-    if (!binary_data) {
-        os << s;
-    } else {
-        for (size_t i = 0; i < s.size(); ++i) {
-            if (s[i] <= 0) {
-                char buf[8] = "\\u0000";
-                uint8_t d1 = ((uint8_t)s[i]) & 0xF;
-                uint8_t d2 = ((uint8_t)s[i]) >> 4;
-                buf[4] = (d1 < 10 ? d1 + '0' : (d1 - 10) + 'A');
-                buf[5] = (d2 < 10 ? d2 + '0' : (d2 - 10) + 'A');
-                os << butil::StringPiece(buf, 6);
-            } else {
-                os << s[i];
-            }
-        }
+    if (flush_start != _str.size()) {
+        os << butil::StringPiece(_str.data() + flush_start, _str.size() - flush_start);
     }
 }
 
@@ -240,9 +254,9 @@ void RedisReply::Print(std::ostream& os) const {
     case REDIS_REPLY_STRING:
         os << '"';
         if (_length < sizeof(_data.short_str)) {
-            os << _data.short_str;
+            os << RedisStringPrinter(_data.short_str, _length);
         } else {
-            PrintBinaryData(os, butil::StringPiece(_data.long_str, _length));
+            os << RedisStringPrinter(_data.long_str, _length);
         }
         os << '"';
         break;
@@ -267,9 +281,9 @@ void RedisReply::Print(std::ostream& os) const {
         // fall through
     case REDIS_REPLY_STATUS:
         if (_length < sizeof(_data.short_str)) {
-            os << _data.short_str;
+            os << RedisStringPrinter(_data.short_str, _length);
         } else {
-            PrintBinaryData(os, butil::StringPiece(_data.long_str, _length));
+            os << RedisStringPrinter(_data.long_str, _length);
         }
         break;
     default:

@@ -15,8 +15,8 @@
 #ifndef BRPC_LOG_H
 #define BRPC_LOG_H
 
-#include <bthread/errno.h>
 #include <inttypes.h>  // PRId64 PRIu64
+#include "bthread/errno.h"
 
 #define RPC_VLOG_LEVEL     99
 #define RPC_VLOG_IS_ON     VLOG_IS_ON(RPC_VLOG_LEVEL)

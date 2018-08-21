@@ -138,19 +138,18 @@ void SendRpcResponse(int64_t correlation_id,
                      const google::protobuf::Message* req,
                      const google::protobuf::Message* res,
                      const Server* server,
-                     MethodStatus* method_status_raw,
-                     long start_parse_us) {
+                     MethodStatus* method_status,
+                     int64_t received_us) {
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
     Socket* sock = accessor.get_sending_socket();
-    ScopedMethodStatus method_status(method_status_raw);
     std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
+    ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
-    ScopedRemoveConcurrency remove_concurrency_dummy(server, cntl);
     
     StreamId response_stream_id = accessor.response_stream();
 
@@ -263,10 +262,6 @@ void SendRpcResponse(int64_t correlation_id,
     if (span) {
         // TODO: this is not sent
         span->set_sent_us(butil::cpuwide_time_us());
-    }
-    if (method_status) {
-        method_status.release()->OnResponded(
-            !cntl->Failed(), butil::cpuwide_time_us() - start_parse_us);
     }
 }
 
@@ -395,8 +390,9 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         }
         
         if (!server_accessor.AddConcurrency(cntl.get())) {
-            cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
-                            server->options().max_concurrency);
+            cntl->SetFailed(
+                ELIMIT, "Reached server's max_concurrency=%d",
+                server->options().max_concurrency);
             break;
         }
 
@@ -439,10 +435,10 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         non_service_error.release();
         method_status = mp->status;
         if (method_status) {
-            if (!method_status->OnRequested()) {
-                cntl->SetFailed(ELIMIT, "Reached %s's max_concurrency=%d",
-                                mp->method->full_name().c_str(),
-                                method_status->max_concurrency());
+            int rejected_cc = 0;
+            if (!method_status->OnRequested(&rejected_cc)) {
+                cntl->SetFailed(ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
+                                mp->method->full_name().c_str(), rejected_cc);
                 break;
             }
         }
@@ -477,19 +473,20 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             break;
         }
         
-        // optional, just release resourse ASAP
-        msg.reset();
-        req_buf.clear();
-
         res.reset(svc->GetResponsePrototype(method).New());
         // `socket' will be held until response has been sent
         google::protobuf::Closure* done = ::brpc::NewCallback<
             int64_t, Controller*, const google::protobuf::Message*,
             const google::protobuf::Message*, const Server*,
-            MethodStatus*, long>(
+            MethodStatus*, int64_t>(
                 &SendRpcResponse, meta.correlation_id(), cntl.get(), 
                 req.get(), res.get(), server,
-                method_status, start_parse_us);
+                method_status, msg->received_us());
+
+        // optional, just release resourse ASAP
+        msg.reset();
+        req_buf.clear();
+
         if (span) {
             span->set_start_callback_us(butil::cpuwide_time_us());
             span->AsParent();
@@ -513,7 +510,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
     // `socket' will be held until response has been sent
     SendRpcResponse(meta.correlation_id(), cntl.release(), 
                     req.release(), res.release(), server,
-                    method_status, -1);
+                    method_status, msg->received_us());
 }
 
 bool VerifyRpcRequest(const InputMessageBase* msg_base) {

@@ -4,7 +4,7 @@ project(http_c++ C CXX)
 option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
 
 execute_process(
-    COMMAND bash -c "find ${CMAKE_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | head -n1 | xargs dirname | tr -d '\n'"
+    COMMAND bash -c "find ${PROJECT_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | head -n1 | xargs dirname | tr -d '\n'"
     OUTPUT_VARIABLE OUTPUT_PATH
 )
 
@@ -135,7 +135,7 @@ target_link_libraries(http_server ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRAR
 target_link_libraries(http_client ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
 target_link_libraries(benchmark_http ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
 
-file(COPY ${CMAKE_SOURCE_DIR}/key.pem
+file(COPY ${PROJECT_SOURCE_DIR}/key.pem
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-file(COPY ${CMAKE_SOURCE_DIR}/cert.pem
+file(COPY ${PROJECT_SOURCE_DIR}/cert.pem
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

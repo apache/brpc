@@ -35,16 +35,19 @@ struct Stat {
     int64_t num;
         
     int64_t get_average_int() const {
-        if (num == 0) {
+        //num can be changed by sampling thread, use tmp_num
+        int64_t tmp_num = num;
+        if (tmp_num == 0) {
             return 0;
         }
-        return sum / (int64_t)num;
+        return sum / (int64_t)tmp_num;
     }
     double get_average_double() const {
-        if (num == 0) {
+        int64_t tmp_num = num;
+        if (tmp_num == 0) {
             return 0.0;
         }
-        return (double)sum / (double)num;
+        return (double)sum / (double)tmp_num;
     }
     Stat operator-(const Stat& rhs) const {
         return Stat(sum - rhs.sum, num - rhs.num);

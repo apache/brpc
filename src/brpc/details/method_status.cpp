@@ -16,32 +16,52 @@
 
 #include <limits>
 #include "butil/macros.h"
+#include "brpc/controller.h"
+#include "brpc/details/server_private_accessor.h"
 #include "brpc/details/method_status.h"
 
 namespace brpc {
 
-static int cast_nprocessing(void* arg) {
+static int cast_int(void* arg) {
     return *(int*)arg;
 }
 
+static int cast_cl(void* arg) {
+    auto cl = static_cast<std::unique_ptr<ConcurrencyLimiter>*>(arg)->get();
+    if (cl) {
+        return cl->MaxConcurrency();
+    }
+    return 0;
+}
+
 MethodStatus::MethodStatus()
-    : _max_concurrency(0)
-    , _nprocessing_bvar(cast_nprocessing, &_nprocessing)
-    , _nprocessing(0) {
+    : _nconcurrency(0)
+    , _nconcurrency_bvar(cast_int, &_nconcurrency)
+    , _eps_bvar(&_nerror_bvar)
+    , _max_concurrency_bvar(cast_cl, &_cl)
+{
 }
 
 MethodStatus::~MethodStatus() {
 }
 
 int MethodStatus::Expose(const butil::StringPiece& prefix) {
-    if (_nprocessing_bvar.expose_as(prefix, "processing") != 0) {
+    if (_nconcurrency_bvar.expose_as(prefix, "concurrency") != 0) {
         return -1;
     }
-    if (_nerror.expose_as(prefix, "error") != 0) {
+    if (_nerror_bvar.expose_as(prefix, "error") != 0) {
+        return -1;
+    }
+    if (_eps_bvar.expose_as(prefix, "eps") != 0) {
         return -1;
     }
     if (_latency_rec.expose(prefix) != 0) {
         return -1;
+    }
+    if (_cl) {
+        if (_max_concurrency_bvar.expose_as(prefix, "max_concurrency") != 0) {
+            return -1;
+        }
     }
     return 0;
 }
@@ -76,19 +96,27 @@ void OutputValue(std::ostream& os,
 
 void MethodStatus::Describe(
     std::ostream &os, const DescribeOptions& options) const {
-    // Sort by alphebetical order to be consistent with /vars.
-    const int64_t qps = _latency_rec.qps();
-    const bool expand = (qps != 0);
+    // success requests
     OutputValue(os, "count: ", _latency_rec.count_name(), _latency_rec.count(),
                 options, false);
-    OutputValue(os, "error: ", _nerror.name(), _nerror.get_value(),
+    const int64_t qps = _latency_rec.qps();
+    const bool expand = (qps != 0);
+    OutputValue(os, "qps: ", _latency_rec.qps_name(), _latency_rec.qps(),
+                options, expand);
+
+    // errorous requests
+    OutputValue(os, "error: ", _nerror_bvar.name(), _nerror_bvar.get_value(),
                 options, false);
+    OutputValue(os, "eps: ", _eps_bvar.name(),
+                _eps_bvar.get_value(1), options, false);
+
+    // latencies
     OutputValue(os, "latency: ", _latency_rec.latency_name(),
                 _latency_rec.latency(), options, false);
     if (options.use_html) {
         OutputValue(os, "latency_percentiles: ",
                     _latency_rec.latency_percentiles_name(),
-                    _latency_rec.latency_percentiles(), options, expand);
+                    _latency_rec.latency_percentiles(), options, false);
         OutputValue(os, "latency_cdf: ", _latency_rec.latency_cdf_name(),
                     "click to view", options, expand);
     } else {
@@ -105,13 +133,26 @@ void MethodStatus::Describe(
     }
     OutputValue(os, "max_latency: ", _latency_rec.max_latency_name(),
                 _latency_rec.max_latency(), options, false);
-    OutputValue(os, "qps: ", _latency_rec.qps_name(), _latency_rec.qps(),
-                options, expand);
-    // Many people are confusing with the old name "unresponded" which
-    // contains "un" generally associated with something wrong. Name it
-    // to "processing" should be more understandable.
-    OutputValue(os, "processing: ", _nprocessing_bvar.name(),
-                _nprocessing, options, false);
+
+    // Concurrency
+    OutputValue(os, "concurrency: ", _nconcurrency_bvar.name(),
+                _nconcurrency, options, false);
+    if (_cl) {
+        OutputValue(os, "max_concurrency: ", _max_concurrency_bvar.name(),
+                    MaxConcurrency(), options, false);
+    }
+}
+
+void MethodStatus::SetConcurrencyLimiter(ConcurrencyLimiter* cl) {
+    _cl.reset(cl);
+}
+
+ConcurrencyRemover::~ConcurrencyRemover() {
+    if (_status) {
+        _status->OnResponded(_c->ErrorCode(), butil::cpuwide_time_us() - _received_us);
+        _status = NULL;
+    }
+    ServerPrivateAccessor(_c->server()).RemoveConcurrency(_c);
 }
 
 }  // namespace brpc

@@ -187,7 +187,10 @@ class ThriftDoneWrapper : public ::google::protobuf::Closure {
 public:
     explicit ThriftDoneWrapper(::google::protobuf::Closure* done)
         : _done(done) {}
-    void Run() override { _done->Run(); }
+    void Run() override {
+        _done->Run();
+        delete this;
+    }
 private:
     ::google::protobuf::Closure* _done;
 public:
