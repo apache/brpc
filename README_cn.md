@@ -56,6 +56,7 @@
     * [高效率排查server卡顿](docs/cn/server_debugging.md)
     * [推送](docs/cn/server_push.md)
     * [雪崩](docs/cn/avalanche.md)
+    * [自适应限流](docs/cn/auto_concurrency_limiter.md)
     * [流媒体服务](https://github.com/brpc/media-server)
     * [json2pb](docs/cn/json2pb.md)
   * [内置服务](docs/cn/builtin_service.md)
