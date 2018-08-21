@@ -56,7 +56,7 @@ AutoConcurrencyLimiter::AutoConcurrencyLimiter()
     , _remeasure_start_us(NextResetTime(butil::gettimeofday_us()))
     , _reset_latency_us(0)
     , _min_latency_us(-1)
-    , _ema_peak_qps(-1)
+    , _ema_max_qps(-1)
     , _last_sampling_time_us(0)
     , _total_succ_req(0) {
 }
@@ -176,10 +176,10 @@ void AutoConcurrencyLimiter::UpdateQps(int32_t succ_count,
                                        int64_t sampling_time_us) {
     double qps = 1000000.0 * succ_count / (sampling_time_us - _sw.start_time_us);
     const double ema_factor = FLAGS_auto_cl_alpha_factor_for_ema / 10;
-    if (qps >= _ema_peak_qps) {
-        _ema_peak_qps = qps;
+    if (qps >= _ema_max_qps) {
+        _ema_max_qps = qps;
     } else {
-        _ema_peak_qps = qps * ema_factor + _ema_peak_qps * (1 - ema_factor);
+        _ema_max_qps = qps * ema_factor + _ema_max_qps * (1 - ema_factor);
     }
 }
 
@@ -201,7 +201,7 @@ void AutoConcurrencyLimiter::UpdateMaxConcurrency(int64_t sampling_time_us) {
     } else {
         const double overload_threshold = FLAGS_auto_cl_overload_threshold;
         int32_t noload_concurrency = 
-            std::ceil(_min_latency_us * _ema_peak_qps / 1000000);
+            std::ceil(_min_latency_us * _ema_max_qps / 1000000);
         if (avg_latency < (1.0 + overload_threshold) * _min_latency_us) {
             next_max_concurrency = std::ceil(noload_concurrency * 
                 (2.0 + overload_threshold - double(avg_latency) / _min_latency_us));
