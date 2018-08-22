@@ -1,5 +1,5 @@
 #client settings
---case_file=test_case_test.json
+--case_file=test_case.json
 --client_qps_change_interval_us=50000
 --max_retry=0
 
