@@ -59,7 +59,7 @@ private:
     void UpdateMaxConcurrency(int64_t sampling_time_us);
     void ResetSampleWindow(int64_t sampling_time_us);
     void UpdateMinLatency(int64_t latency_us);
-    void UpdateQps(int32_t succ_count, int64_t sampling_time_us);
+    void UpdateQps(double qps);
 
     // modified per sample-window or more
     int _max_concurrency;
@@ -67,6 +67,7 @@ private:
     int64_t _reset_latency_us;
     int64_t _min_latency_us; 
     double _ema_max_qps;
+    double _reserved_ratio;
   
     // modified per sample.
     butil::atomic<int64_t> BAIDU_CACHELINE_ALIGNMENT _last_sampling_time_us;
