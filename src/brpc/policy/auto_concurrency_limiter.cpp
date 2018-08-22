@@ -225,8 +225,8 @@ void AutoConcurrencyLimiter::UpdateMaxConcurrency(int64_t sampling_time_us) {
         } else {
             _reserved_ratio = std::max(epsilon, _reserved_ratio - change_step);
         }
-        next_max_concurrency = _min_latency_us * _ema_max_qps / 1000000 * \
-            (1 + _reserved_ratio);
+        next_max_concurrency = 
+            _min_latency_us * _ema_max_qps / 1000000 *  (1 + _reserved_ratio);
     }
 
     if (next_max_concurrency != _max_concurrency) {
