@@ -85,7 +85,6 @@ extern "C" {
 #  endif
 #endif
 namespace butil {
-namespace lz4 {
 
 #if defined(LZ4_DLL_EXPORT) && (LZ4_DLL_EXPORT == 1)
 #  define LZ4LIB_API __declspec(dllexport) LZ4LIB_VISIBILITY
@@ -663,4 +662,4 @@ LZ4LIB_API int LZ4_decompress_fast_withPrefix64k(const char *src, char *dst, int
 #if defined (__cplusplus)
 }
 #endif
-}}
+}

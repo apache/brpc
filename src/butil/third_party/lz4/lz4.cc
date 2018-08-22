@@ -52,7 +52,6 @@
 #include "lz4.h"
 
 namespace butil{
-namespace lz4 {
 /*
  * ACCELERATION_DEFAULT :
  * Select "acceleration" for LZ4_compress_fast() when parameter value <= 0
@@ -2215,4 +2214,4 @@ char *LZ4_slideInputBuffer(void *state) {
 }
 
 #endif   /* LZ4_COMMONDEFS_ONLY */
-}}
+}

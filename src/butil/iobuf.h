@@ -655,7 +655,6 @@ private:
 // iterator's creation. This is for performance consideration.
 class IOBufBytesIterator {
 public:
-
     explicit IOBufBytesIterator(const butil::IOBuf& buf);
     char operator*() const { return *_block_begin; }
     operator const void*() const { return (const void*)!!_bytes_left; }
