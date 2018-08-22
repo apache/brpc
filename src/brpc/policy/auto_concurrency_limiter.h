@@ -51,7 +51,7 @@ private:
         int64_t total_succ_us;
     };
 
-    void AddSample(int error_code, int64_t latency_us, int64_t sampling_time_us);
+    bool AddSample(int error_code, int64_t latency_us, int64_t sampling_time_us);
     int64_t NextResetTime(int64_t sampling_time_us);
 
     // The following methods are not thread safe and can only be called 
@@ -67,7 +67,7 @@ private:
     int64_t _reset_latency_us;
     int64_t _min_latency_us; 
     double _ema_max_qps;
-    double _reserved_ratio;
+    double _explore_ratio;
   
     // modified per sample.
     butil::atomic<int64_t> BAIDU_CACHELINE_ALIGNMENT _last_sampling_time_us;
