@@ -1040,8 +1040,8 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
             SetFailed(EINVAL, "Invalid connection_type=%d", (int)_connection_type);
             return HandleSendFailed();
         }
-        tmp_sock.reset();
         if (rc) {
+            tmp_sock.reset();
             SetFailed(rc, "Fail to get %s connection",
                       ConnectionTypeToString(_connection_type));
             return HandleSendFailed();
@@ -1051,6 +1051,12 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         // w/o trying other protocols. This is a must for (many) protocols that
         // can't be distinguished from other protocols w/o ambiguity.
         _current_call.sending_sock->set_preferred_index(_preferred_index);
+        // Set preferred_index of main_socket as well to make it easier to
+        // debug and observe from /connections.
+        if (tmp_sock->preferred_index() < 0) {
+            tmp_sock->set_preferred_index(_preferred_index);
+        }
+        tmp_sock.reset();
     }
     if (_tos > 0) {
         _current_call.sending_sock->set_type_of_service(_tos);

@@ -4,7 +4,7 @@ project(http_c++ C CXX)
 option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
 
 execute_process(
-    COMMAND bash -c "find ${CMAKE_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | xargs dirname | tr -d '\n'"
+    COMMAND bash -c "find ${PROJECT_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | head -n1 | xargs dirname | tr -d '\n'"
     OUTPUT_VARIABLE OUTPUT_PATH
 )
 
@@ -15,6 +15,17 @@ include(FindProtobuf)
 protobuf_generate_cpp(PROTO_SRC PROTO_HEADER http.proto)
 # include PROTO_HEADER
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
+# Search for libthrift* by best effort. If it is not found and brpc is
+# compiled with thrift protocol enabled, a link error would be reported.
+find_library(THRIFT_LIB NAMES thrift)
+if (NOT THRIFT_LIB)
+    set(THRIFT_LIB "")
+endif()
+find_library(THRIFTNB_LIB NAMES thriftnb)
+if (NOT THRIFTNB_LIB)
+    set(THRIFTNB_LIB "")
+endif()
 
 find_path(GPERFTOOLS_INCLUDE_DIR NAMES gperftools/heap-profiler.h)
 find_library(GPERFTOOLS_LIBRARIES NAMES tcmalloc_and_profiler)
@@ -97,6 +108,8 @@ set(DYNAMIC_LIB
     ${LEVELDB_LIB}
     ${SSL_LIB}
     ${CRYPTO_LIB}
+    ${THRIFT_LIB}
+    ${THRIFTNB_LIB}
     dl
     )
 
@@ -122,7 +135,7 @@ target_link_libraries(http_server ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRAR
 target_link_libraries(http_client ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
 target_link_libraries(benchmark_http ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
 
-file(COPY ${CMAKE_SOURCE_DIR}/key.pem
+file(COPY ${PROJECT_SOURCE_DIR}/key.pem
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-file(COPY ${CMAKE_SOURCE_DIR}/cert.pem
+file(COPY ${PROJECT_SOURCE_DIR}/cert.pem
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

@@ -19,6 +19,7 @@
 #include <butil/logging.h>
 
 #include "gen-cpp/EchoService.h"
+
 #include <thrift/protocol/TBinaryProtocol.h>
 #include <thrift/server/TSimpleServer.h>
 #include <thrift/transport/TServerSocket.h>
@@ -26,6 +27,17 @@
 #include <thrift/server/TNonblockingServer.h>
 #include <thrift/concurrency/PosixThreadFactory.h>
 
+// _THRIFT_STDCXX_H_ is defined by thrift/stdcxx.h which was added since thrift 0.11.0
+#include <thrift/TProcessor.h> // to include stdcxx.h if present
+#ifndef THRIFT_STDCXX
+ #if defined(_THRIFT_STDCXX_H_)
+ # define THRIFT_STDCXX apache::thrift::stdcxx
+ #include <thrift/transport/TNonblockingServerSocket.h>
+ #else
+ # define THRIFT_STDCXX boost
+ # include <boost/make_shared.hpp>
+ #endif
+#endif
 
 DEFINE_int32(port, 8019, "Port of server");
 
@@ -45,28 +57,37 @@ int main(int argc, char *argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     google::ParseCommandLineFlags(&argc, &argv, true);
 
-    boost::shared_ptr<EchoServiceHandler> handler(new EchoServiceHandler());  
-    boost::shared_ptr<apache::thrift::concurrency::PosixThreadFactory> thread_factory(
+    THRIFT_STDCXX::shared_ptr<EchoServiceHandler> handler(new EchoServiceHandler());  
+    THRIFT_STDCXX::shared_ptr<apache::thrift::concurrency::PosixThreadFactory> thread_factory(
         new apache::thrift::concurrency::PosixThreadFactory(
             apache::thrift::concurrency::PosixThreadFactory::ROUND_ROBIN,
             apache::thrift::concurrency::PosixThreadFactory::NORMAL, 1, false));
 
-    boost::shared_ptr<apache::thrift::server::TProcessor> processor(
+    THRIFT_STDCXX::shared_ptr<apache::thrift::server::TProcessor> processor(
         new example::EchoServiceProcessor(handler));
-    boost::shared_ptr<apache::thrift::protocol::TProtocolFactory> protocol_factory(
+    THRIFT_STDCXX::shared_ptr<apache::thrift::protocol::TProtocolFactory> protocol_factory(
         new apache::thrift::protocol::TBinaryProtocolFactory());
-    boost::shared_ptr<apache::thrift::transport::TTransportFactory> transport_factory(
+    THRIFT_STDCXX::shared_ptr<apache::thrift::transport::TTransportFactory> transport_factory(
         new apache::thrift::transport::TBufferedTransportFactory());
-    boost::shared_ptr<apache::thrift::concurrency::ThreadManager> thread_mgr(
+    THRIFT_STDCXX::shared_ptr<apache::thrift::concurrency::ThreadManager> thread_mgr(
         apache::thrift::concurrency::ThreadManager::newSimpleThreadManager(2));
+
     thread_mgr->threadFactory(thread_factory);
 
     thread_mgr->start();
 
+#if defined(_THRIFT_STDCXX_H_)
+    THRIFT_STDCXX::shared_ptr<apache::thrift::transport::TNonblockingServerSocket> server_transport = 
+        THRIFT_STDCXX::make_shared<apache::thrift::transport::TNonblockingServerSocket>(FLAGS_port);
+
     apache::thrift::server::TNonblockingServer server(processor,
         transport_factory, transport_factory, protocol_factory,
-        protocol_factory, FLAGS_port, thread_mgr);
-
+        protocol_factory, server_transport);
+#else
+    apache::thrift::server::TNonblockingServer server(processor,
+        transport_factory, transport_factory, protocol_factory,
+        protocol_factory, FLAGS_port);
+#endif
     server.serve();  
     return 0;
 }

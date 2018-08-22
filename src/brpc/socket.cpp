@@ -78,7 +78,7 @@ DEFINE_int64(socket_max_unwritten_bytes, 64 * 1024 * 1024,
              " Socket.Write fails with EOVERCROWDED");
 
 DEFINE_int32(max_connection_pool_size, 100,
-             "maximum pooled connection count to a single endpoint");
+             "Max number of pooled connections to a single endpoint");
 BRPC_VALIDATE_GFLAG(max_connection_pool_size, PassValidate);
 
 DEFINE_int32(connect_timeout_as_unreachable, 3,
@@ -97,6 +97,7 @@ BRPC_VALIDATE_GFLAG(connect_timeout_as_unreachable,
 const int WAIT_EPOLLOUT_TIMEOUT_MS = 50;
 
 class BAIDU_CACHELINE_ALIGNMENT SocketPool {
+friend class Socket;
 public:
     explicit SocketPool(const SocketOptions& opt);
     ~SocketPool();
@@ -118,8 +119,8 @@ private:
     butil::Mutex _mutex;
     std::vector<SocketId> _pool;
     butil::EndPoint _remote_side;
-    // #free-sockets in all sub pools.
-    butil::atomic<int> _count;
+    butil::atomic<int> _numfree; // #free sockets in all sub pools.
+    butil::atomic<int> _numinflight; // #inflight sockets in all sub pools.
 };
 
 // NOTE: sizeof of this class is 1200 bytes. If we have 10K sockets, total
@@ -290,6 +291,14 @@ static void CreateVars() {
 
 void Socket::CreateVarsOnce() {
     CHECK_EQ(0, pthread_once(&s_create_vars_once, CreateVars));
+}
+
+// Used by ConnectionService
+int64_t GetChannelConnectionCount() {
+    if (s_vars) {
+        return s_vars->channel_conn.get_value();
+    }
+    return 0;
 }
 
 bool Socket::CreatedByConnect() const {
@@ -2060,7 +2069,7 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
                 &ptr->_id_wait_list, idsizes, arraysize(idsizes));
         }
     }
-    const int preferred_index = ptr->_preferred_index;
+    const int preferred_index = ptr->preferred_index();
     SharedPart* sp = ptr->GetSharedPart();
     os << "version=" << VersionOfVRef(vref);
     if (sp) {
@@ -2077,7 +2086,10 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
                 }
                 os << pooled_sockets[i];
             }
-            os << ']';
+            os << "]\n  numfree="
+               << pool->_numfree.load(butil::memory_order_relaxed)
+               << "\n  numinflight="
+               << pool->_numinflight.load(butil::memory_order_relaxed);
         } else {
             os << "null";
         }
@@ -2276,7 +2288,10 @@ void SocketUser::AfterRevived(Socket* ptr) {
 ////////// SocketPool //////////////
 
 inline SocketPool::SocketPool(const SocketOptions& opt)
-    : _options(opt), _remote_side(opt.remote_side), _count(0) {
+    : _options(opt)
+    , _remote_side(opt.remote_side)
+    , _numfree(0)
+    , _numinflight(0) {
 }
 
 inline SocketPool::~SocketPool() {
@@ -2317,10 +2332,11 @@ inline int SocketPool::GetSocket(SocketUniquePtr* ptr) {
                 sid = _pool.back();
                 _pool.pop_back();
             }
-            _count.fetch_sub(1, butil::memory_order_relaxed);
+            _numfree.fetch_sub(1, butil::memory_order_relaxed);
             // Not address inside the lock since at most time the pooled socket
             // is likely to be valid.
             if (Socket::Address(sid, ptr) == 0) {
+                _numinflight.fetch_add(1, butil::memory_order_relaxed);
                 return 0;
             }
         }
@@ -2330,8 +2346,10 @@ inline int SocketPool::GetSocket(SocketUniquePtr* ptr) {
     // Only main socket can be the owner of ssl_ctx
     opt.owns_ssl_ctx = false;
     opt.health_check_interval_s = -1;
-    if (get_client_side_messenger()->Create(opt, &sid) == 0) {
-        return Socket::Address(sid, ptr);
+    if (get_client_side_messenger()->Create(opt, &sid) == 0 &&
+        Socket::Address(sid, ptr) == 0) {
+        _numinflight.fetch_add(1, butil::memory_order_relaxed);
+        return 0;
     }
     return -1;
 }
@@ -2341,16 +2359,17 @@ inline void SocketPool::ReturnSocket(Socket* sock) {
     const int connection_pool_size = FLAGS_max_connection_pool_size;
 
     // Check if the pool is full.
-    if (_count.fetch_add(1, butil::memory_order_relaxed) <
+    if (_numfree.fetch_add(1, butil::memory_order_relaxed) <
         connection_pool_size) {
         const SocketId sid = sock->id();
         BAIDU_SCOPED_LOCK(_mutex);
         _pool.push_back(sid);
     } else {
-         // Cancel the addition and close the pooled socket.
-        _count.fetch_sub(1, butil::memory_order_relaxed);
+        // Cancel the addition and close the pooled socket.
+        _numfree.fetch_sub(1, butil::memory_order_relaxed);
         sock->SetFailed(EUNUSED, "Close unused pooled socket");
     }
+    _numinflight.fetch_sub(1, butil::memory_order_relaxed);
 }
 
 inline void SocketPool::ListSockets(std::vector<SocketId>* out, size_t max_count) {
@@ -2477,6 +2496,20 @@ void Socket::ListPooledSockets(std::vector<SocketId>* out, size_t max_count) {
         return;
     }
     pool->ListSockets(out, max_count);
+}
+
+bool Socket::GetPooledSocketStats(int* numfree, int* numinflight) {
+    SharedPart* sp = GetSharedPart();
+    if (sp == NULL) {
+        return false;
+    }
+    SocketPool* pool = sp->socket_pool.load(butil::memory_order_consume);
+    if (pool == NULL) {
+        return false;
+    }
+    *numfree = pool->_numfree.load(butil::memory_order_relaxed);
+    *numinflight = pool->_numinflight.load(butil::memory_order_relaxed);
+    return true;
 }
     
 int Socket::GetShortSocket(Socket* main_socket,

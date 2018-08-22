@@ -14,8 +14,6 @@
 
 // Authors: wangxuefeng (wangxuefeng@didichuxing.com)
 
-#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
-
 #ifndef BRPC_POLICY_THRIFT_PROTOCOL_H
 #define BRPC_POLICY_THRIFT_PROTOCOL_H
 
@@ -51,6 +49,4 @@ bool VerifyThriftRequest(const InputMessageBase *msg);
 } // namespace policy
 } // namespace brpc
 
-
 #endif // BRPC_POLICY_THRIFT_PROTOCOL_H
-#endif

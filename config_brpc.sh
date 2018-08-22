@@ -1,6 +1,10 @@
 SYSTEM=$(uname -s)
 if [ "$SYSTEM" = "Darwin" ]; then
-    ECHO='echo -e'
+    if [ -z "$BASH" ] || [ "$BASH" = "/bin/sh" ] ; then
+        ECHO=echo
+    else
+        ECHO='echo -e'
+    fi
     SO=dylib
     LDD="otool -L"
     if [ "$(getopt -V)" = " --" ]; then
@@ -27,11 +31,17 @@ if [ $? != 0 ] ; then >&2 $ECHO "Terminating..."; exit 1 ; fi
 # Note the quotes around `$TEMP': they are essential!
 eval set -- "$TEMP"
 
+if [ "$SYSTEM" = "Darwin" ]; then
+    REALPATH=realpath
+else
+    REALPATH="readlink -f"
+fi
+
 # Convert to abspath always so that generated mk is include-able from everywhere
 while true; do
     case "$1" in
-        --headers ) HDRS_IN="$(realpath $2)"; shift 2 ;;
-        --libs ) LIBS_IN="$(realpath $2)"; shift 2 ;;
+        --headers ) HDRS_IN="$(${REALPATH} $2)"; shift 2 ;;
+        --libs ) LIBS_IN="$(${REALPATH} $2)"; shift 2 ;;
         --cc ) CC=$2; shift 2 ;;
         --cxx ) CXX=$2; shift 2 ;;
         --with-glog ) WITH_GLOG=1; shift 1 ;;
@@ -142,6 +152,7 @@ if [ "$SYSTEM" = "Darwin" ]; then
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_MallocExtension_ReleaseFreeMemory"
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_ProfilerStart"
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_ProfilerStop"
+	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -Wl,-U,_RegisterThriftProtocol"
 fi
 append_linking() {
     if [ -f $1/lib${2}.a ]; then
@@ -272,7 +283,7 @@ if [ ! -z "$DEBUGSYMBOLS" ]; then
 fi
 if [ "$SYSTEM" = "Darwin" ]; then
     CPPFLAGS="${CPPFLAGS} -Wno-deprecated-declarations"
-    version=`system_profiler SPSoftwareDataType | grep "System Version" | awk '{print $5}' | awk -F. '{printf "%d.%d", $1, $2}'`
+    version=`sw_vers -productVersion | awk -F '.' '{print $1 "." $2}'`
     if [[ `echo "$version<10.12" | bc -l` == 1 ]]; then
         CPPFLAGS="${CPPFLAGS} -DNO_CLOCK_GETTIME_IN_MAC"
     fi

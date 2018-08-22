@@ -41,18 +41,12 @@ public:
         , _actions(actions)
         , _scheduled_destroy(false) {}
     bool DoPeriodicTask(timespec* next_abstime);
-
-    void CleanUp();
 private:
     PeriodicNamingService* _owner;
     std::string _service_name;
     std::unique_ptr<NamingServiceActions> _actions;
     bool _scheduled_destroy;
 };
-
-void AccessNamingServiceTask::CleanUp() {
-    _actions.reset(NULL);
-}
 
 bool AccessNamingServiceTask::DoPeriodicTask(timespec* next_abstime) {
     if (next_abstime == NULL) {
@@ -90,7 +84,6 @@ void PeriodicNamingService::RunNamingService(
 
 void PeriodicNamingService::Destroy() {
     if (_task) {
-        _task->CleanUp();
         _task->_scheduled_destroy = true;
         _task->RemoveRefManually();
         _task = NULL;

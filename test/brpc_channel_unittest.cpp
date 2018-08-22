@@ -220,6 +220,7 @@ protected:
         brpc::Controller* cntl = new brpc::Controller();
         cntl->_current_call.peer_id = ptr->id();
         cntl->_current_call.sending_sock.reset(ptr.release());
+        cntl->_server = &ts->_dummy;
 
         google::protobuf::Message* res =
               ts->_svc.GetResponsePrototype(method).New();
@@ -701,7 +702,7 @@ protected:
         CallMethod(&subchans[0], &cntl, &req, &res, false);
         ASSERT_TRUE(cntl.Failed());
         ASSERT_EQ(brpc::EINTERNAL, cntl.ErrorCode()) << cntl.ErrorText();
-        ASSERT_EQ("[E2001]Method ComboEcho() not implemented.", cntl.ErrorText());
+        ASSERT_EQ("[E2001][127.0.1.1:0]Method ComboEcho() not implemented.", cntl.ErrorText());
 
         // do the rpc call.
         cntl.Reset();

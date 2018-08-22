@@ -98,7 +98,7 @@ int bthread_id_lock_verbose(bthread_id_t id, void** pdata,
                             const char *location);
 
 // Lock `id' (for using the data exclusively) and reset the range. If `id' is 
-// locked by others, wait until `id' is unlocked or destroyed. if `range' if
+// locked by others, wait until `id' is unlocked or destroyed. if `range' is
 // smaller than the original range of this id, nothing happens about the range
 #define bthread_id_lock_and_reset_range(id, pdata, range)               \
     bthread_id_lock_and_reset_range_verbose(id, pdata, range,           \

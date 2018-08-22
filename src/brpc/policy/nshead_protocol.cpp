@@ -40,7 +40,7 @@ namespace brpc {
 
 NsheadClosure::NsheadClosure(void* additional_space)
     : _server(NULL)
-    , _start_parse_us(0)
+    , _received_us(0)
     , _do_respond(true)
     , _additional_space(additional_space) {
 }
@@ -64,7 +64,6 @@ public:
 void NsheadClosure::Run() {
     // Recycle itself after `Run'
     std::unique_ptr<NsheadClosure, DeleteNsheadClosure> recycle_ctx(this);
-    ScopedRemoveConcurrency remove_concurrency_dummy(_server, &_controller);
 
     ControllerPrivateAccessor accessor(&_controller);
     Span* span = accessor.span();
@@ -72,7 +71,8 @@ void NsheadClosure::Run() {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
     Socket* sock = accessor.get_sending_socket();
-    ScopedMethodStatus method_status(_server->options().nshead_service->_status);
+    MethodStatus* method_status = _server->options().nshead_service->_status;
+    ConcurrencyRemover concurrency_remover(method_status, &_controller, _received_us);
     if (!method_status) {
         // Judge errors belongings.
         // may not be accurate, but it does not matter too much.
@@ -122,10 +122,6 @@ void NsheadClosure::Run() {
     if (span) {
         // TODO: this is not sent
         span->set_sent_us(butil::cpuwide_time_us());
-    }
-    if (method_status) {
-        method_status.release()->OnResponded(
-            !_controller.Failed(), butil::cpuwide_time_us() - cpuwide_start_us());
     }
 }
 
@@ -249,7 +245,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
 
     req->head = *req_head;
     msg->payload.swap(req->body);
-    nshead_done->_start_parse_us = start_parse_us;
+    nshead_done->_received_us = msg->received_us();
     nshead_done->_server = server;
     
     ServerPrivateAccessor server_accessor(server);
@@ -296,8 +292,9 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
             break;
         }
         if (!server_accessor.AddConcurrency(cntl)) {
-            cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
-                            server->options().max_concurrency);
+            cntl->SetFailed(
+                ELIMIT, "Reached server's max_concurrency=%d",
+                server->options().max_concurrency);
             break;
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {
@@ -308,7 +305,6 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
     } while (false);
 
     msg.reset();  // optional, just release resourse ASAP
-    // `socket' will be held until response has been sent
     if (span) {
         span->ResetServerSpanName(service->_cached_name);
         span->set_start_callback_us(butil::cpuwide_time_us());
@@ -376,7 +372,6 @@ void SerializeNsheadRequest(butil::IOBuf* request_buf, Controller* cntl,
     if (req_base == NULL) {
         return cntl->SetFailed(EREQUEST, "request is NULL");
     }
-    ControllerPrivateAccessor accessor(cntl);
     if (req_base->GetDescriptor() != NsheadMessage::descriptor()) {
         return cntl->SetFailed(EINVAL, "Type of request must be NsheadMessage");
     }

@@ -224,19 +224,18 @@ static void SendHuluResponse(int64_t correlation_id,
                              const google::protobuf::Message* req,
                              const google::protobuf::Message* res,
                              const Server* server,
-                             MethodStatus* method_status_raw,
-                             long start_parse_us) {
+                             MethodStatus* method_status,
+                             int64_t received_us) {
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
-    ScopedMethodStatus method_status(method_status_raw);
     Socket* sock = accessor.get_sending_socket();
     std::unique_ptr<HuluController, LogErrorTextAndDelete> recycle_cntl(cntl);
+    ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
-    ScopedRemoveConcurrency remove_concurrency_dummy(server, cntl);
 
     if (cntl->IsCloseConnection()) {
         sock->SetFailed();
@@ -317,10 +316,6 @@ static void SendHuluResponse(int64_t correlation_id,
     if (span) {
         // TODO: this is not sent
         span->set_sent_us(butil::cpuwide_time_us());
-    }
-    if (method_status) {
-        method_status.release()->OnResponded(
-            !cntl->Failed(), butil::cpuwide_time_us() - start_parse_us);
     }
 }
 
@@ -457,10 +452,10 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
         non_service_error.release();
         method_status = sp->status;
         if (method_status) {
-            if (!method_status->OnRequested()) {
-                cntl->SetFailed(ELIMIT, "Reached %s's max_concurrency=%d",
-                                sp->method->full_name().c_str(),
-                                method_status->max_concurrency());
+            int rejected_cc = 0;
+            if (!method_status->OnRequested(&rejected_cc)) {
+                cntl->SetFailed(ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
+                                sp->method->full_name().c_str(), rejected_cc);
                 break;
             }
         }
@@ -487,19 +482,21 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
                             CompressTypeToCStr(req_cmp_type), reqsize);
             break;
         }
-        // optional, just release resourse ASAP
-        msg.reset();
-        req_buf.clear();
 
         res.reset(svc->GetResponsePrototype(method).New());
         // `socket' will be held until response has been sent
         google::protobuf::Closure* done = ::brpc::NewCallback<
             int64_t, HuluController*, const google::protobuf::Message*,
             const google::protobuf::Message*, const Server*,
-                  MethodStatus *, long>(
+                  MethodStatus *, int64_t>(
                 &SendHuluResponse, correlation_id, cntl.get(),
                 req.get(), res.get(), server,
-                method_status, start_parse_us);
+                method_status, msg->received_us());
+
+        // optional, just release resourse ASAP
+        msg.reset();
+        req_buf.clear();
+
         if (span) {
             span->set_start_callback_us(butil::cpuwide_time_us());
             span->AsParent();
@@ -523,7 +520,7 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
     // `socket' will be held until response has been sent
     SendHuluResponse(correlation_id, cntl.release(),
                      req.release(), res.release(), server,
-                     method_status, -1);
+                     method_status, msg->received_us());
 }
 
 bool VerifyHuluRequest(const InputMessageBase* msg_base) {

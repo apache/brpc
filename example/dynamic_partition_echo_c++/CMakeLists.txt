@@ -4,7 +4,7 @@ project(dynamic_partition_echo_c++ C CXX)
 option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
 
 execute_process(
-    COMMAND bash -c "find ${CMAKE_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | xargs dirname | tr -d '\n'"
+    COMMAND bash -c "find ${PROJECT_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | head -n1 | xargs dirname | tr -d '\n'"
     OUTPUT_VARIABLE OUTPUT_PATH
 )
 
@@ -19,6 +19,17 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 find_path(GPERFTOOLS_INCLUDE_DIR NAMES gperftools/heap-profiler.h)
 find_library(GPERFTOOLS_LIBRARIES NAMES tcmalloc_and_profiler)
 include_directories(${GPERFTOOLS_INCLUDE_DIR})
+
+# Search for libthrift* by best effort. If it is not found and brpc is
+# compiled with thrift protocol enabled, a link error would be reported.
+find_library(THRIFT_LIB NAMES thrift)
+if (NOT THRIFT_LIB)
+    set(THRIFT_LIB "")
+endif()
+find_library(THRIFTNB_LIB NAMES thriftnb)
+if (NOT THRIFTNB_LIB)
+    set(THRIFTNB_LIB "")
+endif()
 
 find_path(BRPC_INCLUDE_PATH NAMES brpc/server.h)
 if(EXAMPLE_LINK_SO)
@@ -96,6 +107,8 @@ set(DYNAMIC_LIB
     ${LEVELDB_LIB}
     ${SSL_LIB}
     ${CRYPTO_LIB}
+    ${THRIFT_LIB}
+    ${THRIFTNB_LIB}
     dl
     )
 
@@ -119,5 +132,5 @@ add_executable(dynamic_partition_echo_server server.cpp ${PROTO_SRC} ${PROTO_HEA
 target_link_libraries(dynamic_partition_echo_client ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
 target_link_libraries(dynamic_partition_echo_server ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
 
-file(COPY ${CMAKE_SOURCE_DIR}/server_list
+file(COPY ${PROJECT_SOURCE_DIR}/server_list
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

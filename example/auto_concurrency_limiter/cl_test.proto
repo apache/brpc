@@ -1,0 +1,44 @@
+syntax="proto2";
+package test;
+
+option cc_generic_services = true;
+
+message NotifyRequest {
+      required string message = 1;
+};
+
+message NotifyResponse {
+      required string message = 1;
+};
+
+enum ChangeType {
+    FLUCTUATE = 1;  // Fluctuating between upper and lower bound 
+    SMOOTH = 2;     // Smoothly rising from the lower bound to the upper bound 
+}
+
+message Stage {
+    required int32 lower_bound = 1;
+    required int32 upper_bound = 2;
+    required int32 duration_sec = 3;
+    required ChangeType type = 4; 
+}
+
+message TestCase {
+    required string case_name = 1;
+    required string max_concurrency = 2;
+    repeated Stage qps_stage_list = 3;
+    repeated Stage latency_stage_list = 4;
+}
+
+message TestCaseSet {
+    repeated TestCase test_case = 1;
+}
+
+service ControlService {
+    rpc Notify(NotifyRequest) returns (NotifyResponse);
+}
+
+service EchoService {
+    rpc Echo(NotifyRequest) returns (NotifyResponse);
+};
+

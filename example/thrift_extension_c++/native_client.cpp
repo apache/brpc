@@ -23,6 +23,16 @@
 
 #include <butil/logging.h>
 
+// _THRIFT_STDCXX_H_ is defined by thrift/stdcxx.h which was added since thrift 0.11.0
+#ifndef THRIFT_STDCXX
+ #if defined(_THRIFT_STDCXX_H_)
+ # define THRIFT_STDCXX apache::thrift::stdcxx
+ #else
+ # define THRIFT_STDCXX boost
+ # include <boost/make_shared.hpp>
+ #endif
+#endif
+
 DEFINE_string(server, "0.0.0.0", "IP Address of server");
 DEFINE_int32(port, 8019, "Port of server");
 
@@ -31,26 +41,29 @@ int main(int argc, char **argv) {
     // Parse gflags. We recommend you to use gflags as well.
     google::ParseCommandLineFlags(&argc, &argv, true);
 
-    boost::shared_ptr<apache::thrift::transport::TSocket> socket(
+    THRIFT_STDCXX::shared_ptr<apache::thrift::transport::TSocket> socket(
         new apache::thrift::transport::TSocket(FLAGS_server, FLAGS_port));
-    boost::shared_ptr<apache::thrift::transport::TTransport> transport(
+    THRIFT_STDCXX::shared_ptr<apache::thrift::transport::TTransport> transport(
         new apache::thrift::transport::TFramedTransport(socket));
-    boost::shared_ptr<apache::thrift::protocol::TProtocol> protocol(
+    THRIFT_STDCXX::shared_ptr<apache::thrift::protocol::TProtocol> protocol(
         new apache::thrift::protocol::TBinaryProtocol(transport));
 
     example::EchoServiceClient client(protocol);
     transport->open();
 
     example::EchoRequest req;
-    req.data = "hello";
+    req.__set_data("hello");
+    req.__set_need_by_proxy(10);
 
     example::EchoResponse res;
 
     while (1) {
-        client.Echo(res, req);
-
-        LOG(INFO) << "Req: " << req.data
-                  << " Res: " << res.data;
+        try {
+            client.Echo(res, req);
+            LOG(INFO) << "Req=" << req << " Res=" << res;
+        } catch (std::exception& e) {
+            LOG(ERROR) << "Fail to rpc, " << e.what();
+        }
         sleep(1);
     }
     transport->close();

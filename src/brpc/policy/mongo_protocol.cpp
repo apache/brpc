@@ -41,13 +41,13 @@ namespace policy {
 struct SendMongoResponse : public google::protobuf::Closure {
     SendMongoResponse(const Server *server) :
         status(NULL),
-        start_callback_us(0L),
+        received_us(0L),
         server(server) {}
     ~SendMongoResponse();
     void Run();
 
     MethodStatus* status;
-    long start_callback_us;
+    int64_t received_us;
     const Server *server;
     Controller cntl;
     MongoRequest req;
@@ -60,7 +60,7 @@ SendMongoResponse::~SendMongoResponse() {
 
 void SendMongoResponse::Run() {
     std::unique_ptr<SendMongoResponse> delete_self(this);
-    ScopedMethodStatus method_status(status);
+    ConcurrencyRemover concurrency_remover(status, &cntl, received_us);
     Socket* socket = ControllerPrivateAccessor(&cntl).get_sending_socket();
 
     if (cntl.IsCloseConnection()) {
@@ -101,10 +101,6 @@ void SendMongoResponse::Run() {
             PLOG(WARNING) << "Fail to write into " << *socket;
             return;
         }
-    }
-    if (method_status) {
-        method_status.release()->OnResponded(
-            !cntl.Failed(), butil::cpuwide_time_us() - start_callback_us);
     }
 }
 
@@ -224,8 +220,9 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
         }
 
         if (!ServerPrivateAccessor(server).AddConcurrency(&(mongo_done->cntl))) {
-            mongo_done->cntl.SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
-                            server->options().max_concurrency);
+            mongo_done->cntl.SetFailed(
+                ELIMIT, "Reached server's max_concurrency=%d",
+                server->options().max_concurrency);
             break;
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {
@@ -244,11 +241,11 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
         MethodStatus* method_status = mp->status;
         mongo_done->status = method_status;
         if (method_status) {
-            if (!method_status->OnRequested()) {
+            int rejected_cc = 0;
+            if (!method_status->OnRequested(&rejected_cc)) {
                 mongo_done->cntl.SetFailed(
-                    ELIMIT, "Reached %s's max_concurrency=%d",
-                    mp->method->full_name().c_str(),
-                    method_status->max_concurrency());
+                    ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
+                    mp->method->full_name().c_str(), rejected_cc);
                 break;
             }
         }
@@ -267,7 +264,7 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
         mongo_done->req.mutable_header()->set_op_code(
                 static_cast<MongoOp>(header->op_code));
         mongo_done->res.mutable_header()->set_response_to(header->request_id);
-        mongo_done->start_callback_us = butil::cpuwide_time_us();
+        mongo_done->received_us = msg->received_us();
 
         google::protobuf::Service* svc = mp->service;
         const google::protobuf::MethodDescriptor* method = mp->method;

@@ -61,7 +61,14 @@
 #include "brpc/policy/nshead_mcpack_protocol.h"
 #include "brpc/policy/rtmp_protocol.h"
 #include "brpc/policy/esp_protocol.h"
-#include "brpc/policy/thrift_protocol.h"
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+# include "brpc/policy/thrift_protocol.h"
+#endif
+
+// Concurrency Limiters
+#include "brpc/concurrency_limiter.h"
+#include "brpc/policy/auto_concurrency_limiter.h"
+#include "brpc/policy/constant_concurrency_limiter.h"
 
 #include "brpc/input_messenger.h"     // get_or_new_client_side_messenger
 #include "brpc/socket_map.h"          // SocketMapList
@@ -97,12 +104,13 @@ using namespace policy;
 
 const char* const DUMMY_SERVER_PORT_FILE = "dummy_server.port";
 
-void __attribute__((weak)) RegisterThriftProtocol();
-
 struct GlobalExtensions {
     GlobalExtensions()
         : ch_mh_lb(MurmurHash32)
-        , ch_md5_lb(MD5Hash32){}
+        , ch_md5_lb(MD5Hash32)
+        , constant_cl(0) {
+    }
+    
 #ifdef BAIDU_INTERNAL
     BaiduNamingService bns;
 #endif
@@ -119,6 +127,9 @@ struct GlobalExtensions {
     ConsistentHashingLoadBalancer ch_mh_lb;
     ConsistentHashingLoadBalancer ch_md5_lb;
     DynPartLoadBalancer dynpart_lb;
+
+    AutoConcurrencyLimiter auto_cl;
+    ConstantConcurrencyLimiter constant_cl;
 };
 
 static pthread_once_t register_extensions_once = PTHREAD_ONCE_INIT;
@@ -322,7 +333,8 @@ static void GlobalInitializeOrDieImpl() {
 #endif
     NamingServiceExtension()->RegisterOrDie("file", &g_ext->fns);
     NamingServiceExtension()->RegisterOrDie("list", &g_ext->lns);
-    NamingServiceExtension()->RegisterOrDie("http", &g_ext->dns);
+  NamingServiceExtension()->RegisterOrDie("http", &g_ext->dns);
+  NamingServiceExtension()->RegisterOrDie("redis", &g_ext->dns);
     NamingServiceExtension()->RegisterOrDie("remotefile", &g_ext->rfns);
     NamingServiceExtension()->RegisterOrDie("consul", &g_ext->cns);
 
@@ -466,11 +478,18 @@ static void GlobalInitializeOrDieImpl() {
         exit(1);
     }
 
-    // Register Thrift framed protocol if linked
-
-    if (brpc::RegisterThriftProtocol) {
-        brpc::RegisterThriftProtocol();
+// Use Macro is more straight forward than weak link technology(becasue of static link issue)
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+    Protocol thrift_binary_protocol = {
+        policy::ParseThriftMessage,
+        policy::SerializeThriftRequest, policy::PackThriftRequest,
+        policy::ProcessThriftRequest, policy::ProcessThriftResponse,
+        policy::VerifyThriftRequest, NULL, NULL,
+        CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };
+    if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol) != 0) {
+        exit(1);
     }
+#endif
 
     // Only valid at client side
     Protocol ubrpc_compack_protocol = {
@@ -542,6 +561,10 @@ static void GlobalInitializeOrDieImpl() {
         }
     }
 
+    // Concurrency Limiters
+    ConcurrencyLimiterExtension()->RegisterOrDie("auto", &g_ext->auto_cl);
+    ConcurrencyLimiterExtension()->RegisterOrDie("constant", &g_ext->constant_cl);
+    
     if (FLAGS_usercode_in_pthread) {
         // Optional. If channel/server are initialized before main(), this
         // flag may be false at here even if it will be set to true after

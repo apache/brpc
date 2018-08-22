@@ -19,8 +19,7 @@
 
 #include <stdint.h>                             // int64_t
 #include <string>                               // std::string
-#include <brpc/controller.h>                    // Controller
-
+#include "brpc/controller.h"                    // Controller
 
 namespace brpc {
 namespace policy {
@@ -87,6 +86,5 @@ private:
 
 }  // namespace policy
 } // namespace brpc
-
 
 #endif  //BRPC_HULU_PBRPC_CONTROLLER_H
