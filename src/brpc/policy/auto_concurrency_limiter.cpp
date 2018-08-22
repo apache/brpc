@@ -48,14 +48,11 @@ DEFINE_bool(auto_cl_enable_error_punish, true,
 DEFINE_double(auto_cl_fail_punish_ratio, 1.0,
               "Use the failed requests to punish normal requests. The larger "
               "the configuration item, the more aggressive the penalty strategy.");
-DEFINE_double(auto_cl_epsilon, 0.05, 
-              "The larger the value, the more relaxed the judgment condition "
-              "for full load. Correspondingly, when the server is fully loaded, "
-              "the latency will be higher.");
 DEFINE_double(auto_cl_max_reserved_ratio, 0.3, 
-              "The larger the value, the higher the tolerance of the service to "
-              "the fluctuation of latency at low load, and the higher the upper "
-              "limit of qps increase.");
+              "The larger the value, the higher the tolerance of the server to "
+              "the fluctuation of latency at low load, and the the greater the "
+              "maximum growth rate of qps. Correspondingly, the server will have "
+              "a higher latency for a short period of time after the overload.");
 DEFINE_double(auto_cl_change_rate_of_reserved_ratio, 0.01, 
               "The speed of change of auto_cl_max_reserved_ratio when the "
               "load situation of the server changes, The value range is "
@@ -66,7 +63,8 @@ DEFINE_double(auto_cl_reduce_ratio_while_remeasure, 0.9,
 DEFINE_int32(auto_cl_latency_fluctuation_correction_factor, 1,
              "Affect the judgment of the server's load situation. The larger "
              "the value, the higher the tolerance for the fluctuation of the "
-             "latency, and the higher the latency at full load.");
+             "latency. If the value is too large, the latency will be higher "
+             "when the server is overloaded.");
 
 AutoConcurrencyLimiter::AutoConcurrencyLimiter()
     : _max_concurrency(FLAGS_auto_cl_initial_max_concurrency)
@@ -217,7 +215,7 @@ void AutoConcurrencyLimiter::UpdateMaxConcurrency(int64_t sampling_time_us) {
         next_max_concurrency = 
             std::ceil(_ema_max_qps * _min_latency_us / 1000000 * reduce_ratio);
     } else {
-        const double epsilon = FLAGS_auto_cl_epsilon;
+        const double epsilon = 0.05;
         const double change_step = FLAGS_auto_cl_change_rate_of_reserved_ratio;
         const double max_reserved_ratio = FLAGS_auto_cl_max_reserved_ratio;
         const double correction_factor = FLAGS_auto_cl_latency_fluctuation_correction_factor;
