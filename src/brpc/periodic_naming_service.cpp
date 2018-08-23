@@ -38,15 +38,18 @@ public:
                             NamingServiceActions* actions)
         : _owner(owner)
         , _service_name(service_name)
-        , _actions(actions)
-        , _scheduled_destroy(false) {}
+        , _actions(actions) {}
     bool DoPeriodicTask(timespec* next_abstime);
+    void CleanUp();
 private:
     PeriodicNamingService* _owner;
     std::string _service_name;
     std::unique_ptr<NamingServiceActions> _actions;
-    bool _scheduled_destroy;
 };
+
+void AccessNamingServiceTask::CleanUp() {
+    _actions->CleanUp();
+}
 
 bool AccessNamingServiceTask::DoPeriodicTask(timespec* next_abstime) {
     if (next_abstime == NULL) {
@@ -54,7 +57,7 @@ bool AccessNamingServiceTask::DoPeriodicTask(timespec* next_abstime) {
         this->RemoveRefManually();
         return true;
     }
-    if (_scheduled_destroy) {
+    if (_actions->IsCleanedUp()){
         return false;
     }
     std::vector<ServerNode> servers;
@@ -84,11 +87,16 @@ void PeriodicNamingService::RunNamingService(
 
 void PeriodicNamingService::Destroy() {
     if (_task) {
-        _task->_scheduled_destroy = true;
+        _task->CleanUp();
         _task->RemoveRefManually();
         _task = NULL;
+    } else {
+        // Ownership hasn't been transfered to _task, which should
+        // belong to _task in normal case since PeriodicNamingService::
+        // GetServers may be called in AccessNamingServiceTask and
+        // PeriodicNamingService should still be in a valid state.
+        delete this;
     }
-    delete this;
 }
 
 } // namespace brpc

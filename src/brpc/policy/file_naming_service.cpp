@@ -123,22 +123,21 @@ public:
                    NamingServiceActions* actions)
         : _owner(owner)
         , _fw(fw)
-        , _actions(actions)
-        , _scheduled_destroy(false) {}
+        , _actions(actions) {}
     bool DoPeriodicTask(timespec* next_abstime);
 
     void CleanUp();
 private:
-    FileNamingService* _owner;
+    std::unique_ptr<FileNamingService> _owner;
+    butil::Mutex _mutex;
     butil::FileWatcher _fw;
     std::unique_ptr<NamingServiceActions> _actions;
-    bool _scheduled_destroy;
 };
 
 const int64_t RELOAD_FILE_MS = 100;
 
 void ReloadFileTask::CleanUp() {
-    _actions.reset(NULL);
+    _actions->CleanUp();
 }
 
 bool ReloadFileTask::DoPeriodicTask(timespec* next_abstime) {
@@ -147,7 +146,7 @@ bool ReloadFileTask::DoPeriodicTask(timespec* next_abstime) {
         this->RemoveRefManually();
         return true;
     }
-    if (_scheduled_destroy) {
+    if (_actions->IsCleanedUp()) {
         return false;
     }
     butil::FileWatcher::Change change = _fw.check_and_consume();
@@ -198,11 +197,15 @@ NamingService* FileNamingService::New() const {
 void FileNamingService::Destroy() {
     if (_task) {
         _task->CleanUp();
-        _task->_scheduled_destroy = true;
         _task->RemoveRefManually();
         _task = NULL;
+    } else {
+        // Ownership hasn't been transfered to _task, which should
+        // belong to _task in normal case since FileNamingService::
+        // GetServers may be called in DoPeriodicTask and FileNamingService
+        // should still be in a valid state.
+        delete this;
     }
-    delete this;
 }
 
 }  // namespace policy

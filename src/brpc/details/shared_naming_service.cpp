@@ -36,16 +36,30 @@ SharedNamingService::Actions::Actions(SharedNamingService* owner)
 }
 
 SharedNamingService::Actions::~Actions() {
+    if (!IsCleanedUp()) {
+        // If Action is not cleaned up, _owner is still a valid pointer.
+        // Otherwise *_owner has already been destructed and _owner is a
+        // dangling pointer.
+        _owner->EndWait(ECANCELED);
+    }
+}
+
+void SharedNamingService::Actions::CleanUpImp() {
+    BAIDU_SCOPED_LOCK(_mutex);
     // Remove all sockets from SocketMap
     for (std::vector<ServerNode>::const_iterator it = _last_servers.begin();
          it != _last_servers.end(); ++it) {
         SocketMapRemove(SocketMapKey(it->addr));
     }
-    _owner->EndWait(ECANCELED);
+    NamingServiceActions::CleanUpImp();
 }
 
 void SharedNamingService::Actions::ResetServers(
         const std::vector<ServerNode>& servers) {
+    BAIDU_SCOPED_LOCK(_mutex);
+    if (IsCleanedUp()) {
+        return;
+    }
     _servers.assign(servers.begin(), servers.end());
     // Diff servers with _last_servers by comparing sorted vectors.
     // Notice that _last_servers is always sorted.
@@ -365,7 +379,7 @@ int GetSharedNamingService(
             if (ptr->AddRefManually() == 0) {
                 // The NS's last intrusive_ptr was just destructed and the
                 // removal-from-global-map-code in ptr->~SharedNamingService()
-                // is about to run or already running, need to create another NS
+                // is about to run or already running, need to create another NS.
                 // Notice that we don't need to remove the reference because
                 // the object is already destructing.
                 ptr = NULL;

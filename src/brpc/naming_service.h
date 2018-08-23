@@ -34,10 +34,22 @@ namespace brpc {
 // NOTE: You don't have to implement this class.
 class NamingServiceActions {
 public:
+    NamingServiceActions()
+        :_cleaned_up(false) {}
     virtual ~NamingServiceActions() {}
 
     // Call this method when servers are successfully refreshed.
     virtual void ResetServers(const std::vector<ServerNode>& servers) = 0;
+
+    // Clean up resources
+    void CleanUp() { CleanUpImp(); }
+    bool IsCleanedUp() { return _cleaned_up; }
+
+protected:
+    virtual void CleanUpImp() { _cleaned_up = true; }
+
+private:
+    bool _cleaned_up;
 };
 
 // Mapping a name to ServerNodes.

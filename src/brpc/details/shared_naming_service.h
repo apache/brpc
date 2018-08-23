@@ -27,7 +27,7 @@
 
 namespace brpc {
 
-// Inherit this class to observer NamingService changes.
+// Inherit this class to observe NamingService changes.
 // NOTE: Same SocketId with different tags are treated as different entries.
 // When you change tag of a server, the server with the old tag will appear
 // in OnRemovedServers first, then in OnAddedServers with the new tag.
@@ -65,8 +65,13 @@ class SharedNamingService : public SharedObject, public Describable {
         // @NamingServiceActions
         void ResetServers(const std::vector<ServerNode>& servers);
 
+    protected:
+        // @NamingServiceActions
+        void CleanUpImp();
+
     private:
         SharedNamingService* _owner;
+        butil::Mutex _mutex;
         std::vector<ServerNode> _last_servers;
         std::vector<ServerNode> _servers;
         std::vector<ServerNode> _added;
