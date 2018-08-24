@@ -207,6 +207,7 @@ set(BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/snappy/snappy-stubs-internal.cc
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/snappy/snappy.cc
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/murmurhash3/murmurhash3.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/third_party/libvbucket/rfc1321/md5c.c
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/libvbucket/cJSON.c
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/libvbucket/crc32.c
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/libvbucket/ketama.c

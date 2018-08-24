@@ -24,14 +24,18 @@ namespace brpc {
 
 // Request to couchbase.
 // Do not support pipeline multiple operations in one request and sent now.
+// Do not support Flush/Version
 class CouchbaseRequest : public MemcacheRequest {
+friend class CouchbaseChannel;
+friend class VBucketContext; 
 public:
     void Swap(CouchbaseRequest* other) {
         MemcacheRequest::Swap(other);
     }
 
-    bool Get(const butil::StringPiece& key) {
+    bool Get(const butil::StringPiece& key, bool read_replicas = false) {
         MemcacheRequest::Clear();
+        _read_replicas = read_replicas;
         return MemcacheRequest::Get(key);
     }
 
@@ -101,24 +105,28 @@ public:
 
     void CopyFrom(const CouchbaseRequest& from) {
         MemcacheRequest::CopyFrom(from);
+        _read_replicas = from._read_replicas;
     }
 
+private:
     int ParseRequest(std::string* key, 
                      policy::MemcacheBinaryCommand* command) const;
 
-    bool BuildNewWithVBucketId(CouchbaseRequest* request, 
-                               const size_t vbucket_id) const;
+    bool BuildVBucketId(const size_t vbucket_id,
+                        CouchbaseRequest* request) const;
 
-    bool ReplicasGet(const butil::StringPiece& key);
+    bool ReplicasGet(const butil::StringPiece& key, const size_t vbucket_id);
 
-private:
     void MergeFrom(const CouchbaseRequest& from);
 
     int pipelined_count();
+    
+    bool read_replicas() const { return _read_replicas; } 
+
+    bool _read_replicas = false;
 };
 
-// Request to couchbase.
-// Do not support pipeline multiple operations in one request and sent now.
+// Response from couchbase.
 class CouchbaseResponse : public MemcacheResponse {
 public:
     void Swap(CouchbaseResponse* other) {
@@ -132,6 +140,8 @@ public:
     }
 
     bool GetStatus(Status* status);
+
+    bool RecoverOptCodeForReplicasRead();
 
 private:
     void MergeFrom(const CouchbaseResponse& from);

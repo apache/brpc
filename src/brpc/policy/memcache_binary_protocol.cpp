@@ -64,6 +64,7 @@ static void InitSupportedCommandMap() {
     butil::bit_array_set(supported_cmd_map, MC_BINARY_STAT);
     butil::bit_array_set(supported_cmd_map, MC_BINARY_TOUCH);
     butil::bit_array_set(supported_cmd_map, MC_BINARY_SASL_AUTH);
+    butil::bit_array_set(supported_cmd_map, MC_BINARY_REPLICAS_READ);
 }
 
 inline bool IsSupportedCommand(uint8_t command) {

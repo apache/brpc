@@ -4,7 +4,7 @@
 
 /* This library uses the reference MD5 implementation from [RFC1321] */
 #define PROTOTYPES 1
-#include "butil/third_party/libvbucket/rfc1321/md5c.c"
+#include "butil/third_party/libvbucket/rfc1321/md5.h"
 #undef  PROTOTYPES
 
 void hash_md5(const char *key, size_t key_length, unsigned char *result)

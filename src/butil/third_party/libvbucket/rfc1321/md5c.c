@@ -23,7 +23,6 @@
    documentation and/or software.
    */
 
-#include "butil/third_party/libvbucket/rfc1321/global.h"
 #include "butil/third_party/libvbucket/rfc1321/md5.h"
 
 /* Constants for MD5Transform routine.
