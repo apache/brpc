@@ -38,8 +38,8 @@ int CouchbaseRequest::ParseRequest(
     return 0;
 }
 
-bool CouchbaseRequest::BuildNewWithVBucketId(CouchbaseRequest* request, 
-                                             const size_t vbucket_id) const {
+bool CouchbaseRequest::BuildVBucketId(const size_t vbucket_id,
+                                      CouchbaseRequest* request) const {
     if (this == request) {
         return false;
     }
@@ -56,17 +56,19 @@ bool CouchbaseRequest::BuildNewWithVBucketId(CouchbaseRequest* request,
     }
     _buf.append_to(&request->_buf, n - sizeof(header), sizeof(header));
     request->_pipelined_count = _pipelined_count;
+    request->_read_replicas = _read_replicas;
     return true;
 }
 
-bool CouchbaseRequest::ReplicasGet(const butil::StringPiece& key) {
+bool CouchbaseRequest::ReplicasGet(const butil::StringPiece& key, 
+                                   const size_t vbucket_id) {
     const policy::MemcacheRequestHeader header = {
         policy::MC_MAGIC_REQUEST,
         0x83,
         butil::HostToNet16(key.size()),
         0,
         policy::MC_BINARY_RAW_BYTES,
-        0,
+        butil::HostToNet16(vbucket_id),
         butil::HostToNet32(key.size()),
         0,
         0
@@ -77,7 +79,30 @@ bool CouchbaseRequest::ReplicasGet(const butil::StringPiece& key) {
     if (_buf.append(key.data(), key.size())) {
         return false;
     }
+    _read_replicas = true;
     ++_pipelined_count;
+    return true;
+}
+
+bool CouchbaseResponse::RecoverOptCodeForReplicasRead() {
+    const size_t n = _buf.size();
+    policy::MemcacheResponseHeader header;
+    if (n < sizeof(header)) {
+        butil::string_printf(&_err, "buffer is too small to contain a header");
+        return false;
+    }
+    _buf.copy_to(&header, sizeof(header));
+    if (header.command != (uint8_t)policy::MC_BINARY_REPLICAS_READ) {
+        butil::string_printf(&_err, "not a replicas get response");
+        return false;
+    }
+    header.command = (uint8_t)policy::MC_BINARY_GET;
+    CouchbaseResponse response;
+    if (response._buf.append(&header, sizeof(header))) {
+        return false;
+    }
+    _buf.append_to(&response._buf, n - sizeof(header), sizeof(header));
+    Swap(&response);
     return true;
 }
 

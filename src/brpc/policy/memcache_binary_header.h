@@ -91,7 +91,10 @@ enum MemcacheBinaryCommand {
     MC_BINARY_RINCR     = 0x39,
     MC_BINARY_RINCRQ    = 0x3a,
     MC_BINARY_RDECR     = 0x3b,
-    MC_BINARY_RDECRQ    = 0x3c
+    MC_BINARY_RDECRQ    = 0x3c,
+
+    // Replicas read for couchbase
+    MC_BINARY_REPLICAS_READ = 0x83
     // End Range operations
 };
 

@@ -207,6 +207,7 @@ set(BUTIL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/butil/third_party/snappy/snappy-stubs-internal.cc
     ${CMAKE_SOURCE_DIR}/src/butil/third_party/snappy/snappy.cc
     ${CMAKE_SOURCE_DIR}/src/butil/third_party/murmurhash3/murmurhash3.cpp
+    ${CMAKE_SOURCE_DIR}/src/butil/third_party/libvbucket/rfc1321/md5c.c
     ${CMAKE_SOURCE_DIR}/src/butil/third_party/libvbucket/cJSON.c
     ${CMAKE_SOURCE_DIR}/src/butil/third_party/libvbucket/crc32.c
     ${CMAKE_SOURCE_DIR}/src/butil/third_party/libvbucket/ketama.c

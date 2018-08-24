@@ -47,6 +47,7 @@ BUTIL_SOURCES = \
     src/butil/third_party/snappy/snappy-stubs-internal.cc \
     src/butil/third_party/snappy/snappy.cc \
     src/butil/third_party/murmurhash3/murmurhash3.cpp \
+    src/butil/third_party/libvbucket/rfc1321/md5c.c \
     src/butil/third_party/libvbucket/cJSON.c \
     src/butil/third_party/libvbucket/crc32.c \
     src/butil/third_party/libvbucket/ketama.c \
