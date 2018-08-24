@@ -18,6 +18,7 @@
 #define BRPC_COUCHBASE_H
 
 #include "brpc/memcache.h"
+#include "brpc/policy/memcache_binary_header.h"
 
 namespace brpc {
 
@@ -102,6 +103,11 @@ public:
         MemcacheRequest::CopyFrom(from);
     }
 
+    int ParseRequest(std::string* key, 
+                     policy::MemcacheBinaryCommand* command) const;
+
+    bool ReplicasGet(const butil::StringPiece& key);
+
 private:
     void MergeFrom(const CouchbaseRequest& from);
 
@@ -121,6 +127,8 @@ public:
     void CopyFrom(const CouchbaseResponse& from) {
         MemcacheResponse::CopyFrom(from);
     }
+
+    bool GetStatus(Status* status);
 
 private:
     void MergeFrom(const CouchbaseResponse& from);

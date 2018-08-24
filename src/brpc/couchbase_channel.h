@@ -21,21 +21,35 @@
 #include <unordered_map>
 
 #include "brpc/channel.h"
+#include "brpc/couchbase.h"
 #include "butil/containers/doubly_buffered_data.h"
 
 namespace brpc {
 
+using CouchbaseChannelMap = 
+    std::unordered_map<std::string, std::unique_ptr<Channel>>; 
+
 class CouchbaseServerListener;
 
+// A couchbase channel maps different key to sub memcache channel according to 
+// current vbuckets mapping. It retrieves current vbuckets mapping by maintain
+// an connection for streaming updates from ther couchbase server.
+//
+// CAUTION:
+// ========
+// For async rpc, Should not delete this channel until rpc done.
 class CouchbaseChannel : public ChannelBase/*non-copyable*/ {
+friend class CouchbaseServerListener;
 public:
-    CouchbaseChannel() = default;
+    CouchbaseChannel();
     ~CouchbaseChannel();
 
-    // You MUST initialize a couchbasechannel before using it. 'Server_addr' 
-    // is address of couchbase server. 'options' is used for each channel to 
-    // real servers of bucket. The protocol should be PROTOCOL_MEMCACHE. 
-    // If 'options' is null, use default options. 
+    // You MUST initialize a couchbasechannel before using it. 
+    // 'Server_addr': address list of couchbase servers. On these addresses, we 
+    //                can get vbucket map. 
+    // 'options': is used for each memcache channel of vbucket. The protocol 
+    //            should be PROTOCOL_MEMCACHE. If 'options' is null, 
+    //            use default options. 
     int Init(const char* server_addr, const ChannelOptions* options);
 
     // TODO: Do not support pipeline mode now.
@@ -46,51 +60,71 @@ public:
                     google::protobuf::Message* response,
                     google::protobuf::Closure* done);
 
-    void Describe(std::ostream& os, const DescribeOptions& options) const;
+    void Describe(std::ostream& os, const DescribeOptions& options);
 
-private:
-    // TODO: This struct describes map between vbucket and real memcache server.
-    // '_hash_algorithm': The hash algorithm couchbase used.
-    // '_vbucket_servers': server list of vbuckets, like "list://addr1:port1,
-    //                     addr2:port2...".
-    // '_channel_map': the channel for each vbucket.
+    // Couchbase has two type of distribution used to map keys to servers.
+    // One is vbucket distribution and other is ketama distribution.
+    // This struct describes vbucket distribution of couchbase.
+    // 'num_replicas': the number of copies that will be stored on servers of one
+    //                 vbucket. Each vbucket must have this number of servers 
+    //                 indexes plus one.
+    // '_vbucket': A zero-based indexed by vBucketId. The entries in the _vbucket
+    //            are arrays of integers, where each integer is a zero-based 
+    //            index into the '_servers'. 
+    // '_fvbucket': It is fast forward map with same struct as _vbucket. It is 
+    //              used to provide the final vBubcket-to-server map during the
+    //              statrt of the rebalance. 
+    // '_servers': all servers of a bucket.                    
+    // '_channel_map': the memcache channel for each server.
+    // TODO: support ketama vbucket distribution
     struct VBucketServerMap {
-        std::string _hash_algorithm;
-        std::vector<std::string> _vbucket_servers;
-        std::unordered_map<std::string, std::unique_ptr<Channel>> _channel_map;
+        uint64_t _version = 0;
+        int _num_replicas = 0;    
+        std::vector<std::vector<int>> _vbucket;
+        std::vector<std::vector<int>> _fvbucket;
+        std::vector<std::string> _servers;
+        CouchbaseChannelMap _channel_map;
     };
 
+private:
     int CheckHealth();
 
-    bool GetKeyFromRequest(const google::protobuf::Message* request, 
-                           butil::StringPiece* key);
+    Channel* SelectMasterChannel(const VBucketServerMap* vb_map, 
+                                 const size_t vb_index);
 
-    Channel* SelectChannel(const butil::StringPiece& key, 
-                           const VBucketServerMap* vbucket_map);
+    Channel* GetMappedChannel(const std::string* server,
+                              const VBucketServerMap* vb_map);
 
-    //TODO: Get different hash algorithm if needed.
-    size_t Hash(const std::string& type,
-                const butil::StringPiece& key, 
-                const size_t size);
+    const CouchbaseChannelMap& GetChannelMap();
+
+    const std::string* GetMaster(const VBucketServerMap* vb_map, 
+                                 const size_t vb_index, int* index = nullptr);
+
+    size_t Hash(const butil::StringPiece& key, const size_t vbuckets_num);
 
     bool UpdateVBucketServerMap(
-        const std::string* hash_algo,
-        std::vector<std::string>* vbucket_servers,
-        const std::vector<std::string>* added_vbuckets,
-        const std::vector<std::string>* removed_vbuckets);
+        const int num_replicas,
+        std::vector<std::vector<int>>& vbucket,
+        std::vector<std::vector<int>>& fvbucket,
+        std::vector<std::string>& servers,
+        const std::vector<std::string>& added_servers,
+        const std::vector<std::string>& removed_serverss);
 
     static bool Update(VBucketServerMap& vbucket_map, 
                        const ChannelOptions* options,
-                       const std::string* hash_algo,
-                       std::vector<std::string>* vbucket_servers,
-                       const std::vector<std::string>* added_vbuckets,
-                       const std::vector<std::string>* removed_vbuckets);
+                       const int num_replicas,
+                       std::vector<std::vector<int>>& vbucket,
+                       std::vector<std::vector<int>>& fvbucket,
+                       std::vector<std::string>& servers,
+                       const std::vector<std::string>& added_servers,
+                       const std::vector<std::string>& removed_servers);
+
+    std::string GetAuthentication() const;
 
     // Options for each memcache channel of vbucket.
     ChannelOptions _common_options; 
+    // Listener monitor and update vbucket map information.
     std::unique_ptr<CouchbaseServerListener> _listener;
-    // Memcache channel of each vbucket of couchbase. The key is the server list
-    // of this vbucket, like 'list://addr1:port1,addr2:port2...'.
     butil::DoublyBufferedData<VBucketServerMap> _vbucket_map;
 };
 
