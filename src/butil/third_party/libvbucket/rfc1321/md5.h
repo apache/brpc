@@ -24,6 +24,9 @@
    */
 
 /* MD5 context. */
+
+#include "butil/third_party/libvbucket/rfc1321/global.h"
+
 typedef struct {
 	UINT4 state[4];                                   /* state (ABCD) */
 	UINT4 count[2];        /* number of bits, modulo 2^64 (lsb first) */

@@ -741,6 +741,10 @@ const char *vbucket_config_get_rest_api_server(VBUCKET_CONFIG_HANDLE vb, int i) 
     return vb->servers[i].rest_api_authority;
 }
 
+int vbucket_config_has_forward_vbuckets(VBUCKET_CONFIG_HANDLE vb) {
+    return vb->fvbuckets ? 1 : 0; 
+}
+
 int vbucket_config_is_config_node(VBUCKET_CONFIG_HANDLE vb, int i) {
     return vb->servers[i].config_node;
 }
@@ -780,6 +784,23 @@ int vbucket_get_replica(VBUCKET_CONFIG_HANDLE vb, int vbucket, int i) {
     } else {
         return -1;
     }
+}
+
+int fvbucket_get_master(VBUCKET_CONFIG_HANDLE vb, int vbucket) {
+    if (vb->fvbuckets) {
+        return vb->fvbuckets[vbucket].servers[0];
+    }
+    return -1;
+}
+
+int fvbucket_get_replica(VBUCKET_CONFIG_HANDLE vb, int vbucket, int i) {
+    if (vb->fvbuckets) {
+        int idx = i + 1;
+        if (idx < vb->num_servers) {
+            return vb->fvbuckets[vbucket].servers[idx];
+        }
+    }
+    return -1;
 }
 
 int vbucket_found_incorrect_master(VBUCKET_CONFIG_HANDLE vb, int vbucket,

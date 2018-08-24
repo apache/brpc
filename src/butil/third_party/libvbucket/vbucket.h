@@ -353,6 +353,39 @@ namespace butil {
     int vbucket_get_replica(VBUCKET_CONFIG_HANDLE h, int id, int n);
 
     /**
+     * Check whether including forward vbuckets
+     *
+     * @param id the fvbucket identifier
+     *
+     * @return true if forward vbuckets included.
+     */
+    LIBVBUCKET_PUBLIC_API
+    int vbucket_config_has_forward_vbuckets(VBUCKET_CONFIG_HANDLE h);
+
+    /**
+     * Get the master server for the given vbucket.
+     *
+     * @param h the vbucket config
+     * @param id the fvbucket identifier
+     *
+     * @return the server index
+     */
+    LIBVBUCKET_PUBLIC_API
+    int fvbucket_get_master(VBUCKET_CONFIG_HANDLE h, int id);
+
+    /**
+     * Get a given replica for a forward vbucket.
+     *
+     * @param h the vbucket config
+     * @param id the vbucket id
+     * @param n the replica number
+     *
+     * @return the server ID
+     */
+    LIBVBUCKET_PUBLIC_API
+    int fvbucket_get_replica(VBUCKET_CONFIG_HANDLE h, int id, int n);
+
+    /**
      * @}
      */
 
