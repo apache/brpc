@@ -38,9 +38,6 @@ class CouchbaseAuthenticator : public Authenticator {
                        brpc::AuthContext*) const {
     return 0;
   }
-  
-  const std::string& bucket_name() const { return bucket_name_; }
-  const std::string& bucket_password() const { return bucket_password_; }
 
  private:
   const std::string bucket_name_;
