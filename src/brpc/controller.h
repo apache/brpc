@@ -104,6 +104,8 @@ friend class ParallelChannelDone;
 friend class ControllerPrivateAccessor;
 friend class ServerPrivateAccessor;
 friend class SelectiveChannel;
+friend class CouchbaseChannel;
+friend class CouchbaseDone;
 friend class ThriftStub;
 friend class schan::Sender;
 friend class schan::SubDone;
