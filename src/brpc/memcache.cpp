@@ -451,8 +451,6 @@ const char* MemcacheResponse::status_str(Status st) {
         return "Not stored";
     case STATUS_DELTA_BADVAL:
         return "Bad delta";
-    case STATUS_NOT_MY_VBUCKET:
-        return "Not my vbucket";
     case STATUS_AUTH_ERROR:
         return "authentication error";
     case STATUS_AUTH_CONTINUE:
