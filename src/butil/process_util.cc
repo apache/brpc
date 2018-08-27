@@ -16,16 +16,16 @@
 // Author: Zhu,Jiashun (zhujiashun@baidu.com)
 // Date: Wed Apr 11 14:35:56 CST 2018
 
-#include "process_util.h"
 #include <fcntl.h>                      // open
 #include <stdio.h>                      // snprintf
-#include <butil/fd_guard.h>             // butil::fd_guard
-#include <butil/logging.h>
 #include <sys/types.h>  
 #include <sys/uio.h>
 #include <unistd.h>                     // read, gitpid
 #include <sstream>                      // std::ostringstream
-#include <butil/popen.h>                // read_command_output
+#include "butil/fd_guard.h"             // butil::fd_guard
+#include "butil/logging.h"
+#include "butil/popen.h"                // read_command_output
+#include "butil/process_util.h"
 
 namespace butil {
 

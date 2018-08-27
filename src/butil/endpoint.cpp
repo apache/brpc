@@ -23,11 +23,18 @@
 #include <string.h>                            // strcpy
 #include <stdio.h>                             // snprintf
 #include <stdlib.h>                            // strtol
+#include <gflags/gflags.h>
 #include "butil/fd_guard.h"                    // fd_guard
 #include "butil/endpoint.h"                    // ip_t
 #include "butil/logging.h"
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/strings/string_piece.h"
+
+#ifndef SO_REUSEPORT
+#define SO_REUSEPORT    15
+#endif
+//This option is supported since Linux 3.9.
+DEFINE_bool(reuse_port, false, "turn on support for SO_REUSEPORT socket option.");
 
 __BEGIN_DECLS
 int BAIDU_WEAK bthread_connect(
@@ -313,6 +320,15 @@ int tcp_listen(EndPoint point, bool reuse_addr) {
             return -1;
         }
     }
+
+    if (FLAGS_reuse_port) {
+        const int on = 1;
+        if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT,
+                       &on, sizeof(on)) != 0) {
+            LOG(WARNING) << "Fail to setsockopt SO_REUSEPORT of sockfd=" << sockfd;
+        }
+    }
+
     struct sockaddr_in serv_addr;
     bzero((char*)&serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;

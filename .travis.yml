@@ -25,4 +25,5 @@ install:
 - sudo apt-get install -y gdb  # install gdb
 
 script:
+- if [[ "$PURPOSE" == "compile-with-bazel" ]]; then bazel build -j 12 -c opt --copt -DHAVE_ZLIB=1 //...          ; fi
 - sh build_in_travis_ci.sh

@@ -17,7 +17,7 @@ Meanings of the fields above:
 - **latency_cdf**: shows percentiles as [CDF](https://en.wikipedia.org/wiki/Cumulative_distribution_function), only available on html.
 - **max_latency**: max latency in recent *60s/60m/24h/30d* from *right to left* on html, max latency in recent 10s(by default, specified by [-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)) on plain texts.
 - **qps**: QPS(Queries Per Second) in recent *60s/60m/24h/30d* from *right to left* on html. QPS in recent 10s(by default, specified by [-bvar_dump_interval](http://brpc.baidu.com:8765/flags/bvar_dump_interval)) on plain texts.
-- **processing**: Number of requests being processed by the service. If this counter can't hit zero when the traffic to the service becomes zero, the server probably has bugs, such as forgetting to call done->Run() or stuck on some processing steps.
+- **processing**: (renamed to concurrency in master) Number of requests being processed by the method. If this counter can't hit zero when the traffic to the service becomes zero, the server probably has bugs, such as forgetting to call done->Run() or stuck on some processing steps.
 
 
 Users may customize descriptions on /status by letting the service implement [brpc::Describable](https://github.com/brpc/brpc/blob/master/src/brpc/describable.h).

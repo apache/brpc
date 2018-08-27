@@ -36,6 +36,7 @@
 #include "brpc/builtin/tabbed.h"
 #include "brpc/details/profiler_linker.h"
 #include "brpc/health_reporter.h"
+#include "brpc/adaptive_max_concurrency.h"
 
 extern "C" {
 struct ssl_ctx_st;
@@ -99,14 +100,14 @@ struct ServerOptions {
     // Default: #cpu-cores
     int num_threads;
 
-    // Limit number of requests processed in parallel. To limit the max
-    // concurrency of a method, use server.MaxConcurrencyOf("xxx") instead.
+    // Server-level max concurrency.
+    // "concurrency" = "number of requests processed in parallel"
     //
     // In a traditional server, number of pthread workers also limits
     // concurrency. However brpc runs requests in bthreads which are
     // mapped to pthread workers, when a bthread context switches, it gives
     // the pthread worker to another bthread, yielding a higher concurrency
-    // than number of pthreads. In some situation, higher concurrency may
+    // than number of pthreads. In some situations, higher concurrency may
     // consume more resources, to protect the server from running out of
     // resources, you may set this option.
     // If the server reaches the limitation, it responds client with ELIMIT
@@ -115,6 +116,10 @@ struct ServerOptions {
     // NOTE: accesses to builtin services are not limited by this option.
     // Default: 0 (unlimited)
     int max_concurrency;
+
+    // Default value of method-level max concurrencies,
+    // Overridable by Server.MaxConcurrencyOf().
+    AdaptiveMaxConcurrency method_max_concurrency;
 
     // -------------------------------------------------------
     // Differences between session-local and thread-local data
@@ -327,6 +332,7 @@ public:
         google::protobuf::Service* service;
         const google::protobuf::MethodDescriptor* method;
         MethodStatus* status;
+        AdaptiveMaxConcurrency max_concurrency;
 
         MethodProperty();
     };
@@ -476,11 +482,7 @@ public:
     // current_tab_name is the tab highlighted.
     void PrintTabsBody(std::ostream& os, const char* current_tab_name) const;
 
-    // Reset the max_concurrency set by ServerOptions.max_concurrency after
-    // Server is started.
-    // The concurrency will be limited by the new value if this function is
-    // successfully returned.
-    // Returns 0 on success, -1 otherwise.
+    // This method is already deprecated.You should NOT call it anymore.
     int ResetMaxConcurrency(int max_concurrency);
 
     // Get/set max_concurrency associated with a method.
@@ -488,15 +490,20 @@ public:
     //    server.MaxConcurrencyOf("example.EchoService.Echo") = 10;
     // or server.MaxConcurrencyOf("example.EchoService", "Echo") = 10;
     // or server.MaxConcurrencyOf(&service, "Echo") = 10;
-    int& MaxConcurrencyOf(const butil::StringPiece& full_method_name);
+    // Note: These interfaces can ONLY be called before the server is started.
+    // And you should NOT set the max_concurrency when you are going to choose
+    // an auto concurrency limiter, eg `options.max_concurrency = "auto"`.If you
+    // still called non-const version of the interface, your changes to the
+    // maximum concurrency will not take effect.
+    AdaptiveMaxConcurrency& MaxConcurrencyOf(const butil::StringPiece& full_method_name);
     int MaxConcurrencyOf(const butil::StringPiece& full_method_name) const;
     
-    int& MaxConcurrencyOf(const butil::StringPiece& full_service_name,
+    AdaptiveMaxConcurrency& MaxConcurrencyOf(const butil::StringPiece& full_service_name,
                           const butil::StringPiece& method_name);
     int MaxConcurrencyOf(const butil::StringPiece& full_service_name,
                          const butil::StringPiece& method_name) const;
 
-    int& MaxConcurrencyOf(google::protobuf::Service* service,
+    AdaptiveMaxConcurrency& MaxConcurrencyOf(google::protobuf::Service* service,
                           const butil::StringPiece& method_name);
     int MaxConcurrencyOf(google::protobuf::Service* service,
                          const butil::StringPiece& method_name) const;
@@ -590,7 +597,7 @@ friend class Controller;
     static bool ResetCertMappings(CertMaps& bg, const SSLContextMap& ctx_map);
     static bool ClearCertMapping(CertMaps& bg);
 
-    int& MaxConcurrencyOf(MethodProperty*);
+    AdaptiveMaxConcurrency& MaxConcurrencyOf(MethodProperty*);
     int MaxConcurrencyOf(const MethodProperty*) const;
     
     DISALLOW_COPY_AND_ASSIGN(Server);
@@ -646,11 +653,10 @@ friend class Controller;
     
     bthread_keytable_pool_t* _keytable_pool;
 
-    // FIXME: Temporarily for `ServerPrivateAccessor' to change this bvar
-    //        Replace `ServerPrivateAccessor' with other private-access
-    //        mechanism
-    mutable bvar::Adder<int64_t> _nerror;
+    // mutable is required for `ServerPrivateAccessor' to change this bvar
+    mutable bvar::Adder<int64_t> _nerror_bvar;
     mutable int32_t BAIDU_CACHELINE_ALIGNMENT _concurrency;
+
 };
 
 // Get the data attached to current searching thread. The data is created by

@@ -155,7 +155,7 @@ TEST_F(NovaTest, process_request_failed_socket) {
     brpc::policy::MostCommonMessage* msg = MakeRequestMessage(head);
     _socket->SetFailed();
     ProcessMessage(brpc::policy::ProcessNsheadRequest, msg, false);
-    ASSERT_EQ(0ll, _server._nerror.get_value());
+    ASSERT_EQ(0ll, _server._nerror_bvar.get_value());
     CheckEmptyResponse();
 }
 
@@ -165,7 +165,7 @@ TEST_F(NovaTest, process_request_logoff) {
     brpc::policy::MostCommonMessage* msg = MakeRequestMessage(head);
     _server._status = brpc::Server::READY;
     ProcessMessage(brpc::policy::ProcessNsheadRequest, msg, false);
-    ASSERT_EQ(1ll, _server._nerror.get_value());
+    ASSERT_EQ(1ll, _server._nerror_bvar.get_value());
     ASSERT_TRUE(_socket->Failed());
     CheckEmptyResponse();
 }
@@ -175,7 +175,7 @@ TEST_F(NovaTest, process_request_wrong_method) {
     head.reserved = 10;
     brpc::policy::MostCommonMessage* msg = MakeRequestMessage(head);
     ProcessMessage(brpc::policy::ProcessNsheadRequest, msg, false);
-    ASSERT_EQ(1ll, _server._nerror.get_value());
+    ASSERT_EQ(1ll, _server._nerror_bvar.get_value());
     ASSERT_TRUE(_socket->Failed());
     CheckEmptyResponse();
 }

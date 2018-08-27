@@ -35,6 +35,7 @@
  #include <thrift/transport/TNonblockingServerSocket.h>
  #else
  # define THRIFT_STDCXX boost
+ # include <boost/make_shared.hpp>
  #endif
 #endif
 

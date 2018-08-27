@@ -4,13 +4,13 @@
 
 # ![brpc](docs/images/logo.png)
 
-A industrial-grade RPC framework used throughout [Baidu](http://ir.baidu.com/phoenix.zhtml?c=188488&p=irol-irhome), with 1,000,000+ instances(not counting clients) and thousands kinds of services, called "**baidu-rpc**" inside Baidu. Only C++ implementation is opensourced right now.
+An industrial-grade RPC framework used throughout [Baidu](http://ir.baidu.com/phoenix.zhtml?c=188488&p=irol-irhome), with 1,000,000+ instances(not counting clients) and thousands kinds of services, called "**baidu-rpc**" inside Baidu. Only C++ implementation is opensourced right now.
 
 You can use it to:
 * Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
   * restful http/https, h2/h2c (compatible with [grpc](https://github.com/grpc/grpc), will be opensourced). using http in brpc is much more friendly than [libcurl](https://curl.haxx.se/libcurl/).
   * [redis](docs/en/redis_client.md) and [memcached](docs/en/memcache_client.md), thread-safe, more friendly and performant than the official clients.
-  * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building [live-streaming services](docs/cn/live_streaming.md).
+  * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building [streaming services](https://github.com/brpc/media-server).
   * hadoop_rpc (may be opensourced)
   * [rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access) support (will be opensourced)
   * [thrift](docs/en/thrift.md) support,  thread-safe, more friendly and performant than the official clients.
@@ -21,12 +21,12 @@ You can use it to:
 * Clients can access servers [synchronously](docs/en/client.md#synchronus-call), [asynchronously](docs/en/client.md#asynchronous-call), [semi-synchronously](docs/en/client.md#semi-synchronous-call), or use [combo channels](docs/en/combo_channel.md) to simplify sharded or parallel accesses declaratively.
 * Debug services [via http](docs/en/builtin_service.md), and run  [cpu](docs/cn/cpu_profiler.md), [heap](docs/cn/heap_profiler.md) and [contention](docs/cn/contention_profiler.md) profilers.
 * Get [better latency and throughput](docs/en/overview.md#better-latency-and-throughput).
-* [Extend brpc](docs/en/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/cn/load_balancing.md#名字服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
+* [Extend brpc](docs/en/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/cn/load_balancing.md#命名服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
 
 # Try it!
 
 * Read [overview](docs/en/overview.md) to know where brpc can be used and its advantages.
-* Read [building steps](docs/cn/getting_started.md) to get started and play with [examples](https://github.com/brpc/brpc/tree/master/example/).
+* Read [getting started](docs/cn/getting_started.md) for building steps and play with [examples](https://github.com/brpc/brpc/tree/master/example/).
 * Docs:
   * [Performance benchmark](docs/cn/benchmark.md)
   * [bvar](docs/en/bvar.md)
@@ -55,7 +55,8 @@ You can use it to:
     * [Debug server issues](docs/cn/server_debugging.md)
     * [Server push](docs/en/server_push.md)
     * [Avalanche](docs/cn/avalanche.md)
-    * [Live streaming](docs/cn/live_streaming.md)
+    * [Auto ConcurrencyLimiter](docs/cn/auto_concurrency_limiter.md)
+    * [Media Server](https://github.com/brpc/media-server)
     * [json2pb](docs/cn/json2pb.md)
   * [Builtin Services](docs/en/builtin_service.md)
     * [status](docs/en/status.md)

@@ -580,9 +580,11 @@ In addition, when a server has stable latencies, limiting concurrency has simila
 
 ### Calculate max concurrency
 
-MaxConcurrency = PeakQPS * AverageLatency  ([little's law](https://en.wikipedia.org/wiki/Little%27s_law))
+max_concurrency = peak_qps * noload_latency  ([little's law](https://en.wikipedia.org/wiki/Little%27s_law))
 
-PeakQPS and AverageLatency are queries-per-second and latencies measured in a server being pushed to its limit provided that requests are not delayed severely (with an acceptable latency). Most services have performance tests before going online, multiplications of the two metrics calculates max concurrency of the service.
+peak_qps is the maximum of Queries-Per-Second.
+noload_latency is the average latency measured in a server without pushing to its limit(with an acceptable latency).
+peak_qps and nolaod_latency can be measured in pre-online performance tests and multiplied to calculate the max_concurrency.
 
 ### Limit server-level concurrency
 
@@ -605,6 +607,20 @@ The code is generally put **after AddService, before Start() of the server**. Wh
 When method-level and server-level max_concurrency are both set, framework checks server-level first, then the method-level one.
 
 NOTE: No service-level max_concurrency.
+
+### AutoConcurrencyLimiter
+max_concurrency may change over time and measuring and setting max_concurrency for all services before each deployment are probably very troublesome and impractical.
+
+AutoConcurrencyLimiter addresses on this issue by limiting concurrency for methods. To use the algorithm, set max_concurrency of the method to "auto".
+```c++
+// Set auto concurrency limiter for all methods
+brpc::ServerOptions options;
+options.method_max_concurrency = "auto";
+
+// Set auto concurrency limiter for specific method
+server.MaxConcurrencyOf("example.EchoService.Echo") = "auto";
+```
+Read [this](../cn/auto_concurrency_limiter.md) to know more about the algorithm.
 
 ## pthread mode
 
@@ -752,7 +768,7 @@ int main(int argc, char* argv[]) {
 
 A server-thread-local is bound to **a call to service's CallMethod**, from entering service's CallMethod, to leaving the method. All server-thread-local data are reused as much as possible and will not be deleted before stopping the server. server-thread-local is implemented as a special bthread-local.
 
-After setting ServerOptions.thread_local_data_factory, call Controller.thread_local_data() to get a thread-local. If ServerOptions.thread_local_data_factory is unset, Controller.thread_local_data() always returns NULL. 
+After setting ServerOptions.thread_local_data_factory, call brpc::thread_local_data() to get a thread-local. If ServerOptions.thread_local_data_factory is unset, brpc::thread_local_data() always returns NULL. 
 
 If ServerOptions.reserved_thread_local_data is greater than 0, Server creates so many data before serving.
 

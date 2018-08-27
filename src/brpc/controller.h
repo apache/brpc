@@ -61,9 +61,11 @@ class RpcDumpMeta;
 class MongoContext;
 class RetryPolicy;
 class InputMessageBase;
+class ThriftStub;
 namespace policy {
 class OnServerStreamCreated;
 void ProcessMongoRequest(InputMessageBase*);
+void ProcessThriftRequest(InputMessageBase*);
 }
 namespace schan {
 class Sender;
@@ -102,16 +104,17 @@ friend class ParallelChannelDone;
 friend class ControllerPrivateAccessor;
 friend class ServerPrivateAccessor;
 friend class SelectiveChannel;
+friend class ThriftStub;
 friend class schan::Sender;
 friend class schan::SubDone;
 friend class policy::OnServerStreamCreated;
 friend int StreamCreate(StreamId*, Controller&, const StreamOptions*);
 friend int StreamAccept(StreamId*, Controller&, const StreamOptions*);
 friend void policy::ProcessMongoRequest(InputMessageBase*);
+friend void policy::ProcessThriftRequest(InputMessageBase*);
     // << Flags >>
     static const uint32_t FLAGS_IGNORE_EOVERCROWDED = 1;
     static const uint32_t FLAGS_SECURITY_MODE = (1 << 1);
-    // Incremented Server._concurrency
     static const uint32_t FLAGS_ADDED_CONCURRENCY = (1 << 2);
     static const uint32_t FLAGS_READ_PROGRESSIVELY = (1 << 3);
     static const uint32_t FLAGS_PROGRESSIVE_READER = (1 << 4);
@@ -451,10 +454,7 @@ public:
     void set_idl_result(int64_t result) { _idl_result = result; }
     int64_t idl_result() const { return _idl_result; }
 
-    void set_thrift_method_name(const std::string& method_name) {
-        _thrift_method_name = method_name;
-    }
-    std::string thrift_method_name() { return _thrift_method_name; }
+    const std::string& thrift_method_name() { return _thrift_method_name; }
 
 private:
     struct CompletionInfo {
@@ -689,7 +689,6 @@ private:
 
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;
-    uint32_t _thrift_seq_id;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be

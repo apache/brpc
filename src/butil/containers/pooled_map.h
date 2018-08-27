@@ -85,7 +85,7 @@ template <class T1, size_t BLOCK_SIZE> class PooledAllocator;
 template <typename K, typename V, size_t BLOCK_SIZE = 512,
           typename C = std::less<K> >
 class PooledMap
-    : public std::map<K, V, C, details::PooledAllocator<int, BLOCK_SIZE> > {
+    : public std::map<K, V, C, details::PooledAllocator<std::pair<const K, V>, BLOCK_SIZE> > {
     
 };
 
@@ -128,8 +128,8 @@ public:
     void swap(PooledAllocator& other) { _pool.swap(other._pool); }
 
     // Convert references to pointers.
-    pointer address(reference r) const { return &r; };
-    const_pointer address(const_reference r) const { return &r; };
+    pointer address(reference r) const { return &r; }
+    const_pointer address(const_reference r) const { return &r; }
 
     // Allocate storage for n values of T1.
     pointer allocate(size_type n, PooledAllocator<void, 0>::const_pointer = 0) {
@@ -138,7 +138,7 @@ public:
         } else {
             return (pointer)malloc(n * sizeof(T1));
         }
-    };
+    }
 
     // Deallocate storage obtained by a call to allocate.
     void deallocate(pointer p, size_type n) {
@@ -147,17 +147,17 @@ public:
         } else {
             free(p);
         }
-    };
+    }
 
     // Return the largest possible storage available through a call to allocate.
-    size_type max_size() const { return 0xFFFFFFFF / sizeof(T1); };
+    size_type max_size() const { return 0xFFFFFFFF / sizeof(T1); }
 
-    void construct(pointer ptr) { ::new (ptr) T1; };
-    void construct(pointer ptr, const T1& val) { ::new (ptr) T1(val); };
+    void construct(pointer ptr) { ::new (ptr) T1; }
+    void construct(pointer ptr, const T1& val) { ::new (ptr) T1(val); }
     template <class U1> void construct(pointer ptr, const U1& val)
     { ::new (ptr) T1(val); }
 
-    void destroy(pointer p) { p->T1::~T1(); };
+    void destroy(pointer p) { p->T1::~T1(); }
 
 private:
     butil::SingleThreadedPool<sizeof(T1), BLOCK_SIZE, 1> _pool;
@@ -167,10 +167,10 @@ private:
 // and vice versa. It's clear that our allocator can't be exchanged.
 template <typename T1, size_t S1, typename T2, size_t S2>
 bool operator==(const PooledAllocator<T1, S1>&, const PooledAllocator<T2, S2>&)
-{ return false; };
+{ return false; }
 template <typename T1, size_t S1, typename T2, size_t S2>
 bool operator!=(const PooledAllocator<T1, S1>& a, const PooledAllocator<T2, S2>& b)
-{ return !(a == b); };
+{ return !(a == b); }
 
 } // namespace details
 } // namespace butil

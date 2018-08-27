@@ -147,7 +147,7 @@ TEST_F(MongoTest, process_request_logoff) {
     ASSERT_EQ(brpc::PARSE_OK, req_pr.error());
     _server._status = brpc::Server::READY;
     ProcessMessage(brpc::policy::ProcessMongoRequest, req_pr.message(), false);
-    ASSERT_EQ(1ll, _server._nerror.get_value());
+    ASSERT_EQ(1ll, _server._nerror_bvar.get_value());
 }
 
 TEST_F(MongoTest, process_request_failed_socket) {
@@ -162,7 +162,7 @@ TEST_F(MongoTest, process_request_failed_socket) {
     ASSERT_EQ(brpc::PARSE_OK, req_pr.error());
     _socket->SetFailed();
     ProcessMessage(brpc::policy::ProcessMongoRequest, req_pr.message(), false);
-    ASSERT_EQ(0ll, _server._nerror.get_value());
+    ASSERT_EQ(0ll, _server._nerror_bvar.get_value());
 }
 
 TEST_F(MongoTest, complete_flow) {

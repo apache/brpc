@@ -40,7 +40,9 @@
 #include "brpc/details/ssl_helper.h"           // CreateServerSSLContext
 #include "brpc/protocol.h"                     // ListProtocols
 #include "brpc/nshead_service.h"               // NsheadService
+#ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
 #include "brpc/thrift_service.h"               // ThriftService
+#endif
 #include "brpc/builtin/bad_method_service.h"   // BadMethodService
 #include "brpc/builtin/get_favicon_service.h"
 #include "brpc/builtin/get_js_service.h"
@@ -270,7 +272,7 @@ void* Server::UpdateDerivedVars(void* arg) {
     std::vector<SocketId> conns;
     std::vector<SocketId> internal_conns;
     
-    server->_nerror.expose_as(prefix, "error");
+    server->_nerror_bvar.expose_as(prefix, "error");
 
     bvar::PassiveStatus<timeval> uptime_st(
         prefix, "uptime", GetUptime, (void*)(intptr_t)start_us);
@@ -381,8 +383,8 @@ Server::Server(ProfilerLinker)
     , _derivative_thread(INVALID_BTHREAD)
     , _keytable_pool(NULL)
     , _concurrency(0) {
-    BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,
-              Server_concurrency_must_be_aligned_by_cacheline);
+    BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,	
+                  Server_concurrency_must_be_aligned_by_cacheline);
 }
 
 Server::~Server() {
@@ -660,6 +662,29 @@ static int get_port_from_fd(int fd) {
     return ntohs(addr.sin_port);
 }
 
+static bool CreateConcurrencyLimiter(const AdaptiveMaxConcurrency& amc,
+                                     ConcurrencyLimiter** out) {
+    if (amc.type() == AdaptiveMaxConcurrency::UNLIMITED()) {
+        *out = NULL;
+        return true;
+    }
+    const ConcurrencyLimiter* cl =
+        ConcurrencyLimiterExtension()->Find(amc.type().c_str());
+    if (cl == NULL) {
+        LOG(ERROR) << "Fail to find ConcurrencyLimiter by `" << amc.value() << "'";
+        return false;
+    }
+    ConcurrencyLimiter* cl_copy = cl->New(amc);
+    if (cl_copy == NULL) {
+        LOG(ERROR) << "Fail to new ConcurrencyLimiter";
+        return false;
+    }
+    *out = cl_copy;
+    return true;
+}
+
+static AdaptiveMaxConcurrency g_default_max_concurrency_of_method = 0;
+
 int Server::StartInternal(const butil::ip_t& ip,
                           const PortRange& port_range,
                           const ServerOptions *opt) {
@@ -829,9 +854,9 @@ int Server::StartInternal(const butil::ip_t& ip,
             }
         }
     }
-    
-    _concurrency = 0;
 
+    _concurrency = 0;
+    
     if (_options.has_builtin_services &&
         _builtin_service_count <= 0 &&
         AddBuiltinServices() != 0) {
@@ -868,6 +893,24 @@ int Server::StartInternal(const butil::ip_t& ip,
         bthread_setconcurrency(_options.num_threads);
     }
 
+    for (MethodMap::iterator it = _method_map.begin();
+        it != _method_map.end(); ++it) {
+        if (it->second.is_builtin_service) {
+            it->second.status->SetConcurrencyLimiter(NULL);
+        } else {
+            const AdaptiveMaxConcurrency* amc = &it->second.max_concurrency;
+            if (amc->type() == AdaptiveMaxConcurrency::UNLIMITED()) {
+                amc = &_options.method_max_concurrency;
+            }
+            ConcurrencyLimiter* cl = NULL;
+            if (!CreateConcurrencyLimiter(*amc, &cl)) {
+                LOG(ERROR) << "Fail to create ConcurrencyLimiter for method";
+                return -1;
+            }
+            it->second.status->SetConcurrencyLimiter(cl);
+        }
+    }
+    
     // Create listening ports
     if (port_range.min_port > port_range.max_port) {
         LOG(ERROR) << "Invalid port_range=[" << port_range.min_port << '-'
@@ -1027,9 +1070,6 @@ int Server::Start(const char* ip_str, PortRange port_range,
 }
 
 int Server::Stop(int timeout_ms) {
-    if (_status != RUNNING) {
-        return -1;
-    }
     if (_status != RUNNING) {
         return -1;
     }
@@ -1373,7 +1413,10 @@ void Server::RemoveMethodsOf(google::protobuf::Service* service) {
             full_name_wo_ns.append(md->name());
             _method_map.erase(full_name_wo_ns);
         }
-
+        if (mp == NULL) {
+            LOG(ERROR) << "Fail to find method=" << md->full_name();
+            continue;
+        }
         if (mp->http_url) {
             butil::StringSplitter at_sp(mp->http_url->c_str(), '@');
             for (; at_sp; ++at_sp) {
@@ -1409,7 +1452,7 @@ void Server::RemoveMethodsOf(google::protobuf::Service* service) {
             delete mp->http_url;
         }
 
-        if (mp != NULL && mp->own_method_status) {
+        if (mp->own_method_status) {
             delete mp->status;
         }
         _method_map.erase(md->full_name());
@@ -1966,26 +2009,32 @@ int Server::ResetMaxConcurrency(int max_concurrency) {
     return 0;
 }
 
-static int g_default_max_concurrency_of_method = 0;
-
-int& Server::MaxConcurrencyOf(MethodProperty* mp) {
+AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(MethodProperty* mp) {
+    if (IsRunning()) {
+        LOG(WARNING) << "MaxConcurrencyOf is only allowd before Server started";
+        return g_default_max_concurrency_of_method;
+    }
     if (mp->status == NULL) {
         LOG(ERROR) << "method=" << mp->method->full_name()
                    << " does not support max_concurrency";
         _failed_to_set_max_concurrency_of_method = true;
         return g_default_max_concurrency_of_method;
     }
-    return mp->status->max_concurrency();
+    return mp->max_concurrency;
 }
 
 int Server::MaxConcurrencyOf(const MethodProperty* mp) const {
+    if (IsRunning()) {
+        LOG(WARNING) << "MaxConcurrencyOf is only allowd before Server started";
+        return g_default_max_concurrency_of_method;
+    }
     if (mp == NULL || mp->status == NULL) {
         return 0;
     }
-    return mp->status->max_concurrency();
+    return mp->max_concurrency;
 }
 
-int& Server::MaxConcurrencyOf(const butil::StringPiece& full_method_name) {
+AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(const butil::StringPiece& full_method_name) {
     MethodProperty* mp = _method_map.seek(full_method_name);
     if (mp == NULL) {
         LOG(ERROR) << "Fail to find method=" << full_method_name;
@@ -1999,7 +2048,7 @@ int Server::MaxConcurrencyOf(const butil::StringPiece& full_method_name) const {
     return MaxConcurrencyOf(_method_map.seek(full_method_name));
 }
 
-int& Server::MaxConcurrencyOf(const butil::StringPiece& full_service_name,
+AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(const butil::StringPiece& full_service_name,
                               const butil::StringPiece& method_name) {
     MethodProperty* mp = const_cast<MethodProperty*>(
         FindMethodPropertyByFullName(full_service_name, method_name));
@@ -2018,7 +2067,7 @@ int Server::MaxConcurrencyOf(const butil::StringPiece& full_service_name,
                                 full_service_name, method_name));
 }
 
-int& Server::MaxConcurrencyOf(google::protobuf::Service* service,
+AdaptiveMaxConcurrency& Server::MaxConcurrencyOf(google::protobuf::Service* service,
                               const butil::StringPiece& method_name) {
     return MaxConcurrencyOf(service->GetDescriptor()->full_name(), method_name);
 }
@@ -2070,4 +2119,4 @@ int Server::SSLSwitchCTXByHostname(struct ssl_st* ssl,
 }
 #endif // SSL_CTRL_SET_TLSEXT_HOSTNAME
 
-} // namespace brpc
+}  // namespace brpc
