@@ -592,6 +592,9 @@ private:
     void set_used_by_rpc() { add_flag(FLAGS_USED_BY_RPC); }
     bool is_used_by_rpc() const { return has_flag(FLAGS_USED_BY_RPC); }
 
+    // Get/set sock option. .e.g get vip info through ttm kernel module hook,
+    int get_sock_opt(int level, int optname, void* optval, socklen_t* optlen);
+    int set_sock_opt(int level, int optname, void* optval, socklen_t optlen);
 private:
     // NOTE: align and group fields to make Controller as compact as possible.
 

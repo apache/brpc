@@ -1382,6 +1382,26 @@ x509_st* Controller::get_peer_certificate() const {
     return s ? s->GetPeerCertificate() : NULL;
 }
 
+int Controller::get_sock_opt(int level, int optname, void* optval, socklen_t* optlen) {
+    Socket* s = _current_call.sending_sock.get();
+    if (s) {
+        return getsockopt(s->fd(), level, optname, optval, optlen);
+    } else {
+        LOG(WARNING) << "sock is null";
+        return EINVAL;
+    }
+}
+
+int Controller::set_sock_opt(int level, int optname, void* optval, socklen_t optlen) {
+    Socket* s = _current_call.sending_sock.get();
+    if (s) {
+        return setsockopt(s->fd(), level, optname, optval, optlen);
+    } else {
+        LOG(WARNING) << "sock is null";
+        return EINVAL;
+    }
+}
+
 #if defined(OS_MACOSX)
 typedef sig_t SignalHandler;
 #else
