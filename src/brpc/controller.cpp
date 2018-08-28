@@ -1392,16 +1392,6 @@ int Controller::get_sock_opt(int level, int optname, void* optval, socklen_t* op
     }
 }
 
-int Controller::set_sock_opt(int level, int optname, void* optval, socklen_t optlen) {
-    Socket* s = _current_call.sending_sock.get();
-    if (s) {
-        return setsockopt(s->fd(), level, optname, optval, optlen);
-    } else {
-        LOG(WARNING) << "sock is null";
-        return EINVAL;
-    }
-}
-
 #if defined(OS_MACOSX)
 typedef sig_t SignalHandler;
 #else
