@@ -142,12 +142,7 @@ private:
     void push(const std::string& name, const std::string& value)
     { new (&_list[_size++]) HPacker::Header(name, value); }
 
-    H2UnsentResponse(Controller* c)
-        : _size(0)
-        , _stream_id(c->http_request().h2_stream_id())
-        , _http_response(c->release_http_response()) {
-        _data.swap(c->response_attachment());
-    }
+    H2UnsentResponse(Controller* c);
     ~H2UnsentResponse() {}
     H2UnsentResponse(const H2UnsentResponse&);
     void operator=(const H2UnsentResponse&);
@@ -157,6 +152,7 @@ private:
     uint32_t _stream_id;
     std::unique_ptr<HttpHeader> _http_response;
     butil::IOBuf _data;
+    bool _grpc_protocol;
     HPacker::Header _list[0];
 };
 

@@ -1099,6 +1099,8 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
         if (rc == 0) {
             break;
         }
+        LOG(INFO) << "Header name: " << pair.name
+                  << ", header value: " << pair.value;
         const char* const name = pair.name.c_str();
         bool matched = false;
         if (name[0] == ':') { // reserved names
@@ -1179,13 +1181,14 @@ const CommonStrings* get_common_strings();
 
 static void PackH2Message(butil::IOBuf* out,
                           butil::IOBuf& headers,
+                          butil::IOBuf& trailer_headers,
                           const butil::IOBuf& data,
                           int stream_id,
                           const H2Settings& remote_settings) {
     char headbuf[FRAME_HEAD_SIZE];
     H2FrameHead headers_head = {
         (uint32_t)headers.size(), H2_FRAME_HEADERS, 0, stream_id};
-    if (data.empty()) {
+    if (data.empty() && trailer_headers.empty()) {
         headers_head.flags |= H2_FLAGS_END_STREAM;
     }
     if (headers_head.payload_size <= remote_settings.max_frame_size) {
@@ -1217,8 +1220,10 @@ static void PackH2Message(butil::IOBuf* out,
         butil::IOBufBytesIterator it(data);
         while (it.bytes_left()) {
             if (it.bytes_left() <= remote_settings.max_frame_size) {
-                data_head.flags |= H2_FLAGS_END_STREAM;
                 data_head.payload_size = it.bytes_left();
+                if (trailer_headers.empty()) {
+                    data_head.flags |= H2_FLAGS_END_STREAM;
+                }
             } else {
                 data_head.payload_size = remote_settings.max_frame_size;
             }
@@ -1226,6 +1231,16 @@ static void PackH2Message(butil::IOBuf* out,
             out->append(headbuf, FRAME_HEAD_SIZE);
             it.append_and_forward(out, data_head.payload_size);
         }
+    }
+
+    if (!trailer_headers.empty()) {
+        H2FrameHead headers_head = {
+            (uint32_t)trailer_headers.size(), H2_FRAME_HEADERS, 0, stream_id};
+        headers_head.flags |= H2_FLAGS_END_STREAM;
+        headers_head.flags |= H2_FLAGS_END_HEADERS;
+        SerializeFrameHead(headbuf, headers_head);
+        out->append(headbuf, sizeof(headbuf));
+        out->append(butil::IOBuf::Movable(trailer_headers));
     }
 }
 
@@ -1440,7 +1455,8 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
         return butil::Status(EAGAIN, "Remote window size is not enough(flow control)");
     }
 
-    PackH2Message(out, frag, _cntl->request_attachment(),
+    butil::IOBuf dummy_buf;
+    PackH2Message(out, frag, dummy_buf, _cntl->request_attachment(),
                   _stream_id, ctx->remote_settings());
     return butil::Status::OK();
 }
@@ -1498,6 +1514,15 @@ void H2UnsentRequest::Describe(butil::IOBuf* desc) const {
     } else {
         desc->append(*body);
     }
+}
+
+H2UnsentResponse::H2UnsentResponse(Controller* c)
+    : _size(0)
+    , _stream_id(c->http_request().h2_stream_id())
+    , _http_response(c->release_http_response())
+    , _grpc_protocol(ParseContentType(c->http_request().content_type()) ==
+                     HTTP_CONTENT_GRPC) {
+    _data.swap(c->response_attachment());
 }
 
 H2UnsentResponse* H2UnsentResponse::New(Controller* c) {
@@ -1569,6 +1594,17 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     butil::IOBuf frag;
     appender.move_to(frag);
 
+    butil::IOBufAppender trailer_appender;
+    butil::IOBuf trailer_frag;
+    if (_grpc_protocol) {
+        // TODO(zhujiashun): how to decide status code and status message
+        HPacker::Header status("grpc-status", "0");
+        hpacker.Encode(&trailer_appender, status, options);
+        //HPacker::Header message("grpc-message", "");
+        //hpacker.Encode(&trailer_appender, message, options);
+        trailer_appender.move_to(trailer_frag);
+    }
+
     // flow control
     int64_t c_win = ctx->_remote_conn_window_size.load(butil::memory_order_relaxed);
     const int64_t sz = _data.size();
@@ -1576,7 +1612,7 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
         return butil::Status(EAGAIN, "Remote window size is not enough(flow control)");
     }
     
-    PackH2Message(out, frag, _data, _stream_id, ctx->remote_settings());
+    PackH2Message(out, frag, trailer_frag, _data, _stream_id, ctx->remote_settings());
     return butil::Status::OK();
 }
 

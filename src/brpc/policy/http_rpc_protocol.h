@@ -36,6 +36,7 @@ struct CommonStrings {
     std::string CONTENT_TYPE_TEXT;
     std::string CONTENT_TYPE_JSON;
     std::string CONTENT_TYPE_PROTO;
+    std::string CONTENT_TYPE_GRPC;
     std::string ERROR_CODE;
     std::string AUTHORIZATION;
     std::string ACCEPT_ENCODING;
@@ -123,6 +124,15 @@ void PackHttpRequest(butil::IOBuf* buf,
 bool ParseHttpServerAddress(butil::EndPoint* out, const char* server_addr_and_port);
 const std::string& GetHttpMethodName(const google::protobuf::MethodDescriptor*,
                                      const Controller*);
+
+enum HttpContentType {
+    HTTP_CONTENT_OTHERS = 0,
+    HTTP_CONTENT_JSON = 1,
+    HTTP_CONTENT_PROTO = 2,
+    HTTP_CONTENT_GRPC = 3
+};
+
+HttpContentType ParseContentType(butil::StringPiece content_type);
 
 }  // namespace policy
 } // namespace brpc
