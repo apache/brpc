@@ -31,6 +31,9 @@ DEFINE_int32(circuit_breaker_long_window_error_percent, 3,
 DEFINE_int32(circuit_breaker_min_error_cost_us, 100,
     "The minimum error_cost, when the ema of error cost is less than this "
     "value, it will be set to zero.");
+DEFINE_int32(circuit_breaker_max_failed_latency_mutliple, 2,
+    "The maximum multiple of the latency of the failed request relative to "
+    "the average latency of the success requests.");
 
 namespace {
 // EPSILON is used to generate the smoothing coefficient when calculating EMA.
@@ -40,9 +43,9 @@ namespace {
 // eg: when window_size = 100,
 // EPSILON = 0.1, smooth = 0.9772
 // EPSILON = 0.3, smooth = 0.9880
-// when window_size = 30,
-// EPSILON = 0.1, smooth = 0.9261
-// EPSILON = 0.3, smooth = 0.9606
+// when window_size = 1000,
+// EPSILON = 0.1, smooth = 0.9977
+// EPSILON = 0.3, smooth = 0.9987
 const double EPSILON = 0.1;
 }  // namepace
 
@@ -115,6 +118,8 @@ int64_t CircuitBreaker::EmaErrorRecorder::UpdateLatency(int64_t latency) {
 
 bool CircuitBreaker::EmaErrorRecorder::UpdateErrorCost(int64_t error_cost, 
                                                        int64_t ema_latency) {
+    const int max_mutilple = FLAGS_circuit_breaker_max_failed_latency_mutliple;
+    error_cost = std::min(ema_latency * max_mutilple, error_cost);
     //Errorous response
     if (error_cost != 0) {
         int64_t ema_error_cost = 
