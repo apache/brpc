@@ -141,7 +141,8 @@ public:
 
     bool GetStatus(Status* status);
 
-    bool RecoverOptCodeForReplicasRead();
+    // Add handling for read replica in comparision with MemcacheResponse::PopGet.
+    bool PopGet(butil::IOBuf* value, uint32_t* flags, uint64_t* cas_value);
 
 private:
     void MergeFrom(const CouchbaseResponse& from);

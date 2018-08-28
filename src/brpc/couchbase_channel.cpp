@@ -95,10 +95,9 @@ const std::string* GetForwardMaster(
 
 // Get replicas server address(addr:port) of a vbucket.
 // Return pointer to server if found, otherwise nullptr.
-// 'offset': zero-based index of vbucket. 0 indicating the first replica server. 
-// 'from_fvb': Get replica from fvbucket if true, otherwise get from vbucket.
+// 'offset': one-based index of vbucket. 1 indicating the first replica server. 
 const std::string* GetReplica(const VBucketServerMap* vb_map, 
-                              const size_t vb_index);
+                              const size_t vb_index, const size_t offset = 1);
 
 // Get vbucket id of key belonged to. 
 size_t Hash(const butil::StringPiece& key, const size_t vbuckets_num);
@@ -263,17 +262,11 @@ void CouchbaseServerListener::Init(const char* server_list,
         ns_servers.append("couchbase_list://");
     }
     ns_servers.append(server_list);
-    if (policy::CouchbaseNamingService::ParseNamingServiceUrl(
-        ns_servers, &_listen_port)) {
-        std::string unique_id = "_" + butil::Uint64ToString(reinterpret_cast<uint64_t>(this));
-        ns_servers += unique_id;
-        _service_name = server_list + unique_id;
-        CHECK(_listen_channel.Init(ns_servers.c_str(), "rr", &options) == 0) 
-            << "Failed to init listen channel.";
-    } else {
-        LOG(FATAL) << "Failed to init couchbase listener.";
-        return;
-    }
+    std::string unique_id = "_" + butil::Uint64ToString(reinterpret_cast<uint64_t>(this));
+    ns_servers += unique_id;
+    _service_name = server_list + unique_id;
+    CHECK(_listen_channel.Init(ns_servers.c_str(), "rr", &options) == 0) 
+        << "Failed to init listen channel.";
     if (!InitVBucketMap(init_url)) {
         LOG(ERROR) << "Failed to init vbucket map.";
     }
@@ -297,6 +290,7 @@ bool CouchbaseServerListener::InitVBucketMap(const std::string& uri) {
         butil::VBUCKET_CONFIG_HANDLE vb = 
             butil::vbucket_config_parse_string(str.c_str());
         if (vb != nullptr) {
+            _listen_port = butil::IntToString(cntl.remote_side().port);
             UpdateVBucketMap(vb);
             butil::vbucket_config_destroy(vb);
             return true;
@@ -339,7 +333,10 @@ void* CouchbaseServerListener::ListenThread(void* arg) {
             }
             continue;
         }  
-        
+        // Set listen port if init failure in InitVBucketMap. 
+        if (listener->_listen_port.empty()) {
+            listener->_listen_port = butil::IntToString(cntl.remote_side().port);
+        } 
         listener->_reader->Attach();  
         cntl.ReadProgressiveAttachmentBy(listener->_reader);  
         break;
@@ -623,15 +620,12 @@ void CouchbaseDone::Run() {
         retry_cntl.set_log_id(_cntl->log_id());
         retry_cntl.set_max_retry(0);
     }
-    if (_vb_context._server_type == REPLICA_SERVER 
-        && retry_cntl.ErrorCode() == 0) {
-        _response->RecoverOptCodeForReplicasRead();
-    }
     // Fetch result from retry_cntl to _cntl. They share the same response.
     if (retry_cntl.Failed()) {
         _cntl->SetFailed(retry_cntl.ErrorText());
     }
     _cntl->_error_code = retry_cntl.ErrorCode();
+    _cntl->_remote_side = retry_cntl.remote_side();
     _cntl->OnRPCEnd(butil::gettimeofday_us());
 }
 
@@ -1001,7 +995,7 @@ int CouchbaseChannel::GetDetectedMaster(const VBucketServerMap* vb_map,
 }
 
 bool CouchbaseChannel::UpdateVBucketServerMap(
-   const int num_replicas,
+   const size_t num_replicas,
    std::vector<std::vector<int>>& vbucket,
    std::vector<std::vector<int>>& fvbucket,
    std::vector<std::string>& servers,
@@ -1021,7 +1015,7 @@ bool CouchbaseChannel::UpdateVBucketServerMap(
 
 bool CouchbaseChannel::Update(VBucketServerMap& vbucket_map, 
                               const ChannelOptions* options,
-                              const int num_replicas,
+                              const size_t num_replicas,
                               std::vector<std::vector<int>>& vbucket,
                               std::vector<std::vector<int>>& fvbucket,
                               std::vector<std::string>& servers,
@@ -1136,9 +1130,9 @@ const std::string* GetForwardMaster(const VBucketServerMap* vb_map,
 }
 
 const std::string* GetReplica(const VBucketServerMap* vb_map, 
-                              const size_t vb_index) {
-    if (vb_index < vb_map->_vbucket.size()) {
-        const int index =  vb_map->_vbucket[vb_index][0];
+                              const size_t vb_index, const size_t offset) {
+    if (vb_index < vb_map->_vbucket.size() && offset <= vb_map->_num_replicas) {
+        const int index =  vb_map->_vbucket[vb_index][offset];
         if (index != -1) {
             return &vb_map->_servers[index];
         }

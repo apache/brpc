@@ -50,9 +50,6 @@ private:
     int GetServers(const char *service_name,
                    std::vector<ServerNode>* servers);
     
-    static bool ParseNamingServiceUrl(butil::StringPiece ns_url, 
-                                      std::string* listen_port);
-
     static bool ParseListenUrl(
         const butil::StringPiece listen_url, std::string* server_address, 
         std::string* streaming_uri, std::string* init_uri);

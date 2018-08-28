@@ -16,6 +16,7 @@
 
 #include "brpc/couchbase.h"
 #include "brpc/policy/memcache_binary_header.h"
+#include "butil/logging.h"
 #include "butil/string_printf.h"
 #include "butil/sys_byteorder.h"
 
@@ -84,7 +85,8 @@ bool CouchbaseRequest::ReplicasGet(const butil::StringPiece& key,
     return true;
 }
 
-bool CouchbaseResponse::RecoverOptCodeForReplicasRead() {
+bool CouchbaseResponse::PopGet(
+    butil::IOBuf* value, uint32_t* flags, uint64_t* cas_value) {
     const size_t n = _buf.size();
     policy::MemcacheResponseHeader header;
     if (n < sizeof(header)) {
@@ -92,17 +94,60 @@ bool CouchbaseResponse::RecoverOptCodeForReplicasRead() {
         return false;
     }
     _buf.copy_to(&header, sizeof(header));
-    if (header.command != (uint8_t)policy::MC_BINARY_REPLICAS_READ) {
-        butil::string_printf(&_err, "not a replicas get response");
+    if (header.command != (uint8_t)policy::MC_BINARY_GET &&
+        header.command != (uint8_t)policy::MC_BINARY_REPLICAS_READ) {
+        butil::string_printf(&_err, "not a GET response");
         return false;
     }
-    header.command = (uint8_t)policy::MC_BINARY_GET;
-    CouchbaseResponse response;
-    if (response._buf.append(&header, sizeof(header))) {
+    if (n < sizeof(header) + header.total_body_length) {
+        butil::string_printf(&_err, "response=%u < header=%u + body=%u",
+                  (unsigned)n, (unsigned)sizeof(header), header.total_body_length);
         return false;
     }
-    _buf.append_to(&response._buf, n - sizeof(header), sizeof(header));
-    Swap(&response);
+    if (header.status != (uint16_t)STATUS_SUCCESS) {
+        LOG_IF(ERROR, header.extras_length != 0) << "GET response must not have flags";
+        LOG_IF(ERROR, header.key_length != 0) << "GET response must not have key";
+        const int value_size = (int)header.total_body_length - (int)header.extras_length
+            - (int)header.key_length;
+        if (value_size < 0) {
+            butil::string_printf(&_err, "value_size=%d is non-negative", value_size);
+            return false;
+        }
+        _buf.pop_front(sizeof(header) + header.extras_length +
+                      header.key_length);
+        _err.clear();
+        _buf.cutn(&_err, value_size);
+        return false;
+    }
+    if (header.extras_length != 4u) {
+        butil::string_printf(&_err, "GET response must have flags as extras, actual length=%u",
+                  header.extras_length);
+        return false;
+    }
+    if (header.key_length != 0 && header.command == (uint8_t)policy::MC_BINARY_GET) {
+        butil::string_printf(&_err, "GET response must not have key");
+        return false;
+    }
+    const int value_size = (int)header.total_body_length - (int)header.extras_length
+        - (int)header.key_length;
+    if (value_size < 0) {
+        butil::string_printf(&_err, "value_size=%d is non-negative", value_size);
+        return false;
+    }
+    _buf.pop_front(sizeof(header));
+    uint32_t raw_flags = 0;
+    _buf.cutn(&raw_flags, sizeof(raw_flags));
+    if (flags) {
+        *flags = butil::NetToHost32(raw_flags);
+    }
+    if (value) {
+        value->clear();
+        _buf.cutn(value, value_size);
+    }
+    if (cas_value) {
+        *cas_value = header.cas_value;
+    }
+    _err.clear();
     return true;
 }
 

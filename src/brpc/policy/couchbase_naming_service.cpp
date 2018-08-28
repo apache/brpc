@@ -50,12 +50,6 @@ bool CouchbaseNamingService::ParseListenUrl(
         butil::StringPiece sub_str = listen_url.substr(pos + 2, host_pos - pos - 2);
         server->clear();
         server->append(sub_str.data(), sub_str.length());
-        butil::EndPoint point;
-        if (butil::str2endpoint(server->c_str(), &point) != 0) {
-            LOG(FATAL) << "Failed to get address and port \'" 
-                       << server << "\'.";
-            break; 
-        }
         butil::StringPiece uri_sub = listen_url;
         uri_sub.remove_prefix(host_pos);
         size_t uri_pos = uri_sub.find("/bucketsStreaming/");
@@ -85,37 +79,6 @@ bool CouchbaseNamingService::ParseListenUrl(
     } while (false);
     LOG(FATAL) << "Failed to parse listen url \'" <<  listen_url << "\'.";
     return false;
-}
-
-bool CouchbaseNamingService::ParseNamingServiceUrl(const butil::StringPiece ns_url, 
-                                                   std::string* listen_port) {
-    butil::StringPiece protocol;
-    std::string server_list;
-    const size_t pos = ns_url.find("//");
-    if (pos != ns_url.npos) {
-        protocol = ns_url.substr(0, pos);
-        butil::StringPiece sub = ns_url.substr(pos+2);
-        server_list.append(sub.data(), sub.length());
-    }
-    if (protocol != "couchbase_list:" && server_list.empty()) {
-        LOG(FATAL) << "Invalid couchbase naming service  " << ns_url;
-        return false;
-    }
-    std::vector<std::string> server_array;
-    butil::SplitString(server_list, ',', &server_array);
-    listen_port->clear();
-    for (const std::string& addr_port : server_array) {
-        butil::EndPoint point;
-        if (butil::str2endpoint(addr_port.c_str(), &point) != 0) {
-            LOG(FATAL) << "Failed to get endpoint from \'" << addr_port 
-                       << "\' of the naming server url \'" << ns_url << "\'.";
-            return false;
-        }
-        if (listen_port->empty()) {
-            *listen_port = butil::IntToString(point.port);
-        }
-    }    
-    return true;
 }
 
 int CouchbaseNamingService::GetServers(const char *service_name,

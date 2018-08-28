@@ -59,7 +59,7 @@ using DetectedVBucketMap = std::vector<DetectedMaster>;
 // TODO: support ketama vbucket distribution
 struct VBucketServerMap {
     uint64_t _version = 0;
-    int _num_replicas = 0;    
+    size_t _num_replicas = 0;    
     std::vector<std::vector<int>> _vbucket;
     std::vector<std::vector<int>> _fvbucket;
     std::vector<std::string> _servers;
@@ -154,7 +154,7 @@ private:
         VBucketContext* context);
 
     bool UpdateVBucketServerMap(
-        const int num_replicas,
+        const size_t num_replicas,
         std::vector<std::vector<int>>& vbucket,
         std::vector<std::vector<int>>& fvbucket,
         std::vector<std::string>& servers,
@@ -163,7 +163,7 @@ private:
 
     static bool Update(VBucketServerMap& vbucket_map, 
                        const ChannelOptions* options,
-                       const int num_replicas,
+                       const size_t num_replicas,
                        std::vector<std::vector<int>>& vbucket,
                        std::vector<std::vector<int>>& fvbucket,
                        std::vector<std::string>& servers,
