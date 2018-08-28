@@ -223,6 +223,7 @@ private:
     uint32_t _stream_id;
     std::unique_ptr<HttpHeader> _http_response;
     butil::IOBuf _data;
+    bool _grpc_protocol;
     HPacker::Header _list[0];
 };
 

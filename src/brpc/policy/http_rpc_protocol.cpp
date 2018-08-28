@@ -104,6 +104,7 @@ CommonStrings::CommonStrings()
     , CONTENT_TYPE("content-type")
     , CONTENT_TYPE_TEXT("text/plain")
     , CONTENT_TYPE_JSON("application/json")
+    , CONTENT_TYPE_GRPC("application/grpc")
     , CONTENT_TYPE_PROTO("application/proto")
     , ERROR_CODE("x-bd-error-code")
     , AUTHORIZATION("authorization")
@@ -141,16 +142,11 @@ int InitCommonStrings() {
 static const int ALLOW_UNUSED force_creation_of_common = InitCommonStrings();
 const CommonStrings* get_common_strings() { return common; }
 
-enum HttpContentType {
-    HTTP_CONTENT_OTHERS = 0,
-    HTTP_CONTENT_JSON = 1,
-    HTTP_CONTENT_PROTO = 2
-};
-
-inline HttpContentType ParseContentType(butil::StringPiece content_type) {
+HttpContentType ParseContentType(butil::StringPiece content_type) {
     const butil::StringPiece prefix = "application/";
     const butil::StringPiece json = "json";
     const butil::StringPiece proto = "proto";
+    const butil::StringPiece grpc = "grpc";
 
     // According to http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.7
     //   media-type  = type "/" subtype *( ";" parameter )
@@ -167,6 +163,9 @@ inline HttpContentType ParseContentType(butil::StringPiece content_type) {
     } else if (content_type.starts_with(proto)) {
         type = HTTP_CONTENT_PROTO;
         content_type.remove_prefix(proto.size());
+    } else if (content_type.starts_with(grpc)) {
+        type = HTTP_CONTENT_GRPC;
+        content_type.remove_prefix(grpc.size());
     } else {
         return HTTP_CONTENT_OTHERS;
     }
@@ -612,11 +611,13 @@ HttpResponseSender::~HttpResponseSender() {
             content_type_str = &req_header->content_type();
         }
         const HttpContentType content_type = ParseContentType(*content_type_str);
-        if (content_type == HTTP_CONTENT_PROTO) {
+        if (content_type == HTTP_CONTENT_PROTO || content_type == HTTP_CONTENT_GRPC) {
             if (res->SerializeToZeroCopyStream(&wrapper)) {
                 // Set content-type if user did not
                 if (res_header->content_type().empty()) {
-                    res_header->set_content_type(common->CONTENT_TYPE_PROTO);
+                    res_header->set_content_type((content_type == HTTP_CONTENT_PROTO)?
+                            common->CONTENT_TYPE_PROTO:
+                            common->CONTENT_TYPE_GRPC);
                 }
             } else {
                 cntl->SetFailed(ERESPONSE, "Fail to serialize %s", res->GetTypeName().c_str());
@@ -638,6 +639,18 @@ HttpResponseSender::~HttpResponseSender() {
                 cntl->SetFailed(ERESPONSE, "Fail to convert response to json, %s", err.c_str());
             }
         }
+    }
+
+    if (ParseContentType(req_header->content_type()) == HTTP_CONTENT_GRPC) {
+        butil::IOBuf tmp_buf;
+        // TODO(zhujiashun): Encode response according to Message-Accept-Encoding
+        // in req_header. Currently just appen 0x00 to indicate no compression.
+        tmp_buf.append("\0", 1);
+        char size_buf[4];
+        WriteBigEndian4Bytes(size_buf, cntl->response_attachment().size());
+        tmp_buf.append(size_buf, 4);
+        tmp_buf.append(cntl->response_attachment());
+        cntl->response_attachment().swap(tmp_buf);
     }
 
     // In HTTP 0.9, the server always closes the connection after sending the
@@ -1056,6 +1069,7 @@ bool VerifyHttpRequest(const InputMessageBase* msg) {
                                   socket->mutable_auth_context()) == 0;
 }
 
+
 // Defined in baidu_rpc_protocol.cpp
 void EndRunningCallMethodInPool(
     ::google::protobuf::Service* service,
@@ -1091,6 +1105,17 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     HttpHeader& req_header = cntl->http_request();
     imsg_guard->header().Swap(req_header);
     butil::IOBuf& req_body = imsg_guard->body();
+
+    // TODO(zhujiashun): handle compression
+    char compressed_grpc = false;
+    if (ParseContentType(req_header.content_type()) == HTTP_CONTENT_GRPC) {
+        /* 4 is the size of grpc Message-Length */
+        char buf[4];
+        req_body.cut1(&compressed_grpc);
+        req_body.cutn(buf, 4);
+        int message_length = ReadBigEndian4Bytes(buf);
+        CHECK(message_length == req_body.length());
+    }
     
     butil::EndPoint user_addr;
     if (!GetUserAddressFromHeader(req_header, &user_addr)) {
