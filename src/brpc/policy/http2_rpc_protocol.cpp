@@ -1716,8 +1716,8 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
         // TODO(zhujiashun): how to decide status code and status message
         HPacker::Header status("grpc-status", "0");
         hpacker.Encode(&trailer_appender, status, options);
-        //HPacker::Header message("grpc-message", "");
-        //hpacker.Encode(&trailer_appender, message, options);
+        HPacker::Header message("grpc-message", "");
+        hpacker.Encode(&trailer_appender, message, options);
         trailer_appender.move_to(trailer_frag);
     }
 
