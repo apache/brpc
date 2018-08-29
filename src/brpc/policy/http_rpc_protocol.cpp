@@ -270,13 +270,15 @@ void ProcessHttpResponse(InputMessageBase* msg) {
 
     // TODO(zhujiashun): handle compression
     char compressed_grpc = false;
-    if (ParseContentType(res_header->content_type()) == HTTP_CONTENT_GRPC) {
+    if (ParseContentType(res_header->content_type()) == HTTP_CONTENT_GRPC &&
+        !res_body.empty()) {
         /* 4 is the size of grpc Message-Length in Length-Prefixed-Message*/
         char buf[4];
         res_body.cut1(&compressed_grpc);
         res_body.cutn(buf, 4);
         int message_length = ReadBigEndian4Bytes(buf);
-        CHECK(message_length == res_body.length());
+        CHECK(message_length == res_body.length()) << message_length
+            << " vs " << res_body.length();
     }
 
     do {
