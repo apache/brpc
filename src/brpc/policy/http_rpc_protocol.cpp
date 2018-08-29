@@ -268,7 +268,6 @@ void ProcessHttpResponse(InputMessageBase* msg) {
     CHECK(cntl->response_attachment().empty());
     const int saved_error = cntl->ErrorCode();
 
-    // TODO(zhujiashun): handle compression
     char compressed_grpc = false;
     if (ParseContentType(res_header->content_type()) == HTTP_CONTENT_GRPC &&
         !res_body.empty()) {
