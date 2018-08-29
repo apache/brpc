@@ -504,6 +504,18 @@ static void GlobalInitializeOrDieImpl() {
     }
 #endif
 
+    // grpc protocol is based on http2
+    Protocol grpc_protocol = { ParseH2Message,
+                               SerializeHttpRequest, PackH2Request,
+                               ProcessHttpRequest, ProcessHttpResponse,
+                               VerifyHttpRequest, ParseHttpServerAddress,
+                               GetHttpMethodName,
+                               CONNECTION_TYPE_SINGLE,
+                               "grpc" };
+    if (RegisterProtocol(PROTOCOL_GRPC, grpc_protocol) != 0) {
+        exit(1);
+    }
+
     // Only valid at client side
     Protocol ubrpc_compack_protocol = {
         ParseNsheadMessage,

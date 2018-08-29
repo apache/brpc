@@ -1340,6 +1340,15 @@ static void PackH2Message(butil::IOBuf* out,
             it.append_and_forward(out, data_head.payload_size);
         }
     }
+    if (!trailer_headers.empty()) {
+        H2FrameHead headers_head = {
+            (uint32_t)trailer_headers.size(), H2_FRAME_HEADERS, 0, stream_id};
+        headers_head.flags |= H2_FLAGS_END_STREAM;
+        headers_head.flags |= H2_FLAGS_END_HEADERS;
+        SerializeFrameHead(headbuf, headers_head);
+        out->append(headbuf, sizeof(headbuf));
+        out->append(butil::IOBuf::Movable(trailer_headers));
+    }
     const int64_t conn_wu = conn_ctx->ReleaseDeferredWindowUpdate();
     if (conn_wu > 0) {
         char winbuf[FRAME_HEAD_SIZE + 4];
@@ -1560,7 +1569,8 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     }
     butil::IOBuf frag;
     appender.move_to(frag);
-    PackH2Message(out, frag, _cntl->request_attachment(), _stream_id, ctx);
+    butil::IOBuf dummy_buf;
+    PackH2Message(out, frag, dummy_buf, _cntl->request_attachment(), _stream_id, ctx);
     return butil::Status::OK();
 }
 
@@ -1700,7 +1710,18 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     butil::IOBuf frag;
     appender.move_to(frag);
 
-    PackH2Message(out, frag, _data, _stream_id, ctx);
+    butil::IOBufAppender trailer_appender;
+    butil::IOBuf trailer_frag;
+    if (_grpc_protocol) {
+        // TODO(zhujiashun): how to decide status code and status message
+        HPacker::Header status("grpc-status", "0");
+        hpacker.Encode(&trailer_appender, status, options);
+        //HPacker::Header message("grpc-message", "");
+        //hpacker.Encode(&trailer_appender, message, options);
+        trailer_appender.move_to(trailer_frag);
+    }
+
+    PackH2Message(out, frag, trailer_frag, _data, _stream_id, ctx);
     return butil::Status::OK();
 }
 

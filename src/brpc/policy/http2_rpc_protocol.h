@@ -211,7 +211,9 @@ private:
     H2UnsentResponse(Controller* c, int stream_id)
         : _size(0)
         , _stream_id(stream_id)
-        , _http_response(c->release_http_response()) {
+        , _http_response(c->release_http_response())
+        , _grpc_protocol(ParseContentType(c->http_request().content_type()) ==
+                HTTP_CONTENT_GRPC) {
         _data.swap(c->response_attachment());
     }
     ~H2UnsentResponse() {}
