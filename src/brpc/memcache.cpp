@@ -562,7 +562,8 @@ bool MemcacheResponse::PopGet(
         return false;
     }
     _buf.copy_to(&header, sizeof(header));
-    if (header.command != (uint8_t)policy::MC_BINARY_GET) {
+    if (header.command != (uint8_t)policy::MC_BINARY_GET &&
+        header.command != (uint8_t)policy::MC_BINARY_REPLICAS_READ) {
         butil::string_printf(&_err, "not a GET response");
         return false;
     }
@@ -591,7 +592,7 @@ bool MemcacheResponse::PopGet(
                   header.extras_length);
         return false;
     }
-    if (header.key_length != 0) {
+    if (header.key_length != 0 && header.command == (uint8_t)policy::MC_BINARY_GET) {
         butil::string_printf(&_err, "GET response must not have key");
         return false;
     }

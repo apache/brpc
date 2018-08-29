@@ -31,6 +31,9 @@ friend class VBucketContext;
 public:
     void Swap(CouchbaseRequest* other) {
         MemcacheRequest::Swap(other);
+        if (this != other) {
+            std::swap(_read_replicas, other->_read_replicas);
+        }
     }
 
     bool Get(const butil::StringPiece& key, bool read_replicas = false) {
@@ -140,9 +143,6 @@ public:
     }
 
     bool GetStatus(Status* status);
-
-    // Add handling for read replica in comparision with MemcacheResponse::PopGet.
-    bool PopGet(butil::IOBuf* value, uint32_t* flags, uint64_t* cas_value);
 
 private:
     void MergeFrom(const CouchbaseResponse& from);
