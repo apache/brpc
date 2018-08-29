@@ -41,6 +41,7 @@ struct CommonStrings {
     std::string ACCEPT_ENCODING;
     std::string CONTENT_ENCODING;
     std::string CONTENT_LENGTH;
+    std::string IDENTITY;
     std::string GZIP;
     std::string CONNECTION;
     std::string KEEP_ALIVE;
@@ -67,6 +68,7 @@ struct CommonStrings {
     std::string TE;
     std::string TRAILERS;
     std::string GRPC_ENCODING;
+    std::string GRPC_ACCEPT_ENCODING;
 
     CommonStrings();
 };
