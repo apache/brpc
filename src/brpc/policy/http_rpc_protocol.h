@@ -36,7 +36,6 @@ struct CommonStrings {
     std::string CONTENT_TYPE_TEXT;
     std::string CONTENT_TYPE_JSON;
     std::string CONTENT_TYPE_PROTO;
-    std::string CONTENT_TYPE_GRPC;
     std::string ERROR_CODE;
     std::string AUTHORIZATION;
     std::string ACCEPT_ENCODING;
@@ -62,6 +61,12 @@ struct CommonStrings {
     std::string H2_METHOD;
     std::string METHOD_GET;
     std::string METHOD_POST;
+
+    // GRPC-related headers
+    std::string CONTENT_TYPE_GRPC;
+    std::string TE;
+    std::string TRAILERS;
+    std::string GRPC_ENCODING;
 
     CommonStrings();
 };

@@ -104,7 +104,6 @@ CommonStrings::CommonStrings()
     , CONTENT_TYPE("content-type")
     , CONTENT_TYPE_TEXT("text/plain")
     , CONTENT_TYPE_JSON("application/json")
-    , CONTENT_TYPE_GRPC("application/grpc")
     , CONTENT_TYPE_PROTO("application/proto")
     , ERROR_CODE("x-bd-error-code")
     , AUTHORIZATION("authorization")
@@ -128,6 +127,10 @@ CommonStrings::CommonStrings()
     , H2_METHOD(":method")
     , METHOD_GET("GET")
     , METHOD_POST("POST")
+    , CONTENT_TYPE_GRPC("application/grpc")
+    , TE("te")
+    , TRAILERS("trailers")
+    , GRPC_ENCODING("grpc-encoding")
 {}
 
 static CommonStrings* common = NULL;
@@ -210,6 +213,17 @@ static void PrintMessage(const butil::IOBuf& inbuf,
     std::cerr << buf2 << std::endl;
 }
 
+inline uint32_t ReadBigEndian4Bytes(const void* void_buf) {
+    uint32_t ret = 0;
+    char* p = (char*)&ret;
+    const char* buf = (const char*)void_buf;
+    p[3] = buf[0];
+    p[2] = buf[1];
+    p[1] = buf[2];
+    p[0] = buf[3];
+    return ret;
+}
+
 void ProcessHttpResponse(InputMessageBase* msg) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<HttpContext> imsg_guard(static_cast<HttpContext*>(msg));
@@ -251,6 +265,17 @@ void ProcessHttpResponse(InputMessageBase* msg) {
     butil::IOBuf& res_body = imsg_guard->body();
     CHECK(cntl->response_attachment().empty());
     const int saved_error = cntl->ErrorCode();
+
+    // TODO(zhujiashun): handle compression
+    char compressed_grpc = false;
+    if (ParseContentType(res_header->content_type()) == HTTP_CONTENT_GRPC) {
+        /* 4 is the size of grpc Message-Length */
+        char buf[4];
+        res_body.cut1(&compressed_grpc);
+        res_body.cutn(buf, 4);
+        int message_length = ReadBigEndian4Bytes(buf);
+        CHECK(message_length == res_body.length());
+    }
 
     do {
         if (!is_http2) {
@@ -336,12 +361,15 @@ void ProcessHttpResponse(InputMessageBase* msg) {
         }
         const HttpContentType content_type =
             ParseContentType(res_header->content_type());
-        if (content_type != HTTP_CONTENT_PROTO && content_type != HTTP_CONTENT_JSON) {
-            cntl->SetFailed(ERESPONSE, "content-type=%s is neither %s nor %s "
+        if (content_type != HTTP_CONTENT_PROTO &&
+            content_type != HTTP_CONTENT_JSON &&
+            content_type != HTTP_CONTENT_GRPC) {
+            cntl->SetFailed(ERESPONSE, "content-type=%s is neither %s nor %s or %s"
                             "when response is not NULL",
                             res_header->content_type().c_str(),
                             common->CONTENT_TYPE_JSON.c_str(),
-                            common->CONTENT_TYPE_PROTO.c_str());
+                            common->CONTENT_TYPE_PROTO.c_str(),
+                            common->CONTENT_TYPE_GRPC.c_str());
             break;
         }
         const std::string* encoding =
@@ -357,7 +385,8 @@ void ProcessHttpResponse(InputMessageBase* msg) {
             res_body.swap(uncompressed);
         }
         // message body is json
-        if (content_type == HTTP_CONTENT_PROTO) {
+        if (content_type == HTTP_CONTENT_PROTO ||
+            content_type == HTTP_CONTENT_GRPC) {
             if (!ParsePbFromIOBuf(cntl->response(), res_body)) {
                 cntl->SetFailed(ERESPONSE, "Fail to parse content");
                 break;
@@ -379,6 +408,14 @@ void ProcessHttpResponse(InputMessageBase* msg) {
     accessor.OnResponse(cid, saved_error);
 }
 
+inline void WriteBigEndian4Bytes(char* buf, uint32_t val) {
+    const char* p = (const char*)&val;
+    buf[0] = p[3];
+    buf[1] = p[2];
+    buf[2] = p[1];
+    buf[3] = p[0];
+}
+
 void SerializeHttpRequest(butil::IOBuf* /*not used*/,
                           Controller* cntl,
                           const google::protobuf::Message* request) {
@@ -396,7 +433,8 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
         butil::IOBufAsZeroCopyOutputStream wrapper(&cntl->request_attachment());
         const HttpContentType content_type
                 = ParseContentType(cntl->http_request().content_type());
-        if (content_type == HTTP_CONTENT_PROTO) {
+        if (content_type == HTTP_CONTENT_PROTO ||
+            cntl->request_protocol() == PROTOCOL_GRPC) {
             // Serialize content as protobuf
             if (!request->SerializeToZeroCopyStream(&wrapper)) {
                 cntl->request_attachment().clear();
@@ -464,8 +502,23 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
         header->SetHeader(common->CONNECTION, common->KEEP_ALIVE);
     }
 
-    if (accessor.request_protocol() == PROTOCOL_HTTP2) {
+    if (accessor.request_protocol() == PROTOCOL_HTTP2 ||
+        accessor.request_protocol() == PROTOCOL_GRPC) {
         cntl->set_stream_creator(get_h2_global_stream_creator());
+    }
+
+    if (accessor.request_protocol() == PROTOCOL_GRPC) {
+        header->set_content_type("application/grpc");
+        header->SetHeader(common->TE, common->TRAILERS);
+        butil::IOBuf tmp_buf;
+        // TODO(zhujiashun): Encode request according to Message-Encoding.
+        // Currently just appen 0x00 to indicate no compression.
+        tmp_buf.append("\0", 1);
+        char size_buf[4];
+        WriteBigEndian4Bytes(size_buf, cntl->request_attachment().size());
+        tmp_buf.append(size_buf, 4);
+        tmp_buf.append(cntl->request_attachment());
+        cntl->request_attachment().swap(tmp_buf);
     }
 
     // Set url to /ServiceName/MethodName when we're about to call protobuf
@@ -556,25 +609,6 @@ int ErrorCode2StatusCode(int error_code) {
     default:
         return HTTP_STATUS_INTERNAL_SERVER_ERROR;
     }
-}
-
-inline uint32_t ReadBigEndian4Bytes(const void* void_buf) {
-    uint32_t ret = 0;
-    char* p = (char*)&ret;
-    const char* buf = (const char*)void_buf;
-    p[3] = buf[0];
-    p[2] = buf[1];
-    p[1] = buf[2];
-    p[0] = buf[3];
-    return ret;
-}
-
-inline void WriteBigEndian4Bytes(char* buf, uint32_t val) {
-    const char* p = (const char*)&val;
-    buf[0] = p[3];
-    buf[1] = p[2];
-    buf[2] = p[1];
-    buf[3] = p[0];
 }
 
 static void SendHttpResponse(Controller *cntl,
@@ -1118,6 +1152,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     // TODO(zhujiashun): handle compression
     char compressed_grpc = false;
     if (ParseContentType(req_header.content_type()) == HTTP_CONTENT_GRPC) {
+        LOG(INFO) << "Find grpc";
         /* 4 is the size of grpc Message-Length */
         char buf[4];
         req_body.cut1(&compressed_grpc);
@@ -1312,6 +1347,8 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         } else {
             const std::string* encoding =
                 req_header.GetHeader(common->CONTENT_ENCODING);
+            //const std::string* grpc_encoding =
+            //    req_header.GetHeader(common->
             if (encoding != NULL && *encoding == common->GZIP) {
                 TRACEPRINTF("Decompressing request=%lu",
                             (unsigned long)req_body.size());

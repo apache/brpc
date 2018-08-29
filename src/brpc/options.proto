@@ -47,6 +47,7 @@ enum ProtocolType {
     PROTOCOL_ESP = 24;                 // Client side only
     PROTOCOL_HTTP2 = 25;
     PROTOCOL_THRIFT = 26;              // Server side only
+    PROTOCOL_GRPC = 27;
 }
 
 enum CompressType {

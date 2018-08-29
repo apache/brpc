@@ -1661,12 +1661,12 @@ void H2UnsentResponse::Describe(butil::IOBuf* desc) const {
 }
 
 void PackH2Request(butil::IOBuf*,
-                      SocketMessage** user_message,
-                      uint64_t correlation_id,
-                      const google::protobuf::MethodDescriptor*,
-                      Controller* cntl,
-                      const butil::IOBuf&,
-                      const Authenticator* auth) {
+                   SocketMessage** user_message,
+                   uint64_t correlation_id,
+                   const google::protobuf::MethodDescriptor*,
+                   Controller* cntl,
+                   const butil::IOBuf&,
+                   const Authenticator* auth) {
     ControllerPrivateAccessor accessor(cntl);
     
     HttpHeader* header = &cntl->http_request();
