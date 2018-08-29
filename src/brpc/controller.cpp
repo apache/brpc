@@ -1387,8 +1387,8 @@ int Controller::get_sock_opt(int level, int optname, void* optval, socklen_t* op
     if (s) {
         return getsockopt(s->fd(), level, optname, optval, optlen);
     } else {
-        LOG(WARNING) << "sock is null";
-        return EINVAL;
+        errno = EBADF;
+        return -1;
     }
 }
 
