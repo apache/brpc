@@ -1,4 +1,4 @@
-// Copyright (c) 2014 Baidu, Inc.
+// Copyright (c) 2018 Bilibili, Inc.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// A client sending requests to server every 1 second.
+// A client sending requests to server every 1 second using grpc.
+// Authors: Jiashun Zhu(zhujiashun@bilibili.com)
 
 #include <gflags/gflags.h>
 #include <butil/logging.h>
@@ -20,14 +21,13 @@
 #include <brpc/channel.h>
 #include "helloworld.pb.h"
 
-DEFINE_string(attachment, "foo", "Carry this along with requests");
 DEFINE_string(protocol, "grpc", "Protocol type. Defined in src/brpc/options.proto");
 DEFINE_string(server, "0.0.0.0:8000", "IP Address of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
 DEFINE_int32(interval_ms, 1000, "Milliseconds between consecutive requests");
-DEFINE_string(http_content_type, "application/json", "Content type of http request");
+DEFINE_bool(gzip, false, "compress body using gzip");
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
@@ -53,25 +53,18 @@ int main(int argc, char* argv[]) {
 
     // Send a request and wait for the response every 1 second.
     int log_id = 0;
-    //while (!brpc::IsAskedToQuit()) {
+    while (!brpc::IsAskedToQuit()) {
         // We will receive response synchronously, safe to put variables
         // on stack.
         helloworld::HelloRequest request;
         helloworld::HelloReply response;
         brpc::Controller cntl;
 
-        request.set_name("zjs's world");
-
+        request.set_name("grpc client example");
         cntl.set_log_id(log_id ++);  // set by user
-        if (FLAGS_protocol != "http" && FLAGS_protocol != "h2c" &&
-                FLAGS_protocol != "grpc")  {
-            // Set attachment which is wired to network directly instead of 
-            // being serialized into protobuf messages.
-            cntl.request_attachment().append(FLAGS_attachment);
-        } else {
-            //cntl.http_request().set_content_type(FLAGS_http_content_type);
+        if (FLAGS_gzip) {
+            cntl.set_request_compress_type(brpc::COMPRESS_TYPE_GZIP);
         }
-
         // Because `done'(last parameter) is NULL, this function waits until
         // the response comes back or error occurs(including timedout).
         stub.SayHello(&cntl, &request, &response, NULL);
@@ -84,8 +77,8 @@ int main(int argc, char* argv[]) {
         } else {
             LOG(WARNING) << cntl.ErrorText();
         }
-        //usleep(FLAGS_interval_ms * 1000L);
-    //}
+        usleep(FLAGS_interval_ms * 1000L);
+    }
 
     return 0;
 }

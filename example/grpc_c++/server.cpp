@@ -1,4 +1,4 @@
-// Copyright (c) 2014 Baidu, Inc.
+// Copyright (c) 2018 Bilibili, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// A server to receive HttpRequest and send back HttpResponse.
+// A server to receive HelloRequest and send back HelloReply
+//
+// Authors: Jiashun Zhu(zhujiashun@bilibili.com)
 
 #include <gflags/gflags.h>
 #include <butil/logging.h>
@@ -25,22 +27,25 @@ DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
 DEFINE_int32(logoff_ms, 2000, "Maximum duration of server's LOGOFF state "
              "(waiting for client to close connection before server stops)");
+DEFINE_bool(gzip, false, "compress body using gzip");
 
 // Service with static path.
 using helloworld::HelloRequest;
 using helloworld::HelloReply;
 
-class HttpServiceImpl : public helloworld::Greeter {
+class GreeterImpl : public helloworld::Greeter {
 public:
-    HttpServiceImpl() {};
-    virtual ~HttpServiceImpl() {};
+    GreeterImpl() {};
+    virtual ~GreeterImpl() {};
     void SayHello(google::protobuf::RpcController* cntl_base,
                  const HelloRequest* req,
                  HelloReply* res,
                  google::protobuf::Closure* done) {
         brpc::ClosureGuard done_guard(done);
-
         brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        if (FLAGS_gzip) {
+            cntl->set_response_compress_type(brpc::COMPRESS_TYPE_GZIP);
+        }
         std::string prefix("Hello ");
         LOG(INFO) << "req=" << req->name();
         res->set_message(prefix + req->name());
@@ -54,7 +59,7 @@ int main(int argc, char* argv[]) {
     // Generally you only need one Server.
     brpc::Server server;
 
-    HttpServiceImpl http_svc;
+    GreeterImpl http_svc;
 
     // Add services into server. Notice the second parameter, because the
     // service is put on stack, we don't want server to delete it, otherwise
