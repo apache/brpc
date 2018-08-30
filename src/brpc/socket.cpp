@@ -884,8 +884,7 @@ int Socket::SetFailed() {
 
 void Socket::FeedbackCircuitBreaker(int error_code, int64_t latency_us) {
     if (!GetOrNewSharedPart()->circuit_breaker.OnCallEnd(error_code, latency_us)) {
-        LOG(ERROR) 
-            << "Socket[" << *this << "] deactivted by circuit breaker";
+        LOG(ERROR) << "Socket[" << *this << "] deactivted by circuit breaker";
         SetFailed();
     }
 }
