@@ -206,7 +206,7 @@ TEST_F(SofaTest, process_request_failed_socket) {
     brpc::policy::MostCommonMessage* msg = MakeRequestMessage(meta);
     _socket->SetFailed();
     ProcessMessage(brpc::policy::ProcessSofaRequest, msg, false);
-    ASSERT_EQ(0ll, _server._nerror.get_value());
+    ASSERT_EQ(0ll, _server._nerror_bvar.get_value());
     CheckResponseCode(true, 0);
 }
 
@@ -218,7 +218,7 @@ TEST_F(SofaTest, process_request_logoff) {
     brpc::policy::MostCommonMessage* msg = MakeRequestMessage(meta);
     _server._status = brpc::Server::READY;
     ProcessMessage(brpc::policy::ProcessSofaRequest, msg, false);
-    ASSERT_EQ(1ll, _server._nerror.get_value());
+    ASSERT_EQ(1ll, _server._nerror_bvar.get_value());
     CheckResponseCode(false, brpc::ELOGOFF);
 }
 
@@ -229,7 +229,7 @@ TEST_F(SofaTest, process_request_wrong_method) {
     meta.set_method("EchoService.NO_SUCH_METHOD");
     brpc::policy::MostCommonMessage* msg = MakeRequestMessage(meta);
     ProcessMessage(brpc::policy::ProcessSofaRequest, msg, false);
-    ASSERT_EQ(1ll, _server._nerror.get_value());
+    ASSERT_EQ(1ll, _server._nerror_bvar.get_value());
     CheckResponseCode(false, brpc::ENOMETHOD);
 }
 

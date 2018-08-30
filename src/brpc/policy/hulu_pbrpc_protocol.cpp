@@ -224,19 +224,18 @@ static void SendHuluResponse(int64_t correlation_id,
                              const google::protobuf::Message* req,
                              const google::protobuf::Message* res,
                              const Server* server,
-                             MethodStatus* method_status_raw,
+                             MethodStatus* method_status,
                              int64_t received_us) {
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
-    ScopedMethodStatus method_status(method_status_raw);
     Socket* sock = accessor.get_sending_socket();
     std::unique_ptr<HuluController, LogErrorTextAndDelete> recycle_cntl(cntl);
+    ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
-    ScopedRemoveConcurrency remove_concurrency_dummy(server, cntl);
 
     if (cntl->IsCloseConnection()) {
         sock->SetFailed();
@@ -317,10 +316,6 @@ static void SendHuluResponse(int64_t correlation_id,
     if (span) {
         // TODO: this is not sent
         span->set_sent_us(butil::cpuwide_time_us());
-    }
-    if (method_status) {
-        method_status.release()->OnResponded(
-            !cntl->Failed(), butil::cpuwide_time_us() - received_us);
     }
 }
 
@@ -462,10 +457,10 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
         non_service_error.release();
         method_status = sp->status;
         if (method_status) {
-            if (!method_status->OnRequested()) {
-                cntl->SetFailed(ELIMIT, "Reached %s's max_concurrency=%d",
-                                sp->method->full_name().c_str(),
-                                method_status->max_concurrency());
+            int rejected_cc = 0;
+            if (!method_status->OnRequested(&rejected_cc)) {
+                cntl->SetFailed(ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
+                                sp->method->full_name().c_str(), rejected_cc);
                 break;
             }
         }

@@ -4,7 +4,7 @@ project(partition_echo_c++ C CXX)
 option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
 
 execute_process(
-    COMMAND bash -c "find ${CMAKE_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | head -n1 | xargs dirname | tr -d '\n'"
+    COMMAND bash -c "find ${PROJECT_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | head -n1 | xargs dirname | tr -d '\n'"
     OUTPUT_VARIABLE OUTPUT_PATH
 )
 
@@ -132,5 +132,5 @@ add_executable(server server.cpp ${PROTO_SRC} ${PROTO_HEADER})
 target_link_libraries(client ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
 target_link_libraries(server ${BRPC_LIB} ${DYNAMIC_LIB} ${GPERFTOOLS_LIBRARIES})
 
-file(COPY ${CMAKE_SOURCE_DIR}/server_list
+file(COPY ${PROJECT_SOURCE_DIR}/server_list
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

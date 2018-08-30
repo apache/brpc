@@ -158,7 +158,7 @@ inline const IOBuf::BlockRef& IOBuf::_ref_at(size_t i) const {
 
 inline const IOBuf::BlockRef* IOBuf::_pref_at(size_t i) const {
     if (_small()) {
-        return i < (!!_sv.refs[0].block + !!_sv.refs[1].block) ? &_sv.refs[i] : NULL;
+        return i < (size_t)(!!_sv.refs[0].block + !!_sv.refs[1].block) ? &_sv.refs[i] : NULL;
     } else {
         return i < _bv.nref ? &_bv.ref_at(i) : NULL;
     }

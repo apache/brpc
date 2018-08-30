@@ -115,7 +115,6 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     // << Flags >>
     static const uint32_t FLAGS_IGNORE_EOVERCROWDED = 1;
     static const uint32_t FLAGS_SECURITY_MODE = (1 << 1);
-    // Incremented Server._concurrency
     static const uint32_t FLAGS_ADDED_CONCURRENCY = (1 << 2);
     static const uint32_t FLAGS_READ_PROGRESSIVELY = (1 << 3);
     static const uint32_t FLAGS_PROGRESSIVE_READER = (1 << 4);

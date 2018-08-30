@@ -1,0 +1,253 @@
+{"test_case":[
+
+{
+    "case_name":"CheckPeakQps",
+    "max_concurrency":"140",
+    "qps_stage_list":
+    [
+        {
+            "lower_bound":3000,
+            "upper_bound":3000,
+            "duration_sec":30,
+            "type":2
+        }
+    ],
+    "latency_stage_list":
+    [
+        {
+            "lower_bound":20000,
+            "upper_bound":20000,
+            "duration_sec":30,
+            "type":2
+        }
+    ]
+},
+
+
+{
+    "case_name":"qps_stable_noload, latency_raise_smooth",
+    "max_concurrency":"auto",
+    "qps_stage_list":
+    [
+        {
+            "lower_bound":1500,
+            "upper_bound":1500,
+            "duration_sec":190,
+            "type":2
+        }
+    ],
+    "latency_stage_list":
+    [
+        {
+            "lower_bound":2000,
+            "upper_bound":90000,
+            "duration_sec":200,
+            "type":2
+        }
+    ]
+},
+
+
+{
+    "case_name":"qps_fluctuate_noload, latency_stable",
+    "max_concurrency":"auto",
+    "qps_stage_list":
+    [
+        {
+            "lower_bound":300,
+            "upper_bound":1800,
+            "duration_sec":290,
+            "type":1
+        }
+    ],
+    "latency_stage_list":
+    [
+        {
+            "lower_bound":40000,
+            "upper_bound":40000,
+            "duration_sec":300,
+            "type":1
+        }
+    ]
+},
+
+
+{
+    "case_name":"qps_stable_overload, latency_stable",
+    "max_concurrency":"auto",
+    "qps_stage_list":
+    [
+        {
+            "lower_bound":3000,
+            "upper_bound":3000,
+            "duration_sec":180,
+            "type":2
+        }
+    ],
+    "latency_stage_list":
+    [
+        {
+            "lower_bound":40000,
+            "upper_bound":40000,
+            "duration_sec":200,
+            "type":2
+        }
+    ]
+},
+
+{
+    "case_name":"qps_stable_overload, latency_raise_smooth",
+    "max_concurrency":"auto",
+    "qps_stage_list":
+    [
+        {
+            "lower_bound":3000,
+            "upper_bound":3000,
+            "duration_sec":180,
+            "type":2
+        }
+    ],
+    "latency_stage_list":
+    [
+        {
+            "lower_bound":30000,
+            "upper_bound":80000,
+            "duration_sec":200,
+            "type":2
+        }
+    ]
+},
+
+{
+    "case_name":"qps_overload_then_noload, latency_stable",
+    "max_concurrency":"auto",
+    "qps_stage_list":
+    [
+        {
+            "lower_bound":200,
+            "upper_bound":2500,
+            "duration_sec":20,
+            "type":2
+        },
+        {
+            "lower_bound":2500,
+            "upper_bound":2500,
+            "duration_sec":150,
+            "type":2
+        },
+        {
+            "lower_bound":2500,
+            "upper_bound":1000,
+            "duration_sec":20,
+            "type":2
+        },
+        {
+            "lower_bound":1000,
+            "upper_bound":1000,
+            "duration_sec":150,
+            "type":2
+        }
+    ],
+    "latency_stage_list":
+    [
+        {
+            "lower_bound":30000,
+            "upper_bound":30000,
+            "duration_sec":200,
+            "type":2
+        }
+    ]
+},
+
+
+{
+    "case_name":"qps_noload_to_overload, latency_stable",
+    "max_concurrency":"auto",
+    "qps_stage_list":
+    [
+        {
+            "lower_bound":200,
+            "upper_bound":3000,
+            "duration_sec":150,
+            "type":2
+        },
+        {
+            "lower_bound":3000,
+            "upper_bound":3000,
+            "duration_sec":150,
+            "type":2
+        }
+   ],
+    "latency_stage_list":
+    [
+        {
+            "lower_bound":30000,
+            "upper_bound":30000,
+            "duration_sec":200,
+            "type":2
+        }
+    ]
+},
+
+{
+    "case_name":"qps_stable_noload, latency_leap_raise",
+    "max_concurrency":"auto",
+    "qps_stage_list":
+    [
+        {
+            "lower_bound":300,
+            "upper_bound":1800,
+            "duration_sec":20,
+            "type":2
+        },
+        {
+            "lower_bound":1800,
+            "upper_bound":1800,
+            "duration_sec":220,
+            "type":2
+        }
+    ],
+    "latency_stage_list":
+    [
+        {
+            "lower_bound":30000,
+            "upper_bound":30000,
+            "duration_sec":100,
+            "type":2
+        },
+        {
+            "lower_bound":50000,
+            "upper_bound":50000,
+            "duration_sec":100,
+            "type":2
+        }
+    ]
+},
+
+{
+    "case_name":"qps_fluctuate_noload, latency_fluctuate_noload",
+    "max_concurrency":"auto",
+    "qps_stage_list":
+    [
+        {
+            "lower_bound":300,
+            "upper_bound":1800,
+            "duration_sec":190,
+            "type":1
+        }
+    ],
+    "latency_stage_list":
+    [
+        {
+            "lower_bound":30000,
+            "upper_bound":50000,
+            "duration_sec":200,
+            "type":1
+        }
+    ]
+}
+
+
+
+
+]}

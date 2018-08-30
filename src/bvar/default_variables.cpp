@@ -20,10 +20,12 @@
 #include <sys/resource.h>                  // getrusage
 #include <dirent.h>                        // dirent
 #include <iomanip>                         // setw
-#if defined(OS_MACOSX)
+#if defined(__APPLE__)
 #include <libproc.h>
 #include <sys/resource.h>
+#else
 #endif
+
 #include "butil/time.h"
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/scoped_lock.h"
@@ -444,7 +446,7 @@ static bool read_proc_io(ProcIO* s) {
     memset(s, 0, sizeof(ProcIO));
     static pid_t pid = getpid();
     rusage_info_current rusage;
-    if (proc_pid_rusage(pid, RUSAGE_INFO_CURRENT, (void **)&rusage) != 0) {
+    if (proc_pid_rusage(pid, RUSAGE_INFO_CURRENT, (void**)&rusage) != 0) {
         PLOG(WARNING) << "Fail to proc_pid_rusage";
         return false;
     }
