@@ -1099,8 +1099,6 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
         if (rc == 0) {
             break;
         }
-        LOG(INFO) << "Header name: " << pair.name
-                  << ", header value: " << pair.value;
         const char* const name = pair.name.c_str();
         bool matched = false;
         if (name[0] == ':') { // reserved names
