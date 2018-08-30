@@ -54,8 +54,8 @@ private:
         const int _window_size;
         const int _max_error_percent;
         const double _smooth;
-        butil::atomic<bool> _init_completed;
-        butil::atomic<int>  _sample_count;
+
+        butil::atomic<int64_t> BAIDU_CACHELINE_ALIGNMENT _sample_count;
         butil::atomic<int64_t> _ema_error_cost;
         butil::atomic<int64_t> _ema_latency;
         butil::atomic<bool> _broken;

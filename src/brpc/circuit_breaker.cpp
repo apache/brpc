@@ -31,7 +31,7 @@ DEFINE_int32(circuit_breaker_long_window_error_percent, 3,
 DEFINE_int32(circuit_breaker_min_error_cost_us, 100,
     "The minimum error_cost, when the ema of error cost is less than this "
     "value, it will be set to zero.");
-DEFINE_int32(circuit_breaker_max_failed_latency_mutliple, 2,
+DEFINE_int32(circuit_breaker_max_failed_latency_mutilple, 2,
     "The maximum multiple of the latency of the failed request relative to "
     "the average latency of the success requests.");
 
@@ -54,7 +54,6 @@ CircuitBreaker::EmaErrorRecorder::EmaErrorRecorder(int window_size,
     : _window_size(window_size)
     , _max_error_percent(max_error_percent)
     , _smooth(std::pow(EPSILON, 1.0/window_size))
-    , _init_completed(false)
     , _sample_count(0)
     , _ema_error_cost(0)
     , _ema_latency(0) 
@@ -77,16 +76,10 @@ bool CircuitBreaker::EmaErrorRecorder::OnCallEnd(int error_code,
         healthy = UpdateErrorCost(latency, ema_latency);
     }
 
-    int sample_count = _sample_count.fetch_add(1, butil::memory_order_relaxed);
-    bool init_completed = _init_completed.load(butil::memory_order_acquire);
-    if (!init_completed && sample_count >= _window_size) {
-        _init_completed.store(true, butil::memory_order_release);
-        init_completed = true;
-    }
-    
-    if (!init_completed) {
+    if (_sample_count.fetch_add(1, butil::memory_order_relaxed) < _window_size) {
         return true;
     }
+    
     if (!healthy) {
         _broken.store(true, butil::memory_order_relaxed);
     }
@@ -94,7 +87,6 @@ bool CircuitBreaker::EmaErrorRecorder::OnCallEnd(int error_code,
 }
 
 void CircuitBreaker::EmaErrorRecorder::Reset() {
-    _init_completed.store(false, butil::memory_order_relaxed);
     _sample_count.store(0, butil::memory_order_relaxed);
     _ema_error_cost.store(0, butil::memory_order_relaxed);
     _ema_latency.store(0, butil::memory_order_relaxed);
@@ -102,8 +94,8 @@ void CircuitBreaker::EmaErrorRecorder::Reset() {
 }
 
 int64_t CircuitBreaker::EmaErrorRecorder::UpdateLatency(int64_t latency) {
-    while (true) {
-        int64_t ema_latency = _ema_latency.load(butil::memory_order_relaxed);
+    int64_t ema_latency = _ema_latency.load(butil::memory_order_relaxed);
+    do {
         int64_t next_ema_latency = 0;
         if (0 == ema_latency) {
             next_ema_latency = latency;
@@ -113,12 +105,12 @@ int64_t CircuitBreaker::EmaErrorRecorder::UpdateLatency(int64_t latency) {
         if (_ema_latency.compare_exchange_weak(ema_latency, next_ema_latency)) {
             return next_ema_latency;
         }
-    }
+    } while(true);
 }
 
 bool CircuitBreaker::EmaErrorRecorder::UpdateErrorCost(int64_t error_cost, 
                                                        int64_t ema_latency) {
-    const int max_mutilple = FLAGS_circuit_breaker_max_failed_latency_mutliple;
+    const int max_mutilple = FLAGS_circuit_breaker_max_failed_latency_mutilple;
     error_cost = std::min(ema_latency * max_mutilple, error_cost);
     //Errorous response
     if (error_cost != 0) {
@@ -131,9 +123,8 @@ bool CircuitBreaker::EmaErrorRecorder::UpdateErrorCost(int64_t error_cost,
     }
 
     //Ordinary response
-    while (true) {
-        int64_t ema_error_cost = 
-            _ema_error_cost.load(butil::memory_order_relaxed);
+    int64_t ema_error_cost = _ema_error_cost.load(butil::memory_order_relaxed);
+    do {
         if (ema_error_cost == 0) {
             break;
         } else if (ema_error_cost < FLAGS_circuit_breaker_min_error_cost_us) {
@@ -148,7 +139,7 @@ bool CircuitBreaker::EmaErrorRecorder::UpdateErrorCost(int64_t error_cost,
                 break;
             }
         }
-    }
+    } while (true);
     return true;
 }
 
