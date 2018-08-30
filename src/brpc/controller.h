@@ -593,7 +593,7 @@ private:
     bool is_used_by_rpc() const { return has_flag(FLAGS_USED_BY_RPC); }
 
     // Get sock option. .e.g get vip info through ttm kernel module hook,
-    int get_sock_opt(int level, int optname, void* optval, socklen_t* optlen);
+    int GetSockOption(int level, int optname, void* optval, socklen_t* optlen);
 
 private:
     // NOTE: align and group fields to make Controller as compact as possible.
