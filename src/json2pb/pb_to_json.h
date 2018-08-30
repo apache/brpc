@@ -38,6 +38,11 @@ struct Pb2JsonOptions {
     // encoding when this option is turned on.
     // Default: false for baidu-internal, true otherwise.
     bool bytes_to_base64;
+
+    // Convert the repeated field that has no entry
+    // to a empty array of json when this option is turned on.
+    // Default: false
+    bool jsonify_empty_array;
 };
 
 // Convert protobuf `messge' to `json' according to `options'.
