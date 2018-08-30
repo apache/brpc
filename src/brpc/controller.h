@@ -130,6 +130,7 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_USED_BY_RPC = (1 << 13);
     static const uint32_t FLAGS_REQUEST_WITH_AUTH = (1 << 15);
     static const uint32_t FLAGS_PB_JSONIFY_EMPTY_ARRAY = (1 << 16);
+    static const uint32_t FLAGS_ENABLED_CIRCUIT_BREAKER = (1 << 17);
     
 public:
     Controller();
@@ -601,6 +602,16 @@ private:
     void set_used_by_rpc() { add_flag(FLAGS_USED_BY_RPC); }
     bool is_used_by_rpc() const { return has_flag(FLAGS_USED_BY_RPC); }
 
+<<<<<<< HEAD
+=======
+    // Get sock option. .e.g get vip info through ttm kernel module hook,
+    int GetSockOption(int level, int optname, void* optval, socklen_t* optlen);
+
+    bool has_enabled_circuit_breaker() const { 
+        return has_flag(FLAGS_ENABLED_CIRCUIT_BREAKER); 
+    }
+
+>>>>>>> Replace _enable_circuit_breaker with FALGS_ENABLED_CIRCUIT_BREAKER
 private:
     // NOTE: align and group fields to make Controller as compact as possible.
 
@@ -622,7 +633,6 @@ private:
     // Some of them are copied from `Channel' which might be destroyed
     // after CallMethod.
     int _max_retry;
-    bool _enable_circuit_breaker;
     const RetryPolicy* _retry_policy;
     // Synchronization object for one RPC call. It remains unchanged even 
     // when retry happens. Synchronous RPC will wait on this id.

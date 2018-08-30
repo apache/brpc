@@ -216,7 +216,6 @@ void Controller::InternalReset(bool in_constructor) {
     _rpc_dump_meta = NULL;
     _request_protocol = PROTOCOL_UNKNOWN;
     _max_retry = UNSET_MAGIC_NUM;
-    _enable_circuit_breaker = false;
     _retry_policy = NULL;
     _correlation_id = INVALID_BTHREAD_ID;
     _connection_type = CONNECTION_TYPE_UNKNOWN;
@@ -259,7 +258,6 @@ void Controller::InternalReset(bool in_constructor) {
 Controller::Call::Call(Controller::Call* rhs)
     : nretry(rhs->nretry)
     , need_feedback(rhs->need_feedback)
-    , enable_circuit_breaker(rhs->enable_circuit_breaker)
     , touched_by_stream_creator(rhs->touched_by_stream_creator)
     , peer_id(rhs->peer_id)
     , begin_time_us(rhs->begin_time_us)
@@ -268,7 +266,6 @@ Controller::Call::Call(Controller::Call* rhs)
     // setting all the fields to next call and _current_call.OnComplete
     // will behave incorrectly.
     rhs->need_feedback = false;
-    rhs->enable_circuit_breaker = false;
     rhs->touched_by_stream_creator = false;
     rhs->peer_id = (SocketId)-1;
 }
@@ -280,7 +277,6 @@ Controller::Call::~Call() {
 void Controller::Call::Reset() {
     nretry = 0;
     need_feedback = false;
-    enable_circuit_breaker = false;
     touched_by_stream_creator = false;
     peer_id = (SocketId)-1;
     begin_time_us = 0;
@@ -767,6 +763,10 @@ void Controller::Call::OnComplete(Controller* c, int error_code/*note*/,
         c->stream_creator()->CleanupSocketForStream(
             sending_sock.get(), c, error_code);
     }
+    if (enable_circuit_breaker) {
+        sending_sock->FeedbackCircuitBreaker(error_code, 
+            butil::gettimeofday_us() - begin_time_us);
+    }
     // Release the `Socket' we used to send/receive data
     sending_sock.reset(NULL);
     
@@ -774,13 +774,6 @@ void Controller::Call::OnComplete(Controller* c, int error_code/*note*/,
         const LoadBalancer::CallInfo info =
             { begin_time_us, peer_id, error_code, c };
         c->_lb->Feedback(info);
-    }
-    if (enable_circuit_breaker) {
-        SocketUniquePtr sock;
-        if (Socket::Address(peer_id, &sock) == 0) {
-            sock->FeedbackCircuitBreaker(error_code, 
-                butil::gettimeofday_us() - begin_time_us);
-        }
     }
 }
 
@@ -974,7 +967,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
 
     // Pick a target server for sending RPC
     _current_call.need_feedback = false;
-    _current_call.enable_circuit_breaker = _enable_circuit_breaker;
+    _current_call.enable_circuit_breaker = has_enabled_circuit_breaker();
     SocketUniquePtr tmp_sock;
     if (SingleServer()) {
         // Don't use _current_call.peer_id which is set to -1 after construction
