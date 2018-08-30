@@ -49,7 +49,7 @@ namespace policy {
 // 3. Use service->name() (rather than service->full_name()) + method_index
 //    to locate method defined in .proto file
 // 4. 'user_message_size' is the size of protobuf request,
-//    and should be set iff request/response has attachment
+//    and should be set if request/response has attachment
 // 5. Not supported:
 //    chunk_info                   - hulu doesn't support either
 //    TalkType                     - nobody has use this so far in hulu
@@ -355,7 +355,12 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
         sample->set_method_index(meta.method_index());
         sample->set_compress_type(req_cmp_type);
         sample->set_protocol_type(PROTOCOL_HULU_PBRPC);
-        sample->set_attachment_size(meta.user_message_size());
+        sample->set_user_data(meta.user_data());
+        if (meta.has_user_message_size()
+            && static_cast<size_t>(meta.user_message_size()) < msg->payload.size()) {
+            size_t attachment_size = msg->payload.size() - meta.user_message_size();
+            sample->set_attachment_size(attachment_size);
+        }
         sample->request = msg->payload;
         sample->submit(start_parse_us);
     }
@@ -645,6 +650,7 @@ void PackHuluRequest(butil::IOBuf* req_buf,
         meta.set_method_index(cntl->rpc_dump_meta()->method_index());
         meta.set_compress_type(
             CompressType2Hulu(cntl->rpc_dump_meta()->compress_type()));
+        meta.set_user_data(cntl->rpc_dump_meta()->user_data());
     } else {
         return cntl->SetFailed(ENOMETHOD, "method is NULL");
     }
