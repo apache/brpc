@@ -277,6 +277,7 @@ Controller::Call::~Call() {
 void Controller::Call::Reset() {
     nretry = 0;
     need_feedback = false;
+    enable_circuit_breaker = false;
     touched_by_stream_creator = false;
     peer_id = (SocketId)-1;
     begin_time_us = 0;
