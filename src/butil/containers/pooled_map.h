@@ -85,7 +85,7 @@ template <class T1, size_t BLOCK_SIZE> class PooledAllocator;
 template <typename K, typename V, size_t BLOCK_SIZE = 512,
           typename C = std::less<K> >
 class PooledMap
-    : public std::map<K, V, C, details::PooledAllocator<int, BLOCK_SIZE> > {
+    : public std::map<K, V, C, details::PooledAllocator<std::pair<const K, V>, BLOCK_SIZE> > {
     
 };
 
