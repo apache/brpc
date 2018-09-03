@@ -68,6 +68,8 @@ int main(int argc, char* argv[]) {
         // Because `done'(last parameter) is NULL, this function waits until
         // the response comes back or error occurs(including timedout).
         stub.SayHello(&cntl, &request, &response, NULL);
+        //cntl.http_request().uri() = FLAGS_server;
+        //channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         if (!cntl.Failed()) {
             LOG(INFO) << "Received response from " << cntl.remote_side()
                 << " to " << cntl.local_side()
@@ -75,7 +77,10 @@ int main(int argc, char* argv[]) {
                 << cntl.response_attachment() << ")"
                 << " latency=" << cntl.latency_us() << "us";
         } else {
-            LOG(WARNING) << cntl.ErrorText();
+            LOG(WARNING) << cntl.ErrorCode() << ": " << cntl.ErrorText()
+                         << ", grpc-status=" << cntl.grpc_status()
+                         << ", grpc-message=" << cntl.grpc_message();
+
         }
         usleep(FLAGS_interval_ms * 1000L);
     }

@@ -46,9 +46,10 @@ public:
         if (FLAGS_gzip) {
             cntl->set_response_compress_type(brpc::COMPRESS_TYPE_GZIP);
         }
-        std::string prefix("Hello ");
         LOG(INFO) << "req=" << req->name();
-        res->set_message(prefix + req->name());
+        res->set_message("Hello " + req->name());
+        // If an error happens, use controller::set_grpc_error_code to set errors
+        // e.g., cntl->set_grpc_error_code(brpc::GRPC_RESOURCEEXHAUSTED, "test grpc message");
     }
 };
 

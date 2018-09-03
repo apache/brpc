@@ -19,6 +19,7 @@
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/server.h"
 #include "butil/base64.h"
+#include "brpc/log.h"
 
 namespace brpc {
 
@@ -780,6 +781,7 @@ H2ParseResult H2StreamContext::OnResetStream(
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
     if (_conn_ctx->is_client_side()) {
+        // todo(zhujiashun): convert it
         sctx->header().set_status_code(HTTP_STATUS_INTERNAL_SERVER_ERROR);
         sctx->header()._h2_error = h2_error;
         return MakeH2Message(sctx);
@@ -1099,6 +1101,8 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
         if (rc == 0) {
             break;
         }
+        RPC_VLOG << "Header name: " << pair.name
+                 << ", header value: " << pair.value;
         const char* const name = pair.name.c_str();
         bool matched = false;
         if (name[0] == ':') { // reserved names
@@ -1514,16 +1518,15 @@ void H2UnsentRequest::Describe(butil::IOBuf* desc) const {
     }
 }
 
-H2UnsentResponse::H2UnsentResponse(Controller* c)
+H2UnsentResponse::H2UnsentResponse(Controller* c, const TrailerMessage& trailers)
     : _size(0)
     , _stream_id(c->http_request().h2_stream_id())
     , _http_response(c->release_http_response())
-    , _grpc_protocol(ParseContentType(c->http_request().content_type()) ==
-                     HTTP_CONTENT_GRPC) {
+    , _trailers(trailers) {
     _data.swap(c->response_attachment());
 }
 
-H2UnsentResponse* H2UnsentResponse::New(Controller* c) {
+H2UnsentResponse* H2UnsentResponse::New(Controller* c, const TrailerMessage& trailers) {
     const HttpHeader* const h = &c->http_response();
     const CommonStrings* const common = get_common_strings();
     const bool need_content_length =
@@ -1534,7 +1537,7 @@ H2UnsentResponse* H2UnsentResponse::New(Controller* c) {
         + (size_t)need_content_type;
     const size_t memsize = offsetof(H2UnsentResponse, _list) +
         sizeof(HPacker::Header) * maxsize;
-    H2UnsentResponse* msg = new (malloc(memsize)) H2UnsentResponse(c);
+    H2UnsentResponse* msg = new (malloc(memsize)) H2UnsentResponse(c, trailers);
     // :status
     if (h->status_code() == 200) {
         msg->push(common->H2_STATUS, common->STATUS_200);
@@ -1594,14 +1597,12 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
 
     butil::IOBufAppender trailer_appender;
     butil::IOBuf trailer_frag;
-    if (_grpc_protocol) {
-        // TODO(zhujiashun): how to decide status code and status message
-        HPacker::Header status("grpc-status", "0");
-        hpacker.Encode(&trailer_appender, status, options);
-        HPacker::Header message("grpc-message", "");
-        hpacker.Encode(&trailer_appender, message, options);
-        trailer_appender.move_to(trailer_frag);
+    for (TrailerMessage::iterator it = _trailers.begin();
+        it != _trailers.end(); ++it) {
+        HPacker::Header header(it->first, it->second);
+        hpacker.Encode(&trailer_appender, header, options);
     }
+    trailer_appender.move_to(trailer_frag);
 
     // flow control
     int64_t c_win = ctx->_remote_conn_window_size.load(butil::memory_order_relaxed);

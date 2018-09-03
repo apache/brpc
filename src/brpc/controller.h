@@ -40,6 +40,7 @@
 #include "brpc/callback.h"
 #include "brpc/progressive_attachment.h"       // ProgressiveAttachment
 #include "brpc/progressive_reader.h"           // ProgressiveReader
+#include "brpc/grpc.h"
 
 // EAUTH is defined in MAC
 #ifndef EAUTH
@@ -466,6 +467,13 @@ public:
     }
     std::string thrift_method_name() { return _thrift_method_name; }
 
+    void set_grpc_error_code(GrpcStatus status, const std::string& msg) {
+        _grpc_status = status;
+        _grpc_message = msg;
+    }
+    GrpcStatus grpc_status() { return _grpc_status; }
+    std::string grpc_message() { return _grpc_message; }
+
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request
@@ -700,6 +708,9 @@ private:
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;
     uint32_t _thrift_seq_id;
+
+    GrpcStatus _grpc_status;
+    std::string _grpc_message;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be
