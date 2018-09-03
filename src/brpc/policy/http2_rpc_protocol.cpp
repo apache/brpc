@@ -1206,6 +1206,8 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
         if (rc == 0) {
             break;
         }
+        RPC_VLOG << "Header name: " << pair.name
+                 << ", header value: " << pair.value;
         const char* const name = pair.name.c_str();
         bool matched = false;
         if (name[0] == ':') { // reserved names
@@ -1627,7 +1629,15 @@ void H2UnsentRequest::Describe(butil::IOBuf* desc) const {
     }
 }
 
-H2UnsentResponse* H2UnsentResponse::New(Controller* c, int stream_id) {
+H2UnsentResponse::H2UnsentResponse(Controller* c, const TrailerMessage& trailers)
+    : _size(0)
+    , _stream_id(c->http_request().h2_stream_id())
+    , _http_response(c->release_http_response())
+    , _trailers(trailers) {
+    _data.swap(c->response_attachment());
+}
+
+H2UnsentResponse* H2UnsentResponse::New(Controller* c, const TrailerMessage& trailers) {
     const HttpHeader* const h = &c->http_response();
     const CommonStrings* const common = get_common_strings();
     const bool need_content_length =
@@ -1638,7 +1648,7 @@ H2UnsentResponse* H2UnsentResponse::New(Controller* c, int stream_id) {
         + (size_t)need_content_type;
     const size_t memsize = offsetof(H2UnsentResponse, _list) +
         sizeof(HPacker::Header) * maxsize;
-    H2UnsentResponse* msg = new (malloc(memsize)) H2UnsentResponse(c, stream_id);
+    H2UnsentResponse* msg = new (malloc(memsize)) H2UnsentResponse(c, trailers);
     // :status
     if (h->status_code() == 200) {
         msg->push(common->H2_STATUS, common->STATUS_200);
@@ -1710,14 +1720,12 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
 
     butil::IOBufAppender trailer_appender;
     butil::IOBuf trailer_frag;
-    if (_grpc_protocol) {
-        // TODO(zhujiashun): how to decide status code and status message
-        HPacker::Header status("grpc-status", "0");
-        hpacker.Encode(&trailer_appender, status, options);
-        HPacker::Header message("grpc-message", "");
-        hpacker.Encode(&trailer_appender, message, options);
-        trailer_appender.move_to(trailer_frag);
+    for (TrailerMessage::iterator it = _trailers.begin();
+        it != _trailers.end(); ++it) {
+        HPacker::Header header(it->first, it->second);
+        hpacker.Encode(&trailer_appender, header, options);
     }
+    trailer_appender.move_to(trailer_frag);
 
     PackH2Message(out, frag, trailer_frag, _data, _stream_id, ctx);
     return butil::Status::OK();

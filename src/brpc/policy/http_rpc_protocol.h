@@ -69,6 +69,8 @@ struct CommonStrings {
     std::string TRAILERS;
     std::string GRPC_ENCODING;
     std::string GRPC_ACCEPT_ENCODING;
+    std::string GRPC_STATUS;
+    std::string GRPC_MESSAGE;
 
     CommonStrings();
 };

@@ -37,6 +37,7 @@
 #include "brpc/policy/gzip_compress.h"
 #include "brpc/policy/http2_rpc_protocol.h"
 #include "brpc/details/usercode_backup_pool.h"
+#include "brpc/grpc.h"
 
 extern "C" {
 void bthread_assign_data(void* data);
@@ -133,6 +134,8 @@ CommonStrings::CommonStrings()
     , TRAILERS("trailers")
     , GRPC_ENCODING("grpc-encoding")
     , GRPC_ACCEPT_ENCODING("grpc-accept-encoding")
+    , GRPC_STATUS("grpc-status")
+    , GRPC_MESSAGE("grpc-message")
 {}
 
 static CommonStrings* common = NULL;
@@ -268,12 +271,13 @@ void ProcessHttpResponse(InputMessageBase* msg) {
     CHECK(cntl->response_attachment().empty());
     const int saved_error = cntl->ErrorCode();
 
-    char compressed_grpc = false;
-    if (ParseContentType(res_header->content_type()) == HTTP_CONTENT_GRPC &&
-        !res_body.empty()) {
+    char grpc_compressed = false;
+    bool grpc_protocol =
+        ParseContentType(res_header->content_type()) == HTTP_CONTENT_GRPC;
+    if (grpc_protocol && !res_body.empty()) {
         /* 4 is the size of grpc Message-Length in Length-Prefixed-Message*/
         char buf[4];
-        res_body.cut1(&compressed_grpc);
+        res_body.cut1(&grpc_compressed);
         res_body.cutn(buf, 4);
         int message_length = ReadBigEndian4Bytes(buf);
         CHECK(message_length == res_body.length()) << message_length
@@ -294,6 +298,7 @@ void ProcessHttpResponse(InputMessageBase* msg) {
                 }
             }
         }
+
 
         if (imsg_guard->read_body_progressively()) {
             // Set RPA if needed
@@ -375,7 +380,7 @@ void ProcessHttpResponse(InputMessageBase* msg) {
         const std::string* grpc_encoding =
             res_header->GetHeader(common->GRPC_ENCODING);
         if ((encoding != NULL && *encoding == common->GZIP) ||
-            (compressed_grpc && grpc_encoding != NULL && *grpc_encoding ==
+            (grpc_compressed && grpc_encoding != NULL && *grpc_encoding ==
             common->GZIP)) {
             TRACEPRINTF("Decompressing response=%lu",
                         (unsigned long)res_body.size());
@@ -386,7 +391,6 @@ void ProcessHttpResponse(InputMessageBase* msg) {
             }
             res_body.swap(uncompressed);
         }
-        // message body is json
         if (content_type == HTTP_CONTENT_PROTO ||
             content_type == HTTP_CONTENT_GRPC) {
             if (!ParsePbFromIOBuf(cntl->response(), res_body)) {
@@ -394,6 +398,7 @@ void ProcessHttpResponse(InputMessageBase* msg) {
                 break;
             }
         } else {
+            // message body is json
             butil::IOBufAsZeroCopyInputStream wrapper(res_body);
             std::string err;
             json2pb::Json2PbOptions options;
@@ -404,6 +409,40 @@ void ProcessHttpResponse(InputMessageBase* msg) {
             }
         }
     } while (0);
+
+    do {
+        if (!grpc_protocol) {
+            break;
+        }
+        // begin to handle grpc case
+        const std::string* grpc_status = res_header->GetHeader(common->GRPC_STATUS);
+        const std::string* grpc_message = res_header->GetHeader(common->GRPC_MESSAGE);
+
+        if (grpc_status) {
+            GrpcStatus status = (GrpcStatus)strtol(grpc_status->data(), NULL, 10);
+            cntl->set_grpc_error_code(status, grpc_message? *grpc_message: "");
+            cntl->SetFailed(EGRPC, grpc_message? grpc_message->c_str(): "");
+            break;
+        }
+        // grpc-status is absent in http header, just convert error code
+        // to grpc status
+        if (!cntl->Failed()) {
+            break;
+        }
+        if (cntl->ErrorCode() == EHTTP) {
+            cntl->set_grpc_error_code(
+                    HttpStatus2GrpcStatus(res_header->status_code()),
+                    cntl->ErrorText());
+            // use empty string since gprc-status and grpc-message is absent
+            cntl->SetFailed(EGRPC, "");
+            break;
+        }
+        cntl->set_grpc_error_code(ErrorCode2GrpcStatus(cntl->ErrorCode()),
+                cntl->ErrorText());
+        // use empty string since gprc-status and grpc-message is absent
+        cntl->SetFailed(EGRPC, "");
+    } while (0);
+
     // Unlocks correlation_id inside. Revert controller's
     // error code if it version check of `cid' fails
     imsg_guard.reset();
@@ -748,7 +787,8 @@ HttpResponseSender::~HttpResponseSender() {
     bool grpc_compressed = false;
     bool grpc_protocol =
         ParseContentType(req_header->content_type()) == HTTP_CONTENT_GRPC;
-    if (cntl->Failed()) {
+
+    if (cntl->Failed() && !grpc_protocol) {
         // Set status-code with default value(converted from error code)
         // if user did not set it.
         if (res_header->status_code() == HTTP_STATUS_OK) {
@@ -802,26 +842,52 @@ HttpResponseSender::~HttpResponseSender() {
         }
     }
 
+    TrailerMessage trailers;
     if (grpc_protocol) {
+        // status code is always 200 according to grpc protocol
+        res_header->set_status_code(HTTP_STATUS_OK);
+        res_header->set_content_type(common->CONTENT_TYPE_GRPC);
+
+        GrpcStatus status = accessor.grpc_status();
+        std::string message = accessor.grpc_message();
+        if (status == GRPC_OK && cntl->Failed()) {
+            // In this case, request may not be handled by user-defined method or
+            // users use cntl.SetFailed to set grpc error instead of using
+            // cntl.set_grpc_error_code
+            status = ErrorCode2GrpcStatus(cntl->ErrorCode());
+            message = cntl->ErrorText();
+        }
+
+        std::string message_encoded;
+        percent_encode(message, &message_encoded);
+
+        trailers[common->GRPC_STATUS] = butil::string_printf("%d", status);
+        if (!message_encoded.empty()) {
+            trailers[common->GRPC_MESSAGE] = message_encoded;
+        }
+
         // always tell client gzip support
         // TODO(zhujiashun): add zlib and snappy?
         res_header->SetHeader(common->GRPC_ACCEPT_ENCODING,
             common->IDENTITY + "," + common->GZIP);
 
-        butil::IOBuf tmp_buf;
-        // Compressed-Flag as 0 / 1, encoded as 1 byte unsigned integer
-        if (grpc_compressed) {
-            tmp_buf.append("\1", 1);
+        if (status == GRPC_OK) {
+            butil::IOBuf tmp_buf;
+            // Compressed-Flag as 0 / 1, encoded as 1 byte unsigned integer
+            if (grpc_compressed) {
+                tmp_buf.append("\1", 1);
+            } else {
+                tmp_buf.append("\0", 1);
+            }
+            char size_buf[4];
+            WriteBigEndian4Bytes(size_buf, cntl->response_attachment().size());
+            tmp_buf.append(size_buf, 4);
+            tmp_buf.append(cntl->response_attachment());
+            cntl->response_attachment().swap(tmp_buf);
         } else {
-            tmp_buf.append("\0", 1);
+            cntl->response_attachment().clear();
         }
-        char size_buf[4];
-        WriteBigEndian4Bytes(size_buf, cntl->response_attachment().size());
-        tmp_buf.append(size_buf, 4);
-        tmp_buf.append(cntl->response_attachment());
-        cntl->response_attachment().swap(tmp_buf);
     }
-
 
     int rc = -1;
     // Have the risk of unlimited pending responses, in which case, tell
@@ -829,8 +895,8 @@ HttpResponseSender::~HttpResponseSender() {
     Socket::WriteOptions wopt;
     wopt.ignore_eovercrowded = true;
     if (req_header->is_http2()) {
-        SocketMessagePtr<H2UnsentResponse>
-            h2_response(H2UnsentResponse::New(cntl, _h2_stream_id));
+        SocketMessagePtr<H2UnsentResponse> h2_response(
+                H2UnsentResponse::New(cntl, trailers));
         if (h2_response == NULL) {
             LOG(ERROR) << "Fail to make http2 response";
             errno = EINVAL;
@@ -1195,11 +1261,12 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     imsg_guard->header().Swap(req_header);
     butil::IOBuf& req_body = imsg_guard->body();
 
-    char compressed_grpc = false;
-    if (ParseContentType(req_header.content_type()) == HTTP_CONTENT_GRPC) {
+    char grpc_compressed = false;
+    if (ParseContentType(req_header.content_type()) == HTTP_CONTENT_GRPC &&
+        !req_body.empty()) {
         /* 4 is the size of grpc Message-Length in Length-Prefixed-Message*/
         char buf[4];
-        req_body.cut1(&compressed_grpc);
+        req_body.cut1(&grpc_compressed);
         req_body.cutn(buf, 4);
         int message_length = ReadBigEndian4Bytes(buf);
         CHECK(message_length == req_body.length());
@@ -1391,7 +1458,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
             const std::string* grpc_encoding =
                 req_header.GetHeader(common->GRPC_ENCODING);
             if ((encoding != NULL && *encoding == common->GZIP) ||
-                (compressed_grpc && grpc_encoding != NULL && *grpc_encoding ==
+                (grpc_compressed && grpc_encoding != NULL && *grpc_encoding ==
                  common->GZIP)) {
                 TRACEPRINTF("Decompressing request=%lu",
                             (unsigned long)req_body.size());
