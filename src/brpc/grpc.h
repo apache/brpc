@@ -18,6 +18,7 @@
 #define BRPC_GRPC_H
 
 #include <map>
+#include <brpc/http2.h>
 
 namespace brpc {
 
@@ -139,11 +140,15 @@ enum GrpcStatus {
     // UNAUTHENTICATED indicates the request does not have valid
     // authentication credentials for the operation.
     GRPC_UNAUTHENTICATED,
+
+    GRPC_MAX,
 }; 
 
 GrpcStatus HttpStatus2GrpcStatus(int http_status);
 
 GrpcStatus ErrorCode2GrpcStatus(int error_code);
+
+GrpcStatus h2Error2GrpcStatus(H2Error h2_error);
 
 void percent_encode(const std::string& str, std::string* str_out);
 

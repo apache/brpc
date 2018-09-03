@@ -781,9 +781,11 @@ H2ParseResult H2StreamContext::OnResetStream(
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
     if (_conn_ctx->is_client_side()) {
-        // todo(zhujiashun): convert it
         sctx->header().set_status_code(HTTP_STATUS_INTERNAL_SERVER_ERROR);
         sctx->header()._h2_error = h2_error;
+        sctx->header()._has_h2_error = true;
+        VLOG(99) << "Received ResetStream err= " << h2_error
+                 << " on client side";
         return MakeH2Message(sctx);
     } else {
         // No need to process the request.

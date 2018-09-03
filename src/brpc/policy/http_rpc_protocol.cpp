@@ -420,13 +420,22 @@ void ProcessHttpResponse(InputMessageBase* msg) {
             break;
         }
         // begin to handle grpc case
+
+        // Receive RST_Stream and h2_error is set correspondingly
+        if (res_header->has_h2_error()) {
+            cntl->set_grpc_error_code(h2Error2GrpcStatus(res_header->h2_error()), "");
+            cntl->SetFailed(EGRPC, "");
+            break;
+        }
         const std::string* grpc_status = res_header->GetHeader(common->GRPC_STATUS);
         const std::string* grpc_message = res_header->GetHeader(common->GRPC_MESSAGE);
 
         if (grpc_status) {
             GrpcStatus status = (GrpcStatus)strtol(grpc_status->data(), NULL, 10);
-            cntl->set_grpc_error_code(status, grpc_message? *grpc_message: "");
-            cntl->SetFailed(EGRPC, grpc_message? grpc_message->c_str(): "");
+            if (status != GRPC_OK) {
+                cntl->set_grpc_error_code(status, grpc_message? *grpc_message: "");
+                cntl->SetFailed(EGRPC, grpc_message? grpc_message->c_str(): "");
+            }
             break;
         }
         // grpc-status is absent in http header, just convert error code
@@ -779,23 +788,25 @@ static void SendHttpResponse(Controller *cntl,
     bool grpc_protocol =
         ParseContentType(req_header->content_type()) == HTTP_CONTENT_GRPC;
 
-    if (cntl->Failed() && !grpc_protocol) {
-        // Set status-code with default value(converted from error code)
-        // if user did not set it.
-        if (res_header->status_code() == HTTP_STATUS_OK) {
-            res_header->set_status_code(ErrorCode2StatusCode(cntl->ErrorCode()));
-        }
-        // Fill ErrorCode into header
-        res_header->SetHeader(common->ERROR_CODE,
-                              butil::string_printf("%d", cntl->ErrorCode()));
+    if (cntl->Failed()) {
+        if (!grpc_protocol) {
+            // Set status-code with default value(converted from error code)
+            // if user did not set it.
+            if (res_header->status_code() == HTTP_STATUS_OK) {
+                res_header->set_status_code(ErrorCode2StatusCode(cntl->ErrorCode()));
+            }
+            // Fill ErrorCode into header
+            res_header->SetHeader(common->ERROR_CODE,
+                                  butil::string_printf("%d", cntl->ErrorCode()));
 
-        // Fill body with ErrorText.
-        // user may compress the output and change content-encoding. However
-        // body is error-text right now, remove the header.
-        res_header->RemoveHeader(common->CONTENT_ENCODING);
-        res_header->set_content_type(common->CONTENT_TYPE_TEXT);
-        cntl->response_attachment().clear();
-        cntl->response_attachment().append(cntl->ErrorText());
+            // Fill body with ErrorText.
+            // user may compress the output and change content-encoding. However
+            // body is error-text right now, remove the header.
+            res_header->RemoveHeader(common->CONTENT_ENCODING);
+            res_header->set_content_type(common->CONTENT_TYPE_TEXT);
+            cntl->response_attachment().clear();
+            cntl->response_attachment().append(cntl->ErrorText());
+        }
     } else if (cntl->has_progressive_writer()) {
         // Transfer-Encoding is supported since HTTP/1.1
         if (res_header->major_version() < 2 && !res_header->before_http_1_1()) {

@@ -67,6 +67,38 @@ GrpcStatus ErrorCode2GrpcStatus(int error_code) {
     }
 }
 
+// The mapping can be found in
+// https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#errors
+GrpcStatus h2Error2GrpcStatus(H2Error h2_error) {
+    switch(h2_error) {
+        case H2_NO_ERROR:
+        case H2_PROTOCOL_ERROR:
+        case H2_INTERNAL_ERROR:
+            return GRPC_INTERNAL;
+        case H2_FLOW_CONTROL_ERROR:
+            return GRPC_RESOURCEEXHAUSTED;
+        case H2_SETTINGS_TIMEOUT:
+        case H2_STREAM_CLOSED_ERROR:
+        case H2_FRAME_SIZE_ERROR:
+            return GRPC_INTERNAL;
+        case H2_REFUSED_STREAM:
+            return GRPC_UNAVAILABLE;
+        case H2_CANCEL:
+            return GRPC_CANCELED;
+        case H2_COMPRESSION_ERROR:
+        case H2_CONNECT_ERROR:
+            return GRPC_INTERNAL;
+        case H2_ENHANCE_YOUR_CALM:
+            return GRPC_RESOURCEEXHAUSTED;
+        case H2_INADEQUATE_SECURITY:
+            return GRPC_PERMISSIONDENIED;
+        case H2_HTTP_1_1_REQUIRED:
+            return GRPC_INTERNAL;
+        default:
+            return GRPC_INTERNAL;
+    }
+}
+
 void percent_encode(const std::string& str, std::string* str_out) {
     std::ostringstream escaped;
     escaped.fill('0');

@@ -13,7 +13,8 @@ set(TEST_PROTO_FILES addressbook1.proto
                      repeated.proto
                      snappy_message.proto
                      v1.proto
-                     v2.proto)
+                     v2.proto
+                     grpc.proto)
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/test/hdrs)
 set(PROTOC_FLAGS ${PROTOC_FLAGS} -I${CMAKE_SOURCE_DIR}/src)
 compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_BINARY_DIR}/test
