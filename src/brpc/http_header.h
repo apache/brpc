@@ -69,6 +69,8 @@ public:
 
     H2Error h2_error() const { return _h2_error; }
 
+    bool has_h2_error() { return _has_h2_error; }
+
     // Get/set "Content-Type". Notice that you can't get "Content-Type"
     // via GetHeader().
     // possible values: "text/plain", "application/json" ...
@@ -162,6 +164,7 @@ friend void policy::ProcessHttpRequest(InputMessageBase *msg);
     std::pair<int, int> _version;
     int _h2_stream_id;
     H2Error _h2_error;
+    bool _has_h2_error;
 };
 
 const HttpHeader& DefaultHttpHeader();

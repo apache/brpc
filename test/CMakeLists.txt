@@ -13,12 +13,13 @@ set(TEST_PROTO_FILES addressbook1.proto
                      repeated.proto
                      snappy_message.proto
                      v1.proto
-                     v2.proto)
-file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/test/hdrs)
-set(PROTOC_FLAGS ${PROTOC_FLAGS} -I${PROJECT_SOURCE_DIR}/src)
-compile_proto(PROTO_HDRS PROTO_SRCS ${PROJECT_BINARY_DIR}/test
-                                    ${PROJECT_BINARY_DIR}/test/hdrs
-                                    ${PROJECT_SOURCE_DIR}/test
+                     v2.proto
+                     grpc.proto)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/test/hdrs)
+set(PROTOC_FLAGS ${PROTOC_FLAGS} -I${CMAKE_SOURCE_DIR}/src)
+compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_BINARY_DIR}/test
+                                    ${CMAKE_BINARY_DIR}/test/hdrs
+                                    ${CMAKE_SOURCE_DIR}/test
                                     "${TEST_PROTO_FILES}")
 add_library(TEST_PROTO_LIB OBJECT ${PROTO_SRCS} ${PROTO_HDRS})
 
