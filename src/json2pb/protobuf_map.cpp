@@ -13,6 +13,9 @@ bool IsProtobufMap(const FieldDescriptor* field) {
         return false;
     }
     const Descriptor* entry_desc = field->message_type();
+    if (entry_desc == NULL) {
+        return false;
+    }
     if (entry_desc->field_count() != 2) {
         return false;
     }
