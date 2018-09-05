@@ -152,6 +152,7 @@ TEST_F(GrpcTest, return_error) {
         test::GrpcService_Stub stub(&_channel);
         stub.Method(&cntl, &req, &res, NULL);
         EXPECT_TRUE(cntl.Failed());
+        EXPECT_EQ(cntl.ErrorCode(), brpc::EGRPC);
         EXPECT_EQ((int)cntl.grpc_status(), i);
         EXPECT_EQ(cntl.grpc_message(), butil::string_printf("%s%d", g_prefix.c_str(), i));
     }
