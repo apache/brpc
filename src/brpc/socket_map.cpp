@@ -158,7 +158,7 @@ void SocketMapRemove(const SocketMapKey& key) {
     SocketMap* m = get_client_side_socket_map();
     if (m) {
         // TODO: We don't have expected_id to pass right now since the callsite
-        // at NamingServiceThread is hard to be fixed right now. As long as
+        // at SharedNamingService is hard to be fixed right now. As long as
         // FLAGS_health_check_interval is limited to positive, SocketMapInsert
         // never replaces the sockets, skipping comparison is still right.
         m->Remove(key, (SocketId)-1);

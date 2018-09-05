@@ -71,15 +71,16 @@ int ListNamingService::GetServers(const char *service_name,
     return 0;
 }
 
-int ListNamingService::RunNamingService(const char* service_name,
-                                        NamingServiceActions* actions) {
+void ListNamingService::RunNamingService(const char* service_name,
+                                         NamingServiceActions* actions) {
     std::vector<ServerNode> servers;
     const int rc = GetServers(service_name, &servers);
     if (rc != 0) {
-        servers.clear();
+        delete actions;
+    } else {
+        _actions.reset(actions);
+        _actions->ResetServers(servers);
     }
-    actions->ResetServers(servers);
-    return 0;
 }
 
 void ListNamingService::Describe(

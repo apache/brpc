@@ -1,4 +1,4 @@
-// Copyright (c) 2014 Baidu, Inc.
+// Copyright (c) 2014 brpc authors.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,21 +14,20 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#ifndef BRPC_NAMING_SERVICE_THREAD_H
-#define BRPC_NAMING_SERVICE_THREAD_H
+#ifndef BRPC_SHARED_NAMING_SERVICE_H
+#define BRPC_SHARED_NAMING_SERVICE_H
 
 #include <string>
-#include "butil/intrusive_ptr.hpp"               // butil::intrusive_ptr
-#include "bthread/bthread.h"                    // bthread_t
+#include <bthread/bthread.h>                    // bthread_t
+#include "butil/intrusive_ptr.hpp"              // butil::intrusive_ptr
 #include "brpc/server_id.h"                     // ServerId
 #include "brpc/shared_object.h"                 // SharedObject
 #include "brpc/naming_service.h"                // NamingService
 #include "brpc/naming_service_filter.h"         // NamingServiceFilter
 
-
 namespace brpc {
 
-// Inherit this class to observer NamingService changes.
+// Inherit this class to observe NamingService changes.
 // NOTE: Same SocketId with different tags are treated as different entries.
 // When you change tag of a server, the server with the old tag will appear
 // in OnRemovedServers first, then in OnAddedServers with the new tag.
@@ -39,8 +38,8 @@ public:
     virtual void OnRemovedServers(const std::vector<ServerId>& servers) = 0;
 };
 
-struct GetNamingServiceThreadOptions {
-    GetNamingServiceThreadOptions()
+struct GetSharedNamingServiceOptions {
+    GetSharedNamingServiceOptions()
         : succeed_without_server(false)
         , log_succeed_without_server(true) {}
     
@@ -49,7 +48,7 @@ struct GetNamingServiceThreadOptions {
 };
 
 // A dedicated thread to map a name to ServerIds
-class NamingServiceThread : public SharedObject, public Describable {
+class SharedNamingService : public SharedObject, public Describable {
     struct ServerNodeWithId {
         ServerNode node;
         SocketId id;
@@ -60,19 +59,19 @@ class NamingServiceThread : public SharedObject, public Describable {
     };
     class Actions : public NamingServiceActions {
     public:
-        Actions(NamingServiceThread* owner);
+        Actions(SharedNamingService* owner);
         ~Actions();
-        void AddServers(const std::vector<ServerNode>& servers);
-        void RemoveServers(const std::vector<ServerNode>& servers);
+
+        // @NamingServiceActions
         void ResetServers(const std::vector<ServerNode>& servers);
-        int WaitForFirstBatchOfServers();
-        void EndWait(int error_code);
+
+    protected:
+        // @NamingServiceActions
+        void CleanUpImp();
 
     private:
-        NamingServiceThread* _owner;
-        bthread_id_t _wait_id;
-        butil::atomic<bool> _has_wait_error;
-        int _wait_error;
+        SharedNamingService* _owner;
+        butil::Mutex _mutex;
         std::vector<ServerNode> _last_servers;
         std::vector<ServerNode> _servers;
         std::vector<ServerNode> _added;
@@ -83,11 +82,14 @@ class NamingServiceThread : public SharedObject, public Describable {
     };
 
 public:    
-    NamingServiceThread();
-    ~NamingServiceThread();
+    SharedNamingService();
+    ~SharedNamingService();
 
-    int Start(const NamingService* ns, const std::string& service_name,
-              const GetNamingServiceThreadOptions* options);
+    int Start(const NamingService* ns,
+              const std::string& service_name,
+              const std::string& full_ns,
+              const GetSharedNamingServiceOptions* options);
+    
     int WaitForFirstBatchOfServers();
 
     int AddWatcher(NamingServiceWatcher* w, const NamingServiceFilter* f);
@@ -97,39 +99,39 @@ public:
     void Describe(std::ostream& os, const DescribeOptions&) const;
 
 private:
-    void Run();
-    static void* RunThis(void*);
-
     static void ServerNodeWithId2ServerId(
         const std::vector<ServerNodeWithId>& src,
         std::vector<ServerId>* dst, const NamingServiceFilter* filter);
 
+    void EndWait(int error_code);
+
     butil::Mutex _mutex;
-    bthread_t _tid;
-    // TODO: better use a name.
-    const NamingService* _source_ns;
     NamingService* _ns;
+    Actions* _actions;
+    bthread_id_t _wait_id;
+    butil::atomic<bool> _has_wait_error;
+    int _wait_error;
     std::string _service_name;
-    GetNamingServiceThreadOptions _options;
+    std::string _full_ns;  // normalized protocol://_service_name
+    GetSharedNamingServiceOptions _options;
     std::vector<ServerNodeWithId> _last_sockets;
-    Actions _actions;
     std::map<NamingServiceWatcher*, const NamingServiceFilter*> _watchers;
 };
 
-std::ostream& operator<<(std::ostream& os, const NamingServiceThread&);
+std::ostream& operator<<(std::ostream& os, const SharedNamingService&);
 
-// Get the decicated thread associated with `url' and put the thread into
-// `ns_thread'. Calling with same `url' shares and returns the same thread.
+// Get the NS associated with `url'.
+// Calling with same `url' shares and returns the same instance.
 // If the url is not accessed before, this function blocks until the
 // NamingService returns the first batch of servers. If no servers are
 // available, unless `options->succeed_without_server' is on, this function
 // returns -1.
 // Returns 0 on success, -1 otherwise.
-int GetNamingServiceThread(butil::intrusive_ptr<NamingServiceThread>* ns_thread,
+int GetSharedNamingService(butil::intrusive_ptr<SharedNamingService>* ns,
                            const char* url,
-                           const GetNamingServiceThreadOptions* options);
+                           const GetSharedNamingServiceOptions* options);
+
 
 } // namespace brpc
 
-
-#endif  // BRPC_NAMING_SERVICE_THREAD_H
+#endif  // BRPC_SHARED_NAMING_SERVICE_H

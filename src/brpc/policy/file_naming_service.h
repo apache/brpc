@@ -23,20 +23,28 @@
 namespace brpc {
 namespace policy {
 
-class FileNamingService : public NamingService {
-friend class ConsulNamingService;
-private:
-    int RunNamingService(const char* service_name,
-                         NamingServiceActions* actions);
+class ReloadFileTask;
 
-    int GetServers(const char *service_name,
-                   std::vector<ServerNode>* servers);
+class FileNamingService : public NamingService {
+friend class ReloadFileTask;
+friend class ConsulNamingService;
+public:
+    FileNamingService() : _task(NULL) {}
+private:
+    void RunNamingService(const char* service_name,
+                          NamingServiceActions* actions);
 
     void Describe(std::ostream& os, const DescribeOptions&) const;
 
     NamingService* New() const;
 
     void Destroy();
+private:
+    int GetServers(const char *service_name,
+                   std::vector<ServerNode>* servers);
+
+    // Not using intrusive_ptr to hide the inclusion.
+    ReloadFileTask* _task;
 };
 
 }  // namespace policy

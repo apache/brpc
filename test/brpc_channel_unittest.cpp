@@ -36,7 +36,7 @@ namespace policy {
 void SendRpcResponse(int64_t correlation_id, Controller* cntl, 
                      const google::protobuf::Message* req,
                      const google::protobuf::Message* res,
-                     const Server* server_raw, MethodStatus *, long);
+                     const Server* server_raw, MethodStatus *, int64_t);
 } // policy
 } // brpc
 
@@ -149,7 +149,7 @@ pthread_once_t register_mock_protocol = PTHREAD_ONCE_INIT;
 class ChannelTest : public ::testing::Test{
 protected:
     ChannelTest() 
-        : _ep(butil::IP_ANY, 8787)
+        : _ep(butil::IP_ANY, 9787)
         , _close_fd_once(false) {
         pthread_once(&register_mock_protocol, register_protocol);
         const brpc::InputMessageHandler pairs[] = {
@@ -230,7 +230,7 @@ protected:
             const google::protobuf::Message*,
             const google::protobuf::Message*,
             const brpc::Server*,
-            brpc::MethodStatus*, long>(
+            brpc::MethodStatus*, int64_t>(
                 &brpc::policy::SendRpcResponse,
                 meta.correlation_id(), cntl, NULL, res,
                 &ts->_dummy, NULL, -1);
@@ -702,7 +702,7 @@ protected:
         CallMethod(&subchans[0], &cntl, &req, &res, false);
         ASSERT_TRUE(cntl.Failed());
         ASSERT_EQ(brpc::EINTERNAL, cntl.ErrorCode()) << cntl.ErrorText();
-        ASSERT_EQ("[E2001][127.0.1.1:0]Method ComboEcho() not implemented.", cntl.ErrorText());
+        ASSERT_TRUE(butil::StringPiece(cntl.ErrorText()).ends_with("Method ComboEcho() not implemented."));
 
         // do the rpc call.
         cntl.Reset();
@@ -1867,7 +1867,7 @@ TEST_F(ChannelTest, init_using_naming_service) {
     brpc::LoadBalancerWithNaming* lb =
         dynamic_cast<brpc::LoadBalancerWithNaming*>(channel->_lb.get());
     ASSERT_TRUE(lb != NULL);
-    brpc::NamingServiceThread* ns = lb->_nsthread_ptr.get();
+    brpc::SharedNamingService* ns = lb->_nsthread_ptr.get();
 
     {
         const int NUM = 10;

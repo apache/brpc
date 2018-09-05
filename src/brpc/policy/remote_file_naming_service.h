@@ -35,8 +35,6 @@ private:
 
     NamingService* New() const;
     
-    void Destroy();
-    
 private:
     std::unique_ptr<Channel> _channel;
     std::string _server_addr;

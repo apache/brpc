@@ -153,9 +153,5 @@ NamingService* RemoteFileNamingService::New() const {
     return new RemoteFileNamingService;
 }
 
-void RemoteFileNamingService::Destroy() {
-    delete this;
-}
-
 }  // namespace policy
 } // namespace brpc

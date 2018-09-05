@@ -22,6 +22,8 @@
 #include "bthread/bthread.h"                            // bthread_usleep
 #include "brpc/log.h"
 #include "brpc/policy/file_naming_service.h"
+#include "brpc/periodic_task.h"
+#include "brpc/shared_object.h"
 
 
 namespace brpc {
@@ -112,40 +114,74 @@ int FileNamingService::GetServers(const char *service_name,
     return 0;
 }
 
-int FileNamingService::RunNamingService(const char* service_name,
-                                        NamingServiceActions* actions) {
+class ReloadFileTask : public PeriodicTask, public SharedObject {
+friend class FileNamingService;
+public:
+    // FileWatcher is copyable
+    ReloadFileTask(FileNamingService* owner,
+                   const butil::FileWatcher& fw,
+                   NamingServiceActions* actions)
+        : _owner(owner)
+        , _fw(fw)
+        , _actions(actions) {}
+    bool DoPeriodicTask(timespec* next_abstime);
+
+    void CleanUp();
+private:
+    std::unique_ptr<FileNamingService> _owner;
+    butil::Mutex _mutex;
+    butil::FileWatcher _fw;
+    std::unique_ptr<NamingServiceActions> _actions;
+};
+
+const int64_t RELOAD_FILE_MS = 100;
+
+void ReloadFileTask::CleanUp() {
+    _actions->CleanUp();
+}
+
+bool ReloadFileTask::DoPeriodicTask(timespec* next_abstime) {
+    if (next_abstime == NULL) {
+        // Remove the ref added for this task.
+        this->RemoveRefManually();
+        return true;
+    }
+    if (_actions->IsCleanedUp()) {
+        return false;
+    }
+    butil::FileWatcher::Change change = _fw.check_and_consume();
+    if (change <= 0) {
+        LOG_IF(ERROR, change < 0) << "`" << _fw.filepath() << "' was deleted";
+        return true;
+    }
+    std::vector<ServerNode> servers;
+    const int rc = _owner->GetServers(_fw.filepath(), &servers);
+    if (rc == 0) {
+        _actions->ResetServers(servers);
+    }
+    *next_abstime = butil::seconds_from_now(RELOAD_FILE_MS);
+    return true;
+}
+
+void FileNamingService::RunNamingService(const char* service_name,
+                                         NamingServiceActions* actions) {
     std::vector<ServerNode> servers;
     butil::FileWatcher fw;
     if (fw.init(service_name) < 0) {
-        LOG(ERROR) << "Fail to init FileWatcher on `" << service_name << "'";
-        return -1;
+        delete actions;
+        return;
     }
-    for (;;) {
-        const int rc = GetServers(service_name, &servers);
-        if (rc != 0) {
-            return rc;
-        }
-        actions->ResetServers(servers);
-
-        for (;;) {
-            butil::FileWatcher::Change change = fw.check_and_consume();
-            if (change > 0) {
-                break;
-            }
-            if (change < 0) {
-                LOG(ERROR) << "`" << service_name << "' was deleted";
-            }
-            if (bthread_usleep(100000L/*100ms*/) < 0) {
-                if (errno == ESTOP) {
-                    return 0;
-                }
-                PLOG(ERROR) << "Fail to sleep";
-                return -1;
-            }
-        }
+    const int rc = GetServers(service_name, &servers);
+    if (rc != 0) {
+        delete actions;
+        return;
     }
-    CHECK(false);
-    return -1;
+    actions->ResetServers(servers);
+    _task = new ReloadFileTask(this, fw, actions);
+    _task->AddRefManually();  // Add ref for this NS
+    _task->AddRefManually();  // Add ref for the task
+    PeriodicTaskManager::StartTaskAt(
+        _task, butil::milliseconds_from_now(RELOAD_FILE_MS));
 }
 
 void FileNamingService::Describe(std::ostream& os,
@@ -159,7 +195,17 @@ NamingService* FileNamingService::New() const {
 }
 
 void FileNamingService::Destroy() {
-    delete this;
+    if (_task) {
+        _task->CleanUp();
+        _task->RemoveRefManually();
+        _task = NULL;
+    } else {
+        // Ownership hasn't been transfered to _task, which should
+        // belong to _task in normal case since FileNamingService::
+        // GetServers may be called in DoPeriodicTask and FileNamingService
+        // should still be in a valid state.
+        delete this;
+    }
 }
 
 }  // namespace policy

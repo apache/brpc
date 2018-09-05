@@ -143,9 +143,5 @@ NamingService* DomainNamingService::New() const {
     return new DomainNamingService;
 }
 
-void DomainNamingService::Destroy() {
-    delete this;
-}
-
 }  // namespace policy
 } // namespace brpc
