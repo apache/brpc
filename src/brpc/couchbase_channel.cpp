@@ -98,7 +98,7 @@ int CouchbaseChannel::InitMemcacheChannel(
     std::string ns_url = policy::CouchbaseNamingService::BuildNsUrl(
                              servers, streaming_url, init_url, auth, unique_suffix);
     _service_name = ns_url.substr(kCouchbaseNamingServiceProtocol.size());
-    return _channel.Init(ns_url.c_str(), "cb_lb", options);
+    return _channel.Init(ns_url.c_str(), "cb_lb", &inner_options);
 }
 
 void CouchbaseChannel::CallMethod(const google::protobuf::MethodDescriptor* method,

@@ -15,7 +15,6 @@
 // Authors: Daojin Cai (caidaojin@qiyi.com)
 
 #include "brpc/couchbase.h"
-#include "brpc/policy/memcache_binary_header.h"
 #include "butil/logging.h"
 #include "butil/string_printf.h"
 #include "butil/sys_byteorder.h"

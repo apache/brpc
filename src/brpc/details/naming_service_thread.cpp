@@ -174,15 +174,27 @@ void NamingServiceThread::Actions::ResetServers(
 
     if (!_removed.empty() || !_added.empty()) {
         std::ostringstream info;
-        info << butil::class_name_str(*_owner->_ns) << "(\"" 
-             << _owner->_service_name << "\"):";
+        // Couchbase naming service is too long and print frequently.
+        butil::StringPiece service_name(_owner->_service_name);
+        std::string class_name = butil::class_name_str(*_owner->_ns);
+        bool too_heavy = false;
+        if (class_name == "brpc::policy::CouchbaseNamingService") {
+            too_heavy = true;
+            size_t pos = service_name.find('_');
+            service_name = service_name.substr(0, pos);
+        }
+        info << class_name << "(\"" << service_name << "\"):";
         if (!_added.empty()) {
             info << " added "<< _added.size();
         }
         if (!_removed.empty()) {
             info << " removed " << _removed.size();
         }
-        LOG(INFO) << info.str();
+        if (!too_heavy) { 
+            LOG(INFO) << info.str();
+        } else {
+            LOG_EVERY_N(INFO, 100) << info.str();
+        }
     }
 
     EndWait(servers.empty() ? ENODATA : 0);

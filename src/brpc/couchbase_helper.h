@@ -47,13 +47,13 @@ enum RetryReason {
     // Server is down, need retry other servers during rebalance.
     SERVER_DOWN = 3,
     // Server down and suggest to read replicas.
-    SERVER_DOWN_RETRY_REPLICAS = 3,
+    SERVER_DOWN_RETRY_REPLICAS = 4,
     // Server is not mapped to the bucket, need retry other servers.
-    RPC_SUCCESS_BUT_WRONG_SERVER = 4,
+    RPC_SUCCESS_BUT_WRONG_SERVER = 5,
     // Server is mapped to the bucket right, retry the same server during rebalance.
-    RPC_SUCCESS_BUT_RESPONSE_FAULT = 5, 
+    RPC_SUCCESS_BUT_RESPONSE_FAULT = 6, 
     // No need retry, response is ok.
-    RESPONSE_OK = 6,
+    RESPONSE_OK = 7,
 };
 
 // Will set in controller::_request_code

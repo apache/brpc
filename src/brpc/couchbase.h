@@ -19,6 +19,7 @@
 
 #include "brpc/memcache.h"
 #include "brpc/policy/memcache_binary_header.h"
+#include "butil/logging.h"
 
 namespace brpc {
 
@@ -77,11 +78,6 @@ public:
         return MemcacheRequest::Delete(key);
     }
 
-    bool Flush(uint32_t timeout) {
-        MemcacheRequest::Clear();
-        return MemcacheRequest::Flush(timeout);
-    }
-
     bool Increment(const butil::StringPiece& key, uint64_t delta,
                    uint64_t initial_value, uint32_t exptime) {
         MemcacheRequest::Clear();
@@ -99,11 +95,6 @@ public:
         return MemcacheRequest::Touch(key, exptime);
     }
 
-    bool Version() {
-        MemcacheRequest::Clear();
-        return MemcacheRequest::Version();
-    }
-    
     CouchbaseRequest* New() const { return new CouchbaseRequest;}
 
     void CopyFrom(const CouchbaseRequest& from) {
@@ -121,6 +112,12 @@ private:
     bool ReplicasGet(const butil::StringPiece& key, const size_t vbucket_id);
 
     void MergeFrom(const CouchbaseRequest& from);
+
+    // Do not support Version().
+    bool Version();
+
+    // Do not support Flush().
+    bool Flush(uint32_t timeout);
 
     int pipelined_count();
     
@@ -150,7 +147,6 @@ public:
 private:
     bool GetStatus(Status* status);
 		
-    void MergeFrom(const ::google::protobuf::Message& from);
     void MergeFrom(const CouchbaseResponse& from);
 
     int pipelined_count();
