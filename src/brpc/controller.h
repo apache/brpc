@@ -133,6 +133,7 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_ALLOW_DONE_TO_RUN_IN_PLACE = (1 << 12);
     static const uint32_t FLAGS_USED_BY_RPC = (1 << 13);
     static const uint32_t FLAGS_REQUEST_WITH_AUTH = (1 << 15);
+    static const uint32_t FLAGS_PB_JSONIFY_EMPTY_ARRAY = (1 << 16);
     
 public:
     Controller();
@@ -280,6 +281,11 @@ public:
     // to base64 string in HTTP request.
     void set_pb_bytes_to_base64(bool f) { set_flag(FLAGS_PB_BYTES_TO_BASE64, f); }
     bool has_pb_bytes_to_base64() const { return has_flag(FLAGS_PB_BYTES_TO_BASE64); }
+
+    // Set if convert the repeated field that has no entry to a empty array
+    // of json in HTTP response.
+    void set_pb_jsonify_empty_array(bool f) { set_flag(FLAGS_PB_JSONIFY_EMPTY_ARRAY, f); }
+    bool has_pb_jsonify_empty_array() const { return has_flag(FLAGS_PB_JSONIFY_EMPTY_ARRAY); }
 
     // Tell RPC that done of the RPC can be run in the same thread where
     // the RPC is issued, otherwise done is always run in a different thread.
@@ -459,6 +465,9 @@ public:
     int64_t idl_result() const { return _idl_result; }
 
     const std::string& thrift_method_name() { return _thrift_method_name; }
+
+    // Get sock option. .e.g get vip info through ttm kernel module hook,
+    int GetSockOption(int level, int optname, void* optval, socklen_t* optlen);
 
     CouchbaseContext* couchbase_context() { return _couchbase_context.get(); }
 

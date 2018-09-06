@@ -560,7 +560,7 @@ void SerializeRtmpRequest(butil::IOBuf* buf,
                           Controller* cntl,
                           const google::protobuf::Message* request);
 
-// ============== inlien impl. =================
+// ============== inline impl. =================
 // TODO(gejun): impl. do not work for big-endian machines.
 inline uint8_t Read1Byte(const void* void_buf) {
     return *(const char*)void_buf;

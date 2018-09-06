@@ -1382,6 +1382,16 @@ x509_st* Controller::get_peer_certificate() const {
     return s ? s->GetPeerCertificate() : NULL;
 }
 
+int Controller::GetSockOption(int level, int optname, void* optval, socklen_t* optlen) {
+    Socket* s = _current_call.sending_sock.get();
+    if (s) {
+        return getsockopt(s->fd(), level, optname, optval, optlen);
+    } else {
+        errno = EBADF;
+        return -1;
+    }
+}
+
 #if defined(OS_MACOSX)
 typedef sig_t SignalHandler;
 #else

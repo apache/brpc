@@ -321,6 +321,8 @@ int Sender::IssueRPC(int64_t start_realtime_us) {
     sub_cntl->set_request_compress_type(_main_cntl->request_compress_type());
     sub_cntl->set_log_id(_main_cntl->log_id());
     sub_cntl->set_request_code(_main_cntl->request_code());
+    // Forward request attachment to the subcall
+    sub_cntl->request_attachment().append(_main_cntl->request_attachment());
     
     sel_out.channel()->CallMethod(_main_cntl->_method,
                                   &r.sub_done->_cntl,

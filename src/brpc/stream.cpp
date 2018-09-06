@@ -276,7 +276,8 @@ int Stream::AppendIfNotFull(const butil::IOBuf &data) {
     butil::IOBuf copied_data(data);
     const int rc = _fake_socket_weak_ref->Write(&copied_data);
     if (rc != 0) {
-        CHECK_EQ(0, rc) << "Fail to write to _fake_socket, " << berror();
+        // Stream may be closed by peer before
+        LOG(WARNING) << "Fail to write to _fake_socket, " << berror();
         BAIDU_SCOPED_LOCK(_congestion_control_mutex);
         _produced -= data.length();
         return -1;
