@@ -26,7 +26,7 @@ DEFINE_bool(couchbase_disable_retry_during_active, false,
             "A swith indicating whether to open retry during active status");
 
 SocketId CouchbaseHelper::GetMaster(const VBucketServerMap* vb_map, 
-						            const size_t vb_id) {
+                                    const size_t vb_id) {
     if (vb_id < vb_map->vbucket.size()) {
         const int i = vb_map->vbucket[vb_id][0];
         if (i >= 0 && i < static_cast<int>(vb_map->server_list.size())) {
@@ -64,7 +64,7 @@ bool CouchbaseHelper::GetVBucketMapInfo(
     policy::CouchbaseLoadBalancer* lb = 
         dynamic_cast<policy::CouchbaseLoadBalancer*>(shared_lb->lb()); 
     CHECK(lb != nullptr) << "Failed to get couchbase load balancer.";
-    return lb->GetVBucketMapInfo(server_num, nullptr, rebalance);
+    return lb->GetVBucketMapInfo(server_num, vb_num, rebalance);
 }
 
 void CouchbaseHelper::UpdateDetectedMasterIfNeeded(
