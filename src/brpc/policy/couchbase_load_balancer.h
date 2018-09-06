@@ -62,7 +62,7 @@ public:
 private:	
     const VBucketServerMap* vbucket_map();
 
-	  bool IsInRebalancing(const VBucketServerMap* vb_map) const {
+    bool IsInRebalancing(const VBucketServerMap* vb_map) const {
         return !vb_map->fvbucket.empty();
     }
 

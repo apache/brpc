@@ -377,7 +377,7 @@ bool CouchbaseNamingService::ParseNsUrl(
     size_t init_pos = service_name.find(init_prefix, stream_pos);
     if (init_pos == service_name.npos) {
         return false;
-	  }
+    }
     streaming_url = service_name.substr(stream_pos, init_pos - stream_pos);
     init_pos += init_prefix.length();
 	
