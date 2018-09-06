@@ -131,6 +131,7 @@ private:
 
 // Response from couchbase.
 class CouchbaseResponse : public MemcacheResponse {
+friend class CouchbaseRetryPolicy;
 public:
     void Swap(CouchbaseResponse* other) {
         MemcacheResponse::Swap(other);
@@ -138,13 +139,18 @@ public:
 
     CouchbaseResponse* New() const { return new CouchbaseResponse;}
 
+    void CopyFrom(const ::google::protobuf::Message& from) {
+        MemcacheResponse::CopyFrom(from);
+    }
+
     void CopyFrom(const CouchbaseResponse& from) {
         MemcacheResponse::CopyFrom(from);
     }
 
-    bool GetStatus(Status* status);
-
 private:
+    bool GetStatus(Status* status);
+		
+    void MergeFrom(const ::google::protobuf::Message& from);
     void MergeFrom(const CouchbaseResponse& from);
 
     int pipelined_count();

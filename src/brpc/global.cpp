@@ -133,6 +133,8 @@ struct GlobalExtensions {
     ConsistentHashingLoadBalancer ch_mh_lb;
     ConsistentHashingLoadBalancer ch_md5_lb;
     DynPartLoadBalancer dynpart_lb;
+    // Only used by CouchbaseChannel. Users should not use this.
+    CouchbaseLoadBalancer cb_lb;
 
     AutoConcurrencyLimiter auto_cl;
     ConstantConcurrencyLimiter constant_cl;
