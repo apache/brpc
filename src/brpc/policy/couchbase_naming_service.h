@@ -17,72 +17,71 @@
 #ifndef  BRPC_POLICY_COUCHBASE_NAMING_SERVICE
 #define  BRPC_POLICY_COUCHBASE_NAMING_SERVICE
 
-#include <unordered_map>
-#include "brpc/periodic_naming_service.h"
+#include <map>
+#include "brpc/naming_service.h"
+#include "butil/macros.h"
 
 namespace brpc {
+
+class CouchbaseChannel;
+class NamingServiceActions;
+
+namespace policy {
 
 class CouchbaseServerListener;
 
-}
+class CouchbaseNamingService : public NamingService {
+friend class brpc::CouchbaseChannel;
+friend class CouchbaseServerListener;
+public:
+    CouchbaseNamingService();
+    ~CouchbaseNamingService();
 
-namespace brpc {
-namespace policy {
-
-// It is only used for couchbase channel. It updates servers for listen channel 
-// of CouchbaseServerListener. The naming service format is like
-// "couchbase_list://addr1:port,addr:port_****" where "_****" is a unique id for
-// each couchbase channel since we can not share naming service and "addr*:port"
-// are avalible servers for initializing.
-// After initialization, it get the latest server list periodically from 
-// 'servers_map' by service name as key. 
-class CouchbaseNamingService : public PeriodicNamingService {
-friend brpc::CouchbaseServerListener;
 private:
-    static butil::Mutex _mutex; 
-    // Store the lastest server list for each couchbase channel.
-    // Key is service name of each couchbase channel and value is the latest 
-    // server list. It is like following:
-    // key: addr1:port,addr2:port_****
-    // value: addr1:port,addr2:port,addr3:port 
-    static std::unordered_map<std::string, std::string> servers_map;
+    DISALLOW_COPY_AND_ASSIGN(CouchbaseNamingService);
 
-    int GetServers(const char *service_name,
-                   std::vector<ServerNode>* servers);
+    int RunNamingService(const char* service_name,
+                         NamingServiceActions* actions);
+
+    // We need a dedicated bthread to run this static NS.
+    bool RunNamingServiceReturnsQuickly() { return false; }
     
-    static bool ParseListenUrl(
-        const butil::StringPiece listen_url, std::string* server_address, 
-        std::string* streaming_uri, std::string* init_uri);
-    
-    // Clear naming server data when couchbase channel destroyed.
-    static void ClearNamingServiceData(const std::string& service_name) {
-        BAIDU_SCOPED_LOCK(_mutex);
-        servers_map.erase(service_name);
-    }
-
-    // Called by couchbase listener when vbucekt map changing. 
-    // It set new server list for key 'service_name' in servers_map.
-    static void ResetCouchbaseListenerServers(const std::string& service_name, 
-                                              std::string& new_servers);
-
-    // For couchbase listeners, we should not share this name service object.
-    // So we append couchbase listener address to make name_url unique.
-    // Input: couchbase_list://address1:port1,address2:port2
-    // Output: couchbase_list://address1:port1,address2:port2_****
-    static std::string AddUniqueSuffix(const char* name_url, 
-                                       const char* unique_id);
-
-    // Reserve handling to AddPrefixBeforeAddress.
-    void RemoveUniqueSuffix(std::string& name_service);
+    int ResetServers(const std::vector<std::string>& servers, std::string& vb_map);
 
     void Describe(std::ostream& os, const DescribeOptions& options) const;
 
     NamingService* New() const;
-
+    
     void Destroy();
+
+    static std::string BuildNsUrl(
+        const char* servers_addr, const std::string& streaming_url, 
+        const std::string& init_url, const std::string& auth, 
+        const std::string& unique_id);
+	
+    bool ParseNsUrl(const butil::StringPiece service_full_name, 
+                    butil::StringPiece& server_list, 
+                    butil::StringPiece& streaming_url, 
+                    butil::StringPiece& init_url, butil::StringPiece& auth);
+
+    void SetVBucketNumber(const size_t vb_num);
+
+    static size_t GetVBucketNumber(const std::string& service_name);
+
+    static std::map<std::string, CouchbaseNamingService*> _vbucket_num_map;
+
+    butil::atomic<size_t> _vbucket_num;
+
+    // Naming service of this CouchbaseNamingService.
+    std::string _service_name;
+	
+    NamingServiceActions* _actions;
+    // Listener monitor and update vbucket map.
+    std::unique_ptr<CouchbaseServerListener> _listener;
 };
 
 }  // namespace policy
 } // namespace brpc
+
 
 #endif  //BRPC_POLICY_COUCHBASE_NAMING_SERVICE

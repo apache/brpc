@@ -27,7 +27,7 @@ namespace brpc {
 // Do not support Flush/Version
 class CouchbaseRequest : public MemcacheRequest {
 friend class CouchbaseChannel;
-friend class VBucketContext; 
+friend class CouchbaseRetryPolicy;
 public:
     void Swap(CouchbaseRequest* other) {
         MemcacheRequest::Swap(other);

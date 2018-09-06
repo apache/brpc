@@ -43,6 +43,8 @@ public:
         return s != NULL && s->IsExcluded(id);
     }
 
+    SocketId GetLastId() const;
+
     // #servers inside.
     size_t size() const { return _l.size(); }
 
@@ -82,6 +84,11 @@ inline void ExcludedServers::Add(SocketId id) {
     if (last_id == NULL || *last_id != id) {
         _l.elim_push(id);
     }
+}
+
+inline SocketId ExcludedServers::GetLastId() const {
+    BAIDU_SCOPED_LOCK(_mutex);
+    return *(_l.bottom());
 }
 
 inline bool ExcludedServers::IsExcluded(SocketId id) const {

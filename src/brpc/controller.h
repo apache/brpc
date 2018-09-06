@@ -40,6 +40,7 @@
 #include "brpc/callback.h"
 #include "brpc/progressive_attachment.h"       // ProgressiveAttachment
 #include "brpc/progressive_reader.h"           // ProgressiveReader
+#include "brpc/couchbase_helper.h"
 
 // EAUTH is defined in MAC
 #ifndef EAUTH
@@ -62,6 +63,7 @@ class MongoContext;
 class RetryPolicy;
 class InputMessageBase;
 class ThriftStub;
+class CouchbaseContext;
 namespace policy {
 class OnServerStreamCreated;
 void ProcessMongoRequest(InputMessageBase*);
@@ -104,8 +106,8 @@ friend class ParallelChannelDone;
 friend class ControllerPrivateAccessor;
 friend class ServerPrivateAccessor;
 friend class SelectiveChannel;
+friend class CouchbaseRetryPolicy;
 friend class CouchbaseChannel;
-friend class CouchbaseDone;
 friend class ThriftStub;
 friend class schan::Sender;
 friend class schan::SubDone;
@@ -458,6 +460,8 @@ public:
 
     const std::string& thrift_method_name() { return _thrift_method_name; }
 
+    CouchbaseContext* couchbase_context() { return _couchbase_context.get(); }
+
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request
@@ -691,6 +695,9 @@ private:
 
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;
+
+    // Couchbase context during RPC.
+    std::unique_ptr<CouchbaseContext> _couchbase_context; 
 };
 
 // Advises the RPC system that the caller desires that the RPC call be

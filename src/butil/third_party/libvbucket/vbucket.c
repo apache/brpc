@@ -422,6 +422,44 @@ static int parse_vbucket_config(VBUCKET_CONFIG_HANDLE vb, cJSON *c)
     return 0;
 }
 
+static int parse_vbucket_brief(VBUCKET_CONFIG_HANDLE vb, cJSON *c)
+{
+    cJSON *json, *config;
+
+    config = cJSON_GetObjectItem(c, "vBucketServerMap");
+    if (config == NULL || config->type != cJSON_Object) {
+        /* seems like config without envelop, try to parse it */
+        config = c;
+    }
+
+    json = cJSON_GetObjectItem(config, "serverList");
+    if (json == NULL || json->type != cJSON_Array) {
+        vb->errmsg = strdup("Expected array for serverList");
+        return -1;
+    }
+    vb->num_servers = cJSON_GetArraySize(json);
+    if (vb->num_servers == 0) {
+        vb->errmsg = strdup("Empty serverList");
+        return -1;
+    }
+    if (populate_servers(vb, json) != 0) {
+        return -1;
+    }
+	
+    json = cJSON_GetObjectItem(config, "vBucketMap");
+    if (json == NULL || json->type != cJSON_Array) {
+        vb->errmsg = strdup("Expected array for vBucketMap");
+        return -1;
+    }
+    vb->num_vbuckets = cJSON_GetArraySize(json);
+    if (vb->num_vbuckets == 0 || (vb->num_vbuckets & (vb->num_vbuckets - 1)) != 0) {
+        vb->errmsg = strdup("Number of vBuckets must be a power of two > 0 and <= " STRINGIFY(MAX_VBUCKETS));
+        return -1;
+    }
+
+    return 0;
+}
+
 static int server_cmp(const void *s1, const void *s2)
 {
     return strcmp(((const struct server_st *)s1)->authority,
@@ -484,6 +522,12 @@ static int parse_ketama_config(VBUCKET_CONFIG_HANDLE vb, cJSON *config)
     return 0;
 }
 
+static int parse_ketama_brief(VBUCKET_CONFIG_HANDLE vb, cJSON *config)
+{
+    // TODO
+    return -1;
+}
+
 static int parse_cjson(VBUCKET_CONFIG_HANDLE handle, cJSON *config)
 {
     cJSON *json;
@@ -525,6 +569,47 @@ static int parse_cjson(VBUCKET_CONFIG_HANDLE handle, cJSON *config)
     }
 
     return 0;
+}
+
+static int parse_config_brief(VBUCKET_CONFIG_HANDLE vb, const char* data)
+{
+    int ret;
+    cJSON *config, *json;
+    config = cJSON_Parse(data);
+    if (config == NULL) {
+        vb->errmsg = strdup("Failed to parse data. Invalid JSON?");
+        return -1;
+    }
+
+    ret = 0;
+    json = cJSON_GetObjectItem(config, "nodeLocator");
+    if (json == NULL) {
+        vb->distribution = VBUCKET_DISTRIBUTION_VBUCKET;
+    } else if (json->type == cJSON_String) {
+        if (strcmp(json->valuestring, "vbucket") == 0) {
+            vb->distribution = VBUCKET_DISTRIBUTION_VBUCKET;
+        } else if (strcmp(json->valuestring, "ketama") == 0) {
+            vb->distribution = VBUCKET_DISTRIBUTION_KETAMA;
+        } else {
+            ret = -1;
+        }
+    } else {
+        vb->errmsg = strdup("Expected string for nodeLocator");
+        ret = -1;
+    }
+
+    if (ret == 0) {
+        if (vb->distribution == VBUCKET_DISTRIBUTION_VBUCKET) {
+            ret = parse_vbucket_brief(vb, config);
+        } else if (vb->distribution == VBUCKET_DISTRIBUTION_KETAMA) {
+            ret = parse_ketama_brief(vb, config);
+        } else {
+            ret = -1;
+        }
+    }
+
+    cJSON_Delete(config);
+    return ret;
 }
 
 static int parse_from_memory(VBUCKET_CONFIG_HANDLE handle, const char *data)
@@ -662,6 +747,22 @@ VBUCKET_CONFIG_HANDLE vbucket_config_parse_file(const char *filename)
 VBUCKET_CONFIG_HANDLE vbucket_config_parse_string(const char *data)
 {
     return backwards_compat(LIBVBUCKET_SOURCE_MEMORY, data);
+}
+
+VBUCKET_CONFIG_HANDLE vbucket_brief_parse_string(const char *data)
+{
+    VBUCKET_CONFIG_HANDLE ret = vbucket_config_create();
+    if (ret == NULL) {
+        return NULL;
+    }
+
+    if (parse_config_brief(ret, data) != 0) {
+        errstr = strdup(ret->errmsg);
+        vbucket_config_destroy(ret);
+        ret = NULL;
+    }
+
+    return ret;
 }
 
 int vbucket_map(VBUCKET_CONFIG_HANDLE vb, const void *key, size_t nkey,

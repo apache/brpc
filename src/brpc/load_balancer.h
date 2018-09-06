@@ -110,6 +110,7 @@ DECLARE_bool(show_lb_in_vars);
 
 // A intrusively shareable load balancer created from name.
 class SharedLoadBalancer : public SharedObject, public NonConstDescribable {
+friend class CouchbaseHelper;
 public:
     SharedLoadBalancer();
     ~SharedLoadBalancer();
@@ -166,7 +167,9 @@ public:
 private:
     static void DescribeLB(std::ostream& os, void* arg);
     void ExposeLB();
-
+    // Only used by CouchbaseHelper now.
+    LoadBalancer* lb() const { return _lb; }
+	
     LoadBalancer* _lb;
     butil::atomic<int> _weight_sum;
     volatile bool _exposed;

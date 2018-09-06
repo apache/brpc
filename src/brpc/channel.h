@@ -125,7 +125,6 @@ class Channel : public ChannelBase {
 friend class Controller;
 friend class SelectiveChannel;
 friend class CouchbaseChannel;
-friend class CouchbaseServerListener;
 public:
     Channel(ProfilerLinker = ProfilerLinker());
     ~Channel();

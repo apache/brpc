@@ -31,6 +31,7 @@
 #include "brpc/policy/remote_file_naming_service.h"
 #include "brpc/policy/consul_naming_service.h"
 #include "brpc/policy/couchbase_naming_service.h"
+#include "brpc/policy/couchbase_listener_naming_service.h"
 
 // Load Balancers
 #include "brpc/policy/round_robin_load_balancer.h"
@@ -40,6 +41,7 @@
 #include "brpc/policy/consistent_hashing_load_balancer.h"
 #include "brpc/policy/hasher.h"
 #include "brpc/policy/dynpart_load_balancer.h"
+#include "brpc/policy/couchbase_load_balancer.h"
 
 // Compress handlers
 #include "brpc/compress.h"
@@ -120,7 +122,9 @@ struct GlobalExtensions {
     DomainNamingService dns;
     RemoteFileNamingService rfns;
     ConsulNamingService cns;
-    CouchbaseNamingService cblns;
+    // Only used by CouchbaseChannel. Users should not use this.
+    CouchbaseNamingService cbns;
+    CouchbaseListenerNamingService cblns;
 
     RoundRobinLoadBalancer rr_lb;
     WeightedRoundRobinLoadBalancer wrr_lb;
@@ -339,7 +343,8 @@ static void GlobalInitializeOrDieImpl() {
   NamingServiceExtension()->RegisterOrDie("redis", &g_ext->dns);
     NamingServiceExtension()->RegisterOrDie("remotefile", &g_ext->rfns);
     NamingServiceExtension()->RegisterOrDie("consul", &g_ext->cns);
-    NamingServiceExtension()->RegisterOrDie("couchbase_list", &g_ext->cblns);
+    NamingServiceExtension()->RegisterOrDie("couchbase_listener", &g_ext->cblns);
+    NamingServiceExtension()->RegisterOrDie("couchbase_channel", &g_ext->cbns);
 
     // Load Balancers
     LoadBalancerExtension()->RegisterOrDie("rr", &g_ext->rr_lb);
@@ -349,6 +354,7 @@ static void GlobalInitializeOrDieImpl() {
     LoadBalancerExtension()->RegisterOrDie("c_murmurhash", &g_ext->ch_mh_lb);
     LoadBalancerExtension()->RegisterOrDie("c_md5", &g_ext->ch_md5_lb);
     LoadBalancerExtension()->RegisterOrDie("_dynpart", &g_ext->dynpart_lb);
+    LoadBalancerExtension()->RegisterOrDie("cb_lb", &g_ext->cb_lb);
 
     // Compress Handlers
     const CompressHandler gzip_compress =

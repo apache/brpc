@@ -164,6 +164,14 @@ namespace butil {
     VBUCKET_CONFIG_HANDLE vbucket_config_parse_string(const char *data);
 
     /**
+     * Create an instance of vbucket config only including brief information.
+     *
+     * @param data a vbucket config string.
+     */
+    LIBVBUCKET_PUBLIC_API
+	VBUCKET_CONFIG_HANDLE vbucket_brief_parse_string(const char *data);
+
+    /**
      * Destroy a vbucket config.
      *
      * @param h the vbucket config handle

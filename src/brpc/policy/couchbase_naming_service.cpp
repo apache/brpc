@@ -12,128 +12,318 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Authors: Cai,Daojin (Caidaojin@qiyi.com)
+// Authors: Cai,Daojin (caidaojin@qiyi.com)
 
 #include <stdlib.h>                                   // strtol
 #include <string>                                     // std::string
 #include <set>                                        // std::set
-#include "butil/string_splitter.h"                     // StringSplitter
-#include "butil/strings/string_piece.h"
-#include "butil/strings/string_split.h"
-#include "butil/strings/string_number_conversions.h"
+
+#include "brpc/channel.h"
 #include "brpc/log.h"
+#include "brpc/policy/couchbase_listener_naming_service.h"
 #include "brpc/policy/couchbase_naming_service.h"
+#include "butil/status.h"
+#include "brpc/progressive_reader.h"
+#include "bthread/bthread.h"
+#include "butil/string_splitter.h"
+#include "butil/strings/string_number_conversions.h"
+#include "butil/third_party/libvbucket/vbucket.h"
 
 namespace brpc {
 namespace policy {
 
-// Defined in file_naming_service.cpp
-bool SplitIntoServerAndTag(const butil::StringPiece& line,
-                           butil::StringPiece* server_addr,
-                           butil::StringPiece* tag);
+DEFINE_int32(couchbase_listen_retry_times, 5,
+             "Retry times to create couchbase vbucket map monitoring connection."
+             "Listen thread will sleep a while when reach this times.");
+DEFINE_int32(couchbase_listen_interval_ms, 1000, 
+             "Listen thread sleep for the number of milliseconds after creating"
+             "vbucket map monitoring connection failure.");
 
-butil::Mutex CouchbaseNamingService::_mutex; 
-std::unordered_map<std::string, std::string> CouchbaseNamingService::servers_map;
+namespace {
 
-bool CouchbaseNamingService::ParseListenUrl(
-    const butil::StringPiece listen_url, std::string* server, 
-    std::string* streaming_uri, std::string* init_uri) {
-    do {
-        const size_t pos = listen_url.find("//");
-        if (pos == listen_url.npos) {
-            break;
+// Each vbucket map json string is spiltted by "\n\n\n\n".
+const std::string kSeparator("\n\n\n\n");
+
+}
+
+class CouchbaseServerListener;
+
+class VBucketMapReader : public brpc::ProgressiveReader {
+public:
+    VBucketMapReader(CouchbaseServerListener* listener) : _listener(listener) {}
+    ~VBucketMapReader() = default;
+
+    virtual butil::Status OnReadOnePart(const void* data, size_t length);
+    
+    virtual void OnEndOfMessage(const butil::Status& status);
+
+    void Attach() { _attach = true; }
+    void Detach() { _attach = false; }
+    bool IsAttached() { return _attach; }
+    // The couchbase channel has been distructed.
+    void Destroy() { _listener = nullptr; }
+
+public:
+    VBucketMapReader(const VBucketMapReader&) = delete;
+    VBucketMapReader& operator=(const VBucketMapReader&) = delete;    
+    
+    // It is monitoring vbucket map if it is true.
+    bool _attach = false;
+    CouchbaseServerListener* _listener;
+    std::string _buf;
+    butil::Mutex _mutex;
+};
+
+class CouchbaseServerListener {
+public:
+    CouchbaseServerListener(
+        const butil::StringPiece& server_list, const butil::StringPiece& streaming_url, 
+        const butil::StringPiece& init_url, const butil::StringPiece& auth, CouchbaseNamingService* ns)
+        : _streaming_url(streaming_url.data(), streaming_url.length()),
+          _auth(auth.data(), auth.length()),
+	        _ns(ns),
+          _reader(new VBucketMapReader(this)) {
+        Init(server_list, init_url);
+    }
+    ~CouchbaseServerListener();
+   
+    void UpdateVBucketMap(std::string&& vb_map);
+    
+    void CreateListener();
+    
+private:
+    CouchbaseServerListener(const CouchbaseServerListener&) = delete;
+    CouchbaseServerListener& operator=(const CouchbaseServerListener&) = delete;
+
+    void Init(const butil::StringPiece& server_list, const  butil::StringPiece& init_url);
+
+    bool InitVBucketMap(const std::string& url);
+
+    static void* ListenThread(void* arg);
+
+    bthread_t _listen_bth;
+    // REST/JSON url to monitor vbucket map.
+    std::string _streaming_url;
+    std::string _auth;
+    std::string _listen_port;
+    std::string _service_name;
+	  CouchbaseNamingService* _ns;
+    // Monitor couchbase vbuckets map on this channel. 
+    brpc::Channel _listen_channel;
+    // If _reader is not attached to listen socket, it will be released in
+    // CouchbaseServerListener desconstruction. Otherwise, it will be released
+    // by itself.
+    VBucketMapReader* _reader;
+};
+
+butil::Status VBucketMapReader::OnReadOnePart(const void* data, size_t length) {
+    BAIDU_SCOPED_LOCK(_mutex);
+    // If '_listener' is desconstructed, return error status directly.    
+    if (_listener == nullptr) {
+        return butil::Status(-1, "Couchbase channel is destroyed");
+    }
+
+    _buf.append(static_cast<const char*>(data), length);
+    const size_t end_pos = _buf.rfind(kSeparator);
+    if (end_pos != std::string::npos) {
+        size_t begin_pos = _buf.rfind(kSeparator, end_pos - 1);
+        if (begin_pos == std::string::npos) {
+            begin_pos = 0;
+        } else {
+            begin_pos += kSeparator.size();
         }
-        const size_t host_pos = listen_url.find('/', pos + 2);        
-        if (host_pos == listen_url.npos) {
-            break;
+        std::string vb_map = _buf.substr(begin_pos, end_pos);
+        _buf = _buf.substr(end_pos + kSeparator.size());
+        _listener->UpdateVBucketMap(std::move(vb_map));
+    } 
+    return butil::Status::OK();
+}
+
+void VBucketMapReader::OnEndOfMessage(const butil::Status& status) {
+    {    
+        BAIDU_SCOPED_LOCK(_mutex);
+        if (_listener != nullptr) {
+            _buf.clear();
+            Detach();
+            _listener->CreateListener();
+            return;
         }
-        butil::StringPiece sub_str = listen_url.substr(pos + 2, host_pos - pos - 2);
-        server->clear();
-        server->append(sub_str.data(), sub_str.length());
-        butil::StringPiece uri_sub = listen_url;
-        uri_sub.remove_prefix(host_pos);
-        size_t uri_pos = uri_sub.find("/bucketsStreaming/");
-        if (uri_pos != uri_sub.npos) {
-            streaming_uri->clear();
-            streaming_uri->append(uri_sub.data(), uri_sub.length()); 
-            init_uri->clear();
-            init_uri->append(uri_sub.data(), uri_pos);
-            init_uri->append("/buckets/");
-            butil::StringPiece bucket_name = uri_sub;
-            bucket_name.remove_prefix(uri_pos + std::strlen("/bucketsStreaming/"));
-            init_uri->append(bucket_name.data(), bucket_name.length());
+    }
+    // If '_listener' is desconstructed, release this object.    
+    std::unique_ptr<VBucketMapReader> release(this);
+}
+
+CouchbaseServerListener::~CouchbaseServerListener() {
+    std::unique_lock<butil::Mutex> mu(_reader->_mutex);
+    bthread_stop(_listen_bth);
+    bthread_join(_listen_bth, nullptr);
+    if (!_reader->IsAttached()) {
+        mu.unlock();
+        std::unique_ptr<VBucketMapReader> p(_reader);
+    } else {
+        _reader->Destroy();
+    }
+    CouchbaseListenerNamingService::ClearNamingServiceData(_service_name);
+}
+
+void CouchbaseServerListener::Init(const butil::StringPiece& server_list, 
+                                   const butil::StringPiece& init_url) {
+    brpc::ChannelOptions options;
+    options.protocol = PROTOCOL_HTTP;
+    options.max_retry = FLAGS_couchbase_listen_retry_times;
+    std::string ns_url("couchbase_listener://");
+    ns_url.append(server_list.data(), server_list.length());
+    std::string unique_id = "_" + butil::Uint64ToString(reinterpret_cast<uint64_t>(this));
+    ns_url += unique_id;
+    _service_name.append(server_list.data(), server_list.length());
+    _service_name += unique_id;
+    CHECK(_listen_channel.Init(ns_url.c_str(), "rr", &options) == 0) 
+        << "Failed to init listen channel.";
+    const std::string init_url_str(init_url.data(), init_url.length());
+    InitVBucketMap(init_url_str);
+    CreateListener();
+}
+ 
+bool CouchbaseServerListener::InitVBucketMap(const std::string& uri) {
+    Controller cntl;
+    if (!_auth.empty()) {
+        cntl.http_request().SetHeader("Authorization", _auth);
+    }
+    cntl.http_request().uri() = uri;
+    _listen_channel.CallMethod(nullptr, &cntl, nullptr, nullptr, nullptr);
+    if (!cntl.Failed()) {
+        std::string vb_map = cntl.response_attachment().to_string();
+        if (!vb_map.empty()) {
+            _listen_port = butil::IntToString(cntl.remote_side().port);
+            UpdateVBucketMap(std::move(vb_map));
             return true;
         }
-        uri_pos = uri_sub.find("/buckets/");
-        if (uri_pos != uri_sub.npos) {
-            init_uri->clear();
-            init_uri->append(uri_sub.data(), uri_sub.length()); 
-            streaming_uri->clear();
-            streaming_uri->append(uri_sub.data(), uri_pos);
-            streaming_uri->append("/bucketsStreaming/");
-            butil::StringPiece bucket_name = uri_sub; 
-            bucket_name.remove_prefix(uri_pos + std::strlen("/buckets/"));
-            streaming_uri->append(bucket_name.data(), bucket_name.length());
-            return true;
-        }
-    } while (false);
-    LOG(FATAL) << "Failed to parse listen url \'" <<  listen_url << "\'.";
+    }
+    LOG(ERROR) << "Failed to init vbucket map: " << cntl.ErrorText();
     return false;
 }
 
-int CouchbaseNamingService::GetServers(const char *service_name,
-                                       std::vector<ServerNode>* servers) {
-    servers->clear();
-    // Sort/unique the inserted vector is faster, but may have a different order
-    // of addresses from the file. To make assertions in tests easier, we use
-    // set to de-duplicate and keep the order.
-    std::set<ServerNode> presence;
-    std::string line;
+void* CouchbaseServerListener::ListenThread(void* arg) {
+    CouchbaseServerListener* listener = 
+        static_cast<CouchbaseServerListener*>(arg);
+    while (true) {
+        listener->_reader->Detach();  
+        Controller cntl;
+        if (!listener->_auth.empty()) {
+            cntl.http_request().SetHeader("Authorization", listener->_auth);
+        }
+        cntl.http_request().uri() = listener->_streaming_url;
+        cntl.response_will_be_read_progressively();
+        listener->_listen_channel.CallMethod(nullptr, &cntl, 
+                                             nullptr, nullptr, nullptr);
+        if (cntl.Failed()) {
+            LOG(ERROR) << "Failed to create vbucket map reader: " 
+                       << cntl.ErrorText();
+            if (bthread_usleep(FLAGS_couchbase_listen_interval_ms * 1000) < 0) {
+                if (errno == ESTOP) {
+                    LOG(INFO) << "ListenThread is stopped.";
+                    break;
+                }
+                LOG(ERROR) << "Failed to sleep.";
+            }
+            cntl.Reset();
+            continue;
+        }
+        // Set listen port if init failure in InitVBucketMap. 
+        if (listener->_listen_port.empty()) {
+            listener->_listen_port = butil::IntToString(cntl.remote_side().port);
+        } 
+        listener->_reader->Attach();  
+        cntl.ReadProgressiveAttachmentBy(listener->_reader);  
+        break;
+    }
+    
+    return nullptr;
+}
 
-    if (!service_name) {
-        LOG(FATAL) << "Param[service_name] is NULL";
-        return -1;
+void CouchbaseServerListener::CreateListener() {
+    // TODO: keep one listen thread waiting on futex.
+    CHECK(bthread_start_urgent(
+        &_listen_bth, nullptr, ListenThread, this) == 0)
+        << "Failed to start listen thread.";  
+}
+
+void CouchbaseServerListener::UpdateVBucketMap(std::string&& vb_map) {
+    butil::VBUCKET_CONFIG_HANDLE vb = 
+		butil::vbucket_brief_parse_string(vb_map.c_str());
+    if (vb != nullptr) {
+        const size_t server_num = butil::vbucket_config_get_num_servers(vb);
+        const size_t vb_num = butil::vbucket_config_get_num_vbuckets(vb);
+        _ns->SetVBucketNumber(vb_num);
+        std::vector<std::string> servers(server_num);
+        for (size_t i = 0; i != server_num; ++i) {
+            servers[i] = butil::vbucket_config_get_server(vb, i);
+        }
+        butil::vbucket_config_destroy(vb);
+        // Update new server list for '_listen_channel'.
+        std::string server_list;
+        for (const auto& server : servers) {
+            const size_t pos = server.find(':');
+            server_list.append(server.data(), pos);
+            server_list += ":" + _listen_port + ",";
+        }
+        server_list.pop_back();
+        policy::CouchbaseListenerNamingService::ResetCouchbaseListenerServers(
+            _service_name, server_list);
+		
+        _ns->ResetServers(servers, vb_map);
+    } else {
+        LOG(ERROR) << "Failed to get VBUCKET_CONFIG_HANDLE from string:\n" 
+                   << "\'" << vb_map << "\'.";
     }
-    std::string new_servers(service_name);
-    {
-        BAIDU_SCOPED_LOCK(_mutex);
-        const auto& iter = servers_map.find(new_servers);
-        if (iter != servers_map.end()) {
-            new_servers = iter->second;
+}
+
+std::map<std::string, CouchbaseNamingService*> CouchbaseNamingService::_vbucket_num_map;
+
+CouchbaseNamingService::CouchbaseNamingService() 
+    : _vbucket_num(0), _actions(nullptr) {}
+
+CouchbaseNamingService::~CouchbaseNamingService() {}
+
+int CouchbaseNamingService::ResetServers(const std::vector<std::string>& servers, 
+                                         std::string& vb_map) {
+    if (_actions) {
+        std::vector<brpc::ServerNode> server_node;
+        // The server_node[0] is a fake server. We only use server_node[0].tag 
+        // to bring the vbucket map json string. 
+        server_node.emplace_back();
+        server_node[0].tag.swap(vb_map);
+        for (const std::string& server : servers) {
+            butil::EndPoint point;
+            if (butil::str2endpoint(server.c_str(), &point) != 0 &&
+                butil::hostname2endpoint(server.c_str(), &point) != 0) {
+                LOG(ERROR) << "Invalid address=`" << server << '\'';
+                continue;
+            }
+            server_node.emplace_back(point);
         }
+        _actions->ResetServers(server_node);
     }
-    RemoveUniqueSuffix(new_servers);
-    for (butil::StringSplitter sp(new_servers.c_str(), ','); sp != NULL; ++sp) {
-        line.assign(sp.field(), sp.length());
-        butil::StringPiece addr;
-        butil::StringPiece tag;
-        if (!SplitIntoServerAndTag(line, &addr, &tag)) {
-            continue;
-        }
-        const_cast<char*>(addr.data())[addr.size()] = '\0'; // safe
-        butil::EndPoint point;
-        if (str2endpoint(addr.data(), &point) != 0 &&
-            hostname2endpoint(addr.data(), &point) != 0) {
-            LOG(ERROR) << "Invalid address=`" << addr << '\'';
-            continue;
-        }
-        ServerNode node;
-        node.addr = point;
-        tag.CopyToString(&node.tag);
-        if (presence.insert(node).second) {
-            servers->push_back(node);
-        } else {
-            RPC_VLOG << "Duplicated server=" << node;
-        }
-    }
-    RPC_VLOG << "Got " << servers->size()
-             << (servers->size() > 1 ? " servers" : " server");
+    return 0;
+}
+
+int CouchbaseNamingService::RunNamingService(const char* service_name,
+                                             NamingServiceActions* actions) {
+    butil::StringPiece server_list, streaming_url, init_url, auth;
+	  CHECK(ParseNsUrl(service_name, server_list, streaming_url, init_url, auth))
+        << "Failed to parse couchbase naming url: " << service_name;
+    _service_name = service_name;
+    _vbucket_num_map.emplace(_service_name, this);
+    // '_actions' MUST init before '_listener' due to it will be used by '_listener'. 
+    _actions = actions;
+    _listener.reset(new CouchbaseServerListener(server_list, streaming_url, 
+		                                            init_url, auth, this));
     return 0;
 }
 
 void CouchbaseNamingService::Describe(
     std::ostream& os, const DescribeOptions&) const {
-    os << "Couchbase_list";
+    os << "couchbase_channel";
     return;
 }
 
@@ -142,35 +332,67 @@ NamingService* CouchbaseNamingService::New() const {
 }
 
 void CouchbaseNamingService::Destroy() {
+    _listener.reset(nullptr);
+    _vbucket_num_map.erase(_service_name);
     delete this;
 }
 
-void CouchbaseNamingService::ResetCouchbaseListenerServers(
-    const std::string& service_name, std::string& new_servers) {
-    BAIDU_SCOPED_LOCK(_mutex);
-    auto iter = servers_map.find(service_name);
-    if (iter != servers_map.end()) {
-        iter->second.swap(new_servers);
+void CouchbaseNamingService::SetVBucketNumber(const size_t vb_num) {
+    if (_vbucket_num.load(butil::memory_order_relaxed) == 0) {
+        _vbucket_num.store(vb_num, butil::memory_order_relaxed);
+    }
+}  
+
+size_t CouchbaseNamingService::GetVBucketNumber(const std::string& service_name) {
+    return _vbucket_num_map.at(service_name)->_vbucket_num.load(
+        butil::memory_order_relaxed);
+}
+
+std::string CouchbaseNamingService::BuildNsUrl(
+    const char* servers_addr, const std::string& streaming_url, 
+    const std::string& init_url, const std::string& auth, const std::string& unique_id) {
+    std::string ns_url("couchbase_channel://");
+    ns_url.append(servers_addr);
+    ns_url.append("_streaming@" + streaming_url + "_init@" + init_url);
+    if (!auth.empty()) {
+        ns_url.append("_auth@" + auth);
+    }
+    ns_url.append("_unique@" + unique_id);
+    return std::move(ns_url);
+}
+
+bool CouchbaseNamingService::ParseNsUrl(
+    const butil::StringPiece service_full_name, butil::StringPiece& server_list, 
+    butil::StringPiece& streaming_url, butil::StringPiece& init_url, butil::StringPiece& auth) {
+    size_t pos = service_full_name.rfind("_unique@");
+    butil::StringPiece service_name = service_full_name.substr(0, pos);
+    butil::StringPiece stream_prefix("_streaming@");
+    size_t stream_pos = service_name.find(stream_prefix);
+    if (stream_pos == service_name.npos) {
+        return false;
+    }
+    server_list = service_name.substr(0, stream_pos);
+    stream_pos += stream_prefix.length();
+    butil::StringPiece init_prefix("_init@");
+    size_t init_pos = service_name.find(init_prefix, stream_pos);
+    if (init_pos == service_name.npos) {
+        return false;
+	  }
+    streaming_url = service_name.substr(stream_pos, init_pos - stream_pos);
+    init_pos += init_prefix.length();
+	
+    butil::StringPiece auth_prefix("_auth@");
+    size_t auth_pos = service_name.find(auth_prefix, init_pos);
+    if (auth_pos == service_name.npos) {
+        auth.clear();
+        init_url = service_name.substr(init_pos);		
     } else {
-        servers_map.emplace(service_name, new_servers);
+        init_url = service_name.substr(init_pos, auth_pos - init_pos);
+        auth = service_name.substr(auth_pos + auth_prefix.length());
     }
+    return true;
 }
 
-std::string CouchbaseNamingService::AddUniqueSuffix(
-    const char* name_url, const char* unique_id) {
-    std::string couchbase_name_url;
-    couchbase_name_url.append(name_url);
-    couchbase_name_url.append(1, '_');
-    couchbase_name_url.append(unique_id);
-    return std::move(couchbase_name_url);
-}
-
-void CouchbaseNamingService::RemoveUniqueSuffix(std::string& name_service) {
-    const size_t pos = name_service.find('_');
-    if (pos != std::string::npos) {
-        name_service.resize(pos);
-    }
-}
 
 }  // namespace policy
 } // namespace brpc
