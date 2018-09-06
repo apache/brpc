@@ -678,6 +678,8 @@ void ParallelChannel::CallMethod(
     for (int i = 0, j = 0; i < nchan; ++i) {
         if (!aps[i].is_skip()) {
             ParallelChannelDone::SubDone* sd = d->sub_done(j++);
+            // Forward the attachment to each sub call
+            sd->cntl.request_attachment().append(cntl->request_attachment());
             _chans[i].chan->CallMethod(sd->ap.method, &sd->cntl,
                                        sd->ap.request, sd->ap.response, sd);
         }

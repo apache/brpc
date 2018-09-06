@@ -279,7 +279,7 @@ cntl->http_request().uri().SetQuery("time", "2015/1/2");
 
 http服务常对http body进行压缩，可以有效减少网页的传输时间，加快页面的展现速度。
 
-设置Controller::set_response_compress_type(baidu::rpc::COMPRESS_TYPE_GZIP)后将**尝试**用gzip压缩http body。“尝试“指的是压缩有可能不发生，条件有：
+设置Controller::set_response_compress_type(brpc::COMPRESS_TYPE_GZIP)后将**尝试**用gzip压缩http body。“尝试“指的是压缩有可能不发生，条件有：
 
 - 请求中没有设置Accept-encoding或不包含gzip。比如curl不加--compressed时是不支持压缩的，这时server总是会返回不压缩的结果。
 

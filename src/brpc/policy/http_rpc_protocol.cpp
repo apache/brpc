@@ -400,6 +400,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             std::string err;
             json2pb::Pb2JsonOptions opt;
             opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
+            opt.jsonify_empty_array = cntl->has_pb_jsonify_empty_array();
             opt.enum_option = (FLAGS_pb_enum_as_number
                                ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                : json2pb::OUTPUT_ENUM_BY_NAME);
@@ -603,6 +604,7 @@ static void SendHttpResponse(Controller *cntl,
             std::string err;
             json2pb::Pb2JsonOptions opt;
             opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
+            opt.jsonify_empty_array = cntl->has_pb_jsonify_empty_array();
             opt.enum_option = (FLAGS_pb_enum_as_number
                                ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                : json2pb::OUTPUT_ENUM_BY_NAME);
