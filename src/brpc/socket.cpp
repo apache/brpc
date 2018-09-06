@@ -640,7 +640,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
         return -1;
     }
     // Disable SSL check if there is no SSL context
-    m->_ssl_state = (options.ssl_ctx == NULL ? SSL_OFF : SSL_UNKNOWN);
+    m->_ssl_state = (options.initial_ssl_ctx == NULL ? SSL_OFF : SSL_UNKNOWN);
     m->_ssl_session = NULL;
     m->_connection_type_for_progressive_read = CONNECTION_TYPE_UNKNOWN;
     m->_controller_released_socket.store(false, butil::memory_order_relaxed);
@@ -1048,9 +1048,7 @@ void Socket::OnRecycle() {
         _ssl_session = NULL;
     }
 
-    if (_options.owns_ssl_ctx && _options.ssl_ctx) {
-        SSL_CTX_free(_options.ssl_ctx);
-    }
+    _options.initial_ssl_ctx = NULL;
     
     delete _pipeline_q;
     _pipeline_q = NULL;
@@ -1162,7 +1160,7 @@ int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime) {
 
 int Socket::Connect(const timespec* abstime,
                     int (*on_connect)(int, int, void*), void* data) {
-    if (_options.ssl_ctx) {
+    if (_options.initial_ssl_ctx) {
         _ssl_state = SSL_CONNECTING;
     } else {
         _ssl_state = SSL_OFF;
@@ -1780,7 +1778,7 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
 }
 
 int Socket::SSLHandshake(int fd, bool server_mode) {
-    if (_options.ssl_ctx == NULL) {
+    if (_options.initial_ssl_ctx == NULL) {
         if (server_mode) {
             LOG(ERROR) << "Lack SSL configuration to handle SSL request";
             return -1;
@@ -1793,15 +1791,17 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
         // Free the last session, which may be deprecated when socket failed
         SSL_free(_ssl_session);
     }
-    _ssl_session = CreateSSLSession(_options.ssl_ctx, id(), fd, server_mode);
+    _ssl_session = CreateSSLSession(_options.initial_ssl_ctx->raw_ctx, id(), fd, server_mode);
     if (_ssl_session == NULL) {
+        LOG(ERROR) << "Fail to CreateSSLSession";
         return -1;
     }
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-    if (!_options.sni_name.empty()) {
-        SSL_set_tlsext_host_name(_ssl_session, _options.sni_name.c_str());
+    if (!_options.initial_ssl_ctx->sni_name.empty()) {
+        SSL_set_tlsext_host_name(_ssl_session, _options.initial_ssl_ctx->sni_name.c_str());
     }
-#endif // SSL_CTRL_SET_TLSEXT_HOSTNAME
+#endif
+
     _ssl_state = SSL_CONNECTING;
 
     // Loop until SSL handshake has completed. For SSL_ERROR_WANT_READ/WRITE,
@@ -2159,74 +2159,84 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
     } else {
         os << "\nparsing_context=" << ShowObject(parsing_context);
     }
+    const SSLState ssl_state = ptr->ssl_state();
     os << "\npipeline_q=" << npipelined
        << "\nhc_interval_s=" << ptr->_health_check_interval_s
        << "\nninprocess=" << ptr->_ninprocess.load(butil::memory_order_relaxed)
        << "\nauth_flag_error=" << ptr->_auth_flag_error.load(butil::memory_order_relaxed)
        << "\nauth_id=" << ptr->_auth_id.value
        << "\nauth_context=" << ptr->_auth_context
-       << "\nssl_state=" << SSLStateToString(ptr->_ssl_state)
-       << "\nssl_ctx=" << (void*)ptr->_options.ssl_ctx
-       << "\nssl_session=" << (void*)ptr->_ssl_session
        << "\nlogoff_flag=" << ptr->_logoff_flag.load(butil::memory_order_relaxed)
        << "\nrecycle_flag=" << ptr->_recycle_flag.load(butil::memory_order_relaxed)
        << "\ncid=" << ptr->_correlation_id
-       << "\nwrite_head=" << ptr->_write_head.load(butil::memory_order_relaxed);
-    if (ptr->ssl_state() == SSL_CONNECTED) {
-        os << "\n\n" << ptr->_ssl_session;
+       << "\nwrite_head=" << ptr->_write_head.load(butil::memory_order_relaxed)
+       << "\nssl_state=" << SSLStateToString(ssl_state);
+    const SocketSSLContext* ssl_ctx = ptr->_options.initial_ssl_ctx.get();
+    if (ssl_ctx) {
+        os << "\ninitial_ssl_ctx=" << ssl_ctx->raw_ctx;
+        if (!ssl_ctx->sni_name.empty()) {
+            os << "\nsni_name=" << ssl_ctx->sni_name;
+        }
+    }
+    if (ssl_state == SSL_CONNECTED) {
+        os << "\nssl_session={\n  ";
+        Print(os, ptr->_ssl_session, "\n  ");
+        os << "\n}";
     }
 #if defined(OS_MACOSX)
     struct tcp_connection_info ti;
     socklen_t len = sizeof(ti);
     if (fd >= 0 && getsockopt(fd, IPPROTO_TCP, TCP_CONNECTION_INFO, &ti, &len) == 0) {
-        os << "\ntcpi_state=" << (uint32_t)ti.tcpi_state
-           << "\ntcpi_snd_wscale=" << (uint32_t)ti.tcpi_snd_wscale
-           << "\ntcpi_rcv_wscale=" << (uint32_t)ti.tcpi_rcv_wscale
-           << "\ntcpi_options=" << (uint32_t)ti.tcpi_options
-           << "\ntcpi_flags=" << (uint32_t)ti.tcpi_flags
-           << "\ntcpi_rto=" << ti.tcpi_rto
-           << "\ntcpi_maxseg=" << ti.tcpi_maxseg
-           << "\ntcpi_snd_ssthresh=" << ti.tcpi_snd_ssthresh
-           << "\ntcpi_snd_cwnd=" << ti.tcpi_snd_cwnd
-           << "\ntcpi_snd_wnd=" << ti.tcpi_snd_wnd
-           << "\ntcpi_snd_sbbytes=" << ti.tcpi_snd_sbbytes
-           << "\ntcpi_rcv_wnd=" << ti.tcpi_rcv_wnd
-           << "\ntcpi_srtt=" << ti.tcpi_srtt
-           << "\ntcpi_rttvar=" << ti.tcpi_rttvar;
+        os << "\ntcpi={\n  state=" << (uint32_t)ti.tcpi_state
+           << "\n  snd_wscale=" << (uint32_t)ti.tcpi_snd_wscale
+           << "\n  rcv_wscale=" << (uint32_t)ti.tcpi_rcv_wscale
+           << "\n  options=" << (uint32_t)ti.tcpi_options
+           << "\n  flags=" << (uint32_t)ti.tcpi_flags
+           << "\n  rto=" << ti.tcpi_rto
+           << "\n  maxseg=" << ti.tcpi_maxseg
+           << "\n  snd_ssthresh=" << ti.tcpi_snd_ssthresh
+           << "\n  snd_cwnd=" << ti.tcpi_snd_cwnd
+           << "\n  snd_wnd=" << ti.tcpi_snd_wnd
+           << "\n  snd_sbbytes=" << ti.tcpi_snd_sbbytes
+           << "\n  rcv_wnd=" << ti.tcpi_rcv_wnd
+           << "\n  srtt=" << ti.tcpi_srtt
+           << "\n  rttvar=" << ti.tcpi_rttvar
+           << "\n}";
     }
 #elif defined(OS_LINUX)
     struct tcp_info ti;
     socklen_t len = sizeof(ti);
     if (fd >= 0 && getsockopt(fd, SOL_TCP, TCP_INFO, &ti, &len) == 0) {
-        os << "\ntcpi_state=" << (uint32_t)ti.tcpi_state
-           << "\ntcpi_ca_state=" << (uint32_t)ti.tcpi_ca_state
-           << "\ntcpi_retransmits=" << (uint32_t)ti.tcpi_retransmits
-           << "\ntcpi_probes=" << (uint32_t)ti.tcpi_probes
-           << "\ntcpi_backoff=" << (uint32_t)ti.tcpi_backoff
-           << "\ntcpi_options=" << (uint32_t)ti.tcpi_options
-           << "\ntcpi_snd_wscale=" << (uint32_t)ti.tcpi_snd_wscale
-           << "\ntcpi_rcv_wscale=" << (uint32_t)ti.tcpi_rcv_wscale
-           << "\ntcpi_rto=" << ti.tcpi_rto
-           << "\ntcpi_ato=" << ti.tcpi_ato
-           << "\ntcpi_snd_mss=" << ti.tcpi_snd_mss
-           << "\ntcpi_rcv_mss=" << ti.tcpi_rcv_mss
-           << "\ntcpi_unacked=" << ti.tcpi_unacked
-           << "\ntcpi_sacked=" << ti.tcpi_sacked
-           << "\ntcpi_lost=" << ti.tcpi_lost
-           << "\ntcpi_retrans=" << ti.tcpi_retrans
-           << "\ntcpi_fackets=" << ti.tcpi_fackets
-           << "\ntcpi_last_data_sent=" << ti.tcpi_last_data_sent
-           << "\ntcpi_last_ack_sent=" << ti.tcpi_last_ack_sent
-           << "\ntcpi_last_data_recv=" << ti.tcpi_last_data_recv
-           << "\ntcpi_last_ack_recv=" << ti.tcpi_last_ack_recv
-           << "\ntcpi_pmtu=" << ti.tcpi_pmtu
-           << "\ntcpi_rcv_ssthresh=" << ti.tcpi_rcv_ssthresh
-           << "\ntcpi_rtt=" << ti.tcpi_rtt  // smoothed
-           << "\ntcpi_rttvar=" << ti.tcpi_rttvar
-           << "\ntcpi_snd_ssthresh=" << ti.tcpi_snd_ssthresh
-           << "\ntcpi_snd_cwnd=" << ti.tcpi_snd_cwnd
-           << "\ntcpi_advmss=" << ti.tcpi_advmss
-           << "\ntcpi_reordering=" << ti.tcpi_reordering;
+        os << "\ntcpi={\n  state=" << (uint32_t)ti.tcpi_state
+           << "\n  ca_state=" << (uint32_t)ti.tcpi_ca_state
+           << "\n  retransmits=" << (uint32_t)ti.tcpi_retransmits
+           << "\n  probes=" << (uint32_t)ti.tcpi_probes
+           << "\n  backoff=" << (uint32_t)ti.tcpi_backoff
+           << "\n  options=" << (uint32_t)ti.tcpi_options
+           << "\n  snd_wscale=" << (uint32_t)ti.tcpi_snd_wscale
+           << "\n  rcv_wscale=" << (uint32_t)ti.tcpi_rcv_wscale
+           << "\n  rto=" << ti.tcpi_rto
+           << "\n  ato=" << ti.tcpi_ato
+           << "\n  snd_mss=" << ti.tcpi_snd_mss
+           << "\n  rcv_mss=" << ti.tcpi_rcv_mss
+           << "\n  unacked=" << ti.tcpi_unacked
+           << "\n  sacked=" << ti.tcpi_sacked
+           << "\n  lost=" << ti.tcpi_lost
+           << "\n  retrans=" << ti.tcpi_retrans
+           << "\n  fackets=" << ti.tcpi_fackets
+           << "\n  last_data_sent=" << ti.tcpi_last_data_sent
+           << "\n  last_ack_sent=" << ti.tcpi_last_ack_sent
+           << "\n  last_data_recv=" << ti.tcpi_last_data_recv
+           << "\n  last_ack_recv=" << ti.tcpi_last_ack_recv
+           << "\n  pmtu=" << ti.tcpi_pmtu
+           << "\n  rcv_ssthresh=" << ti.tcpi_rcv_ssthresh
+           << "\n  rtt=" << ti.tcpi_rtt  // smoothed
+           << "\n  rttvar=" << ti.tcpi_rttvar
+           << "\n  snd_ssthresh=" << ti.tcpi_snd_ssthresh
+           << "\n  snd_cwnd=" << ti.tcpi_snd_cwnd
+           << "\n  advmss=" << ti.tcpi_advmss
+           << "\n  reordering=" << ti.tcpi_reordering
+           << "\n}";
     }
 #endif
 }
@@ -2356,8 +2366,6 @@ inline int SocketPool::GetSocket(SocketUniquePtr* ptr) {
     }
     // Not found in pool
     SocketOptions opt = _options;
-    // Only main socket can be the owner of ssl_ctx
-    opt.owns_ssl_ctx = false;
     opt.health_check_interval_s = -1;
     if (get_client_side_messenger()->Create(opt, &sid) == 0 &&
         Socket::Address(sid, ptr) == 0) {
@@ -2533,8 +2541,6 @@ int Socket::GetShortSocket(Socket* main_socket,
     }
     SocketId id;
     SocketOptions opt = main_socket->_options;
-    // Only main socket can be the owner of ssl_ctx
-    opt.owns_ssl_ctx = false;
     opt.health_check_interval_s = -1;
     if (get_client_side_messenger()->Create(opt, &id) != 0) {
         return -1;
@@ -2617,6 +2623,16 @@ std::string Socket::description() const {
         butil::string_appendf(&result, "@%d", local_port);
     }
     return result;
+}
+
+SocketSSLContext::SocketSSLContext()
+    : raw_ctx(NULL)
+{}
+
+SocketSSLContext::~SocketSSLContext() {
+    if (raw_ctx) {
+        SSL_CTX_free(raw_ctx);
+    }
 }
 
 } // namespace brpc

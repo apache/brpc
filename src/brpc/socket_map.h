@@ -22,7 +22,6 @@
 #include "butil/containers/flat_map.h"             // FlatMap
 #include "brpc/socket_id.h"                   // SockdetId
 #include "brpc/options.pb.h"                  // ProtocolType
-#include "brpc/ssl_option.h"                  // ChannelSSLOptions
 #include "brpc/input_messenger.h"             // InputMessageHandler
 
 
@@ -30,29 +29,57 @@ namespace brpc {
 
 // Global mapping from remote-side to out-going sockets created by Channels.
 
+struct ChannelSignature {
+    uint64_t data[2];
+    
+    ChannelSignature() { Reset(); }
+    void Reset() { data[0] = data[1] = 0; }
+};
+
+inline bool operator==(const ChannelSignature& s1, const ChannelSignature& s2) {
+    return s1.data[0] == s2.data[0] && s1.data[1] == s2.data[1];
+}
+inline bool operator!=(const ChannelSignature& s1, const ChannelSignature& s2) {
+    return !(s1 == s2);
+}
+
 // The following fields uniquely define a Socket. In other word,
 // Socket can't be shared between 2 different SocketMapKeys
 struct SocketMapKey {
-    SocketMapKey(const butil::EndPoint& pt,
-                 ChannelSSLOptions ssl = ChannelSSLOptions(),
-                 const Authenticator* auth2 = NULL)
-            : peer(pt), ssl_options(ssl), auth(auth2)
+    explicit SocketMapKey(const butil::EndPoint& pt)
+        : peer(pt)
     {}
-
+    SocketMapKey(const butil::EndPoint& pt, const ChannelSignature& cs)
+        : peer(pt), channel_signature(cs)
+    {}
+    
     butil::EndPoint peer;
-    ChannelSSLOptions ssl_options;
-    const Authenticator* auth;
+    ChannelSignature channel_signature;
 };
 
-// Calculate an 128-bit hashcode for SocketMapKey
-void ComputeSocketMapKeyChecksum(const SocketMapKey& key,
-                                 unsigned char* checksum);
+inline bool operator==(const SocketMapKey& k1, const SocketMapKey& k2) {
+    return k1.peer == k2.peer && k1.channel_signature == k2.channel_signature;
+};
+
+struct SocketMapKeyHasher {
+    std::size_t operator()(const SocketMapKey& key) const {
+        return butil::DefaultHasher<butil::EndPoint>()(key.peer) ^
+            key.channel_signature.data[1];
+    }
+};
+
 
 // Try to share the Socket to `key'. If the Socket does not exist, create one.
 // The corresponding SocketId is written to `*id'. If this function returns
 // successfully, SocketMapRemove() MUST be called when the Socket is not needed.
 // Return 0 on success, -1 otherwise.
-int SocketMapInsert(const SocketMapKey& key, SocketId* id);
+int SocketMapInsert(const SocketMapKey& key, SocketId* id,
+                    const std::shared_ptr<SocketSSLContext>& ssl_ctx);
+
+inline int SocketMapInsert(const SocketMapKey& key, SocketId* id) {
+    std::shared_ptr<SocketSSLContext> empty_ptr;
+    return SocketMapInsert(key, id, empty_ptr);
+}
 
 // Find the SocketId associated with `key'.
 // Return 0 on found, -1 otherwise.
@@ -110,7 +137,13 @@ public:
     SocketMap();
     ~SocketMap();
     int Init(const SocketMapOptions&);
-    int Insert(const SocketMapKey& key, SocketId* id);
+    int Insert(const SocketMapKey& key, SocketId* id,
+               const std::shared_ptr<SocketSSLContext>& ssl_ctx);
+    int Insert(const SocketMapKey& key, SocketId* id) {
+        std::shared_ptr<SocketSSLContext> empty_ptr;
+        return Insert(key, id, empty_ptr);
+    }
+
     void Remove(const SocketMapKey& key, SocketId expected_id);
     int Find(const SocketMapKey& key, SocketId* id);
     void List(std::vector<SocketId>* ids);
@@ -120,7 +153,7 @@ public:
 private:
     void RemoveInternal(const SocketMapKey& key, SocketId id,
                         bool remove_orphan);
-    void ListOrphans(int64_t defer_us, std::vector<butil::EndPoint>* out);
+    void ListOrphans(int64_t defer_us, std::vector<SocketMapKey>* out);
     void WatchConnections();
     static void* RunWatchConnections(void*);
     void Print(std::ostream& os);
@@ -133,39 +166,10 @@ private:
         int64_t no_ref_us;
     };
 
-    // Store checksum of SocketMapKey instead of itself in order to:
-    // 1. Save precious space of key field in FlatMap
-    // 2. Simplify equivalence logic between SocketMapKeys
-    //    (regard the hash collision to be zero)
-    struct SocketMapKeyChecksum {
-        explicit SocketMapKeyChecksum(const SocketMapKey& key)
-                : peer(key.peer) {
-            ComputeSocketMapKeyChecksum(key, checksum);
-        }
-
-        butil::EndPoint peer;
-        unsigned char checksum[16];
-
-        inline bool operator==(const SocketMapKeyChecksum& rhs) const {
-            return this->peer == rhs.peer
-                    && memcmp(this->checksum, rhs.checksum, sizeof(checksum)) == 0;
-        }
-    };
-
-    struct Checksum2Hash {
-        std::size_t operator()(const SocketMapKeyChecksum& key) const {
-            // Slice a subset of checksum over an evenly distributed hash
-            // won't affect the overall balance
-            std::size_t hash;
-            memcpy(&hash, key.checksum, sizeof(hash));
-            return hash;
-        }
-    };
-
     // TODO: When RpcChannels connecting to one EndPoint are frequently created
     //       and destroyed, a single map+mutex may become hot-spots.
-    typedef butil::FlatMap<SocketMapKeyChecksum,
-                           SingleConnection, Checksum2Hash> Map;
+    typedef butil::FlatMap<SocketMapKey, SingleConnection,
+                           SocketMapKeyHasher> Map;
     SocketMapOptions _options;
     butil::Mutex _mutex;
     Map _map;

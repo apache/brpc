@@ -24,7 +24,7 @@
 #include "brpc/shared_object.h"                 // SharedObject
 #include "brpc/naming_service.h"                // NamingService
 #include "brpc/naming_service_filter.h"         // NamingServiceFilter
-
+#include "brpc/socket_map.h"
 
 namespace brpc {
 
@@ -46,6 +46,8 @@ struct GetNamingServiceThreadOptions {
     
     bool succeed_without_server;
     bool log_succeed_without_server;
+    ChannelSignature channel_signature;
+    std::shared_ptr<SocketSSLContext> ssl_ctx;
 };
 
 // A dedicated thread to map a name to ServerIds
@@ -86,7 +88,9 @@ public:
     NamingServiceThread();
     ~NamingServiceThread();
 
-    int Start(const NamingService* ns, const std::string& service_name,
+    int Start(NamingService* ns,
+              const std::string& protocol,
+              const std::string& service_name,
               const GetNamingServiceThreadOptions* options);
     int WaitForFirstBatchOfServers();
 
@@ -106,9 +110,8 @@ private:
 
     butil::Mutex _mutex;
     bthread_t _tid;
-    // TODO: better use a name.
-    const NamingService* _source_ns;
     NamingService* _ns;
+    std::string _protocol;
     std::string _service_name;
     GetNamingServiceThreadOptions _options;
     std::vector<ServerNodeWithId> _last_sockets;

@@ -90,7 +90,7 @@ struct ChannelOptions {
     bool log_succeed_without_server;
 
     // SSL related options. Refer to `ChannelSSLOptions' for details
-    ChannelSSLOptions ssl_options;
+    std::shared_ptr<ChannelSSLOptions> ssl_options;
     
     // Turn on authentication for this channel if `auth' is not NULL.
     // Note `auth' will not be deleted by channel and must remain valid when
@@ -99,9 +99,10 @@ struct ChannelOptions {
     const Authenticator* auth;
 
     // Customize the error code that should be retried. The interface is
-    // defined src/brpc/retry_policy.h
+    // defined in src/brpc/retry_policy.h
     // This object is NOT owned by channel and should remain valid when
     // channel is used.
+    // Default: NULL
     const RetryPolicy* retry_policy;
 
     // Filter ServerNodes (i.e. based on `tag' field of `ServerNode')
@@ -109,7 +110,13 @@ struct ChannelOptions {
     // in src/brpc/naming_service_filter.h
     // This object is NOT owned by channel and should remain valid when
     // channel is used.
+    // Default: NULL
     const NamingServiceFilter* ns_filter;
+
+    // Channels with same connection_group share connections. In an another
+    // word, set to a different value to not share connections.
+    // Default: 0
+    int connection_group;
 };
 
 // A Channel represents a communication line to one server or multiple servers

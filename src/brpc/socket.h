@@ -38,7 +38,6 @@
 #include "brpc/socket_id.h"               // SocketId
 #include "brpc/socket_message.h"          // SocketMessagePtr
 
-
 namespace brpc {
 namespace policy {
 class ConsistentHashingLoadBalancer;
@@ -137,6 +136,14 @@ struct PipelinedInfo {
     bthread_id_t id_wait;
 };
 
+struct SocketSSLContext {
+    SocketSSLContext();
+    ~SocketSSLContext();
+    
+    SSL_CTX* raw_ctx;           // owned
+    std::string sni_name;       // useful for clients
+};
+
 // TODO: Comment fields
 struct SocketOptions {
     SocketOptions();
@@ -155,9 +162,7 @@ struct SocketOptions {
     // one thread at any time.
     void (*on_edge_triggered_events)(Socket*);
     int health_check_interval_s;
-    bool owns_ssl_ctx;
-    SSL_CTX* ssl_ctx;
-    std::string sni_name;
+    std::shared_ptr<SocketSSLContext> initial_ssl_ctx;
     bthread_keytable_pool_t* keytable_pool;
     SocketConnection* conn;
     AppConnect* app_connect;

@@ -21,8 +21,7 @@ namespace brpc {
 VerifyOptions::VerifyOptions() : verify_depth(0) {}
 
 ChannelSSLOptions::ChannelSSLOptions()
-    : enable(false)
-    , ciphers("DEFAULT")
+    : ciphers("DEFAULT")
     , protocols("TLSv1, TLSv1.1, TLSv1.2")
 {}
 

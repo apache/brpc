@@ -38,10 +38,6 @@
 #include "brpc/health_reporter.h"
 #include "brpc/adaptive_max_concurrency.h"
 
-extern "C" {
-struct ssl_ctx_st;
-}
-
 namespace brpc {
 
 class Acceptor;
@@ -52,6 +48,7 @@ class SimpleDataPool;
 class MongoServiceAdaptor;
 class RestfulMap;
 class RtmpService;
+class SocketSSLContext;
 
 struct ServerOptions {
     // Constructed with default options.
@@ -202,7 +199,7 @@ struct ServerOptions {
     bool security_mode() const { return internal_port >= 0 || !has_builtin_services; }
 
     // SSL related options. Refer to `ServerSSLOptions' for details
-    ServerSSLOptions ssl_options;
+    std::shared_ptr<ServerSSLOptions> ssl_options;
     
     // [CAUTION] This option is for implementing specialized http proxies,
     // most users don't need it. Don't change this option unless you fully
@@ -573,21 +570,20 @@ friend class Controller;
     std::string ServerPrefix() const;
 
     // Mapping from hostname to corresponding SSL_CTX
-    typedef butil::CaseIgnoredFlatMap<struct ssl_ctx_st*> CertMap;
+    typedef butil::CaseIgnoredFlatMap<std::shared_ptr<SocketSSLContext> > CertMap;
     struct CertMaps {
         CertMap cert_map;
         CertMap wildcard_cert_map;
     };
 
     struct SSLContext {
-        struct ssl_ctx_st* ctx;
+        std::shared_ptr<SocketSSLContext> ctx;
         std::vector<std::string> filters;
     };
     // Mapping from [certficate + private-key] to SSLContext
     typedef butil::FlatMap<std::string, SSLContext> SSLContextMap;
 
     void FreeSSLContexts();
-    void FreeSSLContextMap(SSLContextMap& ctx_map, bool keep_default);
 
     static int SSLSwitchCTXByHostname(struct ssl_st* ssl,
                                       int* al, Server* server);
@@ -636,7 +632,7 @@ friend class Controller;
     RestfulMap* _global_restful_map;
 
     // Default certficate which can't be reloaded
-    struct ssl_ctx_st* _default_ssl_ctx;
+    std::shared_ptr<SocketSSLContext> _default_ssl_ctx;
 
     // Reloadable SSL mappings
     butil::DoublyBufferedData<CertMaps> _reload_cert_maps;

@@ -1683,7 +1683,7 @@ void RtmpClientStream::CleanupSocketForStream(
     Socket* prev_sock, Controller*, int /*error_code*/) {
     if (prev_sock) {
         if (_from_socketmap) {
-            _client_impl->socket_map().Remove(prev_sock->remote_side(),
+            _client_impl->socket_map().Remove(SocketMapKey(prev_sock->remote_side()),
                                               prev_sock->id());
         } else {
             prev_sock->SetFailed(); // not necessary, already failed.
@@ -1888,7 +1888,7 @@ void RtmpClientStream::OnStopInternal() {
         LOG(FATAL) << "RtmpContext of " << *_rtmpsock << " is NULL";
     }
     if (_from_socketmap) {
-        _client_impl->socket_map().Remove(_rtmpsock->remote_side(),
+        _client_impl->socket_map().Remove(SocketMapKey(_rtmpsock->remote_side()),
                                           _rtmpsock->id());
     } else {
         _rtmpsock->ReleaseAdditionalReference();

@@ -437,10 +437,6 @@ static int SetSSLOptions(SSL_CTX* ctx, const std::string& ciphers,
 }
 
 SSL_CTX* CreateClientSSLContext(const ChannelSSLOptions& options) {
-    if (!options.enable) {
-        return NULL;
-    }
-
     std::unique_ptr<SSL_CTX, FreeSSLCTX> ssl_ctx(
         SSL_CTX_new(SSLv23_client_method()));
     if (!ssl_ctx) {
@@ -770,51 +766,66 @@ int SSLDHInit() {
     return 0;
 }
 
-} // namespace brpc
-
-std::ostream& operator<<(std::ostream& os, SSL* ssl) {
-    os << "[SSL HANDSHAKE]"
-       << "\n* cipher: " << SSL_get_cipher(ssl)
-       << "\n* protocol: " << SSL_get_version(ssl)
-       << "\n* verify: " << (SSL_get_verify_mode(ssl) & SSL_VERIFY_PEER
-                             ? "success" : "none")
-       << "\n";
-
-    X509* cert = SSL_get_peer_certificate(ssl);
-    if (cert) {
-        os << "\n" << cert;
+static std::string GetNextLevelSeparator(const char* sep) {
+    if (sep[0] != '\n') {
+        return sep;
     }
-    return os;
+    const size_t left_len = strlen(sep + 1);
+    if (left_len == 0) {
+        return "\n ";
+    }
+    std::string new_sep;
+    new_sep.reserve(left_len * 2 + 1);
+    new_sep.append(sep, left_len + 1);
+    new_sep.append(sep + 1, left_len);
+    return new_sep;
 }
 
-std::ostream& operator<<(std::ostream& os, X509* cert) {
+void Print(std::ostream& os, SSL* ssl, const char* sep) {
+    os << "cipher=" << SSL_get_cipher(ssl) << sep
+       << "protocol=" << SSL_get_version(ssl) << sep
+       << "verify=" << (SSL_get_verify_mode(ssl) & SSL_VERIFY_PEER
+                        ? "success" : "none");
+    X509* cert = SSL_get_peer_certificate(ssl);
+    if (cert) {
+        os << sep << "peer_certificate={";
+        const std::string new_sep = GetNextLevelSeparator(sep);
+        if (sep[0] == '\n') {
+            os << new_sep;
+        }
+        Print(os, cert, new_sep.c_str());
+        if (sep[0] == '\n') {
+            os << sep;
+        }
+        os << '}';
+    }
+}
+
+void Print(std::ostream& os, X509* cert, const char* sep) {
     BIO* buf = BIO_new(BIO_s_mem());
     if (buf == NULL) {
-        return os;
+        return;
     }
-    BIO_printf(buf, "[CERTIFICATE]");
-
-    BIO_printf(buf, "\n* subject: ");
+    BIO_printf(buf, "subject=");
     X509_NAME_print(buf, X509_get_subject_name(cert), 0);
-    BIO_printf(buf, "\n* start date: ");
+    BIO_printf(buf, "%sstart_date=", sep);
     ASN1_TIME_print(buf, X509_get_notBefore(cert));
-    BIO_printf(buf, "\n* expire date: ");
+    BIO_printf(buf, "%sexpire_date=", sep);
     ASN1_TIME_print(buf, X509_get_notAfter(cert));
 
-    BIO_printf(buf, "\n* common name: ");
+    BIO_printf(buf, "%scommon_name=", sep);
     std::vector<std::string> hostnames;
     brpc::ExtractHostnames(cert, &hostnames);
     for (size_t i = 0; i < hostnames.size(); ++i) {
-        BIO_printf(buf, "%s; ", hostnames[i].c_str());
+        BIO_printf(buf, "%s;", hostnames[i].c_str());
     }
 
-    BIO_printf(buf, "\n* issuer: ");
+    BIO_printf(buf, "%sissuer=", sep);
     X509_NAME_print(buf, X509_get_issuer_name(cert), 0);
-
-    BIO_printf(buf, "\n");
 
     char* bufp = NULL;
     int len = BIO_get_mem_data(buf, &bufp);
     os << butil::StringPiece(bufp, len);
-    return os;
 }
+
+} // namespace brpc
