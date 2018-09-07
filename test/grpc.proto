@@ -15,4 +15,8 @@ message GrpcResponse {
 
 service GrpcService {
     rpc Method(GrpcRequest) returns (GrpcResponse);
+    rpc MethodTimeOut(GrpcRequest) returns (GrpcResponse);
+    rpc MethodNotExist(GrpcRequest) returns (GrpcResponse);
 }
+
+
