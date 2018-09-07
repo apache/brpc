@@ -9,21 +9,21 @@ high-performance services.
 
 We propose to contribute the brpc codebase and associated artifacts
 (e.g. documentation etc.) to the Apache Software Foundation, and aim to
- build an open community around it in the 'Apache Way'.
+ build an wider open community around it in the 'Apache Way'.
 
 
 ## Background
 
-RPC framework is very important for Baidu's development when building high performance services.
-but the old existing ones can not fulfill our needs. so we build one from scratch in 2013.
+RPC framework is very important for Baidu's development when building high performance services,
+but the old existing ones can not fulfill our needs, so we build one from scratch in 2014,
 and many core services inside Baidu have adopted it.
-we named it as baidu rpc ,then change it as brpc for short.
-In 2017, we open source it and hope to get more adoption, and get more contribution from outside.
+We named it as baidu rpc at first ,then change it as brpc for short.
+In 2017, we open source it and hope to get more adoption, and get more contributions from outside.
 
 ## Rationale
 
-brpc has been approved inside baidu, since many high performance core service are using it.
-and since its open source, it has been adopted by several other companies , including Iqiyi,Didi,Sougou,BiliBili etc.
+brpc has been approved inside baidu, since many high performance core services are using it.
+And since its open source, it has been adopted by several other companies , including Iqiyi, Didi, Sougou, BiliBili etc.
 
 ## Current Status
 
@@ -35,13 +35,13 @@ Besides, many other companies have already used it also, such as Iqiyi, Didi, So
 
 ### Meritocracy
 
-brpc was originally created by Ge Jun and Chen zhangyi inside baidu from 2013,
-since its opensource in 2017, it already operates on meritocracy principles.
-it accepts multiple contribute from other companies.
+brpc was originally created by Ge Jun and Chen zhangyi inside baidu from 2014.
+Since its opensource in 2017, it already operates on meritocracy principles.
+It accepts multiple contribute from other companies.
 And now,the core developers are from several different companies.
 
-we will follow Apache way to encourage more developers to contribute in this project.
-we know that only active and committed developers from a diverse set of backgrounds
+We will follow Apache way to encourage more developers to contribute in this project.
+We know that only active and committed developers from a diverse set of backgrounds
 can make brpc a successful project.
 
 
@@ -85,21 +85,21 @@ The core developers are all active users and followers of open source.
 ### Homogenous Developers
 
 brpc was created inside Baidu, but after brpc was open sourced, it received a lot of bug fixes and enhancements from other developers not working at Baidu.
-and the core developers now are from different companies now.
+And the core developers now are from different companies now.
 
 ### Reliance on Salaried Developers
 
 Baidu invested in brpc as a general rpc framework used in company widely.
-The core developers have been dedicated to this project for about four years
-and after its opensource, developers around the world have involved in.
+The core developers have been dedicated to this project for about four years.
+And after its opensource, developers around the world have involved in.
 Besides, we want more developers and researchers to contribute to the project.
 
 ### An Excessive Fascination with the Apache Brand
 
 The mission of brpc is to help developers build reliable and high-performance services quickly and easily.
 It has been widely used in production environment throughout Baidu and after opensource, it has gained much attention and attracted developers all over the world.
-Apache Brand is very respected .we are very honored to have the opportunity to join ASF, with the understanding that its brand policies being respected,
-And We hope Apache can help us build the ecosystem around brpc and attract more developers.
+Apache Brand is very respected. We are very honored to have the opportunity to join ASF, with the understanding that its brand policies being respected,
+And we hope Apache can help us build the ecosystem around brpc and attract more developers.
 
 
 ## Documentation
