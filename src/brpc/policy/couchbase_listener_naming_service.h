@@ -47,12 +47,6 @@ private:
     int GetServers(const char *service_name,
                    std::vector<ServerNode>* servers);
     
-    // Clear naming server data when couchbase channel destroyed.
-    static void ClearNamingServiceData(const std::string& service_name) {
-        BAIDU_SCOPED_LOCK(_mutex);
-        servers_map.erase(service_name);
-    }
-
     // Called by couchbase listener when vbucekt map changing. 
     // It set new server list for key 'service_name' in servers_map.
     static void ResetCouchbaseListenerServers(const std::string& service_name, 
@@ -73,6 +67,8 @@ private:
     NamingService* New() const;
 
     void Destroy();
+
+    std::string _service_name;
 };
 
 }  // namespace policy

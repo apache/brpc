@@ -36,7 +36,7 @@ butil::Mutex CouchbaseListenerNamingService::_mutex;
 std::unordered_map<std::string, std::string> CouchbaseListenerNamingService::servers_map;
 
 
-int CouchbaseListenerNamingService::GetServers(const char *service_name,
+int CouchbaseListenerNamingService::GetServers(const char* service_name,
                                                std::vector<ServerNode>* servers) {
     servers->clear();
     // Sort/unique the inserted vector is faster, but may have a different order
@@ -49,13 +49,14 @@ int CouchbaseListenerNamingService::GetServers(const char *service_name,
         LOG(FATAL) << "Param[service_name] is NULL";
         return -1;
     }
-    std::string new_servers(service_name);
+    if (_service_name.empty()) {
+        _service_name = service_name;
+    }
+    std::string new_servers;
     {
         BAIDU_SCOPED_LOCK(_mutex);
-        const auto& iter = servers_map.find(new_servers);
-        if (iter != servers_map.end()) {
-            new_servers = iter->second;
-        }
+        const auto& iter = servers_map.find(_service_name);
+        new_servers = iter != servers_map.end() ? iter->second : _service_name;
     }
     RemoveUniqueSuffix(new_servers);
     for (butil::StringSplitter sp(new_servers.c_str(), ','); sp != NULL; ++sp) {
@@ -97,6 +98,11 @@ NamingService* CouchbaseListenerNamingService::New() const {
 }
 
 void CouchbaseListenerNamingService::Destroy() {
+    {
+        // Clear naming server data when couchbase channel destroyed.
+        BAIDU_SCOPED_LOCK(_mutex);
+        servers_map.erase(_service_name);
+    }
     delete this;
 }
 

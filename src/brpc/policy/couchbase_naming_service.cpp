@@ -163,7 +163,6 @@ CouchbaseServerListener::~CouchbaseServerListener() {
     } else {
         _reader->Destroy();
     }
-    CouchbaseListenerNamingService::ClearNamingServiceData(_service_name);
 }
 
 void CouchbaseServerListener::Init(const butil::StringPiece& server_list, 
