@@ -49,14 +49,18 @@ int CouchbaseListenerNamingService::GetServers(const char* service_name,
         LOG(FATAL) << "Param[service_name] is NULL";
         return -1;
     }
+    // Just handle at first time.
     if (_service_name.empty()) {
         _service_name = service_name;
+        {
+            BAIDU_SCOPED_LOCK(_mutex);
+            servers_map.emplace(_service_name, _service_name);
+        }
     }
     std::string new_servers;
     {
         BAIDU_SCOPED_LOCK(_mutex);
-        const auto& iter = servers_map.find(_service_name);
-        new_servers = iter != servers_map.end() ? iter->second : _service_name;
+        new_servers = servers_map.at(_service_name);
     }
     RemoveUniqueSuffix(new_servers);
     for (butil::StringSplitter sp(new_servers.c_str(), ','); sp != NULL; ++sp) {
@@ -109,12 +113,7 @@ void CouchbaseListenerNamingService::Destroy() {
 void CouchbaseListenerNamingService::ResetCouchbaseListenerServers(
     const std::string& service_name, std::string& new_servers) {
     BAIDU_SCOPED_LOCK(_mutex);
-    auto iter = servers_map.find(service_name);
-    if (iter != servers_map.end()) {
-        iter->second.swap(new_servers);
-    } else {
-        servers_map.emplace(service_name, new_servers);
-    }
+    servers_map.at(service_name).swap(new_servers);
 }
 
 std::string CouchbaseListenerNamingService::AddUniqueSuffix(
