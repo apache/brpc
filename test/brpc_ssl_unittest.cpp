@@ -95,7 +95,7 @@ TEST_F(SSLTest, sanity) {
     brpc::CertInfo cert;
     cert.certificate = "cert1.crt";
     cert.private_key = "cert1.key";
-    options.ssl_options.default_cert = cert;
+    options.mutable_ssl_options()->default_cert = cert;
 
     EchoServiceImpl echo_svc;
     ASSERT_EQ(0, server.AddService(
@@ -108,7 +108,7 @@ TEST_F(SSLTest, sanity) {
     {
         brpc::Channel channel;
         brpc::ChannelOptions coptions;
-        coptions.ssl_options.enable = true;
+        coptions.mutable_ssl_options();
         ASSERT_EQ(0, channel.Init("localhost", port, &coptions));
 
         brpc::Controller cntl;
@@ -124,7 +124,7 @@ TEST_F(SSLTest, sanity) {
     {
         brpc::Channel channel;
         brpc::ChannelOptions coptions;
-        coptions.ssl_options.enable = true;
+        coptions.mutable_ssl_options();
         ASSERT_EQ(0, channel.Init("127.0.0.1", port, &coptions));
         for (int i = 0; i < NUM; ++i) {
             google::protobuf::Closure* thrd_func =
@@ -140,7 +140,7 @@ TEST_F(SSLTest, sanity) {
         brpc::Channel channel;
         brpc::ChannelOptions coptions;
         coptions.protocol = "http";
-        coptions.ssl_options.enable = true;
+        coptions.mutable_ssl_options();
         ASSERT_EQ(0, channel.Init("127.0.0.1", port, &coptions));
         for (int i = 0; i < NUM; ++i) {
             google::protobuf::Closure* thrd_func =
@@ -160,8 +160,7 @@ void CheckCert(const char* cname, const char* cert) {
     const int port = 8613;
     brpc::Channel channel;
     brpc::ChannelOptions coptions;
-    coptions.ssl_options.enable = true;
-    coptions.ssl_options.sni_name = cname;
+    coptions.mutable_ssl_options()->sni_name = cname;
     ASSERT_EQ(0, channel.Init("127.0.0.1", port, &coptions));
 
     SendMultipleRPC(&channel, 1);
@@ -199,14 +198,14 @@ TEST_F(SSLTest, ssl_sni) {
         cert.certificate = "cert1.crt";
         cert.private_key = "cert1.key";
         cert.sni_filters.push_back("cert1.com");
-        options.ssl_options.default_cert = cert;
+        options.mutable_ssl_options()->default_cert = cert;
     }
     {
         brpc::CertInfo cert;
         cert.certificate = GetRawPemString("cert2.crt");
         cert.private_key = GetRawPemString("cert2.key");
         cert.sni_filters.push_back("*.cert2.com");
-        options.ssl_options.certs.push_back(cert);
+        options.mutable_ssl_options()->certs.push_back(cert);
     }
     EchoServiceImpl echo_svc;
     ASSERT_EQ(0, server.AddService(
@@ -230,7 +229,7 @@ TEST_F(SSLTest, ssl_reload) {
         cert.certificate = "cert1.crt";
         cert.private_key = "cert1.key";
         cert.sni_filters.push_back("cert1.com");
-        options.ssl_options.default_cert = cert;
+        options.mutable_ssl_options()->default_cert = cert;
     }
     EchoServiceImpl echo_svc;
     ASSERT_EQ(0, server.AddService(
@@ -318,7 +317,6 @@ TEST_F(SSLTest, ssl_perf) {
     ASSERT_GT(servfd, 0);
 
     brpc::ChannelSSLOptions opt;
-    opt.enable = true;
     SSL_CTX* cli_ctx = brpc::CreateClientSSLContext(opt);
     SSL_CTX* serv_ctx =
             brpc::CreateServerSSLContext("cert1.crt", "cert1.key",

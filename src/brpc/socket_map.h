@@ -17,18 +17,17 @@
 #ifndef BRPC_SOCKET_MAP_H
 #define BRPC_SOCKET_MAP_H
 
-#include <vector>                                  // std::vector
-#include "bvar/bvar.h"                             // bvar::PassiveStatus
-#include "butil/containers/flat_map.h"             // FlatMap
+#include <vector>                             // std::vector
+#include "bvar/bvar.h"                        // bvar::PassiveStatus
+#include "butil/containers/flat_map.h"        // FlatMap
 #include "brpc/socket_id.h"                   // SockdetId
 #include "brpc/options.pb.h"                  // ProtocolType
 #include "brpc/input_messenger.h"             // InputMessageHandler
-
+#include "brpc/server_node.h"                 // ServerNode
 
 namespace brpc {
 
-// Global mapping from remote-side to out-going sockets created by Channels.
-
+// Different signature means that the Channel needs separate sockets.
 struct ChannelSignature {
     uint64_t data[2];
     
@@ -52,8 +51,11 @@ struct SocketMapKey {
     SocketMapKey(const butil::EndPoint& pt, const ChannelSignature& cs)
         : peer(pt), channel_signature(cs)
     {}
-    
-    butil::EndPoint peer;
+    SocketMapKey(const ServerNode& sn, const ChannelSignature& cs)
+        : peer(sn), channel_signature(cs)
+    {}
+
+    ServerNode peer;
     ChannelSignature channel_signature;
 };
 
@@ -62,9 +64,11 @@ inline bool operator==(const SocketMapKey& k1, const SocketMapKey& k2) {
 };
 
 struct SocketMapKeyHasher {
-    std::size_t operator()(const SocketMapKey& key) const {
-        return butil::DefaultHasher<butil::EndPoint>()(key.peer) ^
-            key.channel_signature.data[1];
+    size_t operator()(const SocketMapKey& key) const {
+        size_t h = butil::DefaultHasher<butil::EndPoint>()(key.peer.addr);
+        h = h * 101 + butil::DefaultHasher<std::string>()(key.peer.tag);
+        h = h * 101 + key.channel_signature.data[1];
+        return h;
     }
 };
 

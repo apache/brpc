@@ -229,7 +229,7 @@ int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
     }
     SocketId tmp_id;
     SocketOptions opt;
-    opt.remote_side = key.peer;
+    opt.remote_side = key.peer.addr;
     opt.initial_ssl_ctx = ssl_ctx;
     if (_options.socket_creator->CreateSocket(opt, &tmp_id) != 0) {
         PLOG(FATAL) << "Fail to create socket to " << key.peer;

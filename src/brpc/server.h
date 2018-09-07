@@ -24,13 +24,14 @@
 #include "bthread/errno.h"        // Redefine errno
 #include "bthread/bthread.h"      // Server may need some bthread functions,
                                   // e.g. bthread_usleep
-#include <google/protobuf/service.h>                // google::protobuf::Service
+#include <google/protobuf/service.h>                 // google::protobuf::Service
 #include "butil/macros.h"                            // DISALLOW_COPY_AND_ASSIGN
 #include "butil/containers/doubly_buffered_data.h"   // DoublyBufferedData
 #include "bvar/bvar.h"
 #include "butil/containers/case_ignored_flat_map.h"  // [CaseIgnored]FlatMap
+#include "butil/ptr_container.h"
 #include "brpc/controller.h"                   // brpc::Controller
-#include "brpc/ssl_option.h"                   // ServerSSLOptions
+#include "brpc/ssl_options.h"                  // ServerSSLOptions
 #include "brpc/describable.h"                  // User often needs this
 #include "brpc/data_factory.h"                 // DataFactory
 #include "brpc/builtin/tabbed.h"
@@ -199,7 +200,9 @@ struct ServerOptions {
     bool security_mode() const { return internal_port >= 0 || !has_builtin_services; }
 
     // SSL related options. Refer to `ServerSSLOptions' for details
-    std::shared_ptr<ServerSSLOptions> ssl_options;
+    bool has_ssl_options() const { return _ssl_options != NULL; }
+    const ServerSSLOptions& ssl_options() const { return *_ssl_options.get(); }
+    ServerSSLOptions* mutable_ssl_options();
     
     // [CAUTION] This option is for implementing specialized http proxies,
     // most users don't need it. Don't change this option unless you fully
@@ -225,6 +228,11 @@ struct ServerOptions {
     // All names inside must be valid, check protocols name in global.cpp
     // Default: empty (all protocols)
     std::string enabled_protocols;
+
+private:
+    // SSLOptions is large and not often used, allocate it on heap to
+    // prevent ServerOptions from being bloated in most cases.
+    butil::PtrContainer<ServerSSLOptions> _ssl_options;
 };
 
 // This struct is originally designed to contain basic statistics of the

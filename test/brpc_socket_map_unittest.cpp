@@ -127,7 +127,7 @@ TEST_F(SocketMapTest, max_pool_size) {
 } //namespace
 
 int main(int argc, char* argv[]) {
-    butil::str2endpoint("127.0.0.1:12345", &g_key.peer);
+    butil::str2endpoint("127.0.0.1:12345", &g_key.peer.addr);
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }

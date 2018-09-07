@@ -30,16 +30,26 @@ namespace brpc {
 struct NSKey {
     std::string protocol;
     std::string service_name;
+    ChannelSignature channel_signature;
+
+    NSKey(const std::string& prot_in,
+          const std::string& service_in,
+          const ChannelSignature& sig)
+        : protocol(prot_in), service_name(service_in), channel_signature(sig) {
+    }
 };
 struct NSKeyHasher {
     size_t operator()(const NSKey& nskey) const {
-        return butil::DefaultHasher<std::string>()(nskey.service_name)
-            * 101 + butil::DefaultHasher<std::string>()(nskey.protocol);
+        size_t h = butil::DefaultHasher<std::string>()(nskey.protocol);
+        h = h * 101 + butil::DefaultHasher<std::string>()(nskey.service_name);
+        h = h * 101 + nskey.channel_signature.data[1];
+        return h;
     }
 };
 inline bool operator==(const NSKey& k1, const NSKey& k2) {
     return k1.protocol == k2.protocol &&
-        k1.service_name == k2.service_name;
+        k1.service_name == k2.service_name &&
+        k1.channel_signature == k2.channel_signature;
 }
 
 typedef butil::FlatMap<NSKey, NamingServiceThread*, NSKeyHasher> NamingServiceMap;
@@ -59,7 +69,7 @@ NamingServiceThread::Actions::~Actions() {
     // Remove all sockets from SocketMap
     for (std::vector<ServerNode>::const_iterator it = _last_servers.begin();
          it != _last_servers.end(); ++it) {
-        const SocketMapKey key(it->addr, _owner->_options.channel_signature);
+        const SocketMapKey key(*it, _owner->_options.channel_signature);
         SocketMapRemove(key);
     }
     EndWait(0);
@@ -112,7 +122,7 @@ void NamingServiceThread::Actions::ResetServers(
         // TODO: For each unique SocketMapKey (i.e. SSL settings), insert a new
         //       Socket. SocketMapKey may be passed through AddWatcher. Make sure
         //       to pick those Sockets with the right settings during OnAddedServers
-        const SocketMapKey key(_added[i].addr, _owner->_options.channel_signature);
+        const SocketMapKey key(_added[i], _owner->_options.channel_signature);
         CHECK_EQ(0, SocketMapInsert(key, &tagged_id.id, _owner->_options.ssl_ctx));
         _added_sockets.push_back(tagged_id);
     }
@@ -121,7 +131,7 @@ void NamingServiceThread::Actions::ResetServers(
     for (size_t i = 0; i < _removed.size(); ++i) {
         ServerNodeWithId tagged_id;
         tagged_id.node = _removed[i];
-        const SocketMapKey key(_removed[i].addr, _owner->_options.channel_signature);
+        const SocketMapKey key(_removed[i], _owner->_options.channel_signature);
         CHECK_EQ(0, SocketMapFind(key, &tagged_id.id));
         _removed_sockets.push_back(tagged_id);
     }
@@ -173,7 +183,7 @@ void NamingServiceThread::Actions::ResetServers(
     for (size_t i = 0; i < _removed.size(); ++i) {
         // TODO: Remove all Sockets that have the same address in SocketMapKey.peer
         //       We may need another data structure to avoid linear cost
-        const SocketMapKey key(_removed[i].addr, _owner->_options.channel_signature);
+        const SocketMapKey key(_removed[i], _owner->_options.channel_signature);
         SocketMapRemove(key);
     }
 
@@ -220,7 +230,7 @@ NamingServiceThread::~NamingServiceThread() {
     RPC_VLOG << "~NamingServiceThread(" << *this << ')';
     // Remove from g_nsthread_map first
     if (!_protocol.empty()) {
-        const NSKey key = { _protocol, _service_name };
+        const NSKey key(_protocol, _service_name, _options.channel_signature);
         std::unique_lock<pthread_mutex_t> mu(g_nsthread_map_mutex);
         if (g_nsthread_map != NULL) {
             NamingServiceThread** ptr = g_nsthread_map->seek(key);
@@ -410,9 +420,8 @@ int GetNamingServiceThread(
         LOG(ERROR) << "Unknown protocol=" << protocol;
         return -1;
     }
-    NSKey key;
-    key.protocol = protocol;
-    key.service_name = service_name;
+    const NSKey key(protocol, service_name,
+                    (options ? options->channel_signature : ChannelSignature()));
     bool new_thread = false;
     butil::intrusive_ptr<NamingServiceThread> nsthread;
     {

@@ -224,8 +224,8 @@ int URI::SetHttpURL(const char* url) {
     return 0;
 }
 
-int ParseHostAndPortFromURL(const char* url, std::string* host_out,
-                             int* port_out) {
+int ParseURL(const char* url,
+             std::string* schema_out, std::string* host_out, int* port_out) {
     const char* p = url;
     // skip heading blanks
     if (*p == ' ') {
@@ -235,7 +235,6 @@ int ParseHostAndPortFromURL(const char* url, std::string* host_out,
     // Find end of host, locate schema and user_info during the searching
     bool need_schema = true;
     bool need_user_info = true;
-    butil::StringPiece schema;
     for (; true; ++p) {
         const char action = g_url_parsing_fast_action_map[(int)*p];
         if (action == URI_PARSE_CONTINUE) {
@@ -247,7 +246,9 @@ int ParseHostAndPortFromURL(const char* url, std::string* host_out,
         if (*p == ':') {
             if (p[1] == '/' && p[2] == '/' && need_schema) {
                 need_schema = false;
-                schema.set(start, p - start);
+                if (schema_out) {
+                    schema_out->assign(start, p - start);
+                }
                 p += 2;
                 start = p + 1;
             }
@@ -266,15 +267,12 @@ int ParseHostAndPortFromURL(const char* url, std::string* host_out,
     }
     int port = -1;
     const char* host_end = SplitHostAndPort(start, p, &port);
-    if (port < 0) {
-        if (schema.empty() || schema == "http") {
-            port = 80;
-        } else if (schema == "https") {
-            port = 443;
-        }
+    if (host_out) {
+        host_out->assign(start, host_end - start);
     }
-    host_out->assign(start, host_end - start);
-    *port_out = port;
+    if (port_out) {
+        *port_out = port;
+    }
     return 0;
 }
 

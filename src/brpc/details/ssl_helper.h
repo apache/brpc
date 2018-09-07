@@ -22,7 +22,7 @@
 // For some versions of openssl, SSL_* are defined inside this header
 #include <openssl/ossl_typ.h>
 #include "brpc/socket_id.h"            // SocketId
-#include "brpc/ssl_option.h"           // ServerSSLOptions
+#include "brpc/ssl_options.h"          // ServerSSLOptions
 
 namespace brpc {
 

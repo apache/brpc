@@ -145,6 +145,13 @@ ServerOptions::ServerOptions()
     }
 }
 
+ServerSSLOptions* ServerOptions::mutable_ssl_options() {
+    if (!_ssl_options) {
+        _ssl_options.reset(new ServerSSLOptions);
+    }
+    return _ssl_options.get();
+}
+
 Server::MethodProperty::OpaqueParams::OpaqueParams()
     : is_tabbed(false)
     , allow_http_body_to_pb(true)
@@ -840,8 +847,8 @@ int Server::StartInternal(const butil::ip_t& ip,
 
     // Free last SSL contexts
     FreeSSLContexts();
-    if (_options.ssl_options) {
-        CertInfo& default_cert = _options.ssl_options->default_cert;
+    if (_options.has_ssl_options()) {
+        CertInfo& default_cert = _options.mutable_ssl_options()->default_cert;
         if (default_cert.certificate.empty()) {
             LOG(ERROR) << "default_cert is empty";
             return -1;
@@ -851,7 +858,7 @@ int Server::StartInternal(const butil::ip_t& ip,
         }
         _default_ssl_ctx = _ssl_ctx_map.begin()->second.ctx;
 
-        const std::vector<CertInfo>& certs = _options.ssl_options->certs;
+        const std::vector<CertInfo>& certs = _options.mutable_ssl_options()->certs;
         for (size_t i = 0; i < certs.size(); ++i) {
             if (AddCertificate(certs[i]) != 0) {
                 return -1;
@@ -1795,7 +1802,7 @@ Server::FindServicePropertyByName(const butil::StringPiece& name) const {
 }
 
 int Server::AddCertificate(const CertInfo& cert) {
-    if (_options.ssl_options == NULL) {
+    if (!_options.has_ssl_options()) {
         LOG(ERROR) << "ServerOptions.ssl_options is not configured yet";
         return -1;
     }
@@ -1810,7 +1817,7 @@ int Server::AddCertificate(const CertInfo& cert) {
     ssl_ctx.filters = cert.sni_filters;
     ssl_ctx.ctx = std::make_shared<SocketSSLContext>();
     SSL_CTX* raw_ctx = CreateServerSSLContext(cert.certificate, cert.private_key,
-                                              *_options.ssl_options, &ssl_ctx.filters);
+                                              _options.ssl_options(), &ssl_ctx.filters);
     if (raw_ctx == NULL) {
         return -1;
     }
@@ -1860,7 +1867,7 @@ bool Server::AddCertMapping(CertMaps& bg, const SSLContext& ssl_ctx) {
 }
 
 int Server::RemoveCertificate(const CertInfo& cert) {
-    if (_options.ssl_options == NULL) {
+    if (!_options.has_ssl_options()) {
         LOG(ERROR) << "ServerOptions.ssl_options is not configured yet";
         return -1;
     }
@@ -1905,7 +1912,7 @@ bool Server::RemoveCertMapping(CertMaps& bg, const SSLContext& ssl_ctx) {
 }
 
 int Server::ResetCertificates(const std::vector<CertInfo>& certs) {
-    if (_options.ssl_options == NULL) {
+    if (!_options.has_ssl_options()) {
         LOG(ERROR) << "ServerOptions.ssl_options is not configured yet";
         return -1;
     }
@@ -1918,8 +1925,8 @@ int Server::ResetCertificates(const std::vector<CertInfo>& certs) {
 
     // Add default certficiate into tmp_map first since it can't be reloaded 
     std::string default_cert_key =
-            _options.ssl_options->default_cert.certificate
-            + _options.ssl_options->default_cert.private_key;
+        _options.ssl_options().default_cert.certificate
+        + _options.ssl_options().default_cert.private_key;
     tmp_map[default_cert_key] = _ssl_ctx_map[default_cert_key];
 
     for (size_t i = 0; i < certs.size(); ++i) {
@@ -1935,7 +1942,7 @@ int Server::ResetCertificates(const std::vector<CertInfo>& certs) {
         ssl_ctx.ctx = std::make_shared<SocketSSLContext>();
         ssl_ctx.ctx->raw_ctx = CreateServerSSLContext(
             certs[i].certificate, certs[i].private_key,
-            *_options.ssl_options, &ssl_ctx.filters);
+            _options.ssl_options(), &ssl_ctx.filters);
         if (ssl_ctx.ctx->raw_ctx == NULL) {
             return -1;
         }
@@ -2086,7 +2093,7 @@ int Server::SSLSwitchCTXByHostname(struct ssl_st* ssl,
                                    int* al, Server* server) {
     (void)al;
     const char* hostname = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
-    bool strict_sni = server->_options.ssl_options->strict_sni;
+    bool strict_sni = server->_options.ssl_options().strict_sni;
     if (hostname == NULL) {
         return strict_sni ? SSL_TLSEXT_ERR_ALERT_FATAL : SSL_TLSEXT_ERR_NOACK;
     }
