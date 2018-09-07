@@ -47,9 +47,9 @@ const std::string g_protocol = "grpc";
 class MyGrpcService : public ::test::GrpcService {
 public:
     void Method(::google::protobuf::RpcController* cntl_base,
-              const ::test::GrpcRequest* req,
-              ::test::GrpcResponse* res,
-              ::google::protobuf::Closure* done) {
+                const ::test::GrpcRequest* req,
+                ::test::GrpcResponse* res,
+                ::google::protobuf::Closure* done) {
         brpc::Controller* cntl =
                 static_cast<brpc::Controller*>(cntl_base);
         brpc::ClosureGuard done_guard(done);
@@ -66,6 +66,15 @@ public:
                         butil::string_printf("%s%d", g_prefix.c_str(), error_code));
             return;
         }
+    }
+
+    void MethodTimeOut(::google::protobuf::RpcController* cntl_base,
+              const ::test::GrpcRequest* req,
+              ::test::GrpcResponse* res,
+              ::google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        bthread_usleep(6 * 1000000L);
+        return;
     }
 };
 
@@ -156,6 +165,36 @@ TEST_F(GrpcTest, return_error) {
         EXPECT_EQ((int)cntl.grpc_status(), i);
         EXPECT_EQ(cntl.grpc_message(), butil::string_printf("%s%d", g_prefix.c_str(), i));
     }
+}
+
+TEST_F(GrpcTest, RpcTimedOut) {
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = g_protocol;
+    options.timeout_ms = g_timeout_ms;
+    EXPECT_EQ(0, channel.Init(g_server_addr.c_str(), "", &options));
+
+    test::GrpcRequest req;
+    test::GrpcResponse res;
+    brpc::Controller cntl;
+    req.set_message(g_req);
+    test::GrpcService_Stub stub(&_channel);
+    stub.MethodTimeOut(&cntl, &req, &res, NULL);
+    EXPECT_TRUE(cntl.Failed());
+    EXPECT_EQ(cntl.ErrorCode(), brpc::ERPCTIMEDOUT);
+}
+
+TEST_F(GrpcTest, MethodNotExist) {
+    test::GrpcRequest req;
+    test::GrpcResponse res;
+    brpc::Controller cntl;
+    req.set_message(g_req);
+    test::GrpcService_Stub stub(&_channel);
+    stub.MethodNotExist(&cntl, &req, &res, NULL);
+    EXPECT_TRUE(cntl.Failed());
+    EXPECT_EQ(cntl.ErrorCode(), brpc::EGRPC);
+    EXPECT_EQ((int)cntl.grpc_status(), brpc::GRPC_INTERNAL);
+    ASSERT_TRUE(butil::StringPiece(cntl.grpc_message()).ends_with("Method MethodNotExist() not implemented."));
 }
 
 } // namespace 

@@ -63,7 +63,7 @@ GrpcStatus ErrorCode2GrpcStatus(int error_code) {
     case ETIMEDOUT:
         return GRPC_INTERNAL;
     default:
-        return GRPC_UNKNOWN;
+        return GRPC_INTERNAL;
     }
 }
 
