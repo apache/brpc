@@ -173,7 +173,6 @@ int CouchbaseLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         return EHOSTDOWN;
     }
     SocketId selected_id = 0;
-    SocketId dummy_id = 0;
     switch (reason) {
     case FIRST_REQUEST: // first request
         if (!IsInRebalancing(vb_map.get()) || 
@@ -181,7 +180,7 @@ int CouchbaseLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
             selected_id = CouchbaseHelper::GetMaster(vb_map.get(), vb_id);
         } else {
             selected_id = GetDetectedMaster(vb_map.get(), vb_id);
-            if (selected_id == dummy_id) {
+            if (selected_id == 0) {
                 selected_id = CouchbaseHelper::GetMaster(vb_map.get(), vb_id);
             }
         }
@@ -201,18 +200,19 @@ int CouchbaseLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     default: // other retry case
         SocketId master_id = CouchbaseHelper::GetMaster(vb_map.get(), vb_id);
 		    SocketId curr_id = in.excluded->GetLastId();
+        SocketId dummy_id = 0;
         if (IsInRebalancing(vb_map.get())) {
             selected_id = GetDetectedMaster(vb_map.get(), vb_id);
-            if (selected_id == dummy_id) {
+            if (selected_id == 0) {
                 if (curr_id != master_id) {
                     selected_id = master_id;
                     break;
                 }
                 selected_id = CouchbaseHelper::GetForwardMaster(vb_map.get(), 
                                                                 vb_id);
-                if (selected_id == dummy_id) {
+                if (selected_id == 0) {
                     selected_id = GetNextProbeId(vb_map.get(), vb_id, curr_id);
-                    if (selected_id == dummy_id) {
+                    if (selected_id == 0) {
                         return ENODATA;
                     }  
                 }
@@ -246,6 +246,22 @@ void CouchbaseLoadBalancer::Destroy() {
 
 void CouchbaseLoadBalancer::Describe(
     std::ostream &os, const DescribeOptions& options) {
+    if (!options.verbose) {
+        os << "cb_lb";
+        return;
+    }
+    os << "CouchbaseLoadBalancer{";
+    butil::DoublyBufferedData<VBucketServerMap>::ScopedPtr vb_map;
+    if(_vbucket_map.Read(&vb_map) != 0) {
+        os << "fail to read vbucket map";
+    } else {
+        os << "n=" << vb_map->server_list.size() << ':';
+        auto iter = vb_map->server_map.begin();
+        for (; iter != vb_map->server_map.end(); ++iter) {
+            os << ' ' << iter->first;
+        }
+    }
+    os << '}';
 }
 
 bool CouchbaseLoadBalancer::Update(VBucketServerMap& vbucket_map, 
@@ -282,7 +298,7 @@ SocketId CouchbaseLoadBalancer::GetDetectedMaster(const VBucketServerMap* vb_map
         return id;
     } else {
         detected_id.compare_exchange_strong(id, 0, butil::memory_order_relaxed);
-	  }
+    }
     return 0;
 }						  
 
@@ -318,18 +334,21 @@ void CouchbaseLoadBalancer::UpdateDetectedMasterIfNeeded(
     DetectedMaster& detect_master = (*_detected_vbucket_map)[vb_id];
     butil::atomic<bool>& is_verified = detect_master._verified;
     butil::atomic<SocketId>& detected_id = detect_master._id;
-	  // reason == RPC_SUCCESS_BUT_RESPONSE_FAULT || reason == RESPONSE_OK
+    // reason == RPC_SUCCESS_BUT_RESPONSE_FAULT || reason == RESPONSE_OK
     if (reason != SERVER_DOWN && reason != RPC_SUCCESS_BUT_WRONG_SERVER) {
         // We detected the right new master for vbucket no matter the
         // response status is success or not. Record for following request
         // during rebalancing.
-        SocketId last_id = detected_id.load(butil::memory_order_acquire);
-        if (last_id != 0 && last_id != id) {
+        if (id == CouchbaseHelper::GetMaster(vb_map.get(), vb_id)) {
+            return;
+        }
+        if (detected_id.load(butil::memory_order_acquire) != id) {
             detected_id.store(id, butil::memory_order_relaxed);
         }
-        if (!is_verified.load(butil::memory_order_acquire)) {
-            is_verified.store(true, butil::memory_order_relaxed); 
-        }
+        bool not_verified = false;
+        is_verified.compare_exchange_strong(not_verified, true,
+                                            butil::memory_order_release, 
+                                            butil::memory_order_relaxed);
     } else { 
         // Server is down or it is a wrong server of the vbucket. Go on probing 
         // other servers.

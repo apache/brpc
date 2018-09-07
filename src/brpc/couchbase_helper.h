@@ -123,7 +123,7 @@ public:
     }  
 	
     static inline uint64_t AddReasonToRequestCode(const uint64_t request_code, 
-		                                              const uint32_t reason) {
+                                                  const uint32_t reason) {
         union CouchbaseRequestCode code;
         code.cntl_request_code = request_code;
         code.request_code.retry_reason = reason;

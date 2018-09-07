@@ -80,7 +80,7 @@ bool CouchbaseRetryPolicy::DoRetry(Controller* cntl) const {
     if (reason == RPC_FAILED || reason == RESPONSE_OK) {
         return false;
     }
-	  // Append retry reason to controll error_text.
+    // Append retry reason to controll error_text.
     if (status != CouchbaseResponse::STATUS_SUCCESS) {
         AppendControllerErrorText(cntl, status, vb_id, curr_server);
     }
@@ -110,7 +110,7 @@ bool CouchbaseRetryPolicy::DoRetry(Controller* cntl) const {
         uint64_t req_code = CouchbaseHelper::AddReasonToRequestCode(
             cntl->request_code(), reason);
         cntl->set_request_code(req_code);
-	      // Read replica server, we need re-package request.
+        // Read replica server, we need re-package request.
         if (reason == SERVER_DOWN_RETRY_REPLICAS) {
             CouchbaseRequest request;
             request.ReplicasGet(cntl->couchbase_context()->key, vb_id);
