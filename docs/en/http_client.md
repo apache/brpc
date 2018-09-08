@@ -233,3 +233,6 @@ Currently the POST data should be intact before launching the http call, thus br
 # Access Servers with authentications
 
 Generate `auth_data` according to authenticating method of the server and set it into `Authorization` header. If you're using curl, add option `-H "Authorization : <auth_data>"`.
+
+# Send https requests
+https is short for "http over SSL", SSL is not exclusive for http, but effective for all protocols. The generic method for turning on client-side SSL is [here](client.md#turn-on-ssl). brpc enables SSL automatically for URIs starting with https:// to make the usage more handy.

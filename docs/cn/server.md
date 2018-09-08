@@ -455,7 +455,7 @@ baidu_std和hulu_pbrpc协议支持传递附件，这段数据由用户自定义�
 
 ## 开启SSL
 
-要开启SSL，首先确保代码依赖了最新的openssl库。如果openssl版本很旧，会有严重的安全漏洞，支持的加密算法也少，违背了开启SSL的初衷。然后设置`ServerOptions.ssl_options`，具体见[ssl_option.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_option.h)。
+要开启SSL，首先确保代码依赖了最新的openssl库。如果openssl版本很旧，会有严重的安全漏洞，支持的加密算法也少，违背了开启SSL的初衷。然后设置`ServerOptions.ssl_options`，具体见[ssl_options.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_options.h)。
 
 ```c++
 // Certificate structure

@@ -673,41 +673,21 @@ In http, attachment corresponds to [message body](http://www.w3.org/Protocols/rf
 
 ## Turn on SSL
 
-Update openssl to the latest version before turning on SSL, since older versions of openssl may have severe security problems and support less encryption algorithms, which is against with the purpose of using SSL. Setup `ChannelOptions.ssl_options` to turn on SSL. Refer to [ssl_option.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_option.h) for more details.
+Update openssl to the latest version before turning on SSL, since older versions of openssl may have severe security problems and support less encryption algorithms, which is against with the purpose of using SSL. 
+Set ChannelOptions.mutable_ssl_options() to enable SSL. Refer to [ssl_options.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_options.h) for the detailed options. ChannelOptions.has_ssl_options() checks if ssl_options was set; ChannelOptions.ssl_options() returns const reference to the ssl_options.
 
 ```c++
-// SSL options at client side
-struct ChannelSSLOptions {
-    // Whether to enable SSL on the channel.
-    // Default: false
-    bool enable;
-    
-    // Cipher suites used for SSL handshake.
-    // The format of this string should follow that in `man 1 cipers'.
-    // Default: "DEFAULT"
-    std::string ciphers;
-    
-    // SSL protocols used for SSL handshake, separated by comma.
-    // Available protocols: SSLv3, TLSv1, TLSv1.1, TLSv1.2
-    // Default: TLSv1, TLSv1.1, TLSv1.2
-    std::string protocols;
-    
-    // When set, fill this into the SNI extension field during handshake,
-    // which can be used by the server to locate the right certificate. 
-    // Default: empty
-    std::string sni_name;
-    
-    // Options used to verify the server's certificate
-    // Default: see above
-    VerifyOptions verify;
-    
-    // ... Other options
-};
+// Enable client-side SSL and use default values.
+options.mutable_ssl_options();
+
+// Enable client-side SSL and customize values.
+options.mutable_ssl_options()->ciphers_name = "...";
+options.mutable_ssl_options()->sni_name = "...";
 ```
 
-- Currently only Channels which connect to a single server (by corresponding `Init`) support SSL request. Those connect to a cluster (using `NamingService`) **do NOT support SSL**.
+- Channels connecting to a single server or a cluster both support SSL (the initial implementation does not support cluster)
 - After turning on SSL, all requests through this Channel will be encrypted. Users should create another Channel for non-SSL requests if needed.
-- Some accessibility optimization for HTTPS: `Channel.Init` recognize https:// prefix and turn on SSL automatically; -http_verbose will print certificate information if SSL connected.
+- Accessibility improvements for HTTPS: Channel.Init recognizes https:// prefix and turns on SSL automatically; -http_verbose prints certificate information when SSL is on.
 
 ## Authentication
 

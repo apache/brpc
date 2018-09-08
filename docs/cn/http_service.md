@@ -308,6 +308,9 @@ if (encoding != NULL && *encoding == "gzip") {
 // cntl->request_attachment()中已经是解压后的数据了
 ```
 
+# 处理https请求
+https是http over SSL的简称，SSL并不是http特有的，而是对所有协议都有效。开启服务端SSL的一般性方法见[这里](server.md#开启ssl)。
+
 # 性能
 
 没有极端性能要求的产品都有使用HTTP协议的倾向，特别是移动产品，所以我们很重视HTTP的实现质量，具体来说：
