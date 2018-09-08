@@ -145,12 +145,7 @@ int Channel::InitChannelOptions(const ChannelOptions* options) {
     }
     const Protocol* protocol = FindProtocol(_options.protocol);
     if (NULL == protocol || !protocol->support_client()) {
-        if (_options.protocol == PROTOCOL_UNKNOWN) {
-            LOG(ERROR) << "Unknown protocol";
-        } else {
-            LOG(ERROR) << "Channel doesn't support protocol="
-                       << _options.protocol.name();
-        }
+        LOG(ERROR) << "Channel does not support the protocol";
         return -1;
     }
     _serialize_request = protocol->serialize_request;
@@ -208,9 +203,13 @@ int Channel::Init(const char* server_addr_and_port,
                   const ChannelOptions* options) {
     GlobalInitializeOrDie();
     butil::EndPoint point;
-    const Protocol* protocol =
-        FindProtocol(options ? options->protocol : _options.protocol);
-    if (protocol != NULL && protocol->parse_server_address != NULL) {
+    const AdaptiveProtocolType& ptype = (options ? options->protocol : _options.protocol);
+    const Protocol* protocol = FindProtocol(ptype);
+    if (protocol == NULL || !protocol->support_client()) {
+        LOG(ERROR) << "Channel does not support the protocol";
+        return -1;
+    }
+    if (protocol->parse_server_address != NULL) {
         if (!protocol->parse_server_address(&point, server_addr_and_port)) {
             LOG(ERROR) << "Fail to parse address=`" << server_addr_and_port << '\'';
             return -1;
@@ -237,9 +236,13 @@ int Channel::Init(const char* server_addr, int port,
                   const ChannelOptions* options) {
     GlobalInitializeOrDie();
     butil::EndPoint point;
-    const Protocol* protocol =
-        FindProtocol(options ? options->protocol : _options.protocol);
-    if (protocol != NULL && protocol->parse_server_address != NULL) {
+    const AdaptiveProtocolType& ptype = (options ? options->protocol : _options.protocol);
+    const Protocol* protocol = FindProtocol(ptype);
+    if (protocol == NULL || !protocol->support_client()) {
+        LOG(ERROR) << "Channel does not support the protocol";
+        return -1;
+    }
+    if (protocol->parse_server_address != NULL) {
         if (!protocol->parse_server_address(&point, server_addr)) {
             LOG(ERROR) << "Fail to parse address=`" << server_addr << '\'';
             return -1;
