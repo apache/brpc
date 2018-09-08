@@ -15,6 +15,7 @@ message EchoRequest {
 message EchoResponse {
     required string message = 1;
     repeated int32 code_list = 2;
+    optional uint64 receiving_socket_id = 3;
 };
 
 message ComboRequest {

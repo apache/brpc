@@ -14,15 +14,14 @@
 
 // Authors: Rujie Jiang (jiangrujie@baidu.com)
 
-#include "brpc/ssl_option.h"
+#include "brpc/ssl_options.h"
 
 namespace brpc {
 
 VerifyOptions::VerifyOptions() : verify_depth(0) {}
 
 ChannelSSLOptions::ChannelSSLOptions()
-    : enable(false)
-    , ciphers("DEFAULT")
+    : ciphers("DEFAULT")
     , protocols("TLSv1, TLSv1.1, TLSv1.2")
 {}
 

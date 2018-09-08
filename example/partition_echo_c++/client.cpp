@@ -192,7 +192,7 @@ int main(int argc, char* argv[]) {
         pthread_mutex_unlock(&g_latency_mutex);
 
         const int64_t avg_latency = (latency_sum - last_latency_sum) /
-            std::max(nsuccess - last_counter, 1LL);
+            std::max(nsuccess - last_counter, (int64_t)1);
         LOG(INFO) << "Sending EchoRequest at qps=" << nsuccess - last_counter
                   << " latency=" << avg_latency;
         last_counter = nsuccess;
