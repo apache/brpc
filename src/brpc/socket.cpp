@@ -833,10 +833,12 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // FIXME(gejun): the initial delay should be related to uncommited
             // CircuitBreaker and shorter for occasional errors and longer for
             // frequent errors.
+            // NOTE: the delay should be positive right now to avoid HC timing
+            // issues in UT.
             if (_health_check_interval_s > 0) {
                 PeriodicTaskManager::StartTaskAt(
                     new HealthCheckTask(id()),
-                    butil::milliseconds_from_now(0)/*FIXME*/);
+                    butil::milliseconds_from_now(100/*NOTE*/));
             }
             // Wake up all threads waiting on EPOLLOUT when closing fd
             _epollout_butex->fetch_add(1, butil::memory_order_relaxed);
@@ -2613,6 +2615,7 @@ std::string Socket::description() const {
     if (local_port > 0) {
         butil::string_appendf(&result, "@%d", local_port);
     }
+    butil::string_appendf(&result, " (0x%p)", this);
     return result;
 }
 
@@ -2641,6 +2644,7 @@ ostream& operator<<(ostream& os, const brpc::Socket& sock) {
     if (local_port > 0) {
         os << '@' << local_port;
     }
+    os << " (0x" << (void*)&sock << ')';
     return os;
 }
 }
