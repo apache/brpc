@@ -19,20 +19,20 @@
 
 namespace brpc {
 
-
-// Override DoPeriodicTask() with code that needs to be periodically run. If
+// Override OnTriggeringTask() with code that needs to be periodically run. If
 // the task is completed, the method should return false; Otherwise the method
 // should return true and set `next_abstime' to the time that the task should
 // be run next time.
-// Each call to DoPeriodicTask() is run in a separated bthread which can be
+// Each call to OnTriggeringTask() is run in a separated bthread which can be
 // suspended. To preserve states between different calls, put the states as
 // fields of (subclass of) PeriodicTask.
-// If any error occurs or DoPeriodicTask() returns false, the task is called
-// with DoPeriodicTask(NULL) and will not be scheduled anymore.
+// If any error occurs or OnTriggeringTask() returns false, the task is called
+// with OnDestroyingTask() and will not be scheduled anymore.
 class PeriodicTask {
 public:
     virtual ~PeriodicTask();
-    virtual bool DoPeriodicTask(timespec* next_abstime) = 0;
+    virtual bool OnTriggeringTask(timespec* next_abstime) = 0;
+    virtual void OnDestroyingTask() = 0;
 };
 
 class PeriodicTaskManager {

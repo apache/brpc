@@ -668,7 +668,7 @@ private:
     int _preferred_index;
 
     // Number of HC since the last SetFailed() was called. Set to 0 when the
-    // socket is revived. Only set in HealthCheckTask::DoPeriodicTask()
+    // socket is revived. Only set in HealthCheckTask::OnTriggeringTask()
     int _hc_count;
 
     // Size of current incomplete message, set to 0 on complete.

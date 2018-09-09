@@ -777,7 +777,8 @@ void Socket::Revive() {
 class HealthCheckTask : public PeriodicTask {
 public:
     explicit HealthCheckTask(SocketId id) : _id(id) , _first_time(true) {}
-    bool DoPeriodicTask(timespec* next_abstime);
+    bool OnTriggeringTask(timespec* next_abstime) override;
+    void OnDestroyingTask() override;
 
 private:
     SocketId _id;
@@ -829,10 +830,13 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // Do health-checking even if we're not connected before, needed
             // by Channel to revive never-connected socket when server side
             // comes online.
+            // FIXME(gejun): the initial delay should be related to uncommited
+            // CircuitBreaker and shorter for occasional errors and longer for
+            // frequent errors.
             if (_health_check_interval_s > 0) {
                 PeriodicTaskManager::StartTaskAt(
                     new HealthCheckTask(id()),
-                    butil::milliseconds_from_now(_health_check_interval_s * 500));
+                    butil::milliseconds_from_now(0)/*FIXME*/);
             }
             // Wake up all threads waiting on EPOLLOUT when closing fd
             _epollout_butex->fetch_add(1, butil::memory_order_relaxed);
@@ -930,11 +934,11 @@ int Socket::Status(SocketId id, int32_t* nref) {
     return -1;
 }
 
-bool HealthCheckTask::DoPeriodicTask(timespec* next_abstime) {
-    if (next_abstime == NULL) {
-        delete this;
-        return true;
-    }
+void HealthCheckTask::OnDestroyingTask() {
+    delete this;
+}
+
+bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
     SocketUniquePtr ptr;
     const int rc = Socket::AddressFailedAsWell(_id, &ptr);
     CHECK(rc != 0);

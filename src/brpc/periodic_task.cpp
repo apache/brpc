@@ -20,15 +20,14 @@
 
 namespace brpc {
 
-
 PeriodicTask::~PeriodicTask() {
 }
 
 static void* PeriodicTaskThread(void* arg) {
     PeriodicTask* task = static_cast<PeriodicTask*>(arg);
     timespec abstime;
-    if (!task->DoPeriodicTask(&abstime)) { // end
-        task->DoPeriodicTask(NULL);
+    if (!task->OnTriggeringTask(&abstime)) { // end
+        task->OnDestroyingTask();
         return NULL;
     }
     PeriodicTaskManager::StartTaskAt(task, abstime);
@@ -41,7 +40,7 @@ static void RunPeriodicTaskThread(void* arg) {
         &th, &BTHREAD_ATTR_NORMAL, PeriodicTaskThread, arg);
     if (rc != 0) {
         LOG(ERROR) << "Fail to start PeriodicTaskThread";
-        static_cast<PeriodicTask*>(arg)->DoPeriodicTask(NULL);
+        static_cast<PeriodicTask*>(arg)->OnDestroyingTask();
         return;
     }
 }
@@ -56,7 +55,7 @@ void PeriodicTaskManager::StartTaskAt(PeriodicTask* task, const timespec& abstim
         &timer_id, abstime, RunPeriodicTaskThread, task);
     if (rc != 0) {
         LOG(ERROR) << "Fail to add timer for RunPerodicTaskThread";
-        task->DoPeriodicTask(NULL);
+        task->OnDestroyingTask();
         return;
     }
 }
