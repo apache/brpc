@@ -36,7 +36,7 @@ namespace policy {
 void SendRpcResponse(int64_t correlation_id, Controller* cntl, 
                      const google::protobuf::Message* req,
                      const google::protobuf::Message* res,
-                     const Server* server_raw, MethodStatus *, long);
+                     const Server* server_raw, MethodStatus *, int64_t);
 } // policy
 } // brpc
 
@@ -231,7 +231,7 @@ protected:
             const google::protobuf::Message*,
             const google::protobuf::Message*,
             const brpc::Server*,
-            brpc::MethodStatus*, long>(
+            brpc::MethodStatus*, int64_t>(
                 &brpc::policy::SendRpcResponse,
                 meta.correlation_id(), cntl, NULL, res,
                 &ts->_dummy, NULL, -1);
@@ -748,7 +748,7 @@ protected:
         CallMethod(&subchans[0], &cntl, &req, &res, false);
         ASSERT_TRUE(cntl.Failed());
         ASSERT_EQ(brpc::EINTERNAL, cntl.ErrorCode()) << cntl.ErrorText();
-        ASSERT_EQ("[E2001][127.0.1.1:0]Method ComboEcho() not implemented.", cntl.ErrorText());
+        ASSERT_TRUE(butil::StringPiece(cntl.ErrorText()).ends_with("Method ComboEcho() not implemented."));
 
         // do the rpc call.
         cntl.Reset();

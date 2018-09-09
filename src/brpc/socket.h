@@ -183,6 +183,7 @@ friend class Controller;
 friend class policy::ConsistentHashingLoadBalancer;
 friend class policy::RtmpContext;
 friend class schan::ChannelBalancer;
+friend class HealthCheckTask;
     class SharedPart;
     struct Forbidden {};
     struct WriteRequest;
@@ -523,7 +524,6 @@ friend void DereferenceSocket(Socket*);
     int ConnectIfNot(const timespec* abstime, WriteRequest* req);
     
     int ResetFileDescriptor(int fd);
-    static void* HealthCheckThread(void*);
 
     // Returns 0 on success, 1 on failed socket, -1 on recycled.
     static int AddressFailedAsWell(SocketId id, SocketUniquePtr* ptr);
@@ -668,7 +668,7 @@ private:
     int _preferred_index;
 
     // Number of HC since the last SetFailed() was called. Set to 0 when the
-    // socket is revived. Only set in HealthCheckThread
+    // socket is revived. Only set in HealthCheckTask::DoPeriodicTask()
     int _hc_count;
 
     // Size of current incomplete message, set to 0 on complete.
