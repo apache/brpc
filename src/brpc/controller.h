@@ -602,16 +602,10 @@ private:
     void set_used_by_rpc() { add_flag(FLAGS_USED_BY_RPC); }
     bool is_used_by_rpc() const { return has_flag(FLAGS_USED_BY_RPC); }
 
-<<<<<<< HEAD
-=======
-    // Get sock option. .e.g get vip info through ttm kernel module hook,
-    int GetSockOption(int level, int optname, void* optval, socklen_t* optlen);
-
     bool has_enabled_circuit_breaker() const { 
         return has_flag(FLAGS_ENABLED_CIRCUIT_BREAKER); 
     }
 
->>>>>>> Replace _enable_circuit_breaker with FALGS_ENABLED_CIRCUIT_BREAKER
 private:
     // NOTE: align and group fields to make Controller as compact as possible.
 
