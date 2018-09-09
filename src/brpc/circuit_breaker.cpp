@@ -20,18 +20,18 @@
 
 namespace brpc {
 
-DEFINE_int32(circuit_breaker_short_window_size, 400,
+DEFINE_int32(circuit_breaker_short_window_size, 500,
     "Short window sample size.");
 DEFINE_int32(circuit_breaker_long_window_size, 1000,
     "Long window sample size.");
 DEFINE_int32(circuit_breaker_short_window_error_percent, 10,
     "The maximum error rate allowed by the short window, ranging from 0-99.");
-DEFINE_int32(circuit_breaker_long_window_error_percent, 30, 
+DEFINE_int32(circuit_breaker_long_window_error_percent, 5, 
     "The maximum error rate allowed by the long window, ranging from 0-99.");
 DEFINE_int32(circuit_breaker_min_error_cost_us, 500,
     "The minimum error_cost, when the ema of error cost is less than this "
     "value, it will be set to zero.");
-DEFINE_int32(circuit_breaker_max_failed_latency_mutilple, 3,
+DEFINE_int32(circuit_breaker_max_failed_latency_mutilple, 2,
     "The maximum multiple of the latency of the failed request relative to "
     "the average latency of the success requests.");
 
