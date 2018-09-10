@@ -24,6 +24,18 @@
 #include <sys/time.h>                        // timeval, gettimeofday
 #include <stdint.h>                          // int64_t, uint64_t
 
+#if defined(NO_CLOCK_GETTIME_IN_MAC)
+#include <mach/mach.h>
+# define CLOCK_REALTIME CALENDAR_CLOCK
+# define CLOCK_MONOTONIC SYSTEM_CLOCK
+
+typedef int clockid_t;
+
+// clock_gettime is not available in MacOS < 10.12
+int clock_gettime(clockid_t id, timespec* time);
+
+#endif
+
 namespace butil {
 
 // Get SVN revision of this copy.
@@ -320,13 +332,13 @@ public:
 
     // Start this timer
     void start() {
-        _start = cpuwide_time_ns();
+        _start = monotonic_time_ns();
         _stop = _start;
     }
     
     // Stop this timer
     void stop() {
-        _stop = cpuwide_time_ns();
+        _stop = monotonic_time_ns();
     }
 
     // Get the elapse from start() to stop(), in various units.
