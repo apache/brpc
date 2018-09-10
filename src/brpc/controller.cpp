@@ -765,9 +765,14 @@ void Controller::Call::OnComplete(Controller* c, int error_code/*note*/,
             sending_sock.get(), c, error_code);
     }
     if (enable_circuit_breaker) {
-        SocketUniquePtr sock; 
-        if (Socket::Address(peer_id, &sock) == 0) {
-            sock->FeedbackCircuitBreaker(error_code, 
+        if (sending_sock) {
+            SocketUniquePtr sock; 
+            if (Socket::Address(peer_id, &sock) == 0) {
+                sock->FeedbackCircuitBreaker(error_code, 
+                    butil::gettimeofday_us() - begin_time_us);
+            }
+        } else {
+            sending_sock->FeedbackCircuitBreaker(error_code, 
                 butil::gettimeofday_us() - begin_time_us);
         }
     }
