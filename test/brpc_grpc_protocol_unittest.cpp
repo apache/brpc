@@ -74,6 +74,7 @@ public:
               ::google::protobuf::Closure* done) {
         brpc::ClosureGuard done_guard(done);
         bthread_usleep(6 * 1000000L);
+        res->set_message(g_prefix + req->message());
         return;
     }
 };
@@ -158,6 +159,7 @@ TEST_F(GrpcTest, return_error) {
         brpc::Controller cntl;
         req.set_message(g_req);
         req.set_error_code(i);
+
         test::GrpcService_Stub stub(&_channel);
         stub.Method(&cntl, &req, &res, NULL);
         EXPECT_TRUE(cntl.Failed());
@@ -168,12 +170,6 @@ TEST_F(GrpcTest, return_error) {
 }
 
 TEST_F(GrpcTest, RpcTimedOut) {
-    brpc::Channel channel;
-    brpc::ChannelOptions options;
-    options.protocol = g_protocol;
-    options.timeout_ms = g_timeout_ms;
-    EXPECT_EQ(0, channel.Init(g_server_addr.c_str(), "", &options));
-
     test::GrpcRequest req;
     test::GrpcResponse res;
     brpc::Controller cntl;
