@@ -8,7 +8,8 @@ enum Errno {
     ENOSERVICE              = 1001;  // Service not found
     ENOMETHOD               = 1002;  // Method not found
     EREQUEST                = 1003;  // Bad Request
-    ERPCAUTH                = 1004;  // Unauthorized, can't be called EAUTH directly which is defined in MACOSX
+    ERPCAUTH                = 1004;  // Unauthorized, can't be called EAUTH
+                                     // directly which is defined in MACOSX
     ETOOMANYFAILS           = 1005;  // Too many sub calls failed
     EPCHANFINISH            = 1006;  // [Internal] ParallelChannel finished
     EBACKUPREQUEST          = 1007;  // Sending backup request
@@ -29,4 +30,5 @@ enum Errno {
     ELIMIT                  = 2004;  // Reached server's limit on resources
     ECLOSE                  = 2005;  // Close socket initiatively
     EITP                    = 2006;  // Failed Itp response
+    EGRPC                   = 2007;  // Failed Grpc response
 }

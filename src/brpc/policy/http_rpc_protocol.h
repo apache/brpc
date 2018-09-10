@@ -41,6 +41,7 @@ struct CommonStrings {
     std::string ACCEPT_ENCODING;
     std::string CONTENT_ENCODING;
     std::string CONTENT_LENGTH;
+    std::string IDENTITY;
     std::string GZIP;
     std::string CONNECTION;
     std::string KEEP_ALIVE;
@@ -61,6 +62,15 @@ struct CommonStrings {
     std::string H2_METHOD;
     std::string METHOD_GET;
     std::string METHOD_POST;
+
+    // GRPC-related headers
+    std::string CONTENT_TYPE_GRPC;
+    std::string TE;
+    std::string TRAILERS;
+    std::string GRPC_ENCODING;
+    std::string GRPC_ACCEPT_ENCODING;
+    std::string GRPC_STATUS;
+    std::string GRPC_MESSAGE;
 
     CommonStrings();
 };
@@ -123,6 +133,15 @@ void PackHttpRequest(butil::IOBuf* buf,
 bool ParseHttpServerAddress(butil::EndPoint* out, const char* server_addr_and_port);
 const std::string& GetHttpMethodName(const google::protobuf::MethodDescriptor*,
                                      const Controller*);
+
+enum HttpContentType {
+    HTTP_CONTENT_OTHERS = 0,
+    HTTP_CONTENT_JSON = 1,
+    HTTP_CONTENT_PROTO = 2,
+    HTTP_CONTENT_GRPC = 3
+};
+
+HttpContentType ParseContentType(butil::StringPiece content_type);
 
 }  // namespace policy
 } // namespace brpc

@@ -19,6 +19,7 @@
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/server.h"
 #include "butil/base64.h"
+#include "brpc/log.h"
 
 namespace brpc {
 
@@ -782,6 +783,9 @@ H2ParseResult H2StreamContext::OnResetStream(
     if (_conn_ctx->is_client_side()) {
         sctx->header().set_status_code(HTTP_STATUS_INTERNAL_SERVER_ERROR);
         sctx->header()._h2_error = h2_error;
+        sctx->header()._has_h2_error = true;
+        VLOG(99) << "Received ResetStream err= " << h2_error
+                 << " on client side";
         return MakeH2Message(sctx);
     } else {
         // No need to process the request.
@@ -1099,6 +1103,8 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
         if (rc == 0) {
             break;
         }
+        RPC_VLOG << "Header name: " << pair.name
+                 << ", header value: " << pair.value;
         const char* const name = pair.name.c_str();
         bool matched = false;
         if (name[0] == ':') { // reserved names
@@ -1179,13 +1185,14 @@ const CommonStrings* get_common_strings();
 
 static void PackH2Message(butil::IOBuf* out,
                           butil::IOBuf& headers,
+                          butil::IOBuf& trailer_headers,
                           const butil::IOBuf& data,
                           int stream_id,
                           const H2Settings& remote_settings) {
     char headbuf[FRAME_HEAD_SIZE];
     H2FrameHead headers_head = {
         (uint32_t)headers.size(), H2_FRAME_HEADERS, 0, stream_id};
-    if (data.empty()) {
+    if (data.empty() && trailer_headers.empty()) {
         headers_head.flags |= H2_FLAGS_END_STREAM;
     }
     if (headers_head.payload_size <= remote_settings.max_frame_size) {
@@ -1217,8 +1224,10 @@ static void PackH2Message(butil::IOBuf* out,
         butil::IOBufBytesIterator it(data);
         while (it.bytes_left()) {
             if (it.bytes_left() <= remote_settings.max_frame_size) {
-                data_head.flags |= H2_FLAGS_END_STREAM;
                 data_head.payload_size = it.bytes_left();
+                if (trailer_headers.empty()) {
+                    data_head.flags |= H2_FLAGS_END_STREAM;
+                }
             } else {
                 data_head.payload_size = remote_settings.max_frame_size;
             }
@@ -1226,6 +1235,16 @@ static void PackH2Message(butil::IOBuf* out,
             out->append(headbuf, FRAME_HEAD_SIZE);
             it.append_and_forward(out, data_head.payload_size);
         }
+    }
+
+    if (!trailer_headers.empty()) {
+        H2FrameHead headers_head = {
+            (uint32_t)trailer_headers.size(), H2_FRAME_HEADERS, 0, stream_id};
+        headers_head.flags |= H2_FLAGS_END_STREAM;
+        headers_head.flags |= H2_FLAGS_END_HEADERS;
+        SerializeFrameHead(headbuf, headers_head);
+        out->append(headbuf, sizeof(headbuf));
+        out->append(butil::IOBuf::Movable(trailer_headers));
     }
 }
 
@@ -1440,7 +1459,8 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
         return butil::Status(EAGAIN, "Remote window size is not enough(flow control)");
     }
 
-    PackH2Message(out, frag, _cntl->request_attachment(),
+    butil::IOBuf dummy_buf;
+    PackH2Message(out, frag, dummy_buf, _cntl->request_attachment(),
                   _stream_id, ctx->remote_settings());
     return butil::Status::OK();
 }
@@ -1500,7 +1520,15 @@ void H2UnsentRequest::Describe(butil::IOBuf* desc) const {
     }
 }
 
-H2UnsentResponse* H2UnsentResponse::New(Controller* c) {
+H2UnsentResponse::H2UnsentResponse(Controller* c, const TrailerMessage& trailers)
+    : _size(0)
+    , _stream_id(c->http_request().h2_stream_id())
+    , _http_response(c->release_http_response())
+    , _trailers(trailers) {
+    _data.swap(c->response_attachment());
+}
+
+H2UnsentResponse* H2UnsentResponse::New(Controller* c, const TrailerMessage& trailers) {
     const HttpHeader* const h = &c->http_response();
     const CommonStrings* const common = get_common_strings();
     const bool need_content_length =
@@ -1511,7 +1539,7 @@ H2UnsentResponse* H2UnsentResponse::New(Controller* c) {
         + (size_t)need_content_type;
     const size_t memsize = offsetof(H2UnsentResponse, _list) +
         sizeof(HPacker::Header) * maxsize;
-    H2UnsentResponse* msg = new (malloc(memsize)) H2UnsentResponse(c);
+    H2UnsentResponse* msg = new (malloc(memsize)) H2UnsentResponse(c, trailers);
     // :status
     if (h->status_code() == 200) {
         msg->push(common->H2_STATUS, common->STATUS_200);
@@ -1569,6 +1597,15 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     butil::IOBuf frag;
     appender.move_to(frag);
 
+    butil::IOBufAppender trailer_appender;
+    butil::IOBuf trailer_frag;
+    for (TrailerMessage::iterator it = _trailers.begin();
+        it != _trailers.end(); ++it) {
+        HPacker::Header header(it->first, it->second);
+        hpacker.Encode(&trailer_appender, header, options);
+    }
+    trailer_appender.move_to(trailer_frag);
+
     // flow control
     int64_t c_win = ctx->_remote_conn_window_size.load(butil::memory_order_relaxed);
     const int64_t sz = _data.size();
@@ -1576,7 +1613,7 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
         return butil::Status(EAGAIN, "Remote window size is not enough(flow control)");
     }
     
-    PackH2Message(out, frag, _data, _stream_id, ctx->remote_settings());
+    PackH2Message(out, frag, trailer_frag, _data, _stream_id, ctx->remote_settings());
     return butil::Status::OK();
 }
 
@@ -1625,12 +1662,12 @@ void H2UnsentResponse::Describe(butil::IOBuf* desc) const {
 }
 
 void PackH2Request(butil::IOBuf*,
-                      SocketMessage** user_message,
-                      uint64_t correlation_id,
-                      const google::protobuf::MethodDescriptor*,
-                      Controller* cntl,
-                      const butil::IOBuf&,
-                      const Authenticator* auth) {
+                   SocketMessage** user_message,
+                   uint64_t correlation_id,
+                   const google::protobuf::MethodDescriptor*,
+                   Controller* cntl,
+                   const butil::IOBuf&,
+                   const Authenticator* auth) {
     ControllerPrivateAccessor accessor(cntl);
     
     HttpHeader* header = &cntl->http_request();
