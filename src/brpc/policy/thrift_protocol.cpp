@@ -689,8 +689,8 @@ void SerializeThriftRequest(butil::IOBuf* request_buf, Controller* cntl,
         // request's write
         xfer += req->raw_instance()->Write(&oprot);
         
-        xfer += oprot.writeFieldEnd();
-        xfer += oprot.writeFieldStop();
+        //xfer += oprot.writeFieldEnd();
+        //xfer += oprot.writeFieldStop();
         xfer += oprot.writeStructEnd();
 
         oprot.writeMessageEnd();
