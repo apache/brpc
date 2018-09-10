@@ -332,13 +332,13 @@ public:
 
     // Start this timer
     void start() {
-        _start = cpuwide_time_ns();
+        _start = monotonic_time_ns();
         _stop = _start;
     }
     
     // Stop this timer
     void stop() {
-        _stop = cpuwide_time_ns();
+        _stop = monotonic_time_ns();
     }
 
     // Get the elapse from start() to stop(), in various units.
