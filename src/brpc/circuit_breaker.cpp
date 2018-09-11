@@ -17,6 +17,7 @@
 #include <cmath>
 #include <gflags/gflags.h>
 #include <butil/time.h>
+#include <butil/logging.h>
 #include "brpc/circuit_breaker.h"
 
 namespace brpc {
@@ -116,7 +117,9 @@ int64_t CircuitBreaker::EmaErrorRecorder::UpdateLatency(int64_t latency) {
 bool CircuitBreaker::EmaErrorRecorder::UpdateErrorCost(int64_t error_cost, 
                                                        int64_t ema_latency) {
     const int max_mutilple = FLAGS_circuit_breaker_max_failed_latency_mutilple;
-    error_cost = std::min(ema_latency * max_mutilple, error_cost);
+    if (ema_latency != 0) {
+        error_cost = std::min(ema_latency * max_mutilple, error_cost);
+    }
     //Errorous response
     if (error_cost != 0) {
         int64_t ema_error_cost = 
