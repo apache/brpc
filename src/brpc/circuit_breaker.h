@@ -40,7 +40,16 @@ public:
     // data and start sampling again. Before you call this method, you need to
     // ensure that no one else is calling OnCallEnd.
     void Reset();
+
+    // The duration that should be isolated when the socket fails in milliseconds.
+    // The higher the frequency of socket errors, the longer the duration.
+    int isolation_duration_ms() {
+        return _isolation_duration_ms.load(butil::memory_order_relaxed);
+    }
+
 private:
+    void UpdateIsolationDuration();
+
     class EmaErrorRecorder {
     public:
         EmaErrorRecorder(int windows_size,  int max_error_percent);
@@ -63,6 +72,9 @@ private:
 
     EmaErrorRecorder _long_window;
     EmaErrorRecorder _short_window;
+    int64_t _last_reset_time_ms; 
+    butil::atomic<bool> _broken;
+    butil::atomic<int> _isolation_duration_ms;
 };
 
 }  // namespace brpc

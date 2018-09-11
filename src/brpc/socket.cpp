@@ -839,15 +839,11 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // Do health-checking even if we're not connected before, needed
             // by Channel to revive never-connected socket when server side
             // comes online.
-            // FIXME(gejun): the initial delay should be related to uncommited
-            // CircuitBreaker and shorter for occasional errors and longer for
-            // frequent errors.
-            // NOTE: the delay should be positive right now to avoid HC timing
-            // issues in UT.
             if (_health_check_interval_s > 0) {
                 PeriodicTaskManager::StartTaskAt(
                     new HealthCheckTask(id()),
-                    butil::milliseconds_from_now(100/*NOTE*/));
+                    butil::milliseconds_from_now(GetOrNewSharedPart()->
+                        circuit_breaker.isolation_duration_ms()));
             }
             // Wake up all threads waiting on EPOLLOUT when closing fd
             _epollout_butex->fetch_add(1, butil::memory_order_relaxed);
@@ -872,7 +868,7 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // Socket's reference will hit 0(recycle) when no one addresses it.
             ReleaseAdditionalReference();
             // NOTE: This Socket may be recycled at this point, don't
-            // touch anything.
+                // touch anything.
             return 0;
         }
     }

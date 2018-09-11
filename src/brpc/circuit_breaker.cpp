@@ -16,6 +16,7 @@
 
 #include <cmath>
 #include <gflags/gflags.h>
+#include <butil/time.h>
 #include "brpc/circuit_breaker.h"
 
 namespace brpc {
@@ -34,6 +35,10 @@ DEFINE_int32(circuit_breaker_min_error_cost_us, 500,
 DEFINE_int32(circuit_breaker_max_failed_latency_mutilple, 2,
     "The maximum multiple of the latency of the failed request relative to "
     "the average latency of the success requests.");
+DEFINE_int32(circuit_breaker_min_isolation_duration_ms, 100,
+    "Minimum isolation duration in milliseconds");
+DEFINE_int32(circuit_breaker_max_isolation_duration_ms, 300000,
+    "Maximum isolation duration in milliseconds");
 
 namespace {
 // EPSILON is used to generate the smoothing coefficient when calculating EMA.
@@ -147,17 +152,47 @@ CircuitBreaker::CircuitBreaker()
     : _long_window(FLAGS_circuit_breaker_long_window_size,
                    FLAGS_circuit_breaker_long_window_error_percent)
     , _short_window(FLAGS_circuit_breaker_short_window_size,
-                    FLAGS_circuit_breaker_short_window_error_percent) {
+                    FLAGS_circuit_breaker_short_window_error_percent) 
+    , _last_reset_time_ms(butil::cpuwide_time_ms())
+    , _broken(false)
+    , _isolation_duration_ms(FLAGS_circuit_breaker_min_isolation_duration_ms) {
 }
 
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
-    return _long_window.OnCallEnd(error_code, latency) && 
-           _short_window.OnCallEnd(error_code, latency);
+    if(_long_window.OnCallEnd(error_code, latency) && 
+           _short_window.OnCallEnd(error_code, latency)) {
+        return true;
+    } else {
+        UpdateIsolationDuration(); 
+        return false;
+    }
 }
 
 void CircuitBreaker::Reset() {
     _long_window.Reset();
     _short_window.Reset();
+    _last_reset_time_ms = butil::cpuwide_time_ms();
+    _broken.store(false, butil::memory_order_release);
+}
+
+void CircuitBreaker::UpdateIsolationDuration() {
+    if (!_broken.load(butil::memory_order_relaxed) &&
+        !_broken.exchange(true, butil::memory_order_acquire)) {
+        int64_t now_time_ms = butil::cpuwide_time_ms();
+        int isolation_duration_ms = _isolation_duration_ms.load(butil::memory_order_relaxed);
+        const int max_isolation_duration_ms = 
+            FLAGS_circuit_breaker_max_isolation_duration_ms;
+        const int min_isolation_duration_ms = 
+            FLAGS_circuit_breaker_min_isolation_duration_ms;
+        if (now_time_ms - _last_reset_time_ms < max_isolation_duration_ms) {
+            isolation_duration_ms *= 2;
+            isolation_duration_ms = 
+                std::min(isolation_duration_ms, max_isolation_duration_ms);
+        } else {
+            isolation_duration_ms = min_isolation_duration_ms;
+        }
+        _isolation_duration_ms.store(isolation_duration_ms, butil::memory_order_relaxed);
+    }
 }
 
 }  // namespace brpc
