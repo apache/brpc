@@ -466,7 +466,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
         header->SetHeader(common->CONNECTION, common->KEEP_ALIVE);
     }
 
-    if (accessor.request_protocol() == PROTOCOL_HTTP2) {
+    if (cntl->request_protocol() == PROTOCOL_HTTP2) {
         cntl->set_stream_creator(get_h2_global_stream_creator());
     }
 

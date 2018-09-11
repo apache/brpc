@@ -1491,7 +1491,7 @@ void H2UnsentRequest::Describe(butil::IOBuf* desc) const {
         size_t nskipped = body->size() - (size_t)FLAGS_http_verbose_max_body_length;
         body->append_to(desc, FLAGS_http_verbose_max_body_length);
         if (nskipped) {
-            char str[32];
+            char str[48];
             snprintf(str, sizeof(str), "\n<skipped %" PRIu64 " bytes>", nskipped);
             desc->append(str);
         }
@@ -1615,7 +1615,7 @@ void H2UnsentResponse::Describe(butil::IOBuf* desc) const {
         size_t nskipped = _data.size() - (size_t)FLAGS_http_verbose_max_body_length;
         _data.append_to(desc, FLAGS_http_verbose_max_body_length);
         if (nskipped) {
-            char str[32];
+            char str[48];
             snprintf(str, sizeof(str), "\n<skipped %" PRIu64 " bytes>", nskipped);
             desc->append(str);
         }
@@ -1649,6 +1649,7 @@ void PackH2Request(butil::IOBuf*,
         static_cast<H2UnsentRequest*>(cntl->stream_creator())->RemoveRefManually();
     }
     cntl->set_stream_creator(h2_req);
+
     h2_req->AddRefManually();
     *user_message = h2_req;
     
@@ -1682,8 +1683,6 @@ void H2GlobalStreamCreator::ReplaceSocketForStream(
 
     SocketId sid;
     SocketOptions opt = (*inout)->_options;
-    // Only main socket can be the owner of ssl_ctx
-    opt.owns_ssl_ctx = false;
     opt.health_check_interval_s = -1;
     // TODO(zhujiashun): Predictively create socket to improve performance
     if (get_client_side_messenger()->Create(opt, &sid) != 0) {

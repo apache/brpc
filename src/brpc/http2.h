@@ -22,7 +22,6 @@
 
 namespace brpc {
 
-
 struct H2Settings {
     // Allows the sender to inform the remote endpoint of the maximum size of
     // the header compression table used to decode header blocks, in octets.
@@ -122,7 +121,6 @@ enum H2Error {
 };
 
 const char* H2ErrorToString(H2Error e);
-
 
 } // namespace brpc
 

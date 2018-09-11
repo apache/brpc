@@ -96,7 +96,6 @@ public:
         _cntl->_request_protocol = protocol;
         return *this;
     }
-    ProtocolType request_protocol() { return _cntl->_request_protocol; }
     
     Span* span() const { return _cntl->_span; }
 
