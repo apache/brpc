@@ -236,6 +236,7 @@ extern int64_t invariant_cpu_freq;
 // note: Inlining shortens time cost per-call for 15ns in a loop of many
 //       calls to this function.
 inline int64_t cpuwide_time_ns() {
+#ifdef USE_TSC
     if (detail::invariant_cpu_freq > 0) {
         const uint64_t tsc = detail::clock_cycles();
         const uint64_t sec = tsc / detail::invariant_cpu_freq;
@@ -251,6 +252,9 @@ inline int64_t cpuwide_time_ns() {
         detail::invariant_cpu_freq = detail::read_invariant_cpu_frequency();
         return cpuwide_time_ns();
     }
+#else
+    return monotonic_time_ns();
+#endif
 }
 
 inline int64_t cpuwide_time_us() {
@@ -332,13 +336,13 @@ public:
 
     // Start this timer
     void start() {
-        _start = monotonic_time_ns();
+        _start = cpuwide_time_ns();
         _stop = _start;
     }
     
     // Stop this timer
     void stop() {
-        _stop = monotonic_time_ns();
+        _stop = cpuwide_time_ns();
     }
 
     // Get the elapse from start() to stop(), in various units.
