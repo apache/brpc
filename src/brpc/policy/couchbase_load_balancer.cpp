@@ -199,7 +199,7 @@ int CouchbaseLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         break;
     default: // other retry case
         SocketId master_id = CouchbaseHelper::GetMaster(vb_map.get(), vb_id);
-		    SocketId curr_id = in.excluded->GetLastId();
+        SocketId curr_id = in.excluded->GetLastId();
         SocketId dummy_id = 0;
         if (IsInRebalancing(vb_map.get())) {
             selected_id = GetDetectedMaster(vb_map.get(), vb_id);
