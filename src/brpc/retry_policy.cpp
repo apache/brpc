@@ -23,7 +23,7 @@ RetryPolicy::~RetryPolicy() {}
 
 class RpcRetryPolicy : public RetryPolicy {
 public:
-    bool DoRetry(const Controller* controller) const {
+    bool DoRetry(Controller* controller) const {
         const int error_code = controller->ErrorCode();
         if (!error_code) {
             return false;
