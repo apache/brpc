@@ -28,36 +28,33 @@ class Controller;
 // generally this object is created before RPC and destroyed after RPC.
 class StreamCreator {
 public:
-    // Replace the socket in `inout' with another one (or keep as it is).
-    // remote_side() of the replaced socket must be same with *inout.
-    // Called each time before iteracting with a server. Notice that
-    // if the RPC has retries, this function is called before each retry.
-    // `cntl' contains necessary information about the RPC, if there's
-    // any error during replacement, call cntl->SetFailed().
-    // The replaced socket should take cntl->connection_type() into account
-    // since the framework will send request by the replaced socket directly
-    // when stream_creator is present.
-    virtual void ReplaceSocketForStream(SocketUniquePtr* inout,
-                                        Controller* cntl) = 0;
+    // Called when the socket for sending request is about to be created.
+    // If the RPC has retries, this function is called before each retry.
+    // Params:
+    //  inout: pointing to the socket to send requests by default,
+    //    replaceable by user created ones (or keep as it is). remote_side()
+    //    of the replaced socket must be same with the default socket.
+    //    The replaced socket should take cntl->connection_type() into account
+    //    since the framework sends request by the replaced socket directly
+    //    when stream_creator is present.
+    //  cntl: contains contexts of the RPC, if there's any error during
+    //    replacement, call cntl->SetFailed().
+    virtual void OnCreatingStream(SocketUniquePtr* inout,
+                                  Controller* cntl) = 0;
 
-    // `cntl' contains necessary information about the call. `sending_sock'
-    // is the socket to the server interacted with. If the RPC was failed,
-    // `sending_sock' is prossibly NULL(fail before choosing a server). User
-    // can own `sending_sock' and set the unique pointer to NULL, otherwise
-    // the socket is cleaned-up by framework.
-    virtual void OnStreamCreationDone(SocketUniquePtr& sending_sock,
-                                      Controller* cntl) = 0;
-    
-    // Called when one interation with the server completes. A RPC for
-    // creating a stream may interact with servers more than once.
-    // This method is paired with _each_ ReplaceSocketForStream().
-    // OnStreamCreationDone() is called _after_ last CleanupSocketForStream(),
-    // If OnStreamCreationDone() moved the `sending_sock', `prev_sock' to this
-    // method is NULL.
-    // Use `error_code' instead of cntl->ErrorCode().
-    virtual void CleanupSocketForStream(Socket* prev_sock,
-                                        Controller* cntl,
-                                        int error_code) = 0;
+    // Called when the stream is about to destroyed.
+    // If the RPC has retries, this function is called before each retry.
+    // This method is always called even if OnCreatingStream() is not called.
+    // Params:
+    //   sending_sock: The socket chosen by OnCreatingStream(), if OnCreatingStream
+    //     is not called, the enclosed socket may be NULL.
+    //   cntl: contexts of the RPC
+    //   error_code: Use this instead of cntl->ErrorCode()
+    //   end_of_rpc: true if the RPC is about to destroyed.
+    virtual void OnDestroyingStream(SocketUniquePtr& sending_sock,
+                                    Controller* cntl,
+                                    int error_code,
+                                    bool end_of_rpc) = 0;
 };
 
 } // namespace brpc

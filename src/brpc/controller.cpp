@@ -549,7 +549,7 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         && info.id != _correlation_id && info.id != current_id()) {
         // The call before backup request was failed.
         if (_unfinished_call && get_id(_unfinished_call->nretry) == info.id) {
-            _unfinished_call->OnComplete(this, _error_code, info.responded);
+            _unfinished_call->OnComplete(this, _error_code, info.responded, false);
             delete _unfinished_call;
             _unfinished_call = NULL;
         }  
@@ -612,7 +612,7 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
             }
             _accessed->Add(_current_call.peer_id);
         }
-        _current_call.OnComplete(this, _error_code, info.responded);
+        _current_call.OnComplete(this, _error_code, info.responded, false);
         ++_current_call.nretry;
         // Clear http responses before retrying, otherwise the response may
         // be mixed with older (and undefined) stuff. This is actually not
@@ -694,8 +694,8 @@ inline bool does_error_affect_main_socket(int error_code) {
 //      retries and backup requests. This method simply cares about the error of
 //      this very Call (specified by |error_code|) rather than the error of the
 //      entire RPC (specified by c->FailedInline()).
-void Controller::Call::OnCompleteAndKeepSocket(
-        Controller* c, int error_code/*note*/, bool responded) {
+void Controller::Call::OnComplete(
+        Controller* c, int error_code/*note*/, bool responded, bool end_of_rpc) {
     switch (c->connection_type()) {
     case CONNECTION_TYPE_UNKNOWN:
         break;
@@ -758,29 +758,24 @@ void Controller::Call::OnCompleteAndKeepSocket(
             sock->SetLogOff();
         }
     }
-    if (touched_by_stream_creator) {
-        touched_by_stream_creator = false;
-        CHECK(c->stream_creator());
-        c->stream_creator()->CleanupSocketForStream(
-            sending_sock.get(), c, error_code);
-    }
     if (enable_circuit_breaker && sending_sock) {
         sending_sock->FeedbackCircuitBreaker(error_code, 
             butil::gettimeofday_us() - begin_time_us);
     }
-    // Release the `Socket' we used to send/receive data
-    sending_sock.reset(NULL);
     
     if (need_feedback) {
         const LoadBalancer::CallInfo info =
             { begin_time_us, peer_id, error_code, c };
         c->_lb->Feedback(info);
     }
-}
 
-void Controller::Call::OnComplete(
-        Controller* c, int error_code, bool responded) {
-    OnCompleteAndKeepSocket(c, error_code, responded);
+    if (touched_by_stream_creator) {
+        touched_by_stream_creator = false;
+        CHECK(c->stream_creator());
+        c->stream_creator()->OnDestroyingStream(
+            sending_sock, c, error_code, end_of_rpc);
+    }
+
     // Release the `Socket' we used to send/receive data
     sending_sock.reset(NULL);
 }
@@ -799,12 +794,7 @@ void Controller::EndRPC(const CompletionInfo& info) {
         }
         // TODO: Replace this with stream_creator.
         HandleStreamConnection(_current_call.sending_sock.get());
-        _current_call.OnCompleteAndKeepSocket(this, _error_code, info.responded);
-        if (_stream_creator) {
-            _stream_creator->OnStreamCreationDone(
-                _current_call.sending_sock, this);
-        }
-        _current_call.sending_sock.reset(NULL);
+        _current_call.OnComplete(this, _error_code, info.responded, true);
 
         if (_unfinished_call != NULL) {
             // When _current_call is successful, mark _unfinished_call as
@@ -815,7 +805,7 @@ void Controller::EndRPC(const CompletionInfo& info) {
             // same error. This is not accurate as well, but we have to end
             // _unfinished_call with some sort of error anyway.
             const int err = (_error_code == 0 ? EBACKUPREQUEST : _error_code);
-            _unfinished_call->OnComplete(this, err, false);
+            _unfinished_call->OnComplete(this, err, false, true);
             delete _unfinished_call;
             _unfinished_call = NULL;
         }
@@ -824,7 +814,7 @@ void Controller::EndRPC(const CompletionInfo& info) {
         // (which gets punished in LALB) for _current_call because _current_call
         // is sent after _unfinished_call, it's just normal that _current_call
         // does not respond before _unfinished_call.
-        _current_call.OnComplete(this, ECANCELED, false);
+        _current_call.OnComplete(this, ECANCELED, false, true);
         if (_unfinished_call != NULL) {
             if (_unfinished_call->sending_sock != NULL) {
                 _remote_side = _unfinished_call->sending_sock->remote_side();
@@ -833,17 +823,12 @@ void Controller::EndRPC(const CompletionInfo& info) {
             // TODO: Replace this with stream_creator.
             HandleStreamConnection(_unfinished_call->sending_sock.get());
             if (get_id(_unfinished_call->nretry) == info.id) {
-                _unfinished_call->OnCompleteAndKeepSocket(
-                        this, _error_code, info.responded);
+                _unfinished_call->OnComplete(
+                        this, _error_code, info.responded, true);
             } else {
                 CHECK(false) << "A previous non-backed-up call responded";
-                _unfinished_call->OnCompleteAndKeepSocket(this, ECANCELED, false);
+                _unfinished_call->OnComplete(this, ECANCELED, false, true);
             }
-            if (_stream_creator) {
-                _stream_creator->OnStreamCreationDone(
-                    _unfinished_call->sending_sock, this);
-            }
-            _unfinished_call->sending_sock.reset(NULL);
 
             delete _unfinished_call;
             _unfinished_call = NULL;
@@ -1016,7 +1001,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     }
     if (_stream_creator) {
         _current_call.touched_by_stream_creator = true;
-        _stream_creator->ReplaceSocketForStream(&tmp_sock, this);
+        _stream_creator->OnCreatingStream(&tmp_sock, this);
         if (FailedInline()) {
             return HandleSendFailed();
         }

@@ -90,10 +90,8 @@ public:
     }
 
     // @StreamCreator
-    void ReplaceSocketForStream(SocketUniquePtr* inout, Controller* cntl);
-    void OnStreamCreationDone(SocketUniquePtr& sending_sock, Controller* cntl);
-    void CleanupSocketForStream(Socket* prev_sock, Controller* cntl,
-                                int error_code);
+    void OnCreatingStream(SocketUniquePtr* inout, Controller* cntl) override;
+    void OnDestroyingStream(SocketUniquePtr& sending_sock, Controller* cntl, int error_code, bool end_of_rpc) override;
     
     // @SocketMessage
     butil::Status AppendAndDestroySelf(butil::IOBuf* out, Socket*);
@@ -218,10 +216,8 @@ void PackH2Request(butil::IOBuf* buf,
 
 class H2GlobalStreamCreator : public StreamCreator {
 protected:
-    void ReplaceSocketForStream(SocketUniquePtr* inout, Controller* cntl);
-    void OnStreamCreationDone(SocketUniquePtr& sending_sock, Controller* cntl);
-    void CleanupSocketForStream(Socket* prev_sock, Controller* cntl,
-                                int error_code);
+    void OnCreatingStream(SocketUniquePtr* inout, Controller* cntl) override;
+    void OnDestroyingStream(SocketUniquePtr& sending_sock, Controller* cntl, int error_code, bool end_of_rpc) override;
 private:
     butil::Mutex _mutex;
 };

@@ -1320,11 +1320,14 @@ void H2UnsentRequest::Destroy() {
     free(this);
 }
 
-void H2UnsentRequest::ReplaceSocketForStream(SocketUniquePtr*, Controller*) {
+void H2UnsentRequest::OnCreatingStream(SocketUniquePtr*, Controller*) {
 }
 
-void H2UnsentRequest::OnStreamCreationDone(
-    SocketUniquePtr& sending_sock, Controller* cntl) {
+void H2UnsentRequest::OnDestroyingStream(
+    SocketUniquePtr& sending_sock, Controller* cntl, int error_code, bool end_of_rpc) {
+    if (!end_of_rpc) {
+        return;
+    }
     if (sending_sock != NULL && cntl->ErrorCode() != 0) {
         CHECK_EQ(_cntl, cntl);
         _mutex.lock();
@@ -1337,10 +1340,6 @@ void H2UnsentRequest::OnStreamCreationDone(
         _mutex.unlock();
     }
     RemoveRefManually();
-}
-
-void H2UnsentRequest::CleanupSocketForStream(
-    Socket* prev_sock, Controller* cntl, int error_code) {
 }
 
 struct RemoveRefOnQuit {
@@ -1660,7 +1659,7 @@ void PackH2Request(butil::IOBuf*,
     }
 }
 
-void H2GlobalStreamCreator::ReplaceSocketForStream(
+void H2GlobalStreamCreator::OnCreatingStream(
     SocketUniquePtr* inout, Controller* cntl) {
     // Although the critical section looks huge, it should rarely be contended
     // since timeout of RPC is much larger than the delay of sending.
@@ -1701,17 +1700,12 @@ void H2GlobalStreamCreator::ReplaceSocketForStream(
     if (tmp_ptr) {
         tmp_ptr->ReleaseAdditionalReference();
     }
-    return;
 }
 
-void H2GlobalStreamCreator::OnStreamCreationDone(
-    SocketUniquePtr& sending_sock, Controller* cntl) {
+void H2GlobalStreamCreator::OnDestroyingStream(
+    SocketUniquePtr& sending_sock, Controller* cntl, int error_code, bool end_of_rpc) {
     // If any error happens during the time of sending rpc, this function
     // would be called. Currently just do nothing.
-}
-
-void H2GlobalStreamCreator::CleanupSocketForStream(
-    Socket* prev_sock, Controller* cntl, int error_code) {
 }
 
 StreamCreator* get_h2_global_stream_creator() {

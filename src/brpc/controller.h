@@ -249,7 +249,7 @@ public:
     const RpcDumpMeta* rpc_dump_meta() { return _rpc_dump_meta; }
 
     // Attach a StreamCreator to this RPC. Notice that controller never deletes
-    // the StreamCreator, you can do the deletion inside OnStreamCreationDone.
+    // the StreamCreator, you can do the deletion inside OnDestroyingStream.
     void set_stream_creator(StreamCreator* sc) { _stream_creator = sc; }
     StreamCreator* stream_creator() const { return _stream_creator; }
 
@@ -568,8 +568,7 @@ private:
         Call(Call*); //move semantics
         ~Call();
         void Reset();
-        void OnComplete(Controller* c, int error_code, bool responded);
-        void OnCompleteAndKeepSocket(Controller* c, int error_code, bool responded);
+        void OnComplete(Controller* c, int error_code, bool responded, bool end_of_rpc);
 
         int nretry;                     // sent in nretry-th retry.
         bool need_feedback;             // The LB needs feedback.
