@@ -97,9 +97,8 @@ bool CouchbaseRetryPolicy::DoRetry(Controller* cntl) const {
               reason == RPC_SUCCESS_BUT_WRONG_SERVER || 
               reason == RPC_SUCCESS_BUT_RESPONSE_FAULT; 
     } else if(!brpc::FLAGS_couchbase_disable_retry_during_active) {
-        CouchbaseContext* ctx = cntl->couchbase_context();
-        if ((reason == SERVER_DOWN && ctx && ctx->can_read_replicas) || 
-            pre_reason == SERVER_DOWN_RETRY_REPLICAS) {
+        if ((reason == SERVER_DOWN && !cntl->couchbase_key_read_replicas().empty()) 
+            || pre_reason == SERVER_DOWN_RETRY_REPLICAS) {
             reason = SERVER_DOWN_RETRY_REPLICAS;    
         }
         ret = reason == RPC_SUCCESS_BUT_WRONG_SERVER || 
@@ -113,7 +112,7 @@ bool CouchbaseRetryPolicy::DoRetry(Controller* cntl) const {
         // Read replica server, we need re-package request.
         if (reason == SERVER_DOWN_RETRY_REPLICAS) {
             CouchbaseRequest request;
-            request.ReplicasGet(cntl->couchbase_context()->key, vb_id);
+            request.ReplicasGet(cntl->couchbase_key_read_replicas(), vb_id);
             policy::SerializeMemcacheRequest(&cntl->_request_buf, cntl, &request);
             if (cntl->FailedInline()) {
                 return false;

@@ -40,7 +40,6 @@
 #include "brpc/callback.h"
 #include "brpc/progressive_attachment.h"       // ProgressiveAttachment
 #include "brpc/progressive_reader.h"           // ProgressiveReader
-#include "brpc/couchbase_helper.h"
 
 // EAUTH is defined in MAC
 #ifndef EAUTH
@@ -469,8 +468,6 @@ public:
     // Get sock option. .e.g get vip info through ttm kernel module hook,
     int GetSockOption(int level, int optname, void* optval, socklen_t* optlen);
 
-    CouchbaseContext* couchbase_context() { return _couchbase_context.get(); }
-
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request
@@ -606,6 +603,14 @@ private:
     void set_used_by_rpc() { add_flag(FLAGS_USED_BY_RPC); }
     bool is_used_by_rpc() const { return has_flag(FLAGS_USED_BY_RPC); }
 
+    void SetCouchbaseKeyReadReplicas(const std::string& key) {
+        _couchbase_key_read_replicas = key;
+    }
+
+    const std::string& couchbase_key_read_replicas() {
+        return _couchbase_key_read_replicas;
+    } 
+
 private:
     // NOTE: align and group fields to make Controller as compact as possible.
 
@@ -705,8 +710,8 @@ private:
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;
 
-    // Couchbase context during RPC.
-    std::unique_ptr<CouchbaseContext> _couchbase_context; 
+    // Couchbase key that can read from replicas during RPC.
+    std::string _couchbase_key_read_replicas; 
 };
 
 // Advises the RPC system that the caller desires that the RPC call be

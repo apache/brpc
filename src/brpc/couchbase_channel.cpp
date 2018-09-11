@@ -116,7 +116,7 @@ void CouchbaseChannel::CallMethod(const google::protobuf::MethodDescriptor* meth
         return;
     }
     if (req->read_replicas()) {
-        cntl->_couchbase_context.reset(new CouchbaseContext(true, key));	    
+        cntl->SetCouchbaseKeyReadReplicas(key);	    
     }
     const size_t vb_num = 
         policy::CouchbaseNamingService::GetVBucketNumber(_service_name);

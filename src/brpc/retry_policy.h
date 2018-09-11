@@ -63,13 +63,9 @@ public:
     //       return brpc::DefaultRetryPolicy()->DoRetry(cntl);
     //     }
     //   };
-    virtual bool DoRetry(const Controller* controller) const = 0;
-    //                                                   ^
-    //                                don't forget the const modifier
-    virtual bool DoRetry(Controller* controller) const {
-        const Controller* cntl = controller;
-        return DoRetry(cntl);
-    }
+    virtual bool DoRetry(Controller* controller) const = 0;
+    //                                             ^
+    //                             don't forget the const modifier
 };
 
 // Get the RetryPolicy used by brpc.

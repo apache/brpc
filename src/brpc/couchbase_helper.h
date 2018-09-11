@@ -67,6 +67,11 @@ union CouchbaseRequestCode {
     } request_code;
 };
 
+struct continuum_item_st {
+    uint32_t index;     /* server index */
+    uint32_t point;     /* point on the ketama continuum */
+};
+
 // Couchbase has two type of distribution used to map keys to servers.
 // One is vbucket distribution and other is ketama distribution.
 // This struct describes vbucket distribution of couchbase.
@@ -81,12 +86,14 @@ union CouchbaseRequestCode {
 //              statrt of the rebalance. 
 // 'server_list': all servers of a bucket.                    
 // 'server_map': key is server in 'server_list', value is the index of 'server_list'.
-// TODO: support ketama vbucket distribution
 struct VBucketServerMap {
     uint64_t version = 0;
+    // vbucket distribution
     size_t num_replicas = 0;	
     std::vector<std::vector<int>> vbucket;
     std::vector<std::vector<int>> fvbucket;
+    // ketama distribution
+    std::vector<continuum_item_st> continuums;
     std::vector<SocketId> server_list;
     std::map<SocketId, size_t> server_map;
 };

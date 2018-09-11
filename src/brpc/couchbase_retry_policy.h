@@ -26,10 +26,6 @@ namespace brpc {
 class CouchbaseRetryPolicy : public RetryPolicy {
 public:
     virtual bool DoRetry(Controller* controller) const;
-    virtual bool DoRetry(const Controller* controller) const {
-        CHECK(false) << "You should not call me";
-        return false;
-    }
 
     static const RetryPolicy* Instance() {
         static RetryPolicy* single_obj = new CouchbaseRetryPolicy;
