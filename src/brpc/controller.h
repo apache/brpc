@@ -568,7 +568,8 @@ private:
         Call(Call*); //move semantics
         ~Call();
         void Reset();
-        void OnComplete(Controller* c, int error_code, bool responded);
+        void OnComplete(Controller* c, int error_code, bool responded, bool release_socket = true);
+        void OnCompleteAndKeepSocket(Controller* c, int error_code, bool responded);
 
         int nretry;                     // sent in nretry-th retry.
         bool need_feedback;             // The LB needs feedback.

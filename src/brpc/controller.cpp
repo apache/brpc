@@ -695,7 +695,7 @@ inline bool does_error_affect_main_socket(int error_code) {
 //      this very Call (specified by |error_code|) rather than the error of the
 //      entire RPC (specified by c->FailedInline()).
 void Controller::Call::OnComplete(Controller* c, int error_code/*note*/,
-                                  bool responded) {
+                                  bool responded, bool release_socket) {
     switch (c->connection_type()) {
     case CONNECTION_TYPE_UNKNOWN:
         break;
@@ -778,6 +778,11 @@ void Controller::Call::OnComplete(Controller* c, int error_code/*note*/,
     }
 }
 
+void Controller::Call::OnCompleteAndKeepSocket(
+        Controller* c, int error_code, bool responded) {
+    OnComplete(c, error_code, responded, false);
+}
+
 void Controller::EndRPC(const CompletionInfo& info) {
     if (_timeout_id != 0) {
         bthread_timer_del(_timeout_id);
@@ -792,11 +797,12 @@ void Controller::EndRPC(const CompletionInfo& info) {
         }
         // TODO: Replace this with stream_creator.
         HandleStreamConnection(_current_call.sending_sock.get());
+        _current_call.OnCompleteAndKeepSocket(this, _error_code, info.responded);
         if (_stream_creator) {
             _stream_creator->OnStreamCreationDone(
                 _current_call.sending_sock, this);
         }
-        _current_call.OnComplete(this, _error_code, info.responded);
+        _current_call.sending_sock.reset(NULL);
 
         if (_unfinished_call != NULL) {
             // When _current_call is successful, mark _unfinished_call as
@@ -824,18 +830,20 @@ void Controller::EndRPC(const CompletionInfo& info) {
             }
             // TODO: Replace this with stream_creator.
             HandleStreamConnection(_unfinished_call->sending_sock.get());
+            if (get_id(_unfinished_call->nretry) == info.id) {
+                _unfinished_call->OnCompleteAndKeepSocket(
+                        this, _error_code, info.responded);
+            } else {
+                CHECK(false) << "A previous non-backed-up call responded";
+                _unfinished_call->OnCompleteAndKeepSocket(this, ECANCELED, false);
+            }
+            delete _unfinished_call;
+            _unfinished_call = NULL;
             if (_stream_creator) {
                 _stream_creator->OnStreamCreationDone(
                     _unfinished_call->sending_sock, this);
             }
-            if (get_id(_unfinished_call->nretry) == info.id) {
-                _unfinished_call->OnComplete(this, _error_code, info.responded);
-            } else {
-                CHECK(false) << "A previous non-backed-up call responded";
-                _unfinished_call->OnComplete(this, ECANCELED, false);
-            }
-            delete _unfinished_call;
-            _unfinished_call = NULL;
+            _unfinished_call->sending_sock.reset(NULL);
         } else {
             CHECK(false) << "A previous non-backed-up call responded";
         }

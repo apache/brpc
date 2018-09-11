@@ -1684,8 +1684,6 @@ void RtmpClientStream::CleanupSocketForStream(
         if (_from_socketmap) {
             _client_impl->socket_map().Remove(SocketMapKey(prev_sock->remote_side()),
                                               prev_sock->id());
-        } else {
-            prev_sock->SetFailed(); // not necessary, already failed.
         }
     }
 }

@@ -44,14 +44,14 @@ public:
     // is the socket to the server interacted with. If the RPC was failed,
     // `sending_sock' is prossibly NULL(fail before choosing a server). User
     // can own `sending_sock' and set the unique pointer to NULL, otherwise
-    // the socket is cleaned-up by framework and then CleanupSocketForStream()
+    // the socket is cleaned-up by framework.
     virtual void OnStreamCreationDone(SocketUniquePtr& sending_sock,
                                       Controller* cntl) = 0;
     
     // Called when one interation with the server completes. A RPC for
     // creating a stream may interact with servers more than once.
     // This method is paired with _each_ ReplaceSocketForStream().
-    // OnStreamCreationDone() is called _before_ last CleanupSocketForStream(),
+    // OnStreamCreationDone() is called _after_ last CleanupSocketForStream(),
     // If OnStreamCreationDone() moved the `sending_sock', `prev_sock' to this
     // method is NULL.
     // Use `error_code' instead of cntl->ErrorCode().
