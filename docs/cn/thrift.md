@@ -64,10 +64,10 @@ if (thrift_channel.Init(Flags_server.c_str(), FLAGS_load_balancer.c_str(), &opti
 brpc::ThriftStub stub(&thrift_channel);
 ...
 
-// example::[EchoRequest/EchoResponse]是thrift生成的消息
-example::EchoRequest req;
+// example::[EchoService_Echo_args/EchoResponse]是thrift生成的消息
+example::EchoService_Echo_args req;
 example::EchoResponse res;
-req.data = "hello";
+req.parameters.data = "hello";
 
 stub.CallMethod("Echo", &cntl, &req, &res, NULL);
 
@@ -88,7 +88,7 @@ public:
                                     google::protobuf::Closure* done) override {
         // Dispatch calls to different methods
         if (cntl->thrift_method_name() == "Echo") {
-            return Echo(cntl, req->Cast<example::EchoRequest>(),
+            return Echo(cntl, req->Cast<example::EchoService_Echo_args>(),
                         res->Cast<example::EchoResponse>(), done);
         } else {
             cntl->SetFailed(brpc::ENOMETHOD, "Fail to find method=%s",
@@ -98,14 +98,14 @@ public:
     }
 
     void Echo(brpc::Controller* cntl,
-              const example::EchoRequest* req,
+              const example::EchoService_Echo_args* req,
               example::EchoResponse* res,
               google::protobuf::Closure* done) {
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().
         brpc::ClosureGuard done_guard(done);
 
-        res->data = req->data + " (processed)";
+        res->data = req->parameters.data + " (processed)";
     }
 };
 ```

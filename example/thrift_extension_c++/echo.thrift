@@ -15,6 +15,6 @@ struct EchoResponse {
 }
 
 service EchoService {
-    EchoResponse Echo(1:EchoRequest request);
+    EchoResponse Echo(1:EchoRequest parameters);
 }
 

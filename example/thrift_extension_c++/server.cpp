@@ -18,14 +18,14 @@
 #include <butil/logging.h>
 #include <brpc/server.h>
 #include <brpc/thrift_service.h>
-#include "gen-cpp/echo_types.h"
+#include "gen-cpp/EchoService.h"
 
 DEFINE_int32(port, 8019, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
-             "read/write operations during the last `idle_timeout_s'");
+                                 "read/write operations during the last `idle_timeout_s'");
 DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
 
-// Adapt your own thrift-based protocol to use brpc 
+// Adapt your own thrift-based protocol to use brpc
 class EchoServiceImpl : public brpc::ThriftService {
 public:
     void ProcessThriftFramedRequest(brpc::Controller* cntl,
@@ -34,7 +34,7 @@ public:
                                     google::protobuf::Closure* done) override {
         // Dispatch calls to different methods
         if (cntl->thrift_method_name() == "Echo") {
-            return Echo(cntl, req->Cast<example::EchoRequest>(),
+            return Echo(cntl, req->Cast<example::EchoService_Echo_args>(),
                         res->Cast<example::EchoResponse>(), done);
         } else {
             cntl->SetFailed(brpc::ENOMETHOD, "Fail to find method=%s",
@@ -44,14 +44,14 @@ public:
     }
 
     void Echo(brpc::Controller* cntl,
-              const example::EchoRequest* req,
+              const example::EchoService_Echo_args* req,
               example::EchoResponse* res,
               google::protobuf::Closure* done) {
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().
         brpc::ClosureGuard done_guard(done);
 
-        res->data = req->data + " (Echo)";
+        res->data = req->parameters.data + " (Echo)";
     }
 };
 

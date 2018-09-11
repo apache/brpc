@@ -683,14 +683,14 @@ void SerializeThriftRequest(butil::IOBuf* request_buf, Controller* cntl,
         p += 6;
         *p = '\0';
         xfer += oprot.writeStructBegin(struct_begin_str);
-        xfer += oprot.writeFieldBegin("request", ::apache::thrift::protocol::T_STRUCT,
-                                      THRIFT_REQUEST_FID);
+//        xfer += oprot.writeFieldBegin("request", ::apache::thrift::protocol::T_STRUCT,
+//                                      THRIFT_REQUEST_FID);
 
         // request's write
         xfer += req->raw_instance()->Write(&oprot);
         
-        xfer += oprot.writeFieldEnd();
-        xfer += oprot.writeFieldStop();
+//        xfer += oprot.writeFieldEnd();
+//        xfer += oprot.writeFieldStop();
         xfer += oprot.writeStructEnd();
 
         oprot.writeMessageEnd();

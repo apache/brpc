@@ -20,18 +20,18 @@
 #include <brpc/thrift_message.h>
 #include <brpc/channel.h>
 #include <brpc/thrift_service.h>
-#include "gen-cpp/echo_types.h"
+#include "gen-cpp/EchoService.h"
 
 DEFINE_int32(port, 8019, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
-             "read/write operations during the last `idle_timeout_s'");
+                                 "read/write operations during the last `idle_timeout_s'");
 DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
 
-// Adapt your own thrift-based protocol to use brpc 
+// Adapt your own thrift-based protocol to use brpc
 class EchoServiceImpl : public brpc::ThriftService {
 public:
     EchoServiceImpl() {
-        // Initialize the channel, NULL means using default options. 
+        // Initialize the channel, NULL means using default options.
         brpc::ChannelOptions options;
         options.protocol = brpc::PROTOCOL_THRIFT;
         if (_channel.Init("0.0.0.0", FLAGS_port , &options) != 0) {
@@ -45,7 +45,7 @@ public:
                                     google::protobuf::Closure* done) override {
         // Dispatch calls to different methods
         if (cntl->thrift_method_name() == "Echo") {
-            // Proxy request/response to RealEcho, note that as a proxy we 
+            // Proxy request/response to RealEcho, note that as a proxy we
             // don't need to Cast the messages to native types.
             brpc::Controller cntl;
             brpc::ThriftStub stub(&_channel);
@@ -55,24 +55,24 @@ public:
             stub.CallMethod("RealEcho", &cntl, req, res, NULL);
             done->Run();
         } else if (cntl->thrift_method_name() == "RealEcho") {
-            return RealEcho(cntl, req->Cast<example::EchoRequest>(),
-                        res->Cast<example::EchoResponse>(), done);
-        } else {    
+            return RealEcho(cntl, req->Cast<example::EchoService_Echo_args>(),
+                            res->Cast<example::EchoResponse>(), done);
+        } else {
             cntl->SetFailed(brpc::ENOMETHOD, "Fail to find method=%s",
-                    cntl->thrift_method_name().c_str());
+                            cntl->thrift_method_name().c_str());
             done->Run();
         }
     }
 
     void RealEcho(brpc::Controller* cntl,
-                  const example::EchoRequest* req,
+                  const example::EchoService_Echo_args* req,
                   example::EchoResponse* res,
                   google::protobuf::Closure* done) {
         // This object helps you to call done->Run() in RAII style. If you need
         // to process the request asynchronously, pass done_guard.release().
         brpc::ClosureGuard done_guard(done);
 
-        res->data = req->data + " (RealEcho)";
+        res->data = req->parameters.data + " (RealEcho)";
     }
 private:
     brpc::Channel _channel;
@@ -84,7 +84,7 @@ int main(int argc, char* argv[]) {
 
     brpc::Server server;
     brpc::ServerOptions options;
-    
+
     options.thrift_service = new EchoServiceImpl;
     options.idle_timeout_sec = FLAGS_idle_timeout_s;
     options.max_concurrency = FLAGS_max_concurrency;

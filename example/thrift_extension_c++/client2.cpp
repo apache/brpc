@@ -14,7 +14,7 @@
 
 // A client sending requests to server by multiple threads.
 
-#include "gen-cpp/echo_types.h"
+#include "gen-cpp/EchoService.h"
 
 #include <gflags/gflags.h>
 #include <bthread/bthread.h>
@@ -31,7 +31,7 @@ DEFINE_string(connection_type, "", "Connection type. Available values: single, p
 DEFINE_string(server, "0.0.0.0:8019", "IP Address of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 DEFINE_int32(dummy_port, -1, "Launch dummy server at this port");
 
@@ -48,25 +48,25 @@ static void* sender(void* arg) {
     while (!brpc::IsAskedToQuit()) {
         // We will receive response synchronously, safe to put variables
         // on stack.
-        example::EchoRequest req;
+        example::EchoService_Echo_args req;
         example::EchoResponse res;
         brpc::Controller cntl;
-        
-        req.__set_data(g_request);
-        req.__set_need_by_proxy(10);
-        
+
+        req.parameters.data = g_request;
+        req.parameters.need_by_proxy = 10;
+
         // Because `done'(last parameter) is NULL, this function waits until
         // the response comes back or error occurs(including timedout).
         stub.CallMethod("Echo", &cntl, &req, &res, NULL);
         if (!cntl.Failed()) {
             g_latency_recorder << cntl.latency_us();
         } else {
-            g_error_count << 1; 
+            g_error_count << 1;
             CHECK(brpc::IsAskedToQuit() || !FLAGS_dont_fail)
-                << "error=" << cntl.ErrorText() << " latency=" << cntl.latency_us();
+            << "error=" << cntl.ErrorText() << " latency=" << cntl.latency_us();
             // We can't connect to the server, sleep a while. Notice that this
             // is a specific sleeping to prevent this thread from spinning too
-            // fast. You should continue the business logic in a production 
+            // fast. You should continue the business logic in a production
             // server rather than sleeping.
             bthread_usleep(50000);
         }
@@ -78,10 +78,10 @@ int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
-    // A Channel represents a communication line to a Server. Notice that 
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
-    
+
     // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_THRIFT;
@@ -118,7 +118,7 @@ int main(int argc, char* argv[]) {
         bids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
             if (bthread_start_background(
-                    &bids[i], NULL, sender, &channel) != 0) {
+                &bids[i], NULL, sender, &channel) != 0) {
                 LOG(ERROR) << "Fail to create bthread";
                 return -1;
             }
