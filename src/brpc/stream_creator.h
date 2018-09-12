@@ -29,7 +29,9 @@ class Controller;
 class StreamCreator {
 public:
     // Called when the socket for sending request is about to be created.
-    // If the RPC has retries, this function is called before each retry.
+    // If the RPC has retries, this function MAY be called before each retry.
+    // This function would not be called if some preconditions are not
+    // satisfied.
     // Params:
     //  inout: pointing to the socket to send requests by default,
     //    replaceable by user created ones (or keep as it is). remote_side()
@@ -43,8 +45,7 @@ public:
                                   Controller* cntl) = 0;
 
     // Called when the stream is about to destroyed.
-    // If the RPC has retries, this function is called before each retry.
-    // This method is always called even if OnCreatingStream() is not called.
+    // If the RPC has retries, this function MUST be called before each retry.
     // Params:
     //   sending_sock: The socket chosen by OnCreatingStream(), if OnCreatingStream
     //     is not called, the enclosed socket may be NULL.
