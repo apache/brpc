@@ -17,7 +17,6 @@
 #include <cmath>
 #include <gflags/gflags.h>
 #include <butil/time.h>
-#include <butil/logging.h>
 #include "brpc/circuit_breaker.h"
 
 namespace brpc {
