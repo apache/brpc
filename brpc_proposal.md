@@ -2,23 +2,17 @@
 
 ## Abstract
 
-brpc is an industrial-grade RPC framework for building reliable and
-high-performance services.
+brpc is an industrial-grade RPC framework for building reliable and high-performance services.
 
 ## Proposal
 
-We propose to contribute the brpc codebase and associated artifacts
-(e.g. documentation etc.) to the Apache Software Foundation, and aim to
- build a wider open community around it in the 'Apache Way'.
+We propose to contribute the brpc codebase and associated artifacts(e.g. documentation etc.) to the Apache Software Foundation, and aim to  build a wider open community around it in the 'Apache Way'.
 
 
 ## Background
 
-RPC framework is very important for Baidu's development when building high performance services.
-But the old existing ones can not fulfill our needs, so we build one from scratch in 2014,
-and many core services inside Baidu have adopted it.
-We named it as baidu-rpc at first, then change its name as brpc for short.
-And in 2017, we open source it and hope to get more adoption, and get more contributions from outside.
+The RPC framework used in Baidu before 2014 was developed at 2008 and limited in protocols and performance, and there were also serveral implementations focused on their own scenarios from Baidu's different BU. As an infrastructural team in Baidu, we tried to build a new framework to unify all RPC scenarios inside. The framework was named "baidu-rpc" internally the early versions were adopted and online at late 2014. The framework was rapidly iterated at 2015-2017, and thousands kinds of services and almost all core services adopted it. And in 2017, we opensourced it as "brpc" and hope to get more adoptions and contributions from outside. At the time of opensourcing, there're more than 1 million instances inside Baidu using baidu-rpc (not counting clients).
+
 
 ## Rationale
 
