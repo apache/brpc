@@ -133,7 +133,11 @@ static int64_t read_cpu_frequency_from_brand_string(char* buf, ssize_t n) {
     }
     char* end = buf + n;
     char* num_str = brand + 10;
-    while (num_str != end && *num_str++ != '@');
+    while (num_str != end && *num_str != '@') {
+        if (*num_str++ == '\n') {
+            return 0;
+        }
+    }
     while (num_str != end && !isdigit(*num_str)) {
         num_str++;
     }
