@@ -108,30 +108,30 @@ void CouchbaseChannel::CallMethod(const google::protobuf::MethodDescriptor* meth
                                   google::protobuf::Closure* done) {
     const CouchbaseRequest* req = reinterpret_cast<const CouchbaseRequest*>(request);
     Controller* cntl = static_cast<Controller*>(controller);
-    ClosureGuard done_guard(done);
-    std::string key;
-    policy::MemcacheBinaryCommand command;
-    if (req->ParseRequest(&key, &command) != 0) {
-        cntl->SetFailed("Failed to parse key and command from request");
-        return;
-    }
-    if (req->read_replicas()) {
-        cntl->SetCouchbaseKeyReadReplicas(key);	    
-    }
-    const size_t vb_num = 
-        policy::CouchbaseNamingService::GetVBucketNumber(_service_name);
-    if (vb_num == 0) {
-        cntl->SetFailed("No vbuckets found");
-        return;
-    }
-    uint32_t vb_id = CouchbaseHelper::GetVBucketId(key, vb_num);
-    cntl->set_request_code(CouchbaseHelper::InitRequestCode(vb_id));
     CouchbaseRequest request_with_vb;
-    if (!req->BuildVBucketId(vb_id, &request_with_vb)) {
-        cntl->SetFailed("Failed to set vbucket id");
-        return;
-    }
-    done_guard.release();
+    do {
+        std::string key;
+        policy::MemcacheBinaryCommand command;
+        if (req->ParseRequest(&key, &command) != 0) {
+            cntl->SetFailed("Failed to parse key and command from request");
+            break;
+        }
+        if (req->read_replicas()) {
+            cntl->SetCouchbaseKeyReadReplicas(key);	    
+        }
+        const size_t vb_num = 
+            policy::CouchbaseNamingService::GetVBucketNumber(_service_name);
+        if (vb_num == 0) {
+            cntl->SetFailed("No vbuckets found");
+            break;
+        }
+        uint32_t vb_id = CouchbaseHelper::GetVBucketId(key, vb_num);
+        cntl->set_request_code(CouchbaseHelper::InitRequestCode(vb_id));
+        if (!req->BuildVBucketId(vb_id, &request_with_vb)) {
+            cntl->SetFailed("Failed to set vbucket id");
+            break;
+        }
+    } while(false);
     _channel.CallMethod(method, controller, &request_with_vb, response, done);
     return;
 }

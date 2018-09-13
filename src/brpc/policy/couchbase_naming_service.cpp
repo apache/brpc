@@ -199,6 +199,10 @@ bool CouchbaseServerListener::InitVBucketMap(const std::string& uri) {
         }
     }
     LOG(ERROR) << "Failed to init vbucket map: " << cntl.ErrorText();
+    // Set empty for first batch of server.
+    std::vector<std::string> servers;
+    std::string vb_map;
+    _ns->ResetServers(servers, vb_map);
     return false;
 }
 
@@ -247,7 +251,7 @@ void CouchbaseServerListener::CreateListener() {
         << "Failed to start listen thread.";  
 }
 
-void CouchbaseServerListener::UpdateVBucketMap(std::string&& vb_map) {
+void CouchbaseServerListener::UpdateVBucketMap(std::string&& vb_map) { 
     butil::VBUCKET_CONFIG_HANDLE vb = 
 		butil::vbucket_brief_parse_string(vb_map.c_str());
     if (vb != nullptr) {
@@ -316,7 +320,7 @@ int CouchbaseNamingService::RunNamingService(const char* service_name,
     // '_actions' MUST init before '_listener' due to it will be used by '_listener'. 
     _actions = actions;
     _listener.reset(new CouchbaseServerListener(server_list, streaming_url, 
-		                                            init_url, auth, this));
+                                                init_url, auth, this));
     return 0;
 }
 
