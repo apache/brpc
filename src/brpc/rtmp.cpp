@@ -2134,7 +2134,10 @@ void RtmpClientStream::Init(const RtmpClient* client,
     _options = options;
     OnClientStreamCreated* done = new OnClientStreamCreated;
     done->stream.reset(this);
+    // In RTMP, stream_creator and current stream_creator is always
+    // this RtmpClientStream.
     done->cntl.set_stream_creator(this);
+    done->cntl.set_current_stream_creator(this);
     done->cntl.set_connection_type(_options.share_connection ?
                                    CONNECTION_TYPE_SINGLE :
                                    CONNECTION_TYPE_SHORT);

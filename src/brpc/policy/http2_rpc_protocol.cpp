@@ -337,6 +337,7 @@ H2StreamContext::H2StreamContext()
     , _local_window_size(0)
     , _correlation_id(INVALID_BTHREAD_ID.value) {
     header().set_version(2, 0);
+    get_http2_bvars()->h2_stream_context_count << 1;
 }
 
 H2StreamContext::~H2StreamContext() {
@@ -344,6 +345,7 @@ H2StreamContext::~H2StreamContext() {
         int64_t diff = _conn_ctx->local_settings().initial_window_size - _local_window_size;
         _conn_ctx->ReclaimWindowSize(diff);
     }
+    get_http2_bvars()->h2_stream_context_count << -1;
 }
 
 int H2Context::Init() {
@@ -775,7 +777,7 @@ H2ParseResult H2StreamContext::OnResetStream(
     }
 #endif
     H2StreamContext* sctx = _conn_ctx->RemoveStream(stream_id());
-    if (sctx != NULL) {
+    if (sctx == NULL) {
         LOG(ERROR) << "Fail to find stream_id=" << stream_id();
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
@@ -1075,6 +1077,7 @@ H2StreamContext::H2StreamContext(H2Context* conn_ctx, int stream_id)
     , _correlation_id(INVALID_BTHREAD_ID.value) {
     header().set_version(2, 0);
     header()._h2_stream_id = stream_id;
+    get_http2_bvars()->h2_stream_context_count << 1;
 }
 
 #ifdef HAS_H2_STREAM_STATE
@@ -1321,6 +1324,7 @@ void H2UnsentRequest::Destroy() {
 }
 
 void H2UnsentRequest::OnCreatingStream(SocketUniquePtr*, Controller*) {
+    CHECK(false) << "H2UnsentRequest::OnCreatingStream should not be called";
 }
 
 void H2UnsentRequest::OnDestroyingStream(
@@ -1328,6 +1332,8 @@ void H2UnsentRequest::OnDestroyingStream(
     if (!end_of_rpc) {
         return;
     }
+    // If cntl->ErrorCode == 0, then it is a normal response and stream has
+    // already been removed in EndRemoteStream.
     if (sending_sock != NULL && cntl->ErrorCode() != 0) {
         CHECK_EQ(_cntl, cntl);
         _mutex.lock();
@@ -1624,12 +1630,12 @@ void H2UnsentResponse::Describe(butil::IOBuf* desc) const {
 }
 
 void PackH2Request(butil::IOBuf*,
-                      SocketMessage** user_message,
-                      uint64_t correlation_id,
-                      const google::protobuf::MethodDescriptor*,
-                      Controller* cntl,
-                      const butil::IOBuf&,
-                      const Authenticator* auth) {
+                   SocketMessage** user_message,
+                   uint64_t correlation_id,
+                   const google::protobuf::MethodDescriptor*,
+                   Controller* cntl,
+                   const butil::IOBuf&,
+                   const Authenticator* auth) {
     ControllerPrivateAccessor accessor(cntl);
     
     HttpHeader* header = &cntl->http_request();
@@ -1643,13 +1649,11 @@ void PackH2Request(butil::IOBuf*,
 
     // Serialize http2 request
     H2UnsentRequest* h2_req = H2UnsentRequest::New(cntl, correlation_id);
-    if (cntl->stream_creator() &&
-        cntl->stream_creator() != get_h2_global_stream_creator()) {
-        static_cast<H2UnsentRequest*>(cntl->stream_creator())->RemoveRefManually();
+    h2_req->AddRefManually();   // add for OnDestroyingStream
+    if (cntl->current_stream_creator()) {
+        dynamic_cast<H2UnsentRequest*>(cntl->current_stream_creator())->RemoveRefManually();
     }
-    cntl->set_stream_creator(h2_req);
-
-    h2_req->AddRefManually();
+    cntl->set_current_stream_creator(h2_req);
     *user_message = h2_req;
     
     if (FLAGS_http_verbose) {

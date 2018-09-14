@@ -24,6 +24,7 @@
 #include "brpc/details/hpack.h"
 #include "brpc/stream_creator.h"
 #include "brpc/controller.h"
+#include "bvar/bvar.h"
 
 namespace brpc {
 
@@ -74,6 +75,19 @@ enum H2StreamState {
 };
 const char* H2StreamState2Str(H2StreamState);
 
+struct Http2Bvars {
+    bvar::Adder<int> h2_unsent_request_count;
+    bvar::Adder<int> h2_stream_context_count;
+
+    Http2Bvars()
+        : h2_unsent_request_count("h2_unsent_request_count")
+        , h2_stream_context_count("h2_stream_context_count") {
+    }
+};
+inline Http2Bvars* get_http2_bvars() {
+    return butil::get_leaky_singleton<Http2Bvars>();
+}
+
 class H2UnsentRequest : public SocketMessage, public StreamCreator {
 public:
     static H2UnsentRequest* New(Controller* c, uint64_t correlation_id);
@@ -108,8 +122,12 @@ private:
         : _nref(1)
         , _size(0)
         , _stream_id(0)
-        , _cntl(c) {}
-    ~H2UnsentRequest() {}
+        , _cntl(c) {
+        get_http2_bvars()->h2_unsent_request_count << 1;
+    }
+    ~H2UnsentRequest() {
+        get_http2_bvars()->h2_unsent_request_count << -1;
+    }
     H2UnsentRequest(const H2UnsentRequest&);
     void operator=(const H2UnsentRequest&);
     void Destroy();
