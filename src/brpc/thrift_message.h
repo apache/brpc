@@ -136,6 +136,12 @@ public:
                     RESPONSE* raw_response,
                     ::google::protobuf::Closure* done);
 
+    template <typename REQUEST>
+    void CallMethod(const char* method_name,
+                    Controller* cntl,
+                    const REQUEST* raw_request,
+                    ::google::protobuf::Closure* done);
+
     void CallMethod(const char* method_name,
                     Controller* cntl,
                     const ThriftFramedMessage* req,
@@ -198,6 +204,21 @@ public:
     ThriftFramedMessage response;
 };
 
+template <>
+class ThriftDoneWrapper<void> : public ::google::protobuf::Closure {
+public:
+    explicit ThriftDoneWrapper(::google::protobuf::Closure* done)
+        : _done(done) {}
+    void Run() override {
+        _done->Run();
+        delete this;
+    }
+private:
+    ::google::protobuf::Closure* _done;
+public:
+    ThriftFramedMessage response;
+};
+
 } // namespace details
 
 template <typename T>
@@ -252,6 +273,34 @@ void ThriftStub::CallMethod(const char* method_name,
     }
 }
 
-} // namespace brpc
+template <typename REQUEST>
+void ThriftStub::CallMethod(const char* method_name,
+                                Controller* cntl,
+                                const REQUEST* raw_request,
+                                ::google::protobuf::Closure* done) {
+    cntl->_thrift_method_name.assign(method_name);
+
+    details::ThriftMessageWrapper<REQUEST>
+        raw_request_wrapper(const_cast<REQUEST*>(raw_request));
+    ThriftFramedMessage request;
+    request._raw_instance = &raw_request_wrapper;
+
+    if (done == NULL) {
+        // response is guaranteed to be unused after a synchronous RPC, no
+        // need to allocate it on heap.
+        ThriftFramedMessage response;
+        response._raw_instance = NULL;
+        _channel->CallMethod(NULL, cntl, &request, &response, NULL);
+    } else {
+        // Let the new_done own the response and release it after Run().
+        details::ThriftDoneWrapper<void>* new_done =
+            new details::ThriftDoneWrapper<void>(done);
+        new_done->response._raw_instance = NULL;
+        _channel->CallMethod(NULL, cntl, &request, &new_done->response, new_done);
+    }
+}
+
+}; // namespace brpc
 
 #endif // BRPC_THRIFT_MESSAGE_H
+
