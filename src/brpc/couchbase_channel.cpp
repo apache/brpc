@@ -119,9 +119,9 @@ void CouchbaseChannel::CallMethod(const google::protobuf::MethodDescriptor* meth
         if (req->read_replicas()) {
             cntl->SetCouchbaseKeyReadReplicas(key);	    
         }
-        const size_t vb_num = 
-            policy::CouchbaseNamingService::GetVBucketNumber(_service_name);
-        if (vb_num == 0) {
+        size_t vb_num = 0;
+        if (!CouchbaseHelper::GetVBucketMapInfo(
+            _channel._lb, nullptr, &vb_num, nullptr) || vb_num == 0) {
             cntl->SetFailed("No vbuckets found");
             break;
         }

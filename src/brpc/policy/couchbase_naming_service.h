@@ -59,18 +59,10 @@ private:
         const std::string& init_url, const std::string& auth, 
         const std::string& unique_id);
 	
-    bool ParseNsUrl(const butil::StringPiece service_full_name, 
-                    butil::StringPiece& server_list, 
-                    butil::StringPiece& streaming_url, 
-                    butil::StringPiece& init_url, butil::StringPiece& auth);
-
-    void SetVBucketNumber(const size_t vb_num);
-
-    static size_t GetVBucketNumber(const std::string& service_name);
-
-    static std::map<std::string, CouchbaseNamingService*> _vbucket_num_map;
-
-    butil::atomic<size_t> _vbucket_num;
+    static bool ParseNsUrl(const butil::StringPiece service_full_name, 
+                           butil::StringPiece& server_list, 
+                           butil::StringPiece& streaming_url, 
+                           butil::StringPiece& init_url, butil::StringPiece& auth);
 
     // Naming service of this CouchbaseNamingService.
     std::string _service_name;

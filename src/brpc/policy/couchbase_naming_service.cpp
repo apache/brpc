@@ -14,17 +14,14 @@
 
 // Authors: Cai,Daojin (caidaojin@qiyi.com)
 
-#include <stdlib.h>                                   // strtol
-#include <string>                                     // std::string
-#include <set>                                        // std::set
 
 #include "brpc/channel.h"
 #include "brpc/log.h"
 #include "brpc/policy/couchbase_listener_naming_service.h"
 #include "brpc/policy/couchbase_naming_service.h"
-#include "butil/status.h"
 #include "brpc/progressive_reader.h"
 #include "bthread/bthread.h"
+#include "butil/status.h"
 #include "butil/string_splitter.h"
 #include "butil/strings/string_number_conversions.h"
 #include "butil/third_party/libvbucket/vbucket.h"
@@ -107,7 +104,7 @@ private:
     std::string _auth;
     std::string _listen_port;
     std::string _service_name;
-	  CouchbaseNamingService* _ns;
+    CouchbaseNamingService* _ns;
     // Monitor couchbase vbuckets map on this channel. 
     brpc::Channel _listen_channel;
     // If _reader is not attached to listen socket, it will be released in
@@ -256,8 +253,6 @@ void CouchbaseServerListener::UpdateVBucketMap(std::string&& vb_map) {
 		butil::vbucket_brief_parse_string(vb_map.c_str());
     if (vb != nullptr) {
         const size_t server_num = butil::vbucket_config_get_num_servers(vb);
-        const size_t vb_num = butil::vbucket_config_get_num_vbuckets(vb);
-        _ns->SetVBucketNumber(vb_num);
         std::vector<std::string> servers(server_num);
         for (size_t i = 0; i != server_num; ++i) {
             servers[i] = butil::vbucket_config_get_server(vb, i);
@@ -281,10 +276,7 @@ void CouchbaseServerListener::UpdateVBucketMap(std::string&& vb_map) {
     }
 }
 
-std::map<std::string, CouchbaseNamingService*> CouchbaseNamingService::_vbucket_num_map;
-
-CouchbaseNamingService::CouchbaseNamingService() 
-    : _vbucket_num(0), _actions(nullptr) {}
+CouchbaseNamingService::CouchbaseNamingService() : _actions(nullptr) {}
 
 CouchbaseNamingService::~CouchbaseNamingService() {}
 
@@ -313,10 +305,9 @@ int CouchbaseNamingService::ResetServers(const std::vector<std::string>& servers
 int CouchbaseNamingService::RunNamingService(const char* service_name,
                                              NamingServiceActions* actions) {
     butil::StringPiece server_list, streaming_url, init_url, auth;
-	  CHECK(ParseNsUrl(service_name, server_list, streaming_url, init_url, auth))
+    CHECK(ParseNsUrl(service_name, server_list, streaming_url, init_url, auth))
         << "Failed to parse couchbase naming url: " << service_name;
     _service_name = service_name;
-    _vbucket_num_map.emplace(_service_name, this);
     // '_actions' MUST init before '_listener' due to it will be used by '_listener'. 
     _actions = actions;
     _listener.reset(new CouchbaseServerListener(server_list, streaming_url, 
@@ -336,19 +327,7 @@ NamingService* CouchbaseNamingService::New() const {
 
 void CouchbaseNamingService::Destroy() {
     _listener.reset(nullptr);
-    _vbucket_num_map.erase(_service_name);
     delete this;
-}
-
-void CouchbaseNamingService::SetVBucketNumber(const size_t vb_num) {
-    if (_vbucket_num.load(butil::memory_order_relaxed) == 0) {
-        _vbucket_num.store(vb_num, butil::memory_order_relaxed);
-    }
-}  
-
-size_t CouchbaseNamingService::GetVBucketNumber(const std::string& service_name) {
-    return _vbucket_num_map.at(service_name)->_vbucket_num.load(
-        butil::memory_order_relaxed);
 }
 
 std::string CouchbaseNamingService::BuildNsUrl(
