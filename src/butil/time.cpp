@@ -121,43 +121,6 @@ static int64_t read_cpu_current_frequency(char* buf, ssize_t n) {
     return result;
 }
 
-static int64_t read_cpu_frequency_from_brand_string(char* buf, ssize_t n) {
-    /* We read the information from the /proc filesystem.  It may contains at
-       least one line like
-       model name	: Intel(R) Xeon(R) CPU E5-2620 v2 @ 2.10GHz
-       We search for this line and convert the number in an integer.  */
-
-    char* brand = static_cast<char*>(memmem(buf, n, "model name", 10));
-    if (brand == NULL) {
-        return 0;
-    }
-    char* end = buf + n;
-    char* num_str = brand + 10;
-    while (num_str != end && *num_str != '@') {
-        if (*num_str++ == '\n') {
-            return 0;
-        }
-    }
-    while (num_str != end && !isdigit(*num_str)) {
-        num_str++;
-    }
-    //expect x.xxGhz
-    //FSB may be 0.10GHz or 0.133...GHz
-    if (end - num_str < 7 || num_str[1] != '.'
-        || !isdigit(num_str[2]) || !isdigit(num_str[3]) ||  num_str[4] != 'G') {
-        return 0;
-    }
-    int64_t result = (num_str[0]-'0') * 10 + (num_str[2]-'0');
-    int64_t last = num_str[3] - '0';
-    if (last == 7) {
-        last = 6;
-    }
-    for (int i = 0; i < 8; i++) {
-        result = result * 10 + last;
-    }
-    return result;
-}
-
 #if defined(__x86_64__) || defined(__i386__)
 #if defined(__pic__) && defined(__i386__)
 static void __cpuid(uint32_t reg[4], uint32_t code) {
@@ -179,6 +142,7 @@ static void __cpuid(uint32_t reg[4], uint32_t code) {
 }
 #endif
 #endif
+
 static int64_t read_cpu_frequency_by_cpuid() {
     int64_t result = 0;
 #if defined(__x86_64__) || defined(__i386__)
@@ -188,6 +152,49 @@ static int64_t read_cpu_frequency_by_cpuid() {
         //Intel CPU only
         __cpuid(reg, 0x16);
         return static_cast<uint64_t>(reg[0]) * 1000000UL;
+    }
+#endif
+    return result;
+}
+
+static int64_t read_cpu_frequency_from_brand_string() {
+    int64_t result = 0;
+#if defined(__x86_64__) || defined(__i386__)
+    union {
+        char brand[48];
+        uint32_t reg[12];
+    } buf;
+    __cpuid(buf.reg, 0x80000000);
+    if (buf.reg[0] < 0x80000004) {
+        return 0;
+    }
+    __cpuid(buf.reg, 0x80000002);
+    __cpuid(buf.reg+4, 0x80000003);
+    __cpuid(buf.reg+8, 0x80000004);
+    //Get something like: Intel(R) Xeon(R) CPU E5-2620 v2 @ 2.10GHz
+    char* end = buf.brand + sizeof(buf.brand);
+    char* p = buf.brand;
+    while (p != end && *p != '@') {
+        if (*p++ == '\n') {
+            return 0;
+        }
+    }
+    while (p != end && !isdigit(*p)) {
+        p++;
+    }
+    //expect x.xxGhz
+    //FSB may be 0.10GHz or 0.133...GHz
+    if (end - p < 7 || p[1] != '.'
+        || !isdigit(p[2]) || !isdigit(p[3]) ||  p[4] != 'G') {
+        return 0;
+    }
+    result = (p[0]-'0') * 10 + (p[2]-'0');
+    int64_t last = p[3] - '0';
+    if (last == 7) {
+        last = 6;
+    }
+    for (int i = 0; i < 8; i++) {
+        result = result * 10 + last;
     }
 #endif
     return result;
@@ -214,7 +221,7 @@ int64_t read_cpu_frequency(bool* invariant_tsc) {
             && memmem(flags_pos, buf + n - flags_pos, "nonstop_tsc", 11)) {
             int64_t result = read_cpu_frequency_by_cpuid();
             if (result <= 0) {
-                result = read_cpu_frequency_from_brand_string(buf, n);
+                result = read_cpu_frequency_from_brand_string();
             }
             if (result > 0) {
                 *invariant_tsc = true;
