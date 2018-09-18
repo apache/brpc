@@ -42,7 +42,6 @@
 #include "brpc/shared_object.h"
 #include "brpc/policy/rtmp_protocol.h"  // FIXME
 #include "brpc/periodic_task.h"
-#include "brpc/circuit_breaker.h"       // CircuitBreaker
 #if defined(OS_MACOSX)
 #include <sys/event.h>
 #endif
@@ -880,8 +879,8 @@ int Socket::SetFailed() {
 
 void Socket::FeedbackCircuitBreaker(int error_code, int64_t latency_us) {
     if (!GetOrNewSharedPart()->circuit_breaker.OnCallEnd(error_code, latency_us)) {
-        LOG(ERROR) << "Socket[" << *this << "] deactivted by circuit breaker";
-        SetFailed();
+        LOG(ERROR) << "Socket[" << *this << "] isolated by circuit breaker";
+        SetFailed(main_socket_id());
     }
 }
 
