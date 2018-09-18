@@ -740,12 +740,6 @@ int Socket::WaitAndReset(int32_t expected_nref) {
             _pipeline_q->clear();
         }
     }
-    
-    SharedPart* sp = GetSharedPart();
-    if (sp) {
-        sp->circuit_breaker.Reset();
-    }
-
     CHECK(NULL == _write_head.load(butil::memory_order_relaxed));
     CHECK_EQ(0, _unwritten_bytes.load(butil::memory_order_relaxed));
     CHECK(!_overcrowded);
@@ -771,6 +765,10 @@ void Socket::Revive() {
                 vref, MakeVRef(id_ver, nref + 1/*note*/),
                 butil::memory_order_release,
                 butil::memory_order_relaxed)) {
+            SharedPart* sp = GetSharedPart();
+            if (sp) {
+                sp->circuit_breaker.Reset();
+            }
             // Set this flag to true since we add additional ref again
             _recycle_flag.store(false, butil::memory_order_relaxed);
             if (_user) {
