@@ -37,7 +37,6 @@
 #include "brpc/options.pb.h"              // ConnectionType
 #include "brpc/socket_id.h"               // SocketId
 #include "brpc/socket_message.h"          // SocketMessagePtr
-#include "brpc/circuit_breaker.h"         // CircuitBreaker
 
 namespace brpc {
 namespace policy {

@@ -36,6 +36,7 @@
 #include "brpc/event_dispatcher.h"          // RemoveConsumer
 #include "brpc/socket.h"
 #include "brpc/describable.h"               // Describable
+#include "brpc/circuit_breaker.h"           // CircuitBreaker
 #include "brpc/input_messenger.h"
 #include "brpc/details/sparse_minute_counter.h"
 #include "brpc/stream_impl.h"
@@ -867,7 +868,7 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // Socket's reference will hit 0(recycle) when no one addresses it.
             ReleaseAdditionalReference();
             // NOTE: This Socket may be recycled at this point, don't
-                // touch anything.
+            // touch anything.
             return 0;
         }
     }
