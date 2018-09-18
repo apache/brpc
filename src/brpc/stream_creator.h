@@ -22,14 +22,6 @@
 namespace brpc {
 class Controller;
 
-// The stream user data on a specific Call
-class StreamUserData {
-public:
-    virtual ~StreamUserData() {}
-
-    virtual void OnDestroy(SocketUniquePtr& sending_sock, Controller* cntl) = 0;
-};
-
 // Abstract creation of "user-level connection" over a RPC-like process.
 // Lifetime of this object should be guaranteed by user during the RPC,
 // generally this object is created before RPC and destroyed after RPC.
@@ -48,8 +40,8 @@ public:
     //    when stream_creator is present.
     //  cntl: contains contexts of the RPC, if there's any error during
     //    replacement, call cntl->SetFailed().
-    virtual void OnCreatingStream(SocketUniquePtr* inout,
-                                  Controller* cntl) = 0;
+    virtual void* OnCreatingStream(SocketUniquePtr* inout,
+                                   Controller* cntl) = 0;
 
     // Called when the stream is about to destroyed.
     // If the RPC has retries, this function MUST be called before each retry.
@@ -64,7 +56,7 @@ public:
                                     Controller* cntl,
                                     int error_code,
                                     bool end_of_rpc,
-                                    StreamUserData* stream_user_data) = 0;
+                                    void* stream_user_data) = 0;
 };
 
 } // namespace brpc

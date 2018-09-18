@@ -1678,26 +1678,26 @@ void RtmpClientStream::SignalError() {
     }
 }
 
-void RtmpClientStream::OnCreatingStream(
+void* RtmpClientStream::OnCreatingStream(
     SocketUniquePtr* inout, Controller* cntl) {
     {
         std::unique_lock<butil::Mutex> mu(_state_mutex);
         if (_state == STATE_ERROR || _state == STATE_DESTROYING) {
             cntl->SetFailed(EINVAL, "Fail to replace socket for stream, _state is error or destroying");
-            return;
+            return NULL;
         }
     }
     SocketId esid;
     if (cntl->connection_type() == CONNECTION_TYPE_SHORT) {
         if (_client_impl->CreateSocket((*inout)->remote_side(), &esid) != 0) {
             cntl->SetFailed(EINVAL, "Fail to create RTMP socket");
-            return;
+            return NULL;
         }
     } else {
         if (_client_impl->socket_map().Insert(
                 SocketMapKey((*inout)->remote_side()), &esid) != 0) {
             cntl->SetFailed(EINVAL, "Fail to get the RTMP socket");
-            return;
+            return NULL;
         }
     }
     SocketUniquePtr tmp_ptr;
@@ -1705,12 +1705,13 @@ void RtmpClientStream::OnCreatingStream(
         cntl->SetFailed(EFAILEDSOCKET, "Fail to address RTMP SocketId=%" PRIu64
                         " from SocketMap of RtmpClient=%p",
                         esid, _client_impl.get());
-        return;
+        return NULL;
     }
     RPC_VLOG << "Replace Socket For Stream, RTMP socketId=" << esid
              << ", main socketId=" << (*inout)->id();
     tmp_ptr->ShareStats(inout->get());
     inout->reset(tmp_ptr.release());
+    return NULL;
 }
 
 int RtmpClientStream::RunOnFailed(bthread_id_t id, void* data, int) {
@@ -1749,7 +1750,7 @@ void RtmpClientStream::OnDestroyingStream(SocketUniquePtr& sending_sock,
                                           Controller* cntl,
                                           int /*error_code*/,
                                           bool end_of_rpc,
-                                          StreamUserData* /*stream_data*/) {
+                                          void* /*stream_data*/) {
     if (!end_of_rpc) {
         if (sending_sock) {
             if (_from_socketmap) {

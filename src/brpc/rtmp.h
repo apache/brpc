@@ -821,9 +821,9 @@ friend class RtmpRetryingClientStream;
     int Publish(const butil::StringPiece& name, RtmpPublishType type);
 
     // @StreamCreator
-    void OnCreatingStream(SocketUniquePtr* inout, Controller* cntl) override;
+    void* OnCreatingStream(SocketUniquePtr* inout, Controller* cntl) override;
     void OnDestroyingStream(SocketUniquePtr&, Controller*, int error_code,
-                            bool end_of_rpc, StreamUserData*) override;
+                            bool end_of_rpc, void*) override;
 
     void OnFailedToCreateStream();
     

@@ -67,11 +67,10 @@ public:
         _cntl->_current_call.sending_sock.reset(ptr.release());
     }
 
-    ControllerPrivateAccessor &set_stream_user_data(StreamUserData* ptr){
-        _cntl->_current_call.stream_user_data = ptr;
-        return *this;
+    void* get_stream_user_data() {
+        return _cntl->_current_call.stream_user_data;
     }
-    
+
     ControllerPrivateAccessor &set_security_mode(bool security_mode) {
         _cntl->set_flag(Controller::FLAGS_SECURITY_MODE, security_mode);
         return *this;

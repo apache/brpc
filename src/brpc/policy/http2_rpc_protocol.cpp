@@ -1232,7 +1232,7 @@ static void PackH2Message(butil::IOBuf* out,
     }
 }
 
-H2UnsentRequest* H2UnsentRequest::New(Controller* c, uint64_t correlation_id) {
+H2UnsentRequest* H2UnsentRequest::New(Controller* c) {
     const HttpHeader& h = c->http_request();
     const CommonStrings* const common = get_common_strings();
     const bool need_content_length = (h.method() != HTTP_METHOD_GET);
@@ -1311,7 +1311,6 @@ H2UnsentRequest* H2UnsentRequest::New(Controller* c, uint64_t correlation_id) {
         val->append(encoded_user_info);
     }
     msg->_sctx.reset(new H2StreamContext);
-    msg->_sctx->set_correlation_id(correlation_id);
     return msg;
 }
 
@@ -1331,7 +1330,7 @@ private:
     H2UnsentRequest* _msg;
 };
 
-void H2UnsentRequest::OnDestroy(SocketUniquePtr& sending_sock, Controller* cntl) {
+void H2UnsentRequest::Discard(SocketUniquePtr& sending_sock, Controller* cntl) {
     RemoveRefOnQuit deref_self(this);
     if (sending_sock != NULL && cntl->ErrorCode() != 0) {
         CHECK_EQ(cntl, _cntl);
@@ -1342,6 +1341,7 @@ void H2UnsentRequest::OnDestroy(SocketUniquePtr& sending_sock, Controller* cntl)
             ctx->AddAbandonedStream(_stream_id);
         }
     }
+    RemoveRefManually();
 }
 
 // bvar::Adder<int64_t> g_append_request_time;
@@ -1635,13 +1635,9 @@ void PackH2Request(butil::IOBuf*,
         header->SetHeader("Authorization", auth_data);
     }
 
-    // Serialize http2 request
-    H2UnsentRequest* h2_req = H2UnsentRequest::New(cntl, correlation_id);
-    if (!h2_req) {
-        return cntl->SetFailed(ENOMEM, "Fail to create H2UnsentRequest");
-    }
-    h2_req->AddRefManually();   // add ref for H2UnsentRequest::OnDestroy
-    accessor.set_stream_user_data(h2_req);
+    H2UnsentRequest* h2_req = (H2UnsentRequest*)accessor.get_stream_user_data();
+    h2_req->AddRefManually();   // add ref for AppendAndDestroySelf
+    h2_req->_sctx->set_correlation_id(correlation_id);
     *user_message = h2_req;
     
     if (FLAGS_http_verbose) {
@@ -1651,11 +1647,12 @@ void PackH2Request(butil::IOBuf*,
     }
 }
 
-void H2GlobalStreamCreator::OnCreatingStream(
+void* H2GlobalStreamCreator::OnCreatingStream(
     SocketUniquePtr* inout, Controller* cntl) {
     // Although the critical section looks huge, it should rarely be contended
     // since timeout of RPC is much larger than the delay of sending.
     std::unique_lock<butil::Mutex> mu(_mutex);
+    bool need_create_agent = true;
     do {
         if (!(*inout)->_agent_socket ||
             (*inout)->_agent_socket->Failed()) {
@@ -1669,39 +1666,49 @@ void H2GlobalStreamCreator::OnCreatingStream(
             break;
         }
         (*inout)->_agent_socket->ReAddress(inout);
-        return;
+        need_create_agent = false;
     } while (0);
 
-    SocketId sid;
-    SocketOptions opt = (*inout)->_options;
-    opt.health_check_interval_s = -1;
-    // TODO(zhujiashun): Predictively create socket to improve performance
-    if (get_client_side_messenger()->Create(opt, &sid) != 0) {
-        cntl->SetFailed(EINVAL, "Fail to create H2 socket");
-        return;
+    if (need_create_agent) {
+        SocketId sid;
+        SocketOptions opt = (*inout)->_options;
+        opt.health_check_interval_s = -1;
+        // TODO(zhujiashun): Predictively create socket to improve performance
+        if (get_client_side_messenger()->Create(opt, &sid) != 0) {
+            cntl->SetFailed(EINVAL, "Fail to create H2 socket");
+            return NULL;
+        }
+        SocketUniquePtr tmp_ptr;
+        if (Socket::Address(sid, &tmp_ptr) != 0) {
+            cntl->SetFailed(EFAILEDSOCKET, "Fail to address H2 socketId=%" PRIu64, sid);
+            return NULL;
+        }
+        tmp_ptr->ShareStats(inout->get());
+        (*inout)->_agent_socket.swap(tmp_ptr);
+        mu.unlock();
+        (*inout)->_agent_socket->ReAddress(inout);
+        if (tmp_ptr) {
+            tmp_ptr->ReleaseAdditionalReference();
+        }
     }
-    SocketUniquePtr tmp_ptr;
-    if (Socket::Address(sid, &tmp_ptr) != 0) {
-        cntl->SetFailed(EFAILEDSOCKET, "Fail to address H2 socketId=%" PRIu64, sid);
-        return;
+
+    H2UnsentRequest* h2_req = H2UnsentRequest::New(cntl);
+    if (!h2_req) {
+        cntl->SetFailed(ENOMEM, "Fail to create H2UnsentRequest");
+        return NULL;
     }
-    tmp_ptr->ShareStats(inout->get());
-    (*inout)->_agent_socket.swap(tmp_ptr);
-    mu.unlock();
-    (*inout)->_agent_socket->ReAddress(inout);
-    if (tmp_ptr) {
-        tmp_ptr->ReleaseAdditionalReference();
-    }
+    return (void*)h2_req;
 }
 
 void H2GlobalStreamCreator::OnDestroyingStream(SocketUniquePtr& sending_sock,
                                                Controller* cntl,
                                                int error_code,
                                                bool end_of_rpc,
-                                               StreamUserData* stream_user_data) {
+                                               void* stream_user_data) {
     // [stream_user_data == NULL] means that RPC has failed before it is created.
-    if (stream_user_data) {
-        stream_user_data->OnDestroy(sending_sock, cntl);
+    H2UnsentRequest* h2_req = static_cast<H2UnsentRequest*>(stream_user_data);
+    if (h2_req) {
+        h2_req->Discard(sending_sock, cntl);
     }
 }
 

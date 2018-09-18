@@ -581,7 +581,7 @@ private:
         // CONNECTION_TYPE_SINGLE. Otherwise, it may be a temporary
         // socket fetched from socket pool
         SocketUniquePtr sending_sock;
-        StreamUserData* stream_user_data;
+        void* stream_user_data;
     };
 
     void HandleStreamConnection(Socket *host_socket);

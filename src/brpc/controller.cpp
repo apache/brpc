@@ -733,8 +733,10 @@ void Controller::Call::OnComplete(
     case CONNECTION_TYPE_SHORT:
         if (sending_sock != NULL) {
             // Check the comment in CONNECTION_TYPE_POOLED branch.
-            if (!sending_sock->is_read_progressive() && c->_stream_creator == NULL) {
-                sending_sock->SetFailed();
+            if (!sending_sock->is_read_progressive()) {
+                if (c->_stream_creator == NULL) {
+                    sending_sock->SetFailed();
+                }
             } else {
                 sending_sock->OnProgressiveReadCompleted();
             }
@@ -998,7 +1000,8 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _remote_side = tmp_sock->remote_side();
     }
     if (_stream_creator) {
-        _stream_creator->OnCreatingStream(&tmp_sock, this);
+        _current_call.stream_user_data =
+                _stream_creator->OnCreatingStream(&tmp_sock, this);
         if (FailedInline()) {
             return HandleSendFailed();
         }
