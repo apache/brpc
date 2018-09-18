@@ -152,8 +152,7 @@ CircuitBreaker::CircuitBreaker()
 }
 
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
-    bool broken = _broken.load(butil::memory_order_relaxed);
-    if (broken) {
+    if (_broken.load(butil::memory_order_relaxed)) {
         return false;
     } 
     if (!_long_window.OnCallEnd(error_code, latency) ||
