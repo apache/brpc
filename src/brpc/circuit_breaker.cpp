@@ -152,10 +152,15 @@ CircuitBreaker::CircuitBreaker()
 }
 
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
-    if (_broken.load(butil::memory_order_relaxed) ||
-        !_long_window.OnCallEnd(error_code, latency) ||
+    bool broken = _broken.load(butil::memory_order_relaxed);
+    if (broken) {
+        return false;
+    } 
+    if (!_long_window.OnCallEnd(error_code, latency) ||
         !_short_window.OnCallEnd(error_code, latency)) {
-        UpdateIsolationDuration(); 
+        if (!_broken.exchange(true, butil::memory_order_acquire)) {
+            UpdateIsolationDuration(); 
+        }
         return false;
     }
     return true;
@@ -169,8 +174,6 @@ void CircuitBreaker::Reset() {
 }
 
 void CircuitBreaker::UpdateIsolationDuration() {
-    if (!_broken.load(butil::memory_order_relaxed) &&
-        !_broken.exchange(true, butil::memory_order_acquire)) {
         int64_t now_time_ms = butil::cpuwide_time_ms();
         int isolation_duration_ms = _isolation_duration_ms.load(butil::memory_order_relaxed);
         const int max_isolation_duration_ms = 
@@ -184,7 +187,6 @@ void CircuitBreaker::UpdateIsolationDuration() {
             isolation_duration_ms = min_isolation_duration_ms;
         }
         _isolation_duration_ms.store(isolation_duration_ms, butil::memory_order_relaxed);
-    }
 }
 
 }  // namespace brpc
