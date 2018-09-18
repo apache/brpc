@@ -67,7 +67,6 @@ private:
         butil::atomic<int64_t> BAIDU_CACHELINE_ALIGNMENT _sample_count;
         butil::atomic<int64_t> _ema_error_cost;
         butil::atomic<int64_t> _ema_latency;
-        butil::atomic<bool> _broken;
     };
 
     EmaErrorRecorder _long_window;

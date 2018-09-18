@@ -61,16 +61,11 @@ CircuitBreaker::EmaErrorRecorder::EmaErrorRecorder(int window_size,
     , _smooth(std::pow(EPSILON, 1.0/window_size))
     , _sample_count(0)
     , _ema_error_cost(0)
-    , _ema_latency(0) 
-    , _broken(false) {
+    , _ema_latency(0) {
 }
 
 bool CircuitBreaker::EmaErrorRecorder::OnCallEnd(int error_code, 
                                                  int64_t latency) {
-    if (_broken.load(butil::memory_order_relaxed)) {
-        return false;
-    }
-
     int64_t ema_latency = 0;
     bool healthy = false;
     if (error_code == 0) {
@@ -85,9 +80,6 @@ bool CircuitBreaker::EmaErrorRecorder::OnCallEnd(int error_code,
         return true;
     }
     
-    if (!healthy) {
-        _broken.store(true, butil::memory_order_relaxed);
-    }
     return healthy;
 }
 
@@ -95,7 +87,6 @@ void CircuitBreaker::EmaErrorRecorder::Reset() {
     _sample_count.store(0, butil::memory_order_relaxed);
     _ema_error_cost.store(0, butil::memory_order_relaxed);
     _ema_latency.store(0, butil::memory_order_relaxed);
-    _broken.store(false, butil::memory_order_relaxed);
 }
 
 int64_t CircuitBreaker::EmaErrorRecorder::UpdateLatency(int64_t latency) {
@@ -161,13 +152,13 @@ CircuitBreaker::CircuitBreaker()
 }
 
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
-    if(_long_window.OnCallEnd(error_code, latency) && 
-           _short_window.OnCallEnd(error_code, latency)) {
-        return true;
-    } else {
+    if (_broken.load(butil::memory_order_relaxed) ||
+        !_long_window.OnCallEnd(error_code, latency) ||
+        !_short_window.OnCallEnd(error_code, latency)) {
         UpdateIsolationDuration(); 
         return false;
     }
+    return true;
 }
 
 void CircuitBreaker::Reset() {
