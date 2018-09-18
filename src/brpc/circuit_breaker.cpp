@@ -32,12 +32,12 @@ DEFINE_int32(circuit_breaker_long_window_error_percent, 5,
 DEFINE_int32(circuit_breaker_min_error_cost_us, 500,
     "The minimum error_cost, when the ema of error cost is less than this "
     "value, it will be set to zero.");
-DEFINE_int32(circuit_breaker_max_failed_latency_mutilple, 2,
+DEFINE_int32(circuit_breaker_max_failed_latency_mutiple, 2,
     "The maximum multiple of the latency of the failed request relative to "
     "the average latency of the success requests.");
 DEFINE_int32(circuit_breaker_min_isolation_duration_ms, 100,
     "Minimum isolation duration in milliseconds");
-DEFINE_int32(circuit_breaker_max_isolation_duration_ms, 300000,
+DEFINE_int32(circuit_breaker_max_isolation_duration_ms, 30000,
     "Maximum isolation duration in milliseconds");
 
 namespace {
@@ -115,9 +115,9 @@ int64_t CircuitBreaker::EmaErrorRecorder::UpdateLatency(int64_t latency) {
 
 bool CircuitBreaker::EmaErrorRecorder::UpdateErrorCost(int64_t error_cost, 
                                                        int64_t ema_latency) {
-    const int max_mutilple = FLAGS_circuit_breaker_max_failed_latency_mutilple;
+    const int max_mutiple = FLAGS_circuit_breaker_max_failed_latency_mutiple;
     if (ema_latency != 0) {
-        error_cost = std::min(ema_latency * max_mutilple, error_cost);
+        error_cost = std::min(ema_latency * max_mutiple, error_cost);
     }
     //Errorous response
     if (error_cost != 0) {
@@ -187,9 +187,8 @@ void CircuitBreaker::UpdateIsolationDuration() {
         const int min_isolation_duration_ms = 
             FLAGS_circuit_breaker_min_isolation_duration_ms;
         if (now_time_ms - _last_reset_time_ms < max_isolation_duration_ms) {
-            isolation_duration_ms *= 2;
             isolation_duration_ms = 
-                std::min(isolation_duration_ms, max_isolation_duration_ms);
+                std::min(isolation_duration_ms * 2, max_isolation_duration_ms);
         } else {
             isolation_duration_ms = min_isolation_duration_ms;
         }
