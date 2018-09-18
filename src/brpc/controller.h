@@ -560,12 +560,12 @@ private:
         void Reset();
         void OnComplete(Controller* c, int error_code, bool responded);
 
-        int nretry;                   // sent in nretry-th retry.
-        bool need_feedback;           // The LB needs feedback.
-        bool enable_circuit_breaker;  // The channel enabled circuit_breaker
-        bool touched_by_stream_creator;
-        SocketId peer_id;            // main server id
-        int64_t begin_time_us;       // sent real time.
+        int nretry;                     // sent in nretry-th retry.
+        bool need_feedback;             // The LB needs feedback.
+        bool enable_circuit_breaker;    // The channel enabled circuit_breaker
+        bool touched_by_stream_creator; 
+        SocketId peer_id;               // main server id
+        int64_t begin_time_us;          // sent real time.
         // The actual `Socket' for sending RPC. It's socket id will be
         // exactly the same as `peer_id' if `_connection_type' is
         // CONNECTION_TYPE_SINGLE. Otherwise, it may be a temporary

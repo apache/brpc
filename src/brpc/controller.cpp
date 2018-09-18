@@ -764,17 +764,9 @@ void Controller::Call::OnComplete(Controller* c, int error_code/*note*/,
         c->stream_creator()->CleanupSocketForStream(
             sending_sock.get(), c, error_code);
     }
-    if (enable_circuit_breaker) {
-        if (!sending_sock) {
-            SocketUniquePtr sock; 
-            if (Socket::Address(peer_id, &sock) == 0) {
-                sock->FeedbackCircuitBreaker(error_code, 
-                    butil::gettimeofday_us() - begin_time_us);
-            }
-        } else {
-            sending_sock->FeedbackCircuitBreaker(error_code, 
-                butil::gettimeofday_us() - begin_time_us);
-        }
+    if (enable_circuit_breaker && sending_sock) {
+        sending_sock->FeedbackCircuitBreaker(error_code, 
+            butil::gettimeofday_us() - begin_time_us);
     }
     // Release the `Socket' we used to send/receive data
     sending_sock.reset(NULL);
