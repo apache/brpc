@@ -20,6 +20,7 @@
 #include "brpc/couchbase.h"
 #include "brpc/policy/couchbase_load_balancer.h"
 #include "butil/strings/string_number_conversions.h" 
+#include "butil/string_printf.h"
 
 namespace brpc {
 
@@ -31,16 +32,13 @@ void SerializeMemcacheRequest(butil::IOBuf* buf, Controller* cntl,
 
 }
 
-static inline void AppendControllerErrorText(
-    Controller* cntl, const CouchbaseResponse::Status status, 
-	  const size_t vb_id, const std::string& remote_side) {
-    std::string error_text;
-    error_text.append(CouchbaseResponse::status_str(status));
-    error_text.append("(vbucket_id=" + butil::IntToString(vb_id) + ") latency=" 
-                      + butil::Int64ToString(cntl->latency_us()) + "us @");
-    error_text.append(remote_side);
-    error_text.append(";");
-    cntl->SetFailed(error_text);
+static inline std::string BuildErrorText(
+    const long long int latency_us, const CouchbaseResponse::Status status, 
+    const int vb_id, const std::string& remote_side) {
+    std::string error_text(CouchbaseResponse::status_str(status));
+    butil::string_appendf(&error_text, "(vbucket_id=%d) latency=%lldus @%s;", 
+                          vb_id, latency_us, remote_side.c_str());
+    return std::move(error_text);
 }
 
 bool CouchbaseRetryPolicy::DoRetry(Controller* cntl) const {
@@ -82,7 +80,9 @@ bool CouchbaseRetryPolicy::DoRetry(Controller* cntl) const {
     }
     // Append retry reason to controll error_text.
     if (status != CouchbaseResponse::STATUS_SUCCESS) {
-        AppendControllerErrorText(cntl, status, vb_id, curr_server);
+        std::string text = BuildErrorText(cntl->latency_us(), status, 
+                                          vb_id, curr_server);
+        cntl->SetFailed(text);
     }
     bool rebalance = false;
     size_t server_num = 0;

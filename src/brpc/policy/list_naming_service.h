@@ -24,21 +24,41 @@ namespace brpc {
 namespace policy {
 
 class ListNamingService : public NamingService {
+public:
+    void AllowUpdate() {
+        _return_quickly = false;
+        _allow_update = true;
+    }
+
+    void UpdateServerList(std::string* server_list);
+	
 private:
     int RunNamingService(const char* service_name,
                          NamingServiceActions* actions);
 
     // We don't need a dedicated bthread to run this static NS.
-    bool RunNamingServiceReturnsQuickly() { return true; }
+    bool RunNamingServiceReturnsQuickly() { return _return_quickly; }
     
     int GetServers(const char *service_name,
                    std::vector<ServerNode>* servers);
+
+    std::string GetServerList();
 
     void Describe(std::ostream& os, const DescribeOptions& options) const;
 
     NamingService* New() const;
     
     void Destroy();
+	
+    bool allow_update() const { return _allow_update; }
+
+    bool _return_quickly = true;
+	
+    bool _allow_update = false;
+	
+    butil::Mutex _mutex; 
+	
+    std::string _server_list;
 };
 
 }  // namespace policy

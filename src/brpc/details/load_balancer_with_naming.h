@@ -33,7 +33,11 @@ public:
     int Init(const char* ns_url, const char* lb_name,
              const NamingServiceFilter* filter,
              const GetNamingServiceThreadOptions* options);
-    
+	
+    int Init(NamingService* ns, const char* lb_name,
+             const NamingServiceFilter* filter,
+             const GetNamingServiceThreadOptions* options);
+	
     void OnAddedServers(const std::vector<ServerId>& servers);
     void OnRemovedServers(const std::vector<ServerId>& servers);
 

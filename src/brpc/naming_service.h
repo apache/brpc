@@ -29,6 +29,8 @@
 
 namespace brpc {
 
+const std::string kCallerCreatedNamingService = "CreatedByCaller";
+
 // Representing a server inside a NamingService.
 struct ServerNode {
     ServerNode() {}
@@ -76,7 +78,11 @@ public:
     // Caller is responsible for Destroy() the instance after usage.
     virtual NamingService* New() const = 0;
 
-protected:
+    // If return true, NamingServiceThread will print logs about added/removed 
+    // server when servers changed. If a naming service change servers too frequently
+    // during a short time, make this method return false to avoid to print log too heavy.
+    virtual bool PrintServerChangeLogsEveryTimes() { return true; }
+
     virtual ~NamingService() {}
 };
 

@@ -156,6 +156,14 @@ public:
              const char* load_balancer_name,
              const ChannelOptions* options);
 
+    // CAUTION:
+    //   1. 'ns' MUST be constructed on heap. 
+    //   2. Channel will take owener of 'ns' whatever this method return 0 or not. 
+    //      You should not realase 'ns'.
+    int Init(NamingService* ns,
+             const char* lb_name,
+             const ChannelOptions* options);
+
     // Call `method' of the remote service with `request' as input, and 
     // `response' as output. `controller' contains options and extra data.
     // If `done' is not NULL, this method returns after request was sent

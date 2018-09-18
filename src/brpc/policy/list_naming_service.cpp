@@ -17,10 +17,17 @@
 #include <stdlib.h>                                   // strtol
 #include <string>                                     // std::string
 #include <set>                                        // std::set
+#include "bthread/bthread.h"
 #include "butil/string_splitter.h"                     // StringSplitter
 #include "brpc/log.h"
 #include "brpc/policy/list_naming_service.h"
 
+namespace brpc {
+
+// Defined in periodic_naming_service.cpp
+DECLARE_int32(ns_access_interval);
+
+}
 
 namespace brpc {
 namespace policy {
@@ -74,12 +81,41 @@ int ListNamingService::GetServers(const char *service_name,
 int ListNamingService::RunNamingService(const char* service_name,
                                         NamingServiceActions* actions) {
     std::vector<ServerNode> servers;
-    const int rc = GetServers(service_name, &servers);
-    if (rc != 0) {
-        servers.clear();
+    if (!allow_update()) {
+        const int rc = GetServers(service_name, &servers);
+        if (rc != 0) {
+            servers.clear();
+        }
+        actions->ResetServers(servers);
+    } else {
+        while (true) {
+            std::string latest_servers = GetServerList();
+            const int rc = GetServers(latest_servers.c_str(), &servers);
+            if (rc != 0) {
+                servers.clear();
+            }
+            actions->ResetServers(servers);
+            if (bthread_usleep(std::max(FLAGS_ns_access_interval, 1) * 1000000L) < 0) {
+                if (errno == ESTOP) {
+                    RPC_VLOG << "Quit NamingServiceThread=" << bthread_self();
+                    return 0;
+                }
+                PLOG(FATAL) << "Fail to sleep";
+                return -1;
+            }
+        }
     }
-    actions->ResetServers(servers);
     return 0;
+}
+
+std::string ListNamingService::GetServerList() {
+    BAIDU_SCOPED_LOCK(_mutex);
+    return _server_list;
+}
+
+void ListNamingService::UpdateServerList(std::string* server_list) {
+    BAIDU_SCOPED_LOCK(_mutex);
+    _server_list.swap(*server_list);
 }
 
 void ListNamingService::Describe(

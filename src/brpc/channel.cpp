@@ -239,6 +239,36 @@ int Channel::Init(const char* ns_url,
     return 0;
 }
 
+int Channel::Init(NamingService* ns,
+                  const char* lb_name,
+                  const ChannelOptions* options) {
+    std::unique_ptr<NamingService> ns_guard(ns);
+    if (ns == nullptr || lb_name == nullptr) {
+        LOG(FATAL) << "Null naming service or load balancer name.";
+        return -1;      
+    }
+    GlobalInitializeOrDie();
+    if (InitChannelOptions(options) != 0) {
+        return -1;
+    }
+    LoadBalancerWithNaming* lb = new (std::nothrow) LoadBalancerWithNaming;
+    if (NULL == lb) {
+        LOG(FATAL) << "Fail to new LoadBalancerWithNaming";
+        return -1;        
+    }
+    GetNamingServiceThreadOptions ns_opt;
+    ns_opt.succeed_without_server = _options.succeed_without_server;
+    ns_opt.log_succeed_without_server = _options.log_succeed_without_server;
+    if (lb->Init(ns, lb_name, _options.ns_filter, &ns_opt) != 0) {
+        LOG(ERROR) << "Fail to initialize LoadBalancerWithNaming";
+        delete lb;
+        return -1;
+    }
+    ns_guard.release();
+    _lb.reset(lb);
+    return 0;
+}
+				  
 static void HandleTimeout(void* arg) {
     bthread_id_t correlation_id = { (uint64_t)arg };
     bthread_id_error(correlation_id, ERPCTIMEDOUT);

@@ -34,7 +34,6 @@ namespace {
 	
 const std::string kDefaultBucketStreamingUrlPrefix("/pools/default/bucketsStreaming/");
 const std::string kDefaultBucketUrlPrefix("/pools/default/buckets/");
-const std::string kCouchbaseNamingServiceProtocol("couchbase_channel://");
 
 }
 
@@ -69,10 +68,10 @@ int CouchbaseChannel::InitMemcacheChannel(
         }
         inner_options = *options;
     }
-	  // Retry times is 1 at least.
-	  inner_options.protocol = PROTOCOL_MEMCACHE;
-	  if (inner_options.max_retry <= 0) {
-	      inner_options.max_retry = 1;
+    // Retry times is 1 at least.
+    inner_options.protocol = PROTOCOL_MEMCACHE;
+    if (inner_options.max_retry <= 0) {
+        inner_options.max_retry = 1;
     }
     inner_options.retry_policy = CouchbaseRetryPolicy::Instance();
     std::string auth;
@@ -97,7 +96,6 @@ int CouchbaseChannel::InitMemcacheChannel(
     std::string unique_suffix = butil::Uint64ToString(reinterpret_cast<uint64_t>(this));
     std::string ns_url = policy::CouchbaseNamingService::BuildNsUrl(
                              servers, streaming_url, init_url, auth, unique_suffix);
-    _service_name = ns_url.substr(kCouchbaseNamingServiceProtocol.size());
     return _channel.Init(ns_url.c_str(), "cb_lb", &inner_options);
 }
 
@@ -117,7 +115,7 @@ void CouchbaseChannel::CallMethod(const google::protobuf::MethodDescriptor* meth
             break;
         }
         if (req->read_replicas()) {
-            cntl->SetCouchbaseKeyReadReplicas(key);	    
+            cntl->set_couchbase_key_read_replicas(key);	    
         }
         size_t vb_num = 0;
         if (!CouchbaseHelper::GetVBucketMapInfo(

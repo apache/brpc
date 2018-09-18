@@ -19,6 +19,7 @@
 #include "brpc/log.h"
 #include "brpc/policy/couchbase_listener_naming_service.h"
 #include "brpc/policy/couchbase_naming_service.h"
+#include "brpc/policy/list_naming_service.h"
 #include "brpc/progressive_reader.h"
 #include "bthread/bthread.h"
 #include "butil/status.h"
@@ -78,7 +79,8 @@ public:
         const butil::StringPiece& init_url, const butil::StringPiece& auth, CouchbaseNamingService* ns)
         : _streaming_url(streaming_url.data(), streaming_url.length()),
           _auth(auth.data(), auth.length()),
-	        _ns(ns),
+          _cbns(ns),
+          _ns(nullptr),
           _reader(new VBucketMapReader(this)) {
         Init(server_list, init_url);
     }
@@ -103,8 +105,9 @@ private:
     std::string _streaming_url;
     std::string _auth;
     std::string _listen_port;
-    std::string _service_name;
-    CouchbaseNamingService* _ns;
+    CouchbaseNamingService* _cbns;
+    // List naming service is used by '_listen_channel'.
+    ListNamingService* _ns;
     // Monitor couchbase vbuckets map on this channel. 
     brpc::Channel _listen_channel;
     // If _reader is not attached to listen socket, it will be released in
@@ -167,13 +170,15 @@ void CouchbaseServerListener::Init(const butil::StringPiece& server_list,
     brpc::ChannelOptions options;
     options.protocol = PROTOCOL_HTTP;
     options.max_retry = FLAGS_couchbase_listen_retry_times;
-    std::string ns_url("couchbase_listener://");
-    ns_url.append(server_list.data(), server_list.length());
-    std::string unique_id = "_" + butil::Uint64ToString(reinterpret_cast<uint64_t>(this));
-    ns_url += unique_id;
-    _service_name.append(server_list.data(), server_list.length());
-    _service_name += unique_id;
-    CHECK(_listen_channel.Init(ns_url.c_str(), "rr", &options) == 0) 
+    _ns = new ListNamingService();
+    if (_ns == nullptr) {
+        LOG(FATAL) << "Fail to new list naming service.";
+        return;
+    }
+    std::string servers(server_list.data(), server_list.length());
+    _ns->AllowUpdate();
+    _ns->UpdateServerList(&servers);
+    CHECK(_listen_channel.Init(_ns, "rr", &options) == 0) 
         << "Failed to init listen channel.";
     const std::string init_url_str(init_url.data(), init_url.length());
     InitVBucketMap(init_url_str);
@@ -197,9 +202,9 @@ bool CouchbaseServerListener::InitVBucketMap(const std::string& uri) {
     }
     LOG(ERROR) << "Failed to init vbucket map: " << cntl.ErrorText();
     // Set empty for first batch of server.
-    std::vector<std::string> servers;
-    std::string vb_map;
-    _ns->ResetServers(servers, vb_map);
+    std::vector<std::string> empty_servers;
+    std::string empty_vb;
+    _cbns->ResetServers(empty_servers, empty_vb);
     return false;
 }
 
@@ -226,7 +231,6 @@ void* CouchbaseServerListener::ListenThread(void* arg) {
                 }
                 LOG(ERROR) << "Failed to sleep.";
             }
-            cntl.Reset();
             continue;
         }
         // Set listen port if init failure in InitVBucketMap. 
@@ -242,7 +246,6 @@ void* CouchbaseServerListener::ListenThread(void* arg) {
 }
 
 void CouchbaseServerListener::CreateListener() {
-    // TODO: keep one listen thread waiting on futex.
     CHECK(bthread_start_urgent(
         &_listen_bth, nullptr, ListenThread, this) == 0)
         << "Failed to start listen thread.";  
@@ -266,10 +269,8 @@ void CouchbaseServerListener::UpdateVBucketMap(std::string&& vb_map) {
             server_list += ":" + _listen_port + ",";
         }
         server_list.pop_back();
-        policy::CouchbaseListenerNamingService::ResetCouchbaseListenerServers(
-            _service_name, server_list);
-		
-        _ns->ResetServers(servers, vb_map);
+        _ns->UpdateServerList(&server_list);		
+        _cbns->ResetServers(servers, vb_map);
     } else {
         LOG(ERROR) << "Failed to get VBUCKET_CONFIG_HANDLE from string:\n" 
                    << "\'" << vb_map << "\'.";

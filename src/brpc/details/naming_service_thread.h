@@ -88,6 +88,8 @@ public:
 
     int Start(const NamingService* ns, const std::string& service_name,
               const GetNamingServiceThreadOptions* options);
+    int Start(NamingService* ns,
+              const GetNamingServiceThreadOptions* options);
     int WaitForFirstBatchOfServers();
 
     int AddWatcher(NamingServiceWatcher* w, const NamingServiceFilter* f);
@@ -103,6 +105,10 @@ private:
     static void ServerNodeWithId2ServerId(
         const std::vector<ServerNodeWithId>& src,
         std::vector<ServerId>* dst, const NamingServiceFilter* filter);
+
+    // Avoid to print log too frequently.	
+    std::string _log_buf;
+    uint64_t _count = 0;
 
     butil::Mutex _mutex;
     bthread_t _tid;
@@ -127,6 +133,10 @@ std::ostream& operator<<(std::ostream& os, const NamingServiceThread&);
 // Returns 0 on success, -1 otherwise.
 int GetNamingServiceThread(butil::intrusive_ptr<NamingServiceThread>* ns_thread,
                            const char* url,
+                           const GetNamingServiceThreadOptions* options);
+
+int GetNamingServiceThread(butil::intrusive_ptr<NamingServiceThread>* nsthread_out,
+                           NamingService* ns,
                            const GetNamingServiceThreadOptions* options);
 
 } // namespace brpc

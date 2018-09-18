@@ -37,6 +37,8 @@ public:
     CouchbaseNamingService();
     ~CouchbaseNamingService();
 
+    virtual bool PrintServerChangeLogsEveryTimes() { return false; }
+
 private:
     DISALLOW_COPY_AND_ASSIGN(CouchbaseNamingService);
 

@@ -23,6 +23,7 @@
 #include "brpc/log.h"
 #include "brpc/socket_map.h"
 #include "brpc/details/naming_service_thread.h"
+#include "butil/time/time.h"
 
 
 namespace brpc {
@@ -174,26 +175,32 @@ void NamingServiceThread::Actions::ResetServers(
 
     if (!_removed.empty() || !_added.empty()) {
         std::ostringstream info;
-        // Couchbase naming service is too long and print frequently.
-        butil::StringPiece service_name(_owner->_service_name);
-        std::string class_name = butil::class_name_str(*_owner->_ns);
-        bool too_heavy = false;
-        if (class_name == "brpc::policy::CouchbaseNamingService") {
-            too_heavy = true;
-            size_t pos = service_name.find('_');
-            service_name = service_name.substr(0, pos);
-        }
-        info << class_name << "(\"" << service_name << "\"):";
+        info << butil::class_name_str(*_owner->_ns) << "(\"" << _owner->_service_name << "\"):";
         if (!_added.empty()) {
             info << " added "<< _added.size();
         }
         if (!_removed.empty()) {
             info << " removed " << _removed.size();
         }
-        if (!too_heavy) { 
+        if (_owner->_ns->PrintServerChangeLogsEveryTimes()) {
             LOG(INFO) << info.str();
-        } else {
-            LOG_EVERY_N(INFO, 100) << info.str();
+        } else { // print log every 100 times.
+            if (_owner->_log_buf.empty()) {
+                _owner->_log_buf.append(":\'");
+            }
+            butil::Time::Exploded exploded_time;
+            butil::Time::Now().LocalExplode(&exploded_time);
+            butil::string_appendf(&_owner->_log_buf, "\nE%2d%2d %2d:%2d:%2d.%d %s", 
+                                  exploded_time.month, exploded_time.day_of_month, 
+                                  exploded_time.hour, exploded_time.minute,
+                                  exploded_time.second, exploded_time.millisecond, 
+                                  info.str().c_str());
+            if (_owner->_count % 100 == 0) {
+                _owner->_log_buf.append("\n\'");
+                LOG(INFO) << _owner->_log_buf;
+                _owner->_log_buf.clear();
+            }
+            ++_owner->_count;
         }
     }
 
@@ -277,6 +284,30 @@ int NamingServiceThread::Start(const NamingService* naming_service,
     _source_ns = naming_service;
     _ns = naming_service->New();
     _service_name = service_name;
+    if (opt_in) {
+        _options = *opt_in;
+    }
+    _last_sockets.clear();
+    if (_ns->RunNamingServiceReturnsQuickly()) {
+        RunThis(this);
+    } else {
+        int rc = bthread_start_urgent(&_tid, NULL, RunThis, this);
+        if (rc) {
+            LOG(ERROR) << "Fail to create bthread: " << berror(rc);
+            return -1;
+        }
+    }
+    return WaitForFirstBatchOfServers();
+}
+
+int NamingServiceThread::Start(NamingService* naming_service,
+                               const GetNamingServiceThreadOptions* opt_in) {
+    if (naming_service == NULL) {
+        LOG(ERROR) << "Param[naming_service] is NULL";
+        return -1;
+    }
+    _service_name = kCallerCreatedNamingService;
+    _ns = naming_service;
     if (opt_in) {
         _options = *opt_in;
     }
@@ -474,6 +505,29 @@ int GetNamingServiceThread(
         if (nsthread->WaitForFirstBatchOfServers() != 0) {
             return -1;
         }
+    }
+    nsthread_out->swap(nsthread);
+    return 0;
+}
+
+int GetNamingServiceThread(
+    butil::intrusive_ptr<NamingServiceThread>* nsthread_out,
+    NamingService* ns,
+    const GetNamingServiceThreadOptions* options) {
+    if (ns == nullptr) {
+        LOG(ERROR) << "Null naming service.";
+        return -1;
+    }
+    butil::intrusive_ptr<NamingServiceThread> nsthread;
+    NamingServiceThread* ns_thread = new (std::nothrow) NamingServiceThread;
+    if (ns_thread == NULL) {
+        LOG(ERROR) << "Fail to new NamingServiceThread";
+        return -1;
+    }
+    nsthread.reset(ns_thread);
+    if (nsthread->Start(ns, options) != 0) {
+        LOG(ERROR) << "Fail to start NamingServiceThread";
+        return -1;
     }
     nsthread_out->swap(nsthread);
     return 0;
