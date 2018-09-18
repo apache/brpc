@@ -822,7 +822,8 @@ friend class RtmpRetryingClientStream;
 
     // @StreamCreator
     void OnCreatingStream(SocketUniquePtr* inout, Controller* cntl) override;
-    void OnDestroyingStream(SocketUniquePtr&, Controller*, int error_code, bool end_of_rpc) override;
+    void OnDestroyingStream(SocketUniquePtr&, Controller*, int error_code,
+                            bool end_of_rpc, StreamUserData*) override;
 
     void OnFailedToCreateStream();
     

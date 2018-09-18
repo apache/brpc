@@ -88,7 +88,7 @@ inline Http2Bvars* get_http2_bvars() {
     return butil::get_leaky_singleton<Http2Bvars>();
 }
 
-class H2UnsentRequest : public SocketMessage, public StreamCreator {
+class H2UnsentRequest : public SocketMessage, public StreamUserData {
 public:
     static H2UnsentRequest* New(Controller* c, uint64_t correlation_id);
     void Describe(butil::IOBuf*) const;
@@ -103,13 +103,12 @@ public:
         }
     }
 
-    // @StreamCreator
-    void OnCreatingStream(SocketUniquePtr* inout, Controller* cntl) override;
-    void OnDestroyingStream(SocketUniquePtr& sending_sock, Controller* cntl, int error_code, bool end_of_rpc) override;
-    
     // @SocketMessage
     butil::Status AppendAndDestroySelf(butil::IOBuf* out, Socket*);
     size_t EstimatedByteSize();
+
+    // @StreamUserData
+    void OnDestroy(SocketUniquePtr& sending_sock, Controller* cntl);
     
 private:
     std::string& push(const std::string& name)
@@ -235,7 +234,11 @@ void PackH2Request(butil::IOBuf* buf,
 class H2GlobalStreamCreator : public StreamCreator {
 protected:
     void OnCreatingStream(SocketUniquePtr* inout, Controller* cntl) override;
-    void OnDestroyingStream(SocketUniquePtr& sending_sock, Controller* cntl, int error_code, bool end_of_rpc) override;
+    void OnDestroyingStream(SocketUniquePtr& sending_sock,
+                            Controller* cntl,
+                            int error_code,
+                            bool end_of_rpc,
+                            StreamUserData* stream_user_data) override;
 private:
     butil::Mutex _mutex;
 };

@@ -248,15 +248,10 @@ public:
     void reset_rpc_dump_meta(RpcDumpMeta* meta);
     const RpcDumpMeta* rpc_dump_meta() { return _rpc_dump_meta; }
 
-    // Attach a global StreamCreator to this RPC. Notice that controller never
-    // deletes the StreamCreator, you can do the deletion inside OnDestroyingStream.
+    // Attach a StreamCreator to this RPC. Notice that controller never deletes
+    // the StreamCreator, you can do the deletion inside OnDestroyingStream.
     void set_stream_creator(StreamCreator* sc) { _stream_creator = sc; }
     StreamCreator* stream_creator() const { return _stream_creator; }
-
-    // Attach a StreamCreator to current call. In some protocols(such as h2), each
-    // call has a specific StreamCreator, use this function to set.
-    void set_current_stream_creator(StreamCreator* sc) { _current_call.stream_creator = sc; }
-    StreamCreator* current_stream_creator() const { return _current_call.stream_creator; }
 
     // Make the RPC end when the HTTP response has complete headers and let
     // user read the remaining body by using ReadProgressiveAttachmentBy().
@@ -586,7 +581,7 @@ private:
         // CONNECTION_TYPE_SINGLE. Otherwise, it may be a temporary
         // socket fetched from socket pool
         SocketUniquePtr sending_sock;
-        StreamCreator* stream_creator;
+        StreamUserData* stream_user_data;
     };
 
     void HandleStreamConnection(Socket *host_socket);

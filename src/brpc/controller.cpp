@@ -261,13 +261,13 @@ Controller::Call::Call(Controller::Call* rhs)
     , peer_id(rhs->peer_id)
     , begin_time_us(rhs->begin_time_us)
     , sending_sock(rhs->sending_sock.release())
-    , stream_creator(rhs->stream_creator) {
+    , stream_user_data(rhs->stream_user_data) {
     // NOTE: fields in rhs should be reset because RPC could fail before
     // setting all the fields to next call and _current_call.OnComplete
     // will behave incorrectly.
     rhs->need_feedback = false;
     rhs->peer_id = (SocketId)-1;
-    rhs->stream_creator = NULL;
+    rhs->stream_user_data = NULL;
 }
 
 Controller::Call::~Call() {
@@ -282,7 +282,7 @@ void Controller::Call::Reset() {
     peer_id = (SocketId)-1;
     begin_time_us = 0;
     sending_sock.reset(NULL);
-    stream_creator = NULL;
+    stream_user_data = NULL;
 }
 
 void Controller::set_timeout_ms(int64_t timeout_ms) {
@@ -769,13 +769,13 @@ void Controller::Call::OnComplete(
         c->_lb->Feedback(info);
     }
 
-    if (stream_creator) {
-        stream_creator->OnDestroyingStream(
-            sending_sock, c, error_code, end_of_rpc);
+    if (c->stream_creator()) {
+        c->stream_creator()->OnDestroyingStream(
+            sending_sock, c, error_code, end_of_rpc, stream_user_data);
     }
-
     // Release the `Socket' we used to send/receive data
     sending_sock.reset(NULL);
+    stream_user_data = NULL;
 }
 
 void Controller::EndRPC(const CompletionInfo& info) {

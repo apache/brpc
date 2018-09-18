@@ -1748,7 +1748,8 @@ void RtmpClientStream::OnFailedToCreateStream() {
 void RtmpClientStream::OnDestroyingStream(SocketUniquePtr& sending_sock,
                                           Controller* cntl,
                                           int /*error_code*/,
-                                          bool end_of_rpc) {
+                                          bool end_of_rpc,
+                                          StreamUserData* /*stream_data*/) {
     if (!end_of_rpc) {
         if (sending_sock) {
             if (_from_socketmap) {
@@ -2137,7 +2138,6 @@ void RtmpClientStream::Init(const RtmpClient* client,
     // In RTMP, stream_creator and current stream_creator is always
     // this RtmpClientStream.
     done->cntl.set_stream_creator(this);
-    done->cntl.set_current_stream_creator(this);
     done->cntl.set_connection_type(_options.share_connection ?
                                    CONNECTION_TYPE_SINGLE :
                                    CONNECTION_TYPE_SHORT);

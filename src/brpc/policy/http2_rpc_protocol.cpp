@@ -1323,31 +1323,6 @@ void H2UnsentRequest::Destroy() {
     free(this);
 }
 
-void H2UnsentRequest::OnCreatingStream(SocketUniquePtr*, Controller*) {
-    CHECK(false) << "H2UnsentRequest::OnCreatingStream should not be called";
-}
-
-void H2UnsentRequest::OnDestroyingStream(
-    SocketUniquePtr& sending_sock, Controller* cntl, int error_code, bool end_of_rpc) {
-    if (!end_of_rpc) {
-        return;
-    }
-    // If cntl->ErrorCode == 0, then it is a normal response and stream has
-    // already been removed in EndRemoteStream.
-    if (sending_sock != NULL && cntl->ErrorCode() != 0) {
-        CHECK_EQ(_cntl, cntl);
-        _mutex.lock();
-        _cntl = NULL;
-        if (_stream_id != 0) {
-            H2Context* ctx =
-                static_cast<H2Context*>(sending_sock->parsing_context());
-            ctx->AddAbandonedStream(_stream_id);
-        }
-        _mutex.unlock();
-    }
-    RemoveRefManually();
-}
-
 struct RemoveRefOnQuit {
     RemoveRefOnQuit(H2UnsentRequest* msg) : _msg(msg) {}
     ~RemoveRefOnQuit() { _msg->RemoveRefManually(); }
@@ -1355,6 +1330,19 @@ private:
     DISALLOW_COPY_AND_ASSIGN(RemoveRefOnQuit);
     H2UnsentRequest* _msg;
 };
+
+void H2UnsentRequest::OnDestroy(SocketUniquePtr& sending_sock, Controller* cntl) {
+    RemoveRefOnQuit deref_self(this);
+    if (sending_sock != NULL && cntl->ErrorCode() != 0) {
+        CHECK_EQ(cntl, _cntl);
+        std::unique_lock<butil::Mutex> mu(_mutex);
+        _cntl = NULL;
+        if (_stream_id != 0) {
+            H2Context* ctx = static_cast<H2Context*>(sending_sock->parsing_context());
+            ctx->AddAbandonedStream(_stream_id);
+        }
+    }
+}
 
 // bvar::Adder<int64_t> g_append_request_time;
 // bvar::PerSecond<bvar::Adder<int64_t> > g_append_request_time_per_second(
@@ -1649,11 +1637,11 @@ void PackH2Request(butil::IOBuf*,
 
     // Serialize http2 request
     H2UnsentRequest* h2_req = H2UnsentRequest::New(cntl, correlation_id);
-    h2_req->AddRefManually();   // add for OnDestroyingStream
-    if (cntl->current_stream_creator()) {
-        dynamic_cast<H2UnsentRequest*>(cntl->current_stream_creator())->RemoveRefManually();
+    if (!h2_req) {
+        return cntl->SetFailed(ENOMEM, "Fail to create H2UnsentRequest");
     }
-    cntl->set_current_stream_creator(h2_req);
+    h2_req->AddRefManually();   // add ref for H2UnsentRequest::OnDestroy
+    accessor.set_stream_user_data(h2_req);
     *user_message = h2_req;
     
     if (FLAGS_http_verbose) {
@@ -1706,10 +1694,15 @@ void H2GlobalStreamCreator::OnCreatingStream(
     }
 }
 
-void H2GlobalStreamCreator::OnDestroyingStream(
-    SocketUniquePtr& sending_sock, Controller* cntl, int error_code, bool end_of_rpc) {
-    // If any error happens during the time of sending rpc, this function
-    // would be called. Currently just do nothing.
+void H2GlobalStreamCreator::OnDestroyingStream(SocketUniquePtr& sending_sock,
+                                               Controller* cntl,
+                                               int error_code,
+                                               bool end_of_rpc,
+                                               StreamUserData* stream_user_data) {
+    // [stream_user_data == NULL] means that RPC has failed before it is created.
+    if (stream_user_data) {
+        stream_user_data->OnDestroy(sending_sock, cntl);
+    }
 }
 
 StreamCreator* get_h2_global_stream_creator() {

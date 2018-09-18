@@ -19,9 +19,16 @@
 
 #include "brpc/socket_id.h"
 
-
 namespace brpc {
 class Controller;
+
+// The stream user data on a specific Call
+class StreamUserData {
+public:
+    virtual ~StreamUserData() {}
+
+    virtual void OnDestroy(SocketUniquePtr& sending_sock, Controller* cntl) = 0;
+};
 
 // Abstract creation of "user-level connection" over a RPC-like process.
 // Lifetime of this object should be guaranteed by user during the RPC,
@@ -52,10 +59,12 @@ public:
     //   cntl: contexts of the RPC
     //   error_code: Use this instead of cntl->ErrorCode()
     //   end_of_rpc: true if the RPC is about to destroyed.
+    //   stream_user_data: the corresponding user data of this very stream
     virtual void OnDestroyingStream(SocketUniquePtr& sending_sock,
                                     Controller* cntl,
                                     int error_code,
-                                    bool end_of_rpc) = 0;
+                                    bool end_of_rpc,
+                                    StreamUserData* stream_user_data) = 0;
 };
 
 } // namespace brpc
