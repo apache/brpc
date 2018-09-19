@@ -22,8 +22,7 @@
 // For some versions of openssl, SSL_* are defined inside this header
 #include <openssl/ossl_typ.h>
 #include "brpc/socket_id.h"            // SocketId
-#include "brpc/ssl_option.h"           // SSLOptions
-
+#include "brpc/ssl_options.h"          // ServerSSLOptions
 
 namespace brpc {
 
@@ -76,7 +75,7 @@ SSL_CTX* CreateClientSSLContext(const ChannelSSLOptions& options);
 // fields into `hostnames'
 SSL_CTX* CreateServerSSLContext(const std::string& certificate_file,
                                 const std::string& private_key_file,
-                                const SSLOptions& options,
+                                const ServerSSLOptions& options,
                                 std::vector<std::string>* hostnames);
 
 // Create a new SSL (per connection object) using configurations in `ctx'.
@@ -92,9 +91,9 @@ void AddBIOBuffer(SSL* ssl, int fd, int bufsize);
 // set to indicate the reason (0 for EOF)
 SSLState DetectSSLState(int fd, int* error_code);
 
-} // namespace brpc
+void Print(std::ostream& os, SSL* ssl, const char* sep);
+void Print(std::ostream& os, X509* cert, const char* sep);
 
-std::ostream& operator<<(std::ostream& os, SSL* ssl);
-std::ostream& operator<<(std::ostream& os, X509* cert);
+} // namespace brpc
 
 #endif // BRPC_SSL_HELPER_H

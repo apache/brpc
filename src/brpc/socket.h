@@ -38,7 +38,6 @@
 #include "brpc/socket_id.h"               // SocketId
 #include "brpc/socket_message.h"          // SocketMessagePtr
 
-
 namespace brpc {
 namespace policy {
 class ConsistentHashingLoadBalancer;
@@ -137,6 +136,14 @@ struct PipelinedInfo {
     bthread_id_t id_wait;
 };
 
+struct SocketSSLContext {
+    SocketSSLContext();
+    ~SocketSSLContext();
+    
+    SSL_CTX* raw_ctx;           // owned
+    std::string sni_name;       // useful for clients
+};
+
 // TODO: Comment fields
 struct SocketOptions {
     SocketOptions();
@@ -155,9 +162,7 @@ struct SocketOptions {
     // one thread at any time.
     void (*on_edge_triggered_events)(Socket*);
     int health_check_interval_s;
-    bool owns_ssl_ctx;
-    SSL_CTX* ssl_ctx;
-    std::string sni_name;
+    std::shared_ptr<SocketSSLContext> initial_ssl_ctx;
     bthread_keytable_pool_t* keytable_pool;
     SocketConnection* conn;
     AppConnect* app_connect;
@@ -178,6 +183,7 @@ friend class Controller;
 friend class policy::ConsistentHashingLoadBalancer;
 friend class policy::RtmpContext;
 friend class schan::ChannelBalancer;
+friend class HealthCheckTask;
     class SharedPart;
     struct Forbidden {};
     struct WriteRequest;
@@ -308,6 +314,8 @@ public:
     int SetFailed(int error_code, const char* error_fmt, ...)
         __attribute__ ((__format__ (__printf__, 3, 4)));
     static int SetFailed(SocketId id);
+
+    void FeedbackCircuitBreaker(int error_code, int64_t latency_us);
 
     bool Failed() const;
 
@@ -518,7 +526,6 @@ friend void DereferenceSocket(Socket*);
     int ConnectIfNot(const timespec* abstime, WriteRequest* req);
     
     int ResetFileDescriptor(int fd);
-    static void* HealthCheckThread(void*);
 
     // Returns 0 on success, 1 on failed socket, -1 on recycled.
     static int AddressFailedAsWell(SocketId id, SocketUniquePtr* ptr);
@@ -663,7 +670,7 @@ private:
     int _preferred_index;
 
     // Number of HC since the last SetFailed() was called. Set to 0 when the
-    // socket is revived. Only set in HealthCheckThread
+    // socket is revived. Only set in HealthCheckTask::OnTriggeringTask()
     int _hc_count;
 
     // Size of current incomplete message, set to 0 on complete.

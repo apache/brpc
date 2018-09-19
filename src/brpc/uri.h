@@ -155,10 +155,9 @@ friend class HttpMessage;
     mutable QueryMap _query_map;
 };
 
-// Parse host and port from `url'.
-// When port is absent, it's set to 80 for http and 443 for https.
+// Parse host/port/schema from `url' if the corresponding parameter is not NULL.
 // Returns 0 on success, -1 otherwise.
-int ParseHostAndPortFromURL(const char* url, std::string* host, int* port);
+int ParseURL(const char* url, std::string* schema, std::string* host, int* port);
 
 inline void URI::SetQuery(const std::string& key, const std::string& value) {
     get_query_map()[key] = value;

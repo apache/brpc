@@ -229,3 +229,6 @@ brpc client支持在读取完body前就结束RPC，让用户在RPC结束后再�
 # 访问带认证的Server
 
 根据Server的认证方式生成对应的auth_data，并设置为http header "Authorization"的值。比如用的是curl，那就加上选项`-H "Authorization : <auth_data>"。`
+
+# 发送https请求
+https是http over SSL的简称，SSL并不是http特有的，而是对所有协议都有效。开启客户端SSL的一般性方法见[这里](client.md#开启ssl)。为方便使用，brpc会对https://开头的uri自动开启SSL。

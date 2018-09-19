@@ -21,10 +21,11 @@
 // To brpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
 
-#include <ostream>                               // std::ostream
-#include "bthread/errno.h"                       // Redefine errno
-#include "butil/intrusive_ptr.hpp"               // butil::intrusive_ptr
-#include "brpc/ssl_option.h"                // ChannelSSLOptions
+#include <ostream>                          // std::ostream
+#include "bthread/errno.h"                  // Redefine errno
+#include "butil/intrusive_ptr.hpp"          // butil::intrusive_ptr
+#include "butil/ptr_container.h"
+#include "brpc/ssl_options.h"               // ChannelSSLOptions
 #include "brpc/channel_base.h"              // ChannelBase
 #include "brpc/adaptive_protocol_type.h"    // AdaptiveProtocolType
 #include "brpc/adaptive_connection_type.h"  // AdaptiveConnectionType
@@ -68,6 +69,12 @@ struct ChannelOptions {
     // Maximum: INT_MAX
     int max_retry;
     
+    // When the error rate of a server node is too high, isolate the node. 
+    // Note that this isolation is GLOBAL, the node will become unavailable 
+    // for all channels running in this process during the isolation.
+    // Default: false
+    bool enable_circuit_breaker;
+
     // Serialization protocol, defined in src/brpc/options.proto
     // NOTE: You can assign name of the protocol to this field as well, for
     // Example: options.protocol = "baidu_std";
@@ -90,8 +97,10 @@ struct ChannelOptions {
     bool log_succeed_without_server;
 
     // SSL related options. Refer to `ChannelSSLOptions' for details
-    ChannelSSLOptions ssl_options;
-    
+    bool has_ssl_options() const { return _ssl_options != NULL; }
+    const ChannelSSLOptions& ssl_options() const { return *_ssl_options.get(); }
+    ChannelSSLOptions* mutable_ssl_options();
+
     // Turn on authentication for this channel if `auth' is not NULL.
     // Note `auth' will not be deleted by channel and must remain valid when
     // the channel is being used.
@@ -99,9 +108,10 @@ struct ChannelOptions {
     const Authenticator* auth;
 
     // Customize the error code that should be retried. The interface is
-    // defined src/brpc/retry_policy.h
+    // defined in src/brpc/retry_policy.h
     // This object is NOT owned by channel and should remain valid when
     // channel is used.
+    // Default: NULL
     const RetryPolicy* retry_policy;
 
     // Filter ServerNodes (i.e. based on `tag' field of `ServerNode')
@@ -109,7 +119,19 @@ struct ChannelOptions {
     // in src/brpc/naming_service_filter.h
     // This object is NOT owned by channel and should remain valid when
     // channel is used.
+    // Default: NULL
     const NamingServiceFilter* ns_filter;
+
+    // Channels with same connection_group share connections.
+    // In other words, set to a different value to stop sharing connections.
+    // Case-sensitive, leading and trailing spaces are ignored.
+    // Default: ""
+    std::string connection_group;
+
+private:
+    // SSLOptions is large and not often used, allocate it on heap to
+    // prevent ChannelOptions from being bloated in most cases.
+    butil::PtrContainer<ChannelSSLOptions> _ssl_options;
 };
 
 // A Channel represents a communication line to one server or multiple servers
@@ -197,8 +219,10 @@ protected:
     static void CallMethodImpl(Controller* controller, SharedLoadBalancer* lb);
 
     int InitChannelOptions(const ChannelOptions* options);
+    int InitSingle(const butil::EndPoint& server_addr_and_port,
+                   const char* raw_server_address,
+                   const ChannelOptions* options);
 
-    std::string _raw_server_address;
     butil::EndPoint _server_address;
     SocketId _server_id;
     Protocol::SerializeRequest _serialize_request;

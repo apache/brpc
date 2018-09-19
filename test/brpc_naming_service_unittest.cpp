@@ -20,6 +20,8 @@
 
 
 namespace brpc {
+DECLARE_int32(health_check_interval);
+
 namespace policy {
 
 DECLARE_bool(consul_enable_degrade_to_file_naming_service);
@@ -357,6 +359,8 @@ public:
 
 TEST(NamingServiceTest, consul_with_backup_file) {
     brpc::policy::FLAGS_consul_enable_degrade_to_file_naming_service = true;
+    const int saved_hc_interval = brpc::FLAGS_health_check_interval;
+    brpc::FLAGS_health_check_interval = 1;
     const char *address_list[] =  {
         "10.127.0.1:1234",
         "10.128.0.1:1234",
@@ -394,7 +398,7 @@ TEST(NamingServiceTest, consul_with_backup_file) {
                                    restful_map.c_str()));
     ASSERT_EQ(0, server.Start("localhost:8500", NULL));
 
-    bthread_usleep(1000000);
+    bthread_usleep(5000000);
 
     butil::EndPoint n1;
     ASSERT_EQ(0, butil::str2endpoint("10.121.36.189:8003", &n1));
@@ -412,6 +416,7 @@ TEST(NamingServiceTest, consul_with_backup_file) {
     for (size_t i = 0; i < expected_servers.size(); ++i) {
         ASSERT_EQ(expected_servers[i], servers[i]);
     }
+    brpc::FLAGS_health_check_interval = saved_hc_interval;
 }
 
 } //namespace

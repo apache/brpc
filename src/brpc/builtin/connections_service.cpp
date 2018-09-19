@@ -192,10 +192,13 @@ void ConnectionsService::PrintConnections(
             // slow (because we have many connections here).
             int pref_index = ptr->preferred_index();
             SocketUniquePtr first_sub;
-            int numfree = 0;
-            int numinflight = 0;
+            int pooled_count = -1;
             if (ptr->fd() < 0) {
-                ptr->GetPooledSocketStats(&numfree, &numinflight);
+                int numfree = 0;
+                int numinflight = 0;
+                if (ptr->GetPooledSocketStats(&numfree, &numinflight)) {
+                    pooled_count = numfree + numinflight;
+                }
                 // Check preferred_index of any pooled sockets.
                 ptr->ListPooledSockets(&first_id, 1);
                 if (!first_id.empty()) {
@@ -263,11 +266,11 @@ void ConnectionsService::PrintConnections(
             }
             os << SSLStateToYesNo(ptr->ssl_state(), use_html) << bar;
             char protname[32];
-            if (!ptr->CreatedByConnect()) {
+            if (pooled_count < 0) {
                 snprintf(protname, sizeof(protname), "%s", pref_prot);
             } else {
                 snprintf(protname, sizeof(protname), "%s*%d", pref_prot,
-                         numfree + numinflight);
+                         pooled_count);
             }
             os << min_width(protname, 12) << bar;
             if (ptr->fd() >= 0) {

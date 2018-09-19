@@ -95,7 +95,9 @@ int main(int argc, char* argv[]) {
     
     // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
-    options.ssl_options.enable = FLAGS_enable_ssl;
+    if (FLAGS_enable_ssl) {
+        options.mutable_ssl_options();
+    }
     options.protocol = FLAGS_protocol;
     options.connection_type = FLAGS_connection_type;
     options.connect_timeout_ms = std::min(FLAGS_timeout_ms / 2, 100);

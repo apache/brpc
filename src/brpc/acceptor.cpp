@@ -44,8 +44,8 @@ Acceptor::~Acceptor() {
     Join();
 }
 
-int Acceptor::StartAccept(
-    int listened_fd, int idle_timeout_sec, SSL_CTX* ssl_ctx) {
+int Acceptor::StartAccept(int listened_fd, int idle_timeout_sec,
+                          const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
     if (listened_fd < 0) {
         LOG(FATAL) << "Invalid listened_fd=" << listened_fd;
         return -1;
@@ -271,7 +271,7 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
         options.remote_side = butil::EndPoint(*(sockaddr_in*)&in_addr);
         options.user = acception->user();
         options.on_edge_triggered_events = InputMessenger::OnNewMessages;
-        options.ssl_ctx = am->_ssl_ctx;
+        options.initial_ssl_ctx = am->_ssl_ctx;
         if (Socket::Create(options, &socket_id) != 0) {
             LOG(ERROR) << "Fail to create Socket";
             continue;

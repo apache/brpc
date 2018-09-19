@@ -277,6 +277,7 @@ Controller::Call::~Call() {
 void Controller::Call::Reset() {
     nretry = 0;
     need_feedback = false;
+    enable_circuit_breaker = false;
     touched_by_stream_creator = false;
     peer_id = (SocketId)-1;
     begin_time_us = 0;
@@ -763,6 +764,10 @@ void Controller::Call::OnComplete(Controller* c, int error_code/*note*/,
         c->stream_creator()->CleanupSocketForStream(
             sending_sock.get(), c, error_code);
     }
+    if (enable_circuit_breaker && sending_sock) {
+        sending_sock->FeedbackCircuitBreaker(error_code, 
+            butil::gettimeofday_us() - begin_time_us);
+    }
     // Release the `Socket' we used to send/receive data
     sending_sock.reset(NULL);
     
@@ -963,15 +968,16 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
 
     // Pick a target server for sending RPC
     _current_call.need_feedback = false;
+    _current_call.enable_circuit_breaker = has_enabled_circuit_breaker();
     SocketUniquePtr tmp_sock;
     if (SingleServer()) {
         // Don't use _current_call.peer_id which is set to -1 after construction
         // of the backup call.
         const int rc = Socket::Address(_single_server_id, &tmp_sock);
         if (rc != 0 || tmp_sock->IsLogOff()) {
+            SetFailed(EHOSTDOWN, "Not connected to %s yet, server_id=%" PRIu64,
+                      endpoint2str(_remote_side).c_str(), _single_server_id);
             tmp_sock.reset();  // Release ref ASAP
-            SetFailed(EHOSTDOWN, "Not connected to %s yet",
-                      endpoint2str(_remote_side).c_str());
             return HandleSendFailed();
         }
         _current_call.peer_id = _single_server_id;

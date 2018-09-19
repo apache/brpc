@@ -139,7 +139,9 @@ If consul is not accessible, the naming service can be automatically downgraded 
 User can extend to more naming services by implementing brpc::NamingService, check [this link](https://github.com/brpc/brpc/blob/master/docs/cn/load_balancing.md#%E5%91%BD%E5%90%8D%E6%9C%8D%E5%8A%A1) for details.
 
 ### The tag in naming service
-tag was used for implementing "coarse-grained wrr": different tags are appended to a same address to make different instances, such that the address gets traffic proportional to the number of different tags. However, you should consider using [wrr algorithm](#wrr) first which distributes traffic proportional to assigned weights and is more fine-grained.
+Every address can be attached with a tag. The common implementation is that if there're spaces after the address, the content after the spaces is the tag.
+Same address with different tag are treated as different instances which are interacted with separate connections. Users can use this feature to establish connections with remote servers in a more flexible way.
+If you need weighted round-robin, you should consider using [wrr algorithm](#wrr) first rather than emulate "a coarse-grained version" with tags.
 
 ### VIP related issues
 VIP is often the public IP of layer-4 load balancer, which proxies traffic to RS behide. When a client connects to the VIP, a connection is established to a chosen RS. When the client connection is broken, the connection to the RS is reset as well.
@@ -148,7 +150,7 @@ If one client establishes only one connection to the VIP("single" connection typ
 
 One solution to these issues is to use "pooled" connection type, so that one client may create multiple connections to one VIP (roughly the max concurrency recently) to make traffic land on different RS. If more than one VIP are present, consider using [wrr load balancing](#wrr) to assign weights to different VIP, or add different tags to VIP to form more instances.
 
-Note: When the client uses "single" connection type, even if one VIP appended with different tags can get more traffic, the connection is still one. This is decided by current implementation in brpc.
+If higher performance is demanded, or number of connections is limited (in a large cluster), consider using single connection and attach same VIP with different tags to create different connections. Comparing to pooled connections, number of connections and overhead of syscalls are often lower, but if tags are not enough, RS hotspots may still present.
 
 ### Naming Service Filter
 
@@ -673,41 +675,21 @@ In http, attachment corresponds to [message body](http://www.w3.org/Protocols/rf
 
 ## Turn on SSL
 
-Update openssl to the latest version before turning on SSL, since older versions of openssl may have severe security problems and support less encryption algorithms, which is against with the purpose of using SSL. Setup `ChannelOptions.ssl_options` to turn on SSL. Refer to [ssl_option.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_option.h) for more details.
+Update openssl to the latest version before turning on SSL, since older versions of openssl may have severe security problems and support less encryption algorithms, which is against with the purpose of using SSL. 
+Set ChannelOptions.mutable_ssl_options() to enable SSL. Refer to [ssl_options.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_options.h) for the detailed options. ChannelOptions.has_ssl_options() checks if ssl_options was set; ChannelOptions.ssl_options() returns const reference to the ssl_options.
 
 ```c++
-// SSL options at client side
-struct ChannelSSLOptions {
-    // Whether to enable SSL on the channel.
-    // Default: false
-    bool enable;
-    
-    // Cipher suites used for SSL handshake.
-    // The format of this string should follow that in `man 1 cipers'.
-    // Default: "DEFAULT"
-    std::string ciphers;
-    
-    // SSL protocols used for SSL handshake, separated by comma.
-    // Available protocols: SSLv3, TLSv1, TLSv1.1, TLSv1.2
-    // Default: TLSv1, TLSv1.1, TLSv1.2
-    std::string protocols;
-    
-    // When set, fill this into the SNI extension field during handshake,
-    // which can be used by the server to locate the right certificate. 
-    // Default: empty
-    std::string sni_name;
-    
-    // Options used to verify the server's certificate
-    // Default: see above
-    VerifyOptions verify;
-    
-    // ... Other options
-};
+// Enable client-side SSL and use default values.
+options.mutable_ssl_options();
+
+// Enable client-side SSL and customize values.
+options.mutable_ssl_options()->ciphers_name = "...";
+options.mutable_ssl_options()->sni_name = "...";
 ```
 
-- Currently only Channels which connect to a single server (by corresponding `Init`) support SSL request. Those connect to a cluster (using `NamingService`) **do NOT support SSL**.
+- Channels connecting to a single server or a cluster both support SSL (the initial implementation does not support cluster)
 - After turning on SSL, all requests through this Channel will be encrypted. Users should create another Channel for non-SSL requests if needed.
-- Some accessibility optimization for HTTPS: `Channel.Init` recognize https:// prefix and turn on SSL automatically; -http_verbose will print certificate information if SSL connected.
+- Accessibility improvements for HTTPS: Channel.Init recognizes https:// prefix and turns on SSL automatically; -http_verbose prints certificate information when SSL is on.
 
 ## Authentication
 

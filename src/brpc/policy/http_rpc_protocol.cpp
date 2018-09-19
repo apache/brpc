@@ -1297,14 +1297,28 @@ void ProcessHttpRequest(InputMessageBase *msg) {
 }
 
 bool ParseHttpServerAddress(butil::EndPoint* point, const char* server_addr_and_port) {
+    std::string schema;
     std::string host;
     int port = -1;
-    if (ParseHostAndPortFromURL(server_addr_and_port, &host, &port) != 0) {
+    if (ParseURL(server_addr_and_port, &schema, &host, &port) != 0) {
+        LOG(ERROR) << "Invalid address=`" << server_addr_and_port << '\'';
+        return false;
+    }
+    if (schema.empty() || schema == "http") {
+        if (port < 0) {
+            port = 80;
+        }
+    } else if (schema == "https") {
+        if (port < 0) {
+            port = 443;
+        }
+    } else {
+        LOG(ERROR) << "Invalid schema=`" << schema << '\'';
         return false;
     }
     if (str2endpoint(host.c_str(), port, point) != 0 &&
         hostname2endpoint(host.c_str(), port, point) != 0) {
-        LOG(ERROR) << "Invalid address=`" << host << '\'';
+        LOG(ERROR) << "Invalid host=" << host << " port=" << port;
         return false;
     }
     return true;

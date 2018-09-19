@@ -137,16 +137,18 @@ BNS是百度内常用的命名服务，比如bns://rdev.matrix.all，其中"bns"
 用户可以通过实现brpc::NamingService来对接更多命名服务，具体见[这里](https://github.com/brpc/brpc/blob/master/docs/cn/load_balancing.md#%E5%91%BD%E5%90%8D%E6%9C%8D%E5%8A%A1)
 
 ### 命名服务中的tag
-tag的用途主要是实现“粗粒度的wrr”，当给同一个地址加上不同的tag后，它们会被认为是不同的实例，从而让那个地址被负载均衡器正比与不同tag个数的流量。不过，你应当优先考虑使用[wrr算法](#wrr)，相比使用tag可以实现更加精细的按权重分流。
+每个地址可以附带一个tag，在常见的命名服务中，如果地址后有空格，则空格之后的内容均为tag。
+相同的地址配合不同的tag被认为是不同的实例，brpc会建立不同的连接。用户可利用这个特性更灵活地控制与单个地址的连接方式。
+如果你需要"带权重的轮询"，你应当优先考虑使用[wrr算法](#wrr)，而不是用tag来模拟。
 
 ### VIP相关的问题
 VIP一般是4层负载均衡器的公网ip，背后有多个RS。当客户端连接至VIP时，VIP会选择一个RS建立连接，当客户端连接断开时，VIP也会断开与对应RS的连接。
 
-如果客户端只与VIP建立一个连接(brpc中的单连接)，那么来自这个客户端的所有流量都会落到一台RS上。如果客户端的数量非常多，至少在集群的角度，所有的RS还是会分到足够多的连接，从而基本均衡。但如果客户端的数量不多，或客户端的负载差异很大，那么可能在个别RS上出现热点。另一个问题是当有多个vip可选时，客户端分给它们的流量与各自后面的RS数量可能不一致。
+如果客户端只与VIP建立一个连接(brpc中的单连接)，那么来自这个客户端的所有流量都会落到一台RS上。如果客户端的数量非常多，至少在集群的角度，所有的RS还是会分到足够多的连接，从而基本均衡。但如果客户端的数量不多，或客户端的负载差异很大，那么可能在个别RS上出现热点。另一个问题是当有多个VIP可选时，客户端分给它们的流量与各自后面的RS数量可能不一致。
 
-解决这个问题的一种方法是使用连接池模式(pooled)，这样客户端对一个vip就可能建立多个连接(约为一段时间内的最大并发度)，从而让负载落到多个RS上。如果有多个vip，可以用[wrr负载均衡](#wrr)给不同的vip声明不同的权重从而分到对应比例的流量，或给相同的vip后加上多个不同的tag而被认为是多个不同的实例。
+解决这个问题的一种方法是使用连接池模式(pooled)，这样客户端对一个VIP就可能建立多个连接(约为一段时间内的最大并发度)，从而让负载落到多个RS上。如果有多个VIP，可以用[wrr负载均衡](#wrr)给不同的VIP声明不同的权重从而分到对应比例的流量，或给相同的VIP后加上多个不同的tag而被认为是多个不同的实例。
 
-注意：在客户端使用单连接时，给相同的vip加上不同的tag确实能让这个vip分到更多的流量，但连接仍然只会有一个，这是由目前brpc实现决定的。
+如果对性能有更高的要求，或要限制大集群中连接的数量，可以使用单连接并给相同的VIP加上不同的tag以建立多个连接。相比连接池一般连接数量更小，系统调用开销更低，但如果tag不够多，仍可能出现RS热点。
 
 ### 命名服务过滤器
 
@@ -663,41 +665,20 @@ baidu_std和hulu_pbrpc协议支持附件，这段数据由用户自定义，不�
 
 ## 开启SSL
 
-要开启SSL，首先确保代码依赖了最新的openssl库。如果openssl版本很旧，会有严重的安全漏洞，支持的加密算法也少，违背了开启SSL的初衷。然后设置`ChannelOptions.ssl_options`，具体见[ssl_option.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_option.h)。
+要开启SSL，首先确保代码依赖了最新的openssl库。如果openssl版本很旧，会有严重的安全漏洞，支持的加密算法也少，违背了开启SSL的初衷。
+然后设置`ChannelOptions.mutable_ssl_options()`，具体选项见[ssl_options.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_options.h)。ChannelOptions.has_ssl_options()可查询是否设置过ssl_options, ChannelOptions.ssl_options()可访问到设置过的只读ssl_options。
 
 ```c++
-// SSL options at client side
-struct ChannelSSLOptions {
-    // Whether to enable SSL on the channel.
-    // Default: false
-    bool enable;
-    
-    // Cipher suites used for SSL handshake.
-    // The format of this string should follow that in `man 1 cipers'.
-    // Default: "DEFAULT"
-    std::string ciphers;
-    
-    // SSL protocols used for SSL handshake, separated by comma.
-    // Available protocols: SSLv3, TLSv1, TLSv1.1, TLSv1.2
-    // Default: TLSv1, TLSv1.1, TLSv1.2
-    std::string protocols;
-    
-    // When set, fill this into the SNI extension field during handshake,
-    // which can be used by the server to locate the right certificate. 
-    // Default: empty
-    std::string sni_name;
-    
-    // Options used to verify the server's certificate
-    // Default: see above
-    VerifyOptions verify;
-    
-    // ... Other options
-};
-```
+// 开启客户端SSL并使用默认值。
+options.mutable_ssl_options();
 
-- 目前只有连接单点的Channel可以开启SSL访问，使用了命名服务的Channel**不支持开启SSL**。
+// 开启客户端SSL并定制选项。
+options.mutable_ssl_options()->ciphers_name = "...";
+options.mutable_ssl_options()->sni_name = "...";
+```
+- 连接单点和集群的Channel均可以开启SSL访问（初始实现曾不支持集群）。
 - 开启后，该Channel上任何协议的请求，都会被SSL加密后发送。如果希望某些请求不加密，需要额外再创建一个Channel。
-- 针对HTTPS做了些易用性优化：`Channel.Init`时能自动识别https://前缀，自动开启SSL；-http_verbose时也会输出证书信息。
+- 针对HTTPS做了些易用性优化：Channel.Init能自动识别https://前缀并自动开启SSL；开启-http_verbose也会输出证书信息。
 
 ## 认证
 
