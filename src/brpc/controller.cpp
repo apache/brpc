@@ -838,6 +838,7 @@ void Controller::EndRPC(const CompletionInfo& info) {
     }
     if (_stream_creator) {
         _stream_creator->DestroyStreamCreator(this);
+        _stream_creator = NULL;
     }
     // Clear _error_text when the call succeeded, otherwise a successful
     // call with non-empty ErrorText may confuse user.
