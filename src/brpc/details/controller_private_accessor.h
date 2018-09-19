@@ -67,7 +67,7 @@ public:
         _cntl->_current_call.sending_sock.reset(ptr.release());
     }
 
-    void* get_stream_user_data() {
+    StreamUserData* get_stream_user_data() {
         return _cntl->_current_call.stream_user_data;
     }
 

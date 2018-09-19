@@ -1678,7 +1678,7 @@ void RtmpClientStream::SignalError() {
     }
 }
 
-void* RtmpClientStream::OnCreatingStream(
+StreamUserData* RtmpClientStream::OnCreatingStream(
     SocketUniquePtr* inout, Controller* cntl) {
     {
         std::unique_lock<butil::Mutex> mu(_state_mutex);
@@ -1711,7 +1711,7 @@ void* RtmpClientStream::OnCreatingStream(
              << ", main socketId=" << (*inout)->id();
     tmp_ptr->ShareStats(inout->get());
     inout->reset(tmp_ptr.release());
-    return NULL;
+    return this;
 }
 
 int RtmpClientStream::RunOnFailed(bthread_id_t id, void* data, int) {
@@ -1746,11 +1746,10 @@ void RtmpClientStream::OnFailedToCreateStream() {
     return OnStopInternal();
 }
 
-void RtmpClientStream::OnDestroyingStream(SocketUniquePtr& sending_sock,
-                                          Controller* cntl,
-                                          int /*error_code*/,
-                                          bool end_of_rpc,
-                                          void* /*stream_data*/) {
+void RtmpClientStream::DestroyStreamUserData(SocketUniquePtr& sending_sock,
+                                             Controller* cntl,
+                                             int error_code,
+                                             bool end_of_rpc) {
     if (!end_of_rpc) {
         if (sending_sock) {
             if (_from_socketmap) {
@@ -1760,15 +1759,18 @@ void RtmpClientStream::OnDestroyingStream(SocketUniquePtr& sending_sock,
                 sending_sock->SetFailed();  // not necessary, already failed.
             }
         }
-        return;
+    } else {
+        // Always move sending_sock into _rtmpsock.
+        // - If the RPC is successful, moving sending_sock prevents it from
+        //   setfailed in Controller after calling this method.
+        // - If the RPC is failed, OnStopInternal() can clean up the socket_map
+        //   inserted in OnCreatingStream().
+        _rtmpsock.swap(sending_sock);
     }
-    // Always move sending_sock into _rtmpsock.
-    // - If the RPC is successful, moving sending_sock prevents it from
-    //   setfailed in Controller after calling this method.
-    // - If the RPC is failed, OnStopInternal() can clean up the socket_map
-    //   inserted in OnCreatingStream().
-    _rtmpsock.swap(sending_sock);
-    
+}
+
+
+void RtmpClientStream::DestroyStreamCreator(Controller* cntl) {
     if (cntl->Failed()) {
         if (_rtmpsock != NULL &&
             // ^ If sending_sock is NULL, the RPC fails before _pack_request

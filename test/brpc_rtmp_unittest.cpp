@@ -837,7 +837,7 @@ TEST(RtmpTest, retrying_stream) {
     LOG(INFO) << "Stopping server";
     server.Stop(0);
     server.Join();
-    LOG(INFO) << "Stopped server and sleep for awhile";
+    LOG(INFO) << "Stopped server and sleep for a while";
     sleep(3);
     ASSERT_EQ(0, server.Start(8576, &server_opt));
     sleep(3);

@@ -1330,7 +1330,10 @@ private:
     H2UnsentRequest* _msg;
 };
 
-void H2UnsentRequest::Discard(SocketUniquePtr& sending_sock, Controller* cntl) {
+void H2UnsentRequest::DestroyStreamUserData(SocketUniquePtr& sending_sock,
+                                            Controller* cntl,
+                                            int error_code,
+                                            bool end_of_rpc) {
     RemoveRefOnQuit deref_self(this);
     if (sending_sock != NULL && cntl->ErrorCode() != 0) {
         CHECK_EQ(cntl, _cntl);
@@ -1341,7 +1344,6 @@ void H2UnsentRequest::Discard(SocketUniquePtr& sending_sock, Controller* cntl) {
             ctx->AddAbandonedStream(_stream_id);
         }
     }
-    RemoveRefManually();
 }
 
 // bvar::Adder<int64_t> g_append_request_time;
@@ -1635,7 +1637,8 @@ void PackH2Request(butil::IOBuf*,
         header->SetHeader("Authorization", auth_data);
     }
 
-    H2UnsentRequest* h2_req = (H2UnsentRequest*)accessor.get_stream_user_data();
+    H2UnsentRequest* h2_req = dynamic_cast<H2UnsentRequest*>(accessor.get_stream_user_data());
+    CHECK(h2_req);
     h2_req->AddRefManually();   // add ref for AppendAndDestroySelf
     h2_req->_sctx->set_correlation_id(correlation_id);
     *user_message = h2_req;
@@ -1647,29 +1650,16 @@ void PackH2Request(butil::IOBuf*,
     }
 }
 
-void* H2GlobalStreamCreator::OnCreatingStream(
-    SocketUniquePtr* inout, Controller* cntl) {
+StreamUserData* H2GlobalStreamCreator::OnCreatingStream(
+        SocketUniquePtr* inout, Controller* cntl) {
     // Although the critical section looks huge, it should rarely be contended
     // since timeout of RPC is much larger than the delay of sending.
     std::unique_lock<butil::Mutex> mu(_mutex);
-    bool need_create_agent = true;
-    do {
-        if (!(*inout)->_agent_socket ||
-            (*inout)->_agent_socket->Failed()) {
-            break;
-        }
-        H2Context* ctx = static_cast<H2Context*>((*inout)->_agent_socket->parsing_context());
-        // According to https://httpwg.org/specs/rfc7540.html#StreamIdentifiers:
-        // A client that is unable to establish a new stream identifier can establish
-        // a new connection for new streams. 
-        if (ctx && ctx->RunOutStreams()) {
-            break;
-        }
-        (*inout)->_agent_socket->ReAddress(inout);
-        need_create_agent = false;
-    } while (0);
-
-    if (need_create_agent) {
+    SocketUniquePtr& agent_sock = (*inout)->_agent_socket;
+    if (!agent_sock || agent_sock->Failed() ||
+        (agent_sock->parsing_context() &&
+         static_cast<H2Context*>(agent_sock->parsing_context())->RunOutStreams())) {
+        // Create a new agent socket
         SocketId sid;
         SocketOptions opt = (*inout)->_options;
         opt.health_check_interval_s = -1;
@@ -1690,6 +1680,8 @@ void* H2GlobalStreamCreator::OnCreatingStream(
         if (tmp_ptr) {
             tmp_ptr->ReleaseAdditionalReference();
         }
+    } else {
+        agent_sock->ReAddress(inout);
     }
 
     H2UnsentRequest* h2_req = H2UnsentRequest::New(cntl);
@@ -1697,19 +1689,12 @@ void* H2GlobalStreamCreator::OnCreatingStream(
         cntl->SetFailed(ENOMEM, "Fail to create H2UnsentRequest");
         return NULL;
     }
-    return (void*)h2_req;
+    return h2_req;
 }
 
-void H2GlobalStreamCreator::OnDestroyingStream(SocketUniquePtr& sending_sock,
-                                               Controller* cntl,
-                                               int error_code,
-                                               bool end_of_rpc,
-                                               void* stream_user_data) {
-    // [stream_user_data == NULL] means that RPC has failed before it is created.
-    H2UnsentRequest* h2_req = static_cast<H2UnsentRequest*>(stream_user_data);
-    if (h2_req) {
-        h2_req->Discard(sending_sock, cntl);
-    }
+void H2GlobalStreamCreator::DestroyStreamCreator(Controller* cntl) {
+    // H2GlobalStreamCreator is a global singleton value.
+    // Don't delete it in this function.
 }
 
 StreamCreator* get_h2_global_stream_creator() {

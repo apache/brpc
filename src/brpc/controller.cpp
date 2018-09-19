@@ -771,13 +771,15 @@ void Controller::Call::OnComplete(
         c->_lb->Feedback(info);
     }
 
-    if (c->stream_creator()) {
-        c->stream_creator()->OnDestroyingStream(
-            sending_sock, c, error_code, end_of_rpc, stream_user_data);
+    if (stream_user_data) {
+        stream_user_data->DestroyStreamUserData(sending_sock, c, error_code, end_of_rpc);
+        stream_user_data = NULL;
+    }
+    if (end_of_rpc && c->stream_creator()) {
+        c->stream_creator()->DestroyStreamCreator(c);
     }
     // Release the `Socket' we used to send/receive data
     sending_sock.reset(NULL);
-    stream_user_data = NULL;
 }
 
 void Controller::EndRPC(const CompletionInfo& info) {
@@ -792,9 +794,6 @@ void Controller::EndRPC(const CompletionInfo& info) {
             _remote_side = _current_call.sending_sock->remote_side();
             _local_side = _current_call.sending_sock->local_side();
         }
-        // TODO: Replace this with stream_creator.
-        HandleStreamConnection(_current_call.sending_sock.get());
-        _current_call.OnComplete(this, _error_code, info.responded, true);
 
         if (_unfinished_call != NULL) {
             // When _current_call is successful, mark _unfinished_call as
@@ -805,16 +804,19 @@ void Controller::EndRPC(const CompletionInfo& info) {
             // same error. This is not accurate as well, but we have to end
             // _unfinished_call with some sort of error anyway.
             const int err = (_error_code == 0 ? EBACKUPREQUEST : _error_code);
-            _unfinished_call->OnComplete(this, err, false, true);
+            _unfinished_call->OnComplete(this, err, false, false);
             delete _unfinished_call;
             _unfinished_call = NULL;
         }
+        // TODO: Replace this with stream_creator.
+        HandleStreamConnection(_current_call.sending_sock.get());
+        _current_call.OnComplete(this, _error_code, info.responded, true);
     } else {
         // Even if _unfinished_call succeeded, we don't use EBACKUPREQUEST
         // (which gets punished in LALB) for _current_call because _current_call
         // is sent after _unfinished_call, it's just normal that _current_call
         // does not respond before _unfinished_call.
-        _current_call.OnComplete(this, ECANCELED, false, true);
+        _current_call.OnComplete(this, ECANCELED, false, false);
         if (_unfinished_call != NULL) {
             if (_unfinished_call->sending_sock != NULL) {
                 _remote_side = _unfinished_call->sending_sock->remote_side();

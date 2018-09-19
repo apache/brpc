@@ -21,6 +21,7 @@
 
 namespace brpc {
 class Controller;
+class StreamUserData;
 
 // Abstract creation of "user-level connection" over a RPC-like process.
 // Lifetime of this object should be guaranteed by user during the RPC,
@@ -40,23 +41,34 @@ public:
     //    when stream_creator is present.
     //  cntl: contains contexts of the RPC, if there's any error during
     //    replacement, call cntl->SetFailed().
-    virtual void* OnCreatingStream(SocketUniquePtr* inout,
-                                   Controller* cntl) = 0;
+    virtual StreamUserData* OnCreatingStream(SocketUniquePtr* inout,
+                                             Controller* cntl) = 0;
 
-    // Called when the stream is about to destroyed.
-    // If the RPC has retries, this function MUST be called before each retry.
+    // Called when the StreamCreator is about to destroyed.
+    // This function MUST be called only once at the end of successful RPC
+    // Call to recycle resources.
     // Params:
-    //   sending_sock: The socket chosen by OnCreatingStream(), if OnCreatingStream
-    //     is not called, the enclosed socket may be NULL.
+    //   cntl: contexts of the RPC
+    virtual void DestroyStreamCreator(Controller* cntl) = 0;
+};
+
+// The Intermediate user data created by StreamCreator to record the context
+// of a specific stream request.
+class StreamUserData {
+public:
+    // Called when the streamUserData is about to destroyed.
+    // This function MUST be called to clean up resources if OnCreatingStream
+    // of StreamCreator has returned a valid StreamUserData pointer.
+    // Params:
+    //   sending_sock: The socket chosen by OnCreatingStream(), if an error
+    //     happens during choosing, the enclosed socket is NULL.
     //   cntl: contexts of the RPC
     //   error_code: Use this instead of cntl->ErrorCode()
     //   end_of_rpc: true if the RPC is about to destroyed.
-    //   stream_user_data: the corresponding user data of this very stream
-    virtual void OnDestroyingStream(SocketUniquePtr& sending_sock,
-                                    Controller* cntl,
-                                    int error_code,
-                                    bool end_of_rpc,
-                                    void* stream_user_data) = 0;
+    virtual void DestroyStreamUserData(SocketUniquePtr& sending_sock,
+                                       Controller* cntl,
+                                       int error_code,
+                                       bool end_of_rpc) = 0;
 };
 
 } // namespace brpc
