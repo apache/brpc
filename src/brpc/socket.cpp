@@ -36,6 +36,7 @@
 #include "brpc/event_dispatcher.h"          // RemoveConsumer
 #include "brpc/socket.h"
 #include "brpc/describable.h"               // Describable
+#include "brpc/circuit_breaker.h"           // CircuitBreaker
 #include "brpc/input_messenger.h"
 #include "brpc/details/sparse_minute_counter.h"
 #include "brpc/stream_impl.h"
@@ -176,6 +177,8 @@ public:
 
     // For computing stats.
     ExtendedSocketStat* extended_stat;
+
+    CircuitBreaker circuit_breaker;
 
     explicit SharedPart(SocketId creator_socket_id);
     ~SharedPart();
@@ -762,6 +765,10 @@ void Socket::Revive() {
                 vref, MakeVRef(id_ver, nref + 1/*note*/),
                 butil::memory_order_release,
                 butil::memory_order_relaxed)) {
+            SharedPart* sp = GetSharedPart();
+            if (sp) {
+                sp->circuit_breaker.Reset();
+            }
             // Set this flag to true since we add additional ref again
             _recycle_flag.store(false, butil::memory_order_relaxed);
             if (_user) {
@@ -830,15 +837,11 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // Do health-checking even if we're not connected before, needed
             // by Channel to revive never-connected socket when server side
             // comes online.
-            // FIXME(gejun): the initial delay should be related to uncommited
-            // CircuitBreaker and shorter for occasional errors and longer for
-            // frequent errors.
-            // NOTE: the delay should be positive right now to avoid HC timing
-            // issues in UT.
             if (_health_check_interval_s > 0) {
                 PeriodicTaskManager::StartTaskAt(
                     new HealthCheckTask(id()),
-                    butil::milliseconds_from_now(100/*NOTE*/));
+                    butil::milliseconds_from_now(GetOrNewSharedPart()->
+                        circuit_breaker.isolation_duration_ms()));
             }
             // Wake up all threads waiting on EPOLLOUT when closing fd
             _epollout_butex->fetch_add(1, butil::memory_order_relaxed);
@@ -871,6 +874,13 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
 
 int Socket::SetFailed() {
     return SetFailed(EFAILEDSOCKET, NULL);
+}
+
+void Socket::FeedbackCircuitBreaker(int error_code, int64_t latency_us) {
+    if (!GetOrNewSharedPart()->circuit_breaker.OnCallEnd(error_code, latency_us)) {
+        LOG(ERROR) << "Socket[" << *this << "] isolated by circuit breaker";
+        SetFailed(main_socket_id());
+    }
 }
 
 int Socket::ReleaseReferenceIfIdle(int idle_seconds) {

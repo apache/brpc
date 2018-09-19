@@ -69,6 +69,12 @@ struct ChannelOptions {
     // Maximum: INT_MAX
     int max_retry;
     
+    // When the error rate of a server node is too high, isolate the node. 
+    // Note that this isolation is GLOBAL, the node will become unavailable 
+    // for all channels running in this process during the isolation.
+    // Default: false
+    bool enable_circuit_breaker;
+
     // Serialization protocol, defined in src/brpc/options.proto
     // NOTE: You can assign name of the protocol to this field as well, for
     // Example: options.protocol = "baidu_std";

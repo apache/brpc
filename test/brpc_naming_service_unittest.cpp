@@ -398,7 +398,7 @@ TEST(NamingServiceTest, consul_with_backup_file) {
                                    restful_map.c_str()));
     ASSERT_EQ(0, server.Start("localhost:8500", NULL));
 
-    bthread_usleep(2000000);
+    bthread_usleep(5000000);
 
     butil::EndPoint n1;
     ASSERT_EQ(0, butil::str2endpoint("10.121.36.189:8003", &n1));

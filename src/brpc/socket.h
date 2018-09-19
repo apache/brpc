@@ -315,6 +315,8 @@ public:
         __attribute__ ((__format__ (__printf__, 3, 4)));
     static int SetFailed(SocketId id);
 
+    void FeedbackCircuitBreaker(int error_code, int64_t latency_us);
+
     bool Failed() const;
 
     bool DidReleaseAdditionalRereference() const
