@@ -169,7 +169,7 @@ void CouchbaseServerListener::Init(const std::string& server_list,
     brpc::ChannelOptions options;
     options.protocol = PROTOCOL_HTTP;
     options.max_retry = FLAGS_couchbase_listen_retry_times;
-    _ns = new ListNamingService();
+    _ns = new (std::nothrow) ListNamingService();
     if (_ns == nullptr) {
         LOG(FATAL) << "Fail to new list naming service.";
         return;

@@ -197,7 +197,7 @@ void NamingServiceThread::Actions::ResetServers(
         if (!_removed.empty()) {
             info << " removed " << _removed.size();
         }
-        if (_owner->_ns->PrintServerChangeLogsEveryTimes()) {
+        if (_owner->_ns->PrintServerChangeLogsEveryTime()) {
             LOG(INFO) << info.str();
         } else { // print log every 100 times.
             if (_owner->_log_buf.empty()) {

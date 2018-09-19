@@ -69,7 +69,7 @@ public:
     // If return true, NamingServiceThread will print logs about added/removed 
     // server when servers changed. If a naming service change servers too frequently
     // during a short time, make this method return false to avoid to print log too heavy.
-    virtual bool PrintServerChangeLogsEveryTimes() { return true; }
+    virtual bool PrintServerChangeLogsEveryTime() { return true; }
 
     static bool IsCreatedByUsers(const char* service_name) {
         return kCallerCreatedNamingService.compare(service_name) == 0;

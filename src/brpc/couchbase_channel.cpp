@@ -94,8 +94,8 @@ int CouchbaseChannel::InitMemcacheChannel(
     }
 		
     // TODO: encrypt auth to avoid expose in log.
-    _ns = new policy::CouchbaseNamingService(servers, init_url, 
-                                             streaming_url, auth);
+    _ns = new (std::nothrow) policy::CouchbaseNamingService(servers, init_url, 
+                                                            streaming_url, auth);
     if (_ns == nullptr) {
         LOG(FATAL) << "Failed to init CouchbaseNamingService.";
         return -1;
