@@ -23,7 +23,8 @@ ConstantConcurrencyLimiter::ConstantConcurrencyLimiter(int max_concurrency)
     : _max_concurrency(max_concurrency) {
 }
 
-bool ConstantConcurrencyLimiter::OnRequested(int current_concurrency) {
+bool ConstantConcurrencyLimiter::OnRequested(int current_concurrency, 
+                                             int64_t /*waiting_us*/) {
     return current_concurrency <= _max_concurrency;
 }
 

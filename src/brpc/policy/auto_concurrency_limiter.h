@@ -28,7 +28,7 @@ class AutoConcurrencyLimiter : public ConcurrencyLimiter {
 public:
     AutoConcurrencyLimiter();
 
-    bool OnRequested(int current_concurrency) override;
+    bool OnRequested(int current_concurrency, int64_t /*waiting_us*/) override;
     
     void OnResponded(int error_code, int64_t latency_us) override;
 

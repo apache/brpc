@@ -1169,7 +1169,8 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     MethodStatus* method_status = sp->status;
     if (method_status) {
         int rejected_cc = 0;
-        if (!method_status->OnRequested(&rejected_cc)) {
+        if (!method_status->OnRequested(&rejected_cc, 
+                start_parse_us - msg->received_us())) {
             cntl->SetFailed(ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
                             sp->method->full_name().c_str(), rejected_cc);
             return SendHttpResponse(cntl.release(), server, method_status, msg->received_us());

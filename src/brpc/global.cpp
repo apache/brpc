@@ -69,6 +69,7 @@
 #include "brpc/concurrency_limiter.h"
 #include "brpc/policy/auto_concurrency_limiter.h"
 #include "brpc/policy/constant_concurrency_limiter.h"
+#include "brpc/policy/codel_concurrency_limiter.h"
 
 #include "brpc/input_messenger.h"     // get_or_new_client_side_messenger
 #include "brpc/socket_map.h"          // SocketMapList
@@ -129,6 +130,7 @@ struct GlobalExtensions {
     DynPartLoadBalancer dynpart_lb;
 
     AutoConcurrencyLimiter auto_cl;
+    CodelConcurrencyLimiter codel_cl;
     ConstantConcurrencyLimiter constant_cl;
 };
 
@@ -564,6 +566,7 @@ static void GlobalInitializeOrDieImpl() {
 
     // Concurrency Limiters
     ConcurrencyLimiterExtension()->RegisterOrDie("auto", &g_ext->auto_cl);
+    ConcurrencyLimiterExtension()->RegisterOrDie("codel", &g_ext->codel_cl);
     ConcurrencyLimiterExtension()->RegisterOrDie("constant", &g_ext->constant_cl);
     
     if (FLAGS_usercode_in_pthread) {
