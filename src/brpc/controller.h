@@ -130,6 +130,7 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_USED_BY_RPC = (1 << 13);
     static const uint32_t FLAGS_REQUEST_WITH_AUTH = (1 << 15);
     static const uint32_t FLAGS_PB_JSONIFY_EMPTY_ARRAY = (1 << 16);
+    static const uint32_t FLAGS_ENABLED_CIRCUIT_BREAKER = (1 << 17);
     
 public:
     Controller();
@@ -559,11 +560,12 @@ private:
         void Reset();
         void OnComplete(Controller* c, int error_code, bool responded);
 
-        int nretry;                // sent in nretry-th retry.
-        bool need_feedback;        // The LB needs feedback.
-        bool touched_by_stream_creator;
-        SocketId peer_id;          // main server id
-        int64_t begin_time_us;     // sent real time.
+        int nretry;                     // sent in nretry-th retry.
+        bool need_feedback;             // The LB needs feedback.
+        bool enable_circuit_breaker;    // The channel enabled circuit_breaker
+        bool touched_by_stream_creator; 
+        SocketId peer_id;               // main server id
+        int64_t begin_time_us;          // sent real time.
         // The actual `Socket' for sending RPC. It's socket id will be
         // exactly the same as `peer_id' if `_connection_type' is
         // CONNECTION_TYPE_SINGLE. Otherwise, it may be a temporary
@@ -599,6 +601,10 @@ private:
 
     void set_used_by_rpc() { add_flag(FLAGS_USED_BY_RPC); }
     bool is_used_by_rpc() const { return has_flag(FLAGS_USED_BY_RPC); }
+
+    bool has_enabled_circuit_breaker() const { 
+        return has_flag(FLAGS_ENABLED_CIRCUIT_BREAKER); 
+    }
 
 private:
     // NOTE: align and group fields to make Controller as compact as possible.

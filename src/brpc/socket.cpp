@@ -36,11 +36,13 @@
 #include "brpc/event_dispatcher.h"          // RemoveConsumer
 #include "brpc/socket.h"
 #include "brpc/describable.h"               // Describable
+#include "brpc/circuit_breaker.h"           // CircuitBreaker
 #include "brpc/input_messenger.h"
 #include "brpc/details/sparse_minute_counter.h"
 #include "brpc/stream_impl.h"
 #include "brpc/shared_object.h"
 #include "brpc/policy/rtmp_protocol.h"  // FIXME
+#include "brpc/periodic_task.h"
 #if defined(OS_MACOSX)
 #include <sys/event.h>
 #endif
@@ -94,13 +96,6 @@ BRPC_VALIDATE_GFLAG(connect_timeout_as_unreachable,
                          validate_connect_timeout_as_unreachable);
 
 const int WAIT_EPOLLOUT_TIMEOUT_MS = 50;
-
-#ifdef BAIDU_INTERNAL
-#define BRPC_AUXTHREAD_ATTR                                        \
-    (sizeof(com_device_t) > 32*1024 ? BTHREAD_ATTR_NORMAL : BTHREAD_ATTR_SMALL)
-#else
-#define BRPC_AUXTHREAD_ATTR BTHREAD_ATTR_SMALL
-#endif
 
 class BAIDU_CACHELINE_ALIGNMENT SocketPool {
 friend class Socket;
@@ -182,6 +177,8 @@ public:
 
     // For computing stats.
     ExtendedSocketStat* extended_stat;
+
+    CircuitBreaker circuit_breaker;
 
     explicit SharedPart(SocketId creator_socket_id);
     ~SharedPart();
@@ -640,7 +637,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
         return -1;
     }
     // Disable SSL check if there is no SSL context
-    m->_ssl_state = (options.ssl_ctx == NULL ? SSL_OFF : SSL_UNKNOWN);
+    m->_ssl_state = (options.initial_ssl_ctx == NULL ? SSL_OFF : SSL_UNKNOWN);
     m->_ssl_session = NULL;
     m->_connection_type_for_progressive_read = CONNECTION_TYPE_UNKNOWN;
     m->_controller_released_socket.store(false, butil::memory_order_relaxed);
@@ -768,6 +765,10 @@ void Socket::Revive() {
                 vref, MakeVRef(id_ver, nref + 1/*note*/),
                 butil::memory_order_release,
                 butil::memory_order_relaxed)) {
+            SharedPart* sp = GetSharedPart();
+            if (sp) {
+                sp->circuit_breaker.Reset();
+            }
             // Set this flag to true since we add additional ref again
             _recycle_flag.store(false, butil::memory_order_relaxed);
             if (_user) {
@@ -779,6 +780,17 @@ void Socket::Revive() {
         }
     }
 }
+
+class HealthCheckTask : public PeriodicTask {
+public:
+    explicit HealthCheckTask(SocketId id) : _id(id) , _first_time(true) {}
+    bool OnTriggeringTask(timespec* next_abstime) override;
+    void OnDestroyingTask() override;
+
+private:
+    SocketId _id;
+    bool _first_time;
+};
 
 int Socket::ReleaseAdditionalReference() {
     bool expect = false;
@@ -826,10 +838,10 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // by Channel to revive never-connected socket when server side
             // comes online.
             if (_health_check_interval_s > 0) {
-                bthread_t th = 0;
-                int rc = bthread_start_background(
-                    &th, &BRPC_AUXTHREAD_ATTR, HealthCheckThread, (void*)id());
-                CHECK_EQ(0, rc);
+                PeriodicTaskManager::StartTaskAt(
+                    new HealthCheckTask(id()),
+                    butil::milliseconds_from_now(GetOrNewSharedPart()->
+                        circuit_breaker.isolation_duration_ms()));
             }
             // Wake up all threads waiting on EPOLLOUT when closing fd
             _epollout_butex->fetch_add(1, butil::memory_order_relaxed);
@@ -862,6 +874,13 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
 
 int Socket::SetFailed() {
     return SetFailed(EFAILEDSOCKET, NULL);
+}
+
+void Socket::FeedbackCircuitBreaker(int error_code, int64_t latency_us) {
+    if (!GetOrNewSharedPart()->circuit_breaker.OnCallEnd(error_code, latency_us)) {
+        LOG(ERROR) << "Socket[" << *this << "] isolated by circuit breaker";
+        SetFailed(main_socket_id());
+    }
 }
 
 int Socket::ReleaseReferenceIfIdle(int idle_seconds) {
@@ -927,81 +946,65 @@ int Socket::Status(SocketId id, int32_t* nref) {
     return -1;
 }
 
-void* Socket::HealthCheckThread(void* void_arg) {
-    SocketId socket_id = (SocketId)void_arg;
-    bool first_time = true;
-    if (bthread_usleep(100000) < 0) {
-        PLOG_IF(FATAL, errno != ESTOP) << "Fail to sleep";
-        return NULL;
+void HealthCheckTask::OnDestroyingTask() {
+    delete this;
+}
+
+bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
+    SocketUniquePtr ptr;
+    const int rc = Socket::AddressFailedAsWell(_id, &ptr);
+    CHECK(rc != 0);
+    if (rc < 0) {
+        RPC_VLOG << "SocketId=" << _id
+                 << " was abandoned before health checking";
+        return false;
     }
-
-    for (;;) {
-        butil::EndPoint remote_side;
-        int check_interval_s = 0;
-        do {
-            SocketUniquePtr ptr;
-            const int rc = AddressFailedAsWell(socket_id, &ptr);
-            CHECK(rc != 0);
-            if (rc < 0) {
-                RPC_VLOG << "SocketId=" << socket_id
-                         << " was abandoned before health checking";
-                return NULL;
-            }
-            remote_side = ptr->remote_side();
-            check_interval_s = ptr->_health_check_interval_s;
-            // Note: Making a Socket re-addessable is hard. An alternative is
-            // creating another Socket with selected internal fields to replace
-            // failed Socket. Although it avoids concurrent issues with in-place
-            // revive, it changes SocketId: many code need to watch SocketId 
-            // and update on change, which is impractical. Another issue with
-            // this method is that it has to move "selected internal fields" 
-            // which may be accessed in parallel, not trivial to be moved.
-            // Finally we choose a simple-enough solution: wait until the
-            // reference count hits `expected_nref', which basically means no
-            // one is addressing the Socket(except here). Because the Socket 
-            // is not addressable, the reference count will not increase 
-            // again. This solution is not perfect because the `expected_nref'
-            // is implementation specific. In our case, one reference comes 
-            // from SocketMapInsert(socket_map.cpp), one reference is here. 
-            // Although WaitAndReset() could hang when someone is addressing
-            // the failed Socket forever (also indicating bug), this is not an 
-            // issue in current code. 
-            if (first_time) {  // Only check at first time.
-                first_time = false;
-                if (ptr->WaitAndReset(2/*note*/) != 0) {
-                    LOG(INFO) << "Cancel checking " << *ptr;
-                    return NULL;
-                }
-            }
-
-            s_vars->nhealthcheck << 1;
-            int hc = 0;
-            if (ptr->_user) {
-                hc = ptr->_user->CheckHealth(ptr.get());
-            } else {
-                hc = ptr->CheckHealth();
-            }
-            if (hc == 0) {
-                if (ptr->CreatedByConnect()) {
-                    s_vars->channel_conn << -1;
-                }
-                ptr->Revive();
-                ptr->_hc_count = 0;
-                return NULL;
-            } else if (hc == ESTOP) {
-                LOG(INFO) << "Cancel checking " << *ptr;
-                return NULL;
-            }
-            ++ ptr->_hc_count;
-        } while (0);
-        CHECK_GT(check_interval_s, 0);
-        if (bthread_usleep(check_interval_s * 1000000L) < 0) {
-            PLOG_IF(FATAL, errno != ESTOP) << "Fail to sleep";
-            LOG(INFO) << "Cancel checking SocketId="
-                      << socket_id  << '@' << remote_side;
-            return NULL;
+    // Note: Making a Socket re-addessable is hard. An alternative is
+    // creating another Socket with selected internal fields to replace
+    // failed Socket. Although it avoids concurrent issues with in-place
+    // revive, it changes SocketId: many code need to watch SocketId 
+    // and update on change, which is impractical. Another issue with
+    // this method is that it has to move "selected internal fields" 
+    // which may be accessed in parallel, not trivial to be moved.
+    // Finally we choose a simple-enough solution: wait until the
+    // reference count hits `expected_nref', which basically means no
+    // one is addressing the Socket(except here). Because the Socket 
+    // is not addressable, the reference count will not increase 
+    // again. This solution is not perfect because the `expected_nref'
+    // is implementation specific. In our case, one reference comes 
+    // from SocketMapInsert(socket_map.cpp), one reference is here. 
+    // Although WaitAndReset() could hang when someone is addressing
+    // the failed Socket forever (also indicating bug), this is not an 
+    // issue in current code. 
+    if (_first_time) {  // Only check at first time.
+        _first_time = false;
+        if (ptr->WaitAndReset(2/*note*/) != 0) {
+            LOG(INFO) << "Cancel checking " << *ptr;
+            return false;
         }
     }
+
+    s_vars->nhealthcheck << 1;
+    int hc = 0;
+    if (ptr->_user) {
+        hc = ptr->_user->CheckHealth(ptr.get());
+    } else {
+        hc = ptr->CheckHealth();
+    }
+    if (hc == 0) {
+        if (ptr->CreatedByConnect()) {
+            s_vars->channel_conn << -1;
+        }
+        ptr->Revive();
+        ptr->_hc_count = 0;
+        return false;
+    } else if (hc == ESTOP) {
+        LOG(INFO) << "Cancel checking " << *ptr;
+        return false;
+    }
+    ++ ptr->_hc_count;
+    *next_abstime = butil::seconds_from_now(ptr->_health_check_interval_s);
+    return true;
 }
 
 void Socket::OnRecycle() {
@@ -1048,9 +1051,7 @@ void Socket::OnRecycle() {
         _ssl_session = NULL;
     }
 
-    if (_options.owns_ssl_ctx && _options.ssl_ctx) {
-        SSL_CTX_free(_options.ssl_ctx);
-    }
+    _options.initial_ssl_ctx = NULL;
     
     delete _pipeline_q;
     _pipeline_q = NULL;
@@ -1162,7 +1163,7 @@ int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime) {
 
 int Socket::Connect(const timespec* abstime,
                     int (*on_connect)(int, int, void*), void* data) {
-    if (_options.ssl_ctx) {
+    if (_options.initial_ssl_ctx) {
         _ssl_state = SSL_CONNECTING;
     } else {
         _ssl_state = SSL_OFF;
@@ -1780,7 +1781,7 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
 }
 
 int Socket::SSLHandshake(int fd, bool server_mode) {
-    if (_options.ssl_ctx == NULL) {
+    if (_options.initial_ssl_ctx == NULL) {
         if (server_mode) {
             LOG(ERROR) << "Lack SSL configuration to handle SSL request";
             return -1;
@@ -1793,15 +1794,17 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
         // Free the last session, which may be deprecated when socket failed
         SSL_free(_ssl_session);
     }
-    _ssl_session = CreateSSLSession(_options.ssl_ctx, id(), fd, server_mode);
+    _ssl_session = CreateSSLSession(_options.initial_ssl_ctx->raw_ctx, id(), fd, server_mode);
     if (_ssl_session == NULL) {
+        LOG(ERROR) << "Fail to CreateSSLSession";
         return -1;
     }
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-    if (!_options.sni_name.empty()) {
-        SSL_set_tlsext_host_name(_ssl_session, _options.sni_name.c_str());
+    if (!_options.initial_ssl_ctx->sni_name.empty()) {
+        SSL_set_tlsext_host_name(_ssl_session, _options.initial_ssl_ctx->sni_name.c_str());
     }
-#endif // SSL_CTRL_SET_TLSEXT_HOSTNAME
+#endif
+
     _ssl_state = SSL_CONNECTING;
 
     // Loop until SSL handshake has completed. For SSL_ERROR_WANT_READ/WRITE,
@@ -2159,74 +2162,84 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
     } else {
         os << "\nparsing_context=" << ShowObject(parsing_context);
     }
+    const SSLState ssl_state = ptr->ssl_state();
     os << "\npipeline_q=" << npipelined
        << "\nhc_interval_s=" << ptr->_health_check_interval_s
        << "\nninprocess=" << ptr->_ninprocess.load(butil::memory_order_relaxed)
        << "\nauth_flag_error=" << ptr->_auth_flag_error.load(butil::memory_order_relaxed)
        << "\nauth_id=" << ptr->_auth_id.value
        << "\nauth_context=" << ptr->_auth_context
-       << "\nssl_state=" << SSLStateToString(ptr->_ssl_state)
-       << "\nssl_ctx=" << (void*)ptr->_options.ssl_ctx
-       << "\nssl_session=" << (void*)ptr->_ssl_session
        << "\nlogoff_flag=" << ptr->_logoff_flag.load(butil::memory_order_relaxed)
        << "\nrecycle_flag=" << ptr->_recycle_flag.load(butil::memory_order_relaxed)
        << "\ncid=" << ptr->_correlation_id
-       << "\nwrite_head=" << ptr->_write_head.load(butil::memory_order_relaxed);
-    if (ptr->ssl_state() == SSL_CONNECTED) {
-        os << "\n\n" << ptr->_ssl_session;
+       << "\nwrite_head=" << ptr->_write_head.load(butil::memory_order_relaxed)
+       << "\nssl_state=" << SSLStateToString(ssl_state);
+    const SocketSSLContext* ssl_ctx = ptr->_options.initial_ssl_ctx.get();
+    if (ssl_ctx) {
+        os << "\ninitial_ssl_ctx=" << ssl_ctx->raw_ctx;
+        if (!ssl_ctx->sni_name.empty()) {
+            os << "\nsni_name=" << ssl_ctx->sni_name;
+        }
+    }
+    if (ssl_state == SSL_CONNECTED) {
+        os << "\nssl_session={\n  ";
+        Print(os, ptr->_ssl_session, "\n  ");
+        os << "\n}";
     }
 #if defined(OS_MACOSX)
     struct tcp_connection_info ti;
     socklen_t len = sizeof(ti);
     if (fd >= 0 && getsockopt(fd, IPPROTO_TCP, TCP_CONNECTION_INFO, &ti, &len) == 0) {
-        os << "\ntcpi_state=" << (uint32_t)ti.tcpi_state
-           << "\ntcpi_snd_wscale=" << (uint32_t)ti.tcpi_snd_wscale
-           << "\ntcpi_rcv_wscale=" << (uint32_t)ti.tcpi_rcv_wscale
-           << "\ntcpi_options=" << (uint32_t)ti.tcpi_options
-           << "\ntcpi_flags=" << (uint32_t)ti.tcpi_flags
-           << "\ntcpi_rto=" << ti.tcpi_rto
-           << "\ntcpi_maxseg=" << ti.tcpi_maxseg
-           << "\ntcpi_snd_ssthresh=" << ti.tcpi_snd_ssthresh
-           << "\ntcpi_snd_cwnd=" << ti.tcpi_snd_cwnd
-           << "\ntcpi_snd_wnd=" << ti.tcpi_snd_wnd
-           << "\ntcpi_snd_sbbytes=" << ti.tcpi_snd_sbbytes
-           << "\ntcpi_rcv_wnd=" << ti.tcpi_rcv_wnd
-           << "\ntcpi_srtt=" << ti.tcpi_srtt
-           << "\ntcpi_rttvar=" << ti.tcpi_rttvar;
+        os << "\ntcpi={\n  state=" << (uint32_t)ti.tcpi_state
+           << "\n  snd_wscale=" << (uint32_t)ti.tcpi_snd_wscale
+           << "\n  rcv_wscale=" << (uint32_t)ti.tcpi_rcv_wscale
+           << "\n  options=" << (uint32_t)ti.tcpi_options
+           << "\n  flags=" << (uint32_t)ti.tcpi_flags
+           << "\n  rto=" << ti.tcpi_rto
+           << "\n  maxseg=" << ti.tcpi_maxseg
+           << "\n  snd_ssthresh=" << ti.tcpi_snd_ssthresh
+           << "\n  snd_cwnd=" << ti.tcpi_snd_cwnd
+           << "\n  snd_wnd=" << ti.tcpi_snd_wnd
+           << "\n  snd_sbbytes=" << ti.tcpi_snd_sbbytes
+           << "\n  rcv_wnd=" << ti.tcpi_rcv_wnd
+           << "\n  srtt=" << ti.tcpi_srtt
+           << "\n  rttvar=" << ti.tcpi_rttvar
+           << "\n}";
     }
 #elif defined(OS_LINUX)
     struct tcp_info ti;
     socklen_t len = sizeof(ti);
     if (fd >= 0 && getsockopt(fd, SOL_TCP, TCP_INFO, &ti, &len) == 0) {
-        os << "\ntcpi_state=" << (uint32_t)ti.tcpi_state
-           << "\ntcpi_ca_state=" << (uint32_t)ti.tcpi_ca_state
-           << "\ntcpi_retransmits=" << (uint32_t)ti.tcpi_retransmits
-           << "\ntcpi_probes=" << (uint32_t)ti.tcpi_probes
-           << "\ntcpi_backoff=" << (uint32_t)ti.tcpi_backoff
-           << "\ntcpi_options=" << (uint32_t)ti.tcpi_options
-           << "\ntcpi_snd_wscale=" << (uint32_t)ti.tcpi_snd_wscale
-           << "\ntcpi_rcv_wscale=" << (uint32_t)ti.tcpi_rcv_wscale
-           << "\ntcpi_rto=" << ti.tcpi_rto
-           << "\ntcpi_ato=" << ti.tcpi_ato
-           << "\ntcpi_snd_mss=" << ti.tcpi_snd_mss
-           << "\ntcpi_rcv_mss=" << ti.tcpi_rcv_mss
-           << "\ntcpi_unacked=" << ti.tcpi_unacked
-           << "\ntcpi_sacked=" << ti.tcpi_sacked
-           << "\ntcpi_lost=" << ti.tcpi_lost
-           << "\ntcpi_retrans=" << ti.tcpi_retrans
-           << "\ntcpi_fackets=" << ti.tcpi_fackets
-           << "\ntcpi_last_data_sent=" << ti.tcpi_last_data_sent
-           << "\ntcpi_last_ack_sent=" << ti.tcpi_last_ack_sent
-           << "\ntcpi_last_data_recv=" << ti.tcpi_last_data_recv
-           << "\ntcpi_last_ack_recv=" << ti.tcpi_last_ack_recv
-           << "\ntcpi_pmtu=" << ti.tcpi_pmtu
-           << "\ntcpi_rcv_ssthresh=" << ti.tcpi_rcv_ssthresh
-           << "\ntcpi_rtt=" << ti.tcpi_rtt  // smoothed
-           << "\ntcpi_rttvar=" << ti.tcpi_rttvar
-           << "\ntcpi_snd_ssthresh=" << ti.tcpi_snd_ssthresh
-           << "\ntcpi_snd_cwnd=" << ti.tcpi_snd_cwnd
-           << "\ntcpi_advmss=" << ti.tcpi_advmss
-           << "\ntcpi_reordering=" << ti.tcpi_reordering;
+        os << "\ntcpi={\n  state=" << (uint32_t)ti.tcpi_state
+           << "\n  ca_state=" << (uint32_t)ti.tcpi_ca_state
+           << "\n  retransmits=" << (uint32_t)ti.tcpi_retransmits
+           << "\n  probes=" << (uint32_t)ti.tcpi_probes
+           << "\n  backoff=" << (uint32_t)ti.tcpi_backoff
+           << "\n  options=" << (uint32_t)ti.tcpi_options
+           << "\n  snd_wscale=" << (uint32_t)ti.tcpi_snd_wscale
+           << "\n  rcv_wscale=" << (uint32_t)ti.tcpi_rcv_wscale
+           << "\n  rto=" << ti.tcpi_rto
+           << "\n  ato=" << ti.tcpi_ato
+           << "\n  snd_mss=" << ti.tcpi_snd_mss
+           << "\n  rcv_mss=" << ti.tcpi_rcv_mss
+           << "\n  unacked=" << ti.tcpi_unacked
+           << "\n  sacked=" << ti.tcpi_sacked
+           << "\n  lost=" << ti.tcpi_lost
+           << "\n  retrans=" << ti.tcpi_retrans
+           << "\n  fackets=" << ti.tcpi_fackets
+           << "\n  last_data_sent=" << ti.tcpi_last_data_sent
+           << "\n  last_ack_sent=" << ti.tcpi_last_ack_sent
+           << "\n  last_data_recv=" << ti.tcpi_last_data_recv
+           << "\n  last_ack_recv=" << ti.tcpi_last_ack_recv
+           << "\n  pmtu=" << ti.tcpi_pmtu
+           << "\n  rcv_ssthresh=" << ti.tcpi_rcv_ssthresh
+           << "\n  rtt=" << ti.tcpi_rtt  // smoothed
+           << "\n  rttvar=" << ti.tcpi_rttvar
+           << "\n  snd_ssthresh=" << ti.tcpi_snd_ssthresh
+           << "\n  snd_cwnd=" << ti.tcpi_snd_cwnd
+           << "\n  advmss=" << ti.tcpi_advmss
+           << "\n  reordering=" << ti.tcpi_reordering
+           << "\n}";
     }
 #endif
 }
@@ -2356,8 +2369,6 @@ inline int SocketPool::GetSocket(SocketUniquePtr* ptr) {
     }
     // Not found in pool
     SocketOptions opt = _options;
-    // Only main socket can be the owner of ssl_ctx
-    opt.owns_ssl_ctx = false;
     opt.health_check_interval_s = -1;
     if (get_client_side_messenger()->Create(opt, &sid) == 0 &&
         Socket::Address(sid, ptr) == 0) {
@@ -2533,8 +2544,6 @@ int Socket::GetShortSocket(Socket* main_socket,
     }
     SocketId id;
     SocketOptions opt = main_socket->_options;
-    // Only main socket can be the owner of ssl_ctx
-    opt.owns_ssl_ctx = false;
     opt.health_check_interval_s = -1;
     if (get_client_side_messenger()->Create(opt, &id) != 0) {
         return -1;
@@ -2616,7 +2625,18 @@ std::string Socket::description() const {
     if (local_port > 0) {
         butil::string_appendf(&result, "@%d", local_port);
     }
+    butil::string_appendf(&result, " (0x%p)", this);
     return result;
+}
+
+SocketSSLContext::SocketSSLContext()
+    : raw_ctx(NULL)
+{}
+
+SocketSSLContext::~SocketSSLContext() {
+    if (raw_ctx) {
+        SSL_CTX_free(raw_ctx);
+    }
 }
 
 } // namespace brpc
@@ -2634,6 +2654,7 @@ ostream& operator<<(ostream& os, const brpc::Socket& sock) {
     if (local_port > 0) {
         os << '@' << local_port;
     }
+    os << " (0x" << (void*)&sock << ')';
     return os;
 }
 }

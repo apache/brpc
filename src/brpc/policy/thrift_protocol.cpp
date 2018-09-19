@@ -488,7 +488,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
         if (!method_status->OnRequested()) {
             cntl->SetFailed(ELIMIT, "Reached %s's max_concurrency=%d",
                             cntl->thrift_method_name().c_str(),
-                            method_status->max_concurrency());
+                            method_status->MaxConcurrency());
             return thrift_done->Run();
         }
     }
@@ -522,7 +522,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
         }
         if (!server_accessor.AddConcurrency(cntl)) {
             cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
-                            server->max_concurrency());
+                            server->options().max_concurrency);
             break;
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {

@@ -48,13 +48,15 @@ public:
 
     int CheckHealth(Socket* ptr) {
         if (ptr->health_check_count() == 0) {
-            LOG(INFO) << "Checking " << *chan;
+            LOG(INFO) << "Checking " << *chan << " chan=0x" << (void*)chan
+                      << " Fake" << *ptr;
         }
         return chan->CheckHealth();
     }
 
-    void AfterRevived(Socket*) {
-        LOG(INFO) << "Revived " << *chan;
+    void AfterRevived(Socket* ptr) {
+        LOG(INFO) << "Revived " << *chan << " chan=0x" << (void*)chan
+                  << " Fake" << *ptr;
     }
 };
 

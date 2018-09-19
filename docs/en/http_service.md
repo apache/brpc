@@ -307,6 +307,9 @@ if (encoding != NULL && *encoding == "gzip") {
 // cntl->request_attachment() contains the data after decompression
 ```
 
+# Serve https requests
+https is short for "http over SSL", SSL is not exclusive for http, but effective for all protocols. The generic method for turning on server-side SSL is [here](server.md#turn-on-ssl).
+
 # Performance
 
 Productions without extreme performance requirements tend to use HTTP protocol, especially mobile products. Thus we put great emphasis on implementation qualities of HTTP. To be more specific:
