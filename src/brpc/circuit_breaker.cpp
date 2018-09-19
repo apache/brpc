@@ -1,5 +1,5 @@
 // Copyright (c) 2014 Baidu, Inc.G
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -27,7 +27,7 @@ DEFINE_int32(circuit_breaker_long_window_size, 1000,
     "Long window sample size.");
 DEFINE_int32(circuit_breaker_short_window_error_percent, 10,
     "The maximum error rate allowed by the short window, ranging from 0-99.");
-DEFINE_int32(circuit_breaker_long_window_error_percent, 5, 
+DEFINE_int32(circuit_breaker_long_window_error_percent, 5,
     "The maximum error rate allowed by the long window, ranging from 0-99.");
 DEFINE_int32(circuit_breaker_min_error_cost_us, 500,
     "The minimum error_cost, when the ema of error cost is less than this "
@@ -42,9 +42,9 @@ DEFINE_int32(circuit_breaker_max_isolation_duration_ms, 30000,
 
 namespace {
 // EPSILON is used to generate the smoothing coefficient when calculating EMA.
-// The larger the EPSILON, the larger the smoothing coefficient, which means 
+// The larger the EPSILON, the larger the smoothing coefficient, which means
 // that the proportion of early data is larger.
-// smooth = pow(EPSILON, 1 / window_size), 
+// smooth = pow(EPSILON, 1 / window_size),
 // eg: when window_size = 100,
 // EPSILON = 0.1, smooth = 0.9772
 // EPSILON = 0.3, smooth = 0.9880
@@ -54,7 +54,7 @@ namespace {
 const double EPSILON = 0.1;
 }  // namepace
 
-CircuitBreaker::EmaErrorRecorder::EmaErrorRecorder(int window_size, 
+CircuitBreaker::EmaErrorRecorder::EmaErrorRecorder(int window_size,
                                                    int max_error_percent)
     : _window_size(window_size)
     , _max_error_percent(max_error_percent)
@@ -64,7 +64,7 @@ CircuitBreaker::EmaErrorRecorder::EmaErrorRecorder(int window_size,
     , _ema_latency(0) {
 }
 
-bool CircuitBreaker::EmaErrorRecorder::OnCallEnd(int error_code, 
+bool CircuitBreaker::EmaErrorRecorder::OnCallEnd(int error_code,
                                                  int64_t latency) {
     int64_t ema_latency = 0;
     bool healthy = false;
@@ -79,7 +79,7 @@ bool CircuitBreaker::EmaErrorRecorder::OnCallEnd(int error_code,
     if (_sample_count.fetch_add(1, butil::memory_order_relaxed) < _window_size) {
         return true;
     }
-    
+
     return healthy;
 }
 
@@ -104,7 +104,7 @@ int64_t CircuitBreaker::EmaErrorRecorder::UpdateLatency(int64_t latency) {
     } while(true);
 }
 
-bool CircuitBreaker::EmaErrorRecorder::UpdateErrorCost(int64_t error_cost, 
+bool CircuitBreaker::EmaErrorRecorder::UpdateErrorCost(int64_t error_cost,
                                                        int64_t ema_latency) {
     const int max_mutiple = FLAGS_circuit_breaker_max_failed_latency_mutiple;
     if (ema_latency != 0) {
@@ -112,10 +112,10 @@ bool CircuitBreaker::EmaErrorRecorder::UpdateErrorCost(int64_t error_cost,
     }
     //Errorous response
     if (error_cost != 0) {
-        int64_t ema_error_cost = 
+        int64_t ema_error_cost =
             _ema_error_cost.fetch_add(error_cost, butil::memory_order_relaxed);
-        ema_error_cost += error_cost; 
-        int64_t max_error_cost = ema_latency * _window_size * 
+        ema_error_cost += error_cost;
+        int64_t max_error_cost = ema_latency * _window_size *
             (_max_error_percent / 100.0) * (1.0 + EPSILON);
         return ema_error_cost <= max_error_cost;
     }
@@ -145,7 +145,7 @@ CircuitBreaker::CircuitBreaker()
     : _long_window(FLAGS_circuit_breaker_long_window_size,
                    FLAGS_circuit_breaker_long_window_error_percent)
     , _short_window(FLAGS_circuit_breaker_short_window_size,
-                    FLAGS_circuit_breaker_short_window_error_percent) 
+                    FLAGS_circuit_breaker_short_window_error_percent)
     , _last_reset_time_ms(butil::cpuwide_time_ms())
     , _broken(false)
     , _isolation_duration_ms(FLAGS_circuit_breaker_min_isolation_duration_ms) {
@@ -154,15 +154,15 @@ CircuitBreaker::CircuitBreaker()
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
     if (_broken.load(butil::memory_order_relaxed)) {
         return false;
-    } 
-    if (!_long_window.OnCallEnd(error_code, latency) ||
-        !_short_window.OnCallEnd(error_code, latency)) {
-        if (!_broken.exchange(true, butil::memory_order_acquire)) {
-            UpdateIsolationDuration(); 
-        }
-        return false;
     }
-    return true;
+    if (_long_window.OnCallEnd(error_code, latency) &&
+        _short_window.OnCallEnd(error_code, latency)) {
+        return true;
+    }
+    if (!_broken.exchange(true, butil::memory_order_acquire)) {
+        UpdateIsolationDuration();
+    }
+    return false;
 }
 
 void CircuitBreaker::Reset() {
@@ -173,19 +173,19 @@ void CircuitBreaker::Reset() {
 }
 
 void CircuitBreaker::UpdateIsolationDuration() {
-        int64_t now_time_ms = butil::cpuwide_time_ms();
-        int isolation_duration_ms = _isolation_duration_ms.load(butil::memory_order_relaxed);
-        const int max_isolation_duration_ms = 
-            FLAGS_circuit_breaker_max_isolation_duration_ms;
-        const int min_isolation_duration_ms = 
-            FLAGS_circuit_breaker_min_isolation_duration_ms;
-        if (now_time_ms - _last_reset_time_ms < max_isolation_duration_ms) {
-            isolation_duration_ms = 
-                std::min(isolation_duration_ms * 2, max_isolation_duration_ms);
-        } else {
-            isolation_duration_ms = min_isolation_duration_ms;
-        }
-        _isolation_duration_ms.store(isolation_duration_ms, butil::memory_order_relaxed);
+    int64_t now_time_ms = butil::cpuwide_time_ms();
+    int isolation_duration_ms = _isolation_duration_ms.load(butil::memory_order_relaxed);
+    const int max_isolation_duration_ms =
+        FLAGS_circuit_breaker_max_isolation_duration_ms;
+    const int min_isolation_duration_ms =
+        FLAGS_circuit_breaker_min_isolation_duration_ms;
+    if (now_time_ms - _last_reset_time_ms < max_isolation_duration_ms) {
+        isolation_duration_ms =
+            std::min(isolation_duration_ms * 2, max_isolation_duration_ms);
+    } else {
+        isolation_duration_ms = min_isolation_duration_ms;
+    }
+    _isolation_duration_ms.store(isolation_duration_ms, butil::memory_order_relaxed);
 }
 
 }  // namespace brpc
