@@ -20,7 +20,6 @@
 #include "brpc/couchbase_retry_policy.h"
 #include "brpc/load_balancer.h"
 #include "brpc/policy/couchbase_authenticator.h"
-#include "brpc/policy/couchbase_naming_service.h"
 #include "butil/base64.h"
 #include "butil/string_splitter.h"
 #include "butil/strings/string_number_conversions.h" 
@@ -85,18 +84,23 @@ int CouchbaseChannel::InitMemcacheChannel(
         const policy::CouchbaseAuthenticator* authenticator = reinterpret_cast<
             const policy::CouchbaseAuthenticator*>(options->auth);
         if (authenticator != nullptr) {
-            auth_str = authenticator->bucket_name() + ':' + authenticator->bucket_password();
+            auth_str = authenticator->bucket_name() + ':' 
+                       + authenticator->bucket_password();
         }
         if (!auth_str.empty()) {
             butil::Base64Encode(auth_str, &auth);
             auth = "Basic " + auth;
         }
     }
+		
     // TODO: encrypt auth to avoid expose in log.
-    std::string unique_suffix = butil::Uint64ToString(reinterpret_cast<uint64_t>(this));
-    std::string ns_url = policy::CouchbaseNamingService::BuildNsUrl(
-                             servers, streaming_url, init_url, auth, unique_suffix);
-    return _channel.Init(ns_url.c_str(), "cb_lb", &inner_options);
+    _ns = new policy::CouchbaseNamingService(servers, init_url, 
+                                             streaming_url, auth);
+    if (_ns == nullptr) {
+        LOG(FATAL) << "Failed to init CouchbaseNamingService.";
+        return -1;
+    }
+    return _channel.Init(_ns, "cb_lb", &inner_options);
 }
 
 void CouchbaseChannel::CallMethod(const google::protobuf::MethodDescriptor* method,

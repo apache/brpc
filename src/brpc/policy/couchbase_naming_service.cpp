@@ -17,7 +17,6 @@
 
 #include "brpc/channel.h"
 #include "brpc/log.h"
-#include "brpc/policy/couchbase_listener_naming_service.h"
 #include "brpc/policy/couchbase_naming_service.h"
 #include "brpc/policy/list_naming_service.h"
 #include "brpc/progressive_reader.h"
@@ -75,10 +74,10 @@ public:
 class CouchbaseServerListener {
 public:
     CouchbaseServerListener(
-        const butil::StringPiece& server_list, const butil::StringPiece& streaming_url, 
-        const butil::StringPiece& init_url, const butil::StringPiece& auth, CouchbaseNamingService* ns)
-        : _streaming_url(streaming_url.data(), streaming_url.length()),
-          _auth(auth.data(), auth.length()),
+        const std::string& server_list, const std::string& streaming_url, 
+        const std::string& init_url, const std::string& auth, CouchbaseNamingService* ns)
+        : _streaming_url(streaming_url),
+          _auth(auth),
           _cbns(ns),
           _ns(nullptr),
           _reader(new VBucketMapReader(this)) {
@@ -94,7 +93,7 @@ private:
     CouchbaseServerListener(const CouchbaseServerListener&) = delete;
     CouchbaseServerListener& operator=(const CouchbaseServerListener&) = delete;
 
-    void Init(const butil::StringPiece& server_list, const  butil::StringPiece& init_url);
+    void Init(const std::string& server_list, const std::string& init_url);
 
     bool InitVBucketMap(const std::string& url);
 
@@ -165,8 +164,8 @@ CouchbaseServerListener::~CouchbaseServerListener() {
     }
 }
 
-void CouchbaseServerListener::Init(const butil::StringPiece& server_list, 
-                                   const butil::StringPiece& init_url) {
+void CouchbaseServerListener::Init(const std::string& server_list, 
+                                   const std::string& init_url) {
     brpc::ChannelOptions options;
     options.protocol = PROTOCOL_HTTP;
     options.max_retry = FLAGS_couchbase_listen_retry_times;
@@ -175,13 +174,10 @@ void CouchbaseServerListener::Init(const butil::StringPiece& server_list,
         LOG(FATAL) << "Fail to new list naming service.";
         return;
     }
-    std::string servers(server_list.data(), server_list.length());
-    _ns->AllowUpdate();
-    _ns->UpdateServerList(&servers);
+    std::string servers(server_list);
     CHECK(_listen_channel.Init(_ns, "rr", &options) == 0) 
         << "Failed to init listen channel.";
-    const std::string init_url_str(init_url.data(), init_url.length());
-    InitVBucketMap(init_url_str);
+    InitVBucketMap(init_url);
     CreateListener();
 }
  
@@ -279,6 +275,11 @@ void CouchbaseServerListener::UpdateVBucketMap(std::string&& vb_map) {
 
 CouchbaseNamingService::CouchbaseNamingService() : _actions(nullptr) {}
 
+CouchbaseNamingService::CouchbaseNamingService(const char* servers, const std::string& init_url,
+                                               const std::string& streaming_url, const std::string& auth)
+    :  _initial_servers(servers), _init_url(init_url), 
+       _streaming_url(streaming_url), _auth(auth) {}
+
 CouchbaseNamingService::~CouchbaseNamingService() {}
 
 int CouchbaseNamingService::ResetServers(const std::vector<std::string>& servers, 
@@ -305,14 +306,14 @@ int CouchbaseNamingService::ResetServers(const std::vector<std::string>& servers
 
 int CouchbaseNamingService::RunNamingService(const char* service_name,
                                              NamingServiceActions* actions) {
-    butil::StringPiece server_list, streaming_url, init_url, auth;
-    CHECK(ParseNsUrl(service_name, server_list, streaming_url, init_url, auth))
-        << "Failed to parse couchbase naming url: " << service_name;
-    _service_name = service_name;
+    if (!brpc::NamingService::IsCreatedByUsers(service_name)) {
+        LOG(FATAL) << "The couchbase naming service is not created by users.";
+        return -1;
+    }
     // '_actions' MUST init before '_listener' due to it will be used by '_listener'. 
     _actions = actions;
-    _listener.reset(new CouchbaseServerListener(server_list, streaming_url, 
-                                                init_url, auth, this));
+    _listener.reset(new CouchbaseServerListener(_initial_servers, _streaming_url, 
+                                                _init_url, _auth, this));
     return 0;
 }
 
@@ -330,52 +331,6 @@ void CouchbaseNamingService::Destroy() {
     _listener.reset(nullptr);
     delete this;
 }
-
-std::string CouchbaseNamingService::BuildNsUrl(
-    const char* servers_addr, const std::string& streaming_url, 
-    const std::string& init_url, const std::string& auth, const std::string& unique_id) {
-    std::string ns_url("couchbase_channel://");
-    ns_url.append(servers_addr);
-    ns_url.append("_streaming@" + streaming_url + "_init@" + init_url);
-    if (!auth.empty()) {
-        ns_url.append("_auth@" + auth);
-    }
-    ns_url.append("_unique@" + unique_id);
-    return std::move(ns_url);
-}
-
-bool CouchbaseNamingService::ParseNsUrl(
-    const butil::StringPiece service_full_name, butil::StringPiece& server_list, 
-    butil::StringPiece& streaming_url, butil::StringPiece& init_url, butil::StringPiece& auth) {
-    size_t pos = service_full_name.rfind("_unique@");
-    butil::StringPiece service_name = service_full_name.substr(0, pos);
-    butil::StringPiece stream_prefix("_streaming@");
-    size_t stream_pos = service_name.find(stream_prefix);
-    if (stream_pos == service_name.npos) {
-        return false;
-    }
-    server_list = service_name.substr(0, stream_pos);
-    stream_pos += stream_prefix.length();
-    butil::StringPiece init_prefix("_init@");
-    size_t init_pos = service_name.find(init_prefix, stream_pos);
-    if (init_pos == service_name.npos) {
-        return false;
-    }
-    streaming_url = service_name.substr(stream_pos, init_pos - stream_pos);
-    init_pos += init_prefix.length();
-	
-    butil::StringPiece auth_prefix("_auth@");
-    size_t auth_pos = service_name.find(auth_prefix, init_pos);
-    if (auth_pos == service_name.npos) {
-        auth.clear();
-        init_url = service_name.substr(init_pos);		
-    } else {
-        init_url = service_name.substr(init_pos, auth_pos - init_pos);
-        auth = service_name.substr(auth_pos + auth_prefix.length());
-    }
-    return true;
-}
-
 
 }  // namespace policy
 } // namespace brpc

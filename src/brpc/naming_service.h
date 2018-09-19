@@ -29,7 +29,9 @@
 
 namespace brpc {
 
-const std::string kCallerCreatedNamingService = "CreatedByCaller";
+// If user init channel by a NamingService object directly, the service name 
+// will be set this default value.
+const std::string kCallerCreatedNamingService("CreatedByUsers");
 
 // Representing a server inside a NamingService.
 struct ServerNode {
@@ -82,6 +84,10 @@ public:
     // server when servers changed. If a naming service change servers too frequently
     // during a short time, make this method return false to avoid to print log too heavy.
     virtual bool PrintServerChangeLogsEveryTimes() { return true; }
+
+    static bool IsCreatedByUsers(const char* service_name) {
+        return kCallerCreatedNamingService.compare(service_name) == 0;
+    }
 
     virtual ~NamingService() {}
 };

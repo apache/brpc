@@ -81,7 +81,7 @@ int ListNamingService::GetServers(const char *service_name,
 int ListNamingService::RunNamingService(const char* service_name,
                                         NamingServiceActions* actions) {
     std::vector<ServerNode> servers;
-    if (!allow_update()) {
+    if (!brpc::NamingService::IsCreatedByUsers(service_name)) {
         const int rc = GetServers(service_name, &servers);
         if (rc != 0) {
             servers.clear();
@@ -95,6 +95,9 @@ int ListNamingService::RunNamingService(const char* service_name,
                 servers.clear();
             }
             actions->ResetServers(servers);
+            if (!allow_update()) {
+                break;
+            }
             if (bthread_usleep(std::max(FLAGS_ns_access_interval, 1) * 1000000L) < 0) {
                 if (errno == ESTOP) {
                     RPC_VLOG << "Quit NamingServiceThread=" << bthread_self();

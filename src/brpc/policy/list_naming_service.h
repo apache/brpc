@@ -25,10 +25,9 @@ namespace policy {
 
 class ListNamingService : public NamingService {
 public:
-    void AllowUpdate() {
-        _return_quickly = false;
-        _allow_update = true;
-    }
+    ListNamingService() {}
+    ListNamingService(const char* servers) 
+        : _return_quickly(false), _allow_update(true), _server_list(servers) {}
 
     void UpdateServerList(std::string* server_list);
 	

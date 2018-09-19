@@ -18,6 +18,8 @@
 #define BRPC_COUCHBASE_CHANNEL_H
 
 #include "brpc/channel.h"
+#include "brpc/policy/couchbase_naming_service.h"
+
 
 namespace brpc {
 
@@ -66,9 +68,9 @@ private:
 							 
     int CheckHealth();
 
-    std::string _service_name;
+    policy::CouchbaseNamingService* _ns = nullptr;
 
-    brpc::Channel _channel;
+    Channel _channel;
 };
 
 } // namespace brpc

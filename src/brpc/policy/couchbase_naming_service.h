@@ -23,7 +23,6 @@
 
 namespace brpc {
 
-class CouchbaseChannel;
 class NamingServiceActions;
 
 namespace policy {
@@ -31,9 +30,11 @@ namespace policy {
 class CouchbaseServerListener;
 
 class CouchbaseNamingService : public NamingService {
-friend class brpc::CouchbaseChannel;
 friend class CouchbaseServerListener;
 public:
+    CouchbaseNamingService(
+        const char* servers, const std::string& init_url,
+        const std::string& streaming_url, const std::string& auth);
     CouchbaseNamingService();
     ~CouchbaseNamingService();
 
@@ -56,18 +57,13 @@ private:
     
     void Destroy();
 
-    static std::string BuildNsUrl(
-        const char* servers_addr, const std::string& streaming_url, 
-        const std::string& init_url, const std::string& auth, 
-        const std::string& unique_id);
-	
-    static bool ParseNsUrl(const butil::StringPiece service_full_name, 
-                           butil::StringPiece& server_list, 
-                           butil::StringPiece& streaming_url, 
-                           butil::StringPiece& init_url, butil::StringPiece& auth);
+    std::string _initial_servers;
 
-    // Naming service of this CouchbaseNamingService.
-    std::string _service_name;
+    std::string _init_url;
+
+    std::string _streaming_url;
+
+    std::string _auth;
 	
     NamingServiceActions* _actions;
     // Listener monitor and update vbucket map.
