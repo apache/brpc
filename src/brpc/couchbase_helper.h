@@ -98,14 +98,6 @@ struct VBucketServerMap {
     std::map<SocketId, size_t> server_map;
 };
 
-class CouchbaseContext {
-public:
-    CouchbaseContext(bool replicas, const std::string& get_key) 
-        : can_read_replicas(replicas), key(get_key) {}
-    bool can_read_replicas;
-    std::string key;
-};
-
 class CouchbaseHelper {
 public:
     static uint32_t GetVBucketId(const butil::StringPiece& key, 

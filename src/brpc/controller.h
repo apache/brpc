@@ -62,7 +62,6 @@ class MongoContext;
 class RetryPolicy;
 class InputMessageBase;
 class ThriftStub;
-class CouchbaseContext;
 namespace policy {
 class OnServerStreamCreated;
 void ProcessMongoRequest(InputMessageBase*);
