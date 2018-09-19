@@ -248,10 +248,10 @@ public:
     void reset_rpc_dump_meta(RpcDumpMeta* meta);
     const RpcDumpMeta* rpc_dump_meta() { return _rpc_dump_meta; }
 
-    // Attach a StreamCreator to this RPC. Notice that controller never deletes
-    // the StreamCreator, you can do the deletion inside OnDestroyingStream.
-    void set_stream_creator(StreamCreator* sc) { _stream_creator = sc; }
-    StreamCreator* stream_creator() const { return _stream_creator; }
+    // Attach a StreamCreator to this RPC. Notice that the ownership of sc has
+    // been transferred to cntl, and sc->DestroyStreamCreator() would be called
+    // only once to destroy sc.
+    void set_stream_creator(StreamCreator* sc);
 
     // Make the RPC end when the HTTP response has complete headers and let
     // user read the remaining body by using ReadProgressiveAttachmentBy().

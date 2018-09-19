@@ -775,9 +775,7 @@ void Controller::Call::OnComplete(
         stream_user_data->DestroyStreamUserData(sending_sock, c, error_code, end_of_rpc);
         stream_user_data = NULL;
     }
-    if (end_of_rpc && c->stream_creator()) {
-        c->stream_creator()->DestroyStreamCreator(c);
-    }
+
     // Release the `Socket' we used to send/receive data
     sending_sock.reset(NULL);
 }
@@ -838,7 +836,9 @@ void Controller::EndRPC(const CompletionInfo& info) {
             CHECK(false) << "A previous non-backed-up call responded";
         }
     }
-    
+    if (_stream_creator) {
+        _stream_creator->DestroyStreamCreator(this);
+    }
     // Clear _error_text when the call succeeded, otherwise a successful
     // call with non-empty ErrorText may confuse user.
     if (!_error_code) {
@@ -1320,6 +1320,14 @@ void WebEscape(const std::string& source, std::string* output) {
 void Controller::reset_rpc_dump_meta(RpcDumpMeta* meta) { 
     delete _rpc_dump_meta;
     _rpc_dump_meta = meta;
+}
+
+void Controller::set_stream_creator(StreamCreator* sc) {
+    if (_stream_creator) {
+        LOG(FATAL) << "A StreamCreator has been set previously";
+        return;
+    }
+    _stream_creator = sc;
 }
 
 ProgressiveAttachment*
