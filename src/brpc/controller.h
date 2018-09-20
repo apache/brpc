@@ -552,11 +552,12 @@ private:
         CallId id = { _correlation_id.value + nretry + 1 };
         return id;
     }
-
+public:
     CallId current_id() const {
         CallId id = { _correlation_id.value + _current_call.nretry + 1 };
         return id;
     }
+private:
     
     // Append server information to `_error_text'
     void AppendServerIdentiy();
@@ -586,7 +587,7 @@ private:
 
     void HandleStreamConnection(Socket *host_socket);
 
-    bool SingleServer() const { return _single_server_id != (SocketId)-1; }
+    bool SingleServer() const { return _single_server_id != INVALID_SOCKET_ID; }
 
     void SubmitSpan();
 
