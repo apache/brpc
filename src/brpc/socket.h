@@ -412,14 +412,16 @@ public:
     // True if this socket was created by Connect.
     bool CreatedByConnect() const;
 
-    ///////////////  Pooled sockets ////////////////
-    // Get a (unused) socket from _shared_part->socket_pool, address it into
-    // `poole_socket'.
-    static int GetPooledSocket(Socket* main_socket,
-                               SocketUniquePtr* pooled_socket);
-    // Return the socket (which must be got from GetPooledSocket) to its
-    // _main_socket's pool and reset _main_socket to NULL.
+    // Get an UNUSED socket connecting to the same place as this socket
+    // from the SocketPool of this socket.
+    int GetPooledSocket(SocketUniquePtr* pooled_socket);
+
+    // Return this socket which MUST be got from GetPooledSocket to its
+    // main_socket's pool.
     int ReturnToPool();
+
+    // True if this socket has SocketPool
+    bool HasSocketPool() const;
 
     // Put all sockets in _shared_part->socket_pool into `list'.
     void ListPooledSockets(std::vector<SocketId>* list, size_t max_count = 0);
@@ -427,9 +429,25 @@ public:
     // Return true on success
     bool GetPooledSocketStats(int* numfree, int* numinflight);
 
-    // Create a socket connecting to the same place of main_socket.
-    static int GetShortSocket(Socket* main_socket,
-                              SocketUniquePtr* short_socket);
+    // Create a socket connecting to the same place as this socket.
+    int GetShortSocket(SocketUniquePtr* short_socket);
+
+    // Get and persist a socket connecting to the same place as this socket.
+    // If an agent socket was already created and persisted, it's returned
+    // directly (provided other constraints are satisfied)
+    // If `checkfn' is not NULL, and the checking result on the socket that
+    // would be returned is false, the socket is abadoned and the getting
+    // process is restarted.
+    // For example, http2 connections may run out of stream_id after long time
+    // running and a new socket should be created. In order not to affect
+    // LoadBalancers or NamingServices that may reference the Socket, agent
+    // socket can be used for the communication and replaced periodically but
+    // the main socket is unchanged.
+    int GetAgentSocket(SocketUniquePtr* out, bool (*checkfn)(Socket*));
+
+    // Take a peek at existing agent socket (no creation).
+    // Returns 0 on success.
+    int PeekAgentSocket(SocketUniquePtr* out) const;
 
     // Where the stats of this socket are accumulated to.
     SocketId main_socket_id() const;
@@ -741,6 +759,8 @@ private:
     int _error_code;
     std::string _error_text;
 
+    butil::atomic<SocketId> _agent_socket_id;
+
     butil::Mutex _pipeline_mutex;
     std::deque<PipelinedInfo>* _pipeline_q;
 
@@ -761,13 +781,6 @@ private:
 
     butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
-
-    // In some protocols, certain resources may run out according to 
-    // protocol spec. For example, http2 streamId would run out after
-    // long time running and a new socket should be created. In order
-    // not to affect main socket, _agent_socket are introduced to 
-    // represent the communication socket.
-    SocketUniquePtr _agent_socket;
 };
 
 } // namespace brpc
