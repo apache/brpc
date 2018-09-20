@@ -846,8 +846,11 @@ ssize_t HPacker::Decode(butil::IOBufBytesIterator& iter, Header* h) {
 }
 
 void HPacker::Describe(std::ostream& os, const DescribeOptions& opt) const {
+    if (opt.verbose) {
+        os << '\n';
+    }
     const char sep = (opt.verbose ? '\n' : ' ');
-    os << (opt.verbose ? sep : '{') << "encode_table=";
+    os << "encode_table=";
     if (_encode_table) {
         _encode_table->Print(os);
     } else {
@@ -859,8 +862,8 @@ void HPacker::Describe(std::ostream& os, const DescribeOptions& opt) const {
     } else {
         os << "null";
     }
-    if (!opt.verbose) {
-        os << '}';
+    if (opt.verbose) {
+        os << '\n';
     }
 }
 

@@ -75,6 +75,7 @@ enum H2StreamState {
 };
 const char* H2StreamState2Str(H2StreamState);
 
+#ifndef NDEBUG
 struct Http2Bvars {
     bvar::Adder<int> h2_unsent_request_count;
     bvar::Adder<int> h2_stream_context_count;
@@ -87,6 +88,7 @@ struct Http2Bvars {
 inline Http2Bvars* get_http2_bvars() {
     return butil::get_leaky_singleton<Http2Bvars>();
 }
+#endif
 
 class H2UnsentRequest : public SocketMessage, public StreamUserData {
 friend void PackH2Request(butil::IOBuf*, SocketMessage**,
@@ -128,10 +130,14 @@ private:
         , _size(0)
         , _stream_id(0)
         , _cntl(c) {
+#ifndef NDEBUG
         get_http2_bvars()->h2_unsent_request_count << 1;
+#endif
     }
     ~H2UnsentRequest() {
+#ifndef NDEBUG
         get_http2_bvars()->h2_unsent_request_count << -1;
+#endif
     }
     H2UnsentRequest(const H2UnsentRequest&);
     void operator=(const H2UnsentRequest&);
@@ -241,8 +247,6 @@ class H2GlobalStreamCreator : public StreamCreator {
 protected:
     StreamUserData* OnCreatingStream(SocketUniquePtr* inout, Controller* cntl) override;
     void DestroyStreamCreator(Controller* cntl) override;
-private:
-    butil::Mutex _mutex;
 };
 
 }  // namespace policy
