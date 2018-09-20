@@ -187,13 +187,19 @@ void ConnectionsService::PrintConnections(
                << min_width("-", 8) << bar
                << min_width("-", 11) << bar;
         } else {
+            {
+                SocketUniquePtr agent_sock;
+                if (ptr->PeekAgentSocket(&agent_sock) == 0) {
+                    ptr.swap(agent_sock);
+                }
+            }
             // Get name of the protocol. In principle we can dynamic_cast the
             // socket user to InputMessenger but I'm not sure if that's a bit
             // slow (because we have many connections here).
             int pref_index = ptr->preferred_index();
             SocketUniquePtr first_sub;
             int pooled_count = -1;
-            if (ptr->fd() < 0) {
+            if (ptr->HasSocketPool()) {
                 int numfree = 0;
                 int numinflight = 0;
                 if (ptr->GetPooledSocketStats(&numfree, &numinflight)) {
