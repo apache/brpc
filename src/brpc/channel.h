@@ -181,7 +181,6 @@ public:
     // CAUTION:
     //   1. 'ns' MUST be constructed on heap. 
     //   2. Channel will take owener of 'ns' whatever this method return 0 or not. 
-    //      You should not realase 'ns'.
     int Init(NamingService* ns,
              const char* lb_name,
              const ChannelOptions* options);
