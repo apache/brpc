@@ -105,7 +105,7 @@ void SocketMapRemove(const SocketMapKey& key) {
         // at NamingServiceThread is hard to be fixed right now. As long as
         // FLAGS_health_check_interval is limited to positive, SocketMapInsert
         // never replaces the sockets, skipping comparison is still right.
-        m->Remove(key, (SocketId)-1);
+        m->Remove(key, INVALID_SOCKET_ID);
     }
 }
 
@@ -274,7 +274,7 @@ void SocketMap::RemoveInternal(const SocketMapKey& key,
         return;
     }
     if (!remove_orphan &&
-        (expected_id == (SocketId)-1 || expected_id == sc->socket->id())) {
+        (expected_id == INVALID_SOCKET_ID || expected_id == sc->socket->id())) {
         --sc->ref_count;
     }
     if (sc->ref_count == 0) {
@@ -384,7 +384,7 @@ void SocketMap::WatchConnections() {
             _options.defer_close_second;
         ListOrphans(defer_seconds * 1000000L, &orphan_sockets);
         for (size_t i = 0; i < orphan_sockets.size(); ++i) {
-            RemoveInternal(orphan_sockets[i], (SocketId)-1, true);
+            RemoveInternal(orphan_sockets[i], INVALID_SOCKET_ID, true);
         }
     }
 }

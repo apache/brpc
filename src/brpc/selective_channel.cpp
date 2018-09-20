@@ -110,7 +110,7 @@ public:
     explicit SubDone(Sender* owner)
         : _owner(owner)
         , _cid(INVALID_BTHREAD_ID)
-        , _peer_id((SocketId)-1) {
+        , _peer_id(INVALID_SOCKET_ID) {
     }
     ~SubDone() {}
     void Run();
