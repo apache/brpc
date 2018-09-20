@@ -20,9 +20,12 @@
 #include "brpc/couchbase_retry_policy.h"
 #include "brpc/load_balancer.h"
 #include "brpc/policy/couchbase_authenticator.h"
+#include "brpc/uri.h" 
 #include "butil/base64.h"
 #include "butil/string_splitter.h"
 #include "butil/strings/string_number_conversions.h" 
+#include "butil/string_printf.h"
+
 
 namespace brpc {
 
@@ -36,15 +39,15 @@ const std::string kDefaultBucketUrlPrefix("/pools/default/buckets/");
 
 }
 
-int CouchbaseChannel::Init(const char* listen_url, const ChannelOptions* options) {
+int CouchbaseChannel::Init(const char* listen_uri, const ChannelOptions* options) {
     std::string servers;
     std::string streaming_url;
     std::string init_url;
-    if (ParseListenUrl(listen_url, &servers, &streaming_url, &init_url)) {
-        return InitMemcacheChannel(servers.c_str(), streaming_url, 
-                                   init_url, options);
+    if (!ParseListenUri(listen_uri, &servers, &streaming_url, &init_url)) {
+        LOG(ERROR) << "Failed to parse listen url \'" << listen_uri << "\'.";
     }
-    return -1;
+    return InitMemcacheChannel(servers.c_str(), streaming_url, 
+                               init_url, options);
 }
 
 int CouchbaseChannel::Init(const char* servers, const char* bucket_name, 
@@ -160,49 +163,34 @@ int CouchbaseChannel::CheckHealth() {
     return 0;   
 }
 
-bool CouchbaseChannel::ParseListenUrl(
-    const butil::StringPiece listen_url, std::string* server, 
+bool CouchbaseChannel::ParseListenUri(
+    const char* listen_uri, std::string* server, 
     std::string* streaming_uri, std::string* init_uri) {
-    do {
-        const size_t pos = listen_url.find("//");
-        if (pos == listen_url.npos) {
-            break;
-        }
-        const size_t host_pos = listen_url.find('/', pos + 2);        
-        if (host_pos == listen_url.npos) {
-            break;
-        }
-        butil::StringPiece sub_str = listen_url.substr(pos + 2, host_pos - pos - 2);
-        server->clear();
-        server->append(sub_str.data(), sub_str.length());
-        butil::StringPiece uri_sub = listen_url;
-        uri_sub.remove_prefix(host_pos);
-        size_t uri_pos = uri_sub.find("/bucketsStreaming/");
-        if (uri_pos != uri_sub.npos) {
-            streaming_uri->clear();
-            streaming_uri->append(uri_sub.data(), uri_sub.length()); 
-            init_uri->clear();
-            init_uri->append(uri_sub.data(), uri_pos);
-            init_uri->append("/buckets/");
-            butil::StringPiece bucket_name = uri_sub;
-            bucket_name.remove_prefix(uri_pos + std::strlen("/bucketsStreaming/"));
-            init_uri->append(bucket_name.data(), bucket_name.length());
-            return true;
-        }
-        uri_pos = uri_sub.find("/buckets/");
-        if (uri_pos != uri_sub.npos) {
-            init_uri->clear();
-            init_uri->append(uri_sub.data(), uri_sub.length()); 
-            streaming_uri->clear();
-            streaming_uri->append(uri_sub.data(), uri_pos);
-            streaming_uri->append("/bucketsStreaming/");
-            butil::StringPiece bucket_name = uri_sub; 
-            bucket_name.remove_prefix(uri_pos + std::strlen("/buckets/"));
-            streaming_uri->append(bucket_name.data(), bucket_name.length());
-            return true;
-        }
-    } while (false);
-    LOG(FATAL) << "Failed to parse listen url \'" <<  listen_url << "\'.";
+    URI uri;
+    if (uri.SetHttpURL(listen_uri) != 0) {
+        return false;
+    }
+    server->clear();
+    butil::string_appendf(server, "%s:%d", uri.host().c_str(), uri.port());
+    const std::string& path = uri.path();
+    size_t pos = path.find("/bucketsStreaming/");
+    if (pos != std::string::npos) {
+        streaming_uri->clear();
+        *streaming_uri = path;
+        *init_uri = path;
+        // remove "Streaming". "/bucketsStreaming/" -> "/buckets/"
+        init_uri->erase(pos + 8, 9);
+        return true;
+    } 
+    pos = path.find("/buckets/");
+    if (pos != std::string::npos) {
+        init_uri->clear();
+        *streaming_uri = path;
+        *init_uri = path;
+        // insert "Streaming". "/buckets/" -> "/bucketsStreaming/"
+        streaming_uri->insert(pos + 8, "Streaming");
+        return true;
+    } 
     return false;
 }
 

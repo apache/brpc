@@ -62,11 +62,11 @@ public:
 private:
     int InitMemcacheChannel(const char* servers, const std::string& streaming_url,
                             const std::string& init_url, const ChannelOptions* options);
-
-    bool ParseListenUrl(const butil::StringPiece listen_url, std::string* server, 
-                        std::string* streaming_uri, std::string* init_uri);
 							 
     int CheckHealth();
+
+    static bool ParseListenUri(const char* listen_uri, std::string* server, 
+                               std::string* streaming_uri, std::string* init_uri);
 
     policy::CouchbaseNamingService* _ns = nullptr;
 
