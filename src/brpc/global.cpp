@@ -44,6 +44,7 @@
 #include "brpc/compress.h"
 #include "brpc/policy/gzip_compress.h"
 #include "brpc/policy/snappy_compress.h"
+#include "brpc/policy/lz4_compress.h"
 
 // Protocols
 #include "brpc/protocol.h"
@@ -362,6 +363,11 @@ static void GlobalInitializeOrDieImpl() {
     const CompressHandler snappy_compress =
         { SnappyCompress, SnappyDecompress, "snappy" };
     if (RegisterCompressHandler(COMPRESS_TYPE_SNAPPY, snappy_compress) != 0) {
+        exit(1);
+    }
+    const CompressHandler lz4_stream_compress =
+            { LZ4Compress, LZ4Decompress, "lz4" };
+    if (RegisterCompressHandler(COMPRESS_TYPE_LZ4, lz4_stream_compress) != 0) {
         exit(1);
     }
 
