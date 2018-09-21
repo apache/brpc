@@ -113,6 +113,7 @@ bool CouchbaseRetryPolicy::DoRetry(Controller* cntl) const {
         if (reason == SERVER_DOWN_RETRY_REPLICAS) {
             CouchbaseRequest request;
             request.ReplicasGet(cntl->couchbase_key_read_replicas(), vb_id);
+            cntl->_error_code = 0;
             policy::SerializeMemcacheRequest(&cntl->_request_buf, cntl, &request);
             if (cntl->FailedInline()) {
                 return false;
