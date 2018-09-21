@@ -90,10 +90,16 @@ struct H2Settings {
     // Parse from n bytes from the iterator.
     // Returns true on success.
     bool ParseFrom(butil::IOBufBytesIterator&, size_t n);
+    
     // Bytes of serialized data.
     size_t ByteSize() const;
+
+    // Maximum value that may be returned by ByteSize().
+    static const size_t MAX_BYTE_SIZE = 36;
+    
     // Serialize to `out' which is at least ByteSize() bytes long.
-    void SerializeTo(void* out) const;
+    // Returns bytes written.
+    size_t SerializeTo(void* out) const;
 
     void Print(std::ostream&) const;
 };

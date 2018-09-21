@@ -24,7 +24,10 @@
 #include "brpc/details/hpack.h"
 #include "brpc/stream_creator.h"
 #include "brpc/controller.h"
+
+#ifndef NDEBUG
 #include "bvar/bvar.h"
+#endif
 
 namespace brpc {
 
@@ -159,8 +162,8 @@ public:
     void Destroy();
     void Describe(butil::IOBuf*) const;
     // @SocketMessage
-    butil::Status AppendAndDestroySelf(butil::IOBuf* out, Socket*);
-    size_t EstimatedByteSize();
+    butil::Status AppendAndDestroySelf(butil::IOBuf* out, Socket*) override;
+    size_t EstimatedByteSize() override;
     
 private:
     std::string& push(const std::string& name)
@@ -214,19 +217,28 @@ public:
     size_t parsed_length() const { return this->_parsed_length; }
     int stream_id() const { return header().h2_stream_id(); }
 
-#ifdef HAS_H2_STREAM_STATE
+    int64_t ReleaseDeferredWindowUpdate() {
+        if (_deferred_window_update.load(butil::memory_order_relaxed) == 0) {
+            return 0;
+        }
+        return _deferred_window_update.exchange(0, butil::memory_order_relaxed);
+    }
+
+    bool ConsumeWindowSize(int64_t size);
+
+#if defined(BRPC_H2_STREAM_STATE)
     H2StreamState state() const { return _state; }
     void SetState(H2StreamState state);
 #endif
 
 friend class H2Context;
     H2Context* _conn_ctx;
-#ifdef HAS_H2_STREAM_STATE
+#if defined(BRPC_H2_STREAM_STATE)
     H2StreamState _state;
 #endif
     bool _stream_ended;
-    butil::atomic<int64_t> _remote_window_size;
-    butil::atomic<int64_t> _local_window_size;
+    butil::atomic<int64_t> _remote_window_left;
+    butil::atomic<int64_t> _deferred_window_update;
     uint64_t _correlation_id;
     butil::IOBuf _remaining_header_fragment;
 };
@@ -250,7 +262,6 @@ protected:
 };
 
 }  // namespace policy
-
 } // namespace brpc
 
 #endif // BAIDU_RPC_POLICY_HTTP2_RPC_PROTOCOL_H

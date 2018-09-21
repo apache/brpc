@@ -137,7 +137,7 @@ size_t H2Settings::ByteSize() const {
     return size;
 }
 
-void H2Settings::SerializeTo(void* out) const {
+size_t H2Settings::SerializeTo(void* out) const {
     uint8_t* p = (uint8_t*)out;
     if (header_table_size != DEFAULT_HEADER_TABLE_SIZE) {
         SaveUint16(p, HTTP2_SETTINGS_HEADER_TABLE_SIZE);
@@ -169,6 +169,7 @@ void H2Settings::SerializeTo(void* out) const {
         SaveUint32(p + 2, max_header_list_size);
         p += 6;
     }
+    return static_cast<size_t>(p - (uint8_t*)out);
 }
 
 void H2Settings::Print(std::ostream& os) const {
