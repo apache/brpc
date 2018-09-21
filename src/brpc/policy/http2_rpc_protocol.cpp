@@ -136,6 +136,110 @@ struct H2FrameHead {
 
 static void InitFrameHandlers();
 
+// [ https://tools.ietf.org/html/rfc7540#section-6.5.1 ]
+
+enum H2SettingsIdentifier {
+    HTTP2_SETTINGS_HEADER_TABLE_SIZE      = 0x1,
+    HTTP2_SETTINGS_ENABLE_PUSH            = 0x2,
+    HTTP2_SETTINGS_MAX_CONCURRENT_STREAMS = 0x3,
+    HTTP2_SETTINGS_INITIAL_WINDOW_SIZE    = 0x4,
+    HTTP2_SETTINGS_MAX_FRAME_SIZE         = 0x5,
+    HTTP2_SETTINGS_MAX_HEADER_LIST_SIZE   = 0x6
+};
+
+// Parse from n bytes from the iterator.
+// Returns true on success.
+bool ParseH2Settings(H2Settings* out, butil::IOBufBytesIterator& it, size_t n) {
+    const uint32_t npairs = n / 6;
+    if (npairs * 6 != n) {
+        LOG(ERROR) << "Invalid payload_size=" << n;
+        return false;
+    }
+    for (uint32_t i = 0; i < npairs; ++i) {
+        uint16_t id = LoadUint16(it);
+        uint32_t value = LoadUint32(it);
+        switch (static_cast<H2SettingsIdentifier>(id)) {
+        case HTTP2_SETTINGS_HEADER_TABLE_SIZE:
+            out->header_table_size = value;
+            break;
+        case HTTP2_SETTINGS_ENABLE_PUSH:
+            if (value > 1) {
+                LOG(ERROR) << "Invalid value=" << value << " for ENABLE_PUSH";
+                return false;
+            }
+            out->enable_push = value;
+            break;
+        case HTTP2_SETTINGS_MAX_CONCURRENT_STREAMS:
+            out->max_concurrent_streams = value;
+            break;
+        case HTTP2_SETTINGS_INITIAL_WINDOW_SIZE:
+            if (value > H2Settings::MAX_INITIAL_WINDOW_SIZE) {
+                LOG(ERROR) << "Invalid initial_window_size=" << value;
+                return false;
+            }
+            out->initial_window_size = value;
+            break;
+        case HTTP2_SETTINGS_MAX_FRAME_SIZE:
+            if (value > H2Settings::MAX_OF_MAX_FRAME_SIZE ||
+                value < H2Settings::DEFAULT_MAX_FRAME_SIZE) {
+                LOG(ERROR) << "Invalid max_frame_size=" << value;
+                return false;
+            }
+            out->max_frame_size = value;
+            break;
+        case HTTP2_SETTINGS_MAX_HEADER_LIST_SIZE:
+            out->max_header_list_size = value;
+            break;
+        default:
+            // An endpoint that receives a SETTINGS frame with any unknown or
+            // unsupported identifier MUST ignore that setting (section 6.5.2)
+            LOG(WARNING) << "Unknown setting, id=" << id << " value=" << value;
+            break;
+        }
+    }
+    return true;
+}
+
+// Maximum value that may be returned by SerializeH2Settings
+static const size_t H2_SETTINGS_MAX_BYTE_SIZE = 36;
+    
+// Serialize to `out' which is at least ByteSize() bytes long.
+// Returns bytes written.
+size_t SerializeH2Settings(const H2Settings& in, void* out) {
+    uint8_t* p = (uint8_t*)out;
+    if (in.header_table_size != H2Settings::DEFAULT_HEADER_TABLE_SIZE) {
+        SaveUint16(p, HTTP2_SETTINGS_HEADER_TABLE_SIZE);
+        SaveUint32(p + 2, in.header_table_size);
+        p += 6;
+    }
+    if (in.enable_push != H2Settings::DEFAULT_ENABLE_PUSH) {
+        SaveUint16(p, HTTP2_SETTINGS_ENABLE_PUSH);
+        SaveUint32(p + 2, in.enable_push);
+        p += 6;
+    }
+    if (in.max_concurrent_streams != std::numeric_limits<uint32_t>::max()) {
+        SaveUint16(p, HTTP2_SETTINGS_MAX_CONCURRENT_STREAMS);
+        SaveUint32(p + 2, in.max_concurrent_streams);
+        p += 6;
+    }
+    if (in.initial_window_size != H2Settings::DEFAULT_INITIAL_WINDOW_SIZE) {
+        SaveUint16(p, HTTP2_SETTINGS_INITIAL_WINDOW_SIZE);
+        SaveUint32(p + 2, in.initial_window_size);
+        p += 6;
+    }
+    if (in.max_frame_size != H2Settings::DEFAULT_MAX_FRAME_SIZE) {
+        SaveUint16(p, HTTP2_SETTINGS_MAX_FRAME_SIZE);
+        SaveUint32(p + 2, in.max_frame_size);
+        p += 6;
+    }
+    if (in.max_header_list_size != std::numeric_limits<uint32_t>::max()) {
+        SaveUint16(p, HTTP2_SETTINGS_MAX_HEADER_LIST_SIZE);
+        SaveUint32(p + 2, in.max_header_list_size);
+        p += 6;
+    }
+    return static_cast<size_t>(p - (uint8_t*)out);
+}
+
 // Contexts of a http2 connection
 class H2Context : public Destroyable, public Describable {
 public:
@@ -384,20 +488,11 @@ H2StreamContext* H2Context::RemoveStream(int stream_id) {
 }
 
 H2StreamContext* H2Context::FindStream(int stream_id) {
-    {
-        std::unique_lock<butil::Mutex> mu(_stream_mutex);
-        H2StreamContext** psctx = _pending_streams.seek(stream_id);
-        if (psctx) {
-            return *psctx;
-        }
+    std::unique_lock<butil::Mutex> mu(_stream_mutex);
+    H2StreamContext** psctx = _pending_streams.seek(stream_id);
+    if (psctx) {
+        return *psctx;
     }
-    /*
-    if (closed) {
-        const uint32_t limit = is_client_side() ? _last_client_stream_id
-            : (uint32_t)_last_server_stream_id;
-        *closed = ((uint32_t)stream_id < limit);
-    }
-    */
     return NULL;
 }
 
@@ -481,8 +576,9 @@ ParseResult H2Context::Consume(
             }
             _conn_state = H2_CONNECTION_READY;
 
-            char settingsbuf[FRAME_HEAD_SIZE + H2Settings::MAX_BYTE_SIZE];
-            const size_t nb = _unack_local_settings.SerializeTo(settingsbuf + FRAME_HEAD_SIZE);
+            char settingsbuf[FRAME_HEAD_SIZE + H2_SETTINGS_MAX_BYTE_SIZE];
+            const size_t nb = SerializeH2Settings(
+                _unack_local_settings, settingsbuf + FRAME_HEAD_SIZE);
             SerializeFrameHead(settingsbuf, nb, H2_FRAME_SETTINGS, 0, 0);
             butil::IOBuf buf;
             buf.append(settingsbuf, FRAME_HEAD_SIZE + nb);
@@ -852,7 +948,7 @@ H2ParseResult H2Context::OnSettings(
         return MakeH2Message(NULL);
     }
     const int64_t old_initial_window_size = _remote_settings.initial_window_size;
-    if (!_remote_settings.ParseFrom(it, frame_head.payload_size)) {
+    if (!ParseH2Settings(&_remote_settings, it, frame_head.payload_size)) {
         LOG(ERROR) << "Fail to parse from SETTINGS";
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
@@ -1419,9 +1515,9 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
         out->append(H2_CONNECTION_PREFACE_PREFIX,
                     H2_CONNECTION_PREFACE_PREFIX_SIZE);
         
-        char settingsbuf[FRAME_HEAD_SIZE + H2Settings::MAX_BYTE_SIZE];
-        const size_t nb = ctx->_unack_local_settings.SerializeTo(
-            settingsbuf + FRAME_HEAD_SIZE);
+        char settingsbuf[FRAME_HEAD_SIZE + H2_SETTINGS_MAX_BYTE_SIZE];
+        const size_t nb = SerializeH2Settings(
+            ctx->_unack_local_settings, settingsbuf + FRAME_HEAD_SIZE);
         SerializeFrameHead(settingsbuf, nb, H2_FRAME_SETTINGS, 0, 0);
         out->append(settingsbuf, FRAME_HEAD_SIZE + nb);
     }

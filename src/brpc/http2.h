@@ -23,6 +23,9 @@
 namespace brpc {
 
 struct H2Settings {
+    // Construct with default values.
+    H2Settings();
+
     // Allows the sender to inform the remote endpoint of the maximum size of
     // the header compression table used to decode header blocks, in octets.
     // The encoder can select any size equal to or less than this value by
@@ -79,35 +82,9 @@ struct H2Settings {
     // enforced.
     // Default: unlimited.
     uint32_t max_header_list_size;
-
-    // Construct with default values.
-    H2Settings();
-
-    // True iff all fields are valid.
-    bool IsValid() const;
-
-    // [ https://tools.ietf.org/html/rfc7540#section-6.5.1 ]
-    // Parse from n bytes from the iterator.
-    // Returns true on success.
-    bool ParseFrom(butil::IOBufBytesIterator&, size_t n);
-    
-    // Bytes of serialized data.
-    size_t ByteSize() const;
-
-    // Maximum value that may be returned by ByteSize().
-    static const size_t MAX_BYTE_SIZE = 36;
-    
-    // Serialize to `out' which is at least ByteSize() bytes long.
-    // Returns bytes written.
-    size_t SerializeTo(void* out) const;
-
-    void Print(std::ostream&) const;
 };
 
-inline std::ostream& operator<<(std::ostream& os, const H2Settings& s) {
-    s.Print(os);
-    return os;
-}
+std::ostream& operator<<(std::ostream& os, const H2Settings& s);
 
 enum H2Error {
     H2_NO_ERROR            = 0x0, // Graceful shutdown
