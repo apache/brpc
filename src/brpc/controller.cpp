@@ -253,6 +253,7 @@ void Controller::InternalReset(bool in_constructor) {
     _response_stream = INVALID_STREAM_ID;
     _remote_stream_settings = NULL;
     _thrift_method_name = "";
+    _couchbase_key_read_replicas = "";
 }
 
 Controller::Call::Call(Controller::Call* rhs)

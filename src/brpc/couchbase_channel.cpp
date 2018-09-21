@@ -179,7 +179,7 @@ bool CouchbaseChannel::ParseListenUri(
         *streaming_uri = path;
         *init_uri = path;
         // remove "Streaming". "/bucketsStreaming/" -> "/buckets/"
-        init_uri->erase(pos + 8, 9);
+        init_uri->erase(pos + sizeof("/buckets") - 1, sizeof("Streaming") - 1);
         return true;
     } 
     pos = path.find("/buckets/");
@@ -188,7 +188,7 @@ bool CouchbaseChannel::ParseListenUri(
         *streaming_uri = path;
         *init_uri = path;
         // insert "Streaming". "/buckets/" -> "/bucketsStreaming/"
-        streaming_uri->insert(pos + 8, "Streaming");
+        streaming_uri->insert(pos + sizeof("/buckets") - 1, "Streaming");
         return true;
     } 
     return false;
