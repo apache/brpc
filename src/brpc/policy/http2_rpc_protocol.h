@@ -261,6 +261,25 @@ protected:
     void DestroyStreamCreator(Controller* cntl) override;
 };
 
+enum H2FrameType {
+    H2_FRAME_DATA          = 0x0,
+    H2_FRAME_HEADERS       = 0x1,
+    H2_FRAME_PRIORITY      = 0x2,
+    H2_FRAME_RST_STREAM    = 0x3,
+    H2_FRAME_SETTINGS      = 0x4,
+    H2_FRAME_PUSH_PROMISE  = 0x5,
+    H2_FRAME_PING          = 0x6,
+    H2_FRAME_GOAWAY        = 0x7,
+    H2_FRAME_WINDOW_UPDATE = 0x8,
+    H2_FRAME_CONTINUATION  = 0x9,
+    // ============================
+    H2_FRAME_TYPE_MAX      = 0x9
+};
+
+void SerializeFrameHead(void* out_buf, uint32_t payload_size,
+                        H2FrameType type, uint8_t flags,
+                        uint32_t stream_id);
+
 }  // namespace policy
 } // namespace brpc
 

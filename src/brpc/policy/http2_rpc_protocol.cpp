@@ -71,21 +71,6 @@ static const char* H2ConnectionState2Str(H2ConnectionState s) {
     return "UNKNOWN(H2ConnectionState)";
 }
 
-enum H2FrameType {
-    H2_FRAME_DATA          = 0x0,
-    H2_FRAME_HEADERS       = 0x1,
-    H2_FRAME_PRIORITY      = 0x2,
-    H2_FRAME_RST_STREAM    = 0x3,
-    H2_FRAME_SETTINGS      = 0x4,
-    H2_FRAME_PUSH_PROMISE  = 0x5,
-    H2_FRAME_PING          = 0x6,
-    H2_FRAME_GOAWAY        = 0x7,
-    H2_FRAME_WINDOW_UPDATE = 0x8,
-    H2_FRAME_CONTINUATION  = 0x9,
-    // ============================
-    H2_FRAME_TYPE_MAX      = 0x9
-};
-
 // A series of utilities to load numbers from http2 streams.
 inline uint8_t LoadUint8(butil::IOBufBytesIterator& it) {
     uint8_t v = *it;
@@ -461,9 +446,9 @@ ParseResult H2Context::ConsumeFrameHead(
     return MakeMessage(NULL);
 }
 
-static void SerializeFrameHead(void* out_buf, uint32_t payload_size,
-                               H2FrameType type, uint8_t flags,
-                               uint32_t stream_id) {
+void SerializeFrameHead(void* out_buf, uint32_t payload_size,
+                        H2FrameType type, uint8_t flags,
+                        uint32_t stream_id) {
     uint8_t* p = (uint8_t*)out_buf;
     *p++ = (payload_size >> 16) & 0xFF;
     *p++ = (payload_size >> 8) & 0xFF;

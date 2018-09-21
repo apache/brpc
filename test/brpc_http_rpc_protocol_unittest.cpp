@@ -20,6 +20,7 @@
 #include "brpc/controller.h"
 #include "echo.pb.h"
 #include "brpc/policy/http_rpc_protocol.h"
+#include "brpc/policy/http2_rpc_protocol.h"
 #include "json2pb/pb_to_json.h"
 #include "json2pb/json_to_pb.h"
 #include "brpc/details/method_status.h"
@@ -174,6 +175,37 @@ protected:
 
         EXPECT_EQ(expect_code, msg->header().status_code());
         msg->Destroy();
+    }
+
+    void MakeH2EchoRequestBuf(butil::IOBuf* out, brpc::Controller* cntl, brpc::Socket* socket, int* h2_stream_id) {
+        butil::IOBuf request_buf;
+        test::EchoRequest req;
+        req.set_message(EXP_REQUEST);
+        brpc::policy::SerializeHttpRequest(&request_buf, cntl, &req);
+        ASSERT_FALSE(cntl->Failed());
+        brpc::policy::H2UnsentRequest* h2_req = brpc::policy::H2UnsentRequest::New(cntl);
+        cntl->_current_call.stream_user_data = h2_req;
+        brpc::SocketMessage* socket_message = NULL;
+        brpc::policy::PackH2Request(NULL, &socket_message, cntl->call_id().value,
+                                    NULL, cntl, request_buf, NULL);
+        butil::Status st = socket_message->AppendAndDestroySelf(out, socket);
+        ASSERT_TRUE(st.ok());
+        *h2_stream_id = h2_req->_stream_id;
+    }
+
+    void MakeH2EchoResponseBuf(butil::IOBuf* out, brpc::Socket* socket, int h2_stream_id) {
+        brpc::Controller cntl;
+        test::EchoResponse res;
+        cntl.http_request()._h2_stream_id = h2_stream_id;
+        cntl.http_request().set_content_type("application/proto");
+        res.set_message(EXP_RESPONSE);
+        {
+            butil::IOBufAsZeroCopyOutputStream wrapper(&cntl.response_attachment());
+            EXPECT_TRUE(res.SerializeToZeroCopyStream(&wrapper));
+        }
+        brpc::policy::H2UnsentResponse* h2_res = brpc::policy::H2UnsentResponse::New(&cntl);
+        butil::Status st = h2_res->AppendAndDestroySelf(out, socket);
+        ASSERT_TRUE(st.ok());
     }
 
     int _pipe_fds[2];
@@ -946,4 +978,112 @@ TEST_F(HttpTest, http2_sanity) {
         ASSERT_EQ(EXP_RESPONSE, res.message());
     }
 }
+
+TEST_F(HttpTest, http2_ping) {
+    // This test injects PING frames before and after header and data.
+    brpc::Controller cntl;
+    brpc::SocketUniquePtr client_sock;
+    brpc::SocketId id;
+    brpc::SocketOptions options;
+    options.user = brpc::get_client_side_messenger();
+    EXPECT_EQ(0, brpc::Socket::Create(options, &id));
+    ASSERT_EQ(0, brpc::Socket::Address(id, &client_sock));
+
+    // Prepare request
+    butil::IOBuf req_out;
+    int h2_stream_id = 0;
+    MakeH2EchoRequestBuf(&req_out, &cntl, client_sock.get(), &h2_stream_id);
+    // Prepare response
+    butil::IOBuf res_out;
+    MakeH2EchoResponseBuf(&res_out, client_sock.get(), h2_stream_id);
+    char pingbuf[9 /*FRAME_HEAD_SIZE*/ + 8 /*Opaque Data*/];
+    brpc::policy::SerializeFrameHead(pingbuf, 8, brpc::policy::H2_FRAME_PING, 0, 0);
+    butil::IOBuf total_buf;
+    // insert ping before header and data
+    total_buf.append(pingbuf, sizeof(pingbuf));
+    total_buf.append(res_out);
+    // insert ping after header and data
+    total_buf.append(pingbuf, sizeof(pingbuf));
+    // parse response
+    brpc::ParseResult res_pr =
+            brpc::policy::ParseH2Message(&total_buf, client_sock.get(), false, NULL);
+    ASSERT_TRUE(res_pr.is_ok());
+    // process response
+    ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
+    ASSERT_FALSE(cntl.Failed());
+}
+
+inline void SaveUint32(void* out, uint32_t v) {
+    uint8_t* p = (uint8_t*)out;
+    p[0] = (v >> 24) & 0xFF;
+    p[1] = (v >> 16) & 0xFF;
+    p[2] = (v >> 8) & 0xFF;
+    p[3] = v & 0xFF;
+}
+
+TEST_F(HttpTest, http2_rst_before_header) {
+    brpc::Controller cntl;
+    brpc::SocketUniquePtr client_sock;
+    brpc::SocketId id;
+    brpc::SocketOptions options;
+    options.user = brpc::get_client_side_messenger();
+    EXPECT_EQ(0, brpc::Socket::Create(options, &id));
+    ASSERT_EQ(0, brpc::Socket::Address(id, &client_sock));
+
+    // Prepare request
+    butil::IOBuf req_out;
+    int h2_stream_id = 0;
+    MakeH2EchoRequestBuf(&req_out, &cntl, client_sock.get(), &h2_stream_id);
+    // Prepare response
+    butil::IOBuf res_out;
+    MakeH2EchoResponseBuf(&res_out, client_sock.get(), h2_stream_id);
+    char rstbuf[9 /*FRAME_HEAD_SIZE*/ + 4];
+    brpc::policy::SerializeFrameHead(rstbuf, 4, brpc::policy::H2_FRAME_RST_STREAM, 0, h2_stream_id);
+    SaveUint32(rstbuf + 9, brpc::H2_INTERNAL_ERROR);
+    butil::IOBuf total_buf;
+    total_buf.append(rstbuf, sizeof(rstbuf));
+    total_buf.append(res_out);
+    // parse response
+    brpc::ParseResult res_pr =
+            brpc::policy::ParseH2Message(&total_buf, client_sock.get(), false, NULL);
+    ASSERT_TRUE(res_pr.is_ok());
+    // process response
+    ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_TRUE(cntl.ErrorCode() == brpc::EHTTP);
+    ASSERT_TRUE(cntl.http_response().status_code() == brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR);
+}
+
+TEST_F(HttpTest, http2_rst_after_header_and_data) {
+    brpc::Controller cntl;
+    brpc::SocketUniquePtr client_sock;
+    brpc::SocketId id;
+    brpc::SocketOptions options;
+    options.user = brpc::get_client_side_messenger();
+    EXPECT_EQ(0, brpc::Socket::Create(options, &id));
+    ASSERT_EQ(0, brpc::Socket::Address(id, &client_sock));
+
+    // Prepare request
+    butil::IOBuf req_out;
+    int h2_stream_id = 0;
+    MakeH2EchoRequestBuf(&req_out, &cntl, client_sock.get(), &h2_stream_id);
+    // Prepare response
+    butil::IOBuf res_out;
+    MakeH2EchoResponseBuf(&res_out, client_sock.get(), h2_stream_id);
+    char rstbuf[9 /*FRAME_HEAD_SIZE*/ + 4];
+    brpc::policy::SerializeFrameHead(rstbuf, 4, brpc::policy::H2_FRAME_RST_STREAM, 0, h2_stream_id);
+    SaveUint32(rstbuf + 9, brpc::H2_INTERNAL_ERROR);
+    butil::IOBuf total_buf;
+    total_buf.append(res_out);
+    total_buf.append(rstbuf, sizeof(rstbuf));
+    // parse response
+    brpc::ParseResult res_pr =
+            brpc::policy::ParseH2Message(&total_buf, client_sock.get(), false, NULL);
+    ASSERT_TRUE(res_pr.is_ok());
+    // process response
+    ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
+    ASSERT_FALSE(cntl.Failed());
+    ASSERT_TRUE(cntl.http_response().status_code() == brpc::HTTP_STATUS_OK);
+}
+
 } //namespace
