@@ -1019,8 +1019,8 @@ private:
 class RtmpConnect : public AppConnect {
 public:
     // @AppConnect
-    void StartConnect(const Socket* s, void (*done)(int, void*), void* data);
-    void StopConnect(Socket* s);
+    void StartConnect(const Socket* s, void (*done)(int, void*), void* data) override;
+    void StopConnect(Socket* s) override;
 };
 
 void RtmpConnect::StartConnect(
@@ -1067,7 +1067,6 @@ void RtmpConnect::StopConnect(Socket* s) {
     } else {
         ctx->OnConnected(EFAILEDSOCKET);
     }
-    delete this;
 }
 
 class RtmpSocketCreator : public SocketCreator {
@@ -1078,7 +1077,7 @@ public:
 
     int CreateSocket(const SocketOptions& opt, SocketId* id) {
         SocketOptions sock_opt = opt;
-        sock_opt.app_connect = new RtmpConnect;
+        sock_opt.app_connect = std::make_shared<RtmpConnect>();
         sock_opt.initial_parsing_context = new policy::RtmpContext(&_connect_options, NULL);
         return get_client_side_messenger()->Create(sock_opt, id);
     }
@@ -1090,7 +1089,7 @@ private:
 int RtmpClientImpl::CreateSocket(const butil::EndPoint& pt, SocketId* id) {
     SocketOptions sock_opt;
     sock_opt.remote_side = pt;
-    sock_opt.app_connect = new RtmpConnect;
+    sock_opt.app_connect = std::make_shared<RtmpConnect>();
     sock_opt.initial_parsing_context = new policy::RtmpContext(&_connect_options, NULL);
     return get_client_side_messenger()->Create(sock_opt, id);
 }

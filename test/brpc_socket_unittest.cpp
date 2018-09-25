@@ -283,7 +283,6 @@ public:
     }
     void StopConnect(brpc::Socket*) {
         LOG(INFO) << "Stop application-level connect";
-        delete this;
     }
     void MakeConnectDone() {
         _done(0, _data);
@@ -313,7 +312,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
     brpc::SocketId id = 8888;
     brpc::SocketOptions options;
     options.remote_side = point;
-    MyConnect* my_connect = new MyConnect;
+    std::shared_ptr<MyConnect> my_connect = std::make_shared<MyConnect>();
     options.app_connect = my_connect;
     options.user = new CheckRecycle;
     ASSERT_EQ(0, brpc::Socket::Create(options, &id));

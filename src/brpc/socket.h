@@ -92,6 +92,8 @@ public:
 // Application-level connect. After TCP connected, the client sends some
 // sort of "connect" message to the server to establish application-level
 // connection.
+// Instances of AppConnect may be shared by multiple sockets and often
+// created by std::make_shared<T>() where T implements AppConnect
 class AppConnect {
 public:
     virtual ~AppConnect() {}
@@ -108,7 +110,6 @@ public:
 
     // Called when the host socket is setfailed or about to be recycled.
     // If the AppConnect is still in-progress, it should be canceled properly.
-    // This callback can delete self.
     virtual void StopConnect(Socket*) = 0;
 };
 
@@ -165,7 +166,7 @@ struct SocketOptions {
     std::shared_ptr<SocketSSLContext> initial_ssl_ctx;
     bthread_keytable_pool_t* keytable_pool;
     SocketConnection* conn;
-    AppConnect* app_connect;
+    std::shared_ptr<AppConnect> app_connect;
     // The created socket will set parsing_context with this value.
     Destroyable* initial_parsing_context;
 };
@@ -267,7 +268,6 @@ public:
     // `conn' parameter passed to Create()
     void set_conn(SocketConnection* conn) { _conn = conn; }
     SocketConnection* conn() const { return _conn; }
-    AppConnect* app_connect() const { return _app_connect; }
 
     // Saved contexts for parsing. Reset before trying new protocols and
     // recycling of the socket.
@@ -648,9 +648,6 @@ private:
     // carefully before implementing the callback.
     void (*_on_edge_triggered_events)(Socket*);
 
-    // Original options used to create this Socket
-    SocketOptions _options;
-
     // A set of callbacks to monitor important events of this socket.
     // Initialized by SocketOptions.user
     SocketUser* _user;
@@ -660,7 +657,7 @@ private:
 
     // User-level connection after TCP-connected.
     // Initialized by SocketOptions.app_connect.
-    AppConnect* _app_connect;
+    std::shared_ptr<AppConnect> _app_connect;
 
     // Identifier of this Socket in ResourcePool
     SocketId _this_id;
@@ -718,6 +715,7 @@ private:
 
     SSLState _ssl_state;
     SSL* _ssl_session;               // owner
+    std::shared_ptr<SocketSSLContext> _ssl_ctx;
 
     // Pass from controller, for progressive reading.
     ConnectionType _connection_type_for_progressive_read;

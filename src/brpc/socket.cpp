@@ -439,7 +439,6 @@ Socket::Socket(Forbidden)
     , _on_edge_triggered_events(NULL)
     , _user(NULL)
     , _conn(NULL)
-    , _app_connect(NULL)
     , _this_id(0)
     , _preferred_index(-1)
     , _hc_count(0)
@@ -639,6 +638,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     // Disable SSL check if there is no SSL context
     m->_ssl_state = (options.initial_ssl_ctx == NULL ? SSL_OFF : SSL_UNKNOWN);
     m->_ssl_session = NULL;
+    m->_ssl_ctx = options.initial_ssl_ctx;
     m->_connection_type_for_progressive_read = CONNECTION_TYPE_UNKNOWN;
     m->_controller_released_socket.store(false, butil::memory_order_relaxed);
     m->_overcrowded = false;
@@ -657,7 +657,6 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     }
     m->_last_writetime_us.store(cpuwide_now, butil::memory_order_relaxed);
     m->_unwritten_bytes.store(0, butil::memory_order_relaxed);
-    m->_options = options;
     CHECK(NULL == m->_write_head.load(butil::memory_order_relaxed));
     // Must be last one! Internal fields of this Socket may be access
     // just after calling ResetFileDescriptor.
@@ -1010,9 +1009,9 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
 void Socket::OnRecycle() {
     const bool create_by_connect = CreatedByConnect();
     if (_app_connect) {
-        AppConnect* const saved_app_connect = _app_connect;
-        _app_connect = NULL;
-        saved_app_connect->StopConnect(this);
+        std::shared_ptr<AppConnect> tmp;
+        _app_connect.swap(tmp);
+        tmp->StopConnect(this);
     }
     if (_conn) {
         SocketConnection* const saved_conn = _conn;
@@ -1051,7 +1050,7 @@ void Socket::OnRecycle() {
         _ssl_session = NULL;
     }
 
-    _options.initial_ssl_ctx = NULL;
+    _ssl_ctx = NULL;
     
     delete _pipeline_q;
     _pipeline_q = NULL;
@@ -1163,7 +1162,7 @@ int Socket::WaitEpollOut(int fd, bool pollin, const timespec* abstime) {
 
 int Socket::Connect(const timespec* abstime,
                     int (*on_connect)(int, int, void*), void* data) {
-    if (_options.initial_ssl_ctx) {
+    if (_ssl_ctx) {
         _ssl_state = SSL_CONNECTING;
     } else {
         _ssl_state = SSL_OFF;
@@ -1781,7 +1780,7 @@ ssize_t Socket::DoWrite(WriteRequest* req) {
 }
 
 int Socket::SSLHandshake(int fd, bool server_mode) {
-    if (_options.initial_ssl_ctx == NULL) {
+    if (_ssl_ctx == NULL) {
         if (server_mode) {
             LOG(ERROR) << "Lack SSL configuration to handle SSL request";
             return -1;
@@ -1794,14 +1793,14 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
         // Free the last session, which may be deprecated when socket failed
         SSL_free(_ssl_session);
     }
-    _ssl_session = CreateSSLSession(_options.initial_ssl_ctx->raw_ctx, id(), fd, server_mode);
+    _ssl_session = CreateSSLSession(_ssl_ctx->raw_ctx, id(), fd, server_mode);
     if (_ssl_session == NULL) {
         LOG(ERROR) << "Fail to CreateSSLSession";
         return -1;
     }
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-    if (!_options.initial_ssl_ctx->sni_name.empty()) {
-        SSL_set_tlsext_host_name(_ssl_session, _options.initial_ssl_ctx->sni_name.c_str());
+    if (!_ssl_ctx->sni_name.empty()) {
+        SSL_set_tlsext_host_name(_ssl_session, _ssl_ctx->sni_name.c_str());
     }
 #endif
 
@@ -2174,7 +2173,7 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
        << "\ncid=" << ptr->_correlation_id
        << "\nwrite_head=" << ptr->_write_head.load(butil::memory_order_relaxed)
        << "\nssl_state=" << SSLStateToString(ssl_state);
-    const SocketSSLContext* ssl_ctx = ptr->_options.initial_ssl_ctx.get();
+    const SocketSSLContext* ssl_ctx = ptr->_ssl_ctx.get();
     if (ssl_ctx) {
         os << "\ninitial_ssl_ctx=" << ssl_ctx->raw_ctx;
         if (!ssl_ctx->sni_name.empty()) {
@@ -2461,7 +2460,14 @@ int Socket::GetPooledSocket(Socket* main_socket,
     // Create socket_pool optimistically.
     SocketPool* socket_pool = main_sp->socket_pool.load(butil::memory_order_consume);
     if (socket_pool == NULL) {
-        socket_pool = new SocketPool(main_socket->_options);
+        SocketOptions opt;
+        opt.remote_side = main_socket->remote_side();
+        opt.user = main_socket->user();
+        opt.on_edge_triggered_events = main_socket->_on_edge_triggered_events;
+        opt.initial_ssl_ctx = main_socket->_ssl_ctx;
+        opt.keytable_pool = main_socket->_keytable_pool;
+        opt.app_connect = main_socket->_app_connect;
+        socket_pool = new SocketPool(opt);
         SocketPool* expected = NULL;
         if (!main_sp->socket_pool.compare_exchange_strong(
                 expected, socket_pool, butil::memory_order_acq_rel)) {
@@ -2543,8 +2549,13 @@ int Socket::GetShortSocket(Socket* main_socket,
         return -1;
     }
     SocketId id;
-    SocketOptions opt = main_socket->_options;
-    opt.health_check_interval_s = -1;
+    SocketOptions opt;
+    opt.remote_side = main_socket->remote_side();
+    opt.user = main_socket->user();
+    opt.on_edge_triggered_events = main_socket->_on_edge_triggered_events;
+    opt.initial_ssl_ctx = main_socket->_ssl_ctx;
+    opt.keytable_pool = main_socket->_keytable_pool;
+    opt.app_connect = main_socket->_app_connect;
     if (get_client_side_messenger()->Create(opt, &id) != 0) {
         return -1;
     }
