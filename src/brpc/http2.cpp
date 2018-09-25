@@ -23,17 +23,39 @@ H2Settings::H2Settings()
     : header_table_size(DEFAULT_HEADER_TABLE_SIZE)
     , enable_push(false)
     , max_concurrent_streams(std::numeric_limits<uint32_t>::max())
-    , initial_window_size(DEFAULT_INITIAL_WINDOW_SIZE)
+    , stream_window_size(256 * 1024)
+    , connection_window_size(1024 * 1024)
     , max_frame_size(DEFAULT_MAX_FRAME_SIZE)
     , max_header_list_size(std::numeric_limits<uint32_t>::max()) {
+}
+
+bool H2Settings::IsValid(bool log_error) const {
+    if (stream_window_size > MAX_WINDOW_SIZE) {
+        LOG_IF(ERROR, log_error) << "Invalid stream_window_size=" << stream_window_size;
+        return false;
+    }
+    if (connection_window_size < DEFAULT_INITIAL_WINDOW_SIZE ||
+        connection_window_size > MAX_WINDOW_SIZE) {
+        LOG_IF(ERROR, log_error) << "Invalid connection_window_size=" << connection_window_size;
+        return false;
+    }
+    if (max_frame_size < DEFAULT_MAX_FRAME_SIZE ||
+        max_frame_size > MAX_OF_MAX_FRAME_SIZE) {
+        LOG_IF(ERROR, log_error) << "Invalid max_frame_size=" << max_frame_size;
+        return false;
+    }
+    return true;
 }
 
 std::ostream& operator<<(std::ostream& os, const H2Settings& s) {
     os << "{header_table_size=" << s.header_table_size
        << " enable_push=" << s.enable_push
        << " max_concurrent_streams=" << s.max_concurrent_streams
-       << " initial_window_size=" << s.initial_window_size
-       << " max_frame_size=" << s.max_frame_size
+       << " stream_window_size=" << s.stream_window_size;
+    if (s.connection_window_size > 0) {
+        os << " conn_window_size=" << s.connection_window_size;
+    }
+    os << " max_frame_size=" << s.max_frame_size
        << " max_header_list_size=" << s.max_header_list_size
        << '}';
     return os;

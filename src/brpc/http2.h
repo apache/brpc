@@ -26,6 +26,9 @@ struct H2Settings {
     // Construct with default values.
     H2Settings();
 
+    // Returns true iff all options are valid.
+    bool IsValid(bool log_error = false) const;
+
     // Allows the sender to inform the remote endpoint of the maximum size of
     // the header compression table used to decode header blocks, in octets.
     // The encoder can select any size equal to or less than this value by
@@ -41,7 +44,7 @@ struct H2Settings {
     // parameter to 0 and had it acknowledged MUST treat the receipt of a
     // PUSH_PROMISE frame as a connection error (Section 5.4.1) of type
     // PROTOCOL_ERROR.
-    // Default: true (server push is permitted)
+    // Default: false (server push is disabled)
     static const bool DEFAULT_ENABLE_PUSH = true;
     bool enable_push;
 
@@ -60,10 +63,15 @@ struct H2Settings {
     // This setting affects the window size of all streams (see Section 6.9.2).
     // Values above the maximum flow-control window size of 2^31-1 are treated
     // as a connection error (Section 5.4.1) of type FLOW_CONTROL_ERROR
-    // Default: 65535
+    // Default: 256 * 1024
     static const uint32_t DEFAULT_INITIAL_WINDOW_SIZE = 65535;
-    static const uint32_t MAX_INITIAL_WINDOW_SIZE = (1u << 31) - 1;
-    uint32_t initial_window_size;
+    static const uint32_t MAX_WINDOW_SIZE = (1u << 31) - 1;
+    uint32_t stream_window_size;
+
+    // Initial window size for connection-level flow control.
+    // Default: 1024 * 1024
+    // Setting to zero stops printing this field.
+    uint32_t connection_window_size;
 
     // Size of the largest frame payload that the sender is willing to receive,
     // in octets. The value advertised by an endpoint MUST be between 16384 and

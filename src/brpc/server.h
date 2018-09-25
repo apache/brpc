@@ -231,7 +231,7 @@ struct ServerOptions {
     std::string enabled_protocols;
 
     // Customize parameters of HTTP2, defined in http2.h
-    H2Settings http2_settings;    
+    H2Settings h2_settings;
 
 private:
     // SSLOptions is large and not often used, allocate it on heap to
