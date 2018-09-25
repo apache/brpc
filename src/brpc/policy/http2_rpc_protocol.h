@@ -64,7 +64,44 @@ inline H2ParseResult MakeH2Message(H2StreamContext* msg)
 { return H2ParseResult(msg); }
 
 class H2Context;
-class H2FrameHead;
+
+enum H2FrameType {
+    H2_FRAME_DATA          = 0x0,
+    H2_FRAME_HEADERS       = 0x1,
+    H2_FRAME_PRIORITY      = 0x2,
+    H2_FRAME_RST_STREAM    = 0x3,
+    H2_FRAME_SETTINGS      = 0x4,
+    H2_FRAME_PUSH_PROMISE  = 0x5,
+    H2_FRAME_PING          = 0x6,
+    H2_FRAME_GOAWAY        = 0x7,
+    H2_FRAME_WINDOW_UPDATE = 0x8,
+    H2_FRAME_CONTINUATION  = 0x9,
+    // ============================
+    H2_FRAME_TYPE_MAX      = 0x9
+};
+
+// https://tools.ietf.org/html/rfc7540#section-4.1
+struct H2FrameHead {
+    // The length of the frame payload expressed as an unsigned 24-bit integer.
+    // Values greater than H2Settings.max_frame_size MUST NOT be sent
+    uint32_t payload_size;
+
+    // The 8-bit type of the frame. The frame type determines the format and
+    // semantics of the frame.  Implementations MUST ignore and discard any
+    // frame that has a type that is unknown.
+    H2FrameType type;
+
+    // An 8-bit field reserved for boolean flags specific to the frame type.
+    // Flags are assigned semantics specific to the indicated frame type.
+    // Flags that have no defined semantics for a particular frame type
+    // MUST be ignored and MUST be left unset (0x0) when sending.
+    uint8_t flags;
+
+    // A stream identifier (see Section 5.1.1) expressed as an unsigned 31-bit
+    // integer. The value 0x0 is reserved for frames that are associated with
+    // the connection as a whole as opposed to an individual stream.
+    int stream_id;
+};
 
 enum H2StreamState {
     H2_STREAM_IDLE = 0,
@@ -260,26 +297,104 @@ protected:
     void DestroyStreamCreator(Controller* cntl) override;
 };
 
-enum H2FrameType {
-    H2_FRAME_DATA          = 0x0,
-    H2_FRAME_HEADERS       = 0x1,
-    H2_FRAME_PRIORITY      = 0x2,
-    H2_FRAME_RST_STREAM    = 0x3,
-    H2_FRAME_SETTINGS      = 0x4,
-    H2_FRAME_PUSH_PROMISE  = 0x5,
-    H2_FRAME_PING          = 0x6,
-    H2_FRAME_GOAWAY        = 0x7,
-    H2_FRAME_WINDOW_UPDATE = 0x8,
-    H2_FRAME_CONTINUATION  = 0x9,
-    // ============================
-    H2_FRAME_TYPE_MAX      = 0x9
+enum H2ConnectionState {
+    H2_CONNECTION_UNINITIALIZED,
+    H2_CONNECTION_READY,
+    H2_CONNECTION_GOAWAY,
 };
 
 void SerializeFrameHead(void* out_buf,
                         uint32_t payload_size, H2FrameType type,
                         uint8_t flags, uint32_t stream_id);
 
-} // namespace policy
+size_t SerializeH2Settings(const H2Settings& in, void* out);
+
+const size_t FRAME_HEAD_SIZE = 9;
+
+// Contexts of a http2 connection
+class H2Context : public Destroyable, public Describable {
+public:
+    typedef H2ParseResult (H2Context::*FrameHandler)(
+        butil::IOBufBytesIterator&, const H2FrameHead&);
+
+    // main_socket: the socket owns this object as parsing_context
+    // server: NULL means client-side
+    H2Context(Socket* main_socket, const Server* server);
+    ~H2Context();
+    // Must be called before usage.
+    int Init();
+
+    H2ConnectionState state() const { return _conn_state; }
+    ParseResult Consume(butil::IOBufBytesIterator& it, Socket*);
+
+    void ClearAbandonedStreams();
+    void AddAbandonedStream(uint32_t stream_id);
+
+    //@Destroyable
+    void Destroy() override { delete this; }
+
+    int AllocateClientStreamId();
+    bool RunOutStreams() const;
+    // Try to map stream_id to ctx if stream_id does not exist before
+    // Returns true on success, false otherwise.
+    bool TryToInsertStream(int stream_id, H2StreamContext* ctx);
+    uint32_t VolatilePendingStreamSize() const;
+
+    HPacker& hpacker() { return _hpacker; }
+    const H2Settings& remote_settings() const { return _remote_settings; }
+    const H2Settings& local_settings() const { return _local_settings; }
+
+    bool is_client_side() const { return _socket->CreatedByConnect(); }
+    bool is_server_side() const { return !is_client_side(); }
+
+    void Describe(std::ostream& os, const DescribeOptions&) const;
+
+    void DeferWindowUpdate(int64_t);
+    int64_t ReleaseDeferredWindowUpdate();
+
+private:
+friend class H2StreamContext;
+friend class H2UnsentRequest;
+friend class H2UnsentResponse;
+friend void InitFrameHandlers();
+
+    ParseResult ConsumeFrameHead(butil::IOBufBytesIterator&, H2FrameHead*);
+
+    H2ParseResult OnData(butil::IOBufBytesIterator&, const H2FrameHead&);
+    H2ParseResult OnHeaders(butil::IOBufBytesIterator&, const H2FrameHead&);
+    H2ParseResult OnPriority(butil::IOBufBytesIterator&, const H2FrameHead&);
+    H2ParseResult OnResetStream(butil::IOBufBytesIterator&, const H2FrameHead&);
+    H2ParseResult OnSettings(butil::IOBufBytesIterator&, const H2FrameHead&);
+    H2ParseResult OnPushPromise(butil::IOBufBytesIterator&, const H2FrameHead&);
+    H2ParseResult OnPing(butil::IOBufBytesIterator&, const H2FrameHead&);
+    H2ParseResult OnGoAway(butil::IOBufBytesIterator&, const H2FrameHead&);
+    H2ParseResult OnWindowUpdate(butil::IOBufBytesIterator&, const H2FrameHead&);
+    H2ParseResult OnContinuation(butil::IOBufBytesIterator&, const H2FrameHead&);
+
+    H2StreamContext* RemoveStream(int stream_id);
+    H2StreamContext* FindStream(int stream_id);
+    void ClearAbandonedStreamsImpl();
+
+    // True if the connection is established by client, otherwise it's
+    // accepted by server.
+    Socket* _socket;
+    butil::atomic<int64_t> _remote_window_left;
+    H2ConnectionState _conn_state;
+    int _last_server_stream_id;
+    uint32_t _last_client_stream_id;
+    H2Settings _remote_settings;
+    H2Settings _local_settings;
+    H2Settings _unack_local_settings;
+    HPacker _hpacker;
+    mutable butil::Mutex _abandoned_streams_mutex;
+    std::vector<uint32_t> _abandoned_streams;
+    typedef butil::FlatMap<int, H2StreamContext*> StreamMap;
+    mutable butil::Mutex _stream_mutex;
+    StreamMap _pending_streams;
+    butil::atomic<int64_t> _deferred_window_update;
+};
+
+}  // namespace policy
 } // namespace brpc
 
 #endif // BAIDU_RPC_POLICY_HTTP2_RPC_PROTOCOL_H

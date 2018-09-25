@@ -68,11 +68,6 @@ const char* H2StreamState2Str(H2StreamState s) {
     return "unknown(H2StreamState)";
 }
 
-enum H2ConnectionState {
-    H2_CONNECTION_UNINITIALIZED,
-    H2_CONNECTION_READY,
-    H2_CONNECTION_GOAWAY,
-};
 static const char* H2ConnectionState2Str(H2ConnectionState s) {
     switch (s) {
     case H2_CONNECTION_UNINITIALIZED: return "UNINITIALIZED";
@@ -122,31 +117,6 @@ const uint8_t H2_FLAGS_PRIORITY = 0x20;
 #define H2_CONNECTION_PREFACE_PREFIX "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 const size_t H2_CONNECTION_PREFACE_PREFIX_SIZE = 24;
 
-const size_t FRAME_HEAD_SIZE = 9;
-
-// https://tools.ietf.org/html/rfc7540#section-4.1
-struct H2FrameHead {
-    // The length of the frame payload expressed as an unsigned 24-bit integer.
-    // Values greater than H2Settings.max_frame_size MUST NOT be sent
-    uint32_t payload_size;
-
-    // The 8-bit type of the frame. The frame type determines the format and
-    // semantics of the frame.  Implementations MUST ignore and discard any
-    // frame that has a type that is unknown.
-    H2FrameType type;
-
-    // An 8-bit field reserved for boolean flags specific to the frame type.
-    // Flags are assigned semantics specific to the indicated frame type.
-    // Flags that have no defined semantics for a particular frame type
-    // MUST be ignored and MUST be left unset (0x0) when sending.
-    uint8_t flags;
-
-    // A stream identifier (see Section 5.1.1) expressed as an unsigned 31-bit
-    // integer. The value 0x0 is reserved for frames that are associated with
-    // the connection as a whole as opposed to an individual stream.
-    int stream_id;
-};
-
 void SerializeFrameHead(void* out_buf,
                         uint32_t payload_size, H2FrameType type,
                         uint8_t flags, uint32_t stream_id) {
@@ -166,8 +136,6 @@ inline void SerializeFrameHead(void* out_buf, const H2FrameHead& h) {
     return SerializeFrameHead(out_buf, h.payload_size, h.type,
                               h.flags, h.stream_id);
 }
-
-static void InitFrameHandlers();
 
 // [ https://tools.ietf.org/html/rfc7540#section-6.5.1 ]
 
@@ -287,89 +255,6 @@ static size_t SerializeH2SettingsFrameAndWU(const H2Settings& in, void* out) {
     return static_cast<size_t>(p - (uint8_t*)out);
 }
 
-// Contexts of a http2 connection
-class H2Context : public Destroyable, public Describable {
-public:
-    typedef H2ParseResult (H2Context::*FrameHandler)(
-        butil::IOBufBytesIterator&, const H2FrameHead&);
-
-    // main_socket: the socket owns this object as parsing_context
-    // server: NULL means client-side
-    H2Context(Socket* main_socket, const Server* server);
-    ~H2Context();
-    // Must be called before usage.
-    int Init();
-    
-    H2ConnectionState state() const { return _conn_state; }
-    ParseResult Consume(butil::IOBufBytesIterator& it, Socket*);
-
-    void ClearAbandonedStreams();
-    void AddAbandonedStream(uint32_t stream_id);
-    
-    //@Destroyable
-    void Destroy() override { delete this; }
-
-    int AllocateClientStreamId();
-    bool RunOutStreams() const;
-    // Try to map stream_id to ctx if stream_id does not exist before
-    // Returns true on success, false otherwise.
-    bool TryToInsertStream(int stream_id, H2StreamContext* ctx);
-    uint32_t VolatilePendingStreamSize() const;
-    
-    HPacker& hpacker() { return _hpacker; }
-    const H2Settings& remote_settings() const { return _remote_settings; }
-    const H2Settings& local_settings() const { return _local_settings; }
-
-    bool is_client_side() const { return _socket->CreatedByConnect(); }
-    bool is_server_side() const { return !is_client_side(); }
-
-    void Describe(std::ostream& os, const DescribeOptions&) const;
-
-    void DeferWindowUpdate(int64_t);
-    int64_t ReleaseDeferredWindowUpdate();
-
-private:
-friend class H2StreamContext;
-friend class H2UnsentRequest;
-friend class H2UnsentResponse;
-friend void InitFrameHandlers();
-
-    ParseResult ConsumeFrameHead(butil::IOBufBytesIterator&, H2FrameHead*);
-
-    H2ParseResult OnData(butil::IOBufBytesIterator&, const H2FrameHead&);
-    H2ParseResult OnHeaders(butil::IOBufBytesIterator&, const H2FrameHead&);
-    H2ParseResult OnPriority(butil::IOBufBytesIterator&, const H2FrameHead&);
-    H2ParseResult OnResetStream(butil::IOBufBytesIterator&, const H2FrameHead&);
-    H2ParseResult OnSettings(butil::IOBufBytesIterator&, const H2FrameHead&);
-    H2ParseResult OnPushPromise(butil::IOBufBytesIterator&, const H2FrameHead&);
-    H2ParseResult OnPing(butil::IOBufBytesIterator&, const H2FrameHead&);
-    H2ParseResult OnGoAway(butil::IOBufBytesIterator&, const H2FrameHead&);
-    H2ParseResult OnWindowUpdate(butil::IOBufBytesIterator&, const H2FrameHead&);
-    H2ParseResult OnContinuation(butil::IOBufBytesIterator&, const H2FrameHead&);
-
-    H2StreamContext* RemoveStream(int stream_id);
-    H2StreamContext* FindStream(int stream_id);
-    void ClearAbandonedStreamsImpl();
-    
-    // True if the connection is established by client, otherwise it's
-    // accepted by server.
-    Socket* _socket;
-    butil::atomic<int64_t> _remote_window_left;
-    H2ConnectionState _conn_state;
-    int _last_server_stream_id;
-    uint32_t _last_client_stream_id;
-    H2Settings _remote_settings;
-    H2Settings _local_settings;
-    H2Settings _unack_local_settings;
-    HPacker _hpacker;
-    mutable butil::Mutex _abandoned_streams_mutex;
-    std::vector<uint32_t> _abandoned_streams;
-    typedef butil::FlatMap<int, H2StreamContext*> StreamMap;
-    mutable butil::Mutex _stream_mutex;
-    StreamMap _pending_streams;
-    butil::atomic<int64_t> _deferred_window_update;
-};
-
 inline bool AddWindowSize(butil::atomic<int64_t>* window_size, int64_t diff) {
     // A sender MUST NOT allow a flow-control window to exceed 2^31 - 1.
     // If a sender receives a WINDOW_UPDATE that causes a flow-control window 
@@ -406,9 +291,8 @@ inline bool MinusWindowSize(butil::atomic<int64_t>* window_size, int64_t size) {
 }
 
 static H2Context::FrameHandler s_frame_handlers[H2_FRAME_TYPE_MAX + 1];
-    
 static pthread_once_t s_frame_handlers_init_once = PTHREAD_ONCE_INIT;
-static void InitFrameHandlers() {
+void InitFrameHandlers() {
     s_frame_handlers[H2_FRAME_DATA] = &H2Context::OnData;
     s_frame_handlers[H2_FRAME_HEADERS] = &H2Context::OnHeaders;
     s_frame_handlers[H2_FRAME_PRIORITY] = &H2Context::OnPriority;
@@ -447,8 +331,8 @@ H2Context::H2Context(Socket* socket, const Server* server)
     }
 #if defined(UNIT_TEST)
     // In ut, we hope _last_client_stream_id run out quickly to test the correctness
-    // of creating new h2 socket. This value is 100,000 less than 0x7FFFFFFF.
-    _last_client_stream_id = 0x7FFE795F;
+    // of creating new h2 socket. This value is 10,000 less than 0x7FFFFFFF.
+    _last_client_stream_id = 0x7fffd8ef;
 #endif
 }
 
@@ -1504,8 +1388,8 @@ private:
 
 void H2UnsentRequest::DestroyStreamUserData(SocketUniquePtr& sending_sock,
                                             Controller* cntl,
-                                            int error_code,
-                                            bool end_of_rpc) {
+                                            int /*error_code*/,
+                                            bool /*end_of_rpc*/) {
     RemoveRefOnQuit deref_self(this);
     if (sending_sock != NULL && cntl->ErrorCode() != 0) {
         CHECK_EQ(cntl, _cntl);
