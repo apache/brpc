@@ -30,7 +30,6 @@
 #endif
 
 namespace brpc {
-
 namespace policy {
 
 class H2StreamContext;
@@ -276,11 +275,11 @@ enum H2FrameType {
     H2_FRAME_TYPE_MAX      = 0x9
 };
 
-void SerializeFrameHead(void* out_buf, uint32_t payload_size,
-                        H2FrameType type, uint8_t flags,
-                        uint32_t stream_id);
+void SerializeFrameHead(void* out_buf,
+                        uint32_t payload_size, H2FrameType type,
+                        uint8_t flags, uint32_t stream_id);
 
-}  // namespace policy
+} // namespace policy
 } // namespace brpc
 
 #endif // BAIDU_RPC_POLICY_HTTP2_RPC_PROTOCOL_H

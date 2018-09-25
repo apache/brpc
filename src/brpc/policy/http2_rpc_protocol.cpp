@@ -147,9 +147,9 @@ struct H2FrameHead {
     int stream_id;
 };
 
-static void SerializeFrameHead(void* out_buf, uint32_t payload_size,
-                               H2FrameType type, uint8_t flags,
-                               uint32_t stream_id) {
+void SerializeFrameHead(void* out_buf,
+                        uint32_t payload_size, H2FrameType type,
+                        uint8_t flags, uint32_t stream_id) {
     uint8_t* p = (uint8_t*)out_buf;
     *p++ = (payload_size >> 16) & 0xFF;
     *p++ = (payload_size >> 8) & 0xFF;
