@@ -204,7 +204,6 @@ protected:
         butil::Status st = socket_message->AppendAndDestroySelf(out, _h2_client_sock.get());
         ASSERT_TRUE(st.ok());
         *h2_stream_id = h2_req->_stream_id;
-        h2_req->DestroyStreamUserData(_h2_client_sock, cntl, 0, false);
     }
 
     void MakeH2EchoResponseBuf(butil::IOBuf* out, int h2_stream_id) {
