@@ -67,11 +67,18 @@ public:
 
 class MyEchoService : public ::test::EchoService {
 public:
-    void Echo(::google::protobuf::RpcController*,
+    void Echo(::google::protobuf::RpcController* cntl_base,
               const ::test::EchoRequest* req,
               ::test::EchoResponse* res,
               ::google::protobuf::Closure* done) {
         brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl =
+            static_cast<brpc::Controller*>(cntl_base);
+        const std::string* sleep_ms_str =
+            cntl->http_request().uri().GetQuery("sleep_ms");
+        if (sleep_ms_str) {
+            bthread_usleep(strtol(sleep_ms_str->data(), NULL, 10) * 1000);
+        }
 
         EXPECT_EQ(EXP_REQUEST, req->message());
         res->set_message(EXP_RESPONSE);
@@ -973,7 +980,6 @@ TEST_F(HttpTest, http2_sanity) {
     options.protocol = "h2c";
     ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
 
-
     // 1) complete flow and
     // 2) socket replacement when streamId runs out, the initial streamId is a special
     // value set in ctor of H2Context
@@ -1167,8 +1173,58 @@ TEST_F(HttpTest, http2_invalid_settings) {
     }
 }
 
-TEST_F(HttpTest, http2_client_not_close_socket_when_timeout) {
+TEST_F(HttpTest, http2_not_closing_socket_when_rpc_timeout) {
+    const int port = 8923;
+    brpc::Server server;
+    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    EXPECT_EQ(0, server.Start(port, NULL));
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = "h2c";
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
 
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    {
+        // make a successful call to create the connection first
+        brpc::Controller cntl;
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.http_request().uri() = "/EchoService/Echo";
+        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+        ASSERT_FALSE(cntl.Failed());
+        ASSERT_EQ(EXP_RESPONSE, res.message());
+    }
+
+    brpc::SocketUniquePtr main_ptr;
+    EXPECT_EQ(brpc::Socket::Address(channel._server_id, &main_ptr), 0);
+    brpc::SocketId agent_id = main_ptr->_agent_socket_id.load(butil::memory_order_relaxed);
+
+    for (int i = 0; i < 4; i++) {
+        brpc::Controller cntl;
+        cntl.set_timeout_ms(50);
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.http_request().uri() = "/EchoService/Echo?sleep_ms=300";
+        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+        ASSERT_TRUE(cntl.Failed());
+
+        brpc::SocketUniquePtr ptr;
+        brpc::SocketId id = main_ptr->_agent_socket_id.load(butil::memory_order_relaxed);
+        EXPECT_EQ(id, agent_id);
+    }
+
+    {
+        // make a successful call again to make sure agent_socket not changing
+        brpc::Controller cntl;
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.http_request().uri() = "/EchoService/Echo";
+        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+        ASSERT_FALSE(cntl.Failed());
+        ASSERT_EQ(EXP_RESPONSE, res.message());
+        brpc::SocketUniquePtr ptr;
+        brpc::SocketId id = main_ptr->_agent_socket_id.load(butil::memory_order_relaxed);
+        EXPECT_EQ(id, agent_id);
+    }
 }
 
 } //namespace
