@@ -53,6 +53,7 @@ namespace butil {
 class IOBuf {
 friend class IOBufAsZeroCopyInputStream;
 friend class IOBufAsZeroCopyOutputStream;
+friend class IOBufBytesIterator;
 public:
     static const size_t DEFAULT_BLOCK_SIZE = 8192;
     static const size_t INITIAL_CAP = 32; // must be power of 2
@@ -650,19 +651,30 @@ private:
 };
 
 // Iterate bytes of a IOBuf.
-// During iteration, the iobuf should NOT be changed. For example,
-// IOBufBytesIterator will not iterate more data appended to the iobuf after
-// iterator's creation. This is for performance consideration.
+// During iteration, the iobuf should NOT be changed.
 class IOBufBytesIterator {
 public:
     explicit IOBufBytesIterator(const butil::IOBuf& buf);
-    char operator*() const { return *_block_begin; }
+    // Construct from another iterator.
+    IOBufBytesIterator(const IOBufBytesIterator& it);
+    IOBufBytesIterator(const IOBufBytesIterator& it, size_t bytes_left);
+    // Returning unsigned is safer than char which would be more error prone
+    // to bitwise operations. For example: in "uint32_t value = *it", value
+    // is (unexpected) 4294967168 when *it returns (char)128.
+    unsigned char operator*() const { return (unsigned char)*_block_begin; }
     operator const void*() const { return (const void*)!!_bytes_left; }
     void operator++();
     void operator++(int) { return operator++(); }
     // Copy at most n bytes into buf, forwarding this iterator.
+    // Returns bytes copied.
     size_t copy_and_forward(void* buf, size_t n);
     size_t copy_and_forward(std::string* s, size_t n);
+    // Just forward this iterator for at most n bytes.
+    size_t forward(size_t n);
+    // Append at most n bytes into buf, forwarding this iterator. Data are
+    // referenced rather than copied.
+    size_t append_and_forward(butil::IOBuf* buf, size_t n);
+    bool forward_one_block(const void** data, size_t* size);
     size_t bytes_left() const { return _bytes_left; }
 private:
     void try_next_block();

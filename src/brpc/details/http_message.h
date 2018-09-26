@@ -22,6 +22,7 @@
 #include "butil/macros.h"
 #include "butil/iobuf.h"                     // butil::IOBuf
 #include "butil/scoped_lock.h"               // butil::unique_lock
+#include "butil/endpoint.h"
 #include "brpc/details/http_parser.h"  // http_parser
 #include "brpc/http_header.h"          // HttpHeader
 #include "brpc/progressive_reader.h"   // ProgressiveReader

@@ -1678,38 +1678,26 @@ void RtmpClientStream::SignalError() {
     }
 }
 
-void RtmpClientStream::CleanupSocketForStream(
-    Socket* prev_sock, Controller*, int /*error_code*/) {
-    if (prev_sock) {
-        if (_from_socketmap) {
-            _client_impl->socket_map().Remove(SocketMapKey(prev_sock->remote_side()),
-                                              prev_sock->id());
-        } else {
-            prev_sock->SetFailed(); // not necessary, already failed.
-        }
-    }
-}
-
-void RtmpClientStream::ReplaceSocketForStream(
+StreamUserData* RtmpClientStream::OnCreatingStream(
     SocketUniquePtr* inout, Controller* cntl) {
     {
         std::unique_lock<butil::Mutex> mu(_state_mutex);
         if (_state == STATE_ERROR || _state == STATE_DESTROYING) {
             cntl->SetFailed(EINVAL, "Fail to replace socket for stream, _state is error or destroying");
-            return;
+            return NULL;
         }
     }
     SocketId esid;
     if (cntl->connection_type() == CONNECTION_TYPE_SHORT) {
         if (_client_impl->CreateSocket((*inout)->remote_side(), &esid) != 0) {
             cntl->SetFailed(EINVAL, "Fail to create RTMP socket");
-            return;
+            return NULL;
         }
     } else {
         if (_client_impl->socket_map().Insert(
                 SocketMapKey((*inout)->remote_side()), &esid) != 0) {
             cntl->SetFailed(EINVAL, "Fail to get the RTMP socket");
-            return;
+            return NULL;
         }
     }
     SocketUniquePtr tmp_ptr;
@@ -1717,12 +1705,13 @@ void RtmpClientStream::ReplaceSocketForStream(
         cntl->SetFailed(EFAILEDSOCKET, "Fail to address RTMP SocketId=%" PRIu64
                         " from SocketMap of RtmpClient=%p",
                         esid, _client_impl.get());
-        return;
+        return NULL;
     }
     RPC_VLOG << "Replace Socket For Stream, RTMP socketId=" << esid
              << ", main socketId=" << (*inout)->id();
     tmp_ptr->ShareStats(inout->get());
     inout->reset(tmp_ptr.release());
+    return this;
 }
 
 int RtmpClientStream::RunOnFailed(bthread_id_t id, void* data, int) {
@@ -1757,15 +1746,31 @@ void RtmpClientStream::OnFailedToCreateStream() {
     return OnStopInternal();
 }
 
-void RtmpClientStream::OnStreamCreationDone(SocketUniquePtr& sending_sock,
-                                            Controller* cntl) {
-    // Always move sending_sock into _rtmpsock.
-    // - If the RPC is successful, moving sending_sock prevents it from
-    //   setfailed in Controller after calling this method.
-    // - If the RPC is failed, OnStopInternal() can clean up the socket_map
-    //   inserted in ReplaceSocketForStream().
-    _rtmpsock.swap(sending_sock);
-    
+void RtmpClientStream::DestroyStreamUserData(SocketUniquePtr& sending_sock,
+                                             Controller* cntl,
+                                             int /*error_code*/,
+                                             bool end_of_rpc) {
+    if (!end_of_rpc) {
+        if (sending_sock) {
+            if (_from_socketmap) {
+                _client_impl->socket_map().Remove(SocketMapKey(sending_sock->remote_side()),
+                        sending_sock->id());
+            } else {
+                sending_sock->SetFailed();  // not necessary, already failed.
+            }
+        }
+    } else {
+        // Always move sending_sock into _rtmpsock at the end of rpc.
+        // - If the RPC is successful, moving sending_sock prevents it from
+        //   setfailed in Controller after calling this method.
+        // - If the RPC is failed, OnStopInternal() can clean up the socket_map
+        //   inserted in OnCreatingStream().
+        _rtmpsock.swap(sending_sock);
+    }
+}
+
+
+void RtmpClientStream::DestroyStreamCreator(Controller* cntl) {
     if (cntl->Failed()) {
         if (_rtmpsock != NULL &&
             // ^ If sending_sock is NULL, the RPC fails before _pack_request

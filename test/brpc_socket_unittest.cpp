@@ -502,7 +502,7 @@ TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
         ASSERT_EQ(wait_id.value, data.id.value);
         ASSERT_EQ(ECONNREFUSED, data.error_code);
         ASSERT_TRUE(butil::StringPiece(data.error_text).starts_with(
-                        "Fail to connect SocketId="));
+                        "Fail to connect socket="));
 #else
         ASSERT_EQ(-1, s->Write(&src));
         ASSERT_EQ(ECONNREFUSED, errno);
@@ -582,7 +582,7 @@ TEST_F(SocketTest, health_check) {
     ASSERT_EQ(wait_id.value, data.id.value);
     ASSERT_EQ(ECONNREFUSED, data.error_code);
     ASSERT_TRUE(butil::StringPiece(data.error_text).starts_with(
-                    "Fail to connect SocketId="));
+                    "Fail to connect socket="));
     if (use_my_message) {
         ASSERT_TRUE(appended_msg);
     }

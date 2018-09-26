@@ -68,7 +68,6 @@ endif
 http_server:$(PROTO_OBJS) $(SERVER_OBJS)
 	@echo "Linking $@"
 ifneq ("$(LINK_SO)", "")
-	@echo "@$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@"
 	@$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
 else
 	@$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@

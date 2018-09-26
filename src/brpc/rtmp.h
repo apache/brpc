@@ -780,7 +780,8 @@ struct RtmpClientStreamOptions {
 // Represent a "NetStream" in AS. Multiple streams can be multiplexed
 // into one TCP connection.
 class RtmpClientStream : public RtmpStreamBase
-                       , public StreamCreator {
+                       , public StreamCreator
+                       , public StreamUserData {
 public:
     RtmpClientStream();
 
@@ -821,9 +822,14 @@ friend class RtmpRetryingClientStream;
     int Publish(const butil::StringPiece& name, RtmpPublishType type);
 
     // @StreamCreator
-    void ReplaceSocketForStream(SocketUniquePtr* inout, Controller* cntl);
-    void OnStreamCreationDone(SocketUniquePtr& sending_sock, Controller* cntl);
-    void CleanupSocketForStream(Socket* prev_sock, Controller*, int error_code);
+    StreamUserData* OnCreatingStream(SocketUniquePtr* inout, Controller* cntl) override;
+    void DestroyStreamCreator(Controller* cntl) override;
+
+    // @StreamUserData
+    void DestroyStreamUserData(SocketUniquePtr& sending_sock,
+                               Controller* cntl,
+                               int error_code,
+                               bool end_of_rpc) override;
 
     void OnFailedToCreateStream();
     

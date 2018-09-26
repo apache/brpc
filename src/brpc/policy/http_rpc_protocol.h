@@ -19,7 +19,6 @@
 #define BRPC_POLICY_HTTP_RPC_PROTOCOL_H
 
 #include "brpc/details/http_message.h"         // HttpMessage
-#include "brpc/details/controller_private_accessor.h"
 #include "brpc/input_messenger.h"              // InputMessenger
 #include "brpc/protocol.h"
 

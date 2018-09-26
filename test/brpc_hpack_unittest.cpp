@@ -12,18 +12,22 @@ class HPackTest : public testing::Test {
 
 // Copied test cases from example of rfc7541
 TEST_F(HPackTest, header_with_indexing) {
+    char c = 128;
+    uint8_t c2 = c;
+    printf("%u %u %d %d\n", (uint32_t)c, (uint32_t)c2, (int)c, (int)c2);
+
     brpc::HPacker p1;
     ASSERT_EQ(0, p1.Init(4096));
     brpc::HPacker p2;
     ASSERT_EQ(0, p2.Init(4096));
     brpc::HPacker::Header h;
-    h.name = "custom-key";
+    h.name = "Custom-Key";
     h.value = "custom-header";
     brpc::HPackOptions options;
     options.index_policy = brpc::HPACK_INDEX_HEADER;
     butil::IOBufAppender buf;
-    ssize_t nwrite = p1.Encode(&buf, h, options);
-    ASSERT_EQ((size_t)nwrite, buf.buf().length());
+    p1.Encode(&buf, h, options);
+    const size_t nwrite = buf.buf().size();
     LOG(INFO) << butil::PrintedAsBinary(buf.buf());
     uint8_t expected[] = {
         0x40, 0x0a, 0x63, 0x75, 0x73, 0x74, 0x6f, 0x6d, 0x2d, 0x6b, 0x65, 0x79,
@@ -35,7 +39,9 @@ TEST_F(HPackTest, header_with_indexing) {
     ssize_t nread = p2.Decode(&buf.buf(), &h2);
     ASSERT_EQ(nread, nwrite);
     ASSERT_TRUE(buf.buf().empty());
-    ASSERT_EQ(h.name, h2.name);
+    std::string lowercase_name = h.name;
+    brpc::tolower(&lowercase_name);
+    ASSERT_EQ(lowercase_name, h2.name);
     ASSERT_EQ(h.value, h2.value);
 }
 
@@ -50,8 +56,8 @@ TEST_F(HPackTest, header_without_indexing) {
     brpc::HPackOptions options;
     options.index_policy = brpc::HPACK_NOT_INDEX_HEADER;
     butil::IOBufAppender buf;
-    ssize_t nwrite = p1.Encode(&buf, h, options);
-    ASSERT_EQ((size_t)nwrite, buf.buf().length());
+    p1.Encode(&buf, h, options);
+    const size_t nwrite = buf.buf().size();
     LOG(INFO) << butil::PrintedAsBinary(buf.buf());
     uint8_t expected[] = {
         0x04, 0x0c, 0x2f, 0x73, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x2f, 0x70, 0x61,
@@ -63,7 +69,9 @@ TEST_F(HPackTest, header_without_indexing) {
     ssize_t nread = p2.Decode(&buf.buf(), &h2);
     ASSERT_EQ(nread, nwrite);
     ASSERT_TRUE(buf.buf().empty());
-    ASSERT_EQ(h.name, h2.name);
+    std::string lowercase_name = h.name;
+    brpc::tolower(&lowercase_name);
+    ASSERT_EQ(lowercase_name, h2.name);
     ASSERT_EQ(h.value, h2.value);
 }
 
@@ -78,11 +86,12 @@ TEST_F(HPackTest, header_never_indexed) {
     brpc::HPackOptions options;
     options.index_policy = brpc::HPACK_NEVER_INDEX_HEADER;
     butil::IOBufAppender buf;
-    ssize_t nwrite = p1.Encode(&buf, h, options);
-    ASSERT_EQ((size_t)nwrite, buf.buf().length());
+    p1.Encode(&buf, h, options);
+    const size_t nwrite = buf.buf().size();
     LOG(INFO) << butil::PrintedAsBinary(buf.buf());
     uint8_t expected[] = {
-        0x10, 0x08, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x06, 0x73, 0x65, 0x63, 0x72, 0x65, 0x74, 
+        0x10, 0x08, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64,
+        0x06, 0x73, 0x65, 0x63, 0x72, 0x65, 0x74, 
     };
     butil::StringPiece sp((char*)expected, sizeof(expected));
     ASSERT_TRUE(buf.buf().equals(sp));
@@ -105,8 +114,8 @@ TEST_F(HPackTest, indexed_header) {
     brpc::HPackOptions options;
     options.index_policy = brpc::HPACK_INDEX_HEADER;
     butil::IOBufAppender buf;
-    ssize_t nwrite = p1.Encode(&buf, h, options);
-    ASSERT_EQ((size_t)nwrite, buf.buf().length());
+    p1.Encode(&buf, h, options);
+    const ssize_t nwrite = buf.buf().size();
     LOG(INFO) << butil::PrintedAsBinary(buf.buf());
     uint8_t expected[] = {
         0x82,
