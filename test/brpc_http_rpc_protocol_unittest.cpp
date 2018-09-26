@@ -1131,21 +1131,40 @@ TEST_F(HttpTest, http2_settings) {
     brpc::policy::ParseH2Message(&buf, _socket.get(), false, NULL);
 
     butil::IOPortal response_buf;
-    CHECK_EQ(response_buf.append_from_file_descriptor(_pipe_fds[0], 1024), (ssize_t)brpc::policy::FRAME_HEAD_SIZE);
+    CHECK_EQ(response_buf.append_from_file_descriptor(_pipe_fds[0], 1024),
+             (ssize_t)brpc::policy::FRAME_HEAD_SIZE);
     brpc::policy::H2FrameHead frame_head;
     butil::IOBufBytesIterator it(response_buf);
     ctx->ConsumeFrameHead(it, &frame_head);
     CHECK_EQ(frame_head.type, brpc::policy::H2_FRAME_SETTINGS);
     CHECK_EQ(frame_head.flags, 0x01 /* H2_FLAGS_ACK */);
     CHECK_EQ(frame_head.stream_id, 0);
-
     ASSERT_TRUE(ctx->_remote_settings.header_table_size == 8192);
     ASSERT_TRUE(ctx->_remote_settings.max_concurrent_streams == 1024);
     ASSERT_TRUE(ctx->_remote_settings.stream_window_size == (1u << 29) - 1);
 }
 
 TEST_F(HttpTest, http2_invalid_settings) {
-
+    {
+        brpc::Server server;
+        brpc::ServerOptions options;
+        options.h2_settings.stream_window_size = brpc::H2Settings::MAX_WINDOW_SIZE + 1;
+        ASSERT_EQ(-1, server.Start("127.0.0.1:8924", &options));
+    }
+    {
+        brpc::Server server;
+        brpc::ServerOptions options;
+        options.h2_settings.max_frame_size =
+            brpc::H2Settings::DEFAULT_MAX_FRAME_SIZE - 1;
+        ASSERT_EQ(-1, server.Start("127.0.0.1:8924", &options));
+    }
+    {
+        brpc::Server server;
+        brpc::ServerOptions options;
+        options.h2_settings.max_frame_size =
+            brpc::H2Settings::MAX_OF_MAX_FRAME_SIZE + 1;
+        ASSERT_EQ(-1, server.Start("127.0.0.1:8924", &options));
+    }
 }
 
 TEST_F(HttpTest, http2_client_not_close_socket_when_timeout) {
