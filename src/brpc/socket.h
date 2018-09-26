@@ -42,6 +42,7 @@ namespace brpc {
 namespace policy {
 class ConsistentHashingLoadBalancer;
 class RtmpContext;
+class CouchbaseLoadBalancer;
 }  // namespace policy
 namespace schan {
 class ChannelBalancer;
@@ -184,6 +185,7 @@ friend class policy::ConsistentHashingLoadBalancer;
 friend class policy::RtmpContext;
 friend class schan::ChannelBalancer;
 friend class HealthCheckTask;
+friend class policy::CouchbaseLoadBalancer;
     class SharedPart;
     struct Forbidden {};
     struct WriteRequest;

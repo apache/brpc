@@ -21,7 +21,6 @@ namespace brpc {
 
 DEFINE_bool(couchbase_disable_retry_during_rebalance, false, 
             "A swith indicating whether to open retry during rebalance status");
-
 DEFINE_bool(couchbase_disable_retry_during_active, false,
             "A swith indicating whether to open retry during active status");
 
@@ -49,7 +48,7 @@ SocketId CouchbaseHelper::GetForwardMaster(const VBucketServerMap* vb_map,
 
 SocketId CouchbaseHelper::GetReplicaId(const VBucketServerMap* vb_map, 
                                        const size_t vb_id, const size_t i) {
-    if (vb_id < vb_map->vbucket.size() && i <= vb_map->num_replicas) {
+    if (vb_id < vb_map->vbucket.size() && i > 0 && i <= vb_map->num_replicas) {
         const int index = vb_map->vbucket[vb_id][i];
         if (index >= 0 && index < static_cast<int>(vb_map->server_list.size())) {
             return vb_map->server_list[index];
@@ -62,8 +61,11 @@ bool CouchbaseHelper::GetVBucketMapInfo(
     butil::intrusive_ptr<SharedLoadBalancer> shared_lb, 
     size_t* server_num, size_t* vb_num, bool* rebalance) {
     policy::CouchbaseLoadBalancer* lb = 
-        dynamic_cast<policy::CouchbaseLoadBalancer*>(shared_lb->lb()); 
-    CHECK(lb != nullptr) << "Failed to get couchbase load balancer.";
+        dynamic_cast<policy::CouchbaseLoadBalancer*>(shared_lb->lb());
+    if (lb == nullptr) {
+        LOG(FATAL) << "Failed to get couchbase load balancer.";
+        return false;
+    }
     return lb->GetVBucketMapInfo(server_num, vb_num, rebalance);
 }
 

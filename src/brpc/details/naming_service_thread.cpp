@@ -205,7 +205,7 @@ void NamingServiceThread::Actions::ResetServers(
             }
             butil::Time::Exploded exploded_time;
             butil::Time::Now().LocalExplode(&exploded_time);
-            butil::string_appendf(&_owner->_log_buf, "\nE%02d%02d %02d:%02d:%02d.%d %s", 
+            butil::string_appendf(&_owner->_log_buf, "\nI%02d%02d %02d:%02d:%02d.%03d %s", 
                                   exploded_time.month, exploded_time.day_of_month, 
                                   exploded_time.hour, exploded_time.minute,
                                   exploded_time.second, exploded_time.millisecond, 

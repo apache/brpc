@@ -22,7 +22,6 @@
 #include "butil/containers/doubly_buffered_data.h"
 #include "brpc/couchbase_helper.h"
 #include "brpc/load_balancer.h"
-#include "butil/third_party/libvbucket/vbucket.h"
 
 namespace brpc {
 
@@ -84,13 +83,15 @@ private:
         return false;
     }
 		
-    bool UpdateVBucketMap(butil::VBUCKET_CONFIG_HANDLE vb_conf);
+    bool UpdateVBucketMap(const std::string& vbucket_map_str, 
+                          const std::map<std::string, SocketId>* server_id_map);
 
     static bool Update(VBucketServerMap& vbucket_map, 
                        const size_t num_replicas,
                        std::vector<std::vector<int>>& vbucket,
                        std::vector<std::vector<int>>& fvbucket,
-                       std::vector<brpc::SocketId>& server_list);
+                       std::vector<brpc::SocketId>& server_list,
+                       const std::map<std::string, SocketId>* server_id_map);
 	
     SocketId GetDetectedMaster(const VBucketServerMap* vb_map, 
                                const size_t vb_id);
@@ -101,7 +102,7 @@ private:
     void UpdateDetectedMasterIfNeeded(
         const bool is_reading_replicas, const uint32_t vb_id, 
         const uint32_t reason, const std::string& curr_server);
-	
+				
     // We need detect new vbucket map due to current vbucket map is invalid 
     // during rebalance.
     std::unique_ptr<DetectedVBucketMap> _detected_vbucket_map;

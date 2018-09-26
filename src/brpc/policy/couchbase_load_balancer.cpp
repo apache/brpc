@@ -20,24 +20,18 @@
 #include "brpc/policy/couchbase_load_balancer.h"
 #include "butil/fast_rand.h"
 #include "butil/macros.h"
+#include "butil/third_party/libvbucket/vbucket.h"
 
 
 namespace brpc {
 namespace policy {
 
 
-bool GetMappedSocketId(const char* addr, SocketId* id) {
-    butil::EndPoint point;
-    if (str2endpoint(addr, &point) != 0 &&
-        hostname2endpoint(addr, &point) != 0) {
-        LOG(FATAL) << "Invalid couchbase server address=`" << addr << '\'';
-        return false;
-    }
-    return 0 == SocketMapFind(SocketMapKey(point), id);
-}
-
 bool CouchbaseLoadBalancer::UpdateVBucketMap(
-    butil::VBUCKET_CONFIG_HANDLE vb_conf) {
+    const std::string& vbucket_map_str, 
+    const std::map<std::string, SocketId>* server_id_map) {
+    butil::VBUCKET_CONFIG_HANDLE vb_conf = 
+        butil::vbucket_config_parse_string(vbucket_map_str.c_str());
     if (vb_conf == nullptr) {
         LOG(ERROR) << "Null VBUCKET_CONFIG_HANDLE.";
         return false;
@@ -45,9 +39,9 @@ bool CouchbaseLoadBalancer::UpdateVBucketMap(
 
     butil::VBUCKET_DISTRIBUTION_TYPE distribution = 
         butil::vbucket_config_get_distribution_type(vb_conf);
-    // TODO: ketama distribution
     if (distribution != butil::VBUCKET_DISTRIBUTION_VBUCKET) {
-        LOG(FATAL) << "Only support vbucket distribution.";
+        LOG(FATAL) << "Only support this type of vbucket distribution: " << distribution;
+        butil::vbucket_config_destroy(vb_conf);
         return false;
     }
     const size_t vb_num = butil::vbucket_config_get_num_vbuckets(vb_conf);
@@ -79,14 +73,25 @@ bool CouchbaseLoadBalancer::UpdateVBucketMap(
             } 
         }
     }
+    const std::map<std::string, SocketId>* curr_server_id_map = nullptr;
+    const VBucketServerMap* vb_map = vbucket_map();
+    if (vb_map) {
+        curr_server_id_map = &vb_map->server_id_map;
+    }
+    std::map<std::string, SocketId>::const_iterator iter;
     for (size_t i = 0; i != server_num; ++i) {
         const char* addr = butil::vbucket_config_get_server(vb_conf, i);
-        CHECK(GetMappedSocketId(addr, &servers[i]))
-            << "Failed to find socket id of address=\'" << addr << '\'';
+        if ((server_id_map && 
+            ((iter = server_id_map->find(addr)) != server_id_map->end())) 
+            || (curr_server_id_map && 
+            (iter = curr_server_id_map->find(addr)) != curr_server_id_map->end())) {
+            servers[i] = iter->second;
+        } else {
+            CHECK(false) << "Failed to find socket id of address=\'" << addr << '\'';
+        }
     }
     uint64_t version = 0;
     bool last_rebalance = false;
-    const VBucketServerMap* vb_map = vbucket_map();
     if (vb_map) {
         last_rebalance = IsInRebalancing(vb_map);
         version = vb_map->version;
@@ -94,7 +99,7 @@ bool CouchbaseLoadBalancer::UpdateVBucketMap(
     bool curr_rebalance = !fvbuckets.empty();
 	
     auto fn = std::bind(Update, std::placeholders::_1, replicas_num, 
-                        vbuckets, fvbuckets, servers);
+                        vbuckets, fvbuckets, servers, server_id_map);
     bool ret = _vbucket_map.Modify(fn);
 
     if (!last_rebalance && curr_rebalance) {
@@ -110,22 +115,15 @@ bool CouchbaseLoadBalancer::UpdateVBucketMap(
         LOG(ERROR) << "Couchbase quit rebalance status from version " 
                    << ++version;
     }
-
+		butil::vbucket_config_destroy(vb_conf);
     return ret;
 }
 
 bool CouchbaseLoadBalancer::AddServer(const ServerId& id) {
-    if (id.tag.empty()) {
-        return false;
+    if (!id.tag.empty()) {
+        return UpdateVBucketMap(id.tag, nullptr);
     }
-    bool ret = false;
-    butil::VBUCKET_CONFIG_HANDLE vb = 
-        butil::vbucket_config_parse_string(id.tag.c_str());
-    if (vb != nullptr) {
-        ret = UpdateVBucketMap(vb);
-        butil::vbucket_config_destroy(vb);
-    }
-    return ret;
+    return false;
 }
 
 bool CouchbaseLoadBalancer::RemoveServer(const ServerId& id) {
@@ -135,11 +133,22 @@ bool CouchbaseLoadBalancer::RemoveServer(const ServerId& id) {
 size_t CouchbaseLoadBalancer::AddServersInBatch(
     const std::vector<ServerId>& servers) {
     size_t n = 0;
+    const ServerId* server_with_vbucket_map = nullptr;
+    std::map<std::string, SocketId> server_id_map;
     for (const auto& server : servers) {
         if (!server.tag.empty()) {
-            n = !!AddServer(server);
+            server_with_vbucket_map = &server;
+            continue;
         }
+        SocketUniquePtr ptr;
+        if (Socket::AddressFailedAsWell(server.id, &ptr) == -1) {
+            continue;
+        }
+        server_id_map.emplace(endpoint2str(ptr->remote_side()).c_str(), 
+                              server.id);
+        ++n;
     }
+    n += !!UpdateVBucketMap(server_with_vbucket_map->tag, &server_id_map);
     return n;
 }
 
@@ -199,7 +208,7 @@ int CouchbaseLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         break;
     default: // other retry case
         SocketId master_id = CouchbaseHelper::GetMaster(vb_map.get(), vb_id);
-        SocketId curr_id = in.excluded->GetLastId();
+		    SocketId curr_id = in.excluded->GetLastId();
         SocketId dummy_id = 0;
         if (IsInRebalancing(vb_map.get())) {
             selected_id = GetDetectedMaster(vb_map.get(), vb_id);
@@ -268,7 +277,8 @@ bool CouchbaseLoadBalancer::Update(VBucketServerMap& vbucket_map,
                                    const size_t num_replicas,
                                    std::vector<std::vector<int>>& vbucket,
                                    std::vector<std::vector<int>>& fvbucket,
-                                   std::vector<SocketId>& servers) {
+                                   std::vector<SocketId>& servers,
+                                   const std::map<std::string, SocketId>* server_id_map) {
     ++(vbucket_map.version);
     vbucket_map.num_replicas = num_replicas;
     vbucket_map.vbucket.swap(vbucket);
@@ -277,6 +287,15 @@ bool CouchbaseLoadBalancer::Update(VBucketServerMap& vbucket_map,
     vbucket_map.server_map.clear();
     for (size_t i = 0; i != vbucket_map.server_list.size(); ++i) {
         vbucket_map.server_map.emplace(vbucket_map.server_list[i], i);
+    }
+    // Override old 'server_id_map' by new one.
+    if (server_id_map != nullptr) {
+        for (auto iter = server_id_map->begin(); iter != server_id_map->end(); ++iter) {
+            auto curr_iter = vbucket_map.server_id_map.emplace(*iter);
+            if (!curr_iter.second) {
+                curr_iter.first->second = iter->second;
+            }
+        }
     }
     return true;
 }
@@ -328,7 +347,10 @@ void CouchbaseLoadBalancer::UpdateDetectedMasterIfNeeded(
         return;
     }
     SocketId id = 0;
-    if (!GetMappedSocketId(curr_server.c_str(), &id)) {
+    const auto iter = vb_map->server_id_map.find(curr_server); 
+    if (iter != vb_map->server_id_map.end()) {
+        id = iter->second;
+    } else {
         return;
     }
     DetectedMaster& detect_master = (*_detected_vbucket_map)[vb_id];
