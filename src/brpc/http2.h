@@ -15,7 +15,7 @@
 #ifndef BAIDU_RPC_HTTP2_H
 #define BAIDU_RPC_HTTP2_H
 
-#include "butil/iobuf.h"
+#include "brpc/http_status_code.h"
 
 // To baidu-rpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
@@ -111,7 +111,11 @@ enum H2Error {
     H2_HTTP_1_1_REQUIRED   = 0xd, // Use HTTP/1.1 for the request   
 };
 
+// Get description of the error.
 const char* H2ErrorToString(H2Error e);
+
+// Convert the error to status code with similar semantics
+int H2ErrorToStatusCode(H2Error e);
 
 } // namespace brpc
 

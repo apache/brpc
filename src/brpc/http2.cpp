@@ -82,4 +82,31 @@ const char* H2ErrorToString(H2Error e) {
     return "Unknown-H2Error";
 }
 
+int H2ErrorToStatusCode(H2Error e) {
+    switch (e) {
+    case H2_NO_ERROR:
+        return HTTP_STATUS_OK;
+    case H2_SETTINGS_TIMEOUT:
+        return HTTP_STATUS_GATEWAY_TIMEOUT;
+    case H2_STREAM_CLOSED_ERROR:
+        return HTTP_STATUS_BAD_REQUEST;
+    case H2_REFUSED_STREAM:
+    case H2_CANCEL:
+    case H2_ENHANCE_YOUR_CALM:
+        return HTTP_STATUS_SERVICE_UNAVAILABLE;
+    case H2_INADEQUATE_SECURITY:
+        return HTTP_STATUS_UNAUTHORIZED;
+    case H2_HTTP_1_1_REQUIRED:
+        return HTTP_STATUS_VERSION_NOT_SUPPORTED;
+    case H2_PROTOCOL_ERROR:
+    case H2_FLOW_CONTROL_ERROR:
+    case H2_FRAME_SIZE_ERROR:
+    case H2_COMPRESSION_ERROR:
+    case H2_CONNECT_ERROR:
+    case H2_INTERNAL_ERROR:
+        return HTTP_STATUS_INTERNAL_SERVER_ERROR;
+    }
+    return HTTP_STATUS_INTERNAL_SERVER_ERROR;
+}
+
 } // namespace brpc

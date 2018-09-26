@@ -299,26 +299,21 @@ void ProcessHttpResponse(InputMessageBase* msg) {
         // ErrorCode of RPC is unified to EHTTP.
         const int sc = res_header->status_code();
         if (sc < 200 || sc >= 300) {
+            std::string err = butil::string_printf(
+                    "HTTP/%d.%d %d %s",
+                    res_header->major_version(),
+                    res_header->minor_version(),
+                    static_cast<int>(res_header->status_code()),
+                    res_header->reason_phrase());
             if (!res_body.empty()) {
                 // Use content as error text if it's present. Notice that
                 // content may be binary data, so the size limit is a must.
-                std::string body_str;
-                res_body.copy_to(
-                    &body_str, std::min((int)res_body.size(),
+                err.append(": ");
+                res_body.append_to(
+                    &err, std::min((int)res_body.size(),
                                         FLAGS_http_max_error_length));
-                cntl->SetFailed(EHTTP, "HTTP/%d.%d %d %s: %.*s",
-                                res_header->major_version(),
-                                res_header->minor_version(),
-                                static_cast<int>(res_header->status_code()),
-                                res_header->reason_phrase(),
-                                (int)body_str.size(), body_str.c_str());
-            } else {
-                cntl->SetFailed(EHTTP, "HTTP/%d.%d %d %s",
-                                res_header->major_version(),
-                                res_header->minor_version(),
-                                static_cast<int>(res_header->status_code()),
-                                res_header->reason_phrase());
             }
+            cntl->SetFailed(EHTTP, "%s", err.c_str());
             if (cntl->response() == NULL ||
                 cntl->response()->GetDescriptor()->field_count() == 0) {
                 // A http call. Http users may need the body(containing a html,
