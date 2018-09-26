@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "brpc/http2.h"
-#include "brpc/details/hpack.h"
 #include <limits>
 #include "butil/logging.h"
+#include "brpc/details/hpack.h"
+#include "brpc/errno.pb.h"
+#include "brpc/http2.h"
 
 namespace brpc {
 

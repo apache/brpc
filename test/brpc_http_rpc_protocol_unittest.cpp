@@ -211,13 +211,12 @@ protected:
         brpc::Controller cntl;
         test::EchoResponse res;
         res.set_message(EXP_RESPONSE);
-        cntl.http_request()._h2_stream_id = h2_stream_id;
         cntl.http_request().set_content_type("application/proto");
         {
             butil::IOBufAsZeroCopyOutputStream wrapper(&cntl.response_attachment());
             EXPECT_TRUE(res.SerializeToZeroCopyStream(&wrapper));
         }
-        brpc::policy::H2UnsentResponse* h2_res = brpc::policy::H2UnsentResponse::New(&cntl);
+        brpc::policy::H2UnsentResponse* h2_res = brpc::policy::H2UnsentResponse::New(&cntl, h2_stream_id);
         butil::Status st = h2_res->AppendAndDestroySelf(out, _h2_client_sock.get());
         ASSERT_TRUE(st.ok());
     }
@@ -687,7 +686,7 @@ TEST_F(HttpTest, read_long_body_progressively) {
         {
             brpc::Channel channel;
             brpc::ChannelOptions options;
-            options.protocol = brpc::PROTOCOL_HTTP2;
+            options.protocol = brpc::PROTOCOL_HTTP;
             ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
             {
                 brpc::Controller cntl;
@@ -1109,7 +1108,7 @@ TEST_F(HttpTest, http2_window_used_up) {
         if (i == nsuc) {
             // the last message should fail according to flow control policy.
             ASSERT_FALSE(st.ok());
-            ASSERT_TRUE(st.error_code() == EAGAIN);
+            ASSERT_TRUE(st.error_code() == brpc::ELIMIT);
             ASSERT_TRUE(butil::StringPiece(st.error_str()).starts_with("remote_window_left is not enough"));
         } else {
             ASSERT_TRUE(st.ok());

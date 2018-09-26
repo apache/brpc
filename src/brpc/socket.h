@@ -489,6 +489,8 @@ public:
     // Returns true if the remote side is overcrowded.
     bool is_overcrowded() const { return _overcrowded; }
 
+    bthread_keytable_pool_t* keytable_pool() const { return _keytable_pool; }
+
 private:
     DISALLOW_COPY_AND_ASSIGN(Socket);
 

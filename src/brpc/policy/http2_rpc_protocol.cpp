@@ -26,6 +26,7 @@ namespace brpc {
 DECLARE_bool(http_verbose);
 DECLARE_int32(http_verbose_max_body_length);
 DECLARE_int32(health_check_interval);
+DECLARE_bool(usercode_in_pthread);
 
 namespace policy {
 
@@ -318,6 +319,7 @@ H2Context::H2Context(Socket* socket, const Server* server)
     , _conn_state(H2_CONNECTION_UNINITIALIZED)
     , _last_server_stream_id(-1)
     , _last_client_stream_id(1)
+    , _goaway_stream_id(-1)
     , _deferred_window_update(0) {
     // Stop printing the field which is useless for remote settings.
     _remote_settings.connection_window_size = 0;
@@ -344,49 +346,6 @@ H2Context::~H2Context() {
     _pending_streams.clear();
 }
 
-H2StreamContext::H2StreamContext()
-    : _conn_ctx(NULL)
-#if defined(BRPC_H2_STREAM_STATE)
-    , _state(H2_STREAM_IDLE)
-#endif
-    , _stream_ended(false)
-    , _remote_window_left(0)
-    , _deferred_window_update(0)
-    , _correlation_id(INVALID_BTHREAD_ID.value) {
-    header().set_version(2, 0);
-#ifndef NDEBUG
-    get_http2_bvars()->h2_stream_context_count << 1;
-#endif
-}
-
-H2StreamContext::~H2StreamContext() {
-#ifndef NDEBUG
-    get_http2_bvars()->h2_stream_context_count << -1;
-#endif
-}
-
-bool H2StreamContext::ConsumeWindowSize(int64_t size) {
-    // This method is guaranteed to be called in AppendAndDestroySelf() which
-    // is run sequentially. As a result, _remote_window_left of this stream
-    // context will not be decremented (may be incremented) because following
-    // AppendAndDestroySelf() are not run yet.
-    // This fact is important to make window_size changes to stream and
-    // connection contexts transactionally.
-    if (_remote_window_left.load(butil::memory_order_relaxed) < size) {
-        return false;
-    }
-    if (!MinusWindowSize(&_conn_ctx->_remote_window_left, size)) {
-        return false;
-    }
-    int64_t after_sub = _remote_window_left.fetch_sub(size, butil::memory_order_relaxed) - size;
-    if (after_sub < 0) {
-        LOG(FATAL) << "Impossible, the http2 impl is buggy";
-        _remote_window_left.fetch_add(size, butil::memory_order_relaxed);
-        return false;
-    }
-    return true;
-}
-
 int H2Context::Init() {
     if (_pending_streams.init(64, 70) != 0) {
         LOG(ERROR) << "Fail to init _pending_streams";
@@ -399,19 +358,6 @@ int H2Context::Init() {
     return 0;
 }
 
-inline int H2Context::AllocateClientStreamId() {
-    if (RunOutStreams()) {
-        return -1;
-    }
-    const int id = _last_client_stream_id;
-    _last_client_stream_id += 2;
-    return id;
-}
-
-inline bool H2Context::RunOutStreams() const {
-    return (_last_client_stream_id > 0x7FFFFFFF);
-}
-
 H2StreamContext* H2Context::RemoveStream(int stream_id) {
     H2StreamContext* sctx = NULL;
     std::unique_lock<butil::Mutex> mu(_stream_mutex);
@@ -419,6 +365,35 @@ H2StreamContext* H2Context::RemoveStream(int stream_id) {
         return sctx;
     }
     return NULL;
+}
+
+void H2Context::RemoveGoAwayStreams(
+    int goaway_stream_id, std::vector<H2StreamContext*>* out_streams) {
+    out_streams->clear();
+
+    if (goaway_stream_id == 0) {  // quick path
+        StreamMap tmp;
+        {
+            std::unique_lock<butil::Mutex> mu(_stream_mutex);
+            _goaway_stream_id = goaway_stream_id;
+            _pending_streams.swap(tmp);
+        }
+        for (StreamMap::const_iterator it = tmp.begin(); it != tmp.end(); ++it) {
+            out_streams->push_back(it->second);
+        }
+    } else {
+        std::unique_lock<butil::Mutex> mu(_stream_mutex);
+        _goaway_stream_id = goaway_stream_id;
+        for (StreamMap::const_iterator it = _pending_streams.begin();
+             it != _pending_streams.end(); ++it) {
+            if (it->first > goaway_stream_id) {
+                out_streams->push_back(it->second);
+            }
+        }
+        for (size_t i = 0; i < out_streams->size(); ++i) {
+            _pending_streams.erase((*out_streams)[i]->stream_id());
+        }
+    }
 }
 
 H2StreamContext* H2Context::FindStream(int stream_id) {
@@ -430,18 +405,17 @@ H2StreamContext* H2Context::FindStream(int stream_id) {
     return NULL;
 }
 
-bool H2Context::TryToInsertStream(int stream_id, H2StreamContext* ctx) {
+int H2Context::TryToInsertStream(int stream_id, H2StreamContext* ctx) {
     std::unique_lock<butil::Mutex> mu(_stream_mutex);
+    if (_goaway_stream_id >= 0 && stream_id > _goaway_stream_id) {
+        return 1;
+    }
     H2StreamContext*& sctx = _pending_streams[stream_id];
     if (sctx == NULL) {
         sctx = ctx;
-        return true;
+        return 0;
     }
-    return false;
-}
-
-inline uint32_t H2Context::VolatilePendingStreamSize() const {
-    return _pending_streams.size();
+    return -1;
 }
 
 ParseResult H2Context::ConsumeFrameHead(
@@ -598,10 +572,14 @@ H2ParseResult H2Context::OnHeaders(
         }
         _last_server_stream_id = frame_head.stream_id;
         sctx = new H2StreamContext(this, frame_head.stream_id);
-        if (!TryToInsertStream(frame_head.stream_id, sctx)) {
+        const int rc = TryToInsertStream(frame_head.stream_id, sctx);
+        if (rc < 0) {
             delete sctx;
-            LOG(ERROR) << "Fail to insert stream_id=" << frame_head.stream_id;
+            LOG(ERROR) << "Fail to insert existing stream_id=" << frame_head.stream_id;
             return MakeH2Error(H2_PROTOCOL_ERROR);
+        } else if (rc > 0) {
+            delete sctx;
+            return MakeH2Error(H2_REFUSED_STREAM);
         }
     } else {
         sctx = FindStream(frame_head.stream_id);
@@ -808,7 +786,6 @@ H2ParseResult H2StreamContext::OnResetStream(
     }
     if (_conn_ctx->is_client_side()) {
         sctx->header().set_status_code(HTTP_STATUS_INTERNAL_SERVER_ERROR);
-        sctx->header()._h2_error = h2_error;
         return MakeH2Message(sctx);
     } else {
         // No need to process the request.
@@ -937,12 +914,40 @@ H2ParseResult H2Context::OnPing(
     return MakeH2Message(NULL);
 }
 
+static void* ProcessHttpResponseWrapper(void* void_arg) {
+    ProcessHttpResponse(static_cast<InputMessageBase*>(void_arg));
+    return NULL;
+}
+
 H2ParseResult H2Context::OnGoAway(
-    butil::IOBufBytesIterator&, const H2FrameHead&) {
-    // TODO(zhujiashun): deal with the stream identifier of the
-    // last peer-initiated stream that was or might be processed
-    // on the sending endpoint in this connection.
-    return MakeH2Message(NULL);
+    butil::IOBufBytesIterator&, const H2FrameHead& h) {
+    if (is_client_side()) {
+        // The socket will not be selected for further requests.
+        _socket->SetLogOff();
+
+        std::vector<H2StreamContext*> goaway_streams;
+        RemoveGoAwayStreams(h.stream_id, &goaway_streams);
+        if (goaway_streams.empty()) {
+            return MakeH2Message(NULL);
+        }
+        for (size_t i = 0; i < goaway_streams.size(); ++i) {
+            H2StreamContext* sctx = goaway_streams[i];
+            sctx->header().set_status_code(HTTP_STATUS_SERVICE_UNAVAILABLE);
+        }
+        for (size_t i = 1; i < goaway_streams.size(); ++i) {
+            bthread_t th;
+            bthread_attr_t tmp = (FLAGS_usercode_in_pthread ?
+                                  BTHREAD_ATTR_PTHREAD :
+                                  BTHREAD_ATTR_NORMAL);
+            tmp.keytable_pool = _socket->keytable_pool();
+            CHECK_EQ(0, bthread_start_background(
+                         &th, &tmp, ProcessHttpResponseWrapper, goaway_streams[i]));
+        }
+        return MakeH2Message(goaway_streams[0]);
+    } else {
+        // server serves requests on-demand, ignoring GOAWAY is OK.
+        return MakeH2Message(NULL);
+    }
 }
                           
 H2ParseResult H2Context::OnWindowUpdate(
@@ -1105,11 +1110,27 @@ void H2Context::ClearAbandonedStreamsImpl() {
     }
 }
 
+H2StreamContext::H2StreamContext()
+    : _conn_ctx(NULL)
+#if defined(BRPC_H2_STREAM_STATE)
+    , _state(H2_STREAM_IDLE)
+#endif
+    , _stream_id(0)
+    , _stream_ended(false)
+    , _remote_window_left(0)
+    , _deferred_window_update(0)
+    , _correlation_id(INVALID_BTHREAD_ID.value) {
+    header().set_version(2, 0);
+#ifndef NDEBUG
+    get_http2_bvars()->h2_stream_context_count << 1;
+#endif
+}
+
 void H2StreamContext::Init(H2Context* conn_ctx, int stream_id) {
     _conn_ctx = conn_ctx;
+    _stream_id = stream_id;
     _remote_window_left.store(conn_ctx->remote_settings().stream_window_size,
                               butil::memory_order_relaxed);
-    header()._h2_stream_id = stream_id;
 }
 
 H2StreamContext::H2StreamContext(H2Context* conn_ctx, int stream_id)
@@ -1117,14 +1138,20 @@ H2StreamContext::H2StreamContext(H2Context* conn_ctx, int stream_id)
 #if defined(BRPC_H2_STREAM_STATE)
     , _state(H2_STREAM_IDLE)
 #endif
+    , _stream_id(stream_id)
     , _stream_ended(false)
     , _remote_window_left(conn_ctx->remote_settings().stream_window_size)
     , _deferred_window_update(0)
     , _correlation_id(INVALID_BTHREAD_ID.value) {
     header().set_version(2, 0);
-    header()._h2_stream_id = stream_id;
 #ifndef NDEBUG
     get_http2_bvars()->h2_stream_context_count << 1;
+#endif
+}
+
+H2StreamContext::~H2StreamContext() {
+#ifndef NDEBUG
+    get_http2_bvars()->h2_stream_context_count << -1;
 #endif
 }
 
@@ -1137,6 +1164,28 @@ void H2StreamContext::SetState(H2StreamState state) {
              << H2StreamState2Str(state);
 }
 #endif
+
+bool H2StreamContext::ConsumeWindowSize(int64_t size) {
+    // This method is guaranteed to be called in AppendAndDestroySelf() which
+    // is run sequentially. As a result, _remote_window_left of this stream
+    // context will not be decremented (may be incremented) because following
+    // AppendAndDestroySelf() are not run yet.
+    // This fact is important to make window_size changes to stream and
+    // connection contexts transactionally.
+    if (_remote_window_left.load(butil::memory_order_relaxed) < size) {
+        return false;
+    }
+    if (!MinusWindowSize(&_conn_ctx->_remote_window_left, size)) {
+        return false;
+    }
+    int64_t after_sub = _remote_window_left.fetch_sub(size, butil::memory_order_relaxed) - size;
+    if (after_sub < 0) {
+        LOG(FATAL) << "Impossible, the http2 impl is buggy";
+        _remote_window_left.fetch_add(size, butil::memory_order_relaxed);
+        return false;
+    }
+    return true;
+}
 
 int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
     HPacker& hpacker = _conn_ctx->hpacker();
@@ -1425,7 +1474,7 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
         ctx = new H2Context(socket, NULL);
         if (ctx->Init() != 0) {
             delete ctx;
-            return butil::Status(EINVAL, "Fail to init H2Context");
+            return butil::Status(EINTERNAL, "Fail to init H2Context");
         }
         socket->initialize_parsing_context(&ctx);
         
@@ -1440,10 +1489,9 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
         out->append(settingsbuf, nb);
     }
 
-    // FIXME(gejun): Replace EAGAIN
     // TODO(zhujiashun): also check this in server push
     if (ctx->VolatilePendingStreamSize() > ctx->remote_settings().max_concurrent_streams) {
-        return butil::Status(EAGAIN, "Pending Stream count exceeds max concurrent stream");
+        return butil::Status(ELIMIT, "Pending Stream count exceeds max concurrent stream");
     }
 
     // Although the critical section looks huge, it should rarely be contended
@@ -1464,9 +1512,13 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     }
     H2StreamContext* sctx = _sctx.release();
     sctx->Init(ctx, id);
-    if (!ctx->TryToInsertStream(id, sctx)) {
+    const int rc = ctx->TryToInsertStream(id, sctx);
+    if (rc < 0) {
         delete sctx;
-        return butil::Status(ECANCELED, "stream_id already exists");
+        return butil::Status(EINTERNAL, "Fail to insert existing stream_id");
+    } else if (rc > 0) {
+        delete sctx;
+        return butil::Status(ELOGOFF, "the connection just issued GOAWAY");
     }
     _stream_id = sctx->stream_id();
 
@@ -1474,7 +1526,7 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     if (!_cntl->request_attachment().empty()) {
         const int64_t data_size = _cntl->request_attachment().size();
         if (!sctx->ConsumeWindowSize(data_size)) {
-            return butil::Status(EAGAIN, "remote_window_left is not enough, data_size=%" PRId64, data_size);
+            return butil::Status(ELIMIT, "remote_window_left is not enough, data_size=%" PRId64, data_size);
         }
     }
 
@@ -1555,7 +1607,7 @@ void H2UnsentRequest::Describe(butil::IOBuf* desc) const {
     }
 }
 
-H2UnsentResponse* H2UnsentResponse::New(Controller* c) {
+H2UnsentResponse* H2UnsentResponse::New(Controller* c, int stream_id) {
     const HttpHeader* const h = &c->http_response();
     const CommonStrings* const common = get_common_strings();
     const bool need_content_length =
@@ -1566,7 +1618,7 @@ H2UnsentResponse* H2UnsentResponse::New(Controller* c) {
         + (size_t)need_content_type;
     const size_t memsize = offsetof(H2UnsentResponse, _list) +
         sizeof(HPacker::Header) * maxsize;
-    H2UnsentResponse* msg = new (malloc(memsize)) H2UnsentResponse(c);
+    H2UnsentResponse* msg = new (malloc(memsize)) H2UnsentResponse(c, stream_id);
     // :status
     if (h->status_code() == 200) {
         msg->push(common->H2_STATUS, common->STATUS_200);
@@ -1614,7 +1666,7 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     // window size is useless, however it's not true when progressive request
     // is supported.
     if (!MinusWindowSize(&ctx->_remote_window_left, _data.size())) {
-        return butil::Status(EAGAIN, "Remote window size is not enough");
+        return butil::Status(ELIMIT, "Remote window size is not enough");
     }
 
     HPacker& hpacker = ctx->hpacker();

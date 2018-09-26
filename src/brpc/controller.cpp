@@ -362,19 +362,15 @@ void Controller::AppendServerIdentiy() {
     }
 }
 
-// Defined in http_rpc_protocol.cpp
-namespace policy {
-int ErrorCode2StatusCode(int error_code);
-}
-
 inline void UpdateResponseHeader(Controller* cntl) {
     DCHECK(cntl->Failed());
-    if (cntl->request_protocol() == PROTOCOL_HTTP) {
+    if (cntl->request_protocol() == PROTOCOL_HTTP ||
+        cntl->request_protocol() == PROTOCOL_HTTP2) {
         if (cntl->ErrorCode() != EHTTP) {
-            // We assume that status code is already set along with EHTTP.
+            // Set the related status code
             cntl->http_response().set_status_code(
-                policy::ErrorCode2StatusCode(cntl->ErrorCode()));
-        }
+                ErrorCodeToStatusCode(cntl->ErrorCode()));
+        } // else assume that status code is already set along with EHTTP.
         if (cntl->server() != NULL) {
             // Override HTTP body at server-side to conduct error text
             // to the client.

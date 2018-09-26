@@ -185,7 +185,7 @@ private:
 private:
     butil::atomic<int> _nref;
     uint32_t _size;
-    uint32_t _stream_id;
+    int _stream_id;
     mutable butil::Mutex _mutex;
     Controller* _cntl;
     std::unique_ptr<H2StreamContext> _sctx;
@@ -194,7 +194,7 @@ private:
 
 class H2UnsentResponse : public SocketMessage {
 public:
-    static H2UnsentResponse* New(Controller* c);
+    static H2UnsentResponse* New(Controller* c, int stream_id);
     void Destroy();
     void Describe(butil::IOBuf*) const;
     // @SocketMessage
@@ -208,9 +208,9 @@ private:
     void push(const std::string& name, const std::string& value)
     { new (&_list[_size++]) HPacker::Header(name, value); }
 
-    H2UnsentResponse(Controller* c)
+    H2UnsentResponse(Controller* c, int stream_id)
         : _size(0)
-        , _stream_id(c->http_request().h2_stream_id())
+        , _stream_id(stream_id)
         , _http_response(c->release_http_response()) {
         _data.swap(c->response_attachment());
     }
@@ -251,7 +251,7 @@ public:
     void set_correlation_id(uint64_t cid) { _correlation_id = cid; }
     
     size_t parsed_length() const { return this->_parsed_length; }
-    int stream_id() const { return header().h2_stream_id(); }
+    int stream_id() const { return _stream_id; }
 
     int64_t ReleaseDeferredWindowUpdate() {
         if (_deferred_window_update.load(butil::memory_order_relaxed) == 0) {
@@ -272,6 +272,7 @@ friend class H2Context;
 #if defined(BRPC_H2_STREAM_STATE)
     H2StreamState _state;
 #endif
+    int _stream_id;
     bool _stream_ended;
     butil::atomic<int64_t> _remote_window_left;
     butil::atomic<int64_t> _deferred_window_update;
@@ -336,9 +337,9 @@ public:
     int AllocateClientStreamId();
     bool RunOutStreams() const;
     // Try to map stream_id to ctx if stream_id does not exist before
-    // Returns true on success, false otherwise.
-    bool TryToInsertStream(int stream_id, H2StreamContext* ctx);
-    uint32_t VolatilePendingStreamSize() const;
+    // Returns 0 on success, -1 on exist, 1 on goaway.
+    int TryToInsertStream(int stream_id, H2StreamContext* ctx);
+    size_t VolatilePendingStreamSize() const { return _pending_streams.size(); }
 
     HPacker& hpacker() { return _hpacker; }
     const H2Settings& remote_settings() const { return _remote_settings; }
@@ -372,6 +373,8 @@ friend void InitFrameHandlers();
     H2ParseResult OnContinuation(butil::IOBufBytesIterator&, const H2FrameHead&);
 
     H2StreamContext* RemoveStream(int stream_id);
+    void RemoveGoAwayStreams(int goaway_stream_id, std::vector<H2StreamContext*>* out_streams);
+
     H2StreamContext* FindStream(int stream_id);
     void ClearAbandonedStreamsImpl();
 
@@ -382,6 +385,7 @@ friend void InitFrameHandlers();
     H2ConnectionState _conn_state;
     int _last_server_stream_id;
     uint32_t _last_client_stream_id;
+    int _goaway_stream_id;
     H2Settings _remote_settings;
     H2Settings _local_settings;
     H2Settings _unack_local_settings;
@@ -393,6 +397,19 @@ friend void InitFrameHandlers();
     StreamMap _pending_streams;
     butil::atomic<int64_t> _deferred_window_update;
 };
+
+inline int H2Context::AllocateClientStreamId() {
+    if (RunOutStreams()) {
+        return -1;
+    }
+    const int id = _last_client_stream_id;
+    _last_client_stream_id += 2;
+    return id;
+}
+
+inline bool H2Context::RunOutStreams() const {
+    return (_last_client_stream_id > 0x7FFFFFFF);
+}
 
 }  // namespace policy
 } // namespace brpc
