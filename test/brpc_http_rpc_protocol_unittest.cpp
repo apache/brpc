@@ -105,6 +105,7 @@ protected:
 
         brpc::SocketOptions h2_client_options;
         h2_client_options.user = brpc::get_client_side_messenger();
+        h2_client_options.fd = _pipe_fds[1];
         EXPECT_EQ(0, brpc::Socket::Create(h2_client_options, &id));
         EXPECT_EQ(0, brpc::Socket::Address(id, &_h2_client_sock));
     };
