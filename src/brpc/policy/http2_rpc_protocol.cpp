@@ -1629,15 +1629,16 @@ void H2UnsentRequest::Describe(butil::IOBuf* desc) const {
     }
 }
 
-H2UnsentResponse::H2UnsentResponse(Controller* c, const TrailerMessage& trailers)
+H2UnsentResponse::H2UnsentResponse(Controller* c, int stream_id, const TrailerMessage& trailers)
     : _size(0)
-    , _stream_id(c->http_request().h2_stream_id())
+    , _stream_id(stream_id)
     , _http_response(c->release_http_response())
     , _trailers(trailers) {
     _data.swap(c->response_attachment());
 }
 
-H2UnsentResponse* H2UnsentResponse::New(Controller* c, const TrailerMessage& trailers) {
+H2UnsentResponse* H2UnsentResponse::New(Controller* c, int stream_id,
+                                        const TrailerMessage& trailers) {
     const HttpHeader* const h = &c->http_response();
     const CommonStrings* const common = get_common_strings();
     const bool need_content_length =
@@ -1648,7 +1649,7 @@ H2UnsentResponse* H2UnsentResponse::New(Controller* c, const TrailerMessage& tra
         + (size_t)need_content_type;
     const size_t memsize = offsetof(H2UnsentResponse, _list) +
         sizeof(HPacker::Header) * maxsize;
-    H2UnsentResponse* msg = new (malloc(memsize)) H2UnsentResponse(c, trailers);
+    H2UnsentResponse* msg = new (malloc(memsize)) H2UnsentResponse(c, stream_id, trailers);
     // :status
     if (h->status_code() == 200) {
         msg->push(common->H2_STATUS, common->STATUS_200);

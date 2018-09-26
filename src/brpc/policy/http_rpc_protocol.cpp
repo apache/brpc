@@ -802,7 +802,7 @@ HttpResponseSender::~HttpResponseSender() {
             // Set status-code with default value(converted from error code)
             // if user did not set it.
             if (res_header->status_code() == HTTP_STATUS_OK) {
-                res_header->set_status_code(ErrorCode2StatusCode(cntl->ErrorCode()));
+                res_header->set_status_code(ErrorCodeToStatusCode(cntl->ErrorCode()));
             }
             // Fill ErrorCode into header
             res_header->SetHeader(common->ERROR_CODE,
@@ -907,7 +907,7 @@ HttpResponseSender::~HttpResponseSender() {
     wopt.ignore_eovercrowded = true;
     if (req_header->is_http2()) {
         SocketMessagePtr<H2UnsentResponse> h2_response(
-                H2UnsentResponse::New(cntl, trailers));
+                H2UnsentResponse::New(cntl, _h2_stream_id, trailers));
         if (h2_response == NULL) {
             LOG(ERROR) << "Fail to make http2 response";
             errno = EINVAL;
