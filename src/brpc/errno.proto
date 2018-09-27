@@ -31,5 +31,4 @@ enum Errno {
     ELIMIT                  = 2004;  // Reached server's limit on resources
     ECLOSE                  = 2005;  // Close socket initiatively
     EITP                    = 2006;  // Failed Itp response
-    EGRPC                   = 2007;  // Failed Grpc response
 }

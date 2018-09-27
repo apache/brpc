@@ -194,7 +194,7 @@ private:
 
 class H2UnsentResponse : public SocketMessage {
 public:
-    static H2UnsentResponse* New(Controller* c, int stream_id, const TrailerMessage& trailers);
+    static H2UnsentResponse* New(Controller* c, int stream_id, bool grpc);
     void Destroy();
     void Describe(butil::IOBuf*) const;
     // @SocketMessage
@@ -208,7 +208,7 @@ private:
     void push(const std::string& name, const std::string& value)
     { new (&_list[_size++]) HPacker::Header(name, value); }
 
-    H2UnsentResponse(Controller* c, int stream_id, const TrailerMessage& trailers);
+    H2UnsentResponse(Controller* c, int stream_id, bool grpc);
     ~H2UnsentResponse() {}
     H2UnsentResponse(const H2UnsentResponse&);
     void operator=(const H2UnsentResponse&);
@@ -218,7 +218,9 @@ private:
     uint32_t _stream_id;
     std::unique_ptr<HttpHeader> _http_response;
     butil::IOBuf _data;
-    TrailerMessage _trailers;
+    bool _grpc;
+    GrpcStatus _grpc_status;
+    std::string _grpc_message;
     HPacker::Header _list[0];
 };
 

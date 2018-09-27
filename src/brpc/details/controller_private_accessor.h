@@ -133,9 +133,6 @@ public:
         _cntl->add_flag(Controller::FLAGS_REQUEST_WITH_AUTH);
     }
 
-    GrpcStatus grpc_status() { return _cntl->_grpc_status; }
-    std::string grpc_message() { return _cntl->_grpc_message; }
-
 private:
     Controller* _cntl;
 };

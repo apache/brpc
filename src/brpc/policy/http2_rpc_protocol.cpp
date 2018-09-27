@@ -1629,16 +1629,19 @@ void H2UnsentRequest::Describe(butil::IOBuf* desc) const {
     }
 }
 
-H2UnsentResponse::H2UnsentResponse(Controller* c, int stream_id, const TrailerMessage& trailers)
+H2UnsentResponse::H2UnsentResponse(Controller* c, int stream_id, bool grpc)
     : _size(0)
     , _stream_id(stream_id)
     , _http_response(c->release_http_response())
-    , _trailers(trailers) {
+    , _grpc(grpc) {
     _data.swap(c->response_attachment());
+    if (grpc) {
+        _grpc_status = ErrorCodeToGrpcStatus(c->ErrorCode());
+        percent_encode(c->ErrorText(), &_grpc_message);
+    }
 }
 
-H2UnsentResponse* H2UnsentResponse::New(Controller* c, int stream_id,
-                                        const TrailerMessage& trailers) {
+H2UnsentResponse* H2UnsentResponse::New(Controller* c, int stream_id, bool grpc) {
     const HttpHeader* const h = &c->http_response();
     const CommonStrings* const common = get_common_strings();
     const bool need_content_length =
@@ -1649,7 +1652,7 @@ H2UnsentResponse* H2UnsentResponse::New(Controller* c, int stream_id,
         + (size_t)need_content_type;
     const size_t memsize = offsetof(H2UnsentResponse, _list) +
         sizeof(HPacker::Header) * maxsize;
-    H2UnsentResponse* msg = new (malloc(memsize)) H2UnsentResponse(c, stream_id, trailers);
+    H2UnsentResponse* msg = new (malloc(memsize)) H2UnsentResponse(c, stream_id, grpc);
     // :status
     if (h->status_code() == 200) {
         msg->push(common->H2_STATUS, common->STATUS_200);
@@ -1721,10 +1724,14 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
 
     butil::IOBufAppender trailer_appender;
     butil::IOBuf trailer_frag;
-    for (TrailerMessage::iterator it = _trailers.begin();
-        it != _trailers.end(); ++it) {
-        HPacker::Header header(it->first, it->second);
-        hpacker.Encode(&trailer_appender, header, options);
+    if (_grpc) {
+        HPacker::Header status_header("grpc-status",
+                                      butil::string_printf("%d", _grpc_status));
+        hpacker.Encode(&trailer_appender, status_header, options);
+        if (!_grpc_message.empty()) {
+            HPacker::Header msg_header("grpc-message", _grpc_message);
+            hpacker.Encode(&trailer_appender, msg_header, options);
+        }
     }
     trailer_appender.move_to(trailer_frag);
 

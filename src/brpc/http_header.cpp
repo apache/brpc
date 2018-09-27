@@ -24,10 +24,7 @@ namespace brpc {
 HttpHeader::HttpHeader() 
     : _status_code(HTTP_STATUS_OK)
     , _method(HTTP_METHOD_GET)
-    , _version(1, 1)
-    , _h2_stream_id(0)
-    , _h2_error(H2_NO_ERROR)
-    , _has_h2_error(false) {
+    , _version(1, 1) {
     // NOTE: don't forget to clear the field in Clear() as well.
 }
 
@@ -51,9 +48,6 @@ void HttpHeader::Swap(HttpHeader &rhs) {
     _content_type.swap(rhs._content_type);
     _unresolved_path.swap(rhs._unresolved_path);
     std::swap(_version, rhs._version);
-    std::swap(_h2_stream_id, rhs._h2_stream_id);
-    std::swap(_h2_error, rhs._h2_error);
-    std::swap(_has_h2_error, rhs._has_h2_error);
 }
 
 void HttpHeader::Clear() {
@@ -64,9 +58,6 @@ void HttpHeader::Clear() {
     _content_type.clear();
     _unresolved_path.clear();
     _version = std::make_pair(1, 1);
-    _h2_stream_id = 0;
-    _h2_error = H2_NO_ERROR;
-    _has_h2_error = false;
 }
 
 const char* HttpHeader::reason_phrase() const {

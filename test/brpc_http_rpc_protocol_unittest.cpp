@@ -216,8 +216,7 @@ protected:
             butil::IOBufAsZeroCopyOutputStream wrapper(&cntl.response_attachment());
             EXPECT_TRUE(res.SerializeToZeroCopyStream(&wrapper));
         }
-        const brpc::TrailerMessage dummy;
-        brpc::policy::H2UnsentResponse* h2_res = brpc::policy::H2UnsentResponse::New(&cntl, h2_stream_id, dummy);
+        brpc::policy::H2UnsentResponse* h2_res = brpc::policy::H2UnsentResponse::New(&cntl, h2_stream_id, false /*is grpc*/);
         butil::Status st = h2_res->AppendAndDestroySelf(out, _h2_client_sock.get());
         ASSERT_TRUE(st.ok());
     }

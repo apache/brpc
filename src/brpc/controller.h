@@ -477,13 +477,6 @@ public:
     // Get sock option. .e.g get vip info through ttm kernel module hook,
     int GetSockOption(int level, int optname, void* optval, socklen_t* optlen);
 
-    void set_grpc_error_code(GrpcStatus status, const std::string& msg) {
-        _grpc_status = status;
-        _grpc_message = msg;
-    }
-    GrpcStatus grpc_status() { return _grpc_status; }
-    std::string grpc_message() { return _grpc_message; }
-
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request
@@ -724,10 +717,6 @@ private:
 
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;
-    uint32_t _thrift_seq_id;
-
-    GrpcStatus _grpc_status;
-    std::string _grpc_message;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be

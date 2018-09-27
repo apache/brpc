@@ -22,24 +22,20 @@
 #include <brpc/restful.h>
 #include "helloworld.pb.h"
 
-DEFINE_int32(port, 8010, "TCP Port of this server");
+DEFINE_int32(port, 50051, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
 DEFINE_int32(logoff_ms, 2000, "Maximum duration of server's LOGOFF state "
              "(waiting for client to close connection before server stops)");
 DEFINE_bool(gzip, false, "compress body using gzip");
 
-// Service with static path.
-using helloworld::HelloRequest;
-using helloworld::HelloReply;
-
 class GreeterImpl : public helloworld::Greeter {
 public:
     GreeterImpl() {};
     virtual ~GreeterImpl() {};
     void SayHello(google::protobuf::RpcController* cntl_base,
-                 const HelloRequest* req,
-                 HelloReply* res,
+                 const helloworld::HelloRequest* req,
+                 helloworld::HelloReply* res,
                  google::protobuf::Closure* done) {
         brpc::ClosureGuard done_guard(done);
         brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);

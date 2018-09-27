@@ -1,4 +1,4 @@
-syntax = "proto3";
+syntax = "proto2";
 
 package helloworld;
 
@@ -12,10 +12,10 @@ service Greeter {
 
 // The request message containing the user's name.
 message HelloRequest {
-  string name = 1;
+  required string name = 1;
 }
 
 // The response message containing the greetings
 message HelloReply {
-  string message = 1;
+  required string message = 1;
 }

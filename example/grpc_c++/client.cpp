@@ -22,7 +22,7 @@
 #include "helloworld.pb.h"
 
 DEFINE_string(protocol, "grpc", "Protocol type. Defined in src/brpc/options.proto");
-DEFINE_string(server, "0.0.0.0:8000", "IP Address of server");
+DEFINE_string(server, "0.0.0.0:50051", "IP Address of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
@@ -52,7 +52,6 @@ int main(int argc, char* argv[]) {
     helloworld::Greeter_Stub stub(&channel);
 
     // Send a request and wait for the response every 1 second.
-    int log_id = 0;
     while (!brpc::IsAskedToQuit()) {
         // We will receive response synchronously, safe to put variables
         // on stack.
@@ -61,7 +60,6 @@ int main(int argc, char* argv[]) {
         brpc::Controller cntl;
 
         request.set_name("grpc client example");
-        cntl.set_log_id(log_id ++);  // set by user
         if (FLAGS_gzip) {
             cntl.set_request_compress_type(brpc::COMPRESS_TYPE_GZIP);
         }
@@ -73,14 +71,10 @@ int main(int argc, char* argv[]) {
         if (!cntl.Failed()) {
             LOG(INFO) << "Received response from " << cntl.remote_side()
                 << " to " << cntl.local_side()
-                << ": " << response.message() << " (attached="
-                << cntl.response_attachment() << ")"
+                << ": " << response.message()
                 << " latency=" << cntl.latency_us() << "us";
         } else {
-            LOG(WARNING) << cntl.ErrorCode() << ": " << cntl.ErrorText()
-                         << ", grpc-status=" << cntl.grpc_status()
-                         << ", grpc-message=" << cntl.grpc_message();
-
+            LOG(WARNING) << cntl.ErrorCode() << ": " << cntl.ErrorText();
         }
         usleep(FLAGS_interval_ms * 1000L);
     }

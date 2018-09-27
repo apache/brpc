@@ -24,27 +24,7 @@
 
 namespace brpc {
 
-// The mapping can be found in grpc-go internal/transport/http_util.go
-GrpcStatus HttpStatus2GrpcStatus(int http_status) {
-    switch(http_status) {
-        case HTTP_STATUS_BAD_REQUEST:
-            return GRPC_INTERNAL;
-        case HTTP_STATUS_UNAUTHORIZED:
-            return GRPC_UNAUTHENTICATED;
-        case HTTP_STATUS_FORBIDDEN:
-            return GRPC_PERMISSIONDENIED;
-        case HTTP_STATUS_NOT_FOUND:
-            return GRPC_UNIMPLEMENTED;
-        case HTTP_STATUS_BAD_GATEWAY:
-        case HTTP_STATUS_SERVICE_UNAVAILABLE:
-        case HTTP_STATUS_GATEWAY_TIMEOUT:
-            return GRPC_UNAVAILABLE;
-        default:
-            return GRPC_UNKNOWN;
-    }
-}
-
-GrpcStatus ErrorCode2GrpcStatus(int error_code) {
+GrpcStatus ErrorCodeToGrpcStatus(int error_code) {
     switch (error_code) {
     case ENOSERVICE:
     case ENOMETHOD:
@@ -63,40 +43,13 @@ GrpcStatus ErrorCode2GrpcStatus(int error_code) {
     case ETIMEDOUT:
         return GRPC_INTERNAL;
     default:
-        return GRPC_INTERNAL;
+        return GRPC_OK;
     }
 }
 
-// The mapping can be found in
-// https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#errors
-GrpcStatus h2Error2GrpcStatus(H2Error h2_error) {
-    switch(h2_error) {
-        case H2_NO_ERROR:
-        case H2_PROTOCOL_ERROR:
-        case H2_INTERNAL_ERROR:
-            return GRPC_INTERNAL;
-        case H2_FLOW_CONTROL_ERROR:
-            return GRPC_RESOURCEEXHAUSTED;
-        case H2_SETTINGS_TIMEOUT:
-        case H2_STREAM_CLOSED_ERROR:
-        case H2_FRAME_SIZE_ERROR:
-            return GRPC_INTERNAL;
-        case H2_REFUSED_STREAM:
-            return GRPC_UNAVAILABLE;
-        case H2_CANCEL:
-            return GRPC_CANCELED;
-        case H2_COMPRESSION_ERROR:
-        case H2_CONNECT_ERROR:
-            return GRPC_INTERNAL;
-        case H2_ENHANCE_YOUR_CALM:
-            return GRPC_RESOURCEEXHAUSTED;
-        case H2_INADEQUATE_SECURITY:
-            return GRPC_PERMISSIONDENIED;
-        case H2_HTTP_1_1_REQUIRED:
-            return GRPC_INTERNAL;
-        default:
-            return GRPC_INTERNAL;
-    }
+int GrpcStatusToErrorCode(GrpcStatus grpc_status) {
+    //TODO(zhujiashun)
+    return EINTERNAL;
 }
 
 void percent_encode(const std::string& str, std::string* str_out) {

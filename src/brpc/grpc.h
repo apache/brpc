@@ -22,8 +22,6 @@
 
 namespace brpc {
 
-typedef std::map<std::string, std::string> TrailerMessage;
-
 enum GrpcStatus {
     // OK is returned on success.
     GRPC_OK = 0,
@@ -144,11 +142,9 @@ enum GrpcStatus {
     GRPC_MAX,
 }; 
 
-GrpcStatus HttpStatus2GrpcStatus(int http_status);
+GrpcStatus ErrorCodeToGrpcStatus(int error_code);
 
-GrpcStatus ErrorCode2GrpcStatus(int error_code);
-
-GrpcStatus h2Error2GrpcStatus(H2Error h2_error);
+int GrpcStatusToErrorCode(GrpcStatus grpc_status);
 
 void percent_encode(const std::string& str, std::string* str_out);
 
