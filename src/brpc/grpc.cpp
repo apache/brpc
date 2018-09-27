@@ -26,6 +26,8 @@ namespace brpc {
 
 GrpcStatus ErrorCodeToGrpcStatus(int error_code) {
     switch (error_code) {
+    case 0:
+        return GRPC_OK;
     case ENOSERVICE:
     case ENOMETHOD:
         return GRPC_UNIMPLEMENTED;
@@ -43,7 +45,7 @@ GrpcStatus ErrorCodeToGrpcStatus(int error_code) {
     case ETIMEDOUT:
         return GRPC_INTERNAL;
     default:
-        return GRPC_OK;
+        return GRPC_INTERNAL;
     }
 }
 

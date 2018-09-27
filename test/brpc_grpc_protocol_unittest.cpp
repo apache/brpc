@@ -63,6 +63,7 @@ public:
         if (req->has_error_code()) {
             const std::string err_msg =
                 butil::string_printf("%s%d", g_prefix.c_str(), req->error_code());
+            // TODO(zhujiashun): set and check error_code when GrpcStatusToErrorCode is done
             cntl->SetFailed(err_msg.c_str());
             return;
         }
@@ -109,7 +110,6 @@ protected:
         stub.Method(&cntl, &req, &res, NULL);
         EXPECT_FALSE(cntl.Failed()) << cntl.ErrorCode() << ": " << cntl.ErrorText();
         EXPECT_EQ(res.message(), g_prefix + g_req);
-        //EXPECT_EQ(brpc::GRPC_OK, cntl.grpc_status());
     }
 
     brpc::Server _server;
@@ -164,9 +164,9 @@ TEST_F(GrpcTest, return_error) {
         test::GrpcService_Stub stub(&_channel);
         stub.Method(&cntl, &req, &res, NULL);
         EXPECT_TRUE(cntl.Failed());
-        // FIXME(zhujiashun): message body is empty so the Errorcode may be ERESPONSE
-        // EXPECT_EQ(cntl.ErrorCode(), brpc::EINTERNAL);
-        // EXPECT_EQ(cntl.ErrorText(), butil::string_printf("%s%d", g_prefix.c_str(), i));
+        // TODO(zhujiashun): set and check error_code when GrpcStatusToErrorCode is done
+        EXPECT_EQ(cntl.ErrorCode(), brpc::EINTERNAL);
+        EXPECT_TRUE(butil::StringPiece(cntl.ErrorText()).ends_with(butil::string_printf("%s%d", g_prefix.c_str(), i)));
     }
 }
 
@@ -195,9 +195,9 @@ TEST_F(GrpcTest, MethodNotExist) {
     test::GrpcService_Stub stub(&_channel);
     stub.MethodNotExist(&cntl, &req, &res, NULL);
     EXPECT_TRUE(cntl.Failed());
-    // FIXME(zhujiashun): message body is empty so the Errorcode may be ERESPONSE
-    //EXPECT_EQ(cntl.ErrorCode(), brpc::EINTERNAL);
-    //ASSERT_TRUE(butil::StringPiece(cntl.ErrorText()).ends_with("Method MethodNotExist() not implemented."));
+    // TODO(zhujiashun): set and check error_code when GrpcStatusToErrorCode is done
+    EXPECT_EQ(cntl.ErrorCode(), brpc::EINTERNAL);
+    ASSERT_TRUE(butil::StringPiece(cntl.ErrorText()).ends_with("Method MethodNotExist() not implemented."));
 }
 
 } // namespace 
