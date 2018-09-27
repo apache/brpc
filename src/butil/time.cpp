@@ -81,14 +81,42 @@ int64_t monotonic_time_ns() {
 
 namespace detail {
 
+static double read_info_from_buf(char* buf, int n, const char* param) {
+    char *pos = static_cast<char*>(memmem(buf, n, param, strlen(param)));
+    double result = 0;
+    if (pos != NULL) {
+        char *endp = buf + n;
+        int seen_decpoint = 0;
+        int ndigits = 0;
+
+        /* Search for the beginning of the string.  */
+        while (pos < endp && (*pos < '0' || *pos > '9') && *pos != '\n') {
+            ++pos;
+        }
+        while (pos < endp && *pos != '\n') {
+            if (*pos >= '0' && *pos <= '9') {
+                result *= 10;
+                result += *pos - '0';
+                if (seen_decpoint)
+                    ++ndigits;
+            } else if (*pos == '.') {
+                seen_decpoint = 1;
+            }
+            ++pos;
+        }
+        while (ndigits --) {
+            result /= 10;
+        }
+    }
+    return result;
+}
+
 // read_cpu_frequency() is modified from source code of glibc.
 int64_t read_cpu_frequency(bool* invariant_tsc) {
-    /* We read the information from the /proc filesystem.  It contains at
-       least one line like
-       cpu MHz         : 497.840237
-       or also
-       cpu MHz         : 497.841
-       We search for this line and convert the number in an integer.  */
+    /*
+     * We use this formula to get the "constant" frequency of cpu:
+     * freq_Mhz = bogomips / hyper-threading_num
+    */
 
     const int fd = open("/proc/cpuinfo", O_RDONLY);
     if (fd < 0) {
@@ -99,33 +127,11 @@ int64_t read_cpu_frequency(bool* invariant_tsc) {
     char buf[4096];  // should be enough
     const ssize_t n = read(fd, buf, sizeof(buf));
     if (n > 0) {
-        char *mhz = static_cast<char*>(memmem(buf, n, "cpu MHz", 7));
-
-        if (mhz != NULL) {
-            char *endp = buf + n;
-            int seen_decpoint = 0;
-            int ndigits = 0;
-
-            /* Search for the beginning of the string.  */
-            while (mhz < endp && (*mhz < '0' || *mhz > '9') && *mhz != '\n') {
-                ++mhz;
-            }
-            while (mhz < endp && *mhz != '\n') {
-                if (*mhz >= '0' && *mhz <= '9') {
-                    result *= 10;
-                    result += *mhz - '0';
-                    if (seen_decpoint)
-                        ++ndigits;
-                } else if (*mhz == '.') {
-                    seen_decpoint = 1;
-                }
-                ++mhz;
-            }
-
-            /* Compensate for missing digits at the end.  */
-            while (ndigits++ < 6) {
-                result *= 10;
-            }
+        double bogomips = read_info_from_buf(buf, n, "bogomips"); 
+        double core_num = read_info_from_buf(buf, n, "cpu cores");
+        double siblings = read_info_from_buf(buf, n, "siblings");
+        if (siblings > 0) {
+            result = static_cast<int64_t>(1000000 * bogomips * core_num / siblings);
         }
 
         if (invariant_tsc) {
