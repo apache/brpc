@@ -774,7 +774,7 @@ void Socket::Revive() {
             if (_user) {
                 _user->AfterRevived(this);
             } else {
-                LOG(INFO) << "Revived socket=" << *this;
+                LOG(INFO) << "Revived " << *this;
             }
             return;
         }
@@ -979,7 +979,7 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
     if (_first_time) {  // Only check at first time.
         _first_time = false;
         if (ptr->WaitAndReset(2/*note*/) != 0) {
-            LOG(INFO) << "Cancel checking socket=" << *ptr;
+            LOG(INFO) << "Cancel checking " << *ptr;
             return false;
         }
     }
@@ -999,7 +999,7 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
         ptr->_hc_count = 0;
         return false;
     } else if (hc == ESTOP) {
-        LOG(INFO) << "Cancel checking socket=" << *ptr;
+        LOG(INFO) << "Cancel checking " << *ptr;
         return false;
     }
     ++ ptr->_hc_count;
@@ -1396,7 +1396,7 @@ void Socket::AfterAppConnected(int err, void* data) {
             }
         }
 
-        s->SetFailed(err, "Fail to connect socket=%s: %s",
+        s->SetFailed(err, "Fail to connect %s: %s",
                      s->description().c_str(), berror(err));
         s->ReleaseAllFailedWriteRequests(req);
     }
@@ -1589,7 +1589,7 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
     int ret = ConnectIfNot(opt.abstime, req);
     if (ret < 0) {
         saved_errno = errno;
-        SetFailed(errno, "Fail to connect socket=%s directly: %m", description().c_str());
+        SetFailed(errno, "Fail to connect %s directly: %m", description().c_str());
         goto FAIL_TO_WRITE;
     } else if (ret == 1) {
         // We are doing connection. Callback `KeepWriteIfConnected'
@@ -1621,8 +1621,8 @@ int Socket::StartWrite(WriteRequest* req, const WriteOptions& opt) {
         if (errno != EAGAIN && errno != EOVERCROWDED) {
             saved_errno = errno;
             // EPIPE is common in pooled connections + backup requests.
-            PLOG_IF(WARNING, errno != EPIPE) << "Fail to write into socket=" << *this;
-            SetFailed(saved_errno, "Fail to write into socket=%s: %s", 
+            PLOG_IF(WARNING, errno != EPIPE) << "Fail to write into " << *this;
+            SetFailed(saved_errno, "Fail to write into %s: %s", 
                       description().c_str(), berror(saved_errno));
             goto FAIL_TO_WRITE;
         }
@@ -1675,8 +1675,8 @@ void* Socket::KeepWrite(void* void_arg) {
         if (nw < 0) {
             if (errno != EAGAIN && errno != EOVERCROWDED) {
                 const int saved_errno = errno;
-                PLOG(WARNING) << "Fail to keep-write into socket=" << *s;
-                s->SetFailed(saved_errno, "Fail to keep-write into socket=%s: %s",
+                PLOG(WARNING) << "Fail to keep-write into " << *s;
+                s->SetFailed(saved_errno, "Fail to keep-write into %s: %s",
                              s->description().c_str(), berror(saved_errno));
                 break;
             }
@@ -1707,8 +1707,8 @@ void* Socket::KeepWrite(void* void_arg) {
             const int rc = s->WaitEpollOut(s->fd(), pollin, &duetime);
             if (rc < 0 && errno != ETIMEDOUT) {
                 const int saved_errno = errno;
-                PLOG(WARNING) << "Fail to wait epollout of socket=" << *s;
-                s->SetFailed(saved_errno, "Fail to wait epollout of socket=%s: %s",
+                PLOG(WARNING) << "Fail to wait epollout of " << *s;
+                s->SetFailed(saved_errno, "Fail to wait epollout of %s: %s",
                              s->description().c_str(), berror(saved_errno));
                 break;
             }
@@ -1967,7 +1967,7 @@ void Socket::SetAuthentication(int error_code) {
                 butil::memory_order_relaxed)) {
         // As expected
         if (error_code != 0) {
-            SetFailed(error_code, "Fail to authenticate socket=%s", description().c_str());
+            SetFailed(error_code, "Fail to authenticate %s", description().c_str());
         }
         CHECK_EQ(0, bthread_id_unlock_and_destroy(_auth_id));
     }
@@ -2262,7 +2262,7 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
 
 int Socket::CheckHealth() {
     if (_hc_count == 0) {
-        LOG(INFO) << "Checking socket=" << *this;
+        LOG(INFO) << "Checking " << *this;
     }
     // Note: No timeout. Timeout setting is given to Write() which
     // we don't know. A drawback is that if a connection takes long
@@ -2324,7 +2324,7 @@ int SocketUser::CheckHealth(Socket* ptr) {
 }
 
 void SocketUser::AfterRevived(Socket* ptr) {
-    LOG(INFO) << "Revived socket=" << *ptr;
+    LOG(INFO) << "Revived " << *ptr;
 }
 
 ////////// SocketPool //////////////
@@ -2498,7 +2498,7 @@ int Socket::GetPooledSocket(SocketUniquePtr* pooled_socket) {
     (*pooled_socket)->ShareStats(this);
     CHECK((*pooled_socket)->parsing_context() == NULL)
         << "context=" << (*pooled_socket)->parsing_context()
-        << " is not NULL when socket={" << *(*pooled_socket) << "} is got from"
+        << " is not NULL when " << *(*pooled_socket) << " is got from"
         " SocketPool, the protocol implementation is buggy";
     return 0;
 }
@@ -2518,7 +2518,7 @@ int Socket::ReturnToPool() {
         return -1;
     }
     CHECK(parsing_context() == NULL)
-        << "context=" << parsing_context() << " is not released when socket="
+        << "context=" << parsing_context() << " is not released when "
         << *this << " is returned to SocketPool, the protocol "
         "implementation is buggy";
     // NOTE: be careful with the sequence.
@@ -2687,7 +2687,7 @@ std::string Socket::description() const {
     // NOTE: The output should be consistent with operator<<()
     std::string result;
     result.reserve(64);
-    butil::string_appendf(&result, "{id=%" PRIu64, id());
+    butil::string_appendf(&result, "Socket{id=%" PRIu64, id());
     const int saved_fd = fd();
     if (saved_fd >= 0) {
         butil::string_appendf(&result, " fd=%d", saved_fd);
@@ -2718,7 +2718,7 @@ SocketSSLContext::~SocketSSLContext() {
 namespace std {
 ostream& operator<<(ostream& os, const brpc::Socket& sock) {
     // NOTE: The output should be consistent with Socket::description()
-    os << "{id=" << sock.id();
+    os << "Socket{id=" << sock.id();
     const int fd = sock.fd();
     if (fd >= 0) {
         os << " fd=" << fd;
