@@ -146,9 +146,9 @@ GrpcStatus ErrorCodeToGrpcStatus(int error_code);
 
 int GrpcStatusToErrorCode(GrpcStatus grpc_status);
 
-void percent_encode(const std::string& str, std::string* str_out);
+void PercentEncode(const std::string& str, std::string* str_out);
 
-void percent_decode(const std::string& str, std::string* str_out);
+void PercentDecode(const std::string& str, std::string* str_out);
 
 
 } // namespace brpc

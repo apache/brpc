@@ -1206,8 +1206,6 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
         if (rc == 0) {
             break;
         }
-        RPC_VLOG << "Header name: " << pair.name
-                 << ", header value: " << pair.value;
         const char* const name = pair.name.c_str();
         bool matched = false;
         if (name[0] == ':') { // reserved names
@@ -1637,7 +1635,7 @@ H2UnsentResponse::H2UnsentResponse(Controller* c, int stream_id, bool grpc)
     _data.swap(c->response_attachment());
     if (grpc) {
         _grpc_status = ErrorCodeToGrpcStatus(c->ErrorCode());
-        percent_encode(c->ErrorText(), &_grpc_message);
+        PercentEncode(c->ErrorText(), &_grpc_message);
     }
 }
 

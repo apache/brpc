@@ -120,26 +120,28 @@ protected:
 TEST_F(GrpcTest, percent_encode) {
     std::string out;
     std::string s1("abcdefg !@#$^&*()/");
-    brpc::percent_encode(s1, &out);
-    EXPECT_TRUE(out == s1) << s1 << " vs " << out;
+    std::string s1_out("abcdefg%20%21%40%23%24%5e%26%2a%28%29%2f");
+    brpc::PercentEncode(s1, &out);
+    EXPECT_TRUE(out == s1_out) << s1_out << " vs " << out;
 
     char s2_buf[] = "\0\0%\33\35 brpc";
     std::string s2(s2_buf, sizeof(s2_buf) - 1);
-    std::string s2_expected_out("%00%00%25%1b%1d brpc");
-    brpc::percent_encode(s2, &out);
+    std::string s2_expected_out("%00%00%25%1b%1d%20brpc");
+    brpc::PercentEncode(s2, &out);
     EXPECT_TRUE(out == s2_expected_out) << s2_expected_out << " vs " << out;
 }
 
 TEST_F(GrpcTest, percent_decode) {
     std::string out;
-    std::string s1("abcdefg !@#$^&*()/");
-    brpc::percent_decode(s1, &out);
-    EXPECT_TRUE(out == s1) << s1 << " vs " << out;
+    std::string s1("abcdefg%20%21%40%23%24%5e%26%2a%28%29%2f");
+    std::string s1_out("abcdefg !@#$^&*()/");
+    brpc::PercentDecode(s1, &out);
+    EXPECT_TRUE(out == s1_out) << s1_out << " vs " << out;
 
-    std::string s2("%00%00%1b%1d brpc");
+    std::string s2("%00%00%1b%1d%20brpc");
     char s2_expected_out_buf[] = "\0\0\33\35 brpc";
     std::string s2_expected_out(s2_expected_out_buf, sizeof(s2_expected_out_buf) - 1);
-    brpc::percent_decode(s2, &out);
+    brpc::PercentDecode(s2, &out);
     EXPECT_TRUE(out == s2_expected_out) << s2_expected_out << " vs " << out;
 }
 

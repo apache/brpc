@@ -364,9 +364,14 @@ void ProcessHttpResponse(InputMessageBase* msg) {
             if (grpc_status) {
                 GrpcStatus status = (GrpcStatus)strtol(grpc_status->data(), NULL, 10);
                 if (status != GRPC_OK) {
-                    const std::string err =
-                            grpc_message ? grpc_message->data() : "Unknown grpc error";
-                    cntl->SetFailed(GrpcStatusToErrorCode(status), "%s", err.c_str());
+                    std::string message_decoded;
+                    if (grpc_message) {
+                        PercentDecode(*grpc_message, &message_decoded);
+                    } else {
+                        message_decoded = "Unknown grpc error";
+                    }
+                    cntl->SetFailed(GrpcStatusToErrorCode(status),
+                            "%s", message_decoded.c_str());
                     break;
                 }
             }

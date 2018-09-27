@@ -52,14 +52,18 @@ int GrpcStatusToErrorCode(GrpcStatus grpc_status) {
     return EINTERNAL;
 }
 
-void percent_encode(const std::string& str, std::string* str_out) {
+void PercentEncode(const std::string& str, std::string* str_out) {
     std::ostringstream escaped;
     escaped.fill('0');
     escaped << std::hex;
     for (std::string::const_iterator it = str.begin();
          it != str.end(); ++it) {
         const std::string::value_type& c = *it;
-        if (c >= ' ' && c <= '~' && c != '%') {
+        // Unreserved Characters are referred from
+        // https://en.wikipedia.org/wiki/Percent-encoding
+        if ((c >= 'a' && c <= 'z') ||
+            (c >= 'A' && c <= 'Z') ||
+            c == '-' || c == '_' || c == '.' || c == '~') {
             escaped << c;
             continue;
         }
@@ -81,7 +85,7 @@ static int hex_to_int(char c) {
     return 0;
 }
 
-void percent_decode(const std::string& str, std::string* str_out) {
+void PercentDecode(const std::string& str, std::string* str_out) {
     std::ostringstream unescaped;
     for (std::string::const_iterator it = str.begin();
          it != str.end(); ++it) {
