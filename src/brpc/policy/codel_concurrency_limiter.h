@@ -36,8 +36,9 @@ public:
 
     int MaxConcurrency() override;
 
-    int current_load_in_percent() const {
-        return 100 * _min_delay_us.load(butil::memory_order_relaxed) / discard_timeout_us();
+    int current_load_in_precent() const {
+        return std::min<int>(100, 
+            100 * _min_delay_us.load(butil::memory_order_relaxed) / discard_timeout_us());
     }
 
 private:
@@ -47,10 +48,15 @@ private:
     // will be discarded.
     uint64_t discard_timeout_us() const;
 
-    std::atomic<bool> _reset_delay;
+    // write per request
+    std::atomic<int32_t> _realtime_tokens;
+    std::atomic<uint64_t> _min_delay_us;
+    std::atomic<uint64_t> _reset_min_delay_after_this_time_us;
+    std::atomic<uint64_t> _reset_tokens_after_this_time_us;
+
+    // write per interval
+    std::atomic<bool> _reset_min_delay;
     std::atomic<bool> _overloaded;
-    std::atomic<uint64_t> BAIDU_CACHELINE_ALIGNMENT _min_delay_us;
-    std::atomic<uint64_t> _reset_delay_after_this_time_us;
 };
 
 }  // namespace policy
