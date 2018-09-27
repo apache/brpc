@@ -12,6 +12,7 @@
 *.prof
 *.so
 *.dylib
+*.rej
 /output
 /test/output
 

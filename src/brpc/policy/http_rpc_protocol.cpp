@@ -280,7 +280,7 @@ void ProcessHttpResponse(InputMessageBase* msg) {
         res_body.cut1(&grpc_compressed);
         res_body.cutn(buf, 4);
         int message_length = ReadBigEndian4Bytes(buf);
-        CHECK(message_length == res_body.length()) << message_length
+        CHECK((size_t)message_length == res_body.length()) << message_length
             << " vs " << res_body.length();
     }
 
@@ -531,7 +531,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             butil::IOBuf compressed;
             if (GzipCompress(cntl->request_attachment(), &compressed, NULL)) {
                 cntl->request_attachment().swap(compressed);
-                if (accessor.request_protocol() == PROTOCOL_GRPC) {
+                if (cntl->request_protocol() == PROTOCOL_GRPC) {
                     grpc_compressed = true;
                     cntl->http_request().SetHeader(common->GRPC_ENCODING, common->GZIP);
                 } else {
@@ -563,7 +563,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
         cntl->set_stream_creator(get_h2_global_stream_creator());
     }
 
-    if (accessor.request_protocol() == PROTOCOL_GRPC) {
+    if (cntl->request_protocol() == PROTOCOL_GRPC) {
         // always tell client gzip support
         // TODO(zhujiashun): add zlib and snappy?
         header->SetHeader(common->GRPC_ACCEPT_ENCODING,
