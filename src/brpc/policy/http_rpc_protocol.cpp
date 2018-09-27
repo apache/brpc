@@ -771,25 +771,22 @@ HttpResponseSender::~HttpResponseSender() {
         ParseContentType(req_header->content_type()) == HTTP_CONTENT_GRPC;
 
     if (cntl->Failed()) {
-        // TODO(zhujiashun): really need this?
-        if (!grpc_protocol) {
-            // Set status-code with default value(converted from error code)
-            // if user did not set it.
-            if (res_header->status_code() == HTTP_STATUS_OK) {
-                res_header->set_status_code(ErrorCodeToStatusCode(cntl->ErrorCode()));
-            }
-            // Fill ErrorCode into header
-            res_header->SetHeader(common->ERROR_CODE,
-                                  butil::string_printf("%d", cntl->ErrorCode()));
-
-            // Fill body with ErrorText.
-            // user may compress the output and change content-encoding. However
-            // body is error-text right now, remove the header.
-            res_header->RemoveHeader(common->CONTENT_ENCODING);
-            res_header->set_content_type(common->CONTENT_TYPE_TEXT);
-            cntl->response_attachment().clear();
-            cntl->response_attachment().append(cntl->ErrorText());
+        // Set status-code with default value(converted from error code)
+        // if user did not set it.
+        if (res_header->status_code() == HTTP_STATUS_OK) {
+            res_header->set_status_code(ErrorCodeToStatusCode(cntl->ErrorCode()));
         }
+        // Fill ErrorCode into header
+        res_header->SetHeader(common->ERROR_CODE,
+                              butil::string_printf("%d", cntl->ErrorCode()));
+
+        // Fill body with ErrorText.
+        // user may compress the output and change content-encoding. However
+        // body is error-text right now, remove the header.
+        res_header->RemoveHeader(common->CONTENT_ENCODING);
+        res_header->set_content_type(common->CONTENT_TYPE_TEXT);
+        cntl->response_attachment().clear();
+        cntl->response_attachment().append(cntl->ErrorText());
     } else if (cntl->has_progressive_writer()) {
         // Transfer-Encoding is supported since HTTP/1.1
         if (res_header->major_version() < 2 && !res_header->before_http_1_1()) {
