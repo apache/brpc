@@ -3524,8 +3524,8 @@ void OnServerStreamCreated::Run(bool error,
             break;
         }
         _stream->_message_stream_id = stream_id;
-        // client stream needs to be added here rather than OnStreamCreationDone
-        // to avoid the race between OnStreamCreationDone and a failed OnStatus,
+        // client stream needs to be added here rather than OnDestroyingStream
+        // to avoid the race between OnDestroyingStream and a failed OnStatus,
         // because the former function runs in another bthread and may run later
         // than OnStatus which needs to see the stream.
         if (!ctx->AddClientStream(_stream.get())) {

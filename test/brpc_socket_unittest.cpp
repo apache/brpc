@@ -283,7 +283,6 @@ public:
     }
     void StopConnect(brpc::Socket*) {
         LOG(INFO) << "Stop application-level connect";
-        delete this;
     }
     void MakeConnectDone() {
         _done(0, _data);
@@ -313,7 +312,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
     brpc::SocketId id = 8888;
     brpc::SocketOptions options;
     options.remote_side = point;
-    MyConnect* my_connect = new MyConnect;
+    std::shared_ptr<MyConnect> my_connect = std::make_shared<MyConnect>();
     options.app_connect = my_connect;
     options.user = new CheckRecycle;
     ASSERT_EQ(0, brpc::Socket::Create(options, &id));
@@ -503,7 +502,7 @@ TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
         ASSERT_EQ(wait_id.value, data.id.value);
         ASSERT_EQ(ECONNREFUSED, data.error_code);
         ASSERT_TRUE(butil::StringPiece(data.error_text).starts_with(
-                        "Fail to connect SocketId="));
+                        "Fail to connect "));
 #else
         ASSERT_EQ(-1, s->Write(&src));
         ASSERT_EQ(ECONNREFUSED, errno);
@@ -583,7 +582,7 @@ TEST_F(SocketTest, health_check) {
     ASSERT_EQ(wait_id.value, data.id.value);
     ASSERT_EQ(ECONNREFUSED, data.error_code);
     ASSERT_TRUE(butil::StringPiece(data.error_text).starts_with(
-                    "Fail to connect SocketId="));
+                    "Fail to connect "));
     if (use_my_message) {
         ASSERT_TRUE(appended_msg);
     }

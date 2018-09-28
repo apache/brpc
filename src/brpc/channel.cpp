@@ -126,7 +126,7 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
 }
 
 Channel::Channel(ProfilerLinker)
-    : _server_id((SocketId)-1)
+    : _server_id(INVALID_SOCKET_ID)
     , _serialize_request(NULL)
     , _pack_request(NULL)
     , _get_method_name(NULL)
@@ -134,7 +134,7 @@ Channel::Channel(ProfilerLinker)
 }
 
 Channel::~Channel() {
-    if (_server_id != (SocketId)-1) {
+    if (_server_id != INVALID_SOCKET_ID) {
         const ChannelSignature sig = ComputeChannelSignature(_options);
         SocketMapRemove(SocketMapKey(_server_address, sig));
     }

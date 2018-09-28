@@ -214,6 +214,11 @@ public:
         return *_http_request;
     }
     bool has_http_request() const { return _http_request; }
+    HttpHeader* release_http_request() {
+        HttpHeader* const tmp = _http_request;
+        _http_request = NULL;
+        return tmp;
+    }
 
     // User attached data or body of http request, which is wired to network
     // directly instead of being serialized into protobuf messages.
@@ -245,10 +250,10 @@ public:
     void reset_rpc_dump_meta(RpcDumpMeta* meta);
     const RpcDumpMeta* rpc_dump_meta() { return _rpc_dump_meta; }
 
-    // Attach a StreamCreator to this RPC. Notice that controller never deletes
-    // the StreamCreator, you can do the deletion inside OnStreamCreationDone.
-    void set_stream_creator(StreamCreator* sc) { _stream_creator = sc; }
-    StreamCreator* stream_creator() const { return _stream_creator; }
+    // Attach a StreamCreator to this RPC. Notice that the ownership of sc has
+    // been transferred to cntl, and sc->DestroyStreamCreator() would be called
+    // only once to destroy sc.
+    void set_stream_creator(StreamCreator* sc);
 
     // Make the RPC end when the HTTP response has complete headers and let
     // user read the remaining body by using ReadProgressiveAttachmentBy().
@@ -336,6 +341,11 @@ public:
         return *_http_response;
     }
     bool has_http_response() const { return _http_response; }
+    HttpHeader* release_http_response() {
+        HttpHeader* const tmp = _http_response;
+        _http_response = NULL;
+        return tmp;
+    }
     
     // User attached data or body of http response, which is wired to network
     // directly instead of being serialized into protobuf messages.
@@ -544,11 +554,12 @@ private:
         CallId id = { _correlation_id.value + nretry + 1 };
         return id;
     }
-
+public:
     CallId current_id() const {
         CallId id = { _correlation_id.value + _current_call.nretry + 1 };
         return id;
     }
+private:
     
     // Append server information to `_error_text'
     void AppendServerIdentiy();
@@ -560,7 +571,7 @@ private:
         Call(Call*); //move semantics
         ~Call();
         void Reset();
-        void OnComplete(Controller* c, int error_code, bool responded);
+        void OnComplete(Controller* c, int error_code, bool responded, bool end_of_rpc);
 
         int nretry;                     // sent in nretry-th retry.
         bool need_feedback;             // The LB needs feedback.
@@ -573,11 +584,12 @@ private:
         // CONNECTION_TYPE_SINGLE. Otherwise, it may be a temporary
         // socket fetched from socket pool
         SocketUniquePtr sending_sock;
+        StreamUserData* stream_user_data;
     };
 
     void HandleStreamConnection(Socket *host_socket);
 
-    bool SingleServer() const { return _single_server_id != (SocketId)-1; }
+    bool SingleServer() const { return _single_server_id != INVALID_SOCKET_ID; }
 
     void SubmitSpan();
 

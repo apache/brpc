@@ -32,6 +32,8 @@ namespace brpc {
 // unique_ptr is not destructed, the enclosed Socket will not be recycled.
 typedef uint64_t SocketId;
 
+const SocketId INVALID_SOCKET_ID = (SocketId)-1;
+
 class Socket;
 
 extern void DereferenceSocket(Socket*);

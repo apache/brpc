@@ -66,7 +66,11 @@ public:
         CHECK(_cntl->_current_call.sending_sock == NULL);
         _cntl->_current_call.sending_sock.reset(ptr.release());
     }
-    
+
+    StreamUserData* get_stream_user_data() {
+        return _cntl->_current_call.stream_user_data;
+    }
+
     ControllerPrivateAccessor &set_security_mode(bool security_mode) {
         _cntl->set_flag(Controller::FLAGS_SECURITY_MODE, security_mode);
         return *this;

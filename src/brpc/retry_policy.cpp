@@ -39,13 +39,13 @@ public:
                 || ECONNREFUSED == error_code
                 || ECONNRESET == error_code
                 || ENODATA == error_code
-                || EOVERCROWDED == error_code);
+                || EOVERCROWDED == error_code
+                || EH2RUNOUTSTREAMS == error_code);
     }
 };
 
 // NOTE(gejun): g_default_policy can't be deleted on process's exit because
-// concurrent processing of responses at client-side may trigger retry and
-// use the policy.
+// client-side may still retry and use the policy at exit
 static pthread_once_t g_default_policy_once = PTHREAD_ONCE_INIT;
 static RpcRetryPolicy* g_default_policy = NULL;
 static void init_default_policy() {

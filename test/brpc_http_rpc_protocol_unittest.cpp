@@ -20,6 +20,7 @@
 #include "brpc/controller.h"
 #include "echo.pb.h"
 #include "brpc/policy/http_rpc_protocol.h"
+#include "brpc/policy/http2_rpc_protocol.h"
 #include "json2pb/pb_to_json.h"
 #include "json2pb/json_to_pb.h"
 #include "brpc/details/method_status.h"
@@ -66,11 +67,18 @@ public:
 
 class MyEchoService : public ::test::EchoService {
 public:
-    void Echo(::google::protobuf::RpcController*,
+    void Echo(::google::protobuf::RpcController* cntl_base,
               const ::test::EchoRequest* req,
               ::test::EchoResponse* res,
               ::google::protobuf::Closure* done) {
         brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl =
+            static_cast<brpc::Controller*>(cntl_base);
+        const std::string* sleep_ms_str =
+            cntl->http_request().uri().GetQuery("sleep_ms");
+        if (sleep_ms_str) {
+            bthread_usleep(strtol(sleep_ms_str->data(), NULL, 10) * 1000);
+        }
 
         EXPECT_EQ(EXP_REQUEST, req->message());
         res->set_message(EXP_RESPONSE);
@@ -94,6 +102,12 @@ protected:
         options.fd = _pipe_fds[1];
         EXPECT_EQ(0, brpc::Socket::Create(options, &id));
         EXPECT_EQ(0, brpc::Socket::Address(id, &_socket));
+
+        brpc::SocketOptions h2_client_options;
+        h2_client_options.user = brpc::get_client_side_messenger();
+        h2_client_options.fd = _pipe_fds[1];
+        EXPECT_EQ(0, brpc::Socket::Create(h2_client_options, &id));
+        EXPECT_EQ(0, brpc::Socket::Address(id, &_h2_client_sock));
     };
 
     virtual ~HttpTest() {};
@@ -176,8 +190,40 @@ protected:
         msg->Destroy();
     }
 
+    void MakeH2EchoRequestBuf(butil::IOBuf* out, brpc::Controller* cntl, int* h2_stream_id) {
+        butil::IOBuf request_buf;
+        test::EchoRequest req;
+        req.set_message(EXP_REQUEST);
+        cntl->http_request().set_method(brpc::HTTP_METHOD_POST);
+        brpc::policy::SerializeHttpRequest(&request_buf, cntl, &req);
+        ASSERT_FALSE(cntl->Failed());
+        brpc::policy::H2UnsentRequest* h2_req = brpc::policy::H2UnsentRequest::New(cntl);
+        cntl->_current_call.stream_user_data = h2_req;
+        brpc::SocketMessage* socket_message = NULL;
+        brpc::policy::PackH2Request(NULL, &socket_message, cntl->call_id().value,
+                                    NULL, cntl, request_buf, NULL);
+        butil::Status st = socket_message->AppendAndDestroySelf(out, _h2_client_sock.get());
+        ASSERT_TRUE(st.ok());
+        *h2_stream_id = h2_req->_stream_id;
+    }
+
+    void MakeH2EchoResponseBuf(butil::IOBuf* out, int h2_stream_id) {
+        brpc::Controller cntl;
+        test::EchoResponse res;
+        res.set_message(EXP_RESPONSE);
+        cntl.http_request().set_content_type("application/proto");
+        {
+            butil::IOBufAsZeroCopyOutputStream wrapper(&cntl.response_attachment());
+            EXPECT_TRUE(res.SerializeToZeroCopyStream(&wrapper));
+        }
+        brpc::policy::H2UnsentResponse* h2_res = brpc::policy::H2UnsentResponse::New(&cntl, h2_stream_id);
+        butil::Status st = h2_res->AppendAndDestroySelf(out, _h2_client_sock.get());
+        ASSERT_TRUE(st.ok());
+    }
+
     int _pipe_fds[2];
     brpc::SocketUniquePtr _socket;
+    brpc::SocketUniquePtr _h2_client_sock;
     brpc::Server _server;
 
     MyEchoService _svc;
@@ -921,4 +967,263 @@ TEST_F(HttpTest, broken_socket_stops_progressive_reading) {
     ASSERT_TRUE(reader->destroyed());
     ASSERT_EQ(ECONNRESET, reader->destroying_status().error_code());
 }
+
+TEST_F(HttpTest, http2_sanity) {
+    const int port = 8923;
+    brpc::Server server;
+    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    EXPECT_EQ(0, server.Start(port, NULL));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = "h2c";
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+
+    // 1) complete flow and
+    // 2) socket replacement when streamId runs out, the initial streamId is a special
+    // value set in ctor of H2Context
+    test::EchoRequest req;
+    req.set_message(EXP_REQUEST);
+    test::EchoResponse res;
+    for (int i = 0; i < 15000; ++i) {
+        brpc::Controller cntl;
+        cntl.http_request().set_content_type("application/json");
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.http_request().uri() = "/EchoService/Echo";
+        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+        ASSERT_FALSE(cntl.Failed());
+        ASSERT_EQ(EXP_RESPONSE, res.message());
+    }
+
+    // check connection window size
+    brpc::SocketUniquePtr main_ptr;
+    brpc::SocketUniquePtr agent_ptr;
+    EXPECT_EQ(brpc::Socket::Address(channel._server_id, &main_ptr), 0);
+    EXPECT_EQ(main_ptr->GetAgentSocket(&agent_ptr, NULL), 0);
+    brpc::policy::H2Context* ctx = static_cast<brpc::policy::H2Context*>(agent_ptr->parsing_context());
+    ASSERT_GT(ctx->_remote_window_left.load(butil::memory_order_relaxed),
+             brpc::H2Settings::DEFAULT_INITIAL_WINDOW_SIZE / 2);
+}
+
+TEST_F(HttpTest, http2_ping) {
+    // This test injects PING frames before and after header and data.
+    brpc::Controller cntl;
+
+    // Prepare request
+    butil::IOBuf req_out;
+    int h2_stream_id = 0;
+    MakeH2EchoRequestBuf(&req_out, &cntl, &h2_stream_id);
+    // Prepare response
+    butil::IOBuf res_out;
+    char pingbuf[9 /*FRAME_HEAD_SIZE*/ + 8 /*Opaque Data*/];
+    brpc::policy::SerializeFrameHead(pingbuf, 8, brpc::policy::H2_FRAME_PING, 0, 0);
+    // insert ping before header and data
+    res_out.append(pingbuf, sizeof(pingbuf));
+    MakeH2EchoResponseBuf(&res_out, h2_stream_id);
+    // insert ping after header and data
+    res_out.append(pingbuf, sizeof(pingbuf));
+    // parse response
+    brpc::ParseResult res_pr =
+            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+    ASSERT_TRUE(res_pr.is_ok());
+    // process response
+    ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
+    ASSERT_FALSE(cntl.Failed());
+}
+
+inline void SaveUint32(void* out, uint32_t v) {
+    uint8_t* p = (uint8_t*)out;
+    p[0] = (v >> 24) & 0xFF;
+    p[1] = (v >> 16) & 0xFF;
+    p[2] = (v >> 8) & 0xFF;
+    p[3] = v & 0xFF;
+}
+
+TEST_F(HttpTest, http2_rst_before_header) {
+    brpc::Controller cntl;
+    // Prepare request
+    butil::IOBuf req_out;
+    int h2_stream_id = 0;
+    MakeH2EchoRequestBuf(&req_out, &cntl, &h2_stream_id);
+    // Prepare response
+    butil::IOBuf res_out;
+    char rstbuf[9 /*FRAME_HEAD_SIZE*/ + 4];
+    brpc::policy::SerializeFrameHead(rstbuf, 4, brpc::policy::H2_FRAME_RST_STREAM, 0, h2_stream_id);
+    SaveUint32(rstbuf + 9, brpc::H2_INTERNAL_ERROR);
+    res_out.append(rstbuf, sizeof(rstbuf));
+    MakeH2EchoResponseBuf(&res_out, h2_stream_id);
+    // parse response
+    brpc::ParseResult res_pr =
+            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+    ASSERT_TRUE(res_pr.is_ok());
+    // process response
+    ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
+    ASSERT_TRUE(cntl.Failed());
+    ASSERT_TRUE(cntl.ErrorCode() == brpc::EHTTP);
+    ASSERT_TRUE(cntl.http_response().status_code() == brpc::HTTP_STATUS_INTERNAL_SERVER_ERROR);
+}
+
+TEST_F(HttpTest, http2_rst_after_header_and_data) {
+    brpc::Controller cntl;
+    // Prepare request
+    butil::IOBuf req_out;
+    int h2_stream_id = 0;
+    MakeH2EchoRequestBuf(&req_out, &cntl, &h2_stream_id);
+    // Prepare response
+    butil::IOBuf res_out;
+    MakeH2EchoResponseBuf(&res_out, h2_stream_id);
+    char rstbuf[9 /*FRAME_HEAD_SIZE*/ + 4];
+    brpc::policy::SerializeFrameHead(rstbuf, 4, brpc::policy::H2_FRAME_RST_STREAM, 0, h2_stream_id);
+    SaveUint32(rstbuf + 9, brpc::H2_INTERNAL_ERROR);
+    res_out.append(rstbuf, sizeof(rstbuf));
+    // parse response
+    brpc::ParseResult res_pr =
+            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+    ASSERT_TRUE(res_pr.is_ok());
+    // process response
+    ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
+    ASSERT_FALSE(cntl.Failed());
+    ASSERT_TRUE(cntl.http_response().status_code() == brpc::HTTP_STATUS_OK);
+}
+
+TEST_F(HttpTest, http2_window_used_up) {
+    brpc::Controller cntl;
+    butil::IOBuf request_buf;
+    test::EchoRequest req;
+    // longer message to trigger using up window size sooner
+    req.set_message("FLOW_CONTROL_FLOW_CONTROL");
+    cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl.http_request().set_content_type("application/proto");
+    brpc::policy::SerializeHttpRequest(&request_buf, &cntl, &req);
+
+    int nsuc = brpc::H2Settings::DEFAULT_INITIAL_WINDOW_SIZE / cntl.request_attachment().size();
+    for (int i = 0; i <= nsuc; i++) {
+        brpc::policy::H2UnsentRequest* h2_req = brpc::policy::H2UnsentRequest::New(&cntl);
+        cntl._current_call.stream_user_data = h2_req;
+        brpc::SocketMessage* socket_message = NULL;
+        brpc::policy::PackH2Request(NULL, &socket_message, cntl.call_id().value,
+                                    NULL, &cntl, request_buf, NULL);
+        butil::IOBuf dummy;
+        butil::Status st = socket_message->AppendAndDestroySelf(&dummy, _h2_client_sock.get());
+        if (i == nsuc) {
+            // the last message should fail according to flow control policy.
+            ASSERT_FALSE(st.ok());
+            ASSERT_TRUE(st.error_code() == brpc::ELIMIT);
+            ASSERT_TRUE(butil::StringPiece(st.error_str()).starts_with("remote_window_left is not enough"));
+        } else {
+            ASSERT_TRUE(st.ok());
+        }
+        h2_req->DestroyStreamUserData(_h2_client_sock, &cntl, 0, false);
+    }
+}
+
+TEST_F(HttpTest, http2_settings) {
+    char settingsbuf[brpc::policy::FRAME_HEAD_SIZE + 36];
+    brpc::H2Settings h2_settings;
+    h2_settings.header_table_size = 8192;
+    h2_settings.max_concurrent_streams = 1024;
+    h2_settings.stream_window_size= (1u << 29) - 1;
+    const size_t nb = brpc::policy::SerializeH2Settings(h2_settings, settingsbuf + brpc::policy::FRAME_HEAD_SIZE);
+    brpc::policy::SerializeFrameHead(settingsbuf, nb, brpc::policy::H2_FRAME_SETTINGS, 0, 0);
+    butil::IOBuf buf;
+    buf.append(settingsbuf, brpc::policy::FRAME_HEAD_SIZE + nb);
+
+    brpc::policy::H2Context* ctx = new brpc::policy::H2Context(_socket.get(), NULL);
+    CHECK_EQ(ctx->Init(), 0);
+    _socket->initialize_parsing_context(&ctx);
+    ctx->_conn_state = brpc::policy::H2_CONNECTION_READY;
+    // parse settings
+    brpc::policy::ParseH2Message(&buf, _socket.get(), false, NULL);
+
+    butil::IOPortal response_buf;
+    CHECK_EQ(response_buf.append_from_file_descriptor(_pipe_fds[0], 1024),
+             (ssize_t)brpc::policy::FRAME_HEAD_SIZE);
+    brpc::policy::H2FrameHead frame_head;
+    butil::IOBufBytesIterator it(response_buf);
+    ctx->ConsumeFrameHead(it, &frame_head);
+    CHECK_EQ(frame_head.type, brpc::policy::H2_FRAME_SETTINGS);
+    CHECK_EQ(frame_head.flags, 0x01 /* H2_FLAGS_ACK */);
+    CHECK_EQ(frame_head.stream_id, 0);
+    ASSERT_TRUE(ctx->_remote_settings.header_table_size == 8192);
+    ASSERT_TRUE(ctx->_remote_settings.max_concurrent_streams == 1024);
+    ASSERT_TRUE(ctx->_remote_settings.stream_window_size == (1u << 29) - 1);
+}
+
+TEST_F(HttpTest, http2_invalid_settings) {
+    {
+        brpc::Server server;
+        brpc::ServerOptions options;
+        options.h2_settings.stream_window_size = brpc::H2Settings::MAX_WINDOW_SIZE + 1;
+        ASSERT_EQ(-1, server.Start("127.0.0.1:8924", &options));
+    }
+    {
+        brpc::Server server;
+        brpc::ServerOptions options;
+        options.h2_settings.max_frame_size =
+            brpc::H2Settings::DEFAULT_MAX_FRAME_SIZE - 1;
+        ASSERT_EQ(-1, server.Start("127.0.0.1:8924", &options));
+    }
+    {
+        brpc::Server server;
+        brpc::ServerOptions options;
+        options.h2_settings.max_frame_size =
+            brpc::H2Settings::MAX_OF_MAX_FRAME_SIZE + 1;
+        ASSERT_EQ(-1, server.Start("127.0.0.1:8924", &options));
+    }
+}
+
+TEST_F(HttpTest, http2_not_closing_socket_when_rpc_timeout) {
+    const int port = 8923;
+    brpc::Server server;
+    EXPECT_EQ(0, server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    EXPECT_EQ(0, server.Start(port, NULL));
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = "h2c";
+    ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
+
+    test::EchoRequest req;
+    test::EchoResponse res;
+    req.set_message(EXP_REQUEST);
+    {
+        // make a successful call to create the connection first
+        brpc::Controller cntl;
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.http_request().uri() = "/EchoService/Echo";
+        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+        ASSERT_FALSE(cntl.Failed());
+        ASSERT_EQ(EXP_RESPONSE, res.message());
+    }
+
+    brpc::SocketUniquePtr main_ptr;
+    EXPECT_EQ(brpc::Socket::Address(channel._server_id, &main_ptr), 0);
+    brpc::SocketId agent_id = main_ptr->_agent_socket_id.load(butil::memory_order_relaxed);
+
+    for (int i = 0; i < 4; i++) {
+        brpc::Controller cntl;
+        cntl.set_timeout_ms(50);
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.http_request().uri() = "/EchoService/Echo?sleep_ms=300";
+        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+        ASSERT_TRUE(cntl.Failed());
+
+        brpc::SocketUniquePtr ptr;
+        brpc::SocketId id = main_ptr->_agent_socket_id.load(butil::memory_order_relaxed);
+        EXPECT_EQ(id, agent_id);
+    }
+
+    {
+        // make a successful call again to make sure agent_socket not changing
+        brpc::Controller cntl;
+        cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+        cntl.http_request().uri() = "/EchoService/Echo";
+        channel.CallMethod(NULL, &cntl, &req, &res, NULL);
+        ASSERT_FALSE(cntl.Failed());
+        ASSERT_EQ(EXP_RESPONSE, res.message());
+        brpc::SocketUniquePtr ptr;
+        brpc::SocketId id = main_ptr->_agent_socket_id.load(butil::memory_order_relaxed);
+        EXPECT_EQ(id, agent_id);
+    }
+}
+
 } //namespace

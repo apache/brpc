@@ -202,8 +202,7 @@ void InputMessenger::OnNewMessages(Socket* m) {
                 // Set `read_eof' flag and proceed to feed EOF into `Protocol'
                 // (implied by m->_read_buf.empty), which may produce a new
                 // `InputMessageBase' under some protocols such as HTTP
-                LOG_IF(WARNING, FLAGS_log_connection_close)
-                        << "Remote side of " << *m << " was closed";
+                LOG_IF(WARNING, FLAGS_log_connection_close) << *m << " was closed by remote side";
                 read_eof = true;                
             } else if (errno != EAGAIN) {
                 if (errno == EINTR) {

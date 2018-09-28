@@ -725,6 +725,11 @@ int Server::StartInternal(const butil::ip_t& ip,
         _options = ServerOptions();
     }
 
+    if (!_options.h2_settings.IsValid(true/*log_error*/)) {
+        LOG(ERROR) << "Invalid h2_settings";
+        return -1;
+    }
+
     if (_options.http_master_service) {
         // Check requirements for http_master_service:
         //  has "default_method" & request/response have no fields
