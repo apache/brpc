@@ -470,7 +470,7 @@ ParseResult H2Context::Consume(
             Socket::WriteOptions wopt;
             wopt.ignore_eovercrowded = true;
             if (socket->Write(&buf, &wopt) != 0) {
-                LOG(WARNING) << socket->remote_side() << ": Fail to respond http2-client with settings";
+                LOG(WARNING) << "Fail to respond http2-client with settings to " << socket->remote_side();
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
         } else {
@@ -502,7 +502,7 @@ ParseResult H2Context::Consume(
             Socket::WriteOptions wopt;
             wopt.ignore_eovercrowded = true;
             if (_socket->Write(&sendbuf, &wopt) != 0) {
-                LOG(WARNING) << _socket->remote_side() << ": Fail to send RST_STREAM";
+                LOG(WARNING) << "Fail to send RST_STREAM to " << _socket->remote_side();
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
             return MakeMessage(NULL);
@@ -516,7 +516,7 @@ ParseResult H2Context::Consume(
             Socket::WriteOptions wopt;
             wopt.ignore_eovercrowded = true;
             if (_socket->Write(&sendbuf, &wopt) != 0) {
-                LOG(WARNING) << _socket->remote_side() << ": Fail to send GOAWAY";
+                LOG(WARNING) << "Fail to send GOAWAY to " << _socket->remote_side();
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
             return MakeMessage(NULL);
@@ -748,7 +748,7 @@ H2ParseResult H2StreamContext::OnData(
             Socket::WriteOptions wopt;
             wopt.ignore_eovercrowded = true;
             if (_conn_ctx->_socket->Write(&sendbuf, &wopt) != 0) {
-                LOG(WARNING) << _conn_ctx->_socket->remote_side() << ": Fail to send WINDOW_UPDATE";
+                LOG(WARNING) << "Fail to send WINDOW_UPDATE to " << _conn_ctx->_socket->remote_side();
                 return MakeH2Error(H2_INTERNAL_ERROR);
             }
         }
@@ -881,7 +881,7 @@ H2ParseResult H2Context::OnSettings(
     Socket::WriteOptions wopt;
     wopt.ignore_eovercrowded = true;
     if (_socket->Write(&sendbuf, &wopt) != 0) {
-        LOG(WARNING) << _socket->remote_side() << ": Fail to respond settings with ack";
+        LOG(WARNING) << "Fail to respond settings with ack to " << _socket->remote_side();
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
     return MakeH2Message(NULL);
@@ -921,7 +921,7 @@ H2ParseResult H2Context::OnPing(
     Socket::WriteOptions wopt;
     wopt.ignore_eovercrowded = true;
     if (_socket->Write(&sendbuf, &wopt) != 0) {
-        LOG(WARNING) << _socket->remote_side() << ": Fail to send ack of PING";
+        LOG(WARNING) << "Fail to send ack of PING to " << _socket->remote_side();
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
     return MakeH2Message(NULL);
