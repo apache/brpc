@@ -1592,8 +1592,7 @@ size_t H2UnsentRequest::EstimatedByteSize() {
     return sz;
 }
 
-void H2UnsentRequest::Describe(butil::IOBuf* desc) const {
-    butil::IOBufBuilder os;
+void H2UnsentRequest::Print(std::ostream& os) const {
     os << "[ H2 REQUEST @" << butil::my_ip() << " ]\n";
     for (size_t i = 0; i < _size; ++i) {
         os << "> " << _list[i].name << " = " << _list[i].value << '\n';
@@ -1613,33 +1612,23 @@ void H2UnsentRequest::Describe(butil::IOBuf* desc) const {
     if (!body->empty()) {
         os << "> \n";
     }
-    os.move_to(*desc);
-    if (body->size() > (size_t)FLAGS_http_verbose_max_body_length) {
-        size_t nskipped = body->size() - (size_t)FLAGS_http_verbose_max_body_length;
-        body->append_to(desc, FLAGS_http_verbose_max_body_length);
-        if (nskipped) {
-            char str[48];
-            snprintf(str, sizeof(str), "\n<skipped %" PRIu64 " bytes>", nskipped);
-            desc->append(str);
-        }
-    } else {
-        desc->append(*body);
-    }
+    os << butil::BinaryPrinter(*body, FLAGS_http_verbose_max_body_length);
+
 }
 
-H2UnsentResponse::H2UnsentResponse(Controller* c, int stream_id, bool grpc)
+H2UnsentResponse::H2UnsentResponse(Controller* c, int stream_id, bool is_grpc)
     : _size(0)
     , _stream_id(stream_id)
     , _http_response(c->release_http_response())
-    , _grpc(grpc) {
+    , _is_grpc(is_grpc) {
     _data.swap(c->response_attachment());
-    if (grpc) {
+    if (is_grpc) {
         _grpc_status = ErrorCodeToGrpcStatus(c->ErrorCode());
         PercentEncode(c->ErrorText(), &_grpc_message);
     }
 }
 
-H2UnsentResponse* H2UnsentResponse::New(Controller* c, int stream_id, bool grpc) {
+H2UnsentResponse* H2UnsentResponse::New(Controller* c, int stream_id, bool is_grpc) {
     const HttpHeader* const h = &c->http_response();
     const CommonStrings* const common = get_common_strings();
     const bool need_content_length =
@@ -1650,7 +1639,7 @@ H2UnsentResponse* H2UnsentResponse::New(Controller* c, int stream_id, bool grpc)
         + (size_t)need_content_type;
     const size_t memsize = offsetof(H2UnsentResponse, _list) +
         sizeof(HPacker::Header) * maxsize;
-    H2UnsentResponse* msg = new (malloc(memsize)) H2UnsentResponse(c, stream_id, grpc);
+    H2UnsentResponse* msg = new (malloc(memsize)) H2UnsentResponse(c, stream_id, is_grpc);
     // :status
     if (h->status_code() == 200) {
         msg->push(common->H2_STATUS, common->STATUS_200);
@@ -1720,18 +1709,17 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     butil::IOBuf frag;
     appender.move_to(frag);
 
-    butil::IOBufAppender trailer_appender;
     butil::IOBuf trailer_frag;
-    if (_grpc) {
+    if (_is_grpc) {
         HPacker::Header status_header("grpc-status",
                                       butil::string_printf("%d", _grpc_status));
-        hpacker.Encode(&trailer_appender, status_header, options);
+        hpacker.Encode(&appender, status_header, options);
         if (!_grpc_message.empty()) {
             HPacker::Header msg_header("grpc-message", _grpc_message);
-            hpacker.Encode(&trailer_appender, msg_header, options);
+            hpacker.Encode(&appender, msg_header, options);
         }
+        appender.move_to(trailer_frag);
     }
-    trailer_appender.move_to(trailer_frag);
 
     PackH2Message(out, frag, trailer_frag, _data, _stream_id, ctx);
     return butil::Status::OK();
@@ -1752,8 +1740,7 @@ size_t H2UnsentResponse::EstimatedByteSize() {
     return sz;
 }
 
-void H2UnsentResponse::Describe(butil::IOBuf* desc) const {
-    butil::IOBufBuilder os;
+void H2UnsentResponse::Print(std::ostream& os) const {
     os << "[ H2 RESPONSE @" << butil::my_ip() << " ]\n";
     for (size_t i = 0; i < _size; ++i) {
         os << "> " << _list[i].name << " = " << _list[i].value << '\n';
@@ -1767,18 +1754,7 @@ void H2UnsentResponse::Describe(butil::IOBuf* desc) const {
     if (!_data.empty()) {
         os << "> \n";
     }
-    os.move_to(*desc);
-    if (_data.size() > (size_t)FLAGS_http_verbose_max_body_length) {
-        size_t nskipped = _data.size() - (size_t)FLAGS_http_verbose_max_body_length;
-        _data.append_to(desc, FLAGS_http_verbose_max_body_length);
-        if (nskipped) {
-            char str[48];
-            snprintf(str, sizeof(str), "\n<skipped %" PRIu64 " bytes>", nskipped);
-            desc->append(str);
-        }
-    } else {
-        desc->append(_data);
-    }
+    os << butil::BinaryPrinter(_data, FLAGS_http_verbose_max_body_length);
 }
 
 void PackH2Request(butil::IOBuf*,
@@ -1806,9 +1782,7 @@ void PackH2Request(butil::IOBuf*,
     *user_message = h2_req;
     
     if (FLAGS_http_verbose) {
-        butil::IOBuf desc;
-        h2_req->Describe(&desc);
-        std::cerr << desc << std::endl;
+        std::cerr << *h2_req << std::endl;
     }
 }
 

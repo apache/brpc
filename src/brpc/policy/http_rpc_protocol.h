@@ -41,7 +41,6 @@ struct CommonStrings {
     std::string ACCEPT_ENCODING;
     std::string CONTENT_ENCODING;
     std::string CONTENT_LENGTH;
-    std::string IDENTITY;
     std::string GZIP;
     std::string CONNECTION;
     std::string KEEP_ALIVE;
@@ -69,6 +68,7 @@ struct CommonStrings {
     std::string TRAILERS;
     std::string GRPC_ENCODING;
     std::string GRPC_ACCEPT_ENCODING;
+    std::string GRPC_ACCEPT_ENCODING_VALUE;
     std::string GRPC_STATUS;
     std::string GRPC_MESSAGE;
 
@@ -77,8 +77,8 @@ struct CommonStrings {
 
 // Used in UT.
 class HttpContext : public ReadableProgressiveAttachment
-                       , public InputMessageBase
-                       , public HttpMessage {
+                  , public InputMessageBase
+                  , public HttpMessage {
 public:
     HttpContext(bool read_body_progressively = false)
         : InputMessageBase()
@@ -138,13 +138,14 @@ enum HttpContentType {
     HTTP_CONTENT_OTHERS = 0,
     HTTP_CONTENT_JSON = 1,
     HTTP_CONTENT_PROTO = 2,
-    HTTP_CONTENT_GRPC = 3
 };
 
-HttpContentType ParseContentType(butil::StringPiece content_type);
+// Parse from the textual content type. One type may have more than one literals.
+// Returns a numerical type. *is_grpc_ct is set to true if the content-type is
+// set by gRPC.
+HttpContentType ParseContentType(butil::StringPiece content_type, bool* is_grpc_ct);
 
-}  // namespace policy
+} // namespace policy
 } // namespace brpc
-
 
 #endif // BRPC_POLICY_HTTP_RPC_PROTOCOL_H

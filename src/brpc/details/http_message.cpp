@@ -225,12 +225,14 @@ int HttpMessage::OnBody(const char *at, const size_t length) {
             delete _vmsgbuilder;
             _vmsgbuilder = NULL;
         } else {
-            if (_body_length < (size_t)FLAGS_http_verbose_max_body_length) {
+            if (_vbodylen < (size_t)FLAGS_http_verbose_max_body_length) {
                 int plen = std::min(length, (size_t)FLAGS_http_verbose_max_body_length
-                                    - _body_length);
-                _vmsgbuilder->write(at, plen);
+                                    - _vbodylen);
+                std::string str = butil::ToPrintableString(
+                    at, plen, std::numeric_limits<size_t>::max());
+                _vmsgbuilder->write(str.data(), str.size());
             }
-            _body_length += length;
+            _vbodylen += length;
         }
     }
     if (_stage != HTTP_ON_BODY) {
@@ -280,8 +282,8 @@ int HttpMessage::OnBody(const char *at, const size_t length) {
 
 int HttpMessage::OnMessageComplete() {
     if (_vmsgbuilder) {
-        if (_body_length > (size_t)FLAGS_http_verbose_max_body_length) {
-            *_vmsgbuilder << "\n<skipped " << _body_length
+        if (_vbodylen > (size_t)FLAGS_http_verbose_max_body_length) {
+            *_vmsgbuilder << "\n<skipped " << _vbodylen
                 - (size_t)FLAGS_http_verbose_max_body_length << " bytes>";
         }
         std::cerr << _vmsgbuilder->buf() << std::endl;
@@ -396,7 +398,7 @@ HttpMessage::HttpMessage(bool read_body_progressively)
     , _body_reader(NULL)
     , _cur_value(NULL)
     , _vmsgbuilder(NULL)
-    , _body_length(0) {
+    , _vbodylen(0) {
     http_parser_init(&_parser, HTTP_BOTH);
     _parser.data = this;
 }
@@ -534,10 +536,10 @@ std::ostream& operator<<(std::ostream& os, const http_parser& parser) {
 //                | "CONNECT"                ; Section 9.9
 //                | extension-method
 // extension-method = token
-void SerializeHttpRequest(butil::IOBuf* request,
-                          HttpHeader* h,
-                          const butil::EndPoint& remote_side,
-                          const butil::IOBuf* content) {
+void MakeRawHttpRequest(butil::IOBuf* request,
+                        HttpHeader* h,
+                        const butil::EndPoint& remote_side,
+                        const butil::IOBuf* content) {
     butil::IOBufBuilder os;
     os << HttpMethod2Str(h->method()) << ' ';
     const URI& uri = h->uri();
@@ -611,9 +613,9 @@ void SerializeHttpRequest(butil::IOBuf* request,
 //                CRLF
 //                [ message-body ]          ; Section 7.2
 // Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
-void SerializeHttpResponse(butil::IOBuf* response,
-                           HttpHeader* h,
-                           butil::IOBuf* content) {
+void MakeRawHttpResponse(butil::IOBuf* response,
+                         HttpHeader* h,
+                         butil::IOBuf* content) {
     butil::IOBufBuilder os;
     os << "HTTP/" << h->major_version() << '.'
        << h->minor_version() << ' ' << h->status_code()

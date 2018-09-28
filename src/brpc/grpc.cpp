@@ -24,6 +24,30 @@
 
 namespace brpc {
 
+const char* GrpcStatusToString(GrpcStatus s) {
+    switch (s) {
+        case GRPC_OK: return "GRPC_OK";
+        case GRPC_CANCELED: return "GRPC_CANCELED";
+        case GRPC_UNKNOWN: return "GRPC_UNKNOWN";
+        case GRPC_INVALIDARGUMENT: return "GRPC_INVALIDARGUMENT";
+        case GRPC_DEADLINEEXCEEDED: return "GRPC_DEADLINEEXCEEDED";
+        case GRPC_NOTFOUND: return "GRPC_NOTFOUND";
+        case GRPC_ALREADYEXISTS: return "GRPC_ALREADYEXISTS";
+        case GRPC_PERMISSIONDENIED: return "GRPC_PERMISSIONDENIED";
+        case GRPC_RESOURCEEXHAUSTED: return "GRPC_RESOURCEEXHAUSTED";
+        case GRPC_FAILEDPRECONDITION: return "GRPC_FAILEDPRECONDITION";
+        case GPRC_ABORTED: return "GPRC_ABORTED";
+        case GRPC_OUTOFRANGE: return "GRPC_OUTOFRANGE";
+        case GRPC_UNIMPLEMENTED: return "GRPC_UNIMPLEMENTED";
+        case GRPC_INTERNAL: return "GRPC_INTERNAL";
+        case GRPC_UNAVAILABLE: return "GRPC_UNAVAILABLE";
+        case GRPC_DATALOSS: return "GRPC_DATALOSS";
+        case GRPC_UNAUTHENTICATED: return "GRPC_UNAUTHENTICATED";
+        case GRPC_MAX: return "GRPC_MAX";
+    }
+    return "Unknown-GrpcStatus";
+}
+
 GrpcStatus ErrorCodeToGrpcStatus(int error_code) {
     switch (error_code) {
     case 0:

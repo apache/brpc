@@ -154,8 +154,6 @@ friend void policy::ProcessHttpRequest(InputMessageBase *msg);
     std::string _content_type;
     std::string _unresolved_path;
     std::pair<int, int> _version;
-    int _h2_stream_id;
-    H2Error _h2_error;
 };
 
 const HttpHeader& DefaultHttpHeader();

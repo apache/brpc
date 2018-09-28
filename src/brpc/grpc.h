@@ -142,8 +142,11 @@ enum GrpcStatus {
     GRPC_MAX,
 }; 
 
-GrpcStatus ErrorCodeToGrpcStatus(int error_code);
+// Get description of the error.
+const char* GrpcStatusToString(GrpcStatus);
 
+// Convert between error code and grpc status with similar semantics
+GrpcStatus ErrorCodeToGrpcStatus(int error_code);
 int GrpcStatusToErrorCode(GrpcStatus grpc_status);
 
 void PercentEncode(const std::string& str, std::string* str_out);

@@ -21,7 +21,7 @@
 #include <brpc/channel.h>
 #include "helloworld.pb.h"
 
-DEFINE_string(protocol, "grpc", "Protocol type. Defined in src/brpc/options.proto");
+DEFINE_string(protocol, "h2c", "Protocol type. Defined in src/brpc/options.proto");
 DEFINE_string(server, "0.0.0.0:50051", "IP Address of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
@@ -59,22 +59,21 @@ int main(int argc, char* argv[]) {
         helloworld::HelloReply response;
         brpc::Controller cntl;
 
-        request.set_name("grpc client example");
+        request.set_name("grpc_req_from_brpc");
+        cntl.http_request().set_content_type("application/grpc");
         if (FLAGS_gzip) {
             cntl.set_request_compress_type(brpc::COMPRESS_TYPE_GZIP);
         }
         // Because `done'(last parameter) is NULL, this function waits until
         // the response comes back or error occurs(including timedout).
         stub.SayHello(&cntl, &request, &response, NULL);
-        //cntl.http_request().uri() = FLAGS_server;
-        //channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         if (!cntl.Failed()) {
             LOG(INFO) << "Received response from " << cntl.remote_side()
                 << " to " << cntl.local_side()
                 << ": " << response.message()
                 << " latency=" << cntl.latency_us() << "us";
         } else {
-            LOG(WARNING) << cntl.ErrorCode() << ": " << cntl.ErrorText();
+            LOG(WARNING) << cntl.ErrorText();
         }
         usleep(FLAGS_interval_ms * 1000L);
     }

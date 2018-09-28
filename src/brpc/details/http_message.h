@@ -113,7 +113,7 @@ private:
 protected:
     // Only valid when -http_verbose is on
     butil::IOBufBuilder* _vmsgbuilder;
-    size_t _body_length;
+    size_t _vbodylen;
 };
 
 std::ostream& operator<<(std::ostream& os, const http_parser& parser);
@@ -122,17 +122,17 @@ std::ostream& operator<<(std::ostream& os, const http_parser& parser);
 // header: may be modified in some cases
 // remote_side: used when "Host" is absent
 // content: could be NULL.
-void SerializeHttpRequest(butil::IOBuf* request,
-                          HttpHeader* header,
-                          const butil::EndPoint& remote_side,
-                          const butil::IOBuf* content);
+void MakeRawHttpRequest(butil::IOBuf* request,
+                        HttpHeader* header,
+                        const butil::EndPoint& remote_side,
+                        const butil::IOBuf* content);
 
 // Serialize a http response.
 // header: may be modified in some cases
 // content: cleared after usage. could be NULL. 
-void SerializeHttpResponse(butil::IOBuf* response,
-                           HttpHeader* header,
-                           butil::IOBuf* content);
+void MakeRawHttpResponse(butil::IOBuf* response,
+                         HttpHeader* header,
+                         butil::IOBuf* content);
 
 } // namespace brpc
 
