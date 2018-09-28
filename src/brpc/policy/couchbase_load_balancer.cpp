@@ -115,7 +115,7 @@ bool CouchbaseLoadBalancer::UpdateVBucketMap(
         LOG(ERROR) << "Couchbase(bucket=" << butil::vbucket_config_get_user(vb_conf) 
             << ") quit rebalance status from version " << ++version;
     }
-		butil::vbucket_config_destroy(vb_conf);
+    butil::vbucket_config_destroy(vb_conf);
     return ret;
 }
 
@@ -210,7 +210,7 @@ int CouchbaseLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         break;
     default: // other retry case
         SocketId master_id = CouchbaseHelper::GetMaster(vb_map.get(), vb_id);
-		    SocketId curr_id = in.excluded->GetLastId();
+        SocketId curr_id = in.excluded->GetLastId();
         SocketId dummy_id = 0;
         if (IsInRebalancing(vb_map.get())) {
             selected_id = GetDetectedMaster(vb_map.get(), vb_id);
