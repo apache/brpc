@@ -67,6 +67,7 @@ BAIDU_REGISTER_ERRNO(brpc::ERTMPCREATESTREAM, "createStream was rejected by the 
 BAIDU_REGISTER_ERRNO(brpc::EEOF, "Got EOF");
 BAIDU_REGISTER_ERRNO(brpc::EUNUSED, "The socket was not needed");
 BAIDU_REGISTER_ERRNO(brpc::ESSL, "SSL related operation failed");
+BAIDU_REGISTER_ERRNO(brpc::EH2RUNOUTSTREAMS, "The H2 socket was run out of streams");
 
 BAIDU_REGISTER_ERRNO(brpc::EINTERNAL, "General internal error");
 BAIDU_REGISTER_ERRNO(brpc::ERESPONSE, "Bad response");
@@ -238,7 +239,7 @@ void Controller::InternalReset(bool in_constructor) {
     _done = NULL;
     _sender = NULL;
     _request_code = 0;
-    _single_server_id = (SocketId)-1;
+    _single_server_id = INVALID_SOCKET_ID;
     _unfinished_call = NULL;
     _stream_creator = NULL;
     _accessed = NULL;
@@ -258,16 +259,16 @@ void Controller::InternalReset(bool in_constructor) {
 Controller::Call::Call(Controller::Call* rhs)
     : nretry(rhs->nretry)
     , need_feedback(rhs->need_feedback)
-    , touched_by_stream_creator(rhs->touched_by_stream_creator)
     , peer_id(rhs->peer_id)
     , begin_time_us(rhs->begin_time_us)
-    , sending_sock(rhs->sending_sock.release()) {
+    , sending_sock(rhs->sending_sock.release())
+    , stream_user_data(rhs->stream_user_data) {
     // NOTE: fields in rhs should be reset because RPC could fail before
     // setting all the fields to next call and _current_call.OnComplete
     // will behave incorrectly.
     rhs->need_feedback = false;
-    rhs->touched_by_stream_creator = false;
-    rhs->peer_id = (SocketId)-1;
+    rhs->peer_id = INVALID_SOCKET_ID;
+    rhs->stream_user_data = NULL;
 }
 
 Controller::Call::~Call() {
@@ -278,10 +279,10 @@ void Controller::Call::Reset() {
     nretry = 0;
     need_feedback = false;
     enable_circuit_breaker = false;
-    touched_by_stream_creator = false;
-    peer_id = (SocketId)-1;
+    peer_id = INVALID_SOCKET_ID;
     begin_time_us = 0;
     sending_sock.reset(NULL);
+    stream_user_data = NULL;
 }
 
 void Controller::set_timeout_ms(int64_t timeout_ms) {
@@ -361,19 +362,15 @@ void Controller::AppendServerIdentiy() {
     }
 }
 
-// Defined in http_rpc_protocol.cpp
-namespace policy {
-int ErrorCode2StatusCode(int error_code);
-}
-
 inline void UpdateResponseHeader(Controller* cntl) {
     DCHECK(cntl->Failed());
-    if (cntl->request_protocol() == PROTOCOL_HTTP) {
+    if (cntl->request_protocol() == PROTOCOL_HTTP ||
+        cntl->request_protocol() == PROTOCOL_HTTP2) {
         if (cntl->ErrorCode() != EHTTP) {
-            // We assume that status code is already set along with EHTTP.
+            // Set the related status code
             cntl->http_response().set_status_code(
-                policy::ErrorCode2StatusCode(cntl->ErrorCode()));
-        }
+                ErrorCodeToStatusCode(cntl->ErrorCode()));
+        } // else assume that status code is already set along with EHTTP.
         if (cntl->server() != NULL) {
             // Override HTTP body at server-side to conduct error text
             // to the client.
@@ -543,20 +540,26 @@ static void HandleTimeout(void* arg) {
 
 void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
                                         bool new_bthread, int saved_error) {
-    // Intercept errors from previous calls because handling these errors
-    // is quick and does not need new thread.
-    if (FailedInline()
-        && info.id != _correlation_id && info.id != current_id()) {
-        // The call before backup request was failed.
+    // TODO(gejun): Simplify call-ending code.
+    // Intercept previous calls
+    while (info.id != _correlation_id && info.id != current_id()) {
         if (_unfinished_call && get_id(_unfinished_call->nretry) == info.id) {
-            _unfinished_call->OnComplete(this, _error_code, info.responded);
+            if (!FailedInline()) {
+                // Continue with successful backup request.
+                break;
+            }
+            // Complete failed backup request.
+            _unfinished_call->OnComplete(this, _error_code, info.responded, false);
             delete _unfinished_call;
             _unfinished_call = NULL;
-        }  
+        }
+        // Ignore all non-backup requests and failed backup requests.
         _error_code = saved_error;
+        response_attachment().clear();
         CHECK_EQ(0, bthread_id_unlock(info.id));
         return;
     }
+
     if ((!_error_code && _retry_policy == NULL) ||
         _current_call.nretry >= _max_retry) {
         goto END_OF_RPC;
@@ -612,7 +615,7 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
             }
             _accessed->Add(_current_call.peer_id);
         }
-        _current_call.OnComplete(this, _error_code, info.responded);
+        _current_call.OnComplete(this, _error_code, info.responded, false);
         ++_current_call.nretry;
         // Clear http responses before retrying, otherwise the response may
         // be mixed with older (and undefined) stuff. This is actually not
@@ -621,7 +624,6 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
             _http_response->Clear();
         }
         response_attachment().clear();
-        
         return IssueRPC(butil::gettimeofday_us());
     }
     
@@ -694,8 +696,8 @@ inline bool does_error_affect_main_socket(int error_code) {
 //      retries and backup requests. This method simply cares about the error of
 //      this very Call (specified by |error_code|) rather than the error of the
 //      entire RPC (specified by c->FailedInline()).
-void Controller::Call::OnComplete(Controller* c, int error_code/*note*/,
-                                  bool responded) {
+void Controller::Call::OnComplete(
+        Controller* c, int error_code/*note*/, bool responded, bool end_of_rpc) {
     switch (c->connection_type()) {
     case CONNECTION_TYPE_UNKNOWN:
         break;
@@ -734,7 +736,9 @@ void Controller::Call::OnComplete(Controller* c, int error_code/*note*/,
         if (sending_sock != NULL) {
             // Check the comment in CONNECTION_TYPE_POOLED branch.
             if (!sending_sock->is_read_progressive()) {
-                sending_sock->SetFailed();
+                if (c->_stream_creator == NULL) {
+                    sending_sock->SetFailed();
+                }
             } else {
                 sending_sock->OnProgressiveReadCompleted();
             }
@@ -758,24 +762,24 @@ void Controller::Call::OnComplete(Controller* c, int error_code/*note*/,
             sock->SetLogOff();
         }
     }
-    if (touched_by_stream_creator) {
-        touched_by_stream_creator = false;
-        CHECK(c->stream_creator());
-        c->stream_creator()->CleanupSocketForStream(
-            sending_sock.get(), c, error_code);
-    }
     if (enable_circuit_breaker && sending_sock) {
         sending_sock->FeedbackCircuitBreaker(error_code, 
             butil::gettimeofday_us() - begin_time_us);
     }
-    // Release the `Socket' we used to send/receive data
-    sending_sock.reset(NULL);
     
     if (need_feedback) {
         const LoadBalancer::CallInfo info =
             { begin_time_us, peer_id, error_code, c };
         c->_lb->Feedback(info);
     }
+
+    if (stream_user_data) {
+        stream_user_data->DestroyStreamUserData(sending_sock, c, error_code, end_of_rpc);
+        stream_user_data = NULL;
+    }
+
+    // Release the `Socket' we used to send/receive data
+    sending_sock.reset(NULL);
 }
 
 void Controller::EndRPC(const CompletionInfo& info) {
@@ -790,13 +794,6 @@ void Controller::EndRPC(const CompletionInfo& info) {
             _remote_side = _current_call.sending_sock->remote_side();
             _local_side = _current_call.sending_sock->local_side();
         }
-        // TODO: Replace this with stream_creator.
-        HandleStreamConnection(_current_call.sending_sock.get());
-        if (_stream_creator) {
-            _stream_creator->OnStreamCreationDone(
-                _current_call.sending_sock, this);
-        }
-        _current_call.OnComplete(this, _error_code, info.responded);
 
         if (_unfinished_call != NULL) {
             // When _current_call is successful, mark _unfinished_call as
@@ -807,16 +804,26 @@ void Controller::EndRPC(const CompletionInfo& info) {
             // same error. This is not accurate as well, but we have to end
             // _unfinished_call with some sort of error anyway.
             const int err = (_error_code == 0 ? EBACKUPREQUEST : _error_code);
-            _unfinished_call->OnComplete(this, err, false);
+            _unfinished_call->OnComplete(this, err, false, false);
             delete _unfinished_call;
             _unfinished_call = NULL;
         }
+        // TODO: Replace this with stream_creator.
+        HandleStreamConnection(_current_call.sending_sock.get());
+        _current_call.OnComplete(this, _error_code, info.responded, true);
     } else {
         // Even if _unfinished_call succeeded, we don't use EBACKUPREQUEST
         // (which gets punished in LALB) for _current_call because _current_call
         // is sent after _unfinished_call, it's just normal that _current_call
         // does not respond before _unfinished_call.
-        _current_call.OnComplete(this, ECANCELED, false);
+        if (_unfinished_call == NULL) {
+            CHECK(false) << "A previous non-backup request responded, cid="
+                         << info.id << " current_cid=" << current_id()
+                         << " initial_cid=" << _correlation_id
+                         << " stream_user_data=" << _current_call.stream_user_data
+                         << " sending_sock=" << *_current_call.sending_sock;
+        }
+        _current_call.OnComplete(this, ECANCELED, false, false);
         if (_unfinished_call != NULL) {
             if (_unfinished_call->sending_sock != NULL) {
                 _remote_side = _unfinished_call->sending_sock->remote_side();
@@ -824,23 +831,22 @@ void Controller::EndRPC(const CompletionInfo& info) {
             }
             // TODO: Replace this with stream_creator.
             HandleStreamConnection(_unfinished_call->sending_sock.get());
-            if (_stream_creator) {
-                _stream_creator->OnStreamCreationDone(
-                    _unfinished_call->sending_sock, this);
-            }
             if (get_id(_unfinished_call->nretry) == info.id) {
-                _unfinished_call->OnComplete(this, _error_code, info.responded);
+                _unfinished_call->OnComplete(
+                        this, _error_code, info.responded, true);
             } else {
-                CHECK(false) << "A previous non-backed-up call responded";
-                _unfinished_call->OnComplete(this, ECANCELED, false);
+                CHECK(false) << "A previous non-backup request responded";
+                _unfinished_call->OnComplete(this, ECANCELED, false, true);
             }
+
             delete _unfinished_call;
             _unfinished_call = NULL;
-        } else {
-            CHECK(false) << "A previous non-backed-up call responded";
         }
     }
-    
+    if (_stream_creator) {
+        _stream_creator->DestroyStreamCreator(this);
+        _stream_creator = NULL;
+    }
     // Clear _error_text when the call succeeded, otherwise a successful
     // call with non-empty ErrorText may confuse user.
     if (!_error_code) {
@@ -1004,8 +1010,8 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _remote_side = tmp_sock->remote_side();
     }
     if (_stream_creator) {
-        _current_call.touched_by_stream_creator = true;
-        _stream_creator->ReplaceSocketForStream(&tmp_sock, this);
+        _current_call.stream_user_data =
+            _stream_creator->OnCreatingStream(&tmp_sock, this);
         if (FailedInline()) {
             return HandleSendFailed();
         }
@@ -1037,9 +1043,9 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     } else {
         int rc = 0;
         if (_connection_type == CONNECTION_TYPE_POOLED) {
-            rc = Socket::GetPooledSocket(tmp_sock.get(), &_current_call.sending_sock);
+            rc = tmp_sock->GetPooledSocket(&_current_call.sending_sock);
         } else if (_connection_type == CONNECTION_TYPE_SHORT) {
-            rc = Socket::GetShortSocket(tmp_sock.get(), &_current_call.sending_sock);
+            rc = tmp_sock->GetShortSocket(&_current_call.sending_sock);
         } else {
             tmp_sock.reset();
             SetFailed(EINVAL, "Invalid connection_type=%d", (int)_connection_type);
@@ -1322,6 +1328,14 @@ void WebEscape(const std::string& source, std::string* output) {
 void Controller::reset_rpc_dump_meta(RpcDumpMeta* meta) { 
     delete _rpc_dump_meta;
     _rpc_dump_meta = meta;
+}
+
+void Controller::set_stream_creator(StreamCreator* sc) {
+    if (_stream_creator) {
+        LOG(FATAL) << "A StreamCreator has been set previously";
+        return;
+    }
+    _stream_creator = sc;
 }
 
 ProgressiveAttachment*

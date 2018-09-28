@@ -23,6 +23,7 @@
 #include "brpc/uri.h"              // URI
 #include "brpc/http_method.h"      // HttpMethod
 #include "brpc/http_status_code.h"
+#include "brpc/http2.h"
 
 // To rpc developers: DON'T put impl. details here, use opaque pointers instead.
 
@@ -31,6 +32,7 @@ namespace brpc {
 class InputMessageBase;
 namespace policy {
 void ProcessHttpRequest(InputMessageBase *msg);
+class H2StreamContext;
 }
 
 // Non-body part of a HTTP message.
@@ -135,6 +137,7 @@ public:
 private:
 friend class HttpMessage;
 friend class HttpMessageSerializer;
+friend class policy::H2StreamContext;
 friend void policy::ProcessHttpRequest(InputMessageBase *msg);
 
     std::string& GetOrAddHeader(const std::string& key) {

@@ -19,20 +19,21 @@
 
 #include "butil/iobuf.h"                             // butil::IOBuf
 #include "butil/strings/string_piece.h"              // butil::StringPiece
-
+#include "brpc/http2.h"
+#include "brpc/describable.h"
 
 namespace brpc {
 
 enum HeaderIndexPolicy {
     // Append this header, alerting the decoder dynamic table
     //  - If the given header matches one of the indexed header, this header
-    //    replaced by the index.
+    //    is replaced by the index.
     //  - If not, append this header into the decoder dynamic table
     HPACK_INDEX_HEADER = 0,
 
     // Append this header, without alerting the decoder dynamic table
     //  - If the given header matches one of the indexed header, this header
-    //    replaced by the index.
+    //    is replaced by the index.
     //  - If not, append this header directly *WITHOUT* any modification on the
     //    decoder dynamic table
     HPACK_NOT_INDEX_HEADER = 1,
@@ -79,35 +80,36 @@ class IndexTable;
 //      header field names MUST be treated as malformed 
 // Not supported methods:
 //  - Resize dynamic table.
-class HPacker {
+class HPacker : public Describable {
 public:
     struct Header {
         std::string name;
         std::string value;
+
+        Header() {}
+        explicit Header(const std::string& name2) : name(name2) {}
+        Header(const std::string& name2, const std::string& value2)
+            : name(name2), value(value2) {}
     };
 
     HPacker();
     ~HPacker();
 
-    // According to rfc7540#section-6.5.2.
-    // The initial value of SETTING_HEADER_TABLE_SIZE is 4096 octets.
-    const static size_t DEFAULT_HEADER_TABLE_SIZE = 4096;
-
     // Initialize the instance.
     // Returns 0 on success, -1 otherwise.
-    int Init(size_t max_table_size = DEFAULT_HEADER_TABLE_SIZE);
+    int Init(size_t max_table_size = H2Settings::DEFAULT_HEADER_TABLE_SIZE);
 
     // Encode header and append the encoded buffer to |out|
-    // Returns the size of encoded buffer on success, -1 otherwise
-    ssize_t Encode(butil::IOBufAppender* out, const Header& header,
-                   const HPackOptions& options);
-    ssize_t Encode(butil::IOBufAppender* out, const Header& header)
+    // Returns true on success.
+    void Encode(butil::IOBufAppender* out, const Header& header,
+                const HPackOptions& options);
+    void Encode(butil::IOBufAppender* out, const Header& header)
     { return Encode(out, header, HPackOptions()); }
 
-    // Try to decode at most one Header from source and erase correspoding
+    // Try to decode at most one Header from source and erase corresponding
     // buffer.
     // Returns:
-    //  * $size of decoded buffer is a header is succesfully decoded
+    //  * $size of decoded buffer when a header is succesfully decoded
     //  * 0 when the source is incompleted
     //  * -1 when the source is malformed
     ssize_t Decode(butil::IOBuf* source, Header* h);
@@ -115,7 +117,11 @@ public:
     // Like the previous function, except that the source is from
     // IOBufBytesIterator.
     ssize_t Decode(butil::IOBufBytesIterator& source, Header* h);
+
+    void Describe(std::ostream& os, const DescribeOptions&) const;
+    
 private:
+    DISALLOW_COPY_AND_ASSIGN(HPacker);
     int FindHeaderFromIndexTable(const Header& h) const;
     int FindNameFromIndexTable(const std::string& name) const;
     const Header* HeaderAt(int index) const;
@@ -125,6 +131,9 @@ private:
     IndexTable* _encode_table;
     IndexTable* _decode_table;
 };
+
+// Lowercase the input string, a fast implementation.
+void tolower(std::string* s);
 
 inline ssize_t HPacker::Decode(butil::IOBuf* source, Header* h) {
     butil::IOBufBytesIterator iter(*source);

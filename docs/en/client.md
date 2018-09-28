@@ -512,7 +512,7 @@ Controller.retried_count() returns number of retries.
 
 Controller.has_backup_request() tells if backup_request was sent.
 
-**servers tried before are not retried by best efforts**
+**Servers tried before are not retried by best efforts**
 
 Conditions for retrying (AND relations):
 - Broken connection.

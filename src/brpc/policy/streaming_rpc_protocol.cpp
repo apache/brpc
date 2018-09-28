@@ -98,7 +98,7 @@ ParseResult ParseStreamingMessage(butil::IOBuf* source,
     do {
         StreamFrameMeta fm;
         if (!ParsePbFromIOBuf(&fm, meta_buf)) {
-            LOG(WARNING) << "Fail to Parse StreamFrameMeta, socket=" << *socket;
+            LOG(WARNING) << "Fail to Parse StreamFrameMeta from " << *socket;
             break;
         }
         SocketUniquePtr ptr;
