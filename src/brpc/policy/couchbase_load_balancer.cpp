@@ -103,8 +103,8 @@ bool CouchbaseLoadBalancer::UpdateVBucketMap(
     bool ret = _vbucket_map.Modify(fn);
 
     if (!last_rebalance && curr_rebalance) {
-        LOG(ERROR) << "Couchbase enters into rebalance status from version " 
-                   << ++version;
+        LOG(ERROR) << "Couchbase(bucket=" << butil::vbucket_config_get_user(vb_conf)
+            << ") enter rebalance status from version " << ++version;
     }
     if (last_rebalance && !curr_rebalance) {
         DetectedVBucketMap& detect_map = *_detected_vbucket_map;
@@ -112,10 +112,10 @@ bool CouchbaseLoadBalancer::UpdateVBucketMap(
             detect_map[vb_id]._verified.store(false, butil::memory_order_relaxed);
             detect_map[vb_id]._id.store(-1, butil::memory_order_relaxed); 
         }
-        LOG(ERROR) << "Couchbase quit rebalance status from version " 
-                   << ++version;
+        LOG(ERROR) << "Couchbase(bucket=" << butil::vbucket_config_get_user(vb_conf) 
+            << ") quit rebalance status from version " << ++version;
     }
-    butil::vbucket_config_destroy(vb_conf);
+		butil::vbucket_config_destroy(vb_conf);
     return ret;
 }
 
@@ -148,7 +148,9 @@ size_t CouchbaseLoadBalancer::AddServersInBatch(
                               server.id);
         ++n;
     }
-    n += !!UpdateVBucketMap(server_with_vbucket_map->tag, &server_id_map);
+    if (server_with_vbucket_map != nullptr) {
+        n += !!UpdateVBucketMap(server_with_vbucket_map->tag, &server_id_map);
+    }
     return n;
 }
 
@@ -208,7 +210,7 @@ int CouchbaseLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         break;
     default: // other retry case
         SocketId master_id = CouchbaseHelper::GetMaster(vb_map.get(), vb_id);
-        SocketId curr_id = in.excluded->GetLastId();
+		    SocketId curr_id = in.excluded->GetLastId();
         SocketId dummy_id = 0;
         if (IsInRebalancing(vb_map.get())) {
             selected_id = GetDetectedMaster(vb_map.get(), vb_id);

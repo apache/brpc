@@ -264,7 +264,6 @@ static int lookup_server_struct(struct vbucket_config_st *vb, cJSON *c) {
 static int update_server_info(struct vbucket_config_st *vb, cJSON *config) {
     int idx, ii;
     cJSON *node, *json;
-
     for (ii = 0; ii < cJSON_GetArraySize(config); ++ii) {
         node = cJSON_GetArrayItem(config, ii);
         if (node) {
@@ -380,7 +379,7 @@ static int parse_vbucket_config(VBUCKET_CONFIG_HANDLE vb, cJSON *c)
     if (populate_servers(vb, json) != 0) {
         return -1;
     }
-    /* optionally update server info using envelop (couchdb_api_base etc.) */
+
     json = cJSON_GetObjectItem(c, "nodes");
     if (json) {
         if (json->type != cJSON_Array) {
@@ -444,6 +443,17 @@ static int parse_vbucket_brief(VBUCKET_CONFIG_HANDLE vb, cJSON *c)
     }
     if (populate_servers(vb, json) != 0) {
         return -1;
+    }
+    
+    json = cJSON_GetObjectItem(c, "nodes");
+    if (json) {
+        if (json->type != cJSON_Array) {
+            vb->errmsg = strdup("Expected array for nodes");
+            return -1;
+        }
+        if (update_server_info(vb, json) != 0) {
+            return -1;
+        }
     }
 	
     json = cJSON_GetObjectItem(config, "vBucketMap");

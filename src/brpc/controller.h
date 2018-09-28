@@ -30,7 +30,7 @@
 #include "brpc/errno.pb.h"                     // error code
 #include "brpc/http_header.h"                  // HttpHeader
 #include "brpc/authenticator.h"                // AuthContext
-#include "brpc/socket_id.h"                    // SocketId
+#include "brpc/socket.h"                       // SocketId, TcpKeepAliveParm
 #include "brpc/stream.h"                       // StreamId
 #include "brpc/stream_creator.h"               // StreamCreator
 #include "brpc/protocol.h"                     // Protocol
@@ -258,6 +258,20 @@ public:
     // Make the RPC end when the HTTP response has complete headers and let
     // user read the remaining body by using ReadProgressiveAttachmentBy().
     void response_will_be_read_progressively() { add_flag(FLAGS_READ_PROGRESSIVELY); }
+
+    // Set tcp keepalive parameter for progressive read connection. The passed
+    // parameters should be positive.
+    void set_progressive_reader_keepalive_parm (int time, int interval, int probes) {
+        if (_keepalive_parm == nullptr) {
+            _keepalive_parm = new (std::nothrow) TcpKeepAliveParm; 
+        }
+        if (_keepalive_parm != nullptr) {
+            _keepalive_parm->time = time;
+            _keepalive_parm->interval = interval;
+            _keepalive_parm->probes = probes; 
+        }
+    }
+
     // True if response_will_be_read_progressively() was called.
     bool is_response_read_progressively() const { return has_flag(FLAGS_READ_PROGRESSIVELY); }
 
@@ -729,6 +743,8 @@ private:
 
     // Couchbase key that can read from replicas during RPC.
     std::string _couchbase_key_read_replicas; 
+    
+    TcpKeepAliveParm* _keepalive_parm = nullptr;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be

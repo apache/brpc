@@ -103,7 +103,6 @@ private:
     // REST/JSON url to monitor vbucket map.
     std::string _streaming_url;
     std::string _auth;
-    std::string _listen_port;
     CouchbaseNamingService* _cbns;
     // List naming service is used by '_listen_channel'.
     ListNamingService* _ns;
@@ -124,7 +123,7 @@ butil::Status VBucketMapReader::OnReadOnePart(const void* data, size_t length) {
 
     _buf.append(static_cast<const char*>(data), length);
     const size_t end_pos = _buf.rfind(kSeparator);
-    if (end_pos != std::string::npos) {
+    if (end_pos != std::string::npos && end_pos > 0) {
         size_t begin_pos = _buf.rfind(kSeparator, end_pos - 1);
         if (begin_pos == std::string::npos) {
             begin_pos = 0;
@@ -191,7 +190,6 @@ bool CouchbaseServerListener::InitVBucketMap(const std::string& uri) {
     if (!cntl.Failed()) {
         std::string vb_map = cntl.response_attachment().to_string();
         if (!vb_map.empty()) {
-            _listen_port = butil::IntToString(cntl.remote_side().port);
             UpdateVBucketMap(std::move(vb_map));
             return true;
         }
@@ -215,11 +213,14 @@ void* CouchbaseServerListener::ListenThread(void* arg) {
         }
         cntl.http_request().uri() = listener->_streaming_url;
         cntl.response_will_be_read_progressively();
+        cntl.set_progressive_reader_keepalive_parm(5,3,3);
         listener->_listen_channel.CallMethod(nullptr, &cntl, 
                                              nullptr, nullptr, nullptr);
         if (cntl.Failed()) {
-            LOG(ERROR) << "Failed to create vbucket map reader: " 
-                       << cntl.ErrorText();
+            LOG(ERROR) << "Failed to create vbucket map reader error_text=\'" 
+                << cntl.ErrorText() << "\' stream_uri=\'" 
+                << butil::endpoint2str(cntl.remote_side()) 
+                << listener->_streaming_url << '\'';
             if (bthread_usleep(FLAGS_couchbase_listen_interval_ms * 1000) < 0) {
                 if (errno == ESTOP) {
                     LOG(INFO) << "ListenThread is stopped.";
@@ -229,12 +230,10 @@ void* CouchbaseServerListener::ListenThread(void* arg) {
             }
             continue;
         }
-        // Set listen port if init failure in InitVBucketMap. 
-        if (listener->_listen_port.empty()) {
-            listener->_listen_port = butil::IntToString(cntl.remote_side().port);
-        } 
         listener->_reader->Attach();  
         cntl.ReadProgressiveAttachmentBy(listener->_reader);  
+        LOG(INFO) << "Succeed to create vbucket map reader streaming_uri=\'"
+            << butil::endpoint2str(cntl.remote_side()) << listener->_streaming_url << '\'';
         break;
     }
     
@@ -248,6 +247,10 @@ void CouchbaseServerListener::CreateListener() {
 }
 
 void CouchbaseServerListener::UpdateVBucketMap(std::string&& vb_map) { 
+    if (vb_map.empty()) {
+        LOG(ERROR) << "Null vbucket map string"; 
+        return;
+    }
     butil::VBUCKET_CONFIG_HANDLE vb = 
 		butil::vbucket_brief_parse_string(vb_map.c_str());
     if (vb != nullptr) {
@@ -256,17 +259,19 @@ void CouchbaseServerListener::UpdateVBucketMap(std::string&& vb_map) {
         for (size_t i = 0; i != server_num; ++i) {
             servers[i] = butil::vbucket_config_get_server(vb, i);
         }
-        butil::vbucket_config_destroy(vb);
         // Update new server list for '_listen_channel'.
         std::string server_list;
-        for (const auto& server : servers) {
-            const size_t pos = server.find(':');
-            server_list.append(server.data(), pos);
-            server_list += ":" + _listen_port + ",";
+        for (size_t i = 0; i != server_num; ++i) {
+            const char* addr = butil::vbucket_config_get_rest_api_server(vb, i);
+            if (addr != nullptr) {
+                server_list.append(addr);
+                server_list.append(1, ',');
+            } 
         }
         server_list.pop_back();
         _ns->UpdateServerList(&server_list);		
         _cbns->ResetServers(servers, vb_map);
+        butil::vbucket_config_destroy(vb);
     } else {
         LOG(ERROR) << "Failed to get VBUCKET_CONFIG_HANDLE from string:\n" 
                    << "\'" << vb_map << "\'.";

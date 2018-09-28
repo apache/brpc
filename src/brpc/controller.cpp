@@ -192,6 +192,10 @@ void Controller::DeleteStuff() {
         }
         _rpa.reset(NULL);
     }
+    if (_keepalive_parm != nullptr) {
+        delete _keepalive_parm;
+        _keepalive_parm = nullptr;
+    }
     delete _remote_stream_settings;
 }
 
@@ -629,6 +633,14 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
     }
     
 END_OF_RPC:
+    if (!_error_code && is_response_read_progressively()) {
+        if (_current_call.sending_sock) {
+            // Set tcp keepalive for progressive read connection.
+            _current_call.sending_sock->SetTcpKeepAlive(_keepalive_parm);
+        } else {
+            LOG(FATAL) << "Failed to call SetTcpKeepAlive due to null socket";
+        }
+    }
     if (new_bthread) {
         // [ Essential for -usercode_in_pthread=true ]
         // When -usercode_in_pthread is on, the reserved threads (set by

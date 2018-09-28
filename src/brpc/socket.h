@@ -173,6 +173,12 @@ struct SocketOptions {
     Destroyable* initial_parsing_context;
 };
 
+struct TcpKeepAliveParm {
+    int time; // tcp_keepalive_time
+    int interval; // tcp_keepalive_intvl
+    int probes; // tcp_keepalive_probes
+};
+
 // Abstractions on reading from and writing into file descriptors.
 // NOTE: accessed by multiple threads(frequently), align it by cacheline.
 class BAIDU_CACHELINE_ALIGNMENT/*note*/ Socket {
@@ -484,6 +490,9 @@ public:
             _last_readtime_us.load(butil::memory_order_relaxed),
             _last_writetime_us.load(butil::memory_order_relaxed));
     }
+
+    // Set tcp keepalive parameters.
+    void SetTcpKeepAlive(TcpKeepAliveParm* parm);
 
     // A brief description of this socket, consistent with os << *this
     std::string description() const;

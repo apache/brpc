@@ -20,6 +20,8 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <netinet/tcp.h>                         // getsockopt
+#include <sys/types.h>
+#include <sys/socket.h>                          // setsockopt
 #include <gflags/gflags.h>
 #include "bthread/unstable.h"                    // bthread_timer_del
 #include "butil/fd_utility.h"                     // make_non_blocking
@@ -2680,6 +2682,32 @@ void Socket::OnProgressiveReadCompleted() {
         } else if (_connection_type_for_progressive_read == CONNECTION_TYPE_SHORT) {
             SetFailed(EUNUSED, "[%s]Close short connection", __FUNCTION__);
         }
+    }
+}
+
+void Socket::SetTcpKeepAlive(TcpKeepAliveParm* parm) {
+    int my_fd = fd();
+    int val = 1;
+    if (::setsockopt(my_fd, SOL_SOCKET, SO_KEEPALIVE, (void*)&val, sizeof(val)) != 0) {
+        LOG(ERROR) << "Failed to open keepalive fd="<< my_fd << " SocketId=" << id() 
+        << "@" << butil::endpoint2str(remote_side()) << " errno=" << ::strerror(errno);
+        return;
+    }
+    if (parm != nullptr) {
+        if ((parm->time > 0 && ::setsockopt(my_fd, SOL_TCP, TCP_KEEPIDLE, 
+                                            (void *)&parm->time, 
+                                            sizeof(parm->time)) != 0) ||
+            (parm->interval > 0 && ::setsockopt(my_fd, SOL_TCP, TCP_KEEPINTVL,
+                                                (void *)&parm->interval, 
+                                                sizeof(parm->interval)) != 0) || 
+            (parm->probes > 0 && ::setsockopt(my_fd, SOL_TCP, TCP_KEEPCNT,
+                                              (void *)&parm->probes, 
+                                              sizeof(parm->probes)) != 0)) {
+            LOG(ERROR) << "Failed to set keepalive parameter time=" << parm->time
+                << " interval=" << parm->interval << " probes=" << parm->probes
+                << " fd="<< my_fd << " SocketId=" << id() << "@" 
+                << butil::endpoint2str(remote_side()) << " errno=" << ::strerror(errno);
+        } 
     }
 }
 
