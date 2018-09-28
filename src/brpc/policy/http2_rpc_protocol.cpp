@@ -428,7 +428,7 @@ ParseResult H2Context::ConsumeFrameHead(
     const uint32_t length = ((uint32_t)length_buf[0] << 16)
         | ((uint32_t)length_buf[1] << 8) | length_buf[2];
     if (length > _local_settings.max_frame_size) {
-        LOG(ERROR) << "Too large length=" << length << " max="
+        LOG(ERROR) << "Too large frame length=" << length << " max="
                    << _local_settings.max_frame_size;
         return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
     }
@@ -470,7 +470,7 @@ ParseResult H2Context::Consume(
             Socket::WriteOptions wopt;
             wopt.ignore_eovercrowded = true;
             if (socket->Write(&buf, &wopt) != 0) {
-                LOG(WARNING) << "Fail to respond http2-client with settings";
+                LOG(WARNING) << socket->remote_side() << ": Fail to respond http2-client with settings";
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
         } else {
@@ -502,7 +502,7 @@ ParseResult H2Context::Consume(
             Socket::WriteOptions wopt;
             wopt.ignore_eovercrowded = true;
             if (_socket->Write(&sendbuf, &wopt) != 0) {
-                LOG(WARNING) << "Fail to send RST_STREAM";
+                LOG(WARNING) << _socket->remote_side() << ": Fail to send RST_STREAM";
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
             return MakeMessage(NULL);
@@ -516,7 +516,7 @@ ParseResult H2Context::Consume(
             Socket::WriteOptions wopt;
             wopt.ignore_eovercrowded = true;
             if (_socket->Write(&sendbuf, &wopt) != 0) {
-                LOG(WARNING) << "Fail to send GOAWAY";
+                LOG(WARNING) << _socket->remote_side() << ": Fail to send GOAWAY";
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
             return MakeMessage(NULL);
@@ -608,7 +608,8 @@ H2ParseResult H2StreamContext::OnHeaders(
 #endif
     butil::IOBufBytesIterator it2(it, frag_size);
     if (ConsumeHeaders(it2) < 0) {
-        LOG(ERROR) << "Invalid header, frag_size=" << frag_size;
+        LOG(ERROR) << "Invalid header, frag_size=" << frag_size
+            << ", stream_id=" << frame_head.stream_id;
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
     const size_t nskip = frag_size - it2.bytes_left();
@@ -620,7 +621,8 @@ H2ParseResult H2StreamContext::OnHeaders(
     it.forward(pad_length);
     if (frame_head.flags & H2_FLAGS_END_HEADERS) {
         if (it2.bytes_left() != 0) {
-            LOG(ERROR) << "Incomplete header";
+            LOG(ERROR) << "Incomplete header: payload_size=" << frame_head.payload_size
+                << ", stream_id=" << frame_head.stream_id;
             return MakeH2Error(H2_PROTOCOL_ERROR);
         }
         if (frame_head.flags & H2_FLAGS_END_STREAM) {
@@ -661,13 +663,15 @@ H2ParseResult H2StreamContext::OnContinuation(
     const size_t size = _remaining_header_fragment.size();
     butil::IOBufBytesIterator it2(_remaining_header_fragment);
     if (ConsumeHeaders(it2) < 0) {
-        LOG(ERROR) << "Invalid header";
+        LOG(ERROR) << "Invalid header: payload_size=" << frame_head.payload_size
+            << ", stream_id=" << frame_head.stream_id;
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
     _remaining_header_fragment.pop_front(size - it2.bytes_left());
     if (frame_head.flags & H2_FLAGS_END_HEADERS) {
         if (it2.bytes_left() != 0) {
-            LOG(ERROR) << "Incomplete header";
+            LOG(ERROR) << "Incomplete header: payload_size=" << frame_head.payload_size
+                << ", stream_id=" << frame_head.stream_id;
             return MakeH2Error(H2_PROTOCOL_ERROR);
         }
         if (_stream_ended) {
@@ -717,7 +721,7 @@ H2ParseResult H2StreamContext::OnData(
     for (size_t i = 0; i < data.backing_block_num(); ++i) {
         const butil::StringPiece blk = data.backing_block(i);
         if (OnBody(blk.data(), blk.size()) != 0) {
-            LOG(ERROR) << "Fail to parse data";
+            LOG(ERROR) << "Fail to parse h2 data as http body";
             return MakeH2Error(H2_PROTOCOL_ERROR);
         }
     }
@@ -744,7 +748,7 @@ H2ParseResult H2StreamContext::OnData(
             Socket::WriteOptions wopt;
             wopt.ignore_eovercrowded = true;
             if (_conn_ctx->_socket->Write(&sendbuf, &wopt) != 0) {
-                LOG(WARNING) << "Fail to send WINDOW_UPDATE";
+                LOG(WARNING) << _conn_ctx->_socket->remote_side() << ": Fail to send WINDOW_UPDATE";
                 return MakeH2Error(H2_INTERNAL_ERROR);
             }
         }
@@ -862,6 +866,9 @@ H2ParseResult H2Context::OnSettings(
         for (StreamMap::const_iterator it = _pending_streams.begin();
              it != _pending_streams.end(); ++it) {
             if (!AddWindowSize(&it->second->_remote_window_left, window_diff)) {
+                LOG(WARNING) << "Fail to add window_diff=" << window_diff
+                    << " to remote_window_left="
+                    << it->second->_remote_window_left.load(butil::memory_order_relaxed);
                 return MakeH2Error(H2_FLOW_CONTROL_ERROR);
             }
         }
@@ -874,7 +881,7 @@ H2ParseResult H2Context::OnSettings(
     Socket::WriteOptions wopt;
     wopt.ignore_eovercrowded = true;
     if (_socket->Write(&sendbuf, &wopt) != 0) {
-        LOG(WARNING) << "Fail to respond settings with ack";
+        LOG(WARNING) << _socket->remote_side() << ": Fail to respond settings with ack";
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
     return MakeH2Message(NULL);
@@ -914,7 +921,7 @@ H2ParseResult H2Context::OnPing(
     Socket::WriteOptions wopt;
     wopt.ignore_eovercrowded = true;
     if (_socket->Write(&sendbuf, &wopt) != 0) {
-        LOG(WARNING) << "Fail to send ack of PING";
+        LOG(WARNING) << _socket->remote_side() << ": Fail to send ack of PING";
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
     return MakeH2Message(NULL);
@@ -969,7 +976,8 @@ H2ParseResult H2Context::OnWindowUpdate(
     }
     if (frame_head.stream_id == 0) {
         if (!AddWindowSize(&_remote_window_left, inc)) {
-            LOG(ERROR) << "Invalid window_size_increment=" << inc;
+            LOG(ERROR) << "Invalid connection-level window_size_increment=" << inc
+                << " to remote_window_left=" << _remote_window_left;
             return MakeH2Error(H2_FLOW_CONTROL_ERROR);
         }
         return MakeH2Message(NULL);
@@ -980,7 +988,8 @@ H2ParseResult H2Context::OnWindowUpdate(
             return MakeH2Message(NULL);
         }
         if (!AddWindowSize(&sctx->_remote_window_left, inc)) {
-            LOG(ERROR) << "Invalid window_size_increment=" << inc;
+            LOG(ERROR) << "Invalid stream-level window_size_increment=" << inc
+                << " to remote_window_left=" << sctx->_remote_window_left.load(butil::memory_order_relaxed);
             return MakeH2Error(H2_FLOW_CONTROL_ERROR);
         }
         return MakeH2Message(NULL);
