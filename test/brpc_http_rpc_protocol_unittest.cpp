@@ -1226,4 +1226,102 @@ TEST_F(HttpTest, http2_not_closing_socket_when_rpc_timeout) {
     }
 }
 
+TEST_F(HttpTest, http2_header_after_data) {
+    brpc::Controller cntl;
+
+    // Prepare request
+    butil::IOBuf req_out;
+    int h2_stream_id = 0;
+    MakeH2EchoRequestBuf(&req_out, &cntl, &h2_stream_id);
+
+    // Prepare response to res_out
+    butil::IOBuf res_out;
+    {
+        butil::IOBuf data_buf;
+        test::EchoResponse res;
+        res.set_message(EXP_RESPONSE);
+        {
+            butil::IOBufAsZeroCopyOutputStream wrapper(&data_buf);
+            EXPECT_TRUE(res.SerializeToZeroCopyStream(&wrapper));
+        }
+        brpc::policy::H2Context* ctx =
+            static_cast<brpc::policy::H2Context*>(_h2_client_sock->parsing_context());
+        brpc::HPacker& hpacker = ctx->hpacker();
+        butil::IOBufAppender header1_appender;
+        brpc::HPackOptions options;
+        options.encode_name = false;    /* disable huffman encoding */
+        options.encode_value = false;
+        {
+            brpc::HPacker::Header header(":status", "200");
+            hpacker.Encode(&header1_appender, header, options);
+        }
+        {
+            brpc::HPacker::Header header("content-length",
+                    butil::string_printf("%" PRIu64, data_buf.size()));
+            hpacker.Encode(&header1_appender, header, options);
+        }
+        {
+            brpc::HPacker::Header header(":status", "200");
+            hpacker.Encode(&header1_appender, header, options);
+        }
+        {
+            brpc::HPacker::Header header("content-type", "application/proto");
+            hpacker.Encode(&header1_appender, header, options);
+        }
+        {
+            brpc::HPacker::Header header("user-defined1", "a");
+            hpacker.Encode(&header1_appender, header, options);
+        }
+        butil::IOBuf header1;
+        header1_appender.move_to(header1);
+
+        char headbuf[brpc::policy::FRAME_HEAD_SIZE];
+        brpc::policy::SerializeFrameHead(headbuf, header1.size(),
+                brpc::policy::H2_FRAME_HEADERS, 0, h2_stream_id);
+        // append header1
+        res_out.append(headbuf, sizeof(headbuf));
+        res_out.append(butil::IOBuf::Movable(header1));
+
+        brpc::policy::SerializeFrameHead(headbuf, data_buf.size(),
+            brpc::policy::H2_FRAME_DATA, 0, h2_stream_id);
+        // append data
+        res_out.append(headbuf, sizeof(headbuf));
+        res_out.append(butil::IOBuf::Movable(data_buf));
+
+        butil::IOBufAppender header2_appender;
+        {
+            brpc::HPacker::Header header("user-defined1", "overwrite-a");
+            hpacker.Encode(&header2_appender, header, options);
+        }
+        {
+            brpc::HPacker::Header header("user-defined2", "b");
+            hpacker.Encode(&header2_appender, header, options);
+        }
+        butil::IOBuf header2;
+        header2_appender.move_to(header2);
+
+        brpc::policy::SerializeFrameHead(headbuf, header2.size(),
+                brpc::policy::H2_FRAME_HEADERS, 0x05/* end header and stream */,
+                h2_stream_id);
+        // append header2
+        res_out.append(headbuf, sizeof(headbuf));
+        res_out.append(butil::IOBuf::Movable(header2));
+    }
+    // parse response
+    brpc::ParseResult res_pr =
+            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+    ASSERT_TRUE(res_pr.is_ok());
+    // process response
+    ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
+    ASSERT_FALSE(cntl.Failed());
+
+    brpc::HttpHeader& res_header = cntl.http_response();
+    ASSERT_EQ(res_header.content_type(), "application/proto");
+    // Check overlapped header is overwritten by the latter.
+    const std::string* user_defined1 = res_header.GetHeader("user-defined1");
+    ASSERT_EQ(*user_defined1, "overwrite-a");
+    const std::string* user_defined2 = res_header.GetHeader("user-defined2");
+    ASSERT_EQ(*user_defined2, "b");
+}
+
 } //namespace
