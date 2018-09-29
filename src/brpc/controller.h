@@ -413,7 +413,10 @@ public:
 
     // Resets the Controller to its initial state so that it may be reused in
     // a new call.  Must NOT be called while an RPC is in progress.
-    void Reset() { InternalReset(false); }
+    void Reset() {
+        ResetNonPods();
+        ResetPods();
+    }
     
     // Causes Failed() to return true on the client side.  "reason" will be
     // incorporated into the message returned by ErrorText().
@@ -522,9 +525,9 @@ private:
     // the container(MongoContextMessage) and all related cntl(s) are recycled.
     void set_mongo_session_data(MongoContext* data);
 
-    // Initialize/reset all fields.
-    void InternalReset(bool in_constructor);
-    void DeleteStuff();
+    // Reset POD/non-POD fields.
+    void ResetPods();
+    void ResetNonPods();
 
     void StartCancel();
 
@@ -618,6 +621,9 @@ private:
     bool has_enabled_circuit_breaker() const { 
         return has_flag(FLAGS_ENABLED_CIRCUIT_BREAKER); 
     }
+
+    std::string& protocol_param() { return _thrift_method_name; }
+    const std::string& protocol_param() const { return _thrift_method_name; }
 
 private:
     // NOTE: align and group fields to make Controller as compact as possible.
