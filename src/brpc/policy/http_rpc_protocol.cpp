@@ -450,34 +450,47 @@ void ProcessHttpResponse(InputMessageBase* msg) {
 
 void SerializeHttpRequest(butil::IOBuf* /*not used*/,
                           Controller* cntl,
-                          const google::protobuf::Message* request) {
+                          const google::protobuf::Message* pbreq) {
+    HttpHeader& hreq = cntl->http_request();
     const bool is_http2 = (cntl->request_protocol() == PROTOCOL_HTTP2);
     bool is_grpc = false;
-    if (request != NULL) {
+    ControllerPrivateAccessor accessor(cntl);
+    if (!accessor.protocol_param().empty() && hreq.content_type().empty()) {
+        const std::string& param = accessor.protocol_param();
+        if (param.find('/') == std::string::npos) {
+            std::string& s = hreq.mutable_content_type();
+            s.reserve(12 + param.size());
+            s.append("application/");
+            s.append(param);
+        } else {
+            hreq.set_content_type(param);
+        }
+    }
+    if (pbreq != NULL) {
         // If request is not NULL, message body will be serialized proto/json,
-        if (!request->IsInitialized()) {
+        if (!pbreq->IsInitialized()) {
             return cntl->SetFailed(
                 EREQUEST, "Missing required fields in request: %s",
-                request->InitializationErrorString().c_str());
+                pbreq->InitializationErrorString().c_str());
         }
         if (!cntl->request_attachment().empty()) {
             return cntl->SetFailed(EREQUEST, "request_attachment must be empty "
                                    "when request is not NULL");
         }
         HttpContentType content_type = HTTP_CONTENT_OTHERS;
-        if (cntl->http_request().content_type().empty()) {
+        if (hreq.content_type().empty()) {
             // Set content-type if user did not.
             // Note that http1.x defaults to json and h2 defaults to pb.
             if (is_http2) {
                 content_type = HTTP_CONTENT_PROTO;
-                cntl->http_request().set_content_type(common->CONTENT_TYPE_PROTO);
+                hreq.set_content_type(common->CONTENT_TYPE_PROTO);
             } else {
                 content_type = HTTP_CONTENT_JSON;
-                cntl->http_request().set_content_type(common->CONTENT_TYPE_JSON);
+                hreq.set_content_type(common->CONTENT_TYPE_JSON);
             }
         } else {
             bool is_grpc_ct = false;
-            content_type = ParseContentType(cntl->http_request().content_type(),
+            content_type = ParseContentType(hreq.content_type(),
                                             &is_grpc_ct);
             is_grpc = (is_http2 && is_grpc_ct);
         }
@@ -485,10 +498,10 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
         butil::IOBufAsZeroCopyOutputStream wrapper(&cntl->request_attachment());
         if (content_type == HTTP_CONTENT_PROTO) {
             // Serialize content as protobuf
-            if (!request->SerializeToZeroCopyStream(&wrapper)) {
+            if (!pbreq->SerializeToZeroCopyStream(&wrapper)) {
                 cntl->request_attachment().clear();
                 return cntl->SetFailed(EREQUEST, "Fail to serialize %s",
-                                       request->GetTypeName().c_str());
+                                       pbreq->GetTypeName().c_str());
             }
         } else if (content_type == HTTP_CONTENT_JSON) {
             std::string err;
@@ -498,24 +511,25 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             opt.enum_option = (FLAGS_pb_enum_as_number
                                ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                : json2pb::OUTPUT_ENUM_BY_NAME);
-            if (!json2pb::ProtoMessageToJson(*request, &wrapper, opt, &err)) {
+            if (!json2pb::ProtoMessageToJson(*pbreq, &wrapper, opt, &err)) {
                 cntl->request_attachment().clear();
-                return cntl->SetFailed(EREQUEST, "Fail to convert request to json, %s", err.c_str());
+                return cntl->SetFailed(
+                    EREQUEST, "Fail to convert request to json, %s", err.c_str());
             }
         } else {
-            return cntl->SetFailed(EREQUEST, "Unknown content_type=%s",
-                    cntl->http_request().content_type().c_str());
+            return cntl->SetFailed(
+                EREQUEST, "Cannot serialize pb request according to content_type=%s",
+                hreq.content_type().c_str());
         }
     } else {
         // Use request_attachment.
         // TODO: Checking required fields of http header.
     }
     // Make RPC fail if uri() is not OK (previous SetHttpURL/operator= failed)
-    if (!cntl->http_request().uri().status().ok()) {
+    if (!hreq.uri().status().ok()) {
         return cntl->SetFailed(EREQUEST, "%s",
-                        cntl->http_request().uri().status().error_cstr());
+                        hreq.uri().status().error_cstr());
     }
-    ControllerPrivateAccessor accessor(cntl);
     bool grpc_compressed = false;
     if (cntl->request_compress_type() != COMPRESS_TYPE_NONE) {
         if (cntl->request_compress_type() != COMPRESS_TYPE_GZIP) {
@@ -530,9 +544,9 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
                 cntl->request_attachment().swap(compressed);
                 if (is_grpc) {
                     grpc_compressed = true;
-                    cntl->http_request().SetHeader(common->GRPC_ENCODING, common->GZIP);
+                    hreq.SetHeader(common->GRPC_ENCODING, common->GZIP);
                 } else {
-                    cntl->http_request().SetHeader(common->CONTENT_ENCODING, common->GZIP);
+                    hreq.SetHeader(common->CONTENT_ENCODING, common->GZIP);
                 }
             } else {
                 cntl->SetFailed("Fail to gzip the request body, skip compressing");
@@ -540,30 +554,29 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
         }
     }
 
-    HttpHeader* header = &cntl->http_request();
     // Fill log-id if user set it.
     if (cntl->has_log_id()) {
-        header->SetHeader(common->LOG_ID,
+        hreq.SetHeader(common->LOG_ID,
                           butil::string_printf(
                               "%llu", (unsigned long long)cntl->log_id()));
     }
 
     if (!is_http2) {
         // HTTP before 1.1 needs to set keep-alive explicitly.
-        if (header->before_http_1_1() &&
+        if (hreq.before_http_1_1() &&
             cntl->connection_type() != CONNECTION_TYPE_SHORT &&
-            header->GetHeader(common->CONNECTION) == NULL) {
-            header->SetHeader(common->CONNECTION, common->KEEP_ALIVE);
+            hreq.GetHeader(common->CONNECTION) == NULL) {
+            hreq.SetHeader(common->CONNECTION, common->KEEP_ALIVE);
         }
     } else {
         cntl->set_stream_creator(get_h2_global_stream_creator());
         if (is_grpc) {
             /*
-            header->SetHeader(common->GRPC_ACCEPT_ENCODING,
+            hreq.SetHeader(common->GRPC_ACCEPT_ENCODING,
                               common->GRPC_ACCEPT_ENCODING_VALUE);
             */
             // TODO: do we need this?
-            header->SetHeader(common->TE, common->TRAILERS);
+            hreq.SetHeader(common->TE, common->TRAILERS);
 
             // Append compressed and length before body
             AddGrpcPrefix(&cntl->request_attachment(), grpc_compressed);
@@ -574,7 +587,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
     // services (indicated by non-NULL method).
     const google::protobuf::MethodDescriptor* method = cntl->method();
     if (method != NULL) {
-        header->set_method(HTTP_METHOD_POST);
+        hreq.set_method(HTTP_METHOD_POST);
         std::string path;
         path.reserve(2 + method->service()->full_name().size()
                      + method->name().size());
@@ -582,17 +595,17 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
         path.append(method->service()->full_name());
         path.push_back('/');
         path.append(method->name());
-        header->uri().set_path(path);
+        hreq.uri().set_path(path);
     }
 
     Span* span = accessor.span();
     if (span) {
-        header->SetHeader("x-bd-trace-id", butil::string_printf(
-                              "%llu", (unsigned long long)span->trace_id()));
-        header->SetHeader("x-bd-span-id", butil::string_printf(
-                              "%llu", (unsigned long long)span->span_id()));
-        header->SetHeader("x-bd-parent-span-id", butil::string_printf(
-                              "%llu", (unsigned long long)span->parent_span_id()));
+        hreq.SetHeader("x-bd-trace-id", butil::string_printf(
+                           "%llu", (unsigned long long)span->trace_id()));
+        hreq.SetHeader("x-bd-span-id", butil::string_printf(
+                           "%llu", (unsigned long long)span->span_id()));
+        hreq.SetHeader("x-bd-parent-span-id", butil::string_printf(
+                           "%llu", (unsigned long long)span->parent_span_id()));
     }
 }
 

@@ -69,6 +69,7 @@ public:
     const std::string& content_type() const { return _content_type; }
     void set_content_type(const std::string& type) { _content_type = type; }
     void set_content_type(const char* type) { _content_type = type; }
+    std::string& mutable_content_type() { return _content_type; }
     
     // Get value of a header which is case-insensitive according to:
     //   https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2

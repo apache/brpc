@@ -42,7 +42,7 @@ const std::string g_server_addr = "127.0.0.1:8011";
 const std::string g_prefix = "Hello, ";
 const std::string g_req = "wyt";
 const int64_t g_timeout_ms = 1000;
-const std::string g_protocol = "grpc";
+const std::string g_protocol = "h2c:grpc";
 
 class MyGrpcService : public ::test::GrpcService {
 public:
