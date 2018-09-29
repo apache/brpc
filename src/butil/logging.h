@@ -46,11 +46,16 @@
 #  define DPLOG_IF(...) PLOG_IF(__VA_ARGS__)
 #  define DPCHECK(...) PCHECK(__VA_ARGS__)
 #  define DVPLOG(...) VLOG(__VA_ARGS__)
+#  define DVLOG_IF(...) VLOG_IF(__VA_ARGS__)
 # else 
-#  define DPLOG(...) DLOG(__VA_ARGS__)
-#  define DPLOG_IF(...) DLOG_IF(__VA_ARGS__)
-#  define DPCHECK(...) DCHECK(__VA_ARGS__)
-#  define DVPLOG(...) DVLOG(__VA_ARGS__)
+  // The actual stream used isn't important.
+#  define BAIDU_EAT_STREAM_PARAMS                                           \
+        true ? (void) 0 : google::LogMessageVoidify() & LOG(FATAL)
+#  define DPLOG(...) BAIDU_EAT_STREAM_PARAMS
+#  define DPLOG_IF(...) BAIDU_EAT_STREAM_PARAMS
+#  define DPCHECK(...) BAIDU_EAT_STREAM_PARAMS
+#  define DVPLOG(...) BAIDU_EAT_STREAM_PARAMS
+#  define DVLOG_IF(...) BAIDU_EAT_STREAM_PARAMS
 # endif
 
 #define LOG_AT(severity, file, line)                                    \
