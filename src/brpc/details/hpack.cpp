@@ -171,7 +171,6 @@ public:
             if (!h.value.empty()) {
                 _header_index[h] = id;
             }
-            _header_index[h] = id;
             _name_index[h.name] = id;
         }
     }
