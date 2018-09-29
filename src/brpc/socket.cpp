@@ -87,8 +87,6 @@ DEFINE_int32(connect_timeout_as_unreachable, 3,
              "times *continuously*, the error is changed to ENETUNREACH which "
              "fails the main socket as well when this socket is pooled.");
 
-DECLARE_bool(http_verbose);
-
 static bool validate_connect_timeout_as_unreachable(const char*, int32_t v) {
     return v >= 2 && v < 1000/*large enough*/;
 }
@@ -1822,9 +1820,6 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
         int rc = SSL_do_handshake(_ssl_session);
         if (rc == 1) {
             _ssl_state = SSL_CONNECTED;
-            if (FLAGS_http_verbose) {
-                std::cerr << _ssl_session << std::endl;
-            }
             AddBIOBuffer(_ssl_session, fd, FLAGS_ssl_bio_buffer_size);
             return 0;
         }

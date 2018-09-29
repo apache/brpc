@@ -571,7 +571,8 @@ H2ParseResult H2Context::OnHeaders(
             return MakeH2Error(H2_PROTOCOL_ERROR);
         }
         _last_server_stream_id = frame_head.stream_id;
-        sctx = new H2StreamContext(this, frame_head.stream_id);
+        sctx = new H2StreamContext(_socket->is_read_progressive());
+        sctx->Init(this, frame_head.stream_id);
         const int rc = TryToInsertStream(frame_head.stream_id, sctx);
         if (rc < 0) {
             delete sctx;
@@ -587,7 +588,8 @@ H2ParseResult H2Context::OnHeaders(
             if (is_client_side()) {
                 RPC_VLOG << "Fail to find stream_id=" << frame_head.stream_id;
                 // Ignore the message without closing the socket.
-                H2StreamContext tmp_sctx(this, frame_head.stream_id);
+                H2StreamContext tmp_sctx(false);
+                tmp_sctx.Init(this, frame_head.stream_id);
                 tmp_sctx.OnHeaders(it, frame_head, frag_size, pad_length);
                 return MakeH2Message(NULL);
             } else {
@@ -643,7 +645,8 @@ H2ParseResult H2Context::OnContinuation(
         if (is_client_side()) {
             RPC_VLOG << "Fail to find stream_id=" << frame_head.stream_id;
             // Ignore the message without closing the socket.
-            H2StreamContext tmp_sctx(this, frame_head.stream_id);
+            H2StreamContext tmp_sctx(false);
+            tmp_sctx.Init(this, frame_head.stream_id);
             tmp_sctx.OnContinuation(it, frame_head);
             return MakeH2Message(NULL);
         } else {
@@ -695,7 +698,8 @@ H2ParseResult H2Context::OnData(
         if (is_client_side()) {
             RPC_VLOG << "Fail to find stream_id=" << frame_head.stream_id;
             // Ignore the message without closing the socket.
-            H2StreamContext tmp_sctx(this, frame_head.stream_id);
+            H2StreamContext tmp_sctx(false);
+            tmp_sctx.Init(this, frame_head.stream_id);
             tmp_sctx.OnData(it, frame_head, frag_size, pad_length);
             DeferWindowUpdate(tmp_sctx.ReleaseDeferredWindowUpdate());
             return MakeH2Message(NULL);
@@ -1117,8 +1121,9 @@ void H2Context::ClearAbandonedStreamsImpl() {
     }
 }
 
-H2StreamContext::H2StreamContext()
-    : _conn_ctx(NULL)
+H2StreamContext::H2StreamContext(bool read_body_progressively)
+    : HttpContext(read_body_progressively)
+    , _conn_ctx(NULL)
 #if defined(BRPC_H2_STREAM_STATE)
     , _state(H2_STREAM_IDLE)
 #endif
@@ -1138,22 +1143,6 @@ void H2StreamContext::Init(H2Context* conn_ctx, int stream_id) {
     _stream_id = stream_id;
     _remote_window_left.store(conn_ctx->remote_settings().stream_window_size,
                               butil::memory_order_relaxed);
-}
-
-H2StreamContext::H2StreamContext(H2Context* conn_ctx, int stream_id)
-    : _conn_ctx(conn_ctx)
-#if defined(BRPC_H2_STREAM_STATE)
-    , _state(H2_STREAM_IDLE)
-#endif
-    , _stream_id(stream_id)
-    , _stream_ended(false)
-    , _remote_window_left(conn_ctx->remote_settings().stream_window_size)
-    , _deferred_window_update(0)
-    , _correlation_id(INVALID_BTHREAD_ID.value) {
-    header().set_version(2, 0);
-#ifndef NDEBUG
-    get_http2_bvars()->h2_stream_context_count << 1;
-#endif
 }
 
 H2StreamContext::~H2StreamContext() {
@@ -1286,6 +1275,7 @@ const CommonStrings* get_common_strings();
 
 static void PackH2Message(butil::IOBuf* out,
                           butil::IOBuf& headers,
+                          butil::IOBuf& trailer_headers,
                           const butil::IOBuf& data,
                           int stream_id,
                           H2Context* conn_ctx) {
@@ -1293,7 +1283,7 @@ static void PackH2Message(butil::IOBuf* out,
     char headbuf[FRAME_HEAD_SIZE];
     H2FrameHead headers_head = {
         (uint32_t)headers.size(), H2_FRAME_HEADERS, 0, stream_id};
-    if (data.empty()) {
+    if (data.empty() && trailer_headers.empty()) {
         headers_head.flags |= H2_FLAGS_END_STREAM;
     }
     if (headers_head.payload_size <= remote_settings.max_frame_size) {
@@ -1325,8 +1315,10 @@ static void PackH2Message(butil::IOBuf* out,
         butil::IOBufBytesIterator it(data);
         while (it.bytes_left()) {
             if (it.bytes_left() <= remote_settings.max_frame_size) {
-                data_head.flags |= H2_FLAGS_END_STREAM;
                 data_head.payload_size = it.bytes_left();
+                if (trailer_headers.empty()) {
+                    data_head.flags |= H2_FLAGS_END_STREAM;
+                }
             } else {
                 data_head.payload_size = remote_settings.max_frame_size;
             }
@@ -1334,6 +1326,15 @@ static void PackH2Message(butil::IOBuf* out,
             out->append(headbuf, FRAME_HEAD_SIZE);
             it.append_and_forward(out, data_head.payload_size);
         }
+    }
+    if (!trailer_headers.empty()) {
+        H2FrameHead headers_head = {
+            (uint32_t)trailer_headers.size(), H2_FRAME_HEADERS, 0, stream_id};
+        headers_head.flags |= H2_FLAGS_END_STREAM;
+        headers_head.flags |= H2_FLAGS_END_HEADERS;
+        SerializeFrameHead(headbuf, headers_head);
+        out->append(headbuf, sizeof(headbuf));
+        out->append(butil::IOBuf::Movable(trailer_headers));
     }
     const int64_t conn_wu = conn_ctx->ReleaseDeferredWindowUpdate();
     if (conn_wu > 0) {
@@ -1347,7 +1348,6 @@ static void PackH2Message(butil::IOBuf* out,
 H2UnsentRequest* H2UnsentRequest::New(Controller* c) {
     const HttpHeader& h = c->http_request();
     const CommonStrings* const common = get_common_strings();
-    const bool need_content_length = (h.method() != HTTP_METHOD_GET);
     const bool need_content_type = !h.content_type().empty();
     const bool need_accept = !h.GetHeader(common->ACCEPT);
     const bool need_user_agent = !h.GetHeader(common->USER_AGENT);
@@ -1355,7 +1355,6 @@ H2UnsentRequest* H2UnsentRequest::New(Controller* c) {
     const bool need_authorization =
         (!user_info.empty() && !h.GetHeader("Authorization"));
     const size_t maxsize = h.HeaderCount() + 4
-        + (size_t)need_content_length
         + (size_t)need_content_type
         + (size_t)need_accept
         + (size_t)need_user_agent
@@ -1397,10 +1396,6 @@ H2UnsentRequest* H2UnsentRequest::New(Controller* c) {
             *val = butil::endpoint2str(c->remote_side()).c_str();
         }
     }
-    if (need_content_length) {
-        butil::string_printf(&msg->push(common->CONTENT_LENGTH),
-                            "%" PRIu64, c->request_attachment().size());
-    }
     if (need_content_type) {
         msg->push(common->CONTENT_TYPE, h.content_type());
     }
@@ -1422,7 +1417,7 @@ H2UnsentRequest* H2UnsentRequest::New(Controller* c) {
         val->append("Basic ");
         val->append(encoded_user_info);
     }
-    msg->_sctx.reset(new H2StreamContext);
+    msg->_sctx.reset(new H2StreamContext(c->is_response_read_progressively()));
     return msg;
 }
 
@@ -1555,7 +1550,8 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     }
     butil::IOBuf frag;
     appender.move_to(frag);
-    PackH2Message(out, frag, _cntl->request_attachment(), _stream_id, ctx);
+    butil::IOBuf dummy_buf;
+    PackH2Message(out, frag, dummy_buf, _cntl->request_attachment(), _stream_id, ctx);
     return butil::Status::OK();
 }
 
@@ -1579,8 +1575,7 @@ size_t H2UnsentRequest::EstimatedByteSize() {
     return sz;
 }
 
-void H2UnsentRequest::Describe(butil::IOBuf* desc) const {
-    butil::IOBufBuilder os;
+void H2UnsentRequest::Print(std::ostream& os) const {
     os << "[ H2 REQUEST @" << butil::my_ip() << " ]\n";
     for (size_t i = 0; i < _size; ++i) {
         os << "> " << _list[i].name << " = " << _list[i].value << '\n';
@@ -1600,42 +1595,37 @@ void H2UnsentRequest::Describe(butil::IOBuf* desc) const {
     if (!body->empty()) {
         os << "> \n";
     }
-    os.move_to(*desc);
-    if (body->size() > (size_t)FLAGS_http_verbose_max_body_length) {
-        size_t nskipped = body->size() - (size_t)FLAGS_http_verbose_max_body_length;
-        body->append_to(desc, FLAGS_http_verbose_max_body_length);
-        if (nskipped) {
-            char str[48];
-            snprintf(str, sizeof(str), "\n<skipped %" PRIu64 " bytes>", nskipped);
-            desc->append(str);
-        }
-    } else {
-        desc->append(*body);
+    os << butil::ToPrintable(*body, FLAGS_http_verbose_max_body_length);
+
+}
+
+H2UnsentResponse::H2UnsentResponse(Controller* c, int stream_id, bool is_grpc)
+    : _size(0)
+    , _stream_id(stream_id)
+    , _http_response(c->release_http_response())
+    , _is_grpc(is_grpc) {
+    _data.swap(c->response_attachment());
+    if (is_grpc) {
+        _grpc_status = ErrorCodeToGrpcStatus(c->ErrorCode());
+        PercentEncode(c->ErrorText(), &_grpc_message);
     }
 }
 
-H2UnsentResponse* H2UnsentResponse::New(Controller* c, int stream_id) {
+H2UnsentResponse* H2UnsentResponse::New(Controller* c, int stream_id, bool is_grpc) {
     const HttpHeader* const h = &c->http_response();
     const CommonStrings* const common = get_common_strings();
-    const bool need_content_length =
-        (c->Failed() || !c->has_progressive_writer());
     const bool need_content_type = !h->content_type().empty();
     const size_t maxsize = 1
-        + (size_t)need_content_length
         + (size_t)need_content_type;
     const size_t memsize = offsetof(H2UnsentResponse, _list) +
         sizeof(HPacker::Header) * maxsize;
-    H2UnsentResponse* msg = new (malloc(memsize)) H2UnsentResponse(c, stream_id);
+    H2UnsentResponse* msg = new (malloc(memsize)) H2UnsentResponse(c, stream_id, is_grpc);
     // :status
     if (h->status_code() == 200) {
         msg->push(common->H2_STATUS, common->STATUS_200);
     } else {
         butil::string_printf(&msg->push(common->H2_STATUS),
                             "%d", h->status_code());
-    }
-    if (need_content_length) {
-        butil::string_printf(&msg->push(common->CONTENT_LENGTH),
-                            "%" PRIu64, msg->_data.size());
     }
     if (need_content_type) {
         msg->push(common->CONTENT_TYPE, h->content_type());
@@ -1695,7 +1685,19 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     butil::IOBuf frag;
     appender.move_to(frag);
 
-    PackH2Message(out, frag, _data, _stream_id, ctx);
+    butil::IOBuf trailer_frag;
+    if (_is_grpc) {
+        HPacker::Header status_header("grpc-status",
+                                      butil::string_printf("%d", _grpc_status));
+        hpacker.Encode(&appender, status_header, options);
+        if (!_grpc_message.empty()) {
+            HPacker::Header msg_header("grpc-message", _grpc_message);
+            hpacker.Encode(&appender, msg_header, options);
+        }
+        appender.move_to(trailer_frag);
+    }
+
+    PackH2Message(out, frag, trailer_frag, _data, _stream_id, ctx);
     return butil::Status::OK();
 }
 
@@ -1714,8 +1716,7 @@ size_t H2UnsentResponse::EstimatedByteSize() {
     return sz;
 }
 
-void H2UnsentResponse::Describe(butil::IOBuf* desc) const {
-    butil::IOBufBuilder os;
+void H2UnsentResponse::Print(std::ostream& os) const {
     os << "[ H2 RESPONSE @" << butil::my_ip() << " ]\n";
     for (size_t i = 0; i < _size; ++i) {
         os << "> " << _list[i].name << " = " << _list[i].value << '\n';
@@ -1729,18 +1730,7 @@ void H2UnsentResponse::Describe(butil::IOBuf* desc) const {
     if (!_data.empty()) {
         os << "> \n";
     }
-    os.move_to(*desc);
-    if (_data.size() > (size_t)FLAGS_http_verbose_max_body_length) {
-        size_t nskipped = _data.size() - (size_t)FLAGS_http_verbose_max_body_length;
-        _data.append_to(desc, FLAGS_http_verbose_max_body_length);
-        if (nskipped) {
-            char str[48];
-            snprintf(str, sizeof(str), "\n<skipped %" PRIu64 " bytes>", nskipped);
-            desc->append(str);
-        }
-    } else {
-        desc->append(_data);
-    }
+    os << butil::ToPrintable(_data, FLAGS_http_verbose_max_body_length);
 }
 
 void PackH2Request(butil::IOBuf*,
@@ -1768,9 +1758,7 @@ void PackH2Request(butil::IOBuf*,
     *user_message = h2_req;
     
     if (FLAGS_http_verbose) {
-        butil::IOBuf desc;
-        h2_req->Describe(&desc);
-        std::cerr << desc << std::endl;
+        LOG(INFO) << '\n' << *h2_req;
     }
 }
 

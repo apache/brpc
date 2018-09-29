@@ -135,7 +135,7 @@ friend void PackH2Request(butil::IOBuf*, SocketMessage**,
                           Controller*, const butil::IOBuf&, const Authenticator*);
 public:
     static H2UnsentRequest* New(Controller* c);
-    void Describe(butil::IOBuf*) const;
+    void Print(std::ostream& os) const;
 
     int AddRefManually()
     { return _nref.fetch_add(1, butil::memory_order_relaxed); }
@@ -194,9 +194,9 @@ private:
 
 class H2UnsentResponse : public SocketMessage {
 public:
-    static H2UnsentResponse* New(Controller* c, int stream_id);
+    static H2UnsentResponse* New(Controller* c, int stream_id, bool is_grpc);
     void Destroy();
-    void Describe(butil::IOBuf*) const;
+    void Print(std::ostream& os) const;
     // @SocketMessage
     butil::Status AppendAndDestroySelf(butil::IOBuf* out, Socket*) override;
     size_t EstimatedByteSize() override;
@@ -208,12 +208,7 @@ private:
     void push(const std::string& name, const std::string& value)
     { new (&_list[_size++]) HPacker::Header(name, value); }
 
-    H2UnsentResponse(Controller* c, int stream_id)
-        : _size(0)
-        , _stream_id(stream_id)
-        , _http_response(c->release_http_response()) {
-        _data.swap(c->response_attachment());
-    }
+    H2UnsentResponse(Controller* c, int stream_id, bool is_grpc);
     ~H2UnsentResponse() {}
     H2UnsentResponse(const H2UnsentResponse&);
     void operator=(const H2UnsentResponse&);
@@ -223,17 +218,19 @@ private:
     uint32_t _stream_id;
     std::unique_ptr<HttpHeader> _http_response;
     butil::IOBuf _data;
+    bool _is_grpc;
+    GrpcStatus _grpc_status;
+    std::string _grpc_message;
     HPacker::Header _list[0];
 };
 
 // Used in http_rpc_protocol.cpp
 class H2StreamContext : public HttpContext {
 public:
-    H2StreamContext();
+    H2StreamContext(bool read_body_progressively);
     ~H2StreamContext();
     void Init(H2Context* conn_ctx, int stream_id);
 
-    H2StreamContext(H2Context* conn_ctx, int stream_id);
     // Decode headers in HPACK from *it and set into this->header(). The input
     // does not need to complete.
     // Returns 0 on success, -1 otherwise.
@@ -409,6 +406,15 @@ inline int H2Context::AllocateClientStreamId() {
 
 inline bool H2Context::RunOutStreams() const {
     return (_last_client_stream_id > 0x7FFFFFFF);
+}
+
+inline std::ostream& operator<<(std::ostream& os, const H2UnsentRequest& req) {
+    req.Print(os);
+    return os;
+}
+inline std::ostream& operator<<(std::ostream& os, const H2UnsentResponse& res) {
+    res.Print(os);
+    return os;
 }
 
 }  // namespace policy

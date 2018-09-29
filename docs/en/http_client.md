@@ -157,7 +157,7 @@ Notes on http header:
 
 # Debug HTTP messages
 
-Turn on [-http_verbose](http://brpc.baidu.com:8765/flags/http_verbose) so that the framework prints each http request and response in stderr. Note that this should only be used in tests or debuggings rather than online services.
+Turn on [-http_verbose](http://brpc.baidu.com:8765/flags/http_verbose) so that the framework prints each http request and response. Note that this should only be used in tests or debuggings rather than online services.
 
 # HTTP errors 
 

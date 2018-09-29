@@ -1,4 +1,4 @@
-// Copyright (c) 2014 Baidu, Inc.
+// Copyright (c) 2018 Bilibili, Inc.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,26 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// A client sending requests to server every 1 second.
+// A client sending requests to server every 1 second using grpc.
+// Authors: Jiashun Zhu(zhujiashun@bilibili.com)
 
 #include <gflags/gflags.h>
 #include <butil/logging.h>
 #include <butil/time.h>
 #include <brpc/channel.h>
-#include "echo.pb.h"
+#include "helloworld.pb.h"
 
-DEFINE_string(attachment, "", "Carry this along with requests");
-DEFINE_string(protocol, "baidu_std", "Protocol type. Defined in src/brpc/options.proto");
-DEFINE_string(connection_type, "", "Connection type. Available values: single, pooled, short");
-DEFINE_string(server, "0.0.0.0:8000", "IP Address of server");
+DEFINE_string(protocol, "h2", "Protocol type. Defined in src/brpc/options.proto");
+DEFINE_string(server, "0.0.0.0:50051", "IP Address of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
 DEFINE_int32(interval_ms, 1000, "Milliseconds between consecutive requests");
+DEFINE_bool(gzip, false, "compress body using gzip");
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
+    if (FLAGS_gzip) {
+        GFLAGS_NS::SetCommandLineOption("http_body_compress_threshold", 0);
+    }
     
     // A Channel represents a communication line to a Server. Notice that 
     // Channel is thread-safe and can be shared by all threads in your program.
@@ -40,7 +43,6 @@ int main(int argc, char* argv[]) {
     // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
     options.protocol = FLAGS_protocol;
-    options.connection_type = FLAGS_connection_type;
     options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
     options.max_retry = FLAGS_max_retry;
     if (channel.Init(FLAGS_server.c_str(), FLAGS_load_balancer.c_str(), &options) != 0) {
@@ -50,32 +52,27 @@ int main(int argc, char* argv[]) {
 
     // Normally, you should not call a Channel directly, but instead construct
     // a stub Service wrapping it. stub can be shared by all threads as well.
-    example::EchoService_Stub stub(&channel);
+    helloworld::Greeter_Stub stub(&channel);
 
     // Send a request and wait for the response every 1 second.
-    int log_id = 0;
     while (!brpc::IsAskedToQuit()) {
         // We will receive response synchronously, safe to put variables
         // on stack.
-        example::EchoRequest request;
-        example::EchoResponse response;
+        helloworld::HelloRequest request;
+        helloworld::HelloReply response;
         brpc::Controller cntl;
 
-        request.set_message("hello world");
-
-        cntl.set_log_id(log_id ++);  // set by user
-        // Set attachment which is wired to network directly instead of 
-        // being serialized into protobuf messages.
-        cntl.request_attachment().append(FLAGS_attachment);
-
+        request.set_name("grpc_req_from_brpc");
+        if (FLAGS_gzip) {
+            cntl.set_request_compress_type(brpc::COMPRESS_TYPE_GZIP);
+        }
         // Because `done'(last parameter) is NULL, this function waits until
         // the response comes back or error occurs(including timedout).
-        stub.Echo(&cntl, &request, &response, NULL);
+        stub.SayHello(&cntl, &request, &response, NULL);
         if (!cntl.Failed()) {
             LOG(INFO) << "Received response from " << cntl.remote_side()
                 << " to " << cntl.local_side()
-                << ": " << response.message() << " (attached="
-                << cntl.response_attachment() << ")"
+                << ": " << response.message()
                 << " latency=" << cntl.latency_us() << "us";
         } else {
             LOG(WARNING) << cntl.ErrorText();
@@ -83,6 +80,5 @@ int main(int argc, char* argv[]) {
         usleep(FLAGS_interval_ms * 1000L);
     }
 
-    LOG(INFO) << "EchoClient is going to quit";
     return 0;
 }

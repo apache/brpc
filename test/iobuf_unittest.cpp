@@ -98,7 +98,7 @@ static void check_memory_leak() {
             ++n;
         }
         ASSERT_EQ(n, s_set.size());
-        ASSERT_EQ(n, butil::iobuf::get_tls_block_count());
+        ASSERT_EQ(n, (size_t)butil::iobuf::get_tls_block_count());
     }
 }
 
@@ -287,7 +287,7 @@ TEST_F(IOBufTest, reserve) {
     b.append("hello world");
     ASSERT_EQ(0, b.unsafe_assign(a1, "prefix")); // `x' will not be copied
     ASSERT_EQ("prefihello world", b.to_string());
-    ASSERT_EQ(16, b.size());
+    ASSERT_EQ((size_t)16, b.size());
 
     // pop/append sth. from back-side and assign again.
     ASSERT_EQ(5, b.pop_back(5));
@@ -1309,7 +1309,7 @@ TEST_F(IOBufTest, append_from_fd_with_offset) {
     butil::IOPortal buf;
     char dummy[10 * 1024];
     buf.append(dummy, sizeof(dummy));
-    ASSERT_EQ(sizeof(dummy), buf.cut_into_file_descriptor(fd));
+    ASSERT_EQ((ssize_t)sizeof(dummy), buf.cut_into_file_descriptor(fd));
     for (size_t i = 0; i < sizeof(dummy); ++i) {
         butil::IOPortal b0;
         ASSERT_EQ(sizeof(dummy) - i, b0.pappend_from_file_descriptor(fd, i, sizeof(dummy))) << berror();
@@ -1532,10 +1532,10 @@ TEST_F(IOBufTest, printed_as_binary) {
         "\\EC\\ED\\EE\\EF\\F0\\F1\\F2\\F3\\F4\\F5\\F6\\F7\\F8\\F9\\FA"
         "\\FB\\FC\\FD\\FE\\FF";
     std::ostringstream os;
-    os << butil::PrintedAsBinary(buf, 256);
+    os << butil::ToPrintable(buf, 256);
     ASSERT_STREQ(OUTPUT, os.str().c_str());
     os.str("");
-    os << butil::PrintedAsBinary(str, 256);
+    os << butil::ToPrintable(str, 256);
     ASSERT_STREQ(OUTPUT, os.str().c_str());
 }
 

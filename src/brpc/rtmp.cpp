@@ -390,14 +390,14 @@ std::ostream& operator<<(std::ostream& os, const RtmpAudioMessage& msg) {
               << " rate=" << FlvSoundRate2Str(msg.rate)
               << " bits=" << FlvSoundBits2Str(msg.bits)
               << " type=" << FlvSoundType2Str(msg.type)
-              << " data=" << butil::PrintedAsBinary(msg.data) << '}';
+              << " data=" << butil::ToPrintable(msg.data) << '}';
 }
 
 std::ostream& operator<<(std::ostream& os, const RtmpVideoMessage& msg) {
     return os << "VideoMessage{timestamp=" << msg.timestamp
               << " type=" << FlvVideoFrameType2Str(msg.frame_type)
               << " codec=" << FlvVideoCodec2Str(msg.codec)
-              << " data=" << butil::PrintedAsBinary(msg.data) << '}';
+              << " data=" << butil::ToPrintable(msg.data) << '}';
 }
 
 butil::Status RtmpAACMessage::Create(const RtmpAudioMessage& msg) {

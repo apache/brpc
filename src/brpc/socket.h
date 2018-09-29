@@ -401,6 +401,7 @@ public:
     void CheckEOF();
     
     SSLState ssl_state() const { return _ssl_state; }
+    bool is_ssl() const { return ssl_state() == SSL_CONNECTED; }
     X509* GetPeerCertificate() const;
     
     // Print debugging inforamtion of `id' into the ostream.
