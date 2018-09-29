@@ -49,13 +49,13 @@
 #  define DVLOG_IF(...) VLOG_IF(__VA_ARGS__)
 # else 
   // The actual stream used isn't important.
-#  define BAIDU_EAT_STREAM_PARAMS                                           \
+#  define EAT_STREAM_PARAMS                                           \
         true ? (void) 0 : google::LogMessageVoidify() & LOG(FATAL)
-#  define DPLOG(...) BAIDU_EAT_STREAM_PARAMS
-#  define DPLOG_IF(...) BAIDU_EAT_STREAM_PARAMS
-#  define DPCHECK(...) BAIDU_EAT_STREAM_PARAMS
-#  define DVPLOG(...) BAIDU_EAT_STREAM_PARAMS
-#  define DVLOG_IF(...) BAIDU_EAT_STREAM_PARAMS
+#  define DPLOG(...) EAT_STREAM_PARAMS
+#  define DPLOG_IF(...) EAT_STREAM_PARAMS
+#  define DPCHECK(...) EAT_STREAM_PARAMS
+#  define DVPLOG(...) EAT_STREAM_PARAMS
+#  define DVLOG_IF(...) EAT_STREAM_PARAMS
 # endif
 
 #define LOG_AT(severity, file, line)                                    \
