@@ -715,11 +715,6 @@ H2ParseResult H2Context::OnData(
             return MakeH2Error(H2_STREAM_CLOSED_ERROR, frame_head.stream_id);
         }
     }
-    if (_deferred_window_update.load(butil::memory_order_relaxed) + frag_size >
-            local_settings().connection_window_size) {
-        LOG(ERROR) << "Fail to satisfy the connection-level flow control policy";
-        return MakeH2Error(H2_FLOW_CONTROL_ERROR);
-    }
     return sctx->OnData(it, frame_head, frag_size, pad_length);
 }
 
@@ -739,10 +734,14 @@ H2ParseResult H2StreamContext::OnData(
     }
 
     const int64_t acc = _deferred_window_update.fetch_add(frag_size, butil::memory_order_relaxed) + frag_size;
-    if (acc > _conn_ctx->local_settings().stream_window_size) {
-        LOG(ERROR) << "Fail to satisfy the stream-level flow control policy";
-        return MakeH2Error(H2_FLOW_CONTROL_ERROR);
-    } else if (acc >= _conn_ctx->local_settings().stream_window_size / 2) {
+    if (acc >= _conn_ctx->local_settings().stream_window_size / 2) {
+        if (acc > _conn_ctx->local_settings().stream_window_size) {
+            LOG(ERROR) << "Fail to satisfy the stream-level flow control policy";
+            H2StreamContext* sctx = _conn_ctx->RemoveStream(frame_head.stream_id);
+            CHECK_EQ(sctx, this);
+            delete sctx;
+            return MakeH2Error(H2_FLOW_CONTROL_ERROR, frame_head.stream_id);
+        }
         // Rarely happen for small messages.
         const int64_t stream_wu =
             _deferred_window_update.exchange(0, butil::memory_order_relaxed);
