@@ -1359,7 +1359,6 @@ static void PackH2Message(butil::IOBuf* out,
 H2UnsentRequest* H2UnsentRequest::New(Controller* c) {
     const HttpHeader& h = c->http_request();
     const CommonStrings* const common = get_common_strings();
-    const bool need_content_length = (h.method() != HTTP_METHOD_GET);
     const bool need_content_type = !h.content_type().empty();
     const bool need_accept = !h.GetHeader(common->ACCEPT);
     const bool need_user_agent = !h.GetHeader(common->USER_AGENT);
@@ -1367,7 +1366,6 @@ H2UnsentRequest* H2UnsentRequest::New(Controller* c) {
     const bool need_authorization =
         (!user_info.empty() && !h.GetHeader("Authorization"));
     const size_t maxsize = h.HeaderCount() + 4
-        + (size_t)need_content_length
         + (size_t)need_content_type
         + (size_t)need_accept
         + (size_t)need_user_agent
@@ -1408,10 +1406,6 @@ H2UnsentRequest* H2UnsentRequest::New(Controller* c) {
         } else if (c->remote_side().port != 0) {
             *val = butil::endpoint2str(c->remote_side()).c_str();
         }
-    }
-    if (need_content_length) {
-        butil::string_printf(&msg->push(common->CONTENT_LENGTH),
-                            "%" PRIu64, c->request_attachment().size());
     }
     if (need_content_type) {
         msg->push(common->CONTENT_TYPE, h.content_type());
@@ -1631,11 +1625,8 @@ H2UnsentResponse::H2UnsentResponse(Controller* c, int stream_id, bool is_grpc)
 H2UnsentResponse* H2UnsentResponse::New(Controller* c, int stream_id, bool is_grpc) {
     const HttpHeader* const h = &c->http_response();
     const CommonStrings* const common = get_common_strings();
-    const bool need_content_length =
-        (c->Failed() || !c->has_progressive_writer());
     const bool need_content_type = !h->content_type().empty();
     const size_t maxsize = 1
-        + (size_t)need_content_length
         + (size_t)need_content_type;
     const size_t memsize = offsetof(H2UnsentResponse, _list) +
         sizeof(HPacker::Header) * maxsize;
@@ -1646,10 +1637,6 @@ H2UnsentResponse* H2UnsentResponse::New(Controller* c, int stream_id, bool is_gr
     } else {
         butil::string_printf(&msg->push(common->H2_STATUS),
                             "%d", h->status_code());
-    }
-    if (need_content_length) {
-        butil::string_printf(&msg->push(common->CONTENT_LENGTH),
-                            "%" PRIu64, msg->_data.size());
     }
     if (need_content_type) {
         msg->push(common->CONTENT_TYPE, h->content_type());

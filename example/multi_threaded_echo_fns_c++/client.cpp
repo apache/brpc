@@ -37,7 +37,6 @@ DEFINE_int32(backup_timeout_ms, -1, "backup timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 DEFINE_int32(dummy_port, -1, "Launch dummy server at this port");
-DEFINE_string(http_content_type, "application/json", "Content type of http request");
 
 std::string g_attachment;
 
@@ -66,8 +65,6 @@ static void* sender(void* arg) {
             // Set attachment which is wired to network directly instead of 
             // being serialized into protobuf messages.
             cntl.request_attachment().append(g_attachment);
-        } else {
-            cntl.http_request().set_content_type(FLAGS_http_content_type);
         }
 
         // Because `done'(last parameter) is NULL, this function waits until

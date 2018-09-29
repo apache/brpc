@@ -111,7 +111,6 @@ CommonStrings::CommonStrings()
     , AUTHORIZATION("authorization")
     , ACCEPT_ENCODING("accept-encoding")
     , CONTENT_ENCODING("content-encoding")
-    , CONTENT_LENGTH("content-length")
     , GZIP("gzip")
     , CONNECTION("connection")
     , KEEP_ALIVE("keep-alive")
@@ -455,7 +454,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
     const bool is_http2 = (cntl->request_protocol() == PROTOCOL_HTTP2);
     bool is_grpc = false;
     if (request != NULL) {
-        // If request is not NULL, message body will be serialized json,
+        // If request is not NULL, message body will be serialized proto/json,
         if (!request->IsInitialized()) {
             return cntl->SetFailed(
                 EREQUEST, "Missing required fields in request: %s",
@@ -465,11 +464,25 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             return cntl->SetFailed(EREQUEST, "request_attachment must be empty "
                                    "when request is not NULL");
         }
+        HttpContentType content_type = HTTP_CONTENT_OTHERS;
+        if (cntl->http_request().content_type().empty()) {
+            // Set content-type if user did not.
+            // Note that http1.x defaults to json and h2 defaults to pb.
+            if (is_http2) {
+                content_type = HTTP_CONTENT_PROTO;
+                cntl->http_request().set_content_type(common->CONTENT_TYPE_PROTO);
+            } else {
+                content_type = HTTP_CONTENT_JSON;
+                cntl->http_request().set_content_type(common->CONTENT_TYPE_JSON);
+            }
+        } else {
+            bool is_grpc_ct = false;
+            content_type = ParseContentType(cntl->http_request().content_type(),
+                                            &is_grpc_ct);
+            is_grpc = (is_http2 && is_grpc_ct);
+        }
+
         butil::IOBufAsZeroCopyOutputStream wrapper(&cntl->request_attachment());
-        bool is_grpc_ct = false;
-        const HttpContentType content_type
-            = ParseContentType(cntl->http_request().content_type(), &is_grpc_ct);
-        is_grpc = (is_http2 && is_grpc_ct);
         if (content_type == HTTP_CONTENT_PROTO) {
             // Serialize content as protobuf
             if (!request->SerializeToZeroCopyStream(&wrapper)) {
@@ -477,7 +490,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
                 return cntl->SetFailed(EREQUEST, "Fail to serialize %s",
                                        request->GetTypeName().c_str());
             }
-        } else { // Serialize content as json
+        } else if (content_type == HTTP_CONTENT_JSON) {
             std::string err;
             json2pb::Pb2JsonOptions opt;
             opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
@@ -489,10 +502,9 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
                 cntl->request_attachment().clear();
                 return cntl->SetFailed(EREQUEST, "Fail to convert request to json, %s", err.c_str());
             }
-            // Set content-type if user did not.
-            if (cntl->http_request().content_type().empty()) {
-                cntl->http_request().set_content_type(common->CONTENT_TYPE_JSON);
-            }
+        } else {
+            return cntl->SetFailed(EREQUEST, "Unknown content_type=%s",
+                    cntl->http_request().content_type().c_str());
         }
     } else {
         // Use request_attachment.
