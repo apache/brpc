@@ -135,7 +135,7 @@ friend void PackH2Request(butil::IOBuf*, SocketMessage**,
                           Controller*, const butil::IOBuf&, const Authenticator*);
 public:
     static H2UnsentRequest* New(Controller* c);
-    void Print(std::ostream&) const;
+    void Print(std::ostream& os) const;
 
     int AddRefManually()
     { return _nref.fetch_add(1, butil::memory_order_relaxed); }
@@ -196,7 +196,7 @@ class H2UnsentResponse : public SocketMessage {
 public:
     static H2UnsentResponse* New(Controller* c, int stream_id, bool is_grpc);
     void Destroy();
-    void Print(std::ostream&) const;
+    void Print(std::ostream& os) const;
     // @SocketMessage
     butil::Status AppendAndDestroySelf(butil::IOBuf* out, Socket*) override;
     size_t EstimatedByteSize() override;
@@ -227,11 +227,10 @@ private:
 // Used in http_rpc_protocol.cpp
 class H2StreamContext : public HttpContext {
 public:
-    H2StreamContext();
+    H2StreamContext(bool read_body_progressively);
     ~H2StreamContext();
     void Init(H2Context* conn_ctx, int stream_id);
 
-    H2StreamContext(H2Context* conn_ctx, int stream_id);
     // Decode headers in HPACK from *it and set into this->header(). The input
     // does not need to complete.
     // Returns 0 on success, -1 otherwise.

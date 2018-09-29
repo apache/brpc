@@ -198,9 +198,9 @@ static void PrintMessage(const butil::IOBuf& inbuf,
     butil::IOBuf buf2;
     char str[48];
     if (request_or_response) {
-        snprintf(str, sizeof(str), "[HTTP REQUEST @%s]", butil::my_ip_cstr());
+        snprintf(str, sizeof(str), "[ HTTP REQUEST @%s ]", butil::my_ip_cstr());
     } else {
-        snprintf(str, sizeof(str), "[HTTP RESPONSE @%s]", butil::my_ip_cstr());
+        snprintf(str, sizeof(str), "[ HTTP RESPONSE @%s ]", butil::my_ip_cstr());
     }
     buf2.append(str);
     size_t last_size;
@@ -212,11 +212,10 @@ static void PrintMessage(const butil::IOBuf& inbuf,
         buf2.pop_back(2);  // remove "> "
     }
     if (!has_content) {
-        buf2.append(buf1);
+        LOG(INFO) << '\n' << buf2 << buf1;
     } else {
-        buf2.append(butil::ToPrintableString(buf1, FLAGS_http_verbose_max_body_length));
+        LOG(INFO) << '\n' << buf2 << butil::ToPrintableString(buf1, FLAGS_http_verbose_max_body_length);
     }
-    std::cerr << buf2 << std::endl;
 }
 
 static void AddGrpcPrefix(butil::IOBuf* body, bool compressed) {
@@ -863,7 +862,7 @@ HttpResponseSender::~HttpResponseSender() {
             rc = -1;
         } else {
             if (FLAGS_http_verbose) {
-                std::cerr << *h2_response << std::endl;
+                LOG(INFO) << '\n' << *h2_response;
             }
             if (span) {
                 span->set_response_size(h2_response->EstimatedByteSize());
@@ -1020,7 +1019,7 @@ FindMethodPropertyByURI(const std::string& uri_path, const Server* server,
     return NULL;
 }
 
-ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket, 
+ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
                              bool read_eof, const void* /*arg*/) {
     HttpContext* http_imsg = 
         static_cast<HttpContext*>(socket->parsing_context());
@@ -1035,8 +1034,7 @@ ParseResult ParseHttpMessage(butil::IOBuf *source, Socket *socket,
             //    source is likely to be empty.
             return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
         }
-        http_imsg = new (std::nothrow) HttpContext(
-            socket->is_read_progressive());
+        http_imsg = new (std::nothrow) HttpContext(socket->is_read_progressive());
         if (http_imsg == NULL) {
             LOG(FATAL) << "Fail to new HttpContext";
             return MakeParseError(PARSE_ERROR_NO_RESOURCE);

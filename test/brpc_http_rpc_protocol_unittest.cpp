@@ -136,7 +136,7 @@ protected:
     }
 
     brpc::policy::HttpContext* MakePostRequestMessage(const std::string& path) {
-        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext();
+        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext(false);
         msg->header().uri().set_path(path);
         msg->header().set_content_type("application/json");
         msg->header().set_method(brpc::HTTP_METHOD_POST);
@@ -149,7 +149,7 @@ protected:
     }
 
     brpc::policy::HttpContext* MakeGetRequestMessage(const std::string& path) {
-        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext();
+        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext(false);
         msg->header().uri().set_path(path);
         msg->header().set_method(brpc::HTTP_METHOD_GET);
         return msg;
@@ -157,7 +157,7 @@ protected:
 
 
     brpc::policy::HttpContext* MakeResponseMessage(int code) {
-        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext();
+        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext(false);
         msg->header().set_status_code(code);
         msg->header().set_content_type("application/json");
         

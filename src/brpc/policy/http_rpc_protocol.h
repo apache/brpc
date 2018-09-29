@@ -80,7 +80,7 @@ class HttpContext : public ReadableProgressiveAttachment
                   , public InputMessageBase
                   , public HttpMessage {
 public:
-    HttpContext(bool read_body_progressively = false)
+    HttpContext(bool read_body_progressively)
         : InputMessageBase()
         , HttpMessage(read_body_progressively)
         , _is_stage2(false) {

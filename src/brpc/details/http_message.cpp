@@ -33,7 +33,7 @@
 namespace brpc {
 
 DEFINE_bool(http_verbose, false,
-            "[DEBUG] Print EVERY http request/response to stderr");
+            "[DEBUG] Print EVERY http request/response");
 DEFINE_int32(http_verbose_max_body_length, 512,
              "[DEBUG] Max body length printed when -http_verbose is on");
 DECLARE_int64(socket_max_unwritten_bytes);
@@ -111,13 +111,13 @@ int HttpMessage::on_header_value(http_parser *parser,
             vs = new butil::IOBufBuilder;
             http_message->_vmsgbuilder = vs;
             if (parser->type == HTTP_REQUEST) {
-                *vs << "[HTTP REQUEST @" << butil::my_ip() << "]\n< "
+                *vs << "[ HTTP REQUEST @" << butil::my_ip() << " ]\n< "
                     << HttpMethod2Str((HttpMethod)parser->method) << ' '
                     << http_message->_url << " HTTP/" << parser->http_major
                     << '.' << parser->http_minor;
             } else {
                 // NOTE: http_message->header().status_code() may not be set yet.
-                *vs << "[HTTP RESPONSE @" << butil::my_ip() << "]\n< HTTP/"
+                *vs << "[ HTTP RESPONSE @" << butil::my_ip() << " ]\n< HTTP/"
                     << parser->http_major
                     << '.' << parser->http_minor << ' ' << parser->status_code
                     << ' ' << HttpReasonPhrase(parser->status_code);
@@ -221,7 +221,7 @@ int HttpMessage::OnBody(const char *at, const size_t length) {
             // description which is very helpful for debugging. Otherwise
             // the body is probably streaming data which is too long to print.
             header().status_code() == HTTP_STATUS_OK) {
-            std::cerr << _vmsgbuilder->buf() << std::endl;
+            LOG(INFO) << '\n' << _vmsgbuilder->buf();
             delete _vmsgbuilder;
             _vmsgbuilder = NULL;
         } else {
@@ -286,7 +286,7 @@ int HttpMessage::OnMessageComplete() {
             *_vmsgbuilder << "\n<skipped " << _vbodylen
                 - (size_t)FLAGS_http_verbose_max_body_length << " bytes>";
         }
-        std::cerr << _vmsgbuilder->buf() << std::endl;
+        LOG(INFO) << '\n' << _vmsgbuilder->buf();
         delete _vmsgbuilder;
         _vmsgbuilder = NULL;
     }

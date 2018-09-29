@@ -45,7 +45,7 @@ class HttpMessage {
 public:
     // If read_body_progressively is true, the body will be read progressively
     // by using SetBodyReader().
-    explicit HttpMessage(bool read_body_progressively = false);
+    HttpMessage(bool read_body_progressively = false);
     ~HttpMessage();
 
     const butil::IOBuf &body() const { return _body; }

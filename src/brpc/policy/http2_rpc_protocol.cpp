@@ -571,7 +571,8 @@ H2ParseResult H2Context::OnHeaders(
             return MakeH2Error(H2_PROTOCOL_ERROR);
         }
         _last_server_stream_id = frame_head.stream_id;
-        sctx = new H2StreamContext(this, frame_head.stream_id);
+        sctx = new H2StreamContext(_socket->is_read_progressive());
+        sctx->Init(this, frame_head.stream_id);
         const int rc = TryToInsertStream(frame_head.stream_id, sctx);
         if (rc < 0) {
             delete sctx;
@@ -587,7 +588,8 @@ H2ParseResult H2Context::OnHeaders(
             if (is_client_side()) {
                 RPC_VLOG << "Fail to find stream_id=" << frame_head.stream_id;
                 // Ignore the message without closing the socket.
-                H2StreamContext tmp_sctx(this, frame_head.stream_id);
+                H2StreamContext tmp_sctx(false);
+                tmp_sctx.Init(this, frame_head.stream_id);
                 tmp_sctx.OnHeaders(it, frame_head, frag_size, pad_length);
                 return MakeH2Message(NULL);
             } else {
@@ -643,7 +645,8 @@ H2ParseResult H2Context::OnContinuation(
         if (is_client_side()) {
             RPC_VLOG << "Fail to find stream_id=" << frame_head.stream_id;
             // Ignore the message without closing the socket.
-            H2StreamContext tmp_sctx(this, frame_head.stream_id);
+            H2StreamContext tmp_sctx(false);
+            tmp_sctx.Init(this, frame_head.stream_id);
             tmp_sctx.OnContinuation(it, frame_head);
             return MakeH2Message(NULL);
         } else {
@@ -695,7 +698,8 @@ H2ParseResult H2Context::OnData(
         if (is_client_side()) {
             RPC_VLOG << "Fail to find stream_id=" << frame_head.stream_id;
             // Ignore the message without closing the socket.
-            H2StreamContext tmp_sctx(this, frame_head.stream_id);
+            H2StreamContext tmp_sctx(false);
+            tmp_sctx.Init(this, frame_head.stream_id);
             tmp_sctx.OnData(it, frame_head, frag_size, pad_length);
             DeferWindowUpdate(tmp_sctx.ReleaseDeferredWindowUpdate());
             return MakeH2Message(NULL);
@@ -1117,8 +1121,9 @@ void H2Context::ClearAbandonedStreamsImpl() {
     }
 }
 
-H2StreamContext::H2StreamContext()
-    : _conn_ctx(NULL)
+H2StreamContext::H2StreamContext(bool read_body_progressively)
+    : HttpContext(read_body_progressively)
+    , _conn_ctx(NULL)
 #if defined(BRPC_H2_STREAM_STATE)
     , _state(H2_STREAM_IDLE)
 #endif
@@ -1138,22 +1143,6 @@ void H2StreamContext::Init(H2Context* conn_ctx, int stream_id) {
     _stream_id = stream_id;
     _remote_window_left.store(conn_ctx->remote_settings().stream_window_size,
                               butil::memory_order_relaxed);
-}
-
-H2StreamContext::H2StreamContext(H2Context* conn_ctx, int stream_id)
-    : _conn_ctx(conn_ctx)
-#if defined(BRPC_H2_STREAM_STATE)
-    , _state(H2_STREAM_IDLE)
-#endif
-    , _stream_id(stream_id)
-    , _stream_ended(false)
-    , _remote_window_left(conn_ctx->remote_settings().stream_window_size)
-    , _deferred_window_update(0)
-    , _correlation_id(INVALID_BTHREAD_ID.value) {
-    header().set_version(2, 0);
-#ifndef NDEBUG
-    get_http2_bvars()->h2_stream_context_count << 1;
-#endif
 }
 
 H2StreamContext::~H2StreamContext() {
@@ -1428,7 +1417,7 @@ H2UnsentRequest* H2UnsentRequest::New(Controller* c) {
         val->append("Basic ");
         val->append(encoded_user_info);
     }
-    msg->_sctx.reset(new H2StreamContext);
+    msg->_sctx.reset(new H2StreamContext(c->is_response_read_progressively()));
     return msg;
 }
 
@@ -1769,7 +1758,7 @@ void PackH2Request(butil::IOBuf*,
     *user_message = h2_req;
     
     if (FLAGS_http_verbose) {
-        std::cerr << *h2_req << std::endl;
+        LOG(INFO) << '\n' << *h2_req;
     }
 }
 

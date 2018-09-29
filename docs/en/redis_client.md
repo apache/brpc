@@ -11,7 +11,7 @@ Advantages compared to [hiredis](https://github.com/redis/hiredis) (the official
 
 Similarly with http, brpc guarantees that the time complexity of parsing redis replies is O(N) in worst cases rather than O(N^2) , where N is the number of bytes of reply. This is important when the reply consists of large arrays.
 
-Turn on [-redis_verbose](#Debug) to print contents of all redis requests and responses to stderr, which is for debugging only.
+Turn on [-redis_verbose](#Debug) to print contents of all redis requests and responses, which is for debugging only.
 
 # Request a redis server
 
@@ -151,13 +151,13 @@ Another choice is to use the common [twemproxy](https://github.com/twitter/twemp
 
 # Debug
 
-Turn on [-redis_verbose](http://brpc.baidu.com:8765/flags/redis_verbose) to print contents of all redis requests and responses to stderr. Note that this should only be used for debugging rather than online services.
+Turn on [-redis_verbose](http://brpc.baidu.com:8765/flags/redis_verbose) to print contents of all redis requests and responses. Note that this should only be used for debugging rather than online services.
 
 Turn on [-redis_verbose_crlf2space](http://brpc.baidu.com:8765/flags/redis_verbose_crlf2space) to replace the `CRLF` (\r\n) with spaces in debugging logs for better readability.
 
 | Name                     | Value | Description                              | Defined At                         |
 | ------------------------ | ----- | ---------------------------------------- | ---------------------------------- |
-| redis_verbose            | false | [DEBUG] Print EVERY redis request/response to stderr | src/brpc/policy/redis_protocol.cpp |
+| redis_verbose            | false | [DEBUG] Print EVERY redis request/response | src/brpc/policy/redis_protocol.cpp |
 | redis_verbose_crlf2space | false | [DEBUG] Show \r\n as a space             | src/brpc/redis.cpp                 |
 
 # Performance

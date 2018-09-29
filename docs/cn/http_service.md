@@ -273,7 +273,7 @@ cntl->http_request().uri().SetQuery("time", "2015/1/2");
 
 # 调试
 
-打开[-http_verbose](http://brpc.baidu.com:8765/flags/http_verbose)即可在stderr看到所有的http request和response，注意这应该只用于线下调试，而不是线上程序。
+打开[-http_verbose](http://brpc.baidu.com:8765/flags/http_verbose)即可看到所有的http request和response，注意这应该只用于线下调试，而不是线上程序。
 
 # 压缩response body
 

@@ -1392,7 +1392,7 @@ void Controller::set_mongo_session_data(MongoContext* data) {
 
 bool Controller::is_ssl() const {
     Socket* s = _current_call.sending_sock.get();
-    return s ? (s->ssl_state() == SSL_CONNECTED) : false;
+    return s != NULL && s->is_ssl();
 }
 
 x509_st* Controller::get_peer_certificate() const {
