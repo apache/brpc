@@ -570,6 +570,11 @@ H2ParseResult H2Context::OnHeaders(
             LOG(ERROR) << "Invalid stream_id=" << frame_head.stream_id;
             return MakeH2Error(H2_PROTOCOL_ERROR);
         }
+        if (VolatilePendingStreamSize() >= local_settings().max_concurrent_streams) {
+            LOG(ERROR) << "Reached max concurrent stream="
+                       << local_settings().max_concurrent_streams;
+            return MakeH2Error(H2_REFUSED_STREAM);
+        }
         _last_server_stream_id = frame_head.stream_id;
         sctx = new H2StreamContext(this, frame_head.stream_id);
         const int rc = TryToInsertStream(frame_head.stream_id, sctx);
