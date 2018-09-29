@@ -114,7 +114,7 @@ public:
     int start_index() const { return _start_index; }
     int end_index() const { return start_index() + _header_queue.size(); }
 
-    static size_t HeaderSize(const Header& h) {
+    static inline size_t HeaderSize(const Header& h) {
         // https://tools.ietf.org/html/rfc7541#section-4.1
         return h.name.size() + h.value.size() + 32;
     }
@@ -125,15 +125,14 @@ public:
         const size_t entry_size = HeaderSize(*h);
         DCHECK_LE(entry_size, size());
         const uint64_t id = _add_times - _header_queue.size();
-        RemoveHeaderFromIndexes(*h, id);
+        if (_need_indexes) {
+            RemoveHeaderFromIndexes(*h, id);
+        }
         _size -= entry_size;
         _header_queue.pop();
     }
 
     void RemoveHeaderFromIndexes(const Header& h, uint64_t expected_id) {
-        if (!_need_indexes) {
-            return;
-        }
         const uint64_t* v = _header_index.seek(h);
         DCHECK(v);
         if (*v == expected_id) {
@@ -150,7 +149,7 @@ public:
         CHECK(!h.name.empty());
         const size_t entry_size = HeaderSize(h);
 
-        while (!empty() && (size() + entry_size > max_size())) {
+        while (!empty() && (_size + entry_size) > _max_size) {
             PopHeader();
         }
 
@@ -703,9 +702,9 @@ void HPacker::Encode(butil::IOBufAppender* out, const Header& header,
             // This header is already in the index table
             return EncodeInteger(out, 0x80, 7, index);
         }
-    }
-    // The header can't be indexed or the header wasn't in the index table
-    int name_index = FindNameFromIndexTable(header.name);
+    } // The header can't be indexed or the header wasn't in the index table
+    
+    const int name_index = FindNameFromIndexTable(header.name);
     if (options.index_policy == HPACK_INDEX_HEADER) {
         // TODO: Add Options that indexes name independently
         _encode_table->AddHeader(header);
