@@ -1606,7 +1606,7 @@ void H2UnsentRequest::Print(std::ostream& os) const {
     if (!body->empty()) {
         os << "> \n";
     }
-    os << butil::BinaryPrinter(*body, FLAGS_http_verbose_max_body_length);
+    os << butil::ToPrintable(*body, FLAGS_http_verbose_max_body_length);
 
 }
 
@@ -1741,7 +1741,7 @@ void H2UnsentResponse::Print(std::ostream& os) const {
     if (!_data.empty()) {
         os << "> \n";
     }
-    os << butil::BinaryPrinter(_data, FLAGS_http_verbose_max_body_length);
+    os << butil::ToPrintable(_data, FLAGS_http_verbose_max_body_length);
 }
 
 void PackH2Request(butil::IOBuf*,

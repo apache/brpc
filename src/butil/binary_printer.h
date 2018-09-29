@@ -26,28 +26,21 @@ class IOBuf;
 // Print binary content within max length.
 // The printing format is optimized for humans and may change in future.
 
-class BinaryPrinter {
+class ToPrintable {
 public:
     static const size_t DEFAULT_MAX_LENGTH = 64;
     
-    explicit BinaryPrinter(const IOBuf& data)
-        : _iobuf(&data), _max_length(DEFAULT_MAX_LENGTH) {}
-    BinaryPrinter(const IOBuf& b, size_t max_length)
+    ToPrintable(const IOBuf& b, size_t max_length = DEFAULT_MAX_LENGTH)
         : _iobuf(&b), _max_length(max_length) {}
 
-    explicit BinaryPrinter(const StringPiece& str)
-        : _iobuf(NULL), _str(str), _max_length(DEFAULT_MAX_LENGTH) {}
-    BinaryPrinter(const StringPiece& str, size_t max_length)
+    ToPrintable(const StringPiece& str, size_t max_length = DEFAULT_MAX_LENGTH)
         : _iobuf(NULL), _str(str), _max_length(max_length) {}
 
-    explicit BinaryPrinter(const void* data, size_t n)
-        : _iobuf(NULL), _str((const char*)data, n), _max_length(DEFAULT_MAX_LENGTH) {}
-
-    explicit BinaryPrinter(const void* data, size_t n, size_t max_length)
+    ToPrintable(const void* data, size_t n, size_t max_length = DEFAULT_MAX_LENGTH)
         : _iobuf(NULL), _str((const char*)data, n), _max_length(max_length) {}
-
-    void Print(std::ostream& os) const;
     
+    void Print(std::ostream& os) const;
+
 private:
     const IOBuf* _iobuf;
     StringPiece _str;
@@ -55,20 +48,20 @@ private:
 };
 
 // Keep old name for compatibility.
-typedef BinaryPrinter PrintedAsBinary;
+typedef ToPrintable PrintedAsBinary;
 
-inline std::ostream& operator<<(std::ostream& os, const BinaryPrinter& p) {
+inline std::ostream& operator<<(std::ostream& os, const ToPrintable& p) {
     p.Print(os);
     return os;
 }
 
 // Convert binary data to a printable string.
 std::string ToPrintableString(const IOBuf& data,
-                              size_t max_length = BinaryPrinter::DEFAULT_MAX_LENGTH);
+                              size_t max_length = ToPrintable::DEFAULT_MAX_LENGTH);
 std::string ToPrintableString(const StringPiece& data,
-                              size_t max_length = BinaryPrinter::DEFAULT_MAX_LENGTH);
+                              size_t max_length = ToPrintable::DEFAULT_MAX_LENGTH);
 std::string ToPrintableString(const void* data, size_t n,
-                              size_t max_length = BinaryPrinter::DEFAULT_MAX_LENGTH);
+                              size_t max_length = ToPrintable::DEFAULT_MAX_LENGTH);
 
 } // namespace butil
 

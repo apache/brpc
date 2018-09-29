@@ -1532,10 +1532,10 @@ TEST_F(IOBufTest, printed_as_binary) {
         "\\EC\\ED\\EE\\EF\\F0\\F1\\F2\\F3\\F4\\F5\\F6\\F7\\F8\\F9\\FA"
         "\\FB\\FC\\FD\\FE\\FF";
     std::ostringstream os;
-    os << butil::PrintedAsBinary(buf, 256);
+    os << butil::ToPrintable(buf, 256);
     ASSERT_STREQ(OUTPUT, os.str().c_str());
     os.str("");
-    os << butil::PrintedAsBinary(str, 256);
+    os << butil::ToPrintable(str, 256);
     ASSERT_STREQ(OUTPUT, os.str().c_str());
 }
 

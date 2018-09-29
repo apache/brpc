@@ -130,7 +130,7 @@ static void PrintString(Appender* appender, const StringPiece& s, size_t max_len
     }
 }
 
-void BinaryPrinter::Print(std::ostream& os) const {
+void ToPrintable::Print(std::ostream& os) const {
     OStreamAppender appender(os);
     if (_iobuf) {
         PrintIOBuf(&appender, *_iobuf, _max_length);

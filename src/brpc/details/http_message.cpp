@@ -458,7 +458,7 @@ ssize_t HttpMessage::ParseFromIOBuf(const butil::IOBuf &buf) {
         if (_parser.http_errno != 0) {
             // May try HTTP on other formats, failure is norm.
             RPC_VLOG << "Fail to parse http message, parser=" << _parser
-                     << ", buf=`" << butil::PrintedAsBinary(buf) << '\'';
+                     << ", buf=" << butil::ToPrintable(buf);
             return -1;
         }
         if (Completed()) {

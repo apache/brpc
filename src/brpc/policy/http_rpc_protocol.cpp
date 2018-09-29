@@ -211,13 +211,12 @@ static void PrintMessage(const butil::IOBuf& inbuf,
     if (buf2.size() == last_size) {
         buf2.pop_back(2);  // remove "> "
     }
-    buf2.append(buf1);
     if (!has_content) {
-        std::cerr << buf2 << std::endl;
+        buf2.append(buf1);
     } else {
-        std::cerr << butil::PrintedAsBinary(
-            buf2, buf2.size() + FLAGS_http_verbose_max_body_length) << std::endl;
+        buf2.append(butil::ToPrintableString(buf1, FLAGS_http_verbose_max_body_length));
     }
+    std::cerr << buf2 << std::endl;
 }
 
 static void AddGrpcPrefix(butil::IOBuf* body, bool compressed) {
