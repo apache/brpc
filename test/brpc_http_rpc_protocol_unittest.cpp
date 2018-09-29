@@ -976,7 +976,7 @@ TEST_F(HttpTest, http2_sanity) {
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
-    options.protocol = "h2c";
+    options.protocol = "h2";
     ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
 
     // 1) complete flow and
@@ -1179,7 +1179,7 @@ TEST_F(HttpTest, http2_not_closing_socket_when_rpc_timeout) {
     EXPECT_EQ(0, server.Start(port, NULL));
     brpc::Channel channel;
     brpc::ChannelOptions options;
-    options.protocol = "h2c";
+    options.protocol = "h2";
     ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
 
     test::EchoRequest req;

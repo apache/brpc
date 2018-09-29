@@ -20,7 +20,7 @@
 #include <brpc/channel.h>
 #include "echo.pb.h"
 
-DEFINE_string(attachment, "foo", "Carry this along with requests");
+DEFINE_string(attachment, "", "Carry this along with requests");
 DEFINE_string(protocol, "baidu_std", "Protocol type. Defined in src/brpc/options.proto");
 DEFINE_string(connection_type, "", "Connection type. Available values: single, pooled, short");
 DEFINE_string(server, "0.0.0.0:8000", "IP Address of server");
@@ -64,11 +64,9 @@ int main(int argc, char* argv[]) {
         request.set_message("hello world");
 
         cntl.set_log_id(log_id ++);  // set by user
-        if (FLAGS_protocol != "http" && FLAGS_protocol != "h2c")  {
-            // Set attachment which is wired to network directly instead of 
-            // being serialized into protobuf messages.
-            cntl.request_attachment().append(FLAGS_attachment);
-        }
+        // Set attachment which is wired to network directly instead of 
+        // being serialized into protobuf messages.
+        cntl.request_attachment().append(FLAGS_attachment);
 
         // Because `done'(last parameter) is NULL, this function waits until
         // the response comes back or error occurs(including timedout).

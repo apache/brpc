@@ -61,11 +61,9 @@ static void* sender(void* arg) {
         const int input = ((thread_index & 0xFFF) << 20) | (log_id & 0xFFFFF);
         request.set_value(input);
         cntl.set_log_id(log_id ++);  // set by user
-        if (FLAGS_protocol != "http" && FLAGS_protocol != "h2c") {
-            // Set attachment which is wired to network directly instead of 
-            // being serialized into protobuf messages.
-            cntl.request_attachment().append(g_attachment);
-        }
+        // Set attachment which is wired to network directly instead of 
+        // being serialized into protobuf messages.
+        cntl.request_attachment().append(g_attachment);
 
         // Because `done'(last parameter) is NULL, this function waits until
         // the response comes back or error occurs(including timedout).
