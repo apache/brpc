@@ -236,8 +236,7 @@ void PackPublicPbrpcRequest(butil::IOBuf* buf,
 
     head->set_from_host(butil::ip2str(butil::my_ip()).c_str());
     head->set_content_type(CONTENT_TYPE);
-    bool short_connection = (ControllerPrivateAccessor(controller)
-                             .connection_type() == CONNECTION_TYPE_SHORT);
+    bool short_connection = (controller->connection_type() == CONNECTION_TYPE_SHORT);
     head->set_connection(!short_connection);
     head->set_charset(CHARSET);
     char time_buf[128];
