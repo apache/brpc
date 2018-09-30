@@ -50,7 +50,7 @@ class SimpleDataPool;
 class MongoServiceAdaptor;
 class RestfulMap;
 class RtmpService;
-class SocketSSLContext;
+struct SocketSSLContext;
 
 struct ServerOptions {
     ServerOptions();  // Constructed with default options.

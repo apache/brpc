@@ -345,7 +345,7 @@ public:
     bool is_client_side() const { return _socket->CreatedByConnect(); }
     bool is_server_side() const { return !is_client_side(); }
 
-    void Describe(std::ostream& os, const DescribeOptions&) const;
+    void Describe(std::ostream& os, const DescribeOptions&) const override;
 
     void DeferWindowUpdate(int64_t);
     int64_t ReleaseDeferredWindowUpdate();
