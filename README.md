@@ -8,7 +8,7 @@ An industrial-grade RPC framework used throughout [Baidu](http://ir.baidu.com/ph
 
 You can use it to:
 * Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
-  * restful http/https, [h2](https://http2.github.io/http2-spec)/[grpc](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md). using http/h2 in brpc is much more friendly than [libcurl](https://curl.haxx.se/libcurl/). Access protobuf-based protocols with HTTP/h2+json, probably from another language.
+  * restful http/https, [h2](https://http2.github.io/http2-spec)/[grpc](https://grpc.io). using http/h2 in brpc is much more friendly than [libcurl](https://curl.haxx.se/libcurl/). Access protobuf-based protocols with HTTP/h2+json, probably from another language.
   * [redis](docs/en/redis_client.md) and [memcached](docs/en/memcache_client.md), thread-safe, more friendly and performant than the official clients.
   * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building [streaming services](https://github.com/brpc/media-server).
   * hadoop_rpc (may be opensourced)
