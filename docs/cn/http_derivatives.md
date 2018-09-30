@@ -22,16 +22,16 @@ http/2默认是这个行为，所以"h2"和"h2:proto"等价。
 
 # h2:grpc
 
-[grpc](https://github.com/grpc)的默认协议，具体格式可阅读[gRPC over HTTP2](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md)
+[gRPC](https://github.com/grpc)的默认协议，具体格式可阅读[gRPC over HTTP2](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md)
 
-使用brpc的客户端把ChannelOptions.protocol设置为"h2:grpc"一般就能连通grpc。
+使用brpc的客户端把ChannelOptions.protocol设置为"h2:grpc"一般就能连通gRPC。
 
-使用brpc的服务端一般无需修改代码即可自动被grpc客户端访问。
+使用brpc的服务端一般无需修改代码即可自动被gRPC客户端访问。
 
-grpc默认序列化是pb二进制格式，所以"h2:grpc"和"h2:grpc+proto"等价。
+gRPC默认序列化是pb二进制格式，所以"h2:grpc"和"h2:grpc+proto"等价。
 
-TODO: grpc其他配置
+TODO: gRPC其他配置
 
 # h2:grpc+json
 
-这个协议相比h2:grpc就是用json序列化结果代替pb序列化结果。grpc未必直接支持这个格式，如grpc-go可参考[这里](https://github.com/johanbrandhorst/grpc-json-example/blob/master/codec/json.go)注册对应的codec后才会支持。
+这个协议相比h2:grpc就是用json序列化结果代替pb序列化结果。gRPC未必直接支持这个格式，如grpc-go可参考[这里](https://github.com/johanbrandhorst/grpc-json-example/blob/master/codec/json.go)注册对应的codec后才会支持。

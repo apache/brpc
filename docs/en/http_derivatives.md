@@ -22,16 +22,16 @@ http/2 behaves in this way by default, so "h2" and "h2:proto" are just same.
 
 # h2:grpc
 
-Default protocol of [grpc](https://github.com/grpc). The detailed format is described in [gRPC over HTTP2](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md).
+Default protocol of [gRPC](https://github.com/grpc). The detailed format is described in [gRPC over HTTP2](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md).
 
-Clients using brpc should be able to talk with grpc after changing ChannelOptions.protocol to "h2:grpc".
+Clients using brpc should be able to talk with gRPC after changing ChannelOptions.protocol to "h2:grpc".
 
-Servers using brpc should be accessible by grpc clients automatically without changing the code.
+Servers using brpc should be accessible by gRPC clients automatically without changing the code.
 
-grpc serializes message into pb wire format by default, so "h2:grpc" and "h2:grpc+proto" are just same.
+gRPC serializes message into pb wire format by default, so "h2:grpc" and "h2:grpc+proto" are just same.
 
-TODO: Other configurations for grpc 
+TODO: Other configurations for gRPC 
 
 # h2:grpc+json
 
-Comparing to h2:grpc, this protocol serializes messages into json instead of pb, which may not be supported by grpc directly. For example, grpc-go may reference [here](https://github.com/johanbrandhorst/grpc-json-example/blob/master/codec/json.go) to register the corresponding codec and turn on the support.
+Comparing to h2:grpc, this protocol serializes messages into json instead of pb, which may not be supported by gRPC directly. For example, grpc-go may reference [here](https://github.com/johanbrandhorst/grpc-json-example/blob/master/codec/json.go) to register the corresponding codec and turn on the support.

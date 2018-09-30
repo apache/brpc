@@ -300,7 +300,7 @@ Server detects supported protocols automatically, without assignment from users.
 
 - http/1.0 and http/1.1, shown as "http", enabled by default.
 
-- http/2 and grpc, shown as "h2c"(unencrypted) or "h2"(encrypted), enabled by default.
+- http/2 and gRPC, shown as "h2c"(unencrypted) or "h2"(encrypted), enabled by default.
 
 - Protocol of RTMP, shown as "rtmp", enabled by default.
 

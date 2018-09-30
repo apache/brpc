@@ -583,7 +583,7 @@ Channel的默认协议是baidu_std，可通过设置ChannelOptions.protocol换�
 - PROTOCOL_H2 或 ”h2", http/2.0协议，默认是单连接。
   - 访问普通h2服务的方法见[访问http/h2服务](http_client.md)。
   - 通过h2:json或h2:proto访问pb服务的方法见[基于http/h2的协议](http_derivatives.md)
-- "h2:grpc", [grpc](https://grpc.io)的协议，也是h2的衍生协议，默认为单连接，具体见[基于http/h2的协议](http_derivatives.md)。
+- "h2:grpc", [gRPC](https://grpc.io)的协议，也是h2的衍生协议，默认为单连接，具体见[基于http/h2的协议](http_derivatives.md)。
 - PROTOCOL_THRIFT 或 "thrift"，[apache thrift](https://thrift.apache.org)的协议，默认为连接池, 具体方法见[访问thrift](thrift.md)。
 - PROTOCOL_MEMCACHE 或 "memcache"，memcached的二进制协议，默认为单连接。具体方法见[访问memcached](memcache_client.md)。
 - PROTOCOL_REDIS 或 "redis"，redis 1.2后的协议(也是hiredis支持的协议)，默认为单连接。具体方法见[访问Redis](redis_client.md)。

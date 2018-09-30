@@ -592,7 +592,7 @@ The default protocol used by Channel is baidu_std, which is changeable by settin
 - PROTOCOL_H2 or ”h2", which is http/2.0, using single connection by default.
   - Methods for accessing ordinary h2 services are listed in [Access http/h2](http_client.md).
   - Methods for accessing pb services by using h2:json or h2:proto are listed in [Protocols based on http/h2](http_derivatives.md)
-- "h2:grpc", which is the protocol of [grpc](https://grpc.io) and based on h2, using single connection by default, check out [Protocols based on http/h2](http_derivatives.md) for details.
+- "h2:grpc", which is the protocol of [gRPC](https://grpc.io) and based on h2, using single connection by default, check out [Protocols based on http/h2](http_derivatives.md) for details.
 - PROTOCOL_THRIFT or "thrift", which is the protocol of [apache thrift](https://thrift.apache.org), using pooled connection by default, check out [access thrift](thrift.md) for details.
 - PROTOCOL_MEMCACHE or "memcache", which is binary protocol of memcached, using **single connection** by default. Check out [access memcached](memcache_client.md) for details.
 - PROTOCOL_REDIS or "redis", which is protocol of redis 1.2+ (the one supported by hiredis), using **single connection** by default. Check out [Access Redis](redis_client.md) for details.

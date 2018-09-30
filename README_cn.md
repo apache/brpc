@@ -9,7 +9,7 @@
 你可以使用它：
 
 * 搭建能在**一个端口**支持多协议的服务, 或访问各种服务
-  * restful http/https, [h2](https://http2.github.io/http2-spec)/[grpc](https://grpc.io)。使用brpc的http实现比[libcurl](https://curl.haxx.se/libcurl/)方便多了。从其他语言通过HTTP/h2+json访问基于protobuf的协议.
+  * restful http/https, [h2](https://http2.github.io/http2-spec)/[gRPC](https://grpc.io)。使用brpc的http实现比[libcurl](https://curl.haxx.se/libcurl/)方便多了。从其他语言通过HTTP/h2+json访问基于protobuf的协议.
   * [redis](docs/cn/redis_client.md)和[memcached](docs/cn/memcache_client.md), 线程安全，比官方client更方便。
   * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), 可用于搭建[流媒体服务](https://github.com/brpc/media-server).
   * hadoop_rpc(可能开源)
@@ -40,7 +40,7 @@
     * [错误码](docs/cn/error_code.md)
     * [组合channels](docs/cn/combo_channel.md)
     * [访问http/h2](docs/cn/http_client.md)
-    * [访问grpc](docs/cn/http_derivatives.md#h2:grpc)
+    * [访问gRPC](docs/cn/http_derivatives.md#h2grpc)
     * [访问thrift](docs/cn/thrift.md#client端访问thrift-server)
     * [访问UB](docs/cn/ub_client.md)
     * [Streaming RPC](docs/cn/streaming_rpc.md)
@@ -51,7 +51,7 @@
   * Server
     * [基础功能](docs/cn/server.md)
     * [搭建http/h2服务](docs/cn/http_service.md)
-    * [搭建grpc服务](docs/cn/http_derivatives.md#h2:grpc)
+    * [搭建gRPC服务](docs/cn/http_derivatives.md#h2grpc)
     * [搭建thrift服务](docs/cn/thrift.md#server端处理thrift请求)
     * [搭建Nshead服务](docs/cn/nshead_service.md)
     * [高效率排查server卡顿](docs/cn/server_debugging.md)
