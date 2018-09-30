@@ -1,6 +1,6 @@
 [English version](../en/http_derivatives.md)
 
-http协议的基本用法见[http_client](http_client.md)和[http_service](http_service.md)
+http/h2协议的基本用法见[http_client](http_client.md)和[http_service](http_service.md)
 
 下文中的小节名均为可填入ChannelOptions.protocol中的协议名。冒号后的内容是协议参数，用于动态选择衍生行为，但基本协议仍然是http/1.x或http/2，故这些协议在服务端只会被显示为http或h2/h2c。
 
