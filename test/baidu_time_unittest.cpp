@@ -198,4 +198,4 @@ TEST(BaiduTimeTest, timer_auto_start) {
     printf("Cost %" PRId64 "us\n", t.u_elapsed());
 }
 
-}
+} // namespace

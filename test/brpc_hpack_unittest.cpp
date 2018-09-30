@@ -12,10 +12,6 @@ class HPackTest : public testing::Test {
 
 // Copied test cases from example of rfc7541
 TEST_F(HPackTest, header_with_indexing) {
-    char c = 128;
-    uint8_t c2 = c;
-    printf("%u %u %d %d\n", (uint32_t)c, (uint32_t)c2, (int)c, (int)c2);
-
     brpc::HPacker p1;
     ASSERT_EQ(0, p1.Init(4096));
     brpc::HPacker p2;
