@@ -493,7 +493,7 @@ public:
         if (_done_place == DONE_BEFORE_CREATE_PA) {
             done_guard.reset(NULL);
         }
-        ASSERT_GT(PA_DATA_LEN, 8);  // long enough to hold a 64-bit decimal.
+        ASSERT_GT(PA_DATA_LEN, 8u);  // long enough to hold a 64-bit decimal.
         char buf[PA_DATA_LEN];
         for (size_t c = 0; c < _nrep;) {
             CopyPAPrefixedWithSeqNo(buf, c);

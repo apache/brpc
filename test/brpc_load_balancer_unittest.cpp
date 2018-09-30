@@ -596,7 +596,7 @@ TEST_F(LoadBalancerTest, weighted_round_robin) {
     // There are 3 valid servers with weight 3, 2 and 7 respectively.
     // We run SelectServer for 12 times. The result number of each server seleted should be 
     // consistent with weight configured.
-    std::map<butil::EndPoint, size_t> select_result;
+    std::map<butil::EndPoint, int> select_result;
     brpc::SocketUniquePtr ptr;
     brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
     brpc::LoadBalancer::SelectOut out(&ptr);
@@ -613,7 +613,7 @@ TEST_F(LoadBalancerTest, weighted_round_robin) {
     } 
     std::cout << std::endl;   
     // Check whether slected result is consistent with expected.
-    EXPECT_EQ(3, select_result.size());
+    EXPECT_EQ((size_t)3, select_result.size());
     for (const auto& result : select_result) {
         std::cout << result.first << " result=" << result.second 
                   << " configured=" << configed_weight[result.first] << std::endl;

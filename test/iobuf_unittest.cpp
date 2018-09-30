@@ -290,7 +290,7 @@ TEST_F(IOBufTest, reserve) {
     ASSERT_EQ((size_t)16, b.size());
 
     // pop/append sth. from back-side and assign again.
-    ASSERT_EQ(5, b.pop_back(5));
+    ASSERT_EQ((size_t)5, b.pop_back(5));
     ASSERT_EQ("prefihello ", b.to_string());
     b.append("blahblahfoobar");
     ASSERT_EQ(0, b.unsafe_assign(a1, "goodorbad")); // `x' will not be copied
@@ -1312,7 +1312,7 @@ TEST_F(IOBufTest, append_from_fd_with_offset) {
     ASSERT_EQ((ssize_t)sizeof(dummy), buf.cut_into_file_descriptor(fd));
     for (size_t i = 0; i < sizeof(dummy); ++i) {
         butil::IOPortal b0;
-        ASSERT_EQ(sizeof(dummy) - i, b0.pappend_from_file_descriptor(fd, i, sizeof(dummy))) << berror();
+        ASSERT_EQ(sizeof(dummy) - i, (size_t)b0.pappend_from_file_descriptor(fd, i, sizeof(dummy))) << berror();
         char tmp[sizeof(dummy)];
         ASSERT_EQ(0, memcmp(dummy + i, b0.fetch(tmp, b0.length()), b0.length()));
     }

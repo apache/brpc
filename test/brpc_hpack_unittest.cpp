@@ -23,7 +23,7 @@ TEST_F(HPackTest, header_with_indexing) {
     options.index_policy = brpc::HPACK_INDEX_HEADER;
     butil::IOBufAppender buf;
     p1.Encode(&buf, h, options);
-    const size_t nwrite = buf.buf().size();
+    const ssize_t nwrite = buf.buf().size();
     LOG(INFO) << butil::ToPrintable(buf.buf());
     uint8_t expected[] = {
         0x40, 0x0a, 0x63, 0x75, 0x73, 0x74, 0x6f, 0x6d, 0x2d, 0x6b, 0x65, 0x79,
@@ -53,7 +53,7 @@ TEST_F(HPackTest, header_without_indexing) {
     options.index_policy = brpc::HPACK_NOT_INDEX_HEADER;
     butil::IOBufAppender buf;
     p1.Encode(&buf, h, options);
-    const size_t nwrite = buf.buf().size();
+    const ssize_t nwrite = buf.buf().size();
     LOG(INFO) << butil::ToPrintable(buf.buf());
     uint8_t expected[] = {
         0x04, 0x0c, 0x2f, 0x73, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x2f, 0x70, 0x61,
@@ -83,7 +83,7 @@ TEST_F(HPackTest, header_never_indexed) {
     options.index_policy = brpc::HPACK_NEVER_INDEX_HEADER;
     butil::IOBufAppender buf;
     p1.Encode(&buf, h, options);
-    const size_t nwrite = buf.buf().size();
+    const ssize_t nwrite = buf.buf().size();
     LOG(INFO) << butil::ToPrintable(buf.buf());
     uint8_t expected[] = {
         0x10, 0x08, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64,
