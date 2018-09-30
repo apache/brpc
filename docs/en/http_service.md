@@ -1,17 +1,28 @@
 [中文版](../cn/http_service.md)
 
-This document talks about ordinary HTTP services rather than protobuf services accessible via HTTP. HTTP services in brpc have to declare interfaces with empty request and response in a .proto file. This requirement keeps all service declarations inside proto files rather than scattering in code, configurations, and proto files. Check [http_server.cpp](https://github.com/brpc/brpc/blob/master/example/http_c++/http_server.cpp) for an example.
+This document talks about ordinary htt/h2 services rather than protobuf services accessible via http/h2. 
+http/h2 services in brpc have to declare interfaces with empty request and response in a .proto file. This requirement keeps all service declarations inside proto files rather than scattering in code, configurations, and proto files.
+
+# Example
+
+[http_server.cpp](https://github.com/brpc/brpc/blob/master/example/http_c++/http_server.cpp)
+
+# About h2
+
+brpc names the HTTP/2 protocol to "h2", no matter encrypted or not. However HTTP/2 connections without SSL are shown on /connections with the official name "h2c", and the ones with SSL are shown as "h2".
+
+The APIs for http and h2 in brpc are basically same. Without explicit statement, mentioned http features work for h2 as well.
 
 # URL types
 
 ## /ServiceName/MethodName as the prefix
 
-Define a service named `ServiceName`(not including the package name), with a method named `MethodName` and empty request/response, the service will provide http service on `/ServiceName/MethodName` by default.
+Define a service named `ServiceName`(not including the package name), with a method named `MethodName` and empty request/response, the service will provide http/h2 service on `/ServiceName/MethodName` by default.
 
-The reason that request and response can be empty is that the HTTP data is in Controller:
+The reason that request and response can be empty is that all data are in Controller:
 
-- Header of the http request is in Controller.http_request() and the body is in Controller.request_attachment().
-- Header of the http response is in Controller.http_response() and the body is in Controller.response_attachment().
+- Header of the http/h2 request is in Controller.http_request() and the body is in Controller.request_attachment().
+- Header of the http/h2 response is in Controller.http_response() and the body is in Controller.response_attachment().
 
 Implementation steps:
 
@@ -69,7 +80,7 @@ public:
 
 ## /ServiceName as the prefix
 
-HTTP services to manage resources may need this kind of URL, such as `/FileService/foobar.txt` represents `./foobar.txt` and `/FileService/app/data/boot.cfg` represents `./app/data/boot.cfg`.
+http/h2 services for managing resources may need this kind of URL, such as `/FileService/foobar.txt` represents `./foobar.txt` and `/FileService/app/data/boot.cfg` represents `./app/data/boot.cfg`.
 
 Implementation steps:
 
@@ -121,13 +132,13 @@ brpc supports specifying a URL for each method in a service. The API is as follo
 // If `restful_mappings' is non-empty, the method in service can
 // be accessed by the specified URL rather than /ServiceName/MethodName.
 // Mapping rules: "PATH1 => NAME1, PATH2 => NAME2 ..."
-// where `PATH' is a valid HTTP path and `NAME' is the method name.
+// where `PATH' is a valid path and `NAME' is the method name.
 int AddService(google::protobuf::Service* service,
                ServiceOwnership ownership,
                butil::StringPiece restful_mappings);
 ```
 
-`QueueService` defined below contains several HTTP methods. If the service is added into the server normally, it's accessible via URLs like `/QueueService/start` and ` /QueueService/stop`.
+`QueueService` defined below contains several methods. If the service is added into the server normally, it's accessible via URLs like `/QueueService/start` and ` /QueueService/stop`.
 
 ```protobuf
 service QueueService {
@@ -165,7 +176,7 @@ There are 3 mappings separated by comma in the 3rd parameter (which is a string 
 More about mapping rules:
 
 - Multiple paths can be mapped to a same method.
-- Both HTTP and protobuf services are supported.
+- Both http/h2 and protobuf services are supported.
 - Un-mapped methods are still accessible via `/ServiceName/MethodName`. Mapped methods are **not** accessible via `/ServiceName/MethodName` anymore.
 - `==>` and ` ===>` are both OK, namely extra spaces at the beginning or the end, extra slashes, extra commas at the end, are all accepted.
 - Pattern `PATH` and `PATH/*` can coexist.
