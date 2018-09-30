@@ -404,7 +404,7 @@ static void GlobalInitializeOrDieImpl() {
                                 GetHttpMethodName,
                                 CONNECTION_TYPE_SINGLE,
                                 "h2" };
-    if (RegisterProtocol(PROTOCOL_HTTP2, http2_protocol) != 0) {
+    if (RegisterProtocol(PROTOCOL_H2, http2_protocol) != 0) {
         exit(1);
     }
 

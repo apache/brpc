@@ -363,7 +363,7 @@ void Controller::AppendServerIdentiy() {
 inline void UpdateResponseHeader(Controller* cntl) {
     DCHECK(cntl->Failed());
     if (cntl->request_protocol() == PROTOCOL_HTTP ||
-        cntl->request_protocol() == PROTOCOL_HTTP2) {
+        cntl->request_protocol() == PROTOCOL_H2) {
         if (cntl->ErrorCode() != EHTTP) {
             // Set the related status code
             cntl->http_response().set_status_code(

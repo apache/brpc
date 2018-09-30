@@ -251,8 +251,8 @@ void ProcessHttpResponse(InputMessageBase* msg) {
     uint64_t cid_value;
     const bool is_http2 = imsg_guard->header().is_http2();
     if (is_http2) {
-        H2StreamContext* http2_sctx = static_cast<H2StreamContext*>(msg);
-        cid_value = http2_sctx->correlation_id();
+        H2StreamContext* h2_sctx = static_cast<H2StreamContext*>(msg);
+        cid_value = h2_sctx->correlation_id();
     } else {
         cid_value = socket->correlation_id();
     }
@@ -450,7 +450,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
                           Controller* cntl,
                           const google::protobuf::Message* pbreq) {
     HttpHeader& hreq = cntl->http_request();
-    const bool is_http2 = (cntl->request_protocol() == PROTOCOL_HTTP2);
+    const bool is_http2 = (cntl->request_protocol() == PROTOCOL_H2);
     bool is_grpc = false;
     ControllerPrivateAccessor accessor(cntl);
     if (!accessor.protocol_param().empty() && hreq.content_type().empty()) {
@@ -1208,8 +1208,8 @@ void ProcessHttpRequest(InputMessageBase *msg) {
 
     const bool is_http2 = imsg_guard->header().is_http2();
     if (is_http2) {
-        H2StreamContext* http2_sctx = static_cast<H2StreamContext*>(msg);
-        resp_sender.set_h2_stream_id(http2_sctx->stream_id());
+        H2StreamContext* h2_sctx = static_cast<H2StreamContext*>(msg);
+        resp_sender.set_h2_stream_id(h2_sctx->stream_id());
     }
 
     ControllerPrivateAccessor accessor(cntl);
@@ -1280,7 +1280,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         span->set_remote_side(user_addr);
         span->set_received_us(msg->received_us());
         span->set_start_parse_us(start_parse_us);
-        span->set_protocol(is_http2 ? PROTOCOL_HTTP2 : PROTOCOL_HTTP);
+        span->set_protocol(is_http2 ? PROTOCOL_H2 : PROTOCOL_HTTP);
         span->set_request_size(imsg_guard->parsed_length());
     }
     

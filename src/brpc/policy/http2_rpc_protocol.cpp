@@ -30,31 +30,31 @@ DECLARE_bool(usercode_in_pthread);
 
 namespace policy {
 
-DEFINE_int32(http2_client_header_table_size,
+DEFINE_int32(h2_client_header_table_size,
              H2Settings::DEFAULT_HEADER_TABLE_SIZE,
              "maximum size of compression tables for decoding headers");
-DEFINE_int32(http2_client_stream_window_size, 256 * 1024,
+DEFINE_int32(h2_client_stream_window_size, 256 * 1024,
              "Initial window size for stream-level flow control");
-DEFINE_int32(http2_client_connection_window_size, 1024 * 1024,
+DEFINE_int32(h2_client_connection_window_size, 1024 * 1024,
              "Initial window size for connection-level flow control");
-DEFINE_int32(http2_client_max_frame_size,
+DEFINE_int32(h2_client_max_frame_size,
              H2Settings::DEFAULT_MAX_FRAME_SIZE,
              "Size of the largest frame payload that client is willing to receive");
 
-DEFINE_bool(http2_hpack_encode_name, false,
+DEFINE_bool(h2_hpack_encode_name, false,
             "Encode name in HTTP2 headers with huffman encoding");
-DEFINE_bool(http2_hpack_encode_value, false,
+DEFINE_bool(h2_hpack_encode_value, false,
             "Encode value in HTTP2 headers with huffman encoding");
 
 static bool CheckStreamWindowSize(const char*, int32_t val) {
     return val >= 0;
 }
-BRPC_VALIDATE_GFLAG(http2_client_stream_window_size, CheckStreamWindowSize);
+BRPC_VALIDATE_GFLAG(h2_client_stream_window_size, CheckStreamWindowSize);
 
 static bool CheckConnWindowSize(const char*, int32_t val) {
     return val >= (int32_t)H2Settings::DEFAULT_INITIAL_WINDOW_SIZE;
 }
-BRPC_VALIDATE_GFLAG(http2_client_connection_window_size, CheckConnWindowSize);
+BRPC_VALIDATE_GFLAG(h2_client_connection_window_size, CheckConnWindowSize);
 
 const char* H2StreamState2Str(H2StreamState s) {
     switch (s) {
@@ -141,12 +141,12 @@ inline void SerializeFrameHead(void* out_buf, const H2FrameHead& h) {
 // [ https://tools.ietf.org/html/rfc7540#section-6.5.1 ]
 
 enum H2SettingsIdentifier {
-    HTTP2_SETTINGS_HEADER_TABLE_SIZE      = 0x1,
-    HTTP2_SETTINGS_ENABLE_PUSH            = 0x2,
-    HTTP2_SETTINGS_MAX_CONCURRENT_STREAMS = 0x3,
-    HTTP2_SETTINGS_STREAM_WINDOW_SIZE     = 0x4,
-    HTTP2_SETTINGS_MAX_FRAME_SIZE         = 0x5,
-    HTTP2_SETTINGS_MAX_HEADER_LIST_SIZE   = 0x6
+    H2_SETTINGS_HEADER_TABLE_SIZE      = 0x1,
+    H2_SETTINGS_ENABLE_PUSH            = 0x2,
+    H2_SETTINGS_MAX_CONCURRENT_STREAMS = 0x3,
+    H2_SETTINGS_STREAM_WINDOW_SIZE     = 0x4,
+    H2_SETTINGS_MAX_FRAME_SIZE         = 0x5,
+    H2_SETTINGS_MAX_HEADER_LIST_SIZE   = 0x6
 };
 
 // Parse from n bytes from the iterator.
@@ -161,27 +161,27 @@ bool ParseH2Settings(H2Settings* out, butil::IOBufBytesIterator& it, size_t n) {
         uint16_t id = LoadUint16(it);
         uint32_t value = LoadUint32(it);
         switch (static_cast<H2SettingsIdentifier>(id)) {
-        case HTTP2_SETTINGS_HEADER_TABLE_SIZE:
+        case H2_SETTINGS_HEADER_TABLE_SIZE:
             out->header_table_size = value;
             break;
-        case HTTP2_SETTINGS_ENABLE_PUSH:
+        case H2_SETTINGS_ENABLE_PUSH:
             if (value > 1) {
                 LOG(ERROR) << "Invalid value=" << value << " for ENABLE_PUSH";
                 return false;
             }
             out->enable_push = value;
             break;
-        case HTTP2_SETTINGS_MAX_CONCURRENT_STREAMS:
+        case H2_SETTINGS_MAX_CONCURRENT_STREAMS:
             out->max_concurrent_streams = value;
             break;
-        case HTTP2_SETTINGS_STREAM_WINDOW_SIZE:
+        case H2_SETTINGS_STREAM_WINDOW_SIZE:
             if (value > H2Settings::MAX_WINDOW_SIZE) {
                 LOG(ERROR) << "Invalid stream_window_size=" << value;
                 return false;
             }
             out->stream_window_size = value;
             break;
-        case HTTP2_SETTINGS_MAX_FRAME_SIZE:
+        case H2_SETTINGS_MAX_FRAME_SIZE:
             if (value > H2Settings::MAX_OF_MAX_FRAME_SIZE ||
                 value < H2Settings::DEFAULT_MAX_FRAME_SIZE) {
                 LOG(ERROR) << "Invalid max_frame_size=" << value;
@@ -189,7 +189,7 @@ bool ParseH2Settings(H2Settings* out, butil::IOBufBytesIterator& it, size_t n) {
             }
             out->max_frame_size = value;
             break;
-        case HTTP2_SETTINGS_MAX_HEADER_LIST_SIZE:
+        case H2_SETTINGS_MAX_HEADER_LIST_SIZE:
             out->max_header_list_size = value;
             break;
         default:
@@ -210,32 +210,32 @@ static const size_t H2_SETTINGS_MAX_BYTE_SIZE = 36;
 size_t SerializeH2Settings(const H2Settings& in, void* out) {
     uint8_t* p = (uint8_t*)out;
     if (in.header_table_size != H2Settings::DEFAULT_HEADER_TABLE_SIZE) {
-        SaveUint16(p, HTTP2_SETTINGS_HEADER_TABLE_SIZE);
+        SaveUint16(p, H2_SETTINGS_HEADER_TABLE_SIZE);
         SaveUint32(p + 2, in.header_table_size);
         p += 6;
     }
     if (in.enable_push != H2Settings::DEFAULT_ENABLE_PUSH) {
-        SaveUint16(p, HTTP2_SETTINGS_ENABLE_PUSH);
+        SaveUint16(p, H2_SETTINGS_ENABLE_PUSH);
         SaveUint32(p + 2, in.enable_push);
         p += 6;
     }
     if (in.max_concurrent_streams != std::numeric_limits<uint32_t>::max()) {
-        SaveUint16(p, HTTP2_SETTINGS_MAX_CONCURRENT_STREAMS);
+        SaveUint16(p, H2_SETTINGS_MAX_CONCURRENT_STREAMS);
         SaveUint32(p + 2, in.max_concurrent_streams);
         p += 6;
     }
     if (in.stream_window_size != H2Settings::DEFAULT_INITIAL_WINDOW_SIZE) {
-        SaveUint16(p, HTTP2_SETTINGS_STREAM_WINDOW_SIZE);
+        SaveUint16(p, H2_SETTINGS_STREAM_WINDOW_SIZE);
         SaveUint32(p + 2, in.stream_window_size);
         p += 6;
     }
     if (in.max_frame_size != H2Settings::DEFAULT_MAX_FRAME_SIZE) {
-        SaveUint16(p, HTTP2_SETTINGS_MAX_FRAME_SIZE);
+        SaveUint16(p, H2_SETTINGS_MAX_FRAME_SIZE);
         SaveUint32(p + 2, in.max_frame_size);
         p += 6;
     }
     if (in.max_header_list_size != std::numeric_limits<uint32_t>::max()) {
-        SaveUint16(p, HTTP2_SETTINGS_MAX_HEADER_LIST_SIZE);
+        SaveUint16(p, H2_SETTINGS_MAX_HEADER_LIST_SIZE);
         SaveUint32(p + 2, in.max_header_list_size);
         p += 6;
     }
@@ -326,10 +326,10 @@ H2Context::H2Context(Socket* socket, const Server* server)
     if (server) {
         _unack_local_settings = server->options().h2_settings;
     } else {
-        _unack_local_settings.header_table_size = FLAGS_http2_client_header_table_size;
-        _unack_local_settings.stream_window_size = FLAGS_http2_client_stream_window_size;
-        _unack_local_settings.max_frame_size = FLAGS_http2_client_max_frame_size;
-        _unack_local_settings.connection_window_size = FLAGS_http2_client_connection_window_size;
+        _unack_local_settings.header_table_size = FLAGS_h2_client_header_table_size;
+        _unack_local_settings.stream_window_size = FLAGS_h2_client_stream_window_size;
+        _unack_local_settings.max_frame_size = FLAGS_h2_client_max_frame_size;
+        _unack_local_settings.connection_window_size = FLAGS_h2_client_connection_window_size;
     }
 #if defined(UNIT_TEST)
     // In ut, we hope _last_client_stream_id run out quickly to test the correctness
@@ -1134,7 +1134,7 @@ H2StreamContext::H2StreamContext(bool read_body_progressively)
     , _correlation_id(INVALID_BTHREAD_ID.value) {
     header().set_version(2, 0);
 #ifndef NDEBUG
-    get_http2_bvars()->h2_stream_context_count << 1;
+    get_h2_bvars()->h2_stream_context_count << 1;
 #endif
 }
 
@@ -1147,7 +1147,7 @@ void H2StreamContext::Init(H2Context* conn_ctx, int stream_id) {
 
 H2StreamContext::~H2StreamContext() {
 #ifndef NDEBUG
-    get_http2_bvars()->h2_stream_context_count << -1;
+    get_h2_bvars()->h2_stream_context_count << -1;
 #endif
 }
 
@@ -1535,8 +1535,8 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     HPacker& hpacker = ctx->hpacker();
     butil::IOBufAppender appender;
     HPackOptions options;
-    options.encode_name = FLAGS_http2_hpack_encode_name;
-    options.encode_value = FLAGS_http2_hpack_encode_value;
+    options.encode_name = FLAGS_h2_hpack_encode_name;
+    options.encode_value = FLAGS_h2_hpack_encode_value;
     for (size_t i = 0; i < _size; ++i) {
         hpacker.Encode(&appender, _list[i], options);
     }
@@ -1669,8 +1669,8 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     HPacker& hpacker = ctx->hpacker();
     butil::IOBufAppender appender;
     HPackOptions options;
-    options.encode_name = FLAGS_http2_hpack_encode_name;
-    options.encode_value = FLAGS_http2_hpack_encode_value;
+    options.encode_name = FLAGS_h2_hpack_encode_name;
+    options.encode_value = FLAGS_h2_hpack_encode_value;
 
     for (size_t i = 0; i < _size; ++i) {
         hpacker.Encode(&appender, _list[i], options);

@@ -115,17 +115,17 @@ enum H2StreamState {
 const char* H2StreamState2Str(H2StreamState);
 
 #ifndef NDEBUG
-struct Http2Bvars {
+struct H2Bvars {
     bvar::Adder<int> h2_unsent_request_count;
     bvar::Adder<int> h2_stream_context_count;
 
-    Http2Bvars()
+    H2Bvars()
         : h2_unsent_request_count("h2_unsent_request_count")
         , h2_stream_context_count("h2_stream_context_count") {
     }
 };
-inline Http2Bvars* get_http2_bvars() {
-    return butil::get_leaky_singleton<Http2Bvars>();
+inline H2Bvars* get_h2_bvars() {
+    return butil::get_leaky_singleton<H2Bvars>();
 }
 #endif
 
@@ -170,12 +170,12 @@ private:
         , _stream_id(0)
         , _cntl(c) {
 #ifndef NDEBUG
-        get_http2_bvars()->h2_unsent_request_count << 1;
+        get_h2_bvars()->h2_unsent_request_count << 1;
 #endif
     }
     ~H2UnsentRequest() {
 #ifndef NDEBUG
-        get_http2_bvars()->h2_unsent_request_count << -1;
+        get_h2_bvars()->h2_unsent_request_count << -1;
 #endif
     }
     H2UnsentRequest(const H2UnsentRequest&);
@@ -417,7 +417,7 @@ inline std::ostream& operator<<(std::ostream& os, const H2UnsentResponse& res) {
     return os;
 }
 
-}  // namespace policy
+} // namespace policy
 } // namespace brpc
 
 #endif // BAIDU_RPC_POLICY_HTTP2_RPC_PROTOCOL_H
