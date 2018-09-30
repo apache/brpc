@@ -1,6 +1,6 @@
 [中文版](../cn/http_derivatives.md)
 
-Basics for accessing and serving http in brpc are listed in [http_client](http_client.md) and [http_service](http_service.md).
+Basics for accessing and serving http/h2 in brpc are listed in [http_client](http_client.md) and [http_service](http_service.md).
 
 Following section names are protocol names that can be directly set to ChannelOptions.protocol. The content after colon is parameters for the protocol to select derivative behaviors dynamically, but the base protocol is still http/1.x or http/2. As a result, these protocols are displayed at server-side as http or h2/h2c only.
 
