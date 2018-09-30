@@ -74,8 +74,42 @@ GrpcStatus ErrorCodeToGrpcStatus(int error_code) {
 }
 
 int GrpcStatusToErrorCode(GrpcStatus grpc_status) {
-    //TODO(zhujiashun)
-    return EINTERNAL;
+    switch (grpc_status) {
+    case GRPC_OK:
+        return 0;
+    case GRPC_CANCELED:
+        return ECANCELED;
+    case GRPC_UNKNOWN:
+    case GRPC_INVALIDARGUMENT:
+        return EINVAL;
+    case GRPC_DEADLINEEXCEEDED:
+        return ERPCTIMEDOUT;
+    case GRPC_NOTFOUND:
+        return EINTERNAL;
+    case GRPC_ALREADYEXISTS:
+        return EEXIST;
+    case GRPC_PERMISSIONDENIED:
+        return EPERM;
+    case GRPC_RESOURCEEXHAUSTED:
+        return ELIMIT;
+    case GRPC_FAILEDPRECONDITION:
+    case GPRC_ABORTED:
+    case GRPC_OUTOFRANGE:
+         return EINTERNAL;
+    case GRPC_UNIMPLEMENTED:
+         return ENOMETHOD;
+    case GRPC_INTERNAL:
+         return EINTERNAL;
+    case GRPC_UNAVAILABLE:
+         return EAGAIN;
+    case GRPC_DATALOSS:
+         return EINTERNAL;
+    case GRPC_UNAUTHENTICATED:
+         return ERPCAUTH;
+    default:
+         return EINTERNAL;
+    }
+
 }
 
 void PercentEncode(const std::string& str, std::string* str_out) {
