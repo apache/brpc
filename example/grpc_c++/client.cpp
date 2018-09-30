@@ -21,7 +21,7 @@
 #include <brpc/channel.h>
 #include "helloworld.pb.h"
 
-DEFINE_string(protocol, "h2", "Protocol type. Defined in src/brpc/options.proto");
+DEFINE_string(protocol, "h2:grpc", "Protocol type. Defined in src/brpc/options.proto");
 DEFINE_string(server, "0.0.0.0:50051", "IP Address of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
