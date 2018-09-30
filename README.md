@@ -39,7 +39,7 @@ You can use it to:
     * [Error code](docs/en/error_code.md)
     * [Combo channels](docs/en/combo_channel.md)
     * [Access http/h2](docs/en/http_client.md)
-    * [Access grpc](docs/en/http_derivatives.md#h2:grpc)
+    * [Access grpc](docs/en/http_derivatives.md#h2grpc)
     * [Access thrift](docs/en/thrift.md#client-accesses-thrift-server) 
     * [Access UB](docs/cn/ub_client.md)
     * [Streaming RPC](docs/en/streaming_rpc.md)
@@ -50,7 +50,7 @@ You can use it to:
   * Server
     * [Basics](docs/en/server.md)
     * [Serve http/h2](docs/en/http_service.md)
-    * [Serve grpc](docs/en/http_derivatives.md#h2:grpc)
+    * [Serve grpc](docs/en/http_derivatives.md#h2grpc)
     * [Serve thrift](docs/en/thrift.md#server-processes-thrift-requests)
     * [Serve Nshead](docs/cn/nshead_service.md)
     * [Debug server issues](docs/cn/server_debugging.md)
