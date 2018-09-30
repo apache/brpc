@@ -34,4 +34,4 @@ TODO: Other configurations for gRPC
 
 # h2:grpc+json
 
-Comparing to h2:grpc, this protocol serializes messages into json instead of pb, which may not be supported by gRPC directly. For example, grpc-go may reference [here](https://github.com/johanbrandhorst/grpc-json-example/blob/master/codec/json.go) to register the corresponding codec and turn on the support.
+Comparing to h2:grpc, this protocol serializes messages into json instead of pb, which may not be supported by gRPC directly. For example, grpc-go users may reference [here](https://github.com/johanbrandhorst/grpc-json-example/blob/master/codec/json.go) to register the corresponding codec and turn on the support.

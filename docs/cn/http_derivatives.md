@@ -34,4 +34,4 @@ TODO: gRPC其他配置
 
 # h2:grpc+json
 
-这个协议相比h2:grpc就是用json序列化结果代替pb序列化结果。gRPC未必直接支持这个格式，如grpc-go可参考[这里](https://github.com/johanbrandhorst/grpc-json-example/blob/master/codec/json.go)注册对应的codec后才会支持。
+这个协议相比h2:grpc就是用json序列化结果代替pb序列化结果。gRPC未必直接支持这个格式，如grpc-go用户可参考[这里](https://github.com/johanbrandhorst/grpc-json-example/blob/master/codec/json.go)注册相应的codec后才支持。
