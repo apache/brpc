@@ -45,7 +45,6 @@ You can use it to:
   * [rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access) support (will be opensourced)
   * [thrift](thrift.md) support,  thread-safe, more friendly and performant than the official clients.
   * all sorts of protocols used in Baidu: [baidu_std](../cn/baidu_std.md), [streaming_rpc](streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc, and nshead-based ones.
-  * Access protobuf-based protocols with HTTP+json, probably from another language.
   * Build [HA](https://en.wikipedia.org/wiki/High_availability) distributed services using an industrial-grade implementation of [RAFT consensus algorithm](https://raft.github.io) which is opensourced at [braft](https://github.com/brpc/braft)
 * Servers can handle requests [synchronously](server.md) or [asynchronously](server.md#asynchronous-service).
 * Clients can access servers [synchronously](client.md#synchronus-call), [asynchronously](client.md#asynchronous-call), [semi-synchronously](client.md#semi-synchronous-call), or use [combo channels](combo_channel.md) to simplify sharded or parallel accesses declaratively.

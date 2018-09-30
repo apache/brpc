@@ -49,7 +49,6 @@ RPC不是万能的抽象，否则我们也不需要TCP/IP这一层了。但是�
   * 支持[rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access)(即将开源)
   * 支持[thrift](thrift.md) , 线程安全，比官方client更方便
   * 各种百度内使用的协议: [baidu_std](baidu_std.md), [streaming_rpc](streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc和使用nshead的各种协议.
-  * 从其他语言通过HTTP+json访问基于protobuf的协议.
   * 基于工业级的[RAFT算法](https://raft.github.io)实现搭建[高可用](https://en.wikipedia.org/wiki/High_availability)分布式系统，已在[braft](https://github.com/brpc/braft)开源。
 * Server能[同步](server.md)或[异步](server.md#异步service)处理请求。
 * Client支持[同步](client.md#同步访问)、[异步](client.md#异步访问)、[半同步](client.md#半同步)，或使用[组合channels](combo_channel.md)简化复杂的分库或并发访问。
