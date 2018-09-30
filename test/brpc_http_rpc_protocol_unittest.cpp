@@ -1324,4 +1324,43 @@ TEST_F(HttpTest, http2_header_after_data) {
     ASSERT_EQ(*user_defined2, "b");
 }
 
+TEST_F(HttpTest, http2_goaway) {
+    brpc::Controller cntl;
+    // Prepare request
+    butil::IOBuf req_out;
+    int h2_stream_id = 0;
+    MakeH2EchoRequestBuf(&req_out, &cntl, &h2_stream_id);
+    // Prepare response
+    butil::IOBuf res_out;
+    MakeH2EchoResponseBuf(&res_out, h2_stream_id);
+    // append goaway
+    char goawaybuf[9 /*FRAME_HEAD_SIZE*/ + 8];
+    brpc::policy::SerializeFrameHead(goawaybuf, 8, brpc::policy::H2_FRAME_GOAWAY, 0, 0);
+    SaveUint32(goawaybuf + 9, 0x7fffd8ef /*last stream id*/);
+    SaveUint32(goawaybuf + 13, brpc::H2_NO_ERROR);
+    res_out.append(goawaybuf, sizeof(goawaybuf));
+    // parse response
+    brpc::ParseResult res_pr =
+            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+    ASSERT_TRUE(res_pr.is_ok());
+    // process response
+    ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
+    ASSERT_TRUE(!cntl.Failed());
+
+    // parse GOAWAY
+    res_pr = brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+    ASSERT_EQ(res_pr.error(), brpc::PARSE_ERROR_NOT_ENOUGH_DATA);
+
+    // Since GOAWAY has been received, the next request should fail
+    brpc::policy::H2UnsentRequest* h2_req = brpc::policy::H2UnsentRequest::New(&cntl);
+    cntl._current_call.stream_user_data = h2_req;
+    brpc::SocketMessage* socket_message = NULL;
+    brpc::policy::PackH2Request(NULL, &socket_message, cntl.call_id().value,
+                                NULL, &cntl, butil::IOBuf(), NULL);
+    butil::IOBuf dummy;
+    butil::Status st = socket_message->AppendAndDestroySelf(&dummy, _h2_client_sock.get());
+    ASSERT_EQ(st.error_code(), brpc::ELOGOFF);
+    ASSERT_TRUE(st.error_data().ends_with("the connection just issued GOAWAY"));
+}
+
 } //namespace
