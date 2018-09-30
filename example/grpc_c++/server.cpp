@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Bilibili, Inc.
+// Copyright (c) 2018 brpc authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,8 +43,6 @@ public:
             cntl->set_response_compress_type(brpc::COMPRESS_TYPE_GZIP);
         }
         res->set_message("Hello " + req->name());
-        // If an error happens, use controller::set_grpc_error_code to set errors
-        // e.g., cntl->set_grpc_error_code(brpc::GRPC_RESOURCEEXHAUSTED, "test grpc message");
     }
 };
 
