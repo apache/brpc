@@ -249,9 +249,11 @@ server.RunUntilAskedToQuit();
 
 Join()完成后可以修改其中的Service，并重新Start。
 
-# 被HTTP client访问
+# 被http/h2访问
 
-使用Protobuf的服务通常可以通过HTTP+json访问，存于http body的json串可与对应protobuf消息相互转化。以[echo server](https://github.com/brpc/brpc/blob/master/example/echo_c%2B%2B/server.cpp)为例，你可以用[curl](https://curl.haxx.se/)访问这个服务。
+使用Protobuf的服务通常可以通过http/h2+json访问，存于body的json串可与对应protobuf消息相互自动转化。
+
+以[echo server](https://github.com/brpc/brpc/blob/master/example/echo_c%2B%2B/server.cpp)为例，你可以用[curl](https://curl.haxx.se/)访问这个服务。
 
 ```shell
 # -H 'Content-Type: application/json' is optional
@@ -259,7 +261,7 @@ $ curl -d '{"message":"hello"}' http://brpc.baidu.com:8765/EchoService/Echo
 {"message":"hello"}
 ```
 
-注意：也可以指定`Content-Type: application/proto`用http+protobuf二进制串访问服务，序列化性能更好。
+注意：也可以指定`Content-Type: application/proto`用http/h2+protobuf二进制串访问服务，序列化性能更好。
 
 ## json<=>pb
 
@@ -269,7 +271,7 @@ json字段通过匹配的名字和结构与pb字段一一对应。json中一定�
 
 ## 兼容早期版本client
 
-早期的brpc允许一个pb service被http协议访问时不设置pb请求，即使里面有required字段。一般来说这种service会自行解析http请求和设置http回复，并不会访问pb请求。但这也是非常危险的行为，毕竟这是pb service，但pb请求却是未定义的。
+早期的brpc允许一个pb service被http协议访问时不填充pb请求，即使里面有required字段。一般来说这种service会自行解析http请求和设置http回复，并不会访问pb请求。但这也是非常危险的行为，毕竟这是pb service，但pb请求却是未定义的。
 
 这种服务在升级到新版本rpc时会遇到障碍，因为brpc已不允许这种行为。为了帮助这种服务升级，brpc允许经过一些设置后不把http body自动转化为pb request(从而可自行处理），方法如下：
 
@@ -277,11 +279,11 @@ json字段通过匹配的名字和结构与pb字段一一对应。json中一定�
 brpc::ServiceOptions svc_opt;
 svc_opt.ownership = ...;
 svc_opt.restful_mappings = ...;
-svc_opt.allow_http_body_to_pb = false; //关闭http body至pb request的自动转化
+svc_opt.allow_http_body_to_pb = false; //关闭http/h2 body至pb request的自动转化
 server.AddService(service, svc_opt);
 ```
 
-如此设置后service收到http请求后不会尝试把body转化为pb请求，所以pb请求总是未定义状态，用户得在`cntl->request_protocol() == brpc::PROTOCOL_HTTP`认定请求是http时自行解析http body。
+如此设置后service收到http/h2请求后不会尝试把body转化为pb请求，所以pb请求总是未定义状态，用户得在`cntl->request_protocol() == brpc::PROTOCOL_HTTP || cntl->request_protocol() == brpc::PROTOCOL_H2`成立时自行解析body。
 
 相应地，当cntl->response_attachment()不为空且pb回复不为空时，框架不再报错，而是直接把cntl->response_attachment()作为回复的body。这个功能和设置allow_http_body_to_pb与否无关。如果放开自由度导致过多的用户犯错，可能会有进一步的调整。
 
@@ -293,7 +295,9 @@ server端会自动尝试其支持的协议，无需用户指定。`cntl->protoco
 
 - [流式RPC协议](streaming_rpc.md)，显示为"streaming_rpc", 默认启用。
 
-- http 1.0/1.1，显示为”http“，默认启用。
+- http/1.0和http/1.1协议，显示为”http“，默认启用。
+
+- http/2和grpc协议，显示为"h2c"(未加密)或"h2"(加密)，默认启用。
 
 - RTMP协议，显示为"rtmp", 默认启用。
 
