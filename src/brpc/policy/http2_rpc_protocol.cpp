@@ -512,7 +512,8 @@ ParseResult H2Context::Consume(
                     delete sctx;
                     return MakeMessage(NULL);
                 } else {
-                    sctx->header().set_status_code(H2ErrorToStatusCode(h2_res.error()));
+                    sctx->header().set_status_code(
+                            H2ErrorToStatusCode(h2_res.error()));
                     return MakeMessage(sctx);
                 }
             }
