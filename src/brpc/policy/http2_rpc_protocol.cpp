@@ -505,6 +505,17 @@ ParseResult H2Context::Consume(
                 LOG(WARNING) << "Fail to send RST_STREAM to " << *_socket;
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
+            H2StreamContext* sctx = RemoveStream(h2_res.stream_id());
+            if (sctx) {
+                DeferWindowUpdate(sctx->ReleaseDeferredWindowUpdate());
+                if (is_server_side()) {
+                    delete sctx;
+                    return MakeMessage(NULL);
+                } else {
+                    sctx->header().set_status_code(H2ErrorToStatusCode(h2_res.error()));
+                    return MakeMessage(sctx);
+                }
+            }
             return MakeMessage(NULL);
         } else { // send GOAWAY
             char goawaybuf[FRAME_HEAD_SIZE + 4];
@@ -737,9 +748,6 @@ H2ParseResult H2StreamContext::OnData(
     if (acc >= _conn_ctx->local_settings().stream_window_size / 2) {
         if (acc > _conn_ctx->local_settings().stream_window_size) {
             LOG(ERROR) << "Fail to satisfy the stream-level flow control policy";
-            H2StreamContext* sctx = _conn_ctx->RemoveStream(frame_head.stream_id);
-            CHECK_EQ(sctx, this);
-            delete sctx;
             return MakeH2Error(H2_FLOW_CONTROL_ERROR, frame_head.stream_id);
         }
         // Rarely happen for small messages.
@@ -835,6 +843,7 @@ H2ParseResult H2StreamContext::EndRemoteStream() {
         RPC_VLOG << "Fail to find stream_id=" << stream_id();
         return MakeH2Message(NULL);
     }
+    CHECK_EQ(sctx, this);
     // The remote stream will not send any more data, sending back the
     // stream-level WINDOW_UPDATE is pointless, just move the value into
     // the connection.
