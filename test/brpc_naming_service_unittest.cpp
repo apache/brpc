@@ -15,6 +15,7 @@
 #include "brpc/policy/file_naming_service.h"
 #include "brpc/policy/list_naming_service.h"
 #include "brpc/policy/remote_file_naming_service.h"
+#include "brpc/policy/discovery_naming_service.h"
 #include "echo.pb.h"
 #include "brpc/server.h"
 
@@ -418,5 +419,21 @@ TEST(NamingServiceTest, consul_with_backup_file) {
     }
     brpc::FLAGS_health_check_interval = saved_hc_interval;
 }
+
+TEST(NamingServiceTest, discovery_parse_function) {
+    std::vector<brpc::ServerNode> servers;
+    brpc::policy::DiscoveryNamingService dcns;
+    butil::IOBuf buf;
+    buf.append(R"({"code":0,"message":"0","ttl":1,"data":{"admin.test":{"instances":[{"region":"","zone":"sh001","env":"uat","appid":"admin.test","treeid":0,"hostname":"host123","http":"","rpc":"","version":"123","metadata":{},"addrs":["http://127.0.0.1:8999", "gorpc://127.0.1.1:9000"],"status":1,"reg_timestamp":1539001034551496412,"up_timestamp":1539001034551496412,"renew_timestamp":1539001034551496412,"dirty_timestamp":1539001034551496412,"latest_timestamp":1539001034551496412}],"zone_instances":{"sh001":[{"region":"","zone":"sh001","env":"uat","appid":"admin.test","treeid":0,"hostname":"host123","http":"","rpc":"","version":"123","metadata":{},"addrs":["http://127.0.0.1:8999", "gorpc://127.0.1.1:9000"],"status":1,"reg_timestamp":1539001034551496412,"up_timestamp":1539001034551496412,"renew_timestamp":1539001034551496412,"dirty_timestamp":1539001034551496412,"latest_timestamp":1539001034551496412}]},"latest_timestamp":1539001034551496412,"latest_timestamp_str":"1539001034"}}})");
+    ASSERT_EQ(0, dcns.parse_fetchs_result(buf, "admin.test", &servers));
+    ASSERT_EQ((size_t)2, servers.size());
+
+    buf.clear();
+    buf.append(R"({ "code": 0, "message": "0", "ttl": 1, "data": [ { "addr": "172.18.33.50:7171", "status": 0, "zone": "" }, { "addr": "172.18.33.51:7171", "status": 0, "zone": "" }, { "addr": "172.18.33.52:7171", "status": 0, "zone": "" }]})");
+    std::string server;
+	ASSERT_EQ(0, dcns.parse_nodes_result(buf, &server));
+    ASSERT_EQ("172.18.33.50:7171", server);
+}
+
 
 } //namespace
