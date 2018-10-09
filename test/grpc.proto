@@ -5,8 +5,8 @@ package test;
 
 message GrpcRequest {
     required string message = 1;
-    optional bool gzip = 2;
-    optional int32 error_code = 3;
+    required bool gzip = 2;
+    required bool return_error = 3;
 };
 
 message GrpcResponse {

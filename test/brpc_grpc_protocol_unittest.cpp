@@ -55,16 +55,13 @@ public:
         brpc::ClosureGuard done_guard(done);
 
         EXPECT_EQ(g_req, req->message());
-        if (req->has_gzip() && req->gzip()) {
+        if (req->gzip()) {
             cntl->set_response_compress_type(brpc::COMPRESS_TYPE_GZIP);
         }
         res->set_message(g_prefix + req->message());
 
-        if (req->has_error_code()) {
-            const std::string err_msg =
-                butil::string_printf("%s%d", g_prefix.c_str(), req->error_code());
-            // TODO(zhujiashun): set and check error_code when GrpcStatusToErrorCode is done
-            cntl->SetFailed(err_msg.c_str());
+        if (req->return_error()) {
+            cntl->SetFailed(brpc::EINTERNAL, "%s", g_prefix.c_str());
             return;
         }
     }
@@ -105,6 +102,7 @@ protected:
         }
         req.set_message(g_req);
         req.set_gzip(res_gzip);
+        req.set_return_error(false);
 
         test::GrpcService_Stub stub(&_channel);
         stub.Method(&cntl, &req, &res, NULL);
@@ -154,20 +152,17 @@ TEST_F(GrpcTest, sanity) {
 }
 
 TEST_F(GrpcTest, return_error) {
-    // GRPC_OK(0) is skipped
-    for (int i = 1; i < (int)brpc::GRPC_MAX; ++i) {
-        test::GrpcRequest req;
-        test::GrpcResponse res;
-        brpc::Controller cntl;
-        req.set_message(g_req);
-        req.set_error_code(i);
-        test::GrpcService_Stub stub(&_channel);
-        stub.Method(&cntl, &req, &res, NULL);
-        EXPECT_TRUE(cntl.Failed());
-        // TODO(zhujiashun): set and check error_code when GrpcStatusToErrorCode is done
-        EXPECT_EQ(cntl.ErrorCode(), brpc::EINTERNAL);
-        EXPECT_TRUE(butil::StringPiece(cntl.ErrorText()).ends_with(butil::string_printf("%s%d", g_prefix.c_str(), i)));
-    }
+    test::GrpcRequest req;
+    test::GrpcResponse res;
+    brpc::Controller cntl;
+    req.set_message(g_req);
+    req.set_gzip(false);
+    req.set_return_error(true);
+    test::GrpcService_Stub stub(&_channel);
+    stub.Method(&cntl, &req, &res, NULL);
+    EXPECT_TRUE(cntl.Failed());
+    EXPECT_EQ(cntl.ErrorCode(), brpc::EINTERNAL);
+    EXPECT_TRUE(butil::StringPiece(cntl.ErrorText()).ends_with(butil::string_printf("%s", g_prefix.c_str())));
 }
 
 TEST_F(GrpcTest, RpcTimedOut) {
@@ -181,6 +176,8 @@ TEST_F(GrpcTest, RpcTimedOut) {
     test::GrpcResponse res;
     brpc::Controller cntl;
     req.set_message(g_req);
+    req.set_gzip(false);
+    req.set_return_error(false);
     test::GrpcService_Stub stub(&_channel);
     stub.MethodTimeOut(&cntl, &req, &res, NULL);
     EXPECT_TRUE(cntl.Failed());
@@ -192,10 +189,11 @@ TEST_F(GrpcTest, MethodNotExist) {
     test::GrpcResponse res;
     brpc::Controller cntl;
     req.set_message(g_req);
+    req.set_gzip(false);
+    req.set_return_error(false);
     test::GrpcService_Stub stub(&_channel);
     stub.MethodNotExist(&cntl, &req, &res, NULL);
     EXPECT_TRUE(cntl.Failed());
-    // TODO(zhujiashun): set and check error_code when GrpcStatusToErrorCode is done
     EXPECT_EQ(cntl.ErrorCode(), brpc::EINTERNAL);
     ASSERT_TRUE(butil::StringPiece(cntl.ErrorText()).ends_with("Method MethodNotExist() not implemented."));
 }
