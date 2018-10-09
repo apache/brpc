@@ -101,17 +101,7 @@
 
 # 贡献代码
 
-**如果你可以修复某个issue或增加一个新功能, 欢迎给我们发送PR. 如果对应的PR被接受了, 你的贡献将会根据难度和质量在0-5区间内打分(越高越好). 如果你累计获得了10分, 可以联系我们获得面试机会或为你写推荐信。**
-
-提交PR前请确认你的代码符合如下要求：
-
-* 符合[google C++代码规范](https://google.github.io/styleguide/cppguide.html), 且一次缩进为4个空格。
-* 代码出现的位置和其定位相符。比如对于某特定协议的扩展代码不该出现在server.cpp, channel.cpp这些较为通用的类中，而一些非常通用的改动也不该深藏在某个特定协议的cpp中。
-* 有对应的单测代码。
-
-提交PR后请检查如下内容：
-
-* [travis-ci](https://travis-ci.org/brpc/brpc/pull_requests)中的编译和单测均已成功。
+请参考[这里](CONTRIBUTING.md#chinese-version)
 
 # 反馈问题
 

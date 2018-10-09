@@ -99,18 +99,7 @@ You can use it to:
     * [云平台代理服务](docs/cn/case_ubrpc.md)
 
 # Contribute code
-
-**If you can fix any of the issues or add new features, you're welcome to send the PR to us. If the PR is accepted, your contribution will be scored from 0 to 5 points according to the difficulty and quality (higher is better). If you accumulate 10 points, you can contact us for interviewing opportunities or recommendation letter for your future jobs.**
-
-Make sure your code meets following requirements before submitting the PR:
-
-- The code conforms to [google C++ coding style](https://google.github.io/styleguide/cppguide.html) and is indented by 4 spaces.
-- The code appears where it should be. For example the code to support an extra protocol should not be put in general classes like server.cpp, channel.cpp, while a general modification would better not be hidden inside a very specific protocol.
-- Has unittests.
-
-Check following items after submitting the PR:
-
-- Compilations and unittests in [travis-ci](https://travis-ci.org/brpc/brpc/pull_requests) are passed.
+Please refer to [here](CONTRIBUTING.md).
 
 # Feedback
 Please report bugs, concerns, suggestions by issues, or join QQ-group 498837325 to discuss problems around source code.
