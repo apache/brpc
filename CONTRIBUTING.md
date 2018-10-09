@@ -1,4 +1,4 @@
-If you meet any problem or request a new feature, you're welcome to [create an issue](https://github.com/brpc/brpc/issues/new).
+If you meet any problem or request a new feature, you're welcome to [create an issue](https://github.com/brpc/brpc/issues/new/choose).
 
 If you can solve any of [the issues](https://github.com/brpc/brpc/issues), you're welcome to send the PR to us.
 
@@ -14,9 +14,9 @@ After the PR:
 
 # Chinese version
 
-如果你遇到了问题或要求新的功能，欢迎[创建issue](https://github.com/brpc/brpc/issues/new).
+如果你遇到问题或需要新功能，欢迎[创建issue](https://github.com/brpc/brpc/issues/new/choose)。
 
-如果你可以解决某个[issue](https://github.com/brpc/brpc/issues), 欢迎发送PR.
+如果你可以解决某个[issue](https://github.com/brpc/brpc/issues), 欢迎发送PR。
 
 发送PR前请确认：
 

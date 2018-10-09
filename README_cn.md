@@ -101,7 +101,7 @@
 
 # 贡献代码
 
-请参考[这里](CONTRIBUTING.md#chinese-version)
+请参考[这里](CONTRIBUTING.md#chinese-version)。
 
 # 反馈问题
 
