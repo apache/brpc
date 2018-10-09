@@ -437,7 +437,7 @@ public:
     // If an agent socket was already created and persisted, it's returned
     // directly (provided other constraints are satisfied)
     // If `checkfn' is not NULL, and the checking result on the socket that
-    // would be returned is false, the socket is abadoned and the getting
+    // would be returned is false, the socket is abandoned and the getting
     // process is restarted.
     // For example, http2 connections may run out of stream_id after long time
     // running and a new socket should be created. In order not to affect
