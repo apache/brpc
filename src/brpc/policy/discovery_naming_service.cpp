@@ -27,7 +27,8 @@ namespace policy {
 DEFINE_string(discovery_api_addr, "http://api.bilibili.co/discovery/nodes",
               "The address of discovery api");
 DEFINE_int32(discovery_timeout_ms, 3000, "Timeout for discovery requests");
-DEFINE_string(discovery_env, "prod", "The environment of services");
+DEFINE_string(discovery_env, "prod", "Environment of services");
+DEFINE_string(discovery_status, "1", "Status of services. 1 for ready, 2 for not ready, 3 for all");
 
 int DiscoveryNamingService::parse_nodes_result(
         const butil::IOBuf& buf, std::string* server_addr) {
@@ -128,7 +129,7 @@ int DiscoveryNamingService::GetServers(const char* service_name,
             return -1;
         }
         Controller cntl;
-        cntl.http_request().uri() = FLAGS_discovery_api_addr + "/discovery/nodes";
+        cntl.http_request().uri() = FLAGS_discovery_api_addr;
         api_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
         if (cntl.Failed()) {
             LOG(ERROR) << "Fail to access " << cntl.http_request().uri()
@@ -151,8 +152,8 @@ int DiscoveryNamingService::GetServers(const char* service_name,
     Controller cntl;
     // TODO(zhujiashun): pass zone from service_name
     cntl.http_request().uri() = butil::string_printf(
-            "/discovery/fetchs?appid=%s&env=%s&status=1", service_name,
-            FLAGS_discovery_env.c_str());
+            "/discovery/fetchs?appid=%s&env=%s&status=%s", service_name,
+            FLAGS_discovery_env.c_str(), FLAGS_discovery_status.c_str());
     _channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     if (cntl.Failed()) {
         LOG(ERROR) << "Fail to make /discovery/fetchs request: " << cntl.ErrorText();

@@ -28,6 +28,8 @@ namespace policy {
 DECLARE_bool(consul_enable_degrade_to_file_naming_service);
 DECLARE_string(consul_file_naming_service_dir);
 DECLARE_string(consul_service_discovery_url);
+DECLARE_string(discovery_api_addr);
+DECLARE_string(discovery_env);
 
 } // policy
 } // brpc
@@ -420,11 +422,8 @@ TEST(NamingServiceTest, consul_with_backup_file) {
     brpc::FLAGS_health_check_interval = saved_hc_interval;
 }
 
-TEST(NamingServiceTest, discovery_parse_function) {
-    std::vector<brpc::ServerNode> servers;
-    brpc::policy::DiscoveryNamingService dcns;
-    butil::IOBuf buf;
-    buf.append(R"({
+
+static const std::string s_fetchs_result = R"({
     "code":0,
     "message":"0",
     "ttl":1,
@@ -487,15 +486,83 @@ TEST(NamingServiceTest, discovery_parse_function) {
             "latest_timestamp":1539001034551496412,
             "latest_timestamp_str":"1539001034"
         }
-    }})");
+    }
+})";
+
+static std::string s_nodes_result = R"({
+    "code": 0,
+    "message": "0",
+    "ttl": 1,
+    "data": [
+        {
+            "addr": "127.0.0.1:8635",
+            "status": 0,
+            "zone": ""
+        }, {
+            "addr": "172.18.33.51:7171",
+            "status": 0,
+            "zone": ""
+        }, {
+            "addr": "172.18.33.52:7171",
+            "status": 0,
+            "zone": ""
+        }
+    ]
+})";
+
+TEST(NamingServiceTest, discovery_parse_function) {
+    std::vector<brpc::ServerNode> servers;
+    brpc::policy::DiscoveryNamingService dcns;
+    butil::IOBuf buf;
+    buf.append(s_fetchs_result);
     ASSERT_EQ(0, dcns.parse_fetchs_result(buf, "admin.test", &servers));
     ASSERT_EQ((size_t)2, servers.size());
-
     buf.clear();
-    buf.append(R"({ "code": 0, "message": "0", "ttl": 1, "data": [ { "addr": "172.18.33.50:7171", "status": 0, "zone": "" }, { "addr": "172.18.33.51:7171", "status": 0, "zone": "" }, { "addr": "172.18.33.52:7171", "status": 0, "zone": "" }]})");
+    buf.append(s_nodes_result);
     std::string server;
 	ASSERT_EQ(0, dcns.parse_nodes_result(buf, &server));
-    ASSERT_EQ("172.18.33.50:7171", server);
+    ASSERT_EQ("127.0.0.1:8635", server);
+}
+
+class DiscoveryNamingServiceImpl : public test::DiscoveryNamingService {
+public:
+    DiscoveryNamingServiceImpl () {}
+    virtual ~DiscoveryNamingServiceImpl() {}
+
+    void Nodes(google::protobuf::RpcController* cntl_base,
+               const test::HttpRequest*,
+               test::HttpResponse*,
+               google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        cntl->response_attachment().append(s_nodes_result);
+    }
+
+    void Fetchs(google::protobuf::RpcController* cntl_base,
+                const test::HttpRequest*,
+                test::HttpResponse*,
+                google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        cntl->response_attachment().append(s_fetchs_result);
+    }
+};
+
+TEST(NamingServiceTest, discovery_sanity) {
+    brpc::policy::FLAGS_discovery_api_addr = "http://127.0.0.1:8635/discovery/nodes";
+    brpc::Server server;
+    DiscoveryNamingServiceImpl svc;
+    std::string rest_mapping =
+        "/discovery/nodes => Nodes, "
+        "/discovery/fetchs => Fetchs";
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE,
+                rest_mapping.c_str()));
+    ASSERT_EQ(0, server.Start("localhost:8635", NULL));
+
+    brpc::policy::DiscoveryNamingService dcns;
+    std::vector<brpc::ServerNode> servers;
+    ASSERT_EQ(0, dcns.GetServers("admin.test", &servers));
+    ASSERT_EQ((size_t)2, servers.size());
 }
 
 
