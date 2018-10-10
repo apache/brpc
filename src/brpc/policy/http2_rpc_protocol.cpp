@@ -360,11 +360,17 @@ int H2Context::Init() {
 
 H2StreamContext* H2Context::RemoveStream(int stream_id) {
     H2StreamContext* sctx = NULL;
-    std::unique_lock<butil::Mutex> mu(_stream_mutex);
-    if (_pending_streams.erase(stream_id, &sctx)) {
-        return sctx;
+    {
+        std::unique_lock<butil::Mutex> mu(_stream_mutex);
+        if (!_pending_streams.erase(stream_id, &sctx)) {
+            return NULL;
+        }
     }
-    return NULL;
+    // The remote stream will not send any more data, sending back the
+    // stream-level WINDOW_UPDATE is pointless, just move the value into
+    // the connection.
+    DeferWindowUpdate(sctx->ReleaseDeferredWindowUpdate());
+    return sctx;
 }
 
 void H2Context::RemoveGoAwayStreams(
@@ -507,7 +513,6 @@ ParseResult H2Context::Consume(
             }
             H2StreamContext* sctx = RemoveStream(h2_res.stream_id());
             if (sctx) {
-                DeferWindowUpdate(sctx->ReleaseDeferredWindowUpdate());
                 if (is_server_side()) {
                     delete sctx;
                     return MakeMessage(NULL);
@@ -719,7 +724,8 @@ H2ParseResult H2Context::OnData(
         // If a DATA frame is received whose stream is not in "open" or "half-closed (local)" state,
         // the recipient MUST respond with a stream error (Section 5.4.2) of type STREAM_CLOSED.
         // Ignore the message without closing the socket.
-        H2StreamContext tmp_sctx(this, frame_head.stream_id);
+        H2StreamContext tmp_sctx(false);
+        tmp_sctx.Init(this, frame_head.stream_id);
         tmp_sctx.OnData(it, frame_head, frag_size, pad_length);
         DeferWindowUpdate(tmp_sctx.ReleaseDeferredWindowUpdate());
 
@@ -844,10 +850,6 @@ H2ParseResult H2StreamContext::EndRemoteStream() {
         return MakeH2Message(NULL);
     }
     CHECK_EQ(sctx, this);
-    // The remote stream will not send any more data, sending back the
-    // stream-level WINDOW_UPDATE is pointless, just move the value into
-    // the connection.
-    _conn_ctx->DeferWindowUpdate(sctx->ReleaseDeferredWindowUpdate());
 
     OnMessageComplete();
     return MakeH2Message(sctx);
