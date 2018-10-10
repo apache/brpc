@@ -380,9 +380,9 @@ friend void InitFrameHandlers();
     Socket* _socket;
     butil::atomic<int64_t> _remote_window_left;
     H2ConnectionState _conn_state;
-    int _last_receive_stream_id;
-    uint32_t _last_send_stream_id;
-    bool _goaway_received;
+    int _last_received_stream_id;
+    uint32_t _last_sent_stream_id;
+    int _goaway_stream_id;
     bool _goaway_sent;
     H2Settings _remote_settings;
     H2Settings _local_settings;
@@ -402,13 +402,13 @@ inline int H2Context::AllocateClientStreamId() {
             << _last_client_stream_id;
         return -1;
     }
-    const int id = _last_send_stream_id;
-    _last_send_stream_id += 2;
+    const int id = _last_sent_stream_id;
+    _last_sent_stream_id += 2;
     return id;
 }
 
 inline bool H2Context::RunOutStreams() const {
-    return (_last_send_stream_id > 0x7FFFFFFF);
+    return (_last_sent_stream_id > 0x7FFFFFFF);
 }
 
 inline std::ostream& operator<<(std::ostream& os, const H2UnsentRequest& req) {
