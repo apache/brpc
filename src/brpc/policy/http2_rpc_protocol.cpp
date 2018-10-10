@@ -646,12 +646,12 @@ H2ParseResult H2StreamContext::OnHeaders(
             return MakeH2Error(H2_PROTOCOL_ERROR);
         }
         if (frame_head.flags & H2_FLAGS_END_STREAM) {
-            return EndRemoteStream();
+            return OnEndStream();
         }
         return MakeH2Message(NULL);
     } else {
         if (frame_head.flags & H2_FLAGS_END_STREAM) {
-            // Delay calling EndRemoteStream() in OnContinuation()
+            // Delay calling OnEndStream() in OnContinuation()
             _stream_ended = true;
         }
         return MakeH2Message(NULL);
@@ -696,7 +696,7 @@ H2ParseResult H2StreamContext::OnContinuation(
             return MakeH2Error(H2_PROTOCOL_ERROR);
         }
         if (_stream_ended) {
-            return EndRemoteStream();
+            return OnEndStream();
         }
     }
     return MakeH2Message(NULL);
@@ -774,7 +774,7 @@ H2ParseResult H2StreamContext::OnData(
         }
     }
     if (frame_head.flags & H2_FLAGS_END_STREAM) {
-        return EndRemoteStream();
+        return OnEndStream();
     }
     return MakeH2Message(NULL);
 }
@@ -823,7 +823,7 @@ H2ParseResult H2StreamContext::OnResetStream(
     }
 }
 
-H2ParseResult H2StreamContext::EndRemoteStream() {
+H2ParseResult H2StreamContext::OnEndStream() {
 #if defined(BRPC_H2_STREAM_STATE)
     if (state() == H2_STREAM_OPEN) {
         SetState(H2_STREAM_HALF_CLOSED_REMOTE);

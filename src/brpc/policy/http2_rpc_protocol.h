@@ -235,7 +235,7 @@ public:
     // does not need to complete.
     // Returns 0 on success, -1 otherwise.
     int ConsumeHeaders(butil::IOBufBytesIterator& it);
-    H2ParseResult EndRemoteStream();
+    H2ParseResult OnEndStream();
 
     H2ParseResult OnData(butil::IOBufBytesIterator&, const H2FrameHead&,
                        uint32_t frag_size, uint8_t pad_length);
