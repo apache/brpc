@@ -18,8 +18,7 @@ int main(int argc, char* argv[]) {
 TEST(H2UnsentMessage, request_throughput) {
     brpc::Controller cntl;
     butil::IOBuf request_buf;
-    cntl.http_request().set_method(brpc::HTTP_METHOD_GET);
-    cntl.http_request().uri() = "/";
+    cntl.http_request().uri() = "0.0.0.0:8010/HttpService/Echo";
     brpc::policy::SerializeHttpRequest(&request_buf, &cntl, NULL);
 
     brpc::SocketId id;
@@ -34,6 +33,7 @@ TEST(H2UnsentMessage, request_throughput) {
     CHECK_EQ(ctx->Init(), 0);
     h2_client_sock->initialize_parsing_context(&ctx);
     ctx->_last_client_stream_id = 0;
+    ctx->_remote_window_left = brpc::H2Settings::MAX_WINDOW_SIZE;
 
     int64_t ntotal = 1000000;
 
@@ -49,14 +49,18 @@ TEST(H2UnsentMessage, request_throughput) {
         req_msgs[i]->AppendAndDestroySelf(&dummy_buf, h2_client_sock.get());
     }
     int64_t end_us = butil::gettimeofday_us();
-    LOG(INFO) << "H2UsentRequest average throughput="
-        << (ntotal * 1000000L) / (end_us - start_us) << "/s";
+    int64_t elapsed = end_us - start_us;
+    LOG(INFO) << "H2UnsentRequest average qps="
+        << (ntotal * 1000000L) / elapsed << "/s, data throughput="
+        << dummy_buf.size() * 1000000L / elapsed;
     req_msgs.clear();
 
     // calc H2UnsentResponse throughput
     std::vector<brpc::policy::H2UnsentResponse*> res_msgs;
     res_msgs.resize(ntotal);
     for (int i = 0; i < ntotal; ++i) {
+        cntl.http_response().set_content_type("text/plain");
+        cntl.response_attachment().append("0123456789abcedef");
         res_msgs[i] = brpc::policy::H2UnsentResponse::New(&cntl, 0, false);
     }
     dummy_buf.clear();
@@ -65,7 +69,9 @@ TEST(H2UnsentMessage, request_throughput) {
         res_msgs[i]->AppendAndDestroySelf(&dummy_buf, h2_client_sock.get());
     }
     end_us = butil::gettimeofday_us();
-    LOG(INFO) << "H2UsentResponse average throughput="
-        << (ntotal * 1000000L) / (end_us - start_us) << "/s";
+    elapsed = end_us - start_us;
+    LOG(INFO) << "H2UnsentResponse average qps="
+        << (ntotal * 1000000L) / elapsed << "/s, data throughput="
+        << dummy_buf.size() * 1000000L / elapsed;
     res_msgs.clear();
 }
