@@ -92,7 +92,7 @@ void PackEspRequest(butil::IOBuf* packet_buf,
                     const Authenticator* auth) {
 
     ControllerPrivateAccessor accessor(cntl);
-    if (accessor.connection_type() == CONNECTION_TYPE_SINGLE) {
+    if (cntl->connection_type() == CONNECTION_TYPE_SINGLE) {
         return cntl->SetFailed(
             EINVAL, "esp protocol can't work with CONNECTION_TYPE_SINGLE");
     }

@@ -136,7 +136,7 @@ protected:
     }
 
     brpc::policy::HttpContext* MakePostRequestMessage(const std::string& path) {
-        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext();
+        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext(false);
         msg->header().uri().set_path(path);
         msg->header().set_content_type("application/json");
         msg->header().set_method(brpc::HTTP_METHOD_POST);
@@ -149,7 +149,7 @@ protected:
     }
 
     brpc::policy::HttpContext* MakeGetRequestMessage(const std::string& path) {
-        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext();
+        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext(false);
         msg->header().uri().set_path(path);
         msg->header().set_method(brpc::HTTP_METHOD_GET);
         return msg;
@@ -157,7 +157,7 @@ protected:
 
 
     brpc::policy::HttpContext* MakeResponseMessage(int code) {
-        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext();
+        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext(false);
         msg->header().set_status_code(code);
         msg->header().set_content_type("application/json");
         
@@ -216,7 +216,7 @@ protected:
             butil::IOBufAsZeroCopyOutputStream wrapper(&cntl.response_attachment());
             EXPECT_TRUE(res.SerializeToZeroCopyStream(&wrapper));
         }
-        brpc::policy::H2UnsentResponse* h2_res = brpc::policy::H2UnsentResponse::New(&cntl, h2_stream_id);
+        brpc::policy::H2UnsentResponse* h2_res = brpc::policy::H2UnsentResponse::New(&cntl, h2_stream_id, false /*is grpc*/);
         butil::Status st = h2_res->AppendAndDestroySelf(out, _h2_client_sock.get());
         ASSERT_TRUE(st.ok());
     }
@@ -493,7 +493,7 @@ public:
         if (_done_place == DONE_BEFORE_CREATE_PA) {
             done_guard.reset(NULL);
         }
-        ASSERT_GT(PA_DATA_LEN, 8);  // long enough to hold a 64-bit decimal.
+        ASSERT_GT(PA_DATA_LEN, 8u);  // long enough to hold a 64-bit decimal.
         char buf[PA_DATA_LEN];
         for (size_t c = 0; c < _nrep;) {
             CopyPAPrefixedWithSeqNo(buf, c);
@@ -976,7 +976,7 @@ TEST_F(HttpTest, http2_sanity) {
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
-    options.protocol = "h2c";
+    options.protocol = "h2";
     ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
 
     // 1) complete flow and
@@ -1179,7 +1179,7 @@ TEST_F(HttpTest, http2_not_closing_socket_when_rpc_timeout) {
     EXPECT_EQ(0, server.Start(port, NULL));
     brpc::Channel channel;
     brpc::ChannelOptions options;
-    options.protocol = "h2c";
+    options.protocol = "h2";
     ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
 
     test::EchoRequest req;

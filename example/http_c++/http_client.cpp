@@ -27,7 +27,7 @@ DEFINE_string(d, "", "POST this data to the http server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 1000, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
-DEFINE_string(protocol, "http", "http or h2c");
+DEFINE_string(protocol, "http", "Client-side protocol");
 
 namespace brpc {
 DECLARE_bool(http_verbose);

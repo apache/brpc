@@ -147,8 +147,9 @@ void SetPriorityRealtimeAudio(mach_port_t mach_thread_id) {
                         THREAD_TIME_CONSTRAINT_POLICY,
                         reinterpret_cast<thread_policy_t>(&time_constraints),
                         THREAD_TIME_CONSTRAINT_POLICY_COUNT);
-  DVLOG_IF(1, result != KERN_SUCCESS) << "Fail to call thread_policy_set";
-
+  if (result != KERN_SUCCESS) {
+    DVLOG(1) << "Fail to call thread_policy_set";
+  }
   return;
 }
 

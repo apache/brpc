@@ -45,14 +45,6 @@ public:
         _cntl->OnVersionedRPCReturned(info, false, saved_error);
     }
 
-    ConnectionType connection_type() const {
-        return _cntl->_connection_type;
-    }
-
-    int current_retry_count() const {
-        return _cntl->_current_call.nretry;
-    }
-    
     ControllerPrivateAccessor &set_peer_id(SocketId peer_id) {
         _cntl->_current_call.peer_id = peer_id;
         return *this;
@@ -132,6 +124,9 @@ public:
     void add_with_auth() {
         _cntl->add_flag(Controller::FLAGS_REQUEST_WITH_AUTH);
     }
+
+    std::string& protocol_param() { return _cntl->protocol_param(); }
+    const std::string& protocol_param() const { return _cntl->protocol_param(); }
 
 private:
     Controller* _cntl;

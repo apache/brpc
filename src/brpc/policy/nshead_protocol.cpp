@@ -399,7 +399,7 @@ void PackNsheadRequest(
     const butil::IOBuf& request,
     const Authenticator*) {
     ControllerPrivateAccessor accessor(cntl);
-    if (accessor.connection_type() == CONNECTION_TYPE_SINGLE) {
+    if (cntl->connection_type() == CONNECTION_TYPE_SINGLE) {
         return cntl->SetFailed(
             EINVAL, "nshead protocol can't work with CONNECTION_TYPE_SINGLE");
     }
