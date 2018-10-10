@@ -276,6 +276,14 @@ output/bin:protoc-gen-mcpack
 	@echo "Compiling $@"
 	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
+%http2_rpc_protocol.dbg.o:%http2_rpc_protocol.cpp
+	@echo "Compiling $@ with O2"
+	@$(CXX) -c $(HDRPATHS) -O2 $(DEBUG_CXXFLAGS) $< -o $@
+
+%hpack.dbg.o:%hpack.cpp
+	@echo "Compiling $@ with O2"
+	@$(CXX) -c $(HDRPATHS) -O2 $(DEBUG_CXXFLAGS) $< -o $@
+
 %.dbg.o:%.cpp
 	@echo "Compiling $@"
 	@$(CXX) -c $(HDRPATHS) $(DEBUG_CXXFLAGS) $< -o $@
