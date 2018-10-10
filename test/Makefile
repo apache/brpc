@@ -204,6 +204,10 @@ baidu_time_unittest.o:baidu_time_unittest.cpp | libbrpc.dbg.a
 	@echo "Compiling $@"
 	@$(CXX) -c $(HDRPATHS) -O2 $(CXXFLAGS) $< -o $@
 
+brpc_h2_unsent_message_unittest.o:brpc_h2_unsent_message_unittest.cpp | libbrpc.dbg.a
+	@echo "Compiling $@"
+	@$(CXX) -c $(HDRPATHS) -O2 $(CXXFLAGS) $< -o $@
+
 %.o:%.cpp | libbrpc.dbg.a
 	@echo "Compiling $@"
 	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
