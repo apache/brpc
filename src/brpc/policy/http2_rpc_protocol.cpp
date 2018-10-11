@@ -328,7 +328,6 @@ H2Context::H2Context(Socket* socket, const Server* server)
     , _last_received_stream_id(-1)
     , _last_sent_stream_id(1)
     , _goaway_stream_id(-1)
-    , _goaway_sent(false)
     , _deferred_window_update(0) {
     // Stop printing the field which is useless for remote settings.
     _remote_settings.connection_window_size = 0;
@@ -532,7 +531,6 @@ ParseResult H2Context::Consume(
                 LOG(WARNING) << "Fail to send GOAWAY to " << *_socket;
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
-            _goaway_sent = true;
             return MakeMessage(NULL);
         }
     } else {
@@ -548,12 +546,6 @@ H2ParseResult H2Context::OnHeaders(
     if (frame_head.stream_id == 0) {
         LOG(ERROR) << "Invalid stream_id=" << frame_head.stream_id;
         return MakeH2Error(H2_PROTOCOL_ERROR);
-    }
-    if (_goaway_sent) {
-        // TODO(zhujiashun): After sending a GOAWAY frame, the sender can discard
-        // frames for streams initiated by the receiver with identifiers higher
-        // than the identified last stream.
-        // Do we really need this strict check?
     }
     const bool has_padding = (frame_head.flags & H2_FLAGS_PADDED);
     const bool has_priority = (frame_head.flags & H2_FLAGS_PRIORITY);
