@@ -515,12 +515,12 @@ TEST(NamingServiceTest, discovery_parse_function) {
     brpc::policy::DiscoveryNamingService dcns;
     butil::IOBuf buf;
     buf.append(s_fetchs_result);
-    ASSERT_EQ(0, dcns.parse_fetchs_result(buf, "admin.test", &servers));
+    ASSERT_EQ(0, dcns.ParseFetchsResult(buf, "admin.test", &servers));
     ASSERT_EQ((size_t)2, servers.size());
     buf.clear();
     buf.append(s_nodes_result);
     std::string server;
-	ASSERT_EQ(0, dcns.parse_nodes_result(buf, &server));
+    ASSERT_EQ(0, dcns.ParseNodesResult(buf, &server));
     ASSERT_EQ("127.0.0.1:8635", server);
 }
 

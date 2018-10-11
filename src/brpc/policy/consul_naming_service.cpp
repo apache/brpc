@@ -135,17 +135,24 @@ int ConsulNamingService::GetServers(const char* service_name,
     }
 
     for (BUTIL_RAPIDJSON_NAMESPACE::SizeType i = 0; i < services.Size(); ++i) {
-        if (!services[i].HasMember("Service")) {
+        BUTIL_RAPIDJSON_NAMESPACE::Value::ConstMemberIterator itr =
+            services[i].FindMember("Service");
+        if (itr == services[i].MemberEnd()) {
             LOG(ERROR) << "No service info in node: "
                        << RapidjsonValueToString(services[i]);
             continue;
         }
 
-        const BUTIL_RAPIDJSON_NAMESPACE::Value& service = services[i]["Service"];
-        if (!service.HasMember("Address") ||
-            !service["Address"].IsString() ||
-            !service.HasMember("Port") ||
-            !service["Port"].IsUint()) {
+        const BUTIL_RAPIDJSON_NAMESPACE::Value& service = itr->value;
+        BUTIL_RAPIDJSON_NAMESPACE::Value::ConstMemberIterator itr_address =
+            service.FindMember("Address");
+        BUTIL_RAPIDJSON_NAMESPACE::Value::ConstMemberIterator itr_port =
+            service.FindMember("Port");
+
+        if (itr_address == service.MemberEnd() ||
+            !itr_address->value.IsString() ||
+            itr_port == service.MemberEnd() ||
+            !itr_port->value.IsUint()) {
             LOG(ERROR) << "Service with no valid address or port: "
                        << RapidjsonValueToString(service);
             continue;
@@ -162,12 +169,14 @@ int ConsulNamingService::GetServers(const char* service_name,
 
         ServerNode node;
         node.addr = end_point;
-        if (service.HasMember("Tags")) {
-            if (service["Tags"].IsArray()) {
-                if (service["Tags"].Size() > 0) {
+        itr = service.FindMember("Tags");
+        if (itr != service.MemberEnd()) {
+            if (itr->value.IsArray()) {
+                if (itr->value.Size() > 0) {
                     // Tags in consul is an array, here we only use the first one.
-                    if (service["Tags"][0].IsString()) {
-                        node.tag = service["Tags"][0].GetString();
+                    const BUTIL_RAPIDJSON_NAMESPACE::Value& tag = itr->value[0];
+                    if (tag.IsString()) {
+                        node.tag = tag.GetString();
                     } else {
                         LOG(ERROR) << "First tag returned by consul is not string, service: "
                                    << RapidjsonValueToString(service);

@@ -24,76 +24,92 @@
 namespace brpc {
 namespace policy {
 
+#ifdef BILIBILI_INTERNAL
 DEFINE_string(discovery_api_addr, "http://api.bilibili.co/discovery/nodes",
               "The address of discovery api");
+#else
+DEFINE_string(discovery_api_addr, "", "The address of discovery api");
+#endif
 DEFINE_int32(discovery_timeout_ms, 3000, "Timeout for discovery requests");
 DEFINE_string(discovery_env, "prod", "Environment of services");
 DEFINE_string(discovery_status, "1", "Status of services. 1 for ready, 2 for not ready, 3 for all");
 
-int DiscoveryNamingService::parse_nodes_result(
+int DiscoveryNamingService::ParseNodesResult(
         const butil::IOBuf& buf, std::string* server_addr) {
     BUTIL_RAPIDJSON_NAMESPACE::Document nodes;
     const std::string response = buf.to_string();
     nodes.Parse(response.c_str());
-    if (!nodes.HasMember("data")) {
+    BUTIL_RAPIDJSON_NAMESPACE::Value::ConstMemberIterator itr =
+        nodes.FindMember("data");
+    if (itr == nodes.MemberEnd()) {
         LOG(ERROR) << "No data field in discovery nodes response";
         return -1;
     }
-    const BUTIL_RAPIDJSON_NAMESPACE::Value& data = nodes["data"];
+    const BUTIL_RAPIDJSON_NAMESPACE::Value& data = itr->value;
     if (!data.IsArray()) {
         LOG(ERROR) << "data field is not an array";
         return -1;
     }
     for (BUTIL_RAPIDJSON_NAMESPACE::SizeType i = 0; i < data.Size(); ++i) {
         const BUTIL_RAPIDJSON_NAMESPACE::Value& addr_item = data[i];
-        if (!addr_item.HasMember("addr") ||
-                !addr_item["addr"].IsString() ||
-                !addr_item.HasMember("status") ||
-                !addr_item["status"].IsUint() ||
-                addr_item["status"].GetUint() != 0) {
+        BUTIL_RAPIDJSON_NAMESPACE::Value::ConstMemberIterator itr_addr =
+            addr_item.FindMember("addr");
+        BUTIL_RAPIDJSON_NAMESPACE::Value::ConstMemberIterator itr_status =
+            addr_item.FindMember("status");
+
+        if (itr_addr == addr_item.MemberEnd() ||
+                !itr_addr->value.IsString() ||
+                itr_status == addr_item.MemberEnd() ||
+                !itr_status->value.IsUint() ||
+                itr_status->value.GetUint() != 0) {
             continue;
         }
-        server_addr->assign(addr_item["addr"].GetString(),
-                            addr_item["addr"].GetStringLength());
+        server_addr->assign(itr_addr->value.GetString(),
+                            itr_addr->value.GetStringLength());
         // Currently, we just use the first successful result
         break;
     }
     return 0;
 }
 
-int DiscoveryNamingService::parse_fetchs_result(
+int DiscoveryNamingService::ParseFetchsResult(
         const butil::IOBuf& buf,
         const char* service_name,
         std::vector<ServerNode>* servers) {
     BUTIL_RAPIDJSON_NAMESPACE::Document d;
     const std::string response = buf.to_string();
     d.Parse(response.c_str());
-    if (!d.HasMember("data")) {
+    BUTIL_RAPIDJSON_NAMESPACE::Value::ConstMemberIterator itr =
+        d.FindMember("data");
+    if (itr == d.MemberEnd()) {
         LOG(ERROR) << "No data field in discovery fetchs response";
         return -1;
     }
-    const BUTIL_RAPIDJSON_NAMESPACE::Value& data = d["data"];
-    if (!data.HasMember(service_name)) {
+    const BUTIL_RAPIDJSON_NAMESPACE::Value& data = itr->value;
+    itr = data.FindMember(service_name);
+    if (itr == data.MemberEnd()) {
         LOG(ERROR) << "No " << service_name << " field in discovery response";
         return -1;
     }
-    const BUTIL_RAPIDJSON_NAMESPACE::Value& services = data[service_name];
-    if (!services.HasMember("instances")) {
+    const BUTIL_RAPIDJSON_NAMESPACE::Value& services = itr->value;
+    itr = services.FindMember("instances");
+    if (itr == services.MemberEnd()) {
         LOG(ERROR) << "Fail to find instances";
         return -1;
     }
-    const BUTIL_RAPIDJSON_NAMESPACE::Value& instances = services["instances"];
+    const BUTIL_RAPIDJSON_NAMESPACE::Value& instances = itr->value;
     if (!instances.IsArray()) {
         LOG(ERROR) << "Fail to parse instances as an array";
         return -1;
     }
 
     for (BUTIL_RAPIDJSON_NAMESPACE::SizeType i = 0; i < instances.Size(); ++i) {
-        if (!instances[i].HasMember("addrs") || !instances[i]["addrs"].IsArray()) {
+        itr = instances[i].FindMember("addrs");
+        if (itr == instances[i].MemberEnd() || !itr->value.IsArray()) {
             LOG(ERROR) << "Fail to find addrs or addrs is not an array";
             return -1;
         }
-        const BUTIL_RAPIDJSON_NAMESPACE::Value& addrs = instances[i]["addrs"];
+        const BUTIL_RAPIDJSON_NAMESPACE::Value& addrs = itr->value;
         for (BUTIL_RAPIDJSON_NAMESPACE::SizeType j = 0; j < addrs.Size(); ++j) {
             if (!addrs[j].IsString()) {
                 continue;
@@ -137,7 +153,7 @@ int DiscoveryNamingService::GetServers(const char* service_name,
             return -1;
         }
         std::string discovery_addr;
-        if (parse_nodes_result(cntl.response_attachment(), &discovery_addr) != 0) {
+        if (ParseNodesResult(cntl.response_attachment(), &discovery_addr) != 0) {
             return -1;
         }
 
@@ -159,7 +175,7 @@ int DiscoveryNamingService::GetServers(const char* service_name,
         LOG(ERROR) << "Fail to make /discovery/fetchs request: " << cntl.ErrorText();
         return -1;
     }
-    return parse_fetchs_result(cntl.response_attachment(), service_name, servers);
+    return ParseFetchsResult(cntl.response_attachment(), service_name, servers);
 }
 
 void DiscoveryNamingService::Describe(std::ostream& os,

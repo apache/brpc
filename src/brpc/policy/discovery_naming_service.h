@@ -26,17 +26,17 @@ namespace policy {
 class DiscoveryNamingService : public PeriodicNamingService {
 private:
     int GetServers(const char* service_name,
-                   std::vector<ServerNode>* servers);
+                   std::vector<ServerNode>* servers) override;
 
-    void Describe(std::ostream& os, const DescribeOptions&) const;
+    void Describe(std::ostream& os, const DescribeOptions&) const override;
 
-    NamingService* New() const;
+    NamingService* New() const override;
 
-    void Destroy();
+    void Destroy() override;
 
 private:
-    int parse_nodes_result(const butil::IOBuf& buf, std::string* server_addr);
-    int parse_fetchs_result(const butil::IOBuf& buf, const char* service_name,
+    int ParseNodesResult(const butil::IOBuf& buf, std::string* server_addr);
+    int ParseFetchsResult(const butil::IOBuf& buf, const char* service_name,
                             std::vector<ServerNode>* servers);
 
     Channel _channel;
