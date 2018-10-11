@@ -36,7 +36,7 @@ TEST(H2UnsentMessage, request_throughput) {
     ctx->_last_client_stream_id = 0;
     ctx->_remote_window_left = brpc::H2Settings::MAX_WINDOW_SIZE;
 
-    int64_t ntotal = 5000000;
+    int64_t ntotal = 500000;
 
     // calc H2UnsentRequest throughput
     butil::IOBuf dummy_buf;
