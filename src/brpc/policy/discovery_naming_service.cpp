@@ -117,6 +117,9 @@ int DiscoveryNamingService::ParseFetchsResult(
                 addr.remove_prefix(pos + 3);
             }
             ServerNode node;
+            // Variable addr contains data from addrs[j].GetString(), it is a
+            // null-terminated string, so it is safe to pass addr.data() as the
+            // first parameter to str2endpoint.
             if (str2endpoint(addr.data(), &node.addr) != 0) {
                 LOG(ERROR) << "Invalid address=`" << addr << '\'';
                 continue;
