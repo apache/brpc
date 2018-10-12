@@ -33,7 +33,7 @@ TEST(H2UnsentMessage, request_throughput) {
         new brpc::policy::H2Context(h2_client_sock.get(), NULL);
     CHECK_EQ(ctx->Init(), 0);
     h2_client_sock->initialize_parsing_context(&ctx);
-    ctx->_last_client_stream_id = 0;
+    ctx->_last_sent_stream_id = 0;
     ctx->_remote_window_left = brpc::H2Settings::MAX_WINDOW_SIZE;
 
     int64_t ntotal = 500000;
