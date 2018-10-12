@@ -161,7 +161,6 @@ int DiscoveryNamingService::GetServers(const char* service_name,
     
     servers->clear();
     Controller cntl;
-    // TODO(zhujiashun): pass zone from service_name
     cntl.http_request().uri() = butil::string_printf(
             "/discovery/fetchs?appid=%s&env=%s&status=%s", service_name,
             FLAGS_discovery_env.c_str(), FLAGS_discovery_status.c_str());
