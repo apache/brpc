@@ -39,8 +39,7 @@ int DiscoveryNamingService::ParseNodesResult(
     BUTIL_RAPIDJSON_NAMESPACE::Document nodes;
     const std::string response = buf.to_string();
     nodes.Parse(response.c_str());
-    BUTIL_RAPIDJSON_NAMESPACE::Value::ConstMemberIterator itr =
-        nodes.FindMember("data");
+    auto itr = nodes.FindMember("data");
     if (itr == nodes.MemberEnd()) {
         LOG(ERROR) << "No data field in discovery nodes response";
         return -1;
@@ -52,11 +51,8 @@ int DiscoveryNamingService::ParseNodesResult(
     }
     for (BUTIL_RAPIDJSON_NAMESPACE::SizeType i = 0; i < data.Size(); ++i) {
         const BUTIL_RAPIDJSON_NAMESPACE::Value& addr_item = data[i];
-        BUTIL_RAPIDJSON_NAMESPACE::Value::ConstMemberIterator itr_addr =
-            addr_item.FindMember("addr");
-        BUTIL_RAPIDJSON_NAMESPACE::Value::ConstMemberIterator itr_status =
-            addr_item.FindMember("status");
-
+        auto itr_addr = addr_item.FindMember("addr");
+        auto itr_status = addr_item.FindMember("status");
         if (itr_addr == addr_item.MemberEnd() ||
                 !itr_addr->value.IsString() ||
                 itr_status == addr_item.MemberEnd() ||
@@ -79,32 +75,31 @@ int DiscoveryNamingService::ParseFetchsResult(
     BUTIL_RAPIDJSON_NAMESPACE::Document d;
     const std::string response = buf.to_string();
     d.Parse(response.c_str());
-    BUTIL_RAPIDJSON_NAMESPACE::Value::ConstMemberIterator itr =
-        d.FindMember("data");
-    if (itr == d.MemberEnd()) {
+    auto itr_data = d.FindMember("data");
+    if (itr_data == d.MemberEnd()) {
         LOG(ERROR) << "No data field in discovery fetchs response";
         return -1;
     }
-    const BUTIL_RAPIDJSON_NAMESPACE::Value& data = itr->value;
-    itr = data.FindMember(service_name);
-    if (itr == data.MemberEnd()) {
+    const BUTIL_RAPIDJSON_NAMESPACE::Value& data = itr_data->value;
+    auto itr_service = data.FindMember(service_name);
+    if (itr_service == data.MemberEnd()) {
         LOG(ERROR) << "No " << service_name << " field in discovery response";
         return -1;
     }
-    const BUTIL_RAPIDJSON_NAMESPACE::Value& services = itr->value;
-    itr = services.FindMember("instances");
-    if (itr == services.MemberEnd()) {
+    const BUTIL_RAPIDJSON_NAMESPACE::Value& services = itr_service->value;
+    auto itr_instances = services.FindMember("instances");
+    if (itr_instances == services.MemberEnd()) {
         LOG(ERROR) << "Fail to find instances";
         return -1;
     }
-    const BUTIL_RAPIDJSON_NAMESPACE::Value& instances = itr->value;
+    const BUTIL_RAPIDJSON_NAMESPACE::Value& instances = itr_instances->value;
     if (!instances.IsArray()) {
         LOG(ERROR) << "Fail to parse instances as an array";
         return -1;
     }
 
     for (BUTIL_RAPIDJSON_NAMESPACE::SizeType i = 0; i < instances.Size(); ++i) {
-        itr = instances[i].FindMember("addrs");
+        auto itr = instances[i].FindMember("addrs");
         if (itr == instances[i].MemberEnd() || !itr->value.IsArray()) {
             LOG(ERROR) << "Fail to find addrs or addrs is not an array";
             return -1;
