@@ -38,11 +38,15 @@ public:
     // ensure that no one else is calling OnCallEnd.
     void Reset();
 
-    // Not thread-safe
+    // Mark the Socket as broken. You should NOT call this method multiple 
+    // times in succession.
     void MarkAsBroken();
 
+    // The closer to 100, the less recent errors occurred, and 0 means that 
+    // it should be isolated.
     int health_index_in_percent() const;
 
+    // Number of times marked as broken
     int broken_times() const {
         return _broken_times;
     }
