@@ -31,9 +31,6 @@ public:
     // be isolated. Otherwise return true.
     // error_code: Error_code of this call, 0 means success.
     // latency: Time cost of this call.
-    // Note: Once OnCallEnd() determined that a node needs to be isolated,
-    // it will always return false until you call Reset(). Usually Reset() 
-    // will be called in the health check thread.
     bool OnCallEnd(int error_code, int64_t latency);
 
     // Reset CircuitBreaker and clear history data. will erase the historical 
@@ -41,10 +38,19 @@ public:
     // ensure that no one else is calling OnCallEnd.
     void Reset();
 
+    // Not thread-safe
+    void MarkAsBroken();
+
+    int health_index_in_percent() const;
+
+    int broken_times() const {
+        return _broken_times;
+    }
+
     // The duration that should be isolated when the socket fails in milliseconds.
     // The higher the frequency of socket errors, the longer the duration.
-    int isolation_duration_ms() {
-        return _isolation_duration_ms.load(butil::memory_order_relaxed);
+    int isolation_duration_ms() const {
+        return _isolation_duration_ms;
     }
 
 private:
@@ -55,6 +61,9 @@ private:
         EmaErrorRecorder(int windows_size,  int max_error_percent);
         bool OnCallEnd(int error_code, int64_t latency);
         void Reset();
+
+        int64_t max_error_cost() const;
+        int health_index_in_percent() const;
      
     private:
         int64_t UpdateLatency(int64_t latency);
@@ -72,8 +81,8 @@ private:
     EmaErrorRecorder _long_window;
     EmaErrorRecorder _short_window;
     int64_t _last_reset_time_ms; 
-    butil::atomic<bool> _broken;
-    butil::atomic<int> _isolation_duration_ms;
+    int _isolation_duration_ms;
+    int _broken_times;
 };
 
 }  // namespace brpc

@@ -89,6 +89,20 @@ void CircuitBreaker::EmaErrorRecorder::Reset() {
     _ema_latency.store(0, butil::memory_order_relaxed);
 }
 
+int64_t CircuitBreaker::EmaErrorRecorder::max_error_cost() const {
+    const int64_t ema_latency = _ema_latency.load(butil::memory_order_relaxed);
+    return ema_latency * _window_size * (_max_error_percent / 100.0) * (1.0 + EPSILON);
+}
+
+int CircuitBreaker::EmaErrorRecorder::health_index_in_percent() const {
+    const int64_t current_error_cost = _ema_error_cost.load(butil::memory_order_relaxed);
+    const int64_t error_cost_threshold = max_error_cost();
+    if (error_cost_threshold == 0) {
+        return current_error_cost == 0 ? 100 : 0;
+    }
+    return 100 - std::min<int>(100 * current_error_cost / error_cost_threshold, 100);
+}
+
 int64_t CircuitBreaker::EmaErrorRecorder::UpdateLatency(int64_t latency) {
     int64_t ema_latency = _ema_latency.load(butil::memory_order_relaxed);
     do {
@@ -115,9 +129,7 @@ bool CircuitBreaker::EmaErrorRecorder::UpdateErrorCost(int64_t error_cost,
         int64_t ema_error_cost =
             _ema_error_cost.fetch_add(error_cost, butil::memory_order_relaxed);
         ema_error_cost += error_cost;
-        int64_t max_error_cost = ema_latency * _window_size *
-            (_max_error_percent / 100.0) * (1.0 + EPSILON);
-        return ema_error_cost <= max_error_cost;
+        return ema_error_cost <= max_error_cost();
     }
 
     //Ordinary response
@@ -147,45 +159,43 @@ CircuitBreaker::CircuitBreaker()
     , _short_window(FLAGS_circuit_breaker_short_window_size,
                     FLAGS_circuit_breaker_short_window_error_percent)
     , _last_reset_time_ms(butil::cpuwide_time_ms())
-    , _broken(false)
-    , _isolation_duration_ms(FLAGS_circuit_breaker_min_isolation_duration_ms) {
+    , _isolation_duration_ms(FLAGS_circuit_breaker_min_isolation_duration_ms)
+    , _broken_times(0) {
 }
 
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
-    if (_broken.load(butil::memory_order_relaxed)) {
-        return false;
-    }
-    if (_long_window.OnCallEnd(error_code, latency) &&
-        _short_window.OnCallEnd(error_code, latency)) {
-        return true;
-    }
-    if (!_broken.exchange(true, butil::memory_order_acquire)) {
-        UpdateIsolationDuration();
-    }
-    return false;
+    return _long_window.OnCallEnd(error_code, latency) &&
+           _short_window.OnCallEnd(error_code, latency);
 }
 
 void CircuitBreaker::Reset() {
     _long_window.Reset();
     _short_window.Reset();
     _last_reset_time_ms = butil::cpuwide_time_ms();
-    _broken.store(false, butil::memory_order_release);
+}
+
+void CircuitBreaker::MarkAsBroken() {
+    ++_broken_times;
+    UpdateIsolationDuration();
+}
+
+int CircuitBreaker::health_index_in_percent() const {
+    return std::min(_long_window.health_index_in_percent(),
+                    _short_window.health_index_in_percent());
 }
 
 void CircuitBreaker::UpdateIsolationDuration() {
     int64_t now_time_ms = butil::cpuwide_time_ms();
-    int isolation_duration_ms = _isolation_duration_ms.load(butil::memory_order_relaxed);
     const int max_isolation_duration_ms =
         FLAGS_circuit_breaker_max_isolation_duration_ms;
     const int min_isolation_duration_ms =
         FLAGS_circuit_breaker_min_isolation_duration_ms;
     if (now_time_ms - _last_reset_time_ms < max_isolation_duration_ms) {
-        isolation_duration_ms =
-            std::min(isolation_duration_ms * 2, max_isolation_duration_ms);
+        _isolation_duration_ms =
+            std::min(_isolation_duration_ms * 2, max_isolation_duration_ms);
     } else {
-        isolation_duration_ms = min_isolation_duration_ms;
+        _isolation_duration_ms = min_isolation_duration_ms;
     }
-    _isolation_duration_ms.store(isolation_duration_ms, butil::memory_order_relaxed);
 }
 
 }  // namespace brpc

@@ -700,6 +700,9 @@ void Controller::Call::OnComplete(
         sending_sock->FeedbackCircuitBreaker(error_code, 
             butil::gettimeofday_us() - begin_time_us);
     }
+    if (error_code != 0 && sending_sock) {
+        sending_sock->AddErrorCount();
+    }
  
     switch (c->connection_type()) {
     case CONNECTION_TYPE_UNKNOWN:
@@ -765,7 +768,7 @@ void Controller::Call::OnComplete(
             sock->SetLogOff();
         }
     }
-   
+    
     if (need_feedback) {
         const LoadBalancer::CallInfo info =
             { begin_time_us, peer_id, error_code, c };

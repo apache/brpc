@@ -317,6 +317,14 @@ public:
         __attribute__ ((__format__ (__printf__, 3, 4)));
     static int SetFailed(SocketId id);
 
+    void AddErrorCount();
+
+    uint64_t error_count() const;
+
+    int broken_times() const;
+
+    int health_index_in_percent() const;
+
     void FeedbackCircuitBreaker(int error_code, int64_t latency_us);
 
     bool Failed() const;

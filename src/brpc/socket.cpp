@@ -178,6 +178,8 @@ public:
 
     CircuitBreaker circuit_breaker;
 
+    butil::atomic<uint64_t> error_count;
+
     explicit SharedPart(SocketId creator_socket_id);
     ~SharedPart();
 
@@ -193,7 +195,8 @@ Socket::SharedPart::SharedPart(SocketId creator_socket_id2)
     , in_num_messages(0)
     , out_size(0)
     , out_num_messages(0)
-    , extended_stat(NULL) {
+    , extended_stat(NULL) 
+    , error_count(0) {
 }
 
 Socket::SharedPart::~SharedPart() {
@@ -802,6 +805,34 @@ int Socket::ReleaseAdditionalReference() {
     return -1;
 }
 
+void Socket::AddErrorCount() {
+    GetOrNewSharedPart()->error_count.fetch_add(1, butil::memory_order_relaxed);
+}
+
+int Socket::broken_times() const {
+    SharedPart* sp = GetSharedPart();
+    if (sp) {
+        return sp->circuit_breaker.broken_times();
+    }
+    return 0;
+}
+
+uint64_t Socket::error_count() const {
+    SharedPart* sp = GetSharedPart();
+    if (sp) {
+        return sp->error_count.load(butil::memory_order_relaxed);
+    }
+    return 0;
+}
+
+int Socket::health_index_in_percent() const {
+    SharedPart* sp = GetSharedPart();
+    if (sp) {
+        return sp->circuit_breaker.health_index_in_percent();
+    }
+    return 100;
+}
+
 int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
     if (error_code == 0) {
         CHECK(false) << "error_code is 0";
@@ -876,8 +907,10 @@ int Socket::SetFailed() {
 
 void Socket::FeedbackCircuitBreaker(int error_code, int64_t latency_us) {
     if (!GetOrNewSharedPart()->circuit_breaker.OnCallEnd(error_code, latency_us)) {
-        LOG(ERROR) << "Socket[" << *this << "] isolated by circuit breaker";
-        SetFailed(main_socket_id());
+        if (SetFailed(main_socket_id()) == 0) {
+            SetFailed(main_socket_id());
+            LOG(ERROR) << "Socket[" << *this << "] isolated by circuit breaker";
+        }
     }
 }
 
