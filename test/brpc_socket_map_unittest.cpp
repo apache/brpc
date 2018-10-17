@@ -77,18 +77,18 @@ TEST_F(SocketMapTest, idle_timeout) {
     brpc::SocketUniquePtr main_ptr;
     brpc::SocketUniquePtr ptr;
     ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
-    ASSERT_EQ(0, main_ptr->GetPooledSocket(&ptr));
+    ASSERT_EQ(0, main_ptr->GetSocketFromGroup(&ptr, CONNECTION_TYPE_POOLED));
     ASSERT_TRUE(main_ptr.get());
     main_ptr.reset();
     id = ptr->id();
-    ptr->ReturnToPool();
+    ptr->ReturnToGroup();
     ptr.reset(NULL);
     usleep(TIMEOUT * 1000000L + 2000000L);
     // Pooled connection should be `ReleaseAdditionalReference',
     // which destroyed the Socket. As a result `GetSocketFromPool'
     // should return a new one
     ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
-    ASSERT_EQ(0, main_ptr->GetPooledSocket(&ptr));
+    ASSERT_EQ(0, main_ptr->GetSocketFromGroup(&ptr, CONNECTION_TYPE_POOLED));
     ASSERT_TRUE(main_ptr.get());
     main_ptr.reset();
     ASSERT_NE(id, ptr->id());
@@ -107,17 +107,17 @@ TEST_F(SocketMapTest, max_pool_size) {
     for (int i = 0; i < TOTALSIZE; ++i) {
         brpc::SocketUniquePtr main_ptr;
         ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
-        ASSERT_EQ(0, main_ptr->GetPooledSocket(&ptrs[i]));
+        ASSERT_EQ(0, main_ptr->GetSocketFromGroup(&ptrs[i], CONNECTION_TYPE_POOLED));
         ASSERT_TRUE(main_ptr.get());
         main_ptr.reset();
     }
     for (int i = 0; i < TOTALSIZE; ++i) {
-        ASSERT_EQ(0, ptrs[i]->ReturnToPool());
+        ASSERT_EQ(0, ptrs[i]->ReturnToGroup());
     }
     std::vector<brpc::SocketId> ids;
     brpc::SocketUniquePtr main_ptr;
     ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
-    main_ptr->ListPooledSockets(&ids);
+    main_ptr->ListSocketsOfGroup(&ids);
     EXPECT_EQ(MAXSIZE, (int)ids.size());
     // The last few Sockets should be `SetFailed' by `ReturnSocketToPool'
     for (int i = MAXSIZE; i < TOTALSIZE; ++i) {
