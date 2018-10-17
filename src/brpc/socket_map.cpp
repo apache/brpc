@@ -351,7 +351,7 @@ void* SocketMap::RunWatchConnections(void* arg) {
 
 void SocketMap::WatchConnections() {
     std::vector<SocketId> main_sockets;
-    std::vector<SocketId> pooled_sockets;
+    std::vector<SocketId> socket_group;
     std::vector<SocketMapKey> orphan_sockets;
     const uint64_t CHECK_INTERVAL_US = 1000000UL;
     while (bthread_usleep(CHECK_INTERVAL_US) == 0) {
@@ -365,10 +365,10 @@ void SocketMap::WatchConnections() {
             for (size_t i = 0; i < main_sockets.size(); ++i) {
                 SocketUniquePtr s;
                 if (Socket::Address(main_sockets[i], &s) == 0) {
-                    s->ListPooledSockets(&pooled_sockets);
-                    for (size_t i = 0; i < pooled_sockets.size(); ++i) {
+                    s->ListSocketsOfGroup(&socket_group);
+                    for (size_t i = 0; i < socket_group.size(); ++i) {
                         SocketUniquePtr s2;
-                        if (Socket::Address(pooled_sockets[i], &s2) == 0) {
+                        if (Socket::Address(socket_group[i], &s2) == 0) {
                             s2->ReleaseReferenceIfIdle(idle_seconds);
                         }
                     }

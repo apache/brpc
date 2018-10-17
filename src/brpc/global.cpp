@@ -380,7 +380,7 @@ static void GlobalInitializeOrDieImpl() {
                                     NULL, NULL, ProcessStreamingMessage,
                                     ProcessStreamingMessage,
                                     NULL, NULL, NULL,
-                                    CONNECTION_TYPE_SINGLE, "streaming_rpc" };
+                                    CONNECTION_TYPE_SINGLE_AND_MULTIPLE, "streaming_rpc" };
 
     if (RegisterProtocol(PROTOCOL_STREAMING_RPC, streaming_protocol) != 0) {
         exit(1);
@@ -402,7 +402,7 @@ static void GlobalInitializeOrDieImpl() {
                                 ProcessHttpRequest, ProcessHttpResponse,
                                 VerifyHttpRequest, ParseHttpServerAddress,
                                 GetHttpMethodName,
-                                CONNECTION_TYPE_SINGLE,
+                                CONNECTION_TYPE_SINGLE_AND_MULTIPLE,
                                 "h2c" };
     if (RegisterProtocol(PROTOCOL_HTTP2, http2_protocol) != 0) {
         exit(1);
