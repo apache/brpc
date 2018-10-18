@@ -39,7 +39,7 @@ public:
     virtual ~NamingServiceActions() {}
     virtual void AddServers(const std::vector<ServerNode>& servers) = 0;
     virtual void RemoveServers(const std::vector<ServerNode>& servers) = 0;
-    virtual void ResetServers(const std::vector<ServerNode>& servers) = 0;
+    virtual bool ResetServers(const std::vector<ServerNode>& servers) = 0;
 };
 
 // Mapping a name to ServerNodes.

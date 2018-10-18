@@ -20,6 +20,7 @@
 #include <vector>
 #include "butil/string_printf.h"
 #include "butil/files/temp_file.h"
+#include "butil/file_util.h"
 #include "bthread/bthread.h"
 #ifdef BAIDU_INTERNAL
 #include "brpc/policy/baidu_naming_service.h"
@@ -36,6 +37,7 @@
 
 namespace brpc {
 DECLARE_int32(health_check_interval);
+DECLARE_string(backup_dir_when_ns_fails);
 
 namespace policy {
 
@@ -645,6 +647,74 @@ TEST(NamingServiceTest, discovery_sanity) {
     }
     ASSERT_EQ(svc.RenewCount(), 1);
     ASSERT_EQ(svc.CancelCount(), 1);
+}
+
+class MyEchoService : public ::test::EchoService {
+    void Echo(google::protobuf::RpcController* cntl_base,
+              const ::test::EchoRequest* req,
+              ::test::EchoResponse* res,
+              google::protobuf::Closure* done) {
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        brpc::ClosureGuard done_guard(done);
+        cntl->http_response().set_content_type("application/proto");
+        res->set_message(req->message());
+    }
+};
+
+
+TEST(NamingServiceTest, backupfiles_load) {
+    brpc::Server server;
+    MyEchoService svc;
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start("localhost:8635", NULL));
+
+    brpc::FLAGS_backup_dir_when_ns_fails = ".";
+    brpc::Channel channel;
+    brpc::ChannelOptions opt;
+    brpc::FLAGS_backup_dir_when_ns_fails = ".";
+    ASSERT_EQ(0, channel.Init("http://brpc-not-exist.com", "rr", &opt));
+
+    brpc::Controller cntl;
+    ::test::EchoRequest req;
+    ::test::EchoResponse res;
+    req.set_message("dummy");
+    ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, NULL);
+    ASSERT_TRUE(!cntl.Failed());
+    ASSERT_TRUE(res.message() == "dummy");
+}
+
+TEST(NamingServiceTest, backupfiles_save) {
+    brpc::policy::FLAGS_discovery_api_addr = "http://127.0.0.1:8635/discovery/nodes";
+    brpc::FLAGS_backup_dir_when_ns_fails = ".";
+    brpc::Server server;
+    DiscoveryNamingServiceImpl svc;
+    std::string rest_mapping =
+        "/discovery/nodes => Nodes, "
+        "/discovery/fetchs => Fetchs";
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE,
+                rest_mapping.c_str()));
+    ASSERT_EQ(0, server.Start("localhost:8635", NULL));
+
+    brpc::Channel channel;
+    brpc::ChannelOptions opt;
+    opt.protocol = brpc::PROTOCOL_HTTP;
+    brpc::FLAGS_backup_dir_when_ns_fails = ".";
+    ASSERT_EQ(0, channel.Init("discovery://admin.test", "rr", &opt));
+
+    // Wait for a while to ensure server infomation is flushed to disk.
+    bthread_usleep(500000);
+
+    FILE* fp = fopen("discovery/admin.test", "r");
+    ASSERT_TRUE(fp);
+    char* line = NULL;
+    size_t line_len = 0;
+    ssize_t nr = 0;
+    ASSERT_TRUE((nr = getline(&line, &line_len, fp)) != -1);
+    ASSERT_TRUE(butil::StringPiece(line, nr).starts_with("127.0.0.1:8999"));
+    ASSERT_TRUE((nr = getline(&line, &line_len, fp)) != -1);
+    ASSERT_TRUE(butil::StringPiece(line, nr).starts_with("127.0.1.1:9000"));
+    free(line);
+    fclose(fp);
 }
 
 } //namespace
