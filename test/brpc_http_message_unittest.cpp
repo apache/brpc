@@ -333,37 +333,37 @@ TEST(HttpMessageTest, serialize_http_request) {
     butil::IOBuf request;
     butil::IOBuf content;
     content.append("data");
-    SerializeHttpRequest(&request, &header, ep, &content);
+    MakeRawHttpRequest(&request, &header, ep, &content);
     ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nHost: 127.0.0.1:1234\r\nFoo: Bar\r\nAccept: */*\r\nUser-Agent: brpc/1.0 curl/7.0\r\n\r\ndata", request);
 
     // user-set content-length is ignored.
     header.SetHeader("Content-Length", "100");
-    SerializeHttpRequest(&request, &header, ep, &content);
+    MakeRawHttpRequest(&request, &header, ep, &content);
     ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nHost: 127.0.0.1:1234\r\nFoo: Bar\r\nAccept: */*\r\nUser-Agent: brpc/1.0 curl/7.0\r\n\r\ndata", request);
 
     // user-host overwrites passed-in remote_side
     header.SetHeader("Host", "MyHost: 4321");
-    SerializeHttpRequest(&request, &header, ep, &content);
+    MakeRawHttpRequest(&request, &header, ep, &content);
     ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\nFoo: Bar\r\nHost: MyHost: 4321\r\nAccept: */*\r\nUser-Agent: brpc/1.0 curl/7.0\r\n\r\ndata", request);
 
     // user-set accept
     header.SetHeader("accePT"/*intended uppercase*/, "blahblah");
-    SerializeHttpRequest(&request, &header, ep, &content);
+    MakeRawHttpRequest(&request, &header, ep, &content);
     ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\naccePT: blahblah\r\nFoo: Bar\r\nHost: MyHost: 4321\r\nUser-Agent: brpc/1.0 curl/7.0\r\n\r\ndata", request);
 
     // user-set UA
     header.SetHeader("user-AGENT", "myUA");
-    SerializeHttpRequest(&request, &header, ep, &content);
+    MakeRawHttpRequest(&request, &header, ep, &content);
     ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\naccePT: blahblah\r\nuser-AGENT: myUA\r\nFoo: Bar\r\nHost: MyHost: 4321\r\n\r\ndata", request);
 
     // user-set Authorization
     header.SetHeader("authorization", "myAuthString");
-    SerializeHttpRequest(&request, &header, ep, &content);
+    MakeRawHttpRequest(&request, &header, ep, &content);
     ASSERT_EQ("POST / HTTP/1.1\r\nContent-Length: 4\r\naccePT: blahblah\r\nuser-AGENT: myUA\r\nauthorization: myAuthString\r\nFoo: Bar\r\nHost: MyHost: 4321\r\n\r\ndata", request);
 
     // GET does not serialize content
     header.set_method(brpc::HTTP_METHOD_GET);
-    SerializeHttpRequest(&request, &header, ep, &content);
+    MakeRawHttpRequest(&request, &header, ep, &content);
     ASSERT_EQ("GET / HTTP/1.1\r\naccePT: blahblah\r\nuser-AGENT: myUA\r\nauthorization: myAuthString\r\nFoo: Bar\r\nHost: MyHost: 4321\r\n\r\n", request);
 }
 
@@ -374,7 +374,7 @@ TEST(HttpMessageTest, serialize_http_response) {
     butil::IOBuf response;
     butil::IOBuf content;
     content.append("data");
-    SerializeHttpResponse(&response, &header, &content);
+    MakeRawHttpResponse(&response, &header, &content);
     ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 4\r\nFoo: Bar\r\n\r\ndata", response);
     // content is cleared.
     CHECK(content.empty());
@@ -382,11 +382,11 @@ TEST(HttpMessageTest, serialize_http_response) {
     // user-set content-length is ignored.
     content.append("data2");
     header.SetHeader("Content-Length", "100");
-    SerializeHttpResponse(&response, &header, &content);
+    MakeRawHttpResponse(&response, &header, &content);
     ASSERT_EQ("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nFoo: Bar\r\n\r\ndata2", response);
 
     // null content
-    SerializeHttpResponse(&response, &header, NULL);
+    MakeRawHttpResponse(&response, &header, NULL);
     ASSERT_EQ("HTTP/1.1 200 OK\r\nFoo: Bar\r\n\r\n", response);
 }
 

@@ -37,7 +37,7 @@ DECLARE_bool(enable_rpcz);
 namespace policy {
 
 DEFINE_bool(redis_verbose, false,
-            "[DEBUG] Print EVERY redis request/response to stderr");
+            "[DEBUG] Print EVERY redis request/response");
 
 struct InputResponse : public InputMessageBase {
     bthread_id_t id_wait;
@@ -142,9 +142,8 @@ void ProcessRedisResponse(InputMessageBase* msg_base) {
             }
             ((RedisResponse*)cntl->response())->Swap(&msg->response);
             if (FLAGS_redis_verbose) {
-                std::cerr << "[REDIS RESPONSE] "
-                          << *((RedisResponse*)cntl->response())
-                          << std::endl;
+                LOG(INFO) << "\n[REDIS RESPONSE] "
+                          << *((RedisResponse*)cntl->response());
             }
         }
     } // silently ignore the response.
@@ -171,7 +170,7 @@ void SerializeRedisRequest(butil::IOBuf* buf,
     }
     ControllerPrivateAccessor(cntl).set_pipelined_count(rr->command_size());
     if (FLAGS_redis_verbose) {
-        std::cerr << "[REDIS REQUEST] " << *rr << std::endl;
+        LOG(INFO) << "\n[REDIS REQUEST] " << *rr;
     }
 }
 

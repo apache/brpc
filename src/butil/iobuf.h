@@ -29,6 +29,7 @@
 #include "butil/zero_copy_stream_as_streambuf.h"
 #include "butil/macros.h"
 #include "butil/reader_writer.h"
+#include "butil/binary_printer.h"
 
 // For IOBuf::appendv(const const_iovec*, size_t). The only difference of this
 // struct from iovec (defined in sys/uio.h) is that iov_base is `const void*'
@@ -402,25 +403,6 @@ private:
 };
 
 std::ostream& operator<<(std::ostream&, const IOBuf& buf);
-
-// Print binary content within max length,
-// working for both butil::IOBuf and std::string
-struct PrintedAsBinary {
-    explicit PrintedAsBinary(const IOBuf& b)
-        : _iobuf(&b), _max_length(64) {}
-    explicit PrintedAsBinary(const std::string& b)
-        : _iobuf(NULL), _data(b), _max_length(64) {}
-    PrintedAsBinary(const IOBuf& b, size_t max_length)
-        : _iobuf(&b), _max_length(max_length) {}
-    PrintedAsBinary(const std::string& b, size_t max_length)
-        : _iobuf(NULL), _data(b), _max_length(max_length) {}
-    void print(std::ostream& os) const;
-private:
-    const IOBuf* _iobuf;
-    std::string _data;
-    size_t _max_length;
-};
-std::ostream& operator<<(std::ostream&, const PrintedAsBinary& buf);
 
 inline bool operator==(const butil::IOBuf& b, const butil::StringPiece& s)
 { return b.equals(s); }

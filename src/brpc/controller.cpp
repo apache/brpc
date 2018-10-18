@@ -123,12 +123,12 @@ static void CreateVars() {
 Controller::Controller() {
     CHECK_EQ(0, pthread_once(&s_create_vars_once, CreateVars));
     *g_ncontroller << 1;
-    InternalReset(true);
+    ResetPods();
 }
 
 Controller::~Controller() {
     *g_ncontroller << -1;
-    DeleteStuff();
+    ResetNonPods();
 }
 
 class IgnoreAllRead : public ProgressiveReader {
@@ -148,11 +148,13 @@ static void CreateIgnoreAllRead() { s_ignore_all_read = new IgnoreAllRead; }
 // directly and indirectly referenced), do them in this method. Notice that
 // you don't have to set the fields to initial state after deletion since
 // they'll be set uniformly after this method is called.
-void Controller::DeleteStuff() {
+void Controller::ResetNonPods() {
     if (_span) {
         Span::Submit(_span, butil::cpuwide_time_us());
     }
     _error_text.clear();
+    _remote_side = butil::EndPoint();
+    _local_side = butil::EndPoint();
     if (_session_local_data) {
         _server->_session_local_data_pool->Return(_session_local_data);
     }
@@ -193,13 +195,12 @@ void Controller::DeleteStuff() {
         _rpa.reset(NULL);
     }
     delete _remote_stream_settings;
+    _thrift_method_name.clear();
+
+    CHECK(_unfinished_call == NULL);
 }
 
-void Controller::InternalReset(bool in_constructor) {
-    if (!in_constructor) {
-        DeleteStuff();
-        CHECK(_unfinished_call == NULL);
-    }
+void Controller::ResetPods() {
     // NOTE: Make the sequence of assignments same with the order that they're
     // defined in header. Better for cpu cache and faster for lookup.
     _span = NULL;
@@ -208,8 +209,6 @@ void Controller::InternalReset(bool in_constructor) {
     set_pb_bytes_to_base64(true);
 #endif
     _error_code = 0;
-    _remote_side = butil::EndPoint();
-    _local_side = butil::EndPoint();
     _session_local_data = NULL;
     _server = NULL;
     _oncancel_id = INVALID_BTHREAD_ID;
@@ -253,7 +252,6 @@ void Controller::InternalReset(bool in_constructor) {
     _request_stream = INVALID_STREAM_ID;
     _response_stream = INVALID_STREAM_ID;
     _remote_stream_settings = NULL;
-    _thrift_method_name = "";
 }
 
 Controller::Call::Call(Controller::Call* rhs)
@@ -365,7 +363,7 @@ void Controller::AppendServerIdentiy() {
 inline void UpdateResponseHeader(Controller* cntl) {
     DCHECK(cntl->Failed());
     if (cntl->request_protocol() == PROTOCOL_HTTP ||
-        cntl->request_protocol() == PROTOCOL_HTTP2) {
+        cntl->request_protocol() == PROTOCOL_H2) {
         if (cntl->ErrorCode() != EHTTP) {
             // Set the related status code
             cntl->http_response().set_status_code(
@@ -485,7 +483,7 @@ private:
 
 int Controller::RunOnCancel(bthread_id_t id, void* data, int error_code) {
     if (error_code == 0) {
-        // Called from Controller::DeleteStuff upon Controller's Reset or
+        // Called from Controller::ResetNonPods upon Controller's Reset or
         // destruction, we just call the callback in-place.
         static_cast<google::protobuf::Closure*>(data)->Run();
         CHECK_EQ(0, bthread_id_unlock_and_destroy(id));
@@ -1394,7 +1392,7 @@ void Controller::set_mongo_session_data(MongoContext* data) {
 
 bool Controller::is_ssl() const {
     Socket* s = _current_call.sending_sock.get();
-    return s ? (s->ssl_state() == SSL_CONNECTED) : false;
+    return s != NULL && s->is_ssl();
 }
 
 x509_st* Controller::get_peer_certificate() const {

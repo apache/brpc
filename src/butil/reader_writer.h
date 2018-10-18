@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Bilibili, Inc.
+// Copyright (c) 2018 brpc authors.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Author: Ge,Jun (gejun@bilibili.com)
+// Author: Ge,Jun (jge666@gmail.com)
 // Date: Wed Aug  8 05:51:33 PDT 2018
 
 #ifndef BUTIL_READER_WRITER_H

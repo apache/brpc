@@ -785,7 +785,7 @@ class RtmpClientStream : public RtmpStreamBase
 public:
     RtmpClientStream();
 
-    void Destroy();
+    void Destroy() override;
 
     // Create this stream on `client' according to `options'.
     // If any error occurred during initialization, OnStop() will be called.
@@ -842,7 +842,7 @@ friend class RtmpRetryingClientStream;
 
     // The Destroy() w/o dereference _self_ref, to be called internally by
     // client stream self.
-    void SignalError();
+    void SignalError() override;
 
     butil::intrusive_ptr<RtmpClientImpl> _client_impl;
     butil::intrusive_ptr<RtmpClientStream> _self_ref;

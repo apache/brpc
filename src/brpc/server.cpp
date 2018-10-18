@@ -535,9 +535,7 @@ bool is_http_protocol(const char* name) {
     if (name[0] != 'h') {
         return false;
     }
-    return strcmp(name, "http") == 0 ||
-        strcmp(name, "h2c") == 0 ||
-        strcmp(name, "h2") == 0;
+    return strcmp(name, "http") == 0 || strcmp(name, "h2") == 0;
 }
 
 Acceptor* Server::BuildAcceptor() {
