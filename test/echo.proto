@@ -53,6 +53,11 @@ service UserNamingService {
     rpc Touch(HttpRequest) returns (HttpResponse);
 };
 
+service DiscoveryNamingService {
+    rpc Nodes(HttpRequest) returns (HttpResponse);
+    rpc Fetchs(HttpRequest) returns (HttpResponse);
+};
+
 enum State0 {
     STATE0_NUM_0 = 0;
     STATE0_NUM_1 = 1;

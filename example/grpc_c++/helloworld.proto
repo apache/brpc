@@ -1,0 +1,21 @@
+syntax = "proto2";
+
+package helloworld;
+
+option cc_generic_services = true;
+
+// The greeting service definition.
+service Greeter {
+  // Sends a greeting
+  rpc SayHello (HelloRequest) returns (HelloReply) {}
+}
+
+// The request message containing the user's name.
+message HelloRequest {
+  required string name = 1;
+}
+
+// The response message containing the greetings
+message HelloReply {
+  required string message = 1;
+}

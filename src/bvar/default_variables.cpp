@@ -197,8 +197,8 @@ struct ProcMemory {
     long resident;  // resident set size
     long share;     // shared pages
     long trs;       // text (code)
-    long drs;       // data/stack
     long lrs;       // library
+    long drs;       // data/stack
     long dt;        // dirty pages
 };
 
@@ -213,8 +213,8 @@ static bool read_proc_memory(ProcMemory &m) {
     }
     if (fscanf(fp, "%ld %ld %ld %ld %ld %ld %ld",
                &m.size, &m.resident, &m.share,
-               &m.trs, &m.drs, &m.lrs, &m.dt) != 7) {
-        PLOG(WARNING) << "Fail to fscanf";
+               &m.trs, &m.lrs, &m.drs, &m.dt) != 7) {
+        PLOG(WARNING) << "Fail to fscanf /proc/self/statm";
         return false;
     }
     return true;
@@ -691,8 +691,6 @@ BVAR_DEFINE_PROC_MEMORY_FIELD(resident, "process_memory_resident");
 BVAR_DEFINE_PROC_MEMORY_FIELD(share, "process_memory_shared");
 BVAR_DEFINE_PROC_MEMORY_FIELD(trs, "process_memory_text");
 BVAR_DEFINE_PROC_MEMORY_FIELD(drs, "process_memory_data_and_stack");
-BVAR_DEFINE_PROC_MEMORY_FIELD(lrs, "process_memory_library");
-BVAR_DEFINE_PROC_MEMORY_FIELD(dt, "process_memory_dirty");
 
 BVAR_DEFINE_LOAD_AVERAGE_FIELD(loadavg_1m, "system_loadavg_1m");
 BVAR_DEFINE_LOAD_AVERAGE_FIELD(loadavg_5m, "system_loadavg_5m");

@@ -226,6 +226,10 @@ void ConnectionsService::PrintConnections(
             if (strcmp(pref_prot, "unknown") == 0) {
                 // Show unknown protocol as - to be consistent with other columns.
                 pref_prot = "-";
+            } else if (strcmp(pref_prot, "h2") == 0) {
+                if (!ptr->is_ssl()) {
+                    pref_prot = "h2c";
+                }
             }
             ptr->GetStat(&stat);
             PrintRealDateTime(os, ptr->_reset_fd_real_us);

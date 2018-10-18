@@ -384,6 +384,10 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     }
     // HTTP needs this field to be set before any SetFailed()
     cntl->_request_protocol = _options.protocol;
+    if (_options.protocol.has_param()) {
+        CHECK(cntl->protocol_param().empty());
+        cntl->protocol_param() = _options.protocol.param();
+    }
     cntl->_preferred_index = _preferred_index;
     cntl->_retry_policy = _options.retry_policy;
     if (_options.enable_circuit_breaker) {

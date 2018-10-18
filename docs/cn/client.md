@@ -121,6 +121,10 @@ BNS是百度内常用的命名服务，比如bns://rdev.matrix.all，其中"bns"
 
 缺点: 受限于DNS的格式限制无法传递复杂的meta数据，也无法实现通知机制。
 
+### https://\<url\>
+
+和http前缀类似，只是会自动开启SSL。
+
 ### consul://\<service-name\>
 
 通过consul获取服务名称为service-name的服务列表。consul的默认地址是localhost:8500，可通过gflags设置-consul\_agent\_addr来修改。consul的连接超时时间默认是200ms，可通过-consul\_connect\_timeout\_ms来修改。
@@ -251,7 +255,7 @@ stub.some_method(controller, request, response, done);
 ```c++
 XXX_Stub(&channel).some_method(controller, request, response, done);
 ```
-一个例外是http client。访问http服务和protobuf没什么关系，直接调用CallMethod即可，除了Controller和done均为NULL，详见[访问HTTP服务](http_client.md)。
+一个例外是http/h2 client。访问http服务和protobuf没什么关系，直接调用CallMethod即可，除了Controller和done均为NULL，详见[访问http/h2服务](http_client.md)。
 
 ## 同步访问
 
@@ -531,7 +535,7 @@ Controller.set_max_retry(0)或ChannelOptions.max_retry=0关闭重试。
 
 一些错误重试是没有意义的，就不会重试，比如请求有错时(EREQUEST)不会重试，因为server总不会接受,没有意义。
 
-用户可以通过继承[brpc::RetryPolicy](https://github.com/brpc/brpc/blob/master/src/brpc/retry_policy.h)自定义重试条件。比如brpc默认不重试HTTP相关的错误，而你的程序中希望在碰到HTTP_STATUS_FORBIDDEN (403)时重试，可以这么做：
+用户可以通过继承[brpc::RetryPolicy](https://github.com/brpc/brpc/blob/master/src/brpc/retry_policy.h)自定义重试条件。比如brpc默认不重试http/h2相关的错误，而你的程序中希望在碰到HTTP_STATUS_FORBIDDEN (403)时重试，可以这么做：
 
 ```c++
 #include <brpc/retry_policy.h>
@@ -539,7 +543,7 @@ Controller.set_max_retry(0)或ChannelOptions.max_retry=0关闭重试。
 class MyRetryPolicy : public brpc::RetryPolicy {
 public:
     bool DoRetry(const brpc::Controller* cntl) const {
-        if (cntl->ErrorCode() == brpc::EHTTP && // HTTP错误
+        if (cntl->ErrorCode() == brpc::EHTTP && // http/h2错误
             cntl->http_response().status_code() == brpc::HTTP_STATUS_FORBIDDEN) {
             return true;
         }
@@ -573,19 +577,25 @@ Channel的默认协议是baidu_std，可通过设置ChannelOptions.protocol换�
 目前支持的有：
 
 - PROTOCOL_BAIDU_STD 或 “baidu_std"，即[百度标准协议](baidu_std.md)，默认为单连接。
+- PROTOCOL_HTTP 或 ”http", http/1.0或http/1.1协议，默认为连接池(Keep-Alive)。
+  - 访问普通http服务的方法见[访问http/h2服务](http_client.md)
+  - 通过http:json或http:proto访问pb服务的方法见[http/h2衍生协议](http_derivatives.md)
+- PROTOCOL_H2 或 ”h2", http/2.0协议，默认是单连接。
+  - 访问普通h2服务的方法见[访问http/h2服务](http_client.md)。
+  - 通过h2:json或h2:proto访问pb服务的方法见[http/h2衍生协议](http_derivatives.md)
+- "h2:grpc", [gRPC](https://grpc.io)的协议，也是h2的衍生协议，默认为单连接，具体见[h2:grpc](http_derivatives.md#h2grpc)。
+- PROTOCOL_THRIFT 或 "thrift"，[apache thrift](https://thrift.apache.org)的协议，默认为连接池, 具体方法见[访问thrift](thrift.md)。
+- PROTOCOL_MEMCACHE 或 "memcache"，memcached的二进制协议，默认为单连接。具体方法见[访问memcached](memcache_client.md)。
+- PROTOCOL_REDIS 或 "redis"，redis 1.2后的协议(也是hiredis支持的协议)，默认为单连接。具体方法见[访问Redis](redis_client.md)。
 - PROTOCOL_HULU_PBRPC 或 "hulu_pbrpc"，hulu的协议，默认为单连接。
 - PROTOCOL_NOVA_PBRPC 或 ”nova_pbrpc“，网盟的协议，默认为连接池。
-- PROTOCOL_HTTP 或 ”http", http 1.0或1.1协议，默认为连接池(Keep-Alive)。具体方法见[访问HTTP服务](http_client.md)。
 - PROTOCOL_SOFA_PBRPC 或 "sofa_pbrpc"，sofa-pbrpc的协议，默认为单连接。
 - PROTOCOL_PUBLIC_PBRPC 或 "public_pbrpc"，public_pbrpc的协议，默认为连接池。
 - PROTOCOL_UBRPC_COMPACK 或 "ubrpc_compack"，public/ubrpc的协议，使用compack打包，默认为连接池。具体方法见[ubrpc (by protobuf)](ub_client.md)。相关的还有PROTOCOL_UBRPC_MCPACK2或ubrpc_mcpack2，使用mcpack2打包。
 - PROTOCOL_NSHEAD_CLIENT 或 "nshead_client"，这是发送baidu-rpc-ub中所有UBXXXRequest需要的协议，默认为连接池。具体方法见[访问UB](ub_client.md)。
 - PROTOCOL_NSHEAD 或 "nshead"，这是发送NsheadMessage需要的协议，默认为连接池。具体方法见[nshead+blob](ub_client.md#nshead-blob) 。
-- PROTOCOL_MEMCACHE 或 "memcache"，memcached的二进制协议，默认为单连接。具体方法见[访问memcached](memcache_client.md)。
-- PROTOCOL_REDIS 或 "redis"，redis 1.2后的协议（也是hiredis支持的协议），默认为单连接。具体方法见[访问Redis](redis_client.md)。
 - PROTOCOL_NSHEAD_MCPACK 或 "nshead_mcpack", 顾名思义，格式为nshead + mcpack，使用mcpack2pb适配，默认为连接池。
 - PROTOCOL_ESP 或 "esp"，访问使用esp协议的服务，默认为连接池。
-- PROTOCOL_THRIFT 或 "thrift"，访问使用thrift协议的服务，默认为连接池, 具体方法见[访问thrift](thrift.md)。
 
 ## 连接方式
 
@@ -661,7 +671,7 @@ brpc支持[Streaming RPC](streaming_rpc.md)，这是一种应用层的连接，�
 
 baidu_std和hulu_pbrpc协议支持附件，这段数据由用户自定义，不经过protobuf的序列化。站在client的角度，设置在Controller::request_attachment()的附件会被server端收到，response_attachment()则包含了server端送回的附件。附件不受压缩选项影响。
 
-在http协议中，附件对应[message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html)，比如要POST的数据就设置在request_attachment()中。
+在http/h2协议中，附件对应[message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html)，比如要POST的数据就设置在request_attachment()中。
 
 ## 开启SSL
 
@@ -718,7 +728,7 @@ set_request_compress_type()设置request的压缩方式，默认不压缩。
 
 注意：附件不会被压缩。
 
-HTTP body的压缩方法见[client压缩request body](http_client#压缩request-body)。
+http/h2 body的压缩方法见[client压缩request body](http_client#压缩request-body)。
 
 支持的压缩方法有：
 

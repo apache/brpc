@@ -2552,22 +2552,38 @@ TEST_F(ChannelTest, adaptive_protocol_type) {
     brpc::AdaptiveProtocolType ptype;
     ASSERT_EQ(brpc::PROTOCOL_UNKNOWN, ptype);
     ASSERT_STREQ("unknown", ptype.name());
+    ASSERT_FALSE(ptype.has_param());
+    ASSERT_EQ("", ptype.param());
 
     ptype = brpc::PROTOCOL_HTTP;
     ASSERT_EQ(brpc::PROTOCOL_HTTP, ptype);
     ASSERT_STREQ("http", ptype.name());
+    ASSERT_FALSE(ptype.has_param());
+    ASSERT_EQ("", ptype.param());
+
+    ptype = "http:xyz ";
+    ASSERT_EQ(brpc::PROTOCOL_HTTP, ptype);
+    ASSERT_STREQ("http", ptype.name());
+    ASSERT_TRUE(ptype.has_param());
+    ASSERT_EQ("xyz ", ptype.param());
 
     ptype = "HuLu_pbRPC";
     ASSERT_EQ(brpc::PROTOCOL_HULU_PBRPC, ptype);
     ASSERT_STREQ("hulu_pbrpc", ptype.name());
+    ASSERT_FALSE(ptype.has_param());
+    ASSERT_EQ("", ptype.param());
     
     ptype = "blah";
     ASSERT_EQ(brpc::PROTOCOL_UNKNOWN, ptype);
-    ASSERT_STREQ("unknown", ptype.name());
+    ASSERT_STREQ("blah", ptype.name());
+    ASSERT_FALSE(ptype.has_param());
+    ASSERT_EQ("", ptype.param());
 
     ptype = "Baidu_STD";
     ASSERT_EQ(brpc::PROTOCOL_BAIDU_STD, ptype);
     ASSERT_STREQ("baidu_std", ptype.name());
+    ASSERT_FALSE(ptype.has_param());
+    ASSERT_EQ("", ptype.param());
 }
 
 } //namespace

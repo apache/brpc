@@ -240,7 +240,7 @@ void InputMessenger::OnNewMessages(Socket* m) {
                 } else if (pr.error() == PARSE_ERROR_TRY_OTHERS) {
                     LOG(WARNING)
                         << "Close " << *m << " due to unknown message: "
-                        << butil::PrintedAsBinary(m->_read_buf);
+                        << butil::ToPrintable(m->_read_buf);
                     m->SetFailed(EINVAL, "Close %s due to unknown message",
                                  m->description().c_str());
                     return;
