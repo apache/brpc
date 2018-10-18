@@ -140,7 +140,7 @@ OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h)
 STATIC_LINKINGS=
 DYNAMIC_LINKINGS="-lpthread -lssl -lcrypto -ldl -lz"
 if [ "$SYSTEM" = "Linux" ]; then
-    DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -lrt"
+    DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -lrt -latomic"
 fi
 if [ "$SYSTEM" = "Darwin" ]; then
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -framework CoreFoundation"

@@ -128,10 +128,6 @@ ifeq ($(SYSTEM), Darwin)
 	DYNAMIC_LINKINGS+=-Wl,-U,_bthread_key_create
 endif
 
-ifeq ($(SYSTEM), Linux)
-	STATIC_LINKINGS += -latomic
-endif
-
 TEST_BUTIL_OBJS = iobuf.pb.o $(addsuffix .o, $(basename $(TEST_BUTIL_SOURCES))) 
 
 TEST_BVAR_SOURCES = $(wildcard bvar_*_unittest.cpp)
