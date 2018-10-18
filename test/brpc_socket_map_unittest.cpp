@@ -77,7 +77,7 @@ TEST_F(SocketMapTest, idle_timeout) {
     brpc::SocketUniquePtr main_ptr;
     brpc::SocketUniquePtr ptr;
     ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
-    ASSERT_EQ(0, main_ptr->GetSocketFromGroup(&ptr, CONNECTION_TYPE_POOLED));
+    ASSERT_EQ(0, main_ptr->GetSocketFromGroup(&ptr, brpc::CONNECTION_TYPE_POOLED));
     ASSERT_TRUE(main_ptr.get());
     main_ptr.reset();
     id = ptr->id();
@@ -88,7 +88,7 @@ TEST_F(SocketMapTest, idle_timeout) {
     // which destroyed the Socket. As a result `GetSocketFromPool'
     // should return a new one
     ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
-    ASSERT_EQ(0, main_ptr->GetSocketFromGroup(&ptr, CONNECTION_TYPE_POOLED));
+    ASSERT_EQ(0, main_ptr->GetSocketFromGroup(&ptr, brpc::CONNECTION_TYPE_POOLED));
     ASSERT_TRUE(main_ptr.get());
     main_ptr.reset();
     ASSERT_NE(id, ptr->id());
@@ -107,7 +107,7 @@ TEST_F(SocketMapTest, max_pool_size) {
     for (int i = 0; i < TOTALSIZE; ++i) {
         brpc::SocketUniquePtr main_ptr;
         ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
-        ASSERT_EQ(0, main_ptr->GetSocketFromGroup(&ptrs[i], CONNECTION_TYPE_POOLED));
+        ASSERT_EQ(0, main_ptr->GetSocketFromGroup(&ptrs[i], brpc::CONNECTION_TYPE_POOLED));
         ASSERT_TRUE(main_ptr.get());
         main_ptr.reset();
     }
