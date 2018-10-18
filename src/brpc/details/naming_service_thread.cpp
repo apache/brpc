@@ -87,7 +87,7 @@ void NamingServiceThread::Actions::RemoveServers(
     abort();
 }
 
-void NamingServiceThread::Actions::ResetServers(
+bool NamingServiceThread::Actions::ResetServers(
         const std::vector<ServerNode>& servers) {
     _servers.assign(servers.begin(), servers.end());
     
@@ -187,7 +187,8 @@ void NamingServiceThread::Actions::ResetServers(
         SocketMapRemove(key);
     }
 
-    if (!_removed.empty() || !_added.empty()) {
+    bool server_changed = (!_removed.empty() || !_added.empty());
+    if (server_changed) {
         std::ostringstream info;
         info << butil::class_name_str(*_owner->_ns) << "(\"" 
              << _owner->_service_name << "\"):";
@@ -201,6 +202,7 @@ void NamingServiceThread::Actions::ResetServers(
     }
 
     EndWait(servers.empty() ? ENODATA : 0);
+    return server_changed;
 }
 
 void NamingServiceThread::Actions::EndWait(int error_code) {
