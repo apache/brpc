@@ -141,6 +141,7 @@ STATIC_LINKINGS=
 DYNAMIC_LINKINGS="-lpthread -lssl -lcrypto -ldl -lz"
 if [ "$SYSTEM" = "Linux" ]; then
     DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -lrt -latomic"
+    STATIC_LINKINGS="-latomic"
 fi
 if [ "$SYSTEM" = "Darwin" ]; then
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -framework CoreFoundation"
