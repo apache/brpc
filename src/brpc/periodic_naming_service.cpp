@@ -40,13 +40,7 @@ BRPC_VALIDATE_GFLAG(ns_access_interval, PositiveInteger);
 DEFINE_string(backup_dir_when_ns_fails, "", "When the first GetServers fails"
         ", ns will search this directory for backup file");
 
-void GetServersFromBackupFile(const std::string& file_path,
-                              std::vector<ServerNode>* servers) {
-    policy::GetServersFromFile(file_path.c_str(), servers);
-    return;
-}
-
-void SaveServersToBackupFile(const std::string& file_path,
+void SaveServersToFile(const std::string& file_path,
                              const std::vector<ServerNode>& servers) {
     size_t pos = file_path.find_last_of('/');
     if (pos != std::string::npos) {
@@ -87,7 +81,7 @@ int PeriodicNamingService::RunNamingService(
             ever_reset = true;
             bool server_changed = actions->ResetServers(servers);
             if (server_changed && !FLAGS_backup_dir_when_ns_fails.empty()) {
-                SaveServersToBackupFile(file_path, servers);
+                SaveServersToFile(file_path, servers);
             }
         } else if (!ever_reset) {
             // ResetServers must be called at first time even if GetServers
@@ -95,7 +89,7 @@ int PeriodicNamingService::RunNamingService(
             ever_reset = true;
             servers.clear();
             if (!FLAGS_backup_dir_when_ns_fails.empty()) {
-                GetServersFromBackupFile(file_path, &servers);
+                policy::GetServersFromFile(file_path.c_str(), &servers);
             }
             actions->ResetServers(servers);
         }

@@ -705,7 +705,7 @@ TEST(NamingServiceTest, backupfiles_save) {
     brpc::FLAGS_backup_dir_when_ns_fails = ".";
     ASSERT_EQ(0, channel.Init("discovery://admin.test", "rr", &opt));
 
-    // Wait for a while to ensure server infomation is flushed to disk.
+    // Wait for a while to ensure server information is flushed to disk.
     bthread_usleep(500000);
 
     FILE* fp = fopen("discovery/admin.test", "r");
