@@ -850,6 +850,7 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
                 vref, MakeVRef(id_ver + 1, NRefOfVRef(vref)),
                 butil::memory_order_release,
                 butil::memory_order_relaxed)) {
+            GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
             // Update _error_text
             std::string error_text;
             if (error_fmt != NULL) {
