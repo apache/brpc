@@ -115,17 +115,17 @@ enum H2StreamState {
 const char* H2StreamState2Str(H2StreamState);
 
 #ifndef NDEBUG
-struct Http2Bvars {
+struct H2Bvars {
     bvar::Adder<int> h2_unsent_request_count;
     bvar::Adder<int> h2_stream_context_count;
 
-    Http2Bvars()
+    H2Bvars()
         : h2_unsent_request_count("h2_unsent_request_count")
         , h2_stream_context_count("h2_stream_context_count") {
     }
 };
-inline Http2Bvars* get_http2_bvars() {
-    return butil::get_leaky_singleton<Http2Bvars>();
+inline H2Bvars* get_h2_bvars() {
+    return butil::get_leaky_singleton<H2Bvars>();
 }
 #endif
 
@@ -135,7 +135,7 @@ friend void PackH2Request(butil::IOBuf*, SocketMessage**,
                           Controller*, const butil::IOBuf&, const Authenticator*);
 public:
     static H2UnsentRequest* New(Controller* c);
-    void Describe(butil::IOBuf*) const;
+    void Print(std::ostream& os) const;
 
     int AddRefManually()
     { return _nref.fetch_add(1, butil::memory_order_relaxed); }
@@ -170,12 +170,12 @@ private:
         , _stream_id(0)
         , _cntl(c) {
 #ifndef NDEBUG
-        get_http2_bvars()->h2_unsent_request_count << 1;
+        get_h2_bvars()->h2_unsent_request_count << 1;
 #endif
     }
     ~H2UnsentRequest() {
 #ifndef NDEBUG
-        get_http2_bvars()->h2_unsent_request_count << -1;
+        get_h2_bvars()->h2_unsent_request_count << -1;
 #endif
     }
     H2UnsentRequest(const H2UnsentRequest&);
@@ -194,9 +194,9 @@ private:
 
 class H2UnsentResponse : public SocketMessage {
 public:
-    static H2UnsentResponse* New(Controller* c, int stream_id);
+    static H2UnsentResponse* New(Controller* c, int stream_id, bool is_grpc);
     void Destroy();
-    void Describe(butil::IOBuf*) const;
+    void Print(std::ostream& os) const;
     // @SocketMessage
     butil::Status AppendAndDestroySelf(butil::IOBuf* out, Socket*) override;
     size_t EstimatedByteSize() override;
@@ -208,12 +208,7 @@ private:
     void push(const std::string& name, const std::string& value)
     { new (&_list[_size++]) HPacker::Header(name, value); }
 
-    H2UnsentResponse(Controller* c, int stream_id)
-        : _size(0)
-        , _stream_id(stream_id)
-        , _http_response(c->release_http_response()) {
-        _data.swap(c->response_attachment());
-    }
+    H2UnsentResponse(Controller* c, int stream_id, bool is_grpc);
     ~H2UnsentResponse() {}
     H2UnsentResponse(const H2UnsentResponse&);
     void operator=(const H2UnsentResponse&);
@@ -223,22 +218,24 @@ private:
     uint32_t _stream_id;
     std::unique_ptr<HttpHeader> _http_response;
     butil::IOBuf _data;
+    bool _is_grpc;
+    GrpcStatus _grpc_status;
+    std::string _grpc_message;
     HPacker::Header _list[0];
 };
 
 // Used in http_rpc_protocol.cpp
 class H2StreamContext : public HttpContext {
 public:
-    H2StreamContext();
+    H2StreamContext(bool read_body_progressively);
     ~H2StreamContext();
     void Init(H2Context* conn_ctx, int stream_id);
 
-    H2StreamContext(H2Context* conn_ctx, int stream_id);
     // Decode headers in HPACK from *it and set into this->header(). The input
     // does not need to complete.
     // Returns 0 on success, -1 otherwise.
     int ConsumeHeaders(butil::IOBufBytesIterator& it);
-    H2ParseResult EndRemoteStream();
+    H2ParseResult OnEndStream();
 
     H2ParseResult OnData(butil::IOBufBytesIterator&, const H2FrameHead&,
                        uint32_t frag_size, uint8_t pad_length);
@@ -348,7 +345,7 @@ public:
     bool is_client_side() const { return _socket->CreatedByConnect(); }
     bool is_server_side() const { return !is_client_side(); }
 
-    void Describe(std::ostream& os, const DescribeOptions&) const;
+    void Describe(std::ostream& os, const DescribeOptions&) const override;
 
     void DeferWindowUpdate(int64_t);
     int64_t ReleaseDeferredWindowUpdate();
@@ -383,8 +380,8 @@ friend void InitFrameHandlers();
     Socket* _socket;
     butil::atomic<int64_t> _remote_window_left;
     H2ConnectionState _conn_state;
-    int _last_server_stream_id;
-    uint32_t _last_client_stream_id;
+    int _last_received_stream_id;
+    uint32_t _last_sent_stream_id;
     int _goaway_stream_id;
     H2Settings _remote_settings;
     H2Settings _local_settings;
@@ -400,18 +397,29 @@ friend void InitFrameHandlers();
 
 inline int H2Context::AllocateClientStreamId() {
     if (RunOutStreams()) {
+        LOG(WARNING) << "Fail to allocate new client stream, _last_sent_stream_id="
+            << _last_sent_stream_id;
         return -1;
     }
-    const int id = _last_client_stream_id;
-    _last_client_stream_id += 2;
+    const int id = _last_sent_stream_id;
+    _last_sent_stream_id += 2;
     return id;
 }
 
 inline bool H2Context::RunOutStreams() const {
-    return (_last_client_stream_id > 0x7FFFFFFF);
+    return (_last_sent_stream_id > 0x7FFFFFFF);
 }
 
-}  // namespace policy
+inline std::ostream& operator<<(std::ostream& os, const H2UnsentRequest& req) {
+    req.Print(os);
+    return os;
+}
+inline std::ostream& operator<<(std::ostream& os, const H2UnsentResponse& res) {
+    res.Print(os);
+    return os;
+}
+
+} // namespace policy
 } // namespace brpc
 
 #endif // BAIDU_RPC_POLICY_HTTP2_RPC_PROTOCOL_H

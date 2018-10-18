@@ -108,13 +108,11 @@ public:
         return _start_index + (_add_times - *v) - 1;
     }
 
-    bool empty() const { return (size() == 0); }
-    size_t size() const { return _size; }
-    size_t max_size() const { return _max_size; }
+    bool empty() const { return _size == 0; }
     int start_index() const { return _start_index; }
     int end_index() const { return start_index() + _header_queue.size(); }
 
-    static size_t HeaderSize(const Header& h) {
+    static inline size_t HeaderSize(const Header& h) {
         // https://tools.ietf.org/html/rfc7541#section-4.1
         return h.name.size() + h.value.size() + 32;
     }
@@ -123,23 +121,24 @@ public:
         DCHECK(!empty());
         const Header* h = _header_queue.top();
         const size_t entry_size = HeaderSize(*h);
-        DCHECK_LE(entry_size, size());
+        DCHECK_LE(entry_size, _size);
         const uint64_t id = _add_times - _header_queue.size();
-        RemoveHeaderFromIndexes(*h, id);
+        if (_need_indexes) {
+            RemoveHeaderFromIndexes(*h, id);
+        }
         _size -= entry_size;
         _header_queue.pop();
     }
 
     void RemoveHeaderFromIndexes(const Header& h, uint64_t expected_id) {
-        if (!_need_indexes) {
-            return;
+        if (!h.value.empty()) {
+            const uint64_t* v = _header_index.seek(h);
+            DCHECK(v);
+            if (*v == expected_id) {
+                _header_index.erase(h);
+            }
         }
-        const uint64_t* v = _header_index.seek(h);
-        DCHECK(v);
-        if (*v == expected_id) {
-            _header_index.erase(h);
-        }
-        v = _name_index.seek(h.name);
+        const uint64_t* v = _name_index.seek(h.name);
         DCHECK(v);
         if (*v == expected_id) {
             _name_index.erase(h.name);
@@ -150,11 +149,11 @@ public:
         CHECK(!h.name.empty());
         const size_t entry_size = HeaderSize(h);
 
-        while (!empty() && (size() + entry_size > max_size())) {
+        while (!empty() && (_size + entry_size) > _max_size) {
             PopHeader();
         }
 
-        if (entry_size > max_size()) {
+        if (entry_size > _max_size) {
             // https://tools.ietf.org/html/rfc7541#section-4.1
             // If this header is larger than the max size, clear the table only.
             DCHECK(empty());
@@ -171,14 +170,13 @@ public:
             if (!h.value.empty()) {
                 _header_index[h] = id;
             }
-            _header_index[h] = id;
             _name_index[h.name] = id;
         }
     }
 
     void ResetMaxSize(size_t new_max_size) {
-        LOG(INFO) << this << ".size=" << size() << " new_max_size=" << new_max_size
-                  << " max_size=" << max_size();
+        LOG(INFO) << this << ".size=" << _size << " new_max_size=" << new_max_size
+                  << " max_size=" << _max_size;
         if (new_max_size > _max_size) {
             //LOG(ERROR) << "Invalid new_max_size=" << new_max_size;
             //return -1;
@@ -187,7 +185,7 @@ public:
         }
         if (new_max_size < _max_size) {
             _max_size = new_max_size;
-            while (size() > max_size()) {
+            while (_size > _max_size) {
                 PopHeader();
             }
         }
@@ -704,9 +702,9 @@ void HPacker::Encode(butil::IOBufAppender* out, const Header& header,
             // This header is already in the index table
             return EncodeInteger(out, 0x80, 7, index);
         }
-    }
-    // The header can't be indexed or the header wasn't in the index table
-    int name_index = FindNameFromIndexTable(header.name);
+    } // The header can't be indexed or the header wasn't in the index table
+    
+    const int name_index = FindNameFromIndexTable(header.name);
     if (options.index_policy == HPACK_INDEX_HEADER) {
         // TODO: Add Options that indexes name independently
         _encode_table->AddHeader(header);

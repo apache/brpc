@@ -221,6 +221,7 @@ BUTIL_SRCS = [
     "src/butil/crc32c.cc",
     "src/butil/containers/case_ignored_flat_map.cpp",
     "src/butil/iobuf.cpp",
+    "src/butil/binary_printer.cpp",
     "src/butil/popen.cpp",
 ] + select({
         ":darwin": [

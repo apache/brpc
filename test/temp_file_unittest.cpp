@@ -127,7 +127,7 @@ TEST_F(TempFileTest, save_binary_twice)
     ASSERT_NE((void*)0, fp);
     test_t act_data;
     bzero(&act_data, sizeof(act_data));
-    ASSERT_EQ(1, fread(&act_data, sizeof(act_data), 1, fp));
+    ASSERT_EQ((size_t)1, fread(&act_data, sizeof(act_data), 1, fp));
     fclose(fp);
 
     ASSERT_EQ(0, memcmp(&data, &act_data, sizeof(data)));
@@ -139,7 +139,7 @@ TEST_F(TempFileTest, save_binary_twice)
     fp = fopen(tmp.fname(), "r");
     ASSERT_NE((void*)0, fp);
     bzero(&act_data, sizeof(act_data));
-    ASSERT_EQ(1, fread(&act_data, sizeof(act_data), 1, fp));
+    ASSERT_EQ((size_t)1, fread(&act_data, sizeof(act_data), 1, fp));
     fclose(fp);
     
     ASSERT_EQ(0, memcmp(&data2, &act_data, sizeof(data2)));

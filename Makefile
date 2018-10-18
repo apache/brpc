@@ -150,6 +150,7 @@ BUTIL_SOURCES = \
     src/butil/crc32c.cc \
     src/butil/containers/case_ignored_flat_map.cpp \
     src/butil/iobuf.cpp \
+    src/butil/binary_printer.cpp \
     src/butil/popen.cpp
 
 ifeq ($(SYSTEM), Linux)
@@ -279,6 +280,14 @@ output/bin:protoc-gen-mcpack
 %.o:%.cpp
 	@echo "Compiling $@"
 	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+
+%http2_rpc_protocol.dbg.o:%http2_rpc_protocol.cpp
+	@echo "Compiling $@ with O2"
+	@$(CXX) -c $(HDRPATHS) -O2 $(DEBUG_CXXFLAGS) $< -o $@
+
+%hpack.dbg.o:%hpack.cpp
+	@echo "Compiling $@ with O2"
+	@$(CXX) -c $(HDRPATHS) -O2 $(DEBUG_CXXFLAGS) $< -o $@
 
 %.dbg.o:%.cpp
 	@echo "Compiling $@"

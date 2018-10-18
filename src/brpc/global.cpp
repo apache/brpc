@@ -30,6 +30,7 @@
 #include "brpc/policy/domain_naming_service.h"
 #include "brpc/policy/remote_file_naming_service.h"
 #include "brpc/policy/consul_naming_service.h"
+#include "brpc/policy/discovery_naming_service.h"
 
 // Load Balancers
 #include "brpc/policy/round_robin_load_balancer.h"
@@ -121,6 +122,7 @@ struct GlobalExtensions {
     DomainNamingService dns;
     RemoteFileNamingService rfns;
     ConsulNamingService cns;
+    DiscoveryNamingService dcns;
 
     RoundRobinLoadBalancer rr_lb;
     WeightedRoundRobinLoadBalancer wrr_lb;
@@ -342,6 +344,7 @@ static void GlobalInitializeOrDieImpl() {
     NamingServiceExtension()->RegisterOrDie("redis", &g_ext->dns);
     NamingServiceExtension()->RegisterOrDie("remotefile", &g_ext->rfns);
     NamingServiceExtension()->RegisterOrDie("consul", &g_ext->cns);
+    NamingServiceExtension()->RegisterOrDie("discovery", &g_ext->dcns);
 
     // Load Balancers
     LoadBalancerExtension()->RegisterOrDie("rr", &g_ext->rr_lb);
@@ -407,8 +410,8 @@ static void GlobalInitializeOrDieImpl() {
                                 VerifyHttpRequest, ParseHttpServerAddress,
                                 GetHttpMethodName,
                                 CONNECTION_TYPE_SINGLE,
-                                "h2c" };
-    if (RegisterProtocol(PROTOCOL_HTTP2, http2_protocol) != 0) {
+                                "h2" };
+    if (RegisterProtocol(PROTOCOL_H2, http2_protocol) != 0) {
         exit(1);
     }
 

@@ -136,7 +136,7 @@ protected:
     }
 
     brpc::policy::HttpContext* MakePostRequestMessage(const std::string& path) {
-        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext();
+        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext(false);
         msg->header().uri().set_path(path);
         msg->header().set_content_type("application/json");
         msg->header().set_method(brpc::HTTP_METHOD_POST);
@@ -149,7 +149,7 @@ protected:
     }
 
     brpc::policy::HttpContext* MakeGetRequestMessage(const std::string& path) {
-        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext();
+        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext(false);
         msg->header().uri().set_path(path);
         msg->header().set_method(brpc::HTTP_METHOD_GET);
         return msg;
@@ -157,7 +157,7 @@ protected:
 
 
     brpc::policy::HttpContext* MakeResponseMessage(int code) {
-        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext();
+        brpc::policy::HttpContext* msg = new brpc::policy::HttpContext(false);
         msg->header().set_status_code(code);
         msg->header().set_content_type("application/json");
         
@@ -216,7 +216,7 @@ protected:
             butil::IOBufAsZeroCopyOutputStream wrapper(&cntl.response_attachment());
             EXPECT_TRUE(res.SerializeToZeroCopyStream(&wrapper));
         }
-        brpc::policy::H2UnsentResponse* h2_res = brpc::policy::H2UnsentResponse::New(&cntl, h2_stream_id);
+        brpc::policy::H2UnsentResponse* h2_res = brpc::policy::H2UnsentResponse::New(&cntl, h2_stream_id, false /*is grpc*/);
         butil::Status st = h2_res->AppendAndDestroySelf(out, _h2_client_sock.get());
         ASSERT_TRUE(st.ok());
     }
@@ -493,7 +493,7 @@ public:
         if (_done_place == DONE_BEFORE_CREATE_PA) {
             done_guard.reset(NULL);
         }
-        ASSERT_GT(PA_DATA_LEN, 8);  // long enough to hold a 64-bit decimal.
+        ASSERT_GT(PA_DATA_LEN, 8u);  // long enough to hold a 64-bit decimal.
         char buf[PA_DATA_LEN];
         for (size_t c = 0; c < _nrep;) {
             CopyPAPrefixedWithSeqNo(buf, c);
@@ -976,7 +976,7 @@ TEST_F(HttpTest, http2_sanity) {
 
     brpc::Channel channel;
     brpc::ChannelOptions options;
-    options.protocol = "h2c";
+    options.protocol = "h2";
     ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
 
     // 1) complete flow and
@@ -1179,7 +1179,7 @@ TEST_F(HttpTest, http2_not_closing_socket_when_rpc_timeout) {
     EXPECT_EQ(0, server.Start(port, NULL));
     brpc::Channel channel;
     brpc::ChannelOptions options;
-    options.protocol = "h2c";
+    options.protocol = "h2";
     ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
 
     test::EchoRequest req;
@@ -1224,6 +1224,143 @@ TEST_F(HttpTest, http2_not_closing_socket_when_rpc_timeout) {
         brpc::SocketId id = main_ptr->_agent_socket_id.load(butil::memory_order_relaxed);
         EXPECT_EQ(id, agent_id);
     }
+}
+
+TEST_F(HttpTest, http2_header_after_data) {
+    brpc::Controller cntl;
+
+    // Prepare request
+    butil::IOBuf req_out;
+    int h2_stream_id = 0;
+    MakeH2EchoRequestBuf(&req_out, &cntl, &h2_stream_id);
+
+    // Prepare response to res_out
+    butil::IOBuf res_out;
+    {
+        butil::IOBuf data_buf;
+        test::EchoResponse res;
+        res.set_message(EXP_RESPONSE);
+        {
+            butil::IOBufAsZeroCopyOutputStream wrapper(&data_buf);
+            EXPECT_TRUE(res.SerializeToZeroCopyStream(&wrapper));
+        }
+        brpc::policy::H2Context* ctx =
+            static_cast<brpc::policy::H2Context*>(_h2_client_sock->parsing_context());
+        brpc::HPacker& hpacker = ctx->hpacker();
+        butil::IOBufAppender header1_appender;
+        brpc::HPackOptions options;
+        options.encode_name = false;    /* disable huffman encoding */
+        options.encode_value = false;
+        {
+            brpc::HPacker::Header header(":status", "200");
+            hpacker.Encode(&header1_appender, header, options);
+        }
+        {
+            brpc::HPacker::Header header("content-length",
+                    butil::string_printf("%" PRIu64, data_buf.size()));
+            hpacker.Encode(&header1_appender, header, options);
+        }
+        {
+            brpc::HPacker::Header header(":status", "200");
+            hpacker.Encode(&header1_appender, header, options);
+        }
+        {
+            brpc::HPacker::Header header("content-type", "application/proto");
+            hpacker.Encode(&header1_appender, header, options);
+        }
+        {
+            brpc::HPacker::Header header("user-defined1", "a");
+            hpacker.Encode(&header1_appender, header, options);
+        }
+        butil::IOBuf header1;
+        header1_appender.move_to(header1);
+
+        char headbuf[brpc::policy::FRAME_HEAD_SIZE];
+        brpc::policy::SerializeFrameHead(headbuf, header1.size(),
+                brpc::policy::H2_FRAME_HEADERS, 0, h2_stream_id);
+        // append header1
+        res_out.append(headbuf, sizeof(headbuf));
+        res_out.append(butil::IOBuf::Movable(header1));
+
+        brpc::policy::SerializeFrameHead(headbuf, data_buf.size(),
+            brpc::policy::H2_FRAME_DATA, 0, h2_stream_id);
+        // append data
+        res_out.append(headbuf, sizeof(headbuf));
+        res_out.append(butil::IOBuf::Movable(data_buf));
+
+        butil::IOBufAppender header2_appender;
+        {
+            brpc::HPacker::Header header("user-defined1", "overwrite-a");
+            hpacker.Encode(&header2_appender, header, options);
+        }
+        {
+            brpc::HPacker::Header header("user-defined2", "b");
+            hpacker.Encode(&header2_appender, header, options);
+        }
+        butil::IOBuf header2;
+        header2_appender.move_to(header2);
+
+        brpc::policy::SerializeFrameHead(headbuf, header2.size(),
+                brpc::policy::H2_FRAME_HEADERS, 0x05/* end header and stream */,
+                h2_stream_id);
+        // append header2
+        res_out.append(headbuf, sizeof(headbuf));
+        res_out.append(butil::IOBuf::Movable(header2));
+    }
+    // parse response
+    brpc::ParseResult res_pr =
+            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+    ASSERT_TRUE(res_pr.is_ok());
+    // process response
+    ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
+    ASSERT_FALSE(cntl.Failed());
+
+    brpc::HttpHeader& res_header = cntl.http_response();
+    ASSERT_EQ(res_header.content_type(), "application/proto");
+    // Check overlapped header is overwritten by the latter.
+    const std::string* user_defined1 = res_header.GetHeader("user-defined1");
+    ASSERT_EQ(*user_defined1, "overwrite-a");
+    const std::string* user_defined2 = res_header.GetHeader("user-defined2");
+    ASSERT_EQ(*user_defined2, "b");
+}
+
+TEST_F(HttpTest, http2_goaway) {
+    brpc::Controller cntl;
+    // Prepare request
+    butil::IOBuf req_out;
+    int h2_stream_id = 0;
+    MakeH2EchoRequestBuf(&req_out, &cntl, &h2_stream_id);
+    // Prepare response
+    butil::IOBuf res_out;
+    MakeH2EchoResponseBuf(&res_out, h2_stream_id);
+    // append goaway
+    char goawaybuf[9 /*FRAME_HEAD_SIZE*/ + 8];
+    brpc::policy::SerializeFrameHead(goawaybuf, 8, brpc::policy::H2_FRAME_GOAWAY, 0, 0);
+    SaveUint32(goawaybuf + 9, 0x7fffd8ef /*last stream id*/);
+    SaveUint32(goawaybuf + 13, brpc::H2_NO_ERROR);
+    res_out.append(goawaybuf, sizeof(goawaybuf));
+    // parse response
+    brpc::ParseResult res_pr =
+            brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+    ASSERT_TRUE(res_pr.is_ok());
+    // process response
+    ProcessMessage(brpc::policy::ProcessHttpResponse, res_pr.message(), false);
+    ASSERT_TRUE(!cntl.Failed());
+
+    // parse GOAWAY
+    res_pr = brpc::policy::ParseH2Message(&res_out, _h2_client_sock.get(), false, NULL);
+    ASSERT_EQ(res_pr.error(), brpc::PARSE_ERROR_NOT_ENOUGH_DATA);
+
+    // Since GOAWAY has been received, the next request should fail
+    brpc::policy::H2UnsentRequest* h2_req = brpc::policy::H2UnsentRequest::New(&cntl);
+    cntl._current_call.stream_user_data = h2_req;
+    brpc::SocketMessage* socket_message = NULL;
+    brpc::policy::PackH2Request(NULL, &socket_message, cntl.call_id().value,
+                                NULL, &cntl, butil::IOBuf(), NULL);
+    butil::IOBuf dummy;
+    butil::Status st = socket_message->AppendAndDestroySelf(&dummy, _h2_client_sock.get());
+    ASSERT_EQ(st.error_code(), brpc::ELOGOFF);
+    ASSERT_TRUE(st.error_data().ends_with("the connection just issued GOAWAY"));
 }
 
 } //namespace
