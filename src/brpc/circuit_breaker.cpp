@@ -94,7 +94,7 @@ int64_t CircuitBreaker::EmaErrorRecorder::max_error_cost() const {
     return ema_latency * _window_size * (_max_error_percent / 100.0) * (1.0 + EPSILON);
 }
 
-int CircuitBreaker::EmaErrorRecorder::health_index_in_percent() const {
+int CircuitBreaker::EmaErrorRecorder::health_score() const {
     const int64_t current_error_cost = _ema_error_cost.load(butil::memory_order_relaxed);
     const int64_t error_cost_threshold = max_error_cost();
     if (error_cost_threshold == 0) {
@@ -160,7 +160,7 @@ CircuitBreaker::CircuitBreaker()
                     FLAGS_circuit_breaker_short_window_error_percent)
     , _last_reset_time_ms(butil::cpuwide_time_ms())
     , _isolation_duration_ms(FLAGS_circuit_breaker_min_isolation_duration_ms)
-    , _broken_times(0) {
+    , _isolated_times(0) {
 }
 
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
@@ -175,13 +175,12 @@ void CircuitBreaker::Reset() {
 }
 
 void CircuitBreaker::MarkAsBroken() {
-    ++_broken_times;
+    ++_isolated_times;
     UpdateIsolationDuration();
 }
 
-int CircuitBreaker::health_index_in_percent() const {
-    return std::min(_long_window.health_index_in_percent(),
-                    _short_window.health_index_in_percent());
+int CircuitBreaker::health_score() const {
+    return std::min(_long_window.health_score(), _short_window.health_score());
 }
 
 void CircuitBreaker::UpdateIsolationDuration() {

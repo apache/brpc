@@ -178,7 +178,7 @@ public:
 
     CircuitBreaker circuit_breaker;
 
-    butil::atomic<uint64_t> error_count;
+    butil::atomic<uint64_t> acc_errors;
 
     explicit SharedPart(SocketId creator_socket_id);
     ~SharedPart();
@@ -196,7 +196,7 @@ Socket::SharedPart::SharedPart(SocketId creator_socket_id2)
     , out_size(0)
     , out_num_messages(0)
     , extended_stat(NULL) 
-    , error_count(0) {
+    , acc_errors(0) {
 }
 
 Socket::SharedPart::~SharedPart() {
@@ -806,31 +806,15 @@ int Socket::ReleaseAdditionalReference() {
 }
 
 void Socket::AddErrorCount() {
-    GetOrNewSharedPart()->error_count.fetch_add(1, butil::memory_order_relaxed);
+    GetOrNewSharedPart()->acc_errors.fetch_add(1, butil::memory_order_relaxed);
 }
 
-int Socket::broken_times() const {
+uint64_t Socket::acc_errors() const {
     SharedPart* sp = GetSharedPart();
     if (sp) {
-        return sp->circuit_breaker.broken_times();
+        return sp->acc_errors.load(butil::memory_order_relaxed);
     }
     return 0;
-}
-
-uint64_t Socket::error_count() const {
-    SharedPart* sp = GetSharedPart();
-    if (sp) {
-        return sp->error_count.load(butil::memory_order_relaxed);
-    }
-    return 0;
-}
-
-int Socket::health_index_in_percent() const {
-    SharedPart* sp = GetSharedPart();
-    if (sp) {
-        return sp->circuit_breaker.health_index_in_percent();
-    }
-    return 100;
 }
 
 int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
@@ -2151,6 +2135,9 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
            << "\n  in_num_messages=" << sp->in_num_messages.load(butil::memory_order_relaxed)
            << "\n  out_size=" << sp->out_size.load(butil::memory_order_relaxed)
            << "\n  out_num_messages=" << sp->out_num_messages.load(butil::memory_order_relaxed)
+           << "\n  health_score=" << sp->circuit_breaker.health_score()
+           << "\n  isolated_times=" << sp->circuit_breaker.isolated_times()
+           << "\n  acc_errors=" << sp->acc_errors.load(butil::memory_order_relaxed)
            << "\n}";
     }
     const int fd = ptr->_fd.load(butil::memory_order_relaxed);

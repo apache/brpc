@@ -44,11 +44,11 @@ public:
 
     // The closer to 100, the less recent errors occurred, and 0 means that 
     // it should be isolated.
-    int health_index_in_percent() const;
+    int health_score() const;
 
     // Number of times marked as broken
-    int broken_times() const {
-        return _broken_times;
+    int isolated_times() const {
+        return _isolated_times;
     }
 
     // The duration that should be isolated when the socket fails in milliseconds.
@@ -67,7 +67,7 @@ private:
         void Reset();
 
         int64_t max_error_cost() const;
-        int health_index_in_percent() const;
+        int health_score() const;
      
     private:
         int64_t UpdateLatency(int64_t latency);
@@ -86,7 +86,7 @@ private:
     EmaErrorRecorder _short_window;
     int64_t _last_reset_time_ms; 
     int _isolation_duration_ms;
-    int _broken_times;
+    int _isolated_times;
 };
 
 }  // namespace brpc

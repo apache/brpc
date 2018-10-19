@@ -319,11 +319,7 @@ public:
 
     void AddErrorCount();
 
-    uint64_t error_count() const;
-
-    int broken_times() const;
-
-    int health_index_in_percent() const;
+    uint64_t acc_errors() const;
 
     void FeedbackCircuitBreaker(int error_code, int64_t latency_us);
 
