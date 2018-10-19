@@ -215,6 +215,7 @@ friend class HealthCheckTask;
 friend class OnAppHealthCheckDone;
 friend class HealthCheckManager;
 friend class policy::H2GlobalStreamCreator;
+friend class SocketMultiple;
     class SharedPart;
     struct Forbidden {};
     struct WriteRequest;
@@ -452,22 +453,23 @@ public:
     // True if this socket was created by Connect.
     bool CreatedByConnect() const;
 
-    // Get an UNUSED socket connecting to the same place as this socket
-    // from the SocketPool of this socket.
-    int GetPooledSocket(SocketUniquePtr* pooled_socket);
+    // Get an socket connecting to the same place as this socket
+    // from socket groups according 'type'. 'type' should be CONNECTION_TYPE_POOLED 
+    // or CONNECTION_TYPE_MULTIPLE.
+    int GetSocketFromGroup(SocketUniquePtr* socket_out, const ConnectionType type);
 
-    // Return this socket which MUST be got from GetPooledSocket to its
-    // main_socket's pool.
-    int ReturnToPool();
+    // Return this socket which MUST be got from GetSocketFromGroup to its
+    // main_socket's group.
+    int ReturnToGroup();
 
-    // True if this socket has SocketPool
-    bool HasSocketPool() const;
+    // True if this socket has SocketGroup
+    bool HasSocketGroup() const;
 
-    // Put all sockets in _shared_part->socket_pool into `list'.
-    void ListPooledSockets(std::vector<SocketId>* list, size_t max_count = 0);
+    // Put all sockets in _shared_part->socket_group into `list'.
+    void ListSocketsOfGroup(std::vector<SocketId>* list, size_t max_count = 0);
 
     // Return true on success
-    bool GetPooledSocketStats(int* numfree, int* numinflight);
+    bool GetSocketGroupCount(int* num);
 
     // Create a socket connecting to the same place as this socket.
     int GetShortSocket(SocketUniquePtr* short_socket);
@@ -664,6 +666,8 @@ friend void DereferenceSocket(Socket*);
 
     void CancelUnwrittenBytes(size_t bytes);
 
+    bool is_free() { return _rpc_count.load(butil::memory_order_relaxed) == 0; }
+
 private:
     // unsigned 32-bit version + signed 32-bit referenced-count.
     // Meaning of version:
@@ -820,8 +824,13 @@ private:
 
     butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
-
     butil::atomic<int64_t> _ninflight_app_health_check;
+    // The number of pending rpc on this socket. This is only used 
+    // by multiple connection.
+    butil::atomic<uint32_t> _rpc_count;
+    // The socket index of multiple connections array. This is only used 
+    // by multiple connection.
+    uint32_t _multiple_index = -1;
 };
 
 } // namespace brpc
