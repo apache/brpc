@@ -224,6 +224,9 @@ private:
     inline void UpdateLightestSocketIfNeeded(const uint64_t s);
 
     butil::atomic<size_t> _num_created;
+    // * High unsigned 32-bit: the lightest socket index of '_multiple'.
+    // * Low unsigned 32-bit: the rpc count when the socket was selected 
+    //                        as the lightest socket. 
     butil::atomic<uint64_t> _lightest;
     butil::EndPoint _remote_side;
     std::vector<SocketId> _multiple;
@@ -2514,7 +2517,7 @@ int SocketMultiple::GetSocket(SocketUniquePtr* ptr_out) {
     // Select a socket which rpc count is lowest.
     butil::atomic<SocketId>* psid;
     SocketId sid;
-    uint32_t min_sid = _multiple.size();
+    uint32_t min_index = _multiple.size();
     uint32_t min_load = (uint32_t)-1;
     const SocketId init_fail = INVALID_SOCKET_ID - 1;
     for (size_t i = 0; i != _multiple.size(); ++i) {
@@ -2536,8 +2539,9 @@ int SocketMultiple::GetSocket(SocketUniquePtr* ptr_out) {
             }
             if (load < min_load) {
                 min_load = load;
-                min_sid = i;
+                min_index = i;
             }
+            continue;
         }
         // If the socket is not initialize, create one.  
         if (sid == INVALID_SOCKET_ID) {
@@ -2577,12 +2581,12 @@ int SocketMultiple::GetSocket(SocketUniquePtr* ptr_out) {
             } 
         }
     }
-    if (min_sid < _multiple.size()) {
-        SocketId sid = reinterpret_cast<butil::atomic<SocketId>*>(&_multiple[min_sid])->load(
+    if (min_index < _multiple.size()) {
+        SocketId sid = reinterpret_cast<butil::atomic<SocketId>*>(&_multiple[min_index])->load(
             butil::memory_order_relaxed);
         if (Socket::Address(sid, ptr_out) == 0) {
             uint64_t s = BuildLightest(
-                min_sid, (*ptr_out)->_rpc_count.load(butil::memory_order_acquire));
+                min_index, (*ptr_out)->_rpc_count.load(butil::memory_order_acquire));
             (*ptr_out)->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
             UpdateLightestSocketIfNeeded(s);
             return 0; 
@@ -2596,6 +2600,9 @@ void SocketMultiple::ReturnSocket(Socket* sock) {
     sock->_rpc_count.fetch_sub(1, butil::memory_order_acquire);
     CHECK_EQ(sock->id(), _multiple[sock->_multiple_index]) 
         << "Socket is not consistent with " << sock->_multiple_index << "th of multiple connections."; 
+    if (sock->Failed()) {
+        return;
+    }
     uint64_t lsid = _lightest.load(butil::memory_order_relaxed);
     uint32_t load = sock->_rpc_count.load(butil::memory_order_relaxed);
     uint64_t s = BuildLightest(sock->_multiple_index, load);
@@ -2629,13 +2636,11 @@ int SocketMultiple::InitSocket(const size_t index, SocketId* sid) {
         } 
     } else {
         _num_created.fetch_sub(1, butil::memory_order_relaxed);
-        if (ptr) {
-            final_pos = index;
-        }
+        final_pos = index;
     }
     if (ptr) {
-			  psid = reinterpret_cast<butil::atomic<SocketId>*>(&_multiple[final_pos]);
-				ptr->_multiple_index = final_pos;
+        psid = reinterpret_cast<butil::atomic<SocketId>*>(&_multiple[final_pos]);
+        ptr->_multiple_index = final_pos;
         if (psid->compare_exchange_strong(dummy, new_id, 
                                           butil::memory_order_relaxed)) {
             *sid = new_id;
@@ -2655,13 +2660,15 @@ inline void SocketMultiple::UpdateLightestSocketIfNeeded(const uint64_t s) {
     do {
         SocketUniquePtr ptr;
         SocketId id = SidOfLightest(lsid);
-        if (Socket::Address(id, &ptr) == 0 && id != new_sid) {
-            if (new_load + FLAGS_threshold_for_switch_multiple_connection >= 
-                ptr->_rpc_count.load(butil::memory_order_relaxed)) {
+        if (Socket::Address(id, &ptr) == 0) { 
+            if (id != new_sid) {
+                if (new_load + FLAGS_threshold_for_switch_multiple_connection >= 
+                    ptr->_rpc_count.load(butil::memory_order_relaxed)) {
+                    break;
+                }
+            } else {
                 break;
             } 
-        } else {
-            break;
         }
     } while (!_lightest.compare_exchange_strong(
                  lsid, s, butil::memory_order_relaxed));
