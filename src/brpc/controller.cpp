@@ -699,6 +699,14 @@ void Controller::Call::OnComplete(
     switch (c->connection_type()) {
     case CONNECTION_TYPE_UNKNOWN:
         break;
+    case CONNECTION_TYPE_MULTIPLE:
+        if (sending_sock) {
+            sending_sock->ReturnToGroup();
+        }
+        if (does_error_affect_main_socket(error_code)) {
+            Socket::SetFailed(peer_id);
+        }
+        break;
     case CONNECTION_TYPE_SINGLE:
         // Set main socket to be failed for connection refusal of streams.
         // "single" streams are often maintained in a separate SocketMap and
@@ -721,7 +729,7 @@ void Controller::Call::OnComplete(
                 // safe to return. Notice that Socket::is_read_progressive may
                 // differ from Controller::is_response_read_progressively()
                 // because RPC possibly ends before setting up the socket.
-                sending_sock->ReturnToPool();
+                sending_sock->ReturnToGroup();
             } else {
                 // Progressively-read socket. Should be returned when the read
                 // ends. The method handles the details.
@@ -1040,8 +1048,9 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _current_call.sending_sock->set_preferred_index(_preferred_index);
     } else {
         int rc = 0;
-        if (_connection_type == CONNECTION_TYPE_POOLED) {
-            rc = tmp_sock->GetPooledSocket(&_current_call.sending_sock);
+        if (_connection_type & CONNECTION_TYPE_POOLED_AND_MULTIPLE) {
+            rc = tmp_sock->GetSocketFromGroup(&_current_call.sending_sock, 
+                                              _connection_type);
         } else if (_connection_type == CONNECTION_TYPE_SHORT) {
             rc = tmp_sock->GetShortSocket(&_current_call.sending_sock);
         } else {

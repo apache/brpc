@@ -162,10 +162,19 @@ const ConnectionType CONNECTION_TYPE_POOLED_AND_SHORT =
     (ConnectionType)((int)CONNECTION_TYPE_POOLED |
                      (int)CONNECTION_TYPE_SHORT);
 
+const ConnectionType CONNECTION_TYPE_SINGLE_AND_MULTIPLE =
+    (ConnectionType)((int)CONNECTION_TYPE_SINGLE |
+                     (int)CONNECTION_TYPE_MULTIPLE);
+
+const ConnectionType CONNECTION_TYPE_POOLED_AND_MULTIPLE =
+    (ConnectionType)((int)CONNECTION_TYPE_POOLED |
+                     (int)CONNECTION_TYPE_MULTIPLE);
+
 const ConnectionType CONNECTION_TYPE_ALL =
     (ConnectionType)((int)CONNECTION_TYPE_SINGLE |
                      (int)CONNECTION_TYPE_POOLED |
-                     (int)CONNECTION_TYPE_SHORT);
+                     (int)CONNECTION_TYPE_SHORT | 
+                     (int)CONNECTION_TYPE_MULTIPLE);
 
 // [thread-safe] 
 // Register `protocol' using key=`type'. 
