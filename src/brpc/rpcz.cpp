@@ -26,8 +26,8 @@
 #include "brpc/shared_object.h"
 #include "butil/string_printf.h"
 #include "brpc/reloadable_flags.h"
-#include "brpc/span.h"
 #include "brpc/span_exporter.h"
+#include "brpc/span.h"
 #include "brpc/rpcz.h"
 
 #define BRPC_SPAN_INFO_SEP "\1"
@@ -509,9 +509,7 @@ static pthread_once_t start_span_indexing_once = PTHREAD_ONCE_INIT;
 
 static void StartSpanIndexing() {
     atexit(RemoveSpanDB);
-    std::shared_ptr<RpczSpanExporter> exporter =
-        std::make_shared<RpczSpanExporter>();
-    RegisterSpanExporter(exporter);
+    RegisterSpanExporter(std::make_shared<RpczSpanExporter>("RpczSpanExporter"));
     started_span_indexing = true;
 }
 
@@ -558,4 +556,3 @@ bool SpanInfoExtractor::PopAnnotation(
 
 
 } // namespace brpc
-

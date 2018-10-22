@@ -31,8 +31,7 @@ void SpanExporter::Describe(std::ostream& os) const {
     os << ']';
 }
 
-void SpanExporterManager::RegisterSpanExporter(
-    std::shared_ptr<SpanExporter> span_exporter) {
+void SpanExporterManager::RegisterSpanExporter(std::shared_ptr<SpanExporter> span_exporter) {
     std::unique_lock<butil::Mutex> lock_guard(_exporter_set_mutex);
     auto it = _exporter_set.find(span_exporter);
     if (it != _exporter_set.end()) {
@@ -45,8 +44,7 @@ void SpanExporterManager::RegisterSpanExporter(
     _exporter_set.insert(std::move(span_exporter));
 }
 
-void SpanExporterManager::UnRegisterSpanExporter(
-    std::shared_ptr<SpanExporter> span_exporter) {
+void SpanExporterManager::UnRegisterSpanExporter(std::shared_ptr<SpanExporter> span_exporter) {
     std::unique_lock<butil::Mutex> lock_guard(_exporter_set_mutex);
     if (_exporter_set.find(span_exporter) == _exporter_set.end()) {
         std::ostringstream os;
@@ -81,4 +79,3 @@ void UnRegisterSpanExporter(std::shared_ptr<SpanExporter> span_exporter) {
 
 
 } // namespace brpc
-

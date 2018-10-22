@@ -25,14 +25,14 @@
 
 namespace brpc {
 
-// You can customize the span's dumper mode by inheriting the class SpanDumper,
+// You can customize the way the span is exported by inheriting SpanExporter.
 // Note:
-// 1. It is not valid to call RegisterSpanExporter() again for the same 
-// SpanExporter object multiple times. If you want to register same SpanExporter
-// object for multiple times, each time you call RegisterSpanExporter(), you 
-// should pass in a different SpanExporter object.
+// 1. It is useless to call RegisterSpanExporter() multiple times with the 
+// same SpanExporter object. If you want to register same SpanExporter
+// more than once, each time you call RegisterSpanExporter(), you should create
+// a new object to pass it to RegisterSpanExporter().
 // 2. The order in which each SpanExporter::DumpSpan is called is independent 
-// of the registration order
+// of the registration order.
 // 3. SpanDumper object should be managered by std::shared_ptr.
 //
 // Example:
@@ -40,13 +40,11 @@ namespace brpc {
 // class FooSpanExporter: public brpc::SpanExporter {
 // public:
 //     void DumpSpan(const RpczSpan* span) {
-//          // do somthing...
+//          // do dump span
 //     }
 // };
 //
-// shared_ptr<FooSpanExporter> foo_span_dumper =
-//     std::make_shared<brpc::FooSpanExporter>("FooSpanExporter");
-// brpc::RegisterSpanExporter(foo_span_dumper);
+// brpc::RegisterSpanExporter(std::make_shared<FooSpanExporter>("FooSpanExporter"));
 //
     
 class SpanExporter {
@@ -65,6 +63,7 @@ private:
     std::string _name;
 };
 
+//The following methods are thread-safe
 void RegisterSpanExporter(std::shared_ptr<SpanExporter> span_exporter);
 void UnRegisterSpanExporter(std::shared_ptr<SpanExporter> span_exporter);
 
