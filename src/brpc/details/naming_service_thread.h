@@ -66,8 +66,7 @@ class NamingServiceThread : public SharedObject, public Describable {
         ~Actions();
         void AddServers(const std::vector<ServerNode>& servers) override;
         void RemoveServers(const std::vector<ServerNode>& servers) override;
-        // return true iff servers are different from the last server list
-        bool ResetServers(const std::vector<ServerNode>& servers) override;
+        void ResetServers(const std::vector<ServerNode>& servers) override;
         int WaitForFirstBatchOfServers();
         void EndWait(int error_code);
 
@@ -83,6 +82,7 @@ class NamingServiceThread : public SharedObject, public Describable {
         std::vector<ServerNodeWithId> _sockets;
         std::vector<ServerNodeWithId> _added_sockets;
         std::vector<ServerNodeWithId> _removed_sockets;
+        bool _has_reset;
     };
 
 public:    

@@ -36,7 +36,7 @@ public:
     virtual ~NamingServiceActions() {}
     virtual void AddServers(const std::vector<ServerNode>& servers) = 0;
     virtual void RemoveServers(const std::vector<ServerNode>& servers) = 0;
-    virtual bool ResetServers(const std::vector<ServerNode>& servers) = 0;
+    virtual void ResetServers(const std::vector<ServerNode>& servers) = 0;
 };
 
 // Mapping a name to ServerNodes.
@@ -57,6 +57,13 @@ public:
     // impl of RunNamingService never quit, thread is a must to prevent the
     // method from blocking the caller.
     virtual bool RunNamingServiceReturnsQuickly() { return false; }
+
+    // If this method returns true, a backup file recording the latest servers
+    // will be created when naming service is running. On the other hand, if
+    // naming service is unable to be reached, then the backup file will be
+    // used. Notice that the backup file will be expired if it is not modified
+    // in FLAGS_backup_file_expire_time_s seconds.
+    virtual bool RunWithBackupFile() { return false; }
 
     // Create/destroy an instance.
     // Caller is responsible for Destroy() the instance after usage.
