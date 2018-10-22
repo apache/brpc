@@ -44,7 +44,7 @@ DEFINE_string(backup_dir_when_ns_fails, "", "When the first GetServers fails"
         ", ns will search this directory for backup file");
 
 void SaveServersToFile(const std::string& file_path,
-                             const std::vector<ServerNode>& servers) {
+                       const std::vector<ServerNode>& servers) {
     size_t pos = file_path.find_last_of('/');
     if (pos != std::string::npos) {
         butil::FilePath fp(file_path.substr(0, pos));
