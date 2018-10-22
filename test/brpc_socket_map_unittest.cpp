@@ -21,7 +21,9 @@
 
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#include "brpc/socket.h"
+#define private public
+#include "brpc/socket.cpp"
+#undef private
 #include "brpc/socket_map.h"
 #include "brpc/reloadable_flags.h"
 
@@ -34,6 +36,8 @@ DECLARE_int32(max_connection_pool_size);
 namespace {
 butil::EndPoint g_endpoint;
 brpc::SocketMapKey g_key(g_endpoint);
+std::map<brpc::SocketId, butil::atomic<uint64_t>> g_multi_count;
+volatile bool multiple_stop = false;
 
 void* worker(void*) {
     const int ROUND = 2;
@@ -49,6 +53,37 @@ void* worker(void*) {
         }
     }
     return NULL;
+}
+
+void* GetMultiConnection(void* arg) {
+    brpc::SocketId main_id = *reinterpret_cast<brpc::SocketId*>(arg);
+    brpc::SocketUniquePtr main_ptr;
+    if(0 == brpc::Socket::Address(main_id, &main_ptr)) {
+        brpc::SocketUniquePtr ptr;
+        if(0 == main_ptr->GetSocketFromGroup(&ptr, brpc::CONNECTION_TYPE_MULTIPLE)) {
+            return ptr.release();
+        }
+    }
+    return nullptr;
+}
+
+void* SendMultiRequest(void* arg) {
+    brpc::SocketId main_id = *reinterpret_cast<brpc::SocketId*>(arg);
+    brpc::SocketUniquePtr main_ptr;
+    if(0 == brpc::Socket::Address(main_id, &main_ptr)) {
+        while (!multiple_stop) {
+            brpc::SocketUniquePtr ptr;
+            if(0 == main_ptr->GetSocketFromGroup(&ptr, brpc::CONNECTION_TYPE_MULTIPLE)) {
+                g_multi_count.at(ptr->id()).fetch_add(1, butil::memory_order_relaxed);
+                bthread_usleep(butil::fast_rand_less_than(2000) + 500);
+                ptr->ReturnToGroup();
+            } else {
+                bthread_usleep(butil::fast_rand_less_than(2000) + 500);
+            }
+        }
+    }
+
+    return nullptr;
 }
 
 class SocketMapTest : public ::testing::Test{
@@ -139,7 +174,139 @@ TEST_F(SocketMapTest, max_pool_size) {
     for (int i = MAXSIZE; i < TOTALSIZE; ++i) {
         EXPECT_TRUE(ptrs[i]->Failed());
     }
+
+    // When no pending rpc is on connection group. The shardpart reference number should be 1
+    // due to only main_socket is refer to the sharedpart.
+    brpc::Socket::SharedPart* sp = main_ptr->GetSharedPart();
+    ASSERT_TRUE(sp != nullptr);
+    ASSERT_EQ(sp->ref_count(), 1);
+    brpc::SocketMapRemove(g_key);
 }
+
+TEST_F(SocketMapTest, max_multiple_size) {
+    const int MAXSIZE = 5;
+    const int THRESHOLD = 3;
+    brpc::FLAGS_max_connection_multiple_size = MAXSIZE;
+    brpc::FLAGS_threshold_for_switch_multiple_connection = THRESHOLD;
+
+    brpc::SocketId main_id;
+    ASSERT_EQ(0, brpc::SocketMapInsert(g_key, &main_id));
+
+    size_t times = MAXSIZE * (THRESHOLD + 1);
+    std::vector<pthread_t> tids(times);
+    for (size_t i = 0; i != times; ++i) {
+		    ASSERT_EQ(0, pthread_create(&tids[i], NULL, GetMultiConnection, &main_id));
+    }
+
+    std::vector<void*> retval(times);
+    for (size_t i = 0; i != times; ++i) {
+        ASSERT_EQ(0, pthread_join(tids[i], &retval[i]));
+    }
+
+    // Created sockets reach the max number.
+    brpc::SocketUniquePtr main_ptr;
+    ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
+	  std::vector<brpc::SocketId> ids;
+    main_ptr->ListSocketsOfGroup(&ids);
+    ASSERT_EQ(MAXSIZE, (int)ids.size());
+
+    for (size_t i = 0; i != times; ++i) {
+        brpc::Socket* sock = reinterpret_cast<brpc::Socket*>(retval[i]);
+        ASSERT_TRUE(sock != nullptr); 
+        brpc::SocketUniquePtr ptr(sock);
+        ptr->ReturnToGroup();
+		}
+
+    // When no pending rpc is on connection group. The shardpart reference number should be 1
+    // due to only main_socket is refer to the sharedpart.
+    brpc::Socket::SharedPart* sp = main_ptr->GetSharedPart();
+    ASSERT_TRUE(sp != nullptr);
+    ASSERT_EQ(sp->ref_count(), 1);
+    brpc::SocketMapRemove(g_key);
+}
+
+TEST_F(SocketMapTest, fairness_multiple_connections) {
+    const int MAXSIZE = 5;
+    const int THRESHOLD = 3;
+    brpc::FLAGS_max_connection_multiple_size = MAXSIZE;
+    brpc::FLAGS_threshold_for_switch_multiple_connection = THRESHOLD;
+    brpc::SocketId main_id;
+    ASSERT_EQ(0, brpc::SocketMapInsert(g_key, &main_id));
+    size_t times = MAXSIZE * (THRESHOLD + 1);
+    std::vector<pthread_t> tids(times);
+    for (size_t i = 0; i != times; ++i) {
+		    ASSERT_EQ(0, pthread_create(&tids[i], NULL, GetMultiConnection, &main_id));
+    }
+    std::vector<void*> retval(times);
+    for (size_t i = 0; i != times; ++i) {
+        ASSERT_EQ(0, pthread_join(tids[i], &retval[i]));
+    }
+    for (size_t i = 0; i != times; ++i) {
+        brpc::Socket* sock = reinterpret_cast<brpc::Socket*>(retval[i]);
+        ASSERT_TRUE(sock != nullptr); 
+        brpc::SocketUniquePtr ptr(sock);
+        ptr->ReturnToGroup();
+		}
+
+    brpc::SocketUniquePtr main_ptr;
+    ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
+	  std::vector<brpc::SocketId> ids;
+    main_ptr->ListSocketsOfGroup(&ids);
+    ASSERT_EQ(MAXSIZE, (int)ids.size());
+    for (const auto id : ids) {
+        g_multi_count[id] = 0;
+    }     
+
+    std::cout << "Time start ..." << std::endl;
+    butil::Timer tm;
+    tm.start();
+
+    tids.resize(20, 0);
+    for (size_t i = 0; i != tids.size(); ++i) {
+		    ASSERT_EQ(0, pthread_create(&tids[i], NULL, SendMultiRequest, &main_id));
+    }
+    bthread_usleep(5*1000*1000);
+    
+    std::cout << "Time end ..." << std::endl;
+    multiple_stop = true;
+    for (const auto tid : tids) {
+        ASSERT_EQ(0, pthread_join(tid, nullptr));
+    }
+    tm.stop();
+    
+    uint64_t count_sum = 0;
+    uint64_t count_squared_sum = 0;
+    uint64_t min_count = (uint64_t)-1;
+    uint64_t max_count = 0;
+    for (auto it = g_multi_count.begin(); it != g_multi_count.end(); ++it) {
+        uint64_t n = it->second;
+        if (n > max_count) { max_count = n; }
+        if (n < min_count) { min_count = n; }
+        count_sum += n;
+        count_squared_sum += n * n; 
+    }
+    ASSERT_TRUE(min_count > 0);
+    ASSERT_EQ(g_multi_count.size(), ids.size());
+    const size_t num = g_multi_count.size();
+    std::cout << '\n'
+              << ": elapse_milliseconds=" << tm.u_elapsed() * 1000
+              << " total_count=" << count_sum
+              << " min_count=" << min_count
+              << " max_count=" << max_count
+              << " average=" << count_sum / num
+              << " deviation=" << sqrt(count_squared_sum * num 
+                  - count_sum * count_sum) / num << std::endl;
+    ASSERT_TRUE((max_count - min_count) < min_count * 0.1);
+
+    // When no pending rpc is on connection group. The shardpart reference number should be 1
+    // due to only main_socket is refer to the sharedpart.
+    brpc::Socket::SharedPart* sp = main_ptr->GetSharedPart();
+    ASSERT_TRUE(sp != nullptr);
+    ASSERT_EQ(sp->ref_count(), 1);
+
+    brpc::SocketMapRemove(g_key);
+}
+
 } //namespace
 
 int main(int argc, char* argv[]) {
