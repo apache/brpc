@@ -21,6 +21,7 @@
 #include "butil/scoped_lock.h"
 #include "butil/logging.h"
 #include "butil/file_util.h"
+#include "butil/fd_utility.h"
 #include "brpc/log.h"
 #include "brpc/socket_map.h"
 #include "brpc/details/naming_service_thread.h"
@@ -126,6 +127,8 @@ void SaveServersToFile(const std::string& file_path,
         LOG(ERROR) << "Fail to open `" << file_path << "' to save naming service results";
         return;
     }
+    butil::make_close_on_exec(fileno(fp));
+
     butil::EndPointStr epstr;
     for (int i = 0; i < (int)servers.size(); ++i) {
         epstr = butil::endpoint2str(servers[i].addr);
