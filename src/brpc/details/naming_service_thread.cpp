@@ -273,7 +273,6 @@ void NamingServiceThread::Actions::ResetServers(
             SaveServersToFile(file_path, servers);
         }
     }
-
     _has_reset = true;
     EndWait(has_data? 0 : ENODATA);
 }
