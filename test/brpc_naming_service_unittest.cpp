@@ -665,7 +665,6 @@ class MyEchoService : public ::test::EchoService {
     }
 };
 
-
 TEST(NamingServiceTest, backupfiles_load) {
     brpc::Server server;
     MyEchoService svc;
