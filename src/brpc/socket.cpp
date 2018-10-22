@@ -2573,6 +2573,7 @@ int SocketMultiple::GetSocket(SocketUniquePtr* ptr_out) {
                     ptr_out->reset(ptr.release());
                     return 0;
                 } else {
+                    ptr->SetFailed(EUNUSED, "Close unused multiple socket");
                     if (Socket::Address(sid, ptr_out) == 0) {
                         (*ptr_out)->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
                         return 0;
@@ -2646,6 +2647,7 @@ int SocketMultiple::InitSocket(const size_t index, SocketId* sid) {
             *sid = new_id;
             return 0;
         } else {
+            ptr->SetFailed(EUNUSED, "Close unused multiple socket");
             *sid = dummy;
             return 1;
         } 
