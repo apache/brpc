@@ -23,12 +23,22 @@
 #include "bthread/butex.h"
 #include "butil/scoped_lock.h"
 #include "butil/logging.h"
+#include "butil/file_util.h"
 #include "brpc/log.h"
 #include "brpc/socket_map.h"
 #include "brpc/details/naming_service_thread.h"
 
-
 namespace brpc {
+namespace policy {
+// Defined in file_naming_service.cpp
+int GetServersFromFile(const char *service_name,
+                       std::vector<ServerNode>* servers);
+}
+
+DEFINE_string(backup_dir_when_ns_fails, "", "When the first GetServers fails"
+        ", ns will search this directory for backup file");
+DEFINE_int64(backup_file_expire_time_s, 7200, "The backup file would be regarded"
+        " as invalid if it is not modified in such seconds");
 
 struct NSKey {
     std::string protocol;
@@ -64,7 +74,8 @@ NamingServiceThread::Actions::Actions(NamingServiceThread* owner)
     : _owner(owner)
     , _wait_id(INVALID_BTHREAD_ID)
     , _has_wait_error(false)
-    , _wait_error(0) {
+    , _wait_error(0)
+    , _has_reset(false) {
     CHECK_EQ(0, bthread_id_create(&_wait_id, NULL, NULL));
 }
 
@@ -90,9 +101,64 @@ void NamingServiceThread::Actions::RemoveServers(
     abort();
 }
 
-bool NamingServiceThread::Actions::ResetServers(
+void CheckExpiredAndGetServers(const std::string& file_path,
+                               std::vector<ServerNode>* servers) {
+    struct stat st;
+    const int ret = stat(file_path.c_str(), &st);
+    if (ret < 0) {
+        LOG(ERROR) << "Fail to stat `" << file_path << "'";
+        return;
+    }
+    int64_t last_modified_time_s = st.st_mtim.tv_sec;
+    int64_t now_s = butil::gettimeofday_s();
+    if ((now_s - last_modified_time_s) >= FLAGS_backup_file_expire_time_s) {
+        LOG(ERROR) << "Expired backup ns file: " << file_path;
+        return;
+    }
+    policy::GetServersFromFile(file_path.c_str(), servers);
+}
+void SaveServersToFile(const std::string& file_path,
+                       const std::vector<ServerNode>& servers) {
+    size_t pos = file_path.find_last_of('/');
+    if (pos != std::string::npos) {
+        butil::FilePath fp(file_path.substr(0, pos));
+        butil::CreateDirectoryAndGetError(fp, NULL, true);
+    }
+    FILE *fp = fopen(file_path.c_str(), "w");
+    if (!fp) {
+        LOG(ERROR) << "Fail to open `" << file_path << "' to save naming service results";
+        return;
+    }
+    butil::EndPointStr epstr;
+    for (int i = 0; i < (int)servers.size(); ++i) {
+        epstr = butil::endpoint2str(servers[i].addr);
+        fprintf(fp, "%s %s\n", epstr.c_str(), servers[i].tag.c_str());
+    }
+    fclose(fp);
+}
+
+void NamingServiceThread::Actions::ResetServers(
         const std::vector<ServerNode>& servers) {
-    _servers.assign(servers.begin(), servers.end());
+    std::string file_path;
+    if (!FLAGS_backup_dir_when_ns_fails.empty()) {
+        std::ostringstream os;
+        _owner->_ns->Describe(os, DescribeOptions());
+        file_path.append(FLAGS_backup_dir_when_ns_fails);
+        file_path.push_back('/');
+        file_path.append(os.str());
+        file_path.push_back('/');
+        file_path.append(_owner->_service_name);
+    }
+    if (!_has_reset && servers.empty()) {
+        std::vector<ServerNode> servers_from_file;
+        if (!file_path.empty() && _owner->_ns->RunWithBackupFile()) {
+            CheckExpiredAndGetServers(file_path, &servers_from_file);
+        }
+        _servers.assign(servers_from_file.begin(), servers_from_file.end());
+    } else {
+        _servers.assign(servers.begin(), servers.end());
+    }
+    bool has_data = !_servers.empty();
     
     // Diff servers with _last_servers by comparing sorted vectors.
     // Notice that _last_servers is always sorted.
@@ -190,8 +256,7 @@ bool NamingServiceThread::Actions::ResetServers(
         SocketMapRemove(key);
     }
 
-    bool server_changed = (!_removed.empty() || !_added.empty());
-    if (server_changed) {
+    if (!_removed.empty() || !_added.empty()) {
         std::ostringstream info;
         info << butil::class_name_str(*_owner->_ns) << "(\"" 
              << _owner->_service_name << "\"):";
@@ -202,10 +267,15 @@ bool NamingServiceThread::Actions::ResetServers(
             info << " removed " << _removed.size();
         }
         LOG(INFO) << info.str();
+        if (!FLAGS_backup_dir_when_ns_fails.empty() &&
+            (!servers.empty() || _has_reset) &&
+            _owner->_ns->RunWithBackupFile()) {
+            SaveServersToFile(file_path, servers);
+        }
     }
 
-    EndWait(servers.empty() ? ENODATA : 0);
-    return server_changed;
+    _has_reset = true;
+    EndWait(has_data? 0 : ENODATA);
 }
 
 void NamingServiceThread::Actions::EndWait(int error_code) {

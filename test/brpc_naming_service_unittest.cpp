@@ -38,6 +38,8 @@
 namespace brpc {
 DECLARE_int32(health_check_interval);
 DECLARE_string(backup_dir_when_ns_fails);
+void SaveServersToFile(const std::string& file_path,
+                       const std::vector<brpc::ServerNode>& servers);
 
 namespace policy {
 
@@ -662,6 +664,14 @@ class MyEchoService : public ::test::EchoService {
 };
 
 TEST(NamingServiceTest, backupfiles_load) {
+    std::vector<brpc::ServerNode> servers;
+    butil::EndPoint ep;
+    butil::str2endpoint("127.0.0.1:8635", &ep);
+    servers.push_back(brpc::ServerNode(ep));
+    brpc::SaveServersToFile("http/brpc-not-exist.com", servers);
+    // Wait for a while to ensure server information is flushed to disk.
+    bthread_usleep(500000);
+
     brpc::Server server;
     MyEchoService svc;
     ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
