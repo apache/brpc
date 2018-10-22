@@ -195,7 +195,7 @@ TEST_F(SocketMapTest, max_multiple_size) {
     size_t times = MAXSIZE * (THRESHOLD + 1);
     std::vector<pthread_t> tids(times);
     for (size_t i = 0; i != times; ++i) {
-		    ASSERT_EQ(0, pthread_create(&tids[i], NULL, GetMultiConnection, &main_id));
+        ASSERT_EQ(0, pthread_create(&tids[i], NULL, GetMultiConnection, &main_id));
     }
 
     std::vector<void*> retval(times);
@@ -206,7 +206,7 @@ TEST_F(SocketMapTest, max_multiple_size) {
     // Created sockets reach the max number.
     brpc::SocketUniquePtr main_ptr;
     ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
-	  std::vector<brpc::SocketId> ids;
+    std::vector<brpc::SocketId> ids;
     main_ptr->ListSocketsOfGroup(&ids);
     ASSERT_EQ(MAXSIZE, (int)ids.size());
 
@@ -215,7 +215,7 @@ TEST_F(SocketMapTest, max_multiple_size) {
         ASSERT_TRUE(sock != nullptr); 
         brpc::SocketUniquePtr ptr(sock);
         ptr->ReturnToGroup();
-		}
+    }
 
     // When no pending rpc is on connection group. The shardpart reference number should be 1
     // due to only main_socket is refer to the sharedpart.
@@ -235,7 +235,7 @@ TEST_F(SocketMapTest, fairness_multiple_connections) {
     size_t times = MAXSIZE * (THRESHOLD + 1);
     std::vector<pthread_t> tids(times);
     for (size_t i = 0; i != times; ++i) {
-		    ASSERT_EQ(0, pthread_create(&tids[i], NULL, GetMultiConnection, &main_id));
+        ASSERT_EQ(0, pthread_create(&tids[i], NULL, GetMultiConnection, &main_id));
     }
     std::vector<void*> retval(times);
     for (size_t i = 0; i != times; ++i) {
@@ -246,11 +246,11 @@ TEST_F(SocketMapTest, fairness_multiple_connections) {
         ASSERT_TRUE(sock != nullptr); 
         brpc::SocketUniquePtr ptr(sock);
         ptr->ReturnToGroup();
-		}
+    }
 
     brpc::SocketUniquePtr main_ptr;
     ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
-	  std::vector<brpc::SocketId> ids;
+    std::vector<brpc::SocketId> ids;
     main_ptr->ListSocketsOfGroup(&ids);
     ASSERT_EQ(MAXSIZE, (int)ids.size());
     for (const auto id : ids) {
@@ -263,7 +263,7 @@ TEST_F(SocketMapTest, fairness_multiple_connections) {
 
     tids.resize(20, 0);
     for (size_t i = 0; i != tids.size(); ++i) {
-		    ASSERT_EQ(0, pthread_create(&tids[i], NULL, SendMultiRequest, &main_id));
+        ASSERT_EQ(0, pthread_create(&tids[i], NULL, SendMultiRequest, &main_id));
     }
     bthread_usleep(5*1000*1000);
     
