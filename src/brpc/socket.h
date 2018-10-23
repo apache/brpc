@@ -175,7 +175,6 @@ struct SocketOptions {
 // Abstractions on reading from and writing into file descriptors.
 // NOTE: accessed by multiple threads(frequently), align it by cacheline.
 class BAIDU_CACHELINE_ALIGNMENT/*note*/ Socket {
-private:
 friend class EventDispatcher;
 friend class InputMessenger;
 friend class Acceptor;
@@ -435,6 +434,9 @@ public:
 
     // Create a socket connecting to the same place as this socket.
     int GetShortSocket(SocketUniquePtr* short_socket);
+
+    // Return the reference number of the shared object.
+    bool GetSharedPartRefNum(int* num);
 
     // Get and persist a socket connecting to the same place as this socket.
     // If an agent socket was already created and persisted, it's returned
