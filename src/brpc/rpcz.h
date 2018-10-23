@@ -19,6 +19,8 @@
 
 #include <string>
 #include <ostream>
+#include <deque>
+#include "butil/string_splitter.h"  // StringSplitter
 #include "brpc/span.pb.h"
 #include "brpc/span_exporter.h"
 
