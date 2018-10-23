@@ -184,7 +184,7 @@ void CircuitBreaker::Reset() {
 
 void CircuitBreaker::MarkAsBroken() {
     if (_broken.exchange(true, butil::memory_order_acquire)) {
-        ++_isolated_times;
+        _isolated_times.fetch_add(butil::memory_order_relaxed);
         UpdateIsolationDuration();
     }
 }
@@ -194,17 +194,20 @@ int CircuitBreaker::health_score() const {
 }
 
 void CircuitBreaker::UpdateIsolationDuration() {
+    int isolation_duration_ms = _isolation_duration_ms.load(butil::memory_order_relaxed);
     int64_t now_time_ms = butil::cpuwide_time_ms();
     const int max_isolation_duration_ms =
         FLAGS_circuit_breaker_max_isolation_duration_ms;
     const int min_isolation_duration_ms =
         FLAGS_circuit_breaker_min_isolation_duration_ms;
     if (now_time_ms - _last_reset_time_ms < max_isolation_duration_ms) {
-        _isolation_duration_ms =
-            std::min(_isolation_duration_ms * 2, max_isolation_duration_ms);
+        isolation_duration_ms =
+            std::min(isolation_duration_ms * 2, max_isolation_duration_ms);
     } else {
-        _isolation_duration_ms = min_isolation_duration_ms;
+        isolation_duration_ms = min_isolation_duration_ms;
     }
+    _isolation_duration_ms.store(isolation_duration_ms, butil::memory_order_relaxed);
 }
+
 
 }  // namespace brpc

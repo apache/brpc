@@ -52,13 +52,13 @@ public:
 
     // Number of times marked as broken
     int isolated_times() const {
-        return _isolated_times;
+        return _isolated_times.load(butil::memory_order_relaxed);
     }
 
     // The duration that should be isolated when the socket fails in milliseconds.
     // The higher the frequency of socket errors, the longer the duration.
     int isolation_duration_ms() const {
-        return _isolation_duration_ms;
+        return _isolation_duration_ms.load(butil::memory_order_relaxed);
     }
 
 private:
@@ -89,8 +89,8 @@ private:
     EmaErrorRecorder _long_window;
     EmaErrorRecorder _short_window;
     int64_t _last_reset_time_ms; 
-    int _isolation_duration_ms;
-    int _isolated_times;
+    butil::atomic<int> _isolation_duration_ms;
+    butil::atomic<int> _isolated_times;
     butil::atomic<bool> _broken;
 };
 
