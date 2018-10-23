@@ -176,7 +176,7 @@ public:
     int64_t latency_us() const { return _end_time_us - _begin_time_us; }
 
     // Get processed time of the RPC call since received
-    int64_t processed_us() const { return butil::cpuwide_time_us()- _received_us; }
+    int64_t processed_us() const { return butil::cpuwide_time_us() - _received_us; }
 
     // Response of the RPC call (passed to CallMethod)
     google::protobuf::Message* response() const { return _response; }
