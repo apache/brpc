@@ -160,12 +160,20 @@ CircuitBreaker::CircuitBreaker()
                     FLAGS_circuit_breaker_short_window_error_percent)
     , _last_reset_time_ms(butil::cpuwide_time_ms())
     , _isolation_duration_ms(FLAGS_circuit_breaker_min_isolation_duration_ms)
-    , _isolated_times(0) {
+    , _isolated_times(0) 
+    , _broken(false) {
 }
 
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
-    return _long_window.OnCallEnd(error_code, latency) &&
-           _short_window.OnCallEnd(error_code, latency);
+    if (_broken.load(butil::memory_order_relaxed)) {
+        return false;
+    }
+    if (_long_window.OnCallEnd(error_code, latency) &&
+        _short_window.OnCallEnd(error_code, latency)) {
+        return true;
+    }
+    MarkAsBroken();
+    return false;
 }
 
 void CircuitBreaker::Reset() {
@@ -175,8 +183,10 @@ void CircuitBreaker::Reset() {
 }
 
 void CircuitBreaker::MarkAsBroken() {
-    ++_isolated_times;
-    UpdateIsolationDuration();
+    if (_broken.exchange(true, butil::memory_order_acquire)) {
+        ++_isolated_times;
+        UpdateIsolationDuration();
+    }
 }
 
 int CircuitBreaker::health_score() const {

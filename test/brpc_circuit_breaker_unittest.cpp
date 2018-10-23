@@ -60,10 +60,14 @@ struct FeedbackControl {
         : _req_num(req_num)
         , _error_percent(error_percent)
         , _circuit_breaker(circuit_breaker)
+        , _healthy_cnt(0) 
+        , _unhealthy_cnt(0) 
         , _healthy(true) {}
     int _req_num;
     int _error_percent;
     brpc::CircuitBreaker* _circuit_breaker;
+    int _healthy_cnt;
+    int _unhealthy_cnt;
     bool _healthy;
 };
 
@@ -87,8 +91,10 @@ protected:
                 healthy = fc->_circuit_breaker->OnCallEnd(kErrorCodeForSucc, kLatency);
             }
             fc->_healthy = healthy;
-            if (!healthy) {
-                break;
+            if (healthy) {
+                ++fc->_healthy_cnt;
+            } else {
+                ++fc->_unhealthy_cnt;
             }
         }
         return fc;
@@ -120,11 +126,9 @@ TEST_F(CircuitBreakerTest, should_not_isolate) {
         void* ret_data = NULL;
         EXPECT_EQ(pthread_join(thread_list[i], &ret_data), 0);
         FeedbackControl* fc = static_cast<FeedbackControl*>(ret_data);
+        EXPECT_EQ(fc->_unhealthy_cnt, 0);
         EXPECT_TRUE(fc->_healthy);
     }
-    // MarkAsBroken shoul be called only once.
-    _circuit_breaker.MarkAsBroken();
-    _circuit_breaker.Reset();
 } 
 
 TEST_F(CircuitBreakerTest, should_isolate) {
@@ -135,15 +139,12 @@ TEST_F(CircuitBreakerTest, should_isolate) {
         void* ret_data = NULL;
         EXPECT_EQ(pthread_join(thread_list[i], &ret_data), 0);
         FeedbackControl* fc = static_cast<FeedbackControl*>(ret_data);
+        EXPECT_GT(fc->_unhealthy_cnt, 0);
         EXPECT_FALSE(fc->_healthy);
     }
-    // MarkAsBroken shoul be called only once.
-    _circuit_breaker.MarkAsBroken();
-    _circuit_breaker.Reset();
 }
 
 TEST_F(CircuitBreakerTest, isolation_duration_grow) {
-    EXPECT_EQ(_circuit_breaker.isolation_duration_ms(), kMinIsolationDurationMs);
     _circuit_breaker.Reset();
     std::vector<pthread_t> thread_list;
     std::vector<std::unique_ptr<FeedbackControl>> fc_list;
@@ -153,9 +154,9 @@ TEST_F(CircuitBreakerTest, isolation_duration_grow) {
         EXPECT_EQ(pthread_join(thread_list[i], &ret_data), 0);
         FeedbackControl* fc = static_cast<FeedbackControl*>(ret_data);
         EXPECT_FALSE(fc->_healthy);
+        EXPECT_LE(fc->_healthy_cnt, kShortWindowSize);
+        EXPECT_GT(fc->_unhealthy_cnt, 0);
     }
-    // MarkAsBroken shoul be called only once.
-    _circuit_breaker.MarkAsBroken();
     EXPECT_EQ(_circuit_breaker.isolation_duration_ms(), kMinIsolationDurationMs * 2);
 
     _circuit_breaker.Reset();
@@ -166,9 +167,9 @@ TEST_F(CircuitBreakerTest, isolation_duration_grow) {
         EXPECT_EQ(pthread_join(thread_list[i], &ret_data), 0);
         FeedbackControl* fc = static_cast<FeedbackControl*>(ret_data);
         EXPECT_FALSE(fc->_healthy);
+        EXPECT_LE(fc->_healthy_cnt, kShortWindowSize);
+        EXPECT_GT(fc->_unhealthy_cnt, 0);
     }
-    // MarkAsBroken shoul be called only once.
-    _circuit_breaker.MarkAsBroken();
     EXPECT_EQ(_circuit_breaker.isolation_duration_ms(), kMinIsolationDurationMs * 4);
 
     _circuit_breaker.Reset();
@@ -179,8 +180,8 @@ TEST_F(CircuitBreakerTest, isolation_duration_grow) {
         EXPECT_EQ(pthread_join(thread_list[i], &ret_data), 0);
         FeedbackControl* fc = static_cast<FeedbackControl*>(ret_data);
         EXPECT_FALSE(fc->_healthy);
+        EXPECT_LE(fc->_healthy_cnt, kShortWindowSize);
+        EXPECT_GT(fc->_unhealthy_cnt, 0);
     }
-    // MarkAsBroken shoul be called only once.
-    _circuit_breaker.MarkAsBroken();
     EXPECT_EQ(_circuit_breaker.isolation_duration_ms(), kMinIsolationDurationMs);
 }

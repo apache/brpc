@@ -31,6 +31,9 @@ public:
     // be isolated. Otherwise return true.
     // error_code: Error_code of this call, 0 means success.
     // latency: Time cost of this call.
+    // Note: Once OnCallEnd() determined that a node needs to be isolated,
+    // it will always return false until you call Reset(). Usually Reset() 
+    // will be called in the health check thread. 
     bool OnCallEnd(int error_code, int64_t latency);
 
     // Reset CircuitBreaker and clear history data. will erase the historical 
@@ -38,8 +41,9 @@ public:
     // ensure that no one else is calling OnCallEnd.
     void Reset();
 
-    // Mark the Socket as broken. You should NOT call this method multiple 
-    // times in succession.
+    // Mark the Socket as broken. Call this method when you want to isolate a 
+    // node in advance. When this method is called multiple times in succession, 
+    // only the first call will take effect.
     void MarkAsBroken();
 
     // The closer to 100, the less recent errors occurred, and 0 means that 
@@ -87,6 +91,7 @@ private:
     int64_t _last_reset_time_ms; 
     int _isolation_duration_ms;
     int _isolated_times;
+    butil::atomic<bool> _broken;
 };
 
 }  // namespace brpc
