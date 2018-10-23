@@ -96,22 +96,20 @@ int GrpcStatusToErrorCode(GrpcStatus grpc_status) {
     case GRPC_PERMISSIONDENIED:
         return EPERM;
     case GRPC_RESOURCEEXHAUSTED:
-        return ELIMIT;
     case GRPC_FAILEDPRECONDITION:
     case GPRC_ABORTED:
     case GRPC_OUTOFRANGE:
-         return EINTERNAL;
+        return EINTERNAL;
     case GRPC_UNIMPLEMENTED:
-         return ENOMETHOD;
+        return ENOMETHOD;
     case GRPC_INTERNAL:
     case GRPC_UNAVAILABLE:
-         return EINTERNAL;
     case GRPC_DATALOSS:
-         return EINTERNAL;
+        return EINTERNAL;
     case GRPC_UNAUTHENTICATED:
-         return ERPCAUTH;
+        return ERPCAUTH;
     default:
-         return EINTERNAL;
+        return EINTERNAL;
     }
 }
 
