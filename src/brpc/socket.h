@@ -201,6 +201,7 @@ struct SocketOptions {
 // Abstractions on reading from and writing into file descriptors.
 // NOTE: accessed by multiple threads(frequently), align it by cacheline.
 class BAIDU_CACHELINE_ALIGNMENT/*note*/ Socket {
+private:
 friend class EventDispatcher;
 friend class InputMessenger;
 friend class Acceptor;
