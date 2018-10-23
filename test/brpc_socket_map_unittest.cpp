@@ -21,9 +21,8 @@
 
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#define private public
-#include "brpc/socket.cpp"
-#undef private
+#include "brpc/socket.h"
+#include "bthread/bthread.h"
 #include "brpc/socket_map.h"
 #include "brpc/reloadable_flags.h"
 
@@ -31,6 +30,8 @@ namespace brpc {
 DECLARE_int32(idle_timeout_second);
 DECLARE_int32(defer_close_second);
 DECLARE_int32(max_connection_pool_size);
+DECLARE_int32(max_connection_multiple_size);
+DECLARE_int32(threshold_for_switch_multiple_connection);
 } // namespace brpc
 
 namespace {
@@ -177,9 +178,10 @@ TEST_F(SocketMapTest, max_pool_size) {
 
     // When no pending rpc is on connection group. The shardpart reference number should be 1
     // due to only main_socket is refer to the sharedpart.
-    brpc::Socket::SharedPart* sp = main_ptr->GetSharedPart();
-    ASSERT_TRUE(sp != nullptr);
-    ASSERT_EQ(sp->ref_count(), 1);
+    int ref_num = 0;
+    ASSERT_TRUE(main_ptr->GetSharedPartRefNum(&ref_num));
+    ASSERT_EQ(ref_num, 1);
+
     brpc::SocketMapRemove(g_key);
 }
 
@@ -219,9 +221,9 @@ TEST_F(SocketMapTest, max_multiple_size) {
 
     // When no pending rpc is on connection group. The shardpart reference number should be 1
     // due to only main_socket is refer to the sharedpart.
-    brpc::Socket::SharedPart* sp = main_ptr->GetSharedPart();
-    ASSERT_TRUE(sp != nullptr);
-    ASSERT_EQ(sp->ref_count(), 1);
+    int ref_num = 0;
+    ASSERT_TRUE(main_ptr->GetSharedPartRefNum(&ref_num));
+    ASSERT_EQ(ref_num, 1);
     brpc::SocketMapRemove(g_key);
 }
 
@@ -300,9 +302,9 @@ TEST_F(SocketMapTest, fairness_multiple_connections) {
 
     // When no pending rpc is on connection group. The shardpart reference number should be 1
     // due to only main_socket is refer to the sharedpart.
-    brpc::Socket::SharedPart* sp = main_ptr->GetSharedPart();
-    ASSERT_TRUE(sp != nullptr);
-    ASSERT_EQ(sp->ref_count(), 1);
+    int ref_num = 0;
+    ASSERT_TRUE(main_ptr->GetSharedPartRefNum(&ref_num));
+    ASSERT_EQ(ref_num, 1);
 
     brpc::SocketMapRemove(g_key);
 }

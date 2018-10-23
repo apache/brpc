@@ -2844,6 +2844,15 @@ bool Socket::GetSocketGroupCount(int* num) {
     return true;
 }
 
+bool Socket::GetSharedPartRefNum(int* num) {
+    SharedPart* sp = GetSharedPart();
+    if (sp) {
+        *num = sp->ref_count();
+        return true;
+    }
+    return false;
+}
+
 int Socket::GetShortSocket(SocketUniquePtr* short_socket) {
     if (short_socket == NULL) {
         LOG(ERROR) << "short_socket is NULL";
