@@ -206,6 +206,7 @@ void ProcessMongoRequest(InputMessageBase* msg_base) {
         .set_local_side(socket->local_side())
         .set_auth_context(socket->auth_context())
         .set_request_protocol(PROTOCOL_MONGO)
+        .set_received_us(msg_base->received_us())
         .move_in_server_receiving_sock(socket_guard);
 
     // Tag the bthread with this server's key for

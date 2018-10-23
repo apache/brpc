@@ -1237,6 +1237,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         .set_local_side(socket->local_side())
         .set_auth_context(socket->auth_context())
         .set_request_protocol(PROTOCOL_HTTP)
+        .set_received_us(msg->received_us())
         .move_in_server_receiving_sock(socket_guard);
     
     // Read log-id. errno may be set when input to strtoull overflows.
