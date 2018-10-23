@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <ostream>
+#include <set>
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/synchronization/lock.h"
 #include "brpc/span.pb.h"
