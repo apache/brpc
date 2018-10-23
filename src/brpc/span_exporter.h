@@ -39,9 +39,13 @@ namespace brpc {
 //
 // class FooSpanExporter: public brpc::SpanExporter {
 // public:
-//     void DumpSpan(const RpczSpan* span) {
+//     FooSpanExporter() : brpc::SpanExporter() {}
+//     FooSpanExporter(const std::string& name) : brpc::SpanExporter(name) {}
+//
+//     void DumpSpan(const RpczSpan* span) override {
 //          // do dump span
 //     }
+//     ~FooSpanExporter() {}
 // };
 //
 // brpc::RegisterSpanExporter(std::make_shared<FooSpanExporter>("FooSpanExporter"));
@@ -49,9 +53,11 @@ namespace brpc {
     
 class SpanExporter {
 public:
-    SpanExporter() {}
+    SpanExporter();
 
-    SpanExporter(const std::string& name) : _name(name) {}
+    SpanExporter(const std::string& name);
+
+    int id() const { return _id; }
 
     virtual void DumpSpan(const TracingSpan* span) {}
 
@@ -61,6 +67,7 @@ public:
 
 private:
     std::string _name;
+    int _id;
 };
 
 //The following methods are thread-safe

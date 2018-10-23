@@ -21,14 +21,23 @@
 namespace brpc {
 
 static butil::atomic<int> g_span_exporter_index;
+
+SpanExporter::SpanExporter() 
+    : _id(g_span_exporter_index.fetch_add(1, butil::memory_order_relaxed)) {
+}
+
+SpanExporter::SpanExporter(const std::string& name) 
+    : _name(name)
+    , _id(g_span_exporter_index.fetch_add(1, butil::memory_order_relaxed)) {
+}
+
 void SpanExporter::Describe(std::ostream& os) const {
-    os << "SpanExporter[";
     if (_name.empty()) {
-        os << g_span_exporter_index.fetch_add(1, butil::memory_order_relaxed);
+        os << "SpanExporter";
     } else {
         os << _name;
     }
-    os << ']';
+    os << "[id =" << _id << ']';
 }
 
 void SpanExporterManager::RegisterSpanExporter(std::shared_ptr<SpanExporter> span_exporter) {
