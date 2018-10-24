@@ -61,7 +61,7 @@ public:
     virtual ~SocketUser() {}
     virtual void BeforeRecycle(Socket*) {};
 
-    // Will be perodically called in a dedicated thread to check the
+    // Will be periodically called in a dedicated thread to check the
     // health.
     // If the return value is 0, the socket is revived.
     // If the return value is ESTOP, the health-checking thread quits.
