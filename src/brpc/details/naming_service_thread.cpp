@@ -143,11 +143,9 @@ void NamingServiceThread::Actions::ResetServers(
         !FLAGS_backup_dir_when_ns_fails.empty() && _owner->_ns->RunWithBackupFile();
     bool load_enabled = !_reset_ever && servers.empty();
     if (backup_file_enabled) {
-        std::ostringstream os;
-        _owner->_ns->Describe(os, DescribeOptions());
         file_path.append(FLAGS_backup_dir_when_ns_fails);
         file_path.push_back('/');
-        file_path.append(os.str());
+        file_path.append(_owner->_protocol);
         file_path.push_back('/');
         file_path.append(_owner->_service_name);
         if (load_enabled) {
