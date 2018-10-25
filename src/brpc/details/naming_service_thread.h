@@ -82,7 +82,7 @@ class NamingServiceThread : public SharedObject, public Describable {
         std::vector<ServerNodeWithId> _sockets;
         std::vector<ServerNodeWithId> _added_sockets;
         std::vector<ServerNodeWithId> _removed_sockets;
-        bool _has_reset;
+        bool _reset_ever;
     };
 
 public:    
