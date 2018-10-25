@@ -138,6 +138,7 @@ void NamingServiceThread::Actions::ResetServers(
     std::string file_path;
     bool backup_file_enabled =
         !FLAGS_backup_dir_when_ns_fails.empty() && _owner->_ns->RunWithBackupFile();
+    bool load_enabled = !_reset_ever && servers.empty();
     if (backup_file_enabled) {
         std::ostringstream os;
         _owner->_ns->Describe(os, DescribeOptions());
@@ -146,12 +147,13 @@ void NamingServiceThread::Actions::ResetServers(
         file_path.append(os.str());
         file_path.push_back('/');
         file_path.append(_owner->_service_name);
-    }
-    bool load_enabled = !_reset_ever && servers.empty();
-    if (backup_file_enabled && load_enabled) {
-        std::vector<ServerNode> servers_from_file;
-        GetUnexpiredServersFromFile(file_path, &servers_from_file);
-        _servers.assign(servers_from_file.begin(), servers_from_file.end());
+        if (load_enabled) {
+            std::vector<ServerNode> servers_from_file;
+            GetUnexpiredServersFromFile(file_path, &servers_from_file);
+            _servers.assign(servers_from_file.begin(), servers_from_file.end());
+        } else {
+            _servers.assign(servers.begin(), servers.end());
+        }
     } else {
         _servers.assign(servers.begin(), servers.end());
     }
