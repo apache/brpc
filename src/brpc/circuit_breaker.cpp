@@ -180,11 +180,12 @@ void CircuitBreaker::Reset() {
     _long_window.Reset();
     _short_window.Reset();
     _last_reset_time_ms = butil::cpuwide_time_ms();
+    _broken.store(false, butil::memory_order_release);
 }
 
 void CircuitBreaker::MarkAsBroken() {
-    if (_broken.exchange(true, butil::memory_order_acquire)) {
-        _isolated_times.fetch_add(butil::memory_order_relaxed);
+    if (!_broken.exchange(true, butil::memory_order_acquire)) {
+        _isolated_times.fetch_add(1, butil::memory_order_relaxed);
         UpdateIsolationDuration();
     }
 }
@@ -194,8 +195,8 @@ int CircuitBreaker::health_score() const {
 }
 
 void CircuitBreaker::UpdateIsolationDuration() {
-    int isolation_duration_ms = _isolation_duration_ms.load(butil::memory_order_relaxed);
     int64_t now_time_ms = butil::cpuwide_time_ms();
+    int isolation_duration_ms = _isolation_duration_ms.load(butil::memory_order_relaxed);
     const int max_isolation_duration_ms =
         FLAGS_circuit_breaker_max_isolation_duration_ms;
     const int min_isolation_duration_ms =
