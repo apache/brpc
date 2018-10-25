@@ -680,7 +680,6 @@ TEST(NamingServiceTest, backupfiles_load) {
     brpc::FLAGS_backup_dir_when_ns_fails = ".";
     brpc::Channel channel;
     brpc::ChannelOptions opt;
-    brpc::FLAGS_backup_dir_when_ns_fails = ".";
     ASSERT_EQ(0, channel.Init("http://brpc-not-exist.com", "rr", &opt));
 
     brpc::Controller cntl;

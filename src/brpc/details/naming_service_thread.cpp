@@ -76,7 +76,7 @@ NamingServiceThread::Actions::Actions(NamingServiceThread* owner)
     , _wait_id(INVALID_BTHREAD_ID)
     , _has_wait_error(false)
     , _wait_error(0)
-    , _has_reset(false) {
+    , _reset_ever(false) {
     CHECK_EQ(0, bthread_id_create(&_wait_id, NULL, NULL));
 }
 
@@ -102,8 +102,8 @@ void NamingServiceThread::Actions::RemoveServers(
     abort();
 }
 
-void CheckExpiredAndGetServers(const std::string& file_path,
-                               std::vector<ServerNode>* servers) {
+void GetUnexpiredServersFromFile(const std::string& file_path,
+                                 std::vector<ServerNode>* servers) {
     struct stat st;
     const int ret = stat(file_path.c_str(), &st);
     if (ret < 0) {
@@ -120,11 +120,7 @@ void CheckExpiredAndGetServers(const std::string& file_path,
 }
 void SaveServersToFile(const std::string& file_path,
                        const std::vector<ServerNode>& servers) {
-    size_t pos = file_path.find_last_of('/');
-    if (pos != std::string::npos) {
-        butil::FilePath fp(file_path.substr(0, pos));
-        butil::CreateDirectoryAndGetError(fp, NULL, true);
-    }
+    butil::CreateDirectoryAndGetError(butil::FilePath(file_path).DirName(), NULL, true);
     FILE *fp = fopen(file_path.c_str(), "w");
     if (!fp) {
         LOG(ERROR) << "Fail to open `" << file_path << "' to save naming service results";
@@ -143,7 +139,9 @@ void SaveServersToFile(const std::string& file_path,
 void NamingServiceThread::Actions::ResetServers(
         const std::vector<ServerNode>& servers) {
     std::string file_path;
-    if (!FLAGS_backup_dir_when_ns_fails.empty()) {
+    bool backup_file_enabled =
+        !FLAGS_backup_dir_when_ns_fails.empty() && _owner->_ns->RunWithBackupFile();
+    if (backup_file_enabled) {
         std::ostringstream os;
         _owner->_ns->Describe(os, DescribeOptions());
         file_path.append(FLAGS_backup_dir_when_ns_fails);
@@ -152,11 +150,10 @@ void NamingServiceThread::Actions::ResetServers(
         file_path.push_back('/');
         file_path.append(_owner->_service_name);
     }
-    if (!_has_reset && servers.empty()) {
+    bool load_enabled = !_reset_ever && servers.empty();
+    if (backup_file_enabled && load_enabled) {
         std::vector<ServerNode> servers_from_file;
-        if (!file_path.empty() && _owner->_ns->RunWithBackupFile()) {
-            CheckExpiredAndGetServers(file_path, &servers_from_file);
-        }
+        GetUnexpiredServersFromFile(file_path, &servers_from_file);
         _servers.assign(servers_from_file.begin(), servers_from_file.end());
     } else {
         _servers.assign(servers.begin(), servers.end());
@@ -270,13 +267,11 @@ void NamingServiceThread::Actions::ResetServers(
             info << " removed " << _removed.size();
         }
         LOG(INFO) << info.str();
-        if (!FLAGS_backup_dir_when_ns_fails.empty() &&
-            (!servers.empty() || _has_reset) &&
-            _owner->_ns->RunWithBackupFile()) {
+        if (backup_file_enabled && !load_enabled) {
             SaveServersToFile(file_path, servers);
         }
     }
-    _has_reset = true;
+    _reset_ever = true;
     EndWait(has_data? 0 : ENODATA);
 }
 
