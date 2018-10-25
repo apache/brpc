@@ -252,7 +252,6 @@ void Controller::ResetPods() {
     _request_stream = INVALID_STREAM_ID;
     _response_stream = INVALID_STREAM_ID;
     _remote_stream_settings = NULL;
-    _received_us = 0;
 }
 
 Controller::Call::Call(Controller::Call* rhs)
