@@ -696,6 +696,11 @@ inline bool does_error_affect_main_socket(int error_code) {
 //      entire RPC (specified by c->FailedInline()).
 void Controller::Call::OnComplete(
         Controller* c, int error_code/*note*/, bool responded, bool end_of_rpc) {
+    if (enable_circuit_breaker && sending_sock) {
+        sending_sock->FeedbackCircuitBreaker(error_code, 
+            butil::gettimeofday_us() - begin_time_us);
+    }
+ 
     switch (c->connection_type()) {
     case CONNECTION_TYPE_UNKNOWN:
         break;
@@ -760,11 +765,7 @@ void Controller::Call::OnComplete(
             sock->SetLogOff();
         }
     }
-    if (enable_circuit_breaker && sending_sock) {
-        sending_sock->FeedbackCircuitBreaker(error_code, 
-            butil::gettimeofday_us() - begin_time_us);
-    }
-    
+   
     if (need_feedback) {
         const LoadBalancer::CallInfo info =
             { begin_time_us, peer_id, error_code, c };
