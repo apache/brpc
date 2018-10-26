@@ -28,6 +28,8 @@ class StreamUserData;
 // generally this object is created before RPC and destroyed after RPC.
 class StreamCreator {
 public:
+    virtual ~StreamCreator() = default;
+
     // Called when the socket for sending request is about to be created.
     // If the RPC has retries, this function MAY be called before each retry.
     // This function would not be called if some preconditions are not
@@ -56,6 +58,8 @@ public:
 // of a specific stream request.
 class StreamUserData {
 public:
+    virtual ~StreamUserData() = default;
+
     // Called when the streamUserData is about to destroyed.
     // This function MUST be called to clean up resources if OnCreatingStream
     // of StreamCreator has returned a valid StreamUserData pointer.
