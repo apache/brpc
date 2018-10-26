@@ -205,7 +205,7 @@ SocketId WeightedRoundRobinLoadBalancer::GetServerInNextStride(
         const std::vector<Server>& server_list,
         const std::unordered_set<SocketId>& filter, 
         TLS& tls) {
-    SocketId final_server = INVALID_STREAM_ID;
+    SocketId final_server = INVALID_SOCKET_ID;
     uint64_t stride = tls.stride;
     Server& remain = tls.remain_server;
     if (remain.weight > 0) {
