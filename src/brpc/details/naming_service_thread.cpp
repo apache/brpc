@@ -33,8 +33,8 @@ int GetServersFromFile(const char *service_name,
                        std::vector<ServerNode>* servers);
 }
 
-DEFINE_string(backup_dir_when_ns_fails, "", "When the first GetServers fails"
-        ", ns will search this directory for backup file");
+DEFINE_string(ns_backup_dir, "", "When the first GetServers fails, ns will search"
+        " this directory for backup files");
 DEFINE_int64(backup_file_expire_time_s, 7200, "The backup file would be regarded"
         " as invalid if it is not modified in such seconds");
 
@@ -137,10 +137,10 @@ void NamingServiceThread::Actions::ResetServers(
         const std::vector<ServerNode>& servers) {
     std::string file_path;
     bool backup_file_enabled =
-        !FLAGS_backup_dir_when_ns_fails.empty() && _owner->_ns->RunWithBackupFile();
+        !FLAGS_ns_backup_dir.empty() && _owner->_ns->RunWithBackupFile();
     bool load_enabled = !_reset_ever && servers.empty();
     if (backup_file_enabled) {
-        file_path.append(FLAGS_backup_dir_when_ns_fails);
+        file_path.append(FLAGS_ns_backup_dir);
         file_path.push_back('/');
         file_path.append(_owner->_protocol);
         file_path.push_back('/');
