@@ -834,7 +834,6 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
                 vref, MakeVRef(id_ver + 1, NRefOfVRef(vref)),
                 butil::memory_order_release,
                 butil::memory_order_relaxed)) {
-            GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
             // Update _error_text
             std::string error_text;
             if (error_fmt != NULL) {
@@ -852,6 +851,7 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // by Channel to revive never-connected socket when server side
             // comes online.
             if (_health_check_interval_s > 0) {
+                GetOrNewSharedPart( )->circuit_breaker.MarkAsBroken();
                 PeriodicTaskManager::StartTaskAt(
                     new HealthCheckTask(id()),
                     butil::milliseconds_from_now(GetOrNewSharedPart()->

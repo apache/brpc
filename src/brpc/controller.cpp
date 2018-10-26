@@ -761,6 +761,7 @@ void Controller::Call::OnComplete(
         }
         break;
     }
+
     if (ELOGOFF == error_code) {
         SocketUniquePtr sock;
         if (Socket::Address(peer_id, &sock) == 0) {
@@ -768,7 +769,7 @@ void Controller::Call::OnComplete(
             sock->SetLogOff();
         }
     }
-    
+
     if (need_feedback) {
         const LoadBalancer::CallInfo info =
             { begin_time_us, peer_id, error_code, c };
