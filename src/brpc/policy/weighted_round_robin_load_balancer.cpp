@@ -194,7 +194,6 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
             tls_temp.stride = GetStride(remain_weight, remain_servers);
             tls_temp.position = tls.position;
             tls_temp.remain_server = tls.remain_server; 
-            continue;
         }
     }
     return EHOSTDOWN;
