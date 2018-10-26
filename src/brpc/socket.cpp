@@ -106,7 +106,8 @@ const int WAIT_EPOLLOUT_TIMEOUT_MS = 50;
 class BAIDU_CACHELINE_ALIGNMENT SocketGroup {
 friend class Socket;
 public:
-    SocketGroup(const SocketOptions& opts) : _options(opts){}
+    SocketGroup(const SocketOptions& opts) 
+        : _options(opts), _remote_side(opts.remote_side) {}
     virtual ~SocketGroup() = default;
 
     // Get an address-able socket from sockets group.
@@ -128,6 +129,7 @@ public:
 protected:
     // options used to create this instance
     SocketOptions _options;
+    butil::EndPoint _remote_side;
 };
 
 class BAIDU_CACHELINE_ALIGNMENT SocketPool : public SocketGroup {
@@ -161,7 +163,6 @@ public:
 private:
     butil::Mutex _mutex;
     std::vector<SocketId> _pool;
-    butil::EndPoint _remote_side;
     butil::atomic<int> _numfree; // #free sockets in all sub pools.
     butil::atomic<int> _numinflight; // #inflight sockets in all sub pools.
 };
@@ -218,7 +219,6 @@ private:
     // * Low unsigned 32-bit: the rpc count when the socket was selected 
     //                        as the lightest socket. 
     butil::atomic<uint64_t> _lightest;
-    butil::EndPoint _remote_side;
     std::vector<SocketId> _multiple;
 };
 
@@ -2427,7 +2427,6 @@ void SocketUser::AfterRevived(Socket* ptr) {
 
 SocketPool::SocketPool(const SocketOptions& opt)
     : SocketGroup(opt)
-    , _remote_side(opt.remote_side)
     , _numfree(0)
     , _numinflight(0) {
 }
@@ -2543,7 +2542,6 @@ SocketMultiple::SocketMultiple(const SocketOptions& opt)
     : SocketGroup(opt)
     , _num_created(0)
     , _lightest(0)
-    , _remote_side(opt.remote_side)
     , _multiple(FLAGS_max_connection_multiple_size, INVALID_SOCKET_ID) {
 }
 
@@ -2658,7 +2656,8 @@ int SocketMultiple::GetSocket(SocketUniquePtr* ptr_out) {
 void SocketMultiple::ReturnSocket(Socket* sock) {
     sock->_rpc_count.fetch_sub(1, butil::memory_order_acquire);
     CHECK_EQ(sock->id(), _multiple[sock->_multiple_index]) 
-        << "Socket is not consistent with " << sock->_multiple_index << "th of multiple connections."; 
+        << "Socket is not consistent with " << sock->_multiple_index 
+        << "th of multiple connections."; 
     if (sock->Failed()) {
         return;
     }
@@ -2667,8 +2666,7 @@ void SocketMultiple::ReturnSocket(Socket* sock) {
     uint64_t s = BuildLightest(sock->_multiple_index, load);
     if (sock->id() == SidOfLightest(lsid)) {
         if (load < LoadOfLightest(lsid)) {
-            _lightest.compare_exchange_strong(
-               lsid, s, butil::memory_order_relaxed);
+            _lightest.compare_exchange_strong(lsid, s, butil::memory_order_relaxed);
         } 
     } else {
         UpdateLightestSocketIfNeeded(s);
@@ -2680,13 +2678,13 @@ int SocketMultiple::InitSocket(const size_t index, SocketId* sid) {
     opt.health_check_interval_s = _options.health_check_interval_s;
     SocketUniquePtr ptr;
     SocketId new_id;
-	  if (get_client_side_messenger()->Create(opt, &new_id) == 0) {
+    if (get_client_side_messenger()->Create(opt, &new_id) == 0) {
         Socket::Address(new_id, &ptr);
     }
-    size_t count = _num_created.fetch_add(1, butil::memory_order_acquire);
     SocketId dummy = INVALID_SOCKET_ID; 
     butil::atomic<SocketId>* psid;
     uint32_t final_pos = 0;
+    const size_t count = _num_created.fetch_add(1, butil::memory_order_acquire);
     if (count < _multiple.size()) {
         final_pos = count;
         if (!ptr) {
