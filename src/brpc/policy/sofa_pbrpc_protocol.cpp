@@ -352,8 +352,7 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
         .set_local_side(socket->local_side())
         .set_auth_context(socket->auth_context())
         .set_request_protocol(PROTOCOL_SOFA_PBRPC)
-        .set_begin_time_us(msg->received_us())
-        .set_end_time_us(butil::cpuwide_time_us())
+        .set_server_latency(msg->received_us())
         .move_in_server_receiving_sock(socket_guard);
 
     // Tag the bthread with this server's key for thread_local_data().

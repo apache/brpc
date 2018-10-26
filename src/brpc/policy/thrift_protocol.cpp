@@ -465,8 +465,7 @@ void ProcessThriftRequest(InputMessageBase* msg_base) {
         .set_remote_side(socket->remote_side())
         .set_local_side(socket->local_side())
         .set_request_protocol(PROTOCOL_THRIFT)
-        .set_begin_time_us(msg_base->received_us())
-        .set_end_time_us(butil::cpuwide_time_us())
+        .set_server_latency(msg_base->received_us())
         .move_in_server_receiving_sock(socket_guard);
 
     uint32_t seq_id;
