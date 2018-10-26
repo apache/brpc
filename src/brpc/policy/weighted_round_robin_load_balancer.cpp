@@ -187,11 +187,11 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
             return 0;
         } else {
             // Skip this invalid server. We need calculate a new stride for server selection.
-            filter.emplace(server_id);
-            remain_weight -= (s->server_list[s->server_map.at(server_id)]).weight;
             if (--remain_servers == 0) {
                 break;
             }
+            filter.emplace(server_id);
+            remain_weight -= (s->server_list[s->server_map.at(server_id)]).weight;
             // Select from begining status.
             tls_temp.stride = GetStride(remain_weight, remain_servers);
             tls_temp.position = tls.position;
