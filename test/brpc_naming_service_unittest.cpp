@@ -37,7 +37,7 @@
 
 namespace brpc {
 DECLARE_int32(health_check_interval);
-DECLARE_string(backup_dir_when_ns_fails);
+DECLARE_string(ns_backup_dir);
 void SaveServersToFile(const std::string& file_path,
                        const std::vector<brpc::ServerNode>& servers);
 
@@ -677,7 +677,7 @@ TEST(NamingServiceTest, backupfiles_load) {
     ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
     ASSERT_EQ(0, server.Start("localhost:8635", NULL));
 
-    brpc::FLAGS_backup_dir_when_ns_fails = ".";
+    brpc::FLAGS_ns_backup_dir = ".";
     brpc::Channel channel;
     brpc::ChannelOptions opt;
     ASSERT_EQ(0, channel.Init("http://brpc-not-exist.com", "rr", &opt));
@@ -693,7 +693,7 @@ TEST(NamingServiceTest, backupfiles_load) {
 
 TEST(NamingServiceTest, backupfiles_save) {
     brpc::policy::FLAGS_discovery_api_addr = "http://127.0.0.1:8635/discovery/nodes";
-    brpc::FLAGS_backup_dir_when_ns_fails = ".";
+    brpc::FLAGS_ns_backup_dir = ".";
     brpc::Server server;
     DiscoveryNamingServiceImpl svc;
     std::string rest_mapping =
@@ -706,7 +706,6 @@ TEST(NamingServiceTest, backupfiles_save) {
     brpc::Channel channel;
     brpc::ChannelOptions opt;
     opt.protocol = brpc::PROTOCOL_HTTP;
-    brpc::FLAGS_backup_dir_when_ns_fails = ".";
     ASSERT_EQ(0, channel.Init("discovery://admin.test", "rr", &opt));
 
     // Wait for a while to ensure server information is flushed to disk.
