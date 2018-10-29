@@ -81,13 +81,21 @@ bool CouchbaseLoadBalancer::UpdateVBucketMap(
     std::map<std::string, SocketId>::const_iterator iter;
     for (size_t i = 0; i != server_num; ++i) {
         const char* addr = butil::vbucket_config_get_server(vb_conf, i);
+        butil::EndPoint point;
+        std::string point_str;
+        if (str2endpoint(addr, &point) == 0 ||
+            hostname2endpoint(addr, &point) == 0) {
+            point_str = endpoint2str(point).c_str();
+        } else {
+            CHECK(false) << "Failed to get endpoint from address=\'" << addr << '\'';
+        }
         if ((server_id_map && 
-            ((iter = server_id_map->find(addr)) != server_id_map->end())) 
+            ((iter = server_id_map->find(point_str)) != server_id_map->end()))
             || (curr_server_id_map && 
-            (iter = curr_server_id_map->find(addr)) != curr_server_id_map->end())) {
+            (iter = curr_server_id_map->find(point_str)) != curr_server_id_map->end())) {
             servers[i] = iter->second;
         } else {
-            CHECK(false) << "Failed to find socket id of address=\'" << addr << '\'';
+            LOG(FATAL) << "Failed to find socket id of address=\'" << point_str << '\'';
         }
     }
     uint64_t version = 0;
