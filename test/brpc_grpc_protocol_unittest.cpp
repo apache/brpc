@@ -20,6 +20,7 @@
 #include "brpc/server.h"
 #include "brpc/channel.h"
 #include "brpc/grpc.h"
+#include "butil/time.h"
 #include "grpc.pb.h"
 
 int main(int argc, char* argv[]) {
@@ -64,6 +65,10 @@ public:
             cntl->SetFailed(brpc::EINTERNAL, "%s", g_prefix.c_str());
             return;
         }
+        if (req->has_timeout_ns()) {
+            EXPECT_NEAR(cntl->deadline_ns() / 1000000000L,
+                butil::gettimeofday_s() + req->timeout_ns() / 1000000000L, 1);
+        }
     }
 
     void MethodTimeOut(::google::protobuf::RpcController* cntl_base,
@@ -76,7 +81,6 @@ public:
         return;
     }
 };
-
 
 class GrpcTest : public ::testing::Test {
 protected:
@@ -196,6 +200,31 @@ TEST_F(GrpcTest, MethodNotExist) {
     EXPECT_TRUE(cntl.Failed());
     EXPECT_EQ(cntl.ErrorCode(), brpc::EINTERNAL);
     ASSERT_TRUE(butil::StringPiece(cntl.ErrorText()).ends_with("Method MethodNotExist() not implemented."));
+}
+
+TEST_F(GrpcTest, GrpcTimeOut) {
+    const char* timeouts[] = {
+        "2H", "7200000000000",
+        "3M", "180000000000",
+        "+1S", "1000000000",
+        "4m", "4000000",
+        "5u", "5000",
+        "6n", "6"
+    };
+
+    for (size_t i = 0; i < arraysize(timeouts); i = i + 2) {
+        test::GrpcRequest req;
+        test::GrpcResponse res;
+        brpc::Controller cntl;
+        req.set_message(g_req);
+        req.set_gzip(false);
+        req.set_return_error(false);
+        req.set_timeout_ns((int64_t)(strtol(timeouts[i+1], NULL, 10)));
+        cntl.http_request().SetHeader("grpc-timeout", timeouts[i]);
+        test::GrpcService_Stub stub(&_channel);
+        stub.Method(&cntl, &req, &res, NULL);
+        EXPECT_FALSE(cntl.Failed());
+    }
 }
 
 } // namespace 

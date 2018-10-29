@@ -128,6 +128,10 @@ public:
     std::string& protocol_param() { return _cntl->protocol_param(); }
     const std::string& protocol_param() const { return _cntl->protocol_param(); }
 
+    void set_deadline_ns(int64_t timeout_ns) {
+        _cntl->_abstime_ns = butil::gettimeofday_us() * 1000L + timeout_ns;
+    }
+
 private:
     Controller* _cntl;
 };

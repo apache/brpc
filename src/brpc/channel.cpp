@@ -493,12 +493,12 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         // Setup timer for backup request. When it occurs, we'll setup a
         // timer of timeout_ms before sending backup request.
 
-        // _abstime_us is for truncating _connect_timeout_ms and resetting
+        // _abstime_ns is for truncating _connect_timeout_ms and resetting
         // timer when EBACKUPREQUEST occurs.
         if (cntl->timeout_ms() < 0) {
-            cntl->_abstime_us = -1;
+            cntl->_abstime_ns = -1;
         } else {
-            cntl->_abstime_us = cntl->timeout_ms() * 1000L + start_send_real_us;
+            cntl->_abstime_ns = cntl->timeout_ms() * 1000000L + start_send_real_us * 1000L;
         }
         const int rc = bthread_timer_add(
             &cntl->_timeout_id,
@@ -512,18 +512,18 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     } else if (cntl->timeout_ms() >= 0) {
         // Setup timer for RPC timetout
 
-        // _abstime_us is for truncating _connect_timeout_ms
-        cntl->_abstime_us = cntl->timeout_ms() * 1000L + start_send_real_us;
+        // _abstime_ns is for truncating _connect_timeout_ms
+        cntl->_abstime_ns = cntl->timeout_ms() * 1000000L + start_send_real_us * 1000L;
         const int rc = bthread_timer_add(
             &cntl->_timeout_id,
-            butil::microseconds_to_timespec(cntl->_abstime_us),
+            butil::nanoseconds_to_timespec(cntl->_abstime_ns),
             HandleTimeout, (void*)correlation_id.value);
         if (BAIDU_UNLIKELY(rc != 0)) {
             cntl->SetFailed(rc, "Fail to add timer for timeout");
             return cntl->HandleSendFailed();
         }
     } else {
-        cntl->_abstime_us = -1;
+        cntl->_abstime_ns = -1;
     }
 
     cntl->IssueRPC(start_send_real_us);

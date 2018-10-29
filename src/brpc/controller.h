@@ -480,6 +480,10 @@ public:
     // Get sock option. .e.g get vip info through ttm kernel module hook,
     int GetSockOption(int level, int optname, void* optval, socklen_t* optlen);
 
+    // Get deadline of this RPC (since the Epoch in nanoseconds).
+    // -1 means no deadline.
+    int64_t deadline_ns() const { return _abstime_ns; }
+
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request
@@ -662,8 +666,8 @@ private:
     int32_t _timeout_ms;
     int32_t _connect_timeout_ms;
     int32_t _backup_request_ms;
-    // Deadline of this RPC (since the Epoch in microseconds).
-    int64_t _abstime_us;
+    // Deadline of this RPC (since the Epoch in nanoseconds).
+    int64_t _abstime_ns;
     // Timer registered to trigger RPC timeout event
     bthread_timer_t _timeout_id;
 

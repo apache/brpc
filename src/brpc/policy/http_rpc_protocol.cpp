@@ -135,6 +135,7 @@ CommonStrings::CommonStrings()
     , GRPC_ACCEPT_ENCODING_VALUE("identity,gzip")
     , GRPC_STATUS("grpc-status")
     , GRPC_MESSAGE("grpc-message")
+    , GRPC_TIMEOUT("grpc-timeout")
 {}
 
 static CommonStrings* common = NULL;
@@ -1190,6 +1191,31 @@ void EndRunningCallMethodInPool(
     ::google::protobuf::Message* response,
     ::google::protobuf::Closure* done);
 
+static int64_t ConvertGrpcTimeoutToNS(int64_t timeout_value, const char timeout_unit) {
+    switch (timeout_unit) {
+        case 'H':
+            timeout_value *= (3600 * 1000000000L);
+            break;
+        case 'M':
+            timeout_value *= (60 * 1000000000L);
+            break;
+        case 'S':
+            timeout_value *= 1000000000L;
+            break;
+        case 'm':
+            timeout_value *= 1000000L;
+            break;
+        case 'u':
+            timeout_value *= 1000L;
+        case 'n':
+            break;
+        default:
+            return -1;
+    }
+    return timeout_value;
+}
+
+
 void ProcessHttpRequest(InputMessageBase *msg) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<HttpContext> imsg_guard(static_cast<HttpContext*>(msg));
@@ -1418,6 +1444,15 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                             return;
                         }
                     }
+                    const std::string* grpc_timeout = req_header.GetHeader(common->GRPC_TIMEOUT);
+                    if (grpc_timeout) {
+                        const char timeout_unit = grpc_timeout->back();
+                        int64_t timeout_value_ns =
+                            ConvertGrpcTimeoutToNS((int64_t)strtol(grpc_timeout->data(), NULL, 10), timeout_unit);
+                        if (timeout_value_ns >= 0) {
+                            accessor.set_deadline_ns(timeout_value_ns);
+                        }
+                    }
                 }
             } else {
                 encoding = req_header.GetHeader(common->CONTENT_ENCODING);
@@ -1455,7 +1490,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         // A http server, just keep content as it is.
         cntl->request_attachment().swap(req_body);
     }
-    
+
     google::protobuf::Closure* done = new HttpResponseSenderAsDone(&resp_sender);
     imsg_guard.reset();  // optional, just release resourse ASAP
 
