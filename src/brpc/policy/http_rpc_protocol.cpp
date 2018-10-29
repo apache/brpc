@@ -1449,12 +1449,14 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                         }
                     }
                     const std::string* grpc_timeout = req_header.GetHeader(common->GRPC_TIMEOUT);
-                    if (grpc_timeout) {
+                    if (grpc_timeout && !grpc_timeout->empty()) {
                         const char timeout_unit = grpc_timeout->back();
+                        // If no digits were found, strtol returns zero as timeout value
                         int64_t timeout_value_ms =
                             ConvertGrpcTimeoutToMS((int64_t)strtol(grpc_timeout->data(), NULL, 10), timeout_unit);
                         if (timeout_value_ms >= 0) {
-                            accessor.set_deadline_us(timeout_value_ms);
+                            accessor.set_deadline_us(
+                                    butil::gettimeofday_us() + timeout_value_ms);
                         }
                     }
                 }

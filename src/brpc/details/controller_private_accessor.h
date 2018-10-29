@@ -128,9 +128,7 @@ public:
     std::string& protocol_param() { return _cntl->protocol_param(); }
     const std::string& protocol_param() const { return _cntl->protocol_param(); }
 
-    void set_deadline_us(int64_t timeout_us) {
-        _cntl->_abstime_us = butil::gettimeofday_us() + timeout_us;
-    }
+    void set_deadline_us(int64_t deadline_us) { _cntl->_deadline_us = deadline_us; }
 
 private:
     Controller* _cntl;

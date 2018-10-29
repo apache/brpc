@@ -482,7 +482,7 @@ public:
 
     // Get deadline of this RPC (since the Epoch in microseconds).
     // -1 means no deadline.
-    int64_t deadline_us() const { return _abstime_us; }
+    int64_t deadline_us() const { return _deadline_us; }
 
 private:
     struct CompletionInfo {
@@ -667,7 +667,7 @@ private:
     int32_t _connect_timeout_ms;
     int32_t _backup_request_ms;
     // Deadline of this RPC (since the Epoch in microseconds).
-    int64_t _abstime_us;
+    int64_t _deadline_us;
     // Timer registered to trigger RPC timeout event
     bthread_timer_t _timeout_id;
 
