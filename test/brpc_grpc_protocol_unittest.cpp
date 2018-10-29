@@ -65,9 +65,9 @@ public:
             cntl->SetFailed(brpc::EINTERNAL, "%s", g_prefix.c_str());
             return;
         }
-        if (req->has_timeout_ns()) {
-            EXPECT_NEAR(cntl->deadline_ns() / 1000000000L,
-                butil::gettimeofday_s() + req->timeout_ns() / 1000000000L, 1);
+        if (req->has_timeout_us()) {
+            EXPECT_NEAR(cntl->deadline_us(),
+                butil::gettimeofday_us() + req->timeout_us(), 30);
         }
     }
 
@@ -204,12 +204,12 @@ TEST_F(GrpcTest, MethodNotExist) {
 
 TEST_F(GrpcTest, GrpcTimeOut) {
     const char* timeouts[] = {
-        "2H", "7200000000000",
-        "3M", "180000000000",
-        "+1S", "1000000000",
-        "4m", "4000000",
-        "5u", "5000",
-        "6n", "6"
+        "2H", "7200000000",
+        "3M", "180000000",
+        "+1S", "1000000",
+        "4m", "4000",
+        "5u", "5",
+        "6n", "1"
     };
 
     for (size_t i = 0; i < arraysize(timeouts); i = i + 2) {
@@ -219,7 +219,7 @@ TEST_F(GrpcTest, GrpcTimeOut) {
         req.set_message(g_req);
         req.set_gzip(false);
         req.set_return_error(false);
-        req.set_timeout_ns((int64_t)(strtol(timeouts[i+1], NULL, 10)));
+        req.set_timeout_us((int64_t)(strtol(timeouts[i+1], NULL, 10)));
         cntl.http_request().SetHeader("grpc-timeout", timeouts[i]);
         test::GrpcService_Stub stub(&_channel);
         stub.Method(&cntl, &req, &res, NULL);

@@ -658,18 +658,18 @@ void ParallelChannel::CallMethod(
         cntl->set_timeout_ms(_options.timeout_ms);
     }
     if (cntl->timeout_ms() >= 0) {
-        cntl->_abstime_ns = cntl->timeout_ms() * 1000000L + cntl->_begin_time_us * 1000L;
+        cntl->_abstime_us = cntl->timeout_ms() * 1000L + cntl->_begin_time_us;
         // Setup timer for RPC timetout
         const int rc = bthread_timer_add(
             &cntl->_timeout_id,
-            butil::nanoseconds_to_timespec(cntl->_abstime_ns),
+            butil::microseconds_to_timespec(cntl->_abstime_us),
             HandleTimeout, (void*)cid.value);
         if (rc != 0) {
             cntl->SetFailed(rc, "Fail to add timer");
             goto FAIL;
         }
     } else {
-        cntl->_abstime_ns = -1;
+        cntl->_abstime_us = -1;
     }
     d->SaveThreadInfoOfCallsite();
     CHECK_EQ(0, bthread_id_unlock(cid));
