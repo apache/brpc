@@ -187,8 +187,9 @@ public:
     // [Required] Call this to send response back to the client.
     void Run() override;
 
-    // Run() is suspended before this method is called.
-    void AllowToRun();
+    // Suspend/resume calling DoRun().
+    void SuspendRunning();
+    void ResumeRunning();
 
 private:
     void DoRun();
@@ -202,21 +203,25 @@ friend void ProcessThriftRequest(InputMessageBase* msg_base);
 };
 
 inline ThriftClosure::ThriftClosure()
-    : _run_counter(0), _received_us(0) {
+    : _run_counter(1), _received_us(0) {
 }
 
 ThriftClosure::~ThriftClosure() {
     LogErrorTextAndDelete(false)(&_controller);
 }
 
-inline void ThriftClosure::AllowToRun() {
-    if (_run_counter.fetch_add(1, butil::memory_order_relaxed) == 1) {
+inline void ThriftClosure::SuspendRunning() {
+    _run_counter.fetch_add(1, butil::memory_order_relaxed);
+}
+
+inline void ThriftClosure::ResumeRunning() {
+    if (_run_counter.fetch_sub(1, butil::memory_order_relaxed) == 1) {
         DoRun();
     }
 }
 
 void ThriftClosure::Run() {
-    if (_run_counter.fetch_add(1, butil::memory_order_relaxed) == 1) {
+    if (_run_counter.fetch_sub(1, butil::memory_order_relaxed) == 1) {
         DoRun();
     }
 }
@@ -385,8 +390,9 @@ inline void ProcessThriftFramedRequestNoExcept(ThriftService* service,
                                                    ThriftFramedMessage* req,
                                                    ThriftFramedMessage* res,
                                                    ThriftClosure* done) {
-    // NOTE: done is not actually run before AllowToRun() is called so that
+    // NOTE: done is not actually run before ResumeRunning() is called so that
     // we can still set `cntl' in the catch branch.
+    done->SuspendRunning();
     try {
         service->ProcessThriftFramedRequest(cntl, req, res, done);
     } catch (std::exception& e) {
@@ -398,7 +404,7 @@ inline void ProcessThriftFramedRequestNoExcept(ThriftService* service,
     } catch (...) {
         cntl->SetFailed(EINTERNAL, "Catched unknown exception");
     }
-    done->AllowToRun();
+    done->ResumeRunning();
 }
 
 struct CallMethodInBackupThreadArgs {
