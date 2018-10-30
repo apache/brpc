@@ -66,8 +66,12 @@ public:
             return;
         }
         if (req->has_timeout_us()) {
-            EXPECT_NEAR(cntl->deadline_us(),
-                butil::gettimeofday_us() + req->timeout_us(), 30);
+            if (req->timeout_us() < 0) {
+                EXPECT_EQ(-1, cntl->deadline_us());
+            } else {
+                EXPECT_NEAR(cntl->deadline_us(),
+                    butil::gettimeofday_us() + req->timeout_us(), 30);
+            }
         }
     }
 
@@ -204,12 +208,20 @@ TEST_F(GrpcTest, MethodNotExist) {
 
 TEST_F(GrpcTest, GrpcTimeOut) {
     const char* timeouts[] = {
+        // valid case
         "2H", "7200000000",
         "3M", "180000000",
         "+1S", "1000000",
         "4m", "4000",
         "5u", "5",
-        "6n", "1"
+        "6n", "1",
+        // invalid case
+        "30A", "-1",
+        "123ASH", "-1",
+        "HHHH", "-1",
+        "112", "-1",
+        "H999m", "-1",
+        "", "-1"
     };
 
     for (size_t i = 0; i < arraysize(timeouts); i = i + 2) {

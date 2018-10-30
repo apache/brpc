@@ -1454,16 +1454,16 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                         char* endptr = NULL;
                         int64_t timeout_value = (int64_t)strtol(grpc_timeout->data(), &endptr, 10);
                         // Only the format that the digit number is equal to (timeout header size - 1) is valid.
-                        // Otherwise the format is not valid and the is treated as no deadline.
+                        // Otherwise the format is not valid and is treated as no deadline.
                         // For example:
                         //      1H, 2993S, 82m is valid.
                         //      30A is also valid, but the following ConvertGrpcTimeoutToUS would return -1 since 'A'
                         //          is not a valid time unit.
                         //      123ASH is not vaid since the digit number is 3, while the size is 6.
                         //      HHH is not valid since the dight number is 0, while the size is 3.
-                        if (endptr - grpc_timeout->data() == grpc_timeout->size() - 1) {
+                        if ((size_t)(endptr - grpc_timeout->data()) == grpc_timeout->size() - 1) {
                             int64_t timeout_value_us =
-                                ConvertGrpcTimeoutToUS( timeout_unit);
+                                ConvertGrpcTimeoutToUS(timeout_value, timeout_unit);
                             if (timeout_value_us >= 0) {
                                 accessor.set_deadline_us(
                                         butil::gettimeofday_us() + timeout_value_us);
