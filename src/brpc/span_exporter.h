@@ -28,10 +28,8 @@ namespace brpc {
 
 // You can customize the way the span is exported by inheriting SpanExporter.
 // Note:
-// 1. It is useless to call RegisterSpanExporter() multiple times with the 
-// same SpanExporter object. If you want to register same SpanExporter
-// more than once, each time you call RegisterSpanExporter(), you should create
-// a new object to pass it to RegisterSpanExporter().
+// 1. If you call RegisterSpanExporter multiple times for the same SpanExporter
+// object, the object's DumpSpan() method will also be executed multiple times.
 // 2. The order in which each SpanExporter::DumpSpan is called is independent 
 // of the registration order.
 // 3. SpanDumper object should be managered by std::shared_ptr.
@@ -40,35 +38,19 @@ namespace brpc {
 //
 // class FooSpanExporter: public brpc::SpanExporter {
 // public:
-//     FooSpanExporter() : brpc::SpanExporter() {}
-//     FooSpanExporter(const std::string& name) : brpc::SpanExporter(name) {}
-//
 //     void DumpSpan(const RpczSpan* span) override {
 //          // do dump span
 //     }
 //     ~FooSpanExporter() {}
 // };
 //
-// brpc::RegisterSpanExporter(std::make_shared<FooSpanExporter>("FooSpanExporter"));
-//
+// brpc::RegisterSpanExporter(std::make_shared<FooSpanExporter>());
     
 class SpanExporter {
 public:
-    SpanExporter();
-
-    SpanExporter(const std::string& name);
-
-    int id() const { return _id; }
-
     virtual void DumpSpan(const TracingSpan* span) {}
 
-    virtual void Describe(std::ostream& os) const;
-
     virtual ~SpanExporter() {}
-
-private:
-    std::string _name;
-    int _id;
 };
 
 //The following methods are thread-safe
@@ -91,7 +73,7 @@ friend class Span;
     SpanExporterManager() {}
     ~SpanExporterManager() {}
 
-    std::set<std::shared_ptr<SpanExporter>> _exporter_set;
+    std::multiset<std::shared_ptr<SpanExporter>> _exporter_set;
     butil::Mutex _exporter_set_mutex;
 };
 

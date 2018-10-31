@@ -499,8 +499,6 @@ void DescribeSpanDB(std::ostream& os) {
 class RpczSpanExporter : public SpanExporter {
 public:
     RpczSpanExporter() : SpanExporter() {}
-    RpczSpanExporter(const std::string& name) : 
-        SpanExporter(name) {}
     void DumpSpan(const TracingSpan* span) override;
 };
 
@@ -509,7 +507,7 @@ static pthread_once_t start_span_indexing_once = PTHREAD_ONCE_INIT;
 
 static void StartSpanIndexing() {
     atexit(RemoveSpanDB);
-    RegisterSpanExporter(std::make_shared<RpczSpanExporter>("RpczSpanExporter"));
+    RegisterSpanExporter(std::make_shared<RpczSpanExporter>());
     started_span_indexing = true;
 }
 

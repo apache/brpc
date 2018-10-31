@@ -20,53 +20,22 @@
 
 namespace brpc {
 
-static butil::atomic<int> g_span_exporter_index;
-
-SpanExporter::SpanExporter() 
-    : _id(g_span_exporter_index.fetch_add(1, butil::memory_order_relaxed)) {
-}
-
-SpanExporter::SpanExporter(const std::string& name) 
-    : _name(name)
-    , _id(g_span_exporter_index.fetch_add(1, butil::memory_order_relaxed)) {
-}
-
-void SpanExporter::Describe(std::ostream& os) const {
-    if (_name.empty()) {
-        os << "SpanExporter";
-    } else {
-        os << _name;
-    }
-    os << "[id =" << _id << ']';
-}
-
 void SpanExporterManager::RegisterSpanExporter(std::shared_ptr<SpanExporter> span_exporter) {
     std::unique_lock<butil::Mutex> lock_guard(_exporter_set_mutex);
-    auto it = _exporter_set.find(span_exporter);
-    if (it != _exporter_set.end()) {
-        std::ostringstream os;
-        (*it)->Describe(os);
-        LOG(WARNING) << "SpanExport `" << os.str()
-                     << "' already registered";
-        return;
-    }
     _exporter_set.insert(std::move(span_exporter));
 }
 
 void SpanExporterManager::UnRegisterSpanExporter(std::shared_ptr<SpanExporter> span_exporter) {
     std::unique_lock<butil::Mutex> lock_guard(_exporter_set_mutex);
     if (_exporter_set.find(span_exporter) == _exporter_set.end()) {
-        std::ostringstream os;
-        span_exporter->Describe(os);
-        LOG(WARNING) << "SpanExport `" << os.str()
-                     << "' not registered yet";
+        LOG(WARNING) << "SpanExport not registered yet";
         return;
     }
     _exporter_set.erase(std::move(span_exporter));
 }
 
 void SpanExporterManager::DumpSpan(const TracingSpan* span) {
-    std::set<std::shared_ptr<SpanExporter>> exporter_copy;
+    std::multiset<std::shared_ptr<SpanExporter>> exporter_copy;
     {
         std::unique_lock<butil::Mutex> lock_guard(_exporter_set_mutex);
         exporter_copy = _exporter_set;
