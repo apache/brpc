@@ -33,11 +33,11 @@ void SerializeMemcacheRequest(butil::IOBuf* buf, Controller* cntl,
 }
 
 static inline std::string BuildErrorText(
-    const long long int latency_us, const CouchbaseResponse::Status status, 
+    const CouchbaseResponse::Status status,
     const int vb_id, const std::string& remote_side) {
     std::string error_text(CouchbaseResponse::status_str(status));
-    butil::string_appendf(&error_text, "(vbucket_id=%d) latency=%lldus @%s;", 
-                          vb_id, latency_us, remote_side.c_str());
+    butil::string_appendf(&error_text, "(vbucket_id=%d) @%s;",
+                          vb_id, remote_side.c_str());
     return std::move(error_text);
 }
 
@@ -69,26 +69,26 @@ bool CouchbaseRetryPolicy::DoRetry(Controller* cntl) const {
              }
         }
     }
+    bool rebalance = false;
+    size_t server_num = 0;
+    if (!CouchbaseHelper::GetVBucketMapInfo(cntl->_lb, &server_num,
+                                            nullptr, &rebalance)) {
+        return false;
+    }
     uint32_t vb_id, pre_reason;
     CouchbaseHelper::ParseRequestCode(cntl->request_code(), &vb_id, &pre_reason);
     const std::string curr_server = butil::endpoint2str(cntl->remote_side()).c_str();
-    CouchbaseHelper::UpdateDetectedMasterIfNeeded(
-        cntl->_lb, pre_reason == SERVER_DOWN_RETRY_REPLICAS, 
-        vb_id, reason, curr_server);
+    if (rebalance) {
+        CouchbaseHelper::UpdateDetectedMasterIfNeeded(
+            cntl->_lb, pre_reason == SERVER_DOWN_RETRY_REPLICAS,
+            vb_id, reason, curr_server);
+    }
     if (reason == RPC_FAILED || reason == RESPONSE_OK) {
         return false;
     }
-    // Append retry reason to controll error_text.
     if (status != CouchbaseResponse::STATUS_SUCCESS) {
-        std::string text = BuildErrorText(cntl->latency_us(), status, 
-                                          vb_id, curr_server);
-        cntl->SetFailed(text);
-    }
-    bool rebalance = false;
-    size_t server_num = 0;
-    if (!CouchbaseHelper::GetVBucketMapInfo(cntl->_lb, &server_num, 
-                                            nullptr, &rebalance)) {
-        return false;
+        std::string text = BuildErrorText(status, vb_id, curr_server);
+        reinterpret_cast<CouchbaseResponse*>(cntl->response())->_retry_err.append(text);
     }
     cntl->set_max_retry(server_num - 1);
     bool ret = false;
@@ -117,7 +117,7 @@ bool CouchbaseRetryPolicy::DoRetry(Controller* cntl) const {
             policy::SerializeMemcacheRequest(&cntl->_request_buf, cntl, &request);
             if (cntl->FailedInline()) {
                 return false;
-            }   
+            }
         }
     }
     return ret;

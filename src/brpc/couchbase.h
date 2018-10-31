@@ -144,12 +144,17 @@ public:
         MemcacheResponse::CopyFrom(from);
     }
 
+    const std::string& retry_err() const { return _retry_err; }
+
 private:
     bool GetStatus(Status* status);
 		
     void MergeFrom(const CouchbaseResponse& from);
 
     int pipelined_count();
+
+    // Record reponse fault for each retry. It is useful for debugging.
+    std::string _retry_err;
 };
 
 } // namespace brpc
