@@ -57,6 +57,7 @@ constexpr int64_t GetEndRealTimeUs(const T* span) {
 
 // Collect information required by /rpcz and tracing system whose idea is
 // described in http://static.googleusercontent.com/media/research.google.com/en//pubs/archive/36356.pdf
+
 class Span : public bvar::Collected {
     struct Forbidden {};
 public:
@@ -150,6 +151,17 @@ public:
 private:
     DISALLOW_COPY_AND_ASSIGN(Span);
 
+    struct Annotation {
+        Annotation(int64_t timestamp, const std::string& info)
+            : realtime_us(timestamp)
+            , content(info) {}
+        Annotation(int64_t timestamp, std::string&& info)
+            : realtime_us(timestamp)
+            , content(info) {}
+        int64_t realtime_us;
+        std::string content;
+    };
+
     void dump_and_destroy(size_t round_index);
     void destroy();
     bvar::CollectorSpeedLimit* speed_limit();
@@ -185,7 +197,7 @@ private:
     //   time1_us \s annotation1 <SEP>
     //   time2_us \s annotation2 <SEP>
     //   ...
-    std::vector<SpanAnnotation> _annotation_list;
+    std::vector<Annotation> _annotation_list;
 
     Span* _local_parent;
     Span* _next_client;

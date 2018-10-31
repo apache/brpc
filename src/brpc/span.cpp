@@ -204,30 +204,23 @@ void Span::Annotate(const char* fmt, va_list args) {
     const int64_t anno_time = butil::cpuwide_time_us() + _base_real_us;
     std::string anno_content;
     butil::string_appendf(&anno_content, fmt, args);
-    SpanAnnotation anno;
-    anno.set_realtime_us(anno_time);
-    anno.set_content(anno_content);
-    _annotation_list.push_back(std::move(anno));
+    _annotation_list.emplace_back(anno_time, std::move(anno_content));
 }
 
 void Span::Annotate(const std::string& info) {
     const int64_t anno_time = butil::cpuwide_time_us() + _base_real_us;
-    SpanAnnotation anno;
-    anno.set_realtime_us(anno_time);
-    anno.set_content(info);
-    _annotation_list.push_back(std::move(anno));
+    _annotation_list.push_back(Annotation(anno_time, info));
 }
 
 void Span::AnnotateCStr(const char* info, size_t length) {
     const int64_t anno_time = butil::cpuwide_time_us() + _base_real_us;
-    SpanAnnotation anno;
-    anno.set_realtime_us(anno_time);
+    std::string anno_content;
     if (length > 0) {
-        anno.set_content(info, length);
+        anno_content = std::string(info, length);
     } else {
-        anno.set_content(info);
+        anno_content = std::string(info);
     }
-    _annotation_list.push_back(std::move(anno));
+    _annotation_list.emplace_back(anno_time, std::move(anno_content));
 }
 
 size_t Span::CountClientSpans() const {
@@ -260,7 +253,8 @@ void Span::Copy2TracingSpan(TracingSpan* out) const {
     size_t anno_count = _annotation_list.size();
     for (size_t i = 0; i < anno_count; ++i) {
         out->add_annotations();
-        *(out->mutable_annotations(i)) = _annotation_list[i];
+        out->mutable_annotations(i)->set_realtime_us(_annotation_list[i].realtime_us);
+        out->mutable_annotations(i)->set_content(_annotation_list[i].content);
     }
     // client spans should be reversed.
     size_t client_span_count = CountClientSpans();
