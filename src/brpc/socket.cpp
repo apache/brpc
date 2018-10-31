@@ -196,8 +196,9 @@ Socket::SharedPart::SharedPart(SocketId creator_socket_id2)
     , in_num_messages(0)
     , out_size(0)
     , out_num_messages(0)
-    , extended_stat(NULL) 
-    , acc_errors(0) {
+    , extended_stat(NULL)
+    , acc_errors(0)
+    , acc_requests(0) {
 }
 
 Socket::SharedPart::~SharedPart() {
@@ -818,14 +819,6 @@ void Socket::AddRequestCount() {
     if (sp) {
         sp->acc_requests.fetch_add(1, butil::memory_order_relaxed);
     }
-}
-
-uint64_t Socket::acc_errors() const {
-    SharedPart* sp = GetSharedPart();
-    if (sp) {
-        return sp->acc_errors.load(butil::memory_order_relaxed);
-    }
-    return 0;
 }
 
 int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
