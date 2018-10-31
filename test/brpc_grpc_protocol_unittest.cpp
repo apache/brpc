@@ -224,6 +224,7 @@ TEST_F(GrpcTest, GrpcTimeOut) {
         "", "-1"
     };
 
+    // test all timeout format
     for (size_t i = 0; i < arraysize(timeouts); i = i + 2) {
         test::GrpcRequest req;
         test::GrpcResponse res;
@@ -232,7 +233,37 @@ TEST_F(GrpcTest, GrpcTimeOut) {
         req.set_gzip(false);
         req.set_return_error(false);
         req.set_timeout_us((int64_t)(strtol(timeouts[i+1], NULL, 10)));
+        cntl.set_timeout_ms(-1);
         cntl.http_request().SetHeader("grpc-timeout", timeouts[i]);
+        test::GrpcService_Stub stub(&_channel);
+        stub.Method(&cntl, &req, &res, NULL);
+        EXPECT_FALSE(cntl.Failed());
+    }
+
+    // test timeout by using timeout_ms in cntl
+    {
+        test::GrpcRequest req;
+        test::GrpcResponse res;
+        brpc::Controller cntl;
+        req.set_message(g_req);
+        req.set_gzip(false);
+        req.set_return_error(false);
+        req.set_timeout_us(9876000);
+        cntl.set_timeout_ms(9876);
+        test::GrpcService_Stub stub(&_channel);
+        stub.Method(&cntl, &req, &res, NULL);
+        EXPECT_FALSE(cntl.Failed());
+    }
+
+    // test timeout by using timeout_ms in channel
+    {
+        test::GrpcRequest req;
+        test::GrpcResponse res;
+        brpc::Controller cntl;
+        req.set_message(g_req);
+        req.set_gzip(false);
+        req.set_return_error(false);
+        req.set_timeout_us(g_timeout_ms * 1000);
         test::GrpcService_Stub stub(&_channel);
         stub.Method(&cntl, &req, &res, NULL);
         EXPECT_FALSE(cntl.Failed());
