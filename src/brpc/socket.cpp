@@ -179,6 +179,7 @@ public:
     CircuitBreaker circuit_breaker;
 
     butil::atomic<uint64_t> acc_errors;
+    butil::atomic<uint64_t> acc_requests;
 
     explicit SharedPart(SocketId creator_socket_id);
     ~SharedPart();
@@ -806,7 +807,17 @@ int Socket::ReleaseAdditionalReference() {
 }
 
 void Socket::AddErrorCount() {
-    GetOrNewSharedPart()->acc_errors.fetch_add(1, butil::memory_order_relaxed);
+    SharedPart* sp = GetSharedPart();
+    if (sp) {
+        sp->acc_errors.fetch_add(1, butil::memory_order_relaxed);
+    }
+}
+
+void Socket::AddRequestCount() {
+    SharedPart* sp = GetSharedPart();
+    if (sp) {
+        sp->acc_requests.fetch_add(1, butil::memory_order_relaxed);
+    }
 }
 
 uint64_t Socket::acc_errors() const {
@@ -2137,6 +2148,7 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
            << "\n  out_num_messages=" << sp->out_num_messages.load(butil::memory_order_relaxed)
            << "\n  health_score=" << sp->circuit_breaker.health_score()
            << "\n  isolated_times=" << sp->circuit_breaker.isolated_times()
+           << "\n  acc_requests=" << sp->acc_requests.load(butil::memory_order_relaxed)
            << "\n  acc_errors=" << sp->acc_errors.load(butil::memory_order_relaxed)
            << "\n}";
     }

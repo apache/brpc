@@ -319,7 +319,7 @@ public:
 
     void AddErrorCount();
 
-    uint64_t acc_errors() const;
+    void AddRequestCount();
 
     void FeedbackCircuitBreaker(int error_code, int64_t latency_us);
 

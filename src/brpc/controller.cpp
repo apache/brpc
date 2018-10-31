@@ -696,14 +696,23 @@ inline bool does_error_affect_main_socket(int error_code) {
 //      entire RPC (specified by c->FailedInline()).
 void Controller::Call::OnComplete(
         Controller* c, int error_code/*note*/, bool responded, bool end_of_rpc) {
-    if (enable_circuit_breaker && sending_sock) {
-        sending_sock->FeedbackCircuitBreaker(error_code, 
-            butil::gettimeofday_us() - begin_time_us);
+    if (stream_user_data) {
+        stream_user_data->DestroyStreamUserData(sending_sock, c, error_code, end_of_rpc);
+        stream_user_data = NULL;
     }
-    if (error_code != 0 && sending_sock) {
-        sending_sock->AddErrorCount();
+
+    if (sending_sock) {
+        sending_sock->AddRequestCount();
+        if (error_code != 0) {
+            sending_sock->AddErrorCount();
+        }
+
+        if (enable_circuit_breaker) {
+            sending_sock->FeedbackCircuitBreaker(error_code, 
+                butil::gettimeofday_us() - begin_time_us);
+        }
     }
- 
+
     switch (c->connection_type()) {
     case CONNECTION_TYPE_UNKNOWN:
         break;
@@ -774,11 +783,6 @@ void Controller::Call::OnComplete(
         const LoadBalancer::CallInfo info =
             { begin_time_us, peer_id, error_code, c };
         c->_lb->Feedback(info);
-    }
-
-    if (stream_user_data) {
-        stream_user_data->DestroyStreamUserData(sending_sock, c, error_code, end_of_rpc);
-        stream_user_data = NULL;
     }
 
     // Release the `Socket' we used to send/receive data

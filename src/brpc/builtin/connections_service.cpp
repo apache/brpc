@@ -122,7 +122,6 @@ void ConnectionsService::PrintConnections(
         os << "<th>SSL</th>"
             "<th>Protocol</th>"
             "<th>fd</th>"
-            "<th>acc_errors</th>"
             "<th>InBytes/s</th>"
             "<th>In/s</th>"
             "<th>InBytes/m</th>"
@@ -139,7 +138,7 @@ void ConnectionsService::PrintConnections(
         if (need_local) {
             os << "Local|";
         }
-        os << "SSL|Protocol    |fd   |acc_errors|"
+        os << "SSL|Protocol    |fd   |"
             "InBytes/s|In/s  |InBytes/m |In/m    |"
             "OutBytes/s|Out/s |OutBytes/m|Out/m   |"
             "Rtt/Var(ms)|SocketId\n";
@@ -178,7 +177,6 @@ void ConnectionsService::PrintConnections(
             os << min_width("-", 3) << bar
                << min_width("-", 12) << bar
                << min_width("-", 5) << bar
-               << min_width(ptr->acc_errors(), 10) << bar
                << min_width("-", 9) << bar
                << min_width("-", 6) << bar
                << min_width("-", 10) << bar
@@ -290,8 +288,7 @@ void ConnectionsService::PrintConnections(
             } else {
                 os << min_width("-", 5) << bar;
             }
-            os << min_width(ptr->acc_errors(), 10) << bar
-               << min_width(stat.in_size_s, 9) << bar
+            os << min_width(stat.in_size_s, 9) << bar
                << min_width(stat.in_num_messages_s, 6) << bar
                << min_width(stat.in_size_m, 10) << bar
                << min_width(stat.in_num_messages_m, 8) << bar
