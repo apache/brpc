@@ -166,4 +166,49 @@ void PercentDecode(const std::string& str, std::string* str_out) {
     }
 }
 
+int64_t ConvertGrpcTimeoutToUS(const std::string* grpc_timeout) {
+    if (!grpc_timeout || grpc_timeout->empty()) {
+        return -1;
+    }
+    const char timeout_unit = grpc_timeout->back();
+    char* endptr = NULL;
+    int64_t timeout_value = (int64_t)strtol(grpc_timeout->data(), &endptr, 10);
+    // Only the format that the digit number is equal to (timeout header size - 1)
+    // is valid. Otherwise the format is not valid and is treated as no deadline.
+    // For example:
+    //      "1H", "2993S", "82m" is valid.
+    //      "30A" is also valid, but the following switch would fall into default
+    //          case and return -1 since 'A' is not a valid time unit.
+    //      "123ASH" is not vaid since the digit number is 3, while the size is 6.
+    //      "HHH" is not valid since the dight number is 0, while the size is 3.
+    if ((size_t)(endptr - grpc_timeout->data()) != grpc_timeout->size() - 1) {
+        return -1;
+    }
+    switch (timeout_unit) {
+        case 'H':
+            timeout_value *= (3600 * 1000000L);
+            break;
+        case 'M':
+            timeout_value *= (60 * 1000000L);
+            break;
+        case 'S':
+            timeout_value *= 1000000L;
+            break;
+        case 'm':
+            timeout_value *= 1000L;
+            break;
+        case 'u':
+            break;
+        case 'n':
+            timeout_value = (timeout_value + 500) / 1000;
+            if (timeout_value == 0) {
+                timeout_value = 1;
+            }
+            break;
+        default:
+            return -1;
+    }
+    return timeout_value;
+}
+
 } // namespace brpc
