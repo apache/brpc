@@ -407,7 +407,7 @@ TEST_F(BthreadTest, stop_sleep) {
     ASSERT_EQ(0, bthread_stop(th));
     ASSERT_EQ(0, bthread_join(th, NULL));
     tm.stop();
-    ASSERT_LE(labs(tm.m_elapsed() - 10), 5);
+    ASSERT_LE(labs(tm.m_elapsed() - 10), 10);
 }
 
 TEST_F(BthreadTest, bthread_exit) {

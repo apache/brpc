@@ -170,7 +170,6 @@ int64_t ConvertGrpcTimeoutToUS(const std::string* grpc_timeout) {
     if (!grpc_timeout || grpc_timeout->empty()) {
         return -1;
     }
-    const char timeout_unit = grpc_timeout->back();
     char* endptr = NULL;
     int64_t timeout_value = (int64_t)strtol(grpc_timeout->data(), &endptr, 10);
     // Only the format that the digit number is equal to (timeout header size - 1)
@@ -184,31 +183,24 @@ int64_t ConvertGrpcTimeoutToUS(const std::string* grpc_timeout) {
     if ((size_t)(endptr - grpc_timeout->data()) != grpc_timeout->size() - 1) {
         return -1;
     }
-    switch (timeout_unit) {
+    switch (*endptr) {
         case 'H':
-            timeout_value *= (3600 * 1000000L);
-            break;
+            return timeout_value * 3600 * 1000000;
         case 'M':
-            timeout_value *= (60 * 1000000L);
-            break;
+            return timeout_value * 60 * 1000000;
         case 'S':
-            timeout_value *= 1000000L;
-            break;
+            return timeout_value * 1000000;
         case 'm':
-            timeout_value *= 1000L;
-            break;
+            return timeout_value * 1000;
         case 'u':
-            break;
+            return timeout_value;
         case 'n':
             timeout_value = (timeout_value + 500) / 1000;
-            if (timeout_value == 0) {
-                timeout_value = 1;
-            }
-            break;
+            return (timeout_value == 0) ? 1 : timeout_value;
         default:
             return -1;
     }
-    return timeout_value;
+    LOG(FATAL) << "Impossible";
 }
 
 } // namespace brpc
