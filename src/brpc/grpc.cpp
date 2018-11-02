@@ -200,7 +200,7 @@ int64_t ConvertGrpcTimeoutToUS(const std::string* grpc_timeout) {
         default:
             return -1;
     }
-    LOG(FATAL) << "Impossible";
+    CHECK(false) << "Impossible";
 }
 
 } // namespace brpc
