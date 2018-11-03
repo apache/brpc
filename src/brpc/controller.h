@@ -309,9 +309,11 @@ public:
     // undefined on the client side (may crash).
     // ------------------------------------------------------------------------
 
-    // Returns true if the client canceled the RPC or the connection has broken
-    // or deadline has been reached, so the server may as well give up on replying
-    // to it. The server should still call the final "done" callback.
+    // Returns true if the client canceled the RPC or the connection has broken,
+    // so the server may as well give up on replying to it. The server should still
+    // call the final "done" callback.
+    // Note: Reaching deadline of the RPC would not affect this function, which means
+    // even if deadline has been reached, this function may still returns false.
     bool IsCanceled() const;
 
     // Asks that the given callback be called when the RPC is canceled or the
@@ -319,11 +321,8 @@ public:
     // If the RPC completes without being canceled/broken connection, the callback
     // will be called after completion.  If the RPC has already been canceled/broken
     // when NotifyOnCancel() is called, the callback will be called immediately.
-    // NotifyOnCancel() must be called no more than once per request.
     //
-    // NOTE: If the RPC is canceled since deadline has been reached, the callback
-    // would not be called immediately and still be called after the completion of
-    // RPC.
+    // NotifyOnCancel() must be called no more than once per request.
     void NotifyOnCancel(google::protobuf::Closure* callback);
 
     // Returns the authenticated result. NULL if there is no authentication
