@@ -457,7 +457,8 @@ void Controller::CloseConnection(const char* reason_fmt, ...) {
 
 bool Controller::IsCanceled() const {
     SocketUniquePtr sock;
-    return (Socket::Address(_current_call.peer_id, &sock) != 0);
+    return (Socket::Address(_current_call.peer_id, &sock) != 0) ||
+        (_deadline_us >= 0 && butil::gettimeofday_us() >= _deadline_us);
 }
 
 class RunOnCancelThread {

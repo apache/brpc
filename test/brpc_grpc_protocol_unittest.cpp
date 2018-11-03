@@ -71,6 +71,13 @@ public:
             } else {
                 EXPECT_NEAR(cntl->deadline_us(),
                     butil::gettimeofday_us() + req->timeout_us(), 30);
+                if (req->timeout_us() < 10) {
+                    bthread_usleep(req->timeout_us() + 1);
+                    EXPECT_TRUE(cntl->IsCanceled());
+                } else {
+                    EXPECT_FALSE(cntl->IsCanceled());
+                }
+
             }
         }
     }
