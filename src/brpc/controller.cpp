@@ -753,7 +753,7 @@ void Controller::Call::OnComplete(
             // main socket should die as well.
             // NOTE: main socket may be wrongly set failed (provided that
             // short/pooled socket does not hold a ref of the main socket).
-            // E.g. a in-parallel RPC sets the peer_id to be failed
+            // E.g. an in-parallel RPC sets the peer_id to be failed
             //   -> this RPC meets ECONNREFUSED
             //   -> main socket gets revived from HC
             //   -> this RPC sets main socket to be failed again.
