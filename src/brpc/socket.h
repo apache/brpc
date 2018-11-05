@@ -416,7 +416,7 @@ public:
 
     // Get an socket connecting to the same place as this socket
     // from socket groups according 'type'. 'type' should be CONNECTION_TYPE_POOLED 
-    // or CONNECTION_TYPE_MULTIPLE.
+    // or CONNECTION_TYPE_MULTI.
     int GetSocketFromGroup(SocketUniquePtr* socket_out, const ConnectionType type);
 
     // Return this socket which MUST be got from GetSocketFromGroup to its
