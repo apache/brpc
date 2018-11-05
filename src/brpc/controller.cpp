@@ -701,10 +701,9 @@ void Controller::Call::OnComplete(
         stream_user_data = NULL;
     }
 
-    if (sending_sock) {
-        sending_sock->AddRequestCount();
+    if (sending_sock != NULL) {
         if (error_code != 0) {
-            sending_sock->AddErrorCount();
+            sending_sock->AddRecentError();
         }
 
         if (enable_circuit_breaker) {

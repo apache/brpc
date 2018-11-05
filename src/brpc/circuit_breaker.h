@@ -46,10 +46,6 @@ public:
     // only the first call will take effect.
     void MarkAsBroken();
 
-    // The closer to 100, the less recent errors occurred, and 0 means that 
-    // it should be isolated.
-    int health_score() const;
-
     // Number of times marked as broken
     int isolated_times() const {
         return _isolated_times.load(butil::memory_order_relaxed);
@@ -70,7 +66,6 @@ private:
         bool OnCallEnd(int error_code, int64_t latency);
         void Reset();
 
-        int64_t max_error_cost() const;
         int health_score() const;
      
     private:

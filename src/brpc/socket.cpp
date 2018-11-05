@@ -178,8 +178,7 @@ public:
 
     CircuitBreaker circuit_breaker;
 
-    butil::atomic<uint64_t> acc_errors;
-    butil::atomic<uint64_t> acc_requests;
+    butil::atomic<uint64_t> recent_error_count;
 
     explicit SharedPart(SocketId creator_socket_id);
     ~SharedPart();
@@ -197,8 +196,7 @@ Socket::SharedPart::SharedPart(SocketId creator_socket_id2)
     , out_size(0)
     , out_num_messages(0)
     , extended_stat(NULL)
-    , acc_errors(0)
-    , acc_requests(0) {
+    , recent_error_count(0) {
 }
 
 Socket::SharedPart::~SharedPart() {
@@ -771,6 +769,7 @@ void Socket::Revive() {
             SharedPart* sp = GetSharedPart();
             if (sp) {
                 sp->circuit_breaker.Reset();
+                sp->recent_error_count.store(0, butil::memory_order_relaxed);
             }
             // Set this flag to true since we add additional ref again
             _recycle_flag.store(false, butil::memory_order_relaxed);
@@ -807,18 +806,27 @@ int Socket::ReleaseAdditionalReference() {
     return -1;
 }
 
-void Socket::AddErrorCount() {
+void Socket::AddRecentError() {
     SharedPart* sp = GetSharedPart();
     if (sp) {
-        sp->acc_errors.fetch_add(1, butil::memory_order_relaxed);
+        sp->recent_error_count.fetch_add(1, butil::memory_order_relaxed);
     }
 }
 
-void Socket::AddRequestCount() {
+int64_t Socket::recent_error_count() const {
     SharedPart* sp = GetSharedPart();
     if (sp) {
-        sp->acc_requests.fetch_add(1, butil::memory_order_relaxed);
+        return sp->recent_error_count.load(butil::memory_order_relaxed);
     }
+    return 0;
+}
+
+int Socket::isolated_times() const {
+    SharedPart* sp = GetSharedPart();
+    if (sp) {
+        return sp->circuit_breaker.isolated_times();
+    }
+    return 0;
 }
 
 int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
@@ -2139,10 +2147,6 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
            << "\n  in_num_messages=" << sp->in_num_messages.load(butil::memory_order_relaxed)
            << "\n  out_size=" << sp->out_size.load(butil::memory_order_relaxed)
            << "\n  out_num_messages=" << sp->out_num_messages.load(butil::memory_order_relaxed)
-           << "\n  health_score=" << sp->circuit_breaker.health_score()
-           << "\n  isolated_times=" << sp->circuit_breaker.isolated_times()
-           << "\n  acc_requests=" << sp->acc_requests.load(butil::memory_order_relaxed)
-           << "\n  acc_errors=" << sp->acc_errors.load(butil::memory_order_relaxed)
            << "\n}";
     }
     const int fd = ptr->_fd.load(butil::memory_order_relaxed);

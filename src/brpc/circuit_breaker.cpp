@@ -89,20 +89,6 @@ void CircuitBreaker::EmaErrorRecorder::Reset() {
     _ema_latency.store(0, butil::memory_order_relaxed);
 }
 
-int64_t CircuitBreaker::EmaErrorRecorder::max_error_cost() const {
-    const int64_t ema_latency = _ema_latency.load(butil::memory_order_relaxed);
-    return ema_latency * _window_size * (_max_error_percent / 100.0) * (1.0 + EPSILON);
-}
-
-int CircuitBreaker::EmaErrorRecorder::health_score() const {
-    const int64_t current_error_cost = _ema_error_cost.load(butil::memory_order_relaxed);
-    const int64_t error_cost_threshold = max_error_cost();
-    if (error_cost_threshold == 0) {
-        return current_error_cost == 0 ? 100 : 0;
-    }
-    return 100 - std::min<int>(100 * current_error_cost / error_cost_threshold, 100);
-}
-
 int64_t CircuitBreaker::EmaErrorRecorder::UpdateLatency(int64_t latency) {
     int64_t ema_latency = _ema_latency.load(butil::memory_order_relaxed);
     do {
@@ -129,7 +115,9 @@ bool CircuitBreaker::EmaErrorRecorder::UpdateErrorCost(int64_t error_cost,
         int64_t ema_error_cost =
             _ema_error_cost.fetch_add(error_cost, butil::memory_order_relaxed);
         ema_error_cost += error_cost;
-        return ema_error_cost <= max_error_cost();
+        const int64_t max_error_cost =
+            ema_latency * _window_size * (_max_error_percent / 100.0) * (1.0 + EPSILON);
+        return ema_error_cost <= max_error_cost;
     }
 
     //Ordinary response
@@ -188,10 +176,6 @@ void CircuitBreaker::MarkAsBroken() {
         _isolated_times.fetch_add(1, butil::memory_order_relaxed);
         UpdateIsolationDuration();
     }
-}
-
-int CircuitBreaker::health_score() const {
-    return std::min(_long_window.health_score(), _short_window.health_score());
 }
 
 void CircuitBreaker::UpdateIsolationDuration() {

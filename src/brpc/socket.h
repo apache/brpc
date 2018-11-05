@@ -317,9 +317,11 @@ public:
         __attribute__ ((__format__ (__printf__, 3, 4)));
     static int SetFailed(SocketId id);
 
-    void AddErrorCount();
+    void AddRecentError();
 
-    void AddRequestCount();
+    int64_t recent_error_count() const;
+
+    int isolated_times() const;
 
     void FeedbackCircuitBreaker(int error_code, int64_t latency_us);
 
