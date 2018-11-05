@@ -187,7 +187,7 @@ friend class policy::RtmpContext;
 friend class schan::ChannelBalancer;
 friend class HealthCheckTask;
 friend class policy::H2GlobalStreamCreator;
-friend class SocketMultiple;
+friend class SocketMulti;
     class SharedPart;
     struct Forbidden {};
     struct WriteRequest;
@@ -632,8 +632,6 @@ friend void DereferenceSocket(Socket*);
     }
 
     void CancelUnwrittenBytes(size_t bytes);
-
-    bool is_free() { return _rpc_count.load(butil::memory_order_relaxed) == 0; }
 
 private:
     // unsigned 32-bit version + signed 32-bit referenced-count.

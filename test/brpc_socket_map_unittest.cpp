@@ -14,8 +14,8 @@ namespace brpc {
 DECLARE_int32(idle_timeout_second);
 DECLARE_int32(defer_close_second);
 DECLARE_int32(max_connection_pool_size);
-DECLARE_int32(max_connection_multiple_size);
-DECLARE_int32(threshold_for_switch_multiple_connection);
+DECLARE_int32(max_connection_multi_size);
+DECLARE_int32(threshold_for_switch_multi_connection);
 } // namespace brpc
 
 namespace {
@@ -45,8 +45,8 @@ void* GetMultiConnection(void* arg) {
     brpc::SocketUniquePtr main_ptr;
     if(0 == brpc::Socket::Address(main_id, &main_ptr)) {
         brpc::SocketUniquePtr ptr;
-        if(0 == main_ptr->GetSocketFromGroup(&ptr, brpc::CONNECTION_TYPE_MULTIPLE)) {
-            return ptr.release(
+        if(0 == main_ptr->GetSocketFromGroup(&ptr, brpc::CONNECTION_TYPE_MULTI)) {
+            return ptr.release();
         }
     }
     return nullptr;
@@ -172,8 +172,8 @@ TEST_F(SocketMapTest, max_pool_size) {
 TEST_F(SocketMapTest, max_multiple_size) {
     const int MAXSIZE = 5;
     const int THRESHOLD = 3;
-    brpc::FLAGS_max_connection_multiple_size = MAXSIZE;
-    brpc::FLAGS_threshold_for_switch_multiple_connection = THRESHOLD;
+    brpc::FLAGS_max_connection_multi_size = MAXSIZE;
+    brpc::FLAGS_threshold_for_switch_multi_connection = THRESHOLD;
 
     brpc::SocketId main_id;
     ASSERT_EQ(0, brpc::SocketMapInsert(g_key, &main_id));
@@ -214,8 +214,8 @@ TEST_F(SocketMapTest, max_multiple_size) {
 TEST_F(SocketMapTest, fairness_multiple_connections) {
     const int MAXSIZE = 5;
     const int THRESHOLD = 3;
-    brpc::FLAGS_max_connection_multiple_size = MAXSIZE;
-    brpc::FLAGS_threshold_for_switch_multiple_connection = THRESHOLD;
+    brpc::FLAGS_max_connection_multi_size = MAXSIZE;
+    brpc::FLAGS_threshold_for_switch_multi_connection = THRESHOLD;
     brpc::SocketId main_id;
     ASSERT_EQ(0, brpc::SocketMapInsert(g_key, &main_id));
     size_t times = MAXSIZE * (THRESHOLD + 1);
