@@ -30,7 +30,7 @@
 //
 //   list.Append(n1);
 //   list.Append(n3);
-//   n3->InsertBefore(n3);
+//   n2->InsertBefore(n3);
 //
 // Lastly, to iterate through the linked list forwards:
 //
