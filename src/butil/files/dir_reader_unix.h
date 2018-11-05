@@ -44,8 +44,7 @@ class DirReaderUnix {
       if (IGNORE_EINTR(close(fd_)))
         RAW_LOG(ERROR, "Failed to close directory handle");
     }
-    if(NULL != dir_)
-    {
+    if(NULL != dir_){
         closedir(dir_);
     }
   }
@@ -57,8 +56,7 @@ class DirReaderUnix {
   // Move to the next entry returning false if the iteration is complete.
   bool Next() {
     int err = readdir_r(dir_,&entry_, &current_);
-    if(0 != err || NULL == current_)
-    {
+    if(0 != err || NULL == current_){
         return false;
     }
     return true;
