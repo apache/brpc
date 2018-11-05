@@ -90,12 +90,12 @@ DEFINE_int32(max_connection_pool_size, 100,
              "Max number of pooled connections to a single endpoint");
 BRPC_VALIDATE_GFLAG(max_connection_pool_size, PassValidate);
 
-DEFINE_int32(max_connection_multiple_size, 10,
-             "The number of multiple connections to a single endpoint");
-BRPC_VALIDATE_GFLAG(max_connection_multiple_size, PassValidate);
+DEFINE_int32(max_connection_multi_size, 10,
+             "The number of multi connections to a single endpoint");
+BRPC_VALIDATE_GFLAG(max_connection_multi_size, PassValidate);
 
-DEFINE_int32(threshold_for_switch_multiple_connection, 5,
-             "Pending rpc count gap of multiple connections reach the "
+DEFINE_int32(threshold_for_switch_multi_connection, 5,
+             "Pending rpc count gap of multi connections reach the "
              "threshold will trigger sending request on the socket with lower load.");
 
 DEFINE_int32(connect_timeout_as_unreachable, 3,
@@ -2499,7 +2499,7 @@ SocketMulti::~SocketMulti() {
 }
 
 int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
-    const uint32_t threshold = FLAGS_threshold_for_switch_multiple_connection;
+    const uint32_t threshold = FLAGS_threshold_for_switch_multi_connection;
     // Keep lightest socket if its rpc count is less than threshold or does not
     // increase more than threshold.
     SocketUniquePtr lptr;
@@ -2662,7 +2662,7 @@ inline void SocketMulti::UpdateLightestSocketIfNeeded(const uint64_t s) {
         SocketId id = SidOfLightest(lsid);
         if (Socket::Address(id, &ptr) == 0) { 
             if (id != new_sid) {
-                if (new_load + FLAGS_threshold_for_switch_multiple_connection >= 
+                if (new_load + FLAGS_threshold_for_switch_multi_connection >= 
                     ptr->_rpc_count.load(butil::memory_order_relaxed)) {
                     break;
                 }
