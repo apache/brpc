@@ -62,7 +62,7 @@ void* GetMultiConnection(void* arg) {
     if(0 == brpc::Socket::Address(main_id, &main_ptr)) {
         brpc::SocketUniquePtr ptr;
         if(0 == main_ptr->GetSocketFromGroup(&ptr, brpc::CONNECTION_TYPE_MULTIPLE)) {
-            return ptr.release();
+            return ptr.release(
         }
     }
     return nullptr;
@@ -74,7 +74,7 @@ void* SendMultiRequest(void* arg) {
     if(0 == brpc::Socket::Address(main_id, &main_ptr)) {
         while (!multiple_stop) {
             brpc::SocketUniquePtr ptr;
-            if(0 == main_ptr->GetSocketFromGroup(&ptr, brpc::CONNECTION_TYPE_MULTIPLE)) {
+            if(0 == main_ptr->GetSocketFromGroup(&ptr, brpc::CONNECTION_TYPE_MULTI)) {
                 g_multi_count.at(ptr->id()).fetch_add(1, butil::memory_order_relaxed);
                 bthread_usleep(butil::fast_rand_less_than(2000) + 500);
                 ptr->ReturnToGroup();

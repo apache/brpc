@@ -718,7 +718,7 @@ void Controller::Call::OnComplete(
     switch (c->connection_type()) {
     case CONNECTION_TYPE_UNKNOWN:
         break;
-    case CONNECTION_TYPE_MULTIPLE:
+    case CONNECTION_TYPE_MULTI:
         if (sending_sock) {
             sending_sock->ReturnToGroup();
         }
@@ -1059,7 +1059,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _current_call.sending_sock->set_preferred_index(_preferred_index);
     } else {
         int rc = 0;
-        if (_connection_type & CONNECTION_TYPE_POOLED_AND_MULTIPLE) {
+        if (_connection_type & CONNECTION_TYPE_POOLED_AND_MULTI) {
             rc = tmp_sock->GetSocketFromGroup(&_current_call.sending_sock, 
                                               _connection_type);
         } else if (_connection_type == CONNECTION_TYPE_SHORT) {

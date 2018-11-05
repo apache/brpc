@@ -416,7 +416,7 @@ static void GlobalInitializeOrDieImpl() {
                                 ProcessHttpRequest, ProcessHttpResponse,
                                 VerifyHttpRequest, ParseHttpServerAddress,
                                 GetHttpMethodName,
-                                CONNECTION_TYPE_SINGLE_AND_MULTIPLE,
+                                CONNECTION_TYPE_SINGLE_AND_MULTI,
                                 "h2" };
     if (RegisterProtocol(PROTOCOL_H2, http2_protocol) != 0) {
         exit(1);
