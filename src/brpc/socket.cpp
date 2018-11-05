@@ -905,7 +905,6 @@ int Socket::SetFailed() {
 void Socket::FeedbackCircuitBreaker(int error_code, int64_t latency_us) {
     if (!GetOrNewSharedPart()->circuit_breaker.OnCallEnd(error_code, latency_us)) {
         if (SetFailed(main_socket_id()) == 0) {
-            SetFailed(main_socket_id());
             LOG(ERROR) << "Socket[" << *this << "] isolated by circuit breaker";
         }
     }

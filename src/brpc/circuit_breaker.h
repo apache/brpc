@@ -66,8 +66,6 @@ private:
         bool OnCallEnd(int error_code, int64_t latency);
         void Reset();
 
-        int health_score() const;
-     
     private:
         int64_t UpdateLatency(int64_t latency);
         bool UpdateErrorCost(int64_t latency, int64_t ema_latency);
