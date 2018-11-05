@@ -78,7 +78,7 @@ $ sh run_tests.sh
 
 ### Compile brpc with cmake
 ```shell
-mkdir build && cd build && cmake .. && make
+mkdir bld && cd bld && cmake .. && make
 ```
 To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
 
@@ -91,7 +91,7 @@ To enable [thrift support](../en/thrift.md), install thrift first and add `-DWIT
 **Run example with cmake**
 ```shell
 $ cd example/echo_c++
-$ mkdir build && cd build && cmake .. && make
+$ mkdir bld && cd bld && cmake .. && make
 $ ./echo_server &
 $ ./echo_client
 ```
@@ -99,7 +99,7 @@ Examples link brpc statically, if you need to link the shared version, use `cmak
 
 **Run tests**
 ```shell
-$ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make
+$ mkdir bld && cd bld && cmake -DBUILD_UNIT_TESTS=ON .. && make
 $ cd test
 $ sh run_tests.sh
 ```
@@ -169,7 +169,7 @@ $ sh run_tests.sh
 
 ### Compile brpc with cmake
 ```shell
-mkdir build && cd build && cmake .. && make
+mkdir bld && cd bld && cmake .. && make
 ```
 To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
 
@@ -183,7 +183,7 @@ To enable [thrift support](../en/thrift.md), install thrift first and add `-DWIT
 
 ```shell
 $ cd example/echo_c++
-$ mkdir build && cd build && cmake .. && make
+$ mkdir bld && cd bld && cmake .. && make
 $ ./echo_server &
 $ ./echo_client
 ```
@@ -191,7 +191,7 @@ Examples link brpc statically, if you need to link the shared version, use `cmak
 
 **Run tests**
 ```shell
-$ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make
+$ mkdir bld && cd bld && cmake -DBUILD_UNIT_TESTS=ON .. && make
 $ cd test
 $ sh run_tests.sh
 ```
@@ -242,7 +242,7 @@ $ make
 git clone brpc. cd into the repo and run
 
 ```shell
-mkdir build && cd build && cmake -DCMAKE_INCLUDE_PATH="/path/to/dep1/include;/path/to/dep2/include" -DCMAKE_LIBRARY_PATH="/path/to/dep1/lib;/path/to/dep2/lib" .. && make
+mkdir bld && cd bld && cmake -DCMAKE_INCLUDE_PATH="/path/to/dep1/include;/path/to/dep2/include" -DCMAKE_LIBRARY_PATH="/path/to/dep1/lib;/path/to/dep2/lib" .. && make
 ```
 
 To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
@@ -276,7 +276,7 @@ brew install gperftools
 
 If you need to run tests, install and compile googletest (which is not compiled yet):
 ```shell
-git clone https://github.com/google/googletest && cd googletest/googletest && mkdir build && cd build && cmake .. && make && sudo mv libgtest* /usr/lib/ && cd -
+git clone https://github.com/google/googletest && cd googletest/googletest && mkdir bld && cd bld && cmake .. && make && sudo mv libgtest* /usr/lib/ && cd -
 ```
 
 ### Compile brpc with config_brpc.sh
@@ -311,7 +311,7 @@ $ sh run_tests.sh
 
 ### Compile brpc with cmake
 ```shell
-mkdir build && cd build && cmake .. && make
+mkdir bld && cd bld && cmake .. && make
 ```
 
 To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
@@ -323,7 +323,7 @@ To enable [thrift support](../en/thrift.md), install thrift first and add `-DWIT
 **Run example with cmake**
 ```shell
 $ cd example/echo_c++
-$ mkdir build && cd build && cmake .. && make
+$ mkdir bld && cd bld && cmake .. && make
 $ ./echo_server &
 $ ./echo_client
 ```
@@ -331,7 +331,7 @@ Examples link brpc statically, if you need to link the shared version, use `cmak
 
 **Run tests**
 ```shell
-$ mkdir build && cd build && cmake -DBUILD_UNIT_TESTS=ON .. && make
+$ mkdir bld && cd bld && cmake -DBUILD_UNIT_TESTS=ON .. && make
 $ cd test
 $ sh run_tests.sh
 ```
