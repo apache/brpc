@@ -184,7 +184,7 @@ public:
         *num = _num_created.load(butil::memory_order_relaxed); 
     }
     
-    // Get all multiple sockets inside.
+    // Get all multi sockets inside.
     virtual void ListSockets(std::vector<SocketId>* list, size_t max_count);
     
     virtual ConnectionType connection_type() const { 
