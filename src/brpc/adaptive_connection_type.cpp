@@ -59,7 +59,7 @@ const char* ConnectionTypeToString(ConnectionType type) {
     case CONNECTION_TYPE_SHORT:
         return "short";
     case CONNECTION_TYPE_MULTI:
-        return "multiple";
+        return "multi";
     }
     return "unknown";
 }

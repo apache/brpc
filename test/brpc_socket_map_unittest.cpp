@@ -185,7 +185,7 @@ TEST_F(SocketMapTest, max_pool_size) {
     brpc::SocketMapRemove(g_key);
 }
 
-TEST_F(SocketMapTest, max_multiple_size) {
+TEST_F(SocketMapTest, max_multi_connection_size) {
     const int MAXSIZE = 5;
     const int THRESHOLD = 3;
     brpc::FLAGS_max_connection_multi_size = MAXSIZE;
@@ -227,7 +227,7 @@ TEST_F(SocketMapTest, max_multiple_size) {
     brpc::SocketMapRemove(g_key);
 }
 
-TEST_F(SocketMapTest, fairness_multiple_connections) {
+TEST_F(SocketMapTest, fairness_multi_connections) {
     const int MAXSIZE = 5;
     const int THRESHOLD = 3;
     brpc::FLAGS_max_connection_multi_size = MAXSIZE;

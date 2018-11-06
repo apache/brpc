@@ -2484,7 +2484,7 @@ SocketMulti::SocketMulti(const SocketOptions& opt)
     : SocketGroup(opt)
     , _num_created(0)
     , _lightest(0)
-    , _multi(FLAGS_max_connection_multiple_size, INVALID_SOCKET_ID) {
+    , _multi(FLAGS_max_connection_multi_size, INVALID_SOCKET_ID) {
 }
 
 SocketMulti::~SocketMulti() {
@@ -2562,7 +2562,7 @@ int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
             opt.health_check_interval_s = _options.health_check_interval_s;
             if (get_client_side_messenger()->Create(opt, &new_id) == 0 &&
                 Socket::Address(new_id, &ptr) == 0) {
-                ptr->_multiple_index = i;
+                ptr->_multi_index = i;
                 if (psid->compare_exchange_strong(
                         sid, new_id, butil::memory_order_relaxed)) {
                     ptr->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
@@ -2571,7 +2571,7 @@ int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
                     ptr_out->reset(ptr.release());
                     return 0;
                 } else {
-                    ptr->SetFailed(EUNUSED, "Close unused multiple socket");
+                    ptr->SetFailed(EUNUSED, "Close unused multi socket");
                     if (Socket::Address(sid, ptr_out) == 0) {
                         (*ptr_out)->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
                         return 0;
@@ -2597,15 +2597,15 @@ int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
 
 void SocketMulti::ReturnSocket(Socket* sock) {
     sock->_rpc_count.fetch_sub(1, butil::memory_order_acquire);
-    CHECK_EQ(sock->id(), _multi[sock->_multiple_index]) 
-        << "Socket is not consistent with " << sock->_multiple_index 
-        << "th of multi connections."; 
+    CHECK_EQ(sock->id(), _multi[sock->_multi_index])
+        << "Socket is not consistent with " << sock->_multi_index
+        << "th of multi connections.";
     if (sock->Failed()) {
         return;
     }
     uint64_t lsid = _lightest.load(butil::memory_order_relaxed);
     uint32_t load = sock->_rpc_count.load(butil::memory_order_relaxed);
-    uint64_t s = BuildLightest(sock->_multiple_index, load);
+    uint64_t s = BuildLightest(sock->_multi_index, load);
     if (sock->id() == SidOfLightest(lsid)) {
         if (load < LoadOfLightest(lsid)) {
             _lightest.compare_exchange_strong(lsid, s, butil::memory_order_relaxed);
@@ -2639,7 +2639,7 @@ int SocketMulti::InitSocket(const size_t index, SocketId* sid) {
     }
     if (ptr) {
         psid = reinterpret_cast<butil::atomic<SocketId>*>(&_multi[final_pos]);
-        ptr->_multiple_index = final_pos;
+        ptr->_multi_index = final_pos;
         if (psid->compare_exchange_strong(dummy, new_id, 
                                           butil::memory_order_relaxed)) {
             *sid = new_id;

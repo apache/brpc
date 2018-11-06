@@ -831,7 +831,7 @@ private:
     butil::atomic<uint32_t> _rpc_count;
     // The socket index of multiple connections array. This is only used 
     // by multiple connection.
-    uint32_t _multiple_index = -1;
+    uint32_t _multi_index = -1;
 };
 
 } // namespace brpc
