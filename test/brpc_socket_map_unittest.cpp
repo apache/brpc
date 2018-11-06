@@ -37,7 +37,6 @@ DECLARE_int32(threshold_for_switch_multi_connection);
 namespace {
 butil::EndPoint g_endpoint;
 brpc::SocketMapKey g_key(g_endpoint);
-std::map<brpc::SocketId, butil::atomic<uint64_t>> g_multi_count;
 volatile bool multiple_stop = false;
 
 void* worker(void*) {
@@ -71,11 +70,15 @@ void* GetMultiConnection(void* arg) {
 void* SendMultiRequest(void* arg) {
     brpc::SocketId main_id = *reinterpret_cast<brpc::SocketId*>(arg);
     brpc::SocketUniquePtr main_ptr;
+    std::map<brpc::SocketId, uint64_t>* multi_count = new std::map<brpc::SocketId, uint64_t>;
     if(0 == brpc::Socket::Address(main_id, &main_ptr)) {
         while (!multiple_stop) {
             brpc::SocketUniquePtr ptr;
             if(0 == main_ptr->GetSocketFromGroup(&ptr, brpc::CONNECTION_TYPE_MULTI)) {
-                g_multi_count.at(ptr->id()).fetch_add(1, butil::memory_order_relaxed);
+                auto insert = multi_count->emplace(ptr->id(), 1);
+                if (!insert.second) {
+                    ++(insert.first->second);
+                }
                 bthread_usleep(butil::fast_rand_less_than(2000) + 500);
                 ptr->ReturnToGroup();
             } else {
@@ -84,7 +87,7 @@ void* SendMultiRequest(void* arg) {
         }
     }
 
-    return nullptr;
+    return multi_count;
 }
 
 class SocketMapTest : public ::testing::Test{
@@ -234,36 +237,15 @@ TEST_F(SocketMapTest, fairness_multi_connections) {
     brpc::FLAGS_threshold_for_switch_multi_connection = THRESHOLD;
     brpc::SocketId main_id;
     ASSERT_EQ(0, brpc::SocketMapInsert(g_key, &main_id));
-    size_t times = MAXSIZE * (THRESHOLD + 1);
-    std::vector<pthread_t> tids(times);
-    for (size_t i = 0; i != times; ++i) {
-        ASSERT_EQ(0, pthread_create(&tids[i], NULL, GetMultiConnection, &main_id));
-    }
-    std::vector<void*> retval(times);
-    for (size_t i = 0; i != times; ++i) {
-        ASSERT_EQ(0, pthread_join(tids[i], &retval[i]));
-    }
-    for (size_t i = 0; i != times; ++i) {
-        brpc::Socket* sock = reinterpret_cast<brpc::Socket*>(retval[i]);
-        ASSERT_TRUE(sock != nullptr); 
-        brpc::SocketUniquePtr ptr(sock);
-        ptr->ReturnToGroup();
-    }
-
     brpc::SocketUniquePtr main_ptr;
     ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
-    std::vector<brpc::SocketId> ids;
-    main_ptr->ListSocketsOfGroup(&ids);
-    ASSERT_EQ(MAXSIZE, (int)ids.size());
-    for (const auto id : ids) {
-        g_multi_count[id] = 0;
-    }     
 
+    size_t times = MAXSIZE * (THRESHOLD + 1);
+    std::vector<pthread_t> tids(times);
     std::cout << "Time start ..." << std::endl;
     butil::Timer tm;
     tm.start();
 
-    tids.resize(20, 0);
     for (size_t i = 0; i != tids.size(); ++i) {
         ASSERT_EQ(0, pthread_create(&tids[i], NULL, SendMultiRequest, &main_id));
     }
@@ -271,16 +253,28 @@ TEST_F(SocketMapTest, fairness_multi_connections) {
     
     std::cout << "Time end ..." << std::endl;
     multiple_stop = true;
-    for (const auto tid : tids) {
-        ASSERT_EQ(0, pthread_join(tid, nullptr));
+    std::vector<void*> retval(tids.size());
+    for (size_t i = 0; i != tids.size(); ++i) {
+        ASSERT_EQ(0, pthread_join(tids[i], &retval[i]));
     }
     tm.stop();
-    
+
+    std::map<brpc::SocketId, uint64_t> total_count;
+    for (auto count : retval) {
+        auto* p = reinterpret_cast<std::map<brpc::SocketId, uint64_t>*>(count);
+        for (const auto& id_count : *p) {
+            auto insert = total_count.insert(id_count);
+            if (!insert.second) {
+                insert.first->second += id_count.second;
+            }
+        }
+        delete p;
+    }
     uint64_t count_sum = 0;
     uint64_t count_squared_sum = 0;
     uint64_t min_count = (uint64_t)-1;
     uint64_t max_count = 0;
-    for (auto it = g_multi_count.begin(); it != g_multi_count.end(); ++it) {
+    for (auto it = total_count.begin(); it != total_count.end(); ++it) {
         uint64_t n = it->second;
         if (n > max_count) { max_count = n; }
         if (n < min_count) { min_count = n; }
@@ -288,8 +282,7 @@ TEST_F(SocketMapTest, fairness_multi_connections) {
         count_squared_sum += n * n; 
     }
     ASSERT_TRUE(min_count > 0);
-    ASSERT_EQ(g_multi_count.size(), ids.size());
-    const size_t num = g_multi_count.size();
+    const size_t num = total_count.size();
     std::cout << '\n'
               << ": elapse_milliseconds=" << tm.u_elapsed() * 1000
               << " total_count=" << count_sum

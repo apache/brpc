@@ -827,10 +827,10 @@ private:
     std::set<StreamId> *_stream_set;
     butil::atomic<int64_t> _ninflight_app_health_check;
     // The number of pending rpc on this socket. This is only used 
-    // by multiple connection.
+    // by multi connection.
     butil::atomic<uint32_t> _rpc_count;
-    // The socket index of multiple connections array. This is only used 
-    // by multiple connection.
+    // The socket index of multi connections array. This is only used 
+    // by multi connection.
     uint32_t _multi_index = -1;
 };
 
