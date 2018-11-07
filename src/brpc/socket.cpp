@@ -210,8 +210,7 @@ private:
        
     int InitSocket(const size_t index, SocketId* sid);
 
-    // If the rpc count of 's' less than threshold than current 
-    // '_lightest', update '_lightest' by 's'. 
+    // If the rpc count of 's' less than (lightest - threshold), update '_lightest' by 's'.
     inline void UpdateLightestSocketIfNeeded(const uint64_t s);
 
     butil::atomic<size_t> _num_created;
@@ -2537,7 +2536,7 @@ void SocketPool::Describe(std::ostream& os) {
        << "\n  numinflight=" << _numinflight.load(butil::memory_order_relaxed);
 }
 
-// Scoket Multiple
+// ScoketMulti
 SocketMulti::SocketMulti(const SocketOptions& opt)
     : SocketGroup(opt)
     , _num_created(0)
@@ -2547,7 +2546,7 @@ SocketMulti::SocketMulti(const SocketOptions& opt)
 
 SocketMulti::~SocketMulti() {
     butil::atomic<SocketId>* p;
-    for (size_t i = 0; i != _multi.size() && _num_created-- > 0; ++i) {
+    for (size_t i = 0; i < _multi.size() && i < _num_created; ++i) {
         p = reinterpret_cast<butil::atomic<SocketId>*>(&_multi[i]);
         SocketUniquePtr ptr;
         if (Socket::Address(p->load(), &ptr) == 0) {
@@ -2578,7 +2577,7 @@ int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
     const SocketId init_fail = INVALID_SOCKET_ID - 1;
     for (size_t i = 0; i != _multi.size(); ++i) {
         psid = reinterpret_cast<butil::atomic<SocketId>*>(&_multi[i]);
-        sid = psid->load(butil::memory_order_relaxed);
+        sid = psid->load(butil::memory_order_acquire);
         SocketUniquePtr ptr;
         int addressed = -2;
         if (sid != INVALID_SOCKET_ID && sid != init_fail) {
@@ -2617,7 +2616,6 @@ int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
         if (sid == init_fail || addressed == -1) {
             SocketId new_id;
             SocketOptions opt = _options;
-            opt.health_check_interval_s = _options.health_check_interval_s;
             if (get_client_side_messenger()->Create(opt, &new_id) == 0 &&
                 Socket::Address(new_id, &ptr) == 0) {
                 ptr->_multi_index = i;
@@ -2657,7 +2655,7 @@ void SocketMulti::ReturnSocket(Socket* sock) {
     sock->_rpc_count.fetch_sub(1, butil::memory_order_acquire);
     CHECK_EQ(sock->id(), _multi[sock->_multi_index])
         << "Socket is not consistent with " << sock->_multi_index
-        << "th of multi connections.";
+        << "th multi connection.";
     if (sock->Failed()) {
         return;
     }
@@ -2675,7 +2673,6 @@ void SocketMulti::ReturnSocket(Socket* sock) {
 
 int SocketMulti::InitSocket(const size_t index, SocketId* sid) {
     SocketOptions opt = _options;
-    opt.health_check_interval_s = _options.health_check_interval_s;
     SocketUniquePtr ptr;
     SocketId new_id;
     if (get_client_side_messenger()->Create(opt, &new_id) == 0) {
@@ -2719,14 +2716,11 @@ inline void SocketMulti::UpdateLightestSocketIfNeeded(const uint64_t s) {
         SocketUniquePtr ptr;
         SocketId id = SidOfLightest(lsid);
         if (Socket::Address(id, &ptr) == 0) { 
-            if (id != new_sid) {
-                if (new_load + FLAGS_threshold_for_switch_multi_connection >= 
+            if (id == new_sid || 
+                new_load + FLAGS_threshold_for_switch_multi_connection >= 
                     ptr->_rpc_count.load(butil::memory_order_relaxed)) {
-                    break;
-                }
-            } else {
                 break;
-            } 
+            }
         }
     } while (!_lightest.compare_exchange_strong(
                  lsid, s, butil::memory_order_relaxed));
