@@ -313,7 +313,7 @@ public:
     // so the server may as well give up on replying to it. The server should still
     // call the final "done" callback.
     // Note: Reaching deadline of the RPC would not affect this function, which means
-    // even if deadline has been reached, this function may still returns false.
+    // even if deadline has been reached, this function may still return false.
     bool IsCanceled() const;
 
     // Asks that the given callback be called when the RPC is canceled or the
