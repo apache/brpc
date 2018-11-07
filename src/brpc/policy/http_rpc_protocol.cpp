@@ -50,6 +50,8 @@ int is_failed_after_queries(const http_parser* parser);
 int is_failed_after_http_version(const http_parser* parser);
 DECLARE_bool(http_verbose);
 DECLARE_int32(http_verbose_max_body_length);
+// Defined in grpc.cpp
+int64_t ConvertGrpcTimeoutToUS(const std::string* grpc_timeout);
 
 namespace policy {
 
@@ -135,6 +137,7 @@ CommonStrings::CommonStrings()
     , GRPC_ACCEPT_ENCODING_VALUE("identity,gzip")
     , GRPC_STATUS("grpc-status")
     , GRPC_MESSAGE("grpc-message")
+    , GRPC_TIMEOUT("grpc-timeout")
 {}
 
 static CommonStrings* common = NULL;
@@ -575,7 +578,10 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             */
             // TODO: do we need this?
             hreq.SetHeader(common->TE, common->TRAILERS);
-
+            if (cntl->timeout_ms() >= 0) {
+                hreq.SetHeader(common->GRPC_TIMEOUT,
+                        butil::string_printf("%ldm", cntl->timeout_ms()));
+            }
             // Append compressed and length before body
             AddGrpcPrefix(&cntl->request_attachment(), grpc_compressed);
         }
@@ -1418,6 +1424,12 @@ void ProcessHttpRequest(InputMessageBase *msg) {
                             return;
                         }
                     }
+                    int64_t timeout_value_us =
+                        ConvertGrpcTimeoutToUS(req_header.GetHeader(common->GRPC_TIMEOUT));
+                    if (timeout_value_us >= 0) {
+                        accessor.set_deadline_us(
+                                butil::gettimeofday_us() + timeout_value_us);
+                    }
                 }
             } else {
                 encoding = req_header.GetHeader(common->CONTENT_ENCODING);
@@ -1455,7 +1467,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         // A http server, just keep content as it is.
         cntl->request_attachment().swap(req_body);
     }
-    
+
     google::protobuf::Closure* done = new HttpResponseSenderAsDone(&resp_sender);
     imsg_guard.reset();  // optional, just release resourse ASAP
 

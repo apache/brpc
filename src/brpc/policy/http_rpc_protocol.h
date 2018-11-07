@@ -71,6 +71,7 @@ struct CommonStrings {
     std::string GRPC_ACCEPT_ENCODING_VALUE;
     std::string GRPC_STATUS;
     std::string GRPC_MESSAGE;
+    std::string GRPC_TIMEOUT;
 
     CommonStrings();
 };

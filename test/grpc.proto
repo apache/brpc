@@ -7,6 +7,7 @@ message GrpcRequest {
     required string message = 1;
     required bool gzip = 2;
     required bool return_error = 3;
+    optional int64 timeout_us = 4;
 };
 
 message GrpcResponse {
@@ -18,5 +19,3 @@ service GrpcService {
     rpc MethodTimeOut(GrpcRequest) returns (GrpcResponse);
     rpc MethodNotExist(GrpcRequest) returns (GrpcResponse);
 }
-
-

@@ -222,7 +222,7 @@ void Controller::ResetPods() {
     _timeout_ms = UNSET_MAGIC_NUM;
     _backup_request_ms = UNSET_MAGIC_NUM;
     _connect_timeout_ms = UNSET_MAGIC_NUM;
-    _abstime_us = -1;
+    _deadline_us = -1;
     _timeout_id = 0;
     _begin_time_us = 0;
     _end_time_us = 0;
@@ -568,7 +568,7 @@ void Controller::OnVersionedRPCReturned(const CompletionInfo& info,
         if (timeout_ms() >= 0) {
             rc = bthread_timer_add(
                     &_timeout_id,
-                    butil::microseconds_to_timespec(_abstime_us),
+                    butil::microseconds_to_timespec(_deadline_us),
                     HandleTimeout, (void*)_correlation_id.value);
         }
         if (rc != 0) {
@@ -750,7 +750,7 @@ void Controller::Call::OnComplete(
             // main socket should die as well.
             // NOTE: main socket may be wrongly set failed (provided that
             // short/pooled socket does not hold a ref of the main socket).
-            // E.g. a in-parallel RPC sets the peer_id to be failed
+            // E.g. an in-parallel RPC sets the peer_id to be failed
             //   -> this RPC meets ECONNREFUSED
             //   -> main socket gets revived from HC
             //   -> this RPC sets main socket to be failed again.
@@ -1111,10 +1111,10 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     timespec connect_abstime;
     timespec* pabstime = NULL;
     if (_connect_timeout_ms > 0) {
-        if (_abstime_us >= 0) {
+        if (_deadline_us >= 0) {
             connect_abstime = butil::microseconds_to_timespec(
                 std::min(_connect_timeout_ms * 1000L + start_realtime_us,
-                         _abstime_us));
+                         _deadline_us));
         } else {
             connect_abstime = butil::microseconds_to_timespec(
                 _connect_timeout_ms * 1000L + start_realtime_us);

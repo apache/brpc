@@ -309,9 +309,11 @@ public:
     // undefined on the client side (may crash).
     // ------------------------------------------------------------------------
 
-    // If true, indicates that the client canceled the RPC or the connection has
-    // broken, so the server may as well give up on replying to it.  The server
-    // should still call the final "done" callback.
+    // Returns true if the client canceled the RPC or the connection has broken,
+    // so the server may as well give up on replying to it. The server should still
+    // call the final "done" callback.
+    // Note: Reaching deadline of the RPC would not affect this function, which means
+    // even if deadline has been reached, this function may still return false.
     bool IsCanceled() const;
 
     // Asks that the given callback be called when the RPC is canceled or the
@@ -479,6 +481,10 @@ public:
 
     // Get sock option. .e.g get vip info through ttm kernel module hook,
     int GetSockOption(int level, int optname, void* optval, socklen_t* optlen);
+
+    // Get deadline of this RPC (since the Epoch in microseconds).
+    // -1 means no deadline.
+    int64_t deadline_us() const { return _deadline_us; }
 
 private:
     struct CompletionInfo {
@@ -663,7 +669,7 @@ private:
     int32_t _connect_timeout_ms;
     int32_t _backup_request_ms;
     // Deadline of this RPC (since the Epoch in microseconds).
-    int64_t _abstime_us;
+    int64_t _deadline_us;
     // Timer registered to trigger RPC timeout event
     bthread_timer_t _timeout_id;
 
