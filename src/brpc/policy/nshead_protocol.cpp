@@ -262,7 +262,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
         .set_remote_side(socket->remote_side())
         .set_local_side(socket->local_side())
         .set_request_protocol(PROTOCOL_NSHEAD)
-        .set_server_latency(msg->received_us())
+        .set_begin_time_us(msg->received_us())
         .move_in_server_receiving_sock(socket_guard);
 
     // Tag the bthread with this server's key for thread_local_data().

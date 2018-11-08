@@ -351,7 +351,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         .set_local_side(socket->local_side())
         .set_auth_context(socket->auth_context())
         .set_request_protocol(PROTOCOL_BAIDU_STD)
-        .set_server_latency(msg->received_us())
+        .set_begin_time_us(msg->received_us())
         .move_in_server_receiving_sock(socket_guard);
 
     if (meta.has_stream_settings()) {
