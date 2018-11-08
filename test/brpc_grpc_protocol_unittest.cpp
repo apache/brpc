@@ -70,7 +70,7 @@ public:
                 EXPECT_EQ(-1, cntl->deadline_us());
             } else {
                 EXPECT_NEAR(cntl->deadline_us(),
-                    butil::gettimeofday_us() + req->timeout_us(), 60);
+                    butil::gettimeofday_us() + req->timeout_us(), 5000);
             }
         }
     }
