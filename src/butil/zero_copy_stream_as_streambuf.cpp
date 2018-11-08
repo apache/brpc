@@ -31,7 +31,7 @@ int ZeroCopyStreamAsStreamBuf::overflow(int ch) {
     int size = 0;
     if (_zero_copy_stream->Next(&block, &size)) {
         setp((char*)block, (char*)block + size);
-        // if size == 1, this function will call overflow again.
+        // if size == 0, this function will call overflow again.
         return sputc(ch);
     } else {
         setp(NULL, NULL);
