@@ -38,12 +38,9 @@ public:
     ThriftService();
     virtual ~ThriftService();
 
-    // Implement this method to handle thrift_binary requests. Notice that this
-    // method can be called with a failed Controller(something wrong with the
-    // request before calling this method), in which case the implemenetation
-    // shall send specific response with error information back to client.
+    // Implement this method to handle thrift_binary requests.
     // Parameters:
-    //   controller  per-rpc settings.
+    //   controller  per-rpc settings. controller->Failed() is always false.
     //   request     The thrift_binary request received.
     //   response    The thrift_binary response that you should fill in.
     //   done        You must call done->Run() to end the processing.
