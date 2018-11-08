@@ -21,9 +21,9 @@
 
 namespace brpc {
 
-DEFINE_int32(circuit_breaker_short_window_size, 500,
+DEFINE_int32(circuit_breaker_short_window_size, 1500,
     "Short window sample size.");
-DEFINE_int32(circuit_breaker_long_window_size, 1000,
+DEFINE_int32(circuit_breaker_long_window_size, 3000,
     "Long window sample size.");
 DEFINE_int32(circuit_breaker_short_window_error_percent, 10,
     "The maximum error rate allowed by the short window, ranging from 0-99.");
@@ -39,6 +39,8 @@ DEFINE_int32(circuit_breaker_min_isolation_duration_ms, 100,
     "Minimum isolation duration in milliseconds");
 DEFINE_int32(circuit_breaker_max_isolation_duration_ms, 30000,
     "Maximum isolation duration in milliseconds");
+DEFINE_double(circuit_breaker_epsilon_value, 0.02, 
+    "ema_alpha = 1 - std::pow(epsilon, 1.0 / window_size)");
 
 namespace {
 // EPSILON is used to generate the smoothing coefficient when calculating EMA.
@@ -51,7 +53,9 @@ namespace {
 // when window_size = 1000,
 // EPSILON = 0.1, smooth = 0.9977
 // EPSILON = 0.3, smooth = 0.9987
-const double EPSILON = 0.1;
+
+#define EPSILON (FLAGS_circuit_breaker_epsilon_value)
+
 }  // namepace
 
 CircuitBreaker::EmaErrorRecorder::EmaErrorRecorder(int window_size,
