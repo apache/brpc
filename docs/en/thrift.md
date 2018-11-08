@@ -33,7 +33,7 @@ sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --with-thrift
 # Fedora/CentOS
 sh config_brpc.sh --headers=/usr/include --libs=/usr/lib64 --with-thrift
 # Or use cmake
-mkdir build && cd build && cmake ../ -DWITH_THRIFT=ON
+mkdir bld && cd bld && cmake ../ -DWITH_THRIFT=ON
 ```
 Read [Getting Started](../cn/getting_started.md) for more compilation options.
 

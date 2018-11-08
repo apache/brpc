@@ -36,7 +36,7 @@ else
 fi
 
 echo "start building by cmake"
-rm -rf build && mkdir build && cd build
+rm -rf bld && mkdir bld && cd bld
 if [ "$PURPOSE" = "compile" ]; then
     if ! cmake ..; then
         echo "Fail to generate Makefile by cmake"
