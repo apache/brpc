@@ -178,6 +178,8 @@ public:
 
     CircuitBreaker circuit_breaker;
 
+    butil::atomic<uint64_t> recent_error_count;
+
     explicit SharedPart(SocketId creator_socket_id);
     ~SharedPart();
 
@@ -193,7 +195,8 @@ Socket::SharedPart::SharedPart(SocketId creator_socket_id2)
     , in_num_messages(0)
     , out_size(0)
     , out_num_messages(0)
-    , extended_stat(NULL) {
+    , extended_stat(NULL)
+    , recent_error_count(0) {
 }
 
 Socket::SharedPart::~SharedPart() {
@@ -766,6 +769,7 @@ void Socket::Revive() {
             SharedPart* sp = GetSharedPart();
             if (sp) {
                 sp->circuit_breaker.Reset();
+                sp->recent_error_count.store(0, butil::memory_order_relaxed);
             }
             // Set this flag to true since we add additional ref again
             _recycle_flag.store(false, butil::memory_order_relaxed);
@@ -802,6 +806,29 @@ int Socket::ReleaseAdditionalReference() {
     return -1;
 }
 
+void Socket::AddRecentError() {
+    SharedPart* sp = GetSharedPart();
+    if (sp) {
+        sp->recent_error_count.fetch_add(1, butil::memory_order_relaxed);
+    }
+}
+
+int64_t Socket::recent_error_count() const {
+    SharedPart* sp = GetSharedPart();
+    if (sp) {
+        return sp->recent_error_count.load(butil::memory_order_relaxed);
+    }
+    return 0;
+}
+
+int Socket::isolated_times() const {
+    SharedPart* sp = GetSharedPart();
+    if (sp) {
+        return sp->circuit_breaker.isolated_times();
+    }
+    return 0;
+}
+
 int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
     if (error_code == 0) {
         CHECK(false) << "error_code is 0";
@@ -836,6 +863,7 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // by Channel to revive never-connected socket when server side
             // comes online.
             if (_health_check_interval_s > 0) {
+                GetOrNewSharedPart( )->circuit_breaker.MarkAsBroken();
                 PeriodicTaskManager::StartTaskAt(
                     new HealthCheckTask(id()),
                     butil::milliseconds_from_now(GetOrNewSharedPart()->
@@ -876,8 +904,9 @@ int Socket::SetFailed() {
 
 void Socket::FeedbackCircuitBreaker(int error_code, int64_t latency_us) {
     if (!GetOrNewSharedPart()->circuit_breaker.OnCallEnd(error_code, latency_us)) {
-        LOG(ERROR) << "Socket[" << *this << "] isolated by circuit breaker";
-        SetFailed(main_socket_id());
+        if (SetFailed(main_socket_id()) == 0) {
+            LOG(ERROR) << "Socket[" << *this << "] isolated by circuit breaker";
+        }
     }
 }
 

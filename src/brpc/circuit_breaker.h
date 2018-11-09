@@ -38,12 +38,22 @@ public:
 
     // Reset CircuitBreaker and clear history data. will erase the historical 
     // data and start sampling again. Before you call this method, you need to
-    // ensure that no one else is calling OnCallEnd.
+    // ensure that no one else is accessing CircuitBreaker.
     void Reset();
+
+    // Mark the Socket as broken. Call this method when you want to isolate a 
+    // node in advance. When this method is called multiple times in succession, 
+    // only the first call will take effect.
+    void MarkAsBroken();
+
+    // Number of times marked as broken
+    int isolated_times() const {
+        return _isolated_times.load(butil::memory_order_relaxed);
+    }
 
     // The duration that should be isolated when the socket fails in milliseconds.
     // The higher the frequency of socket errors, the longer the duration.
-    int isolation_duration_ms() {
+    int isolation_duration_ms() const {
         return _isolation_duration_ms.load(butil::memory_order_relaxed);
     }
 
@@ -55,7 +65,7 @@ private:
         EmaErrorRecorder(int windows_size,  int max_error_percent);
         bool OnCallEnd(int error_code, int64_t latency);
         void Reset();
-     
+
     private:
         int64_t UpdateLatency(int64_t latency);
         bool UpdateErrorCost(int64_t latency, int64_t ema_latency);
@@ -72,8 +82,9 @@ private:
     EmaErrorRecorder _long_window;
     EmaErrorRecorder _short_window;
     int64_t _last_reset_time_ms; 
-    butil::atomic<bool> _broken;
     butil::atomic<int> _isolation_duration_ms;
+    butil::atomic<int> _isolated_times;
+    butil::atomic<bool> _broken;
 };
 
 }  // namespace brpc
