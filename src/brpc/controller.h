@@ -172,8 +172,15 @@ public:
     // True if a backup request was sent during the RPC.
     bool has_backup_request() const { return has_flag(FLAGS_BACKUP_REQUEST); }
 
-    // Get latency of the RPC call.
-    int64_t latency_us() const { return _end_time_us - _begin_time_us; }
+    // This function has different meanings in client and server side.
+    // In client side it gets latency of the RPC call. While in server side,
+    // it gets queue time before server processes the RPC call.
+    int64_t latency_us() const {
+        if (_end_time_us == UNSET_MAGIC_NUM) {
+            return butil::cpuwide_time_us() - _begin_time_us;
+        }
+        return _end_time_us - _begin_time_us;
+    }
 
     // Response of the RPC call (passed to CallMethod)
     google::protobuf::Message* response() const { return _response; }
