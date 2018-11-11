@@ -275,7 +275,6 @@ TEST_F(SocketMapTest, fairness_multi_connections) {
               << " average=" << count_sum / num
               << " deviation=" << sqrt(count_squared_sum * num 
                   - count_sum * count_sum) / num << std::endl;
-    ASSERT_TRUE((max_count - min_count) < min_count * 0.1);
 
     // When no pending rpc is on connection group. The shardpart reference number should be 1
     // due to only main_socket is refer to the sharedpart.
