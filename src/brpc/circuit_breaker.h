@@ -74,7 +74,8 @@ private:
         const int _max_error_percent;
         const double _smooth;
 
-        butil::atomic<int64_t> _sample_count;
+        butil::atomic<int32_t> _sample_count;
+        butil::atomic<int32_t> _error_count;
         butil::atomic<int64_t> _ema_error_cost;
         butil::atomic<int64_t> _ema_latency;
     };
