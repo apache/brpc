@@ -87,7 +87,7 @@ size_t StringSplitter::length() const {
 }
 
 bool StringSplitter::not_end(const char* p) const {
-    return *p && p != _str_tail;
+    return (_str_tail == NULL) ? *p : (p != _str_tail);
 }
 
 int StringSplitter::to_int8(int8_t* pv) const {
@@ -167,6 +167,7 @@ StringMultiSplitter::StringMultiSplitter (
     : _head(str)
     , _str_tail(NULL)
     , _seps(seps)
+    , _seps_tail(NULL)
     , _empty_field_action(action) {
     init();
 }
@@ -177,6 +178,18 @@ StringMultiSplitter::StringMultiSplitter (
     : _head(str_begin)
     , _str_tail(str_end)
     , _seps(seps)
+    , _seps_tail(NULL)
+    , _empty_field_action(action) {
+    init();
+}
+
+StringMultiSplitter::StringMultiSplitter (
+    const char* str_begin, const char* str_end,
+    const char* seps_begin, const char* seps_end, EmptyFieldAction action)
+    : _head(str_begin)
+    , _str_tail(str_end)
+    , _seps(seps_begin)
+    , _seps_tail(seps_end)
     , _empty_field_action(action) {
     init();
 }
@@ -213,7 +226,8 @@ StringMultiSplitter StringMultiSplitter::operator++(int) {
 }
 
 bool StringMultiSplitter::is_sep(char c) const {
-    for (const char* p = _seps; *p != '\0'; ++p) {
+    for (const char* p = _seps;
+          (_seps_tail == NULL) ? (*p != '\0') : (p != _seps_tail); ++p) {
         if (c == *p) {
             return true;
         }
@@ -234,7 +248,7 @@ size_t StringMultiSplitter::length() const {
 }
 
 bool StringMultiSplitter::not_end(const char* p) const {
-    return *p && p != _str_tail;
+    return (_str_tail == NULL) ? *p : (p != _str_tail);
 }
 
 int StringMultiSplitter::to_int8(int8_t* pv) const {
