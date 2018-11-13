@@ -1,5 +1,5 @@
 // uid barrel - a barrel library to make same uid queue up, it's some kind of serialization in brpc.
-// Copyright (c) 2018 Bigo, Inc.
+// Copyright (c) 2018 abstraction No Inc 
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.

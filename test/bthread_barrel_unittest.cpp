@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Bigo, Inc.
+// Copyright (c) 2018 abstraction No Inc 
 // Author: hairet (hairet@vip.qq.com)
 // Date: 2018/11/10 
 

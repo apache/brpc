@@ -1,6 +1,6 @@
 // spin lock - user lib spin lock.caller should pass lock when init
 // carefully use this,as conflict will cause high cost
-// Copyright (c) 2018 Bigo, Inc.
+// Copyright (c) 2018 abstraction No Inc  
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
