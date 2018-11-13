@@ -15,6 +15,7 @@ message RpcMeta {
     optional ChunkInfo chunk_info = 6;
     optional bytes authentication_data = 7;
     optional StreamSettings stream_settings = 8;   
+    optional int64 uid = 9;
 }
 
 message RpcRequestMeta {

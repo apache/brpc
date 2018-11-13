@@ -34,9 +34,11 @@
 #include "butil/third_party/murmurhash3/murmurhash3.h"
 #include "butil/logging.h"
 #include "butil/object_pool.h"
+#include "bthread/task_group.h"            // TaskGroup
 #include "bthread/butex.h"                       // butex_*
 #include "bthread/processor.h"                   // cpu_relax, barrier
 #include "bthread/mutex.h"                       // bthread_mutex_t
+#include "bthread/spinlock.h"                    //user spin lock
 #include "bthread/sys_futex.h"
 #include "bthread/log.h"
 
@@ -810,6 +812,64 @@ int pthread_mutex_lock (pthread_mutex_t *__mutex) {
 }
 int pthread_mutex_unlock (pthread_mutex_t *__mutex) {
     return bthread::pthread_mutex_unlock_impl(__mutex);
+}
+
+extern BAIDU_THREAD_LOCAL bthread::TaskGroup* tls_task_group;
+
+int bthread_queue_mutex_init(bthread_queue_mutex_t* __restrict m,
+        const bthread_queue_mutexattr_t* __restrict) {
+    bthread::make_contention_site_invalid(&m->csite);
+    m->butex = bthread::butex_create_checked<unsigned>();
+    if (!m->butex) {
+        return ENOMEM;
+    }
+    *m->butex = 0;
+    m->next_bid = 0;
+    return 0;
+}
+
+int bthread_queue_mutex_destroy(bthread_queue_mutex_t* m) {
+    bthread::butex_destroy(m->butex);
+    return 0;
+}
+
+int bthread_queue_mutex_trylock(bthread_queue_mutex_t* m) {
+    QueuedMutexInternal* split = (QueuedMutexInternal*)m->butex;
+    {
+        //bSpinLockGaurd lock(split->guarantee_lock);
+        if (!split->locked.exchange(1, butil::memory_order_acquire)) {
+            return 0;
+        }
+    }
+    return EBUSY;
+}
+
+int bthread_queue_mutex_lock(bthread_queue_mutex_t* m) {
+    QueuedMutexInternal* split = (QueuedMutexInternal*)m->butex;
+    {
+        //current use guarantee_lock try lock or not use ,get same effect;here add guarantee_lock as later may add feature lock bthread_queue_mutex_lock->wait_for_queued_butex
+        //bSpinLockGaurd lock(split->guarantee_lock);
+        if (!split->locked.exchange(1, butil::memory_order_acquire)) {
+            return 0;
+        }
+    }
+    //try lock fail,add self to wait queue  
+    int rc = bthread::queued_butex_wait(m->butex, NULL);
+    if(!rc) {    //check wake up next bid,should not unmatch
+        bthread::TaskGroup* g = tls_task_group;
+        if (NULL == g || g->is_current_pthread_task()) {
+            assert(0 == m->next_bid);
+        } else {   //real bthread,check waked up bid with self
+            assert(m->next_bid == g->current_tid() );
+        }
+    }
+    return 0;
+}
+
+int bthread_queue_mutex_unlock(bthread_queue_mutex_t* m) {
+    //try wake up waiter or release lock
+    bthread::queued_butex_wake((butil::atomic<unsigned>*)m->butex, m->next_bid);
+    return 0;
 }
 
 }  // extern "C"

@@ -32,6 +32,24 @@ extern int bthread_mutex_lock(bthread_mutex_t* mutex);
 extern int bthread_mutex_timedlock(bthread_mutex_t* __restrict mutex,
                                    const struct timespec* __restrict abstime);
 extern int bthread_mutex_unlock(bthread_mutex_t* mutex);
+
+//queued mutex
+//add by hairet(hairet@vip.qq.com) 2018/11/6
+//queue mutex will cost more than normal mutex,use it when you really need serialization
+//and not support timeout and disable interrupted by ignore_interrupted 
+//FIXME!!current use spin lock guarantee queue transaction,only guarantee those task in wait_queue orderly
+//later maybe 2 modify will be more accurate,but with more critical zone conflict
+//1.use queued spinlock ,2. guarantee lock whole course from bthread_queue_mutex_lock to wait_for_queued_butex
+//about perfomance:you can see performance in bthread_queue_mutex_unittest,as queueed,wakeup sched bthread will cost time(maybe several us,i'm not accurately sure),and in the same time bthread_mutex_lock get new competitor can directly cas lock(maybe 100ns or less),so we get huge performance gap betwwen queue_mutex and mutex,when 1thread, mutex get 30 million per second lock&unlcok,and  queued_mutex get 20 million(can be higher if no bSpinLockGaurd when try lock),but when 12 thread|bthread,mutex get 3 million,and queued_mutex 0.4 million
+//You should not use queued_mutex unless you really needs serialization,as the performance gap shows in bthread_queue_mutex_unittest,you can see some typical using in bthread/barrel.h
+
+extern int bthread_queue_mutex_init(bthread_queue_mutex_t* __restrict mutex,
+                            const bthread_queue_mutexattr_t* __restrict mutex_attr);
+extern int bthread_queue_mutex_destroy(bthread_queue_mutex_t* mutex);
+extern int bthread_queue_mutex_trylock(bthread_queue_mutex_t* mutex);
+extern int bthread_queue_mutex_lock(bthread_queue_mutex_t* mutex);
+extern int bthread_queue_mutex_unlock(bthread_queue_mutex_t* mutex);
+
 __END_DECLS
 
 namespace bthread {

@@ -56,6 +56,9 @@ struct TaskMeta {
     // The thread is interrupted and should wake up from some blocking ops.
     bool interrupted;
 
+    // The thread should ignore interrupted when in some no inter op like in queued mutex,this flag is seted by bthread in wait_queue and bthread_stop use it
+    bool ignore_interrupted;
+
     // Scheduling of the thread can be delayed.
     bool about_to_quit;
     

@@ -196,6 +196,9 @@ struct ServerOptions {
     // Default: true
     bool has_builtin_services;
 
+    // default false,when enable,all request with same uid will block in one barrel for serialization
+    bool use_uid_barrel;
+    
     // Enable more secured code which protects internal information from exposure.
     bool security_mode() const { return internal_port >= 0 || !has_builtin_services; }
 

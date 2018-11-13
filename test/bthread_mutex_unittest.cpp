@@ -214,6 +214,10 @@ TEST(MutexTest, performance) {
     bthread::Mutex bth_mutex;
     PerfTest(&bth_mutex, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
     PerfTest(&bth_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
+
+    //add test 1 for compare
+    PerfTest(&bth_mutex, (pthread_t*)NULL, 1, pthread_create, pthread_join);
+    PerfTest(&bth_mutex, (bthread_t*)NULL, 1, bthread_start_background, bthread_join);
 }
 
 void* loop_until_stopped(void* arg) {

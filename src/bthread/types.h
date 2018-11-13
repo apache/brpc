@@ -162,6 +162,21 @@ typedef struct {
 } bthread_mutexattr_t;
 
 typedef struct {
+    unsigned* butex;
+    bthread_contention_site_t csite;
+    bthread_t next_bid;     //just for check
+} bthread_queue_mutex_t;
+
+typedef struct {
+} bthread_queue_mutexattr_t;
+
+struct QueuedMutexInternal {                                                                                        
+    butil::static_atomic<unsigned char> locked;                                                                     
+    butil::static_atomic<unsigned char> guarantee_lock;   //a spin lock protect queue                               
+    unsigned short wait_count;     //concurrence for this queue mutex,not use yet,as overflow is not easy to handle,use wake_up 0 instead         
+};    
+
+typedef struct {
     bthread_mutex_t* m;
     int* seq;
 } bthread_cond_t;

@@ -37,6 +37,7 @@
 #include "brpc/details/usercode_backup_pool.h"
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/details/server_private_accessor.h"
+#include "bthread/barrel.h"
 
 extern "C" {
 void bthread_assign_data(void* data);
@@ -276,6 +277,12 @@ struct CallMethodInBackupThreadArgs {
 
 static void CallMethodInBackupThread(void* void_args) {
     CallMethodInBackupThreadArgs* args = (CallMethodInBackupThreadArgs*)void_args;
+    uint64_t barrel_uin = 0;
+    Controller *controller = (Controller *)args->controller;
+    if(controller->use_uid_barrel()) {
+        barrel_uin = (uint64_t)controller->req_uid();
+    }
+    bthread::bUinBarrelGaurd barrel_guard(barrel_uin);
     args->service->CallMethod(args->method, args->controller, args->request,
                               args->response, args->done);
     delete args;
@@ -343,6 +350,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
     if (request_meta.has_log_id()) {
         cntl->set_log_id(request_meta.log_id());
     }
+    cntl->set_req_uid(meta.uid());    //uid for common use,like uin barrel
     cntl->set_request_compress_type((CompressType)meta.compress_type());
     accessor.set_server(server)
         .set_security_mode(security_mode)
@@ -492,15 +500,23 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
             span->set_start_callback_us(butil::cpuwide_time_us());
             span->AsParent();
         }
+        uint64_t barrel_uin = 0;
+        cntl->set_use_uid_barrel(server->options().use_uid_barrel);
+        if(server->options().use_uid_barrel) {
+            barrel_uin = (uint64_t)cntl->req_uid();
+        }
         if (!FLAGS_usercode_in_pthread) {
+            bthread::bUinBarrelGaurd barrel_guard(barrel_uin);
             return svc->CallMethod(method, cntl.release(), 
                                    req.release(), res.release(), done);
         }
         if (BeginRunningUserCode()) {
+            bthread::bUinBarrelGaurd barrel_guard(barrel_uin);
             svc->CallMethod(method, cntl.release(), 
                             req.release(), res.release(), done);
             return EndRunningUserCodeInPlace();
         } else {
+            //pool thread barrel inside
             return EndRunningCallMethodInPool(
                 svc, method, cntl.release(),
                 req.release(), res.release(), done);
@@ -629,6 +645,7 @@ void PackRpcRequest(butil::IOBuf* req_buf,
         return cntl->SetFailed(EREQUEST, "Fail to generate credential");
     }
 
+    meta.set_uid(cntl->req_uid());    //uid client setted for common use,default 0 for nothing 
     ControllerPrivateAccessor accessor(cntl);
     RpcRequestMeta* request_meta = meta.mutable_request();
     if (method) {

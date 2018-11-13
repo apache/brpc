@@ -493,6 +493,12 @@ public:
     // -1 means no deadline.
     int64_t deadline_us() const { return _deadline_us; }
 
+    int64_t req_uid() { return _req_uid;}
+    void set_req_uid(int64_t req_uid) { _req_uid = req_uid; }
+
+    bool use_uid_barrel() { return _use_uid_barrel;}
+    void set_use_uid_barrel(bool use_uid_barrel) { _use_uid_barrel = use_uid_barrel;}
+
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request
@@ -736,6 +742,13 @@ private:
 
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;
+    
+    //uid in rpc_meta for common use
+    int64_t _req_uid;
+
+    //only valid in server side,setted by ServerOptions,default false
+    bool _use_uid_barrel;
+
 };
 
 // Advises the RPC system that the caller desires that the RPC call be

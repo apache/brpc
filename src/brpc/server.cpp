@@ -137,6 +137,7 @@ ServerOptions::ServerOptions()
     , bthread_init_count(0)
     , internal_port(-1) 
     , has_builtin_services(true)
+    , use_uid_barrel(false)
     , http_master_service(NULL)
     , health_reporter(NULL)
     , rtmp_service(NULL) {

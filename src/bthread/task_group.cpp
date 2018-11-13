@@ -229,6 +229,7 @@ int TaskGroup::init(size_t runqueue_capacity) {
     }
     m->stop = false;
     m->interrupted = false;
+    m->ignore_interrupted = false;
     m->about_to_quit = false;
     m->fn = NULL;
     m->arg = NULL;
@@ -371,6 +372,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     CHECK(m->current_waiter.load(butil::memory_order_relaxed) == NULL);
     m->stop = false;
     m->interrupted = false;
+    m->ignore_interrupted = false;
     m->about_to_quit = false;
     m->fn = fn;
     m->arg = arg;
@@ -426,6 +428,7 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     CHECK(m->current_waiter.load(butil::memory_order_relaxed) == NULL);
     m->stop = false;
     m->interrupted = false;
+    m->ignore_interrupted = false;
     m->about_to_quit = false;
     m->fn = fn;
     m->arg = arg;
@@ -844,10 +847,17 @@ static int set_butex_waiter(bthread_t tid, ButexWaiter* w) {
 // by race conditions.
 // TODO: bthreads created by BTHREAD_ATTR_PTHREAD blocking on bthread_usleep()
 // can't be interrupted.
+// bthreads blocking on bthread_queue_mutex_lock() can't be interrupted with flag ignore_interrupted==true
 int TaskGroup::interrupt(bthread_t tid, TaskControl* c) {
     // Consume current_waiter in the TaskMeta, wake it up then set it back.
     ButexWaiter* w = NULL;
     uint64_t sleep_id = 0;
+    TaskMeta* const m = TaskGroup::address_meta(tid);
+    if (m == NULL) {
+        return EINVAL;
+    } else if(m->ignore_interrupted) {    //some bthread ignore interrupted like bthread_queue_mutex_lock
+        return 0;
+    }
     int rc = interrupt_and_consume_waiters(tid, &w, &sleep_id);
     if (rc) {
         return rc;
@@ -896,6 +906,7 @@ void print_task(std::ostream& os, bthread_t tid) {
     bool matched = false;
     bool stop = false;
     bool interrupted = false;
+    bool ignore_interrupted = false;
     bool about_to_quit = false;
     void* (*fn)(void*) = NULL;
     void* arg = NULL;
@@ -909,6 +920,7 @@ void print_task(std::ostream& os, bthread_t tid) {
             matched = true;
             stop = m->stop;
             interrupted = m->interrupted;
+            ignore_interrupted = m->ignore_interrupted;
             about_to_quit = m->about_to_quit;
             fn = m->fn;
             arg = m->arg;
@@ -923,6 +935,7 @@ void print_task(std::ostream& os, bthread_t tid) {
     } else {
         os << "bthread=" << tid << " :\nstop=" << stop
            << "\ninterrupted=" << interrupted
+           << "\nignore_interrupted=" << ignore_interrupted 
            << "\nabout_to_quit=" << about_to_quit
            << "\nfn=" << (void*)fn
            << "\narg=" << (void*)arg

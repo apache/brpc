@@ -67,6 +67,20 @@ int butex_requeue(void* butex1, void* butex2);
 // Returns 0 on success, -1 otherwise and errno is set.
 int butex_wait(void* butex, int expected_value, const timespec* abstime);
 
+//add by haiert 2018.11.6
+//Atomically wait on |butex| ,and take butex->value as QueuedMutexInternal
+//if get QueuedMutex as owner before add wait_queue will return,else can only wake up by queued_butex_wake
+//not support abstime yet,and disable interrupted by ignore_interrupted in task_meta 
+//return 0 when be wake up by queued_butex_wake, when 1 as onwer with no queued_butex_wake 
+int queued_butex_wait(void* butex, const timespec* abstime);
+
+// Wake up at most 1 thread waiting on |butex|.
+// Returns # of threads woken up.
+// if return 1,set wake_bid
+// when return 0,QueuedMutexInternal::locked will unlock 
+int queued_butex_wake(void* arg, bthread_t &wake_bid);
+
+
 }  // namespace bthread
 
 #endif  // BTHREAD_BUTEX_H

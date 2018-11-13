@@ -33,6 +33,7 @@
 #include "bthread/timer_thread.h"
 #include "bthread/butex.h"
 #include "bthread/mutex.h"
+#include "bthread/spinlock.h"                    //user spin lock 
 
 // This file implements butex.h
 // Provides futex-like semantics which is sequenced wait and wake operations
@@ -75,6 +76,7 @@ enum WaiterState {
     WAITER_STATE_TIMEDOUT,
     WAITER_STATE_UNMATCHEDVALUE,
     WAITER_STATE_INTERRUPTED,
+    WAITER_STATE_NOWAIT,      //when return not from wait queue
 };
 
 struct Butex;
@@ -689,10 +691,167 @@ int butex_wait(void* arg, int expected_value, const timespec* abstime) {
     return 0;
 }
 
+//no interupted wait from pthread,and no timeout yet
+static int queue_butex_wait_from_pthread(TaskGroup* g, Butex* b ) {
+    TaskMeta* task = NULL;
+    ButexPthreadWaiter pw;
+    pw.tid = 0;
+    pw.sig.store(PTHREAD_NOT_SIGNALLED, butil::memory_order_relaxed);
+
+    if (g) {
+        task = g->current_task();
+        task->current_waiter.store(&pw, butil::memory_order_release);
+    }
+
+    QueuedMutexInternal* split = (QueuedMutexInternal*)&(b->value);
+    {
+        bSpinLockGaurd lock(split->guarantee_lock);
+        if (!split->locked.exchange(1, butil::memory_order_acquire)) {
+            //take as onwer before block in wait_queue
+            return 1;
+        } else {
+            if(task) {     //here maybe a main thread worker which sched bthreads 
+                task->ignore_interrupted = true;
+            }
+            b->waiters.Append(&pw);
+            pw.container.store(b, butil::memory_order_relaxed);
+        }
+    }
+    //here already add ButexPthreadWaiter into wait_queue 
+#ifdef SHOW_BTHREAD_BUTEX_WAITER_COUNT_IN_VARS
+    bvar::Adder<int64_t>& num_waiters = butex_waiter_count();
+    num_waiters << 1;
+#endif
+    //as ptimeout is NULL,so wait_pthread will never hit ETIMEDOUT
+    int rc = wait_pthread(pw, NULL); 
+#ifdef SHOW_BTHREAD_BUTEX_WAITER_COUNT_IN_VARS
+    num_waiters << -1;
+#endif
+    //here waked up by last onwer(last onwer can be bthread or pthread)
+    if(task) {
+        if (task->interrupted) {
+            task->interrupted = false;
+            assert(false);  //this should never happen,all action cause interrupted (like bthread_interrupt)will skip with ignore_interrupted is true
+        }
+        task->ignore_interrupted = false;
+    }
+    //FIXME!!check rc maybe safe 
+    if(rc) {
+        assert(false);
+    }
+    return 0;
+}
+
+//for queue bthread_mutex cond wait
+static void wait_for_queued_butex(void* arg) {
+    ButexBthreadWaiter* const bw = static_cast<ButexBthreadWaiter*>(arg);
+    Butex* const b = bw->initial_butex;
+    QueuedMutexInternal* split = (QueuedMutexInternal*)&(b->value);
+
+    {
+        bSpinLockGaurd lock(split->guarantee_lock);
+        if (!split->locked.exchange(1, butil::memory_order_acquire)) {
+            bw->waiter_state = WAITER_STATE_NOWAIT;
+        } else {
+            b->waiters.Append(bw);
+            bw->container.store(b, butil::memory_order_relaxed);
+            return;
+        }
+    }
+
+    //here must be owner of lock,let tid run again,code is in queued_butex_wait TaskGroup::sched(&g)
+    unsleep_if_necessary(bw, get_global_timer_thread());
+    tls_task_group->ready_to_run(bw->tid);
+}
+
+int queued_butex_wait(void* arg, const timespec* abstime) {
+    //FIXME!! abstime not implement yet, and not support interrupted with ignore_interrupted 
+    Butex* b = container_of(static_cast<butil::atomic<int>*>(arg), Butex, value);
+    TaskGroup* g = tls_task_group;
+    if (NULL == g || g->is_current_pthread_task()) {
+        return queue_butex_wait_from_pthread(g, b);
+    }
+
+    ButexBthreadWaiter bbw;
+    // tid is 0 iff the thread is non-bthread
+    bbw.tid = g->current_tid();
+    bbw.container.store(NULL, butil::memory_order_relaxed);
+    bbw.task_meta = g->current_task();
+    bbw.sleep_id = 0;
+    bbw.waiter_state = WAITER_STATE_READY;
+    bbw.expected_value = 0;
+    bbw.initial_butex = b;
+    bbw.control = g->control();
+    bbw.task_meta->ignore_interrupted = true;   //queue butex should not interrupt
+
+#ifdef SHOW_BTHREAD_BUTEX_WAITER_COUNT_IN_VARS
+    bvar::Adder<int64_t>& num_waiters = butex_waiter_count();
+    num_waiters << 1;
+#endif
+
+    bbw.task_meta->current_waiter.store(&bbw, butil::memory_order_release);
+    g->set_remained(wait_for_queued_butex, &bbw);
+    TaskGroup::sched(&g);
+
+    BT_LOOP_WHEN(unsleep_if_necessary(&bbw, get_global_timer_thread()) < 0,
+            30/*nops before sched_yield*/);
+    // If current_waiter is NULL, TaskGroup::interrupt() is running and using bbw.
+    // Spin until current_waiter != NULL.
+    BT_LOOP_WHEN(bbw.task_meta->current_waiter.exchange(
+                NULL, butil::memory_order_acquire) == NULL,
+            30/*nops before sched_yield*/);
+#ifdef SHOW_BTHREAD_BUTEX_WAITER_COUNT_IN_VARS
+    num_waiters << -1;
+#endif
+    if (bbw.task_meta->interrupted) {
+        bbw.task_meta->interrupted = false;
+        assert(false);  //this should never happen,all action cause interrupted (like bthread_interrupt)will skip with ignore_interrupted is true
+    }
+
+    bbw.task_meta->ignore_interrupted = false;        //finish wait, reset ignore_interrupted   
+    if (WAITER_STATE_NOWAIT == bbw.waiter_state) {    //this case no needs verify wait next bid
+        return 1;
+    }else {
+        return 0;
+    }
+}
+
+int queued_butex_wake(void* arg, bthread_t &wake_bid) {
+    Butex* b = container_of(static_cast<butil::atomic<int>*>(arg), Butex, value);
+    ButexWaiter* front = NULL;
+    QueuedMutexInternal* split = (QueuedMutexInternal*)&(b->value);
+    {
+        bSpinLockGaurd lock(split->guarantee_lock);
+        if (b->waiters.empty()) {
+            split->locked.exchange(0, butil::memory_order_release);   //release lock when no waiter
+            return 0;
+        }
+        front = b->waiters.head()->value();
+        front->RemoveFromList();
+        front->container.store(NULL, butil::memory_order_relaxed);
+    }
+    if (front->tid == 0) {
+        wakeup_pthread(static_cast<ButexPthreadWaiter*>(front));
+        wake_bid = 0;
+        return 1;
+    }
+    ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(front);
+    unsleep_if_necessary(bbw, get_global_timer_thread());
+    wake_bid = bbw->tid;
+    TaskGroup* g = tls_task_group;
+    if (g) {
+        TaskGroup::exchange(&g, bbw->tid);
+    } else {
+        bbw->control->choose_one_group()->ready_to_run_remote(bbw->tid);
+    }
+    return 1;
+}
+
+
 }  // namespace bthread
 
 namespace butil {
-template <> struct ObjectPoolBlockMaxItem<bthread::Butex> {
-    static const size_t value = 128;
-};
+    template <> struct ObjectPoolBlockMaxItem<bthread::Butex> {
+        static const size_t value = 128;
+    };
 }
