@@ -1,4 +1,4 @@
-// Copyright (c) 2018 abstraction No Inc 
+// Copyright (c) 2018 abstraction No Inc
 // Author: hairet (hairet@vip.qq.com)
 // Date: 2018/11/10 
 
@@ -56,6 +56,10 @@ void* barreler(void* arg) {
 TEST(BthreadBarrelTest, sanity) {
     uint64_t uid1 = 1357890;
     uint64_t uid2 = 1357891;
+    register_idx = 0;
+    c = 0;
+    memset(&register_idx_tid, 0 ,sizeof(long)*2*MAX_THREAD);
+    memset(&run_idx_tid, 0 ,sizeof(long)*2*MAX_THREAD);
     pthread_t th[8];
     t_arg arg[8];
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
@@ -70,6 +74,32 @@ TEST(BthreadBarrelTest, sanity) {
     }
     for(unsigned int k = 0; k<2; ++k) {
         for(unsigned int i = 1; i<ARRAY_SIZE(th)+1 && i<MAX_THREAD; ++i) {
+            ASSERT_EQ(register_idx_tid[k][i], run_idx_tid[k][i]);
+        }
+    }
+}
+
+TEST(BthreadBarrelTest, sanity_bthread) {
+    uint64_t uid1 = 1357890;
+    uint64_t uid2 = 1357891;
+    register_idx = 0;
+    c = 0;
+    memset(&register_idx_tid, 0 ,sizeof(long)*2*MAX_THREAD);
+    memset(&run_idx_tid, 0 ,sizeof(long)*2*MAX_THREAD);
+    bthread_t bth[8];
+    t_arg arg[8];
+    for (size_t i = 0; i < ARRAY_SIZE(bth); ++i) {
+        arg[i].uid = ((i%2==0)?uid1:uid2);
+        arg[i].register_idx_tid = register_idx_tid[i%2];
+        arg[i].run_idx_tid = run_idx_tid[i%2];
+        ASSERT_EQ(0, bthread_start_urgent(&bth[i], NULL, barreler, &arg[i] ));
+        usleep(1500);  //sleep make pthread create and in barrel 
+    }
+    for (size_t i = 0; i < ARRAY_SIZE(bth); ++i) {
+        ASSERT_EQ(0, bthread_join(bth[i], NULL));
+    }
+    for(unsigned int k = 0; k<2; ++k) {
+        for(unsigned int i = 1; i<ARRAY_SIZE(bth)+1 && i<MAX_THREAD; ++i) {
             ASSERT_EQ(register_idx_tid[k][i], run_idx_tid[k][i]);
         }
     }
