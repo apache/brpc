@@ -47,6 +47,8 @@ extern void* _dl_sym(void* handle, const char* symbol, void* caller);
 }
 
 namespace bthread {
+extern BAIDU_THREAD_LOCAL bthread::TaskGroup* tls_task_group;
+
 // Warm up backtrace before main().
 void* dummy_buf[4];
 const int ALLOW_UNUSED dummy_bt = backtrace(dummy_buf, arraysize(dummy_buf));
@@ -814,8 +816,6 @@ int pthread_mutex_unlock (pthread_mutex_t *__mutex) {
     return bthread::pthread_mutex_unlock_impl(__mutex);
 }
 
-extern BAIDU_THREAD_LOCAL bthread::TaskGroup* tls_task_group;
-
 int bthread_queue_mutex_init(bthread_queue_mutex_t* __restrict m,
         const bthread_queue_mutexattr_t* __restrict) {
     bthread::make_contention_site_invalid(&m->csite);
@@ -856,7 +856,7 @@ int bthread_queue_mutex_lock(bthread_queue_mutex_t* m) {
     //try lock fail,add self to wait queue  
     int rc = bthread::queued_butex_wait(m->butex, NULL);
     if(!rc) {    //check wake up next bid,should not unmatch
-        bthread::TaskGroup* g = tls_task_group;
+        bthread::TaskGroup* g = bthread::tls_task_group;
         if (NULL == g || g->is_current_pthread_task()) {
             assert(0 == m->next_bid);
         } else {   //real bthread,check waked up bid with self
