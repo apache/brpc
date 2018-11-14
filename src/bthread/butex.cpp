@@ -735,8 +735,8 @@ static int queue_butex_wait_from_pthread(TaskGroup* g, Butex* b ) {
         }
         task->ignore_interrupted = false;
     }
-    //FIXME!!check rc maybe safe 
-    if(rc) {
+    //FIXME!!check rc maybe safe,as wait_pthread no timeout,so only PTHREAD_SIGNALLED setted by wakeup_pthread can be here 
+    if(rc && PTHREAD_SIGNALLED != pw.sig.load(butil::memory_order_acquire)) {
         assert(false);
     }
     return 0;

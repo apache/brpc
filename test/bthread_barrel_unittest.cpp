@@ -46,7 +46,7 @@ void* barreler(void* arg) {
     p_arg->run_idx_tid[run_idx] = (long)gettid();
     printf("[%" PRIu64 "] I'm here barreler, uid:%lld, run_idx:%d, reg_idx:%d %" PRId64 "ms\n",
                pthread_numeric_id(), (long long int)p_arg->uid, run_idx, reg_idx, butil::cpuwide_time_ms() - start_time);
-    bthread_usleep(50000);
+    bthread_usleep(100000);
     printf("[%" PRIu64 "] I'm exit barreler, uid:%lld, run_idx:%d, reg_idx:%d %" PRId64 "ms\n",
                pthread_numeric_id(), (long long int)p_arg->uid, run_idx, reg_idx, butil::cpuwide_time_ms() - start_time);
     bthread::UinBarrel::GetInstance()->UnLockUinBarrel(p_arg->uid);
