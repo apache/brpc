@@ -63,8 +63,8 @@ CircuitBreaker::EmaErrorRecorder::EmaErrorRecorder(int window_size,
     : _window_size(window_size)
     , _max_error_percent(max_error_percent)
     , _smooth(std::pow(EPSILON, 1.0/window_size))
-    , _sample_count_of_first_window(0)
-    , _error_count_of_first_window(0)
+    , _sample_count_when_initializing(0)
+    , _error_count_when_initializing(0)
     , _ema_error_cost(0)
     , _ema_latency(0) {
 }
@@ -83,15 +83,15 @@ bool CircuitBreaker::EmaErrorRecorder::OnCallEnd(int error_code,
 
     // When the window is initializing, use error_rate to determine 
     // if it needs to be isolated.
-    if (_sample_count_of_first_window.load(butil::memory_order_relaxed) < _window_size &&
-        _sample_count_of_first_window.fetch_add(1, butil::memory_order_relaxed) < _window_size) {
+    if (_sample_count_when_initializing.load(butil::memory_order_relaxed) < _window_size &&
+        _sample_count_when_initializing.fetch_add(1, butil::memory_order_relaxed) < _window_size) {
         if (error_code != 0) {
             const int32_t error_count =
-                _error_count_of_first_window.fetch_add(1, butil::memory_order_relaxed);
+                _error_count_when_initializing.fetch_add(1, butil::memory_order_relaxed);
             return error_count < _window_size * _max_error_percent / 100; 
         }
-        // Because once OnCallEnd returned false, the node will be ioslated soon, so
-        // it is OK to return true for any sample which error_code equals to 0.
+        // Because once OnCallEnd returned false, the node will be ioslated soon,
+        // so when error_code=0, we no longer check the error count.
         return true;
     }
 
@@ -99,8 +99,8 @@ bool CircuitBreaker::EmaErrorRecorder::OnCallEnd(int error_code,
 }
 
 void CircuitBreaker::EmaErrorRecorder::Reset() {
-    _sample_count_of_first_window.store(0, butil::memory_order_relaxed);
-    _error_count_of_first_window.store(0, butil::memory_order_relaxed);
+    _sample_count_when_initializing.store(0, butil::memory_order_relaxed);
+    _error_count_when_initializing.store(0, butil::memory_order_relaxed);
     _ema_error_cost.store(0, butil::memory_order_relaxed);
     _ema_latency.store(0, butil::memory_order_relaxed);
 }
