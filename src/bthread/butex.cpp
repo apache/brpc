@@ -816,7 +816,7 @@ int queued_butex_wait(void* arg, const timespec* abstime) {
     }
 }
 
-int queued_butex_wake(void* arg, bthread_t &wake_bid) {
+int queued_butex_wake(void* arg, butil::static_atomic<uint64_t> &wake_bid ) {
     Butex* b = container_of(static_cast<butil::atomic<int>*>(arg), Butex, value);
     ButexWaiter* front = NULL;
     QueuedMutexInternal* split = (QueuedMutexInternal*)&(b->value);
@@ -832,12 +832,12 @@ int queued_butex_wake(void* arg, bthread_t &wake_bid) {
     }
     if (front->tid == 0) {
         wakeup_pthread(static_cast<ButexPthreadWaiter*>(front));
-        wake_bid = 0;
+        wake_bid.exchange(0, butil::memory_order_release);
         return 1;
     }
     ButexBthreadWaiter* bbw = static_cast<ButexBthreadWaiter*>(front);
     unsleep_if_necessary(bbw, get_global_timer_thread());
-    wake_bid = bbw->tid;
+    wake_bid.exchange(bbw->tid, butil::memory_order_release);
     TaskGroup* g = tls_task_group;
     if (g) {
         TaskGroup::exchange(&g, bbw->tid);

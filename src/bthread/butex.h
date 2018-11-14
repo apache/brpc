@@ -23,6 +23,7 @@
 #include <time.h>                                // timespec
 #include "butil/macros.h"                         // BAIDU_CASSERT
 #include "bthread/types.h"                       // bthread_t
+#include "butil/atomicops.h"                // butil::atomic 
 
 namespace bthread {
 
@@ -78,8 +79,7 @@ int queued_butex_wait(void* butex, const timespec* abstime);
 // Returns # of threads woken up.
 // if return 1,set wake_bid
 // when return 0,QueuedMutexInternal::locked will unlock 
-int queued_butex_wake(void* arg, bthread_t &wake_bid);
-
+int queued_butex_wake(void* arg, butil::static_atomic<uint64_t> &wake_bid);
 
 }  // namespace bthread
 

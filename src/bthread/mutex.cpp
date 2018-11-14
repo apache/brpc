@@ -824,7 +824,7 @@ int bthread_queue_mutex_init(bthread_queue_mutex_t* __restrict m,
         return ENOMEM;
     }
     *m->butex = 0;
-    m->next_bid = 0;
+    m->next_bid.exchange(0, butil::memory_order_acquire);
     return 0;
 }
 
@@ -857,10 +857,15 @@ int bthread_queue_mutex_lock(bthread_queue_mutex_t* m) {
     int rc = bthread::queued_butex_wait(m->butex, NULL);
     if(!rc) {    //check wake up next bid,should not unmatch
         bthread::TaskGroup* g = bthread::tls_task_group;
+        bthread_t next_bid = m->next_bid.load(butil::memory_order_acquire);
+        bthread_t self_bid = 0;
         if (NULL == g || g->is_current_pthread_task()) {
-            assert(0 == m->next_bid);
+            self_bid = 0;
         } else {   //real bthread,check waked up bid with self
-            assert(m->next_bid == g->current_tid() );
+            self_bid = g->current_tid();
+        }
+        if(next_bid != self_bid) {
+            assert(false);
         }
     }
     return 0;

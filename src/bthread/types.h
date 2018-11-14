@@ -164,7 +164,7 @@ typedef struct {
 typedef struct {
     unsigned* butex;
     bthread_contention_site_t csite;
-    bthread_t next_bid;     //just for check
+    butil::static_atomic<uint64_t> next_bid;   //just for check 
 } bthread_queue_mutex_t;
 
 typedef struct {
