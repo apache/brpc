@@ -650,8 +650,8 @@ TEST(NamingServiceTest, discovery_sanity) {
         ASSERT_EQ(0, dc3.Register(dparam));
         ASSERT_EQ(0, dc3.Cancel());
     }
-    // dtor of DiscoveryClient also calls Cancel(), we need to ensure that
-    // Cancel() is called only once.
+    // Dtor of DiscoveryClient also calls Cancel(), we need to ensure that
+    // Cancel() is called only once. One is from dc1, the other is from dc3.
     ASSERT_EQ(svc.CancelCount(), 2);
 }
 
