@@ -51,8 +51,8 @@ struct DiscoveryRegisterParam {
 };
 
 // ONE DiscoveryClient corresponds to ONE service instance.
-// If your program has multiple instances to register, you need multiple
-// DiscoveryClient.
+// If your program has multiple service instances to register,
+// you need multiple DiscoveryClient.
 class DiscoveryClient {
 public:
     DiscoveryClient();
@@ -86,7 +86,6 @@ private:
     std::string _version;
     std::string _metadata;
 };
-
 
 } // namespace policy
 } // namespace brpc

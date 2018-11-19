@@ -261,19 +261,21 @@ void* DiscoveryClient::PeriodicRenew(void* arg) {
     while (!bthread_stopped(bthread_self())) {
         if (consecutive_renew_error == FLAGS_discovery_reregister_threshold) {
             LOG(WARNING) << "Reregister since discovery renew error threshold reached";
-            std::unique_lock<butil::Mutex> mu(d->_mutex);
-            switch (d->_state) {
-                case INIT:
-                    CHECK(false) << "Impossible";
-                    return NULL;
-                case REGISTERING:
-                case REGISTERED:
-                    break;
-                case CANCELED:
-                    return NULL;
-                default:
-                    CHECK(false) << "Impossible";
-                    return NULL;
+            {
+                std::unique_lock<butil::Mutex> mu(d->_mutex);
+                switch (d->_state) {
+                    case INIT:
+                        CHECK(false) << "Impossible";
+                        return NULL;
+                    case REGISTERING:
+                    case REGISTERED:
+                        break;
+                    case CANCELED:
+                        return NULL;
+                    default:
+                        CHECK(false) << "Impossible";
+                        return NULL;
+                }
             }
             // Do register until succeed or Cancel is called
             while (!bthread_stopped(bthread_self())) {
@@ -303,8 +305,7 @@ void* DiscoveryClient::PeriodicRenew(void* arg) {
             continue;
         }
         std::string error_text;
-        int rc = ParseCommonResult(cntl.response_attachment(), &error_text);
-        if (rc != 0) {
+        if (ParseCommonResult(cntl.response_attachment(), &error_text) != 0) {
             LOG(ERROR) << "Fail to renew " << d->_hostname << " to " << d->_appid
                 << ": " << error_text;
             consecutive_renew_error++;
@@ -412,8 +413,7 @@ int DiscoveryClient::do_register() {
         return -1;
     }
     std::string error_text;
-    int rc = ParseCommonResult(cntl.response_attachment(), &error_text);
-    if (rc != 0) {
+    if (ParseCommonResult(cntl.response_attachment(), &error_text) != 0) {
         LOG(ERROR) << "Fail to register " << _hostname << " to " << _appid
                 << ": " << error_text;
         return -1;
@@ -439,6 +439,7 @@ int DiscoveryClient::Cancel() {
                 return -1;
         }
     }
+    CHECK_NE(_th, INVALID_BTHREAD);
     bthread_stop(_th);
     bthread_join(_th, NULL);
     return do_cancel();
@@ -462,8 +463,7 @@ int DiscoveryClient::do_cancel() {
         return -1;
     }
     std::string error_text;
-    int rc = ParseCommonResult(cntl.response_attachment(), &error_text);
-    if (rc != 0) {
+    if (ParseCommonResult(cntl.response_attachment(), &error_text) != 0) {
         LOG(ERROR) << "Fail to cancel " << _hostname << " in " << _appid
             << ": " << error_text;
         return -1;
