@@ -224,7 +224,6 @@ DiscoveryClient::~DiscoveryClient() {
     Cancel();
 }
 
-
 int ParseCommonResult(const butil::IOBuf& buf, std::string* error_text) {
     const std::string s = buf.to_string();
     BUTIL_RAPIDJSON_NAMESPACE::Document d;
