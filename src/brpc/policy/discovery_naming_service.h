@@ -63,8 +63,9 @@ public:
 
 private:
     static void* PeriodicRenew(void* arg);
-    int do_cancel();
-    int do_register();
+    int do_cancel() const;
+    int do_register() const;
+    int do_renew() const;
 
 private:
     enum State {

@@ -247,6 +247,32 @@ int ParseCommonResult(const butil::IOBuf& buf, std::string* error_text) {
     return code;
 }
 
+int DiscoveryClient::do_renew() const {
+    Controller cntl;
+    cntl.http_request().set_method(HTTP_METHOD_POST);
+    cntl.http_request().uri() = "/discovery/renew";
+    cntl.http_request().set_content_type("application/x-www-form-urlencoded");
+    butil::IOBufBuilder os;
+    os << "appid=" << _appid
+        << "&hostname=" << _hostname
+        << "&env=" << _env
+        << "&region=" << _region
+        << "&zone=" << _zone;
+    os.move_to(cntl.request_attachment());
+    s_discovery_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    if (cntl.Failed()) {
+        LOG(ERROR) << "Fail to post /discovery/renew: " << cntl.ErrorText();
+        return -1;
+    }
+    std::string error_text;
+    if (ParseCommonResult(cntl.response_attachment(), &error_text) != 0) {
+        LOG(ERROR) << "Fail to renew " << _hostname << " to " << _appid
+            << ": " << error_text;
+        return -1;
+    }
+    return 0;
+}
+
 void* DiscoveryClient::PeriodicRenew(void* arg) {
     DiscoveryClient* d = static_cast<DiscoveryClient*>(arg);
     int consecutive_renew_error = 0;
@@ -287,27 +313,7 @@ void* DiscoveryClient::PeriodicRenew(void* arg) {
             consecutive_renew_error = 0;
         }
 
-        Controller cntl;
-        cntl.http_request().set_method(HTTP_METHOD_POST);
-        cntl.http_request().uri() = "/discovery/renew";
-        cntl.http_request().set_content_type("application/x-www-form-urlencoded");
-        butil::IOBufBuilder os;
-        os << "appid=" << d->_appid
-            << "&hostname=" << d->_hostname
-            << "&env=" << d->_env
-            << "&region=" << d->_region
-            << "&zone=" << d->_zone;
-        os.move_to(cntl.request_attachment());
-        s_discovery_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
-        if (cntl.Failed()) {
-            LOG(ERROR) << "Fail to post /discovery/renew: " << cntl.ErrorText();
-            consecutive_renew_error++;
-            continue;
-        }
-        std::string error_text;
-        if (ParseCommonResult(cntl.response_attachment(), &error_text) != 0) {
-            LOG(ERROR) << "Fail to renew " << d->_hostname << " to " << d->_appid
-                << ": " << error_text;
+        if (d->do_renew() != 0) {
             consecutive_renew_error++;
             continue;
         }
@@ -391,7 +397,7 @@ int DiscoveryClient::Register(const DiscoveryRegisterParam& req) {
     return 0;
 }
 
-int DiscoveryClient::do_register() {
+int DiscoveryClient::do_register() const {
     Controller cntl;
     cntl.http_request().set_method(HTTP_METHOD_POST);
     cntl.http_request().uri() = "/discovery/register";
@@ -445,7 +451,7 @@ int DiscoveryClient::Cancel() {
     return do_cancel();
 }
 
-int DiscoveryClient::do_cancel() {
+int DiscoveryClient::do_cancel() const {
     pthread_once(&s_init_channel_once, InitChannel);
     Controller cntl;
     cntl.http_request().set_method(HTTP_METHOD_POST);
