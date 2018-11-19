@@ -863,7 +863,7 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // by Channel to revive never-connected socket when server side
             // comes online.
             if (_health_check_interval_s > 0) {
-                GetOrNewSharedPart( )->circuit_breaker.MarkAsBroken();
+                GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
                 PeriodicTaskManager::StartTaskAt(
                     new HealthCheckTask(id()),
                     butil::milliseconds_from_now(GetOrNewSharedPart()->
