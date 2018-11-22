@@ -116,7 +116,11 @@ public:
     
     // Return a socket back to the group.
     virtual void ReturnSocket(Socket* sock) { return; };
-    
+
+    // Discard this socket. Do not reuse this socket any more. 
+    // It is only effective in case of pooled.
+    virtual void DiscardSocket(Socket* sock) {}    
+
     // Get all sockets inside.
     virtual void ListSockets(std::vector<SocketId>* list, size_t max_count) = 0;
     
@@ -145,6 +149,8 @@ public:
     // Return a socket (which was returned by GetSocket) back to the pool,
     // if the pool is full, setfail the socket directly.
     virtual void ReturnSocket(Socket* sock);
+
+    virtual void DiscardSocket(Socket* sock); 
     
     // Get all pooled sockets inside.
     virtual void ListSockets(std::vector<SocketId>* list, size_t max_count);
@@ -170,7 +176,7 @@ private:
 class BAIDU_CACHELINE_ALIGNMENT SocketMulti : public SocketGroup {
 friend class Socket;
 public:
-    explicit SocketMulti(const SocketOptions& opt);
+    explicit SocketMulti(const SocketOptions& opt, Socket::SharedPart* sp);
     virtual ~SocketMulti();
 
     // Get an address-able socket which load is about most lightest.
@@ -213,6 +219,14 @@ private:
     // If the rpc count of 's' less than (lightest - threshold), update '_lightest' by 's'.
     inline void UpdateLightestSocketIfNeeded(const uint64_t s);
 
+    // Each newly created multi socket need reference to sharedpart whatever there is 
+    // rpc request or not.
+    inline void ShareStatsForNewSocket(Socket* socket);
+
+    // Sharedpart this group belonged to.
+    Socket::SharedPart* _sp;
+    // The total pending rpc count on multi sockets. 
+    butil::atomic<uint32_t> _load;
     butil::atomic<size_t> _num_created;
     // * High unsigned 32-bit: the lightest socket index of '_multi'.
     // * Low unsigned 32-bit: the rpc count when the socket was selected 
@@ -1124,9 +1138,7 @@ void Socket::OnRecycle() {
     }
     SharedPart* sp = _shared_part.exchange(NULL, butil::memory_order_acquire);
     if (sp) {
-        if (sp->creator_socket_id == id()) {
-            sp->RemoveRefManually();
-        }
+        sp->RemoveRefManually();
     }
     const int prev_fd = _fd.exchange(-1, butil::memory_order_relaxed);
     if (ValidFileDescriptor(prev_fd)) {
@@ -2506,6 +2518,11 @@ void SocketPool::ReturnSocket(Socket* sock) {
     _numinflight.fetch_sub(1, butil::memory_order_relaxed);
 }
 
+void SocketPool::DiscardSocket(Socket* sock) {
+    sock->_shared_part.store(NULL, butil::memory_order_relaxed);
+    _numinflight.fetch_sub(1, butil::memory_order_relaxed);
+}
+
 void SocketPool::ListSockets(std::vector<SocketId>* out, size_t max_count) {
     out->clear();
     // NOTE: size() of vector is thread-unsafe and may return a very 
@@ -2537,8 +2554,9 @@ void SocketPool::Describe(std::ostream& os) {
 }
 
 // ScoketMulti
-SocketMulti::SocketMulti(const SocketOptions& opt)
+SocketMulti::SocketMulti(const SocketOptions& opt, Socket::SharedPart* sp)
     : SocketGroup(opt)
+    , _sp(sp)
     , _num_created(0)
     , _lightest(0)
     , _multi(FLAGS_max_connection_multi_size, INVALID_SOCKET_ID) {
@@ -2566,6 +2584,7 @@ int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
         if (load <= threshold || (load - LoadOfLightest(lsid)) <= threshold) {
             lptr->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
             ptr_out->reset(lptr.release());
+				    _load.fetch_add(1, butil::memory_order_relaxed);
             return 0;
         }
     }
@@ -2590,6 +2609,7 @@ int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
                 _lightest.store(lsid, butil::memory_order_relaxed); 
                 ptr->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
                 ptr_out->reset(ptr.release());
+                _load.fetch_add(1, butil::memory_order_relaxed);
                 return 0;
             }
             if (load < min_load) {
@@ -2608,6 +2628,7 @@ int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
                     uint64_t lsid = BuildLightest(i, 0);
                     _lightest.store(lsid, butil::memory_order_relaxed); 
                 }
+                _load.fetch_add(1, butil::memory_order_relaxed);
                 return 0;
             }
             continue;
@@ -2625,11 +2646,13 @@ int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
                     uint64_t lsid = BuildLightest(i, 0);
                     _lightest.store(lsid, butil::memory_order_relaxed); 
                     ptr_out->reset(ptr.release());
+                    _load.fetch_add(1, butil::memory_order_relaxed);
                     return 0;
                 } else {
                     ptr->SetFailed(EUNUSED, "Close unused multi socket");
                     if (Socket::Address(sid, ptr_out) == 0) {
                         (*ptr_out)->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
+                        _load.fetch_add(1, butil::memory_order_relaxed);
                         return 0;
                     } 
                 }
@@ -2644,6 +2667,7 @@ int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
                 min_index, (*ptr_out)->_rpc_count.load(butil::memory_order_acquire));
             (*ptr_out)->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
             UpdateLightestSocketIfNeeded(s);
+            _load.fetch_add(1, butil::memory_order_relaxed);
             return 0; 
         }
     } 
@@ -2652,6 +2676,7 @@ int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
 }
 
 void SocketMulti::ReturnSocket(Socket* sock) {
+ 	  _load.fetch_sub(1, butil::memory_order_relaxed);
     sock->_rpc_count.fetch_sub(1, butil::memory_order_acquire);
     CHECK_EQ(sock->id(), _multi[sock->_multi_index])
         << "Socket is not consistent with " << sock->_multi_index
@@ -2698,6 +2723,7 @@ int SocketMulti::InitSocket(const size_t index, SocketId* sid) {
         if (psid->compare_exchange_strong(dummy, new_id, 
                                           butil::memory_order_relaxed)) {
             *sid = new_id;
+            ShareStatsForNewSocket(ptr.get());
             return 0;
         } else {
             ptr->SetFailed(EUNUSED, "Close unused multi socket");
@@ -2726,6 +2752,12 @@ inline void SocketMulti::UpdateLightestSocketIfNeeded(const uint64_t s) {
                  lsid, s, butil::memory_order_relaxed));
 }
 
+inline void SocketMulti::ShareStatsForNewSocket(Socket* socket) {
+    _sp->AddRefManually();
+    Socket::SharedPart* sp = socket->_shared_part.exchange(_sp, butil::memory_order_relaxed);
+    CHECK(sp == nullptr) << "Sharedpart of new multi socket is not null";
+}
+
 void SocketMulti::ListSockets(std::vector<SocketId>* out, size_t max_count) {
     out->clear();
     uint32_t n = _num_created.load(butil::memory_order_acquire);
@@ -2749,9 +2781,10 @@ void SocketMulti::Describe(std::ostream& os) {
         load = ptr->_rpc_count.load(butil::memory_order_relaxed);
         selected_load = LoadOfLightest(lsid);
     }
-    os << "  type=" << "multi";
-    os << "\n  numcreated=" << _num_created.load(butil::memory_order_relaxed)
-       << "\n  LightestId=" << sid << " CurrentLoad=" << load << " SelectedLoad=" << selected_load;
+    os << "  type=" << "multi"
+       << "\n  total_rpc_count=" << _load.load(butil::memory_order_relaxed)
+       << "\n  num_created=" << _num_created.load(butil::memory_order_relaxed)
+       << "\n  lightest_id=" << sid << " current_load=" << load << " selected_load=" << selected_load;
 }
 
 Socket::SharedPart* Socket::GetOrNewSharedPartSlower() {
@@ -2805,7 +2838,7 @@ int Socket::GetSocketFromGroup(SocketUniquePtr* socket_out, const ConnectionType
         if (type == CONNECTION_TYPE_POOLED) {
             socket_group = new SocketPool(opt);
         } else if (type == CONNECTION_TYPE_MULTI) {
-            socket_group = new SocketMulti(opt);
+            socket_group = new SocketMulti(opt, main_sp);
         } else {
             CHECK(false) << "Unsupport this type of connection: " << type;
         }
@@ -2845,6 +2878,7 @@ int Socket::ReturnToGroup() {
         return -1;
     }
     if (group->connection_type() == CONNECTION_TYPE_POOLED) {
+        _shared_part.store(NULL, butil::memory_order_seq_cst);
         CHECK(parsing_context() == NULL)
             << "context=" << parsing_context() << " is not released when "
             << *this << " is returned to SocketPool, the protocol "
@@ -2868,6 +2902,27 @@ bool Socket::HasSocketGroup() const {
     return false;
 }
 
+int Socket::DiscardFromGroup() {
+    SharedPart* sp = _shared_part.load(butil::memory_order_acquire);
+    if (sp == NULL) {
+        LOG(ERROR) << "_shared_part is NULL";
+        SetFailed(EINVAL, "_shared_part is NULL");
+        return -1;
+    }
+    int ret = 0;
+    SocketGroup* group = sp->socket_group.load(butil::memory_order_consume);
+    if (group == NULL) {
+        LOG(ERROR) << "_shared_part->socket_group is NULL";
+        SetFailed(EINVAL, "_shared_part->socket_group is NULL");
+        ret = -1;
+    }
+    CHECK_EQ(group->connection_type(), CONNECTION_TYPE_POOLED) 
+        << "Now only pooled socket need be discarded";
+    group->DiscardSocket(this); 
+    sp->RemoveRefManually();
+    return ret;
+}
+
 void Socket::ListSocketsOfGroup(std::vector<SocketId>* out, size_t max_count) {
     out->clear();
     SharedPart* sp = GetSharedPart();
@@ -2881,7 +2936,7 @@ void Socket::ListSocketsOfGroup(std::vector<SocketId>* out, size_t max_count) {
     group->ListSockets(out, max_count);
 }
 
-bool Socket::GetSocketGroupCount(int* num) {
+bool Socket::GetSocketGroupSize(int* num) {
     SharedPart* sp = GetSharedPart();
     if (sp == nullptr) {
         return false;

@@ -198,9 +198,9 @@ void ConnectionsService::PrintConnections(
             // slow (because we have many connections here).
             int pref_index = ptr->preferred_index();
             SocketUniquePtr first_sub;
-            int group_count = -1;
+            int group_size = -1;
             if (ptr->HasSocketGroup()) {
-                ptr->GetSocketGroupCount(&group_count);
+                ptr->GetSocketGroupSize(&group_size);
                 // Check preferred_index of any pooled sockets.
                 ptr->ListSocketsOfGroup(&first_id, 1);
                 if (!first_id.empty()) {
@@ -272,11 +272,11 @@ void ConnectionsService::PrintConnections(
             }
             os << SSLStateToYesNo(ptr->ssl_state(), use_html) << bar;
             char protname[32];
-            if (group_count < 0) {
+            if (group_size < 0) {
                 snprintf(protname, sizeof(protname), "%s", pref_prot);
             } else {
                 snprintf(protname, sizeof(protname), "%s*%d", pref_prot,
-                         group_count);
+                         group_size);
             }
             os << min_width(protname, 12) << bar;
             if (ptr->fd() >= 0) {
