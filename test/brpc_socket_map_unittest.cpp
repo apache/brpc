@@ -222,6 +222,15 @@ TEST_F(SocketMapTest, max_multi_connection_size) {
         ptr->ReturnToGroup();
     }
 
+    std::vector<brpc::SocketId> out;
+    main_ptr->ListSocketsOfGroup(&out);
+    for (const brpc::SocketId sid : out) {
+        brpc::SocketUniquePtr ptr;
+        if (brpc::Socket::Address(sid, &ptr) == 0) {
+            ptr->ReleaseAdditionalReference();
+        }
+    }
+
     // When no pending rpc is on connection group. The shardpart reference number should be 1
     // due to only main_socket is refer to the sharedpart.
     int ref_num = 0;
@@ -291,6 +300,15 @@ TEST_F(SocketMapTest, fairness_multi_connections) {
               << " average=" << count_sum / num
               << " deviation=" << sqrt(count_squared_sum * num 
                   - count_sum * count_sum) / num << std::endl;
+		
+    std::vector<brpc::SocketId> out;
+    main_ptr->ListSocketsOfGroup(&out);
+    for (const brpc::SocketId sid : out) {
+        brpc::SocketUniquePtr ptr;
+        if (brpc::Socket::Address(sid, &ptr) == 0) {
+            ptr->ReleaseAdditionalReference();
+        }
+    }
 
     // When no pending rpc is on connection group. The shardpart reference number should be 1
     // due to only main_socket is refer to the sharedpart.

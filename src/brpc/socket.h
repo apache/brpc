@@ -216,6 +216,7 @@ friend class OnAppHealthCheckDone;
 friend class HealthCheckManager;
 friend class policy::H2GlobalStreamCreator;
 friend class SocketMulti;
+friend class SocketPool;
     class SharedPart;
     struct Forbidden {};
     struct WriteRequest;
@@ -461,6 +462,9 @@ public:
     // Return this socket which MUST be got from GetSocketFromGroup to its
     // main_socket's group.
     int ReturnToGroup();
+		
+    // Discard this socket. Do not reuse this socket any more.
+    int DiscardFromGroup(); 
 
     // True if this socket has SocketGroup
     bool HasSocketGroup() const;
@@ -469,7 +473,7 @@ public:
     void ListSocketsOfGroup(std::vector<SocketId>* list, size_t max_count = 0);
 
     // Return true on success
-    bool GetSocketGroupCount(int* num);
+    bool GetSocketGroupSize(int* num);
 
     // Create a socket connecting to the same place as this socket.
     int GetShortSocket(SocketUniquePtr* short_socket);
