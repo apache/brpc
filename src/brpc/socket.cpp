@@ -2526,7 +2526,7 @@ int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
         if (load <= threshold || (load - LoadOfLightest(lsid)) <= threshold) {
             lptr->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
             ptr_out->reset(lptr.release());
-				    _load.fetch_add(1, butil::memory_order_relaxed);
+            _load.fetch_add(1, butil::memory_order_relaxed);
             return 0;
         }
     }
@@ -2618,7 +2618,7 @@ int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
 }
 
 void SocketMulti::ReturnSocket(Socket* sock) {
- 	  _load.fetch_sub(1, butil::memory_order_relaxed);
+    _load.fetch_sub(1, butil::memory_order_relaxed);
     sock->_rpc_count.fetch_sub(1, butil::memory_order_acquire);
     CHECK_EQ(sock->id(), _multi[sock->_multi_index])
         << "Socket is not consistent with " << sock->_multi_index

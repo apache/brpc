@@ -82,6 +82,8 @@ void* SendMultiRequest(void* arg) {
                 bthread_usleep(butil::fast_rand_less_than(2000) + 500);
                 ptr->ReturnToGroup();
             } else {
+                std::cout << "Failed to get a multi socket" << std::endl;
+                EXPECT_TRUE(false);
                 bthread_usleep(butil::fast_rand_less_than(2000) + 500);
             }
         }
@@ -224,16 +226,22 @@ TEST_F(SocketMapTest, max_multi_connection_size) {
 
     std::vector<brpc::SocketId> out;
     main_ptr->ListSocketsOfGroup(&out);
+    int ref_num = 0;
+    ASSERT_TRUE(main_ptr->GetSharedPartRefNum(&ref_num));
+    size_t active_connections = 0;
     for (const brpc::SocketId sid : out) {
         brpc::SocketUniquePtr ptr;
         if (brpc::Socket::Address(sid, &ptr) == 0) {
+            ++active_connections;
             ptr->ReleaseAdditionalReference();
         }
     }
+    std::cout << "mulit_size=" << out.size() << " ref_num=" << ref_num << " actives=" 
+        << active_connections << std::endl; 
 
     // When no pending rpc is on connection group. The shardpart reference number should be 1
     // due to only main_socket is refer to the sharedpart.
-    int ref_num = 0;
+    ref_num = 0;
     ASSERT_TRUE(main_ptr->GetSharedPartRefNum(&ref_num));
     ASSERT_EQ(ref_num, 1);
     brpc::SocketMapRemove(g_key);
@@ -300,19 +308,25 @@ TEST_F(SocketMapTest, fairness_multi_connections) {
               << " average=" << count_sum / num
               << " deviation=" << sqrt(count_squared_sum * num 
                   - count_sum * count_sum) / num << std::endl;
-		
+
     std::vector<brpc::SocketId> out;
     main_ptr->ListSocketsOfGroup(&out);
+    int ref_num = 0;
+    ASSERT_TRUE(main_ptr->GetSharedPartRefNum(&ref_num));
+    size_t active_connections = 0;
     for (const brpc::SocketId sid : out) {
         brpc::SocketUniquePtr ptr;
         if (brpc::Socket::Address(sid, &ptr) == 0) {
+            ++active_connections;
             ptr->ReleaseAdditionalReference();
         }
     }
+    std::cout << "mulit_size=" << out.size() << " ref_num=" << ref_num << " actives=" 
+        << active_connections << std::endl;
 
     // When no pending rpc is on connection group. The shardpart reference number should be 1
     // due to only main_socket is refer to the sharedpart.
-    int ref_num = 0;
+    ref_num = 0;
     ASSERT_TRUE(main_ptr->GetSharedPartRefNum(&ref_num));
     ASSERT_EQ(ref_num, 1);
 
