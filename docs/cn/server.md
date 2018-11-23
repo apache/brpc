@@ -201,7 +201,7 @@ Server启动后你无法再修改其中的Service。
 
 # 启动
 
-调用以下[Server](https://github.com/brpc/brpc/blob/master/src/brpc/server.h)的一下接口启动服务。
+调用以下[Server](https://github.com/brpc/brpc/blob/master/src/brpc/server.h)的接口启动服务。
 
 ```c++
 int Start(const char* ip_and_port_str, const ServerOptions* opt);
