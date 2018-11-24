@@ -203,7 +203,7 @@ void Span::Annotate(const char* fmt, ...) {
 void Span::Annotate(const char* fmt, va_list args) {
     const int64_t anno_time = butil::cpuwide_time_us() + _base_real_us;
     std::string anno_content;
-    butil::string_appendf(&anno_content, fmt, args);
+    butil::string_vappendf(&anno_content, fmt, args);
     _annotation_list.emplace_back(anno_time, std::move(anno_content));
 }
 
