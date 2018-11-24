@@ -157,7 +157,7 @@ private:
             , content(info) {}
         Annotation(int64_t timestamp, std::string&& info)
             : realtime_us(timestamp)
-            , content(info) {}
+            , content(std::move(info)) {}
         int64_t realtime_us;
         std::string content;
     };
