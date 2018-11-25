@@ -629,10 +629,10 @@ Read [this](../cn/auto_concurrency_limiter.md) to know more about the algorithm.
 
 ## pthread mode
 
-User code(client-side done, server-side CallMethod) runs in bthreads with 1MB stacksize by default. But some of them cannot run in bthreads, namely:
+User code(client-side done, server-side CallMethod) runs in bthreads with 1MB stacksize by default. But some of them cannot run in bthreads:
 
-- JNI checks stack layout and cannot be run in bthreads.
-- Extensively use pthread-local to pass session-level data to all sorts of functions. Store data into pthread-local before a RPC and expect the data read after RPC to equal to the one stored. These usages are problematic in bthreads which may switch to another pthread after resuming. As a contrast, although tcmalloc uses pthread/LWP-local as well, calls to malloc do not depend on each other, which is safe.
+- JNI code checks stack layout and cannot be run in bthreads.
+- The user code extensively use pthread-local to pass session-level data across functions. If there's a synchronous RPC call or function calls that may block bthread, the resumed bthread may land on a different pthread which does not have the pthread-local data that users expect to have. As a contrast, although tcmalloc uses pthread(or LWP)-local as well, the code inside has nothing to do with bthread, which is safe.
 
 brpc offers pthread mode to solve the issues. When **-usercode_in_pthread** is turned on, user code will be run in pthreads. Functions that would block bthreads block pthreads.
 
@@ -640,10 +640,10 @@ Performance issues when pthread mode is on:
 
 - Since synchronous RPCs block worker pthreads, server often needs more workers (ServerOptions.num_threads), and scheduling efficiencies will be slightly lower.
 - User code still runs in special bthreads actually, which use stacks of pthread workers. These special bthreads are scheduled same with normal bthreads and performance differences are negligible.
-- bthread supports an unique feature: yield pthread worker to a newly created bthread to reduce a context switch. brpc client uses this feature to reduce number of context switches in one RPC from 3 to 2. In a performance-demanding system, reducing context-switches significantly improves performance and latency long-tails. However pthread-mode is not capable of doing this and slower in high-QPS systems.
-- Number of threads in pthread-mode is a hard limit. Once all threads are occupied, requests will be queued rapidly and many of them will be timed-out finally. A common example: When many requests to downstream servers are timedout, the upstream services may also be severely affected by a lot of blocking threads waiting for responses(within timeout). Consider setting ServerOptions.max_concurrency to protect the server when pthread-mode is on. As a contrast, number of bthreads in bthread mode is a soft limit and reacts more smoothly to such kind of issues.
+- bthread supports an unique feature: yield pthread worker to a newly created bthread to reduce a context switch. brpc client uses this feature to reduce number of context switches in one RPC from 3 to 2. In a performance-demanding system, reducing context-switches improves performance. However pthread-mode is not capable of doing this.
+- Number of threads in pthread-mode is a hard limit. Once all threads are occupied, requests will be queued rapidly and many of them will be timed-out finally. An example: When many requests to downstream servers are timedout, the upstream services may also be severely affected by a lot of blocking threads waiting for responses(within timeout). Consider setting ServerOptions.max_concurrency to protect the server when pthread-mode is on. As a contrast, number of bthreads in bthread mode is a soft limit and reacts more smoothly to such kind of issues.
 
-pthread-mode lets legacy code to try brpc more easily, but we still recommend refactoring the code with bthread-local or even not using TLS gradually, to turn off the option in future.
+pthread-mode lets legacy code to try brpc more easily, but we still recommend refactoring the code with bthread-local or even remove TLS gradually, to turn off the option in future.
 
 ## Security mode
 
