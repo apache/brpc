@@ -278,7 +278,7 @@ int butex_wake(void* arg) {
     unsleep_if_necessary(bbw, get_global_timer_thread());
     TaskGroup* g = tls_task_group;
     if (g) {
-        TaskGroup::exchange(&g, bbw->tid);
+        g->ready_to_run(bbw->tid);
     } else {
         bbw->control->choose_one_group()->ready_to_run_remote(bbw->tid);
     }
