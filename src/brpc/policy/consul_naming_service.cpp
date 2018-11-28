@@ -225,7 +225,7 @@ int ConsulNamingService::RunNamingService(const char* service_name,
                 servers.clear();
                 actions->ResetServers(servers);
             }
-            if (bthread_usleep(std::max(FLAGS_consul_retry_interval_ms, 1) * butil::Time::kMillisecondsPerSecond) < 0) {
+            if (bthread_usleep(std::max(FLAGS_consul_retry_interval_ms, 1) * butil::Time::kMicrosecondsPerMillisecond) < 0) {
                 if (errno == ESTOP) {
                     RPC_VLOG << "Quit NamingServiceThread=" << bthread_self();
                     return 0;
@@ -234,6 +234,10 @@ int ConsulNamingService::RunNamingService(const char* service_name,
                 return -1;
             }
         }
+        if (errno == EINTR) {
+            RPC_VLOG << "Quit NamingServiceThread=" << bthread_self();
+            return 0;           
+        }	 
     }
     CHECK(false);
     return -1;
