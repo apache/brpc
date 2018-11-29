@@ -234,7 +234,7 @@ int ConsulNamingService::RunNamingService(const char* service_name,
                 return -1;
             }
         }
-        if (errno == EINTR) {
+        if (bthread_stopped(bthread_self())) {
             RPC_VLOG << "Quit NamingServiceThread=" << bthread_self();
             return 0;           
         }	 
