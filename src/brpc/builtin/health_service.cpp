@@ -14,7 +14,6 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#include <vector>                           // std::vector
 #include "brpc/controller.h"           // Controller
 #include "brpc/server.h"               // Server
 #include "brpc/closure_guard.h"        // ClosureGuard

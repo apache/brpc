@@ -64,6 +64,7 @@
 #include "brpc/builtin/ids_service.h"          // IdsService
 #include "brpc/builtin/sockets_service.h"      // SocketsService
 #include "brpc/builtin/hotspots_service.h"     // HotspotsService
+#include "brpc/builtin/metrics_service.h"
 #include "brpc/details/method_status.h"
 #include "brpc/load_balancer.h"
 #include "brpc/naming_service.h"
@@ -484,6 +485,10 @@ int Server::AddBuiltinServices() {
     }
     if (AddBuiltinService(new (std::nothrow) ListService(this))) {
         LOG(ERROR) << "Fail to add ListService";
+        return -1;
+    }
+    if (AddBuiltinService(new (std::nothrow) MetricsService(this))) {
+        LOG(ERROR) << "Fail to add MetricsService";
         return -1;
     }
     if (FLAGS_enable_threads_service &&
