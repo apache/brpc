@@ -34,7 +34,7 @@ enum STATE {
     SUMMARY
 };
 
-TEST(PROMETHEUS_METRICS, sanity) {
+TEST(PrometheusMetrics, sanity) {
     brpc::Server server;
     DummyEchoServiceImpl echo_svc;
     ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
@@ -60,6 +60,8 @@ TEST(PROMETHEUS_METRICS, sanity) {
     int gauge_num = 0;
     bool summary_sum_gathered = false;
     bool summary_count_gathered = false;
+    bool has_ever_summary = false;
+    bool has_ever_gauge = false;
 
     while ((end_pos = res.find('\n', start_pos)) != butil::StringPiece::npos) {
         res[end_pos] = '\0';       // safe;
@@ -86,6 +88,7 @@ TEST(PROMETHEUS_METRICS, sanity) {
                 ASSERT_EQ(2, matched);
                 ASSERT_STREQ(name_type, name_help);
                 state = HELP;
+                has_ever_gauge = true;
                 break;
             case SUMMARY:
                 if (butil::StringPiece(res.data() + start_pos, end_pos - start_pos).find("quantile=")
@@ -106,6 +109,7 @@ TEST(PROMETHEUS_METRICS, sanity) {
                         state = HELP;
                         summary_sum_gathered = false;
                         summary_count_gathered = false;
+                        has_ever_summary = true;
                     }
                 } // else find "quantile=", just break to next line
                 break;
@@ -115,6 +119,7 @@ TEST(PROMETHEUS_METRICS, sanity) {
         }
         start_pos = end_pos + 1;
     }
+    ASSERT_TRUE(has_ever_gauge && has_ever_summary);
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
 }

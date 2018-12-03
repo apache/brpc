@@ -14,17 +14,17 @@
 
 // Authors: Jiashun Zhu(zhujiashun@bilibili.com)
 
-#ifndef BRPC_METRICS_SERVICE_H
-#define BRPC_METRICS_SERVICE_H
+#ifndef BRPC_PROMETHEUS_METRICS_SERVICE_H
+#define BRPC_PROMETHEUS_METRICS_SERVICE_H
 
 #include "brpc/builtin_service.pb.h"
 #include "brpc/server.h"
 
 namespace brpc {
 
-class MetricsService : public metrics {
+class PrometheusMetricsService : public metrics {
 public:
-    MetricsService(Server* server)
+    PrometheusMetricsService(Server* server)
         : _server(server) {}
 
     void default_method(::google::protobuf::RpcController* cntl_base,
@@ -37,4 +37,4 @@ private:
 
 } // namepace brpc
 
-#endif  // BRPC_METRICS_SERVICE_H
+#endif  // BRPC_PROMETHEUS_METRICS_SERVICE_H
