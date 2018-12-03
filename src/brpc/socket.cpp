@@ -84,11 +84,11 @@ BRPC_VALIDATE_GFLAG(max_connection_pool_size, PassValidate);
 
 DEFINE_int32(max_connection_multi_size, 10,
              "The number of multi connections to a single endpoint");
-BRPC_VALIDATE_GFLAG(max_connection_multi_size, PassValidate);
 
 DEFINE_int32(threshold_for_switch_multi_connection, 5,
              "Pending rpc count gap of multi connections reach the "
              "threshold will trigger sending request on the socket with lower load.");
+BRPC_VALIDATE_GFLAG(threshold_for_switch_multi_connection, PassValidate);
 
 DEFINE_int32(connect_timeout_as_unreachable, 3,
              "If the socket failed to connect due to ETIMEDOUT for so many "
@@ -2625,8 +2625,7 @@ int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
             if (init >= 0 && Socket::Address(new_id, ptr_out) == 0) {
                 (*ptr_out)->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
                 if (init == 0) {
-                    uint64_t lsid = BuildLightest(i, 0);
-                    _lightest.store(lsid, butil::memory_order_relaxed); 
+                    _lightest.store(BuildLightest(i, 0), butil::memory_order_relaxed);
                 }
                 _load.fetch_add(1, butil::memory_order_relaxed);
                 return 0;
@@ -2643,8 +2642,7 @@ int SocketMulti::GetSocket(SocketUniquePtr* ptr_out) {
                 if (psid->compare_exchange_strong(
                         sid, new_id, butil::memory_order_relaxed)) {
                     ptr->_rpc_count.fetch_add(1, butil::memory_order_relaxed);
-                    uint64_t lsid = BuildLightest(i, 0);
-                    _lightest.store(lsid, butil::memory_order_relaxed); 
+                    _lightest.store(BuildLightest(i, 0), butil::memory_order_relaxed);
                     ptr_out->reset(ptr.release());
                     _load.fetch_add(1, butil::memory_order_relaxed);
                     return 0;
@@ -2755,7 +2753,8 @@ inline void SocketMulti::UpdateLightestSocketIfNeeded(const uint64_t s) {
 inline void SocketMulti::ShareStatsForNewSocket(Socket* socket) {
     _sp->AddRefManually();
     Socket::SharedPart* sp = socket->_shared_part.exchange(_sp, butil::memory_order_relaxed);
-    CHECK(sp == nullptr) << "Sharedpart of new multi socket is not null";
+    CHECK(sp == nullptr || sp == _sp) << "Sharedpart of new multi socket is unexpected("
+        << sp << " != " << " nullptr or " << _sp << ')';
 }
 
 void SocketMulti::ListSockets(std::vector<SocketId>* out, size_t max_count) {
