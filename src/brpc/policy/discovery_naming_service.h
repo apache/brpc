@@ -24,18 +24,6 @@
 namespace brpc {
 namespace policy {
 
-class DiscoveryNamingService : public PeriodicNamingService {
-private:
-    int GetServers(const char* service_name,
-                   std::vector<ServerNode>* servers) override;
-
-    void Describe(std::ostream& os, const DescribeOptions&) const override;
-
-    NamingService* New() const override;
-
-    void Destroy() override;
-};
-
 struct DiscoveryRegisterParam {
     std::string appid;
     std::string hostname;
@@ -50,6 +38,14 @@ struct DiscoveryRegisterParam {
     bool IsValid() const;
 };
 
+struct DiscoveryFetchsParam {
+    std::string appid;
+    std::string env;
+    std::string status;
+
+    bool IsValid() const;
+};
+
 // ONE DiscoveryClient corresponds to ONE service instance.
 // If your program has multiple service instances to register,
 // you need multiple DiscoveryClient.
@@ -60,12 +56,13 @@ public:
 
     int Register(const DiscoveryRegisterParam& req);
     int Cancel();
+    int Fetchs(const DiscoveryFetchsParam& req, std::vector<ServerNode>* servers);
 
 private:
     static void* PeriodicRenew(void* arg);
-    int do_cancel() const;
-    int do_register() const;
-    int do_renew() const;
+    int DoCancel() const;
+    int DoRegister() const;
+    int DoRenew() const;
 
 private:
     enum State {
@@ -87,6 +84,22 @@ private:
     std::string _version;
     std::string _metadata;
 };
+
+class DiscoveryNamingService : public PeriodicNamingService {
+private:
+    int GetServers(const char* service_name,
+                   std::vector<ServerNode>* servers) override;
+
+    void Describe(std::ostream& os, const DescribeOptions&) const override;
+
+    NamingService* New() const override;
+
+    void Destroy() override;
+
+private:
+    DiscoveryClient _client;
+};
+
 
 } // namespace policy
 } // namespace brpc
