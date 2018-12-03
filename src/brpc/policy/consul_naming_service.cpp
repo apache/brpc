@@ -214,6 +214,10 @@ int ConsulNamingService::RunNamingService(const char* service_name,
     for (;;) {
         servers.clear();
         const int rc = GetServers(service_name, &servers);
+        if (bthread_stopped(bthread_self())) {
+            RPC_VLOG << "Quit NamingServiceThread=" << bthread_self();
+            return 0;
+        }
         if (rc == 0) {
             ever_reset = true;
             actions->ResetServers(servers);
@@ -234,10 +238,6 @@ int ConsulNamingService::RunNamingService(const char* service_name,
                 return -1;
             }
         }
-        if (bthread_stopped(bthread_self())) {
-            RPC_VLOG << "Quit NamingServiceThread=" << bthread_self();
-            return 0;           
-        }	 
     }
     CHECK(false);
     return -1;
