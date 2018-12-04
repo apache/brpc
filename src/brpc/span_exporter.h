@@ -41,7 +41,7 @@ namespace brpc {
 //
 // class FooSpanExporter: public brpc::SpanExporter {
 // public:
-//     void DumpSpan(const RpczSpan* span) override {
+//     void DumpSpan(const brpc::TracingSpan* span) override {
 //          // do dump span
 //     }
 //     ~FooSpanExporter() {}

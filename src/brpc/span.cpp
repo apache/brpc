@@ -30,7 +30,6 @@
 #include "brpc/span_exporter.h"
 #include "brpc/span.h"
 
-
 namespace brpc {
 
 // TODO: collected per second is customizable.
@@ -230,40 +229,45 @@ size_t Span::CountClientSpans() const {
 }
 
 void Span::Copy2TracingSpan(TracingSpan* out) const {
-    out->set_trace_id(trace_id());
-    out->set_span_id(span_id());
-    out->set_parent_span_id(parent_span_id());
-    out->set_log_id(log_id());
-    out->set_base_cid(base_cid().value);
-    out->set_ending_cid(ending_cid().value);
-    out->set_remote_ip(butil::ip2int(remote_side().ip));
-    out->set_remote_port(remote_side().port);
-    out->set_type(type());
-    out->set_async(async());
-    out->set_protocol(protocol());
-    out->set_error_code(error_code());
-    out->set_request_size(request_size());
-    out->set_response_size(response_size());
-    out->set_received_real_us(received_real_us());
-    out->set_start_parse_real_us(start_parse_real_us());
-    out->set_start_callback_real_us(start_callback_real_us());
-    out->set_start_send_real_us(start_send_real_us());
-    out->set_sent_real_us(sent_real_us());
-    out->set_span_name(full_method_name());
-    size_t anno_count = _annotation_list.size();
-    for (size_t i = 0; i < anno_count; ++i) {
-        out->add_annotations();
-        out->mutable_annotations(i)->set_realtime_us(_annotation_list[i].realtime_us);
-        out->mutable_annotations(i)->set_content(_annotation_list[i].content);
-    }
-    // client spans should be reversed.
+    out->clear_client_spans();
     size_t client_span_count = CountClientSpans();
     for (size_t i = 0; i < client_span_count; ++i) {
         out->add_client_spans();
     }
-    size_t i = 0;
-    for (const Span* p = _next_client; p; p = p->_next_client, ++i) {
-        p->Copy2TracingSpan(out->mutable_client_spans(client_span_count - i - 1));
+    const Span* src = this;
+    TracingSpan* dest = out;
+    for (int i = 0; src; src = src->_next_client) {
+        if (src != this) {
+            // client spans should be reversed.
+            dest = out->mutable_client_spans(client_span_count - i - 1);
+            ++i;
+        }
+        dest->set_trace_id(src->trace_id());
+        dest->set_span_id(src->span_id());
+        dest->set_parent_span_id(src->parent_span_id());
+        dest->set_log_id(src->log_id());
+        dest->set_base_cid(src->base_cid().value);
+        dest->set_ending_cid(src->ending_cid().value);
+        dest->set_remote_ip(butil::ip2int(src->remote_side().ip));
+        dest->set_remote_port(src->remote_side().port);
+        dest->set_type(src->type());
+        dest->set_async(src->async());
+        dest->set_protocol(src->protocol());
+        dest->set_error_code(src->error_code());
+        dest->set_request_size(src->request_size());
+        dest->set_response_size(src->response_size());
+        dest->set_received_real_us(src->received_real_us());
+        dest->set_start_parse_real_us(src->start_parse_real_us());
+        dest->set_start_callback_real_us(src->start_callback_real_us());
+        dest->set_start_send_real_us(src->start_send_real_us());
+        dest->set_sent_real_us(src->sent_real_us());
+        dest->set_span_name(src->full_method_name());
+        size_t anno_count = src->_annotation_list.size();
+        for (size_t i = 0; i < anno_count; ++i) {
+            dest->add_annotations();
+            dest->mutable_annotations(i)->set_realtime_us(src->_annotation_list[i].realtime_us);
+            dest->mutable_annotations(i)->set_content(src->_annotation_list[i].content);
+        }
     }
 }
 
