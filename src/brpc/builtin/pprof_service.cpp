@@ -400,7 +400,7 @@ static void LoadSymbols() {
     size_t line_len = 0;
     ssize_t nr = 0;
     while ((nr = getline(&line, &line_len, fp.get())) != -1) {
-        butil::StringSplitter sp(line, line + line_len, ' ');
+        butil::StringSplitter sp(line, line + nr, ' ');
         if (sp == NULL) {
             continue;
         }
