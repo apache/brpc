@@ -167,7 +167,6 @@ StringMultiSplitter::StringMultiSplitter (
     : _head(str)
     , _str_tail(NULL)
     , _seps(seps)
-    , _seps_tail(NULL)
     , _empty_field_action(action) {
     init();
 }
@@ -178,18 +177,6 @@ StringMultiSplitter::StringMultiSplitter (
     : _head(str_begin)
     , _str_tail(str_end)
     , _seps(seps)
-    , _seps_tail(NULL)
-    , _empty_field_action(action) {
-    init();
-}
-
-StringMultiSplitter::StringMultiSplitter (
-    const char* str_begin, const char* str_end,
-    const char* seps_begin, const char* seps_end, EmptyFieldAction action)
-    : _head(str_begin)
-    , _str_tail(str_end)
-    , _seps(seps_begin)
-    , _seps_tail(seps_end)
     , _empty_field_action(action) {
     init();
 }
@@ -226,8 +213,7 @@ StringMultiSplitter StringMultiSplitter::operator++(int) {
 }
 
 bool StringMultiSplitter::is_sep(char c) const {
-    for (const char* p = _seps;
-          (_seps_tail == NULL) ? (*p != '\0') : (p != _seps_tail); ++p) {
+    for (const char* p = _seps; *p != '\0'; ++p) {
         if (c == *p) {
             return true;
         }

@@ -227,44 +227,6 @@ TEST_F(StringSplitterTest, number_list) {
     ASSERT_FALSE(ss2);
     ASSERT_EQ(0ul, ss2.length());
     ASSERT_EQ(ss2.field(), str + str_len);
-
-    // separators contains '\0'
-    const char* seps = ", \0";
-    const size_t seps_len = 3;
-    butil::StringMultiSplitter ss3(str, str + str_len, seps, seps + seps_len);
-    ASSERT_TRUE(ss3);
-    ASSERT_EQ(3ul, ss3.length());
-    ASSERT_FALSE(strncmp(ss3.field(), "123", ss3.length()));
-
-    ss3++;
-    ASSERT_TRUE(ss3);
-    ASSERT_EQ(2ul, ss3.length());
-    ASSERT_FALSE(strncmp(ss3.field(), "12", ss3.length()));
-
-    ss3++;
-    ASSERT_TRUE(ss3);
-    ASSERT_EQ(1ul, ss3.length());
-    ASSERT_FALSE(strncmp(ss3.field(), "1", ss3.length()));
-
-    ss3++;
-    ASSERT_TRUE(ss3);
-    ASSERT_EQ(2ul, ss3.length());
-    ASSERT_FALSE(strncmp(ss3.field(), "21", ss3.length()));
-
-    ss3++;
-    ASSERT_TRUE(ss3);
-    ASSERT_EQ(4ul, ss3.length());
-    ASSERT_FALSE(strncmp(ss3.field(), "4321", ss3.length()));
-
-    ss3++;
-    ASSERT_TRUE(ss3);
-    ASSERT_EQ(2ul, ss3.length());
-    ASSERT_FALSE(strncmp(ss3.field(), "56", ss3.length()));
-
-    ++ss3;
-    ASSERT_FALSE(ss3);
-    ASSERT_EQ(0ul, ss3.length());
-    ASSERT_EQ(ss3.field(), str + str_len);
 }
 
 TEST_F(StringSplitterTest, cast_type) {
