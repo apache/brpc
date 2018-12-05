@@ -49,14 +49,14 @@ struct DiscoveryFetchsParam {
 // ONE DiscoveryClient corresponds to ONE service instance.
 // If your program has multiple service instances to register,
 // you need multiple DiscoveryClient.
+// Note: Unregister is automatically called in dtor.
 class DiscoveryClient {
 public:
     DiscoveryClient();
     ~DiscoveryClient();
 
     int Register(const DiscoveryRegisterParam& req);
-    int Cancel();
-    int Fetchs(const DiscoveryFetchsParam& req, std::vector<ServerNode>* servers);
+    int Fetchs(const DiscoveryFetchsParam& req, std::vector<ServerNode>* servers) const;
 
 private:
     static void* PeriodicRenew(void* arg);
@@ -65,15 +65,8 @@ private:
     int DoRenew() const;
 
 private:
-    enum State {
-        INIT,
-        REGISTERING,
-        REGISTERED,
-        CANCELED
-    };
     bthread_t _th;
-    State _state;
-    butil::Mutex _mutex;
+    butil::atomic<bool> _registered;
     std::string _appid;
     std::string _hostname;
     std::string _addrs;

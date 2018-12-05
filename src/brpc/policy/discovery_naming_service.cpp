@@ -129,7 +129,6 @@ static void InitChannel() {
     }
 }
 
-
 int ParseFetchsResult(const butil::IOBuf& buf,
                       const char* service_name,
                       std::vector<ServerNode>* servers) {
@@ -201,26 +200,24 @@ int ParseFetchsResult(const butil::IOBuf& buf,
 }
 
 bool DiscoveryRegisterParam::IsValid() const {
-    if (appid.empty() || hostname.empty() || addrs.empty() ||
-            env.empty() || zone.empty() || version.empty()) {
-        return false;
-    }
-    return true;
+    return !appid.empty() && !hostname.empty() && !addrs.empty() &&
+            !env.empty() && !zone.empty() && !version.empty();
 }
 
 bool DiscoveryFetchsParam::IsValid() const {
-    if (appid.empty() || env.empty() || status.empty()) {
-        return false;
-    }
-    return true;
+    return !appid.empty() && !env.empty() && !status.empty();
 }
 
 DiscoveryClient::DiscoveryClient()
     : _th(INVALID_BTHREAD)
-    , _state(INIT) {}
+    , _registered(false) {}
 
 DiscoveryClient::~DiscoveryClient() {
-    Cancel();
+    if (_registered.load(butil::memory_order_acquire)) {
+        bthread_stop(_th);
+        bthread_join(_th, NULL);
+        DoCancel();
+    }
 }
 
 int ParseCommonResult(const butil::IOBuf& buf, std::string* error_text) {
@@ -284,23 +281,7 @@ void* DiscoveryClient::PeriodicRenew(void* arg) {
 
     while (!bthread_stopped(bthread_self())) {
         if (consecutive_renew_error == FLAGS_discovery_reregister_threshold) {
-            LOG(WARNING) << "Reregister since discovery renew error threshold reached";
-            {
-                std::unique_lock<butil::Mutex> mu(d->_mutex);
-                switch (d->_state) {
-                    case INIT:
-                        CHECK(false) << "Impossible";
-                        return NULL;
-                    case REGISTERING:
-                    case REGISTERED:
-                        break;
-                    case CANCELED:
-                        return NULL;
-                    default:
-                        CHECK(false) << "Impossible";
-                        return NULL;
-                }
-            }
+            LOG(WARNING) << "Re-register since discovery renew error threshold reached";
             // Do register until succeed or Cancel is called
             while (!bthread_stopped(bthread_self())) {
                 if (d->DoRegister() == 0) {
@@ -310,17 +291,12 @@ void* DiscoveryClient::PeriodicRenew(void* arg) {
             }
             consecutive_renew_error = 0;
         }
-
         if (d->DoRenew() != 0) {
             consecutive_renew_error++;
             continue;
         }
         consecutive_renew_error = 0;
-        if (bthread_usleep(FLAGS_discovery_renew_interval_s * 1000000) != 0) {
-            if (errno == ESTOP) {
-                break;
-            }
-        }
+        bthread_usleep(FLAGS_discovery_renew_interval_s * 1000000);
     }
     return NULL;
 }
@@ -329,24 +305,9 @@ int DiscoveryClient::Register(const DiscoveryRegisterParam& req) {
     if (!req.IsValid()) {
         return -1;
     }
-    {
-        std::unique_lock<butil::Mutex> mu(_mutex);
-        switch (_state) {
-            case INIT:
-                _state = REGISTERING;
-                break;
-            case REGISTERING:
-            case REGISTERED:
-                LOG(WARNING) << "Discovery Appid=" << req.appid
-                    <<" is registering or registered";
-                return 0;
-            case CANCELED:
-                LOG(ERROR) << "Discovery Appid=" << req.appid << " is canceled";
-                return -1;
-            default:
-                CHECK(false) << "Impossible";
-                return -1;
-        }
+    if (_registered.load(butil::memory_order_relaxed) ||
+            _registered.exchange(true, butil::memory_order_release)) {
+        return 0;
     }
     pthread_once(&s_init_channel_once, InitChannel);
     _appid = req.appid;
@@ -365,32 +326,6 @@ int DiscoveryClient::Register(const DiscoveryRegisterParam& req) {
     if (bthread_start_background(&_th, NULL, PeriodicRenew, this) != 0) {
         LOG(ERROR) << "Fail to start background PeriodicRenew";
         return -1;
-    }
-    bool is_canceled = false;
-    {
-        std::unique_lock<butil::Mutex> mu(_mutex);
-        switch (_state) {
-            case INIT:
-                CHECK(false) << "Impossible";
-                return -1;
-            case REGISTERING:
-                _state = REGISTERED;
-                break;
-            case REGISTERED:
-                CHECK(false) << "Impossible";
-                return -1;
-            case CANCELED:
-                is_canceled = true;
-                break;
-            default:
-                CHECK(false) << "Impossible";
-                return -1;
-        }
-    }
-    if (is_canceled) {
-        bthread_stop(_th);
-        bthread_join(_th, NULL);
-        return DoCancel();
     }
     return 0;
 }
@@ -425,30 +360,6 @@ int DiscoveryClient::DoRegister() const {
     return 0;
 }
 
-int DiscoveryClient::Cancel() {
-    {
-        std::unique_lock<butil::Mutex> mu(_mutex);
-        switch (_state) {
-            case INIT:
-            case REGISTERING:
-                _state = CANCELED;
-                return 0;
-            case REGISTERED:
-                _state = CANCELED;
-                break;
-            case CANCELED:
-                return 0;
-            default:
-                CHECK(false) << "Impossible";
-                return -1;
-        }
-    }
-    CHECK_NE(_th, INVALID_BTHREAD);
-    bthread_stop(_th);
-    bthread_join(_th, NULL);
-    return DoCancel();
-}
-
 int DiscoveryClient::DoCancel() const {
     pthread_once(&s_init_channel_once, InitChannel);
     Controller cntl;
@@ -476,7 +387,7 @@ int DiscoveryClient::DoCancel() const {
 }
 
 int DiscoveryClient::Fetchs(const DiscoveryFetchsParam& req,
-                            std::vector<ServerNode>* servers) {
+                            std::vector<ServerNode>* servers) const {
     if (!req.IsValid()) {
         return false;
     }

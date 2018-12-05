@@ -626,7 +626,6 @@ TEST(NamingServiceTest, discovery_sanity) {
     ASSERT_EQ(0, dcns.GetServers("admin.test", &servers));
     ASSERT_EQ((size_t)1, servers.size());
 
-    brpc::policy::DiscoveryClient dc;
     brpc::policy::DiscoveryRegisterParam dparam;
     dparam.appid = "main.test";
     dparam.hostname = "hostname";
@@ -635,24 +634,21 @@ TEST(NamingServiceTest, discovery_sanity) {
     dparam.zone = "sh001";
     dparam.status = 1;
     dparam.version = "v1";
-    ASSERT_EQ(0, dc.Register(dparam));
-    bthread_usleep(1000000);
-    ASSERT_EQ(0, dc.Cancel());
-    ASSERT_GT(svc.RenewCount(), 0);
-    ASSERT_EQ(svc.CancelCount(), 1);
-
-    brpc::policy::DiscoveryClient dc2;
-    ASSERT_EQ(0, dc2.Cancel());
-    ASSERT_EQ(-1, dc2.Register(dparam));
-
     {
-        brpc::policy::DiscoveryClient dc3;
-        ASSERT_EQ(0, dc3.Register(dparam));
-        ASSERT_EQ(0, dc3.Cancel());
+        brpc::policy::DiscoveryClient dc;
     }
-    // Dtor of DiscoveryClient also calls Cancel(), we need to ensure that
-    // Cancel() is called only once. One is from dc1, the other is from dc3.
-    ASSERT_EQ(svc.CancelCount(), 2);
+    // Cancel is called iff Register is called
+    ASSERT_EQ(svc.CancelCount(), 0);
+    {
+        brpc::policy::DiscoveryClient dc;
+        // Two Register should start one Renew task , and make
+        // svc.RenewCount() be one.
+        ASSERT_EQ(0, dc.Register(dparam));
+        ASSERT_EQ(0, dc.Register(dparam));
+        bthread_usleep(1000000);
+    }
+    ASSERT_EQ(svc.RenewCount(), 1);
+    ASSERT_EQ(svc.CancelCount(), 1);
 }
 
 } //namespace
