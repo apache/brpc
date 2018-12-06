@@ -64,13 +64,11 @@ private:
         std::string latency_avg;
         std::string count;
         std::string metric_name;
+
+        bool IsComplete() const { return !metric_name.empty(); }
     };
-    // Return true iff name ends with suffix output by LatencyRecorder.
-    // If all bvars in LatencyRecorder have been gathered and are ready
-    // to output a summary, *si_out is set properly.
-    bool ProcessLatencyRecorderSuffix(const butil::StringPiece& name,
-                                      const butil::StringPiece& desc,
-                                      SummaryItems** si_out);
+    const SummaryItems* ProcessLatencyRecorderSuffix(const butil::StringPiece& name,
+                                                     const butil::StringPiece& desc);
 
 private:
     butil::IOBufBuilder* _os;
@@ -95,10 +93,9 @@ bool PrometheusMetricsDumper::dump(const std::string& name,
     return true;
 }
 
-bool PrometheusMetricsDumper::ProcessLatencyRecorderSuffix(
-    const butil::StringPiece& name,
-    const butil::StringPiece& desc,
-    PrometheusMetricsDumper::SummaryItems** si_out) {
+const PrometheusMetricsDumper::SummaryItems*
+PrometheusMetricsDumper::ProcessLatencyRecorderSuffix(const butil::StringPiece& name,
+                                                      const butil::StringPiece& desc) {
     static std::string latency_names[] = {
         butil::string_printf("_latency_%d", (int)bvar::FLAGS_bvar_latency_p1),
         butil::string_printf("_latency_%d", (int)bvar::FLAGS_bvar_latency_p2),
@@ -115,26 +112,27 @@ bool PrometheusMetricsDumper::ProcessLatencyRecorderSuffix(
         SummaryItems* si = &_m[metric_name.as_string()];
         si->latency_percentiles[i] = desc.as_string();
         if (i == NPERCENTILES - 1) {
-            // 'max_latency' is the last suffix name that appear in the sorted bvar
+            // '_max_latency' is the last suffix name that appear in the sorted bvar
             // list, which means all related percentiles have been gathered and we are
             // ready to output a Summary.
             si->metric_name = metric_name.as_string();
-            *si_out = si;
         }
-        return true;
+        return si;
     }
     // Get the average of latency in recent window size
     if (metric_name.ends_with("_latency")) {
         metric_name.remove_suffix(8);
-        _m[metric_name.as_string()].latency_avg = desc.as_string();
-        return true;
+        SummaryItems* si = &_m[metric_name.as_string()];
+        si->latency_avg = desc.as_string();
+        return si;
     }
     if (metric_name.ends_with("_count")) {
         metric_name.remove_suffix(6);
-        _m[metric_name.as_string()].count = desc.as_string();
-        return true;
+        SummaryItems* si = &_m[metric_name.as_string()];
+        si->count = desc.as_string();
+        return si;
     }
-    return false;
+    return NULL;
 }
 
 bool PrometheusMetricsDumper::DumpLatencyRecorderSuffix(
@@ -143,11 +141,11 @@ bool PrometheusMetricsDumper::DumpLatencyRecorderSuffix(
     if (!name.starts_with(_server_prefix)) {
         return false;
     }
-    SummaryItems* si = NULL;
-    if (!ProcessLatencyRecorderSuffix(name, desc, &si)) {
+    const SummaryItems* si = ProcessLatencyRecorderSuffix(name, desc);
+    if (!si) {
         return false;
     }
-    if (!si) {
+    if (!si->IsComplete()) {
         return true;
     }
     *_os << "# HELP " << si->metric_name << '\n'
