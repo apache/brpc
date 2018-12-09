@@ -522,6 +522,7 @@ friend class ProtobufsService;
 friend class ConnectionsService;
 friend class BadMethodService;
 friend class ServerPrivateAccessor;
+friend class PrometheusMetricsService;
 friend class Controller;
 
     int AddServiceInternal(google::protobuf::Service* service,

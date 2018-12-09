@@ -89,3 +89,7 @@ The monitoring system should combine data on every single machine periodically a
 ![img](../images/bvar_noah2.png)
 
 ![img](../images/bvar_noah3.png)
+
+# Dump to the format of other monitoring system
+
+Currently monitoring system supported by bvar is [Prometheus](https://prometheus.io). All you need to do is to set the path in scraping target url to `/metrics`. For example, if brpc server is running in localhost on port 8080, the scraping target should be `127.0.0.1:8080/metrics`.

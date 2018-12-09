@@ -89,3 +89,7 @@ process_username : "gejun"
 ![img](../images/bvar_noah2.png)
 
 ![img](../images/bvar_noah3.png)
+
+# bvar导出到其它监控系统格式
+
+bvar已支持的其它监控系统格式有[Prometheus](https://prometheus.io)。将Prometheus的抓取url地址的路径设置为`/metrics`即可，例如brpc server跑在本机的8080端口，则抓取url配置为`127.0.0.1:8080/metrics`。
