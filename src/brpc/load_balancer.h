@@ -24,6 +24,8 @@
 #include "brpc/shared_object.h"                   // SharedObject
 #include "brpc/server_id.h"                       // ServerId
 #include "brpc/extension.h"                       // Extension<T>
+#include "butil/strings/string_piece.h"
+#include "butil/strings/string_split.h"
 
 
 namespace brpc {
@@ -102,6 +104,8 @@ public:
     // Caller is responsible for Destroy() the instance after usage.
     virtual LoadBalancer* New() const = 0;
 
+    virtual bool SetParameters(const butil::StringPairs& parms) { return true; }
+
 protected:
     virtual ~LoadBalancer() { }
 };
@@ -164,6 +168,9 @@ public:
     }
 
 private:
+    static void ParseParameters(const butil::StringPiece lb_protocl, 
+                                std::string* lb_name,
+                                butil::StringPairs* parms);
     static void DescribeLB(std::ostream& os, void* arg);
     void ExposeLB();
 

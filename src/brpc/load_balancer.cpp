@@ -62,8 +62,11 @@ SharedLoadBalancer::~SharedLoadBalancer() {
     }
 }
 
-int SharedLoadBalancer::Init(const char* lb_name) {
-    const LoadBalancer* lb = LoadBalancerExtension()->Find(lb_name);
+int SharedLoadBalancer::Init(const char* lb_protocol) {
+    std::string lb_name;
+    butil::StringPairs lb_parms;
+    ParseParameters(lb_protocol, &lb_name, &lb_parms);
+    const LoadBalancer* lb = LoadBalancerExtension()->Find(lb_name.c_str());
     if (lb == NULL) {
         LOG(FATAL) << "Fail to find LoadBalancer by `" << lb_name << "'";
         return -1;
@@ -74,6 +77,10 @@ int SharedLoadBalancer::Init(const char* lb_name) {
         return -1;
     }
     _lb = lb_copy;
+    if (!_lb->SetParameters(lb_parms)) {
+        LOG(FATAL) << "Fail to set parameters of lb `" << lb_protocol << "'";
+        return -1;
+    }
     if (FLAGS_show_lb_in_vars && !_exposed) {
         ExposeLB();
     }
@@ -89,4 +96,20 @@ void SharedLoadBalancer::Describe(std::ostream& os,
     }
 }
 
+void SharedLoadBalancer::ParseParameters(const butil::StringPiece lb_protocol, 
+                                         std::string* lb_name,
+                                         butil::StringPairs* parms) {
+    lb_name->clear();
+    parms->clear();
+    size_t pos = lb_protocol.find(':');
+    if (pos == std::string::npos) {
+        lb_name->append(lb_protocol.data(), lb_protocol.size());
+    } else {
+        lb_name->append(lb_protocol.data(), pos);
+        butil::StringPiece parms_piece = lb_protocol.substr(pos + sizeof(':'));
+        std::string parms_str(parms_piece.data(), parms_piece.size());
+        butil::SplitStringIntoKeyValuePairs(parms_str, '=', ' ', parms);
+    }
+}
+																				 
 } // namespace brpc

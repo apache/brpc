@@ -303,6 +303,9 @@ public:
     // Always succeed even if this socket is failed.
     void ReAddress(SocketUniquePtr* ptr);
 
+    // Returns 0 on success, 1 on failed socket, -1 on recycled.
+    static int AddressFailedAsWell(SocketId id, SocketUniquePtr* ptr);
+
     // Mark this Socket or the Socket associated with `id' as failed.
     // Any later Address() of the identifier shall return NULL unless the
     // Socket was revivied by HealthCheckThread. The Socket is NOT recycled
@@ -549,9 +552,6 @@ friend void DereferenceSocket(Socket*);
     int ConnectIfNot(const timespec* abstime, WriteRequest* req);
     
     int ResetFileDescriptor(int fd);
-
-    // Returns 0 on success, 1 on failed socket, -1 on recycled.
-    static int AddressFailedAsWell(SocketId id, SocketUniquePtr* ptr);
 
     // Wait until nref hits `expected_nref' and reset some internal resources.
     int WaitAndReset(int32_t expected_nref);

@@ -23,12 +23,16 @@
 namespace brpc {
 namespace policy {
 
-uint32_t MD5Hash32(const void* key, size_t len) {
+uint32_t MD5HashSignature(const void* key, size_t len, unsigned char* results) {
     MD5_CTX my_md5;
     MD5_Init(&my_md5);
     MD5_Update(&my_md5, (const unsigned char *)key, len);
-    unsigned char results[16];
     MD5_Final(results, &my_md5);
+}
+
+uint32_t MD5Hash32(const void* key, size_t len) {
+    unsigned char results[16];
+    MD5HashSignature(key, len, results);
     return ((uint32_t) (results[3] & 0xFF) << 24) 
             | ((uint32_t) (results[2] & 0xFF) << 16) 
             | ((uint32_t) (results[1] & 0xFF) << 8)
