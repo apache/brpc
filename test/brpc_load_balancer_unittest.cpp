@@ -25,6 +25,7 @@
 namespace brpc {
 namespace policy {
 extern uint32_t CRCHash32(const char *key, size_t len);
+extern const char* GetHashName(uint32_t (*hasher)(const void* key, size_t len));
 }}
 
 namespace {
@@ -250,8 +251,7 @@ TEST_F(LoadBalancerTest, update_while_selection) {
         } else if (round == 3) {
             lb = new brpc::policy::WeightedRoundRobinLoadBalancer;
         } else {
-            lb = new brpc::policy::ConsistentHashingLoadBalancer(
-                        ::brpc::policy::MurmurHash32);
+            lb = new brpc::policy::ConsistentHashingLoadBalancer("murmurhash32");
             sa.hash = ::brpc::policy::MurmurHash32;
         }
         sa.lb = lb;
@@ -364,8 +364,7 @@ TEST_F(LoadBalancerTest, fairness) {
         } else if (3 == round || 4 == round) {
             lb = new brpc::policy::WeightedRoundRobinLoadBalancer;
         } else {
-            lb = new brpc::policy::ConsistentHashingLoadBalancer(
-                    brpc::policy::MurmurHash32);
+            lb = new brpc::policy::ConsistentHashingLoadBalancer("murmurhash32");
             sa.hash = brpc::policy::MurmurHash32;
         }
         sa.lb = lb;
@@ -488,7 +487,8 @@ TEST_F(LoadBalancerTest, fairness) {
 TEST_F(LoadBalancerTest, consistent_hashing) {
     ::brpc::policy::ConsistentHashingLoadBalancer::HashFunc hashs[] = {
             ::brpc::policy::MurmurHash32, 
-            ::brpc::policy::MD5Hash32
+            ::brpc::policy::MD5Hash32,
+            ::brpc::policy::KetamaHash
             // ::brpc::policy::CRCHash32 crc is a bad hash function in test
     };
     const char* servers[] = { 
@@ -499,7 +499,7 @@ TEST_F(LoadBalancerTest, consistent_hashing) {
             "10.42.122.201:8833",
     };
     for (size_t round = 0; round < ARRAY_SIZE(hashs); ++round) {
-        brpc::policy::ConsistentHashingLoadBalancer chlb(hashs[round]);
+        brpc::policy::ConsistentHashingLoadBalancer chlb(brpc::policy::GetHashName(hashs[round]));
         std::vector<brpc::ServerId> ids;
         std::vector<butil::EndPoint> addrs;
         for (int j = 0;j < 5; ++j) 

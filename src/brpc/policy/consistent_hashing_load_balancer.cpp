@@ -33,11 +33,9 @@ DEFINE_int32(chash_num_replicas, 100,
 
 namespace {
 
-using HashFun = uint32_t(*)(const void*, size_t);
-
 bool BuildReplicasDefault(const ServerId server,
                           const size_t num_replicas,
-                          HashFun hash,
+                          ConsistentHashingLoadBalancer::HashFunc hash,
                           std::vector<ConsistentHashingLoadBalancer::Node>* replicas) {
     SocketUniquePtr ptr;
     if (Socket::AddressFailedAsWell(server.id, &ptr) == -1) {

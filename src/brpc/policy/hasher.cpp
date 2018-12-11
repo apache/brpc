@@ -23,7 +23,7 @@
 namespace brpc {
 namespace policy {
 
-uint32_t MD5HashSignature(const void* key, size_t len, unsigned char* results) {
+void MD5HashSignature(const void* key, size_t len, unsigned char* results) {
     MD5_CTX my_md5;
     MD5_Init(&my_md5);
     MD5_Update(&my_md5, (const unsigned char *)key, len);
@@ -37,6 +37,10 @@ uint32_t MD5Hash32(const void* key, size_t len) {
             | ((uint32_t) (results[2] & 0xFF) << 16) 
             | ((uint32_t) (results[1] & 0xFF) << 8)
             | (results[0] & 0xFF);
+}
+
+uint32_t KetamaHash(const void* key, size_t len) {
+    return MD5Hash32(key, len);
 }
 
 uint32_t MD5Hash32V(const butil::StringPiece* keys, size_t num_keys) {
@@ -153,7 +157,7 @@ uint32_t CRCHash32(const void* key, size_t len) {
 
 const char *GetHashName(uint32_t (*hasher)(const void* key, size_t len)) {
     if (hasher == MurmurHash32) {
-        return "murmurhash3";
+        return "murmurhash32";
     }
     if (hasher == MD5Hash32) {
         return "md5";
@@ -161,6 +165,10 @@ const char *GetHashName(uint32_t (*hasher)(const void* key, size_t len)) {
     if (hasher == CRCHash32) {
         return "crc32";
     }
+    if (hasher == KetamaHash) {
+        return "ketama";
+    }
+
     return "user_defined";
 }
 

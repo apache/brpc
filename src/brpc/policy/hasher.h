@@ -25,12 +25,14 @@
 namespace brpc {
 namespace policy {
 
-uint32_t MD5HashSignature(const void* key, size_t len, unsigned char* results);
+void MD5HashSignature(const void* key, size_t len, unsigned char* results);
 uint32_t MD5Hash32(const void* key, size_t len);
 uint32_t MD5Hash32V(const butil::StringPiece* keys, size_t num_keys);
 
 uint32_t MurmurHash32(const void* key, size_t len);
 uint32_t MurmurHash32V(const butil::StringPiece* keys, size_t num_keys);
+
+uint32_t KetamaHash(const void* key, size_t len);
 
 }  // namespace policy
 } // namespace brpc
