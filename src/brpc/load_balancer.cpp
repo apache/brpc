@@ -64,8 +64,8 @@ SharedLoadBalancer::~SharedLoadBalancer() {
 
 int SharedLoadBalancer::Init(const char* lb_protocol) {
     std::string lb_name;
-    butil::StringPairs lb_parms;
-    if (!ParseParameters(lb_protocol, &lb_name, &lb_parms)) {
+    butil::StringPairs lb_params;
+    if (!ParseParameters(lb_protocol, &lb_name, &lb_params)) {
         LOG(FATAL) << "Fail to parse this load balancer protocol '" << lb_protocol << '\'';
         return -1;
     }
@@ -80,7 +80,7 @@ int SharedLoadBalancer::Init(const char* lb_protocol) {
         return -1;
     }
     _lb = lb_copy;
-    if (!_lb->SetParameters(lb_parms)) {
+    if (!_lb->SetParameters(lb_params)) {
         LOG(FATAL) << "Fail to set parameters of lb `" << lb_protocol << "'";
         return -1;
     }
