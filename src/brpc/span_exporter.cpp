@@ -28,7 +28,7 @@ void SpanExporterManager::RegisterSpanExporter(std::shared_ptr<SpanExporter> spa
 void SpanExporterManager::UnRegisterSpanExporter(std::shared_ptr<SpanExporter> span_exporter) {
     std::unique_lock<butil::Mutex> lock_guard(_exporter_list_mutex);
     auto it = std::find(_exporter_list.begin(), _exporter_list.end(), span_exporter);
-    if (_exporter_list.empty() || it == _exporter_list.end()) {
+    if (it == _exporter_list.end()) {
         LOG(WARNING) << "SpanExport not registered yet";
         return;
     }
