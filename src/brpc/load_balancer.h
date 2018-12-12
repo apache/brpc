@@ -105,7 +105,7 @@ public:
     virtual LoadBalancer* New() const = 0;
 
     // Set other
-    virtual bool SetParameters(const butil::StringPairs& parms) { return true; }
+    virtual bool SetParameters(const butil::StringPairs& params) { return true; }
 
 protected:
     virtual ~LoadBalancer() { }

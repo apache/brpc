@@ -55,7 +55,7 @@ public:
     void Destroy();
     int SelectServer(const SelectIn &in, SelectOut *out);
     void Describe(std::ostream &os, const DescribeOptions& options);
-    virtual bool SetParameters(const butil::StringPairs& parms);
+    virtual bool SetParameters(const butil::StringPairs& params);
 
 private:
     void Init(const std::string& name);
