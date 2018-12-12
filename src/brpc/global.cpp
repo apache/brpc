@@ -108,7 +108,7 @@ const char* const DUMMY_SERVER_PORT_FILE = "dummy_server.port";
 
 struct GlobalExtensions {
     GlobalExtensions()
-        : ch_mh_lb("murmurhash32")
+        : ch_mh_lb("murmurhash3")
         , ch_md5_lb("md5")
         , ch_ketama_lb("ketama")
         , constant_cl(0) {

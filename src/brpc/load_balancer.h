@@ -104,6 +104,7 @@ public:
     // Caller is responsible for Destroy() the instance after usage.
     virtual LoadBalancer* New() const = 0;
 
+    // Set other
     virtual bool SetParameters(const butil::StringPairs& parms) { return true; }
 
 protected:
@@ -168,9 +169,9 @@ public:
     }
 
 private:
-    static void ParseParameters(const butil::StringPiece lb_protocl, 
+    static bool ParseParameters(const butil::StringPiece& lb_protocol,
                                 std::string* lb_name,
-                                butil::StringPairs* parms);
+                                butil::StringPairs* lb_params);
     static void DescribeLB(std::ostream& os, void* arg);
     void ExposeLB();
 

@@ -94,7 +94,7 @@ ConsistentHashingLoadBalancer::ConsistentHashingLoadBalancer(const char* name)
 }
 
 void ConsistentHashingLoadBalancer::Init(const std::string& name) {
-    if (name.compare("murmurhash3") == 0) {
+    if (name == "murmurhash3") {
         _build_replicas = std::bind(BuildReplicasDefault,
                                     std::placeholders::_1,
                                     std::placeholders::_2,
@@ -102,7 +102,7 @@ void ConsistentHashingLoadBalancer::Init(const std::string& name) {
                                     std::placeholders::_3);
         return;
     }
-    if (name.compare("md5") == 0) {
+    if (name == "md5") {
         _build_replicas = std::bind(BuildReplicasDefault,
                                     std::placeholders::_1,
                                     std::placeholders::_2,
@@ -110,7 +110,7 @@ void ConsistentHashingLoadBalancer::Init(const std::string& name) {
                                     std::placeholders::_3);
         return;
     }
-    if (name.compare("ketama") == 0) {
+    if (name == "ketama") {
         _build_replicas = BuildReplicasKetam;
         return;
     }
@@ -341,18 +341,18 @@ void ConsistentHashingLoadBalancer::GetLoads(
     }
 }
 
-bool ConsistentHashingLoadBalancer::SetParameters(const butil::StringPairs& parms) {
-    for (const std::pair<std::string, std::string>& parm : parms) {
-        if (parm.first.compare("replicas") == 0) {
+bool ConsistentHashingLoadBalancer::SetParameters(const butil::StringPairs& params) {
+    for (const std::pair<std::string, std::string>& param : params) {
+        if (param.first == "replicas") {
             size_t replicas = 0;
-            if (butil::StringToSizeT(parm.second, &replicas)) {
+            if (butil::StringToSizeT(param.second, &replicas)) {
                 _num_replicas = replicas;
             } else {
                 return false;
             }
-        } else {
-            return false;
+            continue;
         }
+        LOG(ERROR) << "Failed to set this unknown parameters " << param.first << '=' << param.second;
     }
 
     return true;

@@ -251,7 +251,7 @@ TEST_F(LoadBalancerTest, update_while_selection) {
         } else if (round == 3) {
             lb = new brpc::policy::WeightedRoundRobinLoadBalancer;
         } else {
-            lb = new brpc::policy::ConsistentHashingLoadBalancer("murmurhash32");
+            lb = new brpc::policy::ConsistentHashingLoadBalancer("murmurhash3");
             sa.hash = ::brpc::policy::MurmurHash32;
         }
         sa.lb = lb;
@@ -364,7 +364,7 @@ TEST_F(LoadBalancerTest, fairness) {
         } else if (3 == round || 4 == round) {
             lb = new brpc::policy::WeightedRoundRobinLoadBalancer;
         } else {
-            lb = new brpc::policy::ConsistentHashingLoadBalancer("murmurhash32");
+            lb = new brpc::policy::ConsistentHashingLoadBalancer("murmurhash3");
             sa.hash = brpc::policy::MurmurHash32;
         }
         sa.lb = lb;

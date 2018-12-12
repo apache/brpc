@@ -157,7 +157,7 @@ uint32_t CRCHash32(const void* key, size_t len) {
 
 const char *GetHashName(uint32_t (*hasher)(const void* key, size_t len)) {
     if (hasher == MurmurHash32) {
-        return "murmurhash32";
+        return "murmurhash3";
     }
     if (hasher == MD5Hash32) {
         return "md5";
