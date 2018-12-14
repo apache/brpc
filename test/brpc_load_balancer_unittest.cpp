@@ -485,7 +485,7 @@ TEST_F(LoadBalancerTest, fairness) {
 }
 
 TEST_F(LoadBalancerTest, consistent_hashing) {
-    ::brpc::policy::ConsistentHashingLoadBalancer::HashFunc hashs[] = {
+    ::brpc::policy::HashFunc hashs[] = {
             ::brpc::policy::MurmurHash32, 
             ::brpc::policy::MD5Hash32,
             ::brpc::policy::KetamaHash

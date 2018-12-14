@@ -35,7 +35,7 @@ namespace {
 
 bool BuildReplicasDefault(const ServerId server,
                           const size_t num_replicas,
-                          ConsistentHashingLoadBalancer::HashFunc hash,
+                          HashFunc hash,
                           std::vector<ConsistentHashingLoadBalancer::Node>* replicas) {
     SocketUniquePtr ptr;
     if (Socket::AddressFailedAsWell(server.id, &ptr) == -1) {

@@ -43,7 +43,6 @@ public:
             return hash < code;
         }
     };
-    using HashFunc = uint32_t(*)(const void*, size_t);
     using BuildReplicasFunc = 
         std::function<bool (const ServerId server, const size_t num_replicas, std::vector<Node>* replicas)>;
     explicit ConsistentHashingLoadBalancer(const char* name);

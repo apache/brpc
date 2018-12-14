@@ -104,7 +104,8 @@ public:
     // Caller is responsible for Destroy() the instance after usage.
     virtual LoadBalancer* New() const = 0;
 
-    // Set other
+    // Config user passed parameters to lb after constrction which 
+    // make lb function more flexible.
     virtual bool SetParameters(const butil::StringPairs& params) { return true; }
 
 protected:

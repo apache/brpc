@@ -155,7 +155,7 @@ uint32_t CRCHash32(const void* key, size_t len) {
     return ((~crc) >> 16) & 0x7fff;
 }
 
-const char *GetHashName(uint32_t (*hasher)(const void* key, size_t len)) {
+const char *GetHashName(HashFunc hasher) {
     if (hasher == MurmurHash32) {
         return "murmurhash3";
     }
