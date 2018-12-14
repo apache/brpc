@@ -10,3 +10,4 @@ ServerOptions serv_options;
 serv_options.use_rdma = true;
 ```
 
+Please remember that you can use RDMA only when your server has RDMA NIC and OFED suite.

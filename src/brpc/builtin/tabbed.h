@@ -20,7 +20,6 @@
 #include <string>
 #include <vector>
 
-
 namespace brpc {
 
 // Contain the information for showing a tab.
@@ -77,6 +76,7 @@ private:
 // Note: don't forget the jquery.
 class Tabbed {
 public:
+    virtual ~Tabbed() = default;
     virtual void GetTabInfo(TabInfoList* info_list) const = 0;
 };
 

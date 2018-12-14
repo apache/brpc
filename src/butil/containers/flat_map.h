@@ -167,9 +167,10 @@ public:
 
     // Remove |key| and the associated value
     // Returns: 1 on erased, 0 otherwise.
-    template <typename K2> size_t erase(const K2& key);
-    
     // Remove all items. Allocated spaces are NOT returned by system.
+    template <typename K2>
+    size_t erase(const K2& key, mapped_type* old_value = NULL);
+
     void clear();
 
     // Remove all items and return all allocated spaces to system.
@@ -259,7 +260,7 @@ public:
 
 private:
 template <typename _Map, typename _Element> friend class FlatMapIterator;
-template <typename _Map, typename _Element> friend class FlatMapSparseIterator;
+template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
     // True if buckets need to be resized before holding `size' elements.
     inline bool is_too_crowded(size_t size) const
     { return size * 100 >= _nbucket * _load_factor; }
@@ -300,7 +301,7 @@ public:
     { return _map.insert(key, FlatMapVoid()); }
 
     template <typename K2>
-    size_t erase(const K2& key) { return _map.erase(key); }
+    size_t erase(const K2& key) { return _map.erase(key, NULL); }
 
     void clear() { return _map.clear(); }
     void clear_and_reset_pool() { return _map.clear_and_reset_pool(); }

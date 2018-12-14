@@ -56,11 +56,4 @@ Instead, brpc tries to register memory every time, which makes performance degra
 You can also try polling mode as well by set the flags 'rdma_cq_num', 'rdma_use_polling', 'rdma_use_inplace', 'rdma_cq_offset'.
 More details of these flags, including default values, can be displayed if you use '--help'.
 
-If you try to use 'specify_attachment_addr' flag, please make sure you have turned on the 'IOBUF_WITH_HUGE_BLOCK' option in cmake.
-
 You can also run TCP as a comparison. You should only use the flag '--use_rdma=false' both on perf_servers (optional) and perf_clients (required).
-
-# Known problems
-
-Currently, brpc cannot support multiple active RDMA ports very well.
-Therefore, if your servers has two or more active RDMA ports, please disable extra ones or make them bonding together.

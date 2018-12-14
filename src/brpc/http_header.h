@@ -23,6 +23,7 @@
 #include "brpc/uri.h"              // URI
 #include "brpc/http_method.h"      // HttpMethod
 #include "brpc/http_status_code.h"
+#include "brpc/http2.h"
 
 // To rpc developers: DON'T put impl. details here, use opaque pointers instead.
 
@@ -31,6 +32,7 @@ namespace brpc {
 class InputMessageBase;
 namespace policy {
 void ProcessHttpRequest(InputMessageBase *msg);
+class H2StreamContext;
 }
 
 // Non-body part of a HTTP message.
@@ -67,6 +69,7 @@ public:
     const std::string& content_type() const { return _content_type; }
     void set_content_type(const std::string& type) { _content_type = type; }
     void set_content_type(const char* type) { _content_type = type; }
+    std::string& mutable_content_type() { return _content_type; }
     
     // Get value of a header which is case-insensitive according to:
     //   https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2
@@ -135,6 +138,7 @@ public:
 private:
 friend class HttpMessage;
 friend class HttpMessageSerializer;
+friend class policy::H2StreamContext;
 friend void policy::ProcessHttpRequest(InputMessageBase *msg);
 
     std::string& GetOrAddHeader(const std::string& key) {

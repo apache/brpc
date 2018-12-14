@@ -1,0 +1,15 @@
+syntax="proto2";
+package brpc.rdma;
+option cc_generic_services = true;
+
+message RdmaTrafficControlRequest {
+    repeated uint64 socket_id = 1;
+}
+
+message RdmaTrafficControlResponse { }
+
+service RdmaTrafficControlService {
+    rpc TurnOn(RdmaTrafficControlRequest) returns (RdmaTrafficControlResponse);
+    rpc TurnOff(RdmaTrafficControlRequest) returns (RdmaTrafficControlResponse);
+    rpc TurnOffPartially(RdmaTrafficControlRequest) returns (RdmaTrafficControlResponse);
+}

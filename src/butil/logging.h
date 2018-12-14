@@ -20,7 +20,7 @@
 #ifndef BUTIL_LOGGING_H_
 #define BUTIL_LOGGING_H_
 
-#include <butil/config.h>   // BRPC_WITH_GLOG
+#include "butil/config.h"   // BRPC_WITH_GLOG
 
 #include <inttypes.h>
 #include <string>
@@ -424,6 +424,7 @@ public:
     };
 
     virtual void print(const Site& site) = 0;
+    virtual ~VLogSitePrinter() = default;
 };
 
 void print_vlog_sites(VLogSitePrinter*);

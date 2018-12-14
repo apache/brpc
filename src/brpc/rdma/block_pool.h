@@ -42,12 +42,11 @@ namespace rdma {
 // And the region is the unit of RDMA registration. The caller must be able
 // to get the LKey of the region from the pool, which we call it region ID.
 //
-// Since IOBuf supports different block size (max: 64KB, when IOBUF_HUGE_BLOCK
-// is not defined), the block_pool also supports several block sizes: 8KB, 16KB,
-// 32KB and 64KB (when IOBUF_HUGE_BLOCK is not defined). The block allocated
-// to the caller is the block with minimum size which is larger than the
-// applied size. For example, if the caller needs a buffer with a size of 9KB,
-// block_pool will allocate a 16KB-block for it. Please remember that
+// Since IOBuf supports different block size, the block_pool also supports
+// several block sizes: 8KB(default), 64KB and 2MB. The block allocated to
+// the caller is the block with minimum size which is larger than the
+// applied size. For example, if the caller needs a buffer with a size of
+// 9KB, block_pool will allocate a 64KB-block for it. Please remember that
 // different-size blocks are in different regions.
 //
 // Currently, the block_pool supports 16 regions at most. If there is more than
@@ -84,8 +83,13 @@ int DeallocBlock(void* buf);
 // Get the region ID of the given buf
 uint32_t GetRegionId(const void* buf);
 
+// Return the block size of given block type
+// type=1: BLOCK_DEFAULT(8KB)
+// type=2: BLOCK_LARGE(64KB)
+// type=3: BLOCK_HUGE(2MB)
+size_t GetBlockSize(int type);
+
 }  // namespace rdma
 }  // namespace brpc
 
 #endif  // BRPC_RDMA_BLOCK_POOL_H
-

@@ -18,12 +18,16 @@
 #define BRPC_RDMA_ENDPOINT_H
 
 #include <cstring>
+#include <iostream>
 #include <string>
-#include <vector>                    // std::vector
-#include <butil/atomicops.h>         // butil::atomic
-#include <butil/iobuf.h>             // butil::IOBuf
-#include <butil/macros.h>
-#include <bthread/execution_queue.h>
+#include <vector>
+#ifdef BRPC_RDMA
+#include <boost/lockfree/spsc_queue.hpp>
+#endif
+#include "butil/atomicops.h"         // butil::atomic
+#include "butil/iobuf.h"             // butil::IOBuf
+#include "butil/macros.h"
+#include "bthread/bthread.h"
 #include "brpc/socket.h"
 #include "brpc/rdma/rdma_communication_manager.h"
 #include "brpc/rdma/rdma_completion_queue.h"
@@ -44,6 +48,10 @@ friend class RdmaCompletionQueue;
 public:
     RdmaEndpoint(Socket* s);
     ~RdmaEndpoint();
+
+    // Global initialization
+    // Return 0 if success, -1 if failed and errno set
+    static int GlobalInitialize();
 
     // Initialize RdmaEndpoint from accept
     // Return 0 if success, -1 if failed and errno set
@@ -69,6 +77,9 @@ public:
     // Whether the endpoint can send more data
     bool IsWritable() const;
 
+    // For debug
+    void DebugInfo(std::ostream& os) const;
+
 private:
     enum Status {
         UNINITIALIZED,
@@ -80,10 +91,6 @@ private:
         ACCEPTING,          // only valid at server
         ESTABLISHED
     };
-
-    // Processing thread used when shared CQ is enabled
-    static int CompletionThread(void* arg,
-            bthread::TaskIterator<RdmaCompletion*>& iter);
 
     // Process handshake at the client
     // event is the corresponding rdmacm event
@@ -101,18 +108,6 @@ private:
 
     // Release resources
     void DeallocateResources();
-
-    // Move data, make sglist and post one WR to the local Send Queue
-    // Arguments:
-    //     from: the IOBufList which contains the data to send
-    //     ndata: the length of the above IOBufList
-    //     to: the IOBuf which we move the data posted to
-    //     imm: imm data in the WR
-    // Return:
-    //     bytes of data posted if success
-    //     -1 if failed, errno set
-    ssize_t DoCutFromIOBufList(
-        butil::IOBuf** from, size_t ndata, butil::IOBuf* to, uint32_t imm);
 
     // Send Imm data to the remote side
     // Arguments:
@@ -172,10 +167,15 @@ private:
     // Receive buffer during handshake
     butil::IOPortal _handshake_buf;
 
+    // Remote block size for receiving
+    uint32_t _remote_recv_block_size;
+
     // The number of new recv WRs acked to the remote side
     uint32_t _accumulated_ack;
     // The number of WRs sent without solicited flag
     uint32_t _unsolicited;
+    // The bytes sent without solicited flag
+    uint32_t _unsolicited_bytes;
     // The current index should be used for sending
     uint32_t _sq_current;
     // The number of send WRs not signaled
@@ -197,10 +197,12 @@ private:
     // Remote side SocketId
     uint64_t _remote_sid;
 
+#ifdef BRPC_RDMA
     // Only used when shared CQ is enabled
-    bthread::ExecutionQueueId<RdmaCompletion*> _completion_queue;
-    // Whether the _completion_queue is valid
-    bool _completion_queue_valid;
+    boost::lockfree::spsc_queue<RdmaCompletion*> _completion_queue;
+#endif
+    // Number of completions received
+    butil::atomic<int> _ncompletions;
 
     // pipe fd used for waking handshake
     int _pipefd[2];

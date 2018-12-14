@@ -20,9 +20,11 @@ TEST(URITest, everything) {
     ASSERT_EQ(*uri.GetQuery("wd"), "uri");
     ASSERT_FALSE(uri.GetQuery("nonkey"));
 
+    std::string schema;
     std::string host_out;
     int port_out = -1;
-    brpc::ParseHostAndPortFromURL(uri_str.c_str(), &host_out, &port_out);
+    brpc::ParseURL(uri_str.c_str(), &schema, &host_out, &port_out);
+    ASSERT_EQ("foobar", schema);
     ASSERT_EQ("www.baidu.com", host_out);
     ASSERT_EQ(80, port_out);
 }
@@ -36,7 +38,7 @@ TEST(URITest, only_host) {
     ASSERT_EQ("", uri.path());
     ASSERT_EQ("", uri.user_info());
     ASSERT_EQ("", uri.fragment());
-    ASSERT_EQ(2, uri.QueryCount());
+    ASSERT_EQ(2u, uri.QueryCount());
     ASSERT_TRUE(uri.GetQuery("wd"));
     ASSERT_EQ(*uri.GetQuery("wd"), "uri2");
     ASSERT_TRUE(uri.GetQuery("nonkey"));

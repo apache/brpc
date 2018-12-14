@@ -156,6 +156,14 @@ inline const IOBuf::BlockRef& IOBuf::_ref_at(size_t i) const {
     return _small() ? _sv.refs[i] : _bv.ref_at(i);
 }
 
+inline const IOBuf::BlockRef* IOBuf::_pref_at(size_t i) const {
+    if (_small()) {
+        return i < (size_t)(!!_sv.refs[0].block + !!_sv.refs[1].block) ? &_sv.refs[i] : NULL;
+    } else {
+        return i < _bv.nref ? &_bv.ref_at(i) : NULL;
+    }
+}
+
 inline bool operator==(const IOBuf::BlockRef& r1, const IOBuf::BlockRef& r2) {
     return r1.offset == r2.offset && r1.length == r2.length &&
         r1.block == r2.block;
@@ -241,6 +249,27 @@ inline IOBufBytesIterator::IOBufBytesIterator(const butil::IOBuf& buf)
     try_next_block();
 }
 
+inline IOBufBytesIterator::IOBufBytesIterator(const IOBufBytesIterator& it)
+    : _block_begin(it._block_begin)
+    , _block_end(it._block_end)
+    , _block_count(it._block_count)
+    , _bytes_left(it._bytes_left)
+    , _buf(it._buf) {
+}
+
+inline IOBufBytesIterator::IOBufBytesIterator(
+    const IOBufBytesIterator& it, size_t bytes_left)
+    : _block_begin(it._block_begin)
+    , _block_end(it._block_end)
+    , _block_count(it._block_count)
+    , _bytes_left(bytes_left)
+    , _buf(it._buf) {
+    //CHECK_LE(_bytes_left, it._bytes_left);
+    if (_block_end > _block_begin + _bytes_left) {
+        _block_end = _block_begin + _bytes_left;
+    }
+}
+
 inline void IOBufBytesIterator::try_next_block() {
     if (_bytes_left == 0) {
         return;
@@ -260,7 +289,7 @@ inline void IOBufBytesIterator::operator++() {
 
 inline size_t IOBufBytesIterator::copy_and_forward(void* buf, size_t n) {
     size_t nc = 0;
-    while (nc < n && *this != NULL) {
+    while (nc < n && _bytes_left != 0) {
         const size_t block_size = _block_end - _block_begin;
         const size_t to_copy = std::min(block_size, n - nc);
         fast_memcpy((char*)buf + nc, _block_begin, to_copy);
@@ -283,6 +312,21 @@ inline size_t IOBufBytesIterator::copy_and_forward(std::string* s, size_t n) {
     const size_t nc = copy_and_forward(const_cast<char*>(s->data()), n);
     if (nc < n && resized) {
         s->resize(nc);
+    }
+    return nc;
+}
+
+inline size_t IOBufBytesIterator::forward(size_t n) {
+    size_t nc = 0;
+    while (nc < n && _bytes_left != 0) {
+        const size_t block_size = _block_end - _block_begin;
+        const size_t to_copy = std::min(block_size, n - nc);
+        _block_begin += to_copy;
+        _bytes_left -= to_copy;
+        nc += to_copy;
+        if (_block_begin == _block_end) {
+            try_next_block();
+        }
     }
     return nc;
 }

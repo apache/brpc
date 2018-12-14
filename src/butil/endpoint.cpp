@@ -1,11 +1,11 @@
 // Copyright (c) 2011 Baidu, Inc.
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -23,11 +23,18 @@
 #include <string.h>                            // strcpy
 #include <stdio.h>                             // snprintf
 #include <stdlib.h>                            // strtol
+#include <gflags/gflags.h>
 #include "butil/fd_guard.h"                    // fd_guard
 #include "butil/endpoint.h"                    // ip_t
 #include "butil/logging.h"
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/strings/string_piece.h"
+
+#ifndef SO_REUSEPORT
+#define SO_REUSEPORT    15
+#endif
+//This option is supported since Linux 3.9.
+DEFINE_bool(reuse_port, false, "turn on support for SO_REUSEPORT socket option.");
 
 __BEGIN_DECLS
 int BAIDU_WEAK bthread_connect(
@@ -127,7 +134,7 @@ int hostname2ip(const char* hostname, ip_t* ip) {
     struct hostent* result = NULL;
     if (gethostbyname_r(hostname, &ent, aux_buf, sizeof(aux_buf),
                         &result, &error) != 0 || result == NULL) {
-        return -1; 
+        return -1;
     }
 #endif // defined(OS_MACOSX)
     // Only fetch the first address here
@@ -139,7 +146,7 @@ struct MyAddressInfo {
     char my_hostname[256];
     ip_t my_ip;
     IPStr my_ip_str;
-    
+
     MyAddressInfo() {
         my_ip = IP_ANY;
         if (gethostname(my_hostname, sizeof(my_hostname)) < 0) {
@@ -215,7 +222,7 @@ int hostname2endpoint(const char* str, EndPoint* point) {
     if (i == sizeof(buf) - 1) {
         return -1;
     }
-    
+
     buf[i] = '\0';
     if (hostname2ip(buf, &point->ip) != 0) {
         return -1;
@@ -313,17 +320,27 @@ int tcp_listen(EndPoint point, bool reuse_addr) {
             return -1;
         }
     }
+
+    if (FLAGS_reuse_port) {
+        const int on = 1;
+        if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT,
+                       &on, sizeof(on)) != 0) {
+            LOG(WARNING) << "Fail to setsockopt SO_REUSEPORT of sockfd=" << sockfd;
+        }
+    }
+
     struct sockaddr_in serv_addr;
     bzero((char*)&serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr = point.ip;
-    serv_addr.sin_port = htons(point.port); 
+    serv_addr.sin_port = htons(point.port);
     if (bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) != 0) {
         return -1;
     }
-    if (listen(sockfd, INT_MAX) != 0) {
+    if (listen(sockfd, 65535) != 0) {
         //             ^^^ kernel would silently truncate backlog to the value
-        //             defined in /proc/sys/net/core/somaxconn
+        //             defined in /proc/sys/net/core/somaxconn if it is less
+        //             than 65535
         return -1;
     }
     return sockfd.release();

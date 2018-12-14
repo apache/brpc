@@ -15,16 +15,21 @@
 #include "brpc/policy/file_naming_service.h"
 #include "brpc/policy/list_naming_service.h"
 #include "brpc/policy/remote_file_naming_service.h"
+#include "brpc/policy/discovery_naming_service.h"
 #include "echo.pb.h"
 #include "brpc/server.h"
 
 
 namespace brpc {
+DECLARE_int32(health_check_interval);
+
 namespace policy {
 
 DECLARE_bool(consul_enable_degrade_to_file_naming_service);
 DECLARE_string(consul_file_naming_service_dir);
 DECLARE_string(consul_service_discovery_url);
+DECLARE_string(discovery_api_addr);
+DECLARE_string(discovery_env);
 
 } // policy
 } // brpc
@@ -357,6 +362,8 @@ public:
 
 TEST(NamingServiceTest, consul_with_backup_file) {
     brpc::policy::FLAGS_consul_enable_degrade_to_file_naming_service = true;
+    const int saved_hc_interval = brpc::FLAGS_health_check_interval;
+    brpc::FLAGS_health_check_interval = 1;
     const char *address_list[] =  {
         "10.127.0.1:1234",
         "10.128.0.1:1234",
@@ -394,7 +401,7 @@ TEST(NamingServiceTest, consul_with_backup_file) {
                                    restful_map.c_str()));
     ASSERT_EQ(0, server.Start("localhost:8500", NULL));
 
-    bthread_usleep(1000000);
+    bthread_usleep(5000000);
 
     butil::EndPoint n1;
     ASSERT_EQ(0, butil::str2endpoint("10.121.36.189:8003", &n1));
@@ -412,6 +419,151 @@ TEST(NamingServiceTest, consul_with_backup_file) {
     for (size_t i = 0; i < expected_servers.size(); ++i) {
         ASSERT_EQ(expected_servers[i], servers[i]);
     }
+    brpc::FLAGS_health_check_interval = saved_hc_interval;
 }
+
+
+static const std::string s_fetchs_result = R"({
+    "code":0,
+    "message":"0",
+    "ttl":1,
+    "data":{
+        "admin.test":{
+            "instances":[
+                {
+                    "region":"",
+                    "zone":"sh001",
+                    "env":"uat",
+                    "appid":"admin.test",
+                    "treeid":0,
+                    "hostname":"host123",
+                    "http":"",
+                    "rpc":"",
+                    "version":"123",
+                    "metadata":{
+
+                    },
+                    "addrs":[
+                        "http://127.0.0.1:8999",
+                        "gorpc://127.0.1.1:9000"
+                    ],
+                    "status":1,
+                    "reg_timestamp":1539001034551496412,
+                    "up_timestamp":1539001034551496412,
+                    "renew_timestamp":1539001034551496412,
+                    "dirty_timestamp":1539001034551496412,
+                    "latest_timestamp":1539001034551496412
+                }
+            ],
+            "zone_instances":{
+                "sh001":[
+                    {
+                        "region":"",
+                        "zone":"sh001",
+                        "env":"uat",
+                        "appid":"admin.test",
+                        "treeid":0,
+                        "hostname":"host123",
+                        "http":"",
+                        "rpc":"",
+                        "version":"123",
+                        "metadata":{
+
+                        },
+                        "addrs":[
+                            "http://127.0.0.1:8999",
+                            "gorpc://127.0.1.1:9000"
+                        ],
+                        "status":1,
+                        "reg_timestamp":1539001034551496412,
+                        "up_timestamp":1539001034551496412,
+                        "renew_timestamp":1539001034551496412,
+                        "dirty_timestamp":1539001034551496412,
+                        "latest_timestamp":1539001034551496412
+                    }
+                ]
+            },
+            "latest_timestamp":1539001034551496412,
+            "latest_timestamp_str":"1539001034"
+        }
+    }
+})";
+
+static std::string s_nodes_result = R"({
+    "code": 0,
+    "message": "0",
+    "ttl": 1,
+    "data": [
+        {
+            "addr": "127.0.0.1:8635",
+            "status": 0,
+            "zone": ""
+        }, {
+            "addr": "172.18.33.51:7171",
+            "status": 0,
+            "zone": ""
+        }, {
+            "addr": "172.18.33.52:7171",
+            "status": 0,
+            "zone": ""
+        }
+    ]
+})";
+
+TEST(NamingServiceTest, discovery_parse_function) {
+    std::vector<brpc::ServerNode> servers;
+    brpc::policy::DiscoveryNamingService dcns;
+    butil::IOBuf buf;
+    buf.append(s_fetchs_result);
+    ASSERT_EQ(0, dcns.ParseFetchsResult(buf, "admin.test", &servers));
+    ASSERT_EQ((size_t)2, servers.size());
+    buf.clear();
+    buf.append(s_nodes_result);
+    std::string server;
+    ASSERT_EQ(0, dcns.ParseNodesResult(buf, &server));
+    ASSERT_EQ("127.0.0.1:8635", server);
+}
+
+class DiscoveryNamingServiceImpl : public test::DiscoveryNamingService {
+public:
+    DiscoveryNamingServiceImpl () {}
+    virtual ~DiscoveryNamingServiceImpl() {}
+
+    void Nodes(google::protobuf::RpcController* cntl_base,
+               const test::HttpRequest*,
+               test::HttpResponse*,
+               google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        cntl->response_attachment().append(s_nodes_result);
+    }
+
+    void Fetchs(google::protobuf::RpcController* cntl_base,
+                const test::HttpRequest*,
+                test::HttpResponse*,
+                google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        cntl->response_attachment().append(s_fetchs_result);
+    }
+};
+
+TEST(NamingServiceTest, discovery_sanity) {
+    brpc::policy::FLAGS_discovery_api_addr = "http://127.0.0.1:8635/discovery/nodes";
+    brpc::Server server;
+    DiscoveryNamingServiceImpl svc;
+    std::string rest_mapping =
+        "/discovery/nodes => Nodes, "
+        "/discovery/fetchs => Fetchs";
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE,
+                rest_mapping.c_str()));
+    ASSERT_EQ(0, server.Start("localhost:8635", NULL));
+
+    brpc::policy::DiscoveryNamingService dcns;
+    std::vector<brpc::ServerNode> servers;
+    ASSERT_EQ(0, dcns.GetServers("admin.test", &servers));
+    ASSERT_EQ((size_t)2, servers.size());
+}
+
 
 } //namespace

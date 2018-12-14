@@ -19,21 +19,25 @@
 #include <rdma/rdma_cma.h>
 #endif
 #include <arpa/inet.h>
-#include <ifaddrs.h>
+#include <dlfcn.h>                                // dlopen
 #include <fcntl.h>
+#include <ifaddrs.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <vector>
-#include <butil/containers/flat_map.h>            // butil::FlatMap
-#include <butil/fd_guard.h>
-#include <butil/fd_utility.h>                     // butil::make_non_blocking
-#include <butil/logging.h>
-#include <butil/string_printf.h>
-#include <bthread/bthread.h>
 #include <gflags/gflags.h>
+#include "butil/containers/flat_map.h"            // butil::FlatMap
+#include "butil/endpoint.h"
+#include "butil/fd_guard.h"
+#include "butil/fd_utility.h"                     // butil::make_non_blocking
+#include "butil/logging.h"
+#include "butil/string_printf.h"
+#include "bthread/bthread.h"
 #include "brpc/socket.h"
 #include "brpc/rdma/block_pool.h"
 #include "brpc/rdma/rdma_completion_queue.h"
+#include "brpc/rdma/rdma_endpoint.h"
+#include "brpc/rdma/rdma_fallback_channel.h"
 #include "brpc/rdma/rdma_helper.h"
 
 namespace butil {
@@ -46,15 +50,62 @@ extern void  (*blockmem_deallocate)(void*);
 
 namespace brpc {
 namespace rdma {
+
+void* g_handle_rdmacm = NULL;
+void* g_handle_ibverbs = NULL;
+
+// RDMA-related functions
+#ifdef BRPC_RDMA
+ibv_context** (*RdmaGetDevices)(int*) = NULL;
+void (*RdmaFreeDevices)(ibv_context**) = NULL;
+int (*RdmaCreateId)(rdma_event_channel*, rdma_cm_id**, void*, rdma_port_space) = NULL;
+int (*RdmaDestroyId)(rdma_cm_id*) = NULL;
+int (*RdmaResolveAddr)(rdma_cm_id*, sockaddr*, sockaddr*, int) = NULL;
+int (*RdmaBindAddr)(rdma_cm_id*, sockaddr*) = NULL;
+int (*RdmaResolveRoute)(rdma_cm_id*, int) = NULL;
+int (*RdmaListen)(rdma_cm_id*, int) = NULL;
+int (*RdmaConnect)(rdma_cm_id*, rdma_conn_param*) = NULL;
+int (*RdmaGetRequest)(rdma_cm_id*, rdma_cm_id**) = NULL;
+int (*RdmaAccept)(rdma_cm_id*, rdma_conn_param*) = NULL;
+int (*RdmaDisconnect)(rdma_cm_id*) = NULL;
+int (*RdmaGetCmEvent)(rdma_event_channel*, rdma_cm_event**) = NULL;
+int (*RdmaAckCmEvent)(rdma_cm_event*) = NULL;
+int (*RdmaCreateQp)(rdma_cm_id*, ibv_pd*, ibv_qp_init_attr*) = NULL;
+
+int (*IbvForkInit)(void) = NULL;
+int (*IbvQueryDevice)(ibv_context*, ibv_device_attr*) = NULL;
+int (*IbvQueryPort)(ibv_context*, uint8_t, ibv_port_attr*) = NULL;
+ibv_pd* (*IbvAllocPd)(ibv_context*) = NULL;
+int (*IbvDeallocPd)(ibv_pd*) = NULL;
+ibv_cq* (*IbvCreateCq)(ibv_context*, int, void*, ibv_comp_channel*, int) = NULL;
+int (*IbvDestroyCq)(ibv_cq*) = NULL;
+ibv_comp_channel* (*IbvCreateCompChannel)(ibv_context*) = NULL;
+int (*IbvDestroyCompChannel)(ibv_comp_channel*) = NULL;
+ibv_mr* (*IbvRegMr)(ibv_pd*, void*, size_t, ibv_access_flags) = NULL;
+int (*IbvDeregMr)(ibv_mr*) = NULL;
+int (*IbvGetCqEvent)(ibv_comp_channel*, ibv_cq**, void**) = NULL;
+void (*IbvAckCqEvents)(ibv_cq*, unsigned int) = NULL;
+int (*IbvGetAsyncEvent)(ibv_context*, ibv_async_event*) = NULL;
+void (*IbvAckAsyncEvent)(ibv_async_event*) = NULL;
+int (*IbvDestroyQp)(ibv_qp*) = NULL;
+#endif
+
+// NOTE:
+// ibv_post_send, ibv_post_recv, ibv_poll_cq, ibv_req_notify_cq are all inline function
+// defined in infiniband/verbs.h.
+
 // declared in rdma_completion_queue.cpp
 extern int g_cq_num;
 
 static in_addr g_rdma_ip = { 0 };
 static int g_max_sge = 0;
 
+static butil::atomic<bool> g_rdma_available(false);
+
 #ifdef BRPC_RDMA
 DEFINE_string(rdma_cluster, "0.0.0.0/0",
               "The ip address prefix of current cluster which supports RDMA");
+DECLARE_bool(rdma_disable_local_connection);
 DEFINE_string(rdma_device, "", "The name of the HCA device used "
                                "(Empty means using the first active device)");
 
@@ -76,7 +127,7 @@ static std::vector<ibv_mr*>* g_mrs = NULL;
 static void* (*g_mem_alloc)(size_t) = NULL;
 static void (*g_mem_dealloc)(void*) = NULL;
 
-butil::Mutex g_addr_map_lock;
+butil::Mutex* g_addr_map_lock;
 typedef butil::FlatMap<const void*, ibv_mr*> AddrMap;
 static AddrMap* g_addr_map = NULL;
 
@@ -90,17 +141,20 @@ static ssize_t ReadFile(std::string& path, void* data) {
 }
 
 static void GlobalRelease() {
-    sleep(1);  // avoid unload library too early
+    g_rdma_available.store(false, butil::memory_order_release);
+    sleep(1);  // to avoid unload library too early
+
+    RdmaFallbackChannel::GlobalStop();
 
     // We do not set `g_async_socket' to failed explicitly to avoid
     // close async_fd twice.
 
-    {
-        BAIDU_SCOPED_LOCK(g_addr_map_lock);
+    if (g_addr_map_lock) {
+        BAIDU_SCOPED_LOCK(*g_addr_map_lock);
         if (g_addr_map) {
             for (AddrMap::iterator it = g_addr_map->begin();
                     it != g_addr_map->end(); ++it) {
-                ibv_dereg_mr(it->second);
+                IbvDeregMr(it->second);
             }
             delete g_addr_map;
             g_addr_map = NULL;  // must set it to NULL
@@ -111,19 +165,23 @@ static void GlobalRelease() {
 
     if (g_mrs) {
         for (size_t i = 0; i < g_mrs->size(); ++i) {
-            ibv_dereg_mr((*g_mrs)[i]);
+            IbvDeregMr((*g_mrs)[i]);
         }
         delete g_mrs;
         g_mrs = NULL;
     }
 
     if (g_pd) {
-        ibv_dealloc_pd(g_pd);
+        IbvDeallocPd(g_pd);
         g_pd = NULL;
     }
 
+    if (g_context) {
+        g_context = NULL;
+    }
+
     if (g_devices) {
-        rdma_free_devices(g_devices);
+        RdmaFreeDevices(g_devices);
         g_devices = NULL;
     }
 }
@@ -131,7 +189,7 @@ static void GlobalRelease() {
 uint32_t RdmaRegisterMemory(void* buf, size_t size) {
     // Register the memory as callback in block_pool
     // The thread-safety should be guaranteed by the caller
-    ibv_mr* mr = ibv_reg_mr(g_pd, buf, size, IBV_ACCESS_LOCAL_WRITE);
+    ibv_mr* mr = IbvRegMr(g_pd, buf, size, IBV_ACCESS_LOCAL_WRITE);
     if (!mr) {
         PLOG(ERROR) << "Fail to register memory";
         return 0;
@@ -153,16 +211,16 @@ static void* BlockAllocate(size_t len) {
     if (!ptr) {
         ptr = g_mem_alloc(len);
         if (ptr) {
-            ibv_mr* mr = ibv_reg_mr(g_pd, ptr, len, IBV_ACCESS_LOCAL_WRITE);
+            ibv_mr* mr = IbvRegMr(g_pd, ptr, len, IBV_ACCESS_LOCAL_WRITE);
             if (!mr) {
                 PLOG(ERROR) << "Fail to register memory";
                 g_mem_dealloc(ptr);
                 ptr = NULL;
             } else {
-                BAIDU_SCOPED_LOCK(g_addr_map_lock);
+                BAIDU_SCOPED_LOCK(*g_addr_map_lock);
                 if (!g_addr_map->insert(ptr, mr)) {
                     PLOG(ERROR) << "Fail to insert to g_addr_map";
-                    ibv_dereg_mr(mr);
+                    IbvDeregMr(mr);
                     g_mem_dealloc(ptr);
                     ptr = NULL;
                 }
@@ -181,11 +239,11 @@ void BlockDeallocate(void* buf) {
     // This may happen after GlobalRelease
     if (DeallocBlock(buf) < 0 && errno == ERANGE) {
         {
-            BAIDU_SCOPED_LOCK(g_addr_map_lock);
+            BAIDU_SCOPED_LOCK(*g_addr_map_lock);
             if (g_addr_map) {
                 ibv_mr** mr = g_addr_map->seek(buf);
                 if (mr && *mr) {
-                    ibv_dereg_mr(*mr);
+                    IbvDeregMr(*mr);
                     g_addr_map->erase(buf);
                 }
             }
@@ -249,7 +307,7 @@ static void OnRdmaAsyncEvent(Socket* m) {
     int progress = Socket::PROGRESS_INIT;
     do {
         ibv_async_event event;
-        if (ibv_get_async_event(g_context, &event) < 0) {
+        if (IbvGetAsyncEvent(g_context, &event) < 0) {
             break;
         }
         switch (event.event_type) {
@@ -265,20 +323,16 @@ static void OnRdmaAsyncEvent(Socket* m) {
             // Otherwise there will be an deadlock.
             // Please check the use of ibv_ack_async_event at:
             // http://www.rdmamojo.com/2012/08/16/ibv_ack_async_event/
-            ibv_ack_async_event(&event);
+            IbvAckAsyncEvent(&event);
             break;
         }
         case IBV_EVENT_CQ_ERR: {
             LOG(WARNING) << "CQ overruns, the connections will be stopped. "
                          << "Try to set rdma_cq_size larger.";
-            ibv_ack_async_event(&event);
+            IbvAckAsyncEvent(&event);
             if (g_cq_num > 0) {
-                // TODO:
-                // If we use shared CQ mode, this is a fatal error. Currently,
-                // we force the application to exit.
-                LOG(FATAL) << "We get a CQ error when we use shared CQ mode. "
-                           << "Application exit.";
-                exit(1);
+                LOG(FATAL) << "We get a CQ error when we use shared CQ mode.";
+                GlobalDisableRdma();
             }
         }
         default:
@@ -290,8 +344,65 @@ static void OnRdmaAsyncEvent(Socket* m) {
     } while (true);
 }
 
+#define LoadSymbol(handle, func, symbol) \
+    *(void**)(&func) = dlsym(handle, symbol); \
+    if (!func) { \
+        LOG(ERROR) << "Fail to find symbol: " << symbol; \
+        return -1; \
+    }
+
+static int ReadRdmaDynamicLib() {
+    // Must load libibverbs.so before librdmacm.so
+    g_handle_ibverbs = dlopen("libibverbs.so", RTLD_LAZY);
+    if (!g_handle_ibverbs) {
+        LOG(ERROR) << "Fail to load libibverbs.so due to " << dlerror();
+        return -1;
+    }
+
+    g_handle_rdmacm = dlopen("librdmacm.so", RTLD_LAZY);
+    if (!g_handle_rdmacm) {
+        LOG(ERROR) << "Fail to load librdmacm.so due to " << dlerror();
+        return -1;
+    }
+
+    LoadSymbol(g_handle_rdmacm, RdmaGetDevices, "rdma_get_devices");
+    LoadSymbol(g_handle_rdmacm, RdmaFreeDevices, "rdma_free_devices");
+    LoadSymbol(g_handle_rdmacm, RdmaCreateId, "rdma_create_id");
+    LoadSymbol(g_handle_rdmacm, RdmaDestroyId, "rdma_destroy_id");
+    LoadSymbol(g_handle_rdmacm, RdmaResolveAddr, "rdma_resolve_addr");
+    LoadSymbol(g_handle_rdmacm, RdmaBindAddr, "rdma_bind_addr");
+    LoadSymbol(g_handle_rdmacm, RdmaResolveRoute, "rdma_resolve_route");
+    LoadSymbol(g_handle_rdmacm, RdmaListen, "rdma_listen");
+    LoadSymbol(g_handle_rdmacm, RdmaConnect, "rdma_connect");
+    LoadSymbol(g_handle_rdmacm, RdmaGetRequest, "rdma_get_request");
+    LoadSymbol(g_handle_rdmacm, RdmaAccept, "rdma_accept");
+    LoadSymbol(g_handle_rdmacm, RdmaDisconnect, "rdma_disconnect");
+    LoadSymbol(g_handle_rdmacm, RdmaGetCmEvent, "rdma_get_cm_event");
+    LoadSymbol(g_handle_rdmacm, RdmaAckCmEvent, "rdma_ack_cm_event");
+    LoadSymbol(g_handle_rdmacm, RdmaCreateQp, "rdma_create_qp");
+
+    LoadSymbol(g_handle_ibverbs, IbvForkInit, "ibv_fork_init");
+    LoadSymbol(g_handle_ibverbs, IbvQueryDevice, "ibv_query_device");
+    LoadSymbol(g_handle_ibverbs, IbvQueryPort, "ibv_query_port");
+    LoadSymbol(g_handle_ibverbs, IbvAllocPd, "ibv_alloc_pd");
+    LoadSymbol(g_handle_ibverbs, IbvDeallocPd, "ibv_dealloc_pd");
+    LoadSymbol(g_handle_ibverbs, IbvCreateCq, "ibv_create_cq");
+    LoadSymbol(g_handle_ibverbs, IbvDestroyCq, "ibv_destroy_cq");
+    LoadSymbol(g_handle_ibverbs, IbvCreateCompChannel, "ibv_create_comp_channel");
+    LoadSymbol(g_handle_ibverbs, IbvDestroyCompChannel, "ibv_destroy_comp_channel");
+    LoadSymbol(g_handle_ibverbs, IbvRegMr, "ibv_reg_mr");
+    LoadSymbol(g_handle_ibverbs, IbvDeregMr, "ibv_dereg_mr");
+    LoadSymbol(g_handle_ibverbs, IbvGetCqEvent, "ibv_get_cq_event");
+    LoadSymbol(g_handle_ibverbs, IbvAckCqEvents, "ibv_ack_cq_events");
+    LoadSymbol(g_handle_ibverbs, IbvGetAsyncEvent, "ibv_get_async_event");
+    LoadSymbol(g_handle_ibverbs, IbvAckAsyncEvent, "ibv_ack_async_event");
+    LoadSymbol(g_handle_ibverbs, IbvDestroyQp, "ibv_destroy_qp");
+
+    return 0;
+}
+
 static inline void ExitWithError() {
-    GlobalRelease();
+    GlobalRelease(); 
     exit(1);
 }
 
@@ -302,36 +413,42 @@ static void GlobalRdmaInitializeOrDieImpl() {
     CHECK(false) << "This libbdrpc.a does not support RDMA";
     exit(1);
 #else
-    // ibv_fork_init is very important
-    // If we don't call this API, you may get some very, very strange
-    // problems if your program calls fork().
-    if (ibv_fork_init()) {
+    if (ReadRdmaDynamicLib() < 0) { 
+        LOG(ERROR) << "Fail to load rdma dynamic lib";
+        ExitWithError();
+    }
+
+    // ibv_fork_init is very important. If we don't call this API,
+    // we may get some very, very strange problems if the program
+    // calls fork().
+    if (IbvForkInit()) {
         PLOG(ERROR) << "Fail to ibv_fork_init";
-        exit(1);
+        ExitWithError();
     }
 
     int num = 0;
-    g_devices = rdma_get_devices(&num);
+    g_devices = RdmaGetDevices(&num);
     if (num == 0) {
-        PLOG(ERROR) << "Fail to find RDMA device";
-        exit(1);
+        PLOG(ERROR) << "Fail to find rdma device";
+        ExitWithError();
     }
 
+    // Find the first active device
+    // Currently we only use the first active device
     int device_index = -1;
     for (int i = 0; i < num; ++i) {
-        // TODO: try to support multiple active ports
         ibv_port_attr attr;
-        if (ibv_query_port(g_devices[i], 1, &attr) < 0) {
+        if (IbvQueryPort(g_devices[i], 1, &attr) < 0) {
             continue;
         }
         if (attr.state != IBV_PORT_ACTIVE) {
             continue;
         } else {
             if (device_index != -1) {
-                LOG(ERROR) << "This server has more than one active RDMA device. "
+                LOG(ERROR) << "This server has more than one active RDMA port. "
                               "Since currently we do not support multiple active "
-                              "devices, try to 1) disable extra devices; 2) make them "
-                              "bonding together; 3) specify a device with --rdma_device.";
+                              "ports, try to 1) disable extra ports; 2) make them "
+                              "bonding together; 3) specify a port with --rdma_device.";
                 ExitWithError();
             }
             device_index = i;
@@ -349,6 +466,7 @@ static void GlobalRdmaInitializeOrDieImpl() {
         ExitWithError();
     }
     g_context = g_devices[device_index];
+    IbvCreateCompChannel(g_context);
 
     // Find the IP address corresponding to this device
     char* dev_path = g_context->device->ibdev_path;
@@ -359,6 +477,7 @@ static void GlobalRdmaInitializeOrDieImpl() {
         LOG(ERROR) << "Fail to find device sysfs at " << dev_resource_path;
         ExitWithError();
     }
+
     // Map ibdev (e.g. mlx5_0) to netdev (e.g. eth0), must compare sysfs file
     // TODO: this method cannot handle bonding mode, see more in ibdev2netdev
     ifaddrs* ifap = NULL;
@@ -385,12 +504,17 @@ static void GlobalRdmaInitializeOrDieImpl() {
         freeifaddrs(ifap);
     }
     if (!found) {
-        LOG(WARNING) << "Fail to find address of RDMA device. "
-                        "Do not use 0.0.0.0/127.0.0.1 to do local connection.";
+        LOG(WARNING) << "Fail to find address of rdma device. "
+                        "Do not use 0.0.0.0/127.0.0.1 to do local RDMA connection.";
+    }
+    if (FLAGS_rdma_disable_local_connection) {
+        LOG(WARNING) << "Now local connection only uses TCP. "
+                     << "Try to set rdma_disable_local_connection to false "
+                     << "to allow RDMA local connection";
     }
 
     // Create protection domain
-    g_pd = ibv_alloc_pd(g_context);
+    g_pd = IbvAllocPd(g_context);
     if (!g_pd) {
         PLOG(ERROR) << "Fail to allocate protection domain";
         ExitWithError();
@@ -403,7 +527,7 @@ static void GlobalRdmaInitializeOrDieImpl() {
     }
 
     ibv_device_attr attr;
-    if (ibv_query_device(g_context, &attr) < 0) {
+    if (IbvQueryDevice(g_context, &attr) < 0) {
         PLOG(ERROR) << "Fail to get the device information";
         ExitWithError();
     }
@@ -417,6 +541,18 @@ static void GlobalRdmaInitializeOrDieImpl() {
     }
 
     if (GlobalCQInit() < 0) {
+        ExitWithError();
+    }
+
+    if (RdmaEndpoint::GlobalInitialize() < 0) {
+        LOG(ERROR) << "rdma_recv_block_type incorrect "
+                   << "(valid value: default/large/huge)";
+        ExitWithError();
+    }
+
+    g_addr_map_lock = new (std::nothrow) butil::Mutex;
+    if (!g_addr_map_lock) {
+        PLOG(WARNING) << "Fail to construct g_addr_map_lock";
         ExitWithError();
     }
 
@@ -451,6 +587,8 @@ static void GlobalRdmaInitializeOrDieImpl() {
     butil::iobuf::blockmem_allocate = BlockAllocate;
     butil::iobuf::blockmem_deallocate = BlockDeallocate;
     g_cluster = ParseRdmaCluster(FLAGS_rdma_cluster);
+    g_rdma_available.store(true, butil::memory_order_relaxed);
+    RdmaFallbackChannel::GlobalStart();
 #endif
 }
 
@@ -459,7 +597,7 @@ static pthread_once_t initialize_rdma_once = PTHREAD_ONCE_INIT;
 void GlobalRdmaInitializeOrDie() {
     if (pthread_once(&initialize_rdma_once,
                      GlobalRdmaInitializeOrDieImpl) != 0) {
-        LOG(FATAL) << "Fail to pthread_once";
+        LOG(FATAL) << "Fail to pthread_once GlobalRdmaInitializeOrDie";
         exit(1);
     }
 }
@@ -489,13 +627,13 @@ int RegisterMemoryForRdma(void* buf, size_t len) {
     CHECK(false) << "This libbdrpc.a does not support RDMA";
     return -1;
 #else
-    ibv_mr* mr = ibv_reg_mr(g_pd, buf, len, IBV_ACCESS_LOCAL_WRITE);
+    ibv_mr* mr = IbvRegMr(g_pd, buf, len, IBV_ACCESS_LOCAL_WRITE);
     if (!mr) {
         return -1;
     }
-    BAIDU_SCOPED_LOCK(g_addr_map_lock);
+    BAIDU_SCOPED_LOCK(*g_addr_map_lock);
     if (!g_addr_map->insert(buf, mr)) {
-        ibv_dereg_mr(mr);
+        IbvDeregMr(mr);
         return -1;
     }
     return 0;
@@ -507,10 +645,10 @@ void DeregisterMemoryForRdma(void* buf) {
     CHECK(false) << "This libbdrpc.a does not support RDMA";
     return;
 #else
-    BAIDU_SCOPED_LOCK(g_addr_map_lock);
+    BAIDU_SCOPED_LOCK(*g_addr_map_lock);
     ibv_mr** mr = g_addr_map->seek(buf);
     if (mr && *mr) {
-        ibv_dereg_mr(*mr);
+        IbvDeregMr(*mr);
         g_addr_map->erase(buf);
     }
 #endif
@@ -557,7 +695,7 @@ uint32_t GetLKey(const void* buf) {
 #else
     uint32_t lkey = GetRegionId(buf);
     if (lkey == 0) {
-        BAIDU_SCOPED_LOCK(g_addr_map_lock);
+        BAIDU_SCOPED_LOCK(*g_addr_map_lock);
         ibv_mr** mr = g_addr_map->seek(buf);
         if (mr && *mr) {
             lkey = (*mr)->lkey;
@@ -565,6 +703,16 @@ uint32_t GetLKey(const void* buf) {
     }
     return lkey;
 #endif
+}
+
+bool IsRdmaAvailable() {
+    return g_rdma_available.load(butil::memory_order_acquire);
+}
+
+void GlobalDisableRdma() {
+    if (g_rdma_available.exchange(false, butil::memory_order_acquire)) {
+        LOG(FATAL) << "RDMA is disabled due to some unrecoverable problem";
+    }
 }
 
 bool SupportedByRdma(std::string protocol) {
@@ -579,4 +727,3 @@ bool SupportedByRdma(std::string protocol) {
 
 }  // namespace rdma
 }  // namespace brpc
-

@@ -18,8 +18,9 @@
 #define BRPC_RDMA_COMPLETION_QUEUE_H
 
 #include <vector>                               // std::vector
-#include <butil/macros.h>                       // DISALLOW_COPY_AND_ASSIGN
-#include <bthread/bthread.h>                    // butil::Mutex
+#include "butil/macros.h"                       // DISALLOW_COPY_AND_ASSIGN
+#include "bthread/bthread.h"                    // butil::Mutex
+#include "brpc/input_messenger.h"
 #include "brpc/socket.h"
 
 namespace brpc {
@@ -36,9 +37,8 @@ enum RdmaEvent {
 };
 
 // A wrapper of ibv_wc
-struct RdmaCompletion {
+struct BAIDU_CACHELINE_ALIGNMENT RdmaCompletion {
     RdmaEvent type;
-    Socket* socket;
     uint32_t len;           // byte_len in ibv_wc
     uint32_t imm;           // imm_data in ibv_wc
 };
@@ -79,6 +79,13 @@ private:
 
     // PollCQ thread
     static void PollCQ(Socket* m);
+
+    // Handle all completions in one bthread when shared CQ is enabled
+    static void* HandleCompletions(void* arg);
+
+    // Handle the given completion
+    static void HandleCompletion(RdmaCompletion* rc, Socket* s,
+            InputMessenger::InputMessageClosure& last_msg);
 
     // Clean the resources, not including the PollCQ thread
     void CleanUp();

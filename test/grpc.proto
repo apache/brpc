@@ -1,0 +1,21 @@
+syntax="proto2";
+option cc_generic_services = true;
+
+package test;
+
+message GrpcRequest {
+    required string message = 1;
+    required bool gzip = 2;
+    required bool return_error = 3;
+    optional int64 timeout_us = 4;
+};
+
+message GrpcResponse {
+    required string message = 1;
+};
+
+service GrpcService {
+    rpc Method(GrpcRequest) returns (GrpcResponse);
+    rpc MethodTimeOut(GrpcRequest) returns (GrpcResponse);
+    rpc MethodNotExist(GrpcRequest) returns (GrpcResponse);
+}

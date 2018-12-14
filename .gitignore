@@ -12,6 +12,7 @@
 *.prof
 *.so
 *.dylib
+*.rej
 /output
 /test/output
 
@@ -32,3 +33,4 @@ cmake_install.cmake
 install_manifest.txt
 compile_commands.json
 CTestTestfile.cmake
+/cmake-build-debug/

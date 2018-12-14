@@ -780,11 +780,12 @@ struct RtmpClientStreamOptions {
 // Represent a "NetStream" in AS. Multiple streams can be multiplexed
 // into one TCP connection.
 class RtmpClientStream : public RtmpStreamBase
-                       , public StreamCreator {
+                       , public StreamCreator
+                       , public StreamUserData {
 public:
     RtmpClientStream();
 
-    void Destroy();
+    void Destroy() override;
 
     // Create this stream on `client' according to `options'.
     // If any error occurred during initialization, OnStop() will be called.
@@ -821,9 +822,14 @@ friend class RtmpRetryingClientStream;
     int Publish(const butil::StringPiece& name, RtmpPublishType type);
 
     // @StreamCreator
-    void ReplaceSocketForStream(SocketUniquePtr* inout, Controller* cntl);
-    void OnStreamCreationDone(SocketUniquePtr& sending_sock, Controller* cntl);
-    void CleanupSocketForStream(Socket* prev_sock, Controller*, int error_code);
+    StreamUserData* OnCreatingStream(SocketUniquePtr* inout, Controller* cntl) override;
+    void DestroyStreamCreator(Controller* cntl) override;
+
+    // @StreamUserData
+    void DestroyStreamUserData(SocketUniquePtr& sending_sock,
+                               Controller* cntl,
+                               int error_code,
+                               bool end_of_rpc) override;
 
     void OnFailedToCreateStream();
     
@@ -836,7 +842,7 @@ friend class RtmpRetryingClientStream;
 
     // The Destroy() w/o dereference _self_ref, to be called internally by
     // client stream self.
-    void SignalError();
+    void SignalError() override;
 
     butil::intrusive_ptr<RtmpClientImpl> _client_impl;
     butil::intrusive_ptr<RtmpClientStream> _self_ref;

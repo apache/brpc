@@ -4,22 +4,28 @@
 
 [example/http_c++](https://github.com/brpc/brpc/blob/master/example/http_c++/http_client.cpp)
 
+# About h2
+
+brpc names the HTTP/2 protocol to "h2", no matter encrypted or not. However HTTP/2 connections without SSL are shown on /connections with the official name "h2c", and the ones with SSL are shown as "h2".
+
+The APIs for http and h2 in brpc are basically same. Without explicit statement, mentioned http features work for h2 as well.
+
 # Create Channel
 
-In order to use `brpc::Channel` to access HTTP services, `ChannelOptions.protocol` must be set to `PROTOCOL_HTTP`.
+In order to use `brpc::Channel` to access http/h2 services, `ChannelOptions.protocol` must be set to `PROTOCOL_HTTP` or `PROTOCOL_H2`.
 
-Once the HTTP protocol is set, the first parameter of `Channel::Init` can be any valid URL. *Note*: Only host and port inside the URL are used by Init(), other parts are discarded. Allowing full URL simply saves the user from additional parsing code.
+Once the protocol is set, the first parameter of `Channel::Init` can be any valid URL. *Note*: Only host and port inside the URL are used by Init(), other parts are discarded. Allowing full URL simply saves the user from additional parsing code.
 
 ```c++
 brpc::ChannelOptions options;
-options.protocol = brpc::PROTOCOL_HTTP;
+options.protocol = brpc::PROTOCOL_HTTP;  // or brpc::PROTOCOL_H2
 if (channel.Init("www.baidu.com" /*any url*/, &options) != 0) {
      LOG(ERROR) << "Fail to initialize channel";
      return -1;
 }
 ```
 
-http channel also support BNS address or other naming services.
+http/h2 channel also support BNS address or other naming services.
 
 # GET
 
@@ -29,9 +35,9 @@ cntl.http_request().uri() = "www.baidu.com/index.html";  // Request URL
 channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
 ```
 
-HTTP does not relate to protobuf much, thus all parameters of  `CallMethod` are NULL except `Controller` and `done`. Issue asynchronous RPC with non-NULL `done`.
+http/h2 does not relate to protobuf much, thus all parameters of `CallMethod` are NULL except `Controller` and `done`. Issue asynchronous RPC with non-NULL `done`.
 
-`cntl.response_attachment()` is body of the http response and typed `butil::IOBuf`. `IOBuf` can be converted to `std::string` by `to_string()`, which needs to allocate memory and copy all data. If performance is important, the code should consider supporting `IOBuf` directly rather than requiring continuous memory.
+`cntl.response_attachment()` is body of the http/h2 response and typed `butil::IOBuf`. `IOBuf` can be converted to `std::string` by `to_string()`, which needs to allocate memory and copy all data. If performance is important, the code should consider supporting `IOBuf` directly rather than requiring continuous memory.
 
 # POST
 
@@ -56,6 +62,19 @@ os << "A lot of printing" << printable_objects << ...;
 os.move_to(cntl.request_attachment());
 channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
 ```
+
+# Change HTTP version
+
+brpc behaves as http 1.1 by default.
+
+Comparing to 1.1, http 1.0 lacks of long connections(KeepAlive). To communicate brpc client with some legacy http servers, the client may be configured as follows:
+```c++
+cntl.http_request().set_version(1, 0);
+```
+
+Setting http version does not work for h2, but the versions in h2 responses received by client and h2 requests received by server are set to (2, 0).
+
+brpc server recognizes http versions automically and responds accordingly without users' aid.
 
 # URL
 
@@ -88,15 +107,17 @@ As we saw in examples above, `Channel.Init()` and `cntl.http_request().uri()` bo
 Indeed, the settings are repeated in simple cases. But they are different in more complex scenes:
 
 - Access multiple servers under a NamingService (for example BNS), in which case `Channel::Init` accepts a name meaningful to the NamingService(for example node names in BNS), while `uri()` is assigned with the URL.
-- Access servers via http proxy, in which case `Channel::Init` takes the address of the proxy server, while `uri()` is still assigned with the URL.
+- Access servers via http/h2 proxy, in which case `Channel::Init` takes the address of the proxy server, while `uri()` is still assigned with the URL.
 
 ## Host header
 
-If user already sets `Host` (a http header), framework makes no change.
+If user already sets `Host` header(case insensitive), framework makes no change.
 
 If user does not set `Host` header and the URL has host, for example http://www.foo.com/path, the http request contains "Host: www.foo.com".
 
 If user does not set host header and the URL does not have host as well,  for example "/index.html?name=value", framework sets `Host` header with IP and port of the target server. A http server at 10.46.188.39:8989 should see `Host: 10.46.188.39:8989`.
+
+The header is named ":authority" in h2.
 
 # Common usages
 
@@ -157,7 +178,7 @@ Notes on http header:
 
 # Debug HTTP messages
 
-Turn on [-http_verbose](http://brpc.baidu.com:8765/flags/http_verbose) so that the framework prints each http request and response in stderr. Note that this should only be used in tests or debuggings rather than online services.
+Turn on [-http_verbose](http://brpc.baidu.com:8765/flags/http_verbose) so that the framework prints each http request and response. Note that this should only be used in tests or debuggings rather than online services.
 
 # HTTP errors 
 
@@ -233,3 +254,6 @@ Currently the POST data should be intact before launching the http call, thus br
 # Access Servers with authentications
 
 Generate `auth_data` according to authenticating method of the server and set it into `Authorization` header. If you're using curl, add option `-H "Authorization : <auth_data>"`.
+
+# Send https requests
+https is short for "http over SSL", SSL is not exclusive for http, but effective for all protocols. The generic method for turning on client-side SSL is [here](client.md#turn-on-ssl). brpc enables SSL automatically for URIs starting with https:// to make the usage more handy.

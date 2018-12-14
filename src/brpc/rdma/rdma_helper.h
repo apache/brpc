@@ -54,6 +54,12 @@ uint32_t GetLKey(const void* buf);
 // Get max_sge supported by the device
 int GetRdmaMaxSge();
 
+// If the RDMA environment is available
+bool IsRdmaAvailable();
+
+// Disable RDMA in the remaining lifetime of the process
+void GlobalDisableRdma();
+
 // If the given protocol supported by RDMA
 bool SupportedByRdma(std::string protocol);
 
@@ -61,4 +67,3 @@ bool SupportedByRdma(std::string protocol);
 }  // namespace brpc
 
 #endif // BRPC_RDMA_HELPER_H
-

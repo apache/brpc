@@ -19,7 +19,7 @@
 #include "butil/logging.h"                           // BAIDU_*
 #include "butil/macros.h"                            // ARRAY_SIZE
 #include "butil/thread_local.h"                      // thread_local
-
+#include "brpc/errno.pb.h"
 #include "brpc/http_status_code.h"
 
 
@@ -111,6 +111,32 @@ const char *HttpReasonPhrase(int status_code) {
     snprintf(tls_phrase_cache, sizeof(tls_phrase_cache),
              "Unknown status code (%d)", status_code);
     return tls_phrase_cache;
+}
+
+int ErrorCodeToStatusCode(int error_code) {
+    if (error_code == 0) {
+        return HTTP_STATUS_OK;
+    }
+    switch (error_code) {
+    case ENOSERVICE:
+    case ENOMETHOD:
+        return HTTP_STATUS_NOT_FOUND;
+    case ERPCAUTH:
+        return HTTP_STATUS_UNAUTHORIZED;
+    case EREQUEST:
+    case EINVAL:
+        return HTTP_STATUS_BAD_REQUEST;
+    case ELIMIT:
+    case ELOGOFF:
+        return HTTP_STATUS_SERVICE_UNAVAILABLE;
+    case EPERM:
+        return HTTP_STATUS_FORBIDDEN;
+    case ERPCTIMEDOUT:
+    case ETIMEDOUT:
+        return HTTP_STATUS_GATEWAY_TIMEOUT;
+    default:
+        return HTTP_STATUS_INTERNAL_SERVER_ERROR;
+    }
 }
 
 } // namespace brpc

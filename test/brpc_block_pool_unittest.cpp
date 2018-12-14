@@ -2,11 +2,11 @@
 // Copyright (c) 2018 baidu-rpc authors
 
 #include <errno.h>
-#include <bthread/bthread.h>
-#include <butil/time.h>
-#include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#include <brpc/rdma/block_pool.h>
+#include <gtest/gtest.h>
+#include "bthread/bthread.h"
+#include "butil/time.h"
+#include "brpc/rdma/block_pool.h"
 
 class BlockPoolTest : public ::testing::Test {
 protected:
@@ -14,7 +14,6 @@ protected:
     ~BlockPoolTest() { }
 };
 
-#ifdef BRPC_RDMA
 namespace brpc {
 namespace rdma {
 DECLARE_int32(rdma_memory_pool_initial_size_mb);
@@ -23,7 +22,6 @@ DECLARE_int32(rdma_memory_pool_max_regions);
 DECLARE_int32(rdma_memory_pool_buckets);
 extern void DestroyBlockPool();
 extern int GetBlockType(void* buf);
-extern size_t GetBlockSize(int type);
 extern size_t GetGlobalLen(int block_type);
 extern size_t GetRegionNum();
 }
@@ -39,17 +37,14 @@ TEST_F(BlockPoolTest, single_thread) {
     FLAGS_rdma_memory_pool_initial_size_mb = 1024;
     FLAGS_rdma_memory_pool_increase_size_mb = 1024;
     FLAGS_rdma_memory_pool_max_regions = 16;
+    FLAGS_rdma_memory_pool_buckets = 4;
     EXPECT_TRUE(InitBlockPool(DummyCallback) != NULL);
 
-    size_t num = 4096;
-    if (num > 1024 * 1024 * 1024 / GetBlockSize(0)) {
-        num = 1024 * 1024 * 1024 / GetBlockSize(0);
-    }
+    size_t num = 1024;
     void* buf[num];
     for (size_t i = 0; i < num; ++i) {
-        buf[i] = AllocBlock(8192);
+        buf[i] = AllocBlock(GetBlockSize(0));
         EXPECT_TRUE(buf[i] != NULL);
-        EXPECT_EQ(0, GetBlockType(buf[i]));
         EXPECT_EQ(0, GetBlockType(buf[i]));
     }
     for (size_t i = 0; i < num; ++i) {
@@ -66,9 +61,9 @@ TEST_F(BlockPoolTest, single_thread) {
         buf[i] = NULL;
     }
     for (size_t i = 0; i < num; ++i) {
-        buf[i] = AllocBlock(GetBlockSize(3));
+        buf[i] = AllocBlock(GetBlockSize(2));
         EXPECT_TRUE(buf[i] != NULL);
-        EXPECT_EQ(3, GetBlockType(buf[i]));
+        EXPECT_EQ(2, GetBlockType(buf[i]));
     }
     for (int i = num - 1; i >= 0; --i) {
         DeallocBlock(buf[i]);
@@ -80,12 +75,12 @@ TEST_F(BlockPoolTest, single_thread) {
 
 static void* AllocAndDealloc(void* arg) {
     uintptr_t i = (uintptr_t)arg;
-    int len = GetBlockSize(i % 4);
+    int len = GetBlockSize(i % 3);
     int iterations = 1000;
     while (iterations > 0) {
         void* buf = AllocBlock(len);
         EXPECT_TRUE(buf != NULL);
-        EXPECT_EQ(i % 4, GetBlockType(buf));
+        EXPECT_EQ(i % 3, GetBlockType(buf));
         DeallocBlock(buf);
         --iterations;
     }
@@ -93,8 +88,10 @@ static void* AllocAndDealloc(void* arg) {
 }
 
 TEST_F(BlockPoolTest, multiple_thread) {
-    FLAGS_rdma_memory_pool_initial_size_mb = 8192;
-    FLAGS_rdma_memory_pool_increase_size_mb = 8192;
+    FLAGS_rdma_memory_pool_initial_size_mb = 1024;
+    FLAGS_rdma_memory_pool_increase_size_mb = 1024;
+    FLAGS_rdma_memory_pool_max_regions = 16;
+    FLAGS_rdma_memory_pool_buckets = 4;
     EXPECT_TRUE(InitBlockPool(DummyCallback) != NULL);
 
     uintptr_t thread_num = 32;
@@ -115,76 +112,64 @@ TEST_F(BlockPoolTest, multiple_thread) {
 TEST_F(BlockPoolTest, extend) {
     FLAGS_rdma_memory_pool_initial_size_mb = 64;
     FLAGS_rdma_memory_pool_increase_size_mb = 64;
+    FLAGS_rdma_memory_pool_max_regions = 16;
     FLAGS_rdma_memory_pool_buckets = 1;
     EXPECT_TRUE(InitBlockPool(DummyCallback) != NULL);
 
     EXPECT_EQ(1, GetRegionNum());
-    size_t num = 4096;
-    if (num > 1024 * 1024 * 1024 / GetBlockSize(0)) {
-        num = 1024 * 1024 * 1024 / GetBlockSize(0);
-    }
+    size_t num = 15 * 64 * 1024 * 1024 / GetBlockSize(2);
     void* buf[num];
     for (size_t i = 0; i < num; ++i) {
-        buf[i] = AllocBlock(65534);
+        buf[i] = AllocBlock(65537);
         EXPECT_TRUE(buf[i] != NULL);
     }
-#ifdef IOBUF_HUGE_BLOCK
-    EXPECT_EQ(FLAGS_rdma_memory_pool_max_regions, GetRegionNum());
-#else
-    EXPECT_EQ(5, GetRegionNum());
-#endif
+    EXPECT_EQ(16, GetRegionNum());
     for (size_t i = 0; i < num; ++i) {
         DeallocBlock(buf[i]);
     }
-#ifdef IOBUF_HUGE_BLOCK
-    EXPECT_EQ(FLAGS_rdma_memory_pool_max_regions, GetRegionNum());
-#else
-    EXPECT_EQ(5, GetRegionNum());
-#endif
+    EXPECT_EQ(16, GetRegionNum());
 
     DestroyBlockPool();
-    FLAGS_rdma_memory_pool_buckets = 4;
 }
 
 TEST_F(BlockPoolTest, memory_not_enough) {
     FLAGS_rdma_memory_pool_initial_size_mb = 64;
     FLAGS_rdma_memory_pool_increase_size_mb = 64;
+    FLAGS_rdma_memory_pool_max_regions = 2;
     FLAGS_rdma_memory_pool_buckets = 1;
     EXPECT_TRUE(InitBlockPool(DummyCallback) != NULL);
 
     EXPECT_EQ(1, GetRegionNum());
-    size_t num = 15360;
-    if (num > 1024 * 1024 * 1024 / GetBlockSize(0)) {
-        num = 1024 * 1024 * 1024 / GetBlockSize(0);
-    }
+    size_t num = 64 * 1024 * 1024 / GetBlockSize(2);
     void* buf[num];
     for (size_t i = 0; i < num; ++i) {
-        buf[i] = AllocBlock(65534);
+        buf[i] = AllocBlock(65537);
         EXPECT_TRUE(buf[i] != NULL);
     }
-    EXPECT_EQ(16, GetRegionNum());
+    EXPECT_EQ(2, GetRegionNum());
     void* tmp = AllocBlock(65536);
     EXPECT_EQ(ENOMEM, errno);
     EXPECT_EQ(0, GetRegionId(tmp));
     for (size_t i = 0; i < num; ++i) {
         DeallocBlock(buf[i]);
     }
-    EXPECT_EQ(16, GetRegionNum());
+    EXPECT_EQ(2, GetRegionNum());
 
     DestroyBlockPool();
-    FLAGS_rdma_memory_pool_buckets = 4;
 }
 
 TEST_F(BlockPoolTest, invalid_use) {
     FLAGS_rdma_memory_pool_initial_size_mb = 64;
     FLAGS_rdma_memory_pool_increase_size_mb = 64;
+    FLAGS_rdma_memory_pool_max_regions = 2;
+    FLAGS_rdma_memory_pool_buckets = 1;
     EXPECT_TRUE(InitBlockPool(DummyCallback) != NULL);
 
     void* buf = AllocBlock(0);
     EXPECT_EQ(NULL, buf);
     EXPECT_EQ(EINVAL, errno);
 
-    buf = AllocBlock(GetBlockSize(3) + 1);
+    buf = AllocBlock(GetBlockSize(2) + 1);
     EXPECT_EQ(NULL, buf);
     EXPECT_EQ(EINVAL, errno);
 
@@ -195,16 +180,8 @@ TEST_F(BlockPoolTest, invalid_use) {
     DestroyBlockPool();
 }
 
-#else
-
-TEST_F(BlockPoolTest, dummy) {
-}
-
-#endif
-
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
     google::ParseCommandLineFlags(&argc, &argv, true);
     return RUN_ALL_TESTS();
 }
-

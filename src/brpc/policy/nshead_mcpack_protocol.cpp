@@ -157,7 +157,7 @@ void PackNsheadMcpackRequest(butil::IOBuf* buf,
                              const butil::IOBuf& request,
                              const Authenticator* /*not supported*/) {
     ControllerPrivateAccessor accessor(controller);
-    if (accessor.connection_type() == CONNECTION_TYPE_SINGLE) {
+    if (controller->connection_type() == CONNECTION_TYPE_SINGLE) {
         return controller->SetFailed(
             EINVAL, "nshead_mcpack can't work with CONNECTION_TYPE_SINGLE");
     }

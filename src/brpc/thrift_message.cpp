@@ -19,9 +19,7 @@
 
 #include <algorithm>
 #include "butil/logging.h"
-
-#include <brpc/protocol.h>                          // RegisterProtocol
-#include <brpc/policy/thrift_protocol.h>
+#include "brpc/details/controller_private_accessor.h"
 
 #include <google/protobuf/stubs/once.h>
 #include <google/protobuf/io/coded_stream.h>
@@ -30,9 +28,7 @@
 #include <google/protobuf/reflection_ops.h>
 #include <google/protobuf/wire_format.h>
 
-
 namespace brpc {
-BAIDU_CASSERT(sizeof(thrift_head_t) == 4, sizeof_thrift_must_be_4);
 
 namespace {
 const ::google::protobuf::Descriptor* ThriftFramedMessage_descriptor_ = NULL;
@@ -43,7 +39,7 @@ void protobuf_AssignDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto() {
     protobuf_AddDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
     const ::google::protobuf::FileDescriptor* file =
         ::google::protobuf::DescriptorPool::generated_pool()->FindFileByName(
-            "baidu/rpc/thrift_framed_message.proto");
+            "thrift_framed_message.proto");
     GOOGLE_CHECK(file != NULL);
     ThriftFramedMessage_descriptor_ = file->message_type(0);
 }
@@ -114,25 +110,16 @@ ThriftFramedMessage::ThriftFramedMessage()
 void ThriftFramedMessage::InitAsDefaultInstance() {
 }
 
-ThriftFramedMessage::ThriftFramedMessage(const ThriftFramedMessage& from)
-    : ::google::protobuf::Message() {
-    SharedCtor();
-    MergeFrom(from);
-}
-
 void ThriftFramedMessage::SharedCtor() {
-    memset(&head, 0, sizeof(head));
-    thrift_raw_instance_deleter = nullptr;
-    thrift_raw_instance = nullptr;
-    thrift_message_seq_id = 0;
-    method_name = "";    
-    //RegisterThriftProtocolDummy dummy;
+    field_id = THRIFT_INVALID_FID;
+    _own_raw_instance = false;
+    _raw_instance = nullptr;
 }
 
 ThriftFramedMessage::~ThriftFramedMessage() {
     SharedDtor();
-    if (thrift_raw_instance && thrift_raw_instance_deleter) {
-        thrift_raw_instance_deleter(thrift_raw_instance);
+    if (_own_raw_instance) {
+        delete _raw_instance;
     }
 }
 
@@ -159,8 +146,12 @@ ThriftFramedMessage* ThriftFramedMessage::New() const {
 }
 
 void ThriftFramedMessage::Clear() {
-    memset(&head, 0, sizeof(head));
     body.clear();
+    if (_own_raw_instance) {
+        delete _raw_instance;
+        _own_raw_instance = false;
+        _raw_instance = NULL;
+    }
 }
 
 bool ThriftFramedMessage::MergePartialFromCodedStream(
@@ -187,38 +178,31 @@ void ThriftFramedMessage::SerializeWithCachedSizes(
 }
 
 int ThriftFramedMessage::ByteSize() const {
-    return sizeof(thrift_head_t) + body.size();
+    if (_raw_instance) {
+        LOG(ERROR) << "ByteSize() is always 0 when _raw_instance is set";
+        return 0;
+    }
+    return body.size();
 }
 
 void ThriftFramedMessage::MergeFrom(const ::google::protobuf::Message& from) {
     GOOGLE_CHECK_NE(&from, this);
-    const ThriftFramedMessage* source =
-        ::google::protobuf::internal::dynamic_cast_if_available<const ThriftFramedMessage*>(
-            &from);
-    if (source == NULL) {
-        LOG(ERROR) << "Can only merge from ThriftFramedMessage";
-        return;
-    } else {
-        MergeFrom(*source);
-    }
+    LOG(ERROR) << "ThriftFramedMessage does not support MergeFrom";
 }
 
 void ThriftFramedMessage::MergeFrom(const ThriftFramedMessage& from) {
     GOOGLE_CHECK_NE(&from, this);
-    head = from.head;
-    body = from.body;
+    LOG(ERROR) << "ThriftFramedMessage does not support MergeFrom";
 }
 
 void ThriftFramedMessage::CopyFrom(const ::google::protobuf::Message& from) {
     if (&from == this) return;
-    Clear();
-    MergeFrom(from);
+    LOG(ERROR) << "ThriftFramedMessage does not support CopyFrom";
 }
 
 void ThriftFramedMessage::CopyFrom(const ThriftFramedMessage& from) {
     if (&from == this) return;
-    Clear();
-    MergeFrom(from);
+    LOG(ERROR) << "ThriftFramedMessage does not support CopyFrom";
 }
 
 bool ThriftFramedMessage::IsInitialized() const {
@@ -227,10 +211,10 @@ bool ThriftFramedMessage::IsInitialized() const {
 
 void ThriftFramedMessage::Swap(ThriftFramedMessage* other) {
     if (other != this) {
-        const thrift_head_t tmp = other->head;
-        other->head = head;
-        head = tmp;
         body.swap(other->body);
+        std::swap(field_id, other->field_id);
+        std::swap(_own_raw_instance, other->_own_raw_instance);
+        std::swap(_raw_instance, other->_raw_instance);
     }
 }
 
@@ -240,6 +224,15 @@ void ThriftFramedMessage::Swap(ThriftFramedMessage* other) {
     metadata.descriptor = ThriftFramedMessage_descriptor_;
     metadata.reflection = NULL;
     return metadata;
+}
+
+void ThriftStub::CallMethod(const char* method_name,
+                            Controller* cntl,
+                            const ThriftFramedMessage* req,
+                            ThriftFramedMessage* res,
+                            ::google::protobuf::Closure* done) {
+    cntl->_thrift_method_name.assign(method_name);
+    _channel->CallMethod(NULL, cntl, req, res, done);
 }
 
 } // namespace brpc

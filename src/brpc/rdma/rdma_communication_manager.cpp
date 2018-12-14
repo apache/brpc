@@ -19,19 +19,35 @@
 #include <rdma/rdma_cma.h>
 #endif
 #include <arpa/inet.h>
-#include <butil/fd_utility.h>                     // make_non_blocking
-#include <butil/logging.h>
-#include <butil/unique_ptr.h>
 #include <gflags/gflags.h>
+#include "butil/fd_utility.h"                     // make_non_blocking
+#include "butil/logging.h"
+#include "butil/unique_ptr.h"
 #include "brpc/rdma/rdma_helper.h"
 #include "brpc/rdma/rdma_communication_manager.h"
 
 namespace brpc {
 namespace rdma {
 
+#ifdef BRPC_RDMA
+extern int (*RdmaCreateId)(rdma_event_channel*, rdma_cm_id**, void*, rdma_port_space);
+extern int (*RdmaDestroyId)(rdma_cm_id*);
+extern int (*RdmaResolveAddr)(rdma_cm_id*, sockaddr*, sockaddr*, int);
+extern int (*RdmaBindAddr)(rdma_cm_id*, sockaddr*);
+extern int (*RdmaResolveRoute)(rdma_cm_id*, int);
+extern int (*RdmaListen)(rdma_cm_id*, int);
+extern int (*RdmaConnect)(rdma_cm_id*, rdma_conn_param*);
+extern int (*RdmaGetRequest)(rdma_cm_id*, rdma_cm_id**);
+extern int (*RdmaAccept)(rdma_cm_id*, rdma_conn_param*);
+extern int (*RdmaGetCmEvent)(rdma_event_channel*, rdma_cm_event**);
+extern int (*RdmaAckCmEvent)(rdma_cm_event*);
+extern int (*RdmaCreateQp)(rdma_cm_id*, ibv_pd*, ibv_qp_init_attr*);
+extern int (*IbvDestroyQp)(ibv_qp*);
+
 DEFINE_int32(rdma_backlog, 1024, "The backlog for rdma connection.");
 DEFINE_int32(rdma_conn_timeout_ms, 500, "The timeout (ms) for RDMA connection"
                                         "establishment.");
+#endif
 
 static const int FLOW_CONTROL = 1;          // for creating QP
 static const int RETRY_COUNT = 1;           // for creating QP
@@ -43,12 +59,10 @@ RdmaCommunicationManager::RdmaCommunicationManager(void* cm_id)
 }
 
 RdmaCommunicationManager::~RdmaCommunicationManager() {
-#ifndef BRPC_RDMA
-    CHECK(false) << "This should not happen";
-#else
+#ifdef BRPC_RDMA
     ReleaseQP();
     if (_cm_id) {
-        rdma_destroy_id((rdma_cm_id*)_cm_id);
+        RdmaDestroyId((rdma_cm_id*)_cm_id);
     }
 #endif
 }
@@ -62,8 +76,8 @@ RdmaCommunicationManager* RdmaCommunicationManager::Create() {
     if (!rcm) {
         return NULL;
     }
-    if (rdma_create_id(NULL, (rdma_cm_id**)(&rcm->_cm_id),
-                       NULL, RDMA_PS_TCP)) {
+    if (RdmaCreateId(NULL, (rdma_cm_id**)(&rcm->_cm_id),
+                       NULL, RDMA_PS_TCP) < 0) {
         PLOG(WARNING) << "Fail to rdma_create_id";
         delete rcm;
         return NULL;
@@ -96,12 +110,12 @@ RdmaCommunicationManager* RdmaCommunicationManager::Listen(
     addr.sin_addr = listen_ep.ip;
 
     rdma_cm_id* cm_id = (rdma_cm_id*)rcm->_cm_id;
-    if (rdma_bind_addr(cm_id, (sockaddr*)&addr) < 0) {
+    if (RdmaBindAddr(cm_id, (sockaddr*)&addr) < 0) {
         PLOG(WARNING) << "Fail to rdma_bind_addr";
         return NULL;
     }
 
-    if (rdma_listen(cm_id, FLAGS_rdma_backlog) < 0) {
+    if (RdmaListen(cm_id, FLAGS_rdma_backlog) < 0) {
         PLOG(WARNING) << "Fail to rdma_listen";
         return NULL;
     }
@@ -119,7 +133,7 @@ RdmaCommunicationManager* RdmaCommunicationManager::GetRequest(
     CHECK(_cm_id != NULL);
 
     rdma_cm_id* cm_id = NULL;
-    if (rdma_get_request((rdma_cm_id*)_cm_id, &cm_id) < 0 || cm_id == NULL) {
+    if (RdmaGetRequest((rdma_cm_id*)_cm_id, &cm_id) < 0 || cm_id == NULL) {
         if (errno != EAGAIN) {
             PLOG(WARNING) << "Fail to rdma_get_request";
         }
@@ -130,7 +144,7 @@ RdmaCommunicationManager* RdmaCommunicationManager::GetRequest(
             new (std::nothrow) RdmaCommunicationManager(cm_id));
     if (rcm == NULL) {
         PLOG(WARNING) << "Fail to create RdmaCommunicationManager";
-        rdma_destroy_id(cm_id);
+        RdmaDestroyId(cm_id);
         return NULL;
     }
 
@@ -173,7 +187,7 @@ int RdmaCommunicationManager::Accept(char* data, size_t len) {
 
     rdma_conn_param param;
     InitRdmaConnParam(&param, data, len);
-    return rdma_accept((rdma_cm_id*)_cm_id, &param);
+    return RdmaAccept((rdma_cm_id*)_cm_id, &param);
 #endif
 }
 
@@ -186,7 +200,7 @@ int RdmaCommunicationManager::Connect(char* data, size_t len) {
 
     rdma_conn_param param;
     InitRdmaConnParam(&param, data, len);
-    return rdma_connect((rdma_cm_id*)_cm_id, &param);
+    return RdmaConnect((rdma_cm_id*)_cm_id, &param);
 #endif
 }
 
@@ -201,9 +215,6 @@ int RdmaCommunicationManager::ResolveAddr(butil::EndPoint& remote_ep) {
     sockaddr_in* addr = &cm_id->route.addr.dst_sin;
     addr->sin_family = AF_INET;
     addr->sin_port = htons(remote_ep.port);
-    // Automatically find local RDMA address
-    // We cannot use 127.0.0.1 or 0.0.0.0 for RDMA directly, because
-    // the resources used are bound to a specific RDMA NIC.
     if (IsLocalIP(remote_ep.ip)) {
         addr->sin_addr = GetRdmaIP();
     } else {
@@ -211,8 +222,8 @@ int RdmaCommunicationManager::ResolveAddr(butil::EndPoint& remote_ep) {
     }
     cm_id->route.addr.src_addr.sa_family = addr->sin_family;
 
-    return rdma_resolve_addr(cm_id, NULL, (sockaddr*)addr,
-                             FLAGS_rdma_conn_timeout_ms / 2);
+    return RdmaResolveAddr(cm_id, NULL, (sockaddr*)addr,
+                           FLAGS_rdma_conn_timeout_ms / 2);
 #endif
 }
 
@@ -223,8 +234,8 @@ int RdmaCommunicationManager::ResolveRoute() {
 #else
     CHECK(_cm_id != NULL);
 
-    return rdma_resolve_route((rdma_cm_id*)_cm_id,
-                              FLAGS_rdma_conn_timeout_ms / 2);
+    return RdmaResolveRoute((rdma_cm_id*)_cm_id,
+                            FLAGS_rdma_conn_timeout_ms / 2);
 #endif
 }
 
@@ -236,13 +247,13 @@ RdmaCMEvent RdmaCommunicationManager::GetCMEvent() {
     CHECK(_cm_id != NULL);
     rdma_cm_id* cm_id = (rdma_cm_id*)_cm_id;
 
-    if (cm_id->event && rdma_ack_cm_event(cm_id->event) < 0) {
+    if (cm_id->event && RdmaAckCmEvent(cm_id->event) < 0) {
         PLOG(WARNING) << "Fail to rdma_ack_cm_event";
         return RDMACM_EVENT_ERROR;
     }
     cm_id->event = NULL;
 
-    if (rdma_get_cm_event(cm_id->channel, &cm_id->event) < 0) {
+    if (RdmaGetCmEvent(cm_id->channel, &cm_id->event) < 0) {
         if (errno != EAGAIN) {
             PLOG(WARNING) << "Fail to rdma_get_cm_event";
             return RDMACM_EVENT_ERROR;
@@ -262,6 +273,10 @@ RdmaCMEvent RdmaCommunicationManager::GetCMEvent() {
     }
     case RDMA_CM_EVENT_DISCONNECTED: {
         return RDMACM_EVENT_DISCONNECT;
+    }
+    case RDMA_CM_EVENT_DEVICE_REMOVAL: {
+        GlobalDisableRdma();
+        break;
     }
     default:
         break;
@@ -293,8 +308,7 @@ void* RdmaCommunicationManager::CreateQP(
     qp_attr.cap.max_send_sge = GetRdmaMaxSge();
     qp_attr.cap.max_recv_sge = 1;
     qp_attr.cap.max_inline_data = 64;
-    if (rdma_create_qp(cm_id, (ibv_pd*)GetRdmaProtectionDomain(),
-                       &qp_attr) < 0) {
+    if (RdmaCreateQp(cm_id, (ibv_pd*)GetRdmaProtectionDomain(), &qp_attr) < 0) {
         PLOG(WARNING) << "Fail to rdma_create_qp";
         return NULL;
     }
@@ -304,15 +318,15 @@ void* RdmaCommunicationManager::CreateQP(
 }
 
 void RdmaCommunicationManager::ReleaseQP() {
-#ifndef BRPC_RDMA
-    CHECK(false) << "This should not happen";
-#else
+#ifdef BRPC_RDMA
     if (_cm_id) {
         rdma_cm_id* cm_id = (rdma_cm_id*)_cm_id;
 
         if (cm_id->qp) {
             // Do not use rdma_destroy_qp, which will release CQ as well
-            ibv_destroy_qp(cm_id->qp);
+            if (IsRdmaAvailable()) {
+                IbvDestroyQp(cm_id->qp);
+            }
             cm_id->qp = NULL;
         }
     }
@@ -363,4 +377,3 @@ size_t RdmaCommunicationManager::GetConnDataLen() const {
 
 }  // namespace rdma
 }  // namespace brpc
-

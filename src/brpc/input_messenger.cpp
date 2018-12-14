@@ -59,9 +59,9 @@ const size_t MAX_ONCE_READ = 524288;
 
 ParseResult InputMessenger::CutInputMessage(
         Socket* m, size_t* index, bool read_eof) {
-    const int preferred = m->_preferred_index;
+    const int preferred = m->preferred_index();
     const int max_index = (int)_max_index.load(butil::memory_order_acquire);
-    // Try preferred handler first. The _preferred_index is set on last
+    // Try preferred handler first. The preferred_index is set on last
     // selection or by client.
     if (preferred >= 0 && preferred <= max_index
             && _handlers[preferred].parse != NULL) {
@@ -95,7 +95,7 @@ ParseResult InputMessenger::CutInputMessage(
         if (m->parsing_context()) {
             m->reset_parsing_context(NULL);
         }
-        m->_preferred_index = -1;
+        m->set_preferred_index(-1);
     }
     for (int i = 0; i <= max_index; ++i) {
         if (i == preferred || _handlers[i].parse == NULL) {
@@ -105,7 +105,7 @@ ParseResult InputMessenger::CutInputMessage(
         ParseResult result = _handlers[i].parse(&m->_read_buf, m, read_eof, _handlers[i].arg);
         if (result.is_ok() ||
             result.error() == PARSE_ERROR_NOT_ENOUGH_DATA) {
-            m->_preferred_index = i;
+            m->set_preferred_index(i);
             *index = i;
             return result;
         } else if (result.error() != PARSE_ERROR_TRY_OTHERS) {
@@ -196,6 +196,9 @@ void InputMessenger::OnNewMessages(Socket* m) {
     InputMessageClosure last_msg;
     bool read_eof = false;
     while (!read_eof) {
+        const int64_t received_us = butil::cpuwide_time_us();
+        const int64_t base_realtime = butil::gettimeofday_us() - received_us;
+
         // Calculate bytes to be read.
         size_t once_read = m->_avg_msg_size * 16;
         if (once_read < MIN_ONCE_READ) {
@@ -211,8 +214,7 @@ void InputMessenger::OnNewMessages(Socket* m) {
                 // Set `read_eof' flag and proceed to feed EOF into `Protocol'
                 // (implied by m->_read_buf.empty), which may produce a new
                 // `InputMessageBase' under some protocols such as HTTP
-                LOG_IF(WARNING, FLAGS_log_connection_close)
-                        << "Remote side of " << *m << " was closed";
+                LOG_IF(WARNING, FLAGS_log_connection_close) << *m << " was closed by remote side";
                 read_eof = true;                
             } else if (errno != EAGAIN) {
                 if (errno == EINTR) {
@@ -231,8 +233,8 @@ void InputMessenger::OnNewMessages(Socket* m) {
         }
 
         // Only process data here when it is received from TCP fd (RDMA_OFF)
-        if (m->_rdma_state == Socket::RDMA_OFF && messenger->ProcessReceivedData(
-                    m, nr, read_eof, last_msg) < 0) {
+        if (m->_rdma_state == Socket::RDMA_OFF && messenger->ProcessNewMessage(
+                m, nr, read_eof, received_us, base_realtime, last_msg) < 0) {
             return;
         }
     }
@@ -242,13 +244,11 @@ void InputMessenger::OnNewMessages(Socket* m) {
     }
 }
 
-int InputMessenger::ProcessReceivedData(
+int InputMessenger::ProcessNewMessage(
         Socket* m, ssize_t bytes, bool read_eof,
+        const uint64_t received_us, const uint64_t base_realtime,
         InputMessageClosure& last_msg) {
     m->AddInputBytes(bytes);
-
-    const int64_t received_us = butil::cpuwide_time_us();
-    const int64_t base_realtime = butil::gettimeofday_us() - received_us;
 
     // Avoid this socket to be closed due to idle_timeout_s
     m->_last_readtime_us.store(received_us, butil::memory_order_relaxed);
@@ -350,7 +350,7 @@ int InputMessenger::ProcessReceivedData(
             num_bthread_created = 0;
         }
     }
-    if (num_bthread_created) {
+    if (num_bthread_created && m->_rdma_state != Socket::RDMA_ON) {
         bthread_flush();
     }
     return 0;

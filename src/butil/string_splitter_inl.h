@@ -87,7 +87,7 @@ size_t StringSplitter::length() const {
 }
 
 bool StringSplitter::not_end(const char* p) const {
-    return *p && p != _str_tail;
+    return (_str_tail == NULL) ? *p : (p != _str_tail);
 }
 
 int StringSplitter::to_int8(int8_t* pv) const {
@@ -234,7 +234,7 @@ size_t StringMultiSplitter::length() const {
 }
 
 bool StringMultiSplitter::not_end(const char* p) const {
-    return *p && p != _str_tail;
+    return (_str_tail == NULL) ? *p : (p != _str_tail);
 }
 
 int StringMultiSplitter::to_int8(int8_t* pv) const {

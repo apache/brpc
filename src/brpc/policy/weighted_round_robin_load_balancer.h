@@ -19,6 +19,7 @@
 
 #include <map>                              
 #include <vector>
+#include <unordered_set>
 #include "butil/containers/doubly_buffered_data.h"
 #include "brpc/load_balancer.h"
 
@@ -75,7 +76,8 @@ private:
     static size_t BatchAdd(Servers& bg, const std::vector<ServerId>& servers);
     static size_t BatchRemove(Servers& bg, const std::vector<ServerId>& servers);
     static SocketId GetServerInNextStride(const std::vector<Server>& server_list,
-                                         TLS& tls);
+                                          const std::unordered_set<SocketId>& filter,
+                                          TLS& tls);
 
     butil::DoublyBufferedData<Servers, TLS> _db_servers;
 };

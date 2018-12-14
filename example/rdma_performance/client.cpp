@@ -20,10 +20,12 @@
 #include <butil/atomicops.h>
 #include <butil/fast_rand.h>
 #include <butil/logging.h>
-#include <brpc/channel.h>
+#include <brpc/rdma/rdma_fallback_channel.h>
 #include <brpc/rdma/rdma_helper.h>
+#include <brpc/server.h>
 #include <bthread/bthread.h>
 #include <bvar/latency_recorder.h>
+#include <bvar/variable.h>
 #include <gflags/gflags.h>
 #include "test.pb.h"
 
@@ -32,17 +34,21 @@ DEFINE_int32(max_thread_num, 16, "The max number of threads are used");
 DEFINE_int32(attachment_size, -1, "Attachment size is used (in KB)");
 DEFINE_bool(specify_attachment_addr, false, "Specify the address of attachment");
 DEFINE_bool(echo_attachment, false, "Select whether attachment should be echo");
+DEFINE_string(connection_type, "pooled", "Connection type of the channel");
 DEFINE_string(protocol, "baidu_std", "Protocol type.");
-DEFINE_string(servers, "0.0.0.0:8002", "IP Address of server");
+DEFINE_string(servers, "0.0.0.0:8002+0.0.0.0:8002", "IP Address of servers");
 DEFINE_bool(use_rdma, true, "Use RDMA or not");
-DEFINE_int32(rpc_timeout_ms, -1, "RPC call timeout");
+DEFINE_int32(rpc_timeout_ms, 2000, "RPC call timeout");
 DEFINE_int32(test_seconds, 20, "Test running time");
 DEFINE_int32(test_iterations, 0, "Test iterations");
 
 bvar::LatencyRecorder g_latency_recorder("client");
-bvar::LatencyRecorder g_cpu_recorder("server_cpu");
+bvar::LatencyRecorder g_server_cpu_recorder("server_cpu");
+bvar::LatencyRecorder g_client_cpu_recorder("client_cpu");
+butil::atomic<uint64_t> g_last_time(0);
 butil::atomic<uint64_t> g_total_bytes;
 std::vector<std::string> g_servers;
+int rr_index = 0;
 
 class PerformanceTest {
 public:
@@ -65,7 +71,7 @@ public:
         butil::fast_rand_bytes(_addr, attachment_size);
         if (FLAGS_specify_attachment_addr) {
             brpc::rdma::RegisterMemoryForRdma(_addr, attachment_size);
-            _attachment.append_zerocopy(_addr, attachment_size, NULL);
+            _attachment.append_user_data(_addr, attachment_size, NULL, NULL);
         } else {
             _attachment.append(_addr, attachment_size);
         }
@@ -88,11 +94,11 @@ public:
         brpc::ChannelOptions options;
         options.use_rdma = FLAGS_use_rdma;
         options.protocol = FLAGS_protocol;
-        options.connection_type = "pooled";
+        options.connection_type = FLAGS_connection_type;
         options.timeout_ms = FLAGS_rpc_timeout_ms;
         options.max_retry = 0;
-        std::string server = g_servers[butil::fast_rand() % g_servers.size()];
-        _channel = new brpc::Channel();
+        std::string server = g_servers[(rr_index++) % g_servers.size()];
+        _channel = new brpc::rdma::RdmaFallbackChannel();
         if (_channel->Init(server.c_str(), &options) != 0) {
             LOG(ERROR) << "Fail to initialize channel";
             return -1;
@@ -135,7 +141,7 @@ public:
         }
         g_latency_recorder << test->_cntl->latency_us();
         if (test->_response->cpu_usage().size() > 0) {
-            g_cpu_recorder << atof(test->_response->cpu_usage().c_str()) * 100;
+            g_server_cpu_recorder << atof(test->_response->cpu_usage().c_str()) * 100;
         }
         g_total_bytes.fetch_add(test->_attachment.size(),
                 butil::memory_order_relaxed);
@@ -148,7 +154,15 @@ public:
             return;
         }
         --test->_iterations;
-        if (butil::gettimeofday_us() - test->_start_time > FLAGS_test_seconds * 1000000u) {
+        uint64_t last = g_last_time.load(butil::memory_order_relaxed);
+        uint64_t now = butil::gettimeofday_us();
+        if (now > last && now - last > 100000) {
+            if (g_last_time.exchange(now, butil::memory_order_relaxed) == last) {
+                g_client_cpu_recorder << 
+                    atof(bvar::Variable::describe_exposed("process_cpu_usage").c_str()) * 100;
+            }
+        }
+        if (now - test->_start_time > FLAGS_test_seconds * 1000000u) {
             test->_stop = true;
             return;
         }
@@ -167,7 +181,7 @@ public:
 
 private:
     void* _addr;
-    brpc::Channel* _channel;
+    brpc::rdma::RdmaFallbackChannel* _channel;
     brpc::Controller* _cntl;
     test::PerfTestResponse* _response;
     uint64_t _start_time;
@@ -176,6 +190,12 @@ private:
     butil::IOBuf _attachment;
     bool _echo_attachment;
 };
+
+static void* DeleteTest(void* arg) {
+    PerformanceTest* test = (PerformanceTest*)arg;
+    delete test;
+    return NULL;
+}
 
 void Test(int thread_num, int attachment_size) {
     std::cout << "[Threads: " << thread_num
@@ -198,7 +218,7 @@ void Test(int thread_num, int attachment_size) {
     }
     for (int k = 0; k < thread_num; ++k) {
         while (!tests[k]->IsStop()) {
-            usleep(1);
+            bthread_usleep(10000);
         }
     }
     uint64_t end_time = butil::gettimeofday_us();
@@ -209,12 +229,15 @@ void Test(int thread_num, int attachment_size) {
             << ", 99th-Latency: " << g_latency_recorder.latency_percentile(0.99)
             << ", 99.9th-Latency: " << g_latency_recorder.latency_percentile(0.999)
             << ", Throughput: " << throughput << "MB/s"
-            << ", CPU-utilization: " << g_cpu_recorder.latency(10) << "\%" << std::endl;
+            << ", QPS: " << (int)(throughput * 1024 / attachment_size / 1000) << "k"
+            << ", Server CPU-utilization: " << g_server_cpu_recorder.latency(10) << "\%"
+            << ", Client CPU-utilization: " << g_client_cpu_recorder.latency(10) << "\%"
+            << std::endl;
     } else {
         std::cout << " Throughput: " << throughput << "MB/s" << std::endl;
     }
     for (int k = 0; k < thread_num; ++k) {
-        delete tests[k];
+        bthread_start_background(&tid[k], &BTHREAD_ATTR_NORMAL, DeleteTest, tests[k]);
     }
 }
 
@@ -226,7 +249,7 @@ int main(int argc, char* argv[]) {
         brpc::rdma::GlobalRdmaInitializeOrDie();
     }
 
-    bthread_setconcurrency(sysconf(_SC_NPROCESSORS_ONLN));
+    brpc::StartDummyServerAt(8001);
 
     std::string::size_type pos1 = 0;
     std::string::size_type pos2 = FLAGS_servers.find('+');
@@ -257,4 +280,3 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-

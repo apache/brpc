@@ -201,7 +201,7 @@ Server启动后你无法再修改其中的Service。
 
 # 启动
 
-调用以下[Server](https://github.com/brpc/brpc/blob/master/src/brpc/server.h)的一下接口启动服务。
+调用以下[Server](https://github.com/brpc/brpc/blob/master/src/brpc/server.h)的接口启动服务。
 
 ```c++
 int Start(const char* ip_and_port_str, const ServerOptions* opt);
@@ -249,9 +249,11 @@ server.RunUntilAskedToQuit();
 
 Join()完成后可以修改其中的Service，并重新Start。
 
-# 被HTTP client访问
+# 被http/h2访问
 
-使用Protobuf的服务通常可以通过HTTP+json访问，存于http body的json串可与对应protobuf消息相互转化。以[echo server](https://github.com/brpc/brpc/blob/master/example/echo_c%2B%2B/server.cpp)为例，你可以用[curl](https://curl.haxx.se/)访问这个服务。
+使用Protobuf的服务通常可以通过http/h2+json访问，存于body的json串可与对应protobuf消息相互自动转化。
+
+以[echo server](https://github.com/brpc/brpc/blob/master/example/echo_c%2B%2B/server.cpp)为例，你可以用[curl](https://curl.haxx.se/)访问这个服务。
 
 ```shell
 # -H 'Content-Type: application/json' is optional
@@ -259,7 +261,7 @@ $ curl -d '{"message":"hello"}' http://brpc.baidu.com:8765/EchoService/Echo
 {"message":"hello"}
 ```
 
-注意：也可以指定`Content-Type: application/proto`用http+protobuf二进制串访问服务，序列化性能更好。
+注意：也可以指定`Content-Type: application/proto`用http/h2+protobuf二进制串访问服务，序列化性能更好。
 
 ## json<=>pb
 
@@ -269,7 +271,7 @@ json字段通过匹配的名字和结构与pb字段一一对应。json中一定�
 
 ## 兼容早期版本client
 
-早期的brpc允许一个pb service被http协议访问时不设置pb请求，即使里面有required字段。一般来说这种service会自行解析http请求和设置http回复，并不会访问pb请求。但这也是非常危险的行为，毕竟这是pb service，但pb请求却是未定义的。
+早期的brpc允许一个pb service被http协议访问时不填充pb请求，即使里面有required字段。一般来说这种service会自行解析http请求和设置http回复，并不会访问pb请求。但这也是非常危险的行为，毕竟这是pb service，但pb请求却是未定义的。
 
 这种服务在升级到新版本rpc时会遇到障碍，因为brpc已不允许这种行为。为了帮助这种服务升级，brpc允许经过一些设置后不把http body自动转化为pb request(从而可自行处理），方法如下：
 
@@ -277,11 +279,11 @@ json字段通过匹配的名字和结构与pb字段一一对应。json中一定�
 brpc::ServiceOptions svc_opt;
 svc_opt.ownership = ...;
 svc_opt.restful_mappings = ...;
-svc_opt.allow_http_body_to_pb = false; //关闭http body至pb request的自动转化
+svc_opt.allow_http_body_to_pb = false; //关闭http/h2 body至pb request的自动转化
 server.AddService(service, svc_opt);
 ```
 
-如此设置后service收到http请求后不会尝试把body转化为pb请求，所以pb请求总是未定义状态，用户得在`cntl->request_protocol() == brpc::PROTOCOL_HTTP`认定请求是http时自行解析http body。
+如此设置后service收到http/h2请求后不会尝试把body转化为pb请求，所以pb请求总是未定义状态，用户得在`cntl->request_protocol() == brpc::PROTOCOL_HTTP || cntl->request_protocol() == brpc::PROTOCOL_H2`成立时自行解析body。
 
 相应地，当cntl->response_attachment()不为空且pb回复不为空时，框架不再报错，而是直接把cntl->response_attachment()作为回复的body。这个功能和设置allow_http_body_to_pb与否无关。如果放开自由度导致过多的用户犯错，可能会有进一步的调整。
 
@@ -293,7 +295,9 @@ server端会自动尝试其支持的协议，无需用户指定。`cntl->protoco
 
 - [流式RPC协议](streaming_rpc.md)，显示为"streaming_rpc", 默认启用。
 
-- http 1.0/1.1，显示为”http“，默认启用。
+- http/1.0和http/1.1协议，显示为”http“，默认启用。
+
+- http/2和gRPC协议，显示为"h2c"(未加密)或"h2"(加密)，默认启用。
 
 - RTMP协议，显示为"rtmp", 默认启用。
 
@@ -455,7 +459,7 @@ baidu_std和hulu_pbrpc协议支持传递附件，这段数据由用户自定义�
 
 ## 开启SSL
 
-要开启SSL，首先确保代码依赖了最新的openssl库。如果openssl版本很旧，会有严重的安全漏洞，支持的加密算法也少，违背了开启SSL的初衷。然后设置`ServerOptions.ssl_options`，具体见[ssl_option.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_option.h)。
+要开启SSL，首先确保代码依赖了最新的openssl库。如果openssl版本很旧，会有严重的安全漏洞，支持的加密算法也少，违背了开启SSL的初衷。然后设置`ServerOptions.ssl_options`，具体见[ssl_options.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_options.h)。
 
 ```c++
 // Certificate structure
@@ -579,9 +583,9 @@ QPS是一个秒级的指标，无法很好地控制瞬间的流量爆发。而�
 
 ### 计算最大并发数
 
-最大并发度 = 极限QPS * 平均延时  ([little's law](https://en.wikipedia.org/wiki/Little%27s_law))
+最大并发度 = 极限QPS * 低负载延时  ([little's law](https://en.wikipedia.org/wiki/Little%27s_law))
 
-极限QPS和平均延时指的是server在没有严重积压请求的前提下（请求的延时仍能接受时）所能达到的最大QPS和当时的平均延时。一般的服务上线都会有性能压测，把测得的QPS和延时相乘一般就是该服务的最大并发度。
+极限QPS指的是server能达到的最大qps，低负载延时指的是server在没有严重积压请求的前提下时的平均延时。一般的服务上线都会有性能压测，把测得的QPS和延时相乘一般就是该服务的最大并发度。
 
 ### 限制server级别并发度
 
@@ -591,12 +595,15 @@ Server.ResetMaxConcurrency()可在server启动后动态修改server级别的max_
 
 ### 限制method级别并发度
 
-server.MaxConcurrencyOf("...") = ...可设置method级别的max_concurrency。可能的设置方法有：
+server.MaxConcurrencyOf("...") = ...可设置method级别的max_concurrency。也可以通过设置ServerOptions.method_max_concurrency一次性为所有的method设置最大并发。
+当ServerOptions.method_max_concurrency和server.MaxConcurrencyOf("...")=...同时被设置时，使用server.MaxConcurrencyOf()所设置的值。
 
 ```c++
-server.MaxConcurrencyOf("example.EchoService.Echo") = 10;
+ServerOptions.method_max_concurrency = 20;                   // Set the default maximum concurrency for all methods
+server.MaxConcurrencyOf("example.EchoService.Echo") = 10;    // Give priority to the value set by server.MaxConcurrencyOf()
 server.MaxConcurrencyOf("example.EchoService", "Echo") = 10;
 server.MaxConcurrencyOf(&service, "Echo") = 10;
+server.MaxConcurrencyOf("example.EchoService.Echo") = "10";  // You can also assign a string value
 ```
 
 此设置一般**发生在AddService后，server启动前**。当设置失败时（比如对应的method不存在），server会启动失败同时提示用户修正MaxConcurrencyOf设置错误。
@@ -604,6 +611,21 @@ server.MaxConcurrencyOf(&service, "Echo") = 10;
 当method级别和server级别的max_concurrency都被设置时，先检查server级别的，再检查method级别的。
 
 注意：没有service级别的max_concurrency。
+
+### 使用自适应限流算法
+实际生产环境中,最大并发未必一成不变，在每次上线前逐个压测和设置服务的最大并发也很繁琐。这个时候可以使用自适应限流算法。
+
+自适应限流是method级别的。要使用自适应限流算法，把method的最大并发度设置为"auto"即可:
+
+```c++
+// Set auto concurrency limiter for all methods
+brpc::ServerOptions options;
+options.method_max_concurrency = "auto";
+
+// Set auto concurrency limiter for specific method
+server.MaxConcurrencyOf("example.EchoService.Echo") = "auto";
+```
+关于自适应限流的更多细节可以看[这里](auto_concurrency_limiter.md)
 
 ## pthread模式
 
@@ -751,7 +773,7 @@ int main(int argc, char* argv[]) {
 
 server-thread-local与一次service回调绑定，从进service回调开始，到出service回调结束。所有的server-thread-local data会被尽量重用，在server停止前不会被删除。在实现上server-thread-local是一个特殊的bthread-local。
 
-设置ServerOptions.thread_local_data_factory后访问Controller.thread_local_data()即可获得thread-local数据。若没有设置，Controller.thread_local_data()总是返回NULL。
+设置ServerOptions.thread_local_data_factory后访问brpc::thread_local_data()即可获得thread-local数据。若没有设置，brpc::thread_local_data()总是返回NULL。
 
 若ServerOptions.reserved_thread_local_data大于0，Server会在启动前就创建这么多个数据。
 

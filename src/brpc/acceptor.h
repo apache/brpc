@@ -58,9 +58,11 @@ public:
     // Return 0 on success, -1 otherwise.
     int StartAccept(int listened_fd,
                     rdma::RdmaCommunicationManager* listened_rdma,
-                    int idle_timeout_sec, SSL_CTX* ssl_ctx);
-    // Just accept at TCP fd
-    int StartAccept(int listened_fd, int idle_timeout_sec, SSL_CTX* ssl_ctx) {
+                    int idle_timeout_sec,
+                    const std::shared_ptr<SocketSSLContext>& ssl_ctx);
+    int StartAccept(int listened_fd,
+                    int idle_timeout_sec,
+                    const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
         return StartAccept(listened_fd, NULL, idle_timeout_sec, ssl_ctx);
     }
 
@@ -121,8 +123,7 @@ private:
     // The map containing all the accepted sockets
     SocketMap _socket_map;
 
-    // Not owner
-    SSL_CTX* _ssl_ctx;
+    std::shared_ptr<SocketSSLContext> _ssl_ctx;
 };
 
 } // namespace brpc

@@ -11,13 +11,8 @@ if(BRPC_WITH_RDMA)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DBRPC_RDMA")
 endif()
 
-if (IOBUF_WITH_HUGE_BLOCK)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DIOBUF_HUGE_BLOCK")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DIOBUF_HUGE_BLOCK")
-endif()
-
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
-include_directories(${CMAKE_SOURCE_DIR}/src)
+include_directories(${PROJECT_SOURCE_DIR}/src)
 
 add_library(BUTIL_LIB OBJECT ${BUTIL_SOURCES})
 add_library(OBJ_LIB OBJECT ${SOURCES})
@@ -48,10 +43,10 @@ SET_TARGET_PROPERTIES(brpc-static PROPERTIES OUTPUT_NAME brpc CLEAN_DIRECT_OUTPU
 SET_TARGET_PROPERTIES(brpc-shared PROPERTIES OUTPUT_NAME brpc CLEAN_DIRECT_OUTPUT 1)
 
 # for protoc-gen-mcpack
-set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/output/bin)
+set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/output/bin)
     
 set(protoc_gen_mcpack_SOURCES
-    ${CMAKE_SOURCE_DIR}/src/mcpack2pb/generator.cpp
+    ${PROJECT_SOURCE_DIR}/src/mcpack2pb/generator.cpp
  )
 add_executable(protoc-gen-mcpack ${protoc_gen_mcpack_SOURCES})
 target_link_libraries(protoc-gen-mcpack brpc-shared)

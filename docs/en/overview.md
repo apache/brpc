@@ -38,13 +38,13 @@ An industrial-grade RPC framework used throughout [Baidu](http://ir.baidu.com/ph
 
 You can use it to:
 * Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
-  * restful http/https, h2/h2c (compatible with [grpc](https://github.com/grpc/grpc), will be opensourced). using http in brpc is much more friendly than [libcurl](https://curl.haxx.se/libcurl/).
+  * restful http/https, [h2](https://http2.github.io/http2-spec)/[gRPC](https://grpc.io). using http/h2 in brpc is much more friendly than [libcurl](https://curl.haxx.se/libcurl/). Access protobuf-based protocols with HTTP/h2+json, probably from another language.
   * [redis](redis_client.md) and [memcached](memcache_client.md), thread-safe, more friendly and performant than the official clients
-  * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building [live-streaming services](../cn/live_streaming.md).
+  * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building [streaming services](https://github.com/brpc/media-server).
   * hadoop_rpc (may be opensourced)
   * [rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access) support (will be opensourced)
+  * [thrift](thrift.md) support,  thread-safe, more friendly and performant than the official clients.
   * all sorts of protocols used in Baidu: [baidu_std](../cn/baidu_std.md), [streaming_rpc](streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc, and nshead-based ones.
-  * Access protobuf-based protocols with HTTP+json, probably from another language.
   * Build [HA](https://en.wikipedia.org/wiki/High_availability) distributed services using an industrial-grade implementation of [RAFT consensus algorithm](https://raft.github.io) which is opensourced at [braft](https://github.com/brpc/braft)
 * Servers can handle requests [synchronously](server.md) or [asynchronously](server.md#asynchronous-service).
 * Clients can access servers [synchronously](client.md#synchronus-call), [asynchronously](client.md#asynchronous-call), [semi-synchronously](client.md#semi-synchronous-call), or use [combo channels](combo_channel.md) to simplify sharded or parallel accesses declaratively.

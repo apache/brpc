@@ -8,7 +8,8 @@ enum Errno {
     ENOSERVICE              = 1001;  // Service not found
     ENOMETHOD               = 1002;  // Method not found
     EREQUEST                = 1003;  // Bad Request
-    ERPCAUTH                = 1004;  // Unauthorized, can't be called EAUTH directly which is defined in MACOSX
+    ERPCAUTH                = 1004;  // Unauthorized, can't be called EAUTH
+                                     // directly which is defined in MACOSX
     ETOOMANYFAILS           = 1005;  // Too many sub calls failed
     EPCHANFINISH            = 1006;  // [Internal] ParallelChannel finished
     EBACKUPREQUEST          = 1007;  // Sending backup request
@@ -21,6 +22,7 @@ enum Errno {
     EEOF                    = 1014;  // Got EOF
     EUNUSED                 = 1015;  // The socket was not needed
     ESSL                    = 1016;  // SSL related error
+    EH2RUNOUTSTREAMS        = 1017;  // The H2 socket was run out of streams
 
     // Errno caused by server
     EINTERNAL               = 2001;  // Internal Server Error
@@ -33,4 +35,7 @@ enum Errno {
     // Errno related to RDMA (may happen at both sides)
     ERDMA                   = 3001;  // RDMA verbs error
     ERDMACM                 = 3002;  // Rdmacm error
+    ERDMAUNAVAIL            = 3003;  // RDMA is not available now
+    ERDMAOUTCLUSTER         = 3004;  // RDMA is not supported for communication inter-cluster
+    ERDMALOCAL              = 3005;  // Do not use RDMA for local connection
 }

@@ -28,7 +28,6 @@ option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
 option(WITH_THRIFT "With thrift framed protocol supported" OFF)
 option(BRPC_WITH_THRIFT "With thrift framed protocol supported" OFF)
 option(BRPC_WITH_RDMA "Whether to build brpc with RDMA" OFF)
-option(IOBUF_WITH_HUGE_BLOCK "Whether to build iobuf with huge block" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 
 set(WITH_GLOG_VAL "0")
@@ -42,12 +41,13 @@ endif()
 
 if(WITH_THRIFT)
     set(THRIFT_CPP_FLAG "-DENABLE_THRIFT_FRAMED_PROTOCOL")
-    set(THRIFT_LIB "thriftnb")
+    set(THRIFTNB_LIB "thriftnb")
+    set(THRIFT_LIB "thrift")
 endif()
 
 include(GNUInstallDirs)
 
-configure_file(${CMAKE_SOURCE_DIR}/config.h.in ${CMAKE_SOURCE_DIR}/src/butil/config.h @ONLY)
+configure_file(${PROJECT_SOURCE_DIR}/config.h.in ${PROJECT_SOURCE_DIR}/src/butil/config.h @ONLY)
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
@@ -65,7 +65,7 @@ if(${GFLAGS_NS} STREQUAL "GFLAGS_NAMESPACE")
 endif()
 
 include_directories(
-    ${CMAKE_SOURCE_DIR}/src
+    ${PROJECT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_BINARY_DIR}
 )
 
@@ -137,6 +137,13 @@ if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
 endif()
 
+if(BRPC_WITH_RDMA)
+    find_path(BOOST_INCLUDE_PATH NAMES boost/lockfree/spsc_queue.hpp)
+    if(NOT BOOST_INCLUDE_PATH)
+        message(FATAL_ERROR "Fail to find boost spsc_queue")
+    endif()
+endif()
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(OPENSSL_ROOT_DIR
         "/usr/local/opt/openssl"    # Homebrew installed OpenSSL
@@ -152,28 +159,6 @@ include_directories(
         ${OPENSSL_INCLUDE_DIR}
         )
 
-if(BRPC_WITH_RDMA)
-    find_library(RDMACM NAMES rdmacm)
-    if(NOT RDMACM)
-        message(FATAL_ERROR "Fail to find rdmacm lib")
-    endif()
-    find_library(IBVERBS NAMES ibverbs)
-    if(NOT IBVERBS)
-        message(FATAL_ERROR "Fail to find ibverbs lib")
-    endif()
-    set(RDMA_DYNAMIC_LIB
-        ibverbs
-        rdmacm
-        )
-    find_library(NL NAMES nl)
-    if (NL)
-        set(RDMA_DYNAMIC_LIB
-            ${RDMA_DYNAMIC_LIB}
-            nl
-            )
-    endif()
-endif()
-
 set(DYNAMIC_LIB
     ${GFLAGS_LIBRARY}
     ${PROTOBUF_LIBRARIES}
@@ -181,9 +166,9 @@ set(DYNAMIC_LIB
     ${PROTOC_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
     ${THRIFT_LIB}
+    ${THRIFTNB_LIB}
     ${OPENSSL_LIBRARIES}
     ${OPENSSL_CRYPTO_LIBRARY}
-    ${RDMA_DYNAMIC_LIB}
     dl
     z
     )
@@ -208,151 +193,151 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "-framework Foundation"
         "-Wl,-U,_MallocExtension_ReleaseFreeMemory"
         "-Wl,-U,_ProfilerStart"
-        "-Wl,-U,_ProfilerStop"
-        "-Wl,-U,_RegisterThriftProtocol")
+        "-Wl,-U,_ProfilerStop")
 endif()
 
 # for *.so
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/output/lib)
 # for *.a
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/output/lib)
 
 # list all source files
 set(BUTIL_SOURCES
-    ${CMAKE_SOURCE_DIR}/src/butil/third_party/dmg_fp/g_fmt.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/third_party/dmg_fp/dtoa_wrapper.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/third_party/dynamic_annotations/dynamic_annotations.c
-    ${CMAKE_SOURCE_DIR}/src/butil/third_party/icu/icu_utf.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/third_party/superfasthash/superfasthash.c
-    ${CMAKE_SOURCE_DIR}/src/butil/third_party/modp_b64/modp_b64.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/third_party/nspr/prtime.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/third_party/symbolize/demangle.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/third_party/symbolize/symbolize.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/third_party/snappy/snappy-sinksource.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/third_party/snappy/snappy-stubs-internal.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/third_party/snappy/snappy.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/third_party/murmurhash3/murmurhash3.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/arena.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/at_exit.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/atomicops_internals_x86_gcc.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/base64.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/big_endian.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/cpu.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/debug/alias.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/debug/asan_invalid_access.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/debug/crash_logging.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/debug/debugger.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/debug/debugger_posix.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/debug/dump_without_crashing.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/debug/proc_maps_linux.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/debug/stack_trace.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/debug/stack_trace_posix.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/environment.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/files/file.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/files/file_posix.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/files/file_enumerator.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/files/file_enumerator_posix.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/files/file_path.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/files/file_path_constants.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/files/memory_mapped_file.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/files/memory_mapped_file_posix.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/files/scoped_file.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/files/scoped_temp_dir.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/file_util.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/file_util_posix.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/guid.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/guid_posix.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/hash.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/lazy_instance.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/location.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/md5.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/memory/aligned_memory.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/memory/ref_counted.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/memory/ref_counted_memory.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/memory/singleton.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/memory/weak_ptr.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/posix/file_descriptor_shuffle.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/posix/global_descriptors.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/process_util.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/rand_util.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/rand_util_posix.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/fast_rand.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/safe_strerror_posix.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/sha1_portable.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/strings/latin1_string_conversions.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/strings/nullable_string16.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/strings/safe_sprintf.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/strings/string16.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/strings/string_number_conversions.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/strings/string_split.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/strings/string_piece.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/strings/string_util.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/strings/string_util_constants.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/strings/stringprintf.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/strings/utf_offset_string_conversions.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/strings/utf_string_conversion_utils.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/strings/utf_string_conversions.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/synchronization/cancellation_flag.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/synchronization/condition_variable_posix.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/synchronization/waitable_event_posix.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/threading/non_thread_safe_impl.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/threading/platform_thread_posix.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/threading/simple_thread.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/threading/thread_checker_impl.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/threading/thread_collision_warner.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/threading/thread_id_name_manager.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/threading/thread_local_posix.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/threading/thread_local_storage.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/threading/thread_local_storage_posix.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/threading/thread_restrictions.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/threading/watchdog.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/time/clock.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/time/default_clock.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/time/default_tick_clock.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/time/tick_clock.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/time/time.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/time/time_posix.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/version.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/logging.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/class_name.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/errno.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/find_cstr.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/status.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/string_printf.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/thread_local.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/unix_socket.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/endpoint.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/fd_utility.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/files/temp_file.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/files/file_watcher.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/time.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/zero_copy_stream_as_streambuf.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/crc32c.cc
-    ${CMAKE_SOURCE_DIR}/src/butil/containers/case_ignored_flat_map.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/iobuf.cpp
-    ${CMAKE_SOURCE_DIR}/src/butil/popen.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/third_party/dmg_fp/g_fmt.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/third_party/dmg_fp/dtoa_wrapper.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/third_party/dynamic_annotations/dynamic_annotations.c
+    ${PROJECT_SOURCE_DIR}/src/butil/third_party/icu/icu_utf.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/third_party/superfasthash/superfasthash.c
+    ${PROJECT_SOURCE_DIR}/src/butil/third_party/modp_b64/modp_b64.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/third_party/nspr/prtime.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/third_party/symbolize/demangle.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/third_party/symbolize/symbolize.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/third_party/snappy/snappy-sinksource.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/third_party/snappy/snappy-stubs-internal.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/third_party/snappy/snappy.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/third_party/murmurhash3/murmurhash3.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/arena.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/at_exit.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/atomicops_internals_x86_gcc.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/base64.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/big_endian.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/cpu.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/debug/alias.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/debug/asan_invalid_access.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/debug/crash_logging.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/debug/debugger.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/debug/debugger_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/debug/dump_without_crashing.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/debug/proc_maps_linux.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/debug/stack_trace.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/debug/stack_trace_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/environment.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/files/file.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/files/file_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/files/file_enumerator.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/files/file_enumerator_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/files/file_path.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/files/file_path_constants.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/files/memory_mapped_file.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/files/memory_mapped_file_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/files/scoped_file.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/files/scoped_temp_dir.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/file_util.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/file_util_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/guid.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/guid_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/hash.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/lazy_instance.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/location.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/md5.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/memory/aligned_memory.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/memory/ref_counted.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/memory/ref_counted_memory.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/memory/singleton.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/memory/weak_ptr.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/posix/file_descriptor_shuffle.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/posix/global_descriptors.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/process_util.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/rand_util.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/rand_util_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/fast_rand.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/safe_strerror_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/sha1_portable.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/strings/latin1_string_conversions.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/strings/nullable_string16.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/strings/safe_sprintf.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/strings/string16.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/strings/string_number_conversions.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/strings/string_split.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/strings/string_piece.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/strings/string_util.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/strings/string_util_constants.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/strings/stringprintf.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/strings/utf_offset_string_conversions.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/strings/utf_string_conversion_utils.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/strings/utf_string_conversions.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/synchronization/cancellation_flag.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/synchronization/condition_variable_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/synchronization/waitable_event_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/threading/non_thread_safe_impl.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/threading/platform_thread_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/threading/simple_thread.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/threading/thread_checker_impl.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/threading/thread_collision_warner.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/threading/thread_id_name_manager.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/threading/thread_local_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/threading/thread_local_storage.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/threading/thread_local_storage_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/threading/thread_restrictions.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/threading/watchdog.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/time/clock.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/time/default_clock.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/time/default_tick_clock.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/time/tick_clock.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/time/time.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/time/time_posix.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/version.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/logging.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/class_name.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/errno.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/find_cstr.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/status.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/string_printf.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/thread_local.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/unix_socket.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/endpoint.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/fd_utility.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/files/temp_file.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/files/file_watcher.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/time.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/zero_copy_stream_as_streambuf.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/crc32c.cc
+    ${PROJECT_SOURCE_DIR}/src/butil/containers/case_ignored_flat_map.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/iobuf.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/binary_printer.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/popen.cpp
     )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(BUTIL_SOURCES ${BUTIL_SOURCES}
-        ${CMAKE_SOURCE_DIR}/src/butil/file_util_linux.cc
-        ${CMAKE_SOURCE_DIR}/src/butil/threading/platform_thread_linux.cc
-        ${CMAKE_SOURCE_DIR}/src/butil/strings/sys_string_conversions_posix.cc)
+        ${PROJECT_SOURCE_DIR}/src/butil/file_util_linux.cc
+        ${PROJECT_SOURCE_DIR}/src/butil/threading/platform_thread_linux.cc
+        ${PROJECT_SOURCE_DIR}/src/butil/strings/sys_string_conversions_posix.cc)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(BUTIL_SOURCES ${BUTIL_SOURCES}
-        ${CMAKE_SOURCE_DIR}/src/butil/mac/bundle_locations.mm
-        ${CMAKE_SOURCE_DIR}/src/butil/mac/foundation_util.mm
-        ${CMAKE_SOURCE_DIR}/src/butil/file_util_mac.mm
-        ${CMAKE_SOURCE_DIR}/src/butil/threading/platform_thread_mac.mm
-        ${CMAKE_SOURCE_DIR}/src/butil/strings/sys_string_conversions_mac.mm
-        ${CMAKE_SOURCE_DIR}/src/butil/time/time_mac.cc
-        ${CMAKE_SOURCE_DIR}/src/butil/mac/scoped_mach_port.cc)
+        ${PROJECT_SOURCE_DIR}/src/butil/mac/bundle_locations.mm
+        ${PROJECT_SOURCE_DIR}/src/butil/mac/foundation_util.mm
+        ${PROJECT_SOURCE_DIR}/src/butil/file_util_mac.mm
+        ${PROJECT_SOURCE_DIR}/src/butil/threading/platform_thread_mac.mm
+        ${PROJECT_SOURCE_DIR}/src/butil/strings/sys_string_conversions_mac.mm
+        ${PROJECT_SOURCE_DIR}/src/butil/time/time_mac.cc
+        ${PROJECT_SOURCE_DIR}/src/butil/mac/scoped_mach_port.cc)
 endif()
 
-file(GLOB_RECURSE BVAR_SOURCES "${CMAKE_SOURCE_DIR}/src/bvar/*.cpp")
-file(GLOB_RECURSE BTHREAD_SOURCES "${CMAKE_SOURCE_DIR}/src/bthread/*.cpp")
-file(GLOB_RECURSE JSON2PB_SOURCES "${CMAKE_SOURCE_DIR}/src/json2pb/*.cpp")
-file(GLOB_RECURSE BRPC_SOURCES "${CMAKE_SOURCE_DIR}/src/brpc/*.cpp")
+file(GLOB_RECURSE BVAR_SOURCES "${PROJECT_SOURCE_DIR}/src/bvar/*.cpp")
+file(GLOB_RECURSE BTHREAD_SOURCES "${PROJECT_SOURCE_DIR}/src/bthread/*.cpp")
+file(GLOB_RECURSE JSON2PB_SOURCES "${PROJECT_SOURCE_DIR}/src/json2pb/*.cpp")
+file(GLOB_RECURSE BRPC_SOURCES "${PROJECT_SOURCE_DIR}/src/brpc/*.cpp")
 file(GLOB_RECURSE THRIFT_SOURCES "thrift*.cpp")
 
 if(WITH_THRIFT)
@@ -366,10 +351,10 @@ else()
 endif()
 
 set(MCPACK2PB_SOURCES
-    ${CMAKE_SOURCE_DIR}/src/mcpack2pb/field_type.cpp
-    ${CMAKE_SOURCE_DIR}/src/mcpack2pb/mcpack2pb.cpp
-    ${CMAKE_SOURCE_DIR}/src/mcpack2pb/parser.cpp
-    ${CMAKE_SOURCE_DIR}/src/mcpack2pb/serializer.cpp
+    ${PROJECT_SOURCE_DIR}/src/mcpack2pb/field_type.cpp
+    ${PROJECT_SOURCE_DIR}/src/mcpack2pb/mcpack2pb.cpp
+    ${PROJECT_SOURCE_DIR}/src/mcpack2pb/parser.cpp
+    ${PROJECT_SOURCE_DIR}/src/mcpack2pb/serializer.cpp
     )
 
 include(CompileProto)
@@ -389,12 +374,14 @@ set(PROTO_FILES idl_options.proto
                 brpc/policy/sofa_pbrpc_meta.proto
                 brpc/policy/mongo.proto
                 brpc/trackme.proto
-                brpc/streaming_rpc_meta.proto)
-file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/output/include/brpc)
+                brpc/streaming_rpc_meta.proto
+                brpc/rdma_health.proto
+                brpc/rdma_traffic_control.proto)
+file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/output/include/brpc)
 set(PROTOC_FLAGS ${PROTOC_FLAGS} -I${PROTOBUF_INCLUDE_DIR})
-compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_BINARY_DIR}
-                                    ${CMAKE_BINARY_DIR}/output/include
-                                    ${CMAKE_SOURCE_DIR}/src
+compile_proto(PROTO_HDRS PROTO_SRCS ${PROJECT_BINARY_DIR}
+                                    ${PROJECT_BINARY_DIR}/output/include
+                                    ${PROJECT_SOURCE_DIR}/src
                                     "${PROTO_FILES}")
 add_library(PROTO_LIB OBJECT ${PROTO_SRCS} ${PROTO_HDRS})
 
@@ -419,7 +406,7 @@ file(COPY ${CMAKE_CURRENT_BINARY_DIR}/brpc/
         PATTERN "*.h"
         PATTERN "*.hpp"
         )
-file(COPY ${CMAKE_SOURCE_DIR}/src/
+file(COPY ${PROJECT_SOURCE_DIR}/src/
         DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/output/include/
         FILES_MATCHING
         PATTERN "*.h"
@@ -433,5 +420,5 @@ install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/output/include/
         )
 
 # Install pkgconfig
-configure_file(cmake/brpc.pc.in ${CMAKE_BINARY_DIR}/brpc.pc @ONLY)
-install(FILES ${CMAKE_BINARY_DIR}/brpc.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+configure_file(cmake/brpc.pc.in ${PROJECT_BINARY_DIR}/brpc.pc @ONLY)
+install(FILES ${PROJECT_BINARY_DIR}/brpc.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)

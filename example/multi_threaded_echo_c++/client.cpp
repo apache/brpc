@@ -35,7 +35,6 @@ DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 DEFINE_bool(enable_ssl, false, "Use SSL connection");
 DEFINE_int32(dummy_port, -1, "Launch dummy server at this port");
-DEFINE_string(http_content_type, "application/json", "Content type of http request");
 
 std::string g_request;
 std::string g_attachment;
@@ -58,13 +57,9 @@ static void* sender(void* arg) {
 
         request.set_message(g_request);
         cntl.set_log_id(log_id++);  // set by user
-        if (FLAGS_protocol != "http" && FLAGS_protocol != "h2c") {
-            // Set attachment which is wired to network directly instead of 
-            // being serialized into protobuf messages.
-            cntl.request_attachment().append(g_attachment);
-        } else {
-            cntl.http_request().set_content_type(FLAGS_http_content_type);
-        }
+        // Set attachment which is wired to network directly instead of 
+        // being serialized into protobuf messages.
+        cntl.request_attachment().append(g_attachment);
 
         // Because `done'(last parameter) is NULL, this function waits until
         // the response comes back or error occurs(including timedout).
@@ -95,7 +90,9 @@ int main(int argc, char* argv[]) {
     
     // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
-    options.ssl_options.enable = FLAGS_enable_ssl;
+    if (FLAGS_enable_ssl) {
+        options.mutable_ssl_options();
+    }
     options.protocol = FLAGS_protocol;
     options.connection_type = FLAGS_connection_type;
     options.connect_timeout_ms = std::min(FLAGS_timeout_ms / 2, 100);

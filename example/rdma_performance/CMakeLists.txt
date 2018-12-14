@@ -8,7 +8,7 @@ execute_process(
     OUTPUT_VARIABLE OUTPUT_PATH
 )
 
-option(WITH_TCALLOC "With tcmalloc supported" OFF)
+option(WITH_TCMALLOC "With tcmalloc supported" OFF)
 
 set(CMAKE_PREFIX_PATH ${OUTPUT_PATH})
 
@@ -86,26 +86,6 @@ if (NOT CRYPTO_LIB)
     message(FATAL_ERROR "Fail to find crypto")
 endif()
 
-find_library(RDMACM NAMES rdmacm)
-if(NOT RDMACM)
-    message(FATAL_ERROR "Fail to find rdmacm lib")
-endif()
-find_library(IBVERBS NAMES ibverbs)
-if(NOT IBVERBS)
-    message(FATAL_ERROR "Fail to find ibverbs lib")
-endif()
-set(RDMA_DYNAMIC_LIB
-    ibverbs
-    rdmacm
-    )
-find_library(NL NAMES nl)
-if (NL)
-    set(RDMA_DYNAMIC_LIB
-        ${RDMA_DYNAMIC_LIB}
-        nl
-        )
-endif()
-
 if (WITH_TCMALLOC)
     find_library(TCMALLOC NAMES tcmalloc)
 endif()
@@ -123,7 +103,6 @@ set(DYNAMIC_LIB
     ${CRYPTO_LIB}
     ${TCMALLOC}
     ${GZIP}
-    ${RDMA_DYNAMIC_LIB}
     dl
     )
 
@@ -142,5 +121,5 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "-Wl,-U,_RegisterThriftProtocol")
 endif()
 
-target_link_libraries(perf_client ${BRPC_LIB} ${DYNAMIC_LIB})
-target_link_libraries(perf_server ${BRPC_LIB} ${DYNAMIC_LIB})
+target_link_libraries(perf_client ${BRPC_LIB} ${BUTIL_LIB} ${DYNAMIC_LIB})
+target_link_libraries(perf_server ${BRPC_LIB} ${BUTIL_LIB} ${DYNAMIC_LIB})

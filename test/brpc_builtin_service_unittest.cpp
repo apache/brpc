@@ -219,7 +219,7 @@ protected:
         EXPECT_FALSE(cntl.Failed());
         EXPECT_EQ(expect_type, cntl.http_response().content_type());
         CheckContent(cntl, buf);
-        CheckFieldInContent(cntl, "channel_socket_count: ", 0);
+        CheckFieldInContent(cntl, "channel_connection_count: ", 0);
 
         close(cfd);
         StopAndJoin();

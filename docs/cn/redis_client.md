@@ -11,7 +11,7 @@
 
 像http一样，brpc保证在最差情况下解析redis reply的时间复杂度也是O(N)，N是reply的字节数，而不是O($N^2$)。当reply是个较大的数组时，这是比较重要的。
 
-加上[-redis_verbose](#查看发出的请求和收到的回复)后会在stderr上打印出所有的redis request和response供调试。
+加上[-redis_verbose](#查看发出的请求和收到的回复)后会打印出所有的redis request和response供调试。
 
 # 访问单台redis
 
@@ -151,13 +151,13 @@ response中的所有reply的ownership属于response。当response析构时，rep
 
 # 查看发出的请求和收到的回复
 
- 打开[-redis_verbose](http://brpc.baidu.com:8765/flags/redis_verbose)即可在stderr看到所有的redis request和response，注意这应该只用于线下调试，而不是线上程序。
+ 打开[-redis_verbose](http://brpc.baidu.com:8765/flags/redis_verbose)即看到所有的redis request和response，注意这应该只用于线下调试，而不是线上程序。
 
 打开[-redis_verbose_crlf2space](http://brpc.baidu.com:8765/flags/redis_verbose_crlf2space)可让打印内容中的CRLF (\r\n)变为空格，方便阅读。
 
 | Name                     | Value | Description                              | Defined At                         |
 | ------------------------ | ----- | ---------------------------------------- | ---------------------------------- |
-| redis_verbose            | false | [DEBUG] Print EVERY redis request/response to stderr | src/brpc/policy/redis_protocol.cpp |
+| redis_verbose            | false | [DEBUG] Print EVERY redis request/response | src/brpc/policy/redis_protocol.cpp |
 | redis_verbose_crlf2space | false | [DEBUG] Show \r\n as a space             | src/brpc/redis.cpp                 |
 
 # 性能

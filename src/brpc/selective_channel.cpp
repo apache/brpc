@@ -48,13 +48,15 @@ public:
 
     int CheckHealth(Socket* ptr) {
         if (ptr->health_check_count() == 0) {
-            LOG(INFO) << "Checking " << *chan;
+            LOG(INFO) << "Checking " << *chan << " chan=0x" << (void*)chan
+                      << " Fake" << *ptr;
         }
         return chan->CheckHealth();
     }
 
-    void AfterRevived(Socket*) {
-        LOG(INFO) << "Revived " << *chan;
+    void AfterRevived(Socket* ptr) {
+        LOG(INFO) << "Revived " << *chan << " chan=0x" << (void*)chan
+                  << " Fake" << *ptr;
     }
 };
 
@@ -108,7 +110,7 @@ public:
     explicit SubDone(Sender* owner)
         : _owner(owner)
         , _cid(INVALID_BTHREAD_ID)
-        , _peer_id((SocketId)-1) {
+        , _peer_id(INVALID_SOCKET_ID) {
     }
     ~SubDone() {}
     void Run();
@@ -321,6 +323,8 @@ int Sender::IssueRPC(int64_t start_realtime_us) {
     sub_cntl->set_request_compress_type(_main_cntl->request_compress_type());
     sub_cntl->set_log_id(_main_cntl->log_id());
     sub_cntl->set_request_code(_main_cntl->request_code());
+    // Forward request attachment to the subcall
+    sub_cntl->request_attachment().append(_main_cntl->request_attachment());
     
     sel_out.channel()->CallMethod(_main_cntl->_method,
                                   &r.sub_done->_cntl,

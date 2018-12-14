@@ -49,9 +49,10 @@ Acceptor::~Acceptor() {
     Join();
 }
 
-int Acceptor::StartAccept(
-    int listened_fd, rdma::RdmaCommunicationManager* listened_rdma,
-    int idle_timeout_sec, SSL_CTX* ssl_ctx) {
+int Acceptor::StartAccept(int listened_fd,
+                          rdma::RdmaCommunicationManager* listened_rdma,
+                          int idle_timeout_sec,
+                          const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
     if (listened_fd < 0) {
         LOG(FATAL) << "Invalid listened_fd=" << listened_fd;
         return -1;
@@ -259,6 +260,13 @@ void Acceptor::ListConnections(std::vector<SocketId>* conn_list) {
 }
 
 void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
+    Acceptor* am = dynamic_cast<Acceptor*>(acception->user());
+    if (NULL == am) {
+        LOG(FATAL) << "Impossible! acception->user() MUST be Acceptor";
+        acception->SetFailed(EINVAL, "Impossible! acception->user() MUST be Acceptor");
+        return;
+    }
+
     while (1) {
         struct sockaddr in_addr;
         socklen_t in_len = sizeof(in_addr);
@@ -278,13 +286,6 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
             continue;
         }
 
-        Acceptor* am = dynamic_cast<Acceptor*>(acception->user());
-        if (NULL == am) {
-            LOG(FATAL) << "Impossible! acception->user() MUST be Acceptor";
-            acception->SetFailed(EINVAL, "Impossible! acception->user() MUST be Acceptor");
-            return;
-        }
-        
         SocketId socket_id;
         SocketOptions options;
         options.keytable_pool = am->_keytable_pool;
@@ -292,8 +293,8 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
         options.remote_side = butil::EndPoint(*(sockaddr_in*)&in_addr);
         options.user = acception->user();
         options.on_edge_triggered_events = InputMessenger::OnNewMessages;
-        options.ssl_ctx = am->_ssl_ctx;
         options.use_rdma = (am->_listened_rdma != NULL);
+        options.initial_ssl_ctx = am->_ssl_ctx;
         if (Socket::Create(options, &socket_id) != 0) {
             LOG(ERROR) << "Fail to create Socket";
             continue;
@@ -350,6 +351,7 @@ void Acceptor::OnNewRdmaConnectionsUntilEAGAIN(Socket* acception) {
         acception->SetFailed(EINVAL, "Impossible! acception->user() MUST be Acceptor");
         return;
     }
+
     while (1) {
         char* data = NULL;
         size_t data_len = 0;

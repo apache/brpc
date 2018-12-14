@@ -17,8 +17,8 @@
 #ifndef BRPC_RDMA_COMMUNICATION_MANAGER_H
 #define BRPC_RDMA_COMMUNICATION_MANAGER_H
 
-#include <butil/endpoint.h>
-#include <butil/macros.h>
+#include "butil/endpoint.h"
+#include "butil/macros.h"
 
 namespace brpc {
 namespace rdma {
@@ -137,5 +137,4 @@ private:
 }  // namespace rdma
 }  // namespace brpc
 
-#endif
-
+#endif  // BRPC_RDMA_COMMUNICATION_MANAGER_H

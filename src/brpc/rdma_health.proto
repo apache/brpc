@@ -1,0 +1,11 @@
+syntax="proto2";
+package brpc.rdma;
+option cc_generic_services = true;
+
+message RdmaHealthRequest { }
+
+message RdmaHealthResponse { }
+
+service RdmaHealthService {
+    rpc Check(RdmaHealthRequest) returns (RdmaHealthResponse);
+}

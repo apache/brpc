@@ -472,10 +472,6 @@ void* bthread_getspecific(bthread_key_t key) {
 
 void bthread_assign_data(void* data) {
     bthread::tls_bls.assigned_data = data;
-    bthread::TaskGroup* const g = bthread::tls_task_group;
-    if (g) {
-        g->current_task()->local_storage.assigned_data = data;
-    }
 }
 
 void* bthread_get_assigned_data() {

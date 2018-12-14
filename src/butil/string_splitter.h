@@ -61,6 +61,8 @@ public:
     // length() field() will be skipped.
     inline StringSplitter(const char* input, char separator,
                           EmptyFieldAction action = SKIP_EMPTY_FIELD);
+    // Allows containing embedded '\0' characters and separator can be '\0',
+    // if str_end is not NULL.
     inline StringSplitter(const char* str_begin, const char* str_end,
                           char separator,
                           EmptyFieldAction = SKIP_EMPTY_FIELD);
@@ -113,6 +115,8 @@ public:
     //       longer than this utility.
     inline StringMultiSplitter(const char* input, const char* separators,
                                EmptyFieldAction action = SKIP_EMPTY_FIELD);
+    // Allows containing embedded '\0' characters if str_end is not NULL.
+    // NOTE: `separators` cannot contain embedded '\0' character.
     inline StringMultiSplitter(const char* str_begin, const char* str_end,
                                const char* separators,
                                EmptyFieldAction action = SKIP_EMPTY_FIELD);

@@ -72,8 +72,8 @@ struct InputMessageHandler {
 // Process messages from connections.
 // `Message' corresponds to a client's request or a server's response.
 class InputMessenger : public SocketUser {
-friend class rdma::RdmaEndpoint;
 friend class rdma::RdmaCompletionQueue;
+friend class rdma::RdmaEndpoint;
 public:
     explicit InputMessenger(size_t capacity = 128);
     ~InputMessenger();
@@ -115,23 +115,24 @@ private:
     public:
         InputMessageClosure() : _msg(NULL) { }
         ~InputMessageClosure();
+
         InputMessageBase* release() {
             InputMessageBase* m = _msg;
             _msg = NULL;
             return m;
         }
+
         void reset(InputMessageBase* m);
+
     private:
         InputMessageBase* _msg;
     };
 
-    // Process data just received in Socket m
-    //   bytes: the received data size
-    //   read_eof: whether the Socket has read EOF already or not
-    //   last_msg: an InputMessageClosure used for processing in the current bthread
-    //             must be a reference!!!
-    int ProcessReceivedData(
+    // Process a new message just received in OnNewMessages
+    // It is extracted from OnNewMessages because RDMA needs similar handling.
+    int ProcessNewMessage(
             Socket* m, ssize_t bytes, bool read_eof,
+            const uint64_t received_us, const uint64_t base_realtime,
             InputMessageClosure& last_msg);
 
     // Find a valid scissor from `handlers' to cut off `header' and `payload'

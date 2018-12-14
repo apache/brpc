@@ -8,14 +8,13 @@ An industrial-grade RPC framework used throughout [Baidu](http://ir.baidu.com/ph
 
 You can use it to:
 * Build a server that can talk in multiple protocols (**on same port**), or access all sorts of services
-  * restful http/https, h2/h2c (compatible with [grpc](https://github.com/grpc/grpc), will be opensourced). using http in brpc is much more friendly than [libcurl](https://curl.haxx.se/libcurl/).
+  * restful http/https, [h2](https://http2.github.io/http2-spec)/[gRPC](https://grpc.io). using http/h2 in brpc is much more friendly than [libcurl](https://curl.haxx.se/libcurl/). Access protobuf-based protocols with HTTP/h2+json, probably from another language.
   * [redis](docs/en/redis_client.md) and [memcached](docs/en/memcache_client.md), thread-safe, more friendly and performant than the official clients.
-  * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building [live-streaming services](docs/cn/live_streaming.md).
+  * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), for building [streaming services](https://github.com/brpc/media-server).
   * hadoop_rpc (may be opensourced)
   * [rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access) support (will be opensourced)
   * [thrift](docs/en/thrift.md) support,  thread-safe, more friendly and performant than the official clients.
   * all sorts of protocols used in Baidu: [baidu_std](docs/cn/baidu_std.md), [streaming_rpc](docs/en/streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc and nshead-based ones.
-  * Access protobuf-based protocols with HTTP+json, probably from another language.
   * Build [HA](https://en.wikipedia.org/wiki/High_availability) distributed services using an industrial-grade implementation of [RAFT consensus algorithm](https://raft.github.io) which is opensourced at [braft](https://github.com/brpc/braft)
 * Servers can handle requests [synchronously](docs/en/server.md) or [asynchronously](docs/en/server.md#asynchronous-service).
 * Clients can access servers [synchronously](docs/en/client.md#synchronus-call), [asynchronously](docs/en/client.md#asynchronous-call), [semi-synchronously](docs/en/client.md#semi-synchronous-call), or use [combo channels](docs/en/combo_channel.md) to simplify sharded or parallel accesses declaratively.
@@ -39,7 +38,8 @@ You can use it to:
     * [Basics](docs/en/client.md)
     * [Error code](docs/en/error_code.md)
     * [Combo channels](docs/en/combo_channel.md)
-    * [Access HTTP](docs/en/http_client.md)
+    * [Access http/h2](docs/en/http_client.md)
+    * [Access gRPC](docs/en/http_derivatives.md#h2grpc)
     * [Access thrift](docs/en/thrift.md#client-accesses-thrift-server) 
     * [Access UB](docs/cn/ub_client.md)
     * [Streaming RPC](docs/en/streaming_rpc.md)
@@ -49,13 +49,15 @@ You can use it to:
     * [Dummy server](docs/en/dummy_server.md)
   * Server
     * [Basics](docs/en/server.md)
-    * [Serve HTTP](docs/en/http_service.md)
+    * [Serve http/h2](docs/en/http_service.md)
+    * [Serve gRPC](docs/en/http_derivatives.md#h2grpc)
     * [Serve thrift](docs/en/thrift.md#server-processes-thrift-requests)
     * [Serve Nshead](docs/cn/nshead_service.md)
     * [Debug server issues](docs/cn/server_debugging.md)
     * [Server push](docs/en/server_push.md)
     * [Avalanche](docs/cn/avalanche.md)
-    * [Live streaming](docs/cn/live_streaming.md)
+    * [Auto ConcurrencyLimiter](docs/cn/auto_concurrency_limiter.md)
+    * [Media Server](https://github.com/brpc/media-server)
     * [json2pb](docs/cn/json2pb.md)
   * [Builtin Services](docs/en/builtin_service.md)
     * [status](docs/en/status.md)
@@ -97,18 +99,7 @@ You can use it to:
     * [云平台代理服务](docs/cn/case_ubrpc.md)
 
 # Contribute code
-
-**If you can fix any of the issues or add new features, you're welcome to send the PR to us. If the PR is accepted, your contribution will be scored from 0 to 5 points according to the difficulty and quality (higher is better). If you accumulate 10 points, you can contact us for interviewing opportunities or recommendation letter for your future jobs.**
-
-Make sure your code meets following requirements before submitting the PR:
-
-- The code conforms to [google C++ coding style](https://google.github.io/styleguide/cppguide.html) and is indented by 4 spaces.
-- The code appears where it should be. For example the code to support an extra protocol should not be put in general classes like server.cpp, channel.cpp, while a general modification would better not be hidden inside a very specific protocol.
-- Has unittests.
-
-Check following items after submitting the PR:
-
-- Compilations and unittests in [travis-ci](https://travis-ci.org/brpc/brpc/pull_requests) are passed.
+Please refer to [here](CONTRIBUTING.md).
 
 # Feedback
 Please report bugs, concerns, suggestions by issues, or join QQ-group 498837325 to discuss problems around source code.
