@@ -110,7 +110,8 @@ public:
 
 protected:
     virtual ~LoadBalancer() { }
-    bool SplitParameters(const butil::StringPiece& params, butil::StringPairs* param_vec) {
+    static bool SplitParameters(const butil::StringPiece& params, 
+                                butil::StringPairs* param_vec) {
         std::string params_str(params.data(), params.size());
         if (!butil::SplitStringIntoKeyValuePairs(params_str, '=', ' ', param_vec)) {
             param_vec->clear();
