@@ -572,6 +572,7 @@ bool MemcacheResponse::PopGet(
                   (unsigned)n, (unsigned)sizeof(header), header.total_body_length);
         return false;
     }
+    _status = header.status;
     if (header.status != (uint16_t)STATUS_SUCCESS) {
         LOG_IF(ERROR, header.extras_length != 0) << "GET response must not have flags";
         LOG_IF(ERROR, header.key_length != 0) << "GET response must not have key";
@@ -711,6 +712,7 @@ bool MemcacheResponse::PopStore(uint8_t command, uint64_t* cas_value) {
     LOG_IF(ERROR, header.key_length != 0) << "STORE response must not have key";
     int value_size = (int)header.total_body_length - (int)header.extras_length
         - (int)header.key_length;
+    _status = header.status;
     if (header.status != (uint16_t)STATUS_SUCCESS) {
         _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
         _err.clear();
@@ -877,7 +879,7 @@ bool MemcacheResponse::PopCounter(
     const int value_size = (int)header.total_body_length - (int)header.extras_length
         - (int)header.key_length;
     _buf.pop_front(sizeof(header) + header.extras_length + header.key_length);
-
+    _status = header.status;
     if (header.status != (uint16_t)STATUS_SUCCESS) {
         if (value_size < 0) {
             butil::string_printf(&_err, "value_size=%d is negative", value_size);
@@ -1001,6 +1003,7 @@ bool MemcacheResponse::PopVersion(std::string* version) {
         butil::string_printf(&_err, "value_size=%d is negative", value_size);
         return false;
     }
+    _status = header.status;
     if (header.status != (uint16_t)STATUS_SUCCESS) {
         _err.clear();
         _buf.cutn(&_err, value_size);

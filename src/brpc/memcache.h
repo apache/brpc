@@ -230,6 +230,8 @@ public:
     const butil::IOBuf& raw_buffer() const { return _buf; }
 
     static const char* status_str(Status);
+    // You should get the status after pop operation. Otherwise, it is a dummy value -1.
+    Status LastStatus() const { return (Status)_status; }
 
 protected:
     bool PopCounter(uint8_t command, uint64_t* new_value, uint64_t* cas_value);
@@ -239,6 +241,7 @@ protected:
     void SharedDtor();
     void SetCachedSize(int size) const;
 
+    int _status = -1;
     std::string _err;
     butil::IOBuf _buf;
     mutable int _cached_size_;
