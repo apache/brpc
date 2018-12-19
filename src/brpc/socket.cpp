@@ -2152,16 +2152,6 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
            << "\n  socket_group=";
         SocketGroup* group = sp->socket_group.load(butil::memory_order_consume);
         if (group) {
-            os << '[';
-            std::vector<SocketId> sockets;
-            group->ListSockets(&sockets, 0);
-            for (size_t i = 0; i < sockets.size(); ++i) {
-                if (i) {
-                    os << ' ';
-                }
-                os << sockets[i];
-            }
-            os << "]\n";
             group->Describe(os);
         } else {
             os << "null";
@@ -2490,6 +2480,16 @@ void SocketPool::ListSockets(std::vector<SocketId>* out, size_t max_count) {
 }
 
 void SocketPool::Describe(std::ostream& os) {
+    os << '[';
+    std::vector<SocketId> sockets;
+    ListSockets(&sockets, 0);
+    for (size_t i = 0; i < sockets.size(); ++i) {
+        if (i) {
+            os << ' ';
+        }
+        os << sockets[i];
+    }
+    os << "]\n";
     os << "  type=" << "pooled";
     os << "\n  numfree=" << _numfree.load(butil::memory_order_relaxed)
        << "\n  numinflight=" << _numinflight.load(butil::memory_order_relaxed);
@@ -2499,6 +2499,7 @@ void SocketPool::Describe(std::ostream& os) {
 SocketMulti::SocketMulti(const SocketOptions& opt, Socket::SharedPart* sp)
     : SocketGroup(opt)
     , _sp(sp)
+    , _load(0)
     , _num_created(0)
     , _lightest(0)
     , _multi(FLAGS_max_connection_multi_size, INVALID_SOCKET_ID) {
@@ -2706,13 +2707,28 @@ void SocketMulti::ListSockets(std::vector<SocketId>* out, size_t max_count) {
         max_count = n;
     }
     butil::atomic<SocketId>* p; 
-    for (size_t i = 0; i != _multi.size() && max_count-- > 0; ++i) {
+    SocketId sid = INVALID_SOCKET_ID;
+    for (size_t i = 0; i != _multi.size() && i < max_count; ++i) {
         p = reinterpret_cast<butil::atomic<SocketId>*>(&_multi[i]);
-        out->emplace_back(p->load(butil::memory_order_relaxed));
+        sid = p->load(butil::memory_order_relaxed);
+        SocketUniquePtr ptr;
+        if (Socket::Address(sid, &ptr) == 0) {
+            out->emplace_back(sid);
+        }
     }
 }
 
 void SocketMulti::Describe(std::ostream& os) {
+    os << '[';
+    std::vector<SocketId> sockets;
+    ListSockets(&sockets, 0);
+    for (size_t i = 0; i < sockets.size(); ++i) {
+        if (i) {
+            os << ' ';
+        }
+        os << sockets[i];
+    }
+    os << "]\n";
     SocketUniquePtr ptr;
     uint32_t load = (uint32_t)-1;
     uint32_t selected_load = (uint32_t)-1;
@@ -2724,6 +2740,7 @@ void SocketMulti::Describe(std::ostream& os) {
     }
     os << "  type=" << "multi"
        << "\n  total_rpc_count=" << _load.load(butil::memory_order_relaxed)
+       << "\n	num_active=" << sockets.size()
        << "\n  num_created=" << _num_created.load(butil::memory_order_relaxed)
        << "\n  lightest_id=" << sid << " current_load=" << load << " selected_load=" << selected_load;
 }
