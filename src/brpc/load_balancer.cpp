@@ -64,7 +64,7 @@ SharedLoadBalancer::~SharedLoadBalancer() {
 
 int SharedLoadBalancer::Init(const char* lb_protocol) {
     std::string lb_name;
-    butil::StringPairs lb_params;
+    butil::StringPiece lb_params;
     if (!ParseParameters(lb_protocol, &lb_name, &lb_params)) {
         LOG(FATAL) << "Fail to parse this load balancer protocol '" << lb_protocol << '\'';
         return -1;
@@ -101,22 +101,20 @@ void SharedLoadBalancer::Describe(std::ostream& os,
 
 bool SharedLoadBalancer::ParseParameters(const butil::StringPiece& lb_protocol,
                                          std::string* lb_name,
-                                         butil::StringPairs* lb_params) {
+                                         butil::StringPiece* lb_params) {
     lb_name->clear();
     lb_params->clear();
     if (lb_protocol.empty()) {
         return false;
     }
-    size_t pos = lb_protocol.find(':');
+    const char separator = ':';
+    size_t pos = lb_protocol.find(separator);
     if (pos == std::string::npos) {
         lb_name->append(lb_protocol.data(), lb_protocol.size());
     } else {
         lb_name->append(lb_protocol.data(), pos);
-        butil::StringPiece params_piece = lb_protocol.substr(pos + sizeof(':'));
-        std::string params_str(params_piece.data(), params_piece.size());
-        if (!butil::SplitStringIntoKeyValuePairs(params_str, '=', ' ', lb_params)) {
-            lb_params->clear();
-            return false;
+        if (pos < lb_protocol.size() - sizeof(separator)) {
+            *lb_params = lb_protocol.substr(pos + sizeof(separator));
         }
     }
 

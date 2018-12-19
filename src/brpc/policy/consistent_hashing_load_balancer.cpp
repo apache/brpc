@@ -341,8 +341,12 @@ void ConsistentHashingLoadBalancer::GetLoads(
     }
 }
 
-bool ConsistentHashingLoadBalancer::SetParameters(const butil::StringPairs& params) {
-    for (const std::pair<std::string, std::string>& param : params) {
+bool ConsistentHashingLoadBalancer::SetParameters(const butil::StringPiece& params) {
+    butil::StringPairs param_vec;
+    if (!SplitParameters(params, &param_vec)) {
+        return false;
+    }
+    for (const std::pair<std::string, std::string>& param : param_vec) {
         if (param.first == "replicas") {
             size_t replicas = 0;
             if (butil::StringToSizeT(param.second, &replicas)) {

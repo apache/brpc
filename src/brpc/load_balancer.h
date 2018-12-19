@@ -106,10 +106,18 @@ public:
 
     // Config user passed parameters to lb after constrction which 
     // make lb function more flexible.
-    virtual bool SetParameters(const butil::StringPairs& params) { return true; }
+    virtual bool SetParameters(const butil::StringPiece& params) { return true; }
 
 protected:
     virtual ~LoadBalancer() { }
+    bool SplitParameters(const butil::StringPiece& params, butil::StringPairs* param_vec) {
+        std::string params_str(params.data(), params.size());
+        if (!butil::SplitStringIntoKeyValuePairs(params_str, '=', ' ', param_vec)) {
+            param_vec->clear();
+            return false;
+        }
+        return true;
+    }
 };
 
 DECLARE_bool(show_lb_in_vars);
@@ -172,7 +180,7 @@ public:
 private:
     static bool ParseParameters(const butil::StringPiece& lb_protocol,
                                 std::string* lb_name,
-                                butil::StringPairs* lb_params);
+                                butil::StringPiece* lb_params);
     static void DescribeLB(std::ostream& os, void* arg);
     void ExposeLB();
 
