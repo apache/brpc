@@ -509,6 +509,8 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             json2pb::Pb2JsonOptions opt;
             opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
             opt.jsonify_empty_array = cntl->has_pb_jsonify_empty_array();
+            opt.always_print_primitive_fields = cntl->has_always_print_primitive_fields();
+            
             opt.enum_option = (FLAGS_pb_enum_as_number
                                ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                : json2pb::OUTPUT_ENUM_BY_NAME);
@@ -749,6 +751,7 @@ HttpResponseSender::~HttpResponseSender() {
             json2pb::Pb2JsonOptions opt;
             opt.bytes_to_base64 = cntl->has_pb_bytes_to_base64();
             opt.jsonify_empty_array = cntl->has_pb_jsonify_empty_array();
+            opt.always_print_primitive_fields = cntl->has_always_print_primitive_fields();
             opt.enum_option = (FLAGS_pb_enum_as_number
                                ? json2pb::OUTPUT_ENUM_BY_NUMBER
                                : json2pb::OUTPUT_ENUM_BY_NAME);
