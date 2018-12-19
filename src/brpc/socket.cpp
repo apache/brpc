@@ -2798,7 +2798,7 @@ void SocketMulti::Describe(std::ostream& os) {
     }
     os << "  type=" << "multi"
        << "\n  total_rpc_count=" << _load.load(butil::memory_order_relaxed)
-       << "\n	num_active=" << sockets.size()
+       << "\n  num_active=" << sockets.size()
        << "\n  num_created=" << _num_created.load(butil::memory_order_relaxed)
        << "\n  lightest_id=" << sid << " current_load=" << load << " selected_load=" << selected_load;
 }
