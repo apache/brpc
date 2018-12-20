@@ -153,6 +153,15 @@ void SendRpcResponse(int64_t correlation_id,
     std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
     ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
 
+    std::unique_ptr<const google::protobuf::Arena> recycle_arena;
+    std::unique_ptr<const google::protobuf::Message> recycle_req;
+    std::unique_ptr<const google::protobuf::Message> recycle_res;
+    if (true == FLAGS_brpc_use_protobuf_arena_in_processrpcrequest) {
+        recycle_arena.reset(arena);
+    } else {
+        recycle_req.reset(req);
+        recycle_res.reset(res);
+    }
     StreamId response_stream_id = accessor.response_stream();
 
     if (cntl->IsCloseConnection()) {
@@ -178,15 +187,6 @@ void SendRpcResponse(int64_t correlation_id,
             append_body = true;
         }
     }
-
-    if (true == FLAGS_brpc_use_protobuf_arena_in_processrpcrequest) {
-        std::unique_ptr<const google::protobuf::Arena> recycle_arena(arena);
-    } else {
-        std::unique_ptr<const google::protobuf::Message> recycle_req(req);
-        std::unique_ptr<const google::protobuf::Message> recycle_res(res);
-        std::unique_ptr<const google::protobuf::Arena> recycle_arena(arena);
-    }
-
     // Don't use res->ByteSize() since it may be compressed
     size_t res_size = 0;
     size_t attached_size = 0;
@@ -343,8 +343,9 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         LOG(WARNING) << "Fail to new Controller";
         return;
     }
-    std::unique_ptr<google::protobuf::Arena> arena(new google::protobuf::Arena());
+    std::unique_ptr<google::protobuf::Arena> arena;
     if (true == FLAGS_brpc_use_protobuf_arena_in_processrpcrequest) {
+        arena.reset(new google::protobuf::Arena());
         if (NULL == arena.get()) {
             LOG(WARNING) << "brpc_use_protobuf_arena_in_processrpcrequest is true but fail to new arena";
             return;
