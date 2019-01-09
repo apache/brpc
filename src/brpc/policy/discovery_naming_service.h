@@ -19,9 +19,64 @@
 
 #include "brpc/periodic_naming_service.h"
 #include "brpc/channel.h"
+#include "butil/synchronization/lock.h"
 
 namespace brpc {
 namespace policy {
+
+struct DiscoveryRegisterParam {
+    std::string appid;
+    std::string hostname;
+    std::string env;
+    std::string zone;
+    std::string region;
+    std::string addrs;          // splitted by ','
+    int status;
+    std::string version;
+    std::string metadata;
+
+    bool IsValid() const;
+};
+
+struct DiscoveryFetchsParam {
+    std::string appid;
+    std::string env;
+    std::string status;
+
+    bool IsValid() const;
+};
+
+// ONE DiscoveryClient corresponds to ONE service instance.
+// If your program has multiple service instances to register,
+// you need multiple DiscoveryClient.
+// Note: Unregister is automatically called in dtor.
+class DiscoveryClient {
+public:
+    DiscoveryClient();
+    ~DiscoveryClient();
+
+    int Register(const DiscoveryRegisterParam& req);
+    int Fetchs(const DiscoveryFetchsParam& req, std::vector<ServerNode>* servers) const;
+
+private:
+    static void* PeriodicRenew(void* arg);
+    int DoCancel() const;
+    int DoRegister() const;
+    int DoRenew() const;
+
+private:
+    bthread_t _th;
+    butil::atomic<bool> _registered;
+    std::string _appid;
+    std::string _hostname;
+    std::string _addrs;
+    std::string _env;
+    std::string _region;
+    std::string _zone;
+    int _status;
+    std::string _version;
+    std::string _metadata;
+};
 
 class DiscoveryNamingService : public PeriodicNamingService {
 private:
@@ -35,16 +90,11 @@ private:
     void Destroy() override;
 
 private:
-    int ParseNodesResult(const butil::IOBuf& buf, std::string* server_addr);
-    int ParseFetchsResult(const butil::IOBuf& buf, const char* service_name,
-                            std::vector<ServerNode>* servers);
-
-    Channel _channel;
-    bool _is_initialized = false;
+    DiscoveryClient _client;
 };
+
 
 } // namespace policy
 } // namespace brpc
-
 
 #endif // BRPC_POLICY_DISCOVERY_NAMING_SERVICE_H
