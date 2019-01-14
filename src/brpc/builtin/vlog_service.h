@@ -17,10 +17,10 @@
 #ifndef  BRPC_VLOG_SERVICE_H
 #define  BRPC_VLOG_SERVICE_H
 
-#if !BRPC_WITH_GLOG 
+#if !WITH_GLOG
+
 #include <ostream>
 #include "brpc/builtin_service.pb.h"
-
 
 namespace brpc {
 
@@ -35,6 +35,6 @@ public:
 
 } // namespace brpc
 
-#endif  // BRPC_WITH_GLOG
+#endif  // WITH_GLOG
 
 #endif  //BRPC_VLOG_SERVICE_H

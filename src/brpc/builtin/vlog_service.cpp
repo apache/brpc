@@ -14,7 +14,7 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#if !BRPC_WITH_GLOG 
+#if !WITH_GLOG
 
 #include "brpc/log.h"
 #include "brpc/controller.h"           // Controller
