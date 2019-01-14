@@ -645,7 +645,7 @@ TEST(NamingServiceTest, discovery_sanity) {
         // svc.RenewCount() be one.
         ASSERT_EQ(0, dc.Register(dparam));
         ASSERT_EQ(0, dc.Register(dparam));
-        bthread_usleep(1000000);
+        bthread_usleep(100000);
     }
     ASSERT_EQ(svc.RenewCount(), 1);
     ASSERT_EQ(svc.CancelCount(), 1);
