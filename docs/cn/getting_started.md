@@ -84,7 +84,7 @@ To change compiler to clang, overwrite environment variable CC and CXX to clang 
 
 To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
 
-To use brpc with glog, add `-DWITH_GLOG=ON`.
+To use brpc with glog, add `-DBRPC_WITH_GLOG=ON`.
 
 To enable [thrift support](../en/thrift.md), install thrift first and add `-DWITH_THRIFT=ON`.
 
@@ -175,7 +175,7 @@ To change compiler to clang, overwrite environment variable CC and CXX to clang 
 
 To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
 
-To use brpc with glog, add `-DWITH_GLOG=ON`.
+To use brpc with glog, add `-DBRPC_WITH_GLOG=ON`.
 
 To enable [thrift support](../en/thrift.md), install thrift first and add `-DWITH_THRIFT=ON`.
 
@@ -249,7 +249,7 @@ To change compiler to clang, overwrite environment variable CC and CXX to clang 
 
 To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
 
-To use brpc with glog, add `-DWITH_GLOG=ON`.
+To use brpc with glog, add `-DBRPC_WITH_GLOG=ON`.
 
 To enable [thrift support](../en/thrift.md), install thrift first and add `-DWITH_THRIFT=ON`.
 
@@ -316,7 +316,7 @@ mkdir bld && cd bld && cmake .. && make
 
 To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
 
-To use brpc with glog, add `-DWITH_GLOG=ON`.
+To use brpc with glog, add `-DBRPC_WITH_GLOG=ON`.
 
 To enable [thrift support](../en/thrift.md), install thrift first and add `-DWITH_THRIFT=ON`.
 
@@ -392,7 +392,7 @@ When you remove tcmalloc, not only remove the linkage with tcmalloc but also the
 
 ## glog: 3.3+
 
-brpc implements a default [logging utility](../../src/butil/logging.h) which conflicts with glog. To replace this with glog, add *--with-glog* to config_brpc.sh or add `-DWITH_GLOG=ON` to cmake.
+brpc implements a default [logging utility](../../src/butil/logging.h) which conflicts with glog. To replace this with glog, add *--with-glog* to config_brpc.sh or add `-DBRPC_WITH_GLOG=ON` to cmake.
 
 ## valgrind: 3.8+
 
