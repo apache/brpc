@@ -20,7 +20,7 @@
 #ifndef BUTIL_LOGGING_H_
 #define BUTIL_LOGGING_H_
 
-#include "butil/config.h"   // WITH_GLOG
+#include "butil/config.h"   // BRPC_WITH_GLOG
 
 #include <inttypes.h>
 #include <string>
@@ -30,7 +30,7 @@
 #include "butil/atomicops.h" // Used by LOG_EVERY_N, LOG_FIRST_N etc
 #include "butil/time.h"      // gettimeofday_us()
 
-#if WITH_GLOG
+#if BRPC_WITH_GLOG
 # include <glog/logging.h>
 # include <glog/raw_logging.h>
 // define macros that not implemented in glog
@@ -1096,7 +1096,7 @@ inline std::ostream& operator<<(std::ostream& out, const std::wstring& wstr) {
 //   4 -- [default] LOG(ERROR) at runtime
 //   5 -- LOG(ERROR) at runtime, only once per call-site
 
-#endif // WITH_GLOG
+#endif // BRPC_WITH_GLOG
 
 #ifndef NOTIMPLEMENTED_POLICY
 #if defined(OS_ANDROID) && defined(OFFICIAL_BUILD)

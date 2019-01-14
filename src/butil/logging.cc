@@ -17,7 +17,7 @@
 
 #include "butil/logging.h"
 
-#if !WITH_GLOG
+#if !BRPC_WITH_GLOG
 
 #if defined(OS_WIN)
 #include <io.h>
@@ -1440,4 +1440,4 @@ std::ostream& operator<<(std::ostream& out, const wchar_t* wstr) {
     return out << butil::WideToUTF8(std::wstring(wstr));
 }
 
-#endif  // WITH_GLOG
+#endif  // BRPC_WITH_GLOG
