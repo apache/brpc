@@ -63,7 +63,7 @@ public:
     // naming service is unable to be reached, then the backup file will be
     // used. Notice that the backup file will be expired if it is not modified
     // in FLAGS_backup_file_expire_time_s seconds.
-    virtual bool RunWithBackupFile() { return false; }
+    virtual bool AllowBackup() { return false; }
 
     // Create/destroy an instance.
     // Caller is responsible for Destroy() the instance after usage.

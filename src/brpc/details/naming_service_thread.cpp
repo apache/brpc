@@ -137,14 +137,11 @@ void NamingServiceThread::Actions::ResetServers(
         const std::vector<ServerNode>& servers) {
     std::string file_path;
     bool backup_file_enabled =
-        !FLAGS_ns_backup_dir.empty() && _owner->_ns->RunWithBackupFile();
+        !FLAGS_ns_backup_dir.empty() && _owner->_ns->AllowBackup();
     bool load_enabled = !_reset_ever && servers.empty();
     if (backup_file_enabled) {
-        file_path.append(FLAGS_ns_backup_dir);
-        file_path.push_back('/');
-        file_path.append(_owner->_protocol);
-        file_path.push_back('/');
-        file_path.append(_owner->_service_name);
+        file_path = butil::string_printf("%s/%s/%s", FLAGS_ns_backup_dir.c_str(),
+                _owner->_protocol.c_str(), _owner->_service_name.c_str());
         if (load_enabled) {
             std::vector<ServerNode> servers_from_file;
             GetUnexpiredServersFromFile(file_path, &servers_from_file);

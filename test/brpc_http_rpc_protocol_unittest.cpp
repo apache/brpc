@@ -706,7 +706,7 @@ TEST_F(HttpTest, read_long_body_progressively) {
                     last_read = current_read;
                 }
                 // Read something in past N seconds.
-                ASSERT_GT(last_read, 100000);
+                ASSERT_GT(last_read, (size_t)100000);
             }
             // the socket still holds a ref.
             ASSERT_FALSE(reader->destroyed());
