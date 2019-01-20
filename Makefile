@@ -144,6 +144,7 @@ BUTIL_SOURCES = \
     src/butil/zero_copy_stream_as_streambuf.cpp \
     src/butil/crc32c.cc \
     src/butil/containers/case_ignored_flat_map.cpp \
+    src/butil/containers/sync_ptr.cc \
     src/butil/iobuf.cpp \
     src/butil/binary_printer.cpp \
     src/butil/popen.cpp

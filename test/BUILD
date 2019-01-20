@@ -140,6 +140,7 @@ TEST_BUTIL_SOURCES = [
     "test_switches.cc",
     "scoped_locale.cc",
     #"popen_unittest.cpp",
+    "sync_map_unittest.cc",
     "butil_unittest_main.cpp",
 ] + select({
         "@bazel_tools//tools/osx:darwin": [],
