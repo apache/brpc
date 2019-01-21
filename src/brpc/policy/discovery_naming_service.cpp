@@ -365,6 +365,7 @@ int DiscoveryClient::DoCancel() const {
     Controller cntl;
     cntl.http_request().set_method(HTTP_METHOD_POST);
     cntl.http_request().uri() = "/discovery/cancel";
+    cntl.http_request().set_content_type("application/x-www-form-urlencoded");
     butil::IOBufBuilder os;
     os << "appid=" << _appid
         << "&hostname=" << _hostname
