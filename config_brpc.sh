@@ -21,9 +21,10 @@ else
     LDD=ldd
 fi
 
-TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,nodebugsymbols -n 'config_brpc' -- "$@"`
+TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,with-mesalink,nodebugsymbols -n 'config_brpc' -- "$@"`
 WITH_GLOG=0
 WITH_THRIFT=0
+WITH_MESALINK=0
 DEBUGSYMBOLS=-g
 
 if [ $? != 0 ] ; then >&2 $ECHO "Terminating..."; exit 1 ; fi
@@ -46,6 +47,7 @@ while true; do
         --cxx ) CXX=$2; shift 2 ;;
         --with-glog ) WITH_GLOG=1; shift 1 ;;
         --with-thrift) WITH_THRIFT=1; shift 1 ;;
+        --with-mesalink) WITH_MESALINK=1; shift 1 ;;
         --nodebugsymbols ) DEBUGSYMBOLS=; shift 1 ;;
         -- ) shift; break ;;
         * ) break ;;
@@ -137,8 +139,18 @@ find_dir_of_header_or_die() {
 #PTHREAD_HDR=$(find_dir_of_header_or_die pthread.h)
 OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h)
 
+if [ $WITH_MESALINK != 0 ]; then
+    MESALINK_HDR=$(find_dir_of_header_or_die mesalink/openssl/ssl.h)
+    OPENSSL_HDR="$OPENSSL_HDR\n$MESALINK_HDR"
+fi
+
 STATIC_LINKINGS=
 DYNAMIC_LINKINGS="-lpthread -lssl -lcrypto -ldl -lz"
+
+if [ $WITH_MESALINK != 0 ]; then
+    DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -lmesalink"
+fi
+
 if [ "$SYSTEM" = "Linux" ]; then
     DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -lrt"
 fi
@@ -302,6 +314,10 @@ if [ $WITH_THRIFT != 0 ]; then
     else
         append_to_output "STATIC_LINKINGS+=-lthriftnb"
     fi
+fi
+
+if [ $WITH_MESALINK != 0 ]; then
+    CPPFLAGS="${CPPFLAGS} -DUSE_MESALINK"
 fi
 
 append_to_output "CPPFLAGS=${CPPFLAGS}"
