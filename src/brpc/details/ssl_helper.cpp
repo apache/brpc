@@ -14,6 +14,9 @@
 
 // Authors: Rujie Jiang (jiangrujie@baidu.com)
 
+
+#ifndef USE_MESALINK
+
 #include <sys/socket.h>                // recv
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -829,3 +832,5 @@ void Print(std::ostream& os, X509* cert, const char* sep) {
 }
 
 } // namespace brpc
+
+#endif // USE_MESALINK

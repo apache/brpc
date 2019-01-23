@@ -19,6 +19,11 @@
 #include "butil/compat.h"                        // OS_MACOSX
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#ifdef USE_MESALINK
+#include <mesalink/openssl/ssl.h>
+#include <mesalink/openssl/err.h>
+#include <mesalink/openssl/x509.h>
+#endif
 #include <netinet/tcp.h>                         // getsockopt
 #include <gflags/gflags.h>
 #include "bthread/unstable.h"                    // bthread_timer_del
@@ -1834,7 +1839,7 @@ int Socket::SSLHandshake(int fd, bool server_mode) {
         LOG(ERROR) << "Fail to CreateSSLSession";
         return -1;
     }
-#ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
+#if defined(SSL_CTRL_SET_TLSEXT_HOSTNAME) || defined(USE_MESALINK)
     if (!_ssl_ctx->sni_name.empty()) {
         SSL_set_tlsext_host_name(_ssl_session, _ssl_ctx->sni_name.c_str());
     }

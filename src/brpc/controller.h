@@ -48,7 +48,12 @@
 #endif
 
 extern "C" {
+#ifndef USE_MESALINK
 struct x509_st;
+#else
+#include <mesalink/openssl/x509.h>
+#define x509_st X509
+#endif
 }
 
 namespace brpc {
