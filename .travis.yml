@@ -10,6 +10,8 @@ env:
 - PURPOSE=compile
 - PURPOSE=unittest
 - PURPOSE=compile-with-bazel
+- PURPOSE=compile USE_MESALINK=yes
+- PURPOSE=unittest USE_MESALINK=yes
 
 before_script:
 - ulimit -c unlimited -S       # enable core dumps
@@ -23,6 +25,7 @@ install:
 - sudo apt-get install -qq realpath libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev libboost-dev libssl-dev libevent-dev libboost-test-dev
 - sudo apt-get install libgtest-dev && cd /usr/src/gtest && sudo env "PATH=$PATH" cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
 - sudo apt-get install -y gdb  # install gdb
+- if [[  "$USE_MESALINK" == "yes" ]]; then curl https://sh.rustup.rs -sSf | sh -s -- -y && source $HOME/.cargo/env && wget https://github.com/mesalock-linux/mesalink/archive/v0.8.0-pre.tar.gz && tar -xf v0.8.0-pre.tar.gz && cd mesalink-0.8.0-pre && ./autogen.sh --prefix=/usr/  && make && sudo make install && cd - ; fi
 
 script:
 - if [[ "$PURPOSE" == "compile-with-bazel" ]]; then bazel build -j 12 -c opt --copt -DHAVE_ZLIB=1 //...          ; fi
