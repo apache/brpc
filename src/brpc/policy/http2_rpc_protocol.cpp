@@ -1523,25 +1523,24 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
         return butil::Status(EH2RUNOUTSTREAMS, "Fail to allocate stream_id");
     }
 
-    std::unique_ptr<H2StreamContext> sctx(std::move(_sctx));
-    sctx->Init(ctx, id);
+    _sctx->Init(ctx, id);
     // flow control
     if (!_cntl->request_attachment().empty()) {
         const int64_t data_size = _cntl->request_attachment().size();
-        if (!sctx->ConsumeWindowSize(data_size)) {
+        if (!_sctx->ConsumeWindowSize(data_size)) {
             return butil::Status(ELIMIT, "remote_window_left is not enough, data_size=%" PRId64, data_size);
         }
     }
 
-    const int rc = ctx->TryToInsertStream(id, sctx.get());
+    const int rc = ctx->TryToInsertStream(id, _sctx.get());
     if (rc < 0) {
         return butil::Status(EINTERNAL, "Fail to insert existing stream_id");
     } else if (rc > 0) {
         return butil::Status(ELOGOFF, "the connection just issued GOAWAY");
     }
-    _stream_id = sctx->stream_id();
-    // After calling TryToInsertStream, ownership of sctx is transferred to ctx
-    sctx.release();
+    _stream_id = _sctx->stream_id();
+    // After calling TryToInsertStream, the ownership of _sctx is transferred to ctx
+    _sctx.release();
 
     HPacker& hpacker = ctx->hpacker();
     butil::IOBufAppender appender;
