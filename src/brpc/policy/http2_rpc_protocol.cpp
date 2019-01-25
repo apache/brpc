@@ -1522,25 +1522,25 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
                  << " h2req=" << (StreamUserData*)this;
         return butil::Status(EH2RUNOUTSTREAMS, "Fail to allocate stream_id");
     }
-    H2StreamContext* sctx = _sctx.release();
-    sctx->Init(ctx, id);
-    const int rc = ctx->TryToInsertStream(id, sctx);
-    if (rc < 0) {
-        delete sctx;
-        return butil::Status(EINTERNAL, "Fail to insert existing stream_id");
-    } else if (rc > 0) {
-        delete sctx;
-        return butil::Status(ELOGOFF, "the connection just issued GOAWAY");
-    }
-    _stream_id = sctx->stream_id();
 
+    _sctx->Init(ctx, id);
     // flow control
     if (!_cntl->request_attachment().empty()) {
         const int64_t data_size = _cntl->request_attachment().size();
-        if (!sctx->ConsumeWindowSize(data_size)) {
+        if (!_sctx->ConsumeWindowSize(data_size)) {
             return butil::Status(ELIMIT, "remote_window_left is not enough, data_size=%" PRId64, data_size);
         }
     }
+
+    const int rc = ctx->TryToInsertStream(id, _sctx.get());
+    if (rc < 0) {
+        return butil::Status(EINTERNAL, "Fail to insert existing stream_id");
+    } else if (rc > 0) {
+        return butil::Status(ELOGOFF, "the connection just issued GOAWAY");
+    }
+    _stream_id = _sctx->stream_id();
+    // After calling TryToInsertStream, the ownership of _sctx is transferred to ctx
+    _sctx.release();
 
     HPacker& hpacker = ctx->hpacker();
     butil::IOBufAppender appender;
@@ -1672,8 +1672,15 @@ H2UnsentResponse::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     // NOTE: Currently the stream context is definitely removed and updating
     // window size is useless, however it's not true when progressive request
     // is supported.
+    // TODO(zhujiashun): Instead of just returning error to client, a better
+    // solution to handle not enough window size is to wait until WINDOW_UPDATE
+    // is received, and then retry those failed response again.
     if (!MinusWindowSize(&ctx->_remote_window_left, _data.size())) {
-        return butil::Status(ELIMIT, "Remote window size is not enough");
+        char rstbuf[FRAME_HEAD_SIZE + 4];
+        SerializeFrameHead(rstbuf, 4, H2_FRAME_RST_STREAM, 0, _stream_id);
+        SaveUint32(rstbuf + FRAME_HEAD_SIZE, H2_FLOW_CONTROL_ERROR);
+        out->append(rstbuf, sizeof(rstbuf));
+        return butil::Status::OK();
     }
 
     HPacker& hpacker = ctx->hpacker();
