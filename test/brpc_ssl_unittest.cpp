@@ -325,7 +325,9 @@ TEST_F(SSLTest, ssl_perf) {
             brpc::CreateServerSSLContext("cert1.crt", "cert1.key",
                                          brpc::SSLOptions(), NULL);
     SSL* cli_ssl = brpc::CreateSSLSession(cli_ctx, 0, clifd, false);
+#if defined(SSL_CTRL_SET_TLSEXT_HOSTNAME) || defined(USE_MESALINK)
     SSL_set_tlsext_host_name(cli_ssl, "localhost");
+#endif
     SSL* serv_ssl = brpc::CreateSSLSession(serv_ctx, 0, servfd, true);
     pthread_t cpid;
     pthread_t spid;
