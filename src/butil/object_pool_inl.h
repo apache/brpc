@@ -222,7 +222,7 @@ public:
 
     inline T* get_object() {
         LocalPool* lp = get_or_new_local_pool();
-        if (__builtin_expect(lp != NULL, 1)) {
+        if (BAIDU_LIKELY(lp != NULL)) {
             return lp->get();
         }
         return NULL;
@@ -231,7 +231,7 @@ public:
     template <typename A1>
     inline T* get_object(const A1& arg1) {
         LocalPool* lp = get_or_new_local_pool();
-        if (__builtin_expect(lp != NULL, 1)) {
+        if (BAIDU_LIKELY(lp != NULL)) {
             return lp->get(arg1);
         }
         return NULL;
@@ -240,7 +240,7 @@ public:
     template <typename A1, typename A2>
     inline T* get_object(const A1& arg1, const A2& arg2) {
         LocalPool* lp = get_or_new_local_pool();
-        if (__builtin_expect(lp != NULL, 1)) {
+        if (BAIDU_LIKELY(lp != NULL)) {
             return lp->get(arg1, arg2);
         }
         return NULL;
@@ -248,7 +248,7 @@ public:
 
     inline int return_object(T* ptr) {
         LocalPool* lp = get_or_new_local_pool();
-        if (__builtin_expect(lp != NULL, 1)) {
+        if (BAIDU_LIKELY(lp != NULL)) {
             return lp->return_object(ptr);
         }
         return -1;
@@ -378,7 +378,7 @@ private:
 
     inline LocalPool* get_or_new_local_pool() {
         LocalPool* lp = _local_pool;
-        if (__builtin_expect(lp != NULL, 1)) {
+        if (BAIDU_LIKELY(lp != NULL)) {
             return lp;
         }
         lp = new(std::nothrow) LocalPool(this);
