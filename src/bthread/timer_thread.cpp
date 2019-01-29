@@ -348,11 +348,10 @@ void TimerThread::run() {
         // Pull tasks from buckets.
         for (size_t i = 0; i < _options.num_buckets; ++i) {
             Bucket& bucket = _buckets[i];
-            Task* next_task = nullptr;
             for (Task* p = bucket.consume_tasks(); p != nullptr; ++nscheduled) {
                 // p->next should be kept first
                 // in case of the deletion of Task p which is unscheduled
-                next_task = p->next;
+                Task* next_task = p->next;
 
                 if (!p->try_delete()) { // remove the task if it's unscheduled
                     tasks.push_back(p);
