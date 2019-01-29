@@ -18,8 +18,7 @@
 #define BRPC_SPAN_EXPORTER_H
 
 #include <memory>
-#include <ostream>
-#include <vector>
+#include <set>
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/synchronization/lock.h"
 #include "brpc/span.pb.h"
@@ -28,14 +27,12 @@ namespace brpc {
 
 // You can customize the way the span is exported by inheriting SpanExporter.
 // Note:
-// 1. If you call RegisterSpanExporter multiple times for the same SpanExporter
-// object, the object's DumpSpan() method will also be executed multiple times.
-// Correspondingly, if you want completely unregister a SpanExporter, you need to
-// call UnResigsterSpanExporter() for the same times as you did when you registered
-// it.
+// 1. For the same SpanExporter object, the RegisterSpanExporter interface 
+//    is idempotent, if you want a span to be dumped multiple times, you 
+//    should implement this logic in the SpanExporter::DumpSpan method.
 // 2. The order in which each SpanExporter::DumpSpan is called is independent 
 // of the registration order.
-// 3. SpanDumper object should be managered by std::shared_ptr.
+// 3. SpanExporter object should be managered by std::shared_ptr.
 //
 // Example:
 //
@@ -51,7 +48,7 @@ namespace brpc {
     
 class SpanExporter {
 public:
-    virtual void DumpSpan(const TracingSpan* span) {}
+    virtual void DumpSpan(const TracingSpan* span) { }
 
     virtual ~SpanExporter() {}
 };
@@ -76,7 +73,7 @@ friend class Span;
     SpanExporterManager() {}
     ~SpanExporterManager() {}
 
-    std::vector<std::shared_ptr<SpanExporter>> _exporter_list;
+    std::set<std::shared_ptr<SpanExporter>> _exporter_list;
     butil::Mutex _exporter_list_mutex;
 };
 

@@ -22,22 +22,21 @@ namespace brpc {
 
 void SpanExporterManager::RegisterSpanExporter(std::shared_ptr<SpanExporter> span_exporter) {
     std::unique_lock<butil::Mutex> lock_guard(_exporter_list_mutex);
-    _exporter_list.push_back(std::move(span_exporter));
+    _exporter_list.insert(std::move(span_exporter));
 }
 
 void SpanExporterManager::UnRegisterSpanExporter(std::shared_ptr<SpanExporter> span_exporter) {
     std::unique_lock<butil::Mutex> lock_guard(_exporter_list_mutex);
-    auto it = std::find(_exporter_list.begin(), _exporter_list.end(), span_exporter);
+    auto it = _exporter_list.find(span_exporter);
     if (it == _exporter_list.end()) {
         LOG(WARNING) << "SpanExport not registered yet";
         return;
     }
-    swap(*it, _exporter_list.back());
-    _exporter_list.erase(--_exporter_list.end());
+    _exporter_list.erase(span_exporter);
 }
 
 void SpanExporterManager::DumpSpan(const TracingSpan* span) {
-    std::vector<std::shared_ptr<SpanExporter>> exporter_copy;
+    std::set<std::shared_ptr<SpanExporter>> exporter_copy;
     {
         std::unique_lock<butil::Mutex> lock_guard(_exporter_list_mutex);
         exporter_copy = _exporter_list;
