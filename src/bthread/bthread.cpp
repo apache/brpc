@@ -16,6 +16,7 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 10 17:40:58 CST 2012
 
+#include <memory>				// std::unique_ptr
 #include <gflags/gflags.h>
 #include "butil/macros.h"                       // BAIDU_CASSERT
 #include "butil/logging.h"
