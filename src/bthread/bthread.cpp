@@ -82,7 +82,7 @@ inline TaskControl* get_or_new_task_control() {
             FLAGS_bthread_min_concurrency :
             FLAGS_bthread_concurrency;
         if (c->init(concurrency) != 0) {
-            LOG(ERROR) << "Fail to init g_task_control";
+            LOG(FATAL) << "Fail to init g_task_control";
             return;
         }
 
