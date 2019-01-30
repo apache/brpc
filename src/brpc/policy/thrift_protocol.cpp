@@ -49,7 +49,7 @@
 #endif
 
 extern "C" {
-void bthread_assign_data(void* data) __THROW;
+void bthread_assign_data(void* data);
 }
 
 namespace brpc {
