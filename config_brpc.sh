@@ -7,10 +7,6 @@ if [ "$SYSTEM" = "Darwin" ]; then
     fi
     SO=dylib
     LDD="otool -L"
-    if [ "$(getopt -V)" = " --" ]; then
-        >&2 $ECHO "gnu-getopt must be installed and used"
-        exit 1
-    fi
 else
     if [ -z "$BASH" ]; then
         ECHO=echo
