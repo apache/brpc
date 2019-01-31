@@ -17,6 +17,10 @@
 // Date: Thu Nov 22 13:57:56 CST 2012
 
 #include <openssl/ssl.h>                   // SSL_*
+#ifdef USE_MESALINK
+#include <mesalink/openssl/ssl.h>
+#include <mesalink/openssl/err.h>
+#endif
 #include <sys/syscall.h>                   // syscall
 #include <fcntl.h>                         // O_RDONLY
 #include <errno.h>                         // errno
@@ -1033,6 +1037,7 @@ ssize_t IOBuf::cut_multiple_into_SSL_channel(SSL* ssl, IOBuf* const* pieces,
         }
     }
 
+#ifndef USE_MESALINK
     // Flush remaining data inside the BIO buffer layer
     BIO* wbio = SSL_get_wbio(ssl);
     if (BIO_wpending(wbio) > 0) {
@@ -1043,6 +1048,14 @@ ssize_t IOBuf::cut_multiple_into_SSL_channel(SSL* ssl, IOBuf* const* pieces,
             return rc;
         }
     }
+#else
+    int rc = SSL_flush(ssl);
+    if (rc <= 0) {
+        *ssl_error = SSL_ERROR_SYSCALL;
+        return rc;
+    }
+#endif
+
     return nw;
 }
 

@@ -14,8 +14,13 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
+#ifndef USE_MESALINK
 #include <openssl/ssl.h>
 #include <openssl/conf.h>
+#else
+#include <mesalink/openssl/ssl.h>
+#endif
+
 #include <gflags/gflags.h>
 #include <fcntl.h>                               // O_RDONLY
 #include <signal.h>

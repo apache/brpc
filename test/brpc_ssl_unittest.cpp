@@ -109,6 +109,7 @@ TEST_F(SSLTest, sanity) {
         brpc::Channel channel;
         brpc::ChannelOptions coptions;
         coptions.mutable_ssl_options();
+        coptions.mutable_ssl_options()->sni_name = "localhost";
         ASSERT_EQ(0, channel.Init("localhost", port, &coptions));
 
         brpc::Controller cntl;
@@ -125,6 +126,7 @@ TEST_F(SSLTest, sanity) {
         brpc::Channel channel;
         brpc::ChannelOptions coptions;
         coptions.mutable_ssl_options();
+        coptions.mutable_ssl_options()->sni_name = "localhost";
         ASSERT_EQ(0, channel.Init("127.0.0.1", port, &coptions));
         for (int i = 0; i < NUM; ++i) {
             google::protobuf::Closure* thrd_func =
@@ -141,6 +143,7 @@ TEST_F(SSLTest, sanity) {
         brpc::ChannelOptions coptions;
         coptions.protocol = "http";
         coptions.mutable_ssl_options();
+        coptions.mutable_ssl_options()->sni_name = "localhost";
         ASSERT_EQ(0, channel.Init("127.0.0.1", port, &coptions));
         for (int i = 0; i < NUM; ++i) {
             google::protobuf::Closure* thrd_func =
@@ -322,6 +325,9 @@ TEST_F(SSLTest, ssl_perf) {
             brpc::CreateServerSSLContext("cert1.crt", "cert1.key",
                                          brpc::SSLOptions(), NULL);
     SSL* cli_ssl = brpc::CreateSSLSession(cli_ctx, 0, clifd, false);
+#if defined(SSL_CTRL_SET_TLSEXT_HOSTNAME) || defined(USE_MESALINK)
+    SSL_set_tlsext_host_name(cli_ssl, "localhost");
+#endif
     SSL* serv_ssl = brpc::CreateSSLSession(serv_ctx, 0, servfd, true);
     pthread_t cpid;
     pthread_t spid;
