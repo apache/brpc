@@ -18,12 +18,12 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <vector>
+#include <butil/fast_rand.h>
+#include <butil/iobuf.h>
+#include <butil/object_pool.h>
+#include <butil/thread_local.h>
+#include <bthread/bthread.h>
 #include <gflags/gflags.h>
-#include "butil/fast_rand.h"
-#include "butil/iobuf.h"
-#include "butil/object_pool.h"
-#include "butil/thread_local.h"
-#include "bthread/bthread.h"
 #include "brpc/rdma/block_pool.h"
 
 namespace brpc {
@@ -32,15 +32,13 @@ namespace rdma {
 // Number of bytes in 1MB
 static const size_t BYTES_IN_MB = 1048576;
 
-// Blocks as thread local cache at most
-static const size_t MAX_TLS_CACHE_NUM = 8;
-
 DEFINE_int32(rdma_memory_pool_initial_size_mb, 1024,
              "Initial size of memory pool for RDMA (MB)");
 DEFINE_int32(rdma_memory_pool_increase_size_mb, 1024,
              "Increased size of memory pool for RDMA (MB)");
 DEFINE_int32(rdma_memory_pool_max_regions, 4, "Max number of regions");
-DEFINE_int32(rdma_memory_pool_buckets, 4, "Number of buckets to reduce race");
+DEFINE_int32(rdma_memory_pool_buckets, 1, "Number of buckets to reduce race");
+DEFINE_int32(rdma_memory_pool_tls_cache_num, 256, "Number of cached block in tls");
 
 struct IdleNode {
     void* start;
@@ -348,7 +346,7 @@ int DeallocBlock(void* buf) {
     node->start = buf;
     node->len = block_size;
 
-    if (block_type == 0 && tls_idle_num < MAX_TLS_CACHE_NUM) {
+    if (block_type == 0 && tls_idle_num < (uint32_t)FLAGS_rdma_memory_pool_tls_cache_num) {
         if (!tls_inited) {
             tls_inited = true;
             butil::thread_atexit(RecycleAll);
@@ -356,6 +354,26 @@ int DeallocBlock(void* buf) {
         tls_idle_num++;
         node->next = tls_idle_list;
         tls_idle_list = node;
+        return 0;
+    }
+
+    // Recycle half the cached blocks in tls when there is only one bucket
+    if (g_buckets == 1 && block_type == 0) {
+        int len = FLAGS_rdma_memory_pool_tls_cache_num / 2;
+        IdleNode* new_head = tls_idle_list;
+        IdleNode* recycle_tail = NULL;
+        for (int i = 0; i < len; ++i) {
+            recycle_tail = new_head;
+            new_head = new_head->next;
+        }
+        if (recycle_tail) {
+            BAIDU_SCOPED_LOCK(*g_info->lock[0][0]);
+            recycle_tail->next = node;
+            node->next = g_info->idle_list[0][0];
+            g_info->idle_list[0][0] = tls_idle_list;
+        }
+        tls_idle_list = new_head;
+        tls_idle_num -= len;
         return 0;
     }
 

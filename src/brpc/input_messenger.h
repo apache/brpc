@@ -130,6 +130,7 @@ private:
 
     // Process a new message just received in OnNewMessages
     // It is extracted from OnNewMessages because RDMA needs similar handling.
+    // Return value >= 0 means success
     int ProcessNewMessage(
             Socket* m, ssize_t bytes, bool read_eof,
             const uint64_t received_us, const uint64_t base_realtime,

@@ -17,12 +17,12 @@
 #ifdef BRPC_RDMA
 #include <infiniband/verbs.h>
 #endif
+#include <butil/fd_utility.h>
+#include <butil/logging.h>                   // CHECK, LOG
+#include <butil/object_pool.h>               // return_object
+#include <butil/fast_rand.h>                 // fast_rand_bytes
+#include <butil/sys_byteorder.h>             // HostToNet,NetToHost
 #include <gflags/gflags.h>
-#include "butil/fd_utility.h"
-#include "butil/logging.h"                   // CHECK, LOG
-#include "butil/object_pool.h"               // return_object
-#include "butil/fast_rand.h"                 // fast_rand_bytes
-#include "butil/sys_byteorder.h"             // HostToNet,NetToHost
 #include "brpc/errno.pb.h"
 #include "brpc/event_dispatcher.h"
 #include "brpc/input_messenger.h"
@@ -61,11 +61,10 @@ static const size_t IOBUF_BLOCK_DEFAULT_PAYLOAD =
 static const size_t RESERVED_WR_NUM = 3;
 
 // Size of blocks for recv WR
-size_t g_rdma_recv_block_size = 0;  // size of payload
+size_t g_rdma_recv_block_size = 8192;  // size of payload
 
 extern bool g_rdma_traffic_enabled;
-extern std::vector<brpc::SocketId> g_disabled_conns;
-extern butil::atomic<bool> g_written;
+extern int g_cq_num;
 
 struct RdmaConnectRequestData {
     void Serialize(char* data) const {
@@ -156,9 +155,7 @@ RdmaEndpoint::RdmaEndpoint(Socket* s)
     , _window_size(_sq_size)
     , _new_rq_wrs(0)
     , _remote_sid(0)
-#ifdef BRPC_RDMA
     , _completion_queue(_sq_size + _rq_size + 32)
-#endif
     , _ncompletions(0)
 {
     _pipefd[0] = -1;
@@ -205,10 +202,7 @@ void RdmaEndpoint::Reset() {
     _remote_sid = 0;
     _sq_sent = 0;
     _rq_received = 0;
-    _ncompletions.store(0, butil::memory_order_release);
-#ifdef BRPC_RDMA
-    CHECK(!_completion_queue.read_available());
-#endif
+    _ncompletions.store(0, butil::memory_order_relaxed);
 }
 
 // Handshake protocol description:
@@ -825,12 +819,6 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             break;
         }
 
-        if (g_written.load(butil::memory_order_acquire)) {
-            if (std::find(g_disabled_conns.begin(), g_disabled_conns.end(), _socket->id()) != g_disabled_conns.end()) {
-                break;
-            }
-        }
-
         ibv_send_wr* bad = NULL;
         if (ibv_post_send((ibv_qp*)_qp, &wr, &bad) < 0) {
             // We use other way to guarantee the Send Queue is not full.
@@ -853,6 +841,13 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
 
     return total_len;
 #endif
+}
+
+int RdmaEndpoint::SendAck(int num) {
+    if (_new_rq_wrs.fetch_add(num, butil::memory_order_relaxed) > _remote_window_capacity / 2) {
+        return SendImm(_new_rq_wrs.exchange(0, butil::memory_order_relaxed));
+    }
+    return 0;
 }
 
 int RdmaEndpoint::SendImm(uint32_t imm) {
@@ -938,10 +933,8 @@ ssize_t RdmaEndpoint::HandleCompletion(RdmaCompletion& rc) {
         if (PostRecv(1) < 0) {
             return -1;
         }
-        if (rc.len > 0 && _new_rq_wrs.fetch_add(1, butil::memory_order_release)
-                > _remote_window_capacity / 2) {
-            // Send a pure ACK
-            SendImm(_new_rq_wrs.exchange(0, butil::memory_order_relaxed));
+        if (rc.len > 0) {
+            SendAck(1);
         }
         return rc.len;
     }
@@ -986,11 +979,8 @@ int RdmaEndpoint::PostRecv(uint32_t num) {
     CHECK(false) << "This should not happen";
     return -1;
 #else
-    if (num == 0) {
-        return 0;
-    }
     // We do the post repeatedly from the _rbuf[_rq_received].
-    do {
+    while (num > 0) {
         if (FLAGS_rdma_recv_zerocopy || _rbuf[_rq_received].empty()) {
             _rbuf[_rq_received].clear();
             butil::IOBufAsZeroCopyOutputStream os(&_rbuf[_rq_received],
@@ -1012,7 +1002,7 @@ int RdmaEndpoint::PostRecv(uint32_t num) {
         if (_rq_received == _rq_size + RESERVED_WR_NUM) {
             _rq_received = 0;
         }
-    } while (num > 0);
+    };
     return 0;
 #endif
 }

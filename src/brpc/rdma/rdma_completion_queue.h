@@ -17,9 +17,9 @@
 #ifndef BRPC_RDMA_COMPLETION_QUEUE_H
 #define BRPC_RDMA_COMPLETION_QUEUE_H
 
-#include <vector>                               // std::vector
-#include "butil/macros.h"                       // DISALLOW_COPY_AND_ASSIGN
-#include "bthread/bthread.h"                    // butil::Mutex
+#include <vector>                                   // std::vector
+#include <butil/macros.h>                           // DISALLOW_COPY_AND_ASSIGN
+#include <bthread/bthread.h>                        // butil::Mutex
 #include "brpc/input_messenger.h"
 #include "brpc/socket.h"
 
@@ -84,7 +84,7 @@ private:
     static void* HandleCompletions(void* arg);
 
     // Handle the given completion
-    static void HandleCompletion(RdmaCompletion* rc, Socket* s,
+    static int HandleCompletion(RdmaCompletion* rc, Socket* s,
             InputMessenger::InputMessageClosure& last_msg);
 
     // Clean the resources, not including the PollCQ thread
@@ -202,4 +202,3 @@ void GlobalCQRelease();
 }  // namespace brpc
 
 #endif  // BRPC_RDMA_COMPLETION_QUEUE_H
-

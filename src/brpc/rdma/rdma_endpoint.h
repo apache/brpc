@@ -20,14 +20,12 @@
 #include <cstring>
 #include <iostream>
 #include <string>
-#include <vector>
-#ifdef BRPC_RDMA
+#include <vector>                    // std::vector
+#include <butil/atomicops.h>         // butil::atomic
+#include <butil/iobuf.h>             // butil::IOBuf
+#include <butil/macros.h>
 #include <boost/lockfree/spsc_queue.hpp>
-#endif
-#include "butil/atomicops.h"         // butil::atomic
-#include "butil/iobuf.h"             // butil::IOBuf
-#include "butil/macros.h"
-#include "bthread/bthread.h"
+#include <bthread/bthread.h>
 #include "brpc/socket.h"
 #include "brpc/rdma/rdma_communication_manager.h"
 #include "brpc/rdma/rdma_completion_queue.h"
@@ -117,6 +115,14 @@ private:
     //     -1:  failed, errno set
     int SendImm(uint32_t imm);
 
+    // Try to send pure ACK to the remote side
+    // Arguments:
+    //     num: the number of rq entry received
+    // Return:
+    //     0:   success
+    //     -1:  failed, errno set
+    int SendAck(int num);
+
     // Handle CQE wrapped in rc
     // If rc is not RDMA RECV event:
     //     return 0 if success, -1 if failed and errno set
@@ -197,10 +203,8 @@ private:
     // Remote side SocketId
     uint64_t _remote_sid;
 
-#ifdef BRPC_RDMA
     // Only used when shared CQ is enabled
     boost::lockfree::spsc_queue<RdmaCompletion*> _completion_queue;
-#endif
     // Number of completions received
     butil::atomic<int> _ncompletions;
 
@@ -218,4 +222,3 @@ private:
 }  // namespace brpc
 
 #endif // BRPC_RDMA_ENDPOINT_H
-

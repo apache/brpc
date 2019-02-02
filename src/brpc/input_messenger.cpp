@@ -353,7 +353,10 @@ int InputMessenger::ProcessNewMessage(
     if (num_bthread_created && m->_rdma_state != Socket::RDMA_ON) {
         bthread_flush();
     }
-    return 0;
+    // Return the number of bthread created, must >= 0.
+    // This is used for rdma to reduce the calling of bthread_flush.
+    // See rdma_completion_queue.cpp.
+    return num_bthread_created;
 }
 
 InputMessenger::InputMessenger(size_t capacity)

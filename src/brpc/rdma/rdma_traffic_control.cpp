@@ -44,25 +44,5 @@ void RdmaTrafficControlServiceImpl::TurnOff(
     LOG(INFO) << "RDMA traffic disabled";
 }
 
-void RdmaTrafficControlServiceImpl::TurnOffPartially(
-        google::protobuf::RpcController* cntl_base,
-        const RdmaTrafficControlRequest* request,
-        RdmaTrafficControlResponse* response,
-        google::protobuf::Closure* done) {
-    brpc::ClosureGuard done_guard(done);
-    g_rdma_traffic_enabled = true;
-
-    g_written.store(false, butil::memory_order_release);
-    if (!g_disabled_conns.empty()) {
-        g_disabled_conns.clear();
-    }
-
-    for (int i = 0; i < request->socket_id_size(); i++) {
-        g_disabled_conns.push_back(request->socket_id(i));
-    }
-
-    g_written.store(true, butil::memory_order_release);
-}
-
 }  // namespace rdma
 }  // namespace brpc

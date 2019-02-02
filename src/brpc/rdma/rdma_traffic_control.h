@@ -40,12 +40,6 @@ public:
             RdmaTrafficControlResponse* response,
             google::protobuf::Closure* done);
 
-   void TurnOffPartially(
-        google::protobuf::RpcController* cntl_base,
-        const RdmaTrafficControlRequest* request,
-        RdmaTrafficControlResponse* response,
-        google::protobuf::Closure* done);
-
 private:
     DISALLOW_COPY_AND_ASSIGN(RdmaTrafficControlServiceImpl);
 };
