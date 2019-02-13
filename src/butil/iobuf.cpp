@@ -282,8 +282,12 @@ IOBuf::Block* get_portal_next(IOBuf::Block const* b) {
     return b->portal_next;
 }
 
-uint32_t block_cap(IOBuf::Block const *b) {
+uint32_t block_cap(IOBuf::Block const* b) {
     return b->cap;
+}
+
+uint32_t block_size(IOBuf::Block const* b) {
+    return b->size;
 }
 
 inline IOBuf::Block* create_block(const size_t block_size) {
@@ -417,7 +421,7 @@ inline void release_tls_block(IOBuf::Block *b) {
 
 // Return chained blocks to TLS.
 // NOTE: b MUST be non-NULL and all blocks linked SHOULD not be full.
-inline void release_tls_block_chain(IOBuf::Block* b) {
+void release_tls_block_chain(IOBuf::Block* b) {
     TLSData& tls_data = g_tls_data;
     size_t n = 0;
     if (tls_data.num_blocks >= MAX_BLOCKS_PER_THREAD) {
@@ -451,13 +455,13 @@ inline void release_tls_block_chain(IOBuf::Block* b) {
 }
 
 // Get and remove one (non-full) block from TLS. If TLS is empty, create one.
-inline IOBuf::Block* acquire_tls_block() {
+IOBuf::Block* acquire_tls_block() {
     TLSData& tls_data = g_tls_data;
     IOBuf::Block* b = tls_data.block_head;
     if (!b) {
         return create_block();
     }
-    if (b->full()) {
+    while (b->full()) {
         IOBuf::Block* const saved_next = b->portal_next;
         b->dec_ref();
         tls_data.block_head = saved_next;
