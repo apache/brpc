@@ -255,12 +255,16 @@ void ConnectionsService::PrintConnections(
             socklen_t len = sizeof(ti);
             if (0 == getsockopt(rttfd, SOL_TCP, TCP_INFO, &ti, &len)) {
                 got_rtt = true;
+                srtt = ti.tcpi_rtt;
+                rtt_var = ti.tcpi_rttvar;
             }
 #elif defined(OS_MACOSX)
             struct tcp_connection_info ti;
             socklen_t len = sizeof(ti);
             if (0 == getsockopt(rttfd, IPPROTO_TCP, TCP_CONNECTION_INFO, &ti, &len)) {
                 got_rtt = true;
+                srtt = ti.tcpi_srtt;
+                rtt_var = ti.tcpi_rttvar;
             }
 #endif
             char rtt_display[32];
