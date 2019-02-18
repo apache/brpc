@@ -1430,7 +1430,7 @@ int Socket::Write(butil::IOBuf* data, const WriteOptions* options_in) {
     if (options_in) {
         opt = *options_in;
     }
-    if (data->empty()) {
+    if (data->empty() && opt.with_auth == false) {
         return SetError(opt.id_wait, EINVAL);
     }
     if (opt.pipelined_count > MAX_PIPELINED_COUNT) {

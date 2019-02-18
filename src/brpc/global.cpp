@@ -68,6 +68,7 @@
 #include "brpc/policy/nshead_mcpack_protocol.h"
 #include "brpc/policy/rtmp_protocol.h"
 #include "brpc/policy/esp_protocol.h"
+#include "brpc/policy/mysql_protocol.h"
 #ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
 # include "brpc/policy/thrift_protocol.h"
 #endif
@@ -564,6 +565,20 @@ static void GlobalInitializeOrDieImpl() {
         NULL, NULL, NULL,
         CONNECTION_TYPE_POOLED_AND_SHORT, "esp"};
     if (RegisterProtocol(PROTOCOL_ESP, esp_protocol) != 0) {
+        exit(1);
+    }
+
+    Protocol mysql_protocol = {ParseMysqlMessage,
+                               SerializeMysqlRequest,
+                               PackMysqlRequest,
+                               NULL,
+                               ProcessMysqlResponse,
+                               NULL,
+                               NULL,
+                               GetMysqlMethodName,
+                               CONNECTION_TYPE_ALL,
+                               "mysql"};
+    if (RegisterProtocol(PROTOCOL_MYSQL, mysql_protocol) != 0) {
         exit(1);
     }
 
