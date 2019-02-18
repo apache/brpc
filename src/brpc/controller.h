@@ -104,6 +104,14 @@ enum StopStyle {
 
 const int32_t UNSET_MAGIC_NUM = -123456789;
 
+// if controller want to reserve a sock after RPC, set BIND_SOCK_ACTIVE
+enum BindSockAction {
+    BIND_SOCK_ACTIVE,
+    BIND_SOCK_USE,
+    BIND_SOCK_NONE,
+};
+// mysql prepared statement declare
+class MysqlStatementStub;
 // A Controller mediates a single method call. The primary purpose of
 // the controller is to provide a way to manipulate settings per RPC-call 
 // and to find out about RPC-level errors.
@@ -674,6 +682,7 @@ private:
         // CONNECTION_TYPE_SINGLE. Otherwise, it may be a temporary
         // socket fetched from socket pool
         SocketUniquePtr sending_sock;
+        BindSockAction bind_sock_action;
         StreamUserData* stream_user_data;
     };
 
@@ -814,6 +823,13 @@ private:
     StreamId _response_stream;
     // Defined at both sides
     StreamSettings *_remote_stream_settings;
+
+    // controller bind socket action
+    BindSockAction _bind_sock_action;
+    // controller bind sock
+    SocketUniquePtr _bind_sock;
+    // sql prepare statement
+    MysqlStatementStub *_stmt;
 
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;
