@@ -21,6 +21,7 @@
 #include "butil/strings/string_piece.h"   // butil::StringPiece
 #include "butil/arena.h"                  // butil::Arena
 #include "butil/logging.h"                // CHECK
+#include "parse_result.h"                 // ParseError
 
 
 namespace brpc {
@@ -79,14 +80,16 @@ public:
 
     // Parse from `buf' which may be incomplete and allocate needed memory
     // on `arena'.
-    // Returns true when an intact reply is parsed and cut off from `buf',
-    // false otherwise and `buf' is guaranteed to be UNCHANGED so that you
-    // can call this function on a RedisReply object with the same buf again
-    // and again until the function returns true. This property makes sure
-    // the parsing of RedisReply in the worst case is O(N) where N is size
-    // of the on-wire reply. As a contrast, if the parsing needs `buf' to be
-    // intact, the complexity in worst case may be O(N^2).
-    bool ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena);
+    // Returns PARSE_OK when an intact reply is parsed and cut off from `buf'.
+    // Returns PARSE_ERROR_NOT_ENOUGH_DATA if data in `buf' is not enough to parse,
+    // and `buf' is guaranteed to be UNCHANGED so that you can call this
+    // function on a RedisReply object with the same buf again and again until
+    // the function returns PARSE_OK. This property makes sure the parsing of
+    // RedisReply in the worst case is O(N) where N is size of the on-wire
+    // reply. As a contrast, if the parsing needs `buf' to be intact,
+    // the complexity in worst case may be O(N^2).
+    // Returns PARSE_ERROR_ABSOLUTELY_WRONG if the parsing failed.
+    ParseError ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena);
 
     // Swap internal fields with another reply.
     void Swap(RedisReply& other);
