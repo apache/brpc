@@ -30,6 +30,7 @@
 #include "butil/strings/string_piece.h"
 #include "butil/arena.h"
 #include "redis_reply.h"
+#include "parse_result.h"
 
 
 namespace brpc {
@@ -177,8 +178,10 @@ public:
     }
 
     // Parse and consume intact replies from the buf.
-    // Returns true on success, false otherwise.
-    bool ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count);
+    // Returns PARSE_OK on success.
+    // Returns PARSE_ERROR_NOT_ENOUGH_DATA if data in `buf' is not enough to parse.
+    // Returns PARSE_ERROR_ABSOLUTELY_WRONG if the parsing failed.
+    ParseError ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count);
     
     // implements Message ----------------------------------------------
   

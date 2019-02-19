@@ -79,9 +79,10 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
 
         const int consume_count = (pi.with_auth ? 1 : pi.count);
 
-        if (!msg->response.ConsumePartialIOBuf(*source, consume_count)) {
+        ParseError err = msg->response.ConsumePartialIOBuf(*source, consume_count);
+        if (err != PARSE_OK) {
             socket->GivebackPipelinedInfo(pi);
-            return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
+            return MakeParseError(err);
         }
 
         if (pi.with_auth) {
