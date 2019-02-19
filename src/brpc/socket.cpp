@@ -746,9 +746,6 @@ int Socket::WaitAndReset(int32_t expected_nref) {
             _pipeline_q->clear();
         }
     }
-    CHECK(NULL == _write_head.load(butil::memory_order_relaxed));
-    CHECK_EQ(0, _unwritten_bytes.load(butil::memory_order_relaxed));
-    CHECK(!_overcrowded);
     return 0;
 }
 
