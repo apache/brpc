@@ -98,20 +98,21 @@ find_dir_of_lib_or_die() {
 }
 
 find_bin() {
-    TARGET_BIN=$(which "$1" 2>/dev/null)
+    TARGET_BIN=$(find ${LIBS_IN} -type f -name "$1" 2>/dev/null | head -n1)
     if [ ! -z "$TARGET_BIN" ]; then
         $ECHO $TARGET_BIN
     else
-        find ${LIBS_IN} -name "$1" 2>/dev/null | head -n1
+        which "$1" 2>/dev/null
     fi
 }
 find_bin_or_die() {
     TARGET_BIN=$(find_bin "$1")
-    if [ -z "$TARGET_BIN" ]; then
-        >&2 $ECHO "Fail to find $1 from --libs"
+    if [ ! -z "$TARGET_BIN" ]; then
+        $ECHO $TARGET_BIN
+    else
+        >&2 $ECHO "Fail to find $1"
         exit 1
     fi
-    $ECHO $TARGET_BIN
 }
 
 find_dir_of_header() {
