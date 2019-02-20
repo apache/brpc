@@ -66,7 +66,7 @@ template <typename T> struct ResourcePoolBlockMaxItem {
 
 // Free objects of each thread are grouped into a chunk before they are merged
 // to the global list. Memory size of objects in one free chunk will not exceed:
-//   min(ResourcePoolFreeChunkMaxItem<T>::value(),
+//   min(ResourcePoolFreeChunkMaxItem<T>::value() * sizeof(T),
 //       ResourcePoolBlockMaxSize<T>::value,
 //       ResourcePoolBlockMaxItem<T>::value * sizeof(T))
 template <typename T> struct ResourcePoolFreeChunkMaxItem {

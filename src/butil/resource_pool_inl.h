@@ -256,15 +256,15 @@ public:
     static inline T* address_resource(ResourceId<T> id) {
         const size_t block_index = id.value / BLOCK_NITEM;
         const size_t group_index = (block_index >> RP_GROUP_NBLOCK_NBIT);
-        if (__builtin_expect(group_index < RP_MAX_BLOCK_NGROUP, 1)) {
+        if (BAIDU_LIKELY(group_index < RP_MAX_BLOCK_NGROUP)) {
             BlockGroup* bg =
                 _block_groups[group_index].load(butil::memory_order_consume);
-            if (__builtin_expect(bg != NULL, 1)) {
+            if (BAIDU_LIKELY(bg != NULL)) {
                 Block* b = bg->blocks[block_index & (RP_GROUP_NBLOCK - 1)]
                            .load(butil::memory_order_consume);
-                if (__builtin_expect(b != NULL, 1)) {
+                if (BAIDU_LIKELY(b != NULL)) {
                     const size_t offset = id.value - block_index * BLOCK_NITEM;
-                    if (__builtin_expect(offset < b->nitem, 1)) {
+                    if (BAIDU_LIKELY(offset < b->nitem)) {
                         return (T*)b->items + offset;
                     }
                 }
@@ -276,7 +276,7 @@ public:
 
     inline T* get_resource(ResourceId<T>* id) {
         LocalPool* lp = get_or_new_local_pool();
-        if (__builtin_expect(lp != NULL, 1)) {
+        if (BAIDU_LIKELY(lp != NULL)) {
             return lp->get(id);
         }
         return NULL;
@@ -285,7 +285,7 @@ public:
     template <typename A1>
     inline T* get_resource(ResourceId<T>* id, const A1& arg1) {
         LocalPool* lp = get_or_new_local_pool();
-        if (__builtin_expect(lp != NULL, 1)) {
+        if (BAIDU_LIKELY(lp != NULL)) {
             return lp->get(id, arg1);
         }
         return NULL;
@@ -294,7 +294,7 @@ public:
     template <typename A1, typename A2>
     inline T* get_resource(ResourceId<T>* id, const A1& arg1, const A2& arg2) {
         LocalPool* lp = get_or_new_local_pool();
-        if (__builtin_expect(lp != NULL, 1)) {
+        if (BAIDU_LIKELY(lp != NULL)) {
             return lp->get(id, arg1, arg2);
         }
         return NULL;
@@ -302,7 +302,7 @@ public:
 
     inline int return_resource(ResourceId<T> id) {
         LocalPool* lp = get_or_new_local_pool();
-        if (__builtin_expect(lp != NULL, 1)) {
+        if (BAIDU_LIKELY(lp != NULL)) {
             return lp->return_resource(id);
         }
         return -1;
@@ -359,13 +359,13 @@ public:
         if (p) {
             return p;
         }
-        pthread_mutex_lock(&_singleton_mutex);
+        std::unique_lock<pthread_mutex_t> lock(_singleton_mutex);
         p = _singleton.load(butil::memory_order_consume);
         if (!p) {
             p = new ResourcePool();
             _singleton.store(p, butil::memory_order_release);
         } 
-        pthread_mutex_unlock(&_singleton_mutex);
+        lock.unlock();
         return p;
     }
 
@@ -503,19 +503,21 @@ private:
 
 private:
     bool pop_free_chunk(FreeChunk& c) {
-        // Critical for the case that most return_object are called in
-        // different threads of get_object.
+        // Critical for the case that most return_resource are called in
+        // different threads of get_resource.
         if (_free_chunks.empty()) {
             return false;
         }
-        pthread_mutex_lock(&_free_chunks_mutex);
+
+        std::unique_lock<pthread_mutex_t> lock(_free_chunks_mutex);
         if (_free_chunks.empty()) {
-            pthread_mutex_unlock(&_free_chunks_mutex);
+            lock.unlock();
             return false;
         }
         DynamicFreeChunk* p = _free_chunks.back();
         _free_chunks.pop_back();
-        pthread_mutex_unlock(&_free_chunks_mutex);
+        lock.unlock();
+
         c.nfree = p->nfree;
         memcpy(c.ids, p->ids, sizeof(*p->ids) * p->nfree);
         free(p);
@@ -530,9 +532,10 @@ private:
         }
         p->nfree = c.nfree;
         memcpy(p->ids, c.ids, sizeof(*c.ids) * c.nfree);
-        pthread_mutex_lock(&_free_chunks_mutex);
+
+        std::unique_lock<pthread_mutex_t> lock(_free_chunks_mutex);
         _free_chunks.push_back(p);
-        pthread_mutex_unlock(&_free_chunks_mutex);
+        lock.unlock();
         return true;
     }
     

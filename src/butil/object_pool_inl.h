@@ -305,13 +305,13 @@ public:
         if (p) {
             return p;
         }
-        pthread_mutex_lock(&_singleton_mutex);
+        std::unique_lock<pthread_mutex_t> lock(_singleton_mutex);
         p = _singleton.load(butil::memory_order_consume);
         if (!p) {
             p = new ObjectPool();
             _singleton.store(p, butil::memory_order_release);
         }
-        pthread_mutex_unlock(&_singleton_mutex);
+        lock.unlock();
         return p;
     }
 
@@ -453,14 +453,16 @@ private:
         if (_free_chunks.empty()) {
             return false;
         }
-        pthread_mutex_lock(&_free_chunks_mutex);
+
+        std::unique_lock<pthread_mutex_t> lock(_free_chunks_mutex);
         if (_free_chunks.empty()) {
-            pthread_mutex_unlock(&_free_chunks_mutex);
+            lock.unlock();
             return false;
         }
         DynamicFreeChunk* p = _free_chunks.back();
         _free_chunks.pop_back();
-        pthread_mutex_unlock(&_free_chunks_mutex);
+        lock.unlock();
+
         c.nfree = p->nfree;
         memcpy(c.ptrs, p->ptrs, sizeof(*p->ptrs) * p->nfree);
         free(p);
@@ -475,9 +477,9 @@ private:
         }
         p->nfree = c.nfree;
         memcpy(p->ptrs, c.ptrs, sizeof(*c.ptrs) * c.nfree);
-        pthread_mutex_lock(&_free_chunks_mutex);
+        std::unique_lock<pthread_mutex_t> lock(_free_chunks_mutex);
         _free_chunks.push_back(p);
-        pthread_mutex_unlock(&_free_chunks_mutex);
+        lock.unlock();
         return true;
     }
     
