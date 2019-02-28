@@ -51,7 +51,13 @@ DEFINE_bool(baidu_protocol_use_fullname, true,
             "If this flag is true, baidu_std puts service.full_name in requests"
             ", otherwise puts service.name (required by jprotobuf).");
 DEFINE_bool(brpc_use_protobuf_arena_in_processrpcrequest, false,
-            "whether use area in baidu_rpc_protocol.cpp::ProcessRpcRequest function");
+            "whether use arena in baidu_rpc_protocol.cpp::ProcessRpcRequest function");
+
+DEFINE_int32(brpc_protobuf_arena_start_block_size, 64 * 1024,
+            "start_block_size for arena in baidu_rpc_protocol.cpp::ProcessRpcRequest function");
+
+DEFINE_int32(brpc_protobuf_arena_max_block_size, 1024 * 1024,
+            "max_block_size for arena in baidu_rpc_protocol.cpp::ProcessRpcRequest function");
 
 // Notes:
 // 1. 12-byte header [PRPC][body_size][meta_size]
@@ -140,7 +146,6 @@ void SendRpcResponse(int64_t correlation_id,
                      Controller* cntl, 
                      const google::protobuf::Message* req,
                      const google::protobuf::Message* res,
-                     const google::protobuf::Arena* arena,
                      const Server* server,
                      MethodStatus* method_status,
                      int64_t received_us) {
@@ -151,12 +156,19 @@ void SendRpcResponse(int64_t correlation_id,
     }
     Socket* sock = accessor.get_sending_socket();
     std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
-    ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
-
     std::unique_ptr<const google::protobuf::Arena> recycle_arena;
     std::unique_ptr<const google::protobuf::Message> recycle_req;
     std::unique_ptr<const google::protobuf::Message> recycle_res;
-    if (true == FLAGS_brpc_use_protobuf_arena_in_processrpcrequest) {
+    ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
+
+    const google::protobuf::Arena* arena = NULL;
+    if (res) {
+        arena = res->GetArena();
+        if (NULL == arena && req) {
+            arena = req->GetArena();
+        }
+    }
+    if (true == FLAGS_brpc_use_protobuf_arena_in_processrpcrequest && arena) {
         recycle_arena.reset(arena);
     } else {
         recycle_req.reset(req);
@@ -345,7 +357,10 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
     }
     std::unique_ptr<google::protobuf::Arena> arena;
     if (true == FLAGS_brpc_use_protobuf_arena_in_processrpcrequest) {
-        arena.reset(new google::protobuf::Arena());
+        google::protobuf::ArenaOptions options;
+        options.start_block_size = FLAGS_brpc_protobuf_arena_start_block_size;
+        options.max_block_size = FLAGS_brpc_protobuf_arena_max_block_size;
+        arena.reset(new google::protobuf::Arena(options));
         if (NULL == arena.get()) {
             LOG(WARNING) << "brpc_use_protobuf_arena_in_processrpcrequest is true but fail to new arena";
             return;
@@ -503,10 +518,10 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
         // `socket' will be held until response has been sent
         google::protobuf::Closure* done = ::brpc::NewCallback<
             int64_t, Controller*, const google::protobuf::Message*,
-            const google::protobuf::Message*, const google::protobuf::Arena*, const Server*,
+            const google::protobuf::Message*, const Server*,
             MethodStatus*, int64_t>(
                 &SendRpcResponse, meta.correlation_id(), cntl.get(), 
-                req.get(), res.get(), arena.release(), server,
+                req.get(), res.get(), server,
                 method_status, msg->received_us());
 
         // optional, just release resourse ASAP
@@ -535,7 +550,7 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
     // `cntl', `req' and `res' will be deleted inside `SendRpcResponse'
     // `socket' will be held until response has been sent
     SendRpcResponse(meta.correlation_id(), cntl.release(), 
-                    req.release(), res.release(), arena.release(), server,
+                    req.release(), res.release(), server,
                     method_status, msg->received_us());
 }
 
