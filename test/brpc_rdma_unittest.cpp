@@ -22,7 +22,6 @@
 #include "brpc/server.h"
 #include "brpc/socket.h"
 #include "brpc/errno.pb.h"
-#include "brpc/policy/giano_authenticator.h"
 #include "brpc/rdma/block_pool.h"
 #include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/rdma/rdma_fallback_channel.h"
@@ -354,6 +353,293 @@ private:
             EXPECT_LT(butil::gettimeofday_us(), start_time + 100000L/*100ms*/);
             bthread_usleep(1000);
         }
+
+        StopServer();
+    }
+
+    struct RpcArg {
+        brpc::rdma::RdmaFallbackChannel* channel;
+        brpc::Controller* cntl;
+        test::EchoRequest* req;
+        test::EchoResponse* res;
+    };
+
+    static void* RunRpcInAnotherThread(void* arg) {
+        RpcArg* rarg = (RpcArg*)arg;
+        ::test::EchoService::Stub(rarg->channel).Echo(rarg->cntl, rarg->req, rarg->res, NULL);
+        return NULL;
+    }
+
+    void TestFallbackChannel(bool async) {
+        StartServer();
+
+        brpc::SocketUniquePtr s;
+        brpc::Controller cntl;
+        test::EchoResponse res;
+        {
+            brpc::rdma::RdmaFallbackChannel channel;
+            brpc::ChannelOptions opt;
+            opt.use_rdma = true;
+            EXPECT_EQ(0, channel.Init(g_ep, &opt));
+
+            EXPECT_EQ(0, brpc::Socket::AddressFailedAsWell(
+                        channel._rdma_chan._server_id, &s));
+            EXPECT_TRUE(s != NULL);
+
+            test::EchoRequest req;
+            req.set_message(__FUNCTION__);
+            req.set_sleep_us(200000);
+            google::protobuf::Closure* done = brpc::DoNothing();
+            RpcArg rarg;
+            rarg.channel = &channel;
+            rarg.cntl = &cntl;
+            rarg.req = &req;
+            rarg.res = &res;
+            if (async) {
+                ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, done);
+            } else {
+                bthread_t tid = 0;
+                EXPECT_EQ(0, bthread_start_background(&tid, &BTHREAD_ATTR_NORMAL,
+                            RunRpcInAnotherThread, &rarg));
+                usleep(10000);
+            }
+            bthread_id_join(cntl.call_id());
+            EXPECT_EQ(0, cntl.ErrorCode());
+
+            cntl.Reset();
+            if (async) {
+                ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, done);
+            } else {
+                bthread_t tid = 0;
+                EXPECT_EQ(0, bthread_start_background(&tid, &BTHREAD_ATTR_NORMAL,
+                            RunRpcInAnotherThread, &rarg));
+                usleep(10000);
+            }
+        }
+
+        usleep(100000);  // wait for rdmacm connection completed
+
+        // Make the RDMA invalid
+        ibv_send_wr wr;
+        memset(&wr, 0, sizeof(wr));
+        void* buf = brpc::rdma::AllocBlock(8192);
+        ibv_sge sge;
+        sge.addr = (uint64_t)buf;
+        sge.length = 8192;
+        sge.lkey = 1;
+        wr.wr_id = s->id();
+        wr.sg_list = &sge;
+        wr.num_sge = 1;
+        ibv_send_wr* bad = NULL;
+        rdma_cm_id* cm_id = (rdma_cm_id*)s->_rdma_ep->_rcm->_cm_id;
+        s.reset(NULL);
+        ibv_post_send(cm_id->qp, &wr, &bad);
+
+        bthread_id_join(cntl.call_id());
+        EXPECT_EQ(0, cntl.ErrorCode());
+
+        sleep(3);  // must sleep to let this socket recover
+
+        StopServer();
+    }
+
+    void TestFallbackChannelCancelWhenRdma(bool async) {
+        StartServer();
+
+        brpc::SocketUniquePtr s;
+        brpc::Controller cntl;
+        test::EchoResponse res;
+        {
+            brpc::rdma::RdmaFallbackChannel channel;
+            brpc::ChannelOptions opt;
+            opt.use_rdma = true;
+            EXPECT_EQ(0, channel.Init(g_ep, &opt));
+
+            EXPECT_EQ(0, brpc::Socket::AddressFailedAsWell(
+                        channel._rdma_chan._server_id, &s));
+            EXPECT_TRUE(s != NULL);
+
+            test::EchoRequest req;
+            req.set_message(__FUNCTION__);
+            req.set_sleep_us(200000);
+            google::protobuf::Closure* done = brpc::DoNothing();
+            RpcArg rarg;
+            rarg.channel = &channel;
+            rarg.cntl = &cntl;
+            rarg.req = &req;
+            rarg.res = &res;
+            if (async) {
+                ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, done);
+            } else {
+                bthread_t tid = 0;
+                EXPECT_EQ(0, bthread_start_background(&tid, &BTHREAD_ATTR_NORMAL,
+                            RunRpcInAnotherThread, &rarg));
+                usleep(10000);
+            }
+        }
+
+        brpc::StartCancel(cntl.call_id());
+        bthread_id_join(cntl.call_id());
+        EXPECT_EQ(ECANCELED, cntl.ErrorCode());
+
+        sleep(3);  // must sleep to let this socket recover
+
+        StopServer();
+    }
+
+    void TestFallbackChannelCancelWhenTcp(bool async) {
+        StartServer();
+
+        brpc::SocketUniquePtr s;
+        brpc::Controller cntl;
+        test::EchoResponse res;
+        {
+            brpc::rdma::RdmaFallbackChannel channel;
+            brpc::ChannelOptions opt;
+            opt.use_rdma = true;
+            EXPECT_EQ(0, channel.Init(g_ep, &opt));
+
+            EXPECT_EQ(0, brpc::Socket::AddressFailedAsWell(
+                        channel._rdma_chan._server_id, &s));
+            EXPECT_TRUE(s != NULL);
+
+            test::EchoRequest req;
+            req.set_message(__FUNCTION__);
+            req.set_sleep_us(200000);
+            google::protobuf::Closure* done = brpc::DoNothing();
+            RpcArg rarg;
+            rarg.channel = &channel;
+            rarg.cntl = &cntl;
+            rarg.req = &req;
+            rarg.res = &res;
+            if (async) {
+                ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, done);
+            } else {
+                bthread_t tid = 0;
+                EXPECT_EQ(0, bthread_start_background(&tid, &BTHREAD_ATTR_NORMAL,
+                            RunRpcInAnotherThread, &rarg));
+                usleep(10000);
+            }
+        }
+
+        usleep(100000);  // wait for rdmacm connection completed
+
+        // Make the RDMA invalid
+        ibv_send_wr wr;
+        memset(&wr, 0, sizeof(wr));
+        void* buf = brpc::rdma::AllocBlock(8192);
+        ibv_sge sge;
+        sge.addr = (uint64_t)buf;
+        sge.length = 8192;
+        sge.lkey = 1;
+        wr.wr_id = s->id();
+        wr.sg_list = &sge;
+        wr.num_sge = 1;
+        ibv_send_wr* bad = NULL;
+        rdma_cm_id* cm_id = (rdma_cm_id*)s->_rdma_ep->_rcm->_cm_id;
+        s.reset(NULL);
+        ibv_post_send(cm_id->qp, &wr, &bad);
+
+        usleep(100000);  // wait for retry with tcp
+
+        brpc::StartCancel(cntl.call_id());
+        bthread_id_join(cntl.call_id());
+        EXPECT_EQ(ECANCELED, cntl.ErrorCode());
+
+        sleep(3);  // must sleep to let this socket recover
+
+        StopServer();
+    }
+
+    void TestFallbackChannelTimeoutWhenRdma(bool async) {
+        StartServer();
+
+        brpc::SocketUniquePtr s;
+        brpc::Controller cntl;
+        test::EchoResponse res;
+        brpc::CallId cid;
+        {
+            brpc::rdma::RdmaFallbackChannel channel;
+            brpc::ChannelOptions opt;
+            opt.use_rdma = true;
+            EXPECT_EQ(0, channel.Init(g_ep, &opt));
+
+            EXPECT_EQ(0, brpc::Socket::AddressFailedAsWell(
+                        channel._rdma_chan._server_id, &s));
+            EXPECT_TRUE(s != NULL);
+
+            test::EchoRequest req;
+            req.set_message(__FUNCTION__);
+            req.set_sleep_us(200000);
+            cntl.set_timeout_ms(100);
+            cid = cntl.call_id();
+            google::protobuf::Closure* done = brpc::DoNothing();
+            RpcArg rarg;
+            rarg.channel = &channel;
+            rarg.cntl = &cntl;
+            rarg.req = &req;
+            rarg.res = &res;
+            if (async) {
+                ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, done);
+            } else {
+                bthread_t tid = 0;
+                EXPECT_EQ(0, bthread_start_background(&tid, &BTHREAD_ATTR_NORMAL,
+                            RunRpcInAnotherThread, &rarg));
+                usleep(10000);
+            }
+            cntl.set_timeout_ms(500);
+        }
+
+        bthread_id_join(cid);
+        EXPECT_EQ(0, cntl.ErrorCode());
+
+        sleep(3);  // must sleep to let this socket recover
+
+        StopServer();
+    }
+
+    void TestFallbackChannelTimeoutWhenTcp(bool async) {
+        StartServer();
+
+        brpc::SocketUniquePtr s;
+        brpc::Controller cntl;
+        test::EchoResponse res;
+        brpc::CallId cid;
+        {
+            brpc::rdma::RdmaFallbackChannel channel;
+            brpc::ChannelOptions opt;
+            opt.use_rdma = true;
+            EXPECT_EQ(0, channel.Init(g_ep, &opt));
+
+            EXPECT_EQ(0, brpc::Socket::AddressFailedAsWell(
+                        channel._rdma_chan._server_id, &s));
+            EXPECT_TRUE(s != NULL);
+
+            test::EchoRequest req;
+            req.set_message(__FUNCTION__);
+            req.set_sleep_us(200000);
+            cntl.set_timeout_ms(100);
+            cid = cntl.call_id();
+            google::protobuf::Closure* done = brpc::DoNothing();
+            RpcArg rarg;
+            rarg.channel = &channel;
+            rarg.cntl = &cntl;
+            rarg.req = &req;
+            rarg.res = &res;
+            if (async) {
+                ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, done);
+            } else {
+                bthread_t tid = 0;
+                EXPECT_EQ(0, bthread_start_background(&tid, &BTHREAD_ATTR_NORMAL,
+                            RunRpcInAnotherThread, &rarg));
+                usleep(10000);
+            }
+        }
+
+        bthread_id_join(cid);
+        EXPECT_EQ(brpc::ERPCTIMEDOUT, cntl.ErrorCode());
+
+        sleep(3);  // must sleep to let this socket recover
 
         StopServer();
     }
@@ -946,55 +1232,28 @@ TEST_F(RdmaTest, verbs_error) {
 }
 
 TEST_F(RdmaTest, rdma_fallback_channel) {
-    StartServer();
+    TestFallbackChannel(false);
+    TestFallbackChannel(true);
+}
 
-    brpc::SocketUniquePtr s;
-    brpc::Controller cntl;
-    test::EchoResponse res;
-    {
-        brpc::rdma::RdmaFallbackChannel channel;
-        brpc::ChannelOptions opt;
-        opt.use_rdma = true;
-        EXPECT_EQ(0, channel.Init(g_ep, &opt));
+TEST_F(RdmaTest, rdma_fallback_channel_cancel_when_use_rdma) {
+    TestFallbackChannelCancelWhenRdma(false);
+    TestFallbackChannelCancelWhenRdma(true);
+}
 
-        EXPECT_EQ(0, brpc::Socket::AddressFailedAsWell(
-                    channel._rdma_chan._server_id, &s));
-        EXPECT_TRUE(s != NULL);
+TEST_F(RdmaTest, rdma_fallback_channel_cancel_when_use_tcp) {
+    TestFallbackChannelCancelWhenTcp(false);
+    TestFallbackChannelCancelWhenTcp(true);
+}
 
-        test::EchoRequest req;
-        req.set_message(__FUNCTION__);
-        req.set_sleep_us(200000);
-        google::protobuf::Closure* done = brpc::DoNothing();
-        ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, done);
-        bthread_id_join(cntl.call_id());
-        EXPECT_EQ(0, cntl.ErrorCode());
+TEST_F(RdmaTest, rdma_fallback_channel_timeout_when_use_rdma) {
+    TestFallbackChannelTimeoutWhenRdma(false);
+    TestFallbackChannelTimeoutWhenRdma(true);
+}
 
-        cntl.Reset();
-        ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, done);
-    }
-
-    usleep(100000);  // wait for rdmacm connection completed
-
-    ibv_send_wr wr;
-    memset(&wr, 0, sizeof(wr));
-    void* buf = brpc::rdma::AllocBlock(8192);
-    ibv_sge sge;
-    sge.addr = (uint64_t)buf;
-    sge.length = 8192;
-    sge.lkey = 1;
-    wr.wr_id = s->id();
-    wr.sg_list = &sge;
-    wr.num_sge = 1;
-    ibv_send_wr* bad = NULL;
-    rdma_cm_id* cm_id = (rdma_cm_id*)s->_rdma_ep->_rcm->_cm_id;
-    s.reset(NULL);
-    ibv_post_send(cm_id->qp, &wr, &bad);
-    bthread_id_join(cntl.call_id());
-    EXPECT_EQ(0, cntl.ErrorCode());
-
-    sleep(3);  // must sleep to let this socket recover
-
-    StopServer();
+TEST_F(RdmaTest, rdma_fallback_channel_timeout_when_use_tcp) {
+    TestFallbackChannelTimeoutWhenTcp(false);
+    TestFallbackChannelTimeoutWhenTcp(true);
 }
 
 TEST_F(RdmaTest, tcp_channel_extra_data) {
@@ -1143,10 +1402,6 @@ TEST_F(RdmaTest, server_option_invalid) {
     options.nshead_service = NULL;
     options.mongo_service_adaptor = (brpc::MongoServiceAdaptor*)1;
     EXPECT_EQ(-1, server.Start(PORT, &options));
-
-    options.mongo_service_adaptor = NULL;
-    options.mutable_ssl_options()->default_cert.certificate = "test";
-    EXPECT_EQ(-1, server.Start(PORT, &options));
 }
 
 TEST_F(RdmaTest, channel_option_invalid) {
@@ -1185,10 +1440,6 @@ TEST_F(RdmaTest, channel_option_invalid) {
     EXPECT_EQ(-1, channel.Init(g_ep, &chan_options));
 
     chan_options.protocol = "esp";
-    EXPECT_EQ(-1, channel.Init(g_ep, &chan_options));
-
-    chan_options.protocol = "baidu_std";
-    chan_options.mutable_ssl_options()->sni_name = "test";
     EXPECT_EQ(-1, channel.Init(g_ep, &chan_options));
 }
 

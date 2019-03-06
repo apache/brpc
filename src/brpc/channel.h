@@ -36,9 +36,6 @@
 #include "brpc/naming_service_filter.h"
 
 namespace brpc {
-namespace rdma {
-class Sender;
-};
 
 struct ChannelOptions {
     // Constructed with default options.
@@ -153,7 +150,6 @@ private:
 class Channel : public ChannelBase {
 friend class Controller;
 friend class SelectiveChannel;
-friend class rdma::Sender;
 friend class rdma::RdmaFallbackChannel;
 public:
     Channel(ProfilerLinker = ProfilerLinker());

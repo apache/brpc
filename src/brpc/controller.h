@@ -73,7 +73,6 @@ class Sender;
 class SubDone;
 }
 namespace rdma {
-class Sender;
 class SubDone;
 class RdmaFallbackChannel;
 }
@@ -114,7 +113,6 @@ friend class ThriftStub;
 friend class schan::Sender;
 friend class schan::SubDone;
 friend class rdma::RdmaFallbackChannel;
-friend class rdma::Sender;
 friend class rdma::SubDone;
 friend class policy::OnServerStreamCreated;
 friend int StreamCreate(StreamId*, Controller&, const StreamOptions*);

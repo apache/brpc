@@ -21,7 +21,6 @@
 #include "bthread/unstable.h"
 #include "brpc/builtin_service.pb.h"
 #include "brpc/builtin/health_service.h"
-#include "brpc/details/controller_private_accessor.h"        // RPCSender
 #include "brpc/controller.h"
 #include "brpc/rdma/rdma_helper.h"
 #include "brpc/rdma/rdma_fallback_channel.h"
@@ -40,190 +39,83 @@ butil::FlatMap<butil::EndPoint, bthread_t> g_unhealth_map;
 butil::Mutex g_unhealth_map_lock;
 bool g_stop = false;
 
-class SubDone;
-
-// The sender to intercept Controller::IssueRPC
-class Sender : public RPCSender,
-               public google::protobuf::Closure {
-friend class SubDone;
-public:
-    Sender(CallId cid, Controller* cntl,
-           const google::protobuf::Message* request,
-           google::protobuf::Message* response,
-           google::protobuf::Closure* user_done,
-           Channel* rdma_chan, ChannelOptions* options);
-    ~Sender() { Clear(); }
-    int IssueRPC(int64_t start_realtime_us);
-    void Run();
-    void Clear();
-
-private:
-    CallId _main_cid;
-    Controller* _main_cntl;
-    const google::protobuf::Message* _request;
-    google::protobuf::Message* _response;
-    google::protobuf::Closure* _user_done;
-    butil::IOBuf _request_buf;
-    Controller _sub_cntl;
-    CallId _sub_call_id;
-    SubDone* _sub_done;
-    Channel* _rdma_chan;
-    butil::EndPoint _remote_side;
-    ChannelOptions _options;
-};
-
 class SubDone : public google::protobuf::Closure {
 public:
-    explicit SubDone(Sender* owner)
-        : _owner(owner)
-        , _main_cid(INVALID_BTHREAD_ID)
-        , _cntl(NULL)
-        , _retried(false) {
+    explicit SubDone(Controller* cntl,
+                     CallId cid,
+                     google::protobuf::Closure* user_done,
+                     ChannelOptions options, // Must make an another copy
+                     int max_retry)
+        : _cntl(cntl)
+        , _cid(cid)
+        , _user_done(user_done)
+        , _options(options)
+        , _max_retry(max_retry)
+        , _use_tcp(false) {
     }
     ~SubDone() { }
     void Run();
 
-    Sender* _owner;
-    CallId _main_cid;
     Controller* _cntl;
-    bool _retried;
+    CallId _cid;
+    google::protobuf::Closure* _user_done;
+    ChannelOptions _options;
+    int _max_retry;
+    bool _use_tcp;
 };
 
-Sender::Sender(
-        CallId cid,
-        Controller* cntl,
-        const google::protobuf::Message* request,
-        google::protobuf::Message* response,
-        google::protobuf::Closure* user_done,
-        Channel* rdma_chan, ChannelOptions* options)
-    : _main_cid(cid)
-    , _main_cntl(cntl)
-    , _request(request)
-    , _response(response)
-    , _user_done(user_done)
-    , _request_buf()
-    , _sub_cntl()
-    , _sub_call_id(INVALID_BTHREAD_ID)
-    , _sub_done(NULL)
-    , _rdma_chan(rdma_chan)
-    , _remote_side(rdma_chan->_remote_side)
-    , _options(*options) {
-    _options.use_rdma = false;
-}
-
-int Sender::IssueRPC(int64_t start_realtime_us) {
-    _sub_cntl.set_max_retry(0);  // Do not retry on RDMA channel
-    if (_main_cntl->timeout_ms() > 0) {
-        _sub_cntl.set_timeout_ms(_main_cntl->timeout_ms() / 2);
-    }
-    _sub_cntl.set_connection_type(_main_cntl->connection_type());
-    _sub_cntl.set_type_of_service(_main_cntl->_tos);
-    _sub_cntl.set_request_compress_type(_main_cntl->request_compress_type());
-    _sub_cntl.set_log_id(_main_cntl->log_id());
-    _sub_cntl.set_request_code(_main_cntl->request_code());
-    _sub_cntl.request_attachment().append(_main_cntl->request_attachment());
-    _rdma_chan->_serialize_request(&_request_buf, &_sub_cntl, _request);
-    _sub_cntl._request_buf.clear();
-    _sub_cntl._request_buf.append(_request_buf);
-    _sub_done = new SubDone(this);
-    _sub_done->_main_cid = _main_cid;
-    _sub_done->_cntl = &_sub_cntl;
-    _sub_call_id = _sub_cntl.call_id();
-    _rdma_chan->CallMethod(
-            _main_cntl->_method, &_sub_cntl, NULL, _response, _sub_done);
-    return 0;
-}
-
-// Run when the main call is finished.
-void Sender::Run() {
-    const int saved_error = _main_cntl->ErrorCode();
-    if (saved_error == ERPCTIMEDOUT || saved_error == ECANCELED) {
-        // If the main call is timed out or canceled, we must inform the sub call.
-        CHECK_EQ(0, bthread_id_unlock(_main_cid));
-        bthread_id_error(_sub_call_id, saved_error);
-    }
-}
-
-void Sender::Clear() {
-    if (!_main_cntl) {
-        return;
-    }
-    const CallId cid = _main_cntl->call_id();
-    _main_cntl = NULL;
-    if (_user_done) {
-        _user_done->Run();
-    }
-    bthread_id_unlock_and_destroy(cid);
-}
-
-// Run when the sub call is finished.
 void SubDone::Run() {
-    Controller* main_cntl = NULL;
-    const int rc = bthread_id_lock(_main_cid, (void**)&main_cntl);
+    Controller* cntl = NULL;
+    int rc = bthread_id_lock(_cid, (void**)&cntl);
     if (rc != 0) {
         LOG(ERROR) << "Fail to lock correlation_id="
-                   << _main_cid.value << ": " << berror(rc);
+                   << _cid.value << ": " << berror(rc);
         delete this;
         return;
     }
-    if (main_cntl->ErrorCode() == ERPCTIMEDOUT || main_cntl->ErrorCode() == ECANCELED) {
-        _owner->Clear();
+    CHECK_EQ(_cntl, cntl);
+    if (_cntl->ErrorCode() == ECANCELED) {
+        if (_user_done) {
+            _user_done->Run();
+        }
+        bthread_id_unlock_and_destroy(_cid);
         delete this;
         return;
     }
 
-    if (_cntl->Failed()) {
-        if (!_retried) {
-            if (_cntl->_error_code != ERDMAUNAVAIL &&
-                _cntl->_error_code != ERDMALOCAL &&
-                _cntl->_error_code != ERDMAOUTCLUSTER) {
-                RdmaFallbackChannel::RdmaUnavailable(_owner->_remote_side);
+    if (_cntl->Failed() && !_use_tcp) {
+        if (_cntl->_error_code != ERDMAUNAVAIL &&
+            _cntl->_error_code != ERDMALOCAL &&
+            _cntl->_error_code != ERDMAOUTCLUSTER) {
+            RdmaFallbackChannel::RdmaUnavailable(_cntl->_remote_side);
 #ifdef BRPC_RDMA
-                LOG_IF(INFO, FLAGS_rdma_trace_verbose) << "RDMA channel unavailable";
+            LOG_IF(INFO, FLAGS_rdma_trace_verbose) << "RDMA channel unavailable";
 #endif
-            }
-            // Try TCP Channel
-            butil::IOBuf req_attachment;
-            req_attachment.swap(_cntl->request_attachment());
-            _cntl->Reset();
-            _cntl->set_max_retry(main_cntl->max_retry());
-            _cntl->set_timeout_ms(main_cntl->timeout_ms());
-            _cntl->set_connection_type(main_cntl->connection_type());
-            _cntl->set_type_of_service(main_cntl->_tos);
-            _cntl->set_request_compress_type(main_cntl->request_compress_type());
-            _cntl->set_log_id(main_cntl->log_id());
-            _cntl->set_request_code(main_cntl->request_code());
-            _cntl->request_attachment().swap(req_attachment);
-            _retried = true;
-            _cntl->_request_buf.swap(_owner->_request_buf);
-            _owner->_sub_call_id = _cntl->call_id();
-            Channel chan;
-            chan.Init(_owner->_remote_side, &_owner->_options);
-            chan.CallMethod(main_cntl->_method, _cntl, NULL, _owner->_response, this);
-            CHECK_EQ(0, bthread_id_unlock(_main_cid));
-            return;
         }
-        main_cntl->SetFailed(_cntl->_error_text);
-        main_cntl->_error_code = _cntl->_error_code;
+        _cntl->_error_code = 0;
+        _cntl->_correlation_id = INVALID_BTHREAD_ID;
+        _cntl->_current_call.Reset();
+        _cntl->set_max_retry(_max_retry);
+        _use_tcp = true;
+        Channel chan;
+        _options.use_rdma = false;
+        chan.Init(_cntl->_remote_side, &_options);
+        chan.CallMethod(_cntl->_method, _cntl, NULL, _cntl->_response, this);
+        bthread_id_unlock(_cid);
     } else {
-        main_cntl->_response->GetReflection()->Swap(main_cntl->_response, _cntl->_response);
-        main_cntl->response_attachment().append(_cntl->response_attachment());
+        if (_user_done) {
+            _user_done->Run();
+        }
+        bthread_id_unlock_and_destroy(_cid);
+        delete this;
     }
-    main_cntl->_end_time_us = _cntl->_end_time_us;
-    if (main_cntl->_timeout_id != 0) {
-        bthread_timer_del(main_cntl->_timeout_id);
-        main_cntl->_timeout_id = 0;
-    }
-    _owner->Clear();
-    delete this;
 }
 
 RdmaFallbackChannel::RdmaFallbackChannel() 
     : _rdma_chan()
     , _tcp_chan()
     , _options()
-    , _initialized(false)
-    , _rdma_on(false) {
+    , _initialized(false) {
 }
 
 RdmaFallbackChannel::~RdmaFallbackChannel() {
@@ -231,7 +123,9 @@ RdmaFallbackChannel::~RdmaFallbackChannel() {
 }
 
 void RdmaFallbackChannel::GlobalStart() {
-    g_unhealth_map.init(1024);
+    // TODO:
+    // In order to avoid rehash. Make it more elegant in the future.
+    g_unhealth_map.init(1048576);
 }
 
 void RdmaFallbackChannel::GlobalStop() {
@@ -274,8 +168,7 @@ int RdmaFallbackChannel::InitInternal(const ChannelOptions* options, int type,
                                       const char* server_addr, int port) {
     int rc = -1;
     _options = *options;
-    _rdma_on = _options.use_rdma;
-    if (!_rdma_on) {
+    if (!_options.use_rdma) {
         ChannelInit(_tcp_chan, &_options);
     } else {
         ChannelInit(_rdma_chan, &_options);
@@ -318,23 +211,23 @@ void RdmaFallbackChannel::CallMethod(
                         this);
         return;
     }
-    if (_options.use_rdma && g_unhealth_map_lock.try_lock()) {
-        // We should avoid contention here. _rdma_on may not be updated in time.
-        if (g_unhealth_map.seek(_rdma_chan._remote_side)) {
-            _rdma_on = false;
-        } else {
-            _rdma_on = true;
+    bool rdma_on = false;
+    if (_options.use_rdma) {
+        // TODO:
+        // In order to avoid performance degradation, we do not use mutex here.
+        // This is not strictly correct, however it will not introduce severe
+        // problems. Fix this in the future.
+        if (!g_unhealth_map.seek(_rdma_chan._remote_side)
+                || g_unhealth_map[_rdma_chan._remote_side] == 0) {
+            rdma_on = true;
         }
-        g_unhealth_map_lock.unlock();
     }
-    if (_rdma_on) {
-        const CallId cid = cntl->call_id();
-        Sender* sndr = new Sender(cid,
-                cntl, const_cast<google::protobuf::Message*>(request),
-                response, user_done, &_rdma_chan, &_options);
-        cntl->_sender = sndr;
-        cntl->add_flag(Controller::FLAGS_DESTROY_CID_IN_DONE);
-        _rdma_chan.CallMethod(method, cntl, request, response, sndr);
+    if (rdma_on) {
+        CallId cid = cntl->call_id();
+        SubDone* sub_done = new SubDone(cntl, cid, user_done, _options, cntl->max_retry());
+        cntl->set_max_retry(0);
+        cntl->_correlation_id = INVALID_BTHREAD_ID;
+        _rdma_chan.CallMethod(method, cntl, request, response, sub_done);
         if (user_done == NULL) {
             Join(cid);
             cntl->OnRPCEnd(butil::gettimeofday_us());
@@ -356,7 +249,7 @@ void* RdmaFallbackChannel::RdmaHealthCheckThread(void* arg) {
     }
     {
         BAIDU_SCOPED_LOCK(g_unhealth_map_lock);
-        g_unhealth_map.erase(chan->_remote_side);
+        g_unhealth_map[chan->_remote_side] = 0;
     }
     delete chan;
 #endif
@@ -364,31 +257,32 @@ void* RdmaFallbackChannel::RdmaHealthCheckThread(void* arg) {
 }
 
 void RdmaFallbackChannel::RdmaUnavailable(butil::EndPoint remote_side) {
-#ifndef BRPC_RDMA
-    {
-#else
+#ifdef BRPC_RDMA
     if (FLAGS_rdma_health_check_interval_s > 0) {
-#endif
         BAIDU_SCOPED_LOCK(g_unhealth_map_lock);
         if (!g_unhealth_map.seek(remote_side)) {
-            if (g_unhealth_map.insert(remote_side, 0)) {
-                bthread_t tid;
-                Channel* chan = new Channel;
-                ChannelOptions options;
-                options.use_rdma = true;
-                options.connection_type = "short";
-                chan->Init(remote_side, &options);
-                if (bthread_start_background(
-                        &tid, &BTHREAD_ATTR_NORMAL,
-                        RdmaHealthCheckThread, chan) != 0) {
-                    delete chan;
-                    g_unhealth_map.erase(remote_side);
-                } else {
-                    g_unhealth_map[remote_side] = tid;
-                }
+            if (!g_unhealth_map.insert(remote_side, 0)) {
+                return;
             }
         }
+        if (g_unhealth_map[remote_side] != 0) {
+            return;
+        }
+        bthread_t tid;
+        Channel* chan = new Channel;
+        ChannelOptions options;
+        options.use_rdma = true;
+        options.connection_type = "short";
+        chan->Init(remote_side, &options);
+        if (bthread_start_background(
+                &tid, &BTHREAD_ATTR_NORMAL,
+                RdmaHealthCheckThread, chan) != 0) {
+            delete chan;
+        } else {
+            g_unhealth_map[remote_side] = tid;
+        }
     }
+#endif
 }
 
 int RdmaFallbackChannel::CheckHealth() {

@@ -18,12 +18,12 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <vector>
-#include <butil/fast_rand.h>
-#include <butil/iobuf.h>
-#include <butil/object_pool.h>
-#include <butil/thread_local.h>
-#include <bthread/bthread.h>
 #include <gflags/gflags.h>
+#include "butil/fast_rand.h"
+#include "butil/iobuf.h"
+#include "butil/object_pool.h"
+#include "butil/thread_local.h"
+#include "bthread/bthread.h"
 #include "brpc/rdma/block_pool.h"
 
 namespace brpc {
@@ -290,6 +290,31 @@ static void* AllocBlockFrom(int block_type) {
             butil::return_object<IdleNode>(node);
         }
     }
+
+    // Move more blocks from global list to tls list
+    if (g_buckets == 1 && block_type == 0) {
+        node = g_info->idle_list[0][0];
+        tls_idle_list = node;
+        IdleNode* last_node = NULL;
+        while (node) {
+            if (tls_idle_num > (uint32_t)FLAGS_rdma_memory_pool_tls_cache_num / 2
+                    || node->len > g_block_size[0]) {
+                break;
+            }
+            tls_idle_num++;
+            last_node = node;
+            node = node->next;
+        }
+        if (tls_idle_num == 0) {
+            tls_idle_list = NULL;
+        } else {
+            g_info->idle_list[0][0] = node;
+        }
+        if (last_node) {
+            last_node->next = NULL;
+        }
+    }
+
     return ptr;
 }
 
@@ -359,10 +384,10 @@ int DeallocBlock(void* buf) {
 
     // Recycle half the cached blocks in tls when there is only one bucket
     if (g_buckets == 1 && block_type == 0) {
-        int len = FLAGS_rdma_memory_pool_tls_cache_num / 2;
+        int num = FLAGS_rdma_memory_pool_tls_cache_num / 2;
         IdleNode* new_head = tls_idle_list;
         IdleNode* recycle_tail = NULL;
-        for (int i = 0; i < len; ++i) {
+        for (int i = 0; i < num; ++i) {
             recycle_tail = new_head;
             new_head = new_head->next;
         }
@@ -373,7 +398,7 @@ int DeallocBlock(void* buf) {
             g_info->idle_list[0][0] = tls_idle_list;
         }
         tls_idle_list = new_head;
-        tls_idle_num -= len;
+        tls_idle_num -= num;
         return 0;
     }
 

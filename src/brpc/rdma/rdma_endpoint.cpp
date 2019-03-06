@@ -17,12 +17,12 @@
 #ifdef BRPC_RDMA
 #include <infiniband/verbs.h>
 #endif
-#include <butil/fd_utility.h>
-#include <butil/logging.h>                   // CHECK, LOG
-#include <butil/object_pool.h>               // return_object
-#include <butil/fast_rand.h>                 // fast_rand_bytes
-#include <butil/sys_byteorder.h>             // HostToNet,NetToHost
 #include <gflags/gflags.h>
+#include "butil/fd_utility.h"
+#include "butil/logging.h"                   // CHECK, LOG
+#include "butil/object_pool.h"               // return_object
+#include "butil/fast_rand.h"                 // fast_rand_bytes
+#include "butil/sys_byteorder.h"             // HostToNet,NetToHost
 #include "brpc/errno.pb.h"
 #include "brpc/event_dispatcher.h"
 #include "brpc/input_messenger.h"
@@ -785,9 +785,6 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             // current window will be flagged as solicited.
             solicited = true;
         } else {
-            ++_unsolicited;
-            _unsolicited += this_len;
-            _accumulated_ack += imm;
             if (_unsolicited > _local_window_capacity / 4) {
                 // Make sure the recv side can be signaled to return ack
                 solicited = true;
@@ -797,6 +794,10 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             } else if (_unsolicited_bytes > 1048576) {
                 // Make sure the recv side can be signaled when it receives enough data
                 solicited = true;
+            } else {
+                ++_unsolicited;
+                _unsolicited_bytes += this_len;
+                _accumulated_ack += imm;
             }
         }
         if (solicited) {

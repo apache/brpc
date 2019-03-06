@@ -20,6 +20,7 @@
 #include <butil/atomicops.h>
 #include <butil/fast_rand.h>
 #include <butil/logging.h>
+#include <brpc/channel.h>
 #include <brpc/rdma/rdma_fallback_channel.h>
 #include <brpc/rdma/rdma_helper.h>
 #include <brpc/server.h>
@@ -41,6 +42,7 @@ DEFINE_bool(use_rdma, true, "Use RDMA or not");
 DEFINE_int32(rpc_timeout_ms, 2000, "RPC call timeout");
 DEFINE_int32(test_seconds, 20, "Test running time");
 DEFINE_int32(test_iterations, 0, "Test iterations");
+DEFINE_bool(use_fallback_channel, false, "Use RdmaFallbackChannel");
 
 bvar::LatencyRecorder g_latency_recorder("client");
 bvar::LatencyRecorder g_server_cpu_recorder("server_cpu");
@@ -54,6 +56,7 @@ class PerformanceTest {
 public:
     PerformanceTest(int attachment_size, bool echo_attachment)
         : _addr(NULL)
+        , _fchannel(NULL)
         , _channel(NULL)
         , _cntl(NULL)
         , _response(NULL)
@@ -85,6 +88,7 @@ public:
             }
             free(_addr);
         }
+        delete _fchannel;
         delete _channel;
     }
 
@@ -98,17 +102,30 @@ public:
         options.timeout_ms = FLAGS_rpc_timeout_ms;
         options.max_retry = 0;
         std::string server = g_servers[(rr_index++) % g_servers.size()];
-        _channel = new brpc::rdma::RdmaFallbackChannel();
-        if (_channel->Init(server.c_str(), &options) != 0) {
-            LOG(ERROR) << "Fail to initialize channel";
-            return -1;
+        if (FLAGS_use_fallback_channel) {
+            _fchannel = new brpc::rdma::RdmaFallbackChannel();
+            if (_fchannel->Init(server.c_str(), &options) != 0) {
+                LOG(ERROR) << "Fail to initialize channel";
+                return -1;
+            }
+        } else {
+            _channel = new brpc::Channel();
+            if (_channel->Init(server.c_str(), &options) != 0) {
+                LOG(ERROR) << "Fail to initialize channel";
+                return -1;
+            }
         }
-        test::PerfTestService_Stub stub(_channel);
         brpc::Controller cntl;
         test::PerfTestResponse response;
         test::PerfTestRequest request;
         request.set_echo_attachment(_echo_attachment);
-        stub.Test(&cntl, &request, &response, NULL);
+        if (FLAGS_use_fallback_channel) {
+            test::PerfTestService_Stub stub(_fchannel);
+            stub.Test(&cntl, &request, &response, NULL);
+        } else {
+            test::PerfTestService_Stub stub(_channel);
+            stub.Test(&cntl, &request, &response, NULL);
+        }
         if (cntl.Failed()) {
             LOG(ERROR) << "RPC call failed: " << cntl.ErrorText();
             return -1;
@@ -123,8 +140,13 @@ public:
         request.set_echo_attachment(_echo_attachment);
         _cntl->request_attachment().append(_attachment);
         google::protobuf::Closure* done = brpc::NewCallback(&HandleResponse, this);
-        test::PerfTestService_Stub stub(_channel);
-        stub.Test(_cntl, &request, _response, done);
+        if (FLAGS_use_fallback_channel) {
+            test::PerfTestService_Stub stub(_fchannel);
+            stub.Test(_cntl, &request, _response, done);
+        } else {
+            test::PerfTestService_Stub stub(_channel);
+            stub.Test(_cntl, &request, _response, done);
+        }
     }
 
     static void HandleResponse(PerformanceTest* test) {
@@ -181,7 +203,8 @@ public:
 
 private:
     void* _addr;
-    brpc::rdma::RdmaFallbackChannel* _channel;
+    brpc::rdma::RdmaFallbackChannel* _fchannel;
+    brpc::Channel* _channel;
     brpc::Controller* _cntl;
     test::PerfTestResponse* _response;
     uint64_t _start_time;

@@ -18,8 +18,8 @@
 #define BRPC_RDMA_COMPLETION_QUEUE_H
 
 #include <vector>                                   // std::vector
-#include <butil/macros.h>                           // DISALLOW_COPY_AND_ASSIGN
-#include <bthread/bthread.h>                        // butil::Mutex
+#include "butil/macros.h"                           // DISALLOW_COPY_AND_ASSIGN
+#include "bthread/bthread.h"                        // butil::Mutex
 #include "brpc/input_messenger.h"
 #include "brpc/socket.h"
 

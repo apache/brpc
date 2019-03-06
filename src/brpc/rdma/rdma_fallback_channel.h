@@ -24,8 +24,6 @@
 namespace brpc {
 namespace rdma {
 
-class Sender;
-
 // Since many users hope RPC should fall back to TCP smoothly when RDMA
 // cannot be used, RdmaFallbackChannel is provided. It is a combo
 // channel including two sub-channels: RDMA channel and TCP channel.
@@ -34,8 +32,15 @@ class Sender;
 // health detect built-in RPC is sent by RDMA channel periodically.
 // Once it detects that RDMA channel is available, all subsequent RPC
 // request should use RDMA channel rather than TCP channel.
+//
+// IMPORTANT:
+// In order to avoid performance degradation as far as possible, we do
+// not create new Controller for the sub-channel call. This results in
+// unfixed call_id() for Controller provided by users. The call_id() of
+// the Controller after the rpc call and before the rpc call done is
+// undefined! If you want to use call_id() by yourself, please get it
+// before the rpc call.
 class RdmaFallbackChannel : public ChannelBase {
-friend class Sender;
 public:
     RdmaFallbackChannel();
     ~RdmaFallbackChannel();
@@ -58,6 +63,7 @@ public:
                     google::protobuf::Message* response,
                     google::protobuf::Closure* done);
 
+    // @override
     void Describe(std::ostream& os, const DescribeOptions& options) const;
 
 private:
@@ -65,6 +71,8 @@ private:
 
     static void* RdmaHealthCheckThread(void* arg);
     static int CheckHealth(Channel* chan);
+
+    // @override
     int CheckHealth();
 
     int InitInternal(const ChannelOptions* options, int type,
@@ -76,7 +84,6 @@ private:
     Channel _tcp_chan;
     ChannelOptions _options;
     bool _initialized;
-    bool _rdma_on;
 };
 
 class RdmaHealthServiceImpl : public RdmaHealthService {
