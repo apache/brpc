@@ -269,6 +269,21 @@ bool MysqlRequest::Query(const std::string& stmt) {
     }
 }
 
+bool MysqlRequest::Query(const char* stmt) {
+    if (_has_error) {
+        return false;
+    }
+
+    const butil::Status st = MysqlMakeCommand(&_buf, COM_QUERY, stmt);
+    if (st.ok()) {
+        return true;
+    } else {
+        CHECK(st.ok()) << st;
+        _has_error = true;
+        return false;
+    }
+}
+
 void MysqlRequest::Print(std::ostream& os) const {
     butil::IOBuf cp = _buf;
     {
@@ -437,7 +452,7 @@ label_reparse:
     } else {
         if (_nreply >= FLAGS_mysql_max_replies) {
             LOG(ERROR) << "current max reply size is " << FLAGS_mysql_max_replies
-                       << ", use --mysql_max_replies=XXX to adjust";
+                       << ", use -mysql_max_replies XXX to adjust";
             return false;
         }
         if (_other_replies == NULL) {
@@ -447,8 +462,10 @@ label_reparse:
                 LOG(ERROR) << "Fail to allocate MysqlReply";
                 return false;
             }
+            for (int i = 0; i < FLAGS_mysql_max_replies; ++i) {
+                new (&_other_replies[i]) MysqlReply;
+            }
         }
-        new (&_other_replies[_nreply - 1]) MysqlReply;
         if (!_other_replies[_nreply - 1].ConsumePartialIOBuf(buf, &_arena, is_auth, &is_multi)) {
             LOG(INFO) << "mysql reply parse error";
             return false;

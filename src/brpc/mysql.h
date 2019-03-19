@@ -79,6 +79,7 @@ public:
     ::google::protobuf::Metadata GetMetadata() const;
 
     bool Query(const std::string& stmt);
+    bool Query(const char* stmt);
 
     // True if previous AddCommand[V] failed.
     bool has_error() const {

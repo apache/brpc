@@ -58,7 +58,7 @@ enum MysqlCommandType : unsigned char {
 
 butil::Status MysqlMakeCommand(butil::IOBuf* outbuf,
                                const MysqlCommandType type,
-                               const std::string& stmt,
+                               const butil::StringPiece& stmt,
                                const uint8_t seq = 0);
 
 }  // namespace brpc

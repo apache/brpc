@@ -17,25 +17,27 @@
 #include "brpc/mysql_command.h"
 #include "butil/sys_byteorder.h"
 #include "butil/logging.h"  // LOG()
-#include <ios>
 
+namespace {
+const uint32_t max_package_size = 0xFFFFFF;
+};
 namespace brpc {
-
 butil::Status MysqlMakeCommand(butil::IOBuf* outbuf,
                                const MysqlCommandType type,
-                               const std::string& stmt,
+                               const butil::StringPiece& stmt,
                                const uint8_t seq) {
-    if (outbuf == NULL || stmt.length() == 0) {
+    if (outbuf == NULL || stmt.size() == 0) {
         return butil::Status(EINVAL, "Param[outbuf] or [stmt] is NULL");
     }
+    if (stmt.size() > max_package_size) {
+        return butil::Status(EINVAL, "stmt size is too big");
+    }
     outbuf->clear();
-    butil::IOBuf payload;
-    payload.push_back(type);
-    payload.append(stmt);
-    uint32_t header = butil::ByteSwapToLE32(payload.size());
+    uint32_t header = butil::ByteSwapToLE32(stmt.size() + 1);  // stmt + type
     outbuf->append(&header, 3);
     outbuf->push_back(seq);
-    outbuf->append(payload);
+    outbuf->push_back(type);
+    outbuf->append(stmt.data(), stmt.size());
     return butil::Status::OK();
 }
 

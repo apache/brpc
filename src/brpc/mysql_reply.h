@@ -385,7 +385,7 @@ public:
         butil::StringPiece auth_plugin() const;
 
     private:
-        bool parse(butil::IOBuf& buf, butil::Arena* arena);
+        bool Parse(butil::IOBuf& buf, butil::Arena* arena);
 
         DISALLOW_COPY_AND_ASSIGN(Auth);
         friend class MysqlReply;
@@ -413,7 +413,7 @@ public:
         butil::StringPiece msg() const;
 
     private:
-        bool parse(butil::IOBuf& buf, butil::Arena* arena);
+        bool Parse(butil::IOBuf& buf, butil::Arena* arena);
 
         DISALLOW_COPY_AND_ASSIGN(Ok);
         friend class MysqlReply;
@@ -433,7 +433,7 @@ public:
         butil::StringPiece msg() const;
 
     private:
-        bool parse(butil::IOBuf& buf, butil::Arena* arena);
+        bool Parse(butil::IOBuf& buf, butil::Arena* arena);
 
         DISALLOW_COPY_AND_ASSIGN(Error);
         friend class MysqlReply;
@@ -450,8 +450,8 @@ public:
         uint16_t status() const;
 
     private:
-        bool parse(butil::IOBuf& buf);
-        bool isEof(const butil::IOBuf& buf);
+        bool Parse(butil::IOBuf& buf);
+        bool IsEof(const butil::IOBuf& buf);
 
         DISALLOW_COPY_AND_ASSIGN(Eof);
         friend class MysqlReply;
@@ -476,7 +476,7 @@ public:
         uint8_t decimal() const;
 
     private:
-        bool parse(butil::IOBuf& buf, butil::Arena* arena);
+        bool Parse(butil::IOBuf& buf, butil::Arena* arena);
 
         DISALLOW_COPY_AND_ASSIGN(Column);
         friend class MysqlReply;
@@ -525,7 +525,7 @@ public:
         bool is_nil() const;
 
     private:
-        bool parse(butil::IOBuf& buf, const MysqlReply::Column* column, butil::Arena* arena);
+        bool Parse(butil::IOBuf& buf, const MysqlReply::Column* column, butil::Arena* arena);
 
         DISALLOW_COPY_AND_ASSIGN(Field);
         friend class MysqlReply;
@@ -554,7 +554,7 @@ public:
         const Field& field(const uint64_t index) const;
 
     private:
-        bool parseText(butil::IOBuf& buf);
+        bool ParseText(butil::IOBuf& buf);
 
         DISALLOW_COPY_AND_ASSIGN(Row);
         friend class MysqlReply;
@@ -597,7 +597,7 @@ private:
     // Mysql result set header
     struct ResultSetHeader : private CheckParsed {
         ResultSetHeader() : _column_number(0), _extra_msg(0) {}
-        bool parse(butil::IOBuf& buf);
+        bool Parse(butil::IOBuf& buf);
         uint64_t _column_number;
         uint64_t _extra_msg;
 
@@ -605,11 +605,12 @@ private:
         DISALLOW_COPY_AND_ASSIGN(ResultSetHeader);
     };
     // Mysql result set
-    struct ResultSet {
+    struct ResultSet : private CheckParsed {
         ResultSet() : _columns(NULL), _row_number(0) {
             _first = _last = &_dummy;
             _cur = _first;
         }
+        bool Parse(butil::IOBuf& buf, butil::Arena* arena);
         ResultSetHeader _header;
         Column* _columns;
         Eof _eof1;
@@ -628,15 +629,11 @@ private:
     // member values
     MysqlRspType _type;
     union {
-        const Auth* auth;
-        union {
-            const ResultSet* const_var;
-            // build full result set, we may call ConsumePartialIOBuf many times
-            ResultSet* var;
-        } result_set;
-        const Ok* ok;
-        const Error* error;
-        const Eof* eof;
+        Auth* auth;
+        ResultSet* result_set;
+        Ok* ok;
+        Error* error;
+        Eof* eof;
         uint64_t padding;  // For swapping, must cover all bytes.
     } _data;
 
@@ -689,37 +686,37 @@ inline const MysqlReply::Eof* MysqlReply::eof() const {
 }
 inline uint64_t MysqlReply::column_number() const {
     if (is_resultset()) {
-        return _data.result_set.const_var->_header._column_number;
+        return _data.result_set->_header._column_number;
     }
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an resultset";
     return 0;
 }
 inline const MysqlReply::Column* MysqlReply::column(const uint64_t index) const {
     if (is_resultset()) {
-        if (index > _data.result_set.const_var->_header._column_number) {
+        if (index > _data.result_set->_header._column_number) {
             LOG(ERROR) << "wrong index, must between [0, "
-                       << _data.result_set.const_var->_header._column_number << ")";
+                       << _data.result_set->_header._column_number << ")";
             return NULL;
         }
-        return _data.result_set.const_var->_columns + index;
+        return _data.result_set->_columns + index;
     }
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an resultset";
     return NULL;
 }
 inline uint64_t MysqlReply::row_number() const {
     if (is_resultset()) {
-        return _data.result_set.const_var->_row_number;
+        return _data.result_set->_row_number;
     }
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an resultset";
     return 0;
 }
 inline const MysqlReply::Row* MysqlReply::next() const {
     if (is_resultset()) {
-        if (_data.result_set.var->_cur == _data.result_set.var->_last->_next) {
-            _data.result_set.var->_cur = _data.result_set.var->_first;
+        if (_data.result_set->_cur == _data.result_set->_last->_next) {
+            _data.result_set->_cur = _data.result_set->_first;
         }
-        _data.result_set.var->_cur = _data.result_set.var->_cur->_next;
-        return _data.result_set.var->_cur;
+        _data.result_set->_cur = _data.result_set->_cur->_next;
+        return _data.result_set->_cur;
     }
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an resultset";
     return NULL;
