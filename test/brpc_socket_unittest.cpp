@@ -545,7 +545,7 @@ public:
         brpc::ClosureGuard done_guard(done);
         brpc::Controller* cntl = (brpc::Controller*)cntl_base;
         if (_sleep_flag) {
-            bthread_usleep(310000 /* 310ms, a little bit longer than the default
+            bthread_usleep(510000 /* 510ms, a little bit longer than the default
                                      timeout of health checking rpc */);
         }
         cntl->response_attachment().append("OK");
@@ -589,7 +589,7 @@ TEST_F(SocketTest, health_check_using_rpc) {
     hc_service._sleep_flag = false;
     // sleep so long because of the buggy impl of health check with no circuit breaker
     // enabled but the sleep time is still exponentially backoff.
-    bthread_usleep(2500000);
+    bthread_usleep(3000000);
     // should recover now
     {
         brpc::Controller cntl;
