@@ -290,7 +290,8 @@ int Sender::IssueRPC(int64_t start_realtime_us) {
                                       true,
                                       _main_cntl->has_request_code(),
                                       _main_cntl->_request_code,
-                                      _main_cntl->_accessed };
+                                      _main_cntl->_accessed,
+                                      false };
     ChannelBalancer::SelectOut sel_out;
     const int rc = static_cast<ChannelBalancer*>(_main_cntl->_lb.get())
         ->SelectChannel(sel_in, &sel_out);

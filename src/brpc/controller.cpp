@@ -986,28 +986,19 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     if (SingleServer()) {
         // Don't use _current_call.peer_id which is set to -1 after construction
         // of the backup call.
-        if (!health_check_call) {
-            const int rc = Socket::Address(_single_server_id, &tmp_sock);
-            if (rc != 0 || tmp_sock->IsLogOff()) {
-                SetFailed(EHOSTDOWN, "Not connected to %s yet, server_id=%" PRIu64,
-                          endpoint2str(_remote_side).c_str(), _single_server_id);
-                tmp_sock.reset();  // Release ref ASAP
-                return HandleSendFailed();
-            }
-        } else {
-            const int rc = Socket::AddressFailedAsWell(_single_server_id, &tmp_sock);
-            if (rc < 0) {
-                SetFailed(EFAILEDSOCKET, "Socket to %s has been recycled, server_id=%" PRIu64,
-                          endpoint2str(_remote_side).c_str(), _single_server_id);
-                tmp_sock.reset();  // Release ref ASAP
-                return HandleSendFailed();
-            }
+        const int rc = Socket::Address(_single_server_id, &tmp_sock);
+        if (rc != 0 || tmp_sock->IsLogOff() ||
+                (!health_check_call && tmp_sock->IsHealthCheckingUsingRPC())) {
+            SetFailed(EHOSTDOWN, "Not connected to %s yet, server_id=%" PRIu64,
+                      endpoint2str(_remote_side).c_str(), _single_server_id);
+            tmp_sock.reset();  // Release ref ASAP
+            return HandleSendFailed();
         }
         _current_call.peer_id = _single_server_id;
     } else {
         LoadBalancer::SelectIn sel_in =
-            { start_realtime_us, true,
-              has_request_code(), _request_code, _accessed };
+            { start_realtime_us, true, has_request_code(),
+                _request_code, _accessed, health_check_call};
         LoadBalancer::SelectOut sel_out(&tmp_sock);
         const int rc = _lb->SelectServer(sel_in, &sel_out);
         if (rc != 0) {

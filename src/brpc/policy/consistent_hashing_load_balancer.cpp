@@ -221,7 +221,8 @@ int ConsistentHashingLoadBalancer::SelectServer(
         if (((i + 1) == s->size() // always take last chance
              || !ExcludedServers::IsExcluded(in.excluded, choice->server_sock.id))
             && Socket::Address(choice->server_sock.id, out->ptr) == 0 
-            && !(*out->ptr)->IsLogOff()) {
+            && !(*out->ptr)->IsLogOff()
+            && (in.health_check_call || !(*out->ptr)->IsHealthCheckingUsingRPC())) {
             return 0;
         } else {
             if (++choice == s->end()) {

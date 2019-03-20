@@ -351,7 +351,8 @@ public:
 
     // TODO(zhujiashun)
     bool IsHealthCheckingUsingRPC() const;
-    
+    void ResetHealthCheckingUsingRPC();
+
     // Start to process edge-triggered events from the fd.
     // This function does not block caller.
     static int StartInputEvent(SocketId id, uint32_t events,
@@ -797,7 +798,6 @@ private:
     // If this flag is set, then the current socket is used to health check
     // and should not health check again
     butil::atomic<bool> _health_checking_using_rpc;
-    
 };
 
 } // namespace brpc

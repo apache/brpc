@@ -122,7 +122,8 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         if (((i + 1) == n  // always take last chance
              || !ExcludedServers::IsExcluded(in.excluded, id))
             && Socket::Address(id, out->ptr) == 0
-            && !(*out->ptr)->IsLogOff()) {
+            && !(*out->ptr)->IsLogOff()
+            && (in.health_check_call || !(*out->ptr)->IsHealthCheckingUsingRPC())) {
             s.tls() = tls;
             return 0;
         }

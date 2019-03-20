@@ -249,6 +249,10 @@ inline bool Socket::IsHealthCheckingUsingRPC() const {
     return _health_checking_using_rpc.load(butil::memory_order_relaxed);
 }
 
+inline void Socket::ResetHealthCheckingUsingRPC() {
+    _health_checking_using_rpc.store(false, butil::memory_order_relaxed);
+}
+
 static const uint32_t EOF_FLAG = (1 << 31);
 
 inline void Socket::PostponeEOF() {
