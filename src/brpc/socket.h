@@ -349,8 +349,12 @@ public:
     void SetLogOff();
     bool IsLogOff() const;
 
-    // TODO(zhujiashun)
+    // Check Whether the state is in health check using rpc state or
+    // not, which means this socket would not be selected in further
+    // user request until rpc succeed and can only be used by health
+    // check rpc call.
     bool IsHealthCheckingUsingRPC() const;
+    // Reset health check state to the initial state(which is false)
     void ResetHealthCheckingUsingRPC();
 
     // Start to process edge-triggered events from the fd.
@@ -795,8 +799,8 @@ private:
     butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
 
-    // If this flag is set, then the current socket is used to health check
-    // and should not health check again
+    // If this flag is set, socket is now in health check state using
+    // application-level rpc.
     butil::atomic<bool> _health_checking_using_rpc;
 };
 

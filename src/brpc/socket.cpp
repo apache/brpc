@@ -94,9 +94,12 @@ DEFINE_int32(connect_timeout_as_unreachable, 3,
              "times *continuously*, the error is changed to ENETUNREACH which "
              "fails the main socket as well when this socket is pooled.");
 
-DEFINE_bool(health_check_using_rpc, false, "todo");
-DEFINE_string(health_check_path, "/health", "todo");
-DEFINE_int32(health_check_timeout_ms, 300, "todo");
+DEFINE_bool(health_check_using_rpc, false, "By default health check succeeds if server"
+        "can be connected. If this flag is set, health check is completed not only"
+        "when server can be connected but also an additional http call succeeds"
+        "indicated by FLAGS_health_check_path and FLAGS_health_check_timeout_ms");
+DEFINE_string(health_check_path, "/health", "Http path of health check call");
+DEFINE_int32(health_check_timeout_ms, 300, "Timeout of health check call");
 
 static bool validate_connect_timeout_as_unreachable(const char*, int32_t v) {
     return v >= 2 && v < 1000/*large enough*/;
@@ -1045,7 +1048,7 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
             options.timeout_ms = FLAGS_health_check_timeout_ms;
             brpc::Channel channel;
             if (channel.Init(_id, &options) != 0) {
-                // SetFailed() again to trigger next round of health checking
+                // SetFailed to trigger next round of health checking
                 ptr->SetFailed();
                 return false;
             }
