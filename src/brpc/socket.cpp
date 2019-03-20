@@ -48,6 +48,8 @@
 #include "brpc/shared_object.h"
 #include "brpc/policy/rtmp_protocol.h"  // FIXME
 #include "brpc/periodic_task.h"
+#include "brpc/channel.h"
+#include "brpc/controller.h"
 #if defined(OS_MACOSX)
 #include <sys/event.h>
 #endif
@@ -91,6 +93,10 @@ DEFINE_int32(connect_timeout_as_unreachable, 3,
              "If the socket failed to connect due to ETIMEDOUT for so many "
              "times *continuously*, the error is changed to ENETUNREACH which "
              "fails the main socket as well when this socket is pooled.");
+
+DEFINE_bool(health_check_using_rpc, false, "todo");
+DEFINE_string(health_check_path, "/health", "todo");
+DEFINE_int32(health_check_timeout_ms, 300, "todo");
 
 static bool validate_connect_timeout_as_unreachable(const char*, int32_t v) {
     return v >= 2 && v < 1000/*large enough*/;
@@ -473,6 +479,7 @@ Socket::Socket(Forbidden)
     , _epollout_butex(NULL)
     , _write_head(NULL)
     , _stream_set(NULL)
+    //, _health_checking_using_rpc(false)
 {
     CreateVarsOnce();
     pthread_mutex_init(&_id_wait_list_mutex, NULL);
@@ -655,6 +662,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->_error_code = 0;
     m->_error_text.clear();
     m->_agent_socket_id.store(INVALID_SOCKET_ID, butil::memory_order_relaxed);
+    //m->_health_checking_using_rpc.store(false, butil::memory_order_relaxed);
     // NOTE: last two params are useless in bthread > r32787
     const int rc = bthread_id_list_init(&m->_id_wait_list, 512, 512);
     if (rc) {
@@ -775,6 +783,7 @@ void Socket::Revive() {
             }
             // Set this flag to true since we add additional ref again
             _recycle_flag.store(false, butil::memory_order_relaxed);
+            //_health_checking_using_rpc.store(false, butil::memory_order_relaxed);
             if (_user) {
                 _user->AfterRevived(this);
             } else {
@@ -865,6 +874,7 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // by Channel to revive never-connected socket when server side
             // comes online.
             if (_health_check_interval_s > 0) {
+                    //!_health_checking_using_rpc.load(butil::memory_order_relaxed)) {
                 GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
                 PeriodicTaskManager::StartTaskAt(
                     new HealthCheckTask(id()),
@@ -1023,6 +1033,32 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
     if (hc == 0) {
         if (ptr->CreatedByConnect()) {
             s_vars->channel_conn << -1;
+        }
+        if (FLAGS_health_check_using_rpc) {
+            //ptr->_health_checking_using_rpc.store(true, butil::memory_order_relaxed);
+            brpc::ChannelOptions options;
+            options.protocol = "http";
+            options.max_retry = 0;
+            options.timeout_ms = FLAGS_health_check_timeout_ms;
+            brpc::Channel channel;
+            if (channel.Init(_id, &options) != 0) {
+                ++ ptr->_hc_count;
+                *next_abstime = butil::seconds_from_now(ptr->_health_check_interval_s);
+                return true;
+            }
+
+            brpc::Controller cntl;
+            cntl.http_request().uri() = FLAGS_health_check_path;
+            cntl.set_health_check_call(true);
+            channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+            if (cntl.Failed()) {
+                LOG(WARNING) << "Fail to health check using rpc, error="
+                    << cntl.ErrorText();
+                ++ ptr->_hc_count;
+                *next_abstime = butil::seconds_from_now(ptr->_health_check_interval_s);
+                return true;
+            }
+            LOG(INFO) << "Succeed to health check using rpc";
         }
         ptr->Revive();
         ptr->_hc_count = 0;

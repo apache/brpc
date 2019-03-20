@@ -348,6 +348,9 @@ public:
     // Once set, this flag can only be cleared inside `WaitAndReset'
     void SetLogOff();
     bool IsLogOff() const;
+
+    // TODO(zhujiashun)
+    bool IsHealthCheckingUsingRPC() const;
     
     // Start to process edge-triggered events from the fd.
     // This function does not block caller.
@@ -790,6 +793,11 @@ private:
 
     butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
+
+    // If this flag is set, then the current socket is used to health check
+    // and should not health check again
+    butil::atomic<bool> _health_checking_using_rpc;
+    
 };
 
 } // namespace brpc

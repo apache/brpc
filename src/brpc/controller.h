@@ -138,6 +138,7 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_PB_JSONIFY_EMPTY_ARRAY = (1 << 16);
     static const uint32_t FLAGS_ENABLED_CIRCUIT_BREAKER = (1 << 17);
     static const uint32_t FLAGS_ALWAYS_PRINT_PRIMITIVE_FIELDS = (1 << 18);
+    static const uint32_t FLAGS_HEALTH_CHECK_CALL = (1 << 19);
     
 public:
     Controller();
@@ -323,6 +324,10 @@ public:
     // True iff above method was called.
     bool is_done_allowed_to_run_in_place() const
     { return has_flag(FLAGS_ALLOW_DONE_TO_RUN_IN_PLACE); }
+
+    // TODO(zhujiahsun): comment
+    void set_health_check_call(bool f) { set_flag(FLAGS_HEALTH_CHECK_CALL, f); }
+    bool has_health_check_call() const { return has_flag(FLAGS_HEALTH_CHECK_CALL); }
 
     // ------------------------------------------------------------------------
     //                      Server-side methods.

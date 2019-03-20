@@ -18,7 +18,10 @@
 #include "brpc/acceptor.h"
 #include "brpc/policy/hulu_pbrpc_protocol.h"
 #include "brpc/policy/most_common_message.h"
+#include "brpc/policy/http_rpc_protocol.h"
 #include "brpc/nshead.h"
+#include "brpc/server.h"
+#include "health_check.pb.h"
 #if defined(OS_MACOSX)
 #include <sys/event.h>
 #endif
@@ -520,6 +523,111 @@ TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
         ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L);
     }
     ASSERT_EQ(-1, brpc::Socket::Status(id));
+}
+
+class HealthCheckTestServiceImpl : public test::HealthCheckTestService {
+public:
+    HealthCheckTestServiceImpl()
+        : _sleep_flag(true) {}
+    virtual ~HealthCheckTestServiceImpl() {}
+
+    virtual void default_method(google::protobuf::RpcController* cntl_base,
+                                const test::HealthCheckRequest* request,
+                                test::HealthCheckResponse* response,
+                                google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = (brpc::Controller*)cntl_base;
+        LOG(INFO) << "In HealthCheckTestServiceImpl, flag=" << _sleep_flag;
+        if (_sleep_flag) {
+            bthread_usleep(310000 /* 310ms, a little bit longer than the default
+                                     timeout of health checking rpc */);
+        } else {
+            LOG(INFO) << "Return fast!";
+
+        }
+        cntl->response_attachment().append("OK");
+    }
+
+    bool _sleep_flag;
+};
+
+TEST_F(SocketTest, health_check_using_rpc) {
+    GFLAGS_NS::SetCommandLineOption("health_check_using_rpc", "true");
+    GFLAGS_NS::SetCommandLineOption("health_check_path", "/HealthCheckTestService");
+    brpc::SocketId id = 8888;
+    butil::EndPoint point(butil::IP_ANY, 7777);
+    const int kCheckInteval = 1;
+    brpc::SocketOptions options;
+    options.remote_side = point;
+    options.user = new CheckRecycle;
+    options.health_check_interval_s = kCheckInteval/*s*/;
+    ASSERT_EQ(0, brpc::Socket::Create(options, &id));
+    brpc::SocketUniquePtr s;
+    ASSERT_EQ(0, brpc::Socket::Address(id, &s));
+    
+    global_sock = s.get();
+    ASSERT_TRUE(global_sock);
+
+    const char* buf = "GET / HTTP/1.1\r\nHost: brpc.com\r\n\r\n";
+    const bool use_my_message = (butil::fast_rand_less_than(2) == 0);
+    brpc::SocketMessagePtr<MyMessage> msg;
+    int appended_msg = 0;
+    butil::IOBuf src;
+    if (use_my_message) {
+        LOG(INFO) << "Use MyMessage";
+        msg.reset(new MyMessage(buf, strlen(buf), &appended_msg));
+    } else {
+        src.append(buf, strlen(buf));
+        ASSERT_EQ(strlen(buf), src.length());
+    }
+#ifdef CONNECT_IN_KEEPWRITE
+    bthread_id_t wait_id;
+    WaitData data;
+    ASSERT_EQ(0, bthread_id_create2(&wait_id, &data, OnWaitIdReset));
+    brpc::Socket::WriteOptions wopt;
+    wopt.id_wait = wait_id;
+    if (use_my_message) {
+        ASSERT_EQ(0, s->Write(msg, &wopt));
+    } else {
+        ASSERT_EQ(0, s->Write(&src, &wopt));
+    }
+    ASSERT_EQ(0, bthread_id_join(wait_id));
+    ASSERT_EQ(wait_id.value, data.id.value);
+    ASSERT_EQ(ECONNREFUSED, data.error_code);
+    ASSERT_TRUE(butil::StringPiece(data.error_text).starts_with(
+                    "Fail to connect "));
+    if (use_my_message) {
+        ASSERT_TRUE(appended_msg);
+    }
+#else
+    if (use_my_message) {
+        ASSERT_EQ(-1, s->Write(msg));
+    } else {
+        ASSERT_EQ(-1, s->Write(&src));
+    }
+    ASSERT_EQ(ECONNREFUSED, errno);
+#endif
+    ASSERT_TRUE(src.empty());
+    ASSERT_EQ(-1, s->fd());
+    ASSERT_TRUE(global_sock);
+    brpc::SocketUniquePtr invalid_ptr;
+    ASSERT_EQ(-1, brpc::Socket::Address(id, &invalid_ptr));
+
+    brpc::Server server;
+    HealthCheckTestServiceImpl hc_service;
+    ASSERT_EQ(0, server.AddService(&hc_service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start("127.0.0.1:7777", NULL));
+    for (int i = 0; i < 3; ++i) {
+        // although ::connect would succeed, the stall in hc_service makes
+        // the health checking rpc fail.
+        ASSERT_EQ(1, brpc::Socket::Status(id));
+        bthread_usleep(1000000 /*1s*/);
+    }
+    hc_service._sleep_flag = false;
+    bthread_usleep(2000000);
+    // recover
+    ASSERT_EQ(0, brpc::Socket::Status(id));
+    GFLAGS_NS::SetCommandLineOption("health_check_using_rpc", "false");
 }
 
 TEST_F(SocketTest, health_check) {

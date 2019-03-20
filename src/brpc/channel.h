@@ -155,6 +155,7 @@ public:
     int Init(butil::EndPoint server_addr_and_port, const ChannelOptions* options);
     int Init(const char* server_addr_and_port, const ChannelOptions* options);
     int Init(const char* server_addr, int port, const ChannelOptions* options);
+    int Init(SocketId id, const ChannelOptions* options);
 
     // Connect this channel to a group of servers whose addresses can be
     // accessed via `naming_service_url' according to its protocol. Use the
