@@ -99,7 +99,7 @@ DEFINE_bool(health_check_using_rpc, false, "By default health check succeeds if 
         "when server can be connected but also an additional http call succeeds"
         "indicated by FLAGS_health_check_path and FLAGS_health_check_timeout_ms");
 DEFINE_string(health_check_path, "/health", "Http path of health check call");
-DEFINE_int32(health_check_timeout_ms, 300, "Timeout of health check call");
+DEFINE_int32(health_check_timeout_ms, 500, "Timeout of health check call");
 
 static bool validate_connect_timeout_as_unreachable(const char*, int32_t v) {
     return v >= 2 && v < 1000/*large enough*/;
@@ -2243,8 +2243,9 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
        << "\nauth_id=" << ptr->_auth_id.value
        << "\nauth_context=" << ptr->_auth_context
        << "\nlogoff_flag=" << ptr->_logoff_flag.load(butil::memory_order_relaxed)
-       // TODO(zhujiashun): add _health_checking_using_rpc
        << "\nrecycle_flag=" << ptr->_recycle_flag.load(butil::memory_order_relaxed)
+       << "\nhealth_checking_using_rpc="
+       << ptr->_health_checking_using_rpc.load(butil::memory_order_relaxed)
        << "\nagent_socket_id=";
     const SocketId asid = ptr->_agent_socket_id.load(butil::memory_order_relaxed);
     if (asid != INVALID_SOCKET_ID) {
