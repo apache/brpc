@@ -146,6 +146,7 @@ private:
 class Channel : public ChannelBase {
 friend class Controller;
 friend class SelectiveChannel;
+friend class HealthCheckTask;
 public:
     Channel(ProfilerLinker = ProfilerLinker());
     ~Channel();
@@ -155,7 +156,6 @@ public:
     int Init(butil::EndPoint server_addr_and_port, const ChannelOptions* options);
     int Init(const char* server_addr_and_port, const ChannelOptions* options);
     int Init(const char* server_addr, int port, const ChannelOptions* options);
-    int Init(SocketId id, const ChannelOptions* options);
 
     // Connect this channel to a group of servers whose addresses can be
     // accessed via `naming_service_url' according to its protocol. Use the
@@ -214,6 +214,10 @@ protected:
     int InitSingle(const butil::EndPoint& server_addr_and_port,
                    const char* raw_server_address,
                    const ChannelOptions* options);
+
+    // Init a channel from a known SocketId. Currently it is
+    // used only by health check using rpc.
+    int Init(SocketId id, const ChannelOptions* options);
 
     butil::EndPoint _server_address;
     SocketId _server_id;
