@@ -146,7 +146,6 @@ private:
 class Channel : public ChannelBase {
 friend class Controller;
 friend class SelectiveChannel;
-friend class HealthCheckTask;
 public:
     Channel(ProfilerLinker = ProfilerLinker());
     ~Channel();

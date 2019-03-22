@@ -1084,7 +1084,7 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
                     << cntl.ErrorText();
                 // the hc rpc above may fail too, we should handle this case
                 // carefully. If this rpc fails, hc must be triggered again.
-                // One Solution is to trigger the second hc in Socket::SetFailed
+                // One solution is to trigger the second hc in Socket::SetFailed
                 // in rpc code path, but rpc fails doesn't mean socket fails,
                 // so we should call Socket::SetFailed[1] explicitly here.
                 // But there is a race here:
