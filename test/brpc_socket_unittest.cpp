@@ -555,9 +555,10 @@ public:
 };
 
 TEST_F(SocketTest, health_check_using_rpc) {
+    int old_health_check_interval = brpc::FLAGS_health_check_interval;
     GFLAGS_NS::SetCommandLineOption("health_check_using_rpc", "true");
     GFLAGS_NS::SetCommandLineOption("health_check_path", "/HealthCheckTestService");
-    int old_health_check_interval = brpc::FLAGS_health_check_interval;
+    GFLAGS_NS::SetCommandLineOption("health_check_interval", "1");
 
     brpc::ChannelOptions options;
     options.protocol = "http";
@@ -587,9 +588,7 @@ TEST_F(SocketTest, health_check_using_rpc) {
         bthread_usleep(1000000 /*1s*/);
     }
     hc_service._sleep_flag = false;
-    // sleep so long because of the buggy impl of health check with no circuit breaker
-    // enabled but the sleep time is still exponentially backoff.
-    bthread_usleep(3000000);
+    bthread_usleep(2000000 /* a little bit longer than hc rpc timeout + hc interval */);
     // should recover now
     {
         brpc::Controller cntl;

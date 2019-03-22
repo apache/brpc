@@ -879,7 +879,11 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // Do health-checking even if we're not connected before, needed
             // by Channel to revive never-connected socket when server side
             // comes online.
-            if (_health_check_interval_s > 0) {
+            if (_health_check_interval_s > 0 &&
+                    // We don't want to start another health check task while
+                    // the socket is in health checking using rpc state.
+                    // Also see comment in HealthCheckTask::OnTriggeringTask
+                    !_health_checking_using_rpc.load(butil::memory_order_relaxed)) {
                 GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
                 PeriodicTaskManager::StartTaskAt(
                     new HealthCheckTask(id()),
@@ -1048,9 +1052,10 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
             options.timeout_ms = FLAGS_health_check_timeout_ms;
             brpc::Channel channel;
             if (channel.Init(_id, &options) != 0) {
-                // SetFailed to trigger next round of health checking
                 ptr->SetFailed();
-                return false;
+                ++ ptr->_hc_count;
+                *next_abstime = butil::seconds_from_now(ptr->_health_check_interval_s);
+                return true;
             }
             brpc::Controller cntl;
             cntl.http_request().uri() = FLAGS_health_check_path;
@@ -1059,8 +1064,27 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
             if (cntl.Failed()) {
                 RPC_VLOG << "Fail to health check using rpc, error="
                     << cntl.ErrorText();
-                ptr->SetFailed();
-                return false;
+                // the hc rpc above may fail too, we should handle this case
+                // carefully. If this rpc fails, hc must be triggered again.
+                // One Solution is to trigger the second hc in Socket::SetFailed
+                // in rpc code path, but rpc fails doesn't mean socket fails,
+                // so we should call Socket::SetFailed[1] explicitly here.
+                // But there is a race here:
+                // If the second hc succeed, the socket is revived and comes back
+                // to normal, after that, [1] is called here, making socket failed
+                // again, which is not an expected case.
+                // 
+                // Another solution is to forbid hc while socket is in health check
+                // using rpc state. So there would be no second hc memtioned above,
+                // and this task should return true to trigger next round hc. There
+                // is no race in this solution.
+                //
+                // We take the second solution here, which is a clear and simple
+                // solution.
+                ptr->SetFailed();   // [1]
+                ++ ptr->_hc_count;
+                *next_abstime = butil::seconds_from_now(ptr->_health_check_interval_s);
+                return true;
             }
             ptr->ResetHealthCheckingUsingRPC();
         }
