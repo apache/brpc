@@ -240,7 +240,7 @@ protected:
 
     int StartAccept(butil::EndPoint ep) {
         int listening_fd = -1;
-        while ((listening_fd = tcp_listen(ep, true)) < 0) {
+        while ((listening_fd = tcp_listen(ep)) < 0) {
             if (errno == EADDRINUSE) {
                 bthread_usleep(1000);
             } else {

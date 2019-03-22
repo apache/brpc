@@ -312,7 +312,7 @@ void* ssl_perf_server(void* arg) {
 
 TEST_F(SSLTest, ssl_perf) {
     const butil::EndPoint ep(butil::IP_ANY, 5961);
-    butil::fd_guard listenfd(butil::tcp_listen(ep, false));
+    butil::fd_guard listenfd(butil::tcp_listen(ep));
     ASSERT_GT(listenfd, 0);
     int clifd = tcp_connect(ep, NULL);
     ASSERT_GT(clifd, 0);

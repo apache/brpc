@@ -303,7 +303,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
     };
 
     butil::EndPoint point(butil::IP_ANY, 7878);
-    int listening_fd = tcp_listen(point, false);
+    int listening_fd = tcp_listen(point);
     ASSERT_TRUE(listening_fd > 0);
     butil::make_non_blocking(listening_fd);
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
@@ -606,7 +606,7 @@ TEST_F(SocketTest, health_check) {
           EchoProcessHuluRequest, NULL, NULL, "dummy_hulu" }
     };
 
-    int listening_fd = tcp_listen(point, false);
+    int listening_fd = tcp_listen(point);
     ASSERT_TRUE(listening_fd > 0);
     butil::make_non_blocking(listening_fd);
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
