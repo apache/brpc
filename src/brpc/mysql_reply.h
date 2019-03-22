@@ -21,6 +21,7 @@
 #include "butil/arena.h"
 #include "butil/sys_byteorder.h"
 #include "butil/logging.h"  // LOG()
+#include "parse_result.h"
 
 namespace brpc {
 
@@ -385,7 +386,7 @@ public:
         butil::StringPiece auth_plugin() const;
 
     private:
-        bool Parse(butil::IOBuf& buf, butil::Arena* arena);
+        ParseError Parse(butil::IOBuf& buf, butil::Arena* arena);
 
         DISALLOW_COPY_AND_ASSIGN(Auth);
         friend class MysqlReply;
@@ -413,7 +414,7 @@ public:
         butil::StringPiece msg() const;
 
     private:
-        bool Parse(butil::IOBuf& buf, butil::Arena* arena);
+        ParseError Parse(butil::IOBuf& buf, butil::Arena* arena);
 
         DISALLOW_COPY_AND_ASSIGN(Ok);
         friend class MysqlReply;
@@ -433,7 +434,7 @@ public:
         butil::StringPiece msg() const;
 
     private:
-        bool Parse(butil::IOBuf& buf, butil::Arena* arena);
+        ParseError Parse(butil::IOBuf& buf, butil::Arena* arena);
 
         DISALLOW_COPY_AND_ASSIGN(Error);
         friend class MysqlReply;
@@ -450,8 +451,7 @@ public:
         uint16_t status() const;
 
     private:
-        bool Parse(butil::IOBuf& buf);
-        bool IsEof(const butil::IOBuf& buf);
+        ParseError Parse(butil::IOBuf& buf);
 
         DISALLOW_COPY_AND_ASSIGN(Eof);
         friend class MysqlReply;
@@ -476,7 +476,7 @@ public:
         uint8_t decimal() const;
 
     private:
-        bool Parse(butil::IOBuf& buf, butil::Arena* arena);
+        ParseError Parse(butil::IOBuf& buf, butil::Arena* arena);
 
         DISALLOW_COPY_AND_ASSIGN(Column);
         friend class MysqlReply;
@@ -525,7 +525,7 @@ public:
         bool is_nil() const;
 
     private:
-        bool Parse(butil::IOBuf& buf, const MysqlReply::Column* column, butil::Arena* arena);
+        ParseError Parse(butil::IOBuf& buf, const MysqlReply::Column* column, butil::Arena* arena);
 
         DISALLOW_COPY_AND_ASSIGN(Field);
         friend class MysqlReply;
@@ -554,7 +554,7 @@ public:
         const Field& field(const uint64_t index) const;
 
     private:
-        bool ParseText(butil::IOBuf& buf);
+        ParseError ParseText(butil::IOBuf& buf);
 
         DISALLOW_COPY_AND_ASSIGN(Row);
         friend class MysqlReply;
@@ -566,10 +566,10 @@ public:
 
 public:
     MysqlReply();
-    bool ConsumePartialIOBuf(butil::IOBuf& buf,
-                             butil::Arena* arena,
-                             const bool is_auth,
-                             bool* is_multi);
+    ParseError ConsumePartialIOBuf(butil::IOBuf& buf,
+                                   butil::Arena* arena,
+                                   const bool is_auth,
+                                   bool* more_results);
     void Swap(MysqlReply& other);
     void Print(std::ostream& os) const;
     // response type
@@ -597,7 +597,7 @@ private:
     // Mysql result set header
     struct ResultSetHeader : private CheckParsed {
         ResultSetHeader() : _column_number(0), _extra_msg(0) {}
-        bool Parse(butil::IOBuf& buf);
+        ParseError Parse(butil::IOBuf& buf);
         uint64_t _column_number;
         uint64_t _extra_msg;
 
@@ -610,7 +610,7 @@ private:
             _first = _last = &_dummy;
             _cur = _first;
         }
-        bool Parse(butil::IOBuf& buf, butil::Arena* arena);
+        ParseError Parse(butil::IOBuf& buf, butil::Arena* arena);
         ResultSetHeader _header;
         Column* _columns;
         Eof _eof1;

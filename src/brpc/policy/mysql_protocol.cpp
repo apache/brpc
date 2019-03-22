@@ -77,13 +77,16 @@ ParseResult ParseMysqlMessage(butil::IOBuf* source,
             socket->reset_parsing_context(msg);
         }
 
-        if (msg->response.ConsumePartialIOBuf(*source, pi.with_auth) == false) {
+        const int consume_count = (pi.with_auth ? 1 : pi.count);
+
+        ParseError err = msg->response.ConsumePartialIOBuf(*source, consume_count, pi.with_auth);
+        if (err != PARSE_OK) {
             socket->GivebackPipelinedInfo(pi);
-            return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
+            return MakeParseError(err);
         }
         if (pi.with_auth) {
             if (FLAGS_mysql_verbose) {
-                LOG(INFO) << "\n[MYSQL RESPONSE] " << msg->response;
+                LOG(INFO) << "[MYSQL PARSE] " << msg->response;
             }
             const bthread_id_t cid = pi.id_wait;
             Controller* cntl = NULL;
@@ -195,7 +198,7 @@ void SerializeMysqlRequest(butil::IOBuf* buf,
     if (!rr->SerializeTo(buf)) {
         return cntl->SetFailed(EREQUEST, "Fail to serialize MysqlRequest");
     }
-    ControllerPrivateAccessor(cntl).set_pipelined_count(1);
+    ControllerPrivateAccessor(cntl).set_pipelined_count(rr->command_size());
     if (FLAGS_mysql_verbose) {
         LOG(INFO) << "\n[MYSQL REQUEST] " << *rr;
     }

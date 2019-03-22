@@ -3,16 +3,15 @@
 
 namespace brpc {
 
-#define MY_ERROR_RET(expr, message) \
-    do {                            \
-        if ((expr) == true) {       \
-            LOG(INFO) << message;   \
-            return false;           \
-        }                           \
+#define MY_ERROR_RET(expr, ret_code) \
+    do {                             \
+        if ((expr) == true) {        \
+            return (ret_code);       \
+        }                            \
     } while (0)
 
-#define MY_ALLOC_CHECK(expr) MY_ERROR_RET(!(expr), "Fail to arena allocate")
-#define MY_PARSE_CHECK(expr) MY_ERROR_RET(!(expr), "Fail to parse mysql protocol")
+#define MY_ALLOC_CHECK(expr) MY_ERROR_RET(!(expr), PARSE_ERROR_ABSOLUTELY_WRONG)
+#define MY_PARSE_CHECK(expr) MY_ERROR_RET(((expr) != PARSE_OK), PARSE_ERROR_NOT_ENOUGH_DATA)
 template <class Type>
 inline bool my_alloc_check(butil::Arena* arena, const size_t n, Type*& pointer) {
     if (pointer == NULL) {
@@ -111,18 +110,29 @@ inline bool is_full_package(const butil::IOBuf& buf) {
     uint8_t header[4];
     const uint8_t* p = (const uint8_t*)buf.fetch(header, sizeof(header));
     if (p == NULL) {
-        LOG(ERROR) << "fetch mysql protocol header failed";
         return false;
     }
     uint32_t payload_size = mysql_uint3korr(p);
     if (buf.size() < payload_size + 4) {
-        LOG(INFO) << "IOBuf not contain full mysql package, buf size:" << buf.size()
-                  << " package size:" << payload_size + 4;
         return false;
     }
     return true;
 }
-
+// if is eof package
+inline bool is_an_eof(const butil::IOBuf& buf) {
+    uint8_t tmp[5];
+    const uint8_t* p = (const uint8_t*)buf.fetch(tmp, sizeof(tmp));
+    if (p == NULL) {
+        return false;
+    }
+    uint8_t type = p[4];
+    if (type == MYSQL_RSP_EOF) {
+        return true;
+    } else {
+        return false;
+    }
+}
+// parse header
 inline bool parse_header(butil::IOBuf& buf, MysqlHeader* value) {
     if (!is_full_package(buf)) {
         return false;
@@ -140,52 +150,53 @@ inline bool parse_header(butil::IOBuf& buf, MysqlHeader* value) {
     return true;
 }
 // use this carefully, we depending on parse_header for checking IOBuf contain full package
-inline bool parse_encode_length(butil::IOBuf& buf, uint64_t* value) {
-    uint8_t f;
+inline uint64_t parse_encode_length(butil::IOBuf& buf) {
+    uint64_t value = 0;
+    uint8_t f = 0;
 
     buf.cut1((char*)&f);
     if (f <= 250) {
-        *value = f;
+        value = f;
     } else if (f == 251) {
-        *value = 0;
+        value = 0;
     } else if (f == 252) {
         uint8_t tmp[2];
         buf.cutn(tmp, sizeof(tmp));
-        *value = mysql_uint2korr(tmp);
+        value = mysql_uint2korr(tmp);
     } else if (f == 253) {
         uint8_t tmp[3];
         buf.cutn(tmp, sizeof(tmp));
-        *value = mysql_uint3korr(tmp);
+        value = mysql_uint3korr(tmp);
     } else if (f == 254) {
         uint8_t tmp[8];
         buf.cutn(tmp, sizeof(tmp));
-        *value = mysql_uint8korr(tmp);
+        value = mysql_uint8korr(tmp);
     }
-    return true;
+    return value;
 }
 
-bool MysqlReply::ConsumePartialIOBuf(butil::IOBuf& buf,
-                                     butil::Arena* arena,
-                                     const bool is_auth,
-                                     bool* is_multi) {
-    *is_multi = false;
+ParseError MysqlReply::ConsumePartialIOBuf(butil::IOBuf& buf,
+                                           butil::Arena* arena,
+                                           const bool is_auth,
+                                           bool* more_results) {
+    *more_results = false;
     uint8_t header[5];
     const uint8_t* p = (const uint8_t*)buf.fetch(header, sizeof(header));
     if (p == NULL) {
-        return false;
+        return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
     uint8_t type = (_type == MYSQL_RSP_UNKNOWN) ? p[4] : (uint8_t)_type;
     if (is_auth && type != 0x00 && type != 0xFF) {
         _type = MYSQL_RSP_AUTH;
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.auth));
         MY_PARSE_CHECK(_data.auth->Parse(buf, arena));
-        return true;
+        return PARSE_OK;
     }
     if (type == 0x00) {
         _type = MYSQL_RSP_OK;
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.ok));
         MY_PARSE_CHECK(_data.ok->Parse(buf, arena));
-        *is_multi = _data.ok->status() & MYSQL_SERVER_MORE_RESULTS_EXISTS;
+        *more_results = _data.ok->status() & MYSQL_SERVER_MORE_RESULTS_EXISTS;
     } else if (type == 0xFF) {
         _type = MYSQL_RSP_ERROR;
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.error));
@@ -194,17 +205,17 @@ bool MysqlReply::ConsumePartialIOBuf(butil::IOBuf& buf,
         _type = MYSQL_RSP_EOF;
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.eof));
         MY_PARSE_CHECK(_data.eof->Parse(buf));
-        *is_multi = _data.eof->status() & MYSQL_SERVER_MORE_RESULTS_EXISTS;
+        *more_results = _data.eof->status() & MYSQL_SERVER_MORE_RESULTS_EXISTS;
     } else if (type >= 0x01 && type <= 0xFA) {
         _type = MYSQL_RSP_RESULTSET;
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.result_set));
         MY_PARSE_CHECK(_data.result_set->Parse(buf, arena));
-        *is_multi = _data.result_set->_eof2.status() & MYSQL_SERVER_MORE_RESULTS_EXISTS;
+        *more_results = _data.result_set->_eof2.status() & MYSQL_SERVER_MORE_RESULTS_EXISTS;
     } else {
         LOG(ERROR) << "Unknown Response Type";
-        return false;
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
-    return true;
+    return PARSE_OK;
 }
 
 void MysqlReply::Print(std::ostream& os) const {
@@ -323,14 +334,14 @@ void MysqlReply::Print(std::ostream& os) const {
     }
 }
 
-bool MysqlReply::Auth::Parse(butil::IOBuf& buf, butil::Arena* arena) {
+ParseError MysqlReply::Auth::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     if (is_parsed()) {
-        return true;
+        return PARSE_OK;
     }
     const std::string delim(1, 0x00);
     MysqlHeader header;
     if (!parse_header(buf, &header)) {
-        return false;
+        return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
     buf.cut1((char*)&_protocol);
     {
@@ -388,71 +399,70 @@ bool MysqlReply::Auth::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     }
     buf.clear();  // consume all buf
     set_parsed();
-    return true;
+    return PARSE_OK;
 }
 
-bool MysqlReply::ResultSetHeader::Parse(butil::IOBuf& buf) {
+ParseError MysqlReply::ResultSetHeader::Parse(butil::IOBuf& buf) {
     if (is_parsed()) {
-        return true;
+        return PARSE_OK;
     }
     MysqlHeader header;
     if (!parse_header(buf, &header)) {
-        return false;
+        return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
     uint64_t old_size, new_size;
     old_size = buf.size();
-    parse_encode_length(buf, &_column_number);
+    _column_number = parse_encode_length(buf);
     new_size = buf.size();
     if (old_size - new_size < header.payload_size) {
-        parse_encode_length(buf, &_extra_msg);
+        _extra_msg = parse_encode_length(buf);
     } else {
         _extra_msg = 0;
     }
     set_parsed();
-    return true;
+    return PARSE_OK;
 }
 
-bool MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
+ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     if (is_parsed()) {
-        return true;
+        return PARSE_OK;
     }
     MysqlHeader header;
     if (!parse_header(buf, &header)) {
-        return false;
+        return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
 
-    uint64_t len;
-    parse_encode_length(buf, &len);
+    uint64_t len = parse_encode_length(buf);
     char* catalog = NULL;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, catalog));
     buf.cutn(catalog, len);
     _catalog.set(catalog, len);
 
-    parse_encode_length(buf, &len);
+    len = parse_encode_length(buf);
     char* database = NULL;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, database));
     buf.cutn(database, len);
     _database.set(database, len);
 
-    parse_encode_length(buf, &len);
+    len = parse_encode_length(buf);
     char* table = NULL;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, table));
     buf.cutn(table, len);
     _table.set(table, len);
 
-    parse_encode_length(buf, &len);
+    len = parse_encode_length(buf);
     char* origin_table = NULL;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, origin_table));
     buf.cutn(origin_table, len);
     _origin_table.set(origin_table, len);
 
-    parse_encode_length(buf, &len);
+    len = parse_encode_length(buf);
     char* name = NULL;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, name));
     buf.cutn(name, len);
     _name.set(name, len);
 
-    parse_encode_length(buf, &len);
+    len = parse_encode_length(buf);
     char* origin_name = NULL;
     MY_ALLOC_CHECK(my_alloc_check(arena, len, origin_name));
     buf.cutn(origin_name, len);
@@ -477,34 +487,30 @@ bool MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     buf.cut1((char*)&_decimal);
     buf.pop_front(2);
     set_parsed();
-    return true;
+    return PARSE_OK;
 }
 
-bool MysqlReply::Ok::Parse(butil::IOBuf& buf, butil::Arena* arena) {
+ParseError MysqlReply::Ok::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     if (is_parsed()) {
-        return true;
+        return PARSE_OK;
     }
     MysqlHeader header;
     if (!parse_header(buf, &header)) {
-        return false;
+        return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
 
-    uint64_t len, old_size, new_size;
+    uint64_t old_size, new_size;
     old_size = buf.size();
     buf.pop_front(1);
 
-    parse_encode_length(buf, &len);
-    _affect_row = len;
-
-    parse_encode_length(buf, &len);
-    _index = len;
-
+    _affect_row = parse_encode_length(buf);
+    _index = parse_encode_length(buf);
     buf.cutn(&_status, 2);
     buf.cutn(&_warning, 2);
 
     new_size = buf.size();
     if (old_size - new_size < header.payload_size) {
-        len = header.payload_size - (old_size - new_size);
+        const int64_t len = header.payload_size - (old_size - new_size);
         char* msg = NULL;
         MY_ALLOC_CHECK(my_alloc_check(arena, len, msg));
         buf.cutn(msg, len);
@@ -512,46 +518,31 @@ bool MysqlReply::Ok::Parse(butil::IOBuf& buf, butil::Arena* arena) {
         // buf.pop_front(1);  // Null
     }
     set_parsed();
-    return true;
+    return PARSE_OK;
 }
 
-bool MysqlReply::Eof::IsEof(const butil::IOBuf& buf) {
-    uint8_t tmp[5];
-    const uint8_t* p = (const uint8_t*)buf.fetch(tmp, sizeof(tmp));
-    if (p == NULL) {
-        return false;
-    }
-    uint8_t type = p[4];
-    if (type == MYSQL_RSP_EOF) {
-        buf.copy_to(&_warning, 2, 5);
-        buf.copy_to(&_status, 2, 7);
-        return true;
-    }
-    return false;
-}
-
-bool MysqlReply::Eof::Parse(butil::IOBuf& buf) {
+ParseError MysqlReply::Eof::Parse(butil::IOBuf& buf) {
     if (is_parsed()) {
-        return true;
+        return PARSE_OK;
     }
     MysqlHeader header;
     if (!parse_header(buf, &header)) {
-        return false;
+        return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
     buf.pop_front(1);
     buf.cutn(&_warning, 2);
     buf.cutn(&_status, 2);
     set_parsed();
-    return true;
+    return PARSE_OK;
 }
 
-bool MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena) {
+ParseError MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     if (is_parsed()) {
-        return true;
+        return PARSE_OK;
     }
     MysqlHeader header;
     if (!parse_header(buf, &header)) {
-        return false;
+        return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
     buf.pop_front(1);  // 0xFF
     {
@@ -573,34 +564,33 @@ bool MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     _msg.set(msg, len);
     // buf.pop_front(1);  // Null
     set_parsed();
-    return true;
+    return PARSE_OK;
 }
 
-bool MysqlReply::Row::ParseText(butil::IOBuf& buf) {
+ParseError MysqlReply::Row::ParseText(butil::IOBuf& buf) {
     if (is_parsed()) {
-        return true;
+        return PARSE_OK;
     }
     MysqlHeader header;
     if (!parse_header(buf, &header)) {
-        return false;
+        return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
     set_parsed();
-    return true;
+    return PARSE_OK;
 }
 
-bool MysqlReply::Field::Parse(butil::IOBuf& buf,
-                              const MysqlReply::Column* column,
-                              butil::Arena* arena) {
+ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
+                                    const MysqlReply::Column* column,
+                                    butil::Arena* arena) {
     if (is_parsed()) {
-        return true;
+        return PARSE_OK;
     }
-    uint64_t len;
-    parse_encode_length(buf, &len);
+    uint64_t len = parse_encode_length(buf);
     // is it null?
     if (len == 0 && !(column->_flag & MYSQL_NOT_NULL_FLAG)) {
         _type = MYSQL_FIELD_TYPE_NULL;
         set_parsed();
-        return true;
+        return PARSE_OK;
     }
     // field type
     _type = column->_type;
@@ -673,15 +663,15 @@ bool MysqlReply::Field::Parse(butil::IOBuf& buf,
         default:
             LOG(ERROR) << "Unknown field type";
             set_parsed();
-            return false;
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     set_parsed();
-    return true;
+    return PARSE_OK;
 }
 
-bool MysqlReply::ResultSet::Parse(butil::IOBuf& buf, butil::Arena* arena) {
+ParseError MysqlReply::ResultSet::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     if (is_parsed()) {
-        return true;
+        return PARSE_OK;
     }
     // parse header
     MY_PARSE_CHECK(_header.Parse(buf));
@@ -693,14 +683,13 @@ bool MysqlReply::ResultSet::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     // parse eof1
     MY_PARSE_CHECK(_eof1.Parse(buf));
     // parse row
-    Eof eof;
     std::vector<Row*> rows;
     bool is_first = true;
     for (;;) {
         if (!is_full_package(buf)) {
-            return false;
+            return PARSE_ERROR_NOT_ENOUGH_DATA;
         }
-        if (eof.IsEof(buf)) {
+        if (is_an_eof(buf)) {
             break;
         }
         if (is_first) {
@@ -735,7 +724,7 @@ bool MysqlReply::ResultSet::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     // parse eof2
     MY_PARSE_CHECK(_eof2.Parse(buf));
     set_parsed();
-    return true;
+    return PARSE_OK;
 }
 
 }  // namespace brpc

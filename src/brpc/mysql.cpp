@@ -32,8 +32,7 @@
 
 namespace brpc {
 
-DEFINE_int32(mysql_max_replies, 50, "maximum replies size in one MysqlResponse");
-DEFINE_bool(mysql_verbose_crlf2space, false, "[DEBUG] Show \\r\\n as a space");
+DECLARE_bool(mysql_verbose);
 
 // Internal implementation detail -- do not call these.
 void protobuf_AddDesc_baidu_2frpc_2fmysql_5fbase_2eproto_impl();
@@ -137,6 +136,7 @@ MysqlRequest::MysqlRequest(const MysqlRequest& from) : ::google::protobuf::Messa
 void MysqlRequest::SharedCtor() {
     _has_error = false;
     _cached_size_ = 0;
+    _ncommand = 0;
 }
 
 MysqlRequest::~MysqlRequest() {
@@ -174,6 +174,7 @@ MysqlRequest* MysqlRequest::New() const {
 void MysqlRequest::Clear() {
     _has_error = false;
     _buf.clear();
+    _ncommand = 0;
 }
 
 bool MysqlRequest::MergePartialFromCodedStream(::google::protobuf::io::CodedInputStream*) {
@@ -210,9 +211,28 @@ void MysqlRequest::MergeFrom(const ::google::protobuf::Message& from) {
 }
 
 void MysqlRequest::MergeFrom(const MysqlRequest& from) {
+    // TODO: maybe need to optimize
     GOOGLE_CHECK_NE(&from, this);
+    const int header_size = 4;
+    const uint32_t size_l = from._buf.size() - header_size - 1;  // payload - type
+    const uint32_t size_r = _buf.size() - header_size + 1;       // payload + seqno
+    const uint32_t payload_size = butil::ByteSwapToLE32(size_l + size_r);
+    if (payload_size > mysql_max_package_size) {
+        CHECK(false)
+            << "[MysqlRequest::MergeFrom] statement size is too big, merge from do nothing";
+        return;
+    }
+    butil::IOBuf buf;
+    butil::IOBuf result;
     _has_error = _has_error || from._has_error;
-    _buf.append(from._buf);
+    buf.append(from._buf);
+    buf.pop_front(header_size + 1);
+    _buf.pop_front(header_size - 1);
+    result.append(&payload_size, 3);
+    result.append(_buf);
+    result.append(buf);
+    _buf = result;
+    _ncommand += from._ncommand;
 }
 
 void MysqlRequest::CopyFrom(const ::google::protobuf::Message& from) {
@@ -234,12 +254,13 @@ void MysqlRequest::Swap(MysqlRequest* other) {
         _buf.swap(other->_buf);
         std::swap(_has_error, other->_has_error);
         std::swap(_cached_size_, other->_cached_size_);
+        std::swap(_ncommand, other->_ncommand);
     }
 }
 
 bool MysqlRequest::SerializeTo(butil::IOBuf* buf) const {
     if (_has_error) {
-        LOG(ERROR) << "Reject serialization due to error in AddCommand[V]";
+        LOG(ERROR) << "Reject serialization due to error in CommandXXX[V]";
         return false;
     }
     *buf = _buf;
@@ -254,13 +275,18 @@ bool MysqlRequest::SerializeTo(butil::IOBuf* buf) const {
     return metadata;
 }
 
-bool MysqlRequest::Query(const std::string& stmt) {
+bool MysqlRequest::CommandSingle(const butil::StringPiece& command) {
     if (_has_error) {
         return false;
     }
 
-    const butil::Status st = MysqlMakeCommand(&_buf, COM_QUERY, stmt);
+    if (_ncommand > 0) {
+        return false;
+    }
+
+    const butil::Status st = MysqlMakeCommand(&_buf, COM_QUERY, command);
     if (st.ok()) {
+        ++_ncommand;
         return true;
     } else {
         CHECK(st.ok()) << st;
@@ -269,13 +295,18 @@ bool MysqlRequest::Query(const std::string& stmt) {
     }
 }
 
-bool MysqlRequest::Query(const char* stmt) {
+bool MysqlRequest::CommandBatch(const butil::StringPiece* commands, const size_t n) {
     if (_has_error) {
         return false;
     }
 
-    const butil::Status st = MysqlMakeCommand(&_buf, COM_QUERY, stmt);
+    if (_ncommand > 0) {
+        return false;
+    }
+
+    const butil::Status st = MysqlMakeCommand(&_buf, COM_QUERY, commands, n);
     if (st.ok()) {
+        _ncommand += n;
         return true;
     } else {
         CHECK(st.ok()) << st;
@@ -434,15 +465,20 @@ void MysqlResponse::Swap(MysqlResponse* other) {
 
 // ===================================================================
 
-bool MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf, const bool is_auth) {
-    bool is_multi;
-
+ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf,
+                                              const int max_count,
+                                              const bool is_auth) {
+    bool more_results;  // use more_results to judge if has more results
+    if (reply_size() > max_count) {
+        LOG(ERROR) << "Impossible!!! There must some bug";
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
 label_reparse:
     size_t oldsize = buf.size();
     if (reply_size() == 0) {
-        if (!_first_reply.ConsumePartialIOBuf(buf, &_arena, is_auth, &is_multi)) {
-            LOG(INFO) << "mysql reply parse error";
-            return false;
+        ParseError err = _first_reply.ConsumePartialIOBuf(buf, &_arena, is_auth, &more_results);
+        if (err != PARSE_OK) {
+            return err;
         }
 
         const size_t newsize = buf.size();
@@ -450,25 +486,20 @@ label_reparse:
         oldsize = newsize;
         ++_nreply;
     } else {
-        if (_nreply >= FLAGS_mysql_max_replies) {
-            LOG(ERROR) << "current max reply size is " << FLAGS_mysql_max_replies
-                       << ", use -mysql_max_replies XXX to adjust";
-            return false;
-        }
         if (_other_replies == NULL) {
-            _other_replies =
-                (MysqlReply*)_arena.allocate(sizeof(MysqlReply) * FLAGS_mysql_max_replies - 1);
+            _other_replies = (MysqlReply*)_arena.allocate(sizeof(MysqlReply) * (max_count - 1));
             if (_other_replies == NULL) {
-                LOG(ERROR) << "Fail to allocate MysqlReply";
-                return false;
+                LOG(ERROR) << "Fail to allocate MysqlReply[" << max_count - 1 << "]";
+                return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
-            for (int i = 0; i < FLAGS_mysql_max_replies; ++i) {
+            for (int i = 0; i < max_count - 1; ++i) {
                 new (&_other_replies[i]) MysqlReply;
             }
         }
-        if (!_other_replies[_nreply - 1].ConsumePartialIOBuf(buf, &_arena, is_auth, &is_multi)) {
-            LOG(INFO) << "mysql reply parse error";
-            return false;
+        ParseError err =
+            _other_replies[_nreply - 1].ConsumePartialIOBuf(buf, &_arena, is_auth, &more_results);
+        if (err != PARSE_OK) {
+            return err;
         }
 
         const size_t newsize = buf.size();
@@ -481,10 +512,10 @@ label_reparse:
         goto label_reparse;
     }
 
-    if (!is_multi) {
-        return true;
+    if (!more_results) {
+        return PARSE_OK;
     } else {
-        return false;
+        return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
 }
 

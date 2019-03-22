@@ -29,7 +29,8 @@
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
 #include "butil/arena.h"
-#include "brpc/mysql_reply.h"
+#include "mysql_reply.h"
+#include "parse_result.h"
 
 namespace brpc {
 // Request to mysql.
@@ -37,7 +38,7 @@ namespace brpc {
 // them to ONE mysql-server together.
 // Example:
 //   MysqlRequest request;
-//   request.Query("select * from table");
+//   request.CommandSingle("select * from table");
 //   MysqlResponse response;
 //   channel.CallMethod(NULL, &controller, &request, &response, NULL/*done*/);
 //   if (!cntl.Failed()) {
@@ -78,8 +79,11 @@ public:
     static const MysqlRequest& default_instance();
     ::google::protobuf::Metadata GetMetadata() const;
 
-    bool Query(const std::string& stmt);
-    bool Query(const char* stmt);
+    // call one sql one time
+    bool CommandSingle(const butil::StringPiece& command);
+
+    // call many sql one time
+    bool CommandBatch(const butil::StringPiece* commands, const size_t n);
 
     // True if previous AddCommand[V] failed.
     bool has_error() const {
@@ -88,11 +92,17 @@ public:
 
     void Print(std::ostream&) const;
 
+    // Number of successfully added commands
+    int command_size() const {
+        return _ncommand;
+    }
+
 private:
     void SharedCtor();
     void SharedDtor();
     void SetCachedSize(int size) const;
 
+    int _ncommand;              // # of valid commands
     bool _has_error;            // previous AddCommand had error
     butil::IOBuf _buf;          // the serialized request.
     mutable int _cached_size_;  // ByteSize
@@ -119,9 +129,15 @@ public:
         return *this;
     }
     void Swap(MysqlResponse* other);
-    // Parse and consume intact replies from the buf.
-    // Returns true on success, false otherwise.
-    bool ConsumePartialIOBuf(butil::IOBuf& buf, const bool is_auth = false);
+    // Parse and consume intact replies from the buf, actual reply size may less then max_count, if
+    // some command execute failed
+    // Returns PARSE_OK on success.
+    // Returns PARSE_ERROR_NOT_ENOUGH_DATA if data in `buf' is not enough to parse.
+    // Returns PARSE_ERROR_ABSOLUTELY_WRONG if the parsing
+    // failed.
+    ParseError ConsumePartialIOBuf(butil::IOBuf& buf,
+                                   const int max_count,
+                                   const bool is_auth = false);
 
     // Number of replies in this response.
     // (May have more than one reply due to pipeline)

@@ -56,9 +56,17 @@ enum MysqlCommandType : unsigned char {
     COM_RESET_CONNECTION,
 };
 
+const uint32_t mysql_max_package_size = 0xFFFFFF;
+
 butil::Status MysqlMakeCommand(butil::IOBuf* outbuf,
                                const MysqlCommandType type,
                                const butil::StringPiece& stmt,
+                               const uint8_t seq = 0);
+
+butil::Status MysqlMakeCommand(butil::IOBuf* outbuf,
+                               const MysqlCommandType type,
+                               const butil::StringPiece* commands,
+                               const size_t n,
                                const uint8_t seq = 0);
 
 }  // namespace brpc

@@ -41,9 +41,11 @@ const char* logo();
 }
 
 // Send `command' to mysql-server via `channel'
-static bool access_mysql(brpc::Channel& channel, const char* command) {
+static bool access_mysql(brpc::Channel& channel,
+                         const butil::StringPiece* commands,
+                         const size_t n) {
     brpc::MysqlRequest request;
-    if (!request.Query(command)) {
+    if (!request.CommandBatch(commands, n)) {
         LOG(ERROR) << "Fail to add command";
         return false;
     }
@@ -148,18 +150,16 @@ int main(int argc, char* argv[]) {
                 // too much sense to run it in this CLI, just quit.
                 return 0;
             }
-            access_mysql(channel, command.get());
+            butil::StringPiece piece = command.get();
+            access_mysql(channel, &piece, 1);
         }
     } else {
-        std::string command;
-        command.reserve(argc * 16);
+        std::vector<butil::StringPiece> commands;
+        commands.reserve(argc - 1);
         for (int i = 1; i < argc; ++i) {
-            if (i != 1) {
-                command.push_back(' ');
-            }
-            command.append(argv[i]);
+            commands.push_back(argv[i]);
         }
-        if (!access_mysql(channel, command.c_str())) {
+        if (!access_mysql(channel, commands.data(), commands.size())) {
             return -1;
         }
     }

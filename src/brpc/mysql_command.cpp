@@ -18,28 +18,55 @@
 #include "butil/sys_byteorder.h"
 #include "butil/logging.h"  // LOG()
 
-namespace {
-const uint32_t max_package_size = 0xFFFFFF;
-};
+namespace {};
 namespace brpc {
 butil::Status MysqlMakeCommand(butil::IOBuf* outbuf,
                                const MysqlCommandType type,
-                               const butil::StringPiece& stmt,
+                               const butil::StringPiece& command,
                                const uint8_t seq) {
-    if (outbuf == NULL || stmt.size() == 0) {
-        return butil::Status(EINVAL, "Param[outbuf] or [stmt] is NULL");
+    // TODO: maybe need to do some command syntex verify
+    const int header_size = 4;
+    if (outbuf == NULL || command.size() == 0) {
+        return butil::Status(EINVAL, "[MysqlMakeCommand] Param[outbuf] or [stmt] is NULL");
     }
-    if (stmt.size() > max_package_size) {
-        return butil::Status(EINVAL, "stmt size is too big");
+    if (command.size() > mysql_max_package_size) {
+        return butil::Status(EINVAL, "[MysqlMakeCommand] statement size is too big");
     }
-    outbuf->clear();
-    uint32_t header = butil::ByteSwapToLE32(stmt.size() + 1);  // stmt + type
-    outbuf->append(&header, 3);
-    outbuf->push_back(seq);
+    uint32_t header = butil::ByteSwapToLE32(command.size() + 1) | seq;  // stmt + type
+    outbuf->append(&header, header_size);
     outbuf->push_back(type);
-    outbuf->append(stmt.data(), stmt.size());
+    outbuf->append(command.data(), command.size());
     return butil::Status::OK();
 }
 
+butil::Status MysqlMakeCommand(butil::IOBuf* outbuf,
+                               const MysqlCommandType type,
+                               const butil::StringPiece* commands,
+                               const size_t n,
+                               const uint8_t seq) {
+    // TODO: maybe need to do some command syntex verify
+    const int header_size = 4;
+    if (outbuf == NULL || commands == NULL || n == 0) {
+        return butil::Status(EINVAL,
+                             "[MysqlMakeCommand] Param[outbuf] or [commands] is NULL or [n] is 0");
+    }
+    butil::IOBuf::Area area = outbuf->reserve(header_size);  // reserve for header
+    if (area == butil::IOBuf::INVALID_AREA) {
+        return butil::Status(EINVAL, "[MysqlMakeCommand] reserve for header failed");
+    }
+    outbuf->push_back(type);
+    for (size_t i = 0; i < n; ++i) {
+        outbuf->append(commands[i].data(), commands[i].size());
+        outbuf->push_back(';');
+    }
+    if (outbuf->size() > mysql_max_package_size) {
+        return butil::Status(EINVAL, "[MysqlMakeCommand] statement size is too big");
+    }
+    uint32_t header = butil::ByteSwapToLE32(outbuf->size() - header_size) | seq;
+    if (outbuf->unsafe_assign(area, &header) != 0) {
+        return butil::Status(EINVAL, "[MysqlMakeCommand] unsafe assign for header failed");
+    }
+    return butil::Status::OK();
+}
 
 }  // namespace brpc

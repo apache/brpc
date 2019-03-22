@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <vector>
 #include "butil/time.h"
 #include <brpc/mysql.h>
 #include <brpc/channel.h>
@@ -76,7 +77,7 @@ TEST_F(MysqlTest, auth) {
         brpc::MysqlResponse response;
         brpc::Controller cntl;
 
-        request.Query("show databases");
+        request.CommandSingle("show databases");
 
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
@@ -101,7 +102,7 @@ TEST_F(MysqlTest, auth) {
         brpc::MysqlResponse response;
         brpc::Controller cntl;
 
-        request.Query("show databases");
+        request.CommandSingle("show databases");
 
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_TRUE(cntl.Failed()) << cntl.ErrorText();
@@ -122,7 +123,7 @@ TEST_F(MysqlTest, auth) {
         brpc::MysqlResponse response;
         brpc::Controller cntl;
 
-        request.Query("show databases");
+        request.CommandSingle("show databases");
 
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_TRUE(cntl.Failed()) << cntl.ErrorText();
@@ -145,7 +146,7 @@ TEST_F(MysqlTest, ok) {
         brpc::MysqlRequest request;
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        request.Query("drop table brpc_table");
+        request.CommandSingle("drop table brpc_table");
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     }
     {
@@ -153,7 +154,7 @@ TEST_F(MysqlTest, ok) {
         brpc::MysqlResponse response;
         brpc::Controller cntl;
 
-        request.Query(
+        request.CommandSingle(
             "CREATE TABLE `brpc_table` (`col1` int(11) NOT NULL, `col2` varchar(45) "
             "DEFAULT NULL, "
             "`col3` decimal(6,3) DEFAULT NULL, `col4` datetime DEFAULT NULL, `col5` blob, `col6` "
@@ -199,7 +200,7 @@ TEST_F(MysqlTest, ok) {
                ",2014,NULL,NULL,NULL,NULL,NULL,69,'12.5',16.9,6.7,24,37,69.56,234,6, '"
                "col31','col32','col33','col34','col35','col36',NULL,9,'col39','col40','col4' ,'"
                "col42')";
-        request.Query(ss1.str());
+        request.CommandSingle(ss1.str());
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, response.reply_size());
@@ -224,7 +225,7 @@ TEST_F(MysqlTest, error) {
         brpc::MysqlResponse response;
         brpc::Controller cntl;
 
-        request.Query("select nocol from notable");
+        request.CommandSingle("select nocol from notable");
 
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
@@ -271,7 +272,7 @@ TEST_F(MysqlTest, resultset) {
                    "col31','col32','col33','col34','col35','col36',NULL,9,'col39','col40','col4' "
                    ",'"
                    "col42')";
-            request.Query(ss1.str());
+            request.CommandSingle(ss1.str());
             channel.CallMethod(NULL, &cntl, &request, &response, NULL);
             ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
             ASSERT_EQ(1, response.reply_size());
@@ -280,8 +281,12 @@ TEST_F(MysqlTest, resultset) {
     }
 
     {
-        std::stringstream ss1;
+        std::vector<std::string> commands_str;
+        std::vector<butil::StringPiece> commands;
+        commands_str.reserve(30);
+        commands.reserve(30);
         for (int i = 0; i < 30; ++i) {
+            std::stringstream ss1;
             ss1 << "INSERT INTO `brpc_table` "
                    "(`col1`,`col2`,`col3`,`col4`,`col5`,`col6`,`col7`,`col8`,`col9`,`col10`,`col11`"
                    ",`"
@@ -301,12 +306,13 @@ TEST_F(MysqlTest, resultset) {
                    "col31','col32','col33','col34','col35','col36',NULL,9,'col39','col40','col4' "
                    ",'"
                    "col42')";
-            ss1 << ";";
+            commands_str.push_back(ss1.str());
+            commands.push_back(commands_str[i]);
         }
         brpc::MysqlRequest request;
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        request.Query(ss1.str());
+        request.CommandBatch(commands.data(), commands.size());
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(30, response.reply_size());
@@ -319,7 +325,7 @@ TEST_F(MysqlTest, resultset) {
         brpc::MysqlRequest request;
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        request.Query("select count(0) from brpc_table");
+        request.CommandSingle("select count(0) from brpc_table");
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, response.reply_size());
@@ -330,7 +336,7 @@ TEST_F(MysqlTest, resultset) {
         brpc::MysqlRequest request;
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        request.Query("select * from brpc_table limit 10");
+        request.CommandSingle("select * from brpc_table limit 10");
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, response.reply_size());
@@ -564,7 +570,7 @@ TEST_F(MysqlTest, resultset) {
         brpc::MysqlRequest request;
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        request.Query("delete from brpc_table");
+        request.CommandSingle("delete from brpc_table");
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, response.reply_size());
@@ -575,7 +581,7 @@ TEST_F(MysqlTest, resultset) {
         brpc::MysqlRequest request;
         brpc::MysqlResponse response;
         brpc::Controller cntl;
-        request.Query("drop table brpc_table");
+        request.CommandSingle("drop table brpc_table");
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, response.reply_size());
