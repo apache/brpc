@@ -50,6 +50,7 @@
 #include "brpc/periodic_task.h"
 #include "brpc/channel.h"
 #include "brpc/controller.h"
+#include "brpc/global.h"
 #if defined(OS_MACOSX)
 #include <sys/event.h>
 #endif
@@ -998,6 +999,23 @@ void HealthCheckTask::OnDestroyingTask() {
     delete this;
 }
 
+class HealthCheckChannel : public brpc::Channel {
+public:
+    HealthCheckChannel() {}
+    ~HealthCheckChannel() {}
+
+    int Init(SocketId id, const ChannelOptions* options);
+};
+
+int HealthCheckChannel::Init(SocketId id, const ChannelOptions* options) {
+    brpc::GlobalInitializeOrDie();
+    if (InitChannelOptions(options) != 0) {
+        return -1;
+    }
+    _server_id = id;
+    return 0;
+}
+
 bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
     SocketUniquePtr ptr;
     const int rc = Socket::AddressFailedAsWell(_id, &ptr);
@@ -1050,7 +1068,7 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
             options.protocol = "http";
             options.max_retry = 0;
             options.timeout_ms = FLAGS_health_check_timeout_ms;
-            brpc::Channel channel;
+            HealthCheckChannel channel;
             if (channel.Init(_id, &options) != 0) {
                 ptr->SetFailed();
                 ++ ptr->_hc_count;

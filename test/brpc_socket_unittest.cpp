@@ -578,7 +578,7 @@ TEST_F(SocketTest, health_check_using_rpc) {
     ASSERT_EQ(0, server.AddService(&hc_service, brpc::SERVER_DOESNT_OWN_SERVICE));
     ASSERT_EQ(0, server.Start("127.0.0.1:7777", NULL));
 
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 4; ++i) {
         // although ::connect would succeed, the stall in hc_service makes
         // the health checking rpc fail.
         brpc::Controller cntl;

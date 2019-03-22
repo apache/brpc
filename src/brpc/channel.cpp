@@ -281,15 +281,6 @@ int Channel::Init(butil::EndPoint server_addr_and_port,
     return InitSingle(server_addr_and_port, "", options);
 }
 
-int Channel::Init(SocketId id, const ChannelOptions* options) {
-    GlobalInitializeOrDie();
-    if (InitChannelOptions(options) != 0) {
-        return -1;
-    }
-    _server_id = id;
-    return 0;
-}
-
 int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
                         const char* raw_server_address,
                         const ChannelOptions* options) {

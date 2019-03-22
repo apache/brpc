@@ -215,10 +215,6 @@ protected:
                    const char* raw_server_address,
                    const ChannelOptions* options);
 
-    // Init a channel from a known SocketId. Currently it is
-    // used only by health check using rpc.
-    int Init(SocketId id, const ChannelOptions* options);
-
     butil::EndPoint _server_address;
     SocketId _server_id;
     Protocol::SerializeRequest _serialize_request;
