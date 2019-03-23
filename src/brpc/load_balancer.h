@@ -40,7 +40,6 @@ public:
         bool has_request_code;
         uint64_t request_code;
         const ExcludedServers* excluded;
-        bool health_check_call;
     };
 
     struct SelectOut {

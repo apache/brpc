@@ -556,7 +556,6 @@ public:
 
 TEST_F(SocketTest, health_check_using_rpc) {
     int old_health_check_interval = brpc::FLAGS_health_check_interval;
-    GFLAGS_NS::SetCommandLineOption("health_check_using_rpc", "true");
     GFLAGS_NS::SetCommandLineOption("health_check_path", "/HealthCheckTestService");
     GFLAGS_NS::SetCommandLineOption("health_check_interval", "1");
 
@@ -610,7 +609,7 @@ TEST_F(SocketTest, health_check_using_rpc) {
         ASSERT_GT(cntl.response_attachment().size(), (size_t)0);
     }
 
-    GFLAGS_NS::SetCommandLineOption("health_check_using_rpc", "false");
+    GFLAGS_NS::SetCommandLineOption("health_check_path", "");
     char hc_buf[8];
     snprintf(hc_buf, sizeof(hc_buf), "%d", old_health_check_interval);
     GFLAGS_NS::SetCommandLineOption("health_check_interval", hc_buf);

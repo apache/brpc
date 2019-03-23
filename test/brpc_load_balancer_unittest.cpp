@@ -205,7 +205,7 @@ void* select_server(void* arg) {
     brpc::LoadBalancer* c = sa->lb;
     brpc::SocketUniquePtr ptr;
     CountMap *selected_count = new CountMap;
-    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL, false };
+    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
     brpc::LoadBalancer::SelectOut out(&ptr);
     uint32_t rand_seed = rand();
     if (sa->hash) {
@@ -259,7 +259,7 @@ TEST_F(LoadBalancerTest, update_while_selection) {
 
         // Accessing empty lb should result in error.
         brpc::SocketUniquePtr ptr;
-        brpc::LoadBalancer::SelectIn in = { 0, false, true, 0, NULL, false };
+        brpc::LoadBalancer::SelectIn in = { 0, false, true, 0, NULL };
         brpc::LoadBalancer::SelectOut out(&ptr);
         ASSERT_EQ(ENODATA, lb->SelectServer(in, &out));
 
@@ -555,7 +555,7 @@ TEST_F(LoadBalancerTest, consistent_hashing) {
         const size_t SELECT_TIMES = 1000000;
         std::map<butil::EndPoint, size_t> times;
         brpc::SocketUniquePtr ptr;
-        brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL, false };
+        brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
         ::brpc::LoadBalancer::SelectOut out(&ptr);
         for (size_t i = 0; i < SELECT_TIMES; ++i) {
             in.has_request_code = true;
@@ -632,7 +632,7 @@ TEST_F(LoadBalancerTest, weighted_round_robin) {
     // consistent with weight configured.
     std::map<butil::EndPoint, size_t> select_result;
     brpc::SocketUniquePtr ptr;
-    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL, false };
+    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
     brpc::LoadBalancer::SelectOut out(&ptr);
     int total_weight = 12;
     std::vector<butil::EndPoint> select_servers;
@@ -690,15 +690,13 @@ TEST_F(LoadBalancerTest, weighted_round_robin_no_valid_server) {
     // The first socket is excluded. The second socket is logfoff. 
     // The third socket is invalid. 
     brpc::SocketUniquePtr ptr;
-    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, exclude, false };
+    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, exclude };
     brpc::LoadBalancer::SelectOut out(&ptr);
     EXPECT_EQ(EHOSTDOWN, wrrlb.SelectServer(in, &out));
     brpc::ExcludedServers::Destroy(exclude);
 }
 
 TEST_F(LoadBalancerTest, health_checking_no_valid_server) {
-    // If socket is revived and FLAGS_health_check_using_rpc is set,
-    // this socket should not be selected.
     const char* servers[] = { 
             "10.92.115.19:8832", 
             "10.42.122.201:8833",
@@ -727,7 +725,7 @@ TEST_F(LoadBalancerTest, health_checking_no_valid_server) {
         // Without setting anything, the lb should work fine
         for (int i = 0; i < 4; ++i) {
             brpc::SocketUniquePtr ptr;
-            brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL, false };
+            brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
             brpc::LoadBalancer::SelectOut out(&ptr);
             ASSERT_EQ(0, lb->SelectServer(in, &out));
         }
@@ -737,7 +735,7 @@ TEST_F(LoadBalancerTest, health_checking_no_valid_server) {
         ptr->_health_checking_using_rpc.store(true, butil::memory_order_relaxed);
         for (int i = 0; i < 4; ++i) {
             brpc::SocketUniquePtr ptr;
-            brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL, false };
+            brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
             brpc::LoadBalancer::SelectOut out(&ptr);
             ASSERT_EQ(0, lb->SelectServer(in, &out));
             // After putting server[0] into health checking state, the only choice is servers[1]
@@ -748,19 +746,22 @@ TEST_F(LoadBalancerTest, health_checking_no_valid_server) {
         ptr->_health_checking_using_rpc.store(true, butil::memory_order_relaxed);
         for (int i = 0; i < 4; ++i) {
             brpc::SocketUniquePtr ptr;
-            brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL, false };
+            brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
             brpc::LoadBalancer::SelectOut out(&ptr);
             // There is no server available
             ASSERT_EQ(EHOSTDOWN, lb->SelectServer(in, &out));
         }
 
-        // set health_check_call to true, the lb should work fine
+        ASSERT_EQ(0, brpc::Socket::Address(ids[0].id, &ptr));
+        ptr->ResetHealthCheckingUsingRPC();
+        ASSERT_EQ(0, brpc::Socket::Address(ids[1].id, &ptr));
+        ptr->ResetHealthCheckingUsingRPC();
+        // After reset health checking state, the lb should work fine
         bool get_server1 = false;
-        bool get_server2 = false;
-        // The probability of 20 consecutive same server is 1 / (2^19)
+        bool get_server2 = false; 
         for (int i = 0; i < 20; ++i) {
             brpc::SocketUniquePtr ptr;
-            brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL, true };
+            brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
             brpc::LoadBalancer::SelectOut out(&ptr);
             ASSERT_EQ(0, lb->SelectServer(in, &out));
             if (ptr->remote_side().port == 8832) {
@@ -770,19 +771,6 @@ TEST_F(LoadBalancerTest, health_checking_no_valid_server) {
             }
         }
         ASSERT_TRUE(get_server1 && get_server2);
-        ASSERT_EQ(0, brpc::Socket::Address(ids[0].id, &ptr));
-        ptr->ResetHealthCheckingUsingRPC();
-        ASSERT_EQ(0, brpc::Socket::Address(ids[1].id, &ptr));
-        ptr->ResetHealthCheckingUsingRPC();
-
-        // After reset health checking state, the lb should work fine
-        for (int i = 0; i < 4; ++i) {
-            brpc::SocketUniquePtr ptr;
-            brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL, false };
-            brpc::LoadBalancer::SelectOut out(&ptr);
-            ASSERT_EQ(0, lb->SelectServer(in, &out));
-        }
-
         delete lb;
     }
 }

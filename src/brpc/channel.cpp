@@ -556,14 +556,15 @@ int Channel::Weight() {
 int Channel::CheckHealth() {
     if (_lb == NULL) {
         SocketUniquePtr ptr;
-        if (Socket::Address(_server_id, &ptr) == 0 && !ptr->IsLogOff() &&
+        if (Socket::Address(_server_id, &ptr) == 0 &&
+                !ptr->IsLogOff() &&
                 !ptr->IsHealthCheckingUsingRPC()) {
             return 0;
         }
         return -1;
     } else {
         SocketUniquePtr tmp_sock;
-        LoadBalancer::SelectIn sel_in = { 0, false, false, 0, NULL, false};
+        LoadBalancer::SelectIn sel_in = { 0, false, false, 0, NULL };
         LoadBalancer::SelectOut sel_out(&tmp_sock);
         return _lb->SelectServer(sel_in, &sel_out);
     }

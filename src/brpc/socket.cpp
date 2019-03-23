@@ -95,11 +95,11 @@ DEFINE_int32(connect_timeout_as_unreachable, 3,
              "times *continuously*, the error is changed to ENETUNREACH which "
              "fails the main socket as well when this socket is pooled.");
 
-DEFINE_bool(health_check_using_rpc, false, "By default health check succeeds if server"
-        "can be connected. If this flag is set, health check is completed not only"
-        "when server can be connected but also an additional http call succeeds"
-        "indicated by FLAGS_health_check_path and FLAGS_health_check_timeout_ms");
-DEFINE_string(health_check_path, "/health", "Http path of health check call");
+DEFINE_string(health_check_path, "", "Http path of health check call."
+        "By default health check succeeds if server can be connected. If this"
+        "flag is set, health check is completed not only when server can be"
+        "connected but also an additional http call succeeds indicated by this"
+        "flag and FLAGS_health_check_timeout_ms");
 DEFINE_int32(health_check_timeout_ms, 500, "Timeout of health check call");
 
 static bool validate_connect_timeout_as_unreachable(const char*, int32_t v) {
@@ -793,7 +793,7 @@ void Socket::Revive() {
             } else {
                 LOG(INFO) << "Revived " << *this;
             }
-            if (FLAGS_health_check_using_rpc) {
+            if (!FLAGS_health_check_path.empty()) {
                 _health_checking_using_rpc.store(true, butil::memory_order_relaxed);
             }
             return;

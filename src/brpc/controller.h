@@ -118,6 +118,8 @@ friend int StreamCreate(StreamId*, Controller&, const StreamOptions*);
 friend int StreamAccept(StreamId*, Controller&, const StreamOptions*);
 friend void policy::ProcessMongoRequest(InputMessageBase*);
 friend void policy::ProcessThriftRequest(InputMessageBase*);
+friend class OnHealthCheckRPCDone;
+friend class HealthCheckManager;
     // << Flags >>
     static const uint32_t FLAGS_IGNORE_EOVERCROWDED = 1;
     static const uint32_t FLAGS_SECURITY_MODE = (1 << 1);
@@ -324,12 +326,6 @@ public:
     // True iff above method was called.
     bool is_done_allowed_to_run_in_place() const
     { return has_flag(FLAGS_ALLOW_DONE_TO_RUN_IN_PLACE); }
-
-    // Tell RPC that this particular call is used to do health check. These two
-    // functions is used by the developers of brpc and should not be touched or
-    // called by users.
-    void set_health_check_call(bool f) { set_flag(FLAGS_HEALTH_CHECK_CALL, f); }
-    bool has_health_check_call() const { return has_flag(FLAGS_HEALTH_CHECK_CALL); }
 
     // ------------------------------------------------------------------------
     //                      Server-side methods.
@@ -590,6 +586,11 @@ private:
         CallId id = { _correlation_id.value + nretry + 1 };
         return id;
     }
+
+    // Tell RPC that this particular call is used to do health check.
+    void set_health_check_call(bool f) { set_flag(FLAGS_HEALTH_CHECK_CALL, f); }
+    bool has_health_check_call() const { return has_flag(FLAGS_HEALTH_CHECK_CALL); }
+
 public:
     CallId current_id() const {
         CallId id = { _correlation_id.value + _current_call.nretry + 1 };

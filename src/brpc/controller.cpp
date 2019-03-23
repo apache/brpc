@@ -998,7 +998,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     } else {
         LoadBalancer::SelectIn sel_in =
             { start_realtime_us, true, has_request_code(),
-                _request_code, _accessed, health_check_call};
+                _request_code, _accessed };
         LoadBalancer::SelectOut sel_out(&tmp_sock);
         const int rc = _lb->SelectServer(sel_in, &sel_out);
         if (rc != 0) {
