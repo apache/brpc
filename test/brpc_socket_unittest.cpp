@@ -560,11 +560,12 @@ TEST_F(SocketTest, health_check_using_rpc) {
     GFLAGS_NS::SetCommandLineOption("health_check_path", "/HealthCheckTestService");
     GFLAGS_NS::SetCommandLineOption("health_check_interval", "1");
 
+    butil::EndPoint point(butil::IP_ANY, 7777);
     brpc::ChannelOptions options;
     options.protocol = "http";
     options.max_retry = 0;
     brpc::Channel channel;
-    ASSERT_EQ(0, channel.Init("127.0.0.1:7777", &options));
+    ASSERT_EQ(0, channel.Init(point, &options));
     {
         brpc::Controller cntl;
         cntl.http_request().uri() = "/";
@@ -572,11 +573,22 @@ TEST_F(SocketTest, health_check_using_rpc) {
         EXPECT_TRUE(cntl.Failed());
         ASSERT_EQ(ECONNREFUSED, cntl.ErrorCode());
     }
+
+    // 2s to make sure remote is connected by HealthCheckTask and enter the
+    // sending-rpc state. Because the remote is not down, so hc rpc would keep
+    // sending.
+    int listening_fd = tcp_listen(point, false);
+    bthread_usleep(2000000);
+
+    // 2s to make sure HealthCheckTask find socket is failed and correct impl
+    // should trigger next round of hc
+    close(listening_fd);
+    bthread_usleep(2000000);
    
     brpc::Server server;
     HealthCheckTestServiceImpl hc_service;
     ASSERT_EQ(0, server.AddService(&hc_service, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start("127.0.0.1:7777", NULL));
+    ASSERT_EQ(0, server.Start(point, NULL));
 
     for (int i = 0; i < 4; ++i) {
         // although ::connect would succeed, the stall in hc_service makes
