@@ -242,7 +242,7 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 | ------------------------- | ----- | ---------------------------------------- | ----------------------- |
 | health_check_interval （R） | 3     | seconds between consecutive health-checkings | src/brpc/socket_map.cpp |
 
-在默认的配置下，一旦server被连接上，它会恢复为可用状态；brpc还提供了应用层健康检查的机制，协议是Http，只有当Server返回200时，这个server才算恢复，可以通过设置-health\_check\_path来打开这个功能（如果下游也是brpc，推荐设置成/health，服务健康的话会返回200），-health\_check\_timeout\_ms设置超时（默认500ms）。如果在隔离过程中，server从命名服务中删除了，brpc也会停止连接尝试。
+在默认的配置下，一旦server被连接上，它会恢复为可用状态；brpc还提供了应用层健康检查的机制，协议是Http，只有当Server返回200时，这个server才算恢复，可以通过把-health\_check\_path设置成被检查的路径来打开这个功能（如果下游也是brpc，推荐设置成/health，服务健康的话会返回200），-health\_check\_timeout\_ms设置超时（默认500ms）。如果在隔离过程中，server从命名服务中删除了，brpc也会停止连接尝试。
 
 # 发起访问
 
