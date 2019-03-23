@@ -982,13 +982,12 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     _current_call.need_feedback = false;
     _current_call.enable_circuit_breaker = has_enabled_circuit_breaker();
     SocketUniquePtr tmp_sock;
-    bool health_check_call = has_flag(FLAGS_HEALTH_CHECK_CALL);
     if (SingleServer()) {
         // Don't use _current_call.peer_id which is set to -1 after construction
         // of the backup call.
         const int rc = Socket::Address(_single_server_id, &tmp_sock);
         if (rc != 0 || tmp_sock->IsLogOff() ||
-                (!health_check_call && tmp_sock->IsHealthCheckingUsingRPC())) {
+                (!has_flag(FLAGS_HEALTH_CHECK_CALL) && tmp_sock->IsHealthCheckingUsingRPC())) {
             SetFailed(EHOSTDOWN, "Not connected to %s yet, server_id=%" PRIu64,
                       endpoint2str(_remote_side).c_str(), _single_server_id);
             tmp_sock.reset();  // Release ref ASAP
@@ -997,8 +996,8 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _current_call.peer_id = _single_server_id;
     } else {
         LoadBalancer::SelectIn sel_in =
-            { start_realtime_us, true, has_request_code(),
-                _request_code, _accessed };
+            { start_realtime_us, true,
+                has_request_code(), _request_code, _accessed };
         LoadBalancer::SelectOut sel_out(&tmp_sock);
         const int rc = _lb->SelectServer(sel_in, &sel_out);
         if (rc != 0) {
