@@ -576,7 +576,7 @@ TEST_F(SocketTest, health_check_using_rpc) {
     // 2s to make sure remote is connected by HealthCheckTask and enter the
     // sending-rpc state. Because the remote is not down, so hc rpc would keep
     // sending.
-    int listening_fd = tcp_listen(point, false);
+    int listening_fd = tcp_listen(point);
     bthread_usleep(2000000);
 
     // 2s to make sure HealthCheckTask find socket is failed and correct impl
