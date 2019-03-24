@@ -758,7 +758,11 @@ int Socket::WaitAndReset(int32_t expected_nref) {
             _pipeline_q->clear();
         }
     }
-    _health_checking_using_rpc.store(false, butil::memory_order_relaxed);
+    if (!FLAGS_health_check_path.empty()) {
+        _health_checking_using_rpc.store(true, butil::memory_order_relaxed);
+    } else {
+        _health_checking_using_rpc.store(false, butil::memory_order_relaxed);
+    }
     return 0;
 }
 
@@ -792,9 +796,6 @@ void Socket::Revive() {
                 _user->AfterRevived(this);
             } else {
                 LOG(INFO) << "Revived " << *this;
-            }
-            if (!FLAGS_health_check_path.empty()) {
-                _health_checking_using_rpc.store(true, butil::memory_order_relaxed);
             }
             return;
         }
@@ -1070,6 +1071,7 @@ public:
         if (done->channel.Init(id, &options) != 0) {
             LOG(WARNING) << "Fail to init health check channel to SocketId=" << id;
             ptr->ResetHealthCheckingUsingRPC();
+            delete done;
             return;
         }
         done->cntl.http_request().uri() = FLAGS_health_check_path;

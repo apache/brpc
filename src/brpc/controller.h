@@ -589,7 +589,7 @@ private:
 
     // Tell RPC that this particular call is used to do health check.
     void set_health_check_call(bool f) { set_flag(FLAGS_HEALTH_CHECK_CALL, f); }
-    bool has_health_check_call() const { return has_flag(FLAGS_HEALTH_CHECK_CALL); }
+    bool is_health_check_call() const { return has_flag(FLAGS_HEALTH_CHECK_CALL); }
 
 public:
     CallId current_id() const {
