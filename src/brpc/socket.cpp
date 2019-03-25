@@ -483,7 +483,7 @@ Socket::Socket(Forbidden)
     , _epollout_butex(NULL)
     , _write_head(NULL)
     , _stream_set(NULL)
-    , _ninflight_app_level_health_check(0)
+    , _ninflight_app_health_check(0)
 {
     CreateVarsOnce();
     pthread_mutex_init(&_id_wait_list_mutex, NULL);
@@ -666,7 +666,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->_error_code = 0;
     m->_error_text.clear();
     m->_agent_socket_id.store(INVALID_SOCKET_ID, butil::memory_order_relaxed);
-    m->_ninflight_app_level_health_check.store(0, butil::memory_order_relaxed);
+    m->_ninflight_app_health_check.store(0, butil::memory_order_relaxed);
     // NOTE: last two params are useless in bthread > r32787
     const int rc = bthread_id_list_init(&m->_id_wait_list, 512, 512);
     if (rc) {
@@ -1020,7 +1020,7 @@ public:
             return;
         }
         if (!cntl.Failed() || ptr->Failed()) {
-            ptr->_ninflight_app_level_health_check.fetch_sub(
+            ptr->_ninflight_app_health_check.fetch_sub(
                         1, butil::memory_order_relaxed);
             return;
         }
@@ -1058,7 +1058,7 @@ public:
         options.timeout_ms = FLAGS_health_check_timeout_ms;
         if (done->channel.Init(id, &options) != 0) {
             LOG(WARNING) << "Fail to init health check channel to SocketId=" << id;
-            ptr->_ninflight_app_level_health_check.fetch_sub(
+            ptr->_ninflight_app_health_check.fetch_sub(
                         1, butil::memory_order_relaxed);
             delete done;
             return;
@@ -1115,12 +1115,12 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
             s_vars->channel_conn << -1;
         }
         if (!FLAGS_health_check_path.empty()) {
-            ptr->_ninflight_app_level_health_check.fetch_add(
+            ptr->_ninflight_app_health_check.fetch_add(
                     1, butil::memory_order_relaxed);
         }
         ptr->Revive();
         ptr->_hc_count = 0;
-        if (ptr->IsAppLevelHealthCheck()) {
+        if (ptr->IsAppHealthCheck()) {
             HealthCheckManager::StartCheck(_id, ptr->_health_check_interval_s);
         }
         return false;
@@ -2303,8 +2303,8 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
        << "\nauth_context=" << ptr->_auth_context
        << "\nlogoff_flag=" << ptr->_logoff_flag.load(butil::memory_order_relaxed)
        << "\nrecycle_flag=" << ptr->_recycle_flag.load(butil::memory_order_relaxed)
-       << "\nninflight_app_level_health_check="
-       << ptr->_ninflight_app_level_health_check.load(butil::memory_order_relaxed)
+       << "\nninflight_app_health_check="
+       << ptr->_ninflight_app_health_check.load(butil::memory_order_relaxed)
        << "\nagent_socket_id=";
     const SocketId asid = ptr->_agent_socket_id.load(butil::memory_order_relaxed);
     if (asid != INVALID_SOCKET_ID) {
