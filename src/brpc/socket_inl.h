@@ -245,12 +245,8 @@ inline bool Socket::IsLogOff() const {
     return _logoff_flag.load(butil::memory_order_relaxed);
 }
 
-inline bool Socket::IsAppLevelHealthChecking() const {
-    return _app_level_health_checking.load(butil::memory_order_relaxed);
-}
-
-inline void Socket::ResetAppLevelHealthChecking() {
-    _app_level_health_checking.store(false, butil::memory_order_relaxed);
+inline bool Socket::IsAppLevelHealthCheck() const {
+    return (_ninflight_app_level_health_check.load(butil::memory_order_relaxed) != 0);
 }
 
 static const uint32_t EOF_FLAG = (1 << 31);

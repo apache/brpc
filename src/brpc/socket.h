@@ -354,9 +354,7 @@ public:
     // Check Whether the state is in app level health checking state or
     // not, which means this socket would not be selected in further
     // user request until app level check succeed.
-    bool IsAppLevelHealthChecking() const;
-    // Reset health check state to the initial state(which is false)
-    void ResetAppLevelHealthChecking();
+    bool IsAppLevelHealthCheck() const;
 
     // Start to process edge-triggered events from the fd.
     // This function does not block caller.
@@ -800,9 +798,7 @@ private:
     butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
 
-    // If this flag is set, socket is now in health check state using
-    // application-level rpc.
-    butil::atomic<bool> _app_level_health_checking;
+    butil::atomic<int64_t> _ninflight_app_level_health_check;
 };
 
 } // namespace brpc

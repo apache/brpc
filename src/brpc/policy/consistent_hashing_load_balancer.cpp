@@ -222,7 +222,7 @@ int ConsistentHashingLoadBalancer::SelectServer(
              || !ExcludedServers::IsExcluded(in.excluded, choice->server_sock.id))
             && Socket::Address(choice->server_sock.id, out->ptr) == 0 
             && !(*out->ptr)->IsLogOff()
-            && !(*out->ptr)->IsAppLevelHealthChecking()) {
+            && !(*out->ptr)->IsAppLevelHealthCheck()) {
             return 0;
         } else {
             if (++choice == s->end()) {

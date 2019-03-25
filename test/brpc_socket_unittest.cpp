@@ -546,7 +546,7 @@ public:
         brpc::Controller* cntl = (brpc::Controller*)cntl_base;
         if (_sleep_flag) {
             bthread_usleep(510000 /* 510ms, a little bit longer than the default
-                                     timeout of health checking rpc */);
+                                     timeout of health check rpc */);
         }
         cntl->response_attachment().append("OK");
     }
@@ -554,7 +554,7 @@ public:
     bool _sleep_flag;
 };
 
-TEST_F(SocketTest, app_level_health_checking) {
+TEST_F(SocketTest, app_level_health_check) {
     int old_health_check_interval = brpc::FLAGS_health_check_interval;
     GFLAGS_NS::SetCommandLineOption("health_check_path", "/HealthCheckTestService");
     GFLAGS_NS::SetCommandLineOption("health_check_interval", "1");
@@ -591,7 +591,7 @@ TEST_F(SocketTest, app_level_health_checking) {
 
     for (int i = 0; i < 4; ++i) {
         // although ::connect would succeed, the stall in hc_service makes
-        // the health checking rpc fail.
+        // the health check rpc fail.
         brpc::Controller cntl;
         cntl.http_request().uri() = "/";
         channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);

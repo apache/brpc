@@ -123,7 +123,7 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
              || !ExcludedServers::IsExcluded(in.excluded, id))
             && Socket::Address(id, out->ptr) == 0
             && !(*out->ptr)->IsLogOff()
-            && !(*out->ptr)->IsAppLevelHealthChecking()) {
+            && !(*out->ptr)->IsAppLevelHealthCheck()) {
             s.tls() = tls;
             return 0;
         }
