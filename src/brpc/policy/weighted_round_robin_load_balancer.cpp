@@ -181,7 +181,7 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
         if (!ExcludedServers::IsExcluded(in.excluded, server_id)
             && Socket::Address(server_id, out->ptr) == 0
             && !(*out->ptr)->IsLogOff()
-            && !(*out->ptr)->IsHealthCheckingUsingRPC()) {
+            && !(*out->ptr)->IsAppLevelHealthChecking()) {
             // update tls.
             tls.remain_server = tls_temp.remain_server;
             tls.position = tls_temp.position;

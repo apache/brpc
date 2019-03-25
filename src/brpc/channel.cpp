@@ -558,7 +558,7 @@ int Channel::CheckHealth() {
         SocketUniquePtr ptr;
         if (Socket::Address(_server_id, &ptr) == 0 &&
                 !ptr->IsLogOff() &&
-                !ptr->IsHealthCheckingUsingRPC()) {
+                !ptr->IsAppLevelHealthChecking()) {
             return 0;
         }
         return -1;

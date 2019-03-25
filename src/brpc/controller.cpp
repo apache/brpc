@@ -987,7 +987,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         // of the backup call.
         const int rc = Socket::Address(_single_server_id, &tmp_sock);
         if (rc != 0 || tmp_sock->IsLogOff() ||
-                (!is_health_check_call() && tmp_sock->IsHealthCheckingUsingRPC())) {
+                (!is_health_check_call() && tmp_sock->IsAppLevelHealthChecking())) {
             SetFailed(EHOSTDOWN, "Not connected to %s yet, server_id=%" PRIu64,
                       endpoint2str(_remote_side).c_str(), _single_server_id);
             tmp_sock.reset();  // Release ref ASAP

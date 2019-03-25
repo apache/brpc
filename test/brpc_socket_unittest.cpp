@@ -554,7 +554,7 @@ public:
     bool _sleep_flag;
 };
 
-TEST_F(SocketTest, health_check_using_rpc) {
+TEST_F(SocketTest, app_level_health_checking) {
     int old_health_check_interval = brpc::FLAGS_health_check_interval;
     GFLAGS_NS::SetCommandLineOption("health_check_path", "/HealthCheckTestService");
     GFLAGS_NS::SetCommandLineOption("health_check_interval", "1");

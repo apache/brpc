@@ -483,7 +483,7 @@ Socket::Socket(Forbidden)
     , _epollout_butex(NULL)
     , _write_head(NULL)
     , _stream_set(NULL)
-    , _health_checking_using_rpc(false)
+    , _app_level_health_checking(false)
 {
     CreateVarsOnce();
     pthread_mutex_init(&_id_wait_list_mutex, NULL);
@@ -666,7 +666,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->_error_code = 0;
     m->_error_text.clear();
     m->_agent_socket_id.store(INVALID_SOCKET_ID, butil::memory_order_relaxed);
-    m->_health_checking_using_rpc.store(false, butil::memory_order_relaxed);
+    m->_app_level_health_checking.store(false, butil::memory_order_relaxed);
     // NOTE: last two params are useless in bthread > r32787
     const int rc = bthread_id_list_init(&m->_id_wait_list, 512, 512);
     if (rc) {
@@ -758,7 +758,7 @@ int Socket::WaitAndReset(int32_t expected_nref) {
             _pipeline_q->clear();
         }
     }
-    _health_checking_using_rpc.store(!FLAGS_health_check_path.empty(), butil::memory_order_relaxed);
+    _app_level_health_checking.store(!FLAGS_health_check_path.empty(), butil::memory_order_relaxed);
     return 0;
 }
 
@@ -1014,24 +1014,16 @@ public:
     void Run() {
         std::unique_ptr<OnHealthCheckRPCDone> self_guard(this);
         SocketUniquePtr ptr;
-        const int rc = Socket::AddressFailedAsWell(id, &ptr);
-        if (rc < 0) {
-            RPC_VLOG << "SocketId=" << id
-                     << " was abandoned during health checking";
+        const int rc = Socket::Address(id, &ptr);
+        if (rc != 0) {
+            // If the socket is failed, Socket::SetFailed() will
+            // trigger next round of hc, just return here.
             return;
         }
         if (!cntl.Failed()) {
-            ptr->ResetHealthCheckingUsingRPC();
+            ptr->ResetAppLevelHealthChecking();
             return;
         }
-
-        // Socket::SetFailed() will trigger next round of hc, just
-        // return here.
-        if (cntl.Failed() && ptr->Failed()) {
-            return;
-        }
-        // the left case is cntl.Failed() && !ptr->Failed(),
-        // in which we should retry hc rpc.
         RPC_VLOG << "Fail to health check using rpc, error="
             << cntl.ErrorText();
         bthread_usleep(interval_s * 1000000);
@@ -1066,7 +1058,7 @@ public:
         options.timeout_ms = FLAGS_health_check_timeout_ms;
         if (done->channel.Init(id, &options) != 0) {
             LOG(WARNING) << "Fail to init health check channel to SocketId=" << id;
-            ptr->ResetHealthCheckingUsingRPC();
+            ptr->ResetAppLevelHealthChecking();
             delete done;
             return;
         }
@@ -1123,7 +1115,7 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
         }
         ptr->Revive();
         ptr->_hc_count = 0;
-        if (ptr->IsHealthCheckingUsingRPC()) {
+        if (ptr->IsAppLevelHealthChecking()) {
             HealthCheckManager::StartCheck(_id, ptr->_health_check_interval_s);
         }
         return false;
@@ -2306,8 +2298,8 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
        << "\nauth_context=" << ptr->_auth_context
        << "\nlogoff_flag=" << ptr->_logoff_flag.load(butil::memory_order_relaxed)
        << "\nrecycle_flag=" << ptr->_recycle_flag.load(butil::memory_order_relaxed)
-       << "\nhealth_checking_using_rpc="
-       << ptr->_health_checking_using_rpc.load(butil::memory_order_relaxed)
+       << "\napp_level_health_checking="
+       << ptr->_app_level_health_checking.load(butil::memory_order_relaxed)
        << "\nagent_socket_id=";
     const SocketId asid = ptr->_agent_socket_id.load(butil::memory_order_relaxed);
     if (asid != INVALID_SOCKET_ID) {
