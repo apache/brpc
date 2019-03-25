@@ -732,7 +732,7 @@ TEST_F(LoadBalancerTest, health_check_no_valid_server) {
 
         brpc::SocketUniquePtr ptr;
         ASSERT_EQ(0, brpc::Socket::Address(ids[0].id, &ptr));
-        ptr->_ninflight_app_level_health_check.store(1, butil::memory_order_relaxed);
+        ptr->_ninflight_app_health_check.store(1, butil::memory_order_relaxed);
         for (int i = 0; i < 4; ++i) {
             brpc::SocketUniquePtr ptr;
             brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
@@ -743,7 +743,7 @@ TEST_F(LoadBalancerTest, health_check_no_valid_server) {
         }
 
         ASSERT_EQ(0, brpc::Socket::Address(ids[1].id, &ptr));
-        ptr->_ninflight_app_level_health_check.store(1, butil::memory_order_relaxed);
+        ptr->_ninflight_app_health_check.store(1, butil::memory_order_relaxed);
         for (int i = 0; i < 4; ++i) {
             brpc::SocketUniquePtr ptr;
             brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
@@ -753,9 +753,9 @@ TEST_F(LoadBalancerTest, health_check_no_valid_server) {
         }
 
         ASSERT_EQ(0, brpc::Socket::Address(ids[0].id, &ptr));
-        ptr->_ninflight_app_level_health_check.store(0, butil::memory_order_relaxed);
+        ptr->_ninflight_app_health_check.store(0, butil::memory_order_relaxed);
         ASSERT_EQ(0, brpc::Socket::Address(ids[1].id, &ptr));
-        ptr->_ninflight_app_level_health_check.store(0, butil::memory_order_relaxed);
+        ptr->_ninflight_app_health_check.store(0, butil::memory_order_relaxed);
         // After reset health check state, the lb should work fine
         bool get_server1 = false;
         bool get_server2 = false; 

@@ -1008,10 +1008,10 @@ int HealthCheckChannel::Init(SocketId id, const ChannelOptions* options) {
     return 0;
 }
 
-class OnHealthCheckRPCDone : public google::protobuf::Closure {
+class OnAppHealthCheckDone : public google::protobuf::Closure {
 public:
     void Run() {
-        std::unique_ptr<OnHealthCheckRPCDone> self_guard(this);
+        std::unique_ptr<OnAppHealthCheckDone> self_guard(this);
         SocketUniquePtr ptr;
         const int rc = Socket::AddressFailedAsWell(id, &ptr);
         if (rc < 0) {
@@ -1020,12 +1020,13 @@ public:
             return;
         }
         if (!cntl.Failed() || ptr->Failed()) {
+            LOG_IF(INFO, !cntl.Failed()) << "AppRevived "
+                << ptr->remote_side() << FLAGS_health_check_path;
             ptr->_ninflight_app_health_check.fetch_sub(
                         1, butil::memory_order_relaxed);
             return;
         }
-        RPC_VLOG << "Fail to health check using rpc, error="
-            << cntl.ErrorText();
+        RPC_VLOG << "Fail to AppCheck, " << cntl.ErrorText();
         bthread_usleep(interval_s * 1000000);
         cntl.Reset();
         cntl.http_request().uri() = FLAGS_health_check_path;
@@ -1049,11 +1050,12 @@ public:
                      << " was abandoned during health checking";
             return;
         }
-        OnHealthCheckRPCDone* done = new OnHealthCheckRPCDone;
+        LOG(INFO) << "AppChecking " << ptr->remote_side() << FLAGS_health_check_path;
+        OnAppHealthCheckDone* done = new OnAppHealthCheckDone;
         done->id = id;
         done->interval_s = check_interval_s;
         brpc::ChannelOptions options;
-        options.protocol = "http";
+        options.protocol = PROTOCOL_HTTP;
         options.max_retry = 0;
         options.timeout_ms = FLAGS_health_check_timeout_ms;
         if (done->channel.Init(id, &options) != 0) {

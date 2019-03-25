@@ -186,7 +186,7 @@ friend class policy::ConsistentHashingLoadBalancer;
 friend class policy::RtmpContext;
 friend class schan::ChannelBalancer;
 friend class HealthCheckTask;
-friend class OnHealthCheckRPCDone;
+friend class OnAppHealthCheckDone;
 friend class HealthCheckManager;
 friend class policy::H2GlobalStreamCreator;
     class SharedPart;

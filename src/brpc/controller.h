@@ -118,7 +118,7 @@ friend int StreamCreate(StreamId*, Controller&, const StreamOptions*);
 friend int StreamAccept(StreamId*, Controller&, const StreamOptions*);
 friend void policy::ProcessMongoRequest(InputMessageBase*);
 friend void policy::ProcessThriftRequest(InputMessageBase*);
-friend class OnHealthCheckRPCDone;
+friend class OnAppHealthCheckDone;
 friend class HealthCheckManager;
     // << Flags >>
     static const uint32_t FLAGS_IGNORE_EOVERCROWDED = 1;
