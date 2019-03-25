@@ -758,11 +758,7 @@ int Socket::WaitAndReset(int32_t expected_nref) {
             _pipeline_q->clear();
         }
     }
-    if (!FLAGS_health_check_path.empty()) {
-        _health_checking_using_rpc.store(true, butil::memory_order_relaxed);
-    } else {
-        _health_checking_using_rpc.store(false, butil::memory_order_relaxed);
-    }
+    _health_checking_using_rpc.store(!FLAGS_health_check_path.empty(), butil::memory_order_relaxed);
     return 0;
 }
 
