@@ -122,8 +122,7 @@ int DynPartLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         for (size_t i = 0; i < n; ++i) {
             const SocketId id = s->server_list[i].id;
             if ((!exclusion || !ExcludedServers::IsExcluded(in.excluded, id))
-                && Socket::Address(id, &ptrs[nptr].first) == 0
-                && (ptrs[nptr].first)->IsAvailable()) {
+                && Socket::Address(id, &ptrs[nptr].first) == 0) {
                 int w = schan::GetSubChannelWeight(ptrs[nptr].first->user());
                 total_weight += w;
                 if (nptr < 8) {
