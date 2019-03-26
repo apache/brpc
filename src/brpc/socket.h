@@ -346,15 +346,12 @@ public:
 
     // Set ELOGOFF flag to this `Socket' which means further requests
     // through this `Socket' will receive an ELOGOFF error. This only
-    // affects return value of `IsLogOff' and won't close the inner fd
-    // Once set, this flag can only be cleared inside `WaitAndReset'
+    // affects return value of `IsAvailable' and won't close the inner
+    // fd. Once set, this flag can only be cleared inside `WaitAndReset'.
     void SetLogOff();
-    bool IsLogOff() const;
 
-    // Check Whether the state is in app level health checking state or
-    // not, which means this socket would not be selected in further
-    // user request until app level check succeed.
-    bool IsAppHealthCheck() const;
+    // Check Whether the socket is available for user requests.
+    bool IsAvailable() const;
 
     // Start to process edge-triggered events from the fd.
     // This function does not block caller.

@@ -50,6 +50,7 @@
 #include "brpc/periodic_task.h"
 #include "brpc/channel.h"
 #include "brpc/controller.h"
+#include "details/controller_private_accessor.h"
 #include "brpc/global.h"
 #if defined(OS_MACOSX)
 #include <sys/event.h>
@@ -100,7 +101,9 @@ DEFINE_string(health_check_path, "", "Http path of health check call."
         "flag is set, health check is completed not only when server can be"
         "connected but also an additional http call succeeds indicated by this"
         "flag and FLAGS_health_check_timeout_ms");
-DEFINE_int32(health_check_timeout_ms, 500, "Timeout of health check call");
+DEFINE_int32(health_check_timeout_ms, 500, "Timeout of health check."
+        "If FLAGS_health_check_path is empty, it means timeout of connect."
+        "Otherwise it means timeout of app health check call.");
 
 static bool validate_connect_timeout_as_unreachable(const char*, int32_t v) {
     return v >= 2 && v < 1000/*large enough*/;
@@ -1030,7 +1033,7 @@ public:
         bthread_usleep(interval_s * 1000000);
         cntl.Reset();
         cntl.http_request().uri() = FLAGS_health_check_path;
-        cntl.set_health_check_call(true);
+        ControllerPrivateAccessor(&cntl).set_health_check_call();
         channel.CallMethod(NULL, &cntl, NULL, NULL, self_guard.release());
     }
 
@@ -1066,7 +1069,7 @@ public:
             return;
         }
         done->cntl.http_request().uri() = FLAGS_health_check_path;
-        done->cntl.set_health_check_call(true);
+        ControllerPrivateAccessor(&done->cntl).set_health_check_call();
         done->channel.CallMethod(NULL, &done->cntl, NULL, NULL, done);
     }
 };
@@ -1122,7 +1125,7 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
         }
         ptr->Revive();
         ptr->_hc_count = 0;
-        if (ptr->IsAppHealthCheck()) {
+        if (!FLAGS_health_check_path.empty()) {
             HealthCheckManager::StartCheck(_id, ptr->_health_check_interval_s);
         }
         return false;
@@ -1312,7 +1315,6 @@ int Socket::Connect(const timespec* abstime,
     CHECK_EQ(0, butil::make_close_on_exec(sockfd));
     // We need to do async connect (to manage the timeout by ourselves).
     CHECK_EQ(0, butil::make_non_blocking(sockfd));
-    
     
     struct sockaddr_in serv_addr;
     bzero((char*)&serv_addr, sizeof(serv_addr));
@@ -2391,11 +2393,9 @@ int Socket::CheckHealth() {
     if (_hc_count == 0) {
         LOG(INFO) << "Checking " << *this;
     }
-    // Note: No timeout. Timeout setting is given to Write() which
-    // we don't know. A drawback is that if a connection takes long
-    // but finally succeeds(indicating unstable network?), we still
-    // revive the socket.
-    const int connected_fd = Connect(NULL/*Note*/, NULL, NULL);
+    const timespec duetime =
+        butil::milliseconds_from_now(FLAGS_health_check_timeout_ms);
+    const int connected_fd = Connect(&duetime, NULL, NULL);
     if (connected_fd >= 0) {
         ::close(connected_fd);
         return 0;

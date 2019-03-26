@@ -556,9 +556,7 @@ int Channel::Weight() {
 int Channel::CheckHealth() {
     if (_lb == NULL) {
         SocketUniquePtr ptr;
-        if (Socket::Address(_server_id, &ptr) == 0 &&
-                !ptr->IsLogOff() &&
-                !ptr->IsAppHealthCheck()) {
+        if (Socket::Address(_server_id, &ptr) == 0 && !ptr->IsAvailable()) {
             return 0;
         }
         return -1;

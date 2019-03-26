@@ -138,6 +138,11 @@ public:
         return *this;
     }
 
+    ControllerPrivateAccessor& set_health_check_call() {
+        _cntl->add_flag(Controller::FLAGS_HEALTH_CHECK_CALL);
+        return *this;
+    }
+
 private:
     Controller* _cntl;
 };

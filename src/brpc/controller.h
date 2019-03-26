@@ -118,8 +118,6 @@ friend int StreamCreate(StreamId*, Controller&, const StreamOptions*);
 friend int StreamAccept(StreamId*, Controller&, const StreamOptions*);
 friend void policy::ProcessMongoRequest(InputMessageBase*);
 friend void policy::ProcessThriftRequest(InputMessageBase*);
-friend class OnAppHealthCheckDone;
-friend class HealthCheckManager;
     // << Flags >>
     static const uint32_t FLAGS_IGNORE_EOVERCROWDED = 1;
     static const uint32_t FLAGS_SECURITY_MODE = (1 << 1);
@@ -588,7 +586,6 @@ private:
     }
 
     // Tell RPC that this particular call is used to do health check.
-    void set_health_check_call(bool f) { set_flag(FLAGS_HEALTH_CHECK_CALL, f); }
     bool is_health_check_call() const { return has_flag(FLAGS_HEALTH_CHECK_CALL); }
 
 public:
