@@ -793,7 +793,7 @@ void Socket::Revive() {
             if (_user) {
                 _user->AfterRevived(this);
             } else {
-                LOG(INFO) << "Revived " << *this;
+                LOG(INFO) << "Revived " << *this << " (Connectable)";
             }
             return;
         }
@@ -1023,13 +1023,14 @@ public:
             return;
         }
         if (!cntl.Failed() || ptr->Failed()) {
-            LOG_IF(INFO, !cntl.Failed()) << "AppRevived "
+            LOG_IF(INFO, !cntl.Failed()) << "Succeeded to call "
                 << ptr->remote_side() << FLAGS_health_check_path;
             ptr->_ninflight_app_health_check.fetch_sub(
                         1, butil::memory_order_relaxed);
             return;
         }
-        RPC_VLOG << "Fail to AppCheck, " << cntl.ErrorText();
+        RPC_VLOG << "Fail to check path=" << FLAGS_health_check_path
+            << ", " << cntl.ErrorText();
         bthread_usleep(interval_s * 1000000);
         cntl.Reset();
         cntl.http_request().uri() = FLAGS_health_check_path;
@@ -1053,7 +1054,7 @@ public:
                      << " was abandoned during health checking";
             return;
         }
-        LOG(INFO) << "AppChecking " << ptr->remote_side() << FLAGS_health_check_path;
+        LOG(INFO) << "Checking path=" << ptr->remote_side() << FLAGS_health_check_path;
         OnAppHealthCheckDone* done = new OnAppHealthCheckDone;
         done->id = id;
         done->interval_s = check_interval_s;
@@ -2451,7 +2452,7 @@ int SocketUser::CheckHealth(Socket* ptr) {
 }
 
 void SocketUser::AfterRevived(Socket* ptr) {
-    LOG(INFO) << "Revived " << *ptr;
+    LOG(INFO) << "Revived " << *ptr << " (Connectable)";
 }
 
 ////////// SocketPool //////////////

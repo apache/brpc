@@ -56,7 +56,7 @@ public:
 
     void AfterRevived(Socket* ptr) {
         LOG(INFO) << "Revived " << *chan << " chan=0x" << (void*)chan
-                  << " Fake" << *ptr;
+                  << " Fake" << *ptr << " (Connectable)";
     }
 };
 
