@@ -80,7 +80,7 @@ extern int bthread_interrupt(bthread_t tid);
 // Returns 0 on success, errno otherwise.
 extern int bthread_stop(bthread_t tid);
 
-// Returns 1 iff bthread_stop(tid) was called or the thread does not exist,
+// Returns 1 if bthread_stop(tid) was called or the thread does not exist,
 // 0 otherwise.
 extern int bthread_stopped(bthread_t tid);
 
