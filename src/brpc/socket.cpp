@@ -1013,6 +1013,8 @@ int HealthCheckChannel::Init(SocketId id, const ChannelOptions* options) {
 class OnAppHealthCheckDone : public google::protobuf::Closure {
 public:
     void Run() {
+        butil::Timer tm;
+        tm.start();
         std::unique_ptr<OnAppHealthCheckDone> self_guard(this);
         SocketUniquePtr ptr;
         const int rc = Socket::AddressFailedAsWell(id, &ptr);
@@ -1030,7 +1032,12 @@ public:
         }
         RPC_VLOG << "Fail to check path=" << FLAGS_health_check_path
             << ", " << cntl.ErrorText();
-        bthread_usleep(interval_s * 1000000);
+        tm.stop();
+        int64_t sleep_time_ms =
+            interval_s * 1000 - cntl.latency_us() / 1000 - tm.m_elapsed();
+        if (sleep_time_ms > 0) {
+            bthread_usleep(sleep_time_ms * 1000);
+        }
         cntl.Reset();
         cntl.http_request().uri() = FLAGS_health_check_path;
         ControllerPrivateAccessor(&cntl).set_health_check_call();
@@ -1060,7 +1067,8 @@ public:
         brpc::ChannelOptions options;
         options.protocol = PROTOCOL_HTTP;
         options.max_retry = 0;
-        options.timeout_ms = FLAGS_health_check_timeout_ms;
+        options.timeout_ms =
+            std::min((int64_t)FLAGS_health_check_timeout_ms, check_interval_s * 1000);
         if (done->channel.Init(id, &options) != 0) {
             LOG(WARNING) << "Fail to init health check channel to SocketId=" << id;
             ptr->_ninflight_app_health_check.fetch_sub(
