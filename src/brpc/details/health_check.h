@@ -25,7 +25,8 @@
 
 namespace brpc {
 
-PeriodicTask* NewHealthCheckTask(SocketId id, SocketVarsCollector* collector);
+// Start health check for socket id after delay_ms.
+void StartHealthCheckWithDelayMS(SocketId id, int64_t delay_ms);
 
 } // namespace brpc
 

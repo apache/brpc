@@ -27,6 +27,9 @@
 
 namespace brpc {
 
+// declared at socket.cpp
+extern SocketVarsCollector* g_vars;
+
 DEFINE_string(health_check_path, "", "Http path of health check call."
         "By default health check succeeds if the server is connectable."
         "If this flag is set, health check is not completed until a http "
@@ -154,20 +157,18 @@ void OnAppHealthCheckDone::Run() {
 
 class HealthCheckTask : public PeriodicTask {
 public:
-    explicit HealthCheckTask(SocketId id, SocketVarsCollector* nhealthcheck);
+    explicit HealthCheckTask(SocketId id);
     bool OnTriggeringTask(timespec* next_abstime) override;
     void OnDestroyingTask() override;
 
 private:
     SocketId _id;
     bool _first_time;
-    SocketVarsCollector* _collector;
 };
 
-HealthCheckTask::HealthCheckTask(SocketId id, SocketVarsCollector* collector)
+HealthCheckTask::HealthCheckTask(SocketId id)
     : _id(id)
-    , _first_time(true)
-    , _collector(collector) {}
+    , _first_time(true) {}
 
 bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
     SocketUniquePtr ptr;
@@ -203,7 +204,7 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
         }
     }
 
-    _collector->nhealthcheck << 1;
+    g_vars->nhealthcheck << 1;
     int hc = 0;
     if (ptr->_user) {
         hc = ptr->_user->CheckHealth(ptr.get());
@@ -212,7 +213,7 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
     }
     if (hc == 0) {
         if (ptr->CreatedByConnect()) {
-            _collector->channel_conn << -1;
+            g_vars->channel_conn << -1;
         }
         if (!FLAGS_health_check_path.empty()) {
             ptr->_ninflight_app_health_check.fetch_add(
@@ -237,8 +238,9 @@ void HealthCheckTask::OnDestroyingTask() {
     delete this;
 }
 
-PeriodicTask* NewHealthCheckTask(SocketId id, SocketVarsCollector* collector) {
-    return new HealthCheckTask(id, collector);
+void StartHealthCheckWithDelayMS(SocketId id, int64_t delay_ms) {
+    PeriodicTaskManager::StartTaskAt(new HealthCheckTask(id),
+            butil::milliseconds_from_now(delay_ms));
 }
 
 } // namespace brpc

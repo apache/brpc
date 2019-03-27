@@ -837,10 +837,8 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // comes online.
             if (_health_check_interval_s > 0) {
                 GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
-                PeriodicTaskManager::StartTaskAt(
-                    NewHealthCheckTask(id(), g_vars),
-                    butil::milliseconds_from_now(GetOrNewSharedPart()->
-                        circuit_breaker.isolation_duration_ms()));
+                StartHealthCheckWithDelayMS(id(),
+                        GetOrNewSharedPart()->circuit_breaker.isolation_duration_ms());
             }
             // Wake up all threads waiting on EPOLLOUT when closing fd
             _epollout_butex->fetch_add(1, butil::memory_order_relaxed);
