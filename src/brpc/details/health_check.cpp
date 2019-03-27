@@ -27,7 +27,8 @@
 
 namespace brpc {
 
-DEFINE_string(health_check_path, "", "Http path of health check call." "By default health check succeeds if the server is connectable."
+DEFINE_string(health_check_path, "", "Http path of health check call."
+        "By default health check succeeds if the server is connectable."
         "If this flag is set, health check is not completed until a http "
         "call to the path succeeds within -health_check_timeout_ms(to make "
         "sure the server functions well).");
