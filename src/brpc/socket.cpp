@@ -34,7 +34,6 @@
 #include "butil/logging.h"                        // CHECK
 #include "butil/macros.h"
 #include "butil/class_name.h"                     // butil::class_name
-#include "bvar/bvar.h"
 #include "brpc/log.h"
 #include "brpc/reloadable_flags.h"          // BRPC_VALIDATE_GFLAG
 #include "brpc/errno.pb.h"
@@ -272,33 +271,11 @@ void Socket::SharedPart::UpdateStatsEverySecond(int64_t now_ms) {
     }
 }
 
-struct SocketVarsCollector {
-    SocketVarsCollector()
-        : nsocket("rpc_socket_count")
-        , channel_conn("rpc_channel_connection_count")
-        , neventthread_second("rpc_event_thread_second", &neventthread)
-        , nhealthcheck("rpc_health_check_count")
-        , nkeepwrite_second("rpc_keepwrite_second", &nkeepwrite)
-        , nwaitepollout("rpc_waitepollout_count")
-        , nwaitepollout_second("rpc_waitepollout_second", &nwaitepollout)
-    {}
-
-    bvar::Adder<int64_t> nsocket;
-    bvar::Adder<int64_t> channel_conn;
-    bvar::Adder<int> neventthread;
-    bvar::PerSecond<bvar::Adder<int> > neventthread_second;
-    bvar::Adder<int64_t> nhealthcheck;
-    bvar::Adder<int64_t> nkeepwrite;
-    bvar::PerSecond<bvar::Adder<int64_t> > nkeepwrite_second;
-    bvar::Adder<int64_t> nwaitepollout;
-    bvar::PerSecond<bvar::Adder<int64_t> > nwaitepollout_second;
-};
-
-static SocketVarsCollector* s_vars = NULL;
+SocketVarsCollector* g_vars = NULL;
 
 static pthread_once_t s_create_vars_once = PTHREAD_ONCE_INIT;
 static void CreateVars() {
-    s_vars = new SocketVarsCollector;
+    g_vars = new SocketVarsCollector;
 }
 
 void Socket::CreateVarsOnce() {
@@ -307,8 +284,8 @@ void Socket::CreateVarsOnce() {
 
 // Used by ConnectionService
 int64_t GetChannelConnectionCount() {
-    if (s_vars) {
-        return s_vars->channel_conn.get_value();
+    if (g_vars) {
+        return g_vars->channel_conn.get_value();
     }
     return 0;
 }
@@ -612,7 +589,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
         LOG(FATAL) << "Fail to get_resource<Socket>";
         return -1;
     }
-    s_vars->nsocket << 1;
+    g_vars->nsocket << 1;
     CHECK(NULL == m->_shared_part.load(butil::memory_order_relaxed));
     m->_nevent.store(0, butil::memory_order_relaxed);
     m->_keytable_pool = options.keytable_pool;
@@ -717,7 +694,7 @@ int Socket::WaitAndReset(int32_t expected_nref) {
         }
         close(prev_fd);
         if (CreatedByConnect()) {
-            s_vars->channel_conn << -1;
+            g_vars->channel_conn << -1;
         }
     }
     _local_side = butil::EndPoint();
@@ -861,7 +838,7 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             if (_health_check_interval_s > 0) {
                 GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
                 PeriodicTaskManager::StartTaskAt(
-                    new HealthCheckTask(id(), &s_vars->nhealthcheck),
+                    NewHealthCheckTask(id(), g_vars),
                     butil::milliseconds_from_now(GetOrNewSharedPart()->
                         circuit_breaker.isolation_duration_ms()));
             }
@@ -997,7 +974,7 @@ void Socket::OnRecycle() {
         }
         close(prev_fd);
         if (create_by_connect) {
-            s_vars->channel_conn << -1;
+            g_vars->channel_conn << -1;
         }
     }
     reset_parsing_context(NULL);
@@ -1032,7 +1009,7 @@ void Socket::OnRecycle() {
         }
     }
     
-    s_vars->nsocket << -1;
+    g_vars->nsocket << -1;
 }
 
 void* Socket::ProcessEvent(void* arg) {
@@ -1248,7 +1225,7 @@ int Socket::CheckConnected(int sockfd) {
             << " via fd=" << (int)sockfd << " SocketId=" << id()
             << " local_port=" << ntohs(client.sin_port);
     if (CreatedByConnect()) {
-        s_vars->channel_conn << 1;
+        g_vars->channel_conn << 1;
     }
     // Doing SSL handshake after TCP connected
     return SSLHandshake(sockfd, false);
@@ -1617,7 +1594,7 @@ FAIL_TO_WRITE:
 static const size_t DATA_LIST_MAX = 256;
 
 void* Socket::KeepWrite(void* void_arg) {
-    s_vars->nkeepwrite << 1;
+    g_vars->nkeepwrite << 1;
     WriteRequest* req = static_cast<WriteRequest*>(void_arg);
     SocketUniquePtr s(req->socket);
 
@@ -1657,7 +1634,7 @@ void* Socket::KeepWrite(void* void_arg) {
         // Update(8/15/2017): Not working, performance downgraded.
         //if (nw <= 0 || req->data.empty()/*note*/) {
         if (nw <= 0) {
-            s_vars->nwaitepollout << 1;
+            g_vars->nwaitepollout << 1;
             bool pollin = (s->_on_edge_triggered_events != NULL);
             // NOTE: Waiting epollout within timeout is a must to force
             // KeepWrite to check and setup pending WriteRequests periodically,
@@ -1972,7 +1949,7 @@ int Socket::StartInputEvent(SocketId id, uint32_t events,
         // According to the stats, above fetch_add is very effective. In a
         // server processing 1 million requests per second, this counter
         // is just 1500~1700/s
-        s_vars->neventthread << 1;
+        g_vars->neventthread << 1;
 
         bthread_t tid;
         // transfer ownership as well, don't use s anymore!

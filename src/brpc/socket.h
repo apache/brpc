@@ -37,6 +37,7 @@
 #include "brpc/options.pb.h"              // ConnectionType
 #include "brpc/socket_id.h"               // SocketId
 #include "brpc/socket_message.h"          // SocketMessagePtr
+#include "bvar/bvar.h"
 
 namespace brpc {
 namespace policy {
@@ -124,6 +125,28 @@ struct SocketStat {
     uint64_t out_size_m;
     uint32_t in_num_messages_m;
     uint32_t out_num_messages_m;
+};
+
+struct SocketVarsCollector {
+    SocketVarsCollector()
+        : nsocket("rpc_socket_count")
+        , channel_conn("rpc_channel_connection_count")
+        , neventthread_second("rpc_event_thread_second", &neventthread)
+        , nhealthcheck("rpc_health_check_count")
+        , nkeepwrite_second("rpc_keepwrite_second", &nkeepwrite)
+        , nwaitepollout("rpc_waitepollout_count")
+        , nwaitepollout_second("rpc_waitepollout_second", &nwaitepollout)
+    {}
+
+    bvar::Adder<int64_t> nsocket;
+    bvar::Adder<int64_t> channel_conn;
+    bvar::Adder<int> neventthread;
+    bvar::PerSecond<bvar::Adder<int> > neventthread_second;
+    bvar::Adder<int64_t> nhealthcheck;
+    bvar::Adder<int64_t> nkeepwrite;
+    bvar::PerSecond<bvar::Adder<int64_t> > nkeepwrite_second;
+    bvar::Adder<int64_t> nwaitepollout;
+    bvar::PerSecond<bvar::Adder<int64_t> > nwaitepollout_second;
 };
 
 struct PipelinedInfo {

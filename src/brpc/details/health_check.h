@@ -21,20 +21,11 @@
 #include "brpc/socket_id.h"
 #include "brpc/periodic_task.h"
 #include "bvar/bvar.h"
+#include "brpc/socket.h"
 
 namespace brpc {
 
-class HealthCheckTask : public PeriodicTask {
-public:
-    explicit HealthCheckTask(SocketId id, bvar::Adder<int64_t>* nhealthcheck);
-    bool OnTriggeringTask(timespec* next_abstime) override;
-    void OnDestroyingTask() override;
-
-private:
-    SocketId _id;
-    bool _first_time;
-    bvar::Adder<int64_t>* _nhealthcheck;
-};
+PeriodicTask* NewHealthCheckTask(SocketId id, SocketVarsCollector* collector);
 
 } // namespace brpc
 

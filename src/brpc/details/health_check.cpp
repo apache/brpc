@@ -152,10 +152,22 @@ void OnAppHealthCheckDone::Run() {
     self_guard.release();
 }
 
-HealthCheckTask::HealthCheckTask(SocketId id, bvar::Adder<int64_t>* nhealthcheck)
+class HealthCheckTask : public PeriodicTask {
+public:
+    explicit HealthCheckTask(SocketId id, SocketVarsCollector* nhealthcheck);
+    bool OnTriggeringTask(timespec* next_abstime) override;
+    void OnDestroyingTask() override;
+
+private:
+    SocketId _id;
+    bool _first_time;
+    SocketVarsCollector* _collector;
+};
+
+HealthCheckTask::HealthCheckTask(SocketId id, SocketVarsCollector* collector)
     : _id(id)
     , _first_time(true)
-    , _nhealthcheck(nhealthcheck) {}
+    , _collector(collector) {}
 
 bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
     SocketUniquePtr ptr;
@@ -191,7 +203,7 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
         }
     }
 
-    (*_nhealthcheck) << 1;
+    _collector->nhealthcheck << 1;
     int hc = 0;
     if (ptr->_user) {
         hc = ptr->_user->CheckHealth(ptr.get());
@@ -200,7 +212,7 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
     }
     if (hc == 0) {
         if (ptr->CreatedByConnect()) {
-            (*_nhealthcheck) << -1;
+            _collector->channel_conn << -1;
         }
         if (!FLAGS_health_check_path.empty()) {
             ptr->_ninflight_app_health_check.fetch_add(
@@ -223,6 +235,10 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
 
 void HealthCheckTask::OnDestroyingTask() {
     delete this;
+}
+
+PeriodicTask* NewHealthCheckTask(SocketId id, SocketVarsCollector* collector) {
+    return new HealthCheckTask(id, collector);
 }
 
 } // namespace brpc
