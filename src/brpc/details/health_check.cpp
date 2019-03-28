@@ -70,7 +70,6 @@ class HealthCheckManager {
 public:
     static void StartCheck(SocketId id, int64_t check_interval_s);
     static void* AppCheck(void* arg);
-    static void RunAppCheck(void* arg);
 };
 
 void HealthCheckManager::StartCheck(SocketId id, int64_t check_interval_s) {
@@ -110,17 +109,6 @@ void* HealthCheckManager::AppCheck(void* arg) {
     return NULL;
 }
 
-void HealthCheckManager::RunAppCheck(void* arg) {
-    bthread_t th = 0;
-    int rc = bthread_start_background(
-        &th, &BTHREAD_ATTR_NORMAL, AppCheck, arg);
-    if (rc != 0) {
-        LOG(ERROR) << "Fail to start AppCheck";
-        AppCheck(arg);
-        return;
-    }
-}
-
 void OnAppHealthCheckDone::Run() {
     std::unique_ptr<OnAppHealthCheckDone> self_guard(this);
     SocketUniquePtr ptr;
@@ -145,23 +133,13 @@ void OnAppHealthCheckDone::Run() {
     int64_t sleep_time_ms =
         last_check_time_ms + interval_s * 1000 - butil::gettimeofday_ms();
     if (sleep_time_ms > 0) {
-        const timespec abstime = butil::milliseconds_from_now(sleep_time_ms);
-        bthread_timer_t timer_id;
-        const int rc = bthread_timer_add(
-                &timer_id, abstime, HealthCheckManager::RunAppCheck, this);
-        if (rc != 0) {
-            LOG(ERROR) << "Fail to add timer for RunAppCheck";
-            // TODO(zhujiashun): we need to handle the case when timer fails.
-            // In most situations, the possibility of this case is quite small,
-            // so currently we just keep sending the hc call.
-            HealthCheckManager::AppCheck(this);
-            return;
-        }
-    } else {
-        // the time of next call has passed, just AppCheck immediately
-        HealthCheckManager::AppCheck(this);
+        // TODO(zhujiashun): we need to handle the case when timer fails
+        // and bthread_usleep returns immediately. In most situations,
+        // the possibility of this case is quite small, so currently we
+        // just keep sending the hc call.
+        bthread_usleep(sleep_time_ms * 1000);
     }
-    self_guard.release();
+    HealthCheckManager::AppCheck(self_guard.release());
 }
 
 class HealthCheckTask : public PeriodicTask {
