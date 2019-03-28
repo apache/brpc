@@ -18,6 +18,7 @@
 #define BRPC_MYSQL_H
 
 #include <string>
+#include <vector>
 #include <google/protobuf/stubs/common.h>
 
 #include <google/protobuf/generated_message_util.h>
@@ -38,7 +39,7 @@ namespace brpc {
 // them to ONE mysql-server together.
 // Example:
 //   MysqlRequest request;
-//   request.CommandSingle("select * from table");
+//   request.Query("select * from table");
 //   MysqlResponse response;
 //   channel.CallMethod(NULL, &controller, &request, &response, NULL/*done*/);
 //   if (!cntl.Failed()) {
@@ -79,11 +80,8 @@ public:
     static const MysqlRequest& default_instance();
     ::google::protobuf::Metadata GetMetadata() const;
 
-    // call one sql one time
-    bool CommandSingle(const butil::StringPiece& command);
-
-    // call many sql one time
-    bool CommandBatch(const butil::StringPiece* commands, const size_t n);
+    // call query command
+    bool Query(const butil::StringPiece& command);
 
     // True if previous AddCommand[V] failed.
     bool has_error() const {
@@ -92,17 +90,12 @@ public:
 
     void Print(std::ostream&) const;
 
-    // Number of successfully added commands
-    int command_size() const {
-        return _ncommand;
-    }
-
 private:
     void SharedCtor();
     void SharedDtor();
     void SetCachedSize(int size) const;
 
-    int _ncommand;              // # of valid commands
+    bool _has_command;          // request has command
     bool _has_error;            // previous AddCommand had error
     butil::IOBuf _buf;          // the serialized request.
     mutable int _cached_size_;  // ByteSize
@@ -135,19 +128,17 @@ public:
     // Returns PARSE_ERROR_NOT_ENOUGH_DATA if data in `buf' is not enough to parse.
     // Returns PARSE_ERROR_ABSOLUTELY_WRONG if the parsing
     // failed.
-    ParseError ConsumePartialIOBuf(butil::IOBuf& buf,
-                                   const int max_count,
-                                   const bool is_auth = false);
+    ParseError ConsumePartialIOBuf(butil::IOBuf& buf, const bool is_auth = false);
 
     // Number of replies in this response.
     // (May have more than one reply due to pipeline)
-    int reply_size() const {
+    size_t reply_size() const {
         return _nreply;
     }
 
-    const MysqlReply& reply(int index) const {
+    const MysqlReply& reply(size_t index) const {
         if (index < reply_size()) {
-            return (index == 0 ? _first_reply : _other_replies[index - 1]);
+            return (index == 0 ? _first_reply : *_other_replies[index - 1]);
         }
         static MysqlReply mysql_nil;
         return mysql_nil;
@@ -181,9 +172,9 @@ private:
     void SetCachedSize(int size) const;
 
     MysqlReply _first_reply;
-    MysqlReply* _other_replies;
+    std::vector<MysqlReply*> _other_replies;
     butil::Arena _arena;
-    int _nreply;
+    size_t _nreply;
     mutable int _cached_size_;
 
     friend void protobuf_AddDesc_baidu_2frpc_2fmysql_5fbase_2eproto_impl();

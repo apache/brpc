@@ -63,11 +63,5 @@ butil::Status MysqlMakeCommand(butil::IOBuf* outbuf,
                                const butil::StringPiece& stmt,
                                const uint8_t seq = 0);
 
-butil::Status MysqlMakeCommand(butil::IOBuf* outbuf,
-                               const MysqlCommandType type,
-                               const butil::StringPiece* commands,
-                               const size_t n,
-                               const uint8_t seq = 0);
-
 }  // namespace brpc
 #endif

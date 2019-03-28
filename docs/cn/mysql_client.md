@@ -38,7 +38,7 @@ if (channel.Init("127.0.0.1", 3306, &options) != 0) {
 // 执行各种mysql命令，可以批量执行命令如："select * from tab1;select * from tab2"
 std::string command = "show databases"; // select,delete,update,insert,create,drop ...
 brpc::MysqlRequest request;
-if (!request.CommandSingle(command)) {
+if (!request.Query(command)) {
     LOG(ERROR) << "Fail to add command";
     return false;
 }
@@ -58,15 +58,14 @@ return true;
 上述代码的说明：
 
 - 请求类型必须为MysqlRequest，回复类型必须为MysqlResponse，否则CallMethod会失败。不需要stub，直接调用channel.CallMethod，method填NULL。
-- 调用request.CommandSingle()传入要执行的命令，可以批量执行命令，调用request.CommandBatch()。
+- 调用request.Query()传入要执行的命令，可以批量执行命令，多个命令用分号隔开。
 - 依次调用response.reply(X)弹出操作结果，根据返回类型的不同，选择不同的类型接收，如：MysqlReply::Ok，MysqlReply::Error，const MysqlReply::Columnconst MysqlReply::Row等。
 - 如果只有一条命令则reply为1个，如果为批量操作返回的reply为多个。
 
 目前支持的请求操作有：
 
 ​```c++
-bool CommandSingle(const butil::StringPiece& command);
-bool CommandBatch(const butil::StringPiece* commands, const size_t n);
+bool Query(const butil::StringPiece& command);
 ​```
 
 对应的回复操作：

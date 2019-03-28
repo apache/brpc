@@ -32,7 +32,7 @@
 
 namespace brpc {
 
-DECLARE_bool(mysql_verbose);
+DEFINE_int32(mysql_default_replies_size, 10, "default replies size in one MysqlResponse");
 
 // Internal implementation detail -- do not call these.
 void protobuf_AddDesc_baidu_2frpc_2fmysql_5fbase_2eproto_impl();
@@ -136,7 +136,7 @@ MysqlRequest::MysqlRequest(const MysqlRequest& from) : ::google::protobuf::Messa
 void MysqlRequest::SharedCtor() {
     _has_error = false;
     _cached_size_ = 0;
-    _ncommand = 0;
+    _has_command = false;
 }
 
 MysqlRequest::~MysqlRequest() {
@@ -174,7 +174,7 @@ MysqlRequest* MysqlRequest::New() const {
 void MysqlRequest::Clear() {
     _has_error = false;
     _buf.clear();
-    _ncommand = 0;
+    _has_command = false;
 }
 
 bool MysqlRequest::MergePartialFromCodedStream(::google::protobuf::io::CodedInputStream*) {
@@ -232,7 +232,7 @@ void MysqlRequest::MergeFrom(const MysqlRequest& from) {
     result.append(_buf);
     result.append(buf);
     _buf = result;
-    _ncommand += from._ncommand;
+    _has_command = _has_command || from._has_command;
 }
 
 void MysqlRequest::CopyFrom(const ::google::protobuf::Message& from) {
@@ -254,7 +254,7 @@ void MysqlRequest::Swap(MysqlRequest* other) {
         _buf.swap(other->_buf);
         std::swap(_has_error, other->_has_error);
         std::swap(_cached_size_, other->_cached_size_);
-        std::swap(_ncommand, other->_ncommand);
+        std::swap(_has_command, other->_has_command);
     }
 }
 
@@ -275,38 +275,18 @@ bool MysqlRequest::SerializeTo(butil::IOBuf* buf) const {
     return metadata;
 }
 
-bool MysqlRequest::CommandSingle(const butil::StringPiece& command) {
+bool MysqlRequest::Query(const butil::StringPiece& command) {
     if (_has_error) {
         return false;
     }
 
-    if (_ncommand > 0) {
+    if (_has_command) {
         return false;
     }
 
     const butil::Status st = MysqlMakeCommand(&_buf, COM_QUERY, command);
     if (st.ok()) {
-        ++_ncommand;
-        return true;
-    } else {
-        CHECK(st.ok()) << st;
-        _has_error = true;
-        return false;
-    }
-}
-
-bool MysqlRequest::CommandBatch(const butil::StringPiece* commands, const size_t n) {
-    if (_has_error) {
-        return false;
-    }
-
-    if (_ncommand > 0) {
-        return false;
-    }
-
-    const butil::Status st = MysqlMakeCommand(&_buf, COM_QUERY, commands, n);
-    if (st.ok()) {
-        _ncommand += n;
+        _has_command = true;
         return true;
     } else {
         CHECK(st.ok()) << st;
@@ -357,9 +337,9 @@ MysqlResponse::MysqlResponse(const MysqlResponse& from) : ::google::protobuf::Me
 }
 
 void MysqlResponse::SharedCtor() {
-    _other_replies = NULL;
     _nreply = 0;
     _cached_size_ = 0;
+    _other_replies.reserve(FLAGS_mysql_default_replies_size - 1);
 }
 
 MysqlResponse::~MysqlResponse() {
@@ -465,57 +445,50 @@ void MysqlResponse::Swap(MysqlResponse* other) {
 
 // ===================================================================
 
-ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf,
-                                              const int max_count,
-                                              const bool is_auth) {
-    bool more_results;  // use more_results to judge if has more results
-    if (reply_size() > max_count) {
-        LOG(ERROR) << "Impossible!!! There must some bug";
-        return PARSE_ERROR_ABSOLUTELY_WRONG;
-    }
-label_reparse:
-    size_t oldsize = buf.size();
-    if (reply_size() == 0) {
-        ParseError err = _first_reply.ConsumePartialIOBuf(buf, &_arena, is_auth, &more_results);
-        if (err != PARSE_OK) {
-            return err;
+ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf, const bool is_auth) {
+    bool more_results = false;
+    for (;;) {
+        size_t oldsize = buf.size();
+        if (reply_size() == 0) {
+            ParseError err = _first_reply.ConsumePartialIOBuf(buf, &_arena, is_auth, &more_results);
+            if (err != PARSE_OK) {
+                return err;
+            }
+        } else {
+            if (_other_replies.size() < reply_size()) {
+                MysqlReply* replies = (MysqlReply*)_arena.allocate(
+                    sizeof(MysqlReply) * (FLAGS_mysql_default_replies_size - 1));
+                if (replies == NULL) {
+                    LOG(ERROR) << "Fail to allocate MysqlReply["
+                               << FLAGS_mysql_default_replies_size - 1 << "]";
+                    return PARSE_ERROR_ABSOLUTELY_WRONG;
+                }
+                for (int i = 0; i < FLAGS_mysql_default_replies_size - 1; ++i) {
+                    new (&replies[i]) MysqlReply;
+                    _other_replies.push_back(&replies[i]);
+                }
+            }
+            ParseError err = _other_replies[_nreply - 1]->ConsumePartialIOBuf(
+                buf, &_arena, is_auth, &more_results);
+            if (err != PARSE_OK) {
+                return err;
+            }
         }
 
         const size_t newsize = buf.size();
         _cached_size_ += oldsize - newsize;
         oldsize = newsize;
         ++_nreply;
-    } else {
-        if (_other_replies == NULL) {
-            _other_replies = (MysqlReply*)_arena.allocate(sizeof(MysqlReply) * (max_count - 1));
-            if (_other_replies == NULL) {
-                LOG(ERROR) << "Fail to allocate MysqlReply[" << max_count - 1 << "]";
-                return PARSE_ERROR_ABSOLUTELY_WRONG;
-            }
-            for (int i = 0; i < max_count - 1; ++i) {
-                new (&_other_replies[i]) MysqlReply;
-            }
-        }
-        ParseError err =
-            _other_replies[_nreply - 1].ConsumePartialIOBuf(buf, &_arena, is_auth, &more_results);
-        if (err != PARSE_OK) {
-            return err;
+
+        if (more_results) {
+            continue;
         }
 
-        const size_t newsize = buf.size();
-        _cached_size_ += oldsize - newsize;
-        oldsize = newsize;
-        ++_nreply;
-    }
-
-    if (oldsize > 0) {
-        goto label_reparse;
-    }
-
-    if (!more_results) {
-        return PARSE_OK;
-    } else {
-        return PARSE_ERROR_NOT_ENOUGH_DATA;
+        if (!more_results && oldsize == 0) {
+            return PARSE_OK;
+        } else {
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
+        }
     }
 }
 
@@ -526,7 +499,7 @@ std::ostream& operator<<(std::ostream& os, const MysqlResponse& response) {
     } else if (response.reply_size() == 1) {
         os << response.reply(0);
     } else {
-        for (int i = 0; i < response.reply_size(); ++i) {
+        for (size_t i = 0; i < response.reply_size(); ++i) {
             os << "\nreply(" << i << ")----------";
             os << response.reply(i);
         }
