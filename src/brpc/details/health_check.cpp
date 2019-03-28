@@ -68,54 +68,58 @@ public:
 
 class HealthCheckManager {
 public:
-    static void StartCheck(SocketId id, int64_t check_interval_s) {
-        SocketUniquePtr ptr;
-        const int rc = Socket::AddressFailedAsWell(id, &ptr);
-        if (rc < 0) {
-            RPC_VLOG << "SocketId=" << id
-                     << " was abandoned during health checking";
-            return;
-        }
-        LOG(INFO) << "Checking path=" << ptr->remote_side() << FLAGS_health_check_path;
-        OnAppHealthCheckDone* done = new OnAppHealthCheckDone;
-        done->id = id;
-        done->interval_s = check_interval_s;
-        brpc::ChannelOptions options;
-        options.protocol = PROTOCOL_HTTP;
-        options.max_retry = 0;
-        options.timeout_ms =
-            std::min((int64_t)FLAGS_health_check_timeout_ms, check_interval_s * 1000);
-        if (done->channel.Init(id, &options) != 0) {
-            LOG(WARNING) << "Fail to init health check channel to SocketId=" << id;
-            ptr->_ninflight_app_health_check.fetch_sub(
-                        1, butil::memory_order_relaxed);
-            delete done;
-            return;
-        }
-        AppCheck(done);
-    }
-
-    static void* AppCheck(void* arg) {
-        OnAppHealthCheckDone* done = static_cast<OnAppHealthCheckDone*>(arg);
-        done->cntl.Reset();
-        done->cntl.http_request().uri() = FLAGS_health_check_path;
-        ControllerPrivateAccessor(&done->cntl).set_health_check_call();
-        done->last_check_time_ms = butil::gettimeofday_ms();
-        done->channel.CallMethod(NULL, &done->cntl, NULL, NULL, done);
-        return NULL;
-    }
-
-    static void RunAppCheck(void* arg) {
-        bthread_t th = 0;
-        int rc = bthread_start_background(
-            &th, &BTHREAD_ATTR_NORMAL, AppCheck, arg);
-        if (rc != 0) {
-            LOG(ERROR) << "Fail to start AppCheck";
-            AppCheck(arg);
-            return;
-        }
-    }
+    static void StartCheck(SocketId id, int64_t check_interval_s);
+    static void* AppCheck(void* arg);
+    static void RunAppCheck(void* arg);
 };
+
+void HealthCheckManager::StartCheck(SocketId id, int64_t check_interval_s) {
+    SocketUniquePtr ptr;
+    const int rc = Socket::AddressFailedAsWell(id, &ptr);
+    if (rc < 0) {
+        RPC_VLOG << "SocketId=" << id
+                 << " was abandoned during health checking";
+        return;
+    }
+    LOG(INFO) << "Checking path=" << ptr->remote_side() << FLAGS_health_check_path;
+    OnAppHealthCheckDone* done = new OnAppHealthCheckDone;
+    done->id = id;
+    done->interval_s = check_interval_s;
+    brpc::ChannelOptions options;
+    options.protocol = PROTOCOL_HTTP;
+    options.max_retry = 0;
+    options.timeout_ms =
+        std::min((int64_t)FLAGS_health_check_timeout_ms, check_interval_s * 1000);
+    if (done->channel.Init(id, &options) != 0) {
+        LOG(WARNING) << "Fail to init health check channel to SocketId=" << id;
+        ptr->_ninflight_app_health_check.fetch_sub(
+                    1, butil::memory_order_relaxed);
+        delete done;
+        return;
+    }
+    AppCheck(done);
+}
+
+void* HealthCheckManager::AppCheck(void* arg) {
+    OnAppHealthCheckDone* done = static_cast<OnAppHealthCheckDone*>(arg);
+    done->cntl.Reset();
+    done->cntl.http_request().uri() = FLAGS_health_check_path;
+    ControllerPrivateAccessor(&done->cntl).set_health_check_call();
+    done->last_check_time_ms = butil::gettimeofday_ms();
+    done->channel.CallMethod(NULL, &done->cntl, NULL, NULL, done);
+    return NULL;
+}
+
+void HealthCheckManager::RunAppCheck(void* arg) {
+    bthread_t th = 0;
+    int rc = bthread_start_background(
+        &th, &BTHREAD_ATTR_NORMAL, AppCheck, arg);
+    if (rc != 0) {
+        LOG(ERROR) << "Fail to start AppCheck";
+        AppCheck(arg);
+        return;
+    }
+}
 
 void OnAppHealthCheckDone::Run() {
     std::unique_ptr<OnAppHealthCheckDone> self_guard(this);
@@ -129,6 +133,8 @@ void OnAppHealthCheckDone::Run() {
     if (!cntl.Failed() || ptr->Failed()) {
         LOG_IF(INFO, !cntl.Failed()) << "Succeeded to call "
             << ptr->remote_side() << FLAGS_health_check_path;
+        // if ptr->Failed(), previous SetFailed would trigger next round
+        // of hc, just return here.
         ptr->_ninflight_app_health_check.fetch_sub(
                     1, butil::memory_order_relaxed);
         return;
@@ -145,6 +151,9 @@ void OnAppHealthCheckDone::Run() {
                 &timer_id, abstime, HealthCheckManager::RunAppCheck, this);
         if (rc != 0) {
             LOG(ERROR) << "Fail to add timer for RunAppCheck";
+            // TODO(zhujiashun): we need to handle the case when timer fails.
+            // In most situations, the possibility of this case is quite small,
+            // so currently we just keep sending the hc call.
             HealthCheckManager::AppCheck(this);
             return;
         }
