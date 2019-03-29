@@ -837,7 +837,7 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // comes online.
             if (_health_check_interval_s > 0) {
                 GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
-                StartHealthCheckWithDelayMS(id(),
+                StartHealthCheck(id(),
                         GetOrNewSharedPart()->circuit_breaker.isolation_duration_ms());
             }
             // Wake up all threads waiting on EPOLLOUT when closing fd

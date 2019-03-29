@@ -229,7 +229,7 @@ void HealthCheckTask::OnDestroyingTask() {
     delete this;
 }
 
-void StartHealthCheckWithDelayMS(SocketId id, int64_t delay_ms) {
+void StartHealthCheck(SocketId id, int64_t delay_ms) {
     PeriodicTaskManager::StartTaskAt(new HealthCheckTask(id),
             butil::milliseconds_from_now(delay_ms));
 }
