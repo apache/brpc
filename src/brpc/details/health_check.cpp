@@ -27,7 +27,7 @@
 
 namespace brpc {
 
-// declared at socket.cpp
+// Declared at socket.cpp
 extern SocketVarsCollector* g_vars;
 
 DEFINE_string(health_check_path, "", "Http path of health check call."
@@ -191,6 +191,10 @@ bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
         }
     }
 
+    // g_vars must not be NULL because it is newed at the creation of
+    // first Socket. When g_vars is used, the socket is at health-checking
+    // state, which means the socket must be created and then g_vars can
+    // not be NULL.
     g_vars->nhealthcheck << 1;
     int hc = 0;
     if (ptr->_user) {
