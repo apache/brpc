@@ -42,10 +42,20 @@ namespace bthread {
 class Mutex {
 public:
     typedef bthread_mutex_t* native_handler_type;
-    Mutex() { CHECK_EQ(0, bthread_mutex_init(&_mutex, NULL)); }
+    Mutex() {
+        int ec = bthread_mutex_init(&_mutex, NULL);
+        if (ec != 0) {
+            throw std::system_error(std::error_code(ec, std::system_category()), "Mutex constructor failed");
+        }
+    }
     ~Mutex() { CHECK_EQ(0, bthread_mutex_destroy(&_mutex)); }
     native_handler_type native_handler() { return &_mutex; }
-    void lock() { bthread_mutex_lock(&_mutex); }
+    void lock() {
+        int ec = bthread_mutex_lock(&_mutex);
+        if (ec != 0) {
+            throw std::system_error(std::error_code(ec, std::system_category()), "Mutex lock failed");
+        }
+    }
     void unlock() { bthread_mutex_unlock(&_mutex); }
     bool try_lock() { return !bthread_mutex_trylock(&_mutex); }
     // TODO(chenzhangyi01): Complement interfaces for C++11
