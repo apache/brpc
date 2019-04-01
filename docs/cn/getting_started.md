@@ -276,7 +276,7 @@ brew install gperftools
 
 If you need to run tests, install and compile googletest (which is not compiled yet):
 ```shell
-git clone https://github.com/google/googletest && cd googletest/googletest && mkdir bld && cd bld && cmake .. && make && sudo mv libgtest* /usr/lib/ && cd -
+git clone https://github.com/google/googletest && cd googletest/googletest && mkdir bld && cd bld && cmake -DCMAKE_CXX_FLAGS="-std=c++11" .. && make && sudo mv libgtest* /usr/lib/ && cd -
 ```
 
 ### Compile brpc with config_brpc.sh
