@@ -29,6 +29,7 @@
 #include "butil/zero_copy_stream_as_streambuf.h"
 #include "butil/macros.h"
 #include "butil/reader_writer.h"
+#include "butil/binary_printer.h"
 
 // For IOBuf::appendv(const const_iovec*, size_t). The only difference of this
 // struct from iovec (defined in sys/uio.h) is that iov_base is `const void*'
@@ -38,7 +39,11 @@ struct const_iovec {
     const void* iov_base;
     size_t iov_len;
 };
+#ifndef USE_MESALINK
 struct ssl_st;
+#else
+#define ssl_st MESALINK_SSL
+#endif
 }
 
 namespace butil {
@@ -53,6 +58,7 @@ namespace butil {
 class IOBuf {
 friend class IOBufAsZeroCopyInputStream;
 friend class IOBufAsZeroCopyOutputStream;
+friend class IOBufBytesIterator;
 public:
     static const size_t DEFAULT_BLOCK_SIZE = 8192;
     static const size_t INITIAL_CAP = 32; // must be power of 2
@@ -402,25 +408,6 @@ private:
 
 std::ostream& operator<<(std::ostream&, const IOBuf& buf);
 
-// Print binary content within max length,
-// working for both butil::IOBuf and std::string
-struct PrintedAsBinary {
-    explicit PrintedAsBinary(const IOBuf& b)
-        : _iobuf(&b), _max_length(64) {}
-    explicit PrintedAsBinary(const std::string& b)
-        : _iobuf(NULL), _data(b), _max_length(64) {}
-    PrintedAsBinary(const IOBuf& b, size_t max_length)
-        : _iobuf(&b), _max_length(max_length) {}
-    PrintedAsBinary(const std::string& b, size_t max_length)
-        : _iobuf(NULL), _data(b), _max_length(max_length) {}
-    void print(std::ostream& os) const;
-private:
-    const IOBuf* _iobuf;
-    std::string _data;
-    size_t _max_length;
-};
-std::ostream& operator<<(std::ostream&, const PrintedAsBinary& buf);
-
 inline bool operator==(const butil::IOBuf& b, const butil::StringPiece& s)
 { return b.equals(s); }
 inline bool operator==(const butil::StringPiece& s, const butil::IOBuf& b)
@@ -650,19 +637,30 @@ private:
 };
 
 // Iterate bytes of a IOBuf.
-// During iteration, the iobuf should NOT be changed. For example,
-// IOBufBytesIterator will not iterate more data appended to the iobuf after
-// iterator's creation. This is for performance consideration.
+// During iteration, the iobuf should NOT be changed.
 class IOBufBytesIterator {
 public:
     explicit IOBufBytesIterator(const butil::IOBuf& buf);
-    char operator*() const { return *_block_begin; }
+    // Construct from another iterator.
+    IOBufBytesIterator(const IOBufBytesIterator& it);
+    IOBufBytesIterator(const IOBufBytesIterator& it, size_t bytes_left);
+    // Returning unsigned is safer than char which would be more error prone
+    // to bitwise operations. For example: in "uint32_t value = *it", value
+    // is (unexpected) 4294967168 when *it returns (char)128.
+    unsigned char operator*() const { return (unsigned char)*_block_begin; }
     operator const void*() const { return (const void*)!!_bytes_left; }
     void operator++();
     void operator++(int) { return operator++(); }
     // Copy at most n bytes into buf, forwarding this iterator.
+    // Returns bytes copied.
     size_t copy_and_forward(void* buf, size_t n);
     size_t copy_and_forward(std::string* s, size_t n);
+    // Just forward this iterator for at most n bytes.
+    size_t forward(size_t n);
+    // Append at most n bytes into buf, forwarding this iterator. Data are
+    // referenced rather than copied.
+    size_t append_and_forward(butil::IOBuf* buf, size_t n);
+    bool forward_one_block(const void** data, size_t* size);
     size_t bytes_left() const { return _bytes_left; }
 private:
     void try_next_block();

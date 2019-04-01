@@ -236,14 +236,26 @@ extern int64_t invariant_cpu_freq;
 // note: Inlining shortens time cost per-call for 15ns in a loop of many
 //       calls to this function.
 inline int64_t cpuwide_time_ns() {
-#ifdef USE_TSC
-    if (detail::invariant_cpu_freq > 0) {
+#if !defined(BAIDU_INTERNAL)
+    // nearly impossible to get the correct invariant cpu frequency on
+    // different CPU and machines. CPU-ID rarely works and frequencies
+    // in "model name" and "cpu Mhz" are both unreliable.
+    // Since clock_gettime() in newer glibc/kernel is much faster(~30ns)
+    // which is closer to the previous impl. of cpuwide_time(~10ns), we
+    // simply use the monotonic time to get rid of all related issues.
+    timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return now.tv_sec * 1000000000L + now.tv_nsec;
+#else
+    int64_t cpu_freq = detail::invariant_cpu_freq;
+    if (cpu_freq > 0) {
         const uint64_t tsc = detail::clock_cycles();
-        const uint64_t sec = tsc / detail::invariant_cpu_freq;
+        //Try to avoid overflow
+        const uint64_t sec = tsc / cpu_freq;
+        const uint64_t remain = tsc % cpu_freq;
         // TODO: should be OK until CPU's frequency exceeds 16GHz.
-        return (tsc - sec * detail::invariant_cpu_freq) * 1000000000L /
-            detail::invariant_cpu_freq + sec * 1000000000L;
-    } else if (!detail::invariant_cpu_freq) {
+        return remain * 1000000000L / cpu_freq + sec * 1000000000L;
+    } else if (!cpu_freq) {
         // Lack of necessary features, return system-wide monotonic time instead.
         return monotonic_time_ns();
     } else {
@@ -252,9 +264,7 @@ inline int64_t cpuwide_time_ns() {
         detail::invariant_cpu_freq = detail::read_invariant_cpu_frequency();
         return cpuwide_time_ns();
     }
-#else
-    return monotonic_time_ns();
-#endif
+#endif // defined(BAIDU_INTERNAL)
 }
 
 inline int64_t cpuwide_time_us() {

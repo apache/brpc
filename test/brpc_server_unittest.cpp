@@ -358,7 +358,7 @@ TEST_F(ServerTest, only_allow_protocols_in_enabled_protocols) {
     test::EchoService_Stub stub(&chan);
     stub.Echo(&cntl, &req, &res, NULL);
     ASSERT_TRUE(cntl.Failed());
-    ASSERT_TRUE(cntl.ErrorText().find("Got EOF of fd") != std::string::npos);
+    ASSERT_TRUE(cntl.ErrorText().find("Got EOF of ") != std::string::npos);
     
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
@@ -1178,7 +1178,7 @@ TEST_F(ServerTest, range_start) {
     butil::EndPoint point;
     for (int i = START_PORT; i < END_PORT; ++i) {
         point.port = i;
-        listen_fds[i - START_PORT].reset(butil::tcp_listen(point, true));
+        listen_fds[i - START_PORT].reset(butil::tcp_listen(point));
     }
 
     brpc::Server server;

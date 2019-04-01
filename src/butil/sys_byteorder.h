@@ -20,23 +20,28 @@
 #include <arpa/inet.h>
 #endif
 
+#if defined(COMPILER_MSVC)
+#include <stdlib.h> // for _byteswap_*
+#elif defined(OS_MACOSX)
+// Mac OS X / Darwin features
+#include <libkern/OSByteOrder.h> // for OSSwapInt*
+#elif defined(OS_LINUX)
+#include <byteswap.h> // for bswap_*
+#endif
+
 namespace butil {
 
 #if defined(COMPILER_MSVC)
-#include <stdlib.h>
 inline uint16_t ByteSwap(uint16_t x) { return _byteswap_ushort(x); }
 inline uint32_t ByteSwap(uint32_t x) { return _byteswap_ulong(x); }
 inline uint64_t ByteSwap(uint64_t x) { return _byteswap_uint64(x); }
 
 #elif defined(OS_MACOSX)
-// Mac OS X / Darwin features
-#include <libkern/OSByteOrder.h>
 inline uint16_t ByteSwap(uint16_t x) { return OSSwapInt16(x); }
 inline uint32_t ByteSwap(uint32_t x) { return OSSwapInt32(x); }
 inline uint64_t ByteSwap(uint64_t x) { return OSSwapInt64(x); }
 
 #elif defined(OS_LINUX)
-#include <byteswap.h>
 inline uint16_t ByteSwap(uint16_t x) { return bswap_16(x); }
 inline uint32_t ByteSwap(uint32_t x) { return bswap_32(x); }
 inline uint64_t ByteSwap(uint64_t x) { return bswap_64(x); }

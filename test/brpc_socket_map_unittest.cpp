@@ -77,7 +77,7 @@ TEST_F(SocketMapTest, idle_timeout) {
     brpc::SocketUniquePtr main_ptr;
     brpc::SocketUniquePtr ptr;
     ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
-    ASSERT_EQ(0, brpc::Socket::GetPooledSocket(main_ptr.get(), &ptr));
+    ASSERT_EQ(0, main_ptr->GetPooledSocket(&ptr));
     ASSERT_TRUE(main_ptr.get());
     main_ptr.reset();
     id = ptr->id();
@@ -88,7 +88,7 @@ TEST_F(SocketMapTest, idle_timeout) {
     // which destroyed the Socket. As a result `GetSocketFromPool'
     // should return a new one
     ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
-    ASSERT_EQ(0, brpc::Socket::GetPooledSocket(main_ptr.get(), &ptr));
+    ASSERT_EQ(0, main_ptr->GetPooledSocket(&ptr));
     ASSERT_TRUE(main_ptr.get());
     main_ptr.reset();
     ASSERT_NE(id, ptr->id());
@@ -107,7 +107,7 @@ TEST_F(SocketMapTest, max_pool_size) {
     for (int i = 0; i < TOTALSIZE; ++i) {
         brpc::SocketUniquePtr main_ptr;
         ASSERT_EQ(0, brpc::Socket::Address(main_id, &main_ptr));
-        ASSERT_EQ(0, brpc::Socket::GetPooledSocket(main_ptr.get(), &ptrs[i]));
+        ASSERT_EQ(0, main_ptr->GetPooledSocket(&ptrs[i]));
         ASSERT_TRUE(main_ptr.get());
         main_ptr.reset();
     }
@@ -127,7 +127,7 @@ TEST_F(SocketMapTest, max_pool_size) {
 } //namespace
 
 int main(int argc, char* argv[]) {
-    butil::str2endpoint("127.0.0.1:12345", &g_key.peer);
+    butil::str2endpoint("127.0.0.1:12345", &g_key.peer.addr);
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }

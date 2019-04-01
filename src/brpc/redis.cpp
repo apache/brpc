@@ -515,11 +515,12 @@ void RedisResponse::Swap(RedisResponse* other) {
 
 // ===================================================================
 
-bool RedisResponse::ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count) {
+ParseError RedisResponse::ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count) {
     size_t oldsize = buf.size();
     if (reply_size() == 0) {
-        if (!_first_reply.ConsumePartialIOBuf(buf, &_arena)) {
-            return false;
+        ParseError err = _first_reply.ConsumePartialIOBuf(buf, &_arena);
+        if (err != PARSE_OK) {
+            return err;
         }
         const size_t newsize = buf.size();
         _cached_size_ += oldsize - newsize;
@@ -532,15 +533,16 @@ bool RedisResponse::ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count) {
                 sizeof(RedisReply) * (reply_count - 1));
             if (_other_replies == NULL) {
                 LOG(ERROR) << "Fail to allocate RedisReply[" << reply_count -1 << "]";
-                return false;
+                return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             for (int i = 0; i < reply_count - 1; ++i) {
                 new (&_other_replies[i]) RedisReply;
             }
         }
         for (int i = reply_size(); i < reply_count; ++i) {
-            if (!_other_replies[i - 1].ConsumePartialIOBuf(buf, &_arena)) {
-                return false;
+            ParseError err = _other_replies[i - 1].ConsumePartialIOBuf(buf, &_arena);
+            if (err != PARSE_OK) {
+                return err;
             }
             const size_t newsize = buf.size();
             _cached_size_ += oldsize - newsize;
@@ -548,7 +550,7 @@ bool RedisResponse::ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count) {
             ++_nreply;
         }
     }
-    return true;
+    return PARSE_OK;
 }
 
 std::ostream& operator<<(std::ostream& os, const RedisResponse& response) {

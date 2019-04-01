@@ -20,28 +20,14 @@
 #include <vector>                                   // std::vector
 #include <string>                                   // std::string
 #include <ostream>                                  // std::ostream
-#include "butil/endpoint.h"                          // butil::EndPoint
-#include "butil/macros.h"                            // BAIDU_CONCAT
+#include "butil/endpoint.h"                         // butil::EndPoint
+#include "butil/macros.h"                           // BAIDU_CONCAT
 #include "brpc/describable.h"
 #include "brpc/destroyable.h"
-#include "brpc/extension.h"                    // Extension<T>
-
+#include "brpc/extension.h"                         // Extension<T>
+#include "brpc/server_node.h"                       // ServerNode
 
 namespace brpc {
-
-// Representing a server inside a NamingService.
-struct ServerNode {
-    ServerNode() {}
-    ServerNode(butil::ip_t ip, int port, const std::string& tag2)
-        : addr(ip, port), tag(tag2) {}
-    ServerNode(const butil::EndPoint& pt, const std::string& tag2)
-        : addr(pt), tag(tag2) {}
-    ServerNode(butil::ip_t ip, int port) : addr(ip, port) {}
-    explicit ServerNode(const butil::EndPoint& pt) : addr(pt) {}
-
-    butil::EndPoint addr;
-    std::string tag;
-};
 
 // Continuing actions to added/removed servers.
 // NOTE: You don't have to implement this class.
@@ -84,21 +70,6 @@ inline Extension<const NamingService>* NamingServiceExtension() {
     return Extension<const NamingService>::instance();
 }
 
-inline bool operator<(const ServerNode& n1, const ServerNode& n2)
-{ return n1.addr != n2.addr ? (n1.addr < n2.addr) : (n1.tag < n2.tag); }
-inline bool operator==(const ServerNode& n1, const ServerNode& n2)
-{ return n1.addr == n2.addr && n1.tag == n2.tag; }
-inline bool operator!=(const ServerNode& n1, const ServerNode& n2)
-{ return !(n1 == n2); }
-inline std::ostream& operator<<(std::ostream& os, const ServerNode& n) {
-    os << n.addr;
-    if (!n.tag.empty()) {
-        os << "(tag=" << n.tag << ')';
-    }
-    return os;
-}
-
 } // namespace brpc
-
 
 #endif  // BRPC_NAMING_SERVICE_H

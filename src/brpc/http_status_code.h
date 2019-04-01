@@ -76,6 +76,9 @@ namespace brpc {
 // value into a container. Directly copy the memory instead.
 const char *HttpReasonPhrase(int status_code);
 
+// Convert brpc error code to related status code.
+int ErrorCodeToStatusCode(int error_code);
+
 // Informational 1xx
 // This class of status code indicates a provisional response, consisting
 // only of the Status-Line and optional headers, and is terminated by an

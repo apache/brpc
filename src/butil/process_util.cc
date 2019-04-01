@@ -59,8 +59,7 @@ ssize_t ReadCommandLine(char* buf, size_t len, bool with_args) {
 
     if (with_args) {
         if ((size_t)nr == len) {
-            LOG(ERROR) << "buf is not big enough";
-            return -1;
+            return len;
         }
         for (ssize_t i = 0; i < nr; ++i) {
             if (buf[i] == '\0') {

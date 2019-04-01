@@ -17,6 +17,10 @@
 // Date: Thu Nov 22 13:57:56 CST 2012
 
 #include <openssl/ssl.h>                   // SSL_*
+#ifdef USE_MESALINK
+#include <mesalink/openssl/ssl.h>
+#include <mesalink/openssl/err.h>
+#endif
 #include <sys/syscall.h>                   // syscall
 #include <fcntl.h>                         // O_RDONLY
 #include <errno.h>                         // errno
@@ -278,8 +282,12 @@ IOBuf::Block* get_portal_next(IOBuf::Block const* b) {
     return b->portal_next;
 }
 
-uint32_t block_cap(IOBuf::Block const *b) {
+uint32_t block_cap(IOBuf::Block const* b) {
     return b->cap;
+}
+
+uint32_t block_size(IOBuf::Block const* b) {
+    return b->size;
 }
 
 inline IOBuf::Block* create_block(const size_t block_size) {
@@ -413,7 +421,7 @@ inline void release_tls_block(IOBuf::Block *b) {
 
 // Return chained blocks to TLS.
 // NOTE: b MUST be non-NULL and all blocks linked SHOULD not be full.
-inline void release_tls_block_chain(IOBuf::Block* b) {
+void release_tls_block_chain(IOBuf::Block* b) {
     TLSData& tls_data = g_tls_data;
     size_t n = 0;
     if (tls_data.num_blocks >= MAX_BLOCKS_PER_THREAD) {
@@ -447,13 +455,13 @@ inline void release_tls_block_chain(IOBuf::Block* b) {
 }
 
 // Get and remove one (non-full) block from TLS. If TLS is empty, create one.
-inline IOBuf::Block* acquire_tls_block() {
+IOBuf::Block* acquire_tls_block() {
     TLSData& tls_data = g_tls_data;
     IOBuf::Block* b = tls_data.block_head;
     if (!b) {
         return create_block();
     }
-    if (b->full()) {
+    while (b->full()) {
         IOBuf::Block* const saved_next = b->portal_next;
         b->dec_ref();
         tls_data.block_head = saved_next;
@@ -1033,6 +1041,7 @@ ssize_t IOBuf::cut_multiple_into_SSL_channel(SSL* ssl, IOBuf* const* pieces,
         }
     }
 
+#ifndef USE_MESALINK
     // Flush remaining data inside the BIO buffer layer
     BIO* wbio = SSL_get_wbio(ssl);
     if (BIO_wpending(wbio) > 0) {
@@ -1043,6 +1052,14 @@ ssize_t IOBuf::cut_multiple_into_SSL_channel(SSL* ssl, IOBuf* const* pieces,
             return rc;
         }
     }
+#else
+    int rc = SSL_flush(ssl);
+    if (rc <= 0) {
+        *ssl_error = SSL_ERROR_SYSCALL;
+        return rc;
+    }
+#endif
+
     return nw;
 }
 
@@ -1463,94 +1480,6 @@ std::ostream& operator<<(std::ostream& os, const IOBuf& buf) {
         StringPiece blk = buf.backing_block(i);
         os.write(blk.data(), blk.size());
     }
-    return os;
-}
-
-static char s_binary_char_map[] = {
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-    'A', 'B', 'C', 'D', 'E', 'F'
-};
-
-class BinaryCharPrinter {
-public:
-    static const size_t BUF_SIZE = 127;
-    explicit BinaryCharPrinter(std::ostream& os)
-        : _n(0), _os(&os) {}
-    ~BinaryCharPrinter() { flush(); }
-    void operator<<(unsigned char c);
-    void flush();
-private:
-    uint32_t _n;
-    std::ostream* _os;
-    char _buf[BUF_SIZE];
-};
-
-void BinaryCharPrinter::flush() {
-    if (_n > 0) {
-        _os->write(_buf, _n);
-        _n = 0;
-    }
-}
-
-inline void BinaryCharPrinter::operator<<(unsigned char c) {
-    if (_n > BUF_SIZE - 3) {
-        _os->write(_buf, _n);
-        _n = 0;
-    }
-    if (c >= 32 && c <= 126) { // displayable ascii characters
-        if (c != '\\') {
-            _buf[_n++] = c;
-        } else {
-            _buf[_n++] = '\\';
-            _buf[_n++] = '\\';
-        }
-    } else {
-        _buf[_n++] = '\\';
-        switch (c) {
-        case '\b': _buf[_n++] = 'b'; break;
-        case '\t': _buf[_n++] = 't'; break;
-        case '\n': _buf[_n++] = 'n'; break;
-        case '\r': _buf[_n++] = 'r'; break;
-        default: 
-            _buf[_n++] = s_binary_char_map[c >> 4];
-            _buf[_n++] = s_binary_char_map[c & 0xF];
-            break;
-        }
-    }
-}
-
-void PrintedAsBinary::print(std::ostream& os) const {
-    if (_iobuf) {
-        const size_t n = _iobuf->backing_block_num();
-        size_t nw = 0;
-        BinaryCharPrinter printer(os);
-        for (size_t i = 0; i < n; ++i) {
-            StringPiece blk = _iobuf->backing_block(i);
-            for (size_t j = 0; j < blk.size(); ++j) {
-                if (nw >= _max_length) {
-                    printer.flush();
-                    os << "...<skipping " << _iobuf->size() - nw << " bytes>";
-                    return;
-                }
-                ++nw;
-                printer << blk[j];
-            }
-        }
-    } else if (!_data.empty()) {
-        BinaryCharPrinter printer(os);
-        for (size_t i = 0; i < _data.size(); ++i) {
-            if (i >= _max_length) {
-                printer.flush();
-                os << "...<skipping " << _data.size() - i << " bytes>";
-                return;
-            }
-            printer << _data[i];
-        }
-    }
-}
-
-std::ostream& operator<<(std::ostream& os, const PrintedAsBinary& binary_buf) {
-    binary_buf.print(os);
     return os;
 }
 
@@ -2057,6 +1986,37 @@ IOBufAppender::IOBufAppender()
     : _data(NULL)
     , _data_end(NULL)
     , _zc_stream(&_buf) {
+}
+
+size_t IOBufBytesIterator::append_and_forward(butil::IOBuf* buf, size_t n) {
+    size_t nc = 0;
+    while (nc < n && _bytes_left != 0) {
+        const IOBuf::BlockRef& r = _buf->_ref_at(_block_count - 1);
+        const size_t block_size = _block_end - _block_begin;
+        const size_t to_copy = std::min(block_size, n - nc);
+        IOBuf::BlockRef r2 = { (uint32_t)(_block_begin - r.block->data),
+                               (uint32_t)to_copy, r.block };
+        buf->_push_back_ref(r2);
+        _block_begin += to_copy;
+        _bytes_left -= to_copy;
+        nc += to_copy;
+        if (_block_begin == _block_end) {
+            try_next_block();
+        }
+    }
+    return nc;
+}
+
+bool IOBufBytesIterator::forward_one_block(const void** data, size_t* size) {
+    if (_bytes_left == 0) {
+        return false;
+    }
+    const size_t block_size = _block_end - _block_begin;
+    *data = _block_begin;
+    *size = block_size;
+    _bytes_left -= block_size;
+    try_next_block();
+    return true;
 }
 
 }  // namespace butil

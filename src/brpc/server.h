@@ -24,23 +24,21 @@
 #include "bthread/errno.h"        // Redefine errno
 #include "bthread/bthread.h"      // Server may need some bthread functions,
                                   // e.g. bthread_usleep
-#include <google/protobuf/service.h>                // google::protobuf::Service
+#include <google/protobuf/service.h>                 // google::protobuf::Service
 #include "butil/macros.h"                            // DISALLOW_COPY_AND_ASSIGN
 #include "butil/containers/doubly_buffered_data.h"   // DoublyBufferedData
 #include "bvar/bvar.h"
 #include "butil/containers/case_ignored_flat_map.h"  // [CaseIgnored]FlatMap
+#include "butil/ptr_container.h"
 #include "brpc/controller.h"                   // brpc::Controller
-#include "brpc/ssl_option.h"                   // ServerSSLOptions
+#include "brpc/ssl_options.h"                  // ServerSSLOptions
 #include "brpc/describable.h"                  // User often needs this
 #include "brpc/data_factory.h"                 // DataFactory
 #include "brpc/builtin/tabbed.h"
 #include "brpc/details/profiler_linker.h"
 #include "brpc/health_reporter.h"
 #include "brpc/adaptive_max_concurrency.h"
-
-extern "C" {
-struct ssl_ctx_st;
-}
+#include "brpc/http2.h"
 
 namespace brpc {
 
@@ -52,10 +50,10 @@ class SimpleDataPool;
 class MongoServiceAdaptor;
 class RestfulMap;
 class RtmpService;
+struct SocketSSLContext;
 
 struct ServerOptions {
-    // Constructed with default options.
-    ServerOptions();
+    ServerOptions();  // Constructed with default options.
         
     // connections without data transmission for so many seconds will be closed
     // Default: -1 (disabled)
@@ -202,7 +200,9 @@ struct ServerOptions {
     bool security_mode() const { return internal_port >= 0 || !has_builtin_services; }
 
     // SSL related options. Refer to `ServerSSLOptions' for details
-    ServerSSLOptions ssl_options;
+    bool has_ssl_options() const { return _ssl_options != NULL; }
+    const ServerSSLOptions& ssl_options() const { return *_ssl_options.get(); }
+    ServerSSLOptions* mutable_ssl_options();
     
     // [CAUTION] This option is for implementing specialized http proxies,
     // most users don't need it. Don't change this option unless you fully
@@ -228,6 +228,14 @@ struct ServerOptions {
     // All names inside must be valid, check protocols name in global.cpp
     // Default: empty (all protocols)
     std::string enabled_protocols;
+
+    // Customize parameters of HTTP2, defined in http2.h
+    H2Settings h2_settings;
+
+private:
+    // SSLOptions is large and not often used, allocate it on heap to
+    // prevent ServerOptions from being bloated in most cases.
+    butil::PtrContainer<ServerSSLOptions> _ssl_options;
 };
 
 // This struct is originally designed to contain basic statistics of the
@@ -514,6 +522,7 @@ friend class ProtobufsService;
 friend class ConnectionsService;
 friend class BadMethodService;
 friend class ServerPrivateAccessor;
+friend class PrometheusMetricsService;
 friend class Controller;
 
     int AddServiceInternal(google::protobuf::Service* service,
@@ -573,21 +582,20 @@ friend class Controller;
     std::string ServerPrefix() const;
 
     // Mapping from hostname to corresponding SSL_CTX
-    typedef butil::CaseIgnoredFlatMap<struct ssl_ctx_st*> CertMap;
+    typedef butil::CaseIgnoredFlatMap<std::shared_ptr<SocketSSLContext> > CertMap;
     struct CertMaps {
         CertMap cert_map;
         CertMap wildcard_cert_map;
     };
 
     struct SSLContext {
-        struct ssl_ctx_st* ctx;
+        std::shared_ptr<SocketSSLContext> ctx;
         std::vector<std::string> filters;
     };
     // Mapping from [certficate + private-key] to SSLContext
     typedef butil::FlatMap<std::string, SSLContext> SSLContextMap;
 
     void FreeSSLContexts();
-    void FreeSSLContextMap(SSLContextMap& ctx_map, bool keep_default);
 
     static int SSLSwitchCTXByHostname(struct ssl_st* ssl,
                                       int* al, Server* server);
@@ -636,7 +644,7 @@ friend class Controller;
     RestfulMap* _global_restful_map;
 
     // Default certficate which can't be reloaded
-    struct ssl_ctx_st* _default_ssl_ctx;
+    std::shared_ptr<SocketSSLContext> _default_ssl_ctx;
 
     // Reloadable SSL mappings
     butil::DoublyBufferedData<CertMaps> _reload_cert_maps;

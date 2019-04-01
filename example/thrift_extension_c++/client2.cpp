@@ -33,7 +33,6 @@ DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
-DEFINE_bool(enable_ssl, false, "Use SSL connection");
 DEFINE_int32(dummy_port, -1, "Launch dummy server at this port");
 
 std::string g_request;
@@ -85,7 +84,6 @@ int main(int argc, char* argv[]) {
     
     // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
-    options.ssl_options.enable = FLAGS_enable_ssl;
     options.protocol = brpc::PROTOCOL_THRIFT;
     options.connection_type = FLAGS_connection_type;
     options.connect_timeout_ms = std::min(FLAGS_timeout_ms / 2, 100);

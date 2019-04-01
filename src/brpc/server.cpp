@@ -64,6 +64,7 @@
 #include "brpc/builtin/ids_service.h"          // IdsService
 #include "brpc/builtin/sockets_service.h"      // SocketsService
 #include "brpc/builtin/hotspots_service.h"     // HotspotsService
+#include "brpc/builtin/prometheus_metrics_service.h"
 #include "brpc/details/method_status.h"
 #include "brpc/load_balancer.h"
 #include "brpc/naming_service.h"
@@ -103,9 +104,6 @@ const char* status_str(Server::Status s) {
 
 butil::static_atomic<int> g_running_server_count = BUTIL_STATIC_ATOMIC_INIT(0);
 
-DEFINE_bool(reuse_addr, true, "Bind to ports in TIME_WAIT state");
-BRPC_VALIDATE_GFLAG(reuse_addr, PassValidate);
-
 // Following services may have security issues and are disabled by default.
 DEFINE_bool(enable_dir_service, false, "Enable /dir");
 DEFINE_bool(enable_threads_service, false, "Enable /threads");
@@ -143,6 +141,13 @@ ServerOptions::ServerOptions()
     if (s_ncore > 0) {
         num_threads = s_ncore + 1;
     }
+}
+
+ServerSSLOptions* ServerOptions::mutable_ssl_options() {
+    if (!_ssl_options) {
+        _ssl_options.reset(new ServerSSLOptions);
+    }
+    return _ssl_options.get();
 }
 
 Server::MethodProperty::OpaqueParams::OpaqueParams()
@@ -479,6 +484,10 @@ int Server::AddBuiltinServices() {
         LOG(ERROR) << "Fail to add ListService";
         return -1;
     }
+    if (AddBuiltinService(new (std::nothrow) PrometheusMetricsService(this))) {
+        LOG(ERROR) << "Fail to add MetricsService";
+        return -1;
+    }
     if (FLAGS_enable_threads_service &&
         AddBuiltinService(new (std::nothrow) ThreadsService)) {
         LOG(ERROR) << "Fail to add ThreadsService";
@@ -528,9 +537,7 @@ bool is_http_protocol(const char* name) {
     if (name[0] != 'h') {
         return false;
     }
-    return strcmp(name, "http") == 0 ||
-        strcmp(name, "h2c") == 0 ||
-        strcmp(name, "h2") == 0;
+    return strcmp(name, "http") == 0 || strcmp(name, "h2") == 0;
 }
 
 Acceptor* Server::BuildAcceptor() {
@@ -718,6 +725,11 @@ int Server::StartInternal(const butil::ip_t& ip,
         _options = ServerOptions();
     }
 
+    if (!_options.h2_settings.IsValid(true/*log_error*/)) {
+        LOG(ERROR) << "Invalid h2_settings";
+        return -1;
+    }
+
     if (_options.http_master_service) {
         // Check requirements for http_master_service:
         //  has "default_method" & request/response have no fields
@@ -840,14 +852,18 @@ int Server::StartInternal(const butil::ip_t& ip,
 
     // Free last SSL contexts
     FreeSSLContexts();
-    CertInfo& default_cert = _options.ssl_options.default_cert;
-    if (!default_cert.certificate.empty()) {
+    if (_options.has_ssl_options()) {
+        CertInfo& default_cert = _options.mutable_ssl_options()->default_cert;
+        if (default_cert.certificate.empty()) {
+            LOG(ERROR) << "default_cert is empty";
+            return -1;
+        }
         if (AddCertificate(default_cert) != 0) {
             return -1;
         }
         _default_ssl_ctx = _ssl_ctx_map.begin()->second.ctx;
 
-        const std::vector<CertInfo>& certs = _options.ssl_options.certs;
+        const std::vector<CertInfo>& certs = _options.mutable_ssl_options()->certs;
         for (size_t i = 0; i < certs.size(); ++i) {
             if (AddCertificate(certs[i]) != 0) {
                 return -1;
@@ -920,7 +936,7 @@ int Server::StartInternal(const butil::ip_t& ip,
     _listen_addr.ip = ip;
     for (int port = port_range.min_port; port <= port_range.max_port; ++port) {
         _listen_addr.port = port;
-        butil::fd_guard sockfd(tcp_listen(_listen_addr, FLAGS_reuse_addr));
+        butil::fd_guard sockfd(tcp_listen(_listen_addr));
         if (sockfd < 0) {
             if (port != port_range.max_port) { // not the last port, try next
                 continue;
@@ -980,7 +996,7 @@ int Server::StartInternal(const butil::ip_t& ip,
         }
         butil::EndPoint internal_point = _listen_addr;
         internal_point.port = _options.internal_port;
-        butil::fd_guard sockfd(tcp_listen(internal_point, FLAGS_reuse_addr));
+        butil::fd_guard sockfd(tcp_listen(internal_point));
         if (sockfd < 0) {
             LOG(ERROR) << "Fail to listen " << internal_point << " (internal)";
             return -1;
@@ -1791,6 +1807,10 @@ Server::FindServicePropertyByName(const butil::StringPiece& name) const {
 }
 
 int Server::AddCertificate(const CertInfo& cert) {
+    if (!_options.has_ssl_options()) {
+        LOG(ERROR) << "ServerOptions.ssl_options is not configured yet";
+        return -1;
+    }
     std::string cert_key(cert.certificate);
     cert_key.append(cert.private_key);
     if (_ssl_ctx_map.seek(cert_key) != NULL) {
@@ -1800,15 +1820,17 @@ int Server::AddCertificate(const CertInfo& cert) {
 
     SSLContext ssl_ctx;
     ssl_ctx.filters = cert.sni_filters;
-    ssl_ctx.ctx = CreateServerSSLContext(cert.certificate, cert.private_key,
-                                         _options.ssl_options, &ssl_ctx.filters);
-    if (ssl_ctx.ctx == NULL) {
+    ssl_ctx.ctx = std::make_shared<SocketSSLContext>();
+    SSL_CTX* raw_ctx = CreateServerSSLContext(cert.certificate, cert.private_key,
+                                              _options.ssl_options(), &ssl_ctx.filters);
+    if (raw_ctx == NULL) {
         return -1;
     }
-    
+    ssl_ctx.ctx->raw_ctx = raw_ctx;
+
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-    SSL_CTX_set_tlsext_servername_callback(ssl_ctx.ctx, SSLSwitchCTXByHostname);
-    SSL_CTX_set_tlsext_servername_arg(ssl_ctx.ctx, this);
+    SSL_CTX_set_tlsext_servername_callback(ssl_ctx.ctx->raw_ctx, SSLSwitchCTXByHostname);
+    SSL_CTX_set_tlsext_servername_arg(ssl_ctx.ctx->raw_ctx, this);
 #endif
             
     if (!_reload_cert_maps.Modify(AddCertMapping, ssl_ctx)) {
@@ -1850,6 +1872,10 @@ bool Server::AddCertMapping(CertMaps& bg, const SSLContext& ssl_ctx) {
 }
 
 int Server::RemoveCertificate(const CertInfo& cert) {
+    if (!_options.has_ssl_options()) {
+        LOG(ERROR) << "ServerOptions.ssl_options is not configured yet";
+        return -1;
+    }
     std::string cert_key(cert.certificate);
     cert_key.append(cert.private_key);
     SSLContext* ssl_ctx = _ssl_ctx_map.seek(cert_key);
@@ -1868,8 +1894,6 @@ int Server::RemoveCertificate(const CertInfo& cert) {
         return -1;
     }
     
-    // After a successful Modify, now it's safe to erase SSLContext
-    SSL_CTX_free(ssl_ctx->ctx);
     _ssl_ctx_map.erase(cert_key);
     return 0;
 }
@@ -1884,7 +1908,7 @@ bool Server::RemoveCertMapping(CertMaps& bg, const SSLContext& ssl_ctx) {
         } else {
             cmap = &(bg.cert_map);
         }
-        SSL_CTX** ctx = cmap->seek(hostname);
+        std::shared_ptr<SocketSSLContext>* ctx = cmap->seek(hostname);
         if (ctx != NULL && *ctx == ssl_ctx.ctx) {
             cmap->erase(hostname);
         }
@@ -1893,6 +1917,11 @@ bool Server::RemoveCertMapping(CertMaps& bg, const SSLContext& ssl_ctx) {
 }
 
 int Server::ResetCertificates(const std::vector<CertInfo>& certs) {
+    if (!_options.has_ssl_options()) {
+        LOG(ERROR) << "ServerOptions.ssl_options is not configured yet";
+        return -1;
+    }
+
     SSLContextMap tmp_map;
     if (tmp_map.init(INITIAL_CERT_MAP) != 0) {
         LOG(ERROR) << "Fail to initialize tmp_map";
@@ -1901,8 +1930,8 @@ int Server::ResetCertificates(const std::vector<CertInfo>& certs) {
 
     // Add default certficiate into tmp_map first since it can't be reloaded 
     std::string default_cert_key =
-            _options.ssl_options.default_cert.certificate
-            + _options.ssl_options.default_cert.private_key;
+        _options.ssl_options().default_cert.certificate
+        + _options.ssl_options().default_cert.private_key;
     tmp_map[default_cert_key] = _ssl_ctx_map[default_cert_key];
 
     for (size_t i = 0; i < certs.size(); ++i) {
@@ -1915,28 +1944,26 @@ int Server::ResetCertificates(const std::vector<CertInfo>& certs) {
 
         SSLContext ssl_ctx;
         ssl_ctx.filters = certs[i].sni_filters;
-        ssl_ctx.ctx = CreateServerSSLContext(
+        ssl_ctx.ctx = std::make_shared<SocketSSLContext>();
+        ssl_ctx.ctx->raw_ctx = CreateServerSSLContext(
             certs[i].certificate, certs[i].private_key,
-            _options.ssl_options, &ssl_ctx.filters);
-        if (ssl_ctx.ctx == NULL) {
-            FreeSSLContextMap(tmp_map, true);
+            _options.ssl_options(), &ssl_ctx.filters);
+        if (ssl_ctx.ctx->raw_ctx == NULL) {
             return -1;
         }
     
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-        SSL_CTX_set_tlsext_servername_callback(ssl_ctx.ctx, SSLSwitchCTXByHostname);
-        SSL_CTX_set_tlsext_servername_arg(ssl_ctx.ctx, this);
+        SSL_CTX_set_tlsext_servername_callback(ssl_ctx.ctx->raw_ctx, SSLSwitchCTXByHostname);
+        SSL_CTX_set_tlsext_servername_arg(ssl_ctx.ctx->raw_ctx, this);
 #endif
         tmp_map[cert_key] = ssl_ctx;
     }
 
     if (!_reload_cert_maps.Modify(ResetCertMappings, tmp_map)) {
-        FreeSSLContextMap(tmp_map, true);
         return -1;
     }
 
     _ssl_ctx_map.swap(tmp_map);
-    FreeSSLContextMap(tmp_map, true);
     return 0;
 }
 
@@ -1976,19 +2003,8 @@ bool Server::ResetCertMappings(CertMaps& bg, const SSLContextMap& ctx_map) {
     return true;
 }
 
-void Server::FreeSSLContextMap(SSLContextMap& ctx_map, bool keep_default) {
-    for (SSLContextMap::iterator it =
-                 ctx_map.begin(); it != ctx_map.end(); ++it) {
-        if (keep_default && it->second.ctx == _default_ssl_ctx) {
-            continue;
-        }
-        SSL_CTX_free(it->second.ctx);
-    }
-    ctx_map.clear();
-}
-
 void Server::FreeSSLContexts() {
-    FreeSSLContextMap(_ssl_ctx_map, false);
+    _ssl_ctx_map.clear();
     _reload_cert_maps.Modify(ClearCertMapping);
     _default_ssl_ctx = NULL;
 }
@@ -2082,7 +2098,7 @@ int Server::SSLSwitchCTXByHostname(struct ssl_st* ssl,
                                    int* al, Server* server) {
     (void)al;
     const char* hostname = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
-    bool strict_sni = server->_options.ssl_options.strict_sni;
+    bool strict_sni = server->_options.ssl_options().strict_sni;
     if (hostname == NULL) {
         return strict_sni ? SSL_TLSEXT_ERR_ALERT_FATAL : SSL_TLSEXT_ERR_NOACK;
     }
@@ -2092,7 +2108,7 @@ int Server::SSLSwitchCTXByHostname(struct ssl_st* ssl,
         return SSL_TLSEXT_ERR_ALERT_FATAL;
     }
     
-    SSL_CTX** pctx = s->cert_map.seek(hostname);
+    std::shared_ptr<SocketSSLContext>* pctx = s->cert_map.seek(hostname);
     if (pctx == NULL) {
         const char* dot = hostname;
         for (; *dot != '\0'; ++dot) {
@@ -2114,7 +2130,7 @@ int Server::SSLSwitchCTXByHostname(struct ssl_st* ssl,
     }
 
     // Switch SSL_CTX to the one with correct hostname
-    SSL_set_SSL_CTX(ssl, *pctx);
+    SSL_set_SSL_CTX(ssl, (*pctx)->raw_ctx);
     return SSL_TLSEXT_ERR_OK;
 }
 #endif // SSL_CTRL_SET_TLSEXT_HOSTNAME

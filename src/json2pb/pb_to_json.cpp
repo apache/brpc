@@ -20,10 +20,12 @@ Pb2JsonOptions::Pb2JsonOptions()
     , pretty_json(false)
     , enable_protobuf_map(true)
 #ifdef BAIDU_INTERNAL
-    , bytes_to_base64(false) {
+    , bytes_to_base64(false)
 #else
-    , bytes_to_base64(true) {
+    , bytes_to_base64(true)
 #endif
+    , jsonify_empty_array(false)
+    , always_print_primitive_fields(false) {
 }
 
 class PbToJsonConverter {
@@ -87,9 +89,13 @@ bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handle
                 _error = "Missing required field: " + field->full_name();
                 return false;
             }
-            continue;
+            // Whether dumps default fields
+            if (!_option.always_print_primitive_fields) {
+                continue;
+            }
         } else if (field->is_repeated()
-                   && reflection->FieldSize(message, field) == 0) {
+                   && reflection->FieldSize(message, field) == 0
+                   && !_option.jsonify_empty_array) {
             // Repeated field that has no entry
             continue;
         }

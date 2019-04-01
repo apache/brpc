@@ -15,6 +15,7 @@ message EchoRequest {
 message EchoResponse {
     required string message = 1;
     repeated int32 code_list = 2;
+    optional uint64 receiving_socket_id = 3;
 };
 
 message ComboRequest {
@@ -50,6 +51,14 @@ service DownloadService {
 service UserNamingService {
     rpc ListNames(HttpRequest) returns (HttpResponse);
     rpc Touch(HttpRequest) returns (HttpResponse);
+};
+
+service DiscoveryNamingService {
+    rpc Nodes(HttpRequest) returns (HttpResponse);
+    rpc Fetchs(HttpRequest) returns (HttpResponse);
+    rpc Register(HttpRequest) returns (HttpResponse);
+    rpc Renew(HttpRequest) returns (HttpResponse);
+    rpc Cancel(HttpRequest) returns (HttpResponse);
 };
 
 enum State0 {

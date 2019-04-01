@@ -208,7 +208,7 @@ TEST(ButexTest, wait_without_stop) {
         ASSERT_EQ(0, bthread_join(th, NULL));
         tm.stop();
         
-        ASSERT_LT(labs(tm.m_elapsed() - WAIT_MSEC), 40);
+        ASSERT_LT(labs(tm.m_elapsed() - WAIT_MSEC), 250);
     }
     bthread::butex_destroy(butex);
 }

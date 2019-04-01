@@ -8,6 +8,10 @@ endif()
 
 set(BRPC_VERSION 0.9.0)
 
+SET(CPACK_GENERATOR "DEB")
+SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "brpc authors")
+INCLUDE(CPack)
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # require at least gcc 4.8
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.8)
@@ -31,6 +35,7 @@ option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 set(WITH_GLOG_VAL "0")
 if(WITH_GLOG)
     set(WITH_GLOG_VAL "1")
+    set(BRPC_WITH_GLOG 1)
 endif()
 
 if(WITH_DEBUG_SYMBOLS)
@@ -294,6 +299,7 @@ set(BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/src/butil/crc32c.cc
     ${PROJECT_SOURCE_DIR}/src/butil/containers/case_ignored_flat_map.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/iobuf.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/binary_printer.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/popen.cpp
     )
 

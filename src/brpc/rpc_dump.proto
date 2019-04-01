@@ -22,4 +22,7 @@ message RpcDumpMeta {
 
   // baidu_std
   optional bytes authentication_data = 7;
+
+  // hulu_pbrpc
+  optional bytes user_data = 8;
 }

@@ -37,6 +37,7 @@ typedef butil::ScopedGeneric<StreamId, detail::StreamIdTraits> ScopedStream;
 
 class StreamInputHandler {
 public:
+    virtual ~StreamInputHandler() = default;
     virtual int on_received_messages(StreamId id, 
                                      butil::IOBuf *const messages[], 
                                      size_t size) = 0;

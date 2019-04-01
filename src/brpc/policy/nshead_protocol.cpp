@@ -262,6 +262,7 @@ void ProcessNsheadRequest(InputMessageBase* msg_base) {
         .set_remote_side(socket->remote_side())
         .set_local_side(socket->local_side())
         .set_request_protocol(PROTOCOL_NSHEAD)
+        .set_begin_time_us(msg->received_us())
         .move_in_server_receiving_sock(socket_guard);
 
     // Tag the bthread with this server's key for thread_local_data().
@@ -399,7 +400,7 @@ void PackNsheadRequest(
     const butil::IOBuf& request,
     const Authenticator*) {
     ControllerPrivateAccessor accessor(cntl);
-    if (accessor.connection_type() == CONNECTION_TYPE_SINGLE) {
+    if (cntl->connection_type() == CONNECTION_TYPE_SINGLE) {
         return cntl->SetFailed(
             EINVAL, "nshead protocol can't work with CONNECTION_TYPE_SINGLE");
     }

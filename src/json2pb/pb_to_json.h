@@ -38,6 +38,17 @@ struct Pb2JsonOptions {
     // encoding when this option is turned on.
     // Default: false for baidu-internal, true otherwise.
     bool bytes_to_base64;
+
+    // Convert the repeated field that has no entry
+    // to a empty array of json when this option is turned on.
+    // Default: false
+    bool jsonify_empty_array;
+    
+    // Whether to always print primitive fields. By default proto3 primitive
+    // fields with default values will be omitted in JSON output. For example, an
+    // int32 field set to 0 will be omitted. Set this flag to true will override
+    // the default behavior and print primitive fields regardless of their values.
+    bool always_print_primitive_fields;
 };
 
 // Convert protobuf `messge' to `json' according to `options'.

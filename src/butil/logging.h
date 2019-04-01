@@ -435,6 +435,7 @@ public:
     };
 
     virtual void print(const Site& site) = 0;
+    virtual ~VLogSitePrinter() = default;
 };
 
 void print_vlog_sites(VLogSitePrinter*);

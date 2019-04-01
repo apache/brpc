@@ -14,8 +14,13 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
+#ifndef USE_MESALINK
 #include <openssl/ssl.h>
 #include <openssl/conf.h>
+#else
+#include <mesalink/openssl/ssl.h>
+#endif
+
 #include <gflags/gflags.h>
 #include <fcntl.h>                               // O_RDONLY
 #include <signal.h>
@@ -30,6 +35,7 @@
 #include "brpc/policy/domain_naming_service.h"
 #include "brpc/policy/remote_file_naming_service.h"
 #include "brpc/policy/consul_naming_service.h"
+#include "brpc/policy/discovery_naming_service.h"
 
 // Load Balancers
 #include "brpc/policy/round_robin_load_balancer.h"
@@ -50,6 +56,7 @@
 #include "brpc/protocol.h"
 #include "brpc/policy/baidu_rpc_protocol.h"
 #include "brpc/policy/http_rpc_protocol.h"
+#include "brpc/policy/http2_rpc_protocol.h"
 #include "brpc/policy/hulu_pbrpc_protocol.h"
 #include "brpc/policy/nova_pbrpc_protocol.h"
 #include "brpc/policy/public_pbrpc_protocol.h"
@@ -120,6 +127,7 @@ struct GlobalExtensions {
     DomainNamingService dns;
     RemoteFileNamingService rfns;
     ConsulNamingService cns;
+    DiscoveryNamingService dcns;
 
     RoundRobinLoadBalancer rr_lb;
     WeightedRoundRobinLoadBalancer wrr_lb;
@@ -335,10 +343,12 @@ static void GlobalInitializeOrDieImpl() {
 #endif
     NamingServiceExtension()->RegisterOrDie("file", &g_ext->fns);
     NamingServiceExtension()->RegisterOrDie("list", &g_ext->lns);
-  NamingServiceExtension()->RegisterOrDie("http", &g_ext->dns);
-  NamingServiceExtension()->RegisterOrDie("redis", &g_ext->dns);
+    NamingServiceExtension()->RegisterOrDie("http", &g_ext->dns);
+    NamingServiceExtension()->RegisterOrDie("https", &g_ext->dns);
+    NamingServiceExtension()->RegisterOrDie("redis", &g_ext->dns);
     NamingServiceExtension()->RegisterOrDie("remotefile", &g_ext->rfns);
     NamingServiceExtension()->RegisterOrDie("consul", &g_ext->cns);
+    NamingServiceExtension()->RegisterOrDie("discovery", &g_ext->dcns);
 
     // Load Balancers
     LoadBalancerExtension()->RegisterOrDie("rr", &g_ext->rr_lb);
@@ -395,6 +405,17 @@ static void GlobalInitializeOrDieImpl() {
                                CONNECTION_TYPE_POOLED_AND_SHORT,
                                "http" };
     if (RegisterProtocol(PROTOCOL_HTTP, http_protocol) != 0) {
+        exit(1);
+    }
+
+    Protocol http2_protocol = { ParseH2Message,
+                                SerializeHttpRequest, PackH2Request,
+                                ProcessHttpRequest, ProcessHttpResponse,
+                                VerifyHttpRequest, ParseHttpServerAddress,
+                                GetHttpMethodName,
+                                CONNECTION_TYPE_SINGLE,
+                                "h2" };
+    if (RegisterProtocol(PROTOCOL_H2, http2_protocol) != 0) {
         exit(1);
     }
 

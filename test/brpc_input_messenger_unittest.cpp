@@ -148,7 +148,7 @@ TEST_F(MessengerTest, dispatch_tasks) {
         snprintf(buf, sizeof(buf), "input_messenger.socket%lu", i);
         int listening_fd = butil::unix_socket_listen(buf);
 #else
-        int listening_fd = tcp_listen(butil::EndPoint(butil::IP_ANY, 7878), false);
+        int listening_fd = tcp_listen(butil::EndPoint(butil::IP_ANY, 7878));
 #endif
         ASSERT_TRUE(listening_fd > 0);
         butil::make_non_blocking(listening_fd);

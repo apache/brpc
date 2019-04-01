@@ -402,13 +402,13 @@ bool JsonValueToProtoMessage(const BUTIL_RAPIDJSON_NAMESPACE::Value& json_value,
                              google::protobuf::Message* message,
                              const Json2PbOptions& options,
                              std::string* err) {
+    const google::protobuf::Descriptor* descriptor = message->GetDescriptor();
     if (!json_value.IsObject()) {
-        J2PERROR(err, "`json_value' is not a json object");
+        J2PERROR(err, "`json_value' is not a json object. %s", descriptor->name().c_str());
         return false;
     }
 
     const google::protobuf::Reflection* reflection = message->GetReflection();
-    const google::protobuf::Descriptor* descriptor = message->GetDescriptor();
     
     std::vector<const google::protobuf::FieldDescriptor*> fields;
     fields.reserve(64);
@@ -491,6 +491,10 @@ inline bool JsonToProtoMessageInline(const std::string& json_string,
     }
     BUTIL_RAPIDJSON_NAMESPACE::Document d;
     d.Parse<0>(json_string.c_str());
+    if (d.HasParseError()) {
+        J2PERROR(error, "Invalid json format");
+        return false;
+    }
     return json2pb::JsonValueToProtoMessage(d, message, options, error);
 }
 

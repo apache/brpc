@@ -42,17 +42,17 @@ RPC不是万能的抽象，否则我们也不需要TCP/IP这一层了。但是�
 你可以使用它：
 
 * 搭建能在**一个端口**支持多协议的服务, 或访问各种服务
-  * restful http/https, h2/h2c (与[grpc](https://github.com/grpc/grpc)兼容, 即将开源). 使用brpc的http实现比[libcurl](https://curl.haxx.se/libcurl/)方便多了。
+  * restful http/https, [h2](https://http2.github.io/http2-spec)/[gRPC](https://grpc.io)。使用brpc的http实现比[libcurl](https://curl.haxx.se/libcurl/)方便多了。从其他语言通过HTTP/h2+json访问基于protobuf的协议.
   * [redis](redis_client.md)和[memcached](memcache_client.md), 线程安全，比官方client更方便。
   * [rtmp](https://github.com/brpc/brpc/blob/master/src/brpc/rtmp.h)/[flv](https://en.wikipedia.org/wiki/Flash_Video)/[hls](https://en.wikipedia.org/wiki/HTTP_Live_Streaming), 可用于搭建[流媒体服务](https://github.com/brpc/media-server).
   * hadoop_rpc(可能开源)
   * 支持[rdma](https://en.wikipedia.org/wiki/Remote_direct_memory_access)(即将开源)
+  * 支持[thrift](thrift.md) , 线程安全，比官方client更方便
   * 各种百度内使用的协议: [baidu_std](baidu_std.md), [streaming_rpc](streaming_rpc.md), hulu_pbrpc, [sofa_pbrpc](https://github.com/baidu/sofa-pbrpc), nova_pbrpc, public_pbrpc, ubrpc和使用nshead的各种协议.
-  * 从其他语言通过HTTP+json访问基于protobuf的协议.
   * 基于工业级的[RAFT算法](https://raft.github.io)实现搭建[高可用](https://en.wikipedia.org/wiki/High_availability)分布式系统，已在[braft](https://github.com/brpc/braft)开源。
-* Server能[同步](docs/cn/server.md)或[异步](docs/cn/server.md#异步service)处理请求。
-* Client支持[同步](docs/cn/client.md#同步访问)、[异步](docs/cn/client.md#异步访问)、[半同步](docs/cn/client.md#半同步)，或使用[组合channels](docs/cn/combo_channel.md)简化复杂的分库或并发访问。
-* [通过http界面](docs/cn/builtin_service.md)调试服务, 使用[cpu](docs/cn/cpu_profiler.md), [heap](docs/cn/heap_profiler.md), [contention](docs/cn/contention_profiler.md) profilers.
+* Server能[同步](server.md)或[异步](server.md#异步service)处理请求。
+* Client支持[同步](client.md#同步访问)、[异步](client.md#异步访问)、[半同步](client.md#半同步)，或使用[组合channels](combo_channel.md)简化复杂的分库或并发访问。
+* [通过http界面](builtin_service.md)调试服务, 使用[cpu](cpu_profiler.md), [heap](heap_profiler.md), [contention](contention_profiler.md) profilers.
 * 获得[更好的延时和吞吐](#更好的延时和吞吐).
 * 把你组织中使用的协议快速地[加入brpc](new_protocol.md)，或定制各类组件, 包括[命名服务](load_balancing.md#命名服务) (dns, zk, etcd), [负载均衡](load_balancing.md#负载均衡) (rr, random, consistent hashing)
 
@@ -85,7 +85,7 @@ brpc特别重视开发和维护效率, 你可以通过浏览器或curl[查看ser
 
 虽然大部分RPC实现都声称“高性能”，但数字仅仅是数字，要在广泛的场景中做到高性能仍是困难的。为了统一百度内的通信架构，brpc在性能方面比其他RPC走得更深。
 
-- 对不同客户端请求的读取和解析是完全并发的，用户也不用区分”IO线程“和”处理线程"。其他实现往往会区分“IO线程”和“处理线程”，并把[fd](http://en.wikipedia.org/wiki/File_descriptor)（对应一个客户端）散列到IO线程中去。当一个IO线程在读取其中的fd时，同一个线程中的fd都无法得到处理。当一些解析变慢时，比如特别大的protobuf message，同一个IO线程中的其他fd都遭殃了。虽然不同IO线程间的fd是并发的，但你不太可能开太多IO线程，因为这类线程的事情很少，大部分时候都是闲着的。如果有10个IO线程，一个fd能影响到的”其他fd“仍有相当大的比例（10个即10%，而工业级在线检索要求99.99%以上的可用性）。这个问题在fd没有均匀地分布在IO线程中，或在多租户(multi-tenacy)环境中会更加恶化。在brpc中，对不同fd的读取是完全并发的，对同一个fd中不同消息的解析也是并发的。解析一个特别大的protobuf message不会影响同一个客户端的其他消息，更不用提其他客户端的消息了。更多细节看[这里](io.md#收消息)。
+- 对不同客户端请求的读取和解析是完全并发的，用户也不用区分”IO线程“和”处理线程"。其他实现往往会区分“IO线程”和“处理线程”，并把[fd](http://en.wikipedia.org/wiki/File_descriptor)（对应一个客户端）散列到IO线程中去。当一个IO线程在读取其中的fd时，同一个线程中的fd都无法得到处理。当一些解析变慢时，比如特别大的protobuf message，同一个IO线程中的其他fd都遭殃了。虽然不同IO线程间的fd是并发的，但你不太可能开太多IO线程，因为这类线程的事情很少，大部分时候都是闲着的。如果有10个IO线程，一个fd能影响到的”其他fd“仍有相当大的比例（10个即10%，而工业级在线检索要求99.99%以上的可用性）。这个问题在fd没有均匀地分布在IO线程中，或在多租户(multi-tenancy)环境中会更加恶化。在brpc中，对不同fd的读取是完全并发的，对同一个fd中不同消息的解析也是并发的。解析一个特别大的protobuf message不会影响同一个客户端的其他消息，更不用提其他客户端的消息了。更多细节看[这里](io.md#收消息)。
 - 对同一fd和不同fd的写出是高度并发的。当多个线程都要对一个fd写出时（常见于单连接），第一个线程会直接在原线程写出，其他线程会以[wait-free](http://en.wikipedia.org/wiki/Non-blocking_algorithm#Wait-freedom)的方式托付自己的写请求，多个线程在高度竞争下仍可以在1秒内对同一个fd写入500万个16字节的消息。更多细节看[这里](io.md#发消息)。
 - 尽量少的锁。高QPS服务可以充分利用一台机器的CPU。比如为处理请求[创建bthread](memory_management.md), [设置超时](timer_keeping.md), 根据回复[找到RPC上下文](bthread_id.md), [记录性能计数器](bvar.md)都是高度并发的。即使服务的QPS超过50万，用户也很少在[contention profiler](contention_profiler.md))中看到框架造成的锁竞争。
 - 服务器线程数自动调节。传统的服务器需要根据下游延时的调整自身的线程数，否则吞吐可能会受影响。在brpc中，每个请求均运行在新建立的[bthread](bthread.md)中，请求结束后线程就结束了，所以天然会根据负载自动调节线程数。

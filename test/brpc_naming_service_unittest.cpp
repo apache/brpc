@@ -15,16 +15,28 @@
 #include "brpc/policy/file_naming_service.h"
 #include "brpc/policy/list_naming_service.h"
 #include "brpc/policy/remote_file_naming_service.h"
+#include "brpc/policy/discovery_naming_service.h"
 #include "echo.pb.h"
 #include "brpc/server.h"
 
 
 namespace brpc {
+DECLARE_int32(health_check_interval);
+
 namespace policy {
 
 DECLARE_bool(consul_enable_degrade_to_file_naming_service);
 DECLARE_string(consul_file_naming_service_dir);
 DECLARE_string(consul_service_discovery_url);
+DECLARE_string(discovery_api_addr);
+DECLARE_string(discovery_env);
+DECLARE_int32(discovery_renew_interval_s);
+
+// Defined in discovery_naming_service.cpp
+int ParseFetchsResult(const butil::IOBuf& buf,
+                      const char* service_name,
+                      std::vector<brpc::ServerNode>* servers);
+int ParseNodesResult(const butil::IOBuf& buf, std::string* server_addr);
 
 } // policy
 } // brpc
@@ -357,6 +369,8 @@ public:
 
 TEST(NamingServiceTest, consul_with_backup_file) {
     brpc::policy::FLAGS_consul_enable_degrade_to_file_naming_service = true;
+    const int saved_hc_interval = brpc::FLAGS_health_check_interval;
+    brpc::FLAGS_health_check_interval = 1;
     const char *address_list[] =  {
         "10.127.0.1:1234",
         "10.128.0.1:1234",
@@ -394,7 +408,7 @@ TEST(NamingServiceTest, consul_with_backup_file) {
                                    restful_map.c_str()));
     ASSERT_EQ(0, server.Start("localhost:8500", NULL));
 
-    bthread_usleep(1000000);
+    bthread_usleep(5000000);
 
     butil::EndPoint n1;
     ASSERT_EQ(0, butil::str2endpoint("10.121.36.189:8003", &n1));
@@ -412,6 +426,229 @@ TEST(NamingServiceTest, consul_with_backup_file) {
     for (size_t i = 0; i < expected_servers.size(); ++i) {
         ASSERT_EQ(expected_servers[i], servers[i]);
     }
+    brpc::FLAGS_health_check_interval = saved_hc_interval;
+}
+
+
+static const std::string s_fetchs_result = R"({
+    "code":0,
+    "message":"0",
+    "ttl":1,
+    "data":{
+        "admin.test":{
+            "instances":[
+                {
+                    "region":"",
+                    "zone":"sh001",
+                    "env":"uat",
+                    "appid":"admin.test",
+                    "treeid":0,
+                    "hostname":"host123",
+                    "http":"",
+                    "rpc":"",
+                    "version":"123",
+                    "metadata":{
+
+                    },
+                    "addrs":[
+                        "http://127.0.0.1:8999",
+                        "grpc://127.0.1.1:9000"
+                    ],
+                    "status":1,
+                    "reg_timestamp":1539001034551496412,
+                    "up_timestamp":1539001034551496412,
+                    "renew_timestamp":1539001034551496412,
+                    "dirty_timestamp":1539001034551496412,
+                    "latest_timestamp":1539001034551496412
+                }
+            ],
+            "zone_instances":{
+                "sh001":[
+                    {
+                        "region":"",
+                        "zone":"sh001",
+                        "env":"uat",
+                        "appid":"admin.test",
+                        "treeid":0,
+                        "hostname":"host123",
+                        "http":"",
+                        "rpc":"",
+                        "version":"123",
+                        "metadata":{
+
+                        },
+                        "addrs":[
+                            "http://127.0.0.1:8999",
+                            "grpc://127.0.1.1:9000"
+                        ],
+                        "status":1,
+                        "reg_timestamp":1539001034551496412,
+                        "up_timestamp":1539001034551496412,
+                        "renew_timestamp":1539001034551496412,
+                        "dirty_timestamp":1539001034551496412,
+                        "latest_timestamp":1539001034551496412
+                    }
+                ]
+            },
+            "latest_timestamp":1539001034551496412,
+            "latest_timestamp_str":"1539001034"
+        }
+    }
+})";
+
+static std::string s_nodes_result = R"({
+    "code": 0,
+    "message": "0",
+    "ttl": 1,
+    "data": [
+        {
+            "addr": "127.0.0.1:8635",
+            "status": 0,
+            "zone": ""
+        }, {
+            "addr": "172.18.33.51:7171",
+            "status": 0,
+            "zone": ""
+        }, {
+            "addr": "172.18.33.52:7171",
+            "status": 0,
+            "zone": ""
+        }
+    ]
+})";
+
+
+TEST(NamingServiceTest, discovery_parse_function) {
+    std::vector<brpc::ServerNode> servers;
+    brpc::policy::DiscoveryNamingService dcns;
+    butil::IOBuf buf;
+    buf.append(s_fetchs_result);
+    ASSERT_EQ(0, brpc::policy::ParseFetchsResult(buf, "admin.test", &servers));
+    ASSERT_EQ((size_t)1, servers.size());
+    buf.clear();
+    buf.append(s_nodes_result);
+    std::string server;
+    ASSERT_EQ(0, brpc::policy::ParseNodesResult(buf, &server));
+    ASSERT_EQ("127.0.0.1:8635", server);
+}
+
+class DiscoveryNamingServiceImpl : public test::DiscoveryNamingService {
+public:
+    DiscoveryNamingServiceImpl()
+        : _renew_count(0)
+        , _cancel_count(0) {}
+    virtual ~DiscoveryNamingServiceImpl() {}
+
+    void Nodes(google::protobuf::RpcController* cntl_base,
+               const test::HttpRequest*,
+               test::HttpResponse*,
+               google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        cntl->response_attachment().append(s_nodes_result);
+    }
+
+    void Fetchs(google::protobuf::RpcController* cntl_base,
+                const test::HttpRequest*,
+                test::HttpResponse*,
+                google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        cntl->response_attachment().append(s_fetchs_result);
+    }
+
+    void Register(google::protobuf::RpcController* cntl_base,
+                 const test::HttpRequest*,
+                 test::HttpResponse*,
+                 google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        cntl->response_attachment().append(R"({
+            "code": 0,
+            "message": "0"
+        })");
+        return;
+    }
+
+    void Renew(google::protobuf::RpcController* cntl_base,
+               const test::HttpRequest*,
+               test::HttpResponse*,
+               google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        cntl->response_attachment().append(R"({
+            "code": 0,
+            "message": "0"
+        })");
+        _renew_count++;
+        return;
+    }
+
+    void Cancel(google::protobuf::RpcController* cntl_base,
+                const test::HttpRequest*,
+                test::HttpResponse*,
+                google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
+        cntl->response_attachment().append(R"({
+            "code": 0,
+            "message": "0"
+        })");
+        _cancel_count++;
+        return;
+    }
+
+    int RenewCount() const { return _renew_count; }
+    int CancelCount() const { return _cancel_count; }
+
+private:
+    int _renew_count;
+    int _cancel_count;
+};
+
+TEST(NamingServiceTest, discovery_sanity) {
+    brpc::policy::FLAGS_discovery_api_addr = "http://127.0.0.1:8635/discovery/nodes";
+    brpc::policy::FLAGS_discovery_renew_interval_s = 1;
+    brpc::Server server;
+    DiscoveryNamingServiceImpl svc;
+    std::string rest_mapping =
+        "/discovery/nodes => Nodes, "
+        "/discovery/fetchs => Fetchs, "
+        "/discovery/register => Register, "
+        "/discovery/renew => Renew, "
+        "/discovery/cancel => Cancel";
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE,
+                rest_mapping.c_str()));
+    ASSERT_EQ(0, server.Start("localhost:8635", NULL));
+
+    brpc::policy::DiscoveryNamingService dcns;
+    std::vector<brpc::ServerNode> servers;
+    ASSERT_EQ(0, dcns.GetServers("admin.test", &servers));
+    ASSERT_EQ((size_t)1, servers.size());
+
+    brpc::policy::DiscoveryRegisterParam dparam;
+    dparam.appid = "main.test";
+    dparam.hostname = "hostname";
+    dparam.addrs = "grpc://10.0.0.1:8000";
+    dparam.env = "dev";
+    dparam.zone = "sh001";
+    dparam.status = 1;
+    dparam.version = "v1";
+    {
+        brpc::policy::DiscoveryClient dc;
+    }
+    // Cancel is called iff Register is called
+    ASSERT_EQ(svc.CancelCount(), 0);
+    {
+        brpc::policy::DiscoveryClient dc;
+        // Two Register should start one Renew task , and make
+        // svc.RenewCount() be one.
+        ASSERT_EQ(0, dc.Register(dparam));
+        ASSERT_EQ(0, dc.Register(dparam));
+        bthread_usleep(100000);
+    }
+    ASSERT_EQ(svc.RenewCount(), 1);
+    ASSERT_EQ(svc.CancelCount(), 1);
 }
 
 } //namespace

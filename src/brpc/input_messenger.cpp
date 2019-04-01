@@ -202,8 +202,7 @@ void InputMessenger::OnNewMessages(Socket* m) {
                 // Set `read_eof' flag and proceed to feed EOF into `Protocol'
                 // (implied by m->_read_buf.empty), which may produce a new
                 // `InputMessageBase' under some protocols such as HTTP
-                LOG_IF(WARNING, FLAGS_log_connection_close)
-                        << "Remote side of " << *m << " was closed";
+                LOG_IF(WARNING, FLAGS_log_connection_close) << *m << " was closed by remote side";
                 read_eof = true;                
             } else if (errno != EAGAIN) {
                 if (errno == EINTR) {
@@ -241,7 +240,7 @@ void InputMessenger::OnNewMessages(Socket* m) {
                 } else if (pr.error() == PARSE_ERROR_TRY_OTHERS) {
                     LOG(WARNING)
                         << "Close " << *m << " due to unknown message: "
-                        << butil::PrintedAsBinary(m->_read_buf);
+                        << butil::ToPrintable(m->_read_buf);
                     m->SetFailed(EINVAL, "Close %s due to unknown message",
                                  m->description().c_str());
                     return;

@@ -68,7 +68,7 @@ public:
     int64_t get_cumulated_signal_count();
 
     // [Not thread safe] Add more worker threads.
-    // Return the number of workers actually added, which may be less then |num|
+    // Return the number of workers actually added, which may be less than |num|
     int add_workers(int num);
 
     // Choose one TaskGroup (randomly right now).

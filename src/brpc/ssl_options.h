@@ -59,10 +59,6 @@ struct ChannelSSLOptions {
     // Constructed with default options
     ChannelSSLOptions();
 
-    // Whether to enable SSL on the channel.
-    // Default: false
-    bool enable;
-
     // Cipher suites used for SSL handshake.
     // The format of this string should follow that in `man 1 cipers'.
     // Default: "DEFAULT"

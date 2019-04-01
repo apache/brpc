@@ -20,7 +20,7 @@
 #include <brpc/channel.h>
 #include "echo.pb.h"
 
-DEFINE_string(attachment, "foo", "Carry this along with requests");
+DEFINE_string(attachment, "", "Carry this along with requests");
 DEFINE_string(protocol, "baidu_std", "Protocol type. Defined in src/brpc/options.proto");
 DEFINE_string(connection_type, "", "Connection type. Available values: single, pooled, short");
 DEFINE_string(server, "0.0.0.0:8000", "IP Address of server");
@@ -28,7 +28,6 @@ DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
 DEFINE_int32(interval_ms, 1000, "Milliseconds between consecutive requests");
-DEFINE_string(http_content_type, "application/json", "Content type of http request");
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
@@ -65,13 +64,9 @@ int main(int argc, char* argv[]) {
         request.set_message("hello world");
 
         cntl.set_log_id(log_id ++);  // set by user
-        if (FLAGS_protocol != "http" && FLAGS_protocol != "h2c")  {
-            // Set attachment which is wired to network directly instead of 
-            // being serialized into protobuf messages.
-            cntl.request_attachment().append(FLAGS_attachment);
-        } else {
-            cntl.http_request().set_content_type(FLAGS_http_content_type);
-        }
+        // Set attachment which is wired to network directly instead of 
+        // being serialized into protobuf messages.
+        cntl.request_attachment().append(FLAGS_attachment);
 
         // Because `done'(last parameter) is NULL, this function waits until
         // the response comes back or error occurs(including timedout).

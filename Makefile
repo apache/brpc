@@ -145,6 +145,7 @@ BUTIL_SOURCES = \
     src/butil/crc32c.cc \
     src/butil/containers/case_ignored_flat_map.cpp \
     src/butil/iobuf.cpp \
+    src/butil/binary_printer.cpp \
     src/butil/popen.cpp
 
 ifeq ($(SYSTEM), Linux)
@@ -222,9 +223,9 @@ clean_debug:
 protoc-gen-mcpack: src/idl_options.pb.cc src/mcpack2pb/generator.o libbrpc.a
 	@echo "Linking $@"
 ifeq ($(SYSTEM),Linux)
-	@$(CXX) -o $@ $(HDRPATHS) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
+	@$(CXX) -o $@ $(HDRPATHS) $(LIBPATHS) -std=c++0x -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 else ifeq ($(SYSTEM),Darwin)
-	@$(CXX) -o $@ $(HDRPATHS) $(LIBPATHS) $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+	@$(CXX) -o $@ $(HDRPATHS) $(LIBPATHS) -std=c++0x $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
 endif
 
 # force generation of pb headers before compiling to avoid fail-to-import issues in compiling pb.cc
@@ -274,6 +275,14 @@ output/bin:protoc-gen-mcpack
 %.o:%.cpp
 	@echo "Compiling $@"
 	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+
+%http2_rpc_protocol.dbg.o:%http2_rpc_protocol.cpp
+	@echo "Compiling $@ with O2"
+	@$(CXX) -c $(HDRPATHS) -O2 $(DEBUG_CXXFLAGS) $< -o $@
+
+%hpack.dbg.o:%hpack.cpp
+	@echo "Compiling $@ with O2"
+	@$(CXX) -c $(HDRPATHS) -O2 $(DEBUG_CXXFLAGS) $< -o $@
 
 %.dbg.o:%.cpp
 	@echo "Compiling $@"

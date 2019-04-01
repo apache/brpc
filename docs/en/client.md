@@ -123,6 +123,10 @@ Pros: Versatility of DNS, useable both in private or public network.
 
 Cons: limited by transmission formats of DNS, unable to implement notification mechanisms.
 
+### https://\<url\>
+
+Similar with "http" prefix besides that the connections will be encrypted with SSL.
+
 ### consul://\<service-name\>
 
 Get a list of servers with the specified service-name through consul. The default address of consul is localhost:8500, which can be modified by setting -consul\_agent\_addr in gflags. The connection timeout of consul is 200ms by default, which can be modified by -consul\_connect\_timeout\_ms. 
@@ -139,7 +143,9 @@ If consul is not accessible, the naming service can be automatically downgraded 
 User can extend to more naming services by implementing brpc::NamingService, check [this link](https://github.com/brpc/brpc/blob/master/docs/cn/load_balancing.md#%E5%91%BD%E5%90%8D%E6%9C%8D%E5%8A%A1) for details.
 
 ### The tag in naming service
-tag was used for implementing "coarse-grained wrr": different tags are appended to a same address to make different instances, such that the address gets traffic proportional to the number of different tags. However, you should consider using [wrr algorithm](#wrr) first which distributes traffic proportional to assigned weights and is more fine-grained.
+Every address can be attached with a tag. The common implementation is that if there're spaces after the address, the content after the spaces is the tag.
+Same address with different tag are treated as different instances which are interacted with separate connections. Users can use this feature to establish connections with remote servers in a more flexible way.
+If you need weighted round-robin, you should consider using [wrr algorithm](#wrr) first rather than emulate "a coarse-grained version" with tags.
 
 ### VIP related issues
 VIP is often the public IP of layer-4 load balancer, which proxies traffic to RS behide. When a client connects to the VIP, a connection is established to a chosen RS. When the client connection is broken, the connection to the RS is reset as well.
@@ -148,7 +154,7 @@ If one client establishes only one connection to the VIP("single" connection typ
 
 One solution to these issues is to use "pooled" connection type, so that one client may create multiple connections to one VIP (roughly the max concurrency recently) to make traffic land on different RS. If more than one VIP are present, consider using [wrr load balancing](#wrr) to assign weights to different VIP, or add different tags to VIP to form more instances.
 
-Note: When the client uses "single" connection type, even if one VIP appended with different tags can get more traffic, the connection is still one. This is decided by current implementation in brpc.
+If higher performance is demanded, or number of connections is limited (in a large cluster), consider using single connection and attach same VIP with different tags to create different connections. Comparing to pooled connections, number of connections and overhead of syscalls are often lower, but if tags are not enough, RS hotspots may still present.
 
 ### Naming Service Filter
 
@@ -251,7 +257,7 @@ Or even:
 ```c++
 XXX_Stub(&channel).some_method(controller, request, response, done);
 ```
-A exception is http client, which is not related to protobuf much. Call CallMethod directly to make a http call, setting all parameters to NULL except for `Controller` and `done`, check [Access HTTP](http_client.md) for details.
+A exception is http/h2 client, which is not related to protobuf much. Call CallMethod directly to make a http call, setting all parameters to NULL except for `Controller` and `done`, check [Access http/h2](http_client.md) for details.
 
 ## Synchronous call
 
@@ -510,7 +516,7 @@ Controller.retried_count() returns number of retries.
 
 Controller.has_backup_request() tells if backup_request was sent.
 
-**servers tried before are not retried by best efforts**
+**Servers tried before are not retried by best efforts**
 
 Conditions for retrying (AND relations):
 - Broken connection.
@@ -538,7 +544,7 @@ Controller.set_max_retry(0) or ChannelOptions.max_retry = 0 disables retries.
 
 If the RPC fails due to request(EREQUEST), no retry will be done because server is very likely to reject the request again, retrying makes no sense here.
 
-Users can inherit [brpc::RetryPolicy](https://github.com/brpc/brpc/blob/master/src/brpc/retry_policy.h) to customize conditions of retrying. For example brpc does not retry for HTTP related errors by default. If you want to retry for HTTP_STATUS_FORBIDDEN(403) in your app, you can do as follows:
+Users can inherit [brpc::RetryPolicy](https://github.com/brpc/brpc/blob/master/src/brpc/retry_policy.h) to customize conditions of retrying. For example brpc does not retry for http/h2 related errors by default. If you want to retry for HTTP_STATUS_FORBIDDEN(403) in your app, you can do as follows:
 
 ```c++
 #include <brpc/retry_policy.h>
@@ -546,7 +552,7 @@ Users can inherit [brpc::RetryPolicy](https://github.com/brpc/brpc/blob/master/s
 class MyRetryPolicy : public brpc::RetryPolicy {
 public:
     bool DoRetry(const brpc::Controller* cntl) const {
-        if (cntl->ErrorCode() == brpc::EHTTP && // HTTP error
+        if (cntl->ErrorCode() == brpc::EHTTP && // http/h2 error
             cntl->http_response().status_code() == brpc::HTTP_STATUS_FORBIDDEN) {
             return true;
         }
@@ -580,16 +586,23 @@ The default protocol used by Channel is baidu_std, which is changeable by settin
  Supported protocols:
 
 - PROTOCOL_BAIDU_STD or "baidu_std", which is [the standard binary protocol inside Baidu](baidu_std.md), using single connection by default.
+- PROTOCOL_HTTP or "http", which is http/1.0 or http/1.1, using pooled connection by default (Keep-Alive).
+  - Methods for accessing ordinary http services are listed in [Access http/h2](http_client.md).
+  - Methods for accessing pb services by using http:json or http:proto are listed in [http/h2 derivatives](http_derivatives.md)
+- PROTOCOL_H2 or ”h2", which is http/2.0, using single connection by default.
+  - Methods for accessing ordinary h2 services are listed in [Access http/h2](http_client.md).
+  - Methods for accessing pb services by using h2:json or h2:proto are listed in [http/h2 derivatives](http_derivatives.md)
+- "h2:grpc", which is the protocol of [gRPC](https://grpc.io) and based on h2, using single connection by default, check out [h2:grpc](http_derivatives.md#h2grpc) for details.
+- PROTOCOL_THRIFT or "thrift", which is the protocol of [apache thrift](https://thrift.apache.org), using pooled connection by default, check out [Access thrift](thrift.md) for details.
+- PROTOCOL_MEMCACHE or "memcache", which is binary protocol of memcached, using **single connection** by default. Check out [Access memcached](memcache_client.md) for details.
+- PROTOCOL_REDIS or "redis", which is protocol of redis 1.2+ (the one supported by hiredis), using **single connection** by default. Check out [Access Redis](redis_client.md) for details.
 - PROTOCOL_HULU_PBRPC or "hulu_pbrpc", which is protocol of hulu-pbrpc, using single connection by default.
 - PROTOCOL_NOVA_PBRPC or "nova_pbrpc",  which is protocol of Baidu ads union, using pooled connection by default.
-- PROTOCOL_HTTP or "http", which is http 1.0 or 1.1, using pooled connection by default (Keep-Alive). Check out [Access HTTP service](http_client.md) for details.
 - PROTOCOL_SOFA_PBRPC or "sofa_pbrpc", which is protocol of sofa-pbrpc, using single connection by default.
 - PROTOCOL_PUBLIC_PBRPC or "public_pbrpc", which is protocol of public_pbrpc, using pooled connection by default.
 - PROTOCOL_UBRPC_COMPACK or "ubrpc_compack", which is protocol of public/ubrpc, packing with compack, using pooled connection by default. check out [ubrpc (by protobuf)](ub_client.md) for details. A related protocol is PROTOCOL_UBRPC_MCPACK2 or ubrpc_mcpack2, packing with mcpack2.
 - PROTOCOL_NSHEAD_CLIENT or "nshead_client", which is required by UBXXXRequest in baidu-rpc-ub, using pooled connection by default. Check out [Access UB](ub_client.md) for details.
 - PROTOCOL_NSHEAD or "nshead", which is required by sending NsheadMessage, using pooled connection by default. Check out [nshead+blob](ub_client.md#nshead-blob) for details.
-- PROTOCOL_MEMCACHE or "memcache", which is binary protocol of memcached, using **single connection** by default. Check out [access memcached](memcache_client.md) for details.
-- PROTOCOL_REDIS or "redis", which is protocol of redis 1.2+ (the one supported by hiredis), using **single connection** by default. Check out [Access Redis](redis_client.md) for details.
 - PROTOCOL_NSHEAD_MCPACK or "nshead_mcpack", which is as the name implies, nshead + mcpack (parsed by protobuf via mcpack2pb), using pooled connection by default.
 - PROTOCOL_ESP or "esp", for accessing services with esp protocol, using pooled connection by default.
 
@@ -598,7 +611,7 @@ The default protocol used by Channel is baidu_std, which is changeable by settin
 brpc supports following connection types:
 
 - short connection: Established before each RPC, closed after completion. Since each RPC has to pay the overhead of establishing connection, this type is used for occasionally launched RPC, not frequently launched ones. No protocol use this type by default. Connections in http 1.0 are handled similarly as short connections.
-- pooled connection: Pick an unused connection from a pool before each RPC, return after completion. One connection carries at most one request at the same time. One client may have multiple connections to one server.  http and the protocols using nshead use this type by default.
+- pooled connection: Pick an unused connection from a pool before each RPC, return after completion. One connection carries at most one request at the same time. One client may have multiple connections to one server. http 1.1 and the protocols using nshead use this type by default.
 - single connection: all clients in one process has at most one connection to one server, one connection may carry multiple requests at the same time. The sequence of received responses does not need to be same as sending requests. This type is used by baidu_std, hulu_pbrpc, sofa_pbrpc by default.
 
 |                                          | short connection                         | pooled connection                       | single connection                        |
@@ -669,52 +682,32 @@ baidu_std and hulu_pbrpc supports attachments which are sent along with messages
 
 Attachment is not compressed by framework.
 
-In http, attachment corresponds to [message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html), namely the data to post to server is stored in request_attachment().
+In http/h2, attachment corresponds to [message body](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html), namely the data to post to server is stored in request_attachment().
 
 ## Turn on SSL
 
-Update openssl to the latest version before turning on SSL, since older versions of openssl may have severe security problems and support less encryption algorithms, which is against with the purpose of using SSL. Setup `ChannelOptions.ssl_options` to turn on SSL. Refer to [ssl_option.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_option.h) for more details.
+Update openssl to the latest version before turning on SSL, since older versions of openssl may have severe security problems and support less encryption algorithms, which is against with the purpose of using SSL. 
+Set ChannelOptions.mutable_ssl_options() to enable SSL. Refer to [ssl_options.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_options.h) for the detailed options. ChannelOptions.has_ssl_options() checks if ssl_options was set; ChannelOptions.ssl_options() returns const reference to the ssl_options.
 
 ```c++
-// SSL options at client side
-struct ChannelSSLOptions {
-    // Whether to enable SSL on the channel.
-    // Default: false
-    bool enable;
-    
-    // Cipher suites used for SSL handshake.
-    // The format of this string should follow that in `man 1 cipers'.
-    // Default: "DEFAULT"
-    std::string ciphers;
-    
-    // SSL protocols used for SSL handshake, separated by comma.
-    // Available protocols: SSLv3, TLSv1, TLSv1.1, TLSv1.2
-    // Default: TLSv1, TLSv1.1, TLSv1.2
-    std::string protocols;
-    
-    // When set, fill this into the SNI extension field during handshake,
-    // which can be used by the server to locate the right certificate. 
-    // Default: empty
-    std::string sni_name;
-    
-    // Options used to verify the server's certificate
-    // Default: see above
-    VerifyOptions verify;
-    
-    // ... Other options
-};
+// Enable client-side SSL and use default values.
+options.mutable_ssl_options();
+
+// Enable client-side SSL and customize values.
+options.mutable_ssl_options()->ciphers_name = "...";
+options.mutable_ssl_options()->sni_name = "...";
 ```
 
-- Currently only Channels which connect to a single server (by corresponding `Init`) support SSL request. Those connect to a cluster (using `NamingService`) **do NOT support SSL**.
+- Channels connecting to a single server or a cluster both support SSL (the initial implementation does not support cluster)
 - After turning on SSL, all requests through this Channel will be encrypted. Users should create another Channel for non-SSL requests if needed.
-- Some accessibility optimization for HTTPS: `Channel.Init` recognize https:// prefix and turn on SSL automatically; -http_verbose will print certificate information if SSL connected.
+- Accessibility improvements for HTTPS: Channel.Init recognizes https:// prefix and turns on SSL automatically; -http_verbose prints certificate information when SSL is on.
 
 ## Authentication
 
 Generally there are 2 ways of authentication at the client side:
 
 1. Request-based authentication: Each request carries authentication information. It's more flexible since the authentication information can contain fields based on this particular request. However, this leads to a performance loss due to the extra payload in each request.
-2. Connection-based authentication: Once a TCP connection has been established, the client sends an authentication packet. After it has been verfied by the server, subsequent requests on this connection no longer needs authentication. Compared with the former, this method can only some static information such as local IP in the authentication packet. However, it has better performance especially under single connection / connection pool scenario.
+2. Connection-based authentication: Once a TCP connection has been established, the client sends an authentication packet. After it has been verfied by the server, subsequent requests on this connection no longer needs authentication. Compared with the former, this method can only carry some static information such as local IP in the authentication packet. However, it has better performance especially under single connection / connection pool scenario.
 
 It's very simple to implement the first method by just adding authentication data format into the request proto definition. Then send it as normal RPC in each request. To achieve the second one, brpc provides an interface for users to implement:
 
@@ -747,7 +740,7 @@ set_request_compress_type() sets compress-type of the request, no compression by
 
 NOTE: Attachment is not compressed by brpc.
 
-Check out [compress request body](http_client#压缩request-body) to compress http body.
+Check out [compress request body](http_client#压缩request-body) to compress http/h2 body.
 
 Supported compressions:
 

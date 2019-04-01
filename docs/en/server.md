@@ -251,9 +251,12 @@ server.RunUntilAskedToQuit();
 
 Services can be added or removed after Join() returns and server can be Start() again.
 
-# Accessed by HTTP client
+# Accessed by http/h2
 
-Services using protobuf can be accessed via http+json generally. The json string stored in http body is convertible to/from corresponding protobuf message. [echo server](https://github.com/brpc/brpc/blob/master/example/echo_c%2B%2B/server.cpp) as an example, is accessible from [curl](https://curl.haxx.se/).
+Services using protobuf can be accessed via http/h2+json generally. The json string stored in body is convertible to/from corresponding protobuf message.
+
+[echo server](https://github.com/brpc/brpc/blob/master/example/echo_c%2B%2B/server.cpp) as an example, is accessible from [curl](https://curl.haxx.se/).
+
 
 ```shell
 # -H 'Content-Type: application/json' is optional
@@ -261,7 +264,7 @@ $ curl -d '{"message":"hello"}' http://brpc.baidu.com:8765/EchoService/Echo
 {"message":"hello"}
 ```
 
-Note: Set `Content-Type: application/proto`  to access services with http + protobuf-serialized-data, which performs better at serialization.
+Note: Set `Content-Type: application/proto` to access services with http/h2 + protobuf-serialized-data, which performs better at serialization.
 
 ## json<=>pb
 
@@ -271,7 +274,7 @@ When -pb_enum_as_number is turned on, enums in pb are converted to values instea
 
 ## Adapt old clients
 
-Early-version brpc allows pb service being accessed via http without setting the pb request, even if there're required fields in. This kind of service often parses http requests and sets http responses by itself, and does not touch the pb request. However this behavior is still very dangerous: a service with an undefined request. 
+Early-version brpc allows pb service being accessed via http without filling the pb request, even if there're required fields. This kind of service often parses http requests and sets http responses by itself, and does not touch the pb request. However this behavior is still very dangerous: a service with an undefined request. 
 
 This kind of services may meet issues after upgrading to latest brpc, which already deprecated the behavior for a long time. To help these services to upgrade, brpc allows bypassing the conversion from http body to pb request (so that users can parse http requests differently), the setting is as follows:
 
@@ -279,13 +282,13 @@ This kind of services may meet issues after upgrading to latest brpc, which alre
 brpc::ServiceOptions svc_opt;
 svc_opt.ownership = ...;
 svc_opt.restful_mappings = ...;
-svc_opt.allow_http_body_to_pb = false; // turn off conversion from http body to pb request
+svc_opt.allow_http_body_to_pb = false; // turn off conversion from http/h2 body to pb request
 server.AddService(service, svc_opt);
 ```
 
-After the setting, service does not convert http body to pb request after receiving http request, which also makes the pb request undefined. Users have to parse the http body by themselves when `cntl->request_protocol() == brpc::PROTOCOL_HTTP` is true which indicates the request is from http.
+After the setting, service does not convert the body to pb request after receiving http/h2 request, which also makes the pb request undefined. Users have to parse the body by themselves when `cntl->request_protocol() == brpc::PROTOCOL_HTTP || cntl->request_protocol() == brpc::PROTOCOL_H2` is true which indicates the request is from http/h2.
 
-As a correspondence, if cntl->response_attachment() is not empty and pb response is set as well, brpc does not report the ambiguous anymore, instead cntl->response_attachment() will be used as body of the http response. This behavior is unaffected by setting allow_http_body_to_pb or not. If the relaxation results in more users' errors, we may restrict it in future.
+As a correspondence, if cntl->response_attachment() is not empty and pb response is set as well, brpc does not report the ambiguous anymore, instead cntl->response_attachment() will be used as body of the http/h2 response. This behavior is unaffected by setting allow_http_body_to_pb or not. If the relaxation results in more users' errors, we may restrict it in future.
 
 # Protocols
 
@@ -295,7 +298,9 @@ Server detects supported protocols automatically, without assignment from users.
 
 - [Streaming RPC](streaming_rpc.md), shown as "streaming_rpc", enabled by default.
 
-- http 1.0/1.1, shown as "http", enabled by default.
+- http/1.0 and http/1.1, shown as "http", enabled by default.
+
+- http/2 and gRPC, shown as "h2c"(unencrypted) or "h2"(encrypted), enabled by default.
 
 - Protocol of RTMP, shown as "rtmp", enabled by default.
 
@@ -456,7 +461,7 @@ In http, attachment corresponds to [message body](http://www.w3.org/Protocols/rf
 
 ## Turn on SSL
 
-Update openssl to the latest version before turning on SSL, since older versions of openssl may have severe security problems and support less encryption algorithms, which is against with the purpose of using SSL. Setup `ServerOptions.ssl_options` to turn on SSL. Refer to [ssl_option.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_option.h) for more details.
+Update openssl to the latest version before turning on SSL, since older versions of openssl may have severe security problems and support less encryption algorithms, which is against with the purpose of using SSL. Setup `ServerOptions.ssl_options` to turn on SSL. Refer to [ssl_options.h](https://github.com/brpc/brpc/blob/master/src/brpc/ssl_options.h) for more details.
 
 ```c++
 // Certificate structure
@@ -624,10 +629,10 @@ Read [this](../cn/auto_concurrency_limiter.md) to know more about the algorithm.
 
 ## pthread mode
 
-User code(client-side done, server-side CallMethod) runs in bthreads with 1MB stacksize by default. But some of them cannot run in bthreads, namely:
+User code(client-side done, server-side CallMethod) runs in bthreads with 1MB stacksize by default. But some of them cannot run in bthreads:
 
-- JNI checks stack layout and cannot be run in bthreads.
-- Extensively use pthread-local to pass session-level data to all sorts of functions. Store data into pthread-local before a RPC and expect the data read after RPC to equal to the one stored. These usages are problematic in bthreads which may switch to another pthread after resuming. As a contrast, although tcmalloc uses pthread/LWP-local as well, calls to malloc do not depend on each other, which is safe.
+- JNI code checks stack layout and cannot be run in bthreads.
+- The user code extensively use pthread-local to pass session-level data across functions. If there's a synchronous RPC call or function calls that may block bthread, the resumed bthread may land on a different pthread which does not have the pthread-local data that users expect to have. As a contrast, although tcmalloc uses pthread(or LWP)-local as well, the code inside has nothing to do with bthread, which is safe.
 
 brpc offers pthread mode to solve the issues. When **-usercode_in_pthread** is turned on, user code will be run in pthreads. Functions that would block bthreads block pthreads.
 
@@ -635,10 +640,10 @@ Performance issues when pthread mode is on:
 
 - Since synchronous RPCs block worker pthreads, server often needs more workers (ServerOptions.num_threads), and scheduling efficiencies will be slightly lower.
 - User code still runs in special bthreads actually, which use stacks of pthread workers. These special bthreads are scheduled same with normal bthreads and performance differences are negligible.
-- bthread supports an unique feature: yield pthread worker to a newly created bthread to reduce a context switch. brpc client uses this feature to reduce number of context switches in one RPC from 3 to 2. In a performance-demanding system, reducing context-switches significantly improves performance and latency long-tails. However pthread-mode is not capable of doing this and slower in high-QPS systems.
-- Number of threads in pthread-mode is a hard limit. Once all threads are occupied, requests will be queued rapidly and many of them will be timed-out finally. A common example: When many requests to downstream servers are timedout, the upstream services may also be severely affected by a lot of blocking threads waiting for responses(within timeout). Consider setting ServerOptions.max_concurrency to protect the server when pthread-mode is on. As a contrast, number of bthreads in bthread mode is a soft limit and reacts more smoothly to such kind of issues.
+- bthread supports an unique feature: yield pthread worker to a newly created bthread to reduce a context switch. brpc client uses this feature to reduce number of context switches in one RPC from 3 to 2. In a performance-demanding system, reducing context-switches improves performance. However pthread-mode is not capable of doing this.
+- Number of threads in pthread-mode is a hard limit. Once all threads are occupied, requests will be queued rapidly and many of them will be timed-out finally. An example: When many requests to downstream servers are timedout, the upstream services may also be severely affected by a lot of blocking threads waiting for responses(within timeout). Consider setting ServerOptions.max_concurrency to protect the server when pthread-mode is on. As a contrast, number of bthreads in bthread mode is a soft limit and reacts more smoothly to such kind of issues.
 
-pthread-mode lets legacy code to try brpc more easily, but we still recommend refactoring the code with bthread-local or even not using TLS gradually, to turn off the option in future.
+pthread-mode lets legacy code to try brpc more easily, but we still recommend refactoring the code with bthread-local or even remove TLS gradually, to turn off the option in future.
 
 ## Security mode
 
