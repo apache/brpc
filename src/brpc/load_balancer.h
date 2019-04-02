@@ -24,9 +24,7 @@
 #include "brpc/shared_object.h"                   // SharedObject
 #include "brpc/server_id.h"                       // ServerId
 #include "brpc/extension.h"                       // Extension<T>
-#include "butil/strings/string_piece.h"
-#include "butil/strings/string_split.h"
-
+#include "brpc/revive_policy.h"
 
 namespace brpc {
 
@@ -42,6 +40,7 @@ public:
         bool has_request_code;
         uint64_t request_code;
         const ExcludedServers* excluded;
+        RevivePolicy* revive_policy;
     };
 
     struct SelectOut {

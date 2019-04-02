@@ -110,7 +110,10 @@ int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     if (n == 0) {
         return ENODATA;
     }
-    
+    if (in.revive_policy &&
+            (in.revive_policy)->RejectDuringReviving(s->server_list)) {
+        return EREJECT;
+    }
     uint32_t stride = 0;
     size_t offset = butil::fast_rand_less_than(n);
     for (size_t i = 0; i < n; ++i) {
@@ -128,6 +131,9 @@ int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         // If `Address' failed, use `offset+stride' to retry so that
         // this failed server won't be visited again inside for
         offset = (offset + stride) % n;
+    }
+    if (in.revive_policy) {
+        in.revive_policy->StartRevive();
     }
     // After we traversed the whole server list, there is still no
     // available server

@@ -34,6 +34,7 @@
 #include "brpc/details/profiler_linker.h"
 #include "brpc/retry_policy.h"
 #include "brpc/naming_service_filter.h"
+#include "brpc/revive_policy.h"
 
 namespace brpc {
 
@@ -127,6 +128,10 @@ struct ChannelOptions {
     // Case-sensitive, leading and trailing spaces are ignored.
     // Default: ""
     std::string connection_group;
+
+    // TODO(zhujiashun)
+    // Default: NULL
+    RevivePolicy* revive_policy;
 
 private:
     // SSLOptions is large and not often used, allocate it on heap to

@@ -110,6 +110,10 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     if (n == 0) {
         return ENODATA;
     }
+    if (in.revive_policy &&
+            (in.revive_policy)->RejectDuringReviving(s->server_list)) {
+        return EREJECT;
+    }
     TLS tls = s.tls();
     if (tls.stride == 0) {
         tls.stride = GenRandomStride();
@@ -126,6 +130,9 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
             s.tls() = tls;
             return 0;
         }
+    }
+    if (in.revive_policy) {
+        in.revive_policy->StartRevive();
     }
     s.tls() = tls;
     return EHOSTDOWN;

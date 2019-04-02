@@ -42,12 +42,14 @@ public:
 struct GetNamingServiceThreadOptions {
     GetNamingServiceThreadOptions()
         : succeed_without_server(false)
-        , log_succeed_without_server(true) {}
+        , log_succeed_without_server(true)
+        , minimum_working_instances(-1) {}
     
     bool succeed_without_server;
     bool log_succeed_without_server;
     ChannelSignature channel_signature;
     std::shared_ptr<SocketSSLContext> ssl_ctx;
+    int64_t minimum_working_instances;
 };
 
 // A dedicated thread to map a name to ServerIds
