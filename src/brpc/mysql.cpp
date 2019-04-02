@@ -445,10 +445,11 @@ void MysqlResponse::Swap(MysqlResponse* other) {
 
 // ===================================================================
 
-ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf, const bool is_auth) {
-    bool more_results = false;
-    for (;;) {
-        size_t oldsize = buf.size();
+ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf, bool is_auth) {
+    bool more_results = true;
+    size_t oldsize = 0;
+    while (more_results) {
+        oldsize = buf.size();
         if (reply_size() == 0) {
             ParseError err = _first_reply.ConsumePartialIOBuf(buf, &_arena, is_auth, &more_results);
             if (err != PARSE_OK) {
@@ -479,16 +480,11 @@ ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf, const bool is_a
         _cached_size_ += oldsize - newsize;
         oldsize = newsize;
         ++_nreply;
-
-        if (more_results) {
-            continue;
-        }
-
-        if (!more_results && oldsize == 0) {
-            return PARSE_OK;
-        } else {
-            return PARSE_ERROR_ABSOLUTELY_WRONG;
-        }
+    }
+    if (oldsize == 0) {
+        return PARSE_OK;
+    } else {
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
 }
 

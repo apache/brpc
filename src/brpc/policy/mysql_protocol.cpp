@@ -42,7 +42,6 @@ namespace policy {
 
 DEFINE_bool(mysql_verbose, false, "[DEBUG] Print EVERY mysql request/response");
 
-
 MysqlAuthenticator* global_mysql_authenticator();
 
 struct InputResponse : public InputMessageBase {
@@ -55,6 +54,55 @@ struct InputResponse : public InputMessageBase {
     }
 };
 
+ParseError HandleAuthentication(const InputResponse* msg, const Socket* socket, PipelinedInfo* pi) {
+    if (FLAGS_mysql_verbose) {
+        LOG(INFO) << "[MYSQL PARSE] " << msg->response;
+    }
+
+    const bthread_id_t cid = pi->id_wait;
+    Controller* cntl = NULL;
+    if (bthread_id_lock(cid, (void**)&cntl) != 0) {
+        LOG(ERROR) << "[MYSQL PARSE] fail to lock controller";
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+
+    ParseError parseCode = PARSE_OK;
+    const AuthContext* ctx = cntl->auth_context();
+    if (ctx == NULL) {
+        LOG(ERROR) << "[MYSQL PARSE] auth context is null";
+        parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
+    } else {
+        const MysqlReply& reply = msg->response.reply(0);
+        if (reply.is_auth()) {
+            std::string auth_str;
+            if (MysqlPackAuthenticator(reply.auth(), &ctx->user(), &auth_str) != 0) {
+                LOG(ERROR) << "[MYSQL PARSE] wrong pack authentication data";
+                parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
+            } else {
+                butil::IOBuf auth_resp;
+                auth_resp.append(auth_str);
+                auth_resp.cut_into_file_descriptor(socket->fd());
+            }
+        } else if (reply.is_ok()) {
+            butil::IOBuf raw_req;
+            raw_req.append(ctx->starter());
+            raw_req.cut_into_file_descriptor(socket->fd());
+            pi->with_auth = false;
+        } else if (reply.is_error()) {
+            LOG(ERROR) << reply;
+            parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
+        } else {
+            LOG(ERROR) << "[MYSQL PARSE] wrong authentication step";
+            parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
+        }
+    }
+
+    if (bthread_id_unlock(cid) != 0) {
+        LOG(ERROR) << "[MYSQL PARSE] fail to unlock controller";
+        parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+    return parseCode;
+}
 // "Message" = "Response" as we only implement the client for mysql.
 ParseResult ParseMysqlMessage(butil::IOBuf* source,
                               Socket* socket,
@@ -83,51 +131,10 @@ ParseResult ParseMysqlMessage(butil::IOBuf* source,
             return MakeParseError(err);
         }
         if (pi.with_auth) {
-            if (FLAGS_mysql_verbose) {
-                LOG(INFO) << "[MYSQL PARSE] " << msg->response;
+            ParseError err = HandleAuthentication(msg, socket, &pi);
+            if (err != PARSE_OK) {
+                return MakeParseError(err);
             }
-            const bthread_id_t cid = pi.id_wait;
-            Controller* cntl = NULL;
-            if (bthread_id_lock(cid, (void**)&cntl) != 0) {
-                LOG(ERROR) << "[MYSQL PARSE] fail to lock controller";
-                return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
-            }
-            const AuthContext* ctx = cntl->auth_context();
-            if (ctx == NULL) {
-                LOG(ERROR) << "[MYSQL PARSE] auth context is null";
-                return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
-            }
-            const MysqlReply& reply = msg->response.reply(0);
-            if (reply.is_auth()) {
-                std::string auth_str;
-                if (MysqlPackAuthenticator(reply.auth(), &ctx->user(), &auth_str) != 0) {
-                    bthread_id_unlock(cid);
-                    LOG(ERROR) << "[MYSQL PARSE] wrong pack authentication data";
-                    return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
-                }
-                butil::IOBuf auth_resp;
-                auth_resp.append(auth_str);
-                auth_resp.cut_into_file_descriptor(socket->fd());
-            } else if (reply.is_ok()) {
-                butil::IOBuf raw_req;
-                raw_req.append(ctx->starter());
-                raw_req.cut_into_file_descriptor(socket->fd());
-                pi.with_auth = false;
-            } else if (reply.is_error()) {
-                bthread_id_unlock(cid);
-                LOG(ERROR) << reply;
-                return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
-            } else {
-                bthread_id_unlock(cid);
-                LOG(ERROR) << "[MYSQL PARSE] wrong authentication step";
-                return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
-            }
-
-            if (bthread_id_unlock(cid) != 0) {
-                LOG(ERROR) << "[MYSQL PARSE] fail to unlock controller";
-                return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
-            }
-
             DestroyingPtr<InputResponse> auth_msg =
                 static_cast<InputResponse*>(socket->release_parsing_context());
             socket->GivebackPipelinedInfo(pi);

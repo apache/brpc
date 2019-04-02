@@ -508,9 +508,6 @@ public:
         float float32() const;
         double float64() const;
         butil::StringPiece string() const;
-
-        MysqlFieldType type() const;
-
         bool is_stiny() const;
         bool is_tiny() const;
         bool is_ssmall() const;
@@ -545,6 +542,7 @@ public:
         } _data = {.str = NULL};
         MysqlFieldType _type;
         bool _is_unsigned;
+        bool _is_nil;
     };
     // Mysql Row
     class Row : private CheckParsed {
@@ -863,131 +861,145 @@ inline const MysqlReply::Field& MysqlReply::Row::field(const uint64_t index) con
     return _fields[index];
 }
 // mysql reply field
-inline MysqlReply::Field::Field() : _type(MYSQL_FIELD_TYPE_NULL), _is_unsigned(false) {}
+inline MysqlReply::Field::Field()
+    : _type(MYSQL_FIELD_TYPE_NULL), _is_unsigned(false), _is_nil(false) {}
 inline int8_t MysqlReply::Field::stiny() const {
     if (is_stiny()) {
         return _data.stiny;
     }
-    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << ", not an stiny";
+    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << " and "
+                 << (_is_nil ? "NULL" : "NOT NULL") << ", not an stiny";
     return 0;
 }
 inline uint8_t MysqlReply::Field::tiny() const {
     if (is_tiny()) {
         return _data.tiny;
     }
-    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << ", not an tiny";
+    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << " and "
+                 << (_is_nil ? "NULL" : "NOT NULL") << ", not an tiny";
     return 0;
 }
 inline int16_t MysqlReply::Field::ssmall() const {
     if (is_ssmall()) {
         return _data.ssmall;
     }
-    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << ", not an ssmall";
+    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << " and "
+                 << (_is_nil ? "NULL" : "NOT NULL") << ", not an ssmall";
     return 0;
 }
 inline uint16_t MysqlReply::Field::small() const {
     if (is_small()) {
         return _data.small;
     }
-    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << ", not an small";
+    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << " and "
+                 << (_is_nil ? "NULL" : "NOT NULL") << ", not an small";
     return 0;
 }
 inline int32_t MysqlReply::Field::sinteger() const {
     if (is_sinteger()) {
         return _data.sinteger;
     }
-    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << ", not an sinteger";
+    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << " and "
+                 << (_is_nil ? "NULL" : "NOT NULL") << ", not an sinteger";
     return 0;
 }
 inline uint32_t MysqlReply::Field::integer() const {
     if (is_integer()) {
         return _data.integer;
     }
-    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << ", not an integer";
+    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << " and "
+                 << (_is_nil ? "NULL" : "NOT NULL") << ", not an integer";
     return 0;
 }
 inline int64_t MysqlReply::Field::sbigint() const {
     if (is_sbigint()) {
         return _data.sbigint;
     }
-    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << ", not an sbigint";
+    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << " and "
+                 << (_is_nil ? "NULL" : "NOT NULL") << ", not an sbigint";
     return 0;
 }
 inline uint64_t MysqlReply::Field::bigint() const {
     if (is_bigint()) {
         return _data.bigint;
     }
-    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << ", not an bigint";
+    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << " and "
+                 << (_is_nil ? "NULL" : "NOT NULL") << ", not an bigint";
     return 0;
 }
 inline float MysqlReply::Field::float32() const {
     if (is_float32()) {
         return _data.float32;
     }
-    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << ", not an float32";
+    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << " and "
+                 << (_is_nil ? "NULL" : "NOT NULL") << ", not an float32";
     return 0;
 }
 inline double MysqlReply::Field::float64() const {
     if (is_float64()) {
         return _data.float64;
     }
-    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << ", not an float64";
+    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << " and "
+                 << (_is_nil ? "NULL" : "NOT NULL") << ", not an float64";
     return 0;
 }
 inline butil::StringPiece MysqlReply::Field::string() const {
     if (is_string()) {
         return _data.str;
     }
-    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << ", not an string";
+    CHECK(false) << "The reply is " << MysqlFieldTypeToString(_type) << " and "
+                 << (_is_nil ? "NULL" : "NOT NULL") << ", not an string";
     return butil::StringPiece();
 }
-inline MysqlFieldType MysqlReply::Field::type() const {
-    return _type;
-}
 inline bool MysqlReply::Field::is_stiny() const {
-    return _type == MYSQL_FIELD_TYPE_TINY && !_is_unsigned;
+    return _type == MYSQL_FIELD_TYPE_TINY && !_is_unsigned && !_is_nil;
 }
 inline bool MysqlReply::Field::is_tiny() const {
-    return _type == MYSQL_FIELD_TYPE_TINY && _is_unsigned;
+    return _type == MYSQL_FIELD_TYPE_TINY && _is_unsigned && !_is_nil;
 }
 inline bool MysqlReply::Field::is_ssmall() const {
-    return (_type == MYSQL_FIELD_TYPE_SHORT || _type == MYSQL_FIELD_TYPE_YEAR) && !_is_unsigned;
+    return (_type == MYSQL_FIELD_TYPE_SHORT || _type == MYSQL_FIELD_TYPE_YEAR) && !_is_unsigned &&
+        !_is_nil;
 }
 inline bool MysqlReply::Field::is_small() const {
-    return (_type == MYSQL_FIELD_TYPE_SHORT || _type == MYSQL_FIELD_TYPE_YEAR) && _is_unsigned;
+    return (_type == MYSQL_FIELD_TYPE_SHORT || _type == MYSQL_FIELD_TYPE_YEAR) && _is_unsigned &&
+        !_is_nil;
 }
 inline bool MysqlReply::Field::is_sinteger() const {
-    return (_type == MYSQL_FIELD_TYPE_INT24 || _type == MYSQL_FIELD_TYPE_LONG) && !_is_unsigned;
+    return (_type == MYSQL_FIELD_TYPE_INT24 || _type == MYSQL_FIELD_TYPE_LONG) && !_is_unsigned &&
+        !_is_nil;
 }
 inline bool MysqlReply::Field::is_integer() const {
-    return (_type == MYSQL_FIELD_TYPE_INT24 || _type == MYSQL_FIELD_TYPE_LONG) && _is_unsigned;
+    return (_type == MYSQL_FIELD_TYPE_INT24 || _type == MYSQL_FIELD_TYPE_LONG) && _is_unsigned &&
+        !_is_nil;
 }
 inline bool MysqlReply::Field::is_sbigint() const {
-    return _type == MYSQL_FIELD_TYPE_LONGLONG && !_is_unsigned;
+    return _type == MYSQL_FIELD_TYPE_LONGLONG && !_is_unsigned && !_is_nil;
 }
 inline bool MysqlReply::Field::is_bigint() const {
-    return _type == MYSQL_FIELD_TYPE_LONGLONG && _is_unsigned;
+    return _type == MYSQL_FIELD_TYPE_LONGLONG && _is_unsigned && !_is_nil;
 }
 inline bool MysqlReply::Field::is_float32() const {
-    return _type == MYSQL_FIELD_TYPE_FLOAT;
+    return _type == MYSQL_FIELD_TYPE_FLOAT && !_is_nil;
 }
 inline bool MysqlReply::Field::is_float64() const {
-    return _type == MYSQL_FIELD_TYPE_DOUBLE;
+    return _type == MYSQL_FIELD_TYPE_DOUBLE && !_is_nil;
 }
 inline bool MysqlReply::Field::is_string() const {
-    return _type == MYSQL_FIELD_TYPE_DECIMAL || _type == MYSQL_FIELD_TYPE_NEWDECIMAL ||
-        _type == MYSQL_FIELD_TYPE_VARCHAR || _type == MYSQL_FIELD_TYPE_BIT ||
-        _type == MYSQL_FIELD_TYPE_ENUM || _type == MYSQL_FIELD_TYPE_SET ||
-        _type == MYSQL_FIELD_TYPE_TINY_BLOB || _type == MYSQL_FIELD_TYPE_MEDIUM_BLOB ||
-        _type == MYSQL_FIELD_TYPE_LONG_BLOB || _type == MYSQL_FIELD_TYPE_BLOB ||
-        _type == MYSQL_FIELD_TYPE_VAR_STRING || _type == MYSQL_FIELD_TYPE_STRING ||
-        _type == MYSQL_FIELD_TYPE_GEOMETRY || _type == MYSQL_FIELD_TYPE_JSON ||
-        _type == MYSQL_FIELD_TYPE_TIME || _type == MYSQL_FIELD_TYPE_DATE ||
-        _type == MYSQL_FIELD_TYPE_NEWDATE || _type == MYSQL_FIELD_TYPE_TIMESTAMP ||
-        _type == MYSQL_FIELD_TYPE_DATETIME;
+    return (_type == MYSQL_FIELD_TYPE_DECIMAL || _type == MYSQL_FIELD_TYPE_NEWDECIMAL ||
+            _type == MYSQL_FIELD_TYPE_VARCHAR || _type == MYSQL_FIELD_TYPE_BIT ||
+            _type == MYSQL_FIELD_TYPE_ENUM || _type == MYSQL_FIELD_TYPE_SET ||
+            _type == MYSQL_FIELD_TYPE_TINY_BLOB || _type == MYSQL_FIELD_TYPE_MEDIUM_BLOB ||
+            _type == MYSQL_FIELD_TYPE_LONG_BLOB || _type == MYSQL_FIELD_TYPE_BLOB ||
+            _type == MYSQL_FIELD_TYPE_VAR_STRING || _type == MYSQL_FIELD_TYPE_STRING ||
+            _type == MYSQL_FIELD_TYPE_GEOMETRY || _type == MYSQL_FIELD_TYPE_JSON ||
+            _type == MYSQL_FIELD_TYPE_TIME || _type == MYSQL_FIELD_TYPE_DATE ||
+            _type == MYSQL_FIELD_TYPE_NEWDATE || _type == MYSQL_FIELD_TYPE_TIMESTAMP ||
+            _type == MYSQL_FIELD_TYPE_DATETIME) &&
+        !_is_nil;
 }
 inline bool MysqlReply::Field::is_nil() const {
-    return _type == MYSQL_FIELD_TYPE_NULL;
+    return _is_nil;
 }
 // little endian order to host order
 inline uint16_t mysql_uint2korr(const uint8_t* A) {

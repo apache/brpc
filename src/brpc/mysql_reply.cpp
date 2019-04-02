@@ -257,7 +257,11 @@ void MysqlReply::Print(std::ostream& os) const {
         for (const Row* row = r._first->_next; row != r._last->_next; row = row->_next) {
             os << "\nrow(" << n++ << "):";
             for (uint64_t j = 0; j < r._header._column_number; ++j) {
-                switch (row->field(j).type()) {
+                if (row->field(j).is_nil()) {
+                    os << "NULL\t";
+                    continue;
+                }
+                switch (row->field(j)._type) {
                     case MYSQL_FIELD_TYPE_TINY:
                         if (r._columns[j]._flag & MYSQL_UNSIGNED_FLAG) {
                             os << row->field(j).tiny();
@@ -585,15 +589,15 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
     if (is_parsed()) {
         return PARSE_OK;
     }
+    // field type
+    _type = column->_type;
     uint64_t len = parse_encode_length(buf);
     // is it null?
     if (len == 0 && !(column->_flag & MYSQL_NOT_NULL_FLAG)) {
-        _type = MYSQL_FIELD_TYPE_NULL;
+        _is_nil = true;
         set_parsed();
         return PARSE_OK;
     }
-    // field type
-    _type = column->_type;
     // is unsigned flag set
     _is_unsigned = column->_flag & MYSQL_UNSIGNED_FLAG;
     // field is not null

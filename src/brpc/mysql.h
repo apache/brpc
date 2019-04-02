@@ -128,7 +128,7 @@ public:
     // Returns PARSE_ERROR_NOT_ENOUGH_DATA if data in `buf' is not enough to parse.
     // Returns PARSE_ERROR_ABSOLUTELY_WRONG if the parsing
     // failed.
-    ParseError ConsumePartialIOBuf(butil::IOBuf& buf, const bool is_auth = false);
+    ParseError ConsumePartialIOBuf(butil::IOBuf& buf, bool is_auth = false);
 
     // Number of replies in this response.
     // (May have more than one reply due to pipeline)
