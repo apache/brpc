@@ -800,7 +800,6 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
     } else {
         lb = new brpc::policy::ConsistentHashingLoadBalancer(brpc::policy::MurmurHash32);
     }
-    LOG(INFO) << "r=" << rand;
     brpc::SocketUniquePtr ptr[2];
     for (size_t i = 0; i < ARRAY_SIZE(servers); ++i) {
         butil::EndPoint dummy;
@@ -867,7 +866,7 @@ public:
         //        static_cast<brpc::Controller*>(cntl_base);
         brpc::ClosureGuard done_guard(done);
         int p = _num_request.fetch_add(1, butil::memory_order_relaxed);
-        // max qps is 50
+        // concurrency in normal case is 50
         if (p < 70) {
             bthread_usleep(100 * 1000);
             _num_request.fetch_sub(1, butil::memory_order_relaxed);
