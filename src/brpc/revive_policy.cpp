@@ -15,6 +15,7 @@
 // Authors: Jiashun Zhu(zhujiashun@bilibili.com)
 
 #include <vector>
+#include <gflags/gflags.h>
 #include "brpc/revive_policy.h"
 #include "butil/scoped_lock.h"
 #include "butil/synchronization/lock.h"
@@ -25,14 +26,18 @@
 
 namespace brpc {
 
+DEFINE_int64(detect_available_server_interval_ms, 10, "The interval "
+        "to detect available server count in DefaultRevivePolicy");
+
 DefaultRevivePolicy::DefaultRevivePolicy(
         int64_t minimum_working_instances, int64_t hold_time_ms)
     : _reviving(false)
     , _minimum_working_instances(minimum_working_instances)
     , _last_usable(0)
     , _last_usable_change_time_ms(0)
-    , _hold_time_ms(hold_time_ms) { }
-
+    , _hold_time_ms(hold_time_ms)
+    , _usable_cache(0)
+    , _usable_cache_time_ms(0) { }
 
 void DefaultRevivePolicy::StartReviving() {
     std::unique_lock<butil::Mutex> mu(_mutex);
@@ -41,12 +46,11 @@ void DefaultRevivePolicy::StartReviving() {
 
 bool DefaultRevivePolicy::StopRevivingIfNecessary() {
     int64_t now_ms = butil::gettimeofday_ms();
+    if (!_reviving) {
+        return false;
+    }
     {
         std::unique_lock<butil::Mutex> mu(_mutex);
-        if (!_reviving) {
-            mu.unlock();
-            return false;
-        }
         if (_last_usable_change_time_ms != 0 && _last_usable != 0 &&
                 (now_ms - _last_usable_change_time_ms > _hold_time_ms)) {
             _reviving = false;
@@ -58,25 +62,33 @@ bool DefaultRevivePolicy::StopRevivingIfNecessary() {
     return true;
 }
 
-bool DefaultRevivePolicy::DoReject(const std::vector<ServerId>& server_list) {
-    {
-        std::unique_lock<butil::Mutex> mu(_mutex);
-        if (!_reviving) {
-            mu.unlock();
-            return false;
-        }
+int DefaultRevivePolicy::GetUsableServerCount(
+        int64_t now_ms, const std::vector<ServerId>& server_list) {
+    if (now_ms - _usable_cache_time_ms < FLAGS_detect_available_server_interval_ms) {
+        return _usable_cache;
     }
-    size_t n = server_list.size();
     int usable = 0;
+    size_t n = server_list.size();
     SocketUniquePtr ptr;
-    // TODO(zhujiashun): optimize O(N) 
     for (size_t i = 0; i < n; ++i) {
         if (Socket::Address(server_list[i].id, &ptr) == 0
             && !ptr->IsLogOff()) {
             usable++;
         }
     }
+    std::unique_lock<butil::Mutex> mu(_mutex);
+    _usable_cache = usable;
+    _usable_cache_time_ms = now_ms;
+    return _usable_cache;
+}
+
+
+bool DefaultRevivePolicy::DoReject(const std::vector<ServerId>& server_list) {
+    if (!_reviving) {
+        return false;
+    }
     int64_t now_ms = butil::gettimeofday_ms();
+    int usable = GetUsableServerCount(now_ms, server_list);
     {
         std::unique_lock<butil::Mutex> mu(_mutex);
         if (_last_usable != usable) {

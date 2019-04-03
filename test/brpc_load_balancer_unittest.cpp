@@ -31,6 +31,7 @@
 
 namespace brpc {
 DECLARE_int32(health_check_interval);
+DECLARE_int64(detect_available_server_interval_ms);
 namespace policy {
 extern uint32_t CRCHash32(const char *key, size_t len);
 extern const char* GetHashName(uint32_t (*hasher)(const void* key, size_t len));
@@ -831,6 +832,7 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
         ASSERT_EQ(1, brpc::Socket::AddressFailedAsWell(ptr[0]->id(), &dummy_ptr));
         dummy_ptr->Revive();
     }
+    bthread_usleep(brpc::FLAGS_detect_available_server_interval_ms * 1000);
     // After one server is revived, the reject rate should be 50%
     int num_ereject = 0;
     int num_ok = 0;

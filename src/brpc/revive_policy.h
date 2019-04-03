@@ -60,12 +60,17 @@ public:
     bool StopRevivingIfNecessary();
 
 private:
+    int GetUsableServerCount(int64_t now_ms, const std::vector<ServerId>& server_list);
+
+private:
     bool _reviving;
     int64_t _minimum_working_instances;
     butil::Mutex _mutex;
     int64_t _last_usable;
     int64_t _last_usable_change_time_ms;
     int64_t _hold_time_ms;
+    int64_t _usable_cache;
+    int64_t _usable_cache_time_ms;
 };
 
 } // namespace brpc
