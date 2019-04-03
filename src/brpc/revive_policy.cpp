@@ -45,19 +45,17 @@ void DefaultRevivePolicy::StartReviving() {
 }
 
 bool DefaultRevivePolicy::StopRevivingIfNecessary() {
-    int64_t now_ms = butil::gettimeofday_ms();
     if (!_reviving) {
         return false;
     }
-    {
-        std::unique_lock<butil::Mutex> mu(_mutex);
-        if (_last_usable_change_time_ms != 0 && _last_usable != 0 &&
-                (now_ms - _last_usable_change_time_ms > _hold_time_ms)) {
-            _reviving = false;
-            _last_usable_change_time_ms = 0;
-            mu.unlock();
-            return false;
-        }
+    int64_t now_ms = butil::gettimeofday_ms();
+    std::unique_lock<butil::Mutex> mu(_mutex);
+    if (_last_usable_change_time_ms != 0 && _last_usable != 0 &&
+            (now_ms - _last_usable_change_time_ms > _hold_time_ms)) {
+        _reviving = false;
+        _last_usable_change_time_ms = 0;
+        mu.unlock();
+        return false;
     }
     return true;
 }
@@ -76,9 +74,11 @@ int DefaultRevivePolicy::GetUsableServerCount(
             usable++;
         }
     }
-    std::unique_lock<butil::Mutex> mu(_mutex);
-    _usable_cache = usable;
-    _usable_cache_time_ms = now_ms;
+    {
+        std::unique_lock<butil::Mutex> mu(_mutex);
+        _usable_cache = usable;
+        _usable_cache_time_ms = now_ms;
+    }
     return _usable_cache;
 }
 

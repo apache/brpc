@@ -42,8 +42,7 @@ public:
 struct GetNamingServiceThreadOptions {
     GetNamingServiceThreadOptions()
         : succeed_without_server(false)
-        , log_succeed_without_server(true)
-        , minimum_working_instances(-1) {}
+        , log_succeed_without_server(true) {}
     
     bool succeed_without_server;
     bool log_succeed_without_server;
