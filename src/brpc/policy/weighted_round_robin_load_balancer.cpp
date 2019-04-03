@@ -20,6 +20,7 @@
 #include "brpc/socket.h"
 #include "brpc/policy/weighted_round_robin_load_balancer.h"
 #include "butil/strings/string_number_conversions.h"
+#include "brpc/revive_policy.h"
 
 namespace {
 
@@ -157,6 +158,18 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
     if (s->server_list.empty()) {
         return ENODATA;
     }
+    RevivePolicy* rp = in.revive_policy;
+    if (rp) {
+        std::vector<ServerId> server_list;
+        server_list.reserve(s->server_list.size());
+        for (auto server: s->server_list) {
+            server_list.emplace_back(server.id);
+        }
+        if (rp->DoReject(server_list)) {
+            return EREJECT;
+        }
+        rp->StopRevivingIfNecessary();
+    }
     TLS& tls = s.tls();
     if (tls.IsNeededCaculateNewStride(s->weight_sum, s->server_list.size())) {
       if (tls.stride == 0) {
@@ -197,6 +210,9 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
             tls_temp.position = tls.position;
             tls_temp.remain_server = tls.remain_server; 
         }
+    }
+    if (rp) {
+        rp->StartReviving();
     }
     return EHOSTDOWN;
 }

@@ -31,12 +31,6 @@ namespace policy {
 // than RoundRobinLoadBalancer.
 class RandomizedLoadBalancer : public LoadBalancer {
 public:
-    RandomizedLoadBalancer()
-        : _reviving(false)
-          //TODO(zhujiashun)
-        , _minimum_working_instances(2)
-        , _last_usable(0)
-        , _last_usable_change_time_ms(0) {}
     bool AddServer(const ServerId& id);
     bool RemoveServer(const ServerId& id);
     size_t AddServersInBatch(const std::vector<ServerId>& servers);
@@ -57,13 +51,6 @@ private:
     static size_t BatchRemove(Servers& bg, const std::vector<ServerId>& servers);
 
     butil::DoublyBufferedData<Servers> _db_servers;
-    bool _reviving;
-    int64_t _minimum_working_instances;
-
-    // TODO(zhujiashun): remove mutex
-    butil::Mutex _mutex;
-    int64_t _last_usable;
-    int64_t _last_usable_change_time_ms;
 };
 
 }  // namespace policy

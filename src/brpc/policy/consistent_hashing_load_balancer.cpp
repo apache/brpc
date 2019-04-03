@@ -302,6 +302,20 @@ int ConsistentHashingLoadBalancer::SelectServer(
     if (s->empty()) {
         return ENODATA;
     }
+    RevivePolicy* rp = in.revive_policy;
+    if (rp) {
+        std::set<ServerId> server_list;
+        for (auto server: *s) {
+            server_list.insert(server.server_sock);
+        }
+        std::vector<ServerId> server_list_distinct(
+                server_list.begin(), server_list.end());
+        if (rp->DoReject(server_list_distinct)) {
+            return EREJECT;
+        }
+        rp->StopRevivingIfNecessary();
+    }
+
     std::vector<Node>::const_iterator choice =
         std::lower_bound(s->begin(), s->end(), (uint32_t)in.request_code);
     if (choice == s->end()) {
@@ -318,6 +332,9 @@ int ConsistentHashingLoadBalancer::SelectServer(
                 choice = s->begin();
             }
         }
+    }
+    if (rp) {
+        rp->StartReviving();
     }
     return EHOSTDOWN;
 }

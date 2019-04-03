@@ -23,20 +23,40 @@
 namespace brpc {
 
 class ServerId;
+
+// After all servers are shutdown and health check happens, servers are
+// online one by one. Once one server is up, all the request that should
+// be sent to all servers, would be sent to one server, which may be a
+// disastrous behaviour. In the worst case it would cause the server shutdown
+// again if circuit breaker is enabled and the server cluster would never
+// recover. This class controls the amount of requests that sent to the revived
+// servers when recovering from all servers are shutdown.
 class RevivePolicy {
 public:
-    // TODO(zhujiashun): 
+    // Indicate that reviving from the shutdown of all server is happening.
+    virtual void StartReviving() = 0;
 
-    virtual void StartRevive() = 0;
-    virtual bool RejectDuringReviving(const std::vector<ServerId>& server_list) = 0;
+    // Return true if some customized policies are satisfied.
+    virtual bool DoReject(const std::vector<ServerId>& server_list) = 0;
+
+    // Stop reviving state and do not reject the request if some condition is
+    // satisfied.
+    virtual void StopRevivingIfNecessary() = 0;
 };
 
+// The default revive policy. Once no servers are available, reviving is start.
+// If in reviving state, the probability that a request is accepted is q/n, in
+// which q is the number of current available server, n is the number of minimum
+// working instances setting by user. If q is not changed during a given time,
+// hold_time_ms, then the cluster is considered recovered and all the request
+// would be sent to the current available servers.
 class DefaultRevivePolicy : public RevivePolicy {
 public:
     DefaultRevivePolicy(int64_t minimum_working_instances, int64_t hold_time_ms);
 
-    void StartRevive() override;
-    bool RejectDuringReviving(const std::vector<ServerId>& server_list) override;
+    void StartReviving();
+    bool DoReject(const std::vector<ServerId>& server_list);
+    void StopRevivingIfNecessary();
 
 private:
     bool _reviving;

@@ -884,6 +884,7 @@ public:
                 num_reject->fetch_add(1, butil::memory_order_relaxed);
             }
         }
+        delete this;
     }
 
     brpc::Controller cntl;
@@ -898,24 +899,22 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     GFLAGS_NS::SetCommandLineOption("circuit_breaker_short_window_error_percent", "30");
     GFLAGS_NS::SetCommandLineOption("circuit_breaker_max_isolation_duration_ms", "5000");
 
-
-    char* lb_algo[] = { "rr" , "random" };
-    
-
+    const char* lb_algo[] = { "rr" , "random", "wrr", "c_murmurhash" };
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = "http";
     options.timeout_ms = 300;
     options.enable_circuit_breaker = true;
     options.revive_policy = new brpc::DefaultRevivePolicy(2, 2000 /*2s*/);
-    // Set max_retry to 0 so that health check of servers
+    // Set max_retry to 0 so that the time of health check of different servers
     // are not continuous.
     options.max_retry = 0;
 
-    ASSERT_EQ(channel.Init("list://127.0.0.1:7777,127.0.0.1:7778",
+    ASSERT_EQ(channel.Init("list://127.0.0.1:7777 50,127.0.0.1:7778 50",
                            lb_algo[butil::fast_rand_less_than(ARRAY_SIZE(lb_algo))],
                            &options), 0);
 
+    uint64_t request_code = 0;
     test::EchoRequest req;
     req.set_message("123");
     test::EchoResponse res;
@@ -923,12 +922,14 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     // trigger one server to health check
     {
         brpc::Controller cntl;
+        cntl.set_request_code(brpc::policy::MurmurHash32(&++request_code, 8));
         stub.Echo(&cntl, &req, &res, NULL);
     }
     bthread_usleep(500000);
     // trigger the other server to health check
     {
         brpc::Controller cntl;
+        cntl.set_request_code(brpc::policy::MurmurHash32(&++request_code, 8));
         stub.Echo(&cntl, &req, &res, NULL);
     }
     bthread_usleep(500000);
@@ -947,14 +948,18 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     
     int64_t start_ms = butil::gettimeofday_ms();
     butil::atomic<int32_t> num_reject(0);
+    int64_t q = 0;
     while ((butil::gettimeofday_ms() - start_ms) <
             brpc::FLAGS_health_check_interval * 1000 + 10) {
         Done* done = new Done;
         done->num_reject = &num_reject;
         done->req.set_message("123");
+        done->cntl.set_request_code(brpc::policy::MurmurHash32(&++request_code, 8));
         stub.Echo(&done->cntl, &done->req, &done->res, done);
+        q++;
         bthread_usleep(1000);
     }
+    ASSERT_TRUE(num_reject.load(butil::memory_order_relaxed) > 1700);
 
     // should recover now
     butil::atomic<int32_t> num_failed(0);
@@ -962,12 +967,12 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
         Done* done = new Done;
         done->req.set_message("123");
         done->num_failed = &num_failed;
+        done->cntl.set_request_code(brpc::policy::MurmurHash32(&++request_code, 8));
         stub.Echo(&done->cntl, &done->req, &done->res, done);
         bthread_usleep(1000);
     }
     bthread_usleep(1050*1000 /* sleep longer than timeout of service */);
     ASSERT_EQ(0, num_failed.load(butil::memory_order_relaxed));
-    ASSERT_TRUE(num_reject.load(butil::memory_order_relaxed) > 1500);
 }
 
 } //namespace

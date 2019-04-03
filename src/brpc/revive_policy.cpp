@@ -34,45 +34,55 @@ DefaultRevivePolicy::DefaultRevivePolicy(
     , _hold_time_ms(hold_time_ms) { }
 
 
-void DefaultRevivePolicy::StartRevive() {
+void DefaultRevivePolicy::StartReviving() {
+    std::unique_lock<butil::Mutex> mu(_mutex);
     _reviving = true;
 }
 
-bool DefaultRevivePolicy::RejectDuringReviving(
-        const std::vector<ServerId>& server_list) {
-    if (!_reviving) {
-        return false;
+void DefaultRevivePolicy::StopRevivingIfNecessary() {
+    int64_t now_ms = butil::gettimeofday_ms();
+    {
+        std::unique_lock<butil::Mutex> mu(_mutex);
+        if (_last_usable_change_time_ms != 0 && _last_usable != 0 &&
+                (now_ms - _last_usable_change_time_ms > _hold_time_ms)) {
+            _reviving = false;
+            _last_usable_change_time_ms = 0;
+        }
+    }
+    return;
+}
+
+bool DefaultRevivePolicy::DoReject(const std::vector<ServerId>& server_list) {
+    {
+        std::unique_lock<butil::Mutex> mu(_mutex);
+        if (!_reviving) {
+            mu.unlock();
+            return false;
+        }
     }
     size_t n = server_list.size();
     int usable = 0;
-    // TODO(zhujiashun): optimize looking process
     SocketUniquePtr ptr;
+    // TODO(zhujiashun): optimize O(N) 
     for (size_t i = 0; i < n; ++i) {
         if (Socket::Address(server_list[i].id, &ptr) == 0
             && !ptr->IsLogOff()) {
             usable++;
         }
     }
-    std::unique_lock<butil::Mutex> mu(_mutex);
-    if (_last_usable_change_time_ms != 0 && usable != 0 &&
-            (butil::gettimeofday_ms() - _last_usable_change_time_ms > _hold_time_ms)
-                && _last_usable == usable) {
-        _reviving = false;
-        _last_usable_change_time_ms = 0;
-        mu.unlock();
-    } else {
+    int64_t now_ms = butil::gettimeofday_ms();
+    {
+        std::unique_lock<butil::Mutex> mu(_mutex);
         if (_last_usable != usable) {
             _last_usable = usable;
-            _last_usable_change_time_ms = butil::gettimeofday_ms();
+            _last_usable_change_time_ms = now_ms;
         }
-        mu.unlock();
-        int rand = butil::fast_rand_less_than(_minimum_working_instances);
-        if (rand >= usable) {
-            return true;
-        }
+    }
+    int rand = butil::fast_rand_less_than(_minimum_working_instances);
+    if (rand >= usable) {
+        return true;
     }
     return false;
 }
 
 } // namespace brpc
-

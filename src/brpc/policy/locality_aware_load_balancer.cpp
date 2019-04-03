@@ -22,7 +22,7 @@
 #include "brpc/socket.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/policy/locality_aware_load_balancer.h"
-
+#include "brpc/revive_policy.h"
 
 namespace brpc {
 namespace policy {
@@ -270,7 +270,6 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
     if (n == 0) {
         return ENODATA;
     }
-
     size_t ntry = 0;
     size_t nloop = 0;
     int64_t total = _total.load(butil::memory_order_relaxed);

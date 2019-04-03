@@ -129,7 +129,10 @@ struct ChannelOptions {
     // Default: ""
     std::string connection_group;
 
-    // TODO(zhujiashun)
+    // Customize the revive policy after all servers are shutdown. The
+    // interface is defined in src/brpc/revive_policy.h
+    // This object is NOT owned by channel and should remain valid when
+    // channel is used.
     // Default: NULL
     RevivePolicy* revive_policy;
 
