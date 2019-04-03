@@ -57,6 +57,7 @@ bool DefaultRevivePolicy::StopRevivingIfNecessary() {
         mu.unlock();
         return false;
     }
+    mu.unlock();
     return true;
 }
 
@@ -89,7 +90,7 @@ bool DefaultRevivePolicy::DoReject(const std::vector<ServerId>& server_list) {
     }
     int64_t now_ms = butil::gettimeofday_ms();
     int usable = GetUsableServerCount(now_ms, server_list);
-    {
+    if (_last_usable != usable) {
         std::unique_lock<butil::Mutex> mu(_mutex);
         if (_last_usable != usable) {
             _last_usable = usable;
