@@ -303,7 +303,7 @@ int ConsistentHashingLoadBalancer::SelectServer(
         return ENODATA;
     }
     RevivePolicy* rp = in.revive_policy;
-    if (rp) {
+    if (rp && rp->StopRevivingIfNecessary()) {
         std::set<ServerId> server_list;
         for (auto server: *s) {
             server_list.insert(server.server_sock);
@@ -313,7 +313,6 @@ int ConsistentHashingLoadBalancer::SelectServer(
         if (rp->DoReject(server_list_distinct)) {
             return EREJECT;
         }
-        rp->StopRevivingIfNecessary();
     }
 
     std::vector<Node>::const_iterator choice =

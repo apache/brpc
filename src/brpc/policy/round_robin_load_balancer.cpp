@@ -111,11 +111,10 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         return ENODATA;
     }
     RevivePolicy* rp = in.revive_policy;
-    if (rp) {
+    if (rp && rp->StopRevivingIfNecessary()) {
         if (rp->DoReject(s->server_list)) {
             return EREJECT;
         }
-        rp->StopRevivingIfNecessary();
     }
     TLS tls = s.tls();
     if (tls.stride == 0) {

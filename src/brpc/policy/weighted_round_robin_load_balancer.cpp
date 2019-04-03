@@ -159,7 +159,7 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
         return ENODATA;
     }
     RevivePolicy* rp = in.revive_policy;
-    if (rp) {
+    if (rp && rp->StopRevivingIfNecessary()) {
         std::vector<ServerId> server_list;
         server_list.reserve(s->server_list.size());
         for (auto server: s->server_list) {
@@ -168,7 +168,6 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
         if (rp->DoReject(server_list)) {
             return EREJECT;
         }
-        rp->StopRevivingIfNecessary();
     }
     TLS& tls = s.tls();
     if (tls.IsNeededCaculateNewStride(s->weight_sum, s->server_list.size())) {

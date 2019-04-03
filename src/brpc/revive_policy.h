@@ -41,7 +41,8 @@ public:
 
     // Stop reviving state and do not reject the request if some condition is
     // satisfied.
-    virtual void StopRevivingIfNecessary() = 0;
+    // Return true if the current state is still in reviving.
+    virtual bool StopRevivingIfNecessary() = 0;
 };
 
 // The default revive policy. Once no servers are available, reviving is start.
@@ -56,7 +57,7 @@ public:
 
     void StartReviving();
     bool DoReject(const std::vector<ServerId>& server_list);
-    void StopRevivingIfNecessary();
+    bool StopRevivingIfNecessary();
 
 private:
     bool _reviving;

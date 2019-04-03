@@ -111,11 +111,10 @@ int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         return ENODATA;
     }
     RevivePolicy* rp = in.revive_policy;
-    if (rp) {
+    if (rp && rp->StopRevivingIfNecessary()) {
         if (rp->DoReject(s->server_list)) {
             return EREJECT;
         }
-        rp->StopRevivingIfNecessary();
     }
     uint32_t stride = 0;
     size_t offset = butil::fast_rand_less_than(n);

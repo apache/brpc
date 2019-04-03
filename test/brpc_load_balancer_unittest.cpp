@@ -789,7 +789,18 @@ TEST_F(LoadBalancerTest, health_check_no_valid_server) {
 }
 
 TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
-    brpc::LoadBalancer* lb = new brpc::policy::RandomizedLoadBalancer;
+    brpc::LoadBalancer* lb = NULL;
+    int rand = butil::fast_rand_less_than(4);
+    if (rand == 0) {
+        lb = new brpc::policy::RoundRobinLoadBalancer;
+    } else if (rand == 1) {
+        lb = new brpc::policy::RandomizedLoadBalancer;
+    } else if (rand == 2) {
+        lb = new brpc::policy::WeightedRoundRobinLoadBalancer;
+    } else {
+        lb = new brpc::policy::ConsistentHashingLoadBalancer(brpc::policy::MurmurHash32);
+    }
+    LOG(INFO) << "r=" << rand;
     brpc::SocketUniquePtr ptr[2];
     for (size_t i = 0; i < ARRAY_SIZE(servers); ++i) {
         butil::EndPoint dummy;
@@ -797,12 +808,15 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
         brpc::SocketOptions options;
         options.remote_side = dummy;
         brpc::ServerId id(8888);
+        id.tag = "50";
         ASSERT_EQ(0, brpc::Socket::Create(options, &id.id));
         ASSERT_EQ(0, brpc::Socket::Address(id.id, &ptr[i]));
         lb->AddServer(id);
     }
     brpc::SocketUniquePtr sptr;
-    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL, NULL };
+    int64_t hold_time_ms = 2000;
+    brpc::RevivePolicy* rp = new brpc::DefaultRevivePolicy(2, hold_time_ms);
+    brpc::LoadBalancer::SelectIn in = { 0, false, true, 0u, NULL, rp };
     brpc::LoadBalancer::SelectOut out(&sptr);
     ASSERT_EQ(0, lb->SelectServer(in, &out));
 
@@ -831,10 +845,8 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
             ASSERT_TRUE(false);
         }
     }
-    ASSERT_TRUE(abs(num_ereject - num_ok) < 20);
-    // TODO(zhujiashun): longer than interval
-    int64_t sleep_time_ms = 2010;
-    bthread_usleep(sleep_time_ms * 1000);
+    ASSERT_TRUE(abs(num_ereject - num_ok) < 30);
+    bthread_usleep((hold_time_ms + 10) * 1000);
 
     // After enough waiting time, traffic should be sent to all available servers.
     for (int i = 0; i < 10; ++i) {
@@ -932,7 +944,6 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
         cntl.set_request_code(brpc::policy::MurmurHash32(&++request_code, 8));
         stub.Echo(&cntl, &req, &res, NULL);
     }
-    bthread_usleep(500000);
 
     butil::EndPoint point(butil::IP_ANY, 7777);
     brpc::Server server;
