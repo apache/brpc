@@ -29,6 +29,7 @@
 #include "brpc/mysql.h"
 #include "brpc/mysql_command.h"
 #include "brpc/mysql_reply.h"
+#include "brpc/mysql_common.h"
 
 namespace brpc {
 
@@ -294,6 +295,26 @@ bool MysqlRequest::Query(const butil::StringPiece& command) {
         return false;
     }
 }
+
+// bool MysqlRequest::Prepare(const butil::StringPiece& command) {
+//     if (_has_error) {
+//         return false;
+//     }
+
+//     if (_has_command) {
+//         return false;
+//     }
+
+//     const butil::Status st = MysqlMakeCommand(&_buf, COM_STMT_PREPARE, command);
+//     if (st.ok()) {
+//         _has_command = true;
+//         return true;
+//     } else {
+//         CHECK(st.ok()) << st;
+//         _has_error = true;
+//         return false;
+//     }
+// }
 
 void MysqlRequest::Print(std::ostream& os) const {
     butil::IOBuf cp = _buf;

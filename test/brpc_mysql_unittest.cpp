@@ -81,7 +81,7 @@ TEST_F(MysqlTest, auth) {
 
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-        ASSERT_EQ(1, response.reply_size());
+        ASSERT_EQ(1ul, response.reply_size());
         ASSERT_EQ(brpc::MYSQL_RSP_RESULTSET, response.reply(0).type());
     }
 
@@ -106,6 +106,7 @@ TEST_F(MysqlTest, auth) {
 
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_TRUE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(brpc::MYSQL_RSP_UNKNOWN, response.reply(0).type());
     }
 
     // check noauth.
@@ -127,6 +128,7 @@ TEST_F(MysqlTest, auth) {
 
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_TRUE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(brpc::MYSQL_RSP_UNKNOWN, response.reply(0).type());
     }
 }
 
@@ -176,7 +178,7 @@ TEST_F(MysqlTest, ok) {
 
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-        ASSERT_EQ(1, response.reply_size());
+        ASSERT_EQ(1ul, response.reply_size());
         ASSERT_EQ(brpc::MYSQL_RSP_OK, response.reply(0).type());
     }
 
@@ -203,7 +205,7 @@ TEST_F(MysqlTest, ok) {
         request.Query(ss1.str());
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-        ASSERT_EQ(1, response.reply_size());
+        ASSERT_EQ(1ul, response.reply_size());
         ASSERT_EQ(brpc::MYSQL_RSP_OK, response.reply(0).type());
     }
 }
@@ -229,7 +231,7 @@ TEST_F(MysqlTest, error) {
 
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-        ASSERT_EQ(1, response.reply_size());
+        ASSERT_EQ(1ul, response.reply_size());
         ASSERT_EQ(brpc::MYSQL_RSP_ERROR, response.reply(0).type());
     }
 }
@@ -275,7 +277,7 @@ TEST_F(MysqlTest, resultset) {
             request.Query(ss1.str());
             channel.CallMethod(NULL, &cntl, &request, &response, NULL);
             ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-            ASSERT_EQ(1, response.reply_size());
+            ASSERT_EQ(1ul, response.reply_size());
             ASSERT_EQ(brpc::MYSQL_RSP_OK, response.reply(0).type());
         }
     }
@@ -309,7 +311,7 @@ TEST_F(MysqlTest, resultset) {
         request.Query(ss1.str());
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-        ASSERT_EQ(30, response.reply_size());
+        ASSERT_EQ(30ul, response.reply_size());
         for (int i = 0; i < 30; ++i) {
             ASSERT_EQ(brpc::MYSQL_RSP_OK, response.reply(i).type());
         }
@@ -322,7 +324,18 @@ TEST_F(MysqlTest, resultset) {
         request.Query("select count(0) from brpc_table");
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-        ASSERT_EQ(1, response.reply_size());
+        ASSERT_EQ(1ul, response.reply_size());
+        ASSERT_EQ(brpc::MYSQL_RSP_RESULTSET, response.reply(0).type());
+    }
+
+    {
+        brpc::MysqlRequest request;
+        brpc::MysqlResponse response;
+        brpc::Controller cntl;
+        request.Query("select * from brpc_table where 1 = 2");
+        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(1ul, response.reply_size());
         ASSERT_EQ(brpc::MYSQL_RSP_RESULTSET, response.reply(0).type());
     }
 
@@ -333,187 +346,187 @@ TEST_F(MysqlTest, resultset) {
         request.Query("select * from brpc_table limit 10");
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-        ASSERT_EQ(1, response.reply_size());
+        ASSERT_EQ(1ul, response.reply_size());
         ASSERT_EQ(brpc::MYSQL_RSP_RESULTSET, response.reply(0).type());
         ASSERT_EQ(42ull, response.reply(0).column_number());
         const brpc::MysqlReply& reply = response.reply(0);
-        ASSERT_EQ(reply.column(0)->name(), "col1");
-        ASSERT_EQ(reply.column(0)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(0)->type(), brpc::MYSQL_FIELD_TYPE_LONG);
+        ASSERT_EQ(reply.column(0).name(), "col1");
+        ASSERT_EQ(reply.column(0).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(0).type(), brpc::MYSQL_FIELD_TYPE_LONG);
 
-        ASSERT_EQ(reply.column(1)->name(), "col2");
+        ASSERT_EQ(reply.column(1).name(), "col2");
         // ASSERT_EQ(reply.column(1)->collation(), brpc::MYSQL_utf8_general_ci);
-        ASSERT_EQ(reply.column(1)->type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
+        ASSERT_EQ(reply.column(1).type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
 
-        ASSERT_EQ(reply.column(2)->name(), "col3");
-        ASSERT_EQ(reply.column(2)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(2)->type(), brpc::MYSQL_FIELD_TYPE_NEWDECIMAL);
+        ASSERT_EQ(reply.column(2).name(), "col3");
+        ASSERT_EQ(reply.column(2).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(2).type(), brpc::MYSQL_FIELD_TYPE_NEWDECIMAL);
 
-        ASSERT_EQ(reply.column(3)->name(), "col4");
-        ASSERT_EQ(reply.column(3)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(3)->type(), brpc::MYSQL_FIELD_TYPE_DATETIME);
+        ASSERT_EQ(reply.column(3).name(), "col4");
+        ASSERT_EQ(reply.column(3).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(3).type(), brpc::MYSQL_FIELD_TYPE_DATETIME);
 
-        ASSERT_EQ(reply.column(4)->name(), "col5");
-        ASSERT_EQ(reply.column(4)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(4)->type(), brpc::MYSQL_FIELD_TYPE_BLOB);
+        ASSERT_EQ(reply.column(4).name(), "col5");
+        ASSERT_EQ(reply.column(4).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(4).type(), brpc::MYSQL_FIELD_TYPE_BLOB);
 
-        ASSERT_EQ(reply.column(5)->name(), "col6");
-        ASSERT_EQ(reply.column(5)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(5)->type(), brpc::MYSQL_FIELD_TYPE_STRING);
+        ASSERT_EQ(reply.column(5).name(), "col6");
+        ASSERT_EQ(reply.column(5).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(5).type(), brpc::MYSQL_FIELD_TYPE_STRING);
 
-        ASSERT_EQ(reply.column(6)->name(), "col7");
-        ASSERT_EQ(reply.column(6)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(6)->type(), brpc::MYSQL_FIELD_TYPE_BLOB);
+        ASSERT_EQ(reply.column(6).name(), "col7");
+        ASSERT_EQ(reply.column(6).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(6).type(), brpc::MYSQL_FIELD_TYPE_BLOB);
 
-        ASSERT_EQ(reply.column(7)->name(), "col8");
-        ASSERT_EQ(reply.column(7)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(7)->type(), brpc::MYSQL_FIELD_TYPE_BLOB);
+        ASSERT_EQ(reply.column(7).name(), "col8");
+        ASSERT_EQ(reply.column(7).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(7).type(), brpc::MYSQL_FIELD_TYPE_BLOB);
 
-        ASSERT_EQ(reply.column(8)->name(), "col9");
-        ASSERT_EQ(reply.column(8)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(8)->type(), brpc::MYSQL_FIELD_TYPE_BLOB);
+        ASSERT_EQ(reply.column(8).name(), "col9");
+        ASSERT_EQ(reply.column(8).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(8).type(), brpc::MYSQL_FIELD_TYPE_BLOB);
 
-        ASSERT_EQ(reply.column(9)->name(), "col10");
-        ASSERT_EQ(reply.column(9)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(9)->type(), brpc::MYSQL_FIELD_TYPE_BLOB);
+        ASSERT_EQ(reply.column(9).name(), "col10");
+        ASSERT_EQ(reply.column(9).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(9).type(), brpc::MYSQL_FIELD_TYPE_BLOB);
 
-        ASSERT_EQ(reply.column(10)->name(), "col11");
-        ASSERT_EQ(reply.column(10)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(10)->type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
+        ASSERT_EQ(reply.column(10).name(), "col11");
+        ASSERT_EQ(reply.column(10).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(10).type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
 
-        ASSERT_EQ(reply.column(11)->name(), "col12");
-        ASSERT_EQ(reply.column(11)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(11)->type(), brpc::MYSQL_FIELD_TYPE_DATE);
+        ASSERT_EQ(reply.column(11).name(), "col12");
+        ASSERT_EQ(reply.column(11).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(11).type(), brpc::MYSQL_FIELD_TYPE_DATE);
 
-        ASSERT_EQ(reply.column(12)->name(), "col13");
-        ASSERT_EQ(reply.column(12)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(12)->type(), brpc::MYSQL_FIELD_TYPE_DATETIME);
+        ASSERT_EQ(reply.column(12).name(), "col13");
+        ASSERT_EQ(reply.column(12).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(12).type(), brpc::MYSQL_FIELD_TYPE_DATETIME);
 
-        ASSERT_EQ(reply.column(13)->name(), "col14");
-        ASSERT_EQ(reply.column(13)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(13)->type(), brpc::MYSQL_FIELD_TYPE_TIME);
+        ASSERT_EQ(reply.column(13).name(), "col14");
+        ASSERT_EQ(reply.column(13).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(13).type(), brpc::MYSQL_FIELD_TYPE_TIME);
 
-        ASSERT_EQ(reply.column(14)->name(), "col15");
-        ASSERT_EQ(reply.column(14)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(14)->type(), brpc::MYSQL_FIELD_TYPE_TIMESTAMP);
+        ASSERT_EQ(reply.column(14).name(), "col15");
+        ASSERT_EQ(reply.column(14).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(14).type(), brpc::MYSQL_FIELD_TYPE_TIMESTAMP);
 
-        ASSERT_EQ(reply.column(15)->name(), "col16");
-        ASSERT_EQ(reply.column(15)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(15)->type(), brpc::MYSQL_FIELD_TYPE_YEAR);
+        ASSERT_EQ(reply.column(15).name(), "col16");
+        ASSERT_EQ(reply.column(15).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(15).type(), brpc::MYSQL_FIELD_TYPE_YEAR);
 
-        ASSERT_EQ(reply.column(16)->name(), "col17");
-        ASSERT_EQ(reply.column(16)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(16)->type(), brpc::MYSQL_FIELD_TYPE_GEOMETRY);
+        ASSERT_EQ(reply.column(16).name(), "col17");
+        ASSERT_EQ(reply.column(16).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(16).type(), brpc::MYSQL_FIELD_TYPE_GEOMETRY);
 
-        ASSERT_EQ(reply.column(17)->name(), "col18");
-        ASSERT_EQ(reply.column(17)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(17)->type(), brpc::MYSQL_FIELD_TYPE_GEOMETRY);
+        ASSERT_EQ(reply.column(17).name(), "col18");
+        ASSERT_EQ(reply.column(17).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(17).type(), brpc::MYSQL_FIELD_TYPE_GEOMETRY);
 
-        ASSERT_EQ(reply.column(18)->name(), "col19");
-        ASSERT_EQ(reply.column(18)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(18)->type(), brpc::MYSQL_FIELD_TYPE_GEOMETRY);
+        ASSERT_EQ(reply.column(18).name(), "col19");
+        ASSERT_EQ(reply.column(18).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(18).type(), brpc::MYSQL_FIELD_TYPE_GEOMETRY);
 
-        ASSERT_EQ(reply.column(19)->name(), "col20");
-        ASSERT_EQ(reply.column(19)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(19)->type(), brpc::MYSQL_FIELD_TYPE_GEOMETRY);
+        ASSERT_EQ(reply.column(19).name(), "col20");
+        ASSERT_EQ(reply.column(19).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(19).type(), brpc::MYSQL_FIELD_TYPE_GEOMETRY);
 
-        ASSERT_EQ(reply.column(20)->name(), "col21");
-        ASSERT_EQ(reply.column(20)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(20)->type(), brpc::MYSQL_FIELD_TYPE_GEOMETRY);
+        ASSERT_EQ(reply.column(20).name(), "col21");
+        ASSERT_EQ(reply.column(20).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(20).type(), brpc::MYSQL_FIELD_TYPE_GEOMETRY);
 
-        ASSERT_EQ(reply.column(21)->name(), "col22");
-        ASSERT_EQ(reply.column(21)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(21)->type(), brpc::MYSQL_FIELD_TYPE_LONGLONG);
+        ASSERT_EQ(reply.column(21).name(), "col22");
+        ASSERT_EQ(reply.column(21).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(21).type(), brpc::MYSQL_FIELD_TYPE_LONGLONG);
 
-        ASSERT_EQ(reply.column(22)->name(), "col23");
-        ASSERT_EQ(reply.column(22)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(22)->type(), brpc::MYSQL_FIELD_TYPE_NEWDECIMAL);
+        ASSERT_EQ(reply.column(22).name(), "col23");
+        ASSERT_EQ(reply.column(22).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(22).type(), brpc::MYSQL_FIELD_TYPE_NEWDECIMAL);
 
-        ASSERT_EQ(reply.column(23)->name(), "col24");
-        ASSERT_EQ(reply.column(23)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(23)->type(), brpc::MYSQL_FIELD_TYPE_DOUBLE);
+        ASSERT_EQ(reply.column(23).name(), "col24");
+        ASSERT_EQ(reply.column(23).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(23).type(), brpc::MYSQL_FIELD_TYPE_DOUBLE);
 
-        ASSERT_EQ(reply.column(24)->name(), "col25");
-        ASSERT_EQ(reply.column(24)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(24)->type(), brpc::MYSQL_FIELD_TYPE_FLOAT);
+        ASSERT_EQ(reply.column(24).name(), "col25");
+        ASSERT_EQ(reply.column(24).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(24).type(), brpc::MYSQL_FIELD_TYPE_FLOAT);
 
-        ASSERT_EQ(reply.column(25)->name(), "col26");
-        ASSERT_EQ(reply.column(25)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(25)->type(), brpc::MYSQL_FIELD_TYPE_LONG);
+        ASSERT_EQ(reply.column(25).name(), "col26");
+        ASSERT_EQ(reply.column(25).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(25).type(), brpc::MYSQL_FIELD_TYPE_LONG);
 
-        ASSERT_EQ(reply.column(26)->name(), "col27");
-        ASSERT_EQ(reply.column(26)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(26)->type(), brpc::MYSQL_FIELD_TYPE_INT24);
+        ASSERT_EQ(reply.column(26).name(), "col27");
+        ASSERT_EQ(reply.column(26).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(26).type(), brpc::MYSQL_FIELD_TYPE_INT24);
 
-        ASSERT_EQ(reply.column(27)->name(), "col28");
-        ASSERT_EQ(reply.column(27)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(27)->type(), brpc::MYSQL_FIELD_TYPE_DOUBLE);
+        ASSERT_EQ(reply.column(27).name(), "col28");
+        ASSERT_EQ(reply.column(27).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(27).type(), brpc::MYSQL_FIELD_TYPE_DOUBLE);
 
-        ASSERT_EQ(reply.column(28)->name(), "col29");
-        ASSERT_EQ(reply.column(28)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(28)->type(), brpc::MYSQL_FIELD_TYPE_SHORT);
+        ASSERT_EQ(reply.column(28).name(), "col29");
+        ASSERT_EQ(reply.column(28).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(28).type(), brpc::MYSQL_FIELD_TYPE_SHORT);
 
-        ASSERT_EQ(reply.column(29)->name(), "col30");
-        ASSERT_EQ(reply.column(29)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(29)->type(), brpc::MYSQL_FIELD_TYPE_TINY);
+        ASSERT_EQ(reply.column(29).name(), "col30");
+        ASSERT_EQ(reply.column(29).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(29).type(), brpc::MYSQL_FIELD_TYPE_TINY);
 
-        ASSERT_EQ(reply.column(30)->name(), "col31");
-        // ASSERT_EQ(reply.column(30)->collation(), brpc::MYSQL_utf8_general_ci);
-        ASSERT_EQ(reply.column(30)->type(), brpc::MYSQL_FIELD_TYPE_STRING);
+        ASSERT_EQ(reply.column(30).name(), "col31");
+        // ASSERT_EQ(reply.column(30).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(30).type(), brpc::MYSQL_FIELD_TYPE_STRING);
 
-        ASSERT_EQ(reply.column(31)->name(), "col32");
-        // ASSERT_EQ(reply.column(31)->collation(), brpc::MYSQL_utf8_general_ci);
-        ASSERT_EQ(reply.column(31)->type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
+        ASSERT_EQ(reply.column(31).name(), "col32");
+        // ASSERT_EQ(reply.column(31).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(31).type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
 
-        ASSERT_EQ(reply.column(32)->name(), "col33");
-        // ASSERT_EQ(reply.column(32)->collation(), brpc::MYSQL_utf8_general_ci);
-        ASSERT_EQ(reply.column(32)->type(), brpc::MYSQL_FIELD_TYPE_BLOB);
+        ASSERT_EQ(reply.column(32).name(), "col33");
+        // ASSERT_EQ(reply.column(32).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(32).type(), brpc::MYSQL_FIELD_TYPE_BLOB);
 
-        ASSERT_EQ(reply.column(33)->name(), "col34");
-        // ASSERT_EQ(reply.column(33)->collation(), brpc::MYSQL_utf8_general_ci);
-        ASSERT_EQ(reply.column(33)->type(), brpc::MYSQL_FIELD_TYPE_BLOB);
+        ASSERT_EQ(reply.column(33).name(), "col34");
+        // ASSERT_EQ(reply.column(33).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(33).type(), brpc::MYSQL_FIELD_TYPE_BLOB);
 
-        ASSERT_EQ(reply.column(34)->name(), "col35");
-        // ASSERT_EQ(reply.column(34)->collation(), brpc::MYSQL_utf8_general_ci);
-        ASSERT_EQ(reply.column(34)->type(), brpc::MYSQL_FIELD_TYPE_BLOB);
+        ASSERT_EQ(reply.column(34).name(), "col35");
+        // ASSERT_EQ(reply.column(34).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(34).type(), brpc::MYSQL_FIELD_TYPE_BLOB);
 
-        ASSERT_EQ(reply.column(35)->name(), "col36");
-        // ASSERT_EQ(reply.column(35)->collation(), brpc::MYSQL_utf8_general_ci);
-        ASSERT_EQ(reply.column(35)->type(), brpc::MYSQL_FIELD_TYPE_BLOB);
+        ASSERT_EQ(reply.column(35).name(), "col36");
+        // ASSERT_EQ(reply.column(35).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(35).type(), brpc::MYSQL_FIELD_TYPE_BLOB);
 
-        ASSERT_EQ(reply.column(36)->name(), "col37");
-        ASSERT_EQ(reply.column(36)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(36)->type(), brpc::MYSQL_FIELD_TYPE_BIT);
+        ASSERT_EQ(reply.column(36).name(), "col37");
+        ASSERT_EQ(reply.column(36).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(36).type(), brpc::MYSQL_FIELD_TYPE_BIT);
 
-        ASSERT_EQ(reply.column(37)->name(), "col38");
-        ASSERT_EQ(reply.column(37)->collation(), brpc::MYSQL_binary);
-        ASSERT_EQ(reply.column(37)->type(), brpc::MYSQL_FIELD_TYPE_TINY);
+        ASSERT_EQ(reply.column(37).name(), "col38");
+        ASSERT_EQ(reply.column(37).collation(), brpc::MYSQL_binary);
+        ASSERT_EQ(reply.column(37).type(), brpc::MYSQL_FIELD_TYPE_TINY);
 
-        ASSERT_EQ(reply.column(38)->name(), "col39");
-        // ASSERT_EQ(reply.column(38)->collation(), brpc::MYSQL_utf8_general_ci);
-        ASSERT_EQ(reply.column(38)->type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
+        ASSERT_EQ(reply.column(38).name(), "col39");
+        // ASSERT_EQ(reply.column(38).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(38).type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
 
-        ASSERT_EQ(reply.column(39)->name(), "col40");
-        // ASSERT_EQ(reply.column(39)->collation(), brpc::MYSQL_utf8_general_ci);
-        ASSERT_EQ(reply.column(39)->type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
+        ASSERT_EQ(reply.column(39).name(), "col40");
+        // ASSERT_EQ(reply.column(39).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(39).type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
 
-        ASSERT_EQ(reply.column(40)->name(), "col41");
-        // ASSERT_EQ(reply.column(40)->collation(), brpc::MYSQL_utf8_general_ci);
-        ASSERT_EQ(reply.column(40)->type(), brpc::MYSQL_FIELD_TYPE_STRING);
+        ASSERT_EQ(reply.column(40).name(), "col41");
+        // ASSERT_EQ(reply.column(40).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(40).type(), brpc::MYSQL_FIELD_TYPE_STRING);
 
-        ASSERT_EQ(reply.column(41)->name(), "col42");
-        // ASSERT_EQ(reply.column(41)->collation(), brpc::MYSQL_utf8_general_ci);
-        ASSERT_EQ(reply.column(41)->type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
+        ASSERT_EQ(reply.column(41).name(), "col42");
+        // ASSERT_EQ(reply.column(41).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(41).type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
 
         int i = 0;
-        const brpc::MysqlReply::Row* row;
-        while ((row = reply.next()) != NULL) {
-            ASSERT_EQ(row->field(0).sinteger(), ++i);
-            ASSERT_EQ(row->field(1).string(), "col2");
-            ASSERT_EQ(row->field(2).string(), "0.015");
-            ASSERT_EQ(row->field(3).string(), "2018-12-01 12:13:14");
-            ASSERT_EQ(row->field(4).string(), "aaa");
-            butil::StringPiece field5 = row->field(5).string();
+        for (size_t idx = 0; idx < reply.row_number(); ++idx) {
+            const brpc::MysqlReply::Row& row = reply.row(idx);
+            ASSERT_EQ(row.field(0).sinteger(), ++i);
+            ASSERT_EQ(row.field(1).string(), "col2");
+            ASSERT_EQ(row.field(2).string(), "0.015");
+            ASSERT_EQ(row.field(3).string(), "2018-12-01 12:13:14");
+            ASSERT_EQ(row.field(4).string(), "aaa");
+            butil::StringPiece field5 = row.field(5).string();
             ASSERT_EQ(field5.size(), size_t(6));
             ASSERT_EQ(field5[0], 'b');
             ASSERT_EQ(field5[1], 'b');
@@ -521,42 +534,42 @@ TEST_F(MysqlTest, resultset) {
             ASSERT_EQ(field5[3], '\0');
             ASSERT_EQ(field5[4], '\0');
             ASSERT_EQ(field5[5], '\0');
-            ASSERT_EQ(row->field(6).string(), "ccc");
-            ASSERT_EQ(row->field(7).string(), "ddd");
-            ASSERT_EQ(row->field(8).string(), "eee");
-            ASSERT_EQ(row->field(9).string(), "fff");
-            ASSERT_EQ(row->field(10).string(), "ggg");
-            ASSERT_EQ(row->field(11).string(), "2014-09-18");
-            ASSERT_EQ(row->field(12).string(), "2010-12-10 14:12:09.019473");
-            ASSERT_EQ(row->field(13).string(), "01:06:09");
-            ASSERT_EQ(row->field(14).string(), "1970-01-01 08:00:00.9856");
-            ASSERT_EQ(row->field(15).small(), uint16_t(2014));
-            ASSERT_EQ(row->field(16).is_nil(), true);
-            ASSERT_EQ(row->field(17).is_nil(), true);
-            ASSERT_EQ(row->field(18).is_nil(), true);
-            ASSERT_EQ(row->field(19).is_nil(), true);
-            ASSERT_EQ(row->field(20).is_nil(), true);
-            ASSERT_EQ(row->field(21).sbigint(), int64_t(69));
-            ASSERT_EQ(row->field(22).string(), "13");
-            ASSERT_EQ(row->field(23).float64(), double(16.9));
-            ASSERT_EQ(row->field(24).float32(), float(6.7));
-            ASSERT_EQ(row->field(25).sinteger(), int32_t(24));
-            ASSERT_EQ(row->field(26).sinteger(), int32_t(37));
-            ASSERT_EQ(row->field(27).float64(), double(69.56));
-            ASSERT_EQ(row->field(28).ssmall(), int16_t(234));
-            ASSERT_EQ(row->field(29).stiny(), '6');
-            ASSERT_EQ(row->field(30).string(), "col31");
-            ASSERT_EQ(row->field(31).string(), "col32");
-            ASSERT_EQ(row->field(32).string(), "col33");
-            ASSERT_EQ(row->field(33).string(), "col34");
-            ASSERT_EQ(row->field(34).string(), "col35");
-            ASSERT_EQ(row->field(35).string(), "col36");
-            ASSERT_EQ(row->field(36).is_nil(), true);
-            ASSERT_EQ(row->field(37).stiny(), '9');
-            ASSERT_EQ(row->field(38).string(), "col39");
-            ASSERT_EQ(row->field(39).string(), "col40");
-            ASSERT_EQ(row->field(40).string(), "col4");  // size is 4
-            ASSERT_EQ(row->field(41).string(), "col42");
+            ASSERT_EQ(row.field(6).string(), "ccc");
+            ASSERT_EQ(row.field(7).string(), "ddd");
+            ASSERT_EQ(row.field(8).string(), "eee");
+            ASSERT_EQ(row.field(9).string(), "fff");
+            ASSERT_EQ(row.field(10).string(), "ggg");
+            ASSERT_EQ(row.field(11).string(), "2014-09-18");
+            ASSERT_EQ(row.field(12).string(), "2010-12-10 14:12:09.019473");
+            ASSERT_EQ(row.field(13).string(), "01:06:09");
+            ASSERT_EQ(row.field(14).string(), "1970-01-01 08:00:00.9856");
+            ASSERT_EQ(row.field(15).small(), uint16_t(2014));
+            ASSERT_EQ(row.field(16).is_nil(), true);
+            ASSERT_EQ(row.field(17).is_nil(), true);
+            ASSERT_EQ(row.field(18).is_nil(), true);
+            ASSERT_EQ(row.field(19).is_nil(), true);
+            ASSERT_EQ(row.field(20).is_nil(), true);
+            ASSERT_EQ(row.field(21).sbigint(), int64_t(69));
+            ASSERT_EQ(row.field(22).string(), "13");
+            ASSERT_EQ(row.field(23).float64(), double(16.9));
+            ASSERT_EQ(row.field(24).float32(), float(6.7));
+            ASSERT_EQ(row.field(25).sinteger(), int32_t(24));
+            ASSERT_EQ(row.field(26).sinteger(), int32_t(37));
+            ASSERT_EQ(row.field(27).float64(), double(69.56));
+            ASSERT_EQ(row.field(28).ssmall(), int16_t(234));
+            ASSERT_EQ(row.field(29).stiny(), '6');
+            ASSERT_EQ(row.field(30).string(), "col31");
+            ASSERT_EQ(row.field(31).string(), "col32");
+            ASSERT_EQ(row.field(32).string(), "col33");
+            ASSERT_EQ(row.field(33).string(), "col34");
+            ASSERT_EQ(row.field(34).string(), "col35");
+            ASSERT_EQ(row.field(35).string(), "col36");
+            ASSERT_EQ(row.field(36).is_nil(), true);
+            ASSERT_EQ(row.field(37).stiny(), '9');
+            ASSERT_EQ(row.field(38).string(), "col39");
+            ASSERT_EQ(row.field(39).string(), "col40");
+            ASSERT_EQ(row.field(40).string(), "col4");  // size is 4
+            ASSERT_EQ(row.field(41).string(), "col42");
         }
     }
 
@@ -567,7 +580,7 @@ TEST_F(MysqlTest, resultset) {
         request.Query("delete from brpc_table");
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-        ASSERT_EQ(1, response.reply_size());
+        ASSERT_EQ(1ul, response.reply_size());
         ASSERT_EQ(brpc::MYSQL_RSP_OK, response.reply(0).type());
     }
 
@@ -578,7 +591,7 @@ TEST_F(MysqlTest, resultset) {
         request.Query("drop table brpc_table");
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-        ASSERT_EQ(1, response.reply_size());
+        ASSERT_EQ(1ul, response.reply_size());
         ASSERT_EQ(brpc::MYSQL_RSP_OK, response.reply(0).type());
     }
 }

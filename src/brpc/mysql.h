@@ -82,8 +82,12 @@ public:
 
     // call query command
     bool Query(const butil::StringPiece& command);
+    // prepared statement begin
+    // bool Prepare(const butil::StringPiece& command);
+    // bool Execute(const butil::StringPiece& command);
+    // prepared statement end
 
-    // True if previous AddCommand[V] failed.
+    // True if previous command failed.
     bool has_error() const {
         return _has_error;
     }

@@ -14,9 +14,10 @@
 
 // Authors: Yang,Liming (yangliming01@baidu.com)
 
-#ifndef BRPC_MYSQL_UTIL_H
-#define BRPC_MYSQL_UTIL_H
+#ifndef BRPC_MYSQL_REPLY_H
+#define BRPC_MYSQL_REPLY_H
 
+#include <vector>
 #include "butil/iobuf.h"  // butil::IOBuf
 #include "butil/arena.h"
 #include "butil/sys_byteorder.h"
@@ -559,7 +560,6 @@ public:
 
         Field* _fields;
         uint64_t _field_number;
-        Row* _next;
     };
 
 public:
@@ -573,18 +573,18 @@ public:
     // response type
     MysqlRspType type() const;
     // get auth
-    const Auth* auth() const;
-    const Ok* ok() const;
-    const Error* error() const;
-    const Eof* eof() const;
+    const Auth& auth() const;
+    const Ok& ok() const;
+    const Error& error() const;
+    const Eof& eof() const;
     // get column number
     uint64_t column_number() const;
     // get one column
-    const Column* column(const uint64_t index) const;
+    const Column& column(const uint64_t index) const;
     // get row number
     uint64_t row_number() const;
     // get one row
-    const Row* next() const;
+    const Row& row(const uint64_t index) const;
     bool is_auth() const;
     bool is_ok() const;
     bool is_error() const;
@@ -604,25 +604,18 @@ private:
     };
     // Mysql result set
     struct ResultSet : private CheckParsed {
-        ResultSet() : _columns(NULL), _row_number(0) {
-            _first = _last = &_dummy;
-            _cur = _first;
+        ResultSet() : _columns(NULL) {
+            _rows.reserve(10);
         }
         ParseError Parse(butil::IOBuf& buf, butil::Arena* arena);
         ResultSetHeader _header;
         Column* _columns;
         Eof _eof1;
-        // row list
-        Row* _first;
-        Row* _cur;
-        Row* _last;
-        // row list end
-        uint64_t _row_number;
+        std::vector<Row*> _rows;
         Eof _eof2;
 
     private:
         DISALLOW_COPY_AND_ASSIGN(ResultSet);
-        Row _dummy;
     };
     // member values
     MysqlRspType _type;
@@ -654,33 +647,37 @@ inline std::ostream& operator<<(std::ostream& os, const MysqlReply& r) {
 inline MysqlRspType MysqlReply::type() const {
     return _type;
 }
-inline const MysqlReply::Auth* MysqlReply::auth() const {
+inline const MysqlReply::Auth& MysqlReply::auth() const {
     if (is_auth()) {
-        return _data.auth;
+        return *_data.auth;
     }
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an auth";
-    return NULL;
+    static Auth auth_nil;
+    return auth_nil;
 }
-inline const MysqlReply::Ok* MysqlReply::ok() const {
+inline const MysqlReply::Ok& MysqlReply::ok() const {
     if (is_ok()) {
-        return _data.ok;
+        return *_data.ok;
     }
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an ok";
-    return NULL;
+    static Ok ok_nil;
+    return ok_nil;
 }
-inline const MysqlReply::Error* MysqlReply::error() const {
+inline const MysqlReply::Error& MysqlReply::error() const {
     if (is_error()) {
-        return _data.error;
+        return *_data.error;
     }
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an error";
-    return NULL;
+    static Error error_nil;
+    return error_nil;
 }
-inline const MysqlReply::Eof* MysqlReply::eof() const {
+inline const MysqlReply::Eof& MysqlReply::eof() const {
     if (is_eof()) {
-        return _data.eof;
+        return *_data.eof;
     }
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an eof";
-    return NULL;
+    static Eof eof_nil;
+    return eof_nil;
 }
 inline uint64_t MysqlReply::column_number() const {
     if (is_resultset()) {
@@ -689,35 +686,38 @@ inline uint64_t MysqlReply::column_number() const {
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an resultset";
     return 0;
 }
-inline const MysqlReply::Column* MysqlReply::column(const uint64_t index) const {
+inline const MysqlReply::Column& MysqlReply::column(const uint64_t index) const {
+    static Column column_nil;
     if (is_resultset()) {
-        if (index > _data.result_set->_header._column_number) {
-            LOG(ERROR) << "wrong index, must between [0, "
-                       << _data.result_set->_header._column_number << ")";
-            return NULL;
+        if (index < _data.result_set->_header._column_number) {
+            return _data.result_set->_columns[index];
         }
-        return _data.result_set->_columns + index;
+        CHECK(false) << "index " << index << " out of bound [0,"
+                     << _data.result_set->_header._column_number << ")";
+        return column_nil;
     }
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an resultset";
-    return NULL;
+    return column_nil;
 }
 inline uint64_t MysqlReply::row_number() const {
     if (is_resultset()) {
-        return _data.result_set->_row_number;
+        return _data.result_set->_rows.size();
     }
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an resultset";
     return 0;
 }
-inline const MysqlReply::Row* MysqlReply::next() const {
+inline const MysqlReply::Row& MysqlReply::row(const uint64_t index) const {
+    static Row row_nil;
     if (is_resultset()) {
-        if (_data.result_set->_cur == _data.result_set->_last->_next) {
-            _data.result_set->_cur = _data.result_set->_first;
+        if (index < _data.result_set->_rows.size()) {
+            return *(_data.result_set->_rows[index]);
         }
-        _data.result_set->_cur = _data.result_set->_cur->_next;
-        return _data.result_set->_cur;
+        CHECK(false) << "index " << index << " out of bound [0," << _data.result_set->_rows.size()
+                     << ")";
+        return row_nil;
     }
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an resultset";
-    return NULL;
+    return row_nil;
 }
 inline bool MysqlReply::is_auth() const {
     return _type == MYSQL_RSP_AUTH;
@@ -813,7 +813,7 @@ inline uint16_t MysqlReply::Eof::status() const {
     return _status;
 }
 // mysql reply column
-inline MysqlReply::Column::Column() : _length(0), _decimal(0) {}
+inline MysqlReply::Column::Column() : _length(0), _type(MYSQL_FIELD_TYPE_NULL), _decimal(0) {}
 inline butil::StringPiece MysqlReply::Column::catalog() const {
     return _catalog;
 }
@@ -848,17 +848,17 @@ inline uint8_t MysqlReply::Column::decimal() const {
     return _decimal;
 }
 // mysql reply row
-inline MysqlReply::Row::Row() : _fields(NULL), _field_number(0), _next(NULL) {}
+inline MysqlReply::Row::Row() : _fields(NULL), _field_number(0) {}
 inline uint64_t MysqlReply::Row::field_number() const {
     return _field_number;
 }
 inline const MysqlReply::Field& MysqlReply::Row::field(const uint64_t index) const {
-    if (index > _field_number) {
-        LOG(ERROR) << "wrong index, must between [0, " << _field_number << ")";
-        static Field field_nil;
-        return field_nil;
+    if (index < _field_number) {
+        return _fields[index];
     }
-    return _fields[index];
+    CHECK(false) << "index " << index << " out of bound [0," << _field_number << ")";
+    static Field field_nil;
+    return field_nil;
 }
 // mysql reply field
 inline MysqlReply::Field::Field()
@@ -1001,24 +1001,7 @@ inline bool MysqlReply::Field::is_string() const {
 inline bool MysqlReply::Field::is_nil() const {
     return _is_nil;
 }
-// little endian order to host order
-inline uint16_t mysql_uint2korr(const uint8_t* A) {
-    return (uint16_t)(((uint16_t)(A[0])) + ((uint16_t)(A[1]) << 8));
-}
-inline uint32_t mysql_uint3korr(const uint8_t* A) {
-    return (uint32_t)(((uint32_t)(A[0])) + (((uint32_t)(A[1])) << 8) + (((uint32_t)(A[2])) << 16));
-}
-inline uint32_t mysql_uint4korr(const uint8_t* A) {
-    return (uint32_t)(((uint32_t)(A[0])) + (((uint32_t)(A[1])) << 8) + (((uint32_t)(A[2])) << 16) +
-                      (((uint32_t)(A[3])) << 24));
-}
-inline uint64_t mysql_uint8korr(const uint8_t* A) {
-    return (uint64_t)(((uint64_t)(A[0])) + (((uint64_t)(A[1])) << 8) + (((uint64_t)(A[2])) << 16) +
-                      (((uint64_t)(A[3])) << 24) + (((uint64_t)(A[4])) << 32) +
-                      (((uint64_t)(A[5])) << 40) + (((uint64_t)(A[6])) << 48) +
-                      (((uint64_t)(A[7])) << 56));
-}
 
 }  // namespace brpc
 
-#endif  // BRPC_MYSQL_UTIL_H
+#endif  // BRPC_MYSQL_REPLY_H

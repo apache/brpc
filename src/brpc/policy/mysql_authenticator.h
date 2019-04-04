@@ -24,8 +24,8 @@
 namespace brpc {
 namespace policy {
 // pack mysql authentication_data
-int MysqlPackAuthenticator(const MysqlReply::Auth* auth,
-                           const std::string* user,
+int MysqlPackAuthenticator(const MysqlReply::Auth& auth,
+                           const std::string& user,
                            std::string* auth_str);
 // Request to mysql for authentication.
 class MysqlAuthenticator : public Authenticator {

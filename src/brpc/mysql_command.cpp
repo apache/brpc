@@ -15,17 +15,16 @@
 // Authors: Yang,Liming (yangliming01@baidu.com)
 
 #include "brpc/mysql_command.h"
+#include "brpc/mysql_common.h"
 #include "butil/sys_byteorder.h"
 #include "butil/logging.h"  // LOG()
 
-namespace {};
 namespace brpc {
 butil::Status MysqlMakeCommand(butil::IOBuf* outbuf,
                                const MysqlCommandType type,
                                const butil::StringPiece& command,
                                const uint8_t seq) {
     // TODO: maybe need to do some command syntex verify
-    const int header_size = 4;
     if (outbuf == NULL || command.size() == 0) {
         return butil::Status(EINVAL, "[MysqlMakeCommand] Param[outbuf] or [stmt] is NULL");
     }
@@ -33,7 +32,7 @@ butil::Status MysqlMakeCommand(butil::IOBuf* outbuf,
         return butil::Status(EINVAL, "[MysqlMakeCommand] statement size is too big");
     }
     uint32_t header = butil::ByteSwapToLE32(command.size() + 1) | seq;  // stmt + type
-    outbuf->append(&header, header_size);
+    outbuf->append(&header, mysql_header_size);
     outbuf->push_back(type);
     outbuf->append(command.data(), command.size());
     return butil::Status::OK();

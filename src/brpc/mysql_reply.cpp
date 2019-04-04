@@ -1,4 +1,21 @@
+// Copyright (c) 2019 Baidu, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Authors: Yang,Liming (yangliming01@baidu.com)
+
 #include "brpc/mysql_reply.h"
+#include "brpc/mysql_common.h"
 #include <ios>
 
 namespace brpc {
@@ -107,13 +124,13 @@ const char* MysqlRspTypeToString(MysqlRspType type) {
 
 // check if the buf is contain a full package
 inline bool is_full_package(const butil::IOBuf& buf) {
-    uint8_t header[4];
+    uint8_t header[mysql_header_size];
     const uint8_t* p = (const uint8_t*)buf.fetch(header, sizeof(header));
     if (p == NULL) {
         return false;
     }
     uint32_t payload_size = mysql_uint3korr(p);
-    if (buf.size() < payload_size + 4) {
+    if (buf.size() < payload_size + mysql_header_size) {
         return false;
     }
     return true;
@@ -180,12 +197,12 @@ ParseError MysqlReply::ConsumePartialIOBuf(butil::IOBuf& buf,
                                            const bool is_auth,
                                            bool* more_results) {
     *more_results = false;
-    uint8_t header[5];
+    uint8_t header[mysql_header_size + 1];  // use the extra byte to judge message type
     const uint8_t* p = (const uint8_t*)buf.fetch(header, sizeof(header));
     if (p == NULL) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
-    uint8_t type = (_type == MYSQL_RSP_UNKNOWN) ? p[4] : (uint8_t)_type;
+    uint8_t type = (_type == MYSQL_RSP_UNKNOWN) ? p[mysql_header_size] : (uint8_t)_type;
     if (is_auth && type != 0x00 && type != 0xFF) {
         _type = MYSQL_RSP_AUTH;
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.auth));
@@ -254,7 +271,8 @@ void MysqlReply::Print(std::ostream& os) const {
         os << "\neof1.warning:" << r._eof1._warning;
         os << "\neof1.status:" << r._eof1._status;
         int n = 0;
-        for (const Row* row = r._first->_next; row != r._last->_next; row = row->_next) {
+        for (size_t i = 0; i < r._rows.size(); ++i) {
+            const Row* row = r._rows[i];
             os << "\nrow(" << n++ << "):";
             for (uint64_t j = 0; j < r._header._column_number; ++j) {
                 if (row->field(j).is_nil()) {
@@ -699,10 +717,11 @@ ParseError MysqlReply::ResultSet::Parse(butil::IOBuf& buf, butil::Arena* arena) 
         if (is_first) {
             // we may reenter ConsumePartialIOBuf many times, check the last
             // row
-            if (_last != _first) {
-                MY_PARSE_CHECK(_last->ParseText(buf));
+            if (_rows.size() > 0) {
+                Row* last = _rows.back();
+                MY_PARSE_CHECK(last->ParseText(buf));
                 for (uint64_t i = 0; i < _header._column_number; ++i) {
-                    MY_PARSE_CHECK(_last->_fields[i].Parse(buf, _columns + i, arena));
+                    MY_PARSE_CHECK(last->_fields[i].Parse(buf, _columns + i, arena));
                 }
             }
             is_first = false;
@@ -715,15 +734,12 @@ ParseError MysqlReply::ResultSet::Parse(butil::IOBuf& buf, butil::Arena* arena) 
         MY_ALLOC_CHECK(my_alloc_check(arena, _header._column_number, fields));
         row->_fields = fields;
         row->_field_number = _header._column_number;
-        _last->_next = row;
-        _last = row;
+        _rows.push_back(row);
         // parse row and fields
         MY_PARSE_CHECK(row->ParseText(buf));
         for (uint64_t i = 0; i < _header._column_number; ++i) {
             MY_PARSE_CHECK(fields[i].Parse(buf, _columns + i, arena));
         }
-        // row number
-        ++_row_number;
     }
     // parse eof2
     MY_PARSE_CHECK(_eof2.Parse(buf));

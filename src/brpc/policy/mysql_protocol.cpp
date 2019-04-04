@@ -75,7 +75,7 @@ ParseError HandleAuthentication(const InputResponse* msg, const Socket* socket, 
         const MysqlReply& reply = msg->response.reply(0);
         if (reply.is_auth()) {
             std::string auth_str;
-            if (MysqlPackAuthenticator(reply.auth(), &ctx->user(), &auth_str) != 0) {
+            if (MysqlPackAuthenticator(reply.auth(), ctx->user(), &auth_str) != 0) {
                 LOG(ERROR) << "[MYSQL PARSE] wrong pack authentication data";
                 parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
             } else {
@@ -90,7 +90,7 @@ ParseError HandleAuthentication(const InputResponse* msg, const Socket* socket, 
             pi->with_auth = false;
         } else if (reply.is_error()) {
             LOG(ERROR) << reply;
-            parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
+            parseCode = PARSE_ERROR_NO_RESOURCE;
         } else {
             LOG(ERROR) << "[MYSQL PARSE] wrong authentication step";
             parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
@@ -118,35 +118,31 @@ ParseResult ParseMysqlMessage(butil::IOBuf* source,
         return MakeParseError(PARSE_ERROR_TRY_OTHERS);
     }
 
-    do {
-        InputResponse* msg = static_cast<InputResponse*>(socket->parsing_context());
-        if (msg == NULL) {
-            msg = new InputResponse;
-            socket->reset_parsing_context(msg);
-        }
+    InputResponse* msg = static_cast<InputResponse*>(socket->parsing_context());
+    if (msg == NULL) {
+        msg = new InputResponse;
+        socket->reset_parsing_context(msg);
+    }
 
-        ParseError err = msg->response.ConsumePartialIOBuf(*source, pi.with_auth);
+    ParseError err = msg->response.ConsumePartialIOBuf(*source, pi.with_auth);
+    if (err != PARSE_OK) {
+        socket->GivebackPipelinedInfo(pi);
+        return MakeParseError(err);
+    }
+    if (pi.with_auth) {
+        ParseError err = HandleAuthentication(msg, socket, &pi);
         if (err != PARSE_OK) {
-            socket->GivebackPipelinedInfo(pi);
-            return MakeParseError(err);
+            return MakeParseError(err, "Fail to authenticate with Mysql");
         }
-        if (pi.with_auth) {
-            ParseError err = HandleAuthentication(msg, socket, &pi);
-            if (err != PARSE_OK) {
-                return MakeParseError(err);
-            }
-            DestroyingPtr<InputResponse> auth_msg =
-                static_cast<InputResponse*>(socket->release_parsing_context());
-            socket->GivebackPipelinedInfo(pi);
-            return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
-        }
+        DestroyingPtr<InputResponse> auth_msg =
+            static_cast<InputResponse*>(socket->release_parsing_context());
+        socket->GivebackPipelinedInfo(pi);
+        return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
+    }
 
-        msg->id_wait = pi.id_wait;
-        socket->release_parsing_context();
-        return MakeMessage(msg);
-    } while (true);
-
-    return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
+    msg->id_wait = pi.id_wait;
+    socket->release_parsing_context();
+    return MakeMessage(msg);
 }
 
 void ProcessMysqlResponse(InputMessageBase* msg_base) {
@@ -228,8 +224,7 @@ void PackMysqlRequest(butil::IOBuf* buf,
            << (uint16_t)my_auth->collation();
         ctx->set_user(ss.str());
         ctx->set_starter(request.to_string());
-        ControllerPrivateAccessor(cntl).set_auth_context(ctx);
-        ControllerPrivateAccessor(cntl).add_with_auth();
+        ControllerPrivateAccessor(cntl).set_auth_context(ctx).add_with_auth();
     } else {
         buf->append(request);
     }

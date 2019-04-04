@@ -14,11 +14,12 @@
 
 // Authors: Yang,Liming (yangliming01@baidu.com)
 
+#ifndef BRPC_MYSQL_COMMAND_H
+#define BRPC_MYSQL_COMMAND_H
+
 #include "butil/iobuf.h"
 #include "butil/status.h"
 
-#ifndef BRPC_MYSQL_COMMAND_H
-#define BRPC_MYSQL_COMMAND_H
 namespace brpc {
 // mysql command types
 enum MysqlCommandType : unsigned char {
@@ -55,8 +56,6 @@ enum MysqlCommandType : unsigned char {
     COM_BINLOG_DUMP_GTID,
     COM_RESET_CONNECTION,
 };
-
-const uint32_t mysql_max_package_size = 0xFFFFFF;
 
 butil::Status MysqlMakeCommand(butil::IOBuf* outbuf,
                                const MysqlCommandType type,
