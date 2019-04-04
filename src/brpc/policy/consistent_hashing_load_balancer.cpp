@@ -35,25 +35,14 @@ class ReplicaPolicy {
 public:
     ReplicaPolicy() : _hash_func(nullptr) {}
     ReplicaPolicy(HashFunc hash) : _hash_func(hash) {}
-
     virtual ~ReplicaPolicy();
+
     virtual bool Build(ServerId server, 
                        size_t num_replicas,
                        std::vector<ConsistentHashingLoadBalancer::Node>* replicas) const = 0;
 
-    static const ReplicaPolicy* GetReplicaPolicy(const std::string& name) {
-        auto iter = _policy_map.find(name);
-        if (iter != _policy_map.end()) {
-            return iter->second;
-        }
-        return nullptr;
-    }
-
 protected:
-    HashFunc _hash_func = nullptr;
-
-private:
-    static const std::map<std::string, const ReplicaPolicy*> _policy_map;
+    HashFunc _hash_func;
 };
 
 class DefaultReplicaPolicy : public ReplicaPolicy {
@@ -124,15 +113,27 @@ bool KetamaReplicaPolicy::Build(ServerId server,
     return true;
 }
 
-const std::map<std::string, const ReplicaPolicy*> ReplicaPolicy::_policy_map = {
+namespace {
+
+const std::map<std::string, const ReplicaPolicy*> g_replica_policy_map = {
     {"murmurhash3", new DefaultReplicaPolicy(MurmurHash32)},
     {"md5", new DefaultReplicaPolicy(MD5Hash32)},
     {"ketama", new KetamaReplicaPolicy}
 };
 
+const ReplicaPolicy* GetReplicaPolicy(const std::string& name) {
+		auto iter = g_replica_policy_map.find(name);
+		if (iter != g_replica_policy_map.end()) {
+				return iter->second;
+		}
+		return nullptr;
+}
+
+} // namespace
+
 ConsistentHashingLoadBalancer::ConsistentHashingLoadBalancer(const char* name)
     : _num_replicas(FLAGS_chash_num_replicas), _name(name) {
-    _replicas_policy = ReplicaPolicy::GetReplicaPolicy(name);
+    _replicas_policy = GetReplicaPolicy(name);
     CHECK(_replicas_policy)
         << "Fail to find replica policy for consistency lb: '" << name << '\'';
 }
