@@ -28,6 +28,8 @@
 namespace brpc {
 namespace policy {
 
+class ReplicaPolicy;
+
 class ConsistentHashingLoadBalancer : public LoadBalancer {
 public:
     struct Node {
@@ -43,8 +45,6 @@ public:
             return hash < code;
         }
     };
-    using BuildReplicasFunc = 
-        std::function<bool (const ServerId server, const size_t num_replicas, std::vector<Node>* replicas)>;
     explicit ConsistentHashingLoadBalancer(const char* name);
     bool AddServer(const ServerId& server);
     bool RemoveServer(const ServerId& server);
@@ -57,7 +57,6 @@ public:
     virtual bool SetParameters(const butil::StringPiece& params);
 
 private:
-    void Init(const std::string& name);
     void GetLoads(std::map<butil::EndPoint, double> *load_map);
     static size_t AddBatch(std::vector<Node> &bg, const std::vector<Node> &fg,
                            const std::vector<Node> &servers, bool *executed);
@@ -65,7 +64,7 @@ private:
                               const std::vector<ServerId> &servers, bool *executed);
     static size_t Remove(std::vector<Node> &bg, const std::vector<Node> &fg,
                          const ServerId& server, bool *executed);
-    BuildReplicasFunc _build_replicas;
+    const ReplicaPolicy* _replicas_policy;
     size_t _num_replicas;
     std::string _name;
     butil::DoublyBufferedData<std::vector<Node> > _db_hash_ring;
