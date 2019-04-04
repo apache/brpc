@@ -35,7 +35,7 @@ class ReplicaPolicy {
 public:
     ReplicaPolicy() : _hash_func(nullptr) {}
     ReplicaPolicy(HashFunc hash) : _hash_func(hash) {}
-    virtual ~ReplicaPolicy();
+    virtual ~ReplicaPolicy() = default;
 
     virtual bool Build(ServerId server, 
                        size_t num_replicas,
