@@ -33,25 +33,22 @@ DEFINE_int32(chash_num_replicas, 100,
 
 class ReplicaPolicy {
 public:
-    ReplicaPolicy() : _hash_func(nullptr) {}
-    ReplicaPolicy(HashFunc hash) : _hash_func(hash) {}
     virtual ~ReplicaPolicy() = default;
 
     virtual bool Build(ServerId server, 
                        size_t num_replicas,
                        std::vector<ConsistentHashingLoadBalancer::Node>* replicas) const = 0;
-
-protected:
-    HashFunc _hash_func;
 };
 
 class DefaultReplicaPolicy : public ReplicaPolicy {
 public:
-    DefaultReplicaPolicy(HashFunc hash) : ReplicaPolicy(hash) {}
+    DefaultReplicaPolicy(HashFunc hash) : _hash_func(hash) {}
 
     virtual bool Build(ServerId server,
                        size_t num_replicas,
                        std::vector<ConsistentHashingLoadBalancer::Node>* replicas) const;
+private:
+    HashFunc _hash_func;
 };
 
 bool DefaultReplicaPolicy::Build(ServerId server,
