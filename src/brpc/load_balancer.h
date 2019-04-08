@@ -104,21 +104,12 @@ public:
     // Caller is responsible for Destroy() the instance after usage.
     virtual LoadBalancer* New() const = 0;
 
-    // Config user passed parameters to lb after constrction which 
+    // Config user passed parameters to lb after construction which 
     // make lb function more flexible.
     virtual bool SetParameters(const butil::StringPiece& params) { return true; }
 
 protected:
     virtual ~LoadBalancer() { }
-    static bool SplitParameters(const butil::StringPiece& params, 
-                                butil::StringPairs* param_vec) {
-        std::string params_str(params.data(), params.size());
-        if (!butil::SplitStringIntoKeyValuePairs(params_str, '=', ' ', param_vec)) {
-            param_vec->clear();
-            return false;
-        }
-        return true;
-    }
 };
 
 DECLARE_bool(show_lb_in_vars);
@@ -195,6 +186,16 @@ private:
 // For registering global instances.
 inline Extension<const LoadBalancer>* LoadBalancerExtension() {
     return Extension<const LoadBalancer>::instance();
+}
+
+inline bool SplitLoadBalancerParameters(const butil::StringPiece& params,
+                                        butil::StringPairs* param_vec) {
+    std::string params_str(params.data(), params.size());
+    if (!butil::SplitStringIntoKeyValuePairs(params_str, '=', ' ', param_vec)) {
+        param_vec->clear();
+        return false;
+    }
+    return true;
 }
 
 } // namespace brpc

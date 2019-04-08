@@ -361,7 +361,7 @@ void ConsistentHashingLoadBalancer::GetLoads(
 
 bool ConsistentHashingLoadBalancer::SetParameters(const butil::StringPiece& params) {
     butil::StringPairs param_vec;
-    if (!SplitParameters(params, &param_vec)) {
+    if (!SplitLoadBalancerParameters(params, &param_vec)) {
         return false;
     }
     for (const std::pair<std::string, std::string>& param : param_vec) {
