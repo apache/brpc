@@ -485,14 +485,14 @@ TEST_F(LoadBalancerTest, fairness) {
 }
 
 TEST_F(LoadBalancerTest, consistent_hashing) {
-    ::brpc::policy::HashFunc hashs[CONS_HASH_LB_LAST] = {
+    ::brpc::policy::HashFunc hashs[::brpc::policy::CONS_HASH_LB_LAST] = {
             ::brpc::policy::MurmurHash32, 
             ::brpc::policy::MD5Hash32,
             ::brpc::policy::KetamaHash
             // ::brpc::policy::CRCHash32 crc is a bad hash function in test
     };
 
-    ::brpc::policy::ConsistentHashingLoadBalancerType hash_type[CONS_HASH_LB_LAST] = {
+    ::brpc::policy::ConsistentHashingLoadBalancerType hash_type[::brpc::policy::CONS_HASH_LB_LAST] = {
         ::brpc::policy::CONS_HASH_LB_MURMUR3,
         ::brpc::policy::CONS_HASH_LB_MD5,
         ::brpc::policy::CONS_HASH_LB_KETAMA
