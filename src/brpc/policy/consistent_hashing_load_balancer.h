@@ -30,6 +30,15 @@ namespace policy {
 
 class ReplicaPolicy;
 
+enum ConsistentHashingLoadBalancerType {
+    CONS_HASH_LB_MURMUR3 = 0,
+    CONS_HASH_LB_MD5 = 1,
+    CONS_HASH_LB_KETAMA = 2,
+
+    // Identify the last one.
+    CONS_HASH_LB_LAST = 3
+};
+
 class ConsistentHashingLoadBalancer : public LoadBalancer {
 public:
     struct Node {
@@ -45,7 +54,7 @@ public:
             return hash < code;
         }
     };
-    explicit ConsistentHashingLoadBalancer(const char* name);
+    explicit ConsistentHashingLoadBalancer(ConsistentHashingLoadBalancerType type);
     bool AddServer(const ServerId& server);
     bool RemoveServer(const ServerId& server);
     size_t AddServersInBatch(const std::vector<ServerId> &servers);
@@ -66,7 +75,7 @@ private:
                          const ServerId& server, bool *executed);
     const ReplicaPolicy* _replicas_policy;
     size_t _num_replicas;
-    std::string _name;
+    ConsistentHashingLoadBalancerType _type;
     butil::DoublyBufferedData<std::vector<Node> > _db_hash_ring;
 };
 

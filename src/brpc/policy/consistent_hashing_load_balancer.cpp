@@ -112,27 +112,29 @@ bool KetamaReplicaPolicy::Build(ServerId server,
 
 namespace {
 
-const std::map<std::string, const ReplicaPolicy*> g_replica_policy_map = {
-    {"murmurhash3", new DefaultReplicaPolicy(MurmurHash32)},
-    {"md5", new DefaultReplicaPolicy(MD5Hash32)},
-    {"ketama", new KetamaReplicaPolicy}
+const std::array<std::pair<const ReplicaPolicy*, std::string>, CONS_HASH_LB_LAST> 
+    g_replica_policy = {
+    std::make_pair(new DefaultReplicaPolicy(MurmurHash32), "murmurhash3"),
+    std::make_pair(new DefaultReplicaPolicy(MD5Hash32), "md5"),
+    std::make_pair(new KetamaReplicaPolicy, "ketama")
 };
 
-const ReplicaPolicy* GetReplicaPolicy(const std::string& name) {
-		auto iter = g_replica_policy_map.find(name);
-		if (iter != g_replica_policy_map.end()) {
-				return iter->second;
-		}
-		return nullptr;
+inline const ReplicaPolicy* GetReplicaPolicy(ConsistentHashingLoadBalancerType type) {
+    return g_replica_policy.at(type).first;
+}
+
+inline const std::string& GetLbName(ConsistentHashingLoadBalancerType type) {
+    return g_replica_policy.at(type).second;
 }
 
 } // namespace
 
-ConsistentHashingLoadBalancer::ConsistentHashingLoadBalancer(const char* name)
-    : _num_replicas(FLAGS_chash_num_replicas), _name(name) {
-    _replicas_policy = GetReplicaPolicy(name);
+ConsistentHashingLoadBalancer::ConsistentHashingLoadBalancer(
+    ConsistentHashingLoadBalancerType type)
+    : _num_replicas(FLAGS_chash_num_replicas), _type(type) {
+    _replicas_policy = GetReplicaPolicy(_type);
     CHECK(_replicas_policy)
-        << "Fail to find replica policy for consistency lb: '" << name << '\'';
+        << "Fail to find replica policy for consistency lb type: '" << type << '\'';
 }
 
 size_t ConsistentHashingLoadBalancer::AddBatch(
@@ -260,7 +262,7 @@ size_t ConsistentHashingLoadBalancer::RemoveServersInBatch(
 }
 
 LoadBalancer *ConsistentHashingLoadBalancer::New() const {
-    return new (std::nothrow) ConsistentHashingLoadBalancer(_name.c_str());
+    return new (std::nothrow) ConsistentHashingLoadBalancer(_type);
 }
 
 void ConsistentHashingLoadBalancer::Destroy() {
@@ -311,7 +313,7 @@ void ConsistentHashingLoadBalancer::Describe(
         return;
     }
     os << "ConsistentHashingLoadBalancer {\n"
-       << "  hash function: " << _name << '\n'
+       << "  hash function: " << GetLbName(_type) << '\n'
        << "  replica per host: " << _num_replicas << '\n';
     std::map<butil::EndPoint, double> load_map;
     GetLoads(&load_map);
