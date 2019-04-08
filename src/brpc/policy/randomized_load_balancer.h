@@ -36,7 +36,7 @@ public:
     size_t AddServersInBatch(const std::vector<ServerId>& servers);
     size_t RemoveServersInBatch(const std::vector<ServerId>& servers);
     int SelectServer(const SelectIn& in, SelectOut* out);
-    RandomizedLoadBalancer* New() const;
+    RandomizedLoadBalancer* New(const butil::StringPiece&) const;
     void Destroy();
     void Describe(std::ostream& os, const DescribeOptions&);
     

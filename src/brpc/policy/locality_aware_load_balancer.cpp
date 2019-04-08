@@ -460,7 +460,8 @@ int64_t LocalityAwareLoadBalancer::Weight::Update(
     return ResetWeight(index, end_time_us);
 }
 
-LocalityAwareLoadBalancer* LocalityAwareLoadBalancer::New() const {
+LocalityAwareLoadBalancer* LocalityAwareLoadBalancer::New(
+    const butil::StringPiece&) const {
     return new (std::nothrow) LocalityAwareLoadBalancer;
 }
 

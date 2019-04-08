@@ -213,7 +213,8 @@ SocketId WeightedRoundRobinLoadBalancer::GetServerInNextStride(
     return final_server;
 }
 
-LoadBalancer* WeightedRoundRobinLoadBalancer::New() const {
+LoadBalancer* WeightedRoundRobinLoadBalancer::New(
+    const butil::StringPiece&) const {
     return new (std::nothrow) WeightedRoundRobinLoadBalancer;
 }
 

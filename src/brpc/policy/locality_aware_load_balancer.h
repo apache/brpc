@@ -44,7 +44,7 @@ public:
     bool RemoveServer(const ServerId& id);
     size_t AddServersInBatch(const std::vector<ServerId>& servers);
     size_t RemoveServersInBatch(const std::vector<ServerId>& servers);
-    LocalityAwareLoadBalancer* New() const;
+    LocalityAwareLoadBalancer* New(const butil::StringPiece&) const;
     void Destroy();
     int SelectServer(const SelectIn& in, SelectOut* out);
     void Feedback(const CallInfo& info);

@@ -31,6 +31,9 @@ namespace policy {
 DEFINE_int32(chash_num_replicas, 100, 
              "default number of replicas per server in chash");
 
+// Defined in hasher.cpp.
+const char* GetHashName(HashFunc hasher);
+
 class ReplicaPolicy {
 public:
     virtual ~ReplicaPolicy() = default;
@@ -38,6 +41,7 @@ public:
     virtual bool Build(ServerId server, 
                        size_t num_replicas,
                        std::vector<ConsistentHashingLoadBalancer::Node>* replicas) const = 0;
+    virtual const char* name() const = 0;
 };
 
 class DefaultReplicaPolicy : public ReplicaPolicy {
@@ -47,6 +51,9 @@ public:
     virtual bool Build(ServerId server,
                        size_t num_replicas,
                        std::vector<ConsistentHashingLoadBalancer::Node>* replicas) const;
+
+    virtual const char* name() const { return GetHashName(_hash_func); }
+
 private:
     HashFunc _hash_func;
 };
@@ -77,6 +84,8 @@ public:
     virtual bool Build(ServerId server,
                        size_t num_replicas,
                        std::vector<ConsistentHashingLoadBalancer::Node>* replicas) const;
+
+    virtual const char* name() const { return "ketama"; }
 };
 
 bool KetamaReplicaPolicy::Build(ServerId server,
@@ -112,19 +121,14 @@ bool KetamaReplicaPolicy::Build(ServerId server,
 
 namespace {
 
-const std::array<std::pair<const ReplicaPolicy*, std::string>, CONS_HASH_LB_LAST> 
-    g_replica_policy = {
-    std::make_pair(new DefaultReplicaPolicy(MurmurHash32), "murmurhash3"),
-    std::make_pair(new DefaultReplicaPolicy(MD5Hash32), "md5"),
-    std::make_pair(new KetamaReplicaPolicy, "ketama")
+const std::array<const ReplicaPolicy*, CONS_HASH_LB_LAST> g_replica_policy = {
+    new DefaultReplicaPolicy(MurmurHash32),
+    new DefaultReplicaPolicy(MD5Hash32),
+    new KetamaReplicaPolicy
 };
 
 inline const ReplicaPolicy* GetReplicaPolicy(ConsistentHashingLoadBalancerType type) {
-    return g_replica_policy.at(type).first;
-}
-
-inline const std::string& GetLbName(ConsistentHashingLoadBalancerType type) {
-    return g_replica_policy.at(type).second;
+    return g_replica_policy.at(type);
 }
 
 } // namespace
@@ -261,8 +265,14 @@ size_t ConsistentHashingLoadBalancer::RemoveServersInBatch(
     return n;
 }
 
-LoadBalancer *ConsistentHashingLoadBalancer::New() const {
-    return new (std::nothrow) ConsistentHashingLoadBalancer(_type);
+LoadBalancer *ConsistentHashingLoadBalancer::New(const butil::StringPiece& params) const {
+    ConsistentHashingLoadBalancer* lb = 
+        new (std::nothrow) ConsistentHashingLoadBalancer(_type);
+    if (lb != nullptr && !lb->SetParameters(params)) {
+        delete lb;
+        lb = nullptr;
+    }
+    return lb;
 }
 
 void ConsistentHashingLoadBalancer::Destroy() {
@@ -313,7 +323,7 @@ void ConsistentHashingLoadBalancer::Describe(
         return;
     }
     os << "ConsistentHashingLoadBalancer {\n"
-       << "  hash function: " << GetLbName(_type) << '\n'
+       << "  hash function: " << _replicas_policy->name() << '\n'
        << "  replica per host: " << _num_replicas << '\n';
     std::map<butil::EndPoint, double> load_map;
     GetLoads(&load_map);

@@ -102,11 +102,7 @@ public:
 
     // Create/destroy an instance.
     // Caller is responsible for Destroy() the instance after usage.
-    virtual LoadBalancer* New() const = 0;
-
-    // Config user passed parameters to lb after construction which 
-    // make lb function more flexible.
-    virtual bool SetParameters(const butil::StringPiece& params) { return true; }
+    virtual LoadBalancer* New(const butil::StringPiece& params) const = 0;
 
 protected:
     virtual ~LoadBalancer() { }

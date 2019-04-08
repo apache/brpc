@@ -59,11 +59,11 @@ public:
     bool RemoveServer(const ServerId& server);
     size_t AddServersInBatch(const std::vector<ServerId> &servers);
     size_t RemoveServersInBatch(const std::vector<ServerId> &servers);
-    LoadBalancer *New() const;
+    LoadBalancer *New(const butil::StringPiece& params) const;
     void Destroy();
     int SelectServer(const SelectIn &in, SelectOut *out);
     void Describe(std::ostream &os, const DescribeOptions& options);
-    virtual bool SetParameters(const butil::StringPiece& params);
+    bool SetParameters(const butil::StringPiece& params);
 
 private:
     void GetLoads(std::map<butil::EndPoint, double> *load_map);

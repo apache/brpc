@@ -74,14 +74,9 @@ int SharedLoadBalancer::Init(const char* lb_protocol) {
         LOG(FATAL) << "Fail to find LoadBalancer by `" << lb_name << "'";
         return -1;
     }
-    LoadBalancer* lb_copy = lb->New();
-    if (lb_copy == NULL) {
+    LoadBalancer* _lb = lb->New(lb_params);
+    if (_lb == NULL) {
         LOG(FATAL) << "Fail to new LoadBalancer";
-        return -1;
-    }
-    _lb = lb_copy;
-    if (!_lb->SetParameters(lb_params)) {
-        LOG(FATAL) << "Fail to set parameters of lb `" << lb_protocol << "'";
         return -1;
     }
     if (FLAGS_show_lb_in_vars && !_exposed) {
