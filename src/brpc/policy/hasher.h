@@ -34,8 +34,6 @@ uint32_t MD5Hash32V(const butil::StringPiece* keys, size_t num_keys);
 uint32_t MurmurHash32(const void* key, size_t len);
 uint32_t MurmurHash32V(const butil::StringPiece* keys, size_t num_keys);
 
-uint32_t KetamaHash(const void* key, size_t len);
-
 }  // namespace policy
 } // namespace brpc
 

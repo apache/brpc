@@ -39,10 +39,6 @@ uint32_t MD5Hash32(const void* key, size_t len) {
             | (results[0] & 0xFF);
 }
 
-uint32_t KetamaHash(const void* key, size_t len) {
-    return MD5Hash32(key, len);
-}
-
 uint32_t MD5Hash32V(const butil::StringPiece* keys, size_t num_keys) {
     MD5_CTX ctx;
     MD5_Init(&ctx);
@@ -164,9 +160,6 @@ const char *GetHashName(HashFunc hasher) {
     }
     if (hasher == CRCHash32) {
         return "crc32";
-    }
-    if (hasher == KetamaHash) {
-        return "ketama";
     }
 
     return "user_defined";
