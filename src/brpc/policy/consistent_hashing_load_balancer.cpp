@@ -121,14 +121,20 @@ bool KetamaReplicaPolicy::Build(ServerId server,
 
 namespace {
 
-const std::array<const ReplicaPolicy*, CONS_HASH_LB_LAST> g_replica_policy = {
-    new DefaultReplicaPolicy(MurmurHash32),
-    new DefaultReplicaPolicy(MD5Hash32),
-    new KetamaReplicaPolicy
-};
+pthread_once_t s_replica_policy_once = PTHREAD_ONCE_INIT;
+const std::array<const ReplicaPolicy*, CONS_HASH_LB_LAST>* g_replica_policy = nullptr;
+
+void init_replica_policy() {
+    g_replica_policy = new std::array<const ReplicaPolicy*, CONS_HASH_LB_LAST>({
+        new DefaultReplicaPolicy(MurmurHash32),
+        new DefaultReplicaPolicy(MD5Hash32),
+        new KetamaReplicaPolicy
+    });
+}
 
 inline const ReplicaPolicy* GetReplicaPolicy(ConsistentHashingLoadBalancerType type) {
-    return g_replica_policy.at(type);
+    pthread_once(&s_replica_policy_once, init_replica_policy);
+    return g_replica_policy->at(type);
 }
 
 } // namespace
