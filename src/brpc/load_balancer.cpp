@@ -74,7 +74,7 @@ int SharedLoadBalancer::Init(const char* lb_protocol) {
         LOG(FATAL) << "Fail to find LoadBalancer by `" << lb_name << "'";
         return -1;
     }
-    LoadBalancer* _lb = lb->New(lb_params);
+    _lb = lb->New(lb_params);
     if (_lb == NULL) {
         LOG(FATAL) << "Fail to new LoadBalancer";
         return -1;

@@ -63,9 +63,9 @@ public:
     void Destroy();
     int SelectServer(const SelectIn &in, SelectOut *out);
     void Describe(std::ostream &os, const DescribeOptions& options);
-    bool SetParameters(const butil::StringPiece& params);
 
 private:
+    bool SetParameters(const butil::StringPiece& params);
     void GetLoads(std::map<butil::EndPoint, double> *load_map);
     static size_t AddBatch(std::vector<Node> &bg, const std::vector<Node> &fg,
                            const std::vector<Node> &servers, bool *executed);
