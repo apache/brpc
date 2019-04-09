@@ -73,7 +73,6 @@ private:
                               const std::vector<ServerId> &servers, bool *executed);
     static size_t Remove(std::vector<Node> &bg, const std::vector<Node> &fg,
                          const ServerId& server, bool *executed);
-    const ReplicaPolicy* _replicas_policy;
     size_t _num_replicas;
     ConsistentHashingLoadBalancerType _type;
     butil::DoublyBufferedData<std::vector<Node> > _db_hash_ring;

@@ -142,9 +142,8 @@ inline const ReplicaPolicy* GetReplicaPolicy(ConsistentHashingLoadBalancerType t
 ConsistentHashingLoadBalancer::ConsistentHashingLoadBalancer(
     ConsistentHashingLoadBalancerType type)
     : _num_replicas(FLAGS_chash_num_replicas), _type(type) {
-    _replicas_policy = GetReplicaPolicy(_type);
-    CHECK(_replicas_policy)
-        << "Fail to find replica policy for consistency lb type: '" << type << '\'';
+    CHECK(GetReplicaPolicy(_type))
+        << "Fail to find replica policy for consistency lb type: '" << _type << '\'';
 }
 
 size_t ConsistentHashingLoadBalancer::AddBatch(
@@ -218,7 +217,7 @@ size_t ConsistentHashingLoadBalancer::Remove(
 bool ConsistentHashingLoadBalancer::AddServer(const ServerId& server) {
     std::vector<Node> add_nodes;
     add_nodes.reserve(_num_replicas);
-    if (!_replicas_policy->Build(server, _num_replicas, &add_nodes)) {
+    if (!GetReplicaPolicy(_type)->Build(server, _num_replicas, &add_nodes)) {
         return false;
     }
     std::sort(add_nodes.begin(), add_nodes.end());
@@ -237,7 +236,7 @@ size_t ConsistentHashingLoadBalancer::AddServersInBatch(
     replicas.reserve(_num_replicas);
     for (size_t i = 0; i < servers.size(); ++i) {
         replicas.clear();
-        if (_replicas_policy->Build(servers[i], _num_replicas, &replicas)) {
+        if (GetReplicaPolicy(_type)->Build(servers[i], _num_replicas, &replicas)) {
             add_nodes.insert(add_nodes.end(), replicas.begin(), replicas.end());
         }
     }
@@ -329,7 +328,7 @@ void ConsistentHashingLoadBalancer::Describe(
         return;
     }
     os << "ConsistentHashingLoadBalancer {\n"
-       << "  hash function: " << _replicas_policy->name() << '\n'
+       << "  hash function: " << GetReplicaPolicy(_type)->name() << '\n'
        << "  replica per host: " << _num_replicas << '\n';
     std::map<butil::EndPoint, double> load_map;
     GetLoads(&load_map);
