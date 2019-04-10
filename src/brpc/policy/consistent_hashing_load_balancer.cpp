@@ -388,6 +388,7 @@ bool ConsistentHashingLoadBalancer::SetParameters(const butil::StringPiece& para
             if (!butil::StringToSizeT(key_value.substr(p + 1), &_num_replicas)) {
                 return false;
             }
+            continue;
         }
         LOG(ERROR) << "Failed to set this unknown parameters " << key_value;
     }
