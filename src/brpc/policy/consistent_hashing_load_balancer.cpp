@@ -377,23 +377,20 @@ void ConsistentHashingLoadBalancer::GetLoads(
 }
 
 bool ConsistentHashingLoadBalancer::SetParameters(const butil::StringPiece& params) {
-    butil::StringPairs param_vec;
-    if (!SplitLoadBalancerParameters(params, &param_vec)) {
-        return false;
-    }
-    for (const std::pair<std::string, std::string>& param : param_vec) {
-        if (param.first == "replicas") {
-            size_t replicas = 0;
-            if (butil::StringToSizeT(param.second, &replicas)) {
-                _num_replicas = replicas;
-            } else {
+    for (butil::StringSplitter sp(params.begin(), params.end(), ' '); sp != nullptr; ++sp) {
+        butil::StringPiece key_value(sp.field(), sp.length());
+        size_t p = key_value.find('=');
+        if (p == key_value.npos || p == key_value.size() - 1) {
+            // No value configed.
+            return false;
+        }
+        if (key_value.substr(0, p) == "replicas") {
+            if (!butil::StringToSizeT(key_value.substr(p + 1), &_num_replicas)) {
                 return false;
             }
-            continue;
         }
-        LOG(ERROR) << "Failed to set this unknown parameters " << param.first << '=' << param.second;
+        LOG(ERROR) << "Failed to set this unknown parameters " << key_value;
     }
-
     return true;
 }
 

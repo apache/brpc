@@ -184,16 +184,6 @@ inline Extension<const LoadBalancer>* LoadBalancerExtension() {
     return Extension<const LoadBalancer>::instance();
 }
 
-inline bool SplitLoadBalancerParameters(const butil::StringPiece& params,
-                                        butil::StringPairs* param_vec) {
-    std::string params_str(params.data(), params.size());
-    if (!butil::SplitStringIntoKeyValuePairs(params_str, '=', ' ', param_vec)) {
-        param_vec->clear();
-        return false;
-    }
-    return true;
-}
-
 } // namespace brpc
 
 
