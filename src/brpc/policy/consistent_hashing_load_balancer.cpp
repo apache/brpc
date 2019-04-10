@@ -124,7 +124,7 @@ namespace {
 pthread_once_t s_replica_policy_once = PTHREAD_ONCE_INIT;
 const std::array<const ReplicaPolicy*, CONS_HASH_LB_LAST>* g_replica_policy = nullptr;
 
-void init_replica_policy() {
+void InitReplicaPolicy() {
     g_replica_policy = new std::array<const ReplicaPolicy*, CONS_HASH_LB_LAST>({
         new DefaultReplicaPolicy(MurmurHash32),
         new DefaultReplicaPolicy(MD5Hash32),
@@ -133,7 +133,7 @@ void init_replica_policy() {
 }
 
 inline const ReplicaPolicy* GetReplicaPolicy(ConsistentHashingLoadBalancerType type) {
-    pthread_once(&s_replica_policy_once, init_replica_policy);
+    pthread_once(&s_replica_policy_once, InitReplicaPolicy);
     return g_replica_policy->at(type);
 }
 
