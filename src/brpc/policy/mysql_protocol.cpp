@@ -200,6 +200,10 @@ void SerializeMysqlRequest(butil::IOBuf* buf,
         return cntl->SetFailed(EREQUEST, "Fail to serialize MysqlRequest");
     }
     ControllerPrivateAccessor(cntl).set_pipelined_count(1);
+    auto tx = rr->get_tx();
+    if (tx != NULL) {
+        cntl->use_bind_sock(tx->get_socket());
+    }
     if (FLAGS_mysql_verbose) {
         LOG(INFO) << "\n[MYSQL REQUEST] " << *rr;
     }

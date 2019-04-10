@@ -252,6 +252,8 @@ void Controller::ResetPods() {
     _request_stream = INVALID_STREAM_ID;
     _response_stream = INVALID_STREAM_ID;
     _remote_stream_settings = NULL;
+    _bind_sock_action = BIND_SOCK_NONE;
+    _bind_sock_other = NULL;
 }
 
 Controller::Call::Call(Controller::Call* rhs)
@@ -280,6 +282,7 @@ void Controller::Call::Reset() {
     peer_id = INVALID_SOCKET_ID;
     begin_time_us = 0;
     sending_sock.reset(NULL);
+    bind_sock_action = BIND_SOCK_NONE;
     stream_user_data = NULL;
 }
 
@@ -731,8 +734,14 @@ void Controller::Call::OnComplete(
         // Otherwise in-flight responses may come back in future and break the
         // assumption that one pooled connection cannot have more than one
         // message at the same time.
+        // If bind sock action is active take the ownship of sending sock 
+        // If bind sock is not NULL, RPC complete, reset the sock to NULL
         if (sending_sock != NULL && (error_code == 0 || responded)) {
-            if (!sending_sock->is_read_progressive()) {
+            if (bind_sock_action == BIND_SOCK_ACTIVE) {
+                c->_bind_sock_owner.reset(sending_sock.release());
+            } else if (c->_bind_sock_other != NULL) {
+                sending_sock.release();
+            } else if (!sending_sock->is_read_progressive()) {
                 // Normally-read socket which will not be used after RPC ends,
                 // safe to return. Notice that Socket::is_read_progressive may
                 // differ from Controller::is_response_read_progressively()
@@ -749,7 +758,11 @@ void Controller::Call::OnComplete(
     case CONNECTION_TYPE_SHORT:
         if (sending_sock != NULL) {
             // Check the comment in CONNECTION_TYPE_POOLED branch.
-            if (!sending_sock->is_read_progressive()) {
+            if (bind_sock_action == BIND_SOCK_ACTIVE) {
+                c->_bind_sock_owner.reset(sending_sock.release());
+            } else if (c->_bind_sock_other != NULL) {
+                sending_sock.release();
+            } else if (!sending_sock->is_read_progressive()) {
                 if (c->_stream_creator == NULL) {
                     sending_sock->SetFailed();
                 }
@@ -816,6 +829,8 @@ void Controller::EndRPC(const CompletionInfo& info) {
         }
         // TODO: Replace this with stream_creator.
         HandleStreamConnection(_current_call.sending_sock.get());
+        // Only bind the success sock of the RPC
+        _current_call.bind_sock_action = _bind_sock_action; 
         _current_call.OnComplete(this, _error_code, info.responded, true);
     } else {
         // Even if _unfinished_call succeeded, we don't use EBACKUPREQUEST
@@ -982,7 +997,10 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     _current_call.need_feedback = false;
     _current_call.enable_circuit_breaker = has_enabled_circuit_breaker();
     SocketUniquePtr tmp_sock;
-    if (SingleServer()) {
+    // if _bind_sock_other is not NULL, use it
+    if (_bind_sock_other != NULL) {
+        _current_call.peer_id = _bind_sock_other->id();
+    } else if (SingleServer()) {
         // Don't use _current_call.peer_id which is set to -1 after construction
         // of the backup call.
         const int rc = Socket::Address(_single_server_id, &tmp_sock);
@@ -1048,7 +1066,10 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _current_call.sending_sock->set_preferred_index(_preferred_index);
     } else {
         int rc = 0;
-        if (_connection_type == CONNECTION_TYPE_POOLED) {
+        // if _bind_sock is not NULL, use it
+        if (_bind_sock_other != NULL) {
+            _current_call.sending_sock.reset(_bind_sock_other);
+        } else if (_connection_type == CONNECTION_TYPE_POOLED) {
             rc = tmp_sock->GetPooledSocket(&_current_call.sending_sock);
         } else if (_connection_type == CONNECTION_TYPE_SHORT) {
             rc = tmp_sock->GetShortSocket(&_current_call.sending_sock);
@@ -1070,7 +1091,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         _current_call.sending_sock->set_preferred_index(_preferred_index);
         // Set preferred_index of main_socket as well to make it easier to
         // debug and observe from /connections.
-        if (tmp_sock->preferred_index() < 0) {
+        if (tmp_sock && tmp_sock->preferred_index() < 0) {
             tmp_sock->set_preferred_index(_preferred_index);
         }
         tmp_sock.reset();

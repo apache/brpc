@@ -32,6 +32,7 @@
 #include "butil/arena.h"
 #include "mysql_reply.h"
 #include "parse_result.h"
+#include "mysql_transaction.h"
 
 namespace brpc {
 // Request to mysql.
@@ -48,6 +49,7 @@ namespace brpc {
 class MysqlRequest : public ::google::protobuf::Message {
 public:
     MysqlRequest();
+    MysqlRequest(MysqlTransaction* tx);
     virtual ~MysqlRequest();
     MysqlRequest(const MysqlRequest& from);
     inline MysqlRequest& operator=(const MysqlRequest& from) {
@@ -92,6 +94,10 @@ public:
         return _has_error;
     }
 
+    MysqlTransaction* get_tx() const {
+        return _tx;
+    }
+
     void Print(std::ostream&) const;
 
 private:
@@ -103,6 +109,7 @@ private:
     bool _has_error;            // previous AddCommand had error
     butil::IOBuf _buf;          // the serialized request.
     mutable int _cached_size_;  // ByteSize
+    MysqlTransaction* _tx;
 
     friend void protobuf_AddDesc_baidu_2frpc_2fmysql_5fbase_2eproto_impl();
     friend void protobuf_AddDesc_baidu_2frpc_2fmysql_5fbase_2eproto();

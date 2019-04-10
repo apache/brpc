@@ -194,7 +194,7 @@ inline uint64_t parse_encode_length(butil::IOBuf& buf) {
 
 ParseError MysqlReply::ConsumePartialIOBuf(butil::IOBuf& buf,
                                            butil::Arena* arena,
-                                           const bool is_auth,
+                                           bool is_auth,
                                            bool* more_results) {
     *more_results = false;
     uint8_t header[mysql_header_size + 1];  // use the extra byte to judge message type

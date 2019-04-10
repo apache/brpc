@@ -596,4 +596,121 @@ TEST_F(MysqlTest, resultset) {
     }
 }
 
+TEST_F(MysqlTest, transaction) {
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_MYSQL;
+    options.connection_type = brpc::MYSQL_connection_type;
+    options.connect_timeout_ms = brpc::MYSQL_connect_timeout_ms;
+    options.timeout_ms = brpc::MYSQL_timeout_ms /*milliseconds*/;
+    options.auth = new brpc::policy::MysqlAuthenticator(
+        brpc::MYSQL_user, brpc::MYSQL_password, brpc::MYSQL_schema);
+    std::stringstream ss;
+    ss << brpc::MYSQL_host + ":" + brpc::MYSQL_port;
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init(ss.str().c_str(), &options));
+
+    {
+        brpc::MysqlRequest request;
+        brpc::MysqlResponse response;
+        brpc::Controller cntl;
+        request.Query("drop table brpc_tx");
+        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+    }
+    {
+        brpc::MysqlRequest request;
+        brpc::MysqlResponse response;
+        brpc::Controller cntl;
+
+        request.Query(
+            "CREATE TABLE `brpc_tx` (`Id` int(11) DEFAULT NULL,`LastName` varchar(255) DEFAULT "
+            "NULL,`FirstName` decimal(10,0) DEFAULT NULL,`Address` varchar(255) DEFAULT "
+            "NULL,`City` varchar(255) DEFAULT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+
+        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(1ul, response.reply_size());
+        ASSERT_EQ(brpc::MYSQL_RSP_OK, response.reply(0).type());
+    }
+    {
+        brpc::MysqlTransactionOptions tx_options;
+        tx_options.readonly = false;
+        tx_options.isolation_level = brpc::MysqlIsoRepeatableRead;
+        brpc::MysqlTransactionUniquePtr tx(brpc::NewMysqlTransaction(channel, tx_options));
+        ASSERT_FALSE(tx == NULL) << "Fail to create transaction";
+
+        {
+            brpc::MysqlRequest request(tx.get());
+            std::string sql =
+                "insert into brpc_tx(Id,LastName,FirstName, Address) values "
+                "(1,'lucy',12.5,'beijing')";
+            ASSERT_EQ(request.Query(sql), true);
+            brpc::MysqlResponse response;
+            brpc::Controller cntl;
+            channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+            ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+            ASSERT_EQ(1ul, response.reply_size());
+            ASSERT_EQ(brpc::MYSQL_RSP_OK, response.reply(0).type());
+        }
+        {
+            brpc::MysqlRequest request(tx.get());
+            std::string sql =
+                "insert into brpc_tx(Id,LastName,FirstName, Address) values "
+                "(2,'lilei',12.6,'shanghai')";
+            ASSERT_EQ(request.Query(sql), true);
+            brpc::MysqlResponse response;
+            brpc::Controller cntl;
+            channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+            ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+            ASSERT_EQ(1ul, response.reply_size());
+            ASSERT_EQ(brpc::MYSQL_RSP_OK, response.reply(0).type());
+        }
+
+        // not commit, so return 0 rows
+        {
+            brpc::MysqlRequest request;
+            brpc::MysqlResponse response;
+            brpc::Controller cntl;
+            request.Query("select * from brpc_tx");
+            channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+            ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+            ASSERT_EQ(1ul, response.reply_size());
+            ASSERT_EQ(response.reply(0).row_number(), 0ul);
+        }
+
+        { ASSERT_EQ(tx->commit(), true); }
+        // after commit, so return 2 rows
+        {
+            brpc::MysqlRequest request;
+            brpc::MysqlResponse response;
+            brpc::Controller cntl;
+            request.Query("select * from brpc_tx");
+            channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+            ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+            ASSERT_EQ(1ul, response.reply_size());
+            ASSERT_EQ(response.reply(0).row_number(), 2ul);
+        }
+    }
+
+    {
+        brpc::MysqlTransactionOptions tx_options;
+        tx_options.readonly = true;
+        tx_options.isolation_level = brpc::MysqlIsoReadCommitted;
+
+        brpc::MysqlTransactionUniquePtr tx(brpc::NewMysqlTransaction(channel, tx_options));
+        ASSERT_FALSE(tx == NULL) << "Fail to create transaction";
+
+        {
+            brpc::MysqlRequest request(tx.get());
+            std::string sql = "update brpc_tx set Address = 'hangzhou' where Id=1";
+            ASSERT_EQ(request.Query(sql), true);
+            brpc::MysqlResponse response;
+            brpc::Controller cntl;
+            channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+            ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+            ASSERT_EQ(1ul, response.reply_size());
+            ASSERT_EQ(brpc::MYSQL_RSP_ERROR, response.reply(0).type());
+        }
+    }
+}
+
 }  // namespace

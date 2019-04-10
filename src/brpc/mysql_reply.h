@@ -566,7 +566,7 @@ public:
     MysqlReply();
     ParseError ConsumePartialIOBuf(butil::IOBuf& buf,
                                    butil::Arena* arena,
-                                   const bool is_auth,
+                                   bool is_auth,
                                    bool* more_results);
     void Swap(MysqlReply& other);
     void Print(std::ostream& os) const;

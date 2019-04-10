@@ -127,6 +127,11 @@ MysqlRequest::MysqlRequest() : ::google::protobuf::Message() {
     SharedCtor();
 }
 
+MysqlRequest::MysqlRequest(MysqlTransaction* tx) : ::google::protobuf::Message() {
+    SharedCtor();
+    _tx = tx;
+}
+
 void MysqlRequest::InitAsDefaultInstance() {}
 
 MysqlRequest::MysqlRequest(const MysqlRequest& from) : ::google::protobuf::Message() {
@@ -138,6 +143,7 @@ void MysqlRequest::SharedCtor() {
     _has_error = false;
     _cached_size_ = 0;
     _has_command = false;
+    _tx = NULL;
 }
 
 MysqlRequest::~MysqlRequest() {
@@ -176,6 +182,7 @@ void MysqlRequest::Clear() {
     _has_error = false;
     _buf.clear();
     _has_command = false;
+    _tx = NULL;
 }
 
 bool MysqlRequest::MergePartialFromCodedStream(::google::protobuf::io::CodedInputStream*) {
