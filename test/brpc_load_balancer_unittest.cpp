@@ -842,7 +842,7 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
         }
     }
     ASSERT_TRUE(abs(num_ereject - num_ok) < 30);
-    bthread_usleep((2000 + 10) * 1000);
+    bthread_usleep((2000 /* hold_time_ms */ + 10) * 1000);
 
     // After enough waiting time, traffic should be sent to all available servers.
     for (int i = 0; i < 10; ++i) {
@@ -921,7 +921,6 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
                            lb_algo[butil::fast_rand_less_than(ARRAY_SIZE(lb_algo))],
                            &options), 0);
 
-    uint64_t request_code = 0;
     test::EchoRequest req;
     req.set_message("123");
     test::EchoResponse res;
@@ -929,14 +928,12 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     // trigger one server to health check
     {
         brpc::Controller cntl;
-        cntl.set_request_code(brpc::policy::MurmurHash32(&++request_code, 8));
         stub.Echo(&cntl, &req, &res, NULL);
     }
     bthread_usleep(500000);
     // trigger the other server to health check
     {
         brpc::Controller cntl;
-        cntl.set_request_code(brpc::policy::MurmurHash32(&++request_code, 8));
         stub.Echo(&cntl, &req, &res, NULL);
     }
 
@@ -960,7 +957,6 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
         Done* done = new Done;
         done->num_reject = &num_reject;
         done->req.set_message("123");
-        done->cntl.set_request_code(brpc::policy::MurmurHash32(&++request_code, 8));
         stub.Echo(&done->cntl, &done->req, &done->res, done);
         q++;
         bthread_usleep(1000);
@@ -973,7 +969,6 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
         Done* done = new Done;
         done->req.set_message("123");
         done->num_failed = &num_failed;
-        done->cntl.set_request_code(brpc::policy::MurmurHash32(&++request_code, 8));
         stub.Echo(&done->cntl, &done->req, &done->res, done);
         bthread_usleep(1000);
     }
