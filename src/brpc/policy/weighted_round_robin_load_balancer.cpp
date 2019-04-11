@@ -20,7 +20,6 @@
 #include "brpc/socket.h"
 #include "brpc/policy/weighted_round_robin_load_balancer.h"
 #include "butil/strings/string_number_conversions.h"
-#include "brpc/revive_policy.h"
 
 namespace {
 

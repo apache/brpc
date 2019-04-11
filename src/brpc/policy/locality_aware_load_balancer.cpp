@@ -22,7 +22,6 @@
 #include "brpc/socket.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/policy/locality_aware_load_balancer.h"
-#include "brpc/revive_policy.h"
 
 namespace brpc {
 namespace policy {

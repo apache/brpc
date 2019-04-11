@@ -110,8 +110,8 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     if (n == 0) {
         return ENODATA;
     }
-    if (_revive_policy && _revive_policy->StopRevivingIfNecessary()) {
-        if (_revive_policy->DoReject(s->server_list)) {
+    if (_cluster_recover_policy && _cluster_recover_policy->StopRecoverIfNecessary()) {
+        if (_cluster_recover_policy->DoReject(s->server_list)) {
             return EREJECT;
         }
     }
@@ -132,8 +132,8 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
             return 0;
         }
     }
-    if (_revive_policy) {
-        _revive_policy->StartReviving();
+    if (_cluster_recover_policy) {
+        _cluster_recover_policy->StartRecover();
     }
     s.tls() = tls;
     return EHOSTDOWN;
@@ -173,9 +173,8 @@ void RoundRobinLoadBalancer::Describe(
 }
 
 bool RoundRobinLoadBalancer::SetParameters(const butil::StringPiece& params) {
-    return GetRevivePolicyByParams(params, &_revive_policy);
+    return GetRecoverPolicyByParams(params, &_cluster_recover_policy);
 }
-
 
 }  // namespace policy
 } // namespace brpc

@@ -32,7 +32,7 @@ inline uint32_t GenRandomStride() {
 }
 
 RandomizedLoadBalancer::RandomizedLoadBalancer()
-    : _revive_policy(NULL)
+    : _cluster_recover_policy(NULL)
 {}
 
 bool RandomizedLoadBalancer::Add(Servers& bg, const ServerId& id) {
@@ -114,8 +114,8 @@ int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     if (n == 0) {
         return ENODATA;
     }
-    if (_revive_policy && _revive_policy->StopRevivingIfNecessary()) {
-        if (_revive_policy->DoReject(s->server_list)) {
+    if (_cluster_recover_policy && _cluster_recover_policy->StopRecoverIfNecessary()) {
+        if (_cluster_recover_policy->DoReject(s->server_list)) {
             return EREJECT;
         }
     }
@@ -137,8 +137,8 @@ int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         // this failed server won't be visited again inside for
         offset = (offset + stride) % n;
     }
-    if (_revive_policy) {
-        _revive_policy->StartReviving();
+    if (_cluster_recover_policy) {
+        _cluster_recover_policy->StartRecover();
     }
     // After we traversed the whole server list, there is still no
     // available server
@@ -179,7 +179,7 @@ void RandomizedLoadBalancer::Describe(
 }
 
 bool RandomizedLoadBalancer::SetParameters(const butil::StringPiece& params) {
-    return GetRevivePolicyByParams(params, &_revive_policy);
+    return GetRecoverPolicyByParams(params, &_cluster_recover_policy);
 }
 
 }  // namespace policy

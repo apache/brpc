@@ -21,7 +21,7 @@
 #include <map>                                         // std::map
 #include "butil/containers/doubly_buffered_data.h"
 #include "brpc/load_balancer.h"
-#include "brpc/revive_policy.h"
+#include "brpc/cluster_recover_policy.h"
 
 namespace brpc {
 namespace policy {
@@ -56,7 +56,7 @@ private:
     static size_t BatchRemove(Servers& bg, const std::vector<ServerId>& servers);
 
     butil::DoublyBufferedData<Servers, TLS> _db_servers;
-    std::shared_ptr<RevivePolicy> _revive_policy;
+    std::shared_ptr<ClusterRecoverPolicy> _cluster_recover_policy;
 };
 
 }  // namespace policy

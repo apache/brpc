@@ -14,8 +14,8 @@
 
 // Authors: Jiashun Zhu(zhujiashun@bilibili.com)
 
-#ifndef BRPC_REVIVE_POLICY
-#define BRPC_REVIVE_POLICY
+#ifndef BRPC_CLUSTER_RECOVER_POLICY
+#define BRPC_CLUSTER_RECOVER_POLICY
 
 #include <cstdint>
 #include <memory>
@@ -27,46 +27,45 @@ namespace brpc {
 
 class ServerId;
 
-// After all servers are shutdown and health check happens, servers are
+// After all servers are down and health check happens, servers are
 // online one by one. Once one server is up, all the request that should
 // be sent to all servers, would be sent to one server, which may be a
-// disastrous behaviour. In the worst case it would cause the server shutdown
-// again if circuit breaker is enabled and the server cluster would never
-// recover. This class controls the amount of requests that sent to the revived
-// servers when recovering from all servers are shutdown.
-class RevivePolicy {
+// disastrous behaviour. In the worst case it would cause the server being down
+// again if circuit breaker is enabled and the cluster would never recover.
+// This class controls the amount of requests that sent to the revived
+// servers when recovering from all servers are down.
+class ClusterRecoverPolicy {
 public:
-    // Indicate that reviving from the shutdown of all server is happening.
-    virtual void StartReviving() = 0;
+    // Indicate that recover from all server being down is happening.
+    virtual void StartRecover() = 0;
 
     // Return true if some customized policies are satisfied.
     virtual bool DoReject(const std::vector<ServerId>& server_list) = 0;
 
-    // Stop reviving state and do not reject the request if some condition is
-    // satisfied.
-    // Return true if the current state is still in reviving.
-    virtual bool StopRevivingIfNecessary() = 0;
+    // Stop recover state and do not reject the request if some condition is
+    // satisfied. Return true if the current state is still in recovering.
+    virtual bool StopRecoverIfNecessary() = 0;
 };
 
-// The default revive policy. Once no servers are available, reviving is start.
-// If in reviving state, the probability that a request is accepted is q/n, in
+// The default cluster recover policy. Once no servers are available, recover is start.
+// If in recover state, the probability that a request is accepted is q/n, in
 // which q is the number of current available server, n is the number of minimum
 // working instances setting by user. If q is not changed during a given time,
 // hold_time_ms, then the cluster is considered recovered and all the request
 // would be sent to the current available servers.
-class DefaultRevivePolicy : public RevivePolicy {
+class DefaultClusterRecoverPolicy : public ClusterRecoverPolicy {
 public:
-    DefaultRevivePolicy(int64_t minimum_working_instances, int64_t hold_time_ms);
+    DefaultClusterRecoverPolicy(int64_t minimum_working_instances, int64_t hold_time_ms);
 
-    void StartReviving();
+    void StartRecover();
     bool DoReject(const std::vector<ServerId>& server_list);
-    bool StopRevivingIfNecessary();
+    bool StopRecoverIfNecessary();
 
 private:
     int GetUsableServerCount(int64_t now_ms, const std::vector<ServerId>& server_list);
 
 private:
-    bool _reviving;
+    bool _recovering;
     int64_t _minimum_working_instances;
     butil::Mutex _mutex;
     int64_t _last_usable;
@@ -76,10 +75,10 @@ private:
     int64_t _usable_cache_time_ms;
 };
 
-// Return a DefaultRevivePolicy object by params. The caller is responsible
+// Return a DefaultClusterRecoverPolicy object by params. The caller is responsible
 // for memory management of the return value.
-bool GetRevivePolicyByParams(const butil::StringPiece& params,
-                             std::shared_ptr<RevivePolicy>* ptr_out);
+bool GetRecoverPolicyByParams(const butil::StringPiece& params,
+                              std::shared_ptr<ClusterRecoverPolicy>* ptr_out);
 
 } // namespace brpc
 
