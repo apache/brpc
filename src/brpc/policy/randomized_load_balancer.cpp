@@ -31,10 +31,6 @@ inline uint32_t GenRandomStride() {
     return prime_offset[butil::fast_rand_less_than(ARRAY_SIZE(prime_offset))];
 }
 
-RandomizedLoadBalancer::RandomizedLoadBalancer()
-    : _cluster_recover_policy(NULL)
-{}
-
 bool RandomizedLoadBalancer::Add(Servers& bg, const ServerId& id) {
     if (bg.server_list.capacity() < 128) {
         bg.server_list.reserve(128);

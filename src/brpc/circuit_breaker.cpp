@@ -18,8 +18,6 @@
 #include <gflags/gflags.h>
 #include <butil/time.h>
 #include "brpc/circuit_breaker.h"
-#include "brpc/errno.pb.h"
-#include "butil/logging.h"
 
 namespace brpc {
 

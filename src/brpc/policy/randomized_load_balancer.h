@@ -31,7 +31,6 @@ namespace policy {
 // than RoundRobinLoadBalancer.
 class RandomizedLoadBalancer : public LoadBalancer {
 public:
-    RandomizedLoadBalancer();
     bool AddServer(const ServerId& id);
     bool RemoveServer(const ServerId& id);
     size_t AddServersInBatch(const std::vector<ServerId>& servers);

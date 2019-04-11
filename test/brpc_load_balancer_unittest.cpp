@@ -790,13 +790,13 @@ TEST_F(LoadBalancerTest, health_check_no_valid_server) {
 
 TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
     brpc::LoadBalancer* lb = NULL;
-    // TODO(zhujiashun)
-    int rand = butil::fast_rand_less_than(1);
+    int rand = butil::fast_rand_less_than(2);
     if (rand == 0) {
         brpc::policy::RandomizedLoadBalancer rlb;
         lb = rlb.New("minimum_working_instances=2 hold_time_ms=2000");
     } else if (rand == 1) {
-        lb = new brpc::policy::RoundRobinLoadBalancer;
+        brpc::policy::RoundRobinLoadBalancer rrlb;
+        lb = rrlb.New("minimum_working_instances=2 hold_time_ms=2000");
     }
     brpc::SocketUniquePtr ptr[2];
     for (size_t i = 0; i < ARRAY_SIZE(servers); ++i) {

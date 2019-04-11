@@ -75,8 +75,7 @@ private:
     int64_t _usable_cache_time_ms;
 };
 
-// Return a DefaultClusterRecoverPolicy object by params. The caller is responsible
-// for memory management of the return value.
+// Return a DefaultClusterRecoverPolicy object by params.
 bool GetRecoverPolicyByParams(const butil::StringPiece& params,
                               std::shared_ptr<ClusterRecoverPolicy>* ptr_out);
 
