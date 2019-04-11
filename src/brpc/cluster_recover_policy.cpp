@@ -62,12 +62,12 @@ bool DefaultClusterRecoverPolicy::StopRecoverIfNecessary() {
     return true;
 }
 
-int DefaultClusterRecoverPolicy::GetUsableServerCount(
+uint64_t DefaultClusterRecoverPolicy::GetUsableServerCount(
         int64_t now_ms, const std::vector<ServerId>& server_list) {
     if (now_ms - _usable_cache_time_ms < FLAGS_detect_available_server_interval_ms) {
         return _usable_cache;
     }
-    int usable = 0;
+    uint64_t usable = 0;
     size_t n = server_list.size();
     SocketUniquePtr ptr;
     for (size_t i = 0; i < n; ++i) {
@@ -90,7 +90,7 @@ bool DefaultClusterRecoverPolicy::DoReject(const std::vector<ServerId>& server_l
         return false;
     }
     int64_t now_ms = butil::gettimeofday_ms();
-    int usable = GetUsableServerCount(now_ms, server_list);
+    uint64_t usable = GetUsableServerCount(now_ms, server_list);
     if (_last_usable != usable) {
         std::unique_lock<butil::Mutex> mu(_mutex);
         if (_last_usable != usable) {
@@ -98,8 +98,7 @@ bool DefaultClusterRecoverPolicy::DoReject(const std::vector<ServerId>& server_l
             _last_usable_change_time_ms = now_ms;
         }
     }
-    int rand = butil::fast_rand_less_than(_minimum_working_instances);
-    if (rand >= usable) {
+    if (butil::fast_rand_less_than(_minimum_working_instances) >= usable) {
         return true;
     }
     return false;
