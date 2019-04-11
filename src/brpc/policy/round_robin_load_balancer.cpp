@@ -131,7 +131,8 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     return EHOSTDOWN;
 }
 
-RoundRobinLoadBalancer* RoundRobinLoadBalancer::New() const {
+RoundRobinLoadBalancer* RoundRobinLoadBalancer::New(
+    const butil::StringPiece&) const {
     return new (std::nothrow) RoundRobinLoadBalancer;
 }
 

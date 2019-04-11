@@ -26,6 +26,7 @@
 namespace brpc {
 namespace policy {
 extern uint32_t CRCHash32(const char *key, size_t len);
+extern const char* GetHashName(uint32_t (*hasher)(const void* key, size_t len));
 }}
 
 namespace {
@@ -251,8 +252,7 @@ TEST_F(LoadBalancerTest, update_while_selection) {
         } else if (round == 3) {
             lb = new brpc::policy::WeightedRoundRobinLoadBalancer;
         } else {
-            lb = new brpc::policy::ConsistentHashingLoadBalancer(
-                        ::brpc::policy::MurmurHash32);
+            lb = new brpc::policy::ConsistentHashingLoadBalancer(brpc::policy::CONS_HASH_LB_MURMUR3);
             sa.hash = ::brpc::policy::MurmurHash32;
         }
         sa.lb = lb;
@@ -392,8 +392,7 @@ TEST_F(LoadBalancerTest, fairness) {
         } else if (3 == round || 4 == round) {
             lb = new brpc::policy::WeightedRoundRobinLoadBalancer;
         } else {
-            lb = new brpc::policy::ConsistentHashingLoadBalancer(
-                    brpc::policy::MurmurHash32);
+            lb = new brpc::policy::ConsistentHashingLoadBalancer(brpc::policy::CONS_HASH_LB_MURMUR3);
             sa.hash = brpc::policy::MurmurHash32;
         }
         sa.lb = lb;
@@ -514,11 +513,19 @@ TEST_F(LoadBalancerTest, fairness) {
 }
 
 TEST_F(LoadBalancerTest, consistent_hashing) {
-    ::brpc::policy::ConsistentHashingLoadBalancer::HashFunc hashs[] = {
+    ::brpc::policy::HashFunc hashs[::brpc::policy::CONS_HASH_LB_LAST] = {
             ::brpc::policy::MurmurHash32, 
+            ::brpc::policy::MD5Hash32,
             ::brpc::policy::MD5Hash32
             // ::brpc::policy::CRCHash32 crc is a bad hash function in test
     };
+
+    ::brpc::policy::ConsistentHashingLoadBalancerType hash_type[::brpc::policy::CONS_HASH_LB_LAST] = {
+        ::brpc::policy::CONS_HASH_LB_MURMUR3,
+        ::brpc::policy::CONS_HASH_LB_MD5,
+        ::brpc::policy::CONS_HASH_LB_KETAMA
+    };
+
     const char* servers[] = { 
             "10.92.115.19:8833", 
             "10.42.108.25:8833", 
@@ -527,7 +534,7 @@ TEST_F(LoadBalancerTest, consistent_hashing) {
             "10.42.122.201:8833",
     };
     for (size_t round = 0; round < ARRAY_SIZE(hashs); ++round) {
-        brpc::policy::ConsistentHashingLoadBalancer chlb(hashs[round]);
+        brpc::policy::ConsistentHashingLoadBalancer chlb(hash_type[round]);
         std::vector<brpc::ServerId> ids;
         std::vector<butil::EndPoint> addrs;
         for (int j = 0;j < 5; ++j) 

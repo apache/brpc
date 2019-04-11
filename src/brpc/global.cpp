@@ -113,8 +113,9 @@ const char* const DUMMY_SERVER_PORT_FILE = "dummy_server.port";
 
 struct GlobalExtensions {
     GlobalExtensions()
-        : ch_mh_lb(MurmurHash32)
-        , ch_md5_lb(MD5Hash32)
+        : ch_mh_lb(CONS_HASH_LB_MURMUR3)
+        , ch_md5_lb(CONS_HASH_LB_MD5)
+        , ch_ketama_lb(CONS_HASH_LB_KETAMA)
         , constant_cl(0) {
     }
     
@@ -134,6 +135,7 @@ struct GlobalExtensions {
     LocalityAwareLoadBalancer la_lb;
     ConsistentHashingLoadBalancer ch_mh_lb;
     ConsistentHashingLoadBalancer ch_md5_lb;
+    ConsistentHashingLoadBalancer ch_ketama_lb;
     DynPartLoadBalancer dynpart_lb;
 
     AutoConcurrencyLimiter auto_cl;
@@ -355,6 +357,7 @@ static void GlobalInitializeOrDieImpl() {
     LoadBalancerExtension()->RegisterOrDie("la", &g_ext->la_lb);
     LoadBalancerExtension()->RegisterOrDie("c_murmurhash", &g_ext->ch_mh_lb);
     LoadBalancerExtension()->RegisterOrDie("c_md5", &g_ext->ch_md5_lb);
+    LoadBalancerExtension()->RegisterOrDie("c_ketama", &g_ext->ch_ketama_lb);
     LoadBalancerExtension()->RegisterOrDie("_dynpart", &g_ext->dynpart_lb);
 
     // Compress Handlers

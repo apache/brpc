@@ -134,7 +134,8 @@ int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     return EHOSTDOWN;
 }
 
-RandomizedLoadBalancer* RandomizedLoadBalancer::New() const {
+RandomizedLoadBalancer* RandomizedLoadBalancer::New(
+    const butil::StringPiece&) const {
     return new (std::nothrow) RandomizedLoadBalancer;
 }
 
