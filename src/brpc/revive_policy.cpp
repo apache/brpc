@@ -23,6 +23,7 @@
 #include "brpc/socket.h"
 #include "butil/fast_rand.h"
 #include "butil/time.h"
+#include "butil/string_splitter.h"
 
 namespace brpc {
 
@@ -103,5 +104,44 @@ bool DefaultRevivePolicy::DoReject(const std::vector<ServerId>& server_list) {
     }
     return false;
 }
+
+bool GetRevivePolicyByParams(const butil::StringPiece& params,
+                             std::shared_ptr<RevivePolicy>* ptr_out) {
+    int64_t minimum_working_instances = -1;
+    int64_t hold_time_ms = -1;
+    bool has_meet_params = false;
+    for (butil::KeyValuePairsSplitter sp(params.begin(), params.end(), '=', ' ');
+            sp; ++sp) {
+        if (sp.value().empty()) {
+            LOG(ERROR) << "Empty value for " << sp.key() << " in lb parameter";
+            return false;
+        }
+        if (sp.key() == "minimum_working_instances") {
+            if (!butil::StringToInt64(sp.value(), &minimum_working_instances)) {
+                return false;
+            }
+            has_meet_params = true;
+            continue;
+        } else if (sp.key() == "hold_time_ms") {
+            if (!butil::StringToInt64(sp.value(), &hold_time_ms)) {
+                return false;
+            }
+            has_meet_params = true;
+            continue;
+        }
+        LOG(ERROR) << "Failed to set this unknown parameters " << sp.key_and_value();
+    }
+    if (minimum_working_instances > 0 && hold_time_ms > 0) {
+        ptr_out->reset(
+                new DefaultRevivePolicy(minimum_working_instances, hold_time_ms));
+    } else if (has_meet_params) {
+        // In this case, user set some params but not in the right way, just return
+        // false to let user take care of this situation.
+        LOG(ERROR) << "Invalid params=`" << params << "'";
+        return false;
+    }
+    return true;
+}
+
 
 } // namespace brpc

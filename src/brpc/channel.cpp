@@ -52,7 +52,6 @@ ChannelOptions::ChannelOptions()
     , auth(NULL)
     , retry_policy(NULL)
     , ns_filter(NULL)
-    , revive_policy(NULL)
 {}
 
 ChannelSSLOptions* ChannelOptions::mutable_ssl_options() {
@@ -526,7 +525,6 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
     } else {
         cntl->_deadline_us = -1;
     }
-    cntl->_revive_policy = _options.revive_policy;
 
     cntl->IssueRPC(start_send_real_us);
     if (done == NULL) {
@@ -564,7 +562,7 @@ int Channel::CheckHealth() {
         return -1;
     } else {
         SocketUniquePtr tmp_sock;
-        LoadBalancer::SelectIn sel_in = { 0, false, false, 0, NULL, NULL };
+        LoadBalancer::SelectIn sel_in = { 0, false, false, 0, NULL };
         LoadBalancer::SelectOut sel_out(&tmp_sock);
         return _lb->SelectServer(sel_in, &sel_out);
     }

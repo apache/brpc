@@ -18,7 +18,7 @@
 #include "butil/fast_rand.h"
 #include "brpc/socket.h"
 #include "brpc/policy/randomized_load_balancer.h"
-
+#include "butil/strings/string_number_conversions.h"
 
 namespace brpc {
 namespace policy {
@@ -30,6 +30,10 @@ const uint32_t prime_offset[] = {
 inline uint32_t GenRandomStride() {
     return prime_offset[butil::fast_rand_less_than(ARRAY_SIZE(prime_offset))];
 }
+
+RandomizedLoadBalancer::RandomizedLoadBalancer()
+    : _revive_policy(NULL)
+{}
 
 bool RandomizedLoadBalancer::Add(Servers& bg, const ServerId& id) {
     if (bg.server_list.capacity() < 128) {
@@ -110,9 +114,8 @@ int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     if (n == 0) {
         return ENODATA;
     }
-    RevivePolicy* rp = in.revive_policy;
-    if (rp && rp->StopRevivingIfNecessary()) {
-        if (rp->DoReject(s->server_list)) {
+    if (_revive_policy && _revive_policy->StopRevivingIfNecessary()) {
+        if (_revive_policy->DoReject(s->server_list)) {
             return EREJECT;
         }
     }
@@ -134,8 +137,8 @@ int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         // this failed server won't be visited again inside for
         offset = (offset + stride) % n;
     }
-    if (rp) {
-        rp->StartReviving();
+    if (_revive_policy) {
+        _revive_policy->StartReviving();
     }
     // After we traversed the whole server list, there is still no
     // available server
@@ -143,8 +146,13 @@ int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
 }
 
 RandomizedLoadBalancer* RandomizedLoadBalancer::New(
-    const butil::StringPiece&) const {
-    return new (std::nothrow) RandomizedLoadBalancer;
+    const butil::StringPiece& params) const {
+    RandomizedLoadBalancer* lb = new (std::nothrow) RandomizedLoadBalancer;
+    if (lb && !lb->SetParameters(params)) {
+        delete lb;
+        lb = NULL;
+    }
+    return lb;
 }
 
 void RandomizedLoadBalancer::Destroy() {
@@ -168,6 +176,10 @@ void RandomizedLoadBalancer::Describe(
         }
     }
     os << '}';
+}
+
+bool RandomizedLoadBalancer::SetParameters(const butil::StringPiece& params) {
+    return GetRevivePolicyByParams(params, &_revive_policy);
 }
 
 }  // namespace policy

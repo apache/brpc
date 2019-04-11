@@ -20,6 +20,7 @@
 #include "butil/containers/flat_map.h"
 #include "butil/errno.h"
 #include "butil/strings/string_number_conversions.h"
+#include "butil/strings/string_split.h"
 #include "brpc/socket.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
 #include "brpc/policy/hasher.h"
@@ -302,19 +303,6 @@ int ConsistentHashingLoadBalancer::SelectServer(
     if (s->empty()) {
         return ENODATA;
     }
-    RevivePolicy* rp = in.revive_policy;
-    if (rp && rp->StopRevivingIfNecessary()) {
-        std::set<ServerId> server_list;
-        for (auto server: *s) {
-            server_list.insert(server.server_sock);
-        }
-        std::vector<ServerId> server_list_distinct(
-                server_list.begin(), server_list.end());
-        if (rp->DoReject(server_list_distinct)) {
-            return EREJECT;
-        }
-    }
-
     std::vector<Node>::const_iterator choice =
         std::lower_bound(s->begin(), s->end(), (uint32_t)in.request_code);
     if (choice == s->end()) {
@@ -331,9 +319,6 @@ int ConsistentHashingLoadBalancer::SelectServer(
                 choice = s->begin();
             }
         }
-    }
-    if (rp) {
-        rp->StartReviving();
     }
     return EHOSTDOWN;
 }

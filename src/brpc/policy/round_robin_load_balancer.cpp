@@ -110,9 +110,8 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     if (n == 0) {
         return ENODATA;
     }
-    RevivePolicy* rp = in.revive_policy;
-    if (rp && rp->StopRevivingIfNecessary()) {
-        if (rp->DoReject(s->server_list)) {
+    if (_revive_policy && _revive_policy->StopRevivingIfNecessary()) {
+        if (_revive_policy->DoReject(s->server_list)) {
             return EREJECT;
         }
     }
@@ -133,16 +132,21 @@ int RoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
             return 0;
         }
     }
-    if (rp) {
-        rp->StartReviving();
+    if (_revive_policy) {
+        _revive_policy->StartReviving();
     }
     s.tls() = tls;
     return EHOSTDOWN;
 }
 
 RoundRobinLoadBalancer* RoundRobinLoadBalancer::New(
-    const butil::StringPiece&) const {
-    return new (std::nothrow) RoundRobinLoadBalancer;
+    const butil::StringPiece& params) const {
+    RoundRobinLoadBalancer* lb = new (std::nothrow) RoundRobinLoadBalancer;
+    if (lb && !lb->SetParameters(params)) {
+        delete lb;
+        lb = NULL;
+    }
+    return lb;
 }
 
 void RoundRobinLoadBalancer::Destroy() {
@@ -167,6 +171,11 @@ void RoundRobinLoadBalancer::Describe(
     }
     os << '}';
 }
+
+bool RoundRobinLoadBalancer::SetParameters(const butil::StringPiece& params) {
+    return GetRevivePolicyByParams(params, &_revive_policy);
+}
+
 
 }  // namespace policy
 } // namespace brpc

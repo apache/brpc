@@ -18,7 +18,10 @@
 #define BRPC_REVIVE_POLICY
 
 #include <cstdint>
-#include <butil/synchronization/lock.h>
+#include <memory>
+#include "butil/synchronization/lock.h"
+#include "butil/strings/string_piece.h"
+#include "butil/strings/string_number_conversions.h"
 
 namespace brpc {
 
@@ -72,6 +75,11 @@ private:
     int64_t _usable_cache;
     int64_t _usable_cache_time_ms;
 };
+
+// Return a DefaultRevivePolicy object by params. The caller is responsible
+// for memory management of the return value.
+bool GetRevivePolicyByParams(const butil::StringPiece& params,
+                             std::shared_ptr<RevivePolicy>* ptr_out);
 
 } // namespace brpc
 

@@ -34,7 +34,6 @@
 #include "brpc/details/profiler_linker.h"
 #include "brpc/retry_policy.h"
 #include "brpc/naming_service_filter.h"
-#include "brpc/revive_policy.h"
 
 namespace brpc {
 
@@ -128,13 +127,6 @@ struct ChannelOptions {
     // Case-sensitive, leading and trailing spaces are ignored.
     // Default: ""
     std::string connection_group;
-
-    // Customize the revive policy after all servers are shutdown. The
-    // interface is defined in src/brpc/revive_policy.h
-    // This object is NOT owned by channel and should remain valid when
-    // channel is used.
-    // Default: NULL
-    RevivePolicy* revive_policy;
 
 private:
     // SSLOptions is large and not often used, allocate it on heap to

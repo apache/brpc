@@ -27,7 +27,6 @@
 #include "brpc/channel.h"
 #include "brpc/controller.h"
 #include "brpc/server.h"
-#include "brpc/revive_policy.h"
 
 namespace brpc {
 DECLARE_int32(health_check_interval);
@@ -214,7 +213,7 @@ void* select_server(void* arg) {
     brpc::LoadBalancer* c = sa->lb;
     brpc::SocketUniquePtr ptr;
     CountMap *selected_count = new CountMap;
-    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL, NULL };
+    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
     brpc::LoadBalancer::SelectOut out(&ptr);
     uint32_t rand_seed = rand();
     if (sa->hash) {
@@ -267,7 +266,7 @@ TEST_F(LoadBalancerTest, update_while_selection) {
 
         // Accessing empty lb should result in error.
         brpc::SocketUniquePtr ptr;
-        brpc::LoadBalancer::SelectIn in = { 0, false, true, 0, NULL, NULL };
+        brpc::LoadBalancer::SelectIn in = { 0, false, true, 0, NULL };
         brpc::LoadBalancer::SelectOut out(&ptr);
         ASSERT_EQ(ENODATA, lb->SelectServer(in, &out));
 
@@ -570,7 +569,7 @@ TEST_F(LoadBalancerTest, consistent_hashing) {
         const size_t SELECT_TIMES = 1000000;
         std::map<butil::EndPoint, size_t> times;
         brpc::SocketUniquePtr ptr;
-        brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL, NULL };
+        brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
         ::brpc::LoadBalancer::SelectOut out(&ptr);
         for (size_t i = 0; i < SELECT_TIMES; ++i) {
             in.has_request_code = true;
@@ -647,7 +646,7 @@ TEST_F(LoadBalancerTest, weighted_round_robin) {
     // consistent with weight configured.
     std::map<butil::EndPoint, size_t> select_result;
     brpc::SocketUniquePtr ptr;
-    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL, NULL };
+    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
     brpc::LoadBalancer::SelectOut out(&ptr);
     int total_weight = 12;
     std::vector<butil::EndPoint> select_servers;
@@ -705,7 +704,7 @@ TEST_F(LoadBalancerTest, weighted_round_robin_no_valid_server) {
     // The first socket is excluded. The second socket is logfoff. 
     // The third socket is invalid. 
     brpc::SocketUniquePtr ptr;
-    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, exclude, NULL };
+    brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, exclude };
     brpc::LoadBalancer::SelectOut out(&ptr);
     EXPECT_EQ(EHOSTDOWN, wrrlb.SelectServer(in, &out));
     brpc::ExcludedServers::Destroy(exclude);
@@ -791,15 +790,13 @@ TEST_F(LoadBalancerTest, health_check_no_valid_server) {
 
 TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
     brpc::LoadBalancer* lb = NULL;
-    int rand = butil::fast_rand_less_than(4);
+    // TODO(zhujiashun)
+    int rand = butil::fast_rand_less_than(1);
     if (rand == 0) {
-        lb = new brpc::policy::RoundRobinLoadBalancer;
+        brpc::policy::RandomizedLoadBalancer rlb;
+        lb = rlb.New("minimum_working_instances=2 hold_time_ms=2000");
     } else if (rand == 1) {
-        lb = new brpc::policy::RandomizedLoadBalancer;
-    } else if (rand == 2) {
-        lb = new brpc::policy::WeightedRoundRobinLoadBalancer;
-    } else {
-        lb = new brpc::policy::ConsistentHashingLoadBalancer(brpc::policy::MurmurHash32);
+        lb = new brpc::policy::RoundRobinLoadBalancer;
     }
     brpc::SocketUniquePtr ptr[2];
     for (size_t i = 0; i < ARRAY_SIZE(servers); ++i) {
@@ -814,9 +811,7 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
         lb->AddServer(id);
     }
     brpc::SocketUniquePtr sptr;
-    int64_t hold_time_ms = 2000;
-    brpc::RevivePolicy* rp = new brpc::DefaultRevivePolicy(2, hold_time_ms);
-    brpc::LoadBalancer::SelectIn in = { 0, false, true, 0u, NULL, rp };
+    brpc::LoadBalancer::SelectIn in = { 0, false, true, 0u, NULL };
     brpc::LoadBalancer::SelectOut out(&sptr);
     ASSERT_EQ(0, lb->SelectServer(in, &out));
 
@@ -847,7 +842,7 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
         }
     }
     ASSERT_TRUE(abs(num_ereject - num_ok) < 30);
-    bthread_usleep((hold_time_ms + 10) * 1000);
+    bthread_usleep((2000 + 10) * 1000);
 
     // After enough waiting time, traffic should be sent to all available servers.
     for (int i = 0; i < 10; ++i) {
@@ -912,18 +907,17 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     GFLAGS_NS::SetCommandLineOption("circuit_breaker_short_window_error_percent", "30");
     GFLAGS_NS::SetCommandLineOption("circuit_breaker_max_isolation_duration_ms", "5000");
 
-    const char* lb_algo[] = { "rr" , "random", "wrr", "c_murmurhash" };
+    const char* lb_algo[] = { "random:minimum_working_instances=2 hold_time_ms=2000",
+                              "rr:minimum_working_instances=2 hold_time_ms=2000" };
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = "http";
     options.timeout_ms = 300;
     options.enable_circuit_breaker = true;
-    options.revive_policy = new brpc::DefaultRevivePolicy(2, 2000 /*2s*/);
     // Set max_retry to 0 so that the time of health check of different servers
     // are not continuous.
     options.max_retry = 0;
-
-    ASSERT_EQ(channel.Init("list://127.0.0.1:7777 50,127.0.0.1:7778 50",
+    ASSERT_EQ(channel.Init("list://127.0.0.1:7777 50, 127.0.0.1:7778 50",
                            lb_algo[butil::fast_rand_less_than(ARRAY_SIZE(lb_algo))],
                            &options), 0);
 

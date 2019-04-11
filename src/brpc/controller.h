@@ -41,7 +41,6 @@
 #include "brpc/progressive_attachment.h"       // ProgressiveAttachment
 #include "brpc/progressive_reader.h"           // ProgressiveReader
 #include "brpc/grpc.h"
-#include "brpc/revive_policy.h"
 
 // EAUTH is defined in MAC
 #ifndef EAUTH
@@ -716,7 +715,6 @@ private:
     uint64_t _request_code;
     SocketId _single_server_id;
     butil::intrusive_ptr<SharedLoadBalancer> _lb;
-    RevivePolicy* _revive_policy;
 
     // for passing parameters to created bthread, don't modify it otherwhere.
     CompletionInfo _tmp_completion_info;
