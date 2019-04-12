@@ -23,10 +23,14 @@
 * 获得[更好的延时和吞吐](docs/cn/overview.md#更好的延时和吞吐).
 * 把你组织中使用的协议快速地[加入brpc](docs/cn/new_protocol.md)，或定制各类组件, 包括[命名服务](docs/cn/load_balancing.md#命名服务) (dns, zk, etcd), [负载均衡](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
 
+# 如何编译
+
+* 请阅读[编译步骤](docs/cn/getting_started.md)了解如何开始使用.
+
 # 试一下!
 
 * 通过[概述](docs/cn/overview.md)了解哪里可以用brpc及其优势。
-* 阅读[编译步骤](docs/cn/getting_started.md)了解如何开始使用, 之后可以运行一下[示例程序](https://github.com/brpc/brpc/tree/master/example/).
+* 可以运行一下[示例程序](https://github.com/brpc/brpc/tree/master/example/).
 * 文档:
   * [性能测试](docs/cn/benchmark.md)
   * [bvar](docs/cn/bvar.md)
