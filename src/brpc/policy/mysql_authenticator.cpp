@@ -14,8 +14,10 @@
 //
 // Author(s): Yang,Liming <yangliming01@baidu.com>
 
+#include <vector>
 #include "brpc/policy/mysql_authenticator.h"
 #include "brpc/policy/mysql_auth_hash.h"
+#include "brpc/mysql_command.h"
 #include "brpc/mysql_reply.h"
 #include "brpc/mysql_common.h"
 #include "butil/base64.h"
@@ -30,17 +32,32 @@ namespace {
 const butil::StringPiece mysql_native_password("mysql_native_password");
 };  // namespace
 
-int MysqlPackAuthenticator(const MysqlReply::Auth& auth,
-                           const std::string& raw,
-                           std::string* auth_str) {
-    const size_t pos1 = raw.find(':', 0);
-    const size_t pos2 = raw.find(':', pos1 + 1);
-    const size_t pos3 = raw.find(':', pos2 + 1);
-    const std::string user = std::string(raw, 0, pos1);
-    const std::string passwd = std::string(raw, pos1 + 1, pos2 - pos1 - 1);
-    const std::string schema = std::string(raw, pos2 + 1, pos3 - pos2 - 1);
-    const MysqlCollation collation = (MysqlCollation)atoi(std::string(raw, pos3 + 1).c_str());
+void MysqlParseAuth(const butil::StringPiece& raw,
+                    std::string* user,
+                    std::string* password,
+                    std::string* schema) {
+    const char* delim = "\t";
+    std::vector<size_t> idx;
+    idx.reserve(3);
+    for (size_t p = raw.find(delim); p != butil::StringPiece::npos; p = raw.find(delim, p + 1)) {
+        idx.push_back(p);
+    }
+    user->assign(raw.data(), 0, idx[0]);
+    password->assign(raw.data(), idx[0] + 1, idx[1] - idx[0] - 1);
+    schema->assign(raw.data(), idx[1] + 1, idx[2] - idx[1] - 1);
+}
 
+void MysqlParseParams(const butil::StringPiece& raw, std::string* params) {
+    const char* delim = "\t";
+    size_t idx = raw.rfind(delim);
+    params->assign(raw.data(), idx + 1, raw.size() - idx - 1);
+}
+
+int MysqlPackAuthenticator(const MysqlReply::Auth& auth,
+                           const butil::StringPiece& user,
+                           const butil::StringPiece& password,
+                           const butil::StringPiece& schema,
+                           std::string* auth_cmd) {
     const uint16_t capability =
         butil::ByteSwapToLE16((schema == "" ? 0x8285 : 0x828d) & auth.capability());
     const uint16_t extended_capability = butil::ByteSwapToLE16(0x000b & auth.extended_capability());
@@ -49,7 +66,7 @@ int MysqlPackAuthenticator(const MysqlReply::Auth& auth,
     salt.append(auth.salt().data(), auth.salt().size());
     salt.append(auth.salt2().data(), auth.salt2().size());
     if (auth.auth_plugin() == mysql_native_password) {
-        salt = mysql_build_mysql41_authentication_response(salt.to_string(), passwd);
+        salt = mysql_build_mysql41_authentication_response(salt.to_string(), password.data());
     } else {
         LOG(ERROR) << "no support auth plugin " << auth.auth_plugin();
         return 1;
@@ -59,15 +76,16 @@ int MysqlPackAuthenticator(const MysqlReply::Auth& auth,
     payload.append(&capability, 2);
     payload.append(&extended_capability, 2);
     payload.append(&max_package_length, 4);
-    payload.append(&collation, 1);
+    uint8_t language = auth.language();
+    payload.append(&language, 1);
     const std::string stuff(23, '\0');
     payload.append(stuff);
-    payload.append(user);
+    payload.append(user.data());
     payload.push_back('\0');
     payload.append(pack_encode_length(salt.size()));
     payload.append(salt);
     if (schema != "") {
-        payload.append(schema);
+        payload.append(schema.data());
         payload.push_back('\0');
     }
     if (auth.auth_plugin() == mysql_native_password) {
@@ -81,13 +99,51 @@ int MysqlPackAuthenticator(const MysqlReply::Auth& auth,
     message.push_back(0x01);
     // payload
     message.append(payload);
-    *auth_str = message.to_string();
+    *auth_cmd = message.to_string();
     return 0;
 }
 
-int MysqlAuthenticator::GenerateCredential(std::string* auth_str) const {
-    // do nothing
-    return 0;
+int MysqlPackParams(const butil::StringPiece& params, std::string* param_cmd) {
+    if (!params.empty()) {
+        butil::IOBuf buf;
+        MysqlMakeCommand(&buf, MYSQL_COM_QUERY, params);
+        buf.copy_to(param_cmd);
+        return 0;
+    }
+    LOG(ERROR) << "empty connection params";
+    return 1;
+}
+
+bool MysqlHandleParams(const butil::StringPiece& params, std::string* param_cmd) {
+    if (params.empty()) {
+        return true;
+    }
+    const char* delim1 = "&";
+    std::vector<size_t> idx;
+    for (size_t p = params.find(delim1); p != butil::StringPiece::npos;
+         p = params.find(delim1, p + 1)) {
+        idx.push_back(p);
+    }
+
+    const char* delim2 = "=";
+    std::stringstream ss;
+    for (size_t i = 0; i < idx.size() + 1; ++i) {
+        size_t pos = (i > 0) ? idx[i - 1] + 1 : 0;
+        size_t len = (i < idx.size()) ? idx[i] - pos : params.size() - pos;
+        butil::StringPiece raw(params.data() + pos, len);
+        const size_t p = raw.find(delim2);
+        if (p != butil::StringPiece::npos) {
+            butil::StringPiece k(raw.data(), p);
+            butil::StringPiece v(raw.data() + p + 1, raw.size() - p - 1);
+            if (k == "charset") {
+                ss << "SET NAMES " << v << ";";
+            } else {
+                ss << "SET " << k << "=" << v << ";";
+            }
+        }
+    }
+    *param_cmd = ss.str();
+    return true;
 }
 
 }  // namespace policy

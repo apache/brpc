@@ -196,6 +196,15 @@ void Controller::ResetNonPods() {
     }
     delete _remote_stream_settings;
     _thrift_method_name.clear();
+    // if bind socket is not transfer to other, release it.
+    if (_bind_sock != INVALID_SOCKET_ID) {
+        SocketUniquePtr sock;
+        Socket::Address(_bind_sock, &sock);
+        if (_connection_type == CONNECTION_TYPE_POOLED) {
+            sock->ReturnToPool();
+        }
+        sock.reset(NULL);
+    }
 
     CHECK(_unfinished_call == NULL);
 }
@@ -253,7 +262,7 @@ void Controller::ResetPods() {
     _response_stream = INVALID_STREAM_ID;
     _remote_stream_settings = NULL;
     _bind_sock_action = BIND_SOCK_NONE;
-    _bind_sock_other = NULL;
+    _bind_sock = INVALID_SOCKET_ID;
 }
 
 Controller::Call::Call(Controller::Call* rhs)
@@ -735,11 +744,13 @@ void Controller::Call::OnComplete(
         // assumption that one pooled connection cannot have more than one
         // message at the same time.
         // If bind sock action is active take the ownship of sending sock 
-        // If bind sock is not NULL, RPC complete, reset the sock to NULL
+        // If bind sock is not INVALID, RPC complete, reset the sock to INVALID
         if (sending_sock != NULL && (error_code == 0 || responded)) {
             if (bind_sock_action == BIND_SOCK_ACTIVE) {
-                c->_bind_sock_owner.reset(sending_sock.release());
-            } else if (c->_bind_sock_other != NULL) {
+                c->_bind_sock = sending_sock->id();
+                sending_sock.release();
+            } else if (c->_bind_sock != INVALID_SOCKET_ID) {
+                c->_bind_sock = INVALID_SOCKET_ID;
                 sending_sock.release();
             } else if (!sending_sock->is_read_progressive()) {
                 // Normally-read socket which will not be used after RPC ends,
@@ -759,8 +770,10 @@ void Controller::Call::OnComplete(
         if (sending_sock != NULL) {
             // Check the comment in CONNECTION_TYPE_POOLED branch.
             if (bind_sock_action == BIND_SOCK_ACTIVE) {
-                c->_bind_sock_owner.reset(sending_sock.release());
-            } else if (c->_bind_sock_other != NULL) {
+                c->_bind_sock = sending_sock->id();
+                sending_sock.release();
+            } else if (c->_bind_sock != INVALID_SOCKET_ID) {
+                c->_bind_sock = INVALID_SOCKET_ID;
                 sending_sock.release();
             } else if (!sending_sock->is_read_progressive()) {
                 if (c->_stream_creator == NULL) {
@@ -997,9 +1010,16 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     _current_call.need_feedback = false;
     _current_call.enable_circuit_breaker = has_enabled_circuit_breaker();
     SocketUniquePtr tmp_sock;
-    // if _bind_sock_other is not NULL, use it
-    if (_bind_sock_other != NULL) {
-        _current_call.peer_id = _bind_sock_other->id();
+    if (_bind_sock != INVALID_SOCKET_ID) {
+        // if _bind_sock is not NULL, use it
+        const int rc = Socket::Address(_bind_sock, &tmp_sock);
+        if (rc != 0 || tmp_sock->IsLogOff()) {
+            SetFailed(EHOSTDOWN, "Not connected to %s yet, server_id=%" PRIu64,
+                      endpoint2str(_remote_side).c_str(), _single_server_id);
+            tmp_sock.reset();  // Release ref ASAP
+            return HandleSendFailed();
+        }
+        _current_call.peer_id = _bind_sock;
     } else if (SingleServer()) {
         // Don't use _current_call.peer_id which is set to -1 after construction
         // of the backup call.
@@ -1067,8 +1087,8 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     } else {
         int rc = 0;
         // if _bind_sock is not NULL, use it
-        if (_bind_sock_other != NULL) {
-            _current_call.sending_sock.reset(_bind_sock_other);
+        if (_bind_sock != INVALID_SOCKET_ID) {
+            _current_call.sending_sock.reset(tmp_sock.release());
         } else if (_connection_type == CONNECTION_TYPE_POOLED) {
             rc = tmp_sock->GetPooledSocket(&_current_call.sending_sock);
         } else if (_connection_type == CONNECTION_TYPE_SHORT) {

@@ -23,53 +23,51 @@
 
 namespace brpc {
 namespace policy {
-// pack mysql authentication_data
-int MysqlPackAuthenticator(const MysqlReply::Auth& auth,
-                           const std::string& user,
-                           std::string* auth_str);
 // Request to mysql for authentication.
 class MysqlAuthenticator : public Authenticator {
 public:
-    MysqlAuthenticator(const std::string& user,
-                       const std::string& passwd,
-                       const std::string& schema = "",
-                       const MysqlCollation collation = MYSQL_utf8_general_ci)
-        : _user(user), _passwd(passwd), _schema(schema), _collation(collation) {}
+    MysqlAuthenticator(const butil::StringPiece& user,
+                       const butil::StringPiece& passwd,
+                       const butil::StringPiece& schema,
+                       const butil::StringPiece& params = "")
+        : _user(user), _passwd(passwd), _schema(schema), _params(params) {}
 
-    int GenerateCredential(std::string* auth_str) const;
+    int GenerateCredential(std::string* auth_str) const {
+        return 0;
+    }
 
     int VerifyCredential(const std::string&, const butil::EndPoint&, brpc::AuthContext*) const {
         return 0;
     }
 
-    const std::string& user() const;
-    const std::string& passwd() const;
-    const std::string& schema() const;
-    MysqlCollation collation() const;
+    butil::StringPiece user() const;
+    butil::StringPiece passwd() const;
+    butil::StringPiece schema() const;
+    butil::StringPiece params() const;
 
 private:
     DISALLOW_COPY_AND_ASSIGN(MysqlAuthenticator);
 
-    const std::string _user;
-    const std::string _passwd;
-    const std::string _schema;
-    const MysqlCollation _collation;
+    butil::StringPiece _user;
+    butil::StringPiece _passwd;
+    butil::StringPiece _schema;
+    butil::StringPiece _params;
 };
 
-inline const std::string& MysqlAuthenticator::user() const {
+inline butil::StringPiece MysqlAuthenticator::user() const {
     return _user;
 }
 
-inline const std::string& MysqlAuthenticator::schema() const {
-    return _schema;
-}
-
-inline const std::string& MysqlAuthenticator::passwd() const {
+inline butil::StringPiece MysqlAuthenticator::passwd() const {
     return _passwd;
 }
 
-inline MysqlCollation MysqlAuthenticator::collation() const {
-    return _collation;
+inline butil::StringPiece MysqlAuthenticator::schema() const {
+    return _schema;
+}
+
+inline butil::StringPiece MysqlAuthenticator::params() const {
+    return _params;
 }
 
 }  // namespace policy

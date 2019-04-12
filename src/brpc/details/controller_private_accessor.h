@@ -143,6 +143,17 @@ public:
         return *this;
     }
 
+    // Set bind socket action
+    void set_bind_sock_action(BindSockAction action) { _cntl->_bind_sock_action = action; }
+    // Transfer ownership to other
+    SocketId get_bind_sock() {
+        SocketId id = _cntl->_bind_sock;
+        _cntl->_bind_sock = INVALID_SOCKET_ID;
+        return id;
+    }
+    // Use a external socket
+    void use_bind_sock(SocketId sock_id) { _cntl->_bind_sock = sock_id; }
+
 private:
     Controller* _cntl;
 };

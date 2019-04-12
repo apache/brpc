@@ -43,6 +43,11 @@ inline bool my_alloc_check(butil::Arena* arena, const size_t n, Type*& pointer) 
     return true;
 }
 
+struct MysqlHeader {
+    uint32_t payload_size;
+    uint32_t seq;
+};
+
 const char* MysqlFieldTypeToString(MysqlFieldType type) {
     switch (type) {
         case MYSQL_FIELD_TYPE_DECIMAL:
@@ -617,7 +622,7 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
         return PARSE_OK;
     }
     // is unsigned flag set
-    _is_unsigned = column->_flag & MYSQL_UNSIGNED_FLAG;
+    _unsigned = column->_flag & MYSQL_UNSIGNED_FLAG;
     // field is not null
     butil::IOBuf str;
     buf.cutn(&str, len);

@@ -18,6 +18,7 @@
 #include "brpc/mysql_transaction.h"
 #include "brpc/mysql.h"
 #include "brpc/socket.h"
+#include "brpc/details/controller_private_accessor.h"
 #include "butil/logging.h"  // LOG()
 
 namespace brpc {
@@ -28,7 +29,7 @@ const char* mysql_isolation_level[] = {
 bool MysqlTransaction::DoneTransaction(const char* command) {
     bool rc = false;
     MysqlRequest request(this);
-    if (_socket == NULL) {  // must already commit or rollback, return true.
+    if (_socket_id == INVALID_SOCKET_ID) {  // must already commit or rollback, return true.
         return true;
     } else if (!request.Query(command)) {
         LOG(ERROR) << "Fail to query command" << command;
@@ -46,10 +47,12 @@ bool MysqlTransaction::DoneTransaction(const char* command) {
             LOG(ERROR) << "Fail " << command << " transaction, " << cntl.ErrorText();
         }
     }
-    if (_socket != NULL && rc && _conn_type == CONNECTION_TYPE_POOLED) {
-        _socket->ReturnToPool();
+    if (rc && _conn_type == CONNECTION_TYPE_POOLED) {
+        SocketUniquePtr sock;
+        Socket::Address(_socket_id, &sock);
+        sock->ReturnToPool();
     }
-    _socket.reset(NULL);
+    _socket_id = INVALID_SOCKET_ID;
     return rc;
 }
 
@@ -79,17 +82,18 @@ MysqlTransactionUniquePtr NewMysqlTransaction(Channel& channel,
     MysqlTransactionUniquePtr tx;
     MysqlResponse response;
     Controller cntl;
-    cntl.set_bind_sock_action(BIND_SOCK_ACTIVE);
+    ControllerPrivateAccessor(&cntl).set_bind_sock_action(BIND_SOCK_ACTIVE);
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     if (!cntl.Failed()) {
         // repeatable read isolation send one reply, other isolation has two reply
         if ((opt.isolation_level == MysqlIsoRepeatableRead && response.reply(0).is_ok()) ||
             (response.reply(0).is_ok() && response.reply(1).is_ok())) {
-            SocketUniquePtr sock;
-            if (!cntl.get_bind_sock(&sock)) {
+            SocketId socket_id = ControllerPrivateAccessor(&cntl).get_bind_sock();
+            if (socket_id == INVALID_SOCKET_ID) {
                 LOG(ERROR) << "Fail create mysql transaction, get bind sock failed";
+            } else {
+                tx.reset(new MysqlTransaction(channel, socket_id, cntl.connection_type()));
             }
-            tx.reset(new MysqlTransaction(channel, sock, cntl.connection_type()));
         } else {
             LOG(ERROR) << "Fail create mysql transaction, " << response;
         }

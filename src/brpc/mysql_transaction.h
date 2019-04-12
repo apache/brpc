@@ -38,9 +38,9 @@ struct MysqlTransactionOptions {
 // mysql transaction type
 class MysqlTransaction {
 public:
-    MysqlTransaction(Channel& channel, SocketUniquePtr& socket, ConnectionType conn_type);
+    MysqlTransaction(Channel& channel, SocketId socket_id, ConnectionType conn_type);
     ~MysqlTransaction();
-    Socket* get_socket() const;
+    SocketId get_socket() const;
     // commit transaction
     bool commit();
     // rollback transaction
@@ -51,16 +51,14 @@ private:
 
 private:
     Channel& _channel;
-    SocketUniquePtr _socket;
+    SocketId _socket_id;
     ConnectionType _conn_type;
 };
 
 inline MysqlTransaction::MysqlTransaction(Channel& channel,
-                                          SocketUniquePtr& socket,
+                                          SocketId socket_id,
                                           ConnectionType conn_type)
-    : _channel(channel), _conn_type(conn_type) {
-    _socket.reset(socket.release());
-}
+    : _channel(channel), _socket_id(socket_id), _conn_type(conn_type) {}
 
 inline MysqlTransaction::~MysqlTransaction() {
     CHECK(rollback()) << "rollback failed";
@@ -74,8 +72,8 @@ inline bool MysqlTransaction::rollback() {
     return DoneTransaction("ROLLBACK");
 }
 
-inline Socket* MysqlTransaction::get_socket() const {
-    return _socket.get();
+inline SocketId MysqlTransaction::get_socket() const {
+    return _socket_id;
 }
 
 typedef std::unique_ptr<MysqlTransaction> MysqlTransactionUniquePtr;

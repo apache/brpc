@@ -292,7 +292,7 @@ bool MysqlRequest::Query(const butil::StringPiece& command) {
         return false;
     }
 
-    const butil::Status st = MysqlMakeCommand(&_buf, COM_QUERY, command);
+    const butil::Status st = MysqlMakeCommand(&_buf, MYSQL_COM_QUERY, command);
     if (st.ok()) {
         _has_command = true;
         return true;
@@ -512,6 +512,7 @@ ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf, bool is_auth) {
     if (oldsize == 0) {
         return PARSE_OK;
     } else {
+        LOG(ERROR) << "Parse protocol finished, but IOBuf has more data";
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
 }

@@ -99,6 +99,7 @@ enum StopStyle {
 };
 
 const int32_t UNSET_MAGIC_NUM = -123456789;
+
 // if controller want to reserve a sock after RPC, set BIND_SOCK_ACTIVE
 enum BindSockAction {
     BIND_SOCK_ACTIVE,
@@ -512,19 +513,6 @@ public:
     // -1 means no deadline.
     int64_t deadline_us() const { return _deadline_us; }
 
-    // Set bind socket action
-    void set_bind_sock_action(BindSockAction action) { _bind_sock_action = action; }
-    // Transfer ownership to other
-    bool get_bind_sock(SocketUniquePtr* ptr) {
-        if (ptr != NULL && _bind_sock_owner != NULL) {
-            ptr->reset(_bind_sock_owner.release());
-            return true;
-        }
-        return false;
-    }
-    // Use a external socket
-    void use_bind_sock(Socket* sock) { _bind_sock_other = sock; }
-
 private:
     struct CompletionInfo {
         CallId id;           // call_id of the corresponding request
@@ -771,15 +759,13 @@ private:
     // Defined at both sides
     StreamSettings *_remote_stream_settings;
 
-    // Thrift method name, only used when thrift protocol enabled
-    std::string _thrift_method_name;
-
     // controller bind socket action
     BindSockAction _bind_sock_action;
-    // when we own the socket use own, BIND_SOCK_ACTIVE
-    // when used external socket use other, BIND_SOCK_NONE
-    SocketUniquePtr _bind_sock_owner;
-    Socket* _bind_sock_other;
+    // controller bind sock
+    SocketId _bind_sock;
+
+    // Thrift method name, only used when thrift protocol enabled
+    std::string _thrift_method_name;
 };
 
 // Advises the RPC system that the caller desires that the RPC call be

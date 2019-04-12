@@ -243,7 +243,7 @@ TEST_F(MysqlTest, resultset) {
     options.connect_timeout_ms = brpc::MYSQL_connect_timeout_ms;
     options.timeout_ms = brpc::MYSQL_timeout_ms /*milliseconds*/;
     options.auth = new brpc::policy::MysqlAuthenticator(
-        brpc::MYSQL_user, brpc::MYSQL_password, brpc::MYSQL_schema);
+        brpc::MYSQL_user, brpc::MYSQL_password, brpc::MYSQL_schema, "charset=utf8");
     std::stringstream ss;
     ss << brpc::MYSQL_host + ":" + brpc::MYSQL_port;
     brpc::Channel channel;
@@ -355,7 +355,7 @@ TEST_F(MysqlTest, resultset) {
         ASSERT_EQ(reply.column(0).type(), brpc::MYSQL_FIELD_TYPE_LONG);
 
         ASSERT_EQ(reply.column(1).name(), "col2");
-        // ASSERT_EQ(reply.column(1)->collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(1).collation(), brpc::MYSQL_utf8_general_ci);
         ASSERT_EQ(reply.column(1).type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
 
         ASSERT_EQ(reply.column(2).name(), "col3");
@@ -471,27 +471,27 @@ TEST_F(MysqlTest, resultset) {
         ASSERT_EQ(reply.column(29).type(), brpc::MYSQL_FIELD_TYPE_TINY);
 
         ASSERT_EQ(reply.column(30).name(), "col31");
-        // ASSERT_EQ(reply.column(30).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(30).collation(), brpc::MYSQL_utf8_general_ci);
         ASSERT_EQ(reply.column(30).type(), brpc::MYSQL_FIELD_TYPE_STRING);
 
         ASSERT_EQ(reply.column(31).name(), "col32");
-        // ASSERT_EQ(reply.column(31).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(31).collation(), brpc::MYSQL_utf8_general_ci);
         ASSERT_EQ(reply.column(31).type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
 
         ASSERT_EQ(reply.column(32).name(), "col33");
-        // ASSERT_EQ(reply.column(32).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(32).collation(), brpc::MYSQL_utf8_general_ci);
         ASSERT_EQ(reply.column(32).type(), brpc::MYSQL_FIELD_TYPE_BLOB);
 
         ASSERT_EQ(reply.column(33).name(), "col34");
-        // ASSERT_EQ(reply.column(33).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(33).collation(), brpc::MYSQL_utf8_general_ci);
         ASSERT_EQ(reply.column(33).type(), brpc::MYSQL_FIELD_TYPE_BLOB);
 
         ASSERT_EQ(reply.column(34).name(), "col35");
-        // ASSERT_EQ(reply.column(34).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(34).collation(), brpc::MYSQL_utf8_general_ci);
         ASSERT_EQ(reply.column(34).type(), brpc::MYSQL_FIELD_TYPE_BLOB);
 
         ASSERT_EQ(reply.column(35).name(), "col36");
-        // ASSERT_EQ(reply.column(35).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(35).collation(), brpc::MYSQL_utf8_general_ci);
         ASSERT_EQ(reply.column(35).type(), brpc::MYSQL_FIELD_TYPE_BLOB);
 
         ASSERT_EQ(reply.column(36).name(), "col37");
@@ -503,19 +503,19 @@ TEST_F(MysqlTest, resultset) {
         ASSERT_EQ(reply.column(37).type(), brpc::MYSQL_FIELD_TYPE_TINY);
 
         ASSERT_EQ(reply.column(38).name(), "col39");
-        // ASSERT_EQ(reply.column(38).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(38).collation(), brpc::MYSQL_utf8_general_ci);
         ASSERT_EQ(reply.column(38).type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
 
         ASSERT_EQ(reply.column(39).name(), "col40");
-        // ASSERT_EQ(reply.column(39).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(39).collation(), brpc::MYSQL_utf8_general_ci);
         ASSERT_EQ(reply.column(39).type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
 
         ASSERT_EQ(reply.column(40).name(), "col41");
-        // ASSERT_EQ(reply.column(40).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(40).collation(), brpc::MYSQL_utf8_general_ci);
         ASSERT_EQ(reply.column(40).type(), brpc::MYSQL_FIELD_TYPE_STRING);
 
         ASSERT_EQ(reply.column(41).name(), "col42");
-        // ASSERT_EQ(reply.column(41).collation(), brpc::MYSQL_utf8_general_ci);
+        ASSERT_EQ(reply.column(41).collation(), brpc::MYSQL_utf8_general_ci);
         ASSERT_EQ(reply.column(41).type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
 
         int i = 0;
