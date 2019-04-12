@@ -40,7 +40,7 @@ sudo apt-get install libgoogle-perftools-dev
 
 If you need to run tests, install and compile libgtest-dev (which is not compiled yet):
 ```shell
-sudo apt-get install libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
+sudo apt-get install libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv lib/libgtest* /usr/lib/ && cd -
 ```
 The directory of gtest source code may be changed, try `/usr/src/googletest/googletest` if `/usr/src/gtest` is not there.
 
@@ -261,12 +261,18 @@ Note: In the same running environment, the performance of the current Mac versio
 
 Install common deps:
 ```shell
-brew install openssl git gnu-getopt coreutils
+brew install openssl@1.1 git gnu-getopt coreutils
 ```
 
-Install [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
+Install [gflags](https://github.com/gflags/gflags), [leveldb](https://github.com/google/leveldb):
 ```shell
-brew install gflags protobuf leveldb
+brew install gflags leveldb
+```
+
+Install [protobuf](https://github.com/google/protobuf):
+```shell
+brew install protobuf@3.1
+brew link --force --overwrite protobuf@3.1
 ```
 
 If you need to enable cpu/heap profilers in examples:
@@ -276,7 +282,7 @@ brew install gperftools
 
 If you need to run tests, install and compile googletest (which is not compiled yet):
 ```shell
-git clone https://github.com/google/googletest && cd googletest/googletest && mkdir bld && cd bld && cmake -DCMAKE_CXX_FLAGS="-std=c++11" .. && make && sudo mv libgtest* /usr/lib/ && cd -
+git clone https://github.com/google/googletest && cd googletest/googletest && mkdir bld && cd bld && cmake -DCMAKE_CXX_FLAGS="-std=c++11" .. && make && sudo mv lib/libgtest* /usr/lib/ && cd -
 ```
 
 ### Compile brpc with config_brpc.sh
