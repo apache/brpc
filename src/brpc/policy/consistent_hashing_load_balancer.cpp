@@ -15,6 +15,7 @@
 // Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
 
 #include <algorithm>                                           // std::set_union
+#include <array>
 #include <gflags/gflags.h>
 #include "butil/containers/flat_map.h"
 #include "butil/errno.h"
@@ -22,7 +23,6 @@
 #include "brpc/socket.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
 #include "brpc/policy/hasher.h"
-
 
 namespace brpc {
 namespace policy {
