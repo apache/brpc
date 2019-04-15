@@ -789,6 +789,10 @@ TEST_F(LoadBalancerTest, health_check_no_valid_server) {
 }
 
 TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
+    const char* servers[] = {
+        "10.92.115.19:8832",
+        "10.42.122.201:8833",
+    };
     brpc::LoadBalancer* lb = NULL;
     int rand = butil::fast_rand_less_than(2);
     if (rand == 0) {
@@ -878,34 +882,31 @@ public:
     butil::atomic<int> _num_request;
 };
 
+butil::atomic<int32_t> num_failed;
+butil::atomic<int32_t> num_reject;
+
 class Done : public google::protobuf::Closure {
 public:
-    Done()
-        : num_failed(NULL)
-        , num_reject(NULL) {}
     void Run() {
         if (cntl.Failed()) {
-            if (num_failed) {
-                num_failed->fetch_add(1, butil::memory_order_relaxed);
-            }
-            if (cntl.ErrorCode() == brpc::EREJECT && num_reject) {
-                num_reject->fetch_add(1, butil::memory_order_relaxed);
+            num_failed.fetch_add(1, butil::memory_order_relaxed);
+            if (cntl.ErrorCode() == brpc::EREJECT) {
+                num_reject.fetch_add(1, butil::memory_order_relaxed);
             }
         }
         delete this;
     }
-
     brpc::Controller cntl;
     test::EchoRequest req;
     test::EchoResponse res;
-    butil::atomic<int32_t>* num_failed;
-    butil::atomic<int32_t>* num_reject;
 };
 
 TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     GFLAGS_NS::SetCommandLineOption("circuit_breaker_short_window_size", "20");
     GFLAGS_NS::SetCommandLineOption("circuit_breaker_short_window_error_percent", "30");
-    GFLAGS_NS::SetCommandLineOption("circuit_breaker_max_isolation_duration_ms", "5000");
+    // Those two lines force the interval of first hc to 3s
+    GFLAGS_NS::SetCommandLineOption("circuit_breaker_max_isolation_duration_ms", "3000");
+    GFLAGS_NS::SetCommandLineOption("circuit_breaker_min_isolation_duration_ms", "3000");
 
     const char* lb_algo[] = { "random:minimum_working_instances=2 hold_time_ms=2000",
                               "rr:minimum_working_instances=2 hold_time_ms=2000" };
@@ -914,24 +915,15 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     options.protocol = "http";
     options.timeout_ms = 300;
     options.enable_circuit_breaker = true;
-    // Set max_retry to 0 so that the time of health check of different servers
-    // are not continuous.
-    options.max_retry = 0;
     ASSERT_EQ(channel.Init("list://127.0.0.1:7777 50, 127.0.0.1:7778 50",
                            lb_algo[butil::fast_rand_less_than(ARRAY_SIZE(lb_algo))],
                            &options), 0);
-
     test::EchoRequest req;
     req.set_message("123");
     test::EchoResponse res;
     test::EchoService_Stub stub(&channel);
-    // trigger one server to health check
-    {
-        brpc::Controller cntl;
-        stub.Echo(&cntl, &req, &res, NULL);
-    }
-    bthread_usleep(500000);
-    // trigger the other server to health check
+    int64_t start_ms = butil::gettimeofday_ms();
+    // trigger to health check
     {
         brpc::Controller cntl;
         stub.Echo(&cntl, &req, &res, NULL);
@@ -949,30 +941,28 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     ASSERT_EQ(0, server2.AddService(&service2, brpc::SERVER_DOESNT_OWN_SERVICE));
     ASSERT_EQ(0, server2.Start(point2, NULL));
     
-    int64_t start_ms = butil::gettimeofday_ms();
-    butil::atomic<int32_t> num_reject(0);
-    int64_t q = 0;
-    while ((butil::gettimeofday_ms() - start_ms) <
-            brpc::FLAGS_health_check_interval * 1000 + 10) {
+    // keep sending for 2900ms(100ms less than hc interval) to make sure all requests
+    // are sent during hc. Those requests should be all failed and error code should
+    // be brpc::EREJECT.
+    while ((butil::gettimeofday_ms() - start_ms) < 2900) {
         Done* done = new Done;
-        done->num_reject = &num_reject;
         done->req.set_message("123");
         stub.Echo(&done->cntl, &done->req, &done->res, done);
-        q++;
         bthread_usleep(1000);
     }
-    ASSERT_TRUE(num_reject.load(butil::memory_order_relaxed) > 1700);
+    ASSERT_EQ(num_reject.load(butil::memory_order_relaxed),
+              num_failed.load(butil::memory_order_relaxed));
+    num_failed.store(0, butil::memory_order_relaxed);
 
+    bthread_usleep(500000);
     // should recover now
-    butil::atomic<int32_t> num_failed(0);
     for (int i = 0; i < 1000; ++i) {
         Done* done = new Done;
         done->req.set_message("123");
-        done->num_failed = &num_failed;
         stub.Echo(&done->cntl, &done->req, &done->res, done);
         bthread_usleep(1000);
     }
-    bthread_usleep(1050*1000 /* sleep longer than timeout of service */);
+    bthread_usleep(500000 /* sleep longer than timeout of channel */);
     ASSERT_EQ(0, num_failed.load(butil::memory_order_relaxed));
 }
 

@@ -72,7 +72,7 @@ uint64_t DefaultClusterRecoverPolicy::GetUsableServerCount(
     SocketUniquePtr ptr;
     for (size_t i = 0; i < n; ++i) {
         if (Socket::Address(server_list[i].id, &ptr) == 0
-            && !ptr->IsLogOff()) {
+            && ptr->IsAvailable()) {
             usable++;
         }
     }
