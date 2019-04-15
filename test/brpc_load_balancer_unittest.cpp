@@ -654,11 +654,11 @@ TEST_F(LoadBalancerTest, weighted_round_robin) {
     } 
     std::cout << std::endl;   
     // Check whether slected result is consistent with expected.
-    EXPECT_EQ(3, select_result.size());
+    EXPECT_EQ((size_t)3, select_result.size());
     for (const auto& result : select_result) {
         std::cout << result.first << " result=" << result.second 
                   << " configured=" << configed_weight[result.first] << std::endl;
-        EXPECT_EQ(result.second, configed_weight[result.first]);
+        EXPECT_EQ(result.second, (size_t)configed_weight[result.first]);
     }
 }
 
@@ -701,6 +701,85 @@ TEST_F(LoadBalancerTest, weighted_round_robin_no_valid_server) {
     brpc::LoadBalancer::SelectOut out(&ptr);
     EXPECT_EQ(EHOSTDOWN, wrrlb.SelectServer(in, &out));
     brpc::ExcludedServers::Destroy(exclude);
+}
+
+TEST_F(LoadBalancerTest, health_check_no_valid_server) {
+    const char* servers[] = { 
+            "10.92.115.19:8832", 
+            "10.42.122.201:8833",
+    };
+
+    std::vector<brpc::LoadBalancer*> lbs;
+    lbs.push_back(new brpc::policy::RoundRobinLoadBalancer);
+    lbs.push_back(new brpc::policy::RandomizedLoadBalancer);
+    lbs.push_back(new brpc::policy::WeightedRoundRobinLoadBalancer);
+
+    for (int i = 0; i < (int)lbs.size(); ++i) {
+        brpc::LoadBalancer* lb = lbs[i];
+        std::vector<brpc::ServerId> ids;
+        for (size_t i = 0; i < ARRAY_SIZE(servers); ++i) {
+            butil::EndPoint dummy;
+            ASSERT_EQ(0, str2endpoint(servers[i], &dummy));
+            brpc::ServerId id(8888);
+            brpc::SocketOptions options;
+            options.remote_side = dummy;
+            ASSERT_EQ(0, brpc::Socket::Create(options, &id.id));
+            id.tag = "50";
+            ids.push_back(id);
+            lb->AddServer(id);
+        }
+
+        // Without setting anything, the lb should work fine
+        for (int i = 0; i < 4; ++i) {
+            brpc::SocketUniquePtr ptr;
+            brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
+            brpc::LoadBalancer::SelectOut out(&ptr);
+            ASSERT_EQ(0, lb->SelectServer(in, &out));
+        }
+
+        brpc::SocketUniquePtr ptr;
+        ASSERT_EQ(0, brpc::Socket::Address(ids[0].id, &ptr));
+        ptr->_ninflight_app_health_check.store(1, butil::memory_order_relaxed);
+        for (int i = 0; i < 4; ++i) {
+            brpc::SocketUniquePtr ptr;
+            brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
+            brpc::LoadBalancer::SelectOut out(&ptr);
+            ASSERT_EQ(0, lb->SelectServer(in, &out));
+            // After putting server[0] into health check state, the only choice is servers[1]
+            ASSERT_EQ(ptr->remote_side().port, 8833);
+        }
+
+        ASSERT_EQ(0, brpc::Socket::Address(ids[1].id, &ptr));
+        ptr->_ninflight_app_health_check.store(1, butil::memory_order_relaxed);
+        for (int i = 0; i < 4; ++i) {
+            brpc::SocketUniquePtr ptr;
+            brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
+            brpc::LoadBalancer::SelectOut out(&ptr);
+            // There is no server available
+            ASSERT_EQ(EHOSTDOWN, lb->SelectServer(in, &out));
+        }
+
+        ASSERT_EQ(0, brpc::Socket::Address(ids[0].id, &ptr));
+        ptr->_ninflight_app_health_check.store(0, butil::memory_order_relaxed);
+        ASSERT_EQ(0, brpc::Socket::Address(ids[1].id, &ptr));
+        ptr->_ninflight_app_health_check.store(0, butil::memory_order_relaxed);
+        // After reset health check state, the lb should work fine
+        bool get_server1 = false;
+        bool get_server2 = false; 
+        for (int i = 0; i < 20; ++i) {
+            brpc::SocketUniquePtr ptr;
+            brpc::LoadBalancer::SelectIn in = { 0, false, false, 0u, NULL };
+            brpc::LoadBalancer::SelectOut out(&ptr);
+            ASSERT_EQ(0, lb->SelectServer(in, &out));
+            if (ptr->remote_side().port == 8832) {
+                get_server1 = true;
+            } else {
+                get_server2 = true;
+            }
+        }
+        ASSERT_TRUE(get_server1 && get_server2);
+        delete lb;
+    }
 }
 
 } //namespace

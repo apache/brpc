@@ -118,7 +118,7 @@ int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         if (((i + 1) == n  // always take last chance
              || !ExcludedServers::IsExcluded(in.excluded, id))
             && Socket::Address(id, out->ptr) == 0
-            && !(*out->ptr)->IsLogOff()) {
+            && (*out->ptr)->IsAvailable()) {
             // We found an available server
             return 0;
         }

@@ -1,0 +1,11 @@
+syntax="proto2";
+option cc_generic_services = true;
+
+package test;
+
+message HealthCheckRequest {};
+message HealthCheckResponse {};
+
+service HealthCheckTestService {
+    rpc default_method(HealthCheckRequest) returns (HealthCheckResponse);
+}

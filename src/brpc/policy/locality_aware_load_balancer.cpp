@@ -303,7 +303,7 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
                 continue;
             }
         } else if (Socket::Address(info.server_id, out->ptr) == 0
-                   && !(*out->ptr)->IsLogOff()) {
+                   && (*out->ptr)->IsAvailable()) {
             if ((ntry + 1) == n  // Instead of fail with EHOSTDOWN, we prefer
                                  // choosing the server again.
                 || !ExcludedServers::IsExcluded(in.excluded, info.server_id)) {
