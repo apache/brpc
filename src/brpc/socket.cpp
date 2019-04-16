@@ -70,6 +70,10 @@ DEFINE_bool(log_idle_connection_close, false,
             "Print log when an idle connection is closed");
 BRPC_VALIDATE_GFLAG(log_idle_connection_close, PassValidate);
 
+DEFINE_bool(socket_enable_tcp_keepalive, true,
+        "Open tcp keepalive explicitly, if this value is false, "
+        "use system default");
+
 DEFINE_int32(socket_recv_buffer_size, -1, 
             "Set the recv buffer size of socket if this value is positive");
 
@@ -548,6 +552,14 @@ int Socket::ResetFileDescriptor(int fd) {
     if (_tos > 0 &&
         setsockopt(fd, IPPROTO_IP, IP_TOS, &_tos, sizeof(_tos)) < 0) {
         PLOG(FATAL) << "Fail to set tos of fd=" << fd << " to " << _tos;
+    }
+
+    if (FLAGS_socket_enable_tcp_keepalive) {
+        int one = 1;
+        if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one)) != 0) {
+            PLOG(FATAL) << "Fail to set enable keepalive of fd=" << fd;
+        }
+
     }
 
     if (FLAGS_socket_send_buffer_size > 0) {
