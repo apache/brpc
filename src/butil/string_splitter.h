@@ -66,7 +66,10 @@ public:
     // if str_end is not NULL.
     inline StringSplitter(const char* str_begin, const char* str_end,
                           char separator,
-                          EmptyFieldAction = SKIP_EMPTY_FIELD);
+                          EmptyFieldAction action = SKIP_EMPTY_FIELD);
+    // Allows containing embedded '\0' characters and separator can be '\0',
+    inline StringSplitter(const StringPiece& input, char separator,
+                          EmptyFieldAction action = SKIP_EMPTY_FIELD);
 
     // Move splitter forward.
     inline StringSplitter& operator++();
@@ -79,6 +82,7 @@ public:
     // not be '\0' because we don't modify `input'.
     inline const char* field() const;
     inline size_t length() const;
+    inline StringPiece field_sp() const;
 
     // Cast field to specific type, and write the value into `pv'.
     // Returns 0 on success, -1 otherwise.
@@ -133,6 +137,7 @@ public:
     // not be '\0' because we don't modify `input'.
     inline const char* field() const;
     inline size_t length() const;
+    inline StringPiece field_sp() const;
 
     // Cast field to specific type, and write the value into `pv'.
     // Returns 0 on success, -1 otherwise.
@@ -161,8 +166,14 @@ private:
 };
 
 // Split query in the format according to the given delimiters.
-// This class can also handle some exceptional cases, such as
-// consecutive ampersand, only equal sign, only key and so on.
+// This class can also handle some exceptional cases.
+// 1. consecutive key_value_pair_delimiter are omitted, for example,
+//    suppose key_value_delimiter is '=' and key_value_pair_delimiter
+//    is '&', then k1=v1&&&k2=v2 is normalized to k1=k2&k2=v2.
+// 2. key or value can be empty or both can be empty
+// 3. consecutive key_value_delimiter are not omitted, for example,
+//    suppose input is k1===v2 and key_value_delimiter is '=', then
+//    key() returns 'k1', value() returns '==v2'.
 class KeyValuePairsSplitter {
 public:
     inline KeyValuePairsSplitter(const char* str_begin,
@@ -170,38 +181,29 @@ public:
                                  char key_value_delimiter,
                                  char key_value_pair_delimiter)
         : _sp(str_begin, str_end, key_value_pair_delimiter)
-        , _is_split(false)
+        , _deli_pos(StringPiece::npos)
         , _key_value_delimiter(key_value_delimiter) {
+        UpdateDelimiterPos();
     }
 
     inline KeyValuePairsSplitter(const char* str_begin,
                                  char key_value_delimiter,
                                  char key_value_pair_delimiter)
-        : _sp(str_begin, key_value_pair_delimiter)
-        , _is_split(false)
-        , _key_value_delimiter(key_value_delimiter) {
-    }
+        : KeyValuePairsSplitter(str_begin, NULL,
+                key_value_delimiter, key_value_pair_delimiter) {}
 
     inline KeyValuePairsSplitter(const StringPiece &sp,
                                  char key_value_delimiter,
                                  char key_value_pair_delimiter)
-        : _sp(sp.begin(), sp.end(), key_value_pair_delimiter)
-        , _is_split(false)
-        , _key_value_delimiter(key_value_delimiter) {
+        : KeyValuePairsSplitter(sp.begin(), sp.end(),
+                key_value_delimiter, key_value_pair_delimiter) {}
+
+    inline StringPiece key() {
+        return StringPiece(_sp.field(), _sp.length()).substr(0, _deli_pos);
     }
 
-    inline const StringPiece& key() {
-        if (!_is_split) {
-            split();
-        }
-        return _key;
-    }
-
-    inline const StringPiece& value() {
-        if (!_is_split) {
-            split();
-        }
-        return _value;
+    inline StringPiece value() {
+        return StringPiece(_sp.field(), _sp.length()).substr(_deli_pos + 1);
     }
 
     // Get the current value of key and value 
@@ -213,7 +215,7 @@ public:
     // Move splitter forward.
     inline KeyValuePairsSplitter& operator++() {
         ++_sp;
-        _is_split = false;
+        UpdateDelimiterPos();
         return *this;
     }
 
@@ -226,13 +228,11 @@ public:
     inline operator const void*() const { return _sp; }
 
 private:
-    inline void split();
+    inline void UpdateDelimiterPos();
 
 private:
     StringSplitter _sp;
-    StringPiece _key;
-    StringPiece _value;
-    bool _is_split;
+    StringPiece::size_type _deli_pos;
     const char _key_value_delimiter;
 };
 

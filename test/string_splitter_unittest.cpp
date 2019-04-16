@@ -319,10 +319,26 @@ TEST_F(StringSplitterTest, split_limit_len) {
 
     ++ss2;
     ASSERT_FALSE(ss2);
+
+    butil::StringPiece sp(str, 5);
+    // Allows using '\0' as separator
+    butil::StringSplitter ss3(sp, '\0');
+
+    ASSERT_TRUE(ss3);
+    ASSERT_EQ(3ul, ss3.length());
+    ASSERT_FALSE(strncmp(ss3.field(), "1\t1", ss3.length()));
+
+    ++ss3;
+    ASSERT_TRUE(ss3);
+    ASSERT_EQ(1ul, ss3.length());
+    ASSERT_FALSE(strncmp(ss3.field(), "3", ss3.length()));
+
+    ++ss3;
+    ASSERT_FALSE(ss3);
 }
 
 TEST_F(StringSplitterTest, key_value_pairs_splitter_sanity) {
-    std::string kvstr = "key1=value1&key2=value2&key3=value3";
+    std::string kvstr = "key1=value1&&&key2=value2&key3=value3";
     {
         butil::KeyValuePairsSplitter splitter(kvstr, '=', '&');
         ASSERT_TRUE(splitter);

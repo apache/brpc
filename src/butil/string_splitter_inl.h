@@ -22,15 +22,6 @@
 
 namespace butil {
 
-StringSplitter::StringSplitter(const char* str, char sep,
-                               EmptyFieldAction action)
-    : _head(str)
-    , _str_tail(NULL)
-    , _sep(sep)
-    , _empty_field_action(action) {
-    init();
-}
-
 StringSplitter::StringSplitter(const char* str_begin,
                                const char* str_end,
                                const char sep,
@@ -41,6 +32,14 @@ StringSplitter::StringSplitter(const char* str_begin,
     , _empty_field_action(action) {
     init();
 }
+
+StringSplitter::StringSplitter(const char* str, char sep,
+                               EmptyFieldAction action)
+    : StringSplitter(str, NULL, sep, action) {}
+
+StringSplitter::StringSplitter(const StringPiece& input, char sep,
+                               EmptyFieldAction action)
+    : StringSplitter(input.data(), input.data() + input.length(), sep, action) {}
 
 void StringSplitter::init() {
     // Find the starting _head and _tail.
@@ -84,6 +83,10 @@ const char* StringSplitter::field() const {
 
 size_t StringSplitter::length() const {
     return static_cast<size_t>(_tail - _head);
+}
+
+StringPiece StringSplitter::field_sp() const {
+    return StringPiece(field(), length());
 }
 
 bool StringSplitter::not_end(const char* p) const {
@@ -233,6 +236,10 @@ size_t StringMultiSplitter::length() const {
     return static_cast<size_t>(_tail - _head);
 }
 
+StringPiece StringMultiSplitter::field_sp() const {
+    return StringPiece(field(), length());
+}
+
 bool StringMultiSplitter::not_end(const char* p) const {
     return (_str_tail == NULL) ? *p : (p != _str_tail);
 }
@@ -309,17 +316,12 @@ int StringMultiSplitter::to_double(double* pv) const {
     return (endptr == field() + length()) ? 0 : -1;
 }
 
-void KeyValuePairsSplitter::split() {
-    StringPiece query_pair(_sp.field(), _sp.length());
-    const size_t pos = query_pair.find('=');
-    if (pos == StringPiece::npos) {
-        _key = query_pair;
-        _value.clear();
-    } else {
-        _key= query_pair.substr(0, pos);
-        _value = query_pair.substr(pos + 1);
+void KeyValuePairsSplitter::UpdateDelimiterPos() {
+    StringPiece key_value_pair(_sp.field(), _sp.length());
+    _deli_pos = key_value_pair.find(_key_value_delimiter);
+    if (_deli_pos == StringPiece::npos) {
+        _deli_pos = key_value_pair.length();
     }
-    _is_split = true;
 }
 
 }  // namespace butil
