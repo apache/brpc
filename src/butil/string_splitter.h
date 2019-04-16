@@ -169,10 +169,10 @@ private:
 // This class can also handle some exceptional cases.
 // 1. consecutive key_value_pair_delimiter are omitted, for example,
 //    suppose key_value_delimiter is '=' and key_value_pair_delimiter
-//    is '&', then k1=v1&&&k2=v2 is normalized to k1=k2&k2=v2.
-// 2. key or value can be empty or both can be empty
+//    is '&', then 'k1=v1&&&k2=v2' is normalized to 'k1=k2&k2=v2'.
+// 2. key or value can be empty or both can be empty.
 // 3. consecutive key_value_delimiter are not omitted, for example,
-//    suppose input is k1===v2 and key_value_delimiter is '=', then
+//    suppose input is 'k1===v2' and key_value_delimiter is '=', then
 //    key() returns 'k1', value() returns '==v2'.
 class KeyValuePairsSplitter {
 public:
@@ -181,8 +181,8 @@ public:
                                  char key_value_delimiter,
                                  char key_value_pair_delimiter)
         : _sp(str_begin, str_end, key_value_pair_delimiter)
-        , _deli_pos(StringPiece::npos)
-        , _key_value_delimiter(key_value_delimiter) {
+        , _delim_pos(StringPiece::npos)
+        , _key_value_delim(key_value_delimiter) {
         UpdateDelimiterPosition();
     }
 
@@ -199,11 +199,11 @@ public:
                 key_value_delimiter, key_value_pair_delimiter) {}
 
     inline StringPiece key() {
-        return key_and_value().substr(0, _deli_pos);
+        return key_and_value().substr(0, _delim_pos);
     }
 
     inline StringPiece value() {
-        return key_and_value().substr(_deli_pos + 1);
+        return key_and_value().substr(_delim_pos + 1);
     }
 
     // Get the current value of key and value 
@@ -232,8 +232,8 @@ private:
 
 private:
     StringSplitter _sp;
-    StringPiece::size_type _deli_pos;
-    const char _key_value_delimiter;
+    StringPiece::size_type _delim_pos;
+    const char _key_value_delim;
 };
 
 }  // namespace butil
