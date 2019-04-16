@@ -407,6 +407,19 @@ void URI::SetH2Path(const char* h2_path) {
     }
 }
 
+void QuerySplitter::split() {
+    butil::StringPiece query_pair(_sp.field(), _sp.length());
+    const size_t pos = query_pair.find('=');
+    if (pos == butil::StringPiece::npos) {
+        _key = query_pair;
+        _value.clear();
+    } else {
+        _key= query_pair.substr(0, pos);
+        _value = query_pair.substr(pos + 1);
+    }
+    _is_split = true;
+}
+
 QueryRemover::QueryRemover(const std::string* str)
     : _query(str)
     , _qs(str->data(), str->data() + str->size())
