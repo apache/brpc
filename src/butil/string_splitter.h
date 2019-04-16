@@ -208,7 +208,7 @@ public:
 
     // Get the current value of key and value 
     // in the format of "key=value"
-    inline StringPiece key_and_value(){
+    inline StringPiece key_and_value() {
         return StringPiece(_sp.field(), _sp.length());
     }
 
