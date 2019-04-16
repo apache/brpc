@@ -309,6 +309,19 @@ int StringMultiSplitter::to_double(double* pv) const {
     return (endptr == field() + length()) ? 0 : -1;
 }
 
+void KeyValuePairsSplitter::split() {
+    StringPiece query_pair(_sp.field(), _sp.length());
+    const size_t pos = query_pair.find('=');
+    if (pos == StringPiece::npos) {
+        _key = query_pair;
+        _value.clear();
+    } else {
+        _key= query_pair.substr(0, pos);
+        _value = query_pair.substr(pos + 1);
+    }
+    _is_split = true;
+}
+
 }  // namespace butil
 
 #endif  // BUTIL_STRING_SPLITTER_INL_H

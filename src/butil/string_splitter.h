@@ -22,6 +22,7 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+#include "butil/strings/string_piece.h"
 
 // It's common to encode data into strings separated by special characters
 // and decode them back, but functions such as `split_string' has to modify
@@ -157,6 +158,82 @@ private:
     const char* _str_tail;
     const char* const _seps;
     const EmptyFieldAction _empty_field_action;
+};
+
+// Split query in the format according to the given delimiters.
+// This class can also handle some exceptional cases, such as
+// consecutive ampersand, only equal sign, only key and so on.
+class KeyValuePairsSplitter {
+public:
+    inline KeyValuePairsSplitter(const char* str_begin,
+                                 const char* str_end,
+                                 char key_value_delimiter,
+                                 char key_value_pair_delimiter)
+        : _sp(str_begin, str_end, key_value_pair_delimiter)
+        , _is_split(false)
+        , _key_value_delimiter(key_value_delimiter) {
+    }
+
+    inline KeyValuePairsSplitter(const char* str_begin,
+                                 char key_value_delimiter,
+                                 char key_value_pair_delimiter)
+        : _sp(str_begin, key_value_pair_delimiter)
+        , _is_split(false)
+        , _key_value_delimiter(key_value_delimiter) {
+    }
+
+    inline KeyValuePairsSplitter(const StringPiece &sp,
+                                 char key_value_delimiter,
+                                 char key_value_pair_delimiter)
+        : _sp(sp.begin(), sp.end(), key_value_pair_delimiter)
+        , _is_split(false)
+        , _key_value_delimiter(key_value_delimiter) {
+    }
+
+    inline const StringPiece& key() {
+        if (!_is_split) {
+            split();
+        }
+        return _key;
+    }
+
+    inline const StringPiece& value() {
+        if (!_is_split) {
+            split();
+        }
+        return _value;
+    }
+
+    // Get the current value of key and value 
+    // in the format of "key=value"
+    inline StringPiece key_and_value(){
+        return StringPiece(_sp.field(), _sp.length());
+    }
+
+    // Move splitter forward.
+    inline KeyValuePairsSplitter& operator++() {
+        ++_sp;
+        _is_split = false;
+        return *this;
+    }
+
+    inline KeyValuePairsSplitter operator++(int) {
+        KeyValuePairsSplitter tmp = *this;
+        operator++();
+        return tmp;
+    }
+
+    inline operator const void*() const { return _sp; }
+
+private:
+    inline void split();
+
+private:
+    StringSplitter _sp;
+    StringPiece _key;
+    StringPiece _value;
+    bool _is_split;
+    const char _key_value_delimiter;
 };
 
 }  // namespace butil

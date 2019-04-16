@@ -321,4 +321,56 @@ TEST_F(StringSplitterTest, split_limit_len) {
     ASSERT_FALSE(ss2);
 }
 
+TEST_F(StringSplitterTest, key_value_pairs_splitter_sanity) {
+    std::string kvstr = "key1=value1&key2=value2&key3=value3";
+    {
+        butil::KeyValuePairsSplitter splitter(kvstr, '=', '&');
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key1");
+        ASSERT_EQ(splitter.value(), "value1");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key2");
+        ASSERT_EQ(splitter.value(), "value2");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key3");
+        ASSERT_EQ(splitter.value(), "value3");
+        ++splitter;
+        ASSERT_FALSE(splitter);
+    }
+    {
+        butil::KeyValuePairsSplitter splitter(kvstr.data(), kvstr.data() + kvstr.size(), '=', '&');
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key1");
+        ASSERT_EQ(splitter.value(), "value1");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key2");
+        ASSERT_EQ(splitter.value(), "value2");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key3");
+        ASSERT_EQ(splitter.value(), "value3");
+        ++splitter;
+        ASSERT_FALSE(splitter);
+    }
+    {
+        butil::KeyValuePairsSplitter splitter(kvstr.c_str(), '=', '&');
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key1");
+        ASSERT_EQ(splitter.value(), "value1");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key2");
+        ASSERT_EQ(splitter.value(), "value2");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key3");
+        ASSERT_EQ(splitter.value(), "value3");
+        ++splitter;
+        ASSERT_FALSE(splitter);
+    }
+}
+
 }
