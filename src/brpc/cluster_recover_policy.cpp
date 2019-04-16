@@ -54,6 +54,7 @@ bool DefaultClusterRecoverPolicy::StopRecoverIfNecessary() {
     if (_last_usable_change_time_ms != 0 && _last_usable != 0 &&
             (now_ms - _last_usable_change_time_ms > _hold_time_ms)) {
         _recovering = false;
+        _last_usable = 0;
         _last_usable_change_time_ms = 0;
         mu.unlock();
         return false;
@@ -109,26 +110,27 @@ bool GetRecoverPolicyByParams(const butil::StringPiece& params,
     int64_t minimum_working_instances = -1;
     int64_t hold_time_ms = -1;
     bool has_meet_params = false;
-    for (butil::KeyValuePairsSplitter sp(params.begin(), params.end(), '=', ' ');
-            sp; ++sp) {
-        if (sp.value().empty()) {
-            LOG(ERROR) << "Empty value for " << sp.key() << " in lb parameter";
+    for (butil::StringSplitter sp(params.begin(), params.end(), ' '); sp != nullptr; ++sp) {
+        butil::StringPiece key_value(sp.field(), sp.length());
+        size_t p = key_value.find('=');
+        if (p == key_value.npos || p == key_value.size() - 1) {
+            // No value configed.
             return false;
         }
-        if (sp.key() == "minimum_working_instances") {
-            if (!butil::StringToInt64(sp.value(), &minimum_working_instances)) {
+        if (key_value.substr(0, p) == "minimum_working_instances") {
+            if (!butil::StringToInt64(key_value.substr(p + 1), &minimum_working_instances)) {
                 return false;
             }
             has_meet_params = true;
             continue;
-        } else if (sp.key() == "hold_time_ms") {
-            if (!butil::StringToInt64(sp.value(), &hold_time_ms)) {
+        } else if (key_value.substr(0, p) == "hold_time_ms") {
+            if (!butil::StringToInt64(key_value.substr(p + 1), &hold_time_ms)) {
                 return false;
             }
             has_meet_params = true;
             continue;
         }
-        LOG(ERROR) << "Failed to set this unknown parameters " << sp.key_and_value();
+        LOG(ERROR) << "Failed to set this unknown parameters " << key_value;
     }
     if (minimum_working_instances > 0 && hold_time_ms > 0) {
         ptr_out->reset(

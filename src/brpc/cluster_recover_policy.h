@@ -36,6 +36,8 @@ class ServerId;
 // servers when recovering from all servers are down.
 class ClusterRecoverPolicy {
 public:
+    virtual ~ClusterRecoverPolicy() {}
+
     // Indicate that recover from all server being down is happening.
     virtual void StartRecover() = 0;
 
