@@ -199,11 +199,11 @@ public:
                 key_value_delimiter, key_value_pair_delimiter) {}
 
     inline StringPiece key() {
-        return StringPiece(_sp.field(), _sp.length()).substr(0, _deli_pos);
+        return key_and_value().substr(0, _deli_pos);
     }
 
     inline StringPiece value() {
-        return StringPiece(_sp.field(), _sp.length()).substr(_deli_pos + 1);
+        return key_and_value().substr(_deli_pos + 1);
     }
 
     // Get the current value of key and value 
