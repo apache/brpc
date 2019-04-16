@@ -316,7 +316,7 @@ int StringMultiSplitter::to_double(double* pv) const {
     return (endptr == field() + length()) ? 0 : -1;
 }
 
-void KeyValuePairsSplitter::UpdateDelimiterPos() {
+void KeyValuePairsSplitter::UpdateDelimiterPosition() {
     StringPiece key_value_pair(_sp.field(), _sp.length());
     _deli_pos = key_value_pair.find(_key_value_delimiter);
     if (_deli_pos == StringPiece::npos) {

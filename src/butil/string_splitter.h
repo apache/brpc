@@ -183,7 +183,7 @@ public:
         : _sp(str_begin, str_end, key_value_pair_delimiter)
         , _deli_pos(StringPiece::npos)
         , _key_value_delimiter(key_value_delimiter) {
-        UpdateDelimiterPos();
+        UpdateDelimiterPosition();
     }
 
     inline KeyValuePairsSplitter(const char* str_begin,
@@ -215,7 +215,7 @@ public:
     // Move splitter forward.
     inline KeyValuePairsSplitter& operator++() {
         ++_sp;
-        UpdateDelimiterPos();
+        UpdateDelimiterPosition();
         return *this;
     }
 
@@ -228,7 +228,7 @@ public:
     inline operator const void*() const { return _sp; }
 
 private:
-    inline void UpdateDelimiterPos();
+    inline void UpdateDelimiterPosition();
 
 private:
     StringSplitter _sp;
