@@ -882,8 +882,8 @@ public:
     butil::atomic<int> _num_request;
 };
 
-butil::atomic<int32_t> num_failed;
-butil::atomic<int32_t> num_reject;
+butil::atomic<int32_t> num_failed(0);
+butil::atomic<int32_t> num_reject(0);
 
 class Done : public google::protobuf::Closure {
 public:
@@ -915,6 +915,8 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     options.protocol = "http";
     options.timeout_ms = 300;
     options.enable_circuit_breaker = true;
+    // Disable retry to make health check happen one by one
+    options.max_retry = 0;
     ASSERT_EQ(channel.Init("list://127.0.0.1:7777 50, 127.0.0.1:7778 50",
                            lb_algo[butil::fast_rand_less_than(ARRAY_SIZE(lb_algo))],
                            &options), 0);
@@ -922,9 +924,16 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     req.set_message("123");
     test::EchoResponse res;
     test::EchoService_Stub stub(&channel);
-    int64_t start_ms = butil::gettimeofday_ms();
-    // trigger to health check
     {
+        // trigger one server to health check
+        brpc::Controller cntl;
+        stub.Echo(&cntl, &req, &res, NULL);
+    }
+    // This sleep make one server revived 700ms earlier than the other server, which
+    // can make the server down again if no request limit policy are applied here.
+    bthread_usleep(700000);
+    {
+        // trigger the other server to health check
         brpc::Controller cntl;
         stub.Echo(&cntl, &req, &res, NULL);
     }
@@ -941,20 +950,21 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     ASSERT_EQ(0, server2.AddService(&service2, brpc::SERVER_DOESNT_OWN_SERVICE));
     ASSERT_EQ(0, server2.Start(point2, NULL));
     
-    // keep sending for 2900ms(100ms less than hc interval) to make sure all requests
-    // are sent during hc. Those requests should be all failed and error code should
-    // be brpc::EREJECT.
-    while ((butil::gettimeofday_ms() - start_ms) < 2900) {
+    int64_t start_ms = butil::gettimeofday_ms();
+    while ((butil::gettimeofday_ms() - start_ms) < 3500) {
         Done* done = new Done;
         done->req.set_message("123");
         stub.Echo(&done->cntl, &done->req, &done->res, done);
         bthread_usleep(1000);
     }
-    ASSERT_EQ(num_reject.load(butil::memory_order_relaxed),
-              num_failed.load(butil::memory_order_relaxed));
+    // All error code should be equal to EREJECT, except when the situation
+    // all servers are down, the very first call that trigger recovering would
+    // fail with EHOSTDOWN instead of EREJECT. This is where the number 1 comes
+    // in following ASSERT.
+    ASSERT_TRUE(num_failed.load(butil::memory_order_relaxed) -
+            num_reject.load(butil::memory_order_relaxed) == 1);
     num_failed.store(0, butil::memory_order_relaxed);
 
-    bthread_usleep(500000);
     // should recover now
     for (int i = 0; i < 1000; ++i) {
         Done* done = new Done;
