@@ -31,12 +31,12 @@ DEFINE_int64(detect_available_server_interval_ms, 10, "The interval "
         "to detect available server count in DefaultClusterRecoverPolicy");
 
 DefaultClusterRecoverPolicy::DefaultClusterRecoverPolicy(
-        int64_t minimum_working_instances, int64_t hold_time_ms)
+        int64_t min_working_instances, int64_t hold_seconds)
     : _recovering(false)
-    , _minimum_working_instances(minimum_working_instances)
+    , _min_working_instances(min_working_instances)
     , _last_usable(0)
     , _last_usable_change_time_ms(0)
-    , _hold_time_ms(hold_time_ms)
+    , _hold_seconds(hold_seconds)
     , _usable_cache(0)
     , _usable_cache_time_ms(0) { }
 
@@ -52,7 +52,7 @@ bool DefaultClusterRecoverPolicy::StopRecoverIfNecessary() {
     int64_t now_ms = butil::gettimeofday_ms();
     std::unique_lock<butil::Mutex> mu(_mutex);
     if (_last_usable_change_time_ms != 0 && _last_usable != 0 &&
-            (now_ms - _last_usable_change_time_ms > _hold_time_ms)) {
+            (now_ms - _last_usable_change_time_ms > _hold_seconds)) {
         _recovering = false;
         _last_usable = 0;
         _last_usable_change_time_ms = 0;
@@ -99,7 +99,7 @@ bool DefaultClusterRecoverPolicy::DoReject(const std::vector<ServerId>& server_l
             _last_usable_change_time_ms = now_ms;
         }
     }
-    if (butil::fast_rand_less_than(_minimum_working_instances) >= usable) {
+    if (butil::fast_rand_less_than(_min_working_instances) >= usable) {
         return true;
     }
     return false;
@@ -107,23 +107,23 @@ bool DefaultClusterRecoverPolicy::DoReject(const std::vector<ServerId>& server_l
 
 bool GetRecoverPolicyByParams(const butil::StringPiece& params,
                               std::shared_ptr<ClusterRecoverPolicy>* ptr_out) {
-    int64_t minimum_working_instances = -1;
-    int64_t hold_time_ms = -1;
+    int64_t min_working_instances = -1;
+    int64_t hold_seconds = -1;
     bool has_meet_params = false;
-    for (butil::KeyValuePairsSplitter sp(params.begin(), params.end(), '=', ' ');
+    for (butil::KeyValuePairsSplitter sp(params.begin(), params.end(), ' ', '=');
             sp; ++sp) {
         if (sp.value().empty()) {
             LOG(ERROR) << "Empty value for " << sp.key() << " in lb parameter";
             return false;
         }
-        if (sp.key() == "minimum_working_instances") {
-            if (!butil::StringToInt64(sp.value(), &minimum_working_instances)) {
+        if (sp.key() == "min_working_instances") {
+            if (!butil::StringToInt64(sp.value(), &min_working_instances)) {
                 return false;
             }
             has_meet_params = true;
             continue;
-        } else if (sp.key() == "hold_time_ms") {
-            if (!butil::StringToInt64(sp.value(), &hold_time_ms)) {
+        } else if (sp.key() == "hold_seconds") {
+            if (!butil::StringToInt64(sp.value(), &hold_seconds)) {
                 return false;
             }
             has_meet_params = true;
@@ -131,9 +131,9 @@ bool GetRecoverPolicyByParams(const butil::StringPiece& params,
         }
         LOG(ERROR) << "Failed to set this unknown parameters " << sp.key_and_value();
     }
-    if (minimum_working_instances > 0 && hold_time_ms > 0) {
+    if (min_working_instances > 0 && hold_seconds > 0) {
         ptr_out->reset(
-                new DefaultClusterRecoverPolicy(minimum_working_instances, hold_time_ms));
+                new DefaultClusterRecoverPolicy(min_working_instances, hold_seconds));
     } else if (has_meet_params) {
         // In this case, user set some params but not in the right way, just return
         // false to let user take care of this situation.

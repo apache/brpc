@@ -797,10 +797,10 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
     int rand = butil::fast_rand_less_than(2);
     if (rand == 0) {
         brpc::policy::RandomizedLoadBalancer rlb;
-        lb = rlb.New("minimum_working_instances=2 hold_time_ms=2000");
+        lb = rlb.New("min_working_instances=2 hold_seconds=2000");
     } else if (rand == 1) {
         brpc::policy::RoundRobinLoadBalancer rrlb;
-        lb = rrlb.New("minimum_working_instances=2 hold_time_ms=2000");
+        lb = rrlb.New("min_working_instances=2 hold_seconds=2000");
     }
     brpc::SocketUniquePtr ptr[2];
     for (size_t i = 0; i < ARRAY_SIZE(servers); ++i) {
@@ -846,7 +846,7 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
         }
     }
     ASSERT_TRUE(abs(num_ereject - num_ok) < 30);
-    bthread_usleep((2000 /* hold_time_ms */ + 10) * 1000);
+    bthread_usleep((2000 /* hold_seconds */ + 10) * 1000);
 
     // After enough waiting time, traffic should be sent to all available servers.
     for (int i = 0; i < 10; ++i) {
@@ -901,6 +901,17 @@ public:
     test::EchoResponse res;
 };
 
+TEST_F(LoadBalancerTest, invalid_lb_params) {
+    const char* lb_algo[] = { "random:mi_working_instances=2 hold_seconds=2000",
+                              "rr:min_working_instances=2 hold_secon=2000" };
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = "http";
+    ASSERT_EQ(channel.Init("list://127.0.0.1:7777 50, 127.0.0.1:7778 50",
+                           lb_algo[butil::fast_rand_less_than(ARRAY_SIZE(lb_algo))],
+                           &options), -1);
+}
+
 TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     GFLAGS_NS::SetCommandLineOption("circuit_breaker_short_window_size", "20");
     GFLAGS_NS::SetCommandLineOption("circuit_breaker_short_window_error_percent", "30");
@@ -908,8 +919,8 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     GFLAGS_NS::SetCommandLineOption("circuit_breaker_max_isolation_duration_ms", "3000");
     GFLAGS_NS::SetCommandLineOption("circuit_breaker_min_isolation_duration_ms", "3000");
 
-    const char* lb_algo[] = { "random:minimum_working_instances=2 hold_time_ms=2000",
-                              "rr:minimum_working_instances=2 hold_time_ms=2000" };
+    const char* lb_algo[] = { "random:min_working_instances=2 hold_seconds=2000",
+                              "rr:min_working_instances=2 hold_seconds=2000" };
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = "http";

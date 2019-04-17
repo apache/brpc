@@ -20,7 +20,6 @@
 #include "butil/containers/flat_map.h"
 #include "butil/errno.h"
 #include "butil/strings/string_number_conversions.h"
-#include "butil/strings/string_split.h"
 #include "brpc/socket.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
 #include "brpc/policy/hasher.h"

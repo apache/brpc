@@ -53,11 +53,11 @@ public:
 // If in recover state, the probability that a request is accepted is q/n, in
 // which q is the number of current available server, n is the number of minimum
 // working instances setting by user. If q is not changed during a given time,
-// hold_time_ms, then the cluster is considered recovered and all the request
+// hold_seconds, then the cluster is considered recovered and all the request
 // would be sent to the current available servers.
 class DefaultClusterRecoverPolicy : public ClusterRecoverPolicy {
 public:
-    DefaultClusterRecoverPolicy(int64_t minimum_working_instances, int64_t hold_time_ms);
+    DefaultClusterRecoverPolicy(int64_t min_working_instances, int64_t hold_seconds);
 
     void StartRecover();
     bool DoReject(const std::vector<ServerId>& server_list);
@@ -68,11 +68,11 @@ private:
 
 private:
     bool _recovering;
-    int64_t _minimum_working_instances;
+    int64_t _min_working_instances;
     butil::Mutex _mutex;
     uint64_t _last_usable;
     int64_t _last_usable_change_time_ms;
-    int64_t _hold_time_ms;
+    int64_t _hold_seconds;
     uint64_t _usable_cache;
     int64_t _usable_cache_time_ms;
 };
