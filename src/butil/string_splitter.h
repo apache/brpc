@@ -22,6 +22,7 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+#include "butil/strings/string_piece.h"
 
 // It's common to encode data into strings separated by special characters
 // and decode them back, but functions such as `split_string' has to modify

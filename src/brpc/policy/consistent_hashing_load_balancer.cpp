@@ -385,13 +385,13 @@ bool ConsistentHashingLoadBalancer::SetParameters(const butil::StringPiece& para
             LOG(ERROR) << "Empty value for " << sp.key() << " in lb parameter";
             return false;
         }
-        if (key_value.substr(0, p) == "replicas") {
-            if (!butil::StringToSizeT(key_value.substr(p + 1), &_num_replicas)) {
+        if (sp.key() == "replicas") {
+            if (!butil::StringToSizeT(sp.value(), &_num_replicas)) {
                 return false;
             }
             continue;
         }
-        LOG(ERROR) << "Failed to set this unknown parameters " << key_value;
+        LOG(ERROR) << "Failed to set this unknown parameters " << sp.key_and_value();
     }
     return true;
 }
