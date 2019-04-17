@@ -100,6 +100,13 @@ if (NOT CRYPTO_LIB)
     message(FATAL_ERROR "Fail to find crypto")
 endif()
 
+# find_path(MYSQL_INCLUDE_PATH NAMES mysql/mysql.h PATHS "/usr/local/opt/mysql-client/include")
+# find_library(MYSQL_LIB NAMES mysqlclient PATHS "/usr/local/opt/mysql-client/lib")
+# if (NOT MYSQL_LIB)
+#     message(FATAL_ERROR "Fail to find mysqlclient")
+# endif()
+# include_directories(${MYSQL_INCLUDE_PATH})
+
 set(DYNAMIC_LIB
     ${CMAKE_THREAD_LIBS_INIT}
     ${GFLAGS_LIBRARY}
@@ -109,6 +116,7 @@ set(DYNAMIC_LIB
     ${CRYPTO_LIB}
     ${THRIFT_LIB}
     ${THRIFTNB_LIB}
+#    ${MYSQL_LIB}
     dl
     )
 
@@ -128,7 +136,11 @@ endif()
 
 add_executable(mysql_cli mysql_cli.cpp)
 add_executable(mysql_tx mysql_tx.cpp)
+add_executable(mysql_press mysql_press.cpp)
+# add_executable(mysqlclient_press mysqlclient_press.cpp)
 
 set(AUX_LIB readline ncurses)
 target_link_libraries(mysql_cli ${BRPC_LIB} ${DYNAMIC_LIB} ${AUX_LIB})
 target_link_libraries(mysql_tx ${BRPC_LIB} ${DYNAMIC_LIB})
+target_link_libraries(mysql_press ${BRPC_LIB} ${DYNAMIC_LIB})
+# target_link_libraries(mysqlclient_press ${BRPC_LIB} ${DYNAMIC_LIB})

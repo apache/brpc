@@ -24,9 +24,7 @@
 #include <brpc/mysql.h>
 #include <brpc/policy/mysql_authenticator.h>
 
-DEFINE_string(connection_type,
-              "pooled",
-              "Connection type. Available values: single, pooled, short");
+DEFINE_string(connection_type, "pooled", "Connection type. Available values: pooled, short");
 DEFINE_string(server, "127.0.0.1", "IP Address of server");
 DEFINE_int32(port, 3306, "Port of server");
 DEFINE_string(user, "brpcuser", "user name");

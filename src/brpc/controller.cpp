@@ -1013,9 +1013,9 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     if (_bind_sock != INVALID_SOCKET_ID) {
         // if _bind_sock is not NULL, use it
         const int rc = Socket::Address(_bind_sock, &tmp_sock);
-        if (rc != 0 || tmp_sock->IsLogOff()) {
-            SetFailed(EHOSTDOWN, "Not connected to %s yet, server_id=%" PRIu64,
-                      endpoint2str(_remote_side).c_str(), _single_server_id);
+        if (rc != 0 || (!is_health_check_call() && !tmp_sock->IsAvailable())) {
+            SetFailed(EHOSTDOWN, "Not connected to bind socket yet, server_id=%" PRIu64,
+                      _bind_sock);
             tmp_sock.reset();  // Release ref ASAP
             return HandleSendFailed();
         }
