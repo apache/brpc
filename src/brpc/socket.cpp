@@ -70,7 +70,7 @@ DEFINE_bool(log_idle_connection_close, false,
             "Print log when an idle connection is closed");
 BRPC_VALIDATE_GFLAG(log_idle_connection_close, PassValidate);
 
-DEFINE_bool(socket_enable_tcp_keepalive, true,
+DEFINE_bool(socket_enable_tcp_keepalive, false,
         "Open tcp keepalive explicitly, if this value is false, "
         "use system default");
 
