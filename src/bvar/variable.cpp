@@ -24,6 +24,7 @@
 #include "butil/containers/flat_map.h"           // butil::FlatMap
 #include "butil/scoped_lock.h"                   // BAIDU_SCOPE_LOCK
 #include "butil/string_splitter.h"               // butil::StringSplitter
+#include "butil/strings/string_split.h"          // butil::SplitStringIntoKeyValuePairs
 #include "butil/errno.h"                         // berror
 #include "butil/time.h"                          // milliseconds_from_now
 #include "butil/file_util.h"                     // butil::FilePath
@@ -626,13 +627,15 @@ public:
             // .data will be appended later
             path = path.RemoveFinalExtension();
         }
-
-        for (butil::KeyValuePairsSplitter sp(tabs, ';', '='); sp; ++sp) {
-            std::string key = sp.key().as_string();
-            std::string value = sp.value().as_string();
+        butil::StringPairs pairs;
+        pairs.reserve(8);
+        butil::SplitStringIntoKeyValuePairs(tabs, '=', ';', &pairs);
+        dumpers.reserve(pairs.size() + 1);
+        //matchers.reserve(pairs.size());
+        for (size_t i = 0; i < pairs.size(); ++i) {
             FileDumper *f = new FileDumper(
-                    path.AddExtension(key).AddExtension("data").value(), s);
-            WildcardMatcher *m = new WildcardMatcher(value, '?', true);
+                    path.AddExtension(pairs[i].first).AddExtension("data").value(), s);
+            WildcardMatcher *m = new WildcardMatcher(pairs[i].second, '?', true);
             dumpers.push_back(std::make_pair(f, m));
         }
         dumpers.push_back(std::make_pair(

@@ -343,12 +343,12 @@ TEST_F(StringSplitterTest, key_value_pairs_splitter_sanity) {
         // Test three constructors
         butil::KeyValuePairsSplitter* psplitter = NULL;
         if (i == 0) {
-            psplitter = new butil::KeyValuePairsSplitter(kvstr, '&', '=');
+            psplitter = new butil::KeyValuePairsSplitter(kvstr, '=', '&');
         } else if (i == 1) {
             psplitter = new butil::KeyValuePairsSplitter(
-                    kvstr.data(), kvstr.data() + kvstr.size(), '&', '=');
+                    kvstr.data(), kvstr.data() + kvstr.size(), '=', '&');
         } else if (i == 2) {
-            psplitter = new butil::KeyValuePairsSplitter(kvstr.c_str(), '&', '=');
+            psplitter = new butil::KeyValuePairsSplitter(kvstr.c_str(), '=', '&');
         }
         butil::KeyValuePairsSplitter& splitter = *psplitter;
 
