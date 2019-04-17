@@ -167,8 +167,8 @@ private:
 
 // Split query in the format according to the given delimiters.
 // This class can also handle some exceptional cases.
-// 1. consecutive key_value_pair_delimiter are omitted, for example,
-//    suppose key_value_delimiter is '=' and key_value_pair_delimiter
+// 1. consecutive pair_delimiter are omitted, for example,
+//    suppose key_value_delimiter is '=' and pair_delimiter
 //    is '&', then 'k1=v1&&&k2=v2' is normalized to 'k1=k2&k2=v2'.
 // 2. key or value can be empty or both can be empty.
 // 3. consecutive key_value_delimiter are not omitted, for example,
@@ -178,25 +178,25 @@ class KeyValuePairsSplitter {
 public:
     inline KeyValuePairsSplitter(const char* str_begin,
                                  const char* str_end,
-                                 char key_value_delimiter,
-                                 char key_value_pair_delimiter)
-        : _sp(str_begin, str_end, key_value_pair_delimiter)
+                                 char pair_delimiter,
+                                 char key_value_delimiter)
+        : _sp(str_begin, str_end, pair_delimiter)
         , _delim_pos(StringPiece::npos)
         , _key_value_delim(key_value_delimiter) {
         UpdateDelimiterPosition();
     }
 
     inline KeyValuePairsSplitter(const char* str_begin,
-                                 char key_value_delimiter,
-                                 char key_value_pair_delimiter)
+                                 char pair_delimiter,
+                                 char key_value_delimiter)
         : KeyValuePairsSplitter(str_begin, NULL,
-                key_value_delimiter, key_value_pair_delimiter) {}
+                pair_delimiter, key_value_delimiter) {}
 
     inline KeyValuePairsSplitter(const StringPiece &sp,
-                                 char key_value_delimiter,
-                                 char key_value_pair_delimiter)
+                                 char pair_delimiter,
+                                 char key_value_delimiter)
         : KeyValuePairsSplitter(sp.begin(), sp.end(),
-                key_value_delimiter, key_value_pair_delimiter) {}
+                pair_delimiter, key_value_delimiter) {}
 
     inline StringPiece key() {
         return key_and_value().substr(0, _delim_pos);
