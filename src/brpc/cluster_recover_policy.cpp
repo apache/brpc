@@ -130,6 +130,7 @@ bool GetRecoverPolicyByParams(const butil::StringPiece& params,
             continue;
         }
         LOG(ERROR) << "Failed to set this unknown parameters " << sp.key_and_value();
+        return false;
     }
     if (min_working_instances > 0 && hold_seconds > 0) {
         ptr_out->reset(
