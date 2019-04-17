@@ -217,8 +217,8 @@ class QueryRemover {
 public:
     QueryRemover(const std::string* str);
 
-    const butil::StringPiece& key() { return _qs.key();}
-    const butil::StringPiece& value() { return _qs.value(); }
+    butil::StringPiece key() { return _qs.key();}
+    butil::StringPiece value() { return _qs.value(); }
     butil::StringPiece key_and_value() { return _qs.key_and_value(); }
 
     // Move splitter forward.
