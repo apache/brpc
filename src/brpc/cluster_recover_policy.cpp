@@ -110,7 +110,7 @@ bool GetRecoverPolicyByParams(const butil::StringPiece& params,
     int64_t min_working_instances = -1;
     int64_t hold_seconds = -1;
     bool has_meet_params = false;
-    for (butil::KeyValuePairsSplitter sp(params.begin(), params.end(), ' ', '=');
+    for (butil::KeyValuePairsSplitter sp(params.begin(), params.end(), '=', ' ');
             sp; ++sp) {
         if (sp.value().empty()) {
             LOG(ERROR) << "Empty value for " << sp.key() << " in lb parameter";
