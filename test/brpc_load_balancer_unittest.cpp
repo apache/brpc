@@ -22,8 +22,15 @@
 #include "brpc/policy/locality_aware_load_balancer.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
 #include "brpc/policy/hasher.h"
+#include "brpc/errno.pb.h"
+#include "echo.pb.h"
+#include "brpc/channel.h"
+#include "brpc/controller.h"
+#include "brpc/server.h"
 
 namespace brpc {
+DECLARE_int32(health_check_interval);
+DECLARE_int64(detect_available_server_interval_ms);
 namespace policy {
 extern uint32_t CRCHash32(const char *key, size_t len);
 extern const char* GetHashName(uint32_t (*hasher)(const void* key, size_t len));
@@ -708,7 +715,6 @@ TEST_F(LoadBalancerTest, health_check_no_valid_server) {
             "10.92.115.19:8832", 
             "10.42.122.201:8833",
     };
-
     std::vector<brpc::LoadBalancer*> lbs;
     lbs.push_back(new brpc::policy::RoundRobinLoadBalancer);
     lbs.push_back(new brpc::policy::RandomizedLoadBalancer);
@@ -780,6 +786,205 @@ TEST_F(LoadBalancerTest, health_check_no_valid_server) {
         ASSERT_TRUE(get_server1 && get_server2);
         delete lb;
     }
+}
+
+TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
+    const char* servers[] = {
+        "10.92.115.19:8832",
+        "10.42.122.201:8833",
+    };
+    brpc::LoadBalancer* lb = NULL;
+    int rand = butil::fast_rand_less_than(2);
+    if (rand == 0) {
+        brpc::policy::RandomizedLoadBalancer rlb;
+        lb = rlb.New("min_working_instances=2 hold_seconds=2000");
+    } else if (rand == 1) {
+        brpc::policy::RoundRobinLoadBalancer rrlb;
+        lb = rrlb.New("min_working_instances=2 hold_seconds=2000");
+    }
+    brpc::SocketUniquePtr ptr[2];
+    for (size_t i = 0; i < ARRAY_SIZE(servers); ++i) {
+        butil::EndPoint dummy;
+        ASSERT_EQ(0, str2endpoint(servers[i], &dummy));
+        brpc::SocketOptions options;
+        options.remote_side = dummy;
+        brpc::ServerId id(8888);
+        id.tag = "50";
+        ASSERT_EQ(0, brpc::Socket::Create(options, &id.id));
+        ASSERT_EQ(0, brpc::Socket::Address(id.id, &ptr[i]));
+        lb->AddServer(id);
+    }
+    brpc::SocketUniquePtr sptr;
+    brpc::LoadBalancer::SelectIn in = { 0, false, true, 0u, NULL };
+    brpc::LoadBalancer::SelectOut out(&sptr);
+    ASSERT_EQ(0, lb->SelectServer(in, &out));
+
+    ptr[0]->SetFailed();
+    ptr[1]->SetFailed();
+    ASSERT_EQ(EHOSTDOWN, lb->SelectServer(in, &out));
+    // should reject all request since there is no available server
+    for (int i = 0; i < 10; ++i) {
+        ASSERT_EQ(brpc::EREJECT, lb->SelectServer(in, &out));
+    }
+    {
+        brpc::SocketUniquePtr dummy_ptr;
+        ASSERT_EQ(1, brpc::Socket::AddressFailedAsWell(ptr[0]->id(), &dummy_ptr));
+        dummy_ptr->Revive();
+    }
+    bthread_usleep(brpc::FLAGS_detect_available_server_interval_ms * 1000);
+    // After one server is revived, the reject rate should be 50%
+    int num_ereject = 0;
+    int num_ok = 0;
+    for (int i = 0; i < 100; ++i) {
+        int rc = lb->SelectServer(in, &out);
+        if (rc == brpc::EREJECT) {
+            num_ereject++;
+        } else if (rc == 0) {
+            num_ok++;
+        } else {
+            ASSERT_TRUE(false);
+        }
+    }
+    ASSERT_TRUE(abs(num_ereject - num_ok) < 30);
+    bthread_usleep((2000 /* hold_seconds */ + 10) * 1000);
+
+    // After enough waiting time, traffic should be sent to all available servers.
+    for (int i = 0; i < 10; ++i) {
+        ASSERT_EQ(0, lb->SelectServer(in, &out));
+    }
+}
+
+class EchoServiceImpl : public test::EchoService {
+public:
+    EchoServiceImpl()
+        : _num_request(0) {}
+    virtual ~EchoServiceImpl() {}
+    virtual void Echo(google::protobuf::RpcController* cntl_base,
+                      const test::EchoRequest* req,
+                      test::EchoResponse* res,
+                      google::protobuf::Closure* done) {
+        //brpc::Controller* cntl =
+        //        static_cast<brpc::Controller*>(cntl_base);
+        brpc::ClosureGuard done_guard(done);
+        int p = _num_request.fetch_add(1, butil::memory_order_relaxed);
+        // concurrency in normal case is 50
+        if (p < 70) {
+            bthread_usleep(100 * 1000);
+            _num_request.fetch_sub(1, butil::memory_order_relaxed);
+            res->set_message("OK");
+        } else {
+            _num_request.fetch_sub(1, butil::memory_order_relaxed);
+            bthread_usleep(1000 * 1000);
+        }
+        return;
+    }
+
+    butil::atomic<int> _num_request;
+};
+
+butil::atomic<int32_t> num_failed(0);
+butil::atomic<int32_t> num_reject(0);
+
+class Done : public google::protobuf::Closure {
+public:
+    void Run() {
+        if (cntl.Failed()) {
+            num_failed.fetch_add(1, butil::memory_order_relaxed);
+            if (cntl.ErrorCode() == brpc::EREJECT) {
+                num_reject.fetch_add(1, butil::memory_order_relaxed);
+            }
+        }
+        delete this;
+    }
+    brpc::Controller cntl;
+    test::EchoRequest req;
+    test::EchoResponse res;
+};
+
+TEST_F(LoadBalancerTest, invalid_lb_params) {
+    const char* lb_algo[] = { "random:mi_working_instances=2 hold_seconds=2000",
+                              "rr:min_working_instances=2 hold_secon=2000" };
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = "http";
+    ASSERT_EQ(channel.Init("list://127.0.0.1:7777 50, 127.0.0.1:7778 50",
+                           lb_algo[butil::fast_rand_less_than(ARRAY_SIZE(lb_algo))],
+                           &options), -1);
+}
+
+TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
+    GFLAGS_NS::SetCommandLineOption("circuit_breaker_short_window_size", "20");
+    GFLAGS_NS::SetCommandLineOption("circuit_breaker_short_window_error_percent", "30");
+    // Those two lines force the interval of first hc to 3s
+    GFLAGS_NS::SetCommandLineOption("circuit_breaker_max_isolation_duration_ms", "3000");
+    GFLAGS_NS::SetCommandLineOption("circuit_breaker_min_isolation_duration_ms", "3000");
+
+    const char* lb_algo[] = { "random:min_working_instances=2 hold_seconds=2000",
+                              "rr:min_working_instances=2 hold_seconds=2000" };
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = "http";
+    options.timeout_ms = 300;
+    options.enable_circuit_breaker = true;
+    // Disable retry to make health check happen one by one
+    options.max_retry = 0;
+    ASSERT_EQ(channel.Init("list://127.0.0.1:7777 50, 127.0.0.1:7778 50",
+                           lb_algo[butil::fast_rand_less_than(ARRAY_SIZE(lb_algo))],
+                           &options), 0);
+    test::EchoRequest req;
+    req.set_message("123");
+    test::EchoResponse res;
+    test::EchoService_Stub stub(&channel);
+    {
+        // trigger one server to health check
+        brpc::Controller cntl;
+        stub.Echo(&cntl, &req, &res, NULL);
+    }
+    // This sleep make one server revived 700ms earlier than the other server, which
+    // can make the server down again if no request limit policy are applied here.
+    bthread_usleep(700000);
+    {
+        // trigger the other server to health check
+        brpc::Controller cntl;
+        stub.Echo(&cntl, &req, &res, NULL);
+    }
+
+    butil::EndPoint point(butil::IP_ANY, 7777);
+    brpc::Server server;
+    EchoServiceImpl service;
+    ASSERT_EQ(0, server.AddService(&service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(point, NULL));
+
+    butil::EndPoint point2(butil::IP_ANY, 7778);
+    brpc::Server server2;
+    EchoServiceImpl service2;
+    ASSERT_EQ(0, server2.AddService(&service2, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server2.Start(point2, NULL));
+    
+    int64_t start_ms = butil::gettimeofday_ms();
+    while ((butil::gettimeofday_ms() - start_ms) < 3500) {
+        Done* done = new Done;
+        done->req.set_message("123");
+        stub.Echo(&done->cntl, &done->req, &done->res, done);
+        bthread_usleep(1000);
+    }
+    // All error code should be equal to EREJECT, except when the situation
+    // all servers are down, the very first call that trigger recovering would
+    // fail with EHOSTDOWN instead of EREJECT. This is where the number 1 comes
+    // in following ASSERT.
+    ASSERT_TRUE(num_failed.load(butil::memory_order_relaxed) -
+            num_reject.load(butil::memory_order_relaxed) == 1);
+    num_failed.store(0, butil::memory_order_relaxed);
+
+    // should recover now
+    for (int i = 0; i < 1000; ++i) {
+        Done* done = new Done;
+        done->req.set_message("123");
+        stub.Echo(&done->cntl, &done->req, &done->res, done);
+        bthread_usleep(1000);
+    }
+    bthread_usleep(500000 /* sleep longer than timeout of channel */);
+    ASSERT_EQ(0, num_failed.load(butil::memory_order_relaxed));
 }
 
 } //namespace

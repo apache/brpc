@@ -206,7 +206,7 @@ public:
         return key_and_value().substr(_delim_pos + 1);
     }
 
-    // Get the current value of key and value 
+    // Get the current value of key and value
     // in the format of "key=value"
     inline StringPiece key_and_value() {
         return StringPiece(_sp.field(), _sp.length());
