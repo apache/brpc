@@ -198,15 +198,15 @@ inline std::ostream& operator<<(std::ostream& os, const URI& uri) {
 class QuerySplitter : public butil::KeyValuePairsSplitter {
 public:
     inline QuerySplitter(const char* str_begin, const char* str_end)
-        : KeyValuePairsSplitter(str_begin, str_end, '=', '&')
+        : KeyValuePairsSplitter(str_begin, str_end, '&', '=')
     {}
 
     inline QuerySplitter(const char* str_begin)
-        : KeyValuePairsSplitter(str_begin, '=', '&')
+        : KeyValuePairsSplitter(str_begin, '&', '=')
     {}
 
     inline QuerySplitter(const butil::StringPiece &sp)
-        : KeyValuePairsSplitter(sp, '=', '&')
+        : KeyValuePairsSplitter(sp, '&', '=')
     {}
 };
 
