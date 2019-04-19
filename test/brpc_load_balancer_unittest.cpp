@@ -797,10 +797,10 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_sanity) {
     int rand = butil::fast_rand_less_than(2);
     if (rand == 0) {
         brpc::policy::RandomizedLoadBalancer rlb;
-        lb = rlb.New("min_working_instances=2 hold_seconds=2000");
+        lb = rlb.New("min_working_instances=2 hold_seconds=2");
     } else if (rand == 1) {
         brpc::policy::RoundRobinLoadBalancer rrlb;
-        lb = rrlb.New("min_working_instances=2 hold_seconds=2000");
+        lb = rrlb.New("min_working_instances=2 hold_seconds=2");
     }
     brpc::SocketUniquePtr ptr[2];
     for (size_t i = 0; i < ARRAY_SIZE(servers); ++i) {
@@ -902,8 +902,8 @@ public:
 };
 
 TEST_F(LoadBalancerTest, invalid_lb_params) {
-    const char* lb_algo[] = { "random:mi_working_instances=2 hold_seconds=2000",
-                              "rr:min_working_instances=2 hold_secon=2000" };
+    const char* lb_algo[] = { "random:mi_working_instances=2 hold_seconds=2",
+                              "rr:min_working_instances=2 hold_secon=2" };
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = "http";
@@ -919,8 +919,8 @@ TEST_F(LoadBalancerTest, revived_from_all_failed_intergrated) {
     GFLAGS_NS::SetCommandLineOption("circuit_breaker_max_isolation_duration_ms", "3000");
     GFLAGS_NS::SetCommandLineOption("circuit_breaker_min_isolation_duration_ms", "3000");
 
-    const char* lb_algo[] = { "random:min_working_instances=2 hold_seconds=2000",
-                              "rr:min_working_instances=2 hold_seconds=2000" };
+    const char* lb_algo[] = { "random:min_working_instances=2 hold_seconds=2",
+                              "rr:min_working_instances=2 hold_seconds=2" };
     brpc::Channel channel;
     brpc::ChannelOptions options;
     options.protocol = "http";

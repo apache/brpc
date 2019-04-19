@@ -52,7 +52,7 @@ bool DefaultClusterRecoverPolicy::StopRecoverIfNecessary() {
     int64_t now_ms = butil::gettimeofday_ms();
     std::unique_lock<butil::Mutex> mu(_mutex);
     if (_last_usable_change_time_ms != 0 && _last_usable != 0 &&
-            (now_ms - _last_usable_change_time_ms > _hold_seconds)) {
+            (now_ms - _last_usable_change_time_ms > _hold_seconds * 1000)) {
         _recovering = false;
         _last_usable = 0;
         _last_usable_change_time_ms = 0;
