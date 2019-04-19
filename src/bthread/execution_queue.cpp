@@ -101,15 +101,22 @@ void ExecutionQueueBase::start_execute(TaskNode* node) {
         }
     }
 
-    bthread_t tid;
-    // We start the execution thread in background instead of foreground as
-    // we can't determine whether the code after execute() is urgent (like
-    // unlock a pthread_mutex_t) in which case implicit context switch may
-    // cause undefined behavior (e.g. deadlock)
-    if (bthread_start_background(&tid, &_options.bthread_attr, 
-                _execute_tasks, node) != 0) {
-        PLOG(FATAL) << "Fail to start bthread";
-        _execute_tasks(node);
+    if (nullptr == _options.executor) {
+        bthread_t tid;
+        // We start the execution thread in background instead of foreground as
+        // we can't determine whether the code after execute() is urgent (like
+        // unlock a pthread_mutex_t) in which case implicit context switch may
+        // cause undefined behavior (e.g. deadlock)
+        if (bthread_start_background(&tid, &_options.bthread_attr,
+                                     _execute_tasks, node) != 0) {
+            PLOG(FATAL) << "Fail to start bthread";
+            _execute_tasks(node);
+        }
+    } else {
+        if (_options.executor->submit(_execute_tasks, node) != 0) {
+            PLOG(FATAL) << "Fail to submit task";
+            _execute_tasks(node);
+        }
     }
 }
 

@@ -317,7 +317,7 @@ public:
 };
 
 inline ExecutionQueueOptions::ExecutionQueueOptions()
-    : bthread_attr(BTHREAD_ATTR_NORMAL)
+    : bthread_attr(BTHREAD_ATTR_NORMAL), executor(NULL)
 {}
 
 template <typename T>
