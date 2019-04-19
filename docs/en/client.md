@@ -236,6 +236,15 @@ Do distinguish "key" and "attributes" of the request. Don't compute request_code
 
 Check out [Consistent Hashing](consistent_hashing.md) for more details.
 
+### Client-side throttling for recovery from cluster downtime
+
+Cluster downtime refers to the state in which all servers in the cluster are unavailable. Due to the health check mechanism, when the cluster returns to normal, server will go online one by one. When a server is online, all traffic will be sent to it, which may cause the service to be overloaded again. If circuit breaker is enabled, server may be offline again before the other servers go online, and the cluster can never be recovered. As a solution, brpc provides a client-side throttling mechanism for recovery after cluster downtime. When no server is available in the cluster, the cluster enters a recovery state. Assuming that the minimum number of servers that can serve all requests based on peak QPS is min_working_instances, current The number of servers available for the cluster is q, then in the recovery state, the probability of client accepting the request is q/min_working_instances, otherwise it is discarded. If q remains unchanged for a period of time(hold_seconds), the traffic is resent to all available servers and leaves recovery state. Whether the request is rejected in the recovery state is indicated by whether controller.ErrorCode() is equal to brpc::ERJECT, and the rejected request will not be retried by the framework.
+
+This recovery mechanism requires the capabilities of downstream servers to be similar, so it is currently only valid for rr and random. The way to enable it is to add the values of min_working_instances and hold_seconds parameters after *load_balancer_name*, for example:
+```c++
+channel.Init("http://...", "random:min_working_instances=6 hold_seconds=10", &options);
+```
+
 ## Health checking
 
 Servers whose connections are lost are isolated temporarily to prevent them from being selected by LoadBalancer. brpc connects isolated servers periodically to test if they're healthy again. The interval is controlled by gflag -health_check_interval:
