@@ -25,6 +25,9 @@
 #include "bthread/list_of_abafree_id.h"
 #include "bthread/bthread.h"
 
+#include <memory>
+#include <mutex>
+
 namespace bthread {
 
 DEFINE_int32(bthread_concurrency, 8 + BTHREAD_EPOLL_THREAD_NUM,
@@ -67,31 +70,28 @@ inline TaskControl* get_task_control() {
     return g_task_control;
 }
 
+static std::once_flag task_control_once;
+
 inline TaskControl* get_or_new_task_control() {
-    butil::atomic<TaskControl*>* p = (butil::atomic<TaskControl*>*)&g_task_control;
-    TaskControl* c = p->load(butil::memory_order_consume);
-    if (c != NULL) {
-        return c;
-    }
-    BAIDU_SCOPED_LOCK(g_task_control_mutex);
-    c = p->load(butil::memory_order_consume);
-    if (c != NULL) {
-        return c;
-    }
-    c = new (std::nothrow) TaskControl;
-    if (NULL == c) {
-        return NULL;
-    }
-    int concurrency = FLAGS_bthread_min_concurrency > 0 ?
-        FLAGS_bthread_min_concurrency :
-        FLAGS_bthread_concurrency;
-    if (c->init(concurrency) != 0) {
-        LOG(ERROR) << "Fail to init g_task_control";
-        delete c;
-        return NULL;
-    }
-    p->store(c, butil::memory_order_release);
-    return c;
+    std::call_once(task_control_once, []() {
+        std::unique_ptr<TaskControl> c{ new (std::nothrow) TaskControl };
+        if (c == nullptr) {
+            LOG(FATAL) << "Fail to new g_task_control";
+            return;
+        }
+
+        int concurrency = FLAGS_bthread_min_concurrency > 0 ?
+            FLAGS_bthread_min_concurrency :
+            FLAGS_bthread_concurrency;
+        if (c->init(concurrency) != 0) {
+            LOG(ERROR) << "Fail to init g_task_control";
+            return;
+        }
+
+        g_task_control = c.release();
+    });
+
+    return g_task_control;
 }
 
 static bool validate_bthread_min_concurrency(const char*, int32_t val) {
