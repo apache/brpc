@@ -112,10 +112,14 @@ public:
     friend struct std::hash<bthread_id_wrapper>;
 
 private:
+
     bthread_id_wrapper(bthread_t id) noexcept: id_(id) {
     }
 
     detail::bthread_id id_{0};
+};
+
+struct urgent_launch_tag {
 };
 
 class bthread {
@@ -133,8 +137,13 @@ public:
     }
 
     template<typename Callable, typename... Args,
-            typename = detail::disable_overload_t<bthread, Callable>>
+            typename = detail::disable_overload_t<bthread, Callable>,
+            typename = detail::disable_overload_t<urgent_launch_tag, Callable>>
     explicit bthread(Callable&& f, Args&& ... args);
+
+    template<typename Callable, typename... Args,
+            typename = detail::disable_overload_t<bthread, Callable>>
+    explicit bthread(urgent_launch_tag /*tag*/, Callable&& f, Args&& ... args);
 
     ~bthread() {
         joinable() ? std::terminate() : void();
@@ -149,7 +158,7 @@ public:
     }
 
     id get_id() noexcept {
-        return {th_};
+        return id{th_};
     }
 
     native_handle_type native_handle() {
@@ -165,14 +174,29 @@ public:
     }
 
 private:
+
+    template<typename Callable, typename... Args>
+    bthread(bool urgent, Callable&& f, Args&& ...args);
+
     bthread_t th_{detail::NULL_BTHREAD};
 };
 
+template<typename Callable, typename... Args, typename, typename>
+bthread::bthread(Callable&& f, Args&& ... args):
+        bthread(false, std::forward<Callable>(f), std::forward<Args>(args)...) {
+}
+
 template<typename Callable, typename... Args, typename>
-bthread::bthread(Callable&& f, Args&& ... args) {
+bthread::bthread(urgent_launch_tag /*tag*/, Callable&& f, Args&& ... args):
+        bthread(true, std::forward<Callable>(f), std::forward<Args>(args)...) {
+}
+
+template<typename Callable, typename... Args>
+bthread::bthread(bool urgent, Callable&& f, Args&& ... args) {
     auto thread_func_ptr = detail::make_func_ptr(
             std::bind(std::forward<Callable>(f), std::forward<Args>(args)...));
-    int ec = bthread_start_background(&th_, nullptr, detail::thread_func_proxy, thread_func_ptr.get());
+    auto start_func = urgent ? bthread_start_urgent : bthread_start_background;
+    int ec = start_func(&th_, nullptr, detail::thread_func_proxy, thread_func_ptr.get());
     if (!ec) {
         thread_func_ptr.release();
     } else {
