@@ -17,11 +17,25 @@
 
 #include <functional>
 #include <memory>
+#include <type_traits>
 #include "bthread.h"
 
 namespace bthread {
 
 namespace detail {
+
+template<typename MatchType, typename TArg>
+struct disable_overload {
+    using type = typename std::enable_if<
+            !std::is_base_of<
+                    MatchType,
+                    typename std::decay<TArg>::type
+            >::value
+    >::type;
+};
+
+template<typename MatchType, typename TArg>
+using disable_overload_t = disable_overload<MatchType, TArg>;
 
 // Just for identifying bthread. There is a bthread_id_t but it is a totally different thing.
 using bthread_id = bthread_t;
@@ -118,7 +132,8 @@ public:
         rhs.th_ = detail::NULL_BTHREAD;
     }
 
-    template<typename Callable, typename... Args>
+    template<typename Callable, typename... Args,
+            typename = detail::disable_overload_t<bthread, Callable>>
     explicit bthread(Callable&& f, Args&& ... args);
 
     ~bthread() {
@@ -153,7 +168,7 @@ private:
     bthread_t th_{detail::NULL_BTHREAD};
 };
 
-template<typename Callable, typename... Args>
+template<typename Callable, typename... Args, typename>
 bthread::bthread(Callable&& f, Args&& ... args) {
     auto thread_func_ptr = detail::make_func_ptr(
             std::bind(std::forward<Callable>(f), std::forward<Args>(args)...));
