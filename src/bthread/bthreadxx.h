@@ -15,6 +15,10 @@
 #ifndef BTHREAD_BTHREADXX_H
 #define BTHREAD_BTHREADXX_H
 
+#include <butil/macros.h>
+
+#ifdef BUTIL_CXX11_ENABLED
+
 #include <functional>
 #include <memory>
 #include <type_traits>
@@ -219,5 +223,7 @@ struct hash<::bthread::bthread_id_wrapper> {
 };
 
 } // namespace std
+
+#endif // BUTIL_CXX11_ENABLED
 
 #endif // BTHREAD_BTHREADXX_H

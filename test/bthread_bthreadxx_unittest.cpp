@@ -2,6 +2,10 @@
 // Created by psi on 2019/4/18.
 //
 
+#include <butil/macros.h>
+
+#ifdef BUTIL_CXX11_ENABLED
+
 #include <atomic>
 #include <functional>
 #include <iostream>
@@ -71,3 +75,5 @@ TEST(BthreadXXTest, id_sanity) {
 }
 
 }
+
+#endif // BUTIL_CXX11_ENABLED
