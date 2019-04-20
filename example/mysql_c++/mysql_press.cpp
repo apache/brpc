@@ -22,6 +22,7 @@
 #include <brpc/policy/mysql_authenticator.h>
 #include <bvar/bvar.h>
 #include <bthread/bthread.h>
+#include <brpc/server.h>
 
 DEFINE_string(connection_type, "pooled", "Connection type. Available values: pooled, short");
 DEFINE_string(server, "127.0.0.1", "IP Address of server");
@@ -36,7 +37,7 @@ DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_int32(thread_num, 50, "Number of threads to send requests");
 DEFINE_bool(use_bthread, false, "Use bthread to send requests");
 DEFINE_int32(dummy_port, -1, "port of dummy server(for monitoring)");
-DEFINE_int32(op_type, 0, "CRUD operation, 0:INSERT, 1:SELECT, 3:UPDATE");
+DEFINE_int32(op_type, 0, "CRUD operation, 0:INSERT, 1:SELECT, 2:UPDATE");
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
 
 bvar::LatencyRecorder g_latency_recorder("client");
@@ -88,7 +89,7 @@ static void* sender(void* void_args) {
         command << "select * from brpc_press where id = " << args->base_index + 1;
     } else if (FLAGS_op_type == 2) {
         command
-            << "update brpc_press set col3 = "
+            << "update brpc_press set col2 = "
                "'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
                "XXX"
                "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
@@ -233,6 +234,10 @@ int main(int argc, char* argv[]) {
                 return -1;
             }
         }
+    }
+
+    if (FLAGS_dummy_port >= 0) {
+        brpc::StartDummyServerAt(FLAGS_dummy_port);
     }
 
     // test CRUD operations

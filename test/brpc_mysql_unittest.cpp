@@ -15,8 +15,8 @@
 
 namespace brpc {
 const std::string MYSQL_connection_type = "pooled";
-const int MYSQL_timeout_ms = 50000;
-const int MYSQL_connect_timeout_ms = 50000;
+const int MYSQL_timeout_ms = 80000;
+const int MYSQL_connect_timeout_ms = 80000;
 
 const std::string MYSQL_host = "db4free.net";
 const std::string MYSQL_port = "3306";
@@ -519,8 +519,8 @@ TEST_F(MysqlTest, resultset) {
         ASSERT_EQ(reply.column(41).type(), brpc::MYSQL_FIELD_TYPE_VAR_STRING);
 
         int i = 0;
-        for (size_t idx = 0; idx < reply.row_number(); ++idx) {
-            const brpc::MysqlReply::Row& row = reply.row(idx);
+        for (uint64_t idx = 0; idx < reply.row_number(); ++idx) {
+            const brpc::MysqlReply::Row& row = reply.next();
             ASSERT_EQ(row.field(0).sinteger(), ++i);
             ASSERT_EQ(row.field(1).string(), "col2");
             ASSERT_EQ(row.field(2).string(), "0.015");

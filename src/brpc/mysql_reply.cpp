@@ -276,8 +276,7 @@ void MysqlReply::Print(std::ostream& os) const {
         os << "\neof1.warning:" << r._eof1._warning;
         os << "\neof1.status:" << r._eof1._status;
         int n = 0;
-        for (size_t i = 0; i < r._rows.size(); ++i) {
-            const Row* row = r._rows[i];
+        for (const Row* row = r._first->_next; row != r._last->_next; row = row->_next) {
             os << "\nrow(" << n++ << "):";
             for (uint64_t j = 0; j < r._header._column_number; ++j) {
                 if (row->field(j).is_nil()) {
@@ -722,11 +721,10 @@ ParseError MysqlReply::ResultSet::Parse(butil::IOBuf& buf, butil::Arena* arena) 
         if (is_first) {
             // we may reenter ConsumePartialIOBuf many times, check the last
             // row
-            if (_rows.size() > 0) {
-                Row* last = _rows.back();
-                MY_PARSE_CHECK(last->ParseText(buf));
+            if (_last != _first) {
+                MY_PARSE_CHECK(_last->ParseText(buf));
                 for (uint64_t i = 0; i < _header._column_number; ++i) {
-                    MY_PARSE_CHECK(last->_fields[i].Parse(buf, _columns + i, arena));
+                    MY_PARSE_CHECK(_last->_fields[i].Parse(buf, _columns + i, arena));
                 }
             }
             is_first = false;
@@ -739,12 +737,15 @@ ParseError MysqlReply::ResultSet::Parse(butil::IOBuf& buf, butil::Arena* arena) 
         MY_ALLOC_CHECK(my_alloc_check(arena, _header._column_number, fields));
         row->_fields = fields;
         row->_field_number = _header._column_number;
-        _rows.push_back(row);
+        _last->_next = row;
+        _last = row;
         // parse row and fields
         MY_PARSE_CHECK(row->ParseText(buf));
         for (uint64_t i = 0; i < _header._column_number; ++i) {
             MY_PARSE_CHECK(fields[i].Parse(buf, _columns + i, arena));
         }
+        // add row number
+        ++_row_number;
     }
     // parse eof2
     MY_PARSE_CHECK(_eof2.Parse(buf));

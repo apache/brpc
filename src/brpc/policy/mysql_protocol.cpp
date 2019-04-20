@@ -79,7 +79,7 @@ ParseError HandleAuthentication(const InputResponse* msg, const Socket* socket, 
     }
 
     ParseError parseCode = PARSE_OK;
-    const AuthContext* ctx = cntl->auth_context();
+    const AuthContext* ctx = socket->auth_context();
     if (ctx == NULL) {
         parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
         LOG(ERROR) << "[MYSQL PARSE] auth context is null";
@@ -123,7 +123,6 @@ ParseError HandleAuthentication(const InputResponse* msg, const Socket* socket, 
             raw_req.append(ctx->starter());
             raw_req.cut_into_file_descriptor(socket->fd());
             pi->with_auth = false;
-            delete ctx;  // after that we have no need of ctx
         }
     } else {
         parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
@@ -259,26 +258,23 @@ void PackMysqlRequest(butil::IOBuf* buf,
             LOG(ERROR) << "[MYSQL PACK] there is not MysqlAuthenticator";
             return;
         }
-        AuthContext* ctx = new AuthContext;
-        std::stringstream ss;
-        ss << my_auth->user() << "\t" << my_auth->passwd() << "\t" << my_auth->schema() << "\t";
+        Socket* sock = ControllerPrivateAccessor(cntl).get_sending_socket();
+        if (sock == NULL) {
+            LOG(ERROR) << "[MYSQL PACK] get sending socket with NULL";
+            return;
+        }
+        AuthContext* ctx = sock->mutable_auth_context();
         std::string params;
         if (!MysqlHandleParams(my_auth->params(), &params)) {
             LOG(ERROR) << "[MYSQL PACK] handle params error";
             return;
         }
-        ss << params;
+        std::stringstream ss;
+        ss << my_auth->user() << "\t" << my_auth->passwd() << "\t" << my_auth->schema() << "\t"
+           << params;
         ctx->set_user(ss.str());
         ctx->set_starter(request.to_string());
-        // if (ss.str().size() > 255) {
-        //     LOG(ERROR) << "[MYSQL PACK] auth message is larger than 255 byte";
-        //     return;
-        // }
-        // uint8_t len = (uint8_t)ss.str().size();
-        // butil::IOBuf& buf = const_cast<butil::IOBuf&>(request);
-        // buf.append(ss.str());
-        // buf.push_back(len);
-        ControllerPrivateAccessor(cntl).set_auth_context(ctx).add_with_auth();
+        ControllerPrivateAccessor(cntl).add_with_auth();
     } else {
         buf->append(request);
     }

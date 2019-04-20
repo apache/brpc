@@ -17,7 +17,6 @@
 #ifndef BRPC_MYSQL_REPLY_H
 #define BRPC_MYSQL_REPLY_H
 
-#include <vector>
 #include "butil/iobuf.h"  // butil::IOBuf
 #include "butil/arena.h"
 #include "butil/sys_byteorder.h"
@@ -334,6 +333,7 @@ public:
 
         Field* _fields;
         uint64_t _field_number;
+        Row* _next;
     };
 
 public:
@@ -358,7 +358,7 @@ public:
     // get row number
     uint64_t row_number() const;
     // get one row
-    const Row& row(const uint64_t index) const;
+    const Row& next() const;
     bool is_auth() const;
     bool is_ok() const;
     bool is_error() const;
@@ -378,18 +378,24 @@ private:
     };
     // Mysql result set
     struct ResultSet : private CheckParsed {
-        ResultSet() : _columns(NULL) {
-            _rows.reserve(10);
+        ResultSet() : _columns(NULL), _row_number(0) {
+            _cur = _first = _last = &_dummy;
         }
         ParseError Parse(butil::IOBuf& buf, butil::Arena* arena);
         ResultSetHeader _header;
         Column* _columns;
         Eof _eof1;
-        std::vector<Row*> _rows;
+        // row list begin
+        Row* _first;
+        Row* _last;
+        Row* _cur;
+        uint64_t _row_number;
+        // row list end
         Eof _eof2;
 
     private:
         DISALLOW_COPY_AND_ASSIGN(ResultSet);
+        Row _dummy;
     };
     // member values
     MysqlRspType _type;
@@ -475,20 +481,24 @@ inline const MysqlReply::Column& MysqlReply::column(const uint64_t index) const 
 }
 inline uint64_t MysqlReply::row_number() const {
     if (is_resultset()) {
-        return _data.result_set->_rows.size();
+        return _data.result_set->_row_number;
     }
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an resultset";
     return 0;
 }
-inline const MysqlReply::Row& MysqlReply::row(const uint64_t index) const {
+inline const MysqlReply::Row& MysqlReply::next() const {
     static Row row_nil;
     if (is_resultset()) {
-        if (index < _data.result_set->_rows.size()) {
-            return *(_data.result_set->_rows[index]);
+        if (_data.result_set->_row_number == 0) {
+            CHECK(false) << "there are 0 rows returned";
+            return row_nil;
         }
-        CHECK(false) << "index " << index << " out of bound [0," << _data.result_set->_rows.size()
-                     << ")";
-        return row_nil;
+        if (_data.result_set->_cur == _data.result_set->_last->_next) {
+            _data.result_set->_cur = _data.result_set->_first->_next;
+        } else {
+            _data.result_set->_cur = _data.result_set->_cur->_next;
+        }
+        return *_data.result_set->_cur;
     }
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an resultset";
     return row_nil;
@@ -622,7 +632,7 @@ inline uint8_t MysqlReply::Column::decimal() const {
     return _decimal;
 }
 // mysql reply row
-inline MysqlReply::Row::Row() : _fields(NULL), _field_number(0) {}
+inline MysqlReply::Row::Row() : _fields(NULL), _field_number(0), _next(NULL) {}
 inline uint64_t MysqlReply::Row::field_number() const {
     return _field_number;
 }

@@ -90,7 +90,7 @@ static void* sender(void* void_args) {
         command << "select * from mysqlclient_press where id = " << args->base_index + 1;
     } else if (FLAGS_op_type == 2) {
         command
-            << "update mysqlclient_press set col3 = "
+            << "update mysqlclient_press set col2 = "
                "'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
                "XXX"
                "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
@@ -141,7 +141,6 @@ static void* sender(void* void_args) {
                     mysql_free_result(res);
                 }
             } else if (FLAGS_op_type == 2) {
-                CHECK_EQ(mysql_affected_rows(args->mysql_conn), 1);
             }
             const int64_t elp = butil::cpuwide_time_us() - begin_time_us;
             g_latency_recorder << elp;
@@ -187,7 +186,9 @@ int main(int argc, char* argv[]) {
     //     return -1;
     // }
 
-    brpc::StartDummyServerAt(FLAGS_dummy_port /*port*/);
+    if (FLAGS_dummy_port >= 0) {
+        brpc::StartDummyServerAt(FLAGS_dummy_port);
+    }
 
     MYSQL* conn = mysql_init(NULL);
     if (!mysql_real_connect(conn,
