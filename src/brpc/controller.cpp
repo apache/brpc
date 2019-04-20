@@ -196,15 +196,6 @@ void Controller::ResetNonPods() {
     }
     delete _remote_stream_settings;
     _thrift_method_name.clear();
-    // if bind socket is not transfer to other, release it.
-    if (_bind_sock != INVALID_SOCKET_ID) {
-        SocketUniquePtr sock;
-        Socket::Address(_bind_sock, &sock);
-        if (_connection_type == CONNECTION_TYPE_POOLED) {
-            sock->ReturnToPool();
-        }
-        sock.reset(NULL);
-    }
 
     CHECK(_unfinished_call == NULL);
 }
@@ -262,7 +253,6 @@ void Controller::ResetPods() {
     _response_stream = INVALID_STREAM_ID;
     _remote_stream_settings = NULL;
     _bind_sock_action = BIND_SOCK_NONE;
-    _bind_sock = INVALID_SOCKET_ID;
 }
 
 Controller::Call::Call(Controller::Call* rhs)
@@ -747,11 +737,9 @@ void Controller::Call::OnComplete(
         // If bind sock is not INVALID, RPC complete, reset the sock to INVALID
         if (sending_sock != NULL && (error_code == 0 || responded)) {
             if (bind_sock_action == BIND_SOCK_ACTIVE) {
-                c->_bind_sock = sending_sock->id();
-                sending_sock.release();
-            } else if (c->_bind_sock != INVALID_SOCKET_ID) {
-                c->_bind_sock = INVALID_SOCKET_ID;
-                sending_sock.release();
+                c->_bind_sock.reset(sending_sock.release());
+            } else if (bind_sock_action == BIND_SOCK_USE) {
+                // do nothing
             } else if (!sending_sock->is_read_progressive()) {
                 // Normally-read socket which will not be used after RPC ends,
                 // safe to return. Notice that Socket::is_read_progressive may
@@ -770,11 +758,9 @@ void Controller::Call::OnComplete(
         if (sending_sock != NULL) {
             // Check the comment in CONNECTION_TYPE_POOLED branch.
             if (bind_sock_action == BIND_SOCK_ACTIVE) {
-                c->_bind_sock = sending_sock->id();
-                sending_sock.release();
-            } else if (c->_bind_sock != INVALID_SOCKET_ID) {
-                c->_bind_sock = INVALID_SOCKET_ID;
-                sending_sock.release();
+                c->_bind_sock.reset(sending_sock.release());
+            } else if (bind_sock_action == BIND_SOCK_USE) {
+                // do nothing
             } else if (!sending_sock->is_read_progressive()) {
                 if (c->_stream_creator == NULL) {
                     sending_sock->SetFailed();
@@ -1010,16 +996,15 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     _current_call.need_feedback = false;
     _current_call.enable_circuit_breaker = has_enabled_circuit_breaker();
     SocketUniquePtr tmp_sock;
-    if (_bind_sock != INVALID_SOCKET_ID) {
-        // if _bind_sock is not NULL, use it
-        const int rc = Socket::Address(_bind_sock, &tmp_sock);
-        if (rc != 0 || (!is_health_check_call() && !tmp_sock->IsAvailable())) {
+    if (_bind_sock_action == BIND_SOCK_USE) {
+        tmp_sock.reset(_bind_sock.release());
+        if (!tmp_sock || (!is_health_check_call() && !tmp_sock->IsAvailable())) {
             SetFailed(EHOSTDOWN, "Not connected to bind socket yet, server_id=%" PRIu64,
-                      _bind_sock);
+                      tmp_sock->id());
             tmp_sock.reset();  // Release ref ASAP
             return HandleSendFailed();
         }
-        _current_call.peer_id = _bind_sock;
+        _current_call.peer_id = tmp_sock->id();
     } else if (SingleServer()) {
         // Don't use _current_call.peer_id which is set to -1 after construction
         // of the backup call.
@@ -1087,7 +1072,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     } else {
         int rc = 0;
         // if _bind_sock is not NULL, use it
-        if (_bind_sock != INVALID_SOCKET_ID) {
+        if (_bind_sock_action == BIND_SOCK_USE) {
             _current_call.sending_sock.reset(tmp_sock.release());
         } else if (_connection_type == CONNECTION_TYPE_POOLED) {
             rc = tmp_sock->GetPooledSocket(&_current_call.sending_sock);

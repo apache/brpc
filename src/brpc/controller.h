@@ -103,6 +103,7 @@ const int32_t UNSET_MAGIC_NUM = -123456789;
 // if controller want to reserve a sock after RPC, set BIND_SOCK_ACTIVE
 enum BindSockAction {
     BIND_SOCK_ACTIVE,
+    BIND_SOCK_USE,
     BIND_SOCK_NONE,
 };
 // A Controller mediates a single method call. The primary purpose of
@@ -762,7 +763,7 @@ private:
     // controller bind socket action
     BindSockAction _bind_sock_action;
     // controller bind sock
-    SocketId _bind_sock;
+    SocketUniquePtr _bind_sock;
 
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;

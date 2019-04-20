@@ -26,10 +26,14 @@ namespace brpc {
 const char* mysql_isolation_level[] = {
     "REPEATABLE READ", "READ COMMITTED", "READ UNCOMMITTED", "SERIALIZABLE"};
 
+SocketId MysqlTransaction::GetSocketId() const {
+    return _socket->id();
+}
+
 bool MysqlTransaction::DoneTransaction(const char* command) {
     bool rc = false;
     MysqlRequest request(this);
-    if (_socket_id == INVALID_SOCKET_ID) {  // must already commit or rollback, return true.
+    if (_socket == NULL) {  // must already commit or rollback, return true.
         return true;
     } else if (!request.Query(command)) {
         LOG(ERROR) << "Fail to query command" << command;
@@ -48,11 +52,9 @@ bool MysqlTransaction::DoneTransaction(const char* command) {
         }
     }
     if (rc && _conn_type == CONNECTION_TYPE_POOLED) {
-        SocketUniquePtr sock;
-        Socket::Address(_socket_id, &sock);
-        sock->ReturnToPool();
+        _socket->ReturnToPool();
     }
-    _socket_id = INVALID_SOCKET_ID;
+    _socket.reset();
     return rc;
 }
 
@@ -88,11 +90,12 @@ MysqlTransactionUniquePtr NewMysqlTransaction(Channel& channel,
         // repeatable read isolation send one reply, other isolation has two reply
         if ((opt.isolation_level == MysqlIsoRepeatableRead && response.reply(0).is_ok()) ||
             (response.reply(0).is_ok() && response.reply(1).is_ok())) {
-            SocketId socket_id = ControllerPrivateAccessor(&cntl).get_bind_sock();
-            if (socket_id == INVALID_SOCKET_ID) {
+            SocketUniquePtr sock;
+            ControllerPrivateAccessor(&cntl).get_bind_sock(&sock);
+            if (sock == NULL) {
                 LOG(ERROR) << "Fail create mysql transaction, get bind sock failed";
             } else {
-                tx.reset(new MysqlTransaction(channel, socket_id, cntl.connection_type()));
+                tx.reset(new MysqlTransaction(channel, sock, cntl.connection_type()));
             }
         } else {
             LOG(ERROR) << "Fail create mysql transaction, " << response;

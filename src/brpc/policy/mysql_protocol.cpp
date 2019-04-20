@@ -239,7 +239,7 @@ void SerializeMysqlRequest(butil::IOBuf* buf,
     ControllerPrivateAccessor(cntl).set_pipelined_count(1);
     auto tx = rr->get_tx();
     if (tx != NULL) {
-        ControllerPrivateAccessor(cntl).use_bind_sock(tx->get_socket());
+        ControllerPrivateAccessor(cntl).use_bind_sock(tx->GetSocketId());
     }
     if (FLAGS_mysql_verbose) {
         LOG(INFO) << "\n[MYSQL REQUEST] " << *rr;
@@ -270,6 +270,14 @@ void PackMysqlRequest(butil::IOBuf* buf,
         ss << params;
         ctx->set_user(ss.str());
         ctx->set_starter(request.to_string());
+        // if (ss.str().size() > 255) {
+        //     LOG(ERROR) << "[MYSQL PACK] auth message is larger than 255 byte";
+        //     return;
+        // }
+        // uint8_t len = (uint8_t)ss.str().size();
+        // butil::IOBuf& buf = const_cast<butil::IOBuf&>(request);
+        // buf.append(ss.str());
+        // buf.push_back(len);
         ControllerPrivateAccessor(cntl).set_auth_context(ctx).add_with_auth();
     } else {
         buf->append(request);

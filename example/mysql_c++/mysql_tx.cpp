@@ -28,7 +28,7 @@ DEFINE_string(schema, "brpc_test", "schema");
 DEFINE_string(params, "", "params");
 DEFINE_int32(timeout_ms, 5000, "RPC timeout in milliseconds");
 DEFINE_int32(connect_timeout_ms, 5000, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
+DEFINE_int32(max_retry, 0, "Max retries(not including the first RPC)");
 DEFINE_bool(readonly, false, "readonly transaction");
 DEFINE_int32(isolation_level, 0, "transaction isolation level");
 
