@@ -21,6 +21,7 @@
 
 #include <functional>
 #include <memory>
+#include <system_error>
 #include <type_traits>
 #include "bthread.h"
 
@@ -204,7 +205,7 @@ bthread::bthread(bool urgent, Callable&& f, Args&& ... args) {
     if (!ec) {
         thread_func_ptr.release();
     } else {
-        throw std::system_error(ec, std::generic_category());
+        throw std::system_error(ec, std::generic_category(), "Failed starting bthread");
     }
 }
 
