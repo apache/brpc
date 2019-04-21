@@ -90,7 +90,12 @@ TEST(MutexTest, timedlock) {
 }
 
 TEST(MutexTest, cpp_wrapper) {
-    bthread::Mutex mutex;
+#ifdef BUTIL_CXX11_ENABLED
+    using mutex_type = bthread::mutex;
+#else
+    typedef bthread::Mutex mutex_type;
+#endif
+    mutex_type mutex;
     ASSERT_TRUE(mutex.try_lock());
     mutex.unlock();
     mutex.lock();
@@ -99,8 +104,8 @@ TEST(MutexTest, cpp_wrapper) {
         BAIDU_SCOPED_LOCK(mutex);
     }
     {
-        std::unique_lock<bthread::Mutex> lck1;
-        std::unique_lock<bthread::Mutex> lck2(mutex);
+        std::unique_lock<mutex_type> lck1;
+        std::unique_lock<mutex_type> lck2(mutex);
         lck1.swap(lck2);
         lck1.unlock();
         lck1.lock();
@@ -110,6 +115,13 @@ TEST(MutexTest, cpp_wrapper) {
     {
         BAIDU_SCOPED_LOCK(*mutex.native_handler());
     }
+#ifdef BUTIL_CXX11_ENABLED
+    {
+        static_assert(std::is_same<mutex_type::native_handle_type, bthread_mutex_t*>::value,
+                "Incorrect native_handle_type");
+        BAIDU_SCOPED_LOCK(*mutex.native_handle());
+    }
+#endif
     {
         std::unique_lock<bthread_mutex_t> lck1;
         std::unique_lock<bthread_mutex_t> lck2(*mutex.native_handler());
@@ -253,4 +265,5 @@ TEST(MutexTest, mix_thread_types) {
         pthread_join(pthreads[i], NULL);
     }
 }
+
 } // namespace

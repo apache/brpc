@@ -20,6 +20,7 @@
 #define  BTHREAD_MUTEX_H
 
 #include "bthread/types.h"
+#include "butil/macros.h"
 #include "butil/scoped_lock.h"
 #include "bvar/utils/lock_timer.h"
 
@@ -41,7 +42,12 @@ namespace bthread {
 // NOTE: Not aligned to cacheline as the container of Mutex is practically aligned
 class Mutex {
 public:
+    // Maybe this is a typo? Anyway it should be deprecated
     typedef bthread_mutex_t* native_handler_type;
+    typedef bthread_mutex_t* native_handle_type;
+
+    // Note: Unlike std::mutex, bthread mutex constructor is not constexpr. Use std::mutex for
+    // synchronization during static initialization.
     Mutex() {
         int ec = bthread_mutex_init(&_mutex, NULL);
         if (ec != 0) {
@@ -49,7 +55,8 @@ public:
         }
     }
     ~Mutex() { CHECK_EQ(0, bthread_mutex_destroy(&_mutex)); }
-    native_handler_type native_handler() { return &_mutex; }
+    native_handler_type native_handler() { return &_mutex; } // also typo?
+    native_handle_type native_handle() {return &_mutex;}
     void lock() {
         int ec = bthread_mutex_lock(&_mutex);
         if (ec != 0) {
@@ -58,11 +65,20 @@ public:
     }
     void unlock() { bthread_mutex_unlock(&_mutex); }
     bool try_lock() { return !bthread_mutex_trylock(&_mutex); }
-    // TODO(chenzhangyi01): Complement interfaces for C++11
+
+#ifdef BUTIL_CXX11_ENABLED
+    DISALLOW_COPY_AND_ASSIGN(Mutex);
+private:
+#else
 private:
     DISALLOW_COPY_AND_ASSIGN(Mutex);
-    bthread_mutex_t _mutex;   
+#endif
+    bthread_mutex_t _mutex;
 };
+
+#ifdef BUTIL_CXX11_ENABLED
+using mutex = Mutex;
+#endif
 
 namespace internal {
 #ifdef BTHREAD_USE_FAST_PTHREAD_MUTEX
@@ -89,6 +105,14 @@ typedef butil::Mutex FastPthreadMutex;
 
 namespace std {
 
+// NOTE:
+// Technically these specializations invoke Undefined Behaviour for both pre- and post-C++11.
+// For pre-C++11 these are adding new classes to namespace std.
+// For post-C++11 the specialization of unique_lock is not MoveConstructible, thus
+// does not satisfy the original requirements for std::unique_lock.
+// Both are prohibited by the C++ standard.
+// It would be good if these can be deprecated and later removed for the sake of correctness.
+// We should use std::unique_lock<bthread::mutex> instead, with no need for explicit specialization.
 template <> class lock_guard<bthread_mutex_t> {
 public:
     explicit lock_guard(bthread_mutex_t & mutex) : _pmutex(&mutex) {
