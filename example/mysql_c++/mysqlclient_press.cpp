@@ -25,16 +25,13 @@ extern "C" {
 #include <bthread/bthread.h>
 #include <brpc/server.h>
 
-DEFINE_string(connection_type, "pooled", "Connection type. Available values: pooled, short");
 DEFINE_string(server, "127.0.0.1", "IP Address of server");
 DEFINE_int32(port, 3306, "Port of server");
 DEFINE_string(user, "brpcuser", "user name");
 DEFINE_string(password, "12345678", "password");
 DEFINE_string(schema, "brpc_test", "schema");
 DEFINE_string(params, "", "params");
-DEFINE_int32(timeout_ms, 5000, "RPC timeout in milliseconds");
-DEFINE_int32(connect_timeout_ms, 5000, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
+DEFINE_string(data, "ABCDEF", "data");
 DEFINE_int32(thread_num, 50, "Number of threads to send requests");
 DEFINE_bool(use_bthread, false, "Use bthread to send requests");
 DEFINE_int32(dummy_port, -1, "port of dummy server(for monitoring)");
@@ -49,36 +46,13 @@ struct SenderArgs {
     MYSQL* mysql_conn;
 };
 
-const char* insert =
+const std::string insert =
     "insert into mysqlclient_press(col1,col2,col3,col4) values "
     "('"
     "ABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCABCA"
-    "BCABCAB"
-    "CABCABCABCABCA', "
-    "'ABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZ"
-    "ABCDEFG"
-    "HIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGH"
-    "IGKLMNO"
-    "PQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOP"
-    "QRSTUVW"
-    "XYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWX"
-    "YZABCDE"
-    "FGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEF"
-    "GHIGKLM"
-    "NOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMN"
-    "OPQRSTU"
-    "VWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUV"
-    "WXYZABC"
-    "DEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCD"
-    "EFGHIGK"
-    "LMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKL"
-    "MNOPQRS"
-    "TUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRST"
-    "UVWXYZA"
-    "BCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZAB"
-    "CDEFGHI"
-    "GKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIGKLMNOPQRSTUVWXYZABCDEFGHIG"
-    "',1.5, "
+    "BCABCABCABCABCABCABCA', '" +
+    FLAGS_data +
+    "' ,1.5, "
     "now())";
 // Send `command' to mysql-server via `channel'
 static void* sender(void* void_args) {
@@ -89,33 +63,8 @@ static void* sender(void* void_args) {
     } else if (FLAGS_op_type == 1) {
         command << "select * from mysqlclient_press where id = " << args->base_index + 1;
     } else if (FLAGS_op_type == 2) {
-        command
-            << "update mysqlclient_press set col2 = "
-               "'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-               "XXX"
-               "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-               "XXX"
-               "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-               "XXX"
-               "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-               "XXX"
-               "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-               "XXX"
-               "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-               "XXX"
-               "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-               "XXX"
-               "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-               "XXX"
-               "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-               "XXX"
-               "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-               "XXX"
-               "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-               "XXX"
-               "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' "
-               "where id = "
-            << args->base_index + 1;
+        command << "update brpc_press set col2 = '" + FLAGS_data + "' where id = "
+                << args->base_index + 1;
     } else {
         LOG(ERROR) << "wrong op type " << FLAGS_op_type;
     }
@@ -167,24 +116,6 @@ static void* sender(void* void_args) {
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
-
-    // A Channel represents a communication line to a Server. Notice that
-    // Channel is thread-safe and can be shared by all threads in your program.
-    // brpc::Channel channel;
-
-    // // Initialize the channel, NULL means using default options.
-    // brpc::ChannelOptions options;
-    // options.protocol = brpc::PROTOCOL_MYSQL;
-    // options.connection_type = FLAGS_connection_type;
-    // options.timeout_ms = FLAGS_timeout_ms /*milliseconds*/;
-    // options.connect_timeout_ms = FLAGS_connect_timeout_ms;
-    // options.max_retry = FLAGS_max_retry;
-    // options.auth = new brpc::policy::MysqlAuthenticator(
-    //     FLAGS_user, FLAGS_password, FLAGS_schema, FLAGS_params);
-    // if (channel.Init(FLAGS_server.c_str(), FLAGS_port, &options) != 0) {
-    //     LOG(ERROR) << "Fail to initialize channel";
-    //     return -1;
-    // }
 
     if (FLAGS_dummy_port >= 0) {
         brpc::StartDummyServerAt(FLAGS_dummy_port);
@@ -240,7 +171,7 @@ int main(int argc, char* argv[]) {
     // prepare data for select, update
     if (FLAGS_op_type != 0) {
         for (int i = 0; i < FLAGS_thread_num; ++i) {
-            const int rc = mysql_real_query(conn, insert, strlen(insert));
+            const int rc = mysql_real_query(conn, insert.c_str(), insert.size());
             if (rc != 0) {
                 LOG(ERROR) << "Fail to execute sql, " << mysql_error(conn);
                 return -1;

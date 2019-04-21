@@ -62,6 +62,10 @@ MysqlTransactionUniquePtr NewMysqlTransaction(Channel& channel,
                                               const MysqlTransactionOptions& opt) {
     const char* command[2] = {"START TRANSACTION READ ONLY", "START TRANSACTION"};
 
+    if (channel.options().connection_type == CONNECTION_TYPE_SINGLE) {
+        LOG(ERROR) << "mysql transaction can't use connection type 'single'";
+        return NULL;
+    }
     std::stringstream ss;
     // repeatable read is mysql default isolation level, so ignore it.
     if (opt.isolation_level != MysqlIsoRepeatableRead) {

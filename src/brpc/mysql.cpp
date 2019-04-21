@@ -33,7 +33,7 @@
 
 namespace brpc {
 
-DEFINE_int32(mysql_default_replies_size, 10, "default replies size in one MysqlResponse");
+DEFINE_int32(mysql_default_replies_size, 10, "default multi replies size in one MysqlResponse");
 
 // Internal implementation detail -- do not call these.
 void protobuf_AddDesc_baidu_2frpc_2fmysql_5fbase_2eproto_impl();
@@ -347,7 +347,6 @@ MysqlResponse::MysqlResponse(const MysqlResponse& from) : ::google::protobuf::Me
 void MysqlResponse::SharedCtor() {
     _nreply = 0;
     _cached_size_ = 0;
-    _other_replies.reserve(FLAGS_mysql_default_replies_size - 1);
 }
 
 MysqlResponse::~MysqlResponse() {
@@ -464,15 +463,17 @@ ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf, bool is_auth) {
                 return err;
             }
         } else {
+            const int32_t replies_size =
+                FLAGS_mysql_default_replies_size > 1 ? FLAGS_mysql_default_replies_size : 10;
             if (_other_replies.size() < reply_size()) {
-                MysqlReply* replies = (MysqlReply*)_arena.allocate(
-                    sizeof(MysqlReply) * (FLAGS_mysql_default_replies_size - 1));
+                MysqlReply* replies =
+                    (MysqlReply*)_arena.allocate(sizeof(MysqlReply) * (replies_size - 1));
                 if (replies == NULL) {
-                    LOG(ERROR) << "Fail to allocate MysqlReply["
-                               << FLAGS_mysql_default_replies_size - 1 << "]";
+                    LOG(ERROR) << "Fail to allocate MysqlReply[" << replies_size - 1 << "]";
                     return PARSE_ERROR_ABSOLUTELY_WRONG;
                 }
-                for (int i = 0; i < FLAGS_mysql_default_replies_size - 1; ++i) {
+                _other_replies.reserve(replies_size - 1);
+                for (int i = 0; i < replies_size - 1; ++i) {
                     new (&replies[i]) MysqlReply;
                     _other_replies.push_back(&replies[i]);
                 }
@@ -489,12 +490,14 @@ ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf, bool is_auth) {
         oldsize = newsize;
         ++_nreply;
     }
-    if (oldsize == 0) {
-        return PARSE_OK;
-    } else {
-        LOG(ERROR) << "Parse protocol finished, but IOBuf has more data";
-        return PARSE_ERROR_ABSOLUTELY_WRONG;
-    }
+
+    return PARSE_OK;
+    // if (oldsize == 0) {
+    //     return PARSE_OK;
+    // } else {
+    //     LOG(ERROR) << "Parse protocol finished, but IOBuf has more data";
+    //     return PARSE_ERROR_ABSOLUTELY_WRONG;
+    // }
 }
 
 std::ostream& operator<<(std::ostream& os, const MysqlResponse& response) {

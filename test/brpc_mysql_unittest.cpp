@@ -1,5 +1,5 @@
 // Copyright (c) 2019 Baidu, Inc.
-// Date: Thu Jun 11 14:30:07 CST 2015
+// Date: Thu Jun 11 14:30:07 CST 2019
 
 
 #include <iostream>
@@ -611,10 +611,11 @@ TEST_F(MysqlTest, transaction) {
         brpc::Controller cntl;
 
         request.Query(
-            "CREATE TABLE IF NOT EXISTS `brpc_tx` (`Id` int(11) DEFAULT NULL,`LastName` "
+            "CREATE TABLE IF NOT EXISTS `brpc_tx` (`Id` int(11) NOT NULL AUTO_INCREMENT,`LastName` "
             "varchar(255) DEFAULT "
             "NULL,`FirstName` decimal(10,0) DEFAULT NULL,`Address` varchar(255) DEFAULT "
-            "NULL,`City` varchar(255) DEFAULT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+            "NULL,`City` varchar(255) DEFAULT NULL, PRIMARY KEY (`Id`)) ENGINE=InnoDB "
+            "AUTO_INCREMENT=1157 DEFAULT CHARSET=utf8");
 
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
@@ -627,12 +628,12 @@ TEST_F(MysqlTest, transaction) {
         tx_options.isolation_level = brpc::MysqlIsoRepeatableRead;
         brpc::MysqlTransactionUniquePtr tx(brpc::NewMysqlTransaction(channel, tx_options));
         ASSERT_FALSE(tx == NULL) << "Fail to create transaction";
-
+        uint64_t idx1, idx2;
         {
             brpc::MysqlRequest request(tx.get());
             std::string sql =
-                "insert into brpc_tx(Id,LastName,FirstName, Address) values "
-                "(1,'lucy',12.5,'beijing')";
+                "insert into brpc_tx(LastName,FirstName, Address) values "
+                "('lucy',12.5,'beijing')";
             ASSERT_EQ(request.Query(sql), true);
             brpc::MysqlResponse response;
             brpc::Controller cntl;
@@ -640,12 +641,13 @@ TEST_F(MysqlTest, transaction) {
             ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
             ASSERT_EQ(1ul, response.reply_size());
             ASSERT_EQ(brpc::MYSQL_RSP_OK, response.reply(0).type());
+            idx1 = response.reply(0).ok().index();
         }
         {
             brpc::MysqlRequest request(tx.get());
             std::string sql =
-                "insert into brpc_tx(Id,LastName,FirstName, Address) values "
-                "(2,'lilei',12.6,'shanghai')";
+                "insert into brpc_tx(LastName,FirstName, Address) values "
+                "('lilei',12.6,'shanghai')";
             ASSERT_EQ(request.Query(sql), true);
             brpc::MysqlResponse response;
             brpc::Controller cntl;
@@ -653,14 +655,18 @@ TEST_F(MysqlTest, transaction) {
             ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
             ASSERT_EQ(1ul, response.reply_size());
             ASSERT_EQ(brpc::MYSQL_RSP_OK, response.reply(0).type());
+            idx2 = response.reply(0).ok().index();
         }
 
+        LOG(INFO) << "idx1=" << idx1 << " idx2=" << idx2;
         // not commit, so return 0 rows
         {
             brpc::MysqlRequest request;
             brpc::MysqlResponse response;
             brpc::Controller cntl;
-            request.Query("select * from brpc_tx");
+            std::stringstream ss;
+            ss << "select * from brpc_tx where id in (" << idx1 << "," << idx2 << ")";
+            request.Query(ss.str());
             channel.CallMethod(NULL, &cntl, &request, &response, NULL);
             ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
             ASSERT_EQ(1ul, response.reply_size());
@@ -673,7 +679,9 @@ TEST_F(MysqlTest, transaction) {
             brpc::MysqlRequest request;
             brpc::MysqlResponse response;
             brpc::Controller cntl;
-            request.Query("select * from brpc_tx");
+            std::stringstream ss;
+            ss << "select * from brpc_tx where id in (" << idx1 << "," << idx2 << ")";
+            request.Query(ss.str());
             channel.CallMethod(NULL, &cntl, &request, &response, NULL);
             ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
             ASSERT_EQ(1ul, response.reply_size());

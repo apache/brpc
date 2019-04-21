@@ -48,6 +48,7 @@ public:
 
 private:
     bool DoneTransaction(const char* command);
+    DISALLOW_COPY_AND_ASSIGN(MysqlTransaction);
 
 private:
     Channel& _channel;
