@@ -28,7 +28,7 @@
 #include <limits>
 #include <system_error>
 
-#endif
+#endif // BUTIL_CXX11_ENABLED
 
 #include "butil/time.h"
 #include "bthread/mutex.h"
@@ -137,15 +137,7 @@ public:
         bthread_cond_broadcast(&_cond);
     }
 
-    void wait(std::unique_lock<bthread::mutex>& lock) noexcept {
-        if (!lock.owns_lock()) {
-            std::terminate();
-        }
-        int ec = bthread_cond_wait(&_cond, lock.mutex()->native_handle());
-        if (ec) {
-            std::terminate();
-        }
-    }
+    void wait(std::unique_lock<bthread::mutex>& lock) noexcept;
 
     template<typename Pred>
     void wait(std::unique_lock<bthread::mutex>& lock, Pred pred) {
@@ -156,23 +148,7 @@ public:
 
     template<typename Rep, typename Period>
     std::cv_status wait_for(std::unique_lock<bthread::mutex>& lock,
-                            const std::chrono::duration<Rep, Period>& rel_time) {
-        if (rel_time < rel_time.zero()) {
-            return std::cv_status::timeout;
-        }
-        auto sys_now = std::chrono::system_clock::now();
-        auto steady_now = std::chrono::steady_clock::now();
-        if (sys_now.max() - rel_time > sys_now) {
-            do_timed_wait(lock, sys_now + ceil_nanoseconds(rel_time));
-        } else {
-            do_timed_wait(lock, sys_now.max());
-        }
-        if (std::chrono::steady_clock::now() - steady_now < rel_time) {
-            return std::cv_status::no_timeout;
-        } else {
-            return std::cv_status::timeout;
-        }
-    }
+                            const std::chrono::duration<Rep, Period>& rel_time);
 
     template<typename Rep, typename Period, typename Pred>
     bool wait_for(std::unique_lock<bthread::mutex>& lock,
@@ -191,14 +167,7 @@ public:
     template<typename Clock, typename Duration, typename Pred>
     bool wait_until(std::unique_lock<bthread::mutex>& lock,
                               const std::chrono::time_point<Clock, Duration>& timeout_time,
-                              Pred pred) {
-        while(!pred()) {
-            if (wait_until(lock, timeout_time) == std::cv_status::timeout) {
-                return pred();
-            }
-        }
-        return true;
-    }
+                              Pred pred);
 
     native_handle_type native_handle() {
         return &_cond;
@@ -208,39 +177,55 @@ private:
 
     void do_timed_wait(std::unique_lock<bthread::mutex>& lock,
                        const std::chrono::time_point<std::chrono::system_clock,
-                               std::chrono::nanoseconds>& tp) noexcept {
-        if (!lock.owns_lock()) {
-            std::terminate();
-        }
-        timespec sp{};
-        auto nanos_since_epoch = tp.time_since_epoch();
-        auto secs_since_epoch = std::chrono::duration_cast<std::chrono::seconds>(nanos_since_epoch);
-        auto max_timespec_secs = std::numeric_limits<decltype(sp.tv_sec)>::max();
-        if (secs_since_epoch.count() < max_timespec_secs) {
-            sp.tv_sec = secs_since_epoch.count();
-            sp.tv_nsec = static_cast<decltype(sp.tv_nsec)>(
-                    (nanos_since_epoch - secs_since_epoch).count());
-        } else {
-            sp.tv_sec = max_timespec_secs;
-            sp.tv_nsec = 999999999;
-        }
-        int ec = bthread_cond_timedwait(&_cond, lock.mutex()->native_handle(), &sp);
-        if (ec && ec != ETIMEDOUT) {
-            std::terminate();
-        }
-    }
+                               std::chrono::nanoseconds>& tp) noexcept;
 
     template<typename Rep, typename Period>
-    std::chrono::nanoseconds ceil_nanoseconds(const std::chrono::duration<Rep, Period>& dur) {
-        std::chrono::nanoseconds result = std::chrono::duration_cast<std::chrono::nanoseconds>(dur);
-        if (result < dur) {
-            ++result;
-        }
-        return result;
-    }
+    std::chrono::nanoseconds ceil_nanoseconds(const std::chrono::duration<Rep, Period>& dur);
 
     bthread_cond_t _cond{};
 };
+
+template<typename Rep, typename Period>
+std::cv_status condition_variable::wait_for(std::unique_lock<bthread::mutex>& lock,
+                                            const std::chrono::duration<Rep, Period>& rel_time) {
+    if (rel_time < rel_time.zero()) {
+        return std::cv_status::timeout;
+    }
+    auto sys_now = std::chrono::system_clock::now();
+    auto steady_now = std::chrono::steady_clock::now();
+    if (sys_now.max() - rel_time > sys_now) {
+        do_timed_wait(lock, sys_now + ceil_nanoseconds(rel_time));
+    } else {
+        do_timed_wait(lock, sys_now.max());
+    }
+    if (std::chrono::steady_clock::now() - steady_now < rel_time) {
+        return std::cv_status::no_timeout;
+    } else {
+        return std::cv_status::timeout;
+    }
+}
+
+template<typename Clock, typename Duration, typename Pred>
+bool condition_variable::wait_until(std::unique_lock<bthread::mutex>& lock,
+                                    const std::chrono::time_point<Clock, Duration>& timeout_time,
+                                    Pred pred) {
+    while (!pred()) {
+        if (wait_until(lock, timeout_time) == std::cv_status::timeout) {
+            return pred();
+        }
+    }
+    return true;
+}
+
+template<typename Rep, typename Period>
+std::chrono::nanoseconds
+condition_variable::ceil_nanoseconds(const std::chrono::duration<Rep, Period>& dur) {
+    std::chrono::nanoseconds result = std::chrono::duration_cast<std::chrono::nanoseconds>(dur);
+    if (result < dur) {
+        ++result;
+    }
+    return result;
+}
 
 #endif // BUTIL_CXX11_ENABLED
 
