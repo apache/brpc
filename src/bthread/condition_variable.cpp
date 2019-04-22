@@ -178,6 +178,20 @@ void condition_variable::do_timed_wait(std::unique_lock<bthread::mutex>& lock,
     }
 }
 
+void condition_variable_any::notify_one() {
+    {
+        std::lock_guard<bthread::mutex> lg(*_internal_mtx);
+    }
+    _cv.notify_one();
+}
+
+void condition_variable_any::notify_all() {
+    {
+        std::lock_guard<bthread::mutex> lg(*_internal_mtx);
+    }
+    _cv.notify_all();
+}
+
 } // namespace bthread
 
 #endif // BUTIL_CXX11_ENABLED

@@ -24,6 +24,7 @@
 #ifdef BUTIL_CXX11_ENABLED
 
 #include <condition_variable>
+#include <memory>
 #include <mutex>
 #include <limits>
 #include <system_error>
@@ -152,8 +153,8 @@ public:
 
     template<typename Rep, typename Period, typename Pred>
     bool wait_for(std::unique_lock<bthread::mutex>& lock,
-                            const std::chrono::duration<Rep, Period>& rel_time,
-                            Pred pred) {
+                  const std::chrono::duration<Rep, Period>& rel_time,
+                  Pred pred) {
         return wait_until(lock, std::chrono::steady_clock::now() + rel_time, std::move(pred));
     }
 
@@ -166,8 +167,8 @@ public:
 
     template<typename Clock, typename Duration, typename Pred>
     bool wait_until(std::unique_lock<bthread::mutex>& lock,
-                              const std::chrono::time_point<Clock, Duration>& timeout_time,
-                              Pred pred);
+                    const std::chrono::time_point<Clock, Duration>& timeout_time,
+                    Pred pred);
 
     native_handle_type native_handle() {
         return &_cond;
@@ -225,6 +226,97 @@ condition_variable::ceil_nanoseconds(const std::chrono::duration<Rep, Period>& d
         ++result;
     }
     return result;
+}
+
+class condition_variable_any {
+public:
+    DISALLOW_COPY_AND_ASSIGN(condition_variable_any);
+
+    condition_variable_any() : _internal_mtx(std::make_shared<bthread::mutex>()), _cv() {
+    }
+
+    ~condition_variable_any() = default;
+
+    void notify_one();
+
+    void notify_all();
+
+    template<typename Lock>
+    void wait(Lock& lock);
+
+    template<typename Lock, typename Pred>
+    void wait(Lock& lock, Pred pred) {
+        while (!pred()) {
+            wait(lock);
+        }
+    }
+
+    template<typename Lock, typename Rep, typename Period>
+    std::cv_status wait_for(Lock& lock, const std::chrono::duration<Rep, Period>& rel_time) {
+        return wait_until(lock, std::chrono::steady_clock::now() + rel_time);
+    }
+
+    template<typename Lock, typename Rep, typename Period, typename Pred>
+    bool wait_for(Lock& lock,
+                  const std::chrono::duration<Rep, Period>& rel_time,
+                  Pred pred) {
+        return wait_until(lock, std::chrono::steady_clock::now() + rel_time, std::move(pred));
+    }
+
+    template<typename Lock, typename Clock, typename Duration>
+    std::cv_status wait_until(Lock& lock,
+                              const std::chrono::time_point<Clock, Duration>& timeout_time);
+
+    template<typename Lock, typename Clock, typename Duration, typename Pred>
+    bool wait_until(Lock& lock,
+                    const std::chrono::time_point<Clock, Duration>& timeout_time,
+                    Pred pred);
+
+private:
+    std::shared_ptr<bthread::mutex> _internal_mtx;
+    bthread::condition_variable _cv;
+};
+
+template<typename Lock>
+void condition_variable_any::wait(Lock& lock) {
+    std::shared_ptr<bthread::mutex> internal_mtx_shared(_internal_mtx);
+    std::unique_lock<bthread::mutex> ilock(*internal_mtx_shared);
+    lock.unlock();
+    auto lock_external_func = [](Lock* lock) {
+        lock->lock();
+    };
+    std::unique_ptr<bthread::mutex, decltype(lock_external_func)> then_relock_lock_guard(&lock);
+    std::lock_guard<std::unique_lock<bthread::mutex>> unlock_ilock_first_guard(
+            ilock, std::adopt_lock);
+    _cv.wait(ilock);
+}
+
+template<typename Lock, typename Clock, typename Duration>
+std::cv_status
+condition_variable_any::wait_until(Lock& lock,
+                                   const std::chrono::time_point<Clock, Duration>& timeout_time) {
+    std::shared_ptr<bthread::mutex> internal_mtx_shared(_internal_mtx);
+    std::unique_lock<bthread::mutex> ilock(*internal_mtx_shared);
+    lock.unlock();
+    auto lock_external_func = [](Lock* lock) {
+        lock->lock();
+    };
+    std::unique_ptr<bthread::mutex, decltype(lock_external_func)> then_relock_lock_guard(&lock);
+    std::lock_guard<std::unique_lock<bthread::mutex>> unlock_ilock_first_guard(
+            ilock, std::adopt_lock);
+    return _cv.wait_until(ilock, timeout_time);
+}
+
+template<typename Lock, typename Clock, typename Duration, typename Pred>
+bool condition_variable_any::wait_until(Lock& lock,
+                                        const std::chrono::time_point<Clock, Duration>& timeout_time,
+                                        Pred pred) {
+    while (!pred()) {
+        if (wait_until(lock, timeout_time) == std::cv_status::timeout) {
+            return pred();
+        }
+    }
+    return true;
 }
 
 #endif // BUTIL_CXX11_ENABLED
