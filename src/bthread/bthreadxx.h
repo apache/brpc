@@ -33,17 +33,15 @@ namespace bthread {
 namespace detail {
 
 template<typename MatchType, typename TArg>
-struct disable_overload {
-    using type = typename std::enable_if<
-            !std::is_base_of<
-                    MatchType,
-                    typename std::decay<TArg>::type
-            >::value
-    >::type;
-};
+using disable_overload = std::enable_if<
+        !std::is_base_of<
+                MatchType,
+                typename std::decay<TArg>::type
+        >::value
+>;
 
 template<typename MatchType, typename TArg>
-using disable_overload_t = disable_overload<MatchType, TArg>;
+using disable_overload_t = typename disable_overload<MatchType, TArg>::type;
 
 // Just for identifying bthread. There is a bthread_id_t but it is a totally different thing.
 using bthread_id = bthread_t;
@@ -81,6 +79,12 @@ inline void* thread_func_proxy(void* owning_func_ptr) {
 
 } // namespace detail
 
+class bthread_id_wrapper;
+
+namespace this_bthread {
+    inline bthread_id_wrapper get_id() noexcept;
+}
+
 class bthread_id_wrapper {
 public:
     bthread_id_wrapper() = default;
@@ -115,8 +119,8 @@ public:
         return ost << id.id_;
     }
 
+    friend bthread_id_wrapper this_bthread::get_id() noexcept;
     friend class bthread;
-
     friend struct std::hash<bthread_id_wrapper>;
 
 private:
