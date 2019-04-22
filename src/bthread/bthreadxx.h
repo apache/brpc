@@ -19,11 +19,14 @@
 
 #ifdef BUTIL_CXX11_ENABLED
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <system_error>
 #include <type_traits>
-#include "bthread.h"
+#include "bthread/bthread.h"
+#include "bthread/condition_variable.h"
+#include "bthread/mutex.h"
 
 namespace bthread {
 
@@ -224,6 +227,39 @@ struct hash<::bthread::bthread_id_wrapper> {
 };
 
 } // namespace std
+
+namespace bthread {
+
+namespace this_bthread {
+
+inline void yield() noexcept {
+    bthread_yield();
+}
+
+// NOTE: Unlike std::this_thread::get_id() that always return a valid id, this function will
+// return an id object that hold the special distinct value that does not represent any thread,
+// should this function be called from outside any bthreads, e.g. a normal pthread.
+inline ::bthread::bthread::id get_id() noexcept {
+    return ::bthread::bthread::id{bthread_self()};
+}
+
+template<class Clock, class Duration>
+void sleep_until(const std::chrono::time_point<Clock, Duration>& sleep_time) {
+    ::bthread::mutex mtx;
+    ::bthread::condition_variable cv;
+    std::unique_lock<::bthread::mutex> lock(mtx);
+    cv.wait_until(lock, sleep_time, [&sleep_time]() { return Clock::now() >= sleep_time; });
+}
+
+template<class Rep, class Period>
+void sleep_for(const std::chrono::duration<Rep, Period>& sleep_duration) {
+    auto sleep_time = std::chrono::steady_clock::now() + sleep_duration;
+    sleep_until(sleep_time);
+}
+
+} // namespace this_bthread
+
+} // namespace this_bthread
 
 #endif // BUTIL_CXX11_ENABLED
 

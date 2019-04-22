@@ -21,6 +21,7 @@ void add_func(int x, int y, int& out) {
 }
 
 TEST(BthreadXXTest, sanity) {
+    // Tests joined thread
     int result = 0;
     bthread::bthread th(add_func, 1, 2, std::ref(result));
     ASSERT_TRUE(th.joinable());
@@ -29,6 +30,7 @@ TEST(BthreadXXTest, sanity) {
     ASSERT_EQ(3, result);
     ASSERT_THROW(th.join(), std::system_error);
 
+    // Tests detached thread
     th = bthread::bthread(add_func, 100, 200, std::ref(result));
     ASSERT_TRUE(th.joinable());
     th.detach();
@@ -37,6 +39,7 @@ TEST(BthreadXXTest, sanity) {
     ASSERT_EQ(300, result);
     ASSERT_THROW(th.detach(), std::system_error);
 
+    // Tests urgent launch
     std::atomic<int> state{0};
     auto inner = [](std::atomic<int>& state) {
         if (state.load() == 0) {
@@ -54,16 +57,35 @@ TEST(BthreadXXTest, sanity) {
     bthread::bthread outer_thread(spawner);
     outer_thread.join();
     ASSERT_EQ(2, state.load());
+
+    // Tests not-a-thread
+    bthread::bthread not_a_thread;
+    ASSERT_FALSE(not_a_thread.joinable());
+    bthread::bthread th1([]() {});
+    ASSERT_TRUE(th1.joinable());
+    bthread::bthread th2(std::move(th1));
+    ASSERT_TRUE(th2.joinable());
+    ASSERT_FALSE(th1.joinable());
+    th2.join();
+    th1 = bthread::bthread([]() {});
+    ASSERT_TRUE(th1.joinable());
+    ASSERT_FALSE(th2.joinable());
+    th2 = std::move(th1);
+    ASSERT_TRUE(th2.joinable());
+    ASSERT_FALSE(th1.joinable());
+    th2.join();
 }
 
 TEST(BthreadXXTest, id_sanity) {
     bthread::bthread not_a_thread;
+    bthread::bthread::id inv_id;
     std::ostringstream oss;
     oss << not_a_thread.get_id();
     ASSERT_STREQ("0", oss.str().c_str());
+    ASSERT_EQ(inv_id, not_a_thread.get_id());
 
     oss = std::ostringstream();
-    auto dummy_func = [](){
+    auto dummy_func = []() {
         return;
     };
     bthread::bthread dummy_thread(dummy_func);
@@ -72,8 +94,99 @@ TEST(BthreadXXTest, id_sanity) {
     ASSERT_STRNE("0", oss.str().c_str());
     dummy_thread.join(); // dummy_thread no longer associates with a bthread
     ASSERT_EQ(not_a_thread.get_id(), dummy_thread.get_id());
+
+    dummy_thread = bthread::bthread(dummy_func);
+    ASSERT_NE(not_a_thread.get_id(), dummy_thread.get_id());
+    bthread::bthread dummy_thread2 = std::move(dummy_thread);
+    ASSERT_EQ(not_a_thread.get_id(), dummy_thread.get_id());
+    ASSERT_NE(not_a_thread.get_id(), dummy_thread2.get_id());
+    dummy_thread2.join();
 }
 
+class MilliSTimeGuard {
+public:
+    explicit MilliSTimeGuard(int* out_millis) noexcept: _out_millis(out_millis),
+                                                        _begin_tp(
+                                                                std::chrono::steady_clock::now()) {
+    }
+
+    ~MilliSTimeGuard() {
+        auto end_time = std::chrono::steady_clock::now();
+        *_out_millis = std::chrono::duration_cast<std::chrono::milliseconds>(
+                end_time - _begin_tp).count();
+    }
+
+private:
+    int* _out_millis;
+    std::chrono::steady_clock::time_point _begin_tp;
+};
+
+TEST(BthreadXXTest, this_thread_sleep) {
+    using std::chrono::milliseconds;
+    using std::chrono::steady_clock;
+    int millis_elapsed = 0;
+    {
+        MilliSTimeGuard tg(&millis_elapsed);
+        bthread::bthread th([]() {
+            bthread::this_bthread::sleep_for(milliseconds(100));
+        });
+        th.join();
+    }
+    ASSERT_LE(100, millis_elapsed);
+    ASSERT_GE(110, millis_elapsed);
+
+    {
+        MilliSTimeGuard tg(&millis_elapsed);
+        bthread::bthread th([]() {
+            bthread::this_bthread::sleep_for(milliseconds(0));
+        });
+        th.join();
+    }
+    ASSERT_GE(5, millis_elapsed);
+
+    {
+        MilliSTimeGuard tg(&millis_elapsed);
+        bthread::bthread th([]() {
+            bthread::this_bthread::sleep_until(steady_clock::now() + milliseconds(150));
+        });
+        th.join();
+    }
+    ASSERT_LE(150, millis_elapsed);
+    ASSERT_GE(160, millis_elapsed);
+
+    {
+        MilliSTimeGuard tg(&millis_elapsed);
+        bthread::bthread th([]() {
+            bthread::this_bthread::sleep_until(steady_clock::now() + milliseconds(-5));
+        });
+        th.join();
+    }
+    ASSERT_GE(5, millis_elapsed);
 }
+
+TEST(BthreadXXTest, this_thread_get_id) {
+    bthread::bthread::id inv_id;
+    bthread::bthread::id id;
+    id = bthread::this_bthread::get_id(); // call from non-bthread returns an invalid id
+    ASSERT_EQ(inv_id, id);
+
+    bthread::bthread get_id_thread([&id]() { id = bthread::this_bthread::get_id(); });
+    auto id2 = get_id_thread.get_id();
+    get_id_thread.join();
+    ASSERT_NE(inv_id, id);
+    ASSERT_EQ(id, id2);
+}
+
+TEST(BthreadXXTest, this_thread_yield) {
+    int out = 0;
+    bthread::bthread yield_thread([&out](){
+        bthread::this_bthread::yield();
+        out = 1;
+    });
+    yield_thread.join();
+    ASSERT_EQ(1, out);
+}
+
+} // namespace
 
 #endif // BUTIL_CXX11_ENABLED
