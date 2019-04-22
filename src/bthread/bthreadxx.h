@@ -165,11 +165,11 @@ public:
 
     bthread& operator=(bthread&& rhs) noexcept;
 
-    bool joinable() noexcept {
+    bool joinable() const noexcept {
         return th_ != detail::NULL_BTHREAD;
     }
 
-    id get_id() noexcept {
+    id get_id() const noexcept {
         return id{th_};
     }
 

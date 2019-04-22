@@ -59,7 +59,7 @@ TEST(BthreadXXTest, sanity) {
     ASSERT_EQ(2, state.load());
 
     // Tests not-a-thread
-    bthread::bthread not_a_thread;
+    const bthread::bthread not_a_thread;
     ASSERT_FALSE(not_a_thread.joinable());
     bthread::bthread th1([]() {});
     ASSERT_TRUE(th1.joinable());
@@ -77,8 +77,8 @@ TEST(BthreadXXTest, sanity) {
 }
 
 TEST(BthreadXXTest, id_sanity) {
-    bthread::bthread not_a_thread;
-    bthread::bthread::id inv_id;
+    const bthread::bthread not_a_thread;
+    const bthread::bthread::id inv_id;
     std::ostringstream oss;
     oss << not_a_thread.get_id();
     ASSERT_STREQ("0", oss.str().c_str());
@@ -165,7 +165,7 @@ TEST(BthreadXXTest, this_thread_sleep) {
 }
 
 TEST(BthreadXXTest, this_thread_get_id) {
-    bthread::bthread::id inv_id;
+    const bthread::bthread::id inv_id;
     bthread::bthread::id id;
     id = bthread::this_bthread::get_id(); // call from non-bthread returns an invalid id
     ASSERT_EQ(inv_id, id);
