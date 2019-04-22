@@ -277,15 +277,23 @@ private:
     bthread::condition_variable _cv;
 };
 
+namespace detail {
+
+template<typename Lock>
+struct LockExternalFunctor {
+    void operator()(Lock* operand) {
+        operand->lock();
+    }
+};
+
+} // namespace detail
+
 template<typename Lock>
 void condition_variable_any::wait(Lock& lock) {
     std::shared_ptr<bthread::mutex> internal_mtx_shared(_internal_mtx);
     std::unique_lock<bthread::mutex> ilock(*internal_mtx_shared);
     lock.unlock();
-    auto lock_external_func = [](Lock* lock) {
-        lock->lock();
-    };
-    std::unique_ptr<bthread::mutex, decltype(lock_external_func)> then_relock_lock_guard(&lock);
+    std::unique_ptr<Lock, detail::LockExternalFunctor<Lock>> then_relock_lock_guard(&lock);
     std::lock_guard<std::unique_lock<bthread::mutex>> unlock_ilock_first_guard(
             ilock, std::adopt_lock);
     _cv.wait(ilock);
@@ -298,10 +306,7 @@ condition_variable_any::wait_until(Lock& lock,
     std::shared_ptr<bthread::mutex> internal_mtx_shared(_internal_mtx);
     std::unique_lock<bthread::mutex> ilock(*internal_mtx_shared);
     lock.unlock();
-    auto lock_external_func = [](Lock* lock) {
-        lock->lock();
-    };
-    std::unique_ptr<bthread::mutex, decltype(lock_external_func)> then_relock_lock_guard(&lock);
+    std::unique_ptr<Lock, detail::LockExternalFunctor<Lock>> then_relock_lock_guard(&lock);
     std::lock_guard<std::unique_lock<bthread::mutex>> unlock_ilock_first_guard(
             ilock, std::adopt_lock);
     return _cv.wait_until(ilock, timeout_time);
