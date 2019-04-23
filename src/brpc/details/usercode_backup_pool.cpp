@@ -18,6 +18,7 @@
 #include <vector>
 #include <gflags/gflags.h>
 #include "butil/scoped_lock.h"
+#include "bvar/bvar.h"
 #ifdef BAIDU_INTERNAL
 #include "butil/comlog_sink.h"
 #endif

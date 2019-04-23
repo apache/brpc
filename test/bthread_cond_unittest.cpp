@@ -2,6 +2,7 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Jul 13 15:04:18 CST 2014
 
+#include <cmath>
 #include <map>
 #include <gtest/gtest.h>
 #include "butil/atomicops.h"

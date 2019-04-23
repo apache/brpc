@@ -22,35 +22,19 @@
 #include "butil/macros.h"
 
 #ifdef BUTIL_CXX11_ENABLED
-
 #include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <limits>
 #include <system_error>
-
 #endif // BUTIL_CXX11_ENABLED
 
 #include "butil/time.h"
-#include "bthread/mutex.h"
-
-__BEGIN_DECLS
-extern int bthread_cond_init(bthread_cond_t* __restrict cond,
-                             const bthread_condattr_t* __restrict cond_attr);
-extern int bthread_cond_destroy(bthread_cond_t* cond);
-extern int bthread_cond_signal(bthread_cond_t* cond);
-extern int bthread_cond_broadcast(bthread_cond_t* cond);
-extern int bthread_cond_wait(bthread_cond_t* __restrict cond,
-                             bthread_mutex_t* __restrict mutex);
-extern int bthread_cond_timedwait(
-        bthread_cond_t* __restrict cond,
-        bthread_mutex_t* __restrict mutex,
-        const struct timespec* __restrict abstime);
-__END_DECLS
+#include "bthread/mtx_cv_base.h"
 
 namespace bthread {
 
-// Deprecated in favor of condition_variable
+// Deprecated in favor of bthread::condition_variable
 class ConditionVariable {
     DISALLOW_COPY_AND_ASSIGN(ConditionVariable);
 
@@ -114,119 +98,6 @@ private:
 };
 
 #ifdef BUTIL_CXX11_ENABLED
-
-class condition_variable {
-
-public:
-    DISALLOW_COPY_AND_ASSIGN(condition_variable);
-
-    using native_handle_type = bthread_cond_t*;
-
-    condition_variable() {
-        CHECK_EQ(0, bthread_cond_init(&_cond, nullptr));
-    }
-
-    ~condition_variable() {
-        CHECK_EQ(0, bthread_cond_destroy(&_cond));
-    }
-
-    void notify_one() noexcept {
-        bthread_cond_signal(&_cond);
-    }
-
-    void notify_all() noexcept {
-        bthread_cond_broadcast(&_cond);
-    }
-
-    void wait(std::unique_lock<bthread::mutex>& lock) noexcept;
-
-    template<typename Pred>
-    void wait(std::unique_lock<bthread::mutex>& lock, Pred pred) {
-        while (!pred) {
-            wait(lock);
-        }
-    }
-
-    template<typename Rep, typename Period>
-    std::cv_status wait_for(std::unique_lock<bthread::mutex>& lock,
-                            const std::chrono::duration<Rep, Period>& rel_time);
-
-    template<typename Rep, typename Period, typename Pred>
-    bool wait_for(std::unique_lock<bthread::mutex>& lock,
-                  const std::chrono::duration<Rep, Period>& rel_time,
-                  Pred pred) {
-        return wait_until(lock, std::chrono::steady_clock::now() + rel_time, std::move(pred));
-    }
-
-    template<typename Clock, typename Duration>
-    std::cv_status wait_until(std::unique_lock<bthread::mutex>& lock,
-                              const std::chrono::time_point<Clock, Duration>& timeout_time) {
-        wait_for(lock, timeout_time - Clock::now());
-        return Clock::now() < timeout_time ? std::cv_status::no_timeout : std::cv_status::timeout;
-    }
-
-    template<typename Clock, typename Duration, typename Pred>
-    bool wait_until(std::unique_lock<bthread::mutex>& lock,
-                    const std::chrono::time_point<Clock, Duration>& timeout_time,
-                    Pred pred);
-
-    native_handle_type native_handle() {
-        return &_cond;
-    }
-
-private:
-
-    void do_timed_wait(std::unique_lock<bthread::mutex>& lock,
-                       const std::chrono::time_point<std::chrono::system_clock,
-                               std::chrono::nanoseconds>& tp) noexcept;
-
-    template<typename Rep, typename Period>
-    std::chrono::nanoseconds ceil_nanoseconds(const std::chrono::duration<Rep, Period>& dur);
-
-    bthread_cond_t _cond{};
-};
-
-template<typename Rep, typename Period>
-std::cv_status condition_variable::wait_for(std::unique_lock<bthread::mutex>& lock,
-                                            const std::chrono::duration<Rep, Period>& rel_time) {
-    if (rel_time < rel_time.zero()) {
-        return std::cv_status::timeout;
-    }
-    auto sys_now = std::chrono::system_clock::now();
-    auto steady_now = std::chrono::steady_clock::now();
-    if (sys_now.max() - rel_time > sys_now) {
-        do_timed_wait(lock, sys_now + ceil_nanoseconds(rel_time));
-    } else {
-        do_timed_wait(lock, sys_now.max());
-    }
-    if (std::chrono::steady_clock::now() - steady_now < rel_time) {
-        return std::cv_status::no_timeout;
-    } else {
-        return std::cv_status::timeout;
-    }
-}
-
-template<typename Clock, typename Duration, typename Pred>
-bool condition_variable::wait_until(std::unique_lock<bthread::mutex>& lock,
-                                    const std::chrono::time_point<Clock, Duration>& timeout_time,
-                                    Pred pred) {
-    while (!pred()) {
-        if (wait_until(lock, timeout_time) == std::cv_status::timeout) {
-            return pred();
-        }
-    }
-    return true;
-}
-
-template<typename Rep, typename Period>
-std::chrono::nanoseconds
-condition_variable::ceil_nanoseconds(const std::chrono::duration<Rep, Period>& dur) {
-    std::chrono::nanoseconds result = std::chrono::duration_cast<std::chrono::nanoseconds>(dur);
-    if (result < dur) {
-        ++result;
-    }
-    return result;
-}
 
 class condition_variable_any {
 public:

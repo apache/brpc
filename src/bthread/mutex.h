@@ -19,66 +19,13 @@
 #ifndef  BTHREAD_MUTEX_H
 #define  BTHREAD_MUTEX_H
 
+#include "bthread/mtx_cv_base.h"
 #include "bthread/types.h"
 #include "butil/macros.h"
 #include "butil/scoped_lock.h"
 #include "bvar/utils/lock_timer.h"
 
-__BEGIN_DECLS
-extern int bthread_mutex_init(bthread_mutex_t* __restrict mutex,
-                              const bthread_mutexattr_t* __restrict mutex_attr);
-extern int bthread_mutex_destroy(bthread_mutex_t* mutex);
-extern int bthread_mutex_trylock(bthread_mutex_t* mutex);
-extern int bthread_mutex_lock(bthread_mutex_t* mutex);
-extern int bthread_mutex_timedlock(bthread_mutex_t* __restrict mutex,
-                                   const struct timespec* __restrict abstime);
-extern int bthread_mutex_unlock(bthread_mutex_t* mutex);
-__END_DECLS
-
 namespace bthread {
-
-// The C++ Wrapper of bthread_mutex
-
-// NOTE: Not aligned to cacheline as the container of Mutex is practically aligned
-class Mutex {
-public:
-    // Maybe this is a typo? Anyway it should be deprecated
-    typedef bthread_mutex_t* native_handler_type;
-    typedef bthread_mutex_t* native_handle_type;
-
-    // Note: Unlike std::mutex, bthread mutex constructor is not constexpr. Use std::mutex for
-    // synchronization during static initialization.
-    Mutex() {
-        int ec = bthread_mutex_init(&_mutex, NULL);
-        if (ec != 0) {
-            throw std::system_error(std::error_code(ec, std::system_category()), "Mutex constructor failed");
-        }
-    }
-    ~Mutex() { CHECK_EQ(0, bthread_mutex_destroy(&_mutex)); }
-    native_handler_type native_handler() { return &_mutex; } // also typo?
-    native_handle_type native_handle() {return &_mutex;}
-    void lock() {
-        int ec = bthread_mutex_lock(&_mutex);
-        if (ec != 0) {
-            throw std::system_error(std::error_code(ec, std::system_category()), "Mutex lock failed");
-        }
-    }
-    void unlock() { bthread_mutex_unlock(&_mutex); }
-    bool try_lock() { return !bthread_mutex_trylock(&_mutex); }
-
-#ifdef BUTIL_CXX11_ENABLED
-    DISALLOW_COPY_AND_ASSIGN(Mutex);
-private:
-#else
-private:
-    DISALLOW_COPY_AND_ASSIGN(Mutex);
-#endif
-    bthread_mutex_t _mutex;
-};
-
-#ifdef BUTIL_CXX11_ENABLED
-using mutex = Mutex;
-#endif
 
 namespace internal {
 #ifdef BTHREAD_USE_FAST_PTHREAD_MUTEX
@@ -100,132 +47,6 @@ typedef butil::Mutex FastPthreadMutex;
 }
 
 }  // namespace bthread
-
-// Specialize std::lock_guard and std::unique_lock for bthread_mutex_t
-
-namespace std {
-
-// NOTE:
-// Technically these specializations invoke Undefined Behaviour for both pre- and post-C++11.
-// For pre-C++11 these are adding new classes to namespace std.
-// For post-C++11 the specialization of unique_lock is not MoveConstructible, thus
-// does not satisfy the original requirements for std::unique_lock.
-// Both are prohibited by the C++ standard.
-// It would be good if these can be deprecated and later removed for the sake of correctness.
-// We should use std::unique_lock<bthread::mutex> instead, with no need for explicit specialization.
-template <> class lock_guard<bthread_mutex_t> {
-public:
-    explicit lock_guard(bthread_mutex_t & mutex) : _pmutex(&mutex) {
-#if !defined(NDEBUG)
-        const int rc = bthread_mutex_lock(_pmutex);
-        if (rc) {
-            LOG(FATAL) << "Fail to lock bthread_mutex_t=" << _pmutex << ", " << berror(rc);
-            _pmutex = NULL;
-        }
-#else
-        bthread_mutex_lock(_pmutex);
-#endif  // NDEBUG
-    }
-
-    ~lock_guard() {
-#ifndef NDEBUG
-        if (_pmutex) {
-            bthread_mutex_unlock(_pmutex);
-        }
-#else
-        bthread_mutex_unlock(_pmutex);
-#endif
-    }
-
-private:
-    DISALLOW_COPY_AND_ASSIGN(lock_guard);
-    bthread_mutex_t* _pmutex;
-};
-
-template <> class unique_lock<bthread_mutex_t> {
-    DISALLOW_COPY_AND_ASSIGN(unique_lock);
-public:
-    typedef bthread_mutex_t         mutex_type;
-    unique_lock() : _mutex(NULL), _owns_lock(false) {}
-    explicit unique_lock(mutex_type& mutex)
-        : _mutex(&mutex), _owns_lock(false) {
-        lock();
-    }
-    unique_lock(mutex_type& mutex, defer_lock_t)
-        : _mutex(&mutex), _owns_lock(false)
-    {}
-    unique_lock(mutex_type& mutex, try_to_lock_t) 
-        : _mutex(&mutex), _owns_lock(bthread_mutex_trylock(&mutex) == 0)
-    {}
-    unique_lock(mutex_type& mutex, adopt_lock_t) 
-        : _mutex(&mutex), _owns_lock(true)
-    {}
-
-    ~unique_lock() {
-        if (_owns_lock) {
-            unlock();
-        }
-    }
-
-    void lock() {
-        if (!_mutex) {
-            CHECK(false) << "Invalid operation";
-            return;
-        }
-        if (_owns_lock) {
-            CHECK(false) << "Detected deadlock issue";     
-            return;
-        }
-        bthread_mutex_lock(_mutex);
-        _owns_lock = true;
-    }
-
-    bool try_lock() {
-        if (!_mutex) {
-            CHECK(false) << "Invalid operation";
-            return false;
-        }
-        if (_owns_lock) {
-            CHECK(false) << "Detected deadlock issue";     
-            return false;
-        }
-        _owns_lock = !bthread_mutex_trylock(_mutex);
-        return _owns_lock;
-    }
-
-    void unlock() {
-        if (!_owns_lock) {
-            CHECK(false) << "Invalid operation";
-            return;
-        }
-        if (_mutex) {
-            bthread_mutex_unlock(_mutex);
-            _owns_lock = false;
-        }
-    }
-
-    void swap(unique_lock& rhs) {
-        std::swap(_mutex, rhs._mutex);
-        std::swap(_owns_lock, rhs._owns_lock);
-    }
-
-    mutex_type* release() {
-        mutex_type* saved_mutex = _mutex;
-        _mutex = NULL;
-        _owns_lock = false;
-        return saved_mutex;
-    }
-
-    mutex_type* mutex() { return _mutex; }
-    bool owns_lock() const { return _owns_lock; }
-    operator bool() const { return owns_lock(); }
-
-private:
-    mutex_type*                     _mutex;
-    bool                            _owns_lock;
-};
-
-}  // namespace std
 
 namespace bvar {
 
