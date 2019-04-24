@@ -14,6 +14,12 @@
 #include "bthread/mutex.h"
 #include "butil/gperftools_profiler.h"
 
+#ifdef BUTIL_CXX11_ENABLED
+#include <atomic>
+#include <chrono>
+#include "bthread/bthreadxx.h"
+#endif
+
 namespace {
 inline unsigned* get_butex(bthread_mutex_t & m) {
     return m.butex;
@@ -24,7 +30,7 @@ int c = 0;
 void* locker(void* arg) {
     bthread_mutex_t* m = (bthread_mutex_t*)arg;
     bthread_mutex_lock(m);
-    printf("[%" PRIu64 "] I'm here, %d, %" PRId64 "ms\n", 
+    printf("[%" PRIu64 "] I'm here, %d, %" PRId64 "ms\n",
            pthread_numeric_id(), ++c, butil::cpuwide_time_ms() - start_time);
     bthread_usleep(10000);
     bthread_mutex_unlock(m);
@@ -199,7 +205,7 @@ void PerfTest(Mutex* mutex,
     }
     g_started = true;
     char prof_name[32];
-    snprintf(prof_name, sizeof(prof_name), "mutex_perf_%d.prof", ++g_prof_name_counter); 
+    snprintf(prof_name, sizeof(prof_name), "mutex_perf_%d.prof", ++g_prof_name_counter);
     ProfilerStart(prof_name);
     usleep(500 * 1000);
     ProfilerStop();
@@ -265,5 +271,79 @@ TEST(MutexTest, mix_thread_types) {
         pthread_join(pthreads[i], NULL);
     }
 }
+
+#ifdef BUTIL_CXX11_ENABLED
+
+// XXX: should we have a test utility header?
+class MilliSTimeGuard {
+public:
+    explicit MilliSTimeGuard(int* out_millis) noexcept: _out_millis(out_millis),
+                                                        _begin_tp(std::chrono::steady_clock::now()) {
+    }
+
+    ~MilliSTimeGuard() {
+        auto end_time = std::chrono::steady_clock::now();
+        *_out_millis = std::chrono::duration_cast<std::chrono::milliseconds>(
+                end_time - _begin_tp).count();
+    }
+
+private:
+    int* _out_millis;
+    std::chrono::steady_clock::time_point _begin_tp;
+};
+
+TEST(MutexTest, cpp_timed_mutex) {
+    using std::chrono::milliseconds;
+    std::atomic<bool> ready{false};
+    bthread::timed_mutex tmtx;
+    bthread::bthread lock_holder([&tmtx, &ready](){
+        std::lock_guard<bthread::timed_mutex> lock(tmtx);
+        ready = true;
+        bthread::this_bthread::sleep_for(milliseconds(1000));
+    });
+    while(!ready); // wait for the lock_holder to take hold of the lock
+
+    int timer = 0;
+    {
+        MilliSTimeGuard tg(&timer);
+        bool locked = tmtx.try_lock();
+        ASSERT_FALSE(locked);
+        locked = tmtx.try_lock_for(milliseconds(-5));
+        ASSERT_FALSE(locked);
+    }
+    ASSERT_GE(2, timer);
+    {
+        MilliSTimeGuard tg(&timer);
+        bool locked = tmtx.try_lock_for(milliseconds(100));
+        ASSERT_FALSE(locked);
+    }
+    ASSERT_LE(100, timer);
+    ASSERT_GE(120, timer);
+    {
+        MilliSTimeGuard tg(&timer);
+        bool locked = tmtx.try_lock_until(std::chrono::steady_clock::now());
+        ASSERT_FALSE(locked);
+    }
+    ASSERT_GE(2, timer);
+    {
+        MilliSTimeGuard tg(&timer);
+        bool locked = tmtx.try_lock_until(std::chrono::steady_clock::now() + milliseconds(100));
+        ASSERT_FALSE(locked);
+    }
+    ASSERT_LE(100, timer);
+    ASSERT_GE(120, timer);
+
+    lock_holder.join();
+}
+
+TEST(MutexTest, cpp_timed_mutex_performance) {
+    const int thread_num = 12;
+    bthread::timed_mutex bth_mutex;
+    PerfTest(&bth_mutex, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
+    PerfTest(&bth_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
+}
+
+
+#endif // BUTIL_CXX11_ENABLED
 
 } // namespace

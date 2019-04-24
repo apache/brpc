@@ -24,6 +24,9 @@
 #include "butil/macros.h"
 #include "butil/scoped_lock.h"
 #include "bvar/utils/lock_timer.h"
+#ifdef BUTIL_CXX11_ENABLED
+#include <chrono>
+#endif
 
 namespace bthread {
 
@@ -65,5 +68,66 @@ struct MutexDestructor<bthread_mutex_t> {
 };
 
 }  // namespace bvar
+
+#ifdef BUTIL_CXX11_ENABLED
+
+// Higher level mutex constructs for C++
+
+namespace bthread {
+
+class timed_mutex {
+
+public:
+
+    DISALLOW_COPY_AND_ASSIGN(timed_mutex);
+
+    timed_mutex() = default;
+
+    ~timed_mutex() {
+        std::lock_guard<mutex> lg(_mtx);
+    }
+
+    void lock();
+
+    void unlock();
+
+    bool try_lock();
+
+    template<typename Rep, typename Period>
+    bool try_lock_for(const std::chrono::duration<Rep, Period>& rel_time);
+
+    template<typename Clock, typename Duration>
+    bool try_lock_until(const std::chrono::time_point<Clock, Duration>& timeout_time);
+
+private:
+    ::bthread::mutex _mtx;
+    bool _locked{false};
+    ::bthread::condition_variable _cv;
+};
+
+template<typename Rep, typename Period>
+bool timed_mutex::try_lock_for(const std::chrono::duration<Rep, Period>& rel_time) {
+    return timed_mutex::try_lock_until(std::chrono::steady_clock::now() + rel_time);
+}
+
+template<typename Clock, typename Duration>
+bool timed_mutex::try_lock_until(const std::chrono::time_point<Clock, Duration>& timeout_time) {
+    std::unique_lock<mutex> lock(_mtx);
+    while(_locked) {
+        if(Clock::now() >= timeout_time) {
+            break;
+        }
+        _cv.wait_until(lock, timeout_time);
+    }
+    if (!_locked) {
+        _locked = true;
+        return true;
+    }
+    return false;
+}
+
+}
+
+#endif // BUTIL_CXX11_ENABLED
 
 #endif  //BTHREAD_MUTEX_H

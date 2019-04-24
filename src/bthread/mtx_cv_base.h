@@ -125,7 +125,7 @@ public:
 
     template<typename Pred>
     void wait(std::unique_lock<bthread::mutex>& lock, Pred pred) {
-        while (!pred) {
+        while (!pred()) {
             wait(lock);
         }
     }

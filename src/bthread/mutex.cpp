@@ -813,3 +813,36 @@ int pthread_mutex_unlock (pthread_mutex_t *__mutex) {
 }
 
 }  // extern "C"
+
+#ifdef BUTIL_CXX11_ENABLED
+
+namespace bthread {
+
+void timed_mutex::lock() {
+    std::unique_lock<mutex> lock(_mtx);
+    _cv.wait(lock, [this](){return !_locked;});
+    _locked = true;
+}
+
+void timed_mutex::unlock() {
+    std::unique_lock<mutex> lock(_mtx);
+    _locked = false;
+    lock.unlock();
+    _cv.notify_one();
+}
+
+bool timed_mutex::try_lock() {
+    std::unique_lock<mutex> lock(_mtx, std::try_to_lock);
+    if (!lock.owns_lock()) {
+        return false;
+    }
+    if (_locked) {
+        return false;
+    }
+    _locked = true;
+    return true;
+}
+
+} // namespace bthread
+
+#endif // BUTIL_CXX11_ENABLED
