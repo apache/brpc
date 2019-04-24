@@ -1,6 +1,6 @@
 [mysql](https://www.mysql.com/)是著名的开源的关系型数据库，为了使用户更快捷地访问mysql并充分利用bthread的并发能力，brpc直接支持mysql协议。示例程序：[example/mysql_c++](https://github.com/brpc/brpc/tree/master/example/mysql_c++/)
 
-**注意**：只支持MySQL 4.1 及之后的版本的文本协议，支持事务，不支持Prepared statement。目前支持的鉴权方式为mysql_native_password
+**注意**：只支持MySQL 4.1 及之后的版本的文本协议，支持事务，不支持Prepared statement。目前支持的鉴权方式为mysql_native_password，使用事务的时候不支持single模式。
 
 相比使用[libmysqlclient](https://dev.mysql.com/downloads/connector/c/)(官方client)的优势有：
 
@@ -9,7 +9,7 @@
 - 支持多种[连接方式](client.md#连接方式)。支持超时、backup request、取消、tracing、内置服务等一系列brpc提供的福利。
 - 明确的返回类型校验，如果使用了不正确的变量接受mysql的数据类型，将抛出异常。
 - 调用mysql标准库会阻塞框架的并发能力，使用本实现将能充分利用brpc框架的并发能力。
-- 使用brpc实现的mysql不会造成pthread的阻塞，使用libmysqlclient会阻塞pthread [相关信息](bthread.md.md)。
+- 使用brpc实现的mysql不会造成pthread的阻塞，使用libmysqlclient会阻塞pthread [线程相关](bthread.md)。
 # 访问mysql
 
 创建一个访问mysql的Channel：
@@ -137,198 +137,379 @@ bool rc = tx->commit();
 
 # 性能测试
 
-我在example/mysql_c++目录下面写了两个测试程序，mysql_press.cpp mysqlclient_press.cpp，一个是使用了brpc框架，一个是使用了的libmysqlclient访问mysql。
+我在example/mysql_c++目录下面写了两个测试程序，mysql_press.cpp mysqlclient_press.cpp，mysql_go_press.go 一个是使用了brpc框架，一个是使用了的libmysqlclient访问mysql，一个是使用[go-sql-driver](https://github.com/go-sql-driver)/**go-mysql**访问mysql
 
-启动一个线程测试
+启动单线程测试
 
-./mysql_press -thread_num=1 -op_type=0
+##### brpc框架访问mysql（单线程）
 
-```
-I0423 13:44:52.306762 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=648 latency=1537
-I0423 13:44:53.307566 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=602 latency=1654
-I0423 13:44:54.307695 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=597 latency=1668
-I0423 13:44:55.308079 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=541 latency=1842
-I0423 13:44:56.308351 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=617 latency=1613
-I0423 13:44:57.308570 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=600 latency=1661
-I0423 13:44:58.308918 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=404 latency=2457
-I0423 13:44:59.309187 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=448 latency=2231
-I0423 13:45:00.309383 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=599 latency=1664
-I0423 13:45:01.309547 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=727 latency=1369
-I0423 13:45:02.309775 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=703 latency=1417
-I0423 13:45:03.310142 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=756 latency=1317
-I0423 13:45:04.310840 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=833 latency=1194
-I0423 13:45:05.311066 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=762 latency=1306
-I0423 13:45:06.311316 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=705 latency=1410
-I0423 13:45:07.311570 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=703 latency=1417
-I0423 13:45:08.311754 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=724 latency=1374
-I0423 13:45:09.311934 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=621 latency=1603
-I0423 13:45:10.312272 19682 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=697 latency=1428
-```
-
-./mysqlclient_press -thread_num=1 -op_type=0
+./mysql_press -thread_num=1 -op_type=0 // insert
 
 ```
-I0423 10:30:11.452513 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=702 latency=1419
-I0423 10:30:12.454211 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=601 latency=1658
-I0423 10:30:13.455104 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=536 latency=1861
-I0423 10:30:14.455533 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=525 latency=1900
-I0423 10:30:15.455700 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=663 latency=1503
-I0423 10:30:16.456220 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=681 latency=1464
-I0423 10:30:17.456804 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=689 latency=1446
-I0423 10:30:18.457374 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=655 latency=1521
-I0423 10:30:19.458235 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=547 latency=1823
-I0423 10:30:20.458475 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=524 latency=1900
-I0423 10:30:21.459120 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=552 latency=1806
-I0423 10:30:22.459670 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=408 latency=2420
-I0423 10:30:23.460059 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=473 latency=2129
-I0423 10:30:24.460952 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=452 latency=2209
-I0423 10:30:25.461151 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=592 latency=1683
-I0423 10:30:26.461301 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=492 latency=2027
-I0423 10:30:27.461465 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=677 latency=1472
-I0423 10:30:28.461943 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=629 latency=1585
-I0423 10:30:29.462272 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=757 latency=1316
-I0423 10:30:30.462743 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=721 latency=1382
-I0423 10:30:31.462891 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=752 latency=1325
-I0423 10:30:32.463246 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=752 latency=1324
-I0423 10:30:33.463935 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=822 latency=1212
-I0423 10:30:34.464395 18007 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=831 latency=1199
+qps=3071 latency=320
+qps=3156 latency=311
+qps=3166 latency=310
+qps=3151 latency=312
+qps=3093 latency=317
+qps=3146 latency=312
+qps=3139 latency=313
+qps=3114 latency=315
+qps=3055 latency=321
+qps=3135 latency=313
+qps=2611 latency=376
+qps=3072 latency=320
+qps=3026 latency=324
+qps=2792 latency=352
+qps=3181 latency=309
+qps=3181 latency=309
+qps=3197 latency=307
+qps=3024 latency=325
 ```
 
 ./mysql_press -thread_num=1 -op_type=1
 
 ```
-I0423 17:26:05.472492 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1360 latency=727
-I0423 17:26:06.472692 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1585 latency=623
-I0423 17:26:07.472788 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1406 latency=703
-I0423 17:26:08.472950 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1530 latency=646
-I0423 17:26:09.473230 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1536 latency=643
-I0423 17:26:10.473329 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1693 latency=584
-I0423 17:26:11.473611 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1637 latency=603
-I0423 17:26:12.473771 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1495 latency=662
-I0423 17:26:13.474620 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1225 latency=807
-I0423 17:26:14.474914 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=986 latency=1003
-I0423 17:26:15.475465 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1434 latency=689
-I0423 17:26:16.475839 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1895 latency=520
-I0423 17:26:17.476128 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1532 latency=645
-I0423 17:26:18.476536 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1498 latency=660
-I0423 17:26:19.476659 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1648 latency=599
-I0423 17:26:20.476777 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1566 latency=632
-I0423 17:26:21.477189 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1163 latency=851
-I0423 17:26:22.477665 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1344 latency=736
-I0423 17:26:23.477910 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1326 latency=746
-I0423 17:26:24.478298 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1419 latency=695
-I0423 17:26:25.478522 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1421 latency=696
-I0423 17:26:26.478836 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1491 latency=663
-I0423 17:26:27.479249 22361 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=1404 latency=704
+qps=6414 latency=151
+qps=5292 latency=182
+qps=6700 latency=144
+qps=6858 latency=141
+qps=6915 latency=140
+qps=6822 latency=142
+qps=6722 latency=144
+qps=6852 latency=141
+qps=6713 latency=144
+qps=6741 latency=144
+qps=6734 latency=144
+qps=6611 latency=146
+qps=6554 latency=148
+qps=6810 latency=142
+qps=6787 latency=143
+qps=6737 latency=144
+qps=6579 latency=147
+qps=6634 latency=146
+qps=6716 latency=144
+qps=6711 latency=144
+```
+
+./mysql_press -thread_num=1 -op_type=2 // update
+
+```
+qps=3090 latency=318
+qps=3452 latency=284
+qps=3239 latency=303
+qps=3328 latency=295
+qps=3218 latency=305
+qps=3251 latency=302
+qps=2516 latency=391
+qps=2874 latency=342
+qps=3366 latency=292
+qps=3249 latency=302
+qps=3346 latency=294
+qps=3486 latency=282
+qps=3457 latency=284
+qps=3439 latency=286
+qps=3386 latency=290
+qps=3352 latency=293
+qps=3253 latency=302
+qps=3341 latency=294
+```
+
+##### libmysqlclient实现（单线程）
+
+./mysqlclient_press -thread_num=1 -op_type=0 // insert
+
+```
+qps=3166 latency=313
+qps=3157 latency=314
+qps=2941 latency=337
+qps=3270 latency=303
+qps=3305 latency=300
+qps=3445 latency=287
+qps=3455 latency=287
+qps=3449 latency=287
+qps=3486 latency=284
+qps=3551 latency=279
+qps=3517 latency=281
+qps=3283 latency=302
+qps=3353 latency=295
+qps=2564 latency=386
+qps=3243 latency=305
+qps=3333 latency=297
+qps=3598 latency=275
+qps=3714 latency=267
 ```
 
 ./mysqlclient_press -thread_num=1 -op_type=1
 
 ```
-I0423 17:23:00.923535 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=5109 latency=194
-I0423 17:23:01.923684 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=5193 latency=191
-I0423 17:23:02.923888 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=6333 latency=156
-I0423 17:23:03.924171 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=7605 latency=130
-I0423 17:23:04.924338 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=7570 latency=130
-I0423 17:23:05.924439 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=4790 latency=207
-I0423 17:23:06.924578 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=5151 latency=192
-I0423 17:23:07.924747 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=6140 latency=161
-I0423 17:23:08.924909 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=7995 latency=123
-I0423 17:23:09.925047 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=5342 latency=185
-I0423 17:23:10.925165 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=5226 latency=190
-I0423 17:23:11.925288 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=5102 latency=194
-I0423 17:23:12.925468 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=3832 latency=258
-I0423 17:23:13.925680 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=4171 latency=237
-I0423 17:23:14.925912 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=6809 latency=145
-I0423 17:23:15.926260 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=4217 latency=235
-I0423 17:23:16.929617 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=6187 latency=159
-I0423 17:23:17.932048 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=8305 latency=119
-I0423 17:23:18.932340 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=5089 latency=194
-I0423 17:23:19.932484 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=4626 latency=214
-I0423 17:23:20.932731 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=4775 latency=208
-I0423 17:23:21.934988 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=6405 latency=154
-I0423 17:23:22.935382 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=5912 latency=167
-I0423 17:23:23.935776 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=7245 latency=136
-I0423 17:23:24.935873 22351 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=4859 latency=204
+qps=8209 latency=120
+qps=8022 latency=123
+qps=7879 latency=125
+qps=8083 latency=122
+qps=8504 latency=116
+qps=8112 latency=121
+qps=8278 latency=119
+qps=8698 latency=113
+qps=8817 latency=112
+qps=8755 latency=112
+qps=8734 latency=113
+qps=8390 latency=117
+qps=8230 latency=120
+qps=8486 latency=116
+qps=8038 latency=122
+qps=8640 latency=114
 ```
 
-./mysql_press -thread_num=1 -op_type=2
+./mysqlclient_press -thread_num=1 -op_type=2 // update
 
 ```
-I0423 17:11:14.094312 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=381 latency=2632
-I0423 17:11:15.094422 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=360 latency=2768
-I0423 17:11:16.094646 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=420 latency=2375
-I0423 17:11:17.094931 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=444 latency=2243
-I0423 17:11:18.095224 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=371 latency=2689
-I0423 17:11:19.095514 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=448 latency=2223
-I0423 17:11:20.095588 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=478 latency=2084
-I0423 17:11:21.096028 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=392 latency=2543
-I0423 17:11:22.096238 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=500 latency=1993
-I0423 17:11:23.096527 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=317 latency=3099
-I0423 17:11:24.096666 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=412 latency=2456
-I0423 17:11:25.096799 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=504 latency=1978
-I0423 17:11:26.097490 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=500 latency=1992
-I0423 17:11:27.097739 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=439 latency=2272
-I0423 17:11:28.099476 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=411 latency=2422
-I0423 17:11:29.099956 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=427 latency=2333
-I0423 17:11:30.100132 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=482 latency=2068
-I0423 17:11:31.100651 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=457 latency=2184
-I0423 17:11:32.100805 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=412 latency=2419
-I0423 17:11:33.101050 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=470 latency=2120
-I0423 17:11:34.101677 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=463 latency=2153
-I0423 17:11:35.102266 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=490 latency=2033
-I0423 17:11:36.102565 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=526 latency=1895
-I0423 17:11:37.102674 22309 /home/yangliming/brpc/example/mysql_c++/mysql_press.cpp:227] Accessing mysql-server at qps=462 latency=2158
+qps=3583 latency=276
+qps=3530 latency=280
+qps=3610 latency=274
+qps=3492 latency=283
+qps=3508 latency=282
+qps=3465 latency=286
+qps=3543 latency=279
+qps=3610 latency=274
+qps=3567 latency=278
+qps=3381 latency=293
+qps=3514 latency=282
+qps=3461 latency=286
+qps=3456 latency=286
+qps=3517 latency=281
+qps=3492 latency=284
 ```
 
-./mysqlclient_press -thread_num=1 -op_type=2
+##### golang访问mysql（单线程）
+
+go run test.go -thread_num=1
 
 ```
-I0423 17:12:20.102581 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=640 latency=1558
-I0423 17:12:21.102965 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=488 latency=2043
-I0423 17:12:22.103339 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=542 latency=1841
-I0423 17:12:23.103479 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=493 latency=2023
-I0423 17:12:24.103622 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=564 latency=1769
-I0423 17:12:25.103812 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=610 latency=1636
-I0423 17:12:26.104240 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=577 latency=1729
-I0423 17:12:27.104442 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=543 latency=1836
-I0423 17:12:28.104955 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=485 latency=2059
-I0423 17:12:29.105208 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=539 latency=1851
-I0423 17:12:30.105446 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=541 latency=1844
-I0423 17:12:31.105569 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=513 latency=1944
-I0423 17:12:32.106135 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=522 latency=1910
-I0423 17:12:33.106223 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=586 latency=1702
-I0423 17:12:34.106557 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=610 latency=1635
-I0423 17:12:35.106850 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=589 latency=1685
-I0423 17:12:36.106950 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=491 latency=2042
-I0423 17:12:37.107048 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=611 latency=1633
-I0423 17:12:38.107224 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=637 latency=1565
-I0423 17:12:39.107469 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=546 latency=1826
-I0423 17:12:40.107634 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=524 latency=1901
-I0423 17:12:41.107844 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=454 latency=2200
-I0423 17:12:42.108194 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=453 latency=2198
-I0423 17:12:43.108463 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=373 latency=2673
-I0423 17:12:44.108603 22323 /home/yangliming/brpc/example/mysql_c++/mysqlclient_press.cpp:226] Accessing mysql-server at qps=557 latency=1794
+qps = 6905 latency = 144
+qps = 6922 latency = 143
+qps = 6931 latency = 143
+qps = 6998 latency = 142
+qps = 6780 latency = 146
+qps = 6980 latency = 142
+qps = 6901 latency = 144
+qps = 6887 latency = 144
+qps = 6943 latency = 143
+qps = 6880 latency = 144
+qps = 6815 latency = 146
+qps = 6089 latency = 163
+qps = 6626 latency = 150
+qps = 6361 latency = 156
+qps = 6783 latency = 146
+qps = 6789 latency = 146
+qps = 6883 latency = 144
+qps = 6795 latency = 146
+qps = 6724 latency = 148
+qps = 6861 latency = 145
+qps = 6878 latency = 144
+qps = 6842 latency = 146
 ```
 
+从以上测试结果看来，使用brpc实现的mysql协议和使用libmysqlclient在插入、修改、删除操作上性能是类似的，但是在查询操作看会逊色于libmysqlclient，查询的性能和golang实现的mysql类似。
 
+##### brpc框架访问mysql（50线程）
 
-从以上测试结果看来，使用brpc实现的mysql协议和使用libmysqlclient在插入、修改、删除操作上性能是类似的，但是在查询操作看会逊色于libmysqlclient。
+./mysql_press -thread_num=50 -op_type=1 -use_bthread=true
 
-brpc实现的mysql协议函数调用耗时分析
+```
+qps=18843 latency=2656
+qps=22426 latency=2226
+qps=22536 latency=2203
+qps=22560 latency=2193
+qps=22270 latency=2226
+qps=22302 latency=2247
+qps=22147 latency=2225
+qps=22517 latency=2228
+qps=22762 latency=2176
+qps=23061 latency=2162
+qps=23819 latency=2070
+qps=23852 latency=2077
+qps=22682 latency=2214
+qps=22381 latency=2213
+qps=24041 latency=2069
+qps=24562 latency=2022
+qps=24874 latency=2004
+qps=24821 latency=1988
+qps=24209 latency=2073
+qps=21706 latency=2281
+```
 
-![brpc实现的mysql协议](../images/mysql_select.png)
+##### libmysqlclient实现（50线程）
 
-libmysqlclient函数调用耗时分析
+./mysql_press -thread_num=50 -op_type=1 -use_bthread=true
 
-![libmysqlclient](../images/mysqlclient_select.png)
+```
+qps=23656 latency=378
+qps=16190 latency=555
+qps=20136 latency=445
+qps=22238 latency=401
+qps=22229 latency=403
+qps=19109 latency=470
+qps=22569 latency=394
+qps=26250 latency=343
+qps=28208 latency=318
+qps=29649 latency=301
+qps=29874 latency=301
+qps=30033 latency=301
+qps=25911 latency=345
+qps=28048 latency=317
+qps=27398 latency=329
+```
 
+##### golang访问mysql（50协程）
 
+go run ../mysql_go_press.go -thread_num=50
 
-在内存占用上，运行了一个晚上，两个程序的内存占用
+```
+qps = 23660 latency = 2049
+qps = 23198 latency = 2160
+qps = 23765 latency = 2181
+qps = 23323 latency = 2149
+qps = 14833 latency = 2136
+qps = 23822 latency = 2853
+qps = 20389 latency = 2474
+qps = 23290 latency = 2151
+qps = 23526 latency = 2153
+qps = 21426 latency = 2613
+qps = 23339 latency = 2155
+qps = 25623 latency = 2084
+qps = 23048 latency = 2210
+qps = 20694 latency = 2423
+qps = 23705 latency = 2122
+qps = 23445 latency = 2125
+qps = 24368 latency = 2054
+qps = 23027 latency = 2175
+qps = 24307 latency = 2063
+qps = 23227 latency = 2096
+qps = 23646 latency = 2173
+```
+
+以上是启动50并发的查询请求，看上去qps都比较相似，但是libmysqlclient延时明显低。
+
+##### brpc框架访问mysql（100线程）
+
+./mysql_press -thread_num=100 -op_type=1 -use_bthread=true
+
+```
+qps=26428 latency=3764
+qps=26305 latency=3780
+qps=26390 latency=3779
+qps=26278 latency=3787
+qps=26326 latency=3787
+qps=26266 latency=3792
+qps=26394 latency=3773
+qps=26263 latency=3797
+qps=26250 latency=3783
+qps=26362 latency=3782
+qps=26212 latency=3796
+qps=26260 latency=3800
+qps=24666 latency=4035
+qps=25569 latency=3896
+qps=26223 latency=3794
+qps=25538 latency=3890
+qps=20065 latency=4958
+qps=23023 latency=4331
+qps=25808 latency=3875
+```
+
+##### libmysqlclient实现（100线程）
+
+./mysql_press -thread_num=50 -op_type=1 -use_bthread=true
+
+```
+qps=29467 latency=304
+qps=29413 latency=305
+qps=29459 latency=304
+qps=29562 latency=302
+qps=30657 latency=291
+qps=30445 latency=295
+qps=30179 latency=298
+qps=30072 latency=297
+qps=29802 latency=299
+qps=29752 latency=301
+qps=29701 latency=304
+qps=29731 latency=301
+qps=29622 latency=299
+qps=29440 latency=304
+qps=29495 latency=306
+qps=29297 latency=303
+qps=29626 latency=306
+qps=29482 latency=300
+qps=28649 latency=313
+qps=29537 latency=305
+qps=29634 latency=299
+```
+
+##### golang访问mysql（100协程）
+
+go run ../mysql_go_press.go -thread_num=100
+
+```
+qps = 22108 latency = 4553
+qps = 21930 latency = 4536
+qps = 20653 latency = 4906
+qps = 22100 latency = 4443
+qps = 21091 latency = 4850
+qps = 21718 latency = 4600
+qps = 21444 latency = 4488
+qps = 17832 latency = 5859
+qps = 18296 latency = 5378
+qps = 20463 latency = 4963
+qps = 21611 latency = 4880
+qps = 18441 latency = 5424
+qps = 20731 latency = 4834
+qps = 20611 latency = 4837
+qps = 20188 latency = 4979
+qps = 15450 latency = 5723
+qps = 20927 latency = 5328
+qps = 19893 latency = 5027
+qps = 21080 latency = 4782
+qps = 20192 latency = 4970
+```
+
+以上是启动100并发的查询请求，看上去qps都比较相似，但是libmysqlclient延时明显低。
+
+并发调整到150的时候，mysql-server已经报错"Too many connections"。
+
+为什么并发数50或者100的时候libmysqlclient的延时会那么低呢？因为libmysqlclient使用的IO模式为阻塞模式，我们运行的mysql_press和mysqlclient_press都是使用的bthread模式（-use_bthread=true），底层默认都是9个pthread，使用阻塞模式的libmysqlclient和mysql交互的相当于并发度是9个线程，mysql会启动9个线程，使用非阻塞模式的rpc访问mysql并发度相当于100个，mysql会启动100个线程，所以会造成mysql的频繁上线文切换。
+
+如果将libmysqlclient的执行方式改为不使用bthread，那么100个线程的执行效果为如下：
+
+```
+qps=26919 latency=1927
+qps=27155 latency=2037
+qps=28054 latency=1784
+qps=26738 latency=1856
+qps=27807 latency=1781
+qps=26734 latency=1730
+qps=26562 latency=1939
+qps=27473 latency=1845
+qps=26677 latency=1806
+qps=27369 latency=1948
+qps=27955 latency=1618
+qps=26574 latency=2151
+qps=27343 latency=1777
+qps=26705 latency=1822
+qps=26668 latency=1807
+qps=25347 latency=2104
+qps=26651 latency=1560
+qps=27815 latency=1979
+qps=27221 latency=1762
+qps=26516 latency=2017
+```
+
+这个结果就和brpc框架启动100个bthread访问mysql的效果类似了。
+
+##### 内存使用
+
+在内存占用上，mysql_press和mysqlclient_press都运行了一个晚上，两个程序的内存占用
 
 ![libmysqlclient](../images/mysql_memory.png)
 
 
 
-以上为我的一个简单测试，后续还将继续分析性能问题，优化协议，给出更多测试。
+以上为我的一些简单测试，以及一些简单的分析，在低并发的情况下同步IO的效率高于异步IO，可以阅读[IO相关的内容](io.md)有更多解释，后续还将继续分析性能问题，优化协议，给出更多测试。
