@@ -75,16 +75,16 @@ struct MutexDestructor<bthread_mutex_t> {
 
 namespace bthread {
 
-class timed_mutex {
+class TimedMutex {
 
 public:
 
-    DISALLOW_COPY_AND_ASSIGN(timed_mutex);
+    DISALLOW_COPY_AND_ASSIGN(TimedMutex);
 
-    timed_mutex() = default;
+    TimedMutex() = default;
 
-    ~timed_mutex() {
-        std::lock_guard<mutex> lg(_mtx);
+    ~TimedMutex() {
+        std::lock_guard<Mutex> lg(_mtx);
     }
 
     void lock();
@@ -100,19 +100,19 @@ public:
     bool try_lock_until(const std::chrono::time_point<Clock, Duration>& timeout_time);
 
 private:
-    ::bthread::mutex _mtx;
+    Mutex _mtx;
     bool _locked{false};
-    ::bthread::condition_variable _cv;
+    ::bthread::ConditionVariable2 _cv;
 };
 
 template<typename Rep, typename Period>
-bool timed_mutex::try_lock_for(const std::chrono::duration<Rep, Period>& rel_time) {
-    return timed_mutex::try_lock_until(std::chrono::steady_clock::now() + rel_time);
+bool TimedMutex::try_lock_for(const std::chrono::duration<Rep, Period>& rel_time) {
+    return TimedMutex::try_lock_until(std::chrono::steady_clock::now() + rel_time);
 }
 
 template<typename Clock, typename Duration>
-bool timed_mutex::try_lock_until(const std::chrono::time_point<Clock, Duration>& timeout_time) {
-    std::unique_lock<mutex> lock(_mtx);
+bool TimedMutex::try_lock_until(const std::chrono::time_point<Clock, Duration>& timeout_time) {
+    std::unique_lock<Mutex> lock(_mtx);
     while(_locked) {
         if(Clock::now() >= timeout_time) {
             break;
@@ -126,7 +126,7 @@ bool timed_mutex::try_lock_until(const std::chrono::time_point<Clock, Duration>&
     return false;
 }
 
-}
+} // namespace bthread
 
 #endif // BUTIL_CXX11_ENABLED
 

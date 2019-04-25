@@ -96,20 +96,19 @@ private:
 };
 
 #ifdef BUTIL_CXX11_ENABLED
-using mutex = Mutex;
 
-class condition_variable {
+class ConditionVariable2 {
 
 public:
-    DISALLOW_COPY_AND_ASSIGN(condition_variable);
+    DISALLOW_COPY_AND_ASSIGN(ConditionVariable2);
 
     using native_handle_type = bthread_cond_t*;
 
-    condition_variable() {
+    ConditionVariable2() {
         CHECK_EQ(0, bthread_cond_init(&_cond, nullptr));
     }
 
-    ~condition_variable() {
+    ~ConditionVariable2() {
         CHECK_EQ(0, bthread_cond_destroy(&_cond));
     }
 
@@ -121,35 +120,35 @@ public:
         bthread_cond_broadcast(&_cond);
     }
 
-    void wait(std::unique_lock<bthread::mutex>& lock) noexcept;
+    void wait(std::unique_lock<bthread::Mutex>& lock) noexcept;
 
     template<typename Pred>
-    void wait(std::unique_lock<bthread::mutex>& lock, Pred pred) {
+    void wait(std::unique_lock<bthread::Mutex>& lock, Pred pred) {
         while (!pred()) {
             wait(lock);
         }
     }
 
     template<typename Rep, typename Period>
-    std::cv_status wait_for(std::unique_lock<bthread::mutex>& lock,
+    std::cv_status wait_for(std::unique_lock<bthread::Mutex>& lock,
                             const std::chrono::duration<Rep, Period>& rel_time);
 
     template<typename Rep, typename Period, typename Pred>
-    bool wait_for(std::unique_lock<bthread::mutex>& lock,
+    bool wait_for(std::unique_lock<bthread::Mutex>& lock,
                   const std::chrono::duration<Rep, Period>& rel_time,
                   Pred pred) {
         return wait_until(lock, std::chrono::steady_clock::now() + rel_time, std::move(pred));
     }
 
     template<typename Clock, typename Duration>
-    std::cv_status wait_until(std::unique_lock<bthread::mutex>& lock,
+    std::cv_status wait_until(std::unique_lock<bthread::Mutex>& lock,
                               const std::chrono::time_point<Clock, Duration>& timeout_time) {
         wait_for(lock, timeout_time - Clock::now());
         return Clock::now() < timeout_time ? std::cv_status::no_timeout : std::cv_status::timeout;
     }
 
     template<typename Clock, typename Duration, typename Pred>
-    bool wait_until(std::unique_lock<bthread::mutex>& lock,
+    bool wait_until(std::unique_lock<bthread::Mutex>& lock,
                     const std::chrono::time_point<Clock, Duration>& timeout_time,
                     Pred pred);
 
@@ -159,7 +158,7 @@ public:
 
 private:
 
-    void do_timed_wait(std::unique_lock<bthread::mutex>& lock,
+    void do_timed_wait(std::unique_lock<bthread::Mutex>& lock,
                        const std::chrono::time_point<std::chrono::system_clock,
                                std::chrono::nanoseconds>& tp) noexcept;
 
@@ -170,7 +169,7 @@ private:
 };
 
 template<typename Rep, typename Period>
-std::cv_status condition_variable::wait_for(std::unique_lock<bthread::mutex>& lock,
+std::cv_status ConditionVariable2::wait_for(std::unique_lock<bthread::Mutex>& lock,
                                             const std::chrono::duration<Rep, Period>& rel_time) {
     if (rel_time < rel_time.zero()) {
         return std::cv_status::timeout;
@@ -190,7 +189,7 @@ std::cv_status condition_variable::wait_for(std::unique_lock<bthread::mutex>& lo
 }
 
 template<typename Clock, typename Duration, typename Pred>
-bool condition_variable::wait_until(std::unique_lock<bthread::mutex>& lock,
+bool ConditionVariable2::wait_until(std::unique_lock<bthread::Mutex>& lock,
                                     const std::chrono::time_point<Clock, Duration>& timeout_time,
                                     Pred pred) {
     while (!pred()) {
@@ -203,7 +202,7 @@ bool condition_variable::wait_until(std::unique_lock<bthread::mutex>& lock,
 
 template<typename Rep, typename Period>
 std::chrono::nanoseconds
-condition_variable::ceil_nanoseconds(const std::chrono::duration<Rep, Period>& dur) {
+ConditionVariable2::ceil_nanoseconds(const std::chrono::duration<Rep, Period>& dur) {
     std::chrono::nanoseconds result = std::chrono::duration_cast<std::chrono::nanoseconds>(dur);
     if (result < dur) {
         ++result;
@@ -216,7 +215,6 @@ condition_variable::ceil_nanoseconds(const std::chrono::duration<Rep, Period>& d
 } // namespace bthread
 
 // Specialize std::lock_guard and std::unique_lock for bthread_mutex_t
-namespace std {
 
 // NOTE:
 // Technically these specializations invoke Undefined Behaviour for both pre- and post-C++11.
@@ -225,7 +223,10 @@ namespace std {
 // does not satisfy the original requirements for std::unique_lock.
 // Both are prohibited by the C++ standard.
 // It would be good if these can be deprecated and later removed for the sake of correctness.
-// We should use std::unique_lock<bthread::mutex> instead, with no need for explicit specialization.
+// We should use std::unique_lock<bthread::Mutex> instead, with no need for explicit specialization.
+
+namespace std {
+
 template <> class lock_guard<bthread_mutex_t> {
 public:
     explicit lock_guard(bthread_mutex_t & mutex) : _pmutex(&mutex) {

@@ -33,7 +33,7 @@ namespace bthread {
 namespace detail {
 
 template<typename MatchType, typename TArg>
-using disable_overload = std::enable_if<
+using DisableOverload = std::enable_if<
         !std::is_base_of<
                 MatchType,
                 typename std::decay<TArg>::type
@@ -41,7 +41,7 @@ using disable_overload = std::enable_if<
 >;
 
 template<typename MatchType, typename TArg>
-using disable_overload_t = typename disable_overload<MatchType, TArg>::type;
+using DisableOverloadT = typename DisableOverload<MatchType, TArg>::type;
 
 // Just for identifying bthread. There is a bthread_id_t but it is a totally different thing.
 using bthread_id = bthread_t;
@@ -79,53 +79,53 @@ inline void* thread_func_proxy(void* owning_func_ptr) {
 
 } // namespace detail
 
-class bthread_id_wrapper;
+class BThreadIdWrapper;
 
 namespace this_bthread {
-    inline bthread_id_wrapper get_id() noexcept;
+    inline BThreadIdWrapper get_id() noexcept;
 }
 
-class bthread_id_wrapper {
+class BThreadIdWrapper {
 public:
-    bthread_id_wrapper() = default;
+    BThreadIdWrapper() = default;
 
-    friend bool operator==(bthread_id_wrapper lhs, bthread_id_wrapper rhs) {
+    friend bool operator==(BThreadIdWrapper lhs, BThreadIdWrapper rhs) {
         return lhs.id_ == rhs.id_;
     }
 
-    friend bool operator<(bthread_id_wrapper lhs, bthread_id_wrapper rhs) {
+    friend bool operator<(BThreadIdWrapper lhs, BThreadIdWrapper rhs) {
         return lhs.id_ < rhs.id_;
     }
 
-    friend bool operator!=(bthread_id_wrapper lhs, bthread_id_wrapper rhs) {
+    friend bool operator!=(BThreadIdWrapper lhs, BThreadIdWrapper rhs) {
         return !(lhs == rhs);
     }
 
-    friend bool operator<=(bthread_id_wrapper lhs, bthread_id_wrapper rhs) {
+    friend bool operator<=(BThreadIdWrapper lhs, BThreadIdWrapper rhs) {
         return !(rhs < lhs);
     }
 
-    friend bool operator>(bthread_id_wrapper lhs, bthread_id_wrapper rhs) {
+    friend bool operator>(BThreadIdWrapper lhs, BThreadIdWrapper rhs) {
         return rhs < lhs;
     }
 
-    friend bool operator>=(bthread_id_wrapper lhs, bthread_id_wrapper rhs) {
+    friend bool operator>=(BThreadIdWrapper lhs, BThreadIdWrapper rhs) {
         return !(lhs < rhs);
     }
 
     template<typename CharT, typename Traits>
     friend std::basic_ostream<CharT, Traits>&
-    operator<<(std::basic_ostream<CharT, Traits>& ost, bthread_id_wrapper id) {
+    operator<<(std::basic_ostream<CharT, Traits>& ost, BThreadIdWrapper id) {
         return ost << id.id_;
     }
 
-    friend bthread_id_wrapper this_bthread::get_id() noexcept;
-    friend class bthread;
-    friend struct std::hash<bthread_id_wrapper>;
+    friend BThreadIdWrapper this_bthread::get_id() noexcept;
+    friend class BThread;
+    friend struct std::hash<BThreadIdWrapper>;
 
 private:
 
-    bthread_id_wrapper(bthread_t id) noexcept: id_(id) {
+    BThreadIdWrapper(bthread_t id) noexcept: id_(id) {
     }
 
     detail::bthread_id id_{0};
@@ -134,36 +134,36 @@ private:
 struct urgent_launch_tag {
 };
 
-class bthread {
+class BThread {
 public:
-    using id = bthread_id_wrapper;
+    using id = BThreadIdWrapper;
 
     using native_handle_type = bthread_t;
 
-    bthread() noexcept = default;
+    BThread() noexcept = default;
 
-    bthread(const bthread& rhs) = delete;
+    BThread(const BThread& rhs) = delete;
 
-    bthread(bthread&& rhs) noexcept: th_(rhs.th_) {
+    BThread(BThread&& rhs) noexcept: th_(rhs.th_) {
         rhs.th_ = detail::NULL_BTHREAD;
     }
 
     template<typename Callable, typename... Args,
-            typename = detail::disable_overload_t<bthread, Callable>,
-            typename = detail::disable_overload_t<urgent_launch_tag, Callable>>
-    explicit bthread(Callable&& f, Args&& ... args);
+            typename = detail::DisableOverloadT<BThread, Callable>,
+            typename = detail::DisableOverloadT<urgent_launch_tag, Callable>>
+    explicit BThread(Callable&& f, Args&& ... args);
 
     template<typename Callable, typename... Args,
-            typename = detail::disable_overload_t<bthread, Callable>>
-    explicit bthread(urgent_launch_tag /*tag*/, Callable&& f, Args&& ... args);
+            typename = detail::DisableOverloadT<BThread, Callable>>
+    explicit BThread(urgent_launch_tag /*tag*/, Callable&& f, Args&& ... args);
 
-    ~bthread() {
+    ~BThread() {
         joinable() ? std::terminate() : void();
     }
 
-    bthread& operator=(const bthread& rhs) = delete;
+    BThread& operator=(const BThread& rhs) = delete;
 
-    bthread& operator=(bthread&& rhs) noexcept;
+    BThread& operator=(BThread&& rhs) noexcept;
 
     bool joinable() const noexcept {
         return th_ != detail::NULL_BTHREAD;
@@ -181,30 +181,30 @@ public:
 
     void detach();
 
-    void swap(bthread& other) noexcept {
+    void swap(BThread& other) noexcept {
         std::swap(th_, other.th_);
     }
 
 private:
 
     template<typename Callable, typename... Args>
-    bthread(bool urgent, Callable&& f, Args&& ...args);
+    BThread(bool urgent, Callable&& f, Args&& ...args);
 
     bthread_t th_{detail::NULL_BTHREAD};
 };
 
 template<typename Callable, typename... Args, typename, typename>
-bthread::bthread(Callable&& f, Args&& ... args):
-        bthread(false, std::forward<Callable>(f), std::forward<Args>(args)...) {
+BThread::BThread(Callable&& f, Args&& ... args):
+        BThread(false, std::forward<Callable>(f), std::forward<Args>(args)...) {
 }
 
 template<typename Callable, typename... Args, typename>
-bthread::bthread(urgent_launch_tag /*tag*/, Callable&& f, Args&& ... args):
-        bthread(true, std::forward<Callable>(f), std::forward<Args>(args)...) {
+BThread::BThread(urgent_launch_tag /*tag*/, Callable&& f, Args&& ... args):
+        BThread(true, std::forward<Callable>(f), std::forward<Args>(args)...) {
 }
 
 template<typename Callable, typename... Args>
-bthread::bthread(bool urgent, Callable&& f, Args&& ... args) {
+BThread::BThread(bool urgent, Callable&& f, Args&& ... args) {
     auto thread_func_ptr = detail::make_func_ptr(
             std::bind(std::forward<Callable>(f), std::forward<Args>(args)...));
     auto start_func = urgent ? bthread_start_urgent : bthread_start_background;
@@ -221,8 +221,8 @@ bthread::bthread(bool urgent, Callable&& f, Args&& ... args) {
 namespace std {
 
 template<>
-struct hash<::bthread::bthread_id_wrapper> {
-    using argument_type = ::bthread::bthread_id_wrapper;
+struct hash<::bthread::BThreadIdWrapper> {
+    using argument_type = ::bthread::BThreadIdWrapper;
     using result_type = size_t;
 
     size_t operator()(argument_type op) const noexcept {
@@ -243,15 +243,15 @@ inline void yield() noexcept {
 // NOTE: Unlike std::this_thread::get_id() that always return a valid id, this function will
 // return an id object that hold the special distinct value that does not represent any thread,
 // should this function be called from outside any bthreads, e.g. a normal pthread.
-inline ::bthread::bthread::id get_id() noexcept {
-    return ::bthread::bthread::id{bthread_self()};
+inline ::bthread::BThread::id get_id() noexcept {
+    return ::bthread::BThread::id{bthread_self()};
 }
 
 template<class Clock, class Duration>
 void sleep_until(const std::chrono::time_point<Clock, Duration>& sleep_time) {
-    ::bthread::mutex mtx;
-    ::bthread::condition_variable cv;
-    std::unique_lock<::bthread::mutex> lock(mtx);
+    ::bthread::Mutex mtx;
+    ::bthread::ConditionVariable2 cv;
+    std::unique_lock<::bthread::Mutex> lock(mtx);
     cv.wait_until(lock, sleep_time, [&sleep_time]() { return Clock::now() >= sleep_time; });
 }
 

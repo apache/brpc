@@ -217,9 +217,9 @@ private:
 };
 
 TEST(CondTest, modern_cpp_condvar) {
-    bthread::mutex mtx;
-    bthread::condition_variable cv;
-    using ulck = std::unique_lock<bthread::mutex>;
+    bthread::Mutex mtx;
+    bthread::ConditionVariable2 cv;
+    using ulck = std::unique_lock<bthread::Mutex>;
     auto delayed_signal = [&cv](const std::chrono::milliseconds& delay_millis) {
         std::this_thread::sleep_for(delay_millis);
         cv.notify_all();
@@ -306,9 +306,9 @@ TEST(CondTest, modern_cpp_condvar) {
 }
 
 TEST(CondTest, modern_cpp_condvar_any) {
-    bthread::condition_variable_any cv;
+    bthread::ConditionVariableAny cv;
     std::mutex mtx;
-    // this one only works with bthread::condition_variable_any
+    // this one only works with bthread::ConditionVariableAny
     using ulck = std::unique_lock<std::mutex>;
     auto delayed_signal = [&cv](const std::chrono::milliseconds& delay_millis) {
         std::this_thread::sleep_for(delay_millis);

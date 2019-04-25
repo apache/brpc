@@ -96,11 +96,7 @@ TEST(MutexTest, timedlock) {
 }
 
 TEST(MutexTest, cpp_wrapper) {
-#ifdef BUTIL_CXX11_ENABLED
-    using mutex_type = bthread::mutex;
-#else
     typedef bthread::Mutex mutex_type;
-#endif
     mutex_type mutex;
     ASSERT_TRUE(mutex.try_lock());
     mutex.unlock();
@@ -295,9 +291,9 @@ private:
 TEST(MutexTest, cpp_timed_mutex) {
     using std::chrono::milliseconds;
     std::atomic<bool> ready{false};
-    bthread::timed_mutex tmtx;
-    bthread::bthread lock_holder([&tmtx, &ready](){
-        std::lock_guard<bthread::timed_mutex> lock(tmtx);
+    bthread::TimedMutex tmtx;
+    bthread::BThread lock_holder([&tmtx, &ready](){
+        std::lock_guard<bthread::TimedMutex> lock(tmtx);
         ready = true;
         bthread::this_bthread::sleep_for(milliseconds(1000));
     });
@@ -338,7 +334,7 @@ TEST(MutexTest, cpp_timed_mutex) {
 
 TEST(MutexTest, cpp_timed_mutex_performance) {
     const int thread_num = 12;
-    bthread::timed_mutex bth_mutex;
+    bthread::TimedMutex bth_mutex;
     PerfTest(&bth_mutex, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
     PerfTest(&bth_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
 }
