@@ -144,7 +144,7 @@ int bthread_cond_timedwait(bthread_cond_t* __restrict c,
 
 namespace bthread {
 
-void ConditionVariable2::wait(std::unique_lock<bthread::Mutex>& lock) noexcept {
+void ConditionVariable::wait(std::unique_lock<bthread::Mutex>& lock) noexcept {
     if (!lock.owns_lock()) {
         std::terminate();
     }
@@ -154,7 +154,7 @@ void ConditionVariable2::wait(std::unique_lock<bthread::Mutex>& lock) noexcept {
     }
 }
 
-void ConditionVariable2::do_timed_wait(std::unique_lock<bthread::Mutex>& lock,
+void ConditionVariable::do_timed_wait(std::unique_lock<bthread::Mutex>& lock,
                                        const std::chrono::time_point<std::chrono::system_clock,
                                                std::chrono::nanoseconds>& tp) noexcept {
     if (!lock.owns_lock()) {

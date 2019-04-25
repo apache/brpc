@@ -218,7 +218,7 @@ private:
 
 TEST(CondTest, modern_cpp_condvar) {
     bthread::Mutex mtx;
-    bthread::ConditionVariable2 cv;
+    bthread::ConditionVariable cv;
     using ulck = std::unique_lock<bthread::Mutex>;
     auto delayed_signal = [&cv](const std::chrono::milliseconds& delay_millis) {
         std::this_thread::sleep_for(delay_millis);

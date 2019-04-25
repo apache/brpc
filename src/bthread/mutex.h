@@ -102,7 +102,7 @@ public:
 private:
     Mutex _mtx;
     bool _locked{false};
-    ::bthread::ConditionVariable2 _cv;
+    ::bthread::ConditionVariable _cv;
 };
 
 template<typename Rep, typename Period>

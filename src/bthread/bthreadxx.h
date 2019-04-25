@@ -250,7 +250,7 @@ inline ::bthread::BThread::id get_id() noexcept {
 template<class Clock, class Duration>
 void sleep_until(const std::chrono::time_point<Clock, Duration>& sleep_time) {
     ::bthread::Mutex mtx;
-    ::bthread::ConditionVariable2 cv;
+    ::bthread::ConditionVariable cv;
     std::unique_lock<::bthread::Mutex> lock(mtx);
     cv.wait_until(lock, sleep_time, [&sleep_time]() { return Clock::now() >= sleep_time; });
 }
