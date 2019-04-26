@@ -128,16 +128,18 @@ bool TimedMutex::try_lock_until(const std::chrono::time_point<Clock, Duration>& 
     return false;
 }
 
-// bthread::RecursiveMutex that has the same interfaces as std::recursive_mutex.
-// This is a higher level construct that is not directly supported by native bthread APIs.
-class RecursiveMutex {
-public:
-    DISALLOW_COPY_AND_ASSIGN(RecursiveMutex);
+class RecursiveTimedMutex;
 
-    RecursiveMutex() : _counter(0) {
+namespace detail {
+
+class RecursiveMutexBase {
+public:
+    DISALLOW_COPY_AND_ASSIGN(RecursiveMutexBase);
+
+    RecursiveMutexBase() : _counter(0) {
     }
 
-    ~RecursiveMutex() {
+    ~RecursiveMutexBase() {
         std::lock_guard<Mutex> lock(_mtx);
     }
 
@@ -146,6 +148,8 @@ public:
     void unlock();
 
     bool try_lock();
+
+    friend class ::bthread::RecursiveTimedMutex;
 
 private:
 
@@ -160,6 +164,46 @@ private:
     BThread::id _owner_bthread_id; // Valid only if owner is a bthread
     std::thread::id _owner_std_thread_id; // Valid only if owner is a std thread / pthread
 };
+
+}
+
+// RecursiveMutex that has the same interfaces as std::recursive_mutex.
+// This is a higher level construct that is not directly supported by native bthread APIs.
+class RecursiveMutex : public detail::RecursiveMutexBase {
+};
+
+// RecursiveTimedMutex that resembles std::recursive_timed_mutex.
+// This is also a higher level construct not directly supported by native bthread APIs.
+class RecursiveTimedMutex : public detail::RecursiveMutexBase {
+public:
+    template<class Rep, class Period>
+    bool try_lock_for(const std::chrono::duration<Rep, Period>& rel_time);
+
+    template<typename Clock, typename Duration>
+    bool try_lock_until(const std::chrono::time_point<Clock, Duration>& timeout_time);
+};
+
+template<typename Rep, typename Period>
+bool RecursiveTimedMutex::try_lock_for(const std::chrono::duration<Rep, Period>& rel_time) {
+    return RecursiveTimedMutex::try_lock_until(std::chrono::steady_clock::now() + rel_time);
+}
+
+template<typename Clock, typename Duration>
+bool
+RecursiveTimedMutex::try_lock_until(const std::chrono::time_point<Clock, Duration>& timeout_time) {
+    std::unique_lock<Mutex> lock(_mtx);
+    while(!available()) {
+        if(Clock::now() >= timeout_time) {
+            break;
+        }
+        _cv.wait_until(lock, timeout_time);
+    }
+    if (available()) {
+        setup_ownership();
+        return true;
+    }
+    return false;
+}
 
 } // namespace bthread
 

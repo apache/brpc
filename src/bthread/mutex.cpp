@@ -843,7 +843,9 @@ bool TimedMutex::try_lock() {
     return true;
 }
 
-bool RecursiveMutex::available() noexcept {
+namespace detail {
+
+bool RecursiveMutexBase::available() noexcept {
     if (_counter == 0) {
         return true;
     }
@@ -855,7 +857,7 @@ bool RecursiveMutex::available() noexcept {
     }
 }
 
-void RecursiveMutex::setup_ownership() noexcept {
+void RecursiveMutexBase::setup_ownership() noexcept {
     if (_counter == 0) {
         _owner_bthread_id = ::bthread::this_bthread::get_id();
         if (_owner_bthread_id == NOT_A_BTHREAD_ID) {
@@ -865,13 +867,13 @@ void RecursiveMutex::setup_ownership() noexcept {
     ++_counter;
 }
 
-void RecursiveMutex::lock() {
+void RecursiveMutexBase::lock() {
     std::unique_lock<Mutex> lock(_mtx);
     _cv.wait(lock, [this]() { return available(); });
     setup_ownership();
 }
 
-void RecursiveMutex::unlock() {
+void RecursiveMutexBase::unlock() {
     std::unique_lock<Mutex> lock(_mtx);
     --_counter;
     if (_counter == 0) {
@@ -880,7 +882,7 @@ void RecursiveMutex::unlock() {
     }
 }
 
-bool RecursiveMutex::try_lock() {
+bool RecursiveMutexBase::try_lock() {
     std::unique_lock<Mutex> lock(_mtx, std::try_to_lock);
     if (lock.owns_lock() && available()) {
         setup_ownership();
@@ -888,6 +890,8 @@ bool RecursiveMutex::try_lock() {
     }
     return false;
 }
+
+} // namespace detail
 
 } // namespace bthread
 

@@ -398,6 +398,57 @@ TEST(MutexTest, cpp_recursive_mutex_performance) {
     PerfTest(&bth_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
 }
 
+TEST(MutexTest, cpp_recursive_timed_mutex_timing) {
+    using std::chrono::milliseconds;
+    std::atomic<bool> ready{false};
+    bthread::RecursiveTimedMutex tmtx;
+    bthread::BThread lock_holder([&tmtx, &ready](){
+        std::lock_guard<bthread::RecursiveTimedMutex> lock(tmtx);
+        ready = true;
+        bthread::this_bthread::sleep_for(milliseconds(1000));
+    });
+    while(!ready); // wait for the lock_holder to take hold of the lock
+
+    int timer = 0;
+    {
+        MilliSTimeGuard tg(&timer);
+        bool locked = tmtx.try_lock();
+        ASSERT_FALSE(locked);
+        locked = tmtx.try_lock_for(milliseconds(-5));
+        ASSERT_FALSE(locked);
+    }
+    ASSERT_GE(2, timer);
+    {
+        MilliSTimeGuard tg(&timer);
+        bool locked = tmtx.try_lock_for(milliseconds(100));
+        ASSERT_FALSE(locked);
+    }
+    ASSERT_LE(100, timer);
+    ASSERT_GE(120, timer);
+    {
+        MilliSTimeGuard tg(&timer);
+        bool locked = tmtx.try_lock_until(std::chrono::steady_clock::now());
+        ASSERT_FALSE(locked);
+    }
+    ASSERT_GE(2, timer);
+    {
+        MilliSTimeGuard tg(&timer);
+        bool locked = tmtx.try_lock_until(std::chrono::steady_clock::now() + milliseconds(100));
+        ASSERT_FALSE(locked);
+    }
+    ASSERT_LE(100, timer);
+    ASSERT_GE(120, timer);
+
+    lock_holder.join();
+}
+
+TEST(MutexTest, cpp_recursive_timed_mutex_performance) {
+    const int thread_num = 12;
+    bthread::RecursiveTimedMutex bth_mutex;
+    PerfTest(&bth_mutex, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
+    PerfTest(&bth_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
+}
+
 #endif // BUTIL_CXX11_ENABLED
 
 } // namespace
