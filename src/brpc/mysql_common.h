@@ -243,6 +243,96 @@ enum MysqlCollation : uint16_t {
     MYSQL_utf8mb4_vietnamese_ci = 247,
 };
 
+enum MysqlFieldType : uint8_t {
+    MYSQL_FIELD_TYPE_DECIMAL = 0x00,
+    MYSQL_FIELD_TYPE_TINY = 0x01,
+    MYSQL_FIELD_TYPE_SHORT = 0x02,
+    MYSQL_FIELD_TYPE_LONG = 0x03,
+    MYSQL_FIELD_TYPE_FLOAT = 0x04,
+    MYSQL_FIELD_TYPE_DOUBLE = 0x05,
+    MYSQL_FIELD_TYPE_NULL = 0x06,
+    MYSQL_FIELD_TYPE_TIMESTAMP = 0x07,
+    MYSQL_FIELD_TYPE_LONGLONG = 0x08,
+    MYSQL_FIELD_TYPE_INT24 = 0x09,
+    MYSQL_FIELD_TYPE_DATE = 0x0A,
+    MYSQL_FIELD_TYPE_TIME = 0x0B,
+    MYSQL_FIELD_TYPE_DATETIME = 0x0C,
+    MYSQL_FIELD_TYPE_YEAR = 0x0D,
+    MYSQL_FIELD_TYPE_NEWDATE = 0x0E,
+    MYSQL_FIELD_TYPE_VARCHAR = 0x0F,
+    MYSQL_FIELD_TYPE_BIT = 0x10,
+    MYSQL_FIELD_TYPE_JSON = 0xF5,
+    MYSQL_FIELD_TYPE_NEWDECIMAL = 0xF6,
+    MYSQL_FIELD_TYPE_ENUM = 0xF7,
+    MYSQL_FIELD_TYPE_SET = 0xF8,
+    MYSQL_FIELD_TYPE_TINY_BLOB = 0xF9,
+    MYSQL_FIELD_TYPE_MEDIUM_BLOB = 0xFA,
+    MYSQL_FIELD_TYPE_LONG_BLOB = 0xFB,
+    MYSQL_FIELD_TYPE_BLOB = 0xFC,
+    MYSQL_FIELD_TYPE_VAR_STRING = 0xFD,
+    MYSQL_FIELD_TYPE_STRING = 0xFE,
+    MYSQL_FIELD_TYPE_GEOMETRY = 0xFF,
+};
+
+enum MysqlFieldFlag : uint16_t {
+    MYSQL_NOT_NULL_FLAG = 0x0001,
+    MYSQL_PRI_KEY_FLAG = 0x0002,
+    MYSQL_UNIQUE_KEY_FLAG = 0x0004,
+    MYSQL_MULTIPLE_KEY_FLAG = 0x0008,
+    MYSQL_BLOB_FLAG = 0x0010,
+    MYSQL_UNSIGNED_FLAG = 0x0020,
+    MYSQL_ZEROFILL_FLAG = 0x0040,
+    MYSQL_BINARY_FLAG = 0x0080,
+    MYSQL_ENUM_FLAG = 0x0100,
+    MYSQL_AUTO_INCREMENT_FLAG = 0x0200,
+    MYSQL_TIMESTAMP_FLAG = 0x0400,
+    MYSQL_SET_FLAG = 0x0800,
+};
+
+enum MysqlServerStatus : uint16_t {
+    MYSQL_SERVER_STATUS_IN_TRANS = 1,
+    MYSQL_SERVER_STATUS_AUTOCOMMIT = 2,   /* Server in auto_commit mode */
+    MYSQL_SERVER_MORE_RESULTS_EXISTS = 8, /* Multi query - next query exists */
+    MYSQL_SERVER_QUERY_NO_GOOD_INDEX_USED = 16,
+    MYSQL_SERVER_QUERY_NO_INDEX_USED = 32,
+    /**
+      The server was able to fulfill the clients request and opened a
+      read-only non-scrollable cursor for a query. This flag comes
+      in reply to COM_STMT_EXECUTE and COM_STMT_FETCH commands.
+    */
+    MYSQL_SERVER_STATUS_CURSOR_EXISTS = 64,
+    /**
+      This flag is sent when a read-only cursor is exhausted, in reply to
+      COM_STMT_FETCH command.
+    */
+    MYSQL_SERVER_STATUS_LAST_ROW_SENT = 128,
+    MYSQL_SERVER_STATUS_DB_DROPPED = 256, /* A database was dropped */
+    MYSQL_SERVER_STATUS_NO_BACKSLASH_ESCAPES = 512,
+    /**
+      Sent to the client if after a prepared statement reprepare
+      we discovered that the new statement returns a different
+      number of result set columns.
+    */
+    MYSQL_SERVER_STATUS_METADATA_CHANGED = 1024,
+    MYSQL_SERVER_QUERY_WAS_SLOW = 2048,
+
+    /**
+      To mark ResultSet containing output parameter values.
+    */
+    MYSQL_SERVER_PS_OUT_PARAMS = 4096,
+
+    /**
+      Set at the same time as MYSQL_SERVER_STATUS_IN_TRANS if the started
+      multi-statement transaction is a read-only transaction. Cleared
+      when the transaction commits or aborts. Since this flag is sent
+      to clients in OK and EOF packets, the flag indicates the
+      transaction status at the end of command execution.
+    */
+    MYSQL_SERVER_STATUS_IN_TRANS_READONLY = 8192,
+    MYSQL_SERVER_SESSION_STATE_CHANGED = 1UL << 14,
+};
+
+const char* MysqlFieldTypeToString(MysqlFieldType);
 const int mysql_header_size = 4;
 const uint32_t mysql_max_package_size = 0xFFFFFF;
 

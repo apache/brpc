@@ -15,11 +15,11 @@
 // Authors: Yang,Liming (yangliming01@baidu.com)
 
 #include <sstream>
+#include "butil/logging.h"  // LOG()
 #include "brpc/mysql_transaction.h"
 #include "brpc/mysql.h"
 #include "brpc/socket.h"
 #include "brpc/details/controller_private_accessor.h"
-#include "butil/logging.h"  // LOG()
 
 namespace brpc {
 // mysql transaction isolation level string
@@ -51,7 +51,7 @@ bool MysqlTransaction::DoneTransaction(const char* command) {
             LOG(ERROR) << "Fail " << command << " transaction, " << cntl.ErrorText();
         }
     }
-    if (rc && _conn_type == CONNECTION_TYPE_POOLED) {
+    if (rc && _connection_type == CONNECTION_TYPE_POOLED) {
         _socket->ReturnToPool();
     }
     _socket.reset();

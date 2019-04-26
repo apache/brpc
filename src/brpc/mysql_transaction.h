@@ -38,7 +38,7 @@ struct MysqlTransactionOptions {
 // mysql transaction type
 class MysqlTransaction {
 public:
-    MysqlTransaction(Channel& channel, SocketUniquePtr& socket, ConnectionType conn_type);
+    MysqlTransaction(Channel& channel, SocketUniquePtr& socket, ConnectionType connection_type);
     ~MysqlTransaction();
     SocketId GetSocketId() const;
     // commit transaction
@@ -53,13 +53,13 @@ private:
 private:
     Channel& _channel;
     SocketUniquePtr _socket;
-    ConnectionType _conn_type;
+    ConnectionType _connection_type;
 };
 
 inline MysqlTransaction::MysqlTransaction(Channel& channel,
                                           SocketUniquePtr& socket,
-                                          ConnectionType conn_type)
-    : _channel(channel), _conn_type(conn_type) {
+                                          ConnectionType connection_type)
+    : _channel(channel), _connection_type(connection_type) {
     _socket.reset(socket.release());
 }
 

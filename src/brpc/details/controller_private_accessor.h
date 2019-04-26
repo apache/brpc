@@ -154,6 +154,10 @@ public:
         _cntl->_bind_sock_action = BIND_SOCK_USE;
         Socket::Address(sock_id, &_cntl->_bind_sock);
     }
+    // set prepare statement
+    void set_stmt(MysqlStatementStub *stmt) { _cntl->_stmt = stmt; }
+    // get prepare statement
+    MysqlStatementStub* get_stmt() { return _cntl->_stmt; }
 
 private:
     Controller* _cntl;

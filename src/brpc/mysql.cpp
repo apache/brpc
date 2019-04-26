@@ -27,13 +27,11 @@
 #include "butil/macros.h"
 #include "brpc/controller.h"
 #include "brpc/mysql.h"
-#include "brpc/mysql_command.h"
-#include "brpc/mysql_reply.h"
 #include "brpc/mysql_common.h"
 
 namespace brpc {
 
-DEFINE_int32(mysql_default_replies_size, 10, "default multi replies size in one MysqlResponse");
+DEFINE_int32(mysql_multi_replies_size, 10, "multi replies size in one MysqlResponse");
 
 // Internal implementation detail -- do not call these.
 void protobuf_AddDesc_baidu_2frpc_2fmysql_5fbase_2eproto_impl();
@@ -123,13 +121,53 @@ struct StaticDescriptorInitializer_baidu_2frpc_2fmysql_5fbase_2eproto {
 #ifndef _MSC_VER
 #endif  // !_MSC_VER
 
+butil::Status MysqlStatementStub::WriteExecuteData(butil::IOBuf* outbuf, uint32_t stmt_id) {
+    butil::Status st;
+    // long data
+    for (const auto& i : _long_data) {
+        st = MysqlMakeLongDataHeader(outbuf, stmt_id, i.param_id, i.long_data.size());
+        if (!st.ok()) {
+            LOG(ERROR) << "make long data header error " << st;
+            return st;
+        }
+        outbuf->append(i.long_data);
+    }
+    _long_data.clear();
+    // execute data
+    st = MysqlMakeExecuteHeader(outbuf, stmt_id, _execute_data.size());
+    if (!st.ok()) {
+        LOG(ERROR) << "make execute header error " << st;
+        return st;
+    }
+    outbuf->append(_execute_data);
+    _execute_data.clear();
+    _null_mask.mask.clear();
+    _null_mask.area = butil::IOBuf::INVALID_AREA;
+    _param_types.types.clear();
+    _param_types.area = butil::IOBuf::INVALID_AREA;
+
+    return st;
+}
+
 MysqlRequest::MysqlRequest() : ::google::protobuf::Message() {
     SharedCtor();
 }
 
-MysqlRequest::MysqlRequest(MysqlTransaction* tx) : ::google::protobuf::Message() {
+MysqlRequest::MysqlRequest(const MysqlTransaction* tx) : ::google::protobuf::Message() {
     SharedCtor();
     _tx = tx;
+}
+
+MysqlRequest::MysqlRequest(MysqlStatement* stmt) : ::google::protobuf::Message() {
+    SharedCtor();
+    _stmt = new MysqlStatementStub(stmt);
+}
+
+MysqlRequest::MysqlRequest(const MysqlTransaction* tx, MysqlStatement* stmt)
+    : ::google::protobuf::Message() {
+    SharedCtor();
+    _tx = tx;
+    _stmt = new MysqlStatementStub(stmt);
 }
 
 void MysqlRequest::InitAsDefaultInstance() {}
@@ -144,10 +182,16 @@ void MysqlRequest::SharedCtor() {
     _cached_size_ = 0;
     _has_command = false;
     _tx = NULL;
+    _stmt = NULL;
+    _param_index = 0;
 }
 
 MysqlRequest::~MysqlRequest() {
     SharedDtor();
+    if (_stmt != NULL) {
+        delete _stmt;
+    }
+    _stmt = NULL;
 }
 
 void MysqlRequest::SharedDtor() {
@@ -183,6 +227,7 @@ void MysqlRequest::Clear() {
     _buf.clear();
     _has_command = false;
     _tx = NULL;
+    _stmt = NULL;
 }
 
 bool MysqlRequest::MergePartialFromCodedStream(::google::protobuf::io::CodedInputStream*) {
@@ -302,6 +347,187 @@ bool MysqlRequest::Query(const butil::StringPiece& command) {
         return false;
     }
 }
+
+bool MysqlRequest::AddParam(int8_t p) {
+    if (_has_error) {
+        return false;
+    }
+    const butil::Status st = MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_TINY);
+    if (st.ok()) {
+        ++_param_index;
+        return true;
+    } else {
+        CHECK(st.ok()) << st;
+        _has_error = true;
+        return false;
+    }
+}
+bool MysqlRequest::AddParam(uint8_t p) {
+    const butil::Status st =
+        MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_TINY, true);
+    if (st.ok()) {
+        ++_param_index;
+        return true;
+    } else {
+        CHECK(st.ok()) << st;
+        _has_error = true;
+        return false;
+    }
+}
+bool MysqlRequest::AddParam(int16_t p) {
+    const butil::Status st = MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_SHORT);
+    if (st.ok()) {
+        ++_param_index;
+        return true;
+    } else {
+        CHECK(st.ok()) << st;
+        _has_error = true;
+        return false;
+    }
+}
+bool MysqlRequest::AddParam(uint16_t p) {
+    const butil::Status st =
+        MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_SHORT, true);
+    if (st.ok()) {
+        ++_param_index;
+        return true;
+    } else {
+        CHECK(st.ok()) << st;
+        _has_error = true;
+        return false;
+    }
+}
+bool MysqlRequest::AddParam(int32_t p) {
+    const butil::Status st = MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_LONG);
+    if (st.ok()) {
+        ++_param_index;
+        return true;
+    } else {
+        CHECK(st.ok()) << st;
+        _has_error = true;
+        return false;
+    }
+}
+bool MysqlRequest::AddParam(uint32_t p) {
+    const butil::Status st =
+        MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_LONG, true);
+    if (st.ok()) {
+        ++_param_index;
+        return true;
+    } else {
+        CHECK(st.ok()) << st;
+        _has_error = true;
+        return false;
+    }
+}
+bool MysqlRequest::AddParam(int64_t p) {
+    const butil::Status st =
+        MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_LONGLONG);
+    if (st.ok()) {
+        ++_param_index;
+        return true;
+    } else {
+        CHECK(st.ok()) << st;
+        _has_error = true;
+        return false;
+    }
+}
+bool MysqlRequest::AddParam(uint64_t p) {
+    const butil::Status st =
+        MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_LONGLONG, true);
+    if (st.ok()) {
+        ++_param_index;
+        return true;
+    } else {
+        CHECK(st.ok()) << st;
+        _has_error = true;
+        return false;
+    }
+}
+bool MysqlRequest::AddParam(float p) {
+    const butil::Status st = MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_FLOAT);
+    if (st.ok()) {
+        ++_param_index;
+        return true;
+    } else {
+        CHECK(st.ok()) << st;
+        _has_error = true;
+        return false;
+    }
+}
+bool MysqlRequest::AddParam(double p) {
+    const butil::Status st = MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_DOUBLE);
+    if (st.ok()) {
+        ++_param_index;
+        return true;
+    } else {
+        CHECK(st.ok()) << st;
+        _has_error = true;
+        return false;
+    }
+}
+bool MysqlRequest::AddParam(const butil::StringPiece& p) {
+    const butil::Status st = MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_STRING);
+    if (st.ok()) {
+        ++_param_index;
+        return true;
+    } else {
+        CHECK(st.ok()) << st;
+        _has_error = true;
+        return false;
+    }
+}
+bool MysqlRequest::AddParam() {
+    const butil::Status st = MysqlMakeExecuteBody(_stmt, _param_index, NULL, MYSQL_FIELD_TYPE_NULL);
+    if (st.ok()) {
+        ++_param_index;
+        return true;
+    } else {
+        CHECK(st.ok()) << st;
+        _has_error = true;
+        return false;
+    }
+}
+// bool MysqlRequest::Execute() {
+//     no params
+//     if (_stmt->param_number() == 0) {
+//         const butil::Status st =
+//             MysqlMakeExecute(&_buf, NULL, NULL, _stmt, 0, NULL, MYSQL_FIELD_TYPE_NULL);
+//         if (st.ok()) {
+//             return true;
+//         } else {
+//             CHECK(st.ok()) << st;
+//             _has_error = true;
+//             return false;
+//         }
+//     }
+//     if (_param_index != _stmt->param_number()) {
+//         LOG(ERROR) << "AddParam count " << _param_index << " mismatch statement param number "
+//                    << _stmt->param_number();
+//         return false;
+//     }
+//     return true;
+// }
+
+// bool MysqlRequest::Prepare(const butil::StringPiece& command) {
+//     if (_has_error) {
+//         return false;
+//     }
+
+//     if (_has_command) {
+//         return false;
+//     }
+
+//     const butil::Status st = MysqlMakeCommand(&_buf, MYSQL_COM_STMT_PREPARE, command);
+//     if (st.ok()) {
+//         _has_command = true;
+//         return true;
+//     } else {
+//         CHECK(st.ok()) << st;
+//         _has_error = true;
+//         return false;
+//     }
+// }
 
 void MysqlRequest::Print(std::ostream& os) const {
     butil::IOBuf cp = _buf;
@@ -452,19 +678,20 @@ void MysqlResponse::Swap(MysqlResponse* other) {
 
 // ===================================================================
 
-ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf, bool is_auth) {
+ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf, bool is_auth, bool is_prepare) {
     bool more_results = true;
     size_t oldsize = 0;
     while (more_results) {
         oldsize = buf.size();
         if (reply_size() == 0) {
-            ParseError err = _first_reply.ConsumePartialIOBuf(buf, &_arena, is_auth, &more_results);
+            ParseError err =
+                _first_reply.ConsumePartialIOBuf(buf, &_arena, is_auth, is_prepare, &more_results);
             if (err != PARSE_OK) {
                 return err;
             }
         } else {
             const int32_t replies_size =
-                FLAGS_mysql_default_replies_size > 1 ? FLAGS_mysql_default_replies_size : 10;
+                FLAGS_mysql_multi_replies_size > 1 ? FLAGS_mysql_multi_replies_size : 10;
             if (_other_replies.size() < reply_size()) {
                 MysqlReply* replies =
                     (MysqlReply*)_arena.allocate(sizeof(MysqlReply) * (replies_size - 1));
@@ -479,7 +706,7 @@ ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf, bool is_auth) {
                 }
             }
             ParseError err = _other_replies[_nreply - 1]->ConsumePartialIOBuf(
-                buf, &_arena, is_auth, &more_results);
+                buf, &_arena, is_auth, is_prepare, &more_results);
             if (err != PARSE_OK) {
                 return err;
             }

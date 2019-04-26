@@ -17,8 +17,10 @@
 #ifndef BRPC_MYSQL_COMMAND_H
 #define BRPC_MYSQL_COMMAND_H
 
+#include <vector>
 #include "butil/iobuf.h"
 #include "butil/status.h"
+#include "brpc/mysql_common.h"
 
 namespace brpc {
 // mysql command types
@@ -61,6 +63,32 @@ butil::Status MysqlMakeCommand(butil::IOBuf* outbuf,
                                const MysqlCommandType type,
                                const butil::StringPiece& stmt,
                                const uint8_t seq = 0);
+
+// Prepared Statement Protocol
+// an prepared statement has a unique statement id in one connection (in brpc SocketId), an prepared
+// statement can be executed in many connections, so ever connection has a different statement id.
+// In bprc, we can only get a connection in the stage of PackXXXRequest which is behind our building
+// mysql protocol stage, but building prepared statement need the statement id of a connection, so
+// we will need to building this fragment at PackXXXRequest stage.
+
+class MysqlStatementStub;
+// prepared statement execute command header, will be called at PackXXXRequest stage.
+butil::Status MysqlMakeExecuteHeader(butil::IOBuf* outbuf, uint32_t stmt_id, uint32_t body_size);
+// prepared statement execute command body, will be called at building mysql protocol stage.
+butil::Status MysqlMakeExecuteBody(MysqlStatementStub* stmt,
+                                   uint16_t index,
+                                   const void* value,
+                                   MysqlFieldType type,
+                                   bool is_unsigned = false);
+// prepared statement long data header
+butil::Status MysqlMakeLongDataHeader(butil::IOBuf* outbuf,
+                                      uint32_t stmt_id,
+                                      uint16_t param_id,
+                                      uint32_t body_size);
+// prepared statement long data body
+butil::Status MysqlMakeLongDataBody(MysqlStatementStub* stmt,
+                                    uint16_t param_id,
+                                    const butil::StringPiece& data);
 
 }  // namespace brpc
 #endif

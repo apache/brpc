@@ -106,6 +106,8 @@ enum BindSockAction {
     BIND_SOCK_USE,
     BIND_SOCK_NONE,
 };
+// mysql prepared statement declare
+class MysqlStatementStub;
 // A Controller mediates a single method call. The primary purpose of
 // the controller is to provide a way to manipulate settings per RPC-call 
 // and to find out about RPC-level errors.
@@ -764,6 +766,8 @@ private:
     BindSockAction _bind_sock_action;
     // controller bind sock
     SocketUniquePtr _bind_sock;
+    // sql prepare statement
+    MysqlStatementStub *_stmt;
 
     // Thrift method name, only used when thrift protocol enabled
     std::string _thrift_method_name;

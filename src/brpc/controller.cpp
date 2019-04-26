@@ -253,6 +253,7 @@ void Controller::ResetPods() {
     _response_stream = INVALID_STREAM_ID;
     _remote_stream_settings = NULL;
     _bind_sock_action = BIND_SOCK_NONE;
+    _stmt = NULL;
 }
 
 Controller::Call::Call(Controller::Call* rhs)
@@ -996,7 +997,8 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     _current_call.need_feedback = false;
     _current_call.enable_circuit_breaker = has_enabled_circuit_breaker();
     SocketUniquePtr tmp_sock;
-    if (_bind_sock_action == BIND_SOCK_USE) {
+    if ((_connection_type & CONNECTION_TYPE_POOLED_AND_SHORT) && 
+        _bind_sock_action == BIND_SOCK_USE) {
         tmp_sock.reset(_bind_sock.release());
         if (!tmp_sock || (!is_health_check_call() && !tmp_sock->IsAvailable())) {
             SetFailed(EHOSTDOWN, "Not connected to bind socket yet, server_id=%" PRIu64,

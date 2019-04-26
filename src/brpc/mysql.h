@@ -30,9 +30,11 @@
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
 #include "butil/arena.h"
-#include "mysql_reply.h"
 #include "parse_result.h"
+#include "mysql_command.h"
+#include "mysql_reply.h"
 #include "mysql_transaction.h"
+#include "mysql_statement.h"
 
 namespace brpc {
 // Request to mysql.
@@ -46,10 +48,75 @@ namespace brpc {
 //   if (!cntl.Failed()) {
 //       LOG(INFO) << response.reply(0);
 //   }
+
+class MysqlStatementStub {
+public:
+    MysqlStatementStub(MysqlStatement* stmt);
+    MysqlStatement* stmt();
+    butil::IOBuf& execute_data();
+    butil::Status WriteExecuteData(butil::IOBuf* outbuf, uint32_t stmt_id);
+    // prepare statement null mask
+    struct NullMask {
+        NullMask() : area(butil::IOBuf::INVALID_AREA) {}
+        std::vector<uint8_t> mask;
+        butil::IOBuf::Area area;
+    };
+    // prepare statement param types
+    struct ParamTypes {
+        ParamTypes() : area(butil::IOBuf::INVALID_AREA) {}
+        std::vector<uint8_t> types;
+        butil::IOBuf::Area area;
+    };
+    // null mask and param types
+    NullMask& null_mask();
+    ParamTypes& param_types();
+    // save long data
+    void save_long_data(uint16_t param_id, const butil::StringPiece& value);
+
+private:
+    MysqlStatement* _stmt;
+    butil::IOBuf _execute_data;
+    NullMask _null_mask;
+    ParamTypes _param_types;
+    // long data
+    struct LongData {
+        uint16_t param_id;
+        butil::IOBuf long_data;
+    };
+    std::vector<LongData> _long_data;
+};
+
+inline MysqlStatementStub::MysqlStatementStub(MysqlStatement* stmt) : _stmt(stmt) {}
+
+inline MysqlStatement* MysqlStatementStub::stmt() {
+    return _stmt;
+}
+
+inline butil::IOBuf& MysqlStatementStub::execute_data() {
+    return _execute_data;
+}
+
+inline MysqlStatementStub::NullMask& MysqlStatementStub::null_mask() {
+    return _null_mask;
+}
+
+inline MysqlStatementStub::ParamTypes& MysqlStatementStub::param_types() {
+    return _param_types;
+}
+
+inline void MysqlStatementStub::save_long_data(uint16_t param_id, const butil::StringPiece& value) {
+    LongData d;
+    d.param_id = param_id;
+    d.long_data.append(value.data(), value.size());
+    _long_data.push_back(d);
+}
+
 class MysqlRequest : public ::google::protobuf::Message {
 public:
     MysqlRequest();
-    MysqlRequest(MysqlTransaction* tx);
+    MysqlRequest(const MysqlTransaction* tx);
+    MysqlRequest(MysqlStatement* stmt);
+    MysqlRequest(const MysqlTransaction* tx, MysqlStatement* stmt);
     virtual ~MysqlRequest();
     MysqlRequest(const MysqlRequest& from);
     inline MysqlRequest& operator=(const MysqlRequest& from) {
@@ -84,18 +151,33 @@ public:
 
     // call query command
     bool Query(const butil::StringPiece& command);
-    // prepared statement begin
-    // bool Prepare(const butil::StringPiece& command);
-    // bool Execute(const butil::StringPiece& command);
-    // prepared statement end
+    // add statement params
+    bool AddParam(int8_t p);
+    bool AddParam(uint8_t p);
+    bool AddParam(int16_t p);
+    bool AddParam(uint16_t p);
+    bool AddParam(int32_t p);
+    bool AddParam(uint32_t p);
+    bool AddParam(int64_t p);
+    bool AddParam(uint64_t p);
+    bool AddParam(float p);
+    bool AddParam(double p);
+    bool AddParam(const butil::StringPiece& p);
+    bool AddParam();  // add a null param
+    // // execute statement
+    // bool Execute();
 
     // True if previous command failed.
     bool has_error() const {
         return _has_error;
     }
 
-    MysqlTransaction* get_tx() const {
+    const MysqlTransaction* get_tx() const {
         return _tx;
+    }
+
+    MysqlStatementStub* get_stmt() const {
+        return _stmt;
     }
 
     void Print(std::ostream&) const;
@@ -105,11 +187,18 @@ private:
     void SharedDtor();
     void SetCachedSize(int size) const;
 
-    bool _has_command;          // request has command
-    bool _has_error;            // previous AddCommand had error
-    butil::IOBuf _buf;          // the serialized request.
-    mutable int _cached_size_;  // ByteSize
-    MysqlTransaction* _tx;
+    // // don't call Prepare directly, use NewMysqlStatement instead.
+    // bool Prepare(const butil::StringPiece& command);
+    // Close will call automiatically when MysqlStatement destruct.
+    bool Close();
+
+    bool _has_command;            // request has command
+    bool _has_error;              // previous AddCommand had error
+    butil::IOBuf _buf;            // the serialized request.
+    mutable int _cached_size_;    // ByteSize
+    const MysqlTransaction* _tx;  // transaction
+    MysqlStatementStub* _stmt;    // statement
+    uint16_t _param_index;        // statement param index
 
     friend void protobuf_AddDesc_baidu_2frpc_2fmysql_5fbase_2eproto_impl();
     friend void protobuf_AddDesc_baidu_2frpc_2fmysql_5fbase_2eproto();
@@ -139,7 +228,7 @@ public:
     // Returns PARSE_ERROR_NOT_ENOUGH_DATA if data in `buf' is not enough to parse.
     // Returns PARSE_ERROR_ABSOLUTELY_WRONG if the parsing
     // failed.
-    ParseError ConsumePartialIOBuf(butil::IOBuf& buf, bool is_auth = false);
+    ParseError ConsumePartialIOBuf(butil::IOBuf& buf, bool is_auth, bool is_prepare);
 
     // Number of replies in this response.
     // (May have more than one reply due to pipeline)

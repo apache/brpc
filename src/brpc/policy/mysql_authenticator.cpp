@@ -32,10 +32,10 @@ namespace {
 const butil::StringPiece mysql_native_password("mysql_native_password");
 };  // namespace
 
-void MysqlParseAuth(const butil::StringPiece& raw,
-                    std::string* user,
-                    std::string* password,
-                    std::string* schema) {
+void MysqlParseAuthenticator(const butil::StringPiece& raw,
+                             std::string* user,
+                             std::string* password,
+                             std::string* schema) {
     const char* delim = "\t";
     std::vector<size_t> idx;
     idx.reserve(3);

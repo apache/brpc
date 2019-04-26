@@ -21,8 +21,8 @@
 #include "butil/arena.h"
 #include "butil/sys_byteorder.h"
 #include "butil/logging.h"  // LOG()
-#include "parse_result.h"
-#include "mysql_common.h"
+#include "brpc/parse_result.h"
+#include "brpc/mysql_common.h"
 
 namespace brpc {
 
@@ -45,100 +45,11 @@ enum MysqlRspType : uint8_t {
     MYSQL_RSP_ERROR = 0xFF,
     MYSQL_RSP_RESULTSET = 0x01,
     MYSQL_RSP_EOF = 0xFE,
-    MYSQL_RSP_AUTH = 0xFB,     // add for mysql auth
-    MYSQL_RSP_UNKNOWN = 0xFC,  // add for other case
+    MYSQL_RSP_AUTH = 0xFB,        // add for mysql auth
+    MYSQL_RSP_PREPARE_OK = 0xFC,  // add for prepared statement
+    MYSQL_RSP_UNKNOWN = 0xFD,     // add for other case
 };
 
-enum MysqlFieldType : uint8_t {
-    MYSQL_FIELD_TYPE_DECIMAL = 0x00,
-    MYSQL_FIELD_TYPE_TINY = 0x01,
-    MYSQL_FIELD_TYPE_SHORT = 0x02,
-    MYSQL_FIELD_TYPE_LONG = 0x03,
-    MYSQL_FIELD_TYPE_FLOAT = 0x04,
-    MYSQL_FIELD_TYPE_DOUBLE = 0x05,
-    MYSQL_FIELD_TYPE_NULL = 0x06,
-    MYSQL_FIELD_TYPE_TIMESTAMP = 0x07,
-    MYSQL_FIELD_TYPE_LONGLONG = 0x08,
-    MYSQL_FIELD_TYPE_INT24 = 0x09,
-    MYSQL_FIELD_TYPE_DATE = 0x0A,
-    MYSQL_FIELD_TYPE_TIME = 0x0B,
-    MYSQL_FIELD_TYPE_DATETIME = 0x0C,
-    MYSQL_FIELD_TYPE_YEAR = 0x0D,
-    MYSQL_FIELD_TYPE_NEWDATE = 0x0E,
-    MYSQL_FIELD_TYPE_VARCHAR = 0x0F,
-    MYSQL_FIELD_TYPE_BIT = 0x10,
-    MYSQL_FIELD_TYPE_JSON = 0xF5,
-    MYSQL_FIELD_TYPE_NEWDECIMAL = 0xF6,
-    MYSQL_FIELD_TYPE_ENUM = 0xF7,
-    MYSQL_FIELD_TYPE_SET = 0xF8,
-    MYSQL_FIELD_TYPE_TINY_BLOB = 0xF9,
-    MYSQL_FIELD_TYPE_MEDIUM_BLOB = 0xFA,
-    MYSQL_FIELD_TYPE_LONG_BLOB = 0xFB,
-    MYSQL_FIELD_TYPE_BLOB = 0xFC,
-    MYSQL_FIELD_TYPE_VAR_STRING = 0xFD,
-    MYSQL_FIELD_TYPE_STRING = 0xFE,
-    MYSQL_FIELD_TYPE_GEOMETRY = 0xFF,
-};
-
-enum MysqlFieldFlag : uint16_t {
-    MYSQL_NOT_NULL_FLAG = 0x0001,
-    MYSQL_PRI_KEY_FLAG = 0x0002,
-    MYSQL_UNIQUE_KEY_FLAG = 0x0004,
-    MYSQL_MULTIPLE_KEY_FLAG = 0x0008,
-    MYSQL_BLOB_FLAG = 0x0010,
-    MYSQL_UNSIGNED_FLAG = 0x0020,
-    MYSQL_ZEROFILL_FLAG = 0x0040,
-    MYSQL_BINARY_FLAG = 0x0080,
-    MYSQL_ENUM_FLAG = 0x0100,
-    MYSQL_AUTO_INCREMENT_FLAG = 0x0200,
-    MYSQL_TIMESTAMP_FLAG = 0x0400,
-    MYSQL_SET_FLAG = 0x0800,
-};
-
-enum MysqlServerStatus : uint16_t {
-    MYSQL_SERVER_STATUS_IN_TRANS = 1,
-    MYSQL_SERVER_STATUS_AUTOCOMMIT = 2,   /* Server in auto_commit mode */
-    MYSQL_SERVER_MORE_RESULTS_EXISTS = 8, /* Multi query - next query exists */
-    MYSQL_SERVER_QUERY_NO_GOOD_INDEX_USED = 16,
-    MYSQL_SERVER_QUERY_NO_INDEX_USED = 32,
-    /**
-      The server was able to fulfill the clients request and opened a
-      read-only non-scrollable cursor for a query. This flag comes
-      in reply to COM_STMT_EXECUTE and COM_STMT_FETCH commands.
-    */
-    MYSQL_SERVER_STATUS_CURSOR_EXISTS = 64,
-    /**
-      This flag is sent when a read-only cursor is exhausted, in reply to
-      COM_STMT_FETCH command.
-    */
-    MYSQL_SERVER_STATUS_LAST_ROW_SENT = 128,
-    MYSQL_SERVER_STATUS_DB_DROPPED = 256, /* A database was dropped */
-    MYSQL_SERVER_STATUS_NO_BACKSLASH_ESCAPES = 512,
-    /**
-      Sent to the client if after a prepared statement reprepare
-      we discovered that the new statement returns a different
-      number of result set columns.
-    */
-    MYSQL_SERVER_STATUS_METADATA_CHANGED = 1024,
-    MYSQL_SERVER_QUERY_WAS_SLOW = 2048,
-
-    /**
-      To mark ResultSet containing output parameter values.
-    */
-    MYSQL_SERVER_PS_OUT_PARAMS = 4096,
-
-    /**
-      Set at the same time as MYSQL_SERVER_STATUS_IN_TRANS if the started
-      multi-statement transaction is a read-only transaction. Cleared
-      when the transaction commits or aborts. Since this flag is sent
-      to clients in OK and EOF packets, the flag indicates the
-      transaction status at the end of command execution.
-    */
-    MYSQL_SERVER_STATUS_IN_TRANS_READONLY = 8192,
-    MYSQL_SERVER_SESSION_STATE_CHANGED = 1UL << 14,
-};
-
-const char* MysqlFieldTypeToString(MysqlFieldType);
 const char* MysqlRspTypeToString(MysqlRspType);
 
 class MysqlReply {
@@ -176,6 +87,31 @@ public:
         uint8_t _auth_plugin_length;
         butil::StringPiece _salt2;
         butil::StringPiece _auth_plugin;
+    };
+    // Mysql Prepared Statement Ok
+    class Column;
+    class PrepareOk : private CheckParsed {
+    public:
+        PrepareOk();
+        uint32_t stmt_id() const;
+        uint16_t column_number() const;
+        uint16_t param_number() const;
+        uint16_t warning() const;
+        const Column& param(uint16_t index) const;
+        const Column& column(uint16_t index) const;
+
+    private:
+        ParseError Parse(butil::IOBuf& buf, butil::Arena* arena);
+
+        DISALLOW_COPY_AND_ASSIGN(PrepareOk);
+        friend class MysqlReply;
+
+        uint32_t _stmt_id;
+        uint16_t _column_number;
+        uint16_t _param_number;
+        uint16_t _warning;
+        Column* _params;
+        Column* _columns;
     };
     // Mysql Ok package
     class Ok : private CheckParsed {
@@ -297,7 +233,12 @@ public:
 
     private:
         ParseError Parse(butil::IOBuf& buf, const MysqlReply::Column* column, butil::Arena* arena);
-
+        ParseError Parse(butil::IOBuf& buf,
+                         const MysqlReply::Column* column,
+                         uint64_t column_index,
+                         uint64_t column_number,
+                         const uint8_t* null_mask,
+                         butil::Arena* arena);
         DISALLOW_COPY_AND_ASSIGN(Field);
         friend class MysqlReply;
 
@@ -326,7 +267,12 @@ public:
         const Field& field(const uint64_t index) const;
 
     private:
-        ParseError ParseText(butil::IOBuf& buf);
+        ParseError Parse(butil::IOBuf& buf,
+                         const Column* columns,
+                         uint64_t column_number,
+                         Field* fields,
+                         bool binary,
+                         butil::Arena* arena);
 
         DISALLOW_COPY_AND_ASSIGN(Row);
         friend class MysqlReply;
@@ -338,10 +284,8 @@ public:
 
 public:
     MysqlReply();
-    ParseError ConsumePartialIOBuf(butil::IOBuf& buf,
-                                   butil::Arena* arena,
-                                   bool is_auth,
-                                   bool* more_results);
+    ParseError ConsumePartialIOBuf(
+        butil::IOBuf& buf, butil::Arena* arena, bool is_auth, bool is_prepare, bool* more_results);
     void Swap(MysqlReply& other);
     void Print(std::ostream& os) const;
     // response type
@@ -349,6 +293,7 @@ public:
     // get auth
     const Auth& auth() const;
     const Ok& ok() const;
+    const PrepareOk& prepare_ok() const;
     const Error& error() const;
     const Eof& eof() const;
     // get column number
@@ -361,6 +306,7 @@ public:
     const Row& next() const;
     bool is_auth() const;
     bool is_ok() const;
+    bool is_prepare_ok() const;
     bool is_error() const;
     bool is_eof() const;
     bool is_resultset() const;
@@ -381,7 +327,7 @@ private:
         ResultSet() : _columns(NULL), _row_number(0) {
             _cur = _first = _last = &_dummy;
         }
-        ParseError Parse(butil::IOBuf& buf, butil::Arena* arena);
+        ParseError Parse(butil::IOBuf& buf, butil::Arena* arena, bool binary);
         ResultSetHeader _header;
         Column* _columns;
         Eof _eof1;
@@ -403,6 +349,7 @@ private:
         Auth* auth;
         ResultSet* result_set;
         Ok* ok;
+        PrepareOk* prepare_ok;
         Error* error;
         Eof* eof;
         uint64_t padding;  // For swapping, must cover all bytes.
@@ -434,6 +381,14 @@ inline const MysqlReply::Auth& MysqlReply::auth() const {
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an auth";
     static Auth auth_nil;
     return auth_nil;
+}
+inline const MysqlReply::PrepareOk& MysqlReply::prepare_ok() const {
+    if (is_prepare_ok()) {
+        return *_data.prepare_ok;
+    }
+    CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an ok";
+    static PrepareOk prepare_ok_nil;
+    return prepare_ok_nil;
 }
 inline const MysqlReply::Ok& MysqlReply::ok() const {
     if (is_ok()) {
@@ -506,6 +461,9 @@ inline const MysqlReply::Row& MysqlReply::next() const {
 inline bool MysqlReply::is_auth() const {
     return _type == MYSQL_RSP_AUTH;
 }
+inline bool MysqlReply::is_prepare_ok() const {
+    return _type == MYSQL_RSP_PREPARE_OK;
+}
 inline bool MysqlReply::is_ok() const {
     return _type == MYSQL_RSP_OK;
 }
@@ -559,6 +517,43 @@ inline butil::StringPiece MysqlReply::Auth::salt2() const {
 }
 inline butil::StringPiece MysqlReply::Auth::auth_plugin() const {
     return _auth_plugin;
+}
+// mysql prepared statement ok
+inline MysqlReply::PrepareOk::PrepareOk()
+    : _stmt_id(0),
+      _column_number(0),
+      _param_number(0),
+      _warning(0),
+      _params(NULL),
+      _columns(NULL) {}
+inline uint32_t MysqlReply::PrepareOk::stmt_id() const {
+    CHECK(_stmt_id > 0) << "stmt id is wrong";
+    return _stmt_id;
+}
+inline uint16_t MysqlReply::PrepareOk::column_number() const {
+    return _column_number;
+}
+inline uint16_t MysqlReply::PrepareOk::param_number() const {
+    return _param_number;
+}
+inline uint16_t MysqlReply::PrepareOk::warning() const {
+    return _warning;
+}
+inline const MysqlReply::Column& MysqlReply::PrepareOk::param(uint16_t index) const {
+    if (index < _param_number) {
+        return _params[index];
+    }
+    static Column column_nil;
+    CHECK(false) << "index " << index << " out of bound [0," << _param_number << ")";
+    return column_nil;
+}
+inline const MysqlReply::Column& MysqlReply::PrepareOk::column(uint16_t index) const {
+    if (index < _column_number) {
+        return _columns[index];
+    }
+    CHECK(false) << "index " << index << " out of bound [0," << _column_number << ")";
+    static Column column_nil;
+    return column_nil;
 }
 // mysql reply ok
 inline MysqlReply::Ok::Ok() : _affect_row(0), _index(0), _status(0), _warning(0) {}

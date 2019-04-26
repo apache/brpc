@@ -576,7 +576,7 @@ static void GlobalInitializeOrDieImpl() {
                                NULL,
                                NULL,
                                GetMysqlMethodName,
-                               CONNECTION_TYPE_ALL,
+                               CONNECTION_TYPE_POOLED_AND_SHORT,
                                "mysql"};
     if (RegisterProtocol(PROTOCOL_MYSQL, mysql_protocol) != 0) {
         exit(1);

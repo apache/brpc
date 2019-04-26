@@ -136,11 +136,13 @@ endif()
 
 add_executable(mysql_cli mysql_cli.cpp)
 add_executable(mysql_tx mysql_tx.cpp)
+add_executable(mysql_stmt mysql_stmt.cpp)
 add_executable(mysql_press mysql_press.cpp)
 # add_executable(mysqlclient_press mysqlclient_press.cpp)
 
 set(AUX_LIB readline ncurses)
 target_link_libraries(mysql_cli ${BRPC_LIB} ${DYNAMIC_LIB} ${AUX_LIB})
 target_link_libraries(mysql_tx ${BRPC_LIB} ${DYNAMIC_LIB})
+target_link_libraries(mysql_stmt ${BRPC_LIB} ${DYNAMIC_LIB})
 target_link_libraries(mysql_press ${BRPC_LIB} ${DYNAMIC_LIB})
 # target_link_libraries(mysqlclient_press ${BRPC_LIB} ${DYNAMIC_LIB})
