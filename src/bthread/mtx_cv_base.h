@@ -10,7 +10,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Authors: Shuo Zang (jasonszang@126.com)
+// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
+//          Shuo Zang (jasonszang@126.com)
+
+// Several basic thread synchronization constructs are extracted into this base header so that
+// other higher level constructs can depend on them without introducing circular header
+// dependencies.
 
 #ifndef BTHREAD_MTX_CV_BASE_H
 #define BTHREAD_MTX_CV_BASE_H
@@ -226,6 +231,9 @@ private:
 
 namespace bthread {
 
+// The bthread equivalent of std::condition_variable. The interface matches that of
+// std::condition_variable with several extra non-standard-compatible functions and members
+// for historical reasons.
 class ConditionVariable {
 
 public:

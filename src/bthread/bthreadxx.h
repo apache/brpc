@@ -85,6 +85,7 @@ namespace this_bthread {
     inline BThreadIdWrapper get_id() noexcept;
 }
 
+// A trivally copyable id type that represents a bthread::BThread.
 class BThreadIdWrapper {
 public:
     BThreadIdWrapper() = default;
@@ -134,6 +135,13 @@ private:
 struct urgent_launch_tag {
 };
 
+// The bthread equivalent of std::thread that supports the same features e.g. starting threads
+// using lambdas and functors, move semantics, joining and detaching.
+//
+// Note that although native bthreads are considered "detached but still joinable",
+// bthread::BThreads are not. The joining and detaching semantics are especially made to match
+// that of std::thread: when a bthread::BThread is detached it is no longer joinable, and if a
+// joinable BThread is destructed, std::terminate() is invoked.
 class BThread {
 public:
     using id = BThreadIdWrapper;
@@ -220,6 +228,7 @@ BThread::BThread(bool urgent, Callable&& f, Args&& ... args) {
 
 namespace std {
 
+// std::hash specialization for bthread::BThread::id
 template<>
 struct hash<::bthread::BThreadIdWrapper> {
     using argument_type = ::bthread::BThreadIdWrapper;
@@ -234,6 +243,7 @@ struct hash<::bthread::BThreadIdWrapper> {
 
 namespace bthread {
 
+// The four utility functions equivalent to the ones in namespace std::this_thread
 namespace this_bthread {
 
 inline void yield() noexcept {

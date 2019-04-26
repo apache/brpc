@@ -13,8 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Author: Zhangyi Chen (chenzhangyi01@baidu.com)
-// Date: 2015/12/14 18:17:04
+// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
+//          Shuo Zang (jasonszang@126.com)
+// Date: 2015/12/14 18:17:0
 
 #ifndef  BTHREAD_MUTEX_H
 #define  BTHREAD_MUTEX_H
@@ -76,6 +77,7 @@ struct MutexDestructor<bthread_mutex_t> {
 
 namespace bthread {
 
+// The bthread equivalent of std::timed_mutex.
 class TimedMutex {
 
 public:
@@ -167,12 +169,12 @@ private:
 
 }
 
-// RecursiveMutex that has the same interfaces as std::recursive_mutex.
+// The bthread equivalent of std::recursive_mutex.
 // This is a higher level construct that is not directly supported by native bthread APIs.
 class RecursiveMutex : public detail::RecursiveMutexBase {
 };
 
-// RecursiveTimedMutex that resembles std::recursive_timed_mutex.
+// The bthread equivalent of std::recursive_timed_mutex.
 // This is also a higher level construct not directly supported by native bthread APIs.
 class RecursiveTimedMutex : public detail::RecursiveMutexBase {
 public:

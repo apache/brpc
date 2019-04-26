@@ -13,7 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Author: Zhangyi Chen (chenzhangyi01@baidu.com)
+// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
+//          Shuo Zang (jasonszang@126.com)
 // Date: 2015/12/14 21:26:26
 
 #ifndef  BTHREAD_CONDITION_VARIABLE_H
@@ -36,6 +37,12 @@ namespace bthread {
 
 #ifdef BUTIL_CXX11_ENABLED
 
+// The bthread equivalent of std::condition_variable_any that works with types of Lockables
+// other than std::unique_lock<bthread::Mutex>.
+// This is a higher level construct that is not directly supported by native bthread APIs.
+// Note that just as std::condition_variable_any, ConditionVariableAny has slightly worse
+// performance than bthread::BThread. And if you use system level thread mutexes with
+// bthread::ConditionVariableAny you will block the underlying thread.
 class ConditionVariableAny {
 public:
     DISALLOW_COPY_AND_ASSIGN(ConditionVariableAny);
