@@ -340,7 +340,7 @@ TEST(MutexTest, cpp_timed_mutex_performance) {
     PerfTest(&bth_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
 }
 
-TEST(MutexText, cpp_recursive_mutex_sanity) {
+TEST(MutexTest, cpp_recursive_mutex_sanity) {
     bthread::RecursiveMutex mtx;
     int counter = 0;
     int concurrency = 0;

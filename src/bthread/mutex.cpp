@@ -818,29 +818,20 @@ int pthread_mutex_unlock (pthread_mutex_t *__mutex) {
 
 namespace bthread {
 
+TimedMutex::TimedMutex():_mutex() {
+    int ec = bthread_mutex_init(&_mutex, NULL);
+    if (ec != 0) {
+        throw std::system_error(std::error_code(ec, std::system_category()),
+                                "Mutex constructor failed");
+    }
+}
+
 void TimedMutex::lock() {
-    std::unique_lock<Mutex> lock(_mtx);
-    _cv.wait(lock, [this](){return !_locked;});
-    _locked = true;
-}
-
-void TimedMutex::unlock() {
-    std::unique_lock<Mutex> lock(_mtx);
-    _locked = false;
-    lock.unlock();
-    _cv.notify_one();
-}
-
-bool TimedMutex::try_lock() {
-    std::unique_lock<Mutex> lock(_mtx, std::try_to_lock);
-    if (!lock.owns_lock()) {
-        return false;
+    int ec = bthread_mutex_lock(&_mutex);
+    if (ec != 0) {
+        throw std::system_error(std::error_code(ec, std::system_category()),
+                                "Mutex lock failed");
     }
-    if (_locked) {
-        return false;
-    }
-    _locked = true;
-    return true;
 }
 
 namespace detail {

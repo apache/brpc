@@ -26,6 +26,7 @@
 #include "bvar/utils/lock_timer.h"
 #ifdef BUTIL_CXX11_ENABLED
 #include <chrono>
+#include <limits>
 #include <thread>
 #include "bthread/bthreadxx.h"
 #endif
@@ -73,27 +74,24 @@ struct MutexDestructor<bthread_mutex_t> {
 
 #ifdef BUTIL_CXX11_ENABLED
 
-// Higher level mutex constructs for C++
-
 namespace bthread {
 
 class TimedMutex {
 
 public:
+    using native_handle_type = bthread_mutex_t*;
 
     DISALLOW_COPY_AND_ASSIGN(TimedMutex);
 
-    TimedMutex() = default;
+    TimedMutex();
 
-    ~TimedMutex() {
-        std::lock_guard<Mutex> lg(_mtx);
-    }
+    ~TimedMutex() { CHECK_EQ(0, bthread_mutex_destroy(&_mutex)); }
 
     void lock();
 
-    void unlock();
+    void unlock() { bthread_mutex_unlock(&_mutex); }
 
-    bool try_lock();
+    bool try_lock() { return !bthread_mutex_trylock(&_mutex); }
 
     template<typename Rep, typename Period>
     bool try_lock_for(const std::chrono::duration<Rep, Period>& rel_time);
@@ -102,9 +100,7 @@ public:
     bool try_lock_until(const std::chrono::time_point<Clock, Duration>& timeout_time);
 
 private:
-    Mutex _mtx;
-    bool _locked{false};
-    ::bthread::ConditionVariable _cv;
+    bthread_mutex_t _mutex;
 };
 
 template<typename Rep, typename Period>
@@ -114,18 +110,22 @@ bool TimedMutex::try_lock_for(const std::chrono::duration<Rep, Period>& rel_time
 
 template<typename Clock, typename Duration>
 bool TimedMutex::try_lock_until(const std::chrono::time_point<Clock, Duration>& timeout_time) {
-    std::unique_lock<Mutex> lock(_mtx);
-    while(_locked) {
-        if(Clock::now() >= timeout_time) {
-            break;
-        }
-        _cv.wait_until(lock, timeout_time);
+    auto dur = timeout_time - Clock::now();
+    auto sys_timeout = std::chrono::time_point_cast<std::chrono::nanoseconds>(
+            std::chrono::system_clock::now() + dur);
+    auto nanos_since_epoch = sys_timeout.time_since_epoch();
+    auto secs_since_epoch = std::chrono::duration_cast<std::chrono::seconds>(nanos_since_epoch);
+    auto max_timespec_secs = std::numeric_limits<decltype(timespec::tv_sec)>::max();
+    timespec sp{};
+    if (secs_since_epoch.count() < max_timespec_secs) {
+        sp.tv_sec = secs_since_epoch.count();
+        sp.tv_nsec = static_cast<decltype(sp.tv_nsec)>(
+                (nanos_since_epoch - secs_since_epoch).count());
+    } else {
+        sp.tv_sec = max_timespec_secs;
+        sp.tv_nsec = 999999999;
     }
-    if (!_locked) {
-        _locked = true;
-        return true;
-    }
-    return false;
+    return !bthread_mutex_timedlock(&_mutex, &sp);
 }
 
 class RecursiveTimedMutex;
