@@ -26,6 +26,8 @@
 #include "bvar/utils/lock_timer.h"
 #ifdef BUTIL_CXX11_ENABLED
 #include <chrono>
+#include <thread>
+#include "bthread/bthreadxx.h"
 #endif
 
 namespace bthread {
@@ -125,6 +127,39 @@ bool TimedMutex::try_lock_until(const std::chrono::time_point<Clock, Duration>& 
     }
     return false;
 }
+
+// bthread::RecursiveMutex that has the same interfaces as std::recursive_mutex.
+// This is a higher level construct that is not directly supported by native bthread APIs.
+class RecursiveMutex {
+public:
+    DISALLOW_COPY_AND_ASSIGN(RecursiveMutex);
+
+    RecursiveMutex() : _counter(0) {
+    }
+
+    ~RecursiveMutex() {
+        std::lock_guard<Mutex> lock(_mtx);
+    }
+
+    void lock();
+
+    void unlock();
+
+    bool try_lock();
+
+private:
+
+    bool available() noexcept;
+
+    void setup_ownership() noexcept;
+
+    constexpr const static BThread::id NOT_A_BTHREAD_ID{};
+    Mutex _mtx;
+    ConditionVariable _cv;
+    int _counter;
+    BThread::id _owner_bthread_id; // Valid only if owner is a bthread
+    std::thread::id _owner_std_thread_id; // Valid only if owner is a std thread / pthread
+};
 
 } // namespace bthread
 

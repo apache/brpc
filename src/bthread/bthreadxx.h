@@ -26,7 +26,7 @@
 #include <type_traits>
 #include "bthread/bthread.h"
 #include "bthread/condition_variable.h"
-#include "bthread/mutex.h"
+#include "bthread/mtx_cv_base.h"
 
 namespace bthread {
 

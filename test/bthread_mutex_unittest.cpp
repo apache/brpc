@@ -2,6 +2,7 @@
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Jul 13 15:04:18 CST 2014
 
+#include <vector>
 #include <gtest/gtest.h>
 #include "butil/compat.h"
 #include "butil/time.h"
@@ -339,6 +340,63 @@ TEST(MutexTest, cpp_timed_mutex_performance) {
     PerfTest(&bth_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
 }
 
+TEST(MutexText, cpp_recursive_mutex_sanity) {
+    bthread::RecursiveMutex mtx;
+    int counter = 0;
+    int concurrency = 0;
+    auto thread_func = [&mtx, &counter, &concurrency]() {
+        for (int cnt = 0; cnt < 10000; ++cnt) {
+            for (int i = 0; i < 3; ++i) {
+                mtx.lock();
+            }
+            ++concurrency;
+            bthread::this_bthread::yield();
+            ASSERT_EQ(1, concurrency);
+            ++counter;
+            --concurrency;
+            for (int i = 0; i < 3; ++i) {
+                mtx.unlock();
+            }
+            bthread::this_bthread::yield();
+        }
+    };
+    std::vector<std::thread> threads;
+    for (int i = 0; i < 3; ++i) {
+        threads.emplace_back(thread_func);
+    }
+    for (auto& th : threads){
+        th.join();
+    }
+    ASSERT_EQ(30000, counter);
+
+    counter = 0;
+    std::vector<bthread::BThread> bthreads;
+    for (int i = 0; i < 5; ++i) {
+        bthreads.emplace_back(thread_func);
+    }
+    for (auto& th : bthreads){
+        th.join();
+    }
+    ASSERT_EQ(50000, counter);
+
+    counter = 0;
+    std::thread th1(thread_func);
+    std::thread th2(thread_func);
+    bthread::BThread th3(thread_func);
+    bthread::BThread th4(thread_func);
+    th1.join();
+    th2.join();
+    th3.join();
+    th4.join();
+    ASSERT_EQ(40000, counter);
+}
+
+TEST(MutexTest, cpp_recursive_mutex_performance) {
+    const int thread_num = 12;
+    bthread::RecursiveMutex bth_mutex;
+    PerfTest(&bth_mutex, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
+    PerfTest(&bth_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
+}
 
 #endif // BUTIL_CXX11_ENABLED
 
