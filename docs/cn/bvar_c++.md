@@ -135,7 +135,7 @@ public:
 
 Variable是所有bvar的基类，主要提供全局注册，列举，查询等功能。
 
-用户以默认参数建立一个bvar时，这个bvar并未注册到任何全局结构中，在这种情况下，bvar纯粹是一个更快的计数器。我们称把一个bvar注册到全局表中的行为为”曝光“，可通过**expose**函数曝光：
+用户以默认参数建立一个bvar时，这个bvar并未注册到任何全局结构中，在这种情况下，bvar纯粹是一个更快的计数器。我们称把一个bvar注册到全局表中的行为为“曝光”，可通过`expose`函数曝光：
 ```c++
 // Expose this variable globally so that it's counted in following functions:
 //   list_exposed
@@ -319,7 +319,7 @@ reducer << e1 << e2 << e3的作用等价于reducer = e1 op e2 op e3。
 顾名思义，用于累加，Op为+。
 ```c++
 bvar::Adder<int> value;
-value<< 1 << 2 << 3 << -4;
+value << 1 << 2 << 3 << -4;
 CHECK_EQ(2, value.get_value());
 
 bvar::Adder<double> fp_value;  // 可能有warning
@@ -340,7 +340,7 @@ CHECK_EQ("hello world", concater.get_value());
 用于取最大值，运算符为std::max。
 ```c++
 bvar::Maxer<int> value;
-value<< 1 << 2 << 3 << -4;
+value << 1 << 2 << 3 << -4;
 CHECK_EQ(3, value.get_value());
 ```
 Since Maxer<> use std::numeric_limits<T>::min() as the identity, it cannot be applied to generic types unless you specialized std::numeric_limits<> (and overloaded operator<, yes, not operator>).
@@ -350,7 +350,7 @@ Since Maxer<> use std::numeric_limits<T>::min() as the identity, it cannot be ap
 用于取最小值，运算符为std::min。
 ```c++
 bvar::Maxer<int> value;
-value<< 1 << 2 << 3 << -4;
+value << 1 << 2 << 3 << -4;
 CHECK_EQ(-4, value.get_value());
 ```
 Since Miner<> use std::numeric_limits<T>::max() as the identity, it cannot be applied to generic types unless you specialized std::numeric_limits<> (and overloaded operator<).
