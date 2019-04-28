@@ -134,6 +134,8 @@ class RecursiveTimedMutex;
 
 namespace detail {
 
+constexpr const static BThread::id NOT_A_BTHREAD_ID{};
+
 class RecursiveMutexBase {
 public:
     DISALLOW_COPY_AND_ASSIGN(RecursiveMutexBase);
@@ -159,7 +161,6 @@ private:
 
     void setup_ownership() noexcept;
 
-    constexpr const static BThread::id NOT_A_BTHREAD_ID{};
     Mutex _mtx;
     ConditionVariable _cv;
     int _counter;

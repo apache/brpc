@@ -84,7 +84,7 @@ TEST(BthreadXXTest, id_sanity) {
     ASSERT_STREQ("0", oss.str().c_str());
     ASSERT_EQ(inv_id, not_a_thread.get_id());
 
-    oss = std::ostringstream();
+    oss.str("");
     auto dummy_func = []() {
         return;
     };
