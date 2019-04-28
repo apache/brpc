@@ -48,7 +48,7 @@ TEST(BthreadXXTest, sanity) {
     };
     // With urgent_launch_tag the inner bthread should run before the outer thread
     auto spawner = [&state, &inner]() {
-        bthread::BThread sub_thread(bthread::urgent_launch_tag(), inner, std::ref(state));
+        bthread::BThread sub_thread(bthread::urgent_launch_tag, inner, std::ref(state));
         if (state.load() == 1) {
             state.store(2);
         }

@@ -132,8 +132,10 @@ private:
     detail::bthread_id id_{0};
 };
 
-struct urgent_launch_tag {
+struct urgent_launch_tag_t {
 };
+
+constexpr const urgent_launch_tag_t urgent_launch_tag{};
 
 // The bthread equivalent of std::thread that supports the same features e.g. starting threads
 // using lambdas and functors, move semantics, joining and detaching.
@@ -156,14 +158,16 @@ public:
         rhs.th_ = detail::NULL_BTHREAD;
     }
 
+    // Starts bthread with bthread_start_background
     template<typename Callable, typename... Args,
             typename = detail::DisableOverloadT<BThread, Callable>,
-            typename = detail::DisableOverloadT<urgent_launch_tag, Callable>>
+            typename = detail::DisableOverloadT<urgent_launch_tag_t, Callable>>
     explicit BThread(Callable&& f, Args&& ... args);
 
+    // Starts bthread with bthread_start_urgent
     template<typename Callable, typename... Args,
             typename = detail::DisableOverloadT<BThread, Callable>>
-    explicit BThread(urgent_launch_tag /*tag*/, Callable&& f, Args&& ... args);
+    explicit BThread(urgent_launch_tag_t /*tag*/, Callable&& f, Args&& ... args);
 
     ~BThread() {
         joinable() ? std::terminate() : void();
@@ -207,7 +211,7 @@ BThread::BThread(Callable&& f, Args&& ... args):
 }
 
 template<typename Callable, typename... Args, typename>
-BThread::BThread(urgent_launch_tag /*tag*/, Callable&& f, Args&& ... args):
+BThread::BThread(urgent_launch_tag_t /*tag*/, Callable&& f, Args&& ... args):
         BThread(true, std::forward<Callable>(f), std::forward<Args>(args)...) {
 }
 
