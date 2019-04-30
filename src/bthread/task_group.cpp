@@ -577,16 +577,16 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
     TaskGroup* g = *pg;
     bthread_t next_tid = 0;
     // Find next task to run, if none, switch to idle thread of the group.
+    bool popped = g->_no_steal_rq.pop(&next_tid);
+    if(!popped) {
 #ifndef BTHREAD_FAIR_WSQ
-    // When BTHREAD_FAIR_WSQ is defined, profiling shows that cpu cost of
-    // WSQ::steal() in example/multi_threaded_echo_c++ changes from 1.9%
-    // to 2.9%
-    bool popped = g->_rq.pop(&next_tid);
+        // When BTHREAD_FAIR_WSQ is defined, profiling shows that cpu cost of
+        // WSQ::steal() in example/multi_threaded_echo_c++ changes from 1.9%
+        // to 2.9%
+        popped = g->_rq.pop(&next_tid);
 #else
-    bool popped = g->_rq.steal(&next_tid);
+        popped = g->_rq.steal(&next_tid);
 #endif
-    if (!popped) {
-        popped = g->_no_steal_rq.pop(&next_tid);
     }
     if (!popped && !g->steal_task(&next_tid)) {
         // Jump to main task if there's no task to run.
@@ -621,13 +621,13 @@ void TaskGroup::sched(TaskGroup** pg) {
     TaskGroup* g = *pg;
     bthread_t next_tid = 0;
     // Find next task to run, if none, switch to idle thread of the group.
+    bool popped = g->_no_steal_rq.pop(&next_tid);
+    if(!popped) {
 #ifndef BTHREAD_FAIR_WSQ
-    bool popped = g->_rq.pop(&next_tid);
+        popped = g->_rq.pop(&next_tid);
 #else
-    bool popped = g->_rq.steal(&next_tid);
+        popped = g->_rq.steal(&next_tid);
 #endif
-    if (!popped) {
-        popped = g->_no_steal_rq.pop(&next_tid);
     }
     if (!popped && !g->steal_task(&next_tid)) {
         // Jump to main task if there's no task to run.
