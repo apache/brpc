@@ -101,6 +101,13 @@ inline void TaskGroup::flush_nosignal_tasks_remote() {
     }
 }
 
+inline void TaskGroup::flush_nosignal_tasks_nosteal() {
+    if (_no_steal_num_nosignal) {
+        _no_steal_rq._mutex.lock();
+        flush_nosignal_tasks_nosteal_locked(_no_steal_rq._mutex);
+    }
+}
+
 }  // namespace bthread
 
 #endif  // BTHREAD_TASK_GROUP_INL_H

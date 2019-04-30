@@ -34,6 +34,10 @@
 #include "bthread/timer_thread.h"
 #include "bthread/errno.h"
 
+namespace brpc {
+    DEFINE_bool(use_uid_barrel, false, "use uid barrel,setted with ServerOptions::use_uid_barrel");
+}
+
 namespace bthread {
 
 static const bthread_attr_t BTHREAD_ATTR_TASKGROUP = {
@@ -118,7 +122,14 @@ bool TaskGroup::wait_task(bthread_t* tid) {
         if (_last_pl_state.stopped()) {
             return false;
         }
-        _pl->wait(_last_pl_state);
+        if(!brpc::FLAGS_use_uid_barrel) {
+            _pl->wait(_last_pl_state);
+        } else {
+            _pl->wait_timeout(_last_pl_state, 2);
+        }
+        if (_no_steal_rq.pop(tid)) {
+            return true;
+        }
         if (steal_task(tid)) {
             return true;
         }
@@ -127,10 +138,17 @@ bool TaskGroup::wait_task(bthread_t* tid) {
         if (st.stopped()) {
             return false;
         }
+        if (_no_steal_rq.pop(tid)) {
+            return true;
+        }
         if (steal_task(tid)) {
             return true;
         }
-        _pl->wait(st);
+        if(!brpc::FLAGS_use_uid_barrel) {
+            _pl->wait(st);
+        } else {
+            _pl->wait_timeout(st, 2);
+        }
 #endif
     } while (true);
 }
@@ -182,12 +200,15 @@ TaskGroup::TaskGroup(TaskControl* c)
     , _nsignaled(0)
     , _last_run_ns(butil::cpuwide_time_ns())
     , _cumulated_cputime_ns(0)
+    , _worker_thread_id(0)
     , _nswitch(0)
     , _last_context_remained(NULL)
     , _last_context_remained_arg(NULL)
     , _pl(NULL) 
     , _main_stack(NULL)
     , _main_tid(0)
+    , _no_steal_num_nosignal(0)
+    , _no_steal_nsignaled(0)
     , _remote_num_nosignal(0)
     , _remote_nsignaled(0)
 {
@@ -210,6 +231,10 @@ TaskGroup::~TaskGroup() {
 int TaskGroup::init(size_t runqueue_capacity) {
     if (_rq.init(runqueue_capacity) != 0) {
         LOG(FATAL) << "Fail to init _rq";
+        return -1;
+    }
+    if (_no_steal_rq.init(runqueue_capacity) != 0) {
+        LOG(FATAL) << "Fail to init _no_steal_rq";
         return -1;
     }
     if (_remote_rq.init(runqueue_capacity / 2) != 0) {
@@ -238,6 +263,7 @@ int TaskGroup::init(size_t runqueue_capacity) {
     m->stat = EMPTY_STAT;
     m->attr = BTHREAD_ATTR_TASKGROUP;
     m->tid = make_tid(*m->version_butex, slot);
+    m->in_no_steal_job = false;
     m->set_stack(stk);
 
     _cur_meta = m;
@@ -382,6 +408,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
     m->tid = make_tid(*m->version_butex, slot);
+    m->in_no_steal_job = false;
     *th = m->tid;
     if (using_attr.flags & BTHREAD_LOG_START_AND_FINISH) {
         LOG(INFO) << "Started bthread " << m->tid;
@@ -438,6 +465,7 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     m->cpuwide_start_ns = start_ns;
     m->stat = EMPTY_STAT;
     m->tid = make_tid(*m->version_butex, slot);
+    m->in_no_steal_job = false;
     *th = m->tid;
     if (using_attr.flags & BTHREAD_LOG_START_AND_FINISH) {
         LOG(INFO) << "Started bthread " << m->tid;
@@ -462,6 +490,46 @@ TaskGroup::start_background<false>(bthread_t* __restrict th,
                                    const bthread_attr_t* __restrict attr,
                                    void * (*fn)(void*),
                                    void* __restrict arg);
+
+int TaskGroup::start_with_nosteal(bthread_t* __restrict th,
+        const bthread_attr_t* __restrict attr,
+        void * (*fn)(void*),
+        void* __restrict arg) {
+    if (__builtin_expect(!fn, 0)) {
+        return EINVAL;
+    }
+    const int64_t start_ns = butil::cpuwide_time_ns();
+    const bthread_attr_t using_attr = (attr ? *attr : BTHREAD_ATTR_NORMAL);
+    butil::ResourceId<TaskMeta> slot;
+    TaskMeta* m = butil::get_resource(&slot);
+    if (__builtin_expect(!m, 0)) {
+        return ENOMEM;
+    }
+    CHECK(m->current_waiter.load(butil::memory_order_relaxed) == NULL);
+    m->stop = false;
+    m->interrupted = false;
+    m->ignore_interrupted = false;
+    m->about_to_quit = false;
+    m->fn = fn;
+    m->arg = arg;
+    CHECK(m->stack == NULL);
+    m->attr = using_attr;
+    m->local_storage = LOCAL_STORAGE_INIT;
+    m->cpuwide_start_ns = start_ns;
+    m->stat = EMPTY_STAT;
+    m->tid = make_tid(*m->version_butex, slot);
+    m->in_no_steal_job = true;
+    *th = m->tid;
+    if (using_attr.flags & BTHREAD_LOG_START_AND_FINISH) {
+        LOG(INFO) << "Started nosteal bthread " << m->tid << "_worker_thread_id:" << _worker_thread_id;
+    }
+    _control->_nbthreads << 1;
+
+    //add bthread to target taks_group's no steal queue
+    ready_to_run_nosteal(m->tid, (using_attr.flags & BTHREAD_NOSIGNAL));
+
+    return 0;
+}
 
 int TaskGroup::join(bthread_t tid, void** return_value) {
     if (__builtin_expect(!tid, 0)) {  // tid of bthread is never 0.
@@ -513,10 +581,13 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
     // When BTHREAD_FAIR_WSQ is defined, profiling shows that cpu cost of
     // WSQ::steal() in example/multi_threaded_echo_c++ changes from 1.9%
     // to 2.9%
-    const bool popped = g->_rq.pop(&next_tid);
+    bool popped = g->_rq.pop(&next_tid);
 #else
-    const bool popped = g->_rq.steal(&next_tid);
+    bool popped = g->_rq.steal(&next_tid);
 #endif
+    if (!popped) {
+        popped = g->_no_steal_rq.pop(&next_tid);
+    }
     if (!popped && !g->steal_task(&next_tid)) {
         // Jump to main task if there's no task to run.
         next_tid = g->_main_tid;
@@ -551,10 +622,13 @@ void TaskGroup::sched(TaskGroup** pg) {
     bthread_t next_tid = 0;
     // Find next task to run, if none, switch to idle thread of the group.
 #ifndef BTHREAD_FAIR_WSQ
-    const bool popped = g->_rq.pop(&next_tid);
+    bool popped = g->_rq.pop(&next_tid);
 #else
-    const bool popped = g->_rq.steal(&next_tid);
+    bool popped = g->_rq.steal(&next_tid);
 #endif
+    if (!popped) {
+        popped = g->_no_steal_rq.pop(&next_tid);
+    }
     if (!popped && !g->steal_task(&next_tid)) {
         // Jump to main task if there's no task to run.
         next_tid = g->_main_tid;
@@ -710,6 +784,41 @@ void TaskGroup::flush_nosignal_tasks_general() {
         return flush_nosignal_tasks();
     }
     return flush_nosignal_tasks_remote();
+}
+
+void TaskGroup::ready_to_run_nosteal(bthread_t tid, bool nosignal) {
+    _no_steal_rq._mutex.lock();
+    while (!_no_steal_rq.push_locked(tid)) {
+        flush_nosignal_tasks_nosteal_locked(_no_steal_rq._mutex);
+        LOG_EVERY_SECOND(ERROR) << "_no_steal_rq is full, capacity="
+            << _no_steal_rq.capacity();
+        ::usleep(1000);
+        _no_steal_rq._mutex.lock();
+    }
+    if (nosignal) {
+        ++_no_steal_num_nosignal;
+        _no_steal_rq._mutex.unlock();
+    } else {
+        const int additional_signal = _no_steal_num_nosignal;
+        _no_steal_num_nosignal = 0;
+        _no_steal_nsignaled += 1 + additional_signal;
+        _no_steal_rq._mutex.unlock();
+        //notify _worker_thread_id
+        _control->signal_task(1 + additional_signal, _worker_thread_id);
+    }
+
+}
+
+void TaskGroup::flush_nosignal_tasks_nosteal_locked(butil::Mutex& locked_mutex) {
+    const int val = _no_steal_num_nosignal;
+    if (!val) {
+        locked_mutex.unlock();
+        return;
+    }
+    _no_steal_num_nosignal = 0;
+    _no_steal_nsignaled += val;
+    locked_mutex.unlock();
+    _control->signal_task(val, _worker_thread_id);
 }
 
 void TaskGroup::ready_to_run_in_worker(void* args_in) {

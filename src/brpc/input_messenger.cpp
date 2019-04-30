@@ -50,12 +50,66 @@ DEFINE_bool(log_connection_close, false,
             "Print log when remote side closes the connection");
 BRPC_VALIDATE_GFLAG(log_connection_close, PassValidate);
 
+DECLARE_bool(use_uid_barrel);
 DECLARE_bool(usercode_in_pthread);
 DECLARE_uint64(max_body_size);
 
 const size_t MSG_SIZE_WINDOW = 10;  // Take last so many message into stat.
 const size_t MIN_ONCE_READ = 4096;
 const size_t MAX_ONCE_READ = 524288;
+
+void SetGflagUseUidBarrel(bool use_uid_barrel) {
+    FLAGS_use_uid_barrel = use_uid_barrel;    
+}
+
+uint64_t MakeDeliverKey(Socket* m);
+static void QueueMessageNoSteal(uint64_t deliver_key,
+                        InputMessageBase* to_run_msg,
+                        int* num_bthread_created,
+                        bthread_keytable_pool_t* keytable_pool);
+
+class NostealInputMessage {
+public:
+    NostealInputMessage(){
+        msg = NULL;
+        m = NULL;
+        _keytable_pool = NULL;
+    }
+    virtual ~NostealInputMessage(){}
+    InputMessageBase *release() {
+        InputMessageBase *tmp = msg;
+        msg = NULL;
+        return tmp;
+    } 
+
+    void reset(InputMessageBase *input) {
+        assert(m);
+        if(msg) {
+            int last_num_bthread_created = 0;
+            QueueMessageNoSteal(MakeDeliverKey(m), msg,
+            &last_num_bthread_created, _keytable_pool);
+        }
+        msg = input;
+    }
+
+    InputMessageBase *msg = NULL;
+    Socket* m = NULL;
+    bthread_keytable_pool_t* _keytable_pool = NULL;
+};
+
+struct RunLastNostealMessage { 
+    inline void operator()(NostealInputMessage* last_nosteal_msg) {
+        std::unique_ptr<NostealInputMessage > protect_self;
+        protect_self.reset(last_nosteal_msg);
+        if(!last_nosteal_msg || !last_nosteal_msg->msg) {
+            return;
+        }
+        assert(last_nosteal_msg->m);
+        int last_num_bthread_created = 0;  
+        QueueMessageNoSteal(MakeDeliverKey(last_nosteal_msg->m), last_nosteal_msg->msg, 
+                    &last_num_bthread_created, last_nosteal_msg->_keytable_pool); 
+    }
+};
 
 ParseResult InputMessenger::CutInputMessage(
         Socket* m, size_t* index, bool read_eof) {
@@ -163,6 +217,45 @@ static void QueueMessage(InputMessageBase* to_run_msg,
     }
 }
 
+void QueueMessageNoSteal(uint64_t deliver_key,
+        InputMessageBase* to_run_msg,
+        int* num_bthread_created,
+        bthread_keytable_pool_t* keytable_pool) {
+    if (!to_run_msg) {
+        return;
+    }
+    // Create bthread for last_msg. The bthread is not scheduled
+    // until bthread_flush() is called (in the worse case).
+
+    // TODO(gejun): Join threads.
+    bthread_t th;
+    // not enbale BTHREAD_NOSIGNAL here,as use bthread flush make no steal signal complex
+    //FIXME!!later check performance cost by signal every no steal bthread create
+    bthread_attr_t tmp = (FLAGS_usercode_in_pthread ?
+            BTHREAD_ATTR_PTHREAD :
+            BTHREAD_ATTR_NORMAL) ;
+    tmp.keytable_pool = keytable_pool;
+    //bthread_start_nosteal will fix64 for deliver_key.so input deliver_key no need be balance
+    if (bthread_start_nosteal(deliver_key,
+                &th, &tmp, ProcessInputMessage, to_run_msg) == 0) {
+        ++*num_bthread_created;
+    } else {    //FIXME!!here maybe not serialization,but create bthread err barely happen
+        LOG(ERROR) << "should not happen,no bthread create,direct ProcessInputMessage,deliver_key:" <<
+            deliver_key;
+        ProcessInputMessage(to_run_msg);
+    }
+}
+
+uint64_t MakeDeliverKey(Socket* m) {
+    if(!m) {
+        return 0;
+    }
+    uint64_t key = m->remote_side().port;
+    key = (key << 32);
+    key += m->remote_side().ip.s_addr;
+    return key;
+}
+
 void InputMessenger::OnNewMessages(Socket* m) {
     // Notes:
     // - If the socket has only one message, the message will be parsed and
@@ -182,6 +275,14 @@ void InputMessenger::OnNewMessages(Socket* m) {
     // message, even if the socket is about to be closed. This should be
     // OK in most cases.
     std::unique_ptr<InputMessageBase, RunLastMessage> last_msg;
+    //when enable FLAGS_use_uid_barrel,last_msg store here
+    std::unique_ptr<NostealInputMessage, RunLastNostealMessage> last_nosteal_msg;
+    if(FLAGS_use_uid_barrel) {
+        NostealInputMessage *nosteal_wrapper = new NostealInputMessage;
+        nosteal_wrapper->m = m;
+        nosteal_wrapper->_keytable_pool = m->_keytable_pool;
+        last_nosteal_msg.reset(nosteal_wrapper);
+    }
     bool read_eof = false;
     while (!read_eof) {
         const int64_t received_us = butil::cpuwide_time_us();
@@ -282,8 +383,14 @@ void InputMessenger::OnNewMessages(Socket* m) {
             // This unique_ptr prevents msg to be lost before transfering
             // ownership to last_msg
             DestroyingPtr<InputMessageBase> msg(pr.message());
-            QueueMessage(last_msg.release(), &num_bthread_created,
-                             m->_keytable_pool);
+            if(!FLAGS_use_uid_barrel) {
+                QueueMessage(last_msg.release(), &num_bthread_created,
+                        m->_keytable_pool);
+            }else {
+                QueueMessageNoSteal(MakeDeliverKey(m), last_nosteal_msg.get()->release(), &num_bthread_created,
+                        m->_keytable_pool); 
+            }
+
             if (handlers[index].process == NULL) {
                 LOG(ERROR) << "process of index=" << index << " is NULL";
                 continue;
@@ -314,16 +421,31 @@ void InputMessenger::OnNewMessages(Socket* m) {
             }
             if (!m->is_read_progressive()) {
                 // Transfer ownership to last_msg
-                last_msg.reset(msg.release());
+                if(FLAGS_use_uid_barrel) {
+                    last_nosteal_msg.get()->reset(msg.release());
+                } else {
+                    // Transfer ownership to last_msg
+                    last_msg.reset(msg.release());
+                }
             } else {
-                QueueMessage(msg.release(), &num_bthread_created,
-                                 m->_keytable_pool);
-                bthread_flush();
+                if(!FLAGS_use_uid_barrel) {
+                    QueueMessage(msg.release(), &num_bthread_created,
+                            m->_keytable_pool);
+                    bthread_flush();
+                }else {
+                    QueueMessageNoSteal(MakeDeliverKey(m), msg.release(), &num_bthread_created,
+                            m->_keytable_pool);
+                    bthread_flush_nosteal(MakeDeliverKey(m));
+                }
                 num_bthread_created = 0;
             }
         }
         if (num_bthread_created) {
-            bthread_flush();
+            if(!FLAGS_use_uid_barrel) {
+                bthread_flush();
+            }else {
+                bthread_flush_nosteal(MakeDeliverKey(m));
+            }
         }
     }
 

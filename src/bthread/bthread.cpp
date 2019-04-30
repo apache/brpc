@@ -190,6 +190,25 @@ int bthread_start_background(bthread_t* __restrict tid,
     return bthread::start_from_non_worker(tid, attr, fn, arg);
 }
 
+int bthread_start_nosteal(uint64_t deliver_key,
+        bthread_t* __restrict tid,
+        const bthread_attr_t* __restrict attr,
+        void * (*fn)(void*),
+        void* __restrict arg) {
+    bthread::TaskControl* c = bthread::get_or_new_task_control();
+    if (NULL == c) {
+        return ENOMEM;
+    }
+    //choose target task_goup by deliver_key
+    bthread::TaskGroup *g = c->choose_one_group(deliver_key);
+    if(!g) {
+        LOG(FATAL) << "fatal err,should not happen,choose_one_group empty,deliver_key:" << deliver_key;
+        return ENOMEM;
+    }
+
+    return g->start_with_nosteal(tid, attr, fn, arg);
+}
+
 void bthread_flush() {
     bthread::TaskGroup* g = bthread::tls_task_group;
     if (g) {
@@ -201,6 +220,23 @@ void bthread_flush() {
         bthread::tls_task_group_nosignal = NULL;
         return g->flush_nosignal_tasks_remote();
     }
+}
+
+void bthread_flush_nosteal(uint64_t deliver_key) {
+    bthread::TaskControl* c = bthread::get_or_new_task_control();
+    if (NULL == c) {
+        LOG(FATAL) << "fatal err,should not happen,get_or_new_task_control err,deliver_key:" << deliver_key;
+        return;
+    }
+
+    //choose target task_goup by deliver_key
+    bthread::TaskGroup *g = c->choose_one_group(deliver_key);
+    if(!g) {
+        LOG(FATAL) << "fatal err,should not happen,choose_one_group empty,deliver_key:" << deliver_key;
+        return;
+    }
+
+    g->flush_nosignal_tasks_nosteal();
 }
 
 int bthread_interrupt(bthread_t tid) {

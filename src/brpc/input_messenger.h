@@ -25,6 +25,8 @@
 
 namespace brpc {
 
+void SetGflagUseUidBarrel(bool use_uid_barrel);
+
 struct InputMessageHandler {
     // The callback to cut a message from `source'.
     // Returned message will be passed to process_request or process_response

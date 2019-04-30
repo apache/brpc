@@ -68,6 +68,8 @@ void* TaskControl::worker_thread(void* arg) {
     BT_VLOG << "Created worker=" << pthread_self()
             << " bthread=" << g->main_tid();
 
+    //set worker id into TaskGroup, for no steal bthread queue create do right signal
+    g->set_worker_thread_id(pthread_numeric_id());
     tls_task_group = g;
     c->_nworkers << 1;
     g->run_main_task();
@@ -216,6 +218,15 @@ TaskGroup* TaskControl::choose_one_group() {
     return NULL;
 }
 
+TaskGroup* TaskControl::choose_one_group(uint64_t deliver_key) {
+    const size_t ngroup = _ngroup.load(butil::memory_order_acquire);
+    if (ngroup != 0) {
+        return _groups[butil::fmix64(deliver_key)%ngroup];
+    }
+    CHECK(false) << "Impossible: ngroup is 0";
+    return NULL;
+}
+
 extern int stop_and_join_epoll_threads();
 
 void TaskControl::stop_and_join() {
@@ -359,6 +370,10 @@ bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
 }
 
 void TaskControl::signal_task(int num_task) {
+    signal_task(num_task, pthread_numeric_id());
+}
+
+void TaskControl::signal_task(int num_task, uint64_t worker_thread_id) {
     if (num_task <= 0) {
         return;
     }
@@ -369,7 +384,7 @@ void TaskControl::signal_task(int num_task) {
     if (num_task > 2) {
         num_task = 2;
     }
-    int start_index = butil::fmix64(pthread_numeric_id()) % PARKING_LOT_NUM;
+    int start_index = butil::fmix64(worker_thread_id) % PARKING_LOT_NUM;
     num_task -= _pl[start_index].signal(1);
     if (num_task > 0) {
         for (int i = 1; i < PARKING_LOT_NUM && num_task > 0; ++i) {

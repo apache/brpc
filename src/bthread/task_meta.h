@@ -91,6 +91,9 @@ struct TaskMeta {
     // DO NOT use this field directly, use tls_bls instead.
     LocalStorage local_storage;
 
+    //FIXME!!debug
+    bool in_no_steal_job = false;    //mark create from no_steal
+
 public:
     // Only initialize [Not Reset] fields, other fields will be reset in
     // bthread_start* functions

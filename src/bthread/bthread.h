@@ -51,6 +51,18 @@ extern int bthread_start_background(bthread_t* __restrict tid,
                                     const bthread_attr_t* __restrict attr,
                                     void * (*fn)(void*),
                                     void* __restrict args);
+// ****Warining:if you fn will do some block op,as bthread_start_nosteal will not steal between work threads
+// same deliver_key's fn will lead to big latency ****
+// Create bthread `fn(args)' with attributes `attr' and put the identifier into
+// `tid'. This function behaves closer to pthread_create: after scheduling the
+// new thread to run, it returns. In another word, the new thread may take
+// longer time than bthread_start_urgent() to run.
+// Return 0 on success, errno otherwise.
+extern int bthread_start_nosteal(uint64_t deliver_key,
+        bthread_t* __restrict tid,
+        const bthread_attr_t* __restrict attr,
+        void * (*fn)(void*),
+        void* __restrict args);
 
 // Wake up operations blocking the thread. Different functions may behave
 // differently:

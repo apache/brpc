@@ -36,6 +36,9 @@ __BEGIN_DECLS
 // Schedule tasks created by BTHREAD_NOSIGNAL
 extern void bthread_flush();
 
+// Schedule tasks created by bthread_start_nosteal with attr&BTHREAD_NOSIGNAL
+extern void bthread_flush_nosteal(uint64_t deliver_key);
+
 // Mark the calling bthread as "about to quit". When the bthread is scheduled,
 // worker pthreads are not notified.
 extern int bthread_about_to_quit();

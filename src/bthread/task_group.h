@@ -71,6 +71,20 @@ public:
                          void * (*fn)(void*),
                          void* __restrict arg);
 
+    // Waring,*****this interface makes same deliver_key schedule by one pthread,inappropriate use 
+    // will cost bad latency and performance ********
+    // maybe deliver_key find choose_one_group wrapper in bthread.cpp is more suitable 
+    // Create task `fn(arg)' with attributes `attr', put the identifier into `tid'.
+    // Schedule the tid into deliver_key%TaskControl::_ngroup's task_group
+    // guarantee tid into task_group's _no_steal_rq.
+    // and only __thread task_group's thread will run this bthread
+    // this makes same deliver_key will schedule by order
+    // Return 0 on success, errno otherwise.
+    int start_with_nosteal(bthread_t* __restrict tid,
+            const bthread_attr_t* __restrict attr,
+            void * (*fn)(void*),
+            void* __restrict arg);
+
     // Suspend caller and run next bthread in TaskGroup *pg.
     static void sched(TaskGroup** pg);
     static void ending_sched(TaskGroup** pg);
@@ -147,6 +161,9 @@ public:
     // Active time in nanoseconds spent by this TaskGroup.
     int64_t cumulated_cputime_ns() const { return _cumulated_cputime_ns; }
 
+    uint64_t worker_thread_id() const { return _worker_thread_id; }
+    void set_worker_thread_id(uint64_t worker_thread_id) { _worker_thread_id = worker_thread_id; }
+
     // Push a bthread into the runqueue
     void ready_to_run(bthread_t tid, bool nosignal = false);
     // Flush tasks pushed to rq but signalled.
@@ -156,6 +173,11 @@ public:
     void ready_to_run_remote(bthread_t tid, bool nosignal = false);
     void flush_nosignal_tasks_remote_locked(butil::Mutex& locked_mutex);
     void flush_nosignal_tasks_remote();
+
+    // Push a bthtread into the _no_steal_rq,called can be worker thread or non-worker thread
+    void ready_to_run_nosteal(bthread_t tid, bool nosignal = false);
+    void flush_nosignal_tasks_nosteal_locked(butil::Mutex& locked_mutex);
+    void flush_nosignal_tasks_nosteal();
 
     // Automatically decide the caller is remote or local, and call
     // the corresponding function.
@@ -231,6 +253,7 @@ friend class TaskControl;
     // last scheduling time
     int64_t _last_run_ns;
     int64_t _cumulated_cputime_ns;
+    uint64_t _worker_thread_id;   //pthread id of this thread TaskGroup,use for create bthread signal 
 
     size_t _nswitch;
     RemainedFn _last_context_remained;
@@ -245,6 +268,9 @@ friend class TaskControl;
     ContextualStack* _main_stack;
     bthread_t _main_tid;
     WorkStealingQueue<bthread_t> _rq;
+    RemoteTaskQueue _no_steal_rq;
+    int _no_steal_num_nosignal;
+    int _no_steal_nsignaled;
     RemoteTaskQueue _remote_rq;
     int _remote_num_nosignal;
     int _remote_nsignaled;

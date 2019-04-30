@@ -57,6 +57,16 @@ public:
         futex_wait_private(&_pending_signal, expected_state.val, NULL);
     }
 
+    // Wait for tasks with timeout.
+    // If the `expected_state' does not match, wait_timeout() may finish directly.
+    // If timeout_ms hit, wait_timeout() may finish
+    void wait_timeout(const State& expected_state,const long timeout_ms) {
+        timespec timeout;
+        timeout.tv_sec = 0;
+        timeout.tv_nsec = timeout_ms*1000*1000;
+        futex_wait_private(&_pending_signal, expected_state.val, &timeout);
+    }
+
     // Wakeup suspended wait() and make them unwaitable ever. 
     void stop() {
         _pending_signal.fetch_or(1);

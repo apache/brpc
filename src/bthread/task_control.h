@@ -54,6 +54,9 @@ public:
     // Tell other groups that `n' tasks was just added to caller's runqueue
     void signal_task(int num_task);
 
+    // Tell worker_thread_id group that `n' tasks was just added to caller's runqueue
+    void signal_task(int num_task, uint64_t worker_thread_id);
+    
     // Stop and join worker threads in TaskControl.
     void stop_and_join();
     
@@ -74,6 +77,10 @@ public:
     // Choose one TaskGroup (randomly right now).
     // If this method is called after init(), it never returns NULL.
     TaskGroup* choose_one_group();
+
+    // Choose one TaskGroup (by input key)
+    // If this method is called after init(), it never returns NULL. 
+    TaskGroup* choose_one_group(uint64_t deliver_key);
 
 private:
     // Add/Remove a TaskGroup.
