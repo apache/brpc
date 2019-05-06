@@ -39,6 +39,8 @@ DEFINE_int32(event_dispatcher_num, 1, "Number of event dispatcher");
 DEFINE_bool(usercode_in_pthread, false, 
             "Call user's callback in pthreads, use bthreads otherwise");
 
+DECLARE_bool(use_uid_barrel);
+
 EventDispatcher::EventDispatcher()
     : _epfd(-1)
     , _stop(false)
@@ -278,12 +280,30 @@ void EventDispatcher::Run() {
         epoll_event e[32];
 #ifdef BRPC_ADDITIONAL_EPOLL
         // Performance downgrades in examples.
-        int n = epoll_wait(_epfd, e, ARRAY_SIZE(e), 0);
-        if (n == 0) {
-            n = epoll_wait(_epfd, e, ARRAY_SIZE(e), -1);
+        int n = 0;
+        if(!FLAGS_use_uid_barrel) {
+            n = epoll_wait(_epfd, e, ARRAY_SIZE(e), 0);
+            if (n == 0) {
+                n = epoll_wait(_epfd, e, ARRAY_SIZE(e), -1);
+            }
+        } else {
+            n = epoll_wait(_epfd, e, ARRAY_SIZE(e), 1);
+            if(n <= 0) {
+                //FIXME!!,later add some sched make Run code continuous
+                bthread_usleep(200);
+            }
         }
 #else
-        const int n = epoll_wait(_epfd, e, ARRAY_SIZE(e), -1);
+        int n = 0;
+        if(!FLAGS_use_uid_barrel) {
+            n = epoll_wait(_epfd, e, ARRAY_SIZE(e), -1);
+        } else {
+            n = epoll_wait(_epfd, e, ARRAY_SIZE(e), 1);
+            if(n <= 0) {
+                //FIXME!!,later add some sched make Run code continuous
+                bthread_usleep(200);
+            }
+        }
 #endif
 #elif defined(OS_MACOSX)
         struct kevent e[32];
