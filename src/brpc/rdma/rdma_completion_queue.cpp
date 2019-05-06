@@ -84,6 +84,7 @@ RdmaCompletionQueue::RdmaCompletionQueue()
     , _tid(0)
     , _sid(0)
     , _ep_sid(0)
+    , _keytable_pool(NULL)
     , _stop(false)
 {
 }
@@ -380,11 +381,21 @@ void RdmaCompletionQueue::PollCQ(Socket* m) {
 
         int num = 0;
         for (int i = 0; i < cnt; ++i) {
-            if (s == NULL || s->id() != wc[i].wr_id) {
-                s.reset(NULL);
-                if (Socket::Address(wc[i].wr_id, &s) < 0) {
-                    continue;
+            if (g_cq_num > 0) {
+                RdmaWrId* wrid = (RdmaWrId*)wc[i].wr_id;
+                if (s == NULL || s->id() != wrid->sid) {
+                    s.reset(NULL);
+                    if (Socket::Address(wrid->sid, &s) < 0) {
+                        butil::return_object<RdmaWrId>(wrid);
+                        continue;
+                    }
+                    if (wrid->version != s->_rdma_ep->_version) {
+                        // Belongs to old socket before reviving, avoid ABA problem
+                        butil::return_object<RdmaWrId>(wrid);
+                        continue;
+                    }
                 }
+                butil::return_object<RdmaWrId>(wrid);
             }
 
             if (s->Failed()) {

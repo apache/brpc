@@ -41,6 +41,11 @@ const size_t RANDOM_LENGTH = 4;
 // The length of hello message from client (magic+random)
 const size_t HELLO_LENGTH = MAGIC_LENGTH + RANDOM_LENGTH;
 
+struct RdmaWrId {
+    uint64_t sid;
+    uint32_t version;
+};
+
 class BAIDU_CACHELINE_ALIGNMENT RdmaEndpoint {
 friend class RdmaCompletionQueue;
 public:
@@ -143,6 +148,9 @@ private:
     //     -1:  failed, errno set
     int DoPostRecv(void* block, size_t block_size);
 
+    // Get wr_id of this RdmaEndpoint
+    RdmaWrId* GetWrId();
+
     // Not owner
     Socket* _socket;
 
@@ -158,6 +166,9 @@ private:
 
     // Status of the connection
     Status _status;
+
+    // The version of this RdmaEndpoint
+    uint32_t _version;
 
     // Capacity of local Send Queue and local Recv Queue
     uint32_t _sq_size;

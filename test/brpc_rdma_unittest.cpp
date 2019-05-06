@@ -427,7 +427,7 @@ private:
         sge.addr = (uint64_t)buf;
         sge.length = 8192;
         sge.lkey = 1;
-        wr.wr_id = s->id();
+        wr.wr_id = (uint64_t)s->_rdma_ep->GetWrId();
         wr.sg_list = &sge;
         wr.num_sge = 1;
         ibv_send_wr* bad = NULL;
@@ -532,7 +532,7 @@ private:
         sge.addr = (uint64_t)buf;
         sge.length = 8192;
         sge.lkey = 1;
-        wr.wr_id = s->id();
+        wr.wr_id = (uint64_t)s->_rdma_ep->GetWrId();
         wr.sg_list = &sge;
         wr.num_sge = 1;
         ibv_send_wr* bad = NULL;
@@ -1219,7 +1219,7 @@ TEST_F(RdmaTest, verbs_error) {
     sge.addr = (uint64_t)buf;
     sge.length = 8192;
     sge.lkey = 1;
-    wr.wr_id = s->id();
+    wr.wr_id = (uint64_t)s->_rdma_ep->GetWrId();
     wr.sg_list = &sge;
     wr.num_sge = 1;
     ibv_send_wr* bad = NULL;

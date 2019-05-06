@@ -26,6 +26,7 @@
 #include "brpc/errno.pb.h"
 #include "brpc/event_dispatcher.h"
 #include "brpc/input_messenger.h"
+#include "brpc/reloadable_flags.h"
 #include "brpc/socket.h"
 #include "brpc/rdma/block_pool.h"
 #include "brpc/rdma/rdma_helper.h"
@@ -49,6 +50,8 @@ DEFINE_string(rdma_recv_block_type, "default", "Default size type for recv WR: "
 DEFINE_bool(rdma_disable_local_connection, true,
             "Disable local RDMA connection");
 DEFINE_bool(rdma_trace_verbose, false, "Print log message verbosely");
+BRPC_VALIDATE_GFLAG(rdma_trace_verbose, brpc::PassValidate);
+
 
 static const size_t IOBUF_BLOCK_HEADER_LEN = 32; // implementation-dependent
 static const size_t IOBUF_BLOCK_DEFAULT_PAYLOAD =
@@ -136,16 +139,19 @@ RdmaEndpoint::RdmaEndpoint(Socket* s)
     , _rcq(NULL)
     , _qp(NULL)
     , _status(UNINITIALIZED)
+    , _version(0)
 #ifdef BRPC_RDMA
     , _sq_size(FLAGS_rdma_sbuf_size / IOBUF_BLOCK_DEFAULT_PAYLOAD + 1)
     , _rq_size(FLAGS_rdma_rbuf_size / g_rdma_recv_block_size + 1)
 #endif
     , _sbuf()
     , _rbuf()
+    , _rbuf_data()
     , _handshake_buf()
     , _remote_recv_block_size(0)
     , _accumulated_ack(0)
     , _unsolicited(0)
+    , _unsolicited_bytes(0)
     , _sq_current(0)
     , _sq_unsignaled(0)
     , _sq_sent(0)
@@ -188,6 +194,7 @@ void RdmaEndpoint::Reset() {
     DeallocateResources();
 
     _status = UNINITIALIZED;
+    _version++;
     _sbuf.clear();
     _rbuf.clear();
     _rbuf_data.clear();
@@ -643,20 +650,20 @@ private:
     // Cut the current IOBuf to ibv_sge list and `to' for at most first max_sge
     // blocks or first max_len bytes.
     // Return: the bytes included in the sglist, or -1 if failed
-    ssize_t cut_into_sglist_and_iobuf(ibv_sge* sglist, butil::IOBuf* to,
-                                      size_t max_sge, size_t max_len) {
+    ssize_t cut_into_sglist_and_iobuf(ibv_sge* sglist, size_t sge_index, 
+            butil::IOBuf* to, size_t max_sge, size_t max_len) {
         size_t len = 0;
-        for (size_t i = 0; i < max_sge; ++i) {
+        for (size_t i = sge_index; i < max_sge; ++i) {
             if (len == max_len || _ref_num() == 0) {
                 break;
             }
             CHECK(len < max_len);
             butil::IOBuf::BlockRef const& r = _ref_at(0);
-            char* start = (char*)backing_block(0).data();
+            const void* start = fetch1();
             uint32_t lkey = 0;
             if ((char*)r.block + IOBUF_BLOCK_HEADER_LEN + r.offset == start) {
                 // IOBuf BlockRef in block
-                lkey = GetLKey((char*)r.block);
+                lkey = GetLKey(r.block);
             } else {
                 // IOBuf BlockRef decoupled with Block
                 lkey = GetLKey(start);
@@ -687,7 +694,16 @@ private:
                 sglist[i].addr = (uint64_t)tmp.backing_block(0).data();
                 sglist[i].length = append_len;
                 sglist[i].lkey = lkey;
+                size_t blocks = to->backing_block_num();
                 tmp.cutn(to, append_len);
+                if (to->backing_block_num() == blocks) {
+                    // This BlockRef is merged with the original tail
+                    CHECK(i > 0);
+                    i--;
+                    butil::StringPiece sp = to->backing_block(blocks - 1);
+                    sglist[i].addr = (uint64_t)sp.data();
+                    sglist[i].length = (uint64_t)sp.length();
+                }
                 cutn(&tmp, append_len);
                 len += append_len;
                 continue;
@@ -702,12 +718,34 @@ private:
             }
             sglist[i].addr = (uint64_t)start;
             sglist[i].lkey = lkey;
+            size_t blocks = to->backing_block_num();
             cutn(to, sglist[i].length);
+            if (to->backing_block_num() == blocks) {
+                // This BlockRef is merged with the original tail
+                CHECK(i > 0);
+                i--;
+                butil::StringPiece sp = to->backing_block(blocks - 1);
+                sglist[i].addr = (uint64_t)sp.data();
+                sglist[i].length = (uint64_t)sp.length();
+            }
         }
         return len;
     }
 };
 #endif
+
+RdmaWrId* RdmaEndpoint::GetWrId() {
+    if (g_cq_num == 0) {
+        return 0;
+    }
+    RdmaWrId* wrid = butil::get_object<RdmaWrId>();
+    if (!wrid) {
+        return 0;
+    }
+    wrid->sid = _socket->id();
+    wrid->version = _version;
+    return wrid;
+}
 
 // Note this function is coupled with the implementation of IOBuf
 ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
@@ -736,7 +774,6 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
 
         ibv_send_wr wr;
         memset(&wr, 0, sizeof(wr));
-        wr.wr_id = _socket->id();
         int max_sge = GetRdmaMaxSge();
         ibv_sge sglist[max_sge];
         wr.sg_list = sglist;
@@ -757,7 +794,7 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             }
 
             ssize_t len = data->cut_into_sglist_and_iobuf(
-                    &sglist[sge_index], to, max_sge - sge_index,
+                    sglist, sge_index, to, max_sge,
                     _remote_recv_block_size - this_len);
             if (len < 0) {
                 errno = ENOMEM;  // must set errno here
@@ -820,11 +857,14 @@ ssize_t RdmaEndpoint::CutFromIOBufList(butil::IOBuf** from, size_t ndata) {
             break;
         }
 
+        RdmaWrId* wrid = GetWrId();
+        wr.wr_id = (uint64_t)wrid;
         ibv_send_wr* bad = NULL;
         if (ibv_post_send((ibv_qp*)_qp, &wr, &bad) < 0) {
             // We use other way to guarantee the Send Queue is not full.
             // So we just consider this error as an unrecoverable error.
             PLOG(WARNING) << "Fail to ibv_post_send";
+            butil::return_object<RdmaWrId>(wrid);
             return -1;
         }
 
@@ -862,17 +902,19 @@ int RdmaEndpoint::SendImm(uint32_t imm) {
 
     ibv_send_wr wr;
     memset(&wr, 0, sizeof(wr));
-    wr.wr_id = _socket->id();
     wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
     wr.imm_data = butil::HostToNet32(imm);
     wr.send_flags |= IBV_SEND_SOLICITED;
     wr.send_flags |= IBV_SEND_SIGNALED;
 
+    RdmaWrId* wrid = GetWrId();
+    wr.wr_id = (uint64_t)wrid;
     ibv_send_wr* bad = NULL;
     if (ibv_post_send((ibv_qp*)_qp, &wr, &bad) < 0) {
         // We use other way to guarantee the Send Queue is not full.
         // So we just consider this error as an unrecoverable error.
         PLOG(WARNING) << "Fail to ibv_post_send";
+        butil::return_object<RdmaWrId>(wrid);
         return -1;
     }
     return 0;
@@ -966,9 +1008,12 @@ int RdmaEndpoint::DoPostRecv(void* block, size_t block_size) {
     wr.num_sge = 1;
     wr.sg_list = &sge;
 
+    RdmaWrId* wrid = GetWrId();
+    wr.wr_id = (uint64_t)wrid;
     ibv_recv_wr* bad = NULL;
     if (ibv_post_recv((ibv_qp*)_qp, &wr, &bad) < 0) {
         PLOG(WARNING) << "Fail to ibv_post_recv";
+        butil::return_object<RdmaWrId>(wrid);
         return -1;
     }
     return 0;
