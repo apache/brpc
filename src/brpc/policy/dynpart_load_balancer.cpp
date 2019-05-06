@@ -159,7 +159,7 @@ int DynPartLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     return EHOSTDOWN;
 }
 
-DynPartLoadBalancer* DynPartLoadBalancer::New() const {
+DynPartLoadBalancer* DynPartLoadBalancer::New(const butil::StringPiece&) const {
     return new (std::nothrow) DynPartLoadBalancer;
 }
 

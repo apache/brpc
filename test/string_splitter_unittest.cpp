@@ -319,6 +319,71 @@ TEST_F(StringSplitterTest, split_limit_len) {
 
     ++ss2;
     ASSERT_FALSE(ss2);
+
+    butil::StringPiece sp(str, 5);
+    // Allows using '\0' as separator
+    butil::StringSplitter ss3(sp, '\0');
+
+    ASSERT_TRUE(ss3);
+    ASSERT_EQ(3ul, ss3.length());
+    ASSERT_FALSE(strncmp(ss3.field(), "1\t1", ss3.length()));
+
+    ++ss3;
+    ASSERT_TRUE(ss3);
+    ASSERT_EQ(1ul, ss3.length());
+    ASSERT_FALSE(strncmp(ss3.field(), "3", ss3.length()));
+
+    ++ss3;
+    ASSERT_FALSE(ss3);
+}
+
+TEST_F(StringSplitterTest, key_value_pairs_splitter_sanity) {
+    std::string kvstr = "key1=value1&&&key2=value2&key3=value3&===&key4=&=&=value5";
+    for (int i = 0 ; i < 3; ++i) {
+        // Test three constructors
+        butil::KeyValuePairsSplitter* psplitter = NULL;
+        if (i == 0) {
+            psplitter = new butil::KeyValuePairsSplitter(kvstr, '&', '=');
+        } else if (i == 1) {
+            psplitter = new butil::KeyValuePairsSplitter(
+                    kvstr.data(), kvstr.data() + kvstr.size(), '&', '=');
+        } else if (i == 2) {
+            psplitter = new butil::KeyValuePairsSplitter(kvstr.c_str(), '&', '=');
+        }
+        butil::KeyValuePairsSplitter& splitter = *psplitter;
+
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key1");
+        ASSERT_EQ(splitter.value(), "value1");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key2");
+        ASSERT_EQ(splitter.value(), "value2");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key3");
+        ASSERT_EQ(splitter.value(), "value3");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "");
+        ASSERT_EQ(splitter.value(), "==");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key4");
+        ASSERT_EQ(splitter.value(), "");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "");
+        ASSERT_EQ(splitter.value(), "");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "");
+        ASSERT_EQ(splitter.value(), "value5");
+        ++splitter;
+        ASSERT_FALSE(splitter);
+
+        delete psplitter;
+    }
 }
 
 }

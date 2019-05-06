@@ -18,7 +18,7 @@
 #include "butil/fast_rand.h"
 #include "brpc/socket.h"
 #include "brpc/policy/randomized_load_balancer.h"
-
+#include "butil/strings/string_number_conversions.h"
 
 namespace brpc {
 namespace policy {
@@ -110,7 +110,11 @@ int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
     if (n == 0) {
         return ENODATA;
     }
-    
+    if (_cluster_recover_policy && _cluster_recover_policy->StopRecoverIfNecessary()) {
+        if (_cluster_recover_policy->DoReject(s->server_list)) {
+            return EREJECT;
+        }
+    }
     uint32_t stride = 0;
     size_t offset = butil::fast_rand_less_than(n);
     for (size_t i = 0; i < n; ++i) {
@@ -118,7 +122,7 @@ int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         if (((i + 1) == n  // always take last chance
              || !ExcludedServers::IsExcluded(in.excluded, id))
             && Socket::Address(id, out->ptr) == 0
-            && !(*out->ptr)->IsLogOff()) {
+            && (*out->ptr)->IsAvailable()) {
             // We found an available server
             return 0;
         }
@@ -129,13 +133,22 @@ int RandomizedLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) {
         // this failed server won't be visited again inside for
         offset = (offset + stride) % n;
     }
+    if (_cluster_recover_policy) {
+        _cluster_recover_policy->StartRecover();
+    }
     // After we traversed the whole server list, there is still no
     // available server
     return EHOSTDOWN;
 }
 
-RandomizedLoadBalancer* RandomizedLoadBalancer::New() const {
-    return new (std::nothrow) RandomizedLoadBalancer;
+RandomizedLoadBalancer* RandomizedLoadBalancer::New(
+    const butil::StringPiece& params) const {
+    RandomizedLoadBalancer* lb = new (std::nothrow) RandomizedLoadBalancer;
+    if (lb && !lb->SetParameters(params)) {
+        delete lb;
+        lb = NULL;
+    }
+    return lb;
 }
 
 void RandomizedLoadBalancer::Destroy() {
@@ -159,6 +172,10 @@ void RandomizedLoadBalancer::Describe(
         }
     }
     os << '}';
+}
+
+bool RandomizedLoadBalancer::SetParameters(const butil::StringPiece& params) {
+    return GetRecoverPolicyByParams(params, &_cluster_recover_policy);
 }
 
 }  // namespace policy
