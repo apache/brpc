@@ -41,7 +41,6 @@
 #include "brpc/policy/round_robin_load_balancer.h"
 #include "brpc/policy/weighted_round_robin_load_balancer.h"
 #include "brpc/policy/randomized_load_balancer.h"
-#include "brpc/policy/primary_load_balancer.h"
 #include "brpc/policy/locality_aware_load_balancer.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
 #include "brpc/policy/hasher.h"
@@ -133,7 +132,6 @@ struct GlobalExtensions {
     RoundRobinLoadBalancer rr_lb;
     WeightedRoundRobinLoadBalancer wrr_lb;
     RandomizedLoadBalancer randomized_lb;
-    PrimaryLoadBalancer primary_lb;
     LocalityAwareLoadBalancer la_lb;
     ConsistentHashingLoadBalancer ch_mh_lb;
     ConsistentHashingLoadBalancer ch_md5_lb;
@@ -356,7 +354,6 @@ static void GlobalInitializeOrDieImpl() {
     LoadBalancerExtension()->RegisterOrDie("rr", &g_ext->rr_lb);
     LoadBalancerExtension()->RegisterOrDie("wrr", &g_ext->wrr_lb);
     LoadBalancerExtension()->RegisterOrDie("random", &g_ext->randomized_lb);
-    LoadBalancerExtension()->RegisterOrDie("primary", &g_ext->primary_lb);
     LoadBalancerExtension()->RegisterOrDie("la", &g_ext->la_lb);
     LoadBalancerExtension()->RegisterOrDie("c_murmurhash", &g_ext->ch_mh_lb);
     LoadBalancerExtension()->RegisterOrDie("c_md5", &g_ext->ch_md5_lb);
