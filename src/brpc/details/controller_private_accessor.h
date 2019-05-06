@@ -125,6 +125,16 @@ public:
         _cntl->add_flag(Controller::FLAGS_REQUEST_WITH_AUTH);
     }
 
+    ExcludedServers* set_accessed(ExcludedServers* accessed) {
+    	ExcludedServers* old_accessed  = _cntl->_accessed;
+	_cntl->_accessed = accessed;
+	return old_accessed;
+    }
+
+    SocketId get_peer_id(){
+	return _cntl->_current_call.peer_id;
+    }
+
     std::string& protocol_param() { return _cntl->protocol_param(); }
     const std::string& protocol_param() const { return _cntl->protocol_param(); }
 
