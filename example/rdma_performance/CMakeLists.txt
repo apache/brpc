@@ -121,5 +121,5 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "-Wl,-U,_RegisterThriftProtocol")
 endif()
 
-target_link_libraries(perf_client ${BRPC_LIB} ${BUTIL_LIB} ${DYNAMIC_LIB})
-target_link_libraries(perf_server ${BRPC_LIB} ${BUTIL_LIB} ${DYNAMIC_LIB})
+target_link_libraries(perf_client ${BRPC_LIB} ${DYNAMIC_LIB})
+target_link_libraries(perf_server ${BRPC_LIB} ${DYNAMIC_LIB})

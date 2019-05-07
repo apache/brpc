@@ -16,7 +16,6 @@
 
 #include <butil/atomicops.h>
 #include <butil/logging.h>
-#include <butil/time.h>
 #include <brpc/server.h>
 #include <bvar/variable.h>
 #include <gflags/gflags.h>
@@ -25,7 +24,7 @@
 DEFINE_int32(port, 8002, "TCP Port of this server");
 DEFINE_bool(use_rdma, true, "Use RDMA or not");
 
-butil::atomic<uint64_t> g_last_time(0);
+butil::atomic<uint64_t> g_cnt(0);
 
 namespace test {
 class PerfTestServiceImpl : public PerfTestService {
@@ -38,14 +37,9 @@ public:
               PerfTestResponse* response,
               google::protobuf::Closure* done) {
         brpc::ClosureGuard done_guard(done);
-        uint64_t last = g_last_time.load(butil::memory_order_relaxed);
-        uint64_t now = butil::monotonic_time_us();
-        if (now > last && now - last > 100000) {
-            if (g_last_time.exchange(now, butil::memory_order_relaxed) == last) {
-                response->set_cpu_usage(bvar::Variable::describe_exposed("process_cpu_usage"));
-            } else {
-                response->set_cpu_usage("");
-            }
+        uint64_t cnt = g_cnt.fetch_add(1, butil::memory_order_relaxed);
+        if (cnt % 100000 == 99999) {
+            response->set_cpu_usage(bvar::Variable::describe_exposed("process_cpu_usage"));
         } else {
             response->set_cpu_usage("");
         }
@@ -69,7 +63,6 @@ int main(int argc, char* argv[]) {
         LOG(ERROR) << "Fail to add service";
         return -1;
     }
-    g_last_time.store(0, butil::memory_order_relaxed);
 
     brpc::ServerOptions options;
     options.use_rdma = FLAGS_use_rdma;
