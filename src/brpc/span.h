@@ -42,22 +42,32 @@ DECLARE_bool(enable_trace);
 
 template<typename T>
 constexpr int64_t GetStartRealTimeUs(const T* span) {
-    return span->type() == SPAN_TYPE_SERVER ? 
+    return span->type() == SPAN_TYPE_SERVER ?
     span->received_real_us() : span->start_send_real_us();
 }
 
 template<typename T>
 constexpr int64_t GetEndRealTimeUs(const T* span) {
-    return std::max<int64_t>({span->received_real_us(), 
+    return std::max<int64_t>({span->received_real_us(),
                               span->start_parse_real_us(),
-                              span->start_callback_real_us(), 
+                              span->start_callback_real_us(),
                               span->start_send_real_us(),
                               span->sent_real_us()});
 }
 
+class Span;
+class Trace {
+public:
+    explicit Trace(Span* parent_span)
+        : _parent_span(parent_span) {}
+
+    ~Trace();
+private:
+    Span* _parent_span;
+};
+
 // Collect information required by /rpcz and tracing system whose idea is
 // described in http://static.googleusercontent.com/media/research.google.com/en//pubs/archive/36356.pdf
-
 class Span : public bvar::Collected {
     struct Forbidden {};
 public:
@@ -82,7 +92,7 @@ public:
     static Span* CreateClientSpan(const std::string& full_method_name,
                                   int64_t base_real_us);
 
-    static void Submit(Span* span, int64_t cpuwide_time_us);
+    static void Submit(Span* span);
 
     // Set tls parent.
     void AsParent() {
@@ -95,7 +105,7 @@ public:
     void Annotate(const std::string& info);
     // When length <= 0, use strlen instead.
     void AnnotateCStr(const char* cstr, size_t length);
-    
+
     // #child spans, Not O(1)
     size_t CountClientSpans() const;
 
@@ -110,7 +120,7 @@ public:
     void set_request_size(int size) { _request_size = size; }
     void set_response_size(int size) { _response_size = size; }
     void set_async(bool async) { _async = async; }
-    
+
     void set_base_real_us(int64_t tm) { _base_real_us = tm; }
     void set_received_us(int64_t tm)
     { _received_real_us = tm + _base_real_us; }
@@ -147,7 +157,7 @@ public:
     int64_t sent_real_us() const { return _sent_real_us; }
     bool async() const { return _async; }
     const std::string& full_method_name() const { return _full_method_name; }
-    
+
 private:
     DISALLOW_COPY_AND_ASSIGN(Span);
 
@@ -193,12 +203,13 @@ private:
     int64_t _start_send_real_us;
     int64_t _sent_real_us;
     std::string _full_method_name;
-    // Format: 
+    // Format:
     //   time1_us \s annotation1 <SEP>
     //   time2_us \s annotation2 <SEP>
     //   ...
     std::vector<Annotation> _annotation_list;
 
+    std::shared_ptr<Trace> _trace;
     Span* _local_parent;
     Span* _next_client;
     Span* _tls_next;

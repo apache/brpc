@@ -85,6 +85,10 @@ inline uint64_t GenerateTraceId() {
     return (g->current_random & 0xFFFFFFFFFFFF0000ULL) | g->seq++;
 }
 
+Trace::~Trace() {
+    _parent_span->submit();
+}
+
 Span* Span::CreateClientSpan(const std::string& full_method_name,
                              int64_t base_real_us) {
     Span* span = butil::get_object<Span>(Forbidden());
@@ -115,12 +119,14 @@ Span* Span::CreateClientSpan(const std::string& full_method_name,
         span->_trace_id = parent->trace_id();
         span->_parent_span_id = parent->span_id();
         span->_local_parent = parent;
+        span->_trace = parent->_trace;
         span->_next_client = parent->_next_client;
         parent->_next_client = span;
     } else {
         span->_trace_id = GenerateTraceId();
         span->_parent_span_id = 0;
         span->_local_parent = NULL;
+        span->_trace = std::make_shared<Trace>(span);
     }
     span->_span_id = GenerateSpanId();
     return span;
@@ -164,6 +170,7 @@ Span* Span::CreateServerSpan(
                                full_method_name : unknown_span_name());
     span->_annotation_list.clear();
     span->_local_parent = NULL;
+    span->_trace = std::make_shared<Trace>(span);
     return span;
 }
 
@@ -274,7 +281,7 @@ void Span::Copy2TracingSpan(TracingSpan* out) const {
 bool CanAnnotateSpan() {
     return bthread::tls_bls.rpcz_parent_span;
 }
-    
+
 void AnnotateSpan(const char* fmt, ...) {
     Span* span = (Span*)bthread::tls_bls.rpcz_parent_span;
     va_list ap;
@@ -298,7 +305,7 @@ public:
     void process(std::vector<bvar::Collected*> & list) {
         // Sort spans by their starting time so that the code on making
         // time monotonic in Span::Index works better.
-        std::sort(list.begin(), list.end(), SpanEarlier()); 
+        std::sort(list.begin(), list.end(), SpanEarlier());
     }
 };
 static SpanPreprocessor g_span_prep;
@@ -311,10 +318,8 @@ bvar::CollectorPreprocessor* Span::preprocessor() {
     return &g_span_prep;
 }
 
-void Span::Submit(Span* span, int64_t cpuwide_time_us) {
-    if (span->local_parent() == NULL) {
-        span->submit(cpuwide_time_us);
-    }
+void Span::Submit(Span* span) {
+    span->_trace.reset();
 }
 
 void Span::dump_and_destroy(size_t /*round*/) {
