@@ -22,8 +22,8 @@ const int kShortWindowSize = 500;
 const int kLongWindowSize = 1000;
 const int kShortWindowErrorPercent = 10;
 const int kLongWindowErrorPercent = 5;
-const int kMinIsolationDurationMs = 100;
-const int kMaxIsolationDurationMs = 1000;
+const int kMinIsolationDurationMs = 10;
+const int kMaxIsolationDurationMs = 200;
 const int kErrorCodeForFailed = 131;
 const int kErrorCodeForSucc = 0;
 const int kErrorCost = 1000;
@@ -60,8 +60,8 @@ struct FeedbackControl {
         : _req_num(req_num)
         , _error_percent(error_percent)
         , _circuit_breaker(circuit_breaker)
-        , _healthy_cnt(0) 
-        , _unhealthy_cnt(0) 
+        , _healthy_cnt(0)
+        , _unhealthy_cnt(0)
         , _healthy(true) {}
     int _req_num;
     int _error_percent;
@@ -86,7 +86,7 @@ protected:
         for (int i = 0; i < fc->_req_num; ++i) {
             bool healthy = false;
             if (rand() % 100 < fc->_error_percent) {
-                healthy = fc->_circuit_breaker->OnCallEnd(kErrorCodeForFailed, kErrorCost); 
+                healthy = fc->_circuit_breaker->OnCallEnd(kErrorCodeForFailed, kErrorCost);
             } else {
                 healthy = fc->_circuit_breaker->OnCallEnd(kErrorCodeForSucc, kLatency);
             }
@@ -100,7 +100,7 @@ protected:
         return fc;
     }
 
-    void StartFeedbackThread(std::vector<pthread_t>* thread_list, 
+    void StartFeedbackThread(std::vector<pthread_t>* thread_list,
                              std::vector<std::unique_ptr<FeedbackControl>>* fc_list,
                              int error_percent) {
         thread_list->clear();
@@ -129,7 +129,7 @@ TEST_F(CircuitBreakerTest, should_not_isolate) {
         EXPECT_EQ(fc->_unhealthy_cnt, 0);
         EXPECT_TRUE(fc->_healthy);
     }
-} 
+}
 
 TEST_F(CircuitBreakerTest, should_isolate) {
     std::vector<pthread_t> thread_list;
@@ -160,7 +160,6 @@ TEST_F(CircuitBreakerTest, isolation_duration_grow) {
     EXPECT_EQ(_circuit_breaker.isolation_duration_ms(), kMinIsolationDurationMs * 2);
 
     _circuit_breaker.Reset();
-    bthread_usleep(kMinIsolationDurationMs * 1000);
     StartFeedbackThread(&thread_list, &fc_list, 100);
     for (int  i = 0; i < kThreadNum; ++i) {
         void* ret_data = NULL;
@@ -173,7 +172,25 @@ TEST_F(CircuitBreakerTest, isolation_duration_grow) {
     EXPECT_EQ(_circuit_breaker.isolation_duration_ms(), kMinIsolationDurationMs * 4);
 
     _circuit_breaker.Reset();
-    bthread_usleep((kMaxIsolationDurationMs + kMinIsolationDurationMs) * 1000);
+    ::usleep((kMaxIsolationDurationMs + kMinIsolationDurationMs) * 1000);
+    StartFeedbackThread(&thread_list, &fc_list, 100);
+    for (int  i = 0; i < kThreadNum; ++i) {
+        void* ret_data = NULL;
+        EXPECT_EQ(pthread_join(thread_list[i], &ret_data), 0);
+        FeedbackControl* fc = static_cast<FeedbackControl*>(ret_data);
+        EXPECT_FALSE(fc->_healthy);
+        EXPECT_LE(fc->_healthy_cnt, kShortWindowSize);
+        EXPECT_GT(fc->_unhealthy_cnt, 0);
+    }
+    EXPECT_EQ(_circuit_breaker.isolation_duration_ms(), kMinIsolationDurationMs * 8);
+}
+
+TEST_F(CircuitBreakerTest, isolation_duration_reset) {
+    std::vector<pthread_t> thread_list;
+    std::vector<std::unique_ptr<FeedbackControl>> fc_list;
+    _circuit_breaker.Reset();
+    _circuit_breaker.OnCallEnd(kErrorCodeForFailed, kLatency);
+    ::usleep((kMaxIsolationDurationMs + kMinIsolationDurationMs) * 1000);
     StartFeedbackThread(&thread_list, &fc_list, 100);
     for (int  i = 0; i < kThreadNum; ++i) {
         void* ret_data = NULL;
@@ -184,4 +201,21 @@ TEST_F(CircuitBreakerTest, isolation_duration_grow) {
         EXPECT_GT(fc->_unhealthy_cnt, 0);
     }
     EXPECT_EQ(_circuit_breaker.isolation_duration_ms(), kMinIsolationDurationMs);
+}
+
+TEST_F(CircuitBreakerTest, isolation_duration_compute) {
+    std::vector<pthread_t> thread_list;
+    std::vector<std::unique_ptr<FeedbackControl>> fc_list;
+    _circuit_breaker.Reset();
+    ::usleep((kMaxIsolationDurationMs + kMinIsolationDurationMs) * 1000);
+    StartFeedbackThread(&thread_list, &fc_list, 100);
+    for (int  i = 0; i < kThreadNum; ++i) {
+        void* ret_data = NULL;
+        EXPECT_EQ(pthread_join(thread_list[i], &ret_data), 0);
+        FeedbackControl* fc = static_cast<FeedbackControl*>(ret_data);
+        EXPECT_FALSE(fc->_healthy);
+        EXPECT_LE(fc->_healthy_cnt, kShortWindowSize);
+        EXPECT_GT(fc->_unhealthy_cnt, 0);
+    }
+    EXPECT_EQ(_circuit_breaker.isolation_duration_ms(), 2 * kMinIsolationDurationMs);
 }
