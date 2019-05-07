@@ -39,7 +39,7 @@ DEFINE_int32(circuit_breaker_min_isolation_duration_ms, 100,
     "Minimum isolation duration in milliseconds");
 DEFINE_int32(circuit_breaker_max_isolation_duration_ms, 30000,
     "Maximum isolation duration in milliseconds");
-DEFINE_double(circuit_breaker_epsilon_value, 0.02, 
+DEFINE_double(circuit_breaker_epsilon_value, 0.02,
     "ema_alpha = 1 - std::pow(epsilon, 1.0 / window_size)");
 
 namespace {
@@ -81,14 +81,14 @@ bool CircuitBreaker::EmaErrorRecorder::OnCallEnd(int error_code,
         healthy = UpdateErrorCost(latency, ema_latency);
     }
 
-    // When the window is initializing, use error_rate to determine 
+    // When the window is initializing, use error_rate to determine
     // if it needs to be isolated.
     if (_sample_count_when_initializing.load(butil::memory_order_relaxed) < _window_size &&
         _sample_count_when_initializing.fetch_add(1, butil::memory_order_relaxed) < _window_size) {
         if (error_code != 0) {
             const int32_t error_count =
                 _error_count_when_initializing.fetch_add(1, butil::memory_order_relaxed);
-            return error_count < _window_size * _max_error_percent / 100; 
+            return error_count < _window_size * _max_error_percent / 100;
         }
         // Because once OnCallEnd returned false, the node will be ioslated soon,
         // so when error_code=0, we no longer check the error count.
@@ -99,10 +99,12 @@ bool CircuitBreaker::EmaErrorRecorder::OnCallEnd(int error_code,
 }
 
 void CircuitBreaker::EmaErrorRecorder::Reset() {
-    _sample_count_when_initializing.store(0, butil::memory_order_relaxed);
-    _error_count_when_initializing.store(0, butil::memory_order_relaxed);
+    if (_sample_count_when_initializing.load(butil::memory_order_relaxed) < _window_size) {
+        _sample_count_when_initializing.store(0, butil::memory_order_relaxed);
+        _error_count_when_initializing.store(0, butil::memory_order_relaxed);
+        _ema_latency.store(0, butil::memory_order_relaxed);
+    }
     _ema_error_cost.store(0, butil::memory_order_relaxed);
-    _ema_latency.store(0, butil::memory_order_relaxed);
 }
 
 int64_t CircuitBreaker::EmaErrorRecorder::UpdateLatency(int64_t latency) {
@@ -162,15 +164,20 @@ CircuitBreaker::CircuitBreaker()
                    FLAGS_circuit_breaker_long_window_error_percent)
     , _short_window(FLAGS_circuit_breaker_short_window_size,
                     FLAGS_circuit_breaker_short_window_error_percent)
-    , _last_reset_time_ms(butil::cpuwide_time_ms())
+    , _last_revived_time_ms(butil::cpuwide_time_ms())
     , _isolation_duration_ms(FLAGS_circuit_breaker_min_isolation_duration_ms)
-    , _isolated_times(0) 
+    , _isolated_times(0)
+    , _is_first_call_after_revived(true)
     , _broken(false) {
 }
 
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
     if (_broken.load(butil::memory_order_relaxed)) {
         return false;
+    }
+    if (_is_first_call_after_revived.load(butil::memory_order_relaxed) &&
+        _is_first_call_after_revived.exchange(false, butil::memory_order_relaxed)) {
+      _last_revived_time_ms.store(butil::cpuwide_time_ms(), butil::memory_order_relaxed);
     }
     if (_long_window.OnCallEnd(error_code, latency) &&
         _short_window.OnCallEnd(error_code, latency)) {
@@ -183,7 +190,8 @@ bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
 void CircuitBreaker::Reset() {
     _long_window.Reset();
     _short_window.Reset();
-    _last_reset_time_ms = butil::cpuwide_time_ms();
+    _last_revived_time_ms.store(butil::cpuwide_time_ms(), butil::memory_order_relaxed);
+    _is_first_call_after_revived.store(true, butil::memory_order_relaxed);
     _broken.store(false, butil::memory_order_release);
 }
 
@@ -201,7 +209,7 @@ void CircuitBreaker::UpdateIsolationDuration() {
         FLAGS_circuit_breaker_max_isolation_duration_ms;
     const int min_isolation_duration_ms =
         FLAGS_circuit_breaker_min_isolation_duration_ms;
-    if (now_time_ms - _last_reset_time_ms < max_isolation_duration_ms) {
+    if (now_time_ms - _last_revived_time_ms < max_isolation_duration_ms) {
         isolation_duration_ms =
             std::min(isolation_duration_ms * 2, max_isolation_duration_ms);
     } else {
