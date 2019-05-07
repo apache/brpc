@@ -172,7 +172,6 @@ TEST_F(CircuitBreakerTest, isolation_duration_grow) {
     EXPECT_EQ(_circuit_breaker.isolation_duration_ms(), kMinIsolationDurationMs * 4);
 
     _circuit_breaker.Reset();
-    ::usleep((kMaxIsolationDurationMs + kMinIsolationDurationMs) * 1000);
     StartFeedbackThread(&thread_list, &fc_list, 100);
     for (int  i = 0; i < kThreadNum; ++i) {
         void* ret_data = NULL;
