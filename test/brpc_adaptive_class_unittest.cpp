@@ -33,14 +33,16 @@ TEST(AdaptiveMaxConcurrencyTest, ShouldConvertCorrectly) {
     EXPECT_TRUE(amc == "auto");
 }
 
-TEST(AdaptiveProtocolType, ShouldConvertCorrectly) {
+TEST(AdaptiveProtocolTypeTest, ShouldConvertCorrectly) {
     brpc::AdaptiveProtocolType apt;
 
     apt = kHttp;
     EXPECT_EQ(apt, brpc::ProtocolType::PROTOCOL_HTTP);
+    EXPECT_NE(apt, brpc::ProtocolType::PROTOCOL_BAIDU_STD);
 
     apt = brpc::ProtocolType::PROTOCOL_HTTP;
     EXPECT_EQ(apt, brpc::ProtocolType::PROTOCOL_HTTP);
+    EXPECT_NE(apt, brpc::ProtocolType::PROTOCOL_BAIDU_STD);
 }
 
 TEST(AdaptiveConnectionTypeTest, ShouldConvertCorrectly) {
@@ -48,9 +50,10 @@ TEST(AdaptiveConnectionTypeTest, ShouldConvertCorrectly) {
 
     act = brpc::ConnectionType::CONNECTION_TYPE_POOLED;
     EXPECT_EQ(act, brpc::ConnectionType::CONNECTION_TYPE_POOLED);
+    EXPECT_NE(act, brpc::ConnectionType::CONNECTION_TYPE_SINGLE);
 
     act = kPooled;
     EXPECT_EQ(act, brpc::ConnectionType::CONNECTION_TYPE_POOLED);
+    EXPECT_NE(act, brpc::ConnectionType::CONNECTION_TYPE_SINGLE);
 }
-
 
