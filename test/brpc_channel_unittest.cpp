@@ -240,7 +240,7 @@ protected:
 
     int StartAccept(butil::EndPoint ep) {
         int listening_fd = -1;
-        while ((listening_fd = tcp_listen(ep, true)) < 0) {
+        while ((listening_fd = tcp_listen(ep)) < 0) {
             if (errno == EADDRINUSE) {
                 bthread_usleep(1000);
             } else {
@@ -1166,7 +1166,7 @@ protected:
         CallMethod(&channel, &cntl, &req, &res, async);
         tm.stop();
         EXPECT_EQ(brpc::ERPCTIMEDOUT, cntl.ErrorCode()) << cntl.ErrorText();
-        EXPECT_LT(labs(tm.m_elapsed() - cntl.timeout_ms()), 10);
+        EXPECT_LT(labs(tm.m_elapsed() - cntl.timeout_ms()), 15);
         StopAndJoin();
     }
 
@@ -1202,7 +1202,7 @@ protected:
         for (int i = 0; i < cntl.sub_count(); ++i) {
             EXPECT_EQ(ECANCELED, cntl.sub(i)->ErrorCode()) << "i=" << i;
         }
-        EXPECT_LT(labs(tm.m_elapsed() - cntl.timeout_ms()), 10);
+        EXPECT_LT(labs(tm.m_elapsed() - cntl.timeout_ms()), 15);
         StopAndJoin();
     }
 
@@ -1255,7 +1255,7 @@ protected:
                 EXPECT_EQ(0, cntl.sub(i)->ErrorCode());
             }
         }
-        EXPECT_LT(labs(tm.m_elapsed() - cntl.timeout_ms()), 10);
+        EXPECT_LT(labs(tm.m_elapsed() - cntl.timeout_ms()), 15);
         StopAndJoin();
     }
 
@@ -1288,7 +1288,7 @@ protected:
         EXPECT_EQ(brpc::ERPCTIMEDOUT, cntl.ErrorCode()) << cntl.ErrorText();
         EXPECT_EQ(1, cntl.sub_count());
         EXPECT_EQ(brpc::ERPCTIMEDOUT, cntl.sub(0)->ErrorCode());
-        EXPECT_LT(labs(tm.m_elapsed() - cntl.timeout_ms()), 10);
+        EXPECT_LT(labs(tm.m_elapsed() - cntl.timeout_ms()), 15);
         StopAndJoin();
     }
     

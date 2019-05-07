@@ -180,7 +180,7 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
         SocketId server_id = GetServerInNextStride(s->server_list, filter, tls_temp);
         if (!ExcludedServers::IsExcluded(in.excluded, server_id)
             && Socket::Address(server_id, out->ptr) == 0
-            && !(*out->ptr)->IsLogOff()) {
+            && (*out->ptr)->IsAvailable()) {
             // update tls.
             tls.remain_server = tls_temp.remain_server;
             tls.position = tls_temp.position;
@@ -239,7 +239,8 @@ SocketId WeightedRoundRobinLoadBalancer::GetServerInNextStride(
     return final_server;
 }
 
-LoadBalancer* WeightedRoundRobinLoadBalancer::New() const {
+LoadBalancer* WeightedRoundRobinLoadBalancer::New(
+    const butil::StringPiece&) const {
     return new (std::nothrow) WeightedRoundRobinLoadBalancer;
 }
 

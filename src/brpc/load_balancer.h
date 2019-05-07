@@ -25,7 +25,6 @@
 #include "brpc/server_id.h"                       // ServerId
 #include "brpc/extension.h"                       // Extension<T>
 
-
 namespace brpc {
 
 class Controller;
@@ -100,7 +99,7 @@ public:
 
     // Create/destroy an instance.
     // Caller is responsible for Destroy() the instance after usage.
-    virtual LoadBalancer* New() const = 0;
+    virtual LoadBalancer* New(const butil::StringPiece& params) const = 0;
 
 protected:
     virtual ~LoadBalancer() { }
@@ -164,6 +163,9 @@ public:
     }
 
 private:
+    static bool ParseParameters(const butil::StringPiece& lb_protocol,
+                                std::string* lb_name,
+                                butil::StringPiece* lb_params);
     static void DescribeLB(std::ostream& os, void* arg);
     void ExposeLB();
 

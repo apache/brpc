@@ -138,6 +138,7 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_PB_JSONIFY_EMPTY_ARRAY = (1 << 16);
     static const uint32_t FLAGS_ENABLED_CIRCUIT_BREAKER = (1 << 17);
     static const uint32_t FLAGS_ALWAYS_PRINT_PRIMITIVE_FIELDS = (1 << 18);
+    static const uint32_t FLAGS_HEALTH_CHECK_CALL = (1 << 19);
     
 public:
     Controller();
@@ -583,6 +584,10 @@ private:
         CallId id = { _correlation_id.value + nretry + 1 };
         return id;
     }
+
+    // Tell RPC that this particular call is used to do health check.
+    bool is_health_check_call() const { return has_flag(FLAGS_HEALTH_CHECK_CALL); }
+
 public:
     CallId current_id() const {
         CallId id = { _correlation_id.value + _current_call.nretry + 1 };

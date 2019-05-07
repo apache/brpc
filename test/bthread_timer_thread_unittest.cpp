@@ -131,7 +131,7 @@ TEST(TimerThreadTest, RunTasks) {
     tm.start();
     timer_thread.stop_and_join();
     tm.stop();
-    ASSERT_LE(tm.m_elapsed(), 10);
+    ASSERT_LE(tm.m_elapsed(), 15);
 
     // verify all runs in expected time range.
     keeper1.expect_first_run();

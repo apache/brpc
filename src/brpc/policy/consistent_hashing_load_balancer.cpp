@@ -15,12 +15,14 @@
 // Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
 
 #include <algorithm>                                           // std::set_union
+#include <array>
 #include <gflags/gflags.h>
 #include "butil/containers/flat_map.h"
 #include "butil/errno.h"
+#include "butil/strings/string_number_conversions.h"
 #include "brpc/socket.h"
 #include "brpc/policy/consistent_hashing_load_balancer.h"
-
+#include "brpc/policy/hasher.h"
 
 namespace brpc {
 namespace policy {
@@ -29,16 +31,119 @@ namespace policy {
 DEFINE_int32(chash_num_replicas, 100, 
              "default number of replicas per server in chash");
 
-ConsistentHashingLoadBalancer::ConsistentHashingLoadBalancer(HashFunc hash) 
-    : _hash(hash)
-    , _num_replicas(FLAGS_chash_num_replicas) {
+// Defined in hasher.cpp.
+const char* GetHashName(HashFunc hasher);
+
+class ReplicaPolicy {
+public:
+    virtual ~ReplicaPolicy() = default;
+
+    virtual bool Build(ServerId server, 
+                       size_t num_replicas,
+                       std::vector<ConsistentHashingLoadBalancer::Node>* replicas) const = 0;
+    virtual const char* name() const = 0;
+};
+
+class DefaultReplicaPolicy : public ReplicaPolicy {
+public:
+    DefaultReplicaPolicy(HashFunc hash) : _hash_func(hash) {}
+
+    virtual bool Build(ServerId server,
+                       size_t num_replicas,
+                       std::vector<ConsistentHashingLoadBalancer::Node>* replicas) const;
+
+    virtual const char* name() const { return GetHashName(_hash_func); }
+
+private:
+    HashFunc _hash_func;
+};
+
+bool DefaultReplicaPolicy::Build(ServerId server,
+                                 size_t num_replicas,
+                                 std::vector<ConsistentHashingLoadBalancer::Node>* replicas) const {
+    SocketUniquePtr ptr;
+    if (Socket::AddressFailedAsWell(server.id, &ptr) == -1) {
+        return false;
+    }
+    replicas->clear();
+    for (size_t i = 0; i < num_replicas; ++i) {
+        char host[32];
+        int len = snprintf(host, sizeof(host), "%s-%lu",
+                           endpoint2str(ptr->remote_side()).c_str(), i);
+        ConsistentHashingLoadBalancer::Node node;
+        node.hash = _hash_func(host, len);
+        node.server_sock = server;
+        node.server_addr = ptr->remote_side();
+        replicas->push_back(node);
+    }
+    return true;
 }
 
+class KetamaReplicaPolicy : public ReplicaPolicy {
+public:
+    virtual bool Build(ServerId server,
+                       size_t num_replicas,
+                       std::vector<ConsistentHashingLoadBalancer::Node>* replicas) const;
+
+    virtual const char* name() const { return "ketama"; }
+};
+
+bool KetamaReplicaPolicy::Build(ServerId server,
+                                size_t num_replicas,
+                                std::vector<ConsistentHashingLoadBalancer::Node>* replicas) const {
+    SocketUniquePtr ptr;
+    if (Socket::AddressFailedAsWell(server.id, &ptr) == -1) {
+        return false;
+    }
+    replicas->clear();
+    const size_t points_per_hash = 4;
+    CHECK(num_replicas % points_per_hash == 0)
+        << "Ketam hash replicas number(" << num_replicas << ") should be n*4";
+    for (size_t i = 0; i < num_replicas / points_per_hash; ++i) {
+        char host[32];
+        int len = snprintf(host, sizeof(host), "%s-%lu",
+                           endpoint2str(ptr->remote_side()).c_str(), i);
+        unsigned char digest[16];
+        MD5HashSignature(host, len, digest);
+        for (size_t j = 0; j < points_per_hash; ++j) {
+            ConsistentHashingLoadBalancer::Node node;
+            node.server_sock = server;
+            node.server_addr = ptr->remote_side();
+            node.hash = ((uint32_t) (digest[3 + j * 4] & 0xFF) << 24)
+                      | ((uint32_t) (digest[2 + j * 4] & 0xFF) << 16)
+                      | ((uint32_t) (digest[1 + j * 4] & 0xFF) << 8)
+                      | (digest[0 + j * 4] & 0xFF);
+            replicas->push_back(node);
+        }
+    }
+    return true;
+}
+
+namespace {
+
+pthread_once_t s_replica_policy_once = PTHREAD_ONCE_INIT;
+const std::array<const ReplicaPolicy*, CONS_HASH_LB_LAST>* g_replica_policy = nullptr;
+
+void InitReplicaPolicy() {
+    g_replica_policy = new std::array<const ReplicaPolicy*, CONS_HASH_LB_LAST>({
+        new DefaultReplicaPolicy(MurmurHash32),
+        new DefaultReplicaPolicy(MD5Hash32),
+        new KetamaReplicaPolicy
+    });
+}
+
+inline const ReplicaPolicy* GetReplicaPolicy(ConsistentHashingLoadBalancerType type) {
+    pthread_once(&s_replica_policy_once, InitReplicaPolicy);
+    return g_replica_policy->at(type);
+}
+
+} // namespace
+
 ConsistentHashingLoadBalancer::ConsistentHashingLoadBalancer(
-        HashFunc hash,
-        size_t num_replicas) 
-    : _hash(hash)
-    , _num_replicas(num_replicas) {
+    ConsistentHashingLoadBalancerType type)
+    : _num_replicas(FLAGS_chash_num_replicas), _type(type) {
+    CHECK(GetReplicaPolicy(_type))
+        << "Fail to find replica policy for consistency lb type: '" << _type << '\'';
 }
 
 size_t ConsistentHashingLoadBalancer::AddBatch(
@@ -112,19 +217,8 @@ size_t ConsistentHashingLoadBalancer::Remove(
 bool ConsistentHashingLoadBalancer::AddServer(const ServerId& server) {
     std::vector<Node> add_nodes;
     add_nodes.reserve(_num_replicas);
-    SocketUniquePtr ptr;
-    if (Socket::AddressFailedAsWell(server.id, &ptr) == -1) {
+    if (!GetReplicaPolicy(_type)->Build(server, _num_replicas, &add_nodes)) {
         return false;
-    }
-    for (size_t i = 0; i < _num_replicas; ++i) {
-        char host[32];
-        int len = snprintf(host, sizeof(host), "%s-%lu", 
-                 endpoint2str(ptr->remote_side()).c_str(), i);
-        Node node;
-        node.hash = _hash(host, len);
-        node.server_sock = server;
-        node.server_addr = ptr->remote_side();
-        add_nodes.push_back(node);
     }
     std::sort(add_nodes.begin(), add_nodes.end());
     bool executed = false;
@@ -138,23 +232,12 @@ size_t ConsistentHashingLoadBalancer::AddServersInBatch(
     const std::vector<ServerId> &servers) {
     std::vector<Node> add_nodes;
     add_nodes.reserve(servers.size() * _num_replicas);
+    std::vector<Node> replicas;
+    replicas.reserve(_num_replicas);
     for (size_t i = 0; i < servers.size(); ++i) {
-        SocketUniquePtr ptr;
-        if (Socket::AddressFailedAsWell(servers[i].id, &ptr) == -1) {
-            continue;
-        }
-        for (size_t rep = 0; rep < _num_replicas; ++rep) {
-            char host[32];
-            // To be compatible with libmemcached, we formulate the key of
-            // a virtual node as `|address|-|replica_index|', see
-            // http://fe.baidu.com/-1bszwnf at line 297.
-            int len = snprintf(host, sizeof(host), "%s-%lu",
-                              endpoint2str(ptr->remote_side()).c_str(), rep);
-            Node node;
-            node.hash = _hash(host, len);
-            node.server_sock = servers[i];
-            node.server_addr = ptr->remote_side();
-            add_nodes.push_back(node);
+        replicas.clear();
+        if (GetReplicaPolicy(_type)->Build(servers[i], _num_replicas, &replicas)) {
+            add_nodes.insert(add_nodes.end(), replicas.begin(), replicas.end());
         }
     }
     std::sort(add_nodes.begin(), add_nodes.end());
@@ -187,8 +270,14 @@ size_t ConsistentHashingLoadBalancer::RemoveServersInBatch(
     return n;
 }
 
-LoadBalancer *ConsistentHashingLoadBalancer::New() const {
-    return new (std::nothrow) ConsistentHashingLoadBalancer(_hash);
+LoadBalancer *ConsistentHashingLoadBalancer::New(const butil::StringPiece& params) const {
+    ConsistentHashingLoadBalancer* lb = 
+        new (std::nothrow) ConsistentHashingLoadBalancer(_type);
+    if (lb && !lb->SetParameters(params)) {
+        delete lb;
+        lb = nullptr;
+    }
+    return lb;
 }
 
 void ConsistentHashingLoadBalancer::Destroy() {
@@ -221,7 +310,7 @@ int ConsistentHashingLoadBalancer::SelectServer(
         if (((i + 1) == s->size() // always take last chance
              || !ExcludedServers::IsExcluded(in.excluded, choice->server_sock.id))
             && Socket::Address(choice->server_sock.id, out->ptr) == 0 
-            && !(*out->ptr)->IsLogOff()) {
+            && (*out->ptr)->IsAvailable()) {
             return 0;
         } else {
             if (++choice == s->end()) {
@@ -232,8 +321,6 @@ int ConsistentHashingLoadBalancer::SelectServer(
     return EHOSTDOWN;
 }
 
-extern const char *GetHashName(uint32_t (*hasher)(const void* key, size_t len));
-
 void ConsistentHashingLoadBalancer::Describe(
     std::ostream &os, const DescribeOptions& options) {
     if (!options.verbose) {
@@ -241,7 +328,7 @@ void ConsistentHashingLoadBalancer::Describe(
         return;
     }
     os << "ConsistentHashingLoadBalancer {\n"
-       << "  hash function: " << GetHashName(_hash) << '\n'
+       << "  hash function: " << GetReplicaPolicy(_type)->name() << '\n'
        << "  replica per host: " << _num_replicas << '\n';
     std::map<butil::EndPoint, double> load_map;
     GetLoads(&load_map);
@@ -287,6 +374,24 @@ void ConsistentHashingLoadBalancer::GetLoads(
             it = count_map.begin(); it!= count_map.end(); ++it) {
         (*load_map)[it->first] = (double)it->second / UINT_MAX;
     }
+}
+
+bool ConsistentHashingLoadBalancer::SetParameters(const butil::StringPiece& params) {
+    for (butil::KeyValuePairsSplitter sp(params.begin(), params.end(), ' ', '=');
+            sp; ++sp) {
+        if (sp.value().empty()) {
+            LOG(ERROR) << "Empty value for " << sp.key() << " in lb parameter";
+            return false;
+        }
+        if (sp.key() == "replicas") {
+            if (!butil::StringToSizeT(sp.value(), &_num_replicas)) {
+                return false;
+            }
+            continue;
+        }
+        LOG(ERROR) << "Failed to set this unknown parameters " << sp.key_and_value();
+    }
+    return true;
 }
 
 }  // namespace policy

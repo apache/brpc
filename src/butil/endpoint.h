@@ -119,10 +119,11 @@ int endpoint2hostname(const EndPoint& point, std::string* host);
 // Returns the socket descriptor, -1 otherwise and errno is set.
 int tcp_connect(EndPoint server, int* self_port);
 
-// Create and listen to a TCP socket bound with `ip_and_port'. If `reuse_addr'
-// is true, ports in TIME_WAIT will be bound as well.
+// Create and listen to a TCP socket bound with `ip_and_port'.
+// To enable SO_REUSEADDR for the whole program, enable gflag -reuse_addr
+// To enable SO_REUSEPORT for the whole program, enable gflag -reuse_port
 // Returns the socket descriptor, -1 otherwise and errno is set.
-int tcp_listen(EndPoint ip_and_port, bool reuse_addr);
+int tcp_listen(EndPoint ip_and_port);
 
 // Get the local end of a socket connection
 int get_local_side(int fd, EndPoint *out);

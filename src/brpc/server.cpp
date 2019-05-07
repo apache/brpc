@@ -104,9 +104,6 @@ const char* status_str(Server::Status s) {
 
 butil::static_atomic<int> g_running_server_count = BUTIL_STATIC_ATOMIC_INIT(0);
 
-DEFINE_bool(reuse_addr, true, "Bind to ports in TIME_WAIT state");
-BRPC_VALIDATE_GFLAG(reuse_addr, PassValidate);
-
 // Following services may have security issues and are disabled by default.
 DEFINE_bool(enable_dir_service, false, "Enable /dir");
 DEFINE_bool(enable_threads_service, false, "Enable /threads");
@@ -939,7 +936,7 @@ int Server::StartInternal(const butil::ip_t& ip,
     _listen_addr.ip = ip;
     for (int port = port_range.min_port; port <= port_range.max_port; ++port) {
         _listen_addr.port = port;
-        butil::fd_guard sockfd(tcp_listen(_listen_addr, FLAGS_reuse_addr));
+        butil::fd_guard sockfd(tcp_listen(_listen_addr));
         if (sockfd < 0) {
             if (port != port_range.max_port) { // not the last port, try next
                 continue;
@@ -999,7 +996,7 @@ int Server::StartInternal(const butil::ip_t& ip,
         }
         butil::EndPoint internal_point = _listen_addr;
         internal_point.port = _options.internal_port;
-        butil::fd_guard sockfd(tcp_listen(internal_point, FLAGS_reuse_addr));
+        butil::fd_guard sockfd(tcp_listen(internal_point));
         if (sockfd < 0) {
             LOG(ERROR) << "Fail to listen " << internal_point << " (internal)";
             return -1;

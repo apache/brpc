@@ -1043,7 +1043,7 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         ASSERT_EQ(0, server.Stop(-1));
         ASSERT_EQ(0, server.Join());
         timer.stop();
-        EXPECT_TRUE(labs(timer.m_elapsed() - 100) < 10) << timer.m_elapsed();
+        EXPECT_TRUE(labs(timer.m_elapsed() - 100) < 15) << timer.m_elapsed();
         bthread_join(tid, NULL);
     }
 
@@ -1066,7 +1066,7 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         timer.stop();
         // Assertion will fail since EchoServiceImpl::Echo is holding
         // additional reference to the `Socket'
-        // EXPECT_TRUE(timer.m_elapsed() < 10) << timer.m_elapsed();
+        // EXPECT_TRUE(timer.m_elapsed() < 15) << timer.m_elapsed();
         bthread_join(tid, NULL);
     }
 
@@ -1089,7 +1089,7 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         timer.stop();
         // Assertion will fail since EchoServiceImpl::Echo is holding
         // additional reference to the `Socket'
-        // EXPECT_TRUE(labs(timer.m_elapsed() - 50) < 10) << timer.m_elapsed();
+        // EXPECT_TRUE(labs(timer.m_elapsed() - 50) < 15) << timer.m_elapsed();
         bthread_join(tid, NULL);
     }
     
@@ -1109,7 +1109,7 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         ASSERT_EQ(0, server.Stop(1000));
         ASSERT_EQ(0, server.Join());
         timer.stop();
-        EXPECT_TRUE(labs(timer.m_elapsed() - 100) < 10) << timer.m_elapsed();
+        EXPECT_TRUE(labs(timer.m_elapsed() - 100) < 15) << timer.m_elapsed();
         bthread_join(tid, NULL);
     }
 }
@@ -1178,7 +1178,7 @@ TEST_F(ServerTest, range_start) {
     butil::EndPoint point;
     for (int i = START_PORT; i < END_PORT; ++i) {
         point.port = i;
-        listen_fds[i - START_PORT].reset(butil::tcp_listen(point, true));
+        listen_fds[i - START_PORT].reset(butil::tcp_listen(point));
     }
 
     brpc::Server server;

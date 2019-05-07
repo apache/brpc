@@ -706,7 +706,7 @@ TEST_F(HttpTest, read_long_body_progressively) {
                     last_read = current_read;
                 }
                 // Read something in past N seconds.
-                ASSERT_GT(last_read, 100000);
+                ASSERT_GT(last_read, (size_t)100000);
             }
             // the socket still holds a ref.
             ASSERT_FALSE(reader->destroyed());
@@ -794,7 +794,7 @@ TEST_F(HttpTest, read_progressively_after_cntl_destroys) {
                 last_read = current_read;
             }
             // Read something in past N seconds.
-            ASSERT_GT(last_read, 100000);
+            ASSERT_GT(last_read, (size_t)100000);
             ASSERT_FALSE(reader->destroyed());
         }
         // Wait for recycling of the main socket.
@@ -843,7 +843,7 @@ TEST_F(HttpTest, read_progressively_after_long_delay) {
                     last_read = current_read;
                 }
                 // Read something in past N seconds.
-                ASSERT_GT(last_read, 100000);
+                ASSERT_GT(last_read, (size_t)100000);
             }
             ASSERT_FALSE(reader->destroyed());
         }
@@ -883,7 +883,7 @@ TEST_F(HttpTest, skip_progressive_reading) {
     ASSERT_EQ(0, svc.last_errno());
     LOG(INFO) << "Server still wrote " << new_written_bytes - old_written_bytes;
     // The server side still wrote things.
-    ASSERT_GT(new_written_bytes - old_written_bytes, 100000);
+    ASSERT_GT(new_written_bytes - old_written_bytes, (size_t)100000);
 }
 
 class AlwaysFailRead : public brpc::ProgressiveReader {
@@ -954,7 +954,7 @@ TEST_F(HttpTest, broken_socket_stops_progressive_reading) {
             last_read = current_read;
         }
         // Read something in past N seconds.
-        ASSERT_GT(last_read, 100000);
+        ASSERT_GT(last_read, (size_t)100000);
     }
     // the socket still holds a ref.
     ASSERT_FALSE(reader->destroyed());
