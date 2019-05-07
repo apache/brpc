@@ -1,11 +1,11 @@
 // Copyright (c) 2014 Baidu, Inc.
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -133,7 +133,7 @@ ServerOptions::ServerOptions()
     , bthread_init_fn(NULL)
     , bthread_init_args(NULL)
     , bthread_init_count(0)
-    , internal_port(-1) 
+    , internal_port(-1)
     , has_builtin_services(true)
     , http_master_service(NULL)
     , health_reporter(NULL)
@@ -271,12 +271,12 @@ std::string Server::ServerPrefix() const {
 
 void* Server::UpdateDerivedVars(void* arg) {
     const int64_t start_us = butil::cpuwide_time_us();
-    
+
     Server* server = static_cast<Server*>(arg);
     const std::string prefix = server->ServerPrefix();
     std::vector<SocketId> conns;
     std::vector<SocketId> internal_conns;
-    
+
     server->_nerror_bvar.expose_as(prefix, "error");
 
     bvar::PassiveStatus<timeval> uptime_st(
@@ -284,10 +284,10 @@ void* Server::UpdateDerivedVars(void* arg) {
 
     bvar::PassiveStatus<std::string> start_time_st(
         prefix, "start_time", PrintStartTime, server);
-        
+
     bvar::PassiveStatus<int32_t> nconn_st(
         prefix, "connection_count", GetConnectionCount, server);
-    
+
     bvar::PassiveStatus<int32_t> nservice_st(
         prefix, "service_count", GetServiceCount, server);
 
@@ -339,7 +339,7 @@ void* Server::UpdateDerivedVars(void* arg) {
             }
         }
         last_time = butil::gettimeofday_us();
-        
+
         // Update stats of accepted sockets.
         if (server->_am) {
             server->_am->ListConnections(&conns);
@@ -388,7 +388,7 @@ Server::Server(ProfilerLinker)
     , _derivative_thread(INVALID_BTHREAD)
     , _keytable_pool(NULL)
     , _concurrency(0) {
-    BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,	
+    BAIDU_CASSERT(offsetof(Server, _concurrency) % 64 == 0,
                   Server_concurrency_must_be_aligned_by_cacheline);
 }
 
@@ -411,7 +411,7 @@ Server::~Server() {
 
     delete _options.http_master_service;
     _options.http_master_service = NULL;
-    
+
     delete _am;
     _am = NULL;
     delete _internal_am;
@@ -422,7 +422,7 @@ Server::~Server() {
 
     delete _global_restful_map;
     _global_restful_map = NULL;
-    
+
     if (!_options.pid_file.empty()) {
         unlink(_options.pid_file.c_str());
     }
@@ -513,7 +513,7 @@ int Server::AddBuiltinServices() {
     if (AddBuiltinService(new (std::nothrow) BthreadsService)) {
         LOG(ERROR) << "Fail to add BthreadsService";
         return -1;
-    }    
+    }
     if (AddBuiltinService(new (std::nothrow) IdsService)) {
         LOG(ERROR) << "Fail to add IdsService";
         return -1;
@@ -521,7 +521,7 @@ int Server::AddBuiltinServices() {
     if (AddBuiltinService(new (std::nothrow) SocketsService)) {
         LOG(ERROR) << "Fail to add SocketsService";
         return -1;
-    }    
+    }
     if (AddBuiltinService(new (std::nothrow) GetFaviconService)) {
         LOG(ERROR) << "Fail to add GetFaviconService";
         return -1;
@@ -601,7 +601,7 @@ int Server::InitializeOnce() {
         return 0;
     }
     GlobalInitializeOrDie();
-    
+
     if (_status != UNINITIALIZED) {
         return 0;
     }
@@ -690,7 +690,7 @@ static bool CreateConcurrencyLimiter(const AdaptiveMaxConcurrency& amc,
     return true;
 }
 
-static AdaptiveMaxConcurrency g_default_max_concurrency_of_method = 0;
+static AdaptiveMaxConcurrency g_default_max_concurrency_of_method(0);
 
 int Server::StartInternal(const butil::ip_t& ip,
                           const PortRange& port_range,
@@ -710,7 +710,7 @@ int Server::StartInternal(const butil::ip_t& ip,
     if (st != READY) {
         if (st == RUNNING) {
             LOG(ERROR) << "Server[" << version() << "] is already running on "
-                       << _listen_addr; 
+                       << _listen_addr;
         } else {
             LOG(ERROR) << "Can't start Server[" << version()
                        << "] which is " << status_str(status());
@@ -780,7 +780,7 @@ int Server::StartInternal(const butil::ip_t& ip,
         _keytable_pool = NULL;
         return -1;
     }
-    
+
     if (_options.thread_local_data_factory) {
         _tl_options.thread_local_data_factory = _options.thread_local_data_factory;
         if (bthread_key_create2(&_tl_options.tls_key, DestroyServerTLS,
@@ -872,7 +872,7 @@ int Server::StartInternal(const butil::ip_t& ip,
     }
 
     _concurrency = 0;
-    
+
     if (_options.has_builtin_services &&
         _builtin_service_count <= 0 &&
         AddBuiltinServices() != 0) {
@@ -926,7 +926,7 @@ int Server::StartInternal(const butil::ip_t& ip,
             it->second.status->SetConcurrencyLimiter(cl);
         }
     }
-    
+
     // Create listening ports
     if (port_range.min_port > port_range.max_port) {
         LOG(ERROR) << "Invalid port_range=[" << port_range.min_port << '-'
@@ -1016,7 +1016,7 @@ int Server::StartInternal(const butil::ip_t& ip,
         }
         sockfd.release();
     }
-    
+
     PutPidFileIfNeeded();
 
     // Launch _derivative_thread.
@@ -1090,7 +1090,7 @@ int Server::Stop(int timeout_ms) {
         return -1;
     }
     _status = STOPPING;
-    
+
     LOG(INFO) << "Server[" << version() << "] is going to quit";
 
     if (_am) {
@@ -1120,7 +1120,7 @@ int Server::Join() {
         // this pool in _derivative_thread which does not quit yet.
         _session_local_data_pool->Reset(NULL);
     }
-    
+
     if (_keytable_pool) {
         // Destroy _keytable_pool to delete keytables inside. This has to be
         // done here (before leaving Join) because it's legal for users to
@@ -1133,7 +1133,7 @@ int Server::Join() {
         // the leak is acceptable in most scenarios.
         _keytable_pool = NULL;
     }
-    
+
     // Delete tls_key as well since we don't need it anymore.
     if (_tl_options.tls_key != INVALID_BTHREAD_KEY) {
         CHECK_EQ(0, bthread_key_delete(_tl_options.tls_key));
@@ -1148,7 +1148,7 @@ int Server::Join() {
         bthread_join(_derivative_thread, NULL);
         _derivative_thread = INVALID_BTHREAD;
     }
-    
+
     g_running_server_count.fetch_sub(1, butil::memory_order_relaxed);
     _status = READY;
     return 0;
@@ -1167,7 +1167,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
                    << " does not have any method.";
         return -1;
     }
-    
+
     if (InitializeOnce() != 0) {
         LOG(ERROR) << "Fail to initialize Server[" << version() << ']';
         return -1;
@@ -1177,7 +1177,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
                    << version() << "] which is " << status_str(status());
         return -1;
     }
-        
+
     if (_fullname_service_map.seek(sd->full_name()) != NULL) {
         LOG(ERROR) << "service=" << sd->full_name() << " already exists";
         return -1;
@@ -1279,7 +1279,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
                 RemoveService(service);
                 return -1;
             }
-            
+
             const std::string& svc_name = mappings[i].path.service_name;
             if (svc_name.empty()) {
                 if (_global_restful_map == NULL) {
@@ -1475,41 +1475,41 @@ void Server::RemoveMethodsOf(google::protobuf::Service* service) {
     }
 }
 
-int Server::RemoveService(google::protobuf::Service* service) {     
-    if (NULL == service) {      
-        LOG(ERROR) << "Parameter[service] is NULL";     
-        return -1;      
-    }       
-    if (status() != READY) {        
-        LOG(ERROR) << "Can't remove service="       
-                   << service->GetDescriptor()->full_name() << " from Server["      
-                   << version() << "] which is " << status_str(status());       
-        return -1;      
+int Server::RemoveService(google::protobuf::Service* service) {
+    if (NULL == service) {
+        LOG(ERROR) << "Parameter[service] is NULL";
+        return -1;
     }
-    
-    const google::protobuf::ServiceDescriptor* sd = service->GetDescriptor();       
-    ServiceProperty* ss = _fullname_service_map.seek(sd->full_name());      
-    if (ss == NULL) {       
-        RPC_VLOG << "Fail to find service=" << sd->full_name().c_str();       
-        return -1;      
-    }       
+    if (status() != READY) {
+        LOG(ERROR) << "Can't remove service="
+                   << service->GetDescriptor()->full_name() << " from Server["
+                   << version() << "] which is " << status_str(status());
+        return -1;
+    }
+
+    const google::protobuf::ServiceDescriptor* sd = service->GetDescriptor();
+    ServiceProperty* ss = _fullname_service_map.seek(sd->full_name());
+    if (ss == NULL) {
+        RPC_VLOG << "Fail to find service=" << sd->full_name().c_str();
+        return -1;
+    }
     RemoveMethodsOf(service);
     if (ss->ownership == SERVER_OWNS_SERVICE) {
-        delete ss->service;     
-    }       
-    const bool is_builtin_service = ss->is_builtin_service;     
-    _fullname_service_map.erase(sd->full_name());       
-    _service_map.erase(sd->name());     
-        
-    // Note: ss is invalidated.     
-    if (is_builtin_service) {       
-        --_builtin_service_count;     
+        delete ss->service;
+    }
+    const bool is_builtin_service = ss->is_builtin_service;
+    _fullname_service_map.erase(sd->full_name());
+    _service_map.erase(sd->name());
+
+    // Note: ss is invalidated.
+    if (is_builtin_service) {
+        --_builtin_service_count;
     } else {
         if (_first_service == service) {
             _first_service = NULL;
         }
     }
-    return 0;       
+    return 0;
 }
 
 void Server::ClearServices() {
@@ -1519,7 +1519,7 @@ void Server::ClearServices() {
             << "] which is " << status_str(status());
         return;
     }
-    for (ServiceMap::const_iterator it = _fullname_service_map.begin(); 
+    for (ServiceMap::const_iterator it = _fullname_service_map.begin();
          it != _fullname_service_map.end(); ++it) {
         if (it->second.ownership == SERVER_OWNS_SERVICE) {
             delete it->second.service;
@@ -1643,7 +1643,7 @@ void Server::PutPidFileIfNeeded() {
     for (size_t pos = _options.pid_file.find('/'); pos != std::string::npos;
             pos = _options.pid_file.find('/', pos + 1)) {
         std::string dir_name =_options.pid_file.substr(0, pos + 1);
-        int rc = mkdir(dir_name.c_str(), 
+        int rc = mkdir(dir_name.c_str(),
                        S_IFDIR | S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP);
         if (rc != 0 && errno != EEXIST
 #if defined(OS_MACOSX)
@@ -1676,14 +1676,14 @@ void Server::RunUntilAskedToQuit() {
 }
 
 void* thread_local_data() {
-    const Server::ThreadLocalOptions* tl_options = 
+    const Server::ThreadLocalOptions* tl_options =
         static_cast<const Server::ThreadLocalOptions*>(bthread_get_assigned_data());
     if (tl_options == NULL) { // not in server threads.
         return NULL;
     }
     if (BAIDU_UNLIKELY(tl_options->thread_local_data_factory == NULL)) {
         CHECK(false) << "The protocol impl. may not set tls correctly";
-        return NULL; 
+        return NULL;
     }
     void* data = bthread_getspecific(tl_options->tls_key);
     if (data == NULL) {
@@ -1832,7 +1832,7 @@ int Server::AddCertificate(const CertInfo& cert) {
     SSL_CTX_set_tlsext_servername_callback(ssl_ctx.ctx->raw_ctx, SSLSwitchCTXByHostname);
     SSL_CTX_set_tlsext_servername_arg(ssl_ctx.ctx->raw_ctx, this);
 #endif
-            
+
     if (!_reload_cert_maps.Modify(AddCertMapping, ssl_ctx)) {
         LOG(ERROR) << "Fail to add mappings into _reload_cert_maps";
         return -1;
@@ -1893,7 +1893,7 @@ int Server::RemoveCertificate(const CertInfo& cert) {
         LOG(ERROR) << "Fail to remove mappings from _reload_cert_maps";
         return -1;
     }
-    
+
     _ssl_ctx_map.erase(cert_key);
     return 0;
 }
@@ -1928,7 +1928,7 @@ int Server::ResetCertificates(const std::vector<CertInfo>& certs) {
         return -1;
     }
 
-    // Add default certficiate into tmp_map first since it can't be reloaded 
+    // Add default certficiate into tmp_map first since it can't be reloaded
     std::string default_cert_key =
         _options.ssl_options().default_cert.certificate
         + _options.ssl_options().default_cert.private_key;
@@ -1951,7 +1951,7 @@ int Server::ResetCertificates(const std::vector<CertInfo>& certs) {
         if (ssl_ctx.ctx->raw_ctx == NULL) {
             return -1;
         }
-    
+
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
         SSL_CTX_set_tlsext_servername_callback(ssl_ctx.ctx->raw_ctx, SSLSwitchCTXByHostname);
         SSL_CTX_set_tlsext_servername_arg(ssl_ctx.ctx->raw_ctx, this);
@@ -2107,7 +2107,7 @@ int Server::SSLSwitchCTXByHostname(struct ssl_st* ssl,
     if (server->_reload_cert_maps.Read(&s) != 0) {
         return SSL_TLSEXT_ERR_ALERT_FATAL;
     }
-    
+
     std::shared_ptr<SocketSSLContext>* pctx = s->cert_map.seek(hostname);
     if (pctx == NULL) {
         const char* dot = hostname;
@@ -2126,7 +2126,7 @@ int Server::SSLSwitchCTXByHostname(struct ssl_st* ssl,
             return SSL_TLSEXT_ERR_ALERT_FATAL;
         }
         // Use default SSL_CTX which is the current one
-        return SSL_TLSEXT_ERR_OK; 
+        return SSL_TLSEXT_ERR_OK;
     }
 
     // Switch SSL_CTX to the one with correct hostname
