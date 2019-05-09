@@ -32,10 +32,10 @@
 
 DEFINE_int32(thread_num, 0, "How many threads are used");
 DEFINE_int32(max_thread_num, 16, "The max number of threads are used");
-DEFINE_int32(attachment_size, -1, "Attachment size is used (in KB)");
+DEFINE_int32(attachment_size, 0, "Attachment size is used (in KB)");
 DEFINE_bool(specify_attachment_addr, false, "Specify the address of attachment");
 DEFINE_bool(echo_attachment, false, "Select whether attachment should be echo");
-DEFINE_string(connection_type, "pooled", "Connection type of the channel");
+DEFINE_string(connection_type, "single", "Connection type of the channel");
 DEFINE_string(protocol, "baidu_std", "Protocol type.");
 DEFINE_string(servers, "0.0.0.0:8002+0.0.0.0:8002", "IP Address of servers");
 DEFINE_bool(use_rdma, true, "Use RDMA or not");
@@ -49,6 +49,7 @@ bvar::LatencyRecorder g_server_cpu_recorder("server_cpu");
 bvar::LatencyRecorder g_client_cpu_recorder("client_cpu");
 butil::atomic<uint64_t> g_last_time(0);
 butil::atomic<uint64_t> g_total_bytes;
+butil::atomic<uint64_t> g_total_cnt;
 std::vector<std::string> g_servers;
 int rr_index = 0;
 
@@ -64,19 +65,17 @@ public:
         , _iterations(0)
         , _stop(false)
     {
-        if (attachment_size == 0) {
-            attachment_size = 1;
-        } else {
-            attachment_size *= 1024;
-        }
+        attachment_size *= 1024;
 
-        _addr = malloc(attachment_size);
-        butil::fast_rand_bytes(_addr, attachment_size);
-        if (FLAGS_specify_attachment_addr) {
-            brpc::rdma::RegisterMemoryForRdma(_addr, attachment_size);
-            _attachment.append_user_data(_addr, attachment_size, NULL, NULL);
-        } else {
-            _attachment.append(_addr, attachment_size);
+        if (attachment_size > 0) {
+            _addr = malloc(attachment_size);
+            butil::fast_rand_bytes(_addr, attachment_size);
+            if (FLAGS_specify_attachment_addr) {
+                brpc::rdma::RegisterMemoryForRdma(_addr, attachment_size);
+                _attachment.append_user_data(_addr, attachment_size, NULL, NULL);
+            } else {
+                _attachment.append(_addr, attachment_size);
+            }
         }
         _echo_attachment = echo_attachment;
     }
@@ -167,6 +166,7 @@ public:
         }
         g_total_bytes.fetch_add(test->_attachment.size(),
                 butil::memory_order_relaxed);
+        g_total_cnt.fetch_add(1, butil::memory_order_relaxed);
 
         cntl_guard.reset(NULL);
         response_guard.reset(NULL);
@@ -225,6 +225,7 @@ void Test(int thread_num, int attachment_size) {
         << ", Attachment: " << attachment_size << "KB"
         << ", Echo: " << (FLAGS_echo_attachment ? "yes]" : "no]") << std::flush;
     g_total_bytes.store(0, butil::memory_order_relaxed);
+    g_total_cnt.store(0, butil::memory_order_relaxed);
     std::vector<PerformanceTest*> tests;
     for (int k = 0; k < thread_num; ++k) {
         PerformanceTest* t = new PerformanceTest(attachment_size, FLAGS_echo_attachment);
@@ -252,7 +253,7 @@ void Test(int thread_num, int attachment_size) {
             << ", 99th-Latency: " << g_latency_recorder.latency_percentile(0.99)
             << ", 99.9th-Latency: " << g_latency_recorder.latency_percentile(0.999)
             << ", Throughput: " << throughput << "MB/s"
-            << ", QPS: " << (int)(throughput * 1024 / attachment_size / 1000) << "k"
+            << ", QPS: " << g_total_cnt.load(butil::memory_order_relaxed) * 1000 / (end_time - start_time) << "k"
             << ", Server CPU-utilization: " << g_server_cpu_recorder.latency(10) << "\%"
             << ", Client CPU-utilization: " << g_client_cpu_recorder.latency(10) << "\%"
             << std::endl;

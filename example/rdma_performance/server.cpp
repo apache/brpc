@@ -14,6 +14,7 @@
 
 // A performance test.
 
+#include <pthread.h>
 #include <butil/atomicops.h>
 #include <butil/logging.h>
 #include <brpc/server.h>
@@ -25,6 +26,8 @@ DEFINE_int32(port, 8002, "TCP Port of this server");
 DEFINE_bool(use_rdma, true, "Use RDMA or not");
 
 butil::atomic<uint64_t> g_cnt(0);
+butil::atomic<uint64_t> g_total_cnt(0);
+volatile bool g_stop = false;
 
 namespace test {
 class PerfTestServiceImpl : public PerfTestService {
@@ -48,8 +51,20 @@ public:
                 static_cast<brpc::Controller*>(cntl_base);
             cntl->response_attachment().append(cntl->request_attachment());
         }
+        g_total_cnt.fetch_add(1, butil::memory_order_relaxed);
     }
 };
+}
+
+void* PrintQPS(void*) {
+    uint64_t last = 0;
+    while (!g_stop) {
+        sleep(1);
+        uint64_t tmp = g_total_cnt.load(butil::memory_order_relaxed);
+        LOG(INFO) << "QPS: " << (tmp - last) / 1000 << "k";
+        last = tmp;
+    }
+    return NULL;
 }
 
 int main(int argc, char* argv[]) {
@@ -71,6 +86,13 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
+    pthread_t tid;
+    pthread_create(&tid, NULL, PrintQPS, NULL);
+
     server.RunUntilAskedToQuit();
+
+    g_stop = true;
+    pthread_join(tid, NULL);
+
     return 0;
 }
