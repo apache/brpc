@@ -201,7 +201,7 @@ void Variable::list_exposed(std::vector<std::string>* names,
         return;
     }
     names->clear();
-    if (names->size() < 32) {
+    if (names->capacity() < 32) {
         names->reserve(count_exposed());
     }
     VarMapWithLock* var_maps = get_var_maps();
