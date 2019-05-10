@@ -144,7 +144,7 @@ Variable是所有bvar的基类，主要提供全局注册，列举，查询等�
 //   find_exposed
 // Return 0 on success, -1 otherwise.
 int expose(const butil::StringPiece& name);
-int expose(const butil::StringPiece& prefix, const butil::StringPiece& name);
+int expose_as(const butil::StringPiece& prefix, const butil::StringPiece& name);
 ```
 全局曝光后的bvar名字便为name或prefix + name，可通过以_exposed为后缀的static函数查询。比如Variable::describe_exposed(name)会返回名为name的bvar的描述。
 
