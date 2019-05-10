@@ -29,8 +29,13 @@ public:
     MysqlAuthenticator(const butil::StringPiece& user,
                        const butil::StringPiece& passwd,
                        const butil::StringPiece& schema,
-                       const butil::StringPiece& params = "")
-        : _user(user), _passwd(passwd), _schema(schema), _params(params) {}
+                       const butil::StringPiece& params = "",
+                       const butil::StringPiece& collation = MysqlDefaultCollation)
+        : _user(user.data(), user.size()),
+          _passwd(passwd.data(), passwd.size()),
+          _schema(schema.data(), schema.size()),
+          _params(params.data(), params.size()),
+          _collation(collation.data(), collation.size()) {}
 
     int GenerateCredential(std::string* auth_str) const {
         return 0;
@@ -40,34 +45,41 @@ public:
         return 0;
     }
 
-    butil::StringPiece user() const;
-    butil::StringPiece passwd() const;
-    butil::StringPiece schema() const;
-    butil::StringPiece params() const;
+    const butil::StringPiece user() const;
+    const butil::StringPiece passwd() const;
+    const butil::StringPiece schema() const;
+    const butil::StringPiece params() const;
+    const butil::StringPiece collation() const;
+    bool SerializeToString(std::string* str) const;
 
 private:
     DISALLOW_COPY_AND_ASSIGN(MysqlAuthenticator);
 
-    butil::StringPiece _user;
-    butil::StringPiece _passwd;
-    butil::StringPiece _schema;
-    butil::StringPiece _params;
+    const std::string _user;
+    const std::string _passwd;
+    const std::string _schema;
+    const std::string _params;
+    const std::string _collation;
 };
 
-inline butil::StringPiece MysqlAuthenticator::user() const {
+inline const butil::StringPiece MysqlAuthenticator::user() const {
     return _user;
 }
 
-inline butil::StringPiece MysqlAuthenticator::passwd() const {
+inline const butil::StringPiece MysqlAuthenticator::passwd() const {
     return _passwd;
 }
 
-inline butil::StringPiece MysqlAuthenticator::schema() const {
+inline const butil::StringPiece MysqlAuthenticator::schema() const {
     return _schema;
 }
 
-inline butil::StringPiece MysqlAuthenticator::params() const {
+inline const butil::StringPiece MysqlAuthenticator::params() const {
     return _params;
+}
+
+inline const butil::StringPiece MysqlAuthenticator::collation() const {
+    return _collation;
 }
 
 }  // namespace policy

@@ -30,26 +30,77 @@ namespace policy {
 
 namespace {
 const butil::StringPiece mysql_native_password("mysql_native_password");
+const char* auth_param_delim = "\t";
+bool MysqlHandleParams(const butil::StringPiece& params, std::string* param_cmd) {
+    if (params.empty()) {
+        return true;
+    }
+    const char* delim1 = "&";
+    std::vector<size_t> idx;
+    for (size_t p = params.find(delim1); p != butil::StringPiece::npos;
+         p = params.find(delim1, p + 1)) {
+        idx.push_back(p);
+    }
+
+    const char* delim2 = "=";
+    std::stringstream ss;
+    for (size_t i = 0; i < idx.size() + 1; ++i) {
+        size_t pos = (i > 0) ? idx[i - 1] + 1 : 0;
+        size_t len = (i < idx.size()) ? idx[i] - pos : params.size() - pos;
+        butil::StringPiece raw(params.data() + pos, len);
+        const size_t p = raw.find(delim2);
+        if (p != butil::StringPiece::npos) {
+            butil::StringPiece k(raw.data(), p);
+            butil::StringPiece v(raw.data() + p + 1, raw.size() - p - 1);
+            if (k == "charset") {
+                ss << "SET NAMES " << v << ";";
+            } else {
+                ss << "SET " << k << "=" << v << ";";
+            }
+        }
+    }
+    *param_cmd = ss.str();
+    return true;
+}
 };  // namespace
+
+// user + "\t" + password + "\t" + schema + "\t" + collation + "\t" + param
+bool MysqlAuthenticator::SerializeToString(std::string* str) const {
+    std::stringstream ss;
+    ss << _user << auth_param_delim;
+    ss << _passwd << auth_param_delim;
+    ss << _schema << auth_param_delim;
+    ss << _collation << auth_param_delim;
+    std::string param_cmd;
+    if (MysqlHandleParams(_params, &param_cmd)) {
+        ss << param_cmd;
+    } else {
+        LOG(ERROR) << "handle mysql authentication params failed, ignore it";
+        return false;
+    }
+    *str = ss.str();
+    return true;
+}
 
 void MysqlParseAuthenticator(const butil::StringPiece& raw,
                              std::string* user,
                              std::string* password,
-                             std::string* schema) {
-    const char* delim = "\t";
+                             std::string* schema,
+                             std::string* collation) {
     std::vector<size_t> idx;
-    idx.reserve(3);
-    for (size_t p = raw.find(delim); p != butil::StringPiece::npos; p = raw.find(delim, p + 1)) {
+    idx.reserve(4);
+    for (size_t p = raw.find(auth_param_delim); p != butil::StringPiece::npos;
+         p = raw.find(auth_param_delim, p + 1)) {
         idx.push_back(p);
     }
     user->assign(raw.data(), 0, idx[0]);
     password->assign(raw.data(), idx[0] + 1, idx[1] - idx[0] - 1);
     schema->assign(raw.data(), idx[1] + 1, idx[2] - idx[1] - 1);
+    collation->assign(raw.data(), idx[2] + 1, idx[3] - idx[2] - 1);
 }
 
 void MysqlParseParams(const butil::StringPiece& raw, std::string* params) {
-    const char* delim = "\t";
-    size_t idx = raw.rfind(delim);
+    size_t idx = raw.rfind(auth_param_delim);
     params->assign(raw.data(), idx + 1, raw.size() - idx - 1);
 }
 
@@ -57,27 +108,34 @@ int MysqlPackAuthenticator(const MysqlReply::Auth& auth,
                            const butil::StringPiece& user,
                            const butil::StringPiece& password,
                            const butil::StringPiece& schema,
+                           const butil::StringPiece& collation,
                            std::string* auth_cmd) {
     const uint16_t capability =
         butil::ByteSwapToLE16((schema == "" ? 0x8285 : 0x828d) & auth.capability());
     const uint16_t extended_capability = butil::ByteSwapToLE16(0x000b & auth.extended_capability());
-    const uint32_t max_package_length = butil::ByteSwapToLE32(16777216UL);
     butil::IOBuf salt;
     salt.append(auth.salt().data(), auth.salt().size());
     salt.append(auth.salt2().data(), auth.salt2().size());
     if (auth.auth_plugin() == mysql_native_password) {
         salt = mysql_build_mysql41_authentication_response(salt.to_string(), password.data());
     } else {
-        LOG(ERROR) << "no support auth plugin " << auth.auth_plugin();
+        LOG(ERROR) << "no support auth plugin [" << auth.auth_plugin() << "]";
         return 1;
     }
 
     butil::IOBuf payload;
     payload.append(&capability, 2);
     payload.append(&extended_capability, 2);
-    payload.append(&max_package_length, 4);
-    uint8_t language = auth.language();
-    payload.append(&language, 1);
+    payload.push_back(0x00);
+    payload.push_back(0x00);
+    payload.push_back(0x00);
+    payload.push_back(0x00);
+    auto iter = MysqlCollations.find(collation.data());
+    if (iter == MysqlCollations.end()) {
+        LOG(ERROR) << "wrong collation [" << collation << "]";
+        return 1;
+    }
+    payload.append(&iter->second, 1);
     const std::string stuff(23, '\0');
     payload.append(stuff);
     payload.append(user.data());
@@ -112,38 +170,6 @@ int MysqlPackParams(const butil::StringPiece& params, std::string* param_cmd) {
     }
     LOG(ERROR) << "empty connection params";
     return 1;
-}
-
-bool MysqlHandleParams(const butil::StringPiece& params, std::string* param_cmd) {
-    if (params.empty()) {
-        return true;
-    }
-    const char* delim1 = "&";
-    std::vector<size_t> idx;
-    for (size_t p = params.find(delim1); p != butil::StringPiece::npos;
-         p = params.find(delim1, p + 1)) {
-        idx.push_back(p);
-    }
-
-    const char* delim2 = "=";
-    std::stringstream ss;
-    for (size_t i = 0; i < idx.size() + 1; ++i) {
-        size_t pos = (i > 0) ? idx[i - 1] + 1 : 0;
-        size_t len = (i < idx.size()) ? idx[i] - pos : params.size() - pos;
-        butil::StringPiece raw(params.data() + pos, len);
-        const size_t p = raw.find(delim2);
-        if (p != butil::StringPiece::npos) {
-            butil::StringPiece k(raw.data(), p);
-            butil::StringPiece v(raw.data() + p + 1, raw.size() - p - 1);
-            if (k == "charset") {
-                ss << "SET NAMES " << v << ";";
-            } else {
-                ss << "SET " << k << "=" << v << ";";
-            }
-        }
-    }
-    *param_cmd = ss.str();
-    return true;
 }
 
 }  // namespace policy

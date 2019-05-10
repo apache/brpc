@@ -276,6 +276,9 @@ public:
     // The file descriptor
     int fd() const { return _fd.load(butil::memory_order_relaxed); }
 
+    // The file descriptor version, used to avoid ABA problem.
+    uint64_t fd_version() const { return _fd_version; }
+
     // ip/port of the local end of the connection
     butil::EndPoint local_side() const { return _local_side; }
 
@@ -692,6 +695,7 @@ private:
     butil::atomic<int> _fd;  // -1 when not connected.
     int _tos;                // Type of service which is actually only 8bits.
     int64_t _reset_fd_real_us; // When _fd was reset, in microseconds.
+    uint64_t _fd_version;  // _fd_version, use only for mysql now.
 
     // Address of peer. Initialized by SocketOptions.remote_side.
     butil::EndPoint _remote_side;

@@ -43,23 +43,22 @@ DEFINE_bool(mysql_verbose, false, "[DEBUG] Print EVERY mysql request/response");
 void MysqlParseAuthenticator(const butil::StringPiece& raw,
                              std::string* user,
                              std::string* password,
-                             std::string* schema);
+                             std::string* schema,
+                             std::string* collation);
 void MysqlParseParams(const butil::StringPiece& raw, std::string* params);
 // pack mysql authentication_data
 int MysqlPackAuthenticator(const MysqlReply::Auth& auth,
                            const butil::StringPiece& user,
                            const butil::StringPiece& password,
                            const butil::StringPiece& schema,
+                           const butil::StringPiece& collation,
                            std::string* auth_cmd);
 int MysqlPackParams(const butil::StringPiece& params, std::string* param_cmd);
-bool MysqlHandleParams(const butil::StringPiece& params, std::string* param_cmd);
 
 namespace {
 // I really don't want to add a variable in controller, so I use AuthContext group to mark auth
 // step.
 const char* auth_step[] = {"AUTH_OK", "PARAMS_OK"};
-// 1. normal statement 2. prepared statement 3. need prepare statement
-enum stmt_type : uint32_t { NORMAL_STATEMENT = 1, PREPARED_STATEMENT = 2, NEED_PREPARE = 3 };
 
 struct InputResponse : public InputMessageBase {
     bthread_id_t id_wait;
@@ -74,7 +73,7 @@ struct InputResponse : public InputMessageBase {
 bool PackRequest(butil::IOBuf* buf,
                  ControllerPrivateAccessor& accessor,
                  const butil::IOBuf& request) {
-    if (accessor.pipelined_count() == PREPARED_STATEMENT) {
+    if (accessor.pipelined_count() == MYSQL_PREPARED_STATEMENT) {
         Socket* sock = accessor.get_sending_socket();
         if (sock == NULL) {
             LOG(ERROR) << "[MYSQL PACK] get sending socket with NULL";
@@ -88,19 +87,19 @@ bool PackRequest(butil::IOBuf* buf,
         uint32_t stmt_id;
         // if can't found stmt_id in this socket, create prepared statement on it, store user
         // request.
-        if ((stmt_id = stub->stmt()->stmt_id(sock->id())) == 0) {
+        if ((stmt_id = stub->stmt()->StatementId(sock->id())) == 0) {
             butil::IOBuf b;
             butil::Status st = MysqlMakeCommand(&b, MYSQL_COM_STMT_PREPARE, stub->stmt()->str());
             if (!st.ok()) {
                 LOG(ERROR) << "[MYSQL PACK] make prepare statement error " << st;
                 return false;
             }
-            accessor.set_pipelined_count(NEED_PREPARE);
+            accessor.set_pipelined_count(MYSQL_NEED_PREPARE);
             buf->append(b);
             return true;
         }
         // else pack execute header with stmt_id
-        butil::Status st = stub->WriteExecuteData(buf, stmt_id);
+        butil::Status st = stub->PackExecuteCommand(buf, stmt_id);
         if (!st.ok()) {
             LOG(ERROR) << "write execute data error " << st;
             return false;
@@ -127,10 +126,11 @@ ParseError HandleAuthentication(const InputResponse* msg, const Socket* socket, 
         goto END_OF_AUTH;
     }
     if (msg->response.reply(0).is_auth()) {
-        std::string user, password, schema, auth_cmd;
+        std::string user, password, schema, collation, auth_cmd;
         const MysqlReply& reply = msg->response.reply(0);
-        MysqlParseAuthenticator(ctx->user(), &user, &password, &schema);
-        if (MysqlPackAuthenticator(reply.auth(), user, password, schema, &auth_cmd) == 0) {
+        MysqlParseAuthenticator(ctx->user(), &user, &password, &schema, &collation);
+        if (MysqlPackAuthenticator(reply.auth(), user, password, schema, collation, &auth_cmd) ==
+            0) {
             butil::IOBuf buf;
             buf.append(auth_cmd);
             buf.cut_into_file_descriptor(socket->fd());
@@ -182,7 +182,7 @@ ParseError HandlePrepareStatement(const InputResponse* msg,
                                   const Socket* socket,
                                   PipelinedInfo* pi) {
     if (!msg->response.reply(0).is_prepare_ok()) {
-        LOG(ERROR) << "[MYSQL PARSE] is not prepare ok, " << msg->response;
+        LOG(ERROR) << "[MYSQL PARSE] response is not prepare ok, " << msg->response;
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     const MysqlReply::PrepareOk& ok = msg->response.reply(0).prepare_ok();
@@ -197,27 +197,26 @@ ParseError HandlePrepareStatement(const InputResponse* msg,
     butil::Status st;
     auto stub = ControllerPrivateAccessor(cntl).get_stmt();
     auto stmt = stub->stmt();
-    if (stmt == NULL || stmt->param_number() != ok.param_number()) {
+    if (stmt == NULL || stmt->param_count() != ok.param_count()) {
         LOG(ERROR) << "[MYSQL PACK] stmt can't be NULL";
         parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
         goto END_OF_PREPARE;
     }
-    if (stmt->param_number() != ok.param_number()) {
-        LOG(ERROR) << "[MYSQL PACK] stmt param number " << stmt->param_number()
-                   << " not equal to prepareOk.param_number " << ok.param_number();
+    if (stmt->param_count() != ok.param_count()) {
+        LOG(ERROR) << "[MYSQL PACK] stmt param number " << stmt->param_count()
+                   << " not equal to prepareOk.param_number " << ok.param_count();
         parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
         goto END_OF_PREPARE;
     }
-    stmt->set_stmt_id(socket->id(), ok.stmt_id());
-    st = stub->WriteExecuteData(&buf, ok.stmt_id());
+    stmt->SetStatementId(socket->id(), ok.stmt_id());
+    st = stub->PackExecuteCommand(&buf, ok.stmt_id());
     if (!st.ok()) {
         LOG(ERROR) << "[MYSQL PACK] make execute header error " << st;
         parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
         goto END_OF_PREPARE;
     }
     buf.cut_into_file_descriptor(socket->fd());
-    pi->count = PREPARED_STATEMENT;
-
+    pi->count = MYSQL_PREPARED_STATEMENT;
 END_OF_PREPARE:
     if (bthread_id_unlock(cid) != 0) {
         parseCode = PARSE_ERROR_ABSOLUTELY_WRONG;
@@ -249,14 +248,16 @@ ParseResult ParseMysqlMessage(butil::IOBuf* source,
         socket->reset_parsing_context(msg);
     }
 
-    const bool is_prepare = !pi.with_auth && (pi.count != NORMAL_STATEMENT);
-    ParseError err = msg->response.ConsumePartialIOBuf(*source, pi.with_auth, is_prepare);
-    if (err != PARSE_OK) {
-        socket->GivebackPipelinedInfo(pi);
-        return MakeParseError(err);
-    }
+    MysqlStmtType stmt_type = static_cast<MysqlStmtType>(pi.count);
+    ParseError err = msg->response.ConsumePartialIOBuf(*source, pi.with_auth, stmt_type);
     if (FLAGS_mysql_verbose) {
         LOG(INFO) << "[MYSQL PARSE] " << msg->response;
+    }
+    if (err != PARSE_OK) {
+        if (err == PARSE_ERROR_NOT_ENOUGH_DATA) {
+            socket->GivebackPipelinedInfo(pi);
+        }
+        return MakeParseError(err);
     }
     if (pi.with_auth) {
         ParseError err = HandleAuthentication(msg, socket, &pi);
@@ -268,7 +269,7 @@ ParseResult ParseMysqlMessage(butil::IOBuf* source,
         socket->GivebackPipelinedInfo(pi);
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
-    if (pi.count == NEED_PREPARE) {
+    if (pi.count == MYSQL_NEED_PREPARE) {
         // store stmt_id, make execute header.
         ParseError err = HandlePrepareStatement(msg, socket, &pi);
         if (err != PARSE_OK) {
@@ -340,7 +341,7 @@ void SerializeMysqlRequest(butil::IOBuf* buf,
     // can't distinguish OK and PreparedOk, so we set pipelined count to 2 to let parse function to
     // parse PreparedOk reply
     ControllerPrivateAccessor accessor(cntl);
-    accessor.set_pipelined_count(NORMAL_STATEMENT);
+    accessor.set_pipelined_count(MYSQL_NORMAL_STATEMENT);
 
     auto tx = rr->get_tx();
     if (tx != NULL) {
@@ -349,7 +350,7 @@ void SerializeMysqlRequest(butil::IOBuf* buf,
     auto st = rr->get_stmt();
     if (st != NULL) {
         accessor.set_stmt(st);
-        accessor.set_pipelined_count(PREPARED_STATEMENT);
+        accessor.set_pipelined_count(MYSQL_PREPARED_STATEMENT);
     }
     if (FLAGS_mysql_verbose) {
         LOG(INFO) << "\n[MYSQL REQUEST] " << *rr;
@@ -376,15 +377,20 @@ void PackMysqlRequest(butil::IOBuf* buf,
             return;
         }
         AuthContext* ctx = sock->mutable_auth_context();
-        std::string params;
-        if (!MysqlHandleParams(my_auth->params(), &params)) {
-            LOG(ERROR) << "[MYSQL PACK] handle params error";
+        // std::string params;
+        // if (!MysqlHandleParams(my_auth->params(), &params)) {
+        //     LOG(ERROR) << "[MYSQL PACK] handle params error";
+        //     return;
+        // }
+        // std::stringstream ss;
+        // ss << my_auth->user() << "\t" << my_auth->passwd() << "\t" << my_auth->schema() << "\t"
+        //    << my_auth->collation() << "\t" << params;
+        std::string str;
+        if (!my_auth->SerializeToString(&str)) {
+            LOG(ERROR) << "[MYSQL PACK] auth param serialize to string failed";
             return;
         }
-        std::stringstream ss;
-        ss << my_auth->user() << "\t" << my_auth->passwd() << "\t" << my_auth->schema() << "\t"
-           << params;
-        ctx->set_user(ss.str());
+        ctx->set_user(str);
         butil::IOBuf b;
         if (!PackRequest(&b, accessor, request)) {
             LOG(ERROR) << "[MYSQL PACK] pack request error";

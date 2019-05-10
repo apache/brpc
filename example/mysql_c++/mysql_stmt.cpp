@@ -27,10 +27,12 @@ DEFINE_string(user, "brpcuser", "user name");
 DEFINE_string(password, "12345678", "password");
 DEFINE_string(schema, "brpc_test", "schema");
 DEFINE_string(params, "", "params");
+DEFINE_string(collation, "utf8mb4_general_ci", "collation");
 DEFINE_int32(timeout_ms, 5000, "RPC timeout in milliseconds");
 DEFINE_int32(connect_timeout_ms, 5000, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 0, "Max retries(not including the first RPC)");
-DEFINE_int32(thread_num, 50, "Number of threads to send requests");
+DEFINE_int32(thread_num, 1, "Number of threads to send requests");
+DEFINE_int32(count, 1, "Number of request to send pre thread");
 
 namespace brpc {
 const char* logo();
@@ -49,7 +51,8 @@ static void* access_mysql(void* void_args) {
     brpc::MysqlStatement* stmt = args->mysql_stmt;
     const std::vector<std::string>& commands = args->commands;
 
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < FLAGS_count; ++i) {
+        // for (;;) {
         brpc::MysqlRequest request(stmt);
         for (size_t i = 1; i < commands.size(); ++i) {
             if (!request.AddParam(commands[i])) {
@@ -66,11 +69,10 @@ static void* access_mysql(void* void_args) {
             return NULL;
         }
 
-        if (response.reply(0).is_error()) {
-            std::cout << response << std::endl;
-        }
+        // if (response.reply(0).is_error()) {
         // check response
-        // std::cout << response << std::endl;
+        std::cout << response << std::endl;
+        // }
     }
 
     return NULL;
@@ -92,7 +94,7 @@ int main(int argc, char* argv[]) {
     options.connect_timeout_ms = FLAGS_connect_timeout_ms;
     options.max_retry = FLAGS_max_retry;
     options.auth = new brpc::policy::MysqlAuthenticator(
-        FLAGS_user, FLAGS_password, FLAGS_schema, FLAGS_params);
+        FLAGS_user, FLAGS_password, FLAGS_schema, FLAGS_params, FLAGS_collation);
     if (channel.Init(FLAGS_server.c_str(), FLAGS_port, &options) != 0) {
         LOG(ERROR) << "Fail to initialize channel";
         return -1;

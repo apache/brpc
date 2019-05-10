@@ -22,29 +22,33 @@
 #include "brpc/mysql_statement_inl.h"
 
 namespace brpc {
-
+// mysql prepared statement Unique Ptr
+class MysqlStatement;
+typedef std::unique_ptr<MysqlStatement> MysqlStatementUniquePtr;
+// mysql prepared statement
 class MysqlStatement {
 public:
-    MysqlStatement(const Channel& channel, const butil::StringPiece& str);
     const butil::StringPiece str() const;
-    uint32_t stmt_id(SocketId sock_id) const;
-    void set_stmt_id(SocketId sock_id, uint32_t stmt_id);
-    uint16_t param_number() const;
+    uint16_t param_count() const;
+    uint32_t StatementId(SocketId sock_id) const;
+    void SetStatementId(SocketId sock_id, uint32_t stmt_id);
 
 private:
-    DISALLOW_COPY_AND_ASSIGN(MysqlStatement);
-    void ClearStaleSockIdFromIdMap();
+    MysqlStatement(const Channel& channel, const butil::StringPiece& str);
     void Init(const Channel& channel);
+    DISALLOW_COPY_AND_ASSIGN(MysqlStatement);
 
-    const std::string _str;    // prepare statement string
-    mutable DBDKVMap _id_map;  // SocketId and statement id
-    uint16_t _param_number;
+    friend MysqlStatementUniquePtr NewMysqlStatement(const Channel& channel,
+                                                     const butil::StringPiece& str);
+
+    const std::string _str;  // prepare statement string
+    uint16_t _param_count;
+    mutable MysqlStatementDBD _id_map;  // SocketId and statement id
     ConnectionType _connection_type;
-    std::atomic_int _set_counter;  // set stmt id call counter
 };
 
 inline MysqlStatement::MysqlStatement(const Channel& channel, const butil::StringPiece& str)
-    : _str(str.data(), str.size()), _param_number(0), _set_counter(0) {
+    : _str(str.data(), str.size()), _param_count(0) {
     Init(channel);
 }
 
@@ -52,31 +56,9 @@ inline const butil::StringPiece MysqlStatement::str() const {
     return butil::StringPiece(_str);
 }
 
-inline uint32_t MysqlStatement::stmt_id(SocketId sock_id) const {
-    if (_connection_type != CONNECTION_TYPE_SHORT) {
-        DBDKVMap::ScopedPtr ptr;
-        if (_id_map.Read(&ptr) != 0) {
-            return 0;
-        }
-        const uint32_t* p = ptr->seek(sock_id);
-        return (p != NULL ? *p : 0);
-    } else {
-        return 0;
-    }
+inline uint16_t MysqlStatement::param_count() const {
+    return _param_count;
 }
-
-inline void MysqlStatement::set_stmt_id(SocketId sock_id, uint32_t stmt_id) {
-    if (_connection_type != CONNECTION_TYPE_SHORT) {
-        ClearStaleSockIdFromIdMap();
-        _id_map.Modify(my_update_kv, sock_id, stmt_id);
-    }
-}
-
-inline uint16_t MysqlStatement::param_number() const {
-    return _param_number;
-}
-
-typedef std::unique_ptr<MysqlStatement> MysqlStatementUniquePtr;
 
 MysqlStatementUniquePtr NewMysqlStatement(const Channel& channel, const butil::StringPiece& str);
 

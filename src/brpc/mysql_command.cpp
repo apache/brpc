@@ -22,46 +22,90 @@
 
 namespace brpc {
 
+namespace {
+const uint32_t max_allowed_packet = 67108864;
+const uint32_t max_packet_size = 16777215;
+
+template <class H, class F, class D>
+butil::Status MakePacket(butil::IOBuf* outbuf, const H& head, const F& func, const D& data) {
+    long pkg_len = head.size() + data.size();
+    if (pkg_len > max_allowed_packet) {
+        return butil::Status(
+            EINVAL,
+            "[MakePacket] statement size is too big, maxAllowedPacket = %d, pkg_len = %ld",
+            max_allowed_packet,
+            pkg_len);
+    }
+    uint32_t size, header;
+    uint8_t seq = 0;
+    size_t offset = 0;
+    for (; pkg_len > 0; pkg_len -= max_packet_size, ++seq) {
+        if (pkg_len > max_packet_size) {
+            size = max_packet_size;
+        } else {
+            size = pkg_len;
+        }
+        header = butil::ByteSwapToLE32(size);
+        ((uint8_t*)&header)[3] = seq;
+        outbuf->append(&header, 4);
+        if (seq == 0) {
+            const uint32_t old_size = outbuf->size();
+            outbuf->append(head);
+            size -= outbuf->size() - old_size;
+        }
+        func(outbuf, data, size, offset);
+        offset += size;
+    }
+
+    return butil::Status::OK();
+}
+
+}  // namespace
+
 butil::Status MysqlMakeCommand(butil::IOBuf* outbuf,
                                const MysqlCommandType type,
-                               const butil::StringPiece& command,
-                               const uint8_t seq) {
-    // TODO: maybe need to do some command syntex verify
+                               const butil::StringPiece& command) {
     if (outbuf == NULL || command.size() == 0) {
         return butil::Status(EINVAL, "[MysqlMakeCommand] Param[outbuf] or [stmt] is NULL");
     }
-    if (command.size() > mysql_max_package_size) {
-        return butil::Status(EINVAL, "[MysqlMakeCommand] statement size is too big");
-    }
-    uint32_t header = butil::ByteSwapToLE32(command.size() + 1) | seq;  // command + type
-    outbuf->append(&header, mysql_header_size);
-    outbuf->push_back(type);
-    outbuf->append(command.data(), command.size());
-    return butil::Status::OK();
+    auto func =
+        [](butil::IOBuf* outbuf, const butil::StringPiece& command, size_t size, size_t offset) {
+            outbuf->append(command.data() + offset, size);
+        };
+    butil::IOBuf head;
+    head.push_back(type);
+    return MakePacket(outbuf, head, func, command);
 }
 
-butil::Status MysqlMakeExecuteHeader(butil::IOBuf* outbuf, uint32_t stmt_id, uint32_t body_size) {
-    uint32_t header = butil::ByteSwapToLE32(
-        1 + 4 + 1 + 4 + body_size);  // cmd_type + stmt_id + flag + reserved + body_size
-    outbuf->append(&header, mysql_header_size);
-    outbuf->push_back(MYSQL_COM_STMT_EXECUTE);  // cmd
+butil::Status MysqlMakeExecutePacket(butil::IOBuf* outbuf,
+                                     uint32_t stmt_id,
+                                     const butil::IOBuf& edata) {
+    butil::IOBuf head;  // cmd_type + stmt_id + flag + reserved + body_size
+    head.push_back(MYSQL_COM_STMT_EXECUTE);
     const uint32_t si = butil::ByteSwapToLE32(stmt_id);
-    outbuf->append(&si, 4);         // stmt_id
-    outbuf->push_back('\0');        // flag
-    outbuf->push_back((char)0x01);  // reserved
-    outbuf->push_back('\0');
-    outbuf->push_back('\0');
-    outbuf->push_back('\0');
-    return butil::Status::OK();
+    head.append(&si, 4);
+    head.push_back('\0');
+    head.push_back((char)0x01);
+    head.push_back('\0');
+    head.push_back('\0');
+    head.push_back('\0');
+    auto func = [](butil::IOBuf* outbuf, const butil::IOBuf& data, size_t size, size_t offset) {
+        data.append_to(outbuf, size, offset);
+    };
+    return MakePacket(outbuf, head, func, edata);
 }
 
-butil::Status MysqlMakeExecuteBody(MysqlStatementStub* stmt,
+butil::Status MysqlMakeExecuteData(MysqlStatementStub* stmt,
                                    uint16_t index,
                                    const void* value,
                                    MysqlFieldType type,
                                    bool is_unsigned) {
-    const uint16_t n = stmt->stmt()->param_number();
-    // if param number is zero finished.
+    const uint16_t n = stmt->stmt()->param_count();
+    uint32_t long_data_size = max_allowed_packet / (n + 1);
+    if (long_data_size < 64) {
+        long_data_size = 64;
+    }
+    // if param count is zero finished.
     if (n == 0) {
         return butil::Status::OK();
     }
@@ -71,7 +115,7 @@ butil::Status MysqlMakeExecuteBody(MysqlStatementStub* stmt,
     // else param number larger than zero.
     if (index >= n) {
         LOG(ERROR) << "too many params";
-        return butil::Status(EINVAL, "[MysqlMakeExecute] too many params");
+        return butil::Status(EINVAL, "[MysqlMakeExecuteData] too many params");
     }
     // reserve null mask and param types packing at first param
     if (index == 0) {
@@ -138,18 +182,12 @@ butil::Status MysqlMakeExecuteBody(MysqlStatementStub* stmt,
         case MYSQL_FIELD_TYPE_FLOAT:
             param_types.types[index + index] = MYSQL_FIELD_TYPE_FLOAT;
             param_types.types[index + index + 1] = 0x00;
-            {
-                uint32_t v = butil::ByteSwapToLE32(*(uint32_t*)value);
-                buf.append(&v, 4);
-            }
+            buf.append(value, 4);
             break;
         case MYSQL_FIELD_TYPE_DOUBLE:
             param_types.types[index + index] = MYSQL_FIELD_TYPE_DOUBLE;
             param_types.types[index + index + 1] = 0x00;
-            {
-                uint64_t v = butil::ByteSwapToLE32(*(uint64_t*)value);
-                buf.append(&v, 8);
-            }
+            buf.append(value, 8);
             break;
         case MYSQL_FIELD_TYPE_STRING: {
             const butil::StringPiece* p = (butil::StringPiece*)value;
@@ -160,9 +198,13 @@ butil::Status MysqlMakeExecuteBody(MysqlStatementStub* stmt,
             } else {
                 param_types.types[index + index] = MYSQL_FIELD_TYPE_STRING;
                 param_types.types[index + index + 1] = 0x00;
-                std::string len = pack_encode_length(p->size());
-                buf.append(len);
-                buf.append(p->data(), p->size());
+                if (p->size() < long_data_size) {
+                    std::string len = pack_encode_length(p->size());
+                    buf.append(len);
+                    buf.append(p->data(), p->size());
+                } else {
+                    stmt->save_long_data(index, *p);
+                }
             }
         } break;
         case MYSQL_FIELD_TYPE_NULL: {
@@ -172,7 +214,7 @@ butil::Status MysqlMakeExecuteBody(MysqlStatementStub* stmt,
         } break;
         default:
             LOG(ERROR) << "wrong param type";
-            return butil::Status(EINVAL, "[MysqlMakeExecute] wrong param type");
+            return butil::Status(EINVAL, "[MysqlMakeExecuteData] wrong param type");
     }
 
     // all args have been building
@@ -184,25 +226,35 @@ butil::Status MysqlMakeExecuteBody(MysqlStatementStub* stmt,
     return butil::Status::OK();
 }
 
-butil::Status MysqlMakeLongDataHeader(butil::IOBuf* outbuf,
+butil::Status MysqlMakeLongDataPacket(butil::IOBuf* outbuf,
                                       uint32_t stmt_id,
                                       uint16_t param_id,
-                                      uint32_t body_size) {
-    uint32_t header =
-        butil::ByteSwapToLE32(1 + 4 + 2 + body_size);  // cmd_type + stmt_id + param_id + body_size
-    outbuf->append(&header, mysql_header_size);
-    outbuf->push_back(MYSQL_COM_STMT_SEND_LONG_DATA);
+                                      const butil::IOBuf& ldata) {
+    butil::IOBuf head;
+    head.push_back(MYSQL_COM_STMT_SEND_LONG_DATA);
     const uint32_t si = butil::ByteSwapToLE32(stmt_id);
-    outbuf->append(&si, 4);  // stmt_id
+    outbuf->append(&si, 4);
     const uint16_t pi = butil::ByteSwapToLE16(param_id);
-    outbuf->append(&pi, 2);  // param_id
+    outbuf->append(&pi, 2);
+    size_t len, pos = 0;
+    for (size_t pkg_len = ldata.size(); pkg_len > 0; pkg_len -= max_allowed_packet) {
+        if (pkg_len < max_allowed_packet) {
+            len = pkg_len;
+        } else {
+            len = max_allowed_packet;
+        }
+        butil::IOBuf data;
+        ldata.append_to(&data, len, pos);
+        pos += pkg_len;
+        auto func = [](butil::IOBuf* outbuf, const butil::IOBuf& data, size_t size, size_t offset) {
+            data.append_to(outbuf, size, offset);
+        };
+        auto rc = MakePacket(outbuf, head, func, data);
+        if (!rc.ok()) {
+            return rc;
+        }
+    }
     return butil::Status::OK();
-}
-
-butil::Status MysqlMakeLongDataBody(MysqlStatementStub* stmt,
-                                    uint16_t param_id,
-                                    const butil::StringPiece& data) {
-    stmt->save_long_data(param_id, data);
 }
 
 }  // namespace brpc

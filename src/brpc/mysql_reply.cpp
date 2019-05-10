@@ -14,21 +14,26 @@
 
 // Authors: Yang,Liming (yangliming01@baidu.com)
 
-#include <ios>
 #include "brpc/mysql_reply.h"
 #include "brpc/mysql_common.h"
 
 namespace brpc {
 
-#define MY_ERROR_RET(expr, ret_code) \
-    do {                             \
-        if ((expr) == true) {        \
-            return (ret_code);       \
-        }                            \
+#define MY_ALLOC_CHECK(expr)                     \
+    do {                                         \
+        if ((expr) == false) {                   \
+            return PARSE_ERROR_ABSOLUTELY_WRONG; \
+        }                                        \
     } while (0)
 
-#define MY_ALLOC_CHECK(expr) MY_ERROR_RET(!(expr), PARSE_ERROR_ABSOLUTELY_WRONG)
-#define MY_PARSE_CHECK(expr) MY_ERROR_RET(((expr) != PARSE_OK), PARSE_ERROR_NOT_ENOUGH_DATA)
+#define MY_PARSE_CHECK(expr)    \
+    do {                        \
+        ParseError rc = (expr); \
+        if (rc != PARSE_OK) {   \
+            return rc;          \
+        }                       \
+    } while (0)
+
 template <class Type>
 inline bool my_alloc_check(butil::Arena* arena, const size_t n, Type*& pointer) {
     if (pointer == NULL) {
@@ -43,10 +48,30 @@ inline bool my_alloc_check(butil::Arena* arena, const size_t n, Type*& pointer) 
     return true;
 }
 
+template <>
+inline bool my_alloc_check(butil::Arena* arena, const size_t n, char*& pointer) {
+    if (pointer == NULL) {
+        pointer = (char*)arena->allocate(sizeof(char) * n);
+        if (pointer == NULL) {
+            return false;
+        }
+    }
+    return true;
+}
+
 struct MysqlHeader {
     uint32_t payload_size;
     uint32_t seq;
 };
+
+namespace {
+const char* digits01 =
+    "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123"
+    "456789";
+const char* digits10 =
+    "0000000000111111111122222222223333333333444444444455555555556666666666777777777788888888889999"
+    "999999";
+}  // namespace
 
 const char* MysqlRspTypeToString(MysqlRspType type) {
     switch (type) {
@@ -67,13 +92,13 @@ const char* MysqlRspTypeToString(MysqlRspType type) {
 
 // check if the buf is contain a full package
 inline bool is_full_package(const butil::IOBuf& buf) {
-    uint8_t header[mysql_header_size];
+    uint8_t header[4];
     const uint8_t* p = (const uint8_t*)buf.fetch(header, sizeof(header));
     if (p == NULL) {
         return false;
     }
     uint32_t payload_size = mysql_uint3korr(p);
-    if (buf.size() < payload_size + mysql_header_size) {
+    if (buf.size() < payload_size + 4) {
         return false;
     }
     return true;
@@ -138,26 +163,33 @@ inline uint64_t parse_encode_length(butil::IOBuf& buf) {
     return value;
 }
 
-ParseError MysqlReply::ConsumePartialIOBuf(
-    butil::IOBuf& buf, butil::Arena* arena, bool is_auth, bool is_prepare, bool* more_results) {
+ParseError MysqlReply::ConsumePartialIOBuf(butil::IOBuf& buf,
+                                           butil::Arena* arena,
+                                           bool is_auth,
+                                           MysqlStmtType stmt_type,
+                                           bool* more_results) {
     *more_results = false;
-    uint8_t header[mysql_header_size + 1];  // use the extra byte to judge message type
+    uint8_t header[4 + 1];  // use the extra byte to judge message type
     const uint8_t* p = (const uint8_t*)buf.fetch(header, sizeof(header));
     if (p == NULL) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
-    uint8_t type = (_type == MYSQL_RSP_UNKNOWN) ? p[mysql_header_size] : (uint8_t)_type;
+    uint8_t type = (_type == MYSQL_RSP_UNKNOWN) ? p[4] : (uint8_t)_type;
     if (is_auth && type != 0x00 && type != 0xFF) {
         _type = MYSQL_RSP_AUTH;
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.auth));
         MY_PARSE_CHECK(_data.auth->Parse(buf, arena));
         return PARSE_OK;
     }
-    if (type == 0x00 && !is_prepare) {
+    if (type == 0x00 && (is_auth || stmt_type != MYSQL_NEED_PREPARE)) {
         _type = MYSQL_RSP_OK;
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.ok));
         MY_PARSE_CHECK(_data.ok->Parse(buf, arena));
         *more_results = _data.ok->status() & MYSQL_SERVER_MORE_RESULTS_EXISTS;
+    } else if (type == 0x00 && stmt_type == MYSQL_NEED_PREPARE) {
+        _type = MYSQL_RSP_PREPARE_OK;
+        MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.prepare_ok));
+        MY_PARSE_CHECK(_data.prepare_ok->Parse(buf, arena));
     } else if (type == 0xFF) {
         _type = MYSQL_RSP_ERROR;
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.error));
@@ -170,14 +202,11 @@ ParseError MysqlReply::ConsumePartialIOBuf(
     } else if (type >= 0x01 && type <= 0xFA) {
         _type = MYSQL_RSP_RESULTSET;
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.result_set));
-        MY_PARSE_CHECK(_data.result_set->Parse(buf, arena, is_prepare));
+        MY_PARSE_CHECK(_data.result_set->Parse(buf, arena, !(stmt_type == MYSQL_NORMAL_STATEMENT)));
         *more_results = _data.result_set->_eof2.status() & MYSQL_SERVER_MORE_RESULTS_EXISTS;
-    } else if (type == 0x00) {
-        _type = MYSQL_RSP_PREPARE_OK;
-        MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.prepare_ok));
-        MY_PARSE_CHECK(_data.prepare_ok->Parse(buf, arena));
     } else {
-        LOG(ERROR) << "Unknown Response Type";
+        LOG(ERROR) << "Unknown Response Type "
+                   << "type=" << unsigned(type) << " buf_size=" << buf.size();
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     return PARSE_OK;
@@ -188,7 +217,7 @@ void MysqlReply::Print(std::ostream& os) const {
         const Auth& auth = *_data.auth;
         os << "\nprotocol:" << (unsigned)auth._protocol << "\nversion:" << auth._version
            << "\nthread_id:" << auth._thread_id << "\nsalt:" << auth._salt
-           << "\ncapacity:" << auth._capability << "\nlanguage:" << (unsigned)auth._language
+           << "\ncapacity:" << auth._capability << "\nlanguage:" << (unsigned)auth._collation
            << "\nstatus:" << auth._status << "\nextended_capacity:" << auth._extended_capability
            << "\nauth_plugin_length:" << auth._auth_plugin_length << "\nsalt2:" << auth._salt2
            << "\nauth_plugin:" << auth._auth_plugin;
@@ -202,15 +231,15 @@ void MysqlReply::Print(std::ostream& os) const {
            << "\nmessage:" << err._msg;
     } else if (_type == MYSQL_RSP_RESULTSET) {
         const ResultSet& r = *_data.result_set;
-        os << "\nheader.column_number:" << r._header._column_number;
-        for (uint64_t i = 0; i < r._header._column_number; ++i) {
+        os << "\nheader.column_count:" << r._header._column_count;
+        for (uint64_t i = 0; i < r._header._column_count; ++i) {
             os << "\ncolumn[" << i << "].catalog:" << r._columns[i]._catalog << "\ncolumn[" << i
                << "].database:" << r._columns[i]._database << "\ncolumn[" << i
                << "].table:" << r._columns[i]._table << "\ncolumn[" << i
                << "].origin_table:" << r._columns[i]._origin_table << "\ncolumn[" << i
                << "].name:" << r._columns[i]._name << "\ncolumn[" << i
                << "].origin_name:" << r._columns[i]._origin_name << "\ncolumn[" << i
-               << "].collation:" << (uint16_t)r._columns[i]._collation << "\ncolumn[" << i
+               << "].charset:" << (uint16_t)r._columns[i]._charset << "\ncolumn[" << i
                << "].length:" << r._columns[i]._length << "\ncolumn[" << i
                << "].type:" << (unsigned)r._columns[i]._type << "\ncolumn[" << i
                << "].flag:" << (unsigned)r._columns[i]._flag << "\ncolumn[" << i
@@ -221,25 +250,28 @@ void MysqlReply::Print(std::ostream& os) const {
         int n = 0;
         for (const Row* row = r._first->_next; row != r._last->_next; row = row->_next) {
             os << "\nrow(" << n++ << "):";
-            for (uint64_t j = 0; j < r._header._column_number; ++j) {
+            for (uint64_t j = 0; j < r._header._column_count; ++j) {
                 if (row->field(j).is_nil()) {
                     os << "NULL\t";
                     continue;
                 }
                 switch (row->field(j)._type) {
+                    case MYSQL_FIELD_TYPE_NULL:
+                        os << "NULL";
+                        break;
                     case MYSQL_FIELD_TYPE_TINY:
                         if (r._columns[j]._flag & MYSQL_UNSIGNED_FLAG) {
-                            os << row->field(j).tiny();
+                            os << unsigned(row->field(j).tiny());
                         } else {
-                            os << row->field(j).stiny();
+                            os << signed(row->field(j).stiny());
                         }
                         break;
                     case MYSQL_FIELD_TYPE_SHORT:
                     case MYSQL_FIELD_TYPE_YEAR:
                         if (r._columns[j]._flag & MYSQL_UNSIGNED_FLAG) {
-                            os << row->field(j).small();
+                            os << unsigned(row->field(j).small());
                         } else {
-                            os << row->field(j).ssmall();
+                            os << signed(row->field(j).ssmall());
                         }
                         break;
                     case MYSQL_FIELD_TYPE_INT24:
@@ -284,9 +316,6 @@ void MysqlReply::Print(std::ostream& os) const {
                     case MYSQL_FIELD_TYPE_DATETIME:
                         os << row->field(j).string();
                         break;
-                    case MYSQL_FIELD_TYPE_NULL:
-                        os << "NULL";
-                        break;
                     default:
                         os << "Unknown field type";
                 }
@@ -300,29 +329,29 @@ void MysqlReply::Print(std::ostream& os) const {
         os << "\nwarning:" << e._warning << "\nstatus:" << e._status;
     } else if (_type == MYSQL_RSP_PREPARE_OK) {
         const PrepareOk& prep = *_data.prepare_ok;
-        os << "\nstmt_id:" << prep._stmt_id << "\ncolumn_number:" << prep._column_number
-           << "\nparam_number:" << prep._param_number;
-        for (uint16_t i = 0; i < prep._param_number; ++i) {
+        os << "\nstmt_id:" << prep._stmt_id << "\ncolumn_count:" << prep._column_count
+           << "\nparam_count:" << prep._param_count;
+        for (uint16_t i = 0; i < prep._param_count; ++i) {
             os << "\nparam[" << i << "].catalog:" << prep._params[i]._catalog << "\nparam[" << i
                << "].database:" << prep._params[i]._database << "\nparam[" << i
                << "].table:" << prep._params[i]._table << "\nparam[" << i
                << "].origin_table:" << prep._params[i]._origin_table << "\nparam[" << i
                << "].name:" << prep._params[i]._name << "\nparam[" << i
                << "].origin_name:" << prep._params[i]._origin_name << "\nparam[" << i
-               << "].collation:" << (uint16_t)prep._params[i]._collation << "\nparam[" << i
+               << "].charset:" << (uint16_t)prep._params[i]._charset << "\nparam[" << i
                << "].length:" << prep._params[i]._length << "\nparam[" << i
                << "].type:" << (unsigned)prep._params[i]._type << "\nparam[" << i
                << "].flag:" << (unsigned)prep._params[i]._flag << "\nparam[" << i
                << "].decimal:" << (unsigned)prep._params[i]._decimal;
         }
-        for (uint16_t i = 0; i < prep._column_number; ++i) {
+        for (uint16_t i = 0; i < prep._column_count; ++i) {
             os << "\ncolumn[" << i << "].catalog:" << prep._columns[i]._catalog << "\ncolumn[" << i
                << "].database:" << prep._columns[i]._database << "\ncolumn[" << i
                << "].table:" << prep._columns[i]._table << "\ncolumn[" << i
                << "].origin_table:" << prep._columns[i]._origin_table << "\ncolumn[" << i
                << "].name:" << prep._columns[i]._name << "\ncolumn[" << i
                << "].origin_name:" << prep._columns[i]._origin_name << "\ncolumn[" << i
-               << "].collation:" << (uint16_t)prep._columns[i]._collation << "\ncolumn[" << i
+               << "].charset:" << (uint16_t)prep._columns[i]._charset << "\ncolumn[" << i
                << "].length:" << prep._columns[i]._length << "\ncolumn[" << i
                << "].type:" << (unsigned)prep._columns[i]._type << "\ncolumn[" << i
                << "].flag:" << (unsigned)prep._columns[i]._flag << "\ncolumn[" << i
@@ -369,7 +398,7 @@ ParseError MysqlReply::Auth::Parse(butil::IOBuf& buf, butil::Arena* arena) {
         buf.cutn(&tmp, sizeof(tmp));
         _capability = mysql_uint2korr(tmp);
     }
-    buf.cut1((char*)&_language);
+    buf.cut1((char*)&_collation);
     {
         uint8_t tmp[2];
         buf.cutn(tmp, sizeof(tmp));
@@ -411,7 +440,7 @@ ParseError MysqlReply::ResultSetHeader::Parse(butil::IOBuf& buf) {
     }
     uint64_t old_size, new_size;
     old_size = buf.size();
-    _column_number = parse_encode_length(buf);
+    _column_count = parse_encode_length(buf);
     new_size = buf.size();
     if (old_size - new_size < header.payload_size) {
         _extra_msg = parse_encode_length(buf);
@@ -470,7 +499,7 @@ ParseError MysqlReply::Column::Parse(butil::IOBuf& buf, butil::Arena* arena) {
     {
         uint8_t tmp[2];
         buf.cutn(tmp, sizeof(tmp));
-        _collation = (MysqlCollation)mysql_uint2korr(tmp);
+        _charset = mysql_uint2korr(tmp);
     }
     {
         uint8_t tmp[4];
@@ -568,7 +597,7 @@ ParseError MysqlReply::Error::Parse(butil::IOBuf& buf, butil::Arena* arena) {
 
 ParseError MysqlReply::Row::Parse(butil::IOBuf& buf,
                                   const MysqlReply::Column* columns,
-                                  uint64_t column_number,
+                                  uint64_t column_count,
                                   MysqlReply::Field* fields,
                                   bool binary,
                                   butil::Arena* arena) {
@@ -580,24 +609,24 @@ ParseError MysqlReply::Row::Parse(butil::IOBuf& buf,
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
     if (!binary) {  // mysql text protocol
-        for (uint64_t i = 0; i < column_number; ++i) {
+        for (uint64_t i = 0; i < column_count; ++i) {
             MY_PARSE_CHECK(fields[i].Parse(buf, columns + i, arena));
         }
     } else {  // mysql binary protocol
-        uint8_t header = 0;
-        buf.cut1((char*)&header);
-        if (header != 0x00) {
+        uint8_t hdr = 0;
+        buf.cut1((char*)&hdr);
+        if (hdr != 0x00) {
             return PARSE_ERROR_ABSOLUTELY_WRONG;
         }
         // NULL-bitmap, [(column-count + 7 + 2) / 8 bytes]
-        const uint64_t size = ((column_number + 7 + 2) >> 3);
+        const uint64_t size = ((column_count + 7 + 2) >> 3);
         uint8_t null_mask[size];
         for (size_t i = 0; i < sizeof(null_mask); ++i) {
             null_mask[i] = 0;
         }
         buf.cutn(null_mask, size);
-        for (uint64_t i = 0; i < column_number; ++i) {
-            MY_PARSE_CHECK(fields[i].Parse(buf, columns + i, i, column_number, null_mask, arena));
+        for (uint64_t i = 0; i < column_count; ++i) {
+            MY_PARSE_CHECK(fields[i].Parse(buf, columns + i, i, column_count, null_mask, arena));
         }
     }
     set_parsed();
@@ -626,41 +655,44 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
     butil::IOBuf str;
     buf.cutn(&str, len);
     switch (_type) {
+        case MYSQL_FIELD_TYPE_NULL:
+            _is_nil = true;
+            break;
         case MYSQL_FIELD_TYPE_TINY:
             if (column->_flag & MYSQL_UNSIGNED_FLAG) {
-                std::istringstream(str.to_string()) >> _data.tiny;
+                _data.tiny = strtoul(str.to_string().c_str(), NULL, 10);
             } else {
-                std::istringstream(str.to_string()) >> _data.stiny;
+                _data.stiny = strtol(str.to_string().c_str(), NULL, 10);
             }
             break;
         case MYSQL_FIELD_TYPE_SHORT:
         case MYSQL_FIELD_TYPE_YEAR:
             if (column->_flag & MYSQL_UNSIGNED_FLAG) {
-                std::istringstream(str.to_string()) >> _data.small;
+                _data.small = strtoul(str.to_string().c_str(), NULL, 10);
             } else {
-                std::istringstream(str.to_string()) >> _data.ssmall;
+                _data.ssmall = strtol(str.to_string().c_str(), NULL, 10);
             }
             break;
         case MYSQL_FIELD_TYPE_INT24:
         case MYSQL_FIELD_TYPE_LONG:
             if (column->_flag & MYSQL_UNSIGNED_FLAG) {
-                std::istringstream(str.to_string()) >> _data.integer;
+                _data.integer = strtoul(str.to_string().c_str(), NULL, 10);
             } else {
-                std::istringstream(str.to_string()) >> _data.sinteger;
+                _data.sinteger = strtol(str.to_string().c_str(), NULL, 10);
             }
             break;
         case MYSQL_FIELD_TYPE_LONGLONG:
             if (column->_flag & MYSQL_UNSIGNED_FLAG) {
-                std::istringstream(str.to_string()) >> _data.bigint;
+                _data.bigint = strtoul(str.to_string().c_str(), NULL, 10);
             } else {
-                std::istringstream(str.to_string()) >> _data.sbigint;
+                _data.sbigint = strtol(str.to_string().c_str(), NULL, 10);
             }
             break;
         case MYSQL_FIELD_TYPE_FLOAT:
-            std::istringstream(str.to_string()) >> _data.float32;
+            _data.float32 = strtof(str.to_string().c_str(), NULL);
             break;
         case MYSQL_FIELD_TYPE_DOUBLE:
-            std::istringstream(str.to_string()) >> _data.float64;
+            _data.float64 = strtod(str.to_string().c_str(), NULL);
             break;
         case MYSQL_FIELD_TYPE_DECIMAL:
         case MYSQL_FIELD_TYPE_NEWDECIMAL:
@@ -698,7 +730,7 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
 ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
                                     const MysqlReply::Column* column,
                                     uint64_t column_index,
-                                    uint64_t column_number,
+                                    uint64_t column_count,
                                     const uint8_t* null_mask,
                                     butil::Arena* arena) {
     if (is_parsed()) {
@@ -708,14 +740,17 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
     _type = column->_type;
     // is unsigned flag set
     _unsigned = column->_flag & MYSQL_UNSIGNED_FLAG;
-
-    if (((null_mask[(column_index + 2) >> 3] >> (column_index + 2) & 7) & 1) == 1) {
+    // (byte >> bit-pos) % 2 == 1
+    if (((null_mask[(column_index + 2) >> 3] >> ((column_index + 2) & 7)) & 1) == 1) {
         _is_nil = true;
         set_parsed();
         return PARSE_OK;
     }
 
     switch (_type) {
+        case MYSQL_FIELD_TYPE_NULL:
+            _is_nil = true;
+            break;
         case MYSQL_FIELD_TYPE_TINY:
             if (column->_flag & MYSQL_UNSIGNED_FLAG) {
                 buf.cut1((char*)&_data.tiny);
@@ -761,12 +796,10 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
         case MYSQL_FIELD_TYPE_FLOAT: {
             uint8_t* p = (uint8_t*)&_data.float32;
             buf.cutn(p, 4);
-            _data.float32 = (float)mysql_uint4korr(p);
         } break;
         case MYSQL_FIELD_TYPE_DOUBLE: {
             uint8_t* p = (uint8_t*)&_data.float64;
             buf.cutn(p, 8);
-            _data.float64 = (double)mysql_uint8korr(p);
         } break;
         case MYSQL_FIELD_TYPE_DECIMAL:
         case MYSQL_FIELD_TYPE_NEWDECIMAL:
@@ -781,12 +814,7 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
         case MYSQL_FIELD_TYPE_VAR_STRING:
         case MYSQL_FIELD_TYPE_STRING:
         case MYSQL_FIELD_TYPE_GEOMETRY:
-        case MYSQL_FIELD_TYPE_JSON:
-        case MYSQL_FIELD_TYPE_TIME:
-        case MYSQL_FIELD_TYPE_DATE:
-        case MYSQL_FIELD_TYPE_NEWDATE:
-        case MYSQL_FIELD_TYPE_TIMESTAMP:
-        case MYSQL_FIELD_TYPE_DATETIME: {
+        case MYSQL_FIELD_TYPE_JSON: {
             const uint64_t len = parse_encode_length(buf);
             // is it null?
             if (len == 0 && !(column->_flag & MYSQL_NOT_NULL_FLAG)) {
@@ -800,12 +828,252 @@ ParseError MysqlReply::Field::Parse(butil::IOBuf& buf,
             buf.cutn(d, len);
             _data.str.set(d, len);
         } break;
+        case MYSQL_FIELD_TYPE_NEWDATE:      // Date YYYY-MM-DD
+        case MYSQL_FIELD_TYPE_DATE:         // Date YYYY-MM-DD
+        case MYSQL_FIELD_TYPE_DATETIME:     // Timestamp YYYY-MM-DD HH:MM:SS[.fractal]
+        case MYSQL_FIELD_TYPE_TIMESTAMP: {  // Timestamp YYYY-MM-DD HH:MM:SS[.fractal]
+            ParseError rc = ParseBinaryDataTime(buf, column, _data.str, arena);
+            if (rc != PARSE_OK) {
+                return rc;
+            }
+        } break;
+        case MYSQL_FIELD_TYPE_TIME: {  // Time [-][H]HH:MM:SS[.fractal]
+            ParseError rc = ParseBinaryTime(buf, column, _data.str, arena);
+            if (rc != PARSE_OK) {
+                return rc;
+            }
+        } break;
         default:
             LOG(ERROR) << "Unknown field type";
-            set_parsed();
             return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     set_parsed();
+    return PARSE_OK;
+}
+
+ParseError MysqlReply::Field::ParseBinaryTime(butil::IOBuf& buf,
+                                              const MysqlReply::Column* column,
+                                              butil::StringPiece& str,
+                                              butil::Arena* arena) {
+
+    const uint64_t len = parse_encode_length(buf);
+    if (len == 0) {
+        _is_nil = true;
+        return PARSE_OK;
+    }
+
+    if (len != 8 && len != 12) {
+        LOG(ERROR) << "invalid TIME packet length " << len;
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+
+    uint8_t dstlen;
+    switch (column->_decimal) {
+        case 0x00:
+        case 0x1f:
+            dstlen = 8;
+            break;
+        case 1:
+        case 2:
+        case 3:
+        case 4:
+        case 5:
+        case 6:
+            dstlen = 8 + 1 + column->_decimal;
+            break;
+        default:
+            LOG(ERROR) << "protocol error, illegal decimals value " << column->_decimal;
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+
+    size_t i = 0;
+    char* d = NULL;
+    MY_ALLOC_CHECK(my_alloc_check(arena, dstlen + 2, d));
+    d[dstlen] = '\0';
+    d[dstlen + 1] = '\0';
+    uint32_t day;
+    uint8_t neg, hour, min, sec;
+
+    buf.cut1((char*)&neg);
+    if (neg == 1) {
+        d[i++] = '-';
+    }
+
+    buf.cutn(&day, 4);
+    day = mysql_uint4korr((uint8_t*)&day);
+    buf.cut1((char*)&hour);
+    hour += day * 24;
+    if (hour >= 100) {
+        std::ostringstream os;
+        os << hour;
+        std::string s = os.str();
+        for (const auto& v : s) {
+            d[i++] = v;
+        }
+    } else {
+        d[i++] = digits10[hour];
+        d[i++] = digits01[hour];
+    }
+
+    buf.cut1((char*)&min);
+    buf.cut1((char*)&sec);
+
+    d[i++] = ':';
+    d[i++] = digits10[min];
+    d[i++] = digits01[min];
+    d[i++] = ':';
+    d[i++] = digits10[sec];
+    d[i++] = digits01[sec];
+
+    ParseError rc = ParseMicrosecs(buf, column->_decimal, d + i);
+    if (rc == PARSE_OK) {
+        str.set(d, dstlen + 2);
+    }
+    return rc;
+}
+
+ParseError MysqlReply::Field::ParseBinaryDataTime(butil::IOBuf& buf,
+                                                  const MysqlReply::Column* column,
+                                                  butil::StringPiece& str,
+                                                  butil::Arena* arena) {
+    const uint64_t len = parse_encode_length(buf);
+    if (len == 0) {
+        _is_nil = true;
+        return PARSE_OK;
+    }
+
+    if (len != 4 && len != 7 && len != 11) {
+        LOG(ERROR) << "illegal date time length " << len;
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+
+    uint8_t dstlen;
+    if (column->_type == MYSQL_FIELD_TYPE_DATE) {
+        dstlen = 10;
+    } else {
+        switch (column->_decimal) {
+            case 0x00:
+            case 0x1f:
+                dstlen = 19;
+                break;
+            case 1:
+            case 2:
+            case 3:
+            case 4:
+            case 5:
+            case 6:
+                dstlen = 19 + 1 + column->_decimal;
+                break;
+            default:
+                LOG(ERROR) << "protocol error, illegal decimal value " << column->_decimal;
+                return PARSE_ERROR_ABSOLUTELY_WRONG;
+        }
+    }
+
+    size_t i = 0;
+    char* d = NULL;
+    MY_ALLOC_CHECK(my_alloc_check(arena, dstlen, d));
+    uint16_t year;
+    uint8_t pt, p1, p2, p3;
+    buf.cutn(&year, 2);  // year
+    year = mysql_uint2korr((uint8_t*)&year);
+    pt = year / 100;
+    p1 = year - (100 * pt);
+    buf.cut1((char*)&p2);
+    buf.cut1((char*)&p3);
+
+    d[i++] = digits10[pt];
+    d[i++] = digits01[pt];
+    d[i++] = digits10[p1];
+    d[i++] = digits01[p1];
+    d[i++] = '-';
+    d[i++] = digits10[p2];
+    d[i++] = digits01[p2];
+    d[i++] = '-';
+    d[i++] = digits10[p3];
+    d[i++] = digits01[p3];
+
+    if (len == 4) {
+        str.set(d, dstlen);
+        return PARSE_OK;
+    }
+
+    d[i++] = ' ';
+    buf.cut1((char*)&p1);  // hour
+    buf.cut1((char*)&p2);  // min
+    buf.cut1((char*)&p3);  // sec
+    d[i++] = digits10[p1];
+    d[i++] = digits01[p1];
+    d[i++] = ':';
+    d[i++] = digits10[p2];
+    d[i++] = digits01[p2];
+    d[i++] = ':';
+    d[i++] = digits10[p3];
+    d[i++] = digits01[p3];
+
+    ParseError rc = ParseMicrosecs(buf, column->_decimal, d + i);
+    if (rc == PARSE_OK) {
+        str.set(d, dstlen);
+    }
+    return rc;
+}
+
+ParseError MysqlReply::Field::ParseMicrosecs(butil::IOBuf& buf, uint8_t decimal, char* d) {
+    if (decimal <= 0) {
+        return PARSE_OK;
+    }
+
+    size_t i = 0;
+    uint32_t microsecs;
+    uint8_t p1, p2, p3;
+    buf.cutn((char*)&microsecs, 4);
+    microsecs = mysql_uint4korr((uint8_t*)&microsecs);
+    p1 = microsecs / 10000;
+    microsecs -= 10000 * p1;
+    p2 = microsecs / 100;
+    microsecs -= 100 * p2;
+    p3 = microsecs;
+
+    switch (decimal) {
+        case 1:
+            d[i++] = '.';
+            d[i++] = digits10[p1];
+            break;
+        case 2:
+            d[i++] = '.';
+            d[i++] = digits10[p1];
+            d[i++] = digits01[p1];
+            break;
+        case 3:
+            d[i++] = '.';
+            d[i++] = digits10[p1];
+            d[i++] = digits01[p1];
+            d[i++] = digits10[p2];
+            break;
+        case 4:
+            d[i++] = '.';
+            d[i++] = digits10[p1];
+            d[i++] = digits01[p1];
+            d[i++] = digits10[p2];
+            d[i++] = digits01[p2];
+            break;
+        case 5:
+            d[i++] = '.';
+            d[i++] = digits10[p1];
+            d[i++] = digits01[p1];
+            d[i++] = digits10[p2];
+            d[i++] = digits01[p2];
+            d[i++] = digits10[p3];
+            break;
+        default:
+            d[i++] = '.';
+            d[i++] = digits10[p1];
+            d[i++] = digits01[p1];
+            d[i++] = digits10[p2];
+            d[i++] = digits01[p2];
+            d[i++] = digits10[p3];
+            d[i++] = digits01[p3];
+    }
     return PARSE_OK;
 }
 
@@ -816,8 +1084,8 @@ ParseError MysqlReply::ResultSet::Parse(butil::IOBuf& buf, butil::Arena* arena, 
     // parse header
     MY_PARSE_CHECK(_header.Parse(buf));
     // parse colunms
-    MY_ALLOC_CHECK(my_alloc_check(arena, _header._column_number, _columns));
-    for (uint64_t i = 0; i < _header._column_number; ++i) {
+    MY_ALLOC_CHECK(my_alloc_check(arena, _header._column_count, _columns));
+    for (uint64_t i = 0; i < _header._column_count; ++i) {
         MY_PARSE_CHECK(_columns[i].Parse(buf, arena));
     }
     // parse eof1
@@ -837,15 +1105,15 @@ ParseError MysqlReply::ResultSet::Parse(butil::IOBuf& buf, butil::Arena* arena, 
         Row* row = NULL;
         Field* fields = NULL;
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, row));
-        MY_ALLOC_CHECK(my_alloc_check(arena, _header._column_number, fields));
+        MY_ALLOC_CHECK(my_alloc_check(arena, _header._column_count, fields));
         row->_fields = fields;
-        row->_field_number = _header._column_number;
+        row->_field_count = _header._column_count;
         _last->_next = row;
         _last = row;
         // parse row and fields
-        MY_PARSE_CHECK(row->Parse(buf, _columns, _header._column_number, fields, binary, arena));
-        // add row number
-        ++_row_number;
+        MY_PARSE_CHECK(row->Parse(buf, _columns, _header._column_count, fields, binary, arena));
+        // add row count
+        ++_row_count;
     }
     // parse eof2
     MY_PARSE_CHECK(_eof2.Parse(buf));
@@ -872,12 +1140,12 @@ ParseError MysqlReply::PrepareOk::Parse(butil::IOBuf& buf, butil::Arena* arena) 
     {
         uint8_t tmp[2];
         buf.cutn(tmp, sizeof(tmp));
-        _column_number = mysql_uint2korr(tmp);
+        _column_count = mysql_uint2korr(tmp);
     }
     {
         uint8_t tmp[2];
         buf.cutn(tmp, sizeof(tmp));
-        _param_number = mysql_uint2korr(tmp);
+        _param_count = mysql_uint2korr(tmp);
     }
     buf.pop_front(1);
     {
@@ -886,18 +1154,18 @@ ParseError MysqlReply::PrepareOk::Parse(butil::IOBuf& buf, butil::Arena* arena) 
         _warning = mysql_uint2korr(tmp);
     }
 
-    if (_param_number > 0) {
-        MY_ALLOC_CHECK(my_alloc_check(arena, _param_number, _params));
-        for (uint16_t i = 0; i < _param_number; ++i) {
+    if (_param_count > 0) {
+        MY_ALLOC_CHECK(my_alloc_check(arena, _param_count, _params));
+        for (uint16_t i = 0; i < _param_count; ++i) {
             MY_PARSE_CHECK(_params[i].Parse(buf, arena));
         }
         Eof eof;
         eof.Parse(buf);
     }
 
-    if (_column_number > 0) {
-        MY_ALLOC_CHECK(my_alloc_check(arena, _column_number, _columns));
-        for (uint16_t i = 0; i < _column_number; ++i) {
+    if (_column_count > 0) {
+        MY_ALLOC_CHECK(my_alloc_check(arena, _column_count, _columns));
+        for (uint16_t i = 0; i < _column_count; ++i) {
             MY_PARSE_CHECK(_columns[i].Parse(buf, arena));
         }
         Eof eof;

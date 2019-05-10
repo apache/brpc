@@ -35,10 +35,12 @@ struct MysqlTransactionOptions {
     bool readonly;
     MysqlIsolationLevel isolation_level;
 };
+// MysqlTransaction Unique Ptr
+class MysqlTransaction;
+typedef std::unique_ptr<MysqlTransaction> MysqlTransactionUniquePtr;
 // mysql transaction type
 class MysqlTransaction {
 public:
-    MysqlTransaction(Channel& channel, SocketUniquePtr& socket, ConnectionType connection_type);
     ~MysqlTransaction();
     SocketId GetSocketId() const;
     // commit transaction
@@ -47,8 +49,12 @@ public:
     bool rollback();
 
 private:
+    MysqlTransaction(Channel& channel, SocketUniquePtr& socket, ConnectionType connection_type);
     bool DoneTransaction(const char* command);
     DISALLOW_COPY_AND_ASSIGN(MysqlTransaction);
+
+    friend MysqlTransactionUniquePtr NewMysqlTransaction(Channel& channel,
+                                                         const MysqlTransactionOptions& opts);
 
 private:
     Channel& _channel;
@@ -75,10 +81,8 @@ inline bool MysqlTransaction::rollback() {
     return DoneTransaction("ROLLBACK");
 }
 
-typedef std::unique_ptr<MysqlTransaction> MysqlTransactionUniquePtr;
-
 MysqlTransactionUniquePtr NewMysqlTransaction(
-    Channel& channel, const MysqlTransactionOptions& opt = MysqlTransactionOptions());
+    Channel& channel, const MysqlTransactionOptions& opts = MysqlTransactionOptions());
 
 }  // namespace brpc
 

@@ -63,7 +63,7 @@ public:
         uint32_t thread_id() const;
         butil::StringPiece salt() const;
         uint16_t capability() const;
-        uint8_t language() const;
+        uint8_t collation() const;
         uint16_t status() const;
         uint16_t extended_capability() const;
         uint8_t auth_plugin_length() const;
@@ -81,7 +81,7 @@ public:
         uint32_t _thread_id;
         butil::StringPiece _salt;
         uint16_t _capability;
-        uint8_t _language;
+        uint8_t _collation;
         uint16_t _status;
         uint16_t _extended_capability;
         uint8_t _auth_plugin_length;
@@ -94,8 +94,8 @@ public:
     public:
         PrepareOk();
         uint32_t stmt_id() const;
-        uint16_t column_number() const;
-        uint16_t param_number() const;
+        uint16_t column_count() const;
+        uint16_t param_count() const;
         uint16_t warning() const;
         const Column& param(uint16_t index) const;
         const Column& column(uint16_t index) const;
@@ -107,8 +107,8 @@ public:
         friend class MysqlReply;
 
         uint32_t _stmt_id;
-        uint16_t _column_number;
-        uint16_t _param_number;
+        uint16_t _column_count;
+        uint16_t _param_count;
         uint16_t _warning;
         Column* _params;
         Column* _columns;
@@ -179,7 +179,7 @@ public:
         butil::StringPiece origin_table() const;
         butil::StringPiece name() const;
         butil::StringPiece origin_name() const;
-        MysqlCollation collation() const;
+        uint16_t charset() const;
         uint32_t length() const;
         MysqlFieldType type() const;
         MysqlFieldFlag flag() const;
@@ -197,7 +197,7 @@ public:
         butil::StringPiece _origin_table;
         butil::StringPiece _name;
         butil::StringPiece _origin_name;
-        MysqlCollation _collation;
+        uint16_t _charset;
         uint32_t _length;
         MysqlFieldType _type;
         MysqlFieldFlag _flag;
@@ -239,6 +239,15 @@ public:
                          uint64_t column_number,
                          const uint8_t* null_mask,
                          butil::Arena* arena);
+        ParseError ParseBinaryTime(butil::IOBuf& buf,
+                                   const MysqlReply::Column* column,
+                                   butil::StringPiece& str,
+                                   butil::Arena* arena);
+        ParseError ParseBinaryDataTime(butil::IOBuf& buf,
+                                       const MysqlReply::Column* column,
+                                       butil::StringPiece& str,
+                                       butil::Arena* arena);
+        ParseError ParseMicrosecs(butil::IOBuf& buf, uint8_t decimal, char* d);
         DISALLOW_COPY_AND_ASSIGN(Field);
         friend class MysqlReply;
 
@@ -263,7 +272,7 @@ public:
     class Row : private CheckParsed {
     public:
         Row();
-        uint64_t field_number() const;
+        uint64_t field_count() const;
         const Field& field(const uint64_t index) const;
 
     private:
@@ -278,14 +287,17 @@ public:
         friend class MysqlReply;
 
         Field* _fields;
-        uint64_t _field_number;
+        uint64_t _field_count;
         Row* _next;
     };
 
 public:
     MysqlReply();
-    ParseError ConsumePartialIOBuf(
-        butil::IOBuf& buf, butil::Arena* arena, bool is_auth, bool is_prepare, bool* more_results);
+    ParseError ConsumePartialIOBuf(butil::IOBuf& buf,
+                                   butil::Arena* arena,
+                                   bool is_auth,
+                                   MysqlStmtType stmt_type,
+                                   bool* more_results);
     void Swap(MysqlReply& other);
     void Print(std::ostream& os) const;
     // response type
@@ -297,11 +309,11 @@ public:
     const Error& error() const;
     const Eof& eof() const;
     // get column number
-    uint64_t column_number() const;
+    uint64_t column_count() const;
     // get one column
     const Column& column(const uint64_t index) const;
     // get row number
-    uint64_t row_number() const;
+    uint64_t row_count() const;
     // get one row
     const Row& next() const;
     bool is_auth() const;
@@ -314,9 +326,9 @@ public:
 private:
     // Mysql result set header
     struct ResultSetHeader : private CheckParsed {
-        ResultSetHeader() : _column_number(0), _extra_msg(0) {}
+        ResultSetHeader() : _column_count(0), _extra_msg(0) {}
         ParseError Parse(butil::IOBuf& buf);
-        uint64_t _column_number;
+        uint64_t _column_count;
         uint64_t _extra_msg;
 
     private:
@@ -324,7 +336,7 @@ private:
     };
     // Mysql result set
     struct ResultSet : private CheckParsed {
-        ResultSet() : _columns(NULL), _row_number(0) {
+        ResultSet() : _columns(NULL), _row_count(0) {
             _cur = _first = _last = &_dummy;
         }
         ParseError Parse(butil::IOBuf& buf, butil::Arena* arena, bool binary);
@@ -335,7 +347,7 @@ private:
         Row* _first;
         Row* _last;
         Row* _cur;
-        uint64_t _row_number;
+        uint64_t _row_count;
         // row list end
         Eof _eof2;
 
@@ -414,9 +426,9 @@ inline const MysqlReply::Eof& MysqlReply::eof() const {
     static Eof eof_nil;
     return eof_nil;
 }
-inline uint64_t MysqlReply::column_number() const {
+inline uint64_t MysqlReply::column_count() const {
     if (is_resultset()) {
-        return _data.result_set->_header._column_number;
+        return _data.result_set->_header._column_count;
     }
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an resultset";
     return 0;
@@ -424,19 +436,19 @@ inline uint64_t MysqlReply::column_number() const {
 inline const MysqlReply::Column& MysqlReply::column(const uint64_t index) const {
     static Column column_nil;
     if (is_resultset()) {
-        if (index < _data.result_set->_header._column_number) {
+        if (index < _data.result_set->_header._column_count) {
             return _data.result_set->_columns[index];
         }
         CHECK(false) << "index " << index << " out of bound [0,"
-                     << _data.result_set->_header._column_number << ")";
+                     << _data.result_set->_header._column_count << ")";
         return column_nil;
     }
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an resultset";
     return column_nil;
 }
-inline uint64_t MysqlReply::row_number() const {
+inline uint64_t MysqlReply::row_count() const {
     if (is_resultset()) {
-        return _data.result_set->_row_number;
+        return _data.result_set->_row_count;
     }
     CHECK(false) << "The reply is " << MysqlRspTypeToString(_type) << ", not an resultset";
     return 0;
@@ -444,7 +456,7 @@ inline uint64_t MysqlReply::row_number() const {
 inline const MysqlReply::Row& MysqlReply::next() const {
     static Row row_nil;
     if (is_resultset()) {
-        if (_data.result_set->_row_number == 0) {
+        if (_data.result_set->_row_count == 0) {
             CHECK(false) << "there are 0 rows returned";
             return row_nil;
         }
@@ -481,7 +493,7 @@ inline MysqlReply::Auth::Auth()
     : _protocol(0),
       _thread_id(0),
       _capability(0),
-      _language(0),
+      _collation(0),
       _status(0),
       _extended_capability(0),
       _auth_plugin_length(0) {}
@@ -500,8 +512,8 @@ inline butil::StringPiece MysqlReply::Auth::salt() const {
 inline uint16_t MysqlReply::Auth::capability() const {
     return _capability;
 }
-inline uint8_t MysqlReply::Auth::language() const {
-    return _language;
+inline uint8_t MysqlReply::Auth::collation() const {
+    return _collation;
 }
 inline uint16_t MysqlReply::Auth::status() const {
     return _status;
@@ -520,38 +532,33 @@ inline butil::StringPiece MysqlReply::Auth::auth_plugin() const {
 }
 // mysql prepared statement ok
 inline MysqlReply::PrepareOk::PrepareOk()
-    : _stmt_id(0),
-      _column_number(0),
-      _param_number(0),
-      _warning(0),
-      _params(NULL),
-      _columns(NULL) {}
+    : _stmt_id(0), _column_count(0), _param_count(0), _warning(0), _params(NULL), _columns(NULL) {}
 inline uint32_t MysqlReply::PrepareOk::stmt_id() const {
     CHECK(_stmt_id > 0) << "stmt id is wrong";
     return _stmt_id;
 }
-inline uint16_t MysqlReply::PrepareOk::column_number() const {
-    return _column_number;
+inline uint16_t MysqlReply::PrepareOk::column_count() const {
+    return _column_count;
 }
-inline uint16_t MysqlReply::PrepareOk::param_number() const {
-    return _param_number;
+inline uint16_t MysqlReply::PrepareOk::param_count() const {
+    return _param_count;
 }
 inline uint16_t MysqlReply::PrepareOk::warning() const {
     return _warning;
 }
 inline const MysqlReply::Column& MysqlReply::PrepareOk::param(uint16_t index) const {
-    if (index < _param_number) {
+    if (index < _param_count) {
         return _params[index];
     }
     static Column column_nil;
-    CHECK(false) << "index " << index << " out of bound [0," << _param_number << ")";
+    CHECK(false) << "index " << index << " out of bound [0," << _param_count << ")";
     return column_nil;
 }
 inline const MysqlReply::Column& MysqlReply::PrepareOk::column(uint16_t index) const {
-    if (index < _column_number) {
+    if (index < _column_count) {
         return _columns[index];
     }
-    CHECK(false) << "index " << index << " out of bound [0," << _column_number << ")";
+    CHECK(false) << "index " << index << " out of bound [0," << _column_count << ")";
     static Column column_nil;
     return column_nil;
 }
@@ -611,8 +618,8 @@ inline butil::StringPiece MysqlReply::Column::name() const {
 inline butil::StringPiece MysqlReply::Column::origin_name() const {
     return _origin_name;
 }
-inline MysqlCollation MysqlReply::Column::collation() const {
-    return _collation;
+inline uint16_t MysqlReply::Column::charset() const {
+    return _charset;
 }
 inline uint32_t MysqlReply::Column::length() const {
     return _length;
@@ -627,15 +634,15 @@ inline uint8_t MysqlReply::Column::decimal() const {
     return _decimal;
 }
 // mysql reply row
-inline MysqlReply::Row::Row() : _fields(NULL), _field_number(0), _next(NULL) {}
-inline uint64_t MysqlReply::Row::field_number() const {
-    return _field_number;
+inline MysqlReply::Row::Row() : _fields(NULL), _field_count(0), _next(NULL) {}
+inline uint64_t MysqlReply::Row::field_count() const {
+    return _field_count;
 }
 inline const MysqlReply::Field& MysqlReply::Row::field(const uint64_t index) const {
-    if (index < _field_number) {
+    if (index < _field_count) {
         return _fields[index];
     }
-    CHECK(false) << "index " << index << " out of bound [0," << _field_number << ")";
+    CHECK(false) << "index " << index << " out of bound [0," << _field_count << ")";
     static Field field_nil;
     return field_nil;
 }

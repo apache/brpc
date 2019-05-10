@@ -29,38 +29,47 @@ MysqlStatementUniquePtr NewMysqlStatement(const Channel& channel, const butil::S
     return ptr;
 }
 
-void MysqlStatement::ClearStaleSockIdFromIdMap() {
+uint32_t MysqlStatement::StatementId(SocketId socket_id) const {
+    if (_connection_type == CONNECTION_TYPE_SHORT) {
+        return 0;
+    }
+    MysqlStatementDBD::ScopedPtr ptr;
+    if (_id_map.Read(&ptr) != 0) {
+        return 0;
+    }
+    const MysqlStatementId* p = ptr->seek(socket_id);
+    if (p == NULL) {
+        return 0;
+    }
+    SocketUniquePtr socket;
+    if (Socket::Address(socket_id, &socket) == 0) {
+        uint64_t fd_version = socket->fd_version();
+        if (fd_version == p->version) {
+            return p->stmt_id;
+        }
+    }
+    return 0;
+}
+
+void MysqlStatement::SetStatementId(SocketId socket_id, uint32_t stmt_id) {
     if (_connection_type == CONNECTION_TYPE_SHORT) {
         return;
     }
-    // add call counter
-    int cnt = _set_counter.fetch_add(1, std::memory_order_relaxed);
-    // get stale socket id
-    std::vector<SocketId> keys;
-    {
-        DBDKVMap::ScopedPtr ptr;
-        if (((cnt + 1) % FLAGS_mysql_statment_map_size) == 0 && _id_map.Read(&ptr) == 0) {
-            for (KVMap::const_iterator it = ptr->begin(); it != ptr->end(); ++it) {
-                SocketUniquePtr sock;
-                if (Socket::Address(it->first, &sock) != 0 || !sock->IsAvailable()) {
-                    keys.push_back(it->first);
-                }
-            }
-        }
-    }
-    // remove stale socket id
-    for (const auto& k : keys) {
-        _id_map.Modify(my_delete_k, k);
+    SocketUniquePtr socket;
+    if (Socket::Address(socket_id, &socket) == 0) {
+        uint64_t fd_version = socket->fd_version();
+        MysqlStatementId value{stmt_id, fd_version};
+        _id_map.Modify(my_update_kv, socket_id, value);
     }
 }
 
 void MysqlStatement::Init(const Channel& channel) {
+    _param_count = std::count(_str.begin(), _str.end(), '?');
     ChannelOptions opts = channel.options();
     _connection_type = ConnectionType(opts.connection_type);
     if (_connection_type != CONNECTION_TYPE_SHORT) {
         _id_map.Modify(my_init_kv);
     }
-    _param_number = std::count(_str.begin(), _str.end(), '?');
 }
 
 }  // namespace brpc

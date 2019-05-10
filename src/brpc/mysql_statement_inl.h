@@ -23,10 +23,16 @@
 
 namespace brpc {
 DECLARE_int32(mysql_statment_map_size);
-typedef butil::FlatMap<SocketId, uint32_t> KVMap;
-typedef butil::DoublyBufferedData<KVMap> DBDKVMap;
 
-inline size_t my_init_kv(KVMap& m) {
+struct MysqlStatementId {
+    uint32_t stmt_id;  // statement id
+    uint64_t version;  // socket's fd version
+};
+
+typedef butil::FlatMap<SocketId, MysqlStatementId> MysqlStatementKVMap;
+typedef butil::DoublyBufferedData<MysqlStatementKVMap> MysqlStatementDBD;
+
+inline size_t my_init_kv(MysqlStatementKVMap& m) {
     if (FLAGS_mysql_statment_map_size < 100) {
         FLAGS_mysql_statment_map_size = 100;
     }
@@ -34,8 +40,8 @@ inline size_t my_init_kv(KVMap& m) {
     return 1;
 }
 
-inline size_t my_update_kv(KVMap& m, SocketId key, uint32_t value) {
-    uint32_t* p = m.seek(key);
+inline size_t my_update_kv(MysqlStatementKVMap& m, SocketId key, MysqlStatementId value) {
+    MysqlStatementId* p = m.seek(key);
     if (p == NULL) {
         m.insert(key, value);
     } else {
@@ -44,7 +50,7 @@ inline size_t my_update_kv(KVMap& m, SocketId key, uint32_t value) {
     return 1;
 }
 
-inline size_t my_delete_k(KVMap& m, SocketId key) {
+inline size_t my_delete_k(MysqlStatementKVMap& m, SocketId key) {
     return m.erase(key);
 }
 

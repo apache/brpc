@@ -31,6 +31,7 @@ DEFINE_string(user, "brpcuser", "user name");
 DEFINE_string(password, "12345678", "password");
 DEFINE_string(schema, "brpc_test", "schema");
 DEFINE_string(params, "", "params");
+DEFINE_string(collation, "utf8mb4_general_ci", "collation");
 DEFINE_int32(timeout_ms, 5000, "RPC timeout in milliseconds");
 DEFINE_int32(connect_timeout_ms, 5000, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 0, "Max retries(not including the first RPC)");
@@ -95,7 +96,7 @@ int main(int argc, char* argv[]) {
     options.connect_timeout_ms = FLAGS_connect_timeout_ms;
     options.max_retry = FLAGS_max_retry;
     options.auth = new brpc::policy::MysqlAuthenticator(
-        FLAGS_user, FLAGS_password, FLAGS_schema, FLAGS_params);
+        FLAGS_user, FLAGS_password, FLAGS_schema, FLAGS_params, FLAGS_collation);
     if (channel.Init(FLAGS_server.c_str(), FLAGS_port, &options) != 0) {
         LOG(ERROR) << "Fail to initialize channel";
         return -1;

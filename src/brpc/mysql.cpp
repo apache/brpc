@@ -121,25 +121,23 @@ struct StaticDescriptorInitializer_baidu_2frpc_2fmysql_5fbase_2eproto {
 #ifndef _MSC_VER
 #endif  // !_MSC_VER
 
-butil::Status MysqlStatementStub::WriteExecuteData(butil::IOBuf* outbuf, uint32_t stmt_id) {
+butil::Status MysqlStatementStub::PackExecuteCommand(butil::IOBuf* outbuf, uint32_t stmt_id) {
     butil::Status st;
     // long data
     for (const auto& i : _long_data) {
-        st = MysqlMakeLongDataHeader(outbuf, stmt_id, i.param_id, i.long_data.size());
+        st = MysqlMakeLongDataPacket(outbuf, stmt_id, i.param_id, i.long_data);
         if (!st.ok()) {
             LOG(ERROR) << "make long data header error " << st;
             return st;
         }
-        outbuf->append(i.long_data);
     }
     _long_data.clear();
     // execute data
-    st = MysqlMakeExecuteHeader(outbuf, stmt_id, _execute_data.size());
+    st = MysqlMakeExecutePacket(outbuf, stmt_id, _execute_data);
     if (!st.ok()) {
         LOG(ERROR) << "make execute header error " << st;
         return st;
     }
-    outbuf->append(_execute_data);
     _execute_data.clear();
     _null_mask.mask.clear();
     _null_mask.area = butil::IOBuf::INVALID_AREA;
@@ -265,27 +263,27 @@ void MysqlRequest::MergeFrom(const ::google::protobuf::Message& from) {
 
 void MysqlRequest::MergeFrom(const MysqlRequest& from) {
     // TODO: maybe need to optimize
-    GOOGLE_CHECK_NE(&from, this);
-    const int header_size = 4;
-    const uint32_t size_l = from._buf.size() - header_size - 1;  // payload - type
-    const uint32_t size_r = _buf.size() - header_size + 1;       // payload + seqno
-    const uint32_t payload_size = butil::ByteSwapToLE32(size_l + size_r);
-    if (payload_size > mysql_max_package_size) {
-        CHECK(false)
-            << "[MysqlRequest::MergeFrom] statement size is too big, merge from do nothing";
-        return;
-    }
-    butil::IOBuf buf;
-    butil::IOBuf result;
-    _has_error = _has_error || from._has_error;
-    buf.append(from._buf);
-    buf.pop_front(header_size + 1);
-    _buf.pop_front(header_size - 1);
-    result.append(&payload_size, 3);
-    result.append(_buf);
-    result.append(buf);
-    _buf = result;
-    _has_command = _has_command || from._has_command;
+    // GOOGLE_CHECK_NE(&from, this);
+    // const int header_size = 4;
+    // const uint32_t size_l = from._buf.size() - header_size - 1;  // payload - type
+    // const uint32_t size_r = _buf.size() - header_size + 1;       // payload + seqno
+    // const uint32_t payload_size = butil::ByteSwapToLE32(size_l + size_r);
+    // if (payload_size > mysql_max_package_size) {
+    //     CHECK(false)
+    //         << "[MysqlRequest::MergeFrom] statement size is too big, merge from do nothing";
+    //     return;
+    // }
+    // butil::IOBuf buf;
+    // butil::IOBuf result;
+    // _has_error = _has_error || from._has_error;
+    // buf.append(from._buf);
+    // buf.pop_front(header_size + 1);
+    // _buf.pop_front(header_size - 1);
+    // result.append(&payload_size, 3);
+    // result.append(_buf);
+    // result.append(buf);
+    // _buf = result;
+    // _has_command = _has_command || from._has_command;
 }
 
 void MysqlRequest::CopyFrom(const ::google::protobuf::Message& from) {
@@ -352,7 +350,7 @@ bool MysqlRequest::AddParam(int8_t p) {
     if (_has_error) {
         return false;
     }
-    const butil::Status st = MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_TINY);
+    const butil::Status st = MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_TINY);
     if (st.ok()) {
         ++_param_index;
         return true;
@@ -364,7 +362,7 @@ bool MysqlRequest::AddParam(int8_t p) {
 }
 bool MysqlRequest::AddParam(uint8_t p) {
     const butil::Status st =
-        MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_TINY, true);
+        MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_TINY, true);
     if (st.ok()) {
         ++_param_index;
         return true;
@@ -375,7 +373,7 @@ bool MysqlRequest::AddParam(uint8_t p) {
     }
 }
 bool MysqlRequest::AddParam(int16_t p) {
-    const butil::Status st = MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_SHORT);
+    const butil::Status st = MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_SHORT);
     if (st.ok()) {
         ++_param_index;
         return true;
@@ -387,7 +385,7 @@ bool MysqlRequest::AddParam(int16_t p) {
 }
 bool MysqlRequest::AddParam(uint16_t p) {
     const butil::Status st =
-        MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_SHORT, true);
+        MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_SHORT, true);
     if (st.ok()) {
         ++_param_index;
         return true;
@@ -398,7 +396,7 @@ bool MysqlRequest::AddParam(uint16_t p) {
     }
 }
 bool MysqlRequest::AddParam(int32_t p) {
-    const butil::Status st = MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_LONG);
+    const butil::Status st = MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_LONG);
     if (st.ok()) {
         ++_param_index;
         return true;
@@ -410,7 +408,7 @@ bool MysqlRequest::AddParam(int32_t p) {
 }
 bool MysqlRequest::AddParam(uint32_t p) {
     const butil::Status st =
-        MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_LONG, true);
+        MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_LONG, true);
     if (st.ok()) {
         ++_param_index;
         return true;
@@ -422,7 +420,7 @@ bool MysqlRequest::AddParam(uint32_t p) {
 }
 bool MysqlRequest::AddParam(int64_t p) {
     const butil::Status st =
-        MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_LONGLONG);
+        MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_LONGLONG);
     if (st.ok()) {
         ++_param_index;
         return true;
@@ -434,7 +432,7 @@ bool MysqlRequest::AddParam(int64_t p) {
 }
 bool MysqlRequest::AddParam(uint64_t p) {
     const butil::Status st =
-        MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_LONGLONG, true);
+        MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_LONGLONG, true);
     if (st.ok()) {
         ++_param_index;
         return true;
@@ -445,7 +443,7 @@ bool MysqlRequest::AddParam(uint64_t p) {
     }
 }
 bool MysqlRequest::AddParam(float p) {
-    const butil::Status st = MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_FLOAT);
+    const butil::Status st = MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_FLOAT);
     if (st.ok()) {
         ++_param_index;
         return true;
@@ -456,7 +454,7 @@ bool MysqlRequest::AddParam(float p) {
     }
 }
 bool MysqlRequest::AddParam(double p) {
-    const butil::Status st = MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_DOUBLE);
+    const butil::Status st = MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_DOUBLE);
     if (st.ok()) {
         ++_param_index;
         return true;
@@ -467,7 +465,7 @@ bool MysqlRequest::AddParam(double p) {
     }
 }
 bool MysqlRequest::AddParam(const butil::StringPiece& p) {
-    const butil::Status st = MysqlMakeExecuteBody(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_STRING);
+    const butil::Status st = MysqlMakeExecuteData(_stmt, _param_index, &p, MYSQL_FIELD_TYPE_STRING);
     if (st.ok()) {
         ++_param_index;
         return true;
@@ -478,7 +476,7 @@ bool MysqlRequest::AddParam(const butil::StringPiece& p) {
     }
 }
 bool MysqlRequest::AddParam() {
-    const butil::Status st = MysqlMakeExecuteBody(_stmt, _param_index, NULL, MYSQL_FIELD_TYPE_NULL);
+    const butil::Status st = MysqlMakeExecuteData(_stmt, _param_index, NULL, MYSQL_FIELD_TYPE_NULL);
     if (st.ok()) {
         ++_param_index;
         return true;
@@ -488,46 +486,6 @@ bool MysqlRequest::AddParam() {
         return false;
     }
 }
-// bool MysqlRequest::Execute() {
-//     no params
-//     if (_stmt->param_number() == 0) {
-//         const butil::Status st =
-//             MysqlMakeExecute(&_buf, NULL, NULL, _stmt, 0, NULL, MYSQL_FIELD_TYPE_NULL);
-//         if (st.ok()) {
-//             return true;
-//         } else {
-//             CHECK(st.ok()) << st;
-//             _has_error = true;
-//             return false;
-//         }
-//     }
-//     if (_param_index != _stmt->param_number()) {
-//         LOG(ERROR) << "AddParam count " << _param_index << " mismatch statement param number "
-//                    << _stmt->param_number();
-//         return false;
-//     }
-//     return true;
-// }
-
-// bool MysqlRequest::Prepare(const butil::StringPiece& command) {
-//     if (_has_error) {
-//         return false;
-//     }
-
-//     if (_has_command) {
-//         return false;
-//     }
-
-//     const butil::Status st = MysqlMakeCommand(&_buf, MYSQL_COM_STMT_PREPARE, command);
-//     if (st.ok()) {
-//         _has_command = true;
-//         return true;
-//     } else {
-//         CHECK(st.ok()) << st;
-//         _has_error = true;
-//         return false;
-//     }
-// }
 
 void MysqlRequest::Print(std::ostream& os) const {
     butil::IOBuf cp = _buf;
@@ -678,14 +636,16 @@ void MysqlResponse::Swap(MysqlResponse* other) {
 
 // ===================================================================
 
-ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf, bool is_auth, bool is_prepare) {
+ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf,
+                                              bool is_auth,
+                                              MysqlStmtType stmt_type) {
     bool more_results = true;
     size_t oldsize = 0;
     while (more_results) {
         oldsize = buf.size();
         if (reply_size() == 0) {
             ParseError err =
-                _first_reply.ConsumePartialIOBuf(buf, &_arena, is_auth, is_prepare, &more_results);
+                _first_reply.ConsumePartialIOBuf(buf, &_arena, is_auth, stmt_type, &more_results);
             if (err != PARSE_OK) {
                 return err;
             }
@@ -706,7 +666,7 @@ ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf, bool is_auth, b
                 }
             }
             ParseError err = _other_replies[_nreply - 1]->ConsumePartialIOBuf(
-                buf, &_arena, is_auth, is_prepare, &more_results);
+                buf, &_arena, is_auth, stmt_type, &more_results);
             if (err != PARSE_OK) {
                 return err;
             }
@@ -718,13 +678,12 @@ ParseError MysqlResponse::ConsumePartialIOBuf(butil::IOBuf& buf, bool is_auth, b
         ++_nreply;
     }
 
-    return PARSE_OK;
-    // if (oldsize == 0) {
-    //     return PARSE_OK;
-    // } else {
-    //     LOG(ERROR) << "Parse protocol finished, but IOBuf has more data";
-    //     return PARSE_ERROR_ABSOLUTELY_WRONG;
-    // }
+    if (oldsize == 0) {
+        return PARSE_OK;
+    } else {
+        LOG(ERROR) << "Parse protocol finished, but IOBuf has more data";
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
 }
 
 std::ostream& operator<<(std::ostream& os, const MysqlResponse& response) {

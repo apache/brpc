@@ -59,7 +59,7 @@ bool MysqlTransaction::DoneTransaction(const char* command) {
 }
 
 MysqlTransactionUniquePtr NewMysqlTransaction(Channel& channel,
-                                              const MysqlTransactionOptions& opt) {
+                                              const MysqlTransactionOptions& opts) {
     const char* command[2] = {"START TRANSACTION READ ONLY", "START TRANSACTION"};
 
     if (channel.options().connection_type == CONNECTION_TYPE_SINGLE) {
@@ -68,12 +68,12 @@ MysqlTransactionUniquePtr NewMysqlTransaction(Channel& channel,
     }
     std::stringstream ss;
     // repeatable read is mysql default isolation level, so ignore it.
-    if (opt.isolation_level != MysqlIsoRepeatableRead) {
-        ss << "SET TRANSACTION ISOLATION LEVEL " << mysql_isolation_level[opt.isolation_level]
+    if (opts.isolation_level != MysqlIsoRepeatableRead) {
+        ss << "SET TRANSACTION ISOLATION LEVEL " << mysql_isolation_level[opts.isolation_level]
            << ";";
     }
 
-    if (opt.readonly) {
+    if (opts.readonly) {
         ss << command[0];
     } else {
         ss << command[1];
@@ -92,14 +92,14 @@ MysqlTransactionUniquePtr NewMysqlTransaction(Channel& channel,
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     if (!cntl.Failed()) {
         // repeatable read isolation send one reply, other isolation has two reply
-        if ((opt.isolation_level == MysqlIsoRepeatableRead && response.reply(0).is_ok()) ||
+        if ((opts.isolation_level == MysqlIsoRepeatableRead && response.reply(0).is_ok()) ||
             (response.reply(0).is_ok() && response.reply(1).is_ok())) {
-            SocketUniquePtr sock;
-            ControllerPrivateAccessor(&cntl).get_bind_sock(&sock);
-            if (sock == NULL) {
-                LOG(ERROR) << "Fail create mysql transaction, get bind sock failed";
+            SocketUniquePtr socket;
+            ControllerPrivateAccessor(&cntl).get_bind_sock(&socket);
+            if (socket == NULL) {
+                LOG(ERROR) << "Fail create mysql transaction, get bind socket failed";
             } else {
-                tx.reset(new MysqlTransaction(channel, sock, cntl.connection_type()));
+                tx.reset(new MysqlTransaction(channel, socket, cntl.connection_type()));
             }
         } else {
             LOG(ERROR) << "Fail create mysql transaction, " << response;

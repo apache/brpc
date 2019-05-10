@@ -54,7 +54,7 @@ public:
     MysqlStatementStub(MysqlStatement* stmt);
     MysqlStatement* stmt();
     butil::IOBuf& execute_data();
-    butil::Status WriteExecuteData(butil::IOBuf* outbuf, uint32_t stmt_id);
+    butil::Status PackExecuteCommand(butil::IOBuf* outbuf, uint32_t stmt_id);
     // prepare statement null mask
     struct NullMask {
         NullMask() : area(butil::IOBuf::INVALID_AREA) {}
@@ -228,7 +228,7 @@ public:
     // Returns PARSE_ERROR_NOT_ENOUGH_DATA if data in `buf' is not enough to parse.
     // Returns PARSE_ERROR_ABSOLUTELY_WRONG if the parsing
     // failed.
-    ParseError ConsumePartialIOBuf(butil::IOBuf& buf, bool is_auth, bool is_prepare);
+    ParseError ConsumePartialIOBuf(butil::IOBuf& buf, bool is_auth, MysqlStmtType stmt_type);
 
     // Number of replies in this response.
     // (May have more than one reply due to pipeline)

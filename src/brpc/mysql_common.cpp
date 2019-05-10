@@ -18,6 +18,9 @@
 
 namespace brpc {
 
+const char* MysqlDefaultCollation = "utf8mb4_general_ci";
+const char* MysqlBinaryCollation = "binary";
+
 const char* MysqlFieldTypeToString(MysqlFieldType type) {
     switch (type) {
         case MYSQL_FIELD_TYPE_DECIMAL:
