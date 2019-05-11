@@ -134,8 +134,9 @@ inline iov_function get_pwritev_func() {
 
 #else   // ARCH_CPU_X86_64
 
-#warning "We don't check whether the kernel supports SYS_preadv or SYS_pwritev " \
-         "when the arch is not X86_64, use user space preadv/pwritev directly"
+#pragma message \
+        "We don't check whether the kernel supports SYS_preadv or SYS_pwritev " \
+        "when the arch is not X86_64, use user space preadv/pwritev directly"
 
 inline iov_function get_preadv_func() {
     return user_preadv;

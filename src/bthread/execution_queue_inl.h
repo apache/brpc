@@ -89,7 +89,13 @@ struct BAIDU_CACHELINE_ALIGNMENT TaskNode {
     TaskNode* next;
     ExecutionQueueBase* q;
     union {
+#if (__SIZEOF_PTHREAD_MUTEX_T == 40)
         char static_task_mem[56];  // Make sizeof TaskNode exactly 128 bytes
+#elif (__SIZEOF_PTHREAD_MUTEX_T == 48)
+        char static_task_mem[48];  // Make sizeof TaskNode exactly 128 bytes
+#else
+#warning "Cannot decide the size of static_task_mem"
+#endif
         char* dynamic_task_mem;
     };
 

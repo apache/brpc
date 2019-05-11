@@ -955,13 +955,13 @@ ssize_t RdmaEndpoint::HandleCompletion(RdmaCompletion& rc) {
             // Clear sbuf here because we ignore event wakeup for send completions
             uint32_t num = rc.imm;
             while (num > 0) {
-                CHECK(_sbuf[_sq_sent].size() > 0);
                 _sbuf[_sq_sent++].clear();
                 if (_sq_sent == _sq_size) {
                     _sq_sent = 0;
                 }
                 --num;
             }
+            butil::subtle::MemoryBarrier();
 
             // Update window
             uint32_t wnd_thresh = _local_window_capacity / 8;
