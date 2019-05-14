@@ -8,8 +8,11 @@ namespace {
 
 class StringReader : public butil::IReader {
 public:
-    StringReader(const std::string& str)
-        : _str(str), _offset(0) {}
+    StringReader(const std::string& str,
+                 bool report_eagain_on_end = false)
+        : _str(str)
+        , _offset(0)
+        , _report_eagain_on_end(report_eagain_on_end) {}
 
     ssize_t ReadV(const iovec* iov, int iovcnt) override {
         size_t total_nc = 0;
@@ -25,11 +28,16 @@ public:
                 break;
             }
         }
+        if (_report_eagain_on_end && total_nc == 0) {
+            errno = EAGAIN;
+            return -1;
+        }
         return total_nc;
     }
 private:
     std::string _str;
     size_t _offset;
+    bool _report_eagain_on_end;
 };
 
 class StringWriter : public butil::IWriter {
@@ -156,6 +164,50 @@ TEST(RecordIOTest, write_read_basic) {
 
     ASSERT_FALSE(rr.ReadNext(NULL));
     ASSERT_EQ((int)butil::RecordReader::END_OF_READER, rr.last_error());
+    ASSERT_EQ(sw.str().size(), rr.read_bytes());
+}
+
+TEST(RecordIOTest, incomplete_reader) {
+    StringWriter sw;
+    butil::RecordWriter rw(&sw);
+
+    butil::Record src;
+    butil::IOBuf* foo_val = src.MutableMeta("foo");
+    foo_val->append("foo_data");
+    ASSERT_EQ(0, rw.Write(src));
+
+    butil::IOBuf* bar_val = src.MutableMeta("bar");
+    bar_val->append("bar_data");
+    ASSERT_EQ(0, rw.Write(src));
+
+    ASSERT_EQ(0, rw.Flush());
+    std::string data = sw.str();
+    std::cout << "len=" << data.size()
+              << " content=" << butil::PrintedAsBinary(data, 256) << std::endl;
+
+    StringReader sr(data, true);
+    butil::RecordReader rr(&sr);
+
+    butil::Record r2;
+    ASSERT_TRUE(rr.ReadNext(&r2));
+    ASSERT_EQ(0, rr.last_error());
+    ASSERT_EQ((size_t)1, r2.MetaCount());
+    ASSERT_EQ("foo", r2.MetaAt(0).name);
+    ASSERT_EQ("foo_data", *r2.MetaAt(0).data);
+    ASSERT_TRUE(r2.Payload().empty());
+
+    butil::Record r3;
+    ASSERT_TRUE(rr.ReadNext(&r3));
+    ASSERT_EQ(0, rr.last_error());
+    ASSERT_EQ((size_t)2, r3.MetaCount());
+    ASSERT_EQ("foo", r3.MetaAt(0).name);
+    ASSERT_EQ("foo_data", *r3.MetaAt(0).data);
+    ASSERT_EQ("bar", r3.MetaAt(1).name);
+    ASSERT_EQ("bar_data", *r3.MetaAt(1).data);
+    ASSERT_TRUE(r3.Payload().empty());
+
+    ASSERT_FALSE(rr.ReadNext(NULL));
+    ASSERT_EQ(EAGAIN, rr.last_error());
     ASSERT_EQ(sw.str().size(), rr.read_bytes());
 }
 

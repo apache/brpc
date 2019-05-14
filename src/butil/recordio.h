@@ -79,7 +79,7 @@ private:
 
 // Parse records from the IReader, corrupted records will be skipped.
 // Example:
-//    RecordReader rd(ireader);
+//    RecordReader rd(...);
 //    Record rec;
 //    while (rd.ReadNext(&rec)) {
 //        // Handle the rec
