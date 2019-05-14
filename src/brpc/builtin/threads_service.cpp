@@ -34,7 +34,6 @@ void ThreadsService::default_method(::google::protobuf::RpcController* cntl_base
     cntl->http_response().set_content_type("text/plain");
     butil::IOBuf& resp = cntl->response_attachment();
 
-    butil::IOPortal read_portal;
     std::string cmd = butil::string_printf("pstack %lld", (long long)getpid());
     butil::Timer tm;
     tm.start();
