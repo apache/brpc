@@ -189,22 +189,92 @@ inline void IOBuf::_move_back_ref(const BlockRef& r) {
     }
 }
 
-inline int IOBufAppender::append(const void* src, size_t n) {
-    const size_t size = (char*)_data_end - (char*)_data;
+////////////////  IOBufCutter ////////////////
+inline size_t IOBufCutter::remaining_bytes() const {
+    if (_block) {
+        return (char*)_data_end - (char*)_data + _buf->size() - _buf->_front_ref().length;
+    } else {
+        return _buf->size();
+    }
+}
+
+inline bool IOBufCutter::cut1(void* c) {
+    if (_data == _data_end) {
+        if (!load_next_ref()) {
+            return false;
+        }
+    }
+    *(char*)c = *(const char*)_data;
+    _data = (char*)_data + 1;
+    return true;
+}
+
+inline const void* IOBufCutter::fetch1() {
+    if (_data == _data_end) {
+        if (!load_next_ref()) {
+            return NULL;
+        }
+    }
+    return _data;
+}
+
+inline size_t IOBufCutter::copy_to(void* out, size_t n) {
+    size_t size = (char*)_data_end - (char*)_data;
     if (n <= size) {
-        fast_memcpy(_data, src, n);
-        _data = (char*)_data + n;
+        memcpy(out, _data, n);
+        return n;
+    }
+    return slower_copy_to(out, n);
+}
+
+inline size_t IOBufCutter::pop_front(size_t n) {
+    const size_t saved_n = n;
+    do {
+        const size_t size = (char*)_data_end - (char*)_data;
+        if (n <= size) {
+            _data = (char*)_data + n;
+            return saved_n;
+        }
+        if (size != 0) {
+            n -= size;
+        }
+        if (!load_next_ref()) {
+            return saved_n;
+        }
+    } while (true);
+}
+
+inline size_t IOBufCutter::cutn(std::string* out, size_t n) {
+    if (n == 0) {
         return 0;
-    } 
-    if (size != 0) {
-        fast_memcpy(_data, src, size);
-        src = (const char*)src + size;
-        n -= size;
     }
-    if (add_block() != 0) {
-        return -1;
+    const size_t len = remaining_bytes();
+    if (n > len) {
+        n = len;
     }
-    return append(src, n); // tailr
+    const size_t old_size = out->size();
+    out->resize(out->size() + n);
+    return cutn(&(*out)[old_size], n);
+}
+
+/////////////// IOBufAppender /////////////////
+inline int IOBufAppender::append(const void* src, size_t n) {
+    do {
+        const size_t size = (char*)_data_end - (char*)_data;
+        if (n <= size) {
+            memcpy(_data, src, n);
+            _data = (char*)_data + n;
+            return 0;
+        }
+        if (size != 0) {
+            memcpy(_data, src, size);
+            src = (const char*)src + size;
+            n -= size;
+        }
+        if (add_block() != 0) {
+            return -1;
+        }
+    } while (true);
 }
 
 inline int IOBufAppender::append(const StringPiece& str) {
@@ -292,7 +362,7 @@ inline size_t IOBufBytesIterator::copy_and_forward(void* buf, size_t n) {
     while (nc < n && _bytes_left != 0) {
         const size_t block_size = _block_end - _block_begin;
         const size_t to_copy = std::min(block_size, n - nc);
-        fast_memcpy((char*)buf + nc, _block_begin, to_copy);
+        memcpy((char*)buf + nc, _block_begin, to_copy);
         _block_begin += to_copy;
         _bytes_left -= to_copy;
         nc += to_copy;
