@@ -23,7 +23,7 @@
 
 namespace butil {
 
-// One Payload + Zero or multiple Metas.
+// 0-or-1 Payload + 0-or-multiple Metas.
 // Payload and metas are often serialized form of protobuf messages. As a
 // correspondence, the implementation is not optimized for very small blobs,
 // which should be batched properly before inserting(e.g. using repeated
@@ -60,7 +60,7 @@ public:
     // Returns true on erased, false on absent.
     bool RemoveMeta(const butil::StringPiece& name);
 
-    // Get the payload.
+    // Get the payload. Empty by default.
     const butil::IOBuf& Payload() const { return _payload; }
 
     // Get a mutable pointer to the payload.
