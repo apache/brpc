@@ -18,10 +18,10 @@
 #ifndef BRPC_HTTP_MESSAGE_H
 #define BRPC_HTTP_MESSAGE_H
 
-#include <string>                           // std::string
+#include <string>                      // std::string
 #include "butil/macros.h"
-#include "butil/iobuf.h"                     // butil::IOBuf
-#include "butil/scoped_lock.h"               // butil::unique_lock
+#include "butil/iobuf.h"               // butil::IOBuf
+#include "butil/scoped_lock.h"         // butil::unique_lock
 #include "butil/endpoint.h"
 #include "brpc/details/http_parser.h"  // http_parser
 #include "brpc/http_header.h"          // HttpHeader
