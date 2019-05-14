@@ -23,6 +23,11 @@
 
 namespace butil {
 
+// One Payload + Zero or multiple Metas.
+// Payload and metas are often serialized form of protobuf messages. As a
+// correspondence, the implementation is not optimized for very small blobs,
+// which should be batched properly before inserting(e.g. using repeated
+// field in pb)
 class Record {
 public:
     struct NamedMeta {
@@ -30,35 +35,41 @@ public:
         std::shared_ptr<butil::IOBuf> data;
     };
 
-    // Number of meta
+    // Number of metas. Could be 0.
     size_t MetaCount() const { return _metas.size(); }
 
     // Get i-th Meta, out-of-range accesses may crash.
+    // This method is mainly for iterating all metas.
     const NamedMeta& MetaAt(size_t i) const { return _metas[i]; }
 
-    // Get meta by name.
+    // Get meta by |name|. NULL on not found.
     const butil::IOBuf* Meta(const char* name) const;
 
-    // Add meta.
-    // Returns a modifiable pointer to the meta with the name.
-    // If null_on_found is true and meta with the name is present, NULL is returned.
+    // Returns a mutable pointer to the meta with |name|. If the meta does
+    // not exist, add it first.
+    // If |null_on_found| is true and meta with |name| is present, NULL is
+    // returned. This is useful for detecting uniqueness of meta names in some
+    // scenarios.
+    // NOTE: With the assumption that there won't be many metas, the impl.
+    // tests presence by scaning all fields, which may perform badly when metas
+    // are a lot.
     butil::IOBuf* MutableMeta(const char* name, bool null_on_found = false);
     butil::IOBuf* MutableMeta(const std::string& name, bool null_on_found = false);
 
-    // Remove meta with the name.
-    // Returns true on erased.
+    // Remove meta with the name. The impl. may scan all fields.
+    // Returns true on erased, false on absent.
     bool RemoveMeta(const butil::StringPiece& name);
 
     // Get the payload.
     const butil::IOBuf& Payload() const { return _payload; }
 
-    // Get a modifiable pointer to the payload.
+    // Get a mutable pointer to the payload.
     butil::IOBuf* MutablePayload() { return &_payload; }
 
     // Clear payload and remove all meta.
     void Clear();
 
-    // Byte size of serialized form of this record.
+    // Serialized size of this record.
     size_t ByteSize() const;
 
 private:
@@ -71,24 +82,24 @@ private:
 //    RecordReader rd(ireader);
 //    Record rec;
 //    while (rd.ReadNext(&rec)) {
-//        HandleRecord(rec);
+//        // Handle the rec
 //    }
 //    if (rd.last_error() != RecordReader::END_OF_READER) {
 //        LOG(FATAL) << "Critical error occurred";
 //    }
 class RecordReader {
 public:
+    // A special error code to mark end of input data.
     static const int END_OF_READER = -1;
 
     explicit RecordReader(IReader* reader);
-    
-    // Returns true on success and `out' is overwritten by the record.
-    // False otherwise, check last_error() for the error which is treated as permanent.
+
+    // Returns true on success and |out| is overwritten by the record.
+    // False otherwise and last_error() is the error which is treated as permanent.
     bool ReadNext(Record* out);
 
     // 0 means no error.
-    // END_OF_READER means all bytes in the input reader are consumed and
-    // turned into records.
+    // END_OF_READER means all data in the IReader are successfully consumed.
     int last_error() const { return _last_error; }
 
     // Total bytes of all read records.
@@ -110,12 +121,12 @@ private:
 class RecordWriter {
 public:
     explicit RecordWriter(IWriter* writer);
-    
-    // Serialize the record into internal buffer and NOT flush into the IWriter.
-    int WriteWithoutFlush(const Record&);
 
-    // Serialize the record into internal buffer and flush into the IWriter.
-    int Write(const Record&);
+    // Serialize |record| into internal buffer and NOT flush into the IWriter.
+    int WriteWithoutFlush(const Record& record);
+
+    // Serialize |record| into internal buffer and flush into the IWriter.
+    int Write(const Record& record);
 
     // Flush internal buffer into the IWriter.
     // Returns 0 on success, error code otherwise.
