@@ -712,7 +712,6 @@ int Socket::WaitAndReset(int32_t expected_nref) {
         SSL_free(_ssl_session);
         _ssl_session = NULL;
     }        
-    _ssl_state = SSL_UNKNOWN;
     _nevent.store(0, butil::memory_order_relaxed);
     // parsing_context is very likely to be associated with the fd,
     // removing it is a safer choice and required by http2.
