@@ -451,19 +451,38 @@ public:
     void SetFailed(const std::string& reason);
     void SetFailed(int error_code, const char* reason_fmt, ...)
         __attribute__ ((__format__ (__printf__, 3, 4)));
-    
+   
+    void SetLogicFailedVa(int error_code, const char* reason_fmt, va_list args);
+    //logic err 10001~11000
+    int SetLogicFailed(int error_code, const char* reason_fmt, ...);
+    //kv logic err 11001~12000 
+    int SetKvLogicFailed(int error_code, const char* reason_fmt, ...);
+
     // After a call has finished, returns true if the RPC call failed.
     // The response to Channel is undefined when Failed() is true.
     // Calling Failed() before a call has finished is undefined.
     bool Failed() const;
 
+    bool LogicFailed() const;
+
     // If Failed() is true, return description of the errors.
     // NOTE: ErrorText() != berror(ErrorCode()). 
     std::string ErrorText() const;
 
+    // If LogicFailed() is true, return description of the errors.
+    // NOTE: LogicErrorText() != berror(LogicErrorCode()). 
+    std::string LogicErrorText() const;
+    void SetLogicErrorText(const std::string &logic_error_text) {
+        _logic_error_text = logic_error_text;
+    }
+
     // Last error code. Equals 0 iff Failed() is false.
     // If there's retry, latter code overwrites former one.
     int ErrorCode() const { return _error_code; }
+
+    // Last logic_error code. Equals 0 iff Failed() is false.
+    int LogicErrorCode() const { return _logic_error_code; }
+    void SetLogicErrorCode(int32_t logic_error_code) { _logic_error_code = logic_error_code; }
 
     // Getters:
     bool has_log_id() const { return has_flag(FLAGS_LOG_ID); }
@@ -664,6 +683,8 @@ private:
     uint32_t _flags; // all boolean fields inside Controller
     int32_t _error_code;
     std::string _error_text;
+    int32_t _logic_error_code;
+    std::string _logic_error_text;
     butil::EndPoint _remote_side;
     butil::EndPoint _local_side;
     

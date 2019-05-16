@@ -29,4 +29,7 @@ message RpcRequestMeta {
 message RpcResponseMeta {
     optional int32 error_code = 1;
     optional string error_text = 2;
+
+    optional int32 logic_error_code = 100;
+    optional string logic_error_text = 101;
 }
