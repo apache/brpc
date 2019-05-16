@@ -200,6 +200,10 @@ void SendRpcResponse(int64_t correlation_id,
         // always new the string no matter if it's empty or not.
         response_meta->set_error_text(cntl->ErrorText());
     }
+    response_meta->set_logic_error_code(cntl->LogicErrorCode());
+    if (!cntl->LogicErrorText().empty()) {
+        response_meta->set_logic_error_text(cntl->LogicErrorText());
+    }
     meta.set_correlation_id(correlation_id);
     meta.set_compress_type(cntl->response_compress_type());
     if (attached_size > 0) {
@@ -590,6 +594,10 @@ void ProcessRpcResponse(InputMessageBase* msg_base) {
     const RpcResponseMeta &response_meta = meta.response();
     const int saved_error = cntl->ErrorCode();
     do {
+        if (response_meta.logic_error_code() != 0) {
+            cntl->SetLogicErrorCode(response_meta.logic_error_code());
+            cntl->SetLogicErrorText(response_meta.logic_error_text());
+        }
         if (response_meta.error_code() != 0) {
             // If error_code is unset, default is 0 = success.
             cntl->SetFailed(response_meta.error_code(), 

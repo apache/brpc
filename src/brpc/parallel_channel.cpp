@@ -188,6 +188,8 @@ public:
             // successfulness of _cntl in OnSubDoneRun().
             _cntl->_error_code = 0;
             _cntl->_error_text.clear();
+            _cntl->_logic_error_code = 0;
+            _cntl->_logic_error_text.clear();
         } else {
             CHECK(ECANCELED == ec || ERPCTIMEDOUT == ec) << "ec=" << ec;
         }
@@ -378,6 +380,8 @@ public:
             // the RPC is still successful rather than ECANCELED.
             _cntl->_error_code = 0;
             _cntl->_error_text.clear();
+            _cntl->_logic_error_code = 0;
+            _cntl->_logic_error_text.clear();
         }
         google::protobuf::Closure* user_done = _user_done;
         const CallId saved_cid = _cntl->call_id();

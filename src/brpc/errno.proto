@@ -32,3 +32,19 @@ enum Errno {
     ECLOSE                  = 2005;  // Close socket initiatively
     EITP                    = 2006;  // Failed Itp response
 }
+
+// naming follow https://zh-google-styleguide.readthedocs.io/en/latest/google-cpp-styleguide/naming/#id13
+enum LogicErrno {
+    // Errno of normal svr logic
+    ELogicErrBegin          = 10001; 
+    
+    ELogicErrEnd            = 11000;
+}
+
+enum KvLogicErrno {
+    // Errno of kv svr logic
+    EKvLogicErrBegin        = 11001;
+
+    EKvLogicErrEnd          = 12000;
+}
+
