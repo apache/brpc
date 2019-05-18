@@ -269,7 +269,7 @@ ParseResult ParseMysqlMessage(butil::IOBuf* source,
         socket->GivebackPipelinedInfo(pi);
         return MakeParseError(PARSE_ERROR_NOT_ENOUGH_DATA);
     }
-    if (pi.count == MYSQL_NEED_PREPARE) {
+    if (stmt_type == MYSQL_NEED_PREPARE) {
         // store stmt_id, make execute header.
         ParseError err = HandlePrepareStatement(msg, socket, &pi);
         if (err != PARSE_OK) {

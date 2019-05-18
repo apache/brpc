@@ -475,17 +475,6 @@ bool MysqlRequest::AddParam(const butil::StringPiece& p) {
         return false;
     }
 }
-bool MysqlRequest::AddParam() {
-    const butil::Status st = MysqlMakeExecuteData(_stmt, _param_index, NULL, MYSQL_FIELD_TYPE_NULL);
-    if (st.ok()) {
-        ++_param_index;
-        return true;
-    } else {
-        CHECK(st.ok()) << st;
-        _has_error = true;
-        return false;
-    }
-}
 
 void MysqlRequest::Print(std::ostream& os) const {
     butil::IOBuf cp = _buf;

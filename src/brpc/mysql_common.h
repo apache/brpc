@@ -345,7 +345,7 @@ enum MysqlServerStatus : uint16_t {
 enum MysqlStmtType : uint32_t {
     MYSQL_NORMAL_STATEMENT = 1,
     MYSQL_PREPARED_STATEMENT = 2,
-    MYSQL_NEED_PREPARE = 3
+    MYSQL_NEED_PREPARE = 3,
 };
 
 const char* MysqlFieldTypeToString(MysqlFieldType);

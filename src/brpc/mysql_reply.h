@@ -90,6 +90,23 @@ public:
     };
     // Mysql Prepared Statement Ok
     class Column;
+    // Mysql Eof package
+    class Eof : private CheckParsed {
+    public:
+        Eof();
+        uint16_t warning() const;
+        uint16_t status() const;
+
+    private:
+        ParseError Parse(butil::IOBuf& buf);
+
+        DISALLOW_COPY_AND_ASSIGN(Eof);
+        friend class MysqlReply;
+
+        uint16_t _warning;
+        uint16_t _status;
+    };
+    // Mysql PrepareOk package
     class PrepareOk : private CheckParsed {
     public:
         PrepareOk();
@@ -106,12 +123,20 @@ public:
         DISALLOW_COPY_AND_ASSIGN(PrepareOk);
         friend class MysqlReply;
 
-        uint32_t _stmt_id;
-        uint16_t _column_count;
-        uint16_t _param_count;
-        uint16_t _warning;
+        class Header : private CheckParsed {
+        public:
+            Header() : _stmt_id(0), _column_count(0), _param_count(0), _warning(0) {}
+            uint32_t _stmt_id;
+            uint16_t _column_count;
+            uint16_t _param_count;
+            uint16_t _warning;
+            ParseError Parse(butil::IOBuf& buf);
+        };
+        Header _header;
         Column* _params;
+        Eof _eof1;
         Column* _columns;
+        Eof _eof2;
     };
     // Mysql Ok package
     class Ok : private CheckParsed {
@@ -152,22 +177,6 @@ public:
         uint16_t _errcode;
         butil::StringPiece _status;
         butil::StringPiece _msg;
-    };
-    // Mysql Eof package
-    class Eof : private CheckParsed {
-    public:
-        Eof();
-        uint16_t warning() const;
-        uint16_t status() const;
-
-    private:
-        ParseError Parse(butil::IOBuf& buf);
-
-        DISALLOW_COPY_AND_ASSIGN(Eof);
-        friend class MysqlReply;
-
-        uint16_t _warning;
-        uint16_t _status;
     };
     // Mysql Column
     class Column : private CheckParsed {
@@ -531,34 +540,33 @@ inline butil::StringPiece MysqlReply::Auth::auth_plugin() const {
     return _auth_plugin;
 }
 // mysql prepared statement ok
-inline MysqlReply::PrepareOk::PrepareOk()
-    : _stmt_id(0), _column_count(0), _param_count(0), _warning(0), _params(NULL), _columns(NULL) {}
+inline MysqlReply::PrepareOk::PrepareOk() : _params(NULL), _columns(NULL) {}
 inline uint32_t MysqlReply::PrepareOk::stmt_id() const {
-    CHECK(_stmt_id > 0) << "stmt id is wrong";
-    return _stmt_id;
+    CHECK(_header._stmt_id > 0) << "stmt id is wrong";
+    return _header._stmt_id;
 }
 inline uint16_t MysqlReply::PrepareOk::column_count() const {
-    return _column_count;
+    return _header._column_count;
 }
 inline uint16_t MysqlReply::PrepareOk::param_count() const {
-    return _param_count;
+    return _header._param_count;
 }
 inline uint16_t MysqlReply::PrepareOk::warning() const {
-    return _warning;
+    return _header._warning;
 }
 inline const MysqlReply::Column& MysqlReply::PrepareOk::param(uint16_t index) const {
-    if (index < _param_count) {
+    if (index < _header._param_count) {
         return _params[index];
     }
     static Column column_nil;
-    CHECK(false) << "index " << index << " out of bound [0," << _param_count << ")";
+    CHECK(false) << "index " << index << " out of bound [0," << _header._param_count << ")";
     return column_nil;
 }
 inline const MysqlReply::Column& MysqlReply::PrepareOk::column(uint16_t index) const {
-    if (index < _column_count) {
+    if (index < _header._column_count) {
         return _columns[index];
     }
-    CHECK(false) << "index " << index << " out of bound [0," << _column_count << ")";
+    CHECK(false) << "index " << index << " out of bound [0," << _header._column_count << ")";
     static Column column_nil;
     return column_nil;
 }

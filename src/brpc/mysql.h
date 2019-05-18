@@ -163,9 +163,6 @@ public:
     bool AddParam(float p);
     bool AddParam(double p);
     bool AddParam(const butil::StringPiece& p);
-    bool AddParam();  // add a null param
-    // // execute statement
-    // bool Execute();
 
     // True if previous command failed.
     bool has_error() const {
@@ -186,11 +183,6 @@ private:
     void SharedCtor();
     void SharedDtor();
     void SetCachedSize(int size) const;
-
-    // // don't call Prepare directly, use NewMysqlStatement instead.
-    // bool Prepare(const butil::StringPiece& command);
-    // Close will call automiatically when MysqlStatement destruct.
-    bool Close();
 
     bool _has_command;            // request has command
     bool _has_error;              // previous AddCommand had error

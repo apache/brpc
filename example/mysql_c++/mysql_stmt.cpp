@@ -54,10 +54,74 @@ static void* access_mysql(void* void_args) {
     for (int i = 0; i < FLAGS_count; ++i) {
         // for (;;) {
         brpc::MysqlRequest request(stmt);
-        for (size_t i = 1; i < commands.size(); ++i) {
-            if (!request.AddParam(commands[i])) {
-                LOG(ERROR) << "Fail to add param";
-                return NULL;
+        for (size_t i = 1; i < commands.size(); i += 2) {
+            if (commands[i] == "int8") {
+                int8_t val = strtol(commands[i + 1].c_str(), NULL, 10);
+                if (!request.AddParam(val)) {
+                    LOG(ERROR) << "Fail to add int8 param";
+                    return NULL;
+                }
+            } else if (commands[i] == "uint8") {
+                uint8_t val = strtoul(commands[i + 1].c_str(), NULL, 10);
+                if (!request.AddParam(val)) {
+                    LOG(ERROR) << "Fail to add uint8 param";
+                    return NULL;
+                }
+            } else if (commands[i] == "int16") {
+                int16_t val = strtol(commands[i + 1].c_str(), NULL, 10);
+                if (!request.AddParam(val)) {
+                    LOG(ERROR) << "Fail to add uint16 param";
+                    return NULL;
+                }
+            } else if (commands[i] == "uint16") {
+                uint16_t val = strtoul(commands[i + 1].c_str(), NULL, 10);
+                if (!request.AddParam(val)) {
+                    LOG(ERROR) << "Fail to add uint16 param";
+                    return NULL;
+                }
+            } else if (commands[i] == "int32") {
+                int32_t val = strtol(commands[i + 1].c_str(), NULL, 10);
+                if (!request.AddParam(val)) {
+                    LOG(ERROR) << "Fail to add int32 param";
+                    return NULL;
+                }
+            } else if (commands[i] == "uint32") {
+                uint32_t val = strtoul(commands[i + 1].c_str(), NULL, 10);
+                if (!request.AddParam(val)) {
+                    LOG(ERROR) << "Fail to add uint32 param";
+                    return NULL;
+                }
+            } else if (commands[i] == "int64") {
+                int64_t val = strtol(commands[i + 1].c_str(), NULL, 10);
+                if (!request.AddParam(val)) {
+                    LOG(ERROR) << "Fail to add int64 param";
+                    return NULL;
+                }
+            } else if (commands[i] == "uint64") {
+                uint64_t val = strtoul(commands[i + 1].c_str(), NULL, 10);
+                if (!request.AddParam(val)) {
+                    LOG(ERROR) << "Fail to add uint64 param";
+                    return NULL;
+                }
+            } else if (commands[i] == "float") {
+                float val = strtof(commands[i + 1].c_str(), NULL);
+                if (!request.AddParam(val)) {
+                    LOG(ERROR) << "Fail to add float param";
+                    return NULL;
+                }
+            } else if (commands[i] == "double") {
+                double val = strtod(commands[i + 1].c_str(), NULL);
+                if (!request.AddParam(val)) {
+                    LOG(ERROR) << "Fail to add double param";
+                    return NULL;
+                }
+            } else if (commands[i] == "string") {
+                if (!request.AddParam(commands[i + 1])) {
+                    LOG(ERROR) << "Fail to add string param";
+                    return NULL;
+                }
+            } else {
+                LOG(ERROR) << "Wrong param type " << commands[i];
             }
         }
 

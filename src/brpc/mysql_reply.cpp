@@ -14,8 +14,8 @@
 
 // Authors: Yang,Liming (yangliming01@baidu.com)
 
-#include "brpc/mysql_reply.h"
 #include "brpc/mysql_common.h"
+#include "brpc/mysql_reply.h"
 
 namespace brpc {
 
@@ -59,12 +59,11 @@ inline bool my_alloc_check(butil::Arena* arena, const size_t n, char*& pointer) 
     return true;
 }
 
+namespace {
 struct MysqlHeader {
     uint32_t payload_size;
     uint32_t seq;
 };
-
-namespace {
 const char* digits01 =
     "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123"
     "456789";
@@ -85,6 +84,8 @@ const char* MysqlRspTypeToString(MysqlRspType type) {
             return "eof";
         case MYSQL_RSP_AUTH:
             return "auth";
+        case MYSQL_RSP_PREPARE_OK:
+            return "prepare_ok";
         default:
             return "Unknown Response Type";
     }
@@ -169,11 +170,11 @@ ParseError MysqlReply::ConsumePartialIOBuf(butil::IOBuf& buf,
                                            MysqlStmtType stmt_type,
                                            bool* more_results) {
     *more_results = false;
-    uint8_t header[4 + 1];  // use the extra byte to judge message type
-    const uint8_t* p = (const uint8_t*)buf.fetch(header, sizeof(header));
-    if (p == NULL) {
+    if (!is_full_package(buf)) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
+    uint8_t header[4 + 1];  // use the extra byte to judge message type
+    const uint8_t* p = (const uint8_t*)buf.fetch(header, sizeof(header));
     uint8_t type = (_type == MYSQL_RSP_UNKNOWN) ? p[4] : (uint8_t)_type;
     if (is_auth && type != 0x00 && type != 0xFF) {
         _type = MYSQL_RSP_AUTH;
@@ -186,7 +187,7 @@ ParseError MysqlReply::ConsumePartialIOBuf(butil::IOBuf& buf,
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.ok));
         MY_PARSE_CHECK(_data.ok->Parse(buf, arena));
         *more_results = _data.ok->status() & MYSQL_SERVER_MORE_RESULTS_EXISTS;
-    } else if (type == 0x00 && stmt_type == MYSQL_NEED_PREPARE) {
+    } else if ((type == 0x00 && stmt_type == MYSQL_NEED_PREPARE) || type == MYSQL_RSP_PREPARE_OK) {
         _type = MYSQL_RSP_PREPARE_OK;
         MY_ALLOC_CHECK(my_alloc_check(arena, 1, _data.prepare_ok));
         MY_PARSE_CHECK(_data.prepare_ok->Parse(buf, arena));
@@ -329,9 +330,10 @@ void MysqlReply::Print(std::ostream& os) const {
         os << "\nwarning:" << e._warning << "\nstatus:" << e._status;
     } else if (_type == MYSQL_RSP_PREPARE_OK) {
         const PrepareOk& prep = *_data.prepare_ok;
-        os << "\nstmt_id:" << prep._stmt_id << "\ncolumn_count:" << prep._column_count
-           << "\nparam_count:" << prep._param_count;
-        for (uint16_t i = 0; i < prep._param_count; ++i) {
+        os << "\nstmt_id:" << prep._header._stmt_id
+           << "\ncolumn_count:" << prep._header._column_count
+           << "\nparam_count:" << prep._header._param_count;
+        for (uint16_t i = 0; i < prep._header._param_count; ++i) {
             os << "\nparam[" << i << "].catalog:" << prep._params[i]._catalog << "\nparam[" << i
                << "].database:" << prep._params[i]._database << "\nparam[" << i
                << "].table:" << prep._params[i]._table << "\nparam[" << i
@@ -344,7 +346,7 @@ void MysqlReply::Print(std::ostream& os) const {
                << "].flag:" << (unsigned)prep._params[i]._flag << "\nparam[" << i
                << "].decimal:" << (unsigned)prep._params[i]._decimal;
         }
-        for (uint16_t i = 0; i < prep._column_count; ++i) {
+        for (uint16_t i = 0; i < prep._header._column_count; ++i) {
             os << "\ncolumn[" << i << "].catalog:" << prep._columns[i]._catalog << "\ncolumn[" << i
                << "].database:" << prep._columns[i]._database << "\ncolumn[" << i
                << "].table:" << prep._columns[i]._table << "\ncolumn[" << i
@@ -1126,6 +1128,32 @@ ParseError MysqlReply::PrepareOk::Parse(butil::IOBuf& buf, butil::Arena* arena) 
         return PARSE_OK;
     }
 
+    MY_PARSE_CHECK(_header.Parse(buf));
+
+    if (_header._param_count > 0) {
+        MY_ALLOC_CHECK(my_alloc_check(arena, _header._param_count, _params));
+        for (uint16_t i = 0; i < _header._param_count; ++i) {
+            MY_PARSE_CHECK(_params[i].Parse(buf, arena));
+        }
+        MY_PARSE_CHECK(_eof1.Parse(buf));
+    }
+
+    if (_header._column_count > 0) {
+        MY_ALLOC_CHECK(my_alloc_check(arena, _header._column_count, _columns));
+        for (uint16_t i = 0; i < _header._column_count; ++i) {
+            MY_PARSE_CHECK(_columns[i].Parse(buf, arena));
+        }
+        MY_PARSE_CHECK(_eof2.Parse(buf));
+    }
+    set_parsed();
+    return PARSE_OK;
+}
+
+ParseError MysqlReply::PrepareOk::Header::Parse(butil::IOBuf& buf) {
+    if (is_parsed()) {
+        return PARSE_OK;
+    }
+
     MysqlHeader header;
     if (!parse_header(buf, &header)) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
@@ -1152,24 +1180,6 @@ ParseError MysqlReply::PrepareOk::Parse(butil::IOBuf& buf, butil::Arena* arena) 
         uint8_t tmp[2];
         buf.cutn(tmp, sizeof(tmp));
         _warning = mysql_uint2korr(tmp);
-    }
-
-    if (_param_count > 0) {
-        MY_ALLOC_CHECK(my_alloc_check(arena, _param_count, _params));
-        for (uint16_t i = 0; i < _param_count; ++i) {
-            MY_PARSE_CHECK(_params[i].Parse(buf, arena));
-        }
-        Eof eof;
-        eof.Parse(buf);
-    }
-
-    if (_column_count > 0) {
-        MY_ALLOC_CHECK(my_alloc_check(arena, _column_count, _columns));
-        for (uint16_t i = 0; i < _column_count; ++i) {
-            MY_PARSE_CHECK(_columns[i].Parse(buf, arena));
-        }
-        Eof eof;
-        eof.Parse(buf);
     }
 
     set_parsed();
