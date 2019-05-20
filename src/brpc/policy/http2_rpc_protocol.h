@@ -153,7 +153,6 @@ public:
 
     // @StreamUserData
     void DestroyStreamUserData(SocketUniquePtr& sending_sock,
-                               Controller* cntl,
                                int error_code,
                                bool end_of_rpc) override;
 

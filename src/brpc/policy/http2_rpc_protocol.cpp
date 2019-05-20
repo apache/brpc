@@ -1448,12 +1448,10 @@ private:
 };
 
 void H2UnsentRequest::DestroyStreamUserData(SocketUniquePtr& sending_sock,
-                                            Controller* cntl,
                                             int error_code,
                                             bool /*end_of_rpc*/) {
     RemoveRefOnQuit deref_self(this);
-    if (sending_sock != NULL && (cntl->ErrorCode() != 0 || error_code != 0)) {
-        CHECK_EQ(cntl, _cntl);
+    if (sending_sock != NULL && error_code != 0) {
         std::unique_lock<butil::Mutex> mu(_mutex);
         _cntl = NULL;
         if (_stream_id != 0) {

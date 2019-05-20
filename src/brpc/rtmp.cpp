@@ -1747,7 +1747,6 @@ void RtmpClientStream::OnFailedToCreateStream() {
 }
 
 void RtmpClientStream::DestroyStreamUserData(SocketUniquePtr& sending_sock,
-                                             Controller* cntl,
                                              int /*error_code*/,
                                              bool end_of_rpc) {
     if (!end_of_rpc) {

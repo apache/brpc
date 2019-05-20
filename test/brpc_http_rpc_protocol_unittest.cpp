@@ -1113,7 +1113,7 @@ TEST_F(HttpTest, http2_window_used_up) {
         } else {
             ASSERT_TRUE(st.ok());
         }
-        h2_req->DestroyStreamUserData(_h2_client_sock, &cntl, 0, false);
+        h2_req->DestroyStreamUserData(_h2_client_sock, 0, false);
     }
 }
 
