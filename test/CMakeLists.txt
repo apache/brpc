@@ -58,6 +58,7 @@ file(COPY ${PROJECT_SOURCE_DIR}/test/jsonout DESTINATION ${CMAKE_CURRENT_BINARY_
 file(COPY ${PROJECT_SOURCE_DIR}/test/run_tests.sh DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 SET(TEST_BUTIL_SOURCES
+    ${PROJECT_SOURCE_DIR}/test/recordio_unittest.cpp
     ${PROJECT_SOURCE_DIR}/test/popen_unittest.cpp
     ${PROJECT_SOURCE_DIR}/test/at_exit_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/atomicops_unittest.cc

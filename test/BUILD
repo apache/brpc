@@ -139,6 +139,7 @@ TEST_BUTIL_SOURCES = [
     "iobuf_unittest.cpp",
     "test_switches.cc",
     "scoped_locale.cc",
+    "recordio_unittest.cpp",
     #"popen_unittest.cpp",
     "butil_unittest_main.cpp",
 ] + select({
