@@ -196,12 +196,6 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < FLAGS_thread_num; ++i) {
             bthread_join(bids[i], NULL);
         }
-
-        // LOG(INFO) << "xxx";
-        // while (!brpc::IsAskedToQuit()) {
-        //     sleep(1);
-        //     LOG(INFO) << "sleep";
-        // }
     }
 
     return 0;

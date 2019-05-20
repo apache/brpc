@@ -1,4 +1,4 @@
-[mysql](https://www.mysql.com/)是著名的开源的关系型数据库，为了使用户更快捷地访问mysql并充分利用bthread的并发能力，brpc直接支持mysql协议。示例程序：[example/mysql_c++](https://github.com/brpc/brpc/tree/master/example/mysql_c++/)
+[MySQL](https://www.mysql.com/)是著名的开源的关系型数据库，为了使用户更快捷地访问mysql并充分利用bthread的并发能力，brpc直接支持mysql协议。示例程序：[example/mysql_c++](https://github.com/brpc/brpc/tree/master/example/mysql_c++/)
 
 **注意**：只支持MySQL 4.1 及之后的版本的文本协议，支持事务，不支持Prepared statement。目前支持的鉴权方式为mysql_native_password，使用事务的时候不支持single模式。
 
@@ -9,7 +9,7 @@
 - 支持多种[连接方式](client.md#连接方式)。支持超时、backup request、取消、tracing、内置服务等一系列brpc提供的福利。
 - 明确的返回类型校验，如果使用了不正确的变量接受mysql的数据类型，将抛出异常。
 - 调用mysql标准库会阻塞框架的并发能力，使用本实现将能充分利用brpc框架的并发能力。
-- 使用brpc实现的mysql不会造成pthread的阻塞，使用libmysqlclient会阻塞pthread [线程相关](bthread.md)。
+- 使用brpc实现的mysql不会造成pthread的阻塞，使用libmysqlclient会阻塞pthread [线程相关](bthread.md)，使用mysql的异步api会使编程变得很复杂。
 # 访问mysql
 
 创建一个访问mysql的Channel：
@@ -90,8 +90,10 @@ const MysqlReply::Field& MysqlReply::Row::field(const uint64_t index) const;
 
 # 事务操作
 
+事务可以保证在一个事务中的多个RPC请求最终要么都成功，要么都失败。
+
 ```c++
- rpc::Channel channel;
+rpc::Channel channel;
 // Initialize the channel, NULL means using default options.
 brpc::ChannelOptions options;
 options.protocol = brpc::PROTOCOL_MYSQL;
@@ -134,6 +136,51 @@ if (cntl.Failed()) {
 std::cout << response << std::endl;
 bool rc = tx->commit();
 ```
+
+# Prepared Statement
+
+Prepared statement对于一个需要执行很多次的SQL语句，它把这个SQL语句注册到mysql-server，避免了每次请求在mysql-server端都去解析这个SQL语句，能得到性能上的提升。
+
+```c++
+rpc::Channel channel;
+// Initialize the channel, NULL means using default options.
+brpc::ChannelOptions options;
+options.protocol = brpc::PROTOCOL_MYSQL;
+options.connection_type = FLAGS_connection_type;
+options.timeout_ms = FLAGS_timeout_ms /*milliseconds*/;
+options.connect_timeout_ms = FLAGS_connect_timeout_ms;
+options.max_retry = FLAGS_max_retry;
+options.auth = new brpc::policy::MysqlAuthenticator(
+    FLAGS_user, FLAGS_password, FLAGS_schema, FLAGS_params);
+if (channel.Init(FLAGS_server.c_str(), FLAGS_port, &options) != 0) {
+    LOG(ERROR) << "Fail to initialize channel";
+    return -1;
+}
+
+auto stmt(brpc::NewMysqlStatement(channel, "select * from tb where name=?"));
+if (stmt == NULL) {
+    LOG(ERROR) << "Fail to create mysql statement";
+    return -1;
+}
+
+brpc::MysqlRequest request(stmt.get());
+if (!request.AddParam("lilei")) {
+    LOG(ERROR) << "Fail to add name param";
+    return NULL;
+}
+
+brpc::MysqlResponse response;
+brpc::Controller cntl;
+channel->CallMethod(NULL, &cntl, &request, &response, NULL);
+if (cntl.Failed()) {
+    LOG(ERROR) << "Fail to access mysql, " << cntl.ErrorText();
+    return NULL;
+}
+
+std::cout << response << std::endl;
+```
+
+
 
 # 性能测试
 
