@@ -364,7 +364,7 @@ Don't use new types in proto3 and start the proto file with `syntax="proto2";`
 
 Arena in pb 3.x is not supported yet.
 
-## gflags: 2.0-2.21
+## gflags: 2.0-2.2.1
 
 no known issues.
 
