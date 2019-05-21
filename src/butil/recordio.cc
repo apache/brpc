@@ -172,7 +172,8 @@ bool RecordReader::CutUntilNextRecordCandidate() {
     if (_cutter.copy_to(magic, sizeof(magic)) != sizeof(magic)) {
         return false;
     }
-    if (*(const uint32_t*)magic == *(const uint32_t*)BRPC_RECORDIO_MAGIC) {
+    void* dummy = magic;  // suppressing strict-aliasing warning
+    if (*(const uint32_t*)dummy == *(const uint32_t*)BRPC_RECORDIO_MAGIC) {
         _cutter.pop_front(sizeof(magic));
         _ncut += sizeof(magic);
     }
@@ -184,7 +185,8 @@ bool RecordReader::CutUntilNextRecordCandidate() {
         }
         const size_t m = nc + 1 - sizeof(magic);
         for (size_t i = 0; i < m; ++i) {
-            if (*(const uint32_t*)(buf + i) == *(const uint32_t*)BRPC_RECORDIO_MAGIC) {
+            void* dummy = buf + i;  // suppressing strict-aliasing warning
+            if (*(const uint32_t*)dummy == *(const uint32_t*)BRPC_RECORDIO_MAGIC) {
                 _cutter.pop_front(i);
                 _ncut += i;
                 LOG(INFO) << "Found record candidate after " << _ncut - old_ncut << " bytes";
@@ -204,7 +206,8 @@ int RecordReader::CutRecord(Record* rec) {
     if (_cutter.copy_to(headbuf, sizeof(headbuf)) != sizeof(headbuf)) {
         return 0;
     }
-    if (*(const uint32_t*)headbuf != *(const uint32_t*)BRPC_RECORDIO_MAGIC) {
+    void* dummy = headbuf;  // suppressing strict-aliasing warning
+    if (*(const uint32_t*)dummy != *(const uint32_t*)BRPC_RECORDIO_MAGIC) {
         LOG(ERROR) << "Invalid magic_num="
                    << butil::PrintedAsBinary(std::string((char*)headbuf, 4))
                    << ", offset=" << read_bytes();
@@ -310,7 +313,8 @@ int RecordWriter::WriteWithoutFlush(const Record& rec) {
     if (!rec.Payload().empty()) {
         _buf.append(rec.Payload());
     }
-    *(uint32_t*)headbuf = *(const uint32_t*)BRPC_RECORDIO_MAGIC;
+    void* dummy = headbuf;  // suppressing strict-aliasing warning
+    *(uint32_t*)dummy = *(const uint32_t*)BRPC_RECORDIO_MAGIC;
     const size_t data_size = _buf.size() - old_size - sizeof(headbuf);
     if (data_size > 0x7FFFFFFFULL) {
         LOG(ERROR) << "data_size=" << data_size << " is too long";
