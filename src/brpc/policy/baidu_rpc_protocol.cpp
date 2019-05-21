@@ -59,8 +59,7 @@ DEFINE_bool(baidu_protocol_use_fullname, true,
 
 // Pack header into `buf'
 inline void PackRpcHeader(char* rpc_header, int meta_size, int payload_size) {
-    // supress strict-aliasing warning.
-    uint32_t* dummy = (uint32_t*)rpc_header;
+    uint32_t* dummy = (uint32_t*)rpc_header;  // suppress strict-alias warning
     *dummy = *(uint32_t*)"PRPC";
     butil::RawPacker(rpc_header + 4)
         .pack32(meta_size + payload_size)

@@ -128,8 +128,7 @@ private:
 };
 
 inline void PackSofaHeader(char* sofa_header, int meta_size, int body_size) {
-    // dummy supresses strict-aliasing warning.
-    uint32_t* dummy = reinterpret_cast<uint32_t*>(sofa_header);
+    uint32_t* dummy = reinterpret_cast<uint32_t*>(sofa_header); // suppress strict-alias warning
     *dummy = *reinterpret_cast<const uint32_t*>("SOFA");
 
     SofaRawPacker rp(sofa_header + 4);

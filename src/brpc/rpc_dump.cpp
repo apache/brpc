@@ -247,8 +247,7 @@ bool RpcDumpContext::Serialize(butil::IOBuf& buf, SampledRequest* sample) {
     const size_t meta_size = buf.size() - starting_size;
     buf.append(sample->request);
 
-    // dummy supresses strict-aliasing warning.
-    uint32_t* dummy = (uint32_t*)rpc_header;
+    uint32_t* dummy = (uint32_t*)rpc_header;  // suppress strict-alias warning
     *dummy = *(uint32_t*)"PRPC";
     butil::RawPacker(rpc_header + 4)
         .pack32(meta_size + sample->request.size())
