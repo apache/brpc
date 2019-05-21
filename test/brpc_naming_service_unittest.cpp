@@ -448,7 +448,8 @@ static const std::string s_fetchs_result = R"({
                     "rpc":"",
                     "version":"123",
                     "metadata":{
-
+                        "weight": "10",
+                        "cluster": ""
                     },
                     "addrs":[
                         "http://127.0.0.1:8999",
@@ -475,7 +476,8 @@ static const std::string s_fetchs_result = R"({
                         "rpc":"",
                         "version":"123",
                         "metadata":{
-
+                            "weight": "10",
+                            "cluster": ""
                         },
                         "addrs":[
                             "http://127.0.0.1:8999",
@@ -525,6 +527,7 @@ TEST(NamingServiceTest, discovery_parse_function) {
     buf.append(s_fetchs_result);
     ASSERT_EQ(0, brpc::policy::ParseFetchsResult(buf, "admin.test", &servers));
     ASSERT_EQ((size_t)1, servers.size());
+    ASSERT_EQ(servers[0].tag, "{\"weight\":\"10\",\"cluster\":\"\"}");
     buf.clear();
     buf.append(s_nodes_result);
     std::string server;

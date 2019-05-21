@@ -16,6 +16,8 @@
 
 #include <gflags/gflags.h>
 #include "butil/third_party/rapidjson/document.h"
+#include "butil/third_party/rapidjson/stringbuffer.h"
+#include "butil/third_party/rapidjson/writer.h"
 #include "butil/string_printf.h"
 #include "butil/fast_rand.h"
 #include "bthread/bthread.h"
@@ -163,6 +165,16 @@ int ParseFetchsResult(const butil::IOBuf& buf,
     }
 
     for (BUTIL_RAPIDJSON_NAMESPACE::SizeType i = 0; i < instances.Size(); ++i) {
+        std::string metadata;
+        // convert metadata in object to string
+        auto itr_metadata = instances[i].FindMember("metadata");
+        if (itr_metadata != instances[i].MemberEnd()) {
+            BUTIL_RAPIDJSON_NAMESPACE::StringBuffer buffer;
+            BUTIL_RAPIDJSON_NAMESPACE::Writer<BUTIL_RAPIDJSON_NAMESPACE::StringBuffer> writer(buffer);
+            itr_metadata->value.Accept(writer);
+            metadata = buffer.GetString();
+        }
+
         auto itr = instances[i].FindMember("addrs");
         if (itr == instances[i].MemberEnd() || !itr->value.IsArray()) {
             LOG(ERROR) << "Fail to find addrs or addrs is not an array";
@@ -186,6 +198,7 @@ int ParseFetchsResult(const butil::IOBuf& buf,
                 addr.remove_prefix(pos + 3);
             }
             ServerNode node;
+            node.tag = metadata;
             // Variable addr contains data from addrs[j].GetString(), it is a
             // null-terminated string, so it is safe to pass addr.data() as the
             // first parameter to str2endpoint.
