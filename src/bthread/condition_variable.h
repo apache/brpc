@@ -41,7 +41,7 @@ namespace bthread {
 // other than std::unique_lock<bthread::Mutex>.
 // This is a higher level construct that is not directly supported by native bthread APIs.
 // Note that just as std::condition_variable_any, ConditionVariableAny has slightly worse
-// performance than bthread::BThread. And if you use system level thread mutexes with
+// performance than bthread::Thread. And if you use system level thread mutexes with
 // bthread::ConditionVariableAny you will block the underlying thread.
 class ConditionVariableAny {
 public:

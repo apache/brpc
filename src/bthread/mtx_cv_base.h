@@ -240,25 +240,15 @@ public:
 
     typedef bthread_cond_t* native_handle_type;
 
-    ConditionVariable() {
-        CHECK_EQ(0, bthread_cond_init(&_cond, nullptr));
-    }
+    ConditionVariable() { CHECK_EQ(0, bthread_cond_init(&_cond, nullptr)); }
 
-    ~ConditionVariable() {
-        CHECK_EQ(0, bthread_cond_destroy(&_cond));
-    }
+    ~ConditionVariable() { CHECK_EQ(0, bthread_cond_destroy(&_cond)); }
 
-    native_handle_type native_handle() {
-        return &_cond;
-    }
+    native_handle_type native_handle() { return &_cond; }
 
-    void notify_one() BUTIL_NOEXCEPT {
-        bthread_cond_signal(&_cond);
-    }
+    void notify_one() BUTIL_NOEXCEPT { bthread_cond_signal(&_cond); }
 
-    void notify_all() BUTIL_NOEXCEPT {
-        bthread_cond_broadcast(&_cond);
-    }
+    void notify_all() BUTIL_NOEXCEPT { bthread_cond_broadcast(&_cond); }
 
     void wait(std::unique_lock<bthread::Mutex>& lock) BUTIL_NOEXCEPT;
 

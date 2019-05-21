@@ -18,7 +18,7 @@
 #ifdef BUTIL_CXX11_ENABLED
 #include <atomic>
 #include <chrono>
-#include "bthread/bthreadxx.h"
+#include "bthread/bthread_cxx.h"
 #endif
 
 namespace {
@@ -293,10 +293,10 @@ TEST(MutexTest, cpp_timed_mutex) {
     using std::chrono::milliseconds;
     std::atomic<bool> ready{false};
     bthread::TimedMutex tmtx;
-    bthread::BThread lock_holder([&tmtx, &ready](){
+    bthread::Thread lock_holder([&tmtx, &ready](){
         std::lock_guard<bthread::TimedMutex> lock(tmtx);
         ready = true;
-        bthread::this_bthread::sleep_for(milliseconds(1000));
+        bthread::this_thread::sleep_for(milliseconds(1000));
     });
     while(!ready); // wait for the lock_holder to take hold of the lock
 
@@ -350,14 +350,14 @@ TEST(MutexTest, cpp_recursive_mutex_sanity) {
                 mtx.lock();
             }
             ++concurrency;
-            bthread::this_bthread::yield();
+            bthread::this_thread::yield();
             ASSERT_EQ(1, concurrency);
             ++counter;
             --concurrency;
             for (int i = 0; i < 3; ++i) {
                 mtx.unlock();
             }
-            bthread::this_bthread::yield();
+            bthread::this_thread::yield();
         }
     };
     std::vector<std::thread> threads;
@@ -370,7 +370,7 @@ TEST(MutexTest, cpp_recursive_mutex_sanity) {
     ASSERT_EQ(30000, counter);
 
     counter = 0;
-    std::vector<bthread::BThread> bthreads;
+    std::vector<bthread::Thread> bthreads;
     for (int i = 0; i < 5; ++i) {
         bthreads.emplace_back(thread_func);
     }
@@ -382,8 +382,8 @@ TEST(MutexTest, cpp_recursive_mutex_sanity) {
     counter = 0;
     std::thread th1(thread_func);
     std::thread th2(thread_func);
-    bthread::BThread th3(thread_func);
-    bthread::BThread th4(thread_func);
+    bthread::Thread th3(thread_func);
+    bthread::Thread th4(thread_func);
     th1.join();
     th2.join();
     th3.join();
@@ -402,10 +402,10 @@ TEST(MutexTest, cpp_recursive_timed_mutex_timing) {
     using std::chrono::milliseconds;
     std::atomic<bool> ready{false};
     bthread::RecursiveTimedMutex tmtx;
-    bthread::BThread lock_holder([&tmtx, &ready](){
+    bthread::Thread lock_holder([&tmtx, &ready](){
         std::lock_guard<bthread::RecursiveTimedMutex> lock(tmtx);
         ready = true;
-        bthread::this_bthread::sleep_for(milliseconds(1000));
+        bthread::this_thread::sleep_for(milliseconds(1000));
     });
     while(!ready); // wait for the lock_holder to take hold of the lock
 

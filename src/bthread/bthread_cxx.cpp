@@ -12,11 +12,11 @@
 
 // Authors: Shuo Zang (jasonszang@126.com)
 
-#include "bthreadxx.h"
+#include "bthread_cxx.h"
 
 namespace bthread {
 
-BThread& BThread::operator=(BThread&& rhs) noexcept {
+Thread& Thread::operator=(Thread&& rhs) noexcept {
     if (joinable()) {
         std::terminate();
     }
@@ -25,7 +25,7 @@ BThread& BThread::operator=(BThread&& rhs) noexcept {
     return *this;
 }
 
-void BThread::join() {
+void Thread::join() {
     int ec = EINVAL;
     if (joinable()) {
         ec = bthread_join(th_, nullptr);
@@ -38,7 +38,7 @@ void BThread::join() {
     }
 }
 
-void BThread::detach() {
+void Thread::detach() {
     int ec = EINVAL;
     if (joinable()) {
         // There is no `bthread_detach' equivalent to `pthread_detach'. Since native bthreads

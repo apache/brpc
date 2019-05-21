@@ -841,16 +841,16 @@ bool RecursiveMutexBase::available() noexcept {
         return true;
     }
     if (_owner_bthread_id == NOT_A_BTHREAD_ID) { // owner is std thread / pthread
-        return this_bthread::get_id() == NOT_A_BTHREAD_ID &&
+        return this_thread::get_id() == NOT_A_BTHREAD_ID &&
                _owner_std_thread_id == std::this_thread::get_id();
     } else { // owner is bthread
-        return _owner_bthread_id == this_bthread::get_id();
+        return _owner_bthread_id == this_thread::get_id();
     }
 }
 
 void RecursiveMutexBase::setup_ownership() noexcept {
     if (_counter == 0) {
-        _owner_bthread_id = ::bthread::this_bthread::get_id();
+        _owner_bthread_id = ::bthread::this_thread::get_id();
         if (_owner_bthread_id == NOT_A_BTHREAD_ID) {
             _owner_std_thread_id = std::this_thread::get_id();
         }

@@ -29,7 +29,7 @@
 #include <chrono>
 #include <limits>
 #include <thread>
-#include "bthread/bthreadxx.h"
+#include "bthread/bthread_cxx.h"
 #endif
 
 namespace bthread {
@@ -134,7 +134,7 @@ class RecursiveTimedMutex;
 
 namespace detail {
 
-constexpr const static BThread::id NOT_A_BTHREAD_ID{};
+constexpr const static Thread::id NOT_A_BTHREAD_ID{};
 
 class RecursiveMutexBase {
 public:
@@ -164,7 +164,7 @@ private:
     Mutex _mtx;
     ConditionVariable _cv;
     int _counter;
-    BThread::id _owner_bthread_id; // Valid only if owner is a bthread
+    Thread::id _owner_bthread_id; // Valid only if owner is a bthread
     std::thread::id _owner_std_thread_id; // Valid only if owner is a std thread / pthread
 };
 

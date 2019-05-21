@@ -54,8 +54,8 @@ bool search() {
 或者使用更简洁的C++11风格接口，它具有与C++11 std::thread相同的语义：
 ```c++
 void search() {
-    bthread::BThread th1(part1, part1_arg1, std::ref(part1_arg2)); // use functions & functors
-    bthread::BThread th2([&part2_args](){ part2(part2_args); }); // use lambdas
+    bthread::Thread th1(part1, part1_arg1, std::ref(part1_arg2)); // use functions & functors
+    bthread::Thread th2([&part2_args](){ part2(part2_args); }); // use lambdas
     // see bthread/bthreadxx.h for more
     part3(part3_args);
     th1.join();
