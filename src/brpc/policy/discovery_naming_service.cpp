@@ -16,7 +16,7 @@
 
 #include <gflags/gflags.h>
 #include "butil/third_party/rapidjson/document.h"
-#include "butil/third_party/rapidjson/stringbuffer.h"
+#include "butil/third_party/rapidjson/memorybuffer.h"
 #include "butil/third_party/rapidjson/writer.h"
 #include "butil/string_printf.h"
 #include "butil/fast_rand.h"
@@ -169,10 +169,10 @@ int ParseFetchsResult(const butil::IOBuf& buf,
         // convert metadata in object to string
         auto itr_metadata = instances[i].FindMember("metadata");
         if (itr_metadata != instances[i].MemberEnd()) {
-            BUTIL_RAPIDJSON_NAMESPACE::StringBuffer buffer;
-            BUTIL_RAPIDJSON_NAMESPACE::Writer<BUTIL_RAPIDJSON_NAMESPACE::StringBuffer> writer(buffer);
+            BUTIL_RAPIDJSON_NAMESPACE::MemoryBuffer buffer;
+            BUTIL_RAPIDJSON_NAMESPACE::Writer<BUTIL_RAPIDJSON_NAMESPACE::MemoryBuffer> writer(buffer);
             itr_metadata->value.Accept(writer);
-            metadata.assign(buffer.GetString(), buffer.GetSize());
+            metadata.assign(buffer.GetBuffer(), buffer.GetSize());
         }
 
         auto itr = instances[i].FindMember("addrs");
