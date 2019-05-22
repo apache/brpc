@@ -172,7 +172,7 @@ int ParseFetchsResult(const butil::IOBuf& buf,
             BUTIL_RAPIDJSON_NAMESPACE::StringBuffer buffer;
             BUTIL_RAPIDJSON_NAMESPACE::Writer<BUTIL_RAPIDJSON_NAMESPACE::StringBuffer> writer(buffer);
             itr_metadata->value.Accept(writer);
-            metadata = buffer.GetString();
+            metadata.assign(buffer.GetString(), buffer.GetSize());
         }
 
         auto itr = instances[i].FindMember("addrs");
