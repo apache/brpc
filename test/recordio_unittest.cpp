@@ -164,7 +164,7 @@ TEST(RecordIOTest, write_read_basic) {
 
     ASSERT_FALSE(rr.ReadNext(NULL));
     ASSERT_EQ((int)butil::RecordReader::END_OF_READER, rr.last_error());
-    ASSERT_EQ(sw.str().size(), rr.read_bytes());
+    ASSERT_EQ(sw.str().size(), rr.offset());
 }
 
 TEST(RecordIOTest, incomplete_reader) {
@@ -208,7 +208,7 @@ TEST(RecordIOTest, incomplete_reader) {
 
     ASSERT_FALSE(rr.ReadNext(NULL));
     ASSERT_EQ(EAGAIN, rr.last_error());
-    ASSERT_EQ(sw.str().size(), rr.read_bytes());
+    ASSERT_EQ(sw.str().size(), rr.offset());
 }
 
 static std::string rand_string(int min_len, int max_len) {
@@ -299,8 +299,8 @@ TEST(RecordIOTest, write_read_random) {
         ASSERT_EQ(name_value_list[j].second, *r.MetaAt(0).data);
     }
     ASSERT_EQ((int)butil::RecordReader::END_OF_READER, rr.last_error());
-    ASSERT_EQ(str.size(), rr.read_bytes());
     ASSERT_EQ(j, name_value_list.size());
+    ASSERT_LE(str.size() - rr.offset(), 3);
 }
 
 } // namespace

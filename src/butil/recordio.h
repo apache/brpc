@@ -102,8 +102,10 @@ public:
     // END_OF_READER means all data in the IReader are successfully consumed.
     int last_error() const { return _last_error; }
 
-    // Total bytes of all read records.
-    size_t read_bytes() const { return _ncut; }
+    // Total bytes consumed.
+    // NOTE: this value may not equal to read bytes from the IReader even if
+    // the reader runs out, due to parsing errors.
+    size_t offset() const { return _ncut; }
 
 private:
     bool CutUntilNextRecordCandidate();

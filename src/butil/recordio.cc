@@ -210,7 +210,7 @@ int RecordReader::CutRecord(Record* rec) {
     if (*(const uint32_t*)dummy != *(const uint32_t*)BRPC_RECORDIO_MAGIC) {
         LOG(ERROR) << "Invalid magic_num="
                    << butil::PrintedAsBinary(std::string((char*)headbuf, 4))
-                   << ", offset=" << read_bytes();
+                   << ", offset=" << offset();
         return -1;
     }
     uint32_t tmp = NetToHost32(*(const uint32_t*)(headbuf + 4));
@@ -224,7 +224,7 @@ int RecordReader::CutRecord(Record* rec) {
                    << std::hex << tmp << std::dec
                    << "(metabit=" << has_meta
                    << " size=" << data_size
-                   << " offset=" << read_bytes()
+                   << " offset=" << offset()
                    << "), expected=" << (unsigned)headbuf[8]
                    << " actual=" << (unsigned)checksum;
         return -1;
@@ -233,7 +233,7 @@ int RecordReader::CutRecord(Record* rec) {
         LOG(ERROR) << "data_size=" << data_size
                    << " is larger than -recordio_max_record_size="
                    << FLAGS_recordio_max_record_size
-                   << ", offset=" << read_bytes();
+                   << ", offset=" << offset();
         return -1;
     }
     if (_cutter.remaining_bytes() < data_size) {
@@ -257,13 +257,13 @@ int RecordReader::CutRecord(Record* rec) {
         if (consumed_bytes + 5 + name_size + meta_size > data_size) {
             LOG(ERROR) << name << ".meta_size=" << meta_size
                        << " is inconsistent with its data_size=" << data_size
-                       << ", offset=" << read_bytes();
+                       << ", offset=" << offset();
             return -1;
         }
         butil::IOBuf* meta = rec->MutableMeta(name, true/*null_on_found*/);
         if (meta == NULL) {
             LOG(ERROR) << "Fail to add meta=" << name
-                       << ", offset=" << read_bytes();
+                       << ", offset=" << offset();
             return -1;
         }
         _cutter.cutn(meta, meta_size);
