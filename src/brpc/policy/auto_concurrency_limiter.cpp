@@ -35,7 +35,7 @@ DEFINE_int32(auto_cl_max_sample_count, 200,
 DEFINE_double(auto_cl_sampling_interval_ms, 0.1, 
              "Interval for sampling request in auto concurrency limiter");
 DEFINE_int32(auto_cl_initial_max_concurrency, 40,
-             "Initial max concurrency for grandient concurrency limiter");
+             "Initial max concurrency for gradient concurrency limiter");
 DEFINE_int32(auto_cl_noload_latency_remeasure_interval_ms, 50000, 
              "Interval for remeasurement of noload_latency. In the period of "
              "remeasurement of noload_latency will halve max_concurrency.");
