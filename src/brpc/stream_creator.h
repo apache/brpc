@@ -66,8 +66,8 @@ public:
     // Params:
     //   sending_sock: The socket chosen by OnCreatingStream(), if an error
     //     happens during choosing, the enclosed socket is NULL.
-    //   cntl: contexts of the RPC
-    //   error_code: Use this instead of cntl->ErrorCode()
+    //   cntl: contexts of the RPC.
+    //   error_code: Use this instead of cntl->ErrorCode().
     //   end_of_rpc: true if the RPC is about to destroyed.
     virtual void DestroyStreamUserData(SocketUniquePtr& sending_sock,
                                        Controller* cntl,
