@@ -697,7 +697,7 @@ inline bool does_error_affect_main_socket(int error_code) {
 void Controller::Call::OnComplete(
         Controller* c, int error_code/*note*/, bool responded, bool end_of_rpc) {
     if (stream_user_data) {
-        stream_user_data->DestroyStreamUserData(sending_sock, error_code, end_of_rpc);
+        stream_user_data->DestroyStreamUserData(sending_sock, c, error_code, end_of_rpc);
         stream_user_data = NULL;
     }
 
