@@ -1,5 +1,5 @@
 // Copyright (c) 2014 Baidu, Inc.G
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -27,13 +27,13 @@ namespace brpc {
 
 class AdaptiveMaxConcurrency{
 public:
-    AdaptiveMaxConcurrency();
-    AdaptiveMaxConcurrency(int max_concurrency);
-    AdaptiveMaxConcurrency(const butil::StringPiece& value);
-    
-    // Non-trivial destructor to prevent AdaptiveMaxConcurrency from being 
+    explicit AdaptiveMaxConcurrency();
+    explicit AdaptiveMaxConcurrency(int max_concurrency);
+    explicit AdaptiveMaxConcurrency(const butil::StringPiece& value);
+
+    // Non-trivial destructor to prevent AdaptiveMaxConcurrency from being
     // passed to variadic arguments without explicit type conversion.
-    // eg: 
+    // eg:
     // printf("%d", options.max_concurrency)                  // compile error
     // printf("%s", options.max_concurrency.value().c_str()) // ok
     ~AdaptiveMaxConcurrency() {}

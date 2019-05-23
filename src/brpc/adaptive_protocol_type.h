@@ -1,11 +1,11 @@
 // Copyright (c) 2015 Baidu, Inc.
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -38,9 +38,9 @@ const char* ProtocolTypeToString(ProtocolType);
 
 // Assignable by both ProtocolType and names.
 class AdaptiveProtocolType {
-public:    
-    AdaptiveProtocolType() : _type(PROTOCOL_UNKNOWN) {}
-    AdaptiveProtocolType(ProtocolType type) : _type(type) {}
+public:
+    explicit AdaptiveProtocolType() : _type(PROTOCOL_UNKNOWN) {}
+    explicit AdaptiveProtocolType(ProtocolType type) : _type(type) {}
     ~AdaptiveProtocolType() {}
 
     void operator=(ProtocolType type) {
@@ -77,7 +77,7 @@ public:
 
     bool has_param() const { return !_param.empty(); }
     const std::string& param() const { return _param; }
-    
+
 private:
     ProtocolType _type;
     std::string _name;
