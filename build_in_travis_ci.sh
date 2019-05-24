@@ -40,8 +40,6 @@ elif [ "$PURPOSE" = "unittest" ]; then
     init_make_config
     cd test
     make -j4 && sh ./run_tests.sh
-elif [ "$PURPOSE" = "compile-with-bazel" ]; then
-    bazel build -j 12 -c opt --copt -DHAVE_ZLIB=1 //...
 elif [ "$PURPOSE" = "compile-with-cmake" ]; then
     rm -rf bld && mkdir bld && cd bld && cmake .. && make -j4
 else

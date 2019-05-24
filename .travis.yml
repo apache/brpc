@@ -29,4 +29,5 @@ install:
 - if [[  "$USE_MESALINK" == "yes" ]]; then curl https://sh.rustup.rs -sSf | sh -s -- -y && source $HOME/.cargo/env && wget https://github.com/mesalock-linux/mesalink/archive/v0.8.0.tar.gz && tar -xf v0.8.0.tar.gz && cd mesalink-0.8.0 && ./autogen.sh --prefix=/usr/  && make && sudo make install && cd - ; fi
 
 script:
+- if [[ "$PURPOSE" == "compile-with-bazel" ]]; then bazel build -j 12 -c opt --copt -DHAVE_ZLIB=1 //...          ; fi
 - sh build_in_travis_ci.sh
