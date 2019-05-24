@@ -155,8 +155,8 @@ void ConditionVariable::wait(std::unique_lock<bthread::Mutex>& lock) noexcept {
 }
 
 void ConditionVariable::do_timed_wait(std::unique_lock<bthread::Mutex>& lock,
-                                       const std::chrono::time_point<std::chrono::system_clock,
-                                               std::chrono::nanoseconds>& tp) noexcept {
+                                      const std::chrono::time_point<std::chrono::system_clock,
+                                              std::chrono::nanoseconds>& tp) noexcept {
     if (!lock.owns_lock()) {
         std::terminate();
     }

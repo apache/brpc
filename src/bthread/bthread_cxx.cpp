@@ -21,7 +21,7 @@ Thread& Thread::operator=(Thread&& rhs) noexcept {
         std::terminate();
     }
     th_ = rhs.th_;
-    rhs.th_ = detail::NULL_BTHREAD;
+    rhs.th_ = INVALID_BTHREAD;
     return *this;
 }
 
@@ -30,7 +30,7 @@ void Thread::join() {
     if (joinable()) {
         ec = bthread_join(th_, nullptr);
         if (!ec) {
-            th_ = detail::NULL_BTHREAD;
+            th_ = INVALID_BTHREAD;
         }
     }
     if (ec) {
@@ -45,7 +45,7 @@ void Thread::detach() {
         // are "detached but still joinable" we only need to make our C++ bthread non-joinable
         // to implement the detaching semantic.
         ec = 0;
-        th_ = detail::NULL_BTHREAD;
+        th_ = INVALID_BTHREAD;
     }
     if (ec) {
         throw std::system_error(ec, std::generic_category());

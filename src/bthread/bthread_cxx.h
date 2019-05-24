@@ -43,19 +43,17 @@ using DisableOverload = std::enable_if<
 template<typename MatchType, typename TArg>
 using DisableOverloadT = typename DisableOverload<MatchType, TArg>::type;
 
-constexpr bthread_t NULL_BTHREAD = 0;
-
 struct ThreadFunc {
     virtual ~ThreadFunc() = default;
 
-    virtual void run() = 0;
+    virtual void Run() = 0;
 };
 
 template<typename Function>
 struct ThreadFuncImpl : public ThreadFunc {
     explicit ThreadFuncImpl(Function&& f) : f_(std::forward<Function>(f)) {}
 
-    void run() override { f_(); }
+    void Run() override { f_(); }
 
     Function f_;
 };
@@ -67,7 +65,7 @@ std::unique_ptr<ThreadFunc> make_func_ptr(Callable&& f) {
 
 inline void* thread_func_proxy(void* owning_func_ptr) {
     std::unique_ptr<ThreadFunc> func_ptr{static_cast<ThreadFunc*>(owning_func_ptr)};
-    func_ptr->run();
+    func_ptr->Run();
     return nullptr;
 }
 
@@ -133,7 +131,7 @@ public:
 
     Thread(const Thread& rhs) = delete;
 
-    Thread(Thread&& rhs) noexcept: th_(rhs.th_) { rhs.th_ = detail::NULL_BTHREAD; }
+    Thread(Thread&& rhs) noexcept: th_(rhs.th_) { rhs.th_ = INVALID_BTHREAD; }
 
     // Starts bthread with bthread_start_background
     template<typename Callable, typename... Args,
@@ -152,7 +150,7 @@ public:
 
     Thread& operator=(Thread&& rhs) noexcept;
 
-    bool joinable() const noexcept { return th_ != detail::NULL_BTHREAD; }
+    bool joinable() const noexcept { return th_ != INVALID_BTHREAD; }
 
     id get_id() const noexcept { return id{th_}; }
 
@@ -169,7 +167,7 @@ private:
     template<typename Callable, typename... Args>
     Thread(bool urgent, Callable&& f, Args&& ...args);
 
-    bthread_t th_{detail::NULL_BTHREAD};
+    bthread_t th_{INVALID_BTHREAD};
 };
 
 template<typename Callable, typename... Args, typename, typename>
