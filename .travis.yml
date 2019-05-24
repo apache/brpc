@@ -9,7 +9,6 @@ compiler:
 env:
 - PURPOSE=compile
 - PURPOSE=unittest
-- PURPOSE=compile-with-cmake
 - PURPOSE=compile-with-bazel
 - PURPOSE=compile USE_MESALINK=yes
 - PURPOSE=unittest USE_MESALINK=yes
