@@ -147,7 +147,7 @@ void* cv_signaler(void* void_arg) {
 
 void* cv_bmutex_waiter(void* void_arg) {
     WrapperArg* a = (WrapperArg*)void_arg;
-    std::unique_lock<bthread_mutex_t> lck(*a->mutex.native_handler());
+    std::unique_lock<bthread_mutex_t> lck(*a->mutex.native_handle());
     while (!stop) {
         a->cond.wait(lck);
     }

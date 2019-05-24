@@ -12,8 +12,8 @@
 
 // Authors: Shuo Zang (jasonszang@126.com)
 
-#ifndef BTHREAD_BTHREADXX_H
-#define BTHREAD_BTHREADXX_H
+#ifndef BTHREAD_BTHREAD_CXX_H
+#define BTHREAD_BTHREAD_CXX_H
 
 #include <butil/macros.h>
 
@@ -49,13 +49,13 @@ struct ThreadFunc {
     virtual void Run() = 0;
 };
 
-template<typename Function>
+template<typename Callable>
 struct ThreadFuncImpl : public ThreadFunc {
-    explicit ThreadFuncImpl(Function&& f) : f_(std::forward<Function>(f)) {}
+    explicit ThreadFuncImpl(Callable&& f) : f_(std::forward<Callable>(f)) {}
 
     void Run() override { f_(); }
 
-    Function f_;
+    Callable f_;
 };
 
 template<typename Callable>
@@ -242,4 +242,4 @@ void sleep_for(const std::chrono::duration<Rep, Period>& sleep_duration) {
 
 #endif // BUTIL_CXX11_ENABLED
 
-#endif // BTHREAD_BTHREADXX_H
+#endif // BTHREAD_BTHREAD_CXX_H

@@ -116,7 +116,7 @@ TEST(MutexTest, cpp_wrapper) {
     ASSERT_TRUE(mutex.try_lock());
     mutex.unlock();
     {
-        BAIDU_SCOPED_LOCK(*mutex.native_handler());
+        BAIDU_SCOPED_LOCK(*mutex.native_handle());
     }
 #ifdef BUTIL_CXX11_ENABLED
     {
@@ -127,7 +127,7 @@ TEST(MutexTest, cpp_wrapper) {
 #endif
     {
         std::unique_lock<bthread_mutex_t> lck1;
-        std::unique_lock<bthread_mutex_t> lck2(*mutex.native_handler());
+        std::unique_lock<bthread_mutex_t> lck2(*mutex.native_handle());
         lck1.swap(lck2);
         lck1.unlock();
         lck1.lock();

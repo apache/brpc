@@ -56,7 +56,7 @@ bool search() {
 void search() {
     bthread::Thread th1(part1, part1_arg1, std::ref(part1_arg2)); // use functions & functors
     bthread::Thread th2([&part2_args](){ part2(part2_args); }); // use lambdas
-    // see bthread/bthreadxx.h for more
+    // see bthread/bthread_cxx.h for more
     part3(part3_args);
     th1.join();
     th2.join();

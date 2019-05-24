@@ -60,7 +60,6 @@ namespace bthread {
 class Mutex {
 public:
     // Maybe this is a typo? Anyway it should be deprecated
-    typedef bthread_mutex_t* native_handler_type;
     typedef bthread_mutex_t* native_handle_type;
 
     // Note: Unlike std::mutex, bthread mutex constructor is not constexpr. Use std::mutex for
@@ -75,7 +74,6 @@ public:
 
     ~Mutex() { CHECK_EQ(0, bthread_mutex_destroy(&_mutex)); }
 
-    native_handler_type native_handler() { return &_mutex; } // also typo?
     native_handle_type native_handle() { return &_mutex; }
 
     void lock() {
@@ -240,7 +238,7 @@ public:
 
     typedef bthread_cond_t* native_handle_type;
 
-    ConditionVariable() { CHECK_EQ(0, bthread_cond_init(&_cond, nullptr)); }
+    ConditionVariable():_cond() { CHECK_EQ(0, bthread_cond_init(&_cond, nullptr)); }
 
     ~ConditionVariable() { CHECK_EQ(0, bthread_cond_destroy(&_cond)); }
 
@@ -287,8 +285,6 @@ public:
 #endif // BUTIL_CXX11_ENABLED
 
     // These are the original non-standard-compatible interfaces
-    typedef bthread_cond_t* native_handler_type;
-    native_handler_type native_handler() { return &_cond; }
     void wait(std::unique_lock<bthread_mutex_t>& lock) {
         bthread_cond_wait(&_cond, lock.mutex());
     }
@@ -305,7 +301,7 @@ public:
     int wait_until(std::unique_lock<bthread::Mutex>& lock,
                    timespec duetime) {
         const int rc = bthread_cond_timedwait(
-                &_cond, lock.mutex()->native_handler(), &duetime);
+                &_cond, lock.mutex()->native_handle(), &duetime);
         return rc == ETIMEDOUT ? ETIMEDOUT : 0;
     }
     int wait_until(std::unique_lock<bthread_mutex_t>& lock,
@@ -333,7 +329,7 @@ private:
     std::chrono::nanoseconds ceil_nanoseconds(const std::chrono::duration<Rep, Period>& dur);
 #endif // BUTIL_CXX11_ENABLED
 
-    bthread_cond_t _cond{};
+    bthread_cond_t _cond;
 };
 
 template<typename Rep, typename Period>
