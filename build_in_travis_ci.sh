@@ -36,7 +36,7 @@ fi
 
 if [ "$PURPOSE" = "compile" ]; then
     init_make_config
-    make -j4 && sh tools/make_all_examples
+    make -j4 #&& sh tools/make_all_examples
 elif [ "$PURPOSE" = "unittest" ]; then
     init_make_config
     cd test
