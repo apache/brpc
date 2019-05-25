@@ -23,9 +23,9 @@ echo "build combination: PURPOSE=$PURPOSE CXX=$CXX CC=$CC"
 
 init_make_config() {
 EXTRA_BUILD_OPTS=""
-#if [ "$USE_MESALINK" = "yes" ]; then
-#    EXTRA_BUILD_OPTS="$EXTRA_BUILD_OPTS --with-mesalink"
-#fi
+if [ "$USE_MESALINK" = "yes" ]; then
+    EXTRA_BUILD_OPTS="$EXTRA_BUILD_OPTS --with-mesalink"
+fi
 
 # The default env in travis-ci is Ubuntu.
 if ! sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --nodebugsymbols --cxx=$CXX --cc=$CC $EXTRA_BUILD_OPTS --with-thrift ; then
