@@ -967,8 +967,8 @@ H2ParseResult H2Context::OnGoAway(
                                   BTHREAD_ATTR_PTHREAD :
                                   BTHREAD_ATTR_NORMAL);
             tmp.keytable_pool = _socket->keytable_pool();
-            CHECK_EQ(0, bthread_start_background(
-                         &th, &tmp, ProcessHttpResponseWrapper, goaway_streams[i]));
+            CHECK_EQ(0, bthread_start_background(&th, &tmp, ProcessHttpResponseWrapper,
+                         static_cast<InputMessageBase*>(goaway_streams[i])));
         }
         return MakeH2Message(goaway_streams[0]);
     } else {
