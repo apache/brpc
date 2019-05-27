@@ -1,3 +1,4 @@
+#include <map>
 #include <gtest/gtest.h>
 #include "butil/recordio.h"
 #include "butil/fast_rand.h"

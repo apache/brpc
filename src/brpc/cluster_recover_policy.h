@@ -25,7 +25,7 @@
 
 namespace brpc {
 
-class ServerId;
+struct ServerId;
 
 // After all servers are down and health check happens, servers are
 // online one by one. Once one server is up, all the request that should
