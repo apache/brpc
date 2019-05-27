@@ -28,14 +28,15 @@ if [ "$USE_MESALINK" = "yes" ]; then
 fi
 
 # The default env in travis-ci is Ubuntu.
-if ! sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --nodebugsymbols --cxx=$CXX --cc=$CC $EXTRA_BUILD_OPTS --with-thrift ; then
+if ! sh config_brpc.sh --headers=/usr/include --libs=/usr/lib --nodebugsymbols --cxx=$CXX --cc=$CC $EXTRA_BUILD_OPTS $1 ; then
     echo "Fail to configure brpc"
     exit 1
 fi
 }
 
 if [ "$PURPOSE" = "compile" ]; then
-    init_make_config
+    # In order to run thrift example, we need to add the corresponding flag
+    init_make_config "--with-thrift"
     make -j4 && sh tools/make_all_examples
 elif [ "$PURPOSE" = "unittest" ]; then
     init_make_config
