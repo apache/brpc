@@ -36,12 +36,9 @@ fi
 
 if [ "$PURPOSE" = "compile" ]; then
     # In order to run thrift example, we need to add the corresponding flag
-    init_make_config "--with-thrift"
-    make -j4 && sh tools/make_all_examples
+    init_make_config "--with-thrift" && make -j4 && sh tools/make_all_examples
 elif [ "$PURPOSE" = "unittest" ]; then
-    init_make_config
-    cd test
-    make -j4 && sh ./run_tests.sh
+    init_make_config && cd test && make -j4 && sh ./run_tests.sh
 elif [ "$PURPOSE" = "compile-with-cmake" ]; then
     rm -rf bld && mkdir bld && cd bld && cmake .. && make -j4
 elif [ "$PURPOSE" = "compile-with-bazel" ]; then
