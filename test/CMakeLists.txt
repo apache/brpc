@@ -174,9 +174,9 @@ endif()
 
 # create executable
 add_executable(test_butil ${TEST_BUTIL_SOURCES}
-                          ${CMAKE_CURRENT_BINARY_DIR}/iobuf.pb.cc
-                          $<TARGET_OBJECTS:BUTIL_LIB>)
-target_link_libraries(test_butil gtest
+                          ${CMAKE_CURRENT_BINARY_DIR}/iobuf.pb.cc)
+target_link_libraries(test_butil brpc-shared
+                                 gtest
                                  ${GPERFTOOLS_LIBRARIES}
                                  ${DYNAMIC_LIB})
 
@@ -185,10 +185,9 @@ list(REMOVE_ITEM BVAR_SOURCES ${PROJECT_SOURCE_DIR}/src/bvar/default_variables.c
 
 add_library(BVAR_OBJ OBJECT ${BVAR_SOURCES})
 file(GLOB TEST_BVAR_SRCS "bvar_*_unittest.cpp")
-add_executable(test_bvar $<TARGET_OBJECTS:BUTIL_LIB>
-                         $<TARGET_OBJECTS:BVAR_OBJ>
-                         ${TEST_BVAR_SRCS})
-target_link_libraries(test_bvar gtest
+add_executable(test_bvar ${TEST_BVAR_SRCS})
+target_link_libraries(test_bvar brpc-shared
+                                gtest
                                 ${GPERFTOOLS_LIBRARIES}
                                 ${DYNAMIC_LIB})
 
@@ -197,29 +196,20 @@ add_library(PROTO_OBJ OBJECT ${PROTO_SRCS})
 file(GLOB BTHREAD_UNITTESTS "bthread*unittest.cpp")
 foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
     get_filename_component(BTHREAD_UT_WE ${BTHREAD_UT} NAME_WE)
-    add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT} 
-                                    $<TARGET_OBJECTS:BUTIL_LIB>
-                                    $<TARGET_OBJECTS:BVAR_OBJ>
-                                    $<TARGET_OBJECTS:BTHREAD_OBJ>
-                                    $<TARGET_OBJECTS:PROTO_LIB>
-                                    $<TARGET_OBJECTS:TEST_PROTO_LIB>)
-    target_link_libraries(${BTHREAD_UT_WE}
-                          gtest_main
-                          ${GPERFTOOLS_LIBRARIES}
-                          ${DYNAMIC_LIB})
+    add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT} $<TARGET_OBJECTS:TEST_PROTO_LIB>)
+    target_link_libraries(${BTHREAD_UT_WE} brpc-shared
+                                           gtest_main
+                                           ${GPERFTOOLS_LIBRARIES}
+                                           ${DYNAMIC_LIB})
 endforeach()
 
 file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
 foreach(BRPC_UT ${BRPC_UNITTESTS})
     get_filename_component(BRPC_UT_WE ${BRPC_UT} NAME_WE)
-    add_executable(${BRPC_UT_WE} ${BRPC_UT}
-                                 $<TARGET_OBJECTS:TEST_PROTO_LIB>
-                                 $<TARGET_OBJECTS:BUTIL_LIB>
-                                 $<TARGET_OBJECTS:OBJ_LIB>
-                                 $<TARGET_OBJECTS:PROTO_LIB>)
-    target_link_libraries(${BRPC_UT_WE}
-                          gtest_main
-                          ${GPERFTOOLS_LIBRARIES}
-                          ${GTEST_LIB}
-                          ${DYNAMIC_LIB})
+    add_executable(${BRPC_UT_WE} ${BRPC_UT} $<TARGET_OBJECTS:TEST_PROTO_LIB>)
+    target_link_libraries(${BRPC_UT_WE} brpc-shared
+                                        gtest_main
+                                        ${GPERFTOOLS_LIBRARIES}
+                                        ${GTEST_LIB}
+                                        ${DYNAMIC_LIB})
 endforeach()
