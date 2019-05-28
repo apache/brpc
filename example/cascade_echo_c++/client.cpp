@@ -21,8 +21,8 @@
 #include <bthread/bthread.h>
 #include <brpc/channel.h>
 #include <brpc/server.h>
-#include "echo.pb.h"
 #include <bvar/bvar.h>
+#include "echo.pb.h"
 
 DEFINE_int32(thread_num, 4, "Number of threads to send requests");
 DEFINE_bool(use_bthread, false, "Use bthread to send requests");

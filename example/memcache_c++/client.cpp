@@ -21,6 +21,7 @@
 #include <brpc/channel.h>
 #include <brpc/memcache.h>
 #include <brpc/policy/couchbase_authenticator.h>
+#include <bvar/bvar.h>
 
 DEFINE_int32(thread_num, 10, "Number of threads to send requests");
 DEFINE_bool(use_bthread, false, "Use bthread to send requests");

@@ -22,6 +22,7 @@
 #include <butil/macros.h>
 #include <brpc/parallel_channel.h>
 #include <brpc/server.h>
+#include <bvar/bvar.h>
 #include "echo.pb.h"
 
 DEFINE_int32(thread_num, 50, "Number of threads to send requests");

@@ -23,6 +23,7 @@
 #include <json2pb/json_to_pb.h>
 #include <bthread/timer_thread.h>
 #include <bthread/bthread.h>
+#include <bvar/bvar.h>
 
 #include <cstdlib>
 #include <fstream>

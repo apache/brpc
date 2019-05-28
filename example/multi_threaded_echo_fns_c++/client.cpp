@@ -22,6 +22,7 @@
 #include <butil/macros.h>
 #include <brpc/channel.h>
 #include <brpc/server.h>
+#include <bvar/bvar.h>
 #include <deque>
 #include "echo.pb.h"
 
