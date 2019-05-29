@@ -17,9 +17,9 @@ COMMA = ,
 SOPATHS = $(addprefix -Wl$(COMMA)-rpath$(COMMA), $(LIBS))
 SRCEXTS = .c .cc .cpp .proto
 
-TARGET_LIB_DY = libbrpc.so
+SOEXT = so
 ifeq ($(SYSTEM),Darwin)
-    TARGET_LIB_DY = libbrpc.dylib
+    SOEXT = dylib
 endif
 
 #required by butil/crc32.cc to boost performance for 10x
@@ -205,19 +205,19 @@ DEBUG_OBJS = $(OBJS:.o=.dbg.o)
 PROTOS=$(BRPC_PROTOS) src/idl_options.proto
 
 .PHONY:all
-all:  protoc-gen-mcpack libbrpc.a $(TARGET_LIB_DY) output/include output/lib output/bin
+all:  protoc-gen-mcpack libbrpc.a libbrpc.$(SOEXT) output/include output/lib output/bin
 
 .PHONY:debug
-debug: test/libbrpc.dbg.a test/libbvar.dbg.a
+debug: test/libbrpc.dbg.$(SOEXT) test/libbvar.dbg.a
 
 .PHONY:clean
 clean:
 	@echo "Cleaning"
-	@rm -rf src/mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a $(TARGET_LIB_DY) $(OBJS) output/include output/lib output/bin $(PROTOS:.proto=.pb.h) $(PROTOS:.proto=.pb.cc)
+	@rm -rf src/mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a libbrpc.$(SOEXT) $(OBJS) output/include output/lib output/bin $(PROTOS:.proto=.pb.h) $(PROTOS:.proto=.pb.cc)
 
 .PHONY:clean_debug
 clean_debug:
-	@rm -rf test/libbrpc.dbg.a test/libbvar.dbg.a $(DEBUG_OBJS)
+	@rm -rf test/libbrpc.dbg.$(SOEXT) test/libbvar.dbg.a $(DEBUG_OBJS)
 
 .PRECIOUS: %.o
 
@@ -234,7 +234,7 @@ libbrpc.a:$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
 	@echo "Packing $@"
 	@ar crs $@ $(filter %.o,$^)
 
-$(TARGET_LIB_DY):$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
+libbrpc.$(SOEXT):$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
 	@echo "Linking $@"
 ifeq ($(SYSTEM),Linux)
 	@$(CXX) -shared -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $(filter %.o,$^) -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
@@ -246,9 +246,13 @@ test/libbvar.dbg.a:$(BVAR_DEBUG_OBJS)
 	@echo "Packing $@"
 	@ar crs $@ $^
 
-test/libbrpc.dbg.a:$(BRPC_PROTOS:.proto=.pb.h) $(DEBUG_OBJS)
-	@echo "Packing $@"
-	@ar crs $@ $(filter %.o,$^)
+test/libbrpc.dbg.$(SOEXT):$(BRPC_PROTOS:.proto=.pb.h) $(DEBUG_OBJS)
+	@echo "Linking $@"
+ifeq ($(SYSTEM),Linux)
+	@$(CXX) -shared -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $(filter %.o,$^) -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+else ifeq ($(SYSTEM),Darwin)
+	@$(CXX) -dynamiclib -Wl,-headerpad_max_install_names -o $@ -install_name @rpath/$@ $(LIBPATHS) $(SOPATHS) $(filter %.o,$^) $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+endif
 
 .PHONY:output/include
 output/include:
@@ -258,7 +262,7 @@ output/include:
 	@cp src/idl_options.proto src/idl_options.pb.h $@
 
 .PHONY:output/lib
-output/lib:libbrpc.a $(TARGET_LIB_DY)
+output/lib:libbrpc.a libbrpc.$(SOEXT)
 	@echo "Copying to $@"
 	@mkdir -p $@
 	@cp $^ $@
