@@ -1158,7 +1158,7 @@ TEST_F(ServerTest, serving_requests) {
 TEST_F(ServerTest, create_pid_file) {
     {
         brpc::Server server;
-        server._options.pid_file = "$PWD//pid_dir/sub_dir/./.server.pid";
+        server._options.pid_file = "./pid_dir/sub_dir/./.server.pid";
         server.PutPidFileIfNeeded();
         pid_t pid = getpid();
         std::ifstream fin("./pid_dir/sub_dir/.server.pid");

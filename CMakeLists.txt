@@ -391,6 +391,7 @@ set(SOURCES
 
 add_subdirectory(src)
 if(BUILD_UNIT_TESTS)
+    enable_testing()
     add_subdirectory(test)
 endif()
 add_subdirectory(tools)
