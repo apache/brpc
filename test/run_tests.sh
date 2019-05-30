@@ -3,6 +3,7 @@ test_num=0
 failed_test=""
 rc=0
 test_bins="test_butil test_bvar bthread*unittest brpc*unittest"
+ulimit -c unlimited # turn on coredumps
 for test_bin in $test_bins; do
     test_num=$((test_num + 1))
     >&2 echo "[runtest] $test_bin"
@@ -18,8 +19,9 @@ if [ $test_num -eq 0 ]; then
     exit 1
 fi
 print_bt () {
-    COREFILE=$(find . -maxdepth 2 -name "core*" | head -n 1) # find core file
-    if [[ -f "$COREFILE" ]]; then
+    # find newest core file
+    COREFILE=$(find . -name "core*" -type f -printf "%T@ %p\n" | sort -k 1 -n | cut -d' ' -f 2- | tail -n 1)
+    if [ ! -z "$COREFILE" ]; then
         gdb -c "$COREFILE" $1 -ex "thread apply all bt" -ex "set pagination 0" -batch;
     fi
 }
