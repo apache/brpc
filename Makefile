@@ -251,7 +251,7 @@ test/libbrpc.dbg.$(SOEXT):$(BRPC_PROTOS:.proto=.pb.h) $(DEBUG_OBJS)
 ifeq ($(SYSTEM),Linux)
 	@$(CXX) -shared -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $(filter %.o,$^) -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
 else ifeq ($(SYSTEM),Darwin)
-	@$(CXX) -dynamiclib -Wl,-headerpad_max_install_names -o $@ -install_name @rpath/$@ $(LIBPATHS) $(SOPATHS) $(filter %.o,$^) $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+	@$(CXX) -dynamiclib -Wl,-headerpad_max_install_names -o $@ -install_name @rpath/libbrpc.dbg.$(SOEXT) $(LIBPATHS) $(SOPATHS) $(filter %.o,$^) $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
 endif
 
 .PHONY:output/include
