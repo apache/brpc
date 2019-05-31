@@ -1,10 +1,9 @@
 # You can change following lines when client is running to see how client 
 # deals with partition changes.
 
- 0.0.0.0:8002  1/4          # unmatched num
-  0.0.0.0:8002    -1/3      # invalid index
-  0.0.0.0:8002  1/3        
- 0.0.0.0:8002   1/3         # repeated
+ 0.0.0.0:8002  1/4          # ignored: unmatched num
+ 0.0.0.0:8002  -1/3         # ignored: invalid index
+ 0.0.0.0:8002  1/3
+ 0.0.0.0:8002  1/3          # ignored: repeated
  0.0.0.0:8002  2/3
- 0.0.0.0:8002   0/3
-
+ 0.0.0.0:8002  0/3
