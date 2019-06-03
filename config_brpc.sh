@@ -230,7 +230,7 @@ LEVELDB_HDR=$(find_dir_of_header_or_die leveldb/db.h)
 BOOST_HDR=$(find_dir_of_header_or_die boost/version.hpp)
 
 HDRS=$($ECHO "$GFLAGS_HDR\n$PROTOBUF_HDR\n$LEVELDB_HDR\n$OPENSSL_HDR\n$BOOST_HDR" | sort | uniq)
-LIBS=$($ECHO "$GFLAGS_LIB\n$PROTOBUF_LIB\n$LEVELDB_LIB\n$SNAPPY_LIB" | sort | uniq)
+LIBS=$($ECHO "$GFLAGS_LIB\n$PROTOBUF_LIB\n$LEVELDB_LIB\n$SNAPPY_LIB\n$OPENSSL_LIB" | sort | uniq)
 
 absent_in_the_list() {
     TMP=`$ECHO "$1\n$2" | sort | uniq`
@@ -310,7 +310,7 @@ if [ $WITH_THRIFT != 0 ]; then
     if [ -f "$THRIFT_LIB/libthriftnb.$SO" ]; then
         append_to_output "DYNAMIC_LINKINGS+=-lthriftnb -levent -lthrift"
     else
-        append_to_output "STATIC_LINKINGS+=-lthriftnb"
+        append_to_output "STATIC_LINKINGS+=-lthriftnb -lthrift"
     fi
 fi
 
