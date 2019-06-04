@@ -99,7 +99,7 @@ Examples link brpc statically, if you need to link the shared version, use `cmak
 
 **Run tests**
 ```shell
-$ mkdir bld && cd bld && cmake -DBUILD_UNIT_TESTS=ON .. && make test
+$ mkdir bld && cd bld && cmake -DBUILD_UNIT_TESTS=ON .. && make && make test
 ```
 
 ## Fedora/CentOS
@@ -189,7 +189,7 @@ Examples link brpc statically, if you need to link the shared version, use `cmak
 
 **Run tests**
 ```shell
-$ mkdir bld && cd bld && cmake -DBUILD_UNIT_TESTS=ON .. && make test
+$ mkdir bld && cd bld && cmake -DBUILD_UNIT_TESTS=ON .. && make && make test
 ```
 
 ## Linux with self-built deps
@@ -327,7 +327,7 @@ Examples link brpc statically, if you need to link the shared version, use `cmak
 
 **Run tests**
 ```shell
-$ mkdir bld && cd bld && cmake -DBUILD_UNIT_TESTS=ON .. && make test
+$ mkdir bld && cd bld && cmake -DBUILD_UNIT_TESTS=ON .. && make && make test
 ```
 
 # Supported deps
