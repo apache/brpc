@@ -141,12 +141,7 @@ OPENSSL_LIB=$(find_dir_of_lib ssl)
 
 # Inconvenient to check these headers in baidu-internal
 #PTHREAD_HDR=$(find_dir_of_header_or_die pthread.h)
-if [ "$SYSTEM" = "Darwin" ]; then
-    OPENSSL_HDR="/usr/local/Cellar/openssl\@1.1/1.1.1b/include"
-    OPENSSL_LIB="/usr/local/Cellar/openssl\@1.1/1.1.1b/lib"
-else
-    OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h)
-fi
+OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h)
 
 if [ $WITH_MESALINK != 0 ]; then
     MESALINK_HDR=$(find_dir_of_header_or_die mesalink/openssl/ssl.h)
