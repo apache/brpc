@@ -142,8 +142,7 @@ private:
 };
 
 inline void PackHuluHeader(char* hulu_header, int meta_size, int body_size) {
-    // dummy supresses strict-aliasing warning.
-    uint32_t* dummy = reinterpret_cast<uint32_t*>(hulu_header);
+    uint32_t* dummy = reinterpret_cast<uint32_t*>(hulu_header); // suppress strict-alias warning
     *dummy = *reinterpret_cast<const uint32_t*>("HULU");
     HuluRawPacker rp(hulu_header + 4);
     rp.pack32(meta_size + body_size).pack32(meta_size);

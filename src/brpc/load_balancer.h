@@ -24,9 +24,6 @@
 #include "brpc/shared_object.h"                   // SharedObject
 #include "brpc/server_id.h"                       // ServerId
 #include "brpc/extension.h"                       // Extension<T>
-#include "butil/strings/string_piece.h"
-#include "butil/strings/string_split.h"
-
 
 namespace brpc {
 

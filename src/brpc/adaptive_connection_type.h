@@ -1,11 +1,11 @@
 // Copyright (c) 2015 Baidu, Inc.
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -38,7 +38,7 @@ const char* ConnectionTypeToString(ConnectionType);
 
 // Assignable by both ConnectionType and names.
 class AdaptiveConnectionType {
-public:    
+public:
     AdaptiveConnectionType() : _type(CONNECTION_TYPE_UNKNOWN), _error(false) {}
     AdaptiveConnectionType(ConnectionType type) : _type(type), _error(false) {}
     ~AdaptiveConnectionType() {}
@@ -52,7 +52,7 @@ public:
     operator ConnectionType() const { return _type; }
     const char* name() const { return ConnectionTypeToString(_type); }
     bool has_error() const { return _error; }
-    
+
 private:
     ConnectionType _type;
     // Since this structure occupies 8 bytes in 64-bit machines anyway,

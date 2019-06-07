@@ -160,4 +160,20 @@ double fast_rand_double() {
     return fast_rand_double(&_tls_seed);
 }
 
+void fast_rand_bytes(void* output, size_t output_length) {
+    const size_t n = output_length / 8;
+    for (size_t i = 0; i < n; ++i) {
+        static_cast<uint64_t*>(output)[i] = fast_rand();
+    }
+    const size_t m = output_length - n * 8;
+    if (m) {
+        uint8_t* p = static_cast<uint8_t*>(output) + n * 8;
+        uint64_t r = fast_rand();
+        for (size_t i = 0; i < m; ++i) {
+            p[i] = (r & 0xFF);
+            r = (r >> 8);
+        }
+    }
+}
+
 }  // namespace butil

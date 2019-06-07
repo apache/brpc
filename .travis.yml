@@ -9,17 +9,19 @@ compiler:
 env:
 - PURPOSE=compile
 - PURPOSE=unittest
+- PURPOSE=compile-with-cmake
 - PURPOSE=compile-with-bazel
-- PURPOSE=compile USE_MESALINK=yes
-- PURPOSE=unittest USE_MESALINK=yes
+#- PURPOSE=compile USE_MESALINK=yes
+#- PURPOSE=unittest USE_MESALINK=yes
 
 before_script:
 - ulimit -c unlimited -S       # enable core dumps
 
 before_install:
-- wget --no-clobber https://github.com/bazelbuild/bazel/releases/download/0.8.1/bazel_0.8.1-linux-x86_64.deb
-- sudo dpkg -i bazel_0.8.1-linux-x86_64.deb
-- wget http://www.us.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz && tar -xf thrift-0.11.0.tar.gz && cd thrift-0.11.0/ &&  ./configure --prefix=/usr --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no && make CPPFLAGS=-DFORCE_BOOST_SMART_PTR -j 3 -s && sudo make install && cd -
+- wget --no-clobber https://github.com/bazelbuild/bazel/releases/download/0.25.1/bazel_0.25.1-linux-x86_64.deb
+- sudo dpkg -i bazel_0.25.1-linux-x86_64.deb
+- sudo apt-get install automake bison flex g++ git libboost-all-dev libevent-dev libssl-dev libtool make pkg-config # thrift dependencies
+- wget http://www.us.apache.org/dist/thrift/0.11.0/thrift-0.11.0.tar.gz && tar -xf thrift-0.11.0.tar.gz && cd thrift-0.11.0/ &&  ./configure --prefix=/usr --with-rs=no --with-ruby=no --with-python=no --with-java=no --with-go=no --with-perl=no --with-php=no --with-csharp=no --with-erlang=no --with-lua=no --with-nodejs=no && make -sj4 && sudo make install && cd -
 
 install:
 - sudo apt-get install -qq realpath libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev libboost-dev libssl-dev libevent-dev libboost-test-dev
@@ -28,5 +30,4 @@ install:
 - if [[  "$USE_MESALINK" == "yes" ]]; then curl https://sh.rustup.rs -sSf | sh -s -- -y && source $HOME/.cargo/env && wget https://github.com/mesalock-linux/mesalink/archive/v0.8.0.tar.gz && tar -xf v0.8.0.tar.gz && cd mesalink-0.8.0 && ./autogen.sh --prefix=/usr/  && make && sudo make install && cd - ; fi
 
 script:
-- if [[ "$PURPOSE" == "compile-with-bazel" ]]; then bazel build -j 12 -c opt --copt -DHAVE_ZLIB=1 //...          ; fi
 - sh build_in_travis_ci.sh

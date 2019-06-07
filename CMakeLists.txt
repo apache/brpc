@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 2.8.10)
 project(brpc C CXX)
 
+option(WITH_GLOG "With glog" OFF)
+option(DEBUG "Print debug logs" OFF)
+option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
+option(WITH_THRIFT "With thrift framed protocol supported" OFF)
+option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
+option(DOWNLOAD_GTEST "Download and build a fresh copy of \
+                            googletest. Requires Internet access." ON)
+
 # Enable MACOSX_RPATH. Run "cmake --help-policy CMP0042" for policy details.
 if(POLICY CMP0042)
     cmake_policy(SET CMP0042 NEW)
@@ -25,12 +33,6 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 else()
     message(WARNING "You are using an unsupported compiler! Compilation has only been tested with Clang and GCC.")
 endif()
-
-option(WITH_GLOG "With glog" OFF)
-option(DEBUG "Print debug logs" OFF)
-option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
-option(WITH_THRIFT "With thrift framed protocol supported" OFF)
-option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 
 set(WITH_GLOG_VAL "0")
 if(WITH_GLOG)
@@ -166,8 +168,7 @@ set(DYNAMIC_LIB
     ${OPENSSL_LIBRARIES}
     ${OPENSSL_CRYPTO_LIBRARY}
     dl
-    z
-    )
+    z)
 set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ldl -lz")
 
 if(WITH_GLOG)
@@ -197,7 +198,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/output/lib)
 # for *.a
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/output/lib)
 
-# list all source files
+# the reason why not using file(GLOB_RECURSE...) is that we want to
+# include different files on different platforms.
 set(BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/dmg_fp/g_fmt.cc
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/dmg_fp/dtoa_wrapper.cc
@@ -311,6 +313,7 @@ set(BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/src/butil/containers/case_ignored_flat_map.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/iobuf.cpp
     ${PROJECT_SOURCE_DIR}/src/butil/binary_printer.cpp
+    ${PROJECT_SOURCE_DIR}/src/butil/recordio.cc
     ${PROJECT_SOURCE_DIR}/src/butil/popen.cpp
     )
 
@@ -350,8 +353,7 @@ set(MCPACK2PB_SOURCES
     ${PROJECT_SOURCE_DIR}/src/mcpack2pb/field_type.cpp
     ${PROJECT_SOURCE_DIR}/src/mcpack2pb/mcpack2pb.cpp
     ${PROJECT_SOURCE_DIR}/src/mcpack2pb/parser.cpp
-    ${PROJECT_SOURCE_DIR}/src/mcpack2pb/serializer.cpp
-    )
+    ${PROJECT_SOURCE_DIR}/src/mcpack2pb/serializer.cpp)
 
 include(CompileProto)
 set(PROTO_FILES idl_options.proto
@@ -390,6 +392,7 @@ set(SOURCES
 
 add_subdirectory(src)
 if(BUILD_UNIT_TESTS)
+    enable_testing()
     add_subdirectory(test)
 endif()
 add_subdirectory(tools)

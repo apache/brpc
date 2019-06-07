@@ -15,6 +15,7 @@
 *.rej
 /output
 /test/output
+build/
 
 # Ignore hidden files
 .*

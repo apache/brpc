@@ -34,7 +34,6 @@
 #include "butil/logging.h"                        // CHECK
 #include "butil/macros.h"
 #include "butil/class_name.h"                     // butil::class_name
-#include "bvar/bvar.h"
 #include "brpc/log.h"
 #include "brpc/reloadable_flags.h"          // BRPC_VALIDATE_GFLAG
 #include "brpc/errno.pb.h"
@@ -48,6 +47,7 @@
 #include "brpc/shared_object.h"
 #include "brpc/policy/rtmp_protocol.h"  // FIXME
 #include "brpc/periodic_task.h"
+#include "brpc/details/health_check.h"
 #if defined(OS_MACOSX)
 #include <sys/event.h>
 #endif
@@ -91,6 +91,8 @@ DEFINE_int32(connect_timeout_as_unreachable, 3,
              "If the socket failed to connect due to ETIMEDOUT for so many "
              "times *continuously*, the error is changed to ENETUNREACH which "
              "fails the main socket as well when this socket is pooled.");
+
+DECLARE_int32(health_check_timeout_ms);
 
 static bool validate_connect_timeout_as_unreachable(const char*, int32_t v) {
     return v >= 2 && v < 1000/*large enough*/;
@@ -269,33 +271,11 @@ void Socket::SharedPart::UpdateStatsEverySecond(int64_t now_ms) {
     }
 }
 
-struct SocketVarsCollector {
-    SocketVarsCollector()
-        : nsocket("rpc_socket_count")
-        , channel_conn("rpc_channel_connection_count")
-        , neventthread_second("rpc_event_thread_second", &neventthread)
-        , nhealthcheck("rpc_health_check_count")
-        , nkeepwrite_second("rpc_keepwrite_second", &nkeepwrite)
-        , nwaitepollout("rpc_waitepollout_count")
-        , nwaitepollout_second("rpc_waitepollout_second", &nwaitepollout)
-    {}
-
-    bvar::Adder<int64_t> nsocket;
-    bvar::Adder<int64_t> channel_conn;
-    bvar::Adder<int> neventthread;
-    bvar::PerSecond<bvar::Adder<int> > neventthread_second;
-    bvar::Adder<int64_t> nhealthcheck;
-    bvar::Adder<int64_t> nkeepwrite;
-    bvar::PerSecond<bvar::Adder<int64_t> > nkeepwrite_second;
-    bvar::Adder<int64_t> nwaitepollout;
-    bvar::PerSecond<bvar::Adder<int64_t> > nwaitepollout_second;
-};
-
-static SocketVarsCollector* s_vars = NULL;
+SocketVarsCollector* g_vars = NULL;
 
 static pthread_once_t s_create_vars_once = PTHREAD_ONCE_INIT;
 static void CreateVars() {
-    s_vars = new SocketVarsCollector;
+    g_vars = new SocketVarsCollector;
 }
 
 void Socket::CreateVarsOnce() {
@@ -304,8 +284,8 @@ void Socket::CreateVarsOnce() {
 
 // Used by ConnectionService
 int64_t GetChannelConnectionCount() {
-    if (s_vars) {
-        return s_vars->channel_conn.get_value();
+    if (g_vars) {
+        return g_vars->channel_conn.get_value();
     }
     return 0;
 }
@@ -473,6 +453,7 @@ Socket::Socket(Forbidden)
     , _epollout_butex(NULL)
     , _write_head(NULL)
     , _stream_set(NULL)
+    , _ninflight_app_health_check(0)
 {
     CreateVarsOnce();
     pthread_mutex_init(&_id_wait_list_mutex, NULL);
@@ -608,7 +589,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
         LOG(FATAL) << "Fail to get_resource<Socket>";
         return -1;
     }
-    s_vars->nsocket << 1;
+    g_vars->nsocket << 1;
     CHECK(NULL == m->_shared_part.load(butil::memory_order_relaxed));
     m->_nevent.store(0, butil::memory_order_relaxed);
     m->_keytable_pool = options.keytable_pool;
@@ -655,6 +636,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->_error_code = 0;
     m->_error_text.clear();
     m->_agent_socket_id.store(INVALID_SOCKET_ID, butil::memory_order_relaxed);
+    m->_ninflight_app_health_check.store(0, butil::memory_order_relaxed);
     // NOTE: last two params are useless in bthread > r32787
     const int rc = bthread_id_list_init(&m->_id_wait_list, 512, 512);
     if (rc) {
@@ -712,7 +694,7 @@ int Socket::WaitAndReset(int32_t expected_nref) {
         }
         close(prev_fd);
         if (CreatedByConnect()) {
-            s_vars->channel_conn << -1;
+            g_vars->channel_conn << -1;
         }
     }
     _local_side = butil::EndPoint();
@@ -778,23 +760,12 @@ void Socket::Revive() {
             if (_user) {
                 _user->AfterRevived(this);
             } else {
-                LOG(INFO) << "Revived " << *this;
+                LOG(INFO) << "Revived " << *this << " (Connectable)";
             }
             return;
         }
     }
 }
-
-class HealthCheckTask : public PeriodicTask {
-public:
-    explicit HealthCheckTask(SocketId id) : _id(id) , _first_time(true) {}
-    bool OnTriggeringTask(timespec* next_abstime) override;
-    void OnDestroyingTask() override;
-
-private:
-    SocketId _id;
-    bool _first_time;
-};
 
 int Socket::ReleaseAdditionalReference() {
     bool expect = false;
@@ -866,10 +837,8 @@ int Socket::SetFailed(int error_code, const char* error_fmt, ...) {
             // comes online.
             if (_health_check_interval_s > 0) {
                 GetOrNewSharedPart()->circuit_breaker.MarkAsBroken();
-                PeriodicTaskManager::StartTaskAt(
-                    new HealthCheckTask(id()),
-                    butil::milliseconds_from_now(GetOrNewSharedPart()->
-                        circuit_breaker.isolation_duration_ms()));
+                StartHealthCheck(id(),
+                        GetOrNewSharedPart()->circuit_breaker.isolation_duration_ms());
             }
             // Wake up all threads waiting on EPOLLOUT when closing fd
             _epollout_butex->fetch_add(1, butil::memory_order_relaxed);
@@ -975,67 +944,6 @@ int Socket::Status(SocketId id, int32_t* nref) {
     return -1;
 }
 
-void HealthCheckTask::OnDestroyingTask() {
-    delete this;
-}
-
-bool HealthCheckTask::OnTriggeringTask(timespec* next_abstime) {
-    SocketUniquePtr ptr;
-    const int rc = Socket::AddressFailedAsWell(_id, &ptr);
-    CHECK(rc != 0);
-    if (rc < 0) {
-        RPC_VLOG << "SocketId=" << _id
-                 << " was abandoned before health checking";
-        return false;
-    }
-    // Note: Making a Socket re-addessable is hard. An alternative is
-    // creating another Socket with selected internal fields to replace
-    // failed Socket. Although it avoids concurrent issues with in-place
-    // revive, it changes SocketId: many code need to watch SocketId 
-    // and update on change, which is impractical. Another issue with
-    // this method is that it has to move "selected internal fields" 
-    // which may be accessed in parallel, not trivial to be moved.
-    // Finally we choose a simple-enough solution: wait until the
-    // reference count hits `expected_nref', which basically means no
-    // one is addressing the Socket(except here). Because the Socket 
-    // is not addressable, the reference count will not increase 
-    // again. This solution is not perfect because the `expected_nref'
-    // is implementation specific. In our case, one reference comes 
-    // from SocketMapInsert(socket_map.cpp), one reference is here. 
-    // Although WaitAndReset() could hang when someone is addressing
-    // the failed Socket forever (also indicating bug), this is not an 
-    // issue in current code. 
-    if (_first_time) {  // Only check at first time.
-        _first_time = false;
-        if (ptr->WaitAndReset(2/*note*/) != 0) {
-            LOG(INFO) << "Cancel checking " << *ptr;
-            return false;
-        }
-    }
-
-    s_vars->nhealthcheck << 1;
-    int hc = 0;
-    if (ptr->_user) {
-        hc = ptr->_user->CheckHealth(ptr.get());
-    } else {
-        hc = ptr->CheckHealth();
-    }
-    if (hc == 0) {
-        if (ptr->CreatedByConnect()) {
-            s_vars->channel_conn << -1;
-        }
-        ptr->Revive();
-        ptr->_hc_count = 0;
-        return false;
-    } else if (hc == ESTOP) {
-        LOG(INFO) << "Cancel checking " << *ptr;
-        return false;
-    }
-    ++ ptr->_hc_count;
-    *next_abstime = butil::seconds_from_now(ptr->_health_check_interval_s);
-    return true;
-}
-
 void Socket::OnRecycle() {
     const bool create_by_connect = CreatedByConnect();
     if (_app_connect) {
@@ -1064,7 +972,7 @@ void Socket::OnRecycle() {
         }
         close(prev_fd);
         if (create_by_connect) {
-            s_vars->channel_conn << -1;
+            g_vars->channel_conn << -1;
         }
     }
     reset_parsing_context(NULL);
@@ -1099,7 +1007,7 @@ void Socket::OnRecycle() {
         }
     }
     
-    s_vars->nsocket << -1;
+    g_vars->nsocket << -1;
 }
 
 void* Socket::ProcessEvent(void* arg) {
@@ -1214,7 +1122,6 @@ int Socket::Connect(const timespec* abstime,
     // We need to do async connect (to manage the timeout by ourselves).
     CHECK_EQ(0, butil::make_non_blocking(sockfd));
     
-    
     struct sockaddr_in serv_addr;
     bzero((char*)&serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
@@ -1316,7 +1223,7 @@ int Socket::CheckConnected(int sockfd) {
             << " via fd=" << (int)sockfd << " SocketId=" << id()
             << " local_port=" << ntohs(client.sin_port);
     if (CreatedByConnect()) {
-        s_vars->channel_conn << 1;
+        g_vars->channel_conn << 1;
     }
     // Doing SSL handshake after TCP connected
     return SSLHandshake(sockfd, false);
@@ -1685,7 +1592,7 @@ FAIL_TO_WRITE:
 static const size_t DATA_LIST_MAX = 256;
 
 void* Socket::KeepWrite(void* void_arg) {
-    s_vars->nkeepwrite << 1;
+    g_vars->nkeepwrite << 1;
     WriteRequest* req = static_cast<WriteRequest*>(void_arg);
     SocketUniquePtr s(req->socket);
 
@@ -1725,7 +1632,7 @@ void* Socket::KeepWrite(void* void_arg) {
         // Update(8/15/2017): Not working, performance downgraded.
         //if (nw <= 0 || req->data.empty()/*note*/) {
         if (nw <= 0) {
-            s_vars->nwaitepollout << 1;
+            g_vars->nwaitepollout << 1;
             bool pollin = (s->_on_edge_triggered_events != NULL);
             // NOTE: Waiting epollout within timeout is a must to force
             // KeepWrite to check and setup pending WriteRequests periodically,
@@ -2040,7 +1947,7 @@ int Socket::StartInputEvent(SocketId id, uint32_t events,
         // According to the stats, above fetch_add is very effective. In a
         // server processing 1 million requests per second, this counter
         // is just 1500~1700/s
-        s_vars->neventthread << 1;
+        g_vars->neventthread << 1;
 
         bthread_t tid;
         // transfer ownership as well, don't use s anymore!
@@ -2206,6 +2113,8 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
        << "\nauth_context=" << ptr->_auth_context
        << "\nlogoff_flag=" << ptr->_logoff_flag.load(butil::memory_order_relaxed)
        << "\nrecycle_flag=" << ptr->_recycle_flag.load(butil::memory_order_relaxed)
+       << "\nninflight_app_health_check="
+       << ptr->_ninflight_app_health_check.load(butil::memory_order_relaxed)
        << "\nagent_socket_id=";
     const SocketId asid = ptr->_agent_socket_id.load(butil::memory_order_relaxed);
     if (asid != INVALID_SOCKET_ID) {
@@ -2290,11 +2199,9 @@ int Socket::CheckHealth() {
     if (_hc_count == 0) {
         LOG(INFO) << "Checking " << *this;
     }
-    // Note: No timeout. Timeout setting is given to Write() which
-    // we don't know. A drawback is that if a connection takes long
-    // but finally succeeds(indicating unstable network?), we still
-    // revive the socket.
-    const int connected_fd = Connect(NULL/*Note*/, NULL, NULL);
+    const timespec duetime =
+        butil::milliseconds_from_now(FLAGS_health_check_timeout_ms);
+    const int connected_fd = Connect(&duetime, NULL, NULL);
     if (connected_fd >= 0) {
         ::close(connected_fd);
         return 0;
@@ -2350,7 +2257,7 @@ int SocketUser::CheckHealth(Socket* ptr) {
 }
 
 void SocketUser::AfterRevived(Socket* ptr) {
-    LOG(INFO) << "Revived " << *ptr;
+    LOG(INFO) << "Revived " << *ptr << " (Connectable)";
 }
 
 ////////// SocketPool //////////////

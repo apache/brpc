@@ -63,6 +63,9 @@ template <typename T> T fast_rand_in(T min, T max) {
 // Cost: ~15ns
 double fast_rand_double();
 
+// Fills |output_length| bytes of |output| with random data.
+void fast_rand_bytes(void* output, size_t output_length, uint8_t min);
+
 }
 
 #endif  // BUTIL_FAST_RAND_H

@@ -305,62 +305,6 @@ void MurmurHash3_x64_128 ( const void * key, const int len,
 
 // ============= iterative versions ==================
 
-namespace murmurhash3 {
-static const size_t FAST_MEMCPY_MAXSIZE = 123;
-template <size_t size> struct FastMemcpyBlock {
-    int data[size];
-};
-template <> struct FastMemcpyBlock<0> { };
-
-template <size_t size> class FastMemcpy {
-public:
-    typedef FastMemcpyBlock<size / sizeof(int)> Block;
-
-    static void* copy(void *dest, const void *src) {
-        *(Block*)dest = *(Block*)src;
-        if ((size % sizeof(int)) > 2) {
-            ((char*)dest)[size-3] = ((char*)src)[size-3];
-        }
-        if ((size % sizeof(int)) > 1) {
-            ((char*)dest)[size-2] = ((char*)src)[size-2];
-        }
-        if ((size % sizeof(int)) > 0) {
-            ((char*)dest)[size-1] = ((char*)src)[size-1];
-        }
-        return dest;
-    }
-};
-
-typedef void* (*CopyFn)(void*, const void*);
-static CopyFn s_fast_memcpy_fn[FAST_MEMCPY_MAXSIZE + 1];
-
-template <size_t size>
-struct InitFastMemcpy : public InitFastMemcpy<size-1> {
-    InitFastMemcpy() {
-        s_fast_memcpy_fn[size] = FastMemcpy<size>::copy;
-    }
-};
-template <>
-class InitFastMemcpy<0> {
-public:
-    InitFastMemcpy() {
-        s_fast_memcpy_fn[0] = FastMemcpy<0>::copy;
-    }
-};
-inline void* cp(void *__restrict dest, const void *__restrict src, size_t n) {
-#if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8))
-    // memcpy in gcc 4.8 seems to be faster.
-    return memcpy(dest, src, n);
-#else
-    if (n <= FAST_MEMCPY_MAXSIZE) {
-        static InitFastMemcpy<FAST_MEMCPY_MAXSIZE> _init_cp_dummy;
-        return s_fast_memcpy_fn[n](dest, src);
-    }
-    return memcpy(dest, src, n);
-#endif
-}
-} // namespace murmurhash3
-
 void MurmurHash3_x86_128_Init(MurmurHash3_x86_128_Context* ctx, uint32_t seed)
 {
     ctx->h1 = seed;
@@ -388,7 +332,7 @@ void MurmurHash3_x86_128_Update(
 
     if (ctx->tail_len > 0) {
         const int append = std::min(len, 16 - ctx->tail_len);
-        murmurhash3::cp(ctx->tail + ctx->tail_len, data, append);
+        memcpy(ctx->tail + ctx->tail_len, data, append);
         ctx->total_len += append;
         ctx->tail_len += append;
         data += append;
@@ -455,7 +399,7 @@ void MurmurHash3_x86_128_Update(
 
     const int tail_len = len & 15;
     if (tail_len > 0) {
-        murmurhash3::cp(ctx->tail, data + nblocks * 16, tail_len);
+        memcpy(ctx->tail, data + nblocks * 16, tail_len);
         ctx->tail_len = tail_len;
     }
     ctx->h1 = h1;
@@ -556,7 +500,7 @@ void MurmurHash3_x64_128_Update(
     const uint8_t * data = (const uint8_t*)key;
     if (ctx->tail_len > 0) {
         const int append = std::min(len, 16 - ctx->tail_len);
-        murmurhash3::cp(ctx->tail + ctx->tail_len, data, append);
+        memcpy(ctx->tail + ctx->tail_len, data, append);
         ctx->total_len += append;
         ctx->tail_len += append;
         data += append;
@@ -600,7 +544,7 @@ void MurmurHash3_x64_128_Update(
     // tail
     const int tail_len = len & 15;
     if (tail_len > 0) {
-        murmurhash3::cp(ctx->tail, data + nblocks * 16, tail_len);
+        memcpy(ctx->tail, data + nblocks * 16, tail_len);
         ctx->tail_len = tail_len;
     }
 
@@ -679,7 +623,7 @@ void MurmurHash3_x86_32_Update(MurmurHash3_x86_32_Context* ctx, const void* key,
     const uint8_t * data = (const uint8_t*)key;
     if (ctx->tail_len > 0) {
         const int append = std::min(len, 4 - ctx->tail_len);
-        murmurhash3::cp(ctx->tail + ctx->tail_len, data, append);
+        memcpy(ctx->tail + ctx->tail_len, data, append);
         ctx->total_len += append;
         ctx->tail_len += append;
         data += append;
@@ -723,7 +667,7 @@ void MurmurHash3_x86_32_Update(MurmurHash3_x86_32_Context* ctx, const void* key,
 
     const int tail_len = len & 3;
     if (tail_len > 0) {
-        murmurhash3::cp(ctx->tail, data + nblocks * 4, tail_len);
+        memcpy(ctx->tail, data + nblocks * 4, tail_len);
         ctx->tail_len = tail_len;
     }
 

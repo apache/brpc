@@ -690,7 +690,7 @@ inline bool does_error_affect_main_socket(int error_code) {
         error_code == EINVAL/*returned by connect "0.0.0.1"*/;
 }
 
-//Note: A RPC call is probably consisted by serveral individual Calls such as
+//Note: A RPC call is probably consisted by several individual Calls such as
 //      retries and backup requests. This method simply cares about the error of
 //      this very Call (specified by |error_code|) rather than the error of the
 //      entire RPC (specified by c->FailedInline()).
@@ -986,7 +986,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
         // Don't use _current_call.peer_id which is set to -1 after construction
         // of the backup call.
         const int rc = Socket::Address(_single_server_id, &tmp_sock);
-        if (rc != 0 || tmp_sock->IsLogOff()) {
+        if (rc != 0 || (!is_health_check_call() && !tmp_sock->IsAvailable())) {
             SetFailed(EHOSTDOWN, "Not connected to %s yet, server_id=%" PRIu64,
                       endpoint2str(_remote_side).c_str(), _single_server_id);
             tmp_sock.reset();  // Release ref ASAP

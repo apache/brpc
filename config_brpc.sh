@@ -136,6 +136,9 @@ find_dir_of_header_or_die() {
     $ECHO $dir
 }
 
+# User specified path of openssl, if not given it's empty
+OPENSSL_LIB=$(find_dir_of_lib ssl)
+
 # Inconvenient to check these headers in baidu-internal
 #PTHREAD_HDR=$(find_dir_of_header_or_die pthread.h)
 if [ "$SYSTEM" = "Darwin" ]; then

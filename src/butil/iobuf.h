@@ -59,6 +59,7 @@ class IOBuf {
 friend class IOBufAsZeroCopyInputStream;
 friend class IOBufAsZeroCopyOutputStream;
 friend class IOBufBytesIterator;
+friend class IOBufCutter;
 public:
     static const size_t DEFAULT_BLOCK_SIZE = 8192;
     static const size_t INITIAL_CAP = 32; // must be power of 2
@@ -128,7 +129,7 @@ public:
     // Returns bytes popped.
     size_t pop_back(size_t n);
 
-    // Cut off `n' bytes from front side and APPEND to `out'
+    // Cut off n bytes from front side and APPEND to `out'
     // If n == 0, nothing cut; if n >= length(), all bytes are cut
     // Returns bytes cut.
     size_t cutn(IOBuf* out, size_t n);
@@ -136,7 +137,7 @@ public:
     size_t cutn(std::string* out, size_t n);
     // Cut off 1 byte from the front side and set to *c
     // Return true on cut, false otherwise.
-    bool cut1(char* c);
+    bool cut1(void* c);
 
     // Cut from front side until the characters matches `delim', append
     // data before the matched characters to `out'.
@@ -319,7 +320,8 @@ public:
     //                      the internal buffer.
     // If n == 0 and buffer is empty, return value is undefined.
     const void* fetch(void* aux_buffer, size_t n) const;
-    // Just fetch one character.
+    // Fetch one character from front side.
+    // Returns pointer to the character, NULL on empty.
     const void* fetch1() const;
 
     // Remove all data
@@ -373,7 +375,14 @@ protected:
 
     // Pop a BlockRef from front side.
     // Returns: 0 on success and -1 on empty.
-    int _pop_front_ref();
+    int _pop_front_ref() { return _pop_or_moveout_front_ref<false>(); }
+
+    // Move a BlockRef out from front side.
+    // Returns: 0 on success and -1 on empty.
+    int _moveout_front_ref() { return _pop_or_moveout_front_ref<true>(); }
+
+    template <bool MOVEOUT>
+    int _pop_or_moveout_front_ref();
 
     // Pop a BlockRef from back side.
     // Returns: 0 on success and -1 on empty.
@@ -465,6 +474,51 @@ private:
     // released after each append_xxx(), which makes messages read from one
     // file descriptor more likely to share blocks and have less BlockRefs.
     Block* _block;
+};
+
+// Specialized utility to cut from IOBuf faster than using corresponding
+// methods in IOBuf.
+// Designed for efficiently parsing data from IOBuf.
+// The cut IOBuf can be appended during cutting.
+class IOBufCutter {
+public:
+    explicit IOBufCutter(butil::IOBuf* buf);
+    ~IOBufCutter();
+
+    // Cut off n bytes and APPEND to `out'
+    // Returns bytes cut.
+    size_t cutn(butil::IOBuf* out, size_t n);
+    size_t cutn(std::string* out, size_t n);
+    size_t cutn(void* out, size_t n);
+
+    // Cut off 1 byte from the front side and set to *c
+    // Return true on cut, false otherwise.
+    bool cut1(void* data);
+
+    // Copy n bytes into `data'
+    // Returns bytes copied.
+    size_t copy_to(void* data, size_t n);
+
+    // Fetch one character.
+    // Returns pointer to the character, NULL on empty
+    const void* fetch1();
+
+    // Pop n bytes from front side
+    // Returns bytes popped.
+    size_t pop_front(size_t n);
+
+    // Uncut bytes
+    size_t remaining_bytes() const;
+
+private:
+    size_t slower_copy_to(void* data, size_t n);
+    bool load_next_ref();
+
+private:
+    void* _data;
+    void* _data_end;
+    IOBuf::Block* _block;
+    IOBuf* _buf;
 };
 
 // Parse protobuf message from IOBuf. Notice that this wrapper does not change
@@ -631,6 +685,8 @@ private:
     int add_block();
 
     void* _data;
+    // Saving _data_end instead of _size avoid modifying _data and _size
+    // in each push_back() which is probably a hotspot.
     void* _data_end;
     IOBuf _buf;
     IOBufAsZeroCopyOutputStream _zc_stream;

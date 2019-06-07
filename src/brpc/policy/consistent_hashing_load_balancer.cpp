@@ -273,7 +273,7 @@ size_t ConsistentHashingLoadBalancer::RemoveServersInBatch(
 LoadBalancer *ConsistentHashingLoadBalancer::New(const butil::StringPiece& params) const {
     ConsistentHashingLoadBalancer* lb = 
         new (std::nothrow) ConsistentHashingLoadBalancer(_type);
-    if (lb != nullptr && !lb->SetParameters(params)) {
+    if (lb && !lb->SetParameters(params)) {
         delete lb;
         lb = nullptr;
     }
@@ -310,7 +310,7 @@ int ConsistentHashingLoadBalancer::SelectServer(
         if (((i + 1) == s->size() // always take last chance
              || !ExcludedServers::IsExcluded(in.excluded, choice->server_sock.id))
             && Socket::Address(choice->server_sock.id, out->ptr) == 0 
-            && !(*out->ptr)->IsLogOff()) {
+            && (*out->ptr)->IsAvailable()) {
             return 0;
         } else {
             if (++choice == s->end()) {
@@ -377,20 +377,19 @@ void ConsistentHashingLoadBalancer::GetLoads(
 }
 
 bool ConsistentHashingLoadBalancer::SetParameters(const butil::StringPiece& params) {
-    for (butil::StringSplitter sp(params.begin(), params.end(), ' '); sp != nullptr; ++sp) {
-        butil::StringPiece key_value(sp.field(), sp.length());
-        size_t p = key_value.find('=');
-        if (p == key_value.npos || p == key_value.size() - 1) {
-            // No value configed.
+    for (butil::KeyValuePairsSplitter sp(params.begin(), params.end(), ' ', '=');
+            sp; ++sp) {
+        if (sp.value().empty()) {
+            LOG(ERROR) << "Empty value for " << sp.key() << " in lb parameter";
             return false;
         }
-        if (key_value.substr(0, p) == "replicas") {
-            if (!butil::StringToSizeT(key_value.substr(p + 1), &_num_replicas)) {
+        if (sp.key() == "replicas") {
+            if (!butil::StringToSizeT(sp.value(), &_num_replicas)) {
                 return false;
             }
             continue;
         }
-        LOG(ERROR) << "Failed to set this unknown parameters " << key_value;
+        LOG(ERROR) << "Failed to set this unknown parameters " << sp.key_and_value();
     }
     return true;
 }
