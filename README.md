@@ -22,7 +22,7 @@ You can use it to:
 * Get [better latency and throughput](docs/en/overview.md#better-latency-and-throughput).
 * [Extend brpc](docs/en/new_protocol.md) with the protocols used in your organization quickly, or customize components, including [naming services](docs/cn/load_balancing.md#命名服务) (dns, zk, etcd), [load balancers](docs/cn/load_balancing.md#负载均衡) (rr, random, consistent hashing)
 
-# How to Build
+# How to build
 
 * Read [getting started](docs/cn/getting_started.md) for building steps.
 
