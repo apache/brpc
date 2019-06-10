@@ -149,7 +149,7 @@ public:
     detail::AddTo<Tp> op() const { return detail::AddTo<Tp>(); }
     detail::MinusFrom<Tp> inv_op() const { return detail::MinusFrom<Tp>(); }
 
-    int describe_series(std::ostream& os, const SeriesOptions& options) const {
+    int describe_series(std::ostream& os, const SeriesOptions& options) const override {
         if (_series_sampler == NULL) {
             return 1;
         }
@@ -165,10 +165,9 @@ public:
     }
 
 protected:
-    // @Variable
     int expose_impl(const butil::StringPiece& prefix,
                     const butil::StringPiece& name,
-                    DisplayFilter display_filter) {
+                    DisplayFilter display_filter) override {
         const int rc = Variable::expose_impl(prefix, name, display_filter);
         if (ADDITIVE &&
             rc == 0 &&

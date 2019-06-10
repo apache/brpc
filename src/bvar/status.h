@@ -86,16 +86,41 @@ template <typename T>
 class Status<T, typename butil::enable_if<detail::is_atomical<T>::value>::type>
     : public Variable {
 public:
-    Status() {}
-    Status(const T& value) : _value(value) { }
-    Status(const butil::StringPiece& name, const T& value) : _value(value) {
+    struct PlaceHolderOp {
+        void operator()(T&, const T&) const {}
+    };
+    class SeriesSampler : public detail::Sampler {
+    public:
+        typedef typename butil::conditional<
+        true, detail::AddTo<T>, PlaceHolderOp>::type Op;
+        explicit SeriesSampler(Status* owner)
+            : _owner(owner), _series(Op()) {}
+        void take_sample() { _series.append(_owner->get_value()); }
+        void describe(std::ostream& os) { _series.describe(os, NULL); }
+    private:
+        Status* _owner;
+        detail::Series<T, Op> _series;
+    };
+
+public:
+    Status() : _series_sampler(NULL) {}
+    Status(const T& value) : _value(value), _series_sampler(NULL) { }
+    Status(const butil::StringPiece& name, const T& value)
+        : _value(value), _series_sampler(NULL) {
         this->expose(name);
     }
     Status(const butil::StringPiece& prefix,
-           const butil::StringPiece& name, const T& value) : _value(value) {
+           const butil::StringPiece& name, const T& value)
+        : _value(value), _series_sampler(NULL) {
         this->expose_as(prefix, name);
     }
-    ~Status() { hide(); }
+    ~Status() {
+        hide();
+        if (_series_sampler) {
+            _series_sampler->destroy();
+            _series_sampler = NULL;
+        }
+    }
 
     // Implement Variable::describe() and Variable::get_value().
     void describe(std::ostream& os, bool /*quote_string*/) const {
@@ -116,8 +141,33 @@ public:
         _value.store(value, butil::memory_order_relaxed);
     }
 
+    int describe_series(std::ostream& os, const SeriesOptions& options) const override {
+        if (_series_sampler == NULL) {
+            return 1;
+        }
+        if (!options.test_only) {
+            _series_sampler->describe(os);
+        }
+        return 0;
+    }
+
+protected:
+    int expose_impl(const butil::StringPiece& prefix,
+                    const butil::StringPiece& name,
+                    DisplayFilter display_filter) override {
+        const int rc = Variable::expose_impl(prefix, name, display_filter);
+        if (rc == 0 &&
+            _series_sampler == NULL &&
+            FLAGS_save_series) {
+            _series_sampler = new SeriesSampler(this);
+            _series_sampler->schedule();
+        }
+        return rc;
+    }
+
 private:
     butil::atomic<T> _value;
+    SeriesSampler* _series_sampler;
 };
 
 // Specialize for std::string, adding a printf-style set_value().
