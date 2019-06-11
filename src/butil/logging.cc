@@ -165,7 +165,6 @@ bool show_error_dialogs = false;
 LogAssertHandler log_assert_handler = NULL;
 
 // Helper functions to wrap platform differences.
-
 int32_t CurrentProcessId() {
 #if defined(OS_WIN)
     return GetCurrentProcessId();

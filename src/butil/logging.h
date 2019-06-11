@@ -354,13 +354,14 @@ const LogSeverity BLOG_DFATAL = BLOG_FATAL;
 const LogSeverity BLOG_DFATAL = BLOG_ERROR;
 #endif
 
-// A few definitions of macros that don't generate much code. These are used
-// by LOG() and LOG_IF, etc. Since these are used all over our code, it's
-// better to have compact code for these operations.
-#ifdef __SHORT_FILE__
-#define BAIDU_COMPACT_LOG_EX(severity, ClassName, ...)  \
-    ::logging::ClassName(__SHORT_FILE__, __LINE__,            \
-    ::logging::BLOG_##severity, ##__VA_ARGS__)
+#if __cplusplus >= 201103L
+    #define __short_file_name(__name) (__builtin_strrchr(__name, '/') ? __builtin_strrchr(__name, '/') + 1 : __name)
+#endif
+
+#if __cplusplus >= 201103L && defined(BRPC_WITH_SHORT_FILE)
+    #define BAIDU_COMPACT_LOG_EX(severity, ClassName, ...)                     \
+        ::logging::ClassName(__short_file_name(__FILE__), __LINE__,            \
+        ::logging::BLOG_##severity, ##__VA_ARGS__)
 #else
 #define BAIDU_COMPACT_LOG_EX(severity, ClassName, ...)  \
     ::logging::ClassName(__FILE__, __LINE__,            \
@@ -410,8 +411,8 @@ const LogSeverity BLOG_0 = BLOG_ERROR;
     (::logging::FLAGS_v >= (verbose_level))
 #endif
 
-#ifdef __SHORT_FILE__
-#define VLOG_IS_ON(verbose_level) BAIDU_VLOG_IS_ON(verbose_level, __SHORT_FILE__)
+#if __cplusplus >= 201103L && defined(BRPC_WITH_SHORT_FILE)
+#define VLOG_IS_ON(verbose_level) BAIDU_VLOG_IS_ON(verbose_level, __short_file_name(__FILE__))
 #else
 #define VLOG_IS_ON(verbose_level) BAIDU_VLOG_IS_ON(verbose_level, __FILE__)
 #endif
@@ -487,9 +488,9 @@ void print_vlog_sites(VLogSitePrinter*);
     BAIDU_LAZY_STREAM(LOG_AT_STREAM(severity, file, line), LOG_IS_ON(severity))
 
 // The VLOG macros log with negative verbosities.
-#ifdef __SHORT_FILE__
+#if __cplusplus >= 201103L && defined(BRPC_WITH_SHORT_FILE)
 #define VLOG_STREAM(verbose_level)                                      \
-    ::logging::LogMessage(__SHORT_FILE__, __LINE__, -(verbose_level)).stream()
+    ::logging::LogMessage(__short_file_name(__FILE__), __LINE__, -(verbose_level)).stream()
 #else
 #define VLOG_STREAM(verbose_level)                                      \
     ::logging::LogMessage(__FILE__, __LINE__, -(verbose_level)).stream()
@@ -524,9 +525,9 @@ void print_vlog_sites(VLogSitePrinter*);
      ::logging::Win32ErrorLogMessage(__FILE__, __LINE__, -verbose_level, \
                                      ::logging::GetLastSystemErrorCode()).stream()
 #elif defined(OS_POSIX)
-#ifdef __SHORT_FILE__
+#if __cplusplus >= 201103L && defined(BRPC_WITH_SHORT_FILE)
 #define VPLOG_STREAM(verbose_level)                                     \
-    ::logging::ErrnoLogMessage(__SHORT_FILE__, __LINE__, -verbose_level,      \
+    ::logging::ErrnoLogMessage(__short_file_name(__FILE__), __LINE__, -verbose_level,      \
                                ::logging::GetLastSystemErrorCode()).stream()
 #else
 #define VPLOG_STREAM(verbose_level)                                     \
@@ -598,12 +599,12 @@ void print_vlog_sites(VLogSitePrinter*);
 //
 // TODO(akalin): Rewrite this so that constructs like if (...)
 // CHECK_EQ(...) else { ... } work properly.
-#ifdef __SHORT_FILE__
+#if __cplusplus >= 201103L && defined(BRPC_WITH_SHORT_FILE)
 #define BAIDU_CHECK_OP(name, op, val1, val2)                                  \
     if (std::string* _result =                                          \
         ::logging::Check##name##Impl((val1), (val2),                    \
                                      #val1 " " #op " " #val2))          \
-        ::logging::LogMessage(__SHORT_FILE__, __LINE__, _result).stream().SetCheck()
+        ::logging::LogMessage(__short_file_name(__FILE__), __LINE__, _result).stream().SetCheck()
 #else
 #define BAIDU_CHECK_OP(name, op, val1, val2)                                  \
     if (std::string* _result =                                          \
@@ -832,14 +833,14 @@ const LogSeverity BLOG_DCHECK = BLOG_INFO;
 
 // Helper macro for binary operators.
 // Don't use this macro directly in your code, use DCHECK_EQ et al below.
-#ifdef __SHORT_FILE__
+#if __cplusplus >= 201103L && defined(BRPC_WITH_SHORT_FILE)
 #define BAIDU_DCHECK_OP(name, op, val1, val2)                           \
     if (DCHECK_IS_ON())                                                   \
         if (std::string* _result =                                      \
             ::logging::Check##name##Impl((val1), (val2),                \
                                          #val1 " " #op " " #val2))      \
             ::logging::LogMessage(                                      \
-                __SHORT_FILE__, __LINE__, ::logging::BLOG_DCHECK,             \
+                __short_file_name(__FILE__), __LINE__, ::logging::BLOG_DCHECK,             \
                 _result).stream()
 #else
 #define BAIDU_DCHECK_OP(name, op, val1, val2)                           \
@@ -1025,8 +1026,8 @@ private:
 // A non-macro interface to the log facility; (useful
 // when the logging level is not a compile-time constant).
 inline void LogAtLevel(int const log_level, const butil::StringPiece &msg) {
-#ifdef __SHORT_FILE__
-    LogMessage(__SHORT_FILE__, __LINE__, log_level).stream() << msg;
+#if __cplusplus >= 201103L && defined(BRPC_WITH_SHORT_FILE)
+    LogMessage(__short_file_name(__FILE__), __LINE__, log_level).stream() << msg;
 #else
     LogMessage(__FILE__, __LINE__, log_level).stream() << msg;
 #endif
