@@ -65,9 +65,9 @@ struct SampledContention : public bvar::Collected {
     void* stack[26];      // backtrace.
 
     // Implement bvar::Collected
-    void dump_and_destroy(size_t round);
-    void destroy();
-    bvar::CollectorSpeedLimit* speed_limit() { return &g_cp_sl; }
+    void dump_and_destroy(size_t round) override;
+    void destroy() override;
+    bvar::CollectorSpeedLimit* speed_limit() override { return &g_cp_sl; }
 
     // For combining samples with hashmap.
     size_t hash_code() const {

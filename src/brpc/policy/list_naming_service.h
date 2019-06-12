@@ -26,19 +26,19 @@ namespace policy {
 class ListNamingService : public NamingService {
 private:
     int RunNamingService(const char* service_name,
-                         NamingServiceActions* actions);
+                         NamingServiceActions* actions) override;
 
     // We don't need a dedicated bthread to run this static NS.
-    bool RunNamingServiceReturnsQuickly() { return true; }
+    bool RunNamingServiceReturnsQuickly() override { return true; }
     
     int GetServers(const char *service_name,
                    std::vector<ServerNode>* servers);
 
-    void Describe(std::ostream& os, const DescribeOptions& options) const;
+    void Describe(std::ostream& os, const DescribeOptions& options) const override;
 
-    NamingService* New() const;
+    NamingService* New() const override;
     
-    void Destroy();
+    void Destroy() override;
 };
 
 }  // namespace policy

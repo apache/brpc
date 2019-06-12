@@ -51,7 +51,7 @@ public:
     int Expose(const butil::StringPiece& prefix);
 
     // Describe internal vars, used by /status
-    void Describe(std::ostream &os, const DescribeOptions&) const;
+    void Describe(std::ostream &os, const DescribeOptions&) const override;
 
     // Current max_concurrency of the method.
     int MaxConcurrency() const { return _cl ? _cl->MaxConcurrency() : 0; }

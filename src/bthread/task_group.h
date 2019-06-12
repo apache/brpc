@@ -34,7 +34,7 @@ class ExitException : public std::exception {
 public:
     explicit ExitException(void* value) : _value(value) {}
     ~ExitException() throw() {}
-    const char* what() const throw() {
+    const char* what() const throw() override {
         return "ExitException";
     }
     void* value() const {

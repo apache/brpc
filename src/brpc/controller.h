@@ -336,7 +336,7 @@ public:
     // call the final "done" callback.
     // Note: Reaching deadline of the RPC would not affect this function, which means
     // even if deadline has been reached, this function may still return false.
-    bool IsCanceled() const;
+    bool IsCanceled() const override;
 
     // Asks that the given callback be called when the RPC is canceled or the
     // connection has broken.  The callback will always be called exactly once.
@@ -345,7 +345,7 @@ public:
     // when NotifyOnCancel() is called, the callback will be called immediately.
     //
     // NotifyOnCancel() must be called no more than once per request.
-    void NotifyOnCancel(google::protobuf::Closure* callback);
+    void NotifyOnCancel(google::protobuf::Closure* callback) override;
 
     // Returns the authenticated result. NULL if there is no authentication
     const AuthContext* auth_context() const { return _auth_context; }
@@ -437,7 +437,7 @@ public:
 
     // Resets the Controller to its initial state so that it may be reused in
     // a new call.  Must NOT be called while an RPC is in progress.
-    void Reset() {
+    void Reset() override {
         ResetNonPods();
         ResetPods();
     }
@@ -448,18 +448,18 @@ public:
     // as well if the protocol is HTTP. If you want to overwrite the 
     // status_code, call http_response().set_status_code() after SetFailed()
     // (rather than before SetFailed)
-    void SetFailed(const std::string& reason);
+    void SetFailed(const std::string& reason) override;
     void SetFailed(int error_code, const char* reason_fmt, ...)
         __attribute__ ((__format__ (__printf__, 3, 4)));
     
     // After a call has finished, returns true if the RPC call failed.
     // The response to Channel is undefined when Failed() is true.
     // Calling Failed() before a call has finished is undefined.
-    bool Failed() const;
+    bool Failed() const override;
 
     // If Failed() is true, return description of the errors.
     // NOTE: ErrorText() != berror(ErrorCode()). 
-    std::string ErrorText() const;
+    std::string ErrorText() const override;
 
     // Last error code. Equals 0 iff Failed() is false.
     // If there's retry, latter code overwrites former one.
@@ -557,7 +557,7 @@ private:
     void ResetPods();
     void ResetNonPods();
 
-    void StartCancel();
+    void StartCancel() override;
 
     // Using fixed start_realtime_us (microseconds since the Epoch) gives
     // more accurate deadline.

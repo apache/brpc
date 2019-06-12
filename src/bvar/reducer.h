@@ -74,7 +74,7 @@ public:
         SeriesSampler(Reducer* owner, const Op& op)
             : _owner(owner), _series(op) {}
         ~SeriesSampler() {}
-        void take_sample() { _series.append(_owner->get_value()); }
+        void take_sample() override { _series.append(_owner->get_value()); }
         void describe(std::ostream& os) { _series.describe(os, NULL); }
     private:
         Reducer* _owner;
@@ -125,8 +125,7 @@ public:
     // Returns the reduced value before reset.
     T reset() { return _combiner.reset_all_agents(); }
 
-    // Implement Variable::describe() and Variable::get_value().
-    void describe(std::ostream& os, bool quote_string) const {
+    void describe(std::ostream& os, bool quote_string) const override {
         if (butil::is_same<T, std::string>::value && quote_string) {
             os << '"' << get_value() << '"';
         } else {
@@ -135,7 +134,7 @@ public:
     }
     
 #ifdef BAIDU_INTERNAL
-    void get_value(boost::any* value) const { *value = get_value(); }
+    void get_value(boost::any* value) const override { *value = get_value(); }
 #endif
 
     // True if this reducer is constructed successfully.
@@ -153,7 +152,7 @@ public:
         return _sampler;
     }
 
-    int describe_series(std::ostream& os, const SeriesOptions& options) const {
+    int describe_series(std::ostream& os, const SeriesOptions& options) const override {
         if (_series_sampler == NULL) {
             return 1;
         }
@@ -166,7 +165,7 @@ public:
 protected:
     int expose_impl(const butil::StringPiece& prefix,
                     const butil::StringPiece& name,
-                    DisplayFilter display_filter) {
+                    DisplayFilter display_filter) override {
         const int rc = Variable::expose_impl(prefix, name, display_filter);
         if (rc == 0 &&
             _series_sampler == NULL &&

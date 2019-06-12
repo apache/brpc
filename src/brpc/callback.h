@@ -86,7 +86,7 @@ class FunctionClosure0 : public ::google::protobuf::Closure {
     : function_(function), self_deleting_(self_deleting) {}
   ~FunctionClosure0() {}
 
-  void Run() {
+  void Run() override {
     bool needs_delete = self_deleting_;  // read in case callback deletes
     function_();
     if (needs_delete) delete this;

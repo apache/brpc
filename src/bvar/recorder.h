@@ -154,7 +154,7 @@ public:
     AddStat op() const { return AddStat(); }
     MinusStat inv_op() const { return MinusStat(); }
     
-    void describe(std::ostream& os, bool /*quote_string*/) const {
+    void describe(std::ostream& os, bool /*quote_string*/) const override {
         os << get_value();
     }
 

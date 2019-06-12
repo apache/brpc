@@ -321,7 +321,7 @@ BUTIL_EXPORT LogSink* SetLogSink(LogSink* sink);
 class StringSink : public LogSink, public std::string {
 public:
     bool OnLogMessage(int severity, const char* file, int line,
-                 const butil::StringPiece& log_content);
+                 const butil::StringPiece& log_content) override;
 private:
     butil::Lock _lock;
 };
@@ -857,8 +857,8 @@ public:
     explicit CharArrayStreamBuf() : _data(NULL), _size(0) {}
     ~CharArrayStreamBuf();
 
-    virtual int overflow(int ch);
-    virtual int sync();
+    int overflow(int ch) override;
+    int sync() override;
     void reset();
 
 private:

@@ -52,13 +52,12 @@ public:
     // Calling hide() manually is a MUST required by Variable.
     ~Status() { hide(); }
 
-    // Implement Variable::describe() and Variable::get_value().
-    void describe(std::ostream& os, bool /*quote_string*/) const {
+    void describe(std::ostream& os, bool /*quote_string*/) const override {
         os << get_value();
     }
     
 #ifdef BAIDU_INTERNAL
-    void get_value(boost::any* value) const {
+    void get_value(boost::any* value) const override {
         butil::AutoLock guard(_lock);
         *value = _value;
     }
@@ -122,13 +121,12 @@ public:
         }
     }
 
-    // Implement Variable::describe() and Variable::get_value().
-    void describe(std::ostream& os, bool /*quote_string*/) const {
+    void describe(std::ostream& os, bool /*quote_string*/) const override {
         os << get_value();
     }
     
 #ifdef BAIDU_INTERNAL
-    void get_value(boost::any* value) const {
+    void get_value(boost::any* value) const override {
         *value = get_value();
     }
 #endif
@@ -197,7 +195,7 @@ public:
 
     ~Status() { hide(); }
 
-    void describe(std::ostream& os, bool quote_string) const {
+    void describe(std::ostream& os, bool quote_string) const override {
         if (quote_string) {
             os << '"' << get_value() << '"';
         } else {
@@ -211,7 +209,7 @@ public:
     }
 
 #ifdef BAIDU_INTERNAL
-    void get_value(boost::any* value) const {
+    void get_value(boost::any* value) const override {
         *value = get_value();
     }
 #endif

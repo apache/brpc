@@ -88,7 +88,7 @@ private:
     int Initialize();
 
     // Remove the accepted socket `sock' from inside
-    virtual void BeforeRecycle(Socket* sock);
+    void BeforeRecycle(Socket* sock) override;
 
     bthread_keytable_pool_t* _keytable_pool; // owned by Server
     Status _status;

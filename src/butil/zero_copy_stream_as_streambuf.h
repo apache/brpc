@@ -37,11 +37,11 @@ public:
     void shrink();
     
 protected:
-    virtual int overflow(int ch);
-    virtual int sync();
+    int overflow(int ch) override;
+    int sync() override;
     std::streampos seekoff(std::streamoff off,
                            std::ios_base::seekdir way,
-                           std::ios_base::openmode which);
+                           std::ios_base::openmode which) override;
 
 private:
     google::protobuf::io::ZeroCopyOutputStream* _zero_copy_stream;

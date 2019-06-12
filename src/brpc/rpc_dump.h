@@ -51,9 +51,9 @@ struct SampledRequest : public bvar::Collected
     butil::IOBuf request;
 
     // Implement methods of Sampled.
-    void dump_and_destroy(size_t round);
-    void destroy();
-    bvar::CollectorSpeedLimit* speed_limit() {
+    void dump_and_destroy(size_t round) override;
+    void destroy() override;
+    bvar::CollectorSpeedLimit* speed_limit() override {
         extern bvar::CollectorSpeedLimit g_rpc_dump_sl;
         return &g_rpc_dump_sl;
     }

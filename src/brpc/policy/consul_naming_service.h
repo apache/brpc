@@ -28,19 +28,19 @@ namespace policy {
 class ConsulNamingService : public NamingService {
 private:
     int RunNamingService(const char* service_name,
-                         NamingServiceActions* actions);
+                         NamingServiceActions* actions) override;
 
     int GetServers(const char* service_name,
                    std::vector<ServerNode>* servers);
 
-    void Describe(std::ostream& os, const DescribeOptions&) const;
+    void Describe(std::ostream& os, const DescribeOptions&) const override;
 
-    NamingService* New() const;
+    NamingService* New() const override;
 
     int DegradeToOtherServiceIfNeeded(const char* service_name,
                                       std::vector<ServerNode>* servers);
 
-    void Destroy();
+    void Destroy() override;
 
 private:
     Channel _channel;

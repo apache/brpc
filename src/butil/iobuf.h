@@ -588,14 +588,14 @@ public:
     virtual ~IOBufAsSnappySource() {}
 
     // Return the number of bytes left to read from the source
-    virtual size_t Available() const;
+    size_t Available() const override;
 
     // Peek at the next flat region of the source.
-    virtual const char* Peek(size_t* len); 
+    const char* Peek(size_t* len) override; 
 
     // Skip the next n bytes.  Invalidates any buffer returned by
     // a previous call to Peek().
-    virtual void Skip(size_t n);
+    void Skip(size_t n) override;
     
 private:
     const butil::IOBuf* _buf;
@@ -609,10 +609,10 @@ public:
     virtual ~IOBufAsSnappySink() {}
 
     // Append "bytes[0,n-1]" to this.
-    virtual void Append(const char* bytes, size_t n);
+    void Append(const char* bytes, size_t n) override;
     
     // Returns a writable buffer of the specified length for appending.
-    virtual char* GetAppendBuffer(size_t length, char* scratch);
+    char* GetAppendBuffer(size_t length, char* scratch) override;
     
 private:
     char* _cur_buf;

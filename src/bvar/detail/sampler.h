@@ -97,7 +97,7 @@ public:
     }
     ~ReducerSampler() {}
 
-    void take_sample() {
+    void take_sample() override {
         // Make _q ready.
         // If _window_size is larger than what _q can hold, e.g. a larger
         // Window<> is created after running of sampler, make _q larger.

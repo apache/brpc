@@ -37,8 +37,8 @@ class CDF : public Variable {
 public:
     explicit CDF(PercentileWindow* w);
     ~CDF();
-    void describe(std::ostream& os, bool quote_string) const;
-    int describe_series(std::ostream& os, const SeriesOptions& options) const;
+    void describe(std::ostream& os, bool quote_string) const override;
+    int describe_series(std::ostream& os, const SeriesOptions& options) const override;
 private:
     PercentileWindow* _w; 
 };

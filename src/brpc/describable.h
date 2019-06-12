@@ -93,7 +93,7 @@ public:
         , _indent(indent, ' ')
     {}
 protected:
-    virtual int overflow(int ch) {
+    int overflow(int ch) override {
         if (_is_at_start_of_line && ch != '\n' ) {
             _dest->sputn(_indent.data(), _indent.size());
         }

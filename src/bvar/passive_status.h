@@ -57,7 +57,7 @@ public:
         ~SeriesSampler() {
             delete _vector_names;
         }
-        void take_sample() { _series.append(_owner->get_value()); }
+        void take_sample() override { _series.append(_owner->get_value()); }
         void describe(std::ostream& os) { _series.describe(os, _vector_names); }
         void set_vector_names(const std::string& names) {
             if (_vector_names == NULL) {
@@ -120,12 +120,12 @@ public:
         return -1;
     }
 
-    void describe(std::ostream& os, bool /*quote_string*/) const {
+    void describe(std::ostream& os, bool /*quote_string*/) const override {
         os << get_value();
     }
 
 #ifdef BAIDU_INTERNAL
-    void get_value(boost::any* value) const {
+    void get_value(boost::any* value) const override {
         if (_getfn) {
             *value = _getfn(_arg);
         } else {
@@ -217,7 +217,7 @@ public:
         hide();
     }
 
-    void describe(std::ostream& os, bool quote_string) const {
+    void describe(std::ostream& os, bool quote_string) const override {
         if (quote_string) {
             if (_print) {
                 os << '"';

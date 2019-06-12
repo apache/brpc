@@ -59,9 +59,9 @@ class DefaultClusterRecoverPolicy : public ClusterRecoverPolicy {
 public:
     DefaultClusterRecoverPolicy(int64_t min_working_instances, int64_t hold_seconds);
 
-    void StartRecover();
-    bool DoReject(const std::vector<ServerId>& server_list);
-    bool StopRecoverIfNecessary();
+    void StartRecover() override;
+    bool DoReject(const std::vector<ServerId>& server_list) override;
+    bool StopRecoverIfNecessary() override;
 
 private:
     uint64_t GetUsableServerCount(int64_t now_ms, const std::vector<ServerId>& server_list);

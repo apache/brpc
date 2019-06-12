@@ -764,7 +764,7 @@ public:
     }
 
     bool OnLogMessage(int severity, const char* file, int line,
-                      const butil::StringPiece& content) {
+                      const butil::StringPiece& content) override {
         // There's a copy here to concatenate prefix and content. Since
         // DefaultLogSink is hardly used right now, the copy is irrelevant.
         // A LogSink focused on performance should also be able to handle

@@ -315,8 +315,8 @@ public:
     explicit CharArrayStreamBuf() : _data(NULL), _size(0) {}
     ~CharArrayStreamBuf();
 
-    virtual int overflow(int ch);
-    virtual int sync();
+    int overflow(int ch) override;
+    int sync() override;
     void reset();
     butil::StringPiece data() {
         return butil::StringPiece(pbase(), pptr() - pbase());
@@ -586,7 +586,7 @@ public:
             _fp = NULL;
         }
     }
-    bool dump(const std::string& name, const butil::StringPiece& desc) {
+    bool dump(const std::string& name, const butil::StringPiece& desc) override {
         if (_fp == NULL) {
             butil::File::Error error;
             butil::FilePath dir = butil::FilePath(_filename).DirName();
@@ -647,7 +647,7 @@ public:
         dumpers.clear();
     }
 
-    bool dump(const std::string& name, const butil::StringPiece& desc) {
+    bool dump(const std::string& name, const butil::StringPiece& desc) override {
         for (size_t i = 0; i < dumpers.size() - 1; ++i) {
             if (dumpers[i].second->match(name)) {
                 return dumpers[i].first->dump(name, desc);

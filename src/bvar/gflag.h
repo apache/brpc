@@ -34,11 +34,10 @@ public:
     // Calling hide() in dtor manually is a MUST required by Variable.
     ~GFlag() { hide(); }
 
-    // Implement Variable::describe() and Variable::get_value().
-    void describe(std::ostream& os, bool quote_string) const;
+    void describe(std::ostream& os, bool quote_string) const override;
 
 #ifdef BAIDU_INTERNAL
-    void get_value(boost::any* value) const;
+    void get_value(boost::any* value) const override;
 #endif
 
     // Get value of the gflag.

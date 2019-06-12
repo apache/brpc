@@ -56,7 +56,7 @@ public:
         SeriesSampler(WindowBase* owner, R* var)
             : _owner(owner), _series(Op(var)) {}
         ~SeriesSampler() {}
-        void take_sample() {
+        void take_sample() override {
             if (series_freq == SERIES_IN_SECOND) {
                 // Get one-second window value for PerSecond<>, otherwise the
                 // "smoother" plot may hide peaks.
@@ -108,8 +108,7 @@ public:
 
     value_type get_value() const { return get_value(_window_size); }
     
-    // Implement Variable::describe() and Variable::get_value().
-    void describe(std::ostream& os, bool quote_string) const {
+    void describe(std::ostream& os, bool quote_string) const override {
         if (butil::is_same<value_type, std::string>::value && quote_string) {
             os << '"' << get_value() << '"';
         } else {
@@ -118,7 +117,7 @@ public:
     }
     
 #ifdef BAIDU_INTERNAL
-    void get_value(boost::any* value) const { *value = get_value(); }
+    void get_value(boost::any* value) const override { *value = get_value(); }
 #endif
 
     time_t window_size() const { return _window_size; }
@@ -219,7 +218,7 @@ public:
         this->expose_as(prefix, name);
     }
 
-    virtual value_type get_value(time_t window_size) const {
+    value_type get_value(time_t window_size) const override {
         detail::Sample<value_type> s;
         this->get_span(window_size, &s);
         // We may test if the multiplication overflows and use integral ops
