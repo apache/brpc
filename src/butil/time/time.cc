@@ -10,7 +10,6 @@
 #include "butil/float_util.h"
 #include "butil/lazy_instance.h"
 #include "butil/logging.h"
-#include "butil/third_party/nspr/prtime.h"
 
 namespace butil {
 
@@ -213,21 +212,24 @@ Time Time::LocalMidnight() const {
 bool Time::FromStringInternal(const char* time_string,
                               bool is_local,
                               Time* parsed_time) {
-  DCHECK((time_string != NULL) && (parsed_time != NULL));
+  // TODO(zhujiashun): after removing nspr, this function
+  // is left unimplemented.
+  return false;
+  // DCHECK((time_string != NULL) && (parsed_time != NULL));
 
-  if (time_string[0] == '\0')
-    return false;
+  // if (time_string[0] == '\0')
+  //   return false;
 
-  PRTime result_time = 0;
-  PRStatus result = PR_ParseTimeString(time_string,
-                                       is_local ? PR_FALSE : PR_TRUE,
-                                       &result_time);
-  if (PR_SUCCESS != result)
-    return false;
+  // PRTime result_time = 0;
+  // PRStatus result = PR_ParseTimeString(time_string,
+  //                                      is_local ? PR_FALSE : PR_TRUE,
+  //                                      &result_time);
+  // if (PR_SUCCESS != result)
+  //   return false;
 
-  result_time += kTimeTToMicrosecondsOffset;
-  *parsed_time = Time(result_time);
-  return true;
+  // result_time += kTimeTToMicrosecondsOffset;
+  // *parsed_time = Time(result_time);
+  // return true;
 }
 
 // Local helper class to hold the conversion from Time to TickTime at the
