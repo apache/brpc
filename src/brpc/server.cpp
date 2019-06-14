@@ -110,6 +110,7 @@ DEFINE_bool(enable_threads_service, false, "Enable /threads");
 
 DECLARE_int32(usercode_backup_threads);
 DECLARE_bool(usercode_in_pthread);
+DECLARE_string(prometheus_metrics_path);
 
 const int INITIAL_SERVICE_CAP = 64;
 const int INITIAL_CERT_MAP = 64;
@@ -484,7 +485,10 @@ int Server::AddBuiltinServices() {
         LOG(ERROR) << "Fail to add ListService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) PrometheusMetricsService(this))) {
+    ServiceOptions options;
+    options.ownership = SERVER_OWNS_SERVICE;
+    options.restful_mappings = FLAGS_prometheus_metrics_path + " => metrics";
+    if (AddBuiltinService(new (std::nothrow) PrometheusMetricsService(this), options)) {
         LOG(ERROR) << "Fail to add MetricsService";
         return -1;
     }
@@ -1411,6 +1415,11 @@ int Server::AddService(google::protobuf::Service* service,
 int Server::AddBuiltinService(google::protobuf::Service* service) {
     ServiceOptions options;
     options.ownership = SERVER_OWNS_SERVICE;
+    return AddBuiltinService(service, options);
+}
+
+int Server::AddBuiltinService(google::protobuf::Service* service,
+                              const ServiceOptions& options) {
     return AddServiceInternal(service, true, options);
 }
 

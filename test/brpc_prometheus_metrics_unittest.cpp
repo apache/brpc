@@ -10,6 +10,10 @@
 #include "butil/strings/string_piece.h"
 #include "echo.pb.h"
 
+namespace brpc {
+DECLARE_string(prometheus_metrics_path);
+} // brpc
+
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
@@ -45,7 +49,7 @@ TEST(PrometheusMetrics, sanity) {
     channel_opts.protocol = "http";
     ASSERT_EQ(0, channel.Init("127.0.0.1:8614", &channel_opts));
     brpc::Controller cntl;
-    cntl.http_request().uri() = "/brpc_vars_metrics";
+    cntl.http_request().uri() = brpc::FLAGS_prometheus_metrics_path;
     channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     ASSERT_FALSE(cntl.Failed());
     std::string res = cntl.response_attachment().to_string();
