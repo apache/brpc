@@ -82,7 +82,7 @@ private:
 
     EmaErrorRecorder _long_window;
     EmaErrorRecorder _short_window;
-    butil::atomic<int64_t> _last_revived_time_ms;
+    int64_t _last_reset_time_ms;
     butil::atomic<int> _isolation_duration_ms;
     butil::atomic<int> _isolated_times;
     butil::atomic<bool> _is_first_call_after_revived;

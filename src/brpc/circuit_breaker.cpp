@@ -164,20 +164,15 @@ CircuitBreaker::CircuitBreaker()
                    FLAGS_circuit_breaker_long_window_error_percent)
     , _short_window(FLAGS_circuit_breaker_short_window_size,
                     FLAGS_circuit_breaker_short_window_error_percent)
-    , _last_revived_time_ms(butil::cpuwide_time_ms())
+    , _last_reset_time_ms(0)
     , _isolation_duration_ms(FLAGS_circuit_breaker_min_isolation_duration_ms)
     , _isolated_times(0)
-    , _is_first_call_after_revived(true)
     , _broken(false) {
 }
 
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
     if (_broken.load(butil::memory_order_relaxed)) {
         return false;
-    }
-    if (_is_first_call_after_revived.load(butil::memory_order_relaxed) &&
-        _is_first_call_after_revived.exchange(false, butil::memory_order_relaxed)) {
-      _last_revived_time_ms.store(butil::cpuwide_time_ms(), butil::memory_order_relaxed);
     }
     if (_long_window.OnCallEnd(error_code, latency) &&
         _short_window.OnCallEnd(error_code, latency)) {
@@ -190,8 +185,7 @@ bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
 void CircuitBreaker::Reset() {
     _long_window.Reset();
     _short_window.Reset();
-    _last_revived_time_ms.store(butil::cpuwide_time_ms(), butil::memory_order_relaxed);
-    _is_first_call_after_revived.store(true, butil::memory_order_relaxed);
+    _last_reset_time_ms = butil::cpuwide_time_ms();
     _broken.store(false, butil::memory_order_release);
 }
 
@@ -209,7 +203,7 @@ void CircuitBreaker::UpdateIsolationDuration() {
         FLAGS_circuit_breaker_max_isolation_duration_ms;
     const int min_isolation_duration_ms =
         FLAGS_circuit_breaker_min_isolation_duration_ms;
-    if (now_time_ms - _last_revived_time_ms < max_isolation_duration_ms) {
+    if (now_time_ms - _last_reset_time_ms < max_isolation_duration_ms) {
         isolation_duration_ms =
             std::min(isolation_duration_ms * 2, max_isolation_duration_ms);
     } else {
