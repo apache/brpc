@@ -1351,7 +1351,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
             }
             if (sp == NULL) {
                 ServiceProperty ss =
-                    { false, SERVER_DOESNT_OWN_SERVICE, NULL, m };
+                    { is_builtin_service, SERVER_DOESNT_OWN_SERVICE, NULL, m };
                 _fullname_service_map[svc_name] = ss;
                 _service_map[svc_name] = ss;
                 ++_virtual_service_count;
