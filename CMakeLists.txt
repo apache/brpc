@@ -207,7 +207,6 @@ set(BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/icu/icu_utf.cc
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/superfasthash/superfasthash.c
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/modp_b64/modp_b64.cc
-    ${PROJECT_SOURCE_DIR}/src/butil/third_party/nspr/prtime.cc
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/symbolize/demangle.cc
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/symbolize/symbolize.cc
     ${PROJECT_SOURCE_DIR}/src/butil/third_party/snappy/snappy-sinksource.cc

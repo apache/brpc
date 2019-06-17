@@ -96,7 +96,6 @@ TEST_BUTIL_SOURCES = \
     thread_local_storage_unittest.cc \
     thread_local_unittest.cc \
     watchdog_unittest.cc \
-    pr_time_unittest.cc \
     time_unittest.cc \
     version_unittest.cc \
     logging_unittest.cc \
