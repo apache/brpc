@@ -40,6 +40,11 @@ TEST(PrometheusMetrics, sanity) {
     ASSERT_EQ(0, server.AddService(&echo_svc, brpc::SERVER_DOESNT_OWN_SERVICE));
     ASSERT_EQ(0, server.Start("127.0.0.1:8614", NULL));
 
+    brpc::Server server2;
+    DummyEchoServiceImpl echo_svc2;
+    ASSERT_EQ(0, server2.AddService(&echo_svc2, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server2.Start("127.0.0.1:8615", NULL));
+
     brpc::Channel channel;
     brpc::ChannelOptions channel_opts;
     channel_opts.protocol = "http";

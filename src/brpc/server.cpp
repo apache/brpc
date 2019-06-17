@@ -265,8 +265,10 @@ static bvar::Vector<unsigned, 2> GetSessionLocalDataCount(void* arg) {
     return v;
 }
 
+std::string Server::Prefix() { return "rpc_server"; }
+
 std::string Server::ServerPrefix() const {
-    return butil::string_printf("rpc_server_%d", listen_address().port);
+    return butil::string_printf("%s_%d", Prefix().c_str(), listen_address().port);
 }
 
 void* Server::UpdateDerivedVars(void* arg) {
@@ -484,7 +486,7 @@ int Server::AddBuiltinServices() {
         LOG(ERROR) << "Fail to add ListService";
         return -1;
     }
-    if (AddBuiltinService(new (std::nothrow) PrometheusMetricsService(this))) {
+    if (AddBuiltinService(new (std::nothrow) PrometheusMetricsService)) {
         LOG(ERROR) << "Fail to add MetricsService";
         return -1;
     }

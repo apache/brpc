@@ -24,19 +24,13 @@ namespace brpc {
 
 class PrometheusMetricsService : public brpc_metrics {
 public:
-    PrometheusMetricsService(Server* server)
-        : _server(server) {}
-
     void default_method(::google::protobuf::RpcController* cntl_base,
                         const ::brpc::MetricsRequest* request,
                         ::brpc::MetricsResponse* response,
                         ::google::protobuf::Closure* done) override;
-
-private:
-    Server* _server;
 };
 
-int DumpPrometheusMetricsToIOBuf(const Server* server, butil::IOBuf* output);
+int DumpPrometheusMetricsToIOBuf(butil::IOBuf* output);
 
 } // namepace brpc
 

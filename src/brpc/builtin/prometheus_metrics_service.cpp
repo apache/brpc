@@ -182,15 +182,15 @@ void PrometheusMetricsService::default_method(::google::protobuf::RpcController*
     ClosureGuard done_guard(done);
     Controller *cntl = static_cast<Controller*>(cntl_base);
     cntl->http_response().set_content_type("text/plain");
-    if (DumpPrometheusMetricsToIOBuf(_server, &cntl->response_attachment()) != 0) {
+    if (DumpPrometheusMetricsToIOBuf(&cntl->response_attachment()) != 0) {
         cntl->SetFailed("Fail to dump metrics");
         return;
     }
 }
 
-int DumpPrometheusMetricsToIOBuf(const Server* server, butil::IOBuf* output) {
+int DumpPrometheusMetricsToIOBuf(butil::IOBuf* output) {
     butil::IOBufBuilder os;
-    PrometheusMetricsDumper dumper(&os, brpc::ServerPrivateAccessor(server).ServerPrefix());
+    PrometheusMetricsDumper dumper(&os, brpc::ServerPrivateAccessor(NULL).Prefix());
     const int ndump = bvar::Variable::dump_exposed(&dumper, NULL);
     if (ndump < 0) {
         return -1;

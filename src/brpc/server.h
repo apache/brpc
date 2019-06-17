@@ -579,6 +579,7 @@ friend class Controller;
     const ServiceProperty*
     FindServicePropertyByName(const butil::StringPiece& name) const;
     
+    static std::string Prefix();
     std::string ServerPrefix() const;
 
     // Mapping from hostname to corresponding SSL_CTX

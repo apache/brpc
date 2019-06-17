@@ -30,7 +30,6 @@ namespace brpc {
 class ServerPrivateAccessor {
 public:
     explicit ServerPrivateAccessor(const Server* svr) {
-        CHECK(svr);
         _server = svr;
     }
 
@@ -98,8 +97,8 @@ public:
     RestfulMap* global_restful_map() const
     { return _server->_global_restful_map; }
 
-    std::string ServerPrefix() const { return _server->ServerPrefix(); }
-    
+    std::string Prefix() const { return Server::Prefix(); }
+
 private:
     const Server* _server;
 };
