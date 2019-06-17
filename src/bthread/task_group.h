@@ -212,10 +212,11 @@ friend class TaskControl;
         if (_remote_rq.pop(tid)) {
             return true;
         }
+        bool ret = _control->steal_task(tid, &_steal_seed, _steal_offset);
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
         _last_pl_state = _pl->get_state();
 #endif
-        return _control->steal_task(tid, &_steal_seed, _steal_offset);
+        return ret;
     }
 
 #ifndef NDEBUG
