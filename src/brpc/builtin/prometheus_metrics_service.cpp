@@ -190,7 +190,7 @@ void PrometheusMetricsService::default_method(::google::protobuf::RpcController*
 
 int DumpPrometheusMetricsToIOBuf(butil::IOBuf* output) {
     butil::IOBufBuilder os;
-    PrometheusMetricsDumper dumper(&os, brpc::ServerPrivateAccessor(NULL).Prefix());
+    PrometheusMetricsDumper dumper(&os, brpc::ServerPrivateAccessor::Prefix());
     const int ndump = bvar::Variable::dump_exposed(&dumper, NULL);
     if (ndump < 0) {
         return -1;
