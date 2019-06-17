@@ -383,14 +383,10 @@ src/butil/third_party/superfasthash: licensed under the following terms:
 
 --------------------------------------------------------------------------------
 
-src/butil/third_party/valgrind: licensed under the following terms:
+src/butil/third_party/valgrind/valgrind.h: licensed under the following terms:
 
-  Notice that the following BSD-style license applies to the Valgrind header
-  files used by brpc (valgrind.h). However, the rest of Valgrind is
-  licensed under the terms of the GNU General Public License, version 2,
-  unless otherwise indicated.
-  
-  ----------------------------------------------------------------
+  This file is part of Valgrind, a dynamic binary instrumentation
+  framework.
   
   Copyright (C) 2000-2008 Julian Seward.  All rights reserved.
   
