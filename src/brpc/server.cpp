@@ -110,7 +110,6 @@ DEFINE_bool(enable_threads_service, false, "Enable /threads");
 
 DECLARE_int32(usercode_backup_threads);
 DECLARE_bool(usercode_in_pthread);
-DECLARE_string(prometheus_metrics_path);
 
 const int INITIAL_SERVICE_CAP = 64;
 const int INITIAL_CERT_MAP = 64;
@@ -1348,7 +1347,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
             }
             if (sp == NULL) {
                 ServiceProperty ss =
-                    { false , SERVER_DOESNT_OWN_SERVICE, NULL, m };
+                    { false, SERVER_DOESNT_OWN_SERVICE, NULL, m };
                 _fullname_service_map[svc_name] = ss;
                 _service_map[svc_name] = ss;
                 ++_virtual_service_count;
