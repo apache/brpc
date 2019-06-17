@@ -31,9 +31,12 @@ public:
                         const ::brpc::MetricsRequest* request,
                         ::brpc::MetricsResponse* response,
                         ::google::protobuf::Closure* done) override;
+
 private:
     Server* _server;
 };
+
+int DumpPrometheusMetricsToIOBuf(const Server* server, butil::IOBuf* output);
 
 } // namepace brpc
 

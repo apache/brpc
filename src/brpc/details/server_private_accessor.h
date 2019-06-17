@@ -97,6 +97,8 @@ public:
 
     RestfulMap* global_restful_map() const
     { return _server->_global_restful_map; }
+
+    std::string ServerPrefix() const { return _server->ServerPrefix(); }
     
 private:
     const Server* _server;
