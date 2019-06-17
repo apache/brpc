@@ -32,9 +32,6 @@ DECLARE_int32(bvar_latency_p3);
 
 namespace brpc {
 
-DEFINE_string(prometheus_metrics_path, "/metrics", "The HTTP resource "
-        "path from which prometheus fetch metrics.");
-
 // This is a class that convert bvar result to prometheus output.
 // Currently the output only includes gauge and summary for two
 // reasons:
@@ -177,10 +174,10 @@ bool PrometheusMetricsDumper::DumpLatencyRecorderSuffix(
     return true;
 }
 
-void PrometheusMetricsService::metrics(::google::protobuf::RpcController* cntl_base,
-                                       const ::brpc::MetricsRequest*,
-                                       ::brpc::MetricsResponse*,
-                                       ::google::protobuf::Closure* done) {
+void PrometheusMetricsService::default_method(::google::protobuf::RpcController* cntl_base,
+                                              const ::brpc::MetricsRequest*,
+                                              ::brpc::MetricsResponse*,
+                                              ::google::protobuf::Closure* done) {
     ClosureGuard done_guard(done);
     Controller *cntl = static_cast<Controller*>(cntl_base);
     cntl->http_response().set_content_type("text/plain");

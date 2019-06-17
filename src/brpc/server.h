@@ -530,8 +530,6 @@ friend class Controller;
                            const ServiceOptions& options);
 
     int AddBuiltinService(google::protobuf::Service* service);
-    int AddBuiltinService(google::protobuf::Service* service,
-                          const ServiceOptions& options);
 
     // Remove all methods of `service' from internal structures.
     void RemoveMethodsOf(google::protobuf::Service* service);

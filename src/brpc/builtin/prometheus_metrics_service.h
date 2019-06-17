@@ -22,15 +22,15 @@
 
 namespace brpc {
 
-class PrometheusMetricsService : public bvars {
+class PrometheusMetricsService : public brpc_prometheus_metrics {
 public:
     PrometheusMetricsService(Server* server)
         : _server(server) {}
 
-    void metrics(::google::protobuf::RpcController* cntl_base,
-                 const ::brpc::MetricsRequest* request,
-                 ::brpc::MetricsResponse* response,
-                 ::google::protobuf::Closure* done) override;
+    void default_method(::google::protobuf::RpcController* cntl_base,
+                        const ::brpc::MetricsRequest* request,
+                        ::brpc::MetricsResponse* response,
+                        ::google::protobuf::Closure* done) override;
 private:
     Server* _server;
 };

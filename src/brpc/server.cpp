@@ -485,10 +485,7 @@ int Server::AddBuiltinServices() {
         LOG(ERROR) << "Fail to add ListService";
         return -1;
     }
-    ServiceOptions options;
-    options.ownership = SERVER_OWNS_SERVICE;
-    options.restful_mappings = FLAGS_prometheus_metrics_path + " => metrics";
-    if (AddBuiltinService(new (std::nothrow) PrometheusMetricsService(this), options)) {
+    if (AddBuiltinService(new (std::nothrow) PrometheusMetricsService(this))) {
         LOG(ERROR) << "Fail to add MetricsService";
         return -1;
     }
@@ -1351,7 +1348,7 @@ int Server::AddServiceInternal(google::protobuf::Service* service,
             }
             if (sp == NULL) {
                 ServiceProperty ss =
-                    { is_builtin_service, SERVER_DOESNT_OWN_SERVICE, NULL, m };
+                    { false , SERVER_DOESNT_OWN_SERVICE, NULL, m };
                 _fullname_service_map[svc_name] = ss;
                 _service_map[svc_name] = ss;
                 ++_virtual_service_count;
@@ -1415,11 +1412,6 @@ int Server::AddService(google::protobuf::Service* service,
 int Server::AddBuiltinService(google::protobuf::Service* service) {
     ServiceOptions options;
     options.ownership = SERVER_OWNS_SERVICE;
-    return AddBuiltinService(service, options);
-}
-
-int Server::AddBuiltinService(google::protobuf::Service* service,
-                              const ServiceOptions& options) {
     return AddServiceInternal(service, true, options);
 }
 
