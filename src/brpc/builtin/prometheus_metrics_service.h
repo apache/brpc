@@ -22,7 +22,7 @@
 
 namespace brpc {
 
-class PrometheusMetricsService : public brpc_prometheus_metrics {
+class PrometheusMetricsService : public brpc_metrics {
 public:
     PrometheusMetricsService(Server* server)
         : _server(server) {}

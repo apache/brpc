@@ -45,7 +45,7 @@ TEST(PrometheusMetrics, sanity) {
     channel_opts.protocol = "http";
     ASSERT_EQ(0, channel.Init("127.0.0.1:8614", &channel_opts));
     brpc::Controller cntl;
-    cntl.http_request().uri() = "/brpc_prometheus_metrics";
+    cntl.http_request().uri() = "/brpc_metrics";
     channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     ASSERT_FALSE(cntl.Failed());
     std::string res = cntl.response_attachment().to_string();
