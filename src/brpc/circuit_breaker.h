@@ -85,7 +85,6 @@ private:
     int64_t _last_reset_time_ms;
     butil::atomic<int> _isolation_duration_ms;
     butil::atomic<int> _isolated_times;
-    butil::atomic<bool> _is_first_call_after_revived;
     butil::atomic<bool> _broken;
 };
 
