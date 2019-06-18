@@ -22,7 +22,6 @@
 #include "brpc/closure_guard.h"             // ClosureGuard
 #include "brpc/builtin/prometheus_metrics_service.h"
 #include "brpc/builtin/common.h"
-#include "brpc/details/server_private_accessor.h"
 #include "bvar/bvar.h"
 
 namespace bvar {
@@ -32,6 +31,9 @@ DECLARE_int32(bvar_latency_p3);
 }
 
 namespace brpc {
+
+// Defined in server.cpp
+extern const char* const g_server_info_prefix;
 
 // This is a class that convert bvar result to prometheus output.
 // Currently the output only includes gauge and summary for two
@@ -190,7 +192,7 @@ void PrometheusMetricsService::default_method(::google::protobuf::RpcController*
 
 int DumpPrometheusMetricsToIOBuf(butil::IOBuf* output) {
     butil::IOBufBuilder os;
-    PrometheusMetricsDumper dumper(&os, brpc::ServerPrivateAccessor::Prefix());
+    PrometheusMetricsDumper dumper(&os, g_server_info_prefix);
     const int ndump = bvar::Variable::dump_exposed(&dumper, NULL);
     if (ndump < 0) {
         return -1;

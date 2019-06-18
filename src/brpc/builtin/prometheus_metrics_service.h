@@ -18,7 +18,6 @@
 #define BRPC_PROMETHEUS_METRICS_SERVICE_H
 
 #include "brpc/builtin_service.pb.h"
-#include "brpc/server.h"
 
 namespace brpc {
 

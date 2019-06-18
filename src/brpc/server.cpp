@@ -92,6 +92,8 @@ namespace brpc {
 BAIDU_CASSERT(sizeof(int32_t) == sizeof(butil::subtle::Atomic32),
               Atomic32_must_be_int32);
 
+extern const char* const g_server_info_prefix = "rpc_server";
+
 const char* status_str(Server::Status s) {
     switch (s) {
     case Server::UNINITIALIZED: return "UNINITIALIZED";
@@ -265,10 +267,8 @@ static bvar::Vector<unsigned, 2> GetSessionLocalDataCount(void* arg) {
     return v;
 }
 
-std::string Server::Prefix() { return "rpc_server"; }
-
 std::string Server::ServerPrefix() const {
-    return butil::string_printf("%s_%d", Prefix().c_str(), listen_address().port);
+    return butil::string_printf("%s_%d", g_server_info_prefix, listen_address().port);
 }
 
 void* Server::UpdateDerivedVars(void* arg) {
