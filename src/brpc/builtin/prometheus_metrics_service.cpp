@@ -103,8 +103,8 @@ PrometheusMetricsDumper::ProcessLatencyRecorderSuffix(const butil::StringPiece& 
         butil::string_printf("_latency_%d", (int)bvar::FLAGS_bvar_latency_p3),
         "_latency_999", "_latency_9999", "_max_latency"
     };
-    std::string desc_str = desc.as_string();
     CHECK(NPERCENTILES == arraysize(latency_names));
+    const std::string desc_str = desc.as_string();
     butil::StringPiece metric_name(name);
     for (int i = 0; i < NPERCENTILES; ++i) {
         if (!metric_name.ends_with(latency_names[i])) {
