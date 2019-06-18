@@ -62,8 +62,8 @@ private:
 
     struct SummaryItems {
         std::string latency_percentiles[NPERCENTILES];
-        std::string latency_avg;
-        std::string count;
+        int64_t latency_avg;
+        int64_t count;
         std::string metric_name;
 
         bool IsComplete() const { return !metric_name.empty(); }
@@ -103,6 +103,7 @@ PrometheusMetricsDumper::ProcessLatencyRecorderSuffix(const butil::StringPiece& 
         butil::string_printf("_latency_%d", (int)bvar::FLAGS_bvar_latency_p3),
         "_latency_999", "_latency_9999", "_max_latency"
     };
+    std::string desc_str = desc.as_string();
     CHECK(NPERCENTILES == arraysize(latency_names));
     butil::StringPiece metric_name(name);
     for (int i = 0; i < NPERCENTILES; ++i) {
@@ -111,7 +112,7 @@ PrometheusMetricsDumper::ProcessLatencyRecorderSuffix(const butil::StringPiece& 
         }
         metric_name.remove_suffix(latency_names[i].size());
         SummaryItems* si = &_m[metric_name.as_string()];
-        si->latency_percentiles[i] = desc.as_string();
+        si->latency_percentiles[i] = desc_str;
         if (i == NPERCENTILES - 1) {
             // '_max_latency' is the last suffix name that appear in the sorted bvar
             // list, which means all related percentiles have been gathered and we are
@@ -124,13 +125,13 @@ PrometheusMetricsDumper::ProcessLatencyRecorderSuffix(const butil::StringPiece& 
     if (metric_name.ends_with("_latency")) {
         metric_name.remove_suffix(8);
         SummaryItems* si = &_m[metric_name.as_string()];
-        si->latency_avg = desc.as_string();
+        si->latency_avg = strtoll(desc_str.data(), NULL, 10);
         return si;
     }
     if (metric_name.ends_with("_count")) {
         metric_name.remove_suffix(6);
         SummaryItems* si = &_m[metric_name.as_string()];
-        si->count = desc.as_string();
+        si->count = strtoll(desc_str.data(), NULL, 10);
         return si;
     }
     return NULL;
@@ -169,8 +170,7 @@ bool PrometheusMetricsDumper::DumpLatencyRecorderSuffix(
          << si->metric_name << "_sum "
          // There is no sum of latency in bvar output, just use
          // average * count as approximation
-         << strtoll(si->latency_avg.data(), NULL, 10) *
-                strtoll(si->count.data(), NULL, 10) << '\n'
+         << si->latency_avg * si->count << '\n'
          << si->metric_name << "_count " << si->count << '\n';
     return true;
 }
