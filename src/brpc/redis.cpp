@@ -14,123 +14,23 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#define INTERNAL_SUPPRESS_PROTOBUF_FIELD_DEPRECATION
-#include <algorithm>
 #include <gflags/gflags.h>
-#include <google/protobuf/stubs/once.h>
-#include <google/protobuf/io/coded_stream.h>
-#include <google/protobuf/wire_format_lite_inl.h>
-#include <google/protobuf/descriptor.h>
-#include <google/protobuf/reflection_ops.h>
-#include <google/protobuf/wire_format.h>
-#include "butil/string_printf.h"
-#include "butil/macros.h"
-#include "brpc/controller.h"
+#include <butil/status.h>
 #include "brpc/redis.h"
 #include "brpc/redis_command.h"
-
 
 namespace brpc {
 
 DEFINE_bool(redis_verbose_crlf2space, false, "[DEBUG] Show \\r\\n as a space");
 
-// Internal implementation detail -- do not call these.
-void protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto_impl();
-void protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto();
-void protobuf_AssignDesc_baidu_2frpc_2fredis_5fbase_2eproto();
-void protobuf_ShutdownFile_baidu_2frpc_2fredis_5fbase_2eproto();
-
-namespace {
-
-const ::google::protobuf::Descriptor* RedisRequest_descriptor_ = NULL;
-const ::google::protobuf::Descriptor* RedisResponse_descriptor_ = NULL;
-
-}  // namespace
-
-void protobuf_AssignDesc_baidu_2frpc_2fredis_5fbase_2eproto() {
-    protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto();
-    const ::google::protobuf::FileDescriptor* file =
-        ::google::protobuf::DescriptorPool::generated_pool()->FindFileByName(
-            "baidu/rpc/redis_base.proto");
-    GOOGLE_CHECK(file != NULL);
-    RedisRequest_descriptor_ = file->message_type(0);
-    RedisResponse_descriptor_ = file->message_type(1);
-}
-
-namespace {
-
-GOOGLE_PROTOBUF_DECLARE_ONCE(protobuf_AssignDescriptors_once_);
-inline void protobuf_AssignDescriptorsOnce() {
-    ::google::protobuf::GoogleOnceInit(&protobuf_AssignDescriptors_once_,
-                                       &protobuf_AssignDesc_baidu_2frpc_2fredis_5fbase_2eproto);
-}
-
-void protobuf_RegisterTypes(const ::std::string&) {
-    protobuf_AssignDescriptorsOnce();
-    ::google::protobuf::MessageFactory::InternalRegisterGeneratedMessage(
-        RedisRequest_descriptor_, &RedisRequest::default_instance());
-    ::google::protobuf::MessageFactory::InternalRegisterGeneratedMessage(
-        RedisResponse_descriptor_, &RedisResponse::default_instance());
-}
-
-}  // namespace
-
-void protobuf_ShutdownFile_baidu_2frpc_2fredis_5fbase_2eproto() {
-    delete RedisRequest::default_instance_;
-    delete RedisResponse::default_instance_;
-}
-
-void protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto_impl() {
-    GOOGLE_PROTOBUF_VERIFY_VERSION;
-
-#if GOOGLE_PROTOBUF_VERSION >= 3002000
-    ::google::protobuf::internal::InitProtobufDefaults();
-#else
-    ::google::protobuf::protobuf_AddDesc_google_2fprotobuf_2fdescriptor_2eproto();
-#endif
-  ::google::protobuf::DescriptorPool::InternalAddGeneratedFile(
-    "\n\032baidu/rpc/redis_base.proto\022\tbaidu.rpc\032"
-    " google/protobuf/descriptor.proto\"\016\n\014Red"
-    "isRequest\"\017\n\rRedisResponseB\003\200\001\001", 111);
-  ::google::protobuf::MessageFactory::InternalRegisterGeneratedFile(
-    "baidu/rpc/redis_base.proto", &protobuf_RegisterTypes);
-  RedisRequest::default_instance_ = new RedisRequest();
-  RedisResponse::default_instance_ = new RedisResponse();
-  RedisRequest::default_instance_->InitAsDefaultInstance();
-  RedisResponse::default_instance_->InitAsDefaultInstance();
-  ::google::protobuf::internal::OnShutdown(&protobuf_ShutdownFile_baidu_2frpc_2fredis_5fbase_2eproto);
-}
-
-GOOGLE_PROTOBUF_DECLARE_ONCE(protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto_once);
-void protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto() {
-    ::google::protobuf::GoogleOnceInit(
-        &protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto_once,
-        &protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto_impl);
-}
-
-// Force AddDescriptors() to be called at static initialization time.
-struct StaticDescriptorInitializer_baidu_2frpc_2fredis_5fbase_2eproto {
-    StaticDescriptorInitializer_baidu_2frpc_2fredis_5fbase_2eproto() {
-        protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto();
-    }
-} static_descriptor_initializer_baidu_2frpc_2fredis_5fbase_2eproto_;
-
-
-// ===================================================================
-
-#ifndef _MSC_VER
-#endif  // !_MSC_VER
-
 RedisRequest::RedisRequest()
-    : ::google::protobuf::Message() {
+
+    : RedisRequestBase() {
     SharedCtor();
 }
 
-void RedisRequest::InitAsDefaultInstance() {
-}
-
 RedisRequest::RedisRequest(const RedisRequest& from)
-    : ::google::protobuf::Message() {
+    : RedisRequestBase() {
     SharedCtor();
     MergeFrom(from);
 }
@@ -155,19 +55,6 @@ void RedisRequest::SetCachedSize(int size) const {
     _cached_size_ = size;
     GOOGLE_SAFE_CONCURRENT_WRITES_END();
 }
-const ::google::protobuf::Descriptor* RedisRequest::descriptor() {
-    protobuf_AssignDescriptorsOnce();
-    return RedisRequest_descriptor_;
-}
-
-const RedisRequest& RedisRequest::default_instance() {
-    if (default_instance_ == NULL) {
-        protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto();
-    }
-    return *default_instance_;
-}
-
-RedisRequest* RedisRequest::default_instance_ = NULL;
 
 RedisRequest* RedisRequest::New() const {
     return new RedisRequest;
@@ -244,14 +131,6 @@ void RedisRequest::Swap(RedisRequest* other) {
         std::swap(_has_error, other->_has_error);
         std::swap(_cached_size_, other->_cached_size_);
     }
-}
-
-::google::protobuf::Metadata RedisRequest::GetMetadata() const {
-    protobuf_AssignDescriptorsOnce();
-    ::google::protobuf::Metadata metadata;
-    metadata.descriptor = RedisRequest_descriptor_;
-    metadata.reflection = NULL;
-    return metadata;
 }
 
 bool RedisRequest::AddCommand(const butil::StringPiece& command) {
@@ -352,21 +231,13 @@ std::ostream& operator<<(std::ostream& os, const RedisRequest& r) {
     return os;
 }
 
-// ===================================================================
-
-#ifndef _MSC_VER
-#endif  // !_MSC_VER
-
 RedisResponse::RedisResponse()
-    : ::google::protobuf::Message() {
+    : RedisResponseBase() {
     SharedCtor();
 }
 
-void RedisResponse::InitAsDefaultInstance() {
-}
-
 RedisResponse::RedisResponse(const RedisResponse& from)
-    : ::google::protobuf::Message() {
+    : RedisResponseBase() {
     SharedCtor();
     MergeFrom(from);
 }
@@ -389,19 +260,6 @@ void RedisResponse::SharedDtor() {
 void RedisResponse::SetCachedSize(int size) const {
     _cached_size_ = size;
 }
-const ::google::protobuf::Descriptor* RedisResponse::descriptor() {
-    protobuf_AssignDescriptorsOnce();
-    return RedisResponse_descriptor_;
-}
-
-const RedisResponse& RedisResponse::default_instance() {
-    if (default_instance_ == NULL) {
-        protobuf_AddDesc_baidu_2frpc_2fredis_5fbase_2eproto();
-    }
-    return *default_instance_;
-}
-
-RedisResponse* RedisResponse::default_instance_ = NULL;
 
 RedisResponse* RedisResponse::New() const {
     return new RedisResponse;
@@ -503,14 +361,6 @@ void RedisResponse::Swap(RedisResponse* other) {
         std::swap(_nreply, other->_nreply);
         std::swap(_cached_size_, other->_cached_size_);
     }
-}
-
-::google::protobuf::Metadata RedisResponse::GetMetadata() const {
-    protobuf_AssignDescriptorsOnce();
-    ::google::protobuf::Metadata metadata;
-    metadata.descriptor = RedisResponse_descriptor_;
-    metadata.reflection = NULL;
-    return metadata;
 }
 
 // ===================================================================
