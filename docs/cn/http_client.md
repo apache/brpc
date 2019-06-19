@@ -64,9 +64,9 @@ channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
 ```
 # 控制HTTP版本
 
-brpc的http行为默认是http 1.1。
+brpc的http行为默认是http/1.1。
 
-http 1.0相比1.1缺少长连接功能，brpc client与一些古老的http server通信时可能需要按如下方法设置为1.0。
+http/1.0相比http/1.1缺少长连接功能，brpc client与一些古老的http server通信时可能需要按如下方法设置为1.0。
 ```c++
 cntl.http_request().set_version(1, 0);
 ```

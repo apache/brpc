@@ -599,7 +599,7 @@ Channel的默认协议是baidu_std，可通过设置ChannelOptions.protocol换�
 - PROTOCOL_HTTP 或 ”http", http/1.0或http/1.1协议，默认为连接池(Keep-Alive)。
   - 访问普通http服务的方法见[访问http/h2服务](http_client.md)
   - 通过http:json或http:proto访问pb服务的方法见[http/h2衍生协议](http_derivatives.md)
-- PROTOCOL_H2 或 ”h2", http/2.0协议，默认是单连接。
+- PROTOCOL_H2 或 ”h2", http/2协议，默认是单连接。
   - 访问普通h2服务的方法见[访问http/h2服务](http_client.md)。
   - 通过h2:json或h2:proto访问pb服务的方法见[http/h2衍生协议](http_derivatives.md)
 - "h2:grpc", [gRPC](https://grpc.io)的协议，也是h2的衍生协议，默认为单连接，具体见[h2:grpc](http_derivatives.md#h2grpc)。
@@ -620,8 +620,8 @@ Channel的默认协议是baidu_std，可通过设置ChannelOptions.protocol换�
 
 brpc支持以下连接方式：
 
-- 短连接：每次RPC前建立连接，结束后关闭连接。由于每次调用得有建立连接的开销，这种方式一般用于偶尔发起的操作，而不是持续发起请求的场景。没有协议默认使用这种连接方式，http 1.0对连接的处理效果类似短链接。
-- 连接池：每次RPC前取用空闲连接，结束后归还，一个连接上最多只有一个请求，一个client对一台server可能有多条连接。http 1.1和各类使用nshead的协议都是这个方式。
+- 短连接：每次RPC前建立连接，结束后关闭连接。由于每次调用得有建立连接的开销，这种方式一般用于偶尔发起的操作，而不是持续发起请求的场景。没有协议默认使用这种连接方式，http/1.0对连接的处理效果类似短链接。
+- 连接池：每次RPC前取用空闲连接，结束后归还，一个连接上最多只有一个请求，一个client对一台server可能有多条连接。http/1.1和各类使用nshead的协议都是这个方式。
 - 单连接：进程内所有client与一台server最多只有一个连接，一个连接上可能同时有多个请求，回复返回顺序和请求顺序不需要一致，这是baidu_std，hulu_pbrpc，sofa_pbrpc协议的默认选项。
 
 |                     | 短连接                                      | 连接池                   | 单连接                 |

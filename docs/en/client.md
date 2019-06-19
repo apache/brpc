@@ -602,7 +602,7 @@ The default protocol used by Channel is baidu_std, which is changeable by settin
 - PROTOCOL_HTTP or "http", which is http/1.0 or http/1.1, using pooled connection by default (Keep-Alive).
   - Methods for accessing ordinary http services are listed in [Access http/h2](http_client.md).
   - Methods for accessing pb services by using http:json or http:proto are listed in [http/h2 derivatives](http_derivatives.md)
-- PROTOCOL_H2 or ”h2", which is http/2.0, using single connection by default.
+- PROTOCOL_H2 or ”h2", which is http/2, using single connection by default.
   - Methods for accessing ordinary h2 services are listed in [Access http/h2](http_client.md).
   - Methods for accessing pb services by using h2:json or h2:proto are listed in [http/h2 derivatives](http_derivatives.md)
 - "h2:grpc", which is the protocol of [gRPC](https://grpc.io) and based on h2, using single connection by default, check out [h2:grpc](http_derivatives.md#h2grpc) for details.
@@ -623,8 +623,8 @@ The default protocol used by Channel is baidu_std, which is changeable by settin
 
 brpc supports following connection types:
 
-- short connection: Established before each RPC, closed after completion. Since each RPC has to pay the overhead of establishing connection, this type is used for occasionally launched RPC, not frequently launched ones. No protocol use this type by default. Connections in http 1.0 are handled similarly as short connections.
-- pooled connection: Pick an unused connection from a pool before each RPC, return after completion. One connection carries at most one request at the same time. One client may have multiple connections to one server. http 1.1 and the protocols using nshead use this type by default.
+- short connection: Established before each RPC, closed after completion. Since each RPC has to pay the overhead of establishing connection, this type is used for occasionally launched RPC, not frequently launched ones. No protocol use this type by default. Connections in http/1.0 are handled similarly as short connections.
+- pooled connection: Pick an unused connection from a pool before each RPC, return after completion. One connection carries at most one request at the same time. One client may have multiple connections to one server. http/1.1 and the protocols using nshead use this type by default.
 - single connection: all clients in one process has at most one connection to one server, one connection may carry multiple requests at the same time. The sequence of received responses does not need to be same as sending requests. This type is used by baidu_std, hulu_pbrpc, sofa_pbrpc by default.
 
 |                                          | short connection                         | pooled connection                       | single connection                        |
