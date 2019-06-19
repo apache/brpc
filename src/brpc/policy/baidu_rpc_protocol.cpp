@@ -317,12 +317,12 @@ void ProcessRpcRequest(InputMessageBase* msg_base) {
 
     SampledRequest* sample = AskToBeSampled();
     if (sample) {
-        sample->set_service_name(request_meta.service_name());
-        sample->set_method_name(request_meta.method_name());
-        sample->set_compress_type((CompressType)meta.compress_type());
-        sample->set_protocol_type(PROTOCOL_BAIDU_STD);
-        sample->set_attachment_size(meta.attachment_size());
-        sample->set_authentication_data(meta.authentication_data());
+        sample->meta.set_service_name(request_meta.service_name());
+        sample->meta.set_method_name(request_meta.method_name());
+        sample->meta.set_compress_type((CompressType)meta.compress_type());
+        sample->meta.set_protocol_type(PROTOCOL_BAIDU_STD);
+        sample->meta.set_attachment_size(meta.attachment_size());
+        sample->meta.set_authentication_data(meta.authentication_data());
         sample->request = msg->payload;
         sample->submit(start_parse_us);
     }

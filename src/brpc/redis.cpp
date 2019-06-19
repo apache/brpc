@@ -24,13 +24,12 @@ namespace brpc {
 DEFINE_bool(redis_verbose_crlf2space, false, "[DEBUG] Show \\r\\n as a space");
 
 RedisRequest::RedisRequest()
-
-    : RedisRequestBase() {
+    : ::google::protobuf::Message() {
     SharedCtor();
 }
 
 RedisRequest::RedisRequest(const RedisRequest& from)
-    : RedisRequestBase() {
+    : ::google::protobuf::Message() {
     SharedCtor();
     MergeFrom(from);
 }
@@ -46,14 +45,10 @@ RedisRequest::~RedisRequest() {
 }
 
 void RedisRequest::SharedDtor() {
-    if (this != default_instance_) {
-    }
 }
 
 void RedisRequest::SetCachedSize(int size) const {
-    GOOGLE_SAFE_CONCURRENT_WRITES_BEGIN();
     _cached_size_ = size;
-    GOOGLE_SAFE_CONCURRENT_WRITES_END();
 }
 
 RedisRequest* RedisRequest::New() const {
@@ -84,9 +79,7 @@ void RedisRequest::SerializeWithCachedSizes(
 
 int RedisRequest::ByteSize() const {
     int total_size =  _buf.size();
-    GOOGLE_SAFE_CONCURRENT_WRITES_BEGIN();
     _cached_size_ = total_size;
-    GOOGLE_SAFE_CONCURRENT_WRITES_END();
     return total_size;
 }
 
@@ -206,6 +199,22 @@ bool RedisRequest::SerializeTo(butil::IOBuf* buf) const {
     return true;
 }
 
+const ::google::protobuf::Descriptor* RedisRequest::descriptor() {
+    return _base.GetDescriptor();
+}
+
+const RedisRequest& RedisRequest::default_instance() {
+    static RedisRequest req;
+    return req;
+}
+
+::google::protobuf::Metadata RedisRequest::GetMetadata() const {
+    ::google::protobuf::Metadata metadata;
+    metadata.descriptor = _base.GetDescriptor();
+    metadata.reflection = _base.GetReflection();
+    return metadata;
+}
+
 void RedisRequest::Print(std::ostream& os) const {
     butil::IOBuf cp = _buf;
     butil::IOBuf seg;
@@ -232,12 +241,12 @@ std::ostream& operator<<(std::ostream& os, const RedisRequest& r) {
 }
 
 RedisResponse::RedisResponse()
-    : RedisResponseBase() {
+    : ::google::protobuf::Message() {
     SharedCtor();
 }
 
 RedisResponse::RedisResponse(const RedisResponse& from)
-    : RedisResponseBase() {
+    : ::google::protobuf::Message() {
     SharedCtor();
     MergeFrom(from);
 }
@@ -253,8 +262,6 @@ RedisResponse::~RedisResponse() {
 }
 
 void RedisResponse::SharedDtor() {
-    if (this != default_instance_) {
-    }
 }
 
 void RedisResponse::SetCachedSize(int size) const {
@@ -361,6 +368,22 @@ void RedisResponse::Swap(RedisResponse* other) {
         std::swap(_nreply, other->_nreply);
         std::swap(_cached_size_, other->_cached_size_);
     }
+}
+
+const ::google::protobuf::Descriptor* RedisResponse::descriptor() {
+    return _base.GetDescriptor();
+}
+
+const RedisResponse& RedisResponse::default_instance() {
+    static RedisResponse res;
+    return res;
+}
+
+::google::protobuf::Metadata RedisResponse::GetMetadata() const {
+    ::google::protobuf::Metadata metadata;
+    metadata.descriptor = _base.GetDescriptor();
+    metadata.reflection = _base.GetReflection();
+    return metadata;
 }
 
 // ===================================================================

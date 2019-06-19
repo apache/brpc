@@ -19,6 +19,7 @@
 
 #include <string>
 
+#include <google/protobuf/message.h>
 #include <google/protobuf/generated_message_reflection.h>   // dynamic_cast_if_available
 #include <google/protobuf/reflection_ops.h>     // ReflectionOps::Merge
 
@@ -42,7 +43,7 @@ namespace brpc {
 //   if (!cntl.Failed()) {
 //       LOG(INFO) << response.reply(0);
 //   }
-class RedisRequest : public RedisRequestBase {
+class RedisRequest : public ::google::protobuf::Message {
 public:
     RedisRequest();
     virtual ~RedisRequest();
@@ -119,6 +120,10 @@ public:
         ::google::protobuf::io::CodedOutputStream* output) const;
     ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const;
     int GetCachedSize() const { return _cached_size_; }
+
+    static const ::google::protobuf::Descriptor* descriptor();
+    static const RedisRequest& default_instance();
+    ::google::protobuf::Metadata GetMetadata() const;
     
     void Print(std::ostream&) const;
 
@@ -132,12 +137,13 @@ private:
     bool _has_error;  // previous AddCommand had error
     butil::IOBuf _buf;  // the serialized request.
     mutable int _cached_size_;  // ByteSize
+    static RedisRequestBase _base;
 };
 
 // Response from Redis.
 // Notice that a RedisResponse instance may contain multiple replies
 // due to pipelining.
-class RedisResponse : public RedisResponseBase {
+class RedisResponse : public ::google::protobuf::Message {
 public:
     RedisResponse();
     virtual ~RedisResponse();
@@ -185,6 +191,10 @@ public:
     ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const;
     int GetCachedSize() const { return _cached_size_; }
 
+    static const ::google::protobuf::Descriptor* descriptor();
+    static const RedisResponse& default_instance();
+    ::google::protobuf::Metadata GetMetadata() const;
+
 private:
     void SharedCtor();
     void SharedDtor();
@@ -195,6 +205,7 @@ private:
     butil::Arena _arena;
     int _nreply;
     mutable int _cached_size_;
+    static RedisResponseBase _base;
 };
 
 std::ostream& operator<<(std::ostream& os, const RedisRequest&);

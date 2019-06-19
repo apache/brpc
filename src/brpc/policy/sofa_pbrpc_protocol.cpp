@@ -322,9 +322,9 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
 
     SampledRequest* sample = AskToBeSampled();
     if (sample) {
-        sample->set_method_name(meta.method());
-        sample->set_compress_type(req_cmp_type);
-        sample->set_protocol_type(PROTOCOL_SOFA_PBRPC);
+        sample->meta.set_method_name(meta.method());
+        sample->meta.set_compress_type(req_cmp_type);
+        sample->meta.set_protocol_type(PROTOCOL_SOFA_PBRPC);
         sample->request = msg->payload;
         sample->submit(start_parse_us);
     }

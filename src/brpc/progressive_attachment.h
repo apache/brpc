@@ -17,6 +17,7 @@
 #ifndef BRPC_PROGRESSIVE_ATTACHMENT_H
 #define BRPC_PROGRESSIVE_ATTACHMENT_H
 
+#include <google/protobuf/stubs/callback.h>
 #include "butil/atomicops.h"
 #include "butil/iobuf.h"
 #include "butil/endpoint.h"       // butil::EndPoint

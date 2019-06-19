@@ -345,15 +345,15 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
     const CompressType req_cmp_type = Hulu2CompressType((HuluCompressType)meta.compress_type());
     SampledRequest* sample = AskToBeSampled();
     if (sample) {
-        sample->set_service_name(meta.service_name());
-        sample->set_method_index(meta.method_index());
-        sample->set_compress_type(req_cmp_type);
-        sample->set_protocol_type(PROTOCOL_HULU_PBRPC);
-        sample->set_user_data(meta.user_data());
+        sample->meta.set_service_name(meta.service_name());
+        sample->meta.set_method_index(meta.method_index());
+        sample->meta.set_compress_type(req_cmp_type);
+        sample->meta.set_protocol_type(PROTOCOL_HULU_PBRPC);
+        sample->meta.set_user_data(meta.user_data());
         if (meta.has_user_message_size()
             && static_cast<size_t>(meta.user_message_size()) < msg->payload.size()) {
             size_t attachment_size = msg->payload.size() - meta.user_message_size();
-            sample->set_attachment_size(attachment_size);
+            sample->meta.set_attachment_size(attachment_size);
         }
         sample->request = msg->payload;
         sample->submit(start_parse_us);
