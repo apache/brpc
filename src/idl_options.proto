@@ -1,8 +1,5 @@
 syntax="proto2";
 // mcpack2pb - Make protobuf be front-end of mcpack/compack
-// Copyright (c) 2015 Baidu, Inc.
-// Author: Ge,Jun (gejun@baidu.com)
-// Date: Mon Oct 19 17:17:36 CST 2015
 
 import "google/protobuf/descriptor.proto";
 
