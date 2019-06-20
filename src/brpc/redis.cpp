@@ -16,7 +16,7 @@
 
 #include <google/protobuf/reflection_ops.h>                 // ReflectionOps::Merge
 #include <gflags/gflags.h>
-#include <butil/status.h>
+#include "butil/status.h"
 #include "brpc/redis.h"
 #include "brpc/redis_command.h"
 

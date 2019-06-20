@@ -17,10 +17,7 @@
 #ifndef BRPC_REDIS_H
 #define BRPC_REDIS_H
 
-#include <string>
-
 #include <google/protobuf/message.h>
-
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
 #include "butil/arena.h"
@@ -193,7 +190,9 @@ public:
 
     static const ::google::protobuf::Descriptor* descriptor();
     static const RedisResponse& default_instance();
-    ::google::protobuf::Metadata GetMetadata() const;
+
+protected:
+    ::google::protobuf::Metadata GetMetadata() const override;
 
 private:
     void SharedCtor();

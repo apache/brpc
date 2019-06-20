@@ -18,7 +18,7 @@
 #define BRPC_MEMCACHE_H
 
 #include <string>
-#include "google/protobuf/message.h"
+#include <google/protobuf/message.h>
 
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"

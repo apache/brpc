@@ -17,8 +17,6 @@
 #ifndef BRPC_NSHEAD_MESSAGE_H
 #define BRPC_NSHEAD_MESSAGE_H
 
-#include <string>
-
 #include <google/protobuf/message.h>
 #include "brpc/nshead.h"                     // nshead_t
 #include "butil/iobuf.h"                     // IOBuf

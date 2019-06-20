@@ -17,8 +17,6 @@
 #ifndef BRPC_THRIFT_MESSAGE_H
 #define BRPC_THRIFT_MESSAGE_H
 
-#include <functional>
-#include <string>
 #include <google/protobuf/message.h>
 #include "butil/iobuf.h"
 #include "butil/class_name.h"

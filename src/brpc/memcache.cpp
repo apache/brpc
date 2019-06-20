@@ -15,7 +15,6 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 
 #include <algorithm>
-#include <google/protobuf/generated_message_reflection.h>
 #include <google/protobuf/reflection_ops.h>
 #include <google/protobuf/wire_format.h>
 #include "butil/string_printf.h"
