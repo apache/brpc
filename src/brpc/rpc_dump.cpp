@@ -31,7 +31,6 @@ namespace bvar {
 std::string read_command_name();
 }
 
-
 namespace brpc {
 
 DECLARE_uint64(max_body_size);

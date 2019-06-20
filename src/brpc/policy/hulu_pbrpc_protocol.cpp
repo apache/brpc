@@ -639,13 +639,13 @@ void PackHuluRequest(butil::IOBuf* req_buf,
         meta.set_service_name(method->service()->name());
         meta.set_method_index(method->index());
         meta.set_compress_type(CompressType2Hulu(cntl->request_compress_type()));
-    } else if (cntl->rpc_dump_meta()) {
+    } else if (cntl->sampled_request()) {
         // Replaying. Keep service-name as the one seen by server.
-        meta.set_service_name(cntl->rpc_dump_meta()->service_name());
-        meta.set_method_index(cntl->rpc_dump_meta()->method_index());
+        meta.set_service_name(cntl->sampled_request()->meta.service_name());
+        meta.set_method_index(cntl->sampled_request()->meta.method_index());
         meta.set_compress_type(
-            CompressType2Hulu(cntl->rpc_dump_meta()->compress_type()));
-        meta.set_user_data(cntl->rpc_dump_meta()->user_data());
+            CompressType2Hulu(cntl->sampled_request()->meta.compress_type()));
+        meta.set_user_data(cntl->sampled_request()->meta.user_data());
     } else {
         return cntl->SetFailed(ENOMETHOD, "method is NULL");
     }

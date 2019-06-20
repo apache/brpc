@@ -147,21 +147,21 @@ static void* replay_thread(void* arg) {
                 continue;
             }
             brpc::Channel* chan =
-                chan_group->channel(sample->protocol_type());
+                chan_group->channel(sample->meta.protocol_type());
             if (chan == NULL) {
                 LOG(ERROR) << "No channel on protocol="
-                           << sample->protocol_type();
+                           << sample->meta.protocol_type();
                 continue;
             }
             
             brpc::Controller* cntl = new brpc::Controller;
             req.Clear();
             
-            cntl->reset_rpc_dump_meta(sample_guard.release());
-            if (sample->attachment_size() > 0) {
+            cntl->reset_sampled_request(sample_guard.release());
+            if (sample->meta.attachment_size() > 0) {
                 sample->request.cutn(
                     &req.serialized_data(),
-                    sample->request.size() - sample->attachment_size());
+                    sample->request.size() - sample->meta.attachment_size());
                 cntl->request_attachment() = sample->request.movable();
             } else {
                 req.serialized_data() = sample->request.movable();

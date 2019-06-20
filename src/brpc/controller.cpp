@@ -41,7 +41,7 @@
 #include "brpc/retry_policy.h"
 #include "brpc/stream_impl.h"
 #include "brpc/policy/streaming_rpc_protocol.h" // FIXME
-#include "brpc/rpc_dump.pb.h"
+#include "brpc/rpc_dump.h"
 #include "brpc/details/usercode_backup_pool.h"  // RunUserCode
 #include "brpc/mongo_service_adaptor.h"
 
@@ -159,7 +159,7 @@ void Controller::ResetNonPods() {
         _server->_session_local_data_pool->Return(_session_local_data);
     }
     _mongo_session_data.reset();
-    delete _rpc_dump_meta;
+    delete _sampled_request;
 
     if (!is_used_by_rpc() && _correlation_id != INVALID_BTHREAD_ID) {
         CHECK_NE(EPERM, bthread_id_cancel(_correlation_id));
@@ -213,7 +213,7 @@ void Controller::ResetPods() {
     _server = NULL;
     _oncancel_id = INVALID_BTHREAD_ID;
     _auth_context = NULL;
-    _rpc_dump_meta = NULL;
+    _sampled_request = NULL;
     _request_protocol = PROTOCOL_UNKNOWN;
     _max_retry = UNSET_MAGIC_NUM;
     _retry_policy = NULL;
@@ -1331,9 +1331,9 @@ void WebEscape(const std::string& source, std::string* output) {
     }
 }
 
-void Controller::reset_rpc_dump_meta(RpcDumpMeta* meta) { 
-    delete _rpc_dump_meta;
-    _rpc_dump_meta = meta;
+void Controller::reset_sampled_request(SampledRequest* req) { 
+    delete _sampled_request;
+    _sampled_request = req;
 }
 
 void Controller::set_stream_creator(StreamCreator* sc) {
