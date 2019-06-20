@@ -14,117 +14,24 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#define INTERNAL_SUPPRESS_PROTOBUF_FIELD_DEPRECATION
 #include <algorithm>
-#include <google/protobuf/stubs/once.h>
-#include <google/protobuf/io/coded_stream.h>
-#include <google/protobuf/wire_format_lite_inl.h>
-#include <google/protobuf/descriptor.h>
+#include <google/protobuf/generated_message_reflection.h>
 #include <google/protobuf/reflection_ops.h>
 #include <google/protobuf/wire_format.h>
 #include "butil/string_printf.h"
 #include "butil/macros.h"
 #include "butil/sys_byteorder.h"
-#include "brpc/controller.h"
+#include "butil/logging.h"
 #include "brpc/memcache.h"
 #include "brpc/policy/memcache_binary_header.h"
 
-
 namespace brpc {
 
-// Internal implementation detail -- do not call these.
-void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto_impl();
-void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto();
-void protobuf_AssignDesc_baidu_2frpc_2fmemcache_5fbase_2eproto();
-void protobuf_ShutdownFile_baidu_2frpc_2fmemcache_5fbase_2eproto();
-
-namespace {
-
-const ::google::protobuf::Descriptor* MemcacheRequest_descriptor_ = NULL;
-const ::google::protobuf::Descriptor* MemcacheResponse_descriptor_ = NULL;
-
-}  // namespace
-
-void protobuf_AssignDesc_baidu_2frpc_2fmemcache_5fbase_2eproto() {
-    protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto();
-    const ::google::protobuf::FileDescriptor* file =
-        ::google::protobuf::DescriptorPool::generated_pool()->FindFileByName(
-            "baidu/rpc/memcache_base.proto");
-    GOOGLE_CHECK(file != NULL);
-    MemcacheRequest_descriptor_ = file->message_type(0);
-    MemcacheResponse_descriptor_ = file->message_type(1);
-}
-
-namespace {
-
-GOOGLE_PROTOBUF_DECLARE_ONCE(protobuf_AssignDescriptors_once_);
-inline void protobuf_AssignDescriptorsOnce() {
-    ::google::protobuf::GoogleOnceInit(&protobuf_AssignDescriptors_once_,
-                                       &protobuf_AssignDesc_baidu_2frpc_2fmemcache_5fbase_2eproto);
-}
-
-void protobuf_RegisterTypes(const ::std::string&) {
-    protobuf_AssignDescriptorsOnce();
-    ::google::protobuf::MessageFactory::InternalRegisterGeneratedMessage(
-        MemcacheRequest_descriptor_, &MemcacheRequest::default_instance());
-    ::google::protobuf::MessageFactory::InternalRegisterGeneratedMessage(
-        MemcacheResponse_descriptor_, &MemcacheResponse::default_instance());
-}
-
-}  // namespace
-
-void protobuf_ShutdownFile_baidu_2frpc_2fmemcache_5fbase_2eproto() {
-    delete MemcacheRequest::default_instance_;
-    delete MemcacheResponse::default_instance_;
-}
-
-void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto_impl() {
-    GOOGLE_PROTOBUF_VERIFY_VERSION;
-
-#if GOOGLE_PROTOBUF_VERSION >= 3002000
-    ::google::protobuf::internal::InitProtobufDefaults();
-#else
-    ::google::protobuf::protobuf_AddDesc_google_2fprotobuf_2fdescriptor_2eproto();
-#endif
-    ::google::protobuf::DescriptorPool::InternalAddGeneratedFile(
-        "\n\035baidu/rpc/memcache_base.proto\022\tbaidu.r"
-        "pc\032 google/protobuf/descriptor.proto\"\021\n\017"
-        "MemcacheRequest\"\022\n\020MemcacheResponseB\003\200\001\001", 120);
-    ::google::protobuf::MessageFactory::InternalRegisterGeneratedFile(
-        "baidu/rpc/memcache_base.proto", &protobuf_RegisterTypes);
-    MemcacheRequest::default_instance_ = new MemcacheRequest();
-    MemcacheResponse::default_instance_ = new MemcacheResponse();
-    MemcacheRequest::default_instance_->InitAsDefaultInstance();
-    MemcacheResponse::default_instance_->InitAsDefaultInstance();
-    ::google::protobuf::internal::OnShutdown(&protobuf_ShutdownFile_baidu_2frpc_2fmemcache_5fbase_2eproto);
-}
-
-GOOGLE_PROTOBUF_DECLARE_ONCE(protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto_once);
-void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto() {
-    ::google::protobuf::GoogleOnceInit(
-        &protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto_once,
-        &protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto_impl);
-}
-
-// Force AddDescriptors() to be called at static initialization time.
-struct StaticDescriptorInitializer_baidu_2frpc_2fmemcache_5fbase_2eproto {
-    StaticDescriptorInitializer_baidu_2frpc_2fmemcache_5fbase_2eproto() {
-        protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto();
-    }
-} static_descriptor_initializer_baidu_2frpc_2fmemcache_5fbase_2eproto_;
-
-
-// ===================================================================
-
-#ifndef _MSC_VER
-#endif  // !_MSC_VER
+MemcacheRequestBase MemcacheRequest::_base;
 
 MemcacheRequest::MemcacheRequest()
     : ::google::protobuf::Message() {
     SharedCtor();
-}
-
-void MemcacheRequest::InitAsDefaultInstance() {
 }
 
 MemcacheRequest::MemcacheRequest(const MemcacheRequest& from)
@@ -143,28 +50,20 @@ MemcacheRequest::~MemcacheRequest() {
 }
 
 void MemcacheRequest::SharedDtor() {
-    if (this != default_instance_) {
-    }
 }
 
 void MemcacheRequest::SetCachedSize(int size) const {
-    GOOGLE_SAFE_CONCURRENT_WRITES_BEGIN();
     _cached_size_ = size;
-    GOOGLE_SAFE_CONCURRENT_WRITES_END();
 }
+
 const ::google::protobuf::Descriptor* MemcacheRequest::descriptor() {
-    protobuf_AssignDescriptorsOnce();
-    return MemcacheRequest_descriptor_;
+    return _base.GetDescriptor();
 }
 
 const MemcacheRequest& MemcacheRequest::default_instance() {
-    if (default_instance_ == NULL) {
-        protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto();
-    }
-    return *default_instance_;
+    static MemcacheRequest req;
+    return req;
 }
-
-MemcacheRequest* MemcacheRequest::default_instance_ = NULL;
 
 MemcacheRequest* MemcacheRequest::New() const {
     return new MemcacheRequest;
@@ -230,9 +129,7 @@ void MemcacheRequest::SerializeWithCachedSizes(
 
 int MemcacheRequest::ByteSize() const {
     int total_size =  _buf.size();
-    GOOGLE_SAFE_CONCURRENT_WRITES_BEGIN();
     _cached_size_ = total_size;
-    GOOGLE_SAFE_CONCURRENT_WRITES_END();
     return total_size;
 }
 
@@ -278,24 +175,17 @@ void MemcacheRequest::Swap(MemcacheRequest* other) {
 }
 
 ::google::protobuf::Metadata MemcacheRequest::GetMetadata() const {
-    protobuf_AssignDescriptorsOnce();
     ::google::protobuf::Metadata metadata;
-    metadata.descriptor = MemcacheRequest_descriptor_;
-    metadata.reflection = NULL;
+    metadata.descriptor = _base.GetDescriptor();
+    metadata.reflection = _base.GetReflection();
     return metadata;
 }
 
-// ===================================================================
-
-#ifndef _MSC_VER
-#endif  // !_MSC_VER
+MemcacheResponseBase MemcacheResponse::_base;
 
 MemcacheResponse::MemcacheResponse()
     : ::google::protobuf::Message() {
     SharedCtor();
-}
-
-void MemcacheResponse::InitAsDefaultInstance() {
 }
 
 MemcacheResponse::MemcacheResponse(const MemcacheResponse& from)
@@ -313,28 +203,19 @@ MemcacheResponse::~MemcacheResponse() {
 }
 
 void MemcacheResponse::SharedDtor() {
-    if (this != default_instance_) {
-    }
 }
 
 void MemcacheResponse::SetCachedSize(int size) const {
-    GOOGLE_SAFE_CONCURRENT_WRITES_BEGIN();
     _cached_size_ = size;
-    GOOGLE_SAFE_CONCURRENT_WRITES_END();
 }
 const ::google::protobuf::Descriptor* MemcacheResponse::descriptor() {
-    protobuf_AssignDescriptorsOnce();
-    return MemcacheResponse_descriptor_;
+    return _base.GetDescriptor();
 }
 
 const MemcacheResponse& MemcacheResponse::default_instance() {
-    if (default_instance_ == NULL) {
-        protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto();
-    }
-    return *default_instance_;
+    static MemcacheResponse res;
+    return res;
 }
-
-MemcacheResponse* MemcacheResponse::default_instance_ = NULL;
 
 MemcacheResponse* MemcacheResponse::New() const {
     return new MemcacheResponse;
@@ -377,9 +258,7 @@ void MemcacheResponse::SerializeWithCachedSizes(
 
 int MemcacheResponse::ByteSize() const {
     int total_size = _buf.size();
-    GOOGLE_SAFE_CONCURRENT_WRITES_BEGIN();
     _cached_size_ = total_size;
-    GOOGLE_SAFE_CONCURRENT_WRITES_END();
     return total_size;
 }
 
@@ -426,10 +305,9 @@ void MemcacheResponse::Swap(MemcacheResponse* other) {
 }
 
 ::google::protobuf::Metadata MemcacheResponse::GetMetadata() const {
-    protobuf_AssignDescriptorsOnce();
     ::google::protobuf::Metadata metadata;
-    metadata.descriptor = MemcacheResponse_descriptor_;
-    metadata.reflection = NULL;
+    metadata.descriptor = _base.GetDescriptor();
+    metadata.reflection = _base.GetReflection();
     return metadata;
 }
 

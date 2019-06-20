@@ -17,21 +17,11 @@
 #ifndef BRPC_SERIALIZED_REQUEST_H
 #define BRPC_SERIALIZED_REQUEST_H
 
-#include <string>
-#include <google/protobuf/stubs/common.h>
-#include <google/protobuf/generated_message_util.h>
-#include <google/protobuf/repeated_field.h>
-#include <google/protobuf/extension_set.h>
-#include <google/protobuf/generated_message_reflection.h>
+#include <google/protobuf/message.h>
 #include "butil/iobuf.h"
-
+#include "brpc/proto_base.pb.h"
 
 namespace brpc {
-
-// Internal implementation detail -- do not call these.
-void protobuf_AddDesc_baidu_2frpc_2fserialized_5frequest_2eproto();
-void protobuf_AssignDesc_baidu_2frpc_2fserialized_5frequest_2eproto();
-void protobuf_ShutdownFile_baidu_2frpc_2fserialized_5frequest_2eproto();
 
 class SerializedRequest : public ::google::protobuf::Message {
 public:
@@ -59,9 +49,11 @@ public:
     bool IsInitialized() const;
     int ByteSize() const;
     int GetCachedSize() const { return (int)_serialized.size(); }
-    ::google::protobuf::Metadata GetMetadata() const;
     butil::IOBuf& serialized_data() { return _serialized; }
     const butil::IOBuf& serialized_data() const { return _serialized; }
+
+protected:
+    ::google::protobuf::Metadata GetMetadata() const;
     
 private:
     bool MergePartialFromCodedStream(
@@ -78,13 +70,7 @@ private:
   
 private:
     butil::IOBuf _serialized;
-  
-friend void protobuf_AddDesc_baidu_2frpc_2fserialized_5frequest_2eproto();
-friend void protobuf_AssignDesc_baidu_2frpc_2fserialized_5frequest_2eproto();
-friend void protobuf_ShutdownFile_baidu_2frpc_2fserialized_5frequest_2eproto();
-  
-    void InitAsDefaultInstance();
-    static SerializedRequest* default_instance_;
+    static SerializedRequestBase _base;
 };
 
 } // namespace brpc

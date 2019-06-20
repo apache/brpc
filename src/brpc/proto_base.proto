@@ -1,0 +1,18 @@
+syntax="proto2";
+import "google/protobuf/descriptor.proto";
+
+package brpc;
+
+message RedisRequestBase {}
+message RedisResponseBase {}
+
+message EspMessageBase {}
+
+message MemcacheRequestBase {}
+message MemcacheResponseBase {}
+
+message NsheadMessageBase {}
+
+message SerializedRequestBase {}
+
+message ThriftFramedMessageBase {}

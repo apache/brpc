@@ -14,102 +14,20 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#define INTERNAL_SUPPRESS_PROTOBUF_FIELD_DEPRECATION
-#include "brpc/nshead_message.h"
-
 #include <algorithm>
-#include "butil/logging.h"
-
-#include <google/protobuf/stubs/once.h>
-#include <google/protobuf/io/coded_stream.h>
-#include <google/protobuf/wire_format_lite_inl.h>
-#include <google/protobuf/descriptor.h>
-#include <google/protobuf/reflection_ops.h>
+#include <google/protobuf/generated_message_reflection.h>   // dynamic_cast_if_available
+#include <google/protobuf/reflection_ops.h>                 // ReflectionOps::Merge
 #include <google/protobuf/wire_format.h>
-
+#include "brpc/nshead_message.h"
+#include "butil/logging.h"
 
 namespace brpc {
 
-namespace {
-const ::google::protobuf::Descriptor* NsheadMessage_descriptor_ = NULL;
-}  // namespace
-
-
-void protobuf_AssignDesc_baidu_2frpc_2fnshead_5fmessage_2eproto() {
-    protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto();
-    const ::google::protobuf::FileDescriptor* file =
-        ::google::protobuf::DescriptorPool::generated_pool()->FindFileByName(
-            "baidu/rpc/nshead_message.proto");
-    GOOGLE_CHECK(file != NULL);
-    NsheadMessage_descriptor_ = file->message_type(0);
-}
-
-namespace {
-
-GOOGLE_PROTOBUF_DECLARE_ONCE(protobuf_AssignDescriptors_once_);
-inline void protobuf_AssignDescriptorsOnce() {
-    ::google::protobuf::GoogleOnceInit(&protobuf_AssignDescriptors_once_,
-                                       &protobuf_AssignDesc_baidu_2frpc_2fnshead_5fmessage_2eproto);
-}
-
-void protobuf_RegisterTypes(const ::std::string&) {
-    protobuf_AssignDescriptorsOnce();
-    ::google::protobuf::MessageFactory::InternalRegisterGeneratedMessage(
-        NsheadMessage_descriptor_, &NsheadMessage::default_instance());
-}
-
-}  // namespace
-
-void protobuf_ShutdownFile_baidu_2frpc_2fnshead_5fmessage_2eproto() {
-    delete NsheadMessage::default_instance_;
-}
-
-void protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto_impl() {
-    GOOGLE_PROTOBUF_VERIFY_VERSION;
-
-#if GOOGLE_PROTOBUF_VERSION >= 3002000
-    ::google::protobuf::internal::InitProtobufDefaults();
-#else
-    ::google::protobuf::protobuf_AddDesc_google_2fprotobuf_2fdescriptor_2eproto();
-#endif
-    ::google::protobuf::DescriptorPool::InternalAddGeneratedFile(
-        "\n\036baidu/rpc/nshead_message.proto\022\tbaidu."
-        "rpc\032 google/protobuf/descriptor.proto\"\017\n"
-        "\rNsheadMessageB\003\200\001\001", 99);
-    ::google::protobuf::MessageFactory::InternalRegisterGeneratedFile(
-        "baidu/rpc/nshead_message.proto", &protobuf_RegisterTypes);
-    NsheadMessage::default_instance_ = new NsheadMessage();
-    NsheadMessage::default_instance_->InitAsDefaultInstance();
-    ::google::protobuf::internal::OnShutdown(
-        &protobuf_ShutdownFile_baidu_2frpc_2fnshead_5fmessage_2eproto);
-}
-
-GOOGLE_PROTOBUF_DECLARE_ONCE(protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto_once);
-void protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto() {
-    ::google::protobuf::GoogleOnceInit(
-        &protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto_once,
-        &protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto_impl);
-}
-
-// Force AddDescriptors() to be called at static initialization time.
-struct StaticDescriptorInitializer_baidu_2frpc_2fnshead_5fmessage_2eproto {
-    StaticDescriptorInitializer_baidu_2frpc_2fnshead_5fmessage_2eproto() {
-        protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto();
-    }
-} static_descriptor_initializer_baidu_2frpc_2fnshead_5fmessage_2eproto_;
-
-
-// ===================================================================
-
-#ifndef _MSC_VER
-#endif  // !_MSC_VER
+NsheadMessageBase NsheadMessage::_base;
 
 NsheadMessage::NsheadMessage()
     : ::google::protobuf::Message() {
     SharedCtor();
-}
-
-void NsheadMessage::InitAsDefaultInstance() {
 }
 
 NsheadMessage::NsheadMessage(const NsheadMessage& from)
@@ -127,22 +45,16 @@ NsheadMessage::~NsheadMessage() {
 }
 
 void NsheadMessage::SharedDtor() {
-    if (this != default_instance_) {
-    }
 }
 
 const ::google::protobuf::Descriptor* NsheadMessage::descriptor() {
-    protobuf_AssignDescriptorsOnce();
-    return NsheadMessage_descriptor_;
+    return _base.GetDescriptor();
 }
 
 const NsheadMessage& NsheadMessage::default_instance() {
-    if (default_instance_ == NULL)
-        protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto();
-    return *default_instance_;
+    static NsheadMessage message;
+    return message;
 }
-
-NsheadMessage* NsheadMessage::default_instance_ = NULL;
 
 NsheadMessage* NsheadMessage::New() const {
     return new NsheadMessage;
@@ -226,10 +138,9 @@ void NsheadMessage::Swap(NsheadMessage* other) {
 }
 
 ::google::protobuf::Metadata NsheadMessage::GetMetadata() const {
-    protobuf_AssignDescriptorsOnce();
     ::google::protobuf::Metadata metadata;
-    metadata.descriptor = NsheadMessage_descriptor_;
-    metadata.reflection = NULL;
+    metadata.descriptor = _base.GetDescriptor();
+    metadata.reflection = _base.GetReflection();
     return metadata;
 }
 

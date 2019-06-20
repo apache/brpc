@@ -14,6 +14,8 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
+#include <google/protobuf/generated_message_reflection.h>   // dynamic_cast_if_available
+#include <google/protobuf/reflection_ops.h>                 // ReflectionOps::Merge
 #include <gflags/gflags.h>
 #include <butil/status.h>
 #include "brpc/redis.h"
@@ -22,6 +24,8 @@
 namespace brpc {
 
 DEFINE_bool(redis_verbose_crlf2space, false, "[DEBUG] Show \\r\\n as a space");
+
+RedisRequestBase RedisRequest::_base;
 
 RedisRequest::RedisRequest()
     : ::google::protobuf::Message() {
@@ -239,6 +243,8 @@ std::ostream& operator<<(std::ostream& os, const RedisRequest& r) {
     r.Print(os);
     return os;
 }
+
+RedisResponseBase RedisResponse::_base;
 
 RedisResponse::RedisResponse()
     : ::google::protobuf::Message() {

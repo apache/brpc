@@ -18,15 +18,11 @@
 #define BRPC_MEMCACHE_H
 
 #include <string>
-#include <google/protobuf/stubs/common.h>
-#include <google/protobuf/generated_message_util.h>
-#include <google/protobuf/repeated_field.h>
-#include <google/protobuf/extension_set.h>
-#include <google/protobuf/generated_message_reflection.h>
-#include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/message.h"
 
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
+#include "brpc/proto_base.pb.h"
 
 namespace brpc {
 
@@ -87,6 +83,9 @@ public:
 
     int pipelined_count() const { return _pipelined_count; }
 
+    butil::IOBuf& raw_buffer() { return _buf; }
+    const butil::IOBuf& raw_buffer() const { return _buf; }
+
     // Protobuf methods.
     MemcacheRequest* New() const;
     void CopyFrom(const ::google::protobuf::Message& from);
@@ -106,10 +105,9 @@ public:
     
     static const ::google::protobuf::Descriptor* descriptor();
     static const MemcacheRequest& default_instance();
-    ::google::protobuf::Metadata GetMetadata() const;
 
-    butil::IOBuf& raw_buffer() { return _buf; }
-    const butil::IOBuf& raw_buffer() const { return _buf; }
+protected:
+    ::google::protobuf::Metadata GetMetadata() const override;
     
 private:
     bool GetOrDelete(uint8_t command, const butil::StringPiece& key);
@@ -127,14 +125,7 @@ private:
     int _pipelined_count;
     butil::IOBuf _buf;
     mutable int _cached_size_;
-
-friend void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto_impl();
-friend void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto();
-friend void protobuf_AssignDesc_baidu_2frpc_2fmemcache_5fbase_2eproto();
-friend void protobuf_ShutdownFile_baidu_2frpc_2fmemcache_5fbase_2eproto();
-  
-    void InitAsDefaultInstance();
-    static MemcacheRequest* default_instance_;
+    static MemcacheRequestBase _base;
 };
 
 // Response from Memcache.
@@ -202,6 +193,9 @@ public:
     bool PopDecrement(uint64_t* new_value, uint64_t* cas_value);
     bool PopTouch();
     bool PopVersion(std::string* version);
+    butil::IOBuf& raw_buffer() { return _buf; }
+    const butil::IOBuf& raw_buffer() const { return _buf; }
+    static const char* status_str(Status);
       
     // implements Message ----------------------------------------------
   
@@ -223,12 +217,9 @@ public:
 
     static const ::google::protobuf::Descriptor* descriptor();
     static const MemcacheResponse& default_instance();
+
+protected:
     ::google::protobuf::Metadata GetMetadata() const;
-
-    butil::IOBuf& raw_buffer() { return _buf; }
-    const butil::IOBuf& raw_buffer() const { return _buf; }
-
-    static const char* status_str(Status);
 
 private:
     bool PopCounter(uint8_t command, uint64_t* new_value, uint64_t* cas_value);
@@ -242,13 +233,7 @@ private:
     butil::IOBuf _buf;
     mutable int _cached_size_;
 
-friend void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto_impl();
-friend void protobuf_AddDesc_baidu_2frpc_2fmemcache_5fbase_2eproto();
-friend void protobuf_AssignDesc_baidu_2frpc_2fmemcache_5fbase_2eproto();
-friend void protobuf_ShutdownFile_baidu_2frpc_2fmemcache_5fbase_2eproto();
-  
-    void InitAsDefaultInstance();
-    static MemcacheResponse* default_instance_;
+    static MemcacheResponseBase _base;
 };
 
 } // namespace brpc

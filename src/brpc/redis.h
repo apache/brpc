@@ -20,13 +20,11 @@
 #include <string>
 
 #include <google/protobuf/message.h>
-#include <google/protobuf/generated_message_reflection.h>   // dynamic_cast_if_available
-#include <google/protobuf/reflection_ops.h>     // ReflectionOps::Merge
 
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
 #include "butil/arena.h"
-#include "brpc/redis_base.pb.h"
+#include "brpc/proto_base.pb.h"
 #include "brpc/redis_reply.h"
 #include "brpc/parse_result.h"
 
@@ -123,9 +121,11 @@ public:
 
     static const ::google::protobuf::Descriptor* descriptor();
     static const RedisRequest& default_instance();
-    ::google::protobuf::Metadata GetMetadata() const;
     
     void Print(std::ostream&) const;
+
+protected:
+    ::google::protobuf::Metadata GetMetadata() const override;
 
 private:
     void SharedCtor();

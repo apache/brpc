@@ -1,7 +1,0 @@
-syntax="proto2";
-import "google/protobuf/descriptor.proto";
-
-package brpc;
-
-message RedisRequestBase {}
-message RedisResponseBase {}
