@@ -18,22 +18,18 @@
 #define BRPC_PROMETHEUS_METRICS_SERVICE_H
 
 #include "brpc/builtin_service.pb.h"
-#include "brpc/server.h"
 
 namespace brpc {
 
-class PrometheusMetricsService : public metrics {
+class PrometheusMetricsService : public brpc_metrics {
 public:
-    PrometheusMetricsService(Server* server)
-        : _server(server) {}
-
     void default_method(::google::protobuf::RpcController* cntl_base,
                         const ::brpc::MetricsRequest* request,
                         ::brpc::MetricsResponse* response,
                         ::google::protobuf::Closure* done) override;
-private:
-    Server* _server;
 };
+
+int DumpPrometheusMetricsToIOBuf(butil::IOBuf* output);
 
 } // namepace brpc
 

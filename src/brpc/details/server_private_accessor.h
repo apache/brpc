@@ -22,7 +22,6 @@
 #include "brpc/builtin/bad_method_service.h"
 #include "brpc/restful.h"
 
-
 namespace brpc {
 
 // A wrapper to access some private methods/fields of `Server'
@@ -97,7 +96,7 @@ public:
 
     RestfulMap* global_restful_map() const
     { return _server->_global_restful_map; }
-    
+
 private:
     const Server* _server;
 };
