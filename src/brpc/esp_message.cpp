@@ -14,6 +14,7 @@
 
 #include "esp_message.h"
 
+#include <google/protobuf/reflection_ops.h>                 // ReflectionOps::Merge
 #include <google/protobuf/wire_format.h>        // WireFormatLite::GetTagWireType
 
 namespace brpc {
@@ -90,10 +91,7 @@ int EspMessage::ByteSize() const {
 
 void EspMessage::MergeFrom(const ::google::protobuf::Message& from) {
     GOOGLE_CHECK_NE(&from, this);
-    const EspMessage* source =
-        ::google::protobuf::internal::dynamic_cast_if_available<const EspMessage*>(
-                &from);
-
+    const EspMessage* source = dynamic_cast<const EspMessage*>(&from);
     if (source == NULL) {
         ::google::protobuf::internal::ReflectionOps::Merge(from, this);
     } else {

@@ -14,7 +14,6 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#include <google/protobuf/generated_message_reflection.h>   // dynamic_cast_if_available
 #include "brpc/serialized_request.h"
 #include "butil/logging.h"
 
@@ -94,9 +93,7 @@ void SerializedRequest::MergeFrom(const SerializedRequest&) {
 
 void SerializedRequest::CopyFrom(const ::google::protobuf::Message& from) {
     if (&from == this) return;
-    const SerializedRequest* source =
-        ::google::protobuf::internal::dynamic_cast_if_available<const SerializedRequest*>(
-            &from);
+    const SerializedRequest* source = dynamic_cast<const SerializedRequest*>(&from);
     if (source == NULL) {
         CHECK(false) << "SerializedRequest can only CopyFrom SerializedRequest";
     } else {

@@ -14,7 +14,6 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#include <google/protobuf/generated_message_reflection.h>   // dynamic_cast_if_available
 #include <google/protobuf/reflection_ops.h>                 // ReflectionOps::Merge
 #include <gflags/gflags.h>
 #include <butil/status.h>
@@ -89,8 +88,7 @@ int RedisRequest::ByteSize() const {
 
 void RedisRequest::MergeFrom(const ::google::protobuf::Message& from) {
     GOOGLE_CHECK_NE(&from, this);
-    const RedisRequest* source =
-        ::google::protobuf::internal::dynamic_cast_if_available<const RedisRequest*>(&from);
+    const RedisRequest* source = dynamic_cast<const RedisRequest*>(&from);
     if (source == NULL) {
         ::google::protobuf::internal::ReflectionOps::Merge(from, this);
     } else {
@@ -308,8 +306,7 @@ int RedisResponse::ByteSize() const {
 
 void RedisResponse::MergeFrom(const ::google::protobuf::Message& from) {
     GOOGLE_CHECK_NE(&from, this);
-    const RedisResponse* source =
-        ::google::protobuf::internal::dynamic_cast_if_available<const RedisResponse*>(&from);
+    const RedisResponse* source = dynamic_cast<const RedisResponse*>(&from);
     if (source == NULL) {
         ::google::protobuf::internal::ReflectionOps::Merge(from, this);
     } else {

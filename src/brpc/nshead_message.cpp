@@ -15,7 +15,6 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 
 #include <algorithm>
-#include <google/protobuf/generated_message_reflection.h>   // dynamic_cast_if_available
 #include <google/protobuf/reflection_ops.h>                 // ReflectionOps::Merge
 #include <google/protobuf/wire_format.h>
 #include "brpc/nshead_message.h"
@@ -94,9 +93,7 @@ int NsheadMessage::ByteSize() const {
 
 void NsheadMessage::MergeFrom(const ::google::protobuf::Message& from) {
     GOOGLE_CHECK_NE(&from, this);
-    const NsheadMessage* source =
-        ::google::protobuf::internal::dynamic_cast_if_available<const NsheadMessage*>(
-            &from);
+    const NsheadMessage* source = dynamic_cast<const NsheadMessage*>(&from);
     if (source == NULL) {
         LOG(ERROR) << "Can only merge from NsheadMessage";
         return;

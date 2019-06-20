@@ -135,8 +135,7 @@ int MemcacheRequest::ByteSize() const {
 
 void MemcacheRequest::MergeFrom(const ::google::protobuf::Message& from) {
     GOOGLE_CHECK_NE(&from, this);
-    const MemcacheRequest* source =
-        ::google::protobuf::internal::dynamic_cast_if_available<const MemcacheRequest*>(&from);
+    const MemcacheRequest* source = dynamic_cast<const MemcacheRequest*>(&from);
     if (source == NULL) {
         ::google::protobuf::internal::ReflectionOps::Merge(from, this);
     } else {
@@ -264,8 +263,7 @@ int MemcacheResponse::ByteSize() const {
 
 void MemcacheResponse::MergeFrom(const ::google::protobuf::Message& from) {
     GOOGLE_CHECK_NE(&from, this);
-    const MemcacheResponse* source =
-        ::google::protobuf::internal::dynamic_cast_if_available<const MemcacheResponse*>(&from);
+    const MemcacheResponse* source = dynamic_cast<const MemcacheResponse*>(&from);
     if (source == NULL) {
         ::google::protobuf::internal::ReflectionOps::Merge(from, this);
     } else {
