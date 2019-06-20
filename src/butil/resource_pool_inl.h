@@ -164,8 +164,9 @@ public:
         if (_cur_free.nfree) {                                          \
             const ResourceId<T> free_id = _cur_free.ids[--_cur_free.nfree]; \
             *id = free_id;                                              \
-            BAIDU_RESOURCE_POOL_FREE_ITEM_NUM_SUB1;                   \
-            return unsafe_address_resource(free_id);                    \
+            T* p = new (unsafe_address_resource(free_id)) T CTOR_ARGS;  \
+            BAIDU_RESOURCE_POOL_FREE_ITEM_NUM_SUB1;                     \
+            return p;                                                   \
         }                                                               \
         /* Fetch a FreeChunk from global.                               \
            TODO: Popping from _free needs to copy a FreeChunk which is  \
@@ -174,8 +175,9 @@ public:
             --_cur_free.nfree;                                          \
             const ResourceId<T> free_id =  _cur_free.ids[_cur_free.nfree]; \
             *id = free_id;                                              \
-            BAIDU_RESOURCE_POOL_FREE_ITEM_NUM_SUB1;                   \
-            return unsafe_address_resource(free_id);                    \
+            T* p = new (unsafe_address_resource(free_id)) T CTOR_ARGS;  \
+            BAIDU_RESOURCE_POOL_FREE_ITEM_NUM_SUB1;                     \
+            return p;                                                   \
         }                                                               \
         /* Fetch memory from local block */                             \
         if (_cur_block && _cur_block->nitem < BLOCK_NITEM) {            \

@@ -146,14 +146,16 @@ public:
         /* Fetch local free ptr */                                      \
         if (_cur_free.nfree) {                                          \
             BAIDU_OBJECT_POOL_FREE_ITEM_NUM_SUB1;                       \
-            return _cur_free.ptrs[--_cur_free.nfree];                   \
+            T* obj = new (_cur_free.ptrs[--_cur_free.nfree]) T CTOR_ARGS; \
+            return obj;                                                 \
         }                                                               \
         /* Fetch a FreeChunk from global.                               \
            TODO: Popping from _free needs to copy a FreeChunk which is  \
            costly, but hardly impacts amortized performance. */         \
         if (_pool->pop_free_chunk(_cur_free)) {                         \
             BAIDU_OBJECT_POOL_FREE_ITEM_NUM_SUB1;                       \
-            return _cur_free.ptrs[--_cur_free.nfree];                   \
+            T* obj = new (_cur_free.ptrs[--_cur_free.nfree]) T CTOR_ARGS; \
+            return obj;                                                 \
         }                                                               \
         /* Fetch memory from local block */                             \
         if (_cur_block && _cur_block->nitem < BLOCK_NITEM) {            \

@@ -103,7 +103,13 @@ TEST_F(ObjectPoolTest, sanity) {
     ASSERT_EQ(10, p1->_value);
     NonDefaultCtorObject* p2 = get_object<NonDefaultCtorObject>(100, 30);
     ASSERT_EQ(130, p2->_value);
-    
+    return_object<NonDefaultCtorObject>(p1);
+    return_object<NonDefaultCtorObject>(p2);
+    p1 = get_object<NonDefaultCtorObject>(50, 100);
+    ASSERT_EQ(150, p1->_value);
+    p2 = get_object<NonDefaultCtorObject>(80);
+    ASSERT_EQ(80, p2->_value);
+
     printf("BLOCK_NITEM=%lu\n", ObjectPool<YellObj>::BLOCK_NITEM);
     
     nc = 0;
