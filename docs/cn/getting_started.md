@@ -350,7 +350,7 @@ no known issues.
 
 no known issues.
 
-## protobuf: 2.4-3.8
+## protobuf: 2.4+
 
 Be compatible with pb 3.x and pb 2.x with the same file:
 Don't use new types in proto3 and start the proto file with `syntax="proto2";`
