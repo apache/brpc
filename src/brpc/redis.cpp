@@ -370,7 +370,7 @@ const ::google::protobuf::Descriptor* RedisResponse::descriptor() {
 
 ::google::protobuf::Metadata RedisResponse::GetMetadata() const {
     ::google::protobuf::Metadata metadata;
-    metadata.descriptor = RedisResponseBase::descriptor();
+    metadata.descriptor = RedisResponse::descriptor();
     metadata.reflection = NULL;
     return metadata;
 }
