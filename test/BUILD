@@ -136,6 +136,7 @@ TEST_BUTIL_SOURCES = [
     "flat_map_unittest.cpp",
     "crc32c_unittest.cc",
     "iobuf_unittest.cpp",
+    "object_pool_unittest.cpp",
     "test_switches.cc",
     "scoped_locale.cc",
     "recordio_unittest.cpp",
