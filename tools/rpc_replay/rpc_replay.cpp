@@ -157,7 +157,7 @@ static void* replay_thread(void* arg) {
             brpc::Controller* cntl = new brpc::Controller;
             req.Clear();
             
-            cntl->reset_rpc_dump_meta(sample_guard.release());
+            cntl->reset_sampled_request(sample_guard.release());
             if (sample->meta.attachment_size() > 0) {
                 sample->request.cutn(
                     &req.serialized_data(),

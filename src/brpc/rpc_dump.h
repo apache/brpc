@@ -21,12 +21,11 @@
 #include "butil/iobuf.h"                            // IOBuf
 #include "butil/files/file_path.h"                  // FilePath
 #include "bvar/collector.h"
-#include "brpc/rpc_dump.pb.h"                       // RpcDumpMetaProto
+#include "brpc/rpc_dump.pb.h"                       // RpcDumpMeta
 
 namespace butil {
 class FileEnumerator;
 }
-
 
 namespace brpc {
 
@@ -46,18 +45,9 @@ DECLARE_bool(rpc_dump);
 // In practice, sampled requests are just small fraction of all requests.
 // The overhead of sampling should be negligible for overall performance.
 
-// According to
-// https://developers.google.com/protocol-buffers/docs/cpptutorial#parsing-and-serialization,
-// we use combination instead of inheritance.
-class RpcDumpMeta {
-public:
-    virtual ~RpcDumpMeta() {}
-    RpcDumpMetaProto meta;
-};
-
-struct SampledRequest : public bvar::Collected
-                      , public RpcDumpMeta {
+struct SampledRequest : public bvar::Collected {
     butil::IOBuf request;
+    RpcDumpMeta meta;
 
     // Implement methods of Sampled.
     void dump_and_destroy(size_t round) override;

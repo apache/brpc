@@ -545,11 +545,11 @@ void PackSofaRequest(butil::IOBuf* req_buf,
     if (method) {
         meta.set_method(method->full_name());
         meta.set_compress_type(CompressType2Sofa(cntl->request_compress_type()));
-    } else if (cntl->rpc_dump_meta()) {
+    } else if (cntl->sampled_request()) {
         // Replaying.
-        meta.set_method(cntl->rpc_dump_meta()->meta.method_name());
+        meta.set_method(cntl->sampled_request()->meta.method_name());
         meta.set_compress_type(
-            CompressType2Sofa(cntl->rpc_dump_meta()->meta.compress_type()));
+            CompressType2Sofa(cntl->sampled_request()->meta.compress_type()));
     } else {
         return cntl->SetFailed(ENOMETHOD, "method is NULL");
     }
