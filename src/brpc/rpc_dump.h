@@ -51,6 +51,7 @@ DECLARE_bool(rpc_dump);
 // we use combination instead of inheritance.
 class RpcDumpMeta {
 public:
+    virtual ~RpcDumpMeta() {}
     RpcDumpMetaProto meta;
 };
 
