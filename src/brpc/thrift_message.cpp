@@ -19,7 +19,6 @@
 
 #include <algorithm>
 #include "butil/logging.h"
-#include "brpc/details/controller_private_accessor.h"
 
 #include <google/protobuf/stubs/once.h>
 #include <google/protobuf/io/coded_stream.h>

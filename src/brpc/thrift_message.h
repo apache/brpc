@@ -22,6 +22,7 @@
 #include "butil/class_name.h"
 #include "brpc/channel_base.h"
 #include "brpc/controller.h"
+#include "brpc/proto_base.pb.h"
 
 namespace apache {
 namespace thrift {
@@ -103,7 +104,7 @@ protected:
 private:
     void SharedCtor();
     void SharedDtor();
-    static ThriftFramedMessage* default_instance_;
+    static ThriftFramedMessageBase _base;
 };
 
 class ThriftStub {
