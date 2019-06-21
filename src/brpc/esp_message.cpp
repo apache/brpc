@@ -14,12 +14,10 @@
 
 #include "esp_message.h"
 
-#include <google/protobuf/reflection_ops.h>                 // ReflectionOps::Merge
+#include <google/protobuf/reflection_ops.h>     // ReflectionOps::Merge
 #include <google/protobuf/wire_format.h>        // WireFormatLite::GetTagWireType
 
 namespace brpc {
-
-EspMessageBase EspMessage::_base;
 
 EspMessage::EspMessage()
     : ::google::protobuf::Message() {
@@ -44,12 +42,7 @@ void EspMessage::SharedDtor() {
 }
 
 const ::google::protobuf::Descriptor* EspMessage::descriptor() {
-    return _base.GetDescriptor();
-}
-
-const EspMessage& EspMessage::default_instance() {
-    static EspMessage req;
-    return req;
+    return EspMessageBase::descriptor();
 }
 
 EspMessage* EspMessage::New() const {
@@ -138,8 +131,8 @@ void EspMessage::Swap(EspMessage* other) {
 
 ::google::protobuf::Metadata EspMessage::GetMetadata() const {
     ::google::protobuf::Metadata metadata;
-    metadata.descriptor = _base.GetDescriptor();
-    metadata.reflection = _base.GetReflection();
+    metadata.descriptor = EspMessage::descriptor();
+    metadata.reflection = NULL;
     return metadata;
 }
 

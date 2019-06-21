@@ -24,8 +24,6 @@ namespace brpc {
 
 DEFINE_bool(redis_verbose_crlf2space, false, "[DEBUG] Show \\r\\n as a space");
 
-RedisRequestBase RedisRequest::_base;
-
 RedisRequest::RedisRequest()
     : ::google::protobuf::Message() {
     SharedCtor();
@@ -202,18 +200,13 @@ bool RedisRequest::SerializeTo(butil::IOBuf* buf) const {
 }
 
 const ::google::protobuf::Descriptor* RedisRequest::descriptor() {
-    return _base.GetDescriptor();
-}
-
-const RedisRequest& RedisRequest::default_instance() {
-    static RedisRequest req;
-    return req;
+    return RedisRequestBase::descriptor();
 }
 
 ::google::protobuf::Metadata RedisRequest::GetMetadata() const {
     ::google::protobuf::Metadata metadata;
-    metadata.descriptor = _base.GetDescriptor();
-    metadata.reflection = _base.GetReflection();
+    metadata.descriptor = RedisRequest::descriptor();
+    metadata.reflection = NULL;
     return metadata;
 }
 
@@ -241,8 +234,6 @@ std::ostream& operator<<(std::ostream& os, const RedisRequest& r) {
     r.Print(os);
     return os;
 }
-
-RedisResponseBase RedisResponse::_base;
 
 RedisResponse::RedisResponse()
     : ::google::protobuf::Message() {
@@ -374,18 +365,13 @@ void RedisResponse::Swap(RedisResponse* other) {
 }
 
 const ::google::protobuf::Descriptor* RedisResponse::descriptor() {
-    return _base.GetDescriptor();
-}
-
-const RedisResponse& RedisResponse::default_instance() {
-    static RedisResponse res;
-    return res;
+    return RedisResponseBase::descriptor();
 }
 
 ::google::protobuf::Metadata RedisResponse::GetMetadata() const {
     ::google::protobuf::Metadata metadata;
-    metadata.descriptor = _base.GetDescriptor();
-    metadata.reflection = _base.GetReflection();
+    metadata.descriptor = RedisResponseBase::descriptor();
+    metadata.reflection = NULL;
     return metadata;
 }
 

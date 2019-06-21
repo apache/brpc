@@ -19,8 +19,6 @@
 
 namespace brpc {
 
-SerializedRequestBase SerializedRequest::_base;
-
 SerializedRequest::SerializedRequest()
     : ::google::protobuf::Message() {
     SharedCtor();
@@ -46,12 +44,7 @@ void SerializedRequest::SetCachedSize(int /*size*/) const {
     CHECK(false) << "You're not supposed to call " << __FUNCTION__;
 }
 const ::google::protobuf::Descriptor* SerializedRequest::descriptor() {
-    return _base.GetDescriptor();
-}
-
-const SerializedRequest& SerializedRequest::default_instance() {
-    static SerializedRequest req;
-    return req;
+    return SerializedRequestBase::descriptor();
 }
 
 SerializedRequest* SerializedRequest::New() const {
@@ -119,8 +112,8 @@ void SerializedRequest::Swap(SerializedRequest* other) {
 
 ::google::protobuf::Metadata SerializedRequest::GetMetadata() const {
     ::google::protobuf::Metadata metadata;
-    metadata.descriptor = _base.GetDescriptor();
-    metadata.reflection = _base.GetReflection();
+    metadata.descriptor = SerializedRequest::descriptor();
+    metadata.reflection = NULL;
     return metadata;
 }
 

@@ -73,11 +73,8 @@ protected:
 private:
     void SharedCtor();
     void SharedDtor();
-
-    static EspMessageBase _base;
 };
 
 } // namespace brpc
 
-
-#endif  // PROTOBUF_esp_5fmessage_2eproto__INCLUDED
+#endif  // BRPC_ESP_MESSAGE_H

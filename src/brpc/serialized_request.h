@@ -36,7 +36,6 @@ public:
     }
   
     static const ::google::protobuf::Descriptor* descriptor();
-    static const SerializedRequest& default_instance();
   
     void Swap(SerializedRequest* other);
   
@@ -70,7 +69,6 @@ private:
   
 private:
     butil::IOBuf _serialized;
-    static SerializedRequestBase _base;
 };
 
 } // namespace brpc

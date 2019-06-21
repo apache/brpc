@@ -76,7 +76,6 @@ public:
     ThriftFramedMessage& operator=(const ThriftFramedMessage& from) = delete;
   
     static const ::google::protobuf::Descriptor* descriptor();
-    static const ThriftFramedMessage& default_instance();
   
     void Swap(ThriftFramedMessage* other);
   
@@ -104,7 +103,6 @@ protected:
 private:
     void SharedCtor();
     void SharedDtor();
-    static ThriftFramedMessageBase _base;
 };
 
 class ThriftStub {

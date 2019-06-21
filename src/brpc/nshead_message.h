@@ -42,7 +42,6 @@ public:
     }
   
     static const ::google::protobuf::Descriptor* descriptor();
-    static const NsheadMessage& default_instance();
   
     void Swap(NsheadMessage* other);
   
@@ -65,13 +64,11 @@ public:
     int GetCachedSize() const { return ByteSize(); }
 
 protected:
-    ::google::protobuf::Metadata GetMetadata() const;
+    ::google::protobuf::Metadata GetMetadata() const override;
 
 private:
     void SharedCtor();
     void SharedDtor();
-  
-    static NsheadMessageBase _base;
 };
 
 } // namespace brpc

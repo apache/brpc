@@ -22,8 +22,6 @@
 
 namespace brpc {
 
-NsheadMessageBase NsheadMessage::_base;
-
 NsheadMessage::NsheadMessage()
     : ::google::protobuf::Message() {
     SharedCtor();
@@ -47,12 +45,7 @@ void NsheadMessage::SharedDtor() {
 }
 
 const ::google::protobuf::Descriptor* NsheadMessage::descriptor() {
-    return _base.GetDescriptor();
-}
-
-const NsheadMessage& NsheadMessage::default_instance() {
-    static NsheadMessage message;
-    return message;
+    return NsheadMessageBase::descriptor();
 }
 
 NsheadMessage* NsheadMessage::New() const {
@@ -136,8 +129,8 @@ void NsheadMessage::Swap(NsheadMessage* other) {
 
 ::google::protobuf::Metadata NsheadMessage::GetMetadata() const {
     ::google::protobuf::Metadata metadata;
-    metadata.descriptor = _base.GetDescriptor();
-    metadata.reflection = _base.GetReflection();
+    metadata.descriptor = NsheadMessage::descriptor();
+    metadata.reflection = NULL;
     return metadata;
 }
 

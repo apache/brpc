@@ -29,8 +29,6 @@
 
 namespace brpc {
 
-ThriftFramedMessageBase ThriftFramedMessage::_base;
-
 ThriftFramedMessage::ThriftFramedMessage()
     : ::google::protobuf::Message() {
     SharedCtor();
@@ -53,12 +51,7 @@ void ThriftFramedMessage::SharedDtor() {
 }
 
 const ::google::protobuf::Descriptor* ThriftFramedMessage::descriptor() {
-    return _base.GetDescriptor();
-}
-
-const ThriftFramedMessage& ThriftFramedMessage::default_instance() {
-    static ThriftFramedMessage message;
-    return message;
+    return ThriftFramedMessageBase::descriptor();
 }
 
 ThriftFramedMessage* ThriftFramedMessage::New() const {
@@ -140,8 +133,8 @@ void ThriftFramedMessage::Swap(ThriftFramedMessage* other) {
 
 ::google::protobuf::Metadata ThriftFramedMessage::GetMetadata() const {
     ::google::protobuf::Metadata metadata;
-    metadata.descriptor = _base.GetDescriptor();
-    metadata.reflection = _base.GetReflection();
+    metadata.descriptor = ThriftFramedMessage::descriptor();
+    metadata.reflection = NULL;
     return metadata;
 }
 

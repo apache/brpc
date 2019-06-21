@@ -26,8 +26,6 @@
 
 namespace brpc {
 
-MemcacheRequestBase MemcacheRequest::_base;
-
 MemcacheRequest::MemcacheRequest()
     : ::google::protobuf::Message() {
     SharedCtor();
@@ -56,12 +54,7 @@ void MemcacheRequest::SetCachedSize(int size) const {
 }
 
 const ::google::protobuf::Descriptor* MemcacheRequest::descriptor() {
-    return _base.GetDescriptor();
-}
-
-const MemcacheRequest& MemcacheRequest::default_instance() {
-    static MemcacheRequest req;
-    return req;
+    return MemcacheRequestBase::descriptor();
 }
 
 MemcacheRequest* MemcacheRequest::New() const {
@@ -174,12 +167,10 @@ void MemcacheRequest::Swap(MemcacheRequest* other) {
 
 ::google::protobuf::Metadata MemcacheRequest::GetMetadata() const {
     ::google::protobuf::Metadata metadata;
-    metadata.descriptor = _base.GetDescriptor();
-    metadata.reflection = _base.GetReflection();
+    metadata.descriptor = MemcacheRequest::descriptor();
+    metadata.reflection = NULL;
     return metadata;
 }
-
-MemcacheResponseBase MemcacheResponse::_base;
 
 MemcacheResponse::MemcacheResponse()
     : ::google::protobuf::Message() {
@@ -207,12 +198,7 @@ void MemcacheResponse::SetCachedSize(int size) const {
     _cached_size_ = size;
 }
 const ::google::protobuf::Descriptor* MemcacheResponse::descriptor() {
-    return _base.GetDescriptor();
-}
-
-const MemcacheResponse& MemcacheResponse::default_instance() {
-    static MemcacheResponse res;
-    return res;
+    return MemcacheResponseBase::descriptor();
 }
 
 MemcacheResponse* MemcacheResponse::New() const {
@@ -303,8 +289,8 @@ void MemcacheResponse::Swap(MemcacheResponse* other) {
 
 ::google::protobuf::Metadata MemcacheResponse::GetMetadata() const {
     ::google::protobuf::Metadata metadata;
-    metadata.descriptor = _base.GetDescriptor();
-    metadata.reflection = _base.GetReflection();
+    metadata.descriptor = MemcacheResponse::descriptor();
+    metadata.reflection = NULL;
     return metadata;
 }
 

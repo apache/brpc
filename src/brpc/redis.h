@@ -117,7 +117,6 @@ public:
     int GetCachedSize() const { return _cached_size_; }
 
     static const ::google::protobuf::Descriptor* descriptor();
-    static const RedisRequest& default_instance();
     
     void Print(std::ostream&) const;
 
@@ -134,7 +133,6 @@ private:
     bool _has_error;  // previous AddCommand had error
     butil::IOBuf _buf;  // the serialized request.
     mutable int _cached_size_;  // ByteSize
-    static RedisRequestBase _base;
 };
 
 // Response from Redis.
@@ -189,7 +187,6 @@ public:
     int GetCachedSize() const { return _cached_size_; }
 
     static const ::google::protobuf::Descriptor* descriptor();
-    static const RedisResponse& default_instance();
 
 protected:
     ::google::protobuf::Metadata GetMetadata() const override;
@@ -204,7 +201,6 @@ private:
     butil::Arena _arena;
     int _nreply;
     mutable int _cached_size_;
-    static RedisResponseBase _base;
 };
 
 std::ostream& operator<<(std::ostream& os, const RedisRequest&);

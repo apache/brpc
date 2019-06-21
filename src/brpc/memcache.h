@@ -104,7 +104,6 @@ public:
     int GetCachedSize() const { return _cached_size_; }
     
     static const ::google::protobuf::Descriptor* descriptor();
-    static const MemcacheRequest& default_instance();
 
 protected:
     ::google::protobuf::Metadata GetMetadata() const override;
@@ -125,7 +124,6 @@ private:
     int _pipelined_count;
     butil::IOBuf _buf;
     mutable int _cached_size_;
-    static MemcacheRequestBase _base;
 };
 
 // Response from Memcache.
@@ -216,7 +214,6 @@ public:
     int GetCachedSize() const { return _cached_size_; }
 
     static const ::google::protobuf::Descriptor* descriptor();
-    static const MemcacheResponse& default_instance();
 
 protected:
     ::google::protobuf::Metadata GetMetadata() const;
@@ -232,8 +229,6 @@ private:
     std::string _err;
     butil::IOBuf _buf;
     mutable int _cached_size_;
-
-    static MemcacheResponseBase _base;
 };
 
 } // namespace brpc
