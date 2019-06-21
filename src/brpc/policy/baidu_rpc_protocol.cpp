@@ -636,11 +636,11 @@ void PackRpcRequest(butil::IOBuf* req_buf,
                                        method->service()->name());
         request_meta->set_method_name(method->name());
         meta.set_compress_type(cntl->request_compress_type());
-    } else if (cntl->sampled_request()) {
+    } else if (cntl->rpc_dump_meta()) {
         // Replaying. Keep service-name as the one seen by server.
-        request_meta->set_service_name(cntl->sampled_request()->meta.service_name());
-        request_meta->set_method_name(cntl->sampled_request()->meta.method_name());
-        meta.set_compress_type(cntl->sampled_request()->meta.compress_type());
+        request_meta->set_service_name(cntl->rpc_dump_meta()->meta.service_name());
+        request_meta->set_method_name(cntl->rpc_dump_meta()->meta.method_name());
+        meta.set_compress_type(cntl->rpc_dump_meta()->meta.compress_type());
     } else {
         return cntl->SetFailed(ENOMETHOD, "%s.method is NULL", __FUNCTION__);
     }

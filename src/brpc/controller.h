@@ -63,7 +63,7 @@ class SharedLoadBalancer;
 class ExcludedServers;
 class RPCSender;
 class StreamSettings;
-class SampledRequest;
+class RpcDumpMeta;
 class MongoContext;
 class RetryPolicy;
 class InputMessageBase;
@@ -258,10 +258,10 @@ public:
     int sub_count() const;
     const Controller* sub(int index) const;
 
-    // Get/own SampledRquest for sending dumped requests.
+    // Get/own RpcDumpMeta for sending dumped requests.
     // Deleted along with controller.
-    void reset_sampled_request(SampledRequest* req);
-    const SampledRequest* sampled_request() { return _sampled_request; }
+    void reset_rpc_dump_meta(RpcDumpMeta* meta);
+    const RpcDumpMeta* rpc_dump_meta() { return _rpc_dump_meta; }
 
     // Attach a StreamCreator to this RPC. Notice that the ownership of sc has
     // been transferred to cntl, and sc->DestroyStreamCreator() would be called
@@ -672,7 +672,7 @@ private:
     bthread_id_t _oncancel_id;
     const AuthContext* _auth_context;        // Authentication result
     butil::intrusive_ptr<MongoContext> _mongo_session_data;
-    SampledRequest* _sampled_request;
+    RpcDumpMeta* _rpc_dump_meta;
 
     ProtocolType _request_protocol;
     // Some of them are copied from `Channel' which might be destroyed

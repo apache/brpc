@@ -3,7 +3,7 @@ import "brpc/options.proto";
 
 package brpc;
 
-message RpcDumpMeta {
+message RpcDumpMetaProto {
   // baidu_std, hulu_pbrpc
   optional string service_name = 1;
 
