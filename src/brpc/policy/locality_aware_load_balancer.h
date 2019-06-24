@@ -74,6 +74,7 @@ private:
 
         // Weight of self. Notice that this value may change at any time.
         int64_t volatile_value() const { return _weight; }
+        int64_t disable_begin_time() const { return _disable_begin_time; }
 
         struct AddInflightResult {
             bool chosen;
@@ -82,6 +83,7 @@ private:
         AddInflightResult AddInflight(
             const SelectIn& in, size_t index, int64_t dice);
         int64_t MarkFailed(size_t index, int64_t avg_weight);
+        int64_t Revive(size_t index, int64_t avg_weight);
 
         void Describe(std::ostream& os, int64_t now);
 
@@ -97,6 +99,7 @@ private:
         int64_t _base_weight;
         butil::Mutex _mutex;
         int64_t _begin_time_sum;
+        int64_t _disable_begin_time;
         int _begin_time_count;
         int64_t _old_diff_sum;
         size_t _old_index;
@@ -213,6 +216,14 @@ inline int64_t LocalityAwareLoadBalancer::Weight::MarkFailed(
     if (_base_weight <= avg_weight) {
         return 0;
     }
+    _base_weight = avg_weight;
+    return ResetWeight(index, 0);
+}
+
+inline int64_t LocalityAwareLoadBalancer::Weight::Revive(
+    size_t index, int64_t avg_weight) {
+    BAIDU_SCOPED_LOCK(_mutex);
+    _disable_begin_time = 0;
     _base_weight = avg_weight;
     return ResetWeight(index, 0);
 }

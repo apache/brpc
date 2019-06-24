@@ -29,6 +29,8 @@
 namespace brpc {
 namespace policy {
 
+DEFINE_int64(disabled_server_check_interval, 10,
+            "interval in seconds that try to revive disabled server node");
 DEFINE_int64(min_weight, 1000, "Minimum weight of a node in LALB");
 DEFINE_double(punish_inflight_ratio, 1.5, "Decrease weight proportionally if "
               "average latency of the inflight requests exeeds average "
@@ -273,6 +275,7 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
         return ENODATA;
     }
     size_t ntry = 0;
+    std::vector<bool> tried(n, false);
     size_t nloop = 0;
     int64_t total = _total.load(butil::memory_order_relaxed);
     int64_t dice = butil::fast_rand_less_than(total);
@@ -290,7 +293,9 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
         // Locate a weight range in the tree. This is obviously not atomic and
         // left-weights / total / weight-of-the-node may not be consistent. But
         // this is what we have to pay to gain more parallism.
+
         const ServerInfo & info = s->weight_tree[index];
+
         const int64_t left = info.left->load(butil::memory_order_relaxed);
         if (dice < left) {
             index = index * 2 + 1;
@@ -304,10 +309,12 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
                 continue;
             }
         } else if (Socket::Address(info.server_id, out->ptr) == 0
-                   && (*out->ptr)->IsAvailable()) {
-            if ((ntry + 1) == n  // Instead of fail with EHOSTDOWN, we prefer
-                                 // choosing the server again.
-                || !ExcludedServers::IsExcluded(in.excluded, info.server_id)) {
+                   && (*out->ptr)->IsAvailable() && !info.weight->Disabled()) {
+            if (!tried[index]) {
+                tried[index] = true;
+                ++ntry;
+            }
+            if (!ExcludedServers::IsExcluded(in.excluded, info.server_id)) {
                 if (!in.changable_weights) {
                     return 0;
                 }
@@ -322,12 +329,24 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
                     return 0;
                 }
             }
-            if (++ntry >= n) {
+            if (ntry >= n) {
                 break;
             }
         } else if (in.changable_weights) {
-            const int64_t diff =
-                info.weight->MarkFailed(index, total / n);
+            if (!tried[index]) {
+                tried[index] = true;
+                ++ntry;
+            }
+            int64_t diff = 0;
+            if (!info.weight->Disabled()) {
+                diff = info.weight->MarkFailed(index, total / n);
+            } else if (info.weight->disable_begin_time() > 0
+                        && butil::gettimeofday_ms() - info.weight->disable_begin_time()
+                        > FLAGS_disabled_server_check_interval * 1000) {
+
+                diff = info.weight->Revive(index, total / n);
+            }
+
             if (diff) {
                 s->UpdateParentWeights(diff, index);
                 _total.fetch_add(diff, butil::memory_order_relaxed);
@@ -339,7 +358,7 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
                     continue;
                 }
             }
-            if (++ntry >= n) {
+            if (ntry >= n) {
                 break;
             }
         }
@@ -457,7 +476,11 @@ int64_t LocalityAwareLoadBalancer::Weight::Update(
         // or time skews, we don't update the weight for safety.
         return 0;
     }
-    _base_weight = scaled_qps / _avg_latency;
+    _base_weight = scaled_qps / _avg_latency / _avg_latency;
+    if (_base_weight == 0) {
+        _disable_begin_time = butil::gettimeofday_ms();
+    }
+
     return ResetWeight(index, end_time_us);
 }
 
@@ -541,6 +564,7 @@ LocalityAwareLoadBalancer::Weight::Weight(int64_t initial_weight)
     : _weight(initial_weight)
     , _base_weight(initial_weight)
     , _begin_time_sum(0)
+    , _disable_begin_time(0)
     , _begin_time_count(0)
     , _old_diff_sum(0)
     , _old_index((size_t)-1L)
