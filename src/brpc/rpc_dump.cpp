@@ -34,7 +34,6 @@ namespace bvar {
 std::string read_command_name();
 }
 
-
 namespace brpc {
 
 DECLARE_uint64(max_body_size);
@@ -243,7 +242,7 @@ bool RpcDumpContext::Serialize(butil::IOBuf& buf, SampledRequest* sample) {
     
     const size_t starting_size = buf.size();
     butil::IOBufAsZeroCopyOutputStream buf_stream(&buf);
-    if (!sample->SerializeToZeroCopyStream(&buf_stream)) {
+    if (!sample->meta.SerializeToZeroCopyStream(&buf_stream)) {
         LOG(ERROR) << "Fail to serialize";
         return false;
     }
@@ -352,7 +351,7 @@ SampledRequest* SampleIterator::Pop(butil::IOBuf& buf, bool* format_error) {
     butil::IOBuf meta_buf;
     buf.cutn(&meta_buf, meta_size);
     std::unique_ptr<SampledRequest> req(new SampledRequest);
-    if (!ParsePbFromIOBuf(req.get(), meta_buf)) {
+    if (!ParsePbFromIOBuf(&req->meta, meta_buf)) {
         LOG(ERROR) << "Fail to parse RpcDumpMeta";
         *format_error = true;
         return NULL;

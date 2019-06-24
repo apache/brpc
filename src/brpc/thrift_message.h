@@ -20,20 +20,12 @@
 #ifndef BRPC_THRIFT_MESSAGE_H
 #define BRPC_THRIFT_MESSAGE_H
 
-#include <functional>
-#include <string>
-
-#include <google/protobuf/stubs/common.h>
-#include <google/protobuf/generated_message_util.h>
-#include <google/protobuf/repeated_field.h>
-#include <google/protobuf/extension_set.h>
-#include <google/protobuf/generated_message_reflection.h>
-#include "google/protobuf/descriptor.pb.h"
-
+#include <google/protobuf/message.h>
 #include "butil/iobuf.h"
 #include "butil/class_name.h"
 #include "brpc/channel_base.h"
 #include "brpc/controller.h"
+#include "brpc/proto_base.pb.h"
 
 namespace apache {
 namespace thrift {
@@ -45,11 +37,6 @@ class TProtocol;
 }
 
 namespace brpc {
-
-// Internal implementation detail -- do not call these.
-void protobuf_AddDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
-void protobuf_AssignDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
-void protobuf_ShutdownFile_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
 
 class ThriftStub;
 
@@ -92,7 +79,6 @@ public:
     ThriftFramedMessage& operator=(const ThriftFramedMessage& from) = delete;
   
     static const ::google::protobuf::Descriptor* descriptor();
-    static const ThriftFramedMessage& default_instance();
   
     void Swap(ThriftFramedMessage* other);
   
@@ -113,19 +99,13 @@ public:
         ::google::protobuf::io::CodedOutputStream* output) const;
     ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const;
     int GetCachedSize() const { return ByteSize(); }
+
+protected:
     ::google::protobuf::Metadata GetMetadata() const;
 
 private:
     void SharedCtor();
     void SharedDtor();
-private:
-friend void protobuf_AddDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto_impl();
-friend void protobuf_AddDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
-friend void protobuf_AssignDesc_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
-friend void protobuf_ShutdownFile_baidu_2frpc_2fthrift_framed_5fmessage_2eproto();
-
-    void InitAsDefaultInstance();
-    static ThriftFramedMessage* default_instance_;
 };
 
 class ThriftStub {

@@ -20,25 +20,12 @@
 #ifndef BRPC_NSHEAD_MESSAGE_H
 #define BRPC_NSHEAD_MESSAGE_H
 
-#include <string>
-
-#include <google/protobuf/stubs/common.h>
-#include <google/protobuf/generated_message_util.h>
-#include <google/protobuf/repeated_field.h>
-#include <google/protobuf/extension_set.h>
-#include <google/protobuf/generated_message_reflection.h>
-#include "google/protobuf/descriptor.pb.h"
-
+#include <google/protobuf/message.h>
 #include "brpc/nshead.h"                     // nshead_t
-#include "butil/iobuf.h"                           // IOBuf
-
+#include "butil/iobuf.h"                     // IOBuf
+#include "brpc/proto_base.pb.h"
 
 namespace brpc {
-
-// Internal implementation detail -- do not call these.
-void protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto();
-void protobuf_AssignDesc_baidu_2frpc_2fnshead_5fmessage_2eproto();
-void protobuf_ShutdownFile_baidu_2frpc_2fnshead_5fmessage_2eproto();
 
 // Representing a nshead request or response.
 class NsheadMessage : public ::google::protobuf::Message {
@@ -58,7 +45,6 @@ public:
     }
   
     static const ::google::protobuf::Descriptor* descriptor();
-    static const NsheadMessage& default_instance();
   
     void Swap(NsheadMessage* other);
   
@@ -79,19 +65,13 @@ public:
         ::google::protobuf::io::CodedOutputStream* output) const;
     ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const;
     int GetCachedSize() const { return ByteSize(); }
-    ::google::protobuf::Metadata GetMetadata() const;
+
+protected:
+    ::google::protobuf::Metadata GetMetadata() const override;
 
 private:
     void SharedCtor();
     void SharedDtor();
-private:
-friend void protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto_impl();
-friend void protobuf_AddDesc_baidu_2frpc_2fnshead_5fmessage_2eproto();
-friend void protobuf_AssignDesc_baidu_2frpc_2fnshead_5fmessage_2eproto();
-friend void protobuf_ShutdownFile_baidu_2frpc_2fnshead_5fmessage_2eproto();
-  
-    void InitAsDefaultInstance();
-    static NsheadMessage* default_instance_;
 };
 
 } // namespace brpc

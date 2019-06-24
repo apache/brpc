@@ -24,12 +24,11 @@
 #include "butil/iobuf.h"                            // IOBuf
 #include "butil/files/file_path.h"                  // FilePath
 #include "bvar/collector.h"
-#include "brpc/rpc_dump.pb.h"                 // RpcDumpMeta
+#include "brpc/rpc_dump.pb.h"                       // RpcDumpMeta
 
 namespace butil {
 class FileEnumerator;
 }
-
 
 namespace brpc {
 
@@ -49,9 +48,9 @@ DECLARE_bool(rpc_dump);
 // In practice, sampled requests are just small fraction of all requests.
 // The overhead of sampling should be negligible for overall performance.
 
-struct SampledRequest : public bvar::Collected
-                      , public RpcDumpMeta {
+struct SampledRequest : public bvar::Collected {
     butil::IOBuf request;
+    RpcDumpMeta meta;
 
     // Implement methods of Sampled.
     void dump_and_destroy(size_t round) override;

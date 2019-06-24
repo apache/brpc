@@ -20,22 +20,15 @@
 
 #include <string>
 
-#include <google/protobuf/stubs/common.h>
-#include <google/protobuf/generated_message_util.h>
-#include <google/protobuf/repeated_field.h>
-#include <google/protobuf/extension_set.h>
-#include <google/protobuf/generated_message_reflection.h>
+#include <google/protobuf/message.h>
+#include <google/protobuf/generated_message_reflection.h>   // dynamic_cast_if_available
+#include <google/protobuf/reflection_ops.h>     // ReflectionOps::Merge
 
 #include "brpc/esp_head.h"
 #include "butil/iobuf.h"       
-
+#include "brpc/proto_base.pb.h"
 
 namespace brpc {
-
-// Internal implementation detail -- do not call these.
-void protobuf_AddDesc_esp_5fmessage_2eproto();
-void protobuf_AssignDesc_esp_5fmessage_2eproto();
-void protobuf_ShutdownFile_esp_5fmessage_2eproto();
 
 class EspMessage : public ::google::protobuf::Message {
 public:
@@ -76,20 +69,15 @@ public:
     ::google::protobuf::uint8* SerializeWithCachedSizesToArray(
             ::google::protobuf::uint8* output) const;
     int GetCachedSize() const { return ByteSize(); }
-    ::google::protobuf::Metadata GetMetadata() const;
+
+protected:
+    ::google::protobuf::Metadata GetMetadata() const override;
 
 private:
     void SharedCtor();
     void SharedDtor();
-    friend void  protobuf_AddDesc_esp_5fmessage_2eproto();
-    friend void protobuf_AssignDesc_esp_5fmessage_2eproto();
-    friend void protobuf_ShutdownFile_esp_5fmessage_2eproto();
-
-    void InitAsDefaultInstance();
-    static EspMessage* default_instance_;
 };
 
 } // namespace brpc
 
-
-#endif  // PROTOBUF_esp_5fmessage_2eproto__INCLUDED
+#endif  // BRPC_ESP_MESSAGE_H

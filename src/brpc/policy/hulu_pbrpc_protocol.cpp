@@ -348,15 +348,15 @@ void ProcessHuluRequest(InputMessageBase* msg_base) {
     const CompressType req_cmp_type = Hulu2CompressType((HuluCompressType)meta.compress_type());
     SampledRequest* sample = AskToBeSampled();
     if (sample) {
-        sample->set_service_name(meta.service_name());
-        sample->set_method_index(meta.method_index());
-        sample->set_compress_type(req_cmp_type);
-        sample->set_protocol_type(PROTOCOL_HULU_PBRPC);
-        sample->set_user_data(meta.user_data());
+        sample->meta.set_service_name(meta.service_name());
+        sample->meta.set_method_index(meta.method_index());
+        sample->meta.set_compress_type(req_cmp_type);
+        sample->meta.set_protocol_type(PROTOCOL_HULU_PBRPC);
+        sample->meta.set_user_data(meta.user_data());
         if (meta.has_user_message_size()
             && static_cast<size_t>(meta.user_message_size()) < msg->payload.size()) {
             size_t attachment_size = msg->payload.size() - meta.user_message_size();
-            sample->set_attachment_size(attachment_size);
+            sample->meta.set_attachment_size(attachment_size);
         }
         sample->request = msg->payload;
         sample->submit(start_parse_us);
@@ -642,13 +642,13 @@ void PackHuluRequest(butil::IOBuf* req_buf,
         meta.set_service_name(method->service()->name());
         meta.set_method_index(method->index());
         meta.set_compress_type(CompressType2Hulu(cntl->request_compress_type()));
-    } else if (cntl->rpc_dump_meta()) {
+    } else if (cntl->sampled_request()) {
         // Replaying. Keep service-name as the one seen by server.
-        meta.set_service_name(cntl->rpc_dump_meta()->service_name());
-        meta.set_method_index(cntl->rpc_dump_meta()->method_index());
+        meta.set_service_name(cntl->sampled_request()->meta.service_name());
+        meta.set_method_index(cntl->sampled_request()->meta.method_index());
         meta.set_compress_type(
-            CompressType2Hulu(cntl->rpc_dump_meta()->compress_type()));
-        meta.set_user_data(cntl->rpc_dump_meta()->user_data());
+            CompressType2Hulu(cntl->sampled_request()->meta.compress_type()));
+        meta.set_user_data(cntl->sampled_request()->meta.user_data());
     } else {
         return cntl->SetFailed(ENOMETHOD, "method is NULL");
     }

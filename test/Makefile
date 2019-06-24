@@ -162,7 +162,7 @@ all: $(TEST_BINS)
 .PHONY:clean
 clean:clean_bins
 	@echo "Cleaning"
-	@rm -rf $(TEST_BUTIL_OBJS) $(TEST_BVAR_OBJS) $(TEST_BTHREAD_OBJS) $(TEST_BRPC_OBJS) $(TEST_PROTO_OBJS)
+	@rm -rf $(TEST_BUTIL_OBJS) $(TEST_BVAR_OBJS) $(TEST_BTHREAD_OBJS) $(TEST_BRPC_OBJS) $(TEST_PROTO_OBJS) $(TEST_PROTO_SOURCES:.proto=.pb.h) $(TEST_PROTO_SOURCES:.proto=.pb.cc)
 	@$(MAKE) -C.. clean_debug
 
 .PHONY:clean_bins

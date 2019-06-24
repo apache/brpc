@@ -20,13 +20,13 @@
 #ifndef BRPC_PROGRESSIVE_ATTACHMENT_H
 #define BRPC_PROGRESSIVE_ATTACHMENT_H
 
+#include "brpc/callback.h"
 #include "butil/atomicops.h"
 #include "butil/iobuf.h"
 #include "butil/endpoint.h"       // butil::EndPoint
 #include "bthread/types.h"        // bthread_id_t
 #include "brpc/socket_id.h"       // SocketUniquePtr
 #include "brpc/shared_object.h"   // SharedObject
-
 
 namespace brpc {
 

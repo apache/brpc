@@ -325,9 +325,9 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
 
     SampledRequest* sample = AskToBeSampled();
     if (sample) {
-        sample->set_method_name(meta.method());
-        sample->set_compress_type(req_cmp_type);
-        sample->set_protocol_type(PROTOCOL_SOFA_PBRPC);
+        sample->meta.set_method_name(meta.method());
+        sample->meta.set_compress_type(req_cmp_type);
+        sample->meta.set_protocol_type(PROTOCOL_SOFA_PBRPC);
         sample->request = msg->payload;
         sample->submit(start_parse_us);
     }
@@ -548,11 +548,11 @@ void PackSofaRequest(butil::IOBuf* req_buf,
     if (method) {
         meta.set_method(method->full_name());
         meta.set_compress_type(CompressType2Sofa(cntl->request_compress_type()));
-    } else if (cntl->rpc_dump_meta()) {
+    } else if (cntl->sampled_request()) {
         // Replaying.
-        meta.set_method(cntl->rpc_dump_meta()->method_name());
+        meta.set_method(cntl->sampled_request()->meta.method_name());
         meta.set_compress_type(
-            CompressType2Sofa(cntl->rpc_dump_meta()->compress_type()));
+            CompressType2Sofa(cntl->sampled_request()->meta.compress_type()));
     } else {
         return cntl->SetFailed(ENOMETHOD, "method is NULL");
     }
