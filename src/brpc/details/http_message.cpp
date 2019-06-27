@@ -513,8 +513,7 @@ std::ostream& operator<<(std::ostream& os, const http_parser& parser) {
     if (parser.type == HTTP_REQUEST || parser.type == HTTP_BOTH) {
         os << " method=" << HttpMethod2Str((HttpMethod)parser.method);
     }
-    os << " upgrade=" << parser.upgrade
-       << " data=" << parser.data
+    os << " data=" << parser.data
        << '}';
     return os;
 }
