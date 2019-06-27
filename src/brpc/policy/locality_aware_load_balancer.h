@@ -86,7 +86,7 @@ private:
         void Describe(std::ostream& os, int64_t now);
 
         int64_t Disable();
-        bool Disabled() const { return _base_weight == 0; }
+        bool Disabled() const { return _base_weight == -1; }
         int64_t MarkOld(size_t index);
         std::pair<int64_t, int64_t> ClearOld();
 
