@@ -1,5 +1,21 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 // brpc - A framework to host and access services throughout Baidu.
-// Copyright (c) 2014 Baidu, Inc.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
@@ -12,6 +28,7 @@
 #include "butil/time.h"
 #include "butil/macros.h"
 #include "butil/files/scoped_file.h"
+#include "butil/fd_guard.h"
 #include "brpc/socket.h"
 #include "brpc/acceptor.h"
 #include "brpc/server.h"
@@ -706,7 +723,7 @@ TEST_F(HttpTest, read_long_body_progressively) {
                     last_read = current_read;
                 }
                 // Read something in past N seconds.
-                ASSERT_GT(last_read, 100000);
+                ASSERT_GT(last_read, (size_t)100000);
             }
             // the socket still holds a ref.
             ASSERT_FALSE(reader->destroyed());
@@ -794,7 +811,7 @@ TEST_F(HttpTest, read_progressively_after_cntl_destroys) {
                 last_read = current_read;
             }
             // Read something in past N seconds.
-            ASSERT_GT(last_read, 100000);
+            ASSERT_GT(last_read, (size_t)100000);
             ASSERT_FALSE(reader->destroyed());
         }
         // Wait for recycling of the main socket.
@@ -843,7 +860,7 @@ TEST_F(HttpTest, read_progressively_after_long_delay) {
                     last_read = current_read;
                 }
                 // Read something in past N seconds.
-                ASSERT_GT(last_read, 100000);
+                ASSERT_GT(last_read, (size_t)100000);
             }
             ASSERT_FALSE(reader->destroyed());
         }
@@ -883,7 +900,7 @@ TEST_F(HttpTest, skip_progressive_reading) {
     ASSERT_EQ(0, svc.last_errno());
     LOG(INFO) << "Server still wrote " << new_written_bytes - old_written_bytes;
     // The server side still wrote things.
-    ASSERT_GT(new_written_bytes - old_written_bytes, 100000);
+    ASSERT_GT(new_written_bytes - old_written_bytes, (size_t)100000);
 }
 
 class AlwaysFailRead : public brpc::ProgressiveReader {
@@ -954,7 +971,7 @@ TEST_F(HttpTest, broken_socket_stops_progressive_reading) {
             last_read = current_read;
         }
         // Read something in past N seconds.
-        ASSERT_GT(last_read, 100000);
+        ASSERT_GT(last_read, (size_t)100000);
     }
     // the socket still holds a ref.
     ASSERT_FALSE(reader->destroyed());
@@ -1324,7 +1341,7 @@ TEST_F(HttpTest, http2_header_after_data) {
     ASSERT_EQ(*user_defined2, "b");
 }
 
-TEST_F(HttpTest, http2_goaway) {
+TEST_F(HttpTest, http2_goaway_sanity) {
     brpc::Controller cntl;
     // Prepare request
     butil::IOBuf req_out;
@@ -1363,4 +1380,49 @@ TEST_F(HttpTest, http2_goaway) {
     ASSERT_TRUE(st.error_data().ends_with("the connection just issued GOAWAY"));
 }
 
+class AfterRecevingGoAway : public ::google::protobuf::Closure {
+public:
+    void Run() {
+        ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+        delete this;
+    }
+    brpc::Controller cntl;
+};
+
+TEST_F(HttpTest, http2_handle_goaway_streams) {
+    const butil::EndPoint ep(butil::IP_ANY, 5961);
+    butil::fd_guard listenfd(butil::tcp_listen(ep));
+    ASSERT_GT(listenfd, 0);
+
+    brpc::Channel channel;
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_H2;
+    ASSERT_EQ(0, channel.Init(ep, &options));
+
+    int req_size = 10;
+    std::vector<brpc::CallId> ids(req_size);
+    for (int i = 0; i < req_size; i++) {
+        AfterRecevingGoAway* done = new AfterRecevingGoAway;
+        brpc::Controller& cntl = done->cntl;
+        ids.push_back(cntl.call_id());
+        cntl.set_timeout_ms(-1);
+        cntl.http_request().uri() = "/it-doesnt-matter";
+        channel.CallMethod(NULL, &cntl, NULL, NULL, done);
+    }
+
+    int servfd = accept(listenfd, NULL, NULL);
+    ASSERT_GT(servfd, 0);
+    // Sleep for a while to make sure that server has received all data.
+    bthread_usleep(2000);
+    char goawaybuf[brpc::policy::FRAME_HEAD_SIZE + 8];
+    SerializeFrameHead(goawaybuf, 8, brpc::policy::H2_FRAME_GOAWAY, 0, 0);
+    SaveUint32(goawaybuf + brpc::policy::FRAME_HEAD_SIZE, 0);
+    SaveUint32(goawaybuf + brpc::policy::FRAME_HEAD_SIZE + 4, 0);
+    ASSERT_EQ(brpc::policy::FRAME_HEAD_SIZE + 8, ::write(servfd, goawaybuf, brpc::policy::FRAME_HEAD_SIZE + 8));
+
+    // After receving GOAWAY, the callbacks in client should be run correctly.
+    for (int i = 0; i < req_size; i++) {
+        brpc::Join(ids[i]);
+    }
+}
 } //namespace

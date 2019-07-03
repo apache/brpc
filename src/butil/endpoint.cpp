@@ -1,16 +1,19 @@
-// Copyright (c) 2011 Baidu, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon. Nov 7 14:47:36 CST 2011
@@ -29,12 +32,12 @@
 #include "butil/logging.h"
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/strings/string_piece.h"
+#include <sys/socket.h>                        // SO_REUSEADDR SO_REUSEPORT
 
-#ifndef SO_REUSEPORT
-#define SO_REUSEPORT    15
-#endif
-//This option is supported since Linux 3.9.
-DEFINE_bool(reuse_port, false, "turn on support for SO_REUSEPORT socket option.");
+//supported since Linux 3.9.
+DEFINE_bool(reuse_port, false, "Enable SO_REUSEPORT for all listened sockets");
+
+DEFINE_bool(reuse_addr, true, "Enable SO_REUSEADDR for all listened sockets");
 
 __BEGIN_DECLS
 int BAIDU_WEAK bthread_connect(
@@ -308,25 +311,36 @@ int tcp_connect(EndPoint point, int* self_port) {
     return sockfd.release();
 }
 
-int tcp_listen(EndPoint point, bool reuse_addr) {
+int tcp_listen(EndPoint point) {
     fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     if (sockfd < 0) {
         return -1;
     }
-    if (reuse_addr) {
+
+    if (FLAGS_reuse_addr) {
+#if defined(SO_REUSEADDR)
         const int on = 1;
         if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,
                        &on, sizeof(on)) != 0) {
             return -1;
         }
+#else
+        LOG(ERROR) << "Missing def of SO_REUSEADDR while -reuse_addr is on";
+        return -1;
+#endif
     }
 
     if (FLAGS_reuse_port) {
+#if defined(SO_REUSEPORT)
         const int on = 1;
         if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT,
                        &on, sizeof(on)) != 0) {
             LOG(WARNING) << "Fail to setsockopt SO_REUSEPORT of sockfd=" << sockfd;
         }
+#else
+        LOG(ERROR) << "Missing def of SO_REUSEPORT while -reuse_port is on";
+        return -1;
+#endif
     }
 
     struct sockaddr_in serv_addr;

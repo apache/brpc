@@ -111,7 +111,6 @@ BUTIL_SRCS = [
     "src/butil/third_party/icu/icu_utf.cc",
     "src/butil/third_party/superfasthash/superfasthash.c",
     "src/butil/third_party/modp_b64/modp_b64.cc",
-    "src/butil/third_party/nspr/prtime.cc",
     "src/butil/third_party/symbolize/demangle.cc",
     "src/butil/third_party/symbolize/symbolize.cc",
     "src/butil/third_party/snappy/snappy-sinksource.cc",
@@ -217,6 +216,7 @@ BUTIL_SRCS = [
     "src/butil/containers/case_ignored_flat_map.cpp",
     "src/butil/iobuf.cpp",
     "src/butil/binary_printer.cpp",
+    "src/butil/recordio.cc",
     "src/butil/popen.cpp",
 ] + select({
         ":darwin": [

@@ -1,16 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Authors: Ge,Jun (gejun@baidu.com)
 //          Jiashun Zhu(zhujiashun@baidu.com)
@@ -967,8 +970,8 @@ H2ParseResult H2Context::OnGoAway(
                                   BTHREAD_ATTR_PTHREAD :
                                   BTHREAD_ATTR_NORMAL);
             tmp.keytable_pool = _socket->keytable_pool();
-            CHECK_EQ(0, bthread_start_background(
-                         &th, &tmp, ProcessHttpResponseWrapper, goaway_streams[i]));
+            CHECK_EQ(0, bthread_start_background(&th, &tmp, ProcessHttpResponseWrapper,
+                         static_cast<InputMessageBase*>(goaway_streams[i])));
         }
         return MakeH2Message(goaway_streams[0]);
     } else {
@@ -1449,10 +1452,10 @@ private:
 
 void H2UnsentRequest::DestroyStreamUserData(SocketUniquePtr& sending_sock,
                                             Controller* cntl,
-                                            int /*error_code*/,
+                                            int error_code,
                                             bool /*end_of_rpc*/) {
     RemoveRefOnQuit deref_self(this);
-    if (sending_sock != NULL && cntl->ErrorCode() != 0) {
+    if (sending_sock != NULL && error_code != 0) {
         CHECK_EQ(cntl, _cntl);
         std::unique_lock<butil::Mutex> mu(_mutex);
         _cntl = NULL;

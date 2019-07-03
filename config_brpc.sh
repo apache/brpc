@@ -136,9 +136,16 @@ find_dir_of_header_or_die() {
     $ECHO $dir
 }
 
-# Inconvenient to check these headers in baidu-internal
-#PTHREAD_HDR=$(find_dir_of_header_or_die pthread.h)
-OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h)
+if [ "$SYSTEM" = "Darwin" ]; then
+    OPENSSL_LIB="/usr/local/opt/openssl/lib"
+    OPENSSL_HDR="/usr/local/opt/openssl/include"
+else
+    # User specified path of openssl, if not given it's empty
+    OPENSSL_LIB=$(find_dir_of_lib ssl)
+    # Inconvenient to check these headers in baidu-internal
+    #PTHREAD_HDR=$(find_dir_of_header_or_die pthread.h)
+    OPENSSL_HDR=$(find_dir_of_header_or_die openssl/ssl.h)
+fi
 
 if [ $WITH_MESALINK != 0 ]; then
     MESALINK_HDR=$(find_dir_of_header_or_die mesalink/openssl/ssl.h)
@@ -233,7 +240,7 @@ PROTOBUF_HDR=$(find_dir_of_header_or_die google/protobuf/message.h)
 LEVELDB_HDR=$(find_dir_of_header_or_die leveldb/db.h)
 
 HDRS=$($ECHO "$GFLAGS_HDR\n$PROTOBUF_HDR\n$LEVELDB_HDR\n$OPENSSL_HDR" | sort | uniq)
-LIBS=$($ECHO "$GFLAGS_LIB\n$PROTOBUF_LIB\n$LEVELDB_LIB\n$SNAPPY_LIB" | sort | uniq)
+LIBS=$($ECHO "$GFLAGS_LIB\n$PROTOBUF_LIB\n$LEVELDB_LIB\n$OPENSSL_LIB\n$SNAPPY_LIB" | sort | uniq)
 
 absent_in_the_list() {
     TMP=`$ECHO "$1\n$2" | sort | uniq`

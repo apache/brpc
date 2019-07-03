@@ -2128,17 +2128,15 @@ TEST_F(FileUtilTest, TouchFile) {
   std::string data("hello");
   ASSERT_TRUE(WriteFile(foobar, data.c_str(), data.length()));
 
-  Time access_time;
-  // This timestamp is divisible by one day (in local timezone),
-  // to make it work on FAT too.
-  ASSERT_TRUE(Time::FromString("Wed, 16 Nov 1994, 00:00:00",
-                               &access_time));
+  // 784915200000000 represents the timestamp of "Wed, 16 Nov 1994, 00:00:00".
+  // This timestamp is divisible by one day (in local timezone), to make it work
+  // on FAT too.
+  Time access_time(784915200000000);
 
-  Time modification_time;
+  // 784903526000000 represents the timestamp of "Tue, 15 Nov 1994, 12:45:26 GMT".
   // Note that this timestamp is divisible by two (seconds) - FAT stores
   // modification times with 2s resolution.
-  ASSERT_TRUE(Time::FromString("Tue, 15 Nov 1994, 12:45:26 GMT",
-              &modification_time));
+  Time modification_time(784903526000000);
 
   ASSERT_TRUE(TouchFile(foobar, access_time, modification_time));
   File::Info file_info;

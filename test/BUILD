@@ -114,7 +114,6 @@ TEST_BUTIL_SOURCES = [
     "thread_local_storage_unittest.cc",
     "thread_local_unittest.cc",
     "watchdog_unittest.cc",
-    "pr_time_unittest.cc",
     "time_unittest.cc",
     "version_unittest.cc",
     "logging_unittest.cc",
@@ -137,8 +136,10 @@ TEST_BUTIL_SOURCES = [
     "flat_map_unittest.cpp",
     "crc32c_unittest.cc",
     "iobuf_unittest.cpp",
+    "object_pool_unittest.cpp",
     "test_switches.cc",
     "scoped_locale.cc",
+    "recordio_unittest.cpp",
     #"popen_unittest.cpp",
     "butil_unittest_main.cpp",
 ] + select({

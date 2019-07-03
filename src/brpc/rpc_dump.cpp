@@ -1,16 +1,19 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
@@ -30,7 +33,6 @@
 namespace bvar {
 std::string read_command_name();
 }
-
 
 namespace brpc {
 
@@ -240,15 +242,14 @@ bool RpcDumpContext::Serialize(butil::IOBuf& buf, SampledRequest* sample) {
     
     const size_t starting_size = buf.size();
     butil::IOBufAsZeroCopyOutputStream buf_stream(&buf);
-    if (!sample->SerializeToZeroCopyStream(&buf_stream)) {
+    if (!sample->meta.SerializeToZeroCopyStream(&buf_stream)) {
         LOG(ERROR) << "Fail to serialize";
         return false;
     }
     const size_t meta_size = buf.size() - starting_size;
     buf.append(sample->request);
 
-    // dummy supresses strict-aliasing warning.
-    uint32_t* dummy = (uint32_t*)rpc_header;
+    uint32_t* dummy = (uint32_t*)rpc_header;  // suppress strict-alias warning
     *dummy = *(uint32_t*)"PRPC";
     butil::RawPacker(rpc_header + 4)
         .pack32(meta_size + sample->request.size())
@@ -350,7 +351,7 @@ SampledRequest* SampleIterator::Pop(butil::IOBuf& buf, bool* format_error) {
     butil::IOBuf meta_buf;
     buf.cutn(&meta_buf, meta_size);
     std::unique_ptr<SampledRequest> req(new SampledRequest);
-    if (!ParsePbFromIOBuf(req.get(), meta_buf)) {
+    if (!ParsePbFromIOBuf(&req->meta, meta_buf)) {
         LOG(ERROR) << "Fail to parse RpcDumpMeta";
         *format_error = true;
         return NULL;

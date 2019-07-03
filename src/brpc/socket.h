@@ -1,16 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Authors: Ge,Jun (gejun@baidu.com)
 //          Rujie Jiang (jiangrujie@baidu.com)
@@ -37,6 +40,7 @@
 #include "brpc/options.pb.h"              // ConnectionType
 #include "brpc/socket_id.h"               // SocketId
 #include "brpc/socket_message.h"          // SocketMessagePtr
+#include "bvar/bvar.h"
 
 namespace brpc {
 namespace policy {
@@ -126,6 +130,28 @@ struct SocketStat {
     uint32_t out_num_messages_m;
 };
 
+struct SocketVarsCollector {
+    SocketVarsCollector()
+        : nsocket("rpc_socket_count")
+        , channel_conn("rpc_channel_connection_count")
+        , neventthread_second("rpc_event_thread_second", &neventthread)
+        , nhealthcheck("rpc_health_check_count")
+        , nkeepwrite_second("rpc_keepwrite_second", &nkeepwrite)
+        , nwaitepollout("rpc_waitepollout_count")
+        , nwaitepollout_second("rpc_waitepollout_second", &nwaitepollout)
+    {}
+
+    bvar::Adder<int64_t> nsocket;
+    bvar::Adder<int64_t> channel_conn;
+    bvar::Adder<int> neventthread;
+    bvar::PerSecond<bvar::Adder<int> > neventthread_second;
+    bvar::Adder<int64_t> nhealthcheck;
+    bvar::Adder<int64_t> nkeepwrite;
+    bvar::PerSecond<bvar::Adder<int64_t> > nkeepwrite_second;
+    bvar::Adder<int64_t> nwaitepollout;
+    bvar::PerSecond<bvar::Adder<int64_t> > nwaitepollout_second;
+};
+
 struct PipelinedInfo {
     PipelinedInfo() { reset(); }
     void reset() {
@@ -186,6 +212,8 @@ friend class policy::ConsistentHashingLoadBalancer;
 friend class policy::RtmpContext;
 friend class schan::ChannelBalancer;
 friend class HealthCheckTask;
+friend class OnAppHealthCheckDone;
+friend class HealthCheckManager;
 friend class policy::H2GlobalStreamCreator;
     class SharedPart;
     struct Forbidden {};
@@ -303,6 +331,9 @@ public:
     // Always succeed even if this socket is failed.
     void ReAddress(SocketUniquePtr* ptr);
 
+    // Returns 0 on success, 1 on failed socket, -1 on recycled.
+    static int AddressFailedAsWell(SocketId id, SocketUniquePtr* ptr);
+
     // Mark this Socket or the Socket associated with `id' as failed.
     // Any later Address() of the identifier shall return NULL unless the
     // Socket was revivied by HealthCheckThread. The Socket is NOT recycled
@@ -344,11 +375,13 @@ public:
 
     // Set ELOGOFF flag to this `Socket' which means further requests
     // through this `Socket' will receive an ELOGOFF error. This only
-    // affects return value of `IsLogOff' and won't close the inner fd
-    // Once set, this flag can only be cleared inside `WaitAndReset'
+    // affects return value of `IsAvailable' and won't close the inner
+    // fd. Once set, this flag can only be cleared inside `WaitAndReset'.
     void SetLogOff();
-    bool IsLogOff() const;
-    
+
+    // Check Whether the socket is available for user requests.
+    bool IsAvailable() const;
+
     // Start to process edge-triggered events from the fd.
     // This function does not block caller.
     static int StartInputEvent(SocketId id, uint32_t events,
@@ -555,9 +588,6 @@ friend void DereferenceSocket(Socket*);
     int ConnectIfNot(const timespec* abstime, WriteRequest* req);
     
     int ResetFileDescriptor(int fd);
-
-    // Returns 0 on success, 1 on failed socket, -1 on recycled.
-    static int AddressFailedAsWell(SocketId id, SocketUniquePtr* ptr);
 
     // Wait until nref hits `expected_nref' and reset some internal resources.
     int WaitAndReset(int32_t expected_nref);
@@ -790,6 +820,8 @@ private:
 
     butil::Mutex _stream_mutex;
     std::set<StreamId> *_stream_set;
+
+    butil::atomic<int64_t> _ninflight_app_health_check;
 };
 
 } // namespace brpc

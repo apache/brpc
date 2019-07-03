@@ -1,16 +1,19 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
 
@@ -23,12 +26,16 @@
 namespace brpc {
 namespace policy {
 
-uint32_t MD5Hash32(const void* key, size_t len) {
+void MD5HashSignature(const void* key, size_t len, unsigned char* results) {
     MD5_CTX my_md5;
     MD5_Init(&my_md5);
     MD5_Update(&my_md5, (const unsigned char *)key, len);
-    unsigned char results[16];
     MD5_Final(results, &my_md5);
+}
+
+uint32_t MD5Hash32(const void* key, size_t len) {
+    unsigned char results[16];
+    MD5HashSignature(key, len, results);
     return ((uint32_t) (results[3] & 0xFF) << 24) 
             | ((uint32_t) (results[2] & 0xFF) << 16) 
             | ((uint32_t) (results[1] & 0xFF) << 8)
@@ -147,7 +154,7 @@ uint32_t CRCHash32(const void* key, size_t len) {
     return ((~crc) >> 16) & 0x7fff;
 }
 
-const char *GetHashName(uint32_t (*hasher)(const void* key, size_t len)) {
+const char *GetHashName(HashFunc hasher) {
     if (hasher == MurmurHash32) {
         return "murmurhash3";
     }
@@ -157,6 +164,7 @@ const char *GetHashName(uint32_t (*hasher)(const void* key, size_t len)) {
     if (hasher == CRCHash32) {
         return "crc32";
     }
+
     return "user_defined";
 }
 

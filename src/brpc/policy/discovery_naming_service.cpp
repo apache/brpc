@@ -1,21 +1,26 @@
-// Copyright (c) 2018 BiliBili, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Authors: Jiashun Zhu(zhujiashun@bilibili.com)
 
 #include <gflags/gflags.h>
 #include "butil/third_party/rapidjson/document.h"
+#include "butil/third_party/rapidjson/memorybuffer.h"
+#include "butil/third_party/rapidjson/writer.h"
 #include "butil/string_printf.h"
 #include "butil/fast_rand.h"
 #include "bthread/bthread.h"
@@ -163,6 +168,16 @@ int ParseFetchsResult(const butil::IOBuf& buf,
     }
 
     for (BUTIL_RAPIDJSON_NAMESPACE::SizeType i = 0; i < instances.Size(); ++i) {
+        std::string metadata;
+        // convert metadata in object to string
+        auto itr_metadata = instances[i].FindMember("metadata");
+        if (itr_metadata != instances[i].MemberEnd()) {
+            BUTIL_RAPIDJSON_NAMESPACE::MemoryBuffer buffer;
+            BUTIL_RAPIDJSON_NAMESPACE::Writer<BUTIL_RAPIDJSON_NAMESPACE::MemoryBuffer> writer(buffer);
+            itr_metadata->value.Accept(writer);
+            metadata.assign(buffer.GetBuffer(), buffer.GetSize());
+        }
+
         auto itr = instances[i].FindMember("addrs");
         if (itr == instances[i].MemberEnd() || !itr->value.IsArray()) {
             LOG(ERROR) << "Fail to find addrs or addrs is not an array";
@@ -186,6 +201,7 @@ int ParseFetchsResult(const butil::IOBuf& buf,
                 addr.remove_prefix(pos + 3);
             }
             ServerNode node;
+            node.tag = metadata;
             // Variable addr contains data from addrs[j].GetString(), it is a
             // null-terminated string, so it is safe to pass addr.data() as the
             // first parameter to str2endpoint.

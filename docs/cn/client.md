@@ -234,6 +234,15 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 
 实现原理请查看[Consistent Hashing](consistent_hashing.md)。
 
+### 从集群宕机后恢复时的客户端限流
+
+集群宕机指的是集群中所有server都处于不可用的状态。由于健康检查机制，当集群恢复正常后，server会间隔性地上线。当某一个server上线后，所有的流量会发送过去，可能导致服务再次过载。若熔断开启，则可能导致其它server上线前该server再次熔断，集群永远无法恢复。作为解决方案，brpc提供了在集群宕机后恢复时的限流机制：当集群中没有可用server时，集群进入恢复状态，假设正好能服务所有请求的server数量为min_working_instances，当前集群可用的server数量为q，则在恢复状态时，client接受请求的概率为q/min_working_instances，否则丢弃；若一段时间hold_seconds内q保持不变，则把流量重新发送全部可用的server上，并离开恢复状态。在恢复阶段时，可以通过判断controller.ErrorCode()是否等于brpc::ERJECT来判断该次请求是否被拒绝，被拒绝的请求不会被框架重试。
+
+此恢复机制要求下游server的能力是类似的，所以目前只针对rr和random有效，开启方式是在*load_balancer_name*后面加上min_working_instances和hold_seconds参数的值，例如：
+```c++
+channel.Init("http://...", "random:min_working_instances=6 hold_seconds=10", &options);
+```
+
 ## 健康检查
 
 连接断开的server会被暂时隔离而不会被负载均衡算法选中，brpc会定期连接被隔离的server，以检查他们是否恢复正常，间隔由参数-health_check_interval控制:
@@ -242,7 +251,7 @@ locality-aware，优先选择延时低的下游，直到其延时高于其他机
 | ------------------------- | ----- | ---------------------------------------- | ----------------------- |
 | health_check_interval （R） | 3     | seconds between consecutive health-checkings | src/brpc/socket_map.cpp |
 
-一旦server被连接上，它会恢复为可用状态。如果在隔离过程中，server从命名服务中删除了，brpc也会停止连接尝试。
+在默认的配置下，一旦server被连接上，它会恢复为可用状态；brpc还提供了应用层健康检查的机制，框架会发送一个HTTP GET请求到该server，请求路径通过-health\_check\_path设置（默认为空），只有当server返回200时，它才会恢复。在两种健康检查机制下，都可通过-health\_check\_timeout\_ms设置超时（默认500ms）。如果在隔离过程中，server从命名服务中删除了，brpc也会停止连接尝试。
 
 # 发起访问
 
@@ -515,6 +524,12 @@ r34717后Controller.has_backup_request()获知是否发送过backup_request。
 **重试时框架会尽量避开之前尝试过的server。**
 
 重试的触发条件有(条件之间是AND关系）：
+
+* 连接出错
+* 没到超时
+* 有剩余重试次数
+* 错误值得重试
+
 ### 连接出错
 
 如果server一直没有返回，但连接没有问题，这种情况下不会重试。如果你需要在一定时间后发送另一个请求，使用backup request。
@@ -570,6 +585,10 @@ options.retry_policy = &g_my_retry_policy;
 
 由于成本的限制，大部分线上server的冗余度是有限的，主要是满足多机房互备的需求。而激进的重试逻辑很容易导致众多client对server集群造成2-3倍的压力，最终使集群雪崩：由于server来不及处理导致队列越积越长，使所有的请求得经过很长的排队才被处理而最终超时，相当于服务停摆。默认的重试是比较安全的: 只要连接不断RPC就不会重试，一般不会产生大量的重试请求。用户可以通过RetryPolicy定制重试策略，但也可能使重试变成一场“风暴”。当你定制RetryPolicy时，你需要仔细考虑client和server的协作关系，并设计对应的异常测试，以确保行为符合预期。
 
+## 熔断
+
+具体方法见[这里](circuit_breaker.md)。
+
 ## 协议
 
 Channel的默认协议是baidu_std，可通过设置ChannelOptions.protocol换为其他协议，这个字段既接受enum也接受字符串。
@@ -580,7 +599,7 @@ Channel的默认协议是baidu_std，可通过设置ChannelOptions.protocol换�
 - PROTOCOL_HTTP 或 ”http", http/1.0或http/1.1协议，默认为连接池(Keep-Alive)。
   - 访问普通http服务的方法见[访问http/h2服务](http_client.md)
   - 通过http:json或http:proto访问pb服务的方法见[http/h2衍生协议](http_derivatives.md)
-- PROTOCOL_H2 或 ”h2", http/2.0协议，默认是单连接。
+- PROTOCOL_H2 或 ”h2", http/2协议，默认是单连接。
   - 访问普通h2服务的方法见[访问http/h2服务](http_client.md)。
   - 通过h2:json或h2:proto访问pb服务的方法见[http/h2衍生协议](http_derivatives.md)
 - "h2:grpc", [gRPC](https://grpc.io)的协议，也是h2的衍生协议，默认为单连接，具体见[h2:grpc](http_derivatives.md#h2grpc)。
@@ -601,8 +620,8 @@ Channel的默认协议是baidu_std，可通过设置ChannelOptions.protocol换�
 
 brpc支持以下连接方式：
 
-- 短连接：每次RPC前建立连接，结束后关闭连接。由于每次调用得有建立连接的开销，这种方式一般用于偶尔发起的操作，而不是持续发起请求的场景。没有协议默认使用这种连接方式，http 1.0对连接的处理效果类似短链接。
-- 连接池：每次RPC前取用空闲连接，结束后归还，一个连接上最多只有一个请求，一个client对一台server可能有多条连接。http 1.1和各类使用nshead的协议都是这个方式。
+- 短连接：每次RPC前建立连接，结束后关闭连接。由于每次调用得有建立连接的开销，这种方式一般用于偶尔发起的操作，而不是持续发起请求的场景。没有协议默认使用这种连接方式，http/1.0对连接的处理效果类似短链接。
+- 连接池：每次RPC前取用空闲连接，结束后归还，一个连接上最多只有一个请求，一个client对一台server可能有多条连接。http/1.1和各类使用nshead的协议都是这个方式。
 - 单连接：进程内所有client与一台server最多只有一个连接，一个连接上可能同时有多个请求，回复返回顺序和请求顺序不需要一致，这是baidu_std，hulu_pbrpc，sofa_pbrpc协议的默认选项。
 
 |                     | 短连接                                      | 连接池                   | 单连接                 |
