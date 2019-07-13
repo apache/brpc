@@ -516,10 +516,6 @@ BRPC_INLINE int EVP_PKEY_base_id(const EVP_PKEY *pkey) {
     return EVP_PKEY_type(pkey->type);
 }
 
-BRPC_INLINE int EVP_PKEY_base_id(const EVP_PKEY *pkey) {
-    return EVP_PKEY_type(pkey->type);
-}
-
 #endif /* OPENSSL_VERSION_NUMBER < 0x0090801fL */
 
 #endif /* BUTIL_SSL_COMPAT_H */
