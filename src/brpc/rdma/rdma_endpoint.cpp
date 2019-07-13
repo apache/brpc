@@ -931,6 +931,7 @@ ssize_t RdmaEndpoint::HandleCompletion(RdmaCompletion& rc) {
     // RDMACM_EVENT_ESTABLISHED. So we force modifying this state here.
     _socket->_rdma_state = Socket::RDMA_ON;
 
+    bool zerocopy = FLAGS_rdma_recv_zerocopy;
     switch (rc.type) {
     case RDMA_EVENT_WRITE:  // send completion of pure ACK
     case RDMA_EVENT_SEND: {  // send completion of data
@@ -940,7 +941,10 @@ ssize_t RdmaEndpoint::HandleCompletion(RdmaCompletion& rc) {
     case RDMA_EVENT_RECV: {  // recv completion of data
         CHECK(rc.len > 0);
         // Please note that only the first rc.len bytes is valid
-        if (FLAGS_rdma_recv_zerocopy) {
+        if (rc.len < 512) {
+            zerocopy = false;
+        }
+        if (zerocopy) {
             butil::IOBuf tmp;
             _rbuf[_rq_received].cutn(&tmp, rc.len);
             _socket->_read_buf.append(tmp);
@@ -973,7 +977,7 @@ ssize_t RdmaEndpoint::HandleCompletion(RdmaCompletion& rc) {
             }
         }
         // We must re-post recv WR
-        if (PostRecv(1) < 0) {
+        if (PostRecv(1, zerocopy) < 0) {
             return -1;
         }
         if (rc.len > 0) {
@@ -1020,14 +1024,14 @@ int RdmaEndpoint::DoPostRecv(void* block, size_t block_size) {
 #endif
 }
 
-int RdmaEndpoint::PostRecv(uint32_t num) {
+int RdmaEndpoint::PostRecv(uint32_t num, bool zerocopy) {
 #ifndef BRPC_RDMA
     CHECK(false) << "This should not happen";
     return -1;
 #else
     // We do the post repeatedly from the _rbuf[_rq_received].
     while (num > 0) {
-        if (FLAGS_rdma_recv_zerocopy || _rbuf[_rq_received].empty()) {
+        if (zerocopy || _rbuf[_rq_received].empty()) {
             _rbuf[_rq_received].clear();
             butil::IOBufAsZeroCopyOutputStream os(&_rbuf[_rq_received],
                     g_rdma_recv_block_size + IOBUF_BLOCK_HEADER_LEN);
@@ -1083,7 +1087,7 @@ int RdmaEndpoint::AllocateResources() {
     _rbuf.resize(_rq_size + RESERVED_WR_NUM);
     _rbuf_data.resize(_rq_size + RESERVED_WR_NUM);
 
-    return PostRecv(_rbuf.size());
+    return PostRecv(_rbuf.size(), true);
 #endif
 }
 

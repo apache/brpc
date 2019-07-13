@@ -1,9 +1,10 @@
 // Baidu RPC - A framework to host and access services throughout Baidu.
 // Copyright (c) 2018 baidu-rpc authors
 
-#include <errno.h>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
+#ifdef BRPC_RDMA
+#include <errno.h>
 #include "bthread/bthread.h"
 #include "butil/time.h"
 #include "brpc/rdma/block_pool.h"
@@ -179,6 +180,7 @@ TEST_F(BlockPoolTest, invalid_use) {
 
     DestroyBlockPool();
 }
+#endif
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);

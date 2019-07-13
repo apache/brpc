@@ -136,8 +136,9 @@ private:
     ssize_t HandleCompletion(RdmaCompletion& rc);
 
     // Post a given number of WRs to Recv Queue
+    // If zerocopy is true, malloc new buffer for WR
     // Return 0 if success, -1 if failed and errno set
-    int PostRecv(uint32_t num);
+    int PostRecv(uint32_t num, bool zerocopy);
 
     // Post a WR pointing to the block to the local Recv Queue
     // Arguments:

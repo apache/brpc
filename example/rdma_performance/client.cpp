@@ -32,7 +32,7 @@
 
 DEFINE_int32(thread_num, 0, "How many threads are used");
 DEFINE_int32(max_thread_num, 16, "The max number of threads are used");
-DEFINE_int32(attachment_size, 4, "Attachment size is used (in KB)");
+DEFINE_int32(attachment_size, -1, "Attachment size is used (in KB)");
 DEFINE_bool(specify_attachment_addr, false, "Specify the address of attachment");
 DEFINE_bool(echo_attachment, false, "Select whether attachment should be echo");
 DEFINE_string(connection_type, "single", "Connection type of the channel");

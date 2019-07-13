@@ -233,11 +233,6 @@ endforeach()
 # brpc tests
 file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
 foreach(BRPC_UT ${BRPC_UNITTESTS})
-    if(NOT WITH_RDMA)
-        if(BRPC_UT MATCHES ".*rdma.*" OR BRPC_UT MATCHES ".*block_pool.*")
-            continue()
-        endif()
-    endif()
     get_filename_component(BRPC_UT_WE ${BRPC_UT} NAME_WE)
     add_executable(${BRPC_UT_WE} ${BRPC_UT} $<TARGET_OBJECTS:TEST_PROTO_LIB>)
     target_link_libraries(${BRPC_UT_WE} brpc-shared-debug

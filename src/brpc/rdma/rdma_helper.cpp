@@ -103,9 +103,10 @@ static int g_max_sge = 0;
 static butil::atomic<bool> g_rdma_available(false);
 
 #ifdef BRPC_RDMA
+DECLARE_bool(rdma_disable_local_connection);
+DEFINE_int32(rdma_max_sge, 0, "Max SGE num in a WR");
 DEFINE_string(rdma_cluster, "0.0.0.0/0",
               "The ip address prefix of current cluster which supports RDMA");
-DECLARE_bool(rdma_disable_local_connection);
 DEFINE_string(rdma_device, "", "The name of the HCA device used "
                                "(Empty means using the first active device)");
 
@@ -508,9 +509,9 @@ static void GlobalRdmaInitializeOrDieImpl() {
                         "Do not use 0.0.0.0/127.0.0.1 to do local RDMA connection.";
     }
     if (FLAGS_rdma_disable_local_connection) {
-        LOG(WARNING) << "Now local connection only uses TCP. "
-                     << "Try to set rdma_disable_local_connection to false "
-                     << "to allow RDMA local connection";
+        LOG(INFO) << "Now local connection only uses TCP. "
+                  << "Try to set rdma_disable_local_connection to false "
+                  << "to allow RDMA local connection";
     }
 
     // Create protection domain
@@ -531,8 +532,14 @@ static void GlobalRdmaInitializeOrDieImpl() {
         PLOG(ERROR) << "Fail to get the device information";
         ExitWithError();
     }
-    // Too large sge consumes too much memory for QP
-    g_max_sge = attr.max_sge < 6 ? attr.max_sge : 6;
+
+    if (FLAGS_rdma_max_sge > 0) {
+        // Too large sge consumes too much memory for QP
+        g_max_sge = attr.max_sge < FLAGS_rdma_max_sge ?
+                    attr.max_sge : FLAGS_rdma_max_sge;
+    } else {
+        g_max_sge = attr.max_sge;
+    }
 
     // Initialize RDMA memory pool (block_pool)
     if (!InitBlockPool(RdmaRegisterMemory)) {

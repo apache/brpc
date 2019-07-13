@@ -1,8 +1,9 @@
 // Baidu RPC - A framework to host and access services throughout Baidu.
 // Copyright (c) 2018 baidu-rpc authors
 
-#include <gtest/gtest.h>
 #include <gflags/gflags.h>
+#include <gtest/gtest.h>
+#ifdef BRPC_RDMA
 #include <infiniband/verbs.h>
 #include <rdma/rdma_cma.h>
 #include <netinet/in.h>
@@ -1684,11 +1685,13 @@ TEST_F(RdmaTest, cq_overrun) {
 
     StopServer();
 }
+#endif
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
     google::ParseCommandLineFlags(&argc, &argv, true);
+#ifdef BRPC_RDMA
     brpc::rdma::FLAGS_rdma_disable_local_connection = false;
+#endif
     return RUN_ALL_TESTS();
 }
-
