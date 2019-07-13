@@ -24,32 +24,102 @@
 #include <brpc/server.h>
 #include <brpc/restful.h>
 #include "helloworld.pb.h"
+#include <brpc/stream.h>
+#include "butil/sys_byteorder.h"
+
+using helloworld::Greeter;
+using helloworld::HelloReply;
+using helloworld::HelloRequest;
 
 DEFINE_int32(port, 50051, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
-             "read/write operations during the last `idle_timeout_s'");
+                                 "read/write operations during the last `idle_timeout_s'");
 DEFINE_int32(logoff_ms, 2000, "Maximum duration of server's LOGOFF state "
-             "(waiting for client to close connection before server stops)");
+                              "(waiting for client to close connection before server stops)");
 DEFINE_bool(gzip, false, "compress body using gzip");
 
-class GreeterImpl : public helloworld::Greeter {
+static void AddGrpcPrefix(butil::IOBuf *body, bool compressed)
+{
+    char buf[5];
+    buf[0] = (compressed ? 1 : 0);
+    *(uint32_t *)(buf + 1) = butil::HostToNet32(body->size());
+    butil::IOBuf tmp_buf;
+    tmp_buf.append(buf, sizeof(buf));
+    tmp_buf.append(butil::IOBuf::Movable(*body));
+    body->swap(tmp_buf);
+}
+
+static void *SendStream(void *arg)
+{
+    butil::intrusive_ptr<brpc::ProgressiveAttachment> pa(
+        (brpc::ProgressiveAttachment *)arg);
+    if (pa == NULL)
+    {
+        LOG(ERROR) << "ProgressiveAttachment is NULL";
+        return NULL;
+    }
+
+    std::string prefix("Hello ");
+
+    // call done and send stream
+    for (int i = 1; i < 5; ++i)
+    {
+        HelloReply reply;
+        std::ostringstream ostr;
+        ostr << prefix << " " << i;
+        reply.set_message(ostr.str());
+        //sleep(1);
+
+        butil::IOBuf iobuf;
+        butil::IOBufAsZeroCopyOutputStream wrapper(&iobuf);
+        reply.SerializePartialToZeroCopyStream(&wrapper);
+
+        AddGrpcPrefix(&iobuf, false);
+
+        LOG(INFO) << "write " << i << ", ret " << pa->Write(iobuf);
+    }
+
+    return NULL;
+}
+
+class GreeterImpl : public helloworld::Greeter
+{
 public:
-    GreeterImpl() {};
-    virtual ~GreeterImpl() {};
-    void SayHello(google::protobuf::RpcController* cntl_base,
-                 const helloworld::HelloRequest* req,
-                 helloworld::HelloReply* res,
-                 google::protobuf::Closure* done) {
+    GreeterImpl() : _sd(brpc::INVALID_STREAM_ID){};
+    virtual ~GreeterImpl()
+    {
+        brpc::StreamClose(_sd);
+    };
+
+    void SayHello(google::protobuf::RpcController *cntl_base,
+                  const helloworld::HelloRequest *req,
+                  helloworld::HelloReply *res,
+                  google::protobuf::Closure *done)
+    {
+
         brpc::ClosureGuard done_guard(done);
-        brpc::Controller* cntl = static_cast<brpc::Controller*>(cntl_base);
-        if (FLAGS_gzip) {
+        brpc::Controller *cntl = static_cast<brpc::Controller *>(cntl_base);
+        if (FLAGS_gzip)
+        {
             cntl->set_response_compress_type(brpc::COMPRESS_TYPE_GZIP);
         }
-        res->set_message("Hello " + req->name());
+
+        bthread_t th;
+        brpc::ProgressiveAttachment *pa = cntl->CreateProgressiveAttachment();
+        pa->is_grpc = true;
+        pa->grpc_stream_id = cntl->grpc_stream_id;
+
+        bthread_start_background(&th, NULL, SendStream, pa);
+
+        res->set_message("Hello " + req->name() + " 0");
     }
+
+private:
+    brpc::StreamId _sd;
 };
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[])
+{
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
@@ -62,7 +132,8 @@ int main(int argc, char* argv[]) {
     // service is put on stack, we don't want server to delete it, otherwise
     // use brpc::SERVER_OWNS_SERVICE.
     if (server.AddService(&http_svc,
-                          brpc::SERVER_DOESNT_OWN_SERVICE) != 0) {
+                          brpc::SERVER_DOESNT_OWN_SERVICE) != 0)
+    {
         LOG(ERROR) << "Fail to add http_svc";
         return -1;
     }
@@ -70,7 +141,8 @@ int main(int argc, char* argv[]) {
     // Start the server.
     brpc::ServerOptions options;
     options.idle_timeout_sec = FLAGS_idle_timeout_s;
-    if (server.Start(FLAGS_port, &options) != 0) {
+    if (server.Start(FLAGS_port, &options) != 0)
+    {
         LOG(ERROR) << "Fail to start HttpServer";
         return -1;
     }

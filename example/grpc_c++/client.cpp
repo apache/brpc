@@ -28,27 +28,32 @@ DEFINE_string(protocol, "h2:grpc", "Protocol type. Defined in src/brpc/options.p
 DEFINE_string(server, "0.0.0.0:50051", "IP Address of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
-DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)");
 DEFINE_int32(interval_ms, 1000, "Milliseconds between consecutive requests");
 DEFINE_bool(gzip, false, "compress body using gzip");
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[])
+{
     // Parse gflags. We recommend you to use gflags as well.
     GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
-    if (FLAGS_gzip) {
+    if (FLAGS_gzip)
+    {
         GFLAGS_NS::SetCommandLineOption("http_body_compress_threshold", 0);
     }
-    
-    // A Channel represents a communication line to a Server. Notice that 
+
+    // A Channel represents a communication line to a Server. Notice that
     // Channel is thread-safe and can be shared by all threads in your program.
     brpc::Channel channel;
-    
+
     // Initialize the channel, NULL means using default options.
     brpc::ChannelOptions options;
     options.protocol = FLAGS_protocol;
-    options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
+    options.timeout_ms = FLAGS_timeout_ms /*milliseconds*/;
     options.max_retry = FLAGS_max_retry;
-    if (channel.Init(FLAGS_server.c_str(), FLAGS_load_balancer.c_str(), &options) != 0) {
+    options.connection_type = "single";
+
+    if (channel.Init(FLAGS_server.c_str(), FLAGS_load_balancer.c_str(), &options) != 0)
+    {
         LOG(ERROR) << "Fail to initialize channel";
         return -1;
     }
@@ -58,7 +63,8 @@ int main(int argc, char* argv[]) {
     helloworld::Greeter_Stub stub(&channel);
 
     // Send a request and wait for the response every 1 second.
-    while (!brpc::IsAskedToQuit()) {
+    while (!brpc::IsAskedToQuit())
+    {
         // We will receive response synchronously, safe to put variables
         // on stack.
         helloworld::HelloRequest request;
@@ -66,18 +72,22 @@ int main(int argc, char* argv[]) {
         brpc::Controller cntl;
 
         request.set_name("grpc_req_from_brpc");
-        if (FLAGS_gzip) {
+        if (FLAGS_gzip)
+        {
             cntl.set_request_compress_type(brpc::COMPRESS_TYPE_GZIP);
         }
         // Because `done'(last parameter) is NULL, this function waits until
         // the response comes back or error occurs(including timedout).
         stub.SayHello(&cntl, &request, &response, NULL);
-        if (!cntl.Failed()) {
+        if (!cntl.Failed())
+        {
             LOG(INFO) << "Received response from " << cntl.remote_side()
-                << " to " << cntl.local_side()
-                << ": " << response.message()
-                << " latency=" << cntl.latency_us() << "us";
-        } else {
+                      << " to " << cntl.local_side()
+                      << ": " << response.message()
+                      << " latency=" << cntl.latency_us() << "us";
+        }
+        else
+        {
             LOG(WARNING) << cntl.ErrorText();
         }
         usleep(FLAGS_interval_ms * 1000L);
