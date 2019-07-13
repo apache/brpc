@@ -12,6 +12,8 @@
 #include "butil/move.h"
 #include "butil/stl_util.h"
 
+namespace butil {
+
 // ScopedVector wraps a vector deleting the elements from its
 // destructor.
 template <class T>
@@ -133,5 +135,7 @@ class ScopedVector {
  private:
   std::vector<T*> v_;
 };
+
+} // namespace butil
 
 #endif  // BUTIL_MEMORY_SCOPED_VECTOR_H_

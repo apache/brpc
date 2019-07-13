@@ -64,9 +64,9 @@ channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
 ```
 # 控制HTTP版本
 
-brpc的http行为默认是http 1.1。
+brpc的http行为默认是http/1.1。
 
-http 1.0相比1.1缺少长连接功能，brpc client与一些古老的http server通信时可能需要按如下方法设置为1.0。
+http/1.0相比http/1.1缺少长连接功能，brpc client与一些古老的http server通信时可能需要按如下方法设置为1.0。
 ```c++
 cntl.http_request().set_version(1, 0);
 ```
@@ -158,14 +158,15 @@ std::string str = cntl->request_attachment().to_string(); // 有拷贝
 设置body
 ```c++
 cntl->request_attachment().append("....");
-butil::IOBufBuilder os; os << "....";
+butil::IOBufBuilder os;
+os << "....";
 os.move_to(cntl->request_attachment());
 ```
 
 Notes on http header:
 
-- 根据[rfc2616](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2)，header的field_name部分不区分大小写。brpc支持大小写不敏感，同时还能在打印时保持field_name大小写与用户设定的相同。
-- 如果HTTP头中出现了相同的field_name, 根据[rfc2616](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2)，value应合并到一起，用逗号(,)分隔，用户自己确定如何理解和处理此类value.
+- 根据[rfc2616](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2)，http header的field_name不区分大小写。brpc支持大小写不敏感，同时会在打印时保持用户传入的大小写。
+- 若http header中出现了相同的field_name, 根据[rfc2616](http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2)，value应合并到一起，用逗号(,)分隔，用户自行处理.
 - query之间用"&"分隔, key和value之间用"="分隔, value可以省略，比如key1=value1&key2&key3=value3中key2是合理的query，值为空字符串。
 
 # 查看HTTP消息
@@ -251,4 +252,4 @@ brpc client支持在读取完body前就结束RPC，让用户在RPC结束后再�
 根据Server的认证方式生成对应的auth_data，并设置为http header "Authorization"的值。比如用的是curl，那就加上选项`-H "Authorization : <auth_data>"。`
 
 # 发送https请求
-https是http over SSL的简称，SSL并不是http特有的，而是对所有协议都有效。开启客户端SSL的一般性方法见[这里](client.md#开启ssl)。为方便使用，brpc会对https://开头的uri自动开启SSL。
+https是http over SSL的简称，SSL并不是http特有的，而是对所有协议都有效。开启客户端SSL的一般性方法见[这里](client.md#开启ssl)。为方便使用，brpc会对https开头的uri自动开启SSL。

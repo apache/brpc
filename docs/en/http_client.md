@@ -65,9 +65,9 @@ channel.CallMethod(NULL, &cntl, NULL, NULL, NULL/*done*/);
 
 # Change HTTP version
 
-brpc behaves as http 1.1 by default.
+brpc behaves as http/1.1 by default.
 
-Comparing to 1.1, http 1.0 lacks of long connections(KeepAlive). To communicate brpc client with some legacy http servers, the client may be configured as follows:
+Comparing to http/1.1, http/1.0 lacks of long connections(KeepAlive). To communicate brpc client with some legacy http servers, the client may be configured as follows:
 ```c++
 cntl.http_request().set_version(1, 0);
 ```

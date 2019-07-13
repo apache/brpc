@@ -97,7 +97,7 @@ service sockets {
     rpc default_method(SocketsRequest) returns (SocketsResponse);
 }
 
-service metrics {
+service brpc_metrics {
     rpc default_method(MetricsRequest) returns (MetricsResponse);
 }
 

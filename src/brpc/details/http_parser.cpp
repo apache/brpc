@@ -1741,10 +1741,6 @@ size_t http_parser_execute (http_parser *parser,
 
         parser->state = s_headers_done;
 
-        /* Set this here so that on_headers_complete() callbacks can see it */
-        parser->upgrade =
-          (parser->flags & F_UPGRADE || parser->method == HTTP_CONNECT);
-
         /* Here we call the headers_complete callback. This is somewhat
          * different than other callbacks because if the user returns 1, we
          * will interpret that as saying that this message has no body. This
@@ -1783,7 +1779,7 @@ size_t http_parser_execute (http_parser *parser,
         parser->nread = 0;
 
         /* Exit, the rest of the connect is in a different protocol. */
-        if (parser->upgrade) {
+        if (parser->method == HTTP_CONNECT) {
           parser->state = NEW_MESSAGE();
           CALLBACK_NOTIFY(message_complete);
           return (p - data) + 1;

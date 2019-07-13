@@ -1,5 +1,21 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 // brpc - A framework to host and access services throughout Baidu.
-// Copyright (c) 2014 Baidu, Inc.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
@@ -1043,7 +1059,7 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         ASSERT_EQ(0, server.Stop(-1));
         ASSERT_EQ(0, server.Join());
         timer.stop();
-        EXPECT_TRUE(labs(timer.m_elapsed() - 100) < 10) << timer.m_elapsed();
+        EXPECT_TRUE(labs(timer.m_elapsed() - 100) < 15) << timer.m_elapsed();
         bthread_join(tid, NULL);
     }
 
@@ -1066,7 +1082,7 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         timer.stop();
         // Assertion will fail since EchoServiceImpl::Echo is holding
         // additional reference to the `Socket'
-        // EXPECT_TRUE(timer.m_elapsed() < 10) << timer.m_elapsed();
+        // EXPECT_TRUE(timer.m_elapsed() < 15) << timer.m_elapsed();
         bthread_join(tid, NULL);
     }
 
@@ -1089,7 +1105,7 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         timer.stop();
         // Assertion will fail since EchoServiceImpl::Echo is holding
         // additional reference to the `Socket'
-        // EXPECT_TRUE(labs(timer.m_elapsed() - 50) < 10) << timer.m_elapsed();
+        // EXPECT_TRUE(labs(timer.m_elapsed() - 50) < 15) << timer.m_elapsed();
         bthread_join(tid, NULL);
     }
     
@@ -1109,7 +1125,7 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         ASSERT_EQ(0, server.Stop(1000));
         ASSERT_EQ(0, server.Join());
         timer.stop();
-        EXPECT_TRUE(labs(timer.m_elapsed() - 100) < 10) << timer.m_elapsed();
+        EXPECT_TRUE(labs(timer.m_elapsed() - 100) < 15) << timer.m_elapsed();
         bthread_join(tid, NULL);
     }
 }
@@ -1158,7 +1174,7 @@ TEST_F(ServerTest, serving_requests) {
 TEST_F(ServerTest, create_pid_file) {
     {
         brpc::Server server;
-        server._options.pid_file = "$PWD//pid_dir/sub_dir/./.server.pid";
+        server._options.pid_file = "./pid_dir/sub_dir/./.server.pid";
         server.PutPidFileIfNeeded();
         pid_t pid = getpid();
         std::ifstream fin("./pid_dir/sub_dir/.server.pid");
@@ -1178,7 +1194,7 @@ TEST_F(ServerTest, range_start) {
     butil::EndPoint point;
     for (int i = START_PORT; i < END_PORT; ++i) {
         point.port = i;
-        listen_fds[i - START_PORT].reset(butil::tcp_listen(point, true));
+        listen_fds[i - START_PORT].reset(butil::tcp_listen(point));
     }
 
     brpc::Server server;

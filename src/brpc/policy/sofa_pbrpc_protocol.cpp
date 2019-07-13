@@ -1,16 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
@@ -128,8 +131,7 @@ private:
 };
 
 inline void PackSofaHeader(char* sofa_header, int meta_size, int body_size) {
-    // dummy supresses strict-aliasing warning.
-    uint32_t* dummy = reinterpret_cast<uint32_t*>(sofa_header);
+    uint32_t* dummy = reinterpret_cast<uint32_t*>(sofa_header); // suppress strict-alias warning
     *dummy = *reinterpret_cast<const uint32_t*>("SOFA");
 
     SofaRawPacker rp(sofa_header + 4);
@@ -323,9 +325,9 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
 
     SampledRequest* sample = AskToBeSampled();
     if (sample) {
-        sample->set_method_name(meta.method());
-        sample->set_compress_type(req_cmp_type);
-        sample->set_protocol_type(PROTOCOL_SOFA_PBRPC);
+        sample->meta.set_method_name(meta.method());
+        sample->meta.set_compress_type(req_cmp_type);
+        sample->meta.set_protocol_type(PROTOCOL_SOFA_PBRPC);
         sample->request = msg->payload;
         sample->submit(start_parse_us);
     }
@@ -546,11 +548,11 @@ void PackSofaRequest(butil::IOBuf* req_buf,
     if (method) {
         meta.set_method(method->full_name());
         meta.set_compress_type(CompressType2Sofa(cntl->request_compress_type()));
-    } else if (cntl->rpc_dump_meta()) {
+    } else if (cntl->sampled_request()) {
         // Replaying.
-        meta.set_method(cntl->rpc_dump_meta()->method_name());
+        meta.set_method(cntl->sampled_request()->meta.method_name());
         meta.set_compress_type(
-            CompressType2Sofa(cntl->rpc_dump_meta()->compress_type()));
+            CompressType2Sofa(cntl->sampled_request()->meta.compress_type()));
     } else {
         return cntl->SetFailed(ENOMETHOD, "method is NULL");
     }

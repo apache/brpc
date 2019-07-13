@@ -1,16 +1,19 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Thu Dec 31 13:35:39 CST 2015
@@ -160,15 +163,19 @@ double fast_rand_double() {
     return fast_rand_double(&_tls_seed);
 }
 
-void fast_rand_bytes(void* addr, uint64_t len) {
-    uint64_t offset = 0;
-    while (offset < len) {
-        uint64_t rand_num = butil::fast_rand();
-        char* rand_str = (char*)(&rand_num);
-        uint64_t current_len = sizeof(uint64_t) < (len - offset) ?
-                               sizeof(uint64_t) : (len - offset);
-        memcpy((char*)addr + offset, rand_str, current_len);
-        offset += current_len;
+void fast_rand_bytes(void* output, size_t output_length) {
+    const size_t n = output_length / 8;
+    for (size_t i = 0; i < n; ++i) {
+        static_cast<uint64_t*>(output)[i] = fast_rand();
+    }
+    const size_t m = output_length - n * 8;
+    if (m) {
+        uint8_t* p = static_cast<uint8_t*>(output) + n * 8;
+        uint64_t r = fast_rand();
+        for (size_t i = 0; i < m; ++i) {
+            p[i] = (r & 0xFF);
+            r = (r >> 8);
+        }
     }
 }
 

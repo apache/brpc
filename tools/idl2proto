@@ -1,8 +1,6 @@
 #!/bin/bash -f
 
 # mcpack2pb - Make protobuf be front-end of mcpack/compack
-# Copyright (c) 2015 Baidu.com, Inc. All Rights Reserved
-# Date: Mon Oct 19 17:17:36 CST 2015
 
 # source shflags from current directory
 mydir="${BASH_SOURCE%/*}"

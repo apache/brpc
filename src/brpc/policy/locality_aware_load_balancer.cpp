@@ -1,16 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
@@ -22,7 +25,6 @@
 #include "brpc/socket.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/policy/locality_aware_load_balancer.h"
-
 
 namespace brpc {
 namespace policy {
@@ -270,7 +272,6 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
     if (n == 0) {
         return ENODATA;
     }
-
     size_t ntry = 0;
     size_t nloop = 0;
     int64_t total = _total.load(butil::memory_order_relaxed);
@@ -303,7 +304,7 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
                 continue;
             }
         } else if (Socket::Address(info.server_id, out->ptr) == 0
-                   && !(*out->ptr)->IsLogOff()) {
+                   && (*out->ptr)->IsAvailable()) {
             if ((ntry + 1) == n  // Instead of fail with EHOSTDOWN, we prefer
                                  // choosing the server again.
                 || !ExcludedServers::IsExcluded(in.excluded, info.server_id)) {
@@ -460,7 +461,8 @@ int64_t LocalityAwareLoadBalancer::Weight::Update(
     return ResetWeight(index, end_time_us);
 }
 
-LocalityAwareLoadBalancer* LocalityAwareLoadBalancer::New() const {
+LocalityAwareLoadBalancer* LocalityAwareLoadBalancer::New(
+    const butil::StringPiece&) const {
     return new (std::nothrow) LocalityAwareLoadBalancer;
 }
 

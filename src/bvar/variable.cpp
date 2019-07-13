@@ -1,16 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: 2014/09/22 19:04:47
@@ -24,7 +27,6 @@
 #include "butil/containers/flat_map.h"           // butil::FlatMap
 #include "butil/scoped_lock.h"                   // BAIDU_SCOPE_LOCK
 #include "butil/string_splitter.h"               // butil::StringSplitter
-#include "butil/strings/string_split.h"          // butil::SplitStringIntoKeyValuePairs
 #include "butil/errno.h"                         // berror
 #include "butil/time.h"                          // milliseconds_from_now
 #include "butil/file_util.h"                     // butil::FilePath
@@ -202,7 +204,7 @@ void Variable::list_exposed(std::vector<std::string>* names,
         return;
     }
     names->clear();
-    if (names->size() < 32) {
+    if (names->capacity() < 32) {
         names->reserve(count_exposed());
     }
     VarMapWithLock* var_maps = get_var_maps();
@@ -316,8 +318,8 @@ public:
     explicit CharArrayStreamBuf() : _data(NULL), _size(0) {}
     ~CharArrayStreamBuf();
 
-    virtual int overflow(int ch);
-    virtual int sync();
+    int overflow(int ch) override;
+    int sync() override;
     void reset();
     butil::StringPiece data() {
         return butil::StringPiece(pbase(), pptr() - pbase());
@@ -587,7 +589,7 @@ public:
             _fp = NULL;
         }
     }
-    bool dump(const std::string& name, const butil::StringPiece& desc) {
+    bool dump(const std::string& name, const butil::StringPiece& desc) override {
         if (_fp == NULL) {
             butil::File::Error error;
             butil::FilePath dir = butil::FilePath(_filename).DirName();
@@ -627,15 +629,13 @@ public:
             // .data will be appended later
             path = path.RemoveFinalExtension();
         }
-        butil::StringPairs pairs;
-        pairs.reserve(8);
-        butil::SplitStringIntoKeyValuePairs(tabs, '=', ';', &pairs);
-        dumpers.reserve(pairs.size() + 1);
-        //matchers.reserve(pairs.size());
-        for (size_t i = 0; i < pairs.size(); ++i) {
+
+        for (butil::KeyValuePairsSplitter sp(tabs, ';', '='); sp; ++sp) {
+            std::string key = sp.key().as_string();
+            std::string value = sp.value().as_string();
             FileDumper *f = new FileDumper(
-                    path.AddExtension(pairs[i].first).AddExtension("data").value(), s);
-            WildcardMatcher *m = new WildcardMatcher(pairs[i].second, '?', true);
+                    path.AddExtension(key).AddExtension("data").value(), s);
+            WildcardMatcher *m = new WildcardMatcher(value, '?', true);
             dumpers.push_back(std::make_pair(f, m));
         }
         dumpers.push_back(std::make_pair(
@@ -650,7 +650,7 @@ public:
         dumpers.clear();
     }
 
-    bool dump(const std::string& name, const butil::StringPiece& desc) {
+    bool dump(const std::string& name, const butil::StringPiece& desc) override {
         for (size_t i = 0; i < dumpers.size() - 1; ++i) {
             if (dumpers[i].second->match(name)) {
                 return dumpers[i].first->dump(name, desc);

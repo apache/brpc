@@ -1,5 +1,21 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 // Baidu RPC - A framework to host and access services throughout Baidu.
-// Copyright (c) 2014 baidu-rpc authors
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
@@ -109,6 +125,7 @@ TEST_F(SSLTest, sanity) {
         brpc::Channel channel;
         brpc::ChannelOptions coptions;
         coptions.mutable_ssl_options();
+        coptions.mutable_ssl_options()->sni_name = "localhost";
         ASSERT_EQ(0, channel.Init("localhost", port, &coptions));
 
         brpc::Controller cntl;
@@ -125,6 +142,7 @@ TEST_F(SSLTest, sanity) {
         brpc::Channel channel;
         brpc::ChannelOptions coptions;
         coptions.mutable_ssl_options();
+        coptions.mutable_ssl_options()->sni_name = "localhost";
         ASSERT_EQ(0, channel.Init("127.0.0.1", port, &coptions));
         for (int i = 0; i < NUM; ++i) {
             google::protobuf::Closure* thrd_func =
@@ -141,6 +159,7 @@ TEST_F(SSLTest, sanity) {
         brpc::ChannelOptions coptions;
         coptions.protocol = "http";
         coptions.mutable_ssl_options();
+        coptions.mutable_ssl_options()->sni_name = "localhost";
         ASSERT_EQ(0, channel.Init("127.0.0.1", port, &coptions));
         for (int i = 0; i < NUM; ++i) {
             google::protobuf::Closure* thrd_func =
@@ -309,7 +328,7 @@ void* ssl_perf_server(void* arg) {
 
 TEST_F(SSLTest, ssl_perf) {
     const butil::EndPoint ep(butil::IP_ANY, 5961);
-    butil::fd_guard listenfd(butil::tcp_listen(ep, false));
+    butil::fd_guard listenfd(butil::tcp_listen(ep));
     ASSERT_GT(listenfd, 0);
     int clifd = tcp_connect(ep, NULL);
     ASSERT_GT(clifd, 0);
@@ -322,6 +341,9 @@ TEST_F(SSLTest, ssl_perf) {
             brpc::CreateServerSSLContext("cert1.crt", "cert1.key",
                                          brpc::SSLOptions(), NULL);
     SSL* cli_ssl = brpc::CreateSSLSession(cli_ctx, 0, clifd, false);
+#if defined(SSL_CTRL_SET_TLSEXT_HOSTNAME) || defined(USE_MESALINK)
+    SSL_set_tlsext_host_name(cli_ssl, "localhost");
+#endif
     SSL* serv_ssl = brpc::CreateSSLSession(serv_ctx, 0, servfd, true);
     pthread_t cpid;
     pthread_t spid;

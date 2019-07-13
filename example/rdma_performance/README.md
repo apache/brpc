@@ -4,10 +4,10 @@ You can run this example in your own environment.
 
 # How to build it
 
-To build this example, please make sure you have built brpc with BRPC_WITH_RDMA option first.
+To build this example, please make sure you have built brpc with WITH_RDMA option first.
 
 ```bash
-$ cmake -DBRPC_WITH_RDMA=on . # in project's directory
+$ cmake -DWITH_RDMA=on . # in project's directory
 $ make -j
 $ cd example/rdma_performance
 $ cmake .

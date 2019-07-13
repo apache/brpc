@@ -1,17 +1,21 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 // bthread - A M:N threading library to make applications more concurrent.
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
 
 // Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Jul 13 15:04:18 CST 2014
@@ -222,7 +226,7 @@ public:
 
     inline T* get_object() {
         LocalPool* lp = get_or_new_local_pool();
-        if (__builtin_expect(lp != NULL, 1)) {
+        if (BAIDU_LIKELY(lp != NULL)) {
             return lp->get();
         }
         return NULL;
@@ -231,7 +235,7 @@ public:
     template <typename A1>
     inline T* get_object(const A1& arg1) {
         LocalPool* lp = get_or_new_local_pool();
-        if (__builtin_expect(lp != NULL, 1)) {
+        if (BAIDU_LIKELY(lp != NULL)) {
             return lp->get(arg1);
         }
         return NULL;
@@ -240,7 +244,7 @@ public:
     template <typename A1, typename A2>
     inline T* get_object(const A1& arg1, const A2& arg2) {
         LocalPool* lp = get_or_new_local_pool();
-        if (__builtin_expect(lp != NULL, 1)) {
+        if (BAIDU_LIKELY(lp != NULL)) {
             return lp->get(arg1, arg2);
         }
         return NULL;
@@ -248,7 +252,7 @@ public:
 
     inline int return_object(T* ptr) {
         LocalPool* lp = get_or_new_local_pool();
-        if (__builtin_expect(lp != NULL, 1)) {
+        if (BAIDU_LIKELY(lp != NULL)) {
             return lp->return_object(ptr);
         }
         return -1;
@@ -378,7 +382,7 @@ private:
 
     inline LocalPool* get_or_new_local_pool() {
         LocalPool* lp = _local_pool;
-        if (__builtin_expect(lp != NULL, 1)) {
+        if (BAIDU_LIKELY(lp != NULL)) {
             return lp;
         }
         lp = new(std::nothrow) LocalPool(this);

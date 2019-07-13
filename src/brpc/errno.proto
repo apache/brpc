@@ -23,6 +23,7 @@ enum Errno {
     EUNUSED                 = 1015;  // The socket was not needed
     ESSL                    = 1016;  // SSL related error
     EH2RUNOUTSTREAMS        = 1017;  // The H2 socket was run out of streams
+    EREJECT                 = 1018;  // The Request is rejected
 
     // Errno caused by server
     EINTERNAL               = 2001;  // Internal Server Error

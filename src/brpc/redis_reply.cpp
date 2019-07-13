@@ -1,16 +1,19 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
@@ -34,26 +37,27 @@ const char* RedisReplyTypeToString(RedisReplyType type) {
     }
 }
 
-bool RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena) {
+ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena) {
     if (_type == REDIS_REPLY_ARRAY && _data.array.last_index >= 0) {
         // The parsing was suspended while parsing sub replies,
         // continue the parsing.
         RedisReply* subs = (RedisReply*)_data.array.replies;
         for (uint32_t i = _data.array.last_index; i < _length; ++i) {
-            if (!subs[i].ConsumePartialIOBuf(buf, arena)) {
-                return false;
+            ParseError err = subs[i].ConsumePartialIOBuf(buf, arena);
+            if (err != PARSE_OK) {
+                return err;
             }
             ++_data.array.last_index;
         }
         // We've got an intact reply. reset the index.
         _data.array.last_index = -1;
-        return true;
+        return PARSE_OK;
     }
 
-    // Notice that all branches returning false must not change `buf'.
+    // Notice that all branches returning PARSE_ERROR_NOT_ENOUGH_DATA must not change `buf'.
     const char* pfc = (const char*)buf.fetch1();
     if (pfc == NULL) {
-        return false;
+        return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
     const char fc = *pfc;  // first character
     switch (fc) {
@@ -61,7 +65,13 @@ bool RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena) {
     case '+': { // Simple String  "+<string>\r\n"
         butil::IOBuf str;
         if (buf.cut_until(&str, "\r\n") != 0) {
-            return false;
+            const size_t len = buf.size();
+            if (len > std::numeric_limits<uint32_t>::max()) {
+                LOG(ERROR) << "simple string is too long! max length=2^32-1,"
+                              " actually=" << len;
+                return PARSE_ERROR_ABSOLUTELY_WRONG;
+            }
+            return PARSE_ERROR_NOT_ENOUGH_DATA;
         }
         const size_t len = str.size() - 1;
         if (len < sizeof(_data.short_str)) {
@@ -69,18 +79,18 @@ bool RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena) {
             _type = (fc == '-' ? REDIS_REPLY_ERROR : REDIS_REPLY_STATUS);
             _length = len;
             str.copy_to_cstr(_data.short_str, (size_t)-1L, 1/*skip fc*/);
-            return true;
+            return PARSE_OK;
         }
         char* d = (char*)arena->allocate((len/8 + 1)*8);
         if (d == NULL) {
             LOG(FATAL) << "Fail to allocate string[" << len << "]";
-            return false;
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
         }
         CHECK_EQ(len, str.copy_to_cstr(d, (size_t)-1L, 1/*skip fc*/));
         _type = (fc == '-' ? REDIS_REPLY_ERROR : REDIS_REPLY_STATUS);
         _length = len;
         _data.long_str = d;
-        return true;
+        return PARSE_OK;
     }
     case '$':   // Bulk String   "$<length>\r\n<string>\r\n"
     case '*':   // Array         "*<size>\r\n<sub-reply1><sub-reply2>..."
@@ -90,20 +100,20 @@ bool RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena) {
         intbuf[ncopied] = '\0';
         const size_t crlf_pos = butil::StringPiece(intbuf, ncopied).find("\r\n");
         if (crlf_pos == butil::StringPiece::npos) {  // not enough data
-            return false;
+            return PARSE_ERROR_NOT_ENOUGH_DATA;
         }
         char* endptr = NULL;
         int64_t value = strtoll(intbuf + 1/*skip fc*/, &endptr, 10);
         if (endptr != intbuf + crlf_pos) {
             LOG(ERROR) << '`' << intbuf + 1 << "' is not a valid 64-bit decimal";
-            return false;
+            return PARSE_ERROR_ABSOLUTELY_WRONG;
         }
         if (fc == ':') {
             buf.pop_front(crlf_pos + 2/*CRLF*/);
             _type = REDIS_REPLY_INTEGER;
             _length = 0;
             _data.integer = value;
-            return true;
+            return PARSE_OK;
         } else if (fc == '$') {
             const int64_t len = value;  // `value' is length of the string
             if (len < 0) {  // redis nil
@@ -111,17 +121,17 @@ bool RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena) {
                 _type = REDIS_REPLY_NIL;
                 _length = 0;
                 _data.integer = 0;
-                return true;
+                return PARSE_OK;
             }
             if (len > (int64_t)std::numeric_limits<uint32_t>::max()) {
                 LOG(ERROR) << "bulk string is too long! max length=2^32-1,"
                     " actually=" << len;
-                return false;
+                return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             // We provide c_str(), thus even if bulk string is started with
             // length, we have to end it with \0.
             if (buf.size() < crlf_pos + 2 + (size_t)len + 2/*CRLF*/) {
-                return false;
+                return PARSE_ERROR_NOT_ENOUGH_DATA;
             }
             if ((size_t)len < sizeof(_data.short_str)) {
                 // SSO short strings, including empty string.
@@ -134,7 +144,7 @@ bool RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena) {
                 char* d = (char*)arena->allocate((len/8 + 1)*8);
                 if (d == NULL) {
                     LOG(FATAL) << "Fail to allocate string[" << len << "]";
-                    return false;
+                    return PARSE_ERROR_ABSOLUTELY_WRONG;
                 }
                 buf.pop_front(crlf_pos + 2/*CRLF*/);
                 buf.cutn(d, len);
@@ -147,8 +157,9 @@ bool RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena) {
             buf.cutn(crlf, sizeof(crlf));
             if (crlf[0] != '\r' || crlf[1] != '\n') {
                 LOG(ERROR) << "Bulk string is not ended with CRLF";
+                return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
-            return true;
+            return PARSE_OK;
         } else {
             const int64_t count = value;  // `value' is count of sub replies
             if (count < 0) { // redis nil
@@ -156,7 +167,7 @@ bool RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena) {
                 _type = REDIS_REPLY_NIL;
                 _length = 0;
                 _data.integer = 0;
-                return true;
+                return PARSE_OK;
             }
             if (count == 0) { // empty array
                 buf.pop_front(crlf_pos + 2/*CRLF*/);
@@ -164,18 +175,18 @@ bool RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena) {
                 _length = 0;
                 _data.array.last_index = -1;
                 _data.array.replies = NULL;
-                return true;
+                return PARSE_OK;
             }
             if (count > (int64_t)std::numeric_limits<uint32_t>::max()) {
                 LOG(ERROR) << "Too many sub replies! max count=2^32-1,"
                     " actually=" << count;
-                return false;
+                return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             // FIXME(gejun): Call allocate_aligned instead.
             RedisReply* subs = (RedisReply*)arena->allocate(sizeof(RedisReply) * count);
             if (subs == NULL) {
                 LOG(FATAL) << "Fail to allocate RedisReply[" << count << "]";
-                return false;
+                return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             for (int64_t i = 0; i < count; ++i) {
                 new (&subs[i]) RedisReply;
@@ -185,24 +196,25 @@ bool RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena) {
             _length = count;
             _data.array.replies = subs;
 
-            // Resursively parse sub replies. If any of them fails, it will
+            // Recursively parse sub replies. If any of them fails, it will
             // be continued in next calls by tracking _data.array.last_index.
             _data.array.last_index = 0;
             for (int64_t i = 0; i < count; ++i) {
-                if (!subs[i].ConsumePartialIOBuf(buf, arena)) {
-                    return false;
+                ParseError err = subs[i].ConsumePartialIOBuf(buf, arena);
+                if (err != PARSE_OK) {
+                    return err;
                 }
                 ++_data.array.last_index;
             }
             _data.array.last_index = -1;
-            return true;
+            return PARSE_OK;
         }
     }
     default:
         LOG(ERROR) << "Invalid first character=" << (int)fc;
-        return false;
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
-    return false;
+    return PARSE_ERROR_ABSOLUTELY_WRONG;
 }
 
 class RedisStringPrinter {

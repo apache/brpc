@@ -113,7 +113,7 @@ TEST(ScopedVectorTest, LifeCycleWatcher) {
 TEST(ScopedVectorTest, PopBack) {
   LifeCycleWatcher watcher;
   EXPECT_EQ(LC_INITIAL, watcher.life_cycle_state());
-  ScopedVector<LifeCycleObject> scoped_vector;
+  butil::ScopedVector<LifeCycleObject> scoped_vector;
   scoped_vector.push_back(watcher.NewLifeCycleObject());
   EXPECT_EQ(LC_CONSTRUCTED, watcher.life_cycle_state());
   EXPECT_TRUE(watcher.IsWatching(scoped_vector.back()));
@@ -125,7 +125,7 @@ TEST(ScopedVectorTest, PopBack) {
 TEST(ScopedVectorTest, Clear) {
   LifeCycleWatcher watcher;
   EXPECT_EQ(LC_INITIAL, watcher.life_cycle_state());
-  ScopedVector<LifeCycleObject> scoped_vector;
+  butil::ScopedVector<LifeCycleObject> scoped_vector;
   scoped_vector.push_back(watcher.NewLifeCycleObject());
   EXPECT_EQ(LC_CONSTRUCTED, watcher.life_cycle_state());
   EXPECT_TRUE(watcher.IsWatching(scoped_vector.back()));
@@ -137,7 +137,7 @@ TEST(ScopedVectorTest, Clear) {
 TEST(ScopedVectorTest, WeakClear) {
   LifeCycleWatcher watcher;
   EXPECT_EQ(LC_INITIAL, watcher.life_cycle_state());
-  ScopedVector<LifeCycleObject> scoped_vector;
+  butil::ScopedVector<LifeCycleObject> scoped_vector;
   scoped_vector.push_back(watcher.NewLifeCycleObject());
   EXPECT_EQ(LC_CONSTRUCTED, watcher.life_cycle_state());
   EXPECT_TRUE(watcher.IsWatching(scoped_vector.back()));
@@ -151,7 +151,7 @@ TEST(ScopedVectorTest, ResizeShrink) {
   EXPECT_EQ(LC_INITIAL, first_watcher.life_cycle_state());
   LifeCycleWatcher second_watcher;
   EXPECT_EQ(LC_INITIAL, second_watcher.life_cycle_state());
-  ScopedVector<LifeCycleObject> scoped_vector;
+  butil::ScopedVector<LifeCycleObject> scoped_vector;
 
   scoped_vector.push_back(first_watcher.NewLifeCycleObject());
   EXPECT_EQ(LC_CONSTRUCTED, first_watcher.life_cycle_state());
@@ -176,7 +176,7 @@ TEST(ScopedVectorTest, ResizeShrink) {
 TEST(ScopedVectorTest, ResizeGrow) {
   LifeCycleWatcher watcher;
   EXPECT_EQ(LC_INITIAL, watcher.life_cycle_state());
-  ScopedVector<LifeCycleObject> scoped_vector;
+  butil::ScopedVector<LifeCycleObject> scoped_vector;
   scoped_vector.push_back(watcher.NewLifeCycleObject());
   EXPECT_EQ(LC_CONSTRUCTED, watcher.life_cycle_state());
   EXPECT_TRUE(watcher.IsWatching(scoped_vector.back()));
@@ -195,7 +195,7 @@ TEST(ScopedVectorTest, Scope) {
   LifeCycleWatcher watcher;
   EXPECT_EQ(LC_INITIAL, watcher.life_cycle_state());
   {
-    ScopedVector<LifeCycleObject> scoped_vector;
+    butil::ScopedVector<LifeCycleObject> scoped_vector;
     scoped_vector.push_back(watcher.NewLifeCycleObject());
     EXPECT_EQ(LC_CONSTRUCTED, watcher.life_cycle_state());
     EXPECT_TRUE(watcher.IsWatching(scoped_vector.back()));
@@ -207,12 +207,12 @@ TEST(ScopedVectorTest, MoveConstruct) {
   LifeCycleWatcher watcher;
   EXPECT_EQ(LC_INITIAL, watcher.life_cycle_state());
   {
-    ScopedVector<LifeCycleObject> scoped_vector;
+    butil::ScopedVector<LifeCycleObject> scoped_vector;
     scoped_vector.push_back(watcher.NewLifeCycleObject());
     EXPECT_FALSE(scoped_vector.empty());
     EXPECT_TRUE(watcher.IsWatching(scoped_vector.back()));
 
-    ScopedVector<LifeCycleObject> scoped_vector_copy(scoped_vector.Pass());
+    butil::ScopedVector<LifeCycleObject> scoped_vector_copy(scoped_vector.Pass());
     EXPECT_TRUE(scoped_vector.empty());
     EXPECT_FALSE(scoped_vector_copy.empty());
     EXPECT_TRUE(watcher.IsWatching(scoped_vector_copy.back()));
@@ -226,9 +226,9 @@ TEST(ScopedVectorTest, MoveAssign) {
   LifeCycleWatcher watcher;
   EXPECT_EQ(LC_INITIAL, watcher.life_cycle_state());
   {
-    ScopedVector<LifeCycleObject> scoped_vector;
+    butil::ScopedVector<LifeCycleObject> scoped_vector;
     scoped_vector.push_back(watcher.NewLifeCycleObject());
-    ScopedVector<LifeCycleObject> scoped_vector_assign;
+    butil::ScopedVector<LifeCycleObject> scoped_vector_assign;
     EXPECT_FALSE(scoped_vector.empty());
     EXPECT_TRUE(watcher.IsWatching(scoped_vector.back()));
 
@@ -261,18 +261,18 @@ class DeleteCounter {
 };
 
 template <typename T>
-ScopedVector<T> PassThru(ScopedVector<T> scoper) {
+butil::ScopedVector<T> PassThru(butil::ScopedVector<T> scoper) {
   return scoper.Pass();
 }
 
 TEST(ScopedVectorTest, Passed) {
   int deletes = 0;
-  ScopedVector<DeleteCounter> deleter_vector;
+  butil::ScopedVector<DeleteCounter> deleter_vector;
   deleter_vector.push_back(new DeleteCounter(&deletes));
   EXPECT_EQ(0, deletes);
   
   EXPECT_EQ(0, deletes);
-  ScopedVector<DeleteCounter> result = deleter_vector.Pass();
+  butil::ScopedVector<DeleteCounter> result = deleter_vector.Pass();
   EXPECT_EQ(0, deletes);
   result.clear();
   EXPECT_EQ(1, deletes);
@@ -290,7 +290,7 @@ TEST(ScopedVectorTest, InsertRange) {
   }
   // Start scope for ScopedVector.
   {
-    ScopedVector<LifeCycleObject> scoped_vector;
+    butil::ScopedVector<LifeCycleObject> scoped_vector;
     scoped_vector.insert(scoped_vector.end(), vec.begin() + 1, vec.begin() + 3);
     for(LifeCycleWatcher* it = watchers; it != watchers + arraysize(watchers);
         ++it)

@@ -14,7 +14,8 @@ set(TEST_PROTO_FILES addressbook1.proto
                      snappy_message.proto
                      v1.proto
                      v2.proto
-                     grpc.proto)
+                     grpc.proto
+                     health_check.proto)
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/test/hdrs)
 set(PROTOC_FLAGS ${PROTOC_FLAGS} -I${CMAKE_SOURCE_DIR}/src)
 compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_BINARY_DIR}/test
@@ -23,10 +24,9 @@ compile_proto(PROTO_HDRS PROTO_SRCS ${CMAKE_BINARY_DIR}/test
                                     "${TEST_PROTO_FILES}")
 add_library(TEST_PROTO_LIB OBJECT ${PROTO_SRCS} ${PROTO_HDRS})
 
-option(BRPC_DOWNLOAD_GTEST "Download and build a fresh copy of googletest. Requires Internet access." ON)
 set(BRPC_SYSTEM_GTEST_SOURCE_DIR "" CACHE PATH "System googletest source directory.")
 
-if(BRPC_DOWNLOAD_GTEST)
+if(DOWNLOAD_GTEST)
     include(SetupGtest)
 elseif(BRPC_SYSTEM_GTEST_SOURCE_DIR)
     add_subdirectory("${BRPC_SYSTEM_GTEST_SOURCE_DIR}" "${PROJECT_BINARY_DIR}/system-googletest-build")
@@ -39,7 +39,7 @@ set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__con
 set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
 use_cxx11()
 
-if(BRPC_WITH_RDMA)
+if(WITH_RDMA)
     set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBRPC_RDMA")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBRPC_RDMA")
 endif()
@@ -62,6 +62,7 @@ file(COPY ${PROJECT_SOURCE_DIR}/test/jsonout DESTINATION ${CMAKE_CURRENT_BINARY_
 file(COPY ${PROJECT_SOURCE_DIR}/test/run_tests.sh DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 SET(TEST_BUTIL_SOURCES
+    ${PROJECT_SOURCE_DIR}/test/recordio_unittest.cpp
     ${PROJECT_SOURCE_DIR}/test/popen_unittest.cpp
     ${PROJECT_SOURCE_DIR}/test/at_exit_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/atomicops_unittest.cc
@@ -131,7 +132,6 @@ SET(TEST_BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/test/thread_local_storage_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/thread_local_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/watchdog_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/pr_time_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/time_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/version_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/logging_unittest.cc
@@ -154,6 +154,7 @@ SET(TEST_BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/test/flat_map_unittest.cpp
     ${PROJECT_SOURCE_DIR}/test/crc32c_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/iobuf_unittest.cpp
+    ${PROJECT_SOURCE_DIR}/test/object_pool_unittest.cpp
     ${PROJECT_SOURCE_DIR}/test/test_switches.cc
     ${PROJECT_SOURCE_DIR}/test/scoped_locale.cc
     ${PROJECT_SOURCE_DIR}/test/butil_unittest_main.cpp
@@ -175,59 +176,72 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
                     "-Wl,-U,_bthread_key_create")
 endif()
 
-# create executable
-add_executable(test_butil ${TEST_BUTIL_SOURCES}
-                          ${CMAKE_CURRENT_BINARY_DIR}/iobuf.pb.cc
-                          $<TARGET_OBJECTS:BUTIL_LIB>)
-target_link_libraries(test_butil gtest
-                                 ${GPERFTOOLS_LIBRARIES}
-                                 ${DYNAMIC_LIB})
+add_library(BUTIL_DEBUG_LIB OBJECT ${BUTIL_SOURCES})
+add_library(SOURCES_DEBUG_LIB OBJECT ${SOURCES})
 
+# shared library needs POSITION_INDEPENDENT_CODE
+set_property(TARGET ${BUTIL_DEBUG_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
+set_property(TARGET ${SOURCES_DEBUG_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
+
+add_library(brpc-shared-debug SHARED $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>
+                                     $<TARGET_OBJECTS:SOURCES_DEBUG_LIB>
+                                     $<TARGET_OBJECTS:PROTO_LIB>)
+# change the debug lib output dir to be different from the release output
+set_target_properties(brpc-shared-debug PROPERTIES
+         LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/test)
+
+target_link_libraries(brpc-shared-debug ${DYNAMIC_LIB})
+if(BRPC_WITH_GLOG)
+    target_link_libraries(brpc-shared-debug ${GLOG_LIB})
+endif()
+
+# test_butil
+add_executable(test_butil ${TEST_BUTIL_SOURCES}
+                          ${CMAKE_CURRENT_BINARY_DIR}/iobuf.pb.cc)
+target_link_libraries(test_butil brpc-shared-debug
+                                 gtest
+                                 ${GPERFTOOLS_LIBRARIES})
+
+add_test(NAME test_butil COMMAND test_butil)
+
+# test_bvar
 # -DBVAR_NOT_LINK_DEFAULT_VARIABLES not work for gcc >= 5.0, just remove the file to prevent linking into unit tests
 list(REMOVE_ITEM BVAR_SOURCES ${PROJECT_SOURCE_DIR}/src/bvar/default_variables.cpp)
 
-add_library(BVAR_OBJ OBJECT ${BVAR_SOURCES})
+add_library(BVAR_DEBUG_LIB OBJECT ${BVAR_SOURCES})
 file(GLOB TEST_BVAR_SRCS "bvar_*_unittest.cpp")
-add_executable(test_bvar $<TARGET_OBJECTS:BUTIL_LIB>
-                         $<TARGET_OBJECTS:BVAR_OBJ>
-                         ${TEST_BVAR_SRCS})
+add_executable(test_bvar ${TEST_BVAR_SRCS}
+                         $<TARGET_OBJECTS:BVAR_DEBUG_LIB>
+                         $<TARGET_OBJECTS:BUTIL_DEBUG_LIB>)
 target_link_libraries(test_bvar gtest
                                 ${GPERFTOOLS_LIBRARIES}
                                 ${DYNAMIC_LIB})
+add_test(NAME test_bvar COMMAND test_bvar)
 
-add_library(BTHREAD_OBJ OBJECT ${BTHREAD_SOURCES})
-add_library(PROTO_OBJ OBJECT ${PROTO_SRCS})
+# bthread tests
 file(GLOB BTHREAD_UNITTESTS "bthread*unittest.cpp")
 foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
     get_filename_component(BTHREAD_UT_WE ${BTHREAD_UT} NAME_WE)
-    add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT} 
-                                    $<TARGET_OBJECTS:BUTIL_LIB>
-                                    $<TARGET_OBJECTS:BVAR_OBJ>
-                                    $<TARGET_OBJECTS:BTHREAD_OBJ>
-                                    $<TARGET_OBJECTS:PROTO_LIB>
+    add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT}
                                     $<TARGET_OBJECTS:TEST_PROTO_LIB>)
-    target_link_libraries(${BTHREAD_UT_WE}
-                          gtest_main
-                          ${GPERFTOOLS_LIBRARIES}
-                          ${DYNAMIC_LIB})
+    target_link_libraries(${BTHREAD_UT_WE} gtest_main
+                                           brpc-shared-debug
+                                           ${GPERFTOOLS_LIBRARIES})
+    add_test(NAME ${BTHREAD_UT_WE} COMMAND ${BTHREAD_UT_WE})
 endforeach()
 
+# brpc tests
 file(GLOB BRPC_UNITTESTS "brpc_*_unittest.cpp")
 foreach(BRPC_UT ${BRPC_UNITTESTS})
-    if(NOT BRPC_WITH_RDMA)
+    if(NOT WITH_RDMA)
         if(BRPC_UT MATCHES ".*rdma.*" OR BRPC_UT MATCHES ".*block_pool.*")
             continue()
         endif()
     endif()
     get_filename_component(BRPC_UT_WE ${BRPC_UT} NAME_WE)
-    add_executable(${BRPC_UT_WE} ${BRPC_UT}
-                                 $<TARGET_OBJECTS:TEST_PROTO_LIB>
-                                 $<TARGET_OBJECTS:BUTIL_LIB>
-                                 $<TARGET_OBJECTS:OBJ_LIB>
-                                 $<TARGET_OBJECTS:PROTO_LIB>)
-    target_link_libraries(${BRPC_UT_WE}
-                          gtest_main
-                          ${GPERFTOOLS_LIBRARIES}
-                          ${GTEST_LIB}
-                          ${DYNAMIC_LIB})
+    add_executable(${BRPC_UT_WE} ${BRPC_UT} $<TARGET_OBJECTS:TEST_PROTO_LIB>)
+    target_link_libraries(${BRPC_UT_WE} brpc-shared-debug
+                                        gtest_main
+                                        ${GPERFTOOLS_LIBRARIES})
+    add_test(NAME ${BRPC_UT_WE} COMMAND ${BRPC_UT_WE})
 endforeach()

@@ -1,16 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
@@ -48,7 +51,12 @@
 #endif
 
 extern "C" {
+#ifndef USE_MESALINK
 struct x509_st;
+#else
+#include <mesalink/openssl/x509.h>
+#define x509_st X509
+#endif
 }
 
 namespace brpc {
@@ -58,7 +66,7 @@ class SharedLoadBalancer;
 class ExcludedServers;
 class RPCSender;
 class StreamSettings;
-class RpcDumpMeta;
+class SampledRequest;
 class MongoContext;
 class RetryPolicy;
 class InputMessageBase;
@@ -138,6 +146,8 @@ friend void policy::ProcessThriftRequest(InputMessageBase*);
     static const uint32_t FLAGS_REQUEST_WITH_AUTH = (1 << 15);
     static const uint32_t FLAGS_PB_JSONIFY_EMPTY_ARRAY = (1 << 16);
     static const uint32_t FLAGS_ENABLED_CIRCUIT_BREAKER = (1 << 17);
+    static const uint32_t FLAGS_ALWAYS_PRINT_PRIMITIVE_FIELDS = (1 << 18);
+    static const uint32_t FLAGS_HEALTH_CHECK_CALL = (1 << 19);
     
 public:
     Controller();
@@ -257,10 +267,10 @@ public:
     int sub_count() const;
     const Controller* sub(int index) const;
 
-    // Get/own RpcDumpMeta for sending dumped requests.
+    // Get/own SampledRequest for sending dumped requests.
     // Deleted along with controller.
-    void reset_rpc_dump_meta(RpcDumpMeta* meta);
-    const RpcDumpMeta* rpc_dump_meta() { return _rpc_dump_meta; }
+    void reset_sampled_request(SampledRequest* req);
+    const SampledRequest* sampled_request() { return _sampled_request; }
 
     // Attach a StreamCreator to this RPC. Notice that the ownership of sc has
     // been transferred to cntl, and sc->DestroyStreamCreator() would be called
@@ -302,6 +312,14 @@ public:
     // of json in HTTP response.
     void set_pb_jsonify_empty_array(bool f) { set_flag(FLAGS_PB_JSONIFY_EMPTY_ARRAY, f); }
     bool has_pb_jsonify_empty_array() const { return has_flag(FLAGS_PB_JSONIFY_EMPTY_ARRAY); }
+    
+    // Whether to always print primitive fields. By default proto3 primitive
+    // fields with default values will be omitted in JSON output. For example, an
+    // int32 field set to 0 will be omitted. Set this flag to true will override
+    // the default behavior and print primitive fields regardless of their values.
+    void set_always_print_primitive_fields(bool f) { set_flag(FLAGS_ALWAYS_PRINT_PRIMITIVE_FIELDS, f); }
+    bool has_always_print_primitive_fields() const { return has_flag(FLAGS_ALWAYS_PRINT_PRIMITIVE_FIELDS); }
+    
 
     // Tell RPC that done of the RPC can be run in the same thread where
     // the RPC is issued, otherwise done is always run in a different thread.
@@ -327,7 +345,7 @@ public:
     // call the final "done" callback.
     // Note: Reaching deadline of the RPC would not affect this function, which means
     // even if deadline has been reached, this function may still return false.
-    bool IsCanceled() const;
+    bool IsCanceled() const override;
 
     // Asks that the given callback be called when the RPC is canceled or the
     // connection has broken.  The callback will always be called exactly once.
@@ -336,7 +354,7 @@ public:
     // when NotifyOnCancel() is called, the callback will be called immediately.
     //
     // NotifyOnCancel() must be called no more than once per request.
-    void NotifyOnCancel(google::protobuf::Closure* callback);
+    void NotifyOnCancel(google::protobuf::Closure* callback) override;
 
     // Returns the authenticated result. NULL if there is no authentication
     const AuthContext* auth_context() const { return _auth_context; }
@@ -428,7 +446,7 @@ public:
 
     // Resets the Controller to its initial state so that it may be reused in
     // a new call.  Must NOT be called while an RPC is in progress.
-    void Reset() {
+    void Reset() override {
         ResetNonPods();
         ResetPods();
     }
@@ -439,18 +457,18 @@ public:
     // as well if the protocol is HTTP. If you want to overwrite the 
     // status_code, call http_response().set_status_code() after SetFailed()
     // (rather than before SetFailed)
-    void SetFailed(const std::string& reason);
+    void SetFailed(const std::string& reason) override;
     void SetFailed(int error_code, const char* reason_fmt, ...)
         __attribute__ ((__format__ (__printf__, 3, 4)));
     
     // After a call has finished, returns true if the RPC call failed.
     // The response to Channel is undefined when Failed() is true.
     // Calling Failed() before a call has finished is undefined.
-    bool Failed() const;
+    bool Failed() const override;
 
     // If Failed() is true, return description of the errors.
     // NOTE: ErrorText() != berror(ErrorCode()). 
-    std::string ErrorText() const;
+    std::string ErrorText() const override;
 
     // Last error code. Equals 0 iff Failed() is false.
     // If there's retry, latter code overwrites former one.
@@ -548,7 +566,7 @@ private:
     void ResetPods();
     void ResetNonPods();
 
-    void StartCancel();
+    void StartCancel() override;
 
     // Using fixed start_realtime_us (microseconds since the Epoch) gives
     // more accurate deadline.
@@ -575,6 +593,10 @@ private:
         CallId id = { _correlation_id.value + nretry + 1 };
         return id;
     }
+
+    // Tell RPC that this particular call is used to do health check.
+    bool is_health_check_call() const { return has_flag(FLAGS_HEALTH_CHECK_CALL); }
+
 public:
     CallId current_id() const {
         CallId id = { _correlation_id.value + _current_call.nretry + 1 };
@@ -659,7 +681,7 @@ private:
     bthread_id_t _oncancel_id;
     const AuthContext* _auth_context;        // Authentication result
     butil::intrusive_ptr<MongoContext> _mongo_session_data;
-    RpcDumpMeta* _rpc_dump_meta;
+    SampledRequest* _sampled_request;
 
     ProtocolType _request_protocol;
     // Some of them are copied from `Channel' which might be destroyed
