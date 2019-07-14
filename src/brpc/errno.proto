@@ -32,4 +32,11 @@ enum Errno {
     ELIMIT                  = 2004;  // Reached server's limit on resources
     ECLOSE                  = 2005;  // Close socket initiatively
     EITP                    = 2006;  // Failed Itp response
+
+    // Errno related to RDMA (may happen at both sides)
+    ERDMA                   = 3001;  // RDMA verbs error
+    ERDMACM                 = 3002;  // Rdmacm error
+    ERDMAUNAVAIL            = 3003;  // RDMA is not available now
+    ERDMAOUTCLUSTER         = 3004;  // RDMA is not supported for communication inter-cluster
+    ERDMALOCAL              = 3005;  // Do not use RDMA for local connection
 }

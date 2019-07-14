@@ -136,6 +136,7 @@ void ConnectionsService::PrintConnections(
             "<th>OutBytes/m</th>"
             "<th>Out/m</th>"
             "<th>Rtt/Var(ms)</th>"
+            "<th>RdmaState</th>"
             "<th>SocketId</th>"
             "</tr>\n";
     } else {
@@ -192,7 +193,8 @@ void ConnectionsService::PrintConnections(
                << min_width("-", 6) << bar
                << min_width("-", 10) << bar
                << min_width("-", 8) << bar
-               << min_width("-", 11) << bar;
+               << min_width("-", 11) << bar
+               << min_width("-", 10) << bar;
         } else {
             {
                 SocketUniquePtr agent_sock;
@@ -277,6 +279,8 @@ void ConnectionsService::PrintConnections(
             } else {
                 strcpy(rtt_display, "-");
             }
+            std::string rdma_state = ptr->_rdma_state == Socket::RDMA_ON ?
+                                     "ON" : "OFF";
             os << bar << min_width(NameOfPoint(ptr->remote_side()), 19) << bar;
             if (is_channel_conn) {
                 if (ptr->local_side().port > 0) {
@@ -309,7 +313,8 @@ void ConnectionsService::PrintConnections(
                << min_width(stat.out_num_messages_s, 6) << bar
                << min_width(stat.out_size_m, 10) << bar
                << min_width(stat.out_num_messages_m, 8) << bar
-               << min_width(rtt_display, 11) << bar;
+               << min_width(rtt_display, 11) << bar
+               << min_width(rdma_state, 10) << bar;
         }
 
         if (use_html) {

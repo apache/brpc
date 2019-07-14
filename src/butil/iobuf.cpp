@@ -142,8 +142,9 @@ inline iov_function get_pwritev_func() {
 
 #else   // ARCH_CPU_X86_64
 
-#warning "We don't check whether the kernel supports SYS_preadv or SYS_pwritev " \
-         "when the arch is not X86_64, use user space preadv/pwritev directly"
+#pragma message \
+        "We don't check whether the kernel supports SYS_preadv or SYS_pwritev " \
+        "when the arch is not X86_64, use user space preadv/pwritev directly"
 
 inline iov_function get_preadv_func() {
     return user_preadv;
@@ -193,6 +194,7 @@ typedef void (*UserDataDeleter)(void*);
 
 struct UserDataExtension {
     UserDataDeleter deleter;
+    void* delete_handle;
 };
 
 struct IOBuf::Block {
@@ -220,7 +222,8 @@ struct IOBuf::Block {
                                     butil::memory_order_relaxed);
     }
 
-    Block(char* data_in, uint32_t data_size, UserDataDeleter deleter)
+    Block(char* data_in, uint32_t data_size,
+          UserDataDeleter deleter, void* delete_handle = NULL)
         : nshared(1)
         , flags(IOBUF_BLOCK_FLAGS_USER_DATA)
         , abi_check(0)
@@ -229,6 +232,11 @@ struct IOBuf::Block {
         , portal_next(NULL)
         , data(data_in) {
         get_user_data_extension()->deleter = deleter;
+        if (delete_handle) {
+            get_user_data_extension()->delete_handle = delete_handle;
+        } else {
+            get_user_data_extension()->delete_handle = data_in;
+        }
     }
 
     // Undefined behavior when (flags & IOBUF_BLOCK_FLAGS_USER_DATA) is 0.
@@ -262,7 +270,8 @@ struct IOBuf::Block {
                 this->~Block();
                 iobuf::blockmem_deallocate(this);
             } else if (flags & IOBUF_BLOCK_FLAGS_USER_DATA) {
-                get_user_data_extension()->deleter(data);
+                get_user_data_extension()->deleter(
+                        get_user_data_extension()->delete_handle);
                 this->~Block();
                 free(this);
             }
@@ -1204,7 +1213,8 @@ int IOBuf::appendv(const const_iovec* vec, size_t n) {
     return 0;
 }
 
-int IOBuf::append_user_data(void* data, size_t size, void (*deleter)(void*)) {
+int IOBuf::append_user_data(void* data, size_t size,
+                            void (*deleter)(void*), void* delete_handle) {
     if (size > 0xFFFFFFFFULL - 100) {
         LOG(FATAL) << "data_size=" << size << " is too large";
         return -1;
@@ -1216,7 +1226,8 @@ int IOBuf::append_user_data(void* data, size_t size, void (*deleter)(void*)) {
     if (deleter == NULL) {
         deleter = ::free;
     }
-    IOBuf::Block* b = new (mem) IOBuf::Block((char*)data, size, deleter);
+    IOBuf::Block* b =
+            new (mem) IOBuf::Block((char*)data, size, deleter, delete_handle);
     const IOBuf::BlockRef r = { 0, b->cap, b };
     _move_back_ref(r);
     return 0;

@@ -216,6 +216,7 @@ inline int64_t monotonic_time_s() {
 
 namespace detail {
 inline uint64_t clock_cycles() {
+#if defined(__x86_64__) || defined(__amd64__)
     unsigned int lo = 0;
     unsigned int hi = 0;
     // We cannot use "=A", since this would use %rax on x86_64
@@ -224,6 +225,11 @@ inline uint64_t clock_cycles() {
         : "=a" (lo), "=d" (hi)
         );
     return ((uint64_t)hi << 32) | lo;
+#elif defined(__aarch64__)
+    uint64_t virtual_timer_value;
+    asm volatile("mrs %0, cntvct_el0" : "=r"(virtual_timer_value));
+    return virtual_timer_value;
+#endif
 }
 extern int64_t read_invariant_cpu_frequency();
 // Be positive iff:

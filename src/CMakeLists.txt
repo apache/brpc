@@ -3,6 +3,11 @@ if(NOT DEBUG)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DNDEBUG")
 endif()
 
+if(WITH_RDMA)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBRPC_RDMA")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DBRPC_RDMA")
+endif()
+
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${PROJECT_SOURCE_DIR}/src)
 

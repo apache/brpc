@@ -23,6 +23,9 @@
 #include "butil/fd_guard.h"                 // fd_guard 
 #include "butil/fd_utility.h"               // make_close_on_exec
 #include "butil/time.h"                     // gettimeofday_us
+#include "butil/unique_ptr.h"               // std::unique_ptr
+#include "brpc/rdma/rdma_communication_manager.h"
+#include "brpc/rdma/rdma_endpoint.h"
 #include "brpc/acceptor.h"
 
 
@@ -38,6 +41,8 @@ Acceptor::Acceptor(bthread_keytable_pool_t* pool)
     , _close_idle_tid(INVALID_BTHREAD)
     , _listened_fd(-1)
     , _acception_id(0)
+    , _listened_rdma(NULL)
+    , _rdma_acception_id(0)
     , _empty_cond(&_map_mutex)
     , _ssl_ctx(NULL) {
 }
@@ -47,7 +52,9 @@ Acceptor::~Acceptor() {
     Join();
 }
 
-int Acceptor::StartAccept(int listened_fd, int idle_timeout_sec,
+int Acceptor::StartAccept(int listened_fd,
+                          rdma::RdmaCommunicationManager* listened_rdma,
+                          int idle_timeout_sec,
                           const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
     if (listened_fd < 0) {
         LOG(FATAL) << "Invalid listened_fd=" << listened_fd;
@@ -87,8 +94,20 @@ int Acceptor::StartAccept(int listened_fd, int idle_timeout_sec,
         LOG(FATAL) << "Fail to create _acception_id";
         return -1;
     }
-    
+
+    if (listened_rdma) {
+        // Start rdmacm accept, with another Socket.
+        options.fd = listened_rdma->GetFD();
+        options.on_edge_triggered_events = OnNewRdmaConnections;
+        if (Socket::Create(options, &_rdma_acception_id) < 0) {
+            LOG(FATAL) << "Fail to create _rdma_acception_id";
+            Socket::SetFailed(_acception_id);
+            return -1;
+        }
+    }
+
     _listened_fd = listened_fd;
+    _listened_rdma = listened_rdma;
     _status = RUNNING;
     return 0;
 }
@@ -125,6 +144,9 @@ void Acceptor::StopAccept(int /*closewait_ms*/) {
 
     // Don't set _acception_id to 0 because BeforeRecycle needs it.
     Socket::SetFailed(_acception_id);
+    if (_rdma_acception_id > 0) {
+        Socket::SetFailed(_rdma_acception_id);
+    }
 
     // SetFailed all existing connections. Connections added after this piece
     // of code will be SetFailed directly in OnNewConnectionsUntilEAGAIN
@@ -167,7 +189,7 @@ void Acceptor::Join() {
         return;
     }
     // `_listened_fd' will be set to -1 once it has been recycled
-    while (_listened_fd > 0 || !_socket_map.empty()) {
+    while (_listened_fd > 0 || _listened_rdma || !_socket_map.empty()) {
         _empty_cond.Wait();
     }
     const int saved_idle_timeout_sec = _idle_timeout_sec;
@@ -241,6 +263,13 @@ void Acceptor::ListConnections(std::vector<SocketId>* conn_list) {
 }
 
 void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
+    Acceptor* am = dynamic_cast<Acceptor*>(acception->user());
+    if (NULL == am) {
+        LOG(FATAL) << "Impossible! acception->user() MUST be Acceptor";
+        acception->SetFailed(EINVAL, "Impossible! acception->user() MUST be Acceptor");
+        return;
+    }
+
     while (1) {
         struct sockaddr in_addr;
         socklen_t in_len = sizeof(in_addr);
@@ -260,13 +289,6 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
             continue;
         }
 
-        Acceptor* am = dynamic_cast<Acceptor*>(acception->user());
-        if (NULL == am) {
-            LOG(FATAL) << "Impossible! acception->user() MUST be Acceptor";
-            acception->SetFailed(EINVAL, "Impossible! acception->user() MUST be Acceptor");
-            return;
-        }
-        
         SocketId socket_id;
         SocketOptions options;
         options.keytable_pool = am->_keytable_pool;
@@ -274,6 +296,7 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
         options.remote_side = butil::EndPoint(*(sockaddr_in*)&in_addr);
         options.user = acception->user();
         options.on_edge_triggered_events = InputMessenger::OnNewMessages;
+        options.use_rdma = (am->_listened_rdma != NULL);
         options.initial_ssl_ctx = am->_ssl_ctx;
         if (Socket::Create(options, &socket_id) != 0) {
             LOG(ERROR) << "Fail to create Socket";
@@ -324,6 +347,44 @@ void Acceptor::OnNewConnections(Socket* acception) {
     } while (acception->MoreReadEvents(&progress));
 }
 
+void Acceptor::OnNewRdmaConnectionsUntilEAGAIN(Socket* acception) {
+    Acceptor* am = dynamic_cast<Acceptor*>(acception->user());
+    if (NULL == am) {
+        LOG(FATAL) << "Impossible! acception->user() MUST be Acceptor";
+        acception->SetFailed(EINVAL, "Impossible! acception->user() MUST be Acceptor");
+        return;
+    }
+
+    while (1) {
+        char* data = NULL;
+        size_t data_len = 0;
+        std::unique_ptr<rdma::RdmaCommunicationManager> rcm(
+                am->_listened_rdma->GetRequest(&data, &data_len));
+        if (rcm == NULL) {
+            if (errno == EAGAIN) {
+                return;
+            }
+            PLOG_EVERY_SECOND(ERROR) << "Fail to accept from listened_rdma";
+            continue;
+        }
+        if (rdma::RdmaEndpoint::InitializeFromAccept(
+                    rcm.get(), data, data_len) < 0) {
+            continue;
+        }
+        rcm.release();
+    }
+}
+
+void Acceptor::OnNewRdmaConnections(Socket* acception) {
+    int progress = Socket::PROGRESS_INIT;
+    do {
+        OnNewRdmaConnectionsUntilEAGAIN(acception);
+        if (acception->Failed()) {
+            return;
+        }
+    } while (acception->MoreReadEvents(&progress));
+}
+
 void Acceptor::BeforeRecycle(Socket* sock) {
     BAIDU_SCOPED_LOCK(_map_mutex);
     if (sock->id() == _acception_id) {
@@ -331,6 +392,13 @@ void Acceptor::BeforeRecycle(Socket* sock) {
         // so that we are ensured no more events will arrive (and `Join'
         // will return to its caller)
         _listened_fd = -1;
+        _empty_cond.Broadcast();
+        return;
+    }
+    if (sock->id() == _rdma_acception_id) {
+        sock->_fd = -1;  // avoid RemoveConsumer twice
+        delete _listened_rdma;
+        _listened_rdma = NULL;
         _empty_cond.Broadcast();
         return;
     }

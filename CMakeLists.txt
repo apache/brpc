@@ -5,6 +5,7 @@ option(WITH_GLOG "With glog" OFF)
 option(DEBUG "Print debug logs" OFF)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
 option(WITH_THRIFT "With thrift framed protocol supported" OFF)
+option(WITH_RDMA "With RDMA supported" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
 option(DOWNLOAD_GTEST "Download and build a fresh copy of \
                             googletest. Requires Internet access." ON)
@@ -90,8 +91,9 @@ endif()
 set(CMAKE_CPP_FLAGS "${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\\\"${BRPC_REVISION}\\\" -D__STRICT_ANSI__")
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEBUG_SYMBOL} ${THRIFT_CPP_FLAG}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
-set(CMAKE_C_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer")
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fno-strict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
+set(CMAKE_C_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fno-strict-aliasing -Wno-unused-parameter -fno-omit-frame-pointer")
 
 macro(use_cxx11)
 if(CMAKE_VERSION VERSION_LESS "3.1.3")
@@ -112,7 +114,11 @@ use_cxx11()
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     #required by butil/crc32.cc to boost performance for 10x
     if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4))
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4 -msse4.2")
+        if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "aarch64")
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-gcse")
+    	else()
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4 -msse4.2")
+    	endif()
     endif()
     if(NOT (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.0))
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-aligned-new")
@@ -140,6 +146,13 @@ endif()
 find_library(PROTOC_LIB NAMES protoc)
 if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
+endif()
+
+if(WITH_RDMA)
+    find_path(BOOST_INCLUDE_PATH NAMES boost/lockfree/spsc_queue.hpp)
+    if(NOT BOOST_INCLUDE_PATH)
+        message(FATAL_ERROR "Fail to find boost spsc_queue")
+    endif()
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -372,7 +385,9 @@ set(PROTO_FILES idl_options.proto
                 brpc/policy/mongo.proto
                 brpc/trackme.proto
                 brpc/streaming_rpc_meta.proto
-                brpc/proto_base.proto)
+                brpc/proto_base.proto
+                brpc/rdma_health.proto
+                brpc/rdma_traffic_control.proto)
 file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/output/include/brpc)
 set(PROTOC_FLAGS ${PROTOC_FLAGS} -I${PROTOBUF_INCLUDE_DIR})
 compile_proto(PROTO_HDRS PROTO_SRCS ${PROJECT_BINARY_DIR}

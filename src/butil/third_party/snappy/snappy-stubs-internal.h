@@ -71,7 +71,7 @@ namespace snappy {
 
 // x86 and PowerPC can simply do these loads and stores native.
 
-#if defined(__i386__) || defined(__x86_64__) || defined(__powerpc__)
+#if defined(__i386__) || defined(__x86_64__) || defined(__powerpc__) || defined(__aarch64__)
 
 #define UNALIGNED_LOAD16(_p) (*reinterpret_cast<const uint16_t *>(_p))
 #define UNALIGNED_LOAD32(_p) (*reinterpret_cast<const uint32_t *>(_p))

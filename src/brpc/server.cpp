@@ -78,6 +78,10 @@
 #include "brpc/rtmp.h"
 #include "brpc/builtin/common.h"               // GetProgramName
 #include "brpc/details/tcmalloc_extension.h"
+#include "brpc/rdma/rdma_communication_manager.h"
+#include "brpc/rdma/rdma_fallback_channel.h"
+#include "brpc/rdma/rdma_helper.h"
+#include "brpc/rdma/rdma_traffic_control.h"
 
 inline std::ostream& operator<<(std::ostream& os, const timeval& tm) {
     const char old_fill = os.fill();
@@ -142,7 +146,8 @@ ServerOptions::ServerOptions()
     , has_builtin_services(true)
     , http_master_service(NULL)
     , health_reporter(NULL)
-    , rtmp_service(NULL) {
+    , rtmp_service(NULL) 
+    , use_rdma(false) {
     if (s_ncore > 0) {
         num_threads = s_ncore + 1;
     }
@@ -535,6 +540,14 @@ int Server::AddBuiltinServices() {
         LOG(ERROR) << "Fail to add GetJsService";
         return -1;
     }
+    if (AddBuiltinService(new (std::nothrow) rdma::RdmaHealthServiceImpl)) {
+        LOG(ERROR) << "Fail to add RdmaHealthService";
+        return -1;
+    }
+    if (AddBuiltinService(new (std::nothrow) rdma::RdmaTrafficControlServiceImpl)) {
+        LOG(ERROR) << "Fail to add RdmaTrafficControlService";
+        return -1;
+    }
     return 0;
 }
 
@@ -674,6 +687,28 @@ static int get_port_from_fd(int fd) {
     return ntohs(addr.sin_port);
 }
 
+#ifdef BRPC_RDMA
+static bool OptionsAvailableOverRdma(const ServerOptions* opt) {
+    if (opt->rtmp_service) {
+        LOG(WARNING) << "RTMP is not supported by RDMA";
+        return false;
+    }
+    if (opt->has_ssl_options()) {
+        LOG(WARNING) << "SSL is not supported by RDMA";
+        return false;
+    }
+    if (opt->nshead_service) {
+        LOG(WARNING) << "NSHEAD is not supported by RDMA";
+        return false;
+    }
+    if (opt->mongo_service_adaptor) {
+        LOG(WARNING) << "MONGO is not supported by RDMA";
+        return false;
+    }
+    return true;
+}
+#endif
+
 static bool CreateConcurrencyLimiter(const AdaptiveMaxConcurrency& amc,
                                      ConcurrencyLimiter** out) {
     if (amc.type() == AdaptiveMaxConcurrency::UNLIMITED()) {
@@ -728,6 +763,18 @@ int Server::StartInternal(const butil::ip_t& ip,
         // Always reset to default options explicitly since `_options'
         // may be the options for the last run or even bad options
         _options = ServerOptions();
+    }
+
+    if (_options.use_rdma) {
+#ifndef BRPC_RDMA
+        LOG(WARNING) << "This libbrpc.a does not support RDMA";
+        return -1;
+#else
+        if (!OptionsAvailableOverRdma(&_options)) {
+            return -1;
+        }
+        rdma::GlobalRdmaInitializeOrDie();
+#endif
     }
 
     if (!_options.h2_settings.IsValid(true/*log_error*/)) {
@@ -964,6 +1011,13 @@ int Server::StartInternal(const butil::ip_t& ip,
                 return -1;
             }
         }
+        std::unique_ptr<rdma::RdmaCommunicationManager> rh;
+        if (_options.use_rdma) {
+            rh.reset(rdma::RdmaCommunicationManager::Listen(_listen_addr));
+            if (rh == NULL) {
+                continue;
+            }
+        }
         if (_am == NULL) {
             _am = BuildAcceptor();
             if (NULL == _am) {
@@ -979,12 +1033,13 @@ int Server::StartInternal(const butil::ip_t& ip,
         g_running_server_count.fetch_add(1, butil::memory_order_relaxed);
 
         // Pass ownership of `sockfd' to `_am'
-        if (_am->StartAccept(sockfd, _options.idle_timeout_sec,
+        if (_am->StartAccept(sockfd, rh.get(), _options.idle_timeout_sec,
                              _default_ssl_ctx) != 0) {
             LOG(ERROR) << "Fail to start acceptor";
             return -1;
         }
         sockfd.release();
+        rh.release();
         break; // stop trying
     }
     if (_options.internal_port >= 0 && _options.has_builtin_services) {
@@ -998,6 +1053,15 @@ int Server::StartInternal(const butil::ip_t& ip,
                 " allocates a dynamic and probabaly unfiltered port,"
                 " against the purpose of \"being internal\".";
             return -1;
+        }
+        std::unique_ptr<rdma::RdmaCommunicationManager> rh;
+        if (_options.use_rdma) {
+            rh.reset(rdma::RdmaCommunicationManager::Listen(_listen_addr));
+            if (rh == NULL) {
+                LOG(ERROR) << "Fail to listen " << _options.internal_port
+                           << " (internal)";
+                return -1;
+            }
         }
         butil::EndPoint internal_point = _listen_addr;
         internal_point.port = _options.internal_port;
@@ -1014,12 +1078,13 @@ int Server::StartInternal(const butil::ip_t& ip,
             }
         }
         // Pass ownership of `sockfd' to `_internal_am'
-        if (_internal_am->StartAccept(sockfd, _options.idle_timeout_sec,
+        if (_internal_am->StartAccept(sockfd, rh.get(), _options.idle_timeout_sec,
                                       _default_ssl_ctx) != 0) {
             LOG(ERROR) << "Fail to start internal_acceptor";
             return -1;
         }
         sockfd.release();
+        rh.release();
     }
 
     PutPidFileIfNeeded();

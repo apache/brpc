@@ -232,6 +232,10 @@ struct ServerOptions {
     // Default: empty (all protocols)
     std::string enabled_protocols;
 
+    // Whether the server uses rdma or not
+    // Default: false
+    bool use_rdma;
+
     // Customize parameters of HTTP2, defined in http2.h
     H2Settings h2_settings;
 

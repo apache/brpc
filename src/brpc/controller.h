@@ -80,6 +80,10 @@ namespace schan {
 class Sender;
 class SubDone;
 }
+namespace rdma {
+class SubDone;
+class RdmaFallbackChannel;
+}
 
 // For serializing/parsing from idl services.
 struct IdlNames {
@@ -116,6 +120,8 @@ friend class SelectiveChannel;
 friend class ThriftStub;
 friend class schan::Sender;
 friend class schan::SubDone;
+friend class rdma::RdmaFallbackChannel;
+friend class rdma::SubDone;
 friend class policy::OnServerStreamCreated;
 friend int StreamCreate(StreamId*, Controller&, const StreamOptions*);
 friend int StreamAccept(StreamId*, Controller&, const StreamOptions*);

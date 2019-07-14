@@ -1582,7 +1582,26 @@ static void my_free(void* m) {
     free(m);
     my_free_params = m;
 }
-    
+struct FreeWrapper {
+    void* data;
+};
+static void my_wrapper_free(void* m) {
+    FreeWrapper* fw = (FreeWrapper*)m;
+    my_free(fw->data);
+    free(fw);
+}
+
+TEST_F(IOBufTest, append_user_data_and_delete) {
+    butil::IOBuf b0;
+    const int len = 4096;
+    char* data = (char*)malloc(len);
+    FreeWrapper* fw = (FreeWrapper*)malloc(sizeof(FreeWrapper));
+    fw->data = data;
+    ASSERT_EQ(0, b0.append_user_data(data, len, my_wrapper_free, fw));
+    b0.clear();
+    ASSERT_EQ(data, my_free_params);
+}
+
 TEST_F(IOBufTest, append_user_data_and_consume) {
     butil::IOBuf b0;
     const int REP = 16;
@@ -1603,7 +1622,7 @@ TEST_F(IOBufTest, append_user_data_and_consume) {
     ASSERT_EQ(len, b0.cutn(&out, len));
     ASSERT_TRUE(b0.empty());
     ASSERT_EQ(data, my_free_params);
-        
+
     ASSERT_EQ(len, out.size());
     // note: cannot memcmp with data which is already free-ed
     for (int i = 0; i < 256; ++i) {

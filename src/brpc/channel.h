@@ -125,6 +125,10 @@ struct ChannelOptions {
     // Default: NULL
     const NamingServiceFilter* ns_filter;
 
+    // Let this channel use rdma rather than tcp.
+    // Default: false
+    bool use_rdma;
+
     // Channels with same connection_group share connections.
     // In other words, set to a different value to stop sharing connections.
     // Case-sensitive, leading and trailing spaces are ignored.
@@ -149,6 +153,7 @@ private:
 class Channel : public ChannelBase {
 friend class Controller;
 friend class SelectiveChannel;
+friend class rdma::RdmaFallbackChannel;
 public:
     Channel(ProfilerLinker = ProfilerLinker());
     ~Channel();
@@ -227,6 +232,7 @@ protected:
     // It will be destroyed after channel's destruction and all
     // the RPC above has finished
     butil::intrusive_ptr<SharedLoadBalancer> _lb;
+    butil::EndPoint _remote_side;
     ChannelOptions _options;
     int _preferred_index;
 };

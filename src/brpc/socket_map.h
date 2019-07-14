@@ -81,11 +81,24 @@ struct SocketMapKeyHasher {
 // successfully, SocketMapRemove() MUST be called when the Socket is not needed.
 // Return 0 on success, -1 otherwise.
 int SocketMapInsert(const SocketMapKey& key, SocketId* id,
-                    const std::shared_ptr<SocketSSLContext>& ssl_ctx);
+                    const std::shared_ptr<SocketSSLContext>& ssl_ctx,
+                    bool use_rdma);
 
 inline int SocketMapInsert(const SocketMapKey& key, SocketId* id) {
     std::shared_ptr<SocketSSLContext> empty_ptr;
-    return SocketMapInsert(key, id, empty_ptr);
+    return SocketMapInsert(key, id, empty_ptr, false);
+}
+
+inline int SocketMapInsert(const SocketMapKey& key, SocketId* id,
+                           bool use_rdma) {
+    std::shared_ptr<SocketSSLContext> empty_ptr;
+    return SocketMapInsert(key, id, empty_ptr, use_rdma);
+}
+
+inline int SocketMapInsert(const SocketMapKey& key, SocketId* id,
+                           const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
+    std::shared_ptr<SocketSSLContext> empty_ptr;
+    return SocketMapInsert(key, id, ssl_ctx, false);
 }
 
 // Find the SocketId associated with `key'.
@@ -145,10 +158,21 @@ public:
     ~SocketMap();
     int Init(const SocketMapOptions&);
     int Insert(const SocketMapKey& key, SocketId* id,
-               const std::shared_ptr<SocketSSLContext>& ssl_ctx);
+               const std::shared_ptr<SocketSSLContext>& ssl_ctx,
+               bool use_rdma);
     int Insert(const SocketMapKey& key, SocketId* id) {
         std::shared_ptr<SocketSSLContext> empty_ptr;
-        return Insert(key, id, empty_ptr);
+        return Insert(key, id, empty_ptr, false);
+    }
+    int Insert(const SocketMapKey& key, SocketId* id,
+               bool use_rdma) {
+        std::shared_ptr<SocketSSLContext> empty_ptr;
+        return Insert(key, id, empty_ptr, use_rdma);
+    }
+    int Insert(const SocketMapKey& key, SocketId* id,
+               const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
+        std::shared_ptr<SocketSSLContext> empty_ptr;
+        return Insert(key, id, ssl_ctx, false);
     }
 
     void Remove(const SocketMapKey& key, SocketId expected_id);

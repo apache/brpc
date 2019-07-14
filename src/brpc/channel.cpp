@@ -36,6 +36,7 @@
 #include "brpc/channel.h"
 #include "brpc/details/usercode_backup_pool.h"       // TooManyUserCode
 #include "brpc/policy/esp_authenticator.h"
+#include "brpc/rdma/rdma_helper.h"                   // rdma::GlobalRdmaInitializeOrDie
 
 namespace brpc {
 
@@ -55,6 +56,7 @@ ChannelOptions::ChannelOptions()
     , auth(NULL)
     , retry_policy(NULL)
     , ns_filter(NULL)
+    , use_rdma(false)
 {}
 
 ChannelSSLOptions* ChannelOptions::mutable_ssl_options() {
@@ -66,6 +68,7 @@ ChannelSSLOptions* ChannelOptions::mutable_ssl_options() {
 
 static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
     if (opt.auth == NULL &&
+        !opt.use_rdma &&
         !opt.has_ssl_options() &&
         opt.connection_group.empty()) {
         // Returning zeroized result by default is more intuitive for users.
@@ -86,6 +89,9 @@ static ChannelSignature ComputeChannelSignature(const ChannelOptions& opt) {
         if (opt.auth) {
             buf.append("|auth=");
             buf.append((char*)&opt.auth, sizeof(opt.auth));
+        }
+        if (opt.use_rdma) {
+            buf.append("|rdma");
         }
         if (opt.has_ssl_options()) {
             const ChannelSSLOptions& ssl = opt.ssl_options();
@@ -143,9 +149,36 @@ Channel::~Channel() {
     }
 }
 
+#ifdef BRPC_RDMA
+static bool OptionsAvailableForRdma(const ChannelOptions* opt) {
+    if (opt->has_ssl_options()) {
+        LOG(WARNING) << "Cannot use SSL and RDMA at the same time";
+        return false;
+    }
+    if (!rdma::SupportedByRdma(opt->protocol.name())) {
+        // TODO: Make RDMA available for other protocols
+        LOG(WARNING) << "Cannot use " << opt->protocol.name()
+                     << " over RDMA";
+        return false;
+    }
+    return true;
+}
+#endif
+
 int Channel::InitChannelOptions(const ChannelOptions* options) {
     if (options) {  // Override default options if user provided one.
         _options = *options;
+    }
+    if (_options.use_rdma) {
+#ifndef BRPC_RDMA
+        LOG(WARNING) << "This libbrpc.a does not support RDMA";
+        return -1;
+#else
+        if (!OptionsAvailableForRdma(&_options)) {
+            return -1;
+        }
+        rdma::GlobalRdmaInitializeOrDie();
+#endif
     }
     const Protocol* protocol = FindProtocol(_options.protocol);
     if (NULL == protocol || !protocol->support_client()) {
@@ -310,10 +343,11 @@ int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
         return -1;
     }
     if (SocketMapInsert(SocketMapKey(server_addr_and_port, sig),
-                        &_server_id, ssl_ctx) != 0) {
+                        &_server_id, ssl_ctx, _options.use_rdma) != 0) {
         LOG(ERROR) << "Fail to insert into SocketMap";
         return -1;
     }
+    _remote_side = server_addr_and_port;
     return 0;
 }
 
@@ -344,6 +378,7 @@ int Channel::Init(const char* ns_url,
     ns_opt.succeed_without_server = _options.succeed_without_server;
     ns_opt.log_succeed_without_server = _options.log_succeed_without_server;
     ns_opt.channel_signature = ComputeChannelSignature(_options);
+    ns_opt.use_rdma = _options.use_rdma;
     if (CreateSocketSSLContext(_options, &ns_opt.ssl_ctx) != 0) {
         return -1;
     }
@@ -479,7 +514,9 @@ void Channel::CallMethod(const google::protobuf::MethodDescriptor* method,
         // parameters in `cntl' are set.
         return cntl->HandleSendFailed();
     }
-    _serialize_request(&cntl->_request_buf, cntl, request);
+    if (cntl->_request_buf.empty()) {  // help rdma_fallback_channel
+        _serialize_request(&cntl->_request_buf, cntl, request);
+    }
     if (cntl->FailedInline()) {
         return cntl->HandleSendFailed();
     }

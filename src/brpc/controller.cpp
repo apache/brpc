@@ -71,6 +71,11 @@ BAIDU_REGISTER_ERRNO(brpc::EEOF, "Got EOF");
 BAIDU_REGISTER_ERRNO(brpc::EUNUSED, "The socket was not needed");
 BAIDU_REGISTER_ERRNO(brpc::ESSL, "SSL related operation failed");
 BAIDU_REGISTER_ERRNO(brpc::EH2RUNOUTSTREAMS, "The H2 socket was run out of streams");
+BAIDU_REGISTER_ERRNO(brpc::ERDMA, "RDMA verbs error");
+BAIDU_REGISTER_ERRNO(brpc::ERDMACM, "RDMACM error");
+BAIDU_REGISTER_ERRNO(brpc::ERDMAUNAVAIL, "RDMA is not available now");
+BAIDU_REGISTER_ERRNO(brpc::ERDMAOUTCLUSTER, "RDMA is not supported for communication inter-cluster");
+BAIDU_REGISTER_ERRNO(brpc::ERDMALOCAL, "Do not use RDMA for local connection");
 
 BAIDU_REGISTER_ERRNO(brpc::EINTERNAL, "General internal error");
 BAIDU_REGISTER_ERRNO(brpc::ERESPONSE, "Bad response");
