@@ -1019,10 +1019,10 @@ void H2Context::Describe(std::ostream& os, const DescribeOptions& opt) const {
         os << '\n';
     }
     const char sep = (opt.verbose ? '\n' : ' ');
-    os << "conn_state=" << H2ConnectionState2Str(_conn_state)
-       << sep << "last_received_stream_id=" << _last_received_stream_id
-       << sep << "last_sent_stream_id=" << _last_sent_stream_id
-       << sep << "deferred_window_update="
+    os << "conn_state=" << H2ConnectionState2Str(_conn_state);
+    os << sep << "last_received_stream_id=" << _last_received_stream_id
+       << sep << "last_sent_stream_id=" << _last_sent_stream_id;
+    os << sep << "deferred_window_update="
        << _deferred_window_update.load(butil::memory_order_relaxed)
        << sep << "remote_conn_window_left="
        << _remote_window_left.load(butil::memory_order_relaxed)
