@@ -162,14 +162,12 @@ enum H2SettingsIdentifier {
 
 // Parse from n bytes from the iterator.
 // Returns true on success.
-bool ParseH2Settings(H2Settings* out, butil::IOBufBytesIterator& it,
-                     size_t n, bool setting_received) {
+bool ParseH2Settings(H2Settings* out, butil::IOBufBytesIterator& it, size_t n) {
     const uint32_t npairs = n / 6;
     if (npairs * 6 != n) {
         LOG(ERROR) << "Invalid payload_size=" << n;
         return false;
     }
-    bool met_stream_window_size = false;
     for (uint32_t i = 0; i < npairs; ++i) {
         uint16_t id = LoadUint16(it);
         uint32_t value = LoadUint32(it);
@@ -193,7 +191,6 @@ bool ParseH2Settings(H2Settings* out, butil::IOBufBytesIterator& it,
                 return false;
             }
             out->stream_window_size = value;
-            met_stream_window_size = true;
             break;
         case H2_SETTINGS_MAX_FRAME_SIZE:
             if (value > H2Settings::MAX_OF_MAX_FRAME_SIZE ||
@@ -212,15 +209,6 @@ bool ParseH2Settings(H2Settings* out, butil::IOBufBytesIterator& it,
             LOG(WARNING) << "Unknown setting, id=" << id << " value=" << value;
             break;
         }
-    }
-    // To solve the problem that sender can't send large request before receving
-    // remote setting, the initial window size of stream is set to MAX_WINDOW_SIZE
-    // (see constructor of H2Context).
-    // As a result, in the view of remote side, window size is 65535 by default so
-    // it may not send its stream size to sender, making stream size still be
-    // MAX_WINDOW_SIZE. In this case we need to revert this value to default.
-    if (!setting_received && !met_stream_window_size) {
-        out->stream_window_size = H2Settings::DEFAULT_INITIAL_WINDOW_SIZE;
     }
     return true;
 }
@@ -878,10 +866,27 @@ H2ParseResult H2Context::OnSettings(
         return MakeH2Message(NULL);
     }
     const int64_t old_stream_window_size = _remote_settings.stream_window_size;
-    if (!ParseH2Settings(&_remote_settings, it,
-                frame_head.payload_size, _remote_settings_received)) {
+    H2Settings tmp_settings;
+    H2Settings* settings = &_remote_settings;
+    if (!_remote_settings_received) {
+        settings = &tmp_settings;
+    }
+    if (!ParseH2Settings(settings, it, frame_head.payload_size)) {
         LOG(ERROR) << "Fail to parse from SETTINGS";
         return MakeH2Error(H2_PROTOCOL_ERROR);
+    }
+    // To solve the problem that sender can't send large request before receving
+    // remote setting, the initial window size of stream/connection is set to
+    // MAX_WINDOW_SIZE(see constructor of H2Context).
+    // As a result, in the view of remote side, window size is 65535 by default so
+    // it may not send its stream size to sender, making stream size still be
+    // MAX_WINDOW_SIZE. In this case we need to revert this value to default.
+    if (!_remote_settings_received) {
+        _remote_settings_received = true;
+        _remote_settings = tmp_settings;
+        _remote_window_left.fetch_sub(
+                H2Settings::MAX_WINDOW_SIZE - H2Settings::DEFAULT_INITIAL_WINDOW_SIZE,
+                butil::memory_order_relaxed);
     }
     const int64_t window_diff =
         static_cast<int64_t>(_remote_settings.stream_window_size)
@@ -905,16 +910,6 @@ H2ParseResult H2Context::OnSettings(
     if (WriteAck(_socket, headbuf, sizeof(headbuf)) != 0) {
         LOG(WARNING) << "Fail to respond settings with ack to " << *_socket;
         return MakeH2Error(H2_PROTOCOL_ERROR);
-    }
-    // To solve the problem that sender can't send large request before receving
-    // remote setting, the initial window size of connection is set to MAX_WINDOW_SIZE
-    // (see constructor of H2Context). So when the settings are received, we should
-    // revert the value to default and respect the remote setting.
-    if (!_remote_settings_received) {
-        _remote_settings_received = true;
-        _remote_window_left.fetch_sub(
-                H2Settings::MAX_WINDOW_SIZE - H2Settings::DEFAULT_INITIAL_WINDOW_SIZE,
-                butil::memory_order_relaxed);
     }
     return MakeH2Message(NULL);
 }
