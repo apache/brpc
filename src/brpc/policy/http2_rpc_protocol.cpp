@@ -866,13 +866,13 @@ H2ParseResult H2Context::OnSettings(
         return MakeH2Message(NULL);
     }
     const int64_t old_stream_window_size = _remote_settings.stream_window_size;
-    // To solve the problem that sender can't send large request before receving
-    // remote setting, the initial window size of stream/connection is set to
-    // MAX_WINDOW_SIZE(see constructor of H2Context).
-    // As a result, in the view of remote side, window size is 65535 by default so
-    // it may not send its stream size to sender, making stream size still be
-    // MAX_WINDOW_SIZE. In this case we need to revert this value to default.
     if (!_remote_settings_received) {
+        // To solve the problem that sender can't send large request before receving
+        // remote setting, the initial window size of stream/connection is set to
+        // MAX_WINDOW_SIZE(see constructor of H2Context).
+        // As a result, in the view of remote side, window size is 65535 by default so
+        // it may not send its stream size to sender, making stream size still be
+        // MAX_WINDOW_SIZE. In this case we need to revert this value to default.
         H2Settings tmp_settings;
         if (!ParseH2Settings(&tmp_settings, it, frame_head.payload_size)) {
             LOG(ERROR) << "Fail to parse from SETTINGS";
