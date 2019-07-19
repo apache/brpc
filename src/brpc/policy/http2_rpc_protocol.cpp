@@ -331,6 +331,7 @@ H2Context::H2Context(Socket* socket, const Server* server)
     , _last_received_stream_id(-1)
     , _last_sent_stream_id(1)
     , _goaway_stream_id(-1)
+    , _remote_settings_received(false)
     , _deferred_window_update(0) {
     // Stop printing the field which is useless for remote settings.
     _remote_settings.connection_window_size = 0;
@@ -887,6 +888,7 @@ H2ParseResult H2Context::OnSettings(
         LOG(WARNING) << "Fail to respond settings with ack to " << *_socket;
         return MakeH2Error(H2_PROTOCOL_ERROR);
     }
+    _remote_settings_received.store(true, butil::memory_order_release);
     return MakeH2Message(NULL);
 }
 
@@ -1017,14 +1019,16 @@ void H2Context::Describe(std::ostream& os, const DescribeOptions& opt) const {
         os << '\n';
     }
     const char sep = (opt.verbose ? '\n' : ' ');
-    os << "conn_state=" << H2ConnectionState2Str(_conn_state);
-    os << sep << "last_received_stream_id=" << _last_received_stream_id
-       << sep << "last_sent_stream_id=" << _last_sent_stream_id;
-    os << sep << "deferred_window_update="
+    os << "conn_state=" << H2ConnectionState2Str(_conn_state)
+       << sep << "last_received_stream_id=" << _last_received_stream_id
+       << sep << "last_sent_stream_id=" << _last_sent_stream_id
+       << sep << "deferred_window_update="
        << _deferred_window_update.load(butil::memory_order_relaxed)
        << sep << "remote_conn_window_left="
        << _remote_window_left.load(butil::memory_order_relaxed)
        << sep << "remote_settings=" << _remote_settings
+       << sep << "remote_settings_received="
+       << _remote_settings_received.load(butil::memory_order_relaxed)
        << sep << "local_settings=" << _local_settings
        << sep << "hpacker={";
     IndentingOStream os2(os, 2);
@@ -1527,8 +1531,8 @@ H2UnsentRequest::AppendAndDestroySelf(butil::IOBuf* out, Socket* socket) {
     }
 
     _sctx->Init(ctx, id);
-    // flow control
-    if (!_cntl->request_attachment().empty()) {
+    // check flow control restriction only when remote setting is received.
+    if (!_cntl->request_attachment().empty() && ctx->is_remote_settings_received()) {
         const int64_t data_size = _cntl->request_attachment().size();
         if (!_sctx->ConsumeWindowSize(data_size)) {
             return butil::Status(ELIMIT, "remote_window_left is not enough, data_size=%" PRId64, data_size);

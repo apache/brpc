@@ -353,6 +353,9 @@ public:
     void DeferWindowUpdate(int64_t);
     int64_t ReleaseDeferredWindowUpdate();
 
+    bool is_remote_settings_received() const
+    { return _remote_settings_received.load(butil::memory_order_acquire); }
+
 private:
 friend class H2StreamContext;
 friend class H2UnsentRequest;
@@ -387,6 +390,7 @@ friend void InitFrameHandlers();
     uint32_t _last_sent_stream_id;
     int _goaway_stream_id;
     H2Settings _remote_settings;
+    butil::atomic<bool> _remote_settings_received;
     H2Settings _local_settings;
     H2Settings _unack_local_settings;
     HPacker _hpacker;
