@@ -20,6 +20,9 @@
 #ifndef BRPC_REDIS_H
 #define BRPC_REDIS_H
 
+#if __cplusplus >= 201103L
+#include <utility>  // std::forward
+#endif
 #include <google/protobuf/message.h>
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
@@ -63,12 +66,13 @@ public:
     //   butil::StringPiece components[] = { "set", "key", "value" };
     //   request.AddCommandByComponents(components, arraysize(components));
     bool AddCommandByComponents(const butil::StringPiece* components, size_t n);
-    
+
+    bool AddCommand(const butil::StringPiece& command);
+
+#if __cplusplus < 201103L
     // Add a command with variadic args to this request.
     // The reason that adding so many overloads rather than using ... is that
     // it's the only way to dispatch the AddCommand w/o args differently.
-    bool AddCommand(const butil::StringPiece& command);
-    
     template <typename A1>
     bool AddCommand(const char* format, A1 a1)
     { return AddCommandWithArgs(format, a1); }
@@ -92,6 +96,11 @@ public:
     template <typename A1, typename A2, typename A3, typename A4, typename A5, typename A6>
     bool AddCommand(const char* format, A1 a1, A2 a2, A3 a3, A4 a4, A5 a5, A6 a6)
     { return AddCommandWithArgs(format, a1, a2, a3, a4, a5, a6); }
+#else
+    template <typename... Args>
+    bool AddCommand(const char* format, Args... args)
+    { return AddCommandWithArgs(format, std::forward<Args>(args)...); }
+#endif  // __cplusplus < 201103L
 
     // Number of successfully added commands
     int command_size() const { return _ncommand; }
