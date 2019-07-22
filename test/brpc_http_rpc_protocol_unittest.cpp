@@ -96,8 +96,6 @@ public:
         if (sleep_ms_str) {
             bthread_usleep(strtol(sleep_ms_str->data(), NULL, 10) * 1000);
         }
-
-        EXPECT_EQ(EXP_REQUEST, req->message());
         res->set_message(EXP_RESPONSE);
     }
 };
@@ -996,12 +994,24 @@ TEST_F(HttpTest, http2_sanity) {
     options.protocol = "h2";
     ASSERT_EQ(0, channel.Init(butil::EndPoint(butil::my_ip(), port), &options));
 
-    // 1) complete flow and
-    // 2) socket replacement when streamId runs out, the initial streamId is a special
-    // value set in ctor of H2Context
+    // Check that the first request with size larger than the default window can
+    // be sent out, when remote settings are not received.
+    brpc::Controller cntl;
+    test::EchoRequest big_req;
+    test::EchoResponse res;
+    std::string message(2 * 1024 * 1024 /* 2M */, 'x');
+    big_req.set_message(message);
+    cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
+    cntl.http_request().uri() = "/EchoService/Echo";
+    channel.CallMethod(NULL, &cntl, &big_req, &res, NULL);
+    ASSERT_FALSE(cntl.Failed());
+    ASSERT_EQ(EXP_RESPONSE, res.message());
+
+    // socket replacement when streamId runs out, the initial streamId is a special
+    // value set in ctor of H2Context so that the number 15000 is enough to run out
+    // of stream.
     test::EchoRequest req;
     req.set_message(EXP_REQUEST);
-    test::EchoResponse res;
     for (int i = 0; i < 15000; ++i) {
         brpc::Controller cntl;
         cntl.http_request().set_content_type("application/json");
@@ -1112,6 +1122,14 @@ TEST_F(HttpTest, http2_window_used_up) {
     cntl.http_request().set_method(brpc::HTTP_METHOD_POST);
     cntl.http_request().set_content_type("application/proto");
     brpc::policy::SerializeHttpRequest(&request_buf, &cntl, &req);
+
+    char settingsbuf[brpc::policy::FRAME_HEAD_SIZE + 36];
+    brpc::H2Settings h2_settings;
+    const size_t nb = brpc::policy::SerializeH2Settings(h2_settings, settingsbuf + brpc::policy::FRAME_HEAD_SIZE);
+    brpc::policy::SerializeFrameHead(settingsbuf, nb, brpc::policy::H2_FRAME_SETTINGS, 0, 0);
+    butil::IOBuf buf;
+    buf.append(settingsbuf, brpc::policy::FRAME_HEAD_SIZE + nb);
+    brpc::policy::ParseH2Message(&buf, _h2_client_sock.get(), false, NULL);
 
     int nsuc = brpc::H2Settings::DEFAULT_INITIAL_WINDOW_SIZE / cntl.request_attachment().size();
     for (int i = 0; i <= nsuc; i++) {
