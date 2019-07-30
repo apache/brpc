@@ -55,19 +55,9 @@ constexpr int64_t GetEndRealTimeUs(const T* span) {
                               span->sent_real_us()});
 }
 
-class Span;
-class Trace {
-public:
-    explicit Trace(Span* parent_span)
-        : _parent_span(parent_span) {}
-
-    ~Trace();
-private:
-    Span* _parent_span;
-};
-
 // Collect information required by /rpcz and tracing system whose idea is
 // described in http://static.googleusercontent.com/media/research.google.com/en//pubs/archive/36356.pdf
+class Trace;
 class Span : public bvar::Collected {
     struct Forbidden {};
 public:

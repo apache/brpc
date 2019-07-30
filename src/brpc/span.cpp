@@ -85,9 +85,17 @@ inline uint64_t GenerateTraceId() {
     return (g->current_random & 0xFFFFFFFFFFFF0000ULL) | g->seq++;
 }
 
-Trace::~Trace() {
-    _parent_span->submit();
-}
+class Trace {
+public:
+    explicit Trace(Span* parent_span)
+        : _parent_span(parent_span) {}
+
+    ~Trace() {
+        _parent_span->submit();
+    }
+private:
+    Span* _parent_span;
+};
 
 Span* Span::CreateClientSpan(const std::string& full_method_name,
                              int64_t base_real_us) {
