@@ -76,7 +76,7 @@ static void RunMemcached() {
     } else if (g_mc_pid == 0) {
         puts("[Starting memcached]");
         char* const argv[] = { (char*)MEMCACHED_BIN,
-                               (char*)"--port", (char*)MEMCACHED_PORT,
+                               (char*)"-p", (char*)MEMCACHED_PORT,
                                NULL };
         if (execvp(MEMCACHED_BIN, argv) < 0) {
             puts("Fail to run " MEMCACHED_BIN);
