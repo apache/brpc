@@ -48,19 +48,19 @@ void ContentionProfilerStop();
 namespace brpc {
 enum class DisplayType{
     kUnknown,
+    kDot,
 #if defined(OS_LINUX)
     kFlameGraph,
 #endif
-    kDot,
     kText
 };
 
 static const char* DisplayTypeToString(DisplayType type) {
     switch (type) {
+        case DisplayType::kDot: return "dot";
 #if defined(OS_LINUX)
         case DisplayType::kFlameGraph: return "flame";
 #endif
-        case DisplayType::kDot: return "dot";
         case DisplayType::kText: return "text";
         default: return "unknown";
     }
@@ -72,10 +72,10 @@ static DisplayType StringToDisplayType(const std::string& val) {
     std::call_once(flag, []() {
         display_type_map = new butil::CaseIgnoredFlatMap<DisplayType>;
         display_type_map->init(10);
+        (*display_type_map)["dot"] = DisplayType::kDot;
 #if defined(OS_LINUX)
         (*display_type_map)["flame"] = DisplayType::kFlameGraph;
 #endif
-        (*display_type_map)["dot"] = DisplayType::kDot;
         (*display_type_map)["text"] = DisplayType::kText;
     });
     auto type = display_type_map->seek(val);
@@ -88,8 +88,8 @@ static DisplayType StringToDisplayType(const std::string& val) {
 static std::string DisplayTypeToPProfArgument(DisplayType type) {
     switch (type) {
 #if defined(OS_LINUX)
-        case DisplayType::kFlameGraph: return " --collapsed ";
         case DisplayType::kDot: return " --dot ";
+        case DisplayType::kFlameGraph: return " --collapsed ";
         case DisplayType::kText: return " --text ";
 #elif defined(OS_MACOSX)
         case DisplayType::kDot: return " -dot ";
@@ -412,7 +412,7 @@ static void DisplayResult(Controller* cntl,
     const bool show_ccount = cntl->http_request().uri().GetQuery("ccount");
     const std::string* base_name = cntl->http_request().uri().GetQuery("base");
     const std::string* display_type_query = cntl->http_request().uri().GetQuery("display_type");
-    DisplayType display_type = DisplayType::kFlameGraph;
+    DisplayType display_type = DisplayType::kDot;
     if (display_type_query) {
         display_type = StringToDisplayType(*display_type_query);
         if (display_type == DisplayType::kUnknown) {
@@ -885,7 +885,7 @@ static void StartProfiling(ProfilingType type,
     const bool show_ccount = cntl->http_request().uri().GetQuery("ccount");
     const std::string* base_name = cntl->http_request().uri().GetQuery("base");
     const std::string* display_type_query = cntl->http_request().uri().GetQuery("display_type");
-    DisplayType display_type = DisplayType::kFlameGraph;
+    DisplayType display_type = DisplayType::kDot;
     if (display_type_query) {
         display_type = StringToDisplayType(*display_type_query);
         if (display_type == DisplayType::kUnknown) {
@@ -922,25 +922,17 @@ static void StartProfiling(ProfilingType type,
         os << "  var show_ccount = document.getElementById('ccount_cb').checked;\n";
     }
     os << "  var targetURL = '/hotspots/" << type_str << "';\n"
-        "  targetURL += '?' + 'display_type=' + display_type;\n"
+        "  targetURL += '?display_type=' + display_type;\n"
         "  if (past_prof != '') {\n"
-        "    targetURL += '&';\n"
-        "    targetURL += 'view=' + past_prof;\n"
+        "    targetURL += '&view=' + past_prof;\n"
         "  }\n"
         "  if (base_prof != '') {\n"
-        "    targetURL += '&';\n"
-        "    targetURL += 'base=' + base_prof;\n"
+        "    targetURL += '&base=' + base_prof;\n"
         "  }\n";
     if (type == PROFILING_CONTENTION) {
         os <<
         "  if (show_ccount) {\n"
-        "    if (first) {\n"
-        "      targetURL += '?';\n"
-        "      first = false;\n"
-        "    } else {\n"
-        "      targetURL += '&';\n"
-        "    }\n"
-        "    targetURL += 'ccount';\n"
+        "    targetURL += '&ccount';\n"
         "  }\n";
     }
     os << "  return targetURL;\n"
@@ -1078,12 +1070,12 @@ static void StartProfiling(ProfilingType type,
         os << '>' << GetBaseName(&past_profs[i]);
     }
     os << "</select>";
-    os << "<div><pre style='display:inline'>Display Type: </pre>"
+    os << "<div><pre style='display:inline'>Display: </pre>"
         "<select id='display_type' onchange='onSelectProf()'>"
+        "<option value=dot" << (display_type == DisplayType::kDot ? " selected" : "") << ">dot</option>"
 #if defined(OS_LINUX)
         "<option value=flame" << (display_type == DisplayType::kFlameGraph ? " selected" : "") << ">flame</option>"
 #endif
-        "<option value=dot" << (display_type == DisplayType::kDot ? " selected" : "") << ">dot</option>"
         "<option value=text" << (display_type == DisplayType::kText ? " selected" : "") << ">text</option></select>";
     if (type == PROFILING_CONTENTION) {
         os << "&nbsp;&nbsp;&nbsp;<label for='ccount_cb'>"
