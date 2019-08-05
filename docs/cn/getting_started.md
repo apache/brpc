@@ -20,7 +20,7 @@ brpc depends on following packages:
 
 Install common deps, [gflags](https://github.com/gflags/gflags), [protobuf](https://github.com/google/protobuf), [leveldb](https://github.com/google/leveldb):
 ```shell
-sudo apt-get install -y git g++ make libssl-dev cmake libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
+sudo apt-get install -y git g++ make libssl-dev libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev
 ```
 
 If you need to statically link leveldb:
@@ -35,7 +35,7 @@ sudo apt-get install -y libgoogle-perftools-dev
 
 If you need to run tests, install and compile libgtest-dev (which is not compiled yet):
 ```shell
-sudo apt-get install -y libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
+sudo apt-get install -y cmake libgtest-dev && cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
 ```
 The directory of gtest source code may be changed, try `/usr/src/googletest/googletest` if `/usr/src/gtest` is not there.
 
