@@ -40,7 +40,7 @@ if [ "$PURPOSE" = "compile" ]; then
 elif [ "$PURPOSE" = "unittest" ]; then
     init_make_config && cd test && make -j4 && sh ./run_tests.sh
 elif [ "$PURPOSE" = "compile-with-cmake" ]; then
-    rm -rf bld && mkdir bld && cd bld && cmake .. && make -j4
+    rm -rf bld && mkdir bld && cd bld && cmake -DWITH_MESALINK="$USE_MESALINK" .. && make -j4
 elif [ "$PURPOSE" = "compile-with-bazel" ]; then
     bazel build -j 12 -c opt --copt -DHAVE_ZLIB=1 //...
 else
