@@ -11,10 +11,10 @@ env:
 - PURPOSE=unittest
 - PURPOSE=compile-with-cmake
 - PURPOSE=compile-with-bazel
-- PURPOSE=compile USE_MESALINK=yes
-- PURPOSE=unittest USE_MESALINK=yes
-- PURPOSE=compile-with-cmake USE_MESALINK=yes
-- PURPOSE=compile-with-bazel USE_MESALINK=yes
+- PURPOSE=compile USE_MESALINK=true
+- PURPOSE=unittest USE_MESALINK=true
+- PURPOSE=compile-with-cmake USE_MESALINK=true
+- PURPOSE=compile-with-bazel USE_MESALINK=true
 
 before_script:
 - ulimit -c unlimited -S       # enable core dumps
