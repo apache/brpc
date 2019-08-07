@@ -29,7 +29,7 @@ install:
 - sudo apt-get install -qq realpath libgflags-dev libprotobuf-dev libprotoc-dev protobuf-compiler libleveldb-dev libgoogle-perftools-dev libboost-dev libssl-dev libevent-dev libboost-test-dev
 - sudo apt-get install libgtest-dev && cd /usr/src/gtest && sudo env "PATH=$PATH" cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
 - sudo apt-get install -y gdb  # install gdb
-- if [[  "$USE_MESALINK" == "yes" ]]; then wget https://mesalink.s3-us-west-1.amazonaws.com/MesaLink-1.0.0-x86_64_trusty.deb && sudo dpkg -i MesaLink-1.0.0-x86_64_trusty.deb ; fi # install MesaLink for trusty
+- if [[  "$USE_MESALINK" == "true" ]]; then wget https://mesalink.s3-us-west-1.amazonaws.com/MesaLink-1.0.0-x86_64_trusty.deb && sudo dpkg -i MesaLink-1.0.0-x86_64_trusty.deb ; fi # install MesaLink for trusty
 
 script:
 - sh build_in_travis_ci.sh
