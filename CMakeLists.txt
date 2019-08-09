@@ -180,11 +180,16 @@ set(DYNAMIC_LIB
     ${CMAKE_THREAD_LIBS_INIT}
     ${THRIFT_LIB}
     ${THRIFTNB_LIB}
-    ${OPENSSL_LIBRARIES}
     ${OPENSSL_CRYPTO_LIBRARY}
-    ${MESALINK_LIB}
     dl
     z)
+
+if(WITH_MESALINK)
+    list(APPEND DYNAMIC_LIB ${MESALINK_LIB})
+else()
+    list(APPEND DYNAMIC_LIB ${OPENSSL_SSL_LIBRARY})
+endif()
+
 set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ldl -lz")
 
 if(WITH_GLOG)
