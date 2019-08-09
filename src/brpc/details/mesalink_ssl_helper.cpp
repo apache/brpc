@@ -67,11 +67,10 @@ static int ParseSSLProtocols(const std::string& str_protocol) {
     for (; sp; ++sp) {
         butil::StringPiece protocol(sp.field(), sp.length());
         protocol.trim_spaces();
-        if ( strncasecmp(protocol.data(), "SSLv3", protocol.size() == 0) 
-            || strncasecmp(protocol.data(), "TLSv1", protocol.size() == 0)
-            || strncasecmp(protocol.data(), "TLSv1.1", protocol.size() == 0)) {
-            LOG(ERROR) << "Uunsupported SSL/TLS protocol=" << protocol;
-            return -1;
+        if (strncasecmp(protocol.data(), "SSLv3", protocol.size()) == 0
+            || strncasecmp(protocol.data(), "TLSv1", protocol.size()) == 0
+            || strncasecmp(protocol.data(), "TLSv1.1", protocol.size()) == 0) {
+            LOG(WARNING) << "Ignored insecure SSL/TLS protocol=" << protocol;
         } else if (strncasecmp(protocol.data(), "TLSv1.2", protocol.size()) == 0) {
             protocol_flag |= TLSv1_2;
         } else {
