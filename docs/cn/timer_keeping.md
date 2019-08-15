@@ -29,7 +29,7 @@
 那新TimerThread是如何做到的？
 
 - 一个TimerThread而不是多个。
-- 创建的timer散列到多个Bucket以降低线程间的竞争，默认12个Bucket。
+- 创建的timer散列到多个Bucket以降低线程间的竞争，默认13个Bucket。
 - Bucket内不使用小顶堆管理时间，而是链表 + nearest_run_time字段，当插入的时间早于nearest_run_time时覆盖这个字段，之后去和全局nearest_run_time（和Bucket的nearest_run_time不同）比较，如果也早于这个时间，修改并唤醒TimerThread。链表节点在锁外使用[ResourcePool](memory_management.md)分配。
 - 删除时通过id直接定位到timer内存结构，修改一个标志，timer结构总是由TimerThread释放。
 - TimerThread被唤醒后首先把全局nearest_run_time设置为几乎无限大(max of int64)，然后取出所有Bucket内的链表，并把Bucket的nearest_run_time设置为几乎无限大(max of int64)。TimerThread把未删除的timer插入小顶堆中维护，这个堆就它一个线程用。在每次运行回调或准备睡眠前都会检查全局nearest_run_time， 如果全局更早，说明有更早的时间加入了，重复这个过程。
