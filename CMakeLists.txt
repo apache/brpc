@@ -46,7 +46,6 @@ endif()
 
 if(WITH_THRIFT)
     set(THRIFT_CPP_FLAG "-DENABLE_THRIFT_FRAMED_PROTOCOL")
-    set(THRIFTNB_LIB "thriftnb")
     set(THRIFT_LIB "thrift")
 endif()
 
