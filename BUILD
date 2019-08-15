@@ -11,6 +11,12 @@ config_setting(
 )
 
 config_setting(
+    name = "with_mesalink",
+    define_values = {"with_mesalink": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "with_thrift",
     define_values = {"with_thrift": "true"},
     visibility = ["//visibility:public"],
@@ -47,6 +53,9 @@ COPTS = [
     ":with_glog": ["-DBRPC_WITH_GLOG=1"],
     "//conditions:default": ["-DBRPC_WITH_GLOG=0"],
 }) + select({
+    ":with_mesalink": ["-DUSE_MESALINK"],
+    "//conditions:default": [""],
+}) + select({
     ":with_thrift": ["-DENABLE_THRIFT_FRAMED_PROTOCOL=1"],
     "//conditions:default": [""],
 })
@@ -54,7 +63,7 @@ COPTS = [
 LINKOPTS = [
     "-lpthread",
     "-ldl",
-    "-lz", 
+    "-lz",
     "-lssl",
     "-lcrypto",
 ] + select({
@@ -73,6 +82,11 @@ LINKOPTS = [
     "//conditions:default": [
       "-lrt",
     ],
+}) + select({
+    ":with_mesalink": [
+        "-lmesalink",
+    ],
+    "//conditions:default": [],
 }) + select({
     ":with_thrift": [
         "-lthriftnb",
@@ -236,7 +250,7 @@ objc_library(
         "src/butil/atomicops.h",
         "src/butil/atomicops_internals_atomicword_compat.h",
         "src/butil/atomicops_internals_mac.h",
-        "src/butil/base_export.h",        
+        "src/butil/base_export.h",
         "src/butil/basictypes.h",
         "src/butil/build_config.h",
         "src/butil/compat.h",
@@ -270,7 +284,7 @@ objc_library(
         "src/butil/strings/sys_string_conversions.h",
         "src/butil/synchronization/lock.h",
         "src/butil/time/time.h",
-        "src/butil/time.h",        
+        "src/butil/time.h",
         "src/butil/third_party/dynamic_annotations/dynamic_annotations.h",
         "src/butil/threading/platform_thread.h",
         "src/butil/threading/thread_restrictions.h",

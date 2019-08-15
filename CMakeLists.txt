@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 2.8.10)
 project(brpc C CXX)
 
 option(WITH_GLOG "With glog" OFF)
+option(WITH_MESALINK "With MesaLink" OFF)
 option(DEBUG "Print debug logs" OFF)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
 option(WITH_THRIFT "With thrift framed protocol supported" OFF)
@@ -87,6 +88,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 endif()
 
 set(CMAKE_CPP_FLAGS "${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
+if(WITH_MESALINK)
+    set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DUSE_MESALINK")
+endif()
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\\\"${BRPC_REVISION}\\\" -D__STRICT_ANSI__")
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEBUG_SYMBOL} ${THRIFT_CPP_FLAG}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
@@ -136,6 +140,17 @@ if(WITH_GLOG)
     include_directories(${GLOG_INCLUDE_PATH})
 endif()
 
+if(WITH_MESALINK)
+    find_path(MESALINK_INCLUDE_PATH NAMES mesalink/openssl/ssl.h)
+    find_library(MESALINK_LIB NAMES mesalink)
+    if((NOT MESALINK_INCLUDE_PATH) OR (NOT MESALINK_LIB))
+        message(FATAL_ERROR "Fail to find MesaLink")
+    else()
+        message(STATUS "Found MesaLink: ${MESALINK_LIB}")
+    endif()
+    include_directories(${MESALINK_INCLUDE_PATH})
+endif()
+
 find_library(PROTOC_LIB NAMES protoc)
 if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
@@ -164,10 +179,16 @@ set(DYNAMIC_LIB
     ${CMAKE_THREAD_LIBS_INIT}
     ${THRIFT_LIB}
     ${THRIFTNB_LIB}
-    ${OPENSSL_LIBRARIES}
     ${OPENSSL_CRYPTO_LIBRARY}
     dl
     z)
+
+if(WITH_MESALINK)
+    list(APPEND DYNAMIC_LIB ${MESALINK_LIB})
+else()
+    list(APPEND DYNAMIC_LIB ${OPENSSL_SSL_LIBRARY})
+endif()
+
 set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ldl -lz")
 
 if(WITH_GLOG)
