@@ -383,7 +383,7 @@ const LogSeverity BLOG_0 = BLOG_ERROR;
 // LOG_IS_ON(DFATAL) always holds in debug mode. In particular, CHECK()s will
 // always fire if they fail.
 #define LOG_IS_ON(severity)                                     \
-    (logging::BLOG_##severity >= ::logging::GetMinLogLevel())
+    (::logging::BLOG_##severity >= ::logging::GetMinLogLevel())
 
 #if defined(__GNUC__)
 // We emit an anonymous static int* variable at every VLOG_IS_ON(n) site.
