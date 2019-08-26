@@ -77,7 +77,7 @@ mkdir bld && cd bld && cmake .. && make
 ```
 To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
 
-To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
+To not link debugging symbols, use `rm -f CMakeCache.txt && cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
 
 To use brpc with glog, add `-DWITH_GLOG=ON`.
 
@@ -90,7 +90,7 @@ $ mkdir bld && cd bld && cmake .. && make
 $ ./echo_server &
 $ ./echo_client
 ```
-Examples link brpc statically, if you need to link the shared version, use `cmake -DLINK_SO=ON ..`
+Examples link brpc statically, if you need to link the shared version, use `rm -f CMakeCache.txt && cmake -DLINK_SO=ON ..`
 
 **Run tests**
 ```shell
@@ -166,7 +166,7 @@ mkdir bld && cd bld && cmake .. && make
 ```
 To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
 
-To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
+To not link debugging symbols, use `rm -f CMakeCache.txt && cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
 
 To use brpc with glog, add `-DWITH_GLOG=ON`.
 
@@ -180,7 +180,7 @@ $ mkdir bld && cd bld && cmake .. && make
 $ ./echo_server &
 $ ./echo_client
 ```
-Examples link brpc statically, if you need to link the shared version, use `cmake -DLINK_SO=ON ..`
+Examples link brpc statically, if you need to link the shared version, use `rm -f CMakeCache.txt && cmake -DLINK_SO=ON ..`
 
 **Run tests**
 ```shell
@@ -238,7 +238,7 @@ mkdir bld && cd bld && cmake -DCMAKE_INCLUDE_PATH="/path/to/dep1/include;/path/t
 
 To change compiler to clang, overwrite environment variable CC and CXX to clang and clang++.
 
-To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
+To not link debugging symbols, use `rm -f CMakeCache.txt && cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
 
 To use brpc with glog, add `-DWITH_GLOG=ON`.
 
@@ -305,7 +305,7 @@ $ sh run_tests.sh
 mkdir bld && cd bld && cmake .. && make
 ```
 
-To not link debugging symbols, use `cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
+To not link debugging symbols, use `rm -f CMakeCache.txt && cmake -DWITH_DEBUG_SYMBOLS=OFF ..` and compiled binaries will be much smaller.
 
 To use brpc with glog, add `-DWITH_GLOG=ON`.
 
@@ -318,7 +318,7 @@ $ mkdir bld && cd bld && cmake .. && make
 $ ./echo_server &
 $ ./echo_client
 ```
-Examples link brpc statically, if you need to link the shared version, use `cmake -DLINK_SO=ON ..`
+Examples link brpc statically, if you need to link the shared version, use `rm -f CMakeCache.txt && cmake -DLINK_SO=ON ..`
 
 **Run tests**
 ```shell
