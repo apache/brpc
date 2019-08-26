@@ -90,7 +90,7 @@ $ mkdir bld && cd bld && cmake .. && make
 $ ./echo_server &
 $ ./echo_client
 ```
-Examples link brpc statically, if you need to link the shared version, use `cmake -DEXAMPLE_LINK_SO=ON ..`
+Examples link brpc statically, if you need to link the shared version, use `cmake -DLINK_SO=ON ..`
 
 **Run tests**
 ```shell
@@ -180,7 +180,7 @@ $ mkdir bld && cd bld && cmake .. && make
 $ ./echo_server &
 $ ./echo_client
 ```
-Examples link brpc statically, if you need to link the shared version, use `cmake -DEXAMPLE_LINK_SO=ON ..`
+Examples link brpc statically, if you need to link the shared version, use `cmake -DLINK_SO=ON ..`
 
 **Run tests**
 ```shell
@@ -318,7 +318,7 @@ $ mkdir bld && cd bld && cmake .. && make
 $ ./echo_server &
 $ ./echo_client
 ```
-Examples link brpc statically, if you need to link the shared version, use `cmake -DEXAMPLE_LINK_SO=ON ..`
+Examples link brpc statically, if you need to link the shared version, use `cmake -DLINK_SO=ON ..`
 
 **Run tests**
 ```shell
