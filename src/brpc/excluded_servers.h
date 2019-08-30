@@ -38,10 +38,10 @@ public:
     static void Destroy(ExcludedServers* ptr);
 
     // Add a server. If the internal queue is full, pop one from the queue first.
-    void Add(SocketId id);
+    virtual void Add(SocketId id);
 
     // True if the server shall be excluded.
-    bool IsExcluded(SocketId id) const;
+    virtual bool IsExcluded(SocketId id) const;
     static bool IsExcluded(const ExcludedServers* s, SocketId id) {
         return s != NULL && s->IsExcluded(id);
     }
@@ -49,33 +49,26 @@ public:
     // #servers inside.
     size_t size() const { return _l.size(); }
 
+    ExcludedServers(int cap): _l(cap) {}
+    virtual ~ExcludedServers() {}
+
 private:
-    ExcludedServers(int cap)
-        : _l(_space, sizeof(SocketId)* cap, butil::NOT_OWN_STORAGE) {}
-    ~ExcludedServers() {}
     // Controller::_accessed may be shared by sub channels in schan, protect
     // all mutable methods with this mutex. In ordinary channels, this mutex
     // is never contended.
     mutable butil::Mutex _mutex;
     butil::BoundedQueue<SocketId> _l;
-    SocketId _space[0];
 };
 
 // ===================================================
 
 inline ExcludedServers* ExcludedServers::Create(int cap) {
-    void *space = malloc(
-        offsetof(ExcludedServers, _space) + sizeof(SocketId) * cap);
-    if (NULL == space) {
-        return NULL;
-    }
-    return new (space) ExcludedServers(cap);
+    return new ExcludedServers(cap);
 }
 
 inline void ExcludedServers::Destroy(ExcludedServers* ptr) {
     if (ptr) {
-        ptr->~ExcludedServers();
-        free(ptr);
+        delete ptr;
     }
 }
 
