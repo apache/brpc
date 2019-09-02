@@ -688,13 +688,13 @@ int GlobalCQInit() {
 
     if (FLAGS_rdma_cq_assign_policy.compare("random") == 0) {
         g_cq_policy = new (std::nothrow)
-                      RandomRdmaCQAssignPolicy(g_cq_num);
+            RandomRdmaCQAssignPolicy((g_cq_num == 0) ? g_cq_enabled_cores : g_cq_num);
     } else if (FLAGS_rdma_cq_assign_policy.compare("rr") == 0) {
         g_cq_policy = new (std::nothrow)
-                      RoundRobinRdmaCQAssignPolicy(g_cq_num);
+            RoundRobinRdmaCQAssignPolicy((g_cq_num == 0) ? g_cq_enabled_cores : g_cq_num);
     } else if (FLAGS_rdma_cq_assign_policy.compare("least_used") == 0) {
         g_cq_policy = new (std::nothrow)
-                      LeastUtilizedRdmaCQAssignPolicy(g_cq_num);
+            LeastUtilizedRdmaCQAssignPolicy((g_cq_num == 0) ? g_cq_enabled_cores : g_cq_num);
     } else {
         LOG(WARNING) << "Incorrect RdmaCQAssignPolicy. Possible value:"
                         " rr, random, least_used";
