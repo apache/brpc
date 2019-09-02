@@ -555,7 +555,7 @@ LocalityAwareLoadBalancer::Weight::~Weight() {
 int64_t LocalityAwareLoadBalancer::Weight::Disable() {
     BAIDU_SCOPED_LOCK(_mutex);
     const int64_t saved = _weight;
-    _base_weight = 0;
+    _base_weight = -1;
     _weight = 0;
     return saved;
 }

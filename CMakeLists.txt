@@ -2,13 +2,13 @@ cmake_minimum_required(VERSION 2.8.10)
 project(brpc C CXX)
 
 option(WITH_GLOG "With glog" OFF)
+option(WITH_MESALINK "With MesaLink" OFF)
 option(DEBUG "Print debug logs" OFF)
 option(WITH_DEBUG_SYMBOLS "With debug symbols" ON)
 option(WITH_THRIFT "With thrift framed protocol supported" OFF)
 option(WITH_RDMA "With RDMA supported" OFF)
 option(BUILD_UNIT_TESTS "Whether to build unit tests" OFF)
-option(DOWNLOAD_GTEST "Download and build a fresh copy of \
-                            googletest. Requires Internet access." ON)
+option(DOWNLOAD_GTEST "Download and build a fresh copy of googletest. Requires Internet access." ON)
 
 # Enable MACOSX_RPATH. Run "cmake --help-policy CMP0042" for policy details.
 if(POLICY CMP0042)
@@ -47,7 +47,6 @@ endif()
 
 if(WITH_THRIFT)
     set(THRIFT_CPP_FLAG "-DENABLE_THRIFT_FRAMED_PROTOCOL")
-    set(THRIFTNB_LIB "thriftnb")
     set(THRIFT_LIB "thrift")
 endif()
 
@@ -89,6 +88,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 endif()
 
 set(CMAKE_CPP_FLAGS "${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
+if(WITH_MESALINK)
+    set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DUSE_MESALINK")
+endif()
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DBRPC_REVISION=\\\"${BRPC_REVISION}\\\" -D__STRICT_ANSI__")
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEBUG_SYMBOL} ${THRIFT_CPP_FLAG}")
 
@@ -143,6 +145,17 @@ if(WITH_GLOG)
     include_directories(${GLOG_INCLUDE_PATH})
 endif()
 
+if(WITH_MESALINK)
+    find_path(MESALINK_INCLUDE_PATH NAMES mesalink/openssl/ssl.h)
+    find_library(MESALINK_LIB NAMES mesalink)
+    if((NOT MESALINK_INCLUDE_PATH) OR (NOT MESALINK_LIB))
+        message(FATAL_ERROR "Fail to find MesaLink")
+    else()
+        message(STATUS "Found MesaLink: ${MESALINK_LIB}")
+    endif()
+    include_directories(${MESALINK_INCLUDE_PATH})
+endif()
+
 find_library(PROTOC_LIB NAMES protoc)
 if(NOT PROTOC_LIB)
     message(FATAL_ERROR "Fail to find protoc lib")
@@ -178,10 +191,16 @@ set(DYNAMIC_LIB
     ${CMAKE_THREAD_LIBS_INIT}
     ${THRIFT_LIB}
     ${THRIFTNB_LIB}
-    ${OPENSSL_LIBRARIES}
     ${OPENSSL_CRYPTO_LIBRARY}
     dl
     z)
+
+if(WITH_MESALINK)
+    list(APPEND DYNAMIC_LIB ${MESALINK_LIB})
+else()
+    list(APPEND DYNAMIC_LIB ${OPENSSL_SSL_LIBRARY})
+endif()
+
 set(BRPC_PRIVATE_LIBS "-lgflags -lprotobuf -lleveldb -lprotoc -lssl -lcrypto -ldl -lz")
 
 if(WITH_GLOG)
@@ -349,7 +368,7 @@ file(GLOB_RECURSE BVAR_SOURCES "${PROJECT_SOURCE_DIR}/src/bvar/*.cpp")
 file(GLOB_RECURSE BTHREAD_SOURCES "${PROJECT_SOURCE_DIR}/src/bthread/*.cpp")
 file(GLOB_RECURSE JSON2PB_SOURCES "${PROJECT_SOURCE_DIR}/src/json2pb/*.cpp")
 file(GLOB_RECURSE BRPC_SOURCES "${PROJECT_SOURCE_DIR}/src/brpc/*.cpp")
-file(GLOB_RECURSE THRIFT_SOURCES "thrift*.cpp")
+file(GLOB_RECURSE THRIFT_SOURCES "${PROJECT_SOURCE_DIR}/src/brpc/thrift*.cpp")
 
 if(WITH_THRIFT)
     message("brpc compile with thrift proctol")
