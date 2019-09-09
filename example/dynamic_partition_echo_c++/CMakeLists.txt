@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.10)
 project(dynamic_partition_echo_c++ C CXX)
 
-option(EXAMPLE_LINK_SO "Whether examples are linked dynamically" OFF)
+option(LINK_SO "Whether examples are linked dynamically" OFF)
 
 execute_process(
     COMMAND bash -c "find ${PROJECT_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | head -n1 | xargs dirname | tr -d '\n'"
@@ -32,7 +32,7 @@ if (NOT THRIFTNB_LIB)
 endif()
 
 find_path(BRPC_INCLUDE_PATH NAMES brpc/server.h)
-if(EXAMPLE_LINK_SO)
+if(LINK_SO)
     find_library(BRPC_LIB NAMES brpc)
 else()
     find_library(BRPC_LIB NAMES libbrpc.a brpc)

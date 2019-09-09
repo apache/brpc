@@ -63,7 +63,7 @@ struct ChannelSSLOptions {
     ChannelSSLOptions();
 
     // Cipher suites used for SSL handshake.
-    // The format of this string should follow that in `man 1 cipers'.
+    // The format of this string should follow that in `man 1 ciphers'.
     // Default: "DEFAULT"
     std::string ciphers;
 
@@ -136,7 +136,7 @@ struct ServerSSLOptions {
     int session_cache_size;
 
     // Cipher suites allowed for each SSL handshake. The format of this string
-    // should follow that in `man 1 cipers'. If empty, OpenSSL will choose
+    // should follow that in `man 1 ciphers'. If empty, OpenSSL will choose
     // a default cipher based on the certificate information
     // Default: ""
     std::string ciphers;

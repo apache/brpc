@@ -387,6 +387,7 @@ friend void InitFrameHandlers();
     uint32_t _last_sent_stream_id;
     int _goaway_stream_id;
     H2Settings _remote_settings;
+    bool _remote_settings_received;
     H2Settings _local_settings;
     H2Settings _unack_local_settings;
     HPacker _hpacker;
