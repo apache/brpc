@@ -10,23 +10,7 @@ Following graph compares overhead of bvar, atomics, static UbMonitor, dynamic Ub
 
 ![img](../images/bvar_perf.png)
 
-# Monitor bvar
-
-Following graph demonstrates how bvars in applications are monitored.
-
-![img](../images/bvar_flow.png)
-
-In which:
-
-- APP means user's application which uses bvar API to record all sorts of metrics.
-- bvar periodically prints exposed bvars into a file (represented by "log") under directory $PWD/monitor/ . The "log" is different from an ordinary log that it's overwritten by newer content rather than concatenated.
-- The monitoring system collects dumped files (represented by noah), aggregates the data inside and plots curves.
-
-The APP is recommended to meet following requirements:
-
-- **Error**: Number of every kind of error that may occur. 
-- **Latency**: latencies(average/percentile) of each public RPC interface, latencies of each RPC to back-end servers.
-- **QPS**: QPS of each public RPC interface, QPS of each RPC to back-end servers.
+# Adding new bvar
 
 Read [Quick introduction](bvar_c++.md#quick-introduction) to know how to add bvar in C++.  bvar already provides stats of many process-level and system-level variables by default, which are prefixed with `process_` and `system_`, such as:
 
@@ -69,7 +53,9 @@ iobuf_block_count_hit_tls_threshold : 0
 iobuf_block_memory : 729088
 iobuf_newbigview_second : 10
 ```
+New exported files overwrite previous files, which is different from regular logs which append new data.
 
+# Monitoring bvar
 Turn on [dump feature](bvar_c++.md#export-all-variables) of bvar to export all exposed bvars to files, which are formatted just like above texts: each line is a pair of "name" and "value". Check if there're data under $PWD/monitor/ after enabling dump, for example:
 
 ```
@@ -84,12 +70,12 @@ process_time_user : 0.741887
 process_username : "gejun"
 ```
 
-The monitoring system should combine data on every single machine periodically and provide on-demand queries. Take the "noah" system inside Baidu as an example, variables defined by bvar appear as metrics in noah, which can be checked by users to view historical curves.
+The monitoring system should combine data on every single machine periodically and merge them together to provide on-demand queries. Take the "noah" system inside Baidu as an example, variables defined by bvar appear as metrics in noah, which can be checked by users to view historical curves.
 
 ![img](../images/bvar_noah2.png)
 
 ![img](../images/bvar_noah3.png)
 
-# Dump to the format of other monitoring system
+# Export to Prometheus
 
-Currently monitoring system supported by bvar is [Prometheus](https://prometheus.io). All you need to do is to set the path in scraping target url to `/brpc_metrics`. For example, if brpc server is running on localhost:8080, the scraping target should be `127.0.0.1:8080/brpc_metrics`.
+To export to [Prometheus](https://prometheus.io), set the path in scraping target url to `/brpc_metrics`. For example, if brpc server is running on localhost:8080, the scraping target should be `127.0.0.1:8080/brpc_metrics`.

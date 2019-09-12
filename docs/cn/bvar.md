@@ -10,23 +10,7 @@
 
 ![img](../images/bvar_perf.png)
 
-# 监控bvar
-
-下图是监控bvar的示意图：
-
-![img](../images/bvar_flow.png)
-
-其中：
-
-- APP代表用户服务，使用bvar API定义监控各类指标。
-- bvar定期把被监控的项目打入$PWD/monitor/目录下的文件（用log指代）。此处的log和普通的log的不同点在于是bvar导出是覆盖式的，而不是添加式的。
-- 监控系统（用noah指代）收集导出的文件，汇总至全局并生成曲线。
-
-建议APP做到如下监控要求：
-
-- **Error**: 系统中可能出现的error个数 
-- **Latency**: 系统对外的每个RPC接口的latency(平均和分位值)，系统依赖的每个后台的每个RPC接口的latency
-- **QPS**: 系统对外的每个RPC接口的QPS信息，系统依赖的每个后台的每个RPC接口的QPS信息
+# 新增bvar
 
 增加C++ bvar的方法请看[快速介绍](bvar_c++.md#quick-introduction). bvar默认统计了进程、系统的一些变量，以process\_, system\_等开头，比如：
 
@@ -70,7 +54,8 @@ iobuf_block_memory : 729088
 iobuf_newbigview_second : 10
 ```
 
-打开bvar的[dump功能](bvar_c++.md#export-all-variables)以导出所有的bvar到文件，格式就入上文一样，每行是一对"名字:值"。打开dump功能后应检查monitor/下是否有数据，比如：
+# 监控bvar
+打开bvar的[dump功能](bvar_c++.md#export-all-variables)以导出所有的bvar到文件，格式就入上文一样，每行是一对"名字:值"。打开dump功能后应检查monitor/目录下是否有数据，比如：
 
 ```
 $ ls monitor/
@@ -83,13 +68,13 @@ process_time_system : 0.380942
 process_time_user : 0.741887
 process_username : "gejun"
 ```
+每次导出都会覆盖之前的文件，这与普通log添加在后面是不同的。
 
-监控系统会把定期把单机导出数据汇总到一起，并按需查询。这里以百度内的noah为例，bvar定义的变量会出现在noah的指标项中，用户可勾选并查看历史曲线。
+监控系统应定期搜集每台单机导出的数据，并把它们汇总到一起。这里以百度内的noah为例，bvar定义的变量会出现在noah的指标项中，用户可勾选并查看历史曲线。
 
 ![img](../images/bvar_noah2.png)
-
 ![img](../images/bvar_noah3.png)
 
-# bvar导出到其它监控系统格式
+# 导出到Prometheus
 
-bvar已支持的其它监控系统格式有[Prometheus](https://prometheus.io)。将Prometheus的抓取url地址的路径设置为`/brpc_metrics`即可，例如brpc server跑在本机的8080端口，则抓取url配置为`127.0.0.1:8080/brpc_metrics`。
+将[Prometheus](https://prometheus.io)的抓取url地址的路径设置为`/brpc_metrics`即可，例如brpc server跑在本机的8080端口，则抓取url配置为`127.0.0.1:8080/brpc_metrics`。
