@@ -2638,19 +2638,19 @@ void SocketMulti::ReturnSocket(Socket* sock) {
 }
 
 int SocketMulti::InitSocket(const size_t index, SocketId* sid) {
-    SocketOptions opt = _options;
     SocketUniquePtr ptr;
     SocketId new_id;
-    if (get_client_side_messenger()->Create(opt, &new_id) == 0) {
+    if (get_client_side_messenger()->Create(_options, &new_id) == 0) {
         Socket::Address(new_id, &ptr);
     }
     SocketId dummy = INVALID_SOCKET_ID; 
-    butil::atomic<SocketId>* psid;
+    butil::atomic<SocketId>* psid = nullptr;
     uint32_t final_pos = 0;
     const size_t count = _num_created.fetch_add(1, butil::memory_order_acquire);
     if (count < _multi.size()) {
         final_pos = count;
         if (!ptr) {
+            psid = reinterpret_cast<butil::atomic<SocketId>*>(&_multi[final_pos]);
             psid->store(INVALID_SOCKET_ID - 1, butil::memory_order_relaxed);
             return -1;
         } 
