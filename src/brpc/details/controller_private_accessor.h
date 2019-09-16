@@ -146,6 +146,18 @@ public:
         return *this;
     }
 
+    const Authenticator* auth() const {
+        return _cntl->_auth;
+    }
+
+    StreamCreator* stream_creator() const {
+        return _cntl->_stream_creator;
+    }
+
+    Socket* sending_sock() const { 
+        return _cntl->_current_call.sending_sock.get();
+    }
+
 private:
     Controller* _cntl;
 };

@@ -74,6 +74,7 @@
 #ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
 # include "brpc/policy/thrift_protocol.h"
 #endif
+#include "brpc/policy/cassandra_query_language_protocol.h"
 
 // Concurrency Limiters
 #include "brpc/concurrency_limiter.h"
@@ -567,6 +568,17 @@ static void GlobalInitializeOrDieImpl() {
         NULL, NULL, NULL,
         CONNECTION_TYPE_POOLED_AND_SHORT, "esp"};
     if (RegisterProtocol(PROTOCOL_ESP, esp_protocol) != 0) {
+        exit(1);
+    }
+
+    Protocol cql_protocol = {
+        ParseCqlMessage,
+        SerializeCqlRequest, PackCqlRequest,
+        NULL, ProcessCqlResponse,
+        NULL, NULL, GetCqlMethodName,
+        (ConnectionType)(CONNECTION_TYPE_SINGLE | CONNECTION_TYPE_SHORT),
+        "cql"};
+    if (RegisterProtocol(PROTOCOL_CQL, cql_protocol) != 0) {
         exit(1);
     }
 
