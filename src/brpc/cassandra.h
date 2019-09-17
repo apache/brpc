@@ -63,7 +63,7 @@ public:
             return;
         }
         const size_t begin_size = _query.size();
-				
+			  // SELECT column_name FROM table WHERE key_name=?	
         _query.append("SELECT ", sizeof("SELECT ") - 1);
         _query.append(column_name.data(), column_name.size());
         _query.append(" FROM ", sizeof(" FROM ") - 1);
@@ -97,7 +97,7 @@ public:
             return;
         }
         const size_t begin_size = _query.size();
-				
+
         // INSERT INTO table (key_name, column_name) VALUES (?, ?) USING TTL ttl
         _query.append("INSERT INTO ", sizeof("INSERT INTO ") - 1);
         _query.append(table.data(), table.size());
@@ -112,6 +112,7 @@ public:
         }
         query_len = butil::HostToNet32(_query.size() - begin_size);
         CHECK(0 == _query.unsafe_assign(area, &query_len));
+
         if (!is_batch_mode()) {
             _query_parameter.add_flag(CqlQueryParameter::WITH_VALUES);
             _query_parameter.AppendValue(key);

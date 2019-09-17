@@ -26,6 +26,16 @@ namespace brpc {
 
 namespace {
 
+union FloatIntCast {
+    float f;
+    int32_t i;
+};
+
+union DoubleIntCast {
+    double d;
+    int64_t i;
+};
+
 std::array<const char*, CQL_OPCODE_LAST_DUMMY> kCqlOpcodeNames = 
     {"'Error response'", "'Startup request'", "'Ready response'",
      "'Authenticate response'", "Not existing message", "'Options request'",
@@ -36,40 +46,25 @@ std::array<const char*, CQL_OPCODE_LAST_DUMMY> kCqlOpcodeNames =
 
 } // namespace
 
+
+void CqlEncodeBytes(float value, butil::IOBuf* buf) {
+    FloatIntCast fi;
+    fi.f = value;
+    CqlEncodeBytes(fi.i, buf);
+}
+
+void CqlEncodeBytes(double value, butil::IOBuf* buf) {
+    DoubleIntCast di;
+    di.d = value;
+    CqlEncodeBytes(di.i, buf);
+}
+
 inline void CqlEncodeString(const std::string& s, butil::IOBuf* buf) {
     if (!s.empty()) {
         CqlEncodeUint16(s.size(), buf);
         buf->append(s);
     }
 }
-
-/*
-inline void CqlEncodeBytes(const std::vector<butil::StringPiece>& list,
-                           butil::IOBuf* buf) {
-    CqlEncodeInt32(list.size(), buf);
-    for (const butil::StringPiece& bytes : list) {
-        CqlEncodeBytes(bytes, buf);
-    }
-}
-
-inline void CqlEncodeBytes(const std::vector<std::vector<char>>& list,
-                           butil::IOBuf* buf) {
-    CqlEncodeInt32(list.size(), buf);
-    for (const std::vector<char>& bytes : list) {
-        CqlEncodeBytes(bytes, buf);
-    }
-}
-
-void CqlEncodeBytes(
-    const std::vector<std::pair<butil::StringPiece, butil::StringPiece>>& map,
-    butil::IOBuf* buf) {
-    CqlEncodeInt32(map.size(), buf);
-    for (const std::pair<butil::StringPiece, butil::StringPiece>& p : map) {
-        CqlEncodeBytes(p.first, buf);
-        CqlEncodeBytes(p.second, buf);
-    }
-}
-*/
 
 // Encode CQL [string map] to buf.
 // Return bytes encoded into buf.
@@ -153,38 +148,6 @@ void CqlEncodeStartup(CqlFrameHead& head,
     head.length = body.size();
     CqlEncodeHead(head, buf);
     buf->append(body);
-}
-
-inline int16_t CqlDecodeInt16(butil::IOBufBytesIterator& iter) {
-    int16_t v = *iter; ++iter;
-    v = ((v << 8) | *iter); ++iter;
-    return v;
-}
-
-inline uint16_t CqlDecodeUint16(butil::IOBufBytesIterator& iter) {
-    uint16_t v = *iter; ++iter;
-    v = ((v << 8) | *iter); ++iter;
-    return v;
-}
-
-inline int32_t CqlDecodeInt32(butil::IOBufBytesIterator& iter) {
-    int32_t v = *iter; ++iter;
-    v = ((v << 8) | *iter); ++iter;
-    v = ((v << 8) | *iter); ++iter;
-    v = ((v << 8) | *iter); ++iter;
-    return v;
-}
-
-inline int32_t CqlDecodeInt64(butil::IOBufBytesIterator& iter) {
-    int32_t v = *iter; ++iter;
-    v = ((v << 8) | *iter); ++iter;
-    v = ((v << 8) | *iter); ++iter;
-    v = ((v << 8) | *iter); ++iter;
-    v = ((v << 8) | *iter); ++iter;
-    v = ((v << 8) | *iter); ++iter;
-    v = ((v << 8) | *iter); ++iter;
-    v = ((v << 8) | *iter); ++iter;
-    return v;
 }
 
 // CQL [string] : A [short] n, followed by n bytes representing an UTF-8 string.
@@ -285,6 +248,44 @@ int CqlDecodeBytes(butil::IOBufBytesIterator& iter, int64_t* out) {
             return -1;
         } 
         *out = CqlDecodeInt64(iter);
+        return 0;
+    } else if (nbytes <= 0) {
+        return 1;
+    }
+    return -1;
+}
+
+int CqlDecodeBytes(butil::IOBufBytesIterator& iter, float* out) {
+    if (iter.bytes_left() < sizeof(int32_t)) {
+        return -1;
+    }
+    int32_t nbytes = CqlDecodeInt32(iter);
+    if (nbytes == sizeof(float)) {
+        if (iter.bytes_left() < sizeof(float)) {
+            return -1;
+        }
+        FloatIntCast fi;
+        fi.i = CqlDecodeInt32(iter);
+        *out = fi.f;
+        return 0;
+    } else if (nbytes <= 0) {
+        return 1;
+    }
+    return -1;
+}
+
+int CqlDecodeBytes(butil::IOBufBytesIterator& iter, double* out) {
+    if (iter.bytes_left() < sizeof(int32_t)) {
+        return -1;
+    }
+    int32_t nbytes = CqlDecodeInt32(iter);
+    if (nbytes == sizeof(double)) {
+        if (iter.bytes_left() < sizeof(double)) {
+            return -1;
+        }
+        DoubleIntCast di;
+        di.i = CqlDecodeInt64(iter);
+        *out = di.d;
         return 0;
     } else if (nbytes <= 0) {
         return 1;
@@ -657,7 +658,7 @@ bool CqlRowsResultDecoder::ForwardToColumnOfRow(
 bool CqlRowsResultDecoder::ForwardToColumnOfRow(
     size_t offset, butil::IOBufBytesIterator& row_iter) {
     for (size_t i = 0; i != offset; ++i) {
-        if (!CqlDecodeBytes(row_iter, reinterpret_cast<std::string*>(0))) {
+        if (-1 == CqlDecodeBytes(row_iter, reinterpret_cast<std::string*>(0))) {
             set_error("Fail to find cql column position in response");
             return false;
         }
@@ -682,7 +683,7 @@ const butil::IOBufBytesIterator* CqlRowsResultDecoder::GetRowIter(size_t index) 
 bool CqlRowsResultDecoder::BuildNextRowIter() {
     butil::IOBufBytesIterator last_iter = _rows_iter.back();
     for (size_t i = 0; i != columns_count(); ++i) {
-        if (!CqlDecodeBytes(last_iter, reinterpret_cast<std::string*>(0))) {
+        if (-1 == CqlDecodeBytes(last_iter, reinterpret_cast<std::string*>(0))) {
             return false;
         }
     }

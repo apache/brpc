@@ -28,6 +28,7 @@
 #include "butil/iobuf.h"
 #include "butil/logging.h"
 #include "butil/strings/string_piece.h"
+#include "butil/sys_byteorder.h"
 
 namespace brpc {
 
@@ -62,9 +63,46 @@ inline void CqlEncodeInt64(int64_t v, butil::IOBuf* buf) {
     CqlEncodeInt32(v & 0xffffffff, buf);
 }
 
+inline int16_t CqlDecodeInt16(butil::IOBufBytesIterator& iter) {
+    int16_t v = *iter; ++iter;
+    v = ((v << 8) | *iter); ++iter;
+    return v;
+}
+
+inline uint16_t CqlDecodeUint16(butil::IOBufBytesIterator& iter) {
+    uint16_t v = *iter; ++iter;
+    v = ((v << 8) | *iter); ++iter;
+    return v;
+}
+
+inline int32_t CqlDecodeInt32(butil::IOBufBytesIterator& iter) {
+    int32_t v = *iter; ++iter;
+    v = ((v << 8) | *iter); ++iter;
+    v = ((v << 8) | *iter); ++iter;
+    v = ((v << 8) | *iter); ++iter;
+    return v;
+}
+
+inline int64_t CqlDecodeInt64(butil::IOBufBytesIterator& iter) {
+    int64_t v = *iter; ++iter;
+    v = ((v << 8) | *iter); ++iter;
+    v = ((v << 8) | *iter); ++iter;
+    v = ((v << 8) | *iter); ++iter;
+    v = ((v << 8) | *iter); ++iter;
+    v = ((v << 8) | *iter); ++iter;
+    v = ((v << 8) | *iter); ++iter;
+    v = ((v << 8) | *iter); ++iter;
+    return v;
+}
+
 // Encode value to buf as [bytes].
 // Where [bytes] is: A [int] n, followed by n bytes if n >= 0. If n < 0,
 // no byte should follow and the value represented is `null`.
+inline void CqlEncodeBytes(bool value, butil::IOBuf* buf) {
+    CqlEncodeInt32(1, buf);
+    buf->push_back(value ? 0x01 : 0x00);
+}
+
 inline void CqlEncodeBytes(int32_t value, butil::IOBuf* buf) {
     CqlEncodeInt32(sizeof(value), buf);
     CqlEncodeInt32(value, buf);
@@ -75,10 +113,9 @@ inline void CqlEncodeBytes(int64_t value, butil::IOBuf* buf) {
     CqlEncodeInt64(value, buf);
 }
 
-inline void CqlEncodeBytes(bool value, butil::IOBuf* buf) {
-    CqlEncodeInt32(1, buf);
-    buf->push_back(value ? 0x01 : 0x00);
-}
+void CqlEncodeBytes(float value, butil::IOBuf* buf);
+
+void CqlEncodeBytes(double value, butil::IOBuf* buf);
 
 inline void CqlEncodeBytes(const butil::StringPiece& bytes, butil::IOBuf* buf) {
     const int n = bytes.size();
@@ -95,18 +132,66 @@ inline void CqlEncodeBytes(const char* value, butil::IOBuf* buf) {
 inline void CqlEncodeBytes(const std::string& value, butil::IOBuf* buf) {
     CqlEncodeBytes(butil::StringPiece(value), buf);
 }
-/*
-void CqlEncodeBytes(const std::vector<butil::StringPiece>& list, butil::IOBuf* buf);
-void CqlEncodeBytes(const std::vector<std::vector<char>>& list, butil::IOBuf* buf);
-void CqlEncodeBytes(
-    const std::vector<std::pair<butil::StringPiece, butil::StringPiece>>& map,
-    butil::IOBuf* buf);
 
-
-inline void CqlEncodeBytes(const std::vector<char>& value, butil::IOBuf* buf) {
-    CqlEncodeBytes(butil::StringPiece(&value.front(), value.size()), buf);
+// Encode cql list and set to buf.
+template <typename TValue>
+void CqlEncodeBytes(const std::vector<TValue>& value, butil::IOBuf* buf) {
+    int32_t len = 0;
+    const butil::IOBuf::Area area = buf->reserve(sizeof(len));
+    if (area == butil::IOBuf::INVALID_AREA) {
+        LOG(FATAL) << "Fail to reserve IOBuf::Area for cql bytes buf.";
+        return;
+    }
+    const size_t begin_size = buf->size();
+    if (!value.empty()) {
+        CqlEncodeInt32(value.size(), buf);
+        for (const auto& e : value) {
+            CqlEncodeBytes(e, buf);
+        }
+    }
+    len = butil::HostToNet32(buf->size() - begin_size);
+    CHECK(0 == buf->unsafe_assign(area, &len));
 }
-*/
+
+template <typename TValue>
+void CqlEncodeBytes(const std::set<TValue>& value, butil::IOBuf* buf) {
+    int32_t len = 0;
+    const butil::IOBuf::Area area = buf->reserve(sizeof(len));
+    if (area == butil::IOBuf::INVALID_AREA) {
+        LOG(FATAL) << "Fail to reserve IOBuf::Area for cql bytes buf.";
+        return;
+    }
+    const size_t begin_size = buf->size();
+    if (!value.empty()) {
+        CqlEncodeInt32(value.size(), buf);
+        for (const auto& e : value) {
+            CqlEncodeBytes(e, buf);
+        }
+    }
+    len = butil::HostToNet32(buf->size() - begin_size);
+    CHECK(0 == buf->unsafe_assign(area, &len));
+}
+
+template <typename TKey, typename TValue>
+void CqlEncodeBytes(const std::map<TKey, TValue>& value, butil::IOBuf* buf) {
+    int32_t len = 0;
+    const butil::IOBuf::Area area = buf->reserve(sizeof(len));
+    if (area == butil::IOBuf::INVALID_AREA) {
+        LOG(FATAL) << "Fail to reserve IOBuf::Area for cql bytes buf.";
+        return;
+    }
+    const size_t begin_size = buf->size();
+    if (!value.empty()) {
+        CqlEncodeInt32(value.size(), buf);
+        for (const auto& e : value) {
+            CqlEncodeBytes(e.first, buf);
+            CqlEncodeBytes(e.second, buf);
+        }
+    }
+    len = butil::HostToNet32(buf->size() - begin_size);
+    CHECK(0 == buf->unsafe_assign(area, &len));
+}
+
 // Decode CQL [bytes] to out.
 // Return 0 if success and out is set. 
 // Return 1 if success but value is null.
@@ -114,7 +199,83 @@ inline void CqlEncodeBytes(const std::vector<char>& value, butil::IOBuf* buf) {
 int CqlDecodeBytes(butil::IOBufBytesIterator& iter, bool* out);
 int CqlDecodeBytes(butil::IOBufBytesIterator& iter, int32_t* out);
 int CqlDecodeBytes(butil::IOBufBytesIterator& iter, int64_t* out);
+int CqlDecodeBytes(butil::IOBufBytesIterator& iter, float* out);
+int CqlDecodeBytes(butil::IOBufBytesIterator& iter, double* out);
 int CqlDecodeBytes(butil::IOBufBytesIterator& iter, std::string* out);
+
+template<typename TValue>
+int CqlDecodeBytes(butil::IOBufBytesIterator& iter, std::vector<TValue>* value) {
+    if (iter.bytes_left() < 4) {
+        return -1;
+    }
+    const int32_t size = CqlDecodeInt32(iter);
+    if (size <= 0) {
+        return 1;
+    }
+
+    if (iter.bytes_left() < 4) {
+        return -1;
+    }
+    const int32_t list_size = CqlDecodeInt32(iter);
+    if (value->capacity() < list_size * sizeof(TValue)) {
+        value->reserve(list_size * sizeof(TValue));
+    }
+    for (size_t i = 0; i != list_size; ++i) {
+        value->emplace_back();
+        if (-1 == CqlDecodeBytes(iter, &value->back())) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+template<typename TValue>
+int CqlDecodeBytes(butil::IOBufBytesIterator& iter, std::set<TValue>* value) {
+    if (iter.bytes_left() < 4) {
+        return -1;
+    }
+    const int32_t size = CqlDecodeInt32(iter);
+    if (size <= 0) {
+        return 1;
+    }
+
+    if (iter.bytes_left() < 4) {
+        return -1;
+    }
+    const int32_t set_size = CqlDecodeInt32(iter);
+    for (size_t i = 0; i != set_size; ++i) {
+        TValue e;
+        if (-1 == CqlDecodeBytes(iter, &e)) {
+            return -1;
+        }
+        value->emplace(std::move(e));
+    }
+    return 0;
+}
+
+template<typename TKey, typename TValue>
+int CqlDecodeBytes(butil::IOBufBytesIterator& iter, std::map<TKey, TValue>* value) {
+    if (iter.bytes_left() < 4) {
+        return -1;
+    }
+    int32_t size = CqlDecodeInt32(iter);
+    if (size <= 0) {
+        return 1;
+    }
+    if (iter.bytes_left() < 4) {
+        return -1;
+    }
+    const int32_t map_size = CqlDecodeInt32(iter);
+    for (size_t i = 0; i != map_size; ++i) {
+        TKey k;
+        TValue v;
+        if (-1 == CqlDecodeBytes(iter, &k) || -1 == CqlDecodeBytes(iter, &v)) {
+            return -1;
+        }
+        value->emplace(std::move(k), std::move(v));
+    }
+    return 0;
+}
 
 class CqlQueryParameter;
 void CqlEncodeQueryParameter(const CqlQueryParameter& parameter, butil::IOBuf* buf);
@@ -499,10 +660,14 @@ bool CheckCppTypeCategories(CqlValueTypeId type_id, TValue*) {
     switch (type_id) {
     case CQL_BOOLEAN:
         return std::is_same<TValue, bool>::value;
-    case CQL_BIGINT:
-        return std::is_same<TValue, int64_t>::value;
     case CQL_INT:
         return std::is_same<TValue, int32_t>::value;
+    case CQL_BIGINT:
+        return std::is_same<TValue, int64_t>::value;
+    case CQL_FLOAT:
+        return std::is_same<TValue, float>::value;
+    case CQL_DOUBLE:
+        return std::is_same<TValue, double>::value;
     default:
         break; 
     }
@@ -576,11 +741,12 @@ public:
             return -1;
         }  
         if (!CheckCppTypeCategories(
-            _meta_data._column_specs[offset].type_id, column_value)) {
+            _meta_data._column_specs.at(offset).type_id, column_value)) {
             set_error("Invalid value type");
             return -1;
         }
 
+        LOG(ERROR) << "debug column_name=" << column_name << " offset=" << offset;
         if (ForwardToColumnOfRow(offset, iter)) {
             const int ret = CqlDecodeBytes(iter, column_value);
             if (ret == -1) {
@@ -594,18 +760,97 @@ public:
     template<typename TValue>
     int DecodeColumnValueOfRow(const butil::StringPiece column_name,
                                size_t row_index, std::vector<TValue>* column_value) {
+        const butil::IOBufBytesIterator* p_iter = GetRowIter(row_index);
+        if (p_iter == nullptr) {
+            return -1;
+        }
+        butil::IOBufBytesIterator iter = *p_iter;
+        const int offset = GetColumnValueSpecOffset(column_name);
+        if (offset < 0) {
+            return -1;
+        }
+				const CqlColumnSpec& column_spec = _meta_data._column_specs.at(offset);
+				if (column_spec.type_id != CQL_LIST) {
+            set_error("Not a cql list type");
+            return -1;
+        }
+        if (!CheckCppTypeCategories(column_spec.elements_type_id.at(0), (TValue*)0)) {
+            set_error("Invalid cql list element type");
+            return -1;
+        }
+        if (ForwardToColumnOfRow(offset, iter)) {
+            const int ret = CqlDecodeBytes(iter, column_value);
+            if (ret == -1) {
+                set_error("Fail to decode cql list.");
+            }
+            return ret;
+        }
         return -1;
     }
 
     template<typename TValue>
     int DecodeColumnValueOfRow(const butil::StringPiece column_name,
                                size_t row_index, std::set<TValue>* column_value) {
+        const butil::IOBufBytesIterator* p_iter = GetRowIter(row_index);
+        if (p_iter == nullptr) {
+            return -1;
+        }
+        butil::IOBufBytesIterator iter = *p_iter;
+        const int offset = GetColumnValueSpecOffset(column_name);
+        if (offset < 0) {
+            return -1;
+        }
+				const CqlColumnSpec& column_spec = _meta_data._column_specs.at(offset);
+				if (column_spec.type_id != CQL_SET) {
+            set_error("Not a cql set type");
+            return -1;
+        }
+        if (!CheckCppTypeCategories(column_spec.elements_type_id.at(0), (TValue*)0)) {
+            set_error("Invalid cql set element type");
+            return -1;
+        }
+        if (ForwardToColumnOfRow(offset, iter)) {
+            const int ret = CqlDecodeBytes(iter, column_value);
+            if (ret == -1) {
+                set_error("Fail to decode cql set.");
+            }
+            return ret;
+        }
         return -1;
     }
 
     template<typename TKey, typename TValue>
     int DecodeColumnValueOfRow(const butil::StringPiece column_name,
                                size_t row_index, std::map<TKey, TValue>* column_value) {
+        const butil::IOBufBytesIterator* p_iter = GetRowIter(row_index);
+        if (p_iter == nullptr) {
+            return -1;
+        }
+        butil::IOBufBytesIterator iter = *p_iter;
+        const int offset = GetColumnValueSpecOffset(column_name);
+        if (offset < 0) {
+            return -1;
+        }
+				const CqlColumnSpec& column_spec = _meta_data._column_specs.at(offset);
+				if (column_spec.type_id != CQL_MAP) {
+            set_error("Not a cql map type");
+            return -1;
+        }
+        if (!CheckCppTypeCategories(column_spec.elements_type_id.at(0), (TKey*)0)) {
+            set_error("Invalid cql map key type");
+            return -1;
+        }
+        if (!CheckCppTypeCategories(column_spec.elements_type_id.at(1), (TValue*)0)) {
+            set_error("Invalid cql map value type");
+            return -1;
+        }				
+        if (ForwardToColumnOfRow(offset, iter)) {
+            const int ret = CqlDecodeBytes(iter, column_value);
+            if (ret == -1) {
+                set_error("Fail to decode cql map.");
+            }
+            return ret;
+        }
         return -1;
     }
 
