@@ -457,6 +457,9 @@ int64_t LocalityAwareLoadBalancer::Weight::Update(
         // or time skews, we don't update the weight for safety.
         return 0;
     }
+    if (_avg_latency == 0) {
+        return 0;
+    }
     _base_weight = scaled_qps / _avg_latency;
     return ResetWeight(index, end_time_us);
 }
