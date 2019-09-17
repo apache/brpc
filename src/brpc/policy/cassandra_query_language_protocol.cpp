@@ -24,6 +24,7 @@
 
 #include "brpc/cassandra.h"
 #include "brpc/controller.h"
+#include "brpc/describable.h"
 #include "brpc/details/controller_private_accessor.h"
 #include "brpc/input_messenger.h"
 #include "brpc/log.h"
