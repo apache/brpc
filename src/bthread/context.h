@@ -1,12 +1,18 @@
-// libcontext - a slightly more portable version of boost::context
-// Copyright Martin Husemann 2013.
-// Copyright Oliver Kowalke 2009.
-// Copyright Sergue E. Leontiev 2013.
-// Copyright Thomas Sailer 2013.
-// Minor modifications by Tomasz Wlostowski 2016.
-// Distributed under the Boost Software License, Version 1.0.
-//      (See accompanying file LICENSE_1_0.txt or copy at
-//            http://www.boost.org/LICENSE_1_0.txt)
+/*
+
+    libcontext - a slightly more portable version of boost::context
+
+    Copyright Martin Husemann 2013.
+    Copyright Oliver Kowalke 2009.
+    Copyright Sergue E. Leontiev 2013.
+    Copyright Thomas Sailer 2013.
+    Minor modifications by Tomasz Wlostowski 2016.
+
+ Distributed under the Boost Software License, Version 1.0.
+      (See accompanying file LICENSE_1_0.txt or copy at
+            http://www.boost.org/LICENSE_1_0.txt)
+
+*/
 
 #ifndef BTHREAD_CONTEXT_H
 #define BTHREAD_CONTEXT_H
@@ -29,6 +35,9 @@
 	    #define BTHREAD_CONTEXT_CALL_CONVENTION
 	#elif __arm__
 	    #define BTHREAD_CONTEXT_PLATFORM_linux_arm32
+	    #define BTHREAD_CONTEXT_CALL_CONVENTION
+	#elif __aarch64__
+	    #define BTHREAD_CONTEXT_PLATFORM_linux_arm64
 	    #define BTHREAD_CONTEXT_CALL_CONVENTION
 	#endif
 
