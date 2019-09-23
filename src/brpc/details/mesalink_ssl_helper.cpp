@@ -67,12 +67,10 @@ static int ParseSSLProtocols(const std::string& str_protocol) {
     for (; sp; ++sp) {
         butil::StringPiece protocol(sp.field(), sp.length());
         protocol.trim_spaces();
-        if (strncasecmp(protocol.data(), "SSLv3", protocol.size()) == 0) {
-            protocol_flag |= SSLv3;
-        } else if (strncasecmp(protocol.data(), "TLSv1", protocol.size()) == 0) {
-            protocol_flag |= TLSv1;
-        } else if (strncasecmp(protocol.data(), "TLSv1.1", protocol.size()) == 0) {
-            protocol_flag |= TLSv1_1;
+        if (strncasecmp(protocol.data(), "SSLv3", protocol.size()) == 0
+            || strncasecmp(protocol.data(), "TLSv1", protocol.size()) == 0
+            || strncasecmp(protocol.data(), "TLSv1.1", protocol.size()) == 0) {
+            LOG(WARNING) << "Ignored insecure SSL/TLS protocol=" << protocol;
         } else if (strncasecmp(protocol.data(), "TLSv1.2", protocol.size()) == 0) {
             protocol_flag |= TLSv1_2;
         } else {
@@ -244,8 +242,6 @@ static int LoadCertificate(SSL_CTX* ctx,
 static int SetSSLOptions(SSL_CTX* ctx, const std::string& ciphers,
                          int protocols, const VerifyOptions& verify) {
     if (verify.verify_depth > 0) {
-        SSL_CTX_set_verify(ctx, (SSL_VERIFY_PEER
-                                 | SSL_VERIFY_FAIL_IF_NO_PEER_CERT), NULL);
         std::string cafile = verify.ca_file_path;
         if (!cafile.empty()) {
             if (SSL_CTX_load_verify_locations(ctx, cafile.c_str(), NULL) == 0) {
@@ -254,6 +250,8 @@ static int SetSSLOptions(SSL_CTX* ctx, const std::string& ciphers,
                 return -1;
             }
         }
+        SSL_CTX_set_verify(ctx, (SSL_VERIFY_PEER
+                                 | SSL_VERIFY_FAIL_IF_NO_PEER_CERT), NULL);
     } else {
         SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
     }
