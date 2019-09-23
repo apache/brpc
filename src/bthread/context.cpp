@@ -1,14 +1,19 @@
-// libcontext - a slightly more portable version of boost::context
-// Copyright Martin Husemann 2013.
-// Copyright Oliver Kowalke 2009.
-// Copyright Sergue E. Leontiev 2013.
-// Copyright Thomas Sailer 2013.
-// Minor modifications by Tomasz Wlostowski 2016.
-// Distributed under the Boost Software License, Version 1.0.
-//      (See accompanying file LICENSE_1_0.txt or copy at
-//            http://www.boost.org/LICENSE_1_0.txt)
-#include "bthread/context.h"
+/*
 
+    auto-generated file, do not modify!
+    libcontext - a slightly more portable version of boost::context
+    Copyright Martin Husemann 2013.
+    Copyright Oliver Kowalke 2009.
+    Copyright Sergue E. Leontiev 2013
+    Copyright Thomas Sailer 2013.
+    Minor modifications by Tomasz Wlostowski 2016.
+
+ Distributed under the Boost Software License, Version 1.0.
+      (See accompanying file LICENSE_1_0.txt or copy at
+            http://www.boost.org/LICENSE_1_0.txt)
+
+*/
+#include "bthread/context.h"
 #if defined(BTHREAD_CONTEXT_PLATFORM_windows_i386) && defined(BTHREAD_CONTEXT_COMPILER_gcc)
 __asm (
 ".text\n"
@@ -562,7 +567,8 @@ __asm (
 "    @ and as first arg in context function\n"
 "    mov  a1, a3\n"
 "    @ restore v1-V8,LR,PC\n"
-"    pop {v1-v8,lr,pc}\n"
+"    pop {v1-v8,lr}\n"
+"    pop {pc}\n"
 ".size bthread_jump_fcontext,.-bthread_jump_fcontext\n"
 "@ Mark that we don't need executable stack.\n"
 ".section .note.GNU-stack,\"\",%progbits\n"
@@ -596,6 +602,109 @@ __asm (
 "    bl  _exit@PLT\n"
 ".size bthread_make_fcontext,.-bthread_make_fcontext\n"
 "@ Mark that we don't need executable stack.\n"
+".section .note.GNU-stack,\"\",%progbits\n"
+);
+
+#endif
+
+#if defined(BTHREAD_CONTEXT_PLATFORM_linux_arm64) && defined(BTHREAD_CONTEXT_COMPILER_gcc)
+__asm (
+".cpu    generic+fp+simd\n"
+".text\n"
+".align  2\n"
+".global bthread_jump_fcontext\n"
+".type   bthread_jump_fcontext, %function\n"
+"bthread_jump_fcontext:\n"
+"    # prepare stack for GP + FPU\n"
+"    sub  sp, sp, #0xb0\n"
+"# Because gcc may save integer registers in fp registers across a\n"
+"# function call we cannot skip saving the fp registers.\n"
+"#\n"
+"# Do not reinstate this test unless you fully understand what you\n"
+"# are doing.\n"
+"#\n"
+"#    # test if fpu env should be preserved\n"
+"#    cmp  w3, #0\n"
+"#    b.eq  1f\n"
+"    # save d8 - d15\n"
+"    stp  d8,  d9,  [sp, #0x00]\n"
+"    stp  d10, d11, [sp, #0x10]\n"
+"    stp  d12, d13, [sp, #0x20]\n"
+"    stp  d14, d15, [sp, #0x30]\n"
+"1:\n"
+"    # save x19-x30\n"
+"    stp  x19, x20, [sp, #0x40]\n"
+"    stp  x21, x22, [sp, #0x50]\n"
+"    stp  x23, x24, [sp, #0x60]\n"
+"    stp  x25, x26, [sp, #0x70]\n"
+"    stp  x27, x28, [sp, #0x80]\n"
+"    stp  x29, x30, [sp, #0x90]\n"
+"    # save LR as PC\n"
+"    str  x30, [sp, #0xa0]\n"
+"    # store RSP (pointing to context-data) in first argument (x0).\n"
+"    # STR cannot have sp as a target register\n"
+"    mov  x4, sp\n"
+"    str  x4, [x0]\n"
+"    # restore RSP (pointing to context-data) from A2 (x1)\n"
+"    mov  sp, x1\n"
+"#    # test if fpu env should be preserved\n"
+"#    cmp  w3, #0\n"
+"#    b.eq  2f\n"
+"    # load d8 - d15\n"
+"    ldp  d8,  d9,  [sp, #0x00]\n"
+"    ldp  d10, d11, [sp, #0x10]\n"
+"    ldp  d12, d13, [sp, #0x20]\n"
+"    ldp  d14, d15, [sp, #0x30]\n"
+"2:\n"
+"    # load x19-x30\n"
+"    ldp  x19, x20, [sp, #0x40]\n"
+"    ldp  x21, x22, [sp, #0x50]\n"
+"    ldp  x23, x24, [sp, #0x60]\n"
+"    ldp  x25, x26, [sp, #0x70]\n"
+"    ldp  x27, x28, [sp, #0x80]\n"
+"    ldp  x29, x30, [sp, #0x90]\n"
+"    # use third arg as return value after jump\n"
+"    # and as first arg in context function\n"
+"    mov  x0, x2\n"
+"    # load pc\n"
+"    ldr  x4, [sp, #0xa0]\n"
+"    # restore stack from GP + FPU\n"
+"    add  sp, sp, #0xb0\n"
+"    ret x4\n"
+".size   bthread_jump_fcontext,.-bthread_jump_fcontext\n"
+"# Mark that we don't need executable stack.\n"
+".section .note.GNU-stack,\"\",%progbits\n"
+);
+
+#endif
+
+#if defined(BTHREAD_CONTEXT_PLATFORM_linux_arm64) && defined(BTHREAD_CONTEXT_COMPILER_gcc)
+__asm (
+".cpu    generic+fp+simd\n"
+".text\n"
+".align  2\n"
+".global bthread_make_fcontext\n"
+".type   bthread_make_fcontext, %function\n"
+"bthread_make_fcontext:\n"
+"    # shift address in x0 (allocated stack) to lower 16 byte boundary\n"
+"    and x0, x0, ~0xF\n"
+"    # reserve space for context-data on context-stack\n"
+"    sub  x0, x0, #0xb0\n"
+"    # third arg of bthread_make_fcontext() == address of context-function\n"
+"    # store address as a PC to jump in\n"
+"    str  x2, [x0, #0xa0]\n"
+"    # save address of finish as return-address for context-function\n"
+"    # will be entered after context-function returns (LR register)\n"
+"    adr  x1, finish\n"
+"    str  x1, [x0, #0x98]\n"
+"    ret  x30 \n"
+"finish:\n"
+"    # exit code is zero\n"
+"    mov  x0, #0\n"
+"    # exit application\n"
+"    bl  _exit\n"
+".size   bthread_make_fcontext,.-bthread_make_fcontext\n"
+"# Mark that we don't need executable stack.\n"
 ".section .note.GNU-stack,\"\",%progbits\n"
 );
 
