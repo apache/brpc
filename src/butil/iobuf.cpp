@@ -198,9 +198,9 @@ struct UserDataExtension {
 struct IOBuf::Block {
     butil::atomic<int> nshared;
     uint16_t flags;
-    uint16_t abi_check;  // original cap, never be zero.
+    uint16_t abi_check;
     uint32_t size;
-    uint32_t cap;
+    uint32_t cap;  // original cap, never be zero.
     Block* portal_next;
     // When flag is 0, data points to `size` bytes starting at `(char*)this+sizeof(Block)'
     // When flag & IOBUF_BLOCK_FLAGS_USER_DATA is non-0, data points to the user data and
