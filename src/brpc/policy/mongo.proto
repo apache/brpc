@@ -1,5 +1,4 @@
 syntax="proto2";
-import "brpc/options.proto";
 
 package brpc.policy;
 

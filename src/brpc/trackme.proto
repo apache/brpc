@@ -1,5 +1,4 @@
 syntax="proto2";
-import "brpc/options.proto";
 option cc_generic_services=true;
 
 package brpc;
