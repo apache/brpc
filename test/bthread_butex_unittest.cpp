@@ -42,8 +42,6 @@ TEST(ButexTest, wait_on_already_timedout_butex) {
     *butex = 1;
     ASSERT_EQ(-1, bthread::butex_wait(butex, 1, &now));
     ASSERT_EQ(ETIMEDOUT, errno);
-    int* p = NULL;
-    *p = 0;
 }
 
 void* sleeper(void* arg) {
