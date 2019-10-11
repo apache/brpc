@@ -23,10 +23,6 @@ rc=0
 test_bins="test_butil test_bvar bthread*unittest brpc*unittest"
 ulimit -c unlimited # turn on coredumps
 for test_bin in $test_bins; do
-    # test_butil would generate core file due to ASSERT_DEATH and still be passed.
-    # The core file should be removed first otherwise other core would not be
-    # generated.
-    rm -rf core*
     test_num=$((test_num + 1))
     >&2 echo "[runtest] $test_bin"
     ./$test_bin
