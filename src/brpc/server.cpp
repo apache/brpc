@@ -1700,28 +1700,62 @@ void* thread_local_data() {
     return data;
 }
 
-inline void tabs_li(std::ostream& os, const char* link,
-                    const char* tab_name, const char* current_tab_name) {
-    os << "<li id='" << link << '\'';
-    if (strcmp(current_tab_name, tab_name) == 0) {
-        os << " class='current'";
+void tab_ul(std::ostream& os, const std::vector<const TabInfo *>& info_list, const std::string& current_tab_name);
+inline void tabs_li(std::ostream& os, const TabInfo& info, const std::string& current_tab_name) {
+    std::string li_class = "";
+    if (info.tab_name == "?") {
+        li_class = "class='help'";
     }
-    os << '>' << tab_name << "</li>\n";
+    os << "<li " << li_class << ">\n";
+    std::string a_class = "";
+    if (info.tab_name == current_tab_name) {
+        a_class = "class='current'";
+    }
+    if (info.path.empty()) {
+        os << "<a href='#' " << a_class << ">" << info.tab_name << "</a>";
+    } else {
+        os << "<a href='" << info.path << "' " << a_class << ">" << info.tab_name << "</a>";
+    }
+    if (info.size() > 0) {
+        std::vector<const TabInfo *> info_list;
+        for (size_t i = 0; i < info.size(); ++i) {
+            info_list.push_back(info[i]);
+        }
+        tab_ul(os, info_list, current_tab_name);
+    }
+    os << "</li>\n";
 }
 
-void Server::PrintTabsBody(std::ostream& os,
-                           const char* current_tab_name) const {
-    os << "<ul class='tabs-menu'>\n";
+inline void tab_ul(std::ostream& os, const std::vector<const TabInfo *>& info_list, const std::string& current_tab_name) {
+
+    std::vector<const TabInfo *> ordered(info_list);
+    std::stable_sort(ordered.begin(), ordered.end(), std::less<const TabInfo *>());
+
+    os << "<ul>\n";
+    for (size_t i = 0; i < ordered.size(); ++i) {
+        const auto * sub = ordered.at(i);
+        tabs_li(os, *sub, current_tab_name);
+    }
+    os << "</ul>\n";
+}
+
+void Server::PrintTabsBody(std::ostream& os, const char* current_tab_name) const {
+    os << "<div class='tabs-menu'>\n";
+    std::vector<const TabInfo *> info_list;
     if (_tab_info_list) {
         for (size_t i = 0; i < _tab_info_list->size(); ++i) {
             const TabInfo& info = (*_tab_info_list)[i];
-            tabs_li(os, info.path.c_str(), info.tab_name.c_str(),
-                    current_tab_name);
+            info_list.push_back(&info);
         }
     }
-    os << "<li id='https://github.com/brpc/brpc/blob/master/docs/cn/builtin_service.md' "
-        "class='help'>?</li>\n</ul>\n"
-        "<div style='height:40px;'></div>";  // placeholder
+
+    TabInfo help_tab;
+    help_tab.tab_name = "?";
+    help_tab.path = "https://github.com/brpc/brpc/blob/master/docs/cn/builtin_service.md";
+    help_tab.order = std::numeric_limits<int>::max();
+    info_list.push_back(&help_tab);
+    tab_ul(os, info_list, current_tab_name);
+    os << "</div>\n";
 }
 
 static pthread_mutex_t g_dummy_server_mutex = PTHREAD_MUTEX_INITIALIZER;
