@@ -17,7 +17,10 @@ env:
 
 before_script:
 - ulimit -c unlimited -S       # enable core dumps
-- sudo bash -c "sudo echo 'core.%e.%p' > /proc/sys/kernel/core_pattern"
+# The real command should be put into another "bash -c" otherwise it
+# would cause a permission issue. The reason may be that the 'sudo'
+# only promote the 'echo' part but not the whole command.
+- sudo bash -c "echo 'core.%e.%p' > /proc/sys/kernel/core_pattern"
 
 before_install:
 - wget --no-clobber https://github.com/bazelbuild/bazel/releases/download/0.25.1/bazel_0.25.1-linux-x86_64.deb && sudo dpkg -i bazel_0.25.1-linux-x86_64.deb
