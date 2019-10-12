@@ -117,7 +117,7 @@ find_dir_of_lib_or_die() {
 }
 
 find_bin() {
-    TARGET_BIN=$(find ${LIBS_IN} -type f -name "$1" 2>/dev/null | head -n1)
+    TARGET_BIN=$(find -L ${LIBS_IN} -type f -name "$1" 2>/dev/null | head -n1)
     if [ ! -z "$TARGET_BIN" ]; then
         $ECHO $TARGET_BIN
     else
