@@ -31,6 +31,7 @@
 #include "butil/errno.h"
 #include "butil/atomicops.h"
 #include "butil/unique_ptr.h"
+#include "bthread/sys_futex.h"
 
 namespace butil {
 
@@ -102,7 +103,7 @@ public:
     size_t ModifyWithForeground(Fn& fn, const Arg1&);
     template <typename Fn, typename Arg1, typename Arg2>
     size_t ModifyWithForeground(Fn& fn, const Arg1&, const Arg2&);
-    
+
 private:
     template <typename Fn>
     struct WithFG0 {
@@ -207,35 +208,48 @@ class DoublyBufferedData<T, TLS>::Wrapper
     : public DoublyBufferedDataWrapperBase<T, TLS> {
 friend class DoublyBufferedData;
 public:
-    explicit Wrapper(DoublyBufferedData* c) : _control(c) {
-        pthread_mutex_init(&_mutex, NULL);
-    }
+    explicit Wrapper(DoublyBufferedData* c) : _control(c), _read_signal(0) {}
     
     ~Wrapper() {
         if (_control != NULL) {
             _control->RemoveWrapper(this);
         }
-        pthread_mutex_destroy(&_mutex);
+        if (_read_signal.exchange(0, butil::memory_order_release) == write_contended) {
+            bthread::futex_wake_private(&_read_signal, 1);
+        }
     }
 
     // _mutex will be locked by the calling pthread and DoublyBufferedData.
     // Most of the time, no modifications are done, so the mutex is
     // uncontended and fast.
     inline void BeginRead() {
-        pthread_mutex_lock(&_mutex);
+        if (_read_signal.exchange(read_locked, butil::memory_order_acquire) == read_locked) {
+            // Deadlock : Keep consistent with the logic of pthread_mutex_lock
+            bthread::futex_wait_private(&_read_signal, 1, NULL);
+        }
     }
 
     inline void EndRead() {
-        pthread_mutex_unlock(&_mutex);
+        if (_read_signal.exchange(0, butil::memory_order_release) == write_contended) {
+            bthread::futex_wake_private(&_read_signal, 1);
+        }
     }
 
     inline void WaitReadDone() {
-        BAIDU_SCOPED_LOCK(_mutex);
+    TRY_AGAIN:
+        if (_read_signal.exchange(write_contended, butil::memory_order_acquire)) {
+            if (bthread::futex_wait_private(&_read_signal, write_contended, NULL) < 0
+                && errno == EWOULDBLOCK) {
+                goto TRY_AGAIN;
+            }
+        }
     }
     
 private:
     DoublyBufferedData* _control;
-    pthread_mutex_t _mutex;
+    butil::atomic<int> _read_signal;
+    const int read_locked = 1;
+    const int write_contended = 2;
 };
 
 // Called when thread initializes thread-local wrapper.
