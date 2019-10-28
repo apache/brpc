@@ -103,6 +103,7 @@
 
 请参考[这里](CONTRIBUTING.md#chinese-version)。
 
-# 反馈问题
+# 反馈和参与
 
-bug、修改建议、疑惑都欢迎提在issue中，或加入qq群498837325交流源码方面的问题。
+* bug、疑惑、修改建议都欢迎提在[Github Issues](https://github.com/apache/incubator-brpc/issues)中
+* 订阅邮件列表(dev-subscribe@brpc.apache.org)获得项目最新信息
