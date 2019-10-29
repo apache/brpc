@@ -830,7 +830,7 @@ void Controller::EndRPC(const CompletionInfo& info) {
                          << info.id << " current_cid=" << current_id()
                          << " initial_cid=" << _correlation_id
                          << " stream_user_data=" << _current_call.stream_user_data
-                         << " sending_sock=" << *_current_call.sending_sock;
+                         << " sending_sock=" << _current_call.sending_sock.get();
         }
         _current_call.OnComplete(this, ECANCELED, false, false);
         if (_unfinished_call != NULL) {
@@ -1039,7 +1039,7 @@ void Controller::IssueRPC(int64_t start_realtime_us) {
     }
     // Handle connection type
     if (_connection_type == CONNECTION_TYPE_SINGLE ||
-        _stream_creator != NULL) { // let user decides the sending_socket
+        _stream_creator != NULL) { // let user decides the sending_sock
         // in the callback(according to connection_type) directly
         _current_call.sending_sock.reset(tmp_sock.release());
         // TODO(gejun): Setting preferred index of single-connected socket
