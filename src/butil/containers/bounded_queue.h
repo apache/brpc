@@ -168,8 +168,9 @@ public:
     bool pop(T* item) {
         if (_count) {
             --_count;
-            *item = ((T*)_items)[_start];
-            ((T*)_items)[_start].~T();
+            T* const p = (T*)_items + _start;
+            *item = *p;
+            p->~T();
             _start = _mod(_start + 1, _cap);
             return true;
         }
@@ -181,7 +182,7 @@ public:
     bool pop_bottom() {
         if (_count) {
             --_count;
-            ((T*)_items + _start + _count)->~T();
+            ((T*)_items + _mod(_start + _count, _cap))->~T();
             return true;
         }
         return false;
@@ -192,8 +193,9 @@ public:
     bool pop_bottom(T* item) {
         if (_count) {
             --_count;
-            *item = ((T*)_items)[_start + _count];
-            ((T*)_items)[_start + _count].~T();
+            T* const p = (T*)_items + _mod(_start + _count, _cap);
+            *item = *p;
+            p->~T();
             return true;
         }
         return false;

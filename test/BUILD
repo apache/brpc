@@ -155,6 +155,7 @@ TEST_BUTIL_SOURCES = [
     "scoped_locale.cc",
     "recordio_unittest.cpp",
     #"popen_unittest.cpp",
+    "bounded_queue_unittest.cc",
     "butil_unittest_main.cpp",
 ] + select({
         "@bazel_tools//tools/osx:darwin": [],

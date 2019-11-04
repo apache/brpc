@@ -140,6 +140,7 @@ TEST_BUTIL_SOURCES = \
     test_switches.cc \
     scoped_locale.cc \
     popen_unittest.cpp \
+    bounded_queue_unittest.cc \
     butil_unittest_main.cpp
 
 ifeq ($(SYSTEM), Linux)
