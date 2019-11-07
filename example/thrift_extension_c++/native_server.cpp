@@ -58,7 +58,7 @@ public:
 
 int main(int argc, char *argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
     THRIFT_STDCXX::shared_ptr<EchoServiceHandler> handler(new EchoServiceHandler());  
     THRIFT_STDCXX::shared_ptr<apache::thrift::concurrency::PosixThreadFactory> thread_factory(

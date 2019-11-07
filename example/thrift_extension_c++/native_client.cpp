@@ -42,7 +42,7 @@ DEFINE_int32(port, 8019, "Port of server");
 int main(int argc, char **argv) {
 
     // Parse gflags. We recommend you to use gflags as well.
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
     THRIFT_STDCXX::shared_ptr<apache::thrift::transport::TSocket> socket(
         new apache::thrift::transport::TSocket(FLAGS_server, FLAGS_port));
