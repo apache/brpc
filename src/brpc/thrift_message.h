@@ -40,6 +40,10 @@ namespace brpc {
 
 class ThriftStub;
 
+namespace policy {
+enum class ThriftProtocolType;
+}
+
 static const int16_t THRIFT_INVALID_FID = -1;
 static const int16_t THRIFT_REQUEST_FID = 1;
 static const int16_t THRIFT_RESPONSE_FID = 0;
@@ -60,6 +64,7 @@ friend class ThriftStub;
 public:
     butil::IOBuf body; // ~= "{ raw_instance }"
     int16_t field_id;  // must be set when body is set.
+    policy::ThriftProtocolType protocol_type;
     
 private:
     bool _own_raw_instance;
@@ -136,7 +141,8 @@ namespace policy {
 // Implemented in policy/thrift_protocol.cpp
 bool ReadThriftStruct(const butil::IOBuf& body,
                       ThriftMessageBase* raw_msg,
-                      int16_t expected_fid);
+                      int16_t expected_fid,
+                      ThriftProtocolType protocol_type);
 }
 
 namespace details {
@@ -201,7 +207,7 @@ T* ThriftFramedMessage::Cast() {
     _own_raw_instance = true;
 
     if (!body.empty()) {
-        if (!policy::ReadThriftStruct(body, _raw_instance, field_id)) {
+        if (!policy::ReadThriftStruct(body, _raw_instance, field_id, protocol_type)) {
             LOG(ERROR) << "Fail to parse " << butil::class_name<T>();
         }
     }

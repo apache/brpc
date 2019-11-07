@@ -75,7 +75,8 @@ class ThriftStub;
 namespace policy {
 class OnServerStreamCreated;
 void ProcessMongoRequest(InputMessageBase*);
-void ProcessThriftRequest(InputMessageBase*);
+enum class ThriftProtocolType;
+void ProcessThriftRequestImpl(InputMessageBase*, ThriftProtocolType);
 }
 namespace schan {
 class Sender;
@@ -121,7 +122,7 @@ friend class policy::OnServerStreamCreated;
 friend int StreamCreate(StreamId*, Controller&, const StreamOptions*);
 friend int StreamAccept(StreamId*, Controller&, const StreamOptions*);
 friend void policy::ProcessMongoRequest(InputMessageBase*);
-friend void policy::ProcessThriftRequest(InputMessageBase*);
+friend void policy::ProcessThriftRequestImpl(InputMessageBase*, policy::ThriftProtocolType);
     // << Flags >>
     static const uint32_t FLAGS_IGNORE_EOVERCROWDED = 1;
     static const uint32_t FLAGS_SECURITY_MODE = (1 << 1);

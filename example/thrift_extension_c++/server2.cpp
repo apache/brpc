@@ -29,6 +29,8 @@ DEFINE_int32(port, 8019, "TCP Port of this server");
 DEFINE_int32(idle_timeout_s, -1, "Connection will be closed if there is no "
              "read/write operations during the last `idle_timeout_s'");
 DEFINE_int32(max_concurrency, 0, "Limit of request processing in parallel");
+DEFINE_string(thrift_protocol, "binary",
+              "Thrift protocol type(must be consistent with the client). Available values: binary, compact");
 
 // Adapt your own thrift-based protocol to use brpc 
 class EchoServiceImpl : public brpc::ThriftService {
@@ -37,6 +39,14 @@ public:
         // Initialize the channel, NULL means using default options. 
         brpc::ChannelOptions options;
         options.protocol = brpc::PROTOCOL_THRIFT;
+        if (FLAGS_thrift_protocol == "binary") {
+            options.protocol = brpc::PROTOCOL_THRIFT;
+        } else if (FLAGS_thrift_protocol == "compact") {
+            options.protocol = brpc::PROTOCOL_THRIFT_COMPACT;
+        } else {
+            LOG(FATAL) << "Unsupported thrift protocol type: "
+                       << FLAGS_thrift_protocol;
+        }
         if (_channel.Init("0.0.0.0", FLAGS_port , &options) != 0) {
             LOG(ERROR) << "Fail to initialize channel";
         }
@@ -83,7 +93,7 @@ private:
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
 
     brpc::Server server;
     brpc::ServerOptions options;
