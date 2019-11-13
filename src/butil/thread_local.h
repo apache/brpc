@@ -28,9 +28,7 @@
 // Provide thread_local keyword (for primitive types) before C++11
 // DEPRECATED: define this keyword before C++11 might make the variable ABI
 // incompatible between C++11 and C++03
-#if !defined(thread_local) &&                                           \
-    (__cplusplus < 201103L ||                                           \
-     (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__) < 40800)
+#if !defined(thread_local) && !defined(BUTIL_CXX11_ENABLED)
 // GCC supports thread_local keyword of C++11 since 4.8.0
 #ifdef _MSC_VER
 // WARNING: don't use this macro in C++03
