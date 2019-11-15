@@ -117,8 +117,8 @@ private:
     pthread_t _tid;
 };
 
-PassiveStatus<double>* g_cumulated_time_bvar = NULL;
-bvar::PerSecond<bvar::PassiveStatus<double> >* g_sampling_thread_usage_bvar = NULL;
+static PassiveStatus<double>* s_cumulated_time_bvar = NULL;
+static bvar::PerSecond<bvar::PassiveStatus<double> >* s_sampling_thread_usage_bvar = NULL;
 
 void SamplerCollector::run() {
 #ifndef UNIT_TEST
@@ -127,14 +127,14 @@ void SamplerCollector::run() {
     //   may be adandoned at any time after forking.
     // * They can't created inside the constructor of SamplerCollector as well,
     //   which results in deadlock.
-    if (g_cumulated_time_bvar == NULL) {
-        g_cumulated_time_bvar =
+    if (s_cumulated_time_bvar == NULL) {
+        s_cumulated_time_bvar =
             new PassiveStatus<double>(get_cumulated_time, this);
     }
-    if (g_sampling_thread_usage_bvar == NULL) {
-        g_sampling_thread_usage_bvar =
+    if (s_sampling_thread_usage_bvar == NULL) {
+        s_sampling_thread_usage_bvar =
             new bvar::PerSecond<bvar::PassiveStatus<double> >(
-                    "bvar_sampler_collector_usage", g_cumulated_time_bvar, 10);
+                    "bvar_sampler_collector_usage", s_cumulated_time_bvar, 10);
     }
 #endif
 
