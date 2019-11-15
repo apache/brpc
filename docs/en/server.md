@@ -353,7 +353,7 @@ Latest brpc re-creates the thread after fork(when necessary) to make bvar work c
 * most fork continues with exec, which wastes re-creations
 * bring too many troubles and complexities to the code
 
-brpc's strategy is to create these threads on demand and fork without exec should happen before all code that may create the threads. Specifically, **fork without exec should happen before initializing all Servers/Channels/Applications, earlier is better. fork not obeying this causes the program dysfunctional. BTW, fork without exec better be avoided because many libraries do not support it.
+brpc's strategy is to create these threads on demand and fork without exec should happen before all code that may create the threads. Specifically, **fork without exec should happen before initializing all Servers/Channels/Applications, earlier is better**. fork not obeying this causes the program dysfunctional. BTW, fork without exec better be avoided because many libraries do not support it.
 
 # Settings
 
