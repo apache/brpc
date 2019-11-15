@@ -350,7 +350,7 @@ server端会自动尝试其支持的协议，无需用户指定。`cntl->protoco
 * 大部分fork会紧接exec，浪费了重建
 * 给代码编写带来很多的麻烦和复杂度
 
-brpc的策略是按需创建这类线程，同时fork without exec必须发生在所有可能创建这些线程的代码前。具体地说，至少**发生在初始化所有Server/Channel/应用代码前**，越早越好，不遵守这个约定的fork会导致程序不正常。另外，不支持fork without exec的lib相当普遍，最好还是避免这种用法。
+brpc的策略是按需创建这类线程，同时fork without exec必须发生在所有可能创建这些线程的代码前。具体地说，至少**发生在初始化所有Server/Channel/应用代码前**，越早越好，不遵守这个约定的fork会导致程序不正常。另外，不支持fork without exec的lib相当普遍，最好避免这种用法。
 
 # 设置
 
