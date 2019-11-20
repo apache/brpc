@@ -212,7 +212,8 @@ std::ostream& operator<<(std::ostream& os, const RedisResponse&);
 class RedisConnection {
 public:
     virtual ~RedisConnection() {}
-    virtual void OnRedisMessage(const RedisReply& message, RedisReply* output) = 0;
+    virtual void OnRedisMessage(const RedisReply& message,
+            RedisReply* output, butil::Arena* arena) = 0;
 };
 
 class RedisService {

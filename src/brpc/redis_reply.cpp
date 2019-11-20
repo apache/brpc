@@ -37,6 +37,12 @@ const char* RedisReplyTypeToString(RedisReplyType type) {
     }
 }
 
+bool RedisReply::SerializeToIOBuf(butil::IOBuf* buf) {
+    //TODO
+
+    return true;
+}
+
 ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena) {
     if (_type == REDIS_REPLY_ARRAY && _data.array.last_index >= 0) {
         // The parsing was suspended while parsing sub replies,

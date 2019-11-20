@@ -548,20 +548,30 @@ TEST_F(RedisTest, quote_and_escape) {
     request.Clear();
 }
 
+class RedisServiceImpl;
 class RedisConnectionImpl : public brpc::RedisConnection {
 public:
-    void OnRedisMessage(const brpc::RedisReply& message, brpc::RedisReply* output) {
+    RedisConnectionImpl(RedisServiceImpl* rs)
+        : _rs(rs) { }
+
+    void OnRedisMessage(const brpc::RedisReply& message, brpc::RedisReply* output, butil::Arena* arena) {
         LOG(INFO) << "OnRedisMessage, m=" << message;
+
         return;
     }
+
+public:
+    RedisServiceImpl* _rs;
 };
 
 class RedisServiceImpl : public brpc::RedisService {
 public:
     // @RedisService
     brpc::RedisConnection* NewConnection() {
-        return new RedisConnectionImpl;
+        return new RedisConnectionImpl(this);
     }
+
+    std::map<std::string, std::string> m;
 };
 
 TEST_F(RedisTest, server) {

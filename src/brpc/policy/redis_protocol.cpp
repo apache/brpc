@@ -56,6 +56,7 @@ struct InputResponse : public InputMessageBase {
 struct ExecutionQueueContext {
     RedisReply message;
     SocketId socket_id;
+    butil::Arena arena;
 };
 
 int Consume(void* meta, bthread::TaskIterator<ExecutionQueueContext*>& iter) {
@@ -72,7 +73,7 @@ int Consume(void* meta, bthread::TaskIterator<ExecutionQueueContext*>& iter) {
             continue;
         }
         RedisReply output;
-        conn->OnRedisMessage(ctx->message, &output);
+        conn->OnRedisMessage(ctx->message, &output, &ctx->arena);
         butil::IOBuf sendbuf;
         sendbuf.append("+OK\r\n");
         Socket::WriteOptions wopt;
@@ -103,7 +104,6 @@ public:
     }
 
     bthread::ExecutionQueueId<ExecutionQueueContext*> queue;
-    butil::Arena arena;
 };
 
 // "Message" = "Response" as we only implement the client for redis.
@@ -129,18 +129,19 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             }
             socket->initialize_parsing_context(&ctx);
         }
+        std::unique_ptr<ExecutionQueueContext> task(new ExecutionQueueContext);
         RedisReply message;
-        ParseError err = message.ConsumePartialIOBuf(*source, &ctx->arena);
+        ParseError err = message.ConsumePartialIOBuf(*source, &task->arena);
         if (err != PARSE_OK) {
             return MakeParseError(err);
         }
-        ExecutionQueueContext* task = new ExecutionQueueContext;
         task->message.Swap(message);
         task->socket_id = socket->id();
-        if (bthread::execution_queue_execute(ctx->queue, task) != 0) {
+        if (bthread::execution_queue_execute(ctx->queue, task.get()) != 0) {
             LOG(ERROR) << "Fail to push execution queue";
             return MakeParseError(PARSE_ERROR_NO_RESOURCE);
         }
+        task.release();
         return MakeMessage(NULL);
     } else {
         // NOTE(gejun): PopPipelinedInfo() is actually more contended than what

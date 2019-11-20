@@ -56,6 +56,13 @@ public:
     bool is_string() const;  // True if the reply is a string.
     bool is_array() const;   // True if the reply is an array.
 
+    bool set_nil_string();  // "$-1\r\n"
+    bool set_array(int size, butil::Arena* arena);  // size == -1 means nil array("*-1\r\n")
+    bool set_simple_string(const std::string& str, butil::Arena* arena);
+    bool set_error(const std::string& str, butil::Arena* arena);
+    bool set_integer(int64_t value);
+    bool set_bulk_string(const std::string& str, butil::Arena* arena);
+
     // Convert the reply into a signed 64-bit integer(according to
     // http://redis.io/topics/protocol). If the reply is not an integer,
     // call stacks are logged and 0 is returned.
@@ -93,6 +100,8 @@ public:
     // the complexity in worst case may be O(N^2).
     // Returns PARSE_ERROR_ABSOLUTELY_WRONG if the parsing failed.
     ParseError ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena);
+    // 
+    bool SerializeToIOBuf(butil::IOBuf* buf);
 
     // Swap internal fields with another reply.
     void Swap(RedisReply& other);
@@ -115,6 +124,8 @@ private:
     // RedisReply does not own the memory of fields, copying must be done
     // by calling CopyFrom[Different|Same]Arena.
     DISALLOW_COPY_AND_ASSIGN(RedisReply);
+
+    bool set_basic_string(const std::string& str, butil::Arena* arena, RedisReplyType type);
     
     RedisReplyType _type;
     uint32_t _length;  // length of short_str/long_str, count of replies
@@ -158,6 +169,71 @@ inline int64_t RedisReply::integer() const {
     CHECK(false) << "The reply is " << RedisReplyTypeToString(_type)
                  << ", not an integer";
     return 0;
+}
+
+inline bool RedisReply::set_nil_string() {
+    _type = REDIS_REPLY_STRING;
+    _length = -1;
+    return true;
+}
+
+inline bool RedisReply::set_array(int size, butil::Arena* arena) {
+    _type = REDIS_REPLY_ARRAY;
+    if (size < 0) {
+        _length = -1;
+        return true;
+    } else if (size == 0) {
+        _length = 0;
+        return true;
+    }
+    RedisReply* subs = (RedisReply*)arena->allocate(sizeof(RedisReply) * size);
+    if (!subs) {
+        LOG(FATAL) << "Fail to allocate RedisReply[" << size << "]";
+        return false;
+    }
+    for (int i = 0; i < size; ++i) {
+        new (&subs[i]) RedisReply;
+    }
+    _length = size;
+    _data.array.replies = subs;
+    return true;
+}
+
+inline bool RedisReply::set_basic_string(const std::string& str, butil::Arena* arena, RedisReplyType type) {
+    size_t size = str.size();
+    if (size < sizeof(_data.short_str)) {
+        memcpy(_data.short_str, str.c_str(), size);
+    } else {
+        char* d = (char*)arena->allocate((_length/8 + 1) * 8);
+        if (!d) {
+            LOG(FATAL) << "Fail to allocate string[" << size << "]";
+            return false;
+        }
+        memcpy(d, str.c_str(), size);
+        _data.long_str = d;
+    }
+    _type = type;
+    _length = size;
+    return true;
+}
+
+inline bool RedisReply::set_simple_string(const std::string& str, butil::Arena* arena) {
+    return set_basic_string(str, arena, REDIS_REPLY_STATUS);
+}
+
+inline bool RedisReply::set_error(const std::string& str, butil::Arena* arena) {
+    return set_basic_string(str, arena, REDIS_REPLY_ERROR);
+}
+
+inline bool RedisReply::set_integer(int64_t value) {
+    _type = REDIS_REPLY_INTEGER;
+    _length = 0;
+    _data.integer = value;
+    return true;
+}
+
+inline bool RedisReply::set_bulk_string(const std::string& str, butil::Arena* arena) {
+    return set_basic_string(str, arena, REDIS_REPLY_STRING);
 }
 
 inline const char* RedisReply::c_str() const {
