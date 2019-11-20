@@ -209,6 +209,18 @@ private:
 std::ostream& operator<<(std::ostream& os, const RedisRequest&);
 std::ostream& operator<<(std::ostream& os, const RedisResponse&);
 
+class RedisConnection {
+public:
+    virtual ~RedisConnection() {}
+    virtual void OnRedisMessage(const RedisReply& message, RedisReply* output) = 0;
+};
+
+class RedisService {
+public:
+    virtual ~RedisService() {}
+    virtual RedisConnection* NewConnection() = 0;
+};
+
 } // namespace brpc
 
 

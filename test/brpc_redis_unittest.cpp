@@ -17,11 +17,12 @@
 
 
 #include <iostream>
-#include "butil/time.h"
-#include "butil/logging.h"
+#include <butil/time.h>
+#include <butil/logging.h>
 #include <brpc/redis.h>
 #include <brpc/channel.h>
 #include <brpc/policy/redis_authenticator.h>
+#include <brpc/server.h>
 #include <gtest/gtest.h>
 
 namespace brpc {
@@ -545,6 +546,45 @@ TEST_F(RedisTest, quote_and_escape) {
     ASSERT_STREQ("*3\r\n$3\r\nset\r\n$1\r\na\r\n$8\r\nfoo \"bar\r\n",
                  request._buf.to_string().c_str());
     request.Clear();
+}
+
+class RedisConnectionImpl : public brpc::RedisConnection {
+public:
+    void OnRedisMessage(const brpc::RedisReply& message, brpc::RedisReply* output) {
+        LOG(INFO) << "OnRedisMessage, m=" << message;
+        return;
+    }
+};
+
+class RedisServiceImpl : public brpc::RedisService {
+public:
+    // @RedisService
+    brpc::RedisConnection* NewConnection() {
+        return new RedisConnectionImpl;
+    }
+};
+
+TEST_F(RedisTest, server) {
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    server_options.redis_service = new RedisServiceImpl;
+    brpc::PortRange pr(8081, 8900);
+    ASSERT_EQ(0, server.Start("127.0.0.1", pr, &server_options));
+
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_REDIS;
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init("127.0.0.1", server.listen_address().port, &options));
+    brpc::RedisRequest request;
+    brpc::RedisResponse response;
+    brpc::Controller cntl;
+
+    ASSERT_TRUE(request.AddCommand("get hello"));
+    channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(1, response.reply_size());
+    ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(0).type());
+    ASSERT_EQ("OK", response.reply(0).data());
 }
 
 } //namespace

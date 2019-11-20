@@ -42,6 +42,7 @@
 #include "brpc/health_reporter.h"
 #include "brpc/adaptive_max_concurrency.h"
 #include "brpc/http2.h"
+#include "brpc/redis.h"
 
 namespace brpc {
 
@@ -53,6 +54,7 @@ class SimpleDataPool;
 class MongoServiceAdaptor;
 class RestfulMap;
 class RtmpService;
+class RedisService;
 struct SocketSSLContext;
 
 struct ServerOptions {
@@ -234,6 +236,10 @@ struct ServerOptions {
 
     // Customize parameters of HTTP2, defined in http2.h
     H2Settings h2_settings;
+
+    // For processing Redis conneections.
+    // Default: NULL (disabled)
+    RedisService* redis_service;
 
 private:
     // SSLOptions is large and not often used, allocate it on heap to
