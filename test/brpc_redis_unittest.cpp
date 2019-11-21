@@ -103,32 +103,32 @@ protected:
     void TearDown() {}
 };
 
-void AssertReplyEqual(const brpc::RedisReply& reply1,
-                      const brpc::RedisReply& reply2) {
+void AssertReplyEqual(const brpc::RedisMessage& reply1,
+                      const brpc::RedisMessage& reply2) {
     if (&reply1 == &reply2) {
         return;
     }
     CHECK_EQ(reply1.type(), reply2.type());
     switch (reply1.type()) {
-    case brpc::REDIS_REPLY_ARRAY:
+    case brpc::REDIS_MESSAGE_ARRAY:
         ASSERT_EQ(reply1.size(), reply2.size());
         for (size_t j = 0; j < reply1.size(); ++j) {
             ASSERT_NE(&reply1[j], &reply2[j]); // from different arena
             AssertReplyEqual(reply1[j], reply2[j]);
         }
         break;
-    case brpc::REDIS_REPLY_INTEGER:
+    case brpc::REDIS_MESSAGE_INTEGER:
         ASSERT_EQ(reply1.integer(), reply2.integer());
         break;
-    case brpc::REDIS_REPLY_NIL:
+    case brpc::REDIS_MESSAGE_NIL:
         break;
-    case brpc::REDIS_REPLY_STRING:
+    case brpc::REDIS_MESSAGE_STRING:
         // fall through
-    case brpc::REDIS_REPLY_STATUS:
+    case brpc::REDIS_MESSAGE_STATUS:
         ASSERT_NE(reply1.c_str(), reply2.c_str()); // from different arena
         ASSERT_STREQ(reply1.c_str(), reply2.c_str());
         break;
-    case brpc::REDIS_REPLY_ERROR:
+    case brpc::REDIS_MESSAGE_ERROR:
         ASSERT_NE(reply1.error_message(), reply2.error_message()); // from different arena
         ASSERT_STREQ(reply1.error_message(), reply2.error_message());
         break;
@@ -168,7 +168,7 @@ TEST_F(RedisTest, sanity) {
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(1, response.reply_size());
-    ASSERT_EQ(brpc::REDIS_REPLY_NIL, response.reply(0).type())
+    ASSERT_EQ(brpc::REDIS_MESSAGE_NIL, response.reply(0).type())
         << response;
 
     cntl.Reset();
@@ -178,7 +178,7 @@ TEST_F(RedisTest, sanity) {
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(1, response.reply_size());
-    ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(0).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_STATUS, response.reply(0).type());
     ASSERT_EQ("OK", response.reply(0).data());
 
     cntl.Reset();
@@ -188,7 +188,7 @@ TEST_F(RedisTest, sanity) {
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed());
     ASSERT_EQ(1, response.reply_size());
-    ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(0).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_STRING, response.reply(0).type());
     ASSERT_EQ("world", response.reply(0).data());
 
     cntl.Reset();
@@ -198,7 +198,7 @@ TEST_F(RedisTest, sanity) {
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(1, response.reply_size());
-    ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(0).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_STATUS, response.reply(0).type());
     ASSERT_EQ("OK", response.reply(0).data());
     
     cntl.Reset();
@@ -208,7 +208,7 @@ TEST_F(RedisTest, sanity) {
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed());
     ASSERT_EQ(1, response.reply_size());
-    ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(0).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_STRING, response.reply(0).type());
     ASSERT_EQ("world2", response.reply(0).data());
 
     cntl.Reset();
@@ -217,7 +217,7 @@ TEST_F(RedisTest, sanity) {
     ASSERT_TRUE(request.AddCommand("del hello"));
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed());
-    ASSERT_EQ(brpc::REDIS_REPLY_INTEGER, response.reply(0).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_INTEGER, response.reply(0).type());
     ASSERT_EQ(1, response.reply(0).integer());
 
     cntl.Reset();
@@ -227,7 +227,7 @@ TEST_F(RedisTest, sanity) {
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(1, response.reply_size());
-    ASSERT_EQ(brpc::REDIS_REPLY_NIL, response.reply(0).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_NIL, response.reply(0).type());
 }
 
 TEST_F(RedisTest, keys_with_spaces) {
@@ -257,19 +257,19 @@ TEST_F(RedisTest, keys_with_spaces) {
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(7, response.reply_size());
-    ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(0).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_STATUS, response.reply(0).type());
     ASSERT_EQ("OK", response.reply(0).data());
-    ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(1).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_STATUS, response.reply(1).type());
     ASSERT_EQ("OK", response.reply(1).data());
-    ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(2).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_STATUS, response.reply(2).type());
     ASSERT_EQ("OK", response.reply(2).data());
-    ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(3).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_STRING, response.reply(3).type());
     ASSERT_EQ("he1 he1 da1", response.reply(3).data());
-    ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(4).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_STRING, response.reply(4).type());
     ASSERT_EQ("he1 he1 da1", response.reply(4).data());
-    ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(5).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_STRING, response.reply(5).type());
     ASSERT_EQ("he2 he2 da2", response.reply(5).data());
-    ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(6).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_STRING, response.reply(6).type());
     ASSERT_EQ("he3 he3 da3", response.reply(6).data());
 
     brpc::RedisResponse response2 = response;
@@ -298,13 +298,13 @@ TEST_F(RedisTest, incr_and_decr) {
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(4, response.reply_size());
-    ASSERT_EQ(brpc::REDIS_REPLY_INTEGER, response.reply(0).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_INTEGER, response.reply(0).type());
     ASSERT_EQ(1, response.reply(0).integer());
-    ASSERT_EQ(brpc::REDIS_REPLY_INTEGER, response.reply(1).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_INTEGER, response.reply(1).type());
     ASSERT_EQ(0, response.reply(1).integer());
-    ASSERT_EQ(brpc::REDIS_REPLY_INTEGER, response.reply(2).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_INTEGER, response.reply(2).type());
     ASSERT_EQ(10, response.reply(2).integer());
-    ASSERT_EQ(brpc::REDIS_REPLY_INTEGER, response.reply(3).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_INTEGER, response.reply(3).type());
     ASSERT_EQ(-10, response.reply(3).integer());
 
     brpc::RedisResponse response2 = response;
@@ -339,13 +339,13 @@ TEST_F(RedisTest, by_components) {
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(4, response.reply_size());
-    ASSERT_EQ(brpc::REDIS_REPLY_INTEGER, response.reply(0).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_INTEGER, response.reply(0).type());
     ASSERT_EQ(1, response.reply(0).integer());
-    ASSERT_EQ(brpc::REDIS_REPLY_INTEGER, response.reply(1).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_INTEGER, response.reply(1).type());
     ASSERT_EQ(0, response.reply(1).integer());
-    ASSERT_EQ(brpc::REDIS_REPLY_INTEGER, response.reply(2).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_INTEGER, response.reply(2).type());
     ASSERT_EQ(10, response.reply(2).integer());
-    ASSERT_EQ(brpc::REDIS_REPLY_INTEGER, response.reply(3).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_INTEGER, response.reply(3).type());
     ASSERT_EQ(-10, response.reply(3).integer());
 
     brpc::RedisResponse response2 = response;
@@ -382,13 +382,13 @@ TEST_F(RedisTest, auth) {
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(4, response.reply_size());
-        ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(0).type());
+        ASSERT_EQ(brpc::REDIS_MESSAGE_STATUS, response.reply(0).type());
         ASSERT_STREQ("OK", response.reply(0).c_str());
-        ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(1).type());
+        ASSERT_EQ(brpc::REDIS_MESSAGE_STATUS, response.reply(1).type());
         ASSERT_STREQ("OK", response.reply(1).c_str());
-        ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(2).type());
+        ASSERT_EQ(brpc::REDIS_MESSAGE_STATUS, response.reply(2).type());
         ASSERT_STREQ("OK", response.reply(2).c_str());
-        ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(3).type());
+        ASSERT_EQ(brpc::REDIS_MESSAGE_STRING, response.reply(3).type());
         ASSERT_STREQ("my_redis", response.reply(3).c_str());
     }
 
@@ -409,7 +409,7 @@ TEST_F(RedisTest, auth) {
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, response.reply_size());
-        ASSERT_EQ(brpc::REDIS_REPLY_ERROR, response.reply(0).type());
+        ASSERT_EQ(brpc::REDIS_MESSAGE_ERROR, response.reply(0).type());
     }
 
     // Auth with RedisAuthenticator && clear auth
@@ -434,9 +434,9 @@ TEST_F(RedisTest, auth) {
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(2, response.reply_size());
-        ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(0).type());
+        ASSERT_EQ(brpc::REDIS_MESSAGE_STRING, response.reply(0).type());
         ASSERT_STREQ("my_redis", response.reply(0).c_str());
-        ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(1).type());
+        ASSERT_EQ(brpc::REDIS_MESSAGE_STATUS, response.reply(1).type());
         ASSERT_STREQ("OK", response.reply(1).c_str());
     }
 
@@ -457,7 +457,7 @@ TEST_F(RedisTest, auth) {
         channel.CallMethod(NULL, &cntl, &request, &response, NULL);
         ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
         ASSERT_EQ(1, response.reply_size());
-        ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(0).type());
+        ASSERT_EQ(brpc::REDIS_MESSAGE_STRING, response.reply(0).type());
         ASSERT_STREQ("my_redis", response.reply(0).c_str());
     }
 }
@@ -552,7 +552,7 @@ TEST_F(RedisTest, codec) {
     butil::Arena arena;
     // status
     {
-        brpc::RedisReply r;
+        brpc::RedisMessage r;
         butil::IOBuf buf;
         ASSERT_TRUE(r.set_status("OK", &arena));
         ASSERT_TRUE(r.SerializeToIOBuf(&buf));
@@ -565,7 +565,7 @@ TEST_F(RedisTest, codec) {
     }
     // error
     {
-        brpc::RedisReply r;
+        brpc::RedisMessage r;
         butil::IOBuf buf;
         ASSERT_TRUE(r.set_error("not exist \'key\'", &arena));
         ASSERT_TRUE(r.SerializeToIOBuf(&buf));
@@ -578,7 +578,7 @@ TEST_F(RedisTest, codec) {
     }
     // string
     {
-        brpc::RedisReply r;
+        brpc::RedisMessage r;
         butil::IOBuf buf;
         ASSERT_TRUE(r.set_nil_string());
         ASSERT_TRUE(r.SerializeToIOBuf(&buf));
@@ -600,7 +600,7 @@ TEST_F(RedisTest, codec) {
     }
     // integer
     {
-        brpc::RedisReply r;
+        brpc::RedisMessage r;
         butil::IOBuf buf;
         int t = 2;
         int input[] = { -1, 1234567 };
@@ -619,10 +619,10 @@ TEST_F(RedisTest, codec) {
     }
     // array
     {
-        brpc::RedisReply r;
+        brpc::RedisMessage r;
         butil::IOBuf buf;
         ASSERT_TRUE(r.set_array(3, &arena));
-        brpc::RedisReply& sub_reply = r[0];
+        brpc::RedisMessage& sub_reply = r[0];
         sub_reply.set_array(2, &arena);
         sub_reply[0].set_bulk_string("hello, it's me", &arena);
         sub_reply[1].set_integer(422);
@@ -668,12 +668,12 @@ public:
     RedisConnectionImpl(RedisServiceImpl* rs)
         : _rs(rs) { }
 
-    void OnRedisMessage(const brpc::RedisReply& message, brpc::RedisReply* output, butil::Arena* arena) {
+    void OnRedisMessage(const brpc::RedisMessage& message, brpc::RedisMessage* output, butil::Arena* arena) {
         if (!message.is_array() || message.size() == 0) {
             output->set_error("command not valid array", arena);
             return;
         }
-        const brpc::RedisReply& comm = message[0];
+        const brpc::RedisMessage& comm = message[0];
         if (!comm.is_string()) {
             output->set_error("command not string", arena);
             return;
@@ -752,17 +752,17 @@ TEST_F(RedisTest, server_sanity) {
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(7, response.reply_size());
-    ASSERT_EQ(brpc::REDIS_REPLY_NIL, response.reply(0).type());
-    ASSERT_EQ(brpc::REDIS_REPLY_NIL, response.reply(1).type());
-    ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(2).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_NIL, response.reply(0).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_NIL, response.reply(1).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_STATUS, response.reply(2).type());
     ASSERT_STREQ("OK", response.reply(2).c_str());
-    ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(3).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_STRING, response.reply(3).type());
     ASSERT_STREQ("value1", response.reply(3).c_str());
-    ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(4).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_STATUS, response.reply(4).type());
     ASSERT_STREQ("OK", response.reply(4).c_str());
-    ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(5).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_STRING, response.reply(5).type());
     ASSERT_STREQ("value2", response.reply(5).c_str());
-    ASSERT_EQ(brpc::REDIS_REPLY_ERROR, response.reply(6).type());
+    ASSERT_EQ(brpc::REDIS_MESSAGE_ERROR, response.reply(6).type());
     ASSERT_TRUE(butil::StringPiece(response.reply(6).error_message()).starts_with("ERR unknown command"));
 
     ASSERT_EQ(rsimpl->call_count, 1);

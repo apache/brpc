@@ -25,7 +25,7 @@
 #include "butil/strings/string_piece.h"
 #include "butil/arena.h"
 #include "brpc/proto_base.pb.h"
-#include "brpc/redis_reply.h"
+#include "brpc/redis_message.h"
 #include "brpc/parse_result.h"
 
 namespace brpc {
@@ -157,11 +157,11 @@ public:
     int reply_size() const { return _nreply; }
 
     // Get index-th reply. If index is out-of-bound, nil reply is returned.
-    const RedisReply& reply(int index) const {
+    const RedisMessage& reply(int index) const {
         if (index < reply_size()) {
             return (index == 0 ? _first_reply : _other_replies[index - 1]);
         }
-        static RedisReply redis_nil;
+        static RedisMessage redis_nil;
         return redis_nil;
     }
 
@@ -199,8 +199,8 @@ private:
     void SharedDtor();
     void SetCachedSize(int size) const;
 
-    RedisReply _first_reply;
-    RedisReply* _other_replies;
+    RedisMessage _first_reply;
+    RedisMessage* _other_replies;
     butil::Arena _arena;
     int _nreply;
     mutable int _cached_size_;
@@ -212,8 +212,8 @@ std::ostream& operator<<(std::ostream& os, const RedisResponse&);
 class RedisConnection {
 public:
     virtual ~RedisConnection() {}
-    virtual void OnRedisMessage(const RedisReply& message,
-            RedisReply* output, butil::Arena* arena) = 0;
+    virtual void OnRedisMessage(const RedisMessage& message,
+            RedisMessage* output, butil::Arena* arena) = 0;
 };
 
 class RedisService {

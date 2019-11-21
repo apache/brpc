@@ -54,7 +54,7 @@ struct InputResponse : public InputMessageBase {
 };
 
 struct ExecutionQueueContext {
-    RedisReply message;
+    RedisMessage message;
     SocketId socket_id;
     butil::Arena arena;
 };
@@ -72,7 +72,7 @@ int Consume(void* meta, bthread::TaskIterator<ExecutionQueueContext*>& iter) {
             LOG(WARNING) << "Fail to address redis socket";
             continue;
         }
-        RedisReply output;
+        RedisMessage output;
         conn->OnRedisMessage(ctx->message, &output, &ctx->arena);
         butil::IOBuf sendbuf;
         output.SerializeToIOBuf(&sendbuf);
@@ -132,7 +132,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             socket->reset_parsing_context(ctx);
         }
         std::unique_ptr<ExecutionQueueContext> task(new ExecutionQueueContext);
-        RedisReply message;
+        RedisMessage message;
         ParseError err = message.ConsumePartialIOBuf(*source, &task->arena);
         if (err != PARSE_OK) {
             return MakeParseError(err);
@@ -178,7 +178,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
 
             if (pi.with_auth) {
                 if (msg->response.reply_size() != 1 ||
-                    !(msg->response.reply(0).type() == brpc::REDIS_REPLY_STATUS &&
+                    !(msg->response.reply(0).type() == brpc::REDIS_MESSAGE_STATUS &&
                       msg->response.reply(0).data().compare("OK") == 0)) {
                     LOG(ERROR) << "Redis Auth failed: " << msg->response;
                     return MakeParseError(PARSE_ERROR_NO_RESOURCE,

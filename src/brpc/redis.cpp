@@ -322,10 +322,10 @@ void RedisResponse::MergeFrom(const RedisResponse& from) {
         _nreply = new_nreply;
         return;
     }
-    RedisReply* new_others =
-        (RedisReply*)_arena.allocate(sizeof(RedisReply) * (new_nreply - 1));
+    RedisMessage* new_others =
+        (RedisMessage*)_arena.allocate(sizeof(RedisMessage) * (new_nreply - 1));
     for (int i = 0; i < new_nreply - 1; ++i) {
-        new (new_others + i) RedisReply;
+        new (new_others + i) RedisMessage;
     }
     int new_other_index = 0;
     for (int i = 1; i < _nreply; ++i) {
@@ -394,14 +394,14 @@ ParseError RedisResponse::ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count
     }
     if (reply_count > 1) {
         if (_other_replies == NULL) {
-            _other_replies = (RedisReply*)_arena.allocate(
-                sizeof(RedisReply) * (reply_count - 1));
+            _other_replies = (RedisMessage*)_arena.allocate(
+                sizeof(RedisMessage) * (reply_count - 1));
             if (_other_replies == NULL) {
-                LOG(ERROR) << "Fail to allocate RedisReply[" << reply_count -1 << "]";
+                LOG(ERROR) << "Fail to allocate RedisMessage[" << reply_count -1 << "]";
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             for (int i = 0; i < reply_count - 1; ++i) {
-                new (&_other_replies[i]) RedisReply;
+                new (&_other_replies[i]) RedisMessage;
             }
         }
         for (int i = reply_size(); i < reply_count; ++i) {
