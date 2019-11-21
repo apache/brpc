@@ -35,7 +35,7 @@ void ProcessRedisResponse(InputMessageBase* msg);
 
 // Actions to a redis request, which is left unimplemented.
 // All requests are processed in execution queue pushed in
-// the parse process.
+// the parsing process.
 void ProcessRedisRequest(InputMessageBase* msg);
 
 // Serialize a redis request.

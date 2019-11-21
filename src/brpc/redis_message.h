@@ -162,7 +162,7 @@ inline RedisMessage::RedisMessage()
 inline bool RedisMessage::is_nil() const {
     return (_type == REDIS_MESSAGE_NIL) ||
         ((_type == REDIS_MESSAGE_STRING || _type == REDIS_MESSAGE_ARRAY) &&
-         _length == uint32_t(-1));
+         _length == npos);
 }
 inline bool RedisMessage::is_error() const { return _type == REDIS_MESSAGE_ERROR; }
 inline bool RedisMessage::is_integer() const { return _type == REDIS_MESSAGE_INTEGER; }

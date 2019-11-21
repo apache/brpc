@@ -107,7 +107,6 @@ public:
     bthread::ExecutionQueueId<ExecutionQueueContext*> queue;
 };
 
-// "Message" = "Response" as we only implement the client for redis.
 ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                               bool read_eof, const void* arg) {
     if (read_eof || source->empty()) {
