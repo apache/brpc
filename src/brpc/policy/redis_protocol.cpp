@@ -115,9 +115,13 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
     }
     const Server* server = static_cast<const Server*>(arg);
     if (server) {
+        RedisService* rs = server->options().redis_service;
+        if (!rs) {
+            return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+        }
         ServerContext* ctx = static_cast<ServerContext*>(socket->parsing_context());
         if (ctx == NULL) {
-            RedisConnection* conn = server->options().redis_service->NewConnection();
+            RedisConnection* conn = rs->NewConnection();
             if (!conn) {
                 LOG(ERROR) << "Fail to new redis connection from redis service";
                 return MakeParseError(PARSE_ERROR_TRY_OTHERS);

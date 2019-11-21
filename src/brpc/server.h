@@ -237,7 +237,7 @@ struct ServerOptions {
     // Customize parameters of HTTP2, defined in http2.h
     H2Settings h2_settings;
 
-    // For processing Redis conneections.
+    // For processing Redis connections. Read src/brpc/redis.h for details.
     // Default: NULL (disabled)
     RedisService* redis_service;
 

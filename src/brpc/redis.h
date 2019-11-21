@@ -208,7 +208,22 @@ private:
 
 std::ostream& operator<<(std::ostream& os, const RedisRequest&);
 std::ostream& operator<<(std::ostream& os, const RedisResponse&);
+class RedisConnection;
 
+// Implement this class and assign an instance to ServerOption.redis_service
+// to enable redis support. The return type of NewConnection(), which is
+// RedisConnection, should also be implemented by users.
+class RedisService {
+public:
+    virtual ~RedisService() {}
+    virtual RedisConnection* NewConnection() = 0;
+};
+
+// Implement this class and make RedisServiceImpl::NewConnection return the
+// implemented class. Notice that one TCP connection corresponds to one RedisConnection
+// instance, and for the same TCP connection, OnRedisMessage is called sequentially.
+// But OnRedisMessage are called concurrently between different TCP connections.
+// Read src/brpc/redis_message.h to get the idea how to read and write RedisMessage.
 class RedisConnection {
 public:
     virtual ~RedisConnection() {}
@@ -216,11 +231,6 @@ public:
             RedisMessage* output, butil::Arena* arena) = 0;
 };
 
-class RedisService {
-public:
-    virtual ~RedisService() {}
-    virtual RedisConnection* NewConnection() = 0;
-};
 
 } // namespace brpc
 
