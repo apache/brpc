@@ -548,6 +548,120 @@ TEST_F(RedisTest, quote_and_escape) {
     request.Clear();
 }
 
+TEST_F(RedisTest, codec) {
+    butil::Arena arena;
+    // status
+    {
+        brpc::RedisReply r;
+        butil::IOBuf buf;
+        ASSERT_TRUE(r.set_status("OK", &arena));
+        ASSERT_TRUE(r.SerializeToIOBuf(&buf));
+        ASSERT_STREQ(buf.to_string().c_str(), "+OK\r\n");
+        r.Clear();
+        brpc::ParseError err = r.ConsumePartialIOBuf(buf, &arena);
+        ASSERT_EQ(err, brpc::PARSE_OK);
+        ASSERT_TRUE(r.is_string());
+        ASSERT_STREQ("OK", r.c_str());
+    }
+    // error
+    {
+        brpc::RedisReply r;
+        butil::IOBuf buf;
+        ASSERT_TRUE(r.set_error("not exist \'key\'", &arena));
+        ASSERT_TRUE(r.SerializeToIOBuf(&buf));
+        ASSERT_STREQ(buf.to_string().c_str(), "-not exist \'key\'\r\n");
+        r.Clear();
+        brpc::ParseError err = r.ConsumePartialIOBuf(buf, &arena);
+        ASSERT_EQ(err, brpc::PARSE_OK);
+        ASSERT_TRUE(r.is_error());
+        ASSERT_STREQ("not exist \'key\'", r.error_message());
+    }
+    // string
+    {
+        brpc::RedisReply r;
+        butil::IOBuf buf;
+        ASSERT_TRUE(r.set_nil_string());
+        ASSERT_TRUE(r.SerializeToIOBuf(&buf));
+        ASSERT_STREQ(buf.to_string().c_str(), "$-1\r\n");
+        r.Clear();
+        brpc::ParseError err = r.ConsumePartialIOBuf(buf, &arena);
+        ASSERT_EQ(err, brpc::PARSE_OK);
+        ASSERT_TRUE(r.is_nil());
+
+        r.Clear();
+        ASSERT_TRUE(r.set_bulk_string("abc'hello world", &arena));
+        ASSERT_TRUE(r.SerializeToIOBuf(&buf));
+        ASSERT_STREQ(buf.to_string().c_str(), "$15\r\nabc'hello world\r\n");
+        r.Clear();
+        err = r.ConsumePartialIOBuf(buf, &arena);
+        ASSERT_EQ(err, brpc::PARSE_OK);
+        ASSERT_TRUE(r.is_string());
+        ASSERT_STREQ(r.c_str(), "abc'hello world");
+    }
+    // integer
+    {
+        brpc::RedisReply r;
+        butil::IOBuf buf;
+        int t = 2;
+        int input[] = { -1, 1234567 };
+        const char* output[] = { ":-1\r\n", ":1234567\r\n" };
+        for (int i = 0; i < t; ++i) {
+            r.Clear();
+            ASSERT_TRUE(r.set_integer(input[i]));
+            ASSERT_TRUE(r.SerializeToIOBuf(&buf));
+            ASSERT_STREQ(buf.to_string().c_str(), output[i]);
+            r.Clear();
+            brpc::ParseError err = r.ConsumePartialIOBuf(buf, &arena);
+            ASSERT_EQ(err, brpc::PARSE_OK);
+            ASSERT_TRUE(r.is_integer());
+            ASSERT_EQ(r.integer(), input[i]);
+        }
+    }
+    // array
+    {
+        brpc::RedisReply r;
+        butil::IOBuf buf;
+        ASSERT_TRUE(r.set_array(3, &arena));
+        brpc::RedisReply& sub_reply = r[0];
+        sub_reply.set_array(2, &arena);
+        sub_reply[0].set_bulk_string("hello, it's me", &arena);
+        sub_reply[1].set_integer(422);
+        r[1].set_bulk_string("To go over everything", &arena);
+        r[2].set_integer(1);
+        ASSERT_TRUE(r[3].is_nil());
+        ASSERT_TRUE(r.SerializeToIOBuf(&buf));
+        ASSERT_STREQ(buf.to_string().c_str(),
+                "*3\r\n*2\r\n$14\r\nhello, it's me\r\n:422\r\n$21\r\n"
+                "To go over everything\r\n:1\r\n");
+        r.Clear();
+        ASSERT_EQ(r.ConsumePartialIOBuf(buf, &arena), brpc::PARSE_OK);
+        ASSERT_TRUE(r.is_array());
+        ASSERT_EQ(3ul, r.size());
+        ASSERT_TRUE(r[0].is_array());
+        ASSERT_EQ(2ul, r[0].size());
+        ASSERT_TRUE(r[0][0].is_string());
+        ASSERT_STREQ(r[0][0].c_str(), "hello, it's me");
+        ASSERT_TRUE(r[0][1].is_integer());
+        ASSERT_EQ(r[0][1].integer(), 422);
+        ASSERT_TRUE(r[1].is_string());
+        ASSERT_STREQ(r[1].c_str(), "To go over everything");
+        ASSERT_TRUE(r[2].is_integer());
+        ASSERT_EQ(1, r[2].integer());
+
+        r.Clear();
+        // nil array
+        ASSERT_TRUE(r.set_array(-1, &arena));
+        ASSERT_TRUE(r.SerializeToIOBuf(&buf));
+        ASSERT_STREQ(buf.to_string().c_str(), "*-1\r\n");
+        ASSERT_EQ(r.ConsumePartialIOBuf(buf, &arena), brpc::PARSE_OK);
+        ASSERT_TRUE(r.is_nil());
+    }
+}
+
+butil::Mutex s_mutex;
+std::unordered_map<std::string, std::string> m;
+std::unordered_map<std::string, int64_t> int_map;
+
 class RedisServiceImpl;
 class RedisConnectionImpl : public brpc::RedisConnection {
 public:
@@ -555,12 +669,49 @@ public:
         : _rs(rs) { }
 
     void OnRedisMessage(const brpc::RedisReply& message, brpc::RedisReply* output, butil::Arena* arena) {
-        LOG(INFO) << "OnRedisMessage, m=" << message;
-
+        if (!message.is_array() || message.size() == 0) {
+            output->set_error("command not valid array", arena);
+            return;
+        }
+        const brpc::RedisReply& comm = message[0];
+        if (!comm.is_string()) {
+            output->set_error("command not string", arena);
+            return;
+        }
+        std::string s(comm.c_str());
+        std::transform(s.begin(), s.end(), s.begin(), [](char c){ return std::tolower(c); });
+        if (s == "set") {
+            std::string key = message[1].c_str();
+            std::string value = message[2].c_str();
+            m[key] = value;
+            output->set_status("OK", arena);
+            return;
+        } else if (s == "get") {
+            std::string key = message[1].c_str();
+            auto it = m.find(key);
+            if (it != m.end()) {
+                output->set_bulk_string(it->second, arena);
+            } else {
+                output->set_nil_string();
+            }
+            butil::IOBuf buf;
+            output->SerializeToIOBuf(&buf);
+            return;
+        } else if (s == "incr") {
+            int64_t value;
+            s_mutex.lock();
+            value = ++int_map[message[1].c_str()];
+            s_mutex.unlock();
+            output->set_integer(value);
+            return;
+        }
+        char buf[128];
+        snprintf(buf, sizeof(buf), "ERR unknown command `%s`", s.c_str());
+        output->set_error(buf, arena);
         return;
     }
 
-public:
+private:
     RedisServiceImpl* _rs;
 };
 
@@ -568,16 +719,18 @@ class RedisServiceImpl : public brpc::RedisService {
 public:
     // @RedisService
     brpc::RedisConnection* NewConnection() {
+        call_count++;
         return new RedisConnectionImpl(this);
     }
 
-    std::map<std::string, std::string> m;
+    int call_count = 0;
 };
 
-TEST_F(RedisTest, server) {
+TEST_F(RedisTest, server_sanity) {
     brpc::Server server;
     brpc::ServerOptions server_options;
-    server_options.redis_service = new RedisServiceImpl;
+    RedisServiceImpl* rsimpl = new RedisServiceImpl;
+    server_options.redis_service = rsimpl;
     brpc::PortRange pr(8081, 8900);
     ASSERT_EQ(0, server.Start("127.0.0.1", pr, &server_options));
 
@@ -585,16 +738,80 @@ TEST_F(RedisTest, server) {
     options.protocol = brpc::PROTOCOL_REDIS;
     brpc::Channel channel;
     ASSERT_EQ(0, channel.Init("127.0.0.1", server.listen_address().port, &options));
+
     brpc::RedisRequest request;
     brpc::RedisResponse response;
     brpc::Controller cntl;
-
     ASSERT_TRUE(request.AddCommand("get hello"));
+    ASSERT_TRUE(request.AddCommand("get hello2"));
+    ASSERT_TRUE(request.AddCommand("set key1 value1"));
+    ASSERT_TRUE(request.AddCommand("get key1"));
+    ASSERT_TRUE(request.AddCommand("set key2 value2"));
+    ASSERT_TRUE(request.AddCommand("get key2"));
+    ASSERT_TRUE(request.AddCommand("xxxcommand key2"));
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-    ASSERT_EQ(1, response.reply_size());
-    ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(0).type());
-    ASSERT_EQ("OK", response.reply(0).data());
+    ASSERT_EQ(7, response.reply_size());
+    ASSERT_EQ(brpc::REDIS_REPLY_NIL, response.reply(0).type());
+    ASSERT_EQ(brpc::REDIS_REPLY_NIL, response.reply(1).type());
+    ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(2).type());
+    ASSERT_STREQ("OK", response.reply(2).c_str());
+    ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(3).type());
+    ASSERT_STREQ("value1", response.reply(3).c_str());
+    ASSERT_EQ(brpc::REDIS_REPLY_STATUS, response.reply(4).type());
+    ASSERT_STREQ("OK", response.reply(4).c_str());
+    ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(5).type());
+    ASSERT_STREQ("value2", response.reply(5).c_str());
+    ASSERT_EQ(brpc::REDIS_REPLY_ERROR, response.reply(6).type());
+    ASSERT_TRUE(butil::StringPiece(response.reply(6).error_message()).starts_with("ERR unknown command"));
+
+    ASSERT_EQ(rsimpl->call_count, 1);
+}
+
+void* incr_thread(void* arg) {
+    brpc::Channel* c = static_cast<brpc::Channel*>(arg);
+
+    for (int i = 0; i < 5000; ++i) {
+        brpc::RedisRequest request;
+        brpc::RedisResponse response;
+        brpc::Controller cntl;
+        EXPECT_TRUE(request.AddCommand("incr count"));
+        c->CallMethod(NULL, &cntl, &request, &response, NULL);
+        EXPECT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        EXPECT_EQ(1, response.reply_size());
+        EXPECT_TRUE(response.reply(0).is_integer());
+    }
+    return NULL;
+}
+
+TEST_F(RedisTest, server_concurrency) {
+    int N = 10;
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    RedisServiceImpl* rsimpl = new RedisServiceImpl;
+    server_options.redis_service = rsimpl;
+    brpc::PortRange pr(8081, 8900);
+    ASSERT_EQ(0, server.Start("127.0.0.1", pr, &server_options));
+
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_REDIS;
+    options.connection_type = "pooled";
+    std::vector<bthread_t> bths;
+    std::vector<brpc::Channel*> channels;
+    for (int i = 0; i < N; ++i) {
+        channels.push_back(new brpc::Channel);
+        ASSERT_EQ(0, channels.back()->Init("127.0.0.1", server.listen_address().port, &options));
+        bthread_t bth;
+        ASSERT_EQ(bthread_start_background(&bth, NULL, incr_thread, channels.back()), 0);
+        bths.push_back(bth);
+    }
+
+    for (int i = 0; i < N; ++i) {
+        bthread_join(bths[i], NULL);
+        delete channels[i];
+    }
+    ASSERT_EQ(int_map["count"], 10 * 5000LL);
+    ASSERT_EQ(N, rsimpl->call_count);
 }
 
 } //namespace

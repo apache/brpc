@@ -58,7 +58,7 @@ public:
 
     bool set_nil_string();  // "$-1\r\n"
     bool set_array(int size, butil::Arena* arena);  // size == -1 means nil array("*-1\r\n")
-    bool set_simple_string(const std::string& str, butil::Arena* arena);
+    bool set_status(const std::string& str, butil::Arena* arena);
     bool set_error(const std::string& str, butil::Arena* arena);
     bool set_integer(int64_t value);
     bool set_bulk_string(const std::string& str, butil::Arena* arena);
@@ -87,6 +87,7 @@ public:
     // Get the index-th sub reply. If this reply is not an array, a nil reply
     // is returned (call stacks are not logged)
     const RedisReply& operator[](size_t index) const;
+    RedisReply& operator[](size_t index);
 
     // Parse from `buf' which may be incomplete and allocate needed memory
     // on `arena'.
@@ -100,6 +101,7 @@ public:
     // the complexity in worst case may be O(N^2).
     // Returns PARSE_ERROR_ABSOLUTELY_WRONG if the parsing failed.
     ParseError ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena);
+
     // 
     bool SerializeToIOBuf(butil::IOBuf* buf);
 
@@ -121,6 +123,8 @@ public:
     void CopyFromSameArena(const RedisReply& other);
 
 private:
+    static const uint32_t npos;
+
     // RedisReply does not own the memory of fields, copying must be done
     // by calling CopyFrom[Different|Same]Arena.
     DISALLOW_COPY_AND_ASSIGN(RedisReply);
@@ -155,7 +159,11 @@ inline RedisReply::RedisReply()
     _data.array.replies = NULL;
 }
 
-inline bool RedisReply::is_nil() const { return _type == REDIS_REPLY_NIL; }
+inline bool RedisReply::is_nil() const {
+    return (_type == REDIS_REPLY_NIL) ||
+        ((_type == REDIS_REPLY_STRING || _type == REDIS_REPLY_ARRAY) &&
+         _length == uint32_t(-1));
+}
 inline bool RedisReply::is_error() const { return _type == REDIS_REPLY_ERROR; }
 inline bool RedisReply::is_integer() const { return _type == REDIS_REPLY_INTEGER; }
 inline bool RedisReply::is_string() const
@@ -173,14 +181,14 @@ inline int64_t RedisReply::integer() const {
 
 inline bool RedisReply::set_nil_string() {
     _type = REDIS_REPLY_STRING;
-    _length = -1;
+    _length = npos;
     return true;
 }
 
 inline bool RedisReply::set_array(int size, butil::Arena* arena) {
     _type = REDIS_REPLY_ARRAY;
     if (size < 0) {
-        _length = -1;
+        _length = npos;
         return true;
     } else if (size == 0) {
         _length = 0;
@@ -217,7 +225,7 @@ inline bool RedisReply::set_basic_string(const std::string& str, butil::Arena* a
     return true;
 }
 
-inline bool RedisReply::set_simple_string(const std::string& str, butil::Arena* arena) {
+inline bool RedisReply::set_status(const std::string& str, butil::Arena* arena) {
     return set_basic_string(str, arena, REDIS_REPLY_STATUS);
 }
 
@@ -277,6 +285,11 @@ inline const char* RedisReply::error_message() const {
 
 inline size_t RedisReply::size() const {
     return (is_array() ? _length : 0);
+}
+
+inline RedisReply& RedisReply::operator[](size_t index) {
+    return const_cast<RedisReply&>(
+            const_cast<const RedisReply*>(this)->operator[](index));
 }
 
 inline const RedisReply& RedisReply::operator[](size_t index) const {

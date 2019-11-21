@@ -24,6 +24,7 @@
 namespace brpc {
 
 //BAIDU_CASSERT(sizeof(RedisReply) == 24, size_match);
+const uint32_t RedisReply::npos = (uint32_t)-1;
 
 const char* RedisReplyTypeToString(RedisReplyType type) {
     switch (type) {
@@ -38,8 +39,56 @@ const char* RedisReplyTypeToString(RedisReplyType type) {
 }
 
 bool RedisReply::SerializeToIOBuf(butil::IOBuf* buf) {
-    //TODO
-
+    butil::IOBufBuilder builder;
+    switch (_type) {
+        case REDIS_REPLY_ERROR:
+        case REDIS_REPLY_STATUS:
+            buf->push_back((_type == REDIS_REPLY_ERROR)? '-' : '+');
+            if (_length < sizeof(_data.short_str)) {
+                buf->append(_data.short_str, _length);
+            } else {
+                buf->append(_data.long_str, _length);
+            }
+            buf->append("\r\n");
+            break;
+        case REDIS_REPLY_INTEGER:
+            builder << ':' << _data.integer << "\r\n";
+            buf->append(builder.buf());
+            break;
+        case REDIS_REPLY_STRING:
+            // Since _length is unsigned, we have to int casting _length to
+            // represent nil string
+            builder << '$' << (int)_length << "\r\n";
+            buf->append(builder.buf());
+            if (_length == npos) {
+                break;
+            }
+            if (_length < sizeof(_data.short_str)) {
+                buf->append(_data.short_str, _length);
+            } else {
+                buf->append(_data.long_str, _length);
+            }
+            buf->append("\r\n");
+            break;
+        case REDIS_REPLY_ARRAY:
+            builder << '*' << (int)_length << "\r\n";
+            buf->append(builder.buf());
+            if (_length == npos) {
+                break;
+            }
+            for (size_t i = 0; i < _length; ++i) {
+                if (!_data.array.replies[i].SerializeToIOBuf(buf)) {
+                    return false;
+                }
+            }
+            break;
+        case REDIS_REPLY_NIL:
+            buf->append("$-1\r\n");
+            break;
+        default:
+            CHECK(false) << "unknown redis type=" << _type;
+            return false;
+    }
     return true;
 }
 

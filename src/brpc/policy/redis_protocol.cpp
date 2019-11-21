@@ -75,10 +75,11 @@ int Consume(void* meta, bthread::TaskIterator<ExecutionQueueContext*>& iter) {
         RedisReply output;
         conn->OnRedisMessage(ctx->message, &output, &ctx->arena);
         butil::IOBuf sendbuf;
-        sendbuf.append("+OK\r\n");
+        output.SerializeToIOBuf(&sendbuf);
         Socket::WriteOptions wopt;
         wopt.ignore_eovercrowded = true;
-        s->Write(&sendbuf, &wopt);
+        LOG_IF(WARNING, s->Write(&sendbuf, &wopt) != 0)
+            << "Fail to send redis reply";
     }
     return 0;
 }
@@ -114,20 +115,21 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
     }
     const Server* server = static_cast<const Server*>(arg);
     if (server) {
-        RedisConnection* conn = server->options().redis_service->NewConnection();
-        if (!conn) {
-            LOG(ERROR) << "Fail to new redis connection from redis service";
-            return MakeParseError(PARSE_ERROR_TRY_OTHERS);
-        }
         ServerContext* ctx = static_cast<ServerContext*>(socket->parsing_context());
         if (ctx == NULL) {
+            RedisConnection* conn = server->options().redis_service->NewConnection();
+            if (!conn) {
+                LOG(ERROR) << "Fail to new redis connection from redis service";
+                return MakeParseError(PARSE_ERROR_TRY_OTHERS);
+            }
             ctx = new ServerContext;
             if (ctx->init(conn) != 0) {
+                delete conn;
                 delete ctx;
                 LOG(ERROR) << "Fail to init redis ServerContext";
                 return MakeParseError(PARSE_ERROR_NO_RESOURCE);
             }
-            socket->initialize_parsing_context(&ctx);
+            socket->reset_parsing_context(&ctx);
         }
         std::unique_ptr<ExecutionQueueContext> task(new ExecutionQueueContext);
         RedisReply message;
