@@ -124,7 +124,7 @@ public:
     void Print(std::ostream&) const;
 
 protected:
-    ::google::protobuf::Metadata GetMetadata() const override;
+    ::google::protobuf::Metadata GetMetadata() const;
 
 private:
     void SharedCtor();
@@ -192,7 +192,7 @@ public:
     static const ::google::protobuf::Descriptor* descriptor();
 
 protected:
-    ::google::protobuf::Metadata GetMetadata() const override;
+    ::google::protobuf::Metadata GetMetadata() const;
 
 private:
     void SharedCtor();
