@@ -129,7 +129,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                 LOG(ERROR) << "Fail to init redis ServerContext";
                 return MakeParseError(PARSE_ERROR_NO_RESOURCE);
             }
-            socket->reset_parsing_context(&ctx);
+            socket->reset_parsing_context(ctx);
         }
         std::unique_ptr<ExecutionQueueContext> task(new ExecutionQueueContext);
         RedisReply message;
