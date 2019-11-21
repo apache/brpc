@@ -17,6 +17,7 @@
 
 
 #include <iostream>
+#include <unordered_map>
 #include <butil/time.h>
 #include <butil/logging.h>
 #include <brpc/redis.h>
