@@ -208,29 +208,44 @@ private:
 
 std::ostream& operator<<(std::ostream& os, const RedisRequest&);
 std::ostream& operator<<(std::ostream& os, const RedisResponse&);
-class RedisConnection;
+
+enum RedisCommandResult {
+    REDIS_COMMAND_OK = 0,
+    REDIS_COMMAND_CONTINUE = 1,
+    REDIS_COMMAND_ERROR = 2,
+};
+
+// The handler for a redis command. Run() and New() should be implemented
+// by user. For Run(), `args` is the redis command argument. For example,
+// "set foo bar" corresponds to args[0] == "set", args[1] == "foo" and
+// args[2] == "bar". `output` is the content that sent to client side,
+// which should be set by user.  Read brpc/src/redis_message.h for more usage.
+// `arena` is the memory arena that `output` would use.
+// For New(), whenever a tcp connection is established, all handlers would
+// be cloned and brpc makes sure that all requests of the same command name
+// from one connection would be sent to the same command handler. All requests
+// in one connection are executed sequentially, just like what redis-server does.
+class RedisCommandHandler {
+public:
+    ~RedisCommandHandler() {}
+    virtual RedisCommandResult Run(const std::vector<const char*>& args,
+            RedisMessage* output, butil::Arena* arena) = 0;
+    virtual RedisCommandHandler* New() = 0;
+};
 
 // Implement this class and assign an instance to ServerOption.redis_service
-// to enable redis support. The return type of NewConnection(), which is
-// RedisConnection, should also be implemented by users.
+// to enable redis support. To support a particular command, you should implement
+// the corresponding handler and call AddHandler to install it.
 class RedisService {
 public:
+    typedef std::unordered_map<std::string, std::shared_ptr<RedisCommandHandler>> CommandMap;
     virtual ~RedisService() {}
-    virtual RedisConnection* NewConnection() = 0;
-};
 
-// Implement this class and make RedisServiceImpl::NewConnection return the
-// implemented class. Notice that one TCP connection corresponds to one RedisConnection
-// instance, and for the same TCP connection, OnRedisMessage is called sequentially.
-// But OnRedisMessage are called concurrently between different TCP connections.
-// Read src/brpc/redis_message.h to get the idea how to read and write RedisMessage.
-class RedisConnection {
-public:
-    virtual ~RedisConnection() {}
-    virtual void OnRedisMessage(const RedisMessage& message,
-            RedisMessage* output, butil::Arena* arena) = 0;
+    bool AddHandler(const std::string& name, RedisCommandHandler* handler);
+    void CloneCommandMap(CommandMap* map);
+private:
+    CommandMap _command_map;
 };
-
 
 } // namespace brpc
 

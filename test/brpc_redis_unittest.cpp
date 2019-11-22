@@ -558,6 +558,7 @@ TEST_F(RedisTest, codec) {
         ASSERT_TRUE(r.set_status("OK", &arena));
         ASSERT_TRUE(r.SerializeToIOBuf(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "+OK\r\n");
+        ASSERT_STREQ(r.c_str(), "OK");
         r.Clear();
         brpc::ParseError err = r.ConsumePartialIOBuf(buf, &arena);
         ASSERT_EQ(err, brpc::PARSE_OK);
@@ -590,14 +591,15 @@ TEST_F(RedisTest, codec) {
         ASSERT_TRUE(r.is_nil());
 
         r.Clear();
-        ASSERT_TRUE(r.set_bulk_string("abc'hello world", &arena));
+        ASSERT_TRUE(r.set_bulk_string("abcde'hello world", &arena));
         ASSERT_TRUE(r.SerializeToIOBuf(&buf));
-        ASSERT_STREQ(buf.to_string().c_str(), "$15\r\nabc'hello world\r\n");
+        ASSERT_STREQ(buf.to_string().c_str(), "$17\r\nabcde'hello world\r\n");
+        ASSERT_STREQ(r.c_str(), "abcde'hello world");
         r.Clear();
         err = r.ConsumePartialIOBuf(buf, &arena);
         ASSERT_EQ(err, brpc::PARSE_OK);
         ASSERT_TRUE(r.is_string());
-        ASSERT_STREQ(r.c_str(), "abc'hello world");
+        ASSERT_STREQ(r.c_str(), "abcde'hello world");
     }
     // integer
     {
@@ -663,74 +665,64 @@ butil::Mutex s_mutex;
 std::unordered_map<std::string, std::string> m;
 std::unordered_map<std::string, int64_t> int_map;
 
-class RedisServiceImpl;
-class RedisConnectionImpl : public brpc::RedisConnection {
+class SetCommandHandler : public brpc::RedisCommandHandler {
 public:
-    RedisConnectionImpl(RedisServiceImpl* rs)
-        : _rs(rs) { }
-
-    void OnRedisMessage(const brpc::RedisMessage& message, brpc::RedisMessage* output, butil::Arena* arena) {
-        if (!message.is_array() || message.size() == 0) {
-            output->set_error("command not valid array", arena);
-            return;
-        }
-        const brpc::RedisMessage& comm = message[0];
-        if (!comm.is_string()) {
-            output->set_error("command not string", arena);
-            return;
-        }
-        std::string s(comm.c_str());
-        std::transform(s.begin(), s.end(), s.begin(), [](char c){ return std::tolower(c); });
-        if (s == "set") {
-            std::string key = message[1].c_str();
-            std::string value = message[2].c_str();
-            m[key] = value;
-            output->set_status("OK", arena);
-            return;
-        } else if (s == "get") {
-            std::string key = message[1].c_str();
-            auto it = m.find(key);
-            if (it != m.end()) {
-                output->set_bulk_string(it->second, arena);
-            } else {
-                output->set_nil_string();
-            }
-            butil::IOBuf buf;
-            output->SerializeToIOBuf(&buf);
-            return;
-        } else if (s == "incr") {
-            int64_t value;
-            s_mutex.lock();
-            value = ++int_map[message[1].c_str()];
-            s_mutex.unlock();
-            output->set_integer(value);
-            return;
-        }
-        char buf[128];
-        snprintf(buf, sizeof(buf), "ERR unknown command `%s`", s.c_str());
-        output->set_error(buf, arena);
-        return;
+    brpc::RedisCommandResult Run(const std::vector<const char*>& args,
+            brpc::RedisMessage* output, butil::Arena* arena) {
+        std::string key = args[1];
+        std::string value = args[2];
+        m[key] = value;
+        output->set_status("OK", arena);
+        return brpc::REDIS_COMMAND_OK;
     }
-
-private:
-    RedisServiceImpl* _rs;
+    RedisCommandHandler* New() { new_count++; return new SetCommandHandler; }
+    int new_count = 0;
 };
 
-class RedisServiceImpl : public brpc::RedisService {
+class GetCommandHandler : public brpc::RedisCommandHandler {
 public:
-    // @RedisService
-    brpc::RedisConnection* NewConnection() {
-        call_count++;
-        return new RedisConnectionImpl(this);
+    brpc::RedisCommandResult Run(const std::vector<const char*>& args,
+            brpc::RedisMessage* output, butil::Arena* arena) {
+        std::string key = args[1];
+        auto it = m.find(key);
+        if (it != m.end()) {
+            output->set_bulk_string(it->second, arena);
+        } else {
+            output->set_nil_string();
+        }
+        return brpc::REDIS_COMMAND_OK;
     }
-
-    int call_count = 0;
+    RedisCommandHandler* New() { new_count++; return new GetCommandHandler; }
+    int new_count = 0;
 };
+
+class IncrCommandHandler : public brpc::RedisCommandHandler {
+public:
+    brpc::RedisCommandResult Run(const std::vector<const char*>& args,
+            brpc::RedisMessage* output, butil::Arena* arena) {
+        int64_t value;
+        s_mutex.lock();
+        value = ++int_map[args[1]];
+        s_mutex.unlock();
+        output->set_integer(value);
+        return brpc::REDIS_COMMAND_OK;
+    }
+    RedisCommandHandler* New() { new_count++; return new IncrCommandHandler; }
+    int new_count = 0;
+};
+
+class RedisServiceImpl : public brpc::RedisService { };
 
 TEST_F(RedisTest, server_sanity) {
     brpc::Server server;
     brpc::ServerOptions server_options;
     RedisServiceImpl* rsimpl = new RedisServiceImpl;
+    GetCommandHandler *gh = new GetCommandHandler;
+    SetCommandHandler *sh = new SetCommandHandler;
+    IncrCommandHandler *ih = new IncrCommandHandler;
+    rsimpl->AddHandler("get", gh);
+    rsimpl->AddHandler("set", sh);
+    rsimpl->AddHandler("incr", ih);
     server_options.redis_service = rsimpl;
     brpc::PortRange pr(8081, 8900);
     ASSERT_EQ(0, server.Start("127.0.0.1", pr, &server_options));
@@ -766,7 +758,9 @@ TEST_F(RedisTest, server_sanity) {
     ASSERT_EQ(brpc::REDIS_MESSAGE_ERROR, response.reply(6).type());
     ASSERT_TRUE(butil::StringPiece(response.reply(6).error_message()).starts_with("ERR unknown command"));
 
-    ASSERT_EQ(rsimpl->call_count, 1);
+    ASSERT_EQ(gh->new_count, 1);
+    ASSERT_EQ(sh->new_count, 1);
+    ASSERT_EQ(ih->new_count, 1);
 }
 
 void* incr_thread(void* arg) {
@@ -790,6 +784,8 @@ TEST_F(RedisTest, server_concurrency) {
     brpc::Server server;
     brpc::ServerOptions server_options;
     RedisServiceImpl* rsimpl = new RedisServiceImpl;
+    IncrCommandHandler *ih = new IncrCommandHandler;
+    rsimpl->AddHandler("incr", ih);
     server_options.redis_service = rsimpl;
     brpc::PortRange pr(8081, 8900);
     ASSERT_EQ(0, server.Start("127.0.0.1", pr, &server_options));
@@ -812,7 +808,97 @@ TEST_F(RedisTest, server_concurrency) {
         delete channels[i];
     }
     ASSERT_EQ(int_map["count"], 10 * 5000LL);
-    ASSERT_EQ(N, rsimpl->call_count);
+    ASSERT_EQ(ih->new_count, N);
+}
+
+class MultiCommandHandler : public brpc::RedisCommandHandler {
+public:
+    brpc::RedisCommandResult Run(const std::vector<const char*>& args,
+            brpc::RedisMessage* output, butil::Arena* arena) {
+        if (strcmp(args[0], "exec") != 0) {
+            return brpc::REDIS_COMMAND_CONTINUE;
+        }
+        return brpc::REDIS_COMMAND_OK;
+    }
+    RedisCommandHandler* New() { return new MultiCommandHandler; }
+};
+
+TEST_F(RedisTest, server_command_continue) {
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    RedisServiceImpl* rsimpl = new RedisServiceImpl;
+    rsimpl->AddHandler("get", new GetCommandHandler);
+    rsimpl->AddHandler("set", new SetCommandHandler);
+    rsimpl->AddHandler("incr", new IncrCommandHandler);
+    rsimpl->AddHandler("multi", new MultiCommandHandler);
+    server_options.redis_service = rsimpl;
+    brpc::PortRange pr(8081, 8900);
+    ASSERT_EQ(0, server.Start("127.0.0.1", pr, &server_options));
+
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_REDIS;
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init("127.0.0.1", server.listen_address().port, &options));
+
+    {
+        brpc::RedisRequest request;
+        brpc::RedisResponse response;
+        brpc::Controller cntl;
+        ASSERT_TRUE(request.AddCommand("set hello world"));
+        ASSERT_TRUE(request.AddCommand("get hello"));
+        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(2, response.reply_size());
+        ASSERT_STREQ("world", response.reply(1).c_str());
+    }
+    {
+        brpc::RedisRequest request;
+        brpc::RedisResponse response;
+        brpc::Controller cntl;
+        // multiple 'multi' should also work
+        ASSERT_TRUE(request.AddCommand("multi"));
+        ASSERT_TRUE(request.AddCommand("Multi"));
+        ASSERT_TRUE(request.AddCommand("muLti"));
+        int count = 10;
+        for (int i = 0; i < count; ++i) {
+            ASSERT_TRUE(request.AddCommand("incr hello 1"));
+        }
+        ASSERT_TRUE(request.AddCommand("exec"));
+        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        ASSERT_EQ(14, response.reply_size());
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_EQ(brpc::REDIS_MESSAGE_STATUS, response.reply(0).type());
+        ASSERT_STREQ("OK", response.reply(0).c_str());
+        ASSERT_EQ(brpc::REDIS_MESSAGE_ERROR, response.reply(1).type());
+        ASSERT_EQ(brpc::REDIS_MESSAGE_ERROR, response.reply(2).type());
+        for (int i = 3; i < count + 3; ++i) {
+            ASSERT_EQ(brpc::REDIS_MESSAGE_STATUS, response.reply(i).type());
+            ASSERT_STREQ("QUEUED", response.reply(i).c_str());
+        }
+        const brpc::RedisMessage& m = response.reply(count+3);
+        ASSERT_EQ(count, (int)m.size());
+        for (int i = 0; i < count; ++i) {
+            ASSERT_EQ(i+1, m[i].integer());
+        }
+    }
+    // After 'multi', normal requests should be successful
+    {
+        brpc::RedisRequest request;
+        brpc::RedisResponse response;
+        brpc::Controller cntl;
+        ASSERT_TRUE(request.AddCommand("get hello"));
+        ASSERT_TRUE(request.AddCommand("get hello2"));
+        ASSERT_TRUE(request.AddCommand("set key1 value1"));
+        ASSERT_TRUE(request.AddCommand("get key1"));
+        channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+        ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+        ASSERT_STREQ("world", response.reply(0).c_str());
+        ASSERT_EQ(brpc::REDIS_MESSAGE_NIL, response.reply(1).type());
+        ASSERT_EQ(brpc::REDIS_MESSAGE_STATUS, response.reply(2).type());
+        ASSERT_STREQ("OK", response.reply(2).c_str());
+        ASSERT_EQ(brpc::REDIS_MESSAGE_STRING, response.reply(3).type());
+        ASSERT_STREQ("value1", response.reply(3).c_str());
+    }
 }
 
 } //namespace

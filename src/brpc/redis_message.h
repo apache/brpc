@@ -211,6 +211,7 @@ inline bool RedisMessage::set_basic_string(const std::string& str, butil::Arena*
     size_t size = str.size();
     if (size < sizeof(_data.short_str)) {
         memcpy(_data.short_str, str.c_str(), size);
+        _data.short_str[size] = '\0';
     } else {
         char* d = (char*)arena->allocate((_length/8 + 1) * 8);
         if (!d) {
@@ -218,6 +219,7 @@ inline bool RedisMessage::set_basic_string(const std::string& str, butil::Arena*
             return false;
         }
         memcpy(d, str.c_str(), size);
+        d[size] = '\0';
         _data.long_str = d;
     }
     _type = type;

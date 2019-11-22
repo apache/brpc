@@ -16,7 +16,9 @@
 // under the License.
 
 // Authors: Ge,Jun (gejun@baidu.com)
+//          Jiashun Zhu(zhujiashun2010@gmail.com)
 
+#include <queue>
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
@@ -30,6 +32,7 @@
 #include "brpc/details/server_private_accessor.h"
 #include "brpc/span.h"
 #include "brpc/redis.h"
+#include "brpc/redis_command.h"
 #include "brpc/policy/redis_protocol.h"
 #include "bthread/execution_queue.h"
 
@@ -53,29 +56,128 @@ struct InputResponse : public InputMessageBase {
     }
 };
 
-struct ExecutionQueueContext {
-    RedisMessage message;
+struct QueueMeta {
     SocketId socket_id;
+    RedisService::CommandMap command_map;
+    RedisCommandHandler* handler_continue;
+    // queue to buffer commands and execute these commands together and atomicly
+    // used to implement command like 'MULTI'.
+    std::queue<RedisMessage> command_queue;
+    // used to allocate memory for queued command;
+    butil::Arena arena;
+    // command that trigger commands to execute atomicly.
+    std::string queue_command_name;
+
+    QueueMeta() : handler_continue(NULL) {}
+};
+
+struct TaskContext {
+    RedisMessage message;
     butil::Arena arena;
 };
 
-int Consume(void* meta, bthread::TaskIterator<ExecutionQueueContext*>& iter) {
-    RedisConnection* conn = static_cast<RedisConnection*>(meta);
+void ConsumeTask(QueueMeta* meta, const RedisMessage& m, butil::Arena* arena, butil::IOBuf* sendbuf) {
+    RedisMessage output;
+    char buf[64];
+    do {
+        std::vector<const char*> args;
+        args.reserve(7);
+        bool args_parsed = true;
+        for (size_t i = 0; i < m.size(); ++i) {
+            if (!m[i].is_string()) {
+                output.set_error("ERR command not string", arena);
+                args_parsed = false;
+                break;
+            }
+            args.push_back(m[i].c_str());
+        }
+        if (!args_parsed) {
+            break;
+        }
+        std::string comm;
+        comm.reserve(8);
+        for (const char* c = m[0].c_str(); *c; ++c) {
+            comm.push_back(std::tolower(*c));
+        }
+        if (meta->handler_continue) {
+            RedisCommandResult result = meta->handler_continue->Run(args, &output, arena);
+            if (result == REDIS_COMMAND_CONTINUE) {
+                if (comm == meta->queue_command_name) {
+                    snprintf(buf, sizeof(buf), "ERR %s calls can not be nested", comm.c_str());
+                    output.set_error(buf, arena);
+                    break;
+                }
+                meta->command_queue.emplace();
+                RedisMessage& last = meta->command_queue.back();
+                last.CopyFromDifferentArena(m, &meta->arena);
+                output.set_status("QUEUED", arena);
+            } else if (result == REDIS_COMMAND_OK) {
+                meta->handler_continue = NULL;
+                meta->queue_command_name.clear();
+                butil::IOBuf nocountbuf;
+                int array_count = meta->command_queue.size();
+                while (!meta->command_queue.empty()) {
+                    RedisMessage& front = meta->command_queue.front();
+                    meta->command_queue.pop();
+                    ConsumeTask(meta, front, arena, &nocountbuf);
+                }
+                AppendHeader(*sendbuf, '*', array_count);
+                sendbuf->append(nocountbuf);
+                return;
+            } else if (result == REDIS_COMMAND_ERROR) {
+                if (!output.is_error()) {
+                    output.set_error("internal server error", arena);
+                }
+            } else {
+                meta->handler_continue = NULL;
+                LOG(ERROR) << "unknown redis command result=" << result;
+                output.set_error("internal server error", arena);
+            }
+            break;
+        }
+        auto it = meta->command_map.find(comm);
+        if (it == meta->command_map.end()) {
+            snprintf(buf, sizeof(buf), "ERR unknown command `%s`", comm.c_str());
+            output.set_error(buf, arena);
+            break;
+        }
+        RedisCommandResult result = it->second->Run(args, &output, arena);
+        if (result == REDIS_COMMAND_CONTINUE) {
+            // First command that return REDIS_COMMAND_CONTINUE should not be pushed
+            // into queue, since it is always a marker.
+            meta->handler_continue = it->second.get();
+            meta->queue_command_name = comm;
+            output.set_status("OK", arena);
+        } else if (result == REDIS_COMMAND_ERROR) {
+            if (!output.is_error()) {
+                output.set_error("internal server error", arena);
+            }
+        } else if (result != REDIS_COMMAND_OK) {
+            LOG(ERROR) << "unknown redis command result=" << result;
+        }
+    } while(0);
+    output.SerializeToIOBuf(sendbuf);
+}
+
+int Consume(void* meta, bthread::TaskIterator<TaskContext*>& iter) {
+    QueueMeta* qmeta = static_cast<QueueMeta*>(meta);
     if (iter.is_queue_stopped()) {
-        delete conn;
+        delete qmeta;
         return 0;
     }
+    SocketUniquePtr s;
+    bool has_err = false;
+    if (Socket::Address(qmeta->socket_id, &s) != 0) {
+        LOG(WARNING) << "Fail to address redis socket";
+        has_err = true;
+    }
     for (; iter; ++iter) {
-        std::unique_ptr<ExecutionQueueContext> ctx(*iter);
-        SocketUniquePtr s;
-        if (Socket::Address(ctx->socket_id, &s) != 0) {
-            LOG(WARNING) << "Fail to address redis socket";
+        std::unique_ptr<TaskContext> ctx(*iter);
+        if (has_err) {
             continue;
         }
-        RedisMessage output;
-        conn->OnRedisMessage(ctx->message, &output, &ctx->arena);
         butil::IOBuf sendbuf;
-        output.SerializeToIOBuf(&sendbuf);
+        ConsumeTask(qmeta, ctx->message, &ctx->arena, &sendbuf);
         Socket::WriteOptions wopt;
         wopt.ignore_eovercrowded = true;
         LOG_IF(WARNING, s->Write(&sendbuf, &wopt) != 0)
@@ -93,18 +195,18 @@ public:
     // @Destroyable
     void Destroy() { delete this; }
 
-    int init(RedisConnection* conn) {
+    int init(QueueMeta* meta) {
         bthread::ExecutionQueueOptions q_opt;
         q_opt.bthread_attr =
             FLAGS_usercode_in_pthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL;
-        if (bthread::execution_queue_start(&queue, &q_opt, Consume, conn) != 0) {
+        if (bthread::execution_queue_start(&queue, &q_opt, Consume, meta) != 0) {
             LOG(ERROR) << "Fail to start execution queue";
             return -1;
         }
         return 0;
     }
 
-    bthread::ExecutionQueueId<ExecutionQueueContext*> queue;
+    bthread::ExecutionQueueId<TaskContext*> queue;
 };
 
 ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
@@ -120,33 +222,28 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         }
         ServerContext* ctx = static_cast<ServerContext*>(socket->parsing_context());
         if (ctx == NULL) {
-            RedisConnection* conn = rs->NewConnection();
-            if (!conn) {
-                LOG(ERROR) << "Fail to new redis connection from redis service";
-                return MakeParseError(PARSE_ERROR_TRY_OTHERS);
-            }
+            QueueMeta* meta = new QueueMeta;
+            meta->socket_id = socket->id();
+            rs->CloneCommandMap(&meta->command_map);
             ctx = new ServerContext;
-            if (ctx->init(conn) != 0) {
-                delete conn;
+            if (ctx->init(meta) != 0) {
                 delete ctx;
+                delete meta;
                 LOG(ERROR) << "Fail to init redis ServerContext";
                 return MakeParseError(PARSE_ERROR_NO_RESOURCE);
             }
             socket->reset_parsing_context(ctx);
         }
-        std::unique_ptr<ExecutionQueueContext> task(new ExecutionQueueContext);
-        RedisMessage message;
-        ParseError err = message.ConsumePartialIOBuf(*source, &task->arena);
+        std::unique_ptr<TaskContext> task_ctx(new TaskContext);
+        ParseError err = task_ctx->message.ConsumePartialIOBuf(*source, &task_ctx->arena);
         if (err != PARSE_OK) {
             return MakeParseError(err);
         }
-        task->message.Swap(message);
-        task->socket_id = socket->id();
-        if (bthread::execution_queue_execute(ctx->queue, task.get()) != 0) {
+        if (bthread::execution_queue_execute(ctx->queue, task_ctx.get()) != 0) {
             LOG(ERROR) << "Fail to push execution queue";
             return MakeParseError(PARSE_ERROR_NO_RESOURCE);
         }
-        task.release();
+        task_ctx.release();
         return MakeMessage(NULL);
     } else {
         // NOTE(gejun): PopPipelinedInfo() is actually more contended than what

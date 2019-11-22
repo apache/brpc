@@ -435,5 +435,21 @@ std::ostream& operator<<(std::ostream& os, const RedisResponse& response) {
     }
     return os;
 }
+
+bool RedisService::AddHandler(const std::string& name, RedisCommandHandler* handler) {
+    std::string lcname;
+    lcname.reserve(name.size());
+    for (auto c : name) {
+        lcname.push_back(std::tolower(c));
+    }
+    _command_map[lcname].reset(handler);
+    return true;
+}
  
+void RedisService::CloneCommandMap(CommandMap* map) {
+    for (auto it : _command_map) {
+        (*map)[it.first].reset(it.second->New());
+    }
+}
+
 } // namespace brpc
