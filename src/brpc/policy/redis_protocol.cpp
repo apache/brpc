@@ -81,7 +81,7 @@ void ConsumeTask(QueueMeta* meta, const RedisMessage& m, butil::Arena* arena, bu
     char buf[64];
     do {
         std::vector<const char*> args;
-        args.reserve(7);
+        args.reserve(8);
         bool args_parsed = true;
         for (size_t i = 0; i < m.size(); ++i) {
             if (!m[i].is_string()) {
@@ -125,11 +125,14 @@ void ConsumeTask(QueueMeta* meta, const RedisMessage& m, butil::Arena* arena, bu
                 sendbuf->append(nocountbuf);
                 return;
             } else if (result == REDIS_COMMAND_ERROR) {
+                meta->handler_continue = NULL;
+                meta->queue_command_name.clear();
                 if (!output.is_error()) {
                     output.set_error("internal server error", arena);
                 }
             } else {
                 meta->handler_continue = NULL;
+                meta->queue_command_name.clear();
                 LOG(ERROR) << "unknown redis command result=" << result;
                 output.set_error("internal server error", arena);
             }
