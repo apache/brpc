@@ -665,19 +665,23 @@ butil::Mutex s_mutex;
 std::unordered_map<std::string, std::string> m;
 std::unordered_map<std::string, int64_t> int_map;
 
-void* random_sleep(void *arg) {
-    google::protobuf::Closure* done = static_cast<google::protobuf::Closure*>(arg);
-    // [50, 100) ms
-    int sleep_ms = 50 + butil::fast_rand_less_than(50);
-    bthread_usleep(sleep_ms * 1000);
-    done->Run();
+struct SleepArgs {
+    int sleep_ms;
+    google::protobuf::Closure* done;
+};
+
+void* sleep(void *arg) {
+    SleepArgs* args = static_cast<SleepArgs*>(arg);
+    bthread_usleep(args->sleep_ms * 1000);
+    args->done->Run();
+    delete args;
     return NULL;
 }
 
 class SetCommandHandler : public brpc::RedisCommandHandler {
 public:
-    SetCommandHandler(bool rand_sleep = false)
-        : _rand_sleep(rand_sleep) {}
+    SetCommandHandler(bool sleep = false)
+        : _sleep(sleep) {}
 
     brpc::RedisCommandHandler::Result Run(const char* args[],
                                           brpc::RedisMessage* output,
@@ -687,24 +691,29 @@ public:
         std::string value = args[2];
         m[key] = value;
         output->SetStatus("OK");
-        if (_rand_sleep) {
+        if (_sleep) {
+            SleepArgs *args = new SleepArgs;
+            args->sleep_ms = _sleep_ms;
+            args->done = done_guard.release();
             bthread_t bth;
-            bthread_start_background(&bth, NULL, random_sleep, done_guard.release());
+            EXPECT_EQ(0, bthread_start_background(&bth, NULL, sleep, args));
+            if (_sleep_ms > 20) _sleep_ms -= 20;
         }
         return brpc::RedisCommandHandler::OK;
     }
-    RedisCommandHandler* New() { _new_count++; return new SetCommandHandler(_rand_sleep); }
+    RedisCommandHandler* New() { _new_count++; return new SetCommandHandler(_sleep); }
     int new_count() { return _new_count; }
 
 private:
+    int _sleep_ms = 100;
     int _new_count = 0;
-    bool _rand_sleep = false;
+    bool _sleep = false;
 };
 
 class GetCommandHandler : public brpc::RedisCommandHandler {
 public:
-    GetCommandHandler(bool rand_sleep = false)
-        : _rand_sleep(rand_sleep) {}
+    GetCommandHandler(bool sleep = false)
+        : _sleep(sleep) {}
 
     brpc::RedisCommandHandler::Result Run(const char* args[],
                                           brpc::RedisMessage* output,
@@ -717,24 +726,29 @@ public:
         } else {
             output->SetNilString();
         }
-        if (_rand_sleep) {
+        if (_sleep) {
+            SleepArgs *args = new SleepArgs;
+            args->sleep_ms = _sleep_ms;
+            args->done = done_guard.release();
             bthread_t bth;
-            bthread_start_background(&bth, NULL, random_sleep, done_guard.release());
+            EXPECT_EQ(0, bthread_start_background(&bth, NULL, sleep, args));
+            if (_sleep_ms > 20) _sleep_ms -= 20;
         }
         return brpc::RedisCommandHandler::OK;
     }
-    RedisCommandHandler* New() { _new_count++; return new GetCommandHandler(_rand_sleep); }
+    RedisCommandHandler* New() { _new_count++; return new GetCommandHandler(_sleep); }
     int new_count() { return _new_count; }
 
 private:
+    int _sleep_ms = 100;
     int _new_count = 0;
-    bool _rand_sleep = false;
+    bool _sleep = false;
 };
 
 class IncrCommandHandler : public brpc::RedisCommandHandler {
 public:
-    IncrCommandHandler(bool rand_sleep = false)
-        : _rand_sleep(rand_sleep) {}
+    IncrCommandHandler(bool sleep = false)
+        : _sleep(sleep) {}
 
     brpc::RedisCommandHandler::Result Run(const char* args[],
                                           brpc::RedisMessage* output,
@@ -745,18 +759,23 @@ public:
         value = ++int_map[args[1]];
         s_mutex.unlock();
         output->SetInteger(value);
-        if (_rand_sleep) {
+        if (_sleep) {
+            SleepArgs *args = new SleepArgs;
+            args->sleep_ms = _sleep_ms;
+            args->done = done_guard.release();
             bthread_t bth;
-            bthread_start_background(&bth, NULL, random_sleep, done_guard.release());
+            EXPECT_EQ(0, bthread_start_background(&bth, NULL, sleep, args));
+            if (_sleep_ms > 20) _sleep_ms -= 20;
         }
         return brpc::RedisCommandHandler::OK;
     }
-    RedisCommandHandler* New() { _new_count++; return new IncrCommandHandler(_rand_sleep); }
+    RedisCommandHandler* New() { _new_count++; return new IncrCommandHandler(_sleep); }
     int new_count() { return _new_count; }
 
 private:
+    int _sleep_ms = 100;
     int _new_count = 0;
-    bool _rand_sleep = false;
+    bool _sleep = false;
 };
 
 class RedisServiceImpl : public brpc::RedisService { };

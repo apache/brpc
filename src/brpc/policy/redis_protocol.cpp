@@ -35,7 +35,6 @@
 #include "brpc/redis_command.h"
 #include "brpc/policy/redis_protocol.h"
 #include "bthread/execution_queue.h"
-#include "bthread/countdown_event.h"
 
 namespace brpc {
 
@@ -182,8 +181,6 @@ int ConsumeTask(RedisConnContext* meta, const RedisMessage& m) {
                 args, &output, done_guard.release());
         if (result == RedisCommandHandler::OK) {
             meta->handler_continue = NULL;
-        } else {
-            LOG(ERROR) << "Unknown handler result=" << (int)result;
         }
     } else {
         std::string comm;
@@ -201,8 +198,6 @@ int ConsumeTask(RedisConnContext* meta, const RedisMessage& m) {
                 it->second->Run(args, &output, done_guard.release());
             if (result == RedisCommandHandler::CONTINUE) {
                 meta->handler_continue = it->second.get();
-            } else {
-                LOG(ERROR) << "Unknown handler result=" << (int)result;
             }
         }
     }
