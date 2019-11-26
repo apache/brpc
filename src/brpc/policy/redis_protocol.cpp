@@ -57,7 +57,7 @@ struct InputResponse : public InputMessageBase {
     }
 };
 
-class QueueMeta;
+class RedisConnContext;
 class ConsumeTaskDone : public google::protobuf::Closure {
 public:
     ConsumeTaskDone()
@@ -73,14 +73,14 @@ private:
 
 public:
     RedisMessage output_message;
-    QueueMeta* meta;
+    RedisConnContext* meta;
     butil::IOBuf sendbuf;
 };
 
 
-class QueueMeta : public brpc::SharedObject {
+class RedisConnContext : public brpc::SharedObject {
 public:
-    QueueMeta() : handler_continue(NULL) {}
+    RedisConnContext() : handler_continue(NULL) {}
 
     void Push(ConsumeTaskDone* done) {
         std::unique_lock<butil::Mutex> m(_mutex);
@@ -93,13 +93,13 @@ public:
             LOG(WARNING) << "Fail to address redis socket";
             return;
         }
-        Socket::WriteOptions wopt;
-        wopt.ignore_eovercrowded = true;
         {
             std::unique_lock<butil::Mutex> m(_mutex);
             if (_writing) return;
             _writing = true;
         }
+        Socket::WriteOptions wopt;
+        wopt.ignore_eovercrowded = true;
         std::queue<ConsumeTaskDone*> ready_to_delete;
         while (true) {
             std::unique_lock<butil::Mutex> m(_mutex);
@@ -158,13 +158,13 @@ const char** ParseArgs(const RedisMessage& message) {
 }
 
 void ConsumeTaskDone::Run() { 
-    butil::intrusive_ptr<QueueMeta> delete_queue_meta(meta, false);
+    butil::intrusive_ptr<RedisConnContext> delete_queue_meta(meta, false);
     output_message.SerializeToIOBuf(&sendbuf);
     _ready.store(true, butil::memory_order_release);
     meta->Flush();
 }
 
-int ConsumeTask(QueueMeta* meta, const RedisMessage& m) {
+int ConsumeTask(RedisConnContext* meta, const RedisMessage& m) {
     ConsumeTaskDone* done = new ConsumeTaskDone;
     ClosureGuard done_guard(done);
     meta->Push(done);
@@ -174,7 +174,7 @@ int ConsumeTask(QueueMeta* meta, const RedisMessage& m) {
 
     const char** args = ParseArgs(m);
     if (!args) {
-        output.set_error("ERR command not string");
+        output.SetError("ERR command not string");
         return -1;
     }
     if (meta->handler_continue) {
@@ -195,7 +195,7 @@ int ConsumeTask(QueueMeta* meta, const RedisMessage& m) {
         if (it == meta->command_map.end()) {
             char buf[64];
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", comm.c_str());
-            output.set_error(buf);
+            output.SetError(buf);
         } else {
             RedisCommandHandler::Result result =
                 it->second->Run(args, &output, done_guard.release());
@@ -211,7 +211,7 @@ int ConsumeTask(QueueMeta* meta, const RedisMessage& m) {
 }
 
 int Consume(void* meta, bthread::TaskIterator<TaskContext*>& iter) {
-    QueueMeta* qmeta = static_cast<QueueMeta*>(meta);
+    RedisConnContext* qmeta = static_cast<RedisConnContext*>(meta);
     if (iter.is_queue_stopped()) {
         qmeta->RemoveRefManually();
         return 0;
@@ -232,7 +232,7 @@ public:
     // @Destroyable
     void Destroy() { delete this; }
 
-    int init(QueueMeta* meta) {
+    int init(RedisConnContext* meta) {
         bthread::ExecutionQueueOptions q_opt;
         q_opt.bthread_attr =
             FLAGS_usercode_in_pthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL;
@@ -259,7 +259,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         }
         ServerContext* ctx = static_cast<ServerContext*>(socket->parsing_context());
         if (ctx == NULL) {
-            QueueMeta* meta = new QueueMeta;
+            RedisConnContext* meta = new RedisConnContext;
             meta->AddRefManually();
             meta->socket_id = socket->id();
             rs->CloneCommandMap(&meta->command_map);

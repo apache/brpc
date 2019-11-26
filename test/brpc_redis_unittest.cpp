@@ -555,7 +555,7 @@ TEST_F(RedisTest, codec) {
     {
         brpc::RedisMessage r(&arena);
         butil::IOBuf buf;
-        ASSERT_TRUE(r.set_status("OK"));
+        ASSERT_TRUE(r.SetStatus("OK"));
         ASSERT_TRUE(r.SerializeToIOBuf(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "+OK\r\n");
         ASSERT_STREQ(r.c_str(), "OK");
@@ -569,7 +569,7 @@ TEST_F(RedisTest, codec) {
     {
         brpc::RedisMessage r(&arena);
         butil::IOBuf buf;
-        ASSERT_TRUE(r.set_error("not exist \'key\'"));
+        ASSERT_TRUE(r.SetError("not exist \'key\'"));
         ASSERT_TRUE(r.SerializeToIOBuf(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "-not exist \'key\'\r\n");
         r.Clear();
@@ -582,7 +582,7 @@ TEST_F(RedisTest, codec) {
     {
         brpc::RedisMessage r(&arena);
         butil::IOBuf buf;
-        ASSERT_TRUE(r.set_nil_string());
+        ASSERT_TRUE(r.SetNilString());
         ASSERT_TRUE(r.SerializeToIOBuf(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "$-1\r\n");
         r.Clear();
@@ -591,7 +591,7 @@ TEST_F(RedisTest, codec) {
         ASSERT_TRUE(r.is_nil());
 
         r.Clear();
-        ASSERT_TRUE(r.set_bulk_string("abcde'hello world"));
+        ASSERT_TRUE(r.SetBulkString("abcde'hello world"));
         ASSERT_TRUE(r.SerializeToIOBuf(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "$17\r\nabcde'hello world\r\n");
         ASSERT_STREQ(r.c_str(), "abcde'hello world");
@@ -610,7 +610,7 @@ TEST_F(RedisTest, codec) {
         const char* output[] = { ":-1\r\n", ":1234567\r\n" };
         for (int i = 0; i < t; ++i) {
             r.Clear();
-            ASSERT_TRUE(r.set_integer(input[i]));
+            ASSERT_TRUE(r.SetInteger(input[i]));
             ASSERT_TRUE(r.SerializeToIOBuf(&buf));
             ASSERT_STREQ(buf.to_string().c_str(), output[i]);
             r.Clear();
@@ -624,13 +624,13 @@ TEST_F(RedisTest, codec) {
     {
         brpc::RedisMessage r(&arena);
         butil::IOBuf buf;
-        ASSERT_TRUE(r.set_array(3));
+        ASSERT_TRUE(r.SetArray(3));
         brpc::RedisMessage& sub_reply = r[0];
-        sub_reply.set_array(2);
-        sub_reply[0].set_bulk_string("hello, it's me");
-        sub_reply[1].set_integer(422);
-        r[1].set_bulk_string("To go over everything");
-        r[2].set_integer(1);
+        sub_reply.SetArray(2);
+        sub_reply[0].SetBulkString("hello, it's me");
+        sub_reply[1].SetInteger(422);
+        r[1].SetBulkString("To go over everything");
+        r[2].SetInteger(1);
         ASSERT_TRUE(r[3].is_nil());
         ASSERT_TRUE(r.SerializeToIOBuf(&buf));
         ASSERT_STREQ(buf.to_string().c_str(),
@@ -653,7 +653,7 @@ TEST_F(RedisTest, codec) {
 
         r.Clear();
         // nil array
-        ASSERT_TRUE(r.set_array(-1));
+        ASSERT_TRUE(r.SetArray(-1));
         ASSERT_TRUE(r.SerializeToIOBuf(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "*-1\r\n");
         ASSERT_EQ(r.ConsumePartialIOBuf(buf, &arena), brpc::PARSE_OK);
@@ -686,7 +686,7 @@ public:
         std::string key = args[1];
         std::string value = args[2];
         m[key] = value;
-        output->set_status("OK");
+        output->SetStatus("OK");
         if (_rand_sleep) {
             bthread_t bth;
             bthread_start_background(&bth, NULL, random_sleep, done_guard.release());
@@ -713,9 +713,9 @@ public:
         std::string key = args[1];
         auto it = m.find(key);
         if (it != m.end()) {
-            output->set_bulk_string(it->second);
+            output->SetBulkString(it->second);
         } else {
-            output->set_nil_string();
+            output->SetNilString();
         }
         if (_rand_sleep) {
             bthread_t bth;
@@ -744,7 +744,7 @@ public:
         s_mutex.lock();
         value = ++int_map[args[1]];
         s_mutex.unlock();
-        output->set_integer(value);
+        output->SetInteger(value);
         if (_rand_sleep) {
             bthread_t bth;
             bthread_start_background(&bth, NULL, random_sleep, done_guard.release());
@@ -866,7 +866,7 @@ public:
                                      google::protobuf::Closure* done) {
         brpc::ClosureGuard done_guard(done);
         if (strcmp(args[0], "multi") == 0) {
-            output->set_status("OK");
+            output->SetStatus("OK");
             return brpc::RedisCommandHandler::CONTINUE;
         } 
         if (strcmp(args[0], "exec") != 0) {
@@ -875,16 +875,16 @@ public:
                 sargs.push_back(*c);
             }
             commands.push_back(sargs);
-            output->set_status("QUEUED");
+            output->SetStatus("QUEUED");
             return brpc::RedisCommandHandler::CONTINUE;
         }
-        output->set_array(commands.size());
+        output->SetArray(commands.size());
         s_mutex.lock();
         for (size_t i = 0; i < commands.size(); ++i) {
             if (commands[i][0] == "incr") {
                 int64_t value;
                 value = ++int_map[commands[i][1]];
-                (*output)[i].set_integer(value);
+                (*output)[i].SetInteger(value);
             }
         }
         s_mutex.unlock();

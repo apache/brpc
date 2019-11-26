@@ -442,6 +442,10 @@ bool RedisService::AddCommandHandler(const std::string& name, RedisCommandHandle
     for (auto c : name) {
         lcname.push_back(std::tolower(c));
     }
+    if (_command_map.count(lcname)) {
+        LOG(ERROR) << "redis command name=" << name << " exist";
+        return false;
+    }
     _command_map[lcname].reset(handler);
     return true;
 }

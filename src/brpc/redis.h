@@ -212,15 +212,34 @@ private:
 std::ostream& operator<<(std::ostream& os, const RedisRequest&);
 std::ostream& operator<<(std::ostream& os, const RedisResponse&);
 
+class RedisCommandHandler;
+
+// Implement this class and assign an instance to ServerOption.redis_service
+// to enable redis support. To support a particular command, you should implement
+// the corresponding handler and call AddCommandHandler to install it.
+class RedisService {
+public:
+    typedef std::unordered_map<std::string, std::shared_ptr<RedisCommandHandler>> CommandMap;
+    virtual ~RedisService() {}
+
+    bool AddCommandHandler(const std::string& name, RedisCommandHandler* handler);
+    void CloneCommandMap(CommandMap* map);
+private:
+    CommandMap _command_map;
+};
+
 // The handler for a redis command. Run() and New() should be implemented
-// by user. For Run(), `args` is the redis command argument. For example,
+// by user.
+//
+// For Run(), `args` is the redis command argument. For example,
 // "set foo bar" corresponds to args[0] == "set", args[1] == "foo" and
 // args[2] == "bar". `output` is the content that sent to client side,
 // which should be set by user.  Read brpc/src/redis_message.h for more usage.
-// `arena` is the memory arena that `output` would use.
+// User has to call `done->Run()` when everything is set up into `output`.
+//
 // For New(), whenever a tcp connection is established, a bunch of new handlers
-// would be created using New() of corresponding handler and brpc makes sure that
-// all requests of the same command name from one connection would be redirected
+// would be created using New() of the corresponding handler and brpc makes sure
+// that all requests of the same command name from one connection would be redirected
 // to the same New()-ed command handler. All requests in one connection are
 // executed sequentially, just like what redis-server does.
 class RedisCommandHandler {
@@ -236,20 +255,6 @@ public:
                                             google::protobuf::Closure* done) = 0;
 
     virtual RedisCommandHandler* New() = 0;
-};
-
-// Implement this class and assign an instance to ServerOption.redis_service
-// to enable redis support. To support a particular command, you should implement
-// the corresponding handler and call AddCommandHandler to install it.
-class RedisService {
-public:
-    typedef std::unordered_map<std::string, std::shared_ptr<RedisCommandHandler>> CommandMap;
-    virtual ~RedisService() {}
-
-    bool AddCommandHandler(const std::string& name, RedisCommandHandler* handler);
-    void CloneCommandMap(CommandMap* map);
-private:
-    CommandMap _command_map;
 };
 
 } // namespace brpc
