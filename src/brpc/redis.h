@@ -22,7 +22,7 @@
 
 #include <google/protobuf/message.h>
 #include <unordered_map>
-#include <vector>
+#include <memory>
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
 #include "butil/arena.h"

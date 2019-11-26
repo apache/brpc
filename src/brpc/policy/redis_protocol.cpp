@@ -126,6 +126,12 @@ public:
         ClearQueue(ready_to_delete);
     }
 
+    SocketId socket_id;
+    RedisService::CommandMap command_map;
+    RedisCommandHandler* handler_continue;
+    std::queue<ConsumeTaskDone*> dones;
+
+private:
     void ClearQueue(std::queue<ConsumeTaskDone*>& queue) {
         while (!queue.empty()) {
             ConsumeTaskDone* head = queue.front();
@@ -134,12 +140,6 @@ public:
         }
     }
 
-    SocketId socket_id;
-    RedisService::CommandMap command_map;
-    RedisCommandHandler* handler_continue;
-    std::queue<ConsumeTaskDone*> dones;
-
-private:
     bool _writing = false;
     butil::Mutex _mutex;
 };
