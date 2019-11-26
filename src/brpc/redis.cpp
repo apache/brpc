@@ -325,7 +325,7 @@ void RedisResponse::MergeFrom(const RedisResponse& from) {
     RedisMessage* new_others =
         (RedisMessage*)_arena.allocate(sizeof(RedisMessage) * (new_nreply - 1));
     for (int i = 0; i < new_nreply - 1; ++i) {
-        new (new_others + i) RedisMessage;
+        new (new_others + i) RedisMessage(NULL);
     }
     int new_other_index = 0;
     for (int i = 1; i < _nreply; ++i) {
@@ -436,7 +436,7 @@ std::ostream& operator<<(std::ostream& os, const RedisResponse& response) {
     return os;
 }
 
-bool RedisService::AddHandler(const std::string& name, RedisCommandHandler* handler) {
+bool RedisService::AddCommandHandler(const std::string& name, RedisCommandHandler* handler) {
     std::string lcname;
     lcname.reserve(name.size());
     for (auto c : name) {

@@ -245,7 +245,7 @@ ParseError RedisMessage::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* ar
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             for (int64_t i = 0; i < count; ++i) {
-                new (&subs[i]) RedisMessage;
+                new (&subs[i]) RedisMessage(NULL);
             }
             buf.pop_front(crlf_pos + 2/*CRLF*/);
             _type = REDIS_MESSAGE_ARRAY;

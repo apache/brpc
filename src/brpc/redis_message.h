@@ -44,8 +44,9 @@ const char* RedisMessageTypeToString(RedisMessageType);
 // A reply from redis-server.
 class RedisMessage {
 public:
-    // A default constructed reply is a nil.
+    // A default reply is a nil.
     RedisMessage();
+    RedisMessage(butil::Arena* arena);
 
     // Type of the reply.
     RedisMessageType type() const { return _type; }
@@ -57,11 +58,11 @@ public:
     bool is_array() const;   // True if the reply is an array.
 
     bool set_nil_string();  // "$-1\r\n"
-    bool set_array(int size, butil::Arena* arena);  // size == -1 means nil array("*-1\r\n")
-    bool set_status(const std::string& str, butil::Arena* arena);
-    bool set_error(const std::string& str, butil::Arena* arena);
+    bool set_array(int size);  // size == -1 means nil array("*-1\r\n")
+    bool set_status(const std::string& str);
+    bool set_error(const std::string& str);
     bool set_integer(int64_t value);
-    bool set_bulk_string(const std::string& str, butil::Arena* arena);
+    bool set_bulk_string(const std::string& str);
 
     // Convert the reply into a signed 64-bit integer(according to
     // http://redis.io/topics/protocol). If the reply is not an integer,
@@ -129,7 +130,7 @@ private:
     // by calling CopyFrom[Different|Same]Arena.
     DISALLOW_COPY_AND_ASSIGN(RedisMessage);
 
-    bool set_basic_string(const std::string& str, butil::Arena* arena, RedisMessageType type);
+    bool set_basic_string(const std::string& str, RedisMessageType type);
     
     RedisMessageType _type;
     uint32_t _length;  // length of short_str/long_str, count of replies
@@ -143,6 +144,7 @@ private:
         } array;
         uint64_t padding[2]; // For swapping, must cover all bytes.
     } _data;
+    butil::Arena* _arena;
 };
 
 // =========== inline impl. ==============
@@ -152,9 +154,15 @@ inline std::ostream& operator<<(std::ostream& os, const RedisMessage& r) {
     return os;
 }
 
+inline RedisMessage::RedisMessage(butil::Arena* arena)
+    : RedisMessage() {
+    _arena = arena;
+}
+
 inline RedisMessage::RedisMessage()
     : _type(REDIS_MESSAGE_NIL)
-    , _length(0) {
+    , _length(0)
+    , _arena(NULL) {
     _data.array.last_index = -1;
     _data.array.replies = NULL;
 }
@@ -180,12 +188,16 @@ inline int64_t RedisMessage::integer() const {
 }
 
 inline bool RedisMessage::set_nil_string() {
+    if (!_arena) return false;
     _type = REDIS_MESSAGE_STRING;
     _length = npos;
     return true;
 }
 
-inline bool RedisMessage::set_array(int size, butil::Arena* arena) {
+inline bool RedisMessage::set_array(int size) {
+    if (!_arena) {
+        return false;
+    }
     _type = REDIS_MESSAGE_ARRAY;
     if (size < 0) {
         _length = npos;
@@ -194,26 +206,29 @@ inline bool RedisMessage::set_array(int size, butil::Arena* arena) {
         _length = 0;
         return true;
     }
-    RedisMessage* subs = (RedisMessage*)arena->allocate(sizeof(RedisMessage) * size);
+    RedisMessage* subs = (RedisMessage*)_arena->allocate(sizeof(RedisMessage) * size);
     if (!subs) {
         LOG(FATAL) << "Fail to allocate RedisMessage[" << size << "]";
         return false;
     }
     for (int i = 0; i < size; ++i) {
-        new (&subs[i]) RedisMessage;
+        new (&subs[i]) RedisMessage(_arena);
     }
     _length = size;
     _data.array.replies = subs;
     return true;
 }
 
-inline bool RedisMessage::set_basic_string(const std::string& str, butil::Arena* arena, RedisMessageType type) {
+inline bool RedisMessage::set_basic_string(const std::string& str, RedisMessageType type) {
+    if (!_arena) {
+        return false;
+    }
     size_t size = str.size();
     if (size < sizeof(_data.short_str)) {
         memcpy(_data.short_str, str.c_str(), size);
         _data.short_str[size] = '\0';
     } else {
-        char* d = (char*)arena->allocate((_length/8 + 1) * 8);
+        char* d = (char*)_arena->allocate((_length/8 + 1) * 8);
         if (!d) {
             LOG(FATAL) << "Fail to allocate string[" << size << "]";
             return false;
@@ -227,12 +242,12 @@ inline bool RedisMessage::set_basic_string(const std::string& str, butil::Arena*
     return true;
 }
 
-inline bool RedisMessage::set_status(const std::string& str, butil::Arena* arena) {
-    return set_basic_string(str, arena, REDIS_MESSAGE_STATUS);
+inline bool RedisMessage::set_status(const std::string& str) {
+    return set_basic_string(str, REDIS_MESSAGE_STATUS);
 }
 
-inline bool RedisMessage::set_error(const std::string& str, butil::Arena* arena) {
-    return set_basic_string(str, arena, REDIS_MESSAGE_ERROR);
+inline bool RedisMessage::set_error(const std::string& str) {
+    return set_basic_string(str, REDIS_MESSAGE_ERROR);
 }
 
 inline bool RedisMessage::set_integer(int64_t value) {
@@ -242,8 +257,8 @@ inline bool RedisMessage::set_integer(int64_t value) {
     return true;
 }
 
-inline bool RedisMessage::set_bulk_string(const std::string& str, butil::Arena* arena) {
-    return set_basic_string(str, arena, REDIS_MESSAGE_STRING);
+inline bool RedisMessage::set_bulk_string(const std::string& str) {
+    return set_basic_string(str, REDIS_MESSAGE_STRING);
 }
 
 inline const char* RedisMessage::c_str() const {
