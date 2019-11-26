@@ -375,8 +375,15 @@ void RedisMessage::CopyFromDifferentArena(const RedisMessage& other,
             new (&subs[i]) RedisMessage;
         }
         _data.array.last_index = other._data.array.last_index;
-        for (size_t i = 0; i < _length; ++i) {
-            subs[i].CopyFromDifferentArena(other._data.array.replies[i], arena);
+        if (_data.array.last_index > 0) {
+            // incomplete state
+            for (int i = 0; i < _data.array.last_index; ++i) {
+                subs[i].CopyFromDifferentArena(other._data.array.replies[i], arena);
+            }
+        } else {
+            for (size_t i = 0; i < _length; ++i) {
+                subs[i].CopyFromDifferentArena(other._data.array.replies[i], arena);
+            }
         }
         _data.array.replies = subs;
     }

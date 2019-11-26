@@ -80,6 +80,9 @@ public:
 class RedisConnContext : public brpc::SharedObject {
 public:
     RedisConnContext() : handler_continue(NULL) {}
+    ~RedisConnContext() {
+        ClearQueue(dones);
+    }
 
     void Push(ConsumeTaskDone* done) {
         std::unique_lock<butil::Mutex> m(_mutex);
@@ -120,9 +123,13 @@ public:
                 ready_to_delete.push(head);
             }
         }
-        while (!ready_to_delete.empty()) {
-            ConsumeTaskDone* head = ready_to_delete.front();
-            ready_to_delete.pop();
+        ClearQueue(ready_to_delete);
+    }
+
+    void ClearQueue(std::queue<ConsumeTaskDone*>& queue) {
+        while (!queue.empty()) {
+            ConsumeTaskDone* head = queue.front();
+            queue.pop();
             delete head;
         }
     }
