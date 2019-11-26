@@ -836,7 +836,7 @@ TEST_F(RedisTest, server_concurrency) {
     rsimpl->AddCommandHandler("incr", ih);
     server_options.redis_service = rsimpl;
     brpc::PortRange pr(8081, 8900);
-    ASSERT_EQ(0, server.Start("127.0.0.1", pr, &server_options));
+    ASSERT_EQ(0, server.Start("0.0.0.0", pr, &server_options));
 
     brpc::ChannelOptions options;
     options.protocol = brpc::PROTOCOL_REDIS;
@@ -879,15 +879,15 @@ public:
             return brpc::RedisCommandHandler::CONTINUE;
         }
         output->set_array(commands.size());
+        s_mutex.lock();
         for (size_t i = 0; i < commands.size(); ++i) {
             if (commands[i][0] == "incr") {
                 int64_t value;
-                s_mutex.lock();
                 value = ++int_map[commands[i][1]];
-                s_mutex.unlock();
                 (*output)[i].set_integer(value);
             }
         }
+        s_mutex.unlock();
         return brpc::RedisCommandHandler::OK;
     }
     RedisCommandHandler* New() { return new MultiCommandHandler; }

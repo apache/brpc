@@ -401,7 +401,7 @@ ParseError RedisResponse::ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             for (int i = 0; i < reply_count - 1; ++i) {
-                new (&_other_replies[i]) RedisMessage;
+                new (&_other_replies[i]) RedisMessage(NULL);
             }
         }
         for (int i = reply_size(); i < reply_count; ++i) {
