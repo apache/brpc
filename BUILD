@@ -138,6 +138,7 @@ BUTIL_SRCS = [
     "src/butil/third_party/dmg_fp/dtoa_wrapper.cc",
     "src/butil/third_party/dynamic_annotations/dynamic_annotations.c",
     "src/butil/third_party/icu/icu_utf.cc",
+    "src/butil/third_party/lz4/lz4.cc",
     "src/butil/third_party/superfasthash/superfasthash.c",
     "src/butil/third_party/modp_b64/modp_b64.cc",
     "src/butil/third_party/symbolize/demangle.cc",
