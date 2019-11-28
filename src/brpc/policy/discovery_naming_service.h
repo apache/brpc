@@ -61,15 +61,7 @@ private:
 private:
     bthread_t _th;
     butil::atomic<bool> _registered;
-    std::string _appid;
-    std::string _hostname;
-    std::string _addrs;
-    std::string _env;
-    std::string _region;
-    std::string _zone;
-    int _status;
-    std::string _version;
-    std::string _metadata;
+    DiscoveryRegisterParam _params;
 };
 
 class DiscoveryNamingService : public PeriodicNamingService {

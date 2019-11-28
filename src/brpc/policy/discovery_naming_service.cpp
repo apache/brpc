@@ -166,11 +166,11 @@ int DiscoveryClient::DoRenew() const {
     cntl.http_request().uri() = "/discovery/renew";
     cntl.http_request().set_content_type("application/x-www-form-urlencoded");
     butil::IOBufBuilder os;
-    os << "appid=" << _appid
-        << "&hostname=" << _hostname
-        << "&env=" << _env
-        << "&region=" << _region
-        << "&zone=" << _zone;
+    os << "appid=" << _params.appid
+        << "&hostname=" << _params.hostname
+        << "&env=" << _params.env
+        << "&region=" << _params.region
+        << "&zone=" << _params.zone;
     os.move_to(cntl.request_attachment());
     GetDiscoveryChannel()->CallMethod(NULL, &cntl, NULL, NULL, NULL);
     if (cntl.Failed()) {
@@ -179,7 +179,7 @@ int DiscoveryClient::DoRenew() const {
     }
     std::string error_text;
     if (ParseCommonResult(cntl.response_attachment(), &error_text) != 0) {
-        LOG(ERROR) << "Fail to renew " << _hostname << " to " << _appid
+        LOG(ERROR) << "Fail to renew " << _params.hostname << " to " << _params.appid
             << ": " << error_text;
         return -1;
     }
@@ -220,22 +220,14 @@ void* DiscoveryClient::PeriodicRenew(void* arg) {
 }
 
 int DiscoveryClient::Register(const DiscoveryRegisterParam& req) {
-    if (!req.IsValid()) {
-        return -1;
-    }
     if (_registered.load(butil::memory_order_relaxed) ||
             _registered.exchange(true, butil::memory_order_release)) {
         return 0;
     }
-    _appid = req.appid;
-    _hostname = req.hostname;
-    _addrs = req.addrs;
-    _env = req.env;
-    _region = req.region;
-    _zone = req.zone;
-    _status = req.status;
-    _version = req.version;
-    _metadata = req.metadata;
+    if (!req.IsValid()) {
+        return -1;
+    }
+    _params = req;
 
     if (DoRegister() != 0) {
         return -1;
@@ -253,24 +245,24 @@ int DiscoveryClient::DoRegister() const {
     cntl.http_request().uri() = "/discovery/register";
     cntl.http_request().set_content_type("application/x-www-form-urlencoded");
     butil::IOBufBuilder os;
-    os << "appid=" << _appid
-        << "&hostname=" << _hostname
-        << "&addrs=" << _addrs
-        << "&env=" << _env
-        << "&zone=" << _zone
-        << "&region=" << _region
-        << "&status=" << _status
-        << "&version=" << _version
-        << "&metadata=" << _metadata;
+    os << "appid=" << _params.appid
+        << "&hostname=" << _params.hostname
+        << "&addrs=" << _params.addrs
+        << "&env=" << _params.env
+        << "&zone=" << _params.zone
+        << "&region=" << _params.region
+        << "&status=" << _params.status
+        << "&version=" << _params.version
+        << "&metadata=" << _params.metadata;
     os.move_to(cntl.request_attachment());
     GetDiscoveryChannel()->CallMethod(NULL, &cntl, NULL, NULL, NULL);
     if (cntl.Failed()) {
-        LOG(ERROR) << "Fail to register " << _appid << ": " << cntl.ErrorText();
+        LOG(ERROR) << "Fail to register " << _params.appid << ": " << cntl.ErrorText();
         return -1;
     }
     std::string error_text;
     if (ParseCommonResult(cntl.response_attachment(), &error_text) != 0) {
-        LOG(ERROR) << "Fail to register " << _hostname << " to " << _appid
+        LOG(ERROR) << "Fail to register " << _params.hostname << " to " << _params.appid
                 << ": " << error_text;
         return -1;
     }
@@ -283,11 +275,11 @@ int DiscoveryClient::DoCancel() const {
     cntl.http_request().uri() = "/discovery/cancel";
     cntl.http_request().set_content_type("application/x-www-form-urlencoded");
     butil::IOBufBuilder os;
-    os << "appid=" << _appid
-        << "&hostname=" << _hostname
-        << "&env=" << _env
-        << "&region=" << _region
-        << "&zone=" << _zone;
+    os << "appid=" << _params.appid
+        << "&hostname=" << _params.hostname
+        << "&env=" << _params.env
+        << "&region=" << _params.region
+        << "&zone=" << _params.zone;
     os.move_to(cntl.request_attachment());
     GetDiscoveryChannel()->CallMethod(NULL, &cntl, NULL, NULL, NULL);
     if (cntl.Failed()) {
@@ -296,7 +288,7 @@ int DiscoveryClient::DoCancel() const {
     }
     std::string error_text;
     if (ParseCommonResult(cntl.response_attachment(), &error_text) != 0) {
-        LOG(ERROR) << "Fail to cancel " << _hostname << " in " << _appid
+        LOG(ERROR) << "Fail to cancel " << _params.hostname << " in " << _params.appid
             << ": " << error_text;
         return -1;
     }
