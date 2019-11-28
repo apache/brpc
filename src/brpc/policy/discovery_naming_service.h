@@ -41,14 +41,6 @@ struct DiscoveryRegisterParam {
     bool IsValid() const;
 };
 
-struct DiscoveryFetchsParam {
-    std::string appid;
-    std::string env;
-    std::string status;
-
-    bool IsValid() const;
-};
-
 // ONE DiscoveryClient corresponds to ONE service instance.
 // If your program has multiple service instances to register,
 // you need multiple DiscoveryClient.
@@ -59,7 +51,6 @@ public:
     ~DiscoveryClient();
 
     int Register(const DiscoveryRegisterParam& req);
-    int Fetchs(const DiscoveryFetchsParam& req, std::vector<ServerNode>* servers) const;
 
 private:
     static void* PeriodicRenew(void* arg);

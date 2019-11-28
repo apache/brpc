@@ -47,9 +47,6 @@ DECLARE_string(discovery_env);
 DECLARE_int32(discovery_renew_interval_s);
 
 // Defined in discovery_naming_service.cpp
-int ParseFetchsResult(const butil::IOBuf& buf,
-                      const char* service_name,
-                      std::vector<brpc::ServerNode>* servers);
 int ParseNodesResult(const butil::IOBuf& buf, std::string* server_addr);
 
 } // policy
@@ -533,21 +530,6 @@ static std::string s_nodes_result = R"({
     ]
 })";
 
-
-TEST(NamingServiceTest, discovery_parse_function) {
-    std::vector<brpc::ServerNode> servers;
-    brpc::policy::DiscoveryNamingService dcns;
-    butil::IOBuf buf;
-    buf.append(s_fetchs_result);
-    ASSERT_EQ(0, brpc::policy::ParseFetchsResult(buf, "admin.test", &servers));
-    ASSERT_EQ((size_t)1, servers.size());
-    ASSERT_EQ(servers[0].tag, "{\"weight\":\"10\",\"cluster\":\"\"}");
-    buf.clear();
-    buf.append(s_nodes_result);
-    std::string server;
-    ASSERT_EQ(0, brpc::policy::ParseNodesResult(buf, &server));
-    ASSERT_EQ("127.0.0.1:8635", server);
-}
 
 class DiscoveryNamingServiceImpl : public test::DiscoveryNamingService {
 public:

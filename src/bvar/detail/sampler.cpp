@@ -117,8 +117,10 @@ private:
     pthread_t _tid;
 };
 
+#ifndef UNIT_TEST
 static PassiveStatus<double>* s_cumulated_time_bvar = NULL;
 static bvar::PerSecond<bvar::PassiveStatus<double> >* s_sampling_thread_usage_bvar = NULL;
+#endif
 
 void SamplerCollector::run() {
 #ifndef UNIT_TEST

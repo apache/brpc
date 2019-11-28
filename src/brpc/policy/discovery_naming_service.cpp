@@ -32,11 +32,12 @@ namespace brpc {
 namespace policy {
 
 #ifdef BILIBILI_INTERNAL
-DEFINE_string(discovery_api_addr, "http://api.bilibili.co/discovery/nodes",
-              "The address of discovery api");
+# define DEFAULT_DISCOVERY_API_ADDR "http://api.bilibili.co/discovery/nodes"
 #else
-DEFINE_string(discovery_api_addr, "", "The address of discovery api");
+# define DEFAULT_DISCOVERY_API_ADDR ""
 #endif
+
+DEFINE_string(discovery_api_addr, DEFAULT_DISCOVERY_API_ADDR, "The address of discovery api");
 DEFINE_int32(discovery_timeout_ms, 3000, "Timeout for discovery requests");
 DEFINE_string(discovery_env, "prod", "Environment of services");
 DEFINE_string(discovery_status, "1", "Status of services. 1 for ready, 2 for not ready, 3 for all");
@@ -44,29 +45,8 @@ DEFINE_int32(discovery_renew_interval_s, 30, "The interval between two consecuti
 DEFINE_int32(discovery_reregister_threshold, 3, "The renew error threshold beyond"
         " which Register would be called again");
 
-static Channel s_discovery_channel;
-static pthread_once_t s_init_channel_once = PTHREAD_ONCE_INIT;
-
-int DiscoveryNamingService::GetServers(const char* service_name,
-                                       std::vector<ServerNode>* servers) {
-    DiscoveryFetchsParam params{
-        service_name, FLAGS_discovery_env, FLAGS_discovery_status};
-    return _client.Fetchs(params, servers);
-}
-
-void DiscoveryNamingService::Describe(std::ostream& os,
-                                      const DescribeOptions&) const {
-    os << "discovery";
-    return;
-}
-
-NamingService* DiscoveryNamingService::New() const {
-    return new DiscoveryNamingService;
-}
-
-void DiscoveryNamingService::Destroy() {
-    delete this;
-}
+static pthread_once_t s_init_discovery_channel_once = PTHREAD_ONCE_INIT;
+static Channel* s_discovery_channel = NULL;
 
 int ParseNodesResult(const butil::IOBuf& buf, std::string* server_addr) {
     BUTIL_RAPIDJSON_NAMESPACE::Document d;
@@ -105,7 +85,7 @@ int ParseNodesResult(const butil::IOBuf& buf, std::string* server_addr) {
     return 0;
 }
 
-static void InitChannel() {
+static void InitDiscoveryChannel() {
     Channel api_channel;
     ChannelOptions channel_options;
     channel_options.protocol = PROTOCOL_HTTP;
@@ -128,25 +108,232 @@ static void InitChannel() {
         LOG(FATAL) << "Fail to parse nodes result from discovery api server";
         return;
     }
-    if (s_discovery_channel.Init(discovery_addr.c_str(), "", &channel_options) != 0) {
+    s_discovery_channel = new Channel;
+    if (s_discovery_channel->Init(discovery_addr.c_str(), "", &channel_options) != 0) {
         LOG(FATAL) << "Fail to init channel to " << discovery_addr;
         return;
     }
 }
 
-int ParseFetchsResult(const butil::IOBuf& buf,
-                      const char* service_name,
-                      std::vector<ServerNode>* servers) {
+Channel* GetDiscoveryChannel() {
+    pthread_once(&s_init_discovery_channel_once, InitDiscoveryChannel);
+    return s_discovery_channel;
+}
+
+
+bool DiscoveryRegisterParam::IsValid() const {
+    return !appid.empty() && !hostname.empty() && !addrs.empty() &&
+            !env.empty() && !zone.empty() && !version.empty();
+}
+
+DiscoveryClient::DiscoveryClient()
+    : _th(INVALID_BTHREAD)
+    , _registered(false) {}
+
+DiscoveryClient::~DiscoveryClient() {
+    if (_registered.load(butil::memory_order_acquire)) {
+        bthread_stop(_th);
+        bthread_join(_th, NULL);
+        DoCancel();
+    }
+}
+
+int ParseCommonResult(const butil::IOBuf& buf, std::string* error_text) {
+    const std::string s = buf.to_string();
     BUTIL_RAPIDJSON_NAMESPACE::Document d;
-    const std::string response = buf.to_string();
-    d.Parse(response.c_str());
+    d.Parse(s.c_str());
     if (!d.IsObject()) {
         LOG(ERROR) << "Fail to parse " << buf << " as json object";
         return -1;
     }
+    auto itr_code = d.FindMember("code");
+    if (itr_code == d.MemberEnd() || !itr_code->value.IsInt()) {
+        LOG(ERROR) << "Invalid `code' field in " << buf;
+        return -1;
+    }
+    int code = itr_code->value.GetInt();
+    auto itr_message = d.FindMember("message");
+    if (itr_message != d.MemberEnd() && itr_message->value.IsString() && error_text) {
+        error_text->assign(itr_message->value.GetString(),
+                           itr_message->value.GetStringLength());
+    }
+    return code;
+}
+
+int DiscoveryClient::DoRenew() const {
+    Controller cntl;
+    cntl.http_request().set_method(HTTP_METHOD_POST);
+    cntl.http_request().uri() = "/discovery/renew";
+    cntl.http_request().set_content_type("application/x-www-form-urlencoded");
+    butil::IOBufBuilder os;
+    os << "appid=" << _appid
+        << "&hostname=" << _hostname
+        << "&env=" << _env
+        << "&region=" << _region
+        << "&zone=" << _zone;
+    os.move_to(cntl.request_attachment());
+    GetDiscoveryChannel()->CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    if (cntl.Failed()) {
+        LOG(ERROR) << "Fail to post /discovery/renew: " << cntl.ErrorText();
+        return -1;
+    }
+    std::string error_text;
+    if (ParseCommonResult(cntl.response_attachment(), &error_text) != 0) {
+        LOG(ERROR) << "Fail to renew " << _hostname << " to " << _appid
+            << ": " << error_text;
+        return -1;
+    }
+    return 0;
+}
+
+void* DiscoveryClient::PeriodicRenew(void* arg) {
+    DiscoveryClient* d = static_cast<DiscoveryClient*>(arg);
+    int consecutive_renew_error = 0;
+    int64_t init_sleep_s = FLAGS_discovery_renew_interval_s / 2 +
+        butil::fast_rand_less_than(FLAGS_discovery_renew_interval_s / 2);
+    if (bthread_usleep(init_sleep_s * 1000000) != 0) {
+        if (errno == ESTOP) {
+            return NULL;
+        }
+    }
+
+    while (!bthread_stopped(bthread_self())) {
+        if (consecutive_renew_error == FLAGS_discovery_reregister_threshold) {
+            LOG(WARNING) << "Re-register since discovery renew error threshold reached";
+            // Do register until succeed or Cancel is called
+            while (!bthread_stopped(bthread_self())) {
+                if (d->DoRegister() == 0) {
+                    break;
+                }
+                bthread_usleep(FLAGS_discovery_renew_interval_s * 1000000);
+            }
+            consecutive_renew_error = 0;
+        }
+        if (d->DoRenew() != 0) {
+            consecutive_renew_error++;
+            continue;
+        }
+        consecutive_renew_error = 0;
+        bthread_usleep(FLAGS_discovery_renew_interval_s * 1000000);
+    }
+    return NULL;
+}
+
+int DiscoveryClient::Register(const DiscoveryRegisterParam& req) {
+    if (!req.IsValid()) {
+        return -1;
+    }
+    if (_registered.load(butil::memory_order_relaxed) ||
+            _registered.exchange(true, butil::memory_order_release)) {
+        return 0;
+    }
+    _appid = req.appid;
+    _hostname = req.hostname;
+    _addrs = req.addrs;
+    _env = req.env;
+    _region = req.region;
+    _zone = req.zone;
+    _status = req.status;
+    _version = req.version;
+    _metadata = req.metadata;
+
+    if (DoRegister() != 0) {
+        return -1;
+    }
+    if (bthread_start_background(&_th, NULL, PeriodicRenew, this) != 0) {
+        LOG(ERROR) << "Fail to start background PeriodicRenew";
+        return -1;
+    }
+    return 0;
+}
+
+int DiscoveryClient::DoRegister() const {
+    Controller cntl;
+    cntl.http_request().set_method(HTTP_METHOD_POST);
+    cntl.http_request().uri() = "/discovery/register";
+    cntl.http_request().set_content_type("application/x-www-form-urlencoded");
+    butil::IOBufBuilder os;
+    os << "appid=" << _appid
+        << "&hostname=" << _hostname
+        << "&addrs=" << _addrs
+        << "&env=" << _env
+        << "&zone=" << _zone
+        << "&region=" << _region
+        << "&status=" << _status
+        << "&version=" << _version
+        << "&metadata=" << _metadata;
+    os.move_to(cntl.request_attachment());
+    GetDiscoveryChannel()->CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    if (cntl.Failed()) {
+        LOG(ERROR) << "Fail to register " << _appid << ": " << cntl.ErrorText();
+        return -1;
+    }
+    std::string error_text;
+    if (ParseCommonResult(cntl.response_attachment(), &error_text) != 0) {
+        LOG(ERROR) << "Fail to register " << _hostname << " to " << _appid
+                << ": " << error_text;
+        return -1;
+    }
+    return 0;
+}
+
+int DiscoveryClient::DoCancel() const {
+    Controller cntl;
+    cntl.http_request().set_method(HTTP_METHOD_POST);
+    cntl.http_request().uri() = "/discovery/cancel";
+    cntl.http_request().set_content_type("application/x-www-form-urlencoded");
+    butil::IOBufBuilder os;
+    os << "appid=" << _appid
+        << "&hostname=" << _hostname
+        << "&env=" << _env
+        << "&region=" << _region
+        << "&zone=" << _zone;
+    os.move_to(cntl.request_attachment());
+    GetDiscoveryChannel()->CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    if (cntl.Failed()) {
+        LOG(ERROR) << "Fail to post /discovery/cancel: " << cntl.ErrorText();
+        return -1;
+    }
+    std::string error_text;
+    if (ParseCommonResult(cntl.response_attachment(), &error_text) != 0) {
+        LOG(ERROR) << "Fail to cancel " << _hostname << " in " << _appid
+            << ": " << error_text;
+        return -1;
+    }
+    return 0;
+}
+
+// ========== DiscoveryNamingService =============
+
+int DiscoveryNamingService::GetServers(const char* service_name,
+                                       std::vector<ServerNode>* servers) {
+    if (service_name == NULL || *service_name == '\0' ||
+        FLAGS_discovery_env.empty() ||
+        FLAGS_discovery_status.empty()) {
+        LOG_ONCE(ERROR) << "Invalid parameters";
+        return -1;
+    }
+    servers->clear();
+    Controller cntl;
+    cntl.http_request().uri() = butil::string_printf(
+            "/discovery/fetchs?appid=%s&env=%s&status=%s", service_name,
+            FLAGS_discovery_env.c_str(), FLAGS_discovery_status.c_str());
+    GetDiscoveryChannel()->CallMethod(NULL, &cntl, NULL, NULL, NULL);
+    if (cntl.Failed()) {
+        LOG(ERROR) << "Fail to get /discovery/fetchs: " << cntl.ErrorText();
+        return -1;
+    }
+
+    const std::string response = cntl.response_attachment().to_string();
+    BUTIL_RAPIDJSON_NAMESPACE::Document d;
+    d.Parse(response.c_str());
+    if (!d.IsObject()) {
+        LOG(ERROR) << "Fail to parse " << response << " as json object";
+        return -1;
+    }
     auto itr_data = d.FindMember("data");
     if (itr_data == d.MemberEnd()) {
-        LOG(ERROR) << "No data field in discovery fetchs response";
+        LOG(ERROR) << "No data field in discovery/fetchs response";
         return -1;
     }
     const BUTIL_RAPIDJSON_NAMESPACE::Value& data = itr_data->value;
@@ -215,212 +402,20 @@ int ParseFetchsResult(const butil::IOBuf& buf,
     return 0;
 }
 
-bool DiscoveryRegisterParam::IsValid() const {
-    return !appid.empty() && !hostname.empty() && !addrs.empty() &&
-            !env.empty() && !zone.empty() && !version.empty();
+void DiscoveryNamingService::Describe(std::ostream& os,
+                                      const DescribeOptions&) const {
+    os << "discovery";
+    return;
 }
 
-bool DiscoveryFetchsParam::IsValid() const {
-    return !appid.empty() && !env.empty() && !status.empty();
+NamingService* DiscoveryNamingService::New() const {
+    return new DiscoveryNamingService;
 }
 
-DiscoveryClient::DiscoveryClient()
-    : _th(INVALID_BTHREAD)
-    , _registered(false) {}
-
-DiscoveryClient::~DiscoveryClient() {
-    if (_registered.load(butil::memory_order_acquire)) {
-        bthread_stop(_th);
-        bthread_join(_th, NULL);
-        DoCancel();
-    }
+void DiscoveryNamingService::Destroy() {
+    delete this;
 }
 
-int ParseCommonResult(const butil::IOBuf& buf, std::string* error_text) {
-    const std::string s = buf.to_string();
-    BUTIL_RAPIDJSON_NAMESPACE::Document d;
-    d.Parse(s.c_str());
-    if (!d.IsObject()) {
-        LOG(ERROR) << "Fail to parse " << buf << " as json object";
-        return -1;
-    }
-    auto itr_code = d.FindMember("code");
-    if (itr_code == d.MemberEnd() || !itr_code->value.IsInt()) {
-        LOG(ERROR) << "Invalid `code' field in " << buf;
-        return -1;
-    }
-    int code = itr_code->value.GetInt();
-    auto itr_message = d.FindMember("message");
-    if (itr_message != d.MemberEnd() && itr_message->value.IsString() && error_text) {
-        error_text->assign(itr_message->value.GetString(),
-                           itr_message->value.GetStringLength());
-    }
-    return code;
-}
-
-int DiscoveryClient::DoRenew() const {
-    Controller cntl;
-    cntl.http_request().set_method(HTTP_METHOD_POST);
-    cntl.http_request().uri() = "/discovery/renew";
-    cntl.http_request().set_content_type("application/x-www-form-urlencoded");
-    butil::IOBufBuilder os;
-    os << "appid=" << _appid
-        << "&hostname=" << _hostname
-        << "&env=" << _env
-        << "&region=" << _region
-        << "&zone=" << _zone;
-    os.move_to(cntl.request_attachment());
-    s_discovery_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
-    if (cntl.Failed()) {
-        LOG(ERROR) << "Fail to post /discovery/renew: " << cntl.ErrorText();
-        return -1;
-    }
-    std::string error_text;
-    if (ParseCommonResult(cntl.response_attachment(), &error_text) != 0) {
-        LOG(ERROR) << "Fail to renew " << _hostname << " to " << _appid
-            << ": " << error_text;
-        return -1;
-    }
-    return 0;
-}
-
-void* DiscoveryClient::PeriodicRenew(void* arg) {
-    DiscoveryClient* d = static_cast<DiscoveryClient*>(arg);
-    int consecutive_renew_error = 0;
-    int64_t init_sleep_s = FLAGS_discovery_renew_interval_s / 2 +
-        butil::fast_rand_less_than(FLAGS_discovery_renew_interval_s / 2);
-    if (bthread_usleep(init_sleep_s * 1000000) != 0) {
-        if (errno == ESTOP) {
-            return NULL;
-        }
-    }
-
-    while (!bthread_stopped(bthread_self())) {
-        if (consecutive_renew_error == FLAGS_discovery_reregister_threshold) {
-            LOG(WARNING) << "Re-register since discovery renew error threshold reached";
-            // Do register until succeed or Cancel is called
-            while (!bthread_stopped(bthread_self())) {
-                if (d->DoRegister() == 0) {
-                    break;
-                }
-                bthread_usleep(FLAGS_discovery_renew_interval_s * 1000000);
-            }
-            consecutive_renew_error = 0;
-        }
-        if (d->DoRenew() != 0) {
-            consecutive_renew_error++;
-            continue;
-        }
-        consecutive_renew_error = 0;
-        bthread_usleep(FLAGS_discovery_renew_interval_s * 1000000);
-    }
-    return NULL;
-}
-
-int DiscoveryClient::Register(const DiscoveryRegisterParam& req) {
-    if (!req.IsValid()) {
-        return -1;
-    }
-    if (_registered.load(butil::memory_order_relaxed) ||
-            _registered.exchange(true, butil::memory_order_release)) {
-        return 0;
-    }
-    pthread_once(&s_init_channel_once, InitChannel);
-    _appid = req.appid;
-    _hostname = req.hostname;
-    _addrs = req.addrs;
-    _env = req.env;
-    _region = req.region;
-    _zone = req.zone;
-    _status = req.status;
-    _version = req.version;
-    _metadata = req.metadata;
-
-    if (DoRegister() != 0) {
-        return -1;
-    }
-    if (bthread_start_background(&_th, NULL, PeriodicRenew, this) != 0) {
-        LOG(ERROR) << "Fail to start background PeriodicRenew";
-        return -1;
-    }
-    return 0;
-}
-
-int DiscoveryClient::DoRegister() const {
-    Controller cntl;
-    cntl.http_request().set_method(HTTP_METHOD_POST);
-    cntl.http_request().uri() = "/discovery/register";
-    cntl.http_request().set_content_type("application/x-www-form-urlencoded");
-    butil::IOBufBuilder os;
-    os << "appid=" << _appid
-        << "&hostname=" << _hostname
-        << "&addrs=" << _addrs
-        << "&env=" << _env
-        << "&zone=" << _zone
-        << "&region=" << _region
-        << "&status=" << _status
-        << "&version=" << _version
-        << "&metadata=" << _metadata;
-    os.move_to(cntl.request_attachment());
-    s_discovery_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
-    if (cntl.Failed()) {
-        LOG(ERROR) << "Fail to register " << _appid << ": " << cntl.ErrorText();
-        return -1;
-    }
-    std::string error_text;
-    if (ParseCommonResult(cntl.response_attachment(), &error_text) != 0) {
-        LOG(ERROR) << "Fail to register " << _hostname << " to " << _appid
-                << ": " << error_text;
-        return -1;
-    }
-    return 0;
-}
-
-int DiscoveryClient::DoCancel() const {
-    pthread_once(&s_init_channel_once, InitChannel);
-    Controller cntl;
-    cntl.http_request().set_method(HTTP_METHOD_POST);
-    cntl.http_request().uri() = "/discovery/cancel";
-    cntl.http_request().set_content_type("application/x-www-form-urlencoded");
-    butil::IOBufBuilder os;
-    os << "appid=" << _appid
-        << "&hostname=" << _hostname
-        << "&env=" << _env
-        << "&region=" << _region
-        << "&zone=" << _zone;
-    os.move_to(cntl.request_attachment());
-    s_discovery_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
-    if (cntl.Failed()) {
-        LOG(ERROR) << "Fail to post /discovery/cancel: " << cntl.ErrorText();
-        return -1;
-    }
-    std::string error_text;
-    if (ParseCommonResult(cntl.response_attachment(), &error_text) != 0) {
-        LOG(ERROR) << "Fail to cancel " << _hostname << " in " << _appid
-            << ": " << error_text;
-        return -1;
-    }
-    return 0;
-}
-
-int DiscoveryClient::Fetchs(const DiscoveryFetchsParam& req,
-                            std::vector<ServerNode>* servers) const {
-    if (!req.IsValid()) {
-        return false;
-    }
-    pthread_once(&s_init_channel_once, InitChannel);
-    servers->clear();
-    Controller cntl;
-    cntl.http_request().uri() = butil::string_printf(
-            "/discovery/fetchs?appid=%s&env=%s&status=%s", req.appid.c_str(),
-            req.env.c_str(), req.status.c_str());
-    s_discovery_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
-    if (cntl.Failed()) {
-        LOG(ERROR) << "Fail to get /discovery/fetchs: " << cntl.ErrorText();
-        return -1;
-    }
-    return ParseFetchsResult(cntl.response_attachment(), req.appid.c_str(), servers);
-}
 
 } // namespace policy
 } // namespace brpc
