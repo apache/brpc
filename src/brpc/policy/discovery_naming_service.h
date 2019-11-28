@@ -44,24 +44,28 @@ struct DiscoveryRegisterParam {
 // ONE DiscoveryClient corresponds to ONE service instance.
 // If your program has multiple service instances to register,
 // you need multiple DiscoveryClient.
-// Note: Unregister is automatically called in dtor.
+// Note: Cancel to the server is automatically called in dtor.
 class DiscoveryClient {
 public:
     DiscoveryClient();
     ~DiscoveryClient();
 
+    // Initialize this client.
+    // Returns 0 on success.
+    // NOTE: Calling more than once does nothing and returns 0.
     int Register(const DiscoveryRegisterParam& req);
 
 private:
     static void* PeriodicRenew(void* arg);
     int DoCancel() const;
-    int DoRegister() const;
+    int DoRegister();
     int DoRenew() const;
 
 private:
     bthread_t _th;
     butil::atomic<bool> _registered;
     DiscoveryRegisterParam _params;
+    butil::EndPoint _current_discovery_server;
 };
 
 class DiscoveryNamingService : public PeriodicNamingService {

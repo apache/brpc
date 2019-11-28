@@ -46,9 +46,6 @@ DECLARE_string(discovery_api_addr);
 DECLARE_string(discovery_env);
 DECLARE_int32(discovery_renew_interval_s);
 
-// Defined in discovery_naming_service.cpp
-int ParseNodesResult(const butil::IOBuf& buf, std::string* server_addr);
-
 } // policy
 } // brpc
 
