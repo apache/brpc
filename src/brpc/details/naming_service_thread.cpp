@@ -122,9 +122,13 @@ void GetUnexpiredServersFromFile(const std::string& file_path,
 void SaveServersToFile(const std::string& file_path,
                        const std::vector<ServerNode>& servers) {
     butil::CreateDirectoryAndGetError(butil::FilePath(file_path).DirName(), NULL, true);
-    FILE *fp = fopen(file_path.c_str(), "w");
+    // use a tmp file to achieve atmoic write to `file_path'
+    std::string file_path_tmp;
+    file_path_tmp.append(file_path);
+    file_path_tmp.append(".tmp");
+    FILE *fp = fopen(file_path_tmp.c_str(), "w");
     if (!fp) {
-        LOG(ERROR) << "Fail to open `" << file_path << "' to save naming service results";
+        LOG(ERROR) << "Fail to open `" << file_path_tmp << "' to save naming service results";
         return;
     }
     butil::make_close_on_exec(fileno(fp));
@@ -135,6 +139,10 @@ void SaveServersToFile(const std::string& file_path,
         fprintf(fp, "%s %s\n", epstr.c_str(), servers[i].tag.c_str());
     }
     fclose(fp);
+    if (::rename(file_path_tmp.c_str(), file_path.c_str()) != 0) {
+        LOG(ERROR) << "Fail to rename `" << file_path_tmp << "' to `" << file_path << "'";
+        return;
+    }
 }
 
 void NamingServiceThread::Actions::ResetServers(
@@ -143,6 +151,7 @@ void NamingServiceThread::Actions::ResetServers(
     bool backup_file_enabled =
         !FLAGS_ns_backup_dir.empty() && _owner->_ns->AllowBackup();
     bool load_enabled = !_reset_ever && servers.empty();
+    _servers.assign(servers.begin(), servers.end());
     if (backup_file_enabled) {
         file_path = butil::string_printf("%s/%s/%s", FLAGS_ns_backup_dir.c_str(),
                 _owner->_protocol.c_str(), _owner->_service_name.c_str());
@@ -150,11 +159,7 @@ void NamingServiceThread::Actions::ResetServers(
             std::vector<ServerNode> servers_from_file;
             GetUnexpiredServersFromFile(file_path, &servers_from_file);
             _servers.assign(servers_from_file.begin(), servers_from_file.end());
-        } else {
-            _servers.assign(servers.begin(), servers.end());
         }
-    } else {
-        _servers.assign(servers.begin(), servers.end());
     }
     bool has_data = !_servers.empty();
     
