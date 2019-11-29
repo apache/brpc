@@ -58,7 +58,7 @@ struct InputResponse : public InputMessageBase {
     }
 };
 
-const char** ParseArgs(const RedisReply& message) {
+static const char** ParseArgs(const RedisReply& message) {
     const char** args = (const char**)
         malloc(sizeof(const char*) * (message.size() + 1 /* NULL */));
     for (size_t i = 0; i < message.size(); ++i) {
@@ -73,12 +73,12 @@ const char** ParseArgs(const RedisReply& message) {
 }
 
 // One redis command corresponding to one ConsumeTaskDone. Whenever user
-// has completed the process of command and call done->Run()(read redis.h
-// for more details), RedisConnContext::Flush() will be called and flush
-// the response to client by the order that commands arrive.
+// has completed the process of handling command and call done->Run()
+// (read redis.h for more details), RedisConnContext::Flush() will be
+// called and flush the response to client by the order that commands arrive.
 class ConsumeTaskDone;
 
-// This class plays role as parsing_context in socket.
+// This class is as parsing_context in socket.
 class RedisConnContext : public SharedObject
                        , public Destroyable  {
 public:
@@ -90,6 +90,7 @@ public:
     void Destroy();
 
     int Init();
+    // Push `done` to a queue which is read by Flush().
     void Push(ConsumeTaskDone* done);
     void Flush();
 
@@ -113,7 +114,8 @@ class ConsumeTaskDone : public google::protobuf::Closure {
 public:
     ConsumeTaskDone()
         : _ready(false)
-        , output_message(&arena) {}
+        , output_message(&arena)
+        , ctx(NULL) {}
 
     void Run() override;
     bool IsReady() { return _ready.load(butil::memory_order_acquire); }
@@ -241,6 +243,10 @@ void RedisConnContext::Flush() {
             ready_to_delete.push(head);
         }
         if ((int)buf.size() > FLAGS_redis_batch_flush_max_size) {
+            // In extreme cases, there are always tasks that are ready in every check
+            // loop and the buf size continues to grow, then we will never have chance
+            // to write the buffer. To solve this issue, just add a limit to the maximum
+            // size of buf.
             LOG_IF(WARNING, s->Write(&buf, &wopt) != 0)
                 << "Fail to send redis reply";
             CHECK(buf.empty());
