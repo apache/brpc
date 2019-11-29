@@ -30,6 +30,7 @@
 #include "brpc/redis_message.h"
 #include "brpc/parse_result.h"
 #include "brpc/callback.h"
+#include "brpc/socket.h"
 
 namespace brpc {
 
@@ -215,45 +216,56 @@ std::ostream& operator<<(std::ostream& os, const RedisResponse&);
 class RedisCommandHandler;
 
 // Implement this class and assign an instance to ServerOption.redis_service
-// to enable redis support. To support a particular command, you should implement
-// the corresponding handler and call AddCommandHandler to install it.
+// to enable redis support. 
 class RedisService {
 public:
-    typedef std::unordered_map<std::string, std::shared_ptr<RedisCommandHandler>> CommandMap;
     virtual ~RedisService() {}
-
+    
+    // Call this function to register `handler` that can handle command `name`.
     bool AddCommandHandler(const std::string& name, RedisCommandHandler* handler);
-    void CloneCommandMap(CommandMap* map);
+
 private:
+    typedef std::unordered_map<std::string, std::shared_ptr<RedisCommandHandler>> CommandMap;
+    friend ParseResult ParseRedisMessage(butil::IOBuf*, Socket*, bool, const void*);
+    void CloneCommandMap(CommandMap* map);
     CommandMap _command_map;
 };
 
-// The handler for a redis command. Run() and New() should be implemented
-// by user.
-//
-// For Run(), `args` is the redis command argument. For example,
-// "set foo bar" corresponds to args[0] == "set", args[1] == "foo" and
-// args[2] == "bar". `output` is the content that sent to client side,
-// which should be set by user.  Read brpc/src/redis_message.h for more usage.
-// User has to call `done->Run()` when everything is set up into `output`.
-//
-// For New(), whenever a tcp connection is established, a bunch of new handlers
-// would be created using New() of the corresponding handler and brpc makes sure
-// that all requests of the same command name from one connection would be redirected
-// to the same New()-ed command handler. All requests in one connection are
-// executed sequentially, just like what redis-server does.
+// The Command handler for a redis request. User should impletement Run() and New().
 class RedisCommandHandler {
 public:
     enum Result {
         OK = 0,
         CONTINUE = 1,
     };
-    
     ~RedisCommandHandler() {}
+
+    // Once Server receives commands, it will first find the corresponding handlers and
+    // call them sequentially(one by one) according to the order that requests arrive,
+    // just like what redis-server does.
+    // `args` is an array of redis command arguments, ending with nullptr. For example,
+    // command "set foo bar" corresponds to args[0] == "set", args[1] == "foo",
+    // args[2] == "bar" and args[3] == nullptr.
+    // `output`, which should be filled by user, is the content that sent to client side.
+    // Read brpc/src/redis_message.h for more usage.
+    // Remember to call `done->Run()` when everything is set up into `output`. The return
+    // value should be RedisCommandHandler::OK for normal cases. If you want to implement
+    // transaction, return RedisCommandHandler::CONTINUE until server receives an ending
+    // marker. The first handler that return RedisCommandHandler::CONTINUE will continue
+    // receiving the following commands until it receives a ending marker and return
+    // RedisCommandHandler::OK to end transaction. For example, the return value of
+    // commands "multi; set k1 v1; set k2 v2; set k3 v3; exec" should be four
+    // RedisCommandHandler::CONTINUE and one RedisCommandHandler::OK since exec is the
+    // marker that ends the transaction. User may queue the commands and execute them
+    // all once an ending marker is received.
     virtual RedisCommandHandler::Result Run(const char* args[],
                                             RedisMessage* output,
                                             google::protobuf::Closure* done) = 0;
 
+    // Whenever a tcp connection is established, a bunch of new handlers would be created
+    // using New() of the corresponding handler and brpc makes sure that all requests from
+    // one connection with the same command name would be redirected to the same New()-ed
+    // command handler. 
     virtual RedisCommandHandler* New() = 0;
 };
 

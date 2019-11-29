@@ -880,38 +880,49 @@ TEST_F(RedisTest, server_concurrency) {
 
 class MultiCommandHandler : public brpc::RedisCommandHandler {
 public:
+    MultiCommandHandler()
+        : _started(false) {}
+
     RedisCommandHandler::Result Run(const char* args[],
                                      brpc::RedisMessage* output,
                                      google::protobuf::Closure* done) {
         brpc::ClosureGuard done_guard(done);
-        if (strcmp(args[0], "multi") == 0) {
-            output->SetStatus("OK");
+        if (strcasecmp(args[0], "multi") == 0) {
+            if (!_started) {
+                output->SetStatus("OK");
+                _started = true;
+            } else {
+                output->SetError("ERR duplicate multi");
+            }
             return brpc::RedisCommandHandler::CONTINUE;
         } 
-        if (strcmp(args[0], "exec") != 0) {
+        if (strcasecmp(args[0], "exec") != 0) {
             std::vector<std::string> sargs;
             for (const char** c = args; *c; ++c) {
                 sargs.push_back(*c);
             }
-            commands.push_back(sargs);
+            _commands.push_back(sargs);
             output->SetStatus("QUEUED");
             return brpc::RedisCommandHandler::CONTINUE;
         }
-        output->SetArray(commands.size());
+        output->SetArray(_commands.size());
         s_mutex.lock();
-        for (size_t i = 0; i < commands.size(); ++i) {
-            if (commands[i][0] == "incr") {
+        for (size_t i = 0; i < _commands.size(); ++i) {
+            if (_commands[i][0] == "incr") {
                 int64_t value;
-                value = ++int_map[commands[i][1]];
+                value = ++int_map[_commands[i][1]];
                 (*output)[i].SetInteger(value);
             }
         }
         s_mutex.unlock();
+        _started = false;
         return brpc::RedisCommandHandler::OK;
     }
     RedisCommandHandler* New() { return new MultiCommandHandler; }
 
-    std::vector<std::vector<std::string>> commands;
+private:
+    std::vector<std::vector<std::string>> _commands;
+    bool _started;
 };
 
 TEST_F(RedisTest, server_command_continue) {

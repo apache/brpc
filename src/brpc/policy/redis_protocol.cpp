@@ -77,11 +77,33 @@ public:
 };
 
 
-class RedisConnContext : public brpc::SharedObject {
+struct TaskContext {
+    RedisMessage message;
+    butil::Arena arena;
+};
+int Consume(void* meta, bthread::TaskIterator<TaskContext*>& iter);
+
+class RedisConnContext : public SharedObject
+                       , public Destroyable  {
 public:
     RedisConnContext() : handler_continue(NULL) {}
     ~RedisConnContext() {
-        ClearQueue(dones);
+        CHECK(dones.empty());
+    }
+    // @Destroyable
+    void Destroy() {
+        bthread::execution_queue_stop(queue);
+    }
+
+    int Init() {
+        bthread::ExecutionQueueOptions q_opt;
+        q_opt.bthread_attr =
+            FLAGS_usercode_in_pthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL;
+        if (bthread::execution_queue_start(&queue, &q_opt, Consume, this) != 0) {
+            LOG(ERROR) << "Fail to start execution queue";
+            return -1;
+        }
+        return 0;
     }
 
     void Push(ConsumeTaskDone* done) {
@@ -129,7 +151,6 @@ public:
     SocketId socket_id;
     RedisService::CommandMap command_map;
     RedisCommandHandler* handler_continue;
-    std::queue<ConsumeTaskDone*> dones;
 
 private:
     void ClearQueue(std::queue<ConsumeTaskDone*>& queue) {
@@ -140,14 +161,25 @@ private:
         }
     }
 
+    bthread::ExecutionQueueId<TaskContext*> queue;
     bool _writing = false;
     butil::Mutex _mutex;
+    std::queue<ConsumeTaskDone*> dones;
 };
 
-struct TaskContext {
-    RedisMessage message;
-    butil::Arena arena;
-};
+int ConsumeTask(RedisConnContext* meta, const RedisMessage& m);
+int Consume(void* meta, bthread::TaskIterator<TaskContext*>& iter) {
+    RedisConnContext* qmeta = static_cast<RedisConnContext*>(meta);
+    if (iter.is_queue_stopped()) {
+        qmeta->RemoveRefManually();
+        return 0;
+    }
+    for (; iter; ++iter) {
+        std::unique_ptr<TaskContext> ctx(*iter);
+        ConsumeTask(qmeta, ctx->message);
+    }
+    return 0;
+}
 
 const char** ParseArgs(const RedisMessage& message) {
     const char** args = (const char**)
@@ -212,42 +244,6 @@ int ConsumeTask(RedisConnContext* meta, const RedisMessage& m) {
     return 0;
 }
 
-int Consume(void* meta, bthread::TaskIterator<TaskContext*>& iter) {
-    RedisConnContext* qmeta = static_cast<RedisConnContext*>(meta);
-    if (iter.is_queue_stopped()) {
-        qmeta->RemoveRefManually();
-        return 0;
-    }
-    for (; iter; ++iter) {
-        std::unique_ptr<TaskContext> ctx(*iter);
-        ConsumeTask(qmeta, ctx->message);
-    }
-    return 0;
-}
-
-class ServerContext : public Destroyable {
-public:
-    ~ServerContext() {
-        bthread::execution_queue_stop(queue);
-    }
-
-    // @Destroyable
-    void Destroy() { delete this; }
-
-    int init(RedisConnContext* meta) {
-        bthread::ExecutionQueueOptions q_opt;
-        q_opt.bthread_attr =
-            FLAGS_usercode_in_pthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL;
-        if (bthread::execution_queue_start(&queue, &q_opt, Consume, meta) != 0) {
-            LOG(ERROR) << "Fail to start execution queue";
-            return -1;
-        }
-        return 0;
-    }
-
-    bthread::ExecutionQueueId<TaskContext*> queue;
-};
-
 ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                               bool read_eof, const void* arg) {
     if (read_eof || source->empty()) {
@@ -259,17 +255,16 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         if (!rs) {
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
         }
-        ServerContext* ctx = static_cast<ServerContext*>(socket->parsing_context());
+        RedisConnContext* ctx = static_cast<RedisConnContext*>(socket->parsing_context());
         if (ctx == NULL) {
-            RedisConnContext* meta = new RedisConnContext;
-            meta->AddRefManually();
-            meta->socket_id = socket->id();
-            rs->CloneCommandMap(&meta->command_map);
-            ctx = new ServerContext;
-            if (ctx->init(meta) != 0) {
-                delete ctx;
-                meta->RemoveRefManually();
-                LOG(ERROR) << "Fail to init redis ServerContext";
+            ctx = new RedisConnContext;
+            // add ref for Consume()
+            ctx->AddRefManually();
+            ctx->socket_id = socket->id();
+            rs->CloneCommandMap(&ctx->command_map);
+            if (ctx->Init() != 0) {
+                ctx->RemoveRefManually();
+                LOG(ERROR) << "Fail to init redis RedisConnContext";
                 return MakeParseError(PARSE_ERROR_NO_RESOURCE);
             }
             socket->reset_parsing_context(ctx);
