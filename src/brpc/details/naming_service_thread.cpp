@@ -118,6 +118,7 @@ void GetUnexpiredServersFromFile(const std::string& file_path,
     }
     policy::GetServersFromFile(file_path.c_str(), servers);
 }
+
 void SaveServersToFile(const std::string& file_path,
                        const std::vector<ServerNode>& servers) {
     butil::CreateDirectoryAndGetError(butil::FilePath(file_path).DirName(), NULL, true);

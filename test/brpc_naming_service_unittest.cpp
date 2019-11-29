@@ -644,48 +644,21 @@ private:
     int _cancel_count;
 };
 
-class DiscoveryTest : public ::testing::Test {
-public:
-    DiscoveryTest() {}
-    virtual ~DiscoveryTest() {}
-    
-    virtual void SetUp() {
-        brpc::policy::FLAGS_discovery_api_addr = "http://127.0.0.1:8635/discovery/nodes";
-        brpc::policy::FLAGS_discovery_renew_interval_s = 1;
-        brpc::FLAGS_ns_backup_dir = ".";
-        std::string rest_mapping =
-            "/discovery/nodes => Nodes, "
-            "/discovery/fetchs => Fetchs, "
-            "/discovery/register => Register, "
-            "/discovery/renew => Renew, "
-            "/discovery/cancel => Cancel";
-        ASSERT_EQ(0, _server.AddService(&_svc, brpc::SERVER_DOESNT_OWN_SERVICE,
-                    rest_mapping.c_str()));
-        ASSERT_EQ(0, _server.Start("localhost:8635", NULL));
-    }
+TEST(NamingServiceTest, discovery_sanity) {
+    brpc::policy::FLAGS_discovery_api_addr = "http://127.0.0.1:8635/discovery/nodes";
+    brpc::policy::FLAGS_discovery_renew_interval_s = 1;
+    brpc::Server server;
+    DiscoveryNamingServiceImpl svc;
+    std::string rest_mapping =
+        "/discovery/nodes => Nodes, "
+        "/discovery/fetchs => Fetchs, "
+        "/discovery/register => Register, "
+        "/discovery/renew => Renew, "
+        "/discovery/cancel => Cancel";
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE,
+                rest_mapping.c_str()));
+    ASSERT_EQ(0, server.Start("localhost:8635", NULL));
 
-private:
-    brpc::Server _server;
-    DiscoveryNamingServiceImpl _svc;
-};
-
-
-TEST_F(DiscoveryTest, parse_function) {
-    std::vector<brpc::ServerNode> servers;
-    brpc::policy::DiscoveryNamingService dcns;
-    butil::IOBuf buf;
-    buf.append(s_fetchs_result);
-    ASSERT_EQ(0, brpc::policy::ParseFetchsResult(buf, "admin.test", &servers));
-    ASSERT_EQ((size_t)1, servers.size());
-    buf.clear();
-    buf.append(s_nodes_result);
-    std::string server;
-    ASSERT_EQ(0, brpc::policy::ParseNodesResult(buf, &server));
-    ASSERT_EQ("127.0.0.1:8635", server);
-}
-
-
-TEST_F(DiscoveryTest, sanity) {
     brpc::policy::DiscoveryNamingService dcns;
     std::vector<brpc::ServerNode> servers;
     ASSERT_EQ(0, dcns.GetServers("admin.test", &servers));
@@ -703,20 +676,35 @@ TEST_F(DiscoveryTest, sanity) {
         brpc::policy::DiscoveryClient dc;
     }
     // Cancel is called iff Register is called
-    ASSERT_EQ(_svc.CancelCount(), 0);
+    ASSERT_EQ(svc.CancelCount(), 0);
     {
         brpc::policy::DiscoveryClient dc;
         // Two Register should start one Renew task , and make
-        // _svc.RenewCount() be one.
+        // svc.RenewCount() be one.
         ASSERT_EQ(0, dc.Register(dparam));
         ASSERT_EQ(0, dc.Register(dparam));
         bthread_usleep(100000);
     }
-    ASSERT_EQ(_svc.RenewCount(), 1);
-    ASSERT_EQ(_svc.CancelCount(), 1);
+    ASSERT_EQ(svc.RenewCount(), 1);
+    ASSERT_EQ(svc.CancelCount(), 1);
 }
 
-TEST_F(DiscoveryTest, backupfiles) {
+TEST(NamingServiceTest, discovery_backup_files) {
+    brpc::FLAGS_ns_backup_dir = ".";
+    brpc::policy::FLAGS_discovery_api_addr = "http://127.0.0.1:8635/discovery/nodes";
+    brpc::policy::FLAGS_discovery_renew_interval_s = 1;
+    brpc::Server server;
+    DiscoveryNamingServiceImpl svc;
+    std::string rest_mapping =
+        "/discovery/nodes => Nodes, "
+        "/discovery/fetchs => Fetchs, "
+        "/discovery/register => Register, "
+        "/discovery/renew => Renew, "
+        "/discovery/cancel => Cancel";
+    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE,
+                rest_mapping.c_str()));
+    ASSERT_EQ(0, server.Start("localhost:8635", NULL));
+
     brpc::Channel channel;
     brpc::ChannelOptions opt;
     opt.protocol = brpc::PROTOCOL_HTTP;
