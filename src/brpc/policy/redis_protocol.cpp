@@ -84,7 +84,7 @@ class RedisConnContext : public SharedObject
 public:
     RedisConnContext() : handler_continue(NULL) {}
     ~RedisConnContext() {
-        CHECK(dones.empty());
+        ClearQueue(dones);
     }
     // @Destroyable
     void Destroy();
