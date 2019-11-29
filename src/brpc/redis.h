@@ -27,7 +27,7 @@
 #include "butil/strings/string_piece.h"
 #include "butil/arena.h"
 #include "brpc/proto_base.pb.h"
-#include "brpc/redis_message.h"
+#include "brpc/redis_reply.h"
 #include "brpc/parse_result.h"
 #include "brpc/callback.h"
 #include "brpc/socket.h"
@@ -161,11 +161,11 @@ public:
     int reply_size() const { return _nreply; }
 
     // Get index-th reply. If index is out-of-bound, nil reply is returned.
-    const RedisMessage& reply(int index) const {
+    const RedisReply& reply(int index) const {
         if (index < reply_size()) {
             return (index == 0 ? _first_reply : _other_replies[index - 1]);
         }
-        static RedisMessage redis_nil;
+        static RedisReply redis_nil;
         return redis_nil;
     }
 
@@ -203,8 +203,8 @@ private:
     void SharedDtor();
     void SetCachedSize(int size) const;
 
-    RedisMessage _first_reply;
-    RedisMessage* _other_replies;
+    RedisReply _first_reply;
+    RedisReply* _other_replies;
     butil::Arena _arena;
     int _nreply;
     mutable int _cached_size_;
@@ -226,7 +226,7 @@ public:
 
 private:
     typedef std::unordered_map<std::string, std::shared_ptr<RedisCommandHandler>> CommandMap;
-    friend ParseResult ParseRedisMessage(butil::IOBuf*, Socket*, bool, const void*);
+    friend ParseResult ParseRedisReply(butil::IOBuf*, Socket*, bool, const void*);
     void CloneCommandMap(CommandMap* map);
     CommandMap _command_map;
 };
@@ -247,7 +247,7 @@ public:
     // command "set foo bar" corresponds to args[0] == "set", args[1] == "foo",
     // args[2] == "bar" and args[3] == nullptr.
     // `output`, which should be filled by user, is the content that sent to client side.
-    // Read brpc/src/redis_message.h for more usage.
+    // Read brpc/src/redis_reply.h for more usage.
     // Remember to call `done->Run()` when everything is set up into `output`. The return
     // value should be RedisCommandHandler::OK for normal cases. If you want to implement
     // transaction, return RedisCommandHandler::CONTINUE until server receives an ending
@@ -259,7 +259,7 @@ public:
     // marker that ends the transaction. User may queue the commands and execute them
     // all once an ending marker is received.
     virtual RedisCommandHandler::Result Run(const char* args[],
-                                            RedisMessage* output,
+                                            RedisReply* output,
                                             google::protobuf::Closure* done) = 0;
 
     // Whenever a tcp connection is established, a bunch of new handlers would be created

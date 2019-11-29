@@ -58,7 +58,7 @@ struct InputResponse : public InputMessageBase {
     }
 };
 
-const char** ParseArgs(const RedisMessage& message) {
+const char** ParseArgs(const RedisReply& message) {
     const char** args = (const char**)
         malloc(sizeof(const char*) * (message.size() + 1 /* NULL */));
     for (size_t i = 0; i < message.size(); ++i) {
@@ -122,8 +122,8 @@ private:
     butil::atomic<bool> _ready;
 
 public:
-    RedisMessage input_message;
-    RedisMessage output_message;
+    RedisReply input_message;
+    RedisReply output_message;
     RedisConnContext* ctx;
     butil::IOBuf sendbuf;
     butil::Arena arena;
@@ -133,7 +133,7 @@ int ConsumeTask(RedisConnContext* ctx, ConsumeTaskDone* done) {
     ClosureGuard done_guard(done);
     done->ctx = ctx;
     ctx->Push(done);
-    RedisMessage& output = done->output_message;
+    RedisReply& output = done->output_message;
 
     const char** args = ParseArgs(done->input_message);
     if (!args) {
@@ -339,7 +339,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
 
             if (pi.with_auth) {
                 if (msg->response.reply_size() != 1 ||
-                    !(msg->response.reply(0).type() == brpc::REDIS_MESSAGE_STATUS &&
+                    !(msg->response.reply(0).type() == brpc::REDIS_REPLY_STATUS &&
                       msg->response.reply(0).data().compare("OK") == 0)) {
                     LOG(ERROR) << "Redis Auth failed: " << msg->response;
                     return MakeParseError(PARSE_ERROR_NO_RESOURCE,
