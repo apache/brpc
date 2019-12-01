@@ -25,6 +25,8 @@
 namespace brpc {
 namespace policy {
 
+DEFINE_bool(bns_support_backup_file, false, "whether bns supports backup file or not");
+
 int BaiduNamingService::GetServers(const char *service_name,
                                    std::vector<ServerNode>* servers) {
     servers->clear();
@@ -73,6 +75,10 @@ NamingService* BaiduNamingService::New() const {
 
 void BaiduNamingService::Destroy() {
     delete this;
+}
+
+bool BaiduNamingService::SupportBackup() const {
+    return FLAGS_bns_support_backup_file;
 }
 
 }  // namespace policy

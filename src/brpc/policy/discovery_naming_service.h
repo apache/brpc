@@ -79,6 +79,7 @@ private:
 
     void Destroy() override;
 
+    bool SupportBackup() const override;
 private:
     DiscoveryClient _client;
 };

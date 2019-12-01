@@ -49,6 +49,11 @@ DECLARE_string(consul_service_discovery_url);
 DECLARE_string(discovery_api_addr);
 DECLARE_string(discovery_env);
 DECLARE_int32(discovery_renew_interval_s);
+DECLARE_bool(discovery_support_backup_file);
+DECLARE_bool(dns_support_backup_file);
+DECLARE_bool(bns_support_backup_file);
+DECLARE_bool(remote_file_support_backup_file);
+DECLARE_bool(discovery_support_backup_file);
 
 } // policy
 } // brpc
@@ -453,32 +458,49 @@ class MyEchoService : public ::test::EchoService {
     }
 };
 
-TEST(NamingServiceTest, backupfiles_save_and_load) {
-    std::vector<brpc::ServerNode> servers;
-    butil::EndPoint ep;
-    butil::str2endpoint("127.0.0.1:8635", &ep);
-    servers.push_back(brpc::ServerNode(ep));
-    brpc::SaveServersToFile("http/brpc-not-exist.com", servers);
-    // Wait for a while to ensure server information is flushed to disk.
-    bthread_usleep(500000);
-
+TEST(NamingServiceTest, backup_files) {
     brpc::FLAGS_ns_backup_dir = ".";
-    brpc::Server server;
-    MyEchoService svc;
-    ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
-    ASSERT_EQ(0, server.Start("localhost:8635", NULL));
+    brpc::policy::FLAGS_dns_support_backup_file = true;
+    brpc::policy::FLAGS_remote_file_support_backup_file = true;
+    brpc::policy::FLAGS_discovery_support_backup_file = true;
+    brpc::policy::FLAGS_discovery_api_addr = "http://127.0.0.1:9999/discovery/nodes";
+    const char* file_names[] = {
+        "http/http-brpc-not-exist.com",
+        "remotefile/rf-brpc-not-exist.com",
+        "discovery/dis-brpc-not-exist.com"
+    };
+    const char* channel_addr[] = {
+        "http://http-brpc-not-exist.com",
+        "remotefile://rf-brpc-not-exist.com",
+        "discovery://dis-brpc-not-exist.com"
+    };
+    int cases = sizeof(file_names) / sizeof(char*);
+    for (int i = 0; i < cases; ++i) {
+        std::vector<brpc::ServerNode> servers;
+        butil::EndPoint ep;
+        butil::str2endpoint("127.0.0.1:8635", &ep);
+        servers.push_back(brpc::ServerNode(ep));
+        brpc::SaveServersToFile(file_names[i], servers);
+        // Wait for a while to ensure server information is flushed to disk.
+        bthread_usleep(500000);
 
-    brpc::Channel channel;
-    brpc::ChannelOptions opt;
-    ASSERT_EQ(0, channel.Init("http://brpc-not-exist.com", "rr", &opt));
+        brpc::Server server;
+        MyEchoService svc;
+        ASSERT_EQ(0, server.AddService(&svc, brpc::SERVER_DOESNT_OWN_SERVICE));
+        ASSERT_EQ(0, server.Start("localhost:8635", NULL));
 
-    brpc::Controller cntl;
-    ::test::EchoRequest req;
-    ::test::EchoResponse res;
-    req.set_message("dummy");
-    ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, NULL);
-    ASSERT_TRUE(!cntl.Failed());
-    ASSERT_TRUE(res.message() == "dummy");
+        brpc::Channel channel;
+        brpc::ChannelOptions opt;
+        ASSERT_EQ(0, channel.Init(channel_addr[i], "rr", &opt));
+
+        brpc::Controller cntl;
+        ::test::EchoRequest req;
+        ::test::EchoResponse res;
+        req.set_message("dummy");
+        ::test::EchoService::Stub(&channel).Echo(&cntl, &req, &res, NULL);
+        ASSERT_TRUE(!cntl.Failed());
+        ASSERT_TRUE(res.message() == "dummy");
+    }
 }
 
 static const std::string s_fetchs_result = R"({
@@ -691,6 +713,7 @@ TEST(NamingServiceTest, discovery_sanity) {
 
 TEST(NamingServiceTest, discovery_backup_files) {
     brpc::FLAGS_ns_backup_dir = ".";
+    brpc::policy::FLAGS_discovery_support_backup_file = true;
     brpc::policy::FLAGS_discovery_api_addr = "http://127.0.0.1:8635/discovery/nodes";
     brpc::policy::FLAGS_discovery_renew_interval_s = 1;
     brpc::Server server;
@@ -712,7 +735,14 @@ TEST(NamingServiceTest, discovery_backup_files) {
 
     // Wait for a while to ensure server information is flushed to disk.
     bthread_usleep(500000);
+    ASSERT_EQ(0, server.Stop(0));
+    ASSERT_EQ(0, server.Join());
 
+    // After discovery server is down, channel can still be initialized.
+    brpc::Channel channel_using_local_file;
+    ASSERT_EQ(0, channel_using_local_file.Init("discovery://admin.test", "rr", &opt));
+
+    // Also check the validness of the backup file.
     FILE* fp = fopen("discovery/admin.test", "r");
     ASSERT_TRUE(fp);
     char* line = NULL;

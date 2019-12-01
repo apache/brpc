@@ -32,8 +32,6 @@ protected:
     
     int RunNamingService(const char* service_name,
                          NamingServiceActions* actions) override;
-
-    bool AllowBackup() override { return true; }
 };
 
 } // namespace brpc

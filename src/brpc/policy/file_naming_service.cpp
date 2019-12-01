@@ -26,7 +26,6 @@
 #include "brpc/log.h"
 #include "brpc/policy/file_naming_service.h"
 
-
 namespace brpc {
 namespace policy {
 

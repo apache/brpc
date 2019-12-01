@@ -149,7 +149,7 @@ void NamingServiceThread::Actions::ResetServers(
         const std::vector<ServerNode>& servers) {
     std::string file_path;
     bool backup_file_enabled =
-        !FLAGS_ns_backup_dir.empty() && _owner->_ns->AllowBackup();
+        !FLAGS_ns_backup_dir.empty() && _owner->_ns->SupportBackup();
     bool load_enabled = !_reset_ever && servers.empty();
     _servers.assign(servers.begin(), servers.end());
     if (backup_file_enabled) {

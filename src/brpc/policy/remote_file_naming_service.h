@@ -40,6 +40,7 @@ private:
     
     void Destroy() override;
     
+    bool SupportBackup() const override;
 private:
     std::unique_ptr<Channel> _channel;
     std::string _server_addr;

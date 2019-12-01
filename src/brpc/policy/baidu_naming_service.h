@@ -39,6 +39,8 @@ public:
     NamingService* New() const override;
     
     void Destroy() override;
+
+    bool SupportBackup() const override;
 };
 
 }  // namespace policy
