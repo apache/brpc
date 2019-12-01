@@ -31,7 +31,7 @@ namespace policy {
 class ConsulNamingService : public NamingService {
 private:
     int RunNamingService(const char* service_name,
-                         NamingServiceActions* actions);
+                         NamingServiceActions* actions) override;
 
     int GetServers(const char* service_name,
                    std::vector<ServerNode>* servers);
