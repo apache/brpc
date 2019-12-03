@@ -47,6 +47,9 @@ DEFINE_bool(redis_verbose, false,
             "[DEBUG] Print EVERY redis request/response");
 DEFINE_int32(redis_batch_flush_max_size, 2048, "beyond which the server response"
         " are forced to write to socket");
+DEFINE_int32(redis_max_request_count_before_clear_arena, 10000, "If the number of "
+        "incoming requests has reached multiple of this value, arena from which the "
+        "requests are allocated will be cleared.");
 
 struct InputResponse : public InputMessageBase {
     bthread_id_t id_wait;
@@ -59,10 +62,15 @@ struct InputResponse : public InputMessageBase {
 };
 
 static const char** ParseArgs(const RedisReply& message) {
+    if (!message.is_array() || message.size() == 0) {
+        LOG(WARNING) << "request message is not array or size equals to zero";
+        return NULL;
+    }
     const char** args = (const char**)
         malloc(sizeof(const char*) * (message.size() + 1 /* NULL */));
     for (size_t i = 0; i < message.size(); ++i) {
         if (!message[i].is_string()) {
+            LOG(WARNING) << "request message[" << i << "] is not array";
             free(args);
             return NULL;
         }
@@ -82,7 +90,9 @@ class ConsumeTaskDone;
 class RedisConnContext : public SharedObject
                        , public Destroyable  {
 public:
-    RedisConnContext() : handler_continue(NULL) {}
+    RedisConnContext()
+        : handler_continue(NULL)
+        , message_count(0) {}
     ~RedisConnContext() {
         ClearQueue(dones);
     }
@@ -102,6 +112,9 @@ public:
     // The redis command are parsed and pushed into this queue
     bthread::ExecutionQueueId<ConsumeTaskDone*> queue;
 
+    RedisReply parsing_message;
+    butil::Arena arena;
+    int64_t message_count;
 private:
     void ClearQueue(std::queue<ConsumeTaskDone*>& queue);
 
@@ -255,10 +268,10 @@ void RedisConnContext::Flush() {
     ClearQueue(ready_to_delete);
 }
 
-void RedisConnContext::ClearQueue(std::queue<ConsumeTaskDone*>& queue) {
-    while (!queue.empty()) {
-        ConsumeTaskDone* head = queue.front();
-        queue.pop();
+void RedisConnContext::ClearQueue(std::queue<ConsumeTaskDone*>& ready_to_delete) {
+    while (!ready_to_delete.empty()) {
+        ConsumeTaskDone* head = ready_to_delete.front();
+        ready_to_delete.pop();
         delete head;
     }
 }
@@ -298,10 +311,15 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             }
             socket->reset_parsing_context(ctx);
         }
-        std::unique_ptr<ConsumeTaskDone> done(new ConsumeTaskDone);
-        ParseError err = done->input_message.ConsumePartialIOBuf(*source, &done->arena);
+        ParseError err = ctx->parsing_message.ConsumePartialIOBuf(*source, &ctx->arena);
         if (err != PARSE_OK) {
             return MakeParseError(err);
+        }
+        std::unique_ptr<ConsumeTaskDone> done(new ConsumeTaskDone);
+        done->input_message.CopyFromDifferentArena(ctx->parsing_message, &done->arena);
+        ctx->parsing_message.Clear();
+        if ((++ctx->message_count % FLAGS_redis_max_request_count_before_clear_arena) == 0) {
+            ctx->arena.clear();
         }
         // Add a ref that removed in ConsumeTaskDone::Run
         ctx->AddRefManually();
