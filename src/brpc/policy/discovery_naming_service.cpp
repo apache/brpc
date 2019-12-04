@@ -349,10 +349,14 @@ int DiscoveryNamingService::GetServers(const char* service_name,
     }
     servers->clear();
     Controller cntl;
-    cntl.http_request().uri() = butil::string_printf(
-            "/discovery/fetchs?appid=%s&env=%s&status=%s&zone=%s", service_name,
-            FLAGS_discovery_env.c_str(), FLAGS_discovery_status.c_str(),
-            FLAGS_discovery_zone.c_str());
+    std::string uri_str = butil::string_printf(
+            "/discovery/fetchs?appid=%s&env=%s&status=%s", service_name,
+            FLAGS_discovery_env.c_str(), FLAGS_discovery_status.c_str());
+    if (!FLAGS_discovery_zone.empty()) {
+        uri_str.append("&zone=", 6);
+        uri_str.append(FLAGS_discovery_zone);
+    }
+    cntl.http_request().uri() = uri_str;
     chan->CallMethod(NULL, &cntl, NULL, NULL, NULL);
     if (cntl.Failed()) {
         LOG(ERROR) << "Fail to get /discovery/fetchs: " << cntl.ErrorText();
