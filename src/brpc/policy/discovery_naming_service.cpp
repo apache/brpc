@@ -41,7 +41,7 @@ DEFINE_string(discovery_api_addr, DEFAULT_DISCOVERY_API_ADDR, "The address of di
 DEFINE_int32(discovery_timeout_ms, 3000, "Timeout for discovery requests");
 DEFINE_string(discovery_env, "prod", "Environment of services");
 DEFINE_string(discovery_status, "1", "Status of services. 1 for ready, 2 for not ready, 3 for all");
-DEFINE_string(discovery_zone, "", "Zone of  services");
+DEFINE_string(discovery_zone, "", "Zone of services");
 DEFINE_int32(discovery_renew_interval_s, 30, "The interval between two consecutive renews");
 DEFINE_int32(discovery_reregister_threshold, 3, "The renew error threshold beyond"
         " which Register would be called again");
@@ -353,7 +353,7 @@ int DiscoveryNamingService::GetServers(const char* service_name,
             "/discovery/fetchs?appid=%s&env=%s&status=%s", service_name,
             FLAGS_discovery_env.c_str(), FLAGS_discovery_status.c_str());
     if (!FLAGS_discovery_zone.empty()) {
-        uri_str.append("&zone=", 6);
+        uri_str.append("&zone=");
         uri_str.append(FLAGS_discovery_zone);
     }
     cntl.http_request().uri() = uri_str;
