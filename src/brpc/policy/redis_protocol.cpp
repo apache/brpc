@@ -18,7 +18,6 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 //          Jiashun Zhu(zhujiashun2010@gmail.com)
 
-#include <queue>
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
 #include <gflags/gflags.h>
@@ -45,7 +44,7 @@ namespace policy {
 
 DEFINE_bool(redis_verbose, false,
             "[DEBUG] Print EVERY redis request/response");
-DEFINE_int32(redis_batch_flush_max_size, 2048, "beyond which the server response"
+DEFINE_int32(redis_batch_flush_max_size, 4096, "beyond which the server response"
         " are forced to write to socket");
 
 struct InputResponse : public InputMessageBase {
@@ -165,9 +164,14 @@ int Consume(void* ctx, bthread::TaskIterator<RedisTask*>& iter) {
             has_err = true;
             continue;
         }
+        if ((int)sendbuf.size() >= FLAGS_redis_batch_flush_max_size) {
+            LOG_IF(WARNING, s->Write(&sendbuf, &wopt) != 0)
+                << "Fail to send redis reply";
+        }
     }
-    if (!has_err) {
-        LOG_IF(WARNING, s->Write(&sendbuf, &wopt) != 0) << "Fail to send redis reply";
+    if (!has_err && !sendbuf.empty()) {
+        LOG_IF(WARNING, s->Write(&sendbuf, &wopt) != 0)
+            << "Fail to send redis reply";
     }
     return 0;
 }

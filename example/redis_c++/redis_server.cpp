@@ -104,7 +104,7 @@ private:
 
 int main(int argc, char* argv[]) {
     google::ParseCommandLineFlags(&argc, &argv, true);
-	RedisServiceImpl* rsimpl = new RedisServiceImpl;
+    RedisServiceImpl* rsimpl = new RedisServiceImpl;
     rsimpl->AddCommandHandler("get", new GetCommandHandler(rsimpl));
     rsimpl->AddCommandHandler("set", new SetCommandHandler(rsimpl));
 
