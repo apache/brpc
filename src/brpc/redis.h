@@ -248,19 +248,17 @@ public:
     // args[2] == "bar" and args[3] == nullptr.
     // `output`, which should be filled by user, is the content that sent to client side.
     // Read brpc/src/redis_reply.h for more usage.
-    // Remember to call `done->Run()` when everything is set up into `output`. The return
-    // value should be RedisCommandHandler::OK for normal cases. If you want to implement
-    // transaction, return RedisCommandHandler::CONTINUE until server receives an ending
-    // marker. The first handler that return RedisCommandHandler::CONTINUE will continue
-    // receiving the following commands until it receives a ending marker and return
-    // RedisCommandHandler::OK to end transaction. For example, the return value of
-    // commands "multi; set k1 v1; set k2 v2; set k3 v3; exec" should be four
+    // The return value should be RedisCommandHandler::OK for normal cases. If you want
+    // to implement transaction, return RedisCommandHandler::CONTINUE until server receives
+    // an ending marker. The first handler that return RedisCommandHandler::CONTINUE will
+    // continue receiving the following commands until it receives an ending marker and
+    // return RedisCommandHandler::OK to end transaction. For example, the return value
+    // of commands "multi; set k1 v1; set k2 v2; set k3 v3; exec" should be four
     // RedisCommandHandler::CONTINUE and one RedisCommandHandler::OK since exec is the
-    // marker that ends the transaction. User may queue the commands and execute them
-    // all once an ending marker is received.
+    // marker that ends the transaction. User should queue the commands and execute them
+    // all once the ending marker is received.
     virtual RedisCommandHandler::Result Run(const char* args[],
-                                            RedisReply* output,
-                                            google::protobuf::Closure* done) = 0;
+                                            RedisReply* output) = 0;
 
     // Whenever a tcp connection is established, a bunch of new handlers would be created
     // using New() of the corresponding handler and brpc makes sure that all requests from

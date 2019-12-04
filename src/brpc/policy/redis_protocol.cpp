@@ -58,47 +58,40 @@ struct InputResponse : public InputMessageBase {
     }
 };
 
-static const char** ParseArgs(const RedisReply& message) {
+static bool ParseArgs(const RedisReply& message, std::unique_ptr<const char*[]>* args_out) {
     if (!message.is_array() || message.size() == 0) {
         LOG(WARNING) << "request message is not array or size equals to zero";
-        return NULL;
+        return false;
     }
-    const char** args = (const char**)
-        malloc(sizeof(const char*) * (message.size() + 1 /* NULL */));
+    args_out->reset(new const char*[message.size() + 1 /* NULL */]);
+    
     for (size_t i = 0; i < message.size(); ++i) {
         if (!message[i].is_string()) {
             LOG(WARNING) << "request message[" << i << "] is not array";
-            free(args);
-            return NULL;
+            return false;
         }
-        args[i] = message[i].c_str();
+        (*args_out)[i] = message[i].c_str();
     }
-    args[message.size()] = NULL;
-    return args;
+    (*args_out)[message.size()] = NULL;
+    return true;
 }
 
-// One redis command corresponding to one ConsumeTaskDone. Whenever user
-// has completed the process of handling command and call done->Run()
-// (read redis.h for more details), RedisConnContext::Flush() will be
-// called and flush the response to client by the order that commands arrive.
-class ConsumeTaskDone;
+struct RedisTask {
+    RedisReply input_message;
+    butil::Arena arena;
+};
 
 // This class is as parsing_context in socket.
 class RedisConnContext : public SharedObject
                        , public Destroyable  {
 public:
     RedisConnContext()
-        : handler_continue(NULL)
-        , message_count(0) {}
+        : handler_continue(NULL) {}
     ~RedisConnContext();
     // @Destroyable
     void Destroy();
 
     int Init();
-    // Push `done` to a queue which is read by Flush().
-    void Push(ConsumeTaskDone* done);
-    void Flush();
-    void ClearSentDones();
 
     SocketId socket_id;
     RedisService::CommandMap command_map;
@@ -106,57 +99,23 @@ public:
     // first handler pointer that triggers the transaction.
     RedisCommandHandler* handler_continue;
     // The redis command are parsed and pushed into this queue
-    bthread::ExecutionQueueId<ConsumeTaskDone*> queue;
+    bthread::ExecutionQueueId<RedisTask*> queue;
 
     RedisReply parsing_message;
     butil::Arena arena;
-    int64_t message_count;
-private:
-    void AddSentDone(ConsumeTaskDone* done);
-
-    bool _writing = false;
-    butil::Mutex _mutex;
-    std::queue<ConsumeTaskDone*> _dones;
-
-    butil::Mutex _dones_sent_mutex;
-    std::queue<ConsumeTaskDone*> _dones_sent;
 };
 
-class ConsumeTaskDone : public google::protobuf::Closure {
-public:
-    ConsumeTaskDone()
-        : _ready(false)
-        , output_message(&arena)
-        , ctx(NULL) {}
-
-    void Run() override;
-    bool IsReady() { return _ready.load(butil::memory_order_acquire); }
-
-private:
-    butil::atomic<bool> _ready;
-
-public:
-    RedisReply input_message;
-    RedisReply output_message;
-    RedisConnContext* ctx;
-    butil::IOBuf sendbuf;
-    butil::Arena arena;
-};
-
-int ConsumeTask(RedisConnContext* ctx, ConsumeTaskDone* done) {
-    ClosureGuard done_guard(done);
-    done->ctx = ctx;
-    ctx->Push(done);
-    RedisReply& output = done->output_message;
-
-    const char** args = ParseArgs(done->input_message);
-    if (!args) {
+int ConsumeTask(RedisConnContext* ctx, RedisTask* task, butil::IOBuf* sendbuf) {
+    RedisReply output(&task->arena);
+    std::unique_ptr<const char*[]> args;
+    if (!ParseArgs(task->input_message, &args)) {
+        LOG(ERROR) << "ERR command not string";
         output.SetError("ERR command not string");
         return -1;
     }
     if (ctx->handler_continue) {
-        RedisCommandHandler::Result result = ctx->handler_continue->Run(
-                args, &output, done_guard.release());
+        RedisCommandHandler::Result result =
+            ctx->handler_continue->Run(args.get(), &output);
         if (result == RedisCommandHandler::OK) {
             ctx->handler_continue = NULL;
         }
@@ -172,39 +131,50 @@ int ConsumeTask(RedisConnContext* ctx, ConsumeTaskDone* done) {
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", comm.c_str());
             output.SetError(buf);
         } else {
-            RedisCommandHandler::Result result =
-                it->second->Run(args, &output, done_guard.release());
+            RedisCommandHandler::Result result = it->second->Run(args.get(), &output);
             if (result == RedisCommandHandler::CONTINUE) {
                 ctx->handler_continue = it->second.get();
             }
         }
     }
-    free(args);
+    output.SerializeToIOBuf(sendbuf);
     return 0;
 }
 
-int Consume(void* ctx, bthread::TaskIterator<ConsumeTaskDone*>& iter) {
+int Consume(void* ctx, bthread::TaskIterator<RedisTask*>& iter) {
     RedisConnContext* qctx = static_cast<RedisConnContext*>(ctx);
     if (iter.is_queue_stopped()) {
         qctx->RemoveRefManually();
         return 0;
     }
+    SocketUniquePtr s;
+    bool has_err = false;
+    if (Socket::Address(qctx->socket_id, &s) != 0) {
+        LOG(WARNING) << "Fail to address redis socket";
+        has_err = true;
+    }
+    Socket::WriteOptions wopt;
+    wopt.ignore_eovercrowded = true;
+    butil::IOBuf sendbuf;
     for (; iter; ++iter) {
-        ConsumeTask(qctx, *iter);
+        std::unique_ptr<RedisTask> guard(*iter);
+        if (has_err) {
+            continue;
+        }
+        if (ConsumeTask(qctx, *iter, &sendbuf) != 0) {
+            has_err = true;
+            continue;
+        }
+    }
+    if (!has_err) {
+        LOG_IF(WARNING, s->Write(&sendbuf, &wopt) != 0) << "Fail to send redis reply";
     }
     return 0;
 }
 
 // ========== impl of RedisConnContext ==========
 
-RedisConnContext::~RedisConnContext() {
-    ClearSentDones();
-    while (!_dones.empty()) {
-        ConsumeTaskDone* head = _dones.front();
-        _dones.pop();
-        delete head;
-    }
-}
+RedisConnContext::~RedisConnContext() { }
 
 void RedisConnContext::Destroy() {
     bthread::execution_queue_stop(queue);
@@ -221,87 +191,7 @@ int RedisConnContext::Init() {
     return 0;
 }
 
-void RedisConnContext::Push(ConsumeTaskDone* done) {
-    std::unique_lock<butil::Mutex> m(_mutex);
-    _dones.push(done);
-}
-void RedisConnContext::Flush() {
-    SocketUniquePtr s;
-    if (Socket::Address(socket_id, &s) != 0) {
-        LOG(WARNING) << "Fail to address redis socket";
-        return;
-    }
-    {
-        std::unique_lock<butil::Mutex> m(_mutex);
-        if (_writing) return;
-        _writing = true;
-    }
-    std::queue<ConsumeTaskDone*> ready_to_write;
-    butil::IOBuf buf;
-    Socket::WriteOptions wopt;
-    wopt.ignore_eovercrowded = true;
-    while (true) {
-        std::unique_lock<butil::Mutex> m(_mutex);
-        while (!_dones.empty() && _dones.front()->IsReady()) {
-            ready_to_write.push(_dones.front());
-            _dones.pop();
-        }
-        if (ready_to_write.empty()) {
-            _writing = false;
-            if (!buf.empty()) {
-                LOG_IF(WARNING, s->Write(&buf, &wopt) != 0)
-                    << "Fail to send redis reply";
-            }
-            break;
-        }
-        m.unlock();
-
-        while (!ready_to_write.empty()) {
-            ConsumeTaskDone* head = ready_to_write.front();
-            ready_to_write.pop();
-            buf.append(head->sendbuf);
-            AddSentDone(head);
-        }
-        if ((int)buf.size() > FLAGS_redis_batch_flush_max_size) {
-            // In extreme cases, there are always tasks that are ready in every check
-            // loop and the buf size continues to grow, then we will never have chance
-            // to write the buffer. To solve this issue, just add a limit to the maximum
-            // size of buf.
-            LOG_IF(WARNING, s->Write(&buf, &wopt) != 0)
-                << "Fail to send redis reply";
-            CHECK(buf.empty());
-        }
-    }
-}
-
-void RedisConnContext::AddSentDone(ConsumeTaskDone* done) {
-    std::unique_lock<butil::Mutex> m(_dones_sent_mutex);
-    _dones_sent.push(done);
-}
-
-void RedisConnContext::ClearSentDones() {
-    std::queue<ConsumeTaskDone*> dones_sent;
-    {
-        std::unique_lock<butil::Mutex> m(_dones_sent_mutex);
-        _dones_sent.swap(dones_sent);
-    }
-    while (!dones_sent.empty()) {
-        ConsumeTaskDone* head = dones_sent.front();
-        dones_sent.pop();
-        delete head;
-    }
-}
-
 // ========== impl of RedisConnContext ==========
-
-void ConsumeTaskDone::Run() { 
-    butil::intrusive_ptr<RedisConnContext> delete_ctx(ctx, false);
-    output_message.SerializeToIOBuf(&sendbuf);
-    _ready.store(true, butil::memory_order_release);
-    ctx->Flush();
-    // After Flush(), this object may be deleted and should never be
-    // touched.
-}
 
 ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
                               bool read_eof, const void* arg) {
@@ -332,19 +222,15 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         if (err != PARSE_OK) {
             return MakeParseError(err);
         }
-        std::unique_ptr<ConsumeTaskDone> done(new ConsumeTaskDone);
-        done->input_message.CopyFromDifferentArena(ctx->parsing_message, &done->arena);
+        std::unique_ptr<RedisTask> task(new RedisTask);
+        task->input_message.CopyFromDifferentArena(ctx->parsing_message, &task->arena);
         ctx->parsing_message.Clear();
         ctx->arena.clear();
-        // Add a ref that removed in ConsumeTaskDone::Run
-        ctx->AddRefManually();
-        if (bthread::execution_queue_execute(ctx->queue, done.get()) != 0) {
-            ctx->RemoveRefManually();
+        if (bthread::execution_queue_execute(ctx->queue, task.get()) != 0) {
             LOG(ERROR) << "Fail to push execution queue";
             return MakeParseError(PARSE_ERROR_NO_RESOURCE);
         }
-        ctx->ClearSentDones();
-        done.release();
+        task.release();
         return MakeMessage(NULL);
     } else {
         // NOTE(gejun): PopPipelinedInfo() is actually more contended than what

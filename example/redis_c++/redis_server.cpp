@@ -60,9 +60,7 @@ public:
         : _rsimpl(rsimpl) {}
 
     brpc::RedisCommandHandler::Result Run(const char* args[],
-                                          brpc::RedisReply* output,
-                                          google::protobuf::Closure* done) {
-        brpc::ClosureGuard done_guard(done);
+                                          brpc::RedisReply* output) {
         if (args[1] == NULL) {
             output->SetError("ERR wrong number of arguments for 'get' command");
             return brpc::RedisCommandHandler::OK;
@@ -88,14 +86,12 @@ public:
         : _rsimpl(rsimpl) {}
 
     brpc::RedisCommandHandler::Result Run(const char* args[],
-                                          brpc::RedisReply* output,
-                                          google::protobuf::Closure* done) {
-        brpc::ClosureGuard done_guard(done);
-        std::string key = args[1];
-        if (args[2] == NULL) {
+                                          brpc::RedisReply* output) {
+        if (args[1] == NULL || args[2] == NULL) {
             output->SetError("ERR wrong number of arguments for 'set' command");
             return brpc::RedisCommandHandler::OK;
         }
+        std::string key = args[1];
         _rsimpl->Set(key, args[2]);
         output->SetStatus("OK");
         return brpc::RedisCommandHandler::OK;
