@@ -47,9 +47,6 @@ DEFINE_bool(redis_verbose, false,
             "[DEBUG] Print EVERY redis request/response");
 DEFINE_int32(redis_batch_flush_max_size, 2048, "beyond which the server response"
         " are forced to write to socket");
-DEFINE_int32(redis_max_request_count_before_clear_arena, 10000, "If the number of "
-        "incoming requests has reached multiple of this value, arena from which the "
-        "requests are allocated will be cleared.");
 
 struct InputResponse : public InputMessageBase {
     bthread_id_t id_wait;
@@ -166,7 +163,7 @@ int ConsumeTask(RedisConnContext* ctx, ConsumeTaskDone* done) {
     } else {
         std::string comm;
         comm.reserve(8);
-        for (const char* c = done->input_message[0].c_str(); *c; ++c) {
+        for (const char* c = args[0]; *c; ++c) {
             comm.push_back(std::tolower(*c));
         }
         auto it = ctx->command_map.find(comm);
@@ -338,9 +335,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         std::unique_ptr<ConsumeTaskDone> done(new ConsumeTaskDone);
         done->input_message.CopyFromDifferentArena(ctx->parsing_message, &done->arena);
         ctx->parsing_message.Clear();
-        if ((++ctx->message_count % FLAGS_redis_max_request_count_before_clear_arena) == 0) {
-            ctx->arena.clear();
-        }
+        ctx->arena.clear();
         // Add a ref that removed in ConsumeTaskDone::Run
         ctx->AddRefManually();
         if (bthread::execution_queue_execute(ctx->queue, done.get()) != 0) {
