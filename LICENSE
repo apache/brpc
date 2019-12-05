@@ -691,7 +691,7 @@ src/brpc/callback.h: 3-clause BSD
 
 --------------------------------------------------------------------------------
 
-src/butil/ (some files), test/ (some files): 3-clause BSD
+src/butil/(some files), test/(some files): 3-clause BSD
 
 Some portions of these files are derived from code in the Chromium project,
 copyright (c) Google inc and (c) The Chromium Authors and licensed under the
