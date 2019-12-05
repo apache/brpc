@@ -22,12 +22,13 @@
 #include <brpc/server.h>
 #include <brpc/redis.h>
 #include <butil/crc32c.h>
+#include <butil/string_splitter.h>
 #include <gflags/gflags.h>
 #include <unordered_map>
 
 class RedisServiceImpl : public brpc::RedisService {
 public:
-    bool Set(const std::string& key, const char* value) {
+    bool Set(const std::string& key, const std::string& value) {
         int slot = butil::crc32c::Value(key.c_str(), key.size()) % HashSlotNum;
         _mutex[slot].lock();
         _map[slot][key] = value;
@@ -59,13 +60,24 @@ public:
     GetCommandHandler(RedisServiceImpl* rsimpl)
         : _rsimpl(rsimpl) {}
 
-    brpc::RedisCommandHandler::Result Run(const char* args[],
+    brpc::RedisCommandHandler::Result Run(const char* args,
                                           brpc::RedisReply* output) {
-        if (args[1] == NULL) {
+        std::string key;
+        bool parse_command = false;
+        butil::StringSplitter sp(args, ' ');
+        for (; sp; ++sp) {
+            if (!parse_command) {
+                parse_command = true;
+            } else if (key.empty()) {
+                key.assign(sp.field(), sp.length());
+            } else {
+                LOG(WARNING) << "unknown args: " << sp;
+            }
+        }
+        if (key.empty()) {
             output->SetError("ERR wrong number of arguments for 'get' command");
             return brpc::RedisCommandHandler::OK;
         }
-        std::string key = args[1];
         std::string value;
         if (_rsimpl->Get(key, &value)) {
             output->SetBulkString(value);
@@ -85,14 +97,28 @@ public:
     SetCommandHandler(RedisServiceImpl* rsimpl)
         : _rsimpl(rsimpl) {}
 
-    brpc::RedisCommandHandler::Result Run(const char* args[],
+    brpc::RedisCommandHandler::Result Run(const char* args,
                                           brpc::RedisReply* output) {
-        if (args[1] == NULL || args[2] == NULL) {
+        std::string key;
+        std::string value;
+        bool parse_command = false;
+        butil::StringSplitter sp(args, ' ');
+        for (; sp; ++sp) {
+            if (!parse_command) {
+                parse_command = true;
+            } else if (key.empty()) {
+                key.assign(sp.field(), sp.length());
+            } else if (value.empty()) {
+                value.assign(sp.field(), sp.length());
+            } else {
+                LOG(WARNING) << "unknown args: " << sp;
+            }
+        }
+        if (key.empty() || value.empty()) {
             output->SetError("ERR wrong number of arguments for 'set' command");
             return brpc::RedisCommandHandler::OK;
         }
-        std::string key = args[1];
-        _rsimpl->Set(key, args[2]);
+        _rsimpl->Set(key, value);
         output->SetStatus("OK");
         return brpc::RedisCommandHandler::OK;
 	}
