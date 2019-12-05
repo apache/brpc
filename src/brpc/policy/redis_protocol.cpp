@@ -57,21 +57,21 @@ struct InputResponse : public InputMessageBase {
     }
 };
 
-static bool ParseArgs(const RedisReply& message, std::unique_ptr<const char*[]>* args_out) {
+static bool ParseArgs(const RedisReply& message, std::ostringstream& os) {
     if (!message.is_array() || message.size() == 0) {
         LOG(WARNING) << "request message is not array or size equals to zero";
         return false;
     }
-    args_out->reset(new const char*[message.size() + 1 /* NULL */]);
-    
     for (size_t i = 0; i < message.size(); ++i) {
         if (!message[i].is_string()) {
             LOG(WARNING) << "request message[" << i << "] is not array";
             return false;
         }
-        (*args_out)[i] = message[i].c_str();
+        if (i != 0) {
+            os << " ";
+        }
+        os << message[i].c_str();
     }
-    (*args_out)[message.size()] = NULL;
     return true;
 }
 
@@ -106,22 +106,22 @@ public:
 
 int ConsumeTask(RedisConnContext* ctx, RedisTask* task, butil::IOBuf* sendbuf) {
     RedisReply output(&task->arena);
-    std::unique_ptr<const char*[]> args;
-    if (!ParseArgs(task->input_message, &args)) {
+    std::ostringstream os;
+    if (!ParseArgs(task->input_message, os)) {
         LOG(ERROR) << "ERR command not string";
         output.SetError("ERR command not string");
         return -1;
     }
     if (ctx->handler_continue) {
         RedisCommandHandler::Result result =
-            ctx->handler_continue->Run(args.get(), &output);
+            ctx->handler_continue->Run(os.str().c_str(), &output);
         if (result == RedisCommandHandler::OK) {
             ctx->handler_continue = NULL;
         }
     } else {
         std::string comm;
         comm.reserve(8);
-        for (const char* c = args[0]; *c; ++c) {
+        for (const char* c = task->input_message[0].c_str(); *c; ++c) {
             comm.push_back(std::tolower(*c));
         }
         auto it = ctx->command_map.find(comm);
@@ -130,7 +130,7 @@ int ConsumeTask(RedisConnContext* ctx, RedisTask* task, butil::IOBuf* sendbuf) {
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", comm.c_str());
             output.SetError(buf);
         } else {
-            RedisCommandHandler::Result result = it->second->Run(args.get(), &output);
+            RedisCommandHandler::Result result = it->second->Run(os.str().c_str(), &output);
             if (result == RedisCommandHandler::CONTINUE) {
                 ctx->handler_continue = it->second.get();
             }

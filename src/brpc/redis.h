@@ -243,9 +243,9 @@ public:
     // Once Server receives commands, it will first find the corresponding handlers and
     // call them sequentially(one by one) according to the order that requests arrive,
     // just like what redis-server does.
-    // `args` is an array of redis command arguments, ending with nullptr. For example,
-    // command "set foo bar" corresponds to args[0] == "set", args[1] == "foo",
-    // args[2] == "bar" and args[3] == nullptr.
+    // `args` is the redis request command string typed by remote side, ending with nullptr.
+    // For example, possible args value may be "set foo bar" or "incr somekey". User can
+    // use butil::StringSplitter to split and parse it.
     // `output`, which should be filled by user, is the content that sent to client side.
     // Read brpc/src/redis_reply.h for more usage.
     // The return value should be RedisCommandHandler::OK for normal cases. If you want
@@ -257,7 +257,7 @@ public:
     // RedisCommandHandler::CONTINUE and one RedisCommandHandler::OK since exec is the
     // marker that ends the transaction. User should queue the commands and execute them
     // all once the ending marker is received.
-    virtual RedisCommandHandler::Result Run(const char* args[],
+    virtual RedisCommandHandler::Result Run(const char* args,
                                             RedisReply* output) = 0;
 
     // Whenever a tcp connection is established, a bunch of new handlers would be created
