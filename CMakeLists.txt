@@ -91,7 +91,7 @@ include_directories(
 )
 
 execute_process(
-    COMMAND bash -c "${PROJECT_SOURCE_DIR}/tools/get_brpc_version.sh ${PROJECT_SOURCE_DIR} | tr -d '\n'"
+    COMMAND bash -c "${PROJECT_SOURCE_DIR}/tools/get_brpc_revision.sh ${PROJECT_SOURCE_DIR} | tr -d '\n'"
     OUTPUT_VARIABLE BRPC_REVISION
 )
 
