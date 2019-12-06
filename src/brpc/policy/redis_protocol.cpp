@@ -44,8 +44,9 @@ namespace policy {
 
 DEFINE_bool(redis_verbose, false,
             "[DEBUG] Print EVERY redis request/response");
-DEFINE_int32(redis_batch_flush_max_size, 4096, "beyond which the server response"
-        " are forced to write to socket");
+DEFINE_int32(redis_batch_flush_data_size, 4096, "If the total data size of buffered "
+        "responses is beyond this value, then data is forced to write to socket"
+        "to avoid latency of the front responses being too big");
 
 struct InputResponse : public InputMessageBase {
     bthread_id_t id_wait;
@@ -57,21 +58,34 @@ struct InputResponse : public InputMessageBase {
     }
 };
 
-static bool ParseArgs(const RedisReply& message, std::ostringstream& os) {
+static bool ParseArgs(const RedisReply& message, std::unique_ptr<char[]>* args) {
     if (!message.is_array() || message.size() == 0) {
         LOG(WARNING) << "request message is not array or size equals to zero";
         return false;
     }
+    int total_size = 0;
     for (size_t i = 0; i < message.size(); ++i) {
         if (!message[i].is_string()) {
             LOG(WARNING) << "request message[" << i << "] is not array";
             return false;
         }
         if (i != 0) {
-            os << " ";
+            total_size++;   // add one byte for ' '
         }
-        os << message[i].c_str();
+        total_size += message[i].size();
     }
+    args->reset(new char[total_size + 1 /* NULL */]);
+    int len = 0;
+    for (size_t i = 0; i < message.size(); ++i) {
+        if (i != 0) {
+            (*args)[len++] = ' ';
+        }
+        memcpy(args->get() + len, message[i].c_str(), message[i].size());
+        len += message[i].size();
+    }
+    (*args)[len] = '\0';
+    CHECK(len == total_size) << "implementation of ParseArgs is buggy, len="
+        << len << " expected=" << total_size;
     return true;
 }
 
@@ -81,19 +95,19 @@ struct RedisTask {
 };
 
 // This class is as parsing_context in socket.
-class RedisConnContext : public SharedObject
-                       , public Destroyable  {
+class RedisConnContext : public Destroyable  {
 public:
     RedisConnContext()
-        : handler_continue(NULL) {}
+        : redis_service(NULL)
+        , handler_continue(NULL) {}
     ~RedisConnContext();
     // @Destroyable
-    void Destroy();
+    void Destroy() override;
 
     int Init();
 
     SocketId socket_id;
-    RedisService::CommandMap command_map;
+    RedisService* redis_service;
     // If user starts a transaction, handler_continue indicates the
     // first handler pointer that triggers the transaction.
     RedisCommandHandler* handler_continue;
@@ -106,33 +120,31 @@ public:
 
 int ConsumeTask(RedisConnContext* ctx, RedisTask* task, butil::IOBuf* sendbuf) {
     RedisReply output(&task->arena);
-    std::ostringstream os;
-    if (!ParseArgs(task->input_message, os)) {
+    std::unique_ptr<char[]> args;
+    if (!ParseArgs(task->input_message, &args)) {
         LOG(ERROR) << "ERR command not string";
         output.SetError("ERR command not string");
         return -1;
     }
     if (ctx->handler_continue) {
         RedisCommandHandler::Result result =
-            ctx->handler_continue->Run(os.str().c_str(), &output);
+            ctx->handler_continue->Run(args.get(), &output);
         if (result == RedisCommandHandler::OK) {
             ctx->handler_continue = NULL;
         }
     } else {
-        std::string comm;
-        comm.reserve(8);
-        for (const char* c = task->input_message[0].c_str(); *c; ++c) {
-            comm.push_back(std::tolower(*c));
-        }
-        auto it = ctx->command_map.find(comm);
-        if (it == ctx->command_map.end()) {
+        std::string comm = task->input_message[0].c_str();
+        std::transform(comm.begin(), comm.end(), comm.begin(),
+                [](unsigned char c){ return std::tolower(c); });
+        RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(comm);
+        if (!ch) {
             char buf[64];
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", comm.c_str());
             output.SetError(buf);
         } else {
-            RedisCommandHandler::Result result = it->second->Run(os.str().c_str(), &output);
+            RedisCommandHandler::Result result = ch->Run(args.get(), &output);
             if (result == RedisCommandHandler::CONTINUE) {
-                ctx->handler_continue = it->second.get();
+                ctx->handler_continue = ch;
             }
         }
     }
@@ -143,7 +155,7 @@ int ConsumeTask(RedisConnContext* ctx, RedisTask* task, butil::IOBuf* sendbuf) {
 int Consume(void* ctx, bthread::TaskIterator<RedisTask*>& iter) {
     RedisConnContext* qctx = static_cast<RedisConnContext*>(ctx);
     if (iter.is_queue_stopped()) {
-        qctx->RemoveRefManually();
+        delete qctx;
         return 0;
     }
     SocketUniquePtr s;
@@ -164,7 +176,12 @@ int Consume(void* ctx, bthread::TaskIterator<RedisTask*>& iter) {
             has_err = true;
             continue;
         }
-        if ((int)sendbuf.size() >= FLAGS_redis_batch_flush_max_size) {
+        // If there are too many tasks to execute, latency of the front
+        // responses will be increased by waiting the following tasks to
+        // be completed. To prevent this, if the current buf size is greater
+        // than FLAGS_redis_batch_flush_max_size, we just write the current
+        // buf first.
+        if ((int)sendbuf.size() >= FLAGS_redis_batch_flush_data_size) {
             LOG_IF(WARNING, s->Write(&sendbuf, &wopt) != 0)
                 << "Fail to send redis reply";
         }
@@ -211,12 +228,10 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         RedisConnContext* ctx = static_cast<RedisConnContext*>(socket->parsing_context());
         if (ctx == NULL) {
             ctx = new RedisConnContext;
-            // add ref that removed in Consume()
-            ctx->AddRefManually();
             ctx->socket_id = socket->id();
-            rs->CloneCommandMap(&ctx->command_map);
+            ctx->redis_service = rs;
             if (ctx->Init() != 0) {
-                ctx->RemoveRefManually();
+                delete ctx;
                 LOG(ERROR) << "Fail to init redis RedisConnContext";
                 return MakeParseError(PARSE_ERROR_NO_RESOURCE);
             }

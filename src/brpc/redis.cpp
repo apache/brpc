@@ -438,10 +438,9 @@ std::ostream& operator<<(std::ostream& os, const RedisResponse& response) {
 
 bool RedisService::AddCommandHandler(const std::string& name, RedisCommandHandler* handler) {
     std::string lcname;
-    lcname.reserve(name.size());
-    for (auto c : name) {
-        lcname.push_back(std::tolower(c));
-    }
+    lcname.resize(name.size());
+    std::transform(name.begin(), name.end(), lcname.begin(),
+            [](unsigned char c){ return std::tolower(c); });
     if (_command_map.count(lcname)) {
         LOG(ERROR) << "redis command name=" << name << " exist";
         return false;
@@ -450,10 +449,12 @@ bool RedisService::AddCommandHandler(const std::string& name, RedisCommandHandle
     return true;
 }
  
-void RedisService::CloneCommandMap(CommandMap* map) {
-    for (auto it : _command_map) {
-        (*map)[it.first].reset(it.second->New());
+RedisCommandHandler* RedisService::FindCommandHandler(const std::string& name) {
+    auto it = _command_map.find(name);
+    if (it != _command_map.end()) {
+        return it->second.get();
     }
+    return NULL;
 }
 
 } // namespace brpc

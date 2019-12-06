@@ -226,12 +226,12 @@ public:
     bool AddCommandHandler(const std::string& name, RedisCommandHandler* handler);
 
     // This function should be touched by user and used by brpc deverloper only.
-    void CloneCommandMap(CommandMap* map);
+    RedisCommandHandler* FindCommandHandler(const std::string& name);
 private:
     CommandMap _command_map;
 };
 
-// The Command handler for a redis request. User should impletement Run() and New().
+// The Command handler for a redis request. User should impletement Run().
 class RedisCommandHandler {
 public:
     enum Result {
@@ -259,12 +259,6 @@ public:
     // all once the ending marker is received.
     virtual RedisCommandHandler::Result Run(const char* args,
                                             RedisReply* output) = 0;
-
-    // Whenever a tcp connection is established, a bunch of new handlers would be created
-    // using New() of the corresponding handler and brpc makes sure that all requests from
-    // one connection with the same command name would be redirected to the same New()-ed
-    // command handler. 
-    virtual RedisCommandHandler* New() = 0;
 };
 
 } // namespace brpc

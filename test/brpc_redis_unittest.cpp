@@ -549,7 +549,7 @@ TEST_F(RedisTest, quote_and_escape) {
     request.Clear();
 }
 
-TEST_F(RedisTest, codec) {
+TEST_F(RedisTest, redis_reply_codec) {
     butil::Arena arena;
     // status
     {
@@ -591,7 +591,7 @@ TEST_F(RedisTest, codec) {
         ASSERT_TRUE(r.is_nil());
 
         r.Clear();
-        ASSERT_TRUE(r.SetBulkString("abcde'hello world"));
+        ASSERT_TRUE(r.SetString("abcde'hello world"));
         ASSERT_TRUE(r.SerializeToIOBuf(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "$17\r\nabcde'hello world\r\n");
         ASSERT_STREQ(r.c_str(), "abcde'hello world");
@@ -627,9 +627,9 @@ TEST_F(RedisTest, codec) {
         ASSERT_TRUE(r.SetArray(3));
         brpc::RedisReply& sub_reply = r[0];
         sub_reply.SetArray(2);
-        sub_reply[0].SetBulkString("hello, it's me");
+        sub_reply[0].SetString("hello, it's me");
         sub_reply[1].SetInteger(422);
-        r[1].SetBulkString("To go over everything");
+        r[1].SetString("To go over everything");
         r[2].SetInteger(1);
         ASSERT_TRUE(r[3].is_nil());
         ASSERT_TRUE(r.SerializeToIOBuf(&buf));
@@ -658,6 +658,44 @@ TEST_F(RedisTest, codec) {
         ASSERT_STREQ(buf.to_string().c_str(), "*-1\r\n");
         ASSERT_EQ(r.ConsumePartialIOBuf(buf, &arena), brpc::PARSE_OK);
         ASSERT_TRUE(r.is_nil());
+    }
+
+    // CopyFromDifferentArena
+    {
+        brpc::RedisReply r(&arena);
+        ASSERT_TRUE(r.SetArray(1));
+        brpc::RedisReply& sub_reply = r[0];
+        sub_reply.SetArray(2);
+        sub_reply[0].SetString("hello, it's me");
+        sub_reply[1].SetInteger(422);
+
+        brpc::RedisReply r2(NULL);
+        r2.CopyFromDifferentArena(r, &arena);
+        ASSERT_TRUE(r2.is_array());
+        ASSERT_EQ((int)r2[0].size(), 2);
+        ASSERT_STREQ(r2[0][0].c_str(), sub_reply[0].c_str());
+        ASSERT_EQ(r2[0][1].integer(), sub_reply[1].integer());
+    }
+    // SetXXX can only be called once
+    {
+        brpc::RedisReply r(&arena);
+        ASSERT_TRUE(r.SetStatus("OK"));
+        ASSERT_FALSE(r.SetStatus("OK"));
+        ASSERT_FALSE(r.SetNilString());
+        ASSERT_FALSE(r.SetArray(2));
+        ASSERT_FALSE(r.SetString("OK"));
+        ASSERT_FALSE(r.SetError("OK"));
+        ASSERT_FALSE(r.SetInteger(42));
+    }
+    {
+        brpc::RedisReply r(&arena);
+        ASSERT_TRUE(r.SetInteger(42));
+        ASSERT_FALSE(r.SetStatus("OK"));
+        ASSERT_FALSE(r.SetNilString());
+        ASSERT_FALSE(r.SetArray(2));
+        ASSERT_FALSE(r.SetString("OK"));
+        ASSERT_FALSE(r.SetError("OK"));
+        ASSERT_FALSE(r.SetStatus("OK"));
     }
 }
 
@@ -694,11 +732,6 @@ public:
         output->SetStatus("OK");
         return brpc::RedisCommandHandler::OK;
     }
-    RedisCommandHandler* New() { _new_count++; return new SetCommandHandler(); }
-    int new_count() { return _new_count; }
-
-private:
-    int _new_count = 0;
 };
 
 class GetCommandHandler : public brpc::RedisCommandHandler {
@@ -725,17 +758,12 @@ public:
         }
         auto it = m.find(key);
         if (it != m.end()) {
-            output->SetBulkString(it->second);
+            output->SetString(it->second);
         } else {
             output->SetNilString();
         }
         return brpc::RedisCommandHandler::OK;
     }
-    RedisCommandHandler* New() { _new_count++; return new GetCommandHandler(); }
-    int new_count() { return _new_count; }
-
-private:
-    int _new_count = 0;
 };
 
 class IncrCommandHandler : public brpc::RedisCommandHandler {
@@ -767,11 +795,6 @@ public:
         output->SetInteger(value);
         return brpc::RedisCommandHandler::OK;
     }
-    RedisCommandHandler* New() { _new_count++; return new IncrCommandHandler(); }
-    int new_count() { return _new_count; }
-
-private:
-    int _new_count = 0;
 };
 
 class RedisServiceImpl : public brpc::RedisService { };
@@ -820,10 +843,6 @@ TEST_F(RedisTest, server_sanity) {
     ASSERT_STREQ("value2", response.reply(5).c_str());
     ASSERT_EQ(brpc::REDIS_REPLY_ERROR, response.reply(6).type());
     ASSERT_TRUE(butil::StringPiece(response.reply(6).error_message()).starts_with("ERR unknown command"));
-
-    ASSERT_EQ(gh->new_count(), 1);
-    ASSERT_EQ(sh->new_count(), 1);
-    ASSERT_EQ(ih->new_count(), 1);
 }
 
 void* incr_thread(void* arg) {
@@ -871,7 +890,6 @@ TEST_F(RedisTest, server_concurrency) {
         delete channels[i];
     }
     ASSERT_EQ(int_map["count"], 10 * 5000LL);
-    ASSERT_EQ(ih->new_count(), N);
 }
 
 class MultiCommandHandler : public brpc::RedisCommandHandler {

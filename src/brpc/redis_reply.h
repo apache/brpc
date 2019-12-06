@@ -59,12 +59,32 @@ public:
     bool is_string() const;  // True if the reply is a string.
     bool is_array() const;   // True if the reply is an array.
 
-    bool SetNilString();  // "$-1\r\n"
-    bool SetArray(int size);  // size == -1 means nil array("*-1\r\n")
+    // Set the reply to the nil string. Return True if it is set
+    // successfully. If the reply has already been set, return false.
+    bool SetNilString();
+
+    // Set the reply to the array with `size' elements. If `size'
+    // is -1, then it is a nil array. After call SetArray, use
+    // operator[] to visit sub replies and set their value. Return
+    // True if it is set successfully. If the reply has already
+    // been set, return false.
+    bool SetArray(int size);
+
+    // Set the reply to status message `str'. Return True if it is set
+    // successfully. If the reply has already been set, return false.
     bool SetStatus(const std::string& str);
+
+    // Set the reply to error message `str'. Return True if it is set
+    // successfully. If the reply has already been set, return false.
     bool SetError(const std::string& str);
+
+    // Set the reply to integer `value'. Return True if it is set
+    // successfully. If the reply has already been set, return false.
     bool SetInteger(int64_t value);
-    bool SetBulkString(const std::string& str);
+
+    // Set the reply to string `str'. Return True if it is set
+    // successfully. If the reply has already been set, return false.
+    bool SetString(const std::string& str);
 
     // Convert the reply into a signed 64-bit integer(according to
     // http://redis.io/topics/protocol). If the reply is not an integer,
@@ -84,8 +104,9 @@ public:
     // If you need a std::string, call .data().as_string() (which allocates mem)
     butil::StringPiece data() const;
 
-    // Return number of sub replies in the array. If this reply is not an array,
-    // 0 is returned (call stacks are not logged).
+    // Return number of sub replies in the array if this reply is an array, or
+    // return the length of string if this reply is a string, otherwise 0 is
+    // returned (call stacks are not logged).
     size_t size() const;
     // Get the index-th sub reply. If this reply is not an array, a nil reply
     // is returned (call stacks are not logged)
@@ -147,6 +168,7 @@ private:
         uint64_t padding[2]; // For swapping, must cover all bytes.
     } _data;
     butil::Arena* _arena;
+    bool _has_set;
 };
 
 // =========== inline impl. ==============
@@ -164,7 +186,8 @@ inline RedisReply::RedisReply(butil::Arena* arena)
 inline RedisReply::RedisReply()
     : _type(REDIS_REPLY_NIL)
     , _length(0)
-    , _arena(NULL) {
+    , _arena(NULL)
+    , _has_set(false) {
     _data.array.last_index = -1;
     _data.array.replies = NULL;
 }
@@ -190,14 +213,15 @@ inline int64_t RedisReply::integer() const {
 }
 
 inline bool RedisReply::SetNilString() {
-    if (!_arena) return false;
+    if (!_arena || _has_set) return false;
     _type = REDIS_REPLY_STRING;
     _length = npos;
+    _has_set = true;
     return true;
 }
 
 inline bool RedisReply::SetArray(int size) {
-    if (!_arena) {
+    if (!_arena || _has_set) {
         return false;
     }
     _type = REDIS_REPLY_ARRAY;
@@ -218,19 +242,20 @@ inline bool RedisReply::SetArray(int size) {
     }
     _length = size;
     _data.array.replies = subs;
+    _has_set = true;
     return true;
 }
 
 inline bool RedisReply::SetBasicString(const std::string& str, RedisReplyType type) {
-    if (!_arena) {
+    if (!_arena || _has_set) {
         return false;
     }
-    size_t size = str.size();
+    const size_t size = str.size();
     if (size < sizeof(_data.short_str)) {
         memcpy(_data.short_str, str.c_str(), size);
         _data.short_str[size] = '\0';
     } else {
-        char* d = (char*)_arena->allocate((_length/8 + 1) * 8);
+        char* d = (char*)_arena->allocate((size/8 + 1) * 8);
         if (!d) {
             LOG(FATAL) << "Fail to allocate string[" << size << "]";
             return false;
@@ -241,6 +266,7 @@ inline bool RedisReply::SetBasicString(const std::string& str, RedisReplyType ty
     }
     _type = type;
     _length = size;
+    _has_set = true;
     return true;
 }
 
@@ -253,13 +279,17 @@ inline bool RedisReply::SetError(const std::string& str) {
 }
 
 inline bool RedisReply::SetInteger(int64_t value) {
+    if (!_arena || _has_set) {
+        return false;
+    }
     _type = REDIS_REPLY_INTEGER;
     _length = 0;
     _data.integer = value;
+    _has_set = true;
     return true;
 }
 
-inline bool RedisReply::SetBulkString(const std::string& str) {
+inline bool RedisReply::SetString(const std::string& str) {
     return SetBasicString(str, REDIS_REPLY_STRING);
 }
 
@@ -303,7 +333,7 @@ inline const char* RedisReply::error_message() const {
 }
 
 inline size_t RedisReply::size() const {
-    return (is_array() ? _length : 0);
+    return ((is_array() || is_string()) ? _length : 0);
 }
 
 inline RedisReply& RedisReply::operator[](size_t index) {
@@ -331,6 +361,7 @@ inline void RedisReply::Clear() {
     _length = 0;
     _data.array.last_index = -1;
     _data.array.replies = NULL;
+    _has_set = false;
 }
 
 inline void RedisReply::CopyFromSameArena(const RedisReply& other) {

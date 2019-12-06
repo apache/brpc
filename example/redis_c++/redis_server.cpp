@@ -64,23 +64,26 @@ public:
                                           brpc::RedisReply* output) {
         std::string key;
         bool parse_command = false;
-        butil::StringSplitter sp(args, ' ');
-        for (; sp; ++sp) {
+        const char* start = args;
+        const char* end = NULL;
+        while ((end = strchr(start, ' '))!= NULL) {
             if (!parse_command) {
                 parse_command = true;
             } else if (key.empty()) {
-                key.assign(sp.field(), sp.length());
-            } else {
-                LOG(WARNING) << "unknown args: " << sp;
+                key.assign(start, end);
             }
+            start = end + 1;
         }
-        if (key.empty()) {
+        if (!parse_command) {
             output->SetError("ERR wrong number of arguments for 'get' command");
             return brpc::RedisCommandHandler::OK;
         }
+        if (key.empty()) {
+            key.assign(start);
+        }
         std::string value;
         if (_rsimpl->Get(key, &value)) {
-            output->SetBulkString(value);
+            output->SetString(value);
         } else {
             output->SetNilString();
         }
@@ -102,21 +105,24 @@ public:
         std::string key;
         std::string value;
         bool parse_command = false;
-        butil::StringSplitter sp(args, ' ');
-        for (; sp; ++sp) {
+        const char* start = args;
+        const char* end = NULL;
+        while ((end = strchr(start, ' '))!= NULL) {
             if (!parse_command) {
                 parse_command = true;
             } else if (key.empty()) {
-                key.assign(sp.field(), sp.length());
+                key.assign(start, end);
             } else if (value.empty()) {
-                value.assign(sp.field(), sp.length());
-            } else {
-                LOG(WARNING) << "unknown args: " << sp;
+                value.assign(start, end);
             }
+            start = end + 1;
         }
-        if (key.empty() || value.empty()) {
+        if (!parse_command || key.empty()) {
             output->SetError("ERR wrong number of arguments for 'set' command");
             return brpc::RedisCommandHandler::OK;
+        }
+        if (value.empty()) {
+            value.assign(start);
         }
         _rsimpl->Set(key, value);
         output->SetStatus("OK");
