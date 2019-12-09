@@ -124,6 +124,7 @@ int ConsumeTask(RedisConnContext* ctx, RedisTask* task, butil::IOBuf* sendbuf) {
     if (!ParseArgs(task->input_message, &args)) {
         LOG(ERROR) << "ERR command not string";
         output.SetError("ERR command not string");
+        output.SerializeToIOBuf(sendbuf);
         return -1;
     }
     if (ctx->handler_continue) {
@@ -172,10 +173,7 @@ int Consume(void* ctx, bthread::TaskIterator<RedisTask*>& iter) {
         if (has_err) {
             continue;
         }
-        if (ConsumeTask(qctx, *iter, &sendbuf) != 0) {
-            has_err = true;
-            continue;
-        }
+        ConsumeTask(qctx, *iter, &sendbuf);
         // If there are too many tasks to execute, latency of the front
         // responses will be increased by waiting the following tasks to
         // be completed. To prevent this, if the current buf size is greater
