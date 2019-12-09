@@ -22,7 +22,7 @@
 #include <brpc/server.h>
 #include <brpc/redis.h>
 #include <butil/crc32c.h>
-#include <butil/string_splitter.h>
+#include <butil/strings/string_split.h>
 #include <gflags/gflags.h>
 #include <unordered_map>
 
@@ -61,26 +61,14 @@ public:
         : _rsimpl(rsimpl) {}
 
     brpc::RedisCommandHandler::Result Run(const char* args,
-                                          brpc::RedisReply* output) {
-        std::string key;
-        bool parse_command = false;
-        const char* start = args;
-        const char* end = NULL;
-        while ((end = strchr(start, ' '))!= NULL) {
-            if (!parse_command) {
-                parse_command = true;
-            } else if (key.empty()) {
-                key.assign(start, end);
-            }
-            start = end + 1;
-        }
-        if (!parse_command) {
+                                          brpc::RedisReply* output) override {
+        std::vector<std::string> args_array;
+        butil::SplitString(args, ' ', &args_array);
+        if ((int)args_array.size() <= 1) {
             output->SetError("ERR wrong number of arguments for 'get' command");
             return brpc::RedisCommandHandler::OK;
         }
-        if (key.empty()) {
-            key.assign(start);
-        }
+        const std::string& key = args_array[1];
         std::string value;
         if (_rsimpl->Get(key, &value)) {
             output->SetString(value);
@@ -89,7 +77,6 @@ public:
         }
         return brpc::RedisCommandHandler::OK;
 	}
-    RedisCommandHandler* New() { return new GetCommandHandler(_rsimpl); }
 
 private:
    	RedisServiceImpl* _rsimpl;
@@ -101,34 +88,23 @@ public:
         : _rsimpl(rsimpl) {}
 
     brpc::RedisCommandHandler::Result Run(const char* args,
-                                          brpc::RedisReply* output) {
-        std::string key;
-        std::string value;
-        bool parse_command = false;
-        const char* start = args;
-        const char* end = NULL;
-        while ((end = strchr(start, ' '))!= NULL) {
-            if (!parse_command) {
-                parse_command = true;
-            } else if (key.empty()) {
-                key.assign(start, end);
-            } else if (value.empty()) {
-                value.assign(start, end);
-            }
-            start = end + 1;
+                                          brpc::RedisReply* output) override {
+        std::vector<std::string> args_array;
+        butil::SplitString(args, ' ', &args_array);
+        if (args_array.size() <= 1) {
+            output->SetError("ERR wrong number of arguments for 'get' command");
+            return brpc::RedisCommandHandler::OK;
         }
-        if (!parse_command || key.empty()) {
+        if ((int)args_array.size() <= 2) {
             output->SetError("ERR wrong number of arguments for 'set' command");
             return brpc::RedisCommandHandler::OK;
         }
-        if (value.empty()) {
-            value.assign(start);
-        }
+        const std::string& key = args_array[1];
+        const std::string& value = args_array[2];
         _rsimpl->Set(key, value);
         output->SetStatus("OK");
         return brpc::RedisCommandHandler::OK;
 	}
-    RedisCommandHandler* New() { return new SetCommandHandler(_rsimpl); }
 
 private:
    	RedisServiceImpl* _rsimpl;
