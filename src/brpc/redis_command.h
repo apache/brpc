@@ -45,8 +45,12 @@ class RedisCommandParser {
 public:
     RedisCommandParser();
 
-    // Parse raw message from `buf' and write the result to `out'.
-    ParseError ParseCommand(butil::IOBuf& buf, std::string* out);
+    // Parse raw message from `buf'. Return PARSE_OK if successful.
+    ParseError ParseCommand(butil::IOBuf& buf);
+
+    // After ParseCommand returns PARSE_OK, call this function to get
+    // the parsed command string.
+    std::string& Command() { return _command; }
 
 private:
     // Reset parser to the initial state.
@@ -55,6 +59,7 @@ private:
     bool _parsing_array; // if the parser has met array indicator '*'
     int _length;         // array length
     int _index;          // current parsing array index
+    std::string _command; // parsed command string
 };
 
 } // namespace brpc

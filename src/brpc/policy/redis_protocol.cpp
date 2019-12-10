@@ -79,7 +79,6 @@ public:
     bthread::ExecutionQueueId<std::string*> queue;
 
     RedisCommandParser parser;
-    std::string command;
 };
 
 int ConsumeTask(RedisConnContext* ctx, std::string* command, butil::IOBuf* sendbuf) {
@@ -195,12 +194,12 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             }
             socket->reset_parsing_context(ctx);
         }
-        ParseError err = ctx->parser.ParseCommand(*source, &ctx->command);
+        ParseError err = ctx->parser.ParseCommand(*source);
         if (err != PARSE_OK) {
             return MakeParseError(err);
         }
         std::unique_ptr<std::string> command(new std::string);
-        command->swap(ctx->command);
+        command->swap(ctx->parser.Command());
         if (bthread::execution_queue_execute(ctx->queue, command.get()) != 0) {
             LOG(ERROR) << "Fail to push execution queue";
             return MakeParseError(PARSE_ERROR_NO_RESOURCE);

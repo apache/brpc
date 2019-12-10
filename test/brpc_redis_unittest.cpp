@@ -557,64 +557,52 @@ TEST_F(RedisTest, command_parser) {
         // parse from whole command
         std::string command = "set abc edc";
         ASSERT_TRUE(brpc::RedisCommandNoFormat(&buf, command.c_str()).ok());
-        std::string command_out;
-        ASSERT_EQ(brpc::PARSE_OK, parser.ParseCommand(buf, &command_out));
+        ASSERT_EQ(brpc::PARSE_OK, parser.ParseCommand(buf));
         ASSERT_TRUE(buf.empty());
-        ASSERT_STREQ(command.c_str(), command_out.c_str());
+        ASSERT_STREQ(command.c_str(), parser.Command().c_str());
     }
     {
         // parse from two consecutive buf
         buf.append("*3\r\n$3");
-        std::string command_out;
         ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
-                parser.ParseCommand(buf, &command_out));
+                parser.ParseCommand(buf));
         ASSERT_EQ((int)buf.size(), 2);    // left "$3"
         buf.append("\r\nset\r\n$3\r\nabc\r\n$3\r\ndef\r\n");
-        ASSERT_EQ(brpc::PARSE_OK, parser.ParseCommand(buf, &command_out));
+        ASSERT_EQ(brpc::PARSE_OK, parser.ParseCommand(buf));
         ASSERT_TRUE(buf.empty());
-        ASSERT_STREQ(command_out.c_str(), "set abc def");
+        ASSERT_STREQ(parser.Command().c_str(), "set abc def");
     }
     {
-        // there is a non-string message and parse should fail
+        // there is a non-string message in command and parse should fail
         buf.append("*3\r\n$3");
-        std::string command_out;
-        ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
-                parser.ParseCommand(buf, &command_out));
+        ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, parser.ParseCommand(buf));
         ASSERT_EQ((int)buf.size(), 2);    // left "$3"
         buf.append("\r\nset\r\n:123\r\n$3\r\ndef\r\n");
-        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, parser.ParseCommand(buf, &command_out));
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, parser.ParseCommand(buf));
         parser.Reset();
     }
     {
         // not array
         buf.append(":123456\r\n");
-        std::string command_out;
-        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS,
-                parser.ParseCommand(buf, &command_out));
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.ParseCommand(buf));
         parser.Reset();
     }
     {
         // not array
         buf.append("+Error\r\n");
-        std::string command_out;
-        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS,
-                parser.ParseCommand(buf, &command_out));
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.ParseCommand(buf));
         parser.Reset();
     }
     {
         // not array
         buf.append("+OK\r\n");
-        std::string command_out;
-        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS,
-                parser.ParseCommand(buf, &command_out));
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.ParseCommand(buf));
         parser.Reset();
     }
     {
         // not array
         buf.append("$5\r\nhello\r\n");
-        std::string command_out;
-        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS,
-                parser.ParseCommand(buf, &command_out));
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.ParseCommand(buf));
         parser.Reset();
     }
 }
