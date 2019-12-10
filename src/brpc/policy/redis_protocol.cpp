@@ -58,42 +58,6 @@ struct InputResponse : public InputMessageBase {
     }
 };
 
-static bool ParseArgs(const RedisReply& message, std::unique_ptr<char[]>* args) {
-    if (!message.is_array() || message.size() == 0) {
-        LOG(WARNING) << "request message is not array or size equals to zero";
-        return false;
-    }
-    int total_size = 0;
-    for (size_t i = 0; i < message.size(); ++i) {
-        if (!message[i].is_string()) {
-            LOG(WARNING) << "request message[" << i << "] is not array";
-            return false;
-        }
-        if (i != 0) {
-            total_size++;   // add one byte for ' '
-        }
-        total_size += message[i].size();
-    }
-    args->reset(new char[total_size + 1 /* NULL */]);
-    int len = 0;
-    for (size_t i = 0; i < message.size(); ++i) {
-        if (i != 0) {
-            (*args)[len++] = ' ';
-        }
-        memcpy(args->get() + len, message[i].c_str(), message[i].size());
-        len += message[i].size();
-    }
-    (*args)[len] = '\0';
-    CHECK(len == total_size) << "implementation of ParseArgs is buggy, len="
-        << len << " expected=" << total_size;
-    return true;
-}
-
-struct RedisTask {
-    RedisReply input_message;
-    butil::Arena arena;
-};
-
 // This class is as parsing_context in socket.
 class RedisConnContext : public Destroyable  {
 public:
@@ -112,38 +76,34 @@ public:
     // first handler pointer that triggers the transaction.
     RedisCommandHandler* handler_continue;
     // The redis command are parsed and pushed into this queue
-    bthread::ExecutionQueueId<RedisTask*> queue;
+    bthread::ExecutionQueueId<std::string*> queue;
 
-    RedisReply parsing_message;
-    butil::Arena arena;
+    RedisCommandParser parser;
+    std::string command;
 };
 
-int ConsumeTask(RedisConnContext* ctx, RedisTask* task, butil::IOBuf* sendbuf) {
-    RedisReply output(&task->arena);
-    std::unique_ptr<char[]> args;
-    if (!ParseArgs(task->input_message, &args)) {
-        LOG(ERROR) << "ERR command not string";
-        output.SetError("ERR command not string");
-        output.SerializeToIOBuf(sendbuf);
-        return -1;
-    }
+int ConsumeTask(RedisConnContext* ctx, std::string* command, butil::IOBuf* sendbuf) {
+    butil::Arena arena;
+    RedisReply output(&arena);
     if (ctx->handler_continue) {
         RedisCommandHandler::Result result =
-            ctx->handler_continue->Run(args.get(), &output);
+            ctx->handler_continue->Run(command->c_str(), &output);
         if (result == RedisCommandHandler::OK) {
             ctx->handler_continue = NULL;
         }
     } else {
-        std::string comm = task->input_message[0].c_str();
-        std::transform(comm.begin(), comm.end(), comm.begin(),
-                [](unsigned char c){ return std::tolower(c); });
+        std::string comm;
+        comm.reserve(8);
+        for (int i = 0; i < (int)command->size() && (*command)[i] != ' '; ++i) {
+            comm.push_back(std::tolower((*command)[i]));
+        }
         RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(comm);
         if (!ch) {
             char buf[64];
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", comm.c_str());
             output.SetError(buf);
         } else {
-            RedisCommandHandler::Result result = ch->Run(args.get(), &output);
+            RedisCommandHandler::Result result = ch->Run(command->c_str(), &output);
             if (result == RedisCommandHandler::CONTINUE) {
                 ctx->handler_continue = ch;
             }
@@ -153,7 +113,7 @@ int ConsumeTask(RedisConnContext* ctx, RedisTask* task, butil::IOBuf* sendbuf) {
     return 0;
 }
 
-int Consume(void* ctx, bthread::TaskIterator<RedisTask*>& iter) {
+int Consume(void* ctx, bthread::TaskIterator<std::string*>& iter) {
     RedisConnContext* qctx = static_cast<RedisConnContext*>(ctx);
     if (iter.is_queue_stopped()) {
         delete qctx;
@@ -169,7 +129,7 @@ int Consume(void* ctx, bthread::TaskIterator<RedisTask*>& iter) {
     wopt.ignore_eovercrowded = true;
     butil::IOBuf sendbuf;
     for (; iter; ++iter) {
-        std::unique_ptr<RedisTask> guard(*iter);
+        std::unique_ptr<std::string> guard(*iter);
         if (has_err) {
             continue;
         }
@@ -235,19 +195,17 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             }
             socket->reset_parsing_context(ctx);
         }
-        ParseError err = ctx->parsing_message.ConsumePartialIOBuf(*source, &ctx->arena);
+        ParseError err = ctx->parser.ParseCommand(*source, &ctx->command);
         if (err != PARSE_OK) {
             return MakeParseError(err);
         }
-        std::unique_ptr<RedisTask> task(new RedisTask);
-        task->input_message.CopyFromDifferentArena(ctx->parsing_message, &task->arena);
-        ctx->parsing_message.Clear();
-        ctx->arena.clear();
-        if (bthread::execution_queue_execute(ctx->queue, task.get()) != 0) {
+        std::unique_ptr<std::string> command(new std::string);
+        command->swap(ctx->command);
+        if (bthread::execution_queue_execute(ctx->queue, command.get()) != 0) {
             LOG(ERROR) << "Fail to push execution queue";
             return MakeParseError(PARSE_ERROR_NO_RESOURCE);
         }
-        task.release();
+        command.release();
         return MakeMessage(NULL);
     } else {
         // NOTE(gejun): PopPipelinedInfo() is actually more contended than what

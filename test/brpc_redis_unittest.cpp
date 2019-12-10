@@ -24,6 +24,7 @@
 #include <brpc/channel.h>
 #include <brpc/policy/redis_authenticator.h>
 #include <brpc/server.h>
+#include <brpc/redis_command.h>
 #include <gtest/gtest.h>
 
 namespace brpc {
@@ -547,6 +548,75 @@ TEST_F(RedisTest, quote_and_escape) {
     ASSERT_STREQ("*3\r\n$3\r\nset\r\n$1\r\na\r\n$8\r\nfoo \"bar\r\n",
                  request._buf.to_string().c_str());
     request.Clear();
+}
+
+TEST_F(RedisTest, command_parser) {
+    brpc::RedisCommandParser parser;
+    butil::IOBuf buf;
+    {
+        // parse from whole command
+        std::string command = "set abc edc";
+        ASSERT_TRUE(brpc::RedisCommandNoFormat(&buf, command.c_str()).ok());
+        std::string command_out;
+        ASSERT_EQ(brpc::PARSE_OK, parser.ParseCommand(buf, &command_out));
+        ASSERT_TRUE(buf.empty());
+        ASSERT_STREQ(command.c_str(), command_out.c_str());
+    }
+    {
+        // parse from two consecutive buf
+        buf.append("*3\r\n$3");
+        std::string command_out;
+        ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
+                parser.ParseCommand(buf, &command_out));
+        ASSERT_EQ((int)buf.size(), 2);    // left "$3"
+        buf.append("\r\nset\r\n$3\r\nabc\r\n$3\r\ndef\r\n");
+        ASSERT_EQ(brpc::PARSE_OK, parser.ParseCommand(buf, &command_out));
+        ASSERT_TRUE(buf.empty());
+        ASSERT_STREQ(command_out.c_str(), "set abc def");
+    }
+    {
+        // there is a non-string message and parse should fail
+        buf.append("*3\r\n$3");
+        std::string command_out;
+        ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
+                parser.ParseCommand(buf, &command_out));
+        ASSERT_EQ((int)buf.size(), 2);    // left "$3"
+        buf.append("\r\nset\r\n:123\r\n$3\r\ndef\r\n");
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, parser.ParseCommand(buf, &command_out));
+        parser.Reset();
+    }
+    {
+        // not array
+        buf.append(":123456\r\n");
+        std::string command_out;
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS,
+                parser.ParseCommand(buf, &command_out));
+        parser.Reset();
+    }
+    {
+        // not array
+        buf.append("+Error\r\n");
+        std::string command_out;
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS,
+                parser.ParseCommand(buf, &command_out));
+        parser.Reset();
+    }
+    {
+        // not array
+        buf.append("+OK\r\n");
+        std::string command_out;
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS,
+                parser.ParseCommand(buf, &command_out));
+        parser.Reset();
+    }
+    {
+        // not array
+        buf.append("$5\r\nhello\r\n");
+        std::string command_out;
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS,
+                parser.ParseCommand(buf, &command_out));
+        parser.Reset();
+    }
 }
 
 TEST_F(RedisTest, redis_reply_codec) {

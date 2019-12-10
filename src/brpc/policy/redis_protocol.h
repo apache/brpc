@@ -35,7 +35,9 @@ void ProcessRedisResponse(InputMessageBase* msg);
 
 // Actions to a redis request, which is left unimplemented.
 // All requests are processed in execution queue pushed in
-// the parsing process.
+// the parsing process. This function must be declared since
+// server side will enable redis as a server side protocol
+// when this function is declared.
 void ProcessRedisRequest(InputMessageBase* msg);
 
 // Serialize a redis request.

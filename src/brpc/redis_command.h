@@ -22,7 +22,7 @@
 
 #include "butil/iobuf.h"
 #include "butil/status.h"
-
+#include "brpc/parse_result.h"
 
 namespace brpc {
 
@@ -39,6 +39,23 @@ butil::Status RedisCommandNoFormat(butil::IOBuf* buf, const butil::StringPiece& 
 butil::Status RedisCommandByComponents(butil::IOBuf* buf,
                                       const butil::StringPiece* components,
                                       size_t num_components);
+
+// A parser used to parse redis raw command.
+class RedisCommandParser {
+public:
+    RedisCommandParser();
+
+    // Parse raw message from `buf' and write the result to `out'.
+    ParseError ParseCommand(butil::IOBuf& buf, std::string* out);
+
+private:
+    // Reset parser to the initial state.
+    void Reset();
+
+    bool _parsing_array; // if the parser has met array indicator '*'
+    int _length;         // array length
+    int _index;          // current parsing array index
+};
 
 } // namespace brpc
 
