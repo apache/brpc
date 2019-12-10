@@ -364,7 +364,7 @@ RedisCommandParser::RedisCommandParser() {
     Reset();
 }
 
-ParseError RedisCommandParser::ParseCommand(butil::IOBuf& buf) {
+ParseError RedisCommandParser::Parse(butil::IOBuf& buf) {
     const char* pfc = (const char*)buf.fetch1();
     if (pfc == NULL) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
@@ -396,10 +396,10 @@ ParseError RedisCommandParser::ParseCommand(butil::IOBuf& buf) {
         _length = value;
         _index = 0;
         _command.clear();
-        return ParseCommand(buf);
+        return Parse(buf);
     }
     CHECK(_index < _length) << "a complete command has been parsed. "
-            "impl of RedisCommandParser::ParseCommand is buggy";
+            "impl of RedisCommandParser::Parse is buggy";
     const int64_t len = value;  // `value' is length of the string
     if (len < 0) {
         LOG(ERROR) << "string in command is nil!";
@@ -425,10 +425,15 @@ ParseError RedisCommandParser::ParseCommand(butil::IOBuf& buf) {
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     if (++_index < _length) {
-        return ParseCommand(buf);
+        return Parse(buf);
     }
     Reset();
     return PARSE_OK;
+}
+
+void RedisCommandParser::SwapCommandTo(std::string* out) {
+    out->clear();
+    out->swap(_command);
 }
 
 void RedisCommandParser::Reset() {

@@ -46,20 +46,20 @@ public:
     RedisCommandParser();
 
     // Parse raw message from `buf'. Return PARSE_OK if successful.
-    ParseError ParseCommand(butil::IOBuf& buf);
+    ParseError Parse(butil::IOBuf& buf);
 
-    // After ParseCommand returns PARSE_OK, call this function to get
-    // the parsed command string.
-    std::string& Command() { return _command; }
+    // After Parse returns PARSE_OK, call this function to swap
+    // the parsed command string to `out'.
+    void SwapCommandTo(std::string* out);
 
 private:
     // Reset parser to the initial state.
     void Reset();
 
-    bool _parsing_array; // if the parser has met array indicator '*'
-    int _length;         // array length
-    int _index;          // current parsing array index
-    std::string _command; // parsed command string
+    bool _parsing_array;    // if the parser has met array indicator '*'
+    int _length;            // array length
+    int _index;             // current parsing array index
+    std::string _command;   // parsed command string
 };
 
 } // namespace brpc

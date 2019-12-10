@@ -194,12 +194,12 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             }
             socket->reset_parsing_context(ctx);
         }
-        ParseError err = ctx->parser.ParseCommand(*source);
+        ParseError err = ctx->parser.Parse(*source);
         if (err != PARSE_OK) {
             return MakeParseError(err);
         }
         std::unique_ptr<std::string> command(new std::string);
-        command->swap(ctx->parser.Command());
+        ctx->parser.SwapCommandTo(command.get());
         if (bthread::execution_queue_execute(ctx->queue, command.get()) != 0) {
             LOG(ERROR) << "Fail to push execution queue";
             return MakeParseError(PARSE_ERROR_NO_RESOURCE);
