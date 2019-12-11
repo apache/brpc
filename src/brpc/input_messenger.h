@@ -118,7 +118,7 @@ private:
     ParseResult CutInputMessage(Socket* m, size_t* index, bool read_eof);
 
     // User-supplied scissors and handlers.
-    // the index of handler is exactly the same as the protocol
+    // _handlers array is sorted by parsing order defined in global.cpp
     InputMessageHandler* _handlers;
     std::map<int, InputMessageHandler>* _ordered_handlers;
     // Max added protocol type

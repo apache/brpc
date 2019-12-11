@@ -382,13 +382,13 @@ static void GlobalInitializeOrDieImpl() {
     ProtocolOrderMap order_map{
         { PROTOCOL_BAIDU_STD, 100 },
         { PROTOCOL_HTTP, 200 },
-        { PROTOCOL_H2, 300},
+        { PROTOCOL_H2, 300 },
         { PROTOCOL_THRIFT, 400 },
         { PROTOCOL_HULU_PBRPC, 500 },
         { PROTOCOL_NOVA_PBRPC, 600 },
         { PROTOCOL_PUBLIC_PBRPC, 700 },
         { PROTOCOL_STREAMING_RPC, 800 },
-        { PROTOCOL_SOFA_PBRPC, 900},
+        { PROTOCOL_SOFA_PBRPC, 900 },
         { PROTOCOL_UBRPC_COMPACK, 1000 },
         { PROTOCOL_UBRPC_MCPACK2, 1100 },
         { PROTOCOL_REDIS, 1200 },
@@ -396,8 +396,8 @@ static void GlobalInitializeOrDieImpl() {
         { PROTOCOL_MONGO, 1400 },
         { PROTOCOL_RTMP, 1500 },
         { PROTOCOL_ESP, 1600 },
-        { PROTOCOL_NSHEAD, 1700},
-        { PROTOCOL_NSHEAD_MCPACK, 1800},
+        { PROTOCOL_NSHEAD, 1700 },
+        { PROTOCOL_NSHEAD_MCPACK, 1800 },
     };
     // Protocols
     Protocol baidu_protocol = { ParseRpcMessage,

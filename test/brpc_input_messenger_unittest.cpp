@@ -73,11 +73,11 @@ protected:
 TEST_F(MessengerTest, parsing_order) {
     brpc::Acceptor messenger;
     const brpc::InputMessageHandler pairs[] = {
-        { brpc::policy::ParseHuluMessage, 
+        { brpc::policy::ParseHuluMessage,
           EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu" },
-        { brpc::policy::ParseHuluMessage, 
+        { brpc::policy::ParseHuluMessage,
           EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu2" },
-        { brpc::policy::ParseHuluMessage, 
+        { brpc::policy::ParseHuluMessage,
           EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu3" }
     };
     for (int i = 0; i < 3; ++i) {

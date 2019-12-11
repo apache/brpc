@@ -173,7 +173,7 @@ const ConnectionType CONNECTION_TYPE_ALL =
 typedef std::unordered_map<ProtocolType, int> ProtocolOrderMap;
 // [thread-safe] 
 // Register `protocol' using key=`type'. `order_map` is the order of different protocol.
-// For the built-in protocol, the order map is following:
+// For the built-in protocol, the order map is as following:
 // { PROTOCOL_BAIDU_STD, 100 },
 // { PROTOCOL_STREAMING_RPC, 200 },
 // { PROTOCOL_HTTP, 300 },
