@@ -564,17 +564,27 @@ TEST_F(RedisTest, command_parser) {
         ASSERT_STREQ(command.c_str(), command_out.c_str());
     }
     {
-        // parse from two consecutive buf
-        buf.append("*3\r\n$3");
-        ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
-                parser.Parse(buf));
-        ASSERT_EQ((int)buf.size(), 2);    // left "$3"
-        buf.append("\r\nset\r\n$3\r\nabc\r\n$3\r\ndef\r\n");
-        ASSERT_EQ(brpc::PARSE_OK, parser.Parse(buf));
-        ASSERT_TRUE(buf.empty());
-        std::string command_out;
-        parser.SwapCommandTo(&command_out);
-        ASSERT_STREQ(command_out.c_str(), "set abc def");
+        // simulate parsing from network
+        int t = 100;
+        std::string raw_string("*3\r\n$3\r\nset\r\n$3\r\nabc\r\n$3\r\ndef\r\n");
+        int size = raw_string.size();
+        while (t--) {
+            for (int i = 0; i < size; ++i) {
+                buf.push_back(raw_string[i]);
+                if (i == size - 1) {
+                    ASSERT_EQ(brpc::PARSE_OK, parser.Parse(buf));
+                } else {
+                    if (butil::fast_rand_less_than(2) == 0) {
+                        ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
+                                parser.Parse(buf));
+                    }
+                }
+            }
+            ASSERT_TRUE(buf.empty());
+            std::string command_out;
+            parser.SwapCommandTo(&command_out);
+            ASSERT_STREQ(command_out.c_str(), "set abc def");
+        }
     }
     {
         // there is a non-string message in command and parse should fail
