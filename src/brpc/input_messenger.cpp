@@ -360,6 +360,7 @@ int InputMessenger::AddHandler(const InputMessageHandler& handler) {
     }
     BAIDU_SCOPED_LOCK(_add_handler_mutex);
     if (_handlers) {
+        // _handlers is created in AddHandlerDone.
         LOG(FATAL) << "AddHandler is not allowed to call after AddHandlerDone";
         return -1;
     }
@@ -392,6 +393,7 @@ int InputMessenger::AddNonProtocolHandler(const InputMessageHandler& handler) {
     }
     BAIDU_SCOPED_LOCK(_add_handler_mutex);
     if (_handlers) {
+        // _handlers is created in AddHandlerDone.
         LOG(FATAL) << "AddNonProtocolHandler is not allowed to call after AddHandlerDone";
         return -1;
     }
@@ -407,11 +409,9 @@ int InputMessenger::AddNonProtocolHandler(const InputMessageHandler& handler) {
         CHECK(false) << "AddHandler was invoked";
         return -1;
     }
-    int order;
-    if (_ordered_handlers->empty()) {
-        order = 0;
-    } else {
-        // set order to the biggest order plus one
+    int order = 0;
+    if (!_ordered_handlers->empty()) {
+        // set next order to be the biggest order plus one
         order = _ordered_handlers->rbegin()->first + 1;
     }
     (*_ordered_handlers)[order] = handler;
