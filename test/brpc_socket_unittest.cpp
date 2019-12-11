@@ -67,7 +67,10 @@ int main(int argc, char* argv[]) {
                                EchoProcessHuluRequest, EchoProcessHuluRequest,
                                NULL, NULL, NULL,
                                brpc::CONNECTION_TYPE_ALL, "dummy_hulu" };
-    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol));
+    brpc::ProtocolOrderMap order_map{
+        { (brpc::ProtocolType)30, 1 }
+    };
+    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol, order_map));
     return RUN_ALL_TESTS();
 }
 
@@ -333,6 +336,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
     ASSERT_TRUE(listening_fd > 0);
     butil::make_non_blocking(listening_fd);
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
+    ASSERT_EQ(0, messenger->AddHandlerDone());
     ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL));
 
     brpc::SocketId id = 8888;
@@ -719,6 +723,7 @@ TEST_F(SocketTest, health_check) {
     ASSERT_TRUE(listening_fd > 0);
     butil::make_non_blocking(listening_fd);
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
+    ASSERT_EQ(0, messenger->AddHandlerDone());
     ASSERT_EQ(0, messenger->StartAccept(listening_fd, -1, NULL));
 
     int64_t start_time = butil::gettimeofday_us();

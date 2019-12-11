@@ -174,6 +174,7 @@ protected:
               ProcessRpcRequest, VerifyMyRequest, this, "baidu_std" }
         };
         EXPECT_EQ(0, _messenger.AddHandler(pairs[0]));
+        EXPECT_EQ(0, _messenger.AddHandlerDone());
 
         EXPECT_EQ(0, _server_list.save(butil::endpoint2str(_ep).c_str()));           
         _naming_url = std::string("File://") + _server_list.fname();
@@ -194,7 +195,10 @@ protected:
                                    NULL, ProcessRpcRequest,
                                    VerifyMyRequest, NULL, NULL,
                                    brpc::CONNECTION_TYPE_ALL, "baidu_std" };
-        ASSERT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol));
+        brpc::ProtocolOrderMap order_map{
+            { (brpc::ProtocolType)30, 1 }
+        };
+        ASSERT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol, order_map));
     }
 
     static void ProcessRpcRequest(brpc::InputMessageBase* msg_base) {

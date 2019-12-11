@@ -45,7 +45,10 @@ int main(int argc, char* argv[]) {
                                EmptyProcessHuluRequest, EmptyProcessHuluRequest,
                                NULL, NULL, NULL,
                                brpc::CONNECTION_TYPE_ALL, "dummy_hulu" };
-    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol));
+    brpc::ProtocolOrderMap order_map{
+        { (brpc::ProtocolType)30, 1 }
+    };
+    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol, order_map));
     return RUN_ALL_TESTS();
 }
 
@@ -169,6 +172,7 @@ TEST_F(MessengerTest, dispatch_tasks) {
         ASSERT_TRUE(listening_fd > 0);
         butil::make_non_blocking(listening_fd);
         ASSERT_EQ(0, messenger[i].AddHandler(pairs[0]));
+        ASSERT_EQ(0, messenger[i].AddHandlerDone());
         ASSERT_EQ(0, messenger[i].StartAccept(listening_fd, -1, NULL));
     }
     

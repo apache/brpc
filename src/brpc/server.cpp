@@ -586,6 +586,12 @@ Acceptor* Server::BuildAcceptor() {
             return NULL;
         }
     }
+    if (acceptor->AddHandlerDone() != 0) {
+        LOG(ERROR) << "Fail to call AddHandlerDone of Acceptor("
+                   << acceptor << ')';
+        delete acceptor;
+        return NULL;
+    }
     if (!whitelist.empty()) {
         std::ostringstream err;
         err << "ServerOptions.enabled_protocols has unknown protocols=`";

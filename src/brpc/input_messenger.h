@@ -81,6 +81,9 @@ public:
     // Returns 0 on success, -1 otherwise.
     int AddHandler(const InputMessageHandler& handler);
 
+    // TODO
+    int AddHandlerDone();
+
     // [thread-safe] Create a socket to process input messages.
     int Create(const butil::EndPoint& remote_side,
                time_t health_check_interval_s,
@@ -115,6 +118,7 @@ private:
     // User-supplied scissors and handlers.
     // the index of handler is exactly the same as the protocol
     InputMessageHandler* _handlers;
+    std::map<int, InputMessageHandler>* _ordered_handlers;
     // Max added protocol type
     butil::atomic<int> _max_index;
     bool _non_protocol;

@@ -18,13 +18,13 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 
 #include <gflags/gflags.h>
-#include "butil/fd_guard.h"                      // fd_guard
-#include "butil/logging.h"                       // CHECK
-#include "butil/time.h"                          // cpuwide_time_us
-#include "butil/fd_utility.h"                    // make_non_blocking
-#include "bthread/bthread.h"                     // bthread_start_background
-#include "bthread/unstable.h"                   // bthread_flush
-#include "bvar/bvar.h"                          // bvar::Adder
+#include "butil/fd_guard.h"                // fd_guard
+#include "butil/logging.h"                 // CHECK
+#include "butil/time.h"                    // cpuwide_time_us
+#include "butil/fd_utility.h"              // make_non_blocking
+#include "bthread/bthread.h"               // bthread_start_background
+#include "bthread/unstable.h"              // bthread_flush
+#include "bvar/bvar.h"                     // bvar::Adder
 #include "brpc/options.pb.h"               // ProtocolType
 #include "brpc/reloadable_flags.h"         // BRPC_VALIDATE_GFLAG
 #include "brpc/protocol.h"                 // ListProtocols
@@ -43,7 +43,7 @@ InputMessenger* get_or_new_client_side_messenger() {
     return g_messenger;
 }
 
-static ProtocolType FindProtocolOfHandler(const InputMessageHandler& h);
+static bool FindProtocolOrderOfHandler(const InputMessageHandler& h, int* order);
 
 // NOTE: This flag was true by default before r31206. But since we have
 // /connections to view all the active connections, logging closing does not
@@ -86,7 +86,8 @@ ParseResult InputMessenger::CutInputMessage(
         }
         if (m->CreatedByConnect() &&
             // baidu_std may fall to streaming_rpc
-            (ProtocolType)preferred != PROTOCOL_BAIDU_STD) {
+            // TODO: not use magic string
+            strcmp(_handlers[preferred].name, "baidu_std") != 0) {
             // The protocol is fixed at client-side, no need to try others.
             LOG(ERROR) << "Fail to parse response from " << m->remote_side()
                        << " by " << _handlers[preferred].name 
@@ -294,6 +295,8 @@ void InputMessenger::OnNewMessages(Socket* m) {
             m->ReAddress(&msg->_socket);
             m->PostponeEOF();
             msg->_process = handlers[index].process;
+            LOG(INFO) << "index=" <<index << " arg=" << handlers[index].arg << " m="
+                << m;
             msg->_arg = handlers[index].arg;
             
             if (handlers[index].verify != NULL) {
@@ -337,6 +340,7 @@ void InputMessenger::OnNewMessages(Socket* m) {
 
 InputMessenger::InputMessenger(size_t capacity)
     : _handlers(NULL)
+    , _ordered_handlers(NULL)
     , _max_index(-1)
     , _non_protocol(false)
     , _capacity(capacity) {
@@ -345,6 +349,8 @@ InputMessenger::InputMessenger(size_t capacity)
 InputMessenger::~InputMessenger() {
     delete[] _handlers;
     _handlers = NULL;        
+    delete _ordered_handlers;
+    _ordered_handlers = NULL;
     _max_index.store(-1, butil::memory_order_relaxed);
     _capacity = 0;
 }
@@ -356,41 +362,28 @@ int InputMessenger::AddHandler(const InputMessageHandler& handler) {
         return -1;
     }
     BAIDU_SCOPED_LOCK(_add_handler_mutex);
-    if (NULL == _handlers) {
-        _handlers = new (std::nothrow) InputMessageHandler[_capacity];
-        if (NULL == _handlers) {
-            LOG(FATAL) << "Fail to new array of InputMessageHandler";
+    if (_handlers) {
+        LOG(FATAL) << "AddHandler is not allowed to call after AddHandlerDone";
+        return -1;
+    }
+    if (NULL == _ordered_handlers) {
+        _ordered_handlers = new std::map<int, InputMessageHandler>;
+        if (NULL == _ordered_handlers) {
+            LOG(FATAL) << "Fail to new std::map<int, InputMessageHandler>";
             return -1;
         }
-        memset(_handlers, 0, sizeof(*_handlers) * _capacity);
         _non_protocol = false;
     }
     if (_non_protocol) {
         CHECK(false) << "AddNonProtocolHandler was invoked";
         return -1;
     }
-    ProtocolType type = FindProtocolOfHandler(handler);
-    if (type == PROTOCOL_UNKNOWN) {
+    int order = 0;
+    if (!FindProtocolOrderOfHandler(handler, &order)) {
         CHECK(false) << "Adding a handler which doesn't belong to any protocol";
         return -1;
     }
-    const int index = type;
-    if (index >= (int)_capacity) {
-        LOG(FATAL) << "Can't add more handlers than " << _capacity;
-        return -1;
-    }
-    if (_handlers[index].parse == NULL) {
-        // The same protocol might be added more than twice
-        _handlers[index] = handler;
-    } else if (_handlers[index].parse != handler.parse 
-               || _handlers[index].process != handler.process) {
-        CHECK(_handlers[index].parse == handler.parse);
-        CHECK(_handlers[index].process == handler.process);
-        return -1;
-    }
-    if (index > _max_index.load(butil::memory_order_relaxed)) {
-        _max_index.store(index, butil::memory_order_release);
-    }
+    (*_ordered_handlers)[order] = handler;
     return 0;
 }
 
@@ -401,6 +394,39 @@ int InputMessenger::AddNonProtocolHandler(const InputMessageHandler& handler) {
         return -1;
     }
     BAIDU_SCOPED_LOCK(_add_handler_mutex);
+    if (_handlers) {
+        LOG(FATAL) << "AddNonProtocolHandler is not allowed to call after AddHandlerDone";
+        return -1;
+    }
+    if (NULL == _ordered_handlers) {
+        _ordered_handlers = new std::map<int, InputMessageHandler>;
+        if (NULL == _ordered_handlers) {
+            LOG(FATAL) << "Fail to new std::map<int, InputMessageHandler>";
+            return -1;
+        }
+        _non_protocol = true;
+    }
+    if (!_non_protocol) {
+        CHECK(false) << "AddHandler was invoked";
+        return -1;
+    }
+    int order;
+    if (_ordered_handlers->empty()) {
+        order = 0;
+    } else {
+        // set order to the biggest order plus one
+        order = _ordered_handlers->rbegin()->first + 1;
+    }
+    (*_ordered_handlers)[order] = handler;
+    return 0;
+}
+
+int InputMessenger::AddHandlerDone() {
+    BAIDU_SCOPED_LOCK(_add_handler_mutex);
+    if (NULL == _ordered_handlers) {
+        CHECK(false) << "Call AddHandler or AddNonProtocolHandler before AddHandlerDone.";
+        return -1;
+    }
     if (NULL == _handlers) {
         _handlers = new (std::nothrow) InputMessageHandler[_capacity];
         if (NULL == _handlers) {
@@ -408,15 +434,15 @@ int InputMessenger::AddNonProtocolHandler(const InputMessageHandler& handler) {
             return -1;
         }
         memset(_handlers, 0, sizeof(*_handlers) * _capacity);
-        _non_protocol = true;
     }
-    if (!_non_protocol) {
-        CHECK(false) << "AddHandler was invoked";
-        return -1;
+
+    int index = -1;
+    for (auto& p : *_ordered_handlers) {
+        _handlers[++index] = p.second;
     }
-    const int index = _max_index.load(butil::memory_order_relaxed) + 1;
-    _handlers[index] = handler;
-    _max_index.store(index, butil::memory_order_release);
+    if (index > _max_index.load(butil::memory_order_relaxed)) {
+        _max_index.store(index, butil::memory_order_release);
+    }
     return 0;
 }
 
@@ -463,8 +489,8 @@ const char* InputMessenger::NameOfProtocol(int n) const {
     return _handlers[n].name;
 }
 
-static ProtocolType FindProtocolOfHandler(const InputMessageHandler& h) {
-    std::vector<std::pair<ProtocolType, Protocol> > vec;
+static bool FindProtocolOrderOfHandler(const InputMessageHandler& h, int* order) {
+    std::vector<std::pair<int, Protocol> > vec;
     ListProtocols(&vec);
     for (size_t i = 0; i < vec.size(); ++i) {
         if (vec[i].second.parse == h.parse &&
@@ -473,10 +499,11 @@ static ProtocolType FindProtocolOfHandler(const InputMessageHandler& h) {
                  || (vec[i].second.process_response == h.process))
                                                  // ^^ client side
                 && strcmp(vec[i].second.name, h.name) == 0) { 
-            return vec[i].first;
+            *order = vec[i].first;
+            return true;
         }
     }
-    return PROTOCOL_UNKNOWN;
+    return false;
 }
 
 void InputMessageBase::Destroy() {

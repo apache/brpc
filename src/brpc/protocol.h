@@ -170,10 +170,12 @@ const ConnectionType CONNECTION_TYPE_ALL =
                      (int)CONNECTION_TYPE_POOLED |
                      (int)CONNECTION_TYPE_SHORT);
 
+typedef std::unordered_map<ProtocolType, int> ProtocolOrderMap;
+
 // [thread-safe] 
 // Register `protocol' using key=`type'. 
 // Returns 0 on success, -1 otherwise
-int RegisterProtocol(ProtocolType type, const Protocol& protocol);
+int RegisterProtocol(ProtocolType type, const Protocol& protocol, const ProtocolOrderMap& map);
 
 // [thread-safe]
 // Find the protocol registered with key=`type'.
@@ -183,6 +185,7 @@ const Protocol* FindProtocol(ProtocolType type);
 // [thread-safe]
 // List all registered protocols into `vec'.
 void ListProtocols(std::vector<Protocol>* vec);
+void ListProtocols(std::vector<std::pair<int, Protocol> >* vec);
 void ListProtocols(std::vector<std::pair<ProtocolType, Protocol> >* vec);
 
 // The common serialize_request implementation used by many protocols.
