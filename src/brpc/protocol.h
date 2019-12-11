@@ -24,10 +24,11 @@
 // To brpc developers: This is a header included by user, don't depend
 // on internal structures, use opaque pointers instead.
 
-#include <vector>                                  // std::vector
-#include <stdint.h>                                // uint64_t
-#include <gflags/gflags_declare.h>                 // DECLARE_xxx
-#include "butil/endpoint.h"                         // butil::EndPoint
+#include <vector>                             // std::vector
+#include <unordered_map>
+#include <stdint.h>                           // uint64_t
+#include <gflags/gflags_declare.h>            // DECLARE_xxx
+#include "butil/endpoint.h"                   // butil::EndPoint
 #include "butil/iobuf.h"
 #include "butil/logging.h"
 #include "brpc/options.pb.h"                  // ProtocolType
