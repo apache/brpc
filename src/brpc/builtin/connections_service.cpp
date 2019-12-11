@@ -223,7 +223,6 @@ void ConnectionsService::PrintConnections(
                 pref_prot = server->_am->NameOfProtocol(pref_index);
                 // Special treatment for nshead services. Notice that
                 // pref_index is comparable to ProtocolType after r31951
-                // TODO: not use magic string
                 if (strcmp(pref_prot, "nshead") == 0 &&
                     server->options().nshead_service != NULL) {
                     if (nshead_service_name.empty()) {

@@ -388,7 +388,7 @@ static void GlobalInitializeOrDieImpl() {
         { PROTOCOL_NOVA_PBRPC, 600 },
         { PROTOCOL_PUBLIC_PBRPC, 700 },
         { PROTOCOL_SOFA_PBRPC, 800},
-        { PROTOCOL_REDIS, 900 }, 
+        { PROTOCOL_REDIS, 900 },
         { PROTOCOL_MEMCACHE, 1000 },
         { PROTOCOL_MONGO, 1100 },
         { PROTOCOL_THRIFT, 1200 },

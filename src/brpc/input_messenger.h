@@ -81,7 +81,9 @@ public:
     // Returns 0 on success, -1 otherwise.
     int AddHandler(const InputMessageHandler& handler);
 
-    // TODO
+    // [thread-safe] Must be called at least once after AddHandler()
+    // or AddNonProtocolHandler().
+    // Returns 0 on success, -1 otherwise.
     int AddHandlerDone();
 
     // [thread-safe] Create a socket to process input messages.

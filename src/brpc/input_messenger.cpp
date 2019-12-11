@@ -86,7 +86,6 @@ ParseResult InputMessenger::CutInputMessage(
         }
         if (m->CreatedByConnect() &&
             // baidu_std may fall to streaming_rpc
-            // TODO: not use magic string
             strcmp(_handlers[preferred].name, "baidu_std") != 0) {
             // The protocol is fixed at client-side, no need to try others.
             LOG(ERROR) << "Fail to parse response from " << m->remote_side()
@@ -295,8 +294,6 @@ void InputMessenger::OnNewMessages(Socket* m) {
             m->ReAddress(&msg->_socket);
             m->PostponeEOF();
             msg->_process = handlers[index].process;
-            LOG(INFO) << "index=" <<index << " arg=" << handlers[index].arg << " m="
-                << m;
             msg->_arg = handlers[index].arg;
             
             if (handlers[index].verify != NULL) {

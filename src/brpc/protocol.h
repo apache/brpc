@@ -171,11 +171,31 @@ const ConnectionType CONNECTION_TYPE_ALL =
                      (int)CONNECTION_TYPE_SHORT);
 
 typedef std::unordered_map<ProtocolType, int> ProtocolOrderMap;
-
 // [thread-safe] 
-// Register `protocol' using key=`type'. 
+// Register `protocol' using key=`type'. `order_map` is the order of different protocol.
+// For the built-in protocol, the order map is following:
+// { PROTOCOL_BAIDU_STD, 100 },
+// { PROTOCOL_STREAMING_RPC, 200 },
+// { PROTOCOL_HTTP, 300 },
+// { PROTOCOL_H2, 400},
+// { PROTOCOL_HULU_PBRPC, 500 },
+// { PROTOCOL_NOVA_PBRPC, 600 },
+// { PROTOCOL_PUBLIC_PBRPC, 700 },
+// { PROTOCOL_SOFA_PBRPC, 800},
+// { PROTOCOL_REDIS, 900 }, 
+// { PROTOCOL_MEMCACHE, 1000 },
+// { PROTOCOL_MONGO, 1100 },
+// { PROTOCOL_THRIFT, 1200 },
+// { PROTOCOL_UBRPC_COMPACK, 1300 },
+// { PROTOCOL_UBRPC_MCPACK2, 1400 },
+// { PROTOCOL_RTMP, 1500 },
+// { PROTOCOL_ESP, 1600 },
+// { PROTOCOL_NSHEAD, 1700},
+// { PROTOCOL_NSHEAD_MCPACK, 1800},
+// If user want to register their own protocols, a user-defined protocol order map
+// should be passed to this function.
 // Returns 0 on success, -1 otherwise
-int RegisterProtocol(ProtocolType type, const Protocol& protocol, const ProtocolOrderMap& map);
+int RegisterProtocol(ProtocolType type, const Protocol& protocol, const ProtocolOrderMap& order_map);
 
 // [thread-safe]
 // Find the protocol registered with key=`type'.

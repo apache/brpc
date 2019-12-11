@@ -192,7 +192,7 @@ protected:
                                  { brpc::policy::ParseRpcMessage,
                                    brpc::SerializeRequestDefault, 
                                    brpc::policy::PackRpcRequest,
-                                   NULL, ProcessRpcRequest,
+                                   ProcessRpcRequest, NULL,
                                    VerifyMyRequest, NULL, NULL,
                                    brpc::CONNECTION_TYPE_ALL, "baidu_std" };
         brpc::ProtocolOrderMap order_map{
