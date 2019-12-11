@@ -25,12 +25,13 @@
 // on internal structures, use opaque pointers instead.
 
 #include <vector>                             // std::vector
-#include <unordered_map>
+#include <map>
 #include <stdint.h>                           // uint64_t
 #include <gflags/gflags_declare.h>            // DECLARE_xxx
 #include "butil/endpoint.h"                   // butil::EndPoint
 #include "butil/iobuf.h"
 #include "butil/logging.h"
+#include "butil/containers/hash_tables.h"     // hash
 #include "brpc/options.pb.h"                  // ProtocolType
 #include "brpc/socket_id.h"                   // SocketId
 #include "brpc/parse_result.h"                // ParseResult
@@ -171,7 +172,7 @@ const ConnectionType CONNECTION_TYPE_ALL =
                      (int)CONNECTION_TYPE_POOLED |
                      (int)CONNECTION_TYPE_SHORT);
 
-typedef std::unordered_map<ProtocolType, int> ProtocolOrderMap;
+typedef std::map<ProtocolType, int> ProtocolOrderMap;
 // [thread-safe] 
 // Register `protocol' using key=`type'. `order_map` is the order of different protocol.
 // For the built-in protocol, the order map is as following:
