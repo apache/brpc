@@ -128,7 +128,7 @@ public:
     void Print(std::ostream&) const;
 
 protected:
-    ::google::protobuf::Metadata GetMetadata() const;
+    ::google::protobuf::Metadata GetMetadata() const override;
 
 private:
     void SharedCtor();
