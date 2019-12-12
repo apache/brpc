@@ -38,7 +38,7 @@ const char* RedisReplyTypeToString(RedisReplyType type) {
     }
 }
 
-bool RedisReply::SerializeToIOBuf(butil::IOBuf* buf) {
+bool RedisReply::SerializeTo(butil::IOBuf* buf) {
     butil::IOBufBuilder builder;
     switch (_type) {
         case REDIS_REPLY_ERROR:
@@ -78,7 +78,7 @@ bool RedisReply::SerializeToIOBuf(butil::IOBuf* buf) {
                 break;
             }
             for (size_t i = 0; i < _length; ++i) {
-                if (!_data.array.replies[i].SerializeToIOBuf(buf)) {
+                if (!_data.array.replies[i].SerializeTo(buf)) {
                     return false;
                 }
             }
@@ -245,7 +245,7 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* aren
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             for (int64_t i = 0; i < count; ++i) {
-                new (&subs[i]) RedisReply(NULL);
+                new (&subs[i]) RedisReply;
             }
             buf.pop_front(crlf_pos + 2/*CRLF*/);
             _type = REDIS_REPLY_ARRAY;
@@ -411,6 +411,54 @@ void RedisReply::CopyFromDifferentArena(const RedisReply& other,
         }
         break;
     }
+}
+
+bool RedisReply::SetArray(int size) {
+    if (!_arena || _type != REDIS_REPLY_NIL) {
+        return false;
+    }
+    _type = REDIS_REPLY_ARRAY;
+    if (size < 0) {
+        _length = npos;
+        return true;
+    } else if (size == 0) {
+        _length = 0;
+        return true;
+    }
+    RedisReply* subs = (RedisReply*)_arena->allocate(sizeof(RedisReply) * size);
+    if (!subs) {
+        LOG(FATAL) << "Fail to allocate RedisReply[" << size << "]";
+        return false;
+    }
+    for (int i = 0; i < size; ++i) {
+        new (&subs[i]) RedisReply(_arena);
+    }
+    _length = size;
+    _data.array.replies = subs;
+    return true;
+}
+
+bool RedisReply::SetBasicString(const std::string& str, RedisReplyType type) {
+    if (!_arena || _type != REDIS_REPLY_NIL) {
+        return false;
+    }
+    const size_t size = str.size();
+    if (size < sizeof(_data.short_str)) {
+        memcpy(_data.short_str, str.c_str(), size);
+        _data.short_str[size] = '\0';
+    } else {
+        char* d = (char*)_arena->allocate((size/8 + 1) * 8);
+        if (!d) {
+            LOG(FATAL) << "Fail to allocate string[" << size << "]";
+            return false;
+        }
+        memcpy(d, str.c_str(), size);
+        d[size] = '\0';
+        _data.long_str = d;
+    }
+    _type = type;
+    _length = size;
+    return true;
 }
 
 } // namespace brpc

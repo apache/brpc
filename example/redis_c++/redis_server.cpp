@@ -29,7 +29,7 @@
 class RedisServiceImpl : public brpc::RedisService {
 public:
     bool Set(const std::string& key, const std::string& value) {
-        int slot = butil::crc32c::Value(key.c_str(), key.size()) % HashSlotNum;
+        int slot = butil::crc32c::Value(key.c_str(), key.size()) % kHashSlotNum;
         _mutex[slot].lock();
         _map[slot][key] = value;
         _mutex[slot].unlock();
@@ -37,7 +37,7 @@ public:
     }
 
     bool Get(const std::string& key, std::string* value) {
-        int slot = butil::crc32c::Value(key.c_str(), key.size()) % HashSlotNum;
+        int slot = butil::crc32c::Value(key.c_str(), key.size()) % kHashSlotNum;
         _mutex[slot].lock();
         auto it = _map[slot].find(key);
         if (it == _map[slot].end()) {
@@ -50,9 +50,9 @@ public:
     }
 
 private:
-    const static int HashSlotNum = 32;
-    std::unordered_map<std::string, std::string> _map[HashSlotNum];
-    butil::Mutex _mutex[HashSlotNum];
+    const static int kHashSlotNum = 32;
+    std::unordered_map<std::string, std::string> _map[kHashSlotNum];
+    butil::Mutex _mutex[kHashSlotNum];
 };
 
 class GetCommandHandler : public brpc::RedisCommandHandler {

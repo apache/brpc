@@ -45,12 +45,9 @@ class RedisCommandParser {
 public:
     RedisCommandParser();
 
-    // Parse raw message from `buf'. Return PARSE_OK if successful.
-    ParseError Parse(butil::IOBuf& buf);
-
-    // After Parse returns PARSE_OK, call this function to swap
-    // the parsed command string to `out'.
-    void SwapCommandTo(std::string* out);
+    // Parse raw message from `buf'. Return PARSE_OK and set the parsed command
+    // to `command' if successful.
+    ParseError Consume(butil::IOBuf& buf, std::string* command);
 
 private:
     // Reset parser to the initial state.

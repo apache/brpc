@@ -127,7 +127,7 @@ public:
     ParseError ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena);
 
     // Serialize to buf using redis protocol
-    bool SerializeToIOBuf(butil::IOBuf* buf);
+    bool SerializeTo(butil::IOBuf* buf);
 
     // Swap internal fields with another reply.
     void Swap(RedisReply& other);
@@ -168,7 +168,6 @@ private:
         uint64_t padding[2]; // For swapping, must cover all bytes.
     } _data;
     butil::Arena* _arena;
-    bool _has_set;
 };
 
 // =========== inline impl. ==============
@@ -186,8 +185,7 @@ inline RedisReply::RedisReply(butil::Arena* arena)
 inline RedisReply::RedisReply()
     : _type(REDIS_REPLY_NIL)
     , _length(0)
-    , _arena(NULL)
-    , _has_set(false) {
+    , _arena(NULL) {
     _data.array.last_index = -1;
     _data.array.replies = NULL;
 }
@@ -213,10 +211,11 @@ inline int64_t RedisReply::integer() const {
 }
 
 inline bool RedisReply::SetNilString() {
-    if (!_arena || _has_set) return false;
+    if (!_arena || _type != REDIS_REPLY_NIL) {
+        return false;
+    }
     _type = REDIS_REPLY_STRING;
     _length = npos;
-    _has_set = true;
     return true;
 }
 
@@ -229,13 +228,12 @@ inline bool RedisReply::SetError(const std::string& str) {
 }
 
 inline bool RedisReply::SetInteger(int64_t value) {
-    if (!_arena || _has_set) {
+    if (!_arena || _type != REDIS_REPLY_NIL) {
         return false;
     }
     _type = REDIS_REPLY_INTEGER;
     _length = 0;
     _data.integer = value;
-    _has_set = true;
     return true;
 }
 
@@ -311,7 +309,6 @@ inline void RedisReply::Clear() {
     _length = 0;
     _data.array.last_index = -1;
     _data.array.replies = NULL;
-    _has_set = false;
 }
 
 inline void RedisReply::CopyFromSameArena(const RedisReply& other) {

@@ -553,14 +553,13 @@ TEST_F(RedisTest, quote_and_escape) {
 TEST_F(RedisTest, command_parser) {
     brpc::RedisCommandParser parser;
     butil::IOBuf buf;
+    std::string command_out;
     {
         // parse from whole command
         std::string command = "set abc edc";
         ASSERT_TRUE(brpc::RedisCommandNoFormat(&buf, command.c_str()).ok());
-        ASSERT_EQ(brpc::PARSE_OK, parser.Parse(buf));
+        ASSERT_EQ(brpc::PARSE_OK, parser.Consume(buf, &command_out));
         ASSERT_TRUE(buf.empty());
-        std::string command_out;
-        parser.SwapCommandTo(&command_out);
         ASSERT_STREQ(command.c_str(), command_out.c_str());
     }
     {
@@ -572,51 +571,49 @@ TEST_F(RedisTest, command_parser) {
             for (int i = 0; i < size; ++i) {
                 buf.push_back(raw_string[i]);
                 if (i == size - 1) {
-                    ASSERT_EQ(brpc::PARSE_OK, parser.Parse(buf));
+                    ASSERT_EQ(brpc::PARSE_OK, parser.Consume(buf, &command_out));
                 } else {
                     if (butil::fast_rand_less_than(2) == 0) {
                         ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
-                                parser.Parse(buf));
+                                parser.Consume(buf, &command_out));
                     }
                 }
             }
             ASSERT_TRUE(buf.empty());
-            std::string command_out;
-            parser.SwapCommandTo(&command_out);
             ASSERT_STREQ(command_out.c_str(), "set abc def");
         }
     }
     {
         // there is a non-string message in command and parse should fail
         buf.append("*3\r\n$3");
-        ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, parser.Parse(buf));
+        ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, parser.Consume(buf, &command_out));
         ASSERT_EQ((int)buf.size(), 2);    // left "$3"
         buf.append("\r\nset\r\n:123\r\n$3\r\ndef\r\n");
-        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, parser.Parse(buf));
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, parser.Consume(buf, &command_out));
         parser.Reset();
     }
     {
         // not array
         buf.append(":123456\r\n");
-        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.Parse(buf));
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.Consume(buf, &command_out));
         parser.Reset();
     }
     {
         // not array
         buf.append("+Error\r\n");
-        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.Parse(buf));
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.Consume(buf, &command_out));
         parser.Reset();
     }
     {
         // not array
         buf.append("+OK\r\n");
-        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.Parse(buf));
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.Consume(buf, &command_out));
         parser.Reset();
     }
     {
         // not array
         buf.append("$5\r\nhello\r\n");
-        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.Parse(buf));
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.Consume(buf, &command_out));
         parser.Reset();
     }
 }
@@ -628,7 +625,7 @@ TEST_F(RedisTest, redis_reply_codec) {
         brpc::RedisReply r(&arena);
         butil::IOBuf buf;
         ASSERT_TRUE(r.SetStatus("OK"));
-        ASSERT_TRUE(r.SerializeToIOBuf(&buf));
+        ASSERT_TRUE(r.SerializeTo(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "+OK\r\n");
         ASSERT_STREQ(r.c_str(), "OK");
         r.Clear();
@@ -642,7 +639,7 @@ TEST_F(RedisTest, redis_reply_codec) {
         brpc::RedisReply r(&arena);
         butil::IOBuf buf;
         ASSERT_TRUE(r.SetError("not exist \'key\'"));
-        ASSERT_TRUE(r.SerializeToIOBuf(&buf));
+        ASSERT_TRUE(r.SerializeTo(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "-not exist \'key\'\r\n");
         r.Clear();
         brpc::ParseError err = r.ConsumePartialIOBuf(buf, &arena);
@@ -655,7 +652,7 @@ TEST_F(RedisTest, redis_reply_codec) {
         brpc::RedisReply r(&arena);
         butil::IOBuf buf;
         ASSERT_TRUE(r.SetNilString());
-        ASSERT_TRUE(r.SerializeToIOBuf(&buf));
+        ASSERT_TRUE(r.SerializeTo(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "$-1\r\n");
         r.Clear();
         brpc::ParseError err = r.ConsumePartialIOBuf(buf, &arena);
@@ -664,7 +661,7 @@ TEST_F(RedisTest, redis_reply_codec) {
 
         r.Clear();
         ASSERT_TRUE(r.SetString("abcde'hello world"));
-        ASSERT_TRUE(r.SerializeToIOBuf(&buf));
+        ASSERT_TRUE(r.SerializeTo(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "$17\r\nabcde'hello world\r\n");
         ASSERT_STREQ(r.c_str(), "abcde'hello world");
         r.Clear();
@@ -683,7 +680,7 @@ TEST_F(RedisTest, redis_reply_codec) {
         for (int i = 0; i < t; ++i) {
             r.Clear();
             ASSERT_TRUE(r.SetInteger(input[i]));
-            ASSERT_TRUE(r.SerializeToIOBuf(&buf));
+            ASSERT_TRUE(r.SerializeTo(&buf));
             ASSERT_STREQ(buf.to_string().c_str(), output[i]);
             r.Clear();
             brpc::ParseError err = r.ConsumePartialIOBuf(buf, &arena);
@@ -704,7 +701,7 @@ TEST_F(RedisTest, redis_reply_codec) {
         r[1].SetString("To go over everything");
         r[2].SetInteger(1);
         ASSERT_TRUE(r[3].is_nil());
-        ASSERT_TRUE(r.SerializeToIOBuf(&buf));
+        ASSERT_TRUE(r.SerializeTo(&buf));
         ASSERT_STREQ(buf.to_string().c_str(),
                 "*3\r\n*2\r\n$14\r\nhello, it's me\r\n:422\r\n$21\r\n"
                 "To go over everything\r\n:1\r\n");
@@ -726,7 +723,7 @@ TEST_F(RedisTest, redis_reply_codec) {
         r.Clear();
         // nil array
         ASSERT_TRUE(r.SetArray(-1));
-        ASSERT_TRUE(r.SerializeToIOBuf(&buf));
+        ASSERT_TRUE(r.SerializeTo(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "*-1\r\n");
         ASSERT_EQ(r.ConsumePartialIOBuf(buf, &arena), brpc::PARSE_OK);
         ASSERT_TRUE(r.is_nil());

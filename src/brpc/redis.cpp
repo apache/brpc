@@ -436,57 +436,6 @@ std::ostream& operator<<(std::ostream& os, const RedisResponse& response) {
     return os;
 }
 
-bool RedisReply::SetArray(int size) {
-    if (!_arena || _has_set) {
-        return false;
-    }
-    _type = REDIS_REPLY_ARRAY;
-    if (size < 0) {
-        _length = npos;
-        return true;
-    } else if (size == 0) {
-        _length = 0;
-        return true;
-    }
-    RedisReply* subs = (RedisReply*)_arena->allocate(sizeof(RedisReply) * size);
-    if (!subs) {
-        LOG(FATAL) << "Fail to allocate RedisReply[" << size << "]";
-        return false;
-    }
-    for (int i = 0; i < size; ++i) {
-        new (&subs[i]) RedisReply(_arena);
-    }
-    _length = size;
-    _data.array.replies = subs;
-    _has_set = true;
-    return true;
-}
-
-bool RedisReply::SetBasicString(const std::string& str, RedisReplyType type) {
-    if (!_arena || _has_set) {
-        return false;
-    }
-    const size_t size = str.size();
-    if (size < sizeof(_data.short_str)) {
-        memcpy(_data.short_str, str.c_str(), size);
-        _data.short_str[size] = '\0';
-    } else {
-        char* d = (char*)_arena->allocate((size/8 + 1) * 8);
-        if (!d) {
-            LOG(FATAL) << "Fail to allocate string[" << size << "]";
-            return false;
-        }
-        memcpy(d, str.c_str(), size);
-        d[size] = '\0';
-        _data.long_str = d;
-    }
-    _type = type;
-    _length = size;
-    _has_set = true;
-    return true;
-}
-
-
 bool RedisService::AddCommandHandler(const std::string& name, RedisCommandHandler* handler) {
     std::string lcname;
     lcname.resize(name.size());
@@ -496,14 +445,14 @@ bool RedisService::AddCommandHandler(const std::string& name, RedisCommandHandle
         LOG(ERROR) << "redis command name=" << name << " exist";
         return false;
     }
-    _command_map[lcname].reset(handler);
+    _command_map[lcname] = handler;
     return true;
 }
  
 RedisCommandHandler* RedisService::FindCommandHandler(const std::string& name) {
     auto it = _command_map.find(name);
     if (it != _command_map.end()) {
-        return it->second.get();
+        return it->second;
     }
     return NULL;
 }

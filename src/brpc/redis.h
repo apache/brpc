@@ -219,13 +219,13 @@ class RedisCommandHandler;
 // to enable redis support. 
 class RedisService {
 public:
-    typedef std::unordered_map<std::string, std::shared_ptr<RedisCommandHandler>> CommandMap;
+    typedef std::unordered_map<std::string, RedisCommandHandler*> CommandMap;
     virtual ~RedisService() {}
     
     // Call this function to register `handler` that can handle command `name`.
     bool AddCommandHandler(const std::string& name, RedisCommandHandler* handler);
 
-    // This function should be touched by user and used by brpc deverloper only.
+    // This function should not be touched by user and used by brpc deverloper only.
     RedisCommandHandler* FindCommandHandler(const std::string& name);
 private:
     CommandMap _command_map;

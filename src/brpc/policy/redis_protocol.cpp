@@ -58,6 +58,11 @@ struct InputResponse : public InputMessageBase {
     }
 };
 
+// This struct is pushed into ExecutionQueue of each connection.
+struct CommandInfo {
+    std::string command;
+};
+
 // This class is as parsing_context in socket.
 class RedisConnContext : public Destroyable  {
 public:
@@ -76,25 +81,26 @@ public:
     // first handler pointer that triggers the transaction.
     RedisCommandHandler* handler_continue;
     // The redis command are parsed and pushed into this queue
-    bthread::ExecutionQueueId<std::string*> queue;
+    bthread::ExecutionQueueId<CommandInfo*> queue;
 
     RedisCommandParser parser;
+    std::string command;
 };
 
-int ConsumeTask(RedisConnContext* ctx, std::string* command, butil::IOBuf* sendbuf) {
+int ConsumeTask(RedisConnContext* ctx, const std::string& command, butil::IOBuf* sendbuf) {
     butil::Arena arena;
     RedisReply output(&arena);
     if (ctx->handler_continue) {
         RedisCommandHandler::Result result =
-            ctx->handler_continue->Run(command->c_str(), &output);
+            ctx->handler_continue->Run(command.c_str(), &output);
         if (result == RedisCommandHandler::OK) {
             ctx->handler_continue = NULL;
         }
     } else {
         std::string comm;
         comm.reserve(8);
-        for (int i = 0; i < (int)command->size() && (*command)[i] != ' '; ++i) {
-            comm.push_back(std::tolower((*command)[i]));
+        for (int i = 0; i < (int)command.size() && command[i] != ' '; ++i) {
+            comm.push_back(std::tolower(command[i]));
         }
         RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(comm);
         if (!ch) {
@@ -102,17 +108,17 @@ int ConsumeTask(RedisConnContext* ctx, std::string* command, butil::IOBuf* sendb
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", comm.c_str());
             output.SetError(buf);
         } else {
-            RedisCommandHandler::Result result = ch->Run(command->c_str(), &output);
+            RedisCommandHandler::Result result = ch->Run(command.c_str(), &output);
             if (result == RedisCommandHandler::CONTINUE) {
                 ctx->handler_continue = ch;
             }
         }
     }
-    output.SerializeToIOBuf(sendbuf);
+    output.SerializeTo(sendbuf);
     return 0;
 }
 
-int Consume(void* ctx, bthread::TaskIterator<std::string*>& iter) {
+int Consume(void* ctx, bthread::TaskIterator<CommandInfo*>& iter) {
     RedisConnContext* qctx = static_cast<RedisConnContext*>(ctx);
     if (iter.is_queue_stopped()) {
         delete qctx;
@@ -128,11 +134,11 @@ int Consume(void* ctx, bthread::TaskIterator<std::string*>& iter) {
     wopt.ignore_eovercrowded = true;
     butil::IOBuf sendbuf;
     for (; iter; ++iter) {
-        std::unique_ptr<std::string> guard(*iter);
+        std::unique_ptr<CommandInfo> guard(*iter);
         if (has_err) {
             continue;
         }
-        ConsumeTask(qctx, *iter, &sendbuf);
+        ConsumeTask(qctx, (*iter)->command, &sendbuf);
         // If there are too many tasks to execute, latency of the front
         // responses will be increased by waiting the following tasks to
         // be completed. To prevent this, if the current buf size is greater
@@ -194,17 +200,17 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             }
             socket->reset_parsing_context(ctx);
         }
-        ParseError err = ctx->parser.Parse(*source);
+        ParseError err = ctx->parser.Consume(*source, &ctx->command);
         if (err != PARSE_OK) {
             return MakeParseError(err);
         }
-        std::unique_ptr<std::string> command(new std::string);
-        ctx->parser.SwapCommandTo(command.get());
-        if (bthread::execution_queue_execute(ctx->queue, command.get()) != 0) {
+        std::unique_ptr<CommandInfo> info(new CommandInfo);
+        info->command.swap(ctx->command);
+        if (bthread::execution_queue_execute(ctx->queue, info.get()) != 0) {
             LOG(ERROR) << "Fail to push execution queue";
             return MakeParseError(PARSE_ERROR_NO_RESOURCE);
         }
-        command.release();
+        info.release();
         return MakeMessage(NULL);
     } else {
         // NOTE(gejun): PopPipelinedInfo() is actually more contended than what
