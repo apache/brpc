@@ -69,7 +69,7 @@ public:
     SocketId socket_id;
     RedisService* redis_service;
     // If user starts a transaction, handler_continue indicates the
-    // handler pointer that runs the transaction handler.
+    // handler pointer that runs the transaction command.
     std::unique_ptr<RedisCommandHandler> handler_continue;
 
     RedisCommandParser parser;

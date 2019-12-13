@@ -325,7 +325,7 @@ void RedisResponse::MergeFrom(const RedisResponse& from) {
     RedisReply* new_others =
         (RedisReply*)_arena.allocate(sizeof(RedisReply) * (new_nreply - 1));
     for (int i = 0; i < new_nreply - 1; ++i) {
-        new (new_others + i) RedisReply(NULL);
+        new (new_others + i) RedisReply;
     }
     int new_other_index = 0;
     for (int i = 1; i < _nreply; ++i) {
@@ -401,7 +401,7 @@ ParseError RedisResponse::ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             for (int i = 0; i < reply_count - 1; ++i) {
-                new (&_other_replies[i]) RedisReply(NULL);
+                new (&_other_replies[i]) RedisReply;
             }
         }
         for (int i = reply_size(); i < reply_count; ++i) {
