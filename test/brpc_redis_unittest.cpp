@@ -550,17 +550,29 @@ TEST_F(RedisTest, quote_and_escape) {
     request.Clear();
 }
 
+std::string GetCompleteCommand(const std::vector<std::string>& commands) {
+	std::string res;
+    for (int i = 0; i < (int)commands.size(); ++i) {
+        if (i != 0) {
+            res.push_back(' ');
+        }
+        res.append(commands[i]);
+    }
+    return res;
+}
+
+
 TEST_F(RedisTest, command_parser) {
     brpc::RedisCommandParser parser;
     butil::IOBuf buf;
-    std::string command_out;
+    std::vector<std::string> command_out;
     {
         // parse from whole command
         std::string command = "set abc edc";
         ASSERT_TRUE(brpc::RedisCommandNoFormat(&buf, command.c_str()).ok());
         ASSERT_EQ(brpc::PARSE_OK, parser.Consume(buf, &command_out));
         ASSERT_TRUE(buf.empty());
-        ASSERT_STREQ(command.c_str(), command_out.c_str());
+        ASSERT_STREQ(command.c_str(), GetCompleteCommand(command_out).c_str());
     }
     {
         // simulate parsing from network
@@ -580,7 +592,7 @@ TEST_F(RedisTest, command_parser) {
                 }
             }
             ASSERT_TRUE(buf.empty());
-            ASSERT_STREQ(command_out.c_str(), "set abc def");
+            ASSERT_STREQ(GetCompleteCommand(command_out).c_str(), "set abc def");
         }
     }
     {
@@ -774,89 +786,98 @@ std::unordered_map<std::string, int64_t> int_map;
 
 class SetCommandHandler : public brpc::RedisCommandHandler {
 public:
-    SetCommandHandler() {}
+    SetCommandHandler(bool batch_process = false)
+        : _batch_process(batch_process)
+        , _batch_count(0) {}
 
-    brpc::RedisCommandHandler::Result Run(const char* args,
-                                          brpc::RedisReply* output) {
-        std::string key;
-        std::string value;
-        bool parse_command = false;
-        butil::StringSplitter sp(args, ' ');
-        for (; sp; ++sp) {
-            if (!parse_command) {
-                parse_command = true;
-            } else if (key.empty()) {
-                key.assign(sp.field(), sp.length());
-            } else if (value.empty()) {
-                value.assign(sp.field(), sp.length());
-            } else {
-                LOG(WARNING) << "unknown args: " << sp;
-            }
-        }
-        if (key.empty() || value.empty()) {
+    brpc::RedisCommandHandler::Result Run(const std::vector<std::string>& args,
+                                          brpc::RedisReply* output,
+                                          bool is_last) {
+        if (args.size() < 3) {
             output->SetError("ERR wrong number of arguments for 'set' command");
             return brpc::RedisCommandHandler::OK;
         }
-        m[key] = value;
-        output->SetStatus("OK");
+        if (_batch_process) {
+            _batched_command.emplace_back(args);
+            outputs.push_back(output);
+            if (is_last) {
+                for (int i = 0; i < (int)_batched_command.size(); ++i) {
+                    DoSet(_batched_command[i][1], _batched_command[i][2], outputs[i]);
+                }
+                _batch_count++;
+            }
+            return brpc::RedisCommandHandler::OK;
+        }
+        DoSet(args[1], args[2], output);
         return brpc::RedisCommandHandler::OK;
     }
+
+    void DoSet(const std::string& key, const std::string& value, brpc::RedisReply* output) {
+        m[key] = value;
+        output->SetStatus("OK");
+    }
+private:
+    bool _batch_process;
+    std::vector<brpc::RedisReply*> outputs;
+    std::vector<std::vector<std::string> > _batched_command;
+    int _batch_count;
 };
 
 class GetCommandHandler : public brpc::RedisCommandHandler {
 public:
-    GetCommandHandler() {}
+    GetCommandHandler(bool batch_process = false)
+        : _batch_process(batch_process)
+        , _batch_count(0) {}
 
-    brpc::RedisCommandHandler::Result Run(const char* args,
-                                          brpc::RedisReply* output) {
-        std::string key;
-        bool parse_command = false;
-        butil::StringSplitter sp(args, ' ');
-        for (; sp; ++sp) {
-            if (!parse_command) {
-                parse_command = true;
-            } else if (key.empty()) {
-                key.assign(sp.field(), sp.length());
-            } else {
-                LOG(WARNING) << "unknown args: " << sp;
-            }
-        }
-        if (key.empty()) {
+    brpc::RedisCommandHandler::Result Run(const std::vector<std::string>& args,
+                                          brpc::RedisReply* output,
+                                          bool is_last) {
+        if (args.size() < 2) {
             output->SetError("ERR wrong number of arguments for 'get' command");
             return brpc::RedisCommandHandler::OK;
         }
+        if (_batch_process) {
+            _batched_command.emplace_back(args);
+            outputs.push_back(output);
+            if (is_last) {
+                for (int i = 0; i < (int)_batched_command.size(); ++i) {
+                    DoGet(_batched_command[i][1], outputs[i]);
+                }
+                _batch_count++;
+            }
+            return brpc::RedisCommandHandler::OK;
+        }
+        DoGet(args[1], output);
+        return brpc::RedisCommandHandler::OK;
+    }
+
+    void DoGet(const std::string& key, brpc::RedisReply* output) {
         auto it = m.find(key);
         if (it != m.end()) {
             output->SetString(it->second);
         } else {
             output->SetNilString();
         }
-        return brpc::RedisCommandHandler::OK;
     }
+private:
+    bool _batch_process;
+    std::vector<brpc::RedisReply*> outputs;
+    std::vector<std::vector<std::string> > _batched_command;
+    int _batch_count;
 };
 
 class IncrCommandHandler : public brpc::RedisCommandHandler {
 public:
     IncrCommandHandler() {}
 
-    brpc::RedisCommandHandler::Result Run(const char* args,
-                                          brpc::RedisReply* output) {
-        std::string key;
-        bool parse_command = false;
-        butil::StringSplitter sp(args, ' ');
-        for (; sp; ++sp) {
-            if (!parse_command) {
-                parse_command = true;
-            } else if (key.empty()) {
-                key.assign(sp.field(), sp.length());
-            } else {
-                LOG(WARNING) << "unknown args: " << sp;
-            }
-        }
-        if (key.empty()) {
+    brpc::RedisCommandHandler::Result Run(const std::vector<std::string>& args,
+                                          brpc::RedisReply* output,
+                                          bool is_last) {
+        if (args.size() < 2) {
             output->SetError("ERR wrong number of arguments for 'incr' command");
             return brpc::RedisCommandHandler::OK;
         }
+        const std::string& key = args[1];
         int64_t value;
         s_mutex.lock();
         value = ++int_map[key];
@@ -966,47 +987,35 @@ public:
     MultiCommandHandler()
         : _started(false) {}
 
-    RedisCommandHandler::Result Run(const char* args,
-                                     brpc::RedisReply* output) {
-        butil::StringSplitter sp(args, ' ');
-        std::string command;
-        std::vector<std::string> sargs;
-        for (; sp; ++sp) {
-            if (command.empty()) {
-                command.assign(sp.field(), sp.length());
-            }
-            if (strcasecmp(command.c_str(), "multi") == 0) {
-                if (!_started) {
-                    output->SetStatus("OK");
-                    _started = true;
-                } else {
-                    output->SetError("ERR duplicate multi");
-                }
-                return brpc::RedisCommandHandler::CONTINUE;
-            }
-            if (strcasecmp(command.c_str(), "exec") != 0) {
-                std::string sarg(sp.field(), sp.length());
-                sargs.push_back(sarg);
+    RedisCommandHandler::Result Run(const std::vector<std::string>& args,
+                                    brpc::RedisReply* output,
+                                    bool is_last) {
+        if (strcasecmp(args[0].c_str(), "multi") == 0) {
+            if (!_started) {
+                output->SetStatus("OK");
+                _started = true;
             } else {
-                output->SetArray(_commands.size());
-                s_mutex.lock();
-                for (size_t i = 0; i < _commands.size(); ++i) {
-                    if (_commands[i][0] == "incr") {
-                        int64_t value;
-                        value = ++int_map[_commands[i][1]];
-                        (*output)[i].SetInteger(value);
-                    } else {
-                        LOG(WARNING) << "unknown command: " << _commands[i][0];
-                    }
-                }
-                s_mutex.unlock();
-                _started = false;
-                return brpc::RedisCommandHandler::OK;
+                output->SetError("ERR duplicate multi");
+            }
+            return brpc::RedisCommandHandler::CONTINUE;
+        } 
+        if (strcasecmp(args[0].c_str(), "exec") != 0) {
+            _commands.push_back(args);
+            output->SetStatus("QUEUED");
+            return brpc::RedisCommandHandler::CONTINUE;
+        }
+        output->SetArray(_commands.size());
+        s_mutex.lock();
+        for (size_t i = 0; i < _commands.size(); ++i) {
+            if (_commands[i][0] == "incr") {
+                int64_t value;
+                value = ++int_map[_commands[i][1]];
+                (*output)[i].SetInteger(value);
             }
         }
-        _commands.push_back(sargs);
-        output->SetStatus("QUEUED");
-        return brpc::RedisCommandHandler::CONTINUE;
+        s_mutex.unlock();
+        _started = false;
+        return brpc::RedisCommandHandler::OK;
     }
     RedisCommandHandler* New() { return new MultiCommandHandler; }
 
@@ -1088,6 +1097,43 @@ TEST_F(RedisTest, server_command_continue) {
         ASSERT_EQ(brpc::REDIS_REPLY_STRING, response.reply(3).type());
         ASSERT_STREQ("value1", response.reply(3).c_str());
     }
+}
+
+TEST_F(RedisTest, server_handle_pipeline) {
+    brpc::Server server;
+    brpc::ServerOptions server_options;
+    RedisServiceImpl* rsimpl = new RedisServiceImpl;
+    GetCommandHandler* getch = new GetCommandHandler(true);
+    SetCommandHandler* setch = new SetCommandHandler(true);
+    rsimpl->AddCommandHandler("get", getch);
+    rsimpl->AddCommandHandler("set", setch);
+    server_options.redis_service = rsimpl;
+    brpc::PortRange pr(8081, 8900);
+    ASSERT_EQ(0, server.Start("127.0.0.1", pr, &server_options));
+
+    brpc::ChannelOptions options;
+    options.protocol = brpc::PROTOCOL_REDIS;
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init("127.0.0.1", server.listen_address().port, &options));
+
+    brpc::RedisRequest request;
+    brpc::RedisResponse response;
+    brpc::Controller cntl;
+    ASSERT_TRUE(request.AddCommand("set key1 v1"));
+    ASSERT_TRUE(request.AddCommand("set key2 v2"));
+    ASSERT_TRUE(request.AddCommand("set key3 v3"));
+    ASSERT_TRUE(request.AddCommand("get hello"));
+    ASSERT_TRUE(request.AddCommand("get hello"));
+    ASSERT_TRUE(request.AddCommand("set key1 world"));
+    ASSERT_TRUE(request.AddCommand("set key2 world"));
+    ASSERT_TRUE(request.AddCommand("get key2"));
+    channel.CallMethod(NULL, &cntl, &request, &response, NULL);
+    ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
+    ASSERT_EQ(8, response.reply_size());
+    ASSERT_EQ(2, getch->_batch_count);
+    ASSERT_EQ(2, setch->_batch_count);
+    ASSERT_TRUE(response.reply(7).is_string());
+    ASSERT_STREQ(response.reply(7).c_str(), "world");
 }
 
 } //namespace

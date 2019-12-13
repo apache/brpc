@@ -60,15 +60,14 @@ public:
     GetCommandHandler(RedisServiceImpl* rsimpl)
         : _rsimpl(rsimpl) {}
 
-    brpc::RedisCommandHandler::Result Run(const char* args,
-                                          brpc::RedisReply* output) override {
-        std::vector<std::string> args_array;
-        butil::SplitString(args, ' ', &args_array);
-        if ((int)args_array.size() <= 1) {
+    brpc::RedisCommandHandler::Result Run(const std::vector<std::string>& commands,
+                                          brpc::RedisReply* output,
+                                          bool is_last) override {
+        if ((int)commands.size() <= 1) {
             output->SetError("ERR wrong number of arguments for 'get' command");
             return brpc::RedisCommandHandler::OK;
         }
-        const std::string& key = args_array[1];
+        const std::string& key = commands[1];
         std::string value;
         if (_rsimpl->Get(key, &value)) {
             output->SetString(value);
@@ -87,20 +86,15 @@ public:
     SetCommandHandler(RedisServiceImpl* rsimpl)
         : _rsimpl(rsimpl) {}
 
-    brpc::RedisCommandHandler::Result Run(const char* args,
-                                          brpc::RedisReply* output) override {
-        std::vector<std::string> args_array;
-        butil::SplitString(args, ' ', &args_array);
-        if (args_array.size() <= 1) {
-            output->SetError("ERR wrong number of arguments for 'get' command");
-            return brpc::RedisCommandHandler::OK;
-        }
-        if ((int)args_array.size() <= 2) {
+    brpc::RedisCommandHandler::Result Run(const std::vector<std::string>& commands,
+                                          brpc::RedisReply* output,
+                                          bool is_last) override {
+        if ((int)commands.size() <= 2) {
             output->SetError("ERR wrong number of arguments for 'set' command");
             return brpc::RedisCommandHandler::OK;
         }
-        const std::string& key = args_array[1];
-        const std::string& value = args_array[2];
+        const std::string& key = commands[1];
+        const std::string& value = commands[2];
         _rsimpl->Set(key, value);
         output->SetStatus("OK");
         return brpc::RedisCommandHandler::OK;

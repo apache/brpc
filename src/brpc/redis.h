@@ -243,11 +243,13 @@ public:
     // Once Server receives commands, it will first find the corresponding handlers and
     // call them sequentially(one by one) according to the order that requests arrive,
     // just like what redis-server does.
-    // `args` is the redis request command string typed by remote side, ending with nullptr.
-    // For example, possible args value may be "set foo bar" or "incr somekey". User can
-    // use butil::StringSplitter to split and parse it.
-    // `output`, which should be filled by user, is the content that sent to client side.
+    // `args' is the array redis of request command. For example, "set somekey somevalue"
+    // corresponds to args[0]=="set", args[1]=="somekey" and args[2]=="somevalue".
+    // `output', which should be filled by user, is the content that sent to client side.
     // Read brpc/src/redis_reply.h for more usage.
+    // `is_last' indicates whether the commands is the last command of this batch. If user
+    // want to do some batch processing, user should buffer the command and output. Once
+    // `is_last' is true, then run all the command and set the output of each command.
     // The return value should be RedisCommandHandler::OK for normal cases. If you want
     // to implement transaction, return RedisCommandHandler::CONTINUE until server receives
     // an ending marker. The first handler that return RedisCommandHandler::CONTINUE will
@@ -257,8 +259,9 @@ public:
     // RedisCommandHandler::CONTINUE and one RedisCommandHandler::OK since exec is the
     // marker that ends the transaction. User should queue the commands and execute them
     // all once the ending marker is received.
-    virtual RedisCommandHandler::Result Run(const char* args,
-                                            RedisReply* output) = 0;
+    virtual RedisCommandHandler::Result Run(const std::vector<std::string>& command,
+                                            brpc::RedisReply* output,
+                                            bool is_last) = 0;
 };
 
 } // namespace brpc

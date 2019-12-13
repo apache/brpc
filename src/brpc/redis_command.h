@@ -20,6 +20,7 @@
 #ifndef BRPC_REDIS_COMMAND_H
 #define BRPC_REDIS_COMMAND_H
 
+#include <vector>
 #include "butil/iobuf.h"
 #include "butil/status.h"
 #include "brpc/parse_result.h"
@@ -47,16 +48,16 @@ public:
 
     // Parse raw message from `buf'. Return PARSE_OK and set the parsed command
     // to `command' if successful.
-    ParseError Consume(butil::IOBuf& buf, std::string* command);
+    ParseError Consume(butil::IOBuf& buf, std::vector<std::string>* command);
 
 private:
     // Reset parser to the initial state.
     void Reset();
 
-    bool _parsing_array;    // if the parser has met array indicator '*'
-    int _length;            // array length
-    int _index;             // current parsing array index
-    std::string _command;   // parsed command string
+    bool _parsing_array;            // if the parser has met array indicator '*'
+    int _length;                    // array length
+    int _index;                     // current parsing array index
+    std::vector<std::string> _commands;   // parsed command string
 };
 
 } // namespace brpc

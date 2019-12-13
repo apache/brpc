@@ -33,7 +33,6 @@
 #include "brpc/redis.h"
 #include "brpc/redis_command.h"
 #include "brpc/policy/redis_protocol.h"
-#include "bthread/execution_queue.h"
 
 namespace brpc {
 
@@ -58,11 +57,6 @@ struct InputResponse : public InputMessageBase {
     }
 };
 
-// This struct is pushed into ExecutionQueue of each connection.
-struct CommandInfo {
-    std::string command;
-};
-
 // This class is as parsing_context in socket.
 class RedisConnContext : public Destroyable  {
 public:
@@ -73,85 +67,82 @@ public:
     // @Destroyable
     void Destroy() override;
 
-    int Init();
-
     SocketId socket_id;
     RedisService* redis_service;
     // If user starts a transaction, handler_continue indicates the
     // first handler pointer that triggers the transaction.
     RedisCommandHandler* handler_continue;
-    // The redis command are parsed and pushed into this queue
-    bthread::ExecutionQueueId<CommandInfo*> queue;
 
     RedisCommandParser parser;
-    std::string command;
+    std::vector<std::string> command;
 };
 
-int ConsumeTask(RedisConnContext* ctx, const std::string& command, butil::IOBuf* sendbuf) {
+std::string ToLowercase(const std::string& command) {
+    std::string res;
+    res.resize(command.size());
+    std::transform(command.begin(), command.end(), res.begin(),
+        [](unsigned char c){ return std::tolower(c); });
+    return res;
+}
+
+int ConsumeTask(RedisConnContext* ctx,
+                const std::vector<std::vector<std::string> >& commands,
+                butil::IOBuf* sendbuf) {
     butil::Arena arena;
-    RedisReply output(&arena);
-    if (ctx->handler_continue) {
-        RedisCommandHandler::Result result =
-            ctx->handler_continue->Run(command.c_str(), &output);
-        if (result == RedisCommandHandler::OK) {
-            ctx->handler_continue = NULL;
-        }
+    int size = commands.size();
+    std::string next_comm;
+    RedisReply reply(&arena);
+    RedisReply* output = NULL;
+    if (size == 1) {
+        // Optimize for the most common case
+        output = &reply;
     } else {
-        std::string comm;
-        comm.reserve(8);
-        for (int i = 0; i < (int)command.size() && command[i] != ' '; ++i) {
-            comm.push_back(std::tolower(command[i]));
+        output = (RedisReply*)malloc(sizeof(RedisReply) * size);
+        for (int i = 0; i < size; ++i) {
+            new (&output[i]) RedisReply(&arena);
         }
-        RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(comm);
-        if (!ch) {
-            char buf[64];
-            snprintf(buf, sizeof(buf), "ERR unknown command `%s`", comm.c_str());
-            output.SetError(buf);
+    }
+    for (int i = 0; i < size; ++i) {
+        if (ctx->handler_continue) {
+            bool is_last = (i == size - 1);
+            RedisCommandHandler::Result result =
+                ctx->handler_continue->Run(commands[i], &output[i], is_last);
+            if (result == RedisCommandHandler::OK) {
+                ctx->handler_continue = NULL;
+            }
         } else {
-            RedisCommandHandler::Result result = ch->Run(command.c_str(), &output);
-            if (result == RedisCommandHandler::CONTINUE) {
-                ctx->handler_continue = ch;
+            bool is_last = true;
+            std::string comm;
+            if (i == 0) {
+                comm = ToLowercase(commands[i][0]);
+            } else {
+                comm.swap(next_comm);
+            }
+            if ((i + 1) < size) {
+                next_comm = ToLowercase(commands[i + 1][0]);
+                if (comm == next_comm) {
+                    is_last = false;
+                }
+            }
+            RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(comm);
+            if (!ch) {
+                char buf[64];
+                snprintf(buf, sizeof(buf), "ERR unknown command `%s`", comm.c_str());
+                output[i].SetError(buf);
+            } else {
+                RedisCommandHandler::Result result =
+                    ch->Run(commands[i], &output[i], is_last);
+                if (result == RedisCommandHandler::CONTINUE) {
+                    ctx->handler_continue = ch;
+                }
             }
         }
     }
-    output.SerializeTo(sendbuf);
-    return 0;
-}
-
-int Consume(void* ctx, bthread::TaskIterator<CommandInfo*>& iter) {
-    RedisConnContext* qctx = static_cast<RedisConnContext*>(ctx);
-    if (iter.is_queue_stopped()) {
-        delete qctx;
-        return 0;
+    for (int i = 0; i < size; ++i) {
+        output[i].SerializeTo(sendbuf);
     }
-    SocketUniquePtr s;
-    bool has_err = false;
-    if (Socket::Address(qctx->socket_id, &s) != 0) {
-        LOG(WARNING) << "Fail to address redis socket";
-        has_err = true;
-    }
-    Socket::WriteOptions wopt;
-    wopt.ignore_eovercrowded = true;
-    butil::IOBuf sendbuf;
-    for (; iter; ++iter) {
-        std::unique_ptr<CommandInfo> guard(*iter);
-        if (has_err) {
-            continue;
-        }
-        ConsumeTask(qctx, (*iter)->command, &sendbuf);
-        // If there are too many tasks to execute, latency of the front
-        // responses will be increased by waiting the following tasks to
-        // be completed. To prevent this, if the current buf size is greater
-        // than FLAGS_redis_batch_flush_max_size, we just write the current
-        // buf first.
-        if ((int)sendbuf.size() >= FLAGS_redis_batch_flush_data_size) {
-            LOG_IF(WARNING, s->Write(&sendbuf, &wopt) != 0)
-                << "Fail to send redis reply";
-        }
-    }
-    if (!has_err && !sendbuf.empty()) {
-        LOG_IF(WARNING, s->Write(&sendbuf, &wopt) != 0)
-            << "Fail to send redis reply";
+    if (size != 1) {
+        free(output);
     }
     return 0;
 }
@@ -161,18 +152,7 @@ int Consume(void* ctx, bthread::TaskIterator<CommandInfo*>& iter) {
 RedisConnContext::~RedisConnContext() { }
 
 void RedisConnContext::Destroy() {
-    bthread::execution_queue_stop(queue);
-}
-
-int RedisConnContext::Init() {
-    bthread::ExecutionQueueOptions q_opt;
-    q_opt.bthread_attr =
-        FLAGS_usercode_in_pthread ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL;
-    if (bthread::execution_queue_start(&queue, &q_opt, Consume, this) != 0) {
-        LOG(ERROR) << "Fail to start execution queue";
-        return -1;
-    }
-    return 0;
+    delete this;
 }
 
 // ========== impl of RedisConnContext ==========
@@ -193,25 +173,30 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             ctx = new RedisConnContext;
             ctx->socket_id = socket->id();
             ctx->redis_service = rs;
-            if (ctx->Init() != 0) {
-                delete ctx;
-                LOG(ERROR) << "Fail to init redis RedisConnContext";
-                return MakeParseError(PARSE_ERROR_NO_RESOURCE);
-            }
             socket->reset_parsing_context(ctx);
         }
-        ParseError err = ctx->parser.Consume(*source, &ctx->command);
-        if (err != PARSE_OK) {
-            return MakeParseError(err);
+        std::vector<std::vector<std::string> > commands;
+        ParseError err = PARSE_OK;
+        while (true) {
+            err = ctx->parser.Consume(*source, &ctx->command);
+            if (err != PARSE_OK) {
+                break;
+            }
+            commands.emplace_back(std::move(ctx->command));
+            CHECK(ctx->command.empty());
         }
-        std::unique_ptr<CommandInfo> info(new CommandInfo);
-        info->command.swap(ctx->command);
-        if (bthread::execution_queue_execute(ctx->queue, info.get()) != 0) {
-            LOG(ERROR) << "Fail to push execution queue";
-            return MakeParseError(PARSE_ERROR_NO_RESOURCE);
+        if (!commands.empty()) {
+            butil::IOBuf sendbuf;
+            if (ConsumeTask(ctx, commands, &sendbuf) != 0) {
+                return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
+            }
+            CHECK(sendbuf.size() > 0) << "invalid size=0 of sendbuf";
+            Socket::WriteOptions wopt;
+            wopt.ignore_eovercrowded = true;
+            LOG_IF(WARNING, socket->Write(&sendbuf, &wopt) != 0)
+                << "Fail to send redis reply";
         }
-        info.release();
-        return MakeMessage(NULL);
+        return MakeParseError(err);
     } else {
         // NOTE(gejun): PopPipelinedInfo() is actually more contended than what
         // I thought before. The Socket._pipeline_q is a SPSC queue pushed before

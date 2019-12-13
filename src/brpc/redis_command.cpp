@@ -364,7 +364,8 @@ RedisCommandParser::RedisCommandParser() {
     Reset();
 }
 
-ParseError RedisCommandParser::Consume(butil::IOBuf& buf, std::string* command) {
+ParseError RedisCommandParser::Consume(
+        butil::IOBuf& buf, std::vector<std::string>* command) {
     const char* pfc = (const char*)buf.fetch1();
     if (pfc == NULL) {
         return PARSE_ERROR_NOT_ENOUGH_DATA;
@@ -395,7 +396,7 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf, std::string* command) 
         _parsing_array = true;
         _length = value;
         _index = 0;
-        _command.clear();
+        _commands.clear();
         return Consume(buf, command);
     }
     CHECK(_index < _length) << "a complete command has been parsed. "
@@ -414,10 +415,8 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf, std::string* command) 
         return PARSE_ERROR_NOT_ENOUGH_DATA;
     }
     buf.pop_front(crlf_pos + 2/*CRLF*/);
-    if (!_command.empty()) {
-        _command.push_back(' ');    // command is separated by ' '
-    }
-    buf.cutn(&_command, len);
+    _commands.emplace_back();
+    buf.cutn(&_commands.back(), len);
     char crlf[2];
     buf.cutn(crlf, sizeof(crlf));
     if (crlf[0] != '\r' || crlf[1] != '\n') {
@@ -428,7 +427,7 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf, std::string* command) 
         return Consume(buf, command);
     }
     command->clear();
-    command->swap(_command);
+    command->swap(_commands);
     Reset();
     return PARSE_OK;
 }
