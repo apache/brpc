@@ -457,4 +457,9 @@ RedisCommandHandler* RedisService::FindCommandHandler(const std::string& name) {
     return NULL;
 }
 
+RedisCommandHandler* RedisCommandHandler::NewTransactionHandler() {
+    LOG(ERROR) << "NewTransactionHandler is not implemented";
+    return NULL;
+}
+
 } // namespace brpc

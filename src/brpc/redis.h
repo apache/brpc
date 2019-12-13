@@ -251,17 +251,29 @@ public:
     // want to do some batch processing, user should buffer the command and output. Once
     // `is_last' is true, then run all the command and set the output of each command.
     // The return value should be RedisCommandHandler::OK for normal cases. If you want
-    // to implement transaction, return RedisCommandHandler::CONTINUE until server receives
-    // an ending marker. The first handler that return RedisCommandHandler::CONTINUE will
-    // continue receiving the following commands until it receives an ending marker and
-    // return RedisCommandHandler::OK to end transaction. For example, the return value
-    // of commands "multi; set k1 v1; set k2 v2; set k3 v3; exec" should be four
-    // RedisCommandHandler::CONTINUE and one RedisCommandHandler::OK since exec is the
-    // marker that ends the transaction. User should queue the commands and execute them
-    // all once the ending marker is received.
+    // to implement transaction, return RedisCommandHandler::CONTINUE once server receives
+    // an start marker and brpc will call MultiTransactionHandler() to new a transaction
+    // handler that all the following commands are sent to this tranction handler until
+    // it returns Result::OK. Read the comment below.
     virtual RedisCommandHandler::Result Run(const std::vector<std::string>& command,
                                             brpc::RedisReply* output,
                                             bool is_last) = 0;
+
+    // This function is called to new a transaction handler once Run() returns
+    // RedisCommandHandler::CONTINUE. All the following commands are sent to this
+    // handler until it return Result::OK. For example, for command "multi; set k1 v1;
+    // set k2 v2; set k3 v3; exec":
+    // 1) In Run(), command is "multi", so return RedisCommandHandler::CONTINUE, and
+    // brpc calls NewTransactionHandler() to new a handler tran_handler.
+    // 2) brpc calls tran_handler.Run() with command "set k1 v1", which should return
+    // RedisCommandHandler::CONTINUE and buffer the command and output.
+    // 3) brpc calls tran_handler.Run() with command "set k2 v2", which should return
+    // RedisCommandHandler::CONTINUE and buffer the command and output.
+    // 4) brpc calls tran_handler.Run() with command "set k3 v3", which should return
+    // RedisCommandHandler::CONTINUE and buffer the command and output.
+    // 5) An ending marker(multi) is found in tran_handler.Run(), user exeuctes all
+    // the command and return RedisCommandHandler::OK. This Transation is done.
+    virtual RedisCommandHandler* NewTransactionHandler();
 };
 
 } // namespace brpc

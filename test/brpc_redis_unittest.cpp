@@ -984,44 +984,50 @@ TEST_F(RedisTest, server_concurrency) {
 
 class MultiCommandHandler : public brpc::RedisCommandHandler {
 public:
-    MultiCommandHandler()
-        : _started(false) {}
+    MultiCommandHandler() {}
 
     RedisCommandHandler::Result Run(const std::vector<std::string>& args,
                                     brpc::RedisReply* output,
                                     bool is_last) {
-        if (strcasecmp(args[0].c_str(), "multi") == 0) {
-            if (!_started) {
-                output->SetStatus("OK");
-                _started = true;
-            } else {
-                output->SetError("ERR duplicate multi");
-            }
-            return brpc::RedisCommandHandler::CONTINUE;
-        } 
-        if (strcasecmp(args[0].c_str(), "exec") != 0) {
-            _commands.push_back(args);
-            output->SetStatus("QUEUED");
-            return brpc::RedisCommandHandler::CONTINUE;
-        }
-        output->SetArray(_commands.size());
-        s_mutex.lock();
-        for (size_t i = 0; i < _commands.size(); ++i) {
-            if (_commands[i][0] == "incr") {
-                int64_t value;
-                value = ++int_map[_commands[i][1]];
-                (*output)[i].SetInteger(value);
-            }
-        }
-        s_mutex.unlock();
-        _started = false;
-        return brpc::RedisCommandHandler::OK;
+        output->SetStatus("OK");
+        return brpc::RedisCommandHandler::CONTINUE;
     }
-    RedisCommandHandler* New() { return new MultiCommandHandler; }
 
-private:
-    std::vector<std::vector<std::string>> _commands;
-    bool _started;
+    RedisCommandHandler* NewTransactionHandler() {
+        return new MultiTransactionHandler;
+    }
+
+    class MultiTransactionHandler : public brpc::RedisCommandHandler {
+    public:
+        RedisCommandHandler::Result Run(const std::vector<std::string>& args,
+                                        brpc::RedisReply* output,
+                                        bool is_last) {
+            if (strcasecmp(args[0].c_str(), "multi") == 0) {
+                output->SetError("ERR duplicate multi");
+                return brpc::RedisCommandHandler::CONTINUE;
+            }
+            if (strcasecmp(args[0].c_str(), "exec") != 0) {
+                _commands.push_back(args);
+                output->SetStatus("QUEUED");
+                return brpc::RedisCommandHandler::CONTINUE;
+            }
+            output->SetArray(_commands.size());
+            s_mutex.lock();
+            for (size_t i = 0; i < _commands.size(); ++i) {
+                if (_commands[i][0] == "incr") {
+                    int64_t value;
+                    value = ++int_map[_commands[i][1]];
+                    (*output)[i].SetInteger(value);
+                } else {
+                    (*output)[i].SetStatus("unknowne command");
+                }
+            }
+            s_mutex.unlock();
+            return brpc::RedisCommandHandler::OK;
+        }
+    private:
+        std::vector<std::vector<std::string>> _commands;
+    };
 };
 
 TEST_F(RedisTest, server_command_continue) {

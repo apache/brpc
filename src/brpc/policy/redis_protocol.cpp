@@ -61,8 +61,7 @@ struct InputResponse : public InputMessageBase {
 class RedisConnContext : public Destroyable  {
 public:
     RedisConnContext()
-        : redis_service(NULL)
-        , handler_continue(NULL) {}
+        : redis_service(NULL) {}
     ~RedisConnContext();
     // @Destroyable
     void Destroy() override;
@@ -70,14 +69,14 @@ public:
     SocketId socket_id;
     RedisService* redis_service;
     // If user starts a transaction, handler_continue indicates the
-    // first handler pointer that triggers the transaction.
-    RedisCommandHandler* handler_continue;
+    // handler pointer that runs the transaction handler.
+    std::unique_ptr<RedisCommandHandler> handler_continue;
 
     RedisCommandParser parser;
     std::vector<std::string> command;
 };
 
-std::string ToLowercase(const std::string& command) {
+static std::string ToLowercase(const std::string& command) {
     std::string res;
     res.resize(command.size());
     std::transform(command.begin(), command.end(), res.begin(),
@@ -108,7 +107,7 @@ int ConsumeTask(RedisConnContext* ctx,
             RedisCommandHandler::Result result =
                 ctx->handler_continue->Run(commands[i], &output[i], is_last);
             if (result == RedisCommandHandler::OK) {
-                ctx->handler_continue = NULL;
+                ctx->handler_continue.reset(NULL);
             }
         } else {
             bool is_last = true;
@@ -133,7 +132,7 @@ int ConsumeTask(RedisConnContext* ctx,
                 RedisCommandHandler::Result result =
                     ch->Run(commands[i], &output[i], is_last);
                 if (result == RedisCommandHandler::CONTINUE) {
-                    ctx->handler_continue = ch;
+                    ctx->handler_continue.reset(ch->NewTransactionHandler());
                 }
             }
         }
