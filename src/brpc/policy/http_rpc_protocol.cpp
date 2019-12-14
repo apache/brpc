@@ -943,7 +943,6 @@ FindMethodPropertyByURIImpl(const std::string& uri_path, const Server* server,
     ServerPrivateAccessor wrapper(server);
     butil::StringSplitter splitter(uri_path.c_str(), '/');
 
-    // Empty uri should check whether user registered restful_mappings. Instead of use IndexServer.
     if (NULL == splitter) {
         return NULL;
     }
@@ -1006,20 +1005,32 @@ FindMethodPropertyByURIImpl(const std::string& uri_path, const Server* server,
     return NULL;
 }
 
+inline bool IsEmptyURI(const std::string& uri_path)
+{
+    // Use StringSplitter to handle uri with multi '/' such as "http://localhost:port/////"
+    butil::StringSplitter splitter(uri_path.c_str(), '/');
+    return NULL == splitter;
+}
+
 // Used in UT, don't be static
 const Server::MethodProperty*
 FindMethodPropertyByURI(const std::string& uri_path, const Server* server,
                         std::string* unresolved_path) {
-    const Server::MethodProperty* mp =
-        FindMethodPropertyByURIImpl(uri_path, server, unresolved_path);
-    if (mp != NULL) {
-        if (mp->http_url != NULL) {
-            // the restful method is accessed from its
-            // default url (SERVICE/METHOD) which should be rejected.
-            return NULL;
+    bool is_empty_uri = IsEmptyURI( uri_path );
+    if ( !is_empty_uri ) // only NOT empty uri need find method.
+    {
+        const Server::MethodProperty* mp =
+                FindMethodPropertyByURIImpl(uri_path, server, unresolved_path);
+        if (mp != NULL) {
+            if (mp->http_url != NULL) {
+                // the restful method is accessed from its
+                // default url (SERVICE/METHOD) which should be rejected.
+                return NULL;
+            }
+            return mp;
         }
-        return mp;
     }
+
     // uri_path cannot match any methods with exact service_name. Match
     // the fuzzy patterns in global restful map which often matches
     // extension names. Say "*.txt => get_text_file, *.mp4 => download_mp4".
@@ -1030,7 +1041,7 @@ FindMethodPropertyByURI(const std::string& uri_path, const Server* server,
     }
 
     // Empty uri not registered at restful_mappings. Use IndexServer.
-    if(uri_path == "/")
+    if( is_empty_uri )
     {
         return accessor.FindMethodPropertyByFullName(
                 IndexService::descriptor()->full_name(), common->DEFAULT_METHOD);
