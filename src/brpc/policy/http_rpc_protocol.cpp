@@ -942,10 +942,10 @@ FindMethodPropertyByURIImpl(const std::string& uri_path, const Server* server,
                             std::string* unresolved_path) {
     ServerPrivateAccessor wrapper(server);
     butil::StringSplitter splitter(uri_path.c_str(), '/');
-    // Show index page for empty URI
+
+    // Empty uri should check whether user registered restful_mappings. Instead of use IndexServer.
     if (NULL == splitter) {
-        return wrapper.FindMethodPropertyByFullName(
-            IndexService::descriptor()->full_name(), common->DEFAULT_METHOD);
+        return NULL;
     }
     butil::StringPiece service_name(splitter.field(), splitter.length());
     const bool full_service_name =
@@ -1027,6 +1027,13 @@ FindMethodPropertyByURI(const std::string& uri_path, const Server* server,
     if (accessor.global_restful_map()) {
         return accessor.global_restful_map()->FindMethodProperty(
             uri_path, unresolved_path);
+    }
+
+    // Empty uri not registered at restful_mappings. Use IndexServer.
+    if(uri_path == "/")
+    {
+        return accessor.FindMethodPropertyByFullName(
+                IndexService::descriptor()->full_name(), common->DEFAULT_METHOD);
     }
     return NULL;
 }
