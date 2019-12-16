@@ -43,9 +43,6 @@ namespace policy {
 
 DEFINE_bool(redis_verbose, false,
             "[DEBUG] Print EVERY redis request/response");
-DEFINE_int32(redis_batch_flush_data_size, 4096, "If the total data size of buffered "
-        "responses is beyond this value, then data is forced to write to socket"
-        "to avoid latency of the front responses being too big");
 
 struct InputResponse : public InputMessageBase {
     bthread_id_t id_wait;
