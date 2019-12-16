@@ -237,25 +237,30 @@ public:
     enum Result {
         OK = 0,
         CONTINUE = 1,
+        BATCHED = 2,
     };
     ~RedisCommandHandler() {}
 
     // Once Server receives commands, it will first find the corresponding handlers and
     // call them sequentially(one by one) according to the order that requests arrive,
     // just like what redis-server does.
-    // `args' is the array redis of request command. For example, "set somekey somevalue"
+    // `args_len` is the length of request command.
+    // `args' is the array of request command. For example, "set somekey somevalue"
     // corresponds to args[0]=="set", args[1]=="somekey" and args[2]=="somevalue".
     // `output', which should be filled by user, is the content that sent to client side.
     // Read brpc/src/redis_reply.h for more usage.
     // `is_last' indicates whether the commands is the last command of this batch. If user
-    // want to do some batch processing, user should buffer the command and output. Once
-    // `is_last' is true, then run all the command and set the output of each command.
+    // want to do some batch processing, user should buffer the command and return
+    // RedisCommandHandler::BATCHED. Once `is_last' is true, run all the commands and
+    // set `output' to be an array and set all the results to the corresponding element
+    // of array.
+    //
     // The return value should be RedisCommandHandler::OK for normal cases. If you want
     // to implement transaction, return RedisCommandHandler::CONTINUE once server receives
     // an start marker and brpc will call MultiTransactionHandler() to new a transaction
     // handler that all the following commands are sent to this tranction handler until
     // it returns Result::OK. Read the comment below.
-    virtual RedisCommandHandler::Result Run(const std::vector<std::string>& command,
+    virtual RedisCommandHandler::Result Run(int args_len, const char* args[],
                                             brpc::RedisReply* output,
                                             bool is_last) = 0;
 

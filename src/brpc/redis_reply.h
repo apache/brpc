@@ -59,15 +59,18 @@ public:
     bool is_string() const;  // True if the reply is a string.
     bool is_array() const;   // True if the reply is an array.
 
-    // Set the reply to the nil string. Return True if it is set
+    // Set the reply to the null string. Return True if it is set
     // successfully. If the reply has already been set, return false.
-    bool SetNilString();
+    bool SetNullString();
 
-    // Set the reply to the array with `size' elements. If `size'
-    // is -1, then it is a nil array. After call SetArray, use
-    // operator[] to visit sub replies and set their value. Return
-    // True if it is set successfully. If the reply has already
-    // been set, return false.
+    // Set the reply to the null array. Return True if it is set
+    // successfully. If the reply has already been set, return false.
+    bool SetNullArray();
+
+    // Set the reply to the array with `size' elements. After calling
+    // SetArray, use operator[] to visit sub replies and set their
+    // value. Return True if it is set successfully. If the reply has
+    // already been set, return false.
     bool SetArray(int size);
 
     // Set the reply to status message `str'. Return True if it is set
@@ -210,8 +213,17 @@ inline int64_t RedisReply::integer() const {
     return 0;
 }
 
-inline bool RedisReply::SetNilString() {
-    if (!_arena || _type != REDIS_REPLY_NIL) {
+inline bool RedisReply::SetNullArray() {
+    if (_type != REDIS_REPLY_NIL) {
+        return false;
+    }
+    _type = REDIS_REPLY_ARRAY;
+    _length = npos;
+    return true;
+}
+
+inline bool RedisReply::SetNullString() {
+    if (_type != REDIS_REPLY_NIL) {
         return false;
     }
     _type = REDIS_REPLY_STRING;
@@ -228,7 +240,7 @@ inline bool RedisReply::SetError(const std::string& str) {
 }
 
 inline bool RedisReply::SetInteger(int64_t value) {
-    if (!_arena || _type != REDIS_REPLY_NIL) {
+    if (_type != REDIS_REPLY_NIL) {
         return false;
     }
     _type = REDIS_REPLY_INTEGER;

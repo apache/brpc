@@ -419,8 +419,8 @@ bool RedisReply::SetArray(int size) {
     }
     _type = REDIS_REPLY_ARRAY;
     if (size < 0) {
-        _length = npos;
-        return true;
+        LOG(ERROR) << "negative size=" << size << " when calling SetArray";
+        return false;
     } else if (size == 0) {
         _length = 0;
         return true;
