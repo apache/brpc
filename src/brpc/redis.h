@@ -271,12 +271,12 @@ public:
     // 1) In Run(), command is "multi", so return RedisCommandHandler::CONTINUE, and
     // brpc calls NewTransactionHandler() to new a handler tran_handler.
     // 2) brpc calls tran_handler.Run() with command "set k1 v1", which should return
-    // RedisCommandHandler::CONTINUE and buffer the command and output.
+    // RedisCommandHandler::CONTINUE and buffer the command.
     // 3) brpc calls tran_handler.Run() with command "set k2 v2", which should return
-    // RedisCommandHandler::CONTINUE and buffer the command and output.
+    // RedisCommandHandler::CONTINUE and buffer the command.
     // 4) brpc calls tran_handler.Run() with command "set k3 v3", which should return
-    // RedisCommandHandler::CONTINUE and buffer the command and output.
-    // 5) An ending marker(multi) is found in tran_handler.Run(), user exeuctes all
+    // RedisCommandHandler::CONTINUE and buffer the command.
+    // 5) An ending marker(exec) is found in tran_handler.Run(), user exeuctes all
     // the command and return RedisCommandHandler::OK. This Transation is done.
     virtual RedisCommandHandler* NewTransactionHandler();
 };
