@@ -52,7 +52,7 @@ public:
     // to `commands' and length to `len' if successful. Memory of commands are
     // allocated in `arena'.
     ParseError Consume(butil::IOBuf& buf, std::unique_ptr<const char*[]>* commands,
-            int*len, butil::Arena* arena);
+                       int* len, butil::Arena* arena);
 
 private:
     // Reset parser to the initial state.
