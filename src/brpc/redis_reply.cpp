@@ -457,7 +457,7 @@ void RedisReply::SetStringImpl(const std::string& str, RedisReplyType type) {
             LOG(FATAL) << "Fail to allocate string[" << size << "]";
             return;
         }
-        memcpy(d, str.c_str(), size);
+        memcpy(d, str.data(), size);
         d[size] = '\0';
         _data.long_str = d;
     }

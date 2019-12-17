@@ -192,9 +192,7 @@ inline RedisReply::RedisReply() {
 }
 
 inline bool RedisReply::is_nil() const {
-    return (_type == REDIS_REPLY_NIL) ||
-        ((_type == REDIS_REPLY_STRING || _type == REDIS_REPLY_ARRAY) &&
-         _length == npos);
+    return (_type == REDIS_REPLY_NIL || _length == npos);
 }
 inline bool RedisReply::is_error() const { return _type == REDIS_REPLY_ERROR; }
 inline bool RedisReply::is_integer() const { return _type == REDIS_REPLY_INTEGER; }
