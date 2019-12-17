@@ -413,34 +413,39 @@ void RedisReply::CopyFromDifferentArena(const RedisReply& other,
     }
 }
 
-bool RedisReply::SetArray(int size) {
-    if (!_arena || _type != REDIS_REPLY_NIL) {
-        return false;
+void RedisReply::SetArray(int size) {
+    if (!_arena) {
+        return;
+    }
+    if (_type != REDIS_REPLY_NIL) {
+        Reset();
     }
     _type = REDIS_REPLY_ARRAY;
     if (size < 0) {
         LOG(ERROR) << "negative size=" << size << " when calling SetArray";
-        return false;
+        return;
     } else if (size == 0) {
         _length = 0;
-        return true;
+        return;
     }
     RedisReply* subs = (RedisReply*)_arena->allocate(sizeof(RedisReply) * size);
     if (!subs) {
         LOG(FATAL) << "Fail to allocate RedisReply[" << size << "]";
-        return false;
+        return;
     }
     for (int i = 0; i < size; ++i) {
         new (&subs[i]) RedisReply(_arena);
     }
     _length = size;
     _data.array.replies = subs;
-    return true;
 }
 
-bool RedisReply::SetBasicString(const std::string& str, RedisReplyType type) {
-    if (!_arena || _type != REDIS_REPLY_NIL) {
-        return false;
+void RedisReply::SetStringImpl(const std::string& str, RedisReplyType type) {
+    if (!_arena) {
+        return;
+    }
+    if (_type != REDIS_REPLY_NIL) {
+        Reset();
     }
     const size_t size = str.size();
     if (size < sizeof(_data.short_str)) {
@@ -450,7 +455,7 @@ bool RedisReply::SetBasicString(const std::string& str, RedisReplyType type) {
         char* d = (char*)_arena->allocate((size/8 + 1) * 8);
         if (!d) {
             LOG(FATAL) << "Fail to allocate string[" << size << "]";
-            return false;
+            return;
         }
         memcpy(d, str.c_str(), size);
         d[size] = '\0';
@@ -458,7 +463,6 @@ bool RedisReply::SetBasicString(const std::string& str, RedisReplyType type) {
     }
     _type = type;
     _length = size;
-    return true;
 }
 
 } // namespace brpc

@@ -638,7 +638,7 @@ TEST_F(RedisTest, redis_reply_codec) {
     {
         brpc::RedisReply r(&arena);
         butil::IOBuf buf;
-        ASSERT_TRUE(r.SetStatus("OK"));
+        r.SetStatus("OK");
         ASSERT_TRUE(r.SerializeTo(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "+OK\r\n");
         ASSERT_STREQ(r.c_str(), "OK");
@@ -652,7 +652,7 @@ TEST_F(RedisTest, redis_reply_codec) {
     {
         brpc::RedisReply r(&arena);
         butil::IOBuf buf;
-        ASSERT_TRUE(r.SetError("not exist \'key\'"));
+        r.SetError("not exist \'key\'");
         ASSERT_TRUE(r.SerializeTo(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "-not exist \'key\'\r\n");
         r.Clear();
@@ -665,7 +665,7 @@ TEST_F(RedisTest, redis_reply_codec) {
     {
         brpc::RedisReply r(&arena);
         butil::IOBuf buf;
-        ASSERT_TRUE(r.SetNullString());
+        r.SetNullString();
         ASSERT_TRUE(r.SerializeTo(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "$-1\r\n");
         r.Clear();
@@ -674,7 +674,7 @@ TEST_F(RedisTest, redis_reply_codec) {
         ASSERT_TRUE(r.is_nil());
 
         r.Clear();
-        ASSERT_TRUE(r.SetString("abcde'hello world"));
+        r.SetString("abcde'hello world");
         ASSERT_TRUE(r.SerializeTo(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "$17\r\nabcde'hello world\r\n");
         ASSERT_STREQ(r.c_str(), "abcde'hello world");
@@ -693,7 +693,7 @@ TEST_F(RedisTest, redis_reply_codec) {
         const char* output[] = { ":-1\r\n", ":1234567\r\n" };
         for (int i = 0; i < t; ++i) {
             r.Clear();
-            ASSERT_TRUE(r.SetInteger(input[i]));
+            r.SetInteger(input[i]);
             ASSERT_TRUE(r.SerializeTo(&buf));
             ASSERT_STREQ(buf.to_string().c_str(), output[i]);
             r.Clear();
@@ -707,7 +707,7 @@ TEST_F(RedisTest, redis_reply_codec) {
     {
         brpc::RedisReply r(&arena);
         butil::IOBuf buf;
-        ASSERT_TRUE(r.SetArray(3));
+        r.SetArray(3);
         brpc::RedisReply& sub_reply = r[0];
         sub_reply.SetArray(2);
         sub_reply[0].SetString("hello, it's me");
@@ -736,7 +736,7 @@ TEST_F(RedisTest, redis_reply_codec) {
 
         r.Clear();
         // null array
-        ASSERT_TRUE(r.SetNullArray());
+        r.SetNullArray();
         ASSERT_TRUE(r.SerializeTo(&buf));
         ASSERT_STREQ(buf.to_string().c_str(), "*-1\r\n");
         ASSERT_EQ(r.ConsumePartialIOBuf(buf, &arena), brpc::PARSE_OK);
@@ -746,7 +746,7 @@ TEST_F(RedisTest, redis_reply_codec) {
     // CopyFromDifferentArena
     {
         brpc::RedisReply r(&arena);
-        ASSERT_TRUE(r.SetArray(1));
+        r.SetArray(1);
         brpc::RedisReply& sub_reply = r[0];
         sub_reply.SetArray(2);
         sub_reply[0].SetString("hello, it's me");
@@ -759,26 +759,21 @@ TEST_F(RedisTest, redis_reply_codec) {
         ASSERT_STREQ(r2[0][0].c_str(), sub_reply[0].c_str());
         ASSERT_EQ(r2[0][1].integer(), sub_reply[1].integer());
     }
-    // SetXXX can only be called once
+    // SetXXX can be called multiple times.
     {
         brpc::RedisReply r(&arena);
-        ASSERT_TRUE(r.SetStatus("OK"));
-        ASSERT_FALSE(r.SetStatus("OK"));
-        ASSERT_FALSE(r.SetNullString());
-        ASSERT_FALSE(r.SetArray(2));
-        ASSERT_FALSE(r.SetString("OK"));
-        ASSERT_FALSE(r.SetError("OK"));
-        ASSERT_FALSE(r.SetInteger(42));
-    }
-    {
-        brpc::RedisReply r(&arena);
-        ASSERT_TRUE(r.SetInteger(42));
-        ASSERT_FALSE(r.SetStatus("OK"));
-        ASSERT_FALSE(r.SetNullString());
-        ASSERT_FALSE(r.SetArray(2));
-        ASSERT_FALSE(r.SetString("OK"));
-        ASSERT_FALSE(r.SetError("OK"));
-        ASSERT_FALSE(r.SetStatus("OK"));
+        r.SetStatus("OK");
+        ASSERT_TRUE(r.is_string());
+        r.SetNullString();
+        ASSERT_TRUE(r.is_nil());
+        r.SetArray(2);
+        ASSERT_TRUE(r.is_array());
+        r.SetString("OK");
+        ASSERT_TRUE(r.is_string());
+        r.SetError("OK");
+        ASSERT_TRUE(r.is_error());
+        r.SetInteger(42);
+        ASSERT_TRUE(r.is_integer());
     }
 }
 
@@ -786,11 +781,67 @@ butil::Mutex s_mutex;
 std::unordered_map<std::string, std::string> m;
 std::unordered_map<std::string, int64_t> int_map;
 
+class RedisServiceImpl : public brpc::RedisService {
+public:
+    RedisServiceImpl()
+        : _batch_count(0) {}
+
+    brpc::RedisCommandHandler::Result OnBatched(int size, const char* args[],
+                   brpc::RedisReply* output, bool is_last) {
+        if (_batched_command.empty() && is_last) {
+            if (strcasecmp(args[0], "set") == 0) {
+                DoSet(args[1], args[2], output);
+            } else if (strcasecmp(args[0], "get") == 0) {
+                DoGet(args[1], output);
+            }
+            return brpc::RedisCommandHandler::OK;
+        }
+        std::vector<std::string> comm;
+        for (int i = 0; args[i]; ++i) {
+            comm.push_back(args[i]);
+        }
+        _batched_command.push_back(comm);
+        if (is_last) {
+            output->SetArray(_batched_command.size());
+            for (int i = 0; i < (int)_batched_command.size(); ++i) {
+                if (_batched_command[i][0] == "set") {
+                    DoSet(_batched_command[i][1], _batched_command[i][2], &(*output)[i]);
+                } else if (_batched_command[i][0] == "get") {
+                    DoGet(_batched_command[i][1], &(*output)[i]);
+                }
+            }
+            _batch_count++;
+            _batched_command.clear();
+            return brpc::RedisCommandHandler::OK;
+        } else {
+            return brpc::RedisCommandHandler::BATCHED;
+        }
+    }
+
+    void DoSet(const std::string& key, const std::string& value, brpc::RedisReply* output) {
+        m[key] = value;
+        output->SetStatus("OK");
+    }
+
+    void DoGet(const std::string& key, brpc::RedisReply* output) {
+        auto it = m.find(key);
+        if (it != m.end()) {
+            output->SetString(it->second);
+        } else {
+            output->SetNullString();
+        }
+    }
+
+    std::vector<std::vector<std::string> > _batched_command;
+    int _batch_count;
+};
+
+
 class SetCommandHandler : public brpc::RedisCommandHandler {
 public:
     SetCommandHandler(bool batch_process = false)
-        : _batch_process(batch_process)
-        , _batch_count(0) {}
+        : rs(NULL)
+        , _batch_process(batch_process) {}
 
     brpc::RedisCommandHandler::Result Run(int size, const char* args[],
                                           brpc::RedisReply* output,
@@ -800,26 +851,7 @@ public:
             return brpc::RedisCommandHandler::OK;
         }
         if (_batch_process) {
-            if (_batched_command.empty() && is_last) {
-                DoSet(args[1], args[2], output);
-                return brpc::RedisCommandHandler::OK;
-            }
-            std::vector<std::string> comm;
-            for (int i = 0; args[i]; ++i) {
-                comm.push_back(args[i]);
-            }
-            _batched_command.push_back(comm);
-            if (is_last) {
-                output->SetArray(_batched_command.size());
-                for (int i = 0; i < (int)_batched_command.size(); ++i) {
-                    DoSet(_batched_command[i][1], _batched_command[i][2], &(*output)[i]);
-                }
-                _batch_count++;
-                _batched_command.clear();
-                return brpc::RedisCommandHandler::OK;
-            } else {
-                return brpc::RedisCommandHandler::BATCHED;
-            }
+            return rs->OnBatched(size, args, output, is_last);
         } else {
             DoSet(args[1], args[2], output);
             return brpc::RedisCommandHandler::OK;
@@ -830,17 +862,17 @@ public:
         m[key] = value;
         output->SetStatus("OK");
     }
+
+    RedisServiceImpl* rs;
 private:
     bool _batch_process;
-    std::vector<std::vector<std::string> > _batched_command;
-    int _batch_count;
 };
 
 class GetCommandHandler : public brpc::RedisCommandHandler {
 public:
     GetCommandHandler(bool batch_process = false)
-        : _batch_process(batch_process)
-        , _batch_count(0) {}
+        : rs(NULL)
+        , _batch_process(batch_process) {}
 
     brpc::RedisCommandHandler::Result Run(int size, const char* args[],
                                           brpc::RedisReply* output,
@@ -850,26 +882,7 @@ public:
             return brpc::RedisCommandHandler::OK;
         }
         if (_batch_process) {
-            if (_batched_command.empty() && is_last) {
-                DoGet(args[1], output);
-                return brpc::RedisCommandHandler::OK;
-            }
-            std::vector<std::string> comm;
-            for (int i = 0; args[i]; ++i) {
-                comm.push_back(args[i]);
-            }
-            _batched_command.push_back(comm);
-            if (is_last) {
-                output->SetArray(_batched_command.size());
-                for (int i = 0; i < (int)_batched_command.size(); ++i) {
-                    DoGet(_batched_command[i][1], &(*output)[i]);
-                }
-                _batch_count++;
-                _batched_command.clear();
-                return brpc::RedisCommandHandler::OK;
-            } else {
-                return brpc::RedisCommandHandler::BATCHED;
-            }
+            return rs->OnBatched(size, args, output, is_last);
         } else {
             DoGet(args[1], output);
             return brpc::RedisCommandHandler::OK;
@@ -884,10 +897,10 @@ public:
             output->SetNullString();
         }
     }
+
+    RedisServiceImpl* rs;
 private:
     bool _batch_process;
-    std::vector<std::vector<std::string> > _batched_command;
-    int _batch_count;
 };
 
 class IncrCommandHandler : public brpc::RedisCommandHandler {
@@ -910,8 +923,6 @@ public:
         return brpc::RedisCommandHandler::OK;
     }
 };
-
-class RedisServiceImpl : public brpc::RedisService { };
 
 TEST_F(RedisTest, server_sanity) {
     brpc::Server server;
@@ -1139,6 +1150,8 @@ TEST_F(RedisTest, server_handle_pipeline) {
     RedisServiceImpl* rsimpl = new RedisServiceImpl;
     GetCommandHandler* getch = new GetCommandHandler(true);
     SetCommandHandler* setch = new SetCommandHandler(true);
+    getch->rs = rsimpl;
+    setch->rs = rsimpl;
     rsimpl->AddCommandHandler("get", getch);
     rsimpl->AddCommandHandler("set", setch);
     server_options.redis_service = rsimpl;
@@ -1164,8 +1177,7 @@ TEST_F(RedisTest, server_handle_pipeline) {
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
     ASSERT_EQ(8, response.reply_size());
-    ASSERT_EQ(1, getch->_batch_count);
-    ASSERT_EQ(2, setch->_batch_count);
+    ASSERT_EQ(1, rsimpl->_batch_count);
     ASSERT_TRUE(response.reply(7).is_string());
     ASSERT_STREQ(response.reply(7).c_str(), "world");
 }

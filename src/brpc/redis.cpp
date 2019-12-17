@@ -17,9 +17,10 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#include <google/protobuf/reflection_ops.h>                 // ReflectionOps::Merge
+#include <google/protobuf/reflection_ops.h>     // ReflectionOps::Merge
 #include <gflags/gflags.h>
 #include "butil/status.h"
+#include "butil/strings/string_util.h"          // StringToLowerASCII
 #include "brpc/redis.h"
 #include "brpc/redis_command.h"
 
@@ -437,11 +438,9 @@ std::ostream& operator<<(std::ostream& os, const RedisResponse& response) {
 }
 
 bool RedisService::AddCommandHandler(const std::string& name, RedisCommandHandler* handler) {
-    std::string lcname;
-    lcname.resize(name.size());
-    std::transform(name.begin(), name.end(), lcname.begin(),
-            [](unsigned char c){ return std::tolower(c); });
-    if (_command_map.count(lcname)) {
+    std::string lcname = StringToLowerASCII(name);
+    auto it = _command_map.find(lcname);
+    if (it != _command_map.end()) {
         LOG(ERROR) << "redis command name=" << name << " exist";
         return false;
     }
@@ -450,7 +449,8 @@ bool RedisService::AddCommandHandler(const std::string& name, RedisCommandHandle
 }
  
 RedisCommandHandler* RedisService::FindCommandHandler(const std::string& name) {
-    auto it = _command_map.find(name);
+    std::string lcname = StringToLowerASCII(name);
+    auto it = _command_map.find(lcname);
     if (it != _command_map.end()) {
         return it->second;
     }

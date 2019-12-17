@@ -67,71 +67,72 @@ public:
 
     SocketId socket_id;
     RedisService* redis_service;
-    // If user starts a transaction, handler_continue indicates the
+    // If user starts a transaction, transaction_handler indicates the
     // handler pointer that runs the transaction command.
-    std::unique_ptr<RedisCommandHandler> handler_continue;
+    std::unique_ptr<RedisCommandHandler> transaction_handler;
     // >0 if command handler is run in batched mode.
     int batched_size;
 
     RedisCommandParser parser;
 };
 
-static std::string ToLowercase(const std::string& command) {
-    std::string res;
-    res.resize(command.size());
-    std::transform(command.begin(), command.end(), res.begin(),
-        [](unsigned char c){ return std::tolower(c); });
-    return res;
-}
-
 int ConsumeCommand(RedisConnContext* ctx,
                    const std::unique_ptr<const char*[]>& commands,
-                   int len, butil::Arena* arena,
+                   int command_len, butil::Arena* arena,
                    bool is_last,
                    butil::IOBuf* sendbuf) {
     RedisReply output(arena);
     RedisCommandHandler::Result result = RedisCommandHandler::OK;
-    if (ctx->handler_continue) {
-        result = ctx->handler_continue->Run(len, commands.get(), &output, is_last);
+    if (ctx->transaction_handler) {
+        result = ctx->transaction_handler->Run(
+                command_len, commands.get(), &output, is_last);
         if (result == RedisCommandHandler::OK) {
-            ctx->handler_continue.reset(NULL);
+            ctx->transaction_handler.reset(NULL);
         } else if (result == RedisCommandHandler::BATCHED) {
-            LOG(ERROR) << "BATCHED should not be returned in redis transaction process.";
+            LOG(ERROR) << "BATCHED should not be returned by a transaction handler.";
             return -1;
         }
     } else {
-        std::string lcname = ToLowercase(commands[0]);
-        RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(lcname);
+        RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(commands[0]);
         if (!ch) {
             char buf[64];
-            snprintf(buf, sizeof(buf), "ERR unknown command `%s`", lcname.c_str());
+            snprintf(buf, sizeof(buf), "ERR unknown command `%s`", commands[0]);
             output.SetError(buf);
         } else {
-            result = ch->Run(len, commands.get(), &output, is_last);
+            result = ch->Run(command_len, commands.get(), &output, is_last);
             if (result == RedisCommandHandler::CONTINUE) {
                 if (ctx->batched_size) {
                     LOG(ERROR) << "CONTINUE should not be returned in redis batched process.";
                     return -1;
                 }
-                ctx->handler_continue.reset(ch->NewTransactionHandler());
+                ctx->transaction_handler.reset(ch->NewTransactionHandler());
             } else if (result == RedisCommandHandler::BATCHED) {
                 ctx->batched_size++;
             }
         }
     }
-    if (result == RedisCommandHandler::OK && ctx->batched_size) {
-        if ((int)output.size() != (ctx->batched_size + 1)) {
-            LOG(ERROR) << "reply array size can't be matched with batched size, "
-                << " expected=" << ctx->batched_size + 1 << " actual=" << output.size();
-            return -1;
+    if (result == RedisCommandHandler::OK) {
+        if (ctx->batched_size) {
+            if ((int)output.size() != (ctx->batched_size + 1)) {
+                LOG(ERROR) << "reply array size can't be matched with batched size, "
+                    << " expected=" << ctx->batched_size + 1 << " actual=" << output.size();
+                return -1;
+            }
+            for (int i = 0; i < (int)output.size(); ++i) {
+                output[i].SerializeTo(sendbuf);
+            }
+            ctx->batched_size = 0;
+        } else {
+            output.SerializeTo(sendbuf);
         }
-        for (int i = 0; i < (int)output.size(); ++i) {
-            output[i].SerializeTo(sendbuf);
-        }
-        ctx->batched_size = 0;
-    } else if (result != RedisCommandHandler::BATCHED) {
+    } else if (result == RedisCommandHandler::CONTINUE) {
         output.SerializeTo(sendbuf);
-    } // else result == RedisCommandHandler::BATCHED, do not serialize to buf
+    } else if (result == RedisCommandHandler::BATCHED) {
+        // just do nothing and wait handler to return OK.
+    } else {
+        LOG(ERROR) << "unknown status=" << result;
+        return -1;
+    }
     return 0;
 }
 
@@ -180,16 +181,15 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             if (err != PARSE_OK) {
                 break;
             }
-            // safe to read first element.
-            // current_commands and next_commands both have at least one element(NULL).
-            bool is_last = (strcasecmp(current_commands[0], next_commands[0]) != 0);
-            if (ConsumeCommand(ctx, current_commands, current_len, &arena, is_last, &sendbuf) != 0) {
+            if (ConsumeCommand(ctx, current_commands, current_len, &arena,
+                               false, &sendbuf) != 0) {
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
             current_commands.swap(next_commands);
             current_len = next_len;
         }
-        if (ConsumeCommand(ctx, current_commands, current_len, &arena, true, &sendbuf) != 0) {
+        if (ConsumeCommand(ctx, current_commands, current_len, &arena,
+                           true /* must be last message */, &sendbuf) != 0) {
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
         CHECK(!sendbuf.empty());

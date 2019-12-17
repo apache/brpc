@@ -59,35 +59,28 @@ public:
     bool is_string() const;  // True if the reply is a string.
     bool is_array() const;   // True if the reply is an array.
 
-    // Set the reply to the null string. Return True if it is set
-    // successfully. If the reply has already been set, return false.
-    bool SetNullString();
+    // Set the reply to the null string.
+    void SetNullString();
 
-    // Set the reply to the null array. Return True if it is set
-    // successfully. If the reply has already been set, return false.
-    bool SetNullArray();
+    // Set the reply to the null array.
+    void SetNullArray();
 
     // Set the reply to the array with `size' elements. After calling
     // SetArray, use operator[] to visit sub replies and set their
-    // value. Return True if it is set successfully. If the reply has
-    // already been set, return false.
-    bool SetArray(int size);
+    // value.
+    void SetArray(int size);
 
-    // Set the reply to status message `str'. Return True if it is set
-    // successfully. If the reply has already been set, return false.
-    bool SetStatus(const std::string& str);
+    // Set the reply to status message `str'.
+    void SetStatus(const std::string& str);
 
-    // Set the reply to error message `str'. Return True if it is set
-    // successfully. If the reply has already been set, return false.
-    bool SetError(const std::string& str);
+    // Set the reply to error message `str'.
+    void SetError(const std::string& str);
 
-    // Set the reply to integer `value'. Return True if it is set
-    // successfully. If the reply has already been set, return false.
-    bool SetInteger(int64_t value);
+    // Set the reply to integer `value'.
+    void SetInteger(int64_t value);
 
-    // Set the reply to string `str'. Return True if it is set
-    // successfully. If the reply has already been set, return false.
-    bool SetString(const std::string& str);
+    // Set the reply to string `str'.
+    void SetString(const std::string& str);
 
     // Convert the reply into a signed 64-bit integer(according to
     // http://redis.io/topics/protocol). If the reply is not an integer,
@@ -156,7 +149,8 @@ private:
     // by calling CopyFrom[Different|Same]Arena.
     DISALLOW_COPY_AND_ASSIGN(RedisReply);
 
-    bool SetBasicString(const std::string& str, RedisReplyType type);
+    void SetStringImpl(const std::string& str, RedisReplyType type);
+    void Reset();
     
     RedisReplyType _type;
     uint32_t _length;  // length of short_str/long_str, count of replies
@@ -180,17 +174,21 @@ inline std::ostream& operator<<(std::ostream& os, const RedisReply& r) {
     return os;
 }
 
-inline RedisReply::RedisReply(butil::Arena* arena)
-    : RedisReply() {
+inline void RedisReply::Reset() {
+    _type = REDIS_REPLY_NIL;
+    _length = 0;
+    _data.array.last_index = -1;
+    _data.array.replies = NULL;
+}
+
+inline RedisReply::RedisReply(butil::Arena* arena) {
+    Reset();
     _arena = arena;
 }
 
-inline RedisReply::RedisReply()
-    : _type(REDIS_REPLY_NIL)
-    , _length(0)
-    , _arena(NULL) {
-    _data.array.last_index = -1;
-    _data.array.replies = NULL;
+inline RedisReply::RedisReply() {
+    Reset();
+    _arena = NULL;
 }
 
 inline bool RedisReply::is_nil() const {
@@ -213,44 +211,41 @@ inline int64_t RedisReply::integer() const {
     return 0;
 }
 
-inline bool RedisReply::SetNullArray() {
+inline void RedisReply::SetNullArray() {
     if (_type != REDIS_REPLY_NIL) {
-        return false;
+        Reset();
     }
     _type = REDIS_REPLY_ARRAY;
     _length = npos;
-    return true;
 }
 
-inline bool RedisReply::SetNullString() {
+inline void RedisReply::SetNullString() {
     if (_type != REDIS_REPLY_NIL) {
-        return false;
+        Reset();
     }
     _type = REDIS_REPLY_STRING;
     _length = npos;
-    return true;
 }
 
-inline bool RedisReply::SetStatus(const std::string& str) {
-    return SetBasicString(str, REDIS_REPLY_STATUS);
+inline void RedisReply::SetStatus(const std::string& str) {
+    return SetStringImpl(str, REDIS_REPLY_STATUS);
 }
 
-inline bool RedisReply::SetError(const std::string& str) {
-    return SetBasicString(str, REDIS_REPLY_ERROR);
+inline void RedisReply::SetError(const std::string& str) {
+    return SetStringImpl(str, REDIS_REPLY_ERROR);
 }
 
-inline bool RedisReply::SetInteger(int64_t value) {
+inline void RedisReply::SetInteger(int64_t value) {
     if (_type != REDIS_REPLY_NIL) {
-        return false;
+        Reset();
     }
     _type = REDIS_REPLY_INTEGER;
     _length = 0;
     _data.integer = value;
-    return true;
 }
 
-inline bool RedisReply::SetString(const std::string& str) {
-    return SetBasicString(str, REDIS_REPLY_STRING);
+inline void RedisReply::SetString(const std::string& str) {
+    return SetStringImpl(str, REDIS_REPLY_STRING);
 }
 
 inline const char* RedisReply::c_str() const {

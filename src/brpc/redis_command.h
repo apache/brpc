@@ -20,6 +20,7 @@
 #ifndef BRPC_REDIS_COMMAND_H
 #define BRPC_REDIS_COMMAND_H
 
+#include <memory>           // std::unique_ptr
 #include <vector>
 #include "butil/iobuf.h"
 #include "butil/status.h"
