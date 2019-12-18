@@ -78,6 +78,7 @@ public:
 
 int ConsumeCommand(RedisConnContext* ctx,
                    const std::vector<const char*>& commands,
+                   const std::string& next_command,
                    butil::Arena* arena,
                    bool is_last,
                    butil::IOBuf* sendbuf) {
@@ -98,10 +99,16 @@ int ConsumeCommand(RedisConnContext* ctx,
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", commands[0]);
             output.SetError(buf);
         } else {
+            RedisCommandHandler* next_ch =
+                ctx->redis_service->FindCommandHandler(next_command);
+            if (next_ch && next_ch->TransactionMarker()) {
+                is_last = true;
+            }
             result = ch->Run(commands, &output, is_last);
             if (result == RedisCommandHandler::CONTINUE) {
-                if (ctx->batched_size) {
-                    LOG(ERROR) << "CONTINUE should not be returned in redis batched process.";
+                if (ctx->batched_size != 0) {
+                    LOG(ERROR) << "Do you forget to return OK "
+                        "when is_last is true?";
                     return -1;
                 }
                 ctx->transaction_handler.reset(ch->NewTransactionHandler());
@@ -139,6 +146,8 @@ int ConsumeCommand(RedisConnContext* ctx,
 
 RedisConnContext::~RedisConnContext() { }
 
+void RedisConnContext::Destroy() {
+    delete this;
 }
 
 // ========== impl of RedisConnContext ==========
@@ -176,12 +185,16 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             if (err != PARSE_OK) {
                 break;
             }
-            if (ConsumeCommand(ctx, current_commands, &arena, false, &sendbuf) != 0) {
+            std::string next_command_name;
+            if (!next_commands.empty()) {
+                next_command_name = next_commands[0];
+            }
+            if (ConsumeCommand(ctx, current_commands, next_command_name, &arena, false, &sendbuf) != 0) {
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
             current_commands.swap(next_commands);
         }
-        if (ConsumeCommand(ctx, current_commands, &arena,
+        if (ConsumeCommand(ctx, current_commands, "", &arena,
                            true /* must be last message */, &sendbuf) != 0) {
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }

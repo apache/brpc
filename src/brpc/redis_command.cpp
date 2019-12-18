@@ -405,6 +405,12 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
     buf.cutn(d, len);
     d[len] = '\0';
     _commands[_index] = d;
+    if (_index == 0) {
+        // convert it to lowercase when it is command name
+        for (int i = 0; i < len; ++i) {
+            d[i] = ::tolower(d[i]);
+        }
+    }
     char crlf[2];
     buf.cutn(crlf, sizeof(crlf));
     if (crlf[0] != '\r' || crlf[1] != '\n') {

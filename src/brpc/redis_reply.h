@@ -143,7 +143,7 @@ public:
     void CopyFromSameArena(const RedisReply& other);
 
 private:
-    static const uint32_t npos;
+    static const int npos;
 
     // RedisReply does not own the memory of fields, copying must be done
     // by calling CopyFrom[Different|Same]Arena.
@@ -153,7 +153,7 @@ private:
     void Reset();
     
     RedisReplyType _type;
-    uint32_t _length;  // length of short_str/long_str, count of replies
+    int _length;  // length of short_str/long_str, count of replies
     union {
         int64_t integer;
         char short_str[16];
@@ -181,9 +181,9 @@ inline void RedisReply::Reset() {
     _data.array.replies = NULL;
 }
 
-inline RedisReply::RedisReply(butil::Arena* arena) {
+inline RedisReply::RedisReply(butil::Arena* arena)
+    : _arena(arena) {
     Reset();
-    _arena = arena;
 }
 
 inline RedisReply::RedisReply() {
@@ -248,7 +248,7 @@ inline void RedisReply::SetString(const std::string& str) {
 
 inline const char* RedisReply::c_str() const {
     if (is_string()) {
-        if (_length < sizeof(_data.short_str)) { // SSO
+        if (_length < (int)sizeof(_data.short_str)) { // SSO
             return _data.short_str;
         } else {
             return _data.long_str;
@@ -261,7 +261,7 @@ inline const char* RedisReply::c_str() const {
 
 inline butil::StringPiece RedisReply::data() const {
     if (is_string()) {
-        if (_length < sizeof(_data.short_str)) { // SSO
+        if (_length < (int)sizeof(_data.short_str)) { // SSO
             return butil::StringPiece(_data.short_str, _length);
         } else {
             return butil::StringPiece(_data.long_str, _length);
@@ -274,7 +274,7 @@ inline butil::StringPiece RedisReply::data() const {
 
 inline const char* RedisReply::error_message() const {
     if (is_error()) {
-        if (_length < sizeof(_data.short_str)) { // SSO
+        if (_length < (int)sizeof(_data.short_str)) { // SSO
             return _data.short_str;
         } else {
             return _data.long_str;
@@ -286,7 +286,7 @@ inline const char* RedisReply::error_message() const {
 }
 
 inline size_t RedisReply::size() const {
-    return ((is_array() || is_string()) ? _length : 0);
+    return _length;
 }
 
 inline RedisReply& RedisReply::operator[](size_t index) {
@@ -295,7 +295,7 @@ inline RedisReply& RedisReply::operator[](size_t index) {
 }
 
 inline const RedisReply& RedisReply::operator[](size_t index) const {
-    if (is_array() && index < _length) {
+    if (is_array() && (int)index < _length) {
         return _data.array.replies[index];
     }
     static RedisReply redis_nil;

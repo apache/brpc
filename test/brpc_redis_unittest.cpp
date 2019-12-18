@@ -788,15 +788,15 @@ public:
     brpc::RedisCommandHandler::Result OnBatched(const std::vector<const char*> args,
                    brpc::RedisReply* output, bool is_last) {
         if (_batched_command.empty() && is_last) {
-            if (strcasecmp(args[0], "set") == 0) {
+            if (strcmp(args[0], "set") == 0) {
                 DoSet(args[1], args[2], output);
-            } else if (strcasecmp(args[0], "get") == 0) {
+            } else if (strcmp(args[0], "get") == 0) {
                 DoGet(args[1], output);
             }
             return brpc::RedisCommandHandler::OK;
         }
         std::vector<std::string> comm;
-        for (int i = 0; args[i]; ++i) {
+        for (int i = 0; i < (int)args.size(); ++i) {
             comm.push_back(args[i]);
         }
         _batched_command.push_back(comm);
@@ -1027,8 +1027,11 @@ public:
         return brpc::RedisCommandHandler::CONTINUE;
     }
 
-    RedisCommandHandler* NewTransactionHandler() {
+    RedisCommandHandler* NewTransactionHandler() override {
         return new MultiTransactionHandler;
+    }
+    bool TransactionMarker() override {
+        return true;
     }
 
     class MultiTransactionHandler : public brpc::RedisCommandHandler {
@@ -1036,13 +1039,13 @@ public:
         brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                               brpc::RedisReply* output,
                                               bool is_last) {
-            if (strcasecmp(args[0], "multi") == 0) {
+            if (strcmp(args[0], "multi") == 0) {
                 output->SetError("ERR duplicate multi");
                 return brpc::RedisCommandHandler::CONTINUE;
             }
-            if (strcasecmp(args[0], "exec") != 0) {
+            if (strcmp(args[0], "exec") != 0) {
                 std::vector<std::string> comm;
-                for (int i = 0; args[i]; ++i) {
+                for (int i = 0; i < (int)args.size(); ++i) {
                     comm.push_back(args[i]);
                 }
                 _commands.push_back(comm);
@@ -1057,7 +1060,7 @@ public:
                     value = ++int_map[_commands[i][1]];
                     (*output)[i].SetInteger(value);
                 } else {
-                    (*output)[i].SetStatus("unknowne command");
+                    (*output)[i].SetStatus("unknown command");
                 }
             }
             s_mutex.unlock();
@@ -1153,6 +1156,7 @@ TEST_F(RedisTest, server_handle_pipeline) {
     setch->rs = rsimpl;
     rsimpl->AddCommandHandler("get", getch);
     rsimpl->AddCommandHandler("set", setch);
+    rsimpl->AddCommandHandler("multi", new MultiCommandHandler);
     server_options.redis_service = rsimpl;
     brpc::PortRange pr(8081, 8900);
     ASSERT_EQ(0, server.Start("127.0.0.1", pr, &server_options));
@@ -1173,12 +1177,20 @@ TEST_F(RedisTest, server_handle_pipeline) {
     ASSERT_TRUE(request.AddCommand("set key1 world"));
     ASSERT_TRUE(request.AddCommand("set key2 world"));
     ASSERT_TRUE(request.AddCommand("get key2"));
+    ASSERT_TRUE(request.AddCommand("multi"));
+    ASSERT_TRUE(request.AddCommand("incr key4"));
+    ASSERT_TRUE(request.AddCommand("exec"));
+    ASSERT_TRUE(request.AddCommand("set key1 v1"));
+    ASSERT_TRUE(request.AddCommand("set key2 v2"));
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-    ASSERT_EQ(8, response.reply_size());
-    ASSERT_EQ(1, rsimpl->_batch_count);
+    ASSERT_EQ(13, response.reply_size());
+    ASSERT_EQ(2, rsimpl->_batch_count);
     ASSERT_TRUE(response.reply(7).is_string());
     ASSERT_STREQ(response.reply(7).c_str(), "world");
+    ASSERT_TRUE(response.reply(10).is_array());
+    ASSERT_TRUE(response.reply(10)[0].is_integer());
+    ASSERT_EQ(response.reply(10)[0].integer(), 1);
 }
 
 } //namespace

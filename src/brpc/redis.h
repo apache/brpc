@@ -263,20 +263,20 @@ public:
                                             brpc::RedisReply* output,
                                             bool is_last) = 0;
 
-    // This function is called to new a transaction handler once Run() returns
-    // RedisCommandHandler::CONTINUE. All the following commands are sent to this
-    // handler until it return Result::OK. For example, for command "multi; set k1 v1;
-    // set k2 v2; set k3 v3; exec":
-    // 1) In Run(), command is "multi", so return RedisCommandHandler::CONTINUE, and
-    // brpc calls NewTransactionHandler() to new a handler tran_handler.
-    // 2) brpc calls tran_handler.Run() with command "set k1 v1", which should return
-    // RedisCommandHandler::CONTINUE and buffer the command.
-    // 3) brpc calls tran_handler.Run() with command "set k2 v2", which should return
-    // RedisCommandHandler::CONTINUE and buffer the command.
-    // 4) brpc calls tran_handler.Run() with command "set k3 v3", which should return
-    // RedisCommandHandler::CONTINUE and buffer the command.
-    // 5) An ending marker(exec) is found in tran_handler.Run(), user exeuctes all
-    // the command and return RedisCommandHandler::OK. This Transation is done.
+    // The Run() returns CONTINUE for "multi", which makes brpc call this method to
+    // create a transaction_handler to process following commands until transaction_handler
+    // returns OK. For example, for command "multi; set k1 v1; set k2 v2; set k3 v3;
+    // exec":
+    // 1) First command is "multi" and Run() return RedisCommandHandler::CONTINUE, then
+    // brpc calls NewTransactionHandler() to new a transaction_handler.
+    // 2) Call transaction_handler.Run() with command "set k1 v1", which should return
+    // CONTINUE.
+    // 3) Call transaction_handler.Run() with command "set k2 v2", which should return
+    // CONTINUE.
+    // 4) Call transaction_handler.Run() with command "set k3 v3", which should return
+    // CONTINUE.
+    // 5) An ending marker(exec) is found in transaction_handler.Run(), user exeuctes all
+    // the commands and return OK. This Transation is done.
     virtual RedisCommandHandler* NewTransactionHandler();
 
     // return true if a transaction is started when met this command.

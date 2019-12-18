@@ -25,7 +25,7 @@
 namespace brpc {
 
 //BAIDU_CASSERT(sizeof(RedisReply) == 24, size_match);
-const uint32_t RedisReply::npos = (uint32_t)-1;
+const int RedisReply::npos = -1;
 
 const char* RedisReplyTypeToString(RedisReplyType type) {
     switch (type) {
@@ -47,7 +47,7 @@ bool RedisReply::SerializeTo(butil::IOBuf* buf) {
             // fall through
         case REDIS_REPLY_STATUS:
             buf->push_back((_type == REDIS_REPLY_ERROR)? '-' : '+');
-            if (_length < sizeof(_data.short_str)) {
+            if (_length < (int)sizeof(_data.short_str)) {
                 buf->append(_data.short_str, _length);
             } else {
                 buf->append(_data.long_str, _length);
@@ -62,17 +62,15 @@ bool RedisReply::SerializeTo(butil::IOBuf* buf) {
             buf->append(prefix_buf, len + 3 /* 1 for ':', 2 for "\r\n" */);
             break;
         case REDIS_REPLY_STRING:
-            // Since _length is unsigned, we have to casting _length to signed
-            // representing nil string
             prefix_buf[0] = '$';
-            len = butil::AppendDecimal(&prefix_buf[1], (int)_length);
+            len = butil::AppendDecimal(&prefix_buf[1], _length);
             prefix_buf[len + 1] = '\r';
             prefix_buf[len + 2] = '\n';
             buf->append(prefix_buf, len + 3 /* 1 for ':', 2 for "\r\n" */);
             if (_length == npos) {
                 break;
             }
-            if (_length < sizeof(_data.short_str)) {
+            if (_length < (int)sizeof(_data.short_str)) {
                 buf->append(_data.short_str, _length);
             } else {
                 buf->append(_data.long_str, _length);
@@ -80,17 +78,15 @@ bool RedisReply::SerializeTo(butil::IOBuf* buf) {
             buf->append("\r\n");
             break;
         case REDIS_REPLY_ARRAY:
-            // Since _length is unsigned, we have to casting _length to signed
-            // representing nil string
             prefix_buf[0] = '*';
-            len = butil::AppendDecimal(&prefix_buf[1], (int)_length);
+            len = butil::AppendDecimal(&prefix_buf[1], _length);
             prefix_buf[len + 1] = '\r';
             prefix_buf[len + 2] = '\n';
             buf->append(prefix_buf, len + 3 /* 1 for ':', 2 for "\r\n" */);
             if (_length == npos) {
                 break;
             }
-            for (size_t i = 0; i < _length; ++i) {
+            for (int i = 0; i < _length; ++i) {
                 if (!_data.array.replies[i].SerializeTo(buf)) {
                     return false;
                 }
@@ -111,7 +107,7 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* aren
         // The parsing was suspended while parsing sub replies,
         // continue the parsing.
         RedisReply* subs = (RedisReply*)_data.array.replies;
-        for (uint32_t i = _data.array.last_index; i < _length; ++i) {
+        for (int i = _data.array.last_index; i < _length; ++i) {
             ParseError err = subs[i].ConsumePartialIOBuf(buf, arena);
             if (err != PARSE_OK) {
                 return err;
@@ -334,7 +330,7 @@ void RedisReply::Print(std::ostream& os) const {
     switch (_type) {
     case REDIS_REPLY_STRING:
         os << '"';
-        if (_length < sizeof(_data.short_str)) {
+        if (_length < (int)sizeof(_data.short_str)) {
             os << RedisStringPrinter(_data.short_str, _length);
         } else {
             os << RedisStringPrinter(_data.long_str, _length);
@@ -343,7 +339,7 @@ void RedisReply::Print(std::ostream& os) const {
         break;
     case REDIS_REPLY_ARRAY:
         os << '[';
-        for (uint32_t i = 0; i < _length; ++i) {
+        for (int i = 0; i < _length; ++i) {
             if (i != 0) {
                 os << ", ";
             }
@@ -361,7 +357,7 @@ void RedisReply::Print(std::ostream& os) const {
         os << "(error) ";
         // fall through
     case REDIS_REPLY_STATUS:
-        if (_length < sizeof(_data.short_str)) {
+        if (_length < (int)sizeof(_data.short_str)) {
             os << RedisStringPrinter(_data.short_str, _length);
         } else {
             os << RedisStringPrinter(_data.long_str, _length);
@@ -384,7 +380,7 @@ void RedisReply::CopyFromDifferentArena(const RedisReply& other,
             LOG(FATAL) << "Fail to allocate RedisReply[" << _length << "]";
             return;
         }
-        for (uint32_t i = 0; i < _length; ++i) {
+        for (int i = 0; i < _length; ++i) {
             new (&subs[i]) RedisReply;
         }
         _data.array.last_index = other._data.array.last_index;
@@ -394,7 +390,7 @@ void RedisReply::CopyFromDifferentArena(const RedisReply& other,
                 subs[i].CopyFromDifferentArena(other._data.array.replies[i], arena);
             }
         } else {
-            for (size_t i = 0; i < _length; ++i) {
+            for (int i = 0; i < _length; ++i) {
                 subs[i].CopyFromDifferentArena(other._data.array.replies[i], arena);
             }
         }
@@ -411,7 +407,7 @@ void RedisReply::CopyFromDifferentArena(const RedisReply& other,
     case REDIS_REPLY_ERROR:
         // fall through
     case REDIS_REPLY_STATUS:
-        if (_length < sizeof(_data.short_str)) {
+        if (_length < (int)sizeof(_data.short_str)) {
             memcpy(_data.short_str, other._data.short_str, _length + 1);
         } else {
             char* d = (char*)arena->allocate((_length/8 + 1)*8);
