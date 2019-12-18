@@ -405,7 +405,8 @@ static void GlobalInitializeOrDieImpl() {
                                 ProcessRpcRequest, ProcessRpcResponse,
                                 VerifyRpcRequest, NULL, NULL,
                                 CONNECTION_TYPE_ALL, "baidu_std" };
-    if (RegisterProtocol(PROTOCOL_BAIDU_STD, baidu_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_BAIDU_STD, baidu_protocol,
+                         order_map[PROTOCOL_BAIDU_STD]) != 0) {
         exit(1);
     }
 
@@ -414,8 +415,8 @@ static void GlobalInitializeOrDieImpl() {
                                     ProcessStreamingMessage,
                                     NULL, NULL, NULL,
                                     CONNECTION_TYPE_SINGLE, "streaming_rpc" };
-
-    if (RegisterProtocol(PROTOCOL_STREAMING_RPC, streaming_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_STREAMING_RPC, streaming_protocol,
+                         order_map[PROTOCOL_STREAMING_RPC]) != 0) {
         exit(1);
     }
 
@@ -426,7 +427,7 @@ static void GlobalInitializeOrDieImpl() {
                                GetHttpMethodName,
                                CONNECTION_TYPE_POOLED_AND_SHORT,
                                "http" };
-    if (RegisterProtocol(PROTOCOL_HTTP, http_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_HTTP, http_protocol, order_map[PROTOCOL_HTTP]) != 0) {
         exit(1);
     }
 
@@ -437,7 +438,7 @@ static void GlobalInitializeOrDieImpl() {
                                 GetHttpMethodName,
                                 CONNECTION_TYPE_SINGLE,
                                 "h2" };
-    if (RegisterProtocol(PROTOCOL_H2, http2_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_H2, http2_protocol, order_map[PROTOCOL_H2]) != 0) {
         exit(1);
     }
 
@@ -446,7 +447,8 @@ static void GlobalInitializeOrDieImpl() {
                                ProcessHuluRequest, ProcessHuluResponse,
                                VerifyHuluRequest, NULL, NULL,
                                CONNECTION_TYPE_ALL, "hulu_pbrpc" };
-    if (RegisterProtocol(PROTOCOL_HULU_PBRPC, hulu_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_HULU_PBRPC, hulu_protocol,
+                         order_map[PROTOCOL_HULU_PBRPC]) != 0) {
         exit(1);
     }
 
@@ -456,7 +458,8 @@ static void GlobalInitializeOrDieImpl() {
                                NULL, ProcessNovaResponse,
                                NULL, NULL, NULL,
                                CONNECTION_TYPE_POOLED_AND_SHORT,  "nova_pbrpc" };
-    if (RegisterProtocol(PROTOCOL_NOVA_PBRPC, nova_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_NOVA_PBRPC, nova_protocol,
+                         order_map[PROTOCOL_NOVA_PBRPC]) != 0) {
         exit(1);
     }
 
@@ -470,7 +473,8 @@ static void GlobalInitializeOrDieImpl() {
                                        // doesn't support full duplex
                                        CONNECTION_TYPE_POOLED_AND_SHORT,
                                        "public_pbrpc" };
-    if (RegisterProtocol(PROTOCOL_PUBLIC_PBRPC, public_pbrpc_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_PUBLIC_PBRPC, public_pbrpc_protocol,
+                         order_map[PROTOCOL_PUBLIC_PBRPC]) != 0) {
         exit(1);
     }
 
@@ -479,7 +483,8 @@ static void GlobalInitializeOrDieImpl() {
                                ProcessSofaRequest, ProcessSofaResponse,
                                VerifySofaRequest, NULL, NULL,
                                CONNECTION_TYPE_ALL, "sofa_pbrpc" };
-    if (RegisterProtocol(PROTOCOL_SOFA_PBRPC, sofa_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_SOFA_PBRPC, sofa_protocol,
+                         order_map[PROTOCOL_SOFA_PBRPC]) != 0) {
         exit(1);
     }
 
@@ -491,7 +496,7 @@ static void GlobalInitializeOrDieImpl() {
                                  ProcessNsheadRequest, ProcessNsheadResponse,
                                  VerifyNsheadRequest, NULL, NULL,
                                  CONNECTION_TYPE_POOLED_AND_SHORT, "nshead" };
-    if (RegisterProtocol(PROTOCOL_NSHEAD, nshead_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_NSHEAD, nshead_protocol, order_map[PROTOCOL_NSHEAD]) != 0) {
         exit(1);
     }
 
@@ -501,7 +506,7 @@ static void GlobalInitializeOrDieImpl() {
                                     NULL, ProcessMemcacheResponse,
                                     NULL, NULL, GetMemcacheMethodName,
                                     CONNECTION_TYPE_ALL, "memcache" };
-    if (RegisterProtocol(PROTOCOL_MEMCACHE, mc_binary_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_MEMCACHE, mc_binary_protocol, order_map[PROTOCOL_MEMCACHE]) != 0) {
         exit(1);
     }
 
@@ -511,7 +516,7 @@ static void GlobalInitializeOrDieImpl() {
                                 NULL, ProcessRedisResponse,
                                 NULL, NULL, GetRedisMethodName,
                                 CONNECTION_TYPE_ALL, "redis" };
-    if (RegisterProtocol(PROTOCOL_REDIS, redis_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_REDIS, redis_protocol, order_map[PROTOCOL_REDIS]) != 0) {
         exit(1);
     }
 
@@ -520,7 +525,7 @@ static void GlobalInitializeOrDieImpl() {
                                 ProcessMongoRequest, NULL,
                                 NULL, NULL, NULL,
                                 CONNECTION_TYPE_POOLED, "mongo" };
-    if (RegisterProtocol(PROTOCOL_MONGO, mongo_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_MONGO, mongo_protocol, order_map[PROTOCOL_MONGO]) != 0) {
         exit(1);
     }
 
@@ -532,7 +537,8 @@ static void GlobalInitializeOrDieImpl() {
         policy::ProcessThriftRequest, policy::ProcessThriftResponse,
         policy::VerifyThriftRequest, NULL, NULL,
         CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };
-    if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol,
+                         order_map[PROTOCOL_THRIFT]) != 0) {
         exit(1);
     }
 #endif
@@ -544,7 +550,8 @@ static void GlobalInitializeOrDieImpl() {
         NULL, ProcessUbrpcResponse,
         NULL, NULL, NULL,
         CONNECTION_TYPE_POOLED_AND_SHORT,  "ubrpc_compack" };
-    if (RegisterProtocol(PROTOCOL_UBRPC_COMPACK, ubrpc_compack_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_UBRPC_COMPACK, ubrpc_compack_protocol,
+                         order_map[PROTOCOL_UBRPC_COMPACK]) != 0) {
         exit(1);
     }
     Protocol ubrpc_mcpack2_protocol = {
@@ -553,7 +560,8 @@ static void GlobalInitializeOrDieImpl() {
         NULL, ProcessUbrpcResponse,
         NULL, NULL, NULL,
         CONNECTION_TYPE_POOLED_AND_SHORT,  "ubrpc_mcpack2" };
-    if (RegisterProtocol(PROTOCOL_UBRPC_MCPACK2, ubrpc_mcpack2_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_UBRPC_MCPACK2, ubrpc_mcpack2_protocol,
+                         order_map[PROTOCOL_UBRPC_MCPACK2]) != 0) {
         exit(1);
     }
 
@@ -564,7 +572,8 @@ static void GlobalInitializeOrDieImpl() {
         NULL, ProcessNsheadMcpackResponse,
         NULL, NULL, NULL,
         CONNECTION_TYPE_POOLED_AND_SHORT,  "nshead_mcpack" };
-    if (RegisterProtocol(PROTOCOL_NSHEAD_MCPACK, nshead_mcpack_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_NSHEAD_MCPACK, nshead_mcpack_protocol,
+                         order_map[PROTOCOL_NSHEAD_MCPACK]) != 0) {
         exit(1);
     }
 
@@ -575,7 +584,7 @@ static void GlobalInitializeOrDieImpl() {
         NULL, NULL, NULL,
         (ConnectionType)(CONNECTION_TYPE_SINGLE|CONNECTION_TYPE_SHORT),
         "rtmp" };
-    if (RegisterProtocol(PROTOCOL_RTMP, rtmp_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_RTMP, rtmp_protocol, order_map[PROTOCOL_RTMP]) != 0) {
         exit(1);
     }
 
@@ -585,7 +594,7 @@ static void GlobalInitializeOrDieImpl() {
         NULL, ProcessEspResponse,
         NULL, NULL, NULL,
         CONNECTION_TYPE_POOLED_AND_SHORT, "esp"};
-    if (RegisterProtocol(PROTOCOL_ESP, esp_protocol, order_map) != 0) {
+    if (RegisterProtocol(PROTOCOL_ESP, esp_protocol, order_map[PROTOCOL_ESP]) != 0) {
         exit(1);
     }
 

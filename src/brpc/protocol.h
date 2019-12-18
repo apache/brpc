@@ -174,7 +174,7 @@ const ConnectionType CONNECTION_TYPE_ALL =
 
 typedef std::map<ProtocolType, int> ProtocolOrderMap;
 // [thread-safe] 
-// Register `protocol' using key=`type'. `order_map` is the order of different protocol.
+// Register `protocol' using key=`type'. `order` is the order of `protocol'.
 // For the built-in protocol, the order map is as following:
 // { PROTOCOL_BAIDU_STD, 100 },
 // { PROTOCOL_HTTP, 200 },
@@ -194,10 +194,10 @@ typedef std::map<ProtocolType, int> ProtocolOrderMap;
 // { PROTOCOL_ESP, 1600 },
 // { PROTOCOL_NSHEAD, 1700 },
 // { PROTOCOL_NSHEAD_MCPACK, 1800 }
-// If user want to register their own protocols, a user-defined protocol order map
+// If user want to register their own protocols, a user-defined protocol order
 // should be passed to this function.
 // Returns 0 on success, -1 otherwise
-int RegisterProtocol(ProtocolType type, const Protocol& protocol, const ProtocolOrderMap& order_map);
+int RegisterProtocol(ProtocolType type, const Protocol& protocol, int order);
 
 // [thread-safe]
 // Find the protocol registered with key=`type'.

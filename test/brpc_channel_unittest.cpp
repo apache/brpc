@@ -195,10 +195,7 @@ protected:
                                    ProcessRpcRequest, NULL,
                                    VerifyMyRequest, NULL, NULL,
                                    brpc::CONNECTION_TYPE_ALL, "baidu_std" };
-        brpc::ProtocolOrderMap order_map{
-            { (brpc::ProtocolType)30, 1 }
-        };
-        ASSERT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol, order_map));
+        ASSERT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol, 1));
     }
 
     static void ProcessRpcRequest(brpc::InputMessageBase* msg_base) {

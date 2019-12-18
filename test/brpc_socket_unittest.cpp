@@ -67,10 +67,7 @@ int main(int argc, char* argv[]) {
                                EchoProcessHuluRequest, EchoProcessHuluRequest,
                                NULL, NULL, NULL,
                                brpc::CONNECTION_TYPE_ALL, "dummy_hulu" };
-    brpc::ProtocolOrderMap order_map{
-        { (brpc::ProtocolType)30, 1 }
-    };
-    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol, order_map));
+    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol, 1));
     return RUN_ALL_TESTS();
 }
 

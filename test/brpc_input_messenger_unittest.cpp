@@ -46,16 +46,11 @@ int main(int argc, char* argv[]) {
                                NULL, NULL, NULL,
                                brpc::CONNECTION_TYPE_ALL, "dummy_hulu" };
     // ProtocolType with 31 should be parsed first, then 32, and finally 30
-    brpc::ProtocolOrderMap order_map{
-        { (brpc::ProtocolType)30, 5},
-        { (brpc::ProtocolType)31, 4},
-        { (brpc::ProtocolType)32, 6},
-    };
-    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol, order_map));
+    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol, 5));
     dummy_protocol.name = "dummy_hulu2";
-    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)31, dummy_protocol, order_map));
+    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)31, dummy_protocol, 4));
     dummy_protocol.name = "dummy_hulu3";
-    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)32, dummy_protocol, order_map));
+    EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)32, dummy_protocol, 6));
     return RUN_ALL_TESTS();
 }
 

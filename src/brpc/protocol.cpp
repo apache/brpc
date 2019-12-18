@@ -68,16 +68,14 @@ inline ProtocolEntry* get_protocol_map() {
 }
 static pthread_mutex_t s_protocol_map_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-int RegisterProtocol(ProtocolType type, const Protocol& protocol,
-                     const ProtocolOrderMap& order_map) {
+int RegisterProtocol(ProtocolType type, const Protocol& protocol, int order) {
     const size_t index = type;
     if (index >= MAX_PROTOCOL_SIZE) {
         LOG(ERROR) << "ProtocolType=" << type << " is out of range";
         return -1;
     }
-    auto it = order_map.find(type);
-    if (it == order_map.end()) {
-        LOG(ERROR) << "Fail to find ProtocolType=" << type << " in OrderMap";
+    if (order <= 0) {
+        LOG(ERROR) << "Invalid order=" << order << " for type=" << type;
         return -1;
     }
     if (!protocol.support_client() && !protocol.support_server()) {
@@ -92,7 +90,7 @@ int RegisterProtocol(ProtocolType type, const Protocol& protocol,
         return -1;
     }
     protocol_map[index].protocol = protocol;
-    protocol_map[index].order = it->second;
+    protocol_map[index].order = order;
     protocol_map[index].valid.store(true, butil::memory_order_release);
     return 0;
 }
