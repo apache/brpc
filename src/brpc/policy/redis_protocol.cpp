@@ -77,15 +77,14 @@ public:
 };
 
 int ConsumeCommand(RedisConnContext* ctx,
-                   const std::unique_ptr<const char*[]>& commands,
-                   int command_len, butil::Arena* arena,
+                   const std::vector<const char*>& commands,
+                   butil::Arena* arena,
                    bool is_last,
                    butil::IOBuf* sendbuf) {
     RedisReply output(arena);
     RedisCommandHandler::Result result = RedisCommandHandler::OK;
     if (ctx->transaction_handler) {
-        result = ctx->transaction_handler->Run(
-                command_len, commands.get(), &output, is_last);
+        result = ctx->transaction_handler->Run(commands, &output, is_last);
         if (result == RedisCommandHandler::OK) {
             ctx->transaction_handler.reset(NULL);
         } else if (result == RedisCommandHandler::BATCHED) {
@@ -99,7 +98,7 @@ int ConsumeCommand(RedisConnContext* ctx,
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", commands[0]);
             output.SetError(buf);
         } else {
-            result = ch->Run(command_len, commands.get(), &output, is_last);
+            result = ch->Run(commands, &output, is_last);
             if (result == RedisCommandHandler::CONTINUE) {
                 if (ctx->batched_size) {
                     LOG(ERROR) << "CONTINUE should not be returned in redis batched process.";
@@ -140,8 +139,6 @@ int ConsumeCommand(RedisConnContext* ctx,
 
 RedisConnContext::~RedisConnContext() { }
 
-void RedisConnContext::Destroy() {
-    delete this;
 }
 
 // ========== impl of RedisConnContext ==========
@@ -165,30 +162,26 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             socket->reset_parsing_context(ctx);
         }
         butil::Arena arena;
-        std::unique_ptr<const char*[]> current_commands;
-        int current_len = 0;
+        std::vector<const char*> current_commands;
         butil::IOBuf sendbuf;
         ParseError err = PARSE_OK;
 
-        err = ctx->parser.Consume(*source, &current_commands, &current_len, &arena);
+        err = ctx->parser.Consume(*source, &current_commands, &arena);
         if (err != PARSE_OK) {
             return MakeParseError(err);
         }
         while (true) {
-            std::unique_ptr<const char*[]> next_commands;
-            int next_len = 0;
-            err = ctx->parser.Consume(*source, &next_commands, &next_len, &arena);
+            std::vector<const char*> next_commands;
+            err = ctx->parser.Consume(*source, &next_commands, &arena);
             if (err != PARSE_OK) {
                 break;
             }
-            if (ConsumeCommand(ctx, current_commands, current_len, &arena,
-                               false, &sendbuf) != 0) {
+            if (ConsumeCommand(ctx, current_commands, &arena, false, &sendbuf) != 0) {
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
             current_commands.swap(next_commands);
-            current_len = next_len;
         }
-        if (ConsumeCommand(ctx, current_commands, current_len, &arena,
+        if (ConsumeCommand(ctx, current_commands, &arena,
                            true /* must be last message */, &sendbuf) != 0) {
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }

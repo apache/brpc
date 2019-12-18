@@ -550,9 +550,9 @@ TEST_F(RedisTest, quote_and_escape) {
     request.Clear();
 }
 
-std::string GetCompleteCommand(const std::unique_ptr<const char*[]>& commands) {
+std::string GetCompleteCommand(const std::vector<const char*>& commands) {
 	std::string res;
-    for (int i = 0; commands[i]; ++i) {
+    for (int i = 0; i < (int)commands.size(); ++i) {
         if (i != 0) {
             res.push_back(' ');
         }
@@ -565,14 +565,13 @@ std::string GetCompleteCommand(const std::unique_ptr<const char*[]>& commands) {
 TEST_F(RedisTest, command_parser) {
     brpc::RedisCommandParser parser;
     butil::IOBuf buf;
-    std::unique_ptr<const char*[]> command_out;
+    std::vector<const char*> command_out;
     butil::Arena arena;
-    int len = 0;
     {
         // parse from whole command
         std::string command = "set abc edc";
         ASSERT_TRUE(brpc::RedisCommandNoFormat(&buf, command.c_str()).ok());
-        ASSERT_EQ(brpc::PARSE_OK, parser.Consume(buf, &command_out, &len, &arena));
+        ASSERT_EQ(brpc::PARSE_OK, parser.Consume(buf, &command_out, &arena));
         ASSERT_TRUE(buf.empty());
         ASSERT_STREQ(command.c_str(), GetCompleteCommand(command_out).c_str());
     }
@@ -585,11 +584,11 @@ TEST_F(RedisTest, command_parser) {
             for (int i = 0; i < size; ++i) {
                 buf.push_back(raw_string[i]);
                 if (i == size - 1) {
-                    ASSERT_EQ(brpc::PARSE_OK, parser.Consume(buf, &command_out, &len, &arena));
+                    ASSERT_EQ(brpc::PARSE_OK, parser.Consume(buf, &command_out, &arena));
                 } else {
                     if (butil::fast_rand_less_than(2) == 0) {
                         ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA,
-                                parser.Consume(buf, &command_out, &len, &arena));
+                                parser.Consume(buf, &command_out, &arena));
                     }
                 }
             }
@@ -600,34 +599,34 @@ TEST_F(RedisTest, command_parser) {
     {
         // there is a non-string message in command and parse should fail
         buf.append("*3\r\n$3");
-        ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, parser.Consume(buf, &command_out, &len, &arena));
+        ASSERT_EQ(brpc::PARSE_ERROR_NOT_ENOUGH_DATA, parser.Consume(buf, &command_out, &arena));
         ASSERT_EQ((int)buf.size(), 2);    // left "$3"
         buf.append("\r\nset\r\n:123\r\n$3\r\ndef\r\n");
-        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, parser.Consume(buf, &command_out, &len, &arena));
+        ASSERT_EQ(brpc::PARSE_ERROR_ABSOLUTELY_WRONG, parser.Consume(buf, &command_out, &arena));
         parser.Reset();
     }
     {
         // not array
         buf.append(":123456\r\n");
-        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.Consume(buf, &command_out, &len, &arena));
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.Consume(buf, &command_out, &arena));
         parser.Reset();
     }
     {
         // not array
         buf.append("+Error\r\n");
-        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.Consume(buf, &command_out, &len, &arena));
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.Consume(buf, &command_out, &arena));
         parser.Reset();
     }
     {
         // not array
         buf.append("+OK\r\n");
-        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.Consume(buf, &command_out, &len, &arena));
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.Consume(buf, &command_out, &arena));
         parser.Reset();
     }
     {
         // not array
         buf.append("$5\r\nhello\r\n");
-        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.Consume(buf, &command_out, &len, &arena));
+        ASSERT_EQ(brpc::PARSE_ERROR_TRY_OTHERS, parser.Consume(buf, &command_out, &arena));
         parser.Reset();
     }
 }
@@ -786,7 +785,7 @@ public:
     RedisServiceImpl()
         : _batch_count(0) {}
 
-    brpc::RedisCommandHandler::Result OnBatched(int size, const char* args[],
+    brpc::RedisCommandHandler::Result OnBatched(const std::vector<const char*> args,
                    brpc::RedisReply* output, bool is_last) {
         if (_batched_command.empty() && is_last) {
             if (strcasecmp(args[0], "set") == 0) {
@@ -843,15 +842,15 @@ public:
         : rs(NULL)
         , _batch_process(batch_process) {}
 
-    brpc::RedisCommandHandler::Result Run(int size, const char* args[],
+    brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
                                           bool is_last) {
-        if (size < 3) {
+        if (args.size() < 3) {
             output->SetError("ERR wrong number of arguments for 'set' command");
             return brpc::RedisCommandHandler::OK;
         }
         if (_batch_process) {
-            return rs->OnBatched(size, args, output, is_last);
+            return rs->OnBatched(args, output, is_last);
         } else {
             DoSet(args[1], args[2], output);
             return brpc::RedisCommandHandler::OK;
@@ -874,15 +873,15 @@ public:
         : rs(NULL)
         , _batch_process(batch_process) {}
 
-    brpc::RedisCommandHandler::Result Run(int size, const char* args[],
+    brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
                                           bool is_last) {
-        if (size < 2) {
+        if (args.size() < 2) {
             output->SetError("ERR wrong number of arguments for 'get' command");
             return brpc::RedisCommandHandler::OK;
         }
         if (_batch_process) {
-            return rs->OnBatched(size, args, output, is_last);
+            return rs->OnBatched(args, output, is_last);
         } else {
             DoGet(args[1], output);
             return brpc::RedisCommandHandler::OK;
@@ -907,10 +906,10 @@ class IncrCommandHandler : public brpc::RedisCommandHandler {
 public:
     IncrCommandHandler() {}
 
-    brpc::RedisCommandHandler::Result Run(int size, const char* args[],
+    brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
                                           bool is_last) {
-        if (size < 2) {
+        if (args.size() < 2) {
             output->SetError("ERR wrong number of arguments for 'incr' command");
             return brpc::RedisCommandHandler::OK;
         }
@@ -1021,7 +1020,7 @@ class MultiCommandHandler : public brpc::RedisCommandHandler {
 public:
     MultiCommandHandler() {}
 
-    brpc::RedisCommandHandler::Result Run(int size, const char* args[],
+    brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
                                           bool is_last) {
         output->SetStatus("OK");
@@ -1034,9 +1033,9 @@ public:
 
     class MultiTransactionHandler : public brpc::RedisCommandHandler {
     public:
-        brpc::RedisCommandHandler::Result Run(int size, const char* args[],
-                                        brpc::RedisReply* output,
-                                        bool is_last) {
+        brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
+                                              brpc::RedisReply* output,
+                                              bool is_last) {
             if (strcasecmp(args[0], "multi") == 0) {
                 output->SetError("ERR duplicate multi");
                 return brpc::RedisCommandHandler::CONTINUE;

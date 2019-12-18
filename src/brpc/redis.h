@@ -196,7 +196,7 @@ public:
     static const ::google::protobuf::Descriptor* descriptor();
 
 protected:
-    ::google::protobuf::Metadata GetMetadata() const;
+    ::google::protobuf::Metadata GetMetadata() const override;
 
 private:
     void SharedCtor();
@@ -244,7 +244,6 @@ public:
     // Once Server receives commands, it will first find the corresponding handlers and
     // call them sequentially(one by one) according to the order that requests arrive,
     // just like what redis-server does.
-    // `args_len` is the length of request command.
     // `args' is the array of request command. For example, "set somekey somevalue"
     // corresponds to args[0]=="set", args[1]=="somekey" and args[2]=="somevalue".
     // `output', which should be filled by user, is the content that sent to client side.
@@ -260,7 +259,7 @@ public:
     // an start marker and brpc will call MultiTransactionHandler() to new a transaction
     // handler that all the following commands are sent to this tranction handler until
     // it returns Result::OK. Read the comment below.
-    virtual RedisCommandHandler::Result Run(int args_len, const char* args[],
+    virtual RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                             brpc::RedisReply* output,
                                             bool is_last) = 0;
 
@@ -279,6 +278,9 @@ public:
     // 5) An ending marker(exec) is found in tran_handler.Run(), user exeuctes all
     // the command and return RedisCommandHandler::OK. This Transation is done.
     virtual RedisCommandHandler* NewTransactionHandler();
+
+    // return true if a transaction is started when met this command.
+    virtual bool TransactionMarker() { return false; }
 };
 
 } // namespace brpc
