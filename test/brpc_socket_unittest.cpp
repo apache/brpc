@@ -66,7 +66,7 @@ int main(int argc, char* argv[]) {
                                brpc::policy::PackHuluRequest,
                                EchoProcessHuluRequest, EchoProcessHuluRequest,
                                NULL, NULL, NULL,
-                               brpc::CONNECTION_TYPE_ALL, "dummy_hulu" };
+                               brpc::CONNECTION_TYPE_ALL, "dummy_hulu" , (brpc::ProtocolType)30 };
     EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol, 1));
     return RUN_ALL_TESTS();
 }
@@ -325,7 +325,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
     brpc::Acceptor* messenger = new brpc::Acceptor;
     const brpc::InputMessageHandler pairs[] = {
         { brpc::policy::ParseHuluMessage, 
-          EchoProcessHuluRequest, NULL, NULL, "dummy_hulu" }
+          EchoProcessHuluRequest, NULL, NULL, "dummy_hulu", (brpc::ProtocolType)30 }
     };
 
     butil::EndPoint point(butil::IP_ANY, 7878);
@@ -713,7 +713,7 @@ TEST_F(SocketTest, health_check) {
 
     const brpc::InputMessageHandler pairs[] = {
         { brpc::policy::ParseHuluMessage, 
-          EchoProcessHuluRequest, NULL, NULL, "dummy_hulu" }
+          EchoProcessHuluRequest, NULL, NULL, "dummy_hulu", (brpc::ProtocolType)30 }
     };
 
     int listening_fd = tcp_listen(point);

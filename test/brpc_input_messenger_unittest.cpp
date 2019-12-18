@@ -44,12 +44,14 @@ int main(int argc, char* argv[]) {
                                brpc::policy::PackHuluRequest,
                                EmptyProcessHuluRequest, EmptyProcessHuluRequest,
                                NULL, NULL, NULL,
-                               brpc::CONNECTION_TYPE_ALL, "dummy_hulu" };
+                               brpc::CONNECTION_TYPE_ALL, "dummy_hulu", (brpc::ProtocolType)30 };
     // ProtocolType with 31 should be parsed first, then 32, and finally 30
     EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol, 5));
     dummy_protocol.name = "dummy_hulu2";
+    dummy_protocol.type = (brpc::ProtocolType)31;
     EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)31, dummy_protocol, 4));
     dummy_protocol.name = "dummy_hulu3";
+    dummy_protocol.type = (brpc::ProtocolType)32;
     EXPECT_EQ(0,  RegisterProtocol((brpc::ProtocolType)32, dummy_protocol, 6));
     return RUN_ALL_TESTS();
 }
@@ -69,11 +71,11 @@ TEST_F(MessengerTest, parsing_order) {
     brpc::Acceptor messenger;
     const brpc::InputMessageHandler pairs[] = {
         { brpc::policy::ParseHuluMessage,
-          EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu" },
+          EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu", (brpc::ProtocolType)30},
         { brpc::policy::ParseHuluMessage,
-          EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu2" },
+          EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu2", (brpc::ProtocolType)31},
         { brpc::policy::ParseHuluMessage,
-          EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu3" }
+          EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu3", (brpc::ProtocolType)32}
     };
     for (int i = 0; i < 3; ++i) {
         ASSERT_EQ(0, messenger.AddHandler(pairs[i]));
@@ -180,7 +182,7 @@ TEST_F(MessengerTest, dispatch_tasks) {
 
     const brpc::InputMessageHandler pairs[] = {
         { brpc::policy::ParseHuluMessage, 
-          EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu" }
+          EmptyProcessHuluRequest, NULL, NULL, "dummy_hulu", (brpc::ProtocolType)30 }
     };
 
     for (size_t i = 0; i < NEPOLL; ++i) {        

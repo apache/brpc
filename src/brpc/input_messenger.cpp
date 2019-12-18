@@ -86,7 +86,7 @@ ParseResult InputMessenger::CutInputMessage(
         }
         if (m->CreatedByConnect() &&
             // baidu_std may fall to streaming_rpc
-            strcmp(_handlers[preferred].name, "baidu_std") != 0) {
+            _handlers[preferred].protocol_type != PROTOCOL_BAIDU_STD) {
             // The protocol is fixed at client-side, no need to try others.
             LOG(ERROR) << "Fail to parse response from " << m->remote_side()
                        << " by " << _handlers[preferred].name 
@@ -484,6 +484,13 @@ const char* InputMessenger::NameOfProtocol(int n) const {
         return "unknown";  // use lowercase to be consistent with valid names.
     }
     return _handlers[n].name;
+}
+
+ProtocolType InputMessenger::TypeOfProtocol(int n) const {
+    if (n < 0 || (size_t)n >= _capacity || _handlers[n].parse == NULL) {
+        return PROTOCOL_UNKNOWN;
+    }
+    return _handlers[n].protocol_type;
 }
 
 static bool FindProtocolOrderOfHandler(const InputMessageHandler& h, int* order) {

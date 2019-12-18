@@ -579,6 +579,7 @@ Acceptor* Server::BuildAcceptor() {
         handler.verify = protocols[i].verify;
         handler.arg = this;
         handler.name = protocols[i].name;
+        handler.protocol_type = protocols[i].type;
         if (acceptor->AddHandler(handler) != 0) {
             LOG(ERROR) << "Fail to add handler into Acceptor("
                        << acceptor << ')';

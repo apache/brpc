@@ -155,6 +155,9 @@ struct Protocol {
     // Name of this protocol, must be string constant.
     const char* name;
 
+    // Type of this protocol which is defined in options.proto
+    ProtocolType type;
+
     // True if this protocol is supported at client-side.
     bool support_client() const {
         return serialize_request && pack_request && process_response;

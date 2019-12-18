@@ -221,9 +221,10 @@ void ConnectionsService::PrintConnections(
             const char* pref_prot = "-";
             if (ptr->user() == server->_am) {
                 pref_prot = server->_am->NameOfProtocol(pref_index);
+                ProtocolType type_prot = server->_am->TypeOfProtocol(pref_index);
                 // Special treatment for nshead services. Notice that
                 // pref_index is comparable to ProtocolType after r31951
-                if (strcmp(pref_prot, "nshead") == 0 &&
+                if (type_prot == PROTOCOL_NSHEAD &&
                     server->options().nshead_service != NULL) {
                     if (nshead_service_name.empty()) {
                         nshead_service_name = BriefName(butil::class_name_str(

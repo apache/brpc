@@ -66,6 +66,9 @@ struct InputMessageHandler {
 
     // Name of this handler, must be string constant.
     const char* name;
+
+    // Type of this handler, which is defined in options.proto
+    ProtocolType protocol_type;
 };
 
 // Process messages from connections.
@@ -101,6 +104,9 @@ public:
     
     // Get name of the n-th handler
     const char* NameOfProtocol(int n) const;
+
+    // Get type of the n-th handler
+    ProtocolType TypeOfProtocol(int n) const;
 
     // Add a handler which doesn't belong to any registered protocol.
     // Note: Invoking this method indicates that you are using Socket without

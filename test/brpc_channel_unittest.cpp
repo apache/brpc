@@ -171,7 +171,7 @@ protected:
         pthread_once(&register_mock_protocol, register_protocol);
         const brpc::InputMessageHandler pairs[] = {
             { brpc::policy::ParseRpcMessage, 
-              ProcessRpcRequest, VerifyMyRequest, this, "baidu_std" }
+              ProcessRpcRequest, VerifyMyRequest, this, "baidu_std" , 30 }
         };
         EXPECT_EQ(0, _messenger.AddHandler(pairs[0]));
         EXPECT_EQ(0, _messenger.AddHandlerDone());
@@ -194,7 +194,7 @@ protected:
                                    brpc::policy::PackRpcRequest,
                                    ProcessRpcRequest, NULL,
                                    VerifyMyRequest, NULL, NULL,
-                                   brpc::CONNECTION_TYPE_ALL, "baidu_std" };
+                                   brpc::CONNECTION_TYPE_ALL, "baidu_std" , 30 };
         ASSERT_EQ(0,  RegisterProtocol((brpc::ProtocolType)30, dummy_protocol, 1));
     }
 

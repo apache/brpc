@@ -400,70 +400,73 @@ static void GlobalInitializeOrDieImpl() {
         { PROTOCOL_NSHEAD_MCPACK, 1800 },
     };
     // Protocols
+    ProtocolType type = PROTOCOL_BAIDU_STD;
     Protocol baidu_protocol = { ParseRpcMessage,
                                 SerializeRequestDefault, PackRpcRequest,
                                 ProcessRpcRequest, ProcessRpcResponse,
                                 VerifyRpcRequest, NULL, NULL,
-                                CONNECTION_TYPE_ALL, "baidu_std" };
-    if (RegisterProtocol(PROTOCOL_BAIDU_STD, baidu_protocol,
-                         order_map[PROTOCOL_BAIDU_STD]) != 0) {
+                                CONNECTION_TYPE_ALL, "baidu_std", type };
+    if (RegisterProtocol(type, baidu_protocol, order_map[type]) != 0) {
         exit(1);
     }
 
+    type = PROTOCOL_STREAMING_RPC;
     Protocol streaming_protocol = { ParseStreamingMessage,
                                     NULL, NULL, ProcessStreamingMessage,
                                     ProcessStreamingMessage,
                                     NULL, NULL, NULL,
-                                    CONNECTION_TYPE_SINGLE, "streaming_rpc" };
-    if (RegisterProtocol(PROTOCOL_STREAMING_RPC, streaming_protocol,
-                         order_map[PROTOCOL_STREAMING_RPC]) != 0) {
+                                    CONNECTION_TYPE_SINGLE, "streaming_rpc", type };
+    if (RegisterProtocol(type, streaming_protocol, order_map[type]) != 0) {
         exit(1);
     }
 
+    type = PROTOCOL_HTTP;
     Protocol http_protocol = { ParseHttpMessage,
                                SerializeHttpRequest, PackHttpRequest,
                                ProcessHttpRequest, ProcessHttpResponse,
                                VerifyHttpRequest, ParseHttpServerAddress,
                                GetHttpMethodName,
                                CONNECTION_TYPE_POOLED_AND_SHORT,
-                               "http" };
-    if (RegisterProtocol(PROTOCOL_HTTP, http_protocol, order_map[PROTOCOL_HTTP]) != 0) {
+                               "http" , type };
+    if (RegisterProtocol(type, http_protocol, order_map[type]) != 0) {
         exit(1);
     }
 
+    type = PROTOCOL_H2;
     Protocol http2_protocol = { ParseH2Message,
                                 SerializeHttpRequest, PackH2Request,
                                 ProcessHttpRequest, ProcessHttpResponse,
                                 VerifyHttpRequest, ParseHttpServerAddress,
                                 GetHttpMethodName,
                                 CONNECTION_TYPE_SINGLE,
-                                "h2" };
-    if (RegisterProtocol(PROTOCOL_H2, http2_protocol, order_map[PROTOCOL_H2]) != 0) {
+                                "h2" , type };
+    if (RegisterProtocol(type, http2_protocol, order_map[type]) != 0) {
         exit(1);
     }
 
+    type = PROTOCOL_HULU_PBRPC;
     Protocol hulu_protocol = { ParseHuluMessage,
                                SerializeRequestDefault, PackHuluRequest,
                                ProcessHuluRequest, ProcessHuluResponse,
                                VerifyHuluRequest, NULL, NULL,
-                               CONNECTION_TYPE_ALL, "hulu_pbrpc" };
-    if (RegisterProtocol(PROTOCOL_HULU_PBRPC, hulu_protocol,
-                         order_map[PROTOCOL_HULU_PBRPC]) != 0) {
+                               CONNECTION_TYPE_ALL, "hulu_pbrpc", type };
+    if (RegisterProtocol(type, hulu_protocol, order_map[type]) != 0) {
         exit(1);
     }
 
     // Only valid at client side
+    type = PROTOCOL_NOVA_PBRPC;
     Protocol nova_protocol = { ParseNsheadMessage,
                                SerializeNovaRequest, PackNovaRequest,
                                NULL, ProcessNovaResponse,
                                NULL, NULL, NULL,
-                               CONNECTION_TYPE_POOLED_AND_SHORT,  "nova_pbrpc" };
-    if (RegisterProtocol(PROTOCOL_NOVA_PBRPC, nova_protocol,
-                         order_map[PROTOCOL_NOVA_PBRPC]) != 0) {
+                               CONNECTION_TYPE_POOLED_AND_SHORT, "nova_pbrpc", type };
+    if (RegisterProtocol(type, nova_protocol, order_map[type]) != 0) {
         exit(1);
     }
 
     // Only valid at client side
+    type = PROTOCOL_PUBLIC_PBRPC;
     Protocol public_pbrpc_protocol = { ParseNsheadMessage,
                                        SerializePublicPbrpcRequest,
                                        PackPublicPbrpcRequest,
@@ -472,129 +475,134 @@ static void GlobalInitializeOrDieImpl() {
                                        // public_pbrpc server implementation
                                        // doesn't support full duplex
                                        CONNECTION_TYPE_POOLED_AND_SHORT,
-                                       "public_pbrpc" };
-    if (RegisterProtocol(PROTOCOL_PUBLIC_PBRPC, public_pbrpc_protocol,
-                         order_map[PROTOCOL_PUBLIC_PBRPC]) != 0) {
+                                       "public_pbrpc", type };
+    if (RegisterProtocol(type, public_pbrpc_protocol, order_map[type]) != 0) {
         exit(1);
     }
 
+    type = PROTOCOL_SOFA_PBRPC;
     Protocol sofa_protocol = { ParseSofaMessage,
                                SerializeRequestDefault, PackSofaRequest,
                                ProcessSofaRequest, ProcessSofaResponse,
                                VerifySofaRequest, NULL, NULL,
-                               CONNECTION_TYPE_ALL, "sofa_pbrpc" };
-    if (RegisterProtocol(PROTOCOL_SOFA_PBRPC, sofa_protocol,
-                         order_map[PROTOCOL_SOFA_PBRPC]) != 0) {
+                               CONNECTION_TYPE_ALL, "sofa_pbrpc", type };
+    if (RegisterProtocol(type, sofa_protocol, order_map[type]) != 0) {
         exit(1);
     }
 
     // Only valid at server side. We generalize all the protocols that
     // prefixes with nshead as `nshead_protocol' and specify the content
     // parsing after nshead by ServerOptions.nshead_service.
+    type = PROTOCOL_NSHEAD;
     Protocol nshead_protocol = { ParseNsheadMessage,
                                  SerializeNsheadRequest, PackNsheadRequest,
                                  ProcessNsheadRequest, ProcessNsheadResponse,
                                  VerifyNsheadRequest, NULL, NULL,
-                                 CONNECTION_TYPE_POOLED_AND_SHORT, "nshead" };
-    if (RegisterProtocol(PROTOCOL_NSHEAD, nshead_protocol, order_map[PROTOCOL_NSHEAD]) != 0) {
+                                 CONNECTION_TYPE_POOLED_AND_SHORT, "nshead", type };
+    if (RegisterProtocol(type, nshead_protocol, order_map[type]) != 0) {
         exit(1);
     }
 
+    type = PROTOCOL_MEMCACHE;
     Protocol mc_binary_protocol = { ParseMemcacheMessage,
                                     SerializeMemcacheRequest,
                                     PackMemcacheRequest,
                                     NULL, ProcessMemcacheResponse,
                                     NULL, NULL, GetMemcacheMethodName,
-                                    CONNECTION_TYPE_ALL, "memcache" };
-    if (RegisterProtocol(PROTOCOL_MEMCACHE, mc_binary_protocol, order_map[PROTOCOL_MEMCACHE]) != 0) {
+                                    CONNECTION_TYPE_ALL, "memcache", type };
+    if (RegisterProtocol(type, mc_binary_protocol, order_map[type]) != 0) {
         exit(1);
     }
 
+    type = PROTOCOL_REDIS;
     Protocol redis_protocol = { ParseRedisMessage,
                                 SerializeRedisRequest,
                                 PackRedisRequest,
                                 NULL, ProcessRedisResponse,
                                 NULL, NULL, GetRedisMethodName,
-                                CONNECTION_TYPE_ALL, "redis" };
-    if (RegisterProtocol(PROTOCOL_REDIS, redis_protocol, order_map[PROTOCOL_REDIS]) != 0) {
+                                CONNECTION_TYPE_ALL, "redis", type };
+    if (RegisterProtocol(type, redis_protocol, order_map[type]) != 0) {
         exit(1);
     }
 
+    type = PROTOCOL_MONGO;
     Protocol mongo_protocol = { ParseMongoMessage,
                                 NULL, NULL,
                                 ProcessMongoRequest, NULL,
                                 NULL, NULL, NULL,
-                                CONNECTION_TYPE_POOLED, "mongo" };
-    if (RegisterProtocol(PROTOCOL_MONGO, mongo_protocol, order_map[PROTOCOL_MONGO]) != 0) {
+                                CONNECTION_TYPE_POOLED, "mongo", type };
+    if (RegisterProtocol(type, mongo_protocol, order_map[type]) != 0) {
         exit(1);
     }
 
 // Use Macro is more straight forward than weak link technology(becasue of static link issue)
 #ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
+    type = PROTOCOL_THRIFT;
     Protocol thrift_binary_protocol = {
         policy::ParseThriftMessage,
         policy::SerializeThriftRequest, policy::PackThriftRequest,
         policy::ProcessThriftRequest, policy::ProcessThriftResponse,
         policy::VerifyThriftRequest, NULL, NULL,
-        CONNECTION_TYPE_POOLED_AND_SHORT, "thrift" };
-    if (RegisterProtocol(PROTOCOL_THRIFT, thrift_binary_protocol,
-                         order_map[PROTOCOL_THRIFT]) != 0) {
+        CONNECTION_TYPE_POOLED_AND_SHORT, "thrift", type };
+    if (RegisterProtocol(type, thrift_binary_protocol, order_map[type]) != 0) {
         exit(1);
     }
 #endif
 
     // Only valid at client side
+    type = PROTOCOL_UBRPC_COMPACK;
     Protocol ubrpc_compack_protocol = {
         ParseNsheadMessage,
         SerializeUbrpcCompackRequest, PackUbrpcRequest,
         NULL, ProcessUbrpcResponse,
         NULL, NULL, NULL,
-        CONNECTION_TYPE_POOLED_AND_SHORT,  "ubrpc_compack" };
-    if (RegisterProtocol(PROTOCOL_UBRPC_COMPACK, ubrpc_compack_protocol,
-                         order_map[PROTOCOL_UBRPC_COMPACK]) != 0) {
+        CONNECTION_TYPE_POOLED_AND_SHORT,  "ubrpc_compack", type };
+    if (RegisterProtocol(type, ubrpc_compack_protocol, order_map[type]) != 0) {
         exit(1);
     }
+    type = PROTOCOL_UBRPC_MCPACK2;
     Protocol ubrpc_mcpack2_protocol = {
         ParseNsheadMessage,
         SerializeUbrpcMcpack2Request, PackUbrpcRequest,
         NULL, ProcessUbrpcResponse,
         NULL, NULL, NULL,
-        CONNECTION_TYPE_POOLED_AND_SHORT,  "ubrpc_mcpack2" };
-    if (RegisterProtocol(PROTOCOL_UBRPC_MCPACK2, ubrpc_mcpack2_protocol,
-                         order_map[PROTOCOL_UBRPC_MCPACK2]) != 0) {
+        CONNECTION_TYPE_POOLED_AND_SHORT,  "ubrpc_mcpack2", type };
+    if (RegisterProtocol(type, ubrpc_mcpack2_protocol, order_map[type]) != 0) {
         exit(1);
     }
 
     // Only valid at client side
+    type = PROTOCOL_NSHEAD_MCPACK;
     Protocol nshead_mcpack_protocol = {
         ParseNsheadMessage,
         SerializeNsheadMcpackRequest, PackNsheadMcpackRequest,
         NULL, ProcessNsheadMcpackResponse,
         NULL, NULL, NULL,
-        CONNECTION_TYPE_POOLED_AND_SHORT,  "nshead_mcpack" };
-    if (RegisterProtocol(PROTOCOL_NSHEAD_MCPACK, nshead_mcpack_protocol,
-                         order_map[PROTOCOL_NSHEAD_MCPACK]) != 0) {
+        CONNECTION_TYPE_POOLED_AND_SHORT,  "nshead_mcpack", type };
+    if (RegisterProtocol(type, nshead_mcpack_protocol, order_map[type]) != 0) {
         exit(1);
     }
 
+    type = PROTOCOL_RTMP;
     Protocol rtmp_protocol = {
         ParseRtmpMessage,
         SerializeRtmpRequest, PackRtmpRequest,
         ProcessRtmpMessage, ProcessRtmpMessage,
         NULL, NULL, NULL,
         (ConnectionType)(CONNECTION_TYPE_SINGLE|CONNECTION_TYPE_SHORT),
-        "rtmp" };
-    if (RegisterProtocol(PROTOCOL_RTMP, rtmp_protocol, order_map[PROTOCOL_RTMP]) != 0) {
+        "rtmp", type };
+    if (RegisterProtocol(type, rtmp_protocol, order_map[type]) != 0) {
         exit(1);
     }
 
+    type = PROTOCOL_ESP;
     Protocol esp_protocol = {
         ParseEspMessage,
         SerializeEspRequest, PackEspRequest,
         NULL, ProcessEspResponse,
         NULL, NULL, NULL,
-        CONNECTION_TYPE_POOLED_AND_SHORT, "esp"};
-    if (RegisterProtocol(PROTOCOL_ESP, esp_protocol, order_map[PROTOCOL_ESP]) != 0) {
+        CONNECTION_TYPE_POOLED_AND_SHORT, "esp", type };
+    if (RegisterProtocol(type, esp_protocol, order_map[type]) != 0) {
         exit(1);
     }
 
@@ -610,6 +618,7 @@ static void GlobalInitializeOrDieImpl() {
             handler.verify = NULL;
             handler.arg = NULL;
             handler.name = protocols[i].name;
+            handler.protocol_type = protocols[i].type;
             if (get_or_new_client_side_messenger()->AddHandler(handler) != 0) {
                 exit(1);
             }
