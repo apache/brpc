@@ -186,9 +186,9 @@ inline RedisReply::RedisReply(butil::Arena* arena)
     Reset();
 }
 
-inline RedisReply::RedisReply() {
+inline RedisReply::RedisReply()
+    : _arena(NULL) {
     Reset();
-    _arena = NULL;
 }
 
 inline bool RedisReply::is_nil() const {
