@@ -107,8 +107,7 @@ int ConsumeCommand(RedisConnContext* ctx,
             result = ch->Run(commands, &output, is_last);
             if (result == RedisCommandHandler::CONTINUE) {
                 if (ctx->batched_size != 0) {
-                    LOG(ERROR) << "Do you forget to return OK "
-                        "when is_last is true?";
+                    LOG(ERROR) << "Do you forget to return OK when is_last is true?";
                     return -1;
                 }
                 ctx->transaction_handler.reset(ch->NewTransactionHandler());
@@ -185,11 +184,10 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             if (err != PARSE_OK) {
                 break;
             }
-            std::string next_command_name;
-            if (!next_commands.empty()) {
-                next_command_name = next_commands[0];
-            }
-            if (ConsumeCommand(ctx, current_commands, next_command_name, &arena, false, &sendbuf) != 0) {
+            // next_commands must have at least one element, otherwise parse.Consume()
+            // should return error.
+            if (ConsumeCommand(ctx, current_commands, next_commands[0], &arena,
+                               false, &sendbuf) != 0) {
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
             current_commands.swap(next_commands);

@@ -377,6 +377,10 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
         LOG(ERROR) << '`' << intbuf + 1 << "' is not a valid 64-bit decimal";
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
+    if (value <= 0) {
+        LOG(ERROR) << "Invalid len=" << value << " in redis command";
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
     if (!_parsing_array) {
         buf.pop_front(crlf_pos + 2/*CRLF*/);
         _parsing_array = true;
