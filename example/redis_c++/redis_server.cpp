@@ -60,10 +60,10 @@ public:
     GetCommandHandler(RedisServiceImpl* rsimpl)
         : _rsimpl(rsimpl) {}
 
-    brpc::RedisCommandHandler::Result Run(int size, const char* args[],
+    brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
                                           bool is_last) override {
-        if (size <= 1) {
+        if (args.size() <= 1) {
             output->SetError("ERR wrong number of arguments for 'get' command");
             return brpc::RedisCommandHandler::OK;
         }
@@ -86,10 +86,10 @@ public:
     SetCommandHandler(RedisServiceImpl* rsimpl)
         : _rsimpl(rsimpl) {}
 
-    brpc::RedisCommandHandler::Result Run(int size, const char* args[],
+    brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
                                           bool is_last) override {
-        if (size <= 2) {
+        if (args.size() <= 2) {
             output->SetError("ERR wrong number of arguments for 'set' command");
             return brpc::RedisCommandHandler::OK;
         }
