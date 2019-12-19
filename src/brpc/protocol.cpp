@@ -68,25 +68,25 @@ inline ProtocolEntry* get_protocol_map() {
 }
 static pthread_mutex_t s_protocol_map_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-int RegisterProtocol(ProtocolType type, const Protocol& protocol, int order) {
-    const size_t index = type;
+int RegisterProtocol(const Protocol& protocol, int order) {
+    const size_t index = protocol.type;
     if (index >= MAX_PROTOCOL_SIZE) {
-        LOG(ERROR) << "ProtocolType=" << type << " is out of range";
+        LOG(ERROR) << "ProtocolType=" << protocol.type << " is out of range";
         return -1;
     }
     if (order <= 0) {
-        LOG(ERROR) << "Invalid order=" << order << " for type=" << type;
+        LOG(ERROR) << "Invalid order=" << order << " for type=" << protocol.type;
         return -1;
     }
     if (!protocol.support_client() && !protocol.support_server()) {
-        LOG(ERROR) << "ProtocolType=" << type
+        LOG(ERROR) << "ProtocolType=" << protocol.type
                    << " neither supports client nor server";
         return -1;
     }
     ProtocolEntry* const protocol_map = get_protocol_map();
     BAIDU_SCOPED_LOCK(s_protocol_map_mutex);
     if (protocol_map[index].valid.load(butil::memory_order_relaxed)) {
-        LOG(ERROR) << "ProtocolType=" << type << " was registered";
+        LOG(ERROR) << "ProtocolType=" << protocol.type << " was registered";
         return -1;
     }
     protocol_map[index].protocol = protocol;
