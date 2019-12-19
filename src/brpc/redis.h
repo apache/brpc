@@ -238,6 +238,7 @@ public:
         OK = 0,
         CONTINUE = 1,
         BATCHED = 2,
+        BATCHED_DONE = 3,
     };
     ~RedisCommandHandler() {}
 
@@ -250,9 +251,9 @@ public:
     // Read brpc/src/redis_reply.h for more usage.
     // `is_last' indicates whether the commands is the last command of this batch. If user
     // want to do some batch processing, user should buffer the command and return
-    // RedisCommandHandler::BATCHED. Once `is_last' is true, run all the commands and
-    // set `output' to be an array and set all the results to the corresponding element
-    // of array.
+    // RedisCommandHandler::BATCHED. Once `is_last' is true, run all the commands,
+    // set `output' to be an array in which every element is the result of batched
+    // commands and return RedisCommandHandler::BATCHED_DONE.
     //
     // The return value should be RedisCommandHandler::OK for normal cases. If you want
     // to implement transaction, return RedisCommandHandler::CONTINUE once server receives

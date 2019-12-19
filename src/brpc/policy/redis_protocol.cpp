@@ -88,8 +88,10 @@ int ConsumeCommand(RedisConnContext* ctx,
         result = ctx->transaction_handler->Run(commands, &output, is_last);
         if (result == RedisCommandHandler::OK) {
             ctx->transaction_handler.reset(NULL);
-        } else if (result == RedisCommandHandler::BATCHED) {
-            LOG(ERROR) << "BATCHED should not be returned by a transaction handler.";
+        } else if (result == RedisCommandHandler::BATCHED ||
+                result == RedisCommandHandler::BATCHED_DONE) {
+            LOG(ERROR) << "BATCHED/BATCHED_DONE should not be returned by a "
+                    " transaction handler.";
             return -1;
         }
     } else {
@@ -116,24 +118,20 @@ int ConsumeCommand(RedisConnContext* ctx,
             }
         }
     }
-    if (result == RedisCommandHandler::OK) {
-        if (ctx->batched_size) {
-            if ((int)output.size() != (ctx->batched_size + 1)) {
-                LOG(ERROR) << "reply array size can't be matched with batched size, "
-                    << " expected=" << ctx->batched_size + 1 << " actual=" << output.size();
-                return -1;
-            }
-            for (int i = 0; i < (int)output.size(); ++i) {
-                output[i].SerializeTo(sendbuf);
-            }
-            ctx->batched_size = 0;
-        } else {
-            output.SerializeTo(sendbuf);
-        }
-    } else if (result == RedisCommandHandler::CONTINUE) {
+    if (result == RedisCommandHandler::OK || result == RedisCommandHandler::CONTINUE) {
         output.SerializeTo(sendbuf);
     } else if (result == RedisCommandHandler::BATCHED) {
-        // just do nothing and wait handler to return OK.
+        // just do nothing and wait handler to return BATCHED_DONE.
+    } else if (result == RedisCommandHandler::BATCHED_DONE) {
+        if ((int)output.size() != (ctx->batched_size + 1)) {
+            LOG(ERROR) << "reply array size can't be matched with batched size, "
+                << " expected=" << ctx->batched_size + 1 << " actual=" << output.size();
+            return -1;
+        }
+        for (int i = 0; i < (int)output.size(); ++i) {
+            output[i].SerializeTo(sendbuf);
+        }
+        ctx->batched_size = 0;
     } else {
         LOG(ERROR) << "unknown status=" << result;
         return -1;
