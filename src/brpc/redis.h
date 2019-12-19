@@ -268,13 +268,13 @@ public:
     // create a transaction_handler to process following commands until transaction_handler
     // returns OK. For example, for command "multi; set k1 v1; set k2 v2; set k3 v3;
     // exec":
-    // 1) First command is "multi" and Run() return RedisCommandHandler::CONTINUE, then
-    // brpc calls NewTransactionHandler() to new a transaction_handler.
-    // 2) Call transaction_handler.Run() with command "set k1 v1", which should return
+    // 1) First command is "multi" and Run() should return RedisCommandHandler::CONTINUE,
+    // then brpc calls NewTransactionHandler() to new a transaction_handler.
+    // 2) brpc calls transaction_handler.Run() with command "set k1 v1", which should return
     // CONTINUE.
-    // 3) Call transaction_handler.Run() with command "set k2 v2", which should return
+    // 3) brpc calls transaction_handler.Run() with command "set k2 v2", which should return
     // CONTINUE.
-    // 4) Call transaction_handler.Run() with command "set k3 v3", which should return
+    // 4) brpc calls transaction_handler.Run() with command "set k3 v3", which should return
     // CONTINUE.
     // 5) An ending marker(exec) is found in transaction_handler.Run(), user exeuctes all
     // the commands and return OK. This Transation is done.
