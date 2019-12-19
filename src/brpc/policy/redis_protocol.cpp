@@ -109,7 +109,7 @@ int ConsumeCommand(RedisConnContext* ctx,
             result = ch->Run(commands, &output, is_last);
             if (result == RedisCommandHandler::CONTINUE) {
                 if (ctx->batched_size != 0) {
-                    LOG(ERROR) << "Do you forget to return OK when is_last is true?";
+                    LOG(ERROR) << "Do you forget to return BATCHED_DONE when is_last is true?";
                     return -1;
                 }
                 ctx->transaction_handler.reset(ch->NewTransactionHandler());
