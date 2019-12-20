@@ -81,7 +81,7 @@ int ConsumeCommand(RedisConnContext* ctx,
                    const std::string& next_command,
                    butil::Arena* arena,
                    bool is_last,
-                   butil::IOBuf* sendbuf) {
+                   butil::IOBufAppender* appender) {
     RedisReply output(arena);
     RedisCommandHandler::Result result = RedisCommandHandler::OK;
     if (ctx->transaction_handler) {
@@ -124,14 +124,14 @@ int ConsumeCommand(RedisConnContext* ctx,
                 return -1;
             }
             for (int i = 0; i < (int)output.size(); ++i) {
-                output[i].SerializeTo(sendbuf);
+                output[i].SerializeTo(appender);
             }
             ctx->batched_size = 0;
         } else {
-            output.SerializeTo(sendbuf);
+            output.SerializeTo(appender);
         }
     } else if (result == RedisCommandHandler::CONTINUE) {
-        output.SerializeTo(sendbuf);
+        output.SerializeTo(appender);
     } else if (result == RedisCommandHandler::BATCHED) {
         // just do nothing and wait handler to return OK.
     } else {
@@ -171,7 +171,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         }
         butil::Arena arena;
         std::vector<const char*> current_commands;
-        butil::IOBuf sendbuf;
+        butil::IOBufAppender appender;
         ParseError err = PARSE_OK;
 
         err = ctx->parser.Consume(*source, &current_commands, &arena);
@@ -187,15 +187,17 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             // next_commands must have at least one element, otherwise parse.Consume()
             // should return error.
             if (ConsumeCommand(ctx, current_commands, next_commands[0], &arena,
-                               false, &sendbuf) != 0) {
+                               false, &appender) != 0) {
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
             current_commands.swap(next_commands);
         }
         if (ConsumeCommand(ctx, current_commands, "", &arena,
-                           true /* must be last message */, &sendbuf) != 0) {
+                           true /* must be last message */, &appender) != 0) {
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
+        butil::IOBuf sendbuf;
+        appender.move_to(sendbuf);
         CHECK(!sendbuf.empty());
         Socket::WriteOptions wopt;
         wopt.ignore_eovercrowded = true;

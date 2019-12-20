@@ -39,61 +39,61 @@ const char* RedisReplyTypeToString(RedisReplyType type) {
     }
 }
 
-bool RedisReply::SerializeTo(butil::IOBuf* buf) {
-    char prefix_buf[24];   // should be enouth for '<type><integer>\r\n"
+bool RedisReply::SerializeTo(butil::IOBufAppender* appender) {
+    char prefix_buf[24];   // should be enough for '<type><integer>\r\n"
     size_t len = 0;
     switch (_type) {
         case REDIS_REPLY_ERROR:
             // fall through
         case REDIS_REPLY_STATUS:
-            buf->push_back((_type == REDIS_REPLY_ERROR)? '-' : '+');
+            appender->push_back((_type == REDIS_REPLY_ERROR)? '-' : '+');
             if (_length < (int)sizeof(_data.short_str)) {
-                buf->append(_data.short_str, _length);
+                appender->append(_data.short_str, _length);
             } else {
-                buf->append(_data.long_str, _length);
+                appender->append(_data.long_str, _length);
             }
-            buf->append("\r\n");
+            appender->append("\r\n");
             break;
         case REDIS_REPLY_INTEGER:
             prefix_buf[0] = ':';
             len = butil::AppendDecimal(&prefix_buf[1], _data.integer);
             prefix_buf[len + 1] = '\r';
             prefix_buf[len + 2] = '\n';
-            buf->append(prefix_buf, len + 3 /* 1 for ':', 2 for "\r\n" */);
+            appender->append(prefix_buf, len + 3 /* 1 for ':', 2 for "\r\n" */);
             break;
         case REDIS_REPLY_STRING:
             prefix_buf[0] = '$';
             len = butil::AppendDecimal(&prefix_buf[1], _length);
             prefix_buf[len + 1] = '\r';
             prefix_buf[len + 2] = '\n';
-            buf->append(prefix_buf, len + 3 /* 1 for ':', 2 for "\r\n" */);
+            appender->append(prefix_buf, len + 3 /* 1 for ':', 2 for "\r\n" */);
             if (_length == npos) {
                 break;
             }
             if (_length < (int)sizeof(_data.short_str)) {
-                buf->append(_data.short_str, _length);
+                appender->append(_data.short_str, _length);
             } else {
-                buf->append(_data.long_str, _length);
+                appender->append(_data.long_str, _length);
             }
-            buf->append("\r\n");
+            appender->append("\r\n");
             break;
         case REDIS_REPLY_ARRAY:
             prefix_buf[0] = '*';
             len = butil::AppendDecimal(&prefix_buf[1], _length);
             prefix_buf[len + 1] = '\r';
             prefix_buf[len + 2] = '\n';
-            buf->append(prefix_buf, len + 3 /* 1 for ':', 2 for "\r\n" */);
+            appender->append(prefix_buf, len + 3 /* 1 for ':', 2 for "\r\n" */);
             if (_length == npos) {
                 break;
             }
             for (int i = 0; i < _length; ++i) {
-                if (!_data.array.replies[i].SerializeTo(buf)) {
+                if (!_data.array.replies[i].SerializeTo(appender)) {
                     return false;
                 }
             }
             break;
         case REDIS_REPLY_NIL:
-            buf->append("$-1\r\n");
+            appender->append("$-1\r\n");
             break;
         default:
             CHECK(false) << "unknown redis type=" << _type;

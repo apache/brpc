@@ -122,8 +122,8 @@ public:
     // Returns PARSE_ERROR_ABSOLUTELY_WRONG if the parsing failed.
     ParseError ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena);
 
-    // Serialize to buf using redis protocol
-    bool SerializeTo(butil::IOBuf* buf);
+    // Serialize to iobuf appender using redis protocol
+    bool SerializeTo(butil::IOBufAppender* appender);
 
     // Swap internal fields with another reply.
     void Swap(RedisReply& other);

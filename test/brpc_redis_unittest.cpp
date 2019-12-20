@@ -637,8 +637,10 @@ TEST_F(RedisTest, redis_reply_codec) {
     {
         brpc::RedisReply r(&arena);
         butil::IOBuf buf;
+        butil::IOBufAppender appender;
         r.SetStatus("OK");
-        ASSERT_TRUE(r.SerializeTo(&buf));
+        ASSERT_TRUE(r.SerializeTo(&appender));
+        appender.move_to(buf);
         ASSERT_STREQ(buf.to_string().c_str(), "+OK\r\n");
         ASSERT_STREQ(r.c_str(), "OK");
         r.Clear();
@@ -651,8 +653,10 @@ TEST_F(RedisTest, redis_reply_codec) {
     {
         brpc::RedisReply r(&arena);
         butil::IOBuf buf;
+        butil::IOBufAppender appender;
         r.SetError("not exist \'key\'");
-        ASSERT_TRUE(r.SerializeTo(&buf));
+        ASSERT_TRUE(r.SerializeTo(&appender));
+        appender.move_to(buf);
         ASSERT_STREQ(buf.to_string().c_str(), "-not exist \'key\'\r\n");
         r.Clear();
         brpc::ParseError err = r.ConsumePartialIOBuf(buf, &arena);
@@ -664,8 +668,10 @@ TEST_F(RedisTest, redis_reply_codec) {
     {
         brpc::RedisReply r(&arena);
         butil::IOBuf buf;
+        butil::IOBufAppender appender;
         r.SetNullString();
-        ASSERT_TRUE(r.SerializeTo(&buf));
+        ASSERT_TRUE(r.SerializeTo(&appender));
+        appender.move_to(buf);
         ASSERT_STREQ(buf.to_string().c_str(), "$-1\r\n");
         r.Clear();
         brpc::ParseError err = r.ConsumePartialIOBuf(buf, &arena);
@@ -674,7 +680,8 @@ TEST_F(RedisTest, redis_reply_codec) {
 
         r.Clear();
         r.SetString("abcde'hello world");
-        ASSERT_TRUE(r.SerializeTo(&buf));
+        ASSERT_TRUE(r.SerializeTo(&appender));
+        appender.move_to(buf);
         ASSERT_STREQ(buf.to_string().c_str(), "$17\r\nabcde'hello world\r\n");
         ASSERT_STREQ(r.c_str(), "abcde'hello world");
         r.Clear();
@@ -687,13 +694,15 @@ TEST_F(RedisTest, redis_reply_codec) {
     {
         brpc::RedisReply r(&arena);
         butil::IOBuf buf;
+        butil::IOBufAppender appender;
         int t = 2;
         int input[] = { -1, 1234567 };
         const char* output[] = { ":-1\r\n", ":1234567\r\n" };
         for (int i = 0; i < t; ++i) {
             r.Clear();
             r.SetInteger(input[i]);
-            ASSERT_TRUE(r.SerializeTo(&buf));
+            ASSERT_TRUE(r.SerializeTo(&appender));
+            appender.move_to(buf);
             ASSERT_STREQ(buf.to_string().c_str(), output[i]);
             r.Clear();
             brpc::ParseError err = r.ConsumePartialIOBuf(buf, &arena);
@@ -706,6 +715,7 @@ TEST_F(RedisTest, redis_reply_codec) {
     {
         brpc::RedisReply r(&arena);
         butil::IOBuf buf;
+        butil::IOBufAppender appender;
         r.SetArray(3);
         brpc::RedisReply& sub_reply = r[0];
         sub_reply.SetArray(2);
@@ -714,7 +724,8 @@ TEST_F(RedisTest, redis_reply_codec) {
         r[1].SetString("To go over everything");
         r[2].SetInteger(1);
         ASSERT_TRUE(r[3].is_nil());
-        ASSERT_TRUE(r.SerializeTo(&buf));
+        ASSERT_TRUE(r.SerializeTo(&appender));
+        appender.move_to(buf);
         ASSERT_STREQ(buf.to_string().c_str(),
                 "*3\r\n*2\r\n$14\r\nhello, it's me\r\n:422\r\n$21\r\n"
                 "To go over everything\r\n:1\r\n");
@@ -736,7 +747,8 @@ TEST_F(RedisTest, redis_reply_codec) {
         r.Clear();
         // null array
         r.SetNullArray();
-        ASSERT_TRUE(r.SerializeTo(&buf));
+        ASSERT_TRUE(r.SerializeTo(&appender));
+        appender.move_to(buf);
         ASSERT_STREQ(buf.to_string().c_str(), "*-1\r\n");
         ASSERT_EQ(r.ConsumePartialIOBuf(buf, &arena), brpc::PARSE_OK);
         ASSERT_TRUE(r.is_nil());
