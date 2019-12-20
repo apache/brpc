@@ -62,7 +62,7 @@ public:
 
     brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
-                                          bool is_last) override {
+                                          bool flush_batched) override {
         if (args.size() <= 1) {
             output->SetError("ERR wrong number of arguments for 'get' command");
             return brpc::RedisCommandHandler::OK;
@@ -88,7 +88,7 @@ public:
 
     brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
-                                          bool is_last) override {
+                                          bool flush_batched) override {
         if (args.size() <= 2) {
             output->SetError("ERR wrong number of arguments for 'set' command");
             return brpc::RedisCommandHandler::OK;
