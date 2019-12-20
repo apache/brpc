@@ -345,9 +345,10 @@ butil::Status RedisCommandByComponents(butil::IOBuf* output,
     return butil::Status::OK();
 }
 
-RedisCommandParser::RedisCommandParser() {
-    Reset();
-}
+RedisCommandParser::RedisCommandParser()
+    : _parsing_array(false)
+    , _length(0)
+    , _index(0) {}
 
 ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
                                        std::vector<const char*>* commands,
