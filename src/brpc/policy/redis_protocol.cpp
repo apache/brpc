@@ -79,7 +79,6 @@ public:
 
 int ConsumeCommand(RedisConnContext* ctx,
                    const std::vector<const char*>& commands,
-                   const std::string& next_command,
                    bool flush_back,
                    butil::IOBufAppender* appender) {
     RedisReply output(&ctx->arena);
@@ -99,15 +98,10 @@ int ConsumeCommand(RedisConnContext* ctx,
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", commands[0]);
             output.SetError(buf);
         } else {
-            RedisCommandHandler* next_ch =
-                ctx->redis_service->FindCommandHandler(next_command);
-            if (next_ch && next_ch->TransactionMarker()) {
-                flush_back = true;
-            }
             result = ch->Run(commands, &output, flush_back);
             if (result == RedisCommandHandler::CONTINUE) {
                 if (ctx->batched_size != 0) {
-                    LOG(ERROR) << "Do you forget to return OK when flush_back is true?";
+                    LOG(ERROR) << "CONTINUE should not be returned in a batched process.";
                     return -1;
                 }
                 ctx->transaction_handler.reset(ch->NewTransactionHandler());
@@ -183,14 +177,12 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             if (err != PARSE_OK) {
                 break;
             }
-            // next_commands must have at least one element, otherwise parse.Consume()
-            // should return error.
-            if (ConsumeCommand(ctx, current_commands, next_commands[0], false, &appender) != 0) {
+            if (ConsumeCommand(ctx, current_commands, false, &appender) != 0) {
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
             current_commands.swap(next_commands);
         }
-        if (ConsumeCommand(ctx, current_commands, "",
+        if (ConsumeCommand(ctx, current_commands,
                     true /*must be the last message*/, &appender) != 0) {
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }

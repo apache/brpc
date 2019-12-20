@@ -1042,9 +1042,6 @@ public:
     RedisCommandHandler* NewTransactionHandler() override {
         return new MultiTransactionHandler;
     }
-    bool TransactionMarker() override {
-        return true;
-    }
 
     class MultiTransactionHandler : public brpc::RedisCommandHandler {
     public:
@@ -1189,20 +1186,12 @@ TEST_F(RedisTest, server_handle_pipeline) {
     ASSERT_TRUE(request.AddCommand("set key1 world"));
     ASSERT_TRUE(request.AddCommand("set key2 world"));
     ASSERT_TRUE(request.AddCommand("get key2"));
-    ASSERT_TRUE(request.AddCommand("multi"));
-    ASSERT_TRUE(request.AddCommand("incr key4"));
-    ASSERT_TRUE(request.AddCommand("exec"));
-    ASSERT_TRUE(request.AddCommand("set key1 v1"));
-    ASSERT_TRUE(request.AddCommand("set key2 v2"));
     channel.CallMethod(NULL, &cntl, &request, &response, NULL);
     ASSERT_FALSE(cntl.Failed()) << cntl.ErrorText();
-    ASSERT_EQ(13, response.reply_size());
-    ASSERT_EQ(2, rsimpl->_batch_count);
+    ASSERT_EQ(8, response.reply_size());
+    ASSERT_EQ(1, rsimpl->_batch_count);
     ASSERT_TRUE(response.reply(7).is_string());
     ASSERT_STREQ(response.reply(7).c_str(), "world");
-    ASSERT_TRUE(response.reply(10).is_array());
-    ASSERT_TRUE(response.reply(10)[0].is_integer());
-    ASSERT_EQ(response.reply(10)[0].integer(), 1);
 }
 
 } //namespace

@@ -278,9 +278,6 @@ public:
     // 5) An ending marker(exec) is found in transaction_handler.Run(), user exeuctes all
     // the commands and return OK. This Transation is done.
     virtual RedisCommandHandler* NewTransactionHandler();
-
-    // return true if a transaction is started when met this command.
-    virtual bool TransactionMarker() { return false; }
 };
 
 } // namespace brpc
