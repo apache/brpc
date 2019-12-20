@@ -248,11 +248,11 @@ public:
     // corresponds to args[0]=="set", args[1]=="somekey" and args[2]=="somevalue".
     // `output', which should be filled by user, is the content that sent to client side.
     // Read brpc/src/redis_reply.h for more usage.
-    // `flush_back' indicates whether the commands is the last command of this batch. If user
-    // want to do some batch processing, user should buffer the command and return
-    // RedisCommandHandler::BATCHED. Once `flush_back' is true, run all the commands,
-    // set `output' to be an array in which every element is the result of batched
-    // commands and return RedisCommandHandler::OK.
+    // `flush_back' indicates whether the user should flush back all the results of
+    // batched commands. If user want to do some batch processing, user should buffer
+    // the commands and return RedisCommandHandler::BATCHED. Once `flush_back' is true,
+    // run all the commands, set `output' to be an array in which every element is the
+    // result of batched commands and return RedisCommandHandler::OK.
     //
     // The return value should be RedisCommandHandler::OK for normal cases. If you want
     // to implement transaction, return RedisCommandHandler::CONTINUE once server receives
