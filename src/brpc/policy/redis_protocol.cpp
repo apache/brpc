@@ -80,12 +80,12 @@ int ConsumeCommand(RedisConnContext* ctx,
                    const std::vector<const char*>& commands,
                    const std::string& next_command,
                    butil::Arena* arena,
-                   bool is_last,
+                   bool flush_back,
                    butil::IOBufAppender* appender) {
     RedisReply output(arena);
     RedisCommandHandler::Result result = RedisCommandHandler::OK;
     if (ctx->transaction_handler) {
-        result = ctx->transaction_handler->Run(commands, &output, is_last);
+        result = ctx->transaction_handler->Run(commands, &output, flush_back);
         if (result == RedisCommandHandler::OK) {
             ctx->transaction_handler.reset(NULL);
         } else if (result == RedisCommandHandler::BATCHED) {
@@ -102,12 +102,12 @@ int ConsumeCommand(RedisConnContext* ctx,
             RedisCommandHandler* next_ch =
                 ctx->redis_service->FindCommandHandler(next_command);
             if (next_ch && next_ch->TransactionMarker()) {
-                is_last = true;
+                flush_back = true;
             }
-            result = ch->Run(commands, &output, is_last);
+            result = ch->Run(commands, &output, flush_back);
             if (result == RedisCommandHandler::CONTINUE) {
                 if (ctx->batched_size != 0) {
-                    LOG(ERROR) << "Do you forget to return OK when is_last is true?";
+                    LOG(ERROR) << "Do you forget to return OK when flush_back is true?";
                     return -1;
                 }
                 ctx->transaction_handler.reset(ch->NewTransactionHandler());

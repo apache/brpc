@@ -798,8 +798,8 @@ public:
         : _batch_count(0) {}
 
     brpc::RedisCommandHandler::Result OnBatched(const std::vector<const char*> args,
-                   brpc::RedisReply* output, bool is_last) {
-        if (_batched_command.empty() && is_last) {
+                   brpc::RedisReply* output, bool flush_back) {
+        if (_batched_command.empty() && flush_back) {
             if (strcmp(args[0], "set") == 0) {
                 DoSet(args[1], args[2], output);
             } else if (strcmp(args[0], "get") == 0) {
@@ -812,7 +812,7 @@ public:
             comm.push_back(args[i]);
         }
         _batched_command.push_back(comm);
-        if (is_last) {
+        if (flush_back) {
             output->SetArray(_batched_command.size());
             for (int i = 0; i < (int)_batched_command.size(); ++i) {
                 if (_batched_command[i][0] == "set") {
@@ -856,13 +856,13 @@ public:
 
     brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
-                                          bool is_last) {
+                                          bool flush_back) {
         if (args.size() < 3) {
             output->SetError("ERR wrong number of arguments for 'set' command");
             return brpc::RedisCommandHandler::OK;
         }
         if (_batch_process) {
-            return rs->OnBatched(args, output, is_last);
+            return rs->OnBatched(args, output, flush_back);
         } else {
             DoSet(args[1], args[2], output);
             return brpc::RedisCommandHandler::OK;
@@ -887,13 +887,13 @@ public:
 
     brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
-                                          bool is_last) {
+                                          bool flush_back) {
         if (args.size() < 2) {
             output->SetError("ERR wrong number of arguments for 'get' command");
             return brpc::RedisCommandHandler::OK;
         }
         if (_batch_process) {
-            return rs->OnBatched(args, output, is_last);
+            return rs->OnBatched(args, output, flush_back);
         } else {
             DoGet(args[1], output);
             return brpc::RedisCommandHandler::OK;
@@ -920,7 +920,7 @@ public:
 
     brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
-                                          bool is_last) {
+                                          bool flush_back) {
         if (args.size() < 2) {
             output->SetError("ERR wrong number of arguments for 'incr' command");
             return brpc::RedisCommandHandler::OK;
@@ -1034,7 +1034,7 @@ public:
 
     brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
-                                          bool is_last) {
+                                          bool flush_back) {
         output->SetStatus("OK");
         return brpc::RedisCommandHandler::CONTINUE;
     }
@@ -1050,7 +1050,7 @@ public:
     public:
         brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                               brpc::RedisReply* output,
-                                              bool is_last) {
+                                              bool flush_back) {
             if (strcmp(args[0], "multi") == 0) {
                 output->SetError("ERR duplicate multi");
                 return brpc::RedisCommandHandler::CONTINUE;
