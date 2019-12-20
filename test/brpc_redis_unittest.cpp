@@ -787,6 +787,14 @@ public:
 
     brpc::RedisCommandHandler::Result OnBatched(const std::vector<const char*> args,
                    brpc::RedisReply* output, bool is_last) {
+        if (_batched_command.empty() && is_last) {
+            if (strcmp(args[0], "set") == 0) {
+                DoSet(args[1], args[2], output);
+            } else if (strcmp(args[0], "get") == 0) {
+                DoGet(args[1], output);
+            }
+            return brpc::RedisCommandHandler::OK;
+        }
         std::vector<std::string> comm;
         for (int i = 0; i < (int)args.size(); ++i) {
             comm.push_back(args[i]);
@@ -803,7 +811,7 @@ public:
             }
             _batch_count++;
             _batched_command.clear();
-            return brpc::RedisCommandHandler::BATCHED_DONE;
+            return brpc::RedisCommandHandler::OK;
         } else {
             return brpc::RedisCommandHandler::BATCHED;
         }
