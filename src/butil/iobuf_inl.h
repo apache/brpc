@@ -285,6 +285,25 @@ inline int IOBufAppender::append(const StringPiece& str) {
     return append(str.data(), str.size());
 }
 
+inline int IOBufAppender::append_decimal(long d) {
+    char buf[24];  // enough for decimal 64-bit integers
+    size_t n = sizeof(buf);
+    bool negative = false;
+    if (d < 0) {
+        negative = true;
+        d = -d;
+    }
+    do {
+        const long q = d / 10;
+        buf[--n] = d - q * 10 + '0';
+        d = q;
+    } while (d);
+    if (negative) {
+        buf[--n] = '-';
+    }
+    return append(buf + n, sizeof(buf) - n);
+}
+
 inline int IOBufAppender::push_back(char c) {
     if (_data == _data_end) {
         if (add_block() != 0) {
