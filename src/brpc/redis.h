@@ -248,9 +248,9 @@ public:
     // corresponds to args[0]=="set", args[1]=="somekey" and args[2]=="somevalue".
     // `output', which should be filled by user, is the content that sent to client side.
     // Read brpc/src/redis_reply.h for more usage.
-    // `flush_back' indicates whether the user should flush back all the results of
+    // `flush_batched' indicates whether the user should flush all the results of
     // batched commands. If user want to do some batch processing, user should buffer
-    // the commands and return RedisCommandHandler::BATCHED. Once `flush_back' is true,
+    // the commands and return RedisCommandHandler::BATCHED. Once `flush_batched' is true,
     // run all the commands, set `output' to be an array in which every element is the
     // result of batched commands and return RedisCommandHandler::OK.
     //
@@ -261,7 +261,7 @@ public:
     // it returns RedisCommandHandler::OK. Read the comment below.
     virtual RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                             brpc::RedisReply* output,
-                                            bool flush_back) = 0;
+                                            bool flush_batched) = 0;
 
     // The Run() returns CONTINUE for "multi", which makes brpc call this method to
     // create a transaction_handler to process following commands until transaction_handler

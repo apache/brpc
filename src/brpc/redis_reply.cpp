@@ -50,30 +50,30 @@ bool RedisReply::SerializeTo(butil::IOBufAppender* appender) {
             } else {
                 appender->append(_data.long_str, _length);
             }
-            appender->append("\r\n");
+            appender->append("\r\n", 2);
             break;
         case REDIS_REPLY_INTEGER:
             appender->push_back(':');
             appender->append_decimal(_data.integer);
-            appender->append("\r\n");
+            appender->append("\r\n", 2);
             break;
         case REDIS_REPLY_STRING:
             appender->push_back('$');
             appender->append_decimal(_length);
-            appender->append("\r\n");
+            appender->append("\r\n", 2);
             if (_length != npos) {
                 if (_length < (int)sizeof(_data.short_str)) {
                     appender->append(_data.short_str, _length);
                 } else {
                     appender->append(_data.long_str, _length);
                 }
-                appender->append("\r\n");
+                appender->append("\r\n", 2);
             }
             break;
         case REDIS_REPLY_ARRAY:
             appender->push_back('*');
             appender->append_decimal(_length);
-            appender->append("\r\n");
+            appender->append("\r\n", 2);
             if (_length != npos) {
                 for (int i = 0; i < _length; ++i) {
                     if (!_data.array.replies[i].SerializeTo(appender)) {
@@ -83,8 +83,8 @@ bool RedisReply::SerializeTo(butil::IOBufAppender* appender) {
             }
             break;
         case REDIS_REPLY_NIL:
-            appender->append("$-1\r\n");
-            break;
+            LOG(ERROR) << "Do you forget to call SetXXX()?";
+            return false;
         default:
             CHECK(false) << "unknown redis type=" << _type;
             return false;

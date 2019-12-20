@@ -79,12 +79,12 @@ public:
 
 int ConsumeCommand(RedisConnContext* ctx,
                    const std::vector<const char*>& commands,
-                   bool flush_back,
+                   bool flush_batched,
                    butil::IOBufAppender* appender) {
     RedisReply output(&ctx->arena);
     RedisCommandHandler::Result result = RedisCommandHandler::OK;
     if (ctx->transaction_handler) {
-        result = ctx->transaction_handler->Run(commands, &output, flush_back);
+        result = ctx->transaction_handler->Run(commands, &output, flush_batched);
         if (result == RedisCommandHandler::OK) {
             ctx->transaction_handler.reset(NULL);
         } else if (result == RedisCommandHandler::BATCHED) {
@@ -98,7 +98,7 @@ int ConsumeCommand(RedisConnContext* ctx,
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", commands[0]);
             output.SetError(buf);
         } else {
-            result = ch->Run(commands, &output, flush_back);
+            result = ch->Run(commands, &output, flush_batched);
             if (result == RedisCommandHandler::CONTINUE) {
                 if (ctx->batched_size != 0) {
                     LOG(ERROR) << "CONTINUE should not be returned in a batched process.";
