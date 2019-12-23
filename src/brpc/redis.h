@@ -165,7 +165,7 @@ public:
         if (index < reply_size()) {
             return (index == 0 ? _first_reply : _other_replies[index - 1]);
         }
-        static RedisReply redis_nil;
+        static RedisReply redis_nil(NULL);
         return redis_nil;
     }
 

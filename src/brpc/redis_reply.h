@@ -44,10 +44,8 @@ const char* RedisReplyTypeToString(RedisReplyType);
 // A reply from redis-server.
 class RedisReply {
 public:
-    // A default reply is a nil.
-    RedisReply();
-
-    // All SetXXX Method would allocate memory from *arena.
+    // The initial value for a reply is a nil.
+    // All needed memory is allocated on `arena'.
     RedisReply(butil::Arena* arena);
 
     // Type of the reply.
@@ -109,8 +107,7 @@ public:
     const RedisReply& operator[](size_t index) const;
     RedisReply& operator[](size_t index);
 
-    // Parse from `buf' which may be incomplete and allocate needed memory
-    // on `arena'.
+    // Parse from `buf' which may be incomplete.
     // Returns PARSE_OK when an intact reply is parsed and cut off from `buf'.
     // Returns PARSE_ERROR_NOT_ENOUGH_DATA if data in `buf' is not enough to parse,
     // and `buf' is guaranteed to be UNCHANGED so that you can call this
@@ -120,7 +117,7 @@ public:
     // reply. As a contrast, if the parsing needs `buf' to be intact,
     // the complexity in worst case may be O(N^2).
     // Returns PARSE_ERROR_ABSOLUTELY_WRONG if the parsing failed.
-    ParseError ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena);
+    ParseError ConsumePartialIOBuf(butil::IOBuf& buf);
 
     // Serialize to iobuf appender using redis protocol
     bool SerializeTo(butil::IOBufAppender* appender);
@@ -134,12 +131,10 @@ public:
     // Print fields into ostream
     void Print(std::ostream& os) const;
 
-    // Copy from another reply allocating on a different Arena, and allocate
-    // required memory with `self_arena'.
-    void CopyFromDifferentArena(const RedisReply& other,
-                                butil::Arena* self_arena);
+    // Copy from another reply allocating on `_arena', which is a deep copy.
+    void CopyFromDifferentArena(const RedisReply& other);
 
-    // Copy from another reply allocating on a same Arena.
+    // Copy from another reply allocating on a same Arena, which is a shallow copy.
     void CopyFromSameArena(const RedisReply& other);
 
 private:
@@ -183,11 +178,6 @@ inline void RedisReply::Reset() {
 
 inline RedisReply::RedisReply(butil::Arena* arena)
     : _arena(arena) {
-    Reset();
-}
-
-inline RedisReply::RedisReply()
-    : _arena(NULL) {
     Reset();
 }
 
@@ -298,7 +288,7 @@ inline const RedisReply& RedisReply::operator[](size_t index) const {
     if (is_array() && (int)index < _length) {
         return _data.array.replies[index];
     }
-    static RedisReply redis_nil;
+    static RedisReply redis_nil(NULL);
     return redis_nil;
 }
 

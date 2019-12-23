@@ -92,13 +92,13 @@ bool RedisReply::SerializeTo(butil::IOBufAppender* appender) {
     return true;
 }
 
-ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* arena) {
+ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf) {
     if (_type == REDIS_REPLY_ARRAY && _data.array.last_index >= 0) {
         // The parsing was suspended while parsing sub replies,
         // continue the parsing.
         RedisReply* subs = (RedisReply*)_data.array.replies;
         for (int i = _data.array.last_index; i < _length; ++i) {
-            ParseError err = subs[i].ConsumePartialIOBuf(buf, arena);
+            ParseError err = subs[i].ConsumePartialIOBuf(buf);
             if (err != PARSE_OK) {
                 return err;
             }
@@ -136,7 +136,7 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* aren
             str.copy_to_cstr(_data.short_str, (size_t)-1L, 1/*skip fc*/);
             return PARSE_OK;
         }
-        char* d = (char*)arena->allocate((len/8 + 1)*8);
+        char* d = (char*)_arena->allocate((len/8 + 1)*8);
         if (d == NULL) {
             LOG(FATAL) << "Fail to allocate string[" << len << "]";
             return PARSE_ERROR_ABSOLUTELY_WRONG;
@@ -196,7 +196,7 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* aren
                 buf.cutn(_data.short_str, len);
                 _data.short_str[len] = '\0';
             } else {
-                char* d = (char*)arena->allocate((len/8 + 1)*8);
+                char* d = (char*)_arena->allocate((len/8 + 1)*8);
                 if (d == NULL) {
                     LOG(FATAL) << "Fail to allocate string[" << len << "]";
                     return PARSE_ERROR_ABSOLUTELY_WRONG;
@@ -238,13 +238,13 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* aren
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             // FIXME(gejun): Call allocate_aligned instead.
-            RedisReply* subs = (RedisReply*)arena->allocate(sizeof(RedisReply) * count);
+            RedisReply* subs = (RedisReply*)_arena->allocate(sizeof(RedisReply) * count);
             if (subs == NULL) {
                 LOG(FATAL) << "Fail to allocate RedisReply[" << count << "]";
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             for (int64_t i = 0; i < count; ++i) {
-                new (&subs[i]) RedisReply;
+                new (&subs[i]) RedisReply(_arena);
             }
             buf.pop_front(crlf_pos + 2/*CRLF*/);
             _type = REDIS_REPLY_ARRAY;
@@ -255,7 +255,7 @@ ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf, butil::Arena* aren
             // be continued in next calls by tracking _data.array.last_index.
             _data.array.last_index = 0;
             for (int64_t i = 0; i < count; ++i) {
-                ParseError err = subs[i].ConsumePartialIOBuf(buf, arena);
+                ParseError err = subs[i].ConsumePartialIOBuf(buf);
                 if (err != PARSE_OK) {
                     return err;
                 }
@@ -359,29 +359,28 @@ void RedisReply::Print(std::ostream& os) const {
     }
 }
 
-void RedisReply::CopyFromDifferentArena(const RedisReply& other,
-                                        butil::Arena* arena) {
+void RedisReply::CopyFromDifferentArena(const RedisReply& other) {
     _type = other._type;
     _length = other._length;
     switch (_type) {
     case REDIS_REPLY_ARRAY: {
-        RedisReply* subs = (RedisReply*)arena->allocate(sizeof(RedisReply) * _length);
+        RedisReply* subs = (RedisReply*)_arena->allocate(sizeof(RedisReply) * _length);
         if (subs == NULL) {
             LOG(FATAL) << "Fail to allocate RedisReply[" << _length << "]";
             return;
         }
         for (int i = 0; i < _length; ++i) {
-            new (&subs[i]) RedisReply;
+            new (&subs[i]) RedisReply(_arena);
         }
         _data.array.last_index = other._data.array.last_index;
         if (_data.array.last_index > 0) {
             // incomplete state
             for (int i = 0; i < _data.array.last_index; ++i) {
-                subs[i].CopyFromDifferentArena(other._data.array.replies[i], arena);
+                subs[i].CopyFromDifferentArena(other._data.array.replies[i]);
             }
         } else {
             for (int i = 0; i < _length; ++i) {
-                subs[i].CopyFromDifferentArena(other._data.array.replies[i], arena);
+                subs[i].CopyFromDifferentArena(other._data.array.replies[i]);
             }
         }
         _data.array.replies = subs;
@@ -400,7 +399,7 @@ void RedisReply::CopyFromDifferentArena(const RedisReply& other,
         if (_length < (int)sizeof(_data.short_str)) {
             memcpy(_data.short_str, other._data.short_str, _length + 1);
         } else {
-            char* d = (char*)arena->allocate((_length/8 + 1)*8);
+            char* d = (char*)_arena->allocate((_length/8 + 1)*8);
             if (d == NULL) {
                 LOG(FATAL) << "Fail to allocate string[" << _length << "]";
                 return;
