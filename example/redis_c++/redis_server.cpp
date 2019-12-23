@@ -26,6 +26,8 @@
 #include <gflags/gflags.h>
 #include <unordered_map>
 
+#include <butil/time.h>
+
 class RedisServiceImpl : public brpc::RedisService {
 public:
     bool Set(const std::string& key, const std::string& value) {

@@ -46,28 +46,6 @@ int string_appendf(std::string* output, const char* format, ...)
 // Returns 0 on success, -1 otherwise.
 int string_vappendf(std::string* output, const char* format, va_list args);
 
-// Format integer |d| to |output|, which is much faster than snprintf(..., "%lu", d);
-// Return written length.
-inline size_t AppendDecimal(char* outbuf, long d) {
-    char buf[24];  // enough for decimal 64-bit integers
-    size_t n = sizeof(buf);
-    bool negative = false;
-    if (d < 0) {
-        negative = true;
-        d = -d;
-    }
-    do {
-        const long q = d / 10;
-        buf[--n] = d - q * 10 + '0';
-        d = q;
-    } while (d);
-    if (negative) {
-        buf[--n] = '-';
-    }
-    memcpy(outbuf, buf + n, sizeof(buf) - n);
-    return sizeof(buf) - n;
-}
-
 }  // namespace butil
 
 #endif  // BUTIL_STRING_PRINTF_H

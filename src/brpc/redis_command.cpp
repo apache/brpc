@@ -18,13 +18,25 @@
 // Authors: Ge,Jun (gejun@baidu.com)
 
 #include "butil/logging.h"
-#include "butil/string_printf.h"
 #include "brpc/log.h"
 #include "brpc/redis_command.h"
 
 namespace brpc {
 
 const size_t CTX_WIDTH = 5;
+
+// Much faster than snprintf(..., "%lu", d);
+inline size_t AppendDecimal(char* outbuf, unsigned long d) {
+    char buf[24];  // enough for decimal 64-bit integers
+    size_t n = sizeof(buf);
+    do {
+        const unsigned long q = d / 10;
+        buf[--n] = d - q * 10 + '0';
+        d = q;
+    } while (d);
+    fast_memcpy(outbuf, buf + n, sizeof(buf) - n);
+    return sizeof(buf) - n;
+}
 
 // This function is the hotspot of RedisCommandFormatV() when format is
 // short or does not have many %. In a 100K-time call to formating of
@@ -33,7 +45,7 @@ const size_t CTX_WIDTH = 5;
 inline void AppendHeader(std::string& buf, char fc, unsigned long value) {
     char header[32];
     header[0] = fc;
-    size_t len = butil::AppendDecimal(header + 1, value);
+    size_t len = AppendDecimal(header + 1, value);
     header[len + 1] = '\r';
     header[len + 2] = '\n';
     buf.append(header, len + 3);
@@ -41,7 +53,7 @@ inline void AppendHeader(std::string& buf, char fc, unsigned long value) {
 inline void AppendHeader(butil::IOBuf& buf, char fc, unsigned long value) {
     char header[32];
     header[0] = fc;
-    size_t len = butil::AppendDecimal(header + 1, value);
+    size_t len = AppendDecimal(header + 1, value);
     header[len + 1] = '\r';
     header[len + 2] = '\n';
     buf.append(header, len + 3);

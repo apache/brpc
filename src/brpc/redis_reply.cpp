@@ -51,12 +51,12 @@ bool RedisReply::SerializeTo(butil::IOBufAppender* appender) {
                 appender->append(_data.long_str, _length);
             }
             appender->append("\r\n", 2);
-            break;
+            return true;
         case REDIS_REPLY_INTEGER:
             appender->push_back(':');
             appender->append_decimal(_data.integer);
             appender->append("\r\n", 2);
-            break;
+            return true;
         case REDIS_REPLY_STRING:
             appender->push_back('$');
             appender->append_decimal(_length);
@@ -69,7 +69,7 @@ bool RedisReply::SerializeTo(butil::IOBufAppender* appender) {
                 }
                 appender->append("\r\n", 2);
             }
-            break;
+            return true;
         case REDIS_REPLY_ARRAY:
             appender->push_back('*');
             appender->append_decimal(_length);
@@ -81,15 +81,13 @@ bool RedisReply::SerializeTo(butil::IOBufAppender* appender) {
                     }
                 }
             }
-            break;
+            return true;
         case REDIS_REPLY_NIL:
             LOG(ERROR) << "Do you forget to call SetXXX()?";
             return false;
-        default:
-            CHECK(false) << "unknown redis type=" << _type;
-            return false;
     }
-    return true;
+    CHECK(false) << "unknown redis type=" << _type;
+    return false;
 }
 
 ParseError RedisReply::ConsumePartialIOBuf(butil::IOBuf& buf) {
@@ -438,7 +436,7 @@ void RedisReply::SetArray(int size) {
     _data.array.replies = subs;
 }
 
-void RedisReply::SetStringImpl(const std::string& str, RedisReplyType type) {
+void RedisReply::SetStringImpl(const butil::StringPiece& str, RedisReplyType type) {
     if (!_arena) {
         return;
     }
@@ -447,7 +445,7 @@ void RedisReply::SetStringImpl(const std::string& str, RedisReplyType type) {
     }
     const size_t size = str.size();
     if (size < sizeof(_data.short_str)) {
-        memcpy(_data.short_str, str.c_str(), size);
+        memcpy(_data.short_str, str.data(), size);
         _data.short_str[size] = '\0';
     } else {
         char* d = (char*)_arena->allocate((size/8 + 1) * 8);

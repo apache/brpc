@@ -69,16 +69,16 @@ public:
     void SetArray(int size);
 
     // Set the reply to status message `str'.
-    void SetStatus(const std::string& str);
+    void SetStatus(const butil::StringPiece& str);
 
     // Set the reply to error message `str'.
-    void SetError(const std::string& str);
+    void SetError(const butil::StringPiece& str);
 
     // Set the reply to integer `value'.
     void SetInteger(int64_t value);
 
     // Set the reply to string `str'.
-    void SetString(const std::string& str);
+    void SetString(const butil::StringPiece& str);
 
     // Convert the reply into a signed 64-bit integer(according to
     // http://redis.io/topics/protocol). If the reply is not an integer,
@@ -144,7 +144,7 @@ private:
     // by calling CopyFrom[Different|Same]Arena.
     DISALLOW_COPY_AND_ASSIGN(RedisReply);
 
-    void SetStringImpl(const std::string& str, RedisReplyType type);
+    void SetStringImpl(const butil::StringPiece& str, RedisReplyType type);
     void Reset();
     
     RedisReplyType _type;
@@ -174,6 +174,7 @@ inline void RedisReply::Reset() {
     _length = 0;
     _data.array.last_index = -1;
     _data.array.replies = NULL;
+    // _arena should not be reset because further memory allocation needs it.
 }
 
 inline RedisReply::RedisReply(butil::Arena* arena)
@@ -215,11 +216,11 @@ inline void RedisReply::SetNullString() {
     _length = npos;
 }
 
-inline void RedisReply::SetStatus(const std::string& str) {
+inline void RedisReply::SetStatus(const butil::StringPiece& str) {
     return SetStringImpl(str, REDIS_REPLY_STATUS);
 }
 
-inline void RedisReply::SetError(const std::string& str) {
+inline void RedisReply::SetError(const butil::StringPiece& str) {
     return SetStringImpl(str, REDIS_REPLY_ERROR);
 }
 
@@ -232,7 +233,7 @@ inline void RedisReply::SetInteger(int64_t value) {
     _data.integer = value;
 }
 
-inline void RedisReply::SetString(const std::string& str) {
+inline void RedisReply::SetString(const butil::StringPiece& str) {
     return SetStringImpl(str, REDIS_REPLY_STRING);
 }
 
@@ -285,7 +286,7 @@ inline RedisReply& RedisReply::operator[](size_t index) {
 }
 
 inline const RedisReply& RedisReply::operator[](size_t index) const {
-    if (is_array() && (int)index < _length) {
+    if (is_array() && _length > 0 && index < (size_t)_length) {
         return _data.array.replies[index];
     }
     static RedisReply redis_nil(NULL);
@@ -297,6 +298,7 @@ inline void RedisReply::Swap(RedisReply& other) {
     std::swap(_length, other._length);
     std::swap(_data.padding[0], other._data.padding[0]);
     std::swap(_data.padding[1], other._data.padding[1]);
+    std::swap(_arena, other._arena);
 }
 
 inline void RedisReply::Clear() {
@@ -304,6 +306,7 @@ inline void RedisReply::Clear() {
     _length = 0;
     _data.array.last_index = -1;
     _data.array.replies = NULL;
+    // _arena should not be cleared because it may be shared between RedisReply;
 }
 
 inline void RedisReply::CopyFromSameArena(const RedisReply& other) {
@@ -311,6 +314,7 @@ inline void RedisReply::CopyFromSameArena(const RedisReply& other) {
     _length = other._length;
     _data.padding[0] = other._data.padding[0];
     _data.padding[1] = other._data.padding[1];
+    _arena = other._arena;
 }
 
 } // namespace brpc
