@@ -102,8 +102,8 @@ public:
     // return the length of string if this reply is a string, otherwise 0 is
     // returned (call stacks are not logged).
     size_t size() const;
-    // Get the index-th sub reply. If this reply is not an array, a nil reply
-    // is returned (call stacks are not logged)
+    // Get the index-th sub reply. If this reply is not an array or index is out of
+    // range, a nil reply is returned (call stacks are not logged)
     const RedisReply& operator[](size_t index) const;
     RedisReply& operator[](size_t index);
 
@@ -286,7 +286,7 @@ inline RedisReply& RedisReply::operator[](size_t index) {
 }
 
 inline const RedisReply& RedisReply::operator[](size_t index) const {
-    if (is_array() && _length > 0 && index < (size_t)_length) {
+    if (is_array() && index < (size_t)_length) {
         return _data.array.replies[index];
     }
     static RedisReply redis_nil(NULL);
