@@ -20,7 +20,6 @@
 
 #include <string>                                // std::string
 #include <stdarg.h>                              // va_list
-#include <string.h>                              // memcpy
 
 namespace butil {
 
