@@ -213,15 +213,17 @@ void RdmaCompletionQueue::CleanUp() {
     ibv_cq* cq = (ibv_cq*)_cq;
 
     if (IsRdmaAvailable()) {
-        if (cq_channel && cq) {
-            IbvAckCqEvents(cq, _cq_events);
-            IbvDestroyCompChannel(cq_channel);
-            _cq_channel = NULL;
-        }
         if (cq) {
+			if (cq_channel) {
+				IbvAckCqEvents(cq, _cq_events);
+			}
             IbvDestroyCq(cq);
             _cq = NULL;
-        }
+			if (cq_channel) {
+				IbvDestroyCompChannel(cq_channel);
+				_cq_channel = NULL;
+			}
+		}
     }
     _cq_events = 0;
     if (_sid > 0) {

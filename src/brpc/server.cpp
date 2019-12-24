@@ -1055,16 +1055,16 @@ int Server::StartInternal(const butil::ip_t& ip,
             return -1;
         }
         std::unique_ptr<rdma::RdmaCommunicationManager> rh;
+        butil::EndPoint internal_point = _listen_addr;
+        internal_point.port = _options.internal_port;
         if (_options.use_rdma) {
-            rh.reset(rdma::RdmaCommunicationManager::Listen(_listen_addr));
+            rh.reset(rdma::RdmaCommunicationManager::Listen(internal_point));
             if (rh == NULL) {
                 LOG(ERROR) << "Fail to listen " << _options.internal_port
                            << " (internal)";
                 return -1;
             }
         }
-        butil::EndPoint internal_point = _listen_addr;
-        internal_point.port = _options.internal_port;
         butil::fd_guard sockfd(tcp_listen(internal_point));
         if (sockfd < 0) {
             LOG(ERROR) << "Fail to listen " << internal_point << " (internal)";
