@@ -191,6 +191,7 @@ endif()
 
 add_library(BUTIL_DEBUG_LIB OBJECT ${BUTIL_SOURCES})
 add_library(SOURCES_DEBUG_LIB OBJECT ${SOURCES})
+add_dependencies(SOURCES_DEBUG_LIB PROTO_LIB)
 
 # shared library needs POSITION_INDEPENDENT_CODE
 set_property(TARGET ${BUTIL_DEBUG_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
@@ -235,8 +236,7 @@ add_test(NAME test_bvar COMMAND test_bvar)
 file(GLOB BTHREAD_UNITTESTS "bthread*unittest.cpp")
 foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
     get_filename_component(BTHREAD_UT_WE ${BTHREAD_UT} NAME_WE)
-    add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT}
-                                    $<TARGET_OBJECTS:TEST_PROTO_LIB>)
+    add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT})
     target_link_libraries(${BTHREAD_UT_WE} gtest_main
                                            brpc-shared-debug
                                            ${GPERFTOOLS_LIBRARIES})
