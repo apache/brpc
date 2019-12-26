@@ -33,10 +33,12 @@ DEFINE_string(server, "0.0.0.0:8019", "IP Address of server");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
+DEFINE_string(thrift_protocol, "binary",
+              "Thrift protocol type. Available values: binary, compact");
 
 int main(int argc, char* argv[]) {
     // Parse gflags. We recommend you to use gflags as well.
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    GFLAGS_NS::ParseCommandLineFlags(&argc, &argv, true);
     
     // A Channel represents a communication line to a Server. Notice that 
     // Channel is thread-safe and can be shared by all threads in your program.
@@ -44,7 +46,14 @@ int main(int argc, char* argv[]) {
     
     // Initialize the channel, NULL means using default options. 
     brpc::ChannelOptions options;
-    options.protocol = brpc::PROTOCOL_THRIFT;
+    if (FLAGS_thrift_protocol == "binary") {
+        options.protocol = brpc::PROTOCOL_THRIFT;
+    } else if (FLAGS_thrift_protocol == "compact") {
+        options.protocol = brpc::PROTOCOL_THRIFT_COMPACT;
+    } else {
+        LOG(FATAL) << "Unsupported thrift protocol type: "
+                   << FLAGS_thrift_protocol;
+    }
     options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
     options.max_retry = FLAGS_max_retry;
     if (channel.Init(FLAGS_server.c_str(), FLAGS_load_balancer.c_str(), &options) != 0) {

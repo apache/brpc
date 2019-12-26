@@ -25,17 +25,38 @@
 namespace brpc {
 namespace policy {
 
+enum class ThriftProtocolType {
+    THRIFT_PROTOCOL_BINARY,
+    THRIFT_PROTOCOL_COMPACT,
+};
+
 // Parse binary protocol format of thrift framed
-ParseResult ParseThriftMessage(butil::IOBuf* source, Socket* socket, bool read_eof, const void *arg);
+ParseResult ParseThriftBinaryMessage(butil::IOBuf* source, Socket* socket,
+                                     bool read_eof, const void *arg);
+
+// Parse compact protocol format of thrift framed
+ParseResult ParseThriftCompactMessage(butil::IOBuf* source, Socket* socket,
+                                      bool read_eof, const void *arg);
 
 // Actions to a (client) request in thrift binary framed format
 void ProcessThriftRequest(InputMessageBase* msg);
 
+// Actions to a (client) request in thrift compact framed format
+void ProcessThriftCompactRequest(InputMessageBase* msg);
+
 // Actions to a (server) response in thrift binary framed format
 void ProcessThriftResponse(InputMessageBase* msg);
 
-void SerializeThriftRequest(butil::IOBuf* request_buf, Controller* controller,
-                            const google::protobuf::Message* request);
+// Actions to a (server) response in thrift compact framed format
+void ProcessThriftCompactResponse(InputMessageBase* msg);
+
+void SerializeThriftBinaryRequest(butil::IOBuf* request_buf,
+                                  Controller* controller,
+                                  const google::protobuf::Message* request);
+
+void SerializeThriftCompactRequest(butil::IOBuf* request_buf,
+                                   Controller* controller,
+                                   const google::protobuf::Message* request);
 
 void PackThriftRequest(
     butil::IOBuf* packet_buf,

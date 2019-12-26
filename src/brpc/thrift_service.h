@@ -32,7 +32,7 @@ class MethodStatus;
 class StatusService;
 namespace policy {
 class ThriftClosure;
-void ProcessThriftRequest(InputMessageBase* msg_base);
+void ProcessThriftRequestImpl(InputMessageBase*, ThriftProtocolType);
 }
 
 // Inherit this class to let brpc server understands thrift_binary requests.
@@ -59,7 +59,7 @@ public:
 private:
 DISALLOW_COPY_AND_ASSIGN(ThriftService);
 friend class policy::ThriftClosure;
-friend void policy::ProcessThriftRequest(InputMessageBase* msg_base);
+friend void policy::ProcessThriftRequestImpl(InputMessageBase*, policy::ThriftProtocolType);
 friend class StatusService;
 friend class Server;
 
