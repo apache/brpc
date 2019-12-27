@@ -17,9 +17,10 @@
 
 // Authors: Ge,Jun (gejun@baidu.com)
 
-#include <google/protobuf/reflection_ops.h>                 // ReflectionOps::Merge
+#include <google/protobuf/reflection_ops.h>     // ReflectionOps::Merge
 #include <gflags/gflags.h>
 #include "butil/status.h"
+#include "butil/strings/string_util.h"          // StringToLowerASCII
 #include "brpc/redis.h"
 #include "brpc/redis_command.h"
 
@@ -239,12 +240,13 @@ std::ostream& operator<<(std::ostream& os, const RedisRequest& r) {
 }
 
 RedisResponse::RedisResponse()
-    : ::google::protobuf::Message() {
+    : ::google::protobuf::Message()
+    , _first_reply(&_arena) {
     SharedCtor();
 }
-
 RedisResponse::RedisResponse(const RedisResponse& from)
-    : ::google::protobuf::Message() {
+    : ::google::protobuf::Message()
+    , _first_reply(&_arena) {
     SharedCtor();
     MergeFrom(from);
 }
@@ -315,7 +317,7 @@ void RedisResponse::MergeFrom(const RedisResponse& from) {
     }
     _cached_size_ += from._cached_size_;
     if (_nreply == 0) {
-        _first_reply.CopyFromDifferentArena(from._first_reply, &_arena);
+        _first_reply.CopyFromDifferentArena(from._first_reply);
     }
     const int new_nreply = _nreply + from._nreply;
     if (new_nreply == 1) {
@@ -325,7 +327,7 @@ void RedisResponse::MergeFrom(const RedisResponse& from) {
     RedisReply* new_others =
         (RedisReply*)_arena.allocate(sizeof(RedisReply) * (new_nreply - 1));
     for (int i = 0; i < new_nreply - 1; ++i) {
-        new (new_others + i) RedisReply;
+        new (new_others + i) RedisReply(&_arena);
     }
     int new_other_index = 0;
     for (int i = 1; i < _nreply; ++i) {
@@ -333,8 +335,7 @@ void RedisResponse::MergeFrom(const RedisResponse& from) {
             _other_replies[i - 1]);
     }
     for (int i = !_nreply; i < from._nreply; ++i) {
-        new_others[new_other_index++].CopyFromDifferentArena(
-            from.reply(i), &_arena);
+        new_others[new_other_index++].CopyFromDifferentArena(from.reply(i));
     }
     DCHECK_EQ(new_nreply - 1, new_other_index);
     _other_replies = new_others;
@@ -383,7 +384,7 @@ const ::google::protobuf::Descriptor* RedisResponse::descriptor() {
 ParseError RedisResponse::ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count) {
     size_t oldsize = buf.size();
     if (reply_size() == 0) {
-        ParseError err = _first_reply.ConsumePartialIOBuf(buf, &_arena);
+        ParseError err = _first_reply.ConsumePartialIOBuf(buf);
         if (err != PARSE_OK) {
             return err;
         }
@@ -401,11 +402,11 @@ ParseError RedisResponse::ConsumePartialIOBuf(butil::IOBuf& buf, int reply_count
                 return PARSE_ERROR_ABSOLUTELY_WRONG;
             }
             for (int i = 0; i < reply_count - 1; ++i) {
-                new (&_other_replies[i]) RedisReply;
+                new (&_other_replies[i]) RedisReply(&_arena);
             }
         }
         for (int i = reply_size(); i < reply_count; ++i) {
-            ParseError err = _other_replies[i - 1].ConsumePartialIOBuf(buf, &_arena);
+            ParseError err = _other_replies[i - 1].ConsumePartialIOBuf(buf);
             if (err != PARSE_OK) {
                 return err;
             }
@@ -435,5 +436,30 @@ std::ostream& operator<<(std::ostream& os, const RedisResponse& response) {
     }
     return os;
 }
+
+bool RedisService::AddCommandHandler(const std::string& name, RedisCommandHandler* handler) {
+    std::string lcname = StringToLowerASCII(name);
+    auto it = _command_map.find(lcname);
+    if (it != _command_map.end()) {
+        LOG(ERROR) << "redis command name=" << name << " exist";
+        return false;
+    }
+    _command_map[lcname] = handler;
+    return true;
+}
  
+RedisCommandHandler* RedisService::FindCommandHandler(const std::string& name) {
+    std::string lcname = StringToLowerASCII(name);
+    auto it = _command_map.find(lcname);
+    if (it != _command_map.end()) {
+        return it->second;
+    }
+    return NULL;
+}
+
+RedisCommandHandler* RedisCommandHandler::NewTransactionHandler() {
+    LOG(ERROR) << "NewTransactionHandler is not implemented";
+    return NULL;
+}
+
 } // namespace brpc

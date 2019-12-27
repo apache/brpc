@@ -489,7 +489,7 @@ static void GlobalInitializeOrDieImpl() {
     Protocol redis_protocol = { ParseRedisMessage,
                                 SerializeRedisRequest,
                                 PackRedisRequest,
-                                NULL, ProcessRedisResponse,
+                                ProcessRedisRequest, ProcessRedisResponse,
                                 NULL, NULL, GetRedisMethodName,
                                 CONNECTION_TYPE_ALL, "redis" };
     if (RegisterProtocol(PROTOCOL_REDIS, redis_protocol) != 0) {

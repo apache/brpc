@@ -142,7 +142,8 @@ ServerOptions::ServerOptions()
     , has_builtin_services(true)
     , http_master_service(NULL)
     , health_reporter(NULL)
-    , rtmp_service(NULL) {
+    , rtmp_service(NULL)
+    , redis_service(NULL) {
     if (s_ncore > 0) {
         num_threads = s_ncore + 1;
     }
@@ -1588,7 +1589,8 @@ void Server::GenerateVersionIfNeeded() {
     if (!_version.empty()) {
         return;
     }
-    int extra_count = !!_options.nshead_service + !!_options.rtmp_service + !!_options.thrift_service;
+    int extra_count = !!_options.nshead_service + !!_options.rtmp_service +
+        !!_options.thrift_service + !!_options.redis_service;
     _version.reserve((extra_count + service_count()) * 20);
     for (ServiceMap::const_iterator it = _fullname_service_map.begin();
          it != _fullname_service_map.end(); ++it) {
@@ -1620,6 +1622,13 @@ void Server::GenerateVersionIfNeeded() {
             _version.push_back('+');
         }
         _version.append(butil::class_name_str(*_options.rtmp_service));
+    }
+
+    if (_options.redis_service) {
+        if (!_version.empty()) {
+            _version.push_back('+');
+        }
+        _version.append(butil::class_name_str(*_options.redis_service));
     }
 }
 

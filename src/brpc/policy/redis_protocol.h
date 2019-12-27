@@ -33,6 +33,13 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket *socket, bool read_eo
 // Actions to a redis response.
 void ProcessRedisResponse(InputMessageBase* msg);
 
+// Actions to a redis request, which is left unimplemented.
+// All requests are processed in execution queue pushed in
+// the parsing process. This function must be declared since
+// server only enables redis as a server-side protocol when
+// this function is declared.
+void ProcessRedisRequest(InputMessageBase* msg);
+
 // Serialize a redis request.
 void SerializeRedisRequest(butil::IOBuf* buf,
                            Controller* cntl,
