@@ -15,13 +15,21 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <cmath>
-#include <gflags/gflags.h>
-#include <butil/time.h>
 #include "brpc/circuit_breaker.h"
+
+#include <cmath>
+#include <mutex>
+#include <gflags/gflags.h>
+
+#include "butil/strings/string_number_conversions.h"
+#include "butil/strings/string_split.h"
+#include "butil/time.h"
 
 namespace brpc {
 
+DEFINE_string(circuit_breaker_ignored_error_codes, "2004", 
+    "Comma sparated error code list, those error codes will be ignored by" 
+    "circuit breaker. Note that you should never ignore 0, we ignored ELIMIT for default."); 
 DEFINE_int32(circuit_breaker_short_window_size, 1500,
     "Short window sample size.");
 DEFINE_int32(circuit_breaker_long_window_size, 3000,
@@ -56,6 +64,24 @@ namespace {
 // EPSILON = 0.3, smooth = 0.9987
 
 #define EPSILON (FLAGS_circuit_breaker_epsilon_value)
+
+std::once_flag g_init_ignored_error_codes_once;
+std::set<int> g_ignored_error_codes;
+
+void InitIgoredErrorCodes() {
+    std::vector<std::string> error_codes;
+    SplitString(FLAGS_circuit_breaker_ignored_error_codes, ',', &error_codes);
+    for (const std::string& str : error_codes) {
+        int error_code = 0;
+        if (!butil::StringToInt(str, &error_code) || error_code == 0) {
+            LOG(ERROR) << "Invalid error code '" << str 
+                << "', check the value of flag 'circuit_breaker_ignored_error_code': "
+                << FLAGS_circuit_breaker_ignored_error_codes;
+            continue;
+        }
+        g_ignored_error_codes.insert(error_code); 
+    }
+}
 
 }  // namepace
 
@@ -172,6 +198,10 @@ CircuitBreaker::CircuitBreaker()
 }
 
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
+    std::call_once(g_init_ignored_error_codes_once, InitIgoredErrorCodes);
+    if (g_ignored_error_codes.find(error_code) != g_ignored_error_codes.end()) {
+        return true;
+    }
     if (_broken.load(butil::memory_order_relaxed)) {
         return false;
     }
