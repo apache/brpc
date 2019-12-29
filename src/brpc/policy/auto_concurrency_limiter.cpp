@@ -20,6 +20,12 @@
 #include "brpc/errno.pb.h"
 #include "brpc/policy/auto_concurrency_limiter.h"
 
+namespace bthread {
+
+DECLARE_int32(bthread_concurrency);
+
+}  // namespace bthread
+
 namespace brpc {
 namespace policy {
 
@@ -247,6 +253,7 @@ void AutoConcurrencyLimiter::UpdateMaxConcurrency(int64_t sampling_time_us) {
             _min_latency_us * _ema_max_qps / 1000000 *  (1 + _explore_ratio);
     }
 
+    next_max_concurrency = std::max(bthread::FLAGS_bthread_concurrency, next_max_concurrency);
     if (next_max_concurrency != _max_concurrency) {
         _max_concurrency = next_max_concurrency;
     }
