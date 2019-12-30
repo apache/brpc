@@ -210,7 +210,7 @@ inline std::size_t hash_value(const butil::EndPoint& ep) {
 template <>
 struct hash<butil::EndPoint> {
     std::size_t operator()(const butil::EndPoint& ep) const {
-        return butil::HashPair(butil::ip2int(ep.ip), ep.port);
+        return butil::HashPair(static_cast<uint64_t>(butil::ip2int(ep.ip)), ep.port);
     }
 };
 

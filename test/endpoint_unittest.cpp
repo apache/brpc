@@ -19,6 +19,7 @@
 #include "butil/errno.h"
 #include "butil/endpoint.h"
 #include "butil/logging.h"
+#include "butil/containers/flat_map.h"
 
 namespace {
 
@@ -121,4 +122,30 @@ TEST(EndPointTest, hash_table) {
     ASSERT_EQ(2u, m.size());
 }
 
+TEST(EndPointTest, flat_map) {
+    butil::FlatMap<butil::EndPoint, int> m;
+    ASSERT_EQ(0, m.init(1024));
+    uint32_t port = 8088;
+
+    butil::EndPoint ep1(butil::IP_ANY, port);
+    butil::EndPoint ep2(butil::IP_ANY, port);
+    ++m[ep1];
+    ++m[ep2];
+    ASSERT_EQ(1u, m.size());
+
+    butil::ip_t ip_addr;
+    butil::str2ip("10.10.10.10", &ip_addr);
+    int ip = butil::ip2int(ip_addr);
+
+    for (int i = 0; i < 1023; ++i) {
+        butil::EndPoint ep(butil::int2ip(++ip), port);
+        ++m[ep];
+    }
+
+    butil::BucketInfo info = m.bucket_info();
+    LOG(INFO) << "bucket info max long=" << info.longest_length
+        << " avg=" << info.average_length << std::endl;
+    ASSERT_LT(info.longest_length, 32) << "detect hash collision and it's too large.";
 }
+
+} // end of namespace
