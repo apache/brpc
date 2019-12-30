@@ -30,7 +30,7 @@ namespace bthread {
 
 // ExecutionQueue is a special wait-free MPSC queue of which the consumer thread
 // is auto started by the execute operation and auto quits if there are no more 
-// tasks, in another word there isn't a daemon bthread waiting to consume tasks
+// tasks, in another word there isn't a daemon bthread waiting to consume tasks.
 
 template <typename T> struct ExecutionQueueId;
 template <typename T> class ExecutionQueue;
