@@ -442,4 +442,11 @@ namespace {  /*anonymous namespace */                           \
 
 #endif  // __cplusplus
 
+// noexcept specifier that supports pre-C++11
+#ifdef BUTIL_CXX11_ENABLED
+#define BUTIL_NOEXCEPT noexcept
+#else
+#define BUTIL_NOEXCEPT throw()
+#endif
+
 #endif  // BUTIL_MACROS_H_

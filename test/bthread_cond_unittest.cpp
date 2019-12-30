@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <cmath>
 #include <map>
 #include <gtest/gtest.h>
 #include "butil/atomicops.h"
@@ -25,6 +26,13 @@
 #include "bthread/bthread.h"
 #include "bthread/condition_variable.h"
 #include "bthread/stack.h"
+
+#ifdef BUTIL_CXX11_ENABLED
+
+#include <chrono>
+#include <thread>
+
+#endif // BUTIL_CXX11_ENABLED
 
 namespace {
 struct Arg {
@@ -152,7 +160,7 @@ void* cv_signaler(void* void_arg) {
 
 void* cv_bmutex_waiter(void* void_arg) {
     WrapperArg* a = (WrapperArg*)void_arg;
-    std::unique_lock<bthread_mutex_t> lck(*a->mutex.native_handler());
+    std::unique_lock<bthread_mutex_t> lck(*a->mutex.native_handle());
     while (!stop) {
         a->cond.wait(lck);
     }
@@ -201,6 +209,206 @@ TEST(CondTest, cpp_wrapper) {
         pthread_join(mutex_waiter_threads[i], NULL);
     }
 }
+
+#ifdef BUTIL_CXX11_ENABLED
+
+class MilliSTimeGuard {
+public:
+    explicit MilliSTimeGuard(int* out_millis) noexcept: _out_millis(out_millis),
+                                                        _begin_tp(std::chrono::steady_clock::now()) {
+    }
+
+    ~MilliSTimeGuard() {
+        auto end_time = std::chrono::steady_clock::now();
+        *_out_millis = std::chrono::duration_cast<std::chrono::milliseconds>(
+                end_time - _begin_tp).count();
+    }
+
+private:
+    int* _out_millis;
+    std::chrono::steady_clock::time_point _begin_tp;
+};
+
+TEST(CondTest, modern_cpp_condvar) {
+    bthread::Mutex mtx;
+    bthread::ConditionVariable cv;
+    using ulck = std::unique_lock<bthread::Mutex>;
+    auto delayed_signal = [&cv](const std::chrono::milliseconds& delay_millis) {
+        std::this_thread::sleep_for(delay_millis);
+        cv.notify_all();
+    };
+    int millis_time = 0;
+    {
+        std::thread(delayed_signal, std::chrono::milliseconds(100)).detach();
+        ulck lock(mtx);
+        cv.wait(lock);
+    }
+
+    {
+        MilliSTimeGuard tg(&millis_time);
+        ulck lock(mtx);
+        cv.wait(lock, []() { return true; });
+    }
+    ASSERT_GT(2, millis_time);
+
+    {
+        ulck lock(mtx);
+        auto ret = cv.wait_for(lock, std::chrono::milliseconds(-5));
+        ASSERT_EQ(std::cv_status::timeout, ret);
+    }
+
+    {
+        std::thread(delayed_signal, std::chrono::milliseconds(100)).detach();
+        ulck lock(mtx);
+        auto ret = cv.wait_for(lock, std::chrono::milliseconds(1000));
+        ASSERT_EQ(std::cv_status::no_timeout, ret);
+    }
+
+    {
+        MilliSTimeGuard tg(&millis_time);
+        ulck lock(mtx);
+        auto ret = cv.wait_for(lock, std::chrono::milliseconds(100), []() { return false; });
+        ASSERT_EQ(false, ret);
+    }
+    ASSERT_LE(100, millis_time);
+    ASSERT_NEAR(100, millis_time, 20);
+
+    {
+        MilliSTimeGuard tg(&millis_time);
+        ulck lock(mtx);
+        auto ret = cv.wait_for(lock, std::chrono::milliseconds(1000), []() { return true; });
+        ASSERT_EQ(true, ret);
+    }
+    ASSERT_GT(2, millis_time);
+
+    {
+        ulck lock(mtx);
+        auto ret = cv.wait_until(lock,
+                                 std::chrono::steady_clock::now() - std::chrono::milliseconds(5));
+        ASSERT_EQ(std::cv_status::timeout, ret);
+    }
+
+    {
+        std::thread(delayed_signal, std::chrono::milliseconds(100)).detach();
+        ulck lock(mtx);
+        auto ret = cv.wait_until(
+                lock, std::chrono::steady_clock::now() + std::chrono::milliseconds(1000));
+        ASSERT_EQ(std::cv_status::no_timeout, ret);
+    }
+
+    {
+        MilliSTimeGuard tg(&millis_time);
+        ulck lock(mtx);
+        auto ret = cv.wait_until(
+                lock, std::chrono::steady_clock::now() + std::chrono::milliseconds(100),
+                []() { return false; });
+        ASSERT_EQ(false, ret);
+    }
+    ASSERT_LE(100, millis_time);
+    ASSERT_NEAR(100, millis_time, 20);
+
+    {
+        MilliSTimeGuard tg(&millis_time);
+        ulck lock(mtx);
+        auto ret = cv.wait_until(
+                lock, std::chrono::steady_clock::now() + std::chrono::milliseconds(100),
+                []() { return true; });
+        ASSERT_EQ(true, ret);
+    }
+    ASSERT_GT(2, millis_time);
+}
+
+TEST(CondTest, modern_cpp_condvar_any) {
+    bthread::ConditionVariableAny cv;
+    std::mutex mtx;
+    // this one only works with bthread::ConditionVariableAny
+    using ulck = std::unique_lock<std::mutex>;
+    auto delayed_signal = [&cv](const std::chrono::milliseconds& delay_millis) {
+        std::this_thread::sleep_for(delay_millis);
+        cv.notify_all();
+    };
+    int millis_time = 0;
+    {
+        std::thread(delayed_signal, std::chrono::milliseconds(100)).detach();
+        ulck lock(mtx);
+        cv.wait(lock);
+    }
+
+    {
+        MilliSTimeGuard tg(&millis_time);
+        ulck lock(mtx);
+        cv.wait(lock, []() { return true; });
+    }
+    ASSERT_GT(2, millis_time);
+
+    {
+        ulck lock(mtx);
+        auto ret = cv.wait_for(lock, std::chrono::milliseconds(-5));
+        ASSERT_EQ(std::cv_status::timeout, ret);
+    }
+
+    {
+        std::thread(delayed_signal, std::chrono::milliseconds(100)).detach();
+        ulck lock(mtx);
+        auto ret = cv.wait_for(lock, std::chrono::milliseconds(1000));
+        ASSERT_EQ(std::cv_status::no_timeout, ret);
+    }
+
+    {
+        MilliSTimeGuard tg(&millis_time);
+        ulck lock(mtx);
+        auto ret = cv.wait_for(lock, std::chrono::milliseconds(100), []() { return false; });
+        ASSERT_EQ(false, ret);
+    }
+    ASSERT_LE(100, millis_time);
+    ASSERT_NEAR(100, millis_time, 20);
+
+    {
+        MilliSTimeGuard tg(&millis_time);
+        ulck lock(mtx);
+        auto ret = cv.wait_for(lock, std::chrono::milliseconds(1000), []() { return true; });
+        ASSERT_EQ(true, ret);
+    }
+    ASSERT_GT(2, millis_time);
+
+    {
+        ulck lock(mtx);
+        auto ret = cv.wait_until(lock,
+                                 std::chrono::steady_clock::now() - std::chrono::milliseconds(5));
+        ASSERT_EQ(std::cv_status::timeout, ret);
+    }
+
+    {
+        std::thread(delayed_signal, std::chrono::milliseconds(100)).detach();
+        ulck lock(mtx);
+        auto ret = cv.wait_until(
+                lock, std::chrono::steady_clock::now() + std::chrono::milliseconds(1000));
+        ASSERT_EQ(std::cv_status::no_timeout, ret);
+    }
+
+    {
+        MilliSTimeGuard tg(&millis_time);
+        ulck lock(mtx);
+        auto ret = cv.wait_until(
+                lock, std::chrono::steady_clock::now() + std::chrono::milliseconds(100),
+                []() { return false; });
+        ASSERT_EQ(false, ret);
+    }
+    ASSERT_LE(100, millis_time);
+    ASSERT_NEAR(100, millis_time, 20);
+
+    {
+        MilliSTimeGuard tg(&millis_time);
+        ulck lock(mtx);
+        auto ret = cv.wait_until(
+                lock, std::chrono::steady_clock::now() + std::chrono::milliseconds(100),
+                []() { return true; });
+        ASSERT_EQ(true, ret);
+    }
+    ASSERT_GT(2, millis_time);
+}
+
+#endif // BUTIL_CXX11_ENABLED
 
 #ifndef COND_IN_PTHREAD
 #undef pthread_join

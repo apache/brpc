@@ -24,6 +24,7 @@
 #include <butil/string_splitter.h>
 #include <butil/rand_util.h>
 #include <brpc/server.h>
+#include <bvar/bvar.h>
 #include "echo.pb.h"
 
 DEFINE_bool(echo_attachment, true, "Echo attachment as well");

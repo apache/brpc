@@ -817,3 +817,77 @@ int pthread_mutex_unlock (pthread_mutex_t *__mutex) {
 }
 
 }  // extern "C"
+
+#ifdef BUTIL_CXX11_ENABLED
+
+namespace bthread {
+
+TimedMutex::TimedMutex():_mutex() {
+    int ec = bthread_mutex_init(&_mutex, NULL);
+    if (ec != 0) {
+        throw std::system_error(std::error_code(ec, std::system_category()),
+                                "Mutex constructor failed");
+    }
+}
+
+void TimedMutex::lock() {
+    int ec = bthread_mutex_lock(&_mutex);
+    if (ec != 0) {
+        throw std::system_error(std::error_code(ec, std::system_category()),
+                                "Mutex lock failed");
+    }
+}
+
+namespace detail {
+
+bool RecursiveMutexBase::available() noexcept {
+    if (_counter == 0) {
+        return true;
+    }
+    if (_owner_bthread_id == NOT_A_BTHREAD_ID) { // owner is std thread / pthread
+        return this_thread::get_id() == NOT_A_BTHREAD_ID &&
+               _owner_std_thread_id == std::this_thread::get_id();
+    } else { // owner is bthread
+        return _owner_bthread_id == this_thread::get_id();
+    }
+}
+
+void RecursiveMutexBase::setup_ownership() noexcept {
+    if (_counter == 0) {
+        _owner_bthread_id = ::bthread::this_thread::get_id();
+        if (_owner_bthread_id == NOT_A_BTHREAD_ID) {
+            _owner_std_thread_id = std::this_thread::get_id();
+        }
+    }
+    ++_counter;
+}
+
+void RecursiveMutexBase::lock() {
+    std::unique_lock<Mutex> lock(_mtx);
+    _cv.wait(lock, [this]() { return available(); });
+    setup_ownership();
+}
+
+void RecursiveMutexBase::unlock() {
+    std::unique_lock<Mutex> lock(_mtx);
+    --_counter;
+    if (_counter == 0) {
+        lock.unlock();
+        _cv.notify_one();
+    }
+}
+
+bool RecursiveMutexBase::try_lock() {
+    std::unique_lock<Mutex> lock(_mtx, std::try_to_lock);
+    if (lock.owns_lock() && available()) {
+        setup_ownership();
+        return true;
+    }
+    return false;
+}
+
+} // namespace detail
+
+} // namespace bthread
+
+#endif // BUTIL_CXX11_ENABLED

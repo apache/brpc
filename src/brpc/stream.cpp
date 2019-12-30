@@ -23,6 +23,7 @@
 #include "butil/time.h"
 #include "butil/object_pool.h"
 #include "butil/unique_ptr.h"
+#include "bthread/mutex.h"
 #include "bthread/unstable.h"
 #include "brpc/log.h"
 #include "brpc/socket.h"

@@ -23,6 +23,7 @@
 #include "butil/atomicops.h"
 #include "butil/macros.h"                         // BAIDU_CASSERT
 #include "bthread/butex.h"                       // butex_*
+#include "bthread/condition_variable.h"
 #include "bthread/types.h"                       // bthread_cond_t
 
 namespace bthread {
@@ -142,3 +143,59 @@ int bthread_cond_timedwait(bthread_cond_t* __restrict c,
 }
 
 }  // extern "C"
+
+#ifdef BUTIL_CXX11_ENABLED
+
+namespace bthread {
+
+void ConditionVariable::wait(std::unique_lock<bthread::Mutex>& lock) noexcept {
+    if (!lock.owns_lock()) {
+        std::terminate();
+    }
+    int ec = bthread_cond_wait(&_cond, lock.mutex()->native_handle());
+    if (ec) {
+        std::terminate();
+    }
+}
+
+void ConditionVariable::do_timed_wait(std::unique_lock<bthread::Mutex>& lock,
+                                      const std::chrono::time_point<std::chrono::system_clock,
+                                              std::chrono::nanoseconds>& tp) noexcept {
+    if (!lock.owns_lock()) {
+        std::terminate();
+    }
+    timespec sp{};
+    auto nanos_since_epoch = tp.time_since_epoch();
+    auto secs_since_epoch = std::chrono::duration_cast<std::chrono::seconds>(nanos_since_epoch);
+    auto max_timespec_secs = std::numeric_limits<decltype(sp.tv_sec)>::max();
+    if (secs_since_epoch.count() < max_timespec_secs) {
+        sp.tv_sec = secs_since_epoch.count();
+        sp.tv_nsec = static_cast<decltype(sp.tv_nsec)>(
+                (nanos_since_epoch - secs_since_epoch).count());
+    } else {
+        sp.tv_sec = max_timespec_secs;
+        sp.tv_nsec = 999999999;
+    }
+    int ec = bthread_cond_timedwait(&_cond, lock.mutex()->native_handle(), &sp);
+    if (ec && ec != ETIMEDOUT) {
+        std::terminate();
+    }
+}
+
+void ConditionVariableAny::notify_one() {
+    {
+        std::lock_guard<bthread::Mutex> lg(*_internal_mtx);
+    }
+    _cv.notify_one();
+}
+
+void ConditionVariableAny::notify_all() {
+    {
+        std::lock_guard<bthread::Mutex> lg(*_internal_mtx);
+    }
+    _cv.notify_all();
+}
+
+} // namespace bthread
+
+#endif // BUTIL_CXX11_ENABLED

@@ -17,56 +17,26 @@
 
 // bthread - A M:N threading library to make applications more concurrent.
 
-// Author: Zhangyi Chen (chenzhangyi01@baidu.com)
-// Date: 2015/12/14 18:17:04
+// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
+//          Shuo Zang (jasonszang@126.com)
+// Date: 2015/12/14 18:17:0
 
 #ifndef  BTHREAD_MUTEX_H
 #define  BTHREAD_MUTEX_H
 
+#include "bthread/mtx_cv_base.h"
 #include "bthread/types.h"
+#include "butil/macros.h"
 #include "butil/scoped_lock.h"
 #include "bvar/utils/lock_timer.h"
-
-__BEGIN_DECLS
-extern int bthread_mutex_init(bthread_mutex_t* __restrict mutex,
-                              const bthread_mutexattr_t* __restrict mutex_attr);
-extern int bthread_mutex_destroy(bthread_mutex_t* mutex);
-extern int bthread_mutex_trylock(bthread_mutex_t* mutex);
-extern int bthread_mutex_lock(bthread_mutex_t* mutex);
-extern int bthread_mutex_timedlock(bthread_mutex_t* __restrict mutex,
-                                   const struct timespec* __restrict abstime);
-extern int bthread_mutex_unlock(bthread_mutex_t* mutex);
-__END_DECLS
+#ifdef BUTIL_CXX11_ENABLED
+#include <chrono>
+#include <limits>
+#include <thread>
+#include "bthread/bthread_cxx.h"
+#endif
 
 namespace bthread {
-
-// The C++ Wrapper of bthread_mutex
-
-// NOTE: Not aligned to cacheline as the container of Mutex is practically aligned
-class Mutex {
-public:
-    typedef bthread_mutex_t* native_handler_type;
-    Mutex() {
-        int ec = bthread_mutex_init(&_mutex, NULL);
-        if (ec != 0) {
-            throw std::system_error(std::error_code(ec, std::system_category()), "Mutex constructor failed");
-        }
-    }
-    ~Mutex() { CHECK_EQ(0, bthread_mutex_destroy(&_mutex)); }
-    native_handler_type native_handler() { return &_mutex; }
-    void lock() {
-        int ec = bthread_mutex_lock(&_mutex);
-        if (ec != 0) {
-            throw std::system_error(std::error_code(ec, std::system_category()), "Mutex lock failed");
-        }
-    }
-    void unlock() { bthread_mutex_unlock(&_mutex); }
-    bool try_lock() { return !bthread_mutex_trylock(&_mutex); }
-    // TODO(chenzhangyi01): Complement interfaces for C++11
-private:
-    DISALLOW_COPY_AND_ASSIGN(Mutex);
-    bthread_mutex_t _mutex;   
-};
 
 namespace internal {
 #ifdef BTHREAD_USE_FAST_PTHREAD_MUTEX
@@ -89,124 +59,6 @@ typedef butil::Mutex FastPthreadMutex;
 
 }  // namespace bthread
 
-// Specialize std::lock_guard and std::unique_lock for bthread_mutex_t
-
-namespace std {
-
-template <> class lock_guard<bthread_mutex_t> {
-public:
-    explicit lock_guard(bthread_mutex_t & mutex) : _pmutex(&mutex) {
-#if !defined(NDEBUG)
-        const int rc = bthread_mutex_lock(_pmutex);
-        if (rc) {
-            LOG(FATAL) << "Fail to lock bthread_mutex_t=" << _pmutex << ", " << berror(rc);
-            _pmutex = NULL;
-        }
-#else
-        bthread_mutex_lock(_pmutex);
-#endif  // NDEBUG
-    }
-
-    ~lock_guard() {
-#ifndef NDEBUG
-        if (_pmutex) {
-            bthread_mutex_unlock(_pmutex);
-        }
-#else
-        bthread_mutex_unlock(_pmutex);
-#endif
-    }
-
-private:
-    DISALLOW_COPY_AND_ASSIGN(lock_guard);
-    bthread_mutex_t* _pmutex;
-};
-
-template <> class unique_lock<bthread_mutex_t> {
-    DISALLOW_COPY_AND_ASSIGN(unique_lock);
-public:
-    typedef bthread_mutex_t         mutex_type;
-    unique_lock() : _mutex(NULL), _owns_lock(false) {}
-    explicit unique_lock(mutex_type& mutex)
-        : _mutex(&mutex), _owns_lock(false) {
-        lock();
-    }
-    unique_lock(mutex_type& mutex, defer_lock_t)
-        : _mutex(&mutex), _owns_lock(false)
-    {}
-    unique_lock(mutex_type& mutex, try_to_lock_t) 
-        : _mutex(&mutex), _owns_lock(bthread_mutex_trylock(&mutex) == 0)
-    {}
-    unique_lock(mutex_type& mutex, adopt_lock_t) 
-        : _mutex(&mutex), _owns_lock(true)
-    {}
-
-    ~unique_lock() {
-        if (_owns_lock) {
-            unlock();
-        }
-    }
-
-    void lock() {
-        if (!_mutex) {
-            CHECK(false) << "Invalid operation";
-            return;
-        }
-        if (_owns_lock) {
-            CHECK(false) << "Detected deadlock issue";     
-            return;
-        }
-        bthread_mutex_lock(_mutex);
-        _owns_lock = true;
-    }
-
-    bool try_lock() {
-        if (!_mutex) {
-            CHECK(false) << "Invalid operation";
-            return false;
-        }
-        if (_owns_lock) {
-            CHECK(false) << "Detected deadlock issue";     
-            return false;
-        }
-        _owns_lock = !bthread_mutex_trylock(_mutex);
-        return _owns_lock;
-    }
-
-    void unlock() {
-        if (!_owns_lock) {
-            CHECK(false) << "Invalid operation";
-            return;
-        }
-        if (_mutex) {
-            bthread_mutex_unlock(_mutex);
-            _owns_lock = false;
-        }
-    }
-
-    void swap(unique_lock& rhs) {
-        std::swap(_mutex, rhs._mutex);
-        std::swap(_owns_lock, rhs._owns_lock);
-    }
-
-    mutex_type* release() {
-        mutex_type* saved_mutex = _mutex;
-        _mutex = NULL;
-        _owns_lock = false;
-        return saved_mutex;
-    }
-
-    mutex_type* mutex() { return _mutex; }
-    bool owns_lock() const { return _owns_lock; }
-    operator bool() const { return owns_lock(); }
-
-private:
-    mutex_type*                     _mutex;
-    bool                            _owns_lock;
-};
-
-}  // namespace std
-
 namespace bvar {
 
 template <>
@@ -224,5 +76,144 @@ struct MutexDestructor<bthread_mutex_t> {
 };
 
 }  // namespace bvar
+
+#ifdef BUTIL_CXX11_ENABLED
+
+namespace bthread {
+
+// The bthread equivalent of std::timed_mutex.
+class TimedMutex {
+
+public:
+    using native_handle_type = bthread_mutex_t*;
+
+    DISALLOW_COPY_AND_ASSIGN(TimedMutex);
+
+    TimedMutex();
+
+    ~TimedMutex() { CHECK_EQ(0, bthread_mutex_destroy(&_mutex)); }
+
+    void lock();
+
+    void unlock() { bthread_mutex_unlock(&_mutex); }
+
+    bool try_lock() { return !bthread_mutex_trylock(&_mutex); }
+
+    template<typename Rep, typename Period>
+    bool try_lock_for(const std::chrono::duration<Rep, Period>& rel_time);
+
+    template<typename Clock, typename Duration>
+    bool try_lock_until(const std::chrono::time_point<Clock, Duration>& timeout_time);
+
+private:
+    bthread_mutex_t _mutex;
+};
+
+template<typename Rep, typename Period>
+bool TimedMutex::try_lock_for(const std::chrono::duration<Rep, Period>& rel_time) {
+    return TimedMutex::try_lock_until(std::chrono::steady_clock::now() + rel_time);
+}
+
+template<typename Clock, typename Duration>
+bool TimedMutex::try_lock_until(const std::chrono::time_point<Clock, Duration>& timeout_time) {
+    auto dur = timeout_time - Clock::now();
+    auto sys_timeout = std::chrono::time_point_cast<std::chrono::nanoseconds>(
+            std::chrono::system_clock::now() + dur);
+    auto nanos_since_epoch = sys_timeout.time_since_epoch();
+    auto secs_since_epoch = std::chrono::duration_cast<std::chrono::seconds>(nanos_since_epoch);
+    auto max_timespec_secs = std::numeric_limits<decltype(timespec::tv_sec)>::max();
+    timespec sp{};
+    if (secs_since_epoch.count() < max_timespec_secs) {
+        sp.tv_sec = secs_since_epoch.count();
+        sp.tv_nsec = static_cast<decltype(sp.tv_nsec)>(
+                (nanos_since_epoch - secs_since_epoch).count());
+    } else {
+        sp.tv_sec = max_timespec_secs;
+        sp.tv_nsec = 999999999;
+    }
+    return !bthread_mutex_timedlock(&_mutex, &sp);
+}
+
+class RecursiveTimedMutex;
+
+namespace detail {
+
+constexpr const static Thread::id NOT_A_BTHREAD_ID{};
+
+class RecursiveMutexBase {
+public:
+    DISALLOW_COPY_AND_ASSIGN(RecursiveMutexBase);
+
+    RecursiveMutexBase() : _counter(0) {
+    }
+
+    ~RecursiveMutexBase() {
+        std::lock_guard<Mutex> lock(_mtx);
+    }
+
+    void lock();
+
+    void unlock();
+
+    bool try_lock();
+
+    friend class ::bthread::RecursiveTimedMutex;
+
+private:
+
+    bool available() noexcept;
+
+    void setup_ownership() noexcept;
+
+    Mutex _mtx;
+    ConditionVariable _cv;
+    int _counter;
+    Thread::id _owner_bthread_id; // Valid only if owner is a bthread
+    std::thread::id _owner_std_thread_id; // Valid only if owner is a std thread / pthread
+};
+
+}
+
+// The bthread equivalent of std::recursive_mutex.
+// This is a higher level construct that is not directly supported by native bthread APIs.
+class RecursiveMutex : public detail::RecursiveMutexBase {
+};
+
+// The bthread equivalent of std::recursive_timed_mutex.
+// This is also a higher level construct not directly supported by native bthread APIs.
+class RecursiveTimedMutex : public detail::RecursiveMutexBase {
+public:
+    template<class Rep, class Period>
+    bool try_lock_for(const std::chrono::duration<Rep, Period>& rel_time);
+
+    template<typename Clock, typename Duration>
+    bool try_lock_until(const std::chrono::time_point<Clock, Duration>& timeout_time);
+};
+
+template<typename Rep, typename Period>
+bool RecursiveTimedMutex::try_lock_for(const std::chrono::duration<Rep, Period>& rel_time) {
+    return RecursiveTimedMutex::try_lock_until(std::chrono::steady_clock::now() + rel_time);
+}
+
+template<typename Clock, typename Duration>
+bool
+RecursiveTimedMutex::try_lock_until(const std::chrono::time_point<Clock, Duration>& timeout_time) {
+    std::unique_lock<Mutex> lock(_mtx);
+    while(!available()) {
+        if(Clock::now() >= timeout_time) {
+            break;
+        }
+        _cv.wait_until(lock, timeout_time);
+    }
+    if (available()) {
+        setup_ownership();
+        return true;
+    }
+    return false;
+}
+
+} // namespace bthread
+
+#endif // BUTIL_CXX11_ENABLED
 
 #endif  //BTHREAD_MUTEX_H

@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <vector>
 #include <gtest/gtest.h>
 #include "butil/compat.h"
 #include "butil/time.h"
@@ -27,6 +28,12 @@
 #include "bthread/mutex.h"
 #include "butil/gperftools_profiler.h"
 
+#ifdef BUTIL_CXX11_ENABLED
+#include <atomic>
+#include <chrono>
+#include "bthread/bthread_cxx.h"
+#endif
+
 namespace {
 inline unsigned* get_butex(bthread_mutex_t & m) {
     return m.butex;
@@ -37,7 +44,7 @@ int c = 0;
 void* locker(void* arg) {
     bthread_mutex_t* m = (bthread_mutex_t*)arg;
     bthread_mutex_lock(m);
-    printf("[%" PRIu64 "] I'm here, %d, %" PRId64 "ms\n", 
+    printf("[%" PRIu64 "] I'm here, %d, %" PRId64 "ms\n",
            pthread_numeric_id(), ++c, butil::cpuwide_time_ms() - start_time);
     bthread_usleep(10000);
     bthread_mutex_unlock(m);
@@ -103,7 +110,8 @@ TEST(MutexTest, timedlock) {
 }
 
 TEST(MutexTest, cpp_wrapper) {
-    bthread::Mutex mutex;
+    typedef bthread::Mutex mutex_type;
+    mutex_type mutex;
     ASSERT_TRUE(mutex.try_lock());
     mutex.unlock();
     mutex.lock();
@@ -112,8 +120,8 @@ TEST(MutexTest, cpp_wrapper) {
         BAIDU_SCOPED_LOCK(mutex);
     }
     {
-        std::unique_lock<bthread::Mutex> lck1;
-        std::unique_lock<bthread::Mutex> lck2(mutex);
+        std::unique_lock<mutex_type> lck1;
+        std::unique_lock<mutex_type> lck2(mutex);
         lck1.swap(lck2);
         lck1.unlock();
         lck1.lock();
@@ -121,11 +129,18 @@ TEST(MutexTest, cpp_wrapper) {
     ASSERT_TRUE(mutex.try_lock());
     mutex.unlock();
     {
-        BAIDU_SCOPED_LOCK(*mutex.native_handler());
+        BAIDU_SCOPED_LOCK(*mutex.native_handle());
     }
+#ifdef BUTIL_CXX11_ENABLED
+    {
+        static_assert(std::is_same<mutex_type::native_handle_type, bthread_mutex_t*>::value,
+                "Incorrect native_handle_type");
+        BAIDU_SCOPED_LOCK(*mutex.native_handle());
+    }
+#endif
     {
         std::unique_lock<bthread_mutex_t> lck1;
-        std::unique_lock<bthread_mutex_t> lck2(*mutex.native_handler());
+        std::unique_lock<bthread_mutex_t> lck2(*mutex.native_handle());
         lck1.swap(lck2);
         lck1.unlock();
         lck1.lock();
@@ -200,7 +215,7 @@ void PerfTest(Mutex* mutex,
     }
     g_started = true;
     char prof_name[32];
-    snprintf(prof_name, sizeof(prof_name), "mutex_perf_%d.prof", ++g_prof_name_counter); 
+    snprintf(prof_name, sizeof(prof_name), "mutex_perf_%d.prof", ++g_prof_name_counter);
     ProfilerStart(prof_name);
     usleep(500 * 1000);
     ProfilerStop();
@@ -266,4 +281,187 @@ TEST(MutexTest, mix_thread_types) {
         pthread_join(pthreads[i], NULL);
     }
 }
+
+#ifdef BUTIL_CXX11_ENABLED
+
+// XXX: should we have a test utility header?
+class MilliSTimeGuard {
+public:
+    explicit MilliSTimeGuard(int* out_millis) noexcept: _out_millis(out_millis),
+                                                        _begin_tp(std::chrono::steady_clock::now()) {
+    }
+
+    ~MilliSTimeGuard() {
+        auto end_time = std::chrono::steady_clock::now();
+        *_out_millis = std::chrono::duration_cast<std::chrono::milliseconds>(
+                end_time - _begin_tp).count();
+    }
+
+private:
+    int* _out_millis;
+    std::chrono::steady_clock::time_point _begin_tp;
+};
+
+TEST(MutexTest, cpp_timed_mutex) {
+    using std::chrono::milliseconds;
+    std::atomic<bool> ready{false};
+    bthread::TimedMutex tmtx;
+    bthread::Thread lock_holder([&tmtx, &ready](){
+        std::lock_guard<bthread::TimedMutex> lock(tmtx);
+        ready = true;
+        bthread::this_thread::sleep_for(milliseconds(1000));
+    });
+    while(!ready); // wait for the lock_holder to take hold of the lock
+
+    int timer = 0;
+    {
+        MilliSTimeGuard tg(&timer);
+        bool locked = tmtx.try_lock();
+        ASSERT_FALSE(locked);
+        locked = tmtx.try_lock_for(milliseconds(-5));
+        ASSERT_FALSE(locked);
+    }
+    ASSERT_GE(2, timer);
+    {
+        MilliSTimeGuard tg(&timer);
+        bool locked = tmtx.try_lock_for(milliseconds(100));
+        ASSERT_FALSE(locked);
+    }
+    ASSERT_LE(100, timer);
+    ASSERT_GE(120, timer);
+    {
+        MilliSTimeGuard tg(&timer);
+        bool locked = tmtx.try_lock_until(std::chrono::steady_clock::now());
+        ASSERT_FALSE(locked);
+    }
+    ASSERT_GE(2, timer);
+    {
+        MilliSTimeGuard tg(&timer);
+        bool locked = tmtx.try_lock_until(std::chrono::steady_clock::now() + milliseconds(100));
+        ASSERT_FALSE(locked);
+    }
+    ASSERT_LE(100, timer);
+    ASSERT_GE(120, timer);
+
+    lock_holder.join();
+}
+
+TEST(MutexTest, cpp_timed_mutex_performance) {
+    const int thread_num = 12;
+    bthread::TimedMutex bth_mutex;
+    PerfTest(&bth_mutex, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
+    PerfTest(&bth_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
+}
+
+TEST(MutexTest, cpp_recursive_mutex_sanity) {
+    bthread::RecursiveMutex mtx;
+    int counter = 0;
+    int concurrency = 0;
+    auto thread_func = [&mtx, &counter, &concurrency]() {
+        for (int cnt = 0; cnt < 10000; ++cnt) {
+            for (int i = 0; i < 3; ++i) {
+                mtx.lock();
+            }
+            ++concurrency;
+            bthread::this_thread::yield();
+            ASSERT_EQ(1, concurrency);
+            ++counter;
+            --concurrency;
+            for (int i = 0; i < 3; ++i) {
+                mtx.unlock();
+            }
+            bthread::this_thread::yield();
+        }
+    };
+    std::vector<std::thread> threads;
+    for (int i = 0; i < 3; ++i) {
+        threads.emplace_back(thread_func);
+    }
+    for (auto& th : threads){
+        th.join();
+    }
+    ASSERT_EQ(30000, counter);
+
+    counter = 0;
+    std::vector<bthread::Thread> bthreads;
+    for (int i = 0; i < 5; ++i) {
+        bthreads.emplace_back(thread_func);
+    }
+    for (auto& th : bthreads){
+        th.join();
+    }
+    ASSERT_EQ(50000, counter);
+
+    counter = 0;
+    std::thread th1(thread_func);
+    std::thread th2(thread_func);
+    bthread::Thread th3(thread_func);
+    bthread::Thread th4(thread_func);
+    th1.join();
+    th2.join();
+    th3.join();
+    th4.join();
+    ASSERT_EQ(40000, counter);
+}
+
+TEST(MutexTest, cpp_recursive_mutex_performance) {
+    const int thread_num = 12;
+    bthread::RecursiveMutex bth_mutex;
+    PerfTest(&bth_mutex, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
+    PerfTest(&bth_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
+}
+
+TEST(MutexTest, cpp_recursive_timed_mutex_timing) {
+    using std::chrono::milliseconds;
+    std::atomic<bool> ready{false};
+    bthread::RecursiveTimedMutex tmtx;
+    bthread::Thread lock_holder([&tmtx, &ready](){
+        std::lock_guard<bthread::RecursiveTimedMutex> lock(tmtx);
+        ready = true;
+        bthread::this_thread::sleep_for(milliseconds(1000));
+    });
+    while(!ready); // wait for the lock_holder to take hold of the lock
+
+    int timer = 0;
+    {
+        MilliSTimeGuard tg(&timer);
+        bool locked = tmtx.try_lock();
+        ASSERT_FALSE(locked);
+        locked = tmtx.try_lock_for(milliseconds(-5));
+        ASSERT_FALSE(locked);
+    }
+    ASSERT_GE(2, timer);
+    {
+        MilliSTimeGuard tg(&timer);
+        bool locked = tmtx.try_lock_for(milliseconds(100));
+        ASSERT_FALSE(locked);
+    }
+    ASSERT_LE(100, timer);
+    ASSERT_GE(120, timer);
+    {
+        MilliSTimeGuard tg(&timer);
+        bool locked = tmtx.try_lock_until(std::chrono::steady_clock::now());
+        ASSERT_FALSE(locked);
+    }
+    ASSERT_GE(2, timer);
+    {
+        MilliSTimeGuard tg(&timer);
+        bool locked = tmtx.try_lock_until(std::chrono::steady_clock::now() + milliseconds(100));
+        ASSERT_FALSE(locked);
+    }
+    ASSERT_LE(100, timer);
+    ASSERT_GE(120, timer);
+
+    lock_holder.join();
+}
+
+TEST(MutexTest, cpp_recursive_timed_mutex_performance) {
+    const int thread_num = 12;
+    bthread::RecursiveTimedMutex bth_mutex;
+    PerfTest(&bth_mutex, (pthread_t*)NULL, thread_num, pthread_create, pthread_join);
+    PerfTest(&bth_mutex, (bthread_t*)NULL, thread_num, bthread_start_background, bthread_join);
+}
+
+#endif // BUTIL_CXX11_ENABLED
+
 } // namespace

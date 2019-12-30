@@ -50,6 +50,19 @@ bool search() {
   return true;
 }
 ```
+
+或者使用更简洁的C++11风格接口，它具有与C++11 std::thread相同的语义：
+```c++
+void search() {
+    bthread::Thread th1(part1, part1_arg1, std::ref(part1_arg2)); // use functions & functors
+    bthread::Thread th2([&part2_args](){ part2(part2_args); }); // use lambdas
+    // see bthread/bthread_cxx.h for more
+    part3(part3_args);
+    th1.join();
+    th2.join();
+}
+```
+
 这么实现的point：
 - 你当然可以建立三个bthread分别执行三个部分，最后join它们，但相比这个方法要多耗费一个线程资源。
 - bthread从建立到执行是有延时的（调度延时），在不是很忙的机器上，这个延时的中位数在3微秒左右，90%在10微秒内，99.99%在30微秒内。这说明两点：

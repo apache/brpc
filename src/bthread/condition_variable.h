@@ -17,90 +17,133 @@
 
 // bthread - A M:N threading library to make applications more concurrent.
 
-// Author: Zhangyi Chen (chenzhangyi01@baidu.com)
+// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
+//          Shuo Zang (jasonszang@126.com)
 // Date: 2015/12/14 21:26:26
 
 #ifndef  BTHREAD_CONDITION_VARIABLE_H
 #define  BTHREAD_CONDITION_VARIABLE_H
 
-#include "butil/time.h"
-#include "bthread/mutex.h"
+#include "butil/macros.h"
 
-__BEGIN_DECLS
-extern int bthread_cond_init(bthread_cond_t* __restrict cond,
-                             const bthread_condattr_t* __restrict cond_attr);
-extern int bthread_cond_destroy(bthread_cond_t* cond);
-extern int bthread_cond_signal(bthread_cond_t* cond);
-extern int bthread_cond_broadcast(bthread_cond_t* cond);
-extern int bthread_cond_wait(bthread_cond_t* __restrict cond,
-                             bthread_mutex_t* __restrict mutex);
-extern int bthread_cond_timedwait(
-    bthread_cond_t* __restrict cond,
-    bthread_mutex_t* __restrict mutex,
-    const struct timespec* __restrict abstime);
-__END_DECLS
+#ifdef BUTIL_CXX11_ENABLED
+#include <condition_variable>
+#include <memory>
+#include <mutex>
+#include <limits>
+#include <system_error>
+#endif // BUTIL_CXX11_ENABLED
+
+#include "butil/time.h"
+#include "bthread/mtx_cv_base.h"
 
 namespace bthread {
 
-class ConditionVariable {
-    DISALLOW_COPY_AND_ASSIGN(ConditionVariable);
+#ifdef BUTIL_CXX11_ENABLED
+
+// The bthread equivalent of std::condition_variable_any that works with types of Lockables
+// other than std::unique_lock<bthread::Mutex>.
+// This is a higher level construct that is not directly supported by native bthread APIs.
+// Note that just as std::condition_variable_any, ConditionVariableAny has slightly worse
+// performance than bthread::Thread. And if you use system level thread mutexes with
+// bthread::ConditionVariableAny you will block the underlying thread.
+class ConditionVariableAny {
 public:
-    typedef bthread_cond_t*         native_handler_type;
-    
-    ConditionVariable() {
-        CHECK_EQ(0, bthread_cond_init(&_cond, NULL));
-    }
-    ~ConditionVariable() {
-        CHECK_EQ(0, bthread_cond_destroy(&_cond));
+    DISALLOW_COPY_AND_ASSIGN(ConditionVariableAny);
+
+    ConditionVariableAny() : _internal_mtx(std::make_shared<bthread::Mutex>()), _cv() {
     }
 
-    native_handler_type native_handler() { return &_cond; }
+    ~ConditionVariableAny() = default;
 
-    void wait(std::unique_lock<bthread::Mutex>& lock) {
-        bthread_cond_wait(&_cond, lock.mutex()->native_handler());
+    void notify_one();
+
+    void notify_all();
+
+    template<typename Lock>
+    void wait(Lock& lock);
+
+    template<typename Lock, typename Pred>
+    void wait(Lock& lock, Pred pred) {
+        while (!pred()) {
+            wait(lock);
+        }
     }
 
-    void wait(std::unique_lock<bthread_mutex_t>& lock) {
-        bthread_cond_wait(&_cond, lock.mutex());
+    template<typename Lock, typename Rep, typename Period>
+    std::cv_status wait_for(Lock& lock, const std::chrono::duration<Rep, Period>& rel_time) {
+        return wait_until(lock, std::chrono::steady_clock::now() + rel_time);
     }
 
-    // Unlike std::condition_variable, we return ETIMEDOUT when time expires
-    // rather than std::timeout
-    int wait_for(std::unique_lock<bthread::Mutex>& lock,
-                 long timeout_us) {
-        return wait_until(lock, butil::microseconds_from_now(timeout_us));
+    template<typename Lock, typename Rep, typename Period, typename Pred>
+    bool wait_for(Lock& lock,
+                  const std::chrono::duration<Rep, Period>& rel_time,
+                  Pred pred) {
+        return wait_until(lock, std::chrono::steady_clock::now() + rel_time, std::move(pred));
     }
 
-    int wait_for(std::unique_lock<bthread_mutex_t>& lock,
-                 long timeout_us) {
-        return wait_until(lock, butil::microseconds_from_now(timeout_us));
-    }
+    template<typename Lock, typename Clock, typename Duration>
+    std::cv_status wait_until(Lock& lock,
+                              const std::chrono::time_point<Clock, Duration>& timeout_time);
 
-    int wait_until(std::unique_lock<bthread::Mutex>& lock,
-                   timespec duetime) {
-        const int rc = bthread_cond_timedwait(
-                &_cond, lock.mutex()->native_handler(), &duetime);
-        return rc == ETIMEDOUT ? ETIMEDOUT : 0;
-    }
-
-    int wait_until(std::unique_lock<bthread_mutex_t>& lock,
-                   timespec duetime) {
-        const int rc = bthread_cond_timedwait(
-                &_cond, lock.mutex(), &duetime);
-        return rc == ETIMEDOUT ? ETIMEDOUT : 0;
-    }
-
-    void notify_one() {
-        bthread_cond_signal(&_cond);
-    }
-
-    void notify_all() {
-        bthread_cond_broadcast(&_cond);
-    }
+    template<typename Lock, typename Clock, typename Duration, typename Pred>
+    bool wait_until(Lock& lock,
+                    const std::chrono::time_point<Clock, Duration>& timeout_time,
+                    Pred pred);
 
 private:
-    bthread_cond_t                  _cond;
+    std::shared_ptr<bthread::Mutex> _internal_mtx;
+    bthread::ConditionVariable _cv;
 };
+
+namespace detail {
+
+template<typename Lock>
+struct LockExternalFunctor {
+    void operator()(Lock* operand) {
+        operand->lock();
+    }
+};
+
+} // namespace detail
+
+template<typename Lock>
+void ConditionVariableAny::wait(Lock& lock) {
+    std::shared_ptr<bthread::Mutex> internal_mtx_shared(_internal_mtx);
+    std::unique_lock<bthread::Mutex> ilock(*internal_mtx_shared);
+    lock.unlock();
+    std::unique_ptr<Lock, detail::LockExternalFunctor<Lock>> then_relock_lock_guard(&lock);
+    std::lock_guard<std::unique_lock<bthread::Mutex>> unlock_ilock_first_guard(
+            ilock, std::adopt_lock);
+    _cv.wait(ilock);
+}
+
+template<typename Lock, typename Clock, typename Duration>
+std::cv_status
+ConditionVariableAny::wait_until(Lock& lock,
+                                   const std::chrono::time_point<Clock, Duration>& timeout_time) {
+    std::shared_ptr<bthread::Mutex> internal_mtx_shared(_internal_mtx);
+    std::unique_lock<bthread::Mutex> ilock(*internal_mtx_shared);
+    lock.unlock();
+    std::unique_ptr<Lock, detail::LockExternalFunctor<Lock>> then_relock_lock_guard(&lock);
+    std::lock_guard<std::unique_lock<bthread::Mutex>> unlock_ilock_first_guard(
+            ilock, std::adopt_lock);
+    return _cv.wait_until(ilock, timeout_time);
+}
+
+template<typename Lock, typename Clock, typename Duration, typename Pred>
+bool ConditionVariableAny::wait_until(Lock& lock,
+                                        const std::chrono::time_point<Clock, Duration>& timeout_time,
+                                        Pred pred) {
+    while (!pred()) {
+        if (wait_until(lock, timeout_time) == std::cv_status::timeout) {
+            return pred();
+        }
+    }
+    return true;
+}
+
+#endif // BUTIL_CXX11_ENABLED
 
 }  // namespace bthread
 
