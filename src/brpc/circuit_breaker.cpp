@@ -20,6 +20,7 @@
 #include "brpc/circuit_breaker.h"
 
 #include <cmath>
+#include <set>
 #include <mutex>
 #include <gflags/gflags.h>
 
