@@ -19,11 +19,13 @@
 
 #include "brpc/circuit_breaker.h"
 
+#include <pthread.h>
 #include <cmath>
 #include <set>
 #include <mutex>
 #include <gflags/gflags.h>
 
+#include "butil/logging.h"
 #include "butil/strings/string_number_conversions.h"
 #include "butil/strings/string_split.h"
 #include "butil/time.h"
@@ -68,12 +70,13 @@ namespace {
 
 #define EPSILON (FLAGS_circuit_breaker_epsilon_value)
 
-std::once_flag g_init_ignored_error_codes_once;
-std::set<int> g_ignored_error_codes;
+static pthread_once_t g_init_ignored_error_codes_once;
+std::set<int>* g_ignored_error_codes;
 
 void InitIgnoredErrorCodes() {
+    g_ignored_error_codes = new std::set<int>;
     std::vector<std::string> error_codes;
-    SplitString(FLAGS_circuit_breaker_ignored_error_codes, ',', &error_codes);
+    butil::SplitString(FLAGS_circuit_breaker_ignored_error_codes, ',', &error_codes);
     for (const std::string& str : error_codes) {
         int error_code = 0;
         if (!butil::StringToInt(str, &error_code) || error_code == 0) {
@@ -82,8 +85,13 @@ void InitIgnoredErrorCodes() {
                 << FLAGS_circuit_breaker_ignored_error_codes;
             continue;
         }
-        g_ignored_error_codes.insert(error_code);
+        g_ignored_error_codes->insert(error_code);
     }
+}
+
+const std::set<int>* GetOrNewIgnoredErrorCodes() {
+    ::pthread_once(&g_init_ignored_error_codes_once, InitIgnoredErrorCodes);
+    return g_ignored_error_codes;
 }
 
 }  // namepace
@@ -201,8 +209,13 @@ CircuitBreaker::CircuitBreaker()
 }
 
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
+<<<<<<< HEAD
     std::call_once(g_init_ignored_error_codes_once, InitIgnoredErrorCodes);
     if (g_ignored_error_codes.find(error_code) != g_ignored_error_codes.end()) {
+=======
+    const std::set<int>* ignored_error_codes = GetOrNewIgnoredErrorCodes();
+    if (ignored_error_codes->find(error_code) != ignored_error_codes->end()) {
+>>>>>>> use pthread_once to initialize ignored_error_codes for cb
         return true;
     }
     if (_broken.load(butil::memory_order_relaxed)) {
