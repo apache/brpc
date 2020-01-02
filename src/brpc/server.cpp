@@ -1669,7 +1669,7 @@ void Server::PutPidFileIfNeeded() {
             return;
         }
     }
-    int fd = open(_options.pid_file.c_str(), O_WRONLY | O_CREAT, 0666);
+    int fd = open(_options.pid_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (fd < 0) {
         LOG(WARNING) << "Fail to open " << _options.pid_file;
         _options.pid_file.clear();
