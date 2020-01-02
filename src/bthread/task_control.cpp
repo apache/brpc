@@ -24,6 +24,7 @@
 #include "butil/errno.h"                   // berror
 #include "butil/logging.h"
 #include "butil/third_party/murmurhash3/murmurhash3.h"
+#include "butil/threading/platform_thread.h"  // PlatformThread
 #include "bthread/sys_futex.h"            // futex_wake_private
 #include "bthread/interrupt_pthread.h"
 #include "bthread/processor.h"            // cpu_relax
@@ -57,6 +58,11 @@ void run_worker_startfn() {
 }
 
 void* TaskControl::worker_thread(void* arg) {
+    static butil::atomic<int> s_brpc_worker_id(0);
+    int worker_id = s_brpc_worker_id.fetch_add(1, butil::memory_order_relaxed);
+    std::string worker_name = "brpc_worker_" + std::to_string(worker_id);
+    butil::PlatformThread::SetName(worker_name.c_str());
+
     run_worker_startfn();    
 #ifdef BAIDU_INTERNAL
     logging::ComlogInitializer comlog_initializer;
