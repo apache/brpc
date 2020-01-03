@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon. Apr. 18 19:52:34 CST 2011
 
 // Iteratively split a string by one or multiple separators.

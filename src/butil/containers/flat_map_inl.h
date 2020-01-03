@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Wed Nov 27 12:59:20 CST 2013
 
 #ifndef BUTIL_FLAT_MAP_INL_H

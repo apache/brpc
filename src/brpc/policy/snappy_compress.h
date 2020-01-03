@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Jiang,Lin (jianglin05@baidu.com)
 
 #ifndef BRPC_POLICY_SNAPPY_COMPRESS_H
 #define BRPC_POLICY_SNAPPY_COMPRESS_H

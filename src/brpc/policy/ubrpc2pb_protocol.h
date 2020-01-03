@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #ifndef BRPC_POLICY_UBRPC2PB_PROTOCOL_H
 #define BRPC_POLICY_UBRPC2PB_PROTOCOL_H

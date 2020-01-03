@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Dec  4 14:57:27 CST 2016
 
 #ifndef BUTIL_CASE_IGNORED_FLAT_MAP_H

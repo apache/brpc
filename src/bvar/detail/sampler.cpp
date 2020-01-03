@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 28 18:14:40 CST 2015
 
 #include "butil/time.h"

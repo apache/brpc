@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
 
 #ifndef  BRPC_HULU_PBRPC_CONTROLLER_H
 #define  BRPC_HULU_PBRPC_CONTROLLER_H

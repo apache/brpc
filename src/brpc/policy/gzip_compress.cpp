@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #include <google/protobuf/io/gzip_stream.h>    // GzipXXXStream
 #include "butil/logging.h"

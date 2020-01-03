@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Fri Sep 10 13:34:25 CST 2010
 
 #include "butil/build_config.h"                        // OS_MACOSX

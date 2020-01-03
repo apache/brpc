@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Jiashun Zhu(zhujiashun@baidu.com)
 
 #ifndef _HEALTH_CHECK_H
 #define _HEALTH_CHECK_H

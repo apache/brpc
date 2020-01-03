@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon Jul 20 12:39:39 CST 2015
 
 // Redirect LOG() into comlog.

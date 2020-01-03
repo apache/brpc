@@ -17,7 +17,6 @@
 
 // bthread - A M:N threading library to make applications more concurrent.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Sep  7 22:37:39 CST 2014
 
 #include <unistd.h>                               // getpagesize

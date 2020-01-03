@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 // [Modified from the code in SRS2 (src/kernel/srs_kernel_ts.cpp)]
 // The MIT License (MIT)

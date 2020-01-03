@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Jiang,Lin (jianglin05@baidu.com)
 
 #include "butil/logging.h"
 #include "butil/third_party/snappy/snappy.h"

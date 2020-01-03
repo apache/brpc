@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Rujie Jiang (jiangrujie@baidu.com)
 
 #include "butil/build_config.h"                       // OS_MACOSX
 #include <netdb.h>                                    // gethostbyname_r

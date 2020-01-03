@@ -17,7 +17,6 @@
 
 // bthread - A M:N threading library to make applications more concurrent.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Thu Aug  7 18:56:27 CST 2014
 
 #include "butil/compat.h"

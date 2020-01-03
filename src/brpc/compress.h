@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Rujie Jiang (jiangrujie@baidu.com)
-//          Ge,Jun (gejun@baidu.com)
 
 #ifndef BRPC_COMPRESS_H
 #define BRPC_COMPRESS_H

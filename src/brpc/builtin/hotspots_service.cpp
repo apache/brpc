@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Tian,Ye(tianye15@baidu.com)
 
 #include <stdio.h>
 #include <thread>

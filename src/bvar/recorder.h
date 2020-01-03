@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: chenzhangyi01@baidu.com gejun@baidu.com
 // Date 2014/09/25 17:50:21
 
 #ifndef  BVAR_RECORDER_H

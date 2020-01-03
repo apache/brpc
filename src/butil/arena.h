@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Fri Jun  5 18:25:40 CST 2015
 
 // Do small memory allocations on continuous blocks.

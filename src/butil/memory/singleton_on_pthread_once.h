@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
  
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Thu Dec 15 14:37:39 CST 2016
 
 #ifndef BUTIL_MEMORY_SINGLETON_ON_PTHREAD_ONCE_H

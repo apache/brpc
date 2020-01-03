@@ -17,7 +17,6 @@
 
 // bthread - A M:N threading library to make applications more concurrent.
 
-// Author: Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date: 2016/06/03 13:15:24
 
 #include "butil/atomicops.h"     // butil::atomic<int>

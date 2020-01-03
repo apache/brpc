@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Wed Jul 29 23:25:43 CST 2015
 
 #ifndef  BVAR_WINDOW_H

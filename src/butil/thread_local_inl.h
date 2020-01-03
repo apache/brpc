@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Sep 16 12:39:12 CST 2014
 
 #ifndef BUTIL_THREAD_LOCAL_INL_H

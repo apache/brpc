@@ -17,7 +17,6 @@
 
 // bthread - A M:N threading library to make applications more concurrent.
 
-// Author: Ge,Jun (gejun@baidu.com)
 
 #include <queue>                           // heap functions
 #include "butil/scoped_lock.h"

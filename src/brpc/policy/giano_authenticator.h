@@ -17,7 +17,6 @@
 
 #ifdef BAIDU_INTERNAL
 
-// Authors: Rujie Jiang (jiangrujie@baidu.com)
 
 #ifndef BRPC_POLICY_GIANO_AUTHENTICATOR_H
 #define BRPC_POLICY_GIANO_AUTHENTICATOR_H

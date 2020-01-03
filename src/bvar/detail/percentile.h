@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date: 2015/09/15 10:44:17
 
 #ifndef  BVAR_DETAIL_PERCENTILE_H

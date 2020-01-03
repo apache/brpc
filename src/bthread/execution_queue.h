@@ -17,7 +17,6 @@
 
 // bthread - A M:N threading library to make applications more concurrent.
 
-// Author: Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date: 2015/10/23 18:16:16
 
 #ifndef  BTHREAD_EXECUTION_QUEUE_H

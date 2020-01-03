@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Yan,Lin (yanlin@baidu.com)
-//         Ge,Jun (gejun@baidu.com)
 // Date: Thu Oct 28 15:23:09 2010
 
 #ifndef BUTIL_FILES_TEMP_FILE_H

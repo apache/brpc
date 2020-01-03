@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Jiashun Zhu(zhujiashun@baidu.com)
 
 #include "brpc/policy/http2_rpc_protocol.h"
 #include "brpc/details/controller_private_accessor.h"
