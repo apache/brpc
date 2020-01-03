@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Daojin Cai (caidaojin@qiyi.com)
 
 #include <algorithm>
 
@@ -43,8 +42,8 @@ bool IsCoprime(uint64_t num1, uint64_t num2) {
     }
     while (true) {
         temp = num1 % num2;
-        if (temp == 0) { 
-            break; 
+        if (temp == 0) {
+            break;
         } else {
             num1 = num2;
             num2 = temp;
@@ -53,20 +52,20 @@ bool IsCoprime(uint64_t num1, uint64_t num2) {
     return num2 == 1;
 }
 
-// Get a reasonable stride according to weights configured of servers. 
+// Get a reasonable stride according to weights configured of servers.
 uint64_t GetStride(const uint64_t weight_sum, const size_t num) {
     if (weight_sum == 1) {
       return 1;
-    } 
+    }
     uint32_t average_weight = weight_sum / num;
-    auto iter = std::lower_bound(prime_stride.begin(), prime_stride.end(), 
+    auto iter = std::lower_bound(prime_stride.begin(), prime_stride.end(),
                                  average_weight);
     while (iter != prime_stride.end()
            && !IsCoprime(weight_sum, *iter)) {
         ++iter;
     }
     CHECK(iter != prime_stride.end()) << "Failed to get stride";
-    return *iter > weight_sum ? *iter % weight_sum : *iter;  
+    return *iter > weight_sum ? *iter % weight_sum : *iter;
 }
 
 }  // namespace
@@ -79,9 +78,9 @@ bool WeightedRoundRobinLoadBalancer::Add(Servers& bg, const ServerId& id) {
         bg.server_list.reserve(128);
     }
     uint32_t weight = 0;
-    if (butil::StringToUint(id.tag, &weight) && 
+    if (butil::StringToUint(id.tag, &weight) &&
         weight > 0) {
-        bool insert_server = 
+        bool insert_server =
                  bg.server_map.emplace(id.id, bg.server_list.size()).second;
         if (insert_server) {
             bg.server_list.emplace_back(id.id, weight);
@@ -165,12 +164,12 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
       if (tls.stride == 0) {
           tls.position = butil::fast_rand_less_than(s->server_list.size());
       }
-      tls.stride = GetStride(s->weight_sum, s->server_list.size()); 
+      tls.stride = GetStride(s->weight_sum, s->server_list.size());
     }
     // If server list changed, the position may be out of range.
     tls.position %= s->server_list.size();
     // Check whether remain server was removed from server list.
-    if (tls.remain_server.weight > 0 && 
+    if (tls.remain_server.weight > 0 &&
         tls.remain_server.id != s->server_list[tls.position].id) {
         tls.remain_server.weight = 0;
     }
@@ -198,7 +197,7 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
             // Select from begining status.
             tls_temp.stride = GetStride(remain_weight, remain_servers);
             tls_temp.position = tls.position;
-            tls_temp.remain_server = tls.remain_server; 
+            tls_temp.remain_server = tls.remain_server;
         }
     }
     return EHOSTDOWN;
@@ -206,7 +205,7 @@ int WeightedRoundRobinLoadBalancer::SelectServer(const SelectIn& in, SelectOut* 
 
 SocketId WeightedRoundRobinLoadBalancer::GetServerInNextStride(
         const std::vector<Server>& server_list,
-        const std::unordered_set<SocketId>& filter, 
+        const std::unordered_set<SocketId>& filter,
         TLS& tls) {
     SocketId final_server = INVALID_SOCKET_ID;
     uint64_t stride = tls.stride;
@@ -214,7 +213,7 @@ SocketId WeightedRoundRobinLoadBalancer::GetServerInNextStride(
     if (remain.weight > 0) {
         if (filter.count(remain.id) == 0) {
             final_server = remain.id;
-            if (remain.weight > stride) { 
+            if (remain.weight > stride) {
                 remain.weight -= stride;
                 return final_server;
             } else {
@@ -223,7 +222,7 @@ SocketId WeightedRoundRobinLoadBalancer::GetServerInNextStride(
         }
         remain.weight = 0;
         ++tls.position;
-        tls.position %= server_list.size(); 
+        tls.position %= server_list.size();
     }
     while (stride > 0) {
         final_server = server_list[tls.position].id;
@@ -237,7 +236,7 @@ SocketId WeightedRoundRobinLoadBalancer::GetServerInNextStride(
             stride -= configured_weight;
         }
         ++tls.position;
-        tls.position %= server_list.size(); 
+        tls.position %= server_list.size();
     }
     return final_server;
 }
