@@ -96,7 +96,6 @@ BUTIL_SOURCES = \
     src/butil/hash.cc \
     src/butil/lazy_instance.cc \
     src/butil/location.cc \
-    src/butil/md5.cc \
     src/butil/memory/aligned_memory.cc \
     src/butil/memory/ref_counted.cc \
     src/butil/memory/ref_counted_memory.cc \

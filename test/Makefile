@@ -68,7 +68,6 @@ TEST_BUTIL_SOURCES = \
     guid_unittest.cc \
     hash_unittest.cc \
     lazy_instance_unittest.cc \
-    md5_unittest.cc \
     aligned_memory_unittest.cc \
     linked_ptr_unittest.cc \
     ref_counted_memory_unittest.cc \

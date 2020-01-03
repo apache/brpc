@@ -100,7 +100,6 @@ SET(TEST_BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/test/guid_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/hash_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/lazy_instance_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/md5_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/aligned_memory_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/linked_ptr_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/ref_counted_memory_unittest.cc

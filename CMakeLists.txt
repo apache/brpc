@@ -285,7 +285,6 @@ set(BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/src/butil/hash.cc
     ${PROJECT_SOURCE_DIR}/src/butil/lazy_instance.cc
     ${PROJECT_SOURCE_DIR}/src/butil/location.cc
-    ${PROJECT_SOURCE_DIR}/src/butil/md5.cc
     ${PROJECT_SOURCE_DIR}/src/butil/memory/aligned_memory.cc
     ${PROJECT_SOURCE_DIR}/src/butil/memory/ref_counted.cc
     ${PROJECT_SOURCE_DIR}/src/butil/memory/ref_counted_memory.cc
