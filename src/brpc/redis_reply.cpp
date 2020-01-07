@@ -409,9 +409,6 @@ void RedisReply::CopyFromDifferentArena(const RedisReply& other) {
 }
 
 void RedisReply::SetArray(int size) {
-    if (!_arena) {
-        return;
-    }
     if (_type != REDIS_REPLY_NIL) {
         Reset();
     }
@@ -436,9 +433,6 @@ void RedisReply::SetArray(int size) {
 }
 
 void RedisReply::SetStringImpl(const butil::StringPiece& str, RedisReplyType type) {
-    if (!_arena) {
-        return;
-    }
     if (_type != REDIS_REPLY_NIL) {
         Reset();
     }
@@ -458,6 +452,25 @@ void RedisReply::SetStringImpl(const butil::StringPiece& str, RedisReplyType typ
     }
     _type = type;
     _length = size;
+}
+
+void RedisReply::FormatStringImpl(const char* fmt, va_list args, RedisReplyType type) {
+    va_list copied_args;
+    va_copy(copied_args, args);
+    char buf[64];
+    int ret = vsnprintf(buf, sizeof(buf), fmt, copied_args);
+    va_end(copied_args);
+    if (ret < 0) {
+        LOG(FATAL) << "Fail to vsnprintf into buf=" << (void*)buf << " size=" << sizeof(buf);
+        return;
+    } else if (ret < (int)sizeof(buf)) {
+        return SetStringImpl(buf, type);
+    } else {
+        std::string str;
+        str.reserve(ret + 1);
+        butil::string_vappendf(&str, fmt, args);
+        return SetStringImpl(str, type);
+    }
 }
 
 } // namespace brpc

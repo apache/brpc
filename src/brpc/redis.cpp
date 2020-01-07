@@ -272,7 +272,7 @@ RedisResponse* RedisResponse::New() const {
 }
 
 void RedisResponse::Clear() {
-    _first_reply.Clear();
+    _first_reply.Reset();
     _other_replies = NULL;
     _arena.clear();
     _nreply = 0;

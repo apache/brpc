@@ -67,17 +67,20 @@ public:
     // value.
     void SetArray(int size);
 
-    // Set the reply to status message `str'.
+    // Set the reply to a status.
     void SetStatus(const butil::StringPiece& str);
+    void FormatStatus(const char* fmt, ...);
 
-    // Set the reply to error message `str'.
+    // Set the reply to an error.
     void SetError(const butil::StringPiece& str);
+    void FormatError(const char* fmt, ...);
 
-    // Set the reply to integer `value'.
+    // Set this reply to integer `value'.
     void SetInteger(int64_t value);
 
-    // Set the reply to string `str'.
+    // Set this reply to a (bulk) string.
     void SetString(const butil::StringPiece& str);
+    void FormatString(const char* fmt, ...);
 
     // Convert the reply into a signed 64-bit integer(according to
     // http://redis.io/topics/protocol). If the reply is not an integer,
@@ -125,7 +128,7 @@ public:
     void Swap(RedisReply& other);
 
     // Reset to the state that this reply was just constructed.
-    void Clear();
+    void Reset();
 
     // Print fields into ostream
     void Print(std::ostream& os) const;
@@ -143,8 +146,8 @@ private:
     // by calling CopyFrom[Different|Same]Arena.
     DISALLOW_COPY_AND_ASSIGN(RedisReply);
 
+    void FormatStringImpl(const char* fmt, va_list args, RedisReplyType type);
     void SetStringImpl(const butil::StringPiece& str, RedisReplyType type);
-    void Reset();
     
     RedisReplyType _type;
     int _length;  // length of short_str/long_str, count of replies
@@ -218,9 +221,21 @@ inline void RedisReply::SetNullString() {
 inline void RedisReply::SetStatus(const butil::StringPiece& str) {
     return SetStringImpl(str, REDIS_REPLY_STATUS);
 }
+inline void RedisReply::FormatStatus(const char* fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    FormatStringImpl(fmt, ap, REDIS_REPLY_STATUS);
+    va_end(ap);
+}
 
 inline void RedisReply::SetError(const butil::StringPiece& str) {
     return SetStringImpl(str, REDIS_REPLY_ERROR);
+}
+inline void RedisReply::FormatError(const char* fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    FormatStringImpl(fmt, ap, REDIS_REPLY_ERROR);
+    va_end(ap);
 }
 
 inline void RedisReply::SetInteger(int64_t value) {
@@ -234,6 +249,12 @@ inline void RedisReply::SetInteger(int64_t value) {
 
 inline void RedisReply::SetString(const butil::StringPiece& str) {
     return SetStringImpl(str, REDIS_REPLY_STRING);
+}
+inline void RedisReply::FormatString(const char* fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    FormatStringImpl(fmt, ap, REDIS_REPLY_STRING);
+    va_end(ap);
 }
 
 inline const char* RedisReply::c_str() const {
@@ -298,14 +319,6 @@ inline void RedisReply::Swap(RedisReply& other) {
     std::swap(_data.padding[0], other._data.padding[0]);
     std::swap(_data.padding[1], other._data.padding[1]);
     std::swap(_arena, other._arena);
-}
-
-inline void RedisReply::Clear() {
-    _type = REDIS_REPLY_NIL;
-    _length = 0;
-    _data.array.last_index = -1;
-    _data.array.replies = NULL;
-    // _arena should not be cleared because it may be shared between RedisReply;
 }
 
 inline void RedisReply::CopyFromSameArena(const RedisReply& other) {

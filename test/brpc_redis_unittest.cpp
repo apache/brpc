@@ -643,11 +643,12 @@ TEST_F(RedisTest, redis_reply_codec) {
         appender.move_to(buf);
         ASSERT_STREQ(buf.to_string().c_str(), "+OK\r\n");
         ASSERT_STREQ(r.c_str(), "OK");
-        r.Clear();
-        brpc::ParseError err = r.ConsumePartialIOBuf(buf);
+
+        brpc::RedisReply r2(&arena);
+        brpc::ParseError err = r2.ConsumePartialIOBuf(buf);
         ASSERT_EQ(err, brpc::PARSE_OK);
-        ASSERT_TRUE(r.is_string());
-        ASSERT_STREQ("OK", r.c_str());
+        ASSERT_TRUE(r2.is_string());
+        ASSERT_STREQ("OK", r2.c_str());
     }
     // error
     {
@@ -658,11 +659,12 @@ TEST_F(RedisTest, redis_reply_codec) {
         ASSERT_TRUE(r.SerializeTo(&appender));
         appender.move_to(buf);
         ASSERT_STREQ(buf.to_string().c_str(), "-not exist \'key\'\r\n");
-        r.Clear();
-        brpc::ParseError err = r.ConsumePartialIOBuf(buf);
+
+        brpc::RedisReply r2(&arena);
+        brpc::ParseError err = r2.ConsumePartialIOBuf(buf);
         ASSERT_EQ(err, brpc::PARSE_OK);
-        ASSERT_TRUE(r.is_error());
-        ASSERT_STREQ("not exist \'key\'", r.error_message());
+        ASSERT_TRUE(r2.is_error());
+        ASSERT_STREQ("not exist \'key\'", r2.error_message());
     }
     // string
     {
@@ -673,22 +675,35 @@ TEST_F(RedisTest, redis_reply_codec) {
         ASSERT_TRUE(r.SerializeTo(&appender));
         appender.move_to(buf);
         ASSERT_STREQ(buf.to_string().c_str(), "$-1\r\n");
-        r.Clear();
-        brpc::ParseError err = r.ConsumePartialIOBuf(buf);
+        
+        brpc::RedisReply r2(&arena);
+        brpc::ParseError err = r2.ConsumePartialIOBuf(buf);
         ASSERT_EQ(err, brpc::PARSE_OK);
-        ASSERT_TRUE(r.is_nil());
+        ASSERT_TRUE(r2.is_nil());
 
-        r.Clear();
         r.SetString("abcde'hello world");
         ASSERT_TRUE(r.SerializeTo(&appender));
         appender.move_to(buf);
         ASSERT_STREQ(buf.to_string().c_str(), "$17\r\nabcde'hello world\r\n");
-        ASSERT_STREQ(r.c_str(), "abcde'hello world");
-        r.Clear();
-        err = r.ConsumePartialIOBuf(buf);
+        ASSERT_STREQ("abcde'hello world", r.c_str());
+
+        r.FormatString("int:%d str:%s fp:%.2f", 123, "foobar", 3.21);
+        ASSERT_TRUE(r.SerializeTo(&appender));
+        appender.move_to(buf);
+        ASSERT_STREQ(buf.to_string().c_str(), "$26\r\nint:123 str:foobar fp:3.21\r\n");
+        ASSERT_STREQ("int:123 str:foobar fp:3.21", r.c_str());
+
+        r.FormatString("verylongstring verylongstring verylongstring verylongstring int:%d str:%s fp:%.2f", 123, "foobar", 3.21);
+        ASSERT_TRUE(r.SerializeTo(&appender));
+        appender.move_to(buf);
+        ASSERT_STREQ(buf.to_string().c_str(), "$86\r\nverylongstring verylongstring verylongstring verylongstring int:123 str:foobar fp:3.21\r\n");
+        ASSERT_STREQ("verylongstring verylongstring verylongstring verylongstring int:123 str:foobar fp:3.21", r.c_str());
+        
+        brpc::RedisReply r3(&arena);
+        err = r3.ConsumePartialIOBuf(buf);
         ASSERT_EQ(err, brpc::PARSE_OK);
-        ASSERT_TRUE(r.is_string());
-        ASSERT_STREQ(r.c_str(), "abcde'hello world");
+        ASSERT_TRUE(r3.is_string());
+        ASSERT_STREQ(r.c_str(), r3.c_str());
     }
     // integer
     {
@@ -699,16 +714,16 @@ TEST_F(RedisTest, redis_reply_codec) {
         int input[] = { -1, 1234567 };
         const char* output[] = { ":-1\r\n", ":1234567\r\n" };
         for (int i = 0; i < t; ++i) {
-            r.Clear();
             r.SetInteger(input[i]);
             ASSERT_TRUE(r.SerializeTo(&appender));
             appender.move_to(buf);
             ASSERT_STREQ(buf.to_string().c_str(), output[i]);
-            r.Clear();
-            brpc::ParseError err = r.ConsumePartialIOBuf(buf);
+
+            brpc::RedisReply r2(&arena);
+            brpc::ParseError err = r2.ConsumePartialIOBuf(buf);
             ASSERT_EQ(err, brpc::PARSE_OK);
-            ASSERT_TRUE(r.is_integer());
-            ASSERT_EQ(r.integer(), input[i]);
+            ASSERT_TRUE(r2.is_integer());
+            ASSERT_EQ(r2.integer(), input[i]);
         }
     }
     // array
@@ -729,22 +744,22 @@ TEST_F(RedisTest, redis_reply_codec) {
         ASSERT_STREQ(buf.to_string().c_str(),
                 "*3\r\n*2\r\n$14\r\nhello, it's me\r\n:422\r\n$21\r\n"
                 "To go over everything\r\n:1\r\n");
-        r.Clear();
-        ASSERT_EQ(r.ConsumePartialIOBuf(buf), brpc::PARSE_OK);
-        ASSERT_TRUE(r.is_array());
-        ASSERT_EQ(3ul, r.size());
-        ASSERT_TRUE(r[0].is_array());
-        ASSERT_EQ(2ul, r[0].size());
-        ASSERT_TRUE(r[0][0].is_string());
-        ASSERT_STREQ(r[0][0].c_str(), "hello, it's me");
-        ASSERT_TRUE(r[0][1].is_integer());
-        ASSERT_EQ(r[0][1].integer(), 422);
-        ASSERT_TRUE(r[1].is_string());
-        ASSERT_STREQ(r[1].c_str(), "To go over everything");
-        ASSERT_TRUE(r[2].is_integer());
-        ASSERT_EQ(1, r[2].integer());
 
-        r.Clear();
+        brpc::RedisReply r2(&arena);
+        ASSERT_EQ(r2.ConsumePartialIOBuf(buf), brpc::PARSE_OK);
+        ASSERT_TRUE(r2.is_array());
+        ASSERT_EQ(3ul, r2.size());
+        ASSERT_TRUE(r2[0].is_array());
+        ASSERT_EQ(2ul, r2[0].size());
+        ASSERT_TRUE(r2[0][0].is_string());
+        ASSERT_STREQ(r2[0][0].c_str(), "hello, it's me");
+        ASSERT_TRUE(r2[0][1].is_integer());
+        ASSERT_EQ(r2[0][1].integer(), 422);
+        ASSERT_TRUE(r2[1].is_string());
+        ASSERT_STREQ(r2[1].c_str(), "To go over everything");
+        ASSERT_TRUE(r2[2].is_integer());
+        ASSERT_EQ(1, r2[2].integer());
+
         // null array
         r.SetNullArray();
         ASSERT_TRUE(r.SerializeTo(&appender));

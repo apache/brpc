@@ -28,6 +28,8 @@
 
 #include <butil/time.h>
 
+DEFINE_int32(port, 6379, "TCP Port of this server");
+
 class RedisServiceImpl : public brpc::RedisService {
 public:
     bool Set(const std::string& key, const std::string& value) {
@@ -65,8 +67,8 @@ public:
     brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
                                           bool /*flush_batched*/) override {
-        if (args.size() <= 1) {
-            output->SetError("ERR wrong number of arguments for 'get' command");
+        if (args.size() != 2ul) {
+            output->FormatError("Expect 1 arg for 'get', actually %lu", args.size()-1);
             return brpc::RedisCommandHandler::OK;
         }
         const std::string key(args[1]);
@@ -91,8 +93,8 @@ public:
     brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
                                           bool /*flush_batched*/) override {
-        if (args.size() <= 2) {
-            output->SetError("ERR wrong number of arguments for 'set' command");
+        if (args.size() != 3ul) {
+            output->FormatError("Expect 2 args for 'set', actually %lu", args.size()-1);
             return brpc::RedisCommandHandler::OK;
         }
         const std::string key(args[1]);
@@ -115,7 +117,7 @@ int main(int argc, char* argv[]) {
     brpc::Server server;
     brpc::ServerOptions server_options;
     server_options.redis_service = rsimpl;
-    if (server.Start(6379, &server_options) != 0) {
+    if (server.Start(FLAGS_port, &server_options) != 0) {
         LOG(ERROR) << "Fail to start server";
         return -1;
     }
