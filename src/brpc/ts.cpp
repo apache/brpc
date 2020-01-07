@@ -123,9 +123,9 @@ static const uint32_t crctab[] = {
 
 uint32_t crc32_ts(const void* data, size_t len) {
     const uint8_t* p = (const uint8_t*)data;
-    uint32_t crc = -1;
-    for (size_t i = 0; i < len; ++i, p++) {
-        crc = (crc << 8) ^ crctab[(crc >> 24) ^ *p];
+    uint32_t crc = 0xffffffff;
+    for (size_t i = 0; i < len; ++i) {
+        crc = (crc << 8) ^ crctab[(crc >> 24) ^ *p++];
     }
     return crc;
 }
