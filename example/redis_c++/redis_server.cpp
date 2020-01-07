@@ -59,12 +59,12 @@ private:
 
 class GetCommandHandler : public brpc::RedisCommandHandler {
 public:
-    GetCommandHandler(RedisServiceImpl* rsimpl)
+    explicit GetCommandHandler(RedisServiceImpl* rsimpl)
         : _rsimpl(rsimpl) {}
 
     brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
-                                          bool flush_batched) override {
+                                          bool /*flush_batched*/) override {
         if (args.size() <= 1) {
             output->SetError("ERR wrong number of arguments for 'get' command");
             return brpc::RedisCommandHandler::OK;
@@ -85,12 +85,12 @@ private:
 
 class SetCommandHandler : public brpc::RedisCommandHandler {
 public:
-    SetCommandHandler(RedisServiceImpl* rsimpl)
+    explicit SetCommandHandler(RedisServiceImpl* rsimpl)
         : _rsimpl(rsimpl) {}
 
     brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
-                                          bool flush_batched) override {
+                                          bool /*flush_batched*/) override {
         if (args.size() <= 2) {
             output->SetError("ERR wrong number of arguments for 'set' command");
             return brpc::RedisCommandHandler::OK;

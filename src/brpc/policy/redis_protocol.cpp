@@ -56,16 +56,15 @@ struct InputResponse : public InputMessageBase {
 // This class is as parsing_context in socket.
 class RedisConnContext : public Destroyable  {
 public:
-    RedisConnContext()
-        : redis_service(NULL)
+    explicit RedisConnContext(const RedisService* rs)
+        : redis_service(rs)
         , batched_size(0) {}
 
     ~RedisConnContext();
     // @Destroyable
     void Destroy() override;
 
-    SocketId socket_id;
-    RedisService* redis_service;
+    const RedisService* redis_service;
     // If user starts a transaction, transaction_handler indicates the
     // handler pointer that runs the transaction command.
     std::unique_ptr<RedisCommandHandler> transaction_handler;
@@ -151,15 +150,13 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
     }
     const Server* server = static_cast<const Server*>(arg);
     if (server) {
-        RedisService* rs = server->options().redis_service;
+        const RedisService* const rs = server->options().redis_service;
         if (!rs) {
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
         }
         RedisConnContext* ctx = static_cast<RedisConnContext*>(socket->parsing_context());
         if (ctx == NULL) {
-            ctx = new RedisConnContext;
-            ctx->socket_id = socket->id();
-            ctx->redis_service = rs;
+            ctx = new RedisConnContext(rs);
             socket->reset_parsing_context(ctx);
         }
         std::vector<const char*> current_commands;

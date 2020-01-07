@@ -433,6 +433,9 @@ Server::~Server() {
         delete _options.auth;
         _options.auth = NULL;
     }
+
+    delete _options.redis_service;
+    _options.redis_service = NULL;
 }
 
 int Server::AddBuiltinServices() {

@@ -28,9 +28,11 @@ SOPATHS=$(addprefix -Wl$(COMMA)-rpath$(COMMA), $(LIBS))
 DYNAMIC_LINKINGS += -lreadline -lncurses
 PRESS_SOURCES = redis_press.cpp
 CLI_SOURCES = redis_cli.cpp
+SERVER_SOURCES = redis_server.cpp
 
 PRESS_OBJS = $(addsuffix .o, $(basename $(PRESS_SOURCES))) 
 CLI_OBJS = $(addsuffix .o, $(basename $(CLI_SOURCES))) 
+SERVER_OBJS = $(addsuffix .o, $(basename $(SERVER_SOURCES))) 
 
 ifeq ($(SYSTEM),Darwin)
  ifneq ("$(LINK_SO)", "")
@@ -48,12 +50,12 @@ else ifeq ($(SYSTEM),Linux)
 endif
 
 .PHONY:all
-all: redis_press redis_cli
+all: redis_press redis_cli redis_server
 
 .PHONY:clean
 clean:
 	@echo "Cleaning"
-	@rm -rf redis_press redis_cli $(PRESS_OBJS) $(CLI_OBJS)
+	@rm -rf redis_press redis_cli $(PRESS_OBJS) $(CLI_OBJS) $(SERVER_OBJS)
 
 redis_press:$(PRESS_OBJS)
 	@echo "Linking $@"
@@ -64,6 +66,14 @@ else
 endif
 
 redis_cli:$(CLI_OBJS)
+	@echo "Linking $@"
+ifneq ("$(LINK_SO)", "")
+	@$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
+else
+	@$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
+endif
+
+redis_server:$(SERVER_OBJS)
 	@echo "Linking $@"
 ifneq ("$(LINK_SO)", "")
 	@$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@

@@ -447,7 +447,7 @@ bool RedisService::AddCommandHandler(const std::string& name, RedisCommandHandle
     return true;
 }
  
-RedisCommandHandler* RedisService::FindCommandHandler(const std::string& name) {
+RedisCommandHandler* RedisService::FindCommandHandler(const std::string& name) const {
     std::string lcname = StringToLowerASCII(name);
     auto it = _command_map.find(lcname);
     if (it != _command_map.end()) {

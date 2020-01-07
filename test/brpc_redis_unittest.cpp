@@ -850,8 +850,8 @@ public:
 
 class SetCommandHandler : public brpc::RedisCommandHandler {
 public:
-    SetCommandHandler(bool batch_process = false)
-        : rs(NULL)
+    SetCommandHandler(RedisServiceImpl* rs, bool batch_process = false)
+        : _rs(rs)
         , _batch_process(batch_process) {}
 
     brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
@@ -862,7 +862,7 @@ public:
             return brpc::RedisCommandHandler::OK;
         }
         if (_batch_process) {
-            return rs->OnBatched(args, output, flush_batched);
+            return _rs->OnBatched(args, output, flush_batched);
         } else {
             DoSet(args[1], args[2], output);
             return brpc::RedisCommandHandler::OK;
@@ -874,15 +874,15 @@ public:
         output->SetStatus("OK");
     }
 
-    RedisServiceImpl* rs;
 private:
+    RedisServiceImpl* _rs;
     bool _batch_process;
 };
 
 class GetCommandHandler : public brpc::RedisCommandHandler {
 public:
-    GetCommandHandler(bool batch_process = false)
-        : rs(NULL)
+    GetCommandHandler(RedisServiceImpl* rs, bool batch_process = false)
+        : _rs(rs)
         , _batch_process(batch_process) {}
 
     brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
@@ -893,7 +893,7 @@ public:
             return brpc::RedisCommandHandler::OK;
         }
         if (_batch_process) {
-            return rs->OnBatched(args, output, flush_batched);
+            return _rs->OnBatched(args, output, flush_batched);
         } else {
             DoGet(args[1], output);
             return brpc::RedisCommandHandler::OK;
@@ -909,8 +909,8 @@ public:
         }
     }
 
-    RedisServiceImpl* rs;
 private:
+    RedisServiceImpl* _rs;
     bool _batch_process;
 };
 
@@ -939,8 +939,8 @@ TEST_F(RedisTest, server_sanity) {
     brpc::Server server;
     brpc::ServerOptions server_options;
     RedisServiceImpl* rsimpl = new RedisServiceImpl;
-    GetCommandHandler *gh = new GetCommandHandler;
-    SetCommandHandler *sh = new SetCommandHandler;
+    GetCommandHandler *gh = new GetCommandHandler(rsimpl);
+    SetCommandHandler *sh = new SetCommandHandler(rsimpl);
     IncrCommandHandler *ih = new IncrCommandHandler;
     rsimpl->AddCommandHandler("get", gh);
     rsimpl->AddCommandHandler("set", sh);
@@ -1084,8 +1084,8 @@ TEST_F(RedisTest, server_command_continue) {
     brpc::Server server;
     brpc::ServerOptions server_options;
     RedisServiceImpl* rsimpl = new RedisServiceImpl;
-    rsimpl->AddCommandHandler("get", new GetCommandHandler);
-    rsimpl->AddCommandHandler("set", new SetCommandHandler);
+    rsimpl->AddCommandHandler("get", new GetCommandHandler(rsimpl));
+    rsimpl->AddCommandHandler("set", new SetCommandHandler(rsimpl));
     rsimpl->AddCommandHandler("incr", new IncrCommandHandler);
     rsimpl->AddCommandHandler("multi", new MultiCommandHandler);
     server_options.redis_service = rsimpl;
@@ -1159,10 +1159,8 @@ TEST_F(RedisTest, server_handle_pipeline) {
     brpc::Server server;
     brpc::ServerOptions server_options;
     RedisServiceImpl* rsimpl = new RedisServiceImpl;
-    GetCommandHandler* getch = new GetCommandHandler(true);
-    SetCommandHandler* setch = new SetCommandHandler(true);
-    getch->rs = rsimpl;
-    setch->rs = rsimpl;
+    GetCommandHandler* getch = new GetCommandHandler(rsimpl, true);
+    SetCommandHandler* setch = new SetCommandHandler(rsimpl, true);
     rsimpl->AddCommandHandler("get", getch);
     rsimpl->AddCommandHandler("set", setch);
     rsimpl->AddCommandHandler("multi", new MultiCommandHandler);

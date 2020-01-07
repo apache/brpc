@@ -214,19 +214,20 @@ std::ostream& operator<<(std::ostream& os, const RedisResponse&);
 
 class RedisCommandHandler;
 
-// Implement this class and assign an instance to ServerOption.redis_service
-// to enable redis support. 
+// Container of CommandHandlers.
+// Assign an instance to ServerOption.redis_service to enable redis support. 
 class RedisService {
 public:
-    typedef std::unordered_map<std::string, RedisCommandHandler*> CommandMap;
     virtual ~RedisService() {}
     
     // Call this function to register `handler` that can handle command `name`.
     bool AddCommandHandler(const std::string& name, RedisCommandHandler* handler);
 
     // This function should not be touched by user and used by brpc deverloper only.
-    RedisCommandHandler* FindCommandHandler(const std::string& name);
+    RedisCommandHandler* FindCommandHandler(const std::string& name) const;
+
 private:
+    typedef std::unordered_map<std::string, RedisCommandHandler*> CommandMap;
     CommandMap _command_map;
 };
 
