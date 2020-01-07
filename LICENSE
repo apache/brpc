@@ -663,7 +663,7 @@ src/brpc/ts.cpp: licensed under the following terms:
 
 --------------------------------------------------------------------------------
 
-src/brpc/builtin/pprof_perl.cpp: 3-clause BSD
+src/brpc/builtin/pprof_perl.cpp: licensed under the following terms:
 
  Copyright (c) 1998-2007, Google Inc.
  All rights reserved.
