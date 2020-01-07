@@ -87,7 +87,7 @@ URL的一般形式如下图：
 //   |           |               |       |                |    |            |                |
 //   |       userinfo           host    port              |    |          query          fragment
 //   |    \________________________________/\_____________|____|/ \__/        \__/
-// schema                 |                          |    |    |    |          |
+// scheme                 |                          |    |    |    |          |
 //                    authority                      |    |    |    |          |
 //                                                 path   |    |    interpretable as keys
 //                                                        |    |

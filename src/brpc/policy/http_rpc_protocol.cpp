@@ -1492,23 +1492,23 @@ void ProcessHttpRequest(InputMessageBase *msg) {
 }
 
 bool ParseHttpServerAddress(butil::EndPoint* point, const char* server_addr_and_port) {
-    std::string schema;
+    std::string scheme;
     std::string host;
     int port = -1;
-    if (ParseURL(server_addr_and_port, &schema, &host, &port) != 0) {
+    if (ParseURL(server_addr_and_port, &scheme, &host, &port) != 0) {
         LOG(ERROR) << "Invalid address=`" << server_addr_and_port << '\'';
         return false;
     }
-    if (schema.empty() || schema == "http") {
+    if (scheme.empty() || scheme == "http") {
         if (port < 0) {
             port = 80;
         }
-    } else if (schema == "https") {
+    } else if (scheme == "https") {
         if (port < 0) {
             port = 443;
         }
     } else {
-        LOG(ERROR) << "Invalid schema=`" << schema << '\'';
+        LOG(ERROR) << "Invalid scheme=`" << scheme << '\'';
         return false;
     }
     if (str2endpoint(host.c_str(), port, point) != 0 &&

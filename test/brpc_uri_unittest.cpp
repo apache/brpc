@@ -23,7 +23,7 @@ TEST(URITest, everything) {
     brpc::URI uri;
     std::string uri_str = " foobar://user:passwd@www.baidu.com:80/s?wd=uri#frag  ";
     ASSERT_EQ(0, uri.SetHttpURL(uri_str));
-    ASSERT_EQ("foobar", uri.schema());
+    ASSERT_EQ("foobar", uri.scheme());
     ASSERT_EQ(80, uri.port());
     ASSERT_EQ("www.baidu.com", uri.host());
     ASSERT_EQ("/s", uri.path());
@@ -33,11 +33,11 @@ TEST(URITest, everything) {
     ASSERT_EQ(*uri.GetQuery("wd"), "uri");
     ASSERT_FALSE(uri.GetQuery("nonkey"));
 
-    std::string schema;
+    std::string scheme;
     std::string host_out;
     int port_out = -1;
-    brpc::ParseURL(uri_str.c_str(), &schema, &host_out, &port_out);
-    ASSERT_EQ("foobar", schema);
+    brpc::ParseURL(uri_str.c_str(), &scheme, &host_out, &port_out);
+    ASSERT_EQ("foobar", scheme);
     ASSERT_EQ("www.baidu.com", host_out);
     ASSERT_EQ(80, port_out);
 }
@@ -45,7 +45,7 @@ TEST(URITest, everything) {
 TEST(URITest, only_host) {
     brpc::URI uri;
     ASSERT_EQ(0, uri.SetHttpURL("  foo1://www.baidu1.com?wd=uri2&nonkey=22 "));
-    ASSERT_EQ("foo1", uri.schema());
+    ASSERT_EQ("foo1", uri.scheme());
     ASSERT_EQ(-1, uri.port());
     ASSERT_EQ("www.baidu1.com", uri.host());
     ASSERT_EQ("", uri.path());
@@ -58,7 +58,7 @@ TEST(URITest, only_host) {
     ASSERT_EQ(*uri.GetQuery("nonkey"), "22");
 
     ASSERT_EQ(0, uri.SetHttpURL("foo2://www.baidu2.com:1234?wd=uri2&nonkey=22 "));
-    ASSERT_EQ("foo2", uri.schema());
+    ASSERT_EQ("foo2", uri.scheme());
     ASSERT_EQ(1234, uri.port());
     ASSERT_EQ("www.baidu2.com", uri.host());
     ASSERT_EQ("", uri.path());
@@ -71,7 +71,7 @@ TEST(URITest, only_host) {
     ASSERT_EQ(*uri.GetQuery("nonkey"), "22");
 
     ASSERT_EQ(0, uri.SetHttpURL(" www.baidu3.com:4321 "));
-    ASSERT_EQ("", uri.schema());
+    ASSERT_EQ("", uri.scheme());
     ASSERT_EQ(4321, uri.port());
     ASSERT_EQ("www.baidu3.com", uri.host());
     ASSERT_EQ("", uri.path());
@@ -80,7 +80,7 @@ TEST(URITest, only_host) {
     ASSERT_EQ(0, uri.QueryCount());
     
     ASSERT_EQ(0, uri.SetHttpURL(" www.baidu4.com "));
-    ASSERT_EQ("", uri.schema());
+    ASSERT_EQ("", uri.scheme());
     ASSERT_EQ(-1, uri.port());
     ASSERT_EQ("www.baidu4.com", uri.host());
     ASSERT_EQ("", uri.path());
@@ -89,10 +89,10 @@ TEST(URITest, only_host) {
     ASSERT_EQ(0, uri.QueryCount());
 }
 
-TEST(URITest, no_schema) {
+TEST(URITest, no_scheme) {
     brpc::URI uri;
     ASSERT_EQ(0, uri.SetHttpURL(" user:passwd2@www.baidu1.com/s?wd=uri2&nonkey=22#frag "));
-    ASSERT_EQ("", uri.schema());
+    ASSERT_EQ("", uri.scheme());
     ASSERT_EQ(-1, uri.port());
     ASSERT_EQ("www.baidu1.com", uri.host());
     ASSERT_EQ("/s", uri.path());
@@ -104,10 +104,10 @@ TEST(URITest, no_schema) {
     ASSERT_EQ(*uri.GetQuery("nonkey"), "22");
 }
 
-TEST(URITest, no_schema_and_user_info) {
+TEST(URITest, no_scheme_and_user_info) {
     brpc::URI uri;
     ASSERT_EQ(0, uri.SetHttpURL(" www.baidu2.com/s?wd=uri2&nonkey=22#frag "));
-    ASSERT_EQ("", uri.schema());
+    ASSERT_EQ("", uri.scheme());
     ASSERT_EQ(-1, uri.port());
     ASSERT_EQ("www.baidu2.com", uri.host());
     ASSERT_EQ("/s", uri.path());
@@ -122,7 +122,7 @@ TEST(URITest, no_schema_and_user_info) {
 TEST(URITest, no_host) {
     brpc::URI uri;
     ASSERT_EQ(0, uri.SetHttpURL(" /sb?wd=uri3#frag2 ")) << uri.status();
-    ASSERT_EQ("", uri.schema());
+    ASSERT_EQ("", uri.scheme());
     ASSERT_EQ(-1, uri.port());
     ASSERT_EQ("", uri.host());
     ASSERT_EQ("/sb", uri.path());
@@ -134,7 +134,7 @@ TEST(URITest, no_host) {
 
     // set_path should do as its name says.
     uri.set_path("/x/y/z/");
-    ASSERT_EQ("", uri.schema());
+    ASSERT_EQ("", uri.scheme());
     ASSERT_EQ(-1, uri.port());
     ASSERT_EQ("", uri.host());
     ASSERT_EQ("/x/y/z/", uri.path());

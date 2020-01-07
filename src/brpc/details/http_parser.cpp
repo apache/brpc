@@ -258,9 +258,9 @@ enum state
 
   , s_req_method
   , s_req_spaces_before_url
-  , s_req_schema
-  , s_req_schema_slash
-  , s_req_schema_slash_slash
+  , s_req_scheme
+  , s_req_scheme_slash
+  , s_req_scheme_slash_slash
   , s_req_server_start
   , s_req_server
   , s_req_server_with_at
@@ -343,9 +343,9 @@ const char* http_parser_state_name(unsigned int state) {
     case s_start_req: return "s_start_req";
     case s_req_method: return "s_req_method";
     case s_req_spaces_before_url: return "s_req_spaces_before_url";
-    case s_req_schema: return "s_req_schema";
-    case s_req_schema_slash: return "s_req_schema_slash";
-    case s_req_schema_slash_slash: return "s_req_schema_slash_slash";
+    case s_req_scheme: return "s_req_scheme";
+    case s_req_scheme_slash: return "s_req_scheme_slash";
+    case s_req_scheme_slash_slash: return "s_req_scheme_slash_slash";
     case s_req_server_start: return "s_req_server_start";
     case s_req_server: return "s_req_server";
     case s_req_server_with_at: return "s_req_server_with_at";
@@ -562,30 +562,30 @@ parse_url_char(enum state s, const char ch)
       }
 
       if (IS_ALPHA(ch)) {
-        return s_req_schema;
+        return s_req_scheme;
       }
 
       break;
 
-    case s_req_schema:
+    case s_req_scheme:
       if (IS_ALPHA(ch)) {
         return s;
       }
 
       if (ch == ':') {
-        return s_req_schema_slash;
+        return s_req_scheme_slash;
       }
 
       break;
 
-    case s_req_schema_slash:
+    case s_req_scheme_slash:
       if (ch == '/') {
-        return s_req_schema_slash_slash;
+        return s_req_scheme_slash_slash;
       }
 
       break;
 
-    case s_req_schema_slash_slash:
+    case s_req_scheme_slash_slash:
       if (ch == '/') {
         return s_req_server_start;
       }
@@ -725,9 +725,9 @@ size_t http_parser_execute (http_parser *parser,
     header_value_mark = data;
   switch (parser->state) {
   case s_req_path:
-  case s_req_schema:
-  case s_req_schema_slash:
-  case s_req_schema_slash_slash:
+  case s_req_scheme:
+  case s_req_scheme_slash:
+  case s_req_scheme_slash_slash:
   case s_req_server_start:
   case s_req_server:
   case s_req_server_with_at:
@@ -1160,9 +1160,9 @@ size_t http_parser_execute (http_parser *parser,
         break;
       }
 
-      case s_req_schema:
-      case s_req_schema_slash:
-      case s_req_schema_slash_slash:
+      case s_req_scheme:
+      case s_req_scheme_slash:
+      case s_req_scheme_slash_slash:
       case s_req_server_start:
       {
         enum state new_state;
@@ -2254,15 +2254,15 @@ http_parser_parse_url(const char *buf, size_t buflen, int is_connect,
         return 1;
 
       /* Skip delimeters */
-      case s_req_schema_slash:
-      case s_req_schema_slash_slash:
+      case s_req_scheme_slash:
+      case s_req_scheme_slash_slash:
       case s_req_server_start:
       case s_req_query_string_start:
       case s_req_fragment_start:
         continue;
 
-      case s_req_schema:
-        uf = UF_SCHEMA;
+      case s_req_scheme:
+        uf = UF_SCHEME;
         break;
 
       case s_req_server_with_at:
@@ -2302,9 +2302,9 @@ http_parser_parse_url(const char *buf, size_t buflen, int is_connect,
     old_uf = uf;
   }
 
-  /* host must be present if there is a schema */
+  /* host must be present if there is a scheme */
   /* parsing http:///toto will fail */
-  if ((u->field_set & ((1 << UF_SCHEMA) | (1 << UF_HOST))) != 0) {
+  if ((u->field_set & ((1 << UF_SCHEME) | (1 << UF_HOST))) != 0) {
     if (http_parse_host(buf, u, found_at) != 0) {
       return 1;
     }
