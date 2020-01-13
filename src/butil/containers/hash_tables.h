@@ -26,6 +26,7 @@
 #include "butil/basictypes.h"
 #include "butil/strings/string16.h"
 #include "butil/build_config.h"
+#include "butil/third_party/murmurhash3/murmurhash3.h"   // fmix64
 
 #if defined(COMPILER_MSVC)
 #include <hash_map>
@@ -131,6 +132,8 @@ using BUTIL_HASH_NAMESPACE::hash_set;
 inline std::size_t HashInts32(uint32_t value1, uint32_t value2) {
   uint64_t value1_64 = value1;
   uint64_t hash64 = (value1_64 << 32) | value2;
+
+  hash64 = fmix64(hash64);
 
   if (sizeof(std::size_t) >= sizeof(uint64_t))
     return static_cast<std::size_t>(hash64);
