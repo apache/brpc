@@ -241,19 +241,39 @@ TEST_F(FlatMapTest, __builtin_ctzl_perf) {
 }
 
 TEST_F(FlatMapTest, case_ignored_map) {
-    butil::Timer tm;
-    tm.start();
     butil::CaseIgnoredFlatMap<int> m1;
     ASSERT_EQ(0, m1.init(32));
     m1["Content-Type"] = 1;
+    m1["content-Type"] = 10;
     m1["Host"] = 2;
+    m1["HOST"] = 20;
     m1["Cache-Control"] = 3;
-    ASSERT_EQ(1, m1["cONTENT-tYPE"]);
-    ASSERT_EQ(2, m1["hOST"]);
-    ASSERT_EQ(3, m1["cache-control"]);
-    tm.stop();
-    std::cout << tm.n_elapsed() << std::endl;
+    m1["CachE-ControL"] = 30;
+    ASSERT_EQ(10, m1["cONTENT-tYPE"]);
+    ASSERT_EQ(20, m1["hOST"]);
+    ASSERT_EQ(30, m1["cache-control"]);
 }
+
+TEST_F(FlatMapTest, case_ignored_set) {
+    butil::CaseIgnoredFlatSet s1;
+    ASSERT_EQ(0, s1.init(32));
+    s1.insert("Content-Type");
+    ASSERT_EQ(1ul, s1.size());
+    s1.insert("Content-TYPE");
+    ASSERT_EQ(1ul, s1.size());
+    s1.insert("Host");
+    ASSERT_EQ(2ul, s1.size());
+    s1.insert("HOST");
+    ASSERT_EQ(2ul, s1.size());
+    s1.insert("Cache-Control");
+    ASSERT_EQ(3ul, s1.size());
+    s1.insert("CachE-ControL");
+    ASSERT_EQ(3ul, s1.size());
+    ASSERT_TRUE(s1.seek("cONTENT-tYPE"));
+    ASSERT_TRUE(s1.seek("hOST"));
+    ASSERT_TRUE(s1.seek("cache-control"));
+}
+
 
 TEST_F(FlatMapTest, make_sure_all_methods_compile) {
     typedef butil::FlatMap<int, long> M1;

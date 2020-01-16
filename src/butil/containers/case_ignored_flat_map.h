@@ -64,7 +64,7 @@ template <typename T>
 class CaseIgnoredFlatMap : public butil::FlatMap<
     std::string, T, CaseIgnoredHasher, CaseIgnoredEqual> {};
 
-class CaseIgnoredFlatSet : public butil::FlatMap<
+class CaseIgnoredFlatSet : public butil::FlatSet<
     std::string, CaseIgnoredHasher, CaseIgnoredEqual> {};
 
 } // namespace butil
