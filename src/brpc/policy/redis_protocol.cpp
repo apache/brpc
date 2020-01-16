@@ -80,12 +80,12 @@ int ConsumeCommand(RedisConnContext* ctx,
                    bool flush_batched,
                    butil::IOBufAppender* appender) {
     RedisReply output(&ctx->arena);
-    RedisCommandHandler::Result result = RedisCommandHandler::OK;
+    RedisCommandHandlerResult result = REDIS_CMD_HANDLED;
     if (ctx->transaction_handler) {
         result = ctx->transaction_handler->Run(commands, &output, flush_batched);
-        if (result == RedisCommandHandler::OK) {
+        if (result == REDIS_CMD_HANDLED) {
             ctx->transaction_handler.reset(NULL);
-        } else if (result == RedisCommandHandler::BATCHED) {
+        } else if (result == REDIS_CMD_BATCHED) {
             LOG(ERROR) << "BATCHED should not be returned by a transaction handler.";
             return -1;
         }
@@ -97,18 +97,18 @@ int ConsumeCommand(RedisConnContext* ctx,
             output.SetError(buf);
         } else {
             result = ch->Run(commands, &output, flush_batched);
-            if (result == RedisCommandHandler::CONTINUE) {
+            if (result == REDIS_CMD_CONTINUE) {
                 if (ctx->batched_size != 0) {
                     LOG(ERROR) << "CONTINUE should not be returned in a batched process.";
                     return -1;
                 }
                 ctx->transaction_handler.reset(ch->NewTransactionHandler());
-            } else if (result == RedisCommandHandler::BATCHED) {
+            } else if (result == REDIS_CMD_BATCHED) {
                 ctx->batched_size++;
             }
         }
     }
-    if (result == RedisCommandHandler::OK) {
+    if (result == REDIS_CMD_HANDLED) {
         if (ctx->batched_size) {
             if ((int)output.size() != (ctx->batched_size + 1)) {
                 LOG(ERROR) << "reply array size can't be matched with batched size, "
@@ -122,9 +122,9 @@ int ConsumeCommand(RedisConnContext* ctx,
         } else {
             output.SerializeTo(appender);
         }
-    } else if (result == RedisCommandHandler::CONTINUE) {
+    } else if (result == REDIS_CMD_CONTINUE) {
         output.SerializeTo(appender);
-    } else if (result == RedisCommandHandler::BATCHED) {
+    } else if (result == REDIS_CMD_BATCHED) {
         // just do nothing and wait handler to return OK.
     } else {
         LOG(ERROR) << "unknown status=" << result;

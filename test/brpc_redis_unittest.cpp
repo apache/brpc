@@ -812,7 +812,7 @@ public:
     RedisServiceImpl()
         : _batch_count(0) {}
 
-    brpc::RedisCommandHandler::Result OnBatched(const std::vector<const char*> args,
+    brpc::RedisCommandHandlerResult OnBatched(const std::vector<const char*> args,
                    brpc::RedisReply* output, bool flush_batched) {
         if (_batched_command.empty() && flush_batched) {
             if (strcmp(args[0], "set") == 0) {
@@ -820,7 +820,7 @@ public:
             } else if (strcmp(args[0], "get") == 0) {
                 DoGet(args[1], output);
             }
-            return brpc::RedisCommandHandler::OK;
+            return brpc::REDIS_CMD_HANDLED;
         }
         std::vector<std::string> comm;
         for (int i = 0; i < (int)args.size(); ++i) {
@@ -838,9 +838,9 @@ public:
             }
             _batch_count++;
             _batched_command.clear();
-            return brpc::RedisCommandHandler::OK;
+            return brpc::REDIS_CMD_HANDLED;
         } else {
-            return brpc::RedisCommandHandler::BATCHED;
+            return brpc::REDIS_CMD_BATCHED;
         }
     }
 
@@ -869,18 +869,18 @@ public:
         : _rs(rs)
         , _batch_process(batch_process) {}
 
-    brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
+    brpc::RedisCommandHandlerResult Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
                                           bool flush_batched) {
         if (args.size() < 3) {
             output->SetError("ERR wrong number of arguments for 'set' command");
-            return brpc::RedisCommandHandler::OK;
+            return brpc::REDIS_CMD_HANDLED;
         }
         if (_batch_process) {
             return _rs->OnBatched(args, output, flush_batched);
         } else {
             DoSet(args[1], args[2], output);
-            return brpc::RedisCommandHandler::OK;
+            return brpc::REDIS_CMD_HANDLED;
         }
     }
 
@@ -900,18 +900,18 @@ public:
         : _rs(rs)
         , _batch_process(batch_process) {}
 
-    brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
+    brpc::RedisCommandHandlerResult Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
                                           bool flush_batched) {
         if (args.size() < 2) {
             output->SetError("ERR wrong number of arguments for 'get' command");
-            return brpc::RedisCommandHandler::OK;
+            return brpc::REDIS_CMD_HANDLED;
         }
         if (_batch_process) {
             return _rs->OnBatched(args, output, flush_batched);
         } else {
             DoGet(args[1], output);
-            return brpc::RedisCommandHandler::OK;
+            return brpc::REDIS_CMD_HANDLED;
         }
     }
 
@@ -933,12 +933,12 @@ class IncrCommandHandler : public brpc::RedisCommandHandler {
 public:
     IncrCommandHandler() {}
 
-    brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
+    brpc::RedisCommandHandlerResult Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
                                           bool flush_batched) {
         if (args.size() < 2) {
             output->SetError("ERR wrong number of arguments for 'incr' command");
-            return brpc::RedisCommandHandler::OK;
+            return brpc::REDIS_CMD_HANDLED;
         }
         const std::string& key = args[1];
         int64_t value;
@@ -946,7 +946,7 @@ public:
         value = ++int_map[key];
         s_mutex.unlock();
         output->SetInteger(value);
-        return brpc::RedisCommandHandler::OK;
+        return brpc::REDIS_CMD_HANDLED;
     }
 };
 
@@ -1047,11 +1047,11 @@ class MultiCommandHandler : public brpc::RedisCommandHandler {
 public:
     MultiCommandHandler() {}
 
-    brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
+    brpc::RedisCommandHandlerResult Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
                                           bool flush_batched) {
         output->SetStatus("OK");
-        return brpc::RedisCommandHandler::CONTINUE;
+        return brpc::REDIS_CMD_CONTINUE;
     }
 
     RedisCommandHandler* NewTransactionHandler() override {
@@ -1060,12 +1060,12 @@ public:
 
     class MultiTransactionHandler : public brpc::RedisCommandHandler {
     public:
-        brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
+        brpc::RedisCommandHandlerResult Run(const std::vector<const char*>& args,
                                               brpc::RedisReply* output,
                                               bool flush_batched) {
             if (strcmp(args[0], "multi") == 0) {
                 output->SetError("ERR duplicate multi");
-                return brpc::RedisCommandHandler::CONTINUE;
+                return brpc::REDIS_CMD_CONTINUE;
             }
             if (strcmp(args[0], "exec") != 0) {
                 std::vector<std::string> comm;
@@ -1074,7 +1074,7 @@ public:
                 }
                 _commands.push_back(comm);
                 output->SetStatus("QUEUED");
-                return brpc::RedisCommandHandler::CONTINUE;
+                return brpc::REDIS_CMD_CONTINUE;
             }
             output->SetArray(_commands.size());
             s_mutex.lock();
@@ -1088,7 +1088,7 @@ public:
                 }
             }
             s_mutex.unlock();
-            return brpc::RedisCommandHandler::OK;
+            return brpc::REDIS_CMD_HANDLED;
         }
     private:
         std::vector<std::vector<std::string> > _commands;

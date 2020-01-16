@@ -231,14 +231,15 @@ private:
     CommandMap _command_map;
 };
 
+enum RedisCommandHandlerResult {
+    REDIS_CMD_HANDLED = 0,
+    REDIS_CMD_CONTINUE = 1,
+    REDIS_CMD_BATCHED = 2,
+};
+
 // The Command handler for a redis request. User should impletement Run().
 class RedisCommandHandler {
 public:
-    enum Result {
-        OK = 0,
-        CONTINUE = 1,
-        BATCHED = 2,
-    };
     ~RedisCommandHandler() {}
 
     // Once Server receives commands, it will first find the corresponding handlers and
@@ -250,24 +251,24 @@ public:
     // Read brpc/src/redis_reply.h for more usage.
     // `flush_batched' indicates whether the user should flush all the results of
     // batched commands. If user want to do some batch processing, user should buffer
-    // the commands and return RedisCommandHandler::BATCHED. Once `flush_batched' is true,
+    // the commands and return REDIS_CMD_BATCHED. Once `flush_batched' is true,
     // run all the commands, set `output' to be an array in which every element is the
-    // result of batched commands and return RedisCommandHandler::OK.
+    // result of batched commands and return REDIS_CMD_HANDLED.
     //
-    // The return value should be RedisCommandHandler::OK for normal cases. If you want
-    // to implement transaction, return RedisCommandHandler::CONTINUE once server receives
+    // The return value should be REDIS_CMD_HANDLED for normal cases. If you want
+    // to implement transaction, return REDIS_CMD_CONTINUE once server receives
     // an start marker and brpc will call MultiTransactionHandler() to new a transaction
     // handler that all the following commands are sent to this tranction handler until
-    // it returns RedisCommandHandler::OK. Read the comment below.
-    virtual RedisCommandHandler::Result Run(const std::vector<const char*>& args,
-                                            brpc::RedisReply* output,
-                                            bool flush_batched) = 0;
+    // it returns REDIS_CMD_HANDLED. Read the comment below.
+    virtual RedisCommandHandlerResult Run(const std::vector<const char*>& args,
+                                          brpc::RedisReply* output,
+                                          bool flush_batched) = 0;
 
     // The Run() returns CONTINUE for "multi", which makes brpc call this method to
     // create a transaction_handler to process following commands until transaction_handler
     // returns OK. For example, for command "multi; set k1 v1; set k2 v2; set k3 v3;
     // exec":
-    // 1) First command is "multi" and Run() should return RedisCommandHandler::CONTINUE,
+    // 1) First command is "multi" and Run() should return REDIS_CMD_CONTINUE,
     // then brpc calls NewTransactionHandler() to new a transaction_handler.
     // 2) brpc calls transaction_handler.Run() with command "set k1 v1",
     // which should return CONTINUE.

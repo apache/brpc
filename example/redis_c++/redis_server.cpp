@@ -64,12 +64,12 @@ public:
     explicit GetCommandHandler(RedisServiceImpl* rsimpl)
         : _rsimpl(rsimpl) {}
 
-    brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
+    brpc::RedisCommandHandlerResult Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
                                           bool /*flush_batched*/) override {
         if (args.size() != 2ul) {
             output->FormatError("Expect 1 arg for 'get', actually %lu", args.size()-1);
-            return brpc::RedisCommandHandler::OK;
+            return brpc::REDIS_CMD_HANDLED;
         }
         const std::string key(args[1]);
         std::string value;
@@ -78,7 +78,7 @@ public:
         } else {
             output->SetNullString();
         }
-        return brpc::RedisCommandHandler::OK;
+        return brpc::REDIS_CMD_HANDLED;
 	}
 
 private:
@@ -90,18 +90,18 @@ public:
     explicit SetCommandHandler(RedisServiceImpl* rsimpl)
         : _rsimpl(rsimpl) {}
 
-    brpc::RedisCommandHandler::Result Run(const std::vector<const char*>& args,
+    brpc::RedisCommandHandlerResult Run(const std::vector<const char*>& args,
                                           brpc::RedisReply* output,
                                           bool /*flush_batched*/) override {
         if (args.size() != 3ul) {
             output->FormatError("Expect 2 args for 'set', actually %lu", args.size()-1);
-            return brpc::RedisCommandHandler::OK;
+            return brpc::REDIS_CMD_HANDLED;
         }
         const std::string key(args[1]);
         const std::string value(args[2]);
         _rsimpl->Set(key, value);
         output->SetStatus("OK");
-        return brpc::RedisCommandHandler::OK;
+        return brpc::REDIS_CMD_HANDLED;
 	}
 
 private:
