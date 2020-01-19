@@ -383,6 +383,8 @@ public:
     int Start(int port, const ServerOptions* opt);
     // Start on `ip_str' + any useable port in `range'
     int Start(const char* ip_str, PortRange range, const ServerOptions *opt);
+    // Start on unix socket file
+    int StartAtSockFile(const char* socket_file, const ServerOptions *opt);
 
     // NOTE: Stop() is paired with Join() to stop a server without losing
     // requests. The point of separating them is that you can Stop() multiple
@@ -551,6 +553,10 @@ friend class Controller;
 
     // Create acceptor with handlers of protocols.
     Acceptor* BuildAcceptor();
+
+    int Init(const ServerOptions *opt);
+
+    int ListenInternalPort();
 
     int StartInternal(const butil::ip_t& ip,
                       const PortRange& port_range,

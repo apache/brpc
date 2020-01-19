@@ -19,6 +19,7 @@
 #include "butil/compat.h"                        // OS_MACOSX
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <sys/un.h>
 #ifdef USE_MESALINK
 #include <mesalink/openssl/ssl.h>
 #include <mesalink/openssl/err.h>
@@ -1114,7 +1115,14 @@ int Socket::Connect(const timespec* abstime,
     } else {
         _ssl_state = SSL_OFF;
     }
-    butil::fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
+    butil::fd_guard sockfd;
+
+    if (butil::is_unix_sock_endpoint(remote_side())) {
+        sockfd.reset(socket(AF_LOCAL, SOCK_STREAM, 0));
+    } else {
+        sockfd.reset(socket(AF_INET, SOCK_STREAM, 0));
+    }
+
     if (sockfd < 0) {
         PLOG(ERROR) << "Fail to create socket";
         return -1;
@@ -1123,13 +1131,26 @@ int Socket::Connect(const timespec* abstime,
     // We need to do async connect (to manage the timeout by ourselves).
     CHECK_EQ(0, butil::make_non_blocking(sockfd));
     
-    struct sockaddr_in serv_addr;
-    bzero((char*)&serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr = remote_side().ip;
-    serv_addr.sin_port = htons(remote_side().port);
-    const int rc = ::connect(
-        sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+    
+    int rc;
+
+    if (butil::is_unix_sock_endpoint(remote_side())) {
+        struct sockaddr_un serv_addr;
+        bzero((char*)&serv_addr, sizeof(serv_addr));
+        serv_addr.sun_family = AF_LOCAL;
+        snprintf(serv_addr.sun_path, sizeof(serv_addr.sun_path), "%s", remote_side().socket_file);
+        rc =  ::connect(
+            sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+    } else {
+        struct sockaddr_in serv_addr;
+        bzero((char*)&serv_addr, sizeof(serv_addr));
+        serv_addr.sin_family = AF_INET;
+        serv_addr.sin_addr = remote_side().ip;
+        serv_addr.sin_port = htons(remote_side().port);
+        rc = ::connect(
+            sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+    }
+
     if (rc != 0 && errno != EINPROGRESS) {
         PLOG(WARNING) << "Fail to connect to " << remote_side();
         return -1;

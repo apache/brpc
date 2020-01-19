@@ -27,6 +27,7 @@
 #include "butil/containers/hash_tables.h"         // hashing functions
 
 namespace butil {
+const size_t UNIX_SOCKET_FILE_PATH_SIZE = 108;
 
 // Type of an IP address
 typedef struct in_addr ip_t;
@@ -81,18 +82,22 @@ const char* my_ip_cstr();
 
 // ipv4 + port
 struct EndPoint {
-    EndPoint() : ip(IP_ANY), port(0) {}
-    EndPoint(ip_t ip2, int port2) : ip(ip2), port(port2) {}
+    EndPoint() : ip(IP_ANY), port(0), socket_file("") {}
+    EndPoint(ip_t ip2, int port2) : ip(ip2), port(port2), socket_file("") {}
     explicit EndPoint(const sockaddr_in& in)
-        : ip(in.sin_addr), port(ntohs(in.sin_port)) {}
+        : ip(in.sin_addr), port(ntohs(in.sin_port)), socket_file("") {}
+    explicit EndPoint(const char* socket_file2) : ip(IP_ANY), port(0) {
+        snprintf(socket_file, sizeof(socket_file), "%s", socket_file2);
+    }
     
     ip_t ip;
     int port;
+    char socket_file[UNIX_SOCKET_FILE_PATH_SIZE];
 };
 
 struct EndPointStr {
     const char* c_str() const { return _buf; }
-    char _buf[INET_ADDRSTRLEN + 16];
+    char _buf[UNIX_SOCKET_FILE_PATH_SIZE];
 };
 
 // Convert EndPoint to c-style string. Notice that you can serialize 
@@ -101,7 +106,10 @@ struct EndPointStr {
 // Example: printf("point=%s\n", endpoint2str(point).c_str());
 EndPointStr endpoint2str(const EndPoint&);
 
-// Convert string `ip_and_port_str' to a EndPoint *point.
+// is an unix socket endpoint or not
+bool is_unix_sock_endpoint(const EndPoint& point);
+
+// Convert string `ip_and_port_str or unix_socket_file_path' to a EndPoint *point.
 // Returns 0 on success, -1 otherwise.
 int str2endpoint(const char* ip_and_port_str, EndPoint* point);
 int str2endpoint(const char* ip_str, int port, EndPoint* point);
@@ -185,7 +193,7 @@ inline bool operator!=(EndPoint p1, EndPoint p2) {
 }
 
 inline std::ostream& operator<<(std::ostream& os, const EndPoint& ep) {
-    return os << ep.ip << ':' << ep.port;
+    return os << endpoint2str(ep).c_str();
 }
 inline std::ostream& operator<<(std::ostream& os, const EndPointStr& ep_str) {
     return os << ep_str.c_str();

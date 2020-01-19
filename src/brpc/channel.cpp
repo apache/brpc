@@ -281,6 +281,16 @@ int Channel::Init(butil::EndPoint server_addr_and_port,
     return InitSingle(server_addr_and_port, "", options);
 }
 
+int Channel::InitWithSockFile(const char* socket_file, const ChannelOptions* options) {
+    butil::EndPoint point;
+    if (strlen(socket_file) >= sizeof(point.socket_file)) {
+        LOG(ERROR) << "Socket file name: " << socket_file << " too long.";
+        return -1;
+    }
+    snprintf(point.socket_file, sizeof(point.socket_file), "%s", socket_file);
+    return InitSingle(point, "", options);
+}
+
 int Channel::InitSingle(const butil::EndPoint& server_addr_and_port,
                         const char* raw_server_address,
                         const ChannelOptions* options) {

@@ -74,3 +74,34 @@ cc_binary(
     ],
     copts = COPTS,
 )
+
+
+cc_binary(
+    name = "echo_c++_unix_server",
+    srcs = [
+        "echo_c++_unix_socket/server.cpp",
+    ],
+    includes = [
+        "echo_c++",
+    ],
+    deps = [
+        ":cc_echo_c++_proto",
+        "//:brpc",
+    ],
+    copts = COPTS,
+)
+
+cc_binary(
+    name = "echo_c++_unix_client",
+    srcs = [
+        "echo_c++_unix_socket/client.cpp",
+    ],
+    includes = [
+        "echo_c++",
+    ],
+    deps = [
+        ":cc_echo_c++_proto",
+        "//:brpc",
+    ],
+    copts = COPTS,
+)

@@ -31,6 +31,7 @@
 #include "butil/time.h"
 #include "butil/class_name.h"
 #include "butil/string_printf.h"
+#include "butil/unix_socket.h"
 #include "brpc/log.h"
 #include "brpc/compress.h"
 #include "brpc/policy/nova_pbrpc_protocol.h"
@@ -698,10 +699,7 @@ static bool CreateConcurrencyLimiter(const AdaptiveMaxConcurrency& amc,
 
 static AdaptiveMaxConcurrency g_default_max_concurrency_of_method(0);
 
-int Server::StartInternal(const butil::ip_t& ip,
-                          const PortRange& port_range,
-                          const ServerOptions *opt) {
-    std::unique_ptr<Server, RevertServerStatus> revert_server(this);
+int Server::Init(const ServerOptions *opt) {
     if (_failed_to_set_max_concurrency_of_method) {
         _failed_to_set_max_concurrency_of_method = false;
         LOG(ERROR) << "previous call to MaxConcurrencyOf() was failed, "
@@ -932,6 +930,53 @@ int Server::StartInternal(const butil::ip_t& ip,
             it->second.status->SetConcurrencyLimiter(cl);
         }
     }
+    return 0;
+}
+
+int Server::ListenInternalPort() {
+    if (_options.internal_port  == _listen_addr.port) {
+        LOG(ERROR) << "ServerOptions.internal_port=" << _options.internal_port
+                   << " is same with port=" << _listen_addr.port << " to Start()";
+        return -1;
+    }
+    if (_options.internal_port == 0) {
+        LOG(ERROR) << "ServerOptions.internal_port cannot be 0, which"
+            " allocates a dynamic and probabaly unfiltered port,"
+            " against the purpose of \"being internal\".";
+        return -1;
+    }
+    butil::EndPoint internal_point = _listen_addr;
+    internal_point.port = _options.internal_port;
+    butil::fd_guard sockfd(tcp_listen(internal_point));
+    if (sockfd < 0) {
+        LOG(ERROR) << "Fail to listen " << internal_point << " (internal)";
+        return -1;
+    }
+    if (NULL == _internal_am) {
+        _internal_am = BuildAcceptor();
+        if (NULL == _internal_am) {
+            LOG(ERROR) << "Fail to build internal acceptor";
+            return -1;
+        }
+    }
+    // Pass ownership of `sockfd' to `_internal_am'
+    if (_internal_am->StartAccept(sockfd, _options.idle_timeout_sec,
+                                  _default_ssl_ctx) != 0) {
+        LOG(ERROR) << "Fail to start internal_acceptor";
+        return -1;
+    }
+    sockfd.release();
+    return 0;
+}
+
+int Server::StartInternal(const butil::ip_t& ip,
+                          const PortRange& port_range,
+                          const ServerOptions *opt) {
+    std::unique_ptr<Server, RevertServerStatus> revert_server(this);
+    if (Init(opt) != 0) {
+        LOG(ERROR) << "Init failed";
+        return -1;
+    }
 
     // Create listening ports
     if (port_range.min_port > port_range.max_port) {
@@ -989,38 +1034,10 @@ int Server::StartInternal(const butil::ip_t& ip,
         break; // stop trying
     }
     if (_options.internal_port >= 0 && _options.has_builtin_services) {
-        if (_options.internal_port  == _listen_addr.port) {
-            LOG(ERROR) << "ServerOptions.internal_port=" << _options.internal_port
-                       << " is same with port=" << _listen_addr.port << " to Start()";
+        if (ListenInternalPort() != 0) {
+            LOG(ERROR) << "ListenInternalPort failed";
             return -1;
         }
-        if (_options.internal_port == 0) {
-            LOG(ERROR) << "ServerOptions.internal_port cannot be 0, which"
-                " allocates a dynamic and probabaly unfiltered port,"
-                " against the purpose of \"being internal\".";
-            return -1;
-        }
-        butil::EndPoint internal_point = _listen_addr;
-        internal_point.port = _options.internal_port;
-        butil::fd_guard sockfd(tcp_listen(internal_point));
-        if (sockfd < 0) {
-            LOG(ERROR) << "Fail to listen " << internal_point << " (internal)";
-            return -1;
-        }
-        if (NULL == _internal_am) {
-            _internal_am = BuildAcceptor();
-            if (NULL == _internal_am) {
-                LOG(ERROR) << "Fail to build internal acceptor";
-                return -1;
-            }
-        }
-        // Pass ownership of `sockfd' to `_internal_am'
-        if (_internal_am->StartAccept(sockfd, _options.idle_timeout_sec,
-                                      _default_ssl_ctx) != 0) {
-            LOG(ERROR) << "Fail to start internal_acceptor";
-            return -1;
-        }
-        sockfd.release();
     }
 
     PutPidFileIfNeeded();
@@ -1053,6 +1070,80 @@ int Server::StartInternal(const butil::ip_t& ip,
     }
     // For trackme reporting
     SetTrackMeAddress(butil::EndPoint(butil::my_ip(), http_port));
+    revert_server.release();
+    return 0;
+}
+
+int Server::StartAtSockFile(const char* socket_file, const ServerOptions *opt) {
+    if (strlen(socket_file) >= sizeof(_listen_addr.socket_file)) {
+        LOG(ERROR) << "Socket file name: " << socket_file << " too long.";
+        return -1;
+    }
+    std::unique_ptr<Server, RevertServerStatus> revert_server(this);
+    // unix socket do not need builtin service
+    if (Init(opt) != 0) {
+        LOG(ERROR) << "Init failed";
+        return -1;
+    }
+    // Start listen
+    snprintf(_listen_addr.socket_file, sizeof(_listen_addr.socket_file), "%s", socket_file);
+    butil::fd_guard sockfd(butil::unix_socket_listen(socket_file));
+    if (sockfd < 0) {
+        LOG(ERROR) << "Fail to listen :[" << socket_file << ']';
+        return -1;
+    }
+    if (_am == NULL) {
+        _am = BuildAcceptor();
+        if (NULL == _am) {
+            LOG(ERROR) << "Fail to build acceptor";
+            return -1;
+        }
+    }
+    // Set `_status' to RUNNING before accepting connections
+    // to prevent requests being rejected as ELOGOFF
+    _status = RUNNING;
+    time(&_last_start_time);
+    GenerateVersionIfNeeded();
+    g_running_server_count.fetch_add(1, butil::memory_order_relaxed);
+
+    // Pass ownership of `sockfd' to `_am'
+    if (_am->StartAccept(sockfd, _options.idle_timeout_sec,
+                            _default_ssl_ctx) != 0) {
+        LOG(ERROR) << "Fail to start acceptor";
+        return -1;
+    }
+    sockfd.release();
+
+    if (_options.internal_port >= 0 && _options.has_builtin_services) {
+        if (ListenInternalPort() != 0) {
+            LOG(ERROR) << "ListenInternalPort failed";
+            return -1;
+        }
+    }
+
+    PutPidFileIfNeeded();
+
+    // Launch _derivative_thread.
+    CHECK_EQ(INVALID_BTHREAD, _derivative_thread);
+    if (bthread_start_background(&_derivative_thread, NULL,
+                                 UpdateDerivedVars, this) != 0) {
+        LOG(ERROR) << "Fail to create _derivative_thread";
+        return -1;
+    }
+
+    // Print tips to server launcher.
+    std::ostringstream server_info;
+    server_info << "Server[" << version() << "] is serving on file="
+                << _listen_addr.socket_file;
+    if (_options.internal_port >= 0 && _options.has_builtin_services) {
+        server_info << " and internal_port="
+                    << _options.internal_port;
+        LOG(INFO) << "Check out http://" << butil::my_hostname() << ':'
+                  << _options.internal_port << " in web browser.";
+
+    }
+    LOG(INFO) << server_info.str() << '.';
+
     revert_server.release();
     return 0;
 }

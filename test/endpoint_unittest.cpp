@@ -72,34 +72,46 @@ TEST(EndPointTest, endpoint) {
     butil::EndPoint p1;
     ASSERT_EQ(butil::IP_ANY, p1.ip);
     ASSERT_EQ(0, p1.port);
+    ASSERT_FALSE(butil::is_unix_sock_endpoint(p1));
     
     butil::EndPoint p2(butil::IP_NONE, -1);
     ASSERT_EQ(butil::IP_NONE, p2.ip);
     ASSERT_EQ(-1, p2.port);
+    ASSERT_FALSE(butil::is_unix_sock_endpoint(p2));
 
     butil::EndPoint p3;
     ASSERT_EQ(-1, butil::str2endpoint(" 127.0.0.1:-1", &p3));
     ASSERT_EQ(-1, butil::str2endpoint(" 127.0.0.1:65536", &p3));
     ASSERT_EQ(0, butil::str2endpoint(" 127.0.0.1:65535", &p3));
     ASSERT_EQ(0, butil::str2endpoint(" 127.0.0.1:0", &p3));
+    ASSERT_FALSE(butil::is_unix_sock_endpoint(p3));
 
     butil::EndPoint p4;
     ASSERT_EQ(0, butil::str2endpoint(" 127.0.0.1: 289 ", &p4));
     ASSERT_STREQ("127.0.0.1", butil::ip2str(p4.ip).c_str());
     ASSERT_EQ(289, p4.port);
+    ASSERT_FALSE(butil::is_unix_sock_endpoint(p4));
     
     butil::EndPoint p5;
     ASSERT_EQ(-1, hostname2endpoint("localhost:-1", &p5));
     ASSERT_EQ(-1, hostname2endpoint("localhost:65536", &p5));
     ASSERT_EQ(0, hostname2endpoint("localhost:65535", &p5)) << berror();
     ASSERT_EQ(0, hostname2endpoint("localhost:0", &p5));
+    ASSERT_FALSE(butil::is_unix_sock_endpoint(p5));
 
 #ifdef BAIDU_INTERNAL
     butil::EndPoint p6;
     ASSERT_EQ(0, hostname2endpoint("tc-cm-et21.tc: 289 ", &p6));
     ASSERT_STREQ("10.23.249.73", butil::ip2str(p6.ip).c_str());
     ASSERT_EQ(289, p6.port);
+    ASSERT_FALSE(butil::is_unix_sock_endpoint(p5));
 #endif
+
+    butil::EndPoint p7("/tmp/test.sock");
+    ASSERT_EQ(butil::IP_ANY, p7.ip);
+    ASSERT_EQ(0, p7.port);
+    ASSERT_EQ(0, strcmp("/tmp/test.sock", p7.socket_file));
+    ASSERT_TRUE(butil::is_unix_sock_endpoint(p7));
 }
 
 TEST(EndPointTest, hash_table) {

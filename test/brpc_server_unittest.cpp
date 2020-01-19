@@ -227,6 +227,47 @@ TEST_F(ServerTest, sanity) {
     ASSERT_EQ(0, server.Join());
 }
 
+TEST_F(ServerTest, start_with_socket_file) {
+    {
+        brpc::Server server;
+        brpc::ServerOptions options;
+        options.has_builtin_services = false;
+        // path not exist
+        ASSERT_EQ(-1, server.StartAtSockFile("/tmp/test/test.sock", &options));
+        // file name too long
+        char socket_file[109];
+        memset(socket_file, '1', 108);
+        socket_file[108] = '\0';
+        ASSERT_EQ(-1, server.StartAtSockFile(socket_file, &options));
+        // normal
+        ASSERT_EQ(0, server.StartAtSockFile("/tmp/test.sock", &options));
+        ASSERT_TRUE(server.IsRunning());
+        std::vector<google::protobuf::Service*> services;
+        server.ListServices(&services);
+        ASSERT_TRUE(services.empty());
+        ASSERT_EQ(0UL, server.service_count());
+        ASSERT_TRUE(server._service_map.empty());
+        unlink("/tmp/test.sock");
+    }
+    {
+        brpc::Server server;
+        brpc::ServerOptions options;
+        options.internal_port = 8613;
+        ASSERT_EQ(0, server.StartAtSockFile("/tmp/test.sock", &options));
+        ASSERT_TRUE(server.IsRunning());
+        std::vector<google::protobuf::Service*> services;
+        server.ListServices(&services);
+        ASSERT_TRUE(services.empty());
+        ASSERT_EQ(0UL, server.service_count());
+        for (brpc::Server::ServiceMap::const_iterator it
+                     = server._service_map.begin();
+            it != server._service_map.end(); ++it) {
+            ASSERT_TRUE(it->second.is_builtin_service);
+        }
+        unlink("/tmp/test.sock");
+    }
+}
+
 TEST_F(ServerTest, invalid_protocol_in_enabled_protocols) {
     butil::EndPoint ep;
     ASSERT_EQ(0, str2endpoint("127.0.0.1:8613", &ep));
