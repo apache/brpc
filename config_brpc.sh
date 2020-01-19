@@ -21,7 +21,7 @@ else
     LDD=ldd
 fi
 
-TEMP=`getopt -o v: --long headers:,libs:,cc:,cxx:,with-glog,with-thrift,nodebugsymbols -n 'config_brpc' -- "$@"`
+TEMP=`getopt -o v: --long headers:,libs:,cc:,protoc-path:,cxx:,with-glog,with-thrift,nodebugsymbols -n 'config_brpc' -- "$@"`
 WITH_GLOG=0
 WITH_THRIFT=0
 DEBUGSYMBOLS=-g
@@ -42,6 +42,7 @@ while true; do
     case "$1" in
         --headers ) HDRS_IN="$(${REALPATH} $2)"; shift 2 ;;
         --libs ) LIBS_IN="$(${REALPATH} $2)"; shift 2 ;;
+        --protoc-path ) PROTOC_IN="$(realpath $2)"; shift 2 ;;
         --cc ) CC=$2; shift 2 ;;
         --cxx ) CXX=$2; shift 2 ;;
         --with-glog ) WITH_GLOG=1; shift 1 ;;
@@ -203,7 +204,11 @@ else
 	DYNAMIC_LINKINGS="$DYNAMIC_LINKINGS -lleveldb"
 fi
 
-PROTOC=$(find_bin_or_die protoc)
+if [ "$PROTOC_IN" ]; then
+    PROTOC=$PROTOC_IN
+else
+    PROTOC=$(find_bin_or_die protoc)
+fi
 
 GFLAGS_HDR=$(find_dir_of_header_or_die gflags/gflags.h)
 # namespace of gflags may not be google, grep it from source.
