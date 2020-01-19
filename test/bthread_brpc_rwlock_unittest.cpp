@@ -107,7 +107,7 @@ template <typename Rwlock, typename ThreadId,
     }
     g_started = true;
     char prof_name[32];
-    snprintf(prof_name, sizeof(prof_name), "rdlock_perf_%d.prof", ++g_prof_name_counter);
+    snprintf(prof_name, sizeof(prof_name), "rwlock_perf_%d.prof", ++g_prof_name_counter);
     ProfilerStart(prof_name);
     usleep(500 * 1000);
     ProfilerStop();
