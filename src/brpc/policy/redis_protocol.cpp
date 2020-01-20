@@ -329,6 +329,8 @@ void PackRedisRequest(butil::IOBuf* buf,
         }
         buf->append(auth_str);
         ControllerPrivateAccessor(cntl).add_with_auth();
+    } else {
+        ControllerPrivateAccessor(cntl).clear_with_auth();
     }
 
     buf->append(request);
