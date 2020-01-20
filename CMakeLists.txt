@@ -181,7 +181,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         )
 endif()
 
-include(FindOpenSSL)
+find_package(OpenSSL)
 
 include_directories(
         ${GFLAGS_INCLUDE_PATH}
