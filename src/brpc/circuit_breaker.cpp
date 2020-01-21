@@ -180,8 +180,8 @@ bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
     // the entire downstream cluster is overloaded. If we isolate nodes at
     // this time, may increase the pressure on downstream. On the other hand,
     // since the latency corresponding to ELIMIT is usually very small, we
-    // cannot handle it as a successful request.Here we simply ignore the requests
-    // that returns ELIMIT.
+    // cannot handle it as a successful request. Here we simply ignore the requests
+    // that returned ELIMIT.
     if (error_code == ELIMIT) {
         return true;
     }
