@@ -583,7 +583,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             hreq.SetHeader(common->TE, common->TRAILERS);
             if (cntl->timeout_ms() >= 0) {
                 hreq.SetHeader(common->GRPC_TIMEOUT,
-                        butil::string_printf("%ldm", cntl->timeout_ms()));
+                        butil::string_printf("%" PRId64, cntl->timeout_ms()));
             }
             // Append compressed and length before body
             AddGrpcPrefix(&cntl->request_attachment(), grpc_compressed);

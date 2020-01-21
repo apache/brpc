@@ -111,7 +111,6 @@ private:
 private:
     bool _created;
     bool _stop;
-    pid_t _created_pid;
     int64_t _cumulated_time_us;
     pthread_t _tid;
 };

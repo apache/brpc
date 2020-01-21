@@ -240,7 +240,7 @@ enum RedisCommandHandlerResult {
 // The Command handler for a redis request. User should impletement Run().
 class RedisCommandHandler {
 public:
-    ~RedisCommandHandler() {}
+    virtual ~RedisCommandHandler() {}
 
     // Once Server receives commands, it will first find the corresponding handlers and
     // call them sequentially(one by one) according to the order that requests arrive,

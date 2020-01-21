@@ -434,7 +434,7 @@ short epoll_to_poll_events(uint32_t epoll_events) {
     return poll_events;
 }
 #elif defined(OS_MACOSX)
-short kqueue_to_poll_events(uint32_t kqueue_events) {
+static short kqueue_to_poll_events(int kqueue_events) {
     //TODO: add more values?
     short poll_events = 0;
     if (kqueue_events == EVFILT_READ) {

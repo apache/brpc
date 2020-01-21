@@ -103,7 +103,7 @@ static std::string GeneratePerlScriptPath(const std::string& filename) {
     path += FLAGS_rpc_profiling_dir;
     path.push_back('/');
     path += filename;
-    return std::move(path);
+    return path;
 }
 
 extern bool cpu_profiler_enabled;

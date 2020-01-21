@@ -106,7 +106,7 @@ static void PrintIOBuf(Appender* appender, const IOBuf& b, size_t max_length) {
                 printer.Flush();
                 char buf[48];
                 int len = snprintf(buf, sizeof(buf), "...<skipping %" PRIu64 " bytes>",
-                         b.size() - nw);
+                        (uint64_t)(b.size() - nw));
                 appender->Append(buf, len);
                 return;
             }
@@ -124,7 +124,7 @@ static void PrintString(Appender* appender, const StringPiece& s, size_t max_len
             printer.Flush();
             char buf[48];
             int len = snprintf(buf, sizeof(buf), "...<skipping %" PRIu64 " bytes>",
-                               s.size() - i);
+                               (uint64_t)(s.size() - i));
             appender->Append(buf, len);
             return;
         }
