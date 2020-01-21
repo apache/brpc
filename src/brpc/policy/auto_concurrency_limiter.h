@@ -62,6 +62,8 @@ private:
     void UpdateMinLatency(int64_t latency_us);
     void UpdateQps(double qps);
 
+    void AdjustMaxConcurrency(int next_max_concurrency);
+
     // modified per sample-window or more
     int _max_concurrency;
     int64_t _remeasure_start_us;
