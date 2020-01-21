@@ -186,7 +186,7 @@ bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
     // cannot handle it as a successful request.Here we simply ignore the requests
     // that returns ELIMIT.
     if (error_code == ELIMIT) {
-      return true;
+        return true;
     }
     if (_broken.load(butil::memory_order_relaxed)) {
         return false;
