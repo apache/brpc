@@ -82,13 +82,13 @@ bool LocalityAwareLoadBalancer::Add(Servers& bg, const Servers& fg,
 
         // Push the weight structure into the tree. Notice that we also need
         // a left_weight entry to store weight sum of all left nodes so that
-        // the load balancing by weights can be done in O(logN) complexicity.
+        // the load balancing by weights can be done in O(logN) complexity.
         ServerInfo info = { id, lb->PushLeft(), new Weight(initial_weight) };
         bg.weight_tree.push_back(info);
 
         // The weight structure may already have initial weight. Add the weight
         // to left_weight entries of all parent nodes and _total. The time
-        // complexicity is strictly O(logN) because the tree is complete.
+        // complexity is strictly O(logN) because the tree is complete.
         const int64_t diff = info.weight->volatile_value();
         if (diff) {
             bg.UpdateParentWeights(diff, index);
@@ -120,7 +120,7 @@ bool LocalityAwareLoadBalancer::Remove(
     // it retries, as if this range of weight is removed.
     const int64_t rm_weight = w->Disable();
     if (index + 1 == bg.weight_tree.size()) {
-        // last node. Removing is eaiser.
+        // last node. Removing is easier.
         bg.weight_tree.pop_back();
         if (rm_weight) {
             // The first buffer. Remove the weight from parents to disable
@@ -151,10 +151,10 @@ bool LocalityAwareLoadBalancer::Remove(
             // However this process is not atomic. The foreground buffer still
             // sees w2 as last node and it may change the weight during the
             // process. To solve this problem, we atomically reset the weight
-            // and remember the preivous index (back()) in _old_index. Later
+            // and remember the previous index (back()) in _old_index. Later
             // change to weight will add the diff to _old_diff_sum if _old_index
             // matches the index which SelectServer is from. In this way we
-            // know the weight diff from foreground before we laterly modify it.
+            // know the weight diff from foreground before we later modify it.
             const int64_t add_weight = w2->MarkOld(bg.weight_tree.size());
 
             // Add the weight diff to parent nodes of node `index'. Notice
@@ -288,7 +288,7 @@ int LocalityAwareLoadBalancer::SelectServer(const SelectIn& in, SelectOut* out) 
         
         // Locate a weight range in the tree. This is obviously not atomic and
         // left-weights / total / weight-of-the-node may not be consistent. But
-        // this is what we have to pay to gain more parallism.
+        // this is what we have to pay to gain more parallelism.
         const ServerInfo & info = s->weight_tree[index];
         const int64_t left = info.left->load(butil::memory_order_relaxed);
         if (dice < left) {
@@ -396,7 +396,7 @@ int64_t LocalityAwareLoadBalancer::Weight::Update(
         // Accumulate into the last entry so that errors always decrease
         // the overall QPS and latency.
         // Note that the latency used is linearly mixed from the real latency
-        // (of an errorous call) and the timeout, so that errors that are more
+        // (of an erroneous call) and the timeout, so that errors that are more
         // unlikely to be solved by later retries are punished more.
         // Examples:
         //   max_retry=0: always use timeout
