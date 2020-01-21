@@ -21,9 +21,6 @@
 #include <gflags/gflags.h>
 
 #include "brpc/errno.pb.h"
-#include "butil/logging.h"
-#include "butil/strings/string_number_conversions.h"
-#include "butil/strings/string_split.h"
 #include "butil/time.h"
 
 namespace brpc {
