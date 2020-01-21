@@ -17,14 +17,10 @@
 
 #include "brpc/circuit_breaker.h"
 
-#include "brpc/circuit_breaker.h"
-
-#include <pthread.h>
 #include <cmath>
-#include <set>
-#include <mutex>
 #include <gflags/gflags.h>
 
+#include "brpc/errno.pb.h"
 #include "butil/logging.h"
 #include "butil/strings/string_number_conversions.h"
 #include "butil/strings/string_split.h"
@@ -32,12 +28,6 @@
 
 namespace brpc {
 
-<<<<<<< HEAD
-DEFINE_string(circuit_breaker_ignored_error_codes, "2004",
-    "Comma sparated error code list, those error codes will be ignored by"
-    "circuit breaker. Note that you should never ignore 0, we ignored ELIMIT for default.");
-=======
->>>>>>> ignore ELIMIT
 DEFINE_int32(circuit_breaker_short_window_size, 1500,
     "Short window sample size.");
 DEFINE_int32(circuit_breaker_long_window_size, 3000,
@@ -72,6 +62,8 @@ namespace {
 // EPSILON = 0.3, smooth = 0.9987
 
 #define EPSILON (FLAGS_circuit_breaker_epsilon_value)
+
+}  // namespace
 
 CircuitBreaker::EmaErrorRecorder::EmaErrorRecorder(int window_size,
                                                    int max_error_percent)
@@ -186,16 +178,6 @@ CircuitBreaker::CircuitBreaker()
 }
 
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
-<<<<<<< HEAD
-<<<<<<< HEAD
-    std::call_once(g_init_ignored_error_codes_once, InitIgnoredErrorCodes);
-    if (g_ignored_error_codes.find(error_code) != g_ignored_error_codes.end()) {
-=======
-    const std::set<int>* ignored_error_codes = GetOrNewIgnoredErrorCodes();
-    if (ignored_error_codes->find(error_code) != ignored_error_codes->end()) {
->>>>>>> use pthread_once to initialize ignored_error_codes for cb
-        return true;
-=======
     // If the server has reached its maximum concurrency, it will return
     // ELIMIT directly when a new request arrives. This usually means that
     // the entire downstream cluster is overloaded. If we isolate nodes at
@@ -205,7 +187,6 @@ bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
     // that returns ELIMIT.
     if (error_code == ELIMIT) {
       return true;
->>>>>>> ignore ELIMIT
     }
     if (_broken.load(butil::memory_order_relaxed)) {
         return false;
