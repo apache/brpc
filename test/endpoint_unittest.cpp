@@ -145,7 +145,7 @@ TEST(EndPointTest, flat_map) {
     butil::BucketInfo info = m.bucket_info();
     LOG(INFO) << "bucket info max long=" << info.longest_length
         << " avg=" << info.average_length << std::endl;
-    ASSERT_LT(info.longest_length, 32) << "detect hash collision and it's too large.";
+    ASSERT_LT(info.longest_length, 32ul) << "detect hash collision and it's too large.";
 }
 
 } // end of namespace

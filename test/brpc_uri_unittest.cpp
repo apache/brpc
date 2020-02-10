@@ -64,7 +64,7 @@ TEST(URITest, only_host) {
     ASSERT_EQ("", uri.path());
     ASSERT_EQ("", uri.user_info());
     ASSERT_EQ("", uri.fragment());
-    ASSERT_EQ(2, uri.QueryCount());
+    ASSERT_EQ(2u, uri.QueryCount());
     ASSERT_TRUE(uri.GetQuery("wd"));
     ASSERT_EQ(*uri.GetQuery("wd"), "uri2");
     ASSERT_TRUE(uri.GetQuery("nonkey"));
@@ -77,7 +77,7 @@ TEST(URITest, only_host) {
     ASSERT_EQ("", uri.path());
     ASSERT_EQ("", uri.user_info());
     ASSERT_EQ("", uri.fragment());
-    ASSERT_EQ(0, uri.QueryCount());
+    ASSERT_EQ(0u, uri.QueryCount());
     
     ASSERT_EQ(0, uri.SetHttpURL(" www.baidu4.com "));
     ASSERT_EQ("", uri.scheme());
@@ -86,7 +86,7 @@ TEST(URITest, only_host) {
     ASSERT_EQ("", uri.path());
     ASSERT_EQ("", uri.user_info());
     ASSERT_EQ("", uri.fragment());
-    ASSERT_EQ(0, uri.QueryCount());
+    ASSERT_EQ(0u, uri.QueryCount());
 }
 
 TEST(URITest, no_scheme) {

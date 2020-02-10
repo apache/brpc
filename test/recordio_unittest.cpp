@@ -318,7 +318,7 @@ TEST(RecordIOTest, write_read_random) {
     }
     ASSERT_EQ((int)butil::RecordReader::END_OF_READER, rr.last_error());
     ASSERT_EQ(j, name_value_list.size());
-    ASSERT_LE(str.size() - rr.offset(), 3);
+    ASSERT_LE(str.size() - rr.offset(), 3u);
 }
 
 } // namespace
