@@ -54,37 +54,37 @@ all: redis_press redis_cli redis_server
 
 .PHONY:clean
 clean:
-	@echo "Cleaning"
-	@rm -rf redis_press redis_cli $(PRESS_OBJS) $(CLI_OBJS) $(SERVER_OBJS)
+	@echo "> Cleaning"
+	rm -rf redis_press redis_cli $(PRESS_OBJS) $(CLI_OBJS) $(SERVER_OBJS)
 
 redis_press:$(PRESS_OBJS)
-	@echo "Linking $@"
+	@echo "> Linking $@"
 ifneq ("$(LINK_SO)", "")
-	@$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
+	$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
 else
-	@$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
+	$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
 endif
 
 redis_cli:$(CLI_OBJS)
-	@echo "Linking $@"
+	@echo "> Linking $@"
 ifneq ("$(LINK_SO)", "")
-	@$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
+	$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
 else
-	@$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
+	$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
 endif
 
 redis_server:$(SERVER_OBJS)
-	@echo "Linking $@"
+	@echo "> Linking $@"
 ifneq ("$(LINK_SO)", "")
-	@$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
+	$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
 else
-	@$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
+	$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
 endif
 
 %.o:%.cpp
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.o:%.cc
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@

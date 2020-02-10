@@ -30,21 +30,21 @@ all: parallel_http
 
 .PHONY:clean
 clean:
-	@echo "Cleaning"
-	@rm -rf parallel_http $(OBJS)
+	@echo "> Cleaning"
+	rm -rf parallel_http $(OBJS)
 
 parallel_http:$(OBJS)
-	@echo "Linking $@"
+	@echo "> Linking $@"
 ifeq ($(SYSTEM),Linux)
-	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
+	$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
 else ifeq ($(SYSTEM),Darwin)
-	@$(CXX) $(LIBPATHS) $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
+	$(CXX) $(LIBPATHS) $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
 endif
 
 %.o:%.cpp
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.o:%.cc
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@

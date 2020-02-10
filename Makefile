@@ -227,107 +227,107 @@ debug: test/libbrpc.dbg.$(SOEXT) test/libbvar.dbg.a
 
 .PHONY:clean
 clean:
-	@echo "Cleaning"
-	@rm -rf src/mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a libbrpc.$(SOEXT) $(OBJS) output/include output/lib output/bin $(PROTOS:.proto=.pb.h) $(PROTOS:.proto=.pb.cc)
+	@echo "> Cleaning"
+	rm -rf src/mcpack2pb/generator.o protoc-gen-mcpack libbrpc.a libbrpc.$(SOEXT) $(OBJS) output/include output/lib output/bin $(PROTOS:.proto=.pb.h) $(PROTOS:.proto=.pb.cc)
 
 .PHONY:clean_debug
 clean_debug:
-	@rm -rf test/libbrpc.dbg.$(SOEXT) test/libbvar.dbg.a $(DEBUG_OBJS)
+	rm -rf test/libbrpc.dbg.$(SOEXT) test/libbvar.dbg.a $(DEBUG_OBJS)
 
 .PRECIOUS: %.o
 
 protoc-gen-mcpack: src/idl_options.pb.cc src/mcpack2pb/generator.o libbrpc.a
-	@echo "Linking $@"
+	@echo "> Linking $@"
 ifeq ($(SYSTEM),Linux)
-	@$(CXX) -o $@ $(HDRPATHS) $(LIBPATHS) -std=c++0x -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
+	$(CXX) -o $@ $(HDRPATHS) $(LIBPATHS) -std=c++0x -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS)
 else ifeq ($(SYSTEM),Darwin)
-	@$(CXX) -o $@ $(HDRPATHS) $(LIBPATHS) -std=c++0x $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+	$(CXX) -o $@ $(HDRPATHS) $(LIBPATHS) -std=c++0x $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
 endif
 
 # force generation of pb headers before compiling to avoid fail-to-import issues in compiling pb.cc
 libbrpc.a:$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
-	@echo "Packing $@"
-	@ar crs $@ $(filter %.o,$^)
+	@echo "> Packing $@"
+	ar crs $@ $(filter %.o,$^)
 
 libbrpc.$(SOEXT):$(BRPC_PROTOS:.proto=.pb.h) $(OBJS)
-	@echo "Linking $@"
+	@echo "> Linking $@"
 ifeq ($(SYSTEM),Linux)
-	@$(CXX) -shared -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $(filter %.o,$^) -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+	$(CXX) -shared -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $(filter %.o,$^) -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
 else ifeq ($(SYSTEM),Darwin)
-	@$(CXX) -dynamiclib -Wl,-headerpad_max_install_names -o $@ -install_name @rpath/$@ $(LIBPATHS) $(SOPATHS) $(filter %.o,$^) $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+	$(CXX) -dynamiclib -Wl,-headerpad_max_install_names -o $@ -install_name @rpath/$@ $(LIBPATHS) $(SOPATHS) $(filter %.o,$^) $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
 endif
 
 test/libbvar.dbg.a:$(BVAR_DEBUG_OBJS)
-	@echo "Packing $@"
+	@echo "> Packing $@"
 	@ar crs $@ $^
 
 test/libbrpc.dbg.$(SOEXT):$(BRPC_PROTOS:.proto=.pb.h) $(DEBUG_OBJS)
-	@echo "Linking $@"
+	@echo "> Linking $@"
 ifeq ($(SYSTEM),Linux)
-	@$(CXX) -shared -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $(filter %.o,$^) -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+	$(CXX) -shared -o $@ $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $(filter %.o,$^) -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
 else ifeq ($(SYSTEM),Darwin)
-	@$(CXX) -dynamiclib -Wl,-headerpad_max_install_names -o $@ -install_name @rpath/libbrpc.dbg.$(SOEXT) $(LIBPATHS) $(SOPATHS) $(filter %.o,$^) $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
+	$(CXX) -dynamiclib -Wl,-headerpad_max_install_names -o $@ -install_name @rpath/libbrpc.dbg.$(SOEXT) $(LIBPATHS) $(SOPATHS) $(filter %.o,$^) $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS)
 endif
 
 .PHONY:output/include
 output/include:
-	@echo "Copying to $@"
+	@echo "> Copying to $@"
 	@for dir in `find src -type f -name "*.h" -exec dirname {} \\; | sed -e 's/^src\///g' -e '/^src$$/d' | sort | uniq`; do mkdir -p $@/$$dir && cp src/$$dir/*.h $@/$$dir/; done
 	@for dir in `find src -type f -name "*.hpp" -exec dirname {} \\; | sed -e 's/^src\///g' -e '/^src$$/d' | sort | uniq`; do mkdir -p $@/$$dir && cp src/$$dir/*.hpp $@/$$dir/; done
 	@cp src/idl_options.proto src/idl_options.pb.h $@
 
 .PHONY:output/lib
 output/lib:libbrpc.a libbrpc.$(SOEXT)
-	@echo "Copying to $@"
+	@echo "> Copying to $@"
 	@mkdir -p $@
 	@cp $^ $@
 
 .PHONY:output/bin
 output/bin:protoc-gen-mcpack
-	@echo "Copying to $@"
+	@echo "> Copying to $@"
 	@mkdir -p $@
 	@cp $^ $@
 
 %.pb.cc %.pb.h:%.proto
-	@echo "Generating $@"
-	@$(PROTOC) --cpp_out=./src --proto_path=./src --proto_path=$(PROTOBUF_HDR) $<
+	@echo "> Generating $@"
+	$(PROTOC) --cpp_out=./src --proto_path=./src --proto_path=$(PROTOBUF_HDR) $<
 
 %.o:%.cpp
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %http2_rpc_protocol.dbg.o:%http2_rpc_protocol.cpp
-	@echo "Compiling $@ with O2"
-	@$(CXX) -c $(HDRPATHS) -O2 $(DEBUG_CXXFLAGS) $< -o $@
+	@echo "> Compiling $@ with O2"
+	$(CXX) -c $(HDRPATHS) -O2 $(DEBUG_CXXFLAGS) $< -o $@
 
 %hpack.dbg.o:%hpack.cpp
-	@echo "Compiling $@ with O2"
-	@$(CXX) -c $(HDRPATHS) -O2 $(DEBUG_CXXFLAGS) $< -o $@
+	@echo "> Compiling $@ with O2"
+	$(CXX) -c $(HDRPATHS) -O2 $(DEBUG_CXXFLAGS) $< -o $@
 
 %.dbg.o:%.cpp
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(DEBUG_CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(DEBUG_CXXFLAGS) $< -o $@
 
 %.o:%.cc
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.dbg.o:%.cc
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(DEBUG_CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(DEBUG_CXXFLAGS) $< -o $@
 
 %.o:%.mm
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.dbg.o:%.mm
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(DEBUG_CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(DEBUG_CXXFLAGS) $< -o $@
 
 %.o:%.c
-	@echo "Compiling $@"
-	@$(CC) -c $(HDRPATHS) $(CFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CC) -c $(HDRPATHS) $(CFLAGS) $< -o $@
 
 %.dbg.o:%.c
-	@echo "Compiling $@"
-	@$(CC) -c $(HDRPATHS) $(DEBUG_CFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CC) -c $(HDRPATHS) $(DEBUG_CFLAGS) $< -o $@

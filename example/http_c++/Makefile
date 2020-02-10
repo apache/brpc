@@ -63,41 +63,41 @@ all: http_client benchmark_http http_server
 
 .PHONY:clean
 clean:
-	@echo "Cleaning"
-	@rm -rf http_client benchmark_http http_server $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS) $(BENCHMARK_OBJS) $(SERVER_OBJS)
+	@echo "> Cleaning"
+	rm -rf http_client benchmark_http http_server $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS) $(BENCHMARK_OBJS) $(SERVER_OBJS)
 
 http_client:$(CLIENT_OBJS)
-	@echo "Linking $@"
+	@echo "> Linking $@"
 ifneq ("$(LINK_SO)", "")
-	@$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
+	$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
 else
-	@$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
+	$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
 endif
 
 benchmark_http:$(BENCHMARK_OBJS)
-	@echo "Linking $@"
+	@echo "> Linking $@"
 ifneq ("$(LINK_SO)", "")
-	@$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
+	$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
 else
-	@$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
+	$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
 endif
 
 http_server:$(PROTO_OBJS) $(SERVER_OBJS)
-	@echo "Linking $@"
+	@echo "> Linking $@"
 ifneq ("$(LINK_SO)", "")
-	@$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
+	$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
 else
-	@$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
+	$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
 endif
 
 %.pb.cc %.pb.h:%.proto
-	@echo "Generating $@"
-	@$(PROTOC) --cpp_out=. --proto_path=. $<
+	@echo "> Generating $@"
+	$(PROTOC) --cpp_out=. --proto_path=. $<
 
 %.o:%.cpp
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.o:%.cc
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@

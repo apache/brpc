@@ -53,43 +53,43 @@ all: echo_client echo_client2 echo_server echo_server2 native_server native_clie
 
 .PHONY:clean
 clean:
-	@echo "Cleaning"
-	@rm -rf echo_client echo_client2 echo_server echo_server2 $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS) $(CLIENT2_OBJS) $(SERVER_OBJS) $(SERVER2_OBJS) native_server native_client EchoService.o echo_types.o libechothrift.a gen-cpp gen-py
+	@echo "> Cleaning"
+	rm -rf echo_client echo_client2 echo_server echo_server2 $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS) $(CLIENT2_OBJS) $(SERVER_OBJS) $(SERVER2_OBJS) native_server native_client EchoService.o echo_types.o libechothrift.a gen-cpp gen-py
 
 echo_client:$(PROTO_OBJS) $(CLIENT_OBJS) libechothrift.a
-	@echo "Linking $@"
-	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
+	@echo "> Linking $@"
+	$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
 
 echo_client2:$(PROTO_OBJS) $(CLIENT2_OBJS) libechothrift.a
-	@echo "Linking $@"
-	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
+	@echo "> Linking $@"
+	$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
 
 echo_server:$(PROTO_OBJS) $(SERVER_OBJS) libechothrift.a
-	@echo "Linking $@"
-	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ libechothrift.a -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
+	@echo "> Linking $@"
+	$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ libechothrift.a -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
 
 echo_server2:$(PROTO_OBJS) $(SERVER2_OBJS) libechothrift.a
-	@echo "Linking $@"
-	@$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ libechothrift.a -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
+	@echo "> Linking $@"
+	$(CXX) $(LIBPATHS) $(SOPATHS) -Xlinker "-(" $^ libechothrift.a -Xlinker "-)" $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
 
 %.o:%.cpp libechothrift.a
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.o:%.cc libechothrift.a
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 libechothrift.a:
-	@echo "Generating thrift files"
-	@thrift --gen cpp echo.thrift
-	@thrift --gen py echo.thrift
-	@$(CXX) -c gen-cpp/echo_types.cpp -o echo_types.o
-	@$(CXX) -c gen-cpp/EchoService.cpp -o EchoService.o
-	@ar -crv libechothrift.a EchoService.o echo_types.o
+	@echo "> Generating thrift files"
+	thrift --gen cpp echo.thrift
+	thrift --gen py echo.thrift
+	$(CXX) -c gen-cpp/echo_types.cpp -o echo_types.o
+	$(CXX) -c gen-cpp/EchoService.cpp -o EchoService.o
+	ar -crv libechothrift.a EchoService.o echo_types.o
 
 native_server: libechothrift.a
-	@$(CXX) native_server.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp $(HDRPATHS) $(LIBPATHS) $(SOPATHS) $(CXXFLAGS) -lthriftnb -lthrift -levent -lpthread -lgflags -lbrpc -o native_server
+	$(CXX) native_server.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp $(HDRPATHS) $(LIBPATHS) $(SOPATHS) $(CXXFLAGS) -lthriftnb -lthrift -levent -lpthread -lgflags -lbrpc -o native_server
 
 native_client: libechothrift.a
-	@$(CXX) native_client.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp $(HDRPATHS) $(LIBPATHS) $(SOPATHS) $(CXXFLAGS) -lthriftnb -lthrift -levent -lpthread -lgflags -lbrpc -o native_client
+	$(CXX) native_client.cpp gen-cpp/echo_types.cpp gen-cpp/EchoService.cpp $(HDRPATHS) $(LIBPATHS) $(SOPATHS) $(CXXFLAGS) -lthriftnb -lthrift -levent -lpthread -lgflags -lbrpc -o native_client
