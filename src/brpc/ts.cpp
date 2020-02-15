@@ -1283,18 +1283,21 @@ butil::Status TsWriter::Write(const RtmpVideoMessage& msg) {
     for (AVCNaluIterator it(&avc_msg.data, _avc_seq_header.length_size_minus1,
                             &_nalu_format); it != NULL; ++it) {
         // ignore SPS/PPS/AUD
-        switch (it.nalu_type()) {
-        case AVC_NALU_IDR:
+//        switch (it.nalu_type()) {
+//        case AVC_NALU_IDR:
+//            has_idr = true;
+//            break;
+//        case AVC_NALU_SPS:
+//        case AVC_NALU_PPS:
+//        case AVC_NALU_ACCESSUNITDELIMITER:
+//            continue;
+//        default:
+//            break;
+//        }
+//      ignore SPS/PPS/AUD make HLS cannot play!
+        if( it.nalu_type() == AVC_NALU_IDR )
             has_idr = true;
-            break;
-        case AVC_NALU_SPS:
-        case AVC_NALU_PPS:
-        case AVC_NALU_ACCESSUNITDELIMITER:
-            continue;
-        default:
-            break;
-        }
-        
+
         // append cont nalu header before NAL units.
         nalus.append(cont_nalu_header, 3);
         nalus.append(*it);
