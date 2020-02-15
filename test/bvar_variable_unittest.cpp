@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Fri Jul 24 17:19:40 CST 2015
 
 #include <pthread.h>                                // pthread_*

@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Thu Nov 22 13:57:56 CST 2012
 
 #include "butil/macros.h"

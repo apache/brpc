@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Zhangyi Chen(chenzhangyi01@baidu.com)
-//          Ge,Jun (gejun@baidu.com)
 
 #ifndef  BRPC_HTTP_HEADER_H
 #define  BRPC_HTTP_HEADER_H

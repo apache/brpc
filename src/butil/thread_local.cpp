@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
  
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
 #include <errno.h>                       // errno

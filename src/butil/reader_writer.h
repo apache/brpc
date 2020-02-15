@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (jge666@gmail.com)
 // Date: Wed Aug  8 05:51:33 PDT 2018
 
 #ifndef BUTIL_READER_WRITER_H

@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Rujie Jiang (jiangrujie@baidu.com)
-//          Ge,Jun (gejun@baidu.com)
 
 #include <google/protobuf/descriptor.h>          // MethodDescriptor
 #include <google/protobuf/message.h>             // Message

@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date: 2017/11/04 17:13:18
 
 #ifndef  PUBLIC_COMMON_POPEN_H

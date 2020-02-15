@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Yaofu Zhang (zhangyaofu@qiyi.com)
 
 #ifndef  BRPC_POLICY_CONSUL_NAMING_SERVICE
 #define  BRPC_POLICY_CONSUL_NAMING_SERVICE

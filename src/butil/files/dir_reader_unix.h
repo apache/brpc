@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: yinqiwen (yinqiwen@gmail.com)
 
 #ifndef BUTIL_FILES_DIR_READER_UNIX_H_
 #define BUTIL_FILES_DIR_READER_UNIX_H_

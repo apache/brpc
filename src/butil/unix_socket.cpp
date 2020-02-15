@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Jiang,Rujie(jiangrujie@baidu.com)  
 // Date: Mon. Jan 27  23:08:35 CST 2014
 
 #include <sys/types.h>                          // socket

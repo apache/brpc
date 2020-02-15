@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Sep 20 12:25:11 CST 2015
 
 #ifndef  BVAR_VECTOR_H

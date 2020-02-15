@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Rujie Jiang (jiangrujie@baidu.com)
 
 #ifndef BRPC_SSL_OPTION_H
 #define BRPC_SSL_OPTION_H

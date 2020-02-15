@@ -17,7 +17,6 @@
 
 // bthread - A M:N threading library to make applications more concurrent.
 
-// Author: Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date: 2015/10/23 18:16:16
 
 #ifndef  BTHREAD_EXECUTION_QUEUE_H
@@ -30,7 +29,7 @@ namespace bthread {
 
 // ExecutionQueue is a special wait-free MPSC queue of which the consumer thread
 // is auto started by the execute operation and auto quits if there are no more 
-// tasks, in another word there isn't a daemon bthread waiting to consume tasks
+// tasks, in another word there isn't a daemon bthread waiting to consume tasks.
 
 template <typename T> struct ExecutionQueueId;
 template <typename T> class ExecutionQueue;
@@ -77,7 +76,7 @@ private:
 // 
 // Examples:
 // int demo_execute(void* meta, TaskIterator<T>& iter) {
-//     if (iter.is_stopped()) {
+//     if (iter.is_queue_stopped()) {
 //         // destroy meta and related resources
 //         return 0;
 //     }

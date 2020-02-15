@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Thu Jul 30 17:44:54 CST 2015
 
 #include <unistd.h>                        // getpagesize

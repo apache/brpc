@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Yan,Lin (yanlin@baidu.com)
-//         Ge,Jun (gejun@baidu.com)
 // Date: Thu Oct 28 15:27:05 2010
 
 #include <fcntl.h>                                  // open

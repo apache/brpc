@@ -17,7 +17,6 @@
 
 // Process-related Info
 
-// Author: Zhu,Jiashun (zhujiashun@baidu.com)
 // Date: Wed Apr 11 14:35:56 CST 2018
 
 #ifndef BUTIL_PROCESS_UTIL_H

@@ -16,7 +16,6 @@
 // under the License.
 
 // A client sending requests to server every 1 second using grpc.
-// Authors: Jiashun Zhu(zhujiashun@bilibili.com)
 
 #include <gflags/gflags.h>
 #include <butil/logging.h>

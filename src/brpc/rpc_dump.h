@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #ifndef BRPC_RPC_DUMP_H
 #define BRPC_RPC_DUMP_H
@@ -48,7 +47,8 @@ DECLARE_bool(rpc_dump);
 // In practice, sampled requests are just small fraction of all requests.
 // The overhead of sampling should be negligible for overall performance.
 
-struct SampledRequest : public bvar::Collected {
+class SampledRequest : public bvar::Collected {
+public:
     butil::IOBuf request;
     RpcDumpMeta meta;
 

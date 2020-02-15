@@ -15,14 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #include "butil/logging.h"
 #include "brpc/log.h"
 #include "brpc/redis_command.h"
-
-// Defined in src/butil/iobuf.cpp
-void* fast_memcpy(void *__restrict dest, const void *__restrict src, size_t n);
 
 namespace brpc {
 
@@ -358,6 +354,98 @@ butil::Status RedisCommandByComponents(butil::IOBuf* output,
         output->append("\r\n", 2);
     }
     return butil::Status::OK();
+}
+
+RedisCommandParser::RedisCommandParser()
+    : _parsing_array(false)
+    , _length(0)
+    , _index(0) {}
+
+ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
+                                       std::vector<const char*>* commands,
+                                       butil::Arena* arena) {
+    const char* pfc = (const char*)buf.fetch1();
+    if (pfc == NULL) {
+        return PARSE_ERROR_NOT_ENOUGH_DATA;
+    }
+    // '*' stands for array "*<size>\r\n<sub-reply1><sub-reply2>..."
+    if (!_parsing_array && *pfc != '*') {
+        return PARSE_ERROR_TRY_OTHERS;
+    }
+    // '$' stands for bulk string "$<length>\r\n<string>\r\n"
+    if (_parsing_array && *pfc != '$') {
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+    char intbuf[32];  // enough for fc + 64-bit decimal + \r\n
+    const size_t ncopied = buf.copy_to(intbuf, sizeof(intbuf) - 1);
+    intbuf[ncopied] = '\0';
+    const size_t crlf_pos = butil::StringPiece(intbuf, ncopied).find("\r\n");
+    if (crlf_pos == butil::StringPiece::npos) {  // not enough data
+        return PARSE_ERROR_NOT_ENOUGH_DATA;
+    }
+    char* endptr = NULL;
+    int64_t value = strtoll(intbuf + 1/*skip fc*/, &endptr, 10);
+    if (endptr != intbuf + crlf_pos) {
+        LOG(ERROR) << '`' << intbuf + 1 << "' is not a valid 64-bit decimal";
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+    if (value <= 0) {
+        LOG(ERROR) << "Invalid len=" << value << " in redis command";
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+    if (!_parsing_array) {
+        buf.pop_front(crlf_pos + 2/*CRLF*/);
+        _parsing_array = true;
+        _length = value;
+        _index = 0;
+        _commands.resize(value);
+        return Consume(buf, commands, arena);
+    }
+    CHECK(_index < _length) << "a complete command has been parsed. "
+            "impl of RedisCommandParser::Parse is buggy";
+    const int64_t len = value;  // `value' is length of the string
+    if (len < 0) {
+        LOG(ERROR) << "string in command is nil!";
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+    if (len > (int64_t)std::numeric_limits<uint32_t>::max()) {
+        LOG(ERROR) << "string in command is too long! max length=2^32-1,"
+            " actually=" << len;
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+    if (buf.size() < crlf_pos + 2 + (size_t)len + 2/*CRLF*/) {
+        return PARSE_ERROR_NOT_ENOUGH_DATA;
+    }
+    buf.pop_front(crlf_pos + 2/*CRLF*/);
+    char* d = (char*)arena->allocate((len/8 + 1) * 8);
+    buf.cutn(d, len);
+    d[len] = '\0';
+    _commands[_index] = d;
+    if (_index == 0) {
+        // convert it to lowercase when it is command name
+        for (int i = 0; i < len; ++i) {
+            d[i] = ::tolower(d[i]);
+        }
+    }
+    char crlf[2];
+    buf.cutn(crlf, sizeof(crlf));
+    if (crlf[0] != '\r' || crlf[1] != '\n') {
+        LOG(ERROR) << "string in command is not ended with CRLF";
+        return PARSE_ERROR_ABSOLUTELY_WRONG;
+    }
+    if (++_index < _length) {
+        return Consume(buf, commands, arena);
+    }
+    commands->swap(_commands);
+    Reset();
+    return PARSE_OK;
+}
+
+void RedisCommandParser::Reset() {
+    _parsing_array = false;
+    _length = 0;
+    _index = 0;
+    _commands.clear();
 }
 
 } // namespace brpc

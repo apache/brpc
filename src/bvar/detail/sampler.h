@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 28 18:15:57 CST 2015
 
 #ifndef  BVAR_DETAIL_SAMPLER_H

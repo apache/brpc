@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Zhangyi Chen (chenzhangyi01@baidu.com)
 
 #ifndef BRPC_POLICY_BRPC_PROTOCOL_H
 #define BRPC_POLICY_BRPC_PROTOCOL_H

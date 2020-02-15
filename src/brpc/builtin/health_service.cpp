@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #include "brpc/controller.h"           // Controller
 #include "brpc/server.h"               // Server

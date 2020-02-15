@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #include <algorithm>
 #include <google/protobuf/reflection_ops.h>                 // ReflectionOps::Merge

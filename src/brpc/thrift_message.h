@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: wangxuefeng (wangxuefeng@didichuxing.com)
 
 #ifndef BRPC_THRIFT_MESSAGE_H
 #define BRPC_THRIFT_MESSAGE_H

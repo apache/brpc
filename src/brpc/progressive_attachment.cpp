@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Zhangyi Chen (chenzhangyi01@baidu.com)
 
 #include "butil/logging.h"
 #include "bthread/bthread.h"   // INVALID_BTHREAD_ID before bthread r32748

@@ -17,7 +17,6 @@
 
 // iobuf - A non-continuous zero-copied buffer
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Thu Nov 22 13:57:56 CST 2012
 
 #ifndef BUTIL_IOBUF_H
@@ -669,6 +668,11 @@ public:
     // Returns 0 on success, -1 otherwise.
     int append(const void* data, size_t n);
     int append(const butil::StringPiece& str);
+
+    // Format integer |d| to back side of the internal buffer, which is much faster
+    // than snprintf(..., "%lu", d).
+    // Returns 0 on success, -1 otherwise.
+    int append_decimal(long d);
     
     // Push the character to back side of the internal buffer.
     // Costs ~3ns while IOBuf.push_back costs ~13ns on Intel(R) Xeon(R) CPU

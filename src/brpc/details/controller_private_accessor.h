@@ -128,6 +128,10 @@ public:
         _cntl->add_flag(Controller::FLAGS_REQUEST_WITH_AUTH);
     }
 
+    void clear_with_auth() {
+        _cntl->clear_flag(Controller::FLAGS_REQUEST_WITH_AUTH);
+    }
+
     std::string& protocol_param() { return _cntl->protocol_param(); }
     const std::string& protocol_param() const { return _cntl->protocol_param(); }
 

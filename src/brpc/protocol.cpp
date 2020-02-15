@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Rujie Jiang (jiangrujie@baidu.com)
 
 // Since kDefaultTotalBytesLimit is private, we need some hacks to get the limit.
 // Works for pb 2.4, 2.6, 3.0

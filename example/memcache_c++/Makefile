@@ -48,21 +48,21 @@ all: memcache_client
 
 .PHONY:clean
 clean:
-	@echo "Cleaning"
-	@rm -rf memcache_client $(OBJS)
+	@echo "> Cleaning"
+	rm -rf memcache_client $(OBJS)
 
 memcache_client:$(OBJS)
-	@echo "Linking $@"
+	@echo "> Linking $@"
 ifneq ("$(LINK_SO)", "")
-	@$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
+	$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
 else
-	@$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
+	$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
 endif
 
 %.o:%.cpp
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.o:%.cc
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@

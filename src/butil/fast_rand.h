@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Thu Dec 31 13:35:39 CST 2015
 
 #ifndef BUTIL_FAST_RAND_H

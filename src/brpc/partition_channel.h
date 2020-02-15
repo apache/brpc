@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #ifndef BRPC_PARTITION_CHANNEL_H
 #define BRPC_PARTITION_CHANNEL_H

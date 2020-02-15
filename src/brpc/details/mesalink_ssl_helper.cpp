@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Yiming Jing (jingyijming@baidu.com)
 
 #ifdef USE_MESALINK
 

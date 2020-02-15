@@ -62,33 +62,33 @@ all: echo_client echo_server
 
 .PHONY:clean
 clean:
-	@echo "Cleaning"
-	@rm -rf echo_client echo_server $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS) $(SERVER_OBJS)
+	@echo "> Cleaning"
+	rm -rf echo_client echo_server $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS) $(SERVER_OBJS)
 
 echo_client:$(PROTO_OBJS) $(CLIENT_OBJS)
-	@echo "Linking $@"
+	@echo "> Linking $@"
 ifneq ("$(LINK_SO)", "")
-	@$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
+	$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
 else
-	@$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
+	$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
 endif
 
 echo_server:$(PROTO_OBJS) $(SERVER_OBJS)
-	@echo "Linking $@"
+	@echo "> Linking $@"
 ifneq ("$(LINK_SO)", "")
-	@$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
+	$(CXX) $(LIBPATHS) $(SOPATHS) $(LINK_OPTIONS_SO) -o $@
 else
-	@$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
+	$(CXX) $(LIBPATHS) $(LINK_OPTIONS) -o $@
 endif
 
 %.pb.cc %.pb.h:%.proto
-	@echo "Generating $@"
-	@$(PROTOC) --cpp_out=. --proto_path=. $(PROTOC_EXTRA_ARGS) $<
+	@echo "> Generating $@"
+	$(PROTOC) --cpp_out=. --proto_path=. $(PROTOC_EXTRA_ARGS) $<
 
 %.o:%.cpp
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.o:%.cc
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@

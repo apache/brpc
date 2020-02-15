@@ -101,9 +101,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     if(NOT HAVE_CLOCK_GETTIME)
         set(DEFINE_CLOCK_GETTIME "-DNO_CLOCK_GETTIME_IN_MAC")
     endif()
+    set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -Wno-deprecated-declarations -Wno-inconsistent-missing-override")
 endif()
 
-set(CMAKE_CPP_FLAGS "${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
+set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} ${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
 if(WITH_MESALINK)
     set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DUSE_MESALINK")
 endif()
@@ -141,8 +142,8 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     endif()
 endif()
 
-include(FindProtobuf)
-include(FindThreads)
+find_package(Protobuf REQUIRED)
+find_package(Threads REQUIRED)
 
 find_path(LEVELDB_INCLUDE_PATH NAMES leveldb/db.h)
 find_library(LEVELDB_LIB NAMES leveldb)
@@ -181,7 +182,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         )
 endif()
 
-include(FindOpenSSL)
+find_package(OpenSSL)
 
 include_directories(
         ${GFLAGS_INCLUDE_PATH}
@@ -285,7 +286,6 @@ set(BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/src/butil/hash.cc
     ${PROJECT_SOURCE_DIR}/src/butil/lazy_instance.cc
     ${PROJECT_SOURCE_DIR}/src/butil/location.cc
-    ${PROJECT_SOURCE_DIR}/src/butil/md5.cc
     ${PROJECT_SOURCE_DIR}/src/butil/memory/aligned_memory.cc
     ${PROJECT_SOURCE_DIR}/src/butil/memory/ref_counted.cc
     ${PROJECT_SOURCE_DIR}/src/butil/memory/ref_counted_memory.cc

@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Tian,Ye(tianye15@baidu.com)
 
 #include <stdio.h>
 #include <thread>
@@ -105,7 +103,7 @@ static std::string GeneratePerlScriptPath(const std::string& filename) {
     path += FLAGS_rpc_profiling_dir;
     path.push_back('/');
     path += filename;
-    return std::move(path);
+    return path;
 }
 
 extern bool cpu_profiler_enabled;

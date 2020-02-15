@@ -37,25 +37,25 @@ all: rpc_view
 
 .PHONY:clean
 clean:
-	@echo "Cleaning"
-	@rm -rf rpc_view $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS)
+	@echo "> Cleaning"
+	rm -rf rpc_view $(PROTO_GENS) $(PROTO_OBJS) $(CLIENT_OBJS)
 
 rpc_view:$(PROTO_OBJS) $(CLIENT_OBJS)
-	@echo "Linking $@"
+	@echo "> Linking $@"
 ifeq ($(SYSTEM),Linux)
-	@$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
+	$(CXX) $(LIBPATHS) -Xlinker "-(" $^ -Wl,-Bstatic $(STATIC_LINKINGS) -Wl,-Bdynamic -Xlinker "-)" $(DYNAMIC_LINKINGS) -o $@
 else ifeq ($(SYSTEM),Darwin)
-	@$(CXX) $(LIBPATHS) $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
+	$(CXX) $(LIBPATHS) $^ $(STATIC_LINKINGS) $(DYNAMIC_LINKINGS) -o $@
 endif
 
 %.pb.cc %.pb.h:%.proto
-	@echo "Generating $@"
-	@$(PROTOC) --cpp_out=. --proto_path=. $(PROTOC_EXTRA_ARGS) $<
+	@echo "> Generating $@"
+	$(PROTOC) --cpp_out=. --proto_path=. $(PROTOC_EXTRA_ARGS) $<
 
 %.o:%.cpp
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
 
 %.o:%.cc
-	@echo "Compiling $@"
-	@$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@
+	@echo "> Compiling $@"
+	$(CXX) -c $(HDRPATHS) $(CXXFLAGS) $< -o $@

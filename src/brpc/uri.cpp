@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
-//          Ge,Jun (gejun@baidu.com)
 
 #include "brpc/log.h"
 #include "brpc/details/http_parser.h"      // http_parser_parse_url
@@ -43,7 +41,7 @@ void URI::Clear() {
     _path.clear();
     _user_info.clear();
     _fragment.clear();
-    _schema.clear();
+    _scheme.clear();
     _query.clear();
     _query_map.clear();
 }
@@ -57,7 +55,7 @@ void URI::Swap(URI &rhs) {
     _path.swap(rhs._path);
     _user_info.swap(rhs._user_info);
     _fragment.swap(rhs._fragment);
-    _schema.swap(rhs._schema);
+    _scheme.swap(rhs._scheme);
     _query.swap(rhs._query);
     _query_map.swap(rhs._query_map);
 }
@@ -140,7 +138,7 @@ static const char* const g_url_parsing_fast_action_map =
     g_url_parsing_fast_action_map_raw + 128;
 
 // This implementation is faster than http_parser_parse_url() and allows
-// ignoring of schema("http://")
+// ignoring of scheme("http://")
 int URI::SetHttpURL(const char* url) {
     Clear();
     
@@ -150,8 +148,8 @@ int URI::SetHttpURL(const char* url) {
         for (++p; *p == ' '; ++p) {}
     }
     const char* start = p;
-    // Find end of host, locate schema and user_info during the searching
-    bool need_schema = true;
+    // Find end of host, locate scheme and user_info during the searching
+    bool need_scheme = true;
     bool need_user_info = true;
     for (; true; ++p) {
         const char action = g_url_parsing_fast_action_map[(int)*p];
@@ -162,9 +160,9 @@ int URI::SetHttpURL(const char* url) {
             break;
         }
         if (*p == ':') {
-            if (p[1] == '/' && p[2] == '/' && need_schema) {
-                need_schema = false;
-                _schema.assign(start, p - start);
+            if (p[1] == '/' && p[2] == '/' && need_scheme) {
+                need_scheme = false;
+                _scheme.assign(start, p - start);
                 p += 2;
                 start = p + 1;
             }
@@ -228,15 +226,15 @@ int URI::SetHttpURL(const char* url) {
 }
 
 int ParseURL(const char* url,
-             std::string* schema_out, std::string* host_out, int* port_out) {
+             std::string* scheme_out, std::string* host_out, int* port_out) {
     const char* p = url;
     // skip heading blanks
     if (*p == ' ') {
         for (++p; *p == ' '; ++p) {}
     }
     const char* start = p;
-    // Find end of host, locate schema and user_info during the searching
-    bool need_schema = true;
+    // Find end of host, locate scheme and user_info during the searching
+    bool need_scheme = true;
     bool need_user_info = true;
     for (; true; ++p) {
         const char action = g_url_parsing_fast_action_map[(int)*p];
@@ -247,10 +245,10 @@ int ParseURL(const char* url,
             break;
         }
         if (*p == ':') {
-            if (p[1] == '/' && p[2] == '/' && need_schema) {
-                need_schema = false;
-                if (schema_out) {
-                    schema_out->assign(start, p - start);
+            if (p[1] == '/' && p[2] == '/' && need_scheme) {
+                need_scheme = false;
+                if (scheme_out) {
+                    scheme_out->assign(start, p - start);
                 }
                 p += 2;
                 start = p + 1;
@@ -281,8 +279,8 @@ int ParseURL(const char* url,
 
 void URI::Print(std::ostream& os) const {
     if (!_host.empty()) {
-        if (!_schema.empty()) {
-            os << _schema << "://";
+        if (!_scheme.empty()) {
+            os << _scheme << "://";
         } else {
             os << "http://";
         }

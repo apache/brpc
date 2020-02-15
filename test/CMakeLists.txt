@@ -53,7 +53,7 @@ endif()
 
 set(CMAKE_CPP_FLAGS "${DEFINE_CLOCK_GETTIME} -DBRPC_WITH_GLOG=${WITH_GLOG_VAL} -DGFLAGS_NS=${GFLAGS_NS}")
 set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -DBTHREAD_USE_FAST_PTHREAD_MUTEX -D__const__= -D_GNU_SOURCE -DUSE_SYMBOLIZE -DNO_TCMALLOC -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DUNIT_TEST -Dprivate=public -Dprotected=public -DBVAR_NOT_LINK_DEFAULT_VARIABLES -D__STRICT_ANSI__ -include ${PROJECT_SOURCE_DIR}/test/sstream_workaround.h")
-set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
+set(CMAKE_CXX_FLAGS "${CMAKE_CPP_FLAGS} -g -O2 -pipe -Wall -W -fPIC -fstrict-aliasing -Wno-invalid-offsetof -Wno-unused-parameter -fno-omit-frame-pointer")
 use_cxx11()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -100,7 +100,6 @@ SET(TEST_BUTIL_SOURCES
     ${PROJECT_SOURCE_DIR}/test/guid_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/hash_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/lazy_instance_unittest.cc
-    ${PROJECT_SOURCE_DIR}/test/md5_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/aligned_memory_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/linked_ptr_unittest.cc
     ${PROJECT_SOURCE_DIR}/test/ref_counted_memory_unittest.cc
@@ -191,6 +190,7 @@ endif()
 
 add_library(BUTIL_DEBUG_LIB OBJECT ${BUTIL_SOURCES})
 add_library(SOURCES_DEBUG_LIB OBJECT ${SOURCES})
+add_dependencies(SOURCES_DEBUG_LIB PROTO_LIB)
 
 # shared library needs POSITION_INDEPENDENT_CODE
 set_property(TARGET ${BUTIL_DEBUG_LIB} PROPERTY POSITION_INDEPENDENT_CODE 1)
@@ -235,8 +235,7 @@ add_test(NAME test_bvar COMMAND test_bvar)
 file(GLOB BTHREAD_UNITTESTS "bthread*unittest.cpp")
 foreach(BTHREAD_UT ${BTHREAD_UNITTESTS})
     get_filename_component(BTHREAD_UT_WE ${BTHREAD_UT} NAME_WE)
-    add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT}
-                                    $<TARGET_OBJECTS:TEST_PROTO_LIB>)
+    add_executable(${BTHREAD_UT_WE} ${BTHREAD_UT})
     target_link_libraries(${BTHREAD_UT_WE} gtest_main
                                            brpc-shared-debug
                                            ${GPERFTOOLS_LIBRARIES})

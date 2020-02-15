@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Jiashun Zhu (zhujiashun@baidu.com)
 
 #include <openssl/hmac.h> // HMAC_CTX_init
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>

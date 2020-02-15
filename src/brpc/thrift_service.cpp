@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: wangxuefeng (wangxuefeng@didichuxing.com)
 
 #include "butil/class_name.h"
 #include "brpc/thrift_service.h"
