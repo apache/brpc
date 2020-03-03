@@ -168,7 +168,7 @@ bvar::Status<std::string> status1("count2", "hello");  // the name conflicts. if
                                                        // program aborts, otherwise a fatal log is printed.
 ```
 
-为避免重名，bvar的名字应加上前缀，建议为<namespace>_<module>_<name>。为了方便使用，我们提供了**expose_as**函数，接收一个前缀。
+为避免重名，bvar的名字应加上前缀，建议为`<namespace>_<module>_<name>`。为了方便使用，我们提供了**expose_as**函数，接收一个前缀。
 ```c++
 // Expose this variable with a prefix.
 // Example:
