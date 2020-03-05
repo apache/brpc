@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Fri Jul 14 11:29:21 CST 2017
 
 #ifndef  BVAR_SCOPED_TIMER_H

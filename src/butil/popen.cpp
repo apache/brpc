@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date: 2017/11/04 17:37:43
 
 #include <gflags/gflags.h>

@@ -17,7 +17,6 @@
 
 // mcpack2pb - Make protobuf be front-end of mcpack/compack
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon Oct 19 17:17:36 CST 2015
 
 #include <set>

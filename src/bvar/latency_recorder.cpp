@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: 2014/09/22 11:57:43
 
 #include <gflags/gflags.h>

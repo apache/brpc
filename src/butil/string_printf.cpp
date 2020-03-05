@@ -108,10 +108,9 @@ int string_appendf(std::string* output, const char* format, ...) {
 int string_vappendf(std::string* output, const char* format, va_list args) {
     const size_t old_size = output->size();
     const int rc = string_printf_impl(*output, format, args);
-    if (rc == 0) {
-        return 0;
+    if (rc != 0) {
+        output->resize(old_size);
     }
-    output->resize(old_size);
     return rc;
 }
 
@@ -130,12 +129,10 @@ int string_printf(std::string* output, const char* format, ...) {
 int string_vprintf(std::string* output, const char* format, va_list args) {
     output->clear();
     const int rc = string_printf_impl(*output, format, args);
-    if (rc == 0) {
-        return 0;
+    if (rc != 0) {
+        output->clear();
     }
-    output->clear();
     return rc;
 };
-
 
 }  // namespace butil

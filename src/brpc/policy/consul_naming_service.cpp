@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Yaofu Zhang (zhangyaofu@qiyi.com)
 
 #include <gflags/gflags.h>
 #include <string>                                       // std::string

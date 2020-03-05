@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date: 2015/09/15 15:14:32
 
 #include "bvar/detail/percentile.h"

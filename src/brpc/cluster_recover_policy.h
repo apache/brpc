@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Jiashun Zhu(zhujiashun@bilibili.com)
 
 #ifndef BRPC_CLUSTER_RECOVER_POLICY
 #define BRPC_CLUSTER_RECOVER_POLICY

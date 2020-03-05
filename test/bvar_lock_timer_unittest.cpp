@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date: 2015/03/06 18:34:03
 
 #include <iostream>

@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
 
 #ifndef  BRPC_STREAMING_RPC_PROTOCOL_H
 #define  BRPC_STREAMING_RPC_PROTOCOL_H

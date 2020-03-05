@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #ifndef USE_MESALINK
 #include <openssl/ssl.h>
@@ -489,7 +488,7 @@ static void GlobalInitializeOrDieImpl() {
     Protocol redis_protocol = { ParseRedisMessage,
                                 SerializeRedisRequest,
                                 PackRedisRequest,
-                                NULL, ProcessRedisResponse,
+                                ProcessRedisRequest, ProcessRedisResponse,
                                 NULL, NULL, GetRedisMethodName,
                                 CONNECTION_TYPE_ALL, "redis" };
     if (RegisterProtocol(PROTOCOL_REDIS, redis_protocol) != 0) {

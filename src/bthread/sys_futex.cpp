@@ -17,7 +17,6 @@
 
 // bthread - A M:N threading library to make applications more concurrent.
 
-// Author: Zhu,Jiashun (zhujiashun@baidu.com)
 // Date: Wed Mar 14 17:44:58 CST 2018
 
 #include "bthread/sys_futex.h"

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Author: Ge,Jun (jge666@gmail.com)
 // Date: Thu Nov 22 13:57:56 CST 2012
 
 #ifndef BUTIL_RECORDIO_H

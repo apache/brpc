@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Jiashun Zhu(zhujiashun@baidu.com)
 
 #include "brpc/policy/http2_rpc_protocol.h"
 #include "brpc/details/controller_private_accessor.h"
@@ -1265,7 +1263,7 @@ int H2StreamContext::ConsumeHeaders(butil::IOBufBytesIterator& it) {
             case 's':
                 if (strcmp(name + 2, /*:s*/"cheme") == 0) {
                     matched = true;
-                    h.uri().set_schema(pair.value);
+                    h.uri().set_scheme(pair.value);
                 } else if (strcmp(name + 2, /*:s*/"tatus") == 0) {
                     matched = true;
                     char* endptr = NULL;
@@ -1410,7 +1408,7 @@ H2UnsentRequest* H2UnsentRequest::New(Controller* c) {
         msg->push(common->H2_METHOD) = HttpMethod2Str(h.method());
     }
     // :scheme
-    const std::string* scheme = &h.uri().schema();
+    const std::string* scheme = &h.uri().scheme();
     if (scheme->empty()) {
         scheme = (c->is_ssl() ? &common->H2_SCHEME_HTTPS :
                   &common->H2_SCHEME_HTTP);

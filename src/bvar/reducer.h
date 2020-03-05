@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: chenzhangyi01@baidu.com, gejun@baidu.com
 // Date 2014/09/24 16:01:08
 
 #ifndef  BVAR_REDUCER_H

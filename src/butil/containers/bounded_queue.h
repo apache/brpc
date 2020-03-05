@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Sat Aug 18 12:42:16 CST 2012
 
 // A thread-unsafe bounded queue(ring buffer). It can push/pop from both

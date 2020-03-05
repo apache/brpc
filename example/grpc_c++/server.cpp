@@ -16,8 +16,6 @@
 // under the License.
 
 // A server to receive HelloRequest and send back HelloReply
-//
-// Authors: Jiashun Zhu(zhujiashun@bilibili.com)
 
 #include <gflags/gflags.h>
 #include <butil/logging.h>

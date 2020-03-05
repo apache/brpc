@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
-//          Ge,Jun (gejun@baidu.com)
 
 #include <google/protobuf/descriptor.h>             // MethodDescriptor
 #include <gflags/gflags.h>
@@ -585,7 +583,7 @@ void SerializeHttpRequest(butil::IOBuf* /*not used*/,
             hreq.SetHeader(common->TE, common->TRAILERS);
             if (cntl->timeout_ms() >= 0) {
                 hreq.SetHeader(common->GRPC_TIMEOUT,
-                        butil::string_printf("%ldm", cntl->timeout_ms()));
+                        butil::string_printf("%" PRId64 "m", cntl->timeout_ms()));
             }
             // Append compressed and length before body
             AddGrpcPrefix(&cntl->request_attachment(), grpc_compressed);
@@ -1494,23 +1492,23 @@ void ProcessHttpRequest(InputMessageBase *msg) {
 }
 
 bool ParseHttpServerAddress(butil::EndPoint* point, const char* server_addr_and_port) {
-    std::string schema;
+    std::string scheme;
     std::string host;
     int port = -1;
-    if (ParseURL(server_addr_and_port, &schema, &host, &port) != 0) {
+    if (ParseURL(server_addr_and_port, &scheme, &host, &port) != 0) {
         LOG(ERROR) << "Invalid address=`" << server_addr_and_port << '\'';
         return false;
     }
-    if (schema.empty() || schema == "http") {
+    if (scheme.empty() || scheme == "http") {
         if (port < 0) {
             port = 80;
         }
-    } else if (schema == "https") {
+    } else if (scheme == "https") {
         if (port < 0) {
             port = 443;
         }
     } else {
-        LOG(ERROR) << "Invalid schema=`" << schema << '\'';
+        LOG(ERROR) << "Invalid scheme=`" << scheme << '\'';
         return false;
     }
     if (str2endpoint(host.c_str(), port, point) != 0 &&

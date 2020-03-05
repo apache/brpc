@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (jge666@gmail.com)
 // Date: Fri Sep  7 12:15:23 CST 2018
 
 #ifndef BUTIL_PTR_CONTAINER_H

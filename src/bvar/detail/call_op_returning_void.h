@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author Zhangyi Chen (chenzhangyi01@baidu.com)
 // Date 2014/09/22 11:57:43
 
 #ifndef  BVAR_DETAIL_CALL_OP_RETURNING_VOID_H

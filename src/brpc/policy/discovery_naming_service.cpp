@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Jiashun Zhu(zhujiashun@bilibili.com)
 
 #include <gflags/gflags.h>
 #include "butil/third_party/rapidjson/document.h"

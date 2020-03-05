@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Sat Dec  3 13:11:32 CST 2016
 
 #ifndef BUTIL_POOLED_MAP_H

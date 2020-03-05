@@ -15,14 +15,16 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #ifndef BRPC_REDIS_COMMAND_H
 #define BRPC_REDIS_COMMAND_H
 
+#include <memory>           // std::unique_ptr
+#include <vector>
 #include "butil/iobuf.h"
 #include "butil/status.h"
-
+#include "butil/arena.h"
+#include "brpc/parse_result.h"
 
 namespace brpc {
 
@@ -39,6 +41,27 @@ butil::Status RedisCommandNoFormat(butil::IOBuf* buf, const butil::StringPiece& 
 butil::Status RedisCommandByComponents(butil::IOBuf* buf,
                                       const butil::StringPiece* components,
                                       size_t num_components);
+
+// A parser used to parse redis raw command.
+class RedisCommandParser {
+public:
+    RedisCommandParser();
+
+    // Parse raw message from `buf'. Return PARSE_OK and set the parsed command
+    // to `commands' and length to `len' if successful. Memory of commands are
+    // allocated in `arena'.
+    ParseError Consume(butil::IOBuf& buf, std::vector<const char*>* commands,
+                       butil::Arena* arena);
+
+private:
+    // Reset parser to the initial state.
+    void Reset();
+
+    bool _parsing_array;            // if the parser has met array indicator '*'
+    int _length;                    // array length
+    int _index;                     // current parsing array index
+    std::vector<const char*> _commands;  // parsed command string
+};
 
 } // namespace brpc
 

@@ -26,6 +26,7 @@
 #include "butil/basictypes.h"
 #include "butil/strings/string16.h"
 #include "butil/build_config.h"
+#include "butil/third_party/murmurhash3/murmurhash3.h"   // fmix64
 
 #if defined(COMPILER_MSVC)
 #include <hash_map>
@@ -120,28 +121,10 @@ using BUTIL_HASH_NAMESPACE::hash_multiset;
 using BUTIL_HASH_NAMESPACE::hash_set;
 
 // Implement hashing for pairs of at-most 32 bit integer values.
-// When size_t is 32 bits, we turn the 64-bit hash code into 32 bits by using
-// multiply-add hashing. This algorithm, as described in
-// Theorem 4.3.3 of the thesis "Über die Komplexität der Multiplikation in
-// eingeschränkten Branchingprogrammmodellen" by Woelfel, is:
-//
-//   h32(x32, y32) = (h64(x32, y32) * rand_odd64 + rand16 * 2^16) % 2^64 / 2^32
-//
-// Contact danakj@chromium.org for any questions.
 inline std::size_t HashInts32(uint32_t value1, uint32_t value2) {
   uint64_t value1_64 = value1;
   uint64_t hash64 = (value1_64 << 32) | value2;
-
-  if (sizeof(std::size_t) >= sizeof(uint64_t))
-    return static_cast<std::size_t>(hash64);
-
-  uint64_t odd_random = 481046412LL << 32 | 1025306955LL;
-  uint32_t shift_random = 10121U << 16;
-
-  hash64 = hash64 * odd_random + shift_random;
-  std::size_t high_bits = static_cast<std::size_t>(
-      hash64 >> (8 * (sizeof(uint64_t) - sizeof(std::size_t))));
-  return high_bits;
+  return static_cast<size_t>(fmix64(hash64));
 }
 
 // Implement hashing for pairs of up-to 64-bit integer values.

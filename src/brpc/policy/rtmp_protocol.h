@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Jiashun Zhu (zhujiashun@baidu.com)
 
 #ifndef BRPC_POLICY_RTMP_PROTOCOL_H
 #define BRPC_POLICY_RTMP_PROTOCOL_H

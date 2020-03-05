@@ -236,7 +236,7 @@ struct http_parser_settings {
 
 
 enum http_parser_url_fields
-  { UF_SCHEMA           = 0
+  { UF_SCHEME           = 0
   , UF_HOST             = 1
   , UF_PORT             = 2
   , UF_PATH             = 3

@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Jiashun Zhu(zhujiashun@bilibili.com)
 
 #ifndef BRPC_PROMETHEUS_METRICS_SERVICE_H
 #define BRPC_PROMETHEUS_METRICS_SERVICE_H

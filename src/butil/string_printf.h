@@ -45,7 +45,6 @@ int string_appendf(std::string* output, const char* format, ...)
 // Returns 0 on success, -1 otherwise.
 int string_vappendf(std::string* output, const char* format, va_list args);
 
-
 }  // namespace butil
 
 #endif  // BUTIL_STRING_PRINTF_H

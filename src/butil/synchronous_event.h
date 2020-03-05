@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Nov 7 21:43:34 CST 2010
 
 #ifndef BUTIL_SYNCHRONOUS_EVENT_H

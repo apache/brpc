@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Sun Aug  9 12:26:03 CST 2015
 
 #include <stdlib.h>

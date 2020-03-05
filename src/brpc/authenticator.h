@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Rujie Jiang (jiangrujie@baidu.com)
 
 #ifndef BRPC_AUTHENTICATOR_H
 #define BRPC_AUTHENTICATOR_H

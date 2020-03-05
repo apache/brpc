@@ -15,10 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include "brpc/circuit_breaker.h"
+
 #include <cmath>
 #include <gflags/gflags.h>
-#include <butil/time.h>
-#include "brpc/circuit_breaker.h"
+
+#include "brpc/errno.pb.h"
+#include "butil/time.h"
 
 namespace brpc {
 
@@ -57,7 +60,7 @@ namespace {
 
 #define EPSILON (FLAGS_circuit_breaker_epsilon_value)
 
-}  // namepace
+}  // namespace
 
 CircuitBreaker::EmaErrorRecorder::EmaErrorRecorder(int window_size,
                                                    int max_error_percent)
@@ -172,6 +175,16 @@ CircuitBreaker::CircuitBreaker()
 }
 
 bool CircuitBreaker::OnCallEnd(int error_code, int64_t latency) {
+    // If the server has reached its maximum concurrency, it will return
+    // ELIMIT directly when a new request arrives. This usually means that
+    // the entire downstream cluster is overloaded. If we isolate nodes at
+    // this time, may increase the pressure on downstream. On the other hand,
+    // since the latency corresponding to ELIMIT is usually very small, we
+    // cannot handle it as a successful request. Here we simply ignore the requests
+    // that returned ELIMIT.
+    if (error_code == ELIMIT) {
+        return true;
+    }
     if (_broken.load(butil::memory_order_relaxed)) {
         return false;
     }

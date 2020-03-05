@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Feb 25 23:43:39 CST 2014
 
 // Provide functions to get/set bits of an integral array. These functions

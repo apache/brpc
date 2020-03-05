@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Tue Jul 28 18:14:40 CST 2015
 
 #include "butil/time.h"
@@ -112,7 +111,6 @@ private:
 private:
     bool _created;
     bool _stop;
-    pid_t _created_pid;
     int64_t _cumulated_time_us;
     pthread_t _tid;
 };

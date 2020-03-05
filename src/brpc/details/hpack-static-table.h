@@ -18,7 +18,6 @@
 // Intentionally no header guard
 
 
-// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
 
 namespace brpc {
 

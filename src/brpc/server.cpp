@@ -15,9 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Rujie Jiang(jiangrujie@baidu.com)
-//          Zhangyi Chen(chenzhangyi01@baidu.com)
 
 #include <wordexp.h>                                // wordexp
 #include <iomanip>
@@ -142,7 +139,8 @@ ServerOptions::ServerOptions()
     , has_builtin_services(true)
     , http_master_service(NULL)
     , health_reporter(NULL)
-    , rtmp_service(NULL) {
+    , rtmp_service(NULL)
+    , redis_service(NULL) {
     if (s_ncore > 0) {
         num_threads = s_ncore + 1;
     }
@@ -435,6 +433,9 @@ Server::~Server() {
         delete _options.auth;
         _options.auth = NULL;
     }
+
+    delete _options.redis_service;
+    _options.redis_service = NULL;
 }
 
 int Server::AddBuiltinServices() {
@@ -1588,7 +1589,8 @@ void Server::GenerateVersionIfNeeded() {
     if (!_version.empty()) {
         return;
     }
-    int extra_count = !!_options.nshead_service + !!_options.rtmp_service + !!_options.thrift_service;
+    int extra_count = !!_options.nshead_service + !!_options.rtmp_service +
+        !!_options.thrift_service + !!_options.redis_service;
     _version.reserve((extra_count + service_count()) * 20);
     for (ServiceMap::const_iterator it = _fullname_service_map.begin();
          it != _fullname_service_map.end(); ++it) {
@@ -1620,6 +1622,13 @@ void Server::GenerateVersionIfNeeded() {
             _version.push_back('+');
         }
         _version.append(butil::class_name_str(*_options.rtmp_service));
+    }
+
+    if (_options.redis_service) {
+        if (!_version.empty()) {
+            _version.push_back('+');
+        }
+        _version.append(butil::class_name_str(*_options.redis_service));
     }
 }
 
@@ -1660,7 +1669,7 @@ void Server::PutPidFileIfNeeded() {
             return;
         }
     }
-    int fd = open(_options.pid_file.c_str(), O_WRONLY | O_CREAT, 0666);
+    int fd = open(_options.pid_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (fd < 0) {
         LOG(WARNING) << "Fail to open " << _options.pid_file;
         _options.pid_file.clear();

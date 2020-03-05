@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #ifndef BRPC_POLICY_LOCALITY_AWARE_LOAD_BALANCER_H
 #define BRPC_POLICY_LOCALITY_AWARE_LOAD_BALANCER_H
@@ -38,7 +37,7 @@ DECLARE_double(punish_inflight_ratio);
 
 // Locality-aware is an iterative algorithm to send requests to servers which
 // have lowest expected latencies. Read docs/cn/lalb.md to get a peek at the
-// algorithm. The implemention is complex.
+// algorithm. The implementation is complex.
 class LocalityAwareLoadBalancer : public LoadBalancer {
 public:
     LocalityAwareLoadBalancer();

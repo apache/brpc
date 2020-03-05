@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #ifndef  BRPC_VERSION_SERVICE_H
 #define  BRPC_VERSION_SERVICE_H

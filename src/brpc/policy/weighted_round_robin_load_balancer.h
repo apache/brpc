@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Authors: Daojin Cai (caidaojin@qiyi.com)
 
 #ifndef BRPC_POLICY_WEIGHTED_ROUND_ROBIN_LOAD_BALANCER_H
 #define BRPC_POLICY_WEIGHTED_ROUND_ROBIN_LOAD_BALANCER_H

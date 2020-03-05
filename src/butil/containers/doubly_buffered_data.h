@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon Sep 22 22:23:13 CST 2014
 
 #ifndef BUTIL_DOUBLY_BUFFERED_DATA_H

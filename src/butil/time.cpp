@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Fri Aug 29 15:01:15 CST 2014
 
 #include <unistd.h>                          // close
