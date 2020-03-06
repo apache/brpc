@@ -517,6 +517,11 @@ static void FindSymbols(butil::IOBuf* out, std::vector<uintptr_t>& addr_list) {
     }
 }
 
+PProfService::PProfService() {
+    // Load /proc/self/maps
+    pthread_once(&s_load_symbolmap_once, LoadSymbols);
+}
+
 void PProfService::symbol(
     ::google::protobuf::RpcController* controller_base,
     const ::brpc::ProfileRequest* /*request*/,
@@ -525,9 +530,6 @@ void PProfService::symbol(
     ClosureGuard done_guard(done);
     Controller* cntl = static_cast<Controller*>(controller_base);
     cntl->http_response().set_content_type("text/plain");
-
-    // Load /proc/self/maps
-    pthread_once(&s_load_symbolmap_once, LoadSymbols);
 
     if (cntl->http_request().method() != HTTP_METHOD_POST) {
         char buf[64];
