@@ -144,7 +144,7 @@ inline void SimpleDataPool::Return(void* data) {
     }
     std::unique_lock<butil::Mutex> mu(_mutex);
     if (_capacity == _size) {
-        const unsigned new_cap = (_capacity == 0 ? 128 : (_capacity * 3 / 2));
+        const unsigned new_cap = (_capacity <= 1 ? 128 : (_capacity * 3 / 2));
         void** new_pool = (void**)malloc(new_cap * sizeof(void*));
         if (NULL == new_pool) {
             mu.unlock();
