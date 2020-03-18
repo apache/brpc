@@ -43,6 +43,10 @@ struct CombineSampler {
     }
 };
 
+// True iff pthread_atfork was called. The callback to atfork works for child
+// of child as well, no need to register in the child again.
+static bool registered_atfork = false;
+
 // Call take_sample() of all scheduled samplers.
 // This can be done with regular timer thread, but it's way too slow(global
 // contention + log(N) heap manipulations). We need it to be super fast so that
@@ -88,7 +92,10 @@ private:
             LOG(FATAL) << "Fail to create sampling_thread, " << berror(rc);
         } else {
             _created = true;
-            pthread_atfork(NULL, NULL, child_callback_atfork);
+            if (!registered_atfork) {
+                registered_atfork = true;
+                pthread_atfork(NULL, NULL, child_callback_atfork);
+            }
         }
     }
 
