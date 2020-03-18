@@ -1,16 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // A client sending requests to servers(discovered by naming service) by multiple threads.
 
@@ -36,14 +39,13 @@ DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(backup_timeout_ms, -1, "backup timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
 DEFINE_bool(dont_fail, false, "Print fatal when some call failed");
-DEFINE_int32(dummy_port, 0, "Launch dummy server at this port");
-DEFINE_string(http_content_type, "application/json", "Content type of http request");
+DEFINE_int32(dummy_port, -1, "Launch dummy server at this port");
 
 std::string g_attachment;
 
 bvar::LatencyRecorder g_latency_recorder("client");
 bvar::Adder<int> g_error_count("client_error_count");
-butil::static_atomic<int> g_sender_count = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<int> g_sender_count = BUTIL_STATIC_ATOMIC_INIT(0);
 
 static void* sender(void* arg) {
     // Normally, you should not call a Channel directly, but instead construct
@@ -62,13 +64,9 @@ static void* sender(void* arg) {
         const int input = ((thread_index & 0xFFF) << 20) | (log_id & 0xFFFFF);
         request.set_value(input);
         cntl.set_log_id(log_id ++);  // set by user
-        if (FLAGS_protocol != "http" && FLAGS_protocol != "h2c") {
-            // Set attachment which is wired to network directly instead of 
-            // being serialized into protobuf messages.
-            cntl.request_attachment().append(g_attachment);
-        } else {
-            cntl.http_request().set_content_type(FLAGS_http_content_type);
-        }
+        // Set attachment which is wired to network directly instead of 
+        // being serialized into protobuf messages.
+        cntl.request_attachment().append(g_attachment);
 
         // Because `done'(last parameter) is NULL, this function waits until
         // the response comes back or error occurs(including timedout).
@@ -115,23 +113,25 @@ int main(int argc, char* argv[]) {
         g_attachment.resize(FLAGS_attachment_size, 'a');
     }
 
-    if (FLAGS_dummy_port > 0) {
+    if (FLAGS_dummy_port >= 0) {
         brpc::StartDummyServerAt(FLAGS_dummy_port);
     }
 
-    std::vector<bthread_t> tids;
-    tids.resize(FLAGS_thread_num);
+    std::vector<bthread_t> bids;
+    std::vector<pthread_t> pids;
     if (!FLAGS_use_bthread) {
+        pids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
-            if (pthread_create(&tids[i], NULL, sender, &channel) != 0) {
+            if (pthread_create(&pids[i], NULL, sender, &channel) != 0) {
                 LOG(ERROR) << "Fail to create pthread";
                 return -1;
             }
         }
     } else {
+        bids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
             if (bthread_start_background(
-                    &tids[i], NULL, sender, &channel) != 0) {
+                    &bids[i], NULL, sender, &channel) != 0) {
                 LOG(ERROR) << "Fail to create bthread";
                 return -1;
             }
@@ -147,9 +147,9 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "EchoClient is going to quit";
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         if (!FLAGS_use_bthread) {
-            pthread_join(tids[i], NULL);
+            pthread_join(pids[i], NULL);
         } else {
-            bthread_join(tids[i], NULL);
+            bthread_join(bids[i], NULL);
         }
     }
 

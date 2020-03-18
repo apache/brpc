@@ -1,25 +1,28 @@
-// iobuf - A non-continuous zero-copied buffer
-// Copyright (c) 2012 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
+// iobuf - A non-continuous zero-copied buffer
+
 // Date: Thu Nov 22 13:57:56 CST 2012
 
 // Inlined implementations of some methods defined in iobuf.h
 
-#ifndef BASE_IOBUF_INL_H
-#define BASE_IOBUF_INL_H
+#ifndef BUTIL_IOBUF_INL_H
+#define BUTIL_IOBUF_INL_H
 
 void* fast_memcpy(void *__restrict dest, const void *__restrict src, size_t n);
 
@@ -156,6 +159,14 @@ inline const IOBuf::BlockRef& IOBuf::_ref_at(size_t i) const {
     return _small() ? _sv.refs[i] : _bv.ref_at(i);
 }
 
+inline const IOBuf::BlockRef* IOBuf::_pref_at(size_t i) const {
+    if (_small()) {
+        return i < (size_t)(!!_sv.refs[0].block + !!_sv.refs[1].block) ? &_sv.refs[i] : NULL;
+    } else {
+        return i < _bv.nref ? &_bv.ref_at(i) : NULL;
+    }
+}
+
 inline bool operator==(const IOBuf::BlockRef& r1, const IOBuf::BlockRef& r2) {
     return r1.offset == r2.offset && r1.length == r2.length &&
         r1.block == r2.block;
@@ -181,26 +192,115 @@ inline void IOBuf::_move_back_ref(const BlockRef& r) {
     }
 }
 
-inline int IOBufAppender::append(const void* src, size_t n) {
-    const size_t size = (char*)_data_end - (char*)_data;
+////////////////  IOBufCutter ////////////////
+inline size_t IOBufCutter::remaining_bytes() const {
+    if (_block) {
+        return (char*)_data_end - (char*)_data + _buf->size() - _buf->_front_ref().length;
+    } else {
+        return _buf->size();
+    }
+}
+
+inline bool IOBufCutter::cut1(void* c) {
+    if (_data == _data_end) {
+        if (!load_next_ref()) {
+            return false;
+        }
+    }
+    *(char*)c = *(const char*)_data;
+    _data = (char*)_data + 1;
+    return true;
+}
+
+inline const void* IOBufCutter::fetch1() {
+    if (_data == _data_end) {
+        if (!load_next_ref()) {
+            return NULL;
+        }
+    }
+    return _data;
+}
+
+inline size_t IOBufCutter::copy_to(void* out, size_t n) {
+    size_t size = (char*)_data_end - (char*)_data;
     if (n <= size) {
-        fast_memcpy(_data, src, n);
-        _data = (char*)_data + n;
+        memcpy(out, _data, n);
+        return n;
+    }
+    return slower_copy_to(out, n);
+}
+
+inline size_t IOBufCutter::pop_front(size_t n) {
+    const size_t saved_n = n;
+    do {
+        const size_t size = (char*)_data_end - (char*)_data;
+        if (n <= size) {
+            _data = (char*)_data + n;
+            return saved_n;
+        }
+        if (size != 0) {
+            n -= size;
+        }
+        if (!load_next_ref()) {
+            return saved_n;
+        }
+    } while (true);
+}
+
+inline size_t IOBufCutter::cutn(std::string* out, size_t n) {
+    if (n == 0) {
         return 0;
-    } 
-    if (size != 0) {
-        fast_memcpy(_data, src, size);
-        src = (const char*)src + size;
-        n -= size;
     }
-    if (add_block() != 0) {
-        return -1;
+    const size_t len = remaining_bytes();
+    if (n > len) {
+        n = len;
     }
-    return append(src, n); // tailr
+    const size_t old_size = out->size();
+    out->resize(out->size() + n);
+    return cutn(&(*out)[old_size], n);
+}
+
+/////////////// IOBufAppender /////////////////
+inline int IOBufAppender::append(const void* src, size_t n) {
+    do {
+        const size_t size = (char*)_data_end - (char*)_data;
+        if (n <= size) {
+            memcpy(_data, src, n);
+            _data = (char*)_data + n;
+            return 0;
+        }
+        if (size != 0) {
+            memcpy(_data, src, size);
+            src = (const char*)src + size;
+            n -= size;
+        }
+        if (add_block() != 0) {
+            return -1;
+        }
+    } while (true);
 }
 
 inline int IOBufAppender::append(const StringPiece& str) {
     return append(str.data(), str.size());
+}
+
+inline int IOBufAppender::append_decimal(long d) {
+    char buf[24];  // enough for decimal 64-bit integers
+    size_t n = sizeof(buf);
+    bool negative = false;
+    if (d < 0) {
+        negative = true;
+        d = -d;
+    }
+    do {
+        const long q = d / 10;
+        buf[--n] = d - q * 10 + '0';
+        d = q;
+    } while (d);
+    if (negative) {
+        buf[--n] = '-';
+    }
+    return append(buf + n, sizeof(buf) - n);
 }
 
 inline int IOBufAppender::push_back(char c) {
@@ -241,6 +341,27 @@ inline IOBufBytesIterator::IOBufBytesIterator(const butil::IOBuf& buf)
     try_next_block();
 }
 
+inline IOBufBytesIterator::IOBufBytesIterator(const IOBufBytesIterator& it)
+    : _block_begin(it._block_begin)
+    , _block_end(it._block_end)
+    , _block_count(it._block_count)
+    , _bytes_left(it._bytes_left)
+    , _buf(it._buf) {
+}
+
+inline IOBufBytesIterator::IOBufBytesIterator(
+    const IOBufBytesIterator& it, size_t bytes_left)
+    : _block_begin(it._block_begin)
+    , _block_end(it._block_end)
+    , _block_count(it._block_count)
+    , _bytes_left(bytes_left)
+    , _buf(it._buf) {
+    //CHECK_LE(_bytes_left, it._bytes_left);
+    if (_block_end > _block_begin + _bytes_left) {
+        _block_end = _block_begin + _bytes_left;
+    }
+}
+
 inline void IOBufBytesIterator::try_next_block() {
     if (_bytes_left == 0) {
         return;
@@ -260,10 +381,10 @@ inline void IOBufBytesIterator::operator++() {
 
 inline size_t IOBufBytesIterator::copy_and_forward(void* buf, size_t n) {
     size_t nc = 0;
-    while (nc < n && *this != NULL) {
+    while (nc < n && _bytes_left != 0) {
         const size_t block_size = _block_end - _block_begin;
         const size_t to_copy = std::min(block_size, n - nc);
-        fast_memcpy((char*)buf + nc, _block_begin, to_copy);
+        memcpy((char*)buf + nc, _block_begin, to_copy);
         _block_begin += to_copy;
         _bytes_left -= to_copy;
         nc += to_copy;
@@ -287,6 +408,21 @@ inline size_t IOBufBytesIterator::copy_and_forward(std::string* s, size_t n) {
     return nc;
 }
 
+inline size_t IOBufBytesIterator::forward(size_t n) {
+    size_t nc = 0;
+    while (nc < n && _bytes_left != 0) {
+        const size_t block_size = _block_end - _block_begin;
+        const size_t to_copy = std::min(block_size, n - nc);
+        _block_begin += to_copy;
+        _bytes_left -= to_copy;
+        nc += to_copy;
+        if (_block_begin == _block_end) {
+            try_next_block();
+        }
+    }
+    return nc;
+}
+
 }  // namespace butil
 
-#endif  // BASE_IOBUF_INL_H
+#endif  // BUTIL_IOBUF_INL_H

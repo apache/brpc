@@ -1,6 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// Author: Ge,Jun (gejun@baidu.com)
-// Date: Sun Jul 13 15:04:18 CST 2014
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #include <gtest/gtest.h>
 #include "butil/time.h"
@@ -176,7 +189,7 @@ TEST_F(ObjectPoolTest, get_int) {
         *(new int) = i;
     }    
     tm.stop();
-    printf("new a int takes %luns\n", tm.n_elapsed()/N);
+    printf("new a int takes %" PRId64 "ns\n", tm.n_elapsed()/N);
 
     std::cout << describe_objects<int>() << std::endl;
     clear_objects<int>();
@@ -207,7 +220,7 @@ TEST_F(ObjectPoolTest, get_perf) {
             get_object<SilentObj>();
         }
         tm1.stop();
-        printf("get a SilentObj takes %luns\n", tm1.n_elapsed()/N);
+        printf("get a SilentObj takes %" PRId64 "ns\n", tm1.n_elapsed()/N);
         //clear_objects<SilentObj>(); // free all blocks
         
         tm2.start();
@@ -215,7 +228,7 @@ TEST_F(ObjectPoolTest, get_perf) {
             new_list.push_back(new SilentObj);
         }    
         tm2.stop();
-        printf("new a SilentObj takes %luns\n", tm2.n_elapsed()/N);
+        printf("new a SilentObj takes %" PRId64 "ns\n", tm2.n_elapsed()/N);
         for (size_t i = 0; i < new_list.size(); ++i) {
             delete new_list[i];
         }
@@ -241,7 +254,7 @@ void* get_and_return_int(void*) {
     return_object(get_object<D>());
     tm0.stop();
 
-    printf("[%lu] warmup=%lu\n", pthread_self(), tm0.n_elapsed());
+    printf("[%lu] warmup=%" PRId64 "\n", (size_t)pthread_self(), tm0.n_elapsed());
 
     for (int j = 0; j < 5; ++j) {
         v.clear();
@@ -268,7 +281,7 @@ void* get_and_return_int(void*) {
         }
         
         printf("[%lu:%d] get<D>=%.1f return<D>=%.1f\n",
-                 pthread_self(), j, tm1.n_elapsed()/(double)N,
+                 (size_t)pthread_self(), j, tm1.n_elapsed()/(double)N,
                  tm2.n_elapsed()/(double)N);
     }
     return NULL;
@@ -304,7 +317,7 @@ void* new_and_delete_int(void*) {
         tm2.stop();
         
         printf("[%lu:%d] new<D>=%.1f delete<D>=%.1f\n",
-                 pthread_self(), j, tm1.n_elapsed()/(double)N,
+                 (size_t)pthread_self(), j, tm1.n_elapsed()/(double)N,
                  tm2.n_elapsed()/(double)N);
     }
     

@@ -1,25 +1,25 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
-//          Ge,Jun (gejun@baidu.com)
 
 #ifndef BRPC_POLICY_HTTP_RPC_PROTOCOL_H
 #define BRPC_POLICY_HTTP_RPC_PROTOCOL_H
 
 #include "brpc/details/http_message.h"         // HttpMessage
-#include "brpc/details/controller_private_accessor.h"
 #include "brpc/input_messenger.h"              // InputMessenger
 #include "brpc/protocol.h"
 
@@ -63,15 +63,26 @@ struct CommonStrings {
     std::string METHOD_GET;
     std::string METHOD_POST;
 
+    // GRPC-related headers
+    std::string CONTENT_TYPE_GRPC;
+    std::string TE;
+    std::string TRAILERS;
+    std::string GRPC_ENCODING;
+    std::string GRPC_ACCEPT_ENCODING;
+    std::string GRPC_ACCEPT_ENCODING_VALUE;
+    std::string GRPC_STATUS;
+    std::string GRPC_MESSAGE;
+    std::string GRPC_TIMEOUT;
+
     CommonStrings();
 };
 
 // Used in UT.
 class HttpContext : public ReadableProgressiveAttachment
-                       , public InputMessageBase
-                       , public HttpMessage {
+                  , public InputMessageBase
+                  , public HttpMessage {
 public:
-    HttpContext(bool read_body_progressively = false)
+    HttpContext(bool read_body_progressively)
         : InputMessageBase()
         , HttpMessage(read_body_progressively)
         , _is_stage2(false) {
@@ -125,8 +136,18 @@ bool ParseHttpServerAddress(butil::EndPoint* out, const char* server_addr_and_po
 const std::string& GetHttpMethodName(const google::protobuf::MethodDescriptor*,
                                      const Controller*);
 
-}  // namespace policy
-} // namespace brpc
+enum HttpContentType {
+    HTTP_CONTENT_OTHERS = 0,
+    HTTP_CONTENT_JSON = 1,
+    HTTP_CONTENT_PROTO = 2,
+};
 
+// Parse from the textual content type. One type may have more than one literals.
+// Returns a numerical type. *is_grpc_ct is set to true if the content-type is
+// set by gRPC.
+HttpContentType ParseContentType(butil::StringPiece content_type, bool* is_grpc_ct);
+
+} // namespace policy
+} // namespace brpc
 
 #endif // BRPC_POLICY_HTTP_RPC_PROTOCOL_H

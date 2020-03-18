@@ -1,26 +1,30 @@
-// bthread - A M:N threading library to make applications more concurrent.
-// Copyright (c) 2012 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
+// bthread - A M:N threading library to make applications more concurrent.
+
 // Date: Tue Jul 10 17:40:58 CST 2012
 
 #include <sys/types.h>
 #include <stddef.h>                         // size_t
 #include <gflags/gflags.h>
-#include "butil/macros.h"                    // ARRAY_SIZE
-#include "butil/scoped_lock.h"               // BAIDU_SCOPED_LOCK
+#include "butil/compat.h"                   // OS_MACOSX
+#include "butil/macros.h"                   // ARRAY_SIZE
+#include "butil/scoped_lock.h"              // BAIDU_SCOPED_LOCK
 #include "butil/fast_rand.h"
 #include "butil/unique_ptr.h"
 #include "butil/third_party/murmurhash3/murmurhash3.h" // fmix64
@@ -54,6 +58,9 @@ const bool ALLOW_UNUSED dummy_show_per_worker_usage_in_vars =
                                     pass_bool);
 
 __thread TaskGroup* tls_task_group = NULL;
+// Sync with TaskMeta::local_storage when a bthread is created or destroyed.
+// During running, the two fields may be inconsistent, use tls_bls as the
+// groundtruth.
 __thread LocalStorage tls_bls = BTHREAD_LOCAL_STORAGE_INITIALIZER;
 
 // defined in bthread/key.cpp
@@ -83,68 +90,36 @@ int TaskGroup::get_attr(bthread_t tid, bthread_attr_t* out) {
     return -1;
 }
 
-int TaskGroup::stopped(bthread_t tid) {
+void TaskGroup::set_stopped(bthread_t tid) {
     TaskMeta* const m = address_meta(tid);
     if (m != NULL) {
         const uint32_t given_ver = get_version(tid);
         BAIDU_SCOPED_LOCK(m->version_lock);
         if (given_ver == *m->version_butex) {
-            return (int)m->stop;
-        }
-    }
-    // If the tid does not exist or version does not match, it's intuitive
-    // to treat the thread as "stopped".
-    return 1;
-}
-
-int stop_and_consume_butex_waiter(
-    bthread_t tid, ButexWaiter** pw) {
-    TaskMeta* const m = TaskGroup::address_meta(tid);
-    if (m != NULL) {
-        const uint32_t given_ver = get_version(tid);
-        // stopping bthread is not frequent, locking (a spinlock) is acceptable.
-        BAIDU_SCOPED_LOCK(m->version_lock);
-        // make sense when version matches.
-        if (given_ver == *m->version_butex) {  
             m->stop = true;
-            // acquire fence guarantees visibility of `interruptible'.
-            ButexWaiter* w =
-                m->current_waiter.exchange(NULL, butil::memory_order_acquire);
-            if (w != NULL && !m->interruptible) {
-                // Set waiter back if the bthread is not interruptible.
-                m->current_waiter.store(w, butil::memory_order_relaxed);
-                *pw = NULL;
-            } else {
-                *pw = w;
-            }
-            return 0;
         }
     }
-    errno = EINVAL;
-    return -1;
 }
 
-// called in butex.cpp
-int set_butex_waiter(bthread_t tid, ButexWaiter* w) {
-    TaskMeta* const m = TaskGroup::address_meta(tid);
+bool TaskGroup::is_stopped(bthread_t tid) {
+    TaskMeta* const m = address_meta(tid);
     if (m != NULL) {
         const uint32_t given_ver = get_version(tid);
         BAIDU_SCOPED_LOCK(m->version_lock);
         if (given_ver == *m->version_butex) {
-            // Release fence makes m->stop visible to butex_wait
-            m->current_waiter.store(w, butil::memory_order_release);
-            return 0;
+            return m->stop;
         }
     }
-    errno = EINVAL;
-    return -1;
+    // If the tid does not exist or version does not match, it's intuitive
+    // to treat the thread as "stopped".
+    return true;
 }
 
 bool TaskGroup::wait_task(bthread_t* tid) {
     do {
 #ifndef BTHREAD_DONT_SAVE_PARKING_STATE
         if (_last_pl_state.stopped()) {
-            return -1;
+            return false;
         }
         _pl->wait(_last_pl_state);
         if (steal_task(tid)) {
@@ -153,7 +128,7 @@ bool TaskGroup::wait_task(bthread_t* tid) {
 #else
         const ParkingLot::State st = _pl->get_state();
         if (st.stopped()) {
-            return -1;
+            return false;
         }
         if (steal_task(tid)) {
             return true;
@@ -183,8 +158,13 @@ void TaskGroup::run_main_task() {
         }
         if (FLAGS_show_per_worker_usage_in_vars && !usage_bvar) {
             char name[32];
+#if defined(OS_MACOSX)
+            snprintf(name, sizeof(name), "bthread_worker_usage_%" PRIu64,
+                     pthread_numeric_id());
+#else
             snprintf(name, sizeof(name), "bthread_worker_usage_%ld",
                      (long)syscall(SYS_gettid));
+#endif
             usage_bvar.reset(new bvar::PerSecond<bvar::PassiveStatus<double> >
                              (name, &cumulated_cputime, 1));
         }
@@ -216,7 +196,7 @@ TaskGroup::TaskGroup(TaskControl* c)
 {
     _steal_seed = butil::fast_rand();
     _steal_offset = OFFSET_TABLE[_steal_seed % ARRAY_SIZE(OFFSET_TABLE)];
-    _pl = &c->_pl[butil::fmix64(pthread_self()) % TaskControl::PARKING_LOT_NUM];
+    _pl = &c->_pl[butil::fmix64(pthread_numeric_id()) % TaskControl::PARKING_LOT_NUM];
     CHECK(c);
 }
 
@@ -251,18 +231,11 @@ int TaskGroup::init(size_t runqueue_capacity) {
         return -1;
     }
     m->stop = false;
-    m->interruptible = true;
+    m->interrupted = false;
     m->about_to_quit = false;
     m->fn = NULL;
     m->arg = NULL;
-    // In current implementation, even if we set m->local_storage to empty,
-    // everything should be fine because a non-worker pthread never context
-    // switches to a bthread, inconsistency between m->local_storage and tls_bls
-    // does not result in bug. However to avoid potential future bug,
-    // TaskMeta.local_storage is better to be sync with tls_bls otherwise
-    // context switching back to this main bthread will restore tls_bls
-    // with NULL values which is incorrect.
-    m->local_storage = tls_bls;
+    m->local_storage = LOCAL_STORAGE_INIT;
     m->cpuwide_start_ns = butil::cpuwide_time_ns();
     m->stat = EMPTY_STAT;
     m->attr = BTHREAD_ATTR_TASKGROUP;
@@ -342,12 +315,12 @@ void TaskGroup::task_runner(intptr_t skip_remained) {
         // Clean tls variables, must be done before changing version_butex
         // otherwise another thread just joined this thread may not see side
         // effects of destructing tls variables.
-        KeyTable* kt = m->local_storage.keytable;
+        KeyTable* kt = tls_bls.keytable;
         if (kt != NULL) {
             return_keytable(m->attr.keytable_pool, kt);
             // After deletion: tls may be set during deletion.
-            m->local_storage.keytable = NULL;
             tls_bls.keytable = NULL;
+            m->local_storage.keytable = NULL; // optional
         }
         
         // Increase the version and wake up all joiners, if resulting version
@@ -400,7 +373,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
     }
     CHECK(m->current_waiter.load(butil::memory_order_relaxed) == NULL);
     m->stop = false;
-    m->interruptible = true;
+    m->interrupted = false;
     m->about_to_quit = false;
     m->fn = fn;
     m->arg = arg;
@@ -455,7 +428,7 @@ int TaskGroup::start_background(bthread_t* __restrict th,
     }
     CHECK(m->current_waiter.load(butil::memory_order_relaxed) == NULL);
     m->stop = false;
-    m->interruptible = true;
+    m->interrupted = false;
     m->about_to_quit = false;
     m->fn = fn;
     m->arg = arg;
@@ -495,40 +468,26 @@ int TaskGroup::join(bthread_t tid, void** return_value) {
         return EINVAL;
     }
     TaskMeta* m = address_meta(tid);
-    if (__builtin_expect(!m, 0)) {  // no bthread used the slot yet.
+    if (__builtin_expect(!m, 0)) {
+        // The bthread is not created yet, this join is definitely wrong.
         return EINVAL;
     }
-    int rc = 0;
+    TaskGroup* g = tls_task_group;
+    if (g != NULL && g->current_tid() == tid) {
+        // joining self causes indefinite waiting.
+        return EINVAL;
+    }
     const uint32_t expected_version = get_version(tid);
-    if (*m->version_butex == expected_version) {
-        TaskGroup* g = tls_task_group;
-        TaskMeta* caller = NULL;
-        if (g != NULL) {
-            if (g->current_tid() == tid) {
-                // joining self causes indefinite waiting.
-                return EINVAL;
-            }
-            caller = g->current_task();
-            caller->interruptible = false;
-        }
-        rc = butex_wait(m->version_butex, expected_version, NULL);
-        if (rc < 0) {
-            if (errno == EWOULDBLOCK) {
-                // Unmatched version means the thread just terminated.
-                rc = 0;
-            } else {
-                rc = errno;
-                CHECK_EQ(ESTOP, rc);
-            }
-        }
-        if (caller) {
-            caller->interruptible = true;
+    while (*m->version_butex == expected_version) {
+        if (butex_wait(m->version_butex, expected_version, NULL) < 0 &&
+            errno != EWOULDBLOCK && errno != EINTR) {
+            return errno;
         }
     }
     if (return_value) {
-        *return_value = NULL;  // TODO: save return value
+        *return_value = NULL;
     }
-    return rc;
+    return 0;
 }
 
 bool TaskGroup::exists(bthread_t tid) {
@@ -628,6 +587,8 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     // Switch to the task
     if (__builtin_expect(next_meta != cur_meta, 1)) {
         g->_cur_meta = next_meta;
+        // Switch tls_bls
+        cur_meta->local_storage = tls_bls;
         tls_bls = next_meta->local_storage;
 
         // Logging must be done after switching the local storage, since the logging lib 
@@ -774,39 +735,36 @@ static void ready_to_run_from_timer_thread(void* arg) {
     e->group->control()->choose_one_group()->ready_to_run_remote(e->tid);
 }
 
-void TaskGroup::_add_sleep_event(void* arg) {
+void TaskGroup::_add_sleep_event(void* void_args) {
     // Must copy SleepArgs. After calling TimerThread::schedule(), previous
     // thread may be stolen by a worker immediately and the on-stack SleepArgs
     // will be gone.
-    SleepArgs e = *static_cast<SleepArgs*>(arg);
+    SleepArgs e = *static_cast<SleepArgs*>(void_args);
     TaskGroup* g = e.group;
     
     TimerThread::TaskId sleep_id;
     sleep_id = get_global_timer_thread()->schedule(
-        ready_to_run_from_timer_thread, arg,
+        ready_to_run_from_timer_thread, void_args,
         butil::microseconds_from_now(e.timeout_us));
 
     if (!sleep_id) {
         // fail to schedule timer, go back to previous thread.
-        // TODO(gejun): Need error?
         g->ready_to_run(e.tid);
         return;
     }
     
-    // Set TaskMeta::current_sleep, synchronizing with stop_usleep().
+    // Set TaskMeta::current_sleep which is for interruption.
     const uint32_t given_ver = get_version(e.tid);
     {
         BAIDU_SCOPED_LOCK(e.meta->version_lock);
-        if (given_ver == *e.meta->version_butex && !e.meta->stop) {
+        if (given_ver == *e.meta->version_butex && !e.meta->interrupted) {
             e.meta->current_sleep = sleep_id;
             return;
         }
     }
-    // Fail to set current_sleep when previous thread is stopping or even
-    // stopped(unmatched version).
-    // Before above code block, stop_usleep() always sees current_sleep == 0.
-    // It will not schedule previous thread. The race is between current
-    // thread and timer thread.
+    // The thread is stopped or interrupted.
+    // interrupt() always sees that current_sleep == 0. It will not schedule
+    // the calling thread. The race is between current thread and timer thread.
     if (get_global_timer_thread()->unschedule(sleep_id) == 0) {
         // added to timer, previous thread may be already woken up by timer and
         // even stopped. It's safe to schedule previous thread when unschedule()
@@ -833,33 +791,93 @@ int TaskGroup::usleep(TaskGroup** pg, uint64_t timeout_us) {
     sched(pg);
     g = *pg;
     e.meta->current_sleep = 0;
-    if (e.meta->stop) {
-        errno = ESTOP;
+    if (e.meta->interrupted) {
+        // Race with set and may consume multiple interruptions, which are OK.
+        e.meta->interrupted = false;
+        // NOTE: setting errno to ESTOP is not necessary from bthread's
+        // pespective, however many RPC code expects bthread_usleep to set
+        // errno to ESTOP when the thread is stopping, and print FATAL
+        // otherwise. To make smooth transitions, ESTOP is still set instead
+        // of EINTR when the thread is stopping.
+        errno = (e.meta->stop ? ESTOP : EINTR);
         return -1;
     }
     return 0;
 }
 
-int TaskGroup::stop_usleep(bthread_t tid) {
-    TaskMeta* const m = address_meta(tid);
+// Defined in butex.cpp
+bool erase_from_butex_because_of_interruption(ButexWaiter* bw);
+
+static int interrupt_and_consume_waiters(
+    bthread_t tid, ButexWaiter** pw, uint64_t* sleep_id) {
+    TaskMeta* const m = TaskGroup::address_meta(tid);
     if (m == NULL) {
         return EINVAL;
     }
-    // Replace current_sleep of the thread with 0 and set stop to true.
-    TimerThread::TaskId sleep_id = 0;
     const uint32_t given_ver = get_version(tid);
-    {
+    BAIDU_SCOPED_LOCK(m->version_lock);
+    if (given_ver == *m->version_butex) {
+        *pw = m->current_waiter.exchange(NULL, butil::memory_order_acquire);
+        *sleep_id = m->current_sleep;
+        m->current_sleep = 0;  // only one stopper gets the sleep_id
+        m->interrupted = true;
+        return 0;
+    }
+    return EINVAL;
+}
+
+static int set_butex_waiter(bthread_t tid, ButexWaiter* w) {
+    TaskMeta* const m = TaskGroup::address_meta(tid);
+    if (m != NULL) {
+        const uint32_t given_ver = get_version(tid);
         BAIDU_SCOPED_LOCK(m->version_lock);
         if (given_ver == *m->version_butex) {
-            m->stop = true;
-            if (m->interruptible) {
-                sleep_id = m->current_sleep;
-                m->current_sleep = 0;  // only one stopper gets the sleep_id
-            }
+            // Release fence makes m->interrupted visible to butex_wait
+            m->current_waiter.store(w, butil::memory_order_release);
+            return 0;
         }
     }
-    if (sleep_id != 0 && get_global_timer_thread()->unschedule(sleep_id) == 0) {
-        ready_to_run_general(tid);
+    return EINVAL;
+}
+
+// The interruption is "persistent" compared to the ones caused by signals,
+// namely if a bthread is interrupted when it's not blocked, the interruption
+// is still remembered and will be checked at next blocking. This designing
+// choice simplifies the implementation and reduces notification loss caused
+// by race conditions.
+// TODO: bthreads created by BTHREAD_ATTR_PTHREAD blocking on bthread_usleep()
+// can't be interrupted.
+int TaskGroup::interrupt(bthread_t tid, TaskControl* c) {
+    // Consume current_waiter in the TaskMeta, wake it up then set it back.
+    ButexWaiter* w = NULL;
+    uint64_t sleep_id = 0;
+    int rc = interrupt_and_consume_waiters(tid, &w, &sleep_id);
+    if (rc) {
+        return rc;
+    }
+    // a bthread cannot wait on a butex and be sleepy at the same time.
+    CHECK(!sleep_id || !w);
+    if (w != NULL) {
+        erase_from_butex_because_of_interruption(w);
+        // If butex_wait() already wakes up before we set current_waiter back,
+        // the function will spin until current_waiter becomes non-NULL.
+        rc = set_butex_waiter(tid, w);
+        if (rc) {
+            LOG(FATAL) << "butex_wait should spin until setting back waiter";
+            return rc;
+        }
+    } else if (sleep_id != 0) {
+        if (get_global_timer_thread()->unschedule(sleep_id) == 0) {
+            bthread::TaskGroup* g = bthread::tls_task_group;
+            if (g) {
+                g->ready_to_run(tid);
+            } else {
+                if (!c) {
+                    return EINVAL;
+                }
+                c->choose_one_group()->ready_to_run_remote(tid);
+            }
+        }
     }
     return 0;
 }
@@ -880,7 +898,7 @@ void print_task(std::ostream& os, bthread_t tid) {
     const uint32_t given_ver = get_version(tid);
     bool matched = false;
     bool stop = false;
-    bool interruptible = false;
+    bool interrupted = false;
     bool about_to_quit = false;
     void* (*fn)(void*) = NULL;
     void* arg = NULL;
@@ -893,7 +911,7 @@ void print_task(std::ostream& os, bthread_t tid) {
         if (given_ver == *m->version_butex) {
             matched = true;
             stop = m->stop;
-            interruptible = m->interruptible;
+            interrupted = m->interrupted;
             about_to_quit = m->about_to_quit;
             fn = m->fn;
             arg = m->arg;
@@ -907,7 +925,7 @@ void print_task(std::ostream& os, bthread_t tid) {
         os << "bthread=" << tid << " : not exist now";
     } else {
         os << "bthread=" << tid << " :\nstop=" << stop
-           << "\ninterruptible=" << interruptible
+           << "\ninterrupted=" << interrupted
            << "\nabout_to_quit=" << about_to_quit
            << "\nfn=" << (void*)fn
            << "\narg=" << (void*)arg

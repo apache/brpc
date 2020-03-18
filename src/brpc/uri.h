@@ -1,19 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
-//          Ge,Jun (gejun@baidu.com)
 
 #ifndef  BRPC_URI_H
 #define  BRPC_URI_H
@@ -36,7 +37,7 @@ namespace brpc {
 //   |           |               |       |                |    |            |                |
 //   |       userinfo           host    port              |    |          query          fragment
 //   |    \________________________________/\_____________|____|/ \__/        \__/
-// schema                 |                          |    |    |    |          |
+// scheme                 |                          |    |    |    |          |
 //                    authority                      |    |    |    |          |
 //                                                 path   |    |    interpretable as keys
 //                                                        |    |
@@ -77,7 +78,8 @@ public:
     const butil::Status& status() const { return _st; }
 
     // Sub fields. Empty string if the field is not set.
-    const std::string& schema() const { return _schema; } // scheme in http2
+	const std::string& scheme() const { return _scheme; }
+    BAIDU_DEPRECATED const std::string& schema() const { return scheme(); }
     const std::string& host() const { return _host; }
     int port() const { return _port; } // -1 on unset.
     const std::string& path() const { return _path; }
@@ -91,7 +93,8 @@ public:
 
     // Overwrite parts of the URL.
     // NOTE: The input MUST be guaranteed to be valid.
-    void set_schema(const std::string& schema) { _schema = schema; }
+    void set_scheme(const std::string& scheme) { _scheme = scheme; }
+    BAIDU_DEPRECATED void set_schema(const std::string& s) { set_scheme(s); }
     void set_path(const std::string& path) { _path = path; }
     void set_host(const std::string& host) { _host = host; }
     void set_port(int port) { _port = port; }
@@ -150,15 +153,14 @@ friend class HttpMessage;
     std::string                             _path;
     std::string                             _user_info;
     std::string                             _fragment;
-    std::string                             _schema;
+    std::string                             _scheme;
     mutable std::string                     _query;
     mutable QueryMap _query_map;
 };
 
-// Parse host and port from `url'.
-// When port is absent, it's set to 80 for http and 443 for https.
+// Parse host/port/scheme from `url' if the corresponding parameter is not NULL.
 // Returns 0 on success, -1 otherwise.
-int ParseHostAndPortFromURL(const char* url, std::string* host, int* port);
+int ParseURL(const char* url, std::string* scheme, std::string* host, int* port);
 
 inline void URI::SetQuery(const std::string& key, const std::string& value) {
     get_query_map()[key] = value;
@@ -196,68 +198,19 @@ inline std::ostream& operator<<(std::ostream& os, const URI& uri) {
 }
 
 // Split query in the format of "key1=value1&key2&key3=value3"
-// This class can also handle some exceptional cases, such as
-// consecutive ampersand, only equal sign, only key and so on.
-class QuerySplitter {
+class QuerySplitter : public butil::KeyValuePairsSplitter {
 public:
-    QuerySplitter(const char* str_begin, const char* str_end)
-        : _sp(str_begin, str_end, '&')
-        , _is_split(false) {
-    }
+    inline QuerySplitter(const char* str_begin, const char* str_end)
+        : KeyValuePairsSplitter(str_begin, str_end, '&', '=')
+    {}
 
-    QuerySplitter(const char* str_begin)
-        : _sp(str_begin, '&')
-        , _is_split(false) {
-    }
+    inline QuerySplitter(const char* str_begin)
+        : KeyValuePairsSplitter(str_begin, '&', '=')
+    {}
 
-    QuerySplitter(const butil::StringPiece &sp)
-        : _sp(sp.begin(), sp.end(), '&')
-        , _is_split(false) {
-    }
-
-    const butil::StringPiece& key() {
-        if (!_is_split) {
-            split();
-        }
-        return _key;
-    }
-
-    const butil::StringPiece& value() {
-        if (!_is_split) {
-            split();
-        }
-        return _value;
-    }
-
-    // Get the current value of key and value 
-    // in the format of "key=value"
-    butil::StringPiece key_and_value(){
-        return butil::StringPiece(_sp.field(), _sp.length());
-    }
-
-    // Move splitter forward.
-    QuerySplitter& operator++() {
-        ++_sp;
-        _is_split = false;
-        return *this;
-    }
-
-    QuerySplitter operator++(int) {
-        QuerySplitter tmp = *this;
-        operator++();
-        return tmp;
-    }
-
-    operator const void*() const { return _sp; }
-
-private:
-    void split();
-
-private:
-    butil::StringSplitter _sp;
-    butil::StringPiece _key;
-    butil::StringPiece _value;
-    bool _is_split;
+    inline QuerySplitter(const butil::StringPiece &sp)
+        : KeyValuePairsSplitter(sp, '&', '=')
+    {}
 };
 
 // A class to remove some specific keys in a query string, 
@@ -267,8 +220,8 @@ class QueryRemover {
 public:
     QueryRemover(const std::string* str);
 
-    const butil::StringPiece& key() { return _qs.key();}
-    const butil::StringPiece& value() { return _qs.value(); }
+    butil::StringPiece key() { return _qs.key();}
+    butil::StringPiece value() { return _qs.value(); }
     butil::StringPiece key_and_value() { return _qs.key_and_value(); }
 
     // Move splitter forward.

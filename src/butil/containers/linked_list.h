@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_CONTAINERS_LINKED_LIST_H_
-#define BASE_CONTAINERS_LINKED_LIST_H_
+#ifndef BUTIL_CONTAINERS_LINKED_LIST_H_
+#define BUTIL_CONTAINERS_LINKED_LIST_H_
 
 #include "butil/macros.h"
 
@@ -30,7 +30,7 @@
 //
 //   list.Append(n1);
 //   list.Append(n3);
-//   n3->InsertBefore(n3);
+//   n2->InsertBefore(n3);
 //
 // Lastly, to iterate through the linked list forwards:
 //
@@ -193,4 +193,4 @@ class LinkedList {
 
 }  // namespace butil
 
-#endif  // BASE_CONTAINERS_LINKED_LIST_H_
+#endif  // BUTIL_CONTAINERS_LINKED_LIST_H_

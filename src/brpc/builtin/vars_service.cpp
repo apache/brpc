@@ -1,18 +1,20 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #include <ostream>
 #include <vector>                           // std::vector
@@ -318,11 +320,9 @@ void VarsService::default_method(::google::protobuf::RpcController* cntl_base,
             cntl->http_response().set_content_type("application/json");
             os.move_to(cntl->response_attachment());
         } else if (rc < 0) {
-            cntl->http_response().set_status_code(HTTP_STATUS_NOT_FOUND);
             cntl->SetFailed(ENOMETHOD, "Fail to find any bvar by `%s'",
                             cntl->http_request().unresolved_path().c_str());
         } else {
-            cntl->http_response().set_status_code(HTTP_STATUS_NOT_FOUND);
             cntl->SetFailed(ENODATA, "`%s' does not have value series",
                             cntl->http_request().unresolved_path().c_str());
         }
@@ -419,7 +419,6 @@ void VarsService::default_method(::google::protobuf::RpcController* cntl_base,
         return;
     }
     if (!options.white_wildcards.empty() && ndump == 0) {
-        cntl->http_response().set_status_code(HTTP_STATUS_NOT_FOUND);
         cntl->SetFailed(ENOMETHOD, "Fail to find any bvar by `%s'",
                         options.white_wildcards.c_str());
     }

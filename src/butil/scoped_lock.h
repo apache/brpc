@@ -1,25 +1,26 @@
-// Copyright (c) 2011 Baidu, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Lock a mutex, a spinlock, or mutex types in C++11 in a way that the lock
-// will be unlocked automatically when go out of declaring scope.
-// Example:
-//   pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-//   ...
-//   if (...) {
-//       BAIDU_SCOPED_LOCK(mutex);
-//       // got the lock.
-//   }
-//   // unlocked when out of declaring scope.
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-// Author: Ge,Jun (gejun@baidu.com)
-// Date: Mon. Nov 7 14:47:36 CST 2011
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-#ifndef BAIDU_BASE_BAIDU_SCOPED_LOCK_H
-#define BAIDU_BASE_BAIDU_SCOPED_LOCK_H
+#ifndef BUTIL_BAIDU_SCOPED_LOCK_H
+#define BUTIL_BAIDU_SCOPED_LOCK_H
 
 #include "butil/build_config.h"
 
-#if defined(BASE_CXX11_ENABLED)
+#if defined(BUTIL_CXX11_ENABLED)
 #include <mutex>                           // std::lock_guard
 #endif
 
@@ -28,7 +29,7 @@
 #include "butil/logging.h"
 #include "butil/errno.h"
 
-#if !defined(BASE_CXX11_ENABLED)
+#if !defined(BUTIL_CXX11_ENABLED)
 #define BAIDU_SCOPED_LOCK(ref_of_lock)                                  \
     std::lock_guard<BAIDU_TYPEOF(ref_of_lock)>                          \
     BAIDU_CONCAT(scoped_locker_dummy_at_line_, __LINE__)(ref_of_lock)
@@ -49,7 +50,7 @@ std::lock_guard<typename std::remove_reference<T>::type> get_lock_guard();
 
 namespace std {
 
-#if !defined(BASE_CXX11_ENABLED)
+#if !defined(BUTIL_CXX11_ENABLED)
 
 // Do not acquire ownership of the mutex
 struct defer_lock_t {};
@@ -145,7 +146,7 @@ private:
     bool                            _owns_lock;
 };
 
-#endif // !defined(BASE_CXX11_ENABLED)
+#endif // !defined(BUTIL_CXX11_ENABLED)
 
 #if defined(OS_POSIX)
 
@@ -396,4 +397,4 @@ void double_lock(std::unique_lock<Mutex1> &lck1, std::unique_lock<Mutex2> &lck2)
 
 };
 
-#endif  // BAIDU_BASE_BAIDU_SCOPED_LOCK_H
+#endif  // BUTIL_BAIDU_SCOPED_LOCK_H

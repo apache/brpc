@@ -1,19 +1,22 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Rujie Jiang (jiangrujie@baidu.com)
 
+#include "butil/build_config.h"                       // OS_MACOSX
 #include <netdb.h>                                    // gethostbyname_r
 #include <stdlib.h>                                   // strtol
 #include <string>                                     // std::string
@@ -73,6 +76,17 @@ int DomainNamingService::GetServers(const char* dns_name,
         return -1;
     }
 
+#if defined(OS_MACOSX)
+    _aux_buf_len = 0; // suppress unused warning
+    // gethostbyname on MAC is thread-safe (with current usage) since the
+    // returned hostent is TLS. Check following link for the ref:
+    // https://lists.apple.com/archives/darwin-dev/2006/May/msg00008.html
+    struct hostent* result = gethostbyname(buf);
+    if (result == NULL) {
+        LOG(WARNING) << "result of gethostbyname is NULL";
+        return -1;
+    }
+#else
     if (_aux_buf == NULL) {
         _aux_buf_len = 1024;
         _aux_buf.reset(new char[_aux_buf_len]);
@@ -104,6 +118,7 @@ int DomainNamingService::GetServers(const char* dns_name,
         LOG(WARNING) << "result of gethostbyname_r is NULL";
         return -1;
     }
+#endif
 
     butil::EndPoint point;
     point.port = port;

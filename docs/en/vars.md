@@ -1,24 +1,26 @@
-[bvar](https://github.com/brpc/brpc/tree/master/src/bvar/) is a counting utility designed for multiple threaded applications. It stores data in thread local storage(TLS) to avoid costly cache bouncing caused by concurrent modification. It is much faster than UbMonitor(a legacy counting utility used inside Baidu) and atomic operation in highly contended scenarios. bvar is builtin within brpc, through [/vars](http://brpc.baidu.com:8765/vars) you can access all the exposed bvars inside the server, or a single one specified by [/vars/`VARNAME`](http://brpc.baidu.com:8765/vars/rpc_socket_count). Check out [bvar](../cn/bvar.md) if you'd like add some bvars for you own services. bvar is widely used inside brpc to calculate indicators of internal status. It is **almost free** in most scenarios to collect data.  If you are looking for a utility to collect and show internal status of your application, try bvar at the first time. However bvar is designed for general purpose counters, the read process of a single bvar have to combines all the TLS data from the threads that the very bvar has been written, which is very slow compared to the write process and atomic operations.
+[中文版](../cn/vars.md)
 
-## Check out bvars
+[bvar](https://github.com/brpc/brpc/tree/master/src/bvar/) is a set of counters to record and view miscellaneous statistics conveniently in multi-threaded applications. The implementation reduces cache bouncing by storing data in thread local storage(TLS), being much faster than UbMonitor(a legacy counting library inside Baidu) and even atomic operations in highly contended scenarios. brpc integrates bvar by default, namely all exposed bvars in a server are accessible through [/vars](http://brpc.baidu.com:8765/vars), and a single bvar is addressable by [/vars/VARNAME](http://brpc.baidu.com:8765/vars/rpc_socket_count). Read [bvar](bvar.md) to know how to add bvars for your program. brpc extensively use bvar to expose internal status. If you are looking for an utility to collect and display metrics of your application, consider bvar in the first place. bvar definitely can't replace all counters, essentially it moves contentions occurred during write to read: which needs to combine all data written by all threads and becomes much slower than an ordinary read. If read and write on the counter are both frequent or decisions need to be made based on latest values, you should not use bvar.
 
-[/vars](http://brpc.baidu.com:8765/vars) : List all the bvars
+## Query methods
 
-[/vars/NAME](http://brpc.baidu.com:8765/vars/rpc_socket_count)：Check out the bvar whose name is `NAME`
+[/vars](http://brpc.baidu.com:8765/vars) : List all exposed bvars
 
-[/vars/NAME1,NAME2,NAME3](http://brpc.baidu.com:8765/vars/pid;process_cpu_usage;rpc_controller_count)：Check out the bvars whose name are `NAME1`, `NAME2` or `NAME3`.
+[/vars/NAME](http://brpc.baidu.com:8765/vars/rpc_socket_count)：List the bvar whose name is `NAME`
 
-[/vars/foo*,b$r](http://brpc.baidu.com:8765/vars/rpc_server*_count;iobuf_blo$k_*) Check out for the bvar whose name matches the given pattern. Note that `$` replaces `?` to represent a single character since `?` is reserved in URL.
+[/vars/NAME1,NAME2,NAME3](http://brpc.baidu.com:8765/vars/pid;process_cpu_usage;rpc_controller_count)：List bvars whose names are either `NAME1`, `NAME2` or `NAME3`.
 
-The following animation shows how you can check out bvars with pattern. You can paste the URI to other forks who will see excatcly the same contents through this URI.
+[/vars/foo*,b$r](http://brpc.baidu.com:8765/vars/rpc_server*_count;iobuf_blo$k_*): List bvars whose names match given wildcard patterns. Note that `$` matches a single character instead of `?` which is a reserved character in URL.
+
+Following animation shows how to find bvars with wildcard patterns. You can copy and paste the URL to others who will see same bvars that you see. (values may change)
 
 ![img](../images/vars_1.gif)
 
-There's a search box in front of /vars page. You can check out bvars with parts of names. Different parts can be specareted by `,` `:` or ` `.
+There's a search box in the upper-left corner on /vars page, in which you can type part of the names to locate bvars. Different patterns are separated by `,` `:` or space.
 
 ![img](../images/vars_2.gif)
 
-It's OK to access /vars throught terminal with curl as well：
+/vars is accessible from terminal as well:
 
 ```shell
 $ curl brpc.baidu.com:8765/vars/bthread*
@@ -38,42 +40,48 @@ bthread_num_workers : 24
 bthread_worker_usage : 1.01056
 ```
 
-## Check out timing diagrams.
+## View historical trends
 
-You can click most of numerical bvars to check out their timing diagrams. Each clickable bvar stores value in the recent `60s/60m/24h/30d`, *174* numbers in total。It takes about 1M memory when there are 1000 clickable bvars.
+Clicking on most of the numerical bvars shows historical trends. Each clickable bvar records values in recent *60 seconds, 60 minutes, 24 hours and 30 days*, which are *174* numbers in total. 1000 clickable bvars take roughly 1M memory.
 
 ![img](../images/vars_3.gif)
 
-## Calculate and check out percentiles
+## Calculate and view percentiles
 
-A percentile indicates the value below which a given percentage of samples in a group of samples fall. E.g. there are 1000 in a very time window，The 500th in the sorted set(1000 * 50%) is the value of 50%-percentile(a.k.a median), the number at the 990-th is 99%-percentile(1000 * 99%)，the number at 999-th is 99.9%-percentile. Percentiles show more information about the latency distribution than average latency, which is very important when calculating SAL. Usually 99.9%-percentile of latency limits the usage of the service rather than the average latency.
+x-ile (short for x-th percentile) is the value ranked at N * x%-th position amongst a group of ordered values. E.g. If there're 1000 values inside a time window, sort them in ascending order first. The 500-th value(1000 * 50%) in the ordered list is 50-ile(a.k.a median), the 990-th(1000 * 99%) value is 99-ile, the 999-th value is 99.9-ile. Percentiles give more information on how latencies distribute than mean values, and being helpful for analyzing behavior of the system more accurately. Industrial-grade services often require SLA to be not less than 99.97% (the requirement for 2nd-level services inside Baidu, >=99.99% for 1st-level services), even if a system has good average latencies, a bad long-tail area may still break SLA. Percentiles do help analyzing the long-tail area.
 
-Percentiles can be plotted as a CDF curve or a timing diagram.
+Percentiles can be plotted as a CDF or percentiles-over-time curve.
+
+**Following diagram plots percentiles as CDF**, where the X-axis is the ratio(ranked-position/total-number) and the Y-axis is the corresponding percentile. E.g. The Y value corresponding to X=50% is 50-ile. If a system requires that "99.9% requests need to be processed within Y milliseconds", you should check the Y at 99.9%.
 
 ![img](../images/vars_4.png)
 
-The diagram above is a CDF curve. The vertical axis is the value of latency and the horizontal axis is the percentage of value less than the corresponding value at vertical axis. Obviously, this diagram is plotted by percentiles from 10% to 99.99%。 For example, the vertical axis value corresponding to the horizontal axis at 50% is 50%-percentile of the quantile value. CDF is short for [Cumulative Distribution Function](https://en.wikipedia.org/wiki/Cumulative_distribution_function).  When we choose a vertical axis value `x`, the corresponding horizontal axis means "the ratio of the value <= `x`".  If the numbers are randomly sampled, it stands for "*the probability* of value <= `x`”, which is exacly the definition of distribution.  The derivative of the CDF is a [PDF(probability density function)](https://en.wikipedia.org/wiki/Probability_density_function). In other words, if we divide the vertical axis of the CDF into a number of small segments, calculating the difference between the corresponding values at the at both ends and use the difference as a new horizontal axis, it would draw the PDF curve, just as the *(horizontal) normal distribution* or *Poisson distribution*. The density of median will be significantly higher than the long tail in PDF curve. However we care more about the long tail. As a result, most system tests show CDF curves rather than PDF curves.
+Why do we call it [CDF](https://en.wikipedia.org/wiki/Cumulative_distribution_function) ? When a Y=y is chosen, the corresponding X means "percentage of values <= y". Since values are sampled randomly (and uniformly), the X can be viewed as "probability of values <= y", or P(values <= y), which is just the definition of CDF.
 
-Some simple rules to check if it is a *good* CDF curve
+Derivative of the CDF is [PDF](https://en.wikipedia.org/wiki/Probability_density_function). If we divide the Y-axis of the CDF into many small-range segments, calculate the difference between X values of both ends of each segment, and use the difference as new value for X-axis, a PDF curve would be plotted, just like a normal distribution rotated 90 degrees clockwise. However density of the median is often much higher than others in a PDF and probably make long-tail area very flat and hard to read. As a result, systems prefer showing distributions in CDF rather than PDF.
 
-- The flatter the better. It's best if the CDF curve is just a horizontal line, which indicates that there's no waiting, congestion nor pausing. Of course it's impossible actually.
-- The more narrow after 99% the better, which shows the range of long tail. And it's a very important part in SLA of most system. For example, if one of indicators in storage system is "*99.9%* of read should finish in *xx milliseconds*"), the maintainer should care about the value at 99.9%; If one of indicaters in search system is "*99.99%* of requests should finish in *xx milliseconds*), maintainers should care about the value at 99.99%.
+Here're 2 simple rules to check if a CDF curve is good or not:
 
-It is a good CDF curve if the gradient is small and the tail is narrow.
+- The flatter the better. A horizontal line is an ideal CDF curve which means that there're no waitings, congestions or pauses, very unlikely in practice.
+- The area between 99% and 100% should be as small as possible: right-side of 99% is the long-tail area, which has a significant impact on SLA.
+
+A CDF with slowly ascending curve and small long-tail area is great in practice. 
+
+**Following diagram plots percentiles over time** and has four curves. The X-axis is time and Y-axis from top to bottom are 99.9% 99% 90% 50% percentiles respectively, plotted in lighter and lighter colors (from orange to yellow). 
 
 ![img](../images/vars_5.png)
 
-It's a timing diagram of percentiles above, consisting of four curves. The horizontal axis is the time and the vertical axis is the latency. The curves from top to bottom show the timing disgram of latency at 99.9%/99%/90%/50%-percentiles. The color from top to bottom is also more and more shallow (from orange to yellow). You can move the mouse on over curves to get the corresponding data at different time. The number showed above means "The `99%`-percentile of latency before `39` seconds is `330` microseconds". The curve of 99.99% percentile is not counted in this diagram since it's usually significantly higher than the others which would make the other four curves hard to tell. You can click the bvars whose names end with "*_latency_9999*" to check the 99.99%-percentile along, and you can also check out curves of 50%,90%,99%,99.9% percentiles along in the same way. The timing digram shows the trends of percentiles, which is very helpful when you are analyzing the performance of the system.
+Hovering mouse over the curves shows corresponding values at the time. The tooltip in above diagram means "The 99% percentile of latency before 39 seconds is 330 **microseconds**". The diagram does not include the 99.99-ile curve which is usually significantly higher than others, making others hard to read. You may click bvars ended with "\_latency\_9999" to read the 99.99-ile curve separately. This diagram shows how percentiles change over time, which is helpful to analyze performance regressions of systems.
 
-brpc calculates latency distributed of the services. Users don't need to do this by themselves. The result is like the following piecture.
+brpc calculates latency distributions of services automatically, which do not need users to add manually. The metrics are as follows:
 
 ![img](../images/vars_6.png)
 
-Use `bvar::LatencyRecorder` to calculate the latency distribution of non rpc services in the ways shows in teh following code block. (checkout [bvar-c++](bvar_c++.md) for more details):
+`bvar::LatencyRecorder` is able to calculate latency distributions of any code, as depicted below. (checkout [bvar-c++](bvar_c++.md) for details):
 
 ```c++
 #include <bvar/bvar.h>
- 
+
 ...
 bvar::LatencyRecorder g_latency_recorder("client");  // expose this recorder
 ... 
@@ -84,10 +92,10 @@ void foo() {
 }
 ```
 
-If there's already a rpc server started in the application, you can view the value like `client_latency, client_latency_cdf` through `/vars`. Click them and you view dynamic curves, like the folowing picture.
+If the application already starts a brpc server, values like `client_latency`, `client_latency_cdf` can be viewed from `/vars` as follows. Clicking them to see (dynamically-updated) curves:
 
 ![img](../images/vars_7.png)
 
 ## Non brpc server
 
-If there's only clients of brpc used in the application or you don't even use brpc. Check out [this page](../cn/dummy_server.md) if you'd like check out the curves as well.
+If your program only uses brpc client or even not use brpc, and you also want to view the curves, check [here](../cn/dummy_server.md).

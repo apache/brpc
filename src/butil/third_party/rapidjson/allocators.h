@@ -17,7 +17,7 @@
 
 #include "rapidjson.h"
 
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 
 ///////////////////////////////////////////////////////////////////////////////
 // Allocator
@@ -260,6 +260,6 @@ private:
 template <typename BaseAllocator>
 const bool MemoryPoolAllocator<BaseAllocator>::kNeedFree;
 
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 #endif // RAPIDJSON_ENCODINGS_H_

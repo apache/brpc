@@ -1,9 +1,24 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
-// Copyright (c) 2014 Baidu, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+// brpc - A framework to host and access services throughout Baidu.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <fstream>
@@ -164,6 +179,13 @@ TEST_F(ServerTest, sanity) {
         // accept hostname as well.
         ASSERT_EQ(0, server.Start("localhost:8613", NULL));
     }
+    {
+        brpc::Server server;
+        ASSERT_EQ(0, server.Start("localhost:0", NULL));
+        // port should be replaced with the actually used one.
+        ASSERT_NE(0, server.listen_address().port);
+    }
+
     {
         brpc::Server server;
         ASSERT_EQ(-1, server.Start(99999, NULL));
@@ -352,7 +374,7 @@ TEST_F(ServerTest, only_allow_protocols_in_enabled_protocols) {
     test::EchoService_Stub stub(&chan);
     stub.Echo(&cntl, &req, &res, NULL);
     ASSERT_TRUE(cntl.Failed());
-    ASSERT_TRUE(cntl.ErrorText().find("Got EOF of fd") != std::string::npos);
+    ASSERT_TRUE(cntl.ErrorText().find("Got EOF of ") != std::string::npos);
     
     ASSERT_EQ(0, server.Stop(0));
     ASSERT_EQ(0, server.Join());
@@ -479,6 +501,7 @@ TEST_F(ServerTest, missing_required_fields) {
     http_channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
     ASSERT_TRUE(cntl.Failed());
     ASSERT_EQ(brpc::EHTTP, cntl.ErrorCode());
+    LOG(INFO) << cntl.ErrorText();
     ASSERT_EQ(brpc::HTTP_STATUS_BAD_REQUEST, cntl.http_response().status_code());
     ASSERT_EQ(0, service_v1.ncalled.load());
 
@@ -1002,7 +1025,7 @@ TEST_F(ServerTest, close_idle_connections) {
 
     const int cfd = tcp_connect(ep, NULL);
     ASSERT_GT(cfd, 0);
-    usleep(1000);
+    usleep(10000);
     brpc::ServerStatistics stat;
     server.GetStat(&stat);
     ASSERT_EQ(1ul, stat.connection_count);
@@ -1036,7 +1059,7 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         ASSERT_EQ(0, server.Stop(-1));
         ASSERT_EQ(0, server.Join());
         timer.stop();
-        EXPECT_TRUE(abs(timer.m_elapsed() - 100) < 10) << timer.m_elapsed();
+        EXPECT_TRUE(labs(timer.m_elapsed() - 100) < 15) << timer.m_elapsed();
         bthread_join(tid, NULL);
     }
 
@@ -1059,7 +1082,7 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         timer.stop();
         // Assertion will fail since EchoServiceImpl::Echo is holding
         // additional reference to the `Socket'
-        // EXPECT_TRUE(timer.m_elapsed() < 10) << timer.m_elapsed();
+        // EXPECT_TRUE(timer.m_elapsed() < 15) << timer.m_elapsed();
         bthread_join(tid, NULL);
     }
 
@@ -1082,7 +1105,7 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         timer.stop();
         // Assertion will fail since EchoServiceImpl::Echo is holding
         // additional reference to the `Socket'
-        // EXPECT_TRUE(abs(timer.m_elapsed() - 50) < 10) << timer.m_elapsed();
+        // EXPECT_TRUE(labs(timer.m_elapsed() - 50) < 15) << timer.m_elapsed();
         bthread_join(tid, NULL);
     }
     
@@ -1102,7 +1125,7 @@ TEST_F(ServerTest, logoff_and_multiple_start) {
         ASSERT_EQ(0, server.Stop(1000));
         ASSERT_EQ(0, server.Join());
         timer.stop();
-        EXPECT_TRUE(abs(timer.m_elapsed() - 100) < 10) << timer.m_elapsed();
+        EXPECT_TRUE(labs(timer.m_elapsed() - 100) < 15) << timer.m_elapsed();
         bthread_join(tid, NULL);
     }
 }
@@ -1151,7 +1174,7 @@ TEST_F(ServerTest, serving_requests) {
 TEST_F(ServerTest, create_pid_file) {
     {
         brpc::Server server;
-        server._options.pid_file = "$PWD//pid_dir/sub_dir/./.server.pid";
+        server._options.pid_file = "./pid_dir/sub_dir/./.server.pid";
         server.PutPidFileIfNeeded();
         pid_t pid = getpid();
         std::ifstream fin("./pid_dir/sub_dir/.server.pid");
@@ -1171,7 +1194,7 @@ TEST_F(ServerTest, range_start) {
     butil::EndPoint point;
     for (int i = START_PORT; i < END_PORT; ++i) {
         point.port = i;
-        listen_fds[i - START_PORT].reset(butil::tcp_listen(point, true));
+        listen_fds[i - START_PORT].reset(butil::tcp_listen(point));
     }
 
     brpc::Server server;
@@ -1274,100 +1297,6 @@ TEST_F(ServerTest, too_big_message) {
 
     server.Stop(0);
     server.Join();
-}
-
-void CheckCert(const char* address, const char* cert) {
-    std::string cmd = butil::string_printf(
-        "/usr/bin/curl -Ikv https://%s 2>&1 | grep %s", address, cert);
-    ASSERT_EQ(0, system(cmd.c_str()));
-}
-
-std::string GetRawPemString(const char* fname) {
-    butil::ScopedFILE fp(fname, "r");
-    char buf[4096];
-    int size = read(fileno(fp), buf, sizeof(buf));
-    std::string raw;
-    raw.append(buf, size);
-    return raw;
-}
-
-TEST_F(ServerTest, ssl_sni) {
-     brpc::Server server;
-     brpc::ServerOptions options;
-     {
-         brpc::CertInfo cert;
-         cert.certificate = "cert1.crt";
-         cert.private_key = "cert1.key";
-         cert.sni_filters.push_back("localhost");
-         options.ssl_options.default_cert = cert;
-     }
-     {
-         brpc::CertInfo cert;
-         cert.certificate = GetRawPemString("cert2.crt");
-         cert.private_key = GetRawPemString("cert2.key");
-         cert.sni_filters.push_back("*.localdomain");
-         options.ssl_options.certs.push_back(cert);
-     }
-     ASSERT_EQ(0, server.Start(8613, &options));
-     CheckCert("localhost:8613", "cert1");
-
-#ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-     CheckCert("localhost.localdomain:8613", "cert2");
-#endif  // SSL_CTRL_SET_TLSEXT_HOSTNAME
-     
-     server.Stop(0);
-     server.Join();
-}
-
-TEST_F(ServerTest, ssl_reload) {
-     brpc::Server server;
-     brpc::ServerOptions options;
-     {
-         brpc::CertInfo cert;
-         cert.certificate = "cert1.crt";
-         cert.private_key = "cert1.key";
-         cert.sni_filters.push_back("localhost");
-         options.ssl_options.default_cert = cert;
-     }
-     ASSERT_EQ(0, server.Start(8613, &options));
-     CheckCert("localhost:8613", "cert1");
-
-     {
-         brpc::CertInfo cert;
-         cert.certificate = GetRawPemString("cert2.crt");
-         cert.private_key = GetRawPemString("cert2.key");
-         cert.sni_filters.push_back("*.localdomain");
-         ASSERT_EQ(0, server.AddCertificate(cert));
-     }
-#ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-    CheckCert("localhost.localdomain:8613", "cert2");
-#endif  // SSL_CTRL_SET_TLSEXT_HOSTNAME
-
-     {
-         brpc::CertInfo cert;
-         cert.certificate = GetRawPemString("cert2.crt");
-         cert.private_key = GetRawPemString("cert2.key");
-         ASSERT_EQ(0, server.RemoveCertificate(cert));
-     }
-#ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-     CheckCert("localhost.localdomain:8613", "cert1");
-#endif  // SSL_CTRL_SET_TLSEXT_HOSTNAME
-
-     {
-         brpc::CertInfo cert;
-         cert.certificate = GetRawPemString("cert2.crt");
-         cert.private_key = GetRawPemString("cert2.key");
-         cert.sni_filters.push_back("*.localdomain");
-         std::vector<brpc::CertInfo> certs;
-         certs.push_back(cert);
-         ASSERT_EQ(0, server.ResetCertificates(certs));
-     }
-#ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-     CheckCert("localhost.localdomain:8613", "cert2");
-#endif  // SSL_CTRL_SET_TLSEXT_HOSTNAME
-
-     server.Stop(0);
-     server.Join();
 }
 
 TEST_F(ServerTest, max_concurrency) {

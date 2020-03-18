@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_AUTO_RESET_H_
-#define BASE_AUTO_RESET_H_
+#ifndef BUTIL_AUTO_RESET_H_
+#define BUTIL_AUTO_RESET_H_
 
 #include "butil/basictypes.h"
 
@@ -38,4 +38,4 @@ class AutoReset {
 
 }
 
-#endif  // BASE_AUTO_RESET_H_
+#endif  // BUTIL_AUTO_RESET_H_

@@ -1,19 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Zhangyi Chen (chenzhangyi01@baidu.com)
-//          Ge,Jun (gejun@baidu.com)
 
 #include <cstdlib>
 
@@ -33,7 +34,7 @@
 namespace brpc {
 
 DEFINE_bool(http_verbose, false,
-            "[DEBUG] Print EVERY http request/response to stderr");
+            "[DEBUG] Print EVERY http request/response");
 DEFINE_int32(http_verbose_max_body_length, 512,
              "[DEBUG] Max body length printed when -http_verbose is on");
 DECLARE_int64(socket_max_unwritten_bytes);
@@ -111,15 +112,16 @@ int HttpMessage::on_header_value(http_parser *parser,
             vs = new butil::IOBufBuilder;
             http_message->_vmsgbuilder = vs;
             if (parser->type == HTTP_REQUEST) {
-                *vs << "[HTTP REQUEST @" << butil::my_ip() << "]\n< "
+                *vs << "[ HTTP REQUEST @" << butil::my_ip() << " ]\n< "
                     << HttpMethod2Str((HttpMethod)parser->method) << ' '
                     << http_message->_url << " HTTP/" << parser->http_major
                     << '.' << parser->http_minor;
             } else {
-                *vs << "[HTTP RESPONSE @" << butil::my_ip() << "]\n< HTTP/"
+                // NOTE: http_message->header().status_code() may not be set yet.
+                *vs << "[ HTTP RESPONSE @" << butil::my_ip() << " ]\n< HTTP/"
                     << parser->http_major
                     << '.' << parser->http_minor << ' ' << parser->status_code
-                    << ' ' << http_message->header().reason_phrase();
+                    << ' ' << HttpReasonPhrase(parser->status_code);
             }
         }
         if (first_entry) {
@@ -215,17 +217,23 @@ int HttpMessage::OnBody(const char *at, const size_t length) {
             // only add prefix at first entry.
             *_vmsgbuilder << "\n<\n";
         }
-        if (_read_body_progressively) {
-            std::cerr << _vmsgbuilder->buf() << std::endl;
+        if (_read_body_progressively &&
+            // If the status_code is non-OK, the body is likely to be the error
+            // description which is very helpful for debugging. Otherwise
+            // the body is probably streaming data which is too long to print.
+            header().status_code() == HTTP_STATUS_OK) {
+            LOG(INFO) << '\n' << _vmsgbuilder->buf();
             delete _vmsgbuilder;
             _vmsgbuilder = NULL;
         } else {
-            if (_body_length < (size_t)FLAGS_http_verbose_max_body_length) {
+            if (_vbodylen < (size_t)FLAGS_http_verbose_max_body_length) {
                 int plen = std::min(length, (size_t)FLAGS_http_verbose_max_body_length
-                                    - _body_length);
-                _vmsgbuilder->write(at, plen);
+                                    - _vbodylen);
+                std::string str = butil::ToPrintableString(
+                    at, plen, std::numeric_limits<size_t>::max());
+                _vmsgbuilder->write(str.data(), str.size());
             }
-            _body_length += length;
+            _vbodylen += length;
         }
     }
     if (_stage != HTTP_ON_BODY) {
@@ -275,11 +283,11 @@ int HttpMessage::OnBody(const char *at, const size_t length) {
 
 int HttpMessage::OnMessageComplete() {
     if (_vmsgbuilder) {
-        if (_body_length > (size_t)FLAGS_http_verbose_max_body_length) {
-            *_vmsgbuilder << "\n<skipped " << _body_length
+        if (_vbodylen > (size_t)FLAGS_http_verbose_max_body_length) {
+            *_vmsgbuilder << "\n<skipped " << _vbodylen
                 - (size_t)FLAGS_http_verbose_max_body_length << " bytes>";
         }
-        std::cerr << _vmsgbuilder->buf() << std::endl;
+        LOG(INFO) << '\n' << _vmsgbuilder->buf();
         delete _vmsgbuilder;
         _vmsgbuilder = NULL;
     }
@@ -391,7 +399,7 @@ HttpMessage::HttpMessage(bool read_body_progressively)
     , _body_reader(NULL)
     , _cur_value(NULL)
     , _vmsgbuilder(NULL)
-    , _body_length(0) {
+    , _vbodylen(0) {
     http_parser_init(&_parser, HTTP_BOTH);
     _parser.data = this;
 }
@@ -451,7 +459,7 @@ ssize_t HttpMessage::ParseFromIOBuf(const butil::IOBuf &buf) {
         if (_parser.http_errno != 0) {
             // May try HTTP on other formats, failure is norm.
             RPC_VLOG << "Fail to parse http message, parser=" << _parser
-                     << ", buf=`" << buf << '\'';
+                     << ", buf=" << butil::ToPrintable(buf);
             return -1;
         }
         if (Completed()) {
@@ -503,8 +511,7 @@ std::ostream& operator<<(std::ostream& os, const http_parser& parser) {
     if (parser.type == HTTP_REQUEST || parser.type == HTTP_BOTH) {
         os << " method=" << HttpMethod2Str((HttpMethod)parser.method);
     }
-    os << " upgrade=" << parser.upgrade
-       << " data=" << parser.data
+    os << " data=" << parser.data
        << '}';
     return os;
 }
@@ -529,10 +536,10 @@ std::ostream& operator<<(std::ostream& os, const http_parser& parser) {
 //                | "CONNECT"                ; Section 9.9
 //                | extension-method
 // extension-method = token
-void SerializeHttpRequest(butil::IOBuf* request,
-                          HttpHeader* h,
-                          const butil::EndPoint& remote_side,
-                          const butil::IOBuf* content) {
+void MakeRawHttpRequest(butil::IOBuf* request,
+                        HttpHeader* h,
+                        const butil::EndPoint& remote_side,
+                        const butil::IOBuf* content) {
     butil::IOBufBuilder os;
     os << HttpMethod2Str(h->method()) << ' ';
     const URI& uri = h->uri();
@@ -606,9 +613,9 @@ void SerializeHttpRequest(butil::IOBuf* request,
 //                CRLF
 //                [ message-body ]          ; Section 7.2
 // Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
-void SerializeHttpResponse(butil::IOBuf* response,
-                           HttpHeader* h,
-                           butil::IOBuf* content) {
+void MakeRawHttpResponse(butil::IOBuf* response,
+                         HttpHeader* h,
+                         butil::IOBuf* content) {
     butil::IOBufBuilder os;
     os << "HTTP/" << h->major_version() << '.'
        << h->minor_version() << ' ' << h->status_code()

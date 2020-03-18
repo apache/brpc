@@ -1,21 +1,24 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #include <map>
 #include <gflags/gflags.h>
+#include "bthread/bthread.h"                         // bthread_id_xx
 #include "brpc/socket.h"                             // SocketUser
 #include "brpc/load_balancer.h"                      // LoadBalancer
 #include "brpc/details/controller_private_accessor.h"        // RPCSender
@@ -47,13 +50,15 @@ public:
 
     int CheckHealth(Socket* ptr) {
         if (ptr->health_check_count() == 0) {
-            LOG(INFO) << "Checking " << *chan;
+            LOG(INFO) << "Checking " << *chan << " chan=0x" << (void*)chan
+                      << " Fake" << *ptr;
         }
         return chan->CheckHealth();
     }
 
-    void AfterRevived(Socket*) {
-        LOG(INFO) << "Revived " << *chan;
+    void AfterRevived(Socket* ptr) {
+        LOG(INFO) << "Revived " << *chan << " chan=0x" << (void*)chan
+                  << " Fake" << *ptr << " (Connectable)";
     }
 };
 
@@ -107,7 +112,7 @@ public:
     explicit SubDone(Sender* owner)
         : _owner(owner)
         , _cid(INVALID_BTHREAD_ID)
-        , _peer_id((SocketId)-1) {
+        , _peer_id(INVALID_SOCKET_ID) {
     }
     ~SubDone() {}
     void Run();
@@ -284,6 +289,7 @@ Sender::Sender(Controller* cntl,
 int Sender::IssueRPC(int64_t start_realtime_us) {
     _main_cntl->_current_call.need_feedback = false;
     LoadBalancer::SelectIn sel_in = { start_realtime_us,
+                                      true,
                                       _main_cntl->has_request_code(),
                                       _main_cntl->_request_code,
                                       _main_cntl->_accessed };
@@ -319,6 +325,8 @@ int Sender::IssueRPC(int64_t start_realtime_us) {
     sub_cntl->set_request_compress_type(_main_cntl->request_compress_type());
     sub_cntl->set_log_id(_main_cntl->log_id());
     sub_cntl->set_request_code(_main_cntl->request_code());
+    // Forward request attachment to the subcall
+    sub_cntl->request_attachment().append(_main_cntl->request_attachment());
     
     sel_out.channel()->CallMethod(_main_cntl->_method,
                                   &r.sub_done->_cntl,
@@ -531,8 +539,6 @@ void SelectiveChannel::RemoveAndDestroyChannel(ChannelHandle handle) {
     lb->RemoveAndDestroyChannel(handle);
 }
 
-void RunDoneByState(Controller*, google::protobuf::Closure*);
-
 void SelectiveChannel::CallMethod(
     const google::protobuf::MethodDescriptor* method,
     google::protobuf::RpcController* controller_base,
@@ -543,7 +549,6 @@ void SelectiveChannel::CallMethod(
     if (!initialized()) {
         cntl->SetFailed(EINVAL, "SelectiveChannel=%p is not initialized yet",
                         this);
-        return RunDoneByState(cntl, user_done);
     }
     schan::Sender* sndr = new schan::Sender(cntl, request, response, user_done);
     cntl->_sender = sndr;

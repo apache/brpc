@@ -1,18 +1,20 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Thu Jul 30 17:44:54 CST 2015
 
 #include <unistd.h>                        // getpagesize
@@ -20,12 +22,20 @@
 #include <sys/resource.h>                  // getrusage
 #include <dirent.h>                        // dirent
 #include <iomanip>                         // setw
+#if defined(__APPLE__)
+#include <libproc.h>
+#include <sys/resource.h>
+#else
+#endif
+
 #include "butil/time.h"
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/scoped_lock.h"
 #include "butil/files/scoped_file.h"
 #include "butil/files/dir_reader_posix.h"
 #include "butil/file_util.h"
+#include "butil/process_util.h"            // ReadCommandLine
+#include "butil/popen.h"                   // read_command_output
 #include "bvar/passive_status.h"
 
 namespace bvar {
@@ -47,30 +57,31 @@ struct ProcStat {
     int session;
     int tty_nr;
     int tpgid;
-    uint32_t flags;
-    uint64_t minflt;
-    uint64_t cminflt;
-    uint64_t majflt;
-    uint64_t cmajflt;
-    uint64_t utime;
-    uint64_t stime;
-    uint64_t cutime;
-    uint64_t cstime;
-    int64_t priority;
-    int64_t nice;
-    int64_t num_threads;
+    unsigned flags;
+    unsigned long minflt;
+    unsigned long cminflt;
+    unsigned long majflt;
+    unsigned long cmajflt;
+    unsigned long utime;
+    unsigned long stime;
+    unsigned long cutime;
+    unsigned long cstime;
+    long priority;
+    long nice;
+    long num_threads;
 };
 
-// Read status from /proc/self/stat. Information from `man proc' is out of date,
-// see http://man7.org/linux/man-pages/man5/proc.5.html
 static bool read_proc_status(ProcStat &stat) {
+    stat = ProcStat();
+    errno = 0;
+#if defined(OS_LINUX)
+    // Read status from /proc/self/stat. Information from `man proc' is out of date,
+    // see http://man7.org/linux/man-pages/man5/proc.5.html
     butil::ScopedFILE fp("/proc/self/stat", "r");
     if (NULL == fp) {
         PLOG_ONCE(WARNING) << "Fail to open /proc/self/stat";
         return false;
     }
-    stat = ProcStat();
-    errno = 0;
     if (fscanf(fp, "%d %*s %c "
                "%d %d %d %d %d "
                "%u %lu %lu %lu "
@@ -85,6 +96,31 @@ static bool read_proc_status(ProcStat &stat) {
         return false;
     }
     return true;
+#elif defined(OS_MACOSX)
+    // TODO(zhujiashun): get remaining state in MacOS.
+    memset(&stat, 0, sizeof(stat));
+    static pid_t pid = getpid();
+    std::ostringstream oss;
+    char cmdbuf[128];
+    snprintf(cmdbuf, sizeof(cmdbuf),
+            "ps -p %ld -o pid,ppid,pgid,sess"
+            ",tpgid,flags,pri,nice | tail -n1", (long)pid);
+    if (butil::read_command_output(oss, cmdbuf) != 0) {
+        LOG(ERROR) << "Fail to read stat";
+        return -1;
+    }
+    const std::string& result = oss.str();
+    if (sscanf(result.c_str(), "%d %d %d %d"
+                              "%d %u %ld %ld",
+               &stat.pid, &stat.ppid, &stat.pgrp, &stat.session,
+               &stat.tpgid, &stat.flags, &stat.priority, &stat.nice) != 8) {
+        PLOG(WARNING) << "Fail to sscanf";
+        return false;
+    }
+    return true;
+#else
+    return false;
+#endif
 }
 
 // Reduce pressures to functions to get system metrics.
@@ -159,30 +195,55 @@ public:
 // ==================================================
 
 struct ProcMemory {
-    int64_t size;      // total program size
-    int64_t resident;  // resident set size
-    int64_t share;     // shared pages
-    int64_t trs;       // text (code)
-    int64_t drs;       // data/stack
-    int64_t lrs;       // library
-    int64_t dt;        // dirty pages
+    long size;      // total program size
+    long resident;  // resident set size
+    long share;     // shared pages
+    long trs;       // text (code)
+    long lrs;       // library
+    long drs;       // data/stack
+    long dt;        // dirty pages
 };
 
 static bool read_proc_memory(ProcMemory &m) {
+    m = ProcMemory();
+    errno = 0;
+#if defined(OS_LINUX)
     butil::ScopedFILE fp("/proc/self/statm", "r");
     if (NULL == fp) {
         PLOG_ONCE(WARNING) << "Fail to open /proc/self/statm";
         return false;
     }
-    m = ProcMemory();
-    errno = 0;
     if (fscanf(fp, "%ld %ld %ld %ld %ld %ld %ld",
                &m.size, &m.resident, &m.share,
-               &m.trs, &m.drs, &m.lrs, &m.dt) != 7) {
-        PLOG(WARNING) << "Fail to fscanf";
+               &m.trs, &m.lrs, &m.drs, &m.dt) != 7) {
+        PLOG(WARNING) << "Fail to fscanf /proc/self/statm";
         return false;
     }
     return true;
+#elif defined(OS_MACOSX)
+    // TODO(zhujiashun): get remaining memory info in MacOS.
+    memset(&m, 0, sizeof(m));
+    static pid_t pid = getpid();
+    static int64_t pagesize = getpagesize();
+    std::ostringstream oss;
+    char cmdbuf[128];
+    snprintf(cmdbuf, sizeof(cmdbuf), "ps -p %ld -o rss=,vsz=", (long)pid);
+    if (butil::read_command_output(oss, cmdbuf) != 0) {
+        LOG(ERROR) << "Fail to read memory state";
+        return -1;
+    }
+    const std::string& result = oss.str();
+    if (sscanf(result.c_str(), "%ld %ld", &m.resident, &m.size) != 2) {
+        PLOG(WARNING) << "Fail to sscanf";
+        return false;
+    }
+    // resident and size in Kbytes
+    m.resident = m.resident * 1024 / pagesize;
+    m.size = m.size * 1024 / pagesize;
+    return true;
+#else
+    return false;
+#endif
 }
 
 class ProcMemoryReader {
@@ -213,6 +274,7 @@ struct LoadAverage {
 };
 
 static bool read_load_average(LoadAverage &m) {
+#if defined(OS_LINUX)
     butil::ScopedFILE fp("/proc/loadavg", "r");
     if (NULL == fp) {
         PLOG_ONCE(WARNING) << "Fail to open /proc/loadavg";
@@ -226,6 +288,23 @@ static bool read_load_average(LoadAverage &m) {
         return false;
     }
     return true;
+#elif defined(OS_MACOSX)
+    std::ostringstream oss;
+    if (butil::read_command_output(oss, "sysctl -n vm.loadavg") != 0) {
+        LOG(ERROR) << "Fail to read loadavg";
+        return -1;
+    }
+    const std::string& result = oss.str();
+    if (sscanf(result.c_str(), "{ %lf %lf %lf }",
+               &m.loadavg_1m, &m.loadavg_5m, &m.loadavg_15m) != 3) {
+        PLOG(WARNING) << "Fail to sscanf";
+        return false;
+    }
+    return true;
+
+#else
+    return false;
+#endif
 }
 
 class LoadAverageReader {
@@ -249,6 +328,7 @@ public:
 // ==================================================
 
 static int get_fd_count(int limit) {
+#if defined(OS_LINUX)
     butil::DirReaderPosix dr("/proc/self/fd");
     int count = 0;
     if (!dr.IsValid()) {
@@ -259,12 +339,39 @@ static int get_fd_count(int limit) {
     // are huge (100k+)
     for (; dr.Next() && count <= limit + 3; ++count) {}
     return count - 3 /* skipped ., .. and the fd in dr*/;
+#elif defined(OS_MACOSX)
+    // TODO(zhujiashun): following code will cause core dump with some 
+    // probability under mac when program exits. Fix it.
+    /* 
+    static pid_t pid = getpid();
+    std::ostringstream oss;
+    char cmdbuf[128];
+    snprintf(cmdbuf, sizeof(cmdbuf),
+            "lsof -p %ld | grep -v \"txt\" | wc -l", (long)pid);
+    if (butil::read_command_output(oss, cmdbuf) != 0) {
+        LOG(ERROR) << "Fail to read open files";
+        return -1;
+    }
+    const std::string& result = oss.str();
+    int count = 0;
+    if (sscanf(result.c_str(), "%d", &count) != 1) {
+        PLOG(WARNING) << "Fail to sscanf";
+        return -1;
+    }
+    // skipped . and first column line
+    count = count - 2;
+    return std::min(count, limit);
+    */
+    return 0;
+#else
+    return 0;
+#endif
 }
 
 extern PassiveStatus<int> g_fd_num;
 
 const int MAX_FD_SCAN_COUNT = 10003;
-static butil::static_atomic<bool> s_ever_reached_fd_scan_limit = BASE_STATIC_ATOMIC_INIT(false);
+static butil::static_atomic<bool> s_ever_reached_fd_scan_limit = BUTIL_STATIC_ATOMIC_INIT(false);
 class FdReader {
 public:
     bool operator()(int* stat) const {
@@ -320,6 +427,7 @@ struct ProcIO {
 };
 
 static bool read_proc_io(ProcIO* s) {
+#if defined(OS_LINUX)
     butil::ScopedFILE fp("/proc/self/io", "r");
     if (NULL == fp) {
         PLOG_ONCE(WARNING) << "Fail to open /proc/self/io";
@@ -334,6 +442,22 @@ static bool read_proc_io(ProcIO* s) {
         return false;
     }
     return true;
+#elif defined(OS_MACOSX)
+    // TODO(zhujiashun): get rchar, wchar, syscr, syscw, cancelled_write_bytes
+    // in MacOS.
+    memset(s, 0, sizeof(ProcIO));
+    static pid_t pid = getpid();
+    rusage_info_current rusage;
+    if (proc_pid_rusage(pid, RUSAGE_INFO_CURRENT, (void**)&rusage) != 0) {
+        PLOG(WARNING) << "Fail to proc_pid_rusage";
+        return false;
+    }
+    s->read_bytes = rusage.ri_diskio_bytesread;
+    s->write_bytes = rusage.ri_diskio_byteswritten;
+    return true;
+#else 
+    return false;
+#endif
 }
 
 class ProcIOReader {
@@ -411,6 +535,7 @@ struct DiskStat {
 };
 
 static bool read_disk_stat(DiskStat* s) {
+#if defined(OS_LINUX)
     butil::ScopedFILE fp("/proc/diskstats", "r");
     if (NULL == fp) {
         PLOG_ONCE(WARNING) << "Fail to open /proc/diskstats";
@@ -437,6 +562,12 @@ static bool read_disk_stat(DiskStat* s) {
         return false;
     }
     return true;
+#elif defined(OS_MACOSX)
+    // TODO(zhujiashun)
+    return false;
+#else
+    return false;
+#endif
 }
 
 class DiskStatReader {
@@ -458,42 +589,31 @@ public:
 
 // =====================================
 
-static std::string read_first_line(const char* filepath) {
-    char * line = NULL;
-    size_t len = 0;
-    butil::ScopedFILE fp(filepath, "r");
-    if (fp == NULL) {
-        return "";
-    }
-    std::string result;
-    ssize_t nr = getline(&line, &len, fp);
-    if (nr != -1) {
-        for (ssize_t i = 0; i < nr; ++i) {
-            if (line[i] == '\0') {
-                line[i] = ' ';
-            }
-        }
-        for (; nr >= 1 && isspace(line[nr - 1]); --nr) {}  // trim.
-        result.assign(line, nr);
-    }
-    free(line);
-    return result;
-}
-
-struct ReadProcSelfCmdline {
+struct ReadSelfCmdline {
     std::string content;
-    ReadProcSelfCmdline() : content(read_first_line("/proc/self/cmdline")) {}
+    ReadSelfCmdline() {
+        char buf[1024];
+        const ssize_t nr = butil::ReadCommandLine(buf, sizeof(buf), true);
+        content.append(buf, nr);
+    }
 };
 static void get_cmdline(std::ostream& os, void*) {
-    os << butil::get_leaky_singleton<ReadProcSelfCmdline>()->content;
+    os << butil::get_leaky_singleton<ReadSelfCmdline>()->content;
 }
 
-struct ReadProcVersion {
+struct ReadVersion {
     std::string content;
-    ReadProcVersion() : content(read_first_line("/proc/version")) {}
+    ReadVersion() {
+        std::ostringstream oss;
+        if (butil::read_command_output(oss, "uname -ap") != 0) {
+            LOG(ERROR) << "Fail to read kernel version";
+            return;
+        }
+        content.append(oss.str());
+    }
 };
 static void get_kernel_version(std::ostream& os, void*) {
-    os << butil::get_leaky_singleton<ReadProcVersion>()->content;
+    os << butil::get_leaky_singleton<ReadVersion>()->content;
 }
 
 // ======================================
@@ -558,7 +678,7 @@ PassiveStatus<std::string> g_username(
     "process_username", get_username, NULL);
 
 BVAR_DEFINE_PROC_STAT_FIELD(minflt);
-PerSecond<PassiveStatus<uint64_t> > g_minflt_second(
+PerSecond<PassiveStatus<unsigned long> > g_minflt_second(
     "process_faults_minor_second", &g_minflt);
 BVAR_DEFINE_PROC_STAT_FIELD2(majflt, "process_faults_major");
 
@@ -573,8 +693,6 @@ BVAR_DEFINE_PROC_MEMORY_FIELD(resident, "process_memory_resident");
 BVAR_DEFINE_PROC_MEMORY_FIELD(share, "process_memory_shared");
 BVAR_DEFINE_PROC_MEMORY_FIELD(trs, "process_memory_text");
 BVAR_DEFINE_PROC_MEMORY_FIELD(drs, "process_memory_data_and_stack");
-BVAR_DEFINE_PROC_MEMORY_FIELD(lrs, "process_memory_library");
-BVAR_DEFINE_PROC_MEMORY_FIELD(dt, "process_memory_dirty");
 
 BVAR_DEFINE_LOAD_AVERAGE_FIELD(loadavg_1m, "system_loadavg_1m");
 BVAR_DEFINE_LOAD_AVERAGE_FIELD(loadavg_5m, "system_loadavg_5m");

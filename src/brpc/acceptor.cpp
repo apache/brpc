@@ -1,19 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Rujie Jiang(jiangrujie@baidu.com)
-//          Ge,Jun(gejun@baidu.com)
 
 #include <inttypes.h>
 #include <gflags/gflags.h>
@@ -44,8 +45,8 @@ Acceptor::~Acceptor() {
     Join();
 }
 
-int Acceptor::StartAccept(
-    int listened_fd, int idle_timeout_sec, SSL_CTX* ssl_ctx) {
+int Acceptor::StartAccept(int listened_fd, int idle_timeout_sec,
+                          const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
     if (listened_fd < 0) {
         LOG(FATAL) << "Invalid listened_fd=" << listened_fd;
         return -1;
@@ -271,12 +272,19 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
         options.remote_side = butil::EndPoint(*(sockaddr_in*)&in_addr);
         options.user = acception->user();
         options.on_edge_triggered_events = InputMessenger::OnNewMessages;
-        options.ssl_ctx = am->_ssl_ctx;
+        options.initial_ssl_ctx = am->_ssl_ctx;
         if (Socket::Create(options, &socket_id) != 0) {
             LOG(ERROR) << "Fail to create Socket";
             continue;
         }
         in_fd.release(); // transfer ownership to socket_id
+
+        // There's a funny race condition here. After Socket::Create, messages
+        // from the socket are already handled and a RPC is possibly done
+        // before the socket is added into _socket_map below. This is found in
+        // ChannelTest.skip_parallel in test/brpc_channel_unittest.cpp (running
+        // on machines with few cores) where the _messenger.ConnectionCount()
+        // may surprisingly be 0 even if the RPC is already done.
 
         SocketUniquePtr sock;
         if (Socket::AddressFailedAsWell(socket_id, &sock) >= 0) {
@@ -292,10 +300,11 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
                 am->_socket_map.insert(socket_id, ConnectStatistics());
             }
             if (!is_running) {
-                LOG(WARNING) << "Acceptor already stopped, discard "
-                             << "new connection, SocketId=" << socket_id;
-                sock->SetFailed(ELOGOFF, "Acceptor already stopped, discard "
-                                "new connection, SocketId=%" PRIu64, socket_id);
+                LOG(WARNING) << "Acceptor on fd=" << acception->fd()
+                    << " has been stopped, discard newly created " << *sock;
+                sock->SetFailed(ELOGOFF, "Acceptor on fd=%d has been stopped, "
+                        "discard newly created %s", acception->fd(),
+                        sock->description().c_str());
                 return;
             }
         } // else: The socket has already been destroyed, Don't add its id

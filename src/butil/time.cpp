@@ -1,22 +1,23 @@
-// Copyright (c) 2010 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Fri Aug 29 15:01:15 CST 2014
 
-#include <syscall.h>                         // SYS_clock_gettime
-#include <unistd.h>                          // syscall
+#include <unistd.h>                          // close
 #include <sys/types.h>                       // open
 #include <sys/stat.h>                        // ^
 #include <fcntl.h>                           // ^
@@ -29,49 +30,61 @@
 
 #include "butil/time.h"
 
-namespace butil {
+#if defined(NO_CLOCK_GETTIME_IN_MAC)
+#include <mach/clock.h>                      // mach_absolute_time
+#include <mach/mach_time.h>                  // mach_timebase_info
+#include <pthread.h>                         // pthread_once
+#include <stdlib.h>                          // exit
 
-clockid_t get_monotonic_clockid() {
-    // http://lxr.free-electrons.com/source/include/uapi/linux/time.h#L44
-    const clockid_t MY_CLOCK_MONOTONIC_RAW = 4;
-    
-    timespec ts;
-    if (0 == syscall(SYS_clock_gettime, MY_CLOCK_MONOTONIC_RAW, &ts)) {
-        return MY_CLOCK_MONOTONIC_RAW;
+static mach_timebase_info_data_t s_timebase;
+static timespec s_init_time;
+static uint64_t s_init_ticks;
+static pthread_once_t s_init_clock_once = PTHREAD_ONCE_INIT;
+
+static void InitClock() {
+    if (mach_timebase_info(&s_timebase) != 0) {
+        exit(1);
     }
-    return CLOCK_MONOTONIC;
+    timeval now;
+    if (gettimeofday(&now, NULL) != 0) {
+        exit(1);
+    }
+    s_init_time.tv_sec = now.tv_sec;
+    s_init_time.tv_nsec = now.tv_usec * 1000L;
+    s_init_ticks = mach_absolute_time();
 }
 
-extern const clockid_t monotonic_clockid = get_monotonic_clockid();
+int clock_gettime(clockid_t id, timespec* time) {
+    if (pthread_once(&s_init_clock_once, InitClock) != 0) {
+        exit(1);
+    }
+    uint64_t clock = mach_absolute_time() - s_init_ticks;
+    uint64_t elapsed = clock * (uint64_t)s_timebase.numer / (uint64_t)s_timebase.denom;
+    *time = s_init_time;
+    time->tv_sec += elapsed / 1000000000L;
+    time->tv_nsec += elapsed % 1000000000L;
+    time->tv_sec += time->tv_nsec / 1000000000L;
+    time->tv_nsec = time->tv_nsec % 1000000000L;
+    return 0;
+}
+
+#endif
+
+namespace butil {
 
 int64_t monotonic_time_ns() {
+    // MONOTONIC_RAW is slower than MONOTONIC in linux 2.6.32, trying to
+    // use the RAW version does not make sense anymore.
+    // NOTE: Not inline to keep ABI-compatible with previous versions.
     timespec now;
-    syscall(SYS_clock_gettime, monotonic_clockid, &now);
+    clock_gettime(CLOCK_MONOTONIC, &now);
     return now.tv_sec * 1000000000L + now.tv_nsec;
 }
 
-/*
-   read_cpu_frequency() is modified from source code of glibc.
-   
-   Copyright (C) 2002 Free Software Foundation, Inc.
-   This file is part of the GNU C Library.
-   Contributed by Ulrich Drepper <drepper@redhat.com>, 2002.
+namespace detail {
 
-   The GNU C Library is free software; you can redistribute it and/or
-   modify it under the terms of the GNU Lesser General Public
-   License as published by the Free Software Foundation; either
-   version 2.1 of the License, or (at your option) any later version.
-
-   The GNU C Library is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-   Lesser General Public License for more details.
-
-   You should have received a copy of the GNU Lesser General Public
-   License along with the GNU C Library; if not, write to the Free
-   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307 USA.  */
-uint64_t read_cpu_frequency(bool* invariant_tsc) {
+// read_cpu_frequency() is modified from source code of glibc.
+int64_t read_cpu_frequency(bool* invariant_tsc) {
     /* We read the information from the /proc filesystem.  It contains at
        least one line like
        cpu MHz         : 497.840237
@@ -84,7 +97,7 @@ uint64_t read_cpu_frequency(bool* invariant_tsc) {
         return 0;
     }
 
-    uint64_t result = 0;
+    int64_t result = 0;
     char buf[4096];  // should be enough
     const ssize_t n = read(fd, buf, sizeof(buf));
     if (n > 0) {
@@ -129,15 +142,17 @@ uint64_t read_cpu_frequency(bool* invariant_tsc) {
     return result;
 }
 
-uint64_t read_invariant_cpu_frequency() {
+// Return value must be >= 0
+int64_t read_invariant_cpu_frequency() {
     bool invariant_tsc = false;
-    const uint64_t freq = read_cpu_frequency(&invariant_tsc);
-    return (invariant_tsc ? freq : 0);
+    const int64_t freq = read_cpu_frequency(&invariant_tsc);
+    if (!invariant_tsc || freq < 0) {
+        return 0;
+    }
+    return freq;
 }
 
-extern const uint64_t invariant_cpu_freq = read_invariant_cpu_frequency();
-
-__thread int64_t tls_realtime_ns = 0;
-__thread int64_t tls_cpuwidetime_ns = 0;
+int64_t invariant_cpu_freq = -1;
+}  // namespace detail
 
 }  // namespace butil

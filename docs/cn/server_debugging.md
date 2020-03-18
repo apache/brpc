@@ -16,7 +16,7 @@
 
 # 2.检查CPU的使用程度
 
-查看 /vars/process_core_**count** 和 /vars/process_cpu_**usage**。分别是cpu核心的个数，和正在使用的cpu核数。
+查看 /vars/system_core_**count** 和 /vars/process_cpu_**usage**。分别是cpu核心的个数，和正在使用的cpu核数。
 
 > 如果usage和count接近，说明CPU不够用了。
 
@@ -80,11 +80,9 @@ rpc_server_8765_example_echo_service_echo_qps : 57
 
 ![img](../images/bthread_concurrency_2.png)
 
-回到flags界面可以看到bthread_concurrency已变成了新值。
+回到/flags界面可以看到bthread_concurrency已变成了新值。
 
 ![img](../images/bthread_concurrency_3.png)
-
- 
 
 不过，调大线程数未必有用。如果工作线程是由于访问下游而大量阻塞，调大工作线程数是没有用的。因为真正的瓶颈在于后端的，调大线程后只是让每个线程的阻塞时间变得更长。
 

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_DEBUG_LEAK_ANNOTATIONS_H_
-#define BASE_DEBUG_LEAK_ANNOTATIONS_H_
+#ifndef BUTIL_DEBUG_LEAK_ANNOTATIONS_H_
+#define BUTIL_DEBUG_LEAK_ANNOTATIONS_H_
 
 #include "butil/basictypes.h"
 #include "butil/build_config.h"
@@ -52,4 +52,4 @@ class ScopedLeakSanitizerDisabler {
 
 #endif
 
-#endif  // BASE_DEBUG_LEAK_ANNOTATIONS_H_
+#endif  // BUTIL_DEBUG_LEAK_ANNOTATIONS_H_

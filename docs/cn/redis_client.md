@@ -1,15 +1,17 @@
-[redis](http://redis.io/)是最近几年比较火的缓存服务，相比memcached在server端提供了更多的数据结构和操作方法，简化了用户的开发工作，在百度内有比较广泛的应用。为了使用户更快捷地访问redis并充分利用bthread的并发能力，brpc直接支持redis协议。示例程序：[example/redis_c++](https://github.com/brpc/brpc/tree/master/example/redis_c++/)
+[English version](../en/redis_client.md)
+
+[redis](http://redis.io/)是最近几年比较火的缓存服务，相比memcached在server端提供了更多的数据结构和操作方法，简化了用户的开发工作。为了使用户更快捷地访问redis并充分利用bthread的并发能力，brpc直接支持redis协议。示例程序：[example/redis_c++](https://github.com/brpc/brpc/tree/master/example/redis_c++/)
 
 相比使用[hiredis](https://github.com/redis/hiredis)(官方client)的优势有：
 
 - 线程安全。用户不需要为每个线程建立独立的client。
 - 支持同步、异步、批量同步、批量异步等访问方式，能使用ParallelChannel等组合访问方式。
 - 支持多种[连接方式](client.md#连接方式)。支持超时、backup request、取消、tracing、内置服务等一系列RPC基本福利。
-- 一个进程和一个redis-server只有一个连接。多个线程同时访问一个redis-server时更高效（见[性能](#性能)）。无论reply的组成多复杂，内存都会连续成块地分配，并支持短串优化(SSO)。
+- 一个进程中的所有brpc client和一个redis-server只有一个连接。多个线程同时访问一个redis-server时更高效（见[性能](#性能)）。无论reply的组成多复杂，内存都会连续成块地分配，并支持短串优化(SSO)进一步提高性能。
 
 像http一样，brpc保证在最差情况下解析redis reply的时间复杂度也是O(N)，N是reply的字节数，而不是O($N^2$)。当reply是个较大的数组时，这是比较重要的。
 
-加上[-redis_verbose](#查看发出的请求和收到的回复)后会在stderr上打印出所有的redis request和response供调试。
+加上[-redis_verbose](#查看发出的请求和收到的回复)后会打印出所有的redis request和response供调试。
 
 # 访问单台redis
 
@@ -45,11 +47,12 @@ if (cntl.Failed()) {
     LOG(ERROR) << "Fail to access redis-server";
     return -1;
 }
+// 可以通过response.reply(i)访问某个reply
 if (response.reply(0).is_error()) {
     LOG(ERROR) << "Fail to set";
     return -1;
 }
-// 你可以通过response.reply(0).c_str()访问到值或多种方式打印出结果。
+// 可用多种方式打印reply
 LOG(INFO) << response.reply(0).c_str()  // OK
           << response.reply(0)          // OK
           << response;                  // OK
@@ -69,7 +72,7 @@ if (response.reply(0).is_error()) {
     LOG(ERROR) << "Fail to incr";
     return -1;
 }
-// 返回了incr后的值，你可以通过response.reply(0).integer()访问到值，或以多种方式打印结果。
+// 可用多种方式打印结果
 LOG(INFO) << response.reply(0).integer()  // 2
           << response.reply(0)            // (integer) 2
           << response;                    // (integer) 2
@@ -103,7 +106,7 @@ CHECK_EQ(-10, response.reply(3).integer());
 
 # RedisRequest
 
-一个[RedisRequest](https://github.com/brpc/brpc/blob/master/src/brpc/redis.h)可包含多个Command，调用AddCommand*增加命令，成功返回true，失败返回false并会打印调用处的栈。
+一个[RedisRequest](https://github.com/brpc/brpc/blob/master/src/brpc/redis.h)可包含多个Command，调用AddCommand*增加命令，成功返回true，失败返回false**并会打印调用处的栈**。
 
 ```c++
 bool AddCommand(const char* fmt, ...);
@@ -113,9 +116,9 @@ bool AddCommandByComponents(const butil::StringPiece* components, size_t n);
 
 格式和hiredis基本兼容：即%b对应二进制数据（指针+length)，其他和printf的参数类似。对一些细节做了改进：当某个字段包含空格时，使用单引号或双引号包围起来会被视作一个字段。比如AddCommand("Set 'a key with space' 'a value with space as well'")中的key是a key with space，value是a value with space as well。在hiredis中必须写成redisvCommand(..., "SET %s %s", "a key with space", "a value with space as well");
 
-AddCommandByComponents类似hiredis中的redisCommandArgv，用户通过数组指定命令中的每一个部分。这个方法不是最快捷的，但效率最高，且对AddCommand和AddCommandV可能发生的转义问题免疫，如果你在使用AddCommand和AddCommandV时出现了“引号不匹配”，“无效格式”等问题且无法定位，可以试下这个方法。
+AddCommandByComponents类似hiredis中的redisCommandArgv，用户通过数组指定命令中的每一个部分。这个方法对AddCommand和AddCommandV可能发生的转义问题免疫，且效率最高。如果你在使用AddCommand和AddCommandV时出现了“Unmatched quote”，“无效格式”等问题且无法定位，可以试下这个方法。
 
-如果AddCommand*失败，后续的AddCommand*和CallMethod都会失败。一般来说不用判AddCommand*的结果，失败后自然会通过RPC失败体现出来。
+如果AddCommand\*失败，后续的AddCommand\*和CallMethod都会失败。一般来说不用判AddCommand*的结果，失败后自然会通过RPC失败体现出来。
 
 command_size()可获得（成功）加入的命令个数。
 
@@ -123,43 +126,43 @@ command_size()可获得（成功）加入的命令个数。
 
 # RedisResponse
 
-[RedisResponse](https://github.com/brpc/brpc/blob/master/src/brpc/redis.h)可能包含一个或多个[RedisReply](https://github.com/brpc/brpc/blob/master/src/brpc/redis_reply.h)，reply_size()可获得reply的个数，reply(i)可获得第i个reply的引用（从0计数）。注意在hiredis中，如果请求包含了N个command，获取结果也要调用N次redisGetReply。但在brpc中这是不必要的，RedisResponse已经包含了N个reply，通过reply(i)获取就行了。只要RPC成功，response.reply_size()应与request.command_size()相等，除非redis-server有bug（redis-server工作的基本前提就是response和request按序一一对应）
+[RedisResponse](https://github.com/brpc/brpc/blob/master/src/brpc/redis.h)可能包含一个或多个[RedisReply](https://github.com/brpc/brpc/blob/master/src/brpc/redis_reply.h)，reply_size()可获得reply的个数，reply(i)可获得第i个reply的引用（从0计数）。注意在hiredis中，如果请求包含了N个command，获取结果也要调用N次redisGetReply。但在brpc中这是不必要的，RedisResponse已经包含了N个reply，通过reply(i)获取就行了。只要RPC成功，response.reply_size()应与request.command_size()相等，除非redis-server有bug，redis-server工作的基本前提就是reply和command按序一一对应。
 
 每个reply可能是：
 
 - REDIS_REPLY_NIL：redis中的NULL，代表值不存在。可通过is_nil()判定。
-- REDIS_REPLY_STATUS：在redis文档中称为Simple String。一般是操作的返回值，比如SET返回的OK。可通过is_string()判定（status和string暂时不让用户区分），c_str()或data()获得值。
-- REDIS_REPLY_STRING：在redis文档中称为Bulk String。大多数值都是这个类型，包括那些可以incr的。可通过is_string()判定，c_str()或data()获得值。
+- REDIS_REPLY_STATUS：在redis文档中称为Simple String。一般是操作的返回状态，比如SET返回的OK。可通过is_string()判定（和string相同），c_str()或data()获得值。
+- REDIS_REPLY_STRING：在redis文档中称为Bulk String。大多数值都是这个类型，包括incr返回的。可通过is_string()判定，c_str()或data()获得值。
 - REDIS_REPLY_ERROR：操作出错时的返回值，包含一段错误信息。可通过is_error()判定，error_message()获得错误信息。
 - REDIS_REPLY_INTEGER：一个64位有符号数。可通过is_integer()判定，integer()获得值。
 - REDIS_REPLY_ARRAY：另一些reply的数组。可通过is_array()判定，size()获得数组大小，[i]获得对应的子reply引用。
 
-比如response包含三个reply，类型分别是integer，string和array (size=2)。那么可以分别这么获得值：response.reply(0).integer()，response.reply(1).c_str(), repsonse.reply(2)[0]和repsonse.reply(2)[1]。如果类型对不上，调用处的栈会被打印出来，并返回一个undefined的值。
+如果response包含三个reply，分别是integer，string和一个长度为2的array。那么可以分别这么获得值：response.reply(0).integer()，response.reply(1).c_str(), repsonse.reply(2)[0]和repsonse.reply(2)[1]。如果类型对不上，调用处的栈会被打印出来，并返回一个undefined的值。
 
-response中的所有reply的ownership属于response。当response析构时，reply也析构了。相应地，RedisReply被禁止拷贝。
+response中的所有reply的ownership属于response。当response析构时，reply也析构了。
 
 调用Clear()后RedisResponse可以重用。
 
 # 访问redis集群
 
-暂时请沿用常见的[twemproxy](https://github.com/twitter/twemproxy)方案，像访问单点一样访问proxy。如果你之前用hiredis访问BDRP（使用了twemproxy），那把client更换成brpc就行了。通过client（一致性哈希）直接访问redis集群虽然能降低延时，但同时也（可能）意味着无法直接利用BDRP的托管服务，这一块还不是很确定。
+建立一个使用一致性哈希负载均衡算法(c_md5或c_murmurhash)的channel就能访问挂载在对应命名服务下的redis集群了。注意每个RedisRequest应只包含一个操作或确保所有的操作是同一个key。如果request包含了多个操作，在当前实现下这些操作总会送向同一个server，假如对应的key分布在多个server上，那么结果就不对了，这个情况下你必须把一个request分开为多个，每个包含一个操作。
 
-如果你自己维护了redis集群，和memcache类似，应该是可以用一致性哈希访问的。但每个RedisRequest应只包含一个command或确保所有的command始终落在同一台server。如果request包含了多个command，在当前实现下总会送向同一个server。比方说一个request中包含了多个Get，而对应的key分布在多个server上，那么结果就肯定不对了，这个情况下你必须把一个request分开为多个。
+或者你可以沿用常见的[twemproxy](https://github.com/twitter/twemproxy)方案。这个方案虽然需要额外部署proxy，还增加了延时，但client端仍可以像访问单点一样的访问它。
 
 # 查看发出的请求和收到的回复
 
- 打开[-redis_verbose](http://brpc.baidu.com:8765/flags/redis_verbose)即可在stderr看到所有的redis request和response，注意这应该只用于线下调试，而不是线上程序。
+ 打开[-redis_verbose](http://brpc.baidu.com:8765/flags/redis_verbose)即看到所有的redis request和response，注意这应该只用于线下调试，而不是线上程序。
 
 打开[-redis_verbose_crlf2space](http://brpc.baidu.com:8765/flags/redis_verbose_crlf2space)可让打印内容中的CRLF (\r\n)变为空格，方便阅读。
 
 | Name                     | Value | Description                              | Defined At                         |
 | ------------------------ | ----- | ---------------------------------------- | ---------------------------------- |
-| redis_verbose            | false | [DEBUG] Print EVERY redis request/response to stderr | src/brpc/policy/redis_protocol.cpp |
+| redis_verbose            | false | [DEBUG] Print EVERY redis request/response | src/brpc/policy/redis_protocol.cpp |
 | redis_verbose_crlf2space | false | [DEBUG] Show \r\n as a space             | src/brpc/redis.cpp                 |
 
 # 性能
 
-redis版本：2.6.14 (不是最新的3.0）
+redis版本：2.6.14
 
 分别使用1，50，200个bthread同步压测同机redis-server，延时单位均为微秒。
 
@@ -221,11 +224,13 @@ TRACE: 02-13 18:07:42:   * 0 client.cpp:180] Accessing redis server at qps=75238
 16878 gejun     20   0 48136 2520 1004 R 99.9  0.0   9:52.33 redis-server
 ```
 
-可以看到qps相比单链接时有大幅回落，同时redis-server的CPU打满了。原因在于redis-server每次只能从一个连接中读到一个请求，IO开销大幅增加。
+可以看到qps相比单链接时有大幅回落，同时redis-server的CPU打满了。原因在于redis-server每次只能从一个连接中读到一个请求，IO开销大幅增加。这也是单个hiredis client的极限性能。
 
 # Command Line Interface
 
-example/redis_c++/redis_cli是一个类似于官方CLI的命令行工具，以展示brpc对redis协议的处理能力。当使用brpc访问redis-server出现不符合预期的行为时，也可以使用这个CLI进行交互式的调试。
+[example/redis_c++/redis_cli](https://github.com/brpc/brpc/blob/master/example/redis_c%2B%2B/redis_cli.cpp)是一个类似于官方CLI的命令行工具，以展示brpc对redis协议的处理能力。当使用brpc访问redis-server出现不符合预期的行为时，也可以使用这个CLI进行交互式的调试。
+
+和官方CLI类似，`redis_cli <command>`也可以直接运行命令，-server参数可以指定redis-server的地址。
 
 ```
 $ ./redis_cli 
@@ -250,5 +255,3 @@ OK
 redis 127.0.0.1:6379> client getname
 "brpc-cli"
 ```
-
-和官方CLI类似，redis_cli <command>也可以直接运行命令，-server参数可以指定redis-server的地址。

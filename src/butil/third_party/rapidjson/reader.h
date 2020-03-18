@@ -115,7 +115,7 @@ RAPIDJSON_DIAG_OFF(effc++)
 
 #include "error/error.h" // ParseErrorCode, ParseResult
 
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 
 template<class T, class U> 
 struct is_same {
@@ -1552,7 +1552,7 @@ private:
 //! Reader with UTF8 encoding and default allocator.
 typedef GenericReader<UTF8<>, UTF8<> > Reader;
 
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 #ifdef __GNUC__
 RAPIDJSON_DIAG_POP

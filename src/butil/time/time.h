@@ -20,8 +20,8 @@
 // These classes are represented as only a 64-bit value, so they can be
 // efficiently passed by value.
 
-#ifndef BASE_TIME_TIME_H_
-#define BASE_TIME_TIME_H_
+#ifndef BUTIL_TIME_TIME_H_
+#define BUTIL_TIME_TIME_H_
 
 #include <time.h>
 
@@ -66,7 +66,7 @@ class TimeTicks;
 
 // TimeDelta ------------------------------------------------------------------
 
-class BASE_EXPORT TimeDelta {
+class BUTIL_EXPORT TimeDelta {
  public:
   TimeDelta() : delta_(0) {
   }
@@ -222,7 +222,7 @@ inline TimeDelta operator*(int64_t a, TimeDelta td) {
 // Time -----------------------------------------------------------------------
 
 // Represents a wall clock time in UTC.
-class BASE_EXPORT Time {
+class BUTIL_EXPORT Time {
  public:
   static const int64_t kMillisecondsPerSecond = 1000;
   static const int64_t kMicrosecondsPerMillisecond = 1000;
@@ -248,7 +248,7 @@ class BASE_EXPORT Time {
   // Represents an exploded time that can be formatted nicely. This is kind of
   // like the Win32 SYSTEMTIME structure or the Unix "struct tm" with a few
   // additions and changes to prevent errors.
-  struct BASE_EXPORT Exploded {
+  struct BUTIL_EXPORT Exploded {
     int year;          // Four digit year "2007"
     int month;         // 1-based month (values 1 = January, etc.)
     int day_of_week;   // 0-based day of week (0 = Sunday, etc.)
@@ -595,7 +595,7 @@ inline Time TimeDelta::operator+(Time t) const {
 
 // TimeTicks ------------------------------------------------------------------
 
-class BASE_EXPORT TimeTicks {
+class BUTIL_EXPORT TimeTicks {
  public:
   // We define this even without OS_CHROMEOS for seccomp sandbox testing.
 #if defined(OS_LINUX)
@@ -762,4 +762,4 @@ inline TimeTicks TimeDelta::operator+(TimeTicks t) const {
 
 }  // namespace butil
 
-#endif  // BASE_TIME_TIME_H_
+#endif  // BUTIL_TIME_TIME_H_

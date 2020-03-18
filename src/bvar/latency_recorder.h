@@ -1,18 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: 2014/09/22 11:57:43
 
 #ifndef  BVAR_LATENCY_RECORDER_H
@@ -37,8 +39,8 @@ class CDF : public Variable {
 public:
     explicit CDF(PercentileWindow* w);
     ~CDF();
-    void describe(std::ostream& os, bool quote_string) const;
-    int describe_series(std::ostream& os, const SeriesOptions& options) const;
+    void describe(std::ostream& os, bool quote_string) const override;
+    int describe_series(std::ostream& os, const SeriesOptions& options) const override;
 private:
     PercentileWindow* _w; 
 };
@@ -58,9 +60,9 @@ protected:
     PassiveStatus<int64_t> _count;
     PassiveStatus<int64_t> _qps;
     PercentileWindow _latency_percentile_window;
-    PassiveStatus<int64_t> _latency_50;
-    PassiveStatus<int64_t> _latency_90;
-    PassiveStatus<int64_t> _latency_99;
+    PassiveStatus<int64_t> _latency_p1;
+    PassiveStatus<int64_t> _latency_p2;
+    PassiveStatus<int64_t> _latency_p3;
     PassiveStatus<int64_t> _latency_999;  // 99.9%
     PassiveStatus<int64_t> _latency_9999; // 99.99%
     CDF _latency_cdf;
@@ -125,7 +127,7 @@ public:
     int64_t latency() const
     { return _latency_window.get_value().get_average_int(); }
 
-    // Get 50/90/99/99.9-ile latencies in recent window_size-to-ctor seconds.
+    // Get p1/p2/p3/99.9-ile latencies in recent window_size-to-ctor seconds.
     Vector<int64_t, 4> latency_percentiles() const;
 
     // Get the max latency in recent window_size-to-ctor seconds.

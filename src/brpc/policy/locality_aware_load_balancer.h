@@ -1,18 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #ifndef BRPC_POLICY_LOCALITY_AWARE_LOAD_BALANCER_H
 #define BRPC_POLICY_LOCALITY_AWARE_LOAD_BALANCER_H
@@ -31,11 +33,11 @@ namespace brpc {
 namespace policy {
 
 DECLARE_int64(min_weight);
-DECLARE_int64(dev_multiple);
+DECLARE_double(punish_inflight_ratio);
 
 // Locality-aware is an iterative algorithm to send requests to servers which
 // have lowest expected latencies. Read docs/cn/lalb.md to get a peek at the
-// algorithm. The implemention is complex.
+// algorithm. The implementation is complex.
 class LocalityAwareLoadBalancer : public LoadBalancer {
 public:
     LocalityAwareLoadBalancer();
@@ -44,7 +46,7 @@ public:
     bool RemoveServer(const ServerId& id);
     size_t AddServersInBatch(const std::vector<ServerId>& servers);
     size_t RemoveServersInBatch(const std::vector<ServerId>& servers);
-    LocalityAwareLoadBalancer* New() const;
+    LocalityAwareLoadBalancer* New(const butil::StringPiece&) const;
     void Destroy();
     int SelectServer(const SelectIn& in, SelectOut* out);
     void Feedback(const CallInfo& info);
@@ -54,7 +56,6 @@ private:
     struct TimeInfo {
         int64_t latency_sum;         // microseconds
         int64_t end_time_us;
-        double squared_latency_sum;  // for calculating deviation
     };
     
     class Servers;
@@ -68,7 +69,7 @@ private:
 
         // Called in Feedback() to recalculate _weight.
         // Returns diff of _weight.
-        int64_t Update(const CallInfo&, size_t index, int64_t latency_percent);
+        int64_t Update(const CallInfo&, size_t index);
 
         // Weight of self. Notice that this value may change at any time.
         int64_t volatile_value() const { return _weight; }
@@ -84,7 +85,7 @@ private:
         void Describe(std::ostream& os, int64_t now);
 
         int64_t Disable();
-        bool Disabled() const { return _base_weight == 0; }
+        bool Disabled() const { return _base_weight < 0; }
         int64_t MarkOld(size_t index);
         std::pair<int64_t, int64_t> ClearOld();
 
@@ -100,7 +101,6 @@ private:
         size_t _old_index;
         int64_t _old_weight;
         int64_t _avg_latency;
-        int64_t _dev;
         butil::BoundedQueue<TimeInfo> _time_q;
         // content of _time_q
         TimeInfo _time_q_items[RECV_QUEUE_SIZE];
@@ -168,15 +168,10 @@ inline int64_t LocalityAwareLoadBalancer::Weight::ResetWeight(
     if (_begin_time_count > 0) {
         const int64_t inflight_delay =
             now_us - _begin_time_sum / _begin_time_count;
-        // note: we only punish latencies at least twice of average latency
-        // when FLAGS_dev_multiple is 0.
-        int64_t punish_latency = _avg_latency * 2;
-        const int64_t dev = FLAGS_dev_multiple * _dev;
-        if (dev > 0) {
-            punish_latency = _avg_latency + dev;
-        }            
+        const int64_t punish_latency =
+            (int64_t)(_avg_latency * FLAGS_punish_inflight_ratio);
         if (inflight_delay >= punish_latency && _avg_latency > 0) {
-            new_weight = new_weight * _avg_latency / inflight_delay;
+            new_weight = new_weight * punish_latency / inflight_delay;
         }
     }
     if (new_weight < FLAGS_min_weight) {

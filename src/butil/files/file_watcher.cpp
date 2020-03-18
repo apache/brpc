@@ -1,21 +1,24 @@
-// Copyright (c) 2010 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: 2010/05/29
 
 #include <sys/stat.h>
+#include "butil/build_config.h"              // OS_MACOSX
 #include "butil/files/file_watcher.h"
 
 namespace butil {
@@ -46,8 +49,8 @@ int FileWatcher::init_from_not_exist(const char* file_path) {
 }
 
 FileWatcher::Change FileWatcher::check(Timestamp* new_timestamp) const {
-    struct stat tmp_st;
-    const int ret = stat(_file_path.c_str(), &tmp_st);
+    struct stat st;
+    const int ret = stat(_file_path.c_str(), &st);
     if (ret < 0) {
         *new_timestamp = NON_EXIST_TS;
         if (NON_EXIST_TS != _last_ts) {
@@ -59,7 +62,11 @@ FileWatcher::Change FileWatcher::check(Timestamp* new_timestamp) const {
         // Use microsecond timestamps which can be used for:
         //   2^63 / 1000000 / 3600 / 24 / 365 = 292471 years
         const Timestamp cur_ts =
-            tmp_st.st_mtim.tv_sec * 1000000L + tmp_st.st_mtim.tv_nsec / 1000L;
+#if defined(OS_MACOSX)
+            st.st_mtimespec.tv_sec * 1000000L + st.st_mtimespec.tv_nsec / 1000L;
+#else
+            st.st_mtim.tv_sec * 1000000L + st.st_mtim.tv_nsec / 1000L;
+#endif
         *new_timestamp = cur_ts;
         if (NON_EXIST_TS != _last_ts) {
             if (cur_ts != _last_ts) {

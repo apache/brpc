@@ -1,22 +1,24 @@
-// Copyright (c) 2016 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Sat Dec  3 13:11:32 CST 2016
 
-#ifndef BASE_POOLED_MAP_H
-#define BASE_POOLED_MAP_H
+#ifndef BUTIL_POOLED_MAP_H
+#define BUTIL_POOLED_MAP_H
 
 #include "butil/single_threaded_pool.h"
 #include <new>
@@ -85,7 +87,7 @@ template <class T1, size_t BLOCK_SIZE> class PooledAllocator;
 template <typename K, typename V, size_t BLOCK_SIZE = 512,
           typename C = std::less<K> >
 class PooledMap
-    : public std::map<K, V, C, details::PooledAllocator<int, BLOCK_SIZE> > {
+    : public std::map<K, V, C, details::PooledAllocator<std::pair<const K, V>, BLOCK_SIZE> > {
     
 };
 
@@ -128,8 +130,8 @@ public:
     void swap(PooledAllocator& other) { _pool.swap(other._pool); }
 
     // Convert references to pointers.
-    pointer address(reference r) const { return &r; };
-    const_pointer address(const_reference r) const { return &r; };
+    pointer address(reference r) const { return &r; }
+    const_pointer address(const_reference r) const { return &r; }
 
     // Allocate storage for n values of T1.
     pointer allocate(size_type n, PooledAllocator<void, 0>::const_pointer = 0) {
@@ -138,7 +140,7 @@ public:
         } else {
             return (pointer)malloc(n * sizeof(T1));
         }
-    };
+    }
 
     // Deallocate storage obtained by a call to allocate.
     void deallocate(pointer p, size_type n) {
@@ -147,17 +149,17 @@ public:
         } else {
             free(p);
         }
-    };
+    }
 
     // Return the largest possible storage available through a call to allocate.
-    size_type max_size() const { return 0xFFFFFFFF / sizeof(T1); };
+    size_type max_size() const { return 0xFFFFFFFF / sizeof(T1); }
 
-    void construct(pointer ptr) { ::new (ptr) T1; };
-    void construct(pointer ptr, const T1& val) { ::new (ptr) T1(val); };
+    void construct(pointer ptr) { ::new (ptr) T1; }
+    void construct(pointer ptr, const T1& val) { ::new (ptr) T1(val); }
     template <class U1> void construct(pointer ptr, const U1& val)
     { ::new (ptr) T1(val); }
 
-    void destroy(pointer p) { p->T1::~T1(); };
+    void destroy(pointer p) { p->T1::~T1(); }
 
 private:
     butil::SingleThreadedPool<sizeof(T1), BLOCK_SIZE, 1> _pool;
@@ -167,17 +169,17 @@ private:
 // and vice versa. It's clear that our allocator can't be exchanged.
 template <typename T1, size_t S1, typename T2, size_t S2>
 bool operator==(const PooledAllocator<T1, S1>&, const PooledAllocator<T2, S2>&)
-{ return false; };
+{ return false; }
 template <typename T1, size_t S1, typename T2, size_t S2>
 bool operator!=(const PooledAllocator<T1, S1>& a, const PooledAllocator<T2, S2>& b)
-{ return !(a == b); };
+{ return !(a == b); }
 
 } // namespace details
 } // namespace butil
 
 // Since this allocator can't be exchanged(check impl. of operator==) nor
 // copied, specializing swap() is a must to make map.swap() work.
-#if !defined(BASE_CXX11_ENABLED)
+#if !defined(BUTIL_CXX11_ENABLED)
 #include <algorithm>  // std::swap until C++11
 #else
 #include <utility>    // std::swap since C++11
@@ -191,4 +193,4 @@ inline void swap(::butil::details::PooledAllocator<T1, BLOCK_SIZE> &lhs,
 }
 }  // namespace std
 
-#endif  // BASE_POOLED_MAP_H
+#endif  // BUTIL_POOLED_MAP_H

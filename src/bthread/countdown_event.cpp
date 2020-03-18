@@ -1,19 +1,22 @@
-// bthread - A M:N threading library to make applications more concurrent.
-// Copyright (c) 2016 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Zhangyi Chen (chenzhangyi01@baidu.com)
+// bthread - A M:N threading library to make applications more concurrent.
+
 // Date: 2016/06/03 13:15:24
 
 #include "butil/atomicops.h"     // butil::atomic<int>
@@ -50,15 +53,18 @@ void CountdownEvent::signal(int sig) {
     butex_wake_all(saved_butex);
 }
 
-void CountdownEvent::wait() {
+int CountdownEvent::wait() {
     _wait_was_invoked = true;
     for (;;) {
         const int seen_counter = 
             ((butil::atomic<int>*)_butex)->load(butil::memory_order_acquire);
         if (seen_counter <= 0) {
-            return;
+            return 0;
         }
-        butex_wait(_butex, seen_counter, NULL);
+        if (butex_wait(_butex, seen_counter, NULL) < 0 &&
+            errno != EWOULDBLOCK && errno != EINTR) {
+            return errno;
+        }
     }
 }
 
@@ -93,8 +99,8 @@ int CountdownEvent::timed_wait(const timespec& duetime) {
         if (seen_counter <= 0) {
             return 0;
         }
-        const int rc = butex_wait(_butex, seen_counter, &duetime);
-        if (rc < 0 && errno != EWOULDBLOCK) {
+        if (butex_wait(_butex, seen_counter, &duetime) < 0 &&
+            errno != EWOULDBLOCK && errno != EINTR) {
             return errno;
         }
     }

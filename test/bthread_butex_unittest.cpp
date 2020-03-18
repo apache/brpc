@@ -1,6 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// Author: Ge,Jun (gejun@baidu.com)
-// Date: Sun Jul 13 15:04:18 CST 2014
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #include <gtest/gtest.h>
 #include "butil/atomicops.h"
@@ -43,7 +56,7 @@ void* joiner(void* arg) {
             LOG(FATAL) << "fail to join thread_" << th - (bthread_t*)arg;
         }
         long elp = butil::gettimeofday_us() - t1;
-        EXPECT_LE(labs(elp - (th - (bthread_t*)arg + 1) * 100000L), 10000L)
+        EXPECT_LE(labs(elp - (th - (bthread_t*)arg + 1) * 100000L), 15000L)
             << "timeout when joining thread_" << th - (bthread_t*)arg;
         LOG(INFO) << "Joined thread " << *th << " at " << elp << "us ["
                   << bthread_self() << "]";
@@ -208,7 +221,7 @@ TEST(ButexTest, wait_without_stop) {
         ASSERT_EQ(0, bthread_join(th, NULL));
         tm.stop();
         
-        ASSERT_LT(abs(tm.m_elapsed() - WAIT_MSEC), 20);
+        ASSERT_LT(labs(tm.m_elapsed() - WAIT_MSEC), 250);
     }
     bthread::butex_destroy(butex);
 }
@@ -223,7 +236,7 @@ TEST(ButexTest, stop_after_running) {
         const bthread_attr_t attr =
             (i == 0 ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL);
         bthread_t th;
-        ButexWaitArg arg = { butex, *butex, WAIT_MSEC, ESTOP };
+        ButexWaitArg arg = { butex, *butex, WAIT_MSEC, EINTR };
 
         tm.start();
         ASSERT_EQ(0, bthread_start_urgent(&th, &attr, wait_butex, &arg));
@@ -232,7 +245,7 @@ TEST(ButexTest, stop_after_running) {
         ASSERT_EQ(0, bthread_join(th, NULL));
         tm.stop();
 
-        ASSERT_LT(abs(tm.m_elapsed() - SLEEP_MSEC), 10);
+        ASSERT_LT(labs(tm.m_elapsed() - SLEEP_MSEC), 25);
         // ASSERT_TRUE(bthread::get_task_control()->
         //             timer_thread()._idset.empty());
         ASSERT_EQ(EINVAL, bthread_stop(th));
@@ -250,7 +263,7 @@ TEST(ButexTest, stop_before_running) {
         const bthread_attr_t attr =
             (i == 0 ? BTHREAD_ATTR_PTHREAD : BTHREAD_ATTR_NORMAL) | BTHREAD_NOSIGNAL;
         bthread_t th;
-        ButexWaitArg arg = { butex, *butex, WAIT_MSEC, ESTOP };
+        ButexWaitArg arg = { butex, *butex, WAIT_MSEC, EINTR };
         
         tm.start();
         ASSERT_EQ(0, bthread_start_background(&th, &attr, wait_butex, &arg));
@@ -268,7 +281,7 @@ TEST(ButexTest, stop_before_running) {
 }
 
 void* join_the_waiter(void* arg) {
-    EXPECT_EQ(ESTOP, bthread_join((bthread_t)arg, NULL));
+    EXPECT_EQ(0, bthread_join((bthread_t)arg, NULL));
     return NULL;
 }
 
@@ -277,7 +290,7 @@ TEST(ButexTest, join_cant_be_wakeup) {
     int* butex = bthread::butex_create_checked<int>();
     *butex = 7;
     butil::Timer tm;
-    ButexWaitArg arg = { butex, *butex, 1000, ESTOP };
+    ButexWaitArg arg = { butex, *butex, 1000, EINTR };
 
     for (int i = 0; i < 2; ++i) {
         const bthread_attr_t attr =
@@ -295,7 +308,7 @@ TEST(ButexTest, join_cant_be_wakeup) {
         ASSERT_EQ(0, bthread_join(th2, NULL));
         ASSERT_EQ(0, bthread_join(th, NULL));
         tm.stop();
-        ASSERT_LT(tm.m_elapsed(), WAIT_MSEC + 10);
+        ASSERT_LT(tm.m_elapsed(), WAIT_MSEC + 15);
         ASSERT_EQ(EINVAL, bthread_stop(th));
         ASSERT_EQ(EINVAL, bthread_stop(th2));
     }
@@ -319,9 +332,9 @@ TEST(ButexTest, stop_after_slept) {
         ASSERT_EQ(0, bthread_join(th, NULL));
         tm.stop();
         if (attr.stack_type == BTHREAD_STACKTYPE_PTHREAD) {
-            ASSERT_LT(abs(tm.m_elapsed() - SLEEP_MSEC), 15);
+            ASSERT_LT(labs(tm.m_elapsed() - SLEEP_MSEC), 15);
         } else {
-            ASSERT_LT(abs(tm.m_elapsed() - WAIT_MSEC), 15);
+            ASSERT_LT(labs(tm.m_elapsed() - WAIT_MSEC), 15);
         }
         // ASSERT_TRUE(bthread::get_task_control()->
         //             timer_thread()._idset.empty());
@@ -344,7 +357,7 @@ TEST(ButexTest, stop_just_when_sleeping) {
         ASSERT_EQ(0, bthread_join(th, NULL));
         tm.stop();
         if (attr.stack_type == BTHREAD_STACKTYPE_PTHREAD) {
-            ASSERT_LT(abs(tm.m_elapsed() - SLEEP_MSEC), 15);
+            ASSERT_LT(labs(tm.m_elapsed() - SLEEP_MSEC), 15);
         } else {
             ASSERT_LT(tm.m_elapsed(), 15);
         }
@@ -372,7 +385,7 @@ TEST(ButexTest, stop_before_sleeping) {
         tm.stop();
 
         if (attr.stack_type == BTHREAD_STACKTYPE_PTHREAD) {
-            ASSERT_LT(abs(tm.m_elapsed() - SLEEP_MSEC), 10);
+            ASSERT_LT(labs(tm.m_elapsed() - SLEEP_MSEC), 10);
         } else {
             ASSERT_LT(tm.m_elapsed(), 10);
         }

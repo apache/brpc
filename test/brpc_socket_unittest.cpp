@@ -1,13 +1,29 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
-// Copyright (c) 2014 Baidu, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+// brpc - A framework to host and access services throughout Baidu.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <fcntl.h>  // F_GETFD
 #include <gtest/gtest.h>
+#include <gflags/gflags.h>
 #include "butil/gperftools_profiler.h"
 #include "butil/time.h"
 #include "butil/macros.h"
@@ -19,12 +35,24 @@
 #include "brpc/acceptor.h"
 #include "brpc/policy/hulu_pbrpc_protocol.h"
 #include "brpc/policy/most_common_message.h"
+#include "brpc/policy/http_rpc_protocol.h"
 #include "brpc/nshead.h"
+#include "brpc/server.h"
+#include "brpc/channel.h"
+#include "brpc/controller.h"
+#include "health_check.pb.h"
+#if defined(OS_MACOSX)
+#include <sys/event.h>
+#endif
 
 #define CONNECT_IN_KEEPWRITE 1;
 
 namespace bthread {
 extern TaskControl* g_task_control;
+}
+
+namespace brpc {
+DECLARE_int32(health_check_interval);
 }
 
 void EchoProcessHuluRequest(brpc::InputMessageBase* msg_base);
@@ -281,7 +309,6 @@ public:
     }
     void StopConnect(brpc::Socket*) {
         LOG(INFO) << "Stop application-level connect";
-        delete this;
     }
     void MakeConnectDone() {
         _done(0, _data);
@@ -302,7 +329,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
     };
 
     butil::EndPoint point(butil::IP_ANY, 7878);
-    int listening_fd = tcp_listen(point, false);
+    int listening_fd = tcp_listen(point);
     ASSERT_TRUE(listening_fd > 0);
     butil::make_non_blocking(listening_fd);
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
@@ -311,7 +338,7 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
     brpc::SocketId id = 8888;
     brpc::SocketOptions options;
     options.remote_side = point;
-    MyConnect* my_connect = new MyConnect;
+    std::shared_ptr<MyConnect> my_connect = std::make_shared<MyConnect>();
     options.app_connect = my_connect;
     options.user = new CheckRecycle;
     ASSERT_EQ(0, brpc::Socket::Create(options, &id));
@@ -362,7 +389,11 @@ TEST_F(SocketTest, single_threaded_connect_and_write) {
                 bthread_usleep(1000);
                 ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L) << "Too long!";
             }
+#if defined(OS_LINUX)
             ASSERT_EQ(0, bthread_fd_wait(s->fd(), EPOLLIN));
+#elif defined(OS_MACOSX)
+            ASSERT_EQ(0, bthread_fd_wait(s->fd(), EVFILT_READ));
+#endif
             char dest[sizeof(buf)];
             ASSERT_EQ(meta_len + len, (size_t)read(s->fd(), dest, sizeof(dest)));
             ASSERT_EQ(0, memcmp(buf + 12, dest, meta_len + len));
@@ -392,7 +423,7 @@ void* FailedWriter(void* void_arg) {
     WriterArg* arg = static_cast<WriterArg*>(void_arg);
     brpc::SocketUniquePtr sock;
     if (brpc::Socket::Address(arg->socket_id, &sock) < 0) {
-        printf("Fail to address SocketId=%lu\n", arg->socket_id);
+        printf("Fail to address SocketId=%" PRIu64 "\n", arg->socket_id);
         return NULL;
     }
     char buf[32];
@@ -497,7 +528,7 @@ TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
         ASSERT_EQ(wait_id.value, data.id.value);
         ASSERT_EQ(ECONNREFUSED, data.error_code);
         ASSERT_TRUE(butil::StringPiece(data.error_text).starts_with(
-                        "Fail to make SocketId="));
+                        "Fail to connect "));
 #else
         ASSERT_EQ(-1, s->Write(&src));
         ASSERT_EQ(ECONNREFUSED, errno);
@@ -515,6 +546,89 @@ TEST_F(SocketTest, not_health_check_when_nref_hits_0) {
         ASSERT_LT(butil::gettimeofday_us(), start_time + 1000000L);
     }
     ASSERT_EQ(-1, brpc::Socket::Status(id));
+}
+
+class HealthCheckTestServiceImpl : public test::HealthCheckTestService {
+public:
+    HealthCheckTestServiceImpl()
+        : _sleep_flag(true) {}
+    virtual ~HealthCheckTestServiceImpl() {}
+
+    virtual void default_method(google::protobuf::RpcController* cntl_base,
+                                const test::HealthCheckRequest* request,
+                                test::HealthCheckResponse* response,
+                                google::protobuf::Closure* done) {
+        brpc::ClosureGuard done_guard(done);
+        brpc::Controller* cntl = (brpc::Controller*)cntl_base;
+        if (_sleep_flag) {
+            bthread_usleep(510000 /* 510ms, a little bit longer than the default
+                                     timeout of health check rpc */);
+        }
+        cntl->response_attachment().append("OK");
+    }
+
+    bool _sleep_flag;
+};
+
+TEST_F(SocketTest, app_level_health_check) {
+    int old_health_check_interval = brpc::FLAGS_health_check_interval;
+    GFLAGS_NS::SetCommandLineOption("health_check_path", "/HealthCheckTestService");
+    GFLAGS_NS::SetCommandLineOption("health_check_interval", "1");
+
+    butil::EndPoint point(butil::IP_ANY, 7777);
+    brpc::ChannelOptions options;
+    options.protocol = "http";
+    options.max_retry = 0;
+    brpc::Channel channel;
+    ASSERT_EQ(0, channel.Init(point, &options));
+    {
+        brpc::Controller cntl;
+        cntl.http_request().uri() = "/";
+        channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        EXPECT_TRUE(cntl.Failed());
+        ASSERT_EQ(ECONNREFUSED, cntl.ErrorCode());
+    }
+
+    // 2s to make sure remote is connected by HealthCheckTask and enter the
+    // sending-rpc state. Because the remote is not down, so hc rpc would keep
+    // sending.
+    int listening_fd = tcp_listen(point);
+    bthread_usleep(2000000);
+
+    // 2s to make sure HealthCheckTask find socket is failed and correct impl
+    // should trigger next round of hc
+    close(listening_fd);
+    bthread_usleep(2000000);
+   
+    brpc::Server server;
+    HealthCheckTestServiceImpl hc_service;
+    ASSERT_EQ(0, server.AddService(&hc_service, brpc::SERVER_DOESNT_OWN_SERVICE));
+    ASSERT_EQ(0, server.Start(point, NULL));
+
+    for (int i = 0; i < 4; ++i) {
+        // although ::connect would succeed, the stall in hc_service makes
+        // the health check rpc fail.
+        brpc::Controller cntl;
+        cntl.http_request().uri() = "/";
+        channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        ASSERT_EQ(EHOSTDOWN, cntl.ErrorCode());
+        bthread_usleep(1000000 /*1s*/);
+    }
+    hc_service._sleep_flag = false;
+    bthread_usleep(2000000 /* a little bit longer than hc rpc timeout + hc interval */);
+    // should recover now
+    {
+        brpc::Controller cntl;
+        cntl.http_request().uri() = "/";
+        channel.CallMethod(NULL, &cntl, NULL, NULL, NULL);
+        ASSERT_FALSE(cntl.Failed());
+        ASSERT_GT(cntl.response_attachment().size(), (size_t)0);
+    }
+
+    GFLAGS_NS::SetCommandLineOption("health_check_path", "");
+    char hc_buf[8];
+    snprintf(hc_buf, sizeof(hc_buf), "%d", old_health_check_interval);
+    GFLAGS_NS::SetCommandLineOption("health_check_interval", hc_buf);
 }
 
 TEST_F(SocketTest, health_check) {
@@ -577,7 +691,7 @@ TEST_F(SocketTest, health_check) {
     ASSERT_EQ(wait_id.value, data.id.value);
     ASSERT_EQ(ECONNREFUSED, data.error_code);
     ASSERT_TRUE(butil::StringPiece(data.error_text).starts_with(
-                    "Fail to make SocketId="));
+                    "Fail to connect "));
     if (use_my_message) {
         ASSERT_TRUE(appended_msg);
     }
@@ -601,7 +715,7 @@ TEST_F(SocketTest, health_check) {
           EchoProcessHuluRequest, NULL, NULL, "dummy_hulu" }
     };
 
-    int listening_fd = tcp_listen(point, false);
+    int listening_fd = tcp_listen(point);
     ASSERT_TRUE(listening_fd > 0);
     butil::make_non_blocking(listening_fd);
     ASSERT_EQ(0, messenger->AddHandler(pairs[0]));
@@ -667,7 +781,7 @@ void* Writer(void* void_arg) {
     WriterArg* arg = static_cast<WriterArg*>(void_arg);
     brpc::SocketUniquePtr sock;
     if (brpc::Socket::Address(arg->socket_id, &sock) < 0) {
-        printf("Fail to address SocketId=%lu\n", arg->socket_id);
+        printf("Fail to address SocketId=%" PRIu64 "\n", arg->socket_id);
         return NULL;
     }
     char buf[32];
@@ -683,7 +797,7 @@ void* Writer(void* void_arg) {
                 --i;
                 continue;
             }
-            printf("Fail to write into SocketId=%lu, %s\n",
+            printf("Fail to write into SocketId=%" PRIu64 ", %s\n",
                    arg->socket_id, berror());
             break;
         }
@@ -788,7 +902,7 @@ void* FastWriter(void* void_arg) {
     WriterArg* arg = static_cast<WriterArg*>(void_arg);
     brpc::SocketUniquePtr sock;
     if (brpc::Socket::Address(arg->socket_id, &sock) < 0) {
-        printf("Fail to address SocketId=%lu\n", arg->socket_id);
+        printf("Fail to address SocketId=%" PRIu64 "\n", arg->socket_id);
         return NULL;
     }
     char buf[] = "hello reader side!";
@@ -806,7 +920,7 @@ void* FastWriter(void* void_arg) {
                 ++nretry;
                 continue;
             }
-            printf("Fail to write into SocketId=%lu, %s\n",
+            printf("Fail to write into SocketId=%" PRIu64 ", %s\n",
                    arg->socket_id, berror());
             break;
         }
@@ -879,14 +993,14 @@ TEST_F(SocketTest, multi_threaded_write_perf) {
 
     butil::Timer tm;
     ProfilerStart("write.prof");
-    const size_t old_nread = reader_arg.nread;
+    const uint64_t old_nread = reader_arg.nread;
     tm.start();
     sleep(2);
     tm.stop();
-    const size_t new_nread = reader_arg.nread;
+    const uint64_t new_nread = reader_arg.nread;
     ProfilerStop();
 
-    printf("tp=%luM/s\n", (new_nread - old_nread) / tm.u_elapsed());
+    printf("tp=%" PRIu64 "M/s\n", (new_nread - old_nread) / tm.u_elapsed());
     
     for (size_t i = 0; i < ARRAY_SIZE(th); ++i) {
         args[i].times = 0;

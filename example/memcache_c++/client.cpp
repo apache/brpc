@@ -1,16 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // A multi-threaded client getting keys from a memcache server constantly.
 
@@ -20,11 +23,15 @@
 #include <butil/string_printf.h>
 #include <brpc/channel.h>
 #include <brpc/memcache.h>
+#include <brpc/policy/couchbase_authenticator.h>
 
 DEFINE_int32(thread_num, 10, "Number of threads to send requests");
 DEFINE_bool(use_bthread, false, "Use bthread to send requests");
+DEFINE_bool(use_couchbase, false, "Use couchbase.");
 DEFINE_string(connection_type, "", "Connection type. Available values: single, pooled, short");
 DEFINE_string(server, "0.0.0.0:11211", "IP Address of server");
+DEFINE_string(bucket_name, "", "Couchbase bucktet name");
+DEFINE_string(bucket_password, "", "Couchbase bucket password");
 DEFINE_string(load_balancer, "", "The algorithm for load balancing");
 DEFINE_int32(timeout_ms, 100, "RPC timeout in milliseconds");
 DEFINE_int32(max_retry, 3, "Max retries(not including the first RPC)"); 
@@ -36,7 +43,7 @@ DEFINE_int32(batch, 1, "Pipelined Operations");
 
 bvar::LatencyRecorder g_latency_recorder("client");
 bvar::Adder<int> g_error_count("client_error_count");
-butil::static_atomic<int> g_sender_count = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<int> g_sender_count = BUTIL_STATIC_ATOMIC_INIT(0);
 
 static void* sender(void* arg) {
     google::protobuf::RpcChannel* channel = 
@@ -109,6 +116,13 @@ int main(int argc, char* argv[]) {
     options.connection_type = FLAGS_connection_type;
     options.timeout_ms = FLAGS_timeout_ms/*milliseconds*/;
     options.max_retry = FLAGS_max_retry;
+    if (FLAGS_use_couchbase && !FLAGS_bucket_name.empty()) {
+        brpc::policy::CouchbaseAuthenticator* auth =
+            new brpc::policy::CouchbaseAuthenticator(FLAGS_bucket_name,
+                                                     FLAGS_bucket_password);
+        options.auth = auth;
+    }
+
     if (channel.Init(FLAGS_server.c_str(), FLAGS_load_balancer.c_str(), &options) != 0) {
         LOG(ERROR) << "Fail to initialize channel";
         return -1;
@@ -147,19 +161,21 @@ int main(int argc, char* argv[]) {
                   << " values, never expired";
     }
     
-    std::vector<bthread_t> tids;
-    tids.resize(FLAGS_thread_num);
+    std::vector<bthread_t> bids;
+    std::vector<pthread_t> pids;
     if (!FLAGS_use_bthread) {
+        pids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
-            if (pthread_create(&tids[i], NULL, sender, &channel) != 0) {
+            if (pthread_create(&pids[i], NULL, sender, &channel) != 0) {
                 LOG(ERROR) << "Fail to create pthread";
                 return -1;
             }
         }
     } else {
+        bids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
             if (bthread_start_background(
-                    &tids[i], NULL, sender, &channel) != 0) {
+                    &bids[i], NULL, sender, &channel) != 0) {
                 LOG(ERROR) << "Fail to create bthread";
                 return -1;
             }
@@ -175,10 +191,13 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "memcache_client is going to quit";
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         if (!FLAGS_use_bthread) {
-            pthread_join(tids[i], NULL);
+            pthread_join(pids[i], NULL);
         } else {
-            bthread_join(tids[i], NULL);
+            bthread_join(bids[i], NULL);
         }
+    }
+    if (options.auth) {
+        delete options.auth;
     }
 
     return 0;

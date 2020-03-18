@@ -1,3 +1,20 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 #include <gtest/gtest.h>
 #include "butil/string_splitter.h"
 #include <stdlib.h>
@@ -165,7 +182,7 @@ TEST_F(StringSplitterTest, site_id_as_example) {
 }
 
 TEST_F(StringSplitterTest, number_list) {
-    const char* str = " 123,,12,1,  21 4321";
+    const char* str = " 123,,12,1,  21 4321\00056";
     butil::StringMultiSplitter ss(str, ", ");
     ASSERT_TRUE(ss);
     ASSERT_EQ(3ul, ss.length());
@@ -195,6 +212,38 @@ TEST_F(StringSplitterTest, number_list) {
     ASSERT_FALSE(ss);
     ASSERT_EQ(0ul, ss.length());
     ASSERT_EQ(ss.field(), str + strlen(str));
+
+    // contains embedded '\0'
+    const size_t str_len = 23;
+    butil::StringMultiSplitter ss2(str, str + str_len, ", ");
+    ASSERT_TRUE(ss2);
+    ASSERT_EQ(3ul, ss2.length());
+    ASSERT_FALSE(strncmp(ss2.field(), "123", ss2.length()));
+
+    ss2++;
+    ASSERT_TRUE(ss2);
+    ASSERT_EQ(2ul, ss2.length());
+    ASSERT_FALSE(strncmp(ss2.field(), "12", ss2.length()));
+
+    ss2++;
+    ASSERT_TRUE(ss2);
+    ASSERT_EQ(1ul, ss2.length());
+    ASSERT_FALSE(strncmp(ss2.field(), "1", ss2.length()));
+
+    ss2++;
+    ASSERT_TRUE(ss2);
+    ASSERT_EQ(2ul, ss2.length());
+    ASSERT_FALSE(strncmp(ss2.field(), "21", ss2.length()));
+
+    ss2++;
+    ASSERT_TRUE(ss2);
+    ASSERT_EQ(7ul, ss2.length());
+    ASSERT_FALSE(strncmp(ss2.field(), "4321\00056", ss2.length()));
+
+    ++ss2;
+    ASSERT_FALSE(ss2);
+    ASSERT_EQ(0ul, ss2.length());
+    ASSERT_EQ(ss2.field(), str + str_len);
 }
 
 TEST_F(StringSplitterTest, cast_type) {
@@ -258,7 +307,7 @@ TEST_F(StringSplitterTest, cast_type) {
 }
 
 TEST_F(StringSplitterTest, split_limit_len) {
-    const char* str = "1\t123\t111\t1\t10\t11\t1.3\t3.1415926";
+    const char* str = "1\t1\0003\t111\t1\t10\t11\t1.3\t3.1415926";
     butil::StringSplitter ss(str, str + 5, '\t');
 
     ASSERT_TRUE(ss);
@@ -268,10 +317,90 @@ TEST_F(StringSplitterTest, split_limit_len) {
     ++ss;
     ASSERT_TRUE(ss);
     ASSERT_EQ(3ul, ss.length());
-    ASSERT_FALSE(strncmp(ss.field(), "123", ss.length()));
+    ASSERT_FALSE(strncmp(ss.field(), "1\0003", ss.length()));
 
     ++ss;
     ASSERT_FALSE(ss);
+
+    // Allows using '\0' as separator
+    butil::StringSplitter ss2(str, str + 5, '\0');
+
+    ASSERT_TRUE(ss2);
+    ASSERT_EQ(3ul, ss2.length());
+    ASSERT_FALSE(strncmp(ss2.field(), "1\t1", ss2.length()));
+
+    ++ss2;
+    ASSERT_TRUE(ss2);
+    ASSERT_EQ(1ul, ss2.length());
+    ASSERT_FALSE(strncmp(ss2.field(), "3", ss2.length()));
+
+    ++ss2;
+    ASSERT_FALSE(ss2);
+
+    butil::StringPiece sp(str, 5);
+    // Allows using '\0' as separator
+    butil::StringSplitter ss3(sp, '\0');
+
+    ASSERT_TRUE(ss3);
+    ASSERT_EQ(3ul, ss3.length());
+    ASSERT_FALSE(strncmp(ss3.field(), "1\t1", ss3.length()));
+
+    ++ss3;
+    ASSERT_TRUE(ss3);
+    ASSERT_EQ(1ul, ss3.length());
+    ASSERT_FALSE(strncmp(ss3.field(), "3", ss3.length()));
+
+    ++ss3;
+    ASSERT_FALSE(ss3);
+}
+
+TEST_F(StringSplitterTest, key_value_pairs_splitter_sanity) {
+    std::string kvstr = "key1=value1&&&key2=value2&key3=value3&===&key4=&=&=value5";
+    for (int i = 0 ; i < 3; ++i) {
+        // Test three constructors
+        butil::KeyValuePairsSplitter* psplitter = NULL;
+        if (i == 0) {
+            psplitter = new butil::KeyValuePairsSplitter(kvstr, '&', '=');
+        } else if (i == 1) {
+            psplitter = new butil::KeyValuePairsSplitter(
+                    kvstr.data(), kvstr.data() + kvstr.size(), '&', '=');
+        } else if (i == 2) {
+            psplitter = new butil::KeyValuePairsSplitter(kvstr.c_str(), '&', '=');
+        }
+        butil::KeyValuePairsSplitter& splitter = *psplitter;
+
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key1");
+        ASSERT_EQ(splitter.value(), "value1");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key2");
+        ASSERT_EQ(splitter.value(), "value2");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key3");
+        ASSERT_EQ(splitter.value(), "value3");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "");
+        ASSERT_EQ(splitter.value(), "==");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "key4");
+        ASSERT_EQ(splitter.value(), "");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "");
+        ASSERT_EQ(splitter.value(), "");
+        ++splitter;
+        ASSERT_TRUE(splitter);
+        ASSERT_EQ(splitter.key(), "");
+        ASSERT_EQ(splitter.value(), "value5");
+        ++splitter;
+        ASSERT_FALSE(splitter);
+
+        delete psplitter;
+    }
 }
 
 }

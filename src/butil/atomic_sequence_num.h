@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_ATOMIC_SEQUENCE_NUM_H_
-#define BASE_ATOMIC_SEQUENCE_NUM_H_
+#ifndef BUTIL_ATOMIC_SEQUENCE_NUM_H_
+#define BUTIL_ATOMIC_SEQUENCE_NUM_H_
 
 #include "butil/atomicops.h"
 #include "butil/basictypes.h"
@@ -57,4 +57,4 @@ class AtomicSequenceNumber {
 
 }  // namespace butil
 
-#endif  // BASE_ATOMIC_SEQUENCE_NUM_H_
+#endif  // BUTIL_ATOMIC_SEQUENCE_NUM_H_

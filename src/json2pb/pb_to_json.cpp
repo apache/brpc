@@ -1,4 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #include <iostream>
 #include <vector>
@@ -20,10 +35,12 @@ Pb2JsonOptions::Pb2JsonOptions()
     , pretty_json(false)
     , enable_protobuf_map(true)
 #ifdef BAIDU_INTERNAL
-    , bytes_to_base64(false) {
+    , bytes_to_base64(false)
 #else
-    , bytes_to_base64(true) {
+    , bytes_to_base64(true)
 #endif
+    , jsonify_empty_array(false)
+    , always_print_primitive_fields(false) {
 }
 
 class PbToJsonConverter {
@@ -87,9 +104,13 @@ bool PbToJsonConverter::Convert(const google::protobuf::Message& message, Handle
                 _error = "Missing required field: " + field->full_name();
                 return false;
             }
-            continue;
+            // Whether dumps default fields
+            if (!_option.always_print_primitive_fields) {
+                continue;
+            }
         } else if (field->is_repeated()
-                   && reflection->FieldSize(message, field) == 0) {
+                   && reflection->FieldSize(message, field) == 0
+                   && !_option.jsonify_empty_array) {
             // Repeated field that has no entry
             continue;
         }
@@ -268,10 +289,10 @@ bool ProtoMessageToJsonStream(const google::protobuf::Message& message,
     PbToJsonConverter converter(options);
     bool succ = false;
     if (options.pretty_json) {    
-        rapidjson::PrettyWriter<OutputStream> writer(os);
+        BUTIL_RAPIDJSON_NAMESPACE::PrettyWriter<OutputStream> writer(os);
         succ = converter.Convert(message, writer); 
     } else {
-        rapidjson::OptimizedWriter<OutputStream> writer(os);
+        BUTIL_RAPIDJSON_NAMESPACE::OptimizedWriter<OutputStream> writer(os);
         succ = converter.Convert(message, writer); 
     }
     if (!succ && error) {
@@ -287,7 +308,7 @@ bool ProtoMessageToJson(const google::protobuf::Message& message,
                         std::string* error) {
     // TODO(gejun): We could further wrap a std::string as a buffer to reduce
     // a copying.
-    rapidjson::StringBuffer buffer;
+    BUTIL_RAPIDJSON_NAMESPACE::StringBuffer buffer;
     if (json2pb::ProtoMessageToJsonStream(message, options, buffer, error)) {
         json->append(buffer.GetString(), buffer.GetSize());
         return true;

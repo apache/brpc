@@ -1,16 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // A client sending requests to ubrpc server every 1 second.
 // This client can access the server in public/baidu-rpc-ub/example/echo_c++_compack_ubrpc as well.
@@ -108,17 +111,17 @@ int main(int argc, char* argv[]) {
             stub.EchoWithMultiArgs(&cntl, &multi_requests, &multi_responses, NULL);
         }
         if (!cntl.Failed()) {
-            LOG(INFO) << "Received response from " << cntl.remote_side()
-                       << ": " << noflush;
             if (!FLAGS_multi_args) {
-                LOG(INFO) << response.message() << noflush;
+                LOG(INFO) << "Received response from " << cntl.remote_side()
+                          << ": " << response.message()
+                          << " latency=" << cntl.latency_us() << "us";
             } else {
-                LOG(INFO) << "res1=" << multi_responses.res1().message()
+                LOG(INFO) << "Received response from " << cntl.remote_side()
+                          << ": res1=" << multi_responses.res1().message()
                           << " res2=" << multi_responses.res2().message()
                           << " result=" << cntl.idl_result()
-                          << noflush;
+                          << " latency=" << cntl.latency_us() << "us";
             }
-            LOG(INFO) << " latency=" << cntl.latency_us() << "us";
         } else {
             LOG(ERROR) << "Fail to send request, " << cntl.ErrorText();
         }

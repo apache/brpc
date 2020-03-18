@@ -1,16 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #ifndef BRPC_CONTROLLER_PRIVATE_ACCESSOR_H
 #define BRPC_CONTROLLER_PRIVATE_ACCESSOR_H
@@ -45,14 +48,6 @@ public:
         _cntl->OnVersionedRPCReturned(info, false, saved_error);
     }
 
-    ConnectionType connection_type() const {
-        return _cntl->_connection_type;
-    }
-
-    int current_retry_count() const {
-        return _cntl->_current_call.nretry;
-    }
-    
     ControllerPrivateAccessor &set_peer_id(SocketId peer_id) {
         _cntl->_current_call.peer_id = peer_id;
         return *this;
@@ -66,7 +61,11 @@ public:
         CHECK(_cntl->_current_call.sending_sock == NULL);
         _cntl->_current_call.sending_sock.reset(ptr.release());
     }
-    
+
+    StreamUserData* get_stream_user_data() {
+        return _cntl->_current_call.stream_user_data;
+    }
+
     ControllerPrivateAccessor &set_security_mode(bool security_mode) {
         _cntl->set_flag(Controller::FLAGS_SECURITY_MODE, security_mode);
         return *this;
@@ -124,6 +123,32 @@ public:
 
     void set_readable_progressive_attachment(ReadableProgressiveAttachment* s)
     { _cntl->_rpa.reset(s); }
+
+    void add_with_auth() {
+        _cntl->add_flag(Controller::FLAGS_REQUEST_WITH_AUTH);
+    }
+
+    void clear_with_auth() {
+        _cntl->clear_flag(Controller::FLAGS_REQUEST_WITH_AUTH);
+    }
+
+    std::string& protocol_param() { return _cntl->protocol_param(); }
+    const std::string& protocol_param() const { return _cntl->protocol_param(); }
+
+    // Note: This function can only be called in server side. The deadline of client
+    // side is properly set in the RPC sending path.
+    void set_deadline_us(int64_t deadline_us) { _cntl->_deadline_us = deadline_us; }
+
+    ControllerPrivateAccessor& set_begin_time_us(int64_t begin_time_us) {
+        _cntl->_begin_time_us = begin_time_us;
+        _cntl->_end_time_us = UNSET_MAGIC_NUM;
+        return *this;
+    }
+
+    ControllerPrivateAccessor& set_health_check_call() {
+        _cntl->add_flag(Controller::FLAGS_HEALTH_CHECK_CALL);
+        return *this;
+    }
 
 private:
     Controller* _cntl;

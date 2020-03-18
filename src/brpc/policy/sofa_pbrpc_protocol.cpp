@@ -1,18 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #include <google/protobuf/descriptor.h>          // MethodDescriptor
 #include <google/protobuf/message.h>             // Message
@@ -33,7 +35,7 @@
 #include "brpc/details/usercode_backup_pool.h"
 
 extern "C" {
-void bthread_assign_data(void* data) __THROW;
+void bthread_assign_data(void* data);
 }
 
 
@@ -128,8 +130,7 @@ private:
 };
 
 inline void PackSofaHeader(char* sofa_header, int meta_size, int body_size) {
-    // dummy supresses strict-aliasing warning.
-    uint32_t* dummy = reinterpret_cast<uint32_t*>(sofa_header);
+    uint32_t* dummy = reinterpret_cast<uint32_t*>(sofa_header); // suppress strict-alias warning
     *dummy = *reinterpret_cast<const uint32_t*>("SOFA");
 
     SofaRawPacker rp(sofa_header + 4);
@@ -207,21 +208,19 @@ static void SendSofaResponse(int64_t correlation_id,
                              Controller* cntl, 
                              const google::protobuf::Message* req,
                              const google::protobuf::Message* res,
-                             Socket* socket_raw,
                              const Server* server,
-                             MethodStatus* method_status_raw,
-                             long start_parse_us) {
+                             MethodStatus* method_status,
+                             int64_t received_us) {
     ControllerPrivateAccessor accessor(cntl);
     Span* span = accessor.span();
     if (span) {
         span->set_start_send_us(butil::cpuwide_time_us());
     }
-    ScopedMethodStatus method_status(method_status_raw);
-    SocketUniquePtr sock(socket_raw);
+    Socket* sock = accessor.get_sending_socket();
     std::unique_ptr<Controller, LogErrorTextAndDelete> recycle_cntl(cntl);
+    ConcurrencyRemover concurrency_remover(method_status, cntl, received_us);
     std::unique_ptr<const google::protobuf::Message> recycle_req(req);
     std::unique_ptr<const google::protobuf::Message> recycle_res(res);
-    ScopedRemoveConcurrency remove_concurrency_dummy(server, cntl);
 
     if (cntl->IsCloseConnection()) {
         sock->SetFailed();
@@ -295,10 +294,6 @@ static void SendSofaResponse(int64_t correlation_id,
         // TODO: this is not sent
         span->set_sent_us(butil::cpuwide_time_us());
     }
-    if (method_status) {
-        method_status.release()->OnResponded(
-            !cntl->Failed(), butil::cpuwide_time_us() - start_parse_us);
-    }
 }
 
 // Defined in baidu_rpc_protocol.cpp
@@ -313,7 +308,8 @@ void EndRunningCallMethodInPool(
 void ProcessSofaRequest(InputMessageBase* msg_base) {
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
-    SocketUniquePtr socket(msg->ReleaseSocket());
+    SocketUniquePtr socket_guard(msg->ReleaseSocket());
+    Socket* socket = socket_guard.get();
     const Server* server = static_cast<const Server*>(msg_base->arg());
     ScopedNonServiceError non_service_error(server);
 
@@ -328,9 +324,9 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
 
     SampledRequest* sample = AskToBeSampled();
     if (sample) {
-        sample->set_method_name(meta.method());
-        sample->set_compress_type(req_cmp_type);
-        sample->set_protocol_type(PROTOCOL_SOFA_PBRPC);
+        sample->meta.set_method_name(meta.method());
+        sample->meta.set_compress_type(req_cmp_type);
+        sample->meta.set_protocol_type(PROTOCOL_SOFA_PBRPC);
         sample->request = msg->payload;
         sample->submit(start_parse_us);
     }
@@ -356,7 +352,9 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
         .set_remote_side(socket->remote_side())
         .set_local_side(socket->local_side())
         .set_auth_context(socket->auth_context())
-        .set_request_protocol(PROTOCOL_SOFA_PBRPC);
+        .set_request_protocol(PROTOCOL_SOFA_PBRPC)
+        .set_begin_time_us(msg->received_us())
+        .move_in_server_receiving_sock(socket_guard);
 
     // Tag the bthread with this server's key for thread_local_data().
     if (server->thread_local_options().thread_local_data_factory) {
@@ -369,12 +367,13 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
             0/*meta.trace_id()*/, 0/*meta.span_id()*/,
             0/*meta.parent_span_id()*/, msg->base_real_us());
         accessor.set_span(span);
-        span->set_remote_side(socket->remote_side());
+        span->set_remote_side(cntl->remote_side());
         span->set_protocol(PROTOCOL_SOFA_PBRPC);
         span->set_received_us(msg->received_us());
         span->set_start_parse_us(start_parse_us);
         span->set_request_size(msg->meta.size() + msg->payload.size() + 24);
     }
+
     MethodStatus* method_status = NULL;
     do {
         if (!server->IsRunning()) {
@@ -382,9 +381,16 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
             break;
         }
 
+        if (socket->is_overcrowded()) {
+            cntl->SetFailed(EOVERCROWDED, "Connection to %s is overcrowded",
+                            butil::endpoint2str(socket->remote_side()).c_str());
+            break;
+        }
+
         if (!server_accessor.AddConcurrency(cntl.get())) {
-            cntl->SetFailed(ELIMIT, "Reached server's max_concurrency=%d",
-                            server->options().max_concurrency);
+            cntl->SetFailed(
+                ELIMIT, "Reached server's max_concurrency=%d",
+                server->options().max_concurrency);
             break;
         }
         if (FLAGS_usercode_in_pthread && TooManyUserCode()) {
@@ -404,10 +410,10 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
         non_service_error.release();
         method_status = sp->status;
         if (method_status) {
-            if (!method_status->OnRequested()) {
-                cntl->SetFailed(ELIMIT, "Reached %s's max_concurrency=%d",
-                                sp->method->full_name().c_str(),
-                                method_status->max_concurrency());
+            int rejected_cc = 0;
+            if (!method_status->OnRequested(&rejected_cc)) {
+                cntl->SetFailed(ELIMIT, "Rejected by %s's ConcurrencyLimiter, concurrency=%d",
+                                sp->method->full_name().c_str(), rejected_cc);
                 break;
             }
         }
@@ -424,17 +430,19 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
                             req_cmp_type, (int)msg->payload.size());
             break;
         }
-        msg.reset();  // optional, just release resourse ASAP
 
         res.reset(svc->GetResponsePrototype(method).New());
         // `socket' will be held until response has been sent
         google::protobuf::Closure* done = ::brpc::NewCallback<
             int64_t, Controller*, const google::protobuf::Message*,
-            const google::protobuf::Message*, Socket*, const Server*,
-                  MethodStatus *, long>(
+            const google::protobuf::Message*, const Server*,
+                  MethodStatus *, int64_t>(
                     &SendSofaResponse, correlation_id, cntl.get(),
-                    req.get(), res.get(), socket.release(), server,
-                    method_status, start_parse_us);
+                    req.get(), res.get(), server,
+                    method_status, msg->received_us());
+
+        msg.reset();  // optional, just release resourse ASAP
+
         // `cntl', `req' and `res' will be deleted inside `done'
         if (span) {
             span->set_start_callback_us(butil::cpuwide_time_us());
@@ -458,8 +466,8 @@ void ProcessSofaRequest(InputMessageBase* msg_base) {
     // `cntl', `req' and `res' will be deleted inside `SendSofaResponse'
     // `socket' will be held until response has been sent
     SendSofaResponse(correlation_id, cntl.release(),
-                     req.release(), res.release(), socket.release(), server,
-                     method_status, -1);
+                     req.release(), res.release(), server,
+                     method_status, msg->received_us());
 }
 
 bool VerifySofaRequest(const InputMessageBase* msg_base) {
@@ -510,7 +518,7 @@ void ProcessSofaResponse(InputMessageBase* msg_base) {
             cntl->SetFailed(
                 ERESPONSE, "Fail to parse response message, "
                 "CompressType=%d, response_size=%" PRIu64, 
-                res_cmp_type, msg->payload.length());
+                res_cmp_type, (uint64_t)msg->payload.length());
         } else {
             cntl->set_response_compress_type(res_cmp_type);
         }
@@ -539,11 +547,11 @@ void PackSofaRequest(butil::IOBuf* req_buf,
     if (method) {
         meta.set_method(method->full_name());
         meta.set_compress_type(CompressType2Sofa(cntl->request_compress_type()));
-    } else if (cntl->rpc_dump_meta()) {
+    } else if (cntl->sampled_request()) {
         // Replaying.
-        meta.set_method(cntl->rpc_dump_meta()->method_name());
+        meta.set_method(cntl->sampled_request()->meta.method_name());
         meta.set_compress_type(
-            CompressType2Sofa(cntl->rpc_dump_meta()->compress_type()));
+            CompressType2Sofa(cntl->sampled_request()->meta.compress_type()));
     } else {
         return cntl->SetFailed(ENOMETHOD, "method is NULL");
     }

@@ -1,27 +1,30 @@
-// Copyright (c) 2012 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: 2012-10-08 23:53:50
 
 // Merged chromium log and streaming log.
 
-#ifndef BASE_LOGGING_H_
-#define BASE_LOGGING_H_
+#ifndef BUTIL_LOGGING_H_
+#define BUTIL_LOGGING_H_
 
-#include <butil/config.h>   // BRPC_WITH_GLOG
+#include "butil/config.h"   // BRPC_WITH_GLOG
 
+#include <inttypes.h>
 #include <string>
 #include <cstring>
 #include <sstream>
@@ -51,6 +54,9 @@
 #  define DPCHECK(...) DCHECK(__VA_ARGS__)
 #  define DVPLOG(...) DVLOG(__VA_ARGS__)
 # endif
+
+#define LOG_AT(severity, file, line)                                    \
+    google::LogMessage(file, line, google::severity).stream()
 
 #else
 
@@ -206,7 +212,7 @@ typedef char PathChar;
 // Where to record logging output? A flat file and/or system debug log
 // via OutputDebugString.
 enum LoggingDestination {
-    LOG_NONE                = 0,
+    LOG_TO_NONE             = 0,
     LOG_TO_FILE             = 1 << 0,
     LOG_TO_SYSTEM_DEBUG_LOG = 1 << 1,
 
@@ -235,7 +241,7 @@ enum LogLockingState { LOCK_LOG_FILE, DONT_LOCK_LOG_FILE };
 // Defaults to APPEND_TO_OLD_LOG_FILE.
 enum OldFileDeletionState { DELETE_OLD_LOG_FILE, APPEND_TO_OLD_LOG_FILE };
 
-struct BASE_EXPORT LoggingSettings {
+struct BUTIL_EXPORT LoggingSettings {
     // The defaults values are:
     //
     //  logging_dest: LOG_DEFAULT
@@ -254,7 +260,7 @@ struct BASE_EXPORT LoggingSettings {
 };
 
 // Implementation of the InitLogging() method declared below. 
-BASE_EXPORT bool BaseInitLoggingImpl(const LoggingSettings& settings);
+BUTIL_EXPORT bool BaseInitLoggingImpl(const LoggingSettings& settings);
 
 // Sets the log file name and other global logging state. Calling this function
 // is recommended, and is normally done at the beginning of application init.
@@ -277,22 +283,22 @@ inline bool InitLogging(const LoggingSettings& settings) {
 // log file/displayed to the user (if applicable). Anything below this level
 // will be silently ignored. The log level defaults to 0 (everything is logged
 // up to level INFO) if this function is not called.
-BASE_EXPORT void SetMinLogLevel(int level);
+BUTIL_EXPORT void SetMinLogLevel(int level);
 
 // Gets the current log level.
-BASE_EXPORT int GetMinLogLevel();
+BUTIL_EXPORT int GetMinLogLevel();
 
 // Sets whether or not you'd like to see fatal debug messages popped up in
 // a dialog box or not.
 // Dialogs are not shown by default.
-BASE_EXPORT void SetShowErrorDialogs(bool enable_dialogs);
+BUTIL_EXPORT void SetShowErrorDialogs(bool enable_dialogs);
 
 // Sets the Log Assert Handler that will be used to notify of check failures.
 // The default handler shows a dialog box and then terminate the process,
 // however clients can use this function to override with their own handling
 // (e.g. a silent one for Unit Tests)
 typedef void (*LogAssertHandler)(const std::string& str);
-BASE_EXPORT void SetLogAssertHandler(LogAssertHandler handler);
+BUTIL_EXPORT void SetLogAssertHandler(LogAssertHandler handler);
 
 class LogSink {
 public:
@@ -311,13 +317,13 @@ private:
 // This function is thread-safe and waits until current LogSink is not used
 // anymore.
 // Returns previous sink.
-BASE_EXPORT LogSink* SetLogSink(LogSink* sink);
+BUTIL_EXPORT LogSink* SetLogSink(LogSink* sink);
 
 // The LogSink mainly for unit-testing. Logs will be appended to it.
 class StringSink : public LogSink, public std::string {
 public:
     bool OnLogMessage(int severity, const char* file, int line,
-                 const butil::StringPiece& log_content);
+                 const butil::StringPiece& log_content) override;
 private:
     butil::Lock _lock;
 };
@@ -376,7 +382,7 @@ const LogSeverity BLOG_0 = BLOG_ERROR;
 // LOG_IS_ON(DFATAL) always holds in debug mode. In particular, CHECK()s will
 // always fire if they fail.
 #define LOG_IS_ON(severity)                                     \
-    (logging::BLOG_##severity >= ::logging::GetMinLogLevel())
+    (::logging::BLOG_##severity >= ::logging::GetMinLogLevel())
 
 #if defined(__GNUC__)
 // We emit an anonymous static int* variable at every VLOG_IS_ON(n) site.
@@ -420,6 +426,7 @@ public:
     };
 
     virtual void print(const Site& site) = 0;
+    virtual ~VLogSitePrinter() = default;
 };
 
 void print_vlog_sites(VLogSitePrinter*);
@@ -595,18 +602,18 @@ std::string* MakeCheckOpString(const t1& v1, const t2& v2, const char* names) {
 #if !defined(COMPILER_MSVC)
 // Commonly used instantiations of MakeCheckOpString<>. Explicitly instantiated
 // in logging.cc.
-extern template BASE_EXPORT std::string* MakeCheckOpString<int, int>(
+extern template BUTIL_EXPORT std::string* MakeCheckOpString<int, int>(
     const int&, const int&, const char* names);
-extern template BASE_EXPORT
+extern template BUTIL_EXPORT
 std::string* MakeCheckOpString<unsigned long, unsigned long>(
     const unsigned long&, const unsigned long&, const char* names);
-extern template BASE_EXPORT
+extern template BUTIL_EXPORT
 std::string* MakeCheckOpString<unsigned long, unsigned int>(
     const unsigned long&, const unsigned int&, const char* names);
-extern template BASE_EXPORT
+extern template BUTIL_EXPORT
 std::string* MakeCheckOpString<unsigned int, unsigned long>(
     const unsigned int&, const unsigned long&, const char* names);
-extern template BASE_EXPORT
+extern template BUTIL_EXPORT
 std::string* MakeCheckOpString<std::string, std::string>(
     const std::string&, const std::string&, const char* name);
 #endif
@@ -840,9 +847,9 @@ typedef int SystemErrorCode;
 
 // Alias for ::GetLastError() on Windows and errno on POSIX. Avoids having to
 // pull in windows.h just for GetLastError() and DWORD.
-BASE_EXPORT SystemErrorCode GetLastSystemErrorCode();
-BASE_EXPORT void SetLastSystemErrorCode(SystemErrorCode err);
-BASE_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code);
+BUTIL_EXPORT SystemErrorCode GetLastSystemErrorCode();
+BUTIL_EXPORT void SetLastSystemErrorCode(SystemErrorCode err);
+BUTIL_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code);
 
 // Underlying buffer to store logs. Comparing to using std::ostringstream
 // directly, this utility exposes more low-level methods so that we avoid
@@ -852,8 +859,8 @@ public:
     explicit CharArrayStreamBuf() : _data(NULL), _size(0) {}
     ~CharArrayStreamBuf();
 
-    virtual int overflow(int ch);
-    virtual int sync();
+    int overflow(int ch) override;
+    int sync() override;
     void reset();
 
 private:
@@ -952,7 +959,7 @@ private:
 // You shouldn't actually use LogMessage's constructor to log things,
 // though.  You should use the LOG() macro (and variants thereof)
 // above.
-class BASE_EXPORT LogMessage {
+class BUTIL_EXPORT LogMessage {
 public:
     // Used for LOG(severity).
     LogMessage(const char* file, int line, LogSeverity severity);
@@ -995,7 +1002,7 @@ public:
 
 #if defined(OS_WIN)
 // Appends a formatted system message of the GetLastError() type.
-class BASE_EXPORT Win32ErrorLogMessage {
+class BUTIL_EXPORT Win32ErrorLogMessage {
 public:
     Win32ErrorLogMessage(const char* file,
                          int line,
@@ -1015,7 +1022,7 @@ private:
 };
 #elif defined(OS_POSIX)
 // Appends a formatted system message of the errno type
-class BASE_EXPORT ErrnoLogMessage {
+class BUTIL_EXPORT ErrnoLogMessage {
 public:
     ErrnoLogMessage(const char* file,
                     int line,
@@ -1039,10 +1046,10 @@ private:
 // NOTE: Since the log file is opened as necessary by the action of logging
 //       statements, there's no guarantee that it will stay closed
 //       after this call.
-BASE_EXPORT void CloseLogFile();
+BUTIL_EXPORT void CloseLogFile();
 
 // Async signal safe logging mechanism.
-BASE_EXPORT void RawLog(int level, const char* message);
+BUTIL_EXPORT void RawLog(int level, const char* message);
 
 #define RAW_LOG(level, message)                         \
     ::logging::RawLog(::logging::BLOG_##level, message)
@@ -1055,7 +1062,7 @@ BASE_EXPORT void RawLog(int level, const char* message);
 
 #if defined(OS_WIN)
 // Returns the default log file path.
-BASE_EXPORT std::wstring GetLogFileFullPath();
+BUTIL_EXPORT std::wstring GetLogFileFullPath();
 #endif
 
 inline LogStream& noflush(LogStream& ls) {
@@ -1075,7 +1082,7 @@ using ::logging::print_vlog_sites;
 // which is normally ASCII. It is relatively slow, so try not to use it for
 // common cases. Non-ASCII characters will be converted to UTF-8 by these
 // operators.
-BASE_EXPORT std::ostream& operator<<(std::ostream& out, const wchar_t* wstr);
+BUTIL_EXPORT std::ostream& operator<<(std::ostream& out, const wchar_t* wstr);
 inline std::ostream& operator<<(std::ostream& out, const std::wstring& wstr) {
     return out << wstr.c_str();
 }
@@ -1241,4 +1248,4 @@ inline std::ostream& operator<<(std::ostream& out, const std::wstring& wstr) {
 enum { DEBUG_MODE = DCHECK_IS_ON() };
 
 
-#endif  // BASE_LOGGING_H_
+#endif  // BUTIL_LOGGING_H_

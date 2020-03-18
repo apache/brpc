@@ -1,18 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #include <gflags/gflags.h>
 #include <butil/logging.h>
@@ -147,21 +149,21 @@ static void* replay_thread(void* arg) {
                 continue;
             }
             brpc::Channel* chan =
-                chan_group->channel(sample->protocol_type());
+                chan_group->channel(sample->meta.protocol_type());
             if (chan == NULL) {
                 LOG(ERROR) << "No channel on protocol="
-                           << sample->protocol_type();
+                           << sample->meta.protocol_type();
                 continue;
             }
             
             brpc::Controller* cntl = new brpc::Controller;
             req.Clear();
             
-            cntl->reset_rpc_dump_meta(sample_guard.release());
-            if (sample->attachment_size() > 0) {
+            cntl->reset_sampled_request(sample_guard.release());
+            if (sample->meta.attachment_size() > 0) {
                 sample->request.cutn(
                     &req.serialized_data(),
-                    sample->request.size() - sample->attachment_size());
+                    sample->request.size() - sample->meta.attachment_size());
                 cntl->request_attachment() = sample->request.movable();
             } else {
                 req.serialized_data() = sample->request.movable();
@@ -208,7 +210,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    if (FLAGS_dummy_port > 0) {
+    if (FLAGS_dummy_port >= 0) {
         brpc::StartDummyServerAt(FLAGS_dummy_port);
     }
     
@@ -232,19 +234,21 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    std::vector<bthread_t> tids;
-    tids.resize(FLAGS_thread_num);
+    std::vector<bthread_t> bids;
+    std::vector<pthread_t> pids;
     if (!FLAGS_use_bthread) {
+        pids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
-            if (pthread_create(&tids[i], NULL, replay_thread, &chan_group) != 0) {
+            if (pthread_create(&pids[i], NULL, replay_thread, &chan_group) != 0) {
                 LOG(ERROR) << "Fail to create pthread";
                 return -1;
             }
         }
     } else {
+        bids.resize(FLAGS_thread_num);
         for (int i = 0; i < FLAGS_thread_num; ++i) {
             if (bthread_start_background(
-                    &tids[i], NULL, replay_thread, &chan_group) != 0) {
+                    &bids[i], NULL, replay_thread, &chan_group) != 0) {
                 LOG(ERROR) << "Fail to create bthread";
                 return -1;
             }
@@ -263,9 +267,9 @@ int main(int argc, char* argv[]) {
 
     for (int i = 0; i < FLAGS_thread_num; ++i) {
         if (!FLAGS_use_bthread) {
-            pthread_join(tids[i], NULL);
+            pthread_join(pids[i], NULL);
         } else {
-            bthread_join(tids[i], NULL);
+            bthread_join(bids[i], NULL);
         }
     }
     info_thr.stop();

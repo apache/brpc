@@ -1,19 +1,22 @@
-// mcpack2pb - Make protobuf be front-end of mcpack/compack
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
+// mcpack2pb - Make protobuf be front-end of mcpack/compack
+
 // Date: Mon Oct 19 17:17:36 CST 2015
 
 #include <set>
@@ -765,12 +768,21 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
         (printer).Print(                                                \
             "  serializer.add_multiple_$type$($msg$.$lcfield$().data(), $msg$.$lcfield$_size());\n" \
             "  serializer.end_array();\n"                               \
-            "} else {\n"                                                \
-            "  serializer.add_null();\n"                                \
-            "}\n"                                                       \
+            "}"                                                         \
             , "msg", msg                                                \
             , "type", to_mcpack_typestr(cit, (field))                   \
             , "lcfield", (field)->lowercase_name());                    \
+        if ((field)->options().GetExtension(idl_on)) {                  \
+          (printer).Print(                                              \
+            " else {\n"                                                 \
+            "  serializer.add_empty_array();\n"                         \
+            "}\n");                                                     \
+        } else {                                                        \
+          (printer).Print(                                              \
+            " else {\n"                                                 \
+            "  serializer.add_null();\n"                                \
+            "}\n");                                                     \
+        }                                                               \
     } else if (looser_cond) {                                           \
         (printer).Print(                                                \
             "if ($msg$.$lcfield$_size()) {\n"                           \
@@ -783,12 +795,21 @@ static bool generate_parsing(const google::protobuf::Descriptor* d,
             "    serializer.add_$type$($msg$.$lcfield$(j));\n"          \
             "  }\n"                                                     \
             "  serializer.end_array();\n"                               \
-            "} else {\n"                                                \
-            "  serializer.add_null();\n"                                \
-            "}\n"                                                       \
+            "}"                                                         \
             , "msg", msg                                                \
             , "type", to_mcpack_typestr(cit, (field))                   \
             , "lcfield", (field)->lowercase_name());                    \
+        if ((field)->options().GetExtension(idl_on)) {                  \
+          (printer).Print(                                              \
+            " else {\n"                                                 \
+            "  serializer.add_empty_array();\n"                         \
+            "}\n");                                                     \
+        } else {                                                        \
+          (printer).Print(                                              \
+            " else {\n"                                                 \
+            "  serializer.add_null();\n"                                \
+            "}\n");                                                     \
+        }                                                               \
     } else {                                                            \
         if ((field)->type() == google::protobuf::FieldDescriptor::TYPE_ENUM) { \
             LOG(ERROR) << "Disallow converting " << (field)->full_name() \
@@ -993,12 +1014,20 @@ static bool generate_serializing(const google::protobuf::Descriptor* d,
                     "      serializer.end_object();\n"
                     "    }\n"
                     "    serializer.end_array();\n"
-                    "  }\n"
-                    "} else if (msg.$lcfield$_size()) {\n"
+                    "  }"
                     , "field", get_idl_name(f)
                     , "lcfield", f->lowercase_name()
                     , "vmsg2", var_name2);
-
+                if (f->options().GetExtension(idl_on)) {
+                    impl.Print(
+                       " else {\n"
+                       "    serializer.add_empty_array(\"$field$\");\n"
+                       "  }\n", "field", get_idl_name(f));
+                } else {
+                    impl.Print("\n");
+                }
+                impl.Print("} else if (msg.$lcfield$_size()) {\n"
+                    , "lcfield", f->lowercase_name());
                 impl.Indent();
                 impl.Print("serializer.begin_object(\"$field$\");\n"
                            , "field", get_idl_name(f));
@@ -1032,12 +1061,21 @@ static bool generate_serializing(const google::protobuf::Descriptor* d,
                                 "    serializer.end_object();\n"
                                 "  }\n"
                                 "  serializer.end_array();\n"
-                                "} else {\n"
-                                "  serializer.add_null();\n"
-                                "}\n"
+                                "}"
                                 , "vmsg3", var_name3
                                 , "lcfield", f->lowercase_name()
                                 , "lcfield2", f2->lowercase_name());
+                            if (f2->options().GetExtension(idl_on)) {
+                                impl.Print(
+                                " else {\n"
+                                "  serializer.add_empty_array();\n"
+                                "}\n");
+                            } else {
+                                impl.Print(
+                                " else {\n"
+                                "  serializer.add_null();\n"
+                                "}\n");
+                            }
                         } else {
                             impl.Print(
                                 "if (msg.$lcfield$(i).has_$lcfield2$()) {\n"
@@ -1310,7 +1348,7 @@ public:
     bool Generate(const google::protobuf::FileDescriptor* file,
                   const std::string& parameter,
                   google::protobuf::compiler::GeneratorContext*,
-                  std::string* error) const;
+                  std::string* error) const override;
 };
 
 bool McpackToProtobuf::Generate(const google::protobuf::FileDescriptor* file,

@@ -10,8 +10,8 @@
 //                 exclusive load / store assembly instructions and do away with
 //                 the barriers.
 
-#ifndef BASE_ATOMICOPS_INTERNALS_ARM64_GCC_H_
-#define BASE_ATOMICOPS_INTERNALS_ARM64_GCC_H_
+#ifndef BUTIL_ATOMICOPS_INTERNALS_ARM64_GCC_H_
+#define BUTIL_ATOMICOPS_INTERNALS_ARM64_GCC_H_
 
 #if defined(OS_QNX)
 #include <sys/cpuinline.h>
@@ -304,4 +304,4 @@ inline Atomic64 Release_Load(volatile const Atomic64* ptr) {
 }  // namespace butil::subtle
 }  // namespace butil
 
-#endif  // BASE_ATOMICOPS_INTERNALS_ARM64_GCC_H_
+#endif  // BUTIL_ATOMICOPS_INTERNALS_ARM64_GCC_H_

@@ -1,19 +1,22 @@
-// bthread - A M:N threading library to make applications more concurrent.
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
+// bthread - A M:N threading library to make applications more concurrent.
+
 // Date: Sun Sep  7 22:37:39 CST 2014
 
 #include <unistd.h>                               // getpagesize
@@ -43,7 +46,7 @@ BAIDU_CASSERT(BTHREAD_STACKTYPE_NORMAL == STACK_TYPE_NORMAL, must_match);
 BAIDU_CASSERT(BTHREAD_STACKTYPE_LARGE == STACK_TYPE_LARGE, must_match);
 BAIDU_CASSERT(STACK_TYPE_MAIN == 0, must_be_0);
 
-static butil::static_atomic<int64_t> s_stack_count = BASE_STATIC_ATOMIC_INIT(0);
+static butil::static_atomic<int64_t> s_stack_count = BUTIL_STATIC_ATOMIC_INIT(0);
 static int64_t get_stack_count(void*) {
     return s_stack_count.load(butil::memory_order_relaxed);
 }
@@ -132,7 +135,7 @@ void deallocate_stack_storage(StackStorage* s) {
         VALGRIND_STACK_DEREGISTER(s->valgrind_stack_id);
     }
     const int memsize = s->stacksize + s->guardsize;
-    if ((char*)s->bottom <= (char*)NULL + memsize) {
+    if ((uintptr_t)s->bottom <= (uintptr_t)memsize) {
         return;
     }
     s_stack_count.fetch_sub(1, butil::memory_order_relaxed);

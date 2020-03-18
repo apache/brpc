@@ -1,22 +1,24 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Rujie Jiang (jiangrujie@baidu.com)
 
 #include <gflags/gflags.h>
 #include <map>
+#include "bthread/bthread.h"
 #include "butil/time.h"
 #include "butil/scoped_lock.h"
 #include "butil/logging.h"
@@ -25,7 +27,6 @@
 #include "brpc/input_messenger.h"
 #include "brpc/reloadable_flags.h"
 #include "brpc/socket_map.h"
-
 
 namespace brpc {
 
@@ -50,13 +51,14 @@ DEFINE_bool(show_socketmap_in_vars, false,
 BRPC_VALIDATE_GFLAG(show_socketmap_in_vars, PassValidate);
 
 static pthread_once_t g_socket_map_init = PTHREAD_ONCE_INIT;
-static butil::static_atomic<SocketMap*> g_socket_map = BASE_STATIC_ATOMIC_INIT(NULL);
+static butil::static_atomic<SocketMap*> g_socket_map = BUTIL_STATIC_ATOMIC_INIT(NULL);
 
 class GlobalSocketCreator : public SocketCreator {
 public:
-    int CreateSocket(const butil::EndPoint& pt, SocketId* id) {
-        return get_client_side_messenger()->Create(
-            pt, FLAGS_health_check_interval, id);
+    int CreateSocket(const SocketOptions& opt, SocketId* id) {
+        SocketOptions sock_opt = opt;
+        sock_opt.health_check_interval_s = FLAGS_health_check_interval;
+        return get_client_side_messenger()->Create(sock_opt, id);
     }
 };
 
@@ -84,26 +86,27 @@ SocketMap* get_or_new_client_side_socket_map() {
     return g_socket_map.load(butil::memory_order_consume);
 }
 
-int SocketMapInsert(butil::EndPoint pt, SocketId* id) {
-    return get_or_new_client_side_socket_map()->Insert(pt, id);
+int SocketMapInsert(const SocketMapKey& key, SocketId* id,
+                    const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
+    return get_or_new_client_side_socket_map()->Insert(key, id, ssl_ctx);
 }    
 
-int SocketMapFind(butil::EndPoint pt, SocketId* id) {
+int SocketMapFind(const SocketMapKey& key, SocketId* id) {
     SocketMap* m = get_client_side_socket_map();
     if (m) {
-        return m->Find(pt, id);
+        return m->Find(key, id);
     }
     return -1;
 }
 
-void SocketMapRemove(butil::EndPoint pt) {
+void SocketMapRemove(const SocketMapKey& key) {
     SocketMap* m = get_client_side_socket_map();
     if (m) {
         // TODO: We don't have expected_id to pass right now since the callsite
         // at NamingServiceThread is hard to be fixed right now. As long as
         // FLAGS_health_check_interval is limited to positive, SocketMapInsert
         // never replaces the sockets, skipping comparison is still right.
-        m->Remove(pt, (SocketId)-1);
+        m->Remove(key, INVALID_SOCKET_ID);
     }
 }
 
@@ -111,6 +114,8 @@ void SocketMapList(std::vector<SocketId>* ids) {
     SocketMap* m = get_client_side_socket_map();
     if (m) {
         m->List(ids);
+    } else {
+        ids->clear();
     }
 }
 
@@ -204,9 +209,10 @@ void SocketMap::PrintSocketMap(std::ostream& os, void* arg) {
     static_cast<SocketMap*>(arg)->Print(os);
 }
 
-int SocketMap::Insert(const butil::EndPoint& pt, SocketId* id) {
+int SocketMap::Insert(const SocketMapKey& key, SocketId* id,
+                      const std::shared_ptr<SocketSSLContext>& ssl_ctx) {
     std::unique_lock<butil::Mutex> mu(_mutex);
-    SingleConnection* sc = _map.seek(pt);
+    SingleConnection* sc = _map.seek(key);
     if (sc) {
         if (!sc->socket->Failed() ||
             sc->socket->health_check_interval() > 0/*HC enabled*/) {
@@ -216,16 +222,18 @@ int SocketMap::Insert(const butil::EndPoint& pt, SocketId* id) {
         }
         // A socket w/o HC is failed (permanently), replace it.
         SocketUniquePtr ptr(sc->socket);  // Remove the ref added at insertion.
-        _map.erase(pt); // in principle, we can override the entry in map w/o
+        _map.erase(key); // in principle, we can override the entry in map w/o
         // removing and inserting it again. But this would make error branches
         // below have to remove the entry before returning, which is
         // error-prone. We prefer code maintainability here.
         sc = NULL;
     }
     SocketId tmp_id;
-    if (_options.socket_creator->CreateSocket(pt, &tmp_id) != 0) {
-        mu.unlock();
-        PLOG(FATAL) << "Fail to create socket to " << pt;
+    SocketOptions opt;
+    opt.remote_side = key.peer.addr;
+    opt.initial_ssl_ctx = ssl_ctx;
+    if (_options.socket_creator->CreateSocket(opt, &tmp_id) != 0) {
+        PLOG(FATAL) << "Fail to create socket to " << key.peer;
         return -1;
     }
     // Add a reference to make sure that sc->socket is always accessible. Not
@@ -233,12 +241,11 @@ int SocketMap::Insert(const butil::EndPoint& pt, SocketId* id) {
     // The ref will be removed at entry's removal.
     SocketUniquePtr ptr;
     if (Socket::Address(tmp_id, &ptr) != 0) {
-        mu.unlock();
         LOG(FATAL) << "Fail to address SocketId=" << tmp_id;
         return -1;
     }
     SingleConnection new_sc = { 1, ptr.release(), 0 };
-    _map[pt] = new_sc;
+    _map[key] = new_sc;
     *id = tmp_id;
     bool need_to_create_bvar = false;
     if (FLAGS_show_socketmap_in_vars && !_exposed_in_bvar) {
@@ -255,20 +262,20 @@ int SocketMap::Insert(const butil::EndPoint& pt, SocketId* id) {
     return 0;
 }
 
-void SocketMap::Remove(const butil::EndPoint& pt, SocketId expected_id) {
-    return RemoveInternal(pt, expected_id, false);
+void SocketMap::Remove(const SocketMapKey& key, SocketId expected_id) {
+    return RemoveInternal(key, expected_id, false);
 }
 
-void SocketMap::RemoveInternal(const butil::EndPoint& pt,
+void SocketMap::RemoveInternal(const SocketMapKey& key,
                                SocketId expected_id,
                                bool remove_orphan) {
     std::unique_lock<butil::Mutex> mu(_mutex);
-    SingleConnection* sc = _map.seek(pt);
+    SingleConnection* sc = _map.seek(key);
     if (!sc) {
         return;
     }
     if (!remove_orphan &&
-        (expected_id == (SocketId)-1 || expected_id == sc->socket->id())) {
+        (expected_id == INVALID_SOCKET_ID || expected_id == sc->socket->id())) {
         --sc->ref_count;
     }
     if (sc->ref_count == 0) {
@@ -281,7 +288,7 @@ void SocketMap::RemoveInternal(const butil::EndPoint& pt,
             sc->no_ref_us = butil::cpuwide_time_us();
         } else {
             Socket* const s = sc->socket;
-            _map.erase(pt);
+            _map.erase(key);
             bool need_to_create_bvar = false;
             if (FLAGS_show_socketmap_in_vars && !_exposed_in_bvar) {
                 _exposed_in_bvar = true;
@@ -300,9 +307,9 @@ void SocketMap::RemoveInternal(const butil::EndPoint& pt,
     }
 }
 
-int SocketMap::Find(const butil::EndPoint& pt, SocketId* id) {
+int SocketMap::Find(const SocketMapKey& key, SocketId* id) {
     BAIDU_SCOPED_LOCK(_mutex);
-    SingleConnection* sc = _map.seek(pt);
+    SingleConnection* sc = _map.seek(key);
     if (sc) {
         *id = sc->socket->id();
         return 0;
@@ -326,15 +333,13 @@ void SocketMap::List(std::vector<butil::EndPoint>* pts) {
     }
 }
 
-void SocketMap::ListOrphans(int defer_seconds,
-                            std::vector<butil::EndPoint>* out) {
+void SocketMap::ListOrphans(int64_t defer_us, std::vector<SocketMapKey>* out) {
     out->clear();
-    int64_t now = butil::cpuwide_time_s();
+    const int64_t now = butil::cpuwide_time_us();
     BAIDU_SCOPED_LOCK(_mutex);
     for (Map::iterator it = _map.begin(); it != _map.end(); ++it) {
         SingleConnection& sc = it->second;
-        if (sc.ref_count == 0
-            && now - sc.no_ref_us / 1000000L > defer_seconds) {
+        if (sc.ref_count == 0 && now - sc.no_ref_us >= defer_us) {
             out->push_back(it->first);
         }
     }
@@ -348,7 +353,7 @@ void* SocketMap::RunWatchConnections(void* arg) {
 void SocketMap::WatchConnections() {
     std::vector<SocketId> main_sockets;
     std::vector<SocketId> pooled_sockets;
-    std::vector<butil::EndPoint> orphan_sockets;
+    std::vector<SocketMapKey> orphan_sockets;
     const uint64_t CHECK_INTERVAL_US = 1000000UL;
     while (bthread_usleep(CHECK_INTERVAL_US) == 0) {
         // NOTE: save the gflag which may be reloaded at any time.
@@ -378,9 +383,9 @@ void SocketMap::WatchConnections() {
         const int defer_seconds = _options.defer_close_second_dynamic ?
             *_options.defer_close_second_dynamic :
             _options.defer_close_second;
-        ListOrphans(defer_seconds, &orphan_sockets);
+        ListOrphans(defer_seconds * 1000000L, &orphan_sockets);
         for (size_t i = 0; i < orphan_sockets.size(); ++i) {
-            RemoveInternal(orphan_sockets[i], (SocketId)-1, true);
+            RemoveInternal(orphan_sockets[i], INVALID_SOCKET_ID, true);
         }
     }
 }

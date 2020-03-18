@@ -1,18 +1,20 @@
-// Copyright (c) 2015 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Wed Jul 29 23:25:43 CST 2015
 
 #ifndef  BVAR_WINDOW_H
@@ -56,7 +58,7 @@ public:
         SeriesSampler(WindowBase* owner, R* var)
             : _owner(owner), _series(Op(var)) {}
         ~SeriesSampler() {}
-        void take_sample() {
+        void take_sample() override {
             if (series_freq == SERIES_IN_SECOND) {
                 // Get one-second window value for PerSecond<>, otherwise the
                 // "smoother" plot may hide peaks.
@@ -108,8 +110,7 @@ public:
 
     value_type get_value() const { return get_value(_window_size); }
     
-    // Implement Variable::describe() and Variable::get_value().
-    void describe(std::ostream& os, bool quote_string) const {
+    void describe(std::ostream& os, bool quote_string) const override {
         if (butil::is_same<value_type, std::string>::value && quote_string) {
             os << '"' << get_value() << '"';
         } else {
@@ -118,12 +119,12 @@ public:
     }
     
 #ifdef BAIDU_INTERNAL
-    void get_value(boost::any* value) const { *value = get_value(); }
+    void get_value(boost::any* value) const override { *value = get_value(); }
 #endif
 
     time_t window_size() const { return _window_size; }
 
-    int describe_series(std::ostream& os, const SeriesOptions& options) const {
+    int describe_series(std::ostream& os, const SeriesOptions& options) const override {
         if (_series_sampler == NULL) {
             return 1;
         }
@@ -140,10 +141,9 @@ public:
     }
 
 protected:
-    // @Variable
     int expose_impl(const butil::StringPiece& prefix,
                     const butil::StringPiece& name,
-                    DisplayFilter display_filter) {
+                    DisplayFilter display_filter) override {
         const int rc = Variable::expose_impl(prefix, name, display_filter);
         if (rc == 0 &&
             _series_sampler == NULL &&
@@ -220,7 +220,7 @@ public:
         this->expose_as(prefix, name);
     }
 
-    virtual value_type get_value(time_t window_size) const {
+    value_type get_value(time_t window_size) const override {
         detail::Sample<value_type> s;
         this->get_span(window_size, &s);
         // We may test if the multiplication overflows and use integral ops

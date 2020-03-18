@@ -182,7 +182,11 @@ TEST_F(LoggingTest, streaming_log_sanity) {
     
     errno = 0;
     PLOG(FATAL) << "Error occurred" << noflush;
+#if defined(OS_LINUX)
     ASSERT_EQ("Error occurred: Success", PLOG_STREAM(FATAL).content_str());
+#else
+    ASSERT_EQ("Error occurred: Undefined error: 0", PLOG_STREAM(FATAL).content_str());
+#endif
 
     errno = EINTR;
     PLOG(FATAL) << "Error occurred" << noflush;

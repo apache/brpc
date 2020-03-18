@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_VERSION_H_
-#define BASE_VERSION_H_
+#ifndef BUTIL_VERSION_H_
+#define BUTIL_VERSION_H_
 
 #include <string>
 #include <vector>
@@ -15,7 +15,7 @@ namespace butil {
 
 // Version represents a dotted version number, like "1.2.3.4", supporting
 // parsing and comparison.
-class BASE_EXPORT Version {
+class BUTIL_EXPORT Version {
  public:
   // The only thing you can legally do to a default constructed
   // Version object is assign to it.
@@ -69,4 +69,4 @@ class BASE_EXPORT Version {
 // namespace
 using butil::Version;
 
-#endif  // BASE_VERSION_H_
+#endif  // BUTIL_VERSION_H_

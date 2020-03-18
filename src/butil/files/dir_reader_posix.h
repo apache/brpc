@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_FILES_DIR_READER_POSIX_H_
-#define BASE_FILES_DIR_READER_POSIX_H_
+#ifndef BUTIL_FILES_DIR_READER_POSIX_H_
+#define BUTIL_FILES_DIR_READER_POSIX_H_
 
 #include "butil/build_config.h"
 
@@ -19,6 +19,8 @@
 
 #if defined(OS_LINUX)
 #include "butil/files/dir_reader_linux.h"
+#elif defined(__APPLE__)
+#include "butil/files/dir_reader_unix.h"
 #else
 #include "butil/files/dir_reader_fallback.h"
 #endif
@@ -27,10 +29,12 @@ namespace butil {
 
 #if defined(OS_LINUX)
 typedef DirReaderLinux DirReaderPosix;
+#elif defined(__APPLE__)
+typedef DirReaderUnix DirReaderPosix;
 #else
 typedef DirReaderFallback DirReaderPosix;
 #endif
 
 }  // namespace butil
 
-#endif // BASE_FILES_DIR_READER_POSIX_H_
+#endif // BUTIL_FILES_DIR_READER_POSIX_H_

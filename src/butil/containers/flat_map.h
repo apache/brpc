@@ -1,18 +1,20 @@
-// Copyright (c) 2013 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Wed Nov 27 12:59:20 CST 2013
 
 // This closed addressing hash-map puts first linked node in bucket array
@@ -88,8 +90,8 @@
 //  Seeking 1000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 4/88/89/13
 //  Seeking 10000 from FlatMap/std::map/butil::PooledMap/butil::hash_map takes 4/177/185/14
 
-#ifndef BASE_FLAT_MAP_H
-#define BASE_FLAT_MAP_H
+#ifndef BUTIL_FLAT_MAP_H
+#define BUTIL_FLAT_MAP_H
 
 #include <stdint.h>
 #include <functional>
@@ -167,9 +169,10 @@ public:
 
     // Remove |key| and the associated value
     // Returns: 1 on erased, 0 otherwise.
-    template <typename K2> size_t erase(const K2& key);
-    
     // Remove all items. Allocated spaces are NOT returned by system.
+    template <typename K2>
+    size_t erase(const K2& key, mapped_type* old_value = NULL);
+
     void clear();
 
     // Remove all items and return all allocated spaces to system.
@@ -259,7 +262,7 @@ public:
 
 private:
 template <typename _Map, typename _Element> friend class FlatMapIterator;
-template <typename _Map, typename _Element> friend class FlatMapSparseIterator;
+template <typename _Map, typename _Element> friend class SparseFlatMapIterator;
     // True if buckets need to be resized before holding `size' elements.
     inline bool is_too_crowded(size_t size) const
     { return size * 100 >= _nbucket * _load_factor; }
@@ -300,7 +303,7 @@ public:
     { return _map.insert(key, FlatMapVoid()); }
 
     template <typename K2>
-    size_t erase(const K2& key) { return _map.erase(key); }
+    size_t erase(const K2& key) { return _map.erase(key, NULL); }
 
     void clear() { return _map.clear(); }
     void clear_and_reset_pool() { return _map.clear_and_reset_pool(); }
@@ -382,7 +385,7 @@ private:
 
 // Implement DefaultHasher and DefaultEqualTo
 template <typename K>
-struct DefaultHasher : public BASE_HASH_NAMESPACE::hash<K> {
+struct DefaultHasher : public BUTIL_HASH_NAMESPACE::hash<K> {
 };
 
 template <>
@@ -480,4 +483,4 @@ _T* find_lowered_cstr(FlatMap<std::string, _T, _Hash, _Equal, _Sparse>& m,
 
 #include "butil/containers/flat_map_inl.h"
 
-#endif  //BASE_FLAT_MAP_H
+#endif  //BUTIL_FLAT_MAP_H

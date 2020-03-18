@@ -5,8 +5,8 @@
 // This file is an internal atomic implementation for compiler-based
 // ThreadSanitizer. Use butil/atomicops.h instead.
 
-#ifndef BASE_ATOMICOPS_INTERNALS_TSAN_H_
-#define BASE_ATOMICOPS_INTERNALS_TSAN_H_
+#ifndef BUTIL_ATOMICOPS_INTERNALS_TSAN_H_
+#define BUTIL_ATOMICOPS_INTERNALS_TSAN_H_
 
 #include <sanitizer/tsan_interface_atomic.h>
 
@@ -183,4 +183,4 @@ inline void MemoryBarrier() {
 }  // namespace butil::subtle
 }  // namespace butil
 
-#endif  // BASE_ATOMICOPS_INTERNALS_TSAN_H_
+#endif  // BUTIL_ATOMICOPS_INTERNALS_TSAN_H_

@@ -1,23 +1,26 @@
-// bthread - A M:N threading library to make applications more concurrent.
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
+// bthread - A M:N threading library to make applications more concurrent.
+
 // Date: Tue Jul 22 17:30:12 CST 2014
 
-#ifndef BAIDU_BTHREAD_BUTEX_H
-#define BAIDU_BTHREAD_BUTEX_H
+#ifndef BTHREAD_BUTEX_H
+#define BTHREAD_BUTEX_H
 
 #include <errno.h>                               // users need to check errno
 #include <time.h>                                // timespec
@@ -64,14 +67,9 @@ int butex_requeue(void* butex1, void* butex2);
 // abstime is not NULL.
 // About |abstime|:
 //   Different from FUTEX_WAIT, butex_wait uses absolute time.
+// Returns 0 on success, -1 otherwise and errno is set.
 int butex_wait(void* butex, int expected_value, const timespec* abstime);
-
-// Same with butex_wait except that this function cannot be woken up by
-// bthread_stop(), although this function still returns -1(ESTOP) after
-// wake-up.
-int butex_wait_uninterruptible(void* butex, int expected_value,
-                               const timespec* abstime);
 
 }  // namespace bthread
 
-#endif  // BAIDU_BTHREAD_BUTEX_H
+#endif  // BTHREAD_BUTEX_H

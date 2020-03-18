@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_STRINGS_STRING_TOKENIZER_H_
-#define BASE_STRINGS_STRING_TOKENIZER_H_
+#ifndef BUTIL_STRINGS_STRING_TOKENIZER_H_
+#define BUTIL_STRINGS_STRING_TOKENIZER_H_
 
 #include <algorithm>
 #include <string>
@@ -257,4 +257,4 @@ typedef StringTokenizerT<std::string, const char*> CStringTokenizer;
 
 }  // namespace butil
 
-#endif  // BASE_STRINGS_STRING_TOKENIZER_H_
+#endif  // BUTIL_STRINGS_STRING_TOKENIZER_H_

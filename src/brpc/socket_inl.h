@@ -1,16 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // This file contains inlined implementation of socket.h
 
@@ -21,30 +24,30 @@
 namespace brpc {
 
 // Utility functions to combine and extract SocketId.
-BASE_FORCE_INLINE SocketId
+BUTIL_FORCE_INLINE SocketId
 MakeSocketId(uint32_t version, butil::ResourceId<Socket> slot) {
     return SocketId((((uint64_t)version) << 32) | slot.value);
 }
 
-BASE_FORCE_INLINE butil::ResourceId<Socket> SlotOfSocketId(SocketId sid) {
+BUTIL_FORCE_INLINE butil::ResourceId<Socket> SlotOfSocketId(SocketId sid) {
     butil::ResourceId<Socket> id = { (sid & 0xFFFFFFFFul) };
     return id;
 }
 
-BASE_FORCE_INLINE uint32_t VersionOfSocketId(SocketId sid) {
+BUTIL_FORCE_INLINE uint32_t VersionOfSocketId(SocketId sid) {
     return (uint32_t)(sid >> 32);
 }
 
 // Utility functions to combine and extract Socket::_versioned_ref
-BASE_FORCE_INLINE uint32_t VersionOfVRef(uint64_t vref) {
+BUTIL_FORCE_INLINE uint32_t VersionOfVRef(uint64_t vref) {
     return (uint32_t)(vref >> 32);
 }
 
-BASE_FORCE_INLINE int32_t NRefOfVRef(uint64_t vref) {
+BUTIL_FORCE_INLINE int32_t NRefOfVRef(uint64_t vref) {
     return (int32_t)(vref & 0xFFFFFFFFul);
 }
 
-BASE_FORCE_INLINE uint64_t MakeVRef(uint32_t version, int32_t nref) {
+BUTIL_FORCE_INLINE uint64_t MakeVRef(uint32_t version, int32_t nref) {
     // 1: Intended conversion to uint32_t, nref=-1 is 00000000FFFFFFFF
     return (((uint64_t)version) << 32) | (uint32_t/*1*/)nref;
 }
@@ -54,7 +57,6 @@ inline SocketOptions::SocketOptions()
     , user(NULL)
     , on_edge_triggered_events(NULL)
     , health_check_interval_s(-1)
-    , ssl_ctx(NULL)
     , keytable_pool(NULL)
     , conn(NULL)
     , app_connect(NULL)
@@ -242,8 +244,9 @@ inline void Socket::SetLogOff() {
     }
 }
 
-inline bool Socket::IsLogOff() const {
-    return _logoff_flag.load(butil::memory_order_relaxed);
+inline bool Socket::IsAvailable() const {
+    return !_logoff_flag.load(butil::memory_order_relaxed) &&
+        (_ninflight_app_health_check.load(butil::memory_order_relaxed) == 0);
 }
 
 static const uint32_t EOF_FLAG = (1 << 31);

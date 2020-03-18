@@ -1,26 +1,29 @@
-// Copyright (c) 2010 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Fri Sep 10 13:34:25 CST 2010
 
+#include "butil/build_config.h"                        // OS_MACOSX
 #include <errno.h>                                     // errno
 #include <string.h>                                    // strerror_r
 #include <stdlib.h>                                    // EXIT_FAILURE
 #include <stdio.h>                                     // snprintf
 #include <pthread.h>                                   // pthread_mutex_t
-#include <error.h>                                     // error
+#include <unistd.h>                                    // _exit
 #include "butil/scoped_lock.h"                         // BAIDU_SCOPED_LOCK
 
 namespace butil {
@@ -37,9 +40,10 @@ int DescribeCustomizedErrno(
     int error_code, const char* error_name, const char* description) {
     BAIDU_SCOPED_LOCK(modify_desc_mutex);
     if (error_code < ERRNO_BEGIN || error_code >= ERRNO_END) {
-        error(EXIT_FAILURE, 0,
-              "Fail to define %s(%d) which is out of range, abort.",
+        // error() is a non-portable GNU extension that should not be used.
+        fprintf(stderr, "Fail to define %s(%d) which is out of range, abort.",
               error_name, error_code);
+        _exit(1);
     }
     const char* desc = errno_desc[error_code - ERRNO_BEGIN];
     if (desc) {
@@ -48,11 +52,17 @@ int DescribeCustomizedErrno(
             return -1;
         }
     } else {
+#if defined(OS_MACOSX)
+        const int rc = strerror_r(error_code, tls_error_buf, ERROR_BUFSIZE);
+        if (rc != EINVAL)
+#else
         desc = strerror_r(error_code, tls_error_buf, ERROR_BUFSIZE);
-        if (desc && strncmp(desc, "Unknown error", 13) != 0) {
-            error(EXIT_FAILURE, 0,
-                    "Fail to define %s(%d) which is already defined as `%s', abort.",
+        if (desc && strncmp(desc, "Unknown error", 13) != 0)
+#endif
+        {
+            fprintf(stderr, "Fail to define %s(%d) which is already defined as `%s', abort.",
                     error_name, error_code, desc);
+            _exit(1);
         }
     }
     errno_desc[error_code - ERRNO_BEGIN] = description;
@@ -70,10 +80,17 @@ const char* berror(int error_code) {
         if (s) {
             return s;
         }
+#if defined(OS_MACOSX)
+        const int rc = strerror_r(error_code, butil::tls_error_buf, butil::ERROR_BUFSIZE);
+        if (rc == 0 || rc == ERANGE/*bufsize is not long enough*/) {
+            return butil::tls_error_buf;
+        }
+#else
         s = strerror_r(error_code, butil::tls_error_buf, butil::ERROR_BUFSIZE);
-        if (s) {  // strerror_r returns NULL if error_code is unknown
+        if (s) {
             return s;
         }
+#endif
     }
     snprintf(butil::tls_error_buf, butil::ERROR_BUFSIZE,
              "Unknown error %d", error_code);

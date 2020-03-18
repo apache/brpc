@@ -1,18 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: chenzhangyi01@baidu.com gejun@baidu.com
 // Date 2014/09/25 17:50:21
 
 #ifndef  BVAR_RECORDER_H
@@ -35,16 +37,19 @@ struct Stat {
     int64_t num;
         
     int64_t get_average_int() const {
-        if (num == 0) {
+        //num can be changed by sampling thread, use tmp_num
+        int64_t tmp_num = num;
+        if (tmp_num == 0) {
             return 0;
         }
-        return sum / (int64_t)num;
+        return sum / (int64_t)tmp_num;
     }
     double get_average_double() const {
-        if (num == 0) {
+        int64_t tmp_num = num;
+        if (tmp_num == 0) {
             return 0.0;
         }
-        return (double)sum / (double)num;
+        return (double)sum / (double)tmp_num;
     }
     Stat operator-(const Stat& rhs) const {
         return Stat(sum - rhs.sum, num - rhs.num);
@@ -151,7 +156,7 @@ public:
     AddStat op() const { return AddStat(); }
     MinusStat inv_op() const { return MinusStat(); }
     
-    void describe(std::ostream& os, bool /*quote_string*/) const {
+    void describe(std::ostream& os, bool /*quote_string*/) const override {
         os << get_value();
     }
 

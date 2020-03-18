@@ -1,4 +1,5 @@
-#ignore all files without extension
+# Ignore all files without extension.
+# If you need to git-add a file without extension, add -f
 *
 !*.*
 !*/
@@ -10,13 +11,27 @@
 *.pb.h
 *.prof
 *.so
+*.dylib
+*.rej
 /output
 /test/output
+build/
 
-#ignore hidden files
+# Ignore hidden files
 .*
 *.swp
 
-#ignore auto-generated files
+# Ignore auto-generated files
 config.mk
 src/butil/config.h
+
+# Ignore CMake files
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+Testing
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+/cmake-build-debug/

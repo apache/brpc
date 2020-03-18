@@ -1,6 +1,6 @@
 有时为了保证可用性，需要同时访问两路服务，哪个先返回就取哪个。在brpc中，这有多种做法：
 
-# 当后端server可以挂在一个名字服务内时
+# 当后端server可以挂在一个命名服务内时
 
 Channel开启backup request。这个Channel会先向其中一个server发送请求，如果在ChannelOptions.backup_request_ms后还没回来，再向另一个server发送。之后哪个先回来就取哪个。在设置了合理的backup_request_ms后，大部分时候只会发一个请求，对后端服务只有一倍压力。
 
@@ -39,7 +39,7 @@ my_func_latency << tm.u_elapsed();  // u代表微秒，还有s_elapsed(), m_elap
 // 好了，在/vars中会显示my_func_qps, my_func_latency, my_func_latency_cdf等很多计数器。
 ```
 
-# 当后端server不能挂在一个名字服务内时
+# 当后端server不能挂在一个命名服务内时
 
 【推荐】建立一个开启backup request的SelectiveChannel，其中包含两个sub channel。访问这个SelectiveChannel和上面的情况类似，会先访问一个sub channel，如果在ChannelOptions.backup_request_ms后没返回，再访问另一个sub channel。如果一个sub channel对应一个集群，这个方法就是在两个集群间做互备。SelectiveChannel的例子见[example/selective_echo_c++](https://github.com/brpc/brpc/tree/master/example/selective_echo_c++)，具体做法请参考上面的过程。
 

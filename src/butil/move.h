@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_MOVE_H_
-#define BASE_MOVE_H_
+#ifndef BUTIL_MOVE_H_
+#define BUTIL_MOVE_H_
 
 // Macro with the boilerplate that makes a type move-only in C++03.
 //
@@ -215,4 +215,4 @@
   typedef void MoveOnlyTypeForCPP03; \
  private:
 
-#endif  // BASE_MOVE_H_
+#endif  // BUTIL_MOVE_H_

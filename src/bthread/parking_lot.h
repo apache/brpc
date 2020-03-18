@@ -1,23 +1,26 @@
-// bthread - A M:N threading library to make applications more concurrent.
-// Copyright (c) 2017 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: chenzhangyi01@baidu.com, gejun@baidu.com
+// bthread - A M:N threading library to make applications more concurrent.
+
 // Date: 2017/07/27 23:07:06
 
-#ifndef  PUBLIC_BTHREAD_PARKING_LOT_H
-#define  PUBLIC_BTHREAD_PARKING_LOT_H
+#ifndef BTHREAD_PARKING_LOT_H
+#define BTHREAD_PARKING_LOT_H
 
 #include "butil/atomicops.h"
 #include "bthread/sys_futex.h"
@@ -63,10 +66,10 @@ public:
         futex_wake_private(&_pending_signal, 10000);
     }
 private:
-    // higher 31 bits for signalling, MLB for stopping.
+    // higher 31 bits for signalling, LSB for stopping.
     butil::atomic<int> _pending_signal;
 };
 
 }  // namespace bthread
 
-#endif  //PUBLIC_BTHREAD_PARKING_LOT_H
+#endif  // BTHREAD_PARKING_LOT_H

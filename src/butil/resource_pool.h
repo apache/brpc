@@ -1,23 +1,26 @@
-// bthread - A M:N threading library to make applications more concurrent.
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
+// bthread - A M:N threading library to make applications more concurrent.
+
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#ifndef BTHREAD_BASE_RESOURCE_POOL_H
-#define BTHREAD_BASE_RESOURCE_POOL_H
+#ifndef BUTIL_RESOURCE_POOL_H
+#define BUTIL_RESOURCE_POOL_H
 
 #include <cstddef>                       // size_t
 
@@ -75,7 +78,7 @@ template <typename T> struct ResourcePoolFreeChunkMaxItem {
 
 // ResourcePool calls this function on newly constructed objects. If this
 // function returns false, the object is destructed immediately and
-// get_object() shall return NULL. This is useful when the constructor
+// get_resource() shall return NULL. This is useful when the constructor
 // failed internally(namely ENOMEM).
 template <typename T> struct ResourcePoolValidator {
     static bool validate(const T*) { return true; }
@@ -142,4 +145,4 @@ template <typename T> ResourcePoolInfo describe_resources() {
 
 }  // namespace butil
 
-#endif  // BTHREAD_BASE_RESOURCE_POOL_H
+#endif  // BUTIL_RESOURCE_POOL_H

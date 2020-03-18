@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_FILE_DESCRIPTOR_POSIX_H_
-#define BASE_FILE_DESCRIPTOR_POSIX_H_
+#ifndef BUTIL_FILE_DESCRIPTOR_POSIX_H_
+#define BUTIL_FILE_DESCRIPTOR_POSIX_H_
 
 #include "butil/files/file.h"
 
@@ -47,4 +47,4 @@ struct FileDescriptor {
 
 }  // namespace butil
 
-#endif  // BASE_FILE_DESCRIPTOR_POSIX_H_
+#endif  // BUTIL_FILE_DESCRIPTOR_POSIX_H_

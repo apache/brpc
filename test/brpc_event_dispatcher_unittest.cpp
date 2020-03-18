@@ -1,9 +1,25 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
-// Copyright (c) 2014 Baidu, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+// brpc - A framework to host and access services throughout Baidu.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#include <sys/epoll.h>
+#include <pthread.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
@@ -168,7 +184,7 @@ inline uint32_t fmix32 ( uint32_t h ) {
 }
 
 TEST_F(EventDispatcherTest, dispatch_tasks) {
-#ifdef BASE_RESOURCE_POOL_NEED_FREE_ITEM_NUM
+#ifdef BUTIL_RESOURCE_POOL_NEED_FREE_ITEM_NUM
     const butil::ResourcePoolInfo old_info =
         butil::describe_resources<brpc::Socket>();
 #endif
@@ -178,7 +194,7 @@ TEST_F(EventDispatcherTest, dispatch_tasks) {
     const size_t NCLIENT = 16;
 
     int fds[2 * NCLIENT];
-    bthread_t cth[NCLIENT];
+    pthread_t cth[NCLIENT];
     ClientMeta* cm[NCLIENT];
     SocketExtra* sm[NCLIENT];
 
@@ -247,7 +263,7 @@ TEST_F(EventDispatcherTest, dispatch_tasks) {
     const butil::ResourcePoolInfo info
         = butil::describe_resources<brpc::Socket>();
     LOG(INFO) << info;
-#ifdef BASE_RESOURCE_POOL_NEED_FREE_ITEM_NUM
+#ifdef BUTIL_RESOURCE_POOL_NEED_FREE_ITEM_NUM
     ASSERT_EQ(NCLIENT, info.free_item_num - old_info.free_item_num);
 #endif
 }

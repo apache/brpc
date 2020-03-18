@@ -1,0 +1,25 @@
+#client settings
+--case_file=test_case.json
+--client_qps_change_interval_us=50000
+--max_retry=0
+
+#auto_cl settings
+--auto_cl_initial_max_concurrency=40
+--auto_cl_max_explore_ratio=0.3
+--auto_cl_min_explore_ratio=0.06
+--auto_cl_change_rate_of_explore_ratio=0.02
+--auto_cl_reduce_ratio_while_remeasure=0.9
+--auto_cl_latency_fluctuation_correction_factor=2
+
+#server setings for async sleep
+--latency_change_interval_us=50000
+--server_bthread_concurrency=4
+--server_sync_sleep_us=2500
+--use_usleep=false
+
+#server setings for sync sleep
+#--latency_change_interval_us=50000
+#--server_bthread_concurrency=16
+#--server_max_concurrency=15
+#--server_sync_sleep_us=2500
+#--use_usleep=true

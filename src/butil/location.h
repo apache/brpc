@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_LOCATION_H_
-#define BASE_LOCATION_H_
+#ifndef BUTIL_LOCATION_H_
+#define BUTIL_LOCATION_H_
 
 #include <string>
 
@@ -14,7 +14,7 @@ namespace tracked_objects {
 
 // Location provides basic info where of an object was constructed, or was
 // significantly brought to life.
-class BASE_EXPORT Location {
+class BUTIL_EXPORT Location {
  public:
   // Constructor should be called with a long-lived char*, such as __FILE__.
   // It assumes the provided value will persist as a global constant, and it
@@ -67,7 +67,7 @@ class BASE_EXPORT Location {
 
 // A "snapshotted" representation of the Location class that can safely be
 // passed across process boundaries.
-struct BASE_EXPORT LocationSnapshot {
+struct BUTIL_EXPORT LocationSnapshot {
   // The default constructor is exposed to support the IPC serialization macros.
   LocationSnapshot();
   explicit LocationSnapshot(const tracked_objects::Location& location);
@@ -78,7 +78,7 @@ struct BASE_EXPORT LocationSnapshot {
   int line_number;
 };
 
-BASE_EXPORT const void* GetProgramCounter();
+BUTIL_EXPORT const void* GetProgramCounter();
 
 // Define a macro to record the current source location.
 #define FROM_HERE FROM_HERE_WITH_EXPLICIT_FUNCTION(__FUNCTION__)
@@ -91,4 +91,4 @@ BASE_EXPORT const void* GetProgramCounter();
 
 }  // namespace tracked_objects
 
-#endif  // BASE_LOCATION_H_
+#endif  // BUTIL_LOCATION_H_

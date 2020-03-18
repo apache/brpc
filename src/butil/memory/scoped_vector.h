@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_MEMORY_SCOPED_VECTOR_H_
-#define BASE_MEMORY_SCOPED_VECTOR_H_
+#ifndef BUTIL_MEMORY_SCOPED_VECTOR_H_
+#define BUTIL_MEMORY_SCOPED_VECTOR_H_
 
 #include <vector>
 
@@ -11,6 +11,8 @@
 #include "butil/logging.h"
 #include "butil/move.h"
 #include "butil/stl_util.h"
+
+namespace butil {
 
 // ScopedVector wraps a vector deleting the elements from its
 // destructor.
@@ -134,4 +136,6 @@ class ScopedVector {
   std::vector<T*> v_;
 };
 
-#endif  // BASE_MEMORY_SCOPED_VECTOR_H_
+} // namespace butil
+
+#endif  // BUTIL_MEMORY_SCOPED_VECTOR_H_

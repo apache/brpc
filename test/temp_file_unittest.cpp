@@ -1,7 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Author: Yan,Lin(yanlin@baidu.com)  Ge,Jun(gejun@baidu.com)
-// Date: Thu Oct 28 15:20:57 2010
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #include <gtest/gtest.h>
 #include <errno.h>                     // errno
@@ -127,7 +139,7 @@ TEST_F(TempFileTest, save_binary_twice)
     ASSERT_NE((void*)0, fp);
     test_t act_data;
     bzero(&act_data, sizeof(act_data));
-    fread(&act_data, sizeof(act_data), 1, fp);
+    ASSERT_EQ((size_t)1, fread(&act_data, sizeof(act_data), 1, fp));
     fclose(fp);
 
     ASSERT_EQ(0, memcmp(&data, &act_data, sizeof(data)));
@@ -139,7 +151,7 @@ TEST_F(TempFileTest, save_binary_twice)
     fp = fopen(tmp.fname(), "r");
     ASSERT_NE((void*)0, fp);
     bzero(&act_data, sizeof(act_data));
-    fread(&act_data, sizeof(act_data), 1, fp);
+    ASSERT_EQ((size_t)1, fread(&act_data, sizeof(act_data), 1, fp));
     fclose(fp);
     
     ASSERT_EQ(0, memcmp(&data2, &act_data, sizeof(data2)));

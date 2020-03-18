@@ -1,18 +1,20 @@
-// Copyright (c) 2012 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: 2012-10-08 23:53:50
 
 #include "butil/logging.h"
@@ -764,7 +766,7 @@ public:
     }
 
     bool OnLogMessage(int severity, const char* file, int line,
-                      const butil::StringPiece& content) {
+                      const butil::StringPiece& content) override {
         // There's a copy here to concatenate prefix and content. Since
         // DefaultLogSink is hardly used right now, the copy is irrelevant.
         // A LogSink focused on performance should also be able to handle
@@ -961,7 +963,7 @@ void SetLastSystemErrorCode(SystemErrorCode err) {
 }
 
 #if defined(OS_WIN)
-BASE_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code) {
+BUTIL_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code) {
     const int error_message_buffer_size = 256;
     char msgbuf[error_message_buffer_size];
     DWORD flags = FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
@@ -976,7 +978,7 @@ BASE_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code) {
                               GetLastError(), error_code);
 }
 #elif defined(OS_POSIX)
-BASE_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code) {
+BUTIL_EXPORT std::string SystemErrorCodeToString(SystemErrorCode error_code) {
     return berror(error_code);
 }
 #else

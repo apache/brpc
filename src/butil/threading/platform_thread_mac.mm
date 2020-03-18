@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/threading/platform_thread.h"
+#include "butil/threading/platform_thread.h"
 
 #import <Foundation/Foundation.h>
 #include <mach/mach.h>
@@ -12,13 +12,12 @@
 
 #include <algorithm>
 
-#include "base/lazy_instance.h"
-#include "base/logging.h"
-#include "base/mac/mach_logging.h"
-#include "base/threading/thread_id_name_manager.h"
-#include "base/tracked_objects.h"
+#include "butil/lazy_instance.h"
+#include "butil/logging.h"
+#include "butil/threading/thread_id_name_manager.h"
+//#include "butil/tracked_objects.h"
 
-namespace base {
+namespace butil {
 
 // If Cocoa is to be used on more than one thread, it must know that the
 // application is multithreaded.  Since it's possible to enter Cocoa code
@@ -44,7 +43,8 @@ void InitThreading() {
 // static
 void PlatformThread::SetName(const char* name) {
   ThreadIdNameManager::GetInstance()->SetName(CurrentId(), name);
-  tracked_objects::ThreadData::InitializeThreadContext(name);
+  // TODO: add tracked_objects related headers
+  //tracked_objects::ThreadData::InitializeThreadContext(name);
 
   // Mac OS X does not expose the length limit of the name, so
   // hardcode it.
@@ -69,7 +69,7 @@ void SetPriorityNormal(mach_port_t mach_thread_id) {
                         THREAD_STANDARD_POLICY_COUNT);
 
   if (result != KERN_SUCCESS)
-    MACH_DVLOG(1, result) << "thread_policy_set";
+    DVLOG(1) << "Fail to call thread_policy_set";
 }
 
 // Enables time-contraint policy and priority suitable for low-latency,
@@ -91,7 +91,7 @@ void SetPriorityRealtimeAudio(mach_port_t mach_thread_id) {
                         reinterpret_cast<thread_policy_t>(&policy),
                         THREAD_EXTENDED_POLICY_COUNT);
   if (result != KERN_SUCCESS) {
-    MACH_DVLOG(1, result) << "thread_policy_set";
+    DVLOG(1) << "Fail to call thread_policy_set";
     return;
   }
 
@@ -103,7 +103,7 @@ void SetPriorityRealtimeAudio(mach_port_t mach_thread_id) {
                              reinterpret_cast<thread_policy_t>(&precedence),
                              THREAD_PRECEDENCE_POLICY_COUNT);
   if (result != KERN_SUCCESS) {
-    MACH_DVLOG(1, result) << "thread_policy_set";
+    DVLOG(1) << "Fail to call thread_policy_set";
     return;
   }
 
@@ -147,8 +147,9 @@ void SetPriorityRealtimeAudio(mach_port_t mach_thread_id) {
                         THREAD_TIME_CONSTRAINT_POLICY,
                         reinterpret_cast<thread_policy_t>(&time_constraints),
                         THREAD_TIME_CONSTRAINT_POLICY_COUNT);
-  MACH_DVLOG_IF(1, result != KERN_SUCCESS, result) << "thread_policy_set";
-
+  if (result != KERN_SUCCESS) {
+    DVLOG(1) << "Fail to call thread_policy_set";
+  }
   return;
 }
 
@@ -214,4 +215,4 @@ void InitOnThread() {
 void TerminateOnThread() {
 }
 
-}  // namespace base
+}  // namespace butil

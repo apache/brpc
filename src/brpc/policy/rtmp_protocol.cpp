@@ -1,19 +1,20 @@
-// Copyright (c) 2016 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
-//          Jiashun Zhu (zhujiashun@baidu.com)
 
 #include <openssl/hmac.h> // HMAC_CTX_init
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
@@ -1790,7 +1791,7 @@ bool RtmpChunkStream::OnMessage(const RtmpBasicHeader& bh,
                                 const RtmpMessageHeader& mh,
                                 butil::IOBuf* msg_body,
                                 Socket* socket) {
-    // Make sure msg_body is consistent with the header. Rrevious code
+    // Make sure msg_body is consistent with the header. Previous code
     // forgot to clear msg_body before appending new message.
     CHECK_EQ((size_t)mh.message_length, msg_body->size());
     
@@ -2169,12 +2170,10 @@ bool RtmpChunkStream::OnVideoMessage(
     msg.frame_type = (FlvVideoFrameType)((first_byte >> 4) & 0xF);
     msg.codec = (FlvVideoCodec)(first_byte & 0xF);
     if (!is_video_frame_type_valid(msg.frame_type)) {
-        RTMP_ERROR(socket, mh) << "Invalid frame_type=" << (int)msg.frame_type;
-        return false;
+        RTMP_WARNING(socket, mh) << "Invalid frame_type=" << (int)msg.frame_type;
     }
     if (!is_video_codec_valid(msg.codec)) {
-        RTMP_ERROR(socket, mh) << "Invalid codec=" << (int)msg.codec;
-        return false;
+        RTMP_WARNING(socket, mh) << "Invalid codec=" << (int)msg.codec;
     }
     msg_body->swap(msg.data);
 
@@ -2214,8 +2213,9 @@ bool RtmpChunkStream::OnDataMessageAMF0(
             // Ignore empty metadata (seen in pulling streams from quanmin)
             return false;
         }
-        AMFObject metadata;
-        if (!ReadAMFObject(&metadata, &istream)) {
+        RtmpMetaData metadata;
+        metadata.timestamp = mh.timestamp;
+        if (!ReadAMFObject(&metadata.data, &istream)) {
             RTMP_ERROR(socket, mh) << "Fail to read metadata";
             return false;
         }
@@ -2227,6 +2227,25 @@ bool RtmpChunkStream::OnDataMessageAMF0(
             return false;
         }
         stream->CallOnMetaData(&metadata, name);
+        return true;
+    } else if (name == RTMP_AMF0_ON_CUE_POINT) {
+        if (istream.check_emptiness()) {
+            return false;
+        }
+        RtmpCuePoint cuepoint;
+        cuepoint.timestamp = mh.timestamp;
+        if (!ReadAMFObject(&cuepoint.data, &istream)) {
+            RTMP_ERROR(socket, mh) << "Fail to read cuepoint";
+            return false;
+        }
+        // TODO: execq?
+        butil::intrusive_ptr<RtmpStreamBase> stream;
+        if (!connection_context()->FindMessageStream(mh.stream_id, &stream)) {
+            LOG_EVERY_SECOND(WARNING) << socket->remote_side()
+                                      << ": Fail to find stream_id=" << mh.stream_id;
+            return false;
+        }
+        stream->CallOnCuePoint(&cuepoint);
         return true;
     } else if (name == RTMP_AMF0_DATA_SAMPLE_ACCESS) {
         return true;
@@ -2265,9 +2284,9 @@ bool RtmpChunkStream::OnCommandMessageAMF0(
 }
 
 bool RtmpChunkStream::OnDataMessageAMF3(
-    const RtmpMessageHeader&, butil::IOBuf*, Socket*) {
-    LOG(ERROR) << "Not implemented";
-    return false;
+    const RtmpMessageHeader& mh, butil::IOBuf* msg_body, Socket* socket) {
+    msg_body->pop_front(1);
+    return OnDataMessageAMF0(mh, msg_body, socket);
 }
 
 bool RtmpChunkStream::OnSharedObjectMessageAMF3(
@@ -2277,9 +2296,9 @@ bool RtmpChunkStream::OnSharedObjectMessageAMF3(
 }
 
 bool RtmpChunkStream::OnCommandMessageAMF3(
-    const RtmpMessageHeader&, butil::IOBuf*, Socket*) {
-    LOG(ERROR) << "Not implemented";
-    return false;
+    const RtmpMessageHeader& mh, butil::IOBuf* msg_body, Socket* socket) {
+    msg_body->pop_front(1);
+    return OnCommandMessageAMF0(mh, msg_body, socket);
 }
 
 bool RtmpChunkStream::OnAggregateMessage(
@@ -2386,7 +2405,7 @@ bool RtmpChunkStream::OnConnect(const RtmpMessageHeader& mh,
             info.set_code(RTMP_STATUS_CODE_CONNECT_SUCCESS);
             info.set_level(RTMP_INFO_LEVEL_STATUS);
             info.set_description("Connection succeeded");
-            info.set_objectencoding(RTMP_AMF0);
+            info.set_objectencoding(req->objectencoding());
         } else {
             info.set_code(RTMP_STATUS_CODE_CONNECT_REJECTED);
             info.set_level(RTMP_INFO_LEVEL_ERROR);
@@ -3446,7 +3465,7 @@ public:
              AMFInputStream* istream, Socket* socket);
     void Cancel();
 private:
-    RtmpClientStream* _stream;
+    butil::intrusive_ptr<RtmpClientStream> _stream;
     CallId _call_id;
 };
 
@@ -3506,11 +3525,11 @@ void OnServerStreamCreated::Run(bool error,
             break;
         }
         _stream->_message_stream_id = stream_id;
-        // client stream needs to be added here rather than OnStreamCreationDone
-        // to avoid the race between OnStreamCreationDone and a failed OnStatus,
+        // client stream needs to be added here rather than OnDestroyingStream
+        // to avoid the race between OnDestroyingStream and a failed OnStatus,
         // because the former function runs in another bthread and may run later
         // than OnStatus which needs to see the stream.
-        if (!ctx->AddClientStream(_stream)) {
+        if (!ctx->AddClientStream(_stream.get())) {
             cntl->SetFailed(EINVAL, "Fail to add client stream_id=%u", stream_id);
             break;
         }
@@ -3537,7 +3556,6 @@ butil::Status
 RtmpCreateStreamMessage::AppendAndDestroySelf(butil::IOBuf* out, Socket* s) {
     std::unique_ptr<RtmpCreateStreamMessage> destroy_self(this);
     if (s == NULL) {  // abandoned
-        RPC_VLOG << "[DEBUG] Socket=NULL";
         return butil::Status::OK();
     }
     // Serialize createStream command
@@ -3597,8 +3615,6 @@ RtmpCreateStreamMessage::AppendAndDestroySelf(butil::IOBuf* out, Socket* s) {
         socket->SetFailed(EINVAL, "Fail to serialize message");
         return butil::Status(EINVAL, "Fail to serialize message");
     }
-    RPC_VLOG << "[DEBUG] Succeed to call AppendAndDestroySelf, size=" << out->size()
-             << " SocketId=" << s->id();
     return butil::Status::OK();
 }
 

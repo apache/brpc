@@ -1,18 +1,20 @@
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Authors: Ge,Jun (gejun@baidu.com)
 
 #ifndef BRPC_LOAD_BALANCER_H
 #define BRPC_LOAD_BALANCER_H
@@ -25,14 +27,17 @@
 #include "brpc/server_id.h"                       // ServerId
 #include "brpc/extension.h"                       // Extension<T>
 
-
 namespace brpc {
+
+class Controller;
 
 // Select a server from a set of servers (in form of ServerId).
 class LoadBalancer : public NonConstDescribable, public Destroyable {
 public:
     struct SelectIn {
         int64_t begin_time_us;
+        // Weight of different nodes could be changed.
+        bool changable_weights;
         bool has_request_code;
         uint64_t request_code;
         const ExcludedServers* excluded;
@@ -46,9 +51,17 @@ public:
     };
 
     struct CallInfo {
-        LoadBalancer::SelectIn in;
+        // Exactly same with SelectIn.begin_time_us, may be different from
+        // controller->_begin_time_us which is beginning of the RPC.
+        int64_t begin_time_us;
+        // Remote side of the call.
         SocketId server_id;
+        // A RPC may have multiple calls, this error may be different from
+        // controller->ErrorCode();
         int error_code;
+        // The controller for the RPC. Should NOT be saved in Feedback()
+        // and used after the function.
+        const Controller* controller;
     };
 
     LoadBalancer() { }
@@ -88,7 +101,7 @@ public:
 
     // Create/destroy an instance.
     // Caller is responsible for Destroy() the instance after usage.
-    virtual LoadBalancer* New() const = 0;
+    virtual LoadBalancer* New(const butil::StringPiece& params) const = 0;
 
 protected:
     virtual ~LoadBalancer() { }
@@ -152,6 +165,9 @@ public:
     }
 
 private:
+    static bool ParseParameters(const butil::StringPiece& lb_protocol,
+                                std::string* lb_name,
+                                butil::StringPiece* lb_params);
     static void DescribeLB(std::ostream& os, void* arg);
     void ExposeLB();
 

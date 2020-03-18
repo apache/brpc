@@ -1,6 +1,19 @@
-// Copyright (c) 2014 Baidu, Inc.
-// File test_uri.cpp
-// Date 2014/10/27 14:19:35
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #include <gtest/gtest.h>
 
@@ -10,7 +23,7 @@ TEST(URITest, everything) {
     brpc::URI uri;
     std::string uri_str = " foobar://user:passwd@www.baidu.com:80/s?wd=uri#frag  ";
     ASSERT_EQ(0, uri.SetHttpURL(uri_str));
-    ASSERT_EQ("foobar", uri.schema());
+    ASSERT_EQ("foobar", uri.scheme());
     ASSERT_EQ(80, uri.port());
     ASSERT_EQ("www.baidu.com", uri.host());
     ASSERT_EQ("/s", uri.path());
@@ -20,9 +33,11 @@ TEST(URITest, everything) {
     ASSERT_EQ(*uri.GetQuery("wd"), "uri");
     ASSERT_FALSE(uri.GetQuery("nonkey"));
 
+    std::string scheme;
     std::string host_out;
     int port_out = -1;
-    brpc::ParseHostAndPortFromURL(uri_str.c_str(), &host_out, &port_out);
+    brpc::ParseURL(uri_str.c_str(), &scheme, &host_out, &port_out);
+    ASSERT_EQ("foobar", scheme);
     ASSERT_EQ("www.baidu.com", host_out);
     ASSERT_EQ(80, port_out);
 }
@@ -30,54 +45,54 @@ TEST(URITest, everything) {
 TEST(URITest, only_host) {
     brpc::URI uri;
     ASSERT_EQ(0, uri.SetHttpURL("  foo1://www.baidu1.com?wd=uri2&nonkey=22 "));
-    ASSERT_EQ("foo1", uri.schema());
+    ASSERT_EQ("foo1", uri.scheme());
     ASSERT_EQ(-1, uri.port());
     ASSERT_EQ("www.baidu1.com", uri.host());
     ASSERT_EQ("", uri.path());
     ASSERT_EQ("", uri.user_info());
     ASSERT_EQ("", uri.fragment());
-    ASSERT_EQ(2, uri.QueryCount());
+    ASSERT_EQ(2u, uri.QueryCount());
     ASSERT_TRUE(uri.GetQuery("wd"));
     ASSERT_EQ(*uri.GetQuery("wd"), "uri2");
     ASSERT_TRUE(uri.GetQuery("nonkey"));
     ASSERT_EQ(*uri.GetQuery("nonkey"), "22");
 
     ASSERT_EQ(0, uri.SetHttpURL("foo2://www.baidu2.com:1234?wd=uri2&nonkey=22 "));
-    ASSERT_EQ("foo2", uri.schema());
+    ASSERT_EQ("foo2", uri.scheme());
     ASSERT_EQ(1234, uri.port());
     ASSERT_EQ("www.baidu2.com", uri.host());
     ASSERT_EQ("", uri.path());
     ASSERT_EQ("", uri.user_info());
     ASSERT_EQ("", uri.fragment());
-    ASSERT_EQ(2, uri.QueryCount());
+    ASSERT_EQ(2u, uri.QueryCount());
     ASSERT_TRUE(uri.GetQuery("wd"));
     ASSERT_EQ(*uri.GetQuery("wd"), "uri2");
     ASSERT_TRUE(uri.GetQuery("nonkey"));
     ASSERT_EQ(*uri.GetQuery("nonkey"), "22");
 
     ASSERT_EQ(0, uri.SetHttpURL(" www.baidu3.com:4321 "));
-    ASSERT_EQ("", uri.schema());
+    ASSERT_EQ("", uri.scheme());
     ASSERT_EQ(4321, uri.port());
     ASSERT_EQ("www.baidu3.com", uri.host());
     ASSERT_EQ("", uri.path());
     ASSERT_EQ("", uri.user_info());
     ASSERT_EQ("", uri.fragment());
-    ASSERT_EQ(0, uri.QueryCount());
+    ASSERT_EQ(0u, uri.QueryCount());
     
     ASSERT_EQ(0, uri.SetHttpURL(" www.baidu4.com "));
-    ASSERT_EQ("", uri.schema());
+    ASSERT_EQ("", uri.scheme());
     ASSERT_EQ(-1, uri.port());
     ASSERT_EQ("www.baidu4.com", uri.host());
     ASSERT_EQ("", uri.path());
     ASSERT_EQ("", uri.user_info());
     ASSERT_EQ("", uri.fragment());
-    ASSERT_EQ(0, uri.QueryCount());
+    ASSERT_EQ(0u, uri.QueryCount());
 }
 
-TEST(URITest, no_schema) {
+TEST(URITest, no_scheme) {
     brpc::URI uri;
     ASSERT_EQ(0, uri.SetHttpURL(" user:passwd2@www.baidu1.com/s?wd=uri2&nonkey=22#frag "));
-    ASSERT_EQ("", uri.schema());
+    ASSERT_EQ("", uri.scheme());
     ASSERT_EQ(-1, uri.port());
     ASSERT_EQ("www.baidu1.com", uri.host());
     ASSERT_EQ("/s", uri.path());
@@ -89,10 +104,10 @@ TEST(URITest, no_schema) {
     ASSERT_EQ(*uri.GetQuery("nonkey"), "22");
 }
 
-TEST(URITest, no_schema_and_user_info) {
+TEST(URITest, no_scheme_and_user_info) {
     brpc::URI uri;
     ASSERT_EQ(0, uri.SetHttpURL(" www.baidu2.com/s?wd=uri2&nonkey=22#frag "));
-    ASSERT_EQ("", uri.schema());
+    ASSERT_EQ("", uri.scheme());
     ASSERT_EQ(-1, uri.port());
     ASSERT_EQ("www.baidu2.com", uri.host());
     ASSERT_EQ("/s", uri.path());
@@ -107,7 +122,7 @@ TEST(URITest, no_schema_and_user_info) {
 TEST(URITest, no_host) {
     brpc::URI uri;
     ASSERT_EQ(0, uri.SetHttpURL(" /sb?wd=uri3#frag2 ")) << uri.status();
-    ASSERT_EQ("", uri.schema());
+    ASSERT_EQ("", uri.scheme());
     ASSERT_EQ(-1, uri.port());
     ASSERT_EQ("", uri.host());
     ASSERT_EQ("/sb", uri.path());
@@ -119,7 +134,7 @@ TEST(URITest, no_host) {
 
     // set_path should do as its name says.
     uri.set_path("/x/y/z/");
-    ASSERT_EQ("", uri.schema());
+    ASSERT_EQ("", uri.scheme());
     ASSERT_EQ(-1, uri.port());
     ASSERT_EQ("", uri.host());
     ASSERT_EQ("/x/y/z/", uri.path());
@@ -473,54 +488,3 @@ TEST(URITest, query_remover_key_value_not_changed_after_modified_query) {
     ASSERT_EQ(qr.value(), "value2");
 }
 
-TEST(URITest, query_splitter_sanity) {
-    std::string query = "key1=value1&key2=value2&key3=value3";
-    {
-        brpc::QuerySplitter qs(query);
-        ASSERT_TRUE(qs);
-        ASSERT_EQ(qs.key(), "key1");
-        ASSERT_EQ(qs.value(), "value1");
-        ++qs;
-        ASSERT_TRUE(qs);
-        ASSERT_EQ(qs.key(), "key2");
-        ASSERT_EQ(qs.value(), "value2");
-        ++qs;
-        ASSERT_TRUE(qs);
-        ASSERT_EQ(qs.key(), "key3");
-        ASSERT_EQ(qs.value(), "value3");
-        ++qs;
-        ASSERT_FALSE(qs);
-    }
-    {
-        brpc::QuerySplitter qs(query.data(), query.data() + query.size());
-        ASSERT_TRUE(qs);
-        ASSERT_EQ(qs.key(), "key1");
-        ASSERT_EQ(qs.value(), "value1");
-        ++qs;
-        ASSERT_TRUE(qs);
-        ASSERT_EQ(qs.key(), "key2");
-        ASSERT_EQ(qs.value(), "value2");
-        ++qs;
-        ASSERT_TRUE(qs);
-        ASSERT_EQ(qs.key(), "key3");
-        ASSERT_EQ(qs.value(), "value3");
-        ++qs;
-        ASSERT_FALSE(qs);
-    }
-    {
-        brpc::QuerySplitter qs(query.c_str());
-        ASSERT_TRUE(qs);
-        ASSERT_EQ(qs.key(), "key1");
-        ASSERT_EQ(qs.value(), "value1");
-        ++qs;
-        ASSERT_TRUE(qs);
-        ASSERT_EQ(qs.key(), "key2");
-        ASSERT_EQ(qs.value(), "value2");
-        ++qs;
-        ASSERT_TRUE(qs);
-        ASSERT_EQ(qs.key(), "key3");
-        ASSERT_EQ(qs.value(), "value3");
-        ++qs;
-        ASSERT_FALSE(qs);
-    }
-}

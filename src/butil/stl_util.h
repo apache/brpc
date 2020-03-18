@@ -4,8 +4,8 @@
 
 // Derived from google3/util/gtl/stl_util.h
 
-#ifndef BASE_STL_UTIL_H_
-#define BASE_STL_UTIL_H_
+#ifndef BUTIL_STL_UTIL_H_
+#define BUTIL_STL_UTIL_H_
 
 #include <algorithm>
 #include <functional>
@@ -14,6 +14,8 @@
 #include <vector>
 
 #include "butil/logging.h"
+
+namespace butil {
 
 // Clears internal memory of an STL object.
 // STL clear()/reserve(0) does not always free internal memory allocated
@@ -196,8 +198,6 @@ bool ContainsKey(const Collection& collection, const Key& key) {
   return collection.find(key) != collection.end();
 }
 
-namespace butil {
-
 // Returns true if the container is sorted.
 template <typename Container>
 bool STLIsSorted(const Container& cont) {
@@ -257,4 +257,4 @@ bool STLIncludes(const Arg1& a1, const Arg2& a2) {
 
 }  // namespace butil
 
-#endif  // BASE_STL_UTIL_H_
+#endif  // BUTIL_STL_UTIL_H_

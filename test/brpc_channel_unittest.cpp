@@ -1,9 +1,24 @@
-// Baidu RPC - A framework to host and access services throughout Baidu.
-// Copyright (c) 2014 Baidu, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+// brpc - A framework to host and access services throughout Baidu.
 
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <gtest/gtest.h>
@@ -37,8 +52,7 @@ namespace policy {
 void SendRpcResponse(int64_t correlation_id, Controller* cntl, 
                      const google::protobuf::Message* req,
                      const google::protobuf::Message* res,
-                     Socket* socket_ptr, const Server* server_raw,
-                     MethodStatus *, long);
+                     const Server* server_raw, MethodStatus *, int64_t);
 } // policy
 } // brpc
 
@@ -143,6 +157,7 @@ class MyEchoService : public ::test::EchoService {
         if (req->code() != 0) {
             res->add_code_list(req->code());
         }
+        res->set_receiving_socket_id(cntl->_current_call.sending_sock->id());
     }
 };
 
@@ -220,6 +235,9 @@ protected:
             EXPECT_TRUE(req->ParseFromZeroCopyStream(&wrapper2));
         }
         brpc::Controller* cntl = new brpc::Controller();
+        cntl->_current_call.peer_id = ptr->id();
+        cntl->_current_call.sending_sock.reset(ptr.release());
+        cntl->_server = &ts->_dummy;
 
         google::protobuf::Message* res =
               ts->_svc.GetResponsePrototype(method).New();
@@ -228,18 +246,17 @@ protected:
             int64_t, brpc::Controller*,
             const google::protobuf::Message*,
             const google::protobuf::Message*,
-            brpc::Socket*,
             const brpc::Server*,
-            brpc::MethodStatus*, long>(
+            brpc::MethodStatus*, int64_t>(
                 &brpc::policy::SendRpcResponse,
                 meta.correlation_id(), cntl, NULL, res,
-                ptr.release(), &ts->_dummy, NULL, -1);
+                &ts->_dummy, NULL, -1);
         ts->_svc.CallMethod(method, cntl, req, res, done);
     }
 
     int StartAccept(butil::EndPoint ep) {
         int listening_fd = -1;
-        while ((listening_fd = tcp_listen(ep, true)) < 0) {
+        while ((listening_fd = tcp_listen(ep)) < 0) {
             if (errno == EADDRINUSE) {
                 bthread_usleep(1000);
             } else {
@@ -258,14 +275,17 @@ protected:
     }
 
     void SetUpChannel(brpc::Channel* channel, 
-                      bool single_server, bool short_connection,
-                      const brpc::Authenticator* auth = NULL) {
+                      bool single_server,
+                      bool short_connection,
+                      const brpc::Authenticator* auth = NULL,
+                      std::string connection_group = std::string()) {
         brpc::ChannelOptions opt;
         if (short_connection) {
             opt.connection_type = brpc::CONNECTION_TYPE_SHORT;
         }
         opt.auth = auth;
         opt.max_retry = 0;
+        opt.connection_group = connection_group;
         if (single_server) {
             EXPECT_EQ(0, channel->Init(_ep, &opt)); 
         } else {                                                 
@@ -405,6 +425,7 @@ protected:
 
         EXPECT_EQ(0, cntl.ErrorCode()) 
             << single_server << ", " << async << ", " << short_connection;
+        const uint64_t receiving_socket_id = res.receiving_socket_id();
         EXPECT_EQ(0, cntl.sub_count());
         EXPECT_TRUE(NULL == cntl.sub(-1));
         EXPECT_TRUE(NULL == cntl.sub(0));
@@ -418,8 +439,49 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
-        }            
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
+        }
+        if (single_server && !short_connection) {
+            // Reuse the connection
+            brpc::Channel channel2;
+            SetUpChannel(&channel2, single_server, short_connection);
+            cntl.Reset();
+            req.Clear();
+            res.Clear();
+            req.set_message(__FUNCTION__);
+            CallMethod(&channel2, &cntl, &req, &res, async);
+            EXPECT_EQ(0, cntl.ErrorCode())
+                << single_server << ", " << async << ", " << short_connection;
+            EXPECT_EQ(receiving_socket_id, res.receiving_socket_id());
+
+            // A different connection_group does not reuse the connection
+            brpc::Channel channel3;
+            SetUpChannel(&channel3, single_server, short_connection,
+                         NULL, "another_group");
+            cntl.Reset();
+            req.Clear();
+            res.Clear();
+            req.set_message(__FUNCTION__);
+            CallMethod(&channel3, &cntl, &req, &res, async);
+            EXPECT_EQ(0, cntl.ErrorCode())
+                << single_server << ", " << async << ", " << short_connection;
+            const uint64_t receiving_socket_id2 = res.receiving_socket_id();
+            EXPECT_NE(receiving_socket_id, receiving_socket_id2);
+
+            // Channel in the same connection_group reuses the connection
+            // note that the leading/trailing spaces should be trimed.
+            brpc::Channel channel4;
+            SetUpChannel(&channel4, single_server, short_connection,
+                         NULL, " another_group ");
+            cntl.Reset();
+            req.Clear();
+            res.Clear();
+            req.set_message(__FUNCTION__);
+            CallMethod(&channel4, &cntl, &req, &res, async);
+            EXPECT_EQ(0, cntl.ErrorCode())
+                << single_server << ", " << async << ", " << short_connection;
+            EXPECT_EQ(receiving_socket_id2, res.receiving_socket_id());
+        }
         StopAndJoin();
     }
 
@@ -519,7 +581,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }
         StopAndJoin();
     }
@@ -571,7 +633,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }
         StopAndJoin();
     }
@@ -615,7 +677,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }
         StopAndJoin();
     }
@@ -664,7 +726,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }
         StopAndJoin();
     }
@@ -702,7 +764,7 @@ protected:
         CallMethod(&subchans[0], &cntl, &req, &res, false);
         ASSERT_TRUE(cntl.Failed());
         ASSERT_EQ(brpc::EINTERNAL, cntl.ErrorCode()) << cntl.ErrorText();
-        ASSERT_EQ("[E2001]Method ComboEcho() not implemented.", cntl.ErrorText());
+        ASSERT_TRUE(butil::StringPiece(cntl.ErrorText()).ends_with("Method ComboEcho() not implemented."));
 
         // do the rpc call.
         cntl.Reset();
@@ -725,7 +787,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }
         StopAndJoin();
     }
@@ -854,7 +916,7 @@ protected:
         tm.start();
         CallMethod(&channel, &cntl, &req, &res, async);
         tm.stop();
-        EXPECT_LT(abs(tm.u_elapsed() - carg.sleep_before_cancel_us), 10000);
+        EXPECT_LT(labs(tm.u_elapsed() - carg.sleep_before_cancel_us), 10000);
         ASSERT_EQ(0, pthread_join(th, NULL));
         EXPECT_EQ(ECANCELED, cntl.ErrorCode());
         EXPECT_EQ(0, cntl.sub_count());
@@ -895,14 +957,14 @@ protected:
         tm.start();
         CallMethod(&channel, &cntl, &req, &res, async);
         tm.stop();
-        EXPECT_LT(abs(tm.u_elapsed() - carg.sleep_before_cancel_us), 10000);
+        EXPECT_LT(labs(tm.u_elapsed() - carg.sleep_before_cancel_us), 10000);
         ASSERT_EQ(0, pthread_join(th, NULL));
         EXPECT_EQ(ECANCELED, cntl.ErrorCode());
         EXPECT_EQ(NCHANS, (size_t)cntl.sub_count());
         for (int i = 0; i < cntl.sub_count(); ++i) {
             EXPECT_EQ(ECANCELED, cntl.sub(i)->ErrorCode()) << "i=" << i;
         }
-        EXPECT_LT(abs(cntl.latency_us() - carg.sleep_before_cancel_us), 10000);
+        EXPECT_LT(labs(cntl.latency_us() - carg.sleep_before_cancel_us), 10000);
         StopAndJoin();
     }
 
@@ -937,7 +999,7 @@ protected:
         tm.start();
         CallMethod(&channel, &cntl, &req, &res, async);
         tm.stop();
-        EXPECT_LT(abs(tm.u_elapsed() - carg.sleep_before_cancel_us), 10000);
+        EXPECT_LT(labs(tm.u_elapsed() - carg.sleep_before_cancel_us), 10000);
         ASSERT_EQ(0, pthread_join(th, NULL));
         EXPECT_EQ(ECANCELED, cntl.ErrorCode());
         EXPECT_EQ(1, cntl.sub_count());
@@ -1026,7 +1088,7 @@ protected:
                 bthread_usleep(1000);
             }
         } else {
-            EXPECT_EQ(1ul, _messenger.ConnectionCount());
+            EXPECT_GE(1ul, _messenger.ConnectionCount());
         }            
         StopAndJoin();
     }
@@ -1120,7 +1182,7 @@ protected:
         CallMethod(&channel, &cntl, &req, &res, async);
         tm.stop();
         EXPECT_EQ(brpc::ERPCTIMEDOUT, cntl.ErrorCode()) << cntl.ErrorText();
-        EXPECT_LT(abs(tm.m_elapsed() - cntl.timeout_ms()), 10);
+        EXPECT_LT(labs(tm.m_elapsed() - cntl.timeout_ms()), 15);
         StopAndJoin();
     }
 
@@ -1156,7 +1218,7 @@ protected:
         for (int i = 0; i < cntl.sub_count(); ++i) {
             EXPECT_EQ(ECANCELED, cntl.sub(i)->ErrorCode()) << "i=" << i;
         }
-        EXPECT_LT(abs(tm.m_elapsed() - cntl.timeout_ms()), 10);
+        EXPECT_LT(labs(tm.m_elapsed() - cntl.timeout_ms()), 15);
         StopAndJoin();
     }
 
@@ -1209,7 +1271,7 @@ protected:
                 EXPECT_EQ(0, cntl.sub(i)->ErrorCode());
             }
         }
-        EXPECT_LT(abs(tm.m_elapsed() - cntl.timeout_ms()), 10);
+        EXPECT_LT(labs(tm.m_elapsed() - cntl.timeout_ms()), 15);
         StopAndJoin();
     }
 
@@ -1242,7 +1304,7 @@ protected:
         EXPECT_EQ(brpc::ERPCTIMEDOUT, cntl.ErrorCode()) << cntl.ErrorText();
         EXPECT_EQ(1, cntl.sub_count());
         EXPECT_EQ(brpc::ERPCTIMEDOUT, cntl.sub(0)->ErrorCode());
-        EXPECT_LT(abs(tm.m_elapsed() - cntl.timeout_ms()), 10);
+        EXPECT_LT(labs(tm.m_elapsed() - cntl.timeout_ms()), 15);
         StopAndJoin();
     }
     
@@ -1291,7 +1353,8 @@ protected:
         CallMethod(&channel, &cntl, &req, &res, async);
         
         EXPECT_TRUE(brpc::EEOF == cntl.ErrorCode() ||
-                    brpc::ETOOMANYFAILS == cntl.ErrorCode()) << cntl.ErrorText();
+                    brpc::ETOOMANYFAILS == cntl.ErrorCode() ||
+                    ECONNRESET == cntl.ErrorCode()) << cntl.ErrorText();
         StopAndJoin();
     }
 
@@ -1546,6 +1609,10 @@ protected:
 
     void TestAuthentication(bool single_server, 
                             bool async, bool short_connection) {
+        std::cout << " *** single=" << single_server
+                  << " async=" << async
+                  << " short=" << short_connection << std::endl;
+
         ASSERT_EQ(0, StartAccept(_ep));
         MyAuthenticator auth;
         brpc::Channel channel;
@@ -1808,7 +1875,7 @@ TEST_F(ChannelTest, init_as_single_server) {
     ASSERT_EQ(ep, channel._server_address);
 
     brpc::SocketId id;
-    ASSERT_EQ(0, brpc::SocketMapFind(ep, &id));
+    ASSERT_EQ(0, brpc::SocketMapFind(brpc::SocketMapKey(ep), &id));
     ASSERT_EQ(id, channel._server_id);
 
     const int NUM = 10;
@@ -2439,7 +2506,7 @@ TEST_F(ChannelTest, global_channel_should_quit_successfully) {
     g_chan.Init("bns://qa-pbrpc.SAT.tjyx", "rr", NULL);
 }
 
-TEST_F(ChannelTest, unused) {
+TEST_F(ChannelTest, unused_call_id) {
     {
         brpc::Controller cntl;
     }
@@ -2501,22 +2568,38 @@ TEST_F(ChannelTest, adaptive_protocol_type) {
     brpc::AdaptiveProtocolType ptype;
     ASSERT_EQ(brpc::PROTOCOL_UNKNOWN, ptype);
     ASSERT_STREQ("unknown", ptype.name());
+    ASSERT_FALSE(ptype.has_param());
+    ASSERT_EQ("", ptype.param());
 
     ptype = brpc::PROTOCOL_HTTP;
     ASSERT_EQ(brpc::PROTOCOL_HTTP, ptype);
     ASSERT_STREQ("http", ptype.name());
+    ASSERT_FALSE(ptype.has_param());
+    ASSERT_EQ("", ptype.param());
+
+    ptype = "http:xyz ";
+    ASSERT_EQ(brpc::PROTOCOL_HTTP, ptype);
+    ASSERT_STREQ("http", ptype.name());
+    ASSERT_TRUE(ptype.has_param());
+    ASSERT_EQ("xyz ", ptype.param());
 
     ptype = "HuLu_pbRPC";
     ASSERT_EQ(brpc::PROTOCOL_HULU_PBRPC, ptype);
     ASSERT_STREQ("hulu_pbrpc", ptype.name());
+    ASSERT_FALSE(ptype.has_param());
+    ASSERT_EQ("", ptype.param());
     
     ptype = "blah";
     ASSERT_EQ(brpc::PROTOCOL_UNKNOWN, ptype);
-    ASSERT_STREQ("unknown", ptype.name());
+    ASSERT_STREQ("blah", ptype.name());
+    ASSERT_FALSE(ptype.has_param());
+    ASSERT_EQ("", ptype.param());
 
     ptype = "Baidu_STD";
     ASSERT_EQ(brpc::PROTOCOL_BAIDU_STD, ptype);
     ASSERT_STREQ("baidu_std", ptype.name());
+    ASSERT_FALSE(ptype.has_param());
+    ASSERT_EQ("", ptype.param());
 }
 
 } //namespace

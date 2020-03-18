@@ -28,8 +28,8 @@
 //
 // Internals shared between the Snappy implementation and its unittest.
 
-#ifndef PUBLIC_COMMON_BASE_THIRD_PARTY_SNAPPY_SNAPPY_INTERNAL_H_
-#define PUBLIC_COMMON_BASE_THIRD_PARTY_SNAPPY_SNAPPY_INTERNAL_H_
+#ifndef BUTIL_THIRD_PARTY_SNAPPY_SNAPPY_INTERNAL_H_
+#define BUTIL_THIRD_PARTY_SNAPPY_SNAPPY_INTERNAL_H_
 
 #include "snappy-stubs-internal.h"
 
@@ -132,7 +132,7 @@ static inline int FindMatchLength(const char* s1,
         matched += 4;
     }
     if (LittleEndian::IsLittleEndian() && s2 <= s2_limit - 4) {
-        uint32 x = UNALIGNED_LOAD32(s2) ^ UNALIGNED_LOAD32(s1 + matched);
+        uint32_t x = UNALIGNED_LOAD32(s2) ^ UNALIGNED_LOAD32(s1 + matched);
         int matching_bits = Bits::FindLSBSetNonZero(x);
         matched += matching_bits >> 3;
     } else {
@@ -149,4 +149,4 @@ static inline int FindMatchLength(const char* s1,
 }  // end namespace snappy
 }  // end namespace butil
 
-#endif  // PUBLIC_COMMON_BASE_THIRD_PARTY_SNAPPY_SNAPPY_INTERNAL_H_
+#endif  // BUTIL_THIRD_PARTY_SNAPPY_SNAPPY_INTERNAL_H_

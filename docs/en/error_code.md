@@ -1,50 +1,49 @@
-brcc use [brpc::Controller](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h) to set the parameters for RPC and fetch RPC result. `ErrorCode()` and `ErrorText()` are two methods of the Controller, which are the error code and error description of the RPC. It's accessible only after RPC finishes, otherwise the result is undefined. `ErrorText()` is defined by the base class of the Controller: `google::protobuf::RpcController`, while `ErrorCode()` is defined by `brpc::Controller`. Controller also has a `Failed()` method to tell whether RPC fails or not. The following shows the relationship among the three:
+[中文版](../cn/error_code.md)
 
--  When `Failed()` is true, `ErrorCode()` can't be 0 and `ErrorText()` is a non-empty error description
-- When `Failed()` is false, `ErrorCode()` must be 0 and `ErrorText()` is undefined (currently in brpc it will be empty, but you should not rely on this)
+brpc use [brpc::Controller](https://github.com/brpc/brpc/blob/master/src/brpc/controller.h) to set and get parameters for one RPC. `Controller::ErrorCode()` and `Controller::ErrorText()` return error code and description of the RPC respectively, only accessible after completion of the RPC, otherwise the result is undefined. `ErrorText()` is defined by the base class of the Controller: `google::protobuf::RpcController`, while `ErrorCode()` is defined by `brpc::Controller`. Controller also has a method `Failed()` to tell whether RPC fails or not. Relations between the three methods:
 
-# Set Error to RPC
+-  When `Failed()` is true, `ErrorCode()` must be non-zero and `ErrorText()` be non-empty.
+-  When `Failed()` is false, `ErrorCode()` is 0 and `ErrorText()` is undefined (it's empty in brpc currently, but you'd better not rely on this)
 
-Both client and server side have Controller object, through which you can use `setFailed()` to modify ErrorCode and ErrorText. Multiple calls to `Controller::SetFailed` leaves the last ErrorCode only, but ErrorText will be **concatenated** instead of overwriting. The framework will also add prefix to the ErrorText: the number of retry at the client side and the address information at the server side.
+# Mark RPC as failed
 
-`Controller::SetFailed()` at the client side is usually called by the framework, such as sending failure,  incomplete response, and so on. Only under some complex situation may the user set error at the client side. For example, you may need to set error to RPC if an error was found during additional check before sending.
+Both client and server in brpc have `Controller`, which can be set with `setFailed()` to modify ErrorCode and ErrorText. Multiple calls to `Controller::SetFailed` leave the last ErrorCode and **concatenate** ErrorTexts rather than leaving the last one. The framework elaborates ErrorTexts by adding extra prefixes: number of retries at client-side and address of the server at server-side.
 
-`Controller::SetFailed()` at the server-side is often called by the user in the service callback. Generally speaking when error occurs, a user calls `SetFailed()` and then releases all the resources before return. The framework will fill the error code and error message into response according to communication protocol, and then these will be received and filled into Controller at the client side so that users can fetch them after RPC completes. Note that **it's not common to print additional error log when calling  `SetFailed()` at the server side**, as logging may lead to huge lag due to heavy disk IO. An error prone client could easily slow the speed of the entire server, and thus affect other clients.  This can even become a security issue in theory. If you really want to see the error message on the server side, you can open the **-log_error_text** gflag (for online service access `/flags/log_error_text?Setvalue=true` to turn it on dynamically). The server will print the ErrorText of the Controller for each failed RPC.
+`Controller::SetFailed()` at client-side is usually called by the framework, such as sending failure,  incomplete response, and so on. Error may be set at client-side under some situations. For example, you may set error to the RPC if an additional check before sending the request is failed.
+
+`Controller::SetFailed()` at server-side is often called by the user in the service callback. Generally speaking when error occurs, users call `SetFailed()`, release all the resources, and return from the callback. The framework fills the error code and message into the response according to communication protocol. When the response is received, the error inside are set into the client-side Controller so that users can fetch them after end of RPC. Note that **server does not print errors to clients by default**, as frequent loggings may impact performance of the server significantly due to heavy disk IO. A client crazily producing errors could slow the entire server down and affect all other clients, which can even become an attacking method against the server. If you really want to see error messages on the server, turn on the gflag **-log_error_text** (modifiable at run-time), the server will log the ErrorText of corresponding Controller of each failed RPC.
 
 # Error Code in brpc
 
-All error codes in brpc are defined in [errno.proto](https://github.com/brpc/brpc/blob/master/src/brpc/errno.proto), those begin with *SYS_* come from linux system, which are exactly the same as `/usr/include/errno.h`. The reason we put it in proto is to cross language. The rest of the error codes belong to brpc itself.
+All error codes in brpc are defined in [errno.proto](https://github.com/brpc/brpc/blob/master/src/brpc/errno.proto), in which those begin with *SYS_* are defined by linux system and exactly same with the ones defined in `/usr/include/errno.h`. The reason that we put it in .proto is to cross language. The rest of the error codes are defined by brpc.
 
-You can use [berror(error_code)](https://github.com/brpc/brpc/blob/master/src/butil/errno.h) to get the error description for an error code, and `berror()` for [system errno](http://www.cplusplus.com/reference/cerrno/errno/). Note that **ErrorText() != berror(ErorCode())**, since `ErrorText()` contains more specific information. brpc includes berror by default so that you can use it in your project directly.
+[berror(error_code)](https://github.com/brpc/brpc/blob/master/src/butil/errno.h) gets description for the error code, and `berror()` gets description for current [system errno](http://www.cplusplus.com/reference/cerrno/errno/). Note that **ErrorText() != berror(ErorCode())** since `ErrorText()` contains more specific information. brpc includes berror by default so that you can use it in your project directly.
 
-The following table shows some common error codes and their description: 
+Following table shows common error codes and their descriptions: 
 
-| Error Code     | Value | Retry | Situation                                | Log Message                              |
+| Error Code     | Value | Retry | Description                              | Logging message                          |
 | -------------- | ----- | ----- | ---------------------------------------- | ---------------------------------------- |
-| EAGAIN         | 11    | Yes   | Too many requests at the same time. Hardly happens as it's a soft limit. | Resource temporarily unavailable         |
+| EAGAIN         | 11    | Yes   | Too many requests at the same time, hardly happening as it's a soft limit. | Resource temporarily unavailable         |
 | ETIMEDOUT      | 110   | Yes   | Connection timeout.                      | Connection timed out                     |
-| ENOSERVICE     | 1001  | No    | Can't locate the service. Hardly happens, usually ENOMETHOD instead |                                          |
-| ENOMETHOD      | 1002  | No    | Can't locate the target method.          | Fail to find method=...                  |
-| EREQUEST       | 1003  | No    | request格式或序列化错误，client端和server端都可能设置     | Missing required fields in request: ...  |
-|                |       |       |                                          | Fail to parse request message, ...       |
-|                |       |       |                                          | Bad request                              |
-| EAUTH          | 1004  | No    | Authentication failed                    | Authentication failed                    |
-| ETOOMANYFAILS  | 1005  | No    | Too many sub channel failure inside a ParallelChannel. | %d/%d channels failed, fail_limit=%d     |
-| EBACKUPREQUEST | 1007  | Yes   | Trigger the backup request. Can be seen from /rpcz | reached backup timeout=%dms              |
-| ERPCTIMEDOUT   | 1008  | No    | RPC timeout.                             | reached timeout=%dms                     |
-| EFAILEDSOCKET  | 1009  | Yes   | Connection broken during RPC             | The socket was SetFailed                 |
-| EHTTP          | 1010  | No    | Non 2xx status code of a HTTP request. No retry by default, but it can be changed through RetryPolicy. | Bad http call                            |
-| EOVERCROWDED   | 1011  | Yes   | Too many buffering message at the sender side. Usually caused by lots of concurrent asynchronous requests. Can be tuned by `-socket_max_unwritten_bytes`, default is 8MB. | The server is overcrowded                |
-| EINTERNAL      | 2001  | No    | Default error code when calling `Controller::SetFailed` without one. | Internal Server Error                    |
-| ERESPONSE      | 2002  | No    | Parsing/Format error in response. Could be set both by the client and the server. | Missing required fields in response: ... |
-|                |       |       |                                          | Fail to parse response message,          |
-|                |       |       |                                          | Bad response                             |
-| ELOGOFF        | 2003  | Yes   | Server has already been stopped          | Server is going to quit                  |
-| ELIMIT         | 2004  | Yes   | The number of concurrent processing requests exceeds `ServerOptions.max_concurrency` | Reached server's limit=%d on concurrent requests, |
+| EHOSTDOWN      | 112   | Yes   | No available server to send request. The servers may be stopped or stopping(returning ELOGOFF). | "Fail to select server from …"  "Not connected to … yet" |
+| ENOSERVICE     | 1001  | No    | Can't locate the service, hardly happening and usually being ENOMETHOD instead |                                          |
+| ENOMETHOD      | 1002  | No    | Can't locate the method.                 | Misc forms, common ones are "Fail to find method=…" |
+| EREQUEST       | 1003  | No    | fail to serialize the request, may be set on either client-side or server-side | Misc forms: "Missing required fields in request: …" "Fail to parse request message, …"  "Bad request" |
+| EAUTH          | 1004  | No    | Authentication failed                    | "Authentication failed"                  |
+| ETOOMANYFAILS  | 1005  | No    | Too many sub-channel failures inside a ParallelChannel | "%d/%d channels failed, fail_limit=%d"   |
+| EBACKUPREQUEST | 1007  | Yes   | Set when backup requests are triggered. Not returned by ErrorCode() directly, viewable from spans in /rpcz | "reached backup timeout=%dms"            |
+| ERPCTIMEDOUT   | 1008  | No    | RPC timeout.                             | "reached timeout=%dms"                   |
+| EFAILEDSOCKET  | 1009  | Yes   | The connection is broken during RPC      | "The socket was SetFailed"               |
+| EHTTP          | 1010  | No    | HTTP responses with non 2xx status code are treated as failure and set with this code. No retry by default, changeable by customizing RetryPolicy. | Bad http call                            |
+| EOVERCROWDED   | 1011  | Yes   | Too many messages to buffer at the sender side. Usually caused by lots of concurrent asynchronous requests. Modifiable by `-socket_max_unwritten_bytes`, 8MB by default. | The server is overcrowded                |
+| EINTERNAL      | 2001  | No    | The default error for `Controller::SetFailed` without specifying a one. | Internal Server Error                    |
+| ERESPONSE      | 2002  | No    | fail to serialize the response, may be set on either client-side or server-side | Misc forms: "Missing required fields in response: …" "Fail to parse response message, " "Bad response" |
+| ELOGOFF        | 2003  | Yes   | Server has been stopped                  | "Server is going to quit"                |
+| ELIMIT         | 2004  | Yes   | Number of requests being  processed concurrently exceeds `ServerOptions.max_concurrency` | "Reached server's limit=%d on concurrent requests" |
 
-# User-Defined Error Code
+# User-defined Error Code
 
-In C/C++, you can use macro, or constant or protobuf enum to define your own ErrorCode:
+In C/C++, error code can be defined in macros, constants or enums:
 
 ```c++
 #define ESTOP -114                // C/C++
@@ -52,39 +51,37 @@ static const int EMYERROR = 30;   // C/C++
 const int EMYERROR2 = -31;        // C++ only
 ```
 
-If you need to get the error description through berror, you can register it in the global scope of your c/cpp file by:
-
-`BAIDU_REGISTER_ERRNO(error_code, description)`
+If you need to get the error description through `berror`, register it in the global scope of your c/cpp file by `BAIDU_REGISTER_ERRNO(error_code, description)`, for example:
 
 ```c++
 BAIDU_REGISTER_ERRNO(ESTOP, "the thread is stopping")
 BAIDU_REGISTER_ERRNO(EMYERROR, "my error")
 ```
 
-Note that `strerror/strerror_r` can't recognize error codes defined by `BAIDU_REGISTER_ERRNO`. Neither can `%m` inside `printf`. You must use `%s` along with `berror`:
+Note that `strerror` and `strerror_r` do not recognize error codes defined by `BAIDU_REGISTER_ERRNO`. Neither does the `%m` used in `printf`. You must use `%s` paired with `berror`:
 
 ```c++
 errno = ESTOP;
-printf("Describe errno: %m\n");                               // [Wrong] Describe errno: Unknown error -114
-printf("Describe errno: %s\n", strerror_r(errno, NULL, 0));   // [Wrong] Describe errno: Unknown error -114
-printf("Describe errno: %s\n", berror());                     // [Correct] Describe errno: the thread is stopping
-printf("Describe errno: %s\n", berror(errno));                // [Correct] Describe errno: the thread is stopping
+printf("Describe errno: %m\n");                              // [Wrong] Describe errno: Unknown error -114
+printf("Describe errno: %s\n", strerror_r(errno, NULL, 0));  // [Wrong] Describe errno: Unknown error -114
+printf("Describe errno: %s\n", berror());                    // [Correct] Describe errno: the thread is stopping
+printf("Describe errno: %s\n", berror(errno));               // [Correct] Describe errno: the thread is stopping
 ```
 
-When an error code has already been registered, it will cause a link error if it's defined in C++:
+When the registration of an error code is duplicated, a linking error is generated provided it's defined in C++:
 
 ```
 redefinition of `class BaiduErrnoHelper<30>'
 ```
 
-Otherwise, the program will abort once starts:
+Or the program aborts before start:
 
 ```
 Fail to define EMYERROR(30) which is already defined as `Read-only file system', abort
 ```
 
-In general this has nothing to do with the RPC framework unless you want to pass ErrorCode through it. It's a natural scenario but you have to make sure that different modules have the same understanding of the same ErrorCode. Otherwise, the result is unpredictable if two modules interpret an error code differently. In order to prevent this from happening, you'd better follow these:
+You have to make sure that different modules have same understandings on same ErrorCode. Otherwise, interactions between two modules that interpret an error code differently may be undefined. To prevent this from happening, you'd better follow these:
 
-- Prefer system error codes since their meanings are fixed.
-- Use the same code for error definitions among multiple modules to prevent inconsistencies during later modifications.
-- Use `BAIDU_REGISTER_ERRNO` to describe a new error code to ensure that the same error code is mutually exclusive inside a process.
+- Prefer system error codes which have fixed values and meanings, generally.
+- Share code on error definitions between multiple modules to prevent inconsistencies after modifications.
+- Use `BAIDU_REGISTER_ERRNO` to describe new error code to ensure that same error code is defined only once inside a process.

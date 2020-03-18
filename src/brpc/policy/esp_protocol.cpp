@@ -1,16 +1,19 @@
-// Copyright (c) 2016 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #include <google/protobuf/descriptor.h>         // MethodDescriptor
 #include <google/protobuf/message.h>            // Message
@@ -92,7 +95,7 @@ void PackEspRequest(butil::IOBuf* packet_buf,
                     const Authenticator* auth) {
 
     ControllerPrivateAccessor accessor(cntl);
-    if (accessor.connection_type() == CONNECTION_TYPE_SINGLE) {
+    if (cntl->connection_type() == CONNECTION_TYPE_SINGLE) {
         return cntl->SetFailed(
             EINVAL, "esp protocol can't work with CONNECTION_TYPE_SINGLE");
     }
@@ -114,7 +117,6 @@ void PackEspRequest(butil::IOBuf* packet_buf,
 }
 
 void ProcessEspResponse(InputMessageBase* msg_base) {
-
     const int64_t start_parse_us = butil::cpuwide_time_us();
     DestroyingPtr<MostCommonMessage> msg(static_cast<MostCommonMessage*>(msg_base));
     

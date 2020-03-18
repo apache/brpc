@@ -5,16 +5,31 @@
 #include "butil/file_util.h"
 
 #include <errno.h>
-// NOTE(gejun): Missing linux/magic.h in some machines of Baidu. Since the file
-// only contains macro constants which is unlikely to be changed in future, we
-// copy the header locally.
-#include "butil/linux_magic.h"
 #include <sys/vfs.h>
 
 #include "butil/files/file_path.h"
 
-// Make sure some of the newer macros from magic.h are defined.
-// TODO(mostynb@opera.com): remove this after 2014.
+#ifndef EXT2_SUPER_MAGIC
+#define EXT2_SUPER_MAGIC 0xEF53
+#endif
+#ifndef MSDOS_SUPER_MAGIC
+#define MSDOS_SUPER_MAGIC 0x4d44		/* MD */
+#endif
+#ifndef REISERFS_SUPER_MAGIC
+#define REISERFS_SUPER_MAGIC 0x52654973	/* used by gcc */
+#endif
+#ifndef NFS_SUPER_MAGIC
+#define NFS_SUPER_MAGIC 0x6969
+#endif
+#ifndef SMB_SUPER_MAGIC
+#define SMB_SUPER_MAGIC 0x517B
+#endif
+#ifndef CODA_SUPER_MAGIC
+#define CODA_SUPER_MAGIC 0x73757245
+#endif
+#ifndef CGROUP_SUPER_MAGIC
+#define CGROUP_SUPER_MAGIC 0x27e0eb
+#endif
 #ifndef BTRFS_SUPER_MAGIC
 #define BTRFS_SUPER_MAGIC 0x9123683E
 #endif

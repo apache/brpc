@@ -8,7 +8,7 @@
 // of hash_map. Allows all platforms to use |butil::hash_map| and
 // |butil::hash_set|.
 //  eg:
-//   butil::hash_map<int> my_map;
+//   butil::hash_map<int, std::string> my_map;
 //   butil::hash_set<int> my_set;
 //
 // NOTE: It is an explicit non-goal of this class to provide a generic hash
@@ -18,26 +18,27 @@
 // because identity hashes are not desirable for all types that might show up
 // in containers as pointers.
 
-#ifndef BASE_CONTAINERS_HASH_TABLES_H_
-#define BASE_CONTAINERS_HASH_TABLES_H_
+#ifndef BUTIL_CONTAINERS_HASH_TABLES_H_
+#define BUTIL_CONTAINERS_HASH_TABLES_H_
 
 #include <utility>
 
 #include "butil/basictypes.h"
 #include "butil/strings/string16.h"
 #include "butil/build_config.h"
+#include "butil/third_party/murmurhash3/murmurhash3.h"   // fmix64
 
 #if defined(COMPILER_MSVC)
 #include <hash_map>
 #include <hash_set>
 
-#define BASE_HASH_NAMESPACE stdext
+#define BUTIL_HASH_NAMESPACE stdext
 
 #elif defined(COMPILER_GCC)
 #if defined(OS_ANDROID)
-#define BASE_HASH_NAMESPACE std
+#define BUTIL_HASH_NAMESPACE std
 #else
-#define BASE_HASH_NAMESPACE __gnu_cxx
+#define BUTIL_HASH_NAMESPACE __gnu_cxx
 #endif
 
 // This is a hack to disable the gcc 4.4 warning about hash_map and hash_set
@@ -63,7 +64,7 @@
 #undef CHROME_OLD__DEPRECATED
 #endif
 
-namespace BASE_HASH_NAMESPACE {
+namespace BUTIL_HASH_NAMESPACE {
 
 #if !defined(OS_ANDROID)
 // The GNU C++ library provides identity hash functions for many integral types,
@@ -107,41 +108,23 @@ DEFINE_STRING_HASH(butil::string16);
 
 #undef DEFINE_STRING_HASH
 
-}  // namespace BASE_HASH_NAMESPACE
+}  // namespace BUTIL_HASH_NAMESPACE
 
 #else  // COMPILER
-#error define BASE_HASH_NAMESPACE for your compiler
+#error define BUTIL_HASH_NAMESPACE for your compiler
 #endif  // COMPILER
 
 namespace butil {
-using BASE_HASH_NAMESPACE::hash_map;
-using BASE_HASH_NAMESPACE::hash_multimap;
-using BASE_HASH_NAMESPACE::hash_multiset;
-using BASE_HASH_NAMESPACE::hash_set;
+using BUTIL_HASH_NAMESPACE::hash_map;
+using BUTIL_HASH_NAMESPACE::hash_multimap;
+using BUTIL_HASH_NAMESPACE::hash_multiset;
+using BUTIL_HASH_NAMESPACE::hash_set;
 
 // Implement hashing for pairs of at-most 32 bit integer values.
-// When size_t is 32 bits, we turn the 64-bit hash code into 32 bits by using
-// multiply-add hashing. This algorithm, as described in
-// Theorem 4.3.3 of the thesis "Über die Komplexität der Multiplikation in
-// eingeschränkten Branchingprogrammmodellen" by Woelfel, is:
-//
-//   h32(x32, y32) = (h64(x32, y32) * rand_odd64 + rand16 * 2^16) % 2^64 / 2^32
-//
-// Contact danakj@chromium.org for any questions.
 inline std::size_t HashInts32(uint32_t value1, uint32_t value2) {
   uint64_t value1_64 = value1;
   uint64_t hash64 = (value1_64 << 32) | value2;
-
-  if (sizeof(std::size_t) >= sizeof(uint64_t))
-    return static_cast<std::size_t>(hash64);
-
-  uint64_t odd_random = 481046412LL << 32 | 1025306955LL;
-  uint32_t shift_random = 10121U << 16;
-
-  hash64 = hash64 * odd_random + shift_random;
-  std::size_t high_bits = static_cast<std::size_t>(
-      hash64 >> (8 * (sizeof(uint64_t) - sizeof(std::size_t))));
-  return high_bits;
+  return static_cast<size_t>(fmix64(hash64));
 }
 
 // Implement hashing for pairs of up-to 64-bit integer values.
@@ -232,7 +215,7 @@ DEFINE_64BIT_PAIR_HASH(uint64_t, uint64_t);
 #undef DEFINE_64BIT_PAIR_HASH
 }  // namespace butil
 
-namespace BASE_HASH_NAMESPACE {
+namespace BUTIL_HASH_NAMESPACE {
 
 // Implement methods for hashing a pair of integers, so they can be used as
 // keys in STL containers.
@@ -274,4 +257,4 @@ struct hash<Type*> {
 #undef DEFINE_PAIR_HASH_FUNCTION_START
 #undef DEFINE_PAIR_HASH_FUNCTION_END
 
-#endif  // BASE_CONTAINERS_HASH_TABLES_H_
+#endif  // BUTIL_CONTAINERS_HASH_TABLES_H_

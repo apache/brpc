@@ -26,7 +26,7 @@
 #pragma intrinsic(_BitScanReverse64)
 #endif
 
-RAPIDJSON_NAMESPACE_BEGIN
+BUTIL_RAPIDJSON_NAMESPACE_BEGIN
 namespace internal {
 
 #ifdef __GNUC__
@@ -242,6 +242,6 @@ RAPIDJSON_DIAG_POP
 #endif
 
 } // namespace internal
-RAPIDJSON_NAMESPACE_END
+BUTIL_RAPIDJSON_NAMESPACE_END
 
 #endif // RAPIDJSON_DIYFP_H_

@@ -1,25 +1,27 @@
-[memcached](http://memcached.org/) is a common cache service today. In order to speed up the access to memcached and make full use of bthread concurrency, brpc directly support the memcached protocol. For examples please refer to: [example/memcache_c++](https://github.com/brpc/brpc/tree/master/example/memcache_c++/)
+[中文版](../cn/memcache_client.md)
 
-**NOTE**: brpc only supports the binary protocol of memcache rather than the textual one before version 1.3 since there is little benefit to do that now. If your memcached has a version earlier than 1.3, please upgrade to the latest.
+[memcached](http://memcached.org/) is a common caching service. In order to access memcached more conveniently and make full use of bthread's capability of concurrency, brpc directly supports the memcached protocol. Check [example/memcache_c++](https://github.com/brpc/brpc/tree/master/example/memcache_c++/) for an example.
 
-Compared to [libmemcached](http://libmemcached.org/libMemcached.html) (the official client), we have advantages in:
+**NOTE**: brpc only supports the binary protocol of memcache. There's little benefit to support the textual protocol which is replaced since memcached 1.3. If your memcached is older than 1.3, upgrade to a newer version.
 
-- Thread safety. No need to set up a separate client for each thread.
-- Support access patterns of synchronous, asynchronous, batch synchronous, batch asynchronous. Can be used with ParallelChannel to enable access combinations.
-- Support various [connection types](client.md#Connection Type). Support timeout, backup request, cancellation, tracing, built-in services, and other basic benefits of the RPC framework.
-- Have the concept of request/response while libmemcached haven't, where users have to do extra maintenance since the received message doesn't have a relationship with the sent message.
+Advantages compared to [libmemcached](http://libmemcached.org/libMemcached.html) (the official client):
 
-The current implementation takes full advantage of the RPC concurrency mechanism to avoid copying as much as possible. A single client can easily reaches the limit of a memcached instance (version 1.4.15) on the same machine: 90,000 QPS for single connection, 330,000 QPS for multiple connections. In most cases, brpc should be able to make full use of memcached's performance.
+- Thread safety. No need to set up separate clients for each thread.
+- Support synchronous, asynchronous, semi-synchronous accesses etc. Support [ParallelChannel etc](combo_channel.md) to define access patterns declaratively.
+- Support various [connection types](client.md#connection-type). Support timeout, backup request, cancellation, tracing, built-in services, and other benefits offered by brpc.
+- Have the concept of requests and responses while libmemcached don't. Users have to do extra bookkeepings to associate received messages with sent messages, which is not trivial.
 
-# Request to single memcached
+The current implementation takes full advantage of the RPC concurrency mechanism and avoids copying as much as possible. A single client can easily pushes a memcached instance (version 1.4.15) on the same machine to its limit: 90,000 QPS for single connection, 330,000 QPS for multiple connections. In most cases, brpc is able to make full use of memcached's capabilities.
 
-Create a `Channel` to access memcached:
+# Request a memcached server
+
+Create a `Channel` for accessing memcached:
 
 ```c++
 #include <brpc/memcache.h>
 #include <brpc/channel.h>
  
-ChannelOptions options;
+brpc::ChannelOptions options;
 options.protocol = brpc::PROTOCOL_MEMCACHE;
 if (channel.Init("0.0.0.0:11211", &options) != 0) {  // 11211 is the default port for memcached
    LOG(FATAL) << "Fail to init channel to memcached";
@@ -28,7 +30,7 @@ if (channel.Init("0.0.0.0:11211", &options) != 0) {  // 11211 is the default por
 ... 
 ```
 
-Set data to memcached
+Following example tries to set data to memcached:
 
 ```c++
 // Set key="hello" value="world" flags=0xdeadbeef, expire in 10s, and ignore cas
@@ -51,14 +53,14 @@ if (!response.PopSet(NULL)) {
 ...
 ```
 
-There are some notes on the above code:
+Notes on above code:
 
-- The class of the request must be `MemcacheRequest`, and `MemcacheResponse` for the response, otherwise `CallMethod` will fail. `stub` is not necessary. Just call `channel.CallMethod` with `method` set to NULL.
-- Call `request.XXX()` to add operation, where `XXX=Set` in this case. Multiple operations on a single request will be sent to memcached in batch (often referred to as pipeline mode).
-- call `response.PopXXX()` pop-up operation results, where `XXX=Set` in this case. Return true on success, and false on failure, in which case use `response.LastError()` to get the error message. Operation `XXX` must correspond to request, otherwise it will fail. In the above example, a `PopGet` will fail with the error message of "not a GET response".
-- The results of `Pop` are independent of RPC result. Even if `Set` fails, RPC may still be successful. RPC failure means things like broken connection, timeout, and so on . *Can not put a value into memcached* is  still a successful RPC. AS a reulst, in order to make sure success of the entire process, you need to not only determine the success of RPC, but also the success of `PopXXX`.
+- The class of the request must be `MemcacheRequest`, response must be `MemcacheResponse`, otherwise `CallMethod` fails. `stub` is not necessary, just call `channel.CallMethod` with `method` to NULL.
+- Call `request.XXX()` to add an operation, where `XXX` is `Set` in this example. Multiple operations inside a request are sent to a memcached server together (often referred to as "pipeline mode").
+- call `response.PopXXX()` to pop result of an operation from the response, where `XXX` is `Set` in this example. true is returned on success, and false otherwise in which case use `response.LastError()` to get the error message. `XXX` must match the corresponding operation in the request, otherwise the pop is rejected. In above example, a `PopGet` would fail with the error message of "not a GET response".
+- Results of `Pop` are independent from the RPC result. Even if "a value cannot be put into the memcached", the RPC may still be successful. RPC failure means things like broken connection, timeout etc. If the business logic requires the memcache operations to be succesful, you should test successfulness of both RPC and `PopXXX`.
 
-Currently our supported operations are:
+Supported operations currently:
 
 ```c++
 bool Set(const Slice& key, const Slice& value, uint32_t flags, uint32_t exptime, uint64_t cas_value);
@@ -74,7 +76,7 @@ bool Touch(const Slice& key, uint32_t exptime);
 bool Version();
 ```
 
-And the corresponding reply operations:
+Corresponding operations in replies:
 
 ```c++
 // Call LastError() of the response to check the error text when any following operation fails.
@@ -93,8 +95,8 @@ bool PopTouch();
 bool PopVersion(std::string* version);
 ```
 
-# Access to memcached cluster
+# Request a memcached cluster
 
-If you want to access a memcached cluster mounted on some naming service, you should create a `Channel` that uses the c_md5 as the load balancing algorithm and make sure each `MemcacheRequest` contains only one operation or all operations fall on the same server. Since under the current implementation, multiple operations inside a single request will always be sent to the same server. For example, if a request contains a number of Get while the corresponding keys distribute in different servers, the result must be wrong, in which case you have to separate the request according to key distribution.
+Create a `Channel` using the `c_md5` as the load balancing algorithm to access a memcached cluster mounted under a naming service. Note that each `MemcacheRequest` should contain only one operation or all operations have the same key. Under current implementation, multiple operations inside a single request are always sent to a same server. If the keys are located on different servers, the result must be wrong. In which case, you have to divide the request into multilple ones with one operation each.
 
-Another choice is to follow the common [twemproxy](https://github.com/twitter/twemproxy) style. This allows the client can still access the cluster just like a single point, although it requires deployment of the proxy and the additional latency.
+Another choice is to use the common [twemproxy](https://github.com/twitter/twemproxy) solution, which makes clients access the cluster just like accessing a single server, although the solution needs to deploy proxies and adds more latency.

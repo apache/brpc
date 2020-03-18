@@ -62,8 +62,8 @@
 // For a discussion of the many very subtle implementation details, see the FAQ
 // at the end of condition_variable_win.cc.
 
-#ifndef BASE_SYNCHRONIZATION_CONDITION_VARIABLE_H_
-#define BASE_SYNCHRONIZATION_CONDITION_VARIABLE_H_
+#ifndef BUTIL_SYNCHRONIZATION_CONDITION_VARIABLE_H_
+#define BUTIL_SYNCHRONIZATION_CONDITION_VARIABLE_H_
 
 #include "butil/build_config.h"
 
@@ -80,7 +80,7 @@ namespace butil {
 class ConditionVarImpl;
 class TimeDelta;
 
-class BASE_EXPORT ConditionVariable {
+class BUTIL_EXPORT ConditionVariable {
  public:
   // Construct a cv for use with ONLY one user lock.
   explicit ConditionVariable(Mutex* user_lock);
@@ -111,4 +111,4 @@ class BASE_EXPORT ConditionVariable {
 
 }  // namespace butil
 
-#endif  // BASE_SYNCHRONIZATION_CONDITION_VARIABLE_H_
+#endif  // BUTIL_SYNCHRONIZATION_CONDITION_VARIABLE_H_

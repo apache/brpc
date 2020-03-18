@@ -1,3 +1,20 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 syntax="proto2";
 import "google/protobuf/descriptor.proto";
 
@@ -25,26 +42,28 @@ enum ProtocolType {
     PROTOCOL_HULU_PBRPC = 3;
     PROTOCOL_SOFA_PBRPC = 4;
     PROTOCOL_RTMP = 5;
-    PROTOCOL_HTTP = 6;
-    PROTOCOL_PUBLIC_PBRPC = 7;
-    PROTOCOL_NOVA_PBRPC = 8;
-    PROTOCOL_NSHEAD_CLIENT = 9;        // implemented in baidu-rpc-ub
-    PROTOCOL_NSHEAD = 10;
-    PROTOCOL_HADOOP_RPC = 11;
-    PROTOCOL_HADOOP_SERVER_RPC = 12;
-    PROTOCOL_MONGO = 13;               // server side only
-    PROTOCOL_UBRPC_COMPACK = 14;
-    PROTOCOL_DIDX_CLIENT = 15;         // Client side only
-    PROTOCOL_REDIS = 16;               // Client side only
-    PROTOCOL_MEMCACHE = 17;            // Client side only
-    PROTOCOL_ITP = 18;
-    PROTOCOL_NSHEAD_MCPACK = 19;
-    PROTOCOL_DISP_IDL = 20;            // Client side only
-    PROTOCOL_ERSDA_CLIENT = 21;        // Client side only
-    PROTOCOL_UBRPC_MCPACK2 = 22;       // Client side only
+    PROTOCOL_THRIFT = 6;
+    PROTOCOL_HTTP = 7;
+    PROTOCOL_PUBLIC_PBRPC = 8;
+    PROTOCOL_NOVA_PBRPC = 9;
+    PROTOCOL_REDIS = 10;
+    PROTOCOL_NSHEAD_CLIENT = 11;       // implemented in baidu-rpc-ub
+    PROTOCOL_NSHEAD = 12;
+    PROTOCOL_HADOOP_RPC = 13;
+    PROTOCOL_HADOOP_SERVER_RPC = 14;
+    PROTOCOL_MONGO = 15;               // server side only
+    PROTOCOL_UBRPC_COMPACK = 16;
+    PROTOCOL_DIDX_CLIENT = 17;         // Client side only
+    PROTOCOL_MEMCACHE = 18;            // Client side only
+    PROTOCOL_ITP = 19;
+    PROTOCOL_NSHEAD_MCPACK = 20;
+    PROTOCOL_DISP_IDL = 21;            // Client side only
+    PROTOCOL_ERSDA_CLIENT = 22;        // Client side only
+    PROTOCOL_UBRPC_MCPACK2 = 23;       // Client side only
     // Reserve special protocol for cds-agent, which depends on FIFO right now
-    PROTOCOL_CDS_AGENT = 23;           // Client side only
-    PROTOCOL_ESP = 24;           // Client side only
+    PROTOCOL_CDS_AGENT = 24;           // Client side only
+    PROTOCOL_ESP = 25;                 // Client side only
+    PROTOCOL_H2 = 26;
 }
 
 enum CompressType {

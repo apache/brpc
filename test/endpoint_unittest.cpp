@@ -1,12 +1,25 @@
-// Copyright (c) 2014 Baidu, Inc.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Author: Ge,Jun (gejun@baidu.com)
-// Date: 2010-12-04 11:59
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 #include <gtest/gtest.h>
 #include "butil/errno.h"
 #include "butil/endpoint.h"
 #include "butil/logging.h"
+#include "butil/containers/flat_map.h"
 
 namespace {
 
@@ -109,4 +122,30 @@ TEST(EndPointTest, hash_table) {
     ASSERT_EQ(2u, m.size());
 }
 
+TEST(EndPointTest, flat_map) {
+    butil::FlatMap<butil::EndPoint, int> m;
+    ASSERT_EQ(0, m.init(1024));
+    uint32_t port = 8088;
+
+    butil::EndPoint ep1(butil::IP_ANY, port);
+    butil::EndPoint ep2(butil::IP_ANY, port);
+    ++m[ep1];
+    ++m[ep2];
+    ASSERT_EQ(1u, m.size());
+
+    butil::ip_t ip_addr;
+    butil::str2ip("10.10.10.10", &ip_addr);
+    int ip = butil::ip2int(ip_addr);
+
+    for (int i = 0; i < 1023; ++i) {
+        butil::EndPoint ep(butil::int2ip(++ip), port);
+        ++m[ep];
+    }
+
+    butil::BucketInfo info = m.bucket_info();
+    LOG(INFO) << "bucket info max long=" << info.longest_length
+        << " avg=" << info.average_length << std::endl;
+    ASSERT_LT(info.longest_length, 32ul) << "detect hash collision and it's too large.";
 }
+
+} // end of namespace

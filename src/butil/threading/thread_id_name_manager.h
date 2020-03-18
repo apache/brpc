@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_THREADING_THREAD_ID_NAME_MANAGER_H_
-#define BASE_THREADING_THREAD_ID_NAME_MANAGER_H_
+#ifndef BUTIL_THREADING_THREAD_ID_NAME_MANAGER_H_
+#define BUTIL_THREADING_THREAD_ID_NAME_MANAGER_H_
 
 #include <map>
 #include <string>
@@ -17,7 +17,7 @@ template <typename T> struct DefaultSingletonTraits;
 
 namespace butil {
 
-class BASE_EXPORT ThreadIdNameManager {
+class BUTIL_EXPORT ThreadIdNameManager {
  public:
   static ThreadIdNameManager* GetInstance();
 
@@ -64,4 +64,4 @@ class BASE_EXPORT ThreadIdNameManager {
 
 }  // namespace butil
 
-#endif  // BASE_THREADING_THREAD_ID_NAME_MANAGER_H_
+#endif  // BUTIL_THREADING_THREAD_ID_NAME_MANAGER_H_

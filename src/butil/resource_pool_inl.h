@@ -1,23 +1,26 @@
-// bthread - A M:N threading library to make applications more concurrent.
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
+// bthread - A M:N threading library to make applications more concurrent.
+
 // Date: Sun Jul 13 15:04:18 CST 2014
 
-#ifndef BASE_RESOURCE_POOL_INL_H
-#define BASE_RESOURCE_POOL_INL_H
+#ifndef BUTIL_RESOURCE_POOL_INL_H
+#define BUTIL_RESOURCE_POOL_INL_H
 
 #include <iostream>                      // std::ostream
 #include <pthread.h>                     // pthread_mutex_t
@@ -28,7 +31,7 @@
 #include "butil/thread_local.h"           // thread_atexit
 #include <vector>
 
-#ifdef BASE_RESOURCE_POOL_NEED_FREE_ITEM_NUM
+#ifdef BUTIL_RESOURCE_POOL_NEED_FREE_ITEM_NUM
 #define BAIDU_RESOURCE_POOL_FREE_ITEM_NUM_ADD1                \
     (_global_nfree.fetch_add(1, butil::memory_order_relaxed))
 #define BAIDU_RESOURCE_POOL_FREE_ITEM_NUM_SUB1                \
@@ -75,7 +78,7 @@ struct ResourcePoolInfo {
     size_t block_item_num;
     size_t free_chunk_item_num;
     size_t total_size;
-#ifdef BASE_RESOURCE_POOL_NEED_FREE_ITEM_NUM
+#ifdef BUTIL_RESOURCE_POOL_NEED_FREE_ITEM_NUM
     size_t free_item_num;
 #endif
 };
@@ -331,7 +334,7 @@ public:
         info.item_num = 0;
         info.free_chunk_item_num = free_chunk_nitem();
         info.block_item_num = BLOCK_NITEM;
-#ifdef BASE_RESOURCE_POOL_NEED_FREE_ITEM_NUM
+#ifdef BUTIL_RESOURCE_POOL_NEED_FREE_ITEM_NUM
         info.free_item_num = _global_nfree.load(butil::memory_order_relaxed);
 #endif
 
@@ -548,7 +551,7 @@ private:
     std::vector<DynamicFreeChunk*> _free_chunks;
     pthread_mutex_t _free_chunks_mutex;
 
-#ifdef BASE_RESOURCE_POOL_NEED_FREE_ITEM_NUM
+#ifdef BUTIL_RESOURCE_POOL_NEED_FREE_ITEM_NUM
     static butil::static_atomic<size_t> _global_nfree;
 #endif
 };
@@ -564,16 +567,16 @@ ResourcePool<T>::_local_pool = NULL;
 
 template <typename T>
 butil::static_atomic<ResourcePool<T>*> ResourcePool<T>::_singleton =
-    BASE_STATIC_ATOMIC_INIT(NULL);
+    BUTIL_STATIC_ATOMIC_INIT(NULL);
 
 template <typename T>
 pthread_mutex_t ResourcePool<T>::_singleton_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 template <typename T>
-butil::static_atomic<long> ResourcePool<T>::_nlocal = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<long> ResourcePool<T>::_nlocal = BUTIL_STATIC_ATOMIC_INIT(0);
 
 template <typename T>
-butil::static_atomic<size_t> ResourcePool<T>::_ngroup = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<size_t> ResourcePool<T>::_ngroup = BUTIL_STATIC_ATOMIC_INIT(0);
 
 template <typename T>
 pthread_mutex_t ResourcePool<T>::_block_group_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -586,9 +589,9 @@ template <typename T>
 butil::static_atomic<typename ResourcePool<T>::BlockGroup*>
 ResourcePool<T>::_block_groups[RP_MAX_BLOCK_NGROUP] = {};
 
-#ifdef BASE_RESOURCE_POOL_NEED_FREE_ITEM_NUM
+#ifdef BUTIL_RESOURCE_POOL_NEED_FREE_ITEM_NUM
 template <typename T>
-butil::static_atomic<size_t> ResourcePool<T>::_global_nfree = BASE_STATIC_ATOMIC_INIT(0);
+butil::static_atomic<size_t> ResourcePool<T>::_global_nfree = BUTIL_STATIC_ATOMIC_INIT(0);
 #endif
 
 template <typename T>
@@ -617,7 +620,7 @@ inline std::ostream& operator<<(std::ostream& os,
               << "\nblock_item_num: " << info.block_item_num
               << "\nfree_chunk_item_num: " << info.free_chunk_item_num
               << "\ntotal_size: " << info.total_size;
-#ifdef BASE_RESOURCE_POOL_NEED_FREE_ITEM_NUM
+#ifdef BUTIL_RESOURCE_POOL_NEED_FREE_ITEM_NUM
               << "\nfree_num: " << info.free_item_num
 #endif
            ;
@@ -625,4 +628,4 @@ inline std::ostream& operator<<(std::ostream& os,
 
 }  // namespace butil
 
-#endif  // BASE_RESOURCE_POOL_INL_H
+#endif  // BUTIL_RESOURCE_POOL_INL_H

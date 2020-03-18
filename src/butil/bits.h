@@ -4,8 +4,8 @@
 
 // This file defines some bit utilities.
 
-#ifndef BASE_BITS_H_
-#define BASE_BITS_H_
+#ifndef BUTIL_BITS_H_
+#define BUTIL_BITS_H_
 
 #include "butil/basictypes.h"
 #include "butil/logging.h"
@@ -44,4 +44,4 @@ inline int Log2Ceiling(uint32_t n) {
 }  // namespace bits
 }  // namespace butil
 
-#endif  // BASE_BITS_H_
+#endif  // BUTIL_BITS_H_

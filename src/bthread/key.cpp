@@ -1,19 +1,22 @@
-// bthread - A M:N threading library to make applications more concurrent.
-// Copyright (c) 2014 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
+// bthread - A M:N threading library to make applications more concurrent.
+
 // Date: Sun Aug  3 12:46:15 CST 2014
 
 #include <pthread.h>
@@ -66,8 +69,8 @@ static size_t nkey = 0;
 static uint32_t s_free_keys[KEYS_MAX];
 
 // Stats.
-static butil::static_atomic<size_t> nkeytable = BASE_STATIC_ATOMIC_INIT(0);
-static butil::static_atomic<size_t> nsubkeytable = BASE_STATIC_ATOMIC_INIT(0);
+static butil::static_atomic<size_t> nkeytable = BUTIL_STATIC_ATOMIC_INIT(0);
+static butil::static_atomic<size_t> nsubkeytable = BUTIL_STATIC_ATOMIC_INIT(0);
 
 // The second-level array.
 // Align with cacheline to avoid false sharing.
@@ -233,8 +236,8 @@ void return_keytable(bthread_keytable_pool_t* pool, KeyTable* kt) {
     pool->free_keytables = kt;
 }
 
-static void cleanup_pthread() {
-    KeyTable* kt = tls_bls.keytable;
+static void cleanup_pthread(void* arg) {
+    KeyTable* kt = static_cast<KeyTable*>(arg);
     if (kt) {
         delete kt;
         // After deletion: tls may be set during deletion.
@@ -378,7 +381,7 @@ void bthread_keytable_pool_reserve(bthread_keytable_pool_t* pool,
 
 int bthread_key_create2(bthread_key_t* key,
                         void (*dtor)(void*, const void*),
-                        const void* dtor_args) __THROW {
+                        const void* dtor_args) {
     uint32_t index = 0;
     {
         BAIDU_SCOPED_LOCK(bthread::s_key_mutex);
@@ -401,7 +404,7 @@ int bthread_key_create2(bthread_key_t* key,
     return 0;
 }
 
-int bthread_key_create(bthread_key_t* key, void (*dtor)(void*)) __THROW {
+int bthread_key_create(bthread_key_t* key, void (*dtor)(void*)) {
     if (dtor == NULL) {
         return bthread_key_create2(key, NULL, NULL);
     } else {
@@ -409,7 +412,7 @@ int bthread_key_create(bthread_key_t* key, void (*dtor)(void*)) __THROW {
     }
 }
 
-int bthread_key_delete(bthread_key_t key) __THROW {
+int bthread_key_delete(bthread_key_t key) {
     if (key.index < bthread::KEYS_MAX &&
         key.version == bthread::s_key_info[key.index].version) {
         BAIDU_SCOPED_LOCK(bthread::s_key_mutex);
@@ -432,7 +435,7 @@ int bthread_key_delete(bthread_key_t key) __THROW {
 //  -> bthread_getspecific fails to borrow_keytable and returns NULL.
 //  -> bthread_setspecific succeeds to borrow_keytable and overwrites old data
 //     at the position with newly created data, the old data is leaked.
-int bthread_setspecific(bthread_key_t key, void* data) __THROW {
+int bthread_setspecific(bthread_key_t key, void* data) {
     bthread::KeyTable* kt = bthread::tls_bls.keytable;
     if (NULL == kt) {
         kt = new (std::nothrow) bthread::KeyTable;
@@ -446,13 +449,13 @@ int bthread_setspecific(bthread_key_t key, void* data) __THROW {
         }
         if (!bthread::tls_ever_created_keytable) {
             bthread::tls_ever_created_keytable = true;
-            CHECK_EQ(0, butil::thread_atexit(bthread::cleanup_pthread));
+            CHECK_EQ(0, butil::thread_atexit(bthread::cleanup_pthread, kt));
         }
     }
     return kt->set_data(key, data);
 }
 
-void* bthread_getspecific(bthread_key_t key) __THROW {
+void* bthread_getspecific(bthread_key_t key) {
     bthread::KeyTable* kt = bthread::tls_bls.keytable;
     if (kt) {
         return kt->get_data(key);
@@ -470,15 +473,11 @@ void* bthread_getspecific(bthread_key_t key) __THROW {
     return NULL;
 }
 
-void bthread_assign_data(void* data) __THROW {
+void bthread_assign_data(void* data) {
     bthread::tls_bls.assigned_data = data;
-    bthread::TaskGroup* const g = bthread::tls_task_group;
-    if (g) {
-        g->current_task()->local_storage.assigned_data = data;
-    }
 }
 
-void* bthread_get_assigned_data() __THROW {
+void* bthread_get_assigned_data() {
     return bthread::tls_bls.assigned_data;
 }
 

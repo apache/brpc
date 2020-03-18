@@ -1,20 +1,23 @@
-// Copyright (c) 2011 Baidu, Inc.
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     http://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Author: Ge,Jun (gejun@baidu.com)
 // Date: Mon. Nov 7 14:47:36 CST 2011
 
+#include "butil/build_config.h"                // OS_MACOSX
 #include <arpa/inet.h>                         // inet_pton, inet_ntop
 #include <netdb.h>                             // gethostbyname_r
 #include <unistd.h>                            // gethostname
@@ -22,11 +25,18 @@
 #include <string.h>                            // strcpy
 #include <stdio.h>                             // snprintf
 #include <stdlib.h>                            // strtol
+#include <gflags/gflags.h>
 #include "butil/fd_guard.h"                    // fd_guard
 #include "butil/endpoint.h"                    // ip_t
 #include "butil/logging.h"
 #include "butil/memory/singleton_on_pthread_once.h"
 #include "butil/strings/string_piece.h"
+#include <sys/socket.h>                        // SO_REUSEADDR SO_REUSEPORT
+
+//supported since Linux 3.9.
+DEFINE_bool(reuse_port, false, "Enable SO_REUSEPORT for all listened sockets");
+
+DEFINE_bool(reuse_addr, true, "Enable SO_REUSEADDR for all listened sockets");
 
 __BEGIN_DECLS
 int BAIDU_WEAK bthread_connect(
@@ -111,14 +121,24 @@ int hostname2ip(const char* hostname, ip_t* ip) {
         for (; isspace(*hostname); ++hostname);
     }
 
+#if defined(OS_MACOSX)
+    // gethostbyname on MAC is thread-safe (with current usage) since the
+    // returned hostent is TLS. Check following link for the ref:
+    // https://lists.apple.com/archives/darwin-dev/2006/May/msg00008.html
+    struct hostent* result = gethostbyname(hostname);
+    if (result == NULL) {
+        return -1;
+    }
+#else
     char aux_buf[1024];
     int error = 0;
     struct hostent ent;
     struct hostent* result = NULL;
     if (gethostbyname_r(hostname, &ent, aux_buf, sizeof(aux_buf),
                         &result, &error) != 0 || result == NULL) {
-        return -1; 
+        return -1;
     }
+#endif // defined(OS_MACOSX)
     // Only fetch the first address here
     bcopy((char*)result->h_addr, (char*)ip, result->h_length);
     return 0;
@@ -128,7 +148,7 @@ struct MyAddressInfo {
     char my_hostname[256];
     ip_t my_ip;
     IPStr my_ip_str;
-    
+
     MyAddressInfo() {
         my_ip = IP_ANY;
         if (gethostname(my_hostname, sizeof(my_hostname)) < 0) {
@@ -204,7 +224,7 @@ int hostname2endpoint(const char* str, EndPoint* point) {
     if (i == sizeof(buf) - 1) {
         return -1;
     }
-    
+
     buf[i] = '\0';
     if (hostname2ip(buf, &point->ip) != 0) {
         return -1;
@@ -290,29 +310,50 @@ int tcp_connect(EndPoint point, int* self_port) {
     return sockfd.release();
 }
 
-int tcp_listen(EndPoint point, bool reuse_addr) {
+int tcp_listen(EndPoint point) {
     fd_guard sockfd(socket(AF_INET, SOCK_STREAM, 0));
     if (sockfd < 0) {
         return -1;
     }
-    if (reuse_addr) {
+
+    if (FLAGS_reuse_addr) {
+#if defined(SO_REUSEADDR)
         const int on = 1;
         if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,
                        &on, sizeof(on)) != 0) {
             return -1;
         }
+#else
+        LOG(ERROR) << "Missing def of SO_REUSEADDR while -reuse_addr is on";
+        return -1;
+#endif
     }
+
+    if (FLAGS_reuse_port) {
+#if defined(SO_REUSEPORT)
+        const int on = 1;
+        if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT,
+                       &on, sizeof(on)) != 0) {
+            LOG(WARNING) << "Fail to setsockopt SO_REUSEPORT of sockfd=" << sockfd;
+        }
+#else
+        LOG(ERROR) << "Missing def of SO_REUSEPORT while -reuse_port is on";
+        return -1;
+#endif
+    }
+
     struct sockaddr_in serv_addr;
     bzero((char*)&serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr = point.ip;
-    serv_addr.sin_port = htons(point.port); 
+    serv_addr.sin_port = htons(point.port);
     if (bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) != 0) {
         return -1;
     }
-    if (listen(sockfd, INT_MAX) != 0) {
+    if (listen(sockfd, 65535) != 0) {
         //             ^^^ kernel would silently truncate backlog to the value
-        //             defined in /proc/sys/net/core/somaxconn
+        //             defined in /proc/sys/net/core/somaxconn if it is less
+        //             than 65535
         return -1;
     }
     return sockfd.release();
