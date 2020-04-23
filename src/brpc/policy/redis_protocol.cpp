@@ -74,6 +74,9 @@ public:
 
     RedisCommandParser parser;
     butil::Arena arena;
+    // The reason why status is stored is because in transaction mode,
+    // we can't find corresponding status by command name which may not
+    // be registered. Just store the status that trigger the transaction.
     MethodStatus* status;
 };
 
