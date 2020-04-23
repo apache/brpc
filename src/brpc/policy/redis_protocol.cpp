@@ -56,7 +56,7 @@ struct InputResponse : public InputMessageBase {
 // This class is as parsing_context in socket.
 class RedisConnContext : public Destroyable  {
 public:
-    explicit RedisConnContext(const RedisService* rs)
+    explicit RedisConnContext(RedisService* rs)
         : redis_service(rs)
         , batched_size(0) {}
 
@@ -64,7 +64,7 @@ public:
     // @Destroyable
     void Destroy() override;
 
-    const RedisService* redis_service;
+    RedisService* redis_service;
     // If user starts a transaction, transaction_handler indicates the
     // handler pointer that runs the transaction command.
     std::unique_ptr<RedisCommandHandler> transaction_handler;
@@ -90,19 +90,26 @@ int ConsumeCommand(RedisConnContext* ctx,
             return -1;
         }
     } else {
-        RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(commands[0]);
-        if (!ch) {
+        RedisService::CommandProperty* cp =
+            ctx->redis_service->FindCommandProperty(commands[0]);
+        if (!cp) {
             char buf[64];
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", commands[0]);
             output.SetError(buf);
         } else {
-            result = ch->Run(commands, &output, flush_batched);
+            CHECK(cp->status->OnRequested());
+            butil::Timer tm;
+            tm.start();
+            result = cp->handler->Run(commands, &output, flush_batched);
+            tm.stop();
+            // 0 means always succeed here, error is passed by error message in `output'
+            cp->status->OnResponded(0 , tm.u_elapsed());
             if (result == REDIS_CMD_CONTINUE) {
                 if (ctx->batched_size != 0) {
                     LOG(ERROR) << "CONTINUE should not be returned in a batched process.";
                     return -1;
                 }
-                ctx->transaction_handler.reset(ch->NewTransactionHandler());
+                ctx->transaction_handler.reset(cp->handler->NewTransactionHandler());
             } else if (result == REDIS_CMD_BATCHED) {
                 ctx->batched_size++;
             }
@@ -150,7 +157,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
     }
     const Server* server = static_cast<const Server*>(arg);
     if (server) {
-        const RedisService* const rs = server->options().redis_service;
+        RedisService* const rs = server->options().redis_service;
         if (!rs) {
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
         }
