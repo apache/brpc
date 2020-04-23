@@ -58,7 +58,8 @@ class RedisConnContext : public Destroyable  {
 public:
     explicit RedisConnContext(RedisService* rs)
         : redis_service(rs)
-        , batched_size(0) {}
+        , batched_size(0)
+        , status(NULL) {}
 
     ~RedisConnContext();
     // @Destroyable
@@ -73,6 +74,27 @@ public:
 
     RedisCommandParser parser;
     butil::Arena arena;
+    MethodStatus* status;
+};
+
+class StatusRecorder {
+public:
+    StatusRecorder(MethodStatus* status)
+        : _status(status)
+        , _error_code(0) {
+        CHECK(_status->OnRequested());
+        _tm.start();
+    }
+    ~StatusRecorder() {
+        _tm.stop();
+        _status->OnResponded(_error_code , _tm.u_elapsed());
+    }
+    void SetError(int error_code) { _error_code = error_code; }
+
+private:
+    MethodStatus* _status;
+    butil::Timer _tm;
+    int _error_code;
 };
 
 int ConsumeCommand(RedisConnContext* ctx,
@@ -82,10 +104,13 @@ int ConsumeCommand(RedisConnContext* ctx,
     RedisReply output(&ctx->arena);
     RedisCommandHandlerResult result = REDIS_CMD_HANDLED;
     if (ctx->transaction_handler) {
+        StatusRecorder sr(ctx->status);
         result = ctx->transaction_handler->Run(commands, &output, flush_batched);
         if (result == REDIS_CMD_HANDLED) {
             ctx->transaction_handler.reset(NULL);
+            ctx->status = NULL;
         } else if (result == REDIS_CMD_BATCHED) {
+            sr.SetError(-1);
             LOG(ERROR) << "BATCHED should not be returned by a transaction handler.";
             return -1;
         }
@@ -97,19 +122,16 @@ int ConsumeCommand(RedisConnContext* ctx,
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", commands[0]);
             output.SetError(buf);
         } else {
-            CHECK(cp->status->OnRequested());
-            butil::Timer tm;
-            tm.start();
+            StatusRecorder sr(cp->status.get());
             result = cp->handler->Run(commands, &output, flush_batched);
-            tm.stop();
-            // 0 means always succeed here, error is passed by error message in `output'
-            cp->status->OnResponded(0 , tm.u_elapsed());
             if (result == REDIS_CMD_CONTINUE) {
                 if (ctx->batched_size != 0) {
+                    sr.SetError(-1);
                     LOG(ERROR) << "CONTINUE should not be returned in a batched process.";
                     return -1;
                 }
                 ctx->transaction_handler.reset(cp->handler->NewTransactionHandler());
+                ctx->status = cp->status.get();
             } else if (result == REDIS_CMD_BATCHED) {
                 ctx->batched_size++;
             }
