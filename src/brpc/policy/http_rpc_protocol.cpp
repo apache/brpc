@@ -1233,6 +1233,7 @@ void ProcessHttpRequest(InputMessageBase *msg) {
     }
     ServerPrivateAccessor server_accessor(server);
     const bool security_mode = server->options().security_mode() &&
+                               socket->remote_side().ip != socket->local_side().ip &&
                                socket->user() == server_accessor.acceptor();
     accessor.set_server(server)
         .set_security_mode(security_mode)
@@ -1376,8 +1377,9 @@ void ProcessHttpRequest(InputMessageBase *msg) {
         }
     } else if (security_mode) {
         cntl->SetFailed(EPERM, "Not allowed to access builtin services, try "
-                        "ServerOptions.internal_port=%d instead if you're in"
-                        " internal network", server->options().internal_port);
+                        "ServerOptions.internal_port=%d or localhost instead "
+                        "if you're in internal network",
+                        server->options().internal_port);
         return;
     }
 
