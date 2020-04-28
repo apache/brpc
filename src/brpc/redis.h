@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
 #ifndef BRPC_REDIS_H
 #define BRPC_REDIS_H
 
@@ -30,6 +29,7 @@
 #include "brpc/parse_result.h"
 #include "brpc/callback.h"
 #include "brpc/socket.h"
+#include "brpc/details/method_status.h"
 
 namespace brpc {
 
@@ -218,17 +218,22 @@ class RedisCommandHandler;
 // Assign an instance to ServerOption.redis_service to enable redis support. 
 class RedisService {
 public:
+    struct CommandProperty {
+        std::unique_ptr<RedisCommandHandler> handler;
+        std::unique_ptr<MethodStatus> status;
+    };
     virtual ~RedisService() {}
     
     // Call this function to register `handler` that can handle command `name`.
+    // `handler` is owned by RedisService.
     bool AddCommandHandler(const std::string& name, RedisCommandHandler* handler);
 
     // This function should not be touched by user and used by brpc deverloper only.
-    RedisCommandHandler* FindCommandHandler(const std::string& name) const;
+    CommandProperty* FindCommandProperty(const std::string& name);
 
 private:
-    typedef std::unordered_map<std::string, RedisCommandHandler*> CommandMap;
-    CommandMap _command_map;
+    typedef std::unordered_map<std::string, CommandProperty> CommandPropertyMap;
+    CommandPropertyMap _command_map;
 };
 
 enum RedisCommandHandlerResult {

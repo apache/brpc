@@ -56,15 +56,16 @@ struct InputResponse : public InputMessageBase {
 // This class is as parsing_context in socket.
 class RedisConnContext : public Destroyable  {
 public:
-    explicit RedisConnContext(const RedisService* rs)
+    explicit RedisConnContext(RedisService* rs)
         : redis_service(rs)
-        , batched_size(0) {}
+        , batched_size(0)
+        , status(NULL) {}
 
     ~RedisConnContext();
     // @Destroyable
     void Destroy() override;
 
-    const RedisService* redis_service;
+    RedisService* redis_service;
     // If user starts a transaction, transaction_handler indicates the
     // handler pointer that runs the transaction command.
     std::unique_ptr<RedisCommandHandler> transaction_handler;
@@ -73,6 +74,30 @@ public:
 
     RedisCommandParser parser;
     butil::Arena arena;
+    // The reason why status is stored is because in transaction mode,
+    // we can't find corresponding status by command name which may not
+    // be registered. Just store the status that trigger the transaction.
+    MethodStatus* status;
+};
+
+class StatusRecorder {
+public:
+    StatusRecorder(MethodStatus* status)
+        : _status(status)
+        , _error_code(0) {
+        CHECK(_status->OnRequested());
+        _tm.start();
+    }
+    ~StatusRecorder() {
+        _tm.stop();
+        _status->OnResponded(_error_code , _tm.u_elapsed());
+    }
+    void SetError(int error_code) { _error_code = error_code; }
+
+private:
+    MethodStatus* _status;
+    butil::Timer _tm;
+    int _error_code;
 };
 
 int ConsumeCommand(RedisConnContext* ctx,
@@ -82,27 +107,34 @@ int ConsumeCommand(RedisConnContext* ctx,
     RedisReply output(&ctx->arena);
     RedisCommandHandlerResult result = REDIS_CMD_HANDLED;
     if (ctx->transaction_handler) {
+        StatusRecorder sr(ctx->status);
         result = ctx->transaction_handler->Run(commands, &output, flush_batched);
         if (result == REDIS_CMD_HANDLED) {
             ctx->transaction_handler.reset(NULL);
+            ctx->status = NULL;
         } else if (result == REDIS_CMD_BATCHED) {
+            sr.SetError(-1);
             LOG(ERROR) << "BATCHED should not be returned by a transaction handler.";
             return -1;
         }
     } else {
-        RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(commands[0]);
-        if (!ch) {
+        RedisService::CommandProperty* cp =
+            ctx->redis_service->FindCommandProperty(commands[0]);
+        if (!cp) {
             char buf[64];
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", commands[0]);
             output.SetError(buf);
         } else {
-            result = ch->Run(commands, &output, flush_batched);
+            StatusRecorder sr(cp->status.get());
+            result = cp->handler->Run(commands, &output, flush_batched);
             if (result == REDIS_CMD_CONTINUE) {
                 if (ctx->batched_size != 0) {
+                    sr.SetError(-1);
                     LOG(ERROR) << "CONTINUE should not be returned in a batched process.";
                     return -1;
                 }
-                ctx->transaction_handler.reset(ch->NewTransactionHandler());
+                ctx->transaction_handler.reset(cp->handler->NewTransactionHandler());
+                ctx->status = cp->status.get();
             } else if (result == REDIS_CMD_BATCHED) {
                 ctx->batched_size++;
             }
@@ -150,7 +182,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
     }
     const Server* server = static_cast<const Server*>(arg);
     if (server) {
-        const RedisService* const rs = server->options().redis_service;
+        RedisService* const rs = server->options().redis_service;
         if (!rs) {
             return MakeParseError(PARSE_ERROR_TRY_OTHERS);
         }

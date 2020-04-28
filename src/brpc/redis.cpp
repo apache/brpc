@@ -438,20 +438,28 @@ std::ostream& operator<<(std::ostream& os, const RedisResponse& response) {
 
 bool RedisService::AddCommandHandler(const std::string& name, RedisCommandHandler* handler) {
     std::string lcname = StringToLowerASCII(name);
-    auto it = _command_map.find(lcname);
-    if (it != _command_map.end()) {
+    if (_command_map.find(lcname) != _command_map.end()) {
         LOG(ERROR) << "redis command name=" << name << " exist";
         return false;
     }
-    _command_map[lcname] = handler;
+    CommandProperty& cp = _command_map[lcname];
+    cp.handler.reset(handler);
+    cp.status.reset(new (std::nothrow) MethodStatus);
+    const std::string service_name = butil::class_name_str(*this);
+    const std::string expose_name = butil::string_printf("redis_service_%s_%s",
+            service_name.c_str(), name.c_str());
+    if (cp.status->Expose(expose_name) != 0) {
+        LOG(INFO) << "Fail to expose redis vars command=" << name;
+        return false;
+    }
     return true;
 }
  
-RedisCommandHandler* RedisService::FindCommandHandler(const std::string& name) const {
+RedisService::CommandProperty* RedisService::FindCommandProperty(const std::string& name) {
     std::string lcname = StringToLowerASCII(name);
     auto it = _command_map.find(lcname);
     if (it != _command_map.end()) {
-        return it->second;
+        return &it->second;
     }
     return NULL;
 }
