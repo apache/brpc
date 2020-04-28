@@ -27,7 +27,7 @@ namespace butil {
 // NOTE: Using ascii_tolower instead of ::tolower shortens 150ns in
 // FlatMapTest.perf_small_string_map (with -O2 added, -O0 by default)
 inline char ascii_tolower(char c) {
-    extern const char* const g_tolower_map;
+    extern const signed char* const g_tolower_map;
     return g_tolower_map[(int)c];
 }
 

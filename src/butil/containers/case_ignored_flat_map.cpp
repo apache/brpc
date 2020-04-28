@@ -19,7 +19,7 @@
 
 namespace butil {
 
-static const char g_tolower_map_base[] = {
+static const signed char g_tolower_map_base[] = {
     -128, -127, -126, -125, -124, -123, -122, -121, -120,
     -119, -118, -117, -116, -115, -114, -113, -112, -111, -110,
     -109, -108, -107, -106, -105, -104, -103, -102, -101, -100,
@@ -48,6 +48,6 @@ static const char g_tolower_map_base[] = {
     120, 121, 122, 123, 124, 125, 126, 127
 };
 
-extern const char* const g_tolower_map = g_tolower_map_base + 128;
+extern const signed char* const g_tolower_map = g_tolower_map_base + 128;
 
 } // namespace butil
