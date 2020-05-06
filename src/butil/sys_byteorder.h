@@ -29,6 +29,12 @@
 #include <byteswap.h> // for bswap_*
 #endif
 
+#if defined(ARCH_CPU_LITTLE_ENDIAN)
+#include "butil/mysql_little_endian.h"
+#else
+#include "butil/mysql_big_endian.h"
+#endif
+
 namespace butil {
 
 #if defined(COMPILER_MSVC)
@@ -134,6 +140,67 @@ inline uint64_t HostToNet64(uint64_t x) {
 #else
   return x;
 #endif
+}
+
+// for mysql protocol
+static inline int16_t SignedIntLoad2Bytes(const char* src) {
+    return SignedIntLoad2Bytes(static_cast<const uint8_t*>(static_cast<const void*>(src)));
+}
+
+static inline uint16_t UnsignedIntLoad2Bytes(const char* src) {
+    return UnsignedIntLoad2Bytes(static_cast<const uint8_t*>(static_cast<const void*>(src)));
+}
+
+static inline int32_t SignedIntLoad3Bytes(const char* src) {
+    return SignedIntLoad3Bytes(static_cast<const uint8_t*>(static_cast<const void*>(src)));
+}
+
+static inline uint32_t UnsignedIntLoad3Bytes(const char* src) {
+    return UnsignedIntLoad3Bytes(static_cast<const uint8_t*>(static_cast<const void*>(src)));
+}
+
+static inline int32_t SignedIntLoad4Bytes(const char* src) {
+    return SignedIntLoad4Bytes(static_cast<const uint8_t*>(static_cast<const void*>(src)));
+}
+
+static inline uint32_t UnsignedIntLoad4Bytes(const char* src) {
+    return UnsignedIntLoad4Bytes(static_cast<const uint8_t*>(static_cast<const void*>(src)));
+}
+
+static inline uint64_t UnsignedIntLoad6Bytes(const char* src) {
+    return UnsignedIntLoad6Bytes(static_cast<const uint8_t*>(static_cast<const void*>(src)));
+}
+
+static inline uint64_t SignedIntLoad8Bytes(const char* src) {
+    return SignedIntLoad8Bytes(static_cast<const uint8_t*>(static_cast<const void*>(src)));
+}
+
+static inline uint64_t UnsignedIntLoad8Bytes(const char* src) {
+    return UnsignedIntLoad8Bytes(static_cast<const uint8_t*>(static_cast<const void*>(src)));
+}
+
+static inline void IntStore2Bytes(char* src, uint16_t num) {
+    IntStore2Bytes(static_cast<uint8_t*>(static_cast<void*>(src)), num);
+}
+
+static inline void IntSotre3Bytes(char* src, uint32_t num) {
+    IntStore3Bytes(static_cast<uint8_t*>(static_cast<void*>(src)), num);
+}
+
+static inline void IntStore4Bytes(char* src, uint32_t num) {
+    IntStore4Bytes(static_cast<uint8_t*>(static_cast<void*>(src)), num);
+}
+
+static inline IntStore5Bytes(char* src, uint64_t num) {
+    IntStore5Bytes(static_cast<uint8_t*>(static_cast<void*>(src)), num);
+}
+
+static inline IntStore6Bytes(char* src, uint64_t num) {
+    IntStore6Bytes(static_cast<uint8_t*>(static_cast<void*>(src)), num);
+}
+
+static inline IntStore8Bytes(char* src, uint64_t num) {
+    IntStore8Bytes(static_cast<uint8_t*>(static_cast<void*>(src)), num);
 }
 
 }  // namespace butil

@@ -140,7 +140,8 @@ ServerOptions::ServerOptions()
     , http_master_service(NULL)
     , health_reporter(NULL)
     , rtmp_service(NULL)
-    , redis_service(NULL) {
+    , redis_service(NULL)
+    , on_new_connection_server_send_initial_packet(nullptr) {
     if (s_ncore > 0) {
         num_threads = s_ncore + 1;
     }
@@ -554,7 +555,7 @@ Acceptor* Server::BuildAcceptor() {
         whitelist.insert(protocol);
     }
     const bool has_whitelist = !whitelist.empty();
-    Acceptor* acceptor = new (std::nothrow) Acceptor(_keytable_pool);
+    Acceptor* acceptor = new (std::nothrow) Acceptor(this, _keytable_pool);
     if (NULL == acceptor) {
         LOG(ERROR) << "Fail to new Acceptor";
         return NULL;

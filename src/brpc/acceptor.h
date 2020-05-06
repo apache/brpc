@@ -26,6 +26,8 @@
 
 namespace brpc {
 
+class Server;
+
 struct ConnectStatistics {
 };
 
@@ -43,7 +45,7 @@ public:
     };
 
 public:
-    explicit Acceptor(bthread_keytable_pool_t* pool = NULL);
+    Acceptor(const Server* server = nullptr, bthread_keytable_pool_t* pool = NULL);
     ~Acceptor();
 
     // [thread-safe] Accept connections from `listened_fd'. Ownership of
@@ -77,6 +79,8 @@ public:
 
     Status status() const { return _status; }
 
+    const Server* server() const { return _server; }
+
 private:
     // Accept connections.
     static void OnNewConnectionsUntilEAGAIN(Socket* m);
@@ -106,6 +110,8 @@ private:
     SocketMap _socket_map;
 
     std::shared_ptr<SocketSSLContext> _ssl_ctx;
+
+    const Server* _server;
 };
 
 } // namespace brpc

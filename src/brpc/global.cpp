@@ -73,6 +73,7 @@
 #ifdef ENABLE_THRIFT_FRAMED_PROTOCOL
 # include "brpc/policy/thrift_protocol.h"
 #endif
+#include "brpc/policy/mysql_protocol.h"
 
 // Concurrency Limiters
 #include "brpc/concurrency_limiter.h"
@@ -566,6 +567,16 @@ static void GlobalInitializeOrDieImpl() {
         NULL, NULL, NULL,
         CONNECTION_TYPE_POOLED_AND_SHORT, "esp"};
     if (RegisterProtocol(PROTOCOL_ESP, esp_protocol) != 0) {
+        exit(1);
+    }
+
+    Protocol mysql_protocol = {
+        ParseMysqlMessage,
+        nullptr, nullptr,
+        ProcessMysqlRequest, nullptr,
+        VerifyMysqlRequest, nullptr, nullptr,
+        CONNECTION_TYPE_SINGLE, "mysql"};
+    if (RegisterProtocol(PROTOCOL_MYSQL, mysql_protocol) != 0) {
         exit(1);
     }
 

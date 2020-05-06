@@ -423,6 +423,7 @@ Socket::Socket(Forbidden)
     , _tos(0)
     , _reset_fd_real_us(-1)
     , _on_edge_triggered_events(NULL)
+    , _on_server_send_initial_packet(nullptr)
     , _user(NULL)
     , _conn(NULL)
     , _this_id(0)
@@ -579,6 +580,10 @@ int Socket::ResetFileDescriptor(int fd) {
     return 0;
 }
 
+struct ServerSendInitialPacketArg {
+    SocketId socket_id;
+};
+
 // SocketId = 32-bit version + 32-bit slot.
 //   version: from version part of _versioned_nref, must be an EVEN number.
 //   slot: designated by ResourcePool.
@@ -595,6 +600,7 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
     m->_keytable_pool = options.keytable_pool;
     m->_tos = 0;
     m->_remote_side = options.remote_side;
+    m->_on_server_send_initial_packet = options.on_server_send_initial_packet;
     m->_on_edge_triggered_events = options.on_edge_triggered_events;
     m->_user = options.user;
     m->_conn = options.conn;
@@ -657,7 +663,37 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
         return -1;
     }
     *id = m->_this_id;
+
+    // When the client establishes the connection,
+    // server sends an initial packet first.
+    // For example, a mysql server sends a handshake packet when the connetion established.
+    if (m->_on_server_send_initial_packet) {
+        bthread_t tid;
+        bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
+        attr.keytable_pool = m->_keytable_pool;
+        ServerSendInitialPacketArg* arg = new ServerSendInitialPacketArg;
+        arg->socket_id = m->_this_id;
+
+        if (bthread_start_urgent(&tid, &attr, ServerSendInitialPacket, arg) != 0) {
+            LOG(FATAL) << "Fail to start ServerSendInitialPacket";
+            ServerSendInitialPacket(arg);
+        }
+    }
+
     return 0;
+}
+
+void* Socket::ServerSendInitialPacket(void* arg) {
+    std::unique_ptr<ServerSendInitialPacketArg> arg_guard(
+        static_cast<ServerSendInitialPacketArg*>(arg));
+
+    SocketUniquePtr s;
+    if (Address(arg_guard->socket_id, &s)) {
+        LOG(FATAL) << "Fail to address socket by socketid";
+        return nullptr;
+    }
+    s->_on_server_send_initial_packet(s.get());
+    return nullptr;
 }
 
 int Socket::WaitAndReset(int32_t expected_nref) {
@@ -2069,6 +2105,7 @@ void Socket::DebugSocket(std::ostream& os, SocketId id) {
        << "\nremote_side=" << ptr->_remote_side
        << "\nlocal_side=" << ptr->_local_side
        << "\non_et_events=" << (void*)ptr->_on_edge_triggered_events
+       << "\non_server_send_initial_packet=" << (void*)ptr->_on_server_send_initial_packet
        << "\nuser=" << ShowObject(ptr->_user)
        << "\nthis_id=" << ptr->_this_id
        << "\npreferred_index=" << preferred_index;

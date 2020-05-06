@@ -21,14 +21,14 @@
 #include "butil/fd_guard.h"                 // fd_guard 
 #include "butil/fd_utility.h"               // make_close_on_exec
 #include "butil/time.h"                     // gettimeofday_us
+#include "brpc/server.h"
 #include "brpc/acceptor.h"
-
 
 namespace brpc {
 
 static const int INITIAL_CONNECTION_CAP = 65536;
 
-Acceptor::Acceptor(bthread_keytable_pool_t* pool)
+Acceptor::Acceptor(const Server* server, bthread_keytable_pool_t* pool)
     : InputMessenger()
     , _keytable_pool(pool)
     , _status(UNINITIALIZED)
@@ -37,7 +37,8 @@ Acceptor::Acceptor(bthread_keytable_pool_t* pool)
     , _listened_fd(-1)
     , _acception_id(0)
     , _empty_cond(&_map_mutex)
-    , _ssl_ctx(NULL) {
+    , _ssl_ctx(NULL)
+    , _server(server) {
 }
 
 Acceptor::~Acceptor() {
@@ -273,6 +274,10 @@ void Acceptor::OnNewConnectionsUntilEAGAIN(Socket* acception) {
         options.user = acception->user();
         options.on_edge_triggered_events = InputMessenger::OnNewMessages;
         options.initial_ssl_ctx = am->_ssl_ctx;
+        if (am->server()) {
+            options.on_server_send_initial_packet =
+                am->server()->options().on_new_connection_server_send_initial_packet;
+        }
         if (Socket::Create(options, &socket_id) != 0) {
             LOG(ERROR) << "Fail to create Socket";
             continue;

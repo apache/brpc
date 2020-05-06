@@ -54,6 +54,7 @@ class RestfulMap;
 class RtmpService;
 class RedisService;
 struct SocketSSLContext;
+struct Socket;
 
 struct ServerOptions {
     ServerOptions();  // Constructed with default options.
@@ -240,6 +241,9 @@ struct ServerOptions {
     // Owned by Server and deleted in server's destructor.
     // Default: NULL (disabled)
     RedisService* redis_service;
+
+    typedef void (*OnNewConnectionServerSendInitialPacketFuncPtr)(Socket*);
+    OnNewConnectionServerSendInitialPacketFuncPtr on_new_connection_server_send_initial_packet;
 
 private:
     // SSLOptions is large and not often used, allocate it on heap to

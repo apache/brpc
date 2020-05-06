@@ -186,6 +186,9 @@ struct SocketOptions {
     // until new data arrives. The callback will not be called from more than
     // one thread at any time.
     void (*on_edge_triggered_events)(Socket*);
+
+    void (*on_server_send_initial_packet)(Socket*);
+
     int health_check_interval_s;
     std::shared_ptr<SocketSSLContext> initial_ssl_ctx;
     bthread_keytable_pool_t* keytable_pool;
@@ -594,6 +597,8 @@ friend void DereferenceSocket(Socket*);
 
     static void* ProcessEvent(void*);
 
+    static void* ServerSendInitialPacket(void*);
+
     static void* KeepWrite(void*);
 
     bool IsWriteComplete(WriteRequest* old_head, bool singular_node,
@@ -703,6 +708,9 @@ private:
     // of EventDispatcher::AddConsumer (event_dispatcher.h)
     // carefully before implementing the callback.
     void (*_on_edge_triggered_events)(Socket*);
+
+    // Called when a new client connection established if not null
+    void (*_on_server_send_initial_packet)(Socket*);
 
     // A set of callbacks to monitor important events of this socket.
     // Initialized by SocketOptions.user
