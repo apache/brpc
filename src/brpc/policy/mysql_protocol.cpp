@@ -335,7 +335,6 @@ static void SendQueryPacket(
     Socket* socket, MysqlConnContext* ctx,
     const google::protobuf::Message* req,
     const google::protobuf::Message* res) {
-    // Just close the connection on quit
     LOG(INFO) << "SendQueryPacket";
     SendOKPacket(socket, ctx->NextSequenceId());
 }
