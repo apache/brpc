@@ -191,15 +191,15 @@ static inline void IntStore4Bytes(char* src, uint32_t num) {
     IntStore4Bytes(static_cast<uint8_t*>(static_cast<void*>(src)), num);
 }
 
-static inline IntStore5Bytes(char* src, uint64_t num) {
+static inline void IntStore5Bytes(char* src, uint64_t num) {
     IntStore5Bytes(static_cast<uint8_t*>(static_cast<void*>(src)), num);
 }
 
-static inline IntStore6Bytes(char* src, uint64_t num) {
+static inline void IntStore6Bytes(char* src, uint64_t num) {
     IntStore6Bytes(static_cast<uint8_t*>(static_cast<void*>(src)), num);
 }
 
-static inline IntStore8Bytes(char* src, uint64_t num) {
+static inline void IntStore8Bytes(char* src, uint64_t num) {
     IntStore8Bytes(static_cast<uint8_t*>(static_cast<void*>(src)), num);
 }
 

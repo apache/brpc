@@ -27,6 +27,9 @@ namespace brpc {
 
 // Messages returned by Parse handlers must extend this class
 class InputMessageBase : public Destroyable {
+public:
+    InputMessageBase() :
+        is_initial_response_message_(false) { }
 protected:
     // Implement this method to customize deletion of this message.
     virtual void DestroyImpl() = 0;
@@ -48,6 +51,22 @@ public:
     int64_t received_us() const { return _received_us; }
     int64_t base_real_us() const { return _base_real_us; }
 
+    bool IsInitalResponseMessage() const {
+        return is_initial_response_message_;
+    }
+
+    void SetInitialResponseMessage() {
+        is_initial_response_message_ = true;
+    }
+
+    void ResetInitialResponseMessage() {
+        is_initial_response_message_ = false;
+    }
+
+    void clear() {
+        ResetInitialResponseMessage();
+    }
+
 protected:
     virtual ~InputMessageBase();
 
@@ -60,6 +79,7 @@ friend class Stream;
     SocketUniquePtr _socket;
     void (*_process)(InputMessageBase* msg);
     const void* _arg;
+    bool is_initial_response_message_;
 };
 
 } // namespace brpc

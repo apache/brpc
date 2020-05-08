@@ -75,19 +75,19 @@ cc_binary(
     copts = COPTS,
 )
 
-proto_library(
-    name = "mysql_c++_proto",
-    srcs = [
-        "mysql_c++/mysql.proto",
-    ],
-)
-
-cc_proto_library(
-    name = "cc_mysql_c++_proto",
-    deps = [
-        ":mysql_c++_proto",
-    ],
-)
+#proto_library(
+#    name = "mysql_c++_proto",
+#    srcs = [
+#        "mysql_c++/mysql.proto",
+#    ],
+#)
+#
+#cc_proto_library(
+#    name = "cc_mysql_c++_proto",
+#    deps = [
+#        ":mysql_c++_proto",
+#    ],
+#)
 
 cc_binary(
     name = "mysql_c++_server",
@@ -98,7 +98,7 @@ cc_binary(
         "mysql_c++",
     ],
     deps = [
-        ":cc_mysql_c++_proto",
+#        ":cc_mysql_c++_proto",
         "//:brpc",
     ],
     copts = COPTS,

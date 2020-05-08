@@ -22,6 +22,7 @@
 #include <sys/types.h>
 
 #include "brpc/protocol.h"
+#include "brpc/policy/mysql_meta.pb.h"
 
 
 namespace brpc {

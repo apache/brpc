@@ -666,12 +666,17 @@ int Socket::Create(const SocketOptions& options, SocketId* id) {
 
     // When the client establishes the connection,
     // server sends an initial packet first.
-    // For example, a mysql server sends a handshake packet when the connetion established.
+    // For example, a mysql server sends a handshake packet when a new connetion established.
     if (m->_on_server_send_initial_packet) {
         bthread_t tid;
         bthread_attr_t attr = BTHREAD_ATTR_NORMAL;
         attr.keytable_pool = m->_keytable_pool;
-        ServerSendInitialPacketArg* arg = new ServerSendInitialPacketArg;
+        ServerSendInitialPacketArg* arg = new (std::nothrow) ServerSendInitialPacketArg;
+        if (arg == nullptr) {
+            m->SetFailed(ENOMEM, "Fail to new ServerSendInitialPacketArg: %s",
+                         berror(ENOMEM));
+            return -1;
+        }
         arg->socket_id = m->_this_id;
 
         if (bthread_start_urgent(&tid, &attr, ServerSendInitialPacket, arg) != 0) {

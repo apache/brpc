@@ -42,6 +42,9 @@ Acceptor::Acceptor(const Server* server, bthread_keytable_pool_t* pool)
 }
 
 Acceptor::~Acceptor() {
+    // Acceptor does not own _server,
+    // and we should do nothing with _server here.
+
     StopAccept(0);
     Join();
 }

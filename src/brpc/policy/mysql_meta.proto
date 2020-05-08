@@ -16,18 +16,32 @@
 // under the License.
 
 syntax="proto2";
-package example;
+package brpc.policy;
 
 option cc_generic_services = true;
 
-message CreateDatabaseRequest {
-      required string message = 1;
-};
+message PingRequest {
+}
 
-message CreateDatabaseResponse {
-      required string message = 1;
-};
+message PingResponse {
+}
+
+message QueryRequest {
+    required bytes sql = 1;
+}
+
+message QueryResponse {
+}
+
+message UnknownMethodRequest {
+    required int32 command_id = 1;
+}
+
+message UnknownMethodResponse {
+}
 
 service MysqlService {
-      rpc CreateDatabase(CreateDatabaseRequest) returns (CreateDatabaseResponse);
-};
+      rpc Ping(PingRequest) returns (PingResponse);
+      rpc Query(QueryRequest) returns (QueryResponse);
+      rpc UnknownMethod(UnknownMethodRequest) returns (UnknownMethodResponse);
+}

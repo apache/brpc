@@ -44,6 +44,7 @@ struct BAIDU_CACHELINE_ALIGNMENT MostCommonMessage : public InputMessageBase {
         meta.clear();
         payload.clear();
         pi.reset();
+        clear(); // InputMessageBase clear
         butil::return_object(this);
     }
 };
