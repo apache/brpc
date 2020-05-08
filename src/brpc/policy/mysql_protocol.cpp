@@ -223,7 +223,6 @@ ParseResult ParseMysqlMessage(
     }
     ctx->ResetSequenceId(sequence_id);
 
-    //source->pop_front(sizeof(header_buf));
     MostCommonMessage* msg = MostCommonMessage::Get();
     source->cutn(&msg->meta, sizeof(header_buf));
     source->cutn(&msg->payload, body_size);
@@ -232,31 +231,31 @@ ParseResult ParseMysqlMessage(
 
 static void SendOKPacket(Socket* socket, uint8_t sequence_id);
 
-static std::string GetMethodName(const butil::IOBuf& payload) {
+static butil::StringPiece GetPBMethodNameByCommandId(uint8_t command_id) {
     static std::map<uint8_t, std::string> cmd2name = {
         {COM_PING, "brpc.policy.MysqlService.Ping"}
         , {COM_QUERY, "brpc.policy.MysqlService.Query"}
     };
+    static const std::string default_method_name =
+        "brpc.policy.MysqlService.UnknownMethod";
 
-    uint8_t command = -1;
-    payload.copy_to(&command, sizeof(command));
-    //assert(n == sizeof(command), "expect n equals to sizeof(int8_t)");
-
-    std::string method_name = "brpc.policy.MysqlService.UnknownMethod";
-    const auto& citr = cmd2name.find(command);
+    const auto& citr = cmd2name.find(command_id);
     if (citr != cmd2name.end()) {
-        method_name = citr->second;
+        return butil::StringPiece(citr->second);
+    } else {
+        return butil::StringPiece(default_method_name);
     }
-    return method_name;
 }
 
 static bool ParsePing(
+    uint8_t /*command_id*/,
     const butil::IOBuf& payload,
     google::protobuf::Message* msg) {
     return true;
 }
 
 static bool ParseQuery(
+    uint8_t /*command_id*/,
     const butil::IOBuf& payload,
     google::protobuf::Message* msg) {
 
@@ -266,43 +265,40 @@ static bool ParseQuery(
 }
 
 static bool ParseUnknownMethod(
+    uint8_t command_id,
     const butil::IOBuf& payload,
     google::protobuf::Message* msg) {
 
-    uint8_t command_id;
-    auto n = payload.copy_to(&command_id, sizeof(command_id));
-    CHECK(n == sizeof(command_id));
     UnknownMethodRequest* req = static_cast<UnknownMethodRequest*>(msg);
     req->set_command_id(command_id);
     return true;
 }
 
 static bool ParseFromPayload(
+    uint8_t command_id,
     const butil::IOBuf& payload,
     google::protobuf::Message* msg) {
 
     typedef bool (*ParseFunctionPtr)(
-        const butil::IOBuf&, google::protobuf::Message*);
+        uint8_t, const butil::IOBuf&, google::protobuf::Message*);
     static std::map<uint8_t, ParseFunctionPtr> cmd2parser = {
         {COM_PING, ParsePing}
         , {COM_QUERY, ParseQuery}
     };
 
-    uint8_t command;
-    payload.copy_to(&command, sizeof(command));
-
     ParseFunctionPtr parser = ParseUnknownMethod;
-    const auto& citr = cmd2parser.find(command);
+    const auto& citr = cmd2parser.find(command_id);
     if (citr != cmd2parser.end()) {
         parser = citr->second;
     }
     CHECK(parser);
-    return parser(payload, msg);
+    return parser(command_id, payload, msg);
 }
 
 // Assemble response packet using `correlation_id', `controller',
 // `res', and then write this packet to `sock'
 static void SendMysqlResponse(
+    uint8_t /*commmand_id*/,
     int64_t correlation_id,
     Controller* cntl, 
     const google::protobuf::Message* req,
@@ -361,6 +357,10 @@ void ProcessMysqlRequest(InputMessageBase* msg_base) {
         LOG(INFO) << "Auth reponse message on socket: " << socket->description();
         return;
     }
+
+    uint8_t command_id;
+    auto n = msg->payload.copy_to(&command_id, sizeof(command_id));
+    CHECK(n == sizeof(command_id));
 
     const Server* server = static_cast<const Server*>(msg->arg());
     ScopedNonServiceError non_service_error(server);
@@ -429,12 +429,13 @@ void ProcessMysqlRequest(InputMessageBase* msg_base) {
             break;
         }
 
-        std::string method_name = GetMethodName(msg->payload);
+        const butil::StringPiece method_name =
+            GetPBMethodNameByCommandId(command_id);
         const Server::MethodProperty* mp =
             server_accessor.FindMethodPropertyByFullName(method_name);
         if (NULL == mp) {
             cntl->SetFailed(ENOMETHOD, "Fail to find method=%s",
-                    method_name.c_str());
+                    method_name.data());
             break;
         }
         // Switch to service-specific error.
@@ -456,7 +457,10 @@ void ProcessMysqlRequest(InputMessageBase* msg_base) {
             span->ResetServerSpanName(method->full_name());
         }
         req.reset(svc->GetRequestPrototype(method).New());
-        if (!ParseFromPayload(msg->payload, req.get())) {
+
+        // command_id is the first byte of msg->payload,
+        // we pass in the command_id explicitly for easy to use.
+        if (!ParseFromPayload(command_id, msg->payload, req.get())) {
             LOG(ERROR) << "Fail to parse request message, size=" << msg->payload.size();
             cntl->SetFailed(EREQUEST, "Fail to parse request message, size=%d", 
                     (int)msg->payload.size());
@@ -466,10 +470,10 @@ void ProcessMysqlRequest(InputMessageBase* msg_base) {
         res.reset(svc->GetResponsePrototype(method).New());
         // `socket' will be held until response has been sent
         google::protobuf::Closure* done = ::brpc::NewCallback<
-            int64_t, Controller*, const google::protobuf::Message*,
+            uint8_t, int64_t, Controller*, const google::protobuf::Message*,
             const google::protobuf::Message*, const Server*,
             MethodStatus *, int64_t>(
-                    &SendMysqlResponse, correlation_id, cntl.get(),
+                    &SendMysqlResponse, command_id, correlation_id, cntl.get(),
                     req.get(), res.get(), server,
                     method_status, msg->received_us());
 
@@ -497,7 +501,7 @@ void ProcessMysqlRequest(InputMessageBase* msg_base) {
 
     // `cntl', `req' and `res' will be deleted inside `SendSofaResponse'
     // `socket' will be held until response has been sent
-    SendMysqlResponse(correlation_id, cntl.release(),
+    SendMysqlResponse(command_id, correlation_id, cntl.release(),
             req.release(), res.release(), server,
             method_status, msg->received_us());
 }

@@ -45,14 +45,20 @@ public:
                       ::brpc::policy::QueryResponse* response,
                       google::protobuf::Closure* done) override {
         brpc::ClosureGuard done_guard(done);
-
         const std::string& sql = request->sql();
         if (FLAGS_show_full_sql) {
-            LOG(INFO) << "query: " << sql;
+            LOG(INFO) << "Query: " << sql;
         } else {
             auto length_limited  = std::min(SqlShowLengthLimit, sql.length());
-            LOG(INFO) << "query: " << butil::StringPiece(sql.c_str(), length_limited);
+            LOG(INFO) << "Query: " << butil::StringPiece(sql.c_str(), length_limited);
         }
+
+        // sql parser works here.
+        // sqlparser.parse(sql);
+        // ......
+        // There is also a MysqlConnContext in the Socket
+        // which can be retrieved from Controller, it's a nice place
+        // to store/read connection-based state.
     }
 
     void Ping(google::protobuf::RpcController* cntl_base,
@@ -60,6 +66,7 @@ public:
                       ::brpc::policy::PingResponse* response,
                       google::protobuf::Closure* done) override {
         brpc::ClosureGuard done_guard(done);
+        LOG(INFO) << "Ping";
     }
 
     void UnknownMethod(google::protobuf::RpcController* cntl_base,
@@ -67,6 +74,12 @@ public:
                       ::brpc::policy::UnknownMethodResponse* response,
                       google::protobuf::Closure* done) override {
         brpc::ClosureGuard done_guard(done);
+        LOG(INFO) << "Unknown command id: " << request->command_id();
+
+        brpc::Controller* cntl =
+            static_cast<brpc::Controller*>(cntl_base);
+        cntl->SetFailed(brpc::ERESPONSE, "Unknown command id: %d",
+                        request->command_id());
     }
 };
 }  // namespace example
