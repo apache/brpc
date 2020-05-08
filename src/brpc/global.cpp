@@ -570,6 +570,7 @@ static void GlobalInitializeOrDieImpl() {
         exit(1);
     }
 
+#ifdef ENABLE_MYSQL_PROTOCOL
     Protocol mysql_protocol = {
         ParseMysqlMessage,
         nullptr, nullptr,
@@ -579,6 +580,7 @@ static void GlobalInitializeOrDieImpl() {
     if (RegisterProtocol(PROTOCOL_MYSQL, mysql_protocol) != 0) {
         exit(1);
     }
+#endif
 
     std::vector<Protocol> protocols;
     ListProtocols(&protocols);

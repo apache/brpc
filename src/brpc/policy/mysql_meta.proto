@@ -20,6 +20,12 @@ package brpc.policy;
 
 option cc_generic_services = true;
 
+message QuitRequest {
+}
+
+message QuitResponse {
+}
+
 message PingRequest {
 }
 
@@ -41,7 +47,8 @@ message UnknownMethodResponse {
 }
 
 service MysqlService {
-      rpc Ping(PingRequest) returns (PingResponse);
-      rpc Query(QueryRequest) returns (QueryResponse);
-      rpc UnknownMethod(UnknownMethodRequest) returns (UnknownMethodResponse);
+    rpc Quit(QuitRequest) returns (QuitResponse);
+    rpc Ping(PingRequest) returns (PingResponse);
+    rpc Query(QueryRequest) returns (QueryResponse);
+    rpc UnknownMethod(UnknownMethodRequest) returns (UnknownMethodResponse);
 }

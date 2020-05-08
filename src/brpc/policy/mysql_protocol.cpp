@@ -233,8 +233,9 @@ static void SendOKPacket(Socket* socket, uint8_t sequence_id);
 
 static butil::StringPiece GetPBMethodNameByCommandId(uint8_t command_id) {
     static std::map<uint8_t, std::string> cmd2name = {
-        {COM_PING, "brpc.policy.MysqlService.Ping"}
-        , {COM_QUERY, "brpc.policy.MysqlService.Query"}
+        {COM_QUIT, "brpc.policy.MysqlService.Quit"},
+        {COM_PING, "brpc.policy.MysqlService.Ping"},
+        {COM_QUERY, "brpc.policy.MysqlService.Query"}
     };
     static const std::string default_method_name =
         "brpc.policy.MysqlService.UnknownMethod";
@@ -245,6 +246,13 @@ static butil::StringPiece GetPBMethodNameByCommandId(uint8_t command_id) {
     } else {
         return butil::StringPiece(default_method_name);
     }
+}
+
+static bool ParseQuit(
+    uint8_t /*command_id*/,
+    const butil::IOBuf& payload,
+    google::protobuf::Message* msg) {
+    return true;
 }
 
 static bool ParsePing(
@@ -282,8 +290,9 @@ static bool ParseFromPayload(
     typedef bool (*ParseFunctionPtr)(
         uint8_t, const butil::IOBuf&, google::protobuf::Message*);
     static std::map<uint8_t, ParseFunctionPtr> cmd2parser = {
-        {COM_PING, ParsePing}
-        , {COM_QUERY, ParseQuery}
+        {COM_QUIT, ParseQuit},
+        {COM_PING, ParsePing},
+        {COM_QUERY, ParseQuery}
     };
 
     ParseFunctionPtr parser = ParseUnknownMethod;
@@ -295,10 +304,46 @@ static bool ParseFromPayload(
     return parser(command_id, payload, msg);
 }
 
+static void SendErrorPacket(
+    uint8_t command_id, Controller* cntl,
+    Socket* socket, MysqlConnContext* ctx,
+    const google::protobuf::Message* req,
+    const google::protobuf::Message* res) {
+}
+
+static void SendUnknownMethodPacket(
+    uint8_t command_id, Controller* cntl,
+    Socket* socket, MysqlConnContext* ctx,
+    const google::protobuf::Message* req,
+    const google::protobuf::Message* res) {
+    LOG(INFO) << "SendUnknownMethodPacket";
+    SendErrorPacket(command_id, cntl, socket, ctx, req, res);
+}
+
+static void SendQuitPacket(
+    uint8_t command_id, Controller* cntl,
+    Socket* socket, MysqlConnContext* ctx,
+    const google::protobuf::Message* req,
+    const google::protobuf::Message* res) {
+    // Just close the connection on quit
+    LOG(INFO) << "SendQuitPacket";
+    socket->SetFailed();
+}
+
+static void SendQueryPacket(
+    uint8_t command_id, Controller* cntl,
+    Socket* socket, MysqlConnContext* ctx,
+    const google::protobuf::Message* req,
+    const google::protobuf::Message* res) {
+    // Just close the connection on quit
+    LOG(INFO) << "SendQueryPacket";
+    SendOKPacket(socket, ctx->NextSequenceId());
+}
+
 // Assemble response packet using `correlation_id', `controller',
 // `res', and then write this packet to `sock'
 static void SendMysqlResponse(
-    uint8_t /*commmand_id*/,
+    uint8_t command_id,
     int64_t correlation_id,
     Controller* cntl, 
     const google::protobuf::Message* req,
@@ -329,9 +374,22 @@ static void SendMysqlResponse(
         << "mysql protocol does not support attachment, "
         "your response_attachment will not be sent";
 
-    // MakeResponse
+    typedef void (*SendResponseByCommandIdFunctionPtr)(
+        uint8_t, Controller*, Socket*, MysqlConnContext*,
+        const google::protobuf::Message* req,
+        const google::protobuf::Message* res);
+    static std::map<uint8_t, SendResponseByCommandIdFunctionPtr> senders = {
+        {COM_QUIT, SendQuitPacket},
+        {COM_QUERY, SendQueryPacket}
+    };
 
-    SendOKPacket(socket, ctx->NextSequenceId());
+    SendResponseByCommandIdFunctionPtr sender = SendUnknownMethodPacket;
+    const auto& citr = senders.find(command_id);
+    if (citr != senders.end()) {
+        sender = citr->second;
+    }
+    CHECK(sender);
+    sender(command_id, cntl, socket, ctx, req, res);
 }
 
 // Defined in baidu_rpc_protocol.cpp

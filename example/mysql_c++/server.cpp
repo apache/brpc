@@ -41,9 +41,9 @@ public:
     MysqlServiceImpl() {};
     virtual ~MysqlServiceImpl() {};
     void Query(google::protobuf::RpcController* cntl_base,
-                      const ::brpc::policy::QueryRequest* request,
-                      ::brpc::policy::QueryResponse* response,
-                      google::protobuf::Closure* done) override {
+               const ::brpc::policy::QueryRequest* request,
+               ::brpc::policy::QueryResponse* response,
+               google::protobuf::Closure* done) override {
         brpc::ClosureGuard done_guard(done);
         const std::string& sql = request->sql();
         if (FLAGS_show_full_sql) {
@@ -61,18 +61,26 @@ public:
         // to store/read connection-based state.
     }
 
+    void Quit(google::protobuf::RpcController* cntl_base,
+              const ::brpc::policy::QuitRequest* request,
+              ::brpc::policy::QuitResponse* response,
+              google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        LOG(INFO) << "Quit";
+    }
+
     void Ping(google::protobuf::RpcController* cntl_base,
-                      const ::brpc::policy::PingRequest* request,
-                      ::brpc::policy::PingResponse* response,
-                      google::protobuf::Closure* done) override {
+              const ::brpc::policy::PingRequest* request,
+              ::brpc::policy::PingResponse* response,
+              google::protobuf::Closure* done) override {
         brpc::ClosureGuard done_guard(done);
         LOG(INFO) << "Ping";
     }
 
     void UnknownMethod(google::protobuf::RpcController* cntl_base,
-                      const ::brpc::policy::UnknownMethodRequest* request,
-                      ::brpc::policy::UnknownMethodResponse* response,
-                      google::protobuf::Closure* done) override {
+                       const ::brpc::policy::UnknownMethodRequest* request,
+                       ::brpc::policy::UnknownMethodResponse* response,
+                       google::protobuf::Closure* done) override {
         brpc::ClosureGuard done_guard(done);
         LOG(INFO) << "Unknown command id: " << request->command_id();
 

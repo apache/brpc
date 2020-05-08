@@ -75,6 +75,8 @@ cc_binary(
     copts = COPTS,
 )
 
+# build mysql_c++_server with:
+# bazel build //example:mysql_c++_server --copt="-DENABLE_MYSQL_PROTOCOL"
 cc_binary(
     name = "mysql_c++_server",
     srcs = [
