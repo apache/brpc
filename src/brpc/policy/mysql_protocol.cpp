@@ -71,9 +71,18 @@ public:
         return butil::StringPiece(current_db);
     }
 
+    void SetScramble(const std::string& auth_plugin_data) {
+        scramble = auth_plugin_data;
+    }
+
+    butil::StringPiece Scramble() {
+        return butil::StringPiece(scramble);
+    }
+
     // the sequence id of the request packet from the client
     int8_t sequence_id;
     std::string current_db;
+    std::string scramble;
 };
 
 
