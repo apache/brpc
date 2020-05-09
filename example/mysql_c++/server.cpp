@@ -90,6 +90,17 @@ public:
         cntl->SetFailed(brpc::ERESPONSE, "As of MySQL 5.7.11, COM_REFRESH is deprecated.");
     }
 
+    void Statistics(google::protobuf::RpcController* cntl_base,
+              const ::brpc::policy::StatisticsRequest* request,
+              ::brpc::policy::StatisticsResponse* response,
+              google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        LOG(INFO) << "Statistics";
+
+        std::string generated_stats("some stats");
+        response->set_stats(std::move(generated_stats));
+    }
+
     void Ping(google::protobuf::RpcController* cntl_base,
               const ::brpc::policy::PingRequest* request,
               ::brpc::policy::PingResponse* response,

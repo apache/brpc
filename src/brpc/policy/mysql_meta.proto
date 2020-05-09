@@ -53,6 +53,13 @@ message RefreshRequest {
 message RefreshResponse {
 }
 
+message StatisticsRequest {
+}
+
+message StatisticsResponse {
+    required string stats = 1;
+}
+
 message PingRequest {
 }
 
@@ -77,6 +84,7 @@ service MysqlService {
     rpc Quit(QuitRequest) returns (QuitResponse);
     rpc InitDB(InitDBRequest) returns (InitDBResponse);
     rpc Refresh(RefreshRequest) returns (RefreshResponse);
+    rpc Statistics(StatisticsRequest) returns (StatisticsResponse);
     rpc Ping(PingRequest) returns (PingResponse);
     rpc Query(QueryRequest) returns (QueryResponse);
     rpc UnknownMethod(UnknownMethodRequest) returns (UnknownMethodResponse);

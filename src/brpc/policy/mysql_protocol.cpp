@@ -246,6 +246,7 @@ static butil::StringPiece GetPBMethodNameByCommandId(uint8_t command_id) {
         {COM_QUIT, "brpc.policy.MysqlService.Quit"},
         {COM_INIT_DB, "brpc.policy.MysqlService.InitDB"},
         {COM_REFRESH, "brpc.policy.MysqlService.Refresh"},
+        {COM_STATISTICS, "brpc.policy.MysqlService.Statistics"},
         {COM_PING, "brpc.policy.MysqlService.Ping"},
         {COM_QUERY, "brpc.policy.MysqlService.Query"}
     };
@@ -297,6 +298,13 @@ static bool ParseRefresh(
     return true;
 }
 
+static bool ParseStatistics(
+    uint8_t /*command_id*/,
+    butil::IOBuf& payload,
+    google::protobuf::Message* req_base) {
+    return true;
+}
+
 static bool ParsePing(
     uint8_t /*command_id*/,
     butil::IOBuf& /*payload*/,
@@ -335,6 +343,7 @@ static bool ParseFromRemainedPayload(
         {COM_QUIT, ParseQuit},
         {COM_INIT_DB, ParseInitDB},
         {COM_REFRESH, ParseRefresh},
+        {COM_STATISTICS, ParseStatistics},
         {COM_PING, ParsePing},
         {COM_QUERY, ParseQuery}
     };
@@ -411,6 +420,26 @@ static void SendRefreshPacket(
     }
 }
 
+static void SendStatisticsPacket(
+    uint8_t command_id, Controller* cntl,
+    Socket* socket, MysqlConnContext* ctx,
+    const google::protobuf::Message* req_base,
+    const google::protobuf::Message* res_base) {
+    LOG(INFO) << "SendStatisticsPacket";
+
+    const auto* res = static_cast<const StatisticsResponse*>(res_base);
+    // make the header
+    MysqlProtocolPacketHeader packet_header;
+    packet_header.SetPayloadLength(res->stats().length());
+    packet_header.SetSequenceId(ctx->NextSequenceId());
+    // composite header and body
+    butil::IOBuf stats_packet;
+    AppendPacketHeaderToIOBuf(packet_header, stats_packet);
+    stats_packet.append(res->stats());
+    // send
+    socket->Write(&stats_packet);
+}
+
 static void SendQueryPacket(
     uint8_t command_id, Controller* cntl,
     Socket* socket, MysqlConnContext* ctx,
@@ -462,6 +491,7 @@ static void SendMysqlResponse(
         {COM_QUIT, SendQuitPacket},
         {COM_INIT_DB, SendInitDBPacket},
         {COM_REFRESH, SendRefreshPacket},
+        {COM_STATISTICS, SendStatisticsPacket},
         {COM_QUERY, SendQueryPacket}
     };
 
