@@ -26,6 +26,19 @@ message QuitRequest {
 message QuitResponse {
 }
 
+message InitDBRequest {
+    required string db_name = 1;
+}
+
+message InitDBResponse {
+    // Set error_code to 0 if anything is ok, and db_name in request
+    // will be set to MysqlConnContext.current_db by brpc.
+    required int32 error_code = 1;
+    optional string sql_state_marker = 2;
+    optional string sql_state = 3;
+    optional string error_message = 4;
+}
+
 message PingRequest {
 }
 
@@ -48,6 +61,7 @@ message UnknownMethodResponse {
 
 service MysqlService {
     rpc Quit(QuitRequest) returns (QuitResponse);
+    rpc InitDB(InitDBRequest) returns (InitDBResponse);
     rpc Ping(PingRequest) returns (PingResponse);
     rpc Query(QueryRequest) returns (QueryResponse);
     rpc UnknownMethod(UnknownMethodRequest) returns (UnknownMethodResponse);

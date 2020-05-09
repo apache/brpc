@@ -69,6 +69,15 @@ public:
         LOG(INFO) << "Quit";
     }
 
+    void InitDB(google::protobuf::RpcController* cntl_base,
+              const ::brpc::policy::InitDBRequest* request,
+              ::brpc::policy::InitDBResponse* response,
+              google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        LOG(INFO) << "InitDB database " << request->db_name();
+        response->set_error_code(0);
+    }
+
     void Ping(google::protobuf::RpcController* cntl_base,
               const ::brpc::policy::PingRequest* request,
               ::brpc::policy::PingResponse* response,

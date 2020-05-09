@@ -62,8 +62,17 @@ public:
         sequence_id = seq_id;
     }
 
+    void SetCurrentDB(const std::string& db_name) {
+        current_db = db_name;
+    }
+
+    butil::StringPiece CurrentDB() {
+        return butil::StringPiece(current_db);
+    }
+
     // the sequence id of the request packet from the client
     int8_t sequence_id;
+    std::string current_db;
 };
 
 
@@ -234,6 +243,7 @@ static void SendOKPacket(Socket* socket, uint8_t sequence_id);
 static butil::StringPiece GetPBMethodNameByCommandId(uint8_t command_id) {
     static std::map<uint8_t, std::string> cmd2name = {
         {COM_QUIT, "brpc.policy.MysqlService.Quit"},
+        {COM_INIT_DB, "brpc.policy.MysqlService.InitDB"},
         {COM_PING, "brpc.policy.MysqlService.Ping"},
         {COM_QUERY, "brpc.policy.MysqlService.Query"}
     };
@@ -252,6 +262,16 @@ static bool ParseQuit(
     uint8_t /*command_id*/,
     const butil::IOBuf& payload,
     google::protobuf::Message* msg) {
+    return true;
+}
+
+static bool ParseInitDB(
+    uint8_t /*command_id*/,
+    const butil::IOBuf& payload,
+    google::protobuf::Message* msg) {
+
+    InitDBRequest* req = static_cast<InitDBRequest*>(msg);
+    req->set_db_name(payload.to_string().substr(1));
     return true;
 }
 
@@ -291,6 +311,7 @@ static bool ParseFromPayload(
         uint8_t, const butil::IOBuf&, google::protobuf::Message*);
     static std::map<uint8_t, ParseFunctionPtr> cmd2parser = {
         {COM_QUIT, ParseQuit},
+        {COM_INIT_DB, ParseInitDB},
         {COM_PING, ParsePing},
         {COM_QUERY, ParseQuery}
     };
@@ -309,6 +330,8 @@ static void SendErrorPacket(
     Socket* socket, MysqlConnContext* ctx,
     const google::protobuf::Message* req,
     const google::protobuf::Message* res) {
+    // TODO:
+    LOG(INFO) << "SendErrorPacket";
 }
 
 static void SendUnknownMethodPacket(
@@ -328,6 +351,24 @@ static void SendQuitPacket(
     // Just close the connection on quit
     LOG(INFO) << "SendQuitPacket";
     socket->SetFailed();
+}
+
+static void SendInitDBPacket(
+    uint8_t command_id, Controller* cntl,
+    Socket* socket, MysqlConnContext* ctx,
+    const google::protobuf::Message* req_base,
+    const google::protobuf::Message* res_base) {
+    LOG(INFO) << "SendInitDB";
+
+    const auto* req = static_cast<const InitDBRequest*>(req_base);
+    const auto* res = static_cast<const InitDBResponse*>(res_base);
+    if (res->error_code() == 0) {
+        // set db_name to ctx
+        ctx->SetCurrentDB(req->db_name());
+        SendOKPacket(socket, ctx->NextSequenceId());
+    } else {
+        SendErrorPacket(command_id, cntl, socket, ctx, req_base, res_base);
+    }
 }
 
 static void SendQueryPacket(
@@ -379,6 +420,7 @@ static void SendMysqlResponse(
         const google::protobuf::Message* res);
     static std::map<uint8_t, SendResponseByCommandIdFunctionPtr> senders = {
         {COM_QUIT, SendQuitPacket},
+        {COM_INIT_DB, SendInitDBPacket},
         {COM_QUERY, SendQueryPacket}
     };
 
