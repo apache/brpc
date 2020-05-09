@@ -78,6 +78,18 @@ public:
         response->set_error_code(0);
     }
 
+    void Refresh(google::protobuf::RpcController* cntl_base,
+              const ::brpc::policy::RefreshRequest* request,
+              ::brpc::policy::RefreshResponse* response,
+              google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        LOG(INFO) << "As of MySQL 5.7.11, COM_REFRESH is deprecated.";
+
+        brpc::Controller* cntl =
+            static_cast<brpc::Controller*>(cntl_base);
+        cntl->SetFailed(brpc::ERESPONSE, "As of MySQL 5.7.11, COM_REFRESH is deprecated.");
+    }
+
     void Ping(google::protobuf::RpcController* cntl_base,
               const ::brpc::policy::PingRequest* request,
               ::brpc::policy::PingResponse* response,

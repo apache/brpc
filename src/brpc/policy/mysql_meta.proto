@@ -39,6 +39,20 @@ message InitDBResponse {
     optional string error_message = 4;
 }
 
+message RefreshRequest {
+    required bool grant = 1;
+    required bool log = 2;
+    required bool tables = 3;
+    required bool hosts = 4;
+    required bool status = 5;
+    required bool threads = 6;
+    required bool slave = 7;
+    required bool master = 8;
+}
+
+message RefreshResponse {
+}
+
 message PingRequest {
 }
 
@@ -62,6 +76,7 @@ message UnknownMethodResponse {
 service MysqlService {
     rpc Quit(QuitRequest) returns (QuitResponse);
     rpc InitDB(InitDBRequest) returns (InitDBResponse);
+    rpc Refresh(RefreshRequest) returns (RefreshResponse);
     rpc Ping(PingRequest) returns (PingResponse);
     rpc Query(QueryRequest) returns (QueryResponse);
     rpc UnknownMethod(UnknownMethodRequest) returns (UnknownMethodResponse);

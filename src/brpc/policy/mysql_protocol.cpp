@@ -34,6 +34,7 @@
 #include "butil/sys_byteorder.h"
 #include "brpc/policy/my_command.h"
 #include "brpc/policy/mysql_protocol.h"
+#include "brpc/policy/mysql_com.h"
 
 extern "C" {
 void bthread_assign_data(void* data);
@@ -244,6 +245,7 @@ static butil::StringPiece GetPBMethodNameByCommandId(uint8_t command_id) {
     static std::map<uint8_t, std::string> cmd2name = {
         {COM_QUIT, "brpc.policy.MysqlService.Quit"},
         {COM_INIT_DB, "brpc.policy.MysqlService.InitDB"},
+        {COM_REFRESH, "brpc.policy.MysqlService.Refresh"},
         {COM_PING, "brpc.policy.MysqlService.Ping"},
         {COM_QUERY, "brpc.policy.MysqlService.Query"}
     };
@@ -260,31 +262,51 @@ static butil::StringPiece GetPBMethodNameByCommandId(uint8_t command_id) {
 
 static bool ParseQuit(
     uint8_t /*command_id*/,
-    const butil::IOBuf& payload,
+    butil::IOBuf& /*payload*/,
     google::protobuf::Message* msg) {
     return true;
 }
 
 static bool ParseInitDB(
     uint8_t /*command_id*/,
-    const butil::IOBuf& payload,
+    butil::IOBuf& payload,
     google::protobuf::Message* msg) {
 
     InitDBRequest* req = static_cast<InitDBRequest*>(msg);
-    req->set_db_name(payload.to_string().substr(1));
+    req->set_db_name(payload.to_string());
+    return true;
+}
+
+static bool ParseRefresh(
+    uint8_t /*command_id*/,
+    butil::IOBuf& payload,
+    google::protobuf::Message* req_base) {
+
+    uint8_t flags;
+    payload.cutn(&flags, 1);
+    RefreshRequest* req = static_cast<RefreshRequest*>(req_base);
+    req->set_grant(flags & REFRESH_GRANT);
+    req->set_log(flags & REFRESH_LOG);
+    req->set_tables(flags & REFRESH_TABLES);
+    req->set_hosts(flags & REFRESH_HOSTS);
+    req->set_status(flags & REFRESH_STATUS);
+    req->set_threads(flags & REFRESH_THREADS);
+    req->set_slave(flags & REFRESH_SLAVE);
+    req->set_master(flags & REFRESH_MASTER);
+
     return true;
 }
 
 static bool ParsePing(
     uint8_t /*command_id*/,
-    const butil::IOBuf& payload,
+    butil::IOBuf& /*payload*/,
     google::protobuf::Message* msg) {
     return true;
 }
 
 static bool ParseQuery(
     uint8_t /*command_id*/,
-    const butil::IOBuf& payload,
+    butil::IOBuf& payload,
     google::protobuf::Message* msg) {
 
     QueryRequest* req = static_cast<QueryRequest*>(msg);
@@ -294,7 +316,7 @@ static bool ParseQuery(
 
 static bool ParseUnknownMethod(
     uint8_t command_id,
-    const butil::IOBuf& payload,
+    butil::IOBuf& ,
     google::protobuf::Message* msg) {
 
     UnknownMethodRequest* req = static_cast<UnknownMethodRequest*>(msg);
@@ -302,16 +324,17 @@ static bool ParseUnknownMethod(
     return true;
 }
 
-static bool ParseFromPayload(
+static bool ParseFromRemainedPayload(
     uint8_t command_id,
-    const butil::IOBuf& payload,
+    butil::IOBuf& payload,
     google::protobuf::Message* msg) {
 
     typedef bool (*ParseFunctionPtr)(
-        uint8_t, const butil::IOBuf&, google::protobuf::Message*);
+        uint8_t, butil::IOBuf&, google::protobuf::Message*);
     static std::map<uint8_t, ParseFunctionPtr> cmd2parser = {
         {COM_QUIT, ParseQuit},
         {COM_INIT_DB, ParseInitDB},
+        {COM_REFRESH, ParseRefresh},
         {COM_PING, ParsePing},
         {COM_QUERY, ParseQuery}
     };
@@ -371,6 +394,23 @@ static void SendInitDBPacket(
     }
 }
 
+static void SendRefreshPacket(
+    uint8_t command_id, Controller* cntl,
+    Socket* socket, MysqlConnContext* ctx,
+    const google::protobuf::Message* req_base,
+    const google::protobuf::Message* res_base) {
+    LOG(INFO) << "SendRefresh";
+
+    // COM_REFRESH is deprecated.
+    // Send error packet back if cntl Failed is setted.
+    // Otherwise ok packet.
+    if (cntl->Failed()) {
+        SendErrorPacket(command_id, cntl, socket, ctx, req_base, res_base);
+    } else {
+        SendOKPacket(socket, ctx->NextSequenceId());
+    }
+}
+
 static void SendQueryPacket(
     uint8_t command_id, Controller* cntl,
     Socket* socket, MysqlConnContext* ctx,
@@ -421,6 +461,7 @@ static void SendMysqlResponse(
     static std::map<uint8_t, SendResponseByCommandIdFunctionPtr> senders = {
         {COM_QUIT, SendQuitPacket},
         {COM_INIT_DB, SendInitDBPacket},
+        {COM_REFRESH, SendRefreshPacket},
         {COM_QUERY, SendQueryPacket}
     };
 
@@ -557,9 +598,8 @@ void ProcessMysqlRequest(InputMessageBase* msg_base) {
         }
         req.reset(svc->GetRequestPrototype(method).New());
 
-        // command_id is the first byte of msg->payload,
-        // we pass in the command_id explicitly for easy to use.
-        if (!ParseFromPayload(command_id, msg->payload, req.get())) {
+        msg->payload.pop_front(1); // pop the command id from payload
+        if (!ParseFromRemainedPayload(command_id, msg->payload, req.get())) {
             LOG(ERROR) << "Fail to parse request message, size=" << msg->payload.size();
             cntl->SetFailed(EREQUEST, "Fail to parse request message, size=%d", 
                     (int)msg->payload.size());
