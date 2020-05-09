@@ -101,6 +101,32 @@ public:
         response->set_stats(std::move(generated_stats));
     }
 
+    void ProcessInfo(google::protobuf::RpcController* cntl_base,
+              const ::brpc::policy::ProcessInfoRequest* request,
+              ::brpc::policy::ProcessInfoResponse* response,
+              google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        LOG(INFO) << "As of 5.7.11 COM_PROCESS_INFO is deprecated"
+           " in favor of COM_QUERY with SHOW PROCESSLIST.";
+
+        brpc::Controller* cntl =
+            static_cast<brpc::Controller*>(cntl_base);
+        cntl->SetFailed(brpc::ERESPONSE, "As of 5.7.11 COM_PROCESS_INFO is deprecated"
+                       " in favor of COM_QUERY with SHOW PROCESSLIST.");
+    }
+
+    void ProcessKill(google::protobuf::RpcController* cntl_base,
+              const ::brpc::policy::ProcessKillRequest* request,
+              ::brpc::policy::ProcessKillResponse* response,
+              google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        LOG(INFO) << "As of MySQL 5.7.11, COM_PROCESS_KILL is deprecated.";
+
+        brpc::Controller* cntl =
+            static_cast<brpc::Controller*>(cntl_base);
+        cntl->SetFailed(brpc::ERESPONSE, "As of MySQL 5.7.11, COM_PROCESS_KILL is deprecated.");
+    }
+
     void Ping(google::protobuf::RpcController* cntl_base,
               const ::brpc::policy::PingRequest* request,
               ::brpc::policy::PingResponse* response,

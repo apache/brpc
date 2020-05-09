@@ -60,6 +60,19 @@ message StatisticsResponse {
     required string stats = 1;
 }
 
+message ProcessInfoRequest {
+}
+
+message ProcessInfoResponse {
+}
+
+message ProcessKillRequest {
+    required uint32 connection_id = 1;
+}
+
+message ProcessKillResponse {
+}
+
 message PingRequest {
 }
 
@@ -85,6 +98,8 @@ service MysqlService {
     rpc InitDB(InitDBRequest) returns (InitDBResponse);
     rpc Refresh(RefreshRequest) returns (RefreshResponse);
     rpc Statistics(StatisticsRequest) returns (StatisticsResponse);
+    rpc ProcessInfo(ProcessInfoRequest) returns (ProcessInfoResponse);
+    rpc ProcessKill(ProcessKillRequest) returns (ProcessKillResponse);
     rpc Ping(PingRequest) returns (PingResponse);
     rpc Query(QueryRequest) returns (QueryResponse);
     rpc UnknownMethod(UnknownMethodRequest) returns (UnknownMethodResponse);

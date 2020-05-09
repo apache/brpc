@@ -183,6 +183,11 @@ public:
         stream_ += 3;
         return *this;
     }
+    MysqlRawUnpacker& unpack_uint4(uint32_t& hostvalue) {
+        hostvalue = butil::UnsignedIntLoad4Bytes(stream_);
+        stream_ += 4;
+        return *this;
+    }
     MysqlRawUnpacker& unpack_uint1(uint8_t& hostvalue) {
         hostvalue = *((const uint8_t*)stream_);
         stream_ += 1;
@@ -247,6 +252,8 @@ static butil::StringPiece GetPBMethodNameByCommandId(uint8_t command_id) {
         {COM_INIT_DB, "brpc.policy.MysqlService.InitDB"},
         {COM_REFRESH, "brpc.policy.MysqlService.Refresh"},
         {COM_STATISTICS, "brpc.policy.MysqlService.Statistics"},
+        {COM_PROCESS_INFO, "brpc.policy.MysqlService.ProcessInfo"},
+        {COM_PROCESS_KILL, "brpc.policy.MysqlService.ProcessKill"},
         {COM_PING, "brpc.policy.MysqlService.Ping"},
         {COM_QUERY, "brpc.policy.MysqlService.Query"}
     };
@@ -305,6 +312,30 @@ static bool ParseStatistics(
     return true;
 }
 
+static bool ParseProcessInfo(
+    uint8_t /*command_id*/,
+    butil::IOBuf& payload,
+    google::protobuf::Message* req_base) {
+    return true;
+}
+
+static bool ParseProcessKill(
+    uint8_t /*command_id*/,
+    butil::IOBuf& payload,
+    google::protobuf::Message* req_base) {
+
+    uint32_t connection_id;
+    char buffer[4];
+    payload.copy_to(buffer, 4);
+    MysqlRawUnpacker ru(buffer);
+    ru.unpack_uint4(connection_id);
+
+    auto* req = static_cast<ProcessKillRequest*>(req_base);
+    req->set_connection_id(connection_id);
+
+    return true;
+}
+
 static bool ParsePing(
     uint8_t /*command_id*/,
     butil::IOBuf& /*payload*/,
@@ -344,6 +375,8 @@ static bool ParseFromRemainedPayload(
         {COM_INIT_DB, ParseInitDB},
         {COM_REFRESH, ParseRefresh},
         {COM_STATISTICS, ParseStatistics},
+        {COM_PROCESS_INFO, ParseProcessInfo},
+        {COM_PROCESS_KILL, ParseProcessKill},
         {COM_PING, ParsePing},
         {COM_QUERY, ParseQuery}
     };
@@ -440,6 +473,40 @@ static void SendStatisticsPacket(
     socket->Write(&stats_packet);
 }
 
+static void SendProcessInfoPacket(
+    uint8_t command_id, Controller* cntl,
+    Socket* socket, MysqlConnContext* ctx,
+    const google::protobuf::Message* req_base,
+    const google::protobuf::Message* res_base) {
+    LOG(INFO) << "SendProcessInfoPacket";
+
+    // COM_PROCESS_INFO is deprecated.
+    // Send error packet back if cntl Failed is setted.
+    // Otherwise text resultset.
+    if (cntl->Failed()) {
+        SendErrorPacket(command_id, cntl, socket, ctx, req_base, res_base);
+    } else {
+        //TODO: send text resultset
+    }
+}
+
+static void SendProcessKillPacket(
+    uint8_t command_id, Controller* cntl,
+    Socket* socket, MysqlConnContext* ctx,
+    const google::protobuf::Message* req_base,
+    const google::protobuf::Message* res_base) {
+    LOG(INFO) << "SendProcessKillPacket";
+
+    // COM_PROCESS_KILL is deprecated.
+    // Send error packet back if cntl Failed is setted.
+    // Otherwise ok packet.
+    if (cntl->Failed()) {
+        SendErrorPacket(command_id, cntl, socket, ctx, req_base, res_base);
+    } else {
+        SendOKPacket(socket, ctx->NextSequenceId());
+    }
+}
+
 static void SendQueryPacket(
     uint8_t command_id, Controller* cntl,
     Socket* socket, MysqlConnContext* ctx,
@@ -492,6 +559,8 @@ static void SendMysqlResponse(
         {COM_INIT_DB, SendInitDBPacket},
         {COM_REFRESH, SendRefreshPacket},
         {COM_STATISTICS, SendStatisticsPacket},
+        {COM_PROCESS_INFO, SendProcessInfoPacket},
+        {COM_PROCESS_KILL, SendProcessKillPacket},
         {COM_QUERY, SendQueryPacket}
     };
 
