@@ -532,6 +532,16 @@ static void SendDebugPacket(
     }
 }
 
+static void SendPingPacket(
+    uint8_t command_id, Controller* cntl,
+    Socket* socket, MysqlConnContext* ctx,
+    const google::protobuf::Message* req_base,
+    const google::protobuf::Message* res_base) {
+    LOG(INFO) << "SendPingPacket";
+
+    SendOKPacket(socket, ctx->NextSequenceId());
+}
+
 static void SendQueryPacket(
     uint8_t command_id, Controller* cntl,
     Socket* socket, MysqlConnContext* ctx,
@@ -587,6 +597,7 @@ static void SendMysqlResponse(
         {COM_PROCESS_INFO, SendProcessInfoPacket},
         {COM_PROCESS_KILL, SendProcessKillPacket},
         {COM_DEBUG, SendDebugPacket},
+        {COM_DEBUG, SendPingPacket},
         {COM_QUERY, SendQueryPacket}
     };
 
