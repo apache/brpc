@@ -254,6 +254,7 @@ static butil::StringPiece GetPBMethodNameByCommandId(uint8_t command_id) {
         {COM_STATISTICS, "brpc.policy.MysqlService.Statistics"},
         {COM_PROCESS_INFO, "brpc.policy.MysqlService.ProcessInfo"},
         {COM_PROCESS_KILL, "brpc.policy.MysqlService.ProcessKill"},
+        {COM_DEBUG, "brpc.policy.MysqlService.Debug"},
         {COM_PING, "brpc.policy.MysqlService.Ping"},
         {COM_QUERY, "brpc.policy.MysqlService.Query"}
     };
@@ -271,16 +272,16 @@ static butil::StringPiece GetPBMethodNameByCommandId(uint8_t command_id) {
 static bool ParseQuit(
     uint8_t /*command_id*/,
     butil::IOBuf& /*payload*/,
-    google::protobuf::Message* msg) {
+    google::protobuf::Message* /*req_base*/) {
     return true;
 }
 
 static bool ParseInitDB(
     uint8_t /*command_id*/,
     butil::IOBuf& payload,
-    google::protobuf::Message* msg) {
+    google::protobuf::Message* req_base) {
 
-    InitDBRequest* req = static_cast<InitDBRequest*>(msg);
+    InitDBRequest* req = static_cast<InitDBRequest*>(req_base);
     req->set_db_name(payload.to_string());
     return true;
 }
@@ -307,15 +308,15 @@ static bool ParseRefresh(
 
 static bool ParseStatistics(
     uint8_t /*command_id*/,
-    butil::IOBuf& payload,
-    google::protobuf::Message* req_base) {
+    butil::IOBuf& /*payload*/,
+    google::protobuf::Message* /*req_base*/) {
     return true;
 }
 
 static bool ParseProcessInfo(
     uint8_t /*command_id*/,
-    butil::IOBuf& payload,
-    google::protobuf::Message* req_base) {
+    butil::IOBuf& /*payload*/,
+    google::protobuf::Message* /*req_base*/) {
     return true;
 }
 
@@ -336,19 +337,26 @@ static bool ParseProcessKill(
     return true;
 }
 
+static bool ParseDebug(
+    uint8_t /*command_id*/,
+    butil::IOBuf& /*payload*/,
+    google::protobuf::Message* /*req_base*/) {
+    return true;
+}
+
 static bool ParsePing(
     uint8_t /*command_id*/,
     butil::IOBuf& /*payload*/,
-    google::protobuf::Message* msg) {
+    google::protobuf::Message* /*req_base*/) {
     return true;
 }
 
 static bool ParseQuery(
     uint8_t /*command_id*/,
     butil::IOBuf& payload,
-    google::protobuf::Message* msg) {
+    google::protobuf::Message* req_base) {
 
-    QueryRequest* req = static_cast<QueryRequest*>(msg);
+    QueryRequest* req = static_cast<QueryRequest*>(req_base);
     req->set_sql(payload.to_string());
     return true;
 }
@@ -377,6 +385,7 @@ static bool ParseFromRemainedPayload(
         {COM_STATISTICS, ParseStatistics},
         {COM_PROCESS_INFO, ParseProcessInfo},
         {COM_PROCESS_KILL, ParseProcessKill},
+        {COM_DEBUG, ParseDebug},
         {COM_PING, ParsePing},
         {COM_QUERY, ParseQuery}
     };
@@ -507,6 +516,22 @@ static void SendProcessKillPacket(
     }
 }
 
+static void SendDebugPacket(
+    uint8_t command_id, Controller* cntl,
+    Socket* socket, MysqlConnContext* ctx,
+    const google::protobuf::Message* req_base,
+    const google::protobuf::Message* res_base) {
+    LOG(INFO) << "SendDebugPacket";
+
+    // Send error packet back if cntl Failed is setted.
+    // Otherwise ok packet.
+    if (cntl->Failed()) {
+        SendErrorPacket(command_id, cntl, socket, ctx, req_base, res_base);
+    } else {
+        SendOKPacket(socket, ctx->NextSequenceId());
+    }
+}
+
 static void SendQueryPacket(
     uint8_t command_id, Controller* cntl,
     Socket* socket, MysqlConnContext* ctx,
@@ -561,6 +586,7 @@ static void SendMysqlResponse(
         {COM_STATISTICS, SendStatisticsPacket},
         {COM_PROCESS_INFO, SendProcessInfoPacket},
         {COM_PROCESS_KILL, SendProcessKillPacket},
+        {COM_DEBUG, SendDebugPacket},
         {COM_QUERY, SendQueryPacket}
     };
 

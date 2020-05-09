@@ -73,6 +73,12 @@ message ProcessKillRequest {
 message ProcessKillResponse {
 }
 
+message DebugRequest {
+}
+
+message DebugResponse {
+}
+
 message PingRequest {
 }
 
@@ -100,6 +106,7 @@ service MysqlService {
     rpc Statistics(StatisticsRequest) returns (StatisticsResponse);
     rpc ProcessInfo(ProcessInfoRequest) returns (ProcessInfoResponse);
     rpc ProcessKill(ProcessKillRequest) returns (ProcessKillResponse);
+    rpc Debug(DebugRequest) returns (DebugResponse);
     rpc Ping(PingRequest) returns (PingResponse);
     rpc Query(QueryRequest) returns (QueryResponse);
     rpc UnknownMethod(UnknownMethodRequest) returns (UnknownMethodResponse);

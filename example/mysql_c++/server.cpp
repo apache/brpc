@@ -127,6 +127,19 @@ public:
         cntl->SetFailed(brpc::ERESPONSE, "As of MySQL 5.7.11, COM_PROCESS_KILL is deprecated.");
     }
 
+    void Debug(google::protobuf::RpcController* cntl_base,
+              const ::brpc::policy::DebugRequest* request,
+              ::brpc::policy::DebugResponse* response,
+              google::protobuf::Closure* done) override {
+        brpc::ClosureGuard done_guard(done);
+        LOG(INFO) << "Dump debug info to server's stdout.";
+
+        // Set cntl failed if encounter errors.
+        // brpc::Controller* cntl =
+        //     static_cast<brpc::Controller*>(cntl_base);
+        // cntl->SetFailed(brpc::ERESPONSE, "Failed to dump debug info.");
+    }
+
     void Ping(google::protobuf::RpcController* cntl_base,
               const ::brpc::policy::PingRequest* request,
               ::brpc::policy::PingResponse* response,
