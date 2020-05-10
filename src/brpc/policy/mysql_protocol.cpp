@@ -43,90 +43,6 @@ void bthread_assign_data(void* data);
 namespace brpc {
 namespace policy {
 
-// This class is as parsing_context in socket.
-class MysqlConnContext : public Destroyable  {
-public:
-    explicit MysqlConnContext(uint8_t seq_id) :
-        sequence_id(seq_id) {}
-
-    ~MysqlConnContext() { }
-    // @Destroyable
-    void Destroy() override {
-        delete this;
-    }
-
-    int8_t NextSequenceId() {
-        return ++sequence_id;
-    }
-
-    void ResetSequenceId(uint8_t seq_id) {
-        sequence_id = seq_id;
-    }
-
-    void SetCurrentDB(const std::string& db_name) {
-        current_db = db_name;
-    }
-
-    butil::StringPiece CurrentDB() {
-        return butil::StringPiece(current_db);
-    }
-
-    void SetScramble(const std::string& auth_plugin_data) {
-        scramble = auth_plugin_data;
-    }
-
-    butil::StringPiece Scramble() {
-        return butil::StringPiece(scramble);
-    }
-
-    // the sequence id of the request packet from the client
-    int8_t sequence_id;
-    std::string current_db;
-    std::string scramble;
-};
-
-
-
-class MysqlProtocolPacketHeader {
-public:
-    MysqlProtocolPacketHeader() :
-        payload_length_{0U, 0U, 0U},
-        sequence_id_(0U) { }
-
-    void SetPayloadLength(uint32_t payload_length) {
-        butil::IntStore3Bytes(payload_length_, payload_length);
-    }
-
-    void SetSequenceId(uint8_t sequence_id) {
-        sequence_id_ = sequence_id;
-    }
-
-    void AppendToIOBuf(butil::IOBuf& iobuf) const {
-        iobuf.append(payload_length_, 4);
-    }
-private:
-    uint8_t payload_length_[3];
-    uint8_t sequence_id_;
-};
-
-class MysqlProtocolPacketBody {
-public:
-    butil::IOBuf& buf() {
-        return buf_;
-    }
-
-    void Append(const void* data, size_t count) {
-        buf_.append(data, count);
-    }
-
-    size_t length() const {
-        return buf_.length();
-    }
-
-private:
-    butil::IOBuf buf_;
-};
-
 const uint8_t packet_handshake_body[] =
     "\x0a"              // protocol version
     "5.0.51b\x00"       // human readable server version
@@ -432,7 +348,6 @@ static void SendQuitPacket(
     const google::protobuf::Message* req,
     const google::protobuf::Message* res) {
     // Just close the connection on quit
-    LOG(INFO) << "SendQuitPacket";
     socket->SetFailed();
 }
 

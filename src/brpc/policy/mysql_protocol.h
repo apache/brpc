@@ -21,8 +21,11 @@
 #include <unistd.h>
 #include <sys/types.h>
 
+#include "butil/iobuf.h"
+#include "brpc/destroyable.h"
 #include "brpc/protocol.h"
 #include "brpc/policy/mysql_meta.pb.h"
+#include "butil/sys_byteorder.h"
 
 
 namespace brpc {
@@ -39,6 +42,110 @@ ParseResult ParseMysqlMessage(
 void ProcessMysqlRequest(InputMessageBase* msg_base);
 
 bool VerifyMysqlRequest(const InputMessageBase* msg_base);
+
+// This class is as parsing_context in socket.
+class MysqlConnContext : public Destroyable  {
+public:
+    MysqlConnContext() :
+        sequence_id(0) { }
+    explicit MysqlConnContext(uint8_t seq_id) :
+        sequence_id(seq_id) {}
+
+    ~MysqlConnContext() { }
+    // @Destroyable
+    void Destroy() override {
+        delete this;
+    }
+
+    int8_t NextSequenceId() {
+        return ++sequence_id;
+    }
+
+    void ResetSequenceId(uint8_t seq_id) {
+        sequence_id = seq_id;
+    }
+
+    void SetCurrentDB(const std::string& db_name) {
+        current_db = db_name;
+    }
+
+    butil::StringPiece CurrentDB() {
+        return butil::StringPiece(current_db);
+    }
+
+    void SetScramble(const std::string& auth_plugin_data) {
+        scramble = auth_plugin_data;
+    }
+
+    butil::StringPiece Scramble() {
+        return butil::StringPiece(scramble);
+    }
+
+    // the sequence id of the request packet from the client
+    int8_t sequence_id;
+    std::string current_db;
+    std::string scramble;
+};
+
+class MysqlProtocolPacketHeader {
+public:
+    MysqlProtocolPacketHeader() :
+        payload_length_{0U, 0U, 0U},
+        sequence_id_(0U) { }
+
+    void SetPayloadLength(uint32_t payload_length) {
+        butil::IntStore3Bytes(payload_length_, payload_length);
+    }
+
+    void SetSequenceId(uint8_t sequence_id) {
+        sequence_id_ = sequence_id;
+    }
+
+    void AppendToIOBuf(butil::IOBuf& iobuf) const {
+        iobuf.append(payload_length_, 4);
+    }
+private:
+    uint8_t payload_length_[3];
+    uint8_t sequence_id_;
+};
+
+class MysqlProtocolPacketBody {
+public:
+    butil::IOBuf& buf() {
+        return buf_;
+    }
+
+    void Append(const void* data, size_t count) {
+        buf_.append(data, count);
+    }
+
+    void AppendByte(uint8_t value) {
+        buf_.append(&value, 1);
+    }
+
+    void AppendString(const std::string& str) {
+        buf_.append(str);
+    }
+
+    void AppendInt(uint32_t value) {
+        char buf[4];
+        butil::IntStore4Bytes(buf, value);
+        buf_.append(buf, sizeof(buf));
+    }
+
+    void AppendInt(uint16_t value) {
+        char buf[2];
+        butil::IntStore2Bytes(buf, value);
+        buf_.append(buf, sizeof(buf));
+    }
+
+    size_t length() const {
+        return buf_.length();
+    }
+
+private:
+    butil::IOBuf buf_;
+};
 
 } // namespace policy
 } // namespace brpc
