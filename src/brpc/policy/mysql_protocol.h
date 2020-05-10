@@ -93,12 +93,14 @@ public:
         payload_length_{0U, 0U, 0U},
         sequence_id_(0U) { }
 
-    void SetPayloadLength(uint32_t payload_length) {
+    MysqlProtocolPacketHeader& SetPayloadLength(uint32_t payload_length) {
         butil::IntStore3Bytes(payload_length_, payload_length);
+        return *this;
     }
 
-    void SetSequenceId(uint8_t sequence_id) {
+    MysqlProtocolPacketHeader& SetSequenceId(uint8_t sequence_id) {
         sequence_id_ = sequence_id;
+        return *this;
     }
 
     void AppendToIOBuf(butil::IOBuf& iobuf) const {

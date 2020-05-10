@@ -86,8 +86,8 @@ void ServerSendInitialPacketDemo(Socket* socket) {
                        sizeof(packet_handshake_body) - 1);
 
     MysqlProtocolPacketHeader packet_header;
-    packet_header.SetPayloadLength(packet_body.length());
-    packet_header.SetSequenceId(0U /* the start sequence id */);
+    packet_header.SetPayloadLength(packet_body.length())
+        .SetSequenceId(0U /* the start sequence id */);
 
     AppendPacketHeaderToIOBuf(packet_header, handshake_packet);
     AppendPacketBodyToIOBuf(packet_body, handshake_packet);
@@ -396,8 +396,8 @@ static void SendStatisticsPacket(
     const auto* res = static_cast<const StatisticsResponse*>(res_base);
     // make the header
     MysqlProtocolPacketHeader packet_header;
-    packet_header.SetPayloadLength(res->stats().length());
-    packet_header.SetSequenceId(ctx->NextSequenceId());
+    packet_header.SetPayloadLength(res->stats().length())
+        .SetSequenceId(ctx->NextSequenceId());
     // composite header and body
     butil::IOBuf stats_packet;
     AppendPacketHeaderToIOBuf(packet_header, stats_packet);
@@ -711,8 +711,8 @@ static void SendOKPacket(Socket* socket, uint8_t sequence_id) {
     packet_body.Append(packet_ok_body, sizeof(packet_ok_body) - 1);
     // make the header
     MysqlProtocolPacketHeader packet_header;
-    packet_header.SetPayloadLength(packet_body.length());
-    packet_header.SetSequenceId(sequence_id);
+    packet_header.SetPayloadLength(packet_body.length())
+        .SetSequenceId(sequence_id);
     // composite header and body
     butil::IOBuf ok_packet;
     AppendPacketHeaderToIOBuf(packet_header, ok_packet);
