@@ -35,6 +35,8 @@
 #include "brpc/policy/my_command.h"
 #include "brpc/policy/mysql_protocol.h"
 #include "brpc/policy/mysql_com.h"
+#include "brpc/policy/mysql_authenticator.h"
+#include "brpc/policy/mysql_constants.h"
 
 extern "C" {
 void bthread_assign_data(void* data);
@@ -97,30 +99,6 @@ void ServerSendInitialPacketDemo(Socket* socket) {
             << socket->description();
     }
 }
-
-class MysqlRawUnpacker {
-public:
-    explicit MysqlRawUnpacker(const void* stream) :
-        stream_((const char*)stream) { }
-
-    MysqlRawUnpacker& unpack_uint3(uint32_t& hostvalue) {
-        hostvalue = butil::UnsignedIntLoad3Bytes(stream_);
-        stream_ += 3;
-        return *this;
-    }
-    MysqlRawUnpacker& unpack_uint4(uint32_t& hostvalue) {
-        hostvalue = butil::UnsignedIntLoad4Bytes(stream_);
-        stream_ += 4;
-        return *this;
-    }
-    MysqlRawUnpacker& unpack_uint1(uint8_t& hostvalue) {
-        hostvalue = *((const uint8_t*)stream_);
-        stream_ += 1;
-        return *this;
-    }
-private:
-    const char* stream_;
-};
 
 ParseResult ParseMysqlMessage(
         butil::IOBuf* source,
@@ -728,20 +706,77 @@ bool VerifyMysqlRequest(const InputMessageBase* msg_base) {
     const MostCommonMessage* msg =
         static_cast<const MostCommonMessage*>(msg_base);
     const Server* server = static_cast<const Server*>(msg->arg());
-    const Authenticator* auth = server->options().auth;
+    const Authenticator* auth_base = server->options().auth;
     Socket* socket = msg->socket();
 
-    if (!auth) {
+    if (!auth_base) {
         // Fast pass (no authentication)
         return true;
     }
 
-    if (auth->VerifyCredential(
-            msg->payload.to_string(), // payload is mysql auth repoonse packet body
-            socket->remote_side(),
-            socket->mutable_auth_context()) != 0) {
+    const auto* auth = dynamic_cast<const MysqlAuthenticator*>(auth_base);
+    if (!auth) {
+        LOG(FATAL) << "Mysql Protocol must use the MysqlAuthenticator";
         return false;
     }
+
+    auto* ctx = static_cast<MysqlConnContext*>(socket->parsing_context());
+    if (ctx == nullptr) {
+        ctx = new (std::nothrow) MysqlConnContext;
+        if (ctx == nullptr) {
+            LOG(ERROR) << "Fail to new MysqlConnContext for socket: "
+                << socket->description();
+            return false;
+        }
+        socket->reset_parsing_context(ctx);
+    }
+
+    std::string packet_body;
+    msg->payload.copy_to(&packet_body);
+    ::brpc::policy::MysqlRawUnpacker ru(packet_body.c_str());
+
+    uint32_t client_flags;
+    ru.unpack_uint4(client_flags);
+    Capabilities::Flags t(client_flags);
+    if (!t.test(Capabilities::PROTOCOL_41)) {
+        LOG(ERROR) << "Need PROTOCOL_41 on " << socket->description();
+        return false;
+    }
+        
+    uint32_t max_packet_size;
+    uint8_t character_set;
+    std::string username;
+    ru.unpack_uint4(max_packet_size)
+        .unpack_uint1(character_set)
+        .skipn(23) // skip the 23 bytes filter, always 0
+        .unpack_cstr(username);
+
+    LOG(INFO) << "max_packet_size=" << max_packet_size
+        << " character_set=" << (int32_t)character_set
+        << " username=" << username;
+
+    std::string auth_response;
+    if (!t.test(Capabilities::PLUGIN_AUTH_LENENC_CLIENT_DATA)) {
+        LOG(INFO) << "Need PLUGIN_AUTH_LENENC_CLIENT_DATA";
+        return false;
+    }
+    ru.unpack_lenenc_str(auth_response);
+
+    std::string database;
+    if (t.test(Capabilities::CONNECT_WITH_DB)) {
+        ru.unpack_cstr(database);
+        LOG(INFO) << "connect with database=" << database;
+    }
+
+    if (auth->VerifyCredential(
+                client_flags, username, database, auth_response,
+                ctx->Scramble().as_string(),
+                socket->remote_side(),
+                socket->mutable_auth_context()) != 0) {
+        return false;
+    }
+
+    ctx->SetCurrentDB(database);
     return true;
 }
 

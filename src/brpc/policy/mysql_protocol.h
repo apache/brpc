@@ -149,6 +149,81 @@ private:
     butil::IOBuf buf_;
 };
 
+class MysqlRawUnpacker {
+public:
+    explicit MysqlRawUnpacker(const void* stream) :
+        stream_((const char*)stream) { }
+
+    MysqlRawUnpacker& unpack_uint1(uint8_t& hostvalue) {
+        hostvalue = *((const uint8_t*)stream_);
+        stream_ += 1;
+        return *this;
+    }
+    MysqlRawUnpacker& unpack_uint2(uint16_t& hostname) {
+        hostname = butil::UnsignedIntLoad2Bytes(stream_);
+        stream_ += 2;
+        return *this;
+    }
+    MysqlRawUnpacker& unpack_uint3(uint32_t& hostvalue) {
+        hostvalue = butil::UnsignedIntLoad3Bytes(stream_);
+        stream_ += 3;
+        return *this;
+    }
+    MysqlRawUnpacker& unpack_uint4(uint32_t& hostvalue) {
+        hostvalue = butil::UnsignedIntLoad4Bytes(stream_);
+        stream_ += 4;
+        return *this;
+    }
+    MysqlRawUnpacker& unpack_uint8(uint64_t& hostvalue) {
+        hostvalue = butil::UnsignedIntLoad8Bytes(stream_);
+        stream_ += 8;
+        return *this;
+    }
+    MysqlRawUnpacker& unpack_cstr(std::string& strval) {
+        while (*stream_) {
+            strval.append(stream_, 1);
+            stream_ += 1;
+        }
+        stream_ += 1; // skip the NULL
+        return *this;
+    }
+    MysqlRawUnpacker& unpack_lenenc_str(std::string& strval) {
+        uint8_t first_byte = 0U;
+        uint64_t real_length = 0U;
+        this->unpack_uint1(first_byte);
+
+        if (first_byte >= 0U && first_byte < 251U) {
+            real_length = first_byte;
+        } else if (first_byte == 0xFC) {
+            uint16_t t;
+            this->unpack_uint2(t);
+            real_length = t;
+        } else if (first_byte == 0xFD) {
+            uint32_t t;
+            this->unpack_uint3(t);
+            real_length = t;
+        } else if (first_byte == 0xFE) {
+            this->unpack_uint8(real_length);
+        } else {
+            // impossble
+        }
+
+        this->unpack_strn(strval, real_length);
+        return *this;
+    }
+    MysqlRawUnpacker& unpack_strn(std::string& strval, size_t n) {
+        strval.append(stream_, n);
+        stream_ += n;
+        return *this;
+    }
+    MysqlRawUnpacker& skipn(size_t n) {
+        stream_ += n;
+        return *this;
+    }
+private:
+    const char* stream_;
+};
+
 } // namespace policy
 } // namespace brpc
 
