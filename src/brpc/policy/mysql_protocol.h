@@ -129,15 +129,41 @@ public:
         buf_.append(str);
     }
 
+    void AppendLenencInt(uint64_t value) {
+        if (value < 251) {
+            AppendInt((uint8_t)value);
+            return;
+        } else if (value < 2 << 16) {
+            AppendByte(0Xfc);
+            AppendInt((uint16_t)value);
+            return;
+        } else if (value < 2 << 24) {
+            AppendByte(0xfd);
+            char buf[3];
+            butil::IntStore3Bytes(buf, (int32_t)value);
+            buf_.append(buf, sizeof(buf));
+            return;
+        } else if (value < 2 << 64 ) {
+            AppendByte(0xfe);
+            AppendInt(value);
+        }
+    }
+    void AppendInt(uint8_t value) {
+        buf_.append(&value, 1);
+    }
+    void AppendInt(uint16_t value) {
+        char buf[2];
+        butil::IntStore2Bytes(buf, value);
+        buf_.append(buf, sizeof(buf));
+    }
     void AppendInt(uint32_t value) {
         char buf[4];
         butil::IntStore4Bytes(buf, value);
         buf_.append(buf, sizeof(buf));
     }
-
-    void AppendInt(uint16_t value) {
-        char buf[2];
-        butil::IntStore2Bytes(buf, value);
+    void AppendInt(uint64_t value) {
+        char buf[8];
+        butil::IntStore8Bytes(buf, value);
         buf_.append(buf, sizeof(buf));
     }
 

@@ -90,6 +90,27 @@ message QueryRequest {
 }
 
 message QueryResponse {
+    message ResultField {
+        optional string catalog = 1;
+        optional string db = 2;
+        optional string table = 3;
+        optional string org_table = 4;
+        optional string name = 5;
+        optional string org_name = 6;
+        optional uint32 charset = 7;
+        optional uint32 length = 8;
+        optional uint32 type = 9;
+        optional uint32 flags = 10;
+        optional uint32 decimals = 11;
+    }
+
+    message ResultRow {
+        repeated bytes filed_value = 1;
+    }
+
+    repeated ResultField field = 1;
+    repeated ResultRow row = 2;
+    optional bool more_result = 3 [default = false];
 }
 
 message UnknownMethodRequest {

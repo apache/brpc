@@ -32,40 +32,53 @@
 namespace brpc {
 namespace policy {
 
-MySQLProtocolEncoder::MsgBuffer MySQLProtocolEncoder::encode_ok_message(
+::butil::IOBuf MySQLProtocolEncoder::EncodeOKMessage(
     uint8_t seq_no, uint64_t affected_rows, uint64_t last_insert_id,
     uint16_t status, uint16_t warnings) {
-  MsgBuffer out_buffer;
 
-  encode_msg_begin(out_buffer);
+    ::brpc::policy::MysqlProtocolPacketBody body;
+    body.AppendByte(0x0);
+    body.AppendLenencInt(affected_rows);
+    body.AppendLenencInt(last_insert_id);
+    body.AppendInt(status);
+    body.AppendInt(warnings);
 
-  append_byte(out_buffer, 0x0);
-  append_lenenc_int(out_buffer, affected_rows);
-  append_lenenc_int(out_buffer, last_insert_id);
-  append_int(out_buffer, status);
-  append_int(out_buffer, warnings);
+    ::brpc::policy::MysqlProtocolPacketHeader header;
+    header.SetPayloadLength(body.length())
+        .SetSequenceId(seq_no);
 
-  encode_msg_end(out_buffer, seq_no);
+    ::butil::IOBuf packet;
+    header.AppendToIOBuf(packet);
+    packet.append(body.buf().movable());
 
-  return out_buffer;
+    return packet;
 }
 
-MySQLProtocolEncoder::MsgBuffer MySQLProtocolEncoder::encode_error_message(
+::butil::IOBuf MySQLProtocolEncoder::EncodeErrorMessage(
     uint8_t seq_no, uint16_t error_code, const std::string &sql_state,
     const std::string &error_msg) {
-  MsgBuffer out_buffer;
 
-  encode_msg_begin(out_buffer);
+    ::brpc::policy::MysqlProtocolPacketBody body;
+    body.AppendByte(0xff);
+    body.AppendInt(error_code);
+    body.AppendByte(0x23); // "#"
+    if (sql_state.length() != 5) {
+        LOG(INFO) << "sql state is invalid[sql=" << sql_state << "]. Use \"HY000\" instead.";
+        body.AppendString(std::string("HY000"));
+    } else {
+        body.AppendString(sql_state);
+    }
+    body.AppendString(error_msg);
 
-  append_byte(out_buffer, 0xff);
-  append_int(out_buffer, error_code);
-  append_byte(out_buffer, 0x23);  // "#"
-  append_str(out_buffer, sql_state);
-  append_str(out_buffer, error_msg);
+    ::brpc::policy::MysqlProtocolPacketHeader header;
+    header.SetPayloadLength(body.length())
+        .SetSequenceId(seq_no);
 
-  encode_msg_end(out_buffer, seq_no);
+    ::butil::IOBuf packet;
+    header.AppendToIOBuf(packet);
+    packet.append(body.buf().movable());
 
-  return out_buffer;
+    return packet;
 }
 
 MySQLProtocolEncoder::MsgBuffer MySQLProtocolEncoder::encode_auth_fast_message(

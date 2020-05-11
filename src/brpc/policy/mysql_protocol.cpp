@@ -37,6 +37,7 @@
 #include "brpc/policy/mysql_com.h"
 #include "brpc/policy/mysql_authenticator.h"
 #include "brpc/policy/mysql_constants.h"
+#include "brpc/policy/mysql_protocol_encoder.h"
 
 extern "C" {
 void bthread_assign_data(void* data);
@@ -447,9 +448,31 @@ static void SendPingPacket(
 static void SendQueryPacket(
     uint8_t command_id, Controller* cntl,
     Socket* socket, MysqlConnContext* ctx,
-    const google::protobuf::Message* req,
-    const google::protobuf::Message* res) {
-    LOG(INFO) << "SendQueryPacket";
+    const google::protobuf::Message* req_base,
+    const google::protobuf::Message* res_base) {
+
+    if (cntl->Failed()) {
+        ::brpc::policy::ErrorMessage msg;
+        msg.seq_no = ctx->NextSequenceId();
+        msg.error_code = (uint16_t)(cntl->ErrorCode() & 0xffff);
+        msg.error_msg = cntl->ErrorText();
+
+        ::butil::IOBuf error_packet =
+            ::brpc::policy::MySQLProtocolEncoder().EncodeErrorMessage(msg);
+        socket->Write(&error_packet);
+        return;
+    }
+
+    const auto* res = static_cast<const QueryResponse*>(res_base);
+    if (res->field_size() == 0) {
+        ::butil::IOBuf ok_packet =
+            ::brpc::policy::MySQLProtocolEncoder().EncodeOKMessage(ctx->NextSequenceId());
+        socket->Write(&ok_packet);
+        return;
+    }
+
+    LOG(INFO) << "QUERY MANY ROWS " << socket->description();
+    // TODO: text resultset here
     SendOKPacket(socket, ctx->NextSequenceId());
 }
 

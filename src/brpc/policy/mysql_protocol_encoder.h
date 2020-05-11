@@ -61,6 +61,18 @@ struct GreetingsMessage {
   uint16_t status_flags;
 };
 
+struct ErrorMessage {
+    ErrorMessage() :
+        seq_no(0U),
+        error_code(0U),
+        sql_state("HY000") { }
+
+    uint8_t seq_no;
+    uint16_t error_code;
+    std::string sql_state;
+    std::string error_msg;
+};
+
 class MySQLProtocolEncoder {
  public:
   using MsgBuffer = std::vector<byte>;
@@ -78,10 +90,17 @@ class MySQLProtocolEncoder {
    *
    * @returns buffer with the encoded message
    **/
-  MsgBuffer encode_ok_message(uint8_t seq_no, uint64_t affected_rows = 0,
+  ::butil::IOBuf EncodeOKMessage(uint8_t seq_no, uint64_t affected_rows = 0,
                               uint64_t last_insert_id = 0, uint16_t status = 0,
                               uint16_t warnings = 0);
 
+  ::butil::IOBuf EncodeErrorMessage(const ErrorMessage& msg) {
+      return EncodeErrorMessage(
+          msg.seq_no,
+          msg.error_code,
+          msg.sql_state,
+          msg.error_msg);
+  }
   /** @brief Encodes MySQL error message
    *
    * @param seq_no      protocol packet sequence number to use
@@ -91,7 +110,7 @@ class MySQLProtocolEncoder {
    *
    * @returns buffer with the encoded message
    **/
-  MsgBuffer encode_error_message(uint8_t seq_no, uint16_t error_code,
+  ::butil::IOBuf EncodeErrorMessage(uint8_t seq_no, uint16_t error_code,
                                  const std::string &sql_state,
                                  const std::string &error_msg);
 

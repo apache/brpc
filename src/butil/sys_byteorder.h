@@ -183,7 +183,7 @@ static inline void IntStore2Bytes(char* src, uint16_t num) {
     IntStore2Bytes(static_cast<uint8_t*>(static_cast<void*>(src)), num);
 }
 
-static inline void IntSotre3Bytes(char* src, uint32_t num) {
+static inline void IntStore3Bytes(char* src, uint32_t num) {
     IntStore3Bytes(static_cast<uint8_t*>(static_cast<void*>(src)), num);
 }
 
