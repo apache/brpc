@@ -134,7 +134,7 @@ public:
             AppendInt((uint8_t)value);
             return;
         } else if (value < 2 << 16) {
-            AppendByte(0Xfc);
+            AppendByte(0xfc);
             AppendInt((uint16_t)value);
             return;
         } else if (value < 2 << 24) {
