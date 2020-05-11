@@ -44,6 +44,7 @@ struct GreetingsMessage {
       connection_id(1U),
       auth_plugin_data("123456789|123456789|"),
       capabilities(
+          ::brpc::policy::Capabilities::CONNECT_WITH_DB |
           ::brpc::policy::Capabilities::PROTOCOL_41 |
           ::brpc::policy::Capabilities::SECURE_CONNECTION),
       auth_plugin_name("mysql_native_password"),
