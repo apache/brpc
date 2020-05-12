@@ -302,7 +302,7 @@ MySQLProtocolEncoder::encode_auth_switch_message(
     return packet;
 }
 
-::butil::IOBuf EncodeRowMessage(
+::butil::IOBuf MySQLProtocolEncoder::EncodeRowMessage(
         uint8_t seq_no, const ::brpc::policy::ResultRow& row) {
     ::brpc::policy::MysqlProtocolPacketBody body;
 
