@@ -446,34 +446,67 @@ static void SendPingPacket(
 }
 
 static void SendQueryPacket(
-    uint8_t command_id, Controller* cntl,
-    Socket* socket, MysqlConnContext* ctx,
-    const google::protobuf::Message* req_base,
-    const google::protobuf::Message* res_base) {
+        uint8_t command_id, Controller* cntl,
+        Socket* socket, MysqlConnContext* ctx,
+        const google::protobuf::Message* req_base,
+        const google::protobuf::Message* res_base) {
+
+    ::brpc::policy::MySQLProtocolEncoder encoder;
 
     if (cntl->Failed()) {
         ::brpc::policy::ErrorMessage msg;
         msg.seq_no = ctx->NextSequenceId();
-        msg.error_code = (uint16_t)(cntl->ErrorCode() & 0xffff);
+        msg.error_code = (uint16_t)cntl->ErrorCode();
         msg.error_msg = cntl->ErrorText();
 
-        ::butil::IOBuf error_packet =
-            ::brpc::policy::MySQLProtocolEncoder().EncodeErrorMessage(msg);
+        ::butil::IOBuf error_packet = encoder.EncodeErrorMessage(msg);
         socket->Write(&error_packet);
         return;
     }
 
     const auto* res = static_cast<const QueryResponse*>(res_base);
-    if (res->field_size() == 0) {
-        ::butil::IOBuf ok_packet =
-            ::brpc::policy::MySQLProtocolEncoder().EncodeOKMessage(ctx->NextSequenceId());
+    uint64_t field_count = res->meta_size();
+    if (field_count == 0) {
+        ::butil::IOBuf ok_packet = encoder.EncodeOKMessage(ctx->NextSequenceId());
         socket->Write(&ok_packet);
         return;
     }
 
     LOG(INFO) << "QUERY MANY ROWS " << socket->description();
-    // TODO: text resultset here
-    SendOKPacket(socket, ctx->NextSequenceId());
+    ::butil::IOBuf field_count_packet = encoder.EncodeColumnsNumberMessage(
+            ctx->NextSequenceId(), field_count);
+    socket->Write(&field_count_packet);
+
+    for (int i = 0; i < res->meta_size(); ++i) {
+        const auto& meta = res->meta(i);
+        ::butil::IOBuf meta_packet = encoder.EncodeColumnMetaMessage(
+                ctx->NextSequenceId(), meta);
+        socket->Write(&meta_packet);
+    }
+
+    ::butil::IOBuf eof_packet =
+        encoder.EncodeEOFMessage(ctx->NextSequenceId(), 0U, 0U);
+    socket->Write(&eof_packet);
+
+    if (res->meta_size() != res->row_size()) {
+        ::brpc::policy::ErrorMessage error_msg;
+        error_msg.seq_no = ctx->NextSequenceId();
+        error_msg.error_code = (uint16_t)::brpc::ERESPONSE;
+        ::butil::IOBuf error_packet = encoder.EncodeErrorMessage(error_msg);
+        socket->Write(&error_packet);
+        return;
+    }
+
+    for (int i = 0; i < res->row_size(); ++i) {
+        const auto& row = res->row(i);
+        ::butil::IOBuf row_packet = encoder.EncodeRowMessage(
+                ctx->NextSequenceId(), row);
+        socket->Write(&row_packet);
+    }
+
+    ::butil::IOBuf eof_packet2 = encoder.EncodeEOFMessage(
+            ctx->NextSequenceId(), 0U, 0U);
+    socket->Write(&eof_packet2);
 }
 
 // Assemble response packet using `correlation_id', `controller',

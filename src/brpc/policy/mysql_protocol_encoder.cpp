@@ -254,82 +254,93 @@ MySQLProtocolEncoder::encode_auth_switch_message(
   return out_buffer;
 }
 
-MySQLProtocolEncoder::MsgBuffer
-MySQLProtocolEncoder::encode_columns_number_message(uint8_t seq_no,
-                                                    uint64_t number) {
-  MsgBuffer out_buffer;
-  encode_msg_begin(out_buffer);
+::butil::IOBuf MySQLProtocolEncoder::EncodeColumnsNumberMessage(
+        uint8_t seq_no,
+        uint64_t number) {
+    ::brpc::policy::MysqlProtocolPacketBody body;
+    body.AppendLenencInt(number);
 
-  append_lenenc_int(out_buffer, number);
+    ::brpc::policy::MysqlProtocolPacketHeader header;
+    header.SetPayloadLength(body.length())
+        .SetSequenceId(seq_no);
 
-  encode_msg_end(out_buffer, seq_no);
-  return out_buffer;
+    ::butil::IOBuf packet;
+    header.AppendToIOBuf(packet);
+    packet.append(body.buf().movable());
+
+    return packet;
 }
 
-MySQLProtocolEncoder::MsgBuffer
-MySQLProtocolEncoder::encode_column_meta_message(
-    uint8_t seq_no, const column_info_type &column_info) {
-  MsgBuffer out_buffer;
-  encode_msg_begin(out_buffer);
+::butil::IOBuf MySQLProtocolEncoder::EncodeColumnMetaMessage(
+        uint8_t seq_no, const ::brpc::policy::ResultMeta& meta) {
+    ::brpc::policy::MysqlProtocolPacketBody body2;
+    body2.AppendInt(static_cast<uint16_t>(meta.charset_set()));
+    body2.AppendInt(static_cast<uint32_t>(meta.length()));
+    body2.AppendInt(static_cast<uint8_t>(meta.type()));
+    body2.AppendInt(static_cast<uint16_t>(meta.flags()));
+    body2.AppendInt(static_cast<uint8_t>(meta.decimals()));
+    body2.AppendInt(static_cast<uint16_t>(0U));
 
-  append_lenenc_str(out_buffer, column_info.catalog);
-  append_lenenc_str(out_buffer, column_info.schema);
-  append_lenenc_str(out_buffer, column_info.table);
-  append_lenenc_str(out_buffer, column_info.orig_table);
-  append_lenenc_str(out_buffer, column_info.name);
-  append_lenenc_str(out_buffer, column_info.orig_name);
+    ::brpc::policy::MysqlProtocolPacketBody body;
+    body.AppendLenencStr(meta.catalog());
+    body.AppendLenencStr(meta.schema());
+    body.AppendLenencStr(meta.table());
+    body.AppendLenencStr(meta.org_table());
+    body.AppendLenencStr(meta.name());
+    body.AppendLenencStr(meta.org_name());
+    body.AppendLenencInt(static_cast<uint64_t>(body2.length()));
 
-  MsgBuffer meta_buffer;
-  append_int(meta_buffer, column_info.character_set);
-  append_int(meta_buffer, column_info.length);
-  append_byte(meta_buffer, static_cast<uint8_t>(column_info.type));
-  append_int(meta_buffer, column_info.flags);
-  append_byte(meta_buffer, column_info.decimals);
-  append_int(meta_buffer, static_cast<uint16_t>(0));
+    ::brpc::policy::MysqlProtocolPacketHeader header;
+    header.SetPayloadLength(body.length() + body2.length())
+        .SetSequenceId(seq_no);
 
-  append_lenenc_int(out_buffer, meta_buffer.size());
-  append_buffer(out_buffer, meta_buffer);
+    ::butil::IOBuf packet;
+    header.AppendToIOBuf(packet);
+    packet.append(body.buf().movable());
+    packet.append(body2.buf().movable());
 
-  encode_msg_end(out_buffer, seq_no);
-  return out_buffer;
+    return packet;
 }
 
-MySQLProtocolEncoder::MsgBuffer MySQLProtocolEncoder::encode_row_message(
-    uint8_t seq_no, const std::vector<column_info_type> &columns_info,
-    const RowValueType &row_values) {
-  MsgBuffer out_buffer;
-  encode_msg_begin(out_buffer);
+::butil::IOBuf EncodeRowMessage(
+        uint8_t seq_no, const ::brpc::policy::ResultRow& row) {
+    ::brpc::policy::MysqlProtocolPacketBody body;
 
-  if (columns_info.size() != row_values.size()) {
-    throw std::runtime_error(
-        std::string("columns_info.size() != row_values.size() ") +
-        std::to_string(columns_info.size()) + std::string("!=") +
-        std::to_string(row_values.size()));
-  }
-
-  for (size_t i = 0; i < row_values.size(); ++i) {
-    if (row_values[i].first) {
-      append_lenenc_str(out_buffer, row_values[i].second);
-    } else {
-      append_byte(out_buffer, 0xfb);  // NULL
+    for (auto i = 0; i < row.row_field_size(); ++i) {
+        if (!row.row_field(i).is_null()) {
+            body.AppendLenencStr(row.row_field(i).field_value());
+        } else {
+            body.AppendByte(0xfb); // NULL
+        }
     }
-  }
 
-  encode_msg_end(out_buffer, seq_no);
-  return out_buffer;
+    ::brpc::policy::MysqlProtocolPacketHeader header;
+    header.SetPayloadLength(body.length())
+        .SetSequenceId(seq_no);
+
+    ::butil::IOBuf packet;
+    header.AppendToIOBuf(packet);
+    packet.append(body.buf().movable());
+
+    return packet;
 }
 
-MySQLProtocolEncoder::MsgBuffer MySQLProtocolEncoder::encode_eof_message(
-    uint8_t seq_no, uint16_t status, uint16_t warnings) {
-  MsgBuffer out_buffer;
-  encode_msg_begin(out_buffer);
+::butil::IOBuf MySQLProtocolEncoder::EncodeEOFMessage(
+        uint8_t seq_no, uint16_t status, uint16_t warnings) {
+    ::brpc::policy::MysqlProtocolPacketBody body;
+    body.AppendByte(0xfe);
+    body.AppendInt(status);
+    body.AppendInt(warnings);
 
-  append_byte(out_buffer, 0xfe);  // ok
-  append_int(out_buffer, status);
-  append_int(out_buffer, warnings);
+    ::brpc::policy::MysqlProtocolPacketHeader header;
+    header.SetPayloadLength(body.length())
+        .SetSequenceId(seq_no);
 
-  encode_msg_end(out_buffer, seq_no);
-  return out_buffer;
+    ::butil::IOBuf packet;
+    header.AppendToIOBuf(packet);
+    packet.append(body.buf().movable());
+
+    return packet;
 }
 
 void MySQLProtocolEncoder::encode_msg_begin(MsgBuffer &out_buffer) {

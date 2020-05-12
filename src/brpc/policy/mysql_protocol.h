@@ -129,6 +129,11 @@ public:
         buf_.append(str);
     }
 
+    void AppendLenencStr(const std::string& str) {
+        AppendLenencInt(str.length());
+        AppendString(str);
+    }
+
     void AppendLenencInt(uint64_t value) {
         if (value < 251) {
             AppendInt((uint8_t)value);

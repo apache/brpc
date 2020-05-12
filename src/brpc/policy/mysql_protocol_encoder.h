@@ -32,6 +32,7 @@
 #include "butil/iobuf.h"
 #include "brpc/policy/mysql_constants.h"
 #include "brpc/policy/mysql_protocol_common.h"
+#include "brpc/policy/mysql_meta.pb.h"
 
 namespace brpc { namespace policy {
 
@@ -177,7 +178,7 @@ class MySQLProtocolEncoder {
    *
    * @returns buffer with the encoded message
    **/
-  MsgBuffer encode_columns_number_message(uint8_t seq_no, uint64_t number);
+  ::butil::IOBuf EncodeColumnsNumberMessage(uint8_t seq_no, uint64_t number);
 
   /** @brief Encodes message containing single column metadata.
    *
@@ -187,8 +188,8 @@ class MySQLProtocolEncoder {
    *
    * @returns buffer with the encoded message
    **/
-  MsgBuffer encode_column_meta_message(uint8_t seq_no,
-                                       const column_info_type &column_info);
+  ::butil::IOBuf EncodeColumnMetaMessage(
+      uint8_t seq_no, const ::brpc::policy::ResultMeta& meta);
 
   /** @brief Encodes message containing single row in the resultset.
    *
@@ -199,9 +200,8 @@ class MySQLProtocolEncoder {
    *
    * @returns buffer with the encoded message
    **/
-  MsgBuffer encode_row_message(
-      uint8_t seq_no, const std::vector<column_info_type> &columns_info,
-      const RowValueType &row_values);
+  ::butil::IOBuf EncodeRowMessage(
+      uint8_t seq_no, const ::brpc::policy::ResultRow& row);
 
   /** @brief Encodes EOF message used to mark the end of columns metadata and
    *rows when sending the resultset to the client.
@@ -212,8 +212,8 @@ class MySQLProtocolEncoder {
    *
    * @returns buffer with the encoded message
    **/
-  MsgBuffer encode_eof_message(uint8_t seq_no, uint16_t status = 0,
-                               uint16_t warnings = 0);
+    ::butil::IOBuf EncodeEOFMessage(uint8_t seq_no, uint16_t status = 0,
+                                    uint16_t warnings = 0);
 
   /**
    * encode a AuthFast message.
