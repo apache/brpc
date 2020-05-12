@@ -274,7 +274,7 @@ MySQLProtocolEncoder::encode_auth_switch_message(
 ::butil::IOBuf MySQLProtocolEncoder::EncodeColumnMetaMessage(
         uint8_t seq_no, const ::brpc::policy::ResultMeta& meta) {
     ::brpc::policy::MysqlProtocolPacketBody body2;
-    body2.AppendInt(static_cast<uint16_t>(meta.charset_set()));
+    body2.AppendInt(static_cast<uint16_t>(meta.charset()));
     body2.AppendInt(static_cast<uint32_t>(meta.length()));
     body2.AppendInt(static_cast<uint8_t>(meta.type()));
     body2.AppendInt(static_cast<uint16_t>(meta.flags()));

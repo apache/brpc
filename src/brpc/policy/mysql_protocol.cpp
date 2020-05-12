@@ -308,8 +308,15 @@ static void SendErrorPacket(
     Socket* socket, MysqlConnContext* ctx,
     const google::protobuf::Message* req,
     const google::protobuf::Message* res) {
-    // TODO:
     LOG(INFO) << "SendErrorPacket";
+    ::brpc::policy::ErrorMessage msg;
+    msg.seq_no = ctx->NextSequenceId();
+    msg.error_code = (uint16_t)cntl->ErrorCode();
+    msg.error_msg = cntl->ErrorText();
+
+    ::brpc::policy::MySQLProtocolEncoder encoder;
+    ::butil::IOBuf error_packet = encoder.EncodeErrorMessage(msg);
+    socket->Write(&error_packet);
 }
 
 static void SendUnknownMethodPacket(
@@ -472,7 +479,6 @@ static void SendQueryPacket(
         return;
     }
 
-    LOG(INFO) << "QUERY MANY ROWS " << socket->description();
     ::butil::IOBuf field_count_packet = encoder.EncodeColumnsNumberMessage(
             ctx->NextSequenceId(), field_count);
     socket->Write(&field_count_packet);

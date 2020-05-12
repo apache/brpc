@@ -96,7 +96,7 @@ message ResultMeta {
     optional string org_table = 4;
     optional string name = 5;
     optional string org_name = 6;
-    optional uint32 charset_set = 7;
+    optional uint32 charset = 7;
     optional uint32 length = 8;
     optional uint32 type = 9;
     optional uint32 flags = 10;
