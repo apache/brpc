@@ -81,10 +81,19 @@ public:
         return butil::StringPiece(scramble);
     }
 
+    void SetConnectionId(uint32_t conn_id_) {
+        this->conn_id = conn_id_;
+    }
+
+    uint32_t ConnectionId() const {
+        return conn_id;
+    }
+
     // the sequence id of the request packet from the client
     int8_t sequence_id;
     std::string current_db;
     std::string scramble;
+    uint32_t conn_id;
 };
 
 class MysqlProtocolPacketHeader {
