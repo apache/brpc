@@ -134,7 +134,7 @@ int HttpMessage::on_header_value(http_parser *parser,
 
 int HttpMessage::on_headers_complete(http_parser *parser) {
     HttpMessage *http_message = (HttpMessage *)parser->data;
-    http_message->_stage = HTTP_ON_HEADERS_COMPLELE;
+    http_message->_stage = HTTP_ON_HEADERS_COMPLETE;
     // Move content-type into the member field.
     const std::string* content_type = http_message->header().GetHeader("content-type");
     if (content_type) {
@@ -295,12 +295,12 @@ int HttpMessage::OnMessageComplete() {
     _cur_value = NULL;
     if (!_read_body_progressively) {
         // Normal read.
-        _stage = HTTP_ON_MESSAGE_COMPLELE;
+        _stage = HTTP_ON_MESSAGE_COMPLETE;
         return 0;
     }
     // Progressive read.
     std::unique_lock<butil::Mutex> mu(_body_mutex);
-    _stage = HTTP_ON_MESSAGE_COMPLELE;
+    _stage = HTTP_ON_MESSAGE_COMPLETE;
     if (_body_reader != NULL) {
         // Solve the case: SetBodyReader quit at ntry=MAX_TRY with non-empty
         // _body and the remaining _body is just the last part.
