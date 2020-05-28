@@ -260,7 +260,7 @@ public:
     // an start marker and brpc will call MultiTransactionHandler() to new a transaction
     // handler that all the following commands are sent to this tranction handler until
     // it returns REDIS_CMD_HANDLED. Read the comment below.
-    virtual RedisCommandHandlerResult Run(const std::vector<const char*>& args,
+    virtual RedisCommandHandlerResult Run(const std::vector<butil::StringPiece>& args,
                                           brpc::RedisReply* output,
                                           bool flush_batched) = 0;
 

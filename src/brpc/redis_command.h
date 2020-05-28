@@ -50,7 +50,7 @@ public:
     // Parse raw message from `buf'. Return PARSE_OK and set the parsed command
     // to `commands' and length to `len' if successful. Memory of commands are
     // allocated in `arena'.
-    ParseError Consume(butil::IOBuf& buf, std::vector<const char*>* commands,
+    ParseError Consume(butil::IOBuf& buf, std::vector<butil::StringPiece>* commands,
                        butil::Arena* arena);
 
 private:
@@ -60,7 +60,7 @@ private:
     bool _parsing_array;            // if the parser has met array indicator '*'
     int _length;                    // array length
     int _index;                     // current parsing array index
-    std::vector<const char*> _commands;  // parsed command string
+    std::vector<butil::StringPiece> _commands;  // parsed command string
 };
 
 } // namespace brpc

@@ -76,7 +76,7 @@ public:
 };
 
 int ConsumeCommand(RedisConnContext* ctx,
-                   const std::vector<const char*>& commands,
+                   const std::vector<butil::StringPiece>& commands,
                    bool flush_batched,
                    butil::IOBufAppender* appender) {
     RedisReply output(&ctx->arena);
@@ -90,10 +90,10 @@ int ConsumeCommand(RedisConnContext* ctx,
             return -1;
         }
     } else {
-        RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(commands[0]);
+        RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(commands[0].as_string());
         if (!ch) {
             char buf[64];
-            snprintf(buf, sizeof(buf), "ERR unknown command `%s`", commands[0]);
+            snprintf(buf, sizeof(buf), "ERR unknown command `%s`", commands[0].data());
             output.SetError(buf);
         } else {
             result = ch->Run(commands, &output, flush_batched);
@@ -159,7 +159,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             ctx = new RedisConnContext(rs);
             socket->reset_parsing_context(ctx);
         }
-        std::vector<const char*> current_commands;
+        std::vector<butil::StringPiece> current_commands;
         butil::IOBufAppender appender;
         ParseError err = PARSE_OK;
 
@@ -168,7 +168,7 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             return MakeParseError(err);
         }
         while (true) {
-            std::vector<const char*> next_commands;
+            std::vector<butil::StringPiece> next_commands;
             err = ctx->parser.Consume(*source, &next_commands, &ctx->arena);
             if (err != PARSE_OK) {
                 break;
