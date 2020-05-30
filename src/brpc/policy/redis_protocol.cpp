@@ -93,7 +93,7 @@ int ConsumeCommand(RedisConnContext* ctx,
         RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(commands[0].as_string());
         if (!ch) {
             char buf[64];
-            snprintf(buf, sizeof(buf), "ERR unknown command `%s`", commands[0].data());
+            snprintf(buf, sizeof(buf), "ERR unknown command `%s`", commands[0].as_string().c_str());
             output.SetError(buf);
         } else {
             result = ch->Run(commands, &output, flush_batched);
