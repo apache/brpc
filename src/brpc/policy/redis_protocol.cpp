@@ -189,7 +189,9 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
         wopt.ignore_eovercrowded = true;
         LOG_IF(WARNING, socket->Write(&sendbuf, &wopt) != 0)
             << "Fail to send redis reply";
-        ctx->arena.clear();
+        if (err != PARSE_ERROR_NOT_ENOUGH_DATA) {
+            ctx->arena.clear();
+        }
         return MakeParseError(err);
     } else {
         // NOTE(gejun): PopPipelinedInfo() is actually more contended than what
