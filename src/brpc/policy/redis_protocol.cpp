@@ -76,13 +76,13 @@ public:
 };
 
 int ConsumeCommand(RedisConnContext* ctx,
-                   const std::vector<butil::StringPiece>& commands,
+                   const std::vector<butil::StringPiece>& args,
                    bool flush_batched,
                    butil::IOBufAppender* appender) {
     RedisReply output(&ctx->arena);
     RedisCommandHandlerResult result = REDIS_CMD_HANDLED;
     if (ctx->transaction_handler) {
-        result = ctx->transaction_handler->Run(commands, &output, flush_batched);
+        result = ctx->transaction_handler->Run(args, &output, flush_batched);
         if (result == REDIS_CMD_HANDLED) {
             ctx->transaction_handler.reset(NULL);
         } else if (result == REDIS_CMD_BATCHED) {
@@ -90,13 +90,13 @@ int ConsumeCommand(RedisConnContext* ctx,
             return -1;
         }
     } else {
-        RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(commands[0]);
+        RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(args[0]);
         if (!ch) {
             char buf[64];
-            snprintf(buf, sizeof(buf), "ERR unknown command `%s`", commands[0].as_string().c_str());
+            snprintf(buf, sizeof(buf), "ERR unknown command `%s`", args[0].as_string().c_str());
             output.SetError(buf);
         } else {
-            result = ch->Run(commands, &output, flush_batched);
+            result = ch->Run(args, &output, flush_batched);
             if (result == REDIS_CMD_CONTINUE) {
                 if (ctx->batched_size != 0) {
                     LOG(ERROR) << "CONTINUE should not be returned in a batched process.";
@@ -159,26 +159,26 @@ ParseResult ParseRedisMessage(butil::IOBuf* source, Socket* socket,
             ctx = new RedisConnContext(rs);
             socket->reset_parsing_context(ctx);
         }
-        std::vector<butil::StringPiece> current_commands;
+        std::vector<butil::StringPiece> current_args;
         butil::IOBufAppender appender;
         ParseError err = PARSE_OK;
 
-        err = ctx->parser.Consume(*source, &current_commands, &ctx->arena);
+        err = ctx->parser.Consume(*source, &current_args, &ctx->arena);
         if (err != PARSE_OK) {
             return MakeParseError(err);
         }
         while (true) {
-            std::vector<butil::StringPiece> next_commands;
-            err = ctx->parser.Consume(*source, &next_commands, &ctx->arena);
+            std::vector<butil::StringPiece> next_args;
+            err = ctx->parser.Consume(*source, &next_args, &ctx->arena);
             if (err != PARSE_OK) {
                 break;
             }
-            if (ConsumeCommand(ctx, current_commands, false, &appender) != 0) {
+            if (ConsumeCommand(ctx, current_args, false, &appender) != 0) {
                 return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
             }
-            current_commands.swap(next_commands);
+            current_args.swap(next_args);
         }
-        if (ConsumeCommand(ctx, current_commands,
+        if (ConsumeCommand(ctx, current_args,
                     true /*must be the last message*/, &appender) != 0) {
             return MakeParseError(PARSE_ERROR_ABSOLUTELY_WRONG);
         }
