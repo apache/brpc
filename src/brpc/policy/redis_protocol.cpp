@@ -90,7 +90,7 @@ int ConsumeCommand(RedisConnContext* ctx,
             return -1;
         }
     } else {
-        RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(commands[0].as_string());
+        RedisCommandHandler* ch = ctx->redis_service->FindCommandHandler(commands[0]);
         if (!ch) {
             char buf[64];
             snprintf(buf, sizeof(buf), "ERR unknown command `%s`", commands[0].as_string().c_str());

@@ -22,6 +22,7 @@
 #include <google/protobuf/message.h>
 #include <unordered_map>
 #include <memory>
+#include <list>
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
 #include "butil/arena.h"
@@ -224,11 +225,13 @@ public:
     bool AddCommandHandler(const std::string& name, RedisCommandHandler* handler);
 
     // This function should not be touched by user and used by brpc deverloper only.
-    RedisCommandHandler* FindCommandHandler(const std::string& name) const;
+    RedisCommandHandler* FindCommandHandler(const butil::StringPiece& name) const;
 
 private:
-    typedef std::unordered_map<std::string, RedisCommandHandler*> CommandMap;
+    typedef BUTIL_HASH_NAMESPACE::hash<butil::StringPiece> StringPieceHasher;
+    typedef std::unordered_map<butil::StringPiece, RedisCommandHandler*, StringPieceHasher> CommandMap;
     CommandMap _command_map;
+    std::list<std::string> _all_commands;
 };
 
 enum RedisCommandHandlerResult {
