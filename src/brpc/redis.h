@@ -222,7 +222,7 @@ public:
     virtual ~RedisService() {}
     
     // Call this function to register `handler` that can handle command `name`.
-    bool AddCommandHandler(const butil::StringPiece& name, RedisCommandHandler* handler);
+    bool AddCommandHandler(const std::string& name, RedisCommandHandler* handler);
 
     // This function should not be touched by user and used by brpc deverloper only.
     RedisCommandHandler* FindCommandHandler(const butil::StringPiece& name) const;

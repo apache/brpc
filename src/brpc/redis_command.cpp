@@ -420,7 +420,7 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
     char* d = (char*)arena->allocate((len/8 + 1) * 8);
     buf.cutn(d, len);
     d[len] = '\0';
-    _args[_index] = butil::StringPiece(d, len);
+    _args[_index].set(d, len);
     if (_index == 0) {
         // convert it to lowercase when it is command name
         for (int i = 0; i < len; ++i) {
