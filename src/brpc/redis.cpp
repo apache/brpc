@@ -436,22 +436,20 @@ std::ostream& operator<<(std::ostream& os, const RedisResponse& response) {
     return os;
 }
 
-bool RedisService::AddCommandHandler(const std::string& name, RedisCommandHandler* handler) {
-    butil::StringPiece name_piece(name);
-    auto it = _command_map.find(name_piece);
+bool RedisService::AddCommandHandler(const butil::StringPiece& name, 
+                                     RedisCommandHandler* handler) {
+    std::string lcname = StringToLowerASCII(name.as_string());
+    auto it = _command_map.find(lcname);
     if (it != _command_map.end()) {
         LOG(ERROR) << "redis command name=" << name << " exist";
         return false;
     }
-    
-    _all_commands.push_back(name);
-    name_piece = _all_commands.back();
-    _command_map[name_piece] = handler;
+    _command_map[lcname] = handler;
     return true;
 }
  
 RedisCommandHandler* RedisService::FindCommandHandler(const butil::StringPiece& name) const {
-    auto it = _command_map.find(name);
+    auto it = _command_map.find(name.as_string());
     if (it != _command_map.end()) {
         return it->second;
     }

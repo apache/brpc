@@ -222,16 +222,14 @@ public:
     virtual ~RedisService() {}
     
     // Call this function to register `handler` that can handle command `name`.
-    bool AddCommandHandler(const std::string& name, RedisCommandHandler* handler);
+    bool AddCommandHandler(const butil::StringPiece& name, RedisCommandHandler* handler);
 
     // This function should not be touched by user and used by brpc deverloper only.
     RedisCommandHandler* FindCommandHandler(const butil::StringPiece& name) const;
 
 private:
-    typedef BUTIL_HASH_NAMESPACE::hash<butil::StringPiece> StringPieceHasher;
-    typedef std::unordered_map<butil::StringPiece, RedisCommandHandler*, StringPieceHasher> CommandMap;
+    typedef std::unordered_map<std::string, RedisCommandHandler*> CommandMap;
     CommandMap _command_map;
-    std::list<std::string> _all_commands;
 };
 
 enum RedisCommandHandlerResult {
