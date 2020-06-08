@@ -362,7 +362,7 @@ RedisCommandParser::RedisCommandParser()
     , _index(0) {}
 
 ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
-                                       std::vector<const char*>* commands,
+                                       std::vector<butil::StringPiece>* args,
                                        butil::Arena* arena) {
     const char* pfc = (const char*)buf.fetch1();
     if (pfc == NULL) {
@@ -389,7 +389,7 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
         LOG(ERROR) << '`' << intbuf + 1 << "' is not a valid 64-bit decimal";
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
-    if (value <= 0) {
+    if (value < 0) {
         LOG(ERROR) << "Invalid len=" << value << " in redis command";
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
@@ -398,8 +398,8 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
         _parsing_array = true;
         _length = value;
         _index = 0;
-        _commands.resize(value);
-        return Consume(buf, commands, arena);
+        _args.resize(value);
+        return Consume(buf, args, arena);
     }
     CHECK(_index < _length) << "a complete command has been parsed. "
             "impl of RedisCommandParser::Parse is buggy";
@@ -420,7 +420,7 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
     char* d = (char*)arena->allocate((len/8 + 1) * 8);
     buf.cutn(d, len);
     d[len] = '\0';
-    _commands[_index] = d;
+    _args[_index].set(d, len);
     if (_index == 0) {
         // convert it to lowercase when it is command name
         for (int i = 0; i < len; ++i) {
@@ -434,9 +434,9 @@ ParseError RedisCommandParser::Consume(butil::IOBuf& buf,
         return PARSE_ERROR_ABSOLUTELY_WRONG;
     }
     if (++_index < _length) {
-        return Consume(buf, commands, arena);
+        return Consume(buf, args, arena);
     }
-    commands->swap(_commands);
+    args->swap(_args);
     Reset();
     return PARSE_OK;
 }
@@ -445,7 +445,7 @@ void RedisCommandParser::Reset() {
     _parsing_array = false;
     _length = 0;
     _index = 0;
-    _commands.clear();
+    _args.clear();
 }
 
 } // namespace brpc

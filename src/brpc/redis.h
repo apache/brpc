@@ -22,6 +22,7 @@
 #include <google/protobuf/message.h>
 #include <unordered_map>
 #include <memory>
+#include <list>
 #include "butil/iobuf.h"
 #include "butil/strings/string_piece.h"
 #include "butil/arena.h"
@@ -224,7 +225,7 @@ public:
     bool AddCommandHandler(const std::string& name, RedisCommandHandler* handler);
 
     // This function should not be touched by user and used by brpc deverloper only.
-    RedisCommandHandler* FindCommandHandler(const std::string& name) const;
+    RedisCommandHandler* FindCommandHandler(const butil::StringPiece& name) const;
 
 private:
     typedef std::unordered_map<std::string, RedisCommandHandler*> CommandMap;
@@ -260,7 +261,7 @@ public:
     // an start marker and brpc will call MultiTransactionHandler() to new a transaction
     // handler that all the following commands are sent to this tranction handler until
     // it returns REDIS_CMD_HANDLED. Read the comment below.
-    virtual RedisCommandHandlerResult Run(const std::vector<const char*>& args,
+    virtual RedisCommandHandlerResult Run(const std::vector<butil::StringPiece>& args,
                                           brpc::RedisReply* output,
                                           bool flush_batched) = 0;
 
