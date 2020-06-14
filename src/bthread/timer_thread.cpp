@@ -406,9 +406,7 @@ void TimerThread::run() {
 
         // The realtime to wait for.
         int64_t next_run_time = std::numeric_limits<int64_t>::max();
-        if (tasks.empty()) {
-            next_run_time = std::numeric_limits<int64_t>::max();
-        } else {
+        if (!tasks.empty()) {
             next_run_time = tasks[0]->run_time;
         }
         // Similarly with the situation before running tasks, we check
